@@ -163,11 +163,16 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Ve quién gana en su ámbito y abre el perfil de una empresa con sus
   adjudicaciones.
 
-### CU-19 — Gobernar mi cuenta: preferencias y sesiones
+### CU-19 — Gobernar mi cuenta: preferencias, sesiones y contraseña
 
 - **Quién:** cualquier usuario. **Dónde:** `/ajustes`.
 - Una preferencia cambiada sigue ahí tras recargar.
 - Ve sus sesiones abiertas, con la actual marcada, y cierra las demás.
+- Cambia su contraseña dando la actual (Ajustes › Seguridad): sigue dentro,
+  sus otras sesiones y sus claves de API dejan de valer, y le llega un aviso al
+  correo. Con una actual equivocada no cambia nada.
+- Si la olvidó, la recupera con el enlace que le llega al correo, con el mismo
+  efecto sobre sesiones y claves y el mismo aviso.
 
 ### CU-20 — Gestionar la plataforma como administrador
 
@@ -302,7 +307,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-16** Exportar el ámbito a CSV | — | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
 | **CU-17** Ajustar mi perfil de puntuación | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-perfil.spec.ts](../web/e2e/recorrido-perfil.spec.ts) | [test_me_profile_routes.py](../tests/test_me_profile_routes.py) |
 | **CU-18** Estudiar a la competencia | [test_escenario_competencia.py](../tests/test_escenario_competencia.py) | [recorrido-competencia.spec.ts](../web/e2e/recorrido-competencia.spec.ts) | — |
-| **CU-19** Gobernar mi cuenta: preferencias y sesiones | — | [ajustes.spec.ts](../web/e2e/ajustes.spec.ts) | — |
+| **CU-19** Gobernar mi cuenta: preferencias, sesiones y contraseña | [test_escenario_cuenta_y_acceso.py](../tests/test_escenario_cuenta_y_acceso.py) | [ajustes.spec.ts](../web/e2e/ajustes.spec.ts) | [cambio-contrasena.test.tsx](../web/src/app/(dashboard)/ajustes/_components/__tests__/cambio-contrasena.test.tsx) |
 | **CU-20** Gestionar la plataforma como administrador | — | [admin-guard.spec.ts](../web/e2e/admin-guard.spec.ts) | — |
 | **CU-21** Descubrir el producto en la web pública | — | [seo.spec.ts](../web/e2e/seo.spec.ts) | — |
 | **CU-22** Leer el pliego con la cita delante | — | [pagina-cita.spec.ts](../web/e2e/pagina-cita.spec.ts) | — |

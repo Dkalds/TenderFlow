@@ -4,6 +4,7 @@ title: "La identidad interna es `user_id`; los proveedores OIDC son intercambiab
 status: accepted
 date: 2026-09-06
 deciders: "Daniel Kalitovics"
+superseded_parcialmente_por: "[[ADR-037-correo-acreditado-y-vinculacion-por-proveedor]]"
 related:
   - "[[ADR-015-identidad-tenderflow]]"
   - "[[ADR-022-frontera-de-persistencia]]"
@@ -12,7 +13,11 @@ tags: [adr]
 
 # ADR-030 — La identidad interna es `user_id`; los proveedores OIDC son intercambiables
 
-- **Estado:** aceptado
+- **Estado:** aceptado — **§C revisado** por
+  [ADR-037](ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md): el
+  correo de un proveedor solo cuenta si el proveedor lo acredita (Entra con
+  `xms_edov`), y dos proveedores con el mismo correo ya no son por eso el mismo
+  `users.id`.
 - **Fecha:** 2026-09-06
 - **Relacionado:** [ADR-015](ADR-015-identidad-tenderflow.md) (identidad del
   *producto*, no del usuario), [ADR-022](ADR-022-frontera-de-persistencia.md)
@@ -85,6 +90,11 @@ aprovisionamiento automático espera a que exista una organización que lo pida.
 El email se normaliza (minúsculas, sin espacios) antes de resolver identidad,
 en el único sitio donde se resuelve. Dos proveedores que devuelven el mismo
 email normalizado son el mismo `users.id`.
+
+> **Revisado por [ADR-037](ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md)
+> (2026-10-23):** la última frase ya no rige. Una identidad no se vincula a una
+> cuenta que entra con otro proveedor solo porque el correo coincide, y el
+> correo de un proveedor solo cuenta si el proveedor lo acredita.
 
 ### D. Dato personal y dato corporativo tienen dueños distintos
 

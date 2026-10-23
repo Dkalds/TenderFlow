@@ -300,7 +300,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * [DEPRECADO 2026-12-04] Comparación entre dos periodos
+         * [DEPRECADO 2027-01-15] Comparación entre dos periodos
          * @deprecated
          * @description Compare two time periods side-by-side.
          */
@@ -369,7 +369,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Forecast Retendering
+         * [DEPRECADO 2027-02-01] Previsión de re-licitaciones
          * @deprecated
          * @description Retendering forecast — contracts approaching end of term.
          *
@@ -379,8 +379,8 @@ export interface paths {
          *        ``GET /competitive/renovaciones`` con un dataset más rico (incluye
          *        `riesgo_cambio` y opportunity score). Se mantiene el endpoint por
          *        compatibilidad de contrato público (retirarlo es breaking change,
-         *        AGENTS.md §5) hasta confirmar ausencia de consumidores externos.
-         *        Ver docs/IMPROVEMENT_BACKLOG.md (Cerrados, 2026-07-20).
+         *        AGENTS.md §5). Apagado el 2027-02-01: ver
+         *        docs/rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md.
          */
         get: operations["forecast_retendering_api_v1_analytics_forecast_retendering_get"];
         put?: never;
@@ -689,7 +689,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * [DEPRECADO 2026-12-04] Flujo Sankey del resumen
+         * [DEPRECADO 2027-01-15] Flujo Sankey del resumen
          * @deprecated
          * @description Sankey flow: tipo_contrato → estado.
          */
@@ -730,7 +730,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * [DEPRECADO 2026-12-04] Top de licitaciones del resumen
+         * [DEPRECADO 2027-01-15] Top de licitaciones del resumen
          * @deprecated
          * @description Top N licitaciones by importe.
          */
@@ -1165,7 +1165,9 @@ export interface paths {
         put?: never;
         /**
          * Confirm Password Reset
-         * @description Consume un token una sola vez, cambia la contraseña y revoca sesiones.
+         * @description Consume un token una sola vez, cambia la contraseña y revoca sesiones y claves.
+         *
+         *     Al titular le llega después un aviso de que su contraseña ha cambiado.
          */
         post: operations["confirm_password_reset_api_v1_auth_password_reset_confirm_post"];
         delete?: never;
@@ -1188,6 +1190,32 @@ export interface paths {
          * @description Emite una respuesta indistinguible exista o no la cuenta.
          */
         post: operations["request_password_reset_api_v1_auth_password_reset_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Password
+         * @description Cambia la contraseña conociendo la actual.
+         *
+         *     Exige sesión con CSRF (y el segundo factor ya verificado, si la cuenta lo
+         *     tiene). La nueva pasa por la misma política que el alta y el reset. Al
+         *     cambiarla se cierran **las demás** sesiones —la que hace el cambio sigue
+         *     abierta— y se desactivan las claves de API de la cuenta, y llega un aviso
+         *     al correo del titular.
+         */
+        post: operations["change_password_api_v1_auth_password_change_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2503,13 +2531,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * [DEPRECADO 2026-12-04] Listado paginado de licitaciones (offset)
+         * [DEPRECADO 2027-01-15] Listado paginado de licitaciones (offset)
          * @deprecated
          * @description Devuelve lista paginada con filtros opcionales.
          *
-         *     > **Deprecation notice**: Se recomienda usar `/licitaciones/cursor` para
-         *     > datasets grandes. La paginación offset se mantendrá pero quedará marcada
-         *     > como legacy en futuras versiones.
+         *     > **Deprecado**: deja de responder el 2027-01-15 (cabeceras `Deprecation`
+         *     > y `Sunset`; docs/rfc/2026-09-06-rfc-retirada-endpoints-analitica.md).
+         *     > La sucesora es `/licitaciones/cursor`, que sirve el mismo dato sin
+         *     > `COUNT(*)` ni `OFFSET`.
          */
         get: operations["list_licitaciones_api_v1_licitaciones_get"];
         put?: never;
@@ -2628,7 +2657,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * SSE — Notificaciones en tiempo real de nuevas licitaciones
+         * [DEPRECADO 2027-02-01] SSE — Notificaciones en tiempo real de nuevas licitaciones
+         * @deprecated
          * @description Abre una conexión Server-Sent Events. Emite eventos ``licitaciones_nuevas`` cuando el scraper ingesta datos nuevos, y ``heartbeat`` cada 30 s para mantener la conexión viva. La conexión se cierra automáticamente tras 5 minutos.
          */
         get: operations["licitaciones_stream_api_v1_licitaciones_stream_get"];
@@ -3716,7 +3746,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Marcar novedades como leidas */
+        /**
+         * [DEPRECADO 2027-02-01] Marcar novedades como leidas
+         * @deprecated
+         * @description Marca novedades del mercado como leídas. Sin consumidor desde el 2026-10-12.
+         *
+         *     La campana ya no lista novedades: sus alertas se marcan con
+         *     ``POST /notifications/alerts/read``, y la última visita del Resumen con
+         *     ``POST /analytics/resumen/desde-mi-ultima-visita/visto``.
+         */
         post: operations["post_mark_read_api_v1_notifications_read_post"];
         delete?: never;
         options?: never;
@@ -10855,19 +10893,19 @@ export interface components {
             alerts_unread_count: number;
             /**
              * @deprecated
-             * @description Deprecado: contadores del mercado, que la campana ya no pinta. Los mismos, con el ámbito de la barra, en GET /analytics/resumen/hoy.
+             * @description Deprecado: contadores del mercado, que la campana ya no pinta; se retira el 2027-02-01. Los mismos, con el ámbito de la barra, en GET /analytics/resumen/hoy.
              */
             hoy?: components["schemas"]["HoyCounters"];
             /**
              * Items
              * @deprecated
-             * @description Deprecado: siempre vacío. La campana ya no lista novedades del mercado; están en GET /analytics/resumen/novedades.
+             * @description Deprecado: siempre vacío; se retira el 2027-02-01. La campana ya no lista novedades del mercado; están en GET /analytics/resumen/novedades.
              */
             items?: components["schemas"]["NotificationItem"][];
             /**
              * Unread Count
              * @deprecated
-             * @description Deprecado: siempre 0 (acompañaba a `items`).
+             * @description Deprecado: siempre 0 (acompañaba a `items`); se retira el 2027-02-01.
              * @default 0
              */
             unread_count: number;
@@ -11799,6 +11837,16 @@ export interface components {
             ultimo_estado: "ok" | "error" | "omitido" | "omitido_por_dependencia" | "sin_ejecuciones";
             /** Ultimo Fallo */
             ultimo_fallo?: string | null;
+        };
+        /**
+         * PasswordChangeRequest
+         * @description Cambio de contraseña desde Ajustes: la actual y la nueva.
+         */
+        PasswordChangeRequest: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
         };
         /** PasswordResetConfirm */
         PasswordResetConfirm: {
@@ -18822,6 +18870,64 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    change_password_api_v1_auth_password_change_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description La contraseña actual no es correcta, o la nueva no cumple la política. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La cuenta no tiene contraseña (entra solo con un proveedor). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demasiadas contraseñas actuales erróneas seguidas. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -7,6 +7,20 @@ from typing import Any
 from db.database import connect, connect_read, now_utc_iso
 
 
+class CuentaDeOtroProveedorError(Exception):
+    """El correo ya es de una cuenta vinculada a otro proveedor OAuth.
+
+    ``get_or_create_oauth_user`` no la vincula (ADR-037): el callback la
+    convierte en un error que la pantalla de login explica. Lleva el proveedor
+    de la cuenta existente para el log, nunca el correo.
+    """
+
+    def __init__(self, user_id: int, proveedor_existente: str) -> None:
+        super().__init__(f"La cuenta {user_id} ya entra con {proveedor_existente}")
+        self.user_id = user_id
+        self.proveedor_existente = proveedor_existente
+
+
 def get_or_create_oauth_user(
     *,
     email: str,
@@ -16,8 +30,24 @@ def get_or_create_oauth_user(
 ) -> int:
     """Busca un usuario por (oauth_provider, oauth_sub); si no existe lo crea.
 
+    Si no existe esa identidad pero sí una cuenta con el mismo correo:
+
+    - **sin proveedor** (alta con contraseña, o creada a mano): se vincula. El
+      proveedor ha acreditado el correo —Google con ``email_verified``,
+      Microsoft con ``xms_edov``—, que es lo mismo que demuestra un enlace de
+      recuperación, y quien controla el buzón ya podía ponerle contraseña;
+    - **del mismo proveedor** con otro ``sub``: se vincula, como siempre;
+    - **de otro proveedor**: no se vincula y se lanza
+      :class:`CuentaDeOtroProveedorError`. Que dos proveedores digan el mismo
+      correo no basta para darle a la segunda identidad la cuenta de la primera
+      (ADR-037, que revisa ADR-030 §C): cada uno responde de lo que acredita, y
+      un tenant cualquiera de Entra no responde de una cuenta de Google.
+
     Returns:
         El ``id`` del usuario.
+
+    Raises:
+        CuentaDeOtroProveedorError: el correo es de una cuenta de otro proveedor.
     """
     with connect() as c:
         row = c.execute(
@@ -36,10 +66,14 @@ def get_or_create_oauth_user(
         # vinculación le daría a ese tercero una llave de la cuenta real
         # (RFC 2026-10-21-alta-con-contrasena-tras-concesion §4).
         if email:
+            # `FOR UPDATE`: dos callbacks a la vez de proveedores distintos no
+            # pueden leer los dos «sin proveedor» y vincular cada uno el suyo.
             row = c.execute(
-                "SELECT id FROM users WHERE email = %s",
+                "SELECT id, oauth_provider FROM users WHERE email = %s FOR UPDATE",
                 (email,),
             ).fetchone()
+            if row and row[1] and row[1] != oauth_provider:
+                raise CuentaDeOtroProveedorError(int(row[0]), str(row[1]))
             if row:
                 c.execute(
                     "UPDATE users SET oauth_provider = %s, oauth_sub = %s, "

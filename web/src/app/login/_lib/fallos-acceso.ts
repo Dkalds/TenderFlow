@@ -32,6 +32,9 @@ const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   invalid_state: "La sesión de inicio caducó o ya se usó. Inténtalo de nuevo.",
   oauth_failed: OAUTH_FALLBACK_ERROR,
   email_not_allowed: "Tu cuenta no tiene acceso a TenderFlow.",
+  // El correo ya es de una cuenta que entra con otro proveedor (ADR-037).
+  account_other_provider:
+    "Ese correo ya tiene cuenta con otro proveedor: entra con el que usaste la primera vez.",
 };
 
 /** El `?error=` con el que vuelve el callback de OAuth, o `null` si no hay. */

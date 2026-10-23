@@ -54,6 +54,14 @@ MOTIVO_MINIMO = 40
 # alcanza"``. Una por línea, en orden alfabético de ruta, para que dos ramas
 # que añaden operaciones distintas no choquen al fusionar.
 NUEVAS: dict[str, str] = {
+    "POST /api/v1/auth/password/change": (
+        "Se miró POST /auth/password-reset/confirm, que cambia la contraseña pero exige el "
+        "token de un solo uso que llega por correo, no la contraseña actual: quien la "
+        "conoce tenía que pedirse un enlace para cambiarla, y ese camino revoca también la "
+        "sesión desde la que se hace. PUT /me/profile y PUT /me/notification-preferences no "
+        "tocan credenciales. El cambio pide la actual, deja viva la sesión que lo hace y "
+        "revoca las demás y las claves de API (backlog, recuperación de contraseña punto 3)."
+    ),
     "POST /api/v1/auth/verify-email": (
         "Se miró POST /auth/password-reset/confirm, que consume un token de un solo uso "
         "llegado por correo, pero cambia la contraseña y revoca sesiones: la activación "

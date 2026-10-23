@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Seguridad — activar y quitar la verificación en dos pasos (CU-25).
+ * Seguridad — la contraseña (CU-19) y la verificación en dos pasos (CU-25).
  *
  * El login ya pedía el código a quien lo tenía activo (`/auth/totp/verify`),
  * pero no había pantalla para activarlo: los endpoints de alta, confirmación y
@@ -24,6 +24,7 @@ import { useSession } from "@/lib/auth";
 import { pideReautenticacion } from "@/lib/reautenticacion";
 import { useIniciarAlta } from "../_hooks/use-segundo-factor";
 import { mensajeDelSegundoFactor } from "../_lib/segundo-factor";
+import { CambioContrasena } from "./cambio-contrasena";
 import { SegundoFactorAlta } from "./segundo-factor-alta";
 import { SegundoFactorCodigos } from "./segundo-factor-codigos";
 import { SegundoFactorQuitar } from "./segundo-factor-quitar";
@@ -113,6 +114,8 @@ export default function SeguridadView() {
       ) : (
         <SinSegundoFactor onAlta={setUri} />
       )}
+
+      <CambioContrasena />
     </div>
   );
 }
