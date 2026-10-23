@@ -1007,17 +1007,9 @@ _Sin ítems abiertos._
   - `access_grants` guarda quién revocó (columna nueva: migración, AGENTS.md §6).
   - Test: con la escritura de auditoría fallando, conceder no deja una concesión activa sin rastro.
   - Las rutas de administración que auditan pasan `user_id`.
+  - *Progreso 2026-10-23:* la reactivación de concesiones (`POST /admin/solicitudes-acceso/grants/{id}/reactivar`) nace auditada con `user_id`, como las tres llamadas de `admin_solicitudes.py`; `admin_users.py` y `feature_flags.py` siguen sin pasarlo.
 - **Files de partida:** [db/audit.py](../db/audit.py), [db/access_grants.py](../db/access_grants.py), [api/routes/admin_solicitudes.py](../api/routes/admin_solicitudes.py), [docs/rfc/242-acceso-oauth-dinamico.md](rfc/242-acceso-oauth-dinamico.md)
 - **Riesgo:** medio — `log_action` serializa la cadena con un advisory lock global: meterlo en transacciones ajenas cambia quién espera a quién.
-
-### [P3] Las violaciones de CSP se guardan y nadie las lee
-- **Área:** api/routes/security.py, web/src/app/(dashboard)/ops
-- **Problema:** `csp_violations` recibió 14 informes en siete días (todos `frame-src`, a 2026-10-09) y no tiene ruta de lectura. Los errores de JavaScript del navegador, que se guardan al lado, sí la tienen y desde ese día se ven en Ops › Estado.
-- **Acceptance criteria:**
-  - Ruta de administración tipada con las violaciones agrupadas por directiva y origen.
-  - Panel en Ops › Estado junto a «Errores en el navegador».
-- **Files de partida:** [api/routes/security.py](../api/routes/security.py), [web/src/app/(dashboard)/ops/_components/observabilidad/errores-navegador-card.tsx](../web/src/app/(dashboard)/ops/_components/observabilidad/errores-navegador-card.tsx)
-- **Riesgo:** bajo.
 
 ### [P2] Encender las fuentes nuevas: contratos menores, plataformas agregadas y TACRC completo
 - **Área:** scraper/connectors/placsp_menores.py, scraper/connectors/placsp_agregadas.py, scraper/connectors/tacrc.py, [runbooks/fuentes-opcionales.md](runbooks/fuentes-opcionales.md)
@@ -1240,17 +1232,6 @@ _Sin ítems abiertos._
 - **Riesgo:** bajo — el guard de `feature_columns` de `BajaModel` degrada a baseline si se despliega el código sin reentrenar.
 - **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — la medición existe; el número no.** `ENV=dev python scripts/medir_cobertura_features.py` (o `--json` para archivarlo) imprime, contra la BD de `DATABASE_URL` y solo leyendo, la cobertura de los tres campos sobre dos poblaciones: `dataset_baja` (las filas exactas de entrenamiento, `_sql_agregado`) y `universo_abierto` (lo que puntúa el batch), cada una con total, por `fuente` y por año de publicación, y un veredicto contra el 50 % **solo sobre el total del dataset**. El SQL vive en `MlDatasetRepository.cobertura_features_pendientes`. Tests en `tests/test_medir_cobertura_features.py` (uno contra Postgres, no ejecutado en local). **Falta:** correrlo contra producción, anotar aquí el número con fecha y, según salga, seguir los cuatro pasos o dejar escrito el número que lo desaconseja.
 
-### [P3] El panel de accesos no deja volver a conceder tras revocar ni dice quién concedió y cuándo
-- **Área:** web/src/app/(dashboard)/ops/_components/solicitudes-acceso, web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts, api/routes/admin_solicitudes.py
-- **Problema:** en Ops › Administración › Solicitudes de acceso, «Accesos dinámicos activos» lista solo las concesiones vivas, con su valor, su tipo y «Revocar». La API ya devuelve `granted_by`, `created_at`, `updated_at` y `revoked_at` (`AccessGrantOut`) y admite `GET /grants?include_inactive=true`, pero el panel no los pide ni los pinta: no se ve quién concedió ni cuándo, ni queda a la vista lo revocado. Las acciones de conceder solo aparecen en solicitudes pendientes, así que devolverle el acceso a alguien revocado exige que vuelva a rellenar el formulario público o llamar a la API a mano (el `PATCH` con `conceder` sobre su solicitud ya atendida reactiva la fila). Tampoco hay confirmación antes de «Conceder dominio» ni de «Revocar»: desde el 2026-10-09 el servidor rechaza el dominio de un proveedor de correo público, pero un clic sigue bastando para abrir el dominio entero de una empresa.
-- **Acceptance criteria:**
-  - Cada concesión muestra quién la concedió y cuándo (hay que resolver `granted_by` a un nombre: hoy la ruta devuelve el id).
-  - Las revocadas se pueden ver y volver a conceder desde el panel, sin pasar por una solicitud nueva.
-  - «Conceder dominio» y «Revocar» piden confirmación diciendo a quién afectan.
-  - El 422 de un dominio no concedible se enseña una sola vez, con su motivo (hoy salen dos avisos: el genérico del hook y el global con el `detail`).
-- **Files de partida:** [web/src/app/(dashboard)/ops/_components/solicitudes-acceso/accesos-dinamicos.tsx](../web/src/app/(dashboard)/ops/_components/solicitudes-acceso/accesos-dinamicos.tsx), [web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts](../web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts), [api/routes/admin_solicitudes.py](../api/routes/admin_solicitudes.py)
-- **Riesgo:** bajo — es interfaz sobre rutas que ya existen; lo único nuevo en la API es el nombre de quien concedió.
-
 ### [P3] 247 adjudicaciones de expedientes multilote siguen sin lote: ver cómo las publica PLACSP
 - **Área:** scraper/codice_parser.py (`_XPATHS_LOTE_RESULTADO`), tests/fixtures/placsp
 - **Problema:** tras el arreglo del parser (#479) y el reproceso de 2020-10 a 2026-10 (#484, #487), medido el 2026-10-18 en producción: de 1.246 adjudicaciones en expedientes con dos o más lotes, 999 tienen `lote_id` y **247 no**, repartidas en 113 expedientes. Todas son de PLACSP y todas tienen NIF, así que no es el emparejamiento por nombre. En 59 de esos expedientes conviven filas con lote y sin él, y 21 ya se han vuelto a ingerir con el parser nuevo y siguen igual: apunta a resultados que PLACSP publica sin referencia de lote, o con una forma que `_lote_del_resultado` no lee. La adjudicación más antigua sin lote es de 2022-04. La consecuencia es la de antes, acotada a esas filas: la agenda no cierra la oportunidad de un lote cuya adjudicación no dice de qué lote es (la regla conservadora).
@@ -1396,6 +1377,32 @@ _Sin ítems abiertos._
 - **Riesgo:** bajo — sustituciones de nombre.
 
 ## Cerrados
+
+- [2026-10-23] **P3: El panel de accesos no deja volver a conceder tras revocar ni dice quién
+  concedió y cuándo** (rama `claude/exciting-mccarthy-v6hcrw`) — `GET /admin/solicitudes-acceso/grants`
+  resuelve `granted_by_nombre` contra `users` (`COALESCE(display_name, email)`, `LEFT JOIN`: las del
+  bootstrap y las de cuentas que ya no están siguen listándose, sin autor) y el panel lo pide con
+  `include_inactive=true`: cada concesión dice quién la concedió y cuándo, las revocadas van aparte
+  —plegadas, con su fecha— y «Volver a conceder» llama a
+  `POST /admin/solicitudes-acceso/grants/{id}/reactivar` (operación nueva, con su motivo en `NUEVAS`):
+  la misma fila, reactivada, con quien reactiva como autor, auditada como `access_grant.granted`
+  con la marca `reactivada` y `user_id`, 404 si sigue activa y 422 si dejó de ser concedible (la
+  regla de los proveedores públicos se aplica también al volver). «Revocar», «Volver a conceder» y
+  «Conceder dominio» piden confirmación en la propia fila nombrando a quién afectan (un dominio,
+  a todas sus cuentas). El 422 de un dominio no concedible sale una sola vez: las tres mutaciones
+  dejan el aviso al gestor global (`meta.errorTitle`), que es el que lleva el `detail`.
+  Escenario `tests/test_escenario_administracion.py` (CU-20), integración en
+  `tests/test_access_grants_integration.py`, rutas en `tests/test_routes_admin_solicitudes.py` y
+  Vitest de la tarjeta.
+- [2026-10-23] **P3: Las violaciones de CSP se guardan y nadie las lee** (rama
+  `claude/exciting-mccarthy-v6hcrw`) — `db/repositories/csp_violations.py::listar_agrupadas` agrupa
+  por directiva y origen bloqueado (esquema y host del `blocked-uri`, o el valor literal para
+  `inline`/`eval`/`data`), con ocurrencias, primera y última vez y la página más frecuente sin
+  query string, dentro de una ventana; `GET /security/csp-violations?dias=&limit=` (admin, operación
+  nueva con su motivo en `NUEVAS`) la sirve y «Bloqueos de la política de contenido» la pinta en
+  Ops › Estado junto a «Errores en el navegador», con vacío y error distinguidos. Tests del
+  repositorio (`tests/test_csp_violations_repo.py`), de la ruta
+  (`tests/test_routes_security_csp_violaciones.py`), el escenario de CU-20 y Vitest de la tarjeta.
 
 - [2026-10-17] **P2: Decidir si el listado `/licitaciones` esconde duplicados (ADR-026 D23
   dice que sí)** (rama `claude/listado-esconde-duplicados`) — manda D23: el listado es

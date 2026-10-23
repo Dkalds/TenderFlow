@@ -27,6 +27,10 @@ class AccessGrant(TypedDict):
     value: str
     active: bool
     granted_by: int | None
+    #: Nombre visible (o, sin él, el correo) de quien concedió, resuelto contra
+    #: ``users``. ``None`` si lo concedió el bootstrap, si la cuenta ya no
+    #: existe, o cuando la fila viene de un ``RETURNING`` sin el join.
+    granted_by_nombre: str | None
     created_at: str
     updated_at: str
     revoked_at: str | None
@@ -157,6 +161,16 @@ def grant_access_request(
     )
 
 
+#: La lectura que ve el panel: la concesión con quien la concedió. El join es
+#: ``LEFT``: ``granted_by`` es nulo en las del bootstrap y puede apuntar a una
+#: cuenta desactivada o anonimizada, y esas filas se siguen listando.
+_SELECT_CON_AUTOR = (
+    "SELECT g.id, g.kind, g.value, g.active, g.granted_by, g.created_at, g.updated_at, "
+    "g.revoked_at, COALESCE(u.display_name, u.email) AS granted_by_nombre "
+    "FROM access_grants g LEFT JOIN users u ON u.id = g.granted_by"
+)
+
+
 def revoke_access(grant_id: int) -> AccessGrant | None:
     with connect() as connection:
         cursor = connection.execute(
@@ -169,23 +183,55 @@ def revoke_access(grant_id: int) -> AccessGrant | None:
     return _row_to_grant(row) if row is not None else None
 
 
+def reactivate_access(grant_id: int, *, granted_by: int | None) -> AccessGrant | None:
+    """Vuelve a activar una concesión revocada, con quien lo hace como autor.
+
+    Es la misma fila (``UNIQUE(kind, value)``), no una nueva: conserva su
+    ``created_at`` y pasa a tener por autor a quien la reactiva. Devuelve
+    ``None`` si no existe o sigue activa —reactivar lo activo no es un evento—.
+
+    Pasa por la misma regla que una concesión nueva (``_valor_concedible``): un
+    dominio que dejó de ser concedible después de concederse (hoy, el de un
+    proveedor de correo público) no vuelve por aquí, y la transacción se deshace
+    sin tocar la fila.
+    """
+    with connect() as connection:
+        row = connection.execute(
+            "SELECT kind, value FROM access_grants WHERE id = %s AND active = FALSE FOR UPDATE",
+            (grant_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        _valor_concedible(cast("AccessGrantKind", row[0]), str(row[1]))
+        connection.execute(
+            "UPDATE access_grants SET active = TRUE, revoked_at = NULL, granted_by = %s, "
+            "updated_at = NOW() WHERE id = %s",
+            (granted_by, grant_id),
+        )
+        fila = connection.execute(f"{_SELECT_CON_AUTOR} WHERE g.id = %s", (grant_id,)).fetchone()
+    return _row_to_grant(fila) if fila is not None else None
+
+
 def list_access_grants(*, include_inactive: bool = False) -> list[AccessGrant]:
-    where = "" if include_inactive else "WHERE active = TRUE"
+    where = "" if include_inactive else "WHERE g.active = TRUE"
     with connect_read() as connection:
         rows = connection.execute(
-            "SELECT id, kind, value, active, granted_by, created_at, updated_at, revoked_at "
-            f"FROM access_grants {where} ORDER BY active DESC, updated_at DESC, id DESC"
+            f"{_SELECT_CON_AUTOR} {where} ORDER BY g.active DESC, g.updated_at DESC, g.id DESC"
         ).fetchall()
     return [_row_to_grant(row) for row in rows]
 
 
 def _row_to_grant(row: Sequence[object]) -> AccessGrant:
+    # Las escrituras devuelven la fila con `RETURNING` (ocho columnas, sin el
+    # nombre); la lectura del panel la trae con el join (nueve).
+    nombre = row[8] if len(row) > 8 else None
     return AccessGrant(
         id=int(cast("int", row[0])),
         kind=cast("AccessGrantKind", row[1]),
         value=str(row[2]),
         active=bool(row[3]),
         granted_by=int(cast("int", row[4])) if row[4] is not None else None,
+        granted_by_nombre=str(nombre) if nombre is not None else None,
         created_at=str(row[5]),
         updated_at=str(row[6]),
         revoked_at=str(row[7]) if row[7] is not None else None,

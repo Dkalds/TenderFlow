@@ -514,6 +514,7 @@ export const adminKeys = {
   },
   accessGrants: ["admin-access-grants"] as const,
   clientErrors: ["admin-client-errors"] as const,
+  cspViolations: ["admin-csp-violations"] as const,
   ejecuciones: ["admin-ejecuciones"] as const,
   dlq: {
     all: ["admin", "dlq"] as const,

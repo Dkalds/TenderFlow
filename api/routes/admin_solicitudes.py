@@ -4,7 +4,7 @@ Requiere autenticación dual (sesión o API key) + is_admin, como el resto de
 ``/admin``. El recorrido entero se hace desde aquí (RFC 242): ver la cola,
 **conceder** el acceso —``conceder`` en el PATCH escribe una concesión en
 ``access_grants``, por email o por dominio—, avisar a la persona, revocar una
-concesión y descartar. ``OAUTH_ALLOWED_EMAILS``/``OAUTH_ALLOWED_DOMAINS`` siguen
+concesión, volver a concederla y descartar. ``OAUTH_ALLOWED_EMAILS``/``OAUTH_ALLOWED_DOMAINS`` siguen
 siendo el arranque estático: no se editan para un alta normal y no se pueden
 revocar desde aquí.
 
@@ -36,6 +36,7 @@ from db.access_grants import (
     ConcesionInvalida,
     grant_access_request,
     list_access_grants,
+    reactivate_access,
     revoke_access,
 )
 from db.audit import log_event
@@ -107,6 +108,9 @@ class AccessGrantOut(BaseModel):
     value: str
     active: bool
     granted_by: int | None = None
+    #: Quién la concedió, con nombre: el panel no puede enseñar un id de
+    #: usuario, y resolverlo desde el navegador costaría una petición por fila.
+    granted_by_nombre: str | None = None
     created_at: datetime
     updated_at: datetime
     revoked_at: datetime | None = None
@@ -241,8 +245,40 @@ async def listar_grants(
     include_inactive: bool = Query(False),
     _admin: dict[str, Any] = Depends(require_admin),
 ) -> list[AccessGrantOut]:
+    """Las concesiones, con quién las concedió; con ``include_inactive``, también las revocadas."""
     rows = await run_db(list_access_grants, include_inactive=include_inactive)
     return [AccessGrantOut.model_validate(row) for row in rows]
+
+
+@router.post("/grants/{grant_id}/reactivar", response_model=AccessGrantOut)
+async def reactivar_grant(
+    grant_id: int,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> AccessGrantOut:
+    """Vuelve a conceder un acceso revocado, sin esperar a una solicitud nueva.
+
+    Es la misma concesión (``UNIQUE(kind, value)``), reactivada: la fila
+    conserva su historial y pasa a tener como autor a quien la reactiva. Una
+    concesión activa o inexistente responde 404 —no hay nada que reactivar—, y
+    una que ya no es concedible (la regla cambió después de concederla)
+    responde 422 con el motivo, como el PATCH. Se audita como una concesión
+    (``access_grant.granted``) con la marca ``reactivada``.
+    """
+    try:
+        grant = await run_db(reactivate_access, grant_id, granted_by=_id_del_admin(admin))
+    except ConcesionInvalida as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if grant is None:
+        raise HTTPException(status_code=404, detail="concesión no encontrada o ya activa")
+    await run_db(
+        log_event,
+        event_type=ACCESS_GRANT_GRANTED,
+        actor=str(admin.get("user_id", "")),
+        user_id=_id_del_admin(admin),
+        resource=f"access_grant:{grant_id}",
+        detail={"kind": grant["kind"], "reactivada": True},
+    )
+    return AccessGrantOut.model_validate(grant)
 
 
 @router.delete("/grants/{grant_id}", response_model=AccessGrantOut)

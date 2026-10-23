@@ -6,8 +6,13 @@
  * Las acciones sólo aparecen en las pendientes: sobre una ya atendida no hay
  * nada que decidir, y repetir los botones invitaría a conceder dos veces el
  * mismo acceso.
+ *
+ * Conceder el dominio pide confirmación en la propia fila, nombrándolo: abre
+ * el acceso a todas las cuentas de ese dominio, y el botón está al lado del de
+ * conceder un solo email.
  */
 
+import * as React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDate } from "@/lib/utils";
@@ -26,8 +31,15 @@ export interface SolicitudItemProps {
   onCambiarEstado: (vars: CambioEstadoVars) => void;
 }
 
+/** Lo que va tras el último `@`: lo mismo que concede la API con `conceder: "domain"`. */
+function dominioDe(email: string): string {
+  return email.trim().toLowerCase().split("@").pop() ?? "";
+}
+
 export function SolicitudItem({ solicitud, ocupado, onCambiarEstado }: SolicitudItemProps) {
   const pendiente = solicitud.estado === "pendiente";
+  const [confirmandoDominio, setConfirmandoDominio] = React.useState(false);
+  const dominio = dominioDe(solicitud.email);
   const contexto = [
     solicitud.empresa,
     solicitud.origen,
@@ -67,21 +79,16 @@ export function SolicitudItem({ solicitud, ocupado, onCambiarEstado }: Solicitud
             >
               Conceder email y avisar
             </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={ocupado}
-              onClick={() =>
-                onCambiarEstado({
-                  id: solicitud.id,
-                  estado: "atendida",
-                  notificar: true,
-                  conceder: "domain",
-                })
-              }
-            >
-              Conceder dominio
-            </Button>
+            {!confirmandoDominio && (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={ocupado}
+                onClick={() => setConfirmandoDominio(true)}
+              >
+                Conceder dominio
+              </Button>
+            )}
             <Button
               size="sm"
               variant="ghost"
@@ -93,6 +100,38 @@ export function SolicitudItem({ solicitud, ocupado, onCambiarEstado }: Solicitud
           </>
         )}
       </div>
+      {pendiente && confirmandoDominio && (
+        <div
+          role="group"
+          aria-label={`Confirmar: conceder el dominio ${dominio}`}
+          className="bg-muted/40 flex w-full flex-wrap items-center justify-between gap-2 rounded-md px-3 py-2"
+        >
+          <p className="text-tf-meta">
+            Entrará cualquiera con una cuenta de <span className="font-medium">{dominio}</span>, no solo{" "}
+            {solicitud.email}. Resérvalo para clientes aprobados.
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setConfirmandoDominio(false)}>
+              Cancelar
+            </Button>
+            <Button
+              size="sm"
+              disabled={ocupado}
+              onClick={() => {
+                setConfirmandoDominio(false);
+                onCambiarEstado({
+                  id: solicitud.id,
+                  estado: "atendida",
+                  notificar: true,
+                  conceder: "domain",
+                });
+              }}
+            >
+              Sí, conceder {dominio}
+            </Button>
+          </div>
+        </div>
+      )}
     </li>
   );
 }

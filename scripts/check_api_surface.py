@@ -54,6 +54,14 @@ MOTIVO_MINIMO = 40
 # alcanza"``. Una por línea, en orden alfabético de ruta, para que dos ramas
 # que añaden operaciones distintas no choquen al fusionar.
 NUEVAS: dict[str, str] = {
+    "POST /api/v1/admin/solicitudes-acceso/grants/{grant_id}/reactivar": (
+        "Se miró PATCH /admin/solicitudes-acceso/{id} con `conceder`, que escribe la "
+        "concesión al atender una solicitud: volver a conceder un acceso revocado no "
+        "tiene solicitud que atender, y fabricar una para pasar por ahí dejaría en la "
+        "cola una petición que nadie envió. DELETE /grants/{id} solo revoca, y GET "
+        "/grants solo lista. Reactivar es la misma fila (`UNIQUE(kind, value)`) con otro "
+        "autor, y necesita su propia escritura auditada."
+    ),
     "POST /api/v1/auth/verify-email": (
         "Se miró POST /auth/password-reset/confirm, que consume un token de un solo uso "
         "llegado por correo, pero cambia la contraseña y revoca sesiones: la activación "
@@ -101,6 +109,14 @@ NUEVAS: dict[str, str] = {
         "de filtros de licitaciones, cacheado y ajeno. La consola necesita saber antes "
         "de ofrecer la subida si el entorno tiene almacén, el tope y la lista blanca, "
         "sin llevar su propia copia de las constantes del servidor."
+    ),
+    "GET /api/v1/security/csp-violations": (
+        "Se miró GET /security/client-errors, que agrega otra tabla por otra clave "
+        "(la huella de un error de JavaScript): mezclar las dos escondería la directiva "
+        "de la CSP tras una huella que no le corresponde y obligaría a cada consumidor a "
+        "separarlas. GET /analytics/quality mide la completitud del dato, no lo que el "
+        "navegador bloquea. Los informes llegan por POST /security/csp-report desde 2026 "
+        "y la tabla no tenía ninguna ruta de lectura."
     ),
 }
 

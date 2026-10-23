@@ -1,8 +1,11 @@
 """Endpoints de seguridad: CSP reports, errores de cliente y GitHub Secret Scanning.
 
-GET  /api/v1/security/csp-report      — recibe CSP violations del navegador
-POST /api/v1/security/client-error    — recibe errores JS del navegador (solo log)
+POST /api/v1/security/csp-report      — recibe CSP violations del navegador
+GET  /api/v1/security/csp-violations  — las lee agrupadas (admin)
+POST /api/v1/security/client-error    — recibe errores JS del navegador
+GET  /api/v1/security/client-errors   — los lee agregados por huella (admin)
 POST /api/v1/security/leaked-key      — recibe notificaciones de GitHub Secret Scanning
+GET  /api/v1/security/audit/verify    — verifica la cadena de hashes del audit log (admin)
 """
 
 from __future__ import annotations
@@ -492,3 +495,51 @@ async def list_client_errors(
 
     filas = await run_db(listar, limit=limit)
     return ClientErroresResult(items=[ClientErrorRow(**fila) for fila in filas])
+
+
+class CspViolacionRow(BaseModel):
+    """Un grupo de violaciones de CSP: una directiva bloqueando un origen."""
+
+    directiva: str
+    origen: str
+    #: La página más frecuente del grupo, sin query string.
+    documento: str | None = None
+    ocurrencias: int
+    primera_vez: str | None = None
+    ultima_vez: str | None = None
+
+
+class CspViolacionesResult(BaseModel):
+    #: Ventana consultada, para que la pantalla diga de qué periodo habla.
+    dias: int
+    items: list[CspViolacionRow] = Field(default_factory=list)
+
+
+@router.get(
+    "/csp-violations",
+    summary="Violaciones de CSP del navegador, agrupadas por directiva y origen",
+)
+async def list_csp_violations(
+    dias: int = Query(7, ge=1, le=90),
+    limit: int = Query(100, ge=1, le=500),
+    _ctx: dict[str, Any] = Depends(require_admin),
+) -> CspViolacionesResult:
+    """Lo que la política de contenido bloqueó, con un destino que alguien mira.
+
+    `POST /security/csp-report` guardaba cada informe en `csp_violations` desde
+    el principio, y la tabla no tenía ruta de lectura: catorce informes en una
+    semana (2026-10-09) que nadie vio. Se devuelven agrupados por directiva y
+    origen bloqueado, que es la pregunta que se hace al revisar una CSP —«qué
+    está bloqueando a quién»—, y no fila a fila.
+
+    `require_admin` y no `require_scope("admin")` por el mismo motivo que
+    `list_client_errors`: se mira desde la consola, con sesión de navegador.
+    """
+    from datetime import timedelta
+
+    from db.database import now_utc
+    from db.repositories.csp_violations import listar_agrupadas
+
+    desde = (now_utc() - timedelta(days=dias)).isoformat()
+    filas = await run_db(listar_agrupadas, desde=desde, limit=limit)
+    return CspViolacionesResult(dias=dias, items=[CspViolacionRow(**fila) for fila in filas])

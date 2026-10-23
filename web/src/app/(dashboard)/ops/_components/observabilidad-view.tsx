@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { useSession } from "@/lib/auth";
 import { useObservabilidad } from "../_hooks/use-observabilidad";
 import { ComponentesGrid } from "./observabilidad/componentes-grid";
+import { CspViolacionesCard } from "./observabilidad/csp-violaciones-card";
 import { ErroresNavegadorCard } from "./observabilidad/errores-navegador-card";
 import { EstadoSistemaCard } from "./observabilidad/estado-sistema-card";
 import { GrafanaCard } from "./observabilidad/grafana-card";
@@ -54,6 +55,8 @@ export default function ObservabilidadView() {
       <ComponentesGrid componentes={componentes} />
 
       {isAdmin && <ErroresNavegadorCard />}
+
+      {isAdmin && <CspViolacionesCard />}
 
       <EstadoSistemaCard health={health} isLoading={isLoading} isError={isError} />
 

@@ -54,8 +54,9 @@ describe("AccesosDinamicos", () => {
         isLoading={false}
         error={new Error("Failed to fetch")}
         onRetry={onRetry}
-        revocando={false}
+        ocupado={false}
         onRevocar={() => {}}
+        onReactivar={() => {}}
       />,
     );
 

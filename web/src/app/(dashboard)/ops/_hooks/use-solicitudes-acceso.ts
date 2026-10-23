@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Cola de solicitudes de acceso: las dos consultas, la de concesiones y las dos
- * mutaciones que las mueven.
+ * Cola de solicitudes de acceso: las dos consultas, la de concesiones y las tres
+ * mutaciones que las mueven (atender, revocar, volver a conceder).
  *
  * **La vista por defecto son las pendientes, y no es cosmética.** El endpoint
  * devuelve las N más recientes ordenadas por `created_at DESC` mezclando los
@@ -48,6 +48,13 @@ export interface AccessGrant {
   kind: "email" | "domain";
   value: string;
   active: boolean;
+  granted_by?: number | null;
+  /** Quién la concedió, con nombre; `null` en las del bootstrap. */
+  granted_by_nombre?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  /** Solo en las revocadas: desde cuándo no abre el login. */
+  revoked_at?: string | null;
 }
 
 /**
@@ -132,16 +139,24 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
     meta: META_ERROR_EN_LINEA,
   });
 
+  // Con las revocadas: el panel las enseña aparte, para saber quién dejó de
+  // entrar y poder volver a concederle sin pasar por una solicitud nueva.
   const grantsQuery = useQuery<AccessGrant[]>({
     queryKey: adminKeys.accessGrants,
-    queryFn: () => fetchWithAuth<AccessGrant[]>("/api/v1/admin/solicitudes-acceso/grants"),
+    queryFn: () =>
+      fetchWithAuth<AccessGrant[]>("/api/v1/admin/solicitudes-acceso/grants?include_inactive=true"),
     // También se pinta en el panel: un fallo aquí no es «no hay concesiones».
     meta: META_ERROR_EN_LINEA,
   });
 
   const activa = vista === "pendiente" ? pendientesQuery : historicoQuery;
 
+  // Los fallos los avisa el gestor global de mutaciones, una vez y con el
+  // `detail` de la API (`meta.errorTitle` pone el titular). Un `onError` propio
+  // con `toast.error` encima lo duplicaba: el 422 de un dominio no concedible
+  // salía dos veces, y solo una de ellas decía el motivo.
   const cambiarEstado = useMutation({
+    meta: { errorTitle: "No se pudo actualizar la solicitud" },
     mutationFn: (vars: CambioEstadoVars) =>
       apiMutate<CambioEstado>("PATCH", `/api/v1/admin/solicitudes-acceso/${vars.id}`, {
         estado: vars.estado,
@@ -166,17 +181,28 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
         toast.success("Solicitud actualizada");
       }
     },
-    onError: () => toast.error("No se pudo actualizar la solicitud"),
   });
 
   const revocar = useMutation({
+    meta: { errorTitle: "No se pudo revocar el acceso" },
     mutationFn: (grantId: number) =>
       apiMutate("DELETE", `/api/v1/admin/solicitudes-acceso/grants/${grantId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: adminKeys.accessGrants });
       toast.success("Acceso revocado para nuevos inicios de sesión");
     },
-    onError: () => toast.error("No se pudo revocar el acceso"),
+  });
+
+  // La misma concesión, reactivada: no hace falta que la persona vuelva a
+  // escribir desde la web pública para recuperar un acceso que se le quitó.
+  const reactivar = useMutation({
+    meta: { errorTitle: "No se pudo volver a conceder el acceso" },
+    mutationFn: (grantId: number) =>
+      apiMutate("POST", `/api/v1/admin/solicitudes-acceso/grants/${grantId}/reactivar`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: adminKeys.accessGrants });
+      toast.success("Acceso concedido de nuevo");
+    },
   });
 
   const solicitudes = activa.data ?? [];
@@ -203,5 +229,6 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
     reintentarGrants: () => void grantsQuery.refetch(),
     cambiarEstado,
     revocar,
+    reactivar,
   };
 }

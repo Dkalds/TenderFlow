@@ -52,6 +52,7 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
     reintentarGrants,
     cambiarEstado,
     revocar,
+    reactivar,
   } = useSolicitudesAcceso(opciones);
 
   return (
@@ -130,8 +131,9 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
         isLoading={grantsLoading}
         error={grantsError}
         onRetry={reintentarGrants}
-        revocando={revocar.isPending}
+        ocupado={revocar.isPending || reactivar.isPending}
         onRevocar={revocar.mutate}
+        onReactivar={reactivar.mutate}
       />
     </Panel>
   );

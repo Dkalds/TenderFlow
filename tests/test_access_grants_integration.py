@@ -9,7 +9,9 @@ rápida. Es lo que solo una base real puede sostener:
 - una concesión de dominio casa con ese dominio exacto y con ningún otro;
 - volver a conceder tras revocar reactiva la misma fila (``UNIQUE(kind, value)``);
 - conceder y revocar desde la ruta abre y corta el login de verdad, y deja en
-  ``audit_log`` quién lo hizo.
+  ``audit_log`` quién lo hizo;
+- la lista resuelve **quién** concedió contra ``users``, y reactivar una
+  concesión revocada desde la ruta reabre el login con quien reactiva como autor.
 
 Lo que se decide sin tocar la tabla (direcciones mal formadas, la regla de los
 proveedores de correo público, la traducción a 422) tiene sus tests sin BD en
@@ -32,6 +34,7 @@ from db.access_grants import (
     grant_access_request,
     is_access_granted,
     list_access_grants,
+    reactivate_access,
     revoke_access,
 )
 from db.solicitudes_acceso import crear_solicitud, obtener_solicitud
@@ -359,3 +362,90 @@ def test_avisar_sin_conceder_solo_escribe_a_quien_ya_puede_entrar(client, api_db
     # El cambio de estado se aplica en los dos casos.
     assert _estado(sin_acceso) == "atendida"
     assert _estado(con_acceso) == "atendida"
+
+
+# ── Quién concedió, y volver a conceder ─────────────────────────────────────
+
+
+def test_la_lista_resuelve_el_nombre_de_quien_concedio(api_db):
+    """El panel enseña un nombre; las del bootstrap y las de cuentas que ya no están, no."""
+    admin = _crear_admin()
+    con_autor = grant_access("email", "ana@example.com", granted_by=admin)
+    sin_autor = grant_access("domain", "empresa.example", granted_by=None)
+    # `RETURNING` no lleva el join: el nombre llega al listar.
+    assert con_autor["granted_by_nombre"] is None
+
+    filas = {fila["id"]: fila for fila in list_access_grants()}
+
+    assert filas[con_autor["id"]]["granted_by_nombre"] == "Admin 242"
+    assert filas[sin_autor["id"]]["granted_by_nombre"] is None
+
+
+def test_reactivar_exige_que_la_concesion_siga_siendo_concedible(api_db):
+    """Un dominio que dejó de ser concedible no vuelve; la fila queda revocada."""
+    grant_id = grant_access("domain", "empresa.example", granted_by=None)["id"]
+    assert revoke_access(grant_id) is not None
+
+    with (
+        patch(
+            "services.access_grants.validar_concesion",
+            side_effect=ConcesionInvalida("empresa.example ya no se concede"),
+        ),
+        pytest.raises(ConcesionInvalida),
+    ):
+        reactivate_access(grant_id, granted_by=None)
+
+    assert is_access_granted("alguien@empresa.example") is False
+    assert list_access_grants() == []
+    # Lo activo no se reactiva: no hay evento que registrar.
+    assert reactivate_access(grant_id, granted_by=None) is not None
+    assert reactivate_access(grant_id, granted_by=None) is None
+
+
+def test_reactivar_desde_la_ruta_reabre_el_login_y_deja_rastro(client, api_db):
+    """CU-20 — el panel de accesos: la revocada se ve, se reactiva y se sabe quién fue."""
+    from api.app import app
+
+    admin = _crear_admin()
+    concedido = grant_access_request(_solicitud(), "email", granted_by=None)
+    assert concedido is not None
+    grant_id = concedido["grant"]["id"]
+    assert revoke_access(grant_id) is not None
+    assert _login_permitido("ana@example.com") is False
+
+    _autenticar(admin)
+    try:
+        # Sin `include_inactive` la revocada no está; con él, sí y con su fecha.
+        activas = client.get(f"{RUTA}/grants")
+        todas = client.get(f"{RUTA}/grants", params={"include_inactive": "true"})
+        resp = client.post(f"{RUTA}/grants/{grant_id}/reactivar")
+        repetida = client.post(f"{RUTA}/grants/{grant_id}/reactivar")
+        despues = client.get(f"{RUTA}/grants")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert activas.json() == []
+    assert [(fila["id"], fila["active"]) for fila in todas.json()] == [(grant_id, False)]
+    assert todas.json()[0]["revoked_at"] is not None
+    assert todas.json()[0]["granted_by_nombre"] is None
+
+    assert resp.status_code == 200, resp.text
+    cuerpo = resp.json()
+    assert cuerpo["id"] == grant_id
+    assert cuerpo["active"] is True
+    assert cuerpo["revoked_at"] is None
+    # Quien reactiva es el autor, y el panel lo ve con nombre.
+    assert cuerpo["granted_by"] == admin
+    assert cuerpo["granted_by_nombre"] == "Admin 242"
+    assert repetida.status_code == 404
+    assert [fila["id"] for fila in despues.json()] == [grant_id]
+    assert _login_permitido("ana@example.com") is True
+
+    # Una reactivación, un evento `granted` marcado como tal; la repetida, ninguno.
+    rastro = _rastro("access_grant.granted")
+    assert [(accion, user_id, user_key) for accion, user_id, user_key, _ in rastro] == [
+        ("access_grant.granted", admin, str(admin)),
+    ]
+    assert f"resource=access_grant:{grant_id}" in rastro[0][3]
+    assert "reactivada" in str(rastro[0][3])
+    assert "ana@example.com" not in str(rastro[0][3])

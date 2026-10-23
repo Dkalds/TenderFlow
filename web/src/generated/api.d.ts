@@ -116,7 +116,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Listar Grants */
+        /**
+         * Listar Grants
+         * @description Las concesiones, con quién las concedió; con ``include_inactive``, también las revocadas.
+         */
         get: operations["listar_grants_api_v1_admin_solicitudes_acceso_grants_get"];
         put?: never;
         post?: never;
@@ -138,6 +141,33 @@ export interface paths {
         post?: never;
         /** Revocar Grant */
         delete: operations["revocar_grant_api_v1_admin_solicitudes_acceso_grants__grant_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/solicitudes-acceso/grants/{grant_id}/reactivar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactivar Grant
+         * @description Vuelve a conceder un acceso revocado, sin esperar a una solicitud nueva.
+         *
+         *     Es la misma concesión (``UNIQUE(kind, value)``), reactivada: la fila
+         *     conserva su historial y pasa a tener como autor a quien la reactiva. Una
+         *     concesión activa o inexistente responde 404 —no hay nada que reactivar—, y
+         *     una que ya no es concedible (la regla cambió después de concederla)
+         *     responde 422 con el motivo, como el PATCH. Se audita como una concesión
+         *     (``access_grant.granted``) con la marca ``reactivada``.
+         */
+        post: operations["reactivar_grant_api_v1_admin_solicitudes_acceso_grants__grant_id__reactivar_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -5425,6 +5455,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/security/csp-violations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Violaciones de CSP del navegador, agrupadas por directiva y origen
+         * @description Lo que la política de contenido bloqueó, con un destino que alguien mira.
+         *
+         *     `POST /security/csp-report` guardaba cada informe en `csp_violations` desde
+         *     el principio, y la tabla no tenía ruta de lectura: catorce informes en una
+         *     semana (2026-10-09) que nadie vio. Se devuelven agrupados por directiva y
+         *     origen bloqueado, que es la pregunta que se hace al revisar una CSP —«qué
+         *     está bloqueando a quién»—, y no fila a fila.
+         *
+         *     `require_admin` y no `require_scope("admin")` por el mismo motivo que
+         *     `list_client_errors`: se mira desde la consola, con sesión de navegador.
+         */
+        get: operations["list_csp_violations_api_v1_security_csp_violations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/tecnologias/keywords": {
         parameters: {
             query?: never;
@@ -5936,6 +5995,8 @@ export interface components {
             created_at: string;
             /** Granted By */
             granted_by?: number | null;
+            /** Granted By Nombre */
+            granted_by_nombre?: string | null;
             /** Id */
             id: number;
             /**
@@ -7998,6 +8059,31 @@ export interface components {
             organo: string;
             /** Tecnologia */
             tecnologia: string;
+        };
+        /**
+         * CspViolacionRow
+         * @description Un grupo de violaciones de CSP: una directiva bloqueando un origen.
+         */
+        CspViolacionRow: {
+            /** Directiva */
+            directiva: string;
+            /** Documento */
+            documento?: string | null;
+            /** Ocurrencias */
+            ocurrencias: number;
+            /** Origen */
+            origen: string;
+            /** Primera Vez */
+            primera_vez?: string | null;
+            /** Ultima Vez */
+            ultima_vez?: string | null;
+        };
+        /** CspViolacionesResult */
+        CspViolacionesResult: {
+            /** Dias */
+            dias: number;
+            /** Items */
+            items?: components["schemas"]["CspViolacionRow"][];
         };
         /**
          * CuadroDireccion
@@ -16874,6 +16960,41 @@ export interface operations {
         };
     };
     revocar_grant_api_v1_admin_solicitudes_acceso_grants__grant_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                grant_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessGrantOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reactivar_grant_api_v1_admin_solicitudes_acceso_grants__grant_id__reactivar_post: {
         parameters: {
             query?: never;
             header?: {
@@ -27487,6 +27608,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ClientErroresResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_csp_violations_api_v1_security_csp_violations_get: {
+        parameters: {
+            query?: {
+                dias?: number;
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CspViolacionesResult"];
                 };
             };
             /** @description Validation Error */

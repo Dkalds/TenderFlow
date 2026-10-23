@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-10-21
+Generado: 2026-10-23
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -101,9 +101,9 @@ Generado: 2026-10-21
 
 ## Superficie de la API
 
-**298 endpoints** expuestos.
+**300 endpoints** expuestos.
 
-Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **6** (`scripts/check_api_surface.py`).
+Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **8** (`scripts/check_api_surface.py`).
 
 <details><summary>Ver listado</summary>
 
@@ -121,6 +121,7 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | GET | `/api/v1/admin/solicitudes-acceso` |
 | GET | `/api/v1/admin/solicitudes-acceso/grants` |
 | DELETE | `/api/v1/admin/solicitudes-acceso/grants/{grant_id}` |
+| POST | `/api/v1/admin/solicitudes-acceso/grants/{grant_id}/reactivar` |
 | PATCH | `/api/v1/admin/solicitudes-acceso/{solicitud_id}` |
 | GET | `/api/v1/admin/users` |
 | GET | `/api/v1/admin/users/{user_id}` |
@@ -375,6 +376,7 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | POST | `/api/v1/security/client-error` |
 | GET | `/api/v1/security/client-errors` |
 | POST | `/api/v1/security/csp-report` |
+| GET | `/api/v1/security/csp-violations` |
 | POST | `/api/v1/security/leaked-key` |
 | DELETE | `/api/v1/tecnologias/keywords` |
 | GET | `/api/v1/tecnologias/keywords` |

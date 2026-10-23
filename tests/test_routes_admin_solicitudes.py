@@ -348,21 +348,23 @@ class TestSinSesion:
             ("PATCH", f"{RUTA}/7", {"estado": "atendida", "conceder": "email"}),
             ("GET", f"{RUTA}/grants", None),
             ("DELETE", f"{RUTA}/grants/11", None),
+            ("POST", f"{RUTA}/grants/11/reactivar", None),
         ],
     )
-    def test_las_cuatro_rutas_exigen_autenticacion(self, client, metodo, ruta, cuerpo):
+    def test_las_rutas_exigen_autenticacion(self, client, metodo, ruta, cuerpo):
         with (
             patch("api.routes.admin_solicitudes.listar_solicitudes") as listar,
             patch("api.routes.admin_solicitudes.actualizar_estado") as actualizar,
             patch("api.routes.admin_solicitudes.grant_access_request") as conceder,
             patch("api.routes.admin_solicitudes.list_access_grants") as listar_grants,
             patch("api.routes.admin_solicitudes.revoke_access") as revocar,
+            patch("api.routes.admin_solicitudes.reactivate_access") as reactivar,
             patch("api.routes.admin_solicitudes.log_event") as auditar,
         ):
             resp = client.request(metodo, ruta, json=cuerpo)
 
         assert resp.status_code == 401, resp.text
-        for doble in (listar, actualizar, conceder, listar_grants, revocar, auditar):
+        for doble in (listar, actualizar, conceder, listar_grants, revocar, reactivar, auditar):
             doble.assert_not_called()
 
 
@@ -378,13 +380,112 @@ def test_el_aviso_comprueba_el_acceso_con_la_funcion_del_callback():
 
 
 class TestAccessGrants:
-    def test_listar_y_revocar_requiere_admin(self, client):
+    def test_listar_revocar_y_reactivar_requieren_admin(self, client):
         app.dependency_overrides[require_any_auth] = _no_admin
         try:
             assert client.get(f"{RUTA}/grants").status_code == 403
             assert client.delete(f"{RUTA}/grants/1").status_code == 403
+            assert client.post(f"{RUTA}/grants/1/reactivar").status_code == 403
         finally:
             app.dependency_overrides.clear()
+
+    def test_listar_dice_quien_concedio_y_pasa_el_filtro_de_revocadas(self, client):
+        """El panel enseña un nombre, no un id, y pide las revocadas con `include_inactive`."""
+        app.dependency_overrides[require_any_auth] = _admin
+        filas = [
+            _grant(granted_by_nombre="Ana Admin"),
+            _grant(
+                id=12,
+                active=False,
+                granted_by=None,
+                granted_by_nombre=None,
+                revoked_at="2026-09-02T00:00:00+00:00",
+            ),
+        ]
+        try:
+            with patch(
+                "api.routes.admin_solicitudes.list_access_grants", return_value=filas
+            ) as listar:
+                resp = client.get(f"{RUTA}/grants", params={"include_inactive": "true"})
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200, resp.text
+        listar.assert_called_once_with(include_inactive=True)
+        cuerpo = resp.json()
+        assert [fila["granted_by_nombre"] for fila in cuerpo] == ["Ana Admin", None]
+        assert [fila["active"] for fila in cuerpo] == [True, False]
+
+    def test_reactivar_se_audita_como_concesion_con_actor_recurso_y_user_id(self, client):
+        app.dependency_overrides[require_any_auth] = _admin
+        reactivada = _grant(
+            kind="domain",
+            value="empresa.example",
+            granted_by_nombre="Ana Admin",
+            updated_at="2026-09-03T00:00:00+00:00",
+        )
+        try:
+            with (
+                patch(
+                    "api.routes.admin_solicitudes.reactivate_access", return_value=reactivada
+                ) as reactivar,
+                patch("api.routes.admin_solicitudes.log_event") as auditar,
+            ):
+                resp = client.post(f"{RUTA}/grants/11/reactivar")
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["active"] is True
+        assert resp.json()["granted_by_nombre"] == "Ana Admin"
+        # Quien reactiva pasa a ser el autor de la concesión.
+        reactivar.assert_called_once_with(11, granted_by=1)
+        # Igualdad exacta: el dominio no se copia al rastro, y la marca
+        # `reactivada` distingue este evento de la concesión original.
+        assert [llamada.kwargs for llamada in auditar.call_args_list] == [
+            {
+                "event_type": "access_grant.granted",
+                "actor": "1",
+                "user_id": 1,
+                "resource": "access_grant:11",
+                "detail": {"kind": "domain", "reactivada": True},
+            }
+        ]
+
+    def test_reactivar_lo_que_no_existe_o_sigue_activo_es_404_sin_rastro(self, client):
+        app.dependency_overrides[require_any_auth] = _admin
+        try:
+            with (
+                patch("api.routes.admin_solicitudes.reactivate_access", return_value=None),
+                patch("api.routes.admin_solicitudes.log_event") as auditar,
+            ):
+                resp = client.post(f"{RUTA}/grants/999/reactivar")
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 404
+        auditar.assert_not_called()
+
+    def test_reactivar_lo_que_ya_no_es_concedible_es_422_con_su_motivo(self, client):
+        """La regla de los proveedores públicos se aplica también al volver a conceder."""
+        from db.access_grants import ConcesionInvalida
+
+        app.dependency_overrides[require_any_auth] = _admin
+        try:
+            with (
+                patch(
+                    "api.routes.admin_solicitudes.reactivate_access",
+                    side_effect=ConcesionInvalida("gmail.com es un proveedor de correo público"),
+                ),
+                patch("api.routes.admin_solicitudes.log_event") as auditar,
+            ):
+                resp = client.post(f"{RUTA}/grants/11/reactivar")
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 422, resp.text
+        assert "gmail.com" in resp.json()["detail"]
+        auditar.assert_not_called()
 
     def test_revoca_y_audita(self, client):
         app.dependency_overrides[require_any_auth] = _admin
