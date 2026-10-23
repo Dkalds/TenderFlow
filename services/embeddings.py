@@ -111,7 +111,7 @@ def _directorio_onnx() -> Path | None:
     cambio de configuración en tests o en caliente no requiera recargar el
     módulo. Las comprobaciones son de sistema de ficheros: baratas.
     """
-    configurado = str(getattr(settings, "EMBEDDINGS_ONNX_DIR", "") or "").strip()
+    configurado = str(settings.EMBEDDINGS_ONNX_DIR or "").strip()
     if not configurado:
         return None
     directorio = Path(configurado)

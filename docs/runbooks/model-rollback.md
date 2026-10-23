@@ -371,7 +371,7 @@ No es un modelo entrenado aquí ni pasa por `model_versions`: es
 degrada a FTS (`source=fts`/`like`), que es lo que hacía hasta 2026-10.
 
 **Dónde entra.** `docker/Dockerfile.api` lo descarga en el build con
-`docker/descargar_modelo_embeddings.py`: commit fijo del repo de Hugging Face y
+`scripts/descargar_modelo_embeddings.py`: commit fijo del repo de Hugging Face y
 sha256 de cada fichero, sin modo «sin verificar». Los argumentos se declaran
 como variables del servicio `tenderflow-api` en Render, que las pasa como build
 args:
@@ -394,7 +394,7 @@ ese mismo commit. Después, en una máquina con el extra `[ml]` y el modelo de
 sentence-transformers en caché:
 
 ```bash
-python docker/descargar_modelo_embeddings.py --destino /tmp/emb \
+python scripts/descargar_modelo_embeddings.py --destino /tmp/emb \
     --revision <commit> --sha256-modelo <hex> --sha256-tokenizador <hex> --sha256-config <hex>
 EMBEDDINGS_ONNX_DIR=/tmp/emb pytest tests/test_embeddings_onnx_paridad.py -rs
 ```

@@ -59,7 +59,7 @@ if TYPE_CHECKING:
 FICHERO_MODELO = "model.onnx"
 FICHERO_TOKENIZADOR = "tokenizer.json"
 #: Opcionales: el largo máximo de secuencia y de dónde salió el modelo
-#: (lo escribe ``docker/descargar_modelo_embeddings.py``).
+#: (lo escribe ``scripts/descargar_modelo_embeddings.py``).
 FICHERO_CONFIG_ST = "sentence_bert_config.json"
 FICHERO_ORIGEN = "origen.json"
 

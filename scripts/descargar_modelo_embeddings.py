@@ -34,7 +34,7 @@ cada fichero en Hugging Face muestra el «SHA256» de los que van por LFS
 
 Uso::
 
-    python docker/descargar_modelo_embeddings.py \\
+    python scripts/descargar_modelo_embeddings.py \\
         --revision <commit> --destino /opt/modelos/embeddings \\
         --sha256-modelo <hex> --sha256-tokenizador <hex> --sha256-config <hex>
 

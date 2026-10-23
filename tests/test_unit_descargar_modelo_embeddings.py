@@ -1,4 +1,4 @@
-"""`docker/descargar_modelo_embeddings.py`: revisión fija, sha256 obligatorio, todo o nada.
+"""`scripts/descargar_modelo_embeddings.py`: revisión fija, sha256 obligatorio, todo o nada.
 
 Sin red: el abridor de URLs se sustituye por uno que sirve bytes en memoria.
 """
@@ -15,7 +15,7 @@ from types import ModuleType
 
 import pytest
 
-_RUTA = Path(__file__).resolve().parents[1] / "docker" / "descargar_modelo_embeddings.py"
+_RUTA = Path(__file__).resolve().parents[1] / "scripts" / "descargar_modelo_embeddings.py"
 _COMMIT = "a" * 40
 
 

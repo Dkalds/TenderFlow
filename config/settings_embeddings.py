@@ -19,7 +19,7 @@ class EmbeddingsOnnxSettings(BaseSettings):
 
     # Directorio con `model.onnx` y `tokenizer.json` (y, si viene,
     # `sentence_bert_config.json` y el `origen.json` que escribe
-    # `docker/descargar_modelo_embeddings.py`). Vacío = desactivado: sin
+    # `scripts/descargar_modelo_embeddings.py`). Vacío = desactivado: sin
     # sentence-transformers la búsqueda degrada a FTS, que es lo que hacía la
     # API hasta 2026-10. Tiene que ser el MISMO modelo que `EMBEDDING_MODEL`,
     # con el que se embebieron los fragmentos de `documento_chunks`: con otro,

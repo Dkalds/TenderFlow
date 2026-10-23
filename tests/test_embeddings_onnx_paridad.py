@@ -10,7 +10,7 @@ modelos «parecidos».
 Solo corre donde están las dos cosas:
 
 - el modelo ONNX, en ``EMBEDDINGS_ONNX_DIR`` (la imagen de la API lo trae en
-  ``/opt/modelos/…``; en local, ``python docker/descargar_modelo_embeddings.py``);
+  ``/opt/modelos/…``; en local, ``python scripts/descargar_modelo_embeddings.py``);
 - sentence-transformers (extra ``[ml]``) con el modelo ya en la caché local de
   Hugging Face: el test no descarga nada (es ``unit`` y el guard de red de
   ``tests/conftest.py`` lo haría fallar).

@@ -68,7 +68,7 @@ ARG EMBEDDINGS_ONNX_REVISION=
 ARG EMBEDDINGS_ONNX_SHA256_MODELO=
 ARG EMBEDDINGS_ONNX_SHA256_TOKENIZADOR=
 ARG EMBEDDINGS_ONNX_SHA256_CONFIG=
-COPY docker/descargar_modelo_embeddings.py ./
+COPY scripts/descargar_modelo_embeddings.py ./
 RUN python descargar_modelo_embeddings.py --destino /modelos/embeddings
 
 
