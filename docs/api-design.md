@@ -251,6 +251,16 @@ opcional **no** es incompatible: un cliente que los ignora sigue funcionando.
 | Ruta | Sunset | Sucesora |
 |---|---|---|
 | `GET /licitaciones` (paginación por offset) | 2027-01-15 | `GET /licitaciones/cursor` |
+| `GET /analytics/compare-periods`, `GET /analytics/resumen/sankey`, `GET /analytics/resumen/top` | 2027-01-15 | — (sin consumidor; [RFC D19](rfc/2026-09-06-rfc-retirada-endpoints-analitica.md)) |
+| `GET /analytics/forecast/retendering` | 2027-02-01 | `GET /competitive/renovaciones` |
+| `POST /notifications/read` | 2027-02-01 | `POST /notifications/alerts/read` |
+| `GET /licitaciones/stream` | 2027-02-01 | `GET /licitaciones/cursor` |
+| Campos `items`, `unread_count` y `hoy` de `GET /notifications` (la operación sigue) | 2027-02-01 | `GET /notifications/alerts`, `GET /analytics/resumen/hoy` |
+
+Las cuatro últimas filas las propone
+[2026-10-23-rfc-retirada-campana-antigua-y-stream](rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md).
+`tests/test_deprecacion_cabeceras.py` fija que toda operación `deprecated` del
+OpenAPI tiene fecha de apagado declarada y la envía en `Sunset`.
 
 
 ## Convenciones de naming

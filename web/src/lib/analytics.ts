@@ -49,6 +49,12 @@
  * clientes externos o trabajos internos—, así que esto es el punto de partida
  * de la conversación de retirada, no la decisión. Los eventos de abajo son la
  * otra mitad: dicen qué **sí** se usa, para que podar deje de ser una apuesta.
+ * (Para esas tres la decisión ya está tomada: se apagan el 2027-01-15,
+ * `docs/rfc/2026-09-06-rfc-retirada-endpoints-analitica.md`.)
+ *
+ * Cada evento del catálogo tiene al menos un `registrarEvento` en `web/src`;
+ * `__tests__/analytics-emisores.test.ts` lo comprueba, así que uno nuevo entra
+ * con su emisor o con su excepción justificada.
  */
 
 import { track } from "@vercel/analytics";

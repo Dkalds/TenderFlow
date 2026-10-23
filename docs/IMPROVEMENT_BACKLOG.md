@@ -584,7 +584,7 @@ _Sin ítems abiertos._
 - **Decisiones ya tomadas (2026-09-06):** D17 → Entra ID multi-tenant reutilizando `OAUTH_ALLOWED_DOMAINS` y `access_grants`; D18 → ratchet ahora y migración aditiva por olas después (esa segunda fase es T4 del plan, no este ítem).
 - **Progreso T4 (2026-09-14, v129 · ADR-030 fase 2):** `user_id` junto a `user_key` en las doce tablas de usuario (nueve nuevas + FK e índice en las tres que ya la tenían), backfill por email en SQL y lectura dual + escritura doble en `db/`, `services/notifications.py`, `services/watchlist_rules.py` y los productores de alertas; GDPR exporta y borra por id o por clave (y cubre por fin `saved_filters`). Test de aceptación del ADR: `tests/test_user_id_cambio_email_integration.py`. **Queda la fase 3** (dejar de escribir `user_key`, recrear las PK de `user_profiles`/`radar_dismissals`, retirar `user_key` del payload de `watchlist_rule.matched` con RFC, y llevar el ratchet a cero).
 - **Progreso fase 3 (2026-09-18, v135, rama `worktree-agent-a8484f81d7c8a27e2`):** PK de `user_profiles` → `(user_id)` y de `radar_dismissals` → `(user_id, id_externo)`, con backfill y fallo ruidoso si queda alguna fila sin id o duplicada; `user_profiles` ya no escribe `user_key`; `log_event(actor=…)` saca seis ficheros del ratchet (69 → 63); RFC `draft` [2026-09-18](rfc/2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md) para el payload del webhook, con el campo intacto hasta la ventana y la sustitución pendiente de decisión humana. **Queda:** `user_notifications`/`follows`/`watchlist_*` siguen tecleadas por `user_key` (y con ellas `radar_dismissals` la sigue escribiendo); aplicar v135 en producción (antes del deploy del código) y regenerar `docs/database-schema.md`. *Estado (2026-09-19):* `docs/database-schema.md` ya está regenerado con v135 y v140 (`98f34bee`; su cabecera dice `v138_notice_type_code`).
-- *Nota (2026-10-17):* este ítem se lleva también la mayoría de las 64 `# noqa: S608` del repo (34 en producción; 18 entre `services/notifications.py` y `services/watchlist_rules.py`). No son inyección: interpolan `_IDENT`, el predicado constante de identidad dual `user_id`/`user_key`, y duplican cada consulta en una rama con y otra sin `organization_id`. Quitarlas antes obligaría a copiar el predicado en cada sentencia; cuando la lectura sea solo por `user_id` el fragmento desaparece y con él la supresión. Sacarlas en el mismo PR que retire la columna.
+- *Nota (2026-10-17):* este ítem se lleva también la mayoría de las 64 `# noqa: S608` del repo (34 en producción; 18 entre `services/notifications.py` y `services/watchlist_rules.py`). No son inyección: interpolan `_IDENT`, el predicado constante de identidad dual `user_id`/`user_key`, y duplican cada consulta en una rama con y otra sin `organization_id`. Quitarlas antes obligaría a copiar el predicado en cada sentencia; cuando la lectura sea solo por `user_id` el fragmento desaparece y con él la supresión. Sacarlas en el mismo PR que retire la columna. *Actualización (2026-10-23):* las 18 de esos dos servicios ya no existen: su SQL bajó a `db/`, donde `S608` está desactivado por fichero y `_IDENT` lleva escrito por qué no es inyección. El predicado dual sigue y se va con la columna.
 - **Acceptance criteria:** los de S1.1–S1.4 del plan v2, sin redefinirlos aquí. Los cuatro subítems son independientes y se pueden entregar por separado; S1.3 (dominio propio) es acción humana.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S1), [services/organizations.py](../services/organizations.py), [api/routes/auth.py](../api/routes/auth.py)
 - **Estado (2026-10-17):** el **Problema** ya no describe el código en su primera frase: invitar a quien no tiene cuenta existe (`services/organizations.py::invite_member_by_email`, tabla `organization_invitations`, aceptación por token y al iniciar sesión con `accept_invitations_for_email`). `add_member_by_email` sigue rechazando un correo sin cuenta porque es el alta directa, no la invitación. Lo abierto es lo de la fase 3 de `user_key` descrito arriba.
@@ -1079,11 +1079,12 @@ _Sin ítems abiertos._
 - **Files de partida:** [requirements.in](../requirements.in), [pyproject.toml](../pyproject.toml), [renovate.json](../renovate.json), [scripts/gen_status.py](../scripts/gen_status.py), [scripts/check_requirements_sync.py](../scripts/check_requirements_sync.py)
 - **Riesgo:** medio — el salto de FastAPI toca todas las rutas; mitigado por el gate de arranque del job E2E y el fuzz de Schemathesis, que es justo lo que detectó la rotura en agosto.
 
-### [P2] La telemetría de producto tiene catálogo y no tiene emisores: medir el uso por espacio antes de la siguiente ola
+### [P2] La telemetría de producto: medir el uso por espacio antes de la siguiente ola
 - **Área:** web/src/lib/analytics.ts, web/src/components/layout/*, web/src/hooks/*, docs/UX_AUDIT.md
 - **Problema:** `web/src/lib/analytics.ts` nació en agosto para responder «qué se usa, qué se abandona y qué se puede retirar» con un catálogo de eventos categóricos y reglas de privacidad; medido el 2026-10-17 solo hay dos llamadas a `track()` fuera del propio módulo y las dos están en la superficie pública (solicitar acceso y su resultado). Dentro del producto —15 espacios, 297 operaciones, 30 casos de uso— sigue sin medirse nada, así que las decisiones de retirar o fusionar superficies (como la del 2026-10-12, que absorbió Empresas y unificó el asistente) se toman sin dato de uso. El punto 0 de AGENTS.md pide comprobar que una superficie nueva hace falta; sin esta medida no se puede comprobar que una existente sobra.
+- **Corrección (2026-10-23):** la medición del 2026-10-17 contó `track()`, que solo se llama dentro de `web/src/lib/analytics.ts`; los emisores del producto pasan por `registrarEvento()`. Auditado ese día: los **23** eventos del catálogo `EventosProducto` tienen al menos un emisor, en unos 30 ficheros (`espacio_abierto` sale del rail, del conmutador de `space-shell.tsx` y de cuatro piezas de pantalla). `web/src/lib/__tests__/analytics-emisores.test.ts` falla si un evento del catálogo se queda sin `registrarEvento("<evento>"` (con una lista de excepciones justificadas, hoy vacía) o si se emite uno fuera del catálogo. Queda abierto lo que necesita datos: la tabla de 30 días y el inventario de la API.
 - **Acceptance criteria:**
-  - Un evento por espacio al entrar (dimensión `espacio`, y `vista` cuando la haya) y los eventos de acción que el catálogo ya define, emitidos desde el marco de la consola, no desde cada pantalla; ninguna propiedad fuera de `PROPIEDADES_PERMITIDAS` (test).
+  - ~~Un evento por espacio al entrar (dimensión `espacio`, y `vista` cuando la haya) y los eventos de acción que el catálogo ya define, emitidos desde el marco de la consola, no desde cada pantalla; ninguna propiedad fuera de `PROPIEDADES_PERMITIDAS` (test).~~ Hecho (ver la corrección de arriba).
   - Tras 30 días, una tabla en `docs/UX_AUDIT.md` con sesiones por espacio y por vista, y una decisión escrita por cada espacio o vista con menos del 2 % de uso: se queda, se fusiona o se retira.
   - La misma pregunta para la API: `pursuits/metrics` o `admin/ejecuciones` ya existen; falta el inventario de operaciones sin ninguna llamada en 30 días (`http_requests_total` por handler ya está en Prometheus), y la lista va a `superficie_congelada.txt` como candidatas a encoger.
 - **Files de partida:** [web/src/lib/analytics.ts](../web/src/lib/analytics.ts), [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx), [web/src/lib/console-spaces.ts](../web/src/lib/console-spaces.ts), [api/superficie_congelada.txt](../api/superficie_congelada.txt)
@@ -1291,7 +1292,7 @@ _Sin ítems abiertos._
 - **Área:** varios
 - **Problema:** lo que las seis líneas dejaron escrito como pendiente, para que no se pierda.
 - **Acceptance criteria:**
-  - RFC para retirar de `GET /notifications` los campos que la campana ya no usa (`items`, `unread_count`, `hoy`), y `POST /notifications/read` y `GET /licitaciones/stream`: quitarlos rompe el contrato.
+  - ~~RFC para retirar de `GET /notifications` los campos que la campana ya no usa (`items`, `unread_count`, `hoy`), y `POST /notifications/read` y `GET /licitaciones/stream`: quitarlos rompe el contrato.~~ Escrito el 2026-10-23: [2026-10-23-rfc-retirada-campana-antigua-y-stream](rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md) (`review`), que propone el 2027-02-01 y añade `forecast/retendering`. La fase 1 ya está en el código: `deprecated`, `Deprecation`/`Sunset`/`Link`. El borrado (fase 2) espera a que el propietario apruebe la RFC.
   - Decidir si la cuota de adjuntos (2 GiB por organización) debe descontar los retirados; hoy borrar no libera espacio.
   - Alta del 2FA con QR (no hay librería instalada) y regenerar los códigos de recuperación sin desactivar el segundo factor.
   - Renovar la captura de `/competencia` en `visual.spec.ts` (tiene dos pestañas más). `/empresas` ya salió de `web/bundle-budget.json`.
@@ -1323,7 +1324,7 @@ _Sin ítems abiertos._
 
 ### [P3] Decidir qué hacer con los ratchets que llevan meses congelados sin bajar
 - **Área:** scripts/check_layers.py, pyproject.toml (TID251), scripts/check_user_key_ratchet.py, docs/STATUS.md
-- **Problema:** tres ratchets congelan deuda con nombre y ninguno tiene plan de bajada: 22 imports contra el orden de capas (los peores van de la capa inferior a la superior: `db/repositories/go_no_go.py -> services.go_no_go_template`, `db/repositories/licitaciones.py -> services.investigador.search_engine`, `db/access_grants.py -> services.access_grants`, `config/settings.py -> shared.*`), 22 ficheros con SQL fuera de `db/` (TID251: de 32 entradas en agosto a 22 hoy, según los comentarios de `pyproject.toml`) y 59 ficheros con `user_key` (el P1 de S1 lo lleva a cero con T4, pero el resto no tiene dueño). Un ratchet que solo impide crecer protege el futuro y deja el presente igual; medido el 2026-10-17 contra `docs/STATUS.md`.
+- **Problema:** tres ratchets congelan deuda con nombre y ninguno tiene plan de bajada: 22 imports contra el orden de capas (los peores van de la capa inferior a la superior: `db/repositories/go_no_go.py -> services.go_no_go_template`, `db/repositories/licitaciones.py -> services.investigador.search_engine`, `db/access_grants.py -> services.access_grants`, `config/settings.py -> shared.*`), 22 ficheros con SQL fuera de `db/` (TID251: de 32 entradas en agosto a 22 hoy, según los comentarios de `pyproject.toml`; 19 desde el 2026-10-23, y `tests/test_s4b_ratchet_tid251.py` falla ahora también ante una entrada que ya no abre conexiones) y 59 ficheros con `user_key` (el P1 de S1 lo lleva a cero con T4, pero el resto no tiene dueño). Un ratchet que solo impide crecer protege el futuro y deja el presente igual; medido el 2026-10-17 contra `docs/STATUS.md`.
 - **Acceptance criteria:**
   - Decisión escrita del dueño por ratchet: (a) cuota de bajada —por ejemplo, cada PR que toque un módulo de la lista saca ese módulo o explica por qué no—, (b) fecha objetivo para llegar a cero, o (c) aceptar la violación como diseño y borrarla de la lista (y, en el caso de capas, actualizar AGENTS.md §2).
   - Para capas: las cuatro violaciones `db/* -> services.*` tienen prioridad, porque son las únicas en que la persistencia conoce el dominio; la pieza compartida baja a `shared/` o a `db/`.
@@ -1371,10 +1372,10 @@ _Sin ítems abiertos._
 
 ### [P3] Los 41 `SELECT *` de `db/` y el SQL propio de `services/notifications.py` y `services/watchlist_rules.py`
 - **Área:** db/*.py, db/repositories/*.py, services/notifications.py, services/watchlist_rules.py, db/notifications.py, db/repositories/watchlist_rules.py
-- **Problema:** medido el 2026-10-17 hay 41 `SELECT *` en `db/`: cada columna nueva viaja en todas esas lecturas y el orden de las columnas pasa a ser contrato implícito (es lo que hace frágil `rows_to_dicts` ante un `ALTER TABLE`). Aparte, `services/notifications.py` (18 sentencias con `# noqa: S608`) y `services/watchlist_rules.py` (10) construyen y ejecutan SQL propio pese a existir `db/notifications.py`, `db/repositories/notification_preferences.py` y `db/repositories/watchlist_rules.py`: son dos de las 22 entradas del ratchet TID251 y las dos tienen ya un destino en `db/`.
+- **Problema:** medido el 2026-10-17 hay 41 `SELECT *` en `db/`: cada columna nueva viaja en todas esas lecturas y el orden de las columnas pasa a ser contrato implícito (es lo que hace frágil `rows_to_dicts` ante un `ALTER TABLE`). Aparte, `services/notifications.py` (10 sentencias con `# noqa: S608`) y `services/watchlist_rules.py` (8) —18 en total; el recuento anterior, «18 y 10», sumaba de más— construían y ejecutaban SQL propio pese a existir `db/notifications.py`, `db/repositories/notification_preferences.py` y `db/repositories/watchlist_rules.py`: son dos de las 22 entradas del ratchet TID251 y las dos tienen ya un destino en `db/`.
 - **Acceptance criteria:**
   - Las lecturas con `SELECT *` que sirven a la API nombran sus columnas (las de `pg_dump`/herramientas internas pueden quedarse con el motivo en la línea); el conteo baja y se fija.
-  - El SQL de `services/notifications.py` y `services/watchlist_rules.py` vive en sus módulos de `db/`; los dos ficheros salen de la whitelist TID251 de `pyproject.toml` (22 → 20) y `docs/STATUS.md` lo refleja.
+  - ~~El SQL de `services/notifications.py` y `services/watchlist_rules.py` vive en sus módulos de `db/`; los dos ficheros salen de la whitelist TID251 de `pyproject.toml` (22 → 20) y `docs/STATUS.md` lo refleja.~~ **Hecho el 2026-10-23:** el SQL bajó a `db/notifications.py` y `db/repositories/watchlist_rules.py` (incluida la ejecución del matching), los 18 `noqa: S608` desaparecieron y la whitelist queda en 19 (sale también el fósil `services/ml/tech_classifier.py`). Queda solo la mitad de los `SELECT *`.
 - **Files de partida:** [services/notifications.py](../services/notifications.py), [services/watchlist_rules.py](../services/watchlist_rules.py), [db/notifications.py](../db/notifications.py), [db/repositories/watchlist_rules.py](../db/repositories/watchlist_rules.py)
 - **Riesgo:** bajo — movimiento de SQL con tests de integración existentes para ambos módulos.
 
@@ -1395,7 +1396,36 @@ _Sin ítems abiertos._
 - **Files de partida:** [scraper/resilience.py](../scraper/resilience.py), [api/routes/pursuits.py](../api/routes/pursuits.py), [api/routes/security.py](../api/routes/security.py), [tests/test_ola1_fixes.py](../tests/test_ola1_fixes.py), [pyproject.toml](../pyproject.toml)
 - **Riesgo:** bajo — sustituciones de nombre.
 
+### [P3] SQLAlchemy se usa en producción y no está declarada como dependencia directa
+- **Área:** requirements.in, pyproject.toml (`[project] dependencies`)
+- **Problema:** `db/models.py`, `db/repositories/watchlist_rules.py`, `services/watchlist_rules.py` y otros construyen consultas con SQLAlchemy Core (`compile_query`), pero `sqlalchemy` no está en `requirements.in` ni en las dependencias de `pyproject.toml`: llega a `requirements.txt` solo como dependencia transitiva (`sqlalchemy==2.0.49`, «via» otra librería). El día que esa librería la suelte, o la fije a una major incompatible, la API deja de arrancar sin que ningún diff de dependencias lo haya avisado. Visto el 2026-10-23.
+- **Acceptance criteria:**
+  - `sqlalchemy` declarada en `requirements.in` y en `pyproject.toml` con el mismo rango, y `requirements.txt` regenerado con `pip-compile`; `scripts/check_requirements_sync.py` en verde.
+- **Pendiente de OK del propietario** (AGENTS.md §6: cambiar dependencias requiere confirmación explícita). No se toca hasta tenerlo.
+- **Files de partida:** [requirements.in](../requirements.in), [pyproject.toml](../pyproject.toml)
+- **Riesgo:** bajo — declara lo que ya está instalado; el riesgo es no hacerlo.
+
 ## Cerrados
+
+- [2026-10-23] **Higiene de la sección 6: SQL de servicios a `db/`, ratchet TID251 sin fósiles, deprecaciones con fecha y auditoría de telemetría** —
+  el SQL de `services/notifications.py` (alertas in-app y preferencias de correo) baja a
+  `db/notifications.py`, y el de `services/watchlist_rules.py` (CRUD de reglas y ejecución del
+  matching) a `db/repositories/watchlist_rules.py`; los servicios conservan la regla (modo de
+  correo por defecto, validación contra el catálogo, fail-safe de la lectura, normalización del
+  órgano, cláusulas del filtro). Desaparecen los 18 `noqa: S608` (eran 18, no 26). Salen de la
+  whitelist TID251 esos dos ficheros y el fósil `services/ml/tech_classifier.py`, que solo
+  nombraba `connect()` en un docstring: **22 → 19**. `test_sin_entradas_fosiles` falla ahora
+  también ante una entrada sin ningún uso real (`ast`, no texto) de `connect`/`connect_read`.
+  Las tres rutas de analítica de D19 y `forecast/retendering` envían `Deprecation`/`Sunset`/`Link`
+  (desde una dependencia, para que sobrevivan al acierto de `cache_response`); la fecha de D19
+  pasa del 2026-12-04 —89 días, fuera de la ventana de C8.1— al 2027-01-15 del listado por
+  offset, cuyo `summary` también decía 2026-12-04 (addendum en la RFC). RFC nueva
+  [2026-10-23-rfc-retirada-campana-antigua-y-stream](rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md)
+  para `GET /notifications` (campos), `POST /notifications/read`, `GET /licitaciones/stream` y
+  `forecast/retendering`, con su fase 1 aplicada. `tests/test_deprecacion_cabeceras.py` exige
+  fecha a toda operación `deprecated`. Telemetría: los 23 eventos del catálogo tienen emisor y
+  `analytics-emisores.test.ts` lo fija. Pendiente aparte: SQLAlchemy como dependencia directa
+  (ítem P3, espera OK del propietario).
 
 - [2026-10-17] **P2: Decidir si el listado `/licitaciones` esconde duplicados (ADR-026 D23
   dice que sí)** (rama `claude/listado-esconde-duplicados`) — manda D23: el listado es
@@ -1542,7 +1572,8 @@ _Sin ítems abiertos._
   pausar la regla de una alerta. Las novedades de mercado se quedan en el
   Resumen; `get_resumen_novedades(user_id)` está retirada y un test vigila que
   nada lea `users.last_login`. Los campos deprecados de `GET /notifications`
-  siguen hasta su RFC (ítem P3 nuevo).
+  siguen hasta su RFC (ítem P3 nuevo; la RFC es
+  [2026-10-23-rfc-retirada-campana-antigua-y-stream](rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md)).
 - [2026-10-12] **P1: El despachador del outbox no lo invoca ningún plano** — el ítem
   estaba desfasado: el cierre de la pasada ya llama a `event_dispatch` entre
   `cartera_avisos` y `digests` (`scheduler/pipeline_runs.py`, `_run_event_dispatch`,

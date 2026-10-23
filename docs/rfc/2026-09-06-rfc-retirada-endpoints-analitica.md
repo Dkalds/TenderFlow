@@ -5,7 +5,7 @@ issue: "(sin issue: decisión D19 del plan de arquitectura 2026-09 v2)"
 author: agent:claude-code
 date: 2026-09-06
 status: approved
-retirada_efectiva: 2026-12-04
+retirada_efectiva: 2027-01-15
 ---
 
 ## Contexto
@@ -53,13 +53,14 @@ puede haber integraciones por API key fuera de nuestra vista.
 Retirada anunciada en dos tiempos, con 90 días entre el anuncio y el borrado.
 
 **Fase 1 — hoy, 2026-09-06.** Las cuatro operaciones se marcan `deprecated=True`
-en FastAPI y su `summary` empieza por `[DEPRECADO 2026-12-04]`. El
+en FastAPI y su `summary` empieza por `[DEPRECADO 2026-12-04]` (2027-01-15
+desde el addendum del final). El
 comportamiento **no cambia**: siguen respondiendo exactamente lo mismo. La marca
 viaja en el OpenAPI, así que aparece tachada en `/docs` y el cliente TS generado
 la refleja, que es la única forma de avisar a un integrador que no lee el
 repositorio.
 
-**Fase 2 — a partir del 2026-12-04.** Se borran los cuatro handlers, sus
+**Fase 2 — a partir del 2026-12-04** (2027-01-15, ver el addendum). Se borran los cuatro handlers, sus
 funciones de servicio si no quedan otros llamadores, y las entradas de
 `web/src/lib/analytics.ts`. El borrado va en su propia PR, citando este RFC.
 
@@ -79,7 +80,7 @@ funciones de servicio si no quedan otros llamadores, y las entradas de
 
 ## Consecuencias
 
-- Antes del 2026-12-04, el frontend tiene que dejar de usar
+- Antes del 2026-12-04 (2027-01-15, ver el addendum), el frontend tiene que dejar de usar
   `GET /licitaciones` por offset. Es posible desde este mismo cambio, porque
   `/licitaciones/cursor` ya acepta sesión.
 - `docs/api-design.md` y el cliente `web/src/lib/analytics.ts` se actualizan en
@@ -94,3 +95,21 @@ funciones de servicio si no quedan otros llamadores, y las entradas de
   Lo fija `tests/test_o06_contrato_api.py::test_las_cuatro_operaciones_estan_deprecadas`.
 - El ratchet de contrato sigue verde:
   `python scripts/check_openapi_contract.py`.
+
+## Addendum 2026-10-23 — la fecha pasa al 2027-01-15
+
+La fecha del anuncio, 2026-12-04, dejaba **89 días** desde el 2026-09-06. La
+ventana mínima de 90 días entre anuncio y apagado se fijó después, en C8.1
+(`DEPRECATION_WINDOW_DAYS` y `sunset_anunciado()` en `api/errors.py`), y con
+ella el 2026-12-04 no se puede declarar: `sunset_anunciado(date(2026, 12, 4),
+anunciado=date(2026, 9, 6))` falla. El listado por offset ya se había movido al
+**2027-01-15** por eso (`api/routes/licitaciones/_base.py::SUNSET_LISTADO_POR_OFFSET`),
+pero su `summary` seguía diciendo 2026-12-04, y las tres de analítica salían
+`deprecated` en el OpenAPI sin enviar ni `Deprecation` ni `Sunset`.
+
+Desde este addendum las cuatro operaciones comparten fecha, **2027-01-15**: lo
+dicen el `summary` (`[DEPRECADO 2027-01-15]`) y la cabecera `Sunset`, y las tres
+de analítica envían además `Link` a este RFC. En las de analítica las cabeceras
+se fijan en una dependencia y no en el handler, porque `cache_response`
+construye su propia `Response` y en un acierto de caché el handler no corre.
+Lo fija `tests/test_deprecacion_cabeceras.py`. La fase 2 se mueve con la fecha.

@@ -41,9 +41,12 @@ _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 #: `scheduler/kpi_precompute.py` y `services/competitive/mercado.py`, y a 25 el
 #: 2026-09-24 al sacar `services/ml/scoring.py`, y a 22 el 2026-09-28 al
 #: borrar tres scripts de un solo uso (`dedupe_licitaciones`,
-#: `fix_dates_adjudicaciones`, `retrain`).
+#: `fix_dates_adjudicaciones`, `retrain`), y a 19 el 2026-10-23 al sacar
+#: `services/notifications.py` y `services/watchlist_rules.py` (su SQL bajó a
+#: `db/`) y el fósil `services/ml/tech_classifier.py`, que solo nombraba
+#: `connect()` en un docstring.
 #: El objetivo del plan de arquitectura de septiembre (≤ 24) queda cumplido.
-MAX_ENTRADAS_WHITELIST = 22
+MAX_ENTRADAS_WHITELIST = 19
 
 #: Las cuatro rutas liberadas en esta ola. Su SQL vive ahora en
 #: ``db/repositories/{empresas,licitaciones,watchlist,watchlist_rules}.py``.
@@ -133,16 +136,95 @@ def test_ninguna_ruta_de_la_api_sigue_en_la_whitelist() -> None:
     assert not intrusas, f"Rutas de la API de vuelta en la whitelist TID251: {intrusas}"
 
 
+#: Módulos que exponen las APIs vetadas por ``banned-api`` en ``pyproject.toml``.
+_MODULOS_CONEXION = ("db.connection", "db.database")
+
+
+def _usos_reales_de_conexion(arbol: ast.AST) -> list[str]:
+    """Usos de ``connect``/``connect_read`` en CÓDIGO, no en prosa.
+
+    Cuenta lo mismo que hace saltar ``TID251``: importar el nombre vetado de
+    ``db.connection``/``db.database`` (a nivel de módulo o dentro de una
+    función, con o sin alias), o acceder a él como atributo de esos módulos
+    (``database.connect``, ``db.database.connect_read``). Un docstring o un
+    comentario que lo nombre no es un nodo de este tipo, que es justo lo que
+    hace falta: ``services/ml/tech_classifier.py`` siguió en la whitelist meses
+    después de dejar de abrir conexiones porque su docstring decía
+    ``sqlite3.connect()``.
+    """
+    alias_de_modulo: set[str] = set()
+    usos: list[str] = []
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.ImportFrom):
+            modulo = nodo.module or ""
+            if modulo in _MODULOS_CONEXION:
+                usos.extend(
+                    f"from {modulo} import {a.name}" for a in nodo.names if a.name in _CONNECT
+                )
+            elif modulo == "db":
+                alias_de_modulo.update(
+                    a.asname or a.name for a in nodo.names if a.name in ("connection", "database")
+                )
+        elif isinstance(nodo, ast.Import):
+            for a in nodo.names:
+                if a.name in _MODULOS_CONEXION:
+                    alias_de_modulo.add(a.asname or a.name)
+    for nodo in ast.walk(arbol):
+        if isinstance(nodo, ast.Attribute) and nodo.attr in _CONNECT:
+            base = ast.unparse(nodo.value)
+            if base in alias_de_modulo or base in _MODULOS_CONEXION:
+                usos.append(f"{base}.{nodo.attr}")
+    return usos
+
+
 def test_sin_entradas_fosiles() -> None:
     """Una whitelist que solo decrece también acumula fósiles.
 
-    Al borrar o renombrar un archivo su línea se queda, e infla el conteo del
-    ratchet con deuda que ya no existe: el número deja de medir nada. Mismo
-    criterio que ``scripts/gen_status.py::_stale_whitelist_entries`` (los
-    patrones con ``*`` no se resuelven a un fichero y quedan fuera).
+    Dos formas de fósil, y las dos inflan el conteo del ratchet con deuda que ya
+    no existe, de modo que el número deja de medir nada:
+
+    * El archivo se borró o renombró y su línea se quedó. Mismo criterio que
+      ``scripts/gen_status.py::_stale_whitelist_entries`` (los patrones con
+      ``*`` no se resuelven a un fichero y quedan fuera).
+    * El archivo existe pero ya no usa ``connect``/``connect_read``: su SQL
+      bajó a ``db/`` y nadie quitó la excepción. Peor que el anterior, porque
+      además deja pasar en silencio la próxima regresión de ese fichero.
     """
-    fosiles = [e for e in _whitelist() if "*" not in e and not (_REPO_ROOT / e).exists()]
-    assert not fosiles, f"Entradas del ratchet que ya no apuntan a nada (borralas): {fosiles}"
+    entradas = [e for e in _whitelist() if "*" not in e]
+    borradas = [e for e in entradas if not (_REPO_ROOT / e).exists()]
+    assert not borradas, f"Entradas del ratchet que ya no apuntan a nada (borralas): {borradas}"
+
+    sin_uso = [
+        e
+        for e in entradas
+        if not _usos_reales_de_conexion(ast.parse((_REPO_ROOT / e).read_text(encoding="utf-8")))
+    ]
+    assert not sin_uso, (
+        "Entradas del ratchet TID251 que ya no abren conexiones (borralas de "
+        f"pyproject.toml y bajá MAX_ENTRADAS_WHITELIST): {sin_uso}"
+    )
+
+
+def test_el_detector_de_fosiles_distingue_codigo_de_prosa() -> None:
+    """El detector no puede fallar hacia el lado cómodo.
+
+    Si devolviera siempre «hay uso», el test de fósiles no apretaría nunca; si
+    contase menciones en docstrings, ``tech_classifier`` no habría salido.
+    """
+    solo_prosa = ast.parse('"""Se retiró el fallback ``sqlite3.connect()``."""\n# connect_read()\n')
+    assert _usos_reales_de_conexion(solo_prosa) == []
+    for codigo in (
+        "from db.database import connect\n",
+        "from db.connection import connect_read as leer\n",
+        "def f():\n    from db.database import connect as db_connect\n",
+        "from db import database\ndatabase.connect()\n",
+        "import db.database\ndb.database.connect_read()\n",
+    ):
+        assert _usos_reales_de_conexion(ast.parse(codigo)), codigo
+    # `sqlite3.connect` o un `connect` propio no son la API vetada.
+    assert (
+        _usos_reales_de_conexion(ast.parse("import sqlite3\nsqlite3.connect(':memory:')\n")) == []
+    )
 
 
 def _literales(arbol: ast.AST) -> list[str]:
