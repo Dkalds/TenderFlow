@@ -96,10 +96,13 @@ def ejecutar_embeddings_expediente(job: Job) -> dict[str, Any]:
     no se escribe SQL nuevo fuera de ``db/``).
     """
     from db.repositories.documentos import DocumentosRepository
-    from services.embeddings import embeddings_available, encode_texts
+    from services.embeddings import embeddings_masivos_disponibles, encode_texts
     from services.rag.chunking import chunk_text
 
-    if not embeddings_available():
+    # El worker corre en un hilo del proceso de la API: con solo el motor ONNX
+    # (el de la consulta), embeber un pliego entero le quitaría la CPU a las
+    # peticiones. Ver ``services.embeddings.embeddings_masivos_disponibles``.
+    if not embeddings_masivos_disponibles():
         # Sin el extra [ml-embeddings] no hay nada que hacer, y reintentarlo
         # tres veces no lo instalará: se cierra el job como hecho declarando
         # que no se procesó nada, en vez de dejar un `failed` que parece un bug.

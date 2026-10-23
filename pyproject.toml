@@ -283,6 +283,8 @@ module = [
     "faiss.*",
     "sentence_transformers",
     "sentence_transformers.*",
+    "onnxruntime",
+    "onnxruntime.*",
     "sklearn",
     "sklearn.*",
     "bcrypt",
