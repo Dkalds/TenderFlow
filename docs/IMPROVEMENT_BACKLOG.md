@@ -114,6 +114,13 @@ el filtro en Radar y Detalle), F2.3, F3.1, F4.1 (sin pantalla para editar las
 probabilidades), F4.3 (sin «preparar renovación», que no tiene endpoint), F4.4
 y F4.6. El estado de cada una está anotado en el plan.
 
+*Estado (2026-10-23):* las salvedades de ese párrafo y del siguiente ya no
+describen el código, y el plan lo anota ítem por ítem: F1.6 filtra por
+etiqueta en Detalle (en servidor) y en Radar; F4.1 edita las probabilidades en
+Equipo → Organización; F4.3 tiene «Preparar renovación»
+(`POST /pursuits/cartera/{id}/renovacion`); y F2.6 descarga el PDF del guion
+(`GET /licitaciones/{id}/guion.pdf`).
+
 Pantallas que faltaban de lado ficha y superficie pública (2026-09-18, rama
 `worktree-agent-ac5d5218d7d3b1f8b`): F2.2, F2.5, F2.6, F2.8, F6.2 y F6.5 ya
 tienen UI; el estado por ítem está anotado en el plan. Quedan sin hacer: el
@@ -1088,6 +1095,16 @@ _Sin ítems abiertos._
 - **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py), [db/connection.py](../db/connection.py), [llm/client.py](../llm/client.py), [services/ml/sap_classifier.py](../services/ml/sap_classifier.py)
 - **Riesgo:** medio — estrechar una excepción en el pipeline puede convertir un aviso en una pasada en rojo; es el objetivo, pero conviene hacerlo módulo a módulo y mirar `scrape-daily` después de cada uno.
 
+### [P2] La matriz go/no-go por criterio no tiene pantalla
+- **Área:** web/src/app/(dashboard)/oportunidades/[id], api/routes/pursuits.py
+- **Problema:** `GET/PUT /pursuits/{id}/go-no-go` (C6.4, D30) puntúa cinco criterios de 1 a 5, recomienda con la media ponderada y marca la decisión que la contradice (`discrepa`), pero ninguna pantalla lo pide: en la consola solo existe la decisión (`DecidirGoNoGo`) y el contraste con la capacidad (`ChecklistGoNoGo`). Desde el 2026-10-23 los **pesos** se editan en Equipo → Organización, así que hoy se configura algo que en la consola no se ve; la recomendación solo llega por la API, el MCP y `make product-status`.
+- **Acceptance criteria:**
+  - La ficha de la oportunidad puntúa cada criterio con su motivo, enseña el total, el umbral y la recomendación sobre cuántos criterios se calculó (`criterios_puntuados`, `completa`), y avisa cuando la decisión tomada discrepa.
+  - Cambiar los pesos en Equipo invalida la puntuación en caché de la ficha.
+  - Vitest de la sección y el E2E `recorrido-oportunidad.spec.ts` (CU-06) pasa por ella.
+- **Files de partida:** [api/routes/pursuits.py](../api/routes/pursuits.py) (`get_pursuit_go_no_go`, `put_pursuit_go_no_go`), [services/go_no_go_template.py](../services/go_no_go_template.py), [web/src/components/pursuits/decidir-go-no-go.tsx](../web/src/components/pursuits/decidir-go-no-go.tsx), [web/src/app/(dashboard)/equipo/_hooks/use-pesos-go-no-go.ts](../web/src/app/(dashboard)/equipo/_hooks/use-pesos-go-no-go.ts)
+- **Riesgo:** bajo — el backend y su escenario (`tests/test_escenario_gobierno_organizacion.py`) ya existen; es una sección nueva en la ficha.
+
 ## P3 — Nice to have
 
 ### [P3] Pasar las fechas de `text` a `timestamptz`
@@ -1386,6 +1403,28 @@ _Sin ítems abiertos._
 
 ## Cerrados
 
+- [2026-10-23] **Backend sin pantalla en Competencia y Equipo: cuota, HHI y
+  bajas; pesos del go/no-go; rastro de auditoría de la organización** (tanda
+  paralela, agente D) — Competencia → Competidores gana «Concentración por
+  segmento» (`GET /competitive/hhi` por familia CPV, comunidad, órgano o
+  tecnología; al elegir un segmento, `/competitive/cuota` y
+  `/competitive/bajas/referencia` solo cuando el endpoint sabe filtrar ese
+  corte) y «Bajas medias» (`/competitive/bajas` por órgano, CPV o comunidad,
+  con la parte de la barra que el endpoint entiende y nombrando la que no).
+  Los umbrales del HHI salen de un solo sitio (`competencia/_hooks/mercado-segmentos.ts`)
+  para la cifra del ámbito y la lista de segmentos; la cifra ya era dato real
+  de `/analytics/competitors`. Equipo → Organización gana la tarjeta de pesos
+  del go/no-go (`GET/PUT /organizations/go-no-go/weights`; todos a cero se para
+  antes de la API) y Equipo → Actividad, para owner/admin, el rastro de
+  auditoría con filtro de fechas, paginación por cursor y CSV generado por la
+  API. **Bug arreglado de paso:** los pesos del go/no-go y la propuesta de
+  pesos aplicada se auditaban con `resource=organization:<id>` y el rastro solo
+  leía `org:<id>`, así que nunca aparecían; `AuditRepository.list_for_organization`
+  lee las dos formas (también lo ya persistido). Recorridos:
+  `tests/test_escenario_gobierno_organizacion.py` (CU-06 y CU-31 nuevo) y el
+  segundo test de `tests/test_escenario_competencia.py` (CU-18). Queda abierta
+  la pantalla de la matriz por criterio (ver P2 «La matriz go/no-go por
+  criterio no tiene pantalla»).
 - [2026-10-17] **P2: Decidir si el listado `/licitaciones` esconde duplicados (ADR-026 D23
   dice que sí)** (rama `claude/listado-esconde-duplicados`) — manda D23: el listado es
   presentación y esconde `pending` y `confirmed`, como el Radar. La exclusión entra siempre

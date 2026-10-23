@@ -16,6 +16,9 @@
  * semanal. Estaban en Mi perfil, mezclados con los pesos de cada persona; son
  * decisiones del equipo y se guardan aparte, así que viven aquí.
  *
+ * Después, los pesos de la matriz go/no-go: cómo pondera el equipo cada
+ * criterio al decidir si se presenta (C6.4).
+ *
  * Al final, lo que cierra el ciclo de la organización —salir, traspasarla,
  * borrarla (CU-26)—: es lo último que se busca y lo único irreversible.
  */
@@ -26,6 +29,7 @@ import { CicloOrganizacion } from "./ciclo-organizacion";
 import { InformeSemanalCard } from "./informe-semanal-card";
 import { OrganizacionCapacidadCard } from "./organizacion-capacidad-card";
 import { OrganizacionNifsCard } from "./organizacion-nifs-card";
+import { PesosGoNoGoCard } from "./pesos-go-no-go-card";
 import { PlantillaTareasCard } from "./plantilla-tareas-card";
 import { ProbabilidadesEtapaCard } from "./probabilidades-etapa-card";
 import { TecnologiasOrganizacionCard } from "./tecnologias-organizacion-card";
@@ -68,6 +72,9 @@ export function OrganizacionTab({
           <ProbabilidadesEtapaCard organizationId={organizationId} canManage={canManage} />
         </>
       )}
+      {/* Fuera del bloque compartido: la organización personal también abre
+          oportunidades y decide go/no-go con estos pesos. */}
+      <PesosGoNoGoCard organizationId={organizationId} canManage={canManage} />
       {organizacion && <CicloOrganizacion organizacion={organizacion} />}
     </div>
   );

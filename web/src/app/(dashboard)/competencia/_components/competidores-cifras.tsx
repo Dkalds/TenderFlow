@@ -11,6 +11,12 @@
  * insuficiente no se pinta un número atenuado, se dice qué falta. Y «Cuándo se
  * adjudica» es lo que antes ocupaba una pestaña con dos ejes Y: doce columnas
  * bastan para ver en qué mes se concentra el año.
+ *
+ * El HHI de aquí es el del ámbito filtrado entero (`/analytics/competitors`,
+ * que sí sigue la barra). Su zona sale de los umbrales compartidos de
+ * `_hooks/mercado-segmentos.ts`, los mismos con los que «Concentración por
+ * segmento» (`/competitive/hhi`) califica cada segmento: una sola regla para
+ * las dos lecturas del mismo índice.
  */
 
 import { ROTULO_DATO, StatCell, StatStrip } from "@/components/console/panel";
@@ -21,7 +27,9 @@ import { EMPTY, formatCurrency, formatNumber, formatPercent } from "@/lib/utils"
 
 import { mesPico, type EstacionalidadPoint } from "../_hooks/competidores-series";
 import type { CompetitorsData } from "../_hooks/competidores-types";
+import { etiquetaHhi } from "../_hooks/mercado-segmentos";
 import { BarraPct } from "./dibujos";
+import { ReglaHhi } from "./regla-hhi";
 
 const MESES_LARGOS = [
   "enero",
@@ -37,40 +45,6 @@ const MESES_LARGOS = [
   "noviembre",
   "diciembre",
 ];
-
-/** Los dos umbrales del índice, los habituales en defensa de la competencia. */
-const HHI_MODERADO = 1500;
-const HHI_CONCENTRADO = 2500;
-/** Tope de la regla: por encima el marcador se queda en el extremo. */
-const HHI_TOPE = 4000;
-
-function etiquetaHhi(hhi: number): string {
-  if (hhi < HHI_MODERADO) return "Mercado competitivo";
-  if (hhi < HHI_CONCENTRADO) return "Concentración moderada";
-  return "Mercado concentrado";
-}
-
-/** El índice sobre una regla de tres zonas: competitivo, moderado, concentrado. */
-function ReglaHhi({ hhi }: { hhi: number }) {
-  const escala = (valor: number) => (Math.min(valor, HHI_TOPE) / HHI_TOPE) * 100;
-  const moderado = escala(HHI_MODERADO);
-  const concentrado = escala(HHI_CONCENTRADO);
-  return (
-    <div>
-      <svg aria-hidden="true" className="h-3 w-full" viewBox="0 0 100 12" preserveAspectRatio="none">
-        <rect y="3" width={moderado - 0.6} height="6" fill="hsl(var(--primary))" fillOpacity="0.18" />
-        <rect x={moderado} y="3" width={concentrado - moderado - 0.6} height="6" fill="hsl(var(--primary))" fillOpacity="0.32" />
-        <rect x={concentrado} y="3" width={100 - concentrado} height="6" fill="hsl(var(--primary))" fillOpacity="0.5" />
-        <rect x={Math.max(0, escala(hhi) - 0.75)} y="0" width="1.5" height="12" fill="hsl(var(--foreground))" />
-      </svg>
-      <div aria-hidden="true" className="mt-0.5 flex text-tf-micro text-muted-foreground">
-        <span className="basis-[37.5%]">competitivo</span>
-        <span className="basis-1/4">moderado</span>
-        <span className="basis-[37.5%]">concentrado</span>
-      </div>
-    </div>
-  );
-}
 
 /** Adjudicaciones por mes del año, con el mes de más actividad en primario. */
 function CeldaMeses({ meses, isLoading }: { meses: EstacionalidadPoint[]; isLoading: boolean }) {

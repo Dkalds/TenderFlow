@@ -143,7 +143,11 @@ function renderVista(competidores: CompetitorResult = COMPETIDORES) {
     // El perfil se deja pendiente: lo que se comprueba es que se pide bien.
     return new Promise(() => {});
   });
-  apiGet.mockResolvedValue(MOVIMIENTOS);
+  // Los bloques de mercado por segmento se prueban en
+  // `competidores-mercado.test.tsx`: aquí se quedan cargando.
+  apiGet.mockImplementation((ruta: string) =>
+    ruta.includes("/watchlist/movimientos") ? Promise.resolve(MOVIMIENTOS) : new Promise(() => {}),
+  );
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>

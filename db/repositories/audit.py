@@ -108,8 +108,14 @@ class AuditRepository:
         ``desde``/``hasta`` son ISO (``created_at`` es texto ISO en UTC, así
         que la comparación lexicográfica es la cronológica); ``hasta`` es
         exclusivo. ``cursor`` es ``(created_at, id)`` de la última fila vista.
+
+        También casa ``resource="organization:<id>"``: es como escriben los
+        pesos del go/no-go (``services/go_no_go_puntuacion.py``) y la propuesta
+        de pesos aplicada (``services/pursuits.py``). Son configuración de la
+        organización y quedaban fuera de su rastro; leer las dos formas recupera
+        también lo ya persistido, que cambiar solo el escritor no arreglaría.
         """
-        patron = rf"(^|\| )resource=org:{int(organization_id)}( \||$)"
+        patron = rf"(^|\| )resource=(org|organization):{int(organization_id)}( \||$)"
         clausulas = ["detail ~ %s"]
         params: list[Any] = [patron]
         if desde:

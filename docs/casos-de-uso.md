@@ -80,6 +80,9 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - **Quién:** responsable y dirección. **Dónde:** ficha de la oportunidad.
 - Puntúa los criterios y recibe una recomendación; la decisión exige motivo.
 - Sin GO no hay oferta, y un NO-GO solo puede retirarse.
+- Quien dirige la organización pondera los criterios en Equipo ›
+  Organización, y la misma ficha cambia de recomendación sin tocar las
+  puntuaciones; quien solo lee ve los pesos y no los cambia.
 
 ### CU-07 — Preparar la oferta con tareas
 
@@ -161,6 +164,10 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - **Quién:** preventa y dirección. **Dónde:** `/competencia`.
 - Ve quién gana en su ámbito y abre el perfil de una empresa con sus
   adjudicaciones.
+- Ve qué segmentos —familia CPV, comunidad, órgano o tecnología— están
+  concentrados; en uno elegido, quién se lo reparte y a qué baja se gana, y
+  las bajas medias por órgano, CPV o comunidad. Cada cifra dice sobre qué base
+  de importe se calculó.
 
 ### CU-19 — Gobernar mi cuenta: preferencias y sesiones
 
@@ -266,6 +273,17 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   una sola vez por umbral y documento; renovarlo con otra fecha vuelve a
   avisar en sus umbrales. Lo puede apagar en Ajustes.
 
+### CU-31 — Revisar y exportar lo que cambió en la organización
+
+- **Quién:** propietario o administrador de la organización. **Dónde:**
+  Equipo › Actividad, rastro de auditoría.
+- Ve, del más reciente al más antiguo, quién entró y salió del equipo, los
+  cambios de rol, de configuración, de capacidad y de pesos del go/no-go, con
+  quién lo hizo (por su identidad, nunca por su correo).
+- Acota por fechas, recorre el rastro página a página sin repetir ni saltarse
+  nada y se lo lleva en CSV.
+- Un miembro que no administra no lo ve.
+
 ## Trazabilidad
 
 <!-- trazabilidad: generado por scripts/check_casos_uso.py — no editar a mano -->
@@ -277,7 +295,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-03** Seguir un expediente y anotarlo | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
 | **CU-04** Vigilar el mercado con una alerta | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-alerta.spec.ts](../web/e2e/recorrido-alerta.spec.ts) | [test_watchlist_rules_maquina_property.py](../tests/test_watchlist_rules_maquina_property.py) |
 | **CU-05** Llevar una oportunidad del expediente al cierre | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x3) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py)<br>[test_pursuits_filtros_tablero.py](../tests/test_pursuits_filtros_tablero.py) |
-| **CU-06** Decidir GO o NO-GO con la matriz | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x2) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py) |
+| **CU-06** Decidir GO o NO-GO con la matriz | [test_escenario_gobierno_organizacion.py](../tests/test_escenario_gobierno_organizacion.py)<br>[test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x2) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py)<br>[pesos-go-no-go-card.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/pesos-go-no-go-card.test.tsx) |
 | **CU-07** Preparar la oferta con tareas | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | — |
 | **CU-08** Vigilar la cartera y preparar la renovación | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) | — | — |
 | **CU-09** Guardar una vista del ámbito | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
@@ -289,7 +307,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-15** Exportar mis datos y borrar mi cuenta | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
 | **CU-16** Exportar el ámbito a CSV | — | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
 | **CU-17** Ajustar mi perfil de puntuación | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-perfil.spec.ts](../web/e2e/recorrido-perfil.spec.ts) | [test_me_profile_routes.py](../tests/test_me_profile_routes.py) |
-| **CU-18** Estudiar a la competencia | [test_escenario_competencia.py](../tests/test_escenario_competencia.py) | [recorrido-competencia.spec.ts](../web/e2e/recorrido-competencia.spec.ts) | — |
+| **CU-18** Estudiar a la competencia | [test_escenario_competencia.py](../tests/test_escenario_competencia.py) (x2) | [recorrido-competencia.spec.ts](../web/e2e/recorrido-competencia.spec.ts) | — |
 | **CU-19** Gobernar mi cuenta: preferencias y sesiones | — | [ajustes.spec.ts](../web/e2e/ajustes.spec.ts) | — |
 | **CU-20** Gestionar la plataforma como administrador | — | [admin-guard.spec.ts](../web/e2e/admin-guard.spec.ts) | — |
 | **CU-21** Descubrir el producto en la web pública | — | [seo.spec.ts](../web/e2e/seo.spec.ts) | — |
@@ -302,7 +320,8 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-28** Acotar Detalle y el tablero por etiqueta, responsable y plazo | [test_escenario_ficha_y_filtros.py](../tests/test_escenario_ficha_y_filtros.py) | — | [use-etiqueta-listado.test.tsx](../web/src/app/(dashboard)/detalle/__tests__/use-etiqueta-listado.test.tsx)<br>[tablero-view.test.tsx](../web/src/app/(dashboard)/oportunidades/__tests__/tablero-view.test.tsx) |
 | **CU-29** Enterarme de lo que me concierne desde la campana | [test_escenario_campana.py](../tests/test_escenario_campana.py) | — | [notification-bell.test.tsx](../web/src/components/__tests__/notification-bell.test.tsx)<br>[ver-todas-sheet.test.tsx](../web/src/components/campana/__tests__/ver-todas-sheet.test.tsx) |
 | **CU-30** Tener al día la documentación acreditativa | [test_escenario_documentacion.py](../tests/test_escenario_documentacion.py) | — | [page.test.tsx](../web/src/app/(dashboard)/equipo/__tests__/page.test.tsx)<br>[organizacion-documentacion.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/organizacion-documentacion.test.tsx) |
+| **CU-31** Revisar y exportar lo que cambió en la organización | [test_escenario_gobierno_organizacion.py](../tests/test_escenario_gobierno_organizacion.py) | — | [auditoria-organizacion-card.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/auditoria-organizacion-card.test.tsx) |
 
-**30 casos**, 30 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
+**31 casos**, 31 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
 
 <!-- fin trazabilidad -->
