@@ -43,8 +43,8 @@ const PESO_MAXIMO = 100;
 
 const pesoTexto = z.string().check(
   z.refine((valor) => {
-    const numero = numeroDeTexto(valor);
-    return numero != null && numero >= 0 && numero <= PESO_MAXIMO;
+    const peso = numeroDeTexto(valor);
+    return peso != null && peso >= 0 && peso <= PESO_MAXIMO;
   }, `Escribe un peso entre 0 y ${PESO_MAXIMO}.`),
 );
 

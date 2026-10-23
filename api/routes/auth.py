@@ -934,9 +934,20 @@ async def change_password(
 
     def _cambiar() -> int:
         """KDF y BD en el threadpool, como el login: argon2 es caro por diseño."""
+        # El intento se apunta antes de mirar el tope y de verificar: con
+        # «mirar, verificar, apuntar el fallo», N peticiones en paralelo pasaban
+        # todas el control antes de que se apuntara ninguna y el tope no
+        # limitaba nada. Apuntado primero, la k-ésima ve al menos k filas; el
+        # +1 deja pasar los mismos _CAMBIO_MAX_FALLOS intentos que antes. Un
+        # cambio correcto limpia el contador.
+        record_failed_login(
+            clave_bloqueo,
+            bucket=_CAMBIO_BUCKET_FALLOS,
+            window_seconds=_CAMBIO_VENTANA_SEGUNDOS,
+        )
         bloqueado, retry_after = is_login_locked_out(
             clave_bloqueo,
-            max_attempts=_CAMBIO_MAX_FALLOS,
+            max_attempts=_CAMBIO_MAX_FALLOS + 1,
             bucket=_CAMBIO_BUCKET_FALLOS,
             window_seconds=_CAMBIO_VENTANA_SEGUNDOS,
         )
@@ -951,11 +962,6 @@ async def change_password(
         if not actual:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_CAMBIO_SIN_CONTRASENA)
         if not verify_password(body.current_password, actual):
-            record_failed_login(
-                clave_bloqueo,
-                bucket=_CAMBIO_BUCKET_FALLOS,
-                window_seconds=_CAMBIO_VENTANA_SEGUNDOS,
-            )
             log.warning("password_change_failed", user_id=user_id, reason="bad_current_password")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=_CAMBIO_ACTUAL_ERRONEA

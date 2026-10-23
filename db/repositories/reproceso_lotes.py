@@ -53,14 +53,19 @@ def multilote_sin_lote() -> set[str]:
 # está redondeado para siempre: 39.567,94 € quedó en 39.567,94140625, y el
 # float8 que lee el parser del XML no es igual a eso. Con igualdad exacta, toda
 # adjudicación cuyo importe tuviera céntimos que float4 no representa se quedaba
-# sin lote (113 de las 121 pendientes, medido el 2026-10-23). Bajar los dos
-# lados a `real` casa las filas viejas y las que ya se escriben en float8.
+# sin lote (113 de las 121 pendientes, medido el 2026-10-23). Se casa por
+# igualdad exacta y, solo si el valor guardado es él mismo un float4 (una fila
+# escrita antes de `v156`), bajando los dos lados a `real`. Bajarlos siempre
+# haría iguales dos importes en float8 que difieren en céntimos y redondean al
+# mismo float4, y el lote de una adjudicación caería también en la otra.
 _ASIGNAR_SQL = (
     "UPDATE adjudicaciones a SET lote_id = lo.id "
     "FROM lotes lo "
     "WHERE lo.licitacion_id = a.licitacion_id AND lo.numero = %(lote_numero)s "
     "  AND a.licitacion_id = %(licitacion_id)s AND a.lote_id IS NULL "
-    "  AND a.importe_adjudicado::real IS NOT DISTINCT FROM %(importe_adjudicado)s::real "
+    "  AND (a.importe_adjudicado IS NOT DISTINCT FROM %(importe_adjudicado)s::float8 "
+    "       OR (a.importe_adjudicado = a.importe_adjudicado::real::float8 "
+    "           AND a.importe_adjudicado::real = %(importe_adjudicado)s::real)) "
     "  AND CASE WHEN %(nif)s::text IS NOT NULL THEN a.nif = %(nif)s "
     "           ELSE a.nif IS NULL AND a.nombre = %(nombre)s END"
 )

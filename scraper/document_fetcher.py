@@ -957,7 +957,11 @@ def _ruta_segura(nombre: str) -> bool:
     pliego y no se lee. Tampoco los restos de macOS (``__MACOSX/``, ``._*``),
     que repiten el nombre del fichero real con un contenido que no lo es.
     """
-    if not nombre or nombre.startswith(("/", "\\")) or "\\" in nombre:
+    # Los compresores viejos de Windows escriben las carpetas con «\»: se
+    # normaliza antes de mirar, para que «Pliegos\PPT.pdf» se lea y
+    # «..\..\x» o «C:\x» sigan rechazándose.
+    nombre = nombre.replace("\\", "/")
+    if not nombre or nombre.startswith("/"):
         return False
     partes = PurePosixPath(nombre).parts
     if not partes or ":" in partes[0]:

@@ -281,6 +281,17 @@ def test_origen_de_otro_modelo_no_activa_onnx(
     assert embeddings.backend_embeddings() is None
 
 
+def test_origen_ilegible_apaga_onnx_sin_lanzar(
+    sin_sentence_transformers: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Un origen.json truncado no puede convertir cada búsqueda en un 500."""
+    directorio = _directorio_modelo(tmp_path)
+    (directorio / "origen.json").write_text('{"repo": "sentence-trans', encoding="utf-8")
+    monkeypatch.setattr(embeddings.settings, "EMBEDDINGS_ONNX_DIR", str(directorio))
+    assert embeddings.backend_embeddings() is None
+    assert embeddings.embeddings_available() is False
+
+
 def test_origen_del_mismo_modelo_activa_onnx(
     sin_sentence_transformers: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

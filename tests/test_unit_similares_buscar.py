@@ -62,7 +62,7 @@ def mod(monkeypatch: pytest.MonkeyPatch):
     """El módulo con los embeddings apagados: el camino por defecto en CI."""
     import services.similares as modulo
 
-    monkeypatch.setattr(modulo, "embeddings_available", lambda: False)
+    monkeypatch.setattr(modulo, "embeddings_masivos_disponibles", lambda: False)
     return modulo
 
 
@@ -88,7 +88,7 @@ class TestMetodoDeclarado:
     def test_con_embeddings_el_metodo_es_embedding(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import services.similares as mod
 
-        monkeypatch.setattr(mod, "embeddings_available", lambda: True)
+        monkeypatch.setattr(mod, "embeddings_masivos_disponibles", lambda: True)
         monkeypatch.setattr(mod, "semantic_match", lambda texto, corpus, threshold=0.0: [(0, 0.9)])
         monkeypatch.setattr(
             mod,
@@ -112,7 +112,7 @@ class TestMetodoDeclarado:
         def _explota(texto: str, corpus: list[str], threshold: float = 0.0) -> Any:
             raise RuntimeError("modelo no cargado")
 
-        monkeypatch.setattr(mod, "embeddings_available", lambda: True)
+        monkeypatch.setattr(mod, "embeddings_masivos_disponibles", lambda: True)
         monkeypatch.setattr(mod, "semantic_match", _explota)
         monkeypatch.setattr(
             mod,

@@ -32,7 +32,12 @@ import numpy as np
 
 from config import settings
 from observability import get_logger
-from services.embeddings_onnx import CodificadorOnnx, leer_repo_de_origen, modelo_onnx_presente
+from services.embeddings_onnx import (
+    CodificadorOnnx,
+    OrigenIlegibleError,
+    leer_repo_de_origen,
+    modelo_onnx_presente,
+)
 
 log = get_logger(__name__)
 
@@ -120,7 +125,11 @@ def _directorio_onnx() -> Path | None:
     if not modelo_onnx_presente(directorio):
         _avisar_una_vez("embeddings.onnx_sin_modelo", directorio=configurado)
         return None
-    repo = leer_repo_de_origen(directorio)
+    try:
+        repo = leer_repo_de_origen(directorio)
+    except OrigenIlegibleError:
+        _avisar_una_vez("embeddings.onnx_origen_ilegible", directorio=configurado)
+        return None
     if repo is not None and not _mismo_modelo(repo, str(settings.EMBEDDING_MODEL)):
         # Un vector de otro modelo no es comparable con los guardados: la
         # fusión devolvería vecinos sin sentido con aspecto de resultado.

@@ -122,8 +122,19 @@ def leer_repo_de_origen(directorio: Path) -> str | None:
     ruta = directorio / FICHERO_ORIGEN
     if not ruta.is_file():
         return None
-    repo = json.loads(ruta.read_text(encoding="utf-8")).get("repo")
+    try:
+        datos = json.loads(ruta.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        # Un origen.json roto (descarga interrumpida) no puede tumbar cada
+        # llamada a embeddings_available(): quien llama lo trata como modelo
+        # no utilizable y la búsqueda cae a texto.
+        raise OrigenIlegibleError(str(ruta)) from None
+    repo = datos.get("repo") if isinstance(datos, dict) else None
     return str(repo) if repo else None
+
+
+class OrigenIlegibleError(ValueError):
+    """``origen.json`` existe pero no se puede leer como JSON."""
 
 
 class CodificadorOnnx:

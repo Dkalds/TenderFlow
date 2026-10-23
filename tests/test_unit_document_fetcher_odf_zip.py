@@ -219,6 +219,14 @@ class TestZip:
         assert "sí debe salir" in texto
         assert "no debe salir" not in texto
 
+    def test_las_carpetas_con_barra_invertida_de_windows_se_leen(self):
+        bueno = _odf("<office:text><text:p>pliego en carpeta</text:p></office:text>")
+        malo = _odf("<office:text><text:p>no debe salir</text:p></office:text>")
+        archivo = _zip({"Pliegos\\PPT.odt": bueno, "..\\..\\evil.odt": malo})
+        texto = _texto(_extract_paginas(archivo, CONTENT_TYPE_ZIP))
+        assert "pliego en carpeta" in texto
+        assert "no debe salir" not in texto
+
     def test_un_zip_solo_con_rutas_peligrosas_es_unsupported(self):
         malo = _odf("<office:text><text:p>x</text:p></office:text>")
         with pytest.raises(UnsupportedDocumentError):
