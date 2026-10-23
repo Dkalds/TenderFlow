@@ -1,0 +1,213 @@
+<template>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #0e0d0c;
+      font-family: "Geist", sans-serif;
+      color: hsl(36 12% 93%);
+    }
+    #m-wall { position: absolute; inset: 0; }
+    .m-col { position: absolute; top: 0; width: 400px; height: 1080px; }
+    .m-card {
+      position: absolute;
+      left: 0;
+      width: 400px;
+      height: 150px;
+      padding: 18px 20px;
+      border-radius: 14px;
+      background: hsl(30 8% 8%);
+      border: 1.5px solid hsla(34, 12%, 60%, 0.22);
+    }
+    .m-meta { display: flex; gap: 10px; align-items: center; height: 26px; }
+    .m-src {
+      font-family: "Geist Mono", monospace;
+      font-size: 14px;
+      letter-spacing: 0.04em;
+      color: hsl(34 8% 65%);
+      border: 1px solid hsla(34, 12%, 60%, 0.3);
+      border-radius: 6px;
+      padding: 2px 8px;
+    }
+    .m-motivo {
+      font-size: 14px;
+      font-weight: 600;
+      color: #f39349;
+      background: hsla(26, 88%, 62%, 0.14);
+      border-radius: 6px;
+      padding: 3px 9px;
+      opacity: 0;
+    }
+    .m-t { margin-top: 12px; font-size: 21px; line-height: 1.25; font-weight: 500; }
+    .m-o { margin-top: 6px; font-size: 16px; color: hsl(34 8% 65%); }
+    #m-plate {
+      position: absolute;
+      opacity: 0;
+      inset: 0;
+      background: radial-gradient(ellipse 980px 340px at 50% 50%, rgba(14, 13, 12, 0.94) 0%, rgba(14, 13, 12, 0.82) 55%, rgba(14, 13, 12, 0) 100%);
+    }
+    #m-q {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 440px;
+      text-align: center;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 120px;
+      line-height: 1.05;
+      font-weight: 560;
+      letter-spacing: -0.02em;
+      color: hsl(36 12% 93%);
+    }
+    #m-q .w { display: inline-block; }
+    #m-q .acc { color: #f39349; }
+    #m-bottom {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 330px;
+      background: linear-gradient(to top, rgba(14, 13, 12, 1) 0%, rgba(14, 13, 12, 0.96) 52%, rgba(14, 13, 12, 0) 100%);
+    }
+    #m-line {
+      position: absolute;
+      left: 100px;
+      right: 100px;
+      bottom: 92px;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 72px;
+      line-height: 1.1;
+      font-weight: 520;
+      letter-spacing: -0.015em;
+      color: hsl(36 12% 93%);
+    }
+    #m-line .w { display: inline-block; }
+    #m-line .acc { color: #f39349; }
+  </style>
+  <div id="root" data-composition-id="mercado" data-width="1920" data-height="1080">
+    <div id="m-wall" class="clip" data-start="0" data-duration="6" data-layout-allow-overflow data-layout-allow-overlap>
+      <div id="m-cols" data-layout-ignore>
+        <div class="m-col" id="m-col-0" style="left:100px">
+          <div class="m-card m-no" style="top:-60px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Reparación del firme en vías municipales</p><p class="m-o">Ayuntamiento</p></div>
+          <div class="m-card m-no" style="top:110px"><div class="m-meta"><span class="m-src">TED</span></div><p class="m-t">Suministro de material de curas para centros de salud</p><p class="m-o">Servicio de salud</p></div>
+          <div class="m-card m-no" style="top:280px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Servicio de limpieza de edificios municipales</p><p class="m-o">Ayuntamiento</p></div>
+          <div class="m-card m-no" style="top:450px"><div class="m-meta"><span class="m-src">Galicia</span></div><p class="m-t">Obras de urbanización del sector residencial norte</p><p class="m-o">Ayuntamiento</p></div>
+          <div class="m-card m-no" style="top:620px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Suministro de mobiliario escolar</p><p class="m-o">Consejería de Educación</p></div>
+          <div class="m-card m-ti" style="top:790px"><div class="m-meta"><span class="m-src">Euskadi</span><span class="m-motivo">Señal TI · ERP</span></div><p class="m-t">Implantación de sistema ERP para gestión municipal</p><p class="m-o">Ayuntamiento de Bilbao</p></div>
+          <div class="m-card m-no" style="top:960px"><div class="m-meta"><span class="m-src">TED</span></div><p class="m-t">Mantenimiento de zonas verdes y arbolado</p><p class="m-o">Ayuntamiento</p></div>
+          <div class="m-card m-ti" style="top:1130px"><div class="m-meta"><span class="m-src">PLACSP</span><span class="m-motivo">Señal TI · cloud</span></div><p class="m-t">Consultoría de transformación digital y cloud</p><p class="m-o">Generalitat de Catalunya</p></div>
+          <div class="m-card m-no" style="top:1300px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Servicio de comedor escolar</p><p class="m-o">Consejería de Educación</p></div>
+          <div class="m-card m-no" style="top:1470px"><div class="m-meta"><span class="m-src">TED</span></div><p class="m-t">Suministro de vestuario para la policía local</p><p class="m-o">Ayuntamiento</p></div>
+          <div class="m-card m-no" style="top:1640px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Rehabilitación de la fachada del mercado municipal</p><p class="m-o">Ayuntamiento</p></div>
+        </div>
+        <div class="m-col" id="m-col-1" style="left:540px">
+          <div class="m-card m-no" style="top:-160px"><div class="m-meta"><span class="m-src">Galicia</span></div><p class="m-t">Transporte adaptado de usuarios</p><p class="m-o">Diputación provincial</p></div>
+          <div class="m-card m-no" style="top:10px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Suministro de reactivos de laboratorio</p><p class="m-o">Servicio de salud</p></div>
+          <div class="m-card m-no" style="top:180px"><div class="m-meta"><span class="m-src">Euskadi</span></div><p class="m-t">Sustitución del alumbrado público por LED</p><p class="m-o">Ayuntamiento</p></div>
+          <div class="m-card m-no" style="top:350px"><div class="m-meta"><span class="m-src">TED</span></div><p class="m-t">Servicio de vigilancia y seguridad</p><p class="m-o">Consejería de Hacienda</p></div>
+          <div class="m-card m-no" style="top:520px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Suministro de combustible para la flota municipal</p><p class="m-o">Ayuntamiento</p></div>
+          <div class="m-card m-no" style="top:690px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Servicio de ayuda a domicilio</p><p class="m-o">Diputación provincial</p></div>
+          <div class="m-card m-ti" style="top:860px"><div class="m-meta"><span class="m-src">TED</span><span class="m-motivo">Señal TI · software</span></div><p class="m-t">Desarrollo y mantenimiento de plataforma de gestión documental</p><p class="m-o">Junta de Andalucía</p></div>
+          <div class="m-card m-no" style="top:1030px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Reforma del pabellón polideportivo</p><p class="m-o">Ayuntamiento</p></div>
+          <div class="m-card m-ti" style="top:1200px"><div class="m-meta"><span class="m-src">Galicia</span><span class="m-motivo">Señal TI · ciberseguridad</span></div><p class="m-t">Servicios de ciberseguridad y auditoría de sistemas</p><p class="m-o">Comunidad de Madrid</p></div>
+          <div class="m-card m-no" style="top:1370px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Suministro de prótesis de cadera</p><p class="m-o">Servicio de salud</p></div>
+          <div class="m-card m-no" style="top:1540px"><div class="m-meta"><span class="m-src">Euskadi</span></div><p class="m-t">Servicio de recogida de residuos</p><p class="m-o">Mancomunidad</p></div>
+        </div>
+        <div class="m-col" id="m-col-2" style="left:980px">
+          <div class="m-card m-no" style="top:-20px"><div class="m-meta"><span class="m-src">TED</span></div><p class="m-t">Señalización horizontal de viales</p><p class="m-o">Diputación provincial</p></div>
+          <div class="m-card m-no" style="top:150px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Suministro de gases medicinales</p><p class="m-o">Servicio de salud</p></div>
+          <div class="m-card m-no" style="top:320px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Conservación de carreteras autonómicas</p><p class="m-o">Consejería de Fomento</p></div>
+          <div class="m-card m-no" style="top:490px"><div class="m-meta"><span class="m-src">TED</span></div><p class="m-t">Servicio de socorrismo en playas</p><p class="m-o">Ayuntamiento</p></div>
+          <div class="m-card m-ti" style="top:660px"><div class="m-meta"><span class="m-src">PLACSP</span><span class="m-motivo">Señal TI · software</span></div><p class="m-t">Licencias de software de oficimática y productividad</p><p class="m-o">Gobierno de Aragón</p></div>
+          <div class="m-card m-no" style="top:830px"><div class="m-meta"><span class="m-src">Galicia</span></div><p class="m-t">Suministro de material de oficina</p><p class="m-o">Universidad</p></div>
+          <div class="m-card m-ti" style="top:1000px"><div class="m-meta"><span class="m-src">PLACSP</span><span class="m-motivo">Señal TI · móvil</span></div><p class="m-t">Desarrollo de app móvil para servicios ciudadanos</p><p class="m-o">Ajuntament de Barcelona</p></div>
+          <div class="m-card m-no" style="top:1170px"><div class="m-meta"><span class="m-src">Euskadi</span></div><p class="m-t">Mantenimiento de ascensores</p><p class="m-o">Consejería de Hacienda</p></div>
+          <div class="m-card m-no" style="top:1340px"><div class="m-meta"><span class="m-src">TED</span></div><p class="m-t">Reparación del firme en vías municipales</p><p class="m-o">Ayuntamiento</p></div>
+          <div class="m-card m-no" style="top:1510px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Suministro de material de curas para centros de salud</p><p class="m-o">Servicio de salud</p></div>
+          <div class="m-card m-no" style="top:1680px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Servicio de limpieza de edificios municipales</p><p class="m-o">Ayuntamiento</p></div>
+        </div>
+        <div class="m-col" id="m-col-3" style="left:1420px">
+          <div class="m-card m-no" style="top:-120px"><div class="m-meta"><span class="m-src">TED</span></div><p class="m-t">Obras de urbanización del sector residencial norte</p><p class="m-o">Ayuntamiento</p></div>
+          <div class="m-card m-no" style="top:50px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Suministro de mobiliario escolar</p><p class="m-o">Consejería de Educación</p></div>
+          <div class="m-card m-no" style="top:220px"><div class="m-meta"><span class="m-src">Galicia</span></div><p class="m-t">Mantenimiento de zonas verdes y arbolado</p><p class="m-o">Ayuntamiento</p></div>
+          <div class="m-card m-no" style="top:390px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Servicio de comedor escolar</p><p class="m-o">Consejería de Educación</p></div>
+          <div class="m-card m-no" style="top:560px"><div class="m-meta"><span class="m-src">Euskadi</span></div><p class="m-t">Suministro de vestuario para la policía local</p><p class="m-o">Ayuntamiento</p></div>
+          <div class="m-card m-ti" style="top:730px"><div class="m-meta"><span class="m-src">TED</span><span class="m-motivo">Señal TI · hardware</span></div><p class="m-t">Adquisición de servidores y almacenamiento para CPD</p><p class="m-o">Junta de Extremadura</p></div>
+          <div class="m-card m-no" style="top:900px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Rehabilitación de la fachada del mercado municipal</p><p class="m-o">Ayuntamiento</p></div>
+          <div class="m-card m-ti" style="top:1070px"><div class="m-meta"><span class="m-src">PLACSP</span><span class="m-motivo">Señal TI · backup</span></div><p class="m-t">Solución de backup y recuperación ante desastres</p><p class="m-o">Gobierno de Canarias</p></div>
+          <div class="m-card m-no" style="top:1240px"><div class="m-meta"><span class="m-src">TED</span></div><p class="m-t">Transporte adaptado de usuarios</p><p class="m-o">Diputación provincial</p></div>
+          <div class="m-card m-no" style="top:1410px"><div class="m-meta"><span class="m-src">PLACSP</span></div><p class="m-t">Suministro de reactivos de laboratorio</p><p class="m-o">Servicio de salud</p></div>
+          <div class="m-card m-no" style="top:1580px"><div class="m-meta"><span class="m-src">Galicia</span></div><p class="m-t">Sustitución del alumbrado público por LED</p><p class="m-o">Ayuntamiento</p></div>
+        </div>
+      </div>
+    </div>
+    <div id="m-plate" class="clip" data-start="0" data-duration="3.4" data-layout-ignore></div>
+    <h1 id="m-q" class="clip" data-start="0" data-duration="3.4">
+      <span class="w">¿A</span> <span class="w acc">cuál</span> <span class="w">te</span> <span class="w">presentas?</span>
+    </h1>
+    <div id="m-bottom" class="clip" data-start="3.2" data-duration="2.8" data-layout-ignore></div>
+    <p id="m-line" class="clip" data-start="3.2" data-duration="2.8">
+      <span class="w">Solo</span> <span class="w">entra</span> <span class="w">el</span> <span class="w">expediente</span>
+      <span class="w">con</span> <span class="w acc">señal</span> <span class="w acc">de</span> <span class="w acc">tecnología.</span>
+    </p>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      const SCROLL = [520, 600, 480, 560];
+      const FREEZE = 3.27; // beat 6 del preset: el muro se para y se filtra
+
+      // El muro sube a velocidad constante y frena justo en el corte del filtro.
+      SCROLL.forEach(function (s, c) {
+        const el = "#m-col-" + c;
+        tl.fromTo(el, { y: 0 }, { y: -s * 0.86, duration: FREEZE - 0.2, ease: "none" }, 0);
+        tl.to(el, { y: -s, duration: 0.55, ease: "power2.out" }, FREEZE - 0.2);
+      });
+
+      // Plate + pregunta: por palabras, blur → 0 (beat-grid: 0.56 s, primer beat).
+      tl.fromTo("#m-plate", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, 0.1);
+      tl.fromTo(
+        "#m-q .w",
+        { opacity: 0, filter: "blur(10px)" },
+        { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out", stagger: 0.09 },
+        0.56,
+      );
+      tl.to("#m-q .w", { opacity: 0, filter: "blur(8px)", duration: 0.18, ease: "power3.in", stagger: 0.03 }, 3.08);
+      tl.to("#m-plate", { opacity: 0, duration: 0.25, ease: "power2.in" }, 3.1);
+
+      // El filtro: lo que no es TI se apaga; lo TI se enciende con su motivo.
+      tl.to(".m-no", { opacity: 0.12, filter: "blur(2px)", duration: 0.45, ease: "power2.out" }, FREEZE);
+      tl.fromTo(
+        ".m-ti",
+        { borderColor: "hsla(34, 12%, 60%, 0.22)", backgroundColor: "hsl(30 8% 8%)" },
+        {
+          borderColor: "#f39349",
+          backgroundColor: "hsl(24 30% 11%)",
+          duration: 0.3,
+          ease: "power2.out",
+          stagger: 0.06,
+        },
+        FREEZE + 0.1,
+      );
+      tl.fromTo(".m-motivo", { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "power2.out", stagger: 0.06 }, FREEZE + 0.18);
+
+      // La línea del filtro, por palabras, y quieta hasta la salida.
+      tl.fromTo("#m-bottom", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power2.out" }, 3.2);
+      tl.fromTo(
+        "#m-line .w",
+        { opacity: 0, filter: "blur(8px)" },
+        { opacity: 1, filter: "blur(0px)", duration: 0.16, ease: "power4.out", stagger: 0.067 },
+        3.38,
+      );
+
+      // Salida: blur swap sobre el mismo fondo.
+      tl.to("#m-line, #m-wall", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 5.78);
+
+      window.__timelines["mercado"] = tl;
+    })();
+  </script>
+</template>

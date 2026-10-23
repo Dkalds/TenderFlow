@@ -1,0 +1,141 @@
+<template>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #0e0d0c;
+      color: hsl(36 12% 93%);
+      font-family: "Geist", sans-serif;
+      --muted-fg: hsl(34 8% 65%);
+      --border: hsla(34, 12%, 60%, 0.22);
+      --card: hsl(30 8% 8%);
+      --accent: #f39349;
+      --warning: hsl(45 93% 56%);
+      --info: hsl(207 90% 64%);
+    }
+    #rv2-label {
+      position: absolute;
+      left: 100px;
+      top: 40px;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 72px;
+      font-weight: 540;
+      letter-spacing: -0.02em;
+    }
+    #rv2-label .w { display: inline-block; }
+    #rv2-demo { position: absolute; right: 100px; top: 1028px; font-size: 17px; color: var(--muted-fg); }
+    #rv2-win {
+      position: absolute;
+      left: 100px;
+      top: 150px;
+      width: 1720px;
+      height: 860px;
+      border-radius: 18px;
+      border: 1.5px solid var(--border);
+      background: #0f0e0d;
+      overflow: hidden;
+    }
+    #rv2-rail { position: absolute; left: 0; top: 0; bottom: 0; width: 76px; border-right: 1.5px solid var(--border); background: #0c0b0a; }
+    .rv2-mark { position: absolute; left: 16px; top: 16px; width: 44px; height: 44px; border-radius: 11px; background: var(--accent); display: flex; align-items: center; justify-content: center; }
+    .rv2-mark svg { width: 26px; height: 26px; }
+    .rv2-mark path { fill: none; stroke: #1a130d; stroke-width: 2.7; stroke-linecap: round; }
+    #rv2-panel {
+      position: absolute;
+      left: 116px;
+      right: 40px;
+      top: 40px;
+      bottom: 40px;
+      border: 1.5px solid var(--border);
+      border-radius: 16px;
+      background: var(--card);
+      padding: 34px 38px;
+    }
+    #rv2-panel h4 { font-size: 36px; font-weight: 600; }
+    .rv2-sub { margin-top: 10px; font-size: 22px; color: var(--muted-fg); }
+    #rv2-left { position: absolute; left: 38px; top: 170px; width: 560px; }
+    #rv2-right { position: absolute; left: 660px; right: 38px; top: 170px; }
+    .rot { font-size: 23px; color: var(--muted-fg); }
+    .big { margin-top: 10px; display: flex; align-items: baseline; gap: 12px; }
+    .big b { font-size: 104px; font-weight: 650; letter-spacing: -0.02em; line-height: 1; }
+    .big span { font-size: 28px; color: var(--muted-fg); }
+    .blk { margin-top: 56px; }
+    .inc { margin-top: 14px; display: flex; align-items: center; gap: 14px; font-size: 32px; font-weight: 500; }
+    .bdg { font-size: 19px; font-weight: 600; border-radius: 7px; padding: 3px 10px; }
+    .bdg.w { color: var(--warning); border: 1.5px solid hsla(45, 93%, 56%, 0.45); background: hsla(45, 93%, 56%, 0.12); }
+    .bdg.i { color: var(--info); border: 1.5px solid hsla(207, 90%, 64%, 0.45); background: hsla(207, 90%, 64%, 0.12); }
+    .kv { margin-top: 14px; font-size: 30px; }
+    .kv b { font-weight: 650; }
+    .rv2-row { margin-top: 22px; border: 1.5px solid hsla(34, 12%, 60%, 0.16); background: #0e0d0c; border-radius: 12px; padding: 26px 30px; }
+    .rv2-row .top { display: flex; align-items: baseline; gap: 14px; }
+    .rv2-row .nm { flex: 1; font-size: 32px; font-weight: 500; }
+    .rv2-row .st { font-family: "Geist Mono", monospace; font-size: 24px; color: var(--muted-fg); }
+    .rv2-row .bot { margin-top: 12px; display: flex; align-items: center; gap: 14px; font-size: 23px; color: var(--muted-fg); }
+  </style>
+  <div id="root" data-composition-id="rivales" data-width="1920" data-height="1080">
+    <h2 id="rv2-label" class="clip" data-start="0" data-duration="2.72"><span class="w">Contra</span> <span class="w">quién</span></h2>
+    <p id="rv2-demo" class="clip" data-start="0" data-duration="2.72">Datos de demostración · empresas ficticias</p>
+
+    <div id="rv2-win" class="clip" data-start="0" data-duration="2.72">
+      <div id="rv2-rail"><div class="rv2-mark"><svg viewBox="0 0 24 24"><path d="M3.5 6 H20.5" /><path d="M12 6 V19" /><path d="M12 12 H18.5" /></svg></div></div>
+      <div id="rv2-panel">
+        <h4>Competencia esperada</h4>
+        <p class="rv2-sub">SEED-2026-008 · Implantación de sistema ERP para gestión municipal</p>
+        <div id="rv2-left">
+          <div id="rv2-l0">
+            <p class="rot">Cuántos se presentarán</p>
+            <div class="big"><b>~5</b><span>ofertas esperadas</span></div>
+          </div>
+          <div class="blk" id="rv2-l1">
+            <p class="rot">Quién lo tiene hoy</p>
+            <div class="inc">Integra Sistemas SL <span class="bdg w">Incumbente</span></div>
+          </div>
+          <div class="blk" id="rv2-l2">
+            <p class="rot">Cómo se puja</p>
+            <p class="kv">Baja típica del ganador <b>14,2 %</b></p>
+          </div>
+        </div>
+        <div id="rv2-right">
+          <p class="rot">Contra quién</p>
+          <div class="rv2-row" id="rv2-r0">
+            <div class="top"><span class="nm">Integra Sistemas SL</span><span class="st">7 exp. · 38 %</span></div>
+            <div class="bot"><span class="bdg w">Incumbente</span>Baja mediana 12,4 %</div>
+          </div>
+          <div class="rv2-row" id="rv2-r1">
+            <div class="top"><span class="nm">Nubalia Consulting SA</span><span class="st">5 exp. · 24 %</span></div>
+            <div class="bot">Baja mediana 16,1 %</div>
+          </div>
+          <div class="rv2-row" id="rv2-r2">
+            <div class="top"><span class="nm">Datatec Norte SL</span><span class="st">3 exp. · 15 %</span></div>
+            <div class="bot"><span class="bdg i">Vigilada</span>Baja mediana 18,7 %</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+
+      // beat-locked: la escena entra en 17.47 s (strong cue). Entrada con whip horizontal corto.
+      tl.fromTo("#rv2-win", { opacity: 0, x: 120, filter: "blur(14px)" }, { opacity: 1, x: 0, filter: "blur(0px)", duration: 0.4, ease: "expo.out" }, 0);
+      tl.fromTo("#rv2-label .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.06);
+      tl.fromTo("#rv2-demo", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power2.out" }, 0.3);
+      tl.fromTo("#rv2-l0, #rv2-l1, #rv2-l2", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.36, ease: "expo.out", stagger: 0.08 }, 0.16);
+
+      // beat-grid: rivales en 17.75 / 18.02 / 18.56 s (local 0.28 / 0.55 / 1.09), y quietos.
+      [0.28, 0.55, 1.09].forEach(function (t, i) {
+        tl.fromTo("#rv2-r" + i, { opacity: 0, y: 16, filter: "blur(5px)" },
+          { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.38, ease: "expo.out" }, t);
+      });
+
+      // Salida: dip a fondo.
+      tl.to("#rv2-win, #rv2-label, #rv2-demo", { opacity: 0, filter: "blur(8px)", duration: 0.2, ease: "power3.in" }, 2.5);
+
+      window.__timelines["rivales"] = tl;
+    })();
+  </script>
+</template>

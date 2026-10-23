@@ -1,0 +1,123 @@
+<template>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #0e0d0c;
+      color: hsl(36 12% 93%);
+      font-family: "Geist", sans-serif;
+    }
+    #rv-halo {
+      position: absolute;
+      left: 40px;
+      top: 70px;
+      width: 520px;
+      height: 520px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(243, 147, 73, 0.34) 0%, rgba(243, 147, 73, 0.12) 38%, rgba(243, 147, 73, 0) 70%);
+    }
+    #rv-brand {
+      position: absolute;
+      left: 200px;
+      top: 230px;
+      display: flex;
+      align-items: center;
+      gap: 30px;
+    }
+    #rv-box {
+      width: 132px;
+      height: 132px;
+      border-radius: 34px;
+      background: #f39349;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #rv-box svg { width: 77px; height: 77px; overflow: visible; }
+    #rv-box path {
+      fill: none;
+      stroke: #1a130d;
+      stroke-width: 2.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    #rv-word {
+      font-size: 84px;
+      font-weight: 650;
+      letter-spacing: -0.035em;
+    }
+    #rv-word .l { display: inline-block; }
+    #rv-lines {
+      position: absolute;
+      left: 200px;
+      top: 470px;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 108px;
+      line-height: 1.08;
+      font-weight: 540;
+      letter-spacing: -0.02em;
+    }
+    #rv-lines .ln { display: block; }
+    #rv-lines .acc { color: #f39349; }
+  </style>
+  <div id="root" data-composition-id="reveal" data-width="1920" data-height="1080">
+    <div id="rv-halo" class="clip" data-start="0" data-duration="3.29" data-layout-ignore></div>
+    <div id="rv-brand" class="clip" data-start="0" data-duration="3.29">
+      <div id="rv-box">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path id="rv-p1" d="M3.5 6 H20.5" pathLength="1" />
+          <path id="rv-p2" d="M12 6 V19" pathLength="1" />
+          <path id="rv-p3" d="M12 12 H18.5" pathLength="1" />
+        </svg>
+      </div>
+      <div id="rv-word">
+        <span class="l">T</span><span class="l">e</span><span class="l">n</span><span class="l">d</span><span class="l">e</span><span class="l">r</span><span class="l">F</span><span class="l">l</span><span class="l">o</span><span class="l">w</span>
+      </div>
+    </div>
+    <h1 id="rv-lines" class="clip" data-start="0" data-duration="3.29">
+      <span class="ln" id="rv-l1">Dónde pujar,</span>
+      <span class="ln" id="rv-l2">a qué precio,</span>
+      <span class="ln" id="rv-l3">contra <span class="acc">quién.</span></span>
+    </h1>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+
+      // La caja del monograma llega con blur, y sus tres trazos se dibujan en orden.
+      tl.fromTo("#rv-box", { scale: 0.7, opacity: 0, filter: "blur(10px)" },
+        { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.5, ease: "expo.out" }, 0.02);
+      ["#rv-p1", "#rv-p2", "#rv-p3"].forEach(function (p, i) {
+        tl.fromTo(p, { strokeDasharray: 1, strokeDashoffset: 1 },
+          { strokeDashoffset: 0, duration: 0.22, ease: "power3.out" }, 0.14 + i * 0.12);
+      });
+      // Wordmark letra a letra (es un nombre).
+      tl.fromTo("#rv-word .l", { opacity: 0.25, filter: "blur(4px)" },
+        { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power2.out", stagger: 0.035 }, 0.22);
+
+      // El titular del producto, frase a frase, y quieto. beat-grid: 6.56 / 7.09 / 7.64 (local 0.56 / 1.09 / 1.64)
+      tl.fromTo("#rv-l1", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0.56);
+      tl.fromTo("#rv-l2", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0.82);
+      tl.fromTo("#rv-l3", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 1.09);
+
+      // Audio-reactivo (sutil): el halo respira con los graves de la música
+      // (bandas 0-1 de extract-audio-data.py, 15 muestras/s, 6.00–9.27 s del film).
+      const BASS = [0.03, 0.02, 0.02, 0.01, 0.04, 0.0, 0.0, 0.01, 0.08, 0.04, 0.08, 0.03, 0.06, 0.02, 0.03, 0.01, 0.04, 0.01, 0.0, 0.0, 0.05, 0.52, 0.44, 0.02, 0.02, 0.02, 0.01, 0.02, 0.03, 0.03, 0.02, 0.03, 0.01, 0.02, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.63, 0.56, 0.35, 0.46, 0.47, 0.47, 0.5, 0.51];
+      tl.fromTo("#rv-halo", { opacity: 0, scale: 0.9 }, { opacity: 0.55, scale: 1, duration: 0.5, ease: "power2.out" }, 0);
+      BASS.forEach(function (b, i) {
+        const t = i / 15;
+        if (t < 0.5 || t > 3.05) return;
+        tl.to("#rv-halo", { opacity: 0.55 + b * 0.45, scale: 1 + b * 0.05, duration: 1 / 15, ease: "none" }, t);
+      });
+
+      // Salida: blur swap.
+      tl.to("#rv-brand, #rv-lines", { opacity: 0, filter: "blur(10px)", duration: 0.18, ease: "power3.in" }, 3.09);
+      tl.to("#rv-halo", { opacity: 0, duration: 0.18, ease: "power3.in" }, 3.09);
+
+      window.__timelines["reveal"] = tl;
+    })();
+  </script>
+</template>

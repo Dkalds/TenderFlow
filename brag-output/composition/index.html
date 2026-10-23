@@ -1,0 +1,94 @@
+<!doctype html>
+<html
+  lang="es"
+  data-resolution="landscape"
+  data-composition-variables='[
+    {"id":"color-ground","type":"color","label":"Fondo","default":"#0E0D0C"},
+    {"id":"color-ink","type":"color","label":"Texto","default":"#EFEDEA"},
+    {"id":"color-accent","type":"color","label":"Acento","default":"#F39349"},
+    {"id":"font-display","type":"string","label":"Titulares","default":"Fraunces"}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>TenderFlow · brag</title>
+    <script src="assets/vendor/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+      @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+      :root {
+        --color-ground: #0e0d0c;
+        --color-ink: #efedea;
+        --color-accent: #f39349;
+        --font-display: "Fraunces";
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: var(--color-ground);
+      }
+      #ground {
+        position: absolute;
+        inset: 0;
+        background: var(--color-ground);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="23"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="ground"></div>
+
+      <div id="mercado" data-composition-id="mercado" data-composition-src="compositions/mercado.html"
+        data-start="0" data-duration="6" data-track-index="1" data-track-kind="graphics"
+        data-width="1920" data-height="1080"></div>
+      <div id="reveal" data-composition-id="reveal" data-composition-src="compositions/reveal.html"
+        data-start="6" data-duration="3.29" data-track-index="1" data-track-kind="graphics"
+        data-width="1920" data-height="1080"></div>
+      <div id="radar" data-composition-id="radar" data-composition-src="compositions/radar.html"
+        data-start="9.29" data-duration="4.35" data-track-index="1" data-track-kind="graphics"
+        data-width="1920" data-height="1080"></div>
+      <div id="precio" data-composition-id="precio" data-composition-src="compositions/precio.html"
+        data-start="13.64" data-duration="3.83" data-track-index="1" data-track-kind="graphics"
+        data-width="1920" data-height="1080"></div>
+      <!-- beat-locked: 17.47s (strong cue del preset vol-12) -->
+      <div id="rivales" data-composition-id="rivales" data-composition-src="compositions/rivales.html"
+        data-start="17.47" data-duration="2.72" data-track-index="1" data-track-kind="graphics"
+        data-width="1920" data-height="1080"></div>
+      <div id="cierre" data-composition-id="cierre" data-composition-src="compositions/cierre.html"
+        data-start="20.19" data-duration="2.81" data-track-index="1" data-track-kind="graphics"
+        data-width="1920" data-height="1080"></div>
+
+      <!-- Música: cama a 0.32, fade-out bajo el cierre -->
+      <audio id="bg-music" class="clip" data-start="0" data-duration="23" data-track-index="10"
+        data-volume="0.32" data-fade-out="1.2"
+        src="assets/music/happy-beats-business-moves-vol-12-by-ende-dot-app.mp3"></audio>
+
+      <!-- SFX: pocos, con causa en pantalla -->
+      <audio id="sfx-apagado" class="clip" data-start="3.27" data-duration="0.19" data-track-index="11"
+        data-volume="0.7" src="assets/sfx/impact/impactSoft_medium_001.ogg"></audio>
+      <audio id="sfx-logo" class="clip" data-start="6.02" data-duration="0.15" data-track-index="12"
+        data-volume="0.6" src="assets/sfx/impact/impactSoft_medium_004.ogg"></audio>
+      <audio id="sfx-clic-fila" class="clip" data-start="10.93" data-duration="0.06" data-track-index="13"
+        data-volume="0.75" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="sfx-clic-precio" class="clip" data-start="15.84" data-duration="0.1" data-track-index="14"
+        data-volume="0.75" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="sfx-cierre" class="clip" data-start="20.21" data-duration="0.13" data-track-index="15"
+        data-volume="0.6" src="assets/sfx/interface/bong_001.ogg"></audio>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

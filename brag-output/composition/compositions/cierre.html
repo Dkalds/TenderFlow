@@ -1,0 +1,122 @@
+<template>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #0e0d0c;
+      color: hsl(36 12% 93%);
+      font-family: "Geist", sans-serif;
+    }
+    #ci-halo {
+      position: absolute;
+      left: 560px;
+      top: 60px;
+      width: 800px;
+      height: 640px;
+      border-radius: 50%;
+      background: radial-gradient(ellipse, rgba(243, 147, 73, 0.3) 0%, rgba(243, 147, 73, 0.1) 40%, rgba(243, 147, 73, 0) 70%);
+    }
+    #ci-brand {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 300px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 34px;
+    }
+    #ci-box {
+      width: 156px;
+      height: 156px;
+      border-radius: 40px;
+      background: #f39349;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #ci-box svg { width: 90px; height: 90px; overflow: visible; }
+    #ci-box path { fill: none; stroke: #1a130d; stroke-width: 2.7; stroke-linecap: round; stroke-linejoin: round; }
+    #ci-word { font-size: 108px; font-weight: 650; letter-spacing: -0.035em; }
+    #ci-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 530px;
+      text-align: center;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 60px;
+      font-weight: 500;
+      letter-spacing: -0.015em;
+    }
+    #ci-line .w { display: inline-block; }
+    #ci-cta {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 680px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 34px;
+    }
+    #ci-btn {
+      background: #f39349;
+      color: hsl(30 30% 8%);
+      font-size: 34px;
+      font-weight: 650;
+      border-radius: 14px;
+      padding: 20px 38px;
+    }
+    #ci-url { font-family: "Geist Mono", monospace; font-size: 32px; color: hsl(34 8% 65%); }
+  </style>
+  <div id="root" data-composition-id="cierre" data-width="1920" data-height="1080">
+    <div id="ci-halo" class="clip" data-start="0" data-duration="2.81" data-layout-ignore></div>
+    <div id="ci-brand" class="clip" data-start="0" data-duration="2.81">
+      <div id="ci-box">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path id="ci-p1" d="M3.5 6 H20.5" pathLength="1" />
+          <path id="ci-p2" d="M12 6 V19" pathLength="1" />
+          <path id="ci-p3" d="M12 12 H18.5" pathLength="1" />
+        </svg>
+      </div>
+      <div id="ci-word">TenderFlow</div>
+    </div>
+    <p id="ci-line" class="clip" data-start="0" data-duration="2.81">
+      <span class="w">Licitaciones</span> <span class="w">TI</span> <span class="w">del</span> <span class="w">sector</span> <span class="w">público</span> <span class="w">español</span>
+    </p>
+    <div id="ci-cta" class="clip" data-start="0" data-duration="2.81">
+      <span id="ci-btn">Solicita acceso</span>
+      <span id="ci-url">tenderflow.es</span>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo("#ci-box", { scale: 0.7, opacity: 0, filter: "blur(10px)" }, { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.55, ease: "expo.out" }, 0.02);
+      ["#ci-p1", "#ci-p2", "#ci-p3"].forEach(function (p, i) {
+        tl.fromTo(p, { strokeDasharray: 1, strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.22, ease: "power3.out" }, 0.14 + i * 0.12);
+      });
+      tl.fromTo("#ci-word", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0.18);
+      // beat-grid: línea en 20.75 s (local 0.56), CTA en 21.28 s (local 1.09). Luego todo quieto hasta el final.
+      tl.fromTo("#ci-line .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.42);
+      tl.fromTo("#ci-cta", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "expo.out" }, 0.75);
+
+      // Audio-reactivo (sutil): el halo con los graves mientras la música cae (20.13–22.93 s del film).
+      const BASS = [0.02, 1.0, 0.41, 0.02, 0.01, 0.87, 0.83, 0.85, 0.86, 0.87, 0.51, 0.65, 0.07, 0.64, 0.69, 0.76, 0.84, 0.75, 0.56, 0.45, 0.64, 0.61, 0.82, 0.69, 0.76, 0.86, 0.82, 0.61, 0.69, 0.74, 0.29, 0.11, 0.02, 0.23, 0.95, 0.22, 0.03, 0.03, 0.27, 0.24, 0.04, 0.06, 0.96];
+      tl.fromTo("#ci-halo", { opacity: 0, scale: 0.9 }, { opacity: 0.6, scale: 1, duration: 0.5, ease: "power2.out" }, 0);
+      BASS.forEach(function (b, i) {
+        const t = i / 15 - 0.06;
+        if (t < 0.5) return;
+        tl.to("#ci-halo", { opacity: 0.6 + b * 0.35, scale: 1 + b * 0.04, duration: 1 / 15, ease: "none" }, t);
+      });
+
+      window.__timelines["cierre"] = tl;
+    })();
+  </script>
+</template>

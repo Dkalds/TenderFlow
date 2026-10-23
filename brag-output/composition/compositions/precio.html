@@ -1,0 +1,149 @@
+<template>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #0e0d0c;
+      color: hsl(36 12% 93%);
+      font-family: "Geist", sans-serif;
+      --muted-fg: hsl(34 8% 65%);
+      --border: hsla(34, 12%, 60%, 0.22);
+      --card: hsl(30 8% 8%);
+      --muted: hsl(30 7% 15%);
+      --accent: #f39349;
+      --success: hsl(152 60% 45%);
+    }
+    .mono { font-family: "Geist Mono", monospace; }
+    #pr-label {
+      position: absolute;
+      left: 100px;
+      top: 40px;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 72px;
+      font-weight: 540;
+      letter-spacing: -0.02em;
+    }
+    #pr-label .w { display: inline-block; }
+    #pr-demo { position: absolute; right: 100px; top: 1028px; font-size: 17px; color: var(--muted-fg); }
+    #pr-win {
+      position: absolute;
+      left: 100px;
+      top: 150px;
+      width: 1720px;
+      height: 860px;
+      border-radius: 18px;
+      border: 1.5px solid var(--border);
+      background: #0f0e0d;
+      overflow: hidden;
+    }
+    #pr-rail { position: absolute; left: 0; top: 0; bottom: 0; width: 76px; border-right: 1.5px solid var(--border); background: #0c0b0a; }
+    .pr-mark { position: absolute; left: 16px; top: 16px; width: 44px; height: 44px; border-radius: 11px; background: var(--accent); display: flex; align-items: center; justify-content: center; }
+    .pr-mark svg { width: 26px; height: 26px; }
+    .pr-mark path { fill: none; stroke: #1a130d; stroke-width: 2.7; stroke-linecap: round; }
+    #pr-head { position: absolute; left: 116px; right: 40px; top: 36px; display: flex; align-items: flex-end; gap: 24px; }
+    #pr-head .id { font-family: "Geist Mono", monospace; font-size: 19px; color: var(--muted-fg); }
+    #pr-head h3 { margin-top: 8px; font-size: 34px; font-weight: 600; letter-spacing: -0.01em; }
+    #pr-head .sp { flex: 1; }
+    #pr-head .bud { text-align: right; }
+    #pr-head .bud span { display: block; font-size: 19px; color: var(--muted-fg); }
+    #pr-head .bud b { display: block; margin-top: 6px; font-family: "Geist Mono", monospace; font-size: 30px; font-weight: 600; }
+    #pr-panel {
+      position: absolute;
+      left: 116px;
+      right: 40px;
+      top: 150px;
+      bottom: 40px;
+      border: 1.5px solid var(--border);
+      border-radius: 16px;
+      background: var(--card);
+      padding: 32px 34px;
+    }
+    .pr-st { display: flex; align-items: center; gap: 16px; }
+    .pr-st h4 { font-size: 34px; font-weight: 600; }
+    .badge-ok { font-size: 20px; font-weight: 600; color: var(--success); border: 1.5px solid hsla(152, 60%, 45%, 0.45); background: hsla(152, 60%, 45%, 0.12); border-radius: 7px; padding: 3px 11px; }
+    .pr-sub { margin-top: 10px; font-size: 24px; color: var(--muted-fg); }
+    #pr-cards { margin-top: 30px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .pr-card { position: relative; height: 390px; border: 1.5px solid hsla(34, 12%, 60%, 0.16); background: #0e0d0c; border-radius: 16px; padding: 30px 32px; }
+    .pr-card .nm { font-size: 26px; color: var(--muted-fg); }
+    .pr-card .pz { margin-top: 16px; font-size: 68px; font-weight: 650; letter-spacing: -0.02em; }
+    .pr-card .bj { margin-top: 10px; font-size: 28px; font-weight: 600; color: var(--accent); }
+    .pr-btn { position: absolute; left: 32px; bottom: 32px; font-size: 22px; border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 20px; }
+    .pr-ok { position: absolute; left: 32px; bottom: 44px; font-size: 24px; font-weight: 600; color: var(--success); opacity: 0; }
+    #pr-ring { position: absolute; inset: -1.5px; border-radius: 16px; border: 2.5px solid var(--success); opacity: 0; }
+    .pr-foot { position: absolute; left: 34px; bottom: 28px; font-size: 21px; color: var(--muted-fg); }
+    #pr-cursor { position: absolute; left: 0; top: 0; width: 34px; height: 44px; }
+  </style>
+  <div id="root" data-composition-id="precio" data-width="1920" data-height="1080">
+    <h2 id="pr-label" class="clip" data-start="0" data-duration="3.83"><span class="w">A</span> <span class="w">qué</span> <span class="w">precio</span></h2>
+    <p id="pr-demo" class="clip" data-start="0" data-duration="3.83">Datos de demostración</p>
+
+    <div id="pr-win" class="clip" data-start="0" data-duration="3.83" data-layout-allow-overlap>
+      <div id="pr-rail"><div class="pr-mark"><svg viewBox="0 0 24 24"><path d="M3.5 6 H20.5" /><path d="M12 6 V19" /><path d="M12 12 H18.5" /></svg></div></div>
+      <div id="pr-head">
+        <div><span class="id">SEED-2026-008 · Ayuntamiento de Bilbao</span><h3>Implantación de sistema ERP para gestión municipal</h3></div>
+        <span class="sp"></span>
+        <div class="bud"><span>Presupuesto base</span><b>890.000 €</b></div>
+      </div>
+      <div id="pr-panel">
+        <div class="pr-st"><h4>Escenarios de precio</h4><span class="badge-ok">Muestra robusta</span></div>
+        <p class="pr-sub">Cuantiles de bajas observadas en adjudicaciones comparables.</p>
+        <div id="pr-cards">
+          <div class="pr-card" id="pr-c0">
+            <p class="nm">Defensivo</p><p class="pz">818.800 €</p><p class="bj">Baja 8,0 %</p>
+            <span class="pr-btn">Usar como oferta prevista</span>
+          </div>
+          <div class="pr-card" id="pr-c1">
+            <div id="pr-ring"></div>
+            <p class="nm">Central</p><p class="pz">765.400 €</p><p class="bj">Baja 14,0 %</p>
+            <span class="pr-btn" id="pr-btn1">Usar como oferta prevista</span>
+            <span class="pr-ok" id="pr-ok1">✓ Es la oferta prevista</span>
+          </div>
+          <div class="pr-card" id="pr-c2">
+            <p class="nm">Competitivo</p><p class="pz">703.100 €</p><p class="bj">Baja 21,0 %</p>
+            <span class="pr-btn">Usar como oferta prevista</span>
+          </div>
+        </div>
+        <p class="pr-foot" id="pr-foot">Comparables por: mismo órgano · mismo CPV (4 dígitos) · importe parecido</p>
+      </div>
+    </div>
+
+    <svg id="pr-cursor" class="clip" data-start="1.6" data-duration="1.2" viewBox="0 0 34 44" aria-hidden="true">
+      <path d="M3 2 L3 34 L11 26.5 L16.5 39 L22 36.5 L16.6 24.4 L27.5 24 Z" fill="#f4f1ec" stroke="#0e0d0c" stroke-width="2.2" stroke-linejoin="round" />
+    </svg>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+
+      tl.fromTo("#pr-win", { opacity: 0, filter: "blur(10px)", y: 18 }, { opacity: 1, filter: "blur(0px)", y: 0, duration: 0.45, ease: "expo.out" }, 0);
+      tl.fromTo("#pr-label .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.08);
+      tl.fromTo("#pr-demo", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power2.out" }, 0.3);
+
+      // beat-grid: escenarios en 14.20 / 14.73 / 15.29 s (local 0.56 / 1.09 / 1.65); luego el set entero queda quieto.
+      [0.56, 1.09, 1.65].forEach(function (t, i) {
+        tl.fromTo("#pr-c" + i, { opacity: 0, y: 22, filter: "blur(6px)" },
+          { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.42, ease: "expo.out" }, t);
+      });
+      tl.fromTo("#pr-foot", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power2.out" }, 1.8);
+
+      // Clic en «Usar como oferta prevista» del Central: 15.84 s (local 2.20), sobre el beat.
+      tl.set("#pr-cursor", { x: 1250, y: 960 }, 0);
+      tl.fromTo("#pr-cursor", { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "none" }, 1.6);
+      tl.to("#pr-cursor", { x: 930, y: 790, duration: 0.5, ease: "power3.inOut" }, 1.66);
+      tl.to("#pr-cursor", { scale: 0.86, duration: 0.06, ease: "power2.in", transformOrigin: "3px 2px" }, 2.16);
+      tl.to("#pr-cursor", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 2.22);
+      tl.to("#pr-btn1", { opacity: 0, duration: 0.1, ease: "power2.in" }, 2.22);
+      tl.fromTo("#pr-ok1", { opacity: 0, filter: "blur(4px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.16, ease: "power4.out" }, 2.3);
+      tl.fromTo("#pr-ring", { opacity: 0 }, { opacity: 1, duration: 0.2, ease: "power2.out" }, 2.26);
+      tl.to("#pr-cursor", { opacity: 0, duration: 0.2, ease: "power2.in" }, 2.55);
+
+      tl.to("#pr-win, #pr-label, #pr-demo", { opacity: 0, filter: "blur(10px)", duration: 0.18, ease: "power3.in" }, 3.63);
+
+      window.__timelines["precio"] = tl;
+    })();
+  </script>
+</template>

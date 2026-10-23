@@ -1,0 +1,370 @@
+<template>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+    #root {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      background: #0e0d0c;
+      color: hsl(36 12% 93%);
+      font-family: "Geist", sans-serif;
+      --muted-fg: hsl(34 8% 65%);
+      --border: hsla(34, 12%, 60%, 0.22);
+      --card: hsl(30 8% 8%);
+      --muted: hsl(30 7% 15%);
+      --accent: #f39349;
+      --hot: hsl(0 76% 63%);
+      --info: hsl(207 90% 64%);
+    }
+    .mono { font-family: "Geist Mono", monospace; }
+    #rd-label {
+      position: absolute;
+      left: 100px;
+      top: 40px;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 72px;
+      font-weight: 540;
+      letter-spacing: -0.02em;
+    }
+    #rd-label .w { display: inline-block; }
+    #rd-demo {
+      position: absolute;
+      right: 100px;
+      top: 1028px;
+      font-size: 17px;
+      color: var(--muted-fg);
+    }
+    #rd-win {
+      position: absolute;
+      left: 100px;
+      top: 150px;
+      width: 1720px;
+      height: 860px;
+      border-radius: 18px;
+      border: 1.5px solid var(--border);
+      background: #0f0e0d;
+      overflow: hidden;
+    }
+    #rd-rail {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 76px;
+      border-right: 1.5px solid var(--border);
+      background: #0c0b0a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding-top: 16px;
+      gap: 18px;
+    }
+    .rd-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 11px;
+      background: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .rd-mark svg { width: 26px; height: 26px; }
+    .rd-mark path { fill: none; stroke: #1a130d; stroke-width: 2.7; stroke-linecap: round; }
+    .rd-ri {
+      width: 52px;
+      padding: 6px 0 4px;
+      border-radius: 10px;
+      text-align: center;
+      font-family: "Geist Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      color: var(--muted-fg);
+    }
+    .rd-ri i {
+      display: block;
+      width: 22px;
+      height: 18px;
+      margin: 0 auto 4px;
+      border: 2px solid currentColor;
+      border-radius: 5px;
+      opacity: 0.8;
+    }
+    .rd-ri.on { color: var(--accent); background: hsla(26, 88%, 62%, 0.15); }
+    #rd-top {
+      position: absolute;
+      left: 76px;
+      right: 0;
+      top: 0;
+      height: 60px;
+      border-bottom: 1.5px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 14px;
+      font-size: 17px;
+    }
+    #rd-top .lbl { font-family: "Geist Mono", monospace; font-size: 13px; letter-spacing: 0.12em; color: var(--muted-fg); }
+    #rd-top .pill { border: 1.5px dashed var(--border); border-radius: 8px; padding: 4px 12px; color: var(--muted-fg); }
+    #rd-top .sp { flex: 1; }
+    #rd-top .box { border: 1.5px solid var(--border); border-radius: 9px; padding: 6px 14px; }
+    #rd-tabs {
+      position: absolute;
+      left: 76px;
+      right: 0;
+      top: 60px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      gap: 8px;
+      font-size: 19px;
+      color: var(--muted-fg);
+    }
+    .rd-tab { padding: 7px 14px; border-radius: 9px; display: flex; gap: 10px; align-items: center; }
+    .rd-tab b { font-family: "Geist Mono", monospace; font-weight: 500; font-size: 14px; background: var(--muted); border-radius: 6px; padding: 2px 8px; }
+    .rd-tab.on { background: var(--muted); color: hsl(36 12% 93%); }
+    .rd-tab.on b { color: var(--accent); background: hsla(26, 88%, 62%, 0.15); }
+    #rd-tabs .sp { flex: 1; }
+    #rd-tabs .ord { font-family: "Geist Mono", monospace; font-size: 13px; letter-spacing: 0.12em; }
+    #rd-tabs .so { padding: 5px 12px; border-radius: 8px; font-size: 17px; }
+    #rd-tabs .so.on { color: var(--accent); border: 1.5px solid hsla(26, 88%, 62%, 0.5); background: hsla(26, 88%, 62%, 0.1); }
+    #rd-head, .rd-row { position: absolute; left: 76px; right: 0; }
+    #rd-head {
+      top: 124px;
+      height: 44px;
+      border-top: 1.5px solid var(--border);
+      border-bottom: 1.5px solid var(--border);
+      font-family: "Geist Mono", monospace;
+      font-size: 13px;
+      letter-spacing: 0.12em;
+      color: var(--muted-fg);
+    }
+    #rd-head span, .rd-row > div { position: absolute; }
+    #rd-head span { top: 13px; }
+    .rd-row { height: 100px; border-bottom: 1.5px solid hsla(34, 12%, 60%, 0.12); }
+    .c-score { left: 24px; top: 20px; }
+    .c-score .n { font-size: 34px; font-weight: 600; line-height: 1; }
+    .c-score .b { margin-top: 6px; font-family: "Geist Mono", monospace; font-size: 12px; letter-spacing: 0.08em; color: var(--muted-fg); }
+    .hot .n { color: var(--hot); }
+    .warm .n { color: var(--accent); }
+    .c-tit { left: 128px; top: 22px; width: 660px; }
+    .c-tit p { font-size: 21px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .c-tit small { display: block; margin-top: 7px; font-family: "Geist Mono", monospace; font-size: 15px; color: var(--muted-fg); }
+    .c-org { left: 820px; top: 36px; font-size: 19px; color: hsl(36 10% 85%); }
+    .c-tec { left: 1130px; top: 32px; }
+    .chip { font-size: 16px; color: var(--info); border: 1.5px solid hsla(207, 90%, 64%, 0.4); background: hsla(207, 90%, 64%, 0.1); border-radius: 7px; padding: 3px 10px; }
+    .c-imp { left: 1290px; width: 150px; top: 36px; text-align: right; font-size: 20px; font-weight: 600; }
+    .c-pla { left: 1480px; top: 26px; width: 100px; text-align: right; font-family: "Geist Mono", monospace; font-size: 18px; color: hsl(152 60% 45%); }
+    .c-pla.urg { color: var(--accent); }
+    .c-pla i { display: block; margin-top: 8px; height: 4px; border-radius: 2px; background: var(--muted); position: relative; overflow: hidden; }
+    .c-pla i::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--p); background: currentColor; }
+    #rd-sel { position: absolute; left: 76px; right: 0; top: 268px; height: 100px; background: hsla(26, 88%, 62%, 0.09); border-left: 4px solid var(--hot); opacity: 0; }
+    #rd-foot {
+      position: absolute;
+      left: 76px;
+      right: 0;
+      bottom: 0;
+      height: 48px;
+      border-top: 1.5px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      font-size: 16px;
+      color: var(--muted-fg);
+    }
+    #rd-glow {
+      position: absolute;
+      left: 1220px;
+      top: 210px;
+      width: 600px;
+      height: 800px;
+      border-radius: 18px;
+      box-shadow: 0 0 70px 10px rgba(243, 147, 73, 0.5);
+      opacity: 0;
+    }
+    #rd-panel {
+      position: absolute;
+      right: 0;
+      top: 60px;
+      bottom: 0;
+      width: 600px;
+      background: var(--card);
+      border-left: 1.5px solid var(--border);
+      box-shadow: -24px 0 50px -20px rgba(6, 5, 4, 0.9);
+      padding: 28px 30px;
+    }
+    .p-head { display: flex; align-items: center; gap: 14px; }
+    .badge-hot { font-size: 16px; font-weight: 600; color: var(--hot); border: 1.5px solid hsla(0, 75%, 58%, 0.5); background: hsla(0, 75%, 58%, 0.12); border-radius: 7px; padding: 3px 11px; }
+    .p-head .id { font-family: "Geist Mono", monospace; font-size: 16px; color: var(--muted-fg); }
+    .p-head .sc { margin-left: auto; font-size: 52px; font-weight: 650; line-height: 1; }
+    .p-tit { margin-top: 16px; font-size: 27px; font-weight: 600; line-height: 1.25; }
+    .p-facts { margin-top: 22px; display: grid; grid-template-columns: 1fr 1fr; border: 1.5px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .p-facts div { padding: 13px 16px; border-bottom: 1.5px solid var(--border); }
+    .p-facts div:nth-child(odd) { border-right: 1.5px solid var(--border); }
+    .p-facts div:nth-last-child(-n + 2) { border-bottom: 0; }
+    .p-facts span { display: block; font-family: "Geist Mono", monospace; font-size: 12px; letter-spacing: 0.1em; color: var(--muted-fg); }
+    .p-facts b { display: block; margin-top: 6px; font-size: 19px; font-weight: 500; }
+    .p-sec { margin-top: 26px; font-family: "Geist Mono", monospace; font-size: 13px; letter-spacing: 0.12em; color: var(--muted-fg); }
+    .p-bar { display: flex; align-items: center; margin-top: 13px; font-size: 18px; }
+    .p-bar span { width: 150px; }
+    .p-bar i { flex: 1; height: 7px; border-radius: 4px; background: var(--muted); position: relative; overflow: hidden; }
+    .p-bar i em { position: absolute; left: 0; top: 0; bottom: 0; width: var(--w); background: var(--accent); border-radius: 4px; transform-origin: left center; }
+    .p-bar b { width: 46px; text-align: right; font-weight: 600; }
+    .p-btns { position: absolute; left: 30px; right: 30px; bottom: 26px; display: flex; gap: 12px; font-size: 18px; }
+    .p-btns div { border: 1.5px solid var(--border); border-radius: 10px; padding: 11px 18px; }
+    .p-btns .pri { margin-left: auto; background: var(--accent); border-color: var(--accent); color: hsl(30 30% 8%); font-weight: 600; }
+    #rd-cursor { position: absolute; left: 0; top: 0; width: 34px; height: 44px; }
+  </style>
+  <div id="root" data-composition-id="radar" data-width="1920" data-height="1080">
+    <h2 id="rd-label" class="clip" data-start="0" data-duration="4.35"><span class="w">Dónde</span> <span class="w">pujar</span></h2>
+    <p id="rd-demo" class="clip" data-start="0" data-duration="4.35">Datos de demostración</p>
+    <div id="rd-glow" class="clip" data-start="1.6" data-duration="2.75" data-layout-ignore></div>
+
+    <div id="rd-win" class="clip" data-start="0" data-duration="4.35" data-layout-allow-overlap>
+      <div id="rd-rail">
+        <div class="rd-mark"><svg viewBox="0 0 24 24"><path d="M3.5 6 H20.5" /><path d="M12 6 V19" /><path d="M12 12 H18.5" /></svg></div>
+        <div class="rd-ri"><i></i>RES</div>
+        <div class="rd-ri on"><i></i>RAD</div>
+        <div class="rd-ri"><i></i>DET</div>
+        <div class="rd-ri"><i></i>MKT</div>
+        <div class="rd-ri"><i></i>CMP</div>
+        <div class="rd-ri"><i></i>PIP</div>
+        <div class="rd-ri"><i></i>WLS</div>
+      </div>
+      <div id="rd-top">
+        <span class="lbl">ÁMBITO</span><span class="pill">+ Añadir</span><span class="sp"></span>
+        <span class="box">Buscar <span class="mono" style="color: var(--muted-fg)">⌘K</span></span>
+        <span class="box">Exportar ámbito</span>
+      </div>
+      <div id="rd-tabs">
+        <span class="rd-tab on">Bandeja <b>12</b></span>
+        <span class="rd-tab">Siguiendo <b>0</b></span>
+        <span class="rd-tab">Descartadas <b>0</b></span>
+        <span class="rd-tab">Todas <b>12</b></span>
+        <span class="sp"></span>
+        <span class="ord">ORDEN</span><span class="so on">Score</span><span class="so">Plazo</span><span class="so">Importe</span>
+      </div>
+      <div id="rd-head">
+        <span style="left: 24px">SCORE</span><span style="left: 128px">LICITACIÓN</span><span style="left: 820px">ÓRGANO</span>
+        <span style="left: 1130px">TECNOLOGÍA</span><span style="left: 1362px">IMPORTE</span><span style="left: 1520px">PLAZO</span>
+      </div>
+      <div id="rd-sel"></div>
+
+      <div class="rd-row" id="rd-r0" style="top: 168px">
+        <div class="c-score hot"><div class="n">79</div><div class="b">CALIENTE</div></div>
+        <div class="c-tit"><p>Desarrollo y mantenimiento de plataforma de gestión documental</p><small>SEED-2026-002 · CPV 72212000 · Andalucía</small></div>
+        <div class="c-org">Junta de Andalucía</div>
+        <div class="c-tec"><span class="chip">software</span></div>
+        <div class="c-imp">1,20 M€</div>
+        <div class="c-pla urg" style="--p: 70%">15 d<i></i></div>
+      </div>
+      <div class="rd-row" id="rd-r1" style="top: 268px">
+        <div class="c-score hot"><div class="n">76</div><div class="b">CALIENTE</div></div>
+        <div class="c-tit"><p>Implantación de sistema ERP para gestión municipal</p><small>SEED-2026-008 · CPV 72263000 · País Vasco</small></div>
+        <div class="c-org">Ayuntamiento de Bilbao</div>
+        <div class="c-tec"><span class="chip">ERP</span></div>
+        <div class="c-imp">890K €</div>
+        <div class="c-pla" style="--p: 22%">36 d<i></i></div>
+      </div>
+      <div class="rd-row" id="rd-r2" style="top: 368px">
+        <div class="c-score warm"><div class="n">73</div><div class="b">ATRACTIVA</div></div>
+        <div class="c-tit"><p>Consultoría de transformación digital y cloud</p><small>SEED-2026-003 · CPV 72220000 · Cataluña</small></div>
+        <div class="c-org">Generalitat de Catalunya</div>
+        <div class="c-tec"><span class="chip">cloud</span></div>
+        <div class="c-imp">750K €</div>
+        <div class="c-pla urg" style="--p: 55%">20 d<i></i></div>
+      </div>
+      <div class="rd-row" id="rd-r3" style="top: 468px">
+        <div class="c-score warm"><div class="n">66</div><div class="b">ATRACTIVA</div></div>
+        <div class="c-tit"><p>Suministro de equipos informáticos para administración pública</p><small>SEED-2026-001 · CPV 30213000 · Madrid</small></div>
+        <div class="c-org">Ministerio de Hacienda</div>
+        <div class="c-tec"><span class="chip">hardware</span></div>
+        <div class="c-imp">485K €</div>
+        <div class="c-pla urg" style="--p: 80%">10 d<i></i></div>
+      </div>
+      <div class="rd-row" id="rd-r4" style="top: 568px">
+        <div class="c-score warm"><div class="n">64</div><div class="b">ATRACTIVA</div></div>
+        <div class="c-tit"><p>Servicio de soporte técnico y helpdesk TIC</p><small>SEED-2026-007 · CPV 72611000 · Madrid</small></div>
+        <div class="c-org">Comunidad de Madrid</div>
+        <div class="c-tec"><span class="chip">soporte</span></div>
+        <div class="c-imp">420K €</div>
+        <div class="c-pla urg" style="--p: 50%">23 d<i></i></div>
+      </div>
+      <div class="rd-row" id="rd-r5" style="top: 668px">
+        <div class="c-score warm"><div class="n">62</div><div class="b">ATRACTIVA</div></div>
+        <div class="c-tit"><p>Desarrollo de app móvil para servicios ciudadanos</p><small>SEED-2026-010 · CPV 72212460 · Cataluña</small></div>
+        <div class="c-org">Ajuntament de Barcelona</div>
+        <div class="c-tec"><span class="chip">móvil</span></div>
+        <div class="c-imp">340K €</div>
+        <div class="c-pla" style="--p: 28%">31 d<i></i></div>
+      </div>
+      <div id="rd-foot">12 filas · 12 por revisar · 0 en seguimiento</div>
+
+      <div id="rd-panel">
+        <div class="p-head"><span class="badge-hot">Caliente</span><span class="id">SEED-2026-008</span><span class="sc">76</span></div>
+        <p class="p-tit">Implantación de sistema ERP para gestión municipal</p>
+        <div class="p-facts">
+          <div><span>ÓRGANO</span><b>Ayuntamiento de Bilbao</b></div>
+          <div><span>IMPORTE</span><b class="mono">890.000 €</b></div>
+          <div><span>CIERRE</span><b class="mono" style="color: hsl(152 60% 45%)">36 días</b></div>
+          <div><span>TECNOLOGÍA</span><b>ERP</b></div>
+        </div>
+        <p class="p-sec">DESGLOSE DE SCORE</p>
+        <div class="p-bar"><span>Importe</span><i><em style="--w: 73%"></em></i><b>22</b></div>
+        <div class="p-bar"><span>Plazo</span><i><em style="--w: 57%"></em></i><b>17</b></div>
+        <div class="p-bar"><span>Competencia</span><i><em style="--w: 47%"></em></i><b>14</b></div>
+        <div class="p-bar"><span>Margen</span><i><em style="--w: 50%"></em></i><b>15</b></div>
+        <div class="p-bar"><span>Señal técnica</span><i><em style="--w: 27%"></em></i><b>8</b></div>
+        <div class="p-bar"><span>Riesgo</span><i><em style="--w: 0%"></em></i><b>0</b></div>
+        <div class="p-btns"><div>Descartar</div><div>☆ Seguir</div><div class="pri">↗ Abrir oportunidad</div></div>
+      </div>
+    </div>
+
+    <svg id="rd-cursor" class="clip" data-start="0.6" data-duration="1.6" viewBox="0 0 34 44" aria-hidden="true">
+      <path d="M3 2 L3 34 L11 26.5 L16.5 39 L22 36.5 L16.6 24.4 L27.5 24 Z" fill="#f4f1ec" stroke="#0e0d0c" stroke-width="2.2" stroke-linejoin="round" />
+    </svg>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+
+      // Entrada: blur swap sobre el mismo fondo.
+      tl.fromTo("#rd-win", { opacity: 0, filter: "blur(10px)", y: 18 }, { opacity: 1, filter: "blur(0px)", y: 0, duration: 0.45, ease: "expo.out" }, 0);
+      tl.fromTo("#rd-label .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.08);
+      tl.fromTo("#rd-demo", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power2.out" }, 0.3);
+
+      // Las filas llegan ordenadas por score (textura hasta que se fijan: 60 ms entre filas).
+      // beat-grid: primera fila en 9.83 s (local 0.54)
+      for (let i = 0; i < 6; i++) {
+        tl.fromTo("#rd-r" + i, { opacity: 0, y: 14, filter: "blur(4px)" },
+          { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.38, ease: "expo.out" }, 0.54 + i * 0.06);
+      }
+
+      // El cursor baja a SEED-2026-008 y hace clic. Clic en 10.93 s (local 1.64), sobre el beat.
+      tl.set("#rd-cursor", { x: 1180, y: 900 }, 0);
+      tl.fromTo("#rd-cursor", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "none" }, 0.6);
+      tl.to("#rd-cursor", { x: 430, y: 450, duration: 0.82, ease: "power3.inOut" }, 0.72);
+      tl.to("#rd-cursor", { scale: 0.86, duration: 0.06, ease: "power2.in", transformOrigin: "3px 2px" }, 1.6);
+      tl.to("#rd-cursor", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 1.66);
+      tl.fromTo("#rd-sel", { opacity: 0 }, { opacity: 1, duration: 0.12, ease: "power2.out" }, 1.64);
+      tl.to("#rd-cursor", { opacity: 0, duration: 0.2, ease: "power2.in" }, 1.95);
+
+      // El inspector entra desde la derecha y el desglose se pinta dimensión a dimensión.
+      tl.fromTo("#rd-panel", { x: 640 }, { x: 0, duration: 0.5, ease: "expo.out" }, 1.7);
+      tl.fromTo("#rd-panel .p-bar em", { scaleX: 0 }, { scaleX: 1, duration: 0.42, ease: "power3.out", stagger: 0.08 }, 2.1);
+
+      // Audio-reactivo (sutil): presencia del inspector con los graves (11.0–13.5 s del film).
+      const BASS = [0.67, 0.68, 0.41, 0.43, 0.46, 0.43, 0.44, 0.42, 0.64, 0.78, 0.36, 0.5, 0.46, 0.45, 0.46, 0.43, 0.32, 0.8, 0.24, 0.38, 0.33, 0.36, 0.46, 0.45, 0.32, 0.91, 0.37, 0.38, 0.46, 0.43, 0.45, 0.43, 0.43, 0.64, 0.47, 0.37, 0.37];
+      BASS.forEach(function (b, i) {
+        tl.to("#rd-glow", { opacity: 0.06 + b * 0.16, duration: 1 / 15, ease: "none" }, 1.7 + i / 15);
+      });
+
+      // Salida.
+      tl.to("#rd-win, #rd-label, #rd-demo, #rd-glow", { opacity: 0, filter: "blur(10px)", duration: 0.18, ease: "power3.in" }, 4.15);
+
+      window.__timelines["radar"] = tl;
+    })();
+  </script>
+</template>
