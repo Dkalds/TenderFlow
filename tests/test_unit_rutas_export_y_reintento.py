@@ -100,18 +100,51 @@ class TestExportDelTablero:
 
 
 class TestReentregaDeWebhook:
+    """Las respuestas de la ruta, sin BD. La autorización cruzada contra Postgres
+    está en ``tests/test_webhooks_redeliver.py``."""
+
     RUTA = "/api/v1/webhooks/1/deliveries/2/redeliver"
 
-    def test_un_webhook_que_no_existe_es_404(
+    @pytest.fixture(autouse=True)
+    def _organizacion_resuelta(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """La ruta exige escritura en la organización activa; aquí se resuelve a la 7."""
+        import api.routes.webhooks as rutas
+
+        monkeypatch.setattr("api.tenancy.resolve_organization", lambda *a, **k: (7, "owner"))
+        # El registro de auditoría escribe en BD; aquí no hay.
+        monkeypatch.setattr(rutas, "log_event", lambda *a, **k: None)
+
+    def test_un_webhook_que_no_es_de_la_organizacion_es_404(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import api.routes.webhooks as rutas
 
+        vistos: list[int | None] = []
+
         class _Repo:
-            def get_by_id(self, wid: int) -> None:
+            def get_by_id(self, wid: int, *, organization_id: int | None = None) -> None:
+                vistos.append(organization_id)
                 return None
 
         monkeypatch.setattr(rutas, "_repo", _Repo())
+
+        assert client.post(self.RUTA).status_code == 404
+        assert vistos == [7], "el webhook se busca dentro de la organización activa"
+
+    def test_una_entrega_que_no_es_de_ese_webhook_es_404(
+        self, client: TestClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import api.routes.webhooks as rutas
+        import db.repositories.webhooks as repo_mod
+
+        class _Repo:
+            def get_by_id(self, wid: int, *, organization_id: int | None = None) -> dict[str, Any]:
+                return {"id": wid}
+
+        monkeypatch.setattr(rutas, "_repo", _Repo())
+        monkeypatch.setattr(
+            repo_mod, "encolar_reintento", lambda did, *, webhook_id, ahora: "no_existe"
+        )
 
         assert client.post(self.RUTA).status_code == 404
 
@@ -124,11 +157,13 @@ class TestReentregaDeWebhook:
         import db.repositories.webhooks as repo_mod
 
         class _Repo:
-            def get_by_id(self, wid: int) -> dict[str, Any]:
+            def get_by_id(self, wid: int, *, organization_id: int | None = None) -> dict[str, Any]:
                 return {"id": wid}
 
         monkeypatch.setattr(rutas, "_repo", _Repo())
-        monkeypatch.setattr(repo_mod, "encolar_reintento", lambda did, *, ahora: False)
+        monkeypatch.setattr(
+            repo_mod, "encolar_reintento", lambda did, *, webhook_id, ahora: "no_reenviable"
+        )
 
         assert client.post(self.RUTA).status_code == 409
 
@@ -141,18 +176,19 @@ class TestReentregaDeWebhook:
         import db.repositories.webhooks as repo_mod
 
         class _Repo:
-            def get_by_id(self, wid: int) -> dict[str, Any]:
+            def get_by_id(self, wid: int, *, organization_id: int | None = None) -> dict[str, Any]:
                 return {"id": wid}
 
-        encoladas: list[int] = []
+        encoladas: list[tuple[int, int]] = []
+
+        def _encolar(did: int, *, webhook_id: int, ahora: str) -> str:
+            encoladas.append((did, webhook_id))
+            return "encolada"
+
         monkeypatch.setattr(rutas, "_repo", _Repo())
-        monkeypatch.setattr(
-            repo_mod,
-            "encolar_reintento",
-            lambda did, *, ahora: encoladas.append(did) or True,
-        )
+        monkeypatch.setattr(repo_mod, "encolar_reintento", _encolar)
 
         respuesta = client.post(self.RUTA)
         assert respuesta.status_code == 202
         assert respuesta.json() == {"status": "encolada"}
-        assert encoladas == [2]
+        assert encoladas == [(2, 1)], "la entrega se reencola acotada a su webhook"

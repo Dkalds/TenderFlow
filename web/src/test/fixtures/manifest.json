@@ -427,6 +427,27 @@
       "path": "/api/v1/cuentas/{cuenta_id}/organos/{cuenta_organo_id}",
       "kind": "response",
       "status": "200"
+    },
+    {
+      "fixture": "pursuits-mi-baja.json",
+      "method": "GET",
+      "path": "/api/v1/pursuits/mi-baja",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "watchlist-item-nota.json",
+      "method": "PUT",
+      "path": "/api/v1/watchlist/items/{id_externo}/nota",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "webhook-redeliver.json",
+      "method": "POST",
+      "path": "/api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}/redeliver",
+      "kind": "response",
+      "status": "202"
     }
   ]
 }

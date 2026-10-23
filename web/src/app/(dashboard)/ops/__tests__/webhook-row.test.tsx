@@ -89,7 +89,9 @@ describe("WebhookRow — eliminar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sí, eliminar" }));
 
     await waitFor(() => expect(borrados(fetchMock)).toHaveLength(1));
-    expect(callUrl(borrados(fetchMock)[0])).toBe("/api/v1/webhooks/7");
+    // Con su organización: sin ella la API busca en la personal y, desde un
+    // equipo, el borrado acababa en 404.
+    expect(callUrl(borrados(fetchMock)[0])).toBe("/api/v1/webhooks/7?organization_id=1");
     await waitFor(() => expect(screen.queryByRole("group", { name: /Confirmar la eliminación/ })).toBeNull());
   });
 

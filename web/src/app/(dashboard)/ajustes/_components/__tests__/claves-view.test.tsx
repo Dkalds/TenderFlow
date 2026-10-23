@@ -191,4 +191,34 @@ describe("Claves: crear", () => {
 
     expect(await screen.findByRole("button", { name: "Volver a entrar" })).toBeInTheDocument();
   });
+
+  it("sin marcar el feed nace con el scope por defecto y no enseña ninguna URL", async () => {
+    renderVista();
+    fireEvent.change(await screen.findByLabelText("Nombre"), { target: { value: "ERP" } });
+    fireEvent.click(screen.getByRole("button", { name: "Crear" }));
+
+    expect(await screen.findByText("tf_creada")).toBeInTheDocument();
+    const [[, init]] = llamadas("POST", "/api/v1/me/keys");
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ name: "ERP" });
+    expect(screen.queryByLabelText("URL del feed de tus alertas")).not.toBeInTheDocument();
+  });
+
+  it("con el feed pide watchlist:read y enseña la URL del feed con la clave dentro", async () => {
+    renderVista();
+    fireEvent.change(await screen.findByLabelText("Nombre"), { target: { value: "Lector" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Leer también mis alertas/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Crear" }));
+
+    const url = (await screen.findByLabelText("URL del feed de tus alertas")) as HTMLInputElement;
+    const [[, init]] = llamadas("POST", "/api/v1/me/keys");
+    // Sin `data:read` la clave leería las alertas pero ya no el mercado.
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
+      name: "Lector",
+      scopes: "data:read,watchlist:read",
+    });
+    expect(url.value).toBe(`${window.location.origin}/api/v1/watchlist/feed.xml?token=tf_creada`);
+
+    fireEvent.click(within(url.closest("[role=status]") as HTMLElement).getByRole("button", { name: "Copiar" }));
+    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(url.value));
+  });
 });

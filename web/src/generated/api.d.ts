@@ -5650,16 +5650,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Feed Atom con las últimas licitaciones que coinciden con tu watchlist
-         * @description Devuelve un feed Atom 1.0 con las últimas licitaciones que coinciden
-         *     con las entradas de la watchlist asociadas al API key autenticado.
+         * Feed Atom con las últimas licitaciones que casan tus alertas
+         * @description Feed Atom 1.0 con lo que casan las alertas activas del titular de la clave.
          *
-         *     Compatible con cualquier lector RSS/Atom (Feedly, NewsBlur, etc.)
-         *     usando la URL: ``/api/v1/watchlist/feed.xml`` con cabecera
-         *     ``X-API-Key: <token>``.
-         *
-         *     El ``user_key`` se deriva del ``key_hash`` de la API key autenticada,
-         *     garantizando que cada key solo accede a su propia watchlist.
+         *     Mismo resultado que ``GET /watchlist/rules/{id}/matches`` regla a regla,
+         *     juntado y ordenado por fecha de publicación. Compatible con cualquier
+         *     lector de feeds: basta pegar la URL con ``?token=<clave>``.
          */
         get: operations["watchlist_feed_api_v1_watchlist_feed_xml_get"];
         put?: never;
@@ -5985,6 +5981,11 @@ export interface paths {
          *     No reinicia el contador de intentos: hacerlo convertiría este botón en una
          *     forma de reintentar indefinidamente un endpoint muerto, que es justo lo que
          *     el tope de `MAX_INTENTOS` evita.
+         *
+         *     Mismo alcance que ``rotate-secret``: el webhook tiene que ser de la
+         *     organización activa y la entrega, de ese webhook. Hasta 2026-10 exigía
+         *     ``require_admin`` —el dueño de la organización no podía reenviar las
+         *     suyas— y no comprobaba ninguna de las dos cosas.
          */
         post: operations["redeliver_api_v1_webhooks__webhook_id__deliveries__delivery_id__redeliver_post"];
         delete?: never;
@@ -16753,6 +16754,8 @@ export interface components {
         WebhookDelivery: {
             /** Created At */
             created_at: string;
+            /** Estado */
+            estado?: ("pending" | "delivered" | "failed") | null;
             /** Event Type */
             event_type: string;
             /** Id */
@@ -28259,8 +28262,12 @@ export interface operations {
     watchlist_feed_api_v1_watchlist_feed_xml_get: {
         parameters: {
             query?: {
+                /** @description Organización cuyas alertas se leen; por defecto la personal. */
+                organization_id?: number | null;
                 /** @description Máximo de entradas */
                 limit?: number;
+                /** @description La API key, para lectores de feeds que no envían cabeceras. Equivale a `X-API-Key` y exige el mismo scope. */
+                token?: string | null;
             };
             header?: never;
             path?: never;
@@ -28277,14 +28284,14 @@ export interface operations {
                     "application/atom+xml": unknown;
                 };
             };
-            /** @description Token inválido o ausente */
+            /** @description Clave inválida, ausente o sin titular */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Scope watchlist:read requerido */
+            /** @description Scope watchlist:read requerido, o la organización no es tuya */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -29195,7 +29202,10 @@ export interface operations {
     };
     redeliver_api_v1_webhooks__webhook_id__deliveries__delivery_id__redeliver_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -29225,14 +29235,21 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Webhook o entrega no encontrados */
+            /** @description Scope insuficiente o sin permiso de escritura en la organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El webhook no es de tu organización, o la entrega no es suya */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description La entrega ya se completó */
+            /** @description La entrega ya se completó o no guarda cuerpo que reenviar */
             409: {
                 headers: {
                     [name: string]: unknown;

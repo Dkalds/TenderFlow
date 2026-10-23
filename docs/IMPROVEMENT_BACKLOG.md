@@ -1302,7 +1302,7 @@ _Sin ítems abiertos._
 - **Acceptance criteria:**
   - ~~RFC para retirar de `GET /notifications` los campos que la campana ya no usa (`items`, `unread_count`, `hoy`), y `POST /notifications/read` y `GET /licitaciones/stream`: quitarlos rompe el contrato.~~ Escrito el 2026-10-23: [2026-10-23-rfc-retirada-campana-antigua-y-stream](rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md) (`review`), que propone el 2027-02-01 y añade `forecast/retendering`. La fase 1 ya está en el código: `deprecated`, `Deprecation`/`Sunset`/`Link`. El borrado (fase 2) espera a que el propietario apruebe la RFC.
   - Decidir si la cuota de adjuntos (2 GiB por organización) debe descontar los retirados; hoy borrar no libera espacio.
-  - Alta del 2FA con QR (no hay librería instalada) y regenerar los códigos de recuperación sin desactivar el segundo factor.
+  - Regenerar los códigos de recuperación sin desactivar el segundo factor. (El QR en el alta del 2FA quedó **decidido no** el 2026-10-23: exige una dependencia nueva y D39 del [plan de funcionalidades](plans/2026-09-plan-funcionalidades.md) no la autoriza; el alta sigue ofreciendo la clave para teclearla y el enlace `otpauth://`.)
   - Renovar la captura de `/competencia` en `visual.spec.ts` (tiene dos pestañas más). `/empresas` ya salió de `web/bundle-budget.json`.
   - Validar con el dueño el reparto fabricante → familia de «Proyectos y módulos» (`FAMILIA_DE_FABRICANTE`; Oracle, Microsoft, IBM, ServiceNow y Sopra no cuentan en ninguna).
   - El digest dice «expedientes que sigues» también en los avisos de documentación.

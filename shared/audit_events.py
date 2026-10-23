@@ -99,6 +99,7 @@ WEBHOOK_CREATED: Final = "webhook.created"
 WEBHOOK_UPDATED: Final = "webhook.updated"
 WEBHOOK_DELETED: Final = "webhook.deleted"
 WEBHOOK_SECRET_ROTATED: Final = "webhook.secret_rotated"  # noqa: S105 — nombre de evento
+WEBHOOK_REDELIVERED: Final = "webhook.redelivered"
 
 # ── configuración de producto (solo administración) ────────────────────────
 FEATURE_FLAG_SET: Final = "feature_flag.set"
@@ -164,7 +165,13 @@ FAMILIAS: Final[Mapping[str, frozenset[str]]] = {
     "user": frozenset({USER_ADMIN_CHANGED, USER_DEACTIVATE, USER_REACTIVATE, USER_ANONYMIZE}),
     "acceso": frozenset({SOLICITUD_ACCESO_ESTADO, ACCESS_GRANT_GRANTED, ACCESS_GRANT_REVOKED}),
     "webhook": frozenset(
-        {WEBHOOK_CREATED, WEBHOOK_UPDATED, WEBHOOK_DELETED, WEBHOOK_SECRET_ROTATED}
+        {
+            WEBHOOK_CREATED,
+            WEBHOOK_UPDATED,
+            WEBHOOK_DELETED,
+            WEBHOOK_SECRET_ROTATED,
+            WEBHOOK_REDELIVERED,
+        }
     ),
     "configuracion": frozenset(
         {

@@ -59,6 +59,10 @@ const PriceScenariosPanel = dynamic(
   () => import("@/components/pursuits/price-scenarios").then((modulo) => modulo.PriceScenariosPanel),
   { loading: cargando },
 );
+const MiBajaPanel = dynamic(
+  () => import("@/components/pursuits/mi-baja").then((modulo) => modulo.MiBajaPanel),
+  { loading: cargando },
+);
 const CompetenciaEsperadaBlock = dynamic(
   () => import("@/components/competencia-esperada").then((modulo) => modulo.CompetenciaEsperadaBlock),
   { loading: cargando },
@@ -87,8 +91,9 @@ export const EditorCompleto = dynamic(
 
 /**
  * La pestaña Precio: la competencia esperada, los escenarios —que fijan la
- * oferta prevista con un clic y pueden acotarse a esa competencia— y el
- * simulador de puntuación, que ofrece como rival la baja del incumbente. El
+ * oferta prevista con un clic y pueden acotarse a esa competencia—, la baja
+ * propia de la organización frente a la del mercado (C6.5) y el simulador de
+ * puntuación, que ofrece como rival la baja del incumbente. El
  * lote va explícito desde el pursuit que la ficha ya tiene, en vez de que el
  * panel lo vuelva a resolver por ruta.
  */
@@ -123,6 +128,9 @@ function PestanaPrecio({ pursuit }: { pursuit: Pursuit }) {
         onUsarPrecio={usar}
         usando={actualizar.isPending}
       />
+      {/* Junto a los escenarios: lo que gana el mercado se lee contra lo que
+          suele bajar la casa. */}
+      <MiBajaPanel organo={pursuit.tender_organo ?? null} />
       <Panel>
         <SimuladorPuntuacion licitacionId={pursuit.licitacion_id} />
       </Panel>

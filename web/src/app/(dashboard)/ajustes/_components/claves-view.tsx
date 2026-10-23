@@ -14,6 +14,10 @@
  *
  * El secreto se enseña **una sola vez**, al crear y al rotar, en un aviso que
  * no desaparece solo (`SecretoNuevo`).
+ *
+ * Una clave puede nacer además con permiso para leer las alertas propias
+ * (`watchlist:read`): entonces, junto al secreto, sale la URL del feed de
+ * alertas para un lector de feeds (`FeedAlertas`), que lleva la clave dentro.
  */
 
 import * as React from "react";
@@ -22,25 +26,39 @@ import { toast } from "sonner";
 import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { AvisoReautenticacion } from "@/components/console/aviso-reautenticacion";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useClaves, useCrearClave } from "@/hooks/use-ajustes";
+import { useActiveOrganizationId } from "@/hooks/use-organization";
 import { getErrorMessage } from "@/lib/query-feedback";
 import { pideReautenticacion } from "@/lib/reautenticacion";
 import { ClaveFila } from "./clave-fila";
+import { FeedAlertas, SCOPE_FEED_ALERTAS } from "./feed-alertas";
 import { SecretoNuevo } from "./secreto-nuevo";
 
 interface ClaveReciente {
   token: string;
   /** Al rotar, hasta cuándo vale la anterior. */
   nota?: string;
+  /** Nació con `watchlist:read`: se enseña la URL del feed con ella dentro. */
+  conFeed?: boolean;
 }
+
+/**
+ * La clave sin marcar nace con el scope por defecto de la API (`data:read`).
+ * Con el feed, se pide ese mismo y además `watchlist:read`: pedir solo el
+ * segundo dejaría una clave que lee las alertas pero no el mercado.
+ */
+const SCOPES_CON_FEED = `data:read,${SCOPE_FEED_ALERTAS}`;
 
 export default function ClavesView() {
   const { data, isLoading, error, refetch } = useClaves();
   const crear = useCrearClave();
+  const organizationId = useActiveOrganizationId();
   const [nombre, setNombre] = React.useState("");
+  const [conFeed, setConFeed] = React.useState(false);
   const [reciente, setReciente] = React.useState<ClaveReciente | null>(null);
 
   const claves = data?.items ?? [];
@@ -52,11 +70,12 @@ export default function ClavesView() {
       return;
     }
     crear.mutate(
-      { name: limpio },
+      conFeed ? { name: limpio, scopes: SCOPES_CON_FEED } : { name: limpio },
       {
         onSuccess: (nueva) => {
-          setReciente({ token: nueva.api_key });
+          setReciente({ token: nueva.api_key, conFeed });
           setNombre("");
+          setConFeed(false);
         },
       },
     );
@@ -69,6 +88,7 @@ export default function ClavesView() {
           {reciente.nota}
         </SecretoNuevo>
       ) : null}
+      {reciente?.conFeed ? <FeedAlertas token={reciente.token} organizationId={organizationId ?? null} /> : null}
 
       <Panel>
         <PanelTitle title="Nueva clave" />
@@ -86,6 +106,21 @@ export default function ClavesView() {
             <Plus aria-hidden="true" />
             Crear
           </Button>
+        </div>
+        <div className="mt-3 flex items-start gap-2">
+          <Checkbox
+            id="clave-con-feed"
+            checked={conFeed}
+            onCheckedChange={(valor) => setConFeed(valor === true)}
+            className="mt-0.5"
+          />
+          <label htmlFor="clave-con-feed" className="text-tf-meta">
+            Leer también mis alertas desde un lector de feeds
+            <span className="block text-muted-foreground">
+              Al crearla verás la URL del feed, con la clave dentro, para pegarla en Feedly, Inoreader o
+              Thunderbird.
+            </span>
+          </label>
         </div>
         {crear.error ? (
           <div className="mt-3">
