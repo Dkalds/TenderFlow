@@ -38,7 +38,8 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - **Quién:** cualquier usuario. **Dónde:** `/login`.
 - Entra con sus credenciales y queda con sesión; una contraseña incorrecta lo
   dice y no navega.
-- El alta self-service solo se ofrece donde el entorno la tiene abierta.
+- La pestaña «Crear cuenta» se ofrece siempre; el alta solo la completa quien
+  tiene el acceso concedido (CU-31).
 
 ### CU-02 — Buscar un expediente y abrir su ficha
 
@@ -266,6 +267,17 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   una sola vez por umbral y documento; renovarlo con otra fecha vuelve a
   avisar en sus umbrales. Lo puede apagar en Ajustes.
 
+### CU-31 — Pedir acceso, recibirlo y crearme la cuenta
+
+- **Quién:** una persona sin cuenta, y quien administra los accesos. **Dónde:**
+  la portada, el panel de solicitudes y `/login`.
+- Pide acceso desde la portada; la operadora lo concede desde el panel y a la
+  persona le llega un correo con el enlace para crearse la cuenta.
+- Se da de alta con ese correo y la contraseña que elige; hasta que no pulsa
+  el enlace de activación que le llega, la contraseña no le deja entrar.
+- Sin el acceso concedido, el alta lo dice y no crea nada. Si se revoca, deja
+  de poder entrar con su contraseña (también con Google).
+
 ## Trazabilidad
 
 <!-- trazabilidad: generado por scripts/check_casos_uso.py — no editar a mano -->
@@ -302,7 +314,8 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-28** Acotar Detalle y el tablero por etiqueta, responsable y plazo | [test_escenario_ficha_y_filtros.py](../tests/test_escenario_ficha_y_filtros.py) | — | [use-etiqueta-listado.test.tsx](../web/src/app/(dashboard)/detalle/__tests__/use-etiqueta-listado.test.tsx)<br>[tablero-view.test.tsx](../web/src/app/(dashboard)/oportunidades/__tests__/tablero-view.test.tsx) |
 | **CU-29** Enterarme de lo que me concierne desde la campana | [test_escenario_campana.py](../tests/test_escenario_campana.py) | — | [notification-bell.test.tsx](../web/src/components/__tests__/notification-bell.test.tsx)<br>[ver-todas-sheet.test.tsx](../web/src/components/campana/__tests__/ver-todas-sheet.test.tsx) |
 | **CU-30** Tener al día la documentación acreditativa | [test_escenario_documentacion.py](../tests/test_escenario_documentacion.py) | — | [page.test.tsx](../web/src/app/(dashboard)/equipo/__tests__/page.test.tsx)<br>[organizacion-documentacion.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/organizacion-documentacion.test.tsx) |
+| **CU-31** Pedir acceso, recibirlo y crearme la cuenta | [test_escenario_alta_tras_concesion.py](../tests/test_escenario_alta_tras_concesion.py) | — | — |
 
-**30 casos**, 30 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
+**31 casos**, 31 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
 
 <!-- fin trazabilidad -->

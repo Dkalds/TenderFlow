@@ -97,6 +97,24 @@ class TestCorreoDeAcceso:
         assert "https://x.example/login" in kwargs["texto"]
         assert "https://x.example/login" in kwargs["html"]
 
+    def test_ofrece_crear_la_cuenta_con_el_correo_puesto_y_tambien_google(self):
+        """RFC 2026-10-21: el acceso se usa con correo y contraseña o con Google."""
+        with (
+            patch(
+                "services.solicitudes_acceso.url_de_login", return_value="https://x.example/login"
+            ),
+            patch(
+                "services.solicitudes_acceso.enviar_email_transaccional", return_value=True
+            ) as enviar,
+        ):
+            notificar_acceso_concedido(email="ana+tf@empresa.example")
+
+        alta = "https://x.example/login?modo=registro&email=ana%2Btf%40empresa.example"
+        kwargs = enviar.call_args.kwargs
+        assert alta in kwargs["texto"]
+        assert alta.replace("&", "&amp;") in kwargs["html"]
+        assert "Google" in kwargs["texto"]
+
     def test_escapa_el_nombre_de_empresa_en_el_html(self):
         """`empresa` es texto que escribió un desconocido en un formulario público."""
         with (

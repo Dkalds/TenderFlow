@@ -27,7 +27,7 @@ from fastapi import (
     Response,
     status,
 )
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from api.concurrency import run_db
@@ -51,6 +51,7 @@ from db.users import (
 )
 from observability.logging import get_logger
 from shared.audit_events import (
+    AUTH_EMAIL_VERIFIED,
     AUTH_LOGIN_FAILED,
     AUTH_LOGIN_SUCCESS,
     AUTH_LOGOUT,
@@ -97,6 +98,12 @@ _OAUTH_TELEMETRY_PROVIDER_COOKIE = "oauth_login_provider"
 _SESSION_MAX_AGE = session_max_age_seconds()
 _OAUTH_MAX_AGE = 600
 _RESET_REQUEST_RESPONSE = "Si existe una cuenta local activa, recibirás un enlace de recuperación."
+_REGISTER_RESPONSE = "Revisa tu correo: te hemos enviado un enlace para activar la cuenta."
+#: Motivos de los 403 del alta y del login que la web traduce a un mensaje. Son
+#: códigos y no frases porque la web decide el texto y los enlaces (solicitar
+#: acceso, reenviar el correo).
+ACCESS_NOT_GRANTED = "access_not_granted"
+EMAIL_NOT_VERIFIED = "email_not_verified"
 
 
 async def _oauth_access_allowed(email: str) -> bool:
@@ -134,6 +141,10 @@ _RESET_IP_MAX_CALLS = 5
 _RESET_IP_WINDOW_SECONDS = 900
 _RESET_REQUEST_BUCKET = "password-reset"
 _RESET_CONFIRM_BUCKET = "password-reset:confirm"
+#: El alta cerrada y la verificación usan la misma cuota que el reset, cada una
+#: en su cubo: las dos mandan correo a una dirección que escribe un anónimo.
+_REGISTER_BUCKET = "register"
+_VERIFY_BUCKET = "verify-email"
 
 
 async def _password_reset_rate_allowed(
@@ -418,6 +429,12 @@ class PasswordResetConfirm(BaseModel):
     password: str = Field(min_length=10, max_length=512)
 
 
+class EmailVerificationConfirm(BaseModel):
+    """Token del enlace de activación que llega al correo tras el alta."""
+
+    token: str = Field(min_length=32, max_length=200)
+
+
 class UserInfo(BaseModel):
     """Public user info returned by auth endpoints."""
 
@@ -452,7 +469,38 @@ class OAuthAuthorizeResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-@router.post("/login", response_model=UserInfo)
+def _motivo_login_denegado(user: Mapping[str, Any]) -> str | None:
+    """Por qué una contraseña correcta no basta para entrar, o ``None``.
+
+    - ``email_not_verified``: alta cerrada cuyo enlace nadie ha pulsado.
+    - ``access_not_granted``: el correo ya no pasa la misma regla que el login
+      OAuth (lista estática o ``access_grants``), p. ej. porque se revocó la
+      concesión. Los administradores quedan exentos: el panel desde el que se
+      conceden los accesos no puede quedarse sin nadie que entre.
+
+    Síncrona: consulta ``access_grants``, se llama desde el hilo del login.
+    """
+    from services.access_grants import acceso_oauth_permitido
+
+    if user.get("email_verified_at") is None:
+        return EMAIL_NOT_VERIFIED
+    user_id = int(user["id"])
+    if not is_admin(user_id) and not acceso_oauth_permitido(str(user.get("email") or "")):
+        return ACCESS_NOT_GRANTED
+    return None
+
+
+@router.post(
+    "/login",
+    response_model=UserInfo,
+    responses={
+        403: {
+            "description": (
+                "Contraseña correcta pero sin entrada: `email_not_verified` o `access_not_granted`."
+            )
+        }
+    },
+)
 async def login(body: LoginRequest, response: Response, request: Request) -> UserInfo:
     """Authenticate with email + password, set session cookie."""
     # Nota de implementación (deliberadamente FUERA del docstring: FastAPI lo
@@ -475,7 +523,13 @@ async def login(body: LoginRequest, response: Response, request: Request) -> Use
                 detail="Too many failed login attempts. Try again later.",
                 headers={"Retry-After": str(max(1, int(retry_after)))},
             )
-        user = get_user_by_email(body.email)
+        # Primero tal cual —las cuentas de siempre se guardaron con la
+        # capitalización que se tecleó— y después en minúsculas, que es como
+        # guarda el correo el alta cerrada: quien se dio de alta como
+        # «Ana@Empresa.es» tiene que poder entrar escribiéndolo igual. Las dos
+        # son búsquedas exactas; no se compara sin mayúsculas porque ahí pueden
+        # coincidir dos cuentas heredadas.
+        user = get_user_by_email(body.email) or get_user_by_email(str(body.email).strip().lower())
         if not user:
             record_failed_login(client_key)
             # Sin actor ni correo: un intento contra una cuenta que no existe
@@ -505,6 +559,21 @@ async def login(body: LoginRequest, response: Response, request: Request) -> Use
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
             )
 
+        # Las dos comprobaciones van DESPUÉS de la contraseña: antes le dirían
+        # a cualquiera que ese correo tiene cuenta (RFC
+        # 2026-10-21-alta-con-contrasena-tras-concesion §3).
+        motivo_denegado = _motivo_login_denegado(user)
+        if motivo_denegado is not None:
+            log_event(
+                event_type=AUTH_LOGIN_FAILED,
+                user_id=int(user["id"]),
+                outcome="failure",
+                resource=f"user:{user['id']}",
+                detail={"reason": motivo_denegado},
+            )
+            log.warning("login_failed", user_id=user["id"], reason=motivo_denegado)
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=motivo_denegado)
+
         clear_login_attempts(client_key)
         _set_session_cookie(response, user["id"], request, remember=body.remember)
 
@@ -528,30 +597,58 @@ async def login(body: LoginRequest, response: Response, request: Request) -> Use
     return await run_db(_authenticate)
 
 
-@router.post("/register", response_model=UserInfo, status_code=status.HTTP_201_CREATED)
-async def register(body: RegisterRequest, response: Response, request: Request) -> UserInfo:
-    """Alta self-service con email + password. Hace auto-login (set session cookie).
+def _registro_abierto() -> bool:
+    """``True`` en el modo abierto del alta: dev o ``ALLOW_SELF_REGISTRATION``.
+
+    Función y no condición en línea para que los tests del modo cerrado —el
+    de producción— lo fuercen sin cambiar ``ENV``, que decide muchas otras
+    cosas en el resto de la app.
+    """
+    return bool(settings.ALLOW_SELF_REGISTRATION) or settings.ENV == "dev"
+
+
+@router.post(
+    "/register",
+    response_model=UserInfo,
+    status_code=status.HTTP_201_CREATED,
+    # El 201 (modo abierto) conserva su contrato; el 202 del modo cerrado es
+    # una respuesta más, no un cambio de la existente.
+    responses={
+        202: {
+            "model": DetailMessage,
+            "description": "Alta cerrada: el enlace de activación va al correo.",
+        },
+        403: {"description": "El correo no tiene el acceso concedido (`access_not_granted`)."},
+    },
+)
+async def register(
+    body: RegisterRequest,
+    response: Response,
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> UserInfo | JSONResponse:
+    """Alta con correo y contraseña.
 
     Política de contraseña equilibrada: mínimo 10 caracteres con mayúsculas,
     minúsculas y al menos un dígito (sin exigir carácter especial).
 
-    **El alta NO es abierta.** Está cerrada por defecto
-    (``ALLOW_SELF_REGISTRATION=False``) y en producción responde 403: el acceso
-    a TenderFlow es por invitación y se concede a mano desde el panel de
-    solicitudes. Este docstring decía «Registro abierto: cualquier email válido
-    puede crear cuenta» dos líneas por encima del guard que lo impide.
-    """
-    if not settings.ALLOW_SELF_REGISTRATION and settings.ENV != "dev":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Self-service registration is disabled. Contact an administrator.",
-        )
+    **Modo cerrado** (producción): solo para correos con el acceso concedido
+    —lista estática o ``access_grants``, la misma regla que el login OAuth—.
+    Responde 202 sin crear sesión, exista o no la cuenta, y el enlace de
+    activación llega al correo (RFC 2026-10-21-alta-con-contrasena-tras-concesion).
+    Un correo sin concesión recibe 403 ``access_not_granted``.
 
+    **Modo abierto** (``ENV=dev`` o ``ALLOW_SELF_REGISTRATION``): crea la cuenta
+    verificada, abre sesión y responde 201 con el usuario, como siempre.
+    """
     check = check_account_password(body.password)
     if not check.is_strong:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=check.summary)
 
     display_name = (body.display_name or "").strip() or None
+
+    if not _registro_abierto():
+        return await _register_closed(body, display_name, request, background_tasks)
 
     def _create_account() -> int:
         """BD + ``hash_password`` (argon2) fuera del event loop."""
@@ -565,9 +662,9 @@ async def register(body: RegisterRequest, response: Response, request: Request) 
             password_hash=hash_password(body.password),
             display_name=display_name,
         )
-        # Registrarse con el correo al que se invitó es la prueba de que se
-        # controla ese buzón: aquí es donde la invitación pendiente se convierte
-        # en membresía activa y la organización aparece en GET /organizations.
+        # En modo abierto el alta activa ya las invitaciones: es el
+        # comportamiento de siempre, y el modo que no verifica nada. En el
+        # cerrado esto pasa al verificar el correo.
         _activar_invitaciones(new_id, str(body.email))
         _set_session_cookie(response, new_id, request)  # auto-login
         log_access(auth_method="password_signup", user_id=new_id)
@@ -582,6 +679,101 @@ async def register(body: RegisterRequest, response: Response, request: Request) 
         display_name=display_name,
         is_admin=False,
     )
+
+
+async def _register_closed(
+    body: RegisterRequest,
+    display_name: str | None,
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> JSONResponse:
+    """El alta de producción: concesión, cuota y todo lo demás en segundo plano."""
+    email = str(body.email).strip().lower()
+    # La cuota va antes de mirar la concesión: el 403 dice si un correo la
+    # tiene, y sin tope serviría para sondear la lista.
+    if not await _password_reset_rate_allowed(request, email, bucket=_REGISTER_BUCKET):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Demasiados intentos. Inténtalo más tarde.",
+            headers={"Retry-After": str(_RESET_IP_WINDOW_SECONDS)},
+        )
+    if not await _oauth_access_allowed(email):
+        log.info("signup_rejected", reason=ACCESS_NOT_GRANTED)
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ACCESS_NOT_GRANTED)
+
+    from services.email_verification import process_registration
+
+    # Como el reset: lo que depende de si la cuenta existe (crearla, reemplazar
+    # una sin verificar, el correo que toca) va con la respuesta ya enviada, para
+    # que ni el cuerpo ni la latencia lo distingan.
+    background_tasks.add_task(process_registration, email, body.password, display_name)
+    # Respuesta directa y no el modelo: `response_model` es el `UserInfo` del 201,
+    # y FastAPI no valida contra él lo que ya es una `Response`. Las tareas en
+    # segundo plano se le cuelgan igual (`background_tasks` inyectado).
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content=DetailMessage(detail=_REGISTER_RESPONSE).model_dump(),
+    )
+
+
+@router.post(
+    "/verify-email",
+    response_model=UserInfo,
+    responses={403: {"description": "El acceso se revocó antes de verificar."}},
+)
+async def verify_email(
+    body: EmailVerificationConfirm,
+    response: Response,
+    request: Request,
+) -> UserInfo:
+    """Activa la cuenta del alta cerrada con el enlace del correo y abre sesión.
+
+    Comprueba otra vez la concesión: si se revocó entre el alta y el clic,
+    responde 403 ``access_not_granted`` sin gastar el enlace ni abrir sesión.
+    Token inválido, caducado o ya usado → 400 genérico.
+    """
+    if not await _password_reset_rate_allowed(request, bucket=_VERIFY_BUCKET):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Demasiados intentos. Inténtalo más tarde.",
+            headers={"Retry-After": str(_RESET_IP_WINDOW_SECONDS)},
+        )
+
+    from db.email_verification import consume_verification_token, pending_token_email
+    from services.access_grants import acceso_oauth_permitido
+    from services.password_reset import token_hash
+
+    def _verify() -> UserInfo:
+        digest = token_hash(body.token)
+        email = pending_token_email(digest)
+        if email is None:
+            raise HTTPException(status_code=400, detail="El enlace no es válido o ha caducado.")
+        if not acceso_oauth_permitido(email):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=ACCESS_NOT_GRANTED)
+        user_id = consume_verification_token(digest)
+        if user_id is None:
+            raise HTTPException(status_code=400, detail="El enlace no es válido o ha caducado.")
+        # Es aquí, y no en el alta, donde se demuestra el buzón: las
+        # invitaciones pendientes de este correo pasan a membresías activas.
+        _activar_invitaciones(user_id, email)
+        _set_session_cookie(response, user_id, request)
+        log_access(auth_method="password_signup", user_id=user_id)
+        log_event(
+            event_type=AUTH_EMAIL_VERIFIED,
+            user_id=user_id,
+            resource=f"user:{user_id}",
+        )
+        user = get_user_by_id(user_id)
+        return UserInfo(
+            user_id=user_id,
+            email=email,
+            display_name=(user or {}).get("display_name"),
+            is_admin=is_admin(user_id),
+        )
+
+    info = await run_db(_verify)
+    log.info("email_verified", user_id=info.user_id)
+    return info
 
 
 # ---------------------------------------------------------------------------

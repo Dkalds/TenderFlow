@@ -72,10 +72,10 @@ export const CONTENIDO: ContenidoLanding = {
   // y nosotros una solicitud que no se podría atender.
   heroAcotacion: "Si vendes obra pública, sanidad o suministros generales, esto no te sirve.",
 
-  // El alta self-service está desactivada en producción: `ALLOW_SELF_REGISTRATION`
-  // es `False` por defecto y no se declara en `render.yaml`, así que
-  // `POST /auth/register` responde 403; y el login con Google es fail-closed sin
-  // allowlist. Un "crea tu cuenta gratis" sería una promesa que acaba en error.
+  // En producción el alta solo vale para un correo con el acceso concedido
+  // (`POST /auth/register` responde 403 `access_not_granted` a los demás), y el
+  // login con Google aplica la misma regla. Un "crea tu cuenta gratis" sería
+  // una promesa que acaba en error: primero se pide el acceso.
   ctaPrimario: "Solicita acceso",
   ctaSecundario: "Cómo funciona",
 

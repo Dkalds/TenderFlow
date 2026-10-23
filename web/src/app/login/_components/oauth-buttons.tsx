@@ -16,8 +16,7 @@ import { Button } from "@/components/ui/button";
  * El backend solo lo sirve si `OAUTH_MICROSOFT_CLIENT_ID` está configurado
  * (si no, `/auth/oauth/microsoft/authorize` responde 501). Enseñar el botón en
  * un despliegue sin configurar sería exactamente la superficie que promete lo
- * que el backend no hace, así que se gobierna con la misma bandera de entorno
- * que ya usa la pestaña de alta.
+ * que el backend no hace, así que se gobierna con una bandera de entorno.
  */
 const MICROSOFT_HABILITADO =
   process.env.NEXT_PUBLIC_OAUTH_MICROSOFT === "1" || process.env.NODE_ENV === "development";

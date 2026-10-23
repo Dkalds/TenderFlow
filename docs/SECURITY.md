@@ -335,6 +335,8 @@ producto existe para conservar.
 | `webhook_deliveries` | 90 días (3 meses) | Historial de entregas para depurar un webhook que falla. El reintento vive en horas, no en meses. | `python scripts/retention_cleanup.py --apply` |
 | `solicitudes_acceso` | 720 días (24 meses) | **Plazo publicado en el aviso legal.** Cambiarlo cambia una promesa hecha al visitante en el momento de la recogida (RGPD art. 13). | `python scripts/retention_cleanup.py --apply` |
 | `password_reset_tokens` | 7 días | Un token de recuperación caducado no sirve para nada y sí identifica a quien lo pidió. | `python scripts/retention_cleanup.py --apply` |
+| `email_verification_tokens` | 7 días | Enlace de activación del alta con contraseña: caducado no sirve para nada y sí identifica a quien se dio de alta. | `python scripts/retention_cleanup.py --apply` |
+| `users` | 7 días | **Solo las altas con contraseña que nadie verificó**, sin OAuth ni sesiones: cuentas que nunca se usaron con el correo de una persona. Ninguna otra cuenta caduca por tiempo. | `python scripts/retention_cleanup.py --apply` |
 | `client_errors` | 30 días (1 mes) | Huella sin PII de un fallo de JavaScript. No hace falta guardarla más de lo que dura investigar una regresión. | `python scripts/retention_cleanup.py --apply` |
 | `rate_limits` | 1 día | Ventanas de rate limit. Se purgan las **expiradas** en cada pasada, sin esperar al plazo: la columna que manda es `reset_at`. | `python scripts/retention_cleanup.py --apply` (por `reset_at`, no por plazo) |
 

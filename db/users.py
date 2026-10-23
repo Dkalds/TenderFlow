@@ -27,7 +27,14 @@ def get_or_create_oauth_user(
         if row:
             return int(row[0])
 
-        # Si el email ya existe (usuario previo sin OAuth), vincular
+        # Si el email ya existe (usuario previo sin OAuth), vincular.
+        #
+        # El proveedor acaba de demostrar que quien entra controla ese buzón,
+        # así que la cuenta queda verificada. Si **no** lo estaba, su contraseña
+        # la puso alguien que nunca lo demostró —quizá un tercero que se dio de
+        # alta con este correo antes que su dueño— y se borra: sobrevivir a la
+        # vinculación le daría a ese tercero una llave de la cuenta real
+        # (RFC 2026-10-21-alta-con-contrasena-tras-concesion §4).
         if email:
             row = c.execute(
                 "SELECT id FROM users WHERE email = %s",
@@ -36,7 +43,11 @@ def get_or_create_oauth_user(
             if row:
                 c.execute(
                     "UPDATE users SET oauth_provider = %s, oauth_sub = %s, "
-                    "display_name = COALESCE(%s, display_name) WHERE id = %s",
+                    "display_name = COALESCE(%s, display_name), "
+                    "password_hash = CASE WHEN email_verified_at IS NULL "
+                    "THEN NULL ELSE password_hash END, "
+                    "email_verified_at = COALESCE(email_verified_at, NOW()) "
+                    "WHERE id = %s",
                     (oauth_provider, oauth_sub, display_name, row[0]),
                 )
                 return int(row[0])

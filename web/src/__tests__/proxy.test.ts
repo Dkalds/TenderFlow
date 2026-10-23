@@ -45,6 +45,7 @@ describe("rutas públicas", () => {
     ["/aviso-legal", "el aviso legal"],
     ["/login", "el login"],
     ["/restablecer-contrasena", "la recuperación de contraseña"],
+    ["/verificar-correo", "la activación de la cuenta"],
     ["/solicitud-recibida", "el acuse del formulario"],
     ["/robots.txt", "robots"],
     ["/sitemap.xml", "el sitemap"],
@@ -121,8 +122,8 @@ describe("CSP", () => {
     }
   });
 
-  it("el dashboard y /login conservan nonce y strict-dynamic", () => {
-    for (const ruta of ["/resumen", "/login"]) {
+  it("el dashboard y las pantallas de credenciales conservan nonce y strict-dynamic", () => {
+    for (const ruta of ["/resumen", "/login", "/verificar-correo"]) {
       const politica = csp(proxy(peticion(ruta, { conSesion: true })));
       expect(politica).toContain("nonce-");
       expect(politica).toContain("strict-dynamic");

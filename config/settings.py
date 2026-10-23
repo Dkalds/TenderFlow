@@ -454,6 +454,10 @@ class Settings(ResumenPregenSettings, BaseSettings):
         "contrataciondelestado.es,*.contrataciondelestado.es,ted.europa.eu,contractaciopublica.cat"
     )
     WEBHOOK_ALLOWED_HOSTS: str = ""
+    # Alta ABIERTA a cualquier correo, sin verificar el buzón (el modo de dev y
+    # de tests). Apagada, que es lo de producción, `POST /auth/register` solo
+    # admite correos con el acceso concedido y la cuenta se activa con un enlace
+    # al correo (RFC 2026-10-21-alta-con-contrasena-tras-concesion).
     ALLOW_SELF_REGISTRATION: bool = False
 
     # ── Conectores autonómicos / TACRC (RFC 20260611-1, Fase 5) ─────────
@@ -807,6 +811,9 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # los dos números coincidan.
     RETENTION_SOLICITUDES_ACCESO_MESES: int = 24
     RETENTION_PASSWORD_RESET_DAYS: int = 7
+    # Altas con contraseña que nadie verificó (RFC 2026-10-21): cuentas sin uso
+    # con el correo de una persona. El enlace caduca en 24 horas.
+    RETENTION_UNVERIFIED_SIGNUP_DAYS: int = 7
     # Errores de cliente (C2.6): huella sin PII, no hace falta conservarla más
     # de lo que dura investigar una regresión.
     RETENTION_CLIENT_ERRORS_DAYS: int = 30

@@ -38,8 +38,42 @@ def create_reset_token_for_email(email: str, token_hash: str, expires_at: str) -
     return True
 
 
+def create_reset_token_for_user(user_id: int, token_hash: str, expires_at: str) -> bool:
+    """Emite un token para una cuenta activa **tenga o no contraseña**.
+
+    No lo usa ``POST /auth/password-reset/request``, que sigue limitado a
+    cuentas locales: lo usa el alta cerrada cuando el correo ya tiene una cuenta
+    verificada (``services/email_verification.py``). Ahí el enlace llega al
+    buzón que la persona acaba de escribir, y para quien entró solo por Google
+    es la forma de ponerse su primera contraseña sin que el endpoint público
+    revele qué cuentas no tienen una.
+    """
+    with connect() as connection:
+        row = connection.execute(
+            "SELECT id FROM users WHERE id = %s AND deactivated_at IS NULL FOR UPDATE",
+            (user_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        connection.execute(
+            "UPDATE password_reset_tokens SET used_at = NOW() "
+            "WHERE user_id = %s AND used_at IS NULL",
+            (user_id,),
+        )
+        connection.execute(
+            "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) "
+            "VALUES (%s, %s, %s)",
+            (user_id, token_hash, expires_at),
+        )
+    return True
+
+
 def consume_reset_token(token_hash: str, password_hash: str) -> int | None:
     """Cambia la contraseña una vez; invalida los demás enlaces y revoca las sesiones.
+
+    No exige que la cuenta ya tenga contraseña: los tokens de una cuenta sin
+    ella solo los emite :func:`create_reset_token_for_user`, y consumirlo le
+    pone la primera.
 
     Todo en una transacción: o se cambia la contraseña, se gastan los tokens
     pendientes de la cuenta y caen sus sesiones, o no cambia nada.
@@ -52,7 +86,7 @@ def consume_reset_token(token_hash: str, password_hash: str) -> int | None:
         owner = connection.execute(
             "SELECT u.id FROM users u WHERE u.id = "
             "(SELECT prt.user_id FROM password_reset_tokens prt WHERE prt.token_hash = %s) "
-            "AND u.deactivated_at IS NULL AND u.password_hash IS NOT NULL FOR UPDATE",
+            "AND u.deactivated_at IS NULL FOR UPDATE",
             (token_hash,),
         ).fetchone()
         if owner is None:
@@ -68,8 +102,11 @@ def consume_reset_token(token_hash: str, password_hash: str) -> int | None:
         ).fetchone()
         if token is None:
             return None
+        # Consumir el enlace demuestra el buzón: una cuenta del alta cerrada que
+        # aún no verificó queda verificada.
         connection.execute(
-            "UPDATE users SET password_hash = %s WHERE id = %s",
+            "UPDATE users SET password_hash = %s, "
+            "email_verified_at = COALESCE(email_verified_at, NOW()) WHERE id = %s",
             (password_hash, user_id),
         )
         # Todos los pendientes de la cuenta, no solo el consumido: otro enlace

@@ -1,9 +1,10 @@
 /**
  * Canal de solicitud de acceso de la superficie pública.
  *
- * El acceso a TenderFlow es por invitación (`ALLOW_SELF_REGISTRATION` apagado
- * en producción), así que el CTA "Solicita acceso" necesita un destino real o
- * es un fondo de saco: /login solo deja entrar a quien ya tiene cuenta. El
+ * El acceso a TenderFlow es por concesión: en producción el alta con correo y
+ * contraseña solo vale para un correo con el acceso concedido (si no, la API
+ * responde 403 `access_not_granted`), así que el CTA "Solicita acceso"
+ * necesita un destino real o es un fondo de saco. El
  * destino es siempre el formulario de la portada (`solicitarAccesoHref`).
  * `CONTACT_EMAIL` ya no decide nada del embudo: es solo la dirección del pie y
  * del aviso legal, y la pone el responsable vía entorno —ADR-014: sin hardcode
