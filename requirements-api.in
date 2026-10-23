@@ -30,6 +30,18 @@
 #   inventario de fuentes se lee sin `lxml` (tests/test_unit_api_imagen_slim.py).
 # - `pypdf` lo necesita `POST /ficha-pliego/extract`, que descarga y extrae bajo
 #   demanda. Vivía en el extra `[pliegos]` y se subió a runtime por eso.
+# - `onnxruntime` y `tokenizers` **entraron** el 2026-10-23 (autorizado por el
+#   propietario, AGENTS.md §6) para que `POST /search/semantic` y `/ask`
+#   codifiquen la consulta con el mismo `paraphrase-multilingual-MiniLM-L12-v2`
+#   que embebió `documento_chunks`, sin PyTorch (backlog P2 «La búsqueda por
+#   significado no corre en producción»). Peso instalado, medido en Linux
+#   x86_64 / CPython 3.13: onnxruntime 68 MB, tokenizers 12 MB, y lo que
+#   arrastra tokenizers —huggingface_hub 7 MB, hf-xet 11 MB, fsspec, filelock,
+#   pyyaml, tqdm, protobuf, flatbuffers— hasta ~100 MB en total; además
+#   `click` sube de 8.3.3 a 8.5.0 porque huggingface_hub exige >=8.4.2. Frente
+#   a los ~2 GB de PyTorch. El modelo (~470 MB) no viene en ningún paquete: lo
+#   baja el build de docker/Dockerfile.api con revisión fija y sha256, y sin él
+#   la búsqueda sigue degradando a FTS como antes.
 #
 # Lo que la API NO necesita está en requirements-pipeline.in.
 
@@ -92,6 +104,14 @@ pypdf>=4.0,<7
 # `pending` para el lote nocturno (`ExtractorAusenteError`).
 tenacity>=8.2.0,<10
 pybreaker>=1.0.0,<2
+
+# ── Embeddings de la consulta (services/embeddings_onnx.py) ──────────────────
+# Solo codifican la consulta: la afinidad del Radar y el embebido de pliegos
+# siguen exigiendo sentence-transformers (`embeddings_masivos_disponibles`).
+# `tokenizers` arrastra `huggingface_hub`, que el código no usa (descarga el
+# build, no la API).
+onnxruntime>=1.20,<2
+tokenizers>=0.20,<1
 
 # ── LLM (/ask) ───────────────────────────────────────────────────────────────
 openai>=1.30.0,<4

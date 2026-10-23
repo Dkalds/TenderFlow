@@ -47,6 +47,30 @@ COPY requirements-api.txt requirements-pipeline.txt requirements-mcp.txt pyproje
 RUN pip install --upgrade "pip>=26.1" \
     && pip install --prefix=/install --no-cache-dir --require-hashes -r "${REQUIREMENTS_FILE}"
 
+# Modelo ONNX con el que la API codifica la CONSULTA de la búsqueda por
+# significado (`services/embeddings_onnx.py`; backlog P2 «La búsqueda por
+# significado no corre en producción»). Es el mismo
+# `paraphrase-multilingual-MiniLM-L12-v2` con el que el pipeline embebió
+# `documento_chunks`, exportado a ONNX: ~470 MB en disco y en memoria una vez
+# cargado (perezosamente, en la primera búsqueda), sin PyTorch.
+#
+# Revisión fija (un commit del repo de Hugging Face, no una rama) y sha256 de
+# cada fichero: `descargar_modelo_embeddings.py` no tiene modo «sin
+# verificar». Sin `EMBEDDINGS_ONNX_REVISION` no descarga nada y la imagen sale
+# como antes: es el caso del CI y de los servicios que no la declaran (el
+# worker y el MCP no codifican consultas). Render pasa las variables del
+# servicio como build args, así que se declaran en `tenderflow-api`; los
+# valores y cómo obtenerlos están en `docs/runbooks/model-rollback.md`
+# § «Modelo ONNX de embeddings». No hay valores por defecto porque no se han
+# podido verificar desde aquí: un hash inventado es peor que ninguno.
+ARG EMBEDDINGS_ONNX_REPO=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+ARG EMBEDDINGS_ONNX_REVISION=
+ARG EMBEDDINGS_ONNX_SHA256_MODELO=
+ARG EMBEDDINGS_ONNX_SHA256_TOKENIZADOR=
+ARG EMBEDDINGS_ONNX_SHA256_CONFIG=
+COPY docker/descargar_modelo_embeddings.py ./
+RUN python descargar_modelo_embeddings.py --destino /modelos/embeddings
+
 
 # ── Etapa 2: imagen de producción — FastAPI / uvicorn ────────────────────────
 FROM python:3.13.16-slim-bookworm AS runtime
@@ -68,6 +92,7 @@ RUN useradd --create-home --shell /bin/bash --uid 1001 appuser
 WORKDIR /app
 
 COPY --from=builder /install /usr/local
+COPY --from=builder /modelos /opt/modelos
 COPY --chown=appuser:appuser . .
 
 # El `pip` que viaja en la imagen NO es el de la etapa builder: `COPY
@@ -93,6 +118,12 @@ RUN pip install --no-cache-dir --no-deps . \
     && find /usr/local/lib/python3.13 -name '*.pyc' -delete
 
 RUN mkdir -p /data && chown appuser:appuser /data
+# El modelo ONNX solo se activa si el build lo descargó: `${VAR:+valor}` deja
+# la variable vacía (motor desactivado) cuando no hubo revisión, en vez de
+# apuntar a un directorio vacío y avisar en cada arranque de que falta.
+ARG EMBEDDINGS_ONNX_REVISION=
+ENV EMBEDDINGS_ONNX_DIR=${EMBEDDINGS_ONNX_REVISION:+/opt/modelos/embeddings}
+
 # Sin DB_PATH: SQLite se retiró en ADR-021; el único motor es Postgres vía
 # DATABASE_URL.
 ENV DATA_DIR=/data \

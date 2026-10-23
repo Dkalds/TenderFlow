@@ -187,6 +187,62 @@ Una versión que **no** supera el criterio queda registrada igual, con
 `promotion_reason` explicando cuál de las dos cuentas falló: el histórico es lo
 que permite ver si la siguiente mejora de verdad o repite la anterior.
 
+### `baja_model` v2 y `retencion_model` v1: qué hace falta para decidir
+
+La decisión es humana (`train-predictivos.yml` no activa salvo
+`ML_PRED_AUTO_ACTIVATE`), pero no a ojo: se activa una versión cuando
+**todas** estas condiciones se cumplen con los números de su fila de
+`model_versions` delante, y se anota el número que lo justifica en `notes`.
+
+| Modelo | Condición (todas) | De dónde sale |
+| --- | --- | --- |
+| `baja_model` | `mae_baseline − mae_p50 ≥ mae_p50_std_folds × MIN_IMPROVEMENT_OVER_FOLD_DISPERSION` (1.0) | `evaluar_promocion_predictiva` |
+| | mejora relativa en MAE ≥ 10 % (`MEJORA_MINIMA_RELATIVA`) | `baja_model.py`, RFC 20260611-2 |
+| | `cobertura_intervalo_80` en [0,75, 0,85] | `baja_model.py`, RFC 20260611-2 |
+| `retencion_model` | `pr_auc − pr_auc_baseline ≥ pr_auc_std_folds × 1.0` (baseline = prevalencia) | `evaluar_promocion_predictiva` |
+| | `pr_auc > prevalencia + 0,15` (`PR_AUC_MARGEN`) y `ece < 0,08` (`ECE_MAX`) | `retencion_model.py`, RFC 20260611-2 |
+| | Resuelta la clave de `predicciones_retencion` (hoy un riesgo por expediente, pinta una fila por adjudicatario) | backlog P2, exige migración |
+| Los dos | Sin dispersión medida **no se activa**: una mejora sin error asociado no se distingue del ruido | `evaluar_promocion_predictiva` |
+
+Aplicado a lo registrado (backlog P2 «`baja_model` v2 y `retencion_model` v1
+están entrenados…»):
+
+- **`baja_model` v2: no promocionable.** Mejora 0,005 en `mae_p50`
+  (0,12494 vs 0,12999, un 3,3 %) frente a una dispersión entre folds de 0,01287:
+  falla la dispersión y falla el 10 % relativo.
+- **`retencion_model` v1: no decidible.** Es anterior al gate y no registra
+  `pr_auc_std_folds`; `pr_auc` 0,2453 sobre prevalencia 0,1099 (margen 0,135 <
+  0,15) tampoco pasaría el criterio del RFC. Hay que relanzar
+  `train-predictivos.yml` para tener la versión con dispersión y rival de
+  antigüedad registrados, y decidir sobre esa.
+- `pr_auc_baseline_antiguedad` (ordenar por antigüedad de la relación) **no
+  gatea**: si el modelo no lo supera, actívalo sabiendo que un `ORDER BY` hacía
+  lo mismo.
+
+## Incidente de la v2 de `sap_classifier` (2026-09-29): resumen
+
+La ficha completa, con fechas, PRs y criterios abiertos, está en el P1 del
+backlog «Cerrar el incidente de la v2 de `sap_classifier`». Lo que conviene
+saber antes de tocar el clasificador:
+
+- **Qué pasó.** El paso semanal `sap_active_learning` de `scrape-daily` contó
+  59 feedbacks humanos (umbral 50), reentrenó **dentro del runner**, pasó el
+  gate y activó la v2. El `.pkl` se quedó en el disco efímero del runner y no
+  se subió a ninguna Release: desde la pasada siguiente, `ml_scoring` bajaba el
+  asset de mayo, el sha256 no coincidía con el registrado y fallaba con
+  `ModelArtifactMismatch` (14 fallos entre el 29/09 y el 03/10).
+- **Por qué pasó el gate con poco.** La v2 pasó con `recall_no_keyword` 0,33
+  medido sobre **tres** ejemplos del golden legado (27 ejemplos escritos a
+  mano). Un gate sobre un golden tan pequeño no protege: es la razón de fondo
+  del golden real (`golden_ti.jsonl`, [etiquetado-ti.md](etiquetado-ti.md)).
+- **Qué se cambió.** Con `SCHEDULER_PLANE` declarado nadie entrena ni activa
+  fuera de `train-model.yml`, que activa **después** de subir y cotejar el
+  `digest` (#404, #405); `model_artifacts_canary` coteja a diario. La v2 se
+  desactivó a mano y no es recuperable: su artefacto no existe.
+- **Qué sigue abierto.** Ver correr el flujo nuevo de punta a punta, decidir
+  qué dataset entrena cada camino, y nombrar el asset por contenido como los
+  predictivos.
+
 ## Ver modelos en disco
 
 ```bash
@@ -305,3 +361,57 @@ Verificá que la versión servida es la esperada:
 curl -fsS -H "X-API-Key: $ADMIN_API_KEY" \
   "$API_BASE_URL/api/v1/models/sap_classifier" | python -m json.tool
 ```
+
+## Modelo ONNX de embeddings (búsqueda por significado)
+
+No es un modelo entrenado aquí ni pasa por `model_versions`: es
+`paraphrase-multilingual-MiniLM-L12-v2` exportado a ONNX, el mismo que embebió
+`documento_chunks`, y la API lo usa para codificar la consulta de
+`POST /search/semantic` (`services/embeddings_onnx.py`). Sin él, la búsqueda
+degrada a FTS (`source=fts`/`like`), que es lo que hacía hasta 2026-10.
+
+**Dónde entra.** `docker/Dockerfile.api` lo descarga en el build con
+`docker/descargar_modelo_embeddings.py`: commit fijo del repo de Hugging Face y
+sha256 de cada fichero, sin modo «sin verificar». Los argumentos se declaran
+como variables del servicio `tenderflow-api` en Render, que las pasa como build
+args:
+
+| Variable | Valor |
+| --- | --- |
+| `EMBEDDINGS_ONNX_REVISION` | Commit (40 hex) de `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
+| `EMBEDDINGS_ONNX_SHA256_MODELO` | sha256 de `onnx/model.onnx` en ese commit |
+| `EMBEDDINGS_ONNX_SHA256_TOKENIZADOR` | sha256 de `tokenizer.json` |
+| `EMBEDDINGS_ONNX_SHA256_CONFIG` | sha256 de `sentence_bert_config.json` |
+
+Sin `EMBEDDINGS_ONNX_REVISION` el build no descarga nada y la imagen no define
+`EMBEDDINGS_ONNX_DIR`: así se construyen el CI, el worker y el MCP.
+
+**Cómo obtener los valores.** El commit, de la pestaña *Files and versions* del
+repo (no `main`: una rama puede cambiar entre dos builds). Los sha256 de
+`model.onnx` y `tokenizer.json` aparecen en la página de cada fichero (son
+LFS); el de `sentence_bert_config.json` es el `sha256sum` del fichero bajado de
+ese mismo commit. Después, en una máquina con el extra `[ml]` y el modelo de
+sentence-transformers en caché:
+
+```bash
+python docker/descargar_modelo_embeddings.py --destino /tmp/emb \
+    --revision <commit> --sha256-modelo <hex> --sha256-tokenizador <hex> --sha256-config <hex>
+EMBEDDINGS_ONNX_DIR=/tmp/emb pytest tests/test_embeddings_onnx_paridad.py -rs
+```
+
+El test de paridad exige coseno ≥ 0,999 frase a frase con sentence-transformers;
+si se salta, dice por qué, y un salto no es un verde.
+
+**Memoria.** La sesión ONNX son ~470 MB residentes, cargados en la primera
+búsqueda (no al arrancar). La API corre en `standard` (2 GB); no lo actives en
+un servicio de 512 MB.
+
+**Qué NO usa este modelo.** La afinidad del Radar, el ranking de fragmentos del
+RAG y el embebido de pliegos del worker codifican cientos o miles de textos por
+petición y siguen exigiendo sentence-transformers
+(`services.embeddings.embeddings_masivos_disponibles`). Los similares y el
+predecesor de la ficha (≤ 100 títulos) sí lo usan.
+
+**Revertir.** Declarar `EMBEDDINGS_ONNX_DIR` **vacía** en el entorno del
+servicio (borrarla no basta: la imagen la define) apaga el motor sin rebuild;
+la búsqueda vuelve a FTS.
