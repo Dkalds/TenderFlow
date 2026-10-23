@@ -19,13 +19,18 @@ Formatos soportados
   páginas quedan marcadas ``ocr = true`` en ``documento_pages``. Un PDF que sí
   trae texto **nunca** pasa por OCR: el OCR sólo se invoca en la rama de fallo.
 - ``text/plain`` — una sola página.
-- Office Open XML (``.docx``) y OpenDocument (``.odt``).
-- ``application/zip`` — se expande y se procesan los PDF y DOCX de dentro.
+- Office Open XML (``.docx``), con ``python-docx``.
+- OpenDocument (``.odt``, ``.ods``, ``.odp``), con la biblioteca estándar:
+  ``zipfile`` + ``expat`` sobre ``content.xml``, rechazando cualquier DOCTYPE.
+  No depende de ningún extra, así que también se lee en la imagen de la API.
+- ``application/zip`` — se expande y se procesan los PDF, DOCX y OpenDocument
+  de dentro; cada entrada abre su primera página con una línea separadora que
+  dice de qué fichero sale (``── nombre ──``).
 
 El formato lo decide la **firma del contenido** (:func:`_resolver_content_type`),
 no el ``Content-Type`` del servidor, que en PLACSP llega mal escrito o genérico.
 
-**Convención de página lógica en DOCX y ODT**: ninguno de los dos formatos
+**Convención de página lógica en DOCX y OpenDocument**: ninguno de los dos formatos
 tiene páginas — la paginación la decide el motor de renderizado al imprimir, y
 no está en el fichero. Se agrupan los párrafos no vacíos en bloques de
 :data:`_PARRAFOS_POR_PAGINA_LOGICA`, en orden documental, y cada bloque es una
@@ -35,11 +40,14 @@ así que una cita de la ficha sigue anclando a una región concreta y verificabl
 del documento; lo que no puede hacer es decir «página 3 de la impresión». Es
 estable frente a re-extracciones porque sólo depende del orden de los párrafos.
 
-**Zip bomb**: el número de entradas y el tamaño descomprimido acumulado están
-acotados (:data:`_ZIP_MAX_ENTRADAS` y ``MAX_DOCUMENT_SIZE_BYTES``), y la lectura
-de cada entrada se hace con un tope explícito en vez de fiarse de ``file_size``
-de la cabecera, que la escribe quien construyó el ZIP. No hay recursión: un ZIP
-dentro de un ZIP se ignora.
+**Zip bomb**: están acotados el número de entradas (:data:`_ZIP_MAX_ENTRADAS`),
+el tamaño descomprimido por entrada (:data:`_ZIP_MAX_BYTES_POR_ENTRADA`) y
+acumulado (``MAX_DOCUMENT_SIZE_BYTES``) y el ratio de compresión
+(:data:`_ZIP_RATIO_MAX`); la lectura de cada entrada se hace por bloques con
+un tope explícito en vez de fiarse de ``file_size`` de la cabecera, que la
+escribe quien construyó el ZIP. El ``content.xml`` de un OpenDocument pasa por
+la misma lectura acotada. No hay recursión: un ZIP dentro de un ZIP se ignora,
+y una entrada con ``..`` o ruta absoluta tampoco se lee.
 
 Un content-type que no sepamos leer marca el documento como ``unsupported``
 **con su content-type** (``v103``), no como ``error``: son cosas distintas y
@@ -48,9 +56,10 @@ sólo separadas se puede medir cuánta cobertura falta y de qué formato.
 Un content-type que sí sabemos leer pero cuya dependencia opcional falta **en
 este proceso** no es ninguna de las dos: la fila se queda ``pending``
 (:class:`ExtractorAusenteError`). Pasa en la imagen de la API, que extrae la
-ficha bajo demanda sin ``python-docx`` ni ``odfpy`` (traen ``lxml``, fuera de
+ficha bajo demanda sin ``python-docx`` (trae ``lxml``, fuera de
 ``requirements-api.in``); marcarla ``unsupported`` allí la sacaría para siempre
-del lote nocturno, que sí los tiene.
+del lote nocturno, que sí lo tiene. Desde 2026-10 OpenDocument ya no pasa por
+aquí: se lee con la biblioteca estándar y ``odfpy`` no se importa.
 
 Configuración del OCR (variables de entorno, leídas aquí y no en
 ``config/settings.py`` porque sólo las usa este módulo y sólo en el runner de
@@ -77,9 +86,10 @@ import subprocess
 import tempfile
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+from pathlib import Path, PurePosixPath
+from typing import Any, NoReturn
 from urllib.parse import urlparse
+from xml.parsers import expat  # nosemgrep -- se rechaza el DOCTYPE, ver «OpenDocument»
 
 import pybreaker
 import requests
@@ -97,7 +107,14 @@ CONTENT_TYPE_PDF = "application/pdf"
 CONTENT_TYPE_TEXT = "text/plain"
 CONTENT_TYPE_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 CONTENT_TYPE_ODT = "application/vnd.oasis.opendocument.text"
+CONTENT_TYPE_ODS = "application/vnd.oasis.opendocument.spreadsheet"
+CONTENT_TYPE_ODP = "application/vnd.oasis.opendocument.presentation"
 CONTENT_TYPE_ZIP = "application/zip"
+
+#: OpenDocument que se lee de ``content.xml`` con la biblioteca estándar. Los
+#: tres comparten estructura (párrafos ``text:p``/``text:h`` y tablas), así que
+#: los lee el mismo código: lo que cambia es dónde vive el texto, no cómo.
+_ODF_TIPOS = frozenset({CONTENT_TYPE_ODT, CONTENT_TYPE_ODS, CONTENT_TYPE_ODP})
 
 #: Los servidores de PLACSP no son consistentes con el content-type del ZIP;
 #: estos tres son la misma cosa.
@@ -108,7 +125,7 @@ _SUPPORTED_CONTENT_TYPES = frozenset(
         CONTENT_TYPE_PDF,
         CONTENT_TYPE_TEXT,
         CONTENT_TYPE_DOCX,
-        CONTENT_TYPE_ODT,
+        *_ODF_TIPOS,
         *_ZIP_ALIASES,
     }
 )
@@ -127,7 +144,7 @@ def supported_content_types() -> frozenset[str]:
     return _SUPPORTED_CONTENT_TYPES
 
 
-#: Párrafos por página lógica en DOCX/ODT. Ver la convención del docstring del
+#: Párrafos por página lógica en DOCX/OpenDocument. Ver la convención del docstring del
 #: módulo. 40 párrafos es del orden de una página impresa de pliego y mantiene
 #: los fragmentos dentro de lo que el chunker y el selector de páginas de la
 #: ficha (``services/rag/fact_sheet.py``) manejan sin cortar contexto útil.
@@ -137,9 +154,41 @@ _PARRAFOS_POR_PAGINA_LOGICA = 40
 #: entradas ya no es un expediente, es un intento de agotar el runner.
 _ZIP_MAX_ENTRADAS = 50
 
+#: Bytes descomprimidos máximos de UNA entrada (y del ``content.xml`` de un
+#: OpenDocument). El total del ZIP lo acota ``MAX_DOCUMENT_SIZE_BYTES``; este
+#: tope por entrada impide que un solo anexo se coma el presupuesto entero de
+#: los demás.
+_ZIP_MAX_BYTES_POR_ENTRADA = 25 * 1024 * 1024
+
+#: Ratio máximo descomprimido/comprimido de una entrada. Un PDF o un DOCX ya
+#: vienen comprimidos (ratio cercano a 1) y un XML de OpenDocument ronda 5-20;
+#: una bomba de deflate llega a ~1.000. 100 deja margen a lo legítimo y corta lo
+#: otro mucho antes de materializarlo.
+_ZIP_RATIO_MAX = 100
+
+#: Por debajo de este tamaño descomprimido el ratio no se mira: un fichero
+#: pequeño y repetitivo comprime mucho sin ser peligroso, y lo que importa de
+#: una bomba es cuánto ocupa al expandirse, no el ratio en sí.
+_ZIP_RATIO_UMBRAL_BYTES = 1024 * 1024
+
+#: Tamaño de cada lectura al descomprimir una entrada. El ratio se comprueba
+#: tras cada bloque, así que una bomba se corta al primer MiB sospechoso.
+_ZIP_BLOQUE_LECTURA = 1024 * 1024
+
 #: Extensiones que se procesan dentro de un ZIP. Sin recursión: un ``.zip``
-#: dentro de otro se ignora a propósito.
-_ZIP_EXTENSIONES = {".pdf": CONTENT_TYPE_PDF, ".docx": CONTENT_TYPE_DOCX}
+#: dentro de otro se ignora a propósito. La extensión solo **preselecciona**
+#: (no se descomprime lo que no se va a leer); el formato lo decide después la
+#: firma del contenido, igual que en una descarga directa.
+_ZIP_EXTENSIONES = {
+    ".pdf": CONTENT_TYPE_PDF,
+    ".docx": CONTENT_TYPE_DOCX,
+    ".odt": CONTENT_TYPE_ODT,
+    ".ods": CONTENT_TYPE_ODS,
+    ".odp": CONTENT_TYPE_ODP,
+}
+
+#: Bandera de la cabecera ZIP que declara el nombre en UTF-8 (bit 11).
+_ZIP_FLAG_UTF8 = 0x800
 
 #: Marca del fallo «este PDF no tiene texto». Se compara por texto y no por
 #: tipo de excepción porque el parser aislado (``_pdf_extraction_worker``)
@@ -609,14 +658,14 @@ def _extract_pdf_paginas_con_ocr(content: bytes) -> list[PaginaExtraida]:
         return [PaginaExtraida(texto=texto, ocr=True) for texto in paginas]
 
 
-# ── DOCX y ODT (S8.2) ──────────────────────────────────────────────────────
+# ── DOCX (S8.2) ────────────────────────────────────────────────────────────
 
 
 def _importar_opcional(modulo: str, *, content_type: str, paquete: str) -> Any:
     """Importa una dependencia opcional o declara el formato ``unsupported``.
 
     ``importlib`` y no ``import x`` para que el tipo sea ``Any`` sin un
-    ``# type: ignore``: ni ``python-docx`` ni ``odfpy`` publican stubs, y este
+    ``# type: ignore``: ``python-docx`` no publica stubs, y este
     módulo pasa mypy strict como el resto de producción.
     """
     try:
@@ -672,36 +721,277 @@ def _extract_docx_paginas(content: bytes) -> list[str]:
     return paginas
 
 
-def _extract_odt_paginas(content: bytes) -> list[str]:
-    """Párrafos de un ``.odt``, agrupados con la misma convención que el DOCX."""
-    opendocument = _importar_opcional(
-        "odf.opendocument", content_type=CONTENT_TYPE_ODT, paquete="odfpy"
-    )
-    odf_text = _importar_opcional("odf.text", content_type=CONTENT_TYPE_ODT, paquete="odfpy")
-    teletype = _importar_opcional("odf.teletype", content_type=CONTENT_TYPE_ODT, paquete="odfpy")
-    try:
-        documento = opendocument.load(io.BytesIO(content))
-        parrafos = [
-            str(teletype.extractText(nodo)) for nodo in documento.getElementsByType(odf_text.P)
-        ]
-    except Exception as exc:
-        raise DocumentFetchError(f"ODT corrupto o ilegible: {exc}") from exc
+# ── OpenDocument con la biblioteca estándar (ODT, ODS, ODP) ────────────────
+#
+# Hasta 2026-10 el ODT se leía con ``odfpy``, que trae ``lxml`` y por eso no
+# está en la imagen de la API: un ODT descargado allí se quedaba ``pending``
+# hasta el lote nocturno. ``content.xml`` es XML plano dentro de un ZIP y no
+# necesita nada más que ``zipfile`` y ``expat`` para leerse, así que ahora se
+# lee igual en todos los procesos.
+#
+# **XML hostil.** ``defusedxml`` no es dependencia de producción (solo está en
+# ``requirements-dev.txt``), y la mitigación que usa el resto del repo es el
+# parser endurecido de ``lxml``, que aquí es justo lo que se quiere evitar. Se
+# usa ``expat`` directamente y se **rechaza cualquier DOCTYPE**: un
+# ``content.xml`` de OpenDocument no declara DTD nunca, y sin DTD no hay
+# entidades que expandir («billion laughs») ni externas que resolver (XXE).
+# El manejador salta al abrir el DOCTYPE, antes de procesar su subconjunto
+# interno. ``expat`` además no resuelve entidades externas por sí mismo.
 
-    paginas = _agrupar_en_paginas_logicas(parrafos)
+_NS_TEXT = "urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+_NS_TABLE = "urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+_NS_OFFICE = "urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+
+#: Separador de espacio de nombres que se le pide a expat: los nombres llegan
+#: como ``"{uri} {local}"`` y se comparan con las tuplas de abajo.
+_SEP_NS = " "
+
+_ODF_PARRAFOS = frozenset({f"{_NS_TEXT} p", f"{_NS_TEXT} h"})
+_ODF_FILA = f"{_NS_TABLE} table-row"
+_ODF_CELDAS = frozenset({f"{_NS_TABLE} table-cell", f"{_NS_TABLE} covered-table-cell"})
+_ODF_ESPACIO = f"{_NS_TEXT} s"
+_ODF_TAB = f"{_NS_TEXT} tab"
+_ODF_SALTO = f"{_NS_TEXT} line-break"
+_ODF_ATRIBUTO_REPETICION = f"{_NS_TEXT} c"
+#: Subárboles cuyo texto no es contenido del documento: lo borrado del control
+#: de cambios (seguiría «diciendo» el importe que se corrigió) y los
+#: comentarios de revisión.
+_ODF_IGNORADOS = frozenset(
+    {
+        f"{_NS_TEXT} tracked-changes",
+        f"{_NS_OFFICE} annotation",
+        f"{_NS_OFFICE} annotation-end",
+    }
+)
+#: Tope de ``text:s text:c``: el atributo lo escribe quien hizo el fichero y un
+#: ``c="999999999"`` no puede convertirse en un gigabyte de espacios.
+_ODF_MAX_ESPACIOS = 1000
+
+
+class _LectorOdf:
+    """Recorre ``content.xml`` y deja los párrafos en orden documental.
+
+    Convenciones (las mismas que el DOCX, para que la página lógica signifique
+    lo mismo en los dos formatos):
+
+    - Cada ``text:p`` y ``text:h`` es un párrafo. ``odfpy`` solo devolvía los
+      ``text:p`` y perdía los encabezados, que en un pliego son los títulos de
+      cláusula.
+    - Una fila de tabla es **una** línea con sus celdas no vacías unidas por
+      `` | `` (como el DOCX); los párrafos de una celda se unen con espacio.
+      En una hoja de cálculo (ODS) eso es una fila por línea.
+    - Un párrafo anidado (el de un cuadro de texto dentro de otro párrafo) se
+      emite como párrafo propio al cerrarse.
+    """
+
+    def __init__(self) -> None:
+        self.parrafos: list[str] = []
+        self._buffers: list[list[str]] = []
+        self._filas: list[list[str]] = []
+        self._celdas: list[list[str]] = []
+        self._ignorando = 0
+
+    def _emitir(self, texto: str) -> None:
+        texto = texto.strip()
+        if not texto:
+            return
+        if self._celdas:
+            self._celdas[-1].append(texto)
+        else:
+            self.parrafos.append(texto)
+
+    def inicio(self, nombre: str, atributos: dict[str, str]) -> None:
+        if self._ignorando or nombre in _ODF_IGNORADOS:
+            self._ignorando += 1
+            return
+        if nombre in _ODF_PARRAFOS:
+            self._buffers.append([])
+        elif nombre == _ODF_FILA:
+            self._filas.append([])
+        elif nombre in _ODF_CELDAS:
+            self._celdas.append([])
+        elif self._buffers and nombre == _ODF_ESPACIO:
+            try:
+                repeticiones = int(atributos.get(_ODF_ATRIBUTO_REPETICION, "1"))
+            except ValueError:
+                repeticiones = 1
+            self._buffers[-1].append(" " * max(1, min(repeticiones, _ODF_MAX_ESPACIOS)))
+        elif self._buffers and nombre == _ODF_TAB:
+            self._buffers[-1].append("\t")
+        elif self._buffers and nombre == _ODF_SALTO:
+            self._buffers[-1].append("\n")
+
+    def fin(self, nombre: str) -> None:
+        if self._ignorando:
+            self._ignorando -= 1
+            return
+        if nombre in _ODF_PARRAFOS and self._buffers:
+            self._emitir("".join(self._buffers.pop()))
+        elif nombre in _ODF_CELDAS and self._celdas:
+            celda = " ".join(self._celdas.pop())
+            if self._filas:
+                self._filas[-1].append(celda)
+        elif nombre == _ODF_FILA and self._filas:
+            self._emitir(" | ".join(c for c in self._filas.pop() if c))
+
+    def texto(self, datos: str) -> None:
+        if not self._ignorando and self._buffers:
+            self._buffers[-1].append(datos)
+
+
+def _rechazar_dtd(*_args: object) -> NoReturn:
+    raise DocumentFetchError(
+        "OpenDocument con DOCTYPE en content.xml: rechazado (ODF no declara DTD; "
+        "solo serviría para expandir entidades)"
+    )
+
+
+def _parrafos_de_content_xml(xml: bytes) -> list[str]:
+    """Párrafos de un ``content.xml`` (ver :class:`_LectorOdf`)."""
+    lector = _LectorOdf()
+    parser = expat.ParserCreate(namespace_separator=_SEP_NS)
+    parser.buffer_text = True
+    parser.StartDoctypeDeclHandler = _rechazar_dtd
+    parser.EntityDeclHandler = _rechazar_dtd
+    parser.ExternalEntityRefHandler = _rechazar_dtd
+    parser.StartElementHandler = lector.inicio
+    parser.EndElementHandler = lector.fin
+    parser.CharacterDataHandler = lector.texto
+    try:
+        parser.Parse(xml, True)
+    except expat.ExpatError as exc:
+        raise DocumentFetchError(f"ODT corrupto o ilegible: {exc}") from exc
+    return lector.parrafos
+
+
+def _extract_odf_paginas(content: bytes, content_type: str = CONTENT_TYPE_ODT) -> list[str]:
+    """Párrafos de un OpenDocument, agrupados con la misma convención que el DOCX.
+
+    ``content_type`` solo da nombre al formato en los mensajes de error; ODT,
+    ODS y ODP se leen igual.
+    """
+    formato = {CONTENT_TYPE_ODS: "ODS", CONTENT_TYPE_ODP: "ODP"}.get(content_type, "ODT")
+    try:
+        archivo = zipfile.ZipFile(io.BytesIO(content))
+    except (zipfile.BadZipFile, OSError) as exc:
+        raise DocumentFetchError(f"{formato} corrupto o ilegible: {exc}") from exc
+    with archivo:
+        try:
+            info = archivo.getinfo("content.xml")
+        except KeyError as exc:
+            raise DocumentFetchError(f"{formato} sin content.xml") from exc
+        xml = _leer_entrada_acotada(
+            archivo,
+            info,
+            tope=min(_ZIP_MAX_BYTES_POR_ENTRADA, int(settings.MAX_DOCUMENT_SIZE_BYTES)),
+            que=f"content.xml del {formato}",
+        )
+
+    paginas = _agrupar_en_paginas_logicas(_parrafos_de_content_xml(xml))
     if not paginas:
-        raise DocumentFetchError("ODT sin texto extraíble")
+        raise DocumentFetchError(f"{formato} sin texto extraíble")
     return paginas
 
 
 # ── ZIP (S8.2) ─────────────────────────────────────────────────────────────
 
 
+def _leer_entrada_acotada(
+    archivo: zipfile.ZipFile, info: zipfile.ZipInfo, *, tope: int, que: str
+) -> bytes:
+    """Descomprime una entrada sin fiarse de lo que declara su cabecera.
+
+    ``file_size`` lo escribe quien construyó el ZIP: si ya confiesa el exceso
+    se rechaza sin descomprimir, pero si miente la lectura misma va acotada
+    (se pide un byte más que el tope, para detectar el exceso sin
+    materializarlo). El ratio se mide contra ``compress_size``, que sí es lo
+    que ``zipfile`` consume del fichero: con la lectura a medias ya es una cota
+    inferior del ratio final, así que superarlo pronto es motivo suficiente.
+    """
+    if info.file_size > tope:
+        raise DocumentFetchError(
+            f"{que}: el tamaño descomprimido declarado ({info.file_size:,} bytes) "
+            f"supera {tope:,} bytes"
+        )
+    comprimido = max(int(info.compress_size), 1)
+    bloques: list[bytes] = []
+    leidos = 0
+    with archivo.open(info) as fh:
+        while True:
+            bloque = fh.read(min(_ZIP_BLOQUE_LECTURA, tope + 1 - leidos))
+            if not bloque:
+                break
+            bloques.append(bloque)
+            leidos += len(bloque)
+            if leidos > tope:
+                raise DocumentFetchError(f"{que}: el contenido descomprimido supera {tope:,} bytes")
+            if leidos > _ZIP_RATIO_UMBRAL_BYTES and leidos / comprimido > _ZIP_RATIO_MAX:
+                raise DocumentFetchError(
+                    f"{que}: ratio de compresión superior a {_ZIP_RATIO_MAX}:1 (posible zip bomb)"
+                )
+    return b"".join(bloques)
+
+
+def _nombre_de_entrada(info: zipfile.ZipInfo) -> str:
+    """El nombre real de la entrada, también cuando el ZIP no declara UTF-8.
+
+    Sin la bandera UTF-8, ``zipfile`` decodifica el nombre como CP437, que es
+    lo que manda la especificación; pero muchos compresores de Windows
+    escriben UTF-8 sin marcarlo, y «Pliego técnico.odt» salía como
+    «Pliego tÃ©cnico.odt» en el separador de páginas.
+    """
+    nombre = info.filename
+    if info.flag_bits & _ZIP_FLAG_UTF8:
+        return nombre
+    try:
+        return nombre.encode("cp437").decode("utf-8")
+    except UnicodeError:
+        return nombre
+
+
+def _ruta_segura(nombre: str) -> bool:
+    """¿Es una ruta relativa normal, sin ``..``, absoluta ni de unidad?
+
+    Aquí nada se escribe a disco, pero una entrada así es la firma de un ZIP
+    fabricado para escaparse del directorio al expandirse: no es un anexo de
+    pliego y no se lee. Tampoco los restos de macOS (``__MACOSX/``, ``._*``),
+    que repiten el nombre del fichero real con un contenido que no lo es.
+    """
+    if not nombre or nombre.startswith(("/", "\\")) or "\\" in nombre:
+        return False
+    partes = PurePosixPath(nombre).parts
+    if not partes or ":" in partes[0]:
+        return False
+    if any(parte == ".." for parte in partes):
+        return False
+    return partes[0] != "__MACOSX" and not partes[-1].startswith("._")
+
+
+def _separador_de_entrada(nombre: str) -> str:
+    """Línea que abre las páginas de cada entrada del ZIP.
+
+    Va dentro del texto de la primera página de la entrada —no en una página
+    aparte— para no cambiar el contrato de «una página = texto de una página
+    del documento» que usan los offsets y las citas: la cita sigue anclando a
+    la página de verdad, y quien la lee sabe de qué anexo sale.
+    """
+    return f"── {nombre} ──"
+
+
 def _extract_zip_paginas(content: bytes) -> list[PaginaExtraida]:
-    """Expande el ZIP y concatena las páginas de los PDF y DOCX de dentro.
+    """Expande el ZIP y concatena las páginas de los documentos de dentro.
 
     Las entradas se procesan en orden alfabético para que el resultado sea
     reproducible entre corridas: los offsets de ``documento_pages`` —y por
     tanto las citas ya persistidas— dependen del orden en que se concatenan.
+
+    Límites (todos lanzan :class:`DocumentFetchError`, que deja la fila en
+    ``error`` y no ``unsupported``: un ZIP hostil no es cobertura que falte):
+    número de entradas (:data:`_ZIP_MAX_ENTRADAS`), tamaño descomprimido por
+    entrada (:data:`_ZIP_MAX_BYTES_POR_ENTRADA`) y total
+    (``MAX_DOCUMENT_SIZE_BYTES``), y ratio de compresión
+    (:data:`_ZIP_RATIO_MAX`). Profundidad 1: un ZIP dentro se ignora. Las
+    rutas con ``..``, absolutas o de unidad se ignoran (:func:`_ruta_segura`).
     """
     try:
         archivo = zipfile.ZipFile(io.BytesIO(content))
@@ -719,24 +1009,33 @@ def _extract_zip_paginas(content: bytes) -> list[PaginaExtraida]:
         paginas: list[PaginaExtraida] = []
         procesadas = 0
         for info in sorted(entradas, key=lambda i: i.filename):
-            extension = Path(info.filename).suffix.lower()
-            tipo_interno = _ZIP_EXTENSIONES.get(extension)
-            if tipo_interno is None:
+            nombre = _nombre_de_entrada(info)
+            if not _ruta_segura(nombre):
+                log.info("document_zip_entry_ruta_insegura", entry=nombre)
                 continue
-            # Lectura acotada: ``info.file_size`` lo escribe quien creó el ZIP
-            # y una bomba lo declara pequeño. Se pide un byte más que el
-            # presupuesto para poder detectar el exceso sin materializarlo.
-            with archivo.open(info) as fh:
-                datos = fh.read(presupuesto + 1)
-            if len(datos) > presupuesto:
+            tipo_por_extension = _ZIP_EXTENSIONES.get(PurePosixPath(nombre).suffix.lower())
+            if tipo_por_extension is None:
+                continue
+            if presupuesto <= 0:
                 raise DocumentFetchError(
                     "El contenido descomprimido del ZIP supera "
                     f"{settings.MAX_DOCUMENT_SIZE_BYTES:,} bytes"
                 )
+            datos = _leer_entrada_acotada(
+                archivo,
+                info,
+                tope=min(_ZIP_MAX_BYTES_POR_ENTRADA, presupuesto),
+                que=f"Entrada {nombre!r} del ZIP",
+            )
             presupuesto -= len(datos)
+            # La firma decide, como en una descarga directa: un «.docx» que en
+            # realidad es un ZIP cualquiera no se abre (eso sería recursión).
+            tipo_interno = _resolver_content_type(datos, tipo_por_extension)
+            if tipo_interno not in _TIPOS_DENTRO_DE_ZIP:
+                continue
             procesadas += 1
             try:
-                paginas.extend(_extraer_paginas_de_tipo(datos, tipo_interno))
+                de_la_entrada = _extraer_paginas_de_tipo(datos, tipo_interno)
             except ExtractorAusenteError:
                 # No es un adjunto roto: saltarlo dejaría el ZIP `extracted`
                 # sin el DOCX de dentro, y ninguna pasada volvería a por él.
@@ -744,14 +1043,26 @@ def _extract_zip_paginas(content: bytes) -> list[PaginaExtraida]:
             except DocumentFetchError as exc:
                 # Un adjunto roto dentro del ZIP no invalida los demás: mismo
                 # criterio fail-open que el lote diario.
-                log.info("document_zip_entry_skipped", entry=info.filename, error=str(exc))
+                log.info("document_zip_entry_skipped", entry=nombre, error=str(exc))
+                continue
+            if de_la_entrada:
+                primera = de_la_entrada[0]
+                de_la_entrada[0] = PaginaExtraida(
+                    texto=f"{_separador_de_entrada(nombre)}\n{primera.texto}", ocr=primera.ocr
+                )
+            paginas.extend(de_la_entrada)
 
     if not paginas:
         raise UnsupportedDocumentError(
-            f"ZIP sin PDF ni DOCX procesables ({procesadas} entradas candidatas)",
+            f"ZIP sin documentos procesables ({procesadas} entradas candidatas)",
             content_type=CONTENT_TYPE_ZIP,
         )
     return paginas
+
+
+#: Formatos que se extraen de dentro de un ZIP. Sin ZIP (profundidad 1) ni
+#: ``text/plain`` (un ``léeme.txt`` no es un pliego).
+_TIPOS_DENTRO_DE_ZIP = frozenset({CONTENT_TYPE_PDF, CONTENT_TYPE_DOCX, *_ODF_TIPOS})
 
 
 # ── Despacho ───────────────────────────────────────────────────────────────
@@ -770,8 +1081,8 @@ def _extraer_paginas_de_tipo(content: bytes, content_type: str) -> list[PaginaEx
         return _extract_pdf_paginas_con_ocr(content)
     if content_type == CONTENT_TYPE_DOCX:
         return [PaginaExtraida(texto=t) for t in _extract_docx_paginas(content)]
-    if content_type == CONTENT_TYPE_ODT:
-        return [PaginaExtraida(texto=t) for t in _extract_odt_paginas(content)]
+    if content_type in _ODF_TIPOS:
+        return [PaginaExtraida(texto=t) for t in _extract_odf_paginas(content, content_type)]
     if content_type in _ZIP_ALIASES:
         return _extract_zip_paginas(content)
     raise UnsupportedDocumentError(
@@ -799,8 +1110,8 @@ def _resolver_content_type(content: bytes, declarado: str | None) -> str | None:
 
     La firma del contenido manda; el tipo declarado solo decide cuando el
     contenido no tiene una firma reconocible (``text/plain``). Dentro de un ZIP
-    se distingue DOCX (``word/document.xml``) y ODT (``mimetype``) de un ZIP de
-    verdad; un XLSX u otro contenedor se deja con su tipo declarado, que sigue
+    se distingue DOCX (``word/document.xml``) y OpenDocument —ODT, ODS, ODP,
+    por su fichero ``mimetype``— de un ZIP de verdad; un XLSX u otro contenedor se deja con su tipo declarado, que sigue
     cayendo en ``unsupported`` como antes.
     """
     if content.startswith(_FIRMA_PDF):
@@ -814,8 +1125,8 @@ def _resolver_content_type(content: bytes, declarado: str | None) -> str | None:
                 if "mimetype" in nombres:
                     with archivo.open("mimetype") as fh:
                         mimetype = fh.read(100).decode("ascii", errors="replace").strip()
-                    if mimetype == CONTENT_TYPE_ODT:
-                        return CONTENT_TYPE_ODT
+                    if mimetype in _ODF_TIPOS:
+                        return mimetype
                 if any(nombre.startswith(("xl/", "ppt/")) for nombre in nombres):
                     return declarado
         except (zipfile.BadZipFile, OSError, KeyError):

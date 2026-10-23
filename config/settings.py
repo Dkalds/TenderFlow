@@ -451,7 +451,9 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # así que se copia a mano y `test_allowlist_de_documentos_por_defecto_sale_del_inventario`
     # exige que coincidan.
     DOCUMENT_ALLOWED_HOSTS: str = (
-        "contrataciondelestado.es,*.contrataciondelestado.es,ted.europa.eu,contractaciopublica.cat"
+        "contrataciondelestado.es,*.contrataciondelestado.es,ted.europa.eu,contractaciopublica.cat,"
+        # TACRC: PDF de la resolución vinculada (scraper/connectors/tacrc.py).
+        "www.hacienda.gob.es"
     )
     WEBHOOK_ALLOWED_HOSTS: str = ""
     ALLOW_SELF_REGISTRATION: bool = False

@@ -106,6 +106,25 @@ def _vigente_sql() -> str:
 #: de extracción no lo lleva.
 _FALLO_DE_DESCARGA = "descarga fallida:"
 
+#: Prefijo del ``error_detail`` que dejaba un formato sin soporte **antes** de
+#: ``v103``, cuando aún no existía ``unsupported`` y todo caía en ``error``. Lo
+#: escribe ``scraper/document_fetcher.py`` (``content-type no soportado: …``).
+_FORMATO_SIN_SOPORTE = "content-type no soportado:"
+
+
+def normalizar_content_type(content_type: str | None) -> str:
+    """Forma comparable de un content-type: sin parámetros, minúsculas y sin guiones.
+
+    Sin guiones porque PLACSP mandaba el DOCX como
+    ``application/vnd.openxmlformatsofficedocument…`` (sin el guion de
+    ``openxmlformats-officedocument``), y ese tipo mal escrito es justo el que
+    llevan las ~2.100 filas que el reencolado viene a recuperar. La consulta de
+    :meth:`DocumentosRepository.reencolar_formatos_soportados` aplica la misma
+    transformación en SQL.
+    """
+    return (content_type or "").split(";", 1)[0].strip().lower().replace("-", "")
+
+
 #: Lo que deja escrito un fallo que vino del otro lado: el transporte fijado de
 #: ``shared/outbound_http.py`` (un estado HTTP o un corte de red) y, en las
 #: filas anteriores a él, el de ``requests``.
@@ -872,6 +891,71 @@ class DocumentosRepository:
                     documento_id,
                 ),
             )
+
+    def reencolar_formatos_soportados(
+        self, content_types: Iterable[str], *, aplicar: bool
+    ) -> list[dict[str, Any]]:
+        """Devuelve a ``pending`` los documentos sin soporte cuyo formato ya se lee.
+
+        ``unsupported`` es terminal a propósito (ver :meth:`mark_unsupported`):
+        nada lo saca de ahí salvo esto, que se ejecuta **a mano** cuando el
+        extractor aprende un formato. Entran dos grupos:
+
+        - ``status = 'unsupported'`` (``v103`` en adelante);
+        - ``status = 'error'`` con ``error_detail`` «content-type no soportado:»,
+          que es como quedaba el mismo caso antes de ``v103``. Un ``error`` de
+          descarga o un PDF roto no lleva ese prefijo y no se toca.
+
+        y de ellos, solo los que tienen un ``content_type`` de *content_types*,
+        comparado con :func:`normalizar_content_type` (por eso entra el DOCX
+        mal escrito de PLACSP). Un tipo que sigue sin leerse (XLSX, HTML, RAR)
+        se queda donde está: reencolarlo gastaría una descarga para volver al
+        mismo sitio.
+
+        Con ``aplicar=False`` solo cuenta. Devuelve, por ``(content_type,
+        status)`` de origen, cuántas filas casan (o se reencolaron).
+        """
+        normalizados = sorted({normalizar_content_type(ct) for ct in content_types} - {""})
+        if not normalizados:
+            return []
+        marcadores = ", ".join(["%s"] * len(normalizados))
+        filtro = (
+            "(status = 'unsupported' "
+            f"OR (status = 'error' AND starts_with(error_detail, '{_FORMATO_SIN_SOPORTE}'))) "
+            "AND replace(lower(btrim(split_part(content_type, ';', 1))), '-', '') "
+            f"IN ({marcadores})"
+        )
+        if not aplicar:
+            with connect_read() as c:
+                cur = c.execute(
+                    "SELECT content_type, status, COUNT(*) AS total FROM documentos "
+                    f"WHERE {filtro} GROUP BY content_type, status "
+                    "ORDER BY total DESC, content_type, status",
+                    tuple(normalizados),
+                )
+                return rows_to_dicts(cur)
+
+        with connect() as c:
+            # El ``status`` de origen se devuelve desde la subconsulta: tras el
+            # UPDATE la fila ya es ``pending`` y el informe no sabría de dónde vino.
+            cur = c.execute(
+                "UPDATE documentos d SET status = 'pending', error_detail = NULL, "
+                "updated_at = %s "
+                "FROM (SELECT id, status AS status_previo FROM documentos "
+                f"      WHERE {filtro}) previo "
+                "WHERE d.id = previo.id "
+                "RETURNING d.content_type, previo.status_previo",
+                (now_utc_iso(), *normalizados),
+            )
+            conteo: dict[tuple[str | None, str], int] = {}
+            for content_type, status_previo in cur.fetchall():
+                clave = (content_type, str(status_previo))
+                conteo[clave] = conteo.get(clave, 0) + 1
+        log.info("documentos_reencolados", total=sum(conteo.values()), tipos=len(conteo))
+        return [
+            {"content_type": ct, "status": st, "total": n}
+            for (ct, st), n in sorted(conteo.items(), key=lambda kv: (-kv[1], str(kv[0])))
+        ]
 
     # ── Binario conservado en el almacén de objetos (v103, S8.1) ─────────
 

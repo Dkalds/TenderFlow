@@ -77,3 +77,35 @@ def upsert_resoluciones_lote(filas: Sequence[Mapping[str, Any]]) -> tuple[int, i
         )
     nuevas = len(set(zip(tribunales, numeros, strict=True)) - existentes)
     return nuevas, len(filas) - nuevas
+
+
+def resoluciones_vinculadas_sin_documento(
+    prefijo_hash: str, *, limit: int = 500
+) -> list[dict[str, str]]:
+    """Resoluciones vinculadas a una licitación cuyo PDF aún no es documento suyo.
+
+    Es la cola de :func:`scraper.connectors.tacrc.registrar_documentos`: el PDF
+    de una resolución vinculada entra en ``documentos`` como adjunto de la
+    licitación, y el ``NOT EXISTS`` hace que cada pasada solo mire las que
+    faltan. La identidad del documento es ``prefijo_hash`` + el número de
+    resolución con ``/`` cambiada por ``-`` (``tacrc-1758-2025``); el conector
+    construye la misma cadena en Python, y si las dos divergieran cada pasada
+    volvería a proponer las mismas resoluciones —sin duplicar nada, porque
+    ``upsert_meta`` es idempotente, pero gastando viajes—.
+    """
+    with connect() as c:
+        filas = c.execute(
+            "SELECT r.licitacion_id, r.numero_resolucion, r.url_pdf "
+            "FROM resoluciones_recurso r "
+            "WHERE r.licitacion_id IS NOT NULL AND r.url_pdf IS NOT NULL "
+            "AND NOT EXISTS (SELECT 1 FROM documentos d "
+            "  WHERE d.licitacion_id = r.licitacion_id "
+            "  AND d.source_hash = %s || translate(r.numero_resolucion, '/', '-')) "
+            "ORDER BY r.fecha DESC NULLS LAST, r.numero_resolucion "
+            "LIMIT %s",
+            (prefijo_hash, max(1, min(int(limit), 5000))),
+        ).fetchall()
+    return [
+        {"licitacion_id": str(lic), "numero_resolucion": str(num), "url_pdf": str(url)}
+        for lic, num, url in filas
+    ]

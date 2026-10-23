@@ -5,8 +5,12 @@ en ``run_connector``: tiene su camino de ingesta ligero propio que SÍ
 reutiliza los cursores (``ingestion_cursors``, source ``tacrc``) y la DLQ
 (RFC 20260611-1 §5.3).
 
-v1 = solo metadatos + URL del PDF (la extracción de texto del PDF queda fuera
-de alcance). El índice es HTML; el parser es deliberadamente tolerante: busca
+v1 = solo metadatos + URL del PDF. Desde 2026-10, el PDF de cada resolución
+**vinculada** a una licitación entra además en ``documentos`` como adjunto
+``additional`` de esa licitación (:func:`registrar_documentos`), y el lote
+nocturno lo descarga y extrae como cualquier pliego.
+
+El índice es HTML; el parser es deliberadamente tolerante: busca
 filas/enlaces con número de resolución (``NNN/AAAA``) y extrae del texto
 circundante recurso, fecha y sentido cuando aparecen.
 
@@ -57,6 +61,7 @@ from lxml import html as lxml_html
 from config import settings
 from db.database import get_cursor, set_cursor
 from db.dlq import record_failure
+from db.upsert import DocumentoReferencia
 from observability import get_logger
 from services.resoluciones import Resolucion, link_unlinked, upsert_resoluciones
 
@@ -277,6 +282,72 @@ def parse_listado_json(texto: str, base_url: str = "") -> list[Resolucion]:
     return list(vistas.values())
 
 
+#: Prefijo de ``documentos.source_hash`` del PDF de una resolución. Ver
+#: :func:`registrar_documentos` y ``db.resoluciones.resoluciones_vinculadas_sin_documento``,
+#: que construye la misma cadena en SQL.
+PREFIJO_HASH_DOCUMENTO = "tacrc-"
+
+#: Caracteres que no se re-escapan al normalizar la URL del PDF. ``%`` está
+#: dentro: las URL del índice ya llegan escapadas (``resoluci%c3%b3n``) y
+#: volver a escapar el ``%`` las rompería; lo que se arregla son los espacios y
+#: las letras sin escapar de un ``href`` copiado tal cual de la biblioteca.
+_URL_SEGURA = ":/?&=%()#+,;@!$'*~"
+
+
+def referencia_documento(numero_resolucion: str, url_pdf: str) -> DocumentoReferencia:
+    """El PDF de una resolución como documento de la licitación a la que se vinculó.
+
+    ``tipo='additional'``, como el anuncio de TED: no es ninguno de los dos
+    pliegos (CHECK de ``v56``), así que no reserva portada en la ficha
+    (``services/rag/fact_sheet.py``) y queda detrás de ellos en todo orden por
+    tipo. ``source_hash`` es el número de resolución: una resolución publicada
+    no cambia, así que identifica el fichero igual que un hash del contenido,
+    y sin él ``upsert_meta`` la trataría como fila «legacy» adoptable.
+    """
+    return DocumentoReferencia(
+        tipo="additional",
+        uri=quote(url_pdf, safe=_URL_SEGURA),
+        filename=f"Resolución TACRC {numero_resolucion}.pdf",
+        source_hash=f"{PREFIJO_HASH_DOCUMENTO}{numero_resolucion.replace('/', '-')}",
+    )
+
+
+def registrar_documentos(*, limit: int = 500) -> int:
+    """Da de alta como documento de su licitación el PDF de cada resolución vinculada.
+
+    Hasta 2026-10 el PDF solo vivía en ``resoluciones_recurso.url_pdf``: la
+    API devolvía el enlace, pero su texto no llegaba a la búsqueda en pliegos
+    ni al asistente. Ahora entra en ``documentos`` y el lote nocturno lo descarga y
+    lo extrae como cualquier otro adjunto (host en ``dominios_documentos`` del
+    inventario de fuentes). Solo las **vinculadas**: una resolución sin
+    licitación no tiene de quién ser documento.
+
+    Idempotente (AGENTS.md §3.2) por dos lados: la consulta solo devuelve las
+    que aún no tienen documento, y ``upsert_meta`` identifica el adjunto por
+    ``(licitacion_id, tipo, source_hash)``. Fail-open por licitación, como
+    ``_persist_documentos`` de ``run_connector``: devuelve cuántas referencias
+    se escribieron.
+    """
+    from db.repositories.documentos import DocumentosRepository
+    from db.resoluciones import resoluciones_vinculadas_sin_documento
+
+    por_licitacion: dict[str, list[DocumentoReferencia]] = {}
+    for fila in resoluciones_vinculadas_sin_documento(PREFIJO_HASH_DOCUMENTO, limit=limit):
+        por_licitacion.setdefault(fila["licitacion_id"], []).append(
+            referencia_documento(fila["numero_resolucion"], fila["url_pdf"])
+        )
+    repo = DocumentosRepository()
+    escritas = 0
+    for licitacion_id, refs in por_licitacion.items():
+        try:
+            escritas += repo.upsert_meta(licitacion_id, refs)
+        except Exception as e:
+            log.warning(
+                "tacrc_documentos_persist_failed", licitacion_id=licitacion_id, error=str(e)
+            )
+    return escritas
+
+
 def _hoy() -> date:
     return datetime.now(UTC).date()
 
@@ -388,6 +459,13 @@ def run(
 
     link_stats = link_unlinked()
     stats.update(link_stats)
+    # Tras vincular: es la vinculación la que dice de qué licitación es cada
+    # PDF. Un fallo aquí no tumba la pasada (las resoluciones ya se escribieron).
+    try:
+        stats["documentos"] = registrar_documentos()
+    except Exception as e:
+        stats["documentos"] = 0
+        log.warning("tacrc_documentos_failed", error=str(e))
     log.info("tacrc_run_done", **stats)
     record_source_health(
         SOURCE_ID,
@@ -486,7 +564,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"TACRC: {stats['fetched']} resoluciones · {stats['nuevas']} nuevas · "
         f"{stats['actualizadas']} actualizadas · {stats.get('vinculadas', 0)} vinculadas · "
-        f"{stats.get('eventos', 0)} eventos · {stats['errores']} errores"
+        f"{stats.get('eventos', 0)} eventos · {stats.get('documentos', 0)} documentos · "
+        f"{stats['errores']} errores"
     )
     return 0 if stats["errores"] == 0 else 1
 
