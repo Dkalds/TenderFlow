@@ -129,5 +129,19 @@ Desde el 2026-10-02 emiten referencias tres fuentes (`scraper/documentos_platafo
   cada publicación, que además cita el anuncio TED del mismo contrato.
 
 La ficha HTML de PLACSP no se usa: su `robots.txt` es `Disallow: /` y no sirve
-los documentos a un User-Agent que se identifique como bot. Galicia, Euskadi y
-TACRC no extraen enlaces todavía.
+los documentos a un User-Agent que se identifique como bot.
+
+Desde 2026-10 se suma una cuarta:
+
+- **TACRC** (`www.hacienda.gob.es`): el PDF de cada resolución **vinculada** a
+  una licitación, como adjunto `additional` de esa licitación
+  (`scraper.connectors.tacrc.registrar_documentos`). Una resolución sin
+  vincular no es documento de nadie y no se emite.
+
+**Galicia y Euskadi no emiten referencias, y no por olvido.** Su conector
+descarga solo el RSS, y cada `item` trae título, enlace a la ficha, fecha y una
+descripción en prosa (estado, órgano, tipo, importe, plazos) sin un solo enlace
+a pliegos o anexos. Los documentos viven en la ficha HTML de cada licitación,
+que el conector no pide: traerlos exigiría una petición por ficha, revisar su
+`robots.txt` y una fixture real. Queda anotado en el backlog (P3 «Referencias a
+documentos desde Galicia, Euskadi y TACRC»).

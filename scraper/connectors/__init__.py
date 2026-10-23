@@ -102,7 +102,9 @@ class RegisteredSource:
     #: enlazara. Vacío significa «esta fuente no emite referencias a
     #: documentos». Desde el 2026-10-02 las emiten PLACSP, TED (el PDF de su
     #: anuncio, ``scraper.documentos_plataforma``) y PSCP (los pliegos de la
-    #: ficha de cada publicación); Galicia, Euskadi y TACRC aún no. Cuando un
+    #: ficha de cada publicación), y desde 2026-10 TACRC (el PDF de la
+    #: resolución vinculada). Galicia y Euskadi no: su RSS no enlaza ningún
+    #: documento (ver ``docs/regional-source-coverage.md``). Cuando un
     #: conector empiece a emitir ``DocumentoReferencia``, su dominio se declara
     #: aquí y el test de paridad exige que la allowlist por defecto lo incluya.
     dominios_documentos: tuple[str, ...] = ()
@@ -261,6 +263,9 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
             "cómo terminaron los recursos presentados."
         ),
         estado="opcional",
+        # El PDF de cada resolución vinculada a una licitación (2026-10,
+        # ``scraper.connectors.tacrc.registrar_documentos``).
+        dominios_documentos=("www.hacienda.gob.es",),
     ),
     RegisteredSource(
         source_id="placsp_watched_company_awards",

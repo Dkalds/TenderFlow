@@ -954,6 +954,11 @@ _Sin ítems abiertos._
 - **Relación:** S8.4 roza el P3 «Un solo transporte para bajar assets de la Release» (cerrado el 2026-09-18): los dos tocan cómo se resuelve un artefacto de modelo, y conviene decidirlos juntos.
 - **Riesgo:** medio — el coste del OCR por página se mide en el primer run nocturno y lo acota el tope de páginas.
 - **Progreso 2026-09-28:** el soporte de DOCX existía pero no se usaba en la mayoría de casos: PLACSP manda el tipo mal escrito (`…openxmlformatsofficedocument…`, sin guion) y 1.964 documentos acabaron en `unsupported`, el mayor agujero de cobertura medido. El formato lo decide ahora la firma del contenido (`_resolver_content_type`). Las filas ya marcadas no se recuperan solas: `unsupported` no vuelve a `list_pendientes`, así que hace falta reencolarlas (dato de producción, OK del mantenedor).
+- **Progreso 2026-10-23 (tanda paralela, agente H):**
+  - **OpenDocument sin `odfpy`.** ODT, ODS y ODP se leen de `content.xml` con `zipfile` + `expat` (`_extract_odf_paginas`), con encabezados (`text:h`, que `odfpy` perdía), filas de tabla como una línea y sin el texto borrado del control de cambios. Un `content.xml` con `DOCTYPE` se rechaza antes de expandir entidades (`defusedxml` no es dependencia de producción). Al no depender de ningún extra, el ODT ya se lee también en la imagen de la API. `odfpy` queda sin uso en el extra `[pliegos]` de `pyproject.toml`: retirarlo es un cambio de dependencias (§6) y se deja para quien lo apruebe.
+  - **ZIP endurecido.** Tope por entrada (`_ZIP_MAX_BYTES_POR_ENTRADA`) además del total, ratio de compresión (`_ZIP_RATIO_MAX`, comprobado por bloques), rutas con `..`/absolutas/de unidad y restos de macOS ignorados, nombres UTF-8 sin bandera recuperados, ODT/ODS/ODP dentro del ZIP, y cada entrada abre su primera página con `── nombre ──`. Sigue sin recursión. Tests en `tests/test_unit_document_fetcher_odf_zip.py` (zip bomb y path traversal construidos en memoria).
+  - **Reencolado.** `make reencolar-documentos` (sin `APLICAR=1` solo cuenta) devuelve a `pending` las filas `unsupported` —y las `error` con «content-type no soportado:» de cuando aún no existía ese estado— cuyo tipo ya se lee, comparando sin guiones para recoger el DOCX mal escrito de PLACSP. Medido el 2026-10-23 por el MCP de solo lectura: ~2.140 DOCX (1.007 `unsupported` + 1.131 `error`), 48 ODT, 2 ODS y 215 ZIP. **Pendiente, propietario:** ejecutarlo contra producción ([runbooks/documentos-reencolar.md](runbooks/documentos-reencolar.md)). XLSX (337), XML (349), HTML (237), RTF, `.doc` y RAR siguen sin leerse y no se tocan.
+  - **OCR de escaneados: fuera de esta tanda.** S8.3 dejó `ocrmypdf` en el runner de `pliegos.yml`, pero el coste por página sigue sin medir (su propia aceptación), y sin ese número no se amplía: los 54 PDF «sin texto extraíble» en `error` no entran en el reencolado.
 
 ### [P2] Retirar la excepción de `braces` en `npm audit` cuando haya versión corregida (caduca el 2026-11-03)
 - **Área:** scripts/check_npm_audit.py, web/package-lock.json, .github/workflows/ci.yml (job `audit`)
@@ -1027,6 +1032,7 @@ _Sin ítems abiertos._
   - Decidido si la analítica de competidores sin filtro de tecnología debe contar los menores.
   - Variables en `vars.` según el runbook; las tres fuentes en `ok` en el healthcheck.
 - **Riesgo:** medio — volumen nuevo en `adjudicaciones` y `empresas`.
+- **Nota 2026-10-23 (tanda paralela):** no se encienden en esta tanda: dependen de `make medir-solape` contra producción (D16, D42 del plan de salida al mercado). El comando existe y funciona: se ejecutó en local contra una base migrada a head (vacía, así que solo prueba el camino). Contra producción lo ejecuta el propietario con un `DATABASE_URL` de lectura (`make medir-solape`, o `python scripts/medir_solape_agregados.py --json`); el script solo usa el pool de lectura (`default_transaction_read_only=on`). El número se anota aquí antes de decidir.
 
 ### [P2] Medir la cobertura de las condiciones oficiales de CODICE y verificar sus nombres
 - **Área:** scraper/codice_parser.py (`parse_condiciones`), scripts/medir_terminos_codice.py
@@ -1110,6 +1116,15 @@ _Sin ítems abiertos._
 - **Riesgo:** bajo — el backend y su escenario (`tests/test_escenario_gobierno_organizacion.py`) ya existen; es una sección nueva en la ficha.
 
 ## P3 — Nice to have
+
+### [P3] Referencias a documentos desde Galicia, Euskadi y TACRC
+- **Área:** scraper/connectors/{tacrc,regional_rss,galicia,euskadi}.py, db/resoluciones.py, config/settings.py
+- **Problema:** solo PLACSP, TED y PSCP emitían referencias a documentos; las otras tres fuentes registradas no aportaban ningún adjunto.
+- **Progreso 2026-10-23 (tanda paralela, agente H):**
+  - **TACRC — hecho en código.** El PDF de cada resolución **vinculada** a una licitación entra en `documentos` como adjunto `additional` de esa licitación (`scraper.connectors.tacrc.registrar_documentos`, tras `link_unlinked`), con `source_hash = tacrc-<número>` y upsert idempotente; `www.hacienda.gob.es` pasa a `dominios_documentos` y a `DOCUMENT_ALLOWED_HOSTS`, con su propio circuito en `scraper/resilience.py`. Efecto hoy: **cero**, porque en producción hay 19 resoluciones y ninguna vinculada (MCP, 2026-10-23); crece cuando se encienda el índice completo (ítem «Encender las fuentes nuevas») y la vinculación encuentre expedientes.
+  - **Galicia y Euskadi — no se emiten, a propósito.** Lo que su conector descarga es solo el RSS, y sus `item` traen título, enlace a la ficha, `pubDate` y una descripción en prosa (estado, órgano, tipo, importe, fechas) sin ningún enlace a pliegos ni anexos: no hay nada que emitir sin inventarlo. Los documentos están en la ficha HTML de cada licitación, que el conector no pide. Para traerlos haría falta una petición por ficha, revisar antes su `robots.txt` (el de PLACSP es `Disallow: /`, y por eso no se lee la suya) y una fixture real: la sesión del 2026-10-23 no tenía salida a `contratosdegalicia.gal` ni a `euskadi.eus`.
+- **Pendiente:** (1) si Render fija `DOCUMENT_ALLOWED_HOSTS` a mano, añadir `www.hacienda.gob.es` (acción del propietario; `.env.example` no se tocó, §6); (2) Galicia/Euskadi: `--dump` del RSS real para confirmar que no hay enlaces y decidir si merece la pena pedir la ficha.
+- **Riesgo:** bajo — volumen mínimo y fail-open por licitación.
 
 ### [P3] Pasar las fechas de `text` a `timestamptz`
 - **Área:** db/ (esquema), todo lector de fechas

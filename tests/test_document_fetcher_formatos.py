@@ -159,11 +159,12 @@ class TestFormatosSoportados:
         assert exc.value.content_type == CONTENT_TYPE_DOCX
         assert "python-docx" in str(exc.value)
 
-    def test_sin_odfpy_el_odt_es_unsupported_no_error(self, monkeypatch):
+    def test_sin_odfpy_el_odt_se_lee_igual(self, monkeypatch):
+        """Desde 2026-10 el ODT se lee con la biblioteca estándar: sin odfpy
+        (la imagen de la API) ya no es ``unsupported`` ni se queda pendiente."""
         _sin_dependencia(monkeypatch, "odf")
-        with pytest.raises(UnsupportedDocumentError) as exc:
-            _extract_paginas(_fixture("pliego.odt"), CONTENT_TYPE_ODT)
-        assert exc.value.content_type == CONTENT_TYPE_ODT
+        paginas = _extract_paginas(_fixture("pliego.odt"), CONTENT_TYPE_ODT)
+        assert FRASE in paginas[0].texto
 
     def test_docx_corrupto_es_error_no_unsupported(self):
         """Un fichero roto no es un formato sin soporte: no se cuentan juntos."""

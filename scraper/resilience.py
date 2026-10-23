@@ -191,10 +191,14 @@ placsp_breaker = _nuevo_breaker("placsp")
 #: y paraban también la descarga de sus pliegos, que es el grueso del lote.
 ted_breaker = _nuevo_breaker("ted")
 pscp_breaker = _nuevo_breaker("pscp")
+#: PDFs de resoluciones del TACRC (2026-10). Mismo motivo: sin el suyo, cinco
+#: fallos de hacienda.gob.es abrían el de PLACSP.
+tacrc_breaker = _nuevo_breaker("tacrc")
 
 _BREAKERS_POR_HOST: tuple[tuple[str, pybreaker.CircuitBreaker], ...] = (
     ("ted.europa.eu", ted_breaker),
     ("contractaciopublica.cat", pscp_breaker),
+    ("hacienda.gob.es", tacrc_breaker),
 )
 
 
