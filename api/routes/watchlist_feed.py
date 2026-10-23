@@ -18,14 +18,12 @@ identidad sale ahora del **titular** de la clave, igual que en
 **El token no se escribe en ningún log.** El access log propio
 (``api/middleware.py::_registrar_acceso``) guarda la plantilla de la ruta sin
 query y Sentry la quita (``observability/sentry.py::_strip_pii``), pero la
-línea de acceso de uvicorn lleva la URL entera. De ahí ``_SinTokenEnAccessLog``,
-que se instala sobre el logger ``uvicorn.access`` al importar este módulo.
+línea de acceso de uvicorn lleva la URL entera. La redacta
+``observability/logging.py::AccessLogQueryRedactor``, que ``configure_logging``
+instala sobre el logger ``uvicorn.access`` para todas las rutas.
 """
 
 from __future__ import annotations
-
-import logging
-import re
 
 from fastapi import (
     APIRouter,
@@ -60,40 +58,6 @@ _UNAUTHORIZED = HTTPException(
     detail="API key ausente o inválida.",
     headers={"WWW-Authenticate": "ApiKey"},
 )
-
-#: ``token=<lo que sea>`` dentro de una query, hasta el siguiente ``&``.
-_TOKEN_EN_QUERY = re.compile(r"([?&]token=)[^&\s\"]*")
-
-
-def redactar_token(texto: str) -> str:
-    """Sustituye el valor de ``token=`` de una URL por ``[REDACTED]``."""
-    return _TOKEN_EN_QUERY.sub(r"\1[REDACTED]", texto)
-
-
-class _SinTokenEnAccessLog(logging.Filter):
-    """Quita la clave de la línea de acceso de uvicorn.
-
-    uvicorn la formatea con ``args = (cliente, método, ruta_con_query,
-    versión, estado)``: se reescribe el argumento, no el mensaje, para no
-    depender de su formato.
-    """
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        if isinstance(record.args, tuple):
-            record.args = tuple(
-                redactar_token(arg) if isinstance(arg, str) else arg for arg in record.args
-            )
-        return True
-
-
-def _instalar_filtro_access_log() -> None:
-    """Idempotente: importar el módulo dos veces no apila filtros."""
-    acceso = logging.getLogger("uvicorn.access")
-    if not any(isinstance(f, _SinTokenEnAccessLog) for f in acceso.filters):
-        acceso.addFilter(_SinTokenEnAccessLog())
-
-
-_instalar_filtro_access_log()
 
 
 async def _clave_del_feed(

@@ -88,6 +88,18 @@ _URL_QUERY_SECRET_RE = re.compile(
 
 _REDACTED = "***REDACTED***"
 
+# Parámetros de query que llevan una credencial y que la línea de acceso de
+# uvicorn imprimiría en claro, porque escribe la ruta con su query: la clave
+# del feed Atom (`?token=`) y el `code`/`state` de un solo uso del callback
+# OAuth (2026-10-17 → 10-21 quedaron en los logs de Render). Se redactan en
+# cualquier ruta; el nombre se conserva para que la línea siga sirviendo.
+_ACCESS_LOG_SECRET_PARAMS = ("token", "code", "state", "id_token", "access_token")
+# Anclado a `?`/`&`: `postal_code=` o `estado=` no casan.
+_ACCESS_LOG_QUERY_SECRET_RE = re.compile(
+    r"([?&](?:" + "|".join(_ACCESS_LOG_SECRET_PARAMS) + r")=)[^&\s\"]*",
+    re.IGNORECASE,
+)
+
 # Cache de valores sensibles — se actualiza una única vez en configure_logging().
 # Evita leer os.environ en cada evento de log.
 _cached_sensitive_values: set[str] = set()
@@ -188,6 +200,45 @@ class _RedactingFormatter(logging.Formatter):
         return redact_text(super().formatStack(stack_info))
 
 
+def redact_query_credentials(text: str) -> str:
+    """Sustituye el valor de los parámetros credenciales de una URL por ``[REDACTED]``.
+
+    ``/callback?state=abc&code=xyz&scope=email`` →
+    ``/callback?state=[REDACTED]&code=[REDACTED]&scope=email``.
+    """
+    return _ACCESS_LOG_QUERY_SECRET_RE.sub(r"\1[REDACTED]", text)
+
+
+class AccessLogQueryRedactor(logging.Filter):
+    """Quita las credenciales de la query en la línea de acceso de uvicorn.
+
+    uvicorn la emite con ``args = (cliente, método, ruta_con_query, versión,
+    estado)``: se reescriben los argumentos, no el formato, para no depender de
+    él. Un registro sin argumentos se redacta en el mensaje. Nunca descarta.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple) and record.args:
+            record.args = tuple(
+                redact_query_credentials(arg) if isinstance(arg, str) else arg
+                for arg in record.args
+            )
+        elif not record.args and isinstance(record.msg, str):
+            record.msg = redact_query_credentials(record.msg)
+        return True
+
+
+def install_access_log_redactor() -> None:
+    """Instala :class:`AccessLogQueryRedactor` en ``uvicorn.access``. Idempotente.
+
+    Es un filtro de logger, no de handler: vale con la configuración de logging
+    de uvicorn, que aplica antes de importar la app y no quita filtros.
+    """
+    acceso = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, AccessLogQueryRedactor) for f in acceso.filters):
+        acceso.addFilter(AccessLogQueryRedactor())
+
+
 def _detect_json_default() -> bool:
     """Por defecto JSON en entornos no-TTY (CI, Docker, systemd)."""
     from config import settings
@@ -244,6 +295,8 @@ def configure_logging(
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(level)
+
+    install_access_log_redactor()
 
     global _configured
     _configured = True
