@@ -90,7 +90,9 @@ def test_el_token_no_queda_en_el_access_log_de_uvicorn():
     Un lector de feeds la pide cada pocos minutos: sin el filtro, el log de
     producción acumularía la clave en claro una vez por petición.
     """
-    import api.routes.watchlist_feed  # noqa: F401 -- importarlo instala el filtro
+    from observability.logging import install_access_log_redactor
+
+    install_access_log_redactor()
 
     registro = logging.LogRecord(
         name="uvicorn.access",

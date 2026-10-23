@@ -70,6 +70,12 @@ Defensas activas (revisión de seguridad 2026-07, ADR-016):
   server-side en cada conexión (evitan DoS por agotamiento del pool).
 - **Redacción de DSN**: la password de `DATABASE_URL` se redacta en logs y en las
   rutas de error de conexión (`observability.logging.redact_dsn`).
+- **Query en el access log de uvicorn**: la línea de acceso lleva la ruta con su
+  query, así que `configure_logging` instala sobre `uvicorn.access`
+  `observability.logging.AccessLogQueryRedactor`, que deja `token`, `code`,
+  `state`, `id_token` y `access_token` como `nombre=[REDACTED]` en cualquier
+  ruta (la clave del feed Atom y el `code`/`state` del callback OAuth, que
+  entre el 2026-10-17 y el 10-21 quedaron en claro en los logs de Render).
 
 **Cutover de roles: pendiente a 2026-09-06.** El script
 `scripts/setup_pg_roles.sql` ya prepara `tenderflow_app` con solo DML,

@@ -272,3 +272,77 @@ def test_la_linea_json_de_structlog_no_se_reescribe(capsys):
     out = capsys.readouterr().err + capsys.readouterr().out
     data = _find_event(out, "enlace")
     assert data["texto"] == "a\n\nhttps://x.example/r#token=***REDACTED***\n\nfin"
+
+
+# ── Línea de acceso de uvicorn ──────────────────────────────────────────
+# Imports aquí y no arriba: arriba desplazarían las líneas que fija
+# `.secrets.baseline` para los secretos de prueba de este módulo.
+import io
+
+from uvicorn.logging import AccessFormatter
+
+from observability.logging import (
+    install_access_log_redactor,
+    redact_query_credentials,
+)
+
+
+def _linea_de_acceso(ruta_con_query: str) -> str:
+    """La línea que uvicorn escribe para ``GET ruta_con_query``.
+
+    Pasa por el logger ``uvicorn.access`` de verdad (sus filtros incluidos) y
+    por el ``AccessFormatter`` de uvicorn, como en producción.
+    """
+    install_access_log_redactor()
+    acceso = logging.getLogger("uvicorn.access")
+    salida = io.StringIO()
+    handler = logging.StreamHandler(salida)
+    handler.setFormatter(AccessFormatter('%(client_addr)s - "%(request_line)s" %(status_code)s'))
+    nivel, propaga = acceso.level, acceso.propagate
+    acceso.addHandler(handler)
+    acceso.setLevel(logging.INFO)
+    acceso.propagate = False
+    try:
+        acceso.info('%s - "%s %s HTTP/%s" %d', "1.2.3.4:5", "GET", ruta_con_query, "1.1", 302)
+    finally:
+        acceso.removeHandler(handler)
+        acceso.setLevel(nivel)
+        acceso.propagate = propaga
+    return salida.getvalue()
+
+
+def test_el_callback_de_google_no_deja_code_ni_state_en_el_access_log():
+    linea = _linea_de_acceso(
+        "/api/v1/auth/oauth/google/callback"
+        "?state=STATE-SECRETO-1&code=4/0AQ-CODIGO-SECRETO&scope=email%20openid"
+    )
+
+    assert "STATE-SECRETO-1" not in linea
+    assert "CODIGO-SECRETO" not in linea
+    assert "state=[REDACTED]" in linea
+    assert "code=[REDACTED]" in linea
+    assert "/api/v1/auth/oauth/google/callback?" in linea
+    assert "scope=email%20openid" in linea
+
+
+@pytest.mark.parametrize("param", ["token", "code", "state", "id_token", "access_token"])
+def test_cada_parametro_credencial_se_redacta_en_cualquier_ruta(param):
+    linea = _linea_de_acceso(f"/api/v1/cualquier/ruta?limit=5&{param}=VALOR-SECRETO")
+
+    assert "VALOR-SECRETO" not in linea
+    assert f"&{param}=[REDACTED]" in linea
+    assert "limit=5" in linea
+
+
+def test_los_parametros_que_no_son_credenciales_quedan_como_estaban():
+    url = "/api/v1/licitaciones?postal_code=28001&estado=abierta&limit=5"
+
+    assert redact_query_credentials(url) == url
+
+
+def test_instalar_el_redactor_dos_veces_no_apila_filtros():
+    install_access_log_redactor()
+    install_access_log_redactor()
+
+    acceso = logging.getLogger("uvicorn.access")
+    assert sum(type(f).__name__ == "AccessLogQueryRedactor" for f in acceso.filters) == 1
