@@ -199,6 +199,16 @@ formulario de solicitud es público, y un clic sobre una solicitud enviada desde
 Gmail dejaría entrar a cualquier cuenta de Gmail. Esas solicitudes se conceden
 por email.
 
+La allowlist solo decide sobre un correo que el proveedor acredita
+([ADR-037](adr/ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md)): Google
+con `email_verified`, Microsoft Entra ID con el claim opcional `xms_edov` (el
+dueño del dominio del correo está verificado), que hay que pedir en el
+manifiesto de la aplicación. Con Microsoft el correo sale solo de `email`, nunca
+de `preferred_username` ni de `upn`. Y una identidad no se vincula a una cuenta
+que ya entra con **otro** proveedor solo porque el correo coincide: el callback
+vuelve a `/login?error=account_other_provider` y deja `auth.login_failed` en el
+rastro de esa cuenta.
+
 ### Segundo factor (TOTP)
 
 Se activa y se quita desde Ajustes › Seguridad, y los cuatro pasos exigen sesión
@@ -228,7 +238,8 @@ token, el evento de auditoría y el correo ocurren con la respuesta ya enviada
 aleatorio (`secrets.token_urlsafe(32)`) y en Postgres sólo se guarda su
 SHA-256. Caduca en 30 minutos y se consume una vez. Pedir uno nuevo invalida
 los anteriores, y la confirmación —en una sola transacción— invalida además
-cualquier otro pendiente de la cuenta y revoca todas sus sesiones activas. Las
+cualquier otro pendiente de la cuenta y revoca todas sus sesiones activas y sus
+claves de API personales (`db/password_reset.py::_revocar_credenciales`). Las
 cuentas solo-OAuth y las desactivadas no reciben token ni pueden consumirlo. La
 contraseña nueva pasa por la misma política que el alta
 (`shared/password_policy.py::check_account_password`), antes de tocar el token:
@@ -240,8 +251,8 @@ fragmento, así que no llega al servidor ni a sus access logs, y la pantalla lo
 saca de la barra de direcciones al cargar. Donde sí puede acabar es en el log
 de la propia API con `EMAIL_BACKEND=console`, que escribe el cuerpo del correo
 en el evento `mailer_console`: el redactor de `observability/logging.py`
-sustituye el valor de `#token=`, pero ese backend no es para producción (el
-validador de arranque no lo impide; ver el backlog). El origen del enlace sale
+sustituye el valor de `#token=`, y ese backend no arranca en producción ni en
+staging (`config/settings.py::_validate_prod_email_backend`). El origen del enlace sale
 de la configuración (`services/app_urls.py`), nunca de la cabecera `Host`.
 
 Cuotas: 5 solicitudes por IP cada 15 minutos y 3 por hash del email cada hora
@@ -252,6 +263,24 @@ se purgan por retención.
 
 Un correo que no sale deja `password_reset_email sent=false` a nivel `warning`,
 con el dominio del destinatario y nunca la dirección ni el token.
+
+### Cambio de contraseña con sesión
+
+`POST /auth/password/change` (Ajustes › Seguridad) pide la contraseña actual y
+la nueva, con sesión, CSRF y el segundo factor ya verificado si la cuenta lo
+tiene. La nueva pasa por la misma política que el alta y el reset. En una
+transacción cambia el hash, gasta los enlaces de recuperación pendientes,
+revoca **las demás** sesiones —la que hace el cambio sigue— y las claves de API
+personales. Cinco contraseñas actuales erróneas por cuenta en 15 minutos
+bloquean el cambio (429); solo cuentan los fallos. Una cuenta que entra solo
+con un proveedor no tiene contraseña que cambiar (409): crea la primera
+repitiendo el alta con su correo, que le manda un enlace para elegirla. Queda `auth.password_changed` en el audit log, con el
+número de claves revocadas.
+
+Tras el cambio y tras un reset, al titular le llega «Tu contraseña de
+TenderFlow ha cambiado» (`services/password_reset.py::send_password_changed_email`),
+en segundo plano y sin poder fallar la petición. No lleva ningún token: enlaza
+a la pantalla donde se pide uno.
 
 ## Auditoría
 
@@ -269,7 +298,7 @@ en el log — es un bug del llamante, no un motivo para perder el rastro.
 | Familia | Eventos | Dónde se escriben |
 |---|---|---|
 | `org.*` | `created`, `deleted`, `settings_updated`, `nifs_updated`, `capabilities_updated`, `member_added`, `member_role_changed`, `member_removed`, `ownership_transferred`, `left`, `invitation_sent`, `invitation_resent`, `invitation_revoked`, `invitation_accepted` | `api/routes/pursuits.py`, `organization_settings.py`, `organizations_capacidad.py` |
-| `auth.*` | `login_success`, `login_failed`, `logout`, `logout_all`, `password_reset_requested`, `password_reset_completed`, `totp_enabled`, `totp_disabled`, `session_revoked` | `api/routes/auth.py`, `api/routes/me.py` y `services/password_reset.py` (la solicitud de recuperación, que se registra después de responder) |
+| `auth.*` | `login_success`, `login_failed`, `logout`, `logout_all`, `password_reset_requested`, `password_reset_completed`, `password_changed`, `totp_enabled`, `totp_disabled`, `session_revoked` | `api/routes/auth.py`, `api/routes/me.py` y `services/password_reset.py` (la solicitud de recuperación, que se registra después de responder) |
 | `api_key.*` | `created`, `rotated`, `revoked` | `api/routes/me.py`; `revoked` lo emite la revocación por Secret Scanning de GitHub (`api/routes/security.py`) |
 | `export.*` | `downloaded`, `calendar_link_created` | `api/routes/exports.py` |
 | `gdpr.*` | `export`, `delete` | `api/routes/me.py` |

@@ -1192,7 +1192,20 @@ class Settings(ResumenPregenSettings, BaseSettings):
         vacío rechaza cada mensaje con un 4xx, y ambos fallos serían silenciosos
         porque el transporte nunca propaga. Aplica a todos los perfiles: el
         scraper y los workers también escriben correo.
+
+        ``console`` no se admite en producción ni en staging: no envía nada y
+        escribe el cuerpo de cada correo en el log. La recuperación de
+        contraseña, la verificación del alta y los avisos dejaban de funcionar
+        sin que nada fallara, y el log se llenaba de direcciones y enlaces que
+        solo el redactor separaba de quien lo leyera. Es un backend de
+        desarrollo, y desde 2026-10 el arranque lo dice.
         """
+        if self._is_prod_data and self.EMAIL_BACKEND == "console":
+            raise ValueError(
+                f"EMAIL_BACKEND=console no se admite en ENV={self.ENV}: no envía ningún "
+                "correo y escribe su cuerpo en el log. Usa smtp, resend o postmark "
+                "(ver docs/runbooks/correo-transaccional.md)."
+            )
         if self._is_prod_data and self.EMAIL_BACKEND in ("resend", "postmark"):
             faltan = [
                 nombre

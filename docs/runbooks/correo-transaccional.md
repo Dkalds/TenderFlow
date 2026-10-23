@@ -72,7 +72,7 @@ documentadas en `.env.example`):
 
 | Variable | Default | Uso |
 |---|---|---|
-| `EMAIL_BACKEND` | `smtp` | `smtp` · `resend` · `postmark` · `console` |
+| `EMAIL_BACKEND` | `smtp` | `smtp` · `resend` · `postmark` · `console` (solo desarrollo: con `ENV=prod` o `staging` el arranque lo rechaza) |
 | `EMAIL_FROM` | `""` → `ALERT_SMTP_USER` | Dirección remitente. Con un ESP, **obligatoria** y de un dominio verificado |
 | `EMAIL_FROM_NAME` | `TenderFlow` | Nombre que se muestra: `TenderFlow <no-reply@…>` |
 | `EMAIL_REPLY_TO` | `""` | Reply-To global (un buzón de soporte, por ejemplo) |

@@ -21,6 +21,39 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ---
 
+## Cerrados el 2026-10-23 — Entra solo con correo acreditado, y la recuperación de contraseña
+
+**Cerrado el 2026-10-23** ([ADR-037](../adr/ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md)). El propietario decidió `xms_edov` y no vincular cuentas entre proveedores por correo. `verify_oidc_id_token` exige el claim que cada proveedor declara (`xms_edov` para Microsoft, booleano `true`), el correo de Microsoft sale solo de `email`, y `get_or_create_oauth_user` lanza `CuentaDeOtroProveedorError` en vez de reescribir la identidad de una cuenta de otro proveedor (`/login?error=account_other_provider`). Tests: `tests/test_oauth_vinculacion_entre_proveedores.py` firma un token de Entra de verdad y comprueba que sin `xms_edov` no entra ni toca el `oauth_sub` de la cuenta existente. **Queda abierto** el último criterio —comprobar en Render `OAUTH_MICROSOFT_CLIENT_ID`—, que es del propietario: está en el backlog como P2 «Antes de activar Microsoft en producción».
+
+### [P1] Microsoft/Entra: la allowlist se decide sobre un correo que puede no estar verificado
+- **Área:** shared/identity.py, api/routes/auth.py, db/users.py, config/settings.py
+- **Problema:** hay que cerrarlo **antes de activar Microsoft en producción** (`OAUTH_MICROSOFT_CLIENT_ID`; vacío es apagado, y el 2026-10-09 no se comprobó qué valor tiene en Render). Comprobado en el código ese día: el camino de Google exige `email_verified` (`validate_google_id_token` en `shared/auth_core.py`) y el genérico que sirve a Entra no —`verify_oidc_id_token` lo dice en su docstring: Entra no emite ese claim—; sobre ese token, `_email_from_claims` toma `email` → `preferred_username` → `upn`; el tenant por defecto es `common` (`oauth_microsoft_tenant`) y `_issuer_matches` acepta el `tid` de cualquier tenant; y `get_or_create_oauth_user` **vincula por email**: si ya existe un usuario con esa dirección, le reescribe `oauth_provider`/`oauth_sub` y devuelve su `id`. Ninguno de esos tres claims acredita que quien entra controle ese buzón (Microsoft documenta `email` y `preferred_username` como modificables y no aptos para autorizar; contrastarlo con su documentación vigente al abordar el ítem, no se probó contra un tenant real). Si quien administra un tenant cualquiera puede presentarse con el correo de otra persona, pasa la allowlist —estática o `access_grants`— como si fuera ella y se queda con su cuenta: suplantación de un usuario existente, no solo un alta indebida. La decisión D17 (multi-tenant + allowlist por dominio) da por hecho que el dominio del correo dice de qué organización es la cuenta.
+- **Acceptance criteria:**
+  - El callback de Microsoft solo acepta un correo cuya propiedad conste (el claim opcional `xms_edov`, una lista de `tid` permitidos, o dejar de decidir sobre `email`). La elección queda escrita: toca ADR-030 y D17.
+  - `get_or_create_oauth_user` no vincula la identidad de otro proveedor a un usuario existente solo porque el correo coincide.
+  - Tests: un token de Entra firmado y válido cuyo correo no está verificado no entra, y no altera el `oauth_sub` de un usuario existente con esa dirección.
+  - Comprobado en Render que `OAUTH_MICROSOFT_CLIENT_ID` está vacío mientras esto siga abierto. Si no lo está, este ítem es P0.
+- **Files de partida:** [shared/identity.py](../shared/identity.py), [api/routes/auth.py](../api/routes/auth.py), [db/users.py](../db/users.py), [docs/adr/ADR-030-identidad-user-id-y-oidc.md](adr/ADR-030-identidad-user-id-y-oidc.md)
+- **Riesgo:** alto — toca el login y la vinculación de cuentas; el camino de Google no debe cambiar.
+
+**Recuperación de contraseña, puntos 3, 4, 5, 6 y 8 — cerrados el 2026-10-23** (aprobados por el propietario; el ítem sigue abierto en el backlog con 1, 2 y 7):
+
+- (3) `POST /auth/password/change` en Ajustes › Seguridad: pide la actual, misma política, bloqueo de 5 fallos por cuenta en 15 min, deja la sesión actual y revoca las demás y las claves; `auth.password_changed`. CU-19 ampliado, con su recorrido en `tests/test_escenario_cuenta_y_acceso.py`.
+- (4) El reset desactiva las claves de API personales en la misma transacción (`db/password_reset.py::_revocar_credenciales`), sin pasar por `deactivate_all_for_user`, que se traga los errores.
+- (5) «Tu contraseña de TenderFlow ha cambiado» tras el reset y tras el cambio, en segundo plano y sin token (`services/password_reset.py::send_password_changed_email`).
+- (6) `EMAIL_BACKEND=console` no arranca con `ENV=prod` ni `staging`.
+- (8) `configure_logging` usa un `Formatter` que pasa las trazas (`formatException`/`formatStack`) por el redactor; el mensaje de structlog no se reescribe.
+
+Texto original de los cinco puntos:
+
+  3. **[P2] No existe cambio de contraseña autenticado.** El issue lo nombra en el problema («ni recuperación ni cambio») y no en el alcance: quien conoce su contraseña y quiere cambiarla tiene que pasar por «¿Has olvidado tu contraseña?».
+  4. **[P2] El reset no revoca las claves de API del usuario.** Revoca las sesiones; una clave creada por quien tuviera la cuenta sigue valiendo después de que el titular la recupere.
+  5. **[P2] No se avisa al titular de que su contraseña ha cambiado.** El único rastro es `auth.password_reset_completed` en el audit log, que el titular no ve.
+  6. **[P2] El backend `console` del correo se admite en producción.** `_validate_prod_email_backend` solo exige credenciales para `resend`/`postmark`. Con `console` el correo no sale y su cuerpo va al log; el redactor ya quita el token del enlace (`#token=`), pero la recuperación deja de funcionar sin que nada falle. Prohibirlo en el arranque puede tumbar un despliegue que hoy lo tenga puesto: por eso no se tocó.
+  8. **[P2] `log.exception` saca la traza sin pasar por el redactor.** `structlog.stdlib.BoundLogger.exception` entrega además `exc_info` a `logging`, y el `Formatter("%(message)s")` de `configure_logging` imprime la traza cruda debajo de la línea JSON ya redactada (medido el 2026-10-09: el mensaje de la excepción sale con el correo y el token en claro en esa segunda copia). El trabajo aplazado de la recuperación ya usa `log.error(..., exc_info=True)`, que no la duplica; quedan 18 llamadas a `log.exception` en `api/`, `services/`, `scheduler/` y `scraper/`, y el arreglo de raíz está en `configure_logging`, no en cada llamada.
+
+---
+
 ## Cerrado el 2026-10-18 — cada adjudicación sabe de qué lote es
 
 **Cerrado el 2026-10-18** (#479, #484, #487). Los dos criterios se cumplen en producción. La ingesta escribe `adjudicaciones.lote_id`: el parser lo buscaba en `cac:ProcurementProjectLotReference/cbc:ID` (forma inventada por el fixture sintético `01_multilote`) y CODICE lo publica en `cac:AwardedTenderedProject/cbc:ProcurementProjectLotID`; `_lote_del_resultado` lee las tres formas (caso golden 18). `_AGENDA_SELECT` afirma adjudicatario para la oportunidad de un lote solo con las adjudicaciones de ese lote.

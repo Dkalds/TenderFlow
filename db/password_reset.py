@@ -1,13 +1,20 @@
-"""Persistencia transaccional de recuperación de contraseña.
+"""Persistencia transaccional de recuperación y cambio de contraseña.
 
-Las dos transacciones bloquean primero la fila del usuario y después tocan sus
-tokens. Ese orden común es lo que serializa por cuenta la emisión y el consumo
-sin que puedan esperarse la una a la otra en círculo.
+Las transacciones bloquean primero la fila del usuario y después tocan sus
+tokens. Ese orden común es lo que serializa por cuenta la emisión, el consumo y
+el cambio sin que puedan esperarse la una a la otra en círculo.
+
+Cambiar la contraseña —por el enlace del correo o desde Ajustes— revoca en la
+misma transacción las credenciales que quien tuviera la cuenta pudo dejarse:
+sesiones y claves de API (:func:`_revocar_credenciales`).
 """
 
 from __future__ import annotations
 
+from typing import Any
+
 from db.database import connect, now_utc_iso
+from db.sessions import _hash_token
 
 
 def create_reset_token_for_email(email: str, token_hash: str, expires_at: str) -> bool:
@@ -76,7 +83,9 @@ def consume_reset_token(token_hash: str, password_hash: str) -> int | None:
     pone la primera.
 
     Todo en una transacción: o se cambia la contraseña, se gastan los tokens
-    pendientes de la cuenta y caen sus sesiones, o no cambia nada.
+    pendientes de la cuenta y caen sus sesiones y sus claves de API, o no
+    cambia nada. Las claves caen desde 2026-10: una creada por quien tuviera la
+    cuenta seguía valiendo después de que el titular la recuperase.
     """
     with connect() as connection:
         # Primero la cuenta y después el token, en dos sentencias: el mismo
@@ -117,10 +126,74 @@ def consume_reset_token(token_hash: str, password_hash: str) -> int | None:
             "WHERE user_id = %s AND used_at IS NULL",
             (user_id,),
         )
-        # `revoked_at` es TEXT: ISO 8601 desde Python, como en `db/sessions.py`.
-        # Un `NOW()` de Postgres dejaba ahí otro formato («2026-10-09 12:00:00+00»).
+        _revocar_credenciales(connection, user_id)
+    return user_id
+
+
+def change_password(user_id: int, password_hash: str, *, sesion_actual: str) -> int | None:
+    """Cambia la contraseña de una cuenta activa y revoca lo demás en una transacción.
+
+    Para ``POST /auth/password/change``, que ya comprobó la contraseña actual.
+    Revoca todas las sesiones **menos** ``sesion_actual`` (el token de la que
+    hace el cambio: quien cambia su contraseña no tiene por qué volver a
+    entrar) y todas las claves de API. Gasta además los enlaces de
+    recuperación pendientes: uno pedido antes del cambio permitiría deshacerlo.
+
+    Devuelve cuántas claves de API se desactivaron, o ``None`` si la cuenta ya
+    no está activa.
+    """
+    with connect() as connection:
+        fila = connection.execute(
+            "SELECT id FROM users WHERE id = %s AND deactivated_at IS NULL FOR UPDATE",
+            (user_id,),
+        ).fetchone()
+        if fila is None:
+            return None
+        connection.execute(
+            "UPDATE users SET password_hash = %s WHERE id = %s",
+            (password_hash, user_id),
+        )
+        connection.execute(
+            "UPDATE password_reset_tokens SET used_at = NOW() "
+            "WHERE user_id = %s AND used_at IS NULL",
+            (user_id,),
+        )
+        # El mismo hash con el que `db/sessions.py` guarda la sesión: el token
+        # en claro no se compara contra la tabla.
+        return _revocar_credenciales(connection, user_id, salvo_sesion=_hash_token(sesion_actual))
+
+
+def _revocar_credenciales(connection: Any, user_id: int, *, salvo_sesion: str | None = None) -> int:
+    """Revoca las sesiones (salvo la de hash ``salvo_sesion``) y las claves de API.
+
+    Dentro de la transacción de quien la llama, y sin tragarse errores: si algo
+    falla, la contraseña tampoco cambia. Por eso no usa
+    ``ApiKeyRepository.deactivate_all_for_user``, que abre su propia conexión y
+    devuelve 0 ante cualquier fallo — en el camino del RGPD es aceptable, aquí
+    dejaría vivas las claves de quien tuviera la cuenta mientras el titular
+    cree que la ha recuperado.
+
+    Las claves que se desactivan son las del ``user_id``: las personales. Las
+    de organización no tienen dueño individual (ADR-030 §D).
+
+    Devuelve cuántas claves activas se desactivaron.
+    """
+    # `revoked_at` es TEXT: ISO 8601 desde Python, como en `db/sessions.py`.
+    # Un `NOW()` de Postgres dejaba ahí otro formato («2026-10-09 12:00:00+00»).
+    ahora = now_utc_iso()
+    if salvo_sesion is None:
         connection.execute(
             "UPDATE sessions SET revoked = 1, revoked_at = %s WHERE user_id = %s AND revoked = 0",
-            (now_utc_iso(), user_id),
+            (ahora, user_id),
         )
-    return user_id
+    else:
+        connection.execute(
+            "UPDATE sessions SET revoked = 1, revoked_at = %s "
+            "WHERE user_id = %s AND revoked = 0 AND token_hash <> %s",
+            (ahora, user_id, salvo_sesion),
+        )
+    cursor = connection.execute(
+        "UPDATE api_keys SET is_active = 0 WHERE user_id = %s AND is_active = 1",
+        (user_id,),
+    )
+    return int(cursor.rowcount or 0)

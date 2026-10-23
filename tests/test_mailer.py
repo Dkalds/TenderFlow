@@ -457,14 +457,13 @@ def _settings_prod(**kwargs: object):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return Settings(
-            ENV="prod",
+            **{"ENV": "prod", **kwargs},
             # Perfil sin HTTP: los validadores de SIGNING_KEY/HMAC/Redis no
             # aplican y el test mira solo la regla del correo, que es de todos
             # los perfiles. DATABASE_URL vacío para no heredar el de un .env.
             APP_PROFILE="worker",
             DATABASE_URL="",
             ALERT_EMAIL_TO="",
-            **kwargs,
         )
 
 
@@ -480,9 +479,21 @@ def test_prod_con_esp_exige_clave_y_remitente(backend) -> None:
     assert backend == s.EMAIL_BACKEND
 
 
-def test_prod_con_smtp_o_console_no_exige_la_clave_del_esp() -> None:
+def test_prod_con_smtp_no_exige_la_clave_del_esp() -> None:
     assert _settings_prod(EMAIL_BACKEND="smtp", EMAIL_API_KEY="", EMAIL_FROM="").EMAIL_FROM == ""
-    assert _settings_prod(EMAIL_BACKEND="console", EMAIL_API_KEY="").EMAIL_BACKEND == "console"
+
+
+@pytest.mark.parametrize("entorno", ["prod", "staging"])
+def test_prod_no_arranca_con_el_backend_console(entorno) -> None:
+    """Con `console` ningún correo sale y su cuerpo va al log (backlog, recuperación 6)."""
+    with pytest.raises(ValueError, match="EMAIL_BACKEND=console"):
+        _settings_prod(EMAIL_BACKEND="console", ENV=entorno)
+
+
+def test_dev_admite_el_backend_console() -> None:
+    from config.settings import Settings
+
+    assert Settings(ENV="dev", EMAIL_BACKEND="console").EMAIL_BACKEND == "console"
 
 
 def test_dev_con_esp_sin_clave_arranca() -> None:

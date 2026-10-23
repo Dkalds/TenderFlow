@@ -21,7 +21,7 @@ import * as z from "zod/mini";
 import type { components } from "@/generated/api";
 import { MOTIVOS_PERDIDA, type MotivoPerdida } from "@/lib/motivos-perdida";
 import { esquemaDeDto, type ContratoDto } from "./dto-schema";
-import { acceso, registro } from "./esquemas-acceso";
+import { acceso, contrasenaConPolitica, registro } from "./esquemas-acceso";
 import { correo, enteroOpcional, importeOpcional, numeroDeTexto, textoOpcional } from "./valores";
 
 type Schemas = components["schemas"];
@@ -234,6 +234,31 @@ export const webhook = esquemaDeDto("WebhookCreate")(
   ["organization_id"],
 );
 
+/* ---------------------------------------------------- Cambio de contraseña */
+
+/**
+ * `api/routes/auth.py::PasswordChangeRequest` (Ajustes › Seguridad). La nueva
+ * con la misma política que el alta; si la actual es buena lo dice solo el
+ * backend.
+ */
+export const cambioContrasena = esquemaDeDto("PasswordChangeRequest")(
+  {
+    current_password: z.string().check(z.minLength(1, "Escribe tu contraseña actual.")),
+    new_password: contrasenaConPolitica(),
+  },
+  [],
+);
+
+/** El formulario añade la confirmación, que no viaja. */
+export const cambioContrasenaFormulario = z
+  .extend(cambioContrasena.esquema, { confirmacion: z.string() })
+  .check(
+    z.refine((valores) => valores.new_password === valores.confirmacion, {
+      path: ["confirmacion"],
+      message: "Las contraseñas no coinciden.",
+    }),
+  );
+
 /** Todos los contratos, para el test de deriva contra el OpenAPI generado. */
 export const CONTRATOS_DE_FORMULARIO: Readonly<Record<string, ContratoDto>> = {
   acceso: acceso.contrato,
@@ -246,4 +271,5 @@ export const CONTRATOS_DE_FORMULARIO: Readonly<Record<string, ContratoDto>> = {
   probabilidadesEtapa: probabilidadesEtapa.contrato,
   oportunidad: oportunidad.contrato,
   webhook: webhook.contrato,
+  cambioContrasena: cambioContrasena.contrato,
 };

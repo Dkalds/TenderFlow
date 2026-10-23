@@ -159,6 +159,57 @@ def test_email_from_claims_no_acepta_lo_que_no_tiene_forma_de_direccion(claims):
     assert auth_routes._email_from_claims(claims) == ""
 
 
+def test_microsoft_toma_el_correo_solo_de_email():
+    """`preferred_username` y `upn` los escribe el tenant: no deciden nada (ADR-037)."""
+    microsoft = auth_routes._PROVIDERS["microsoft"]
+
+    assert microsoft.claims_de_correo == ("email",)
+    assert microsoft.claim_correo_verificado == "xms_edov"
+    assert (
+        auth_routes._email_from_claims(
+            {"preferred_username": "b@empresa.test"}, microsoft.claims_de_correo
+        )
+        == ""
+    )
+    assert (
+        auth_routes._email_from_claims({"upn": "c@empresa.test"}, microsoft.claims_de_correo) == ""
+    )
+
+
+def test_regresion_google_sigue_tomando_el_correo_de_email():
+    google = auth_routes._PROVIDERS["google"]
+
+    assert google.claim_correo_verificado is None
+    assert (
+        auth_routes._email_from_claims({"email": "a@empresa.test"}, google.claims_de_correo)
+        == "a@empresa.test"
+    )
+
+
+def test_un_callback_de_microsoft_sin_email_no_entra(
+    monkeypatch, microsoft_configurado, callback_sin_bd
+):
+    """Un token de cuenta de trabajo con solo `preferred_username` ya no basta."""
+    monkeypatch.setattr(
+        auth_routes,
+        "verify_oidc_id_token",
+        lambda *_a, **_k: {"preferred_username": "persona@empresa.test", "sub": "ms-sub"},
+    )
+
+    resultado = asyncio.run(
+        auth_routes.oauth_callback(
+            provider="microsoft",
+            code="code",
+            state="state",
+            response=Response(),
+            request=_request(),
+            pkce_verifier="verifier",
+        )
+    )
+
+    assert resultado.headers["location"].endswith("/login?error=email_not_allowed")
+
+
 # ── Redirect URI derivado ───────────────────────────────────────────────────
 
 
@@ -235,7 +286,7 @@ def test_callback_de_microsoft_sobre_un_descubrimiento_simulado(
 ):
     verificados: list[dict[str, Any]] = []
 
-    def _verify(raw, *, jwks_uri, issuer, audience, expected_nonce):
+    def _verify(raw, *, jwks_uri, issuer, audience, expected_nonce, email_verified_claim):
         verificados.append(
             {
                 "raw": raw,
@@ -243,9 +294,10 @@ def test_callback_de_microsoft_sobre_un_descubrimiento_simulado(
                 "issuer": issuer,
                 "audience": audience,
                 "nonce": expected_nonce,
+                "claim": email_verified_claim,
             }
         )
-        return {"preferred_username": "persona@empresa.test", "sub": "ms-sub", "name": "Persona"}
+        return {"email": "persona@empresa.test", "sub": "ms-sub", "name": "Persona"}
 
     proveedores: list[str] = []
     monkeypatch.setattr(auth_routes, "verify_oidc_id_token", _verify)
@@ -274,6 +326,8 @@ def test_callback_de_microsoft_sobre_un_descubrimiento_simulado(
     assert verificados[0]["jwks_uri"] == _DISCOVERY_SIMULADO["jwks_uri"]
     assert verificados[0]["issuer"] == _DISCOVERY_SIMULADO["issuer"]
     assert verificados[0]["audience"] == "microsoft-client-id"
+    # Entra solo entra con el correo acreditado por `xms_edov` (ADR-037).
+    assert verificados[0]["claim"] == "xms_edov"
     # `users.oauth_provider` guarda el proveedor con el que se entró (v105).
     assert proveedores == ["microsoft"]
 

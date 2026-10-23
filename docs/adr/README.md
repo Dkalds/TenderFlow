@@ -43,7 +43,7 @@ el cuerpo.
 
 <!-- BEGIN indice-adr (generado por scripts/gen_adr_index.py — no editar a mano) -->
 
-**35 ADR**, de los cuales **30** están vigentes. `accepted` 30 · `rejected` 1 · `superseded` 4.
+**36 ADR**, de los cuales **31** están vigentes. `accepted` 31 · `rejected` 1 · `superseded` 4.
 
 Esta tabla se genera con `python scripts/gen_adr_index.py` a partir del frontmatter de cada ADR; CI la verifica con `--check`, igual que `make check-agent-docs` y la suite (`tests/test_unit_ratchet_indice_adr.py`). Un ADR sin `id` o `status` —o con un estado fuera del vocabulario— la hace fallar.
 
@@ -84,12 +84,13 @@ Esta tabla se genera con `python scripts/gen_adr_index.py` a partir del frontmat
 | [ADR-027](ADR-027-backbone-de-eventos-outbox.md) | Un solo backbone de eventos: outbox sobre `domain_events` | `accepted` | 2026-09-06 | — |
 | [ADR-028](ADR-028-cola-de-trabajo-y-worker.md) | Cola de trabajo y worker: un plano de cron, un plano de trabajo a demanda | `accepted` | 2026-09-06 | — |
 | [ADR-029](ADR-029-almacen-de-objetos.md) | Almacén de objetos para binarios: se revoca «texto por página, sin blob store» | `accepted` | 2026-09-06 | — |
-| [ADR-030](ADR-030-identidad-user-id-y-oidc.md) | La identidad interna es `user_id`; los proveedores OIDC son intercambiables | `accepted` | 2026-09-06 | — |
+| [ADR-030](ADR-030-identidad-user-id-y-oidc.md) | La identidad interna es `user_id`; los proveedores OIDC son intercambiables | `accepted` | 2026-09-06 | [ADR-037](ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md) (en parte) |
 | [ADR-031](ADR-031-seguimiento-unificado.md) | Seguimiento unificado: una tabla `follows`, un control «Seguir» | `accepted` | 2026-09-06 | — |
 | [ADR-032](ADR-032-semantica-del-importe-y-maestro-de-organos.md) | Semántica del importe y maestro de órganos | `accepted` | 2026-09-06 | — |
 | [ADR-033](ADR-033-plano-de-cron-en-el-worker.md) | Plano de cron dentro del worker de Render | `accepted` | 2026-09-14 | — |
 | [ADR-034](ADR-034-rls-por-tenant.md) | Aislamiento por organización en dos capas: filtro de aplicación + RLS por tenant | `accepted` | 2026-09-14 | — |
 | [ADR-035](ADR-035-camino-de-peticion-sin-bloquear-el-event-loop.md) | El camino de cada petición no bloquea el event loop: cuota en Redis por defecto, ETag al cachear y consulta cancelada como 503 | `accepted` | 2026-09-25 | — |
 | [ADR-036](ADR-036-acceso-interno-por-mcp.md) | Acceso interno por MCP con rol de solo lectura: un servicio aparte, OAuth propio y el SQL lo limita Postgres | `accepted` | 2026-10-15 | — |
+| [ADR-037](ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md) | Un correo solo cuenta si el proveedor lo acredita, y no une cuentas de proveedores distintos | `accepted` | 2026-10-23 | — |
 
 <!-- END indice-adr -->

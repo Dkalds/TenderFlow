@@ -222,3 +222,53 @@ def test_bind_session_context_returns_none():
     """bind_session_context always returns None (Streamlit removed)."""
     result = bind_session_context()
     assert result is None
+
+
+# ── La copia de `logging` también pasa por el redactor ───────────────────
+#
+# Al final del fichero por lo mismo que los de arriba: `.secrets.baseline`
+# registra líneas por número.
+
+
+def test_la_traza_de_log_exception_sale_redactada_tambien_en_logging(capsys):
+    """``log.exception`` entrega ``exc_info`` a `logging`, que imprimía la traza cruda."""
+    configure_logging(level="INFO", json_logs=True)
+    log = get_logger("tests.traza")
+    correo = "ana.titular@empresa.es"
+    token = "tok_-" + "z" * 38
+    try:
+        raise RuntimeError(
+            f"no se pudo entregar a {correo}: https://app.example/restablecer-contrasena#token={token}"
+        )
+    except RuntimeError:
+        log.exception("entrega_fallida")
+    out = capsys.readouterr().err + capsys.readouterr().out
+    # Premisa: la traza sale (si no, el test no probaría nada).
+    assert "Traceback" in out
+    assert "RuntimeError" in out
+    assert correo not in out
+    assert token not in out
+    assert "#token=***REDACTED***" in out
+
+
+def test_la_traza_de_un_logger_de_la_biblioteca_estandar_tambien_se_redacta(capsys):
+    """Las dependencias escriben sus trazas con `logging`, sin pasar por structlog."""
+    configure_logging(level="INFO", json_logs=True)
+    correo = "persona@empresa.es"
+    try:
+        raise ValueError(f"rechazado {correo}")
+    except ValueError:
+        logging.getLogger("tests.tercero").exception("fallo de entrega")
+    out = capsys.readouterr().err + capsys.readouterr().out
+    assert "fallo de entrega" in out
+    assert "ValueError" in out
+    assert correo not in out
+
+
+def test_la_linea_json_de_structlog_no_se_reescribe(capsys):
+    """El mensaje ya redactado no pasa otra vez por las reglas: rompería el JSON."""
+    configure_logging(level="INFO", json_logs=True)
+    get_logger("tests.json").info("enlace", texto="a\n\nhttps://x.example/r#token=abc\n\nfin")
+    out = capsys.readouterr().err + capsys.readouterr().out
+    data = _find_event(out, "enlace")
+    assert data["texto"] == "a\n\nhttps://x.example/r#token=***REDACTED***\n\nfin"

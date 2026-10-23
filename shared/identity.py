@@ -152,17 +152,25 @@ def verify_oidc_id_token(
     issuer: str,
     audience: str,
     expected_nonce: str | None = None,
+    email_verified_claim: str | None,
 ) -> dict[str, Any] | None:
     """Verifica firma RS256 y claims de un ``id_token`` OIDC cualquiera.
 
     Devuelve los claims si todo cuadra y ``None`` en cualquier otro caso: un
     token nunca se acepta simplemente decodificado. Se comprueban ``iss``,
-    ``aud``, ``exp``, ``sub`` y —si se pide— ``nonce``.
+    ``aud``, ``exp``, ``sub``, —si se pide— ``nonce`` y el claim que acredita
+    el correo.
 
-    ``email_verified`` **no** se exige aquí, a diferencia del camino de Google:
-    Microsoft Entra ID no emite ese claim, así que exigirlo rechazaría a todo
-    el mundo. Quién puede entrar lo decide la allowlist por dominio y
-    ``access_grants``, que es donde vive esa política para los dos proveedores.
+    ``email_verified_claim`` es ese claim, y tiene que valer exactamente el
+    booleano ``true``. Cada proveedor lo llama a su manera: Google,
+    ``email_verified`` (y tiene su propio verificador); Microsoft Entra ID no
+    emite ese, sino ``xms_edov`` —«el dueño del dominio del correo está
+    verificado»—, que además es opcional y hay que pedirlo en el manifiesto de
+    la aplicación (ADR-037). Hasta 2026-10 aquí no se exigía nada y la
+    allowlist decidía sobre un correo que el administrador de cualquier tenant
+    podía escribir a su gusto. No tiene valor por defecto a propósito: quien
+    añada un proveedor tiene que decir qué claim lo acredita, o ``None`` si lo
+    acredita por otra vía.
     """
     try:
         from cryptography.hazmat.primitives import hashes
@@ -192,7 +200,8 @@ def verify_oidc_id_token(
         log.warning("oidc_id_token_signature_invalid", exc_info=True)
         return None
 
-    return claims if _oidc_claims_valid(claims, audience, issuer, expected_nonce) else None
+    valido = _oidc_claims_valid(claims, audience, issuer, expected_nonce, email_verified_claim)
+    return claims if valido else None
 
 
 def _oidc_claims_valid(
@@ -200,6 +209,7 @@ def _oidc_claims_valid(
     audience: str,
     issuer: str,
     expected_nonce: str | None,
+    email_verified_claim: str | None,
 ) -> bool:
     if not _issuer_matches(issuer, claims):
         log.warning("oidc_id_token_invalid_iss")
@@ -232,6 +242,13 @@ def _oidc_claims_valid(
             return False
     except (TypeError, ValueError):
         log.warning("oidc_id_token_invalid_exp")
+        return False
+
+    # `is True` y no «algo que parezca verdadero»: el claim es un booleano JSON
+    # y una cadena o un número es un token que no sabemos leer. Ante la duda,
+    # fuera — el fallo se ve en este log y no en una cuenta suplantada.
+    if email_verified_claim is not None and claims.get(email_verified_claim) is not True:
+        log.warning("oidc_id_token_email_not_verified", claim=email_verified_claim)
         return False
 
     return True

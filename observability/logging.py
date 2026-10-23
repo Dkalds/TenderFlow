@@ -130,20 +130,62 @@ def _redact_secrets(
         if value in sensitive_values:
             event_dict[key] = _REDACTED
             continue
-        # Sustituir cualquier ocurrencia incrustada de un valor sensible (e.g. URLs con token)
-        redacted = value
-        for sv in sensitive_values:
-            if sv in redacted:
-                redacted = redacted.replace(sv, _REDACTED)
-        # Redacta passwords en DSNs Postgres aunque no coincidan con un valor cacheado.
-        redacted = redact_dsn(redacted)
-        # Errores de proveedores y URLs de callback pueden incluir tanto emails
-        # como tokens en query string; el log conserva el contexto no sensible.
-        redacted = _EMAIL_RE.sub("<email-redacted>", redacted)
-        redacted = _URL_QUERY_SECRET_RE.sub(r"\1" + _REDACTED, redacted)
+        redacted = redact_text(value)
         if redacted != value:
             event_dict[key] = redacted
     return event_dict
+
+
+def redact_text(value: str) -> str:
+    """Redacta un texto libre con las mismas reglas que los valores de un evento.
+
+    Valores de las variables sensibles, contraseñas de DSN, correos y secretos
+    en la query o el fragmento de una URL. Es lo que hace :func:`_redact_secrets`
+    con cada cadena del evento, y lo que hace :class:`_RedactingFormatter` con
+    las trazas que imprime `logging`.
+    """
+    # Sustituir cualquier ocurrencia incrustada de un valor sensible (e.g. URLs con token)
+    redacted = value
+    for sv in _cached_sensitive_values:
+        if sv in redacted:
+            redacted = redacted.replace(sv, _REDACTED)
+    # Redacta passwords en DSNs Postgres aunque no coincidan con un valor cacheado.
+    redacted = redact_dsn(redacted)
+    # Errores de proveedores y URLs de callback pueden incluir tanto emails
+    # como tokens en query string; el log conserva el contexto no sensible.
+    redacted = _EMAIL_RE.sub("<email-redacted>", redacted)
+    return _URL_QUERY_SECRET_RE.sub(r"\1" + _REDACTED, redacted)
+
+
+class _RedactingFormatter(logging.Formatter):
+    """``Formatter`` de la salida de `logging` que pasa todo por el redactor.
+
+    Lo que emite structlog ya llega redactado como mensaje, pero no todo lo que
+    imprime este handler pasa por structlog:
+
+    - ``log.exception(...)`` de structlog le entrega además ``exc_info`` a
+      `logging`, que imprimía la traza debajo de la línea JSON **sin
+      redactar**: el mensaje de la excepción salía con el correo y el token en
+      claro en esa segunda copia (medido el 2026-10-09; backlog, recuperación
+      de contraseña punto 8). El arreglo es aquí y no en cada llamada: había
+      18 y vendrán más.
+    - Las dependencias (uvicorn, httpx, psycopg…) escriben sus trazas con
+      `logging` directamente.
+
+    ``formatException`` y ``formatStack`` redactan lo que devuelven, y así la
+    traza que `logging` cachea en ``record.exc_text`` ya queda limpia para
+    cualquier otro handler. El **mensaje** no se toca: el de structlog ya es la
+    línea JSON redactada, y pasarle otra vez las reglas de URL la rompería (el
+    patrón de ``#token=`` se come hasta el siguiente espacio, y en JSON los
+    saltos de línea van escapados). El mensaje propio de una dependencia queda
+    como estaba.
+    """
+
+    def formatException(self, ei: Any) -> str:
+        return redact_text(super().formatException(ei))
+
+    def formatStack(self, stack_info: str) -> str:
+        return redact_text(super().formatStack(stack_info))
 
 
 def _detect_json_default() -> bool:
@@ -197,7 +239,7 @@ def configure_logging(
 
     # Redirigir logs stdlib al formato estructurado
     handler = logging.StreamHandler(sys.stderr)
-    handler.setFormatter(logging.Formatter("%(message)s"))
+    handler.setFormatter(_RedactingFormatter("%(message)s"))
     root = logging.getLogger()
     root.handlers.clear()
     root.addHandler(handler)

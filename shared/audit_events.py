@@ -56,6 +56,9 @@ AUTH_LOGOUT_ALL: Final = "auth.logout_all"
 # la palabra en el identificador.
 AUTH_PASSWORD_RESET_REQUESTED: Final = "auth.password_reset_requested"  # noqa: S105
 AUTH_PASSWORD_RESET_COMPLETED: Final = "auth.password_reset_completed"  # noqa: S105
+#: Cambio desde Ajustes con la contraseña actual (``POST /auth/password/change``).
+#: El ``detail`` dice cuántas sesiones y claves cayeron, nunca la contraseña.
+AUTH_PASSWORD_CHANGED: Final = "auth.password_changed"  # noqa: S105
 #: Alta cerrada (RFC 2026-10-21): se pidió crear la cuenta y, después, se
 #: verificó el correo con el enlace. Sin id ni correo en el primero, como el
 #: reset: la respuesta no distingue si la cuenta existía.
@@ -143,6 +146,7 @@ FAMILIAS: Final[Mapping[str, frozenset[str]]] = {
             AUTH_LOGOUT_ALL,
             AUTH_PASSWORD_RESET_REQUESTED,
             AUTH_PASSWORD_RESET_COMPLETED,
+            AUTH_PASSWORD_CHANGED,
             AUTH_SIGNUP_REQUESTED,
             AUTH_EMAIL_VERIFIED,
             AUTH_TOTP_ENABLED,

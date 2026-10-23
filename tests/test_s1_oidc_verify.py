@@ -80,18 +80,25 @@ def _claims(**overrides: Any) -> dict[str, Any]:
         "exp": int(time.time()) + 600,
         "nonce": "nonce-de-prueba",
         "preferred_username": "persona@empresa.test",
+        "email": "persona@empresa.test",
+        # Claim opcional que hay que pedir en el manifiesto de la aplicación
+        # de Entra: el dueño del dominio del correo está verificado (ADR-037).
+        "xms_edov": True,
     }
     base.update(overrides)
     return base
 
 
-def _verificar(token: str) -> dict[str, Any] | None:
+def _verificar(
+    token: str, *, email_verified_claim: str | None = "xms_edov"
+) -> dict[str, Any] | None:
     return identity.verify_oidc_id_token(
         token,
         jwks_uri=_JWKS_URI,
         issuer=_ISSUER_MULTITENANT,
         audience=_AUDIENCE,
         expected_nonce="nonce-de-prueba",
+        email_verified_claim=email_verified_claim,
     )
 
 
@@ -130,6 +137,47 @@ def test_rechaza_un_token_caducado(clave_rsa, jwks_simulado):
 
 def test_rechaza_un_kid_desconocido(clave_rsa, jwks_simulado):
     assert _verificar(_firmar(clave_rsa, _claims(), kid="kid-que-no-existe")) is None
+
+
+# ── El correo tiene que constar como verificado (ADR-037) ───────────────────
+
+
+@pytest.mark.parametrize(
+    "valor",
+    [
+        pytest.param(None, id="sin-claim"),
+        pytest.param(False, id="falso"),
+        # Solo el booleano JSON: una cadena o un número es un token que no
+        # sabemos leer, y ante la duda se rechaza.
+        pytest.param("true", id="cadena"),
+        pytest.param(1, id="numero"),
+    ],
+)
+def test_rechaza_un_token_firmado_cuyo_correo_no_consta_verificado(clave_rsa, jwks_simulado, valor):
+    claims = _claims()
+    if valor is None:
+        del claims["xms_edov"]
+    else:
+        claims["xms_edov"] = valor
+
+    assert _verificar(_firmar(clave_rsa, claims)) is None
+
+
+def test_sin_claim_exigido_no_se_mira_ninguno(clave_rsa, jwks_simulado):
+    """Un proveedor que acredita el correo por otra vía lo dice pasando ``None``."""
+    claims = _claims()
+    del claims["xms_edov"]
+
+    assert _verificar(_firmar(clave_rsa, claims), email_verified_claim=None) is not None
+
+
+def test_el_claim_exigido_es_obligatorio_en_la_firma_de_la_funcion():
+    """Sin valor por defecto: quien añada un proveedor tiene que decidirlo."""
+    import inspect
+
+    parametro = inspect.signature(identity.verify_oidc_id_token).parameters["email_verified_claim"]
+    assert parametro.default is inspect.Parameter.empty
+    assert parametro.kind is inspect.Parameter.KEYWORD_ONLY
 
 
 def test_el_documento_de_descubrimiento_se_cachea(monkeypatch):
