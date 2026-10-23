@@ -42,6 +42,7 @@ from db.sql_fragments import (
     periodo_canonico,
     periodo_publicacion_sql,
     plegar_organo,
+    rango_de_fuente_sql,
     titulo_normalizado_sql,
 )
 from services.dedupe import (
@@ -299,7 +300,7 @@ def test_el_rango_de_python_espeja_el_de_sql() -> None:
     clausula = fila_canonica_sql(alias="l", gemelo="l2", filtro_gemelo="true")
 
     # Mismo orden de criterios, y el mismo relleno para las fechas ausentes.
-    assert "l.fuente <> 'placsp'" in clausula
+    assert rango_de_fuente_sql("l") in clausula
     assert "coalesce(l.fecha_publicacion, '9999')" in clausula
     assert "coalesce(l.primera_extraccion, l.fecha_extraccion, '9999')" in clausula
 
@@ -310,7 +311,54 @@ def test_el_rango_de_python_espeja_el_de_sql() -> None:
         "primera_extraccion": None,
         "fecha_extraccion": None,
     }
-    assert _rango_canonico(fila) == (True, "9999", "9999", "ted:1")
+    assert _rango_canonico(fila) == (2, "9999", "9999", "ted:1")
+
+
+@pytest.mark.parametrize(
+    ("fuente", "rango"),
+    [
+        ("placsp", 0),
+        ("bulk_202606", 0),
+        ("pscp", 1),
+        ("galicia_rss", 1),
+        ("placsp_watched_company_awards", 1),
+        # `bulk` sin guion bajo no es la etiqueta del carril bulk: el SQL compara
+        # el prefijo exacto, no un LIKE cuyo `_` sería comodín.
+        ("bulkx", 1),
+        (None, 1),
+        ("ted", 2),
+    ],
+)
+def test_el_rango_de_fuente_pone_placsp_primero_y_ted_al_final(
+    fuente: str | None, rango: int
+) -> None:
+    """PLACSP (con su carril ``bulk_YYYYMM``) → el resto → TED.
+
+    Los dos defectos que cierra el criterio de ``v156``: el upsert reescribe
+    ``fuente`` con la etiqueta del carril que refrescó la fila, así que una
+    fila de PLACSP traída por el bulk dejaba de contar como PLACSP; y TED, que
+    republica lo que el comprador ya publicó en su plataforma, ganaba a PSCP o
+    a un RSS autonómico solo por ser más antigua. El dedupe por referencia ya
+    aplicaba las dos reglas (ADR-026); la vista no.
+    """
+    fila = {"id_externo": "X", "fuente": fuente, "fecha_publicacion": None}
+
+    assert _rango_canonico(fila)[0] == rango
+
+
+def test_ted_pierde_frente_a_otra_fuente_aunque_sea_mas_antigua() -> None:
+    ted = _fila("ted:0001", fuente="ted", fecha_publicacion="2020-01-01")
+    pscp = _fila("pscp:A", fuente="pscp", fecha_publicacion="2026-12-31")
+
+    assert _pick_canonical(ted, pscp)[0]["id_externo"] == "pscp:A"
+    assert _pick_canonical(pscp, ted)[0]["id_externo"] == "pscp:A"
+
+
+def test_el_bulk_cuenta_como_placsp() -> None:
+    bulk = _fila("EXP-1", fuente="bulk_202606", fecha_publicacion="2026-12-31")
+    pscp = _fila("pscp:A", fuente="pscp", fecha_publicacion="2020-01-01")
+
+    assert _pick_canonical(pscp, bulk)[0]["id_externo"] == "EXP-1"
 
 
 def test_el_rango_prefiere_la_primera_extraccion_sobre_la_ultima() -> None:

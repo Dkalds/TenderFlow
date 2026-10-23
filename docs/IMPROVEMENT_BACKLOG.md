@@ -519,25 +519,6 @@ _Sin ítems abiertos._
 - **Files de partida:** [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [db/repositories/documentos.py](../db/repositories/documentos.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo — solo observación y una variable de entorno.
 
-### [P1] La vista canónica todavía puede preferir TED, y el bulk no cuenta como PLACSP
-- **Área:** db/sql_fragments.py (`_criterios_canonicos_sql`), services/dedupe.py (`_rango_canonico`), db/alembic
-- **Problema:** el orden de canónica es `fuente <> 'placsp'`, fecha de publicación,
-  primera extracción e id. Dos defectos: TED no pierde frente a las demás fuentes
-  cuando un par colapsa por clave sin referencia explícita (gana la más antigua),
-  y las filas que refrescó el carril bulk llevan `fuente = 'bulk_YYYYMM'` —el
-  upsert reescribe `fuente`—, así que pierden la preferencia de PLACSP. El
-  dedupe por referencia ya aplica «TED nunca canónica» y cuenta el bulk como
-  PLACSP; la vista no.
-- **Acceptance criteria:**
-  - `_criterios_canonicos_sql` y su gemelo `_rango_canonico` ordenan PLACSP (con
-    `bulk_%`) → resto → TED, y `tests/test_dedupe_publico.py` fija la paridad.
-  - Migración nueva que reconstruye `licitaciones_canonicas` por permuta, como
-    `v102` (requiere OK: AGENTS.md §6), y `tests/test_mv_canonicas_definicion.py`
-    apuntando a ella.
-  - Delta medido en producción: cuántas canónicas cambian de fila (y de URL).
-- **Files de partida:** [db/sql_fragments.py](../db/sql_fragments.py), [db/alembic/versions/v102_mv_canonicas_clave_inmutable.py](../db/alembic/versions/v102_mv_canonicas_clave_inmutable.py), [services/dedupe.py](../services/dedupe.py)
-- **Riesgo:** alto — reconstruye la vista de la superficie pública y mueve URLs del sitemap.
-
 ### [P1] Ampliar el golden set del clasificador SAP a 300-500 ejemplos etiquetados a mano
 - **Área:** tests/fixtures/golden_set.jsonl, tests/fixtures/golden_set_tech.jsonl, scripts/sample_golden_candidates.py (acción del usuario: etiquetar)
 - **Problema:** el golden set es el único sitio del repo con etiquetas humanas independientes del filtro de keywords, y de él salen dos cosas que gobiernan producción: el umbral servido y `recall_no_keyword`, la métrica que decide si el ML aporta algo sobre `matches_sap()` (desde el 2026-08-24 es criterio **bloqueante** del gate de promoción, `services/ml/promotion.py`). Con 27 ejemplos no sostiene ninguna de las dos: solo 6 son positivos humanos sin keyword, así que `recall_no_keyword` se mueve a saltos de 16,7 puntos y solo puede tomar 7 valores; un bootstrap sobre esos 27 da un umbral con sigma=0,084 y rango p5-p95 de [0,30, 0,56] sobre un rango útil de 0,65, y el F-beta reportado sobre el mismo conjunto donde se elegía el umbral sobreestimaba el real en +0,08 de media (+0,25 en el p90). El reparto tune/holdout ya está implementado; partir 27 en dos no arregla el tamaño. El golden multi-etiqueta (`golden_set_tech.jsonl`) tiene 23 ejemplos semilla y el mismo problema.
@@ -767,14 +748,7 @@ _Sin ítems abiertos._
 - **Files de partida:** [db/upsert.py](../db/upsert.py), [shared/numeric.py](../shared/numeric.py), [services/contract_events.py](../services/contract_events.py), [db/alembic/versions/baseline002_pg_core_genesis.py](../db/alembic/versions/baseline002_pg_core_genesis.py)
 - **Riesgo:** alto — migra schema de la tabla núcleo con lock exclusivo sobre 1,3 M filas; la mitigación aplicada (tolerancia) es de riesgo bajo y ya cubre el síntoma.
 - **Progreso (2026-09-18, PARCIAL, rama `worktree-agent-ae7fea40cc310a705`):** unificado con T2 del plan de arquitectura v2. El plan de columna sombra está escrito con el nombre que fijó el plan, **`importe_num numeric(14,2)`** (no `importe_f8`: céntimos exactos en vez de otro float), más `duracion_valor_num numeric` (`v133_nucleo_tipado_sombra`, sólo catálogo, sin reescritura), escritura dual en `db/upsert.py` que traduce el `float` del conector **antes** de que pase por `real`, backfill por lotes (`scripts/backfill_nucleo_tipado.py`) y runbook de la ventana ([runbooks/nucleo-tipado-ventana.md](runbooks/nucleo-tipado-ventana.md)). `FLOAT_REL_TOL` **no se ha tocado**. Pendiente, todo en producción: aplicar la ventana, verificar cero divergencias, mover las lecturas de `importe` a la sombra, y sólo entonces bajar la tolerancia y limpiar `licitaciones_history`/`contrato_eventos`. El test de round-trip exacto contra Postgres (`tests/test_nucleo_tipado_pg.py`) está escrito y **no se ha ejecutado**.
-
-### [P2] Filas nuevas con importe y sin `importe_tipo`: la auditoría lo viola a diario y crece
-- **Área:** scraper/connectors/, db/upsert.py, scripts/audit_domain_truth.py
-- **Problema:** el umbral `importe/filas_nuevas_sin_tipo` (cero, sin margen, desde `v113`) se supera en las siete ejecuciones archivadas de `domain-truth.yml` del 12 al 18/09, y la cuenta **crece cada día**: 131, 131, 152, 190, 238, 279, 316 filas con importe desde el 2026-09-06 y sin base declarada. Algún camino de escritura no puebla `importe_tipo`; el correo de alerta lleva una semana diciendo lo mismo. (En la misma serie, `ml_proba` > 0,7 está en el 72,9 % de lo puntuado frente al 50 % del criterio: eso es el P2 del corpus de PSCP, ya abierto.)
-- **Acceptance criteria:** identificado el camino (por `fuente` de esas filas) y corregido en origen; la cuenta deja de crecer en `domain-truth.json`. El umbral no se relaja.
-- *Estado (2026-10-17):* la cuenta **ya no crece**. Medido en producción con el mismo predicado que la auditoría (`COALESCE(primera_extraccion, fecha_extraccion) >= '2026-09-06'`): quedan **4** filas con importe y sin `importe_tipo`, todas de `galicia_rss` y escritas entre el 10 y el 17/09; ninguna después. Las 316 del 18/09 no están: o las reescribió una reingesta con tipo o las purgó la limpieza de PSCP. El camino roto ya está cerrado: los RSS autonómicos, Galicia incluido, declaran la base desde `scraper/connectors/regional_rss.py::_tipo_de_importe` (#419), y cuando la prosa no la dice escriben `desconocido`, no `NULL`. Para cerrar el ítem solo queda decidir qué se hace con esas 4 filas para que el umbral de cero deje de saltar: reingerirlas o marcarlas `desconocido`, que es lo que habría escrito el conector de hoy.
-- **Files de partida:** [db/domain_truth_audit.py](../db/domain_truth_audit.py) (`importe_sin_base_declarada`), [scripts/audit_domain_truth.py](../scripts/audit_domain_truth.py)
-- **Riesgo:** bajo — corrección de ingesta; la serie está en el docstring del script.
+- **Progreso (2026-10-23, rama de la tanda paralela, OK del propietario a la migración):** escrita `v155_importes_double_precision`, que pasa a `double precision` `licitaciones.importe` y `duracion_valor` y los cuatro importes de `adjudicaciones` (`importe_adjudicado`, `importe_pagable`, `oferta_minima`, `oferta_maxima`). Inventario de dependencias con `pg_depend` en producción y en una base recién migrada: solo índices (los reconstruye el `ALTER`) y la vista `licitaciones_canonicas`, que la revisión tira y rehace con el cuerpo de `v102`; ningún trigger, función, `CHECK` ni `DEFAULT`. Un `ALTER TABLE` por tabla, para reescribir cada una una sola vez; `lock_timeout` 30 s y downgrade simétrico a `real` (con pérdida de precisión, documentada). El plan de columna sombra deja de ser el camino para `importe`: la tabla tiene hoy ~89 k filas vivas, no 1,3 M. `importe_num` **se conserva** (las filas antiguas conservan el redondeo de float4 hasta su reingesta; retirarla es decisión aparte). Ciclo `upgrade head` → `downgrade -1` ×3 → `upgrade head` verde en Postgres local. **Pendiente, propietario:** aplicarla con `migrate.yml` en ventana y con la ingesta parada (lock `ACCESS EXCLUSIVE` sobre `licitaciones` y `adjudicaciones` mientras se reescriben: 873 MB + 1,15 GB de índices y 280 MB; estimación sin medir, de uno a pocos minutos). **Después**, en otro cambio: bajar `FLOAT_REL_TOL` (o retirarla del campo) y limpiar `licitaciones_history`/`contrato_eventos`, como dicen los criterios.
 
 ### [P2] Modelo de baja por lote
 - **Área:** services/ml, db/alembic, api/routes/predicciones.py, web/
@@ -1248,6 +1222,7 @@ _Sin ítems abiertos._
   - Si el lote viene en otra forma, añadirla a `_XPATHS_LOTE_RESULTADO` y relanzar `reproceso-lotes.yml` con `aplicar` sobre el rango afectado; si de verdad no viene, documentarlo en el docstring de `_lote_del_resultado` y cerrar.
 - **Files de partida:** [scraper/codice_parser.py](../scraper/codice_parser.py), [scraper/reproceso_lotes.py](../scraper/reproceso_lotes.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
 - **Riesgo:** bajo — es lectura del XML; el reproceso solo rellena `lote_id` vacío.
+- **Progreso (2026-10-23):** sin red a PLACSP desde la sesión, así que `26/AMLICENCIASCITI` no se capturó y el XML no se inventa. Medido con el MCP: quedan **121** filas sin lote en 58 expedientes multilote, y **113** de ellas tienen un `importe_adjudicado` que float4 no guarda en céntimos (39.567,94 € está guardado como 39.567,94140625); en los expedientes mixtos, 51 de 53 filas sin lote son así frente a 11 de 44 con lote. Es el emparejamiento de `db/repositories/reproceso_lotes.py`, no el XML: comparaba `importe_adjudicado` (`real`) por igualdad exacta con el float8 del parser, que no casa nunca en esos importes. Corregido comparando a la precisión de `real` (test `test_casa_el_importe_que_la_columna_real_redondeo`); vale antes y después de `v155`. **Pendiente, propietario:** relanzar `reproceso-lotes.yml` con `aplicar` sobre 2022-04..2026-10 y volver a medir. Si queda residuo (las ~8 filas con importe exacto), entonces sí capturar el XML con red y decidir entre ampliar `_XPATHS_LOTE_RESULTADO` o documentarlo en `_lote_del_resultado`.
 
 ### [P3] Partir los componentes con cinco o más booleanos de modo en variantes explícitas
 - **Área:** web/src (composición de componentes)
@@ -1385,6 +1360,27 @@ _Sin ítems abiertos._
 - **Riesgo:** bajo — sustituciones de nombre.
 
 ## Cerrados
+
+- [2026-10-23] **P1: La vista canónica todavía puede preferir TED, y el bulk no cuenta como
+  PLACSP** (rama de la tanda paralela; OK del propietario a la migración) — el primer criterio de
+  canónica pasa a `db.sql_fragments.rango_de_fuente_sql`: PLACSP (`placsp` o `bulk_*`, prefijo
+  exacto con `left(..., 5)`, sin `LIKE` ni `%`) → resto → TED. Su gemelo
+  `services.dedupe._rango_canonico` cambia con él y `tests/test_canonica_orden_pg.py` ordena las mismas
+  filas en Postgres y en Python. `v156_mv_canonicas_fuente` reconstruye la vista por permuta (calcada
+  de `v102`); `tests/test_mv_canonicas_definicion.py` apunta a ella. Delta medido en producción el
+  mismo día con el MCP, sin aplicar nada: **32 de 40.545** contratos publicables cambian de fila
+  canónica (29 de TED a PLACSP-bulk, 3 de `placsp` a `bulk_*` del mismo expediente). Glosario del
+  MCP y ADR-026 actualizados. **Pendiente, propietario:** revisar el delta con
+  `ENV=dev python scripts/medir_delta_canonicas.py` (lista cada URL que cambia) y aplicar `v156` con
+  `migrate.yml`; va detrás de `v155`, así que se puede subir hasta `v155` sin mover URLs.
+
+- [2026-10-23] **P2: Filas nuevas con importe y sin `importe_tipo`** — las 4 filas de `galicia_rss`
+  (escritas entre el 10 y el 17/09, las únicas de toda la tabla, medido ese día) pasan a
+  `desconocido` con `v154_importe_tipo_galicia_desconocido`, acotada a esa fuente para que otro camino
+  roto siga saltando en la auditoría. Idempotente; downgrade no-op documentado. El conector de hoy ya
+  escribe la base (`regional_rss._tipo_de_importe`, test `test_rss_la_fila_de_galicia_lleva_tipo`).
+  **Pendiente, propietario:** aplicar `v154` con `migrate.yml`; tras ello `importe/filas_nuevas_sin_tipo`
+  vuelve a cero.
 
 - [2026-10-17] **P2: Decidir si el listado `/licitaciones` esconde duplicados (ADR-026 D23
   dice que sí)** (rama `claude/listado-esconde-duplicados`) — manda D23: el listado es

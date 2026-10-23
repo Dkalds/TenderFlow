@@ -241,7 +241,15 @@ class DedupeResult:
         }
 
 
-def _rango_canonico(row: dict[str, Any]) -> tuple[bool, str, str, str]:
+def _rango_de_fuente(fuente: object) -> int:
+    """Gemelo de ``db.sql_fragments.rango_de_fuente_sql``: PLACSP 0, resto 1, TED 2."""
+    valor = None if fuente is None else str(fuente)
+    if _es_placsp(valor):
+        return 0
+    return 2 if valor == FUENTE_TED else 1
+
+
+def _rango_canonico(row: dict[str, Any]) -> tuple[int, str, str, str]:
     """Orden de preferencia de canónica; menor gana.
 
     Espeja ``db.sql_fragments._rango_canonico_sql`` campo a campo. Termina en
@@ -267,9 +275,14 @@ def _rango_canonico(row: dict[str, Any]) -> tuple[bool, str, str, str]:
     vacía como ausente y ``coalesce`` no. Solo afecta a filas de legado con
     fechas en cadena vacía y se deja como estaba: cambiarlo movería canónicas
     que hoy están quietas, que es justo lo que este criterio existe para evitar.
+
+    **PLACSP (con ``bulk_YYYYMM``) → resto → TED (revisión ``v156``).** El
+    primer término era ``fuente != "placsp"``: una fila de PLACSP refrescada por
+    el carril bulk competía como una fuente cualquiera, y TED ganaba a PSCP o a
+    un RSS autonómico si era la más antigua. Ver :func:`_rango_de_fuente`.
     """
     return (
-        str(row.get("fuente")) != "placsp",
+        _rango_de_fuente(row.get("fuente")),
         str(row.get("fecha_publicacion") or "9999"),
         str(row.get("primera_extraccion") or row.get("fecha_extraccion") or "9999"),
         str(row["id_externo"]),
@@ -277,7 +290,7 @@ def _rango_canonico(row: dict[str, Any]) -> tuple[bool, str, str, str]:
 
 
 def _pick_canonical(a: dict[str, Any], b: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    """(canónica, duplicada): PLACSP gana; si no, la más antigua; si no, la de id menor."""
+    """(canónica, duplicada): PLACSP gana y TED pierde; si no, la más antigua; si no, la de id menor."""
     return (a, b) if _rango_canonico(a) <= _rango_canonico(b) else (b, a)
 
 
@@ -572,8 +585,9 @@ def id_evl_de_url(url: str | None) -> str | None:
 def _es_placsp(fuente: str | None) -> bool:
     """PLACSP entra con dos etiquetas: ``placsp`` (ATOM) y ``bulk_YYYYMM`` (ZIP mensual).
 
-    ``_rango_canonico`` solo reconoce la primera, así que una fila que refrescó
-    el carril bulk competía con TED como si fuera una fuente cualquiera.
+    Hasta ``v156`` ``_rango_canonico`` solo reconocía la primera, así que una
+    fila que refrescó el carril bulk competía con TED como si fuera una fuente
+    cualquiera.
     """
     valor = fuente or ""
     return valor == "placsp" or valor.startswith("bulk_")
@@ -594,7 +608,7 @@ def _organo_emparejable(nombre: str | None) -> str | None:
     return normalize_organo(nombre)
 
 
-def _orden_de_candidata(fila: dict[str, Any]) -> tuple[bool, tuple[bool, str, str, str]]:
+def _orden_de_candidata(fila: dict[str, Any]) -> tuple[bool, tuple[int, str, str, str]]:
     """Qué fila representa al contrato cuando TED tiene varias gemelas: PLACSP primero.
 
     Detrás, el mismo criterio total de :func:`_rango_canonico`, para que el

@@ -942,6 +942,35 @@ def periodo_canonico(
     return ""
 
 
+def rango_de_fuente_sql(alias: str = "l") -> str:
+    """Primer criterio de canónica: PLACSP (``0``) → el resto (``1``) → TED (``2``).
+
+    **PLACSP entra con dos etiquetas.** El ATOM escribe ``placsp`` y el carril
+    de ZIP mensuales ``bulk_YYYYMM``, y el upsert reescribe ``fuente`` con la
+    del carril que refrescó la fila: comparar solo con ``'placsp'`` dejaba a
+    PLACSP compitiendo como una fuente más en cuanto pasaba el bulk. Se
+    compara el prefijo con ``left(..., 5)`` y no con ``LIKE 'bulk_%'`` por dos
+    motivos: el ``_`` de un ``LIKE`` es comodín de un carácter, así que no diría
+    lo mismo que ``startswith("bulk_")`` en ``services.dedupe._es_placsp``; y un
+    ``%`` literal rompe psycopg en cuanto el fragmento viaja en una consulta con
+    parámetros (``tests/test_dedupe_publico.py`` lo vigila).
+
+    **TED al final**, por la misma razón que ``services.dedupe.FUENTE_TED``:
+    republica en el DOUE lo que el comprador ya publicó en su plataforma, con
+    menos detalle (sin lotes, sin pliegos, sin importes por lote). Antes solo
+    perdía frente a PLACSP, así que frente a PSCP o a un RSS autonómico ganaba
+    cuando era la más antigua.
+
+    Un ``fuente`` ``NULL`` cae en el ``ELSE``, igual que en el gemelo Python
+    (``None`` no es PLACSP ni TED). El ``fuente <> 'placsp'`` de antes daba
+    ``NULL`` y Postgres lo ordenaba detrás de todo, Python no.
+    """
+    return (
+        f"CASE WHEN {alias}.fuente = 'placsp' OR left({alias}.fuente, 5) = 'bulk_' THEN 0 "
+        f"WHEN {alias}.fuente = 'ted' THEN 2 ELSE 1 END"
+    )
+
+
 def _criterios_canonicos_sql(alias: str) -> str:
     """Los cuatro criterios de canónica, como lista separada por comas.
 
@@ -955,9 +984,14 @@ def _criterios_canonicos_sql(alias: str) -> str:
     :func:`periodo_publicacion_sql`: el desempate tiene que ser inmutable, y el
     upsert reescribe ``fecha_extraccion`` en cada pasada. El respaldo se
     conserva mientras ``db/upsert.py`` no rellene la columna nueva.
+
+    El primero es :func:`rango_de_fuente_sql` desde la revisión ``v156``; hasta
+    ``v102`` era ``fuente <> 'placsp'``. La vista materializada congela este
+    orden en su cuerpo, así que cambiarlo exige una revisión que la reconstruya
+    (``tests/test_mv_canonicas_definicion.py`` falla si no).
     """
     return (
-        f"({alias}.fuente <> 'placsp'), coalesce({alias}.fecha_publicacion, '9999'), "
+        f"{rango_de_fuente_sql(alias)}, coalesce({alias}.fecha_publicacion, '9999'), "
         f"coalesce({alias}.primera_extraccion, {alias}.fecha_extraccion, '9999'), "
         f"{alias}.id_externo"
     )
@@ -973,7 +1007,8 @@ def _rango_canonico_sql(alias: str) -> str:
     justo lo que un sitemap existe para evitar.
 
     Los tres primeros criterios son los mismos que ``_pick_canonical`` en
-    ``services/dedupe.py``: PLACSP primero (lleva más detalle de adjudicación),
+    ``services/dedupe.py``: PLACSP primero (lleva más detalle de adjudicación) y
+    TED al final (republica con menos detalle), ver :func:`rango_de_fuente_sql`;
     luego la publicación más antigua, luego la extracción más antigua. Preferir
     la más antigua y no la más reciente es lo que mantiene quieta la URL cuando
     llegan corrigendos.

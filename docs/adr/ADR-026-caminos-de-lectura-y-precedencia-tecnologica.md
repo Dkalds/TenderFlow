@@ -297,10 +297,14 @@ Implementación: `services.dedupe.detect_duplicados_por_referencia`, alimentado 
 ### Lo que queda fuera
 
 - **El orden de la vista canónica.** `_criterios_canonicos_sql`, congelado en
-  `v102`, sigue siendo «`fuente = 'placsp'` primero, luego la más antigua». Un par
-  sin referencia explícita que colapse por clave puede seguir eligiendo la fila
-  TED si es la más antigua, y `bulk_YYYYMM` sigue sin contar como PLACSP.
-  Cambiarlo exige una migración que reconstruya la vista.
+  `v102`, era «`fuente = 'placsp'` primero, luego la más antigua»: un par sin
+  referencia explícita que colapsara por clave podía elegir la fila TED si era
+  la más antigua, y `bulk_YYYYMM` no contaba como PLACSP. **Resuelto en `v156`
+  (2026-10-23)**: el primer criterio pasa a ser `rango_de_fuente_sql` (PLACSP
+  con el bulk → resto → TED), el mismo que esta regla aplica por referencia, y
+  su gemelo `services.dedupe._rango_canonico` cambia con él. Medido ese día en
+  producción antes de aplicar: 32 de 40.545 contratos publicables cambian de
+  fila canónica (29 de TED a PLACSP; 3 entre dos filas de PLACSP).
 - **BT-22 y el `idEvl` no son columnas.** El emparejamiento ocurre mientras el
   conector re-lee su ventana de 14 días; pasada la ventana, un backfill
   (`python -m scraper.connectors.ted --desde YYYYMMDD`) re-lee y empareja.

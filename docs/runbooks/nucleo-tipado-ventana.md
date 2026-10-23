@@ -26,6 +26,15 @@ producción. Los pasos 1, 4 y 6 son decisiones con el dato real delante.
 `db/upsert.py`, el backfill (`scripts/backfill_nucleo_tipado.py`) y los
 fragmentos de lectura dual detrás de `NUCLEO_TIPADO_LECTURA` (apagado).
 
+**Cambio de plan para `importe` y `duracion_valor` (2026-10-23):** con OK del
+propietario, `v155_importes_double_precision` hace el `ALTER COLUMN ... TYPE
+double precision` que la sección siguiente descartaba, junto con los cuatro
+importes de `adjudicaciones`. Lo que cambió es el tamaño: `licitaciones` tiene
+hoy ~89 k filas vivas, no ~1,3 M. Se aplica por `migrate.yml` en ventana, con
+la ingesta parada (coste y lock en el docstring de la revisión). Las sombras
+de fecha siguen este runbook; `importe_num` se conserva hasta verificar que
+coincide con `importe` y su retirada es decisión aparte.
+
 ---
 
 ## Por qué así y no con un `ALTER COLUMN ... TYPE`
