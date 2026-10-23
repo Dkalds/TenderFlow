@@ -243,6 +243,10 @@ def test_retired_models_are_not_offered():
         "deepseek-ai/deepseek-v4-flash-0731",
         "z-ai/glm-5.2",
         "minimaxai/minimax-m3",
+        # Sigue en `/v1/models`, pero el chat responde 404 desde el 2026-10-20
+        # (issue #523). Si NVIDIA vuelve a servirlo, sacarlo de aquí es la
+        # decisión consciente de devolverlo a la oferta.
+        "nvidia/nemotron-3-super-120b-a12b",
     }
     en_uso = {
         *AVAILABLE_MODELS,
@@ -310,7 +314,7 @@ def test_stream_llm_response_dispatches_to_nvidia(monkeypatch):
 
         result = list(
             stream_llm_response(
-                "pregunta de prueba", [], model="nvidia/nemotron-3-super-120b-a12b", keywords=[]
+                "pregunta de prueba", [], model="nvidia/nemotron-3-ultra-550b-a55b", keywords=[]
             )
         )
 
@@ -636,12 +640,29 @@ def test_all_candidates_failed_raises_last_error(monkeypatch):
             list(stream_llm_response("pregunta de prueba", [], "gpt-4o-mini", []))
 
 
+def _con_segundo_nim(monkeypatch) -> None:
+    """Pone un segundo NIM en la cadena, detrás del default.
+
+    La oferta real puede quedarse con un solo NIM (desde el 2026-10-21 solo
+    queda `nemotron-3-ultra`), y lo que estos tests miden es cómo trata la
+    cadena a dos modelos del mismo proveedor, no qué catálogo hay hoy.
+    """
+    from llm import client
+
+    monkeypatch.setattr(
+        client,
+        "FALLBACK_MODELS",
+        [client.DEFAULT_MODEL, "nvidia/segundo-nim-de-prueba", "gpt-4o-mini", "claude-haiku-4-5"],
+    )
+
+
 def test_rejected_key_skips_the_rest_of_its_provider(monkeypatch):
     """Una key rechazada lo es para todos los modelos de su proveedor: la cadena
     no gasta otra llamada en el segundo NIM y pasa directamente al siguiente."""
     from llm.providers import LLMAuthError
 
     _sin_claves_nvidia_anthropic(monkeypatch)
+    _con_segundo_nim(monkeypatch)
     monkeypatch.setenv("NVIDIA_API_KEY", "key-rechazada")  # pragma: allowlist secret
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")  # pragma: allowlist secret
 
@@ -680,6 +701,7 @@ def test_unavailable_model_falls_back_within_its_provider(monkeypatch):
     from llm.providers import LLMModelUnavailableError
 
     _sin_claves_nvidia_anthropic(monkeypatch)
+    _con_segundo_nim(monkeypatch)
     monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test")  # pragma: allowlist secret
     intentados: list[str] = []
     fallbacks: list[tuple[str, str]] = []

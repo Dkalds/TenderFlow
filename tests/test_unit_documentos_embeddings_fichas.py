@@ -103,7 +103,7 @@ def fase_activada(monkeypatch: pytest.MonkeyPatch) -> None:
     # Modelo NVIDIA explícito: el proveedor que se sustituye abajo es el suyo.
     # Tiene que estar en AVAILABLE_MODELS: la cadena real lo valida.
     monkeypatch.setattr(
-        settings, "PLIEGO_FACTS_MODEL", "nvidia/nemotron-3-super-120b-a12b", raising=False
+        settings, "PLIEGO_FACTS_MODEL", "nvidia/nemotron-3-ultra-550b-a55b", raising=False
     )
 
 

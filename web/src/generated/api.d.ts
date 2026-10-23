@@ -6274,7 +6274,7 @@ export interface components {
             /**
              * Model
              * @description Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.
-             * @default nvidia/nemotron-3-super-120b-a12b
+             * @default nvidia/nemotron-3-ultra-550b-a55b
              */
             model: string;
             /**
@@ -14039,7 +14039,7 @@ export interface components {
             /**
              * Model
              * @description Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.
-             * @default nvidia/nemotron-3-super-120b-a12b
+             * @default nvidia/nemotron-3-ultra-550b-a55b
              */
             model: string;
         };

@@ -38,7 +38,7 @@ _OPENAI_PREFIXES = ("gpt-", "o1-", "o3-")
 _ANTHROPIC_PREFIXES = ("claude-",)
 
 # NVIDIA NIM expone una API compatible con OpenAI. Los modelos llegan con formato
-# "namespace/modelo" (p. ej. "nvidia/nemotron-3-super-120b-a12b"), y el "/" en
+# "namespace/modelo" (p. ej. "nvidia/nemotron-3-ultra-550b-a55b"), y el "/" en
 # el nombre actúa como discriminador frente a los modelos OpenAI/Anthropic.
 # El endpoint es configurable vía NVIDIA_BASE_URL para apuntar a un gateway propio.
 _NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
@@ -71,7 +71,16 @@ _NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvid
 # oferta hasta que responda: un modelo colgado es peor que uno retirado, que al
 # menos falla rápido.
 #
-# Los dos modelos NIM marcados abajo como "razonamiento" generan una traza de
+# Quinto, y otra vez el default, pero con otra forma: `nvidia/nemotron-3-super-
+# 120b-a12b` respondía 200 el 2026-10-20 a las 05:00 y desde ese mediodía el
+# endpoint de chat devuelve 404, mientras `/v1/models` lo sigue listando (el
+# canary dio `ok` el 2026-10-21, cuatro minutos después de un 404). La ficha
+# del pliego y el etiquetado de tecnologías fallaron enteros (issue #523);
+# `/ask` siguió viva porque su fallback pasó a `nemotron-3-ultra`, que
+# respondió 200 en producción ese mismo día. Estar en el catálogo no prueba
+# que el modelo se sirva.
+#
+# El modelo NIM marcado abajo como "razonamiento" genera una traza de
 # reasoning ANTES de la respuesta final, y esa traza consume el presupuesto de
 # `max_tokens` del provider (900 en /ask, 1500 en /resumen). Si la traza se lo
 # come entero, el stream llega vacío y /ask degrada — mismo síntoma que un
@@ -79,9 +88,7 @@ _NVIDIA_BASE_URL = os.environ.get("NVIDIA_BASE_URL", "https://integrate.api.nvid
 # envía desde 2026-09-06 (ver `REASONING_TEMPLATE_KWARGS` más abajo).
 AVAILABLE_MODELS: list[str] = [
     # ── NVIDIA NIM (free tier: sin coste, limitado por RPM/créditos de la key) ─
-    # 120B / 12B activos, 1M contexto, español soportado. Razonamiento.
-    "nvidia/nemotron-3-super-120b-a12b",
-    # 550B / 55B activos, 1M contexto. Razonamiento. El más lento del lote.
+    # 550B / 55B activos, 1M contexto. Razonamiento.
     "nvidia/nemotron-3-ultra-550b-a55b",
     # ── Proveedores de pago (requieren OPENAI_API_KEY / ANTHROPIC_API_KEY) ────
     "gpt-4o-mini",
@@ -92,18 +99,20 @@ AVAILABLE_MODELS: list[str] = [
 ]
 
 # Modelo por defecto cuando el cliente no especifica uno.
-# Criterio: el NIM más rápido de los que responden. `nemotron-3-super` (12B
-# activos) dio el primer token en 0,5 s el 2026-09-24, pedido sin traza de
-# razonamiento (`REASONING_TEMPLATE_KWARGS`), y ya estaba en `FALLBACK_MODELS`
-# desde el 2026-09-02. Sustituye a `deepseek-ai/deepseek-v4-flash-0731`, que
-# NVIDIA retiró (ver arriba). Los prompts de `llm/prompts.py` se afinaron
-# contra DeepSeek: la calidad con este modelo se mide con `make eval-llm`, no
-# se da por hecha.
+# Criterio: el NIM que responde. `nemotron-3-ultra` es el único que queda en la
+# oferta desde que `nemotron-3-super` dejó de servirse (ver arriba): era el
+# segundo eslabón de `FALLBACK_MODELS` y el 2026-10-21 contestó 200 en
+# producción a cada `/ask` que caía desde super. Es más lento (primer token en
+# 2,4 s frente a 0,5 s el 2026-09-24), así que la ficha y el etiquetado sacan
+# menos expedientes por corrida dentro de su tope de reloj, y su precio
+# nocional en `_PRICE_PER_MTOK` es 4,5 veces el de super. Los prompts de
+# `llm/prompts.py` se afinaron contra DeepSeek y después contra super: la
+# calidad con este modelo se mide con `make eval-llm`, no se da por hecha.
 #
 # `config/settings.py` (PLIEGO_FACTS_MODEL, LLM_TECH_LABELING_MODEL),
 # `config/settings_resumen.py` y `api/routes/ask.py` repiten este valor como
 # literal; `tests/test_llm_client.py` comprueba que no se desincronizan.
-DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b"
+DEFAULT_MODEL = "nvidia/nemotron-3-ultra-550b-a55b"
 
 # Cadena de fallback cuando el modelo pedido falla ANTES de emitir el primer
 # token (excepción del provider o stream vacío — el síntoma exacto del EOL de
@@ -111,20 +120,15 @@ DEFAULT_MODEL = "nvidia/nemotron-3-super-120b-a12b"
 # Solo se intentan los modelos cuyo proveedor tiene API key configurada, y
 # nunca se cambia de modelo a mitad de respuesta: con tokens ya emitidos el
 # error se propaga tal cual. El orden es coste ascendente dentro de "fiable":
-# segundo NIM gratuito primero, después los proveedores de pago baratos.
+# segundo NIM gratuito primero (si lo hay), después los de pago baratos.
 #
-# El segundo eslabón ha cambiado dos veces: fue `z-ai/glm-5.2` hasta que salió
-# del catálogo (2026-09-02), después `nemotron-3-super` hasta que pasó a ser el
-# default (2026-09-24), y ahora es `nemotron-3-ultra`, el otro NIM que queda en
-# la oferta. Es más lento (primer token en 2,4 s frente a 0,5 s el 2026-09-24)
-# y, como el default, es de razonamiento: se pide sin traza, y aun así un
-# candidato que devuelva vacío cuenta como fallo y se pasa al siguiente. Va por
-# delante de los de pago porque en un despliegue con solo NVIDIA_API_KEY es el
-# único respaldo posible, y en uno con claves de pago lo peor que hace es
-# costar un intento antes de gpt-4o-mini.
+# Hoy no hay segundo NIM: el eslabón fue `z-ai/glm-5.2` hasta que salió del
+# catálogo (2026-09-02), después `nemotron-3-super` hasta que pasó a ser el
+# default (2026-09-24), después `nemotron-3-ultra` hasta que también lo pasó a
+# ser (2026-10-21). En un despliegue con solo NVIDIA_API_KEY el default no
+# tiene respaldo; con claves de pago, el siguiente es gpt-4o-mini.
 FALLBACK_MODELS: list[str] = [
     DEFAULT_MODEL,
-    "nvidia/nemotron-3-ultra-550b-a55b",
     "gpt-4o-mini",
     "claude-haiku-4-5",
 ]
@@ -151,7 +155,6 @@ _PROVIDER_KEY_ENV: dict[str, str] = {
 # la clave, el síntoma vuelve a ser el stream vacío, no un 400, así que
 # `make eval-llm` con uno de estos modelos es la comprobación real.
 REASONING_TEMPLATE_KWARGS: dict[str, dict[str, Any]] = {
-    "nvidia/nemotron-3-super-120b-a12b": {"thinking": False},
     "nvidia/nemotron-3-ultra-550b-a55b": {"thinking": False},
 }
 
@@ -207,7 +210,6 @@ _PRICE_PER_MTOK: dict[str, tuple[float, float]] = {
     # dejaría el breaker de coste sin contar nada; y si algún día se pasa a un
     # plan de pago el control ya está puesto. Son estimaciones por clase de
     # modelo, no tarifas publicadas: ajustar al plan real que se contrate.
-    "nvidia/nemotron-3-super-120b-a12b": (0.20, 0.80),
     "nvidia/nemotron-3-ultra-550b-a55b": (0.90, 3.60),
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),

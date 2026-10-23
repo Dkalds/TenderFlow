@@ -105,7 +105,7 @@ class AskRequest(BaseModel):
     model: str = Field(
         # Mantener sincronizado con llm.client.DEFAULT_MODEL (lo comprueba
         # tests/test_llm_client.py).
-        default="nvidia/nemotron-3-super-120b-a12b",
+        default="nvidia/nemotron-3-ultra-550b-a55b",
         description="Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.",
     )
     top_k: int = Field(
@@ -222,7 +222,7 @@ class ResumenRequest(BaseModel):
     model: str = Field(
         # Mantener sincronizado con llm.client.DEFAULT_MODEL (lo comprueba
         # tests/test_llm_client.py).
-        default="nvidia/nemotron-3-super-120b-a12b",
+        default="nvidia/nemotron-3-ultra-550b-a55b",
         description="Modelo LLM a usar. Ver /api/v1/ask/models para modelos disponibles.",
     )
     force: bool = Field(
