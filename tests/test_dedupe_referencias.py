@@ -583,7 +583,8 @@ def test_integration_una_gemela_ya_escondida_no_puede_ser_canonica(db) -> None:
 
 def test_integration_promueve_la_marca_pendiente_y_respeta_la_rechazada(db) -> None:
     from db.database import connect, connect_read
-    from services.dedupe import detect_duplicados_por_referencia, resolve_pending
+    from db.repositories.dedupe import resolver_pendiente
+    from services.dedupe import detect_duplicados_por_referencia
 
     placsp = _placsp("EXP-P")
     ted_pendiente = _ted("ted:1-2026")
@@ -598,7 +599,7 @@ def test_integration_promueve_la_marca_pendiente_y_respeta_la_rechazada(db) -> N
                 " confianza, status) VALUES (%s, 'ted:0-2026', 'republicacion', 0.8, 'pending')",
                 (dup,),
             )
-    assert resolve_pending("ted:2-2026", accept=False, resolved_by="revisor")
+    assert resolver_pendiente("ted:2-2026", accept=False, resolved_by="revisor")
 
     ref = ReferenciaCruzada(expediente="EXP-P")
     detect_duplicados_por_referencia(

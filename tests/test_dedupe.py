@@ -11,8 +11,6 @@ from services.dedupe import (
     medir_solape,
     natural_expediente,
     normalize_organo,
-    resolve_pending,
-    review_pending,
 )
 
 
@@ -139,10 +137,12 @@ def test_detect_cpv_distinto_va_a_revision(db):
             extraccion="2026-05-02T00:00:00",
         )
 
+    from db.repositories.dedupe import pendientes_de_revision, resolver_pendiente
+
     result = detect_duplicates(fuente="pscp")
 
     assert result.pendientes == 1 and result.confirmados == 0
-    pendientes = review_pending()
+    pendientes = pendientes_de_revision()
     assert len(pendientes) == 1
     assert pendientes[0]["confianza"] == 0.8
 
@@ -153,10 +153,10 @@ def test_detect_cpv_distinto_va_a_revision(db):
         sql = f"SELECT COUNT(*) FROM licitaciones l WHERE {exclude_duplicados_sql()}"  # noqa: S608
         assert c.execute(sql).fetchone()[0] == 2
 
-    assert resolve_pending("pscp:EXP-9", accept=True, resolved_by="test")
+    assert resolver_pendiente("pscp:EXP-9", accept=True, resolved_by="test")
     with connect_read() as c:
         assert c.execute(sql).fetchone()[0] == 1
-    assert review_pending() == []
+    assert pendientes_de_revision() == []
 
 
 def test_detect_es_incremental_por_cursor(db):

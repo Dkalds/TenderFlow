@@ -96,4 +96,13 @@ describe("Ops › Datos", () => {
     expect(await screen.findByText("No se pudieron cargar las métricas de calidad")).toBeInTheDocument();
     expect(screen.queryByText("Completitud por columna")).not.toBeInTheDocument();
   });
+
+  it("las colas de revisión y la auditoría del dato no dependen de la consulta de calidad", async () => {
+    // Traen su propia consulta: con la de calidad caída se puede seguir decidiendo.
+    montar({ detail: "boom" }, 500);
+
+    expect(await screen.findByRole("heading", { name: "Duplicados por decidir" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Órganos por decidir" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Verdad del dato" })).toBeInTheDocument();
+  });
 });

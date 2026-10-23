@@ -276,7 +276,7 @@ en el log — es un bug del llamante, no un motivo para perder el rastro.
 | `user.*` | `admin_changed`, `deactivate`, `reactivate`, `anonymize` | `api/routes/admin_users.py` |
 | acceso | `solicitud_acceso.estado`, `access_grant.granted`, `access_grant.revoked` | `api/routes/admin_solicitudes.py` |
 | `webhook.*` | `created`, `updated`, `deleted`, `secret_rotated` | `api/routes/webhooks.py` |
-| configuración | `feature_flag.set`, `tecnologias_keyword.{added,removed,seeded}`, `empresa.review_resolved` | rutas de administración |
+| configuración | `feature_flag.set`, `tecnologias_keyword.{added,removed,seeded}`, `empresa.review_resolved`, `dedupe.review_resolved`, `organo.review_resolved` | rutas de administración; las dos colas del dato en `api/routes/admin_revision.py` |
 | operación | `dlq.requeued`, `dlq.discarded` | `api/routes/admin_dlq.py` |
 | producto | `feedback.submitted`, `pursuit.weights_proposal_applied`, `go_no_go.weights_updated` | `api/routes/feedback.py`, `services/pursuits.py`, `services/go_no_go_puntuacion.py` |
 

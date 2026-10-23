@@ -150,7 +150,11 @@ def revision_pendiente_count() -> int:
 
 
 def listar_pendientes(*, limit: int = 200) -> list[dict[str, Any]]:
-    """Cola de revisión pendiente, la más reciente primero."""
+    """Cola de revisión pendiente, la más reciente primero.
+
+    La lee ``GET /admin/revision/organos``; el candidato llega con su nombre
+    para que la decisión se tome viendo las dos grafías.
+    """
     with connect_read() as c:
         return rows_to_dicts(
             c.execute(
@@ -158,10 +162,43 @@ def listar_pendientes(*, limit: int = 200) -> list[dict[str, Any]]:
                 "FROM organo_review_queue q "
                 "LEFT JOIN organos o ON o.organo_id = q.candidato_organo_id "
                 "WHERE q.status = 'pending' "
-                "ORDER BY q.created_at DESC LIMIT %s",
+                "ORDER BY q.created_at DESC, q.id DESC LIMIT %s",
                 (limit,),
             )
         )
+
+
+#: Estados con los que se cierra un ítem de la cola.
+ESTADOS_RESUELTOS = ("accepted", "rejected")
+
+
+def resolver_revision(revision_id: int, *, status: str, resolved_by: str) -> dict[str, Any] | None:
+    """Cierra un ítem **pendiente** de la cola y devuelve lo que hace falta para aplicarlo.
+
+    Reclama la fila con un único ``UPDATE ... WHERE status = 'pending'``: de dos
+    decisiones simultáneas sobre el mismo ítem solo una recibe la fila, y la
+    otra ``None``. Los efectos (alias, órgano nuevo, asignación) los aplica
+    después ``services.organos.decidir_revision``.
+
+    ``nombre_plano`` es ``lower(btrim(nombre_original))``: el mismo predicado con
+    el que :func:`asignar_a_licitaciones` encuentra la grafía cruda en
+    ``licitaciones``. No sirve ``alias_normalizado``, que es la forma plegada
+    para comparar órganos y no aparece tal cual en ninguna fila.
+    """
+    if status not in ESTADOS_RESUELTOS:
+        raise ValueError(f"estado de cierre inválido: {status!r}")
+    with connect() as c:
+        filas = rows_to_dicts(
+            c.execute(
+                "UPDATE organo_review_queue "
+                "SET status = %s, resolved_at = %s, resolved_by = %s "
+                "WHERE id = %s AND status = 'pending' "
+                "RETURNING id, nombre_original, alias_normalizado, dir3, "
+                "          candidato_organo_id, lower(btrim(nombre_original)) AS nombre_plano",
+                (status, now_utc_iso(), resolved_by, revision_id),
+            )
+        )
+    return filas[0] if filas else None
 
 
 def asignar_a_licitaciones(organo_id: int, *, nombre_normalizado: str, limit: int) -> int:

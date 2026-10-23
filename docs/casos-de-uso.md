@@ -173,6 +173,12 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - **Quién:** administrador. **Dónde:** `/ops`.
 - Ve usuarios, banderas y ejecuciones; quien no es administrador recibe un
   aviso, no los datos.
+- En Ops › Datos (`/ops?vista=calidad`) vacía las colas de revisión del dato:
+  confirma o rechaza los pares de duplicados pendientes —un par pendiente no
+  sale en los listados; confirmado tampoco cuenta en las métricas, rechazado
+  vuelve a todo— y decide si una grafía dudosa de órgano es el órgano que se le
+  parece u otro distinto, con lo que sus licitaciones reciben su órgano. Ve
+  también la auditoría de verdad del dato contra sus umbrales.
 
 ### CU-21 — Descubrir el producto en la web pública
 
@@ -291,7 +297,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-17** Ajustar mi perfil de puntuación | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-perfil.spec.ts](../web/e2e/recorrido-perfil.spec.ts) | [test_me_profile_routes.py](../tests/test_me_profile_routes.py) |
 | **CU-18** Estudiar a la competencia | [test_escenario_competencia.py](../tests/test_escenario_competencia.py) | [recorrido-competencia.spec.ts](../web/e2e/recorrido-competencia.spec.ts) | — |
 | **CU-19** Gobernar mi cuenta: preferencias y sesiones | — | [ajustes.spec.ts](../web/e2e/ajustes.spec.ts) | — |
-| **CU-20** Gestionar la plataforma como administrador | — | [admin-guard.spec.ts](../web/e2e/admin-guard.spec.ts) | — |
+| **CU-20** Gestionar la plataforma como administrador | [test_escenario_revision_datos.py](../tests/test_escenario_revision_datos.py) | [admin-guard.spec.ts](../web/e2e/admin-guard.spec.ts) | — |
 | **CU-21** Descubrir el producto en la web pública | — | [seo.spec.ts](../web/e2e/seo.spec.ts) | — |
 | **CU-22** Leer el pliego con la cita delante | — | [pagina-cita.spec.ts](../web/e2e/pagina-cita.spec.ts) | — |
 | **CU-23** Preguntar al Investigador en lenguaje natural | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-investigador.spec.ts](../web/e2e/recorrido-investigador.spec.ts) | — |

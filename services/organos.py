@@ -272,6 +272,108 @@ def resolver_pendientes(
     return resumen
 
 
+@dataclass(frozen=True, slots=True)
+class DecisionRevision:
+    """Qué hizo :func:`decidir_revision` con un ítem de la cola."""
+
+    #: Órgano al que quedó asignada la grafía.
+    organo_id: int
+    #: ``True`` si la decisión creó (o recuperó por nombre) un órgano propio
+    #: para la grafía; ``False`` si se fusionó con el candidato como alias.
+    organo_nuevo: bool
+    #: Licitaciones que recibieron ``organo_id`` por esta decisión.
+    filas_asignadas: int
+
+
+#: Lote de :func:`decidir_revision` al asignar licitaciones. El mismo que la
+#: pasada incremental de :func:`resolver_pendientes`.
+LOTE_ASIGNACION = 2_000
+
+
+def decidir_revision(
+    revision_id: int,
+    *,
+    aceptar: bool,
+    resolved_by: str = "",
+    batch: int = LOTE_ASIGNACION,
+) -> DecisionRevision | None:
+    """Aplica la decisión humana sobre una fusión dudosa de la cola.
+
+    Calcada de ``db.empresas.apply_review``, que hace lo mismo con empresas:
+
+    - **Aceptar**: la grafía es el candidato. Se registra como alias suyo
+      (``fuente="review"``), y la próxima pasada del resolver la encuentra por
+      nombre sin volver a la cola.
+    - **Rechazar**: es otro órgano. Se crea uno propio con esa grafía como
+      canónica. Es la asimetría del módulo: separar no exige evidencia.
+
+    En los dos casos, las licitaciones que esperaban la decisión con esa
+    grafía (``organo_id IS NULL``) reciben el órgano, por lotes hasta agotar.
+
+    Devuelve ``None`` si el ítem no existe o ya no estaba pendiente.
+
+    La fila se reclama **antes** de aplicar los efectos
+    (:func:`db.repositories.organos.resolver_revision`): así dos decisiones
+    simultáneas no pueden aplicar las dos. Si un efecto falla a medias, la
+    grafía sigue sin ``organo_id`` y la siguiente pasada de
+    :func:`resolver_pendientes` la vuelve a encolar: se pierde la decisión, no
+    el dato.
+    """
+    fila = repo.resolver_revision(
+        revision_id,
+        status="accepted" if aceptar else "rejected",
+        resolved_by=resolved_by,
+    )
+    if fila is None:
+        return None
+
+    nombre_original = str(fila.get("nombre_original") or "")
+    alias = str(fila["alias_normalizado"])
+    dir3 = fila.get("dir3") or None
+    candidato = fila.get("candidato_organo_id")
+
+    if aceptar and candidato is not None:
+        organo_id = int(candidato)
+        organo_nuevo = False
+        repo.anadir_alias(
+            organo_id,
+            alias_normalizado=alias,
+            alias_original=nombre_original,
+            dir3_variante=dir3,
+            fuente="review",
+        )
+    else:
+        # Sin candidato no hay con quién fusionar: aceptar equivale a separar,
+        # como en `apply_review`. El DIR3 solo se reclama si nadie lo tiene ya:
+        # el índice único de `v114` haría que `crear` no encontrara su fila.
+        organo_id = repo.crear(
+            nombre_canonico=nombre_original.strip() or alias,
+            nombre_normalizado=alias,
+            dir3=dir3 if dir3 and repo.get_by_dir3(dir3) is None else None,
+        )
+        organo_nuevo = True
+
+    plano = str(fila.get("nombre_plano") or "")
+    filas_asignadas = 0
+    while plano:
+        n = repo.asignar_a_licitaciones(organo_id, nombre_normalizado=plano, limit=batch)
+        if n <= 0:
+            break
+        filas_asignadas += n
+
+    log.info(
+        "organo_revision_resuelta",
+        revision_id=revision_id,
+        aceptada=aceptar,
+        organo_id=organo_id,
+        organo_nuevo=organo_nuevo,
+        filas_asignadas=filas_asignadas,
+    )
+    return DecisionRevision(
+        organo_id=organo_id, organo_nuevo=organo_nuevo, filas_asignadas=filas_asignadas
+    )
+
+
 def _candidato_mas_parecido(normalizado: str) -> tuple[int | None, float]:
     """Órgano existente más parecido a *normalizado*, con su score.
 

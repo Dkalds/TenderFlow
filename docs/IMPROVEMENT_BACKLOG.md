@@ -1386,6 +1386,31 @@ _Sin ítems abiertos._
 
 ## Cerrados
 
+- [2026-10-23] **P2: Las colas de revisión del dato se llenaban y nadie podía vaciarlas;
+  la auditoría de verdad del dato solo llegaba por correo** (tanda paralela, tramo A) —
+  `licitaciones_duplicados` en `pending` (ADR-026) solo se resolvía desde un test, con el SQL
+  en `services/dedupe.py` (contra ADR-022), y `organo_review_queue` (ADR-032 §C) no tenía
+  ninguna función que la resolviera. El SQL de la cola de duplicados baja a
+  `db/repositories/dedupe.py` (`pendientes_de_revision`, `pendientes_count`,
+  `resolver_pendiente`; `review_pending`/`resolve_pending` desaparecen del servicio). Los
+  órganos se resuelven con `db.repositories.organos.resolver_revision` (reclama la fila) y la
+  regla `services.organos.decidir_revision`, calcada de `db.empresas.apply_review`: aceptar
+  registra la grafía como alias del candidato, rechazar crea un órgano propio, y en los dos
+  casos las licitaciones con esa grafía reciben su `organo_id`. Rutas de admin en
+  `api/routes/admin_revision.py` (`GET/POST /admin/revision/duplicados`, `…/organos` y
+  `GET /admin/revision/verdad`, cacheada una hora), auditadas como `dedupe.review_resolved` y
+  `organo.review_resolved`. Los umbrales, la medición de BD y `evaluar` de
+  `scripts/audit_domain_truth.py` bajan a `services/verdad_dominio.py` para que la API los
+  sirva sin importar el script; el script los re-exporta y añade la sección (b), que lee ZIP
+  con `scraper/`. `QualityResult` publica `duplicados_pendientes`. En la consola, Ops › Datos
+  monta tres tarjetas (`revision-duplicados-card`, `revision-organos-card`,
+  `verdad-dominio-card`). Lo fijan `tests/test_revision_datos.py`,
+  `tests/test_unit_admin_revision.py`, `tests/test_unit_verdad_dominio.py`, el escenario
+  CU-20 `tests/test_escenario_revision_datos.py` y
+  `web/src/app/(dashboard)/ops/__tests__/revision-datos-cards.test.tsx`. Sigue fuera: la
+  auditoría no persiste su serie en la BD (el histórico está en los artefactos de
+  `domain-truth.yml`), así que el panel enseña la medición de la última hora, no la tendencia.
+
 - [2026-10-17] **P2: Decidir si el listado `/licitaciones` esconde duplicados (ADR-026 D23
   dice que sí)** (rama `claude/listado-esconde-duplicados`) — manda D23: el listado es
   presentación y esconde `pending` y `confirmed`, como el Radar. La exclusión entra siempre

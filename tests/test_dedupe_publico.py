@@ -414,7 +414,7 @@ def test_el_indice_del_detector_se_filtra_como_la_superficie_publica() -> None:
     """Si no, el job puede proponer como canónica una fila que no se publica.
 
     Secuencia del fallo: el detector marca B como duplicada de A, un humano
-    confirma el par en ``resolve_pending``, ``exclude_duplicados_sql`` esconde B
+    confirma el par en ``resolver_pendiente``, ``exclude_duplicados_sql`` esconde B
     — y como A no supera el umbral de sustancia, el contrato desaparece entero
     de la superficie pública. Es el mismo fallo que
     ``test_la_subconsulta_filtra_la_fila_gemela_igual_que_la_exterior`` protege

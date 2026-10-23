@@ -54,6 +54,7 @@ from api.middleware import (
 )
 from api.routes.admin_dlq import router as admin_dlq_router
 from api.routes.admin_ejecuciones import router as admin_ejecuciones_router
+from api.routes.admin_revision import router as admin_revision_router
 from api.routes.admin_solicitudes import router as admin_solicitudes_router
 from api.routes.admin_users import router as admin_users_router
 from api.routes.analytics import router as analytics_router
@@ -518,6 +519,7 @@ if not _ES_WORKER:
     app.include_router(admin_solicitudes_router, prefix="/api/v1")
     app.include_router(admin_dlq_router, prefix="/api/v1")
     app.include_router(admin_ejecuciones_router, prefix="/api/v1")
+    app.include_router(admin_revision_router, prefix="/api/v1")
     app.include_router(feature_flags_router, prefix="/api/v1")
     app.include_router(tecnologias_keywords_router, prefix="/api/v1")
     app.include_router(ask_router, prefix="/api/v1")
