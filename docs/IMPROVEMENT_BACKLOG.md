@@ -934,16 +934,6 @@ _Sin ítems abiertos._
   - **Reencolado.** `make reencolar-documentos` (sin `APLICAR=1` solo cuenta) devuelve a `pending` las filas `unsupported` —y las `error` con «content-type no soportado:» de cuando aún no existía ese estado— cuyo tipo ya se lee, comparando sin guiones para recoger el DOCX mal escrito de PLACSP. Medido el 2026-10-23 por el MCP de solo lectura: ~2.140 DOCX (1.007 `unsupported` + 1.131 `error`), 48 ODT, 2 ODS y 215 ZIP. **Pendiente, propietario:** ejecutarlo contra producción ([runbooks/documentos-reencolar.md](runbooks/documentos-reencolar.md)). XLSX (337), XML (349), HTML (237), RTF, `.doc` y RAR siguen sin leerse y no se tocan.
   - **OCR de escaneados: fuera de esta tanda.** S8.3 dejó `ocrmypdf` en el runner de `pliegos.yml`, pero el coste por página sigue sin medir (su propia aceptación), y sin ese número no se amplía: los 54 PDF «sin texto extraíble» en `error` no entran en el reencolado.
 
-### [P2] Retirar la excepción de `braces` en `npm audit` cuando haya versión corregida (caduca el 2026-11-03)
-- **Área:** scripts/check_npm_audit.py, web/package-lock.json, .github/workflows/ci.yml (job `audit`)
-- **Problema:** desde el 2026-10-03 el paso `npm audit --audit-level=high` del job «Security audit» fallaba en cualquier rama, también con el lockfile de master, por GHSA-vfj7-8cjw-p6xm (`braces <= 3.0.3`, alta, CVE-2026-93687: agotamiento de pila con patrones muy anidados). No hay versión corregida —3.0.3 es la última publicada; el arreglo es micromatch/braces#72, sin fusionar, en un repositorio sin commits desde 2025-01— y la cadena es solo de desarrollo: `eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob@3.3.1` → `micromatch` → `braces` (`npm audit --omit=dev` da 0). Subir `eslint-config-next` no la corta (la 16.3.8 y la canary 16.4 siguen fijando `fast-glob@3.3.1`) y `npm audit fix --force` lo baja a 14.2.35.
-- **Decisión (mantenedor, 2026-10-03):** excepción explícita y fechada. Se descartaron (a) auditar solo producción con `--omit=dev` y dejar las de desarrollo en un paso informativo —las deja sin puerta para siempre, contra el criterio que el mismo job aplica a `requirements-dev.txt`— y (b) aceptar el rojo hasta el parche —un check siempre rojo no distingue el aviso siguiente—. `npm audit` no tiene `--ignore`, así que el paso de CI pasa por `scripts/check_npm_audit.py`: mismo umbral (high/critical, desarrollo incluido), lista `EXCEPCIONES` con caducidad (90 días como máximo) y fallo si una excepción caduca o ya no tapa ningún aviso.
-- **Acceptance criteria:**
-  - `braces` corregido en `web/package-lock.json` (`npm update braces` si la versión nueva entra en el rango `^3.0.3` de `micromatch`; si no, `overrides` en `web/package.json`) y su entrada retirada de `EXCEPCIONES` en el mismo cambio: el script falla si sobra.
-  - Si el 2026-11-03 sigue sin parche (`npm view braces version`; `firstPatchedVersion` del aviso), renovar la fecha con el motivo al día, o reabrir la decisión si upstream sigue parado.
-- **Files de partida:** [scripts/check_npm_audit.py](../scripts/check_npm_audit.py), [tests/test_check_npm_audit.py](../tests/test_check_npm_audit.py), [web/package.json](../web/package.json)
-- **Riesgo:** bajo — solo dependencias de desarrollo. Desde el 2026-11-04 el job vuelve a fallar a propósito hasta que alguien re-evalúe.
-
 ---
 
 ### [P2] Inventariar las claves de API sin dueño: 89 activas, sin usuario y sin caducidad
@@ -1411,6 +1401,11 @@ _Sin ítems abiertos._
 
 ## Cerrados
 
+- [2026-10-23] **Excepción de `braces` en `npm audit` retirada** — el job «Security audit»
+  de la PR #529 falló porque `npm audit` ya no reporta GHSA-vfj7-8cjw-p6xm (el lockfile sigue en
+  `braces` 3.0.3 y `npm view braces version` también) y `scripts/check_npm_audit.py` exige quitar
+  una excepción que no tapa nada. `EXCEPCIONES` queda vacía; si el aviso vuelve, la puerta falla
+  y se re-evalúa con la plantilla del 2026-10-03.
 - [2026-10-23] **Higiene de la sección 6: SQL de servicios a `db/`, ratchet TID251 sin fósiles, deprecaciones con fecha y auditoría de telemetría** —
   el SQL de `services/notifications.py` (alertas in-app y preferencias de correo) baja a
   `db/notifications.py`, y el de `services/watchlist_rules.py` (CRUD de reglas y ejecución del
