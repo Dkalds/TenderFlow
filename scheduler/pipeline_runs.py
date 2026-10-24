@@ -826,7 +826,9 @@ def _run_llm_models_canary() -> str:
     """Canary del catálogo NIM (una vez al día): avisa ANTES del próximo EOL.
 
     Un modelo ofertado que desaparece del catálogo tumbó la IA seis días en
-    silencio (deepseek-v4-pro, 410 sin aviso). Modelos ausentes se lanzan como
+    silencio (deepseek-v4-pro, 410 sin aviso), y uno que sigue listado pero ya
+    no se sirve (404 en el chat, 2026-10-20) también: el canary comprueba las
+    dos cosas. Modelos ausentes o sin servir se lanzan como
     fallo del paso: así llega el email de ``_notify_step_failure`` en vez de
     quedarse en un log de runner efímero — que es exactamente donde se ocultó
     el incidente original. Un fallo de red del propio canary NO lanza (el
@@ -839,7 +841,9 @@ def _run_llm_models_canary() -> str:
         result = run_canary()
         if result["missing"]:
             raise RuntimeError(
-                f"Modelos NIM ofertados que ya no existen en el catálogo: {result['missing']}"
+                "Modelos NIM ofertados que ya no se pueden usar: "
+                f"{result['missing']} (sin servir, con el chat en 404/410: "
+                f"{result['unserved']})"
             )
 
     return _run_periodic("llm_models_canary", _SEGUNDOS_DIA, _check)
