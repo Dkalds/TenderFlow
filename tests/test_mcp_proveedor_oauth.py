@@ -1075,7 +1075,7 @@ def test_auditar_oauth_es_la_unica_llamada_a_log_action_del_mcp() -> None:
 
     raiz = Path(__file__).resolve().parents[1] / "mcp_server"
     llamadas = {
-        str(f.relative_to(raiz)): f.read_text(encoding="utf-8").count("log_action(")
+        f.relative_to(raiz).as_posix(): f.read_text(encoding="utf-8").count("log_action(")
         for f in raiz.rglob("*.py")
     }
     assert {k: v for k, v in llamadas.items() if v} == {"auth/proveedor.py": 1}
