@@ -59,6 +59,7 @@ from starlette.responses import RedirectResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
+from api.diagnostico_proxy import registrar_cabeceras_proxy
 from observability.logging import get_logger
 from services.rate_limiting import get_rate_limiter
 from shared.etag import coincide_if_none_match, etag_debil
@@ -611,6 +612,7 @@ def _registrar_acceso(conexion: HTTPConnection, scope: Scope, status_code: int, 
     # para evitar reducir el espacio de brute-force en los logs.
     raw_key = conexion.headers.get("x-api-key") or ""
     key_prefix = hashlib.sha256(raw_key.encode()).hexdigest()[:12] if raw_key else "-"
+    client_ip = _trusted_client_ip(conexion)
 
     log.info(
         "http_request",
@@ -619,8 +621,10 @@ def _registrar_acceso(conexion: HTTPConnection, scope: Scope, status_code: int, 
         status=status_code,
         duration_ms=round(dt * 1000, 1),
         key_prefix=key_prefix,
-        client_ip=_trusted_client_ip(conexion),
+        client_ip=client_ip,
     )
+    # Temporal: qué cabeceras de reenvío llegan (ver api/diagnostico_proxy.py).
+    registrar_cabeceras_proxy(conexion, scope["path"], client_ip)
 
 
 class ObservabilityMiddleware:
