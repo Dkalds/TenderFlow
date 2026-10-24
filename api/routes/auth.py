@@ -72,6 +72,7 @@ from shared.auth_core import (
     verify_google_id_token,
     verify_oauth_state,
     verify_password,
+    verify_password_against_dummy,
 )
 from shared.csrf import csrf_token_valido, generate_csrf_token
 from shared.dto import DetailMessage, StatusOk
@@ -543,6 +544,12 @@ async def login(body: LoginRequest, response: Response, request: Request) -> Use
         # son búsquedas exactas; no se compara sin mayúsculas porque ahí pueden
         # coincidir dos cuentas heredadas.
         user = get_user_by_email(body.email) or get_user_by_email(str(body.email).strip().lower())
+        # Sin hash con el que comparar (no hay cuenta, o es solo-OAuth) se
+        # verifica igual contra uno ficticio del mismo KDF y coste: respondiendo
+        # sin pasar por argon2, el tiempo decía qué correos tienen contraseña.
+        pw_hash: str = (user or {}).get("password_hash", "") or ""
+        if not pw_hash:
+            verify_password_against_dummy(body.password)
         if not user:
             record_failed_login(client_key)
             # Sin actor ni correo: un intento contra una cuenta que no existe
@@ -557,8 +564,7 @@ async def login(body: LoginRequest, response: Response, request: Request) -> Use
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
             )
 
-        pw_hash: str = user.get("password_hash", "") or ""
-        if not verify_password(body.password, pw_hash):
+        if not pw_hash or not verify_password(body.password, pw_hash):
             record_failed_login(client_key)
             log_event(
                 event_type=AUTH_LOGIN_FAILED,

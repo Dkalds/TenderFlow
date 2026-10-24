@@ -19,9 +19,11 @@ que evita replay attacks en despliegues multi-proceso/multi-contenedor.
 from __future__ import annotations
 
 import base64 as _base64
+import functools
 import hashlib
 import hmac
 import os
+import secrets
 import time
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -235,6 +237,30 @@ def hash_password(password: str) -> str:
         import bcrypt
 
         return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+@functools.cache
+def _dummy_password_hash() -> str:
+    """Hash de una contraseña aleatoria que nadie conoce, calculado una vez por proceso.
+
+    Sale de :func:`hash_password` y no de un literal: así lleva el mismo KDF y
+    el mismo coste que el hash de una cuenta recién creada, también si cambian
+    los parámetros por defecto de argon2-cffi o si se cae a bcrypt.
+    """
+    return hash_password(secrets.token_urlsafe(32))
+
+
+def verify_password_against_dummy(candidate: str) -> bool:
+    """Gasta en *candidate* lo mismo que :func:`verify_password` y devuelve ``False``.
+
+    Para la rama del login en la que no hay hash con el que comparar (el
+    correo no tiene cuenta, o la cuenta es solo-OAuth): sin esto respondía sin
+    pasar por el KDF y el tiempo de respuesta decía si el correo tenía una
+    cuenta con contraseña. Siempre ``False``: la contraseña del hash ficticio
+    no está en ninguna parte, y aunque alguien la acertara no abre nada.
+    """
+    verify_password(candidate, _dummy_password_hash())
+    return False
 
 
 # ---------------------------------------------------------------------------
