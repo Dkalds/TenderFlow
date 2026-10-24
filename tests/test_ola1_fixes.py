@@ -173,9 +173,7 @@ def test_metrics_allowed_ips_declared_in_settings():
     from config.settings import Settings
 
     # Debe existir el campo (no lanzar AttributeError)
-    default_val = Settings.__fields__.get("METRICS_ALLOWED_IPS") or Settings.model_fields.get(
-        "METRICS_ALLOWED_IPS"
-    )
+    default_val = Settings.model_fields.get("METRICS_ALLOWED_IPS")
     assert default_val is not None, "METRICS_ALLOWED_IPS no encontrado en Settings"
 
     # El valor default debe ser '127.0.0.1'

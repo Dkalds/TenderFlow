@@ -274,7 +274,7 @@ async def client_error(request: Request) -> None:
     body = await _leer_body_acotado(request, _MAX_CLIENT_ERROR_BYTES)
     if body is None:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="Client error report too large",
         )
 

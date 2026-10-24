@@ -90,7 +90,7 @@ def status_de(exc: requests.HTTPError) -> int | None:
 
 http_retry = retry(
     stop=stop_after_attempt(4),
-    wait=wait_exponential_jitter(initial=2, max=30, jitter=2),
+    wait=wait_exponential_jitter(multiplier=2, max=30, jitter=2),
     retry=retry_if_exception(_is_transient),
     before_sleep=before_sleep_log(_stdlib_log, logging.WARNING),
     reraise=True,
