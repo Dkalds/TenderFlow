@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-10-23
+Generado: 2026-10-24
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -98,9 +98,9 @@ Generado: 2026-10-23
 
 ## Superficie de la API
 
-**304 endpoints** expuestos.
+**306 endpoints** expuestos.
 
-Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **12** (`scripts/check_api_surface.py`).
+Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **14** (`scripts/check_api_surface.py`).
 
 <details><summary>Ver listado</summary>
 
@@ -111,6 +111,8 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | GET | `/api/openapi.json` |
 | GET | `/api/redoc` |
 | GET | `/api/v1/adjudicaciones` |
+| GET | `/api/v1/admin/api-keys` |
+| DELETE | `/api/v1/admin/api-keys/{key_id}` |
 | GET | `/api/v1/admin/dlq` |
 | POST | `/api/v1/admin/dlq/{failure_id}/descartar` |
 | POST | `/api/v1/admin/dlq/{failure_id}/reintentar` |

@@ -544,6 +544,8 @@ export const adminKeys = {
     vista: (vista: "pendiente" | "historico") => ["admin-solicitudes-acceso", vista] as const,
   },
   accessGrants: ["admin-access-grants"] as const,
+  /** Claves de API de toda la instancia (`/admin/api-keys`), no las de quien mira. */
+  apiKeys: ["admin-api-keys"] as const,
   clientErrors: ["admin-client-errors"] as const,
   ejecuciones: ["admin-ejecuciones"] as const,
   dlq: {

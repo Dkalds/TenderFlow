@@ -24,6 +24,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar las claves de API de la instancia (sin hash ni token)
+         * @description Todas las claves, de cualquier dueño o de ninguno, y su recuento.
+         *
+         *     Las vivas primero (ni revocadas ni caducadas) y, dentro, la más reciente
+         *     arriba. ``resumen`` se cuenta sobre la tabla entera, no sobre la página.
+         */
+        get: operations["listar_claves_api_v1_admin_api_keys_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/api-keys/{key_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revocar una clave de API de cualquier dueño
+         * @description Apaga la clave al momento. Revocar una ya revocada responde 200.
+         */
+        delete: operations["revocar_clave_api_v1_admin_api_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/dlq": {
         parameters: {
             query?: never;
@@ -6160,6 +6203,92 @@ export interface components {
             nif?: string | null;
             /** Nombre */
             nombre: string;
+        };
+        /**
+         * AdminApiKeyOut
+         * @description Una clave de la instancia, sin secreto.
+         */
+        AdminApiKeyOut: {
+            /** Created At */
+            created_at?: string | null;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "activa" | "caducada" | "revocada";
+            /** Expires At */
+            expires_at?: string | null;
+            /** Id */
+            id: number;
+            /** Last Used */
+            last_used?: string | null;
+            /** Name */
+            name: string;
+            /** Organization Id */
+            organization_id?: number | null;
+            /**
+             * Owner Deactivated
+             * @default false
+             */
+            owner_deactivated: boolean;
+            /** Owner Email */
+            owner_email?: string | null;
+            /** Owner Name */
+            owner_name?: string | null;
+            /** Prefix */
+            prefix?: string | null;
+            /** Scopes */
+            scopes: string;
+            /** Tier */
+            tier?: string | null;
+            /** User Id */
+            user_id?: number | null;
+        };
+        /**
+         * AdminApiKeyRevocadaOut
+         * @description La clave tras revocarla.
+         */
+        AdminApiKeyRevocadaOut: {
+            /**
+             * Estado
+             * @default revocada
+             * @constant
+             */
+            estado: "revocada";
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** User Id */
+            user_id?: number | null;
+        };
+        /**
+         * AdminApiKeysOut
+         * @description Las claves de la instancia: las vivas primero, la más reciente arriba.
+         */
+        AdminApiKeysOut: {
+            /** Items */
+            items?: components["schemas"]["AdminApiKeyOut"][];
+            resumen: components["schemas"]["AdminApiKeysResumen"];
+            /**
+             * Truncado
+             * @default false
+             */
+            truncado: boolean;
+        };
+        /**
+         * AdminApiKeysResumen
+         * @description Recuento sobre la tabla entera, no sobre la página devuelta.
+         */
+        AdminApiKeysResumen: {
+            /** Activas */
+            activas: number;
+            /** Activas Sin Caducidad */
+            activas_sin_caducidad: number;
+            /** Activas Sin Dueno */
+            activas_sin_dueno: number;
+            /** Total */
+            total: number;
         };
         /**
          * AdminUserAction
@@ -16971,6 +17100,83 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listar_claves_api_v1_admin_api_keys_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminApiKeysOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revocar_clave_api_v1_admin_api_keys__key_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                key_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminApiKeyRevocadaOut"];
+                };
+            };
+            /** @description La clave no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

@@ -70,10 +70,13 @@ def insert_api_key(
     name: str,
     scopes: str,
     prefix: str,
-    user_id: int | None,
-    expires_at: str | None,
+    user_id: int,
+    expires_at: str,
 ) -> None:
-    """Inserta una nueva API key respetando las columnas presentes."""
+    """Inserta una nueva API key respetando las columnas presentes.
+
+    Dueño y caducidad son obligatorios: ver ``ApiKeyRepository.insert``.
+    """
     _repo.insert(
         key_hash=key_hash,
         name=name,
