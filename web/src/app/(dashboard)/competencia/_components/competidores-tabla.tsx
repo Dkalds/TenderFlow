@@ -10,7 +10,7 @@
  * con las mismas dos acciones por fila que el ranking con gráficos.
  */
 
-import { IndicadorOrden } from "@/components/ui/data-table";
+import { IndicadorOrden } from "@/components/ui/indicador-orden";
 import { CABECERA_COLUMNA, Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 

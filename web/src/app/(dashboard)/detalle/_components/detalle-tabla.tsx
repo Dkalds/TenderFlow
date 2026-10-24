@@ -4,7 +4,7 @@ import type { SortingState } from "@tanstack/react-table";
 import { PanelEmpty, PanelError } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { IndicadorOrden } from "@/components/ui/data-table";
+import { IndicadorOrden } from "@/components/ui/indicador-orden";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CABECERA_COLUMNA } from "@/components/ui/table";
 import { cn } from "@/lib/utils";

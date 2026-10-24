@@ -22,7 +22,7 @@ import {
 } from "@/components/console/panel";
 import { SeguirBoton } from "@/components/seguir-boton";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCuentaDeOrgano } from "@/hooks/use-cuentas";
+import { useCuentaDeOrgano } from "@/hooks/use-seguir-cuenta";
 import { usePuedeEscribir } from "@/hooks/use-organization";
 import { useScopedHref } from "@/lib/filters";
 import { EMPTY, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
