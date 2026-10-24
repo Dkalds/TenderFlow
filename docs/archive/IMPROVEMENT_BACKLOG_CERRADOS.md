@@ -21,6 +21,28 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ---
 
+## Cerrados el 2026-10-24 (tercera tanda) — las adjudicaciones multilote tienen su lote
+
+### [P3] 121 adjudicaciones de expedientes multilote siguen sin lote: relanzar `reproceso-lotes.yml` (acción del propietario)
+
+**Cerrado el 2026-10-24.** `reproceso-lotes.yml` sobre 2026-06..2026-10: el recuento sin `aplicar` (run 40134431023) dio 684 asignaciones candidatas en 56 expedientes, y con `aplicar` (run 40135817204) rellenó **109 filas** (98 de junio, 3 de julio, 8 de agosto). Medido después con el MCP: de 121 filas sin lote en 58 expedientes multilote quedan **12 en 11**, el residuo previsto —las 8 colisiones de `ContractFolderID` entre órganos (P1 de identidad de PLACSP) y las 4 que la ingesta antigua juntó en una fila—, que no deben llevar lote. El caso golden real que lo congela es el 25 (`25_multilote_real_por_lote`).
+
+- **Área:** scraper/codice_parser.py (`_XPATHS_LOTE_RESULTADO`), tests/fixtures/placsp
+- **Problema:** tras el arreglo del parser (#479) y el reproceso de 2020-10 a 2026-10 (#484, #487), medido el 2026-10-18 en producción: de 1.246 adjudicaciones en expedientes con dos o más lotes, 999 tienen `lote_id` y **247 no**, repartidas en 113 expedientes. Todas son de PLACSP y todas tienen NIF, así que no es el emparejamiento por nombre. En 59 de esos expedientes conviven filas con lote y sin él, y 21 ya se han vuelto a ingerir con el parser nuevo y siguen igual: apunta a resultados que PLACSP publica sin referencia de lote, o con una forma que `_lote_del_resultado` no lee. La adjudicación más antigua sin lote es de 2022-04. La consecuencia es la de antes, acotada a esas filas: la agenda no cierra la oportunidad de un lote cuya adjudicación no dice de qué lote es (la regla conservadora).
+- **Acceptance criteria:**
+  - Capturar al menos un expediente real con mezcla —p. ej. `26/AMLICENCIASCITI` (33 adjudicaciones, 15 con lote)— con `scripts/capture_placsp_fixtures.py` y añadirlo al corpus golden.
+  - Si el lote viene en otra forma, añadirla a `_XPATHS_LOTE_RESULTADO` y relanzar `reproceso-lotes.yml` con `aplicar` sobre el rango afectado; si de verdad no viene, documentarlo en el docstring de `_lote_del_resultado` y cerrar.
+- **Files de partida:** [scraper/codice_parser.py](../scraper/codice_parser.py), [scraper/reproceso_lotes.py](../scraper/reproceso_lotes.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
+- **Estado (2026-10-24): PLACSP sí publica el lote; falta relanzar el reproceso.** Hoy quedan 121 filas sin `lote_id` en 58 expedientes. De los ZIP reales de 2026-05 a 2026-10 salen 966 entries de esos expedientes; las 295 multilote traen 776 `TenderResult` y los 776 llevan el lote en `AwardedTenderedProject/cbc:ProcurementProjectLotID`, la forma que ya lee `_lote_del_resultado`. Caso golden 25 (renumerado al integrar; real) (`B070005/2022-0071`), y test en `tests/test_reproceso_lotes.py`. Reparto, simulado contra producción:
+  - **109 filas (47 exp.):** el reproceso del 17/18-10 no casó un importe que venía de `real`; a71db23e ya lo corrige. **Acción del propietario:** `gh workflow run reproceso-lotes.yml -f desde=2026-06 -f hasta=2026-10 -f aplicar=false` para el recuento (≈109) y después con `aplicar=true`.
+  - **8 filas (8 exp.):** `ContractFolderID` compartido entre órganos (`04/2026`, `101/2026`, `36/2026`, `47/2026`, `48/2026`, `49/2026`, `51/2026`, `SUM005/2026`): la adjudicación es de otro expediente. No se les asigna lote; es el P1 de identidad de PLACSP.
+  - **4 filas (3 exp.):** misma empresa e importe en dos lotes, juntadas en una fila por `uq_adjudicaciones_lic_nif_importe_sin_lote` en la ingesta antigua. Solo se separan reingiriendo; para 4 filas no compensa.
+  - Se cierra cuando el reproceso deje el residuo en esas 12 filas.
+- **Riesgo:** bajo — es lectura del XML; el reproceso solo rellena `lote_id` vacío.
+- **Progreso (2026-10-23):** sin red a PLACSP desde la sesión, así que `26/AMLICENCIASCITI` no se capturó y el XML no se inventa. Medido con el MCP: quedan **121** filas sin lote en 58 expedientes multilote, y **113** de ellas tienen un `importe_adjudicado` que float4 no guarda en céntimos (39.567,94 € está guardado como 39.567,94140625); en los expedientes mixtos, 51 de 53 filas sin lote son así frente a 11 de 44 con lote. Es el emparejamiento de `db/repositories/reproceso_lotes.py`, no el XML: comparaba `importe_adjudicado` (`real`) por igualdad exacta con el float8 del parser, que no casa nunca en esos importes. Corregido comparando a la precisión de `real` (test `test_casa_el_importe_que_la_columna_real_redondeo`); vale antes y después de `v156`. **Pendiente, propietario:** relanzar `reproceso-lotes.yml` con `aplicar` sobre 2022-04..2026-10 y volver a medir. Si queda residuo (las ~8 filas con importe exacto), entonces sí capturar el XML con red y decidir entre ampliar `_XPATHS_LOTE_RESULTADO` o documentarlo en `_lote_del_resultado`.
+
+---
+
 ## Cerrados el 2026-10-24 (segunda tanda) — la matriz go/no-go se ve, el canary prueba el chat y `ops_events` ya escribe
 
 ### [P2] El canary de modelos NIM no ve un modelo que sigue en el catálogo y no se sirve
