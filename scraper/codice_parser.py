@@ -34,7 +34,7 @@ from db.database import (
 from observability.logging import get_logger
 from scraper.puerta_tecnologica import MOTIVO_ADMITIDA, senal_tecnologica
 from shared.dates import to_iso_date, to_iso_datetime
-from shared.geo import nuts_to_ccaa
+from shared.geo import es_nuts_de_pais, nuts_to_ccaa
 
 log = get_logger(__name__)
 
@@ -77,6 +77,25 @@ def _float(elem: Any, xpath: str) -> float | None:
         return float(raw.replace(",", "."))
     except ValueError:
         return None
+
+
+def _importe_informado(elem: Any, xpath: str) -> float | None:
+    """Como :func:`_float`, pero un ``0`` es «no informado» y queda ``None``.
+
+    Solo para los campos en los que el cero no es un valor posible: el importe
+    adjudicado y el pagable, la oferta más baja y la más alta, y el porcentaje
+    y el importe de una garantía. PLACSP los rellena con ``0`` cuando el órgano
+    no publica la cifra (caso golden 15: adjudicación con importe, pagable y
+    horquilla de ofertas a 0 y una sola oferta), y guardarlo como cero pintaba
+    una baja del 100 % y sumaba un contrato gratis a la cuota del adjudicatario.
+    Es el mismo criterio que el umbral de solvencia (:func:`_umbral_de_solvencia`).
+
+    No se aplica al presupuesto ni al valor estimado del expediente o del lote.
+    """
+    valor = _float(elem, xpath)
+    if valor is None or valor == 0:
+        return None
+    return valor
 
 
 def parse_summary(summary: str | None) -> dict[str, Any]:
@@ -151,17 +170,19 @@ def parse_adjudicaciones(entry: Any, licitacion_id: str) -> list[Adjudicacion]:
         lote_numero = _lote_del_resultado(tr)
         award_date = to_iso_date(_text(tr, "./cbc:AwardDate"))
         n_ofertas = _int(tr, "./cbc:ReceivedTenderQuantity")
-        oferta_min = _float(tr, "./cbc:LowerTenderAmount")
-        oferta_max = _float(tr, "./cbc:HigherTenderAmount")
+        # Un 0 en cualquiera de los cuatro importes es «no publicado»: ver
+        # `_importe_informado`.
+        oferta_min = _importe_informado(tr, "./cbc:LowerTenderAmount")
+        oferta_max = _importe_informado(tr, "./cbc:HigherTenderAmount")
         sme_raw = _text(tr, "./cbc:SMEAwardedIndicator")
         es_pyme = None
         if sme_raw:
             es_pyme = 1 if sme_raw.strip().lower() == "true" else 0
 
-        importe_adj = _float(
+        importe_adj = _importe_informado(
             tr, "./cac:AwardedTenderedProject/cac:LegalMonetaryTotal/cbc:TaxExclusiveAmount"
         )
-        importe_pag = _float(
+        importe_pag = _importe_informado(
             tr, "./cac:AwardedTenderedProject/cac:LegalMonetaryTotal/cbc:PayableAmount"
         )
 
@@ -272,6 +293,34 @@ def _issue_date(entry: Any, cfs: str) -> str | None:
     )
     normalized = [d for d in (to_iso_date(raw) for raw in dates) if d]
     return min(normalized) if normalized else None
+
+
+def _fecha_publicacion(entry: Any, cfs: str, fecha_upd: str | None) -> str | None:
+    """``fecha_publicacion``: el primer ``IssueDate`` o, sin él, el día del ``updated``.
+
+    El respaldo se normaliza igual que ``IssueDate``: solo el día (``YYYY-MM-DD``),
+    el local que trae el propio ``updated`` (``2026-10-23T17:06:21.032+02:00`` →
+    ``2026-10-23``). Antes se guardaba el timestamp entero (caso golden 24), y la
+    columna mezclaba dos formatos. El ``updated`` completo sigue en
+    ``fecha_actualizacion_fuente``.
+    """
+    return _issue_date(entry, cfs) or to_iso_date(fecha_upd)
+
+
+def _provincia_y_nuts(entry: Any, project_xp: str) -> tuple[str | None, str | None]:
+    """``(provincia, nuts_code)`` del lugar de ejecución del proyecto.
+
+    La provincia es el ``CountrySubentity`` que publica el órgano. Con un NUTS de
+    nivel país (``ES``) ese texto es «España», que no es una provincia: queda
+    ``None``, como la CCAA (``nuts_to_ccaa("ES")`` ya da ``None``). El NUTS se
+    conserva tal cual: dice que el contrato es de ámbito estatal.
+    """
+    ubicacion = f"{project_xp}/cac:RealizedLocation"
+    provincia = _text(entry, f"{ubicacion}/cbc:CountrySubentity")
+    nuts_code = _text(entry, f"{ubicacion}/cbc:CountrySubentityCode")
+    if es_nuts_de_pais(nuts_code):
+        provincia = None
+    return provincia, nuts_code
 
 
 def _tipos_anuncio(entry: Any, cfs: str) -> str | None:
@@ -782,13 +831,16 @@ def _garantias_del_ambito(bloques: list[Any], lote_numero: str | None) -> list[G
     garantias: list[GarantiaExigida] = []
     nodos = [n for terms in bloques for n in terms.xpath(_hijo("RequiredFinancialGuarantee"))]
     for nodo in nodos:
+        # Un porcentaje o un importe 0 es «no publicado», no una garantía de
+        # cero (ver `_importe_informado`); sin importe, la moneda no describe nada.
+        importe = _importe_informado(nodo, _hijo("LiabilityAmount"))
         garantia = GarantiaExigida(
             orden=len(garantias) + 1,
             lote_numero=lote_numero,
             tipo_codigo=_text(nodo, _hijo("GuaranteeTypeCode")),
-            porcentaje=_float(nodo, _hijo("AmountRate")),
-            importe=_float(nodo, _hijo("LiabilityAmount")),
-            moneda=_moneda(nodo, "LiabilityAmount"),
+            porcentaje=_importe_informado(nodo, _hijo("AmountRate")),
+            importe=importe,
+            moneda=_moneda(nodo, "LiabilityAmount") if importe is not None else None,
             descripcion=_text(nodo, _hijo("Description")),
         )
         if (
@@ -1041,14 +1093,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
         moneda = moneda_attr[0]
 
     # Localización: provincia + código NUTS
-    provincia = _text(
-        entry,
-        f"{project_xp}/cac:RealizedLocation/cbc:CountrySubentity",
-    )
-    nuts_code = _text(
-        entry,
-        f"{project_xp}/cac:RealizedLocation/cbc:CountrySubentityCode",
-    )
+    provincia, nuts_code = _provincia_y_nuts(entry, project_xp)
 
     # Duración del contrato
     pp = f"{project_xp}/cac:PlannedPeriod"
@@ -1094,7 +1139,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
     tecnologias = list(senal.tecnologias)
     kw = list(senal.keywords)
 
-    fecha_pub = _issue_date(entry, cfs) or fecha_upd
+    fecha_pub = _fecha_publicacion(entry, cfs, fecha_upd)
 
     lic = Licitacion(
         id_externo=id_externo,
@@ -1208,8 +1253,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
     )
     moneda = moneda_attr[0] if moneda_attr else None
 
-    provincia = _text(entry, f"{project_xp}/cac:RealizedLocation/cbc:CountrySubentity")
-    nuts_code = _text(entry, f"{project_xp}/cac:RealizedLocation/cbc:CountrySubentityCode")
+    provincia, nuts_code = _provincia_y_nuts(entry, project_xp)
 
     pp = f"{project_xp}/cac:PlannedPeriod"
     duracion_valor = _float(entry, f"{pp}/cbc:DurationMeasure")
@@ -1233,7 +1277,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
     if nombre_proyecto:
         titulo = nombre_proyecto
 
-    fecha_pub = _issue_date(entry, cfs) or fecha_upd
+    fecha_pub = _fecha_publicacion(entry, cfs, fecha_upd)
 
     return Licitacion(
         id_externo=id_externo,
