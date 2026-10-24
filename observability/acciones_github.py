@@ -21,20 +21,20 @@ from typing import Literal, TextIO
 Nivel = Literal["notice", "warning", "error"]
 
 
+# Las propiedades (`title=`) terminan en `,` o `::`; el mensaje, en el salto de
+# línea. Los escapes son los que documenta GitHub (codificación por porcentaje
+# de esos caracteres y del propio `%`). Con `str.translate` y no con `replace`
+# encadenados: en una sola pasada, un `%` ya escapado no se vuelve a escapar.
+_ESCAPES_MENSAJE = str.maketrans({"%": "%25", "\r": "%0D", "\n": "%0A"})
+_ESCAPES_PROPIEDAD = str.maketrans({"%": "%25", "\r": "%0D", "\n": "%0A", ":": "%3A", ",": "%2C"})
+
+
 def _escapar_propiedad(valor: str) -> str:
-    # Las propiedades (`title=`) terminan en `,` o `::`; el mensaje, en el salto
-    # de línea. Los escapes son los que documenta GitHub.
-    return (
-        valor.replace("%", "%25")
-        .replace("\r", "%0D")
-        .replace("\n", "%0A")
-        .replace(":", "%3A")
-        .replace(",", "%2C")
-    )
+    return valor.translate(_ESCAPES_PROPIEDAD)
 
 
 def _escapar_mensaje(valor: str) -> str:
-    return valor.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+    return valor.translate(_ESCAPES_MENSAJE)
 
 
 def anotar(nivel: Nivel, titulo: str, mensaje: str, *, salida: TextIO | None = None) -> None:
