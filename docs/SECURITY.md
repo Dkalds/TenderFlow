@@ -182,6 +182,12 @@ los secretos cuando lleven más de 90 días.
   techo. La renovación no toca `created_at` ni `mfa_verified_at`: las acciones
   sensibles (`require_recent_session`) siguen exigiendo login y segundo factor
   recientes con independencia de lo viva que esté la sesión.
+- El login no distingue por tiempo un correo sin cuenta (o una cuenta
+  solo-OAuth) de una contraseña mala: sin hash con el que comparar verifica
+  contra uno ficticio del mismo KDF y coste que `hash_password`
+  (`shared/auth_core.py::verify_password_against_dummy`). Queda una diferencia
+  menor: cuando el correo tal cual no encuentra cuenta se hace una segunda
+  búsqueda en minúsculas, una consulta más frente al coste del KDF.
 - SQL: todas las queries usan parámetros posicionales. Los nombres de columna se
   validan contra regex `^[a-zA-Z_]\w*$` antes de usarse en `ALTER TABLE`.
 - XML: lxml con `resolve_entities=False`, `no_network=True` para prevenir XXE.

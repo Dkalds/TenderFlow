@@ -21,6 +21,80 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ---
 
+## Cerrados el 2026-10-24 — los pliegos de la PSCP se leen, y el login no delata cuentas por tiempo
+
+**(7) de «Recuperación de contraseña…», cerrado el 2026-10-24.** El login verifica contra un hash ficticio del mismo KDF y coste que `hash_password` cuando el correo no tiene cuenta o la cuenta es solo-OAuth (`shared/auth_core.py::verify_password_against_dummy`); test `tests/test_login_tiempo_sin_cuenta.py`, que comprueba con un espía que esas ramas pasan una vez por el KDF y no mide tiempos. Queda sin igualar la segunda búsqueda por correo en minúsculas (una consulta pequeña frente al KDF), las cuentas antiguas con hash bcrypt frente al argon2 del ficticio, y el primer login sin cuenta de cada proceso, que paga el cálculo del hash ficticio. El ítem padre sigue abierto con (1) y (2).
+
+**Cerrado el 2026-10-24.** Medido sobre los 79 runs de `scrape-daily.yml` del 03-10 al 24-10: el step de PSCP no se ha vuelto a cortar desde el 37126368765 (03-10 13:29) y dura entre 77 y 349 s. `pscp_documentos_completados` sale en todos los runs desde el 37147352339 (03-10 19:17), también en los que traen filas (p. ej. 40095284766: 62 candidatas, 416 referencias, 6 emparejadas). En producción hay 217 licitaciones PSCP con documentos (1.589 documentos, 1.416 `extracted`) y 32 marcas `publicacion_oficial:%` confirmadas. Lo que consumía los 10 minutos era la resolución de empresas, con un viaje de red por fila: la arregló #399, y un lote de unas 5.000 adjudicaciones tarda ahora 33-93 s en vez de 961 s. Dedupe y eventos tardan 8-20 s juntos; desde #471 los documentos corren antes del cierre (75-125 s, con presupuesto de 120 s). Además, `_post_ingestion` y el paso de documentos registran `connector_paso_empieza`/`connector_paso_termina` (con `paso`, `ok` y `duracion_s`), así que un corte futuro se atribuye leyendo el log. Queda aparte, sin ítem propio todavía, si `replace_adjudicaciones_batch` debe conservar `empresa_id`, que hoy regenera a diario el atraso de enlaces.
+
+### [P1] Los pliegos de la PSCP no se leen: su paso tras la ingesta no llega a ejecutarse
+- **Área:** scraper/connectors/base.py (`run_connector`, `_post_ingestion`), scraper/connectors/pscp.py, scraper/documentos_plataforma.py
+- **Problema:** `completar_documentos` cuelga de `_post_ingestion` (#395), y en
+  PSCP eso no ocurre casi nunca:
+  - **Con cero filas nuevas** —la mayoría de las pasadas: el dataset se actualiza
+    una vez al día— `run_connector` se salta `_post_ingestion` entero
+    (`if result.parsed or result.adjudicaciones`).
+  - **Con filas**, el step «Run PSCP Catalunya connector» se corta a los 10
+    minutos dentro de `_post_ingestion`, antes de llegar al paso. El 2026-10-03
+    a las 13:36 UTC el cursor quedó escrito 3 s después de la última página y no
+    hubo más logs hasta el corte (run 37126368765). El run del 2026-10-02 14:47,
+    anterior a #395, se cortó igual (37022322136): el corte no lo trajo #395.
+
+  Medido el 2026-10-03: 0 filas PSCP con documentos y 0 marcas
+  `publicacion_oficial:%`. El paso no depende del lote —lee de la BD las
+  convocatorias vigentes—, así que no hay motivo para atarlo a que el lote
+  traiga algo.
+- **Acceptance criteria:**
+  - `completar_documentos` corre aunque la pasada no parsee nada, y un test lo fija.
+  - Log `pscp_documentos_completados` en un run de `scrape-daily.yml`, y filas
+    PSCP con documentos en producción.
+  - Aparte: saber qué consume los 10 minutos del step cuando PSCP trae filas
+    (la resolución de empresas o `detect_duplicates(fuente='pscp')`). El ítem
+    «Verificar que el fix de PSCP progresa…» mira el cursor, que sí avanza; esto
+    no lo mira nadie.
+- **Progreso (2026-10-03):** el primer criterio lo cubre el PR #398
+  (`run_connector` llama al paso también sin lote; tests unitarios y de
+  integración). Una pasada en seco ese día —la consulta de candidatas sobre
+  producción y la ficha de cada una pedida al portal, sin escribir— dio 120
+  candidatas, las 120 con documentos, 958 referencias (117 PCAP, 117 PPT, 724
+  adicionales), 45 fichas que citan un anuncio TED y 0 fallos en 52 s. Quedan
+  los otros dos criterios, que solo se cierran con un run de producción.
+- **Qué consumía los 10 minutos (diagnóstico del 2026-10-03):** la resolución
+  de empresas, y no por cálculo sino por viajes de red.
+  - Un lote son 5.000 adjudicaciones en una transacción, con un `INSERT` de
+    alias y un `UPDATE` de enlace **por fila, cada uno en su viaje**. Sobre el
+    lote real de PSCP: 4.904 filas por NIF exacto, 10.126 escrituras, 2 s de
+    CPU (la comparación difusa, 1,9 s en 56 filas).
+  - Los runners están en EE. UU. («Azure Region» del log: eastus,
+    northcentralus, westus3) y la BD en París: 95-150 ms por viaje. El
+    2026-10-01, desde eastus, el lote tardó 961 s; el dedupe de detrás, 16 s.
+  - `HOOK_TIME_BUDGET_S` solo se mira entre lotes, así que no llegaba a actuar.
+  - El `timeout-minutes` del step no mata el proceso: lo deja huérfano
+    escribiendo hasta el final del job («Terminate orphan process … (python)»).
+    Si el job acaba antes que el lote, se deshace entero: el 2 y el 3 de octubre
+    no avanzó nada, y el cursor `entity_resolution_pscp` seguía en el día 1.
+  - Estado medido: 52.811 de las 58.029 adjudicaciones de PSCP sin enlazar
+    (91 %). El atraso se regenera a diario: `replace_adjudicaciones_batch`
+    reinserta las adjudicaciones sin conservar `empresa_id`.
+- **Arreglo de la causa (PR de `claude/resolucion-empresas-por-lotes`):** los
+  alias y los enlaces del lote se escriben juntos al final con `executemany`.
+  La función real sobre el lote real, con las escrituras interceptadas: **134
+  viajes en vez de 10.130**. Medido por el pooler de producción, en solo
+  lectura: 5.000 sentencias en un `executemany` tardan 0,2 s; una a una, 142 s.
+  Pendiente: verlo en un run (`entity_resolution_batch` de `source=pscp`, el
+  cursor avanzando y el porcentaje enlazado), y decidir si
+  `replace_adjudicaciones_batch` debe conservar el enlace.
+- **Estado (2026-10-15):** la causa «con filas» está cerrada en código: PSCP
+  declara `completar_documentos_primero`, así que `run_connector` lee los
+  pliegos antes del cierre del lote, con 120 s de presupuesto propio
+  (`PRESUPUESTO_DOCUMENTOS_S`) y tope por petición (rama
+  `claude/funcionalidades-2026-10`). Queda verlo en un run de producción: log
+  `pscp_documentos_completados` y filas PSCP con documentos.
+- **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py), [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [services/entity_resolution.py](../services/entity_resolution.py), [db/empresas.py](../db/empresas.py)
+- **Riesgo:** bajo — el paso ya es fail-open y tiene presupuesto de tiempo.
+
+---
+
 ## Cerrados el 2026-10-23 — Entra solo con correo acreditado, y la recuperación de contraseña
 
 **Cerrado el 2026-10-23** ([ADR-037](../adr/ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md)). El propietario decidió `xms_edov` y no vincular cuentas entre proveedores por correo. `verify_oidc_id_token` exige el claim que cada proveedor declara (`xms_edov` para Microsoft, booleano `true`), el correo de Microsoft sale solo de `email`, y `get_or_create_oauth_user` lanza `CuentaDeOtroProveedorError` en vez de reescribir la identidad de una cuenta de otro proveedor (`/login?error=account_other_provider`). Tests: `tests/test_oauth_vinculacion_entre_proveedores.py` firma un token de Entra de verdad y comprueba que sin `xms_edov` no entra ni toca el `oauth_sub` de la cuenta existente. **Queda abierto** el último criterio —comprobar en Render `OAUTH_MICROSOFT_CLIENT_ID`—, que es del propietario: está en el backlog como P2 «Antes de activar Microsoft en producción».

@@ -23,7 +23,7 @@ mismo sitio», que es lo que convertía la duplicidad en diseño.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any, NamedTuple, TypedDict
 
 from db.database import connect, connect_read, now_utc_iso
@@ -252,6 +252,17 @@ def _respuesta_desde_filas_vigentes(
         elif tecnologia not in SENTINELS and score >= min_score:
             familias.append(tecnologia)
     return {"es_ti": es_ti, "familias": sorted(familias)}
+
+
+def es_ti_de_version_vigente(tecnologias: Iterable[str]) -> bool | None:
+    """El ``es_ti`` del LLM a partir de las ``tecnologia`` de su versión vigente
+    de ``llm_metadata``, con la regla de :func:`_respuesta_desde_filas_vigentes`
+    (``__sin_evidencia__`` = no se pronunció). Es la que lee el modelo de nivel
+    1 (``db.repositories.ml_dataset.filas_etiquetadas_nivel1``): el informe de
+    acuerdo certifica justo las etiquetas que ese entrenamiento usa.
+    """
+    filas = [(str(t), 0.0) for t in tecnologias]
+    return _respuesta_desde_filas_vigentes(filas, min_score=float("inf"))["es_ti"]
 
 
 class TecnologiaPliegoRepository:

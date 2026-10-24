@@ -33,11 +33,25 @@ ya en el feed principal. Tres capas, ninguna nueva:
 El Radar y los listados esconden ``pending`` y ``confirmed`` (ADR-026, D23); la
 cuota de mercado, solo ``confirmed``.
 
-**Documentos.** Solo se guardan las referencias alojadas en PLACSP: una
-plataforma agregada puede enlazar sus pliegos en su propio host, que no está en
-``DOCUMENT_ALLOWED_HOSTS``, y esas filas fallarían en cada pasada del job de
-pliegos. Se cuentan (``placsp_agregadas_documentos_de_otro_host``) para poder
-decidir con el número si merece la pena ampliar la allowlist.
+**Documentos.** Solo se guardan las referencias de hosts que el descargador
+acepta (``DOCUMENT_ALLOWED_HOSTS``, la misma regla que ``shared.ssrf``): una
+referencia a otro host fallaría en cada pasada del job de pliegos. La hipótesis
+inicial —que las plataformas agregadas enlazan sus pliegos en PLACSP— era falsa:
+en 20 páginas del feed real (9.349 entradas, 728 admitidas por el filtro) las
+1.057 referencias de documento apuntan a tres hosts autonómicos y ninguna a
+``contrataciondelestado.es``: ``contractaciopublica.cat`` (544, ya en la
+allowlist por PSCP), ``www.contratacion.euskadi.eus`` (346) y
+``contratos-publicos.comunidad.madrid`` (167). Con el filtro «solo PLACSP» se
+habrían descartado todas. Los dos últimos hosts siguen fuera de la allowlist y
+se cuentan (``placsp_agregadas_documentos_de_otro_host``): ampliarla es una
+decisión de seguridad del propietario (ver el backlog).
+
+**Identidad.** ``placsp_agregadas:<ContractFolderID>`` se mantiene porque el
+dedupe casa por expediente natural, pero tiene el mismo defecto que tenía
+menores: en el muestreo 57 ``ContractFolderID`` los comparten órganos distintos
+(74 filas pisadas de 7.956, el 0,9 %). Ver el backlog: el feed principal
+(``placsp``, sin prefijo) tiene el problema con más peso (67 de 3.646, el 2,5 %)
+y arreglarlo exige migrar filas escritas.
 
 Uso::
 
@@ -68,21 +82,22 @@ if TYPE_CHECKING:
 log = get_logger(__name__)
 
 SOURCE_ID = "placsp_agregadas"
-#: URL documentada del feed (página de datos abiertos del Ministerio de
-#: Hacienda). No se pudo descargar desde la sesión que escribió el conector:
-#: `--check` antes de fijarla en `PLACSP_AGREGADAS_ATOM_URL`.
+#: URL del feed (página de datos abiertos del Ministerio de Hacienda). Verificada
+#: el 2026-10-24: 200 ``application/atom+xml`` a un GET, 283 entradas en la
+#: primera página, ``rel="next"`` hacia ``..._AAAAMMDD_HHMMSS[_N].atom`` y
+#: contenido CODICE. El órgano va en ``ID_OC_PLAT``, no en ``ID_PLATAFORMA``.
 URL_SINDICACION_1044 = f"{URL_BASE_SINDICACION}sindicacion_1044/PlataformasAgregadasSinMenores.atom"
 VARIABLE = "PLACSP_AGREGADAS_ATOM_URL"
 
-#: Hosts de PLACSP desde los que se aceptan documentos. Son los
-#: `dominios_documentos` de la fuente en `REGISTERED_SOURCES`, ya incluidos en
-#: la allowlist por defecto del descargador.
-_HOST_DOCUMENTOS = "contrataciondelestado.es"
 
-
-def _alojado_en_placsp(documento: DocumentoReferencia) -> bool:
+def _host_permitido(documento: DocumentoReferencia) -> bool:
+    """¿Acepta el descargador el host de esta referencia? (regla de ``shared.ssrf``)."""
     host = (urlparse(documento.uri).hostname or "").lower()
-    return host == _HOST_DOCUMENTOS or host.endswith(f".{_HOST_DOCUMENTOS}")
+    reglas = [r.strip().lower() for r in settings.DOCUMENT_ALLOWED_HOSTS.split(",") if r.strip()]
+    return bool(host) and any(
+        host == regla.lstrip("*.") or (regla.startswith("*.") and host.endswith(regla[1:]))
+        for regla in reglas
+    )
 
 
 class PlacspAgregadasConnector(FeedSindicacionPlacsp):
@@ -111,7 +126,7 @@ class PlacspAgregadasConnector(FeedSindicacionPlacsp):
 
         id_externo = f"{SOURCE_ID}:{parsed.licitacion.id_externo}"
         parsed.licitacion.id_externo = id_externo
-        documentos = [d for d in parsed.documentos if _alojado_en_placsp(d)]
+        documentos = [d for d in parsed.documentos if _host_permitido(d)]
         self._documentos_de_otro_host += len(parsed.documentos) - len(documentos)
         return ParsedTender(
             licitacion=parsed.licitacion,

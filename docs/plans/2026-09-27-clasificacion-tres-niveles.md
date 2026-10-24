@@ -1,7 +1,9 @@
 # Clasificación de licitaciones en tres niveles, con etiquetas que no salgan de las reglas
 
 **Estado:** aprobada por el propietario el 2026-09-27, con D1 y D2 tal como
-se proponen en §7. F1 hecha (§6).
+se proponen en §7. F1 hecha; F2 con todo su código hecho y pendiente de D3/D4;
+F3 con el código de comparación y gate hecho, sin entrenar (§6, comprobado
+contra el código el 2026-10-24).
 **Alcance:** qué entra en el corpus como TI, con qué familia y de qué fabricante,
 y cómo se entrenan, evalúan y sirven los modelos que lo deciden. Fuera de
 alcance: la ficha del pliego, los modelos de baja y de retención.
@@ -182,8 +184,8 @@ Hoy fabricantes y categorías van en la misma lista, y por eso unos «funcionan�
 |---|---|---|
 | F0 | Arreglos rápidos (§1) | hecho |
 | F1 | Política de frontera y familias nuevas; prompt v3 (`es_ti`); esquema del golden; formulario y cola por desacuerdo en `/ops`; `relevante` = `es_ti` | hecho (rama `claude/clasificacion-f1-tres-niveles`) |
-| F2 | Muestra LLM en producción + revisión humana → `golden_ti.jsonl` | OK a lanzar el LLM; tu tiempo |
-| F3 | Modelo de nivel 1 con baselines, gate y sombra | — |
+| F2 | Muestra LLM en producción + revisión humana → `golden_ti.jsonl` | código hecho; falta OK a lanzar el LLM (D3) y tu tiempo (D4) |
+| F3 | Modelo de nivel 1 con baselines, gate y sombra | código de entrenamiento, comparación y gate hecho; falta golden, correrlo, registro y sombra |
 | F4 | Modelo de nivel 2 | — |
 | F5 | Tabla de decisión con procedencia, cambio de los consumidores del universo (Radar, Mercado, superficie pública) a «es TI», reclasificación, vigilancia, renombre del binario | migración + reconstrucción de vistas materializadas + revisión de ADR-026 + workflows (OK explícito, AGENTS.md §6) |
 
@@ -212,7 +214,54 @@ Hoy fabricantes y categorías van en la misma lista, y por eso unos «funcionan�
 - **Nota para F3.** El lector de nivel 1 que entrene el modelo tiene que tratar
   también `__sin_evidencia__` como «no se pronunció», aunque la misma versión
   traiga el marcador de es_ti: es la regla que ya aplican el lector de familias
-  y el informe de acuerdo.
+  y el informe de acuerdo. *Hecho:* `filas_etiquetadas_nivel1` la aplica con
+  `es_ti_de_version_vigente`, la misma función que el informe de acuerdo.
+- **F2 en el código (comprobado el 2026-10-24).** Está todo lo que no es
+  ejecutar ni etiquetar:
+  - `--muestra` del job del LLM, con los estratos de §3.2
+    (`services/ml/muestra_estratificada.py`,
+    `TecnologiaPliegoRepository.list_muestra_pending_llm_signal`);
+  - la cola por desacuerdo de `/ops?vista=etiquetado`;
+  - una segunda muestra, para etiquetar a mano sin propuesta delante: 400
+    licitaciones por fuente × CPV × keyword × año
+    (`scripts/muestra_etiquetado_ti.py`, runbook
+    [etiquetado-ti](../runbooks/etiquetado-ti.md)). No estratifica por banda
+    del modelo actual a propósito, porque el golden es lo que va a juzgar a
+    ese modelo. El import entra por `POST /api/v1/feedback`, el mismo camino
+    que el formulario de `/ops`;
+  - `exportar_golden_ti.py` y `medir_acuerdo_llm.py`.
+
+  `golden_ti.jsonl` sigue teniendo solo la cabecera.
+- **F3 en el código (2026-10-24).**
+  - `services/ml/nivel1.py`:
+    - features de §4 (sin el `summary` de PLACSP; CPV de 2, 3 y 4 cifras sin
+      `CPV_TI`; idioma);
+    - etiqueta humano > LLM apto > nada;
+    - el golden entero fuera del entrenamiento, por id y por convocatoria;
+    - candidatos A, B y A+B, con isotónica sobre el pliegue temporal más
+      reciente y reentrenamiento final con todo.
+  - `services/ml/nivel1_eval.py`:
+    - PR-AUC con IC por bootstrap y diferencia pareada;
+    - baselines «solo keywords» y «solo CPV 48/72»;
+    - las dos bandas (precisión ≥ 0,95; ≤ 5 % de recall perdido), elegidas
+      en `tune`;
+    - el gate en `holdout`, que exige batir a los dos baselines y la medida
+      aparte en «CPV 48/72 sin keyword»;
+    - el desempate por simplicidad.
+  - `db.repositories.ml_dataset.filas_etiquetadas_nivel1`.
+  - `scripts/entrenar_nivel1.py`, que junta las piezas, solo lee y no
+    registra.
+
+  Falta:
+  - un golden con holdout (D4);
+  - correr el script;
+  - si sale APTO, registrar en `model_versions` y la semana en sombra con su
+    informe de qué entra y qué sale. Necesita OK: escribe en producción, y
+    servirlo como `sap_classifier` cambia `ml_proba`.
+
+  Las métricas del golden comparan puntuadores sobre el mismo conjunto, pero
+  no estiman la población: la muestra sobrerrepresenta los estratos pequeños.
+  La precisión real la mide la sombra.
 
 ## 7. Decisiones del propietario: D1 y D2 aprobadas; D3 (OK a la muestra del LLM) y D4 (revisión humana), pendientes
 
