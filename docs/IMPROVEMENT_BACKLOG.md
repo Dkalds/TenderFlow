@@ -231,6 +231,15 @@ _Sin ítems abiertos._
 
 ## P1 — Alta
 
+### [P1] La identidad de PLACSP no incluye el órgano: dos licitaciones con el mismo número de expediente se pisan
+- **Área:** scraper/connectors/placsp.py y el parser CODICE, carga bulk, `licitaciones.id_externo` y todo lo que lo referencia, services/dedupe.py (`natural_expediente`) y su gemelo en db/repositories/dedupe.py
+- **Problema:** el `id_externo` de las filas `placsp`/`bulk_*` es el `ContractFolderID` sin prefijo ni órgano, y es la PK de `licitaciones`. Cuando dos órganos usan el mismo número de expediente, la segunda licitación sobrescribe a la primera por `ON CONFLICT(id_externo)`. Medido el 2026-10-24 en `licitaciones_history` (fuentes `placsp` y `bulk_%`): **339 de 10.007** `id_externo` con historia tienen dos o más `organo_contratacion` distintos (3,4 %). En una muestra aleatoria de 8, siete eran licitaciones distintas —`2026/LIC/0049`: un servicio web de la Mutua Intercomarcal y un hosting de EGARSAT; `1681/2026`: el Ayuntamiento de Carlet y el de Sanlúcar de Barrameda— y una era un renombre del mismo órgano. En el feed vivo (8 páginas) salieron 67 de 3.646 expedientes compartidos (93 filas, 2,5 %), y en el de agregadas 74 de 7.956 (0,9 %). Las licitaciones pisadas desaparecen del producto sin error: el Radar, la ficha, las adjudicaciones y la analítica ven solo la última que llegó. Y lo que queda mezcla las dos: las adjudicaciones y los documentos no se reemplazan cuando la entrada nueva no trae los suyos, así que una licitación puede heredar el adjudicatario de otro órgano. El RFC cuenta, con órgano **y** título distintos, 379 `id_externo` y 570 pares perdidos (cota inferior: el histórico empieza el 2026-05-22).
+- **Hallazgo aparte, del mismo RFC (§«Riesgos y preguntas abiertas»):** la re-key de PSCP (`v153`) no repuntó `domain_events.aggregate_id`, y hoy hay 1.117 eventos de PSCP huérfanos. Se corrige con la misma fase o antes, por separado.
+- **Cómo se arregló en los conectores nuevos:** contratos menores usa `placsp_menores:<ID_PLATAFORMA>:<ContractFolderID>` (rama `claude/mejoras-2026-10-24`; `ID_PLATAFORMA` viene en el 100 % de las entradas y es 1:1 con el órgano), y PSCP ya usaba `pscp:<uuid>:<expediente>`.
+- **Por qué no se cerró en el mismo cambio:** exige cambiar la clave de filas ya escritas y de todo lo que las referencia, URLs públicas incluidas. Es un cambio de persistencia irreversible: RFC y OK del dueño (AGENTS.md §5 y §6). RFC: [2026-10-24-rfc-identidad-placsp-organo-expediente](rfc/2026-10-24-rfc-identidad-placsp-organo-expediente.md) (`draft`).
+- **Acceptance criteria:** los del RFC una vez aprobado; como mínimo, que dos licitaciones de órganos distintos con el mismo expediente convivan (test de integración), que el dedupe con TED siga casando por expediente, que las URLs viejas redirijan, y una consulta que cuente cuántas filas pisadas se recuperan de `licitaciones_history` o de la reingesta.
+- **Riesgo:** alto — cambia la PK de la tabla central y sus referencias.
+
 ### [P1] Cerrar el incidente de la v2 de `sap_classifier`: ver la pasada en verde y unificar los dos caminos de entrenamiento
 - **Área:** scheduler/concept_drift.py, scheduler/jobs/ml_training_run.py, services/ml/promotion.py, shared/model_artifacts.py, .github/workflows/train-model.yml, `model_versions` (producción)
 - **Problema:** `scrape-daily` está en rojo desde el 2026-09-29T18:08Z (15
@@ -311,6 +320,7 @@ _Sin ítems abiertos._
     a una Release fija» de «ml-scoring: verificar en producción el arreglo del
     2026-09-24», y exige que la ingesta resuelva el modelo por
     `resolve_artifact` y no por `ensure_downloaded` + `load()`.
+- *Nota (2026-10-24):* el camino de F3 del plan de tres niveles (`scripts/entrenar_nivel1.py`, `services/ml/nivel1.py`) no registra ni activa nada. Al unificar los dos caminos, el que sobreviva debería ser ese y no `train_from_db`, cuya etiqueta es circular. Registrar en `model_versions` y la semana en sombra siguen pendientes de OK.
 - **Files de partida:** [scheduler/jobs/ml_training_run.py](../scheduler/jobs/ml_training_run.py), [scheduler/concept_drift.py](../scheduler/concept_drift.py), [services/ml/promotion.py](../services/ml/promotion.py), [.github/workflows/train-model.yml](../.github/workflows/train-model.yml), [docs/runbooks/model-rollback.md](runbooks/model-rollback.md)
 - **Riesgo:** bajo para las verificaciones; medio para el nombre por
   contenido, que toca el camino por el que la ingesta y la API cargan el
@@ -417,72 +427,6 @@ _Sin ítems abiertos._
 - **Riesgo:** medio — los índices son aditivos, pero migran schema: +100-200 MB de disco
   y más escritura por fila; el autovacuum al 2 % añade E/S de fondo.
 
-### [P1] Los pliegos de la PSCP no se leen: su paso tras la ingesta no llega a ejecutarse
-- **Área:** scraper/connectors/base.py (`run_connector`, `_post_ingestion`), scraper/connectors/pscp.py, scraper/documentos_plataforma.py
-- **Problema:** `completar_documentos` cuelga de `_post_ingestion` (#395), y en
-  PSCP eso no ocurre casi nunca:
-  - **Con cero filas nuevas** —la mayoría de las pasadas: el dataset se actualiza
-    una vez al día— `run_connector` se salta `_post_ingestion` entero
-    (`if result.parsed or result.adjudicaciones`).
-  - **Con filas**, el step «Run PSCP Catalunya connector» se corta a los 10
-    minutos dentro de `_post_ingestion`, antes de llegar al paso. El 2026-10-03
-    a las 13:36 UTC el cursor quedó escrito 3 s después de la última página y no
-    hubo más logs hasta el corte (run 37126368765). El run del 2026-10-02 14:47,
-    anterior a #395, se cortó igual (37022322136): el corte no lo trajo #395.
-
-  Medido el 2026-10-03: 0 filas PSCP con documentos y 0 marcas
-  `publicacion_oficial:%`. El paso no depende del lote —lee de la BD las
-  convocatorias vigentes—, así que no hay motivo para atarlo a que el lote
-  traiga algo.
-- **Acceptance criteria:**
-  - `completar_documentos` corre aunque la pasada no parsee nada, y un test lo fija.
-  - Log `pscp_documentos_completados` en un run de `scrape-daily.yml`, y filas
-    PSCP con documentos en producción.
-  - Aparte: saber qué consume los 10 minutos del step cuando PSCP trae filas
-    (la resolución de empresas o `detect_duplicates(fuente='pscp')`). El ítem
-    «Verificar que el fix de PSCP progresa…» mira el cursor, que sí avanza; esto
-    no lo mira nadie.
-- **Progreso (2026-10-03):** el primer criterio lo cubre el PR #398
-  (`run_connector` llama al paso también sin lote; tests unitarios y de
-  integración). Una pasada en seco ese día —la consulta de candidatas sobre
-  producción y la ficha de cada una pedida al portal, sin escribir— dio 120
-  candidatas, las 120 con documentos, 958 referencias (117 PCAP, 117 PPT, 724
-  adicionales), 45 fichas que citan un anuncio TED y 0 fallos en 52 s. Quedan
-  los otros dos criterios, que solo se cierran con un run de producción.
-- **Qué consumía los 10 minutos (diagnóstico del 2026-10-03):** la resolución
-  de empresas, y no por cálculo sino por viajes de red.
-  - Un lote son 5.000 adjudicaciones en una transacción, con un `INSERT` de
-    alias y un `UPDATE` de enlace **por fila, cada uno en su viaje**. Sobre el
-    lote real de PSCP: 4.904 filas por NIF exacto, 10.126 escrituras, 2 s de
-    CPU (la comparación difusa, 1,9 s en 56 filas).
-  - Los runners están en EE. UU. («Azure Region» del log: eastus,
-    northcentralus, westus3) y la BD en París: 95-150 ms por viaje. El
-    2026-10-01, desde eastus, el lote tardó 961 s; el dedupe de detrás, 16 s.
-  - `HOOK_TIME_BUDGET_S` solo se mira entre lotes, así que no llegaba a actuar.
-  - El `timeout-minutes` del step no mata el proceso: lo deja huérfano
-    escribiendo hasta el final del job («Terminate orphan process … (python)»).
-    Si el job acaba antes que el lote, se deshace entero: el 2 y el 3 de octubre
-    no avanzó nada, y el cursor `entity_resolution_pscp` seguía en el día 1.
-  - Estado medido: 52.811 de las 58.029 adjudicaciones de PSCP sin enlazar
-    (91 %). El atraso se regenera a diario: `replace_adjudicaciones_batch`
-    reinserta las adjudicaciones sin conservar `empresa_id`.
-- **Arreglo de la causa (PR de `claude/resolucion-empresas-por-lotes`):** los
-  alias y los enlaces del lote se escriben juntos al final con `executemany`.
-  La función real sobre el lote real, con las escrituras interceptadas: **134
-  viajes en vez de 10.130**. Medido por el pooler de producción, en solo
-  lectura: 5.000 sentencias en un `executemany` tardan 0,2 s; una a una, 142 s.
-  Pendiente: verlo en un run (`entity_resolution_batch` de `source=pscp`, el
-  cursor avanzando y el porcentaje enlazado), y decidir si
-  `replace_adjudicaciones_batch` debe conservar el enlace.
-- **Estado (2026-10-15):** la causa «con filas» está cerrada en código: PSCP
-  declara `completar_documentos_primero`, así que `run_connector` lee los
-  pliegos antes del cierre del lote, con 120 s de presupuesto propio
-  (`PRESUPUESTO_DOCUMENTOS_S`) y tope por petición (rama
-  `claude/funcionalidades-2026-10`). Queda verlo en un run de producción: log
-  `pscp_documentos_completados` y filas PSCP con documentos.
-- **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py), [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [services/entity_resolution.py](../services/entity_resolution.py), [db/empresas.py](../db/empresas.py)
-- **Riesgo:** bajo — el paso ya es fail-open y tiene presupuesto de tiempo.
-
 ### [P2] Medir en producción los documentos de TED y PSCP tras el despliegue
 - **Área:** scraper/documentos_plataforma.py, scraper/connectors/{ted,pscp,placsp}.py, config/settings.py
 - **Problema:** hasta el 2026-10-02 ninguna fila TED ni PSCP tenía documentos
@@ -523,6 +467,11 @@ _Sin ítems abiertos._
   - **Render, sin comprobar.** El MCP de Render no lista variables de entorno
     (solo las escribe): hay que mirarlo en el panel. Fuera de Render no la pisa
     nadie: ni `render.yaml`, ni los workflows, ni las variables del repositorio.
+- **Progreso (2026-10-24, MCP de solo lectura):** PSCP, 217 licitaciones con
+  documentos (1.589 documentos, 1.416 `extracted`); TED, 409 (960 documentos,
+  283 `extracted`); 32 marcas `publicacion_oficial:%`, todas `confirmed`. El P1
+  de los pliegos de la PSCP está en _Cerrados_. Siguen abiertos el recuento de
+  `placsp_rescate_ted`, `DOCUMENT_ALLOWED_HOSTS` en Render y la asimetría de CPV.
 - **Files de partida:** [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [db/repositories/documentos.py](../db/repositories/documentos.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo — solo observación y una variable de entorno.
 
@@ -538,6 +487,7 @@ _Sin ítems abiertos._
 - **Files de partida:** [scripts/sample_golden_candidates.py](../scripts/sample_golden_candidates.py), [tests/fixtures/golden_set.jsonl](../tests/fixtures/golden_set.jsonl), [services/ml_eval.py](../services/ml_eval.py)
 - **Riesgo:** bajo en código, alto en oportunidad — mientras el set sea pequeño, el gate de promoción bloquea con poca evidencia y el umbral servido tiene una varianza que ninguna mejora del modelo puede compensar.
 - *Estado (2026-09-27):* el plan [2026-09-27-clasificacion-tres-niveles](plans/2026-09-27-clasificacion-tres-niveles.md) propone sustituir este golden por `golden_ti.jsonl` (fase F2): la etiqueta pasa de «es SAP» a «es TI», que es lo que el binario aprende de verdad, y los ~500 ejemplos se revisan partiendo de la propuesta del LLM en vez de etiquetarse desde cero. Ese día el reentrenamiento del binario (primero que completa desde julio) quedó rechazado con `recall_no_keyword` 0/3 sobre los 17 ejemplos del holdout.
+- *Estado (2026-10-24):* la muestra y el import existen desde el 2026-10-23 (`scripts/muestra_etiquetado_ti.py`, [runbook](runbooks/etiquetado-ti.md)), y ya hay consumidor: `scripts/entrenar_nivel1.py` (F3 del plan de tres niveles) usa `golden_ti.jsonl`, con `tune` para fijar umbrales y `holdout` para el gate; para decidir exige ≥ 60 ejemplos en el holdout y ≥ 10 de cada clase en «CPV 48/72 sin keyword». Medido en producción ese día: 2 revisiones humanas `revision_ti` frente a 3.451 licitaciones con marcador del LLM (`__es_ti__`/`__no_es_ti__`), con las dos clases en todas las fuentes (en CPV 48/72 sin keyword: 1.585 sí / 452 no). Solo falta etiquetar (D4) y exportar; sin golden no se puede medir si las etiquetas del LLM son aptas.
 
 ### [P2] Verificar que el fix de PSCP progresa en producción tras el próximo deploy
 - **Área:** scraper/connectors/pscp.py, observability
@@ -596,21 +546,22 @@ _Sin ítems abiertos._
 - **Estado (2026-10-01):** el código de la cola está, pero **`tenderflow-worker` no existe en Render** (su API lista un único servicio, la API). Nadie consumía los jobs `ficha_pliego`: siete `pending` desde el 14-sep y la pestaña Pliego en «Extrayendo…» para siempre (oportunidad 14). Mientras tanto los consume la API ([ADR-028 §G](adr/ADR-028-cola-de-trabajo-y-worker.md)), que además ganó `pybreaker`/`tenacity` en su imagen y encola la ficha al abrir una oportunidad en vez de usar `BackgroundTasks`. Lo que queda de este ítem: crear el servicio (checklist de `render.yaml`) y poner `JOBS_CONSUMIDOR_EN_API=0` en la API.
 - **Actualización (2026-10-10):** la creación del servicio está escrita paso a paso, con todas sus variables, en el paso 1 del [runbook del cutover del cron](runbooks/cutover-cron-al-worker.md), y su plan declarado pasa a `standard`: con el plano de cron de ADR-033 corre la ingesta y el scoring en el mismo proceso que la cola. `deploy.yml` despliega también el worker, del mismo commit y tras verificar la API, si su deploy hook está en `RENDER_WORKER_DEPLOY_HOOK_URL` (en los de Actions); sin él no despliega ninguno de los dos.
 - **Actualización (2026-10-19):** el servicio se creó el 2026-10-10, pero en el plan `free` de Render, que lo hibernaba a los ~15 min: su consumidor y su plano de cron solo corrían tras cada deploy. Como `JOBS_CONSUMIDOR_EN_API` nunca se puso a `0`, la cola la siguió vaciando la API, y la ingesta y el scoring siguieron en Actions. Se retiró en vez de pagar `standard`: `render.yaml` ya no lo declara, `deploy.yml` no lo despliega y `scripts/check_job_parity.py` acepta a la API como consumidor ([ADR-028 §G](adr/ADR-028-cola-de-trabajo-y-worker.md), revisión del 2026-10-19). Lo que quedaba de este ítem —crear el servicio y apagar el consumidor de la API— deja de aplicar; el de §A (que la extracción no comparta proceso con la API) sigue abierto y es lo que justificaría recrearlo.
+- *Nota (2026-10-24):* el servicio sigue existiendo en Render: `TenderFlow-1` (`srv-db58n80473hc73a94rsg`), plan `free`, sin suspender y sin ningún log desde el 2026-10-19. No consume nada, pero si alguien lo despierta corre contra la misma base. Suspenderlo o borrarlo es acción del dueño.
 - **Riesgo:** medio — servicio nuevo en producción y cambio del camino por el que se sirve la ficha.
 
 ---
 
 ### [P1] Recuperación de contraseña: comprobar la entrega en producción y decidir lo que la auditoría dejó fuera
 - **Área:** services/password_reset.py, api/routes/auth.py, api/middleware.py, observability/, config/settings.py, variables de Render (acción del usuario)
-- **Problema:** la auditoría del issue #243 (2026-10-09) cerró los huecos del flujo en el código —ver [el RFC](rfc/243-recuperacion-contrasena-local.md)—, pero dejó ocho cosas que no se arreglan con un commit: dos hay que mirarlas en producción y el resto son decisiones del dueño. Cada una lleva su prioridad. **2026-10-23:** el dueño aprobó 3, 4, 5, 6 y 8 y están hechos (ver _Cerrados_ en el [archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md)); quedan 1, 2 y 7.
+- **Problema:** la auditoría del issue #243 (2026-10-09) cerró los huecos del flujo en el código —ver [el RFC](rfc/243-recuperacion-contrasena-local.md)—, pero dejó ocho cosas que no se arreglan con un commit: dos hay que mirarlas en producción y el resto son decisiones del dueño. Cada una lleva su prioridad. **2026-10-23:** el dueño aprobó 3, 4, 5, 6 y 8 y están hechos (ver _Cerrados_ en el [archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md)); el 7 se hizo el 2026-10-24 (ídem); quedan 1 y 2.
   1. **[P1] La entrega del correo en producción no está comprobada.** `render.yaml` no declara `EMAIL_*` ni `ALERT_SMTP_*` para `tenderflow-api` (solo para `tenderflow-alertmanager`), y ese fichero tampoco gobierna el servicio real (ítem P2 de más abajo), así que desde el repo no se sabe si la API tiene con qué enviar. Sin credenciales el transporte devuelve «no configurado» sin lanzar: quien pide el enlace lee «te llegará un enlace» y no llega nada. Desde este cambio queda `password_reset_email sent=false` a nivel `warning`; antes, solo un `info`. Lo mismo si falta la URL del frontend (`CORS_ALLOWED_ORIGINS` vacío y sin `OAUTH_REDIRECT_URI`): `password_reset_frontend_url_unavailable`.
      **Progreso 2026-10-21:** comprobado en el log de Render que **no sale ningún correo**: la aprobación de la solicitud 3 dejó `solicitud_acceso_aviso_persona enviado=false` sin `mailer_failed` alrededor, firma de `not_configured`. `render.yaml` declara ya las variables de correo en la API, el arranque avisa con `email_backend_not_configured` y `mailer_not_configured` pasó a `warning` ([RFC del alta](rfc/2026-10-21-rfc-alta-con-contrasena-tras-concesion.md) §7). Falta lo que solo hace el dueño: poner las credenciales en el panel de Render y el reset real de extremo a extremo del criterio (1). El alta con contraseña depende de lo mismo, y comparte con este ítem el riesgo del punto 2: sus cuotas por IP (`register`, `verify-email`) se repartirían entre todos los usuarios si la IP que ve la API es la de Vercel.
   2. **[P1] Hipótesis sin verificar: el límite por IP puede no distinguir clientes en producción.** El navegador llama a `/api/*` en Vercel y Vercel lo reenvía a Render (`rewrites()` de `web/next.config.ts`), así que quien abre la conexión con Render es Vercel. `_trusted_client_ip` recorre `X-Forwarded-For` desde el final y devuelve el primer salto que no esté en `FORWARDED_ALLOW_IPS` —el rango del proxy de Render—: ese salto sería la IP de salida de Vercel, no la del usuario. Si es así, las cuotas por IP de la recuperación (5 cada 15 minutos), el bloqueo de login (`_login_client_key`) y el tope global del middleware se reparten entre todos los usuarios, y cualquiera puede agotárselos a los demás. `web/src/lib/server-prefetch.ts` ya lo reconoce para las peticiones del SSR; nadie lo ha mirado para las del navegador. Depende de qué cabeceras pone Vercel y de qué hay en `FORWARDED_ALLOW_IPS` en el panel de Render, que desde aquí no se lee.
-  7. **[P3] El login distingue por tiempo una cuenta inexistente de una contraseña mala.** Si el correo no existe (o la cuenta es solo-OAuth) responde sin pasar por el KDF; si existe, tarda lo que tarde `verify_password`. Falta verificar contra un hash ficticio en la rama sin cuenta.
+     **Medido 2026-10-24 (log de Render, servicio `TenderFlow`):** es peor que la hipótesis. El `client_ip` de las líneas `http_request` es siempre una IP interna `10.19x.x.x` (seis distintas en dos minutos, también en el `INFO: 10.192.214.29:42670` de uvicorn), y cambia **dentro de la misma sesión**: la carga de una pantalla reparte sus peticiones entre `10.192.214.29`, `10.197.182.120`, `10.194.137.88`… No es la IP de salida de Vercel ni la del usuario, sino el salto interno del proxy de Render: las cuotas por IP son por nodo del proxy, compartidas por todos los usuarios y troceadas para cada uno. Hace falta decidir de dónde sale la IP del cliente (qué hay en `FORWARDED_ALLOW_IPS` y en `X-Forwarded-For`, o una cabecera de Vercel verificable).
+     **Y el (1) sigue igual el 2026-10-24:** a las 01:17 UTC una petición de recuperación para una cuenta del dominio `deloitte.es` dejó `password_reset_email sent=false`. Hay usuarios reales pidiendo el enlace y no les llega.
 - **Acceptance criteria:**
   - (1) Un reset real de extremo a extremo en producción: pedir el enlace para una cuenta local, recibir el correo, cambiar la contraseña y entrar. Anotado con fecha, y con el backend de correo que usa la API.
   - (2) El `client_ip` de las líneas `http_request` del log de la API, comparado para dos usuarios en redes distintas: si coincide, la hipótesis es cierta y hace falta decidir de dónde sale la IP del cliente (una cabecera de Vercel verificable, o que el navegador llame a la API sin pasar por el rewrite).
-  - (7) Decisión escrita del dueño: se hace, o se descarta con el motivo.
 - **Files de partida:** [services/password_reset.py](../services/password_reset.py), [api/middleware.py](../api/middleware.py), [web/next.config.ts](../web/next.config.ts), [observability/logging.py](../observability/logging.py), [config/settings.py](../config/settings.py), [docs/runbooks/correo-transaccional.md](runbooks/correo-transaccional.md)
 - **Riesgo:** medio — (1) y (2) son comprobaciones; lo que salga de (2) toca la base del rate limiting.
 
@@ -829,6 +780,7 @@ _Sin ítems abiertos._
 - **Relación:** bloquea el P1 del golden set (ampliarlo no sirve de nada si el dataset de entrenamiento está ahogado) y explica por qué `model_versions` no tiene ninguna fila de `sap_classifier`.
 - **Riesgo:** medio — cambiar la población de entrenamiento cambia qué aprende el clasificador que decide el rescate ML en ingesta.
 - **Progreso parcial (2026-09-14, Ola 1 · Taxonomía):** parte del 0,46 % era vocabulario, no población: el diccionario solo tenía castellano y la PSCP publica en catalán. `config/keywords.py` añade nueve categorías de TI con formas en catalán, euskera y gallego ([docs/taxonomia-tecnologica.md](taxonomia-tecnologica.md)); tras resembrar, la tasa de positivos de PSCP hay que volver a medirla antes de decidir la bifurcación. No toca la población de entrenamiento ni `validate_training_data`.
+- *Estado (2026-10-24):* el código de F3 ([plan](plans/2026-09-27-clasificacion-tres-niveles.md) §6) sustituye la etiqueta «alguna keyword» por la humana o la del LLM cuando su acuerdo es apto, sin submuestrear negativos y con calibración isotónica temporal (`services/ml/nivel1.py`). El gate (`services/ml/nivel1_eval.py`) exige batir a los baselines «solo keywords» y «solo CPV 48/72» con la cota inferior del IC95 de la diferencia por encima de cero. No se ha entrenado: falta el golden (ver «Ampliar el golden set…»).
 - *Estado (2026-09-27):* la purga se ejecutó (PSCP quedó en 35.542 filas) y ese mismo día el binario reentrenado sobre la población acotada (32.641 filas, 21,7 % de positivos) completó y el gate lo rechazó: `recall_no_keyword` 0/3, F1 temporal 0,52 frente a 0,94 en validación cruzada. La causa ya no es la población sino la etiqueta, que sigue siendo «alguna keyword»: el plan [2026-09-27-clasificacion-tres-niveles](plans/2026-09-27-clasificacion-tres-niveles.md) la sustituye por etiquetas del LLM revisadas por humanos.
 - *Estado (2026-09-26):* medido contra producción, las 683k filas de PSCP **no** eran un bug de etiquetado: son el censo catalán entero (0 filas se llegaron a marcar `pscp_censo`). El RFC [2026-09-26](rfc/2026-09-26-rfc-purga-pscp-sin-tecnologia.md) las purga reevaluando cada fila con la puerta del conector —conserva las que el diccionario de hoy sí reconoce, y la reingesta posterior las reetiqueta—; queda pendiente de ejecutar (P1 «Ejecutar en producción la purga de PSCP»). Tras ella, la población de entrenamiento deja de depender del acotado.
 - *Estado (2026-09-19):* **la bifurcación ya se tomó en código, por la opción 1**, y el ítem no lo decía. Desde S6.1 del plan v2 (`#274`, 2026-09-08) `train_from_db` (`services/ml/classifier_training.py:374-418`) no lee `licitaciones` entera: entrena sobre `db.repositories.ml_dataset.filas_entrenamiento_sap`, acotada por `poblacion_clasificador_sql` (universo tecnológico observado, no un filtro por nombre de fuente, y sin duplicados confirmados), pasa `validate_training_data` en ese mismo camino y registra la población como `train_population`. Lo que sigue abierto es la consecuencia que la propia opción 1 anunciaba —el modelo puntúa una población distinta de la que aprende— y la medida: `domain-truth.yml` seguía dando `ml_proba > 0,7` en el 72,9 % de lo puntuado del 12 al 18/09 (ver el P2 de `importe_tipo`). No se comprobó aquí si hay ya una versión de `sap_classifier` entrenada con esa población.
@@ -996,6 +948,10 @@ _Sin ítems abiertos._
   - Decidido si la analítica de competidores sin filtro de tecnología debe contar los menores.
   - Variables en `vars.` según el runbook; las tres fuentes en `ok` en el healthcheck.
 - **Riesgo:** medio — volumen nuevo en `adjudicaciones` y `empresas`.
+- **Nota 2026-10-24 (verificación contra las fuentes reales):** las URL de 1143 y 1044 responden GET 200 con ATOM CODICE (`--check` da 13 de 498 y 25 de 283 admitidas) y las fixtures son ya recortes reales. **Menores:** identidad decidida: `placsp_menores:<ID_PLATAFORMA>:<ContractFolderID>`. En 9.977 entradas, 327 de 9.563 expedientes los compartían órganos distintos (390 filas pisadas con la clave vieja, 3,9 %); no había filas que migrar porque nunca se encendió. Las adjudicaciones con NIF enmascarado no se guardan. **Agregadas:** ninguno de sus 1.057 pliegos apunta a PLACSP (544 `contractaciopublica.cat`, 346 `contratacion.euskadi.eus`, 167 `contratos-publicos.comunidad.madrid`); el filtro sigue ahora la allowlist de descargas. **TACRC:** la API REST candidata no existe (302 a `pagenotfound`, que `fetch_index` ahora rechaza) y el buscador exige Cloudflare Turnstile: no hay índice completo anónimo; queda el Pleno (19 resoluciones) o pedir a Hacienda un listado abierto. El mismo defecto de identidad está en el feed principal: ver el P1 «La identidad de PLACSP no incluye el órgano». Quedan:
+  - Del dueño: si se guardan los 12 adjudicatarios persona física con NIF y nombre visibles (de 241 admitidos; registro de tratamientos), si `DOCUMENT_ALLOWED_HOSTS` se amplía a `contratacion.euskadi.eus` y `contratos-publicos.comunidad.madrid`, y `make medir-solape` contra producción.
+  - Los `test_integration_*` de `tests/test_connectors_placsp_sindicaciones.py`, con Postgres.
+  - Analítica de competidores: excluir los menores por defecto (mediana 4.950 € en la muestra) en `AdjudicacionRepository.load_for_competitors` y las consultas de UTE, y ofrecerlos como vista aparte.
 - **Nota 2026-10-23 (tanda paralela):** no se encienden en esta tanda: dependen de `make medir-solape` contra producción (D16, D42 del plan de salida al mercado). El comando existe y funciona: se ejecutó en local contra una base migrada a head (vacía, así que solo prueba el camino). Contra producción lo ejecuta el propietario con un `DATABASE_URL` de lectura (`make medir-solape`, o `python scripts/medir_solape_agregados.py --json`); el script solo usa el pool de lectura (`default_transaction_read_only=on`). El número se anota aquí antes de decidir.
 
 ### [P2] Medir la cobertura de las condiciones oficiales de CODICE y verificar sus nombres
