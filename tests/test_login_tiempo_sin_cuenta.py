@@ -27,6 +27,7 @@ from api.routes import auth
 from shared.auth_core import hash_password, verify_password_against_dummy
 
 _CORREO = "ana@example.com"
+_CONTRASENA = "no-es-la-buena-1234"  # pragma: allowlist secret
 
 
 def _parametros(pw_hash: str) -> tuple[str, str]:
@@ -64,7 +65,7 @@ def _login_con(usuario: dict[str, Any] | None) -> HTTPException:
     ):
         asyncio.run(
             auth.login(
-                auth.LoginRequest(email=_CORREO, password="no-es-la-buena-1234"),
+                auth.LoginRequest(email=_CORREO, password=_CONTRASENA),
                 Response(),
                 _peticion(),
             )
