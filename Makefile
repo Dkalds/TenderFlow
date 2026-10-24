@@ -1,5 +1,5 @@
 .PHONY: status schema-doc product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker
-.PHONY: web-test web-test-coverage check-env-parity check-public-surface check-layers check-api-surface
+.PHONY: web-test web-test-coverage check-env-parity check-public-surface check-layers check-prints check-api-surface
 .PHONY: check-casos-uso casos-uso web-mutation reencolar-documentos
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
@@ -51,6 +51,9 @@ check-frontend-invariants:  ## Integridad analítica del frontend (ADR-014, bloq
 
 check-layers:  ## Ningún paquete importa de una capa superior (ratchet, solo encoge)
 	python scripts/check_layers.py
+
+check-prints:  ## Ningún print() en scraper/, services/ y scheduler/ fuera de un __main__
+	python scripts/check_prints.py
 
 check-api-surface:  ## Una operación nueva de la API llega con su motivo (AGENTS.md §0)
 	ENV=dev APP_PROFILE=api python scripts/check_api_surface.py
