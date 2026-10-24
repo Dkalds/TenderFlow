@@ -86,13 +86,16 @@ def _comprobar_vista_canonicas(
     checks: list[dict[str, object]],
     warnings: list[str],
     info: dict[str, object],
-) -> None:
+) -> bool:
     """Antigüedad y tamaño del último refresco de la vista pública.
 
     Va en su propio ``try`` por el mismo motivo que sus vecinos: un check
     secundario no puede llevarse por delante el informe entero, y con
     ``connect()`` una consulta fallida deja la sesión abortada si no se hace
     ROLLBACK.
+
+    Devuelve si la vista tiene corpus (``False`` si no se pudo medir): el check
+    de silencio de ``ops_events`` lo necesita para no avisar en una base vacía.
     """
     try:
         estado = estado_refresco_canonicas(conn=c)
@@ -108,7 +111,7 @@ def _comprobar_vista_canonicas(
         # del informe: mismo criterio que el check de resolución de empresas.
         warnings.append("canonicas_no_medida")
         checks.append({"name": "canonicas_frescas", "ok": True})
-        return
+        return False
 
     if not filas:
         # Sin ningún refresco registrado.
@@ -124,7 +127,7 @@ def _comprobar_vista_canonicas(
         if con_datos:
             warnings.append("canonicas_sin_registro_de_refresco")
         checks.append({"name": "canonicas_frescas", "ok": not con_datos})
-        return
+        return con_datos
 
     try:
         ultimo = datetime.fromisoformat(str(filas[0][0]))
@@ -152,7 +155,7 @@ def _comprobar_vista_canonicas(
     if n_actual == 0:
         warnings.append("canonicas_vacias")
         checks.append({"name": "canonicas_tamano", "ok": False})
-        return
+        return con_datos
     if len(filas) > 1:
         n_previo = int(filas[1][1] or 0)
         cayo = n_previo > 0 and n_actual < n_previo * (1 - _CAIDA_CANONICAS_MAX)
@@ -161,6 +164,7 @@ def _comprobar_vista_canonicas(
         checks.append({"name": "canonicas_tamano", "ok": not cayo})
     else:
         checks.append({"name": "canonicas_tamano", "ok": True})
+    return con_datos
 
 
 #: Estado con el que un conector declara «estoy apagado a propósito» en
@@ -566,7 +570,7 @@ def run_check(
         # registra cuándo se refrescó una vista materializada, y comparar sus
         # filas contra la tabla exige repetir el anti-join que la vista existe
         # para evitar. El evento lo emite `scheduler/aggregates_precompute.py`.
-        _comprobar_vista_canonicas(c, canonicas_stale_hours, checks, warnings, info)
+        hay_corpus = _comprobar_vista_canonicas(c, canonicas_stale_hours, checks, warnings, info)
 
         # ── Frescura POR FUENTE (S2.3) ─────────────────────────────────
         # `last_run_fresh`, más arriba, mira el último `extraction_run`
@@ -599,13 +603,18 @@ def run_check(
         # que SI corre en prod cada 6h, pueda leerlos.
         # Umbrales espejo de observability/alert_rules.yml.
         try:
-            cutoff = (datetime.now(UTC) - timedelta(hours=6)).isoformat()
+            ahora = datetime.now(UTC)
+            cutoff = (ahora - timedelta(hours=6)).isoformat()
+            cutoff_24h = (ahora - timedelta(hours=24)).isoformat()
             rows = c.execute(
-                "SELECT event_type, COUNT(*) FROM ops_events WHERE ts > %s GROUP BY event_type",
-                (cutoff,),
+                "SELECT event_type, COUNT(*) FILTER (WHERE ts > %s), COUNT(*) "
+                "FROM ops_events WHERE ts > %s GROUP BY event_type",
+                (cutoff, cutoff_24h),
             ).fetchall()
-            ops_counts: dict[str, int] = {r[0]: int(r[1]) for r in rows}
+            ops_counts: dict[str, int] = {r[0]: int(r[1]) for r in rows if int(r[1]) > 0}
             info["ops_events_6h"] = ops_counts
+            n_24h = sum(int(r[2]) for r in rows)
+            info["ops_events_24h"] = n_24h
 
             # write_slow: >=20 warn
             n_slow = ops_counts.get("write_slow", 0)
@@ -618,6 +627,19 @@ def run_check(
             if n_wh >= 1:
                 warnings.append(f"writers_high:{n_wh}")
             checks.append({"name": "ops_events_writers_high", "ok": n_wh == 0})
+
+            # Silencio: cada pasada de cierre emite varios eventos, así que un
+            # día entero sin ninguno es que no llegan, no que no pase nada. Es
+            # el estado en que estuvo la tabla de septiembre a octubre de 2026
+            # (el flush no encontraba la CA de verify-full), y entonces solo lo
+            # delataba de rebote `canonicas_sin_registro_de_refresco`. Con la
+            # base sin corpus —un schema de test, un entorno nuevo— nada tiene
+            # por qué emitir, y avisar ahí sería ruido: mismo criterio que el
+            # check de la vista pública, que es quien mide si hay corpus.
+            silencio = n_24h == 0 and hay_corpus
+            if silencio:
+                warnings.append("ops_events_sin_eventos_24h")
+            checks.append({"name": "ops_events_recientes", "ok": not silencio})
 
             # Retención best-effort: eliminar eventos > 30 días
             try:
@@ -637,6 +659,7 @@ def run_check(
                 info["ops_events_missing"] = True
                 checks.append({"name": "ops_events_write_slow", "ok": True})
                 checks.append({"name": "ops_events_writers_high", "ok": True})
+                checks.append({"name": "ops_events_recientes", "ok": True})
             else:
                 info["ops_events_error"] = str(exc)[:200]
 

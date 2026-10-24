@@ -25,7 +25,12 @@ trigger de ``licitacion_tecnologia_score``—, pero el criterio de retirada es
 producción, y ``precompute_ml_tecnologias(force=True)`` todavía borra las
 filas del pliego al sustituir las del modelo. Se retira cuando el contador
 ``licitaciones_reparadas`` lo demuestre, no antes; ``scripts/check_job_parity.py``
-va en el mismo commit.
+va en el mismo commit. El paso deja ese contador en ``ops_events`` como
+``EVENTO_TECH_SIGNAL_MERGE`` (``value`` = reparaciones de la pasada)::
+
+    SELECT ts, value FROM ops_events
+    WHERE event_type = 'tech_signal_merge' AND ts > now() - interval '7 days'
+    ORDER BY ts DESC
 
 ``digests``, ``retention_cleanup`` y ``drift_checks`` tienen **cadencia
 propia** (ver ``_run_periodic``): la pipeline corre cada 4h, pero un digest
@@ -39,8 +44,13 @@ from datetime import UTC, date, datetime
 from typing import Any, Literal
 
 from observability.logging import get_logger
+from observability.ops_events import record_event
 
 log = get_logger(__name__)
+
+#: Tipo de evento con el que ``tech_signal_merge`` deja en ``ops_events`` las
+#: reparaciones de cada pasada. Es la serie que mide su criterio de retirada.
+EVENTO_TECH_SIGNAL_MERGE = "tech_signal_merge"
 
 # ---------------------------------------------------------------------------
 # Pasos individuales (best-effort wrappers)
@@ -426,17 +436,26 @@ def _run_tech_signal_merge() -> None:
     cierre del ítem del backlog («cero reparaciones en siete días»): cada
     unidad es una licitación cuya señal ya estaba fusionada y cuyo resumen
     hubo que reescribir.
+
+    Ese contador va también a ``ops_events``: el criterio de retirada se mide
+    ahí y el paso solo lo dejaba en el log del runner, que GitHub Actions
+    borra a los 90 días y nadie consulta con SQL. Solo lo emite esta pasada
+    sin ids; la de ``llm_tech_labeling`` (con ids) cuenta como «reparadas» las
+    licitaciones ya fusionadas que reetiqueta, que no son reparaciones.
     """
+    import json
     import time as _time
 
     from services.tech_signal import merge_doc_signals
 
     t0 = _time.monotonic()
     result = merge_doc_signals()
-    log.info(
-        "pipeline_tech_signal_merge_completed",
-        elapsed_ms=int((_time.monotonic() - t0) * 1000),
-        **result,
+    elapsed_ms = int((_time.monotonic() - t0) * 1000)
+    log.info("pipeline_tech_signal_merge_completed", elapsed_ms=elapsed_ms, **result)
+    record_event(
+        EVENTO_TECH_SIGNAL_MERGE,
+        value=float(result.get("licitaciones_reparadas", 0)),
+        detail=json.dumps({**result, "elapsed_ms": elapsed_ms}, sort_keys=True),
     )
 
 
