@@ -107,6 +107,9 @@ class AccessGrantOut(BaseModel):
     value: str
     active: bool
     granted_by: int | None = None
+    #: Nombre (o correo) de quien concedió. Solo lo rellena el listado: las
+    #: respuestas de revocar no lo resuelven.
+    granted_by_name: str | None = None
     created_at: datetime
     updated_at: datetime
     revoked_at: datetime | None = None

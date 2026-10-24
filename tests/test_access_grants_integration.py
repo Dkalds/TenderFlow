@@ -137,6 +137,28 @@ def test_conceder_dos_veces_la_misma_solicitud_no_duplica_nada(api_db):
     assert _estado(solicitud_id) == "atendida"
 
 
+def test_el_listado_resuelve_el_nombre_de_quien_concedio(api_db):
+    admin = _crear_admin()
+    grant_access("email", "ana@example.com", granted_by=admin)
+    grant_access("email", "bea@example.com", granted_by=None)
+
+    por_valor = {g["value"]: g for g in list_access_grants()}
+
+    assert por_valor["ana@example.com"]["granted_by_name"] == "Admin 242"
+    assert por_valor["bea@example.com"]["granted_by_name"] is None
+
+
+def test_el_listado_con_revocadas_las_trae_despues_de_las_vivas(api_db):
+    viva = grant_access("email", "viva@example.com", granted_by=None)
+    muerta = grant_access("email", "muerta@example.com", granted_by=None)
+    assert revoke_access(muerta["id"]) is not None
+
+    assert [g["id"] for g in list_access_grants()] == [viva["id"]]
+    todas = list_access_grants(include_inactive=True)
+    assert [g["id"] for g in todas] == [viva["id"], muerta["id"]]
+    assert todas[1]["revoked_at"] is not None
+
+
 def test_conceder_una_solicitud_que_no_existe_no_escribe_nada(api_db):
     assert grant_access_request(999_999, "email", granted_by=None) is None
     assert list_access_grants(include_inactive=True) == []

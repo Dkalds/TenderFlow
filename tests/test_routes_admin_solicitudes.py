@@ -386,6 +386,32 @@ class TestAccessGrants:
         finally:
             app.dependency_overrides.clear()
 
+    def test_el_listado_pasa_include_inactive_y_devuelve_quien_concedio(self, client):
+        app.dependency_overrides[require_any_auth] = _admin
+        viva = _grant(granted_by_name="Admin 242")
+        revocada = _grant(
+            id=12,
+            value="bea@empresa.example",
+            active=False,
+            granted_by=None,
+            granted_by_name=None,
+            revoked_at="2026-09-02T00:00:00+00:00",
+        )
+        try:
+            with patch(
+                "api.routes.admin_solicitudes.list_access_grants", return_value=[viva, revocada]
+            ) as listar:
+                resp = client.get(f"{RUTA}/grants?include_inactive=true")
+        finally:
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200, resp.text
+        listar.assert_called_once_with(include_inactive=True)
+        cuerpo = resp.json()
+        assert cuerpo[0]["granted_by_name"] == "Admin 242"
+        assert cuerpo[1]["granted_by_name"] is None
+        assert cuerpo[1]["revoked_at"] is not None
+
     def test_revoca_y_audita(self, client):
         app.dependency_overrides[require_any_auth] = _admin
         grant = {

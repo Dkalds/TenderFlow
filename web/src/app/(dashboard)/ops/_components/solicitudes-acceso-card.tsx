@@ -50,6 +50,7 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
     grantsLoading,
     grantsError,
     reintentarGrants,
+    historico,
     cambiarEstado,
     revocar,
   } = useSolicitudesAcceso(opciones);
@@ -132,6 +133,16 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
         onRetry={reintentarGrants}
         revocando={revocar.isPending}
         onRevocar={revocar.mutate}
+        solicitudes={historico}
+        concediendo={cambiarEstado.isPending}
+        onVolverAConceder={({ solicitudId, kind }) =>
+          cambiarEstado.mutate({
+            id: solicitudId,
+            estado: "atendida",
+            notificar: true,
+            conceder: kind,
+          })
+        }
       />
     </Panel>
   );

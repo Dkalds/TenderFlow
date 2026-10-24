@@ -75,6 +75,7 @@ function solicitud(id: number, estado: string): SolicitudFalsa {
  */
 const cola: SolicitudFalsa[] = [];
 let urlsPedidas: string[] = [];
+let concesiones: Record<string, unknown>[] = [];
 
 /** Defecto del endpoint cuando no se pasa `limit` (`Query(100, ge=1, le=500)`). */
 const LIMITE_POR_DEFECTO = 100;
@@ -85,7 +86,10 @@ function instalarFetch() {
     vi.fn(async (url: string) => {
       urlsPedidas.push(url);
       if (url.includes("/grants")) {
-        return { ok: true, status: 200, json: async () => [] };
+        // Como el endpoint: sin `include_inactive` solo las vivas.
+        const todas = new URLSearchParams(url.split("?")[1] ?? "").get("include_inactive") === "true";
+        const cuerpo = todas ? concesiones : concesiones.filter((g) => g.active);
+        return { ok: true, status: 200, json: async () => cuerpo };
       }
       const params = new URLSearchParams(url.split("?")[1] ?? "");
       const estado = params.get("estado");
@@ -118,6 +122,7 @@ describe("SolicitudesAccesoCard", () => {
   beforeEach(() => {
     cleanup();
     urlsPedidas = [];
+    concesiones = [];
     cola.length = 0;
     mutar.mockReset();
     mutar.mockResolvedValue({ status: "ok", notificado: null });
@@ -239,5 +244,102 @@ describe("SolicitudesAccesoCard", () => {
         notificar: true,
       }),
     );
+  });
+
+  describe("accesos concedidos", () => {
+    const viva = {
+      id: 1,
+      kind: "email",
+      value: "alguien-1@empresa.es",
+      active: true,
+      granted_by: 7,
+      granted_by_name: "Admin Uno",
+      created_at: "2026-08-01T10:00:00Z",
+      updated_at: "2026-08-02T10:00:00Z",
+      revoked_at: null,
+    };
+    const revocada = {
+      id: 2,
+      kind: "email",
+      value: "alguien-2@empresa.es",
+      active: false,
+      granted_by: null,
+      granted_by_name: null,
+      created_at: "2026-07-01T10:00:00Z",
+      updated_at: "2026-07-05T10:00:00Z",
+      revoked_at: "2026-07-05T10:00:00Z",
+    };
+
+    it("pide también las revocadas y dice quién concedió cada una", async () => {
+      concesiones.push(viva, revocada);
+      renderCard();
+
+      expect(await screen.findByText(/Concedido por Admin Uno el /)).toBeInTheDocument();
+      expect(urlsPedidas.some((u) => u.includes("/grants?include_inactive=true"))).toBe(true);
+      // Sin autor registrado no se inventa uno.
+      expect(screen.getByText(/Concedido por autor no registrado · revocado el /)).toBeInTheDocument();
+    });
+
+    it("lista las revocadas aparte y no les ofrece «Revocar»", async () => {
+      concesiones.push(viva, revocada);
+      renderCard();
+
+      await screen.findByText("Accesos revocados");
+      expect(screen.getByRole("button", { name: "Revocar acceso de alguien-1@empresa.es" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Revocar acceso de alguien-2@empresa.es" })).toBeNull();
+    });
+
+    it("vuelve a conceder una revocada con el PATCH de su solicitud", async () => {
+      concesiones.push(revocada);
+      // La solicitud de esa persona, ya atendida, solo está en el histórico.
+      cola.push(solicitud(2, "atendida"));
+      renderCard();
+
+      const boton = await screen.findByRole("button", {
+        name: "Volver a conceder acceso a alguien-2@empresa.es",
+      });
+      await waitFor(() => expect(boton).toBeEnabled());
+      fireEvent.click(boton);
+
+      await waitFor(() =>
+        expect(mutar).toHaveBeenCalledWith(
+          "PATCH",
+          "/api/v1/admin/solicitudes-acceso/2",
+          expect.objectContaining({ estado: "atendida", conceder: "email" }),
+        ),
+      );
+    });
+
+    it("una revocada de dominio se vuelve a conceder sobre una solicitud de ese dominio", async () => {
+      concesiones.push({ ...revocada, id: 3, kind: "domain", value: "empresa.es" });
+      cola.push(solicitud(9, "descartada"));
+      renderCard();
+
+      const boton = await screen.findByRole("button", {
+        name: "Volver a conceder acceso a empresa.es",
+      });
+      await waitFor(() => expect(boton).toBeEnabled());
+      fireEvent.click(boton);
+
+      await waitFor(() =>
+        expect(mutar).toHaveBeenCalledWith(
+          "PATCH",
+          "/api/v1/admin/solicitudes-acceso/9",
+          expect.objectContaining({ conceder: "domain" }),
+        ),
+      );
+    });
+
+    it("sin solicitud que case no deja conceder y lo explica", async () => {
+      concesiones.push(revocada);
+      renderCard();
+
+      const boton = await screen.findByRole("button", {
+        name: "Volver a conceder acceso a alguien-2@empresa.es",
+      });
+      expect(boton).toBeDisabled();
+      expect(await screen.findByText(/No hay ninguna solicitud con ese correo/)).toBeInTheDocument();
+      expect(mutar).not.toHaveBeenCalled();
+    });
   });
 });
