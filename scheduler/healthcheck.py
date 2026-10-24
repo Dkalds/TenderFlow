@@ -33,6 +33,7 @@ import re
 import shutil
 import sys
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -743,7 +744,25 @@ def comprobar_y_alertar() -> dict[str, Any]:
     return result
 
 
-def main() -> int:
+def _informe_al_log(result: dict[str, Any]) -> None:
+    log.info(
+        "healthcheck_resultado",
+        status=result.get("status"),
+        warnings=result.get("warnings"),
+        errors=result.get("errors"),
+        checks=result.get("checks"),
+        info=result.get("info"),
+    )
+
+
+def main(informe: Callable[[dict[str, Any]], None] = _informe_al_log) -> int:
+    """La CLI del healthcheck. Devuelve el exit code.
+
+    ``informe`` decide dónde va el resultado: al log si se llama importada (los
+    tests, otro proceso), y como JSON legible por ``stdout`` cuando corre como
+    programa (el bloque ``__main__`` de abajo), que es lo que se lee en el run
+    de Actions y a mano.
+    """
     p = argparse.ArgumentParser()
     p.add_argument("--freshness-hours", type=int, default=36)
     p.add_argument("--dlq-threshold", type=int, default=50)
@@ -771,7 +790,7 @@ def main() -> int:
         args.canonicas_stale_hours,
         args.client_errors_min,
     )
-    print(json.dumps(result, indent=2, default=str))
+    informe(result)
 
     if args.alert:
         alertar(result)
@@ -792,4 +811,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Como programa, el informe es su salida: JSON legible por stdout.
+    sys.exit(main(informe=lambda result: print(json.dumps(result, indent=2, default=str))))

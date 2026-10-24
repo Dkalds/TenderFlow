@@ -476,7 +476,13 @@ def test_una_url_fuera_de_placsp_se_rechaza(url):
         agregadas.PlacspAgregadasConnector(url)
 
 
-def test_check_valida_la_primera_pagina_sin_escribir(monkeypatch, capsys, tmp_path):
+def test_check_valida_la_primera_pagina_sin_escribir(monkeypatch, tmp_path):
+    from unittest.mock import MagicMock
+
+    from scraper.connectors import sindicacion_placsp
+
+    registro = MagicMock()
+    monkeypatch.setattr(sindicacion_placsp, "log", registro)
     contenido = (_FIXTURES / "agregadas_1044.atom").read_bytes()
     pedidas: list[str] = []
 
@@ -496,11 +502,14 @@ def test_check_valida_la_primera_pagina_sin_escribir(monkeypatch, capsys, tmp_pa
 
     codigo = agregadas.main(["--check", "--dump", str(volcado)])
 
-    salida = capsys.readouterr().out
     assert codigo == 0
     assert pedidas == [agregadas.URL_SINDICACION_1044]
-    assert "5 entradas" in salida
-    assert "4 admitidas" in salida
+    # El informe del --check va al log estructurado (sin print() en scraper/).
+    informe = next(
+        c.kwargs for c in registro.info.call_args_list if c.args == ("sindicacion_check",)
+    )
+    assert informe["entradas"] == 5
+    assert informe["admitidas"] == 4
     assert volcado.read_bytes() == contenido
 
 

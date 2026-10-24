@@ -140,6 +140,7 @@ def _apply_step_failures(pipeline_result: dict[str, Any], code: int, log: Any) -
       devuelven ``skipped``; con la comparación anterior (``!= "ok"``) cada uno
       de ellos habría puesto el job en rojo.
     """
+    from observability.acciones_github import anotar
     from scheduler.pipeline_runs import STEP_TIER, pasos_bloqueantes_fallidos
 
     steps = pipeline_result.get("steps") or {}
@@ -150,13 +151,13 @@ def _apply_step_failures(pipeline_result: dict[str, Any], code: int, log: Any) -
         if status == "error" and STEP_TIER.get(name, "bloqueante") == "advisory"
     ]
     for name in advisory:
-        print(f"::warning title=advisory step failed::{name}", file=sys.stderr)
+        anotar("warning", "advisory step failed", name)
     if advisory:
         log.warning("pipeline_advisory_steps_failed", failed=advisory)
     if not failed:
         return code
     for name in failed:
-        print(f"::error title=post-ingestion step failed::{name}", file=sys.stderr)
+        anotar("error", "post-ingestion step failed", name)
     log.error("pipeline_post_ingestion_steps_failed", failed=failed)
     return 1
 

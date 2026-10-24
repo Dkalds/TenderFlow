@@ -48,11 +48,8 @@ def main(argv: list[str] | None = None) -> int:
         result = ejecutar(feed_url=args.url)
     finally:
         close_pool()
-    print(
-        f"Galicia RSS: {result.fetched} avisos · {result.nuevas} nuevas · "
-        f"{result.actualizadas} actualizadas · {result.descartadas} descartadas · "
-        f"{result.errores} errores"
-    )
+    # El resumen de la pasada ya lo deja `run_connector` en el log
+    # (`connector_run_done`, con las mismas cifras).
     return 0 if result.errores == 0 else 1
 
 
