@@ -51,6 +51,10 @@ suficientes». El producto no devuelve probabilidad de ganar, y lo dice.
 Es un radar tecnológico, no un censo de toda la contratación pública, y no
 sustituye a la fuente oficial: enlaza a ella.
 
+Alternativa real con la que se compara: buscar a mano en PLACSP, con sus
+alertas por email. No hay un competidor de
+referencia nombrado; el trabajo de diseño no inventa uno ni tablas comparativas.
+
 ## Operating Context
 
 - Ritual diario: triaje de la bandeja (Radar) por la mañana; el trabajo de cada
@@ -87,9 +91,13 @@ sustituye a la fuente oficial: enlaza a ella.
 - Terminología fija (D8): se mantienen «Score», «Pipeline», «Watchlist» y
   «Go/No-Go»; se traducen sync, win rate, dashboard, owner/admin, lead time,
   secret y API keys.
-- Sin decidir: el naranja definitivo de marca (F19) y la portada diaria (F27).
-  Falta dominio propio (el sitio vive en `*.vercel.app`) y la identidad
-  societaria publicada (razón social, NIF, domicilio).
+- Dominio propio: pendiente, sin elegir. El sitio vive en `*.vercel.app`; ningún
+  trabajo de diseño cita un dominio ni un buzón de ese dominio.
+- Identidad societaria: la sociedad está pendiente de constituir. La superficie
+  pública no puede mostrar razón social, NIF ni domicilio, y no se rellenan con
+  marcadores; las variables de entorno que los publicarán siguen vacías.
+- Portada del día (F27): descartada por decisión, no pendiente
+  (docs/UX_AUDIT.md).
 
 ## Brand Commitments
 
