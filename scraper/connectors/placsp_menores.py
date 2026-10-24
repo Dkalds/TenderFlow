@@ -44,8 +44,42 @@ CPV del proyecto; entra por keyword o por CPV 48/72. Sin el rescate por
 clasificador ML que PLACSP aplica a las entries CPV TI: puntúa oportunidades, y
 esto no lo es.
 
-``id_externo`` es ``placsp_menores:<ContractFolderID>`` (ADR-009), como hacen
-``placsp_watched_company_awards`` y el resto de fuentes derivadas de PLACSP.
+**Identidad (medida contra el feed real, 2026-10-24).** ``id_externo`` es
+``placsp_menores:<ID_PLATAFORMA>:<ContractFolderID>`` (ADR-009), no
+``placsp_menores:<ContractFolderID>``: el número de expediente de un contrato
+menor es el contador interno de cada órgano («1/2026», «1000/2026») y lo repiten
+órganos distintos. En 20 páginas del feed (9.977 entradas, ~4 días) 327 de los
+9.563 ``ContractFolderID`` distintos los usaban 2 o más órganos, y con la clave
+vieja habrían sido 390 filas pisadas por el ``ON CONFLICT(id_externo)`` del
+upsert (el 3,9 %). ``ID_PLATAFORMA`` es el identificador del órgano de
+contratación en la Plataforma: viene en el 100 % de las entradas, es 1:1 con el
+órgano (ningún ``ID_PLATAFORMA`` con dos DIR3) y, con él, ``(órgano, expediente)``
+es 1:1 con el ``<id>`` Atom de la entrada (9.953 pares, 9.953 ids; una
+actualización repite el mismo par, así que el upsert sigue siendo idempotente).
+No sirve el DIR3 (falta en el 17 % de las entradas) ni el NIF (una entidad con
+varios órganos comparte NIF). Sin ``ID_PLATAFORMA`` se cae al NIF y, sin él, al
+DIR3; sin ninguno de los tres la entrada se descarta y se cuenta.
+
+El expediente natural (``services.dedupe.natural_expediente``: lo que va tras el
+primer ``:``) pasa a ser ``<ID_PLATAFORMA>:<ContractFolderID>``, que no casa con
+ninguna otra fuente. Es lo que se quiere: de las 9.951 claves ``(DIR3, expediente)``
+del muestreo solo 5 aparecen también en el feed principal, así que menores y
+principal son conjuntos casi disjuntos, y casar solo por el número de expediente
+marcaría como duplicado un menor de un órgano contra la licitación de otro
+contrato con el mismo número («12/2026») y el mismo CPV a 4 dígitos. Misma idea
+que ``pscp:<uuid>:<codi_expedient>``. No hay filas escritas con la clave vieja:
+el conector nunca se encendió (``PLACSP_MENORES_ATOM_URL`` vacía), así que no hay
+nada que migrar.
+
+**Adjudicatarios con NIF enmascarado.** PLACSP enmascara el NIF de los
+adjudicatarios personas físicas (``***3418**``) y, a veces, el de una sociedad
+(``****2061*``). Una clave así no identifica a nadie y la resolución de empresas
+la trataría como una empresa más, fundiendo adjudicatarios sin relación: esas
+adjudicaciones no se guardan (``placsp_menores_nif_enmascarado``). La
+licitación sí. De las 241 admitidas por el filtro en el muestreo, 14 tienen el
+primer adjudicatario con NIF enmascarado y 12 con NIF de persona física sin
+enmascarar (esos sí se guardan, con nombre y apellidos: lo publica PLACSP, pero es
+dato personal y lo decide el propietario, ver el backlog).
 
 Uso::
 
@@ -55,7 +89,7 @@ Uso::
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from config import settings
 from observability import get_logger
@@ -78,9 +112,10 @@ SOURCE_ID = "placsp_menores"
 ANALYSIS_UNIVERSE = "placsp_contratos_menores_observed"
 #: Estado con el que se guarda un contrato menor cuyo feed no trae uno terminal.
 ESTADO_POR_DEFECTO = "RES"
-#: URL documentada del feed (página de datos abiertos del Ministerio de
-#: Hacienda). No se pudo descargar desde la sesión que escribió el conector:
-#: `--check` antes de fijarla en `PLACSP_MENORES_ATOM_URL`.
+#: URL del feed (página de datos abiertos del Ministerio de Hacienda). Verificada
+#: el 2026-10-24: responde 200 ``application/atom+xml`` a un GET (a un HEAD, la
+#: conexión se cierra), 500 entradas por página, ``rel="next"`` hacia
+#: ``..._AAAAMMDD_HHMMSS[_N].atom`` y contenido CODICE como el del feed principal.
 URL_SINDICACION_1143 = (
     f"{URL_BASE_SINDICACION}sindicacion_1143/contratosMenoresPerfilesContratantes.atom"
 )
@@ -90,6 +125,38 @@ _CPVS_XPATH = (
     "./cacext:ContractFolderStatus/cac:ProcurementProject"
     "/cac:RequiredCommodityClassification/cbc:ItemClassificationCode/text()"
 )
+_ORGANO_IDS_XPATH = (
+    "./cacext:ContractFolderStatus/cacext:LocatedContractingParty"
+    "/cac:Party/cac:PartyIdentification/cbc:ID"
+)
+#: Orden de preferencia del identificador del órgano en la clave (ver el
+#: docstring del módulo): el de la Plataforma, el NIF y el DIR3.
+_ESQUEMAS_ORGANO = ("ID_PLATAFORMA", "NIF", "DIR3")
+
+
+def identificador_organo(entry: Any) -> str | None:  # Any: elemento lxml, sin stubs
+    """Identificador del órgano de contratación que acota el expediente, o ``None``."""
+    from scraper.codice_parser import NS
+
+    por_esquema: dict[str, str] = {}
+    for nodo in entry.xpath(_ORGANO_IDS_XPATH, namespaces=NS):
+        valor = (nodo.text or "").strip()
+        esquema = (nodo.get("schemeName") or "").strip().upper()
+        if valor and esquema not in por_esquema:
+            por_esquema[esquema] = valor
+    for esquema in _ESQUEMAS_ORGANO:
+        if esquema in por_esquema:
+            return por_esquema[esquema]
+    return None
+
+
+def id_externo_menor(organo: str, expediente: str) -> str:
+    """``placsp_menores:<órgano>:<expediente>``: el expediente solo es único por órgano."""
+    return f"{SOURCE_ID}:{organo}:{expediente}"
+
+
+def _nif_enmascarado(nif: str | None) -> bool:
+    return bool(nif) and "*" in str(nif)
 
 
 class PlacspContratosMenoresConnector(FeedSindicacionPlacsp):
@@ -102,6 +169,8 @@ class PlacspContratosMenoresConnector(FeedSindicacionPlacsp):
         self._sin_senal = 0
         self._ambigua_sin_cpv_ti = 0
         self._estado_por_defecto = 0
+        self._sin_organo = 0
+        self._adjudicaciones_enmascaradas = 0
 
     def parse(self, raw: RawNotice) -> ParsedTender | None:
         from scraper.codice_parser import NS, parse_adjudicaciones, parse_entry_unfiltered
@@ -125,7 +194,12 @@ class PlacspContratosMenoresConnector(FeedSindicacionPlacsp):
                 self._sin_senal += 1
             return None
 
-        id_externo = f"{SOURCE_ID}:{lic.id_externo}"
+        organo = identificador_organo(entry)
+        if organo is None:
+            # Sin órgano no hay clave que no pueda pisar a otro expediente.
+            self._sin_organo += 1
+            return None
+        id_externo = id_externo_menor(organo, lic.id_externo)
         lic.id_externo = id_externo
         lic.fuente = SOURCE_ID
         lic.analysis_universe = ANALYSIS_UNIVERSE
@@ -142,7 +216,10 @@ class PlacspContratosMenoresConnector(FeedSindicacionPlacsp):
         if updated:
             lic.fecha_actualizacion_fuente = updated
 
-        return ParsedTender(licitacion=lic, adjudicaciones=parse_adjudicaciones(entry, id_externo))
+        todas = parse_adjudicaciones(entry, id_externo)
+        adjudicaciones = [a for a in todas if not _nif_enmascarado(a.nif)]
+        self._adjudicaciones_enmascaradas += len(todas) - len(adjudicaciones)
+        return ParsedTender(licitacion=lic, adjudicaciones=adjudicaciones)
 
     def contadores_de_descarte(self) -> dict[str, int]:
         """Descartes y correcciones de este run, por motivo (como PSCP, C4.1)."""
@@ -150,6 +227,8 @@ class PlacspContratosMenoresConnector(FeedSindicacionPlacsp):
             "placsp_menores_sin_senal_tecnologica": self._sin_senal,
             "placsp_menores_keyword_ambigua_sin_cpv_ti": self._ambigua_sin_cpv_ti,
             "placsp_menores_estado_cerrado_por_defecto": self._estado_por_defecto,
+            "placsp_menores_sin_identificador_de_organo": self._sin_organo,
+            "placsp_menores_nif_enmascarado": self._adjudicaciones_enmascaradas,
         }
 
 

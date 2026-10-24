@@ -509,3 +509,75 @@ def test_upsert_por_lotes_cuenta_bien_y_no_pisa_la_vinculacion(db):
     assert filas["123/2026"]["licitacion_id"] == "EXP-L"
     assert filas["123/2026"]["sentido"] == "desestimado"
     assert set(filas) == {"123/2026", "124/2026", "125/2026"}
+
+
+# ---------------------------------------------------------------------------
+# Recorte real del índice del Pleno (bajado el 2026-10-24)
+# ---------------------------------------------------------------------------
+
+_URL_PLENO = (
+    "https://www.hacienda.gob.es/es-ES/Areas%20Tematicas/Contratacion/"
+    "TACRC/Paginas/Resoluciones-Pleno.aspx"
+)
+
+
+def _pleno_real() -> list[Resolucion]:
+    from pathlib import Path
+
+    html = (Path(__file__).parent / "fixtures" / "tacrc" / "resoluciones_pleno.html").read_bytes()
+    return parse_index(html, base_url=_URL_PLENO)
+
+
+def test_el_indice_real_del_pleno_se_parsea_entero():
+    items = _pleno_real()
+
+    assert len(items) == 19
+    assert all(r.url_pdf and r.numero_recurso and r.fecha for r in items)
+    assert all(r.url_pdf.startswith("https://www.hacienda.gob.es/tacrc/") for r in items)
+    assert [r.fecha[:4] for r in items] == sorted(r.fecha[:4] for r in items)
+
+
+def test_el_indice_real_del_pleno_saca_numero_recurso_y_fecha_del_nombre_del_pdf():
+    por_numero = {r.numero_resolucion: r for r in _pleno_real()}
+
+    # «recurso 590-2022 ast 33-2022 (res 696) 16-06-2022.pdf»: el recurso es el
+    # primer número, no el «33-2022» que sigue a «ast», y la fecha va al final.
+    r = por_numero["696/2022"]
+    assert (r.numero_recurso, r.fecha) == ("590/2022", "2022-06-16")
+    # Un recurso de 2024 resuelto en 2025: el número de resolución lleva el año
+    # de la fecha de la resolución, el del recurso es el suyo.
+    r = por_numero["144/2025"]
+    assert (r.numero_recurso, r.fecha) == ("1312/2024", "2025-01-31")
+    # Día de un dígito («27-9-2022») y sufijo «. corregida» tras la fecha.
+    assert por_numero["1113/2022"].fecha == "2022-09-27"
+    assert por_numero["1014/2026"].fecha == "2026-06-11"
+
+
+def test_el_indice_real_del_pleno_no_trae_el_sentido():
+    """Son resoluciones doctrinales: el índice las titula por materia, no por fallo."""
+    assert {r.sentido for r in _pleno_real()} == {None}
+
+
+def test_la_api_de_sharepoint_que_redirige_a_pagenotfound_es_un_error_no_cero_resoluciones():
+    """El sitio no contesta 401/403: redirige a su página de «no encontrado».
+
+    ``requests`` la sigue y devuelve 200 con HTML, y sin esta guarda una pasada
+    con la plantilla candidata habría terminado «bien» con 0 resoluciones.
+    """
+
+    class _Respuesta:
+        url = "https://www.hacienda.gob.es/es-es/Paginas/pagenotfound.aspx"
+        text = "<html>Pagina de archivo no encontrado</html>"
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _Sesion:
+        def get(self, url: str, **kw: object) -> _Respuesta:
+            return _Respuesta()
+
+    with pytest.raises(RuntimeError, match="pagenotfound"):
+        tacrc.fetch_index(
+            tacrc.URL_BIBLIOTECA_RESOLUCIONES.replace("{anio}", "2026"),
+            session=_Sesion(),  # type: ignore[arg-type]
+        )

@@ -34,12 +34,24 @@ Para leerla, este conector acepta además:
   cursor tras cada año: un run cortado conserva los años ya escritos. Un año
   que responde 404 no tiene carpeta y no es un error.
 
-La candidata es :data:`URL_BIBLIOTECA_RESOLUCIONES`. **No está verificada**: la
-sesión que la escribió no tenía salida a ``hacienda.gob.es``, y que el servidor
-sirva su API REST a un visitante anónimo es justo lo que hay que comprobar con
-``--check`` antes de fijarla. El valor por defecto no cambia a propósito: en el
-plano del worker, sin variable, manda el valor por defecto, y cambiarlo
-encendería el índice completo sin decidirlo.
+**Verificado el 2026-10-24: no hay índice completo anónimo.** La candidata
+:data:`URL_BIBLIOTECA_RESOLUCIONES` está refutada: cualquier ruta ``/_api/``
+del sitio (``/tacrc/_api/web/...``, ``/_api/web``, ``/_vti_bin/listdata.svc``)
+responde ``302`` a ``/es-es/Paginas/pagenotfound.aspx``, y la vista de lista de la
+biblioteca (``/TACRC/Forms/Todos.aspx``, adonde redirige ``/tacrc/resoluciones/``)
+también. Los PDF sí se sirven por su ruta exacta (200), pero no hay listado
+anónimo que los enumere. El buscador (``BuscadordeResoluciones.aspx``) es una
+aplicación React que, según su JavaScript (``TACRCSearcher.js``), hace ``POST`` a
+``serviciostelematicos.hacienda.gob.es/MINHAC_SP_PUBLIC_SERVICES/api/``
+``MinhacSearchController/GetResultsForFilter`` con un token de Cloudflare
+Turnstile (``CaptchaSettings.visible = true``). No se llamó a ese endpoint: una
+verificación anti-bot no es algo que un conector deba esquivar. Lo único estático y verificado es el
+índice del Pleno (:data:`settings.TACRC_INDEX_URL` por defecto): 19 resoluciones
+doctrinales, la más reciente de 2026-06; ``--check`` las parsea todas. La
+maquinaria de abajo (listado JSON y ``{anio}``) se conserva para el día en que
+Hacienda publique un listado abierto o ceda un acceso; ``fetch_index`` falla con
+un mensaje claro, en vez de leer cero resoluciones, cuando la API redirige a
+``pagenotfound``.
 
 Uso directo:
     python -m scraper.connectors.tacrc            # ingesta incremental
@@ -73,8 +85,9 @@ _TIMEOUT = 60
 #: Marcador de año en una URL de índice que se recorre año a año.
 MARCADOR_ANIO = "{anio}"
 #: Candidata al índice completo: los ficheros de la carpeta de un año de la
-#: biblioteca de resoluciones, por la API REST de SharePoint. Sin verificar
-#: (ver docstring del módulo): `--check --url` antes de fijarla.
+#: biblioteca de resoluciones, por la API REST de SharePoint. **REFUTADA el
+#: 2026-10-24** (302 a pagenotfound; ver el docstring del módulo): se conserva
+#: solo como ejemplo de plantilla ``{anio}`` para los tests.
 URL_BIBLIOTECA_RESOLUCIONES = (
     "https://www.hacienda.gob.es/tacrc/_api/web/"
     "GetFolderByServerRelativeUrl('/tacrc/resoluciones/año {anio}')/Files"
@@ -382,6 +395,13 @@ def fetch_index(index_url: str | None = None, *, session: requests.Session | Non
         resp = (session or requests).get(
             url, timeout=_TIMEOUT, headers={"Accept": _ACCEPT_JSON_SHAREPOINT}
         )
+        # El sitio no responde 401/403 a la API: redirige a su página de «no
+        # encontrado», que `requests` sigue y devuelve como 200 con HTML.
+        if "pagenotfound" in str(getattr(resp, "url", "")).lower():
+            raise RuntimeError(
+                "La API REST de SharePoint de hacienda.gob.es redirige a pagenotfound: "
+                "no es anónima y no hay índice completo (ver scraper/connectors/tacrc.py)"
+            )
     else:
         resp = (session or requests).get(url, timeout=_TIMEOUT)
     resp.raise_for_status()

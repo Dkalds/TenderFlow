@@ -37,20 +37,23 @@ operativo:
    en `REGISTERED_SOURCES`, que hoy dice «escrito y apagado». Para agregadas,
    medí antes el solape con `make medir-solape`
    ([regional-source-coverage.md](../regional-source-coverage.md)).
-2. **Validar la URL sin escribir nada.** Ninguna de las dos URL se pudo
-   descargar desde la sesión que las escribió, y las fixtures de los tests son
-   sintéticas:
+2. **Validar la URL sin escribir nada.** Las dos URL se verificaron el
+   2026-10-24 (`GET` 200 `application/atom+xml`; un `HEAD` cierra la conexión, no
+   lo uses) y las fixtures de los tests son ya recortes reales
+   (`tests/fixtures/placsp_sindicaciones/README.md`). Antes de encender, repetilo
+   desde la máquina que correrá el conector:
 
    ```bash
    python -m scraper.connectors.placsp_agregadas --check --dump agregadas.atom
    python -m scraper.connectors.placsp_menores --check --dump menores.atom
    ```
 
-   Tiene que contar entradas y alguna admitida por el filtro de tecnología. Con
-   0 entradas, mirá el volcado: o la URL no es la del feed, o su contenido no es
-   CODICE como el del feed principal, que es lo que asume el parser. Sustituí la
-   fixture de `tests/fixtures/placsp_sindicaciones/` por un recorte del volcado y
-   corré `pytest tests/test_connectors_placsp_sindicaciones.py`.
+   Resultado del 2026-10-24: menores, 498 entradas en la primera página y 13
+   admitidas por el filtro; agregadas, 283 y 25. Tiene que contar entradas y
+   alguna admitida. Con 0 entradas, mirá el volcado: o la URL no es la del feed, o
+   su contenido no es CODICE como el del feed principal, que es lo que asume el
+   parser. (`--check` imprime un traceback de `tecnologias_keywords_lectura_fallida`
+   si no hay `DATABASE_URL`: es un aviso, el filtro cae al diccionario estático.)
 3. **Fijar la variable** con la URL validada.
 4. **Comprobar tras la primera pasada:** el resumen de conectores del run
    (`placsp_agregadas` / `placsp_menores` en `success`), el log
@@ -61,7 +64,19 @@ operativo:
 
 La primera pasada, sin cursor, lee solo la primera página (500 entradas), como
 el feed principal. El histórico vendría de los ZIP mensuales de cada sindicación
-(`..._AAAAMM.zip`), que no tienen conector todavía.
+(`..._AAAAMM.zip`), que no tienen conector todavía. Volumen medido (20 páginas de
+cada feed, 2026-10-24): menores publican ~2.500 entradas al día (~5 páginas) y
+admite el filtro un 2,4 %; agregadas ~2.300 al día y admite un 7,8 %.
+
+**Identidad de los menores (decidida el 2026-10-24).** El `id_externo` es
+`placsp_menores:<ID_PLATAFORMA>:<ContractFolderID>`, no `...:<ContractFolderID>`:
+en 9.977 entradas, 327 de los 9.563 expedientes distintos los repetían órganos
+distintos y 390 filas se habrían pisado en el `ON CONFLICT(id_externo)`. Nunca se
+encendió, así que no hay filas con la clave vieja que migrar (comprobado:
+`PLACSP_MENORES_ATOM_URL` vacía por defecto y ningún registro en el código que la
+fije). Detalle y números en el docstring de `placsp_menores.py`. **Las agregadas
+y el feed principal (`placsp`, sin prefijo) tienen el mismo defecto** y no se han
+cambiado aquí: ver el backlog.
 
 **Qué cambia en el producto al encender contratos menores.** Nada en el Radar,
 el listado, la superficie pública, los KPIs ni el clasificador: se guardan
@@ -73,36 +88,44 @@ UTE). **Al encender agregadas**, sus convocatorias abiertas entran en el Radar
 como cualquier otra de PLACSP, y las que ya entraban por otra fuente quedan
 marcadas como duplicadas.
 
+**Pliegos de las agregadas.** Ninguna referencia de documento del feed real
+apunta a PLACSP: de 1.057, 544 son de `contractaciopublica.cat` (en la allowlist
+por PSCP, se guardan), 346 de `www.contratacion.euskadi.eus` y 167 de
+`contratos-publicos.comunidad.madrid` (fuera de ella: se descartan y se cuentan en
+`placsp_agregadas_documentos_de_otro_host`). Ampliar `DOCUMENT_ALLOWED_HOSTS` a
+esos dos hosts es una decisión de seguridad (superficie SSRF) del propietario.
+
+**Datos personales en menores.** El adjudicatario de un menor es a menudo una
+persona física: de 241 admitidas, 14 con NIF enmascarado (`***3418**`; esas
+adjudicaciones no se guardan) y 12 con NIF y nombre completos. Antes de encender,
+el propietario decide si se guardan; ver el backlog y
+[registro-tratamientos.md](../legal/registro-tratamientos.md).
+
 ## TACRC: el índice completo
 
-El índice del Pleno trae ~17 resoluciones. El completo vive en la biblioteca de
-SharePoint `/tacrc/resoluciones/año AAAA/`, y el conector lo lee año a año con
-una URL que lleve `{anio}`. La candidata es `URL_BIBLIOTECA_RESOLUCIONES`
-(`scraper/connectors/tacrc.py`), **sin verificar**: no se sabe si el servidor
-sirve su API REST a un visitante anónimo.
+El índice del Pleno trae 19 resoluciones doctrinales (2026-10-24; la más reciente
+de junio de 2026). El tribunal dicta ~1.900 al año y su índice completo **no es
+accesible de forma anónima**. Comprobado el 2026-10-24:
 
-1. **Validar** (pide solo el año en curso):
+- La candidata `URL_BIBLIOTECA_RESOLUCIONES` (API REST de SharePoint,
+  `/tacrc/_api/web/GetFolderByServerRelativeUrl(...)/Files`) está **refutada**:
+  esa y cualquier otra ruta `/_api/` del sitio responden `302` a
+  `/es-es/Paginas/pagenotfound.aspx` (no 401/403: `requests` la sigue y llega un
+  200 con HTML; `fetch_index` ahora lo trata como error). La vista de lista
+  (`/tacrc/resoluciones/` → `/TACRC/Forms/Todos.aspx`) también.
+- Los PDF sí se sirven por su ruta exacta (200), pero nada los enumera.
+- El buscador (`BuscadordeResoluciones.aspx`) hace `POST` a
+  `serviciostelematicos.hacienda.gob.es/MINHAC_SP_PUBLIC_SERVICES/api/MinhacSearchController/GetResultsForFilter`
+  con un token de Cloudflare Turnstile (según su `TACRCSearcher.js`). No se llamó:
+  no se esquiva una verificación anti-bot.
 
-   ```bash
-   python -m scraper.connectors.tacrc --check \
-     --url "https://www.hacienda.gob.es/tacrc/_api/web/GetFolderByServerRelativeUrl('/tacrc/resoluciones/año {anio}')/Files?\$select=Name,ServerRelativeUrl,TimeLastModified"
-   ```
-
-   Un 401/403 significa que la API no es anónima. La alternativa es la que ya
-   proponía el conector: abrir `BuscadordeResoluciones.aspx` con las DevTools,
-   localizar en *Network* la petición que devuelve el listado y pasarla con
-   `--url` (con `{anio}` donde vaya el año, si lo lleva).
-2. **Cargar el histórico una vez** desde una máquina con `DATABASE_URL`: el
-   cursor que dejó el índice del Pleno puede ir por delante, y una pasada normal
-   empieza en su año.
-
-   ```bash
-   python -m scraper.connectors.tacrc --url "<plantilla>" --desde-anio 2010
-   ```
-
-   Va por años ascendentes y avanza el cursor tras cada uno: si se corta,
-   relanzarlo sin `--desde-anio` sigue desde el último año escrito.
-3. **Fijar** `TACRC_INDEX_URL` con la plantilla.
+Qué queda: dejar `TACRC_INDEX_URL` como está (el índice del Pleno, validado con
+`python -m scraper.connectors.tacrc --check`: 19 resoluciones) y pedir a Hacienda
+un listado abierto —un feed, un CSV o un acceso a la API—. La maquinaria para un
+índice por años (`{anio}`, `--desde-anio`, listado JSON de SharePoint) sigue en el
+conector para ese día; con un listado así, el procedimiento sería: validar con
+`--check --url "<plantilla>"`, cargar el histórico una vez con `--desde-anio 2010`
+desde una máquina con `DATABASE_URL`, y fijar `TACRC_INDEX_URL` con la plantilla.
 
 ## El respaldo del feed principal: ZIP mensual cuando el ATOM no avanza
 

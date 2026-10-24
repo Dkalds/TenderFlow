@@ -305,7 +305,13 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
             "entra por otra fuente se marca como duplicado y no se cuenta dos veces."
         ),
         estado="opcional",
-        dominios_documentos=("contrataciondelestado.es", "*.contrataciondelestado.es"),
+        # Los pliegos de las agregadas apuntan a hosts autonómicos, no a PLACSP
+        # (medido 2026-10-24): solo se guardan los de la allowlist, hoy el catalán.
+        dominios_documentos=(
+            "contrataciondelestado.es",
+            "*.contrataciondelestado.es",
+            "contractaciopublica.cat",
+        ),
         max_antiguedad_dato_hours=_DATO_PLACSP,
     ),
     RegisteredSource(
