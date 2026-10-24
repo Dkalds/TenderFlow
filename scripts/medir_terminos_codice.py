@@ -16,8 +16,9 @@ columnas es justo lo que hay que mirar a mano.
 
 Uso::
 
-    # páginas ya descargadas (o el XML de un ZIP mensual)
+    # páginas ya descargadas, o ZIP mensuales enteros
     ENV=dev python scripts/medir_terminos_codice.py muestra/*.atom
+    ENV=dev python scripts/medir_terminos_codice.py licitacionesPerfilesContratanteCompleto3_202609.zip
     # el feed en vivo, siguiendo rel="next", guardando lo leído
     ENV=dev python scripts/medir_terminos_codice.py --vivo --paginas 2 --guardar muestra/
     # para archivar
@@ -36,6 +37,16 @@ Cómo leer el resultado
 - Los **códigos observados** y el rango de ``AmountRate`` sirven para
   verificar dos supuestos del parser: que los códigos son de listas que no se
   traducen y que ``AmountRate`` viene en porcentaje (5 = 5 %), no en fracción.
+- La tabla **por estado** (``ContractFolderStatusCode``: PUB, EV, ADJ, RES…)
+  dice si una fase deja de publicar el bloque, que es lo que decide si el
+  histórico se puede rellenar desde los ZIP mensuales.
+
+Primera medición (2026-10-24), en cualquier nivel: ocho páginas del ATOM vivo
+(3.903 entradas) dan criterios 94,2 %, garantías 53,4 %, solvencia técnica
+67,2 %, económica 66,5 % y clasificación 6,0 %; el ZIP de 2026-09 (95.910
+entradas) 88,4 / 54,0 / 64,5 / 64,1 / 6,5 %. ``AmountRate`` viene en
+porcentaje (mediana 5; 14 de 59.114 valores por debajo de 1). Las fases
+ADJ y RES siguen publicando el bloque (criterios en el 79 % y el 83 % del ZIP).
 """
 
 from __future__ import annotations
@@ -93,6 +104,10 @@ class Medicion:
     codigos_criterio: Counter[str] = field(default_factory=Counter)
     codigos_garantia: Counter[str] = field(default_factory=Counter)
     codigos_solvencia: Counter[str] = field(default_factory=Counter)
+    solvencia_economica_con_umbral: int = 0
+    #: Entradas por ``ContractFolderStatusCode`` y, de ellas, cuántas traen
+    #: cada bloque en cualquier nivel: ``{estado: {"entradas": n, bloque: n}}``.
+    por_estado: dict[str, dict[str, int]] = field(default_factory=dict)
     updated_min: str | None = None
     updated_max: str | None = None
 
@@ -137,12 +152,19 @@ def medir(entradas: Iterable[Any]) -> Medicion:
         if entry.xpath(f"{cfs}/cac:ProcurementProjectLot/cac:TenderingTerms", namespaces=NS):
             m.terms_lote += 1
 
+        estado = (
+            entry.findtext(f"{cfs}/cbcext:ContractFolderStatusCode", namespaces=NS) or "—"
+        ).strip() or "—"
+        conteo_estado = m.por_estado.setdefault(estado, {"entradas": 0})
+        conteo_estado["entradas"] += 1
+
         condiciones = parse_condiciones(entry)
         for bloque, niveles in _bloques_de(condiciones).items():
             for nivel in niveles:
                 m.por_bloque[bloque][nivel] += 1
             if niveles:
                 m.por_bloque[bloque]["cualquiera"] += 1
+                conteo_estado[bloque] = conteo_estado.get(bloque, 0) + 1
 
         for criterio in condiciones.criterios:
             m.criterios_filas += 1
@@ -160,6 +182,8 @@ def medir(entradas: Iterable[Any]) -> Medicion:
             if garantia.tipo_codigo:
                 m.codigos_garantia[garantia.tipo_codigo] += 1
         for requisito in condiciones.solvencia:
+            if requisito.clase == "economica" and requisito.umbral_importe is not None:
+                m.solvencia_economica_con_umbral += 1
             if requisito.tipo_codigo:
                 m.codigos_solvencia[f"{requisito.clase}:{requisito.tipo_codigo}"] += 1
     return m
@@ -199,6 +223,20 @@ def informe_markdown(m: Medicion, *, muestra: str, fecha: str) -> str:
         f"con subtipo {_pct(m.criterios_con_subtipo, m.criterios_filas)}, "
         f"con nota {_pct(m.criterios_con_nota, m.criterios_filas)}.",
     ]
+    lineas.append(
+        f"Requisitos de solvencia económica con umbral en importe: "
+        f"{m.solvencia_economica_con_umbral}."
+    )
+    if m.por_estado:
+        lineas += [
+            "",
+            "| Estado | Entradas | " + " | ".join(BLOQUES) + " |",
+            "|---|---:|" + "---:|" * len(BLOQUES),
+        ]
+        for estado, conteo in sorted(m.por_estado.items(), key=lambda kv: -kv[1]["entradas"]):
+            celdas = " | ".join(_pct(conteo.get(b, 0), conteo["entradas"]) for b in BLOQUES)
+            lineas.append(f"| {estado} | {conteo['entradas']} | {celdas} |")
+        lineas.append("")
     if m.porcentajes_garantia:
         lineas.append(
             f"`AmountRate` de garantía: min {min(m.porcentajes_garantia)}, mediana "
@@ -218,10 +256,22 @@ def informe_markdown(m: Medicion, *, muestra: str, fecha: str) -> str:
 
 
 def _entradas_de_ficheros(rutas: list[Path]) -> Iterator[Any]:
+    """Entradas de páginas ATOM o de ZIP mensuales, según la extensión.
+
+    Los ZIP se leen con ``iter_xml_files`` del descargador masivo, que ya
+    trae las defensas contra ZIP bomb (ratio, número de entradas, tamaño
+    leído en streaming): son datos de fuera, igual que cuando ingiere.
+    """
     from lxml import etree
+
+    from scraper.bulk_downloader import iter_xml_files
 
     parser = etree.XMLParser(huge_tree=False, resolve_entities=False, no_network=True)
     for ruta in rutas:
+        if ruta.suffix.lower() == ".zip":
+            for _nombre, contenido in iter_xml_files(ruta):
+                yield from etree.fromstring(contenido, parser).iter(f"{ATOM}entry")
+            continue
         raiz = etree.parse(str(ruta), parser).getroot()
         yield from raiz.iter(f"{ATOM}entry")
 
@@ -265,7 +315,9 @@ def _entradas_en_vivo(paginas: int, guardar: Path | None) -> Iterator[Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("ficheros", nargs="*", type=Path, help="páginas ATOM ya descargadas")
+    parser.add_argument(
+        "ficheros", nargs="*", type=Path, help="páginas ATOM ya descargadas o ZIP mensuales"
+    )
     parser.add_argument("--vivo", action="store_true", help="lee el feed en vivo")
     parser.add_argument("--paginas", type=int, default=2, help="páginas a leer con --vivo")
     parser.add_argument("--guardar", type=Path, help="carpeta donde guardar lo leído con --vivo")

@@ -802,6 +802,35 @@ def _garantias_del_ambito(bloques: list[Any], lote_numero: str | None) -> list[G
     return garantias
 
 
+def _umbral_de_solvencia(nodo: Any, clase: ClaseSolvencia) -> tuple[float | None, str | None]:
+    """Umbral en importe de un requisito de solvencia, con su moneda.
+
+    El esquema UBL lo llama ``ThresholdAmount`` (con ``currencyID``), pero
+    PLACSP no lo publica nunca: medido sobre 3.903 entradas del ATOM vivo
+    (2026-10-24), el umbral viaja en ``cbc:ThresholdQuantity``, sin moneda.
+
+    En la solvencia **económica** esa cantidad es dinero en todos los códigos
+    observados (volumen de negocios, seguro de responsabilidad, patrimonio
+    neto), así que se guarda como importe. En la **técnica** no: el mismo
+    código ``OSR-COMPTASK`` trae unas veces el importe de los trabajos
+    similares (179.384,97) y otras el número de trabajos («al menos dos
+    obras» → 2); leerla como euros pintaría «Umbral 2 €». Se queda fuera
+    hasta que haya columna para una cantidad que no es importe.
+
+    Un ``0`` es «no se exige cifra» (lo publican con descripciones como
+    «Exento.»), no un umbral de cero euros: se trata como ausente.
+    """
+    importe = _float(nodo, _hijo("ThresholdAmount"))
+    if importe is not None:
+        return importe, _moneda(nodo, "ThresholdAmount")
+    if clase != "economica":
+        return None, None
+    cantidad = _float(nodo, _hijo("ThresholdQuantity"))
+    if cantidad is None or cantidad <= 0:
+        return None, None
+    return cantidad, None
+
+
 def _solvencia_del_ambito(bloques: list[Any], lote_numero: str | None) -> list[RequisitoSolvencia]:
     requisitos: list[RequisitoSolvencia] = []
 
@@ -826,7 +855,7 @@ def _solvencia_del_ambito(bloques: list[Any], lote_numero: str | None) -> list[R
                     hijo, _hijo("EvaluationCriteriaTypeCode", "EvaluationCriterionTypeCode")
                 )
                 descripcion = _text(hijo, _hijo("Description"))
-                umbral = _float(hijo, _hijo("ThresholdAmount"))
+                umbral, moneda = _umbral_de_solvencia(hijo, clase)
                 if tipo is None and descripcion is None and umbral is None:
                     continue
                 anadir(
@@ -834,7 +863,7 @@ def _solvencia_del_ambito(bloques: list[Any], lote_numero: str | None) -> list[R
                     tipo_codigo=tipo,
                     descripcion=descripcion,
                     umbral_importe=umbral,
-                    moneda=_moneda(hijo, "ThresholdAmount"),
+                    moneda=moneda,
                 )
             elif local == "RequiredBusinessClassificationScheme":
                 for categoria in hijo.xpath(".//*[local-name()='ClassificationCategory']"):
@@ -866,18 +895,23 @@ def parse_condiciones(entry: Any) -> CondicionesCodice:
     contrastó con las descripciones publicadas, y se guarda aparte en
     ``es_precio``: los códigos siguen viajando crudos.
 
-    **Cobertura: sin medir todavía.** La sesión que escribió esto no pudo leer
-    el feed (la política de red bloqueaba ``contrataciondelsectorpublico.gob.es``
-    el 2026-10-12). Los nombres de los criterios coinciden con los de un parser
-    público independiente que sí lee el feed (``cac:AwardingTerms/
-    cac:AwardingCriteria`` con ``AwardingCriteriaTypeCode``,
-    ``AwardingCriteriaSubTypeCode``, ``Description``, ``WeightNumeric`` y
-    ``Note``, también bajo ``ProcurementProjectLot/cac:TenderingTerms``); los
-    de garantía y solvencia salen del esquema CODICE/UBL. Qué porcentaje de
-    entradas trae cada bloque, y a qué nivel, lo mide
-    ``scripts/medir_terminos_codice.py`` sobre páginas del ATOM; mientras
-    tanto, ``parser_field_null_total`` lo cuenta en producción con los campos
-    ``criterios_adjudicacion``, ``garantias`` y ``solvencia``.
+    **Nombres verificados contra el feed** (``scripts/medir_terminos_codice.py``
+    sobre 3.903 entradas del ATOM vivo, 2026-10-24): los criterios van en
+    ``cac:AwardingTerms/cac:AwardingCriteria`` (``AwardingCriteriaTypeCode``,
+    ``AwardingCriteriaSubTypeCode``, ``Description``, ``WeightNumeric``,
+    ``Note``), sin subcriterios anidados; la garantía en
+    ``cac:RequiredFinancialGuarantee`` (``GuaranteeTypeCode``, ``AmountRate``
+    en porcentaje —5 = 5 %—, ``LiabilityAmount``), solo a nivel de
+    expediente; la solvencia en ``cac:TendererQualificationRequest`` con
+    ``Technical``/``FinancialEvaluationCriteria`` y
+    ``RequiredBusinessClassificationScheme`` (solo ``CodeValue``, sin
+    nombre). El umbral no es ``ThresholdAmount`` sino ``ThresholdQuantity``:
+    ver :func:`_umbral_de_solvencia`. ``SpecificTendererRequirement`` (las
+    declaraciones responsables: capacidad de obrar, no prohibición…) no se
+    lee: no es solvencia. La grafía UBL 2.1 (``...Criterion``) no apareció en
+    la muestra y se sigue aceptando. ``parser_field_null_total`` cuenta en
+    producción las tres familias con los campos ``criterios_adjudicacion``,
+    ``garantias`` y ``solvencia``.
     """
     cfs = "./cacext:ContractFolderStatus"
     condiciones = CondicionesCodice()

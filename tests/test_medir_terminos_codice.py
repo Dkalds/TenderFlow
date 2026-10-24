@@ -78,3 +78,27 @@ def test_main_lee_ficheros_atom(tmp_path: Path, capsys) -> None:  # type: ignore
     salida = capsys.readouterr().out
     assert "2 entradas" in salida
     assert "| criterios | 50.0 % | 50.0 % | 100.0 % | 100.0 % |" in salida
+
+
+def test_main_lee_un_zip_mensual_y_desglosa_por_estado(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+    """Los ZIP mensuales se miden igual que las páginas, y con la tabla por estado.
+
+    La tabla por ``ContractFolderStatusCode`` es la que dice si una fase deja
+    de publicar el bloque, que es lo que decide si el histórico se rellena.
+    """
+    import zipfile
+
+    cuerpos = b"".join(
+        (_FIXTURES / nombre).read_bytes().split(b"?>", 1)[1]
+        for nombre in ("16_condiciones_expediente.xml", "03_sin_fecha_limite.xml")
+    )
+    feed = b'<feed xmlns="http://www.w3.org/2005/Atom">' + cuerpos + b"</feed>"
+    zip_mensual = tmp_path / "licitacionesPerfilesContratanteCompleto3_202609.zip"
+    with zipfile.ZipFile(zip_mensual, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("licitacionesPerfilesContratanteCompleto3.atom", feed)
+
+    assert main([str(zip_mensual)]) == 0
+
+    salida = capsys.readouterr().out
+    assert "2 entradas" in salida
+    assert "| PUB | 2 | 50.0 % |" in salida
