@@ -32,19 +32,24 @@ vi.mock("sonner", () => ({
 // sale** (`urlsPedidas`), no lo que se pinta. Un mock que se saltara `fetch`
 // dejaría de registrar la URL y el test pasaría a verde sin comprobar nada —
 // justo el fallo que documenta la cabecera de este fichero.
-vi.mock("@/lib/api-client", () => ({
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  // `ApiError` y los mensajes por estado son los de verdad: el test del 422 monta
+  // la política global de avisos (`crearQueryClient`), que los lee de aquí.
+  ...(await importOriginal<typeof import("@/lib/api-client")>()),
   apiMutate: vi.fn(),
   fetchWithAuth: vi.fn(async (url: string) => {
-    const respuesta = (await (globalThis.fetch as unknown as (u: string) => Promise<unknown>)(
-      url,
-    )) as { json: () => Promise<unknown> };
+    const respuesta = (await (globalThis.fetch as unknown as (u: string) => Promise<unknown>)(url)) as {
+      json: () => Promise<unknown>;
+    };
     return respuesta.json();
   }),
 }));
 
 import { SolicitudesAccesoCard } from "@/app/(dashboard)/ops/_components/solicitudes-acceso-card";
 import type { OpcionesSolicitudesAcceso } from "@/app/(dashboard)/ops/_hooks/use-solicitudes-acceso";
-import { apiMutate } from "@/lib/api-client";
+import { toast } from "sonner";
+import { crearQueryClient } from "@/components/providers";
+import { ApiError, apiMutate } from "@/lib/api-client";
 
 const mutar = vi.mocked(apiMutate);
 
@@ -113,8 +118,7 @@ function renderCard(opciones: OpcionesSolicitudesAcceso = {}) {
 function queryDe(vista: "pendiente" | "historico"): string | undefined {
   return urlsPedidas.find(
     (url) =>
-      !url.includes("/grants") &&
-      (vista === "pendiente" ? url.includes("estado=pendiente") : !url.includes("estado=")),
+      !url.includes("/grants") && (vista === "pendiente" ? url.includes("estado=pendiente") : !url.includes("estado=")),
   );
 }
 
@@ -125,6 +129,7 @@ describe("SolicitudesAccesoCard", () => {
     concesiones = [];
     cola.length = 0;
     mutar.mockReset();
+    vi.mocked(toast.error).mockClear();
     mutar.mockResolvedValue({ status: "ok", notificado: null });
     instalarFetch();
   });
@@ -148,10 +153,7 @@ describe("SolicitudesAccesoCard", () => {
   it("una pendiente vieja sepultada bajo el histórico sigue saliendo", async () => {
     // La forma exacta del fallo: la pendiente es la MÁS antigua, así que en una
     // ventana por `created_at DESC` sin filtrar cae por debajo del corte.
-    cola.push(
-      ...Array.from({ length: 120 }, (_, i) => solicitud(100 + i, "atendida")),
-      solicitud(1, "pendiente"),
-    );
+    cola.push(...Array.from({ length: 120 }, (_, i) => solicitud(100 + i, "atendida")), solicitud(1, "pendiente"));
     renderCard();
 
     expect(await screen.findByText("alguien-1@empresa.es")).toBeInTheDocument();
@@ -208,8 +210,7 @@ describe("SolicitudesAccesoCard", () => {
     await screen.findByText("alguien-2@empresa.es");
 
     // 500 es el `le=500` del endpoint: por encima responde 422.
-    const limiteDe = (url: string | undefined) =>
-      new URLSearchParams(url?.split("?")[1] ?? "").get("limit");
+    const limiteDe = (url: string | undefined) => new URLSearchParams(url?.split("?")[1] ?? "").get("limit");
     expect(limiteDe(queryDe("pendiente"))).toBe("500");
     expect(limiteDe(queryDe("historico"))).toBe("500");
   });
@@ -300,6 +301,9 @@ describe("SolicitudesAccesoCard", () => {
       });
       await waitFor(() => expect(boton).toBeEnabled());
       fireEvent.click(boton);
+      // Pide confirmación antes de escribir nada.
+      expect(mutar).not.toHaveBeenCalled();
+      fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Volver a conceder" }));
 
       await waitFor(() =>
         expect(mutar).toHaveBeenCalledWith(
@@ -320,6 +324,7 @@ describe("SolicitudesAccesoCard", () => {
       });
       await waitFor(() => expect(boton).toBeEnabled());
       fireEvent.click(boton);
+      fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Volver a conceder" }));
 
       await waitFor(() =>
         expect(mutar).toHaveBeenCalledWith(
@@ -340,6 +345,112 @@ describe("SolicitudesAccesoCard", () => {
       expect(boton).toBeDisabled();
       expect(await screen.findByText(/No hay ninguna solicitud con ese correo/)).toBeInTheDocument();
       expect(mutar).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("confirmaciones", () => {
+    const viva = {
+      id: 1,
+      kind: "domain",
+      value: "empresa.es",
+      active: true,
+      granted_by: 7,
+      granted_by_name: "Admin Uno",
+      created_at: "2026-08-01T10:00:00Z",
+      updated_at: "2026-08-02T10:00:00Z",
+      revoked_at: null,
+    };
+
+    it("«Conceder dominio» dice qué dominio abre y a quién avisa, y no escribe hasta confirmar", async () => {
+      cola.push(solicitud(1, "pendiente"));
+      renderCard();
+      await screen.findByText("alguien-1@empresa.es");
+
+      fireEvent.click(screen.getByRole("button", { name: "Conceder dominio" }));
+
+      const dialogo = await screen.findByRole("dialog");
+      expect(within(dialogo).getByText(/Cualquier cuenta @empresa\.es podrá iniciar sesión/)).toBeInTheDocument();
+      expect(within(dialogo).getByText(/Se avisará por correo a alguien-1@empresa\.es/)).toBeInTheDocument();
+      expect(mutar).not.toHaveBeenCalled();
+
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Conceder dominio" }));
+      await waitFor(() =>
+        expect(mutar).toHaveBeenCalledWith(
+          "PATCH",
+          "/api/v1/admin/solicitudes-acceso/1",
+          expect.objectContaining({ estado: "atendida", conceder: "domain", notificar: true }),
+        ),
+      );
+    });
+
+    it("cancelar no concede nada", async () => {
+      cola.push(solicitud(1, "pendiente"));
+      renderCard();
+      await screen.findByText("alguien-1@empresa.es");
+
+      fireEvent.click(screen.getByRole("button", { name: "Conceder dominio" }));
+      fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancelar" }));
+
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(mutar).not.toHaveBeenCalled();
+    });
+
+    it("«Revocar» nombra a quién afecta y solo revoca al confirmar", async () => {
+      concesiones.push(viva);
+      renderCard();
+
+      fireEvent.click(await screen.findByRole("button", { name: "Revocar acceso de empresa.es" }));
+
+      const dialogo = await screen.findByRole("dialog");
+      expect(within(dialogo).getByText("Revocar el acceso de empresa.es")).toBeInTheDocument();
+      expect(within(dialogo).getByText(/Las cuentas @empresa\.es/)).toBeInTheDocument();
+      expect(mutar).not.toHaveBeenCalled();
+
+      fireEvent.click(within(dialogo).getByRole("button", { name: "Revocar" }));
+      await waitFor(() => expect(mutar).toHaveBeenCalledWith("DELETE", "/api/v1/admin/solicitudes-acceso/grants/1"));
+    });
+
+    it("«Volver a conceder» avisa de que la persona recibirá un correo", async () => {
+      concesiones.push({
+        ...viva,
+        id: 2,
+        kind: "email",
+        value: "alguien-2@empresa.es",
+        active: false,
+        revoked_at: "2026-09-01T00:00:00Z",
+      });
+      cola.push(solicitud(2, "atendida"));
+      renderCard();
+
+      const boton = await screen.findByRole("button", { name: "Volver a conceder acceso a alguien-2@empresa.es" });
+      await waitFor(() => expect(boton).toBeEnabled());
+      fireEvent.click(boton);
+
+      expect(await screen.findByText(/alguien-2@empresa\.es recibirá un correo/)).toBeInTheDocument();
+    });
+
+    it("el 422 de un dominio no concedible sale en un solo aviso, con su motivo", async () => {
+      const motivo = "El dominio gmail.com es de un proveedor de correo público.";
+      mutar.mockRejectedValue(new ApiError(422, motivo));
+      cola.push(solicitud(1, "pendiente"));
+      // La política real de avisos: la del hook ya no puede sumar un segundo toast.
+      const qc = crearQueryClient();
+      render(
+        <QueryClientProvider client={qc}>
+          <SolicitudesAccesoCard />
+        </QueryClientProvider>,
+      );
+      await screen.findByText("alguien-1@empresa.es");
+
+      fireEvent.click(screen.getByRole("button", { name: "Conceder dominio" }));
+      fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Conceder dominio" }));
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalled());
+      expect(toast.error).toHaveBeenCalledTimes(1);
+      expect(toast.error).toHaveBeenCalledWith(
+        "No se pudo actualizar la solicitud",
+        expect.objectContaining({ description: motivo }),
+      );
     });
   });
 });

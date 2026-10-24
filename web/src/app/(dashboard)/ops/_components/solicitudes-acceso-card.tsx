@@ -20,12 +20,15 @@
  * pasa de 800 líneas y está en el roadmap de descomposición del UX_AUDIT.
  */
 
+import { useState } from "react";
 import { Panel, PanelEmpty, PanelError, PanelTitle, Segmented } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSolicitudesAcceso } from "../_hooks/use-solicitudes-acceso";
 import type { OpcionesSolicitudesAcceso } from "../_hooks/use-solicitudes-acceso";
 import { AccesosDinamicos } from "./solicitudes-acceso/accesos-dinamicos";
+import { ConfirmarConcesion } from "./solicitudes-acceso/confirmar-concesion";
+import type { AccionDeAcceso } from "./solicitudes-acceso/confirmar-concesion";
 import { SolicitudItem } from "./solicitudes-acceso/solicitud-item";
 
 const VISTAS = [
@@ -55,6 +58,25 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
     revocar,
   } = useSolicitudesAcceso(opciones);
 
+  // Lo que se concede o se revoca con un clic afecta a gente que no está en la
+  // fila (todo un dominio, o quien recibe el correo): pasa por una confirmación
+  // que lo dice. Conceder un email y descartar no abren nada nuevo y van directo.
+  const [porConfirmar, setPorConfirmar] = useState<AccionDeAcceso | null>(null);
+
+  const confirmar = (accion: AccionDeAcceso) => {
+    setPorConfirmar(null);
+    if (accion.tipo === "revocar") {
+      revocar.mutate(accion.grantId);
+      return;
+    }
+    cambiarEstado.mutate({
+      id: accion.solicitudId,
+      estado: "atendida",
+      notificar: true,
+      conceder: accion.tipo === "conceder-dominio" ? "domain" : accion.kind,
+    });
+  };
+
   return (
     <Panel>
       <PanelTitle
@@ -70,9 +92,9 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
           </span>
         }
       />
-      <p className="mb-3 text-tf-meta text-muted-foreground">
-        Peticiones enviadas desde la web pública. «Conceder email y avisar» activa el acceso antes de enviar el
-        correo. Conceder un dominio abre el acceso a todas sus cuentas: resérvalo para clientes aprobados.
+      <p className="text-tf-meta text-muted-foreground mb-3">
+        Peticiones enviadas desde la web pública. «Conceder email y avisar» activa el acceso antes de enviar el correo.
+        Conceder un dominio abre el acceso a todas sus cuentas: resérvalo para clientes aprobados.
       </p>
       {/* El conmutador, y no un filtro sobre lo ya descargado: cada vista es
           su propia consulta al servidor, que es el único sitio donde el
@@ -86,20 +108,13 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
       />
       {isLoading && <Skeleton className="h-24 w-full" />}
       {error ? (
-        <PanelError
-          variant="inline"
-          title="No se pudieron cargar las solicitudes"
-          error={error}
-          onRetry={reintentar}
-        />
+        <PanelError variant="inline" title="No se pudieron cargar las solicitudes" error={error} onRetry={reintentar} />
       ) : null}
       {!isLoading && !error && solicitudes.length === 0 && (
         <PanelEmpty
           size="sm"
           title={
-            vista === "pendiente"
-              ? "No queda ninguna solicitud pendiente"
-              : "Todavía no ha llegado ninguna solicitud"
+            vista === "pendiente" ? "No queda ninguna solicitud pendiente" : "Todavía no ha llegado ninguna solicitud"
           }
           hint={
             vista === "pendiente"
@@ -109,9 +124,9 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
         />
       )}
       {!isLoading && !error && truncada && (
-        <p className="text-muted-foreground mb-3 text-tf-meta">
-          Se muestran las {limite} más recientes: hay más de las que caben en una respuesta. Usa «Pendientes»
-          para no perder ninguna sin atender.
+        <p className="text-muted-foreground text-tf-meta mb-3">
+          Se muestran las {limite} más recientes: hay más de las que caben en una respuesta. Usa «Pendientes» para no
+          perder ninguna sin atender.
         </p>
       )}
       {!isLoading && !error && solicitudes.length > 0 && (
@@ -121,7 +136,18 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
               key={solicitud.id}
               solicitud={solicitud}
               ocupado={cambiarEstado.isPending}
-              onCambiarEstado={cambiarEstado.mutate}
+              onCambiarEstado={(vars) => {
+                if (vars.conceder !== "domain") {
+                  cambiarEstado.mutate(vars);
+                  return;
+                }
+                setPorConfirmar({
+                  tipo: "conceder-dominio",
+                  solicitudId: vars.id,
+                  email: solicitud.email,
+                  dominio: solicitud.email.slice(solicitud.email.lastIndexOf("@") + 1),
+                });
+              }}
             />
           ))}
         </ul>
@@ -132,17 +158,27 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
         error={grantsError}
         onRetry={reintentarGrants}
         revocando={revocar.isPending}
-        onRevocar={revocar.mutate}
+        onRevocar={(grantId) => {
+          const grant = grants?.find((g) => g.id === grantId);
+          if (grant) setPorConfirmar({ tipo: "revocar", grantId, kind: grant.kind, value: grant.value });
+        }}
         solicitudes={historico}
         concediendo={cambiarEstado.isPending}
-        onVolverAConceder={({ solicitudId, kind }) =>
-          cambiarEstado.mutate({
-            id: solicitudId,
-            estado: "atendida",
-            notificar: true,
-            conceder: kind,
+        onVolverAConceder={(grant, solicitud) =>
+          setPorConfirmar({
+            tipo: "volver-a-conceder",
+            solicitudId: solicitud.id,
+            kind: grant.kind,
+            value: grant.value,
+            email: solicitud.email,
           })
         }
+      />
+      <ConfirmarConcesion
+        accion={porConfirmar}
+        ocupado={cambiarEstado.isPending || revocar.isPending}
+        onCancelar={() => setPorConfirmar(null)}
+        onConfirmar={confirmar}
       />
     </Panel>
   );

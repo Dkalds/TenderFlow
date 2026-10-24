@@ -202,7 +202,10 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
         toast.success("Solicitud actualizada");
       }
     },
-    onError: () => toast.error("No se pudo actualizar la solicitud"),
+    // Un solo aviso de error: el global (`providers.tsx`) lo pinta con este
+    // título y el `detail` de la API —p. ej. el motivo de un dominio no
+    // concedible, un 422—. Un `onError` con su propio toast lo duplicaba.
+    meta: { errorTitle: "No se pudo actualizar la solicitud" },
   });
 
   const revocar = useMutation({
@@ -212,7 +215,7 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
       queryClient.invalidateQueries({ queryKey: adminKeys.accessGrants });
       toast.success("Acceso revocado para nuevos inicios de sesión");
     },
-    onError: () => toast.error("No se pudo revocar el acceso"),
+    meta: { errorTitle: "No se pudo revocar el acceso" },
   });
 
   const solicitudes = activa.data ?? [];

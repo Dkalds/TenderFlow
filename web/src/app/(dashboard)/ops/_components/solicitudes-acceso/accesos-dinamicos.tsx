@@ -32,7 +32,7 @@ export interface AccesosDinamicosProps {
   /** Todas las solicitudes: de ahí sale la que permite volver a conceder una revocada. */
   solicitudes?: SolicitudAcceso[];
   concediendo?: boolean;
-  onVolverAConceder?: (vars: { solicitudId: number; kind: AccessGrant["kind"] }) => void;
+  onVolverAConceder?: (grant: AccessGrant, solicitud: SolicitudAcceso) => void;
 }
 
 function quienConcedio(grant: AccessGrant): string {
@@ -143,9 +143,7 @@ export function AccesosDinamicos({
                         variant="secondary"
                         disabled={concediendo || !solicitud || !onVolverAConceder}
                         aria-label={`Volver a conceder acceso a ${grant.value}`}
-                        onClick={() =>
-                          solicitud && onVolverAConceder?.({ solicitudId: solicitud.id, kind: grant.kind })
-                        }
+                        onClick={() => solicitud && onVolverAConceder?.(grant, solicitud)}
                       >
                         Volver a conceder
                       </Button>
