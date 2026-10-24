@@ -49,6 +49,7 @@ from db.repositories.client_errors import (  # noqa: E402
 from db.repositories.publico import estado_refresco_canonicas  # noqa: E402
 from observability import AlertLevel, configure_logging, get_logger, notify  # noqa: E402
 from observability.alerts import COOLDOWN_RECORDATORIO_DIARIO_S  # noqa: E402
+from observability.errores import errores_repetidos  # noqa: E402
 from scheduler.latido import enviar_latido  # noqa: E402
 
 log = get_logger(__name__)
@@ -628,6 +629,18 @@ def run_check(
                 warnings.append(f"writers_high:{n_wh}")
             checks.append({"name": "ops_events_writers_high", "ok": n_wh == 0})
 
+            # Errores capturados repetidos (observability/errores.py): el mismo
+            # paso de un módulo caliente fallando una y otra vez sin tumbar la
+            # pasada. Es el espejo de `DbConnectionErroresCapturados` y
+            # `LlmClientErroresCapturados` para los procesos efímeros (scraper,
+            # cierre de la pasada, pliegos), que Prometheus no ve.
+            repetidos = errores_repetidos(ops_counts)
+            for clave, n in repetidos.items():
+                warnings.append(f"errores_capturados:{clave}:{n}")
+            if repetidos:
+                info["errores_capturados_repetidos"] = repetidos
+            checks.append({"name": "ops_events_errores_capturados", "ok": not repetidos})
+
             # Silencio: cada pasada de cierre emite varios eventos, así que un
             # día entero sin ninguno es que no llegan, no que no pase nada. Es
             # el estado en que estuvo la tabla de septiembre a octubre de 2026
@@ -659,6 +672,7 @@ def run_check(
                 info["ops_events_missing"] = True
                 checks.append({"name": "ops_events_write_slow", "ok": True})
                 checks.append({"name": "ops_events_writers_high", "ok": True})
+                checks.append({"name": "ops_events_errores_capturados", "ok": True})
                 checks.append({"name": "ops_events_recientes", "ok": True})
             else:
                 info["ops_events_error"] = str(exc)[:200]
