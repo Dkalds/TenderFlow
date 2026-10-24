@@ -6,13 +6,15 @@ consumes via server-side JSON responses.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from api.concurrency import run_db
 from api.dependencias_pipeline import paquete_del_pipeline_ausente
+from api.errors import deprecate_route, sunset_anunciado
 from api.routes.dual_auth import require_any_auth
 from api.routes.dual_auth import require_any_auth as require_analytics_auth
 from api.techo_analitica import techo_sentencia_analitica
@@ -109,6 +111,43 @@ router = APIRouter(
     tags=["analytics"],
     dependencies=[Depends(techo_sentencia_analitica)],
 )
+
+
+# ── Rutas deprecadas: fecha de apagado y cabeceras (C8.1) ────────────────────
+
+#: Retirada D19 de las tres operaciones sin consumidor (``compare-periods``,
+#: ``resumen/sankey``, ``resumen/top``). La RFC las anunció el 2026-09-06 para
+#: el 2026-12-04, que deja 89 días y no cabe en la ventana de 90 que fijó C8.1
+#: después; el listado por offset, de la misma RFC, ya se había movido al
+#: 2027-01-15 por lo mismo, y aquí se alinean con él (addendum de la RFC).
+SUNSET_ANALITICA_SIN_CONSUMIDOR = sunset_anunciado(date(2027, 1, 15), anunciado=date(2026, 9, 6))
+_RFC_D19 = "docs/rfc/2026-09-06-rfc-retirada-endpoints-analitica.md"
+
+#: ``forecast/retendering`` estaba deprecada desde el 2026-07-20 sin fecha. Se
+#: la pone la RFC del 2026-10-23; la sucesora es ``/competitive/renovaciones``.
+SUNSET_FORECAST_RETENDERING = sunset_anunciado(date(2027, 2, 1), anunciado=date(2026, 10, 23))
+_RFC_2026_10 = "docs/rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md"
+
+
+def _deprecada(
+    sunset: date, *, rfc: str, successor: str | None = None
+) -> Callable[[Response], None]:
+    """Dependencia que marca la respuesta como deprecada.
+
+    Es una dependencia y no una llamada dentro del handler porque estas rutas
+    pasan por ``cache_response``, que construye su propia ``Response`` y solo
+    conserva las cabeceras que se fijaron en la respuesta temporal *antes* del
+    handler (``shared/cache.py::_respuesta_http``). En un acierto de caché el
+    handler ni se ejecuta: una cabecera puesta dentro desaparecería justo ahí.
+    """
+
+    def marcar(response: Response) -> None:
+        deprecate_route(response, sunset=sunset, successor=successor, rfc=rfc)
+
+    return marcar
+
+
+_DEPRECADA_D19 = Depends(_deprecada(SUNSET_ANALITICA_SIN_CONSUMIDOR, rfc=_RFC_D19))
 
 
 @router.get("/overview", response_model=OverviewResult)
@@ -814,7 +853,8 @@ def resumen_timeline(
     "/resumen/sankey",
     response_model=SankeyResult,
     deprecated=True,
-    summary="[DEPRECADO 2026-12-04] Flujo Sankey del resumen",
+    summary="[DEPRECADO 2027-01-15] Flujo Sankey del resumen",
+    dependencies=[_DEPRECADA_D19],
 )
 @cache_response(ttl=300, user_scoped=False)
 def resumen_sankey(
@@ -838,7 +878,8 @@ def resumen_sankey(
     "/resumen/top",
     response_model=TopLicitacionesResult,
     deprecated=True,
-    summary="[DEPRECADO 2026-12-04] Top de licitaciones del resumen",
+    summary="[DEPRECADO 2027-01-15] Top de licitaciones del resumen",
+    dependencies=[_DEPRECADA_D19],
 )
 @cache_response(ttl=300, user_scoped=False)
 def resumen_top(
@@ -937,6 +978,16 @@ def forecast_estacionalidad_organo(
     "/forecast/retendering",
     response_model=RetenderingResult,
     deprecated=True,
+    summary="[DEPRECADO 2027-02-01] Previsión de re-licitaciones",
+    dependencies=[
+        Depends(
+            _deprecada(
+                SUNSET_FORECAST_RETENDERING,
+                rfc=_RFC_2026_10,
+                successor="/api/v1/competitive/renovaciones",
+            )
+        )
+    ],
 )
 @cache_response(ttl=600, cpu_bound=True, user_scoped=False)
 def forecast_retendering(
@@ -957,8 +1008,8 @@ def forecast_retendering(
        ``GET /competitive/renovaciones`` con un dataset más rico (incluye
        `riesgo_cambio` y opportunity score). Se mantiene el endpoint por
        compatibilidad de contrato público (retirarlo es breaking change,
-       AGENTS.md §5) hasta confirmar ausencia de consumidores externos.
-       Ver docs/IMPROVEMENT_BACKLOG.md (Cerrados, 2026-07-20).
+       AGENTS.md §5). Apagado el 2027-02-01: ver
+       docs/rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md.
     """
     filters = RetenderingFilters(
         meses_anticipacion=meses_anticipacion,
@@ -1068,7 +1119,8 @@ def utes(
     "/compare-periods",
     response_model=CompareResult,
     deprecated=True,
-    summary="[DEPRECADO 2026-12-04] Comparación entre dos periodos",
+    summary="[DEPRECADO 2027-01-15] Comparación entre dos periodos",
+    dependencies=[_DEPRECADA_D19],
 )
 @cache_response(ttl=300, user_scoped=False)
 def compare_periods(

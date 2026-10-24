@@ -33,7 +33,7 @@ from typing import Any, Literal
 
 from db.repositories import similares as repo
 from observability.logging import get_logger
-from services.embeddings import embeddings_available, semantic_match
+from services.embeddings import embeddings_masivos_disponibles, semantic_match
 
 log = get_logger(__name__)
 
@@ -167,9 +167,12 @@ def _ordenar(
     de términos. El segundo es peor y por eso el método viaja en la respuesta.
     """
     if not filas:
-        return [], "embedding" if embeddings_available() else "fts"
+        return [], "embedding" if embeddings_masivos_disponibles() else "fts"
 
-    if embeddings_available():
+    # Codificar el corpus (100+ títulos por ficha, dos veces) en la petición
+    # es el caso «masivo»: con solo el motor ONNX de la API costaría segundos
+    # de CPU por ficha, así que va gateado como la afinidad del Radar.
+    if embeddings_masivos_disponibles():
         corpus = [str(f.get("titulo") or "") for f in filas]
         try:
             emparejados = semantic_match(objetivo_texto, corpus, threshold=0.0)

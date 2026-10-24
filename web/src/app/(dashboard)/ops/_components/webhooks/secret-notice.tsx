@@ -6,20 +6,33 @@
  * No desaparece solo a propósito: no hay endpoint que vuelva a exponer el
  * secreto, así que un toast efímero para un valor irrecuperable sería una
  * trampa. Se cierra cuando el usuario dice que ya lo guardó.
+ *
+ * Sirve al alta y a la rotación: `children` añade lo que hay que saber además
+ * del secreto (al rotar, que el anterior ya no firma).
  */
 
+import type * as React from "react";
 import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Aviso } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 
-export function SecretNotice({ secret, onDismiss }: { secret: string; onDismiss: () => void }) {
+export function SecretNotice({
+  secret,
+  onDismiss,
+  children,
+}: {
+  secret: string;
+  onDismiss: () => void;
+  children?: React.ReactNode;
+}) {
   return (
     <Aviso tone="warning" role="alert" title="Guarda este secreto ahora">
       <p className="text-muted-foreground">
         Es la única vez que se muestra: sirve para verificar la firma HMAC de cada entrega y no hay forma de
         recuperarlo después.
       </p>
+      {children && <p className="mt-1">{children}</p>}
       <code className="bg-background mt-2 block truncate rounded-sm border border-border/60 px-2 py-1.5 font-mono text-tf-meta">
         {secret}
       </code>

@@ -61,22 +61,10 @@ class Excepcion:
     motivo: str
 
 
-EXCEPCIONES: tuple[Excepcion, ...] = (
-    Excepcion(
-        ghsa="GHSA-vfj7-8cjw-p6xm",
-        paquete="braces",
-        alta=date(2026, 10, 3),
-        caduca=date(2026, 11, 3),
-        motivo=(
-            "Sin versión corregida: 3.0.3 es la última publicada y el arreglo "
-            "(micromatch/braces#72) sigue sin fusionar. Solo entra por "
-            "eslint-config-next (@next/eslint-plugin-next, fast-glob, micromatch), "
-            "que expande los globs de `rootDir` de nuestra propia configuración de "
-            "ESLint: no viaja a producción ni recibe entrada ajena. Al renovar, "
-            "comprobar antes `npm view braces version`."
-        ),
-    ),
-)
+#: Vacía desde el 2026-10-23: `npm audit` dejó de reportar GHSA-vfj7-8cjw-p6xm
+#: (`braces`) aunque el lockfile sigue en 3.0.3, y la puerta exige retirar una
+#: excepción que ya no tapa nada.
+EXCEPCIONES: tuple[Excepcion, ...] = ()
 
 
 @dataclass(frozen=True)

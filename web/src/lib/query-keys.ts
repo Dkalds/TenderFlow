@@ -297,6 +297,18 @@ export const competitiveKeys = {
    * invalidarla los refresca con el resto de la competencia.
    */
   watchlistMovimientos: (dias: number) => ["competitive", "watchlist-movimientos", dias] as const,
+  /**
+   * Mercado por segmento en Competencia: HHI por corte (`GET /competitive/hhi`),
+   * cuota de un segmento (`/cuota`), bajas por grupo con el ámbito de la barra
+   * (`/bajas`) y la baja de referencia de un segmento (`/bajas/referencia`).
+   * No dependen de quién pregunta: el backend las cachea compartidas.
+   */
+  hhi: (segmentBy: string, minContratos: number) =>
+    ["competitive", "hhi", segmentBy, minContratos] as const,
+  cuota: (params: Record<string, string>) => ["competitive", "cuota", params] as const,
+  bajas: (params: Record<string, string>) => ["competitive", "bajas", params] as const,
+  bajaReferencia: (params: Record<string, string>) =>
+    ["competitive", "bajas-referencia", params] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -358,6 +370,12 @@ export const pursuitKeys = {
    * Cuelga de la raíz `pursuits` como las tareas: son trabajo de la oportunidad.
    */
   adjuntos: (pursuitId: number | string) => ["pursuits", "adjuntos", String(pursuitId)] as const,
+  /**
+   * «Mi baja frente al mercado» de la organización (`GET /pursuits/mi-baja`,
+   * C6.5). Bajo la raíz `pursuits`: fijar una oferta presentada cambia la
+   * media, y las mutaciones de pursuits ya invalidan por ese prefijo.
+   */
+  miBaja: (organizationId: OrganizacionDeClave) => ["pursuits", "mi-baja", organizationId] as const,
   /**
    * Política de adjuntos del entorno (`GET /pursuits/adjuntos/politica`): si hay
    * almacén, el tope y los tipos. No depende de la organización.
@@ -519,6 +537,13 @@ export const adminKeys = {
     all: ["admin", "dlq"] as const,
     estado: (estado: "abiertas" | "agotadas") => ["admin", "dlq", estado] as const,
   },
+  /** Colas de revisión del dato y panel de verdad (`/admin/revision/*`). */
+  revision: {
+    all: ["admin", "revision"] as const,
+    duplicados: ["admin", "revision", "duplicados"] as const,
+    organos: ["admin", "revision", "organos"] as const,
+    verdad: ["admin", "revision", "verdad"] as const,
+  },
 };
 
 /**
@@ -552,4 +577,22 @@ export const estaticosKeys = {
   all: ["estaticos"] as const,
   /** Contornos de las comunidades autónomas (`/spain-ccaa.json`). */
   geoCcaa: ["estaticos", "spain-ccaa"] as const,
+};
+
+// ---------------------------------------------------------------------------
+// Gobierno de la organización (Equipo)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cómo decide la organización y qué quedó escrito: los pesos del go/no-go
+ * (`GET /organizations/go-no-go/weights`) y su rastro de auditoría
+ * (`GET /organizations/{id}/audit`). Comparten raíz porque guardar los pesos
+ * escribe en el rastro: invalidar `all` refresca las dos.
+ */
+export const gobiernoOrgKeys = {
+  all: ["gobierno-organizacion"] as const,
+  pesosGoNoGo: (organizationId: OrganizacionDeClave) =>
+    ["gobierno-organizacion", "pesos-go-no-go", organizationId] as const,
+  auditoria: (organizationId: OrganizacionDeClave, desde: string | null, hasta: string | null) =>
+    ["gobierno-organizacion", "auditoria", organizationId, desde, hasta] as const,
 };

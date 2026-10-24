@@ -1,4 +1,4 @@
-"""Escenarios de la cuenta y el acceso: el segundo factor y la organización.
+"""Escenarios de la cuenta y el acceso: contraseña, segundo factor y organización.
 
 Recorridos completos por la API con sesión real. Ver ``tests/escenarios.py`` y
 ``docs/casos-de-uso.md``.
@@ -6,9 +6,19 @@ Recorridos completos por la API con sesión real. Ver ``tests/escenarios.py`` y
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
+from unittest.mock import patch
 
+from fastapi.testclient import TestClient
+
+from api.app import app
 from tests.escenarios import PASSWORD, Sesion, abrir_sesion, codigo_totp, sembrar_licitacion
+
+#: Lo que se busca en el correo de recuperación para seguir el enlace.
+_TOKEN_DEL_ENLACE = re.compile(r"#token=(\S+)")
+#: Una contraseña actual que no es la de la cuenta.
+_EQUIVOCADA = "-".join(("No", "Es", "2026", "La"))
 
 
 def _volver_a_entrar(sesion: Sesion) -> Sesion:
@@ -145,3 +155,62 @@ def test_cu26_salir_traspasar_y_borrar_la_organizacion(client, api_db):
     )
     assert personal.status_code == 409
     assert "Ajustes, en Datos y cuenta" in personal.json()["detail"]
+
+
+def test_cu19_cambiar_la_contrasena_y_recuperarla(client, api_db, monkeypatch):
+    """CU-19 — la cambia con la actual sin salir; la recupera por correo; las dos avisan."""
+    from services import app_urls
+
+    monkeypatch.setattr(
+        app_urls.settings, "CORS_ALLOWED_ORIGINS", "https://app.example", raising=False
+    )
+    nueva = "-".join(("Cambiada", "2026", "Segura"))
+    recuperada = "-".join(("Recuperada", "2026", "Segura"))
+    sesion = abrir_sesion("contrasena@example.com", client)
+    portatil = TestClient(app)
+    entrada = portatil.post(
+        "/api/v1/auth/login", json={"email": sesion.email, "password": PASSWORD}
+    )
+    assert entrada.status_code == 200, entrada.text
+    clave = sesion.post("/me/keys", json={"name": "Integración"}).json()["api_key"]
+    maquina = TestClient(app)
+    assert maquina.get("/api/v1/licitaciones", headers={"X-API-Key": clave}).status_code == 200
+
+    # Con una actual equivocada no cambia nada.
+    mal = sesion.post(
+        "/auth/password/change", json={"current_password": _EQUIVOCADA, "new_password": nueva}
+    )
+    assert mal.status_code == 400
+    assert portatil.get("/api/v1/auth/me").status_code == 200
+
+    # Con la buena: sigue dentro, el portátil y la clave dejan de valer, y avisa.
+    with patch("services.password_reset.enviar_email_transaccional", return_value=True) as correo:
+        cambio = sesion.post(
+            "/auth/password/change", json={"current_password": PASSWORD, "new_password": nueva}
+        )
+    assert cambio.status_code == 200, cambio.text
+    assert sesion.get("/auth/me").status_code == 200
+    assert portatil.get("/api/v1/auth/me").status_code == 401
+    assert maquina.get("/api/v1/licitaciones", headers={"X-API-Key": clave}).status_code == 401
+    assert correo.call_args.kwargs["subject"] == "Tu contraseña de TenderFlow ha cambiado"
+
+    # La olvida: pide el enlace, elige otra, y le llega otra vez el aviso. Las
+    # sesiones —también la de antes— y las claves nuevas caen igual.
+    otra_clave = sesion.post("/me/keys", json={"name": "Otra integración"}).json()["api_key"]
+    with patch("services.password_reset.enviar_email_transaccional", return_value=True) as correo:
+        pedido = maquina.post("/api/v1/auth/password-reset/request", json={"email": sesion.email})
+        assert pedido.status_code == 202, pedido.text
+        enlace = _TOKEN_DEL_ENLACE.search(correo.call_args.kwargs["texto"])
+        assert enlace is not None
+        confirmado = maquina.post(
+            "/api/v1/auth/password-reset/confirm",
+            json={"token": enlace.group(1), "password": recuperada},
+        )
+        assert confirmado.status_code == 200, confirmado.text
+        assert correo.call_args.kwargs["subject"] == "Tu contraseña de TenderFlow ha cambiado"
+    assert sesion.get("/auth/me").status_code == 401
+    assert maquina.get("/api/v1/licitaciones", headers={"X-API-Key": otra_clave}).status_code == 401
+    vuelta = maquina.post(
+        "/api/v1/auth/login", json={"email": sesion.email, "password": recuperada}
+    )
+    assert vuelta.status_code == 200, vuelta.text

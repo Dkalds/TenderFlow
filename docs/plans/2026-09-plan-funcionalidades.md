@@ -355,6 +355,15 @@ Mi Watchlist → Favoritos, en la ficha de la oportunidad y en Cuentas; chips en
 las tarjetas del tablero y filtro por etiqueta en Oportunidades. Falta el
 filtro en Radar y Detalle.
 
+**Estado (2026-10-23).** Hecho: ya no falta ninguno de los dos filtros.
+Detalle filtra **en servidor** (`etiqueta` en `GET /licitaciones`,
+`api/routes/licitaciones/listado.py`, descrito en `_DESC_ETIQUETA`), así que el
+total y las páginas son los del conjunto etiquetado entero
+(`detalle/_hooks/use-etiqueta-listado.ts`). Radar filtra con el selector de
+`radar/_components/radar-controles.tsx` sobre las señales ya cargadas
+(`radar/_hooks/use-radar-consola.ts`, `useFiltroEtiqueta("favorito", …)`): el
+ranking del Radar no admite etiqueta. Recorrido: CU-28.
+
 #### F1.7 Procedimiento y tramitación legibles — P1
 
 **Para quién.** Todos; sobre todo quien no vive en la Ley 9/2017. **Qué.**
@@ -529,6 +538,14 @@ Presupuesto LLM por organización (C2.9). **Esfuerzo / gate.** M · **[§6]**
 Pliego de la oportunidad). Se genera sólo con botón (cuesta presupuesto), los
 puntos `sin_base` se marcan, el 429 se explica y se descarga en Markdown. El
 **PDF** no tiene ruta en el backend y queda sin hacer.
+
+*Estado (2026-10-23):* **hecho, PDF incluido.** `GET
+/licitaciones/{id}/guion.pdf` (`api/routes/licitaciones/pliegos.py`) sirve el
+guion **ya generado** —nunca llama al LLM— y responde 404 si el pliego cambió
+desde la generación. La UI lo descarga desde
+`components/pliego/guion-oferta.tsx` (`fetchBlobWithAuth` + `descargarBlob`
+con `recurso="guion"`) y explica ese 404 como «el guion ya no corresponde al
+pliego vigente».
 
 #### F2.7 Ficha de oportunidad en PDF — P1
 
@@ -713,6 +730,12 @@ Mi Pipeline → Embudo pinta `pipeline_value_eur`, la previsión trimestral y lo
 supuestos (probabilidades usadas, oportunidades sin importe). La edición de
 `probabilidades_etapa` por owner/admin no tiene pantalla todavía.
 
+**Estado (2026-10-23).** Hecho: la edición tiene pantalla. Equipo →
+Organización monta `equipo/_components/probabilidades-etapa-card.tsx`: las
+etapas y sus defaults salen de la respuesta (`probabilidades_etapa_default`),
+un campo vacío usa el default y no viaja, el PUT reenvía el resto de la
+configuración guardada, y quien no es owner/admin lee sin poder guardar.
+
 #### F4.2 Cuadro de mando de dirección — P1
 
 **Para quién.** Owner y admin. **Qué.** Espacio «Dirección» (grupo
@@ -796,6 +819,13 @@ y caía a la agenda): fin efectivo con su origen, prórrogas, ventana de
 relicitación como estimación, filtros por tecnología y órgano, evento
 `cartera_abierta`. **Pendiente:** «Preparar renovación» — el backend no expone
 esa acción (sólo `renovacion_pursuit_id`, que la vista enlaza).
+
+**Estado (2026-10-23).** Hecho: «Preparar renovación» existe de punta a
+punta. Backend `POST /pursuits/cartera/{cartera_id}/renovacion`
+(`api/routes/pursuits.py`), idempotente (`creada=false` en el segundo clic);
+hook `usePrepararRenovacion` en `web/src/hooks/use-cartera.ts`; botón y
+selección del expediente en `oportunidades/_components/preparar-renovacion.tsx`.
+Recorrido: CU-08 (`tests/test_escenario_oportunidad.py`).
 
 **Estado (2026-09-20, reestructura «un espacio, una pregunta»).** La vista
 Cartera vive en **Oportunidades → Cartera** (`/oportunidades?vista=cartera`,

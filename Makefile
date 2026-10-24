@@ -1,6 +1,6 @@
 .PHONY: status schema-doc product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker
 .PHONY: web-test web-test-coverage check-env-parity check-public-surface check-layers check-api-surface
-.PHONY: check-casos-uso casos-uso web-mutation
+.PHONY: check-casos-uso casos-uso web-mutation reencolar-documentos
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -290,6 +290,11 @@ product-status:  ## Métricas de producto: funnel, win rate, euros y tiempo de d
 
 medir-solape:  ## Cuánto de la contratación TI autonómica llega ya por PLACSP (D16, antes de abrir un conector)
 	python scripts/medir_solape_agregados.py
+
+# Lo ejecuta el propietario contra producción (docs/runbooks/documentos-reencolar.md).
+# Sin APLICAR=1 solo cuenta.
+reencolar-documentos:  ## Devuelve a pending los documentos `unsupported` cuyo formato ya se lee (S8)
+	python scripts/reencolar_documentos_no_soportados.py $(if $(APLICAR),--aplicar,)
 
 job-parity:  ## Verifica que todo job del registry tiene plano de ejecución (ADR-012)
 	python scripts/check_job_parity.py

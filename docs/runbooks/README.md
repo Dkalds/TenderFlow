@@ -50,7 +50,9 @@ sí valen `docker logs tenderflow-api` y los `docker compose` de más abajo.
 ### Operación y procedimientos puntuales
 
 - **Fuentes opcionales** (encender PSCP, TACRC completo, agregadas y contratos menores de PLACSP; respaldo ZIP del ATOM) — [fuentes-opcionales.md](fuentes-opcionales.md)
+- **Reencolar documentos** cuyo formato ya se lee (`unsupported` → `pending`; lo ejecuta el propietario) — [documentos-reencolar.md](documentos-reencolar.md)
 - **Conceder acceso** a quien lo solicita — [conceder-acceso.md](conceder-acceso.md)
+- **Etiquetado humano de «¿es TI?»** (muestra estratificada, instrucciones, volcado al golden) — [etiquetado-ti.md](etiquetado-ti.md)
 - **MCP interno** (alta, revocación, rotación del rol, diagnóstico, auditoría; ADR-036) — [mcp-interno.md](mcp-interno.md)
 - **Correo transaccional** (ESP, dominio, rotación de clave) — [correo-transaccional.md](correo-transaccional.md)
 - **Alertas y receptor de guardia** — [observability-alerts.md](observability-alerts.md)

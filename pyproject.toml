@@ -168,6 +168,10 @@ ignore = [
 # 2026-09-24: sale `services/ml/scoring.py`. La baja real por expediente y el
 # upsert de `predicciones_retencion` (con su purga) viven en
 # `db/repositories/predicciones.py`. 26 → 25.
+# 2026-10-23: salen `services/notifications.py` y `services/watchlist_rules.py`
+# (su SQL y sus 18 `noqa: S608` bajan a `db/notifications.py` y
+# `db/repositories/watchlist_rules.py`) y `services/ml/tech_classifier.py`, que
+# ya no abría conexiones: solo nombraba `connect()` en un docstring. 22 → 19.
 "scheduler/aggregates_precompute.py" = ["TID251"]
 "scheduler/anomaly_alerts.py" = ["TID251"]
 "scheduler/competitor_alerts.py" = ["TID251"]
@@ -177,7 +181,6 @@ ignore = [
 "scheduler/retention.py" = ["TID251"]
 "scheduler/watchlist_rules_alerts.py" = ["TID251"]
 "scraper/seed_negatives.py" = ["TID251", "S608"]  # SQL built from internal schema strings
-"services/ml/tech_classifier.py" = ["TID251"]
 "scripts/rotate_api_keys.py" = ["TID251"]
 "scripts/seed_dev.py" = ["TID251"]
 "services/analytics/scoring_signals.py" = ["TID251"]
@@ -187,9 +190,7 @@ ignore = [
 "services/deadline_reminders.py" = ["TID251"]
 "services/dedupe.py" = ["TID251"]
 "services/entity_resolution.py" = ["TID251"]
-"services/notifications.py" = ["TID251"]
 "services/resoluciones.py" = ["TID251"]
-"services/watchlist_rules.py" = ["TID251"]
 # ── fin RATCHET TID251 ──
 # Archivos no-TID con permisos especiales
 "db/database.py" = ["E402", "RUF022"]  # E402 intentional facade re-exports
@@ -282,6 +283,8 @@ module = [
     "faiss.*",
     "sentence_transformers",
     "sentence_transformers.*",
+    "onnxruntime",
+    "onnxruntime.*",
     "sklearn",
     "sklearn.*",
     "bcrypt",

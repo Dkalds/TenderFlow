@@ -56,6 +56,9 @@ AUTH_LOGOUT_ALL: Final = "auth.logout_all"
 # la palabra en el identificador.
 AUTH_PASSWORD_RESET_REQUESTED: Final = "auth.password_reset_requested"  # noqa: S105
 AUTH_PASSWORD_RESET_COMPLETED: Final = "auth.password_reset_completed"  # noqa: S105
+#: Cambio desde Ajustes con la contraseña actual (``POST /auth/password/change``).
+#: El ``detail`` dice cuántas sesiones y claves cayeron, nunca la contraseña.
+AUTH_PASSWORD_CHANGED: Final = "auth.password_changed"  # noqa: S105
 #: Alta cerrada (RFC 2026-10-21): se pidió crear la cuenta y, después, se
 #: verificó el correo con el enlace. Sin id ni correo en el primero, como el
 #: reset: la respuesta no distingue si la cuenta existía.
@@ -96,6 +99,7 @@ WEBHOOK_CREATED: Final = "webhook.created"
 WEBHOOK_UPDATED: Final = "webhook.updated"
 WEBHOOK_DELETED: Final = "webhook.deleted"
 WEBHOOK_SECRET_ROTATED: Final = "webhook.secret_rotated"  # noqa: S105 — nombre de evento
+WEBHOOK_REDELIVERED: Final = "webhook.redelivered"
 
 # ── configuración de producto (solo administración) ────────────────────────
 FEATURE_FLAG_SET: Final = "feature_flag.set"
@@ -103,6 +107,10 @@ TECNOLOGIAS_KEYWORD_ADDED: Final = "tecnologias_keyword.added"
 TECNOLOGIAS_KEYWORD_REMOVED: Final = "tecnologias_keyword.removed"
 TECNOLOGIAS_KEYWORD_SEEDED: Final = "tecnologias_keyword.seeded"
 EMPRESA_REVIEW_RESOLVED: Final = "empresa.review_resolved"
+#: Colas de revisión del dato (``api/routes/admin_revision.py``): un par de
+#: duplicados confirmado o rechazado, y una fusión dudosa de órganos decidida.
+DEDUPE_REVIEW_RESOLVED: Final = "dedupe.review_resolved"
+ORGANO_REVIEW_RESOLVED: Final = "organo.review_resolved"
 
 # ── operación — acciones sobre la ingesta (solo administración) ────────────
 DLQ_REQUEUED: Final = "dlq.requeued"
@@ -143,6 +151,7 @@ FAMILIAS: Final[Mapping[str, frozenset[str]]] = {
             AUTH_LOGOUT_ALL,
             AUTH_PASSWORD_RESET_REQUESTED,
             AUTH_PASSWORD_RESET_COMPLETED,
+            AUTH_PASSWORD_CHANGED,
             AUTH_SIGNUP_REQUESTED,
             AUTH_EMAIL_VERIFIED,
             AUTH_TOTP_ENABLED,
@@ -156,7 +165,13 @@ FAMILIAS: Final[Mapping[str, frozenset[str]]] = {
     "user": frozenset({USER_ADMIN_CHANGED, USER_DEACTIVATE, USER_REACTIVATE, USER_ANONYMIZE}),
     "acceso": frozenset({SOLICITUD_ACCESO_ESTADO, ACCESS_GRANT_GRANTED, ACCESS_GRANT_REVOKED}),
     "webhook": frozenset(
-        {WEBHOOK_CREATED, WEBHOOK_UPDATED, WEBHOOK_DELETED, WEBHOOK_SECRET_ROTATED}
+        {
+            WEBHOOK_CREATED,
+            WEBHOOK_UPDATED,
+            WEBHOOK_DELETED,
+            WEBHOOK_SECRET_ROTATED,
+            WEBHOOK_REDELIVERED,
+        }
     ),
     "configuracion": frozenset(
         {
@@ -165,6 +180,8 @@ FAMILIAS: Final[Mapping[str, frozenset[str]]] = {
             TECNOLOGIAS_KEYWORD_REMOVED,
             TECNOLOGIAS_KEYWORD_SEEDED,
             EMPRESA_REVIEW_RESOLVED,
+            DEDUPE_REVIEW_RESOLVED,
+            ORGANO_REVIEW_RESOLVED,
         }
     ),
     "operacion": frozenset({DLQ_REQUEUED, DLQ_DISCARDED}),

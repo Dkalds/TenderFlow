@@ -25,7 +25,9 @@
  * La pestaña «Actividad» (F4.5) es para **todos** los roles: el feed vivía
  * sólo en Dirección, que es de propietarios y administradores, y un miembro no
  * tenía dónde ver qué hizo el equipo. El backend ya lo acota por rol (sin eventos de
- * administración para un `member`), así que aquí no se filtra nada.
+ * administración para un `member`), así que aquí no se filtra nada. Debajo,
+ * solo para propietario y administrador, el rastro de auditoría de la
+ * organización (CU-32): la API se lo niega a los demás.
  */
 
 import dynamic from "next/dynamic";
@@ -55,6 +57,10 @@ const OrganizacionTab = dynamic(
 );
 const WebhooksEquipoView = dynamic(
   () => import("../ops/_components/webhooks-view").then((modulo) => modulo.WebhooksEquipoView),
+  { loading },
+);
+const AuditoriaOrganizacionCard = dynamic(
+  () => import("./_components/auditoria-organizacion-card").then((modulo) => modulo.AuditoriaOrganizacionCard),
   { loading },
 );
 const ActividadEquipo = dynamic(
@@ -120,8 +126,11 @@ export default function EquipoPage() {
             />
           </TabsContent>
 
-          <TabsContent value="actividad">
+          <TabsContent value="actividad" className="space-y-5">
             <ActividadEquipo organizationId={activeOrganizationId} />
+            {canManage && activeOrganizationId != null && (
+              <AuditoriaOrganizacionCard organizationId={activeOrganizationId} />
+            )}
           </TabsContent>
 
           {canManage && (

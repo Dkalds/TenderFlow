@@ -40,6 +40,7 @@ from db.sessions import (
     validate_session_principal,
 )
 from db.users import (
+    CuentaDeOtroProveedorError,
     admin_granted_by,
     create_user,
     get_or_create_oauth_user,
@@ -55,6 +56,7 @@ from shared.audit_events import (
     AUTH_LOGIN_FAILED,
     AUTH_LOGIN_SUCCESS,
     AUTH_LOGOUT,
+    AUTH_PASSWORD_CHANGED,
     AUTH_PASSWORD_RESET_COMPLETED,
     AUTH_TOTP_DISABLED,
     AUTH_TOTP_ENABLED,
@@ -104,6 +106,10 @@ _REGISTER_RESPONSE = "Revisa tu correo: te hemos enviado un enlace para activar 
 #: acceso, reenviar el correo).
 ACCESS_NOT_GRANTED = "access_not_granted"
 EMAIL_NOT_VERIFIED = "email_not_verified"
+#: `?error=` del callback OAuth cuando el correo ya es de una cuenta que entra
+#: con otro proveedor (ADR-037). La web lo traduce en
+#: `web/src/app/login/_lib/fallos-acceso.ts`.
+OAUTH_OTRO_PROVEEDOR = "account_other_provider"
 
 
 async def _oauth_access_allowed(email: str) -> bool:
@@ -427,6 +433,13 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirm(BaseModel):
     token: str = Field(min_length=32, max_length=200)
     password: str = Field(min_length=10, max_length=512)
+
+
+class PasswordChangeRequest(BaseModel):
+    """Cambio de contraseña desde Ajustes: la actual y la nueva."""
+
+    current_password: str = Field(min_length=1, max_length=512)
+    new_password: str = Field(min_length=10, max_length=512)
 
 
 class EmailVerificationConfirm(BaseModel):
@@ -810,8 +823,12 @@ async def request_password_reset(
 async def confirm_password_reset(
     body: PasswordResetConfirm,
     request: Request,
+    background_tasks: BackgroundTasks,
 ) -> StatusOk:
-    """Consume un token una sola vez, cambia la contraseña y revoca sesiones."""
+    """Consume un token una sola vez, cambia la contraseña y revoca sesiones y claves.
+
+    Al titular le llega después un aviso de que su contraseña ha cambiado.
+    """
     if not await _password_reset_rate_allowed(request, bucket=_RESET_CONFIRM_BUCKET):
         # `Retry-After` con la ventana entera, igual que el 429 del
         # `RateLimitMiddleware`: el limitador responde sí o no, no cuánto
@@ -845,6 +862,131 @@ async def confirm_password_reset(
         resource=f"user:{user_id}",
     )
     log.info("password_reset_completed", user_id=user_id)
+    _avisar_contrasena_cambiada(background_tasks, user_id)
+    return StatusOk(status="ok")
+
+
+def _avisar_contrasena_cambiada(background_tasks: BackgroundTasks, user_id: int) -> None:
+    """Encola el correo «tu contraseña ha cambiado» para después de responder.
+
+    Lo mandan el reset y el cambio desde Ajustes. En segundo plano y sin poder
+    fallar la petición: la contraseña ya cambió, y un correo que no sale no
+    puede convertir eso en un error (``notify_password_changed`` no lanza).
+    """
+    from services.password_reset import notify_password_changed
+
+    background_tasks.add_task(notify_password_changed, user_id)
+
+
+#: Bloqueo del cambio de contraseña: 5 contraseñas actuales erróneas por cuenta
+#: cada 15 minutos. Por cuenta y no por IP: lo que se protege es la contraseña
+#: de una sesión que alguien pudo dejarse abierta, y quien la tiene delante
+#: tiene también su IP. Solo cuentan los fallos.
+_CAMBIO_BUCKET_FALLOS = "password_change_fail"
+_CAMBIO_MAX_FALLOS = 5
+_CAMBIO_VENTANA_SEGUNDOS = 900.0
+_CAMBIO_ACTUAL_ERRONEA = "La contraseña actual no es correcta."
+#: El reset público solo sirve a cuentas con contraseña; quien entra solo con
+#: un proveedor crea la primera repitiendo el alta con su correo, que le manda
+#: «ya tienes cuenta» con un enlace para elegirla (`services/email_verification.py`).
+_CAMBIO_SIN_CONTRASENA = (
+    "Tu cuenta no tiene contraseña: entras con Google o Microsoft. Para crear una, "
+    "usa «Crear cuenta» en la pantalla de acceso con este mismo correo y te llegará "
+    "un enlace para elegirla."
+)
+
+
+@router.post(
+    "/password/change",
+    response_model=StatusOk,
+    responses={
+        400: {
+            "description": "La contraseña actual no es correcta, o la nueva no cumple la política."
+        },
+        409: {"description": "La cuenta no tiene contraseña (entra solo con un proveedor)."},
+        429: {"description": "Demasiadas contraseñas actuales erróneas seguidas."},
+    },
+)
+async def change_password(
+    body: PasswordChangeRequest,
+    background_tasks: BackgroundTasks,
+    user: dict[str, Any] = Depends(require_csrf),
+) -> StatusOk:
+    """Cambia la contraseña conociendo la actual.
+
+    Exige sesión con CSRF (y el segundo factor ya verificado, si la cuenta lo
+    tiene). La nueva pasa por la misma política que el alta y el reset. Al
+    cambiarla se cierran **las demás** sesiones —la que hace el cambio sigue
+    abierta— y se desactivan las claves de API de la cuenta, y llega un aviso
+    al correo del titular.
+    """
+    # Antes que nada, como el reset: una contraseña rechazada no cuenta como
+    # intento ni le cuesta nada a nadie.
+    password_check = check_account_password(body.new_password)
+    if not password_check.is_strong:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=password_check.summary)
+
+    from db.password_reset import change_password as cambiar_contrasena
+    from db.rate_limits import clear_login_attempts, is_login_locked_out, record_failed_login
+
+    user_id = int(user["user_id"])
+    clave_bloqueo = f"user:{user_id}"
+
+    def _cambiar() -> int:
+        """KDF y BD en el threadpool, como el login: argon2 es caro por diseño."""
+        # El intento se apunta antes de mirar el tope y de verificar: con
+        # «mirar, verificar, apuntar el fallo», N peticiones en paralelo pasaban
+        # todas el control antes de que se apuntara ninguna y el tope no
+        # limitaba nada. Apuntado primero, la k-ésima ve al menos k filas; el
+        # +1 deja pasar los mismos _CAMBIO_MAX_FALLOS intentos que antes. Un
+        # cambio correcto limpia el contador.
+        record_failed_login(
+            clave_bloqueo,
+            bucket=_CAMBIO_BUCKET_FALLOS,
+            window_seconds=_CAMBIO_VENTANA_SEGUNDOS,
+        )
+        bloqueado, retry_after = is_login_locked_out(
+            clave_bloqueo,
+            max_attempts=_CAMBIO_MAX_FALLOS + 1,
+            bucket=_CAMBIO_BUCKET_FALLOS,
+            window_seconds=_CAMBIO_VENTANA_SEGUNDOS,
+        )
+        if bloqueado:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Demasiados intentos. Inténtalo más tarde.",
+                headers={"Retry-After": str(max(1, int(retry_after)))},
+            )
+        cuenta = get_user_by_id(user_id)
+        actual = str((cuenta or {}).get("password_hash") or "")
+        if not actual:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=_CAMBIO_SIN_CONTRASENA)
+        if not verify_password(body.current_password, actual):
+            log.warning("password_change_failed", user_id=user_id, reason="bad_current_password")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=_CAMBIO_ACTUAL_ERRONEA
+            )
+        claves = cambiar_contrasena(
+            user_id,
+            hash_password(body.new_password),
+            sesion_actual=str(user["session_token"]),
+        )
+        if claves is None:
+            # La cuenta se desactivó entre la sesión y el cambio.
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session")
+        clear_login_attempts(clave_bloqueo, bucket=_CAMBIO_BUCKET_FALLOS)
+        return claves
+
+    claves_revocadas = await run_db(_cambiar)
+    await run_db(
+        log_event,
+        event_type=AUTH_PASSWORD_CHANGED,
+        user_id=user_id,
+        resource=f"user:{user_id}",
+        detail={"api_keys_revoked": claves_revocadas},
+    )
+    log.info("password_changed", user_id=user_id, api_keys_revoked=claves_revocadas)
+    _avisar_contrasena_cambiada(background_tasks, user_id)
     return StatusOk(status="ok")
 
 
@@ -1185,6 +1327,15 @@ class _OAuthProvider:
     #: URL del ``.well-known/openid-configuration``, si aplica.
     discovery_url: Callable[[], str] | None
     scope: str
+    #: Claim booleano del ``id_token`` que acredita que quien entra controla el
+    #: correo (ADR-037). Sin valor por defecto: un proveedor nuevo tiene que
+    #: decirlo. ``None`` solo para Google, cuyo verificador propio ya exige
+    #: ``email_verified``.
+    claim_correo_verificado: str | None
+    #: Claims de los que se toma el correo, por orden. Solo los que el claim
+    #: anterior acredita: un correo sin acreditar no puede decidir la allowlist
+    #: ni con qué cuenta se entra.
+    claims_de_correo: tuple[str, ...] = ("email",)
     #: Parámetros propios del proveedor en la URL de autorización.
     extra_authorize_params: Mapping[str, str] = field(default_factory=dict)
     #: ``True`` cuando el proveedor tiene su propio verificador ya probado.
@@ -1231,6 +1382,7 @@ _PROVIDERS: dict[str, _OAuthProvider] = {
         ),
         discovery_url=None,
         scope="openid email profile",
+        claim_correo_verificado=None,
         extra_authorize_params={"access_type": "online", "prompt": "select_account"},
         usa_verificador_google=True,
     ),
@@ -1243,6 +1395,14 @@ _PROVIDERS: dict[str, _OAuthProvider] = {
         # `offline_access` queda fuera: no se guarda refresh token, la sesión de
         # TenderFlow es propia y dura 24 h.
         scope="openid email profile",
+        # `xms_edov`: el dueño del dominio del correo está verificado en el
+        # tenant que emite el token. Es un claim opcional: hay que añadirlo en
+        # «Token configuration» de la aplicación de Entra, o no entra nadie
+        # (ADR-037). Y el correo sale solo de `email`, que es el claim que
+        # `xms_edov` acredita: `preferred_username` y `upn` los escribe el
+        # administrador del tenant y no dicen de quién es el buzón.
+        claim_correo_verificado="xms_edov",
+        claims_de_correo=("email",),
         extra_authorize_params={"prompt": "select_account"},
     ),
 }
@@ -1330,15 +1490,22 @@ def _verify_provider_id_token(
         issuer=endpoints.issuer,
         audience=audience,
         expected_nonce=expected_nonce,
+        email_verified_claim=provider.claim_correo_verificado,
     )
 
 
-def _email_from_claims(claims: Mapping[str, Any]) -> str:
-    """Correo del token. Entra ID no siempre manda ``email``.
+def _email_from_claims(
+    claims: Mapping[str, Any],
+    claves: tuple[str, ...] = ("email", "preferred_username", "upn"),
+) -> str:
+    """Correo del token, de los claims ``claves`` y en ese orden.
 
-    Con cuentas de trabajo, Microsoft emite ``preferred_username`` (el UPN) y
-    solo incluye ``email`` si el tenant lo tiene poblado. Sin este respaldo, un
-    login de Microsoft perfectamente válido acabaría en «email_not_allowed».
+    El callback pasa los de su proveedor (``claims_de_correo``): para los dos
+    de hoy, solo ``email``. Hasta 2026-10 Microsoft caía a
+    ``preferred_username`` y ``upn`` cuando el tenant no poblaba ``email``,
+    pero esos dos los escribe el administrador del tenant y ningún claim
+    acredita que el buzón sea de quien entra (ADR-037). El orden por defecto
+    sigue describiendo las formas que puede traer un token.
 
     El primer claim que trae un ``@`` es el que identifica a la cuenta, y tiene
     que tener forma de dirección (``oauth_email_parts``: un solo ``@`` con algo
@@ -1346,7 +1513,7 @@ def _email_from_claims(claims: Mapping[str, Any]) -> str:
     vez de seguir con el siguiente claim: lo que decide la allowlist es esta
     cadena, y de ``x@evil.com@empresa.com`` no se puede decir de qué dominio es.
     """
-    for clave in ("email", "preferred_username", "upn"):
+    for clave in claves:
         valor = str(claims.get(clave, "") or "").strip()
         if "@" in valor:
             return valor if oauth_email_parts(valor) is not None else ""
@@ -1558,7 +1725,7 @@ async def _oauth_callback_impl(
     if claims is None:
         return _oauth_error_redirect(frontend_url, "oauth_failed", provider.name)
 
-    email: str = _email_from_claims(claims)
+    email: str = _email_from_claims(claims, provider.claims_de_correo)
     if not email or not await _oauth_access_allowed(email):
         log.warning("oauth_email_not_allowed", provider=provider.name)
         return _oauth_error_redirect(frontend_url, "email_not_allowed", provider.name)
@@ -1580,7 +1747,31 @@ async def _oauth_callback_impl(
         log_access(auth_method=f"{provider.name}_oauth", user_id=new_id)
         return new_id, is_totp_required(new_id)
 
-    user_id, mfa_required = await run_db(_provision_user)
+    try:
+        user_id, mfa_required = await run_db(_provision_user)
+    except CuentaDeOtroProveedorError as conflicto:
+        # El correo ya es de una cuenta que entra con otro proveedor: no se le
+        # da a esta identidad (ADR-037). Queda en el rastro de la cuenta
+        # afectada —un intento así puede ser una suplantación— sin el correo.
+        log.warning(
+            "oauth_provider_conflict",
+            provider=provider.name,
+            existing_provider=conflicto.proveedor_existente,
+            user_id=conflicto.user_id,
+        )
+        await run_db(
+            log_event,
+            event_type=AUTH_LOGIN_FAILED,
+            user_id=conflicto.user_id,
+            outcome="failure",
+            resource=f"user:{conflicto.user_id}",
+            detail={
+                "reason": OAUTH_OTRO_PROVEEDOR,
+                "provider": provider.name,
+                "existing_provider": conflicto.proveedor_existente,
+            },
+        )
+        return _oauth_error_redirect(frontend_url, OAUTH_OTRO_PROVEEDOR, provider.name)
     log.info("oauth_login_success", user_id=user_id, provider=provider.name)
 
     # Con MFA confirmado la sesión nace pendiente: mandarla al dashboard la

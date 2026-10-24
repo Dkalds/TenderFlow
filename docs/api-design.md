@@ -76,7 +76,7 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 |---|---|---|
 | `account:delete` | DELETE | `/me` |
 | `account:read` | GET | `/me/data` |
-| `admin` | todos | `/admin/dlq`, `/admin/ejecuciones`, `/admin/solicitudes-acceso`, `/admin/users`, `/empresas/reviews`, `/feature-flags`, `/security/audit`, `/security/client-error`, `/security/client-errors`, `/security/csp-report`, `/security/leaked-key`, `/webhooks`, `/webhooks/event-types`, `/webhooks/global` |
+| `admin` | todos | `/admin/dlq`, `/admin/ejecuciones`, `/admin/revision`, `/admin/solicitudes-acceso`, `/admin/users`, `/empresas/reviews`, `/feature-flags`, `/security/audit`, `/security/client-error`, `/security/client-errors`, `/security/csp-report`, `/security/leaked-key`, `/webhooks`, `/webhooks/event-types`, `/webhooks/global` |
 | `analytics:read` | GET/POST | `/analytics/calendario`, `/analytics/clusters`, `/analytics/compare-periods`, `/analytics/competitors`, `/analytics/forecast`, `/analytics/geography`, `/analytics/organos`, `/analytics/overview`, `/analytics/pipeline`, `/analytics/proyectos-modulos`, `/analytics/quality`, `/analytics/resumen`, `/analytics/scoring`, `/analytics/source-freshness`, `/analytics/tecnologias`, `/analytics/trends`, `/analytics/trends-cpv`, `/analytics/utes` |
 | `api_keys:read` | GET/POST/DELETE | `/me/keys` |
 | `api_keys:rotate` | POST | `/me/keys` |
@@ -85,7 +85,7 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `competitive:read` | GET | `/competitive/bajas`, `/competitive/cuota`, `/competitive/empresas`, `/competitive/hhi`, `/competitive/partners`, `/competitive/renovaciones`, `/competitive/watchlist` |
 | `competitive:write` | POST/DELETE | `/competitive/watchlist` |
 | `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/cuentas`, `/cuentas/buscar-organos`, `/cuentas/resumen`, `/etiquetas`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/jobs`, `/me/notification-preferences`, `/me/sessions`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/cobertura`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/radar/proximas`, `/resoluciones`, `/search/global`, `/tecnologias/keywords` |
-| `data:write` | POST/PATCH/PUT/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/logout-all`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/auth/verify-email`, `/cuentas`, `/cuentas/por-organo`, `/etiquetas`, `/etiquetas/aplicar`, `/etiquetas/por-objeto`, `/etiquetas/quitar`, `/me/notification-preferences`, `/me/sessions`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic`, `/tecnologias/keywords` |
+| `data:write` | POST/PATCH/PUT/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/logout-all`, `/auth/password`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/auth/verify-email`, `/cuentas`, `/cuentas/por-organo`, `/etiquetas`, `/etiquetas/aplicar`, `/etiquetas/por-objeto`, `/etiquetas/quitar`, `/me/notification-preferences`, `/me/sessions`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic`, `/tecnologias/keywords` |
 | `empresas:read` | GET | `/empresas`, `/empresas/stats` |
 | `exports:read` | GET | `/exports/calendario`, `/exports/calendario.ics`, `/exports/crm`, `/exports/descargas`, `/exports/download` |
 | `feature_flags:read` | GET | `/feature-flags` |
@@ -251,6 +251,16 @@ opcional **no** es incompatible: un cliente que los ignora sigue funcionando.
 | Ruta | Sunset | Sucesora |
 |---|---|---|
 | `GET /licitaciones` (paginación por offset) | 2027-01-15 | `GET /licitaciones/cursor` |
+| `GET /analytics/compare-periods`, `GET /analytics/resumen/sankey`, `GET /analytics/resumen/top` | 2027-01-15 | — (sin consumidor; [RFC D19](rfc/2026-09-06-rfc-retirada-endpoints-analitica.md)) |
+| `GET /analytics/forecast/retendering` | 2027-02-01 | `GET /competitive/renovaciones` |
+| `POST /notifications/read` | 2027-02-01 | `POST /notifications/alerts/read` |
+| `GET /licitaciones/stream` | 2027-02-01 | `GET /licitaciones/cursor` |
+| Campos `items`, `unread_count` y `hoy` de `GET /notifications` (la operación sigue) | 2027-02-01 | `GET /notifications/alerts`, `GET /analytics/resumen/hoy` |
+
+Las cuatro últimas filas las propone
+[2026-10-23-rfc-retirada-campana-antigua-y-stream](rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md).
+`tests/test_deprecacion_cabeceras.py` fija que toda operación `deprecated` del
+OpenAPI tiene fecha de apagado declarada y la envía en `Sunset`.
 
 
 ## Convenciones de naming

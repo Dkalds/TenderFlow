@@ -6,7 +6,8 @@
  * Primero el dibujo, después la lista: el titular de dato y las cifras del
  * mercado arriba, el reparto en una barra, el mapa de competidores junto a tus
  * vigilados, el perfil de la empresa abierta en una franja, el cara a cara y la
- * matriz por comunidad, y el ranking al final. Hasta 2026-10 era una tabla de
+ * matriz por comunidad, el mercado por segmento (concentración, cuota y bajas)
+ * y el ranking al final. Hasta 2026-10 era una tabla de
  * cien filas con nueve gráficos detrás de pestañas, de uno en uno.
  *
  * El cuerpo vive aquí y no en un `page.tsx` de ruta propia porque
@@ -27,6 +28,7 @@ import { cn } from "@/lib/utils";
 
 import { useCompetidoresData } from "../_hooks/use-competidores-data";
 import { CompetidorPerfil } from "./competidor-perfil";
+import { CompetidoresBajas } from "./competidores-bajas";
 import { CompetidoresCabecera } from "./competidores-cabecera";
 import { CompetidoresCifras } from "./competidores-cifras";
 import { CompetidoresDuelo } from "./competidores-duelo";
@@ -35,6 +37,7 @@ import { CompetidoresMapa } from "./competidores-mapa";
 import { CompetidoresRanking } from "./competidores-ranking";
 import { CompetidoresReparto } from "./competidores-reparto";
 import { CompetidoresResolucion } from "./competidores-resolucion";
+import { CompetidoresSegmentos } from "./competidores-segmentos";
 import { CompetidoresTruncado } from "./competidores-truncado";
 import { CompetidoresVigilados } from "./competidores-vigilados";
 
@@ -151,6 +154,14 @@ export default function CompetidoresView() {
           filtrado={filtrado}
           isLoading={isLoading}
         />
+      </div>
+
+      {/* El mercado por segmento: dónde está concentrado, quién manda en cada
+          trozo y a qué baja se gana. Antes del ranking porque responde a
+          «dónde entrar», que el ranking (quién gana) no contesta. */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+        <CompetidoresSegmentos />
+        <CompetidoresBajas />
       </div>
 
       <CompetidoresRanking

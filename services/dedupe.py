@@ -16,7 +16,9 @@ CPV a 4 dígitos.
 - Match completo (órgano + expediente + CPV4) → confianza 1.0, ``confirmed``.
 - Órgano + expediente sin CPV coincidente → confianza 0.8, ``pending``
   (cola de revisión humana, mismo patrón que ``empresa_review_queue``;
-  el status vive en la propia tabla, preferencia del RFC).
+  el status vive en la propia tabla, preferencia del RFC). La cola se lee y
+  se resuelve en ``db/repositories/dedupe.py`` y se trabaja desde
+  ``/admin/revision/duplicados``.
 
 Canónico: la fila PLACSP cuando existe (más detalle de adjudicación);
 si no, la más antigua por fecha de publicación/extracción; y a igualdad de
@@ -58,9 +60,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, Self
 from urllib.parse import unquote, urlparse
 
-from db.database import connect, connect_read, get_cursor, now_utc_iso, set_cursor
+from db.database import connect_read, get_cursor, set_cursor
 from db.repositories import dedupe as dedupe_repo
-from db.repositories.base import rows_to_dicts
 
 # Reexport: el fragmento SQL bajó a ``db/sql_fragments.py`` (ADR-022) para que
 # ``db/`` pueda interpolarlo sin importar hacia arriba (ADR-024). La lógica de
@@ -241,7 +242,15 @@ class DedupeResult:
         }
 
 
-def _rango_canonico(row: dict[str, Any]) -> tuple[bool, str, str, str]:
+def _rango_de_fuente(fuente: object) -> int:
+    """Gemelo de ``db.sql_fragments.rango_de_fuente_sql``: PLACSP 0, resto 1, TED 2."""
+    valor = None if fuente is None else str(fuente)
+    if _es_placsp(valor):
+        return 0
+    return 2 if valor == FUENTE_TED else 1
+
+
+def _rango_canonico(row: dict[str, Any]) -> tuple[int, str, str, str]:
     """Orden de preferencia de canónica; menor gana.
 
     Espeja ``db.sql_fragments._rango_canonico_sql`` campo a campo. Termina en
@@ -267,9 +276,14 @@ def _rango_canonico(row: dict[str, Any]) -> tuple[bool, str, str, str]:
     vacía como ausente y ``coalesce`` no. Solo afecta a filas de legado con
     fechas en cadena vacía y se deja como estaba: cambiarlo movería canónicas
     que hoy están quietas, que es justo lo que este criterio existe para evitar.
+
+    **PLACSP (con ``bulk_YYYYMM``) → resto → TED (revisión ``v157``).** El
+    primer término era ``fuente != "placsp"``: una fila de PLACSP refrescada por
+    el carril bulk competía como una fuente cualquiera, y TED ganaba a PSCP o a
+    un RSS autonómico si era la más antigua. Ver :func:`_rango_de_fuente`.
     """
     return (
-        str(row.get("fuente")) != "placsp",
+        _rango_de_fuente(row.get("fuente")),
         str(row.get("fecha_publicacion") or "9999"),
         str(row.get("primera_extraccion") or row.get("fecha_extraccion") or "9999"),
         str(row["id_externo"]),
@@ -277,7 +291,7 @@ def _rango_canonico(row: dict[str, Any]) -> tuple[bool, str, str, str]:
 
 
 def _pick_canonical(a: dict[str, Any], b: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    """(canónica, duplicada): PLACSP gana; si no, la más antigua; si no, la de id menor."""
+    """(canónica, duplicada): PLACSP gana y TED pierde; si no, la más antigua; si no, la de id menor."""
     return (a, b) if _rango_canonico(a) <= _rango_canonico(b) else (b, a)
 
 
@@ -572,8 +586,9 @@ def id_evl_de_url(url: str | None) -> str | None:
 def _es_placsp(fuente: str | None) -> bool:
     """PLACSP entra con dos etiquetas: ``placsp`` (ATOM) y ``bulk_YYYYMM`` (ZIP mensual).
 
-    ``_rango_canonico`` solo reconoce la primera, así que una fila que refrescó
-    el carril bulk competía con TED como si fuera una fuente cualquiera.
+    Hasta ``v157`` ``_rango_canonico`` solo reconocía la primera, así que una
+    fila que refrescó el carril bulk competía con TED como si fuera una fuente
+    cualquiera.
     """
     valor = fuente or ""
     return valor == "placsp" or valor.startswith("bulk_")
@@ -594,7 +609,7 @@ def _organo_emparejable(nombre: str | None) -> str | None:
     return normalize_organo(nombre)
 
 
-def _orden_de_candidata(fila: dict[str, Any]) -> tuple[bool, tuple[bool, str, str, str]]:
+def _orden_de_candidata(fila: dict[str, Any]) -> tuple[bool, tuple[int, str, str, str]]:
     """Qué fila representa al contrato cuando TED tiene varias gemelas: PLACSP primero.
 
     Detrás, el mismo criterio total de :func:`_rango_canonico`, para que el
@@ -836,40 +851,6 @@ def expediente_del_pliego(licitacion_id: str) -> str:
     detección por referencia ya descarta como canónica una fila marcada.
     """
     return dedupe_repo.canonical_for(licitacion_id, solo_confirmadas=True) or licitacion_id
-
-
-def review_pending(limit: int = 100) -> list[dict[str, Any]]:
-    """Cola de revisión humana: matches con confianza < 1.0 sin resolver."""
-    with connect_read() as c:
-        return rows_to_dicts(
-            c.execute(
-                """
-                SELECT d.licitacion_id, d.canonical_id, d.clave_match, d.confianza,
-                       d.detectado_en, l.titulo, l.fuente,
-                       lc.titulo AS titulo_canonica, lc.fuente AS fuente_canonica
-                FROM licitaciones_duplicados d
-                JOIN licitaciones l  ON l.id_externo  = d.licitacion_id
-                JOIN licitaciones lc ON lc.id_externo = d.canonical_id
-                WHERE d.status = 'pending'
-                ORDER BY d.detectado_en LIMIT %s
-                """,
-                (max(1, min(int(limit), 500)),),
-            )
-        )
-
-
-def resolve_pending(licitacion_id: str, *, accept: bool, resolved_by: str = "") -> bool:
-    """Resuelve un match pendiente: aceptar lo confirma, rechazarlo lo descarta."""
-    # resolved_at es TEXT ISO (v39_licitaciones_duplicados). Un `NOW()::text`
-    # lo escribía con espacio en vez de `T` y offset corto (normalizado en v151).
-    with connect() as c:
-        cur = c.execute(
-            "UPDATE licitaciones_duplicados "
-            "SET status = %s, resolved_at = %s, resolved_by = %s "
-            "WHERE licitacion_id = %s AND status = 'pending'",
-            ("confirmed" if accept else "rejected", now_utc_iso(), resolved_by, licitacion_id),
-        )
-        return bool(cur.rowcount)
 
 
 def medir_solape(fuente_a: str = "pscp", fuente_b: str = "placsp") -> dict[str, Any]:

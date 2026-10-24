@@ -14,7 +14,7 @@ Las tres funciones de este módulo tienen un invariante compartido con
 que la superficie pública.** Antes no era así, y el modo de fallo era grave y
 silencioso: el detector podía proponer como canónica una fila que la superficie
 pública **no publica** (título corto, sin importe ni descripción), un humano
-confirmaba el par desde ``resolve_pending``, ``exclude_duplicados_sql`` escondía
+confirmaba el par desde ``resolver_pendiente``, ``exclude_duplicados_sql`` escondía
 la duplicada… y el contrato desaparecía entero de la superficie. Es exactamente
 el fallo que ``test_la_subconsulta_filtra_la_fila_gemela_igual_que_la_exterior``
 protege en el lado SQL y que nadie protegía en el lado Python.
@@ -45,7 +45,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from db.database import connect, connect_read
+from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 
 # Importa el privado a propósito. `_publicable_sql` es la definición de qué hace
@@ -369,6 +369,85 @@ def marcar_duplicados_por_referencia(marcas: Sequence[tuple[str, str, str, float
     return len(marcas)
 
 
+# ---------------------------------------------------------------------------
+# Cola de revisión humana (ADR-026)
+# ---------------------------------------------------------------------------
+#
+# Vivían en ``services/dedupe.py`` con el SQL en línea —fuera de ``db/``, contra
+# ADR-022— y sin más llamador que los tests. Las consume
+# ``api/routes/admin_revision.py``: resolver un par no tiene regla de negocio
+# que transformar (ADR-024), así que la ruta llama aquí directamente.
+
+#: Tope de una página de la cola. La consola enseña unas decenas; el tope
+#: impide que un ``limit`` sin acotar traiga la tabla entera.
+MAX_PENDIENTES = 500
+
+
+def pendientes_de_revision(limit: int = 100) -> list[dict[str, Any]]:
+    """Pares ``pending`` con las dos filas a la vista, el más antiguo primero.
+
+    Trae de cada lado lo que hace falta para decidir sin abrir dos fichas:
+    título, fuente, órgano, fecha e importe. Un par cuya fila ya no existe no
+    sale (``JOIN``): no hay nada que comparar.
+    """
+    with connect_read() as c:
+        return rows_to_dicts(
+            c.execute(
+                """
+                SELECT d.licitacion_id, d.canonical_id, d.clave_match, d.confianza,
+                       d.detectado_en,
+                       l.titulo, l.fuente, l.organo_contratacion AS organo,
+                       l.fecha_publicacion, l.importe,
+                       lc.titulo AS titulo_canonica, lc.fuente AS fuente_canonica,
+                       lc.organo_contratacion AS organo_canonica,
+                       lc.fecha_publicacion AS fecha_publicacion_canonica,
+                       lc.importe AS importe_canonica
+                FROM licitaciones_duplicados d
+                JOIN licitaciones l  ON l.id_externo  = d.licitacion_id
+                JOIN licitaciones lc ON lc.id_externo = d.canonical_id
+                WHERE d.status = 'pending'
+                ORDER BY d.detectado_en, d.licitacion_id LIMIT %s
+                """,
+                (max(1, min(int(limit), MAX_PENDIENTES)),),
+            )
+        )
+
+
+def pendientes_count() -> int:
+    """Tamaño de la cola de duplicados por revisar. Se publica en ``/analytics/quality``."""
+    with connect_read() as c:
+        # Con alias a propósito: la tabla seguida de su filtro por estado, sin
+        # alias, es la forma que `tests/test_dedup_guardrail.py` persigue como
+        # copia a mano de `exclude_duplicados_sql`. Esto cuenta la cola, no
+        # excluye nada.
+        fila = c.execute(
+            "SELECT COUNT(*) FROM licitaciones_duplicados d WHERE d.status = 'pending'"
+        ).fetchone()
+    return int(fila[0] or 0) if fila else 0
+
+
+def resolver_pendiente(licitacion_id: str, *, accept: bool, resolved_by: str = "") -> bool:
+    """Resuelve un par pendiente: aceptar lo confirma, rechazarlo lo descarta.
+
+    Devuelve ``False`` si el par no existe o ya no estaba ``pending``: una
+    decisión tomada no se reabre desde aquí. ``confirmed`` esconde la fila de
+    listados **y** métricas; ``rejected`` la devuelve a los dos, y ningún
+    detector vuelve a marcarla: :func:`marcar_duplicados` no pisa una marca
+    existente y :func:`marcar_duplicados_por_referencia` solo promueve las
+    ``pending``.
+    """
+    # resolved_at es TEXT ISO (v39_licitaciones_duplicados). Un `NOW()::text`
+    # lo escribía con espacio en vez de `T` y offset corto (normalizado en v151).
+    with connect() as c:
+        cur = c.execute(
+            "UPDATE licitaciones_duplicados "
+            "SET status = %s, resolved_at = %s, resolved_by = %s "
+            "WHERE licitacion_id = %s AND status = 'pending'",
+            ("confirmed" if accept else "rejected", now_utc_iso(), resolved_by, licitacion_id),
+        )
+        return bool(cur.rowcount)
+
+
 __all__ = [
     "es_canonica_visible",
     "filas_nuevas_de_fuente",
@@ -378,6 +457,9 @@ __all__ = [
     "iter_filas_publicables_de_organos",
     "marcar_duplicados",
     "marcar_duplicados_por_referencia",
+    "pendientes_count",
+    "pendientes_de_revision",
+    "resolver_pendiente",
     "ted_sin_pareja_con_id_evl",
 ]
 

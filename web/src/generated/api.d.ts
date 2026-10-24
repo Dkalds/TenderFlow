@@ -92,6 +92,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/revision/duplicados": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Pares de duplicados sin decidir */
+        get: operations["listar_duplicados_api_v1_admin_revision_duplicados_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/revision/duplicados/{id_externo}/resolver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirmar o rechazar un par de duplicados */
+        post: operations["resolver_duplicado_api_v1_admin_revision_duplicados__id_externo__resolver_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/revision/organos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fusiones dudosas de órganos sin decidir */
+        get: operations["listar_organos_api_v1_admin_revision_organos_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/revision/organos/{revision_id}/resolver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Fusionar una grafía con su candidato o separarla como órgano propio */
+        post: operations["resolver_organo_api_v1_admin_revision_organos__revision_id__resolver_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/revision/verdad": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Auditoría de verdad del dato contra sus umbrales calibrados
+         * @description Las secciones de BD de ``scripts/audit_domain_truth.py``, cacheadas una hora.
+         *
+         *     La (b), multi-lote, no está: lee ZIP en disco que el servidor de la API no
+         *     tiene. Una sección que no pudo medirse sale con ``estado="error"`` y no
+         *     tumba las demás.
+         */
+        get: operations["verdad_dominio_api_v1_admin_revision_verdad_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/solicitudes-acceso": {
         parameters: {
             query?: never;
@@ -300,7 +392,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * [DEPRECADO 2026-12-04] Comparación entre dos periodos
+         * [DEPRECADO 2027-01-15] Comparación entre dos periodos
          * @deprecated
          * @description Compare two time periods side-by-side.
          */
@@ -369,7 +461,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Forecast Retendering
+         * [DEPRECADO 2027-02-01] Previsión de re-licitaciones
          * @deprecated
          * @description Retendering forecast — contracts approaching end of term.
          *
@@ -379,8 +471,8 @@ export interface paths {
          *        ``GET /competitive/renovaciones`` con un dataset más rico (incluye
          *        `riesgo_cambio` y opportunity score). Se mantiene el endpoint por
          *        compatibilidad de contrato público (retirarlo es breaking change,
-         *        AGENTS.md §5) hasta confirmar ausencia de consumidores externos.
-         *        Ver docs/IMPROVEMENT_BACKLOG.md (Cerrados, 2026-07-20).
+         *        AGENTS.md §5). Apagado el 2027-02-01: ver
+         *        docs/rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md.
          */
         get: operations["forecast_retendering_api_v1_analytics_forecast_retendering_get"];
         put?: never;
@@ -689,7 +781,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * [DEPRECADO 2026-12-04] Flujo Sankey del resumen
+         * [DEPRECADO 2027-01-15] Flujo Sankey del resumen
          * @deprecated
          * @description Sankey flow: tipo_contrato → estado.
          */
@@ -730,7 +822,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * [DEPRECADO 2026-12-04] Top de licitaciones del resumen
+         * [DEPRECADO 2027-01-15] Top de licitaciones del resumen
          * @deprecated
          * @description Top N licitaciones by importe.
          */
@@ -1165,7 +1257,9 @@ export interface paths {
         put?: never;
         /**
          * Confirm Password Reset
-         * @description Consume un token una sola vez, cambia la contraseña y revoca sesiones.
+         * @description Consume un token una sola vez, cambia la contraseña y revoca sesiones y claves.
+         *
+         *     Al titular le llega después un aviso de que su contraseña ha cambiado.
          */
         post: operations["confirm_password_reset_api_v1_auth_password_reset_confirm_post"];
         delete?: never;
@@ -1188,6 +1282,32 @@ export interface paths {
          * @description Emite una respuesta indistinguible exista o no la cuenta.
          */
         post: operations["request_password_reset_api_v1_auth_password_reset_request_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/password/change": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Password
+         * @description Cambia la contraseña conociendo la actual.
+         *
+         *     Exige sesión con CSRF (y el segundo factor ya verificado, si la cuenta lo
+         *     tiene). La nueva pasa por la misma política que el alta y el reset. Al
+         *     cambiarla se cierran **las demás** sesiones —la que hace el cambio sigue
+         *     abierta— y se desactivan las claves de API de la cuenta, y llega un aviso
+         *     al correo del titular.
+         */
+        post: operations["change_password_api_v1_auth_password_change_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2503,13 +2623,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * [DEPRECADO 2026-12-04] Listado paginado de licitaciones (offset)
+         * [DEPRECADO 2027-01-15] Listado paginado de licitaciones (offset)
          * @deprecated
          * @description Devuelve lista paginada con filtros opcionales.
          *
-         *     > **Deprecation notice**: Se recomienda usar `/licitaciones/cursor` para
-         *     > datasets grandes. La paginación offset se mantendrá pero quedará marcada
-         *     > como legacy en futuras versiones.
+         *     > **Deprecado**: deja de responder el 2027-01-15 (cabeceras `Deprecation`
+         *     > y `Sunset`; docs/rfc/2026-09-06-rfc-retirada-endpoints-analitica.md).
+         *     > La sucesora es `/licitaciones/cursor`, que sirve el mismo dato sin
+         *     > `COUNT(*)` ni `OFFSET`.
          */
         get: operations["list_licitaciones_api_v1_licitaciones_get"];
         put?: never;
@@ -2628,7 +2749,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * SSE — Notificaciones en tiempo real de nuevas licitaciones
+         * [DEPRECADO 2027-02-01] SSE — Notificaciones en tiempo real de nuevas licitaciones
+         * @deprecated
          * @description Abre una conexión Server-Sent Events. Emite eventos ``licitaciones_nuevas`` cuando el scraper ingesta datos nuevos, y ``heartbeat`` cada 30 s para mantener la conexión viva. La conexión se cierra automáticamente tras 5 minutos.
          */
         get: operations["licitaciones_stream_api_v1_licitaciones_stream_get"];
@@ -3716,7 +3838,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Marcar novedades como leidas */
+        /**
+         * [DEPRECADO 2027-02-01] Marcar novedades como leidas
+         * @deprecated
+         * @description Marca novedades del mercado como leídas. Sin consumidor desde el 2026-10-12.
+         *
+         *     La campana ya no lista novedades: sus alertas se marcan con
+         *     ``POST /notifications/alerts/read``, y la última visita del Resumen con
+         *     ``POST /analytics/resumen/desde-mi-ultima-visita/visto``.
+         */
         post: operations["post_mark_read_api_v1_notifications_read_post"];
         delete?: never;
         options?: never;
@@ -5520,16 +5650,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Feed Atom con las últimas licitaciones que coinciden con tu watchlist
-         * @description Devuelve un feed Atom 1.0 con las últimas licitaciones que coinciden
-         *     con las entradas de la watchlist asociadas al API key autenticado.
+         * Feed Atom con las últimas licitaciones que casan tus alertas
+         * @description Feed Atom 1.0 con lo que casan las alertas activas del titular de la clave.
          *
-         *     Compatible con cualquier lector RSS/Atom (Feedly, NewsBlur, etc.)
-         *     usando la URL: ``/api/v1/watchlist/feed.xml`` con cabecera
-         *     ``X-API-Key: <token>``.
-         *
-         *     El ``user_key`` se deriva del ``key_hash`` de la API key autenticada,
-         *     garantizando que cada key solo accede a su propia watchlist.
+         *     Mismo resultado que ``GET /watchlist/rules/{id}/matches`` regla a regla,
+         *     juntado y ordenado por fecha de publicación. Compatible con cualquier
+         *     lector de feeds: basta pegar la URL con ``?token=<clave>``.
          */
         get: operations["watchlist_feed_api_v1_watchlist_feed_xml_get"];
         put?: never;
@@ -5855,6 +5981,11 @@ export interface paths {
          *     No reinicia el contador de intentos: hacerlo convertiría este botón en una
          *     forma de reintentar indefinidamente un endpoint muerto, que es justo lo que
          *     el tope de `MAX_INTENTOS` evita.
+         *
+         *     Mismo alcance que ``rotate-secret``: el webhook tiene que ser de la
+         *     organización activa y la entrega, de ese webhook. Hasta 2026-10 exigía
+         *     ``require_admin`` —el dueño de la organización no podía reenviar las
+         *     suyas— y no comprobaba ninguna de las dos cosas.
          */
         post: operations["redeliver_api_v1_webhooks__webhook_id__deliveries__delivery_id__redeliver_post"];
         delete?: never;
@@ -8537,6 +8668,70 @@ export interface components {
             /** Items */
             items: components["schemas"]["DocumentoSummary"][];
         };
+        /**
+         * DuplicadoPendiente
+         * @description Un par sin decidir: la fila que se escondería y la canónica que se queda.
+         */
+        DuplicadoPendiente: {
+            /**
+             * Canonical Id
+             * @description La fila canónica que se queda.
+             */
+            canonical_id: string;
+            /** Clave Match */
+            clave_match?: string | null;
+            /** Confianza */
+            confianza: number;
+            /** Detectado En */
+            detectado_en?: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion?: string | null;
+            /** Fecha Publicacion Canonica */
+            fecha_publicacion_canonica?: string | null;
+            /** Fuente */
+            fuente?: string | null;
+            /** Fuente Canonica */
+            fuente_canonica?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Importe Canonica */
+            importe_canonica?: number | null;
+            /**
+             * Licitacion Id
+             * @description La fila marcada como duplicada.
+             */
+            licitacion_id: string;
+            /** Organo */
+            organo?: string | null;
+            /** Organo Canonica */
+            organo_canonica?: string | null;
+            /** Titulo */
+            titulo?: string | null;
+            /** Titulo Canonica */
+            titulo_canonica?: string | null;
+        };
+        /** DuplicadoResuelto */
+        DuplicadoResuelto: {
+            /** Detalle */
+            detalle: string;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "confirmed" | "rejected";
+            /** Licitacion Id */
+            licitacion_id: string;
+        };
+        /** DuplicadosPendientes */
+        DuplicadosPendientes: {
+            /** Items */
+            items?: components["schemas"]["DuplicadoPendiente"][];
+            /**
+             * Total
+             * @description Pares pendientes en toda la cola, no solo en esta página.
+             */
+            total: number;
+        };
         /** EjecucionesResumen */
         EjecucionesResumen: {
             /** Generado At */
@@ -10855,19 +11050,19 @@ export interface components {
             alerts_unread_count: number;
             /**
              * @deprecated
-             * @description Deprecado: contadores del mercado, que la campana ya no pinta. Los mismos, con el ámbito de la barra, en GET /analytics/resumen/hoy.
+             * @description Deprecado: contadores del mercado, que la campana ya no pinta; se retira el 2027-02-01. Los mismos, con el ámbito de la barra, en GET /analytics/resumen/hoy.
              */
             hoy?: components["schemas"]["HoyCounters"];
             /**
              * Items
              * @deprecated
-             * @description Deprecado: siempre vacío. La campana ya no lista novedades del mercado; están en GET /analytics/resumen/novedades.
+             * @description Deprecado: siempre vacío; se retira el 2027-02-01. La campana ya no lista novedades del mercado; están en GET /analytics/resumen/novedades.
              */
             items?: components["schemas"]["NotificationItem"][];
             /**
              * Unread Count
              * @deprecated
-             * @description Deprecado: siempre 0 (acompañaba a `items`).
+             * @description Deprecado: siempre 0 (acompañaba a `items`); se retira el 2027-02-01.
              * @default 0
              */
             unread_count: number;
@@ -11538,6 +11733,65 @@ export interface components {
             total_licitaciones: number;
         };
         /**
+         * OrganoPendiente
+         * @description Una grafía que se parece a un órgano del maestro, a la espera de decisión.
+         */
+        OrganoPendiente: {
+            /** Alias Normalizado */
+            alias_normalizado: string;
+            /** Candidato Nombre */
+            candidato_nombre?: string | null;
+            /** Candidato Organo Id */
+            candidato_organo_id?: number | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Dir3 */
+            dir3?: string | null;
+            /** Id */
+            id: number;
+            /** Nombre Original */
+            nombre_original: string;
+            /**
+             * Score
+             * @default 0
+             */
+            score: number;
+        };
+        /** OrganoResuelto */
+        OrganoResuelto: {
+            /** Detalle */
+            detalle: string;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "accepted" | "rejected";
+            /**
+             * Filas Asignadas
+             * @description Licitaciones que recibieron el órgano.
+             */
+            filas_asignadas: number;
+            /** Id */
+            id: number;
+            /** Organo Id */
+            organo_id: number;
+            /**
+             * Organo Nuevo
+             * @description True si la grafía quedó como órgano propio.
+             */
+            organo_nuevo: boolean;
+        };
+        /** OrganosPendientes */
+        OrganosPendientes: {
+            /** Items */
+            items?: components["schemas"]["OrganoPendiente"][];
+            /**
+             * Total
+             * @description Grafías pendientes en toda la cola, no solo en esta página.
+             */
+            total: number;
+        };
+        /**
          * OrganosResult
          * @description Combined organos response.
          */
@@ -11799,6 +12053,16 @@ export interface components {
             ultimo_estado: "ok" | "error" | "omitido" | "omitido_por_dependencia" | "sin_ejecuciones";
             /** Ultimo Fallo */
             ultimo_fallo?: string | null;
+        };
+        /**
+         * PasswordChangeRequest
+         * @description Cambio de contraseña desde Ajustes: la actual y la nueva.
+         */
+        PasswordChangeRequest: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
         };
         /** PasswordResetConfirm */
         PasswordResetConfirm: {
@@ -13342,6 +13606,8 @@ export interface components {
             dlq_count: number;
             /** Documentos Por Formato */
             documentos_por_formato?: components["schemas"]["DocumentoFormatoCobertura"][];
+            /** Duplicados Pendientes */
+            duplicados_pendientes?: number | null;
             /**
              * Fechas No Iso
              * @default 0
@@ -14115,6 +14381,14 @@ export interface components {
             review_id: number;
             /** Status */
             status: string;
+        };
+        /** RevisionDecision */
+        RevisionDecision: {
+            /**
+             * Aceptar
+             * @description Duplicados: true confirma el par (la fila se esconde de listados y métricas), false lo rechaza (vuelve a contar). Órganos: true fusiona la grafía con el candidato, false crea un órgano propio.
+             */
+            aceptar: boolean;
         };
         /**
          * Rival
@@ -15966,6 +16240,58 @@ export interface components {
             total: number;
         };
         /**
+         * VerdadDominio
+         * @description Lo que mide la auditoría nocturna de verdad del dato, contra sus umbrales.
+         */
+        VerdadDominio: {
+            /** Medido En */
+            medido_en: string;
+            /** Secciones */
+            secciones?: components["schemas"]["VerdadSeccion"][];
+            /**
+             * Violaciones
+             * @description Las mismas frases que manda el correo del cron.
+             */
+            violaciones?: string[];
+        };
+        /** VerdadMetrica */
+        VerdadMetrica: {
+            /** Detalle */
+            detalle?: string | null;
+            /** Etiqueta */
+            etiqueta: string;
+            /**
+             * Limite
+             * @description Umbral calibrado; null si el número se informa sin evaluar.
+             */
+            limite?: number | null;
+            /**
+             * Supera
+             * @default false
+             */
+            supera: boolean;
+            /** Unidad */
+            unidad: string;
+            /** Valor */
+            valor?: number | null;
+        };
+        /** VerdadSeccion */
+        VerdadSeccion: {
+            /** Clave */
+            clave: string;
+            /** Error */
+            error?: string | null;
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "ok" | "violacion" | "error" | "sin_datos";
+            /** Metricas */
+            metricas?: components["schemas"]["VerdadMetrica"][];
+            /** Titulo */
+            titulo: string;
+        };
+        /**
          * VigenciaDocumento
          * @description Estado de vigencia de un documento del perfil, calculado en el servidor.
          *
@@ -16428,6 +16754,8 @@ export interface components {
         WebhookDelivery: {
             /** Created At */
             created_at: string;
+            /** Estado */
+            estado?: ("pending" | "delivered" | "failed") | null;
             /** Event Type */
             event_type: string;
             /** Id */
@@ -16788,6 +17116,202 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EjecucionesResumen"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_duplicados_api_v1_admin_revision_duplicados_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicadosPendientes"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolver_duplicado_api_v1_admin_revision_duplicados__id_externo__resolver_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                /** @description La fila marcada como duplicada. */
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuplicadoResuelto"];
+                };
+            };
+            /** @description El par no existe o ya estaba resuelto */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    listar_organos_api_v1_admin_revision_organos_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganosPendientes"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolver_organo_api_v1_admin_revision_organos__revision_id__resolver_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                revision_id: number;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevisionDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganoResuelto"];
+                };
+            };
+            /** @description La revisión no existe o ya estaba resuelta */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verdad_dominio_api_v1_admin_revision_verdad_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VerdadDominio"];
                 };
             };
             /** @description Validation Error */
@@ -18822,6 +19346,64 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    change_password_api_v1_auth_password_change_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusOk"];
+                };
+            };
+            /** @description La contraseña actual no es correcta, o la nueva no cumple la política. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La cuenta no tiene contraseña (entra solo con un proveedor). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Demasiadas contraseñas actuales erróneas seguidas. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -27680,8 +28262,12 @@ export interface operations {
     watchlist_feed_api_v1_watchlist_feed_xml_get: {
         parameters: {
             query?: {
+                /** @description Organización cuyas alertas se leen; por defecto la personal. */
+                organization_id?: number | null;
                 /** @description Máximo de entradas */
                 limit?: number;
+                /** @description La API key, para lectores de feeds que no envían cabeceras. Equivale a `X-API-Key` y exige el mismo scope. */
+                token?: string | null;
             };
             header?: never;
             path?: never;
@@ -27698,14 +28284,14 @@ export interface operations {
                     "application/atom+xml": unknown;
                 };
             };
-            /** @description Token inválido o ausente */
+            /** @description Clave inválida, ausente o sin titular */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description Scope watchlist:read requerido */
+            /** @description Scope watchlist:read requerido, o la organización no es tuya */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -28616,7 +29202,10 @@ export interface operations {
     };
     redeliver_api_v1_webhooks__webhook_id__deliveries__delivery_id__redeliver_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -28646,14 +29235,21 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Webhook o entrega no encontrados */
+            /** @description Scope insuficiente o sin permiso de escritura en la organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El webhook no es de tu organización, o la entrega no es suya */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description La entrega ya se completó */
+            /** @description La entrega ya se completó o no guarda cuerpo que reenviar */
             409: {
                 headers: {
                     [name: string]: unknown;

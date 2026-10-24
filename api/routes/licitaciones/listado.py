@@ -87,7 +87,7 @@ async def _organizacion_de_la_etiqueta(
 @router.get(
     "/licitaciones",
     response_model=PaginatedResponse[LicitacionSummary],
-    summary="[DEPRECADO 2026-12-04] Listado paginado de licitaciones (offset)",
+    summary="[DEPRECADO 2027-01-15] Listado paginado de licitaciones (offset)",
     deprecated=True,
     responses={
         200: {"description": "Lista de licitaciones"},
@@ -212,9 +212,10 @@ async def list_licitaciones(
 ) -> PaginatedResponse[LicitacionSummary]:
     """Devuelve lista paginada con filtros opcionales.
 
-    > **Deprecation notice**: Se recomienda usar `/licitaciones/cursor` para
-    > datasets grandes. La paginación offset se mantendrá pero quedará marcada
-    > como legacy en futuras versiones.
+    > **Deprecado**: deja de responder el 2027-01-15 (cabeceras `Deprecation`
+    > y `Sunset`; docs/rfc/2026-09-06-rfc-retirada-endpoints-analitica.md).
+    > La sucesora es `/licitaciones/cursor`, que sirve el mismo dato sin
+    > `COUNT(*)` ni `OFFSET`.
     """
     _validate_query(q)
     _validate_date(fecha_desde, "fecha_desde")

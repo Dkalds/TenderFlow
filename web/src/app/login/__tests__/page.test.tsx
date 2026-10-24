@@ -376,6 +376,13 @@ describe("lo que trae la URL", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Tu cuenta no tiene acceso a TenderFlow");
   });
 
+  it("el correo de una cuenta de otro proveedor dice con cuál entrar (ADR-037)", () => {
+    query.actual = "error=account_other_provider";
+    render(<LoginPage />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("ya tiene cuenta con otro proveedor");
+  });
+
   it("un código de error desconocido cae al mensaje genérico", () => {
     query.actual = "error=algo_que_nadie_previo";
     render(<LoginPage />);

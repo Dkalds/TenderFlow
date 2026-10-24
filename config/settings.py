@@ -11,6 +11,7 @@ from typing import Literal
 from pydantic import AnyUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from config.settings_embeddings import EmbeddingsOnnxSettings
 from config.settings_resumen import ResumenPregenSettings
 from shared.scoring_weights import validate_scoring_weights
 
@@ -64,7 +65,7 @@ if "site-packages" in str(_ROOT):
     _DEFAULT_DATA_DIR = Path("/tmp/licitaciones_data")  # noqa: S108
 
 
-class Settings(ResumenPregenSettings, BaseSettings):
+class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, BaseSettings):
     """Todas las variables de entorno del proyecto, validadas al arrancar."""
 
     model_config = SettingsConfigDict(
@@ -451,7 +452,9 @@ class Settings(ResumenPregenSettings, BaseSettings):
     # así que se copia a mano y `test_allowlist_de_documentos_por_defecto_sale_del_inventario`
     # exige que coincidan.
     DOCUMENT_ALLOWED_HOSTS: str = (
-        "contrataciondelestado.es,*.contrataciondelestado.es,ted.europa.eu,contractaciopublica.cat"
+        "contrataciondelestado.es,*.contrataciondelestado.es,ted.europa.eu,contractaciopublica.cat,"
+        # TACRC: PDF de la resolución vinculada (scraper/connectors/tacrc.py).
+        "www.hacienda.gob.es"
     )
     WEBHOOK_ALLOWED_HOSTS: str = ""
     # Alta ABIERTA a cualquier correo, sin verificar el buzón (el modo de dev y
@@ -1192,7 +1195,20 @@ class Settings(ResumenPregenSettings, BaseSettings):
         vacío rechaza cada mensaje con un 4xx, y ambos fallos serían silenciosos
         porque el transporte nunca propaga. Aplica a todos los perfiles: el
         scraper y los workers también escriben correo.
+
+        ``console`` no se admite en producción ni en staging: no envía nada y
+        escribe el cuerpo de cada correo en el log. La recuperación de
+        contraseña, la verificación del alta y los avisos dejaban de funcionar
+        sin que nada fallara, y el log se llenaba de direcciones y enlaces que
+        solo el redactor separaba de quien lo leyera. Es un backend de
+        desarrollo, y desde 2026-10 el arranque lo dice.
         """
+        if self._is_prod_data and self.EMAIL_BACKEND == "console":
+            raise ValueError(
+                f"EMAIL_BACKEND=console no se admite en ENV={self.ENV}: no envía ningún "
+                "correo y escribe su cuerpo en el log. Usa smtp, resend o postmark "
+                "(ver docs/runbooks/correo-transaccional.md)."
+            )
         if self._is_prod_data and self.EMAIL_BACKEND in ("resend", "postmark"):
             faltan = [
                 nombre

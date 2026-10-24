@@ -179,7 +179,7 @@ def test_las_cuatro_operaciones_estan_deprecadas(
 
     Ver docs/rfc/2026-09-06-rfc-retirada-endpoints-analitica.md: la marca es lo
     único que avisa a un integrador que no lee el repositorio, y la fecha de
-    borrado es el 2026-12-04.
+    borrado es el 2027-01-15 (era el 2026-12-04; ver el addendum de la RFC).
     """
     operacion = spec["paths"][ruta][metodo]
     assert operacion.get("deprecated") is True

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
@@ -345,7 +345,8 @@ class WebhookRepository:
         with connect_read() as c:
             try:
                 cur = c.execute(
-                    "SELECT id, webhook_id, event_type, status_code, success, payload_size, created_at "
+                    "SELECT id, webhook_id, event_type, status_code, success, payload_size, created_at, "
+                    "       estado "
                     "FROM webhook_deliveries WHERE webhook_id = %s ORDER BY created_at DESC LIMIT %s",
                     (webhook_id, limit),
                 )
@@ -509,7 +510,12 @@ def marcar_para_reintento(
         return bool(getattr(cur, "rowcount", 0))
 
 
-def encolar_reintento(delivery_id: int, *, ahora: str) -> bool:
+#: Resultado de :func:`encolar_reintento`. Tres y no un booleano porque la ruta
+#: responde distinto a cada uno: 202, 404 y 409.
+ResultadoReintento = Literal["encolada", "no_existe", "no_reenviable"]
+
+
+def encolar_reintento(delivery_id: int, *, webhook_id: int, ahora: str) -> ResultadoReintento:
     """Pone una entrega en cola para reenviarla **ya** (C2.4, re-entrega manual).
 
     Es lo que hace `POST /webhooks/{id}/deliveries/{delivery_id}/redeliver`: no
@@ -517,17 +523,34 @@ def encolar_reintento(delivery_id: int, *, ahora: str) -> bool:
     conexión HTTP a un endpoint que puede estar caído— sino que la marca
     `pending` con `proximo_intento` en el pasado, y el job la recoge.
 
+    **La entrega tiene que ser de `webhook_id`.** Hasta 2026-10 se filtraba
+    solo por `id`, y la ruta comprobaba el webhook pero no el par: con el id de
+    una entrega ajena y un webhook propio se reencolaba la entrega de otra
+    organización. El llamante comprueba que el webhook es de su organización;
+    aquí se cierra que la entrega sea de ese webhook.
+
     **No reinicia `intentos`.** Reiniciarlo convertiría el botón de re-entrega
     en una forma de reintentar indefinidamente un endpoint muerto, que es justo
     lo que el tope de `MAX_INTENTOS` evita.
+
+    `no_reenviable` cubre lo ya entregado y las entregas sin cuerpo guardado
+    (los `ping`, que escribe `WebhookRepository.record_delivery`): reenviar un
+    cuerpo reconstruido no sería la misma entrega que el receptor rechazó.
     """
     with connect() as c:
         cur = c.execute(
             "UPDATE webhook_deliveries SET estado = 'pending', proximo_intento = %s "
-            "WHERE id = %s AND estado <> 'delivered'",
-            (ahora, delivery_id),
+            "WHERE id = %s AND webhook_id = %s AND estado <> 'delivered' "
+            "  AND payload_json IS NOT NULL",
+            (ahora, delivery_id, webhook_id),
         )
-        return bool(getattr(cur, "rowcount", 0))
+        if getattr(cur, "rowcount", 0):
+            return "encolada"
+        existe = c.execute(
+            "SELECT 1 FROM webhook_deliveries WHERE id = %s AND webhook_id = %s",
+            (delivery_id, webhook_id),
+        ).fetchone()
+        return "no_reenviable" if existe is not None else "no_existe"
 
 
 def pendientes_de_reintento(*, ahora: str, limit: int = 100) -> list[dict[str, Any]]:

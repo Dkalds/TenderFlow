@@ -166,3 +166,63 @@ def test_reprocesar_lee_el_mes_y_asigna(multilote: None, monkeypatch: pytest.Mon
 
     # Repetir no cambia nada: solo se rellena el `lote_id` vacío.
     assert reprocesar("2026-06", "2026-06", aplicar=True).filas_actualizadas == 0
+
+
+def test_casa_el_importe_que_la_columna_real_redondeo(tmp_db: Any) -> None:
+    """La forma que dejaba sin lote a las adjudicaciones con céntimos.
+
+    En producción ``importe_adjudicado`` fue ``real`` hasta ``v156``: 39.567,94 €
+    quedó guardado como 39.567,94140625, y migrar la columna a float8 no
+    devuelve los céntimos. El XML trae 39.567,94, y la igualdad exacta contra el
+    float8 del parser no casaba nunca: medido el 2026-10-23, 113 de las 121
+    adjudicaciones de expedientes multilote que seguían sin lote tenían un
+    importe así. Una fila guardada como float4 se compara a la precisión de
+    ``real``; la que ya se escribe en float8, por igualdad exacta.
+    """
+    from db.database import connect
+
+    fecha = "2026-09-01T10:00:00+00:00"
+    with connect() as conn:
+        _sembrar(conn, _LIC, [])
+        conn.execute(
+            "INSERT INTO adjudicaciones "
+            "(licitacion_id, nombre, nif, importe_adjudicado, fecha_extraccion) "
+            "VALUES (%s, 'Redondeada SL', 'B28000003', %s::real, %s), "
+            "       (%s, 'Exacta SL', 'B28000004', %s, %s)",
+            (_LIC, 39567.94, fecha, _LIC, 24415.51, fecha),
+        )
+
+    cambiadas = asignar_lotes(
+        [
+            AsignacionLote(_LIC, "Redondeada SL", "B28000003", 39567.94, "1"),
+            AsignacionLote(_LIC, "Exacta SL", "B28000004", 24415.51, "2"),
+        ]
+    )
+
+    assert cambiadas == 2
+    assert _lotes_de(_LIC) == {"Redondeada SL": "1", "Exacta SL": "2"}
+
+
+def test_dos_importes_float8_que_redondean_igual_no_se_cruzan(tmp_db: Any) -> None:
+    """Tras ``v156``, céntimos que float4 no distingue siguen siendo distintos.
+
+    12.345.678,91 € y 12.345.678,95 € caen en el mismo float4. Si el reproceso
+    bajara siempre los dos lados a ``real``, la asignación del lote 1 casaría
+    también con la adjudicación del lote 2 (misma empresa, misma licitación).
+    """
+    from db.database import connect
+
+    fecha = "2026-09-01T10:00:00+00:00"
+    with connect() as conn:
+        _sembrar(conn, _LIC, [])
+        conn.execute(
+            "INSERT INTO adjudicaciones "
+            "(licitacion_id, nombre, nif, importe_adjudicado, fecha_extraccion) "
+            "VALUES (%s, 'Gemela SL', 'B28000005', %s::float8, %s), "
+            "       (%s, 'Gemela SL', 'B28000005', %s::float8, %s)",
+            (_LIC, 12345678.91, fecha, _LIC, 12345678.95, fecha),
+        )
+
+    cambiadas = asignar_lotes([AsignacionLote(_LIC, "Gemela SL", "B28000005", 12345678.91, "1")])
+
+    assert cambiadas == 1

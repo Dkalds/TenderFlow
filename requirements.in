@@ -114,6 +114,12 @@ boto3>=1.43.56,<1.44
 # POST /ficha-pliego/extract descarga y extrae adjuntos bajo demanda
 # (services/rag/fact_sheet.py::ensure_documents_ready). Mismo rango que el extra.
 pypdf>=4.0,<7
+# Codificador ONNX de la consulta de la búsqueda por significado
+# (services/embeddings_onnx.py): el mismo modelo que sentence-transformers, sin
+# PyTorch. Lo instala la imagen de la API (requirements-api.in); aquí para que
+# el lock del CI lo pine y los hijos salgan con las mismas versiones.
+onnxruntime>=1.20,<2
+tokenizers>=0.20,<1
 
 # Servidor MCP interno (mcp_server/): SDK oficial v2 (`mcp.server.mcpserver.MCPServer`,
 # sin `FastMCP`). Solo lo instala el proceso MCP (requirements-mcp.in); vive aquí

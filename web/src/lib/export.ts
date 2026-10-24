@@ -177,7 +177,11 @@ export type RecursoDescargaLocal =
   // F2.6: el PDF del guion llega de la API pero se descarga por aquí para
   // poder explicar un 404 (guion no generado para el pliego vigente) en vez
   // del mensaje genérico de exportación de `triggerDownload`.
-  | "guion";
+  | "guion"
+  // El rastro de auditoría de la organización (Equipo → Actividad): el CSV lo
+  // arma la API, pero se descarga por aquí para avisar si llegó al tope de
+  // filas de una página.
+  | "auditoria-organizacion";
 
 /** Formato de la métrica deducido de la extensión del fichero generado. */
 function formatoDeNombre(nombre: string): EventosProducto["export_lanzado"]["formato"] {

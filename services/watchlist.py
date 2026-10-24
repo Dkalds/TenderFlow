@@ -96,96 +96,101 @@ def update_frequency(
     return _update_frequency(entry_id, frequency, user_key, user_id=user_id)
 
 
-def generate_atom_feed(user_key: str, limit: int = 50) -> str:
-    """Genera un feed Atom 1.0 con las últimas licitaciones que coinciden con la watchlist del usuario.
+#: Tope de reglas que se cruzan por petición del feed.
+#:
+#: Cada regla es una consulta (``list_matches``), y un lector de feeds pide la
+#: URL cada pocos minutos. Las reglas llegan de la más reciente a la más
+#: antigua, así que el corte deja fuera las que más tiempo llevan sin tocarse.
+MAX_REGLAS_FEED = 25
+
+
+def _rfc3339(valor: object, por_defecto: str) -> str:
+    """Fecha de la licitación en el formato que exige Atom, o ``por_defecto``."""
+    from datetime import datetime
+
+    try:
+        fecha = datetime.fromisoformat(str(valor).replace("Z", "+00:00"))
+    except ValueError:
+        return por_defecto
+    return fecha.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def generate_atom_feed(
+    user_key: str,
+    limit: int = 50,
+    *,
+    user_id: int | None = None,
+    organization_id: int | None = None,
+) -> str:
+    """Feed Atom 1.0 con lo que casan las alertas activas del usuario.
+
+    Las alertas son las reglas de ``/mi-watchlist`` (``watchlist_rules``) y lo
+    que casa cada una sale de :func:`services.watchlist_rules.list_matches`, el
+    mismo predicado que ``GET /watchlist/rules/{id}/matches``: el feed no puede
+    ser una versión más ancha de la alerta. Hasta 2026-10 leía la tabla
+    heredada ``watchlist_cpv`` y casaba solo por prefijo CPV, de modo que ni
+    veía las reglas que la gente crea hoy ni respetaba su importe mínimo.
 
     Args:
-        user_key: Identificador opaco del usuario (hash de email/nombre).
-        limit: Número máximo de entradas a incluir en el feed.
+        user_key: Identidad heredada del titular (``user_key_from_email``).
+        limit: Número máximo de entradas del feed.
+        user_id: Titular; hace dual la lectura de sus reglas (v129).
+        organization_id: Organización cuyas reglas se leen: las suyas y las
+            que el equipo comparte, las mismas que ve en ``/mi-watchlist``.
+            ``None`` lee solo las suyas, en todas sus organizaciones.
 
     Returns:
-        XML del feed como string. Devuelve un feed vacío si no hay entradas.
+        El XML del feed. Sin reglas activas, un feed válido y vacío.
     """
     import html
     from datetime import UTC, datetime
 
-    from db.watchlist import list_entries
+    from services.watchlist_rules import list_matches, list_rules
 
-    entries = list_entries(user_key)
-    if not entries:
-        now_iso = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-        return (
-            '<?xml version="1.0" encoding="UTF-8"?>'
-            '<feed xmlns="http://www.w3.org/2005/Atom">'
-            f"<title>Watchlist — sin entradas</title>"
-            f"<id>urn:watchlist:{html.escape(user_key[:8])}</id>"
-            f"<updated>{now_iso}</updated>"
-            "</feed>"
-        )
+    ahora = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    reglas = [
+        regla for regla in list_rules(user_key, organization_id, user_id=user_id) if regla.active
+    ]
 
-    # Calcular since_date: 30 días atrás como ventana de consulta
-    since_date = (datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)).isoformat()
-    from datetime import timedelta
-
-    since_date = (datetime.now(UTC) - timedelta(days=30)).strftime("%Y-%m-%dT00:00:00")
-
-    matches = query_licitaciones_batch(entries, default_since=since_date)
-
-    # Aplanar resultados, deduplicar por id_externo, ordenar por fecha_publicacion
-    seen: set[str] = set()
+    vistas: set[str] = set()
     lics: list[dict[str, Any]] = []
-    for lic_list in matches.values():
-        for lic in lic_list:
-            fid = str(lic.get("id_externo", ""))
-            if fid and fid not in seen:
-                seen.add(fid)
+    for regla in reglas[:MAX_REGLAS_FEED]:
+        for lic in list_matches(regla, limit=limit):
+            fid = str(lic.get("id_externo") or "")
+            if fid and fid not in vistas:
+                vistas.add(fid)
                 lics.append(lic)
 
-    lics.sort(key=lambda x: x.get("fecha_publicacion") or "", reverse=True)
+    lics.sort(key=lambda lic: str(lic.get("fecha_publicacion") or ""), reverse=True)
     lics = lics[:limit]
 
-    updated = (
-        lics[0].get("fecha_publicacion", datetime.now(UTC).isoformat())
-        if lics
-        else datetime.now(UTC).isoformat()
-    )
-    # Normalise to RFC3339
-    try:
-        updated_dt = datetime.fromisoformat(updated.replace("Z", "+00:00"))
-        updated_str = updated_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-    except (ValueError, AttributeError):
-        updated_str = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-
+    actualizado = _rfc3339(lics[0].get("fecha_publicacion"), ahora) if lics else ahora
+    titulo = "Alertas de TenderFlow" if reglas else "Alertas de TenderFlow — sin alertas activas"
     parts: list[str] = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<feed xmlns="http://www.w3.org/2005/Atom">',
-        f"  <title>Watchlist licitaciones SAP — {html.escape(user_key[:8])}</title>",
+        f"  <title>{html.escape(titulo)}</title>",
         f"  <id>urn:watchlist:{html.escape(user_key[:8])}</id>",
-        f"  <updated>{updated_str}</updated>",
+        f"  <updated>{actualizado}</updated>",
+        # Atom exige autor en el feed si las entradas no lo llevan.
+        "  <author><name>TenderFlow</name></author>",
+        # Sin la query: el enlace `self` lo lee el lector y no debe repetir la
+        # clave que vino en `?token=`.
         '  <link rel="self" type="application/atom+xml" href="/api/v1/watchlist/feed.xml"/>',
     ]
 
     for lic in lics:
         fid = html.escape(str(lic.get("id_externo", "")))
         title = html.escape(str(lic.get("titulo") or "(Sin título)"))
-        summary = html.escape(str(lic.get("descripcion") or ""))[:500]
         url = html.escape(str(lic.get("url") or ""))
         org = html.escape(str(lic.get("organo_contratacion") or ""))
         importe = lic.get("importe")
         importe_str = f"{float(importe):,.0f} €" if importe else "—"
-        pub_raw = lic.get("fecha_publicacion") or ""
-        try:
-            pub_dt = datetime.fromisoformat(pub_raw.replace("Z", "+00:00"))
-            pub_str = pub_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-        except (ValueError, AttributeError):
-            pub_str = updated_str
-
         parts += [
             "  <entry>",
             f"    <id>urn:licitacion:{fid}</id>",
             f"    <title>{title}</title>",
-            f"    <updated>{pub_str}</updated>",
-            f"    <summary>{summary}</summary>",
+            f"    <updated>{_rfc3339(lic.get('fecha_publicacion'), actualizado)}</updated>",
             f"    <content type='text'>Órgano: {org} | Importe: {importe_str}</content>",
         ]
         if url:

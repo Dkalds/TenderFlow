@@ -18,20 +18,28 @@ puedan divergir: los dos cuentan con ``count_matches``.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel
-from sqlalchemy import ColumnElement, and_, bindparam, func, literal_column, or_, select, text
+from sqlalchemy import ColumnElement, and_, bindparam, func, literal_column, or_, text
 
-from db.database import connect, connect_read
-from db.models import compile_query, licitaciones
-from db.repositories.base import rows_to_dicts
+from db.models import licitaciones
 from db.repositories.watchlist_rules import (
+    ValoresRegla,
+    actualizar_regla,
+    borrar_regla,
+    borrar_reglas_de_usuario,
     bounded_match_counts,
+    contar_matches,
     daily_match_counts,
+    filas_de_reglas,
+    ids_que_casan,
+    insertar_regla,
+    listar_matches,
     matches_pendientes,
+    pausar_reglas_de_usuario,
 )
 from db.sql_fragments import FOLD_TABLE, escape_like, fold_expr, iso_guard, palabras_de_organo
 from services.dedupe import normalize_organo
@@ -56,11 +64,6 @@ ORDEN_BANDAS: tuple[RadarBanda, ...] = ("Descarte", "Tibia", "Atractiva", "Calie
 #: el conteo acotado del listado: por encima, lo que el usuario necesita es
 #: afinar la regla, no un dígito más.
 MAX_CANDIDATAS_BANDA = 1000
-
-#: Predicado de identidad dual (v129, ADR-030 fase 2). Parámetros:
-#: ``(user_id, user_key, user_id)``; con ``user_id=None`` se reduce a
-#: ``user_key = %s``. El razonamiento está en ``db/repositories/watchlist.py``.
-_IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
 
 
 class WatchlistRule(BaseModel):
@@ -98,6 +101,26 @@ class WatchlistRule(BaseModel):
         return normalize_organo(self.organo)
 
 
+def _valores(rule: WatchlistRule) -> ValoresRegla:
+    """Las columnas editables de ``rule`` tal y como las guarda la tabla."""
+    return ValoresRegla(
+        nombre=rule.nombre,
+        keyword=rule.keyword,
+        cpv=rule.cpv,
+        min_importe=rule.min_importe,
+        ccaa=rule.ccaa,
+        frequency=rule.frequency,
+        active=1 if rule.active else 0,
+        tecnologia=rule.tecnologia,
+        organo=rule.organo,
+        organo_norm=rule.organo_norm,
+        procedimiento=rule.procedimiento,
+        tipo_contrato=rule.tipo_contrato,
+        banda_min=rule.banda_min,
+        plazo_min_dias=rule.plazo_min_dias,
+    )
+
+
 def create_rule(
     user_key: str,
     rule: WatchlistRule,
@@ -107,68 +130,33 @@ def create_rule(
     visibility: str = "private",
 ) -> int:
     """Persiste una regla nueva y devuelve su id."""
-    with connect() as c:
-        row = c.execute(
-            "INSERT INTO watchlist_rules "
-            "(user_key, user_id, nombre, keyword, cpv, min_importe, ccaa, "
-            " frequency, active, organization_id, visibility, "
-            " tecnologia, organo, organo_norm, procedimiento, tipo_contrato, "
-            " banda_min, plazo_min_dias) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
-            "        %s, %s, %s, %s, %s, %s, %s) RETURNING id",
-            (
-                user_key,
-                user_id,
-                rule.nombre,
-                rule.keyword,
-                rule.cpv,
-                rule.min_importe,
-                rule.ccaa,
-                rule.frequency,
-                1 if rule.active else 0,
-                organization_id,
-                visibility,
-                rule.tecnologia,
-                rule.organo,
-                rule.organo_norm,
-                rule.procedimiento,
-                rule.tipo_contrato,
-                rule.banda_min,
-                rule.plazo_min_dias,
-            ),
-        ).fetchone()
-    return int(row[0]) if row else 0
+    return insertar_regla(
+        user_key,
+        _valores(rule),
+        user_id=user_id,
+        organization_id=organization_id,
+        visibility=visibility,
+    )
 
 
-#: Proyección de una regla. Una sola constante para las dos ramas del listado:
-#: cuando eran dos literales, añadir un criterio obligaba a acordarse de los
-#: dos, y el que se olvidara devolvía la regla sin ese filtro — es decir, una
-#: regla más ancha de la que el usuario escribió.
-_COLS_REGLA = (
-    "id, nombre, keyword, cpv, min_importe, ccaa, frequency, active, "
-    "organization_id, visibility, tecnologia, organo, procedimiento, "
-    "tipo_contrato, banda_min, plazo_min_dias"
-)
-
-
-def _fila_a_regla(row: Sequence[Any]) -> WatchlistRule:
+def _fila_a_regla(row: Mapping[str, Any]) -> WatchlistRule:
     return WatchlistRule(
-        id=row[0],
-        nombre=row[1],
-        keyword=row[2],
-        cpv=row[3],
-        min_importe=row[4],
-        ccaa=row[5],
-        frequency=row[6],
-        active=bool(row[7]),
-        organization_id=row[8],
-        visibility=row[9],
-        tecnologia=row[10],
-        organo=row[11],
-        procedimiento=row[12],
-        tipo_contrato=row[13],
-        banda_min=row[14],
-        plazo_min_dias=row[15],
+        id=row["id"],
+        nombre=row["nombre"],
+        keyword=row["keyword"],
+        cpv=row["cpv"],
+        min_importe=row["min_importe"],
+        ccaa=row["ccaa"],
+        frequency=row["frequency"],
+        active=bool(row["active"]),
+        organization_id=row["organization_id"],
+        visibility=row["visibility"],
+        tecnologia=row["tecnologia"],
+        organo=row["organo"],
+        procedimiento=row["procedimiento"],
+        tipo_contrato=row["tipo_contrato"],
+        banda_min=row["banda_min"],
+        plazo_min_dias=row["plazo_min_dias"],
     )
 
 
@@ -176,22 +164,8 @@ def list_rules(
     user_key: str, organization_id: int | None = None, *, user_id: int | None = None
 ) -> list[WatchlistRule]:
     """Reglas de un usuario, más recientes primero."""
-    with connect() as c:
-        if organization_id is None:
-            rows = c.execute(
-                f"SELECT {_COLS_REGLA} FROM watchlist_rules WHERE {_IDENT} "  # noqa: S608
-                "ORDER BY created_at DESC, id DESC",
-                (user_id, user_key, user_id),
-            ).fetchall()
-        else:
-            rows = c.execute(
-                f"SELECT {_COLS_REGLA} FROM watchlist_rules "  # noqa: S608
-                "WHERE organization_id = %s "
-                f"AND (visibility = 'organization' OR {_IDENT}) "
-                "ORDER BY created_at DESC, id DESC",
-                (organization_id, user_id, user_key, user_id),
-            ).fetchall()
-    return [_fila_a_regla(row) for row in rows]
+    filas = filas_de_reglas(user_key, organization_id, user_id=user_id)
+    return [_fila_a_regla(fila) for fila in filas]
 
 
 def update_rule(
@@ -203,42 +177,7 @@ def update_rule(
     user_id: int | None = None,
 ) -> bool:
     """Actualiza una regla propia. ``False`` si no existe o no es del usuario."""
-    values = (
-        rule.nombre,
-        rule.keyword,
-        rule.cpv,
-        rule.min_importe,
-        rule.ccaa,
-        rule.frequency,
-        1 if rule.active else 0,
-        rule.tecnologia,
-        rule.organo,
-        rule.organo_norm,
-        rule.procedimiento,
-        rule.tipo_contrato,
-        rule.banda_min,
-        rule.plazo_min_dias,
-    )
-    sets = (
-        "nombre = %s, keyword = %s, cpv = %s, min_importe = %s, ccaa = %s, "
-        "frequency = %s, active = %s, tecnologia = %s, organo = %s, "
-        "organo_norm = %s, procedimiento = %s, tipo_contrato = %s, "
-        "banda_min = %s, plazo_min_dias = %s"
-    )
-    with connect() as c:
-        if organization_id is None:
-            cur = c.execute(
-                f"UPDATE watchlist_rules SET {sets} "  # noqa: S608
-                f"WHERE id = %s AND {_IDENT}",
-                (*values, rule_id, user_id, user_key, user_id),
-            )
-        else:
-            cur = c.execute(
-                f"UPDATE watchlist_rules SET {sets} "  # noqa: S608
-                f"WHERE id = %s AND {_IDENT} AND organization_id = %s",
-                (*values, rule_id, user_id, user_key, user_id, organization_id),
-            )
-        return bool(cur.rowcount > 0)
+    return actualizar_regla(user_key, rule_id, _valores(rule), organization_id, user_id=user_id)
 
 
 def delete_rule(
@@ -249,29 +188,12 @@ def delete_rule(
     user_id: int | None = None,
 ) -> bool:
     """Borra una regla propia. ``False`` si no existe o no es del usuario."""
-    with connect() as c:
-        if organization_id is None:
-            cur = c.execute(
-                f"DELETE FROM watchlist_rules WHERE id = %s AND {_IDENT}",  # noqa: S608
-                (rule_id, user_id, user_key, user_id),
-            )
-        else:
-            cur = c.execute(
-                f"DELETE FROM watchlist_rules WHERE id = %s AND {_IDENT} "  # noqa: S608
-                "AND organization_id = %s",
-                (rule_id, user_id, user_key, user_id, organization_id),
-            )
-        return bool(cur.rowcount > 0)
+    return borrar_regla(user_key, rule_id, organization_id, user_id=user_id)
 
 
 def delete_all_for_user(user_key: str, *, user_id: int | None = None) -> int:
     """Borra todas las reglas del usuario (GDPR). Devuelve el numero de filas borradas."""
-    with connect() as c:
-        cur = c.execute(
-            f"DELETE FROM watchlist_rules WHERE {_IDENT}",  # noqa: S608
-            (user_id, user_key, user_id),
-        )
-        return int(cur.rowcount)
+    return borrar_reglas_de_usuario(user_key, user_id=user_id)
 
 
 def deactivate_all_for_user(user_key: str, *, user_id: int | None = None) -> int:
@@ -281,12 +203,7 @@ def deactivate_all_for_user(user_key: str, *, user_id: int | None = None) -> int
     reglas siguen en Mi Watchlist y se reactivan desde allí— pero corta el
     correo de inmediato, que es lo único que quien pulsa ese enlace quiere.
     """
-    with connect() as c:
-        cur = c.execute(
-            f"UPDATE watchlist_rules SET active = 0 WHERE {_IDENT} AND active = 1",  # noqa: S608
-            (user_id, user_key, user_id),
-        )
-        return int(cur.rowcount)
+    return pausar_reglas_de_usuario(user_key, user_id=user_id)
 
 
 # ---------------------------------------------------------------------------
@@ -295,7 +212,9 @@ def deactivate_all_for_user(user_key: str, *, user_id: int | None = None) -> int
 # RFC ux-mi-watchlist: el matching aplica keyword + CPV + min_importe + ccaa
 # (no solo keyword/ccaa como el frontend), y el conteo se calcula en backend
 # sobre TODO el dataset (no un ``limit=20`` cliente). SQLAlchemy Core →
-# parametrizado (sin SQL string-built, sin S608).
+# parametrizado (sin SQL string-built, sin S608). Aquí se construyen las
+# cláusulas; las sentencias se ejecutan en ``db/repositories/watchlist_rules.py``
+# (ADR-022).
 # ---------------------------------------------------------------------------
 
 _MATCH_COLS = (
@@ -523,13 +442,7 @@ def _ids_desde_banda(rule: WatchlistRule, *, hoy_iso: str | None = None) -> list
     """
     from services.analytics.scoring import ScoringFilters, get_scoring
 
-    clauses = _rule_clauses(rule, hoy_iso=hoy_iso)
-    stmt = select(licitaciones.c.id_externo).select_from(licitaciones)
-    if clauses:
-        stmt = stmt.where(and_(*clauses))
-    sql, params = compile_query(stmt.limit(MAX_CANDIDATAS_BANDA))
-    with connect_read() as c:
-        candidatas = [str(row[0]) for row in c.execute(sql, params).fetchall()]
+    candidatas = ids_que_casan(_rule_clauses(rule, hoy_iso=hoy_iso), limit=MAX_CANDIDATAS_BANDA)
     if not candidatas:
         return []
 
@@ -551,14 +464,7 @@ def count_matches(rule: WatchlistRule, *, hoy_iso: str | None = None) -> int:
     """
     if rule.banda_min:
         return len(_ids_desde_banda(rule, hoy_iso=hoy_iso))
-    clauses = _rule_clauses(rule, hoy_iso=hoy_iso)
-    stmt = select(func.count()).select_from(licitaciones)
-    if clauses:
-        stmt = stmt.where(and_(*clauses))
-    sql, params = compile_query(stmt)
-    with connect_read() as c:
-        row = c.execute(sql, params).fetchone()
-    return int(row[0]) if row else 0
+    return contar_matches(_rule_clauses(rule, hoy_iso=hoy_iso))
 
 
 #: Semanas de historia que mira la vista previa de ruido (F5.5).
@@ -646,13 +552,7 @@ def list_matches(
         if not ids:
             return []
         clauses = [licitaciones.c.id_externo.in_(ids)]
-    stmt = select(*_MATCH_COLS).select_from(licitaciones)
-    if clauses:
-        stmt = stmt.where(and_(*clauses))
-    stmt = stmt.order_by(licitaciones.c.fecha_publicacion.desc()).limit(limit)
-    sql, params = compile_query(stmt)
-    with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, params))
+    return listar_matches(clauses, _MATCH_COLS, limit=limit)
 
 
 def matches_since(

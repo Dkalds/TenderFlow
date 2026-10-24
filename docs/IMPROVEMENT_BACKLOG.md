@@ -114,6 +114,13 @@ el filtro en Radar y Detalle), F2.3, F3.1, F4.1 (sin pantalla para editar las
 probabilidades), F4.3 (sin «preparar renovación», que no tiene endpoint), F4.4
 y F4.6. El estado de cada una está anotado en el plan.
 
+*Estado (2026-10-23):* las salvedades de ese párrafo y del siguiente ya no
+describen el código, y el plan lo anota ítem por ítem: F1.6 filtra por
+etiqueta en Detalle (en servidor) y en Radar; F4.1 edita las probabilidades en
+Equipo → Organización; F4.3 tiene «Preparar renovación»
+(`POST /pursuits/cartera/{id}/renovacion`); y F2.6 descarga el PDF del guion
+(`GET /licitaciones/{id}/guion.pdf`).
+
 Pantallas que faltaban de lado ficha y superficie pública (2026-09-18, rama
 `worktree-agent-ac5d5218d7d3b1f8b`): F2.2, F2.5, F2.6, F2.8, F6.2 y F6.5 ya
 tienen UI; el estado por ítem está anotado en el plan. Quedan sin hacer: el
@@ -519,25 +526,6 @@ _Sin ítems abiertos._
 - **Files de partida:** [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [db/repositories/documentos.py](../db/repositories/documentos.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo — solo observación y una variable de entorno.
 
-### [P1] La vista canónica todavía puede preferir TED, y el bulk no cuenta como PLACSP
-- **Área:** db/sql_fragments.py (`_criterios_canonicos_sql`), services/dedupe.py (`_rango_canonico`), db/alembic
-- **Problema:** el orden de canónica es `fuente <> 'placsp'`, fecha de publicación,
-  primera extracción e id. Dos defectos: TED no pierde frente a las demás fuentes
-  cuando un par colapsa por clave sin referencia explícita (gana la más antigua),
-  y las filas que refrescó el carril bulk llevan `fuente = 'bulk_YYYYMM'` —el
-  upsert reescribe `fuente`—, así que pierden la preferencia de PLACSP. El
-  dedupe por referencia ya aplica «TED nunca canónica» y cuenta el bulk como
-  PLACSP; la vista no.
-- **Acceptance criteria:**
-  - `_criterios_canonicos_sql` y su gemelo `_rango_canonico` ordenan PLACSP (con
-    `bulk_%`) → resto → TED, y `tests/test_dedupe_publico.py` fija la paridad.
-  - Migración nueva que reconstruye `licitaciones_canonicas` por permuta, como
-    `v102` (requiere OK: AGENTS.md §6), y `tests/test_mv_canonicas_definicion.py`
-    apuntando a ella.
-  - Delta medido en producción: cuántas canónicas cambian de fila (y de URL).
-- **Files de partida:** [db/sql_fragments.py](../db/sql_fragments.py), [db/alembic/versions/v102_mv_canonicas_clave_inmutable.py](../db/alembic/versions/v102_mv_canonicas_clave_inmutable.py), [services/dedupe.py](../services/dedupe.py)
-- **Riesgo:** alto — reconstruye la vista de la superficie pública y mueve URLs del sitemap.
-
 ### [P1] Ampliar el golden set del clasificador SAP a 300-500 ejemplos etiquetados a mano
 - **Área:** tests/fixtures/golden_set.jsonl, tests/fixtures/golden_set_tech.jsonl, scripts/sample_golden_candidates.py (acción del usuario: etiquetar)
 - **Problema:** el golden set es el único sitio del repo con etiquetas humanas independientes del filtro de keywords, y de él salen dos cosas que gobiernan producción: el umbral servido y `recall_no_keyword`, la métrica que decide si el ML aporta algo sobre `matches_sap()` (desde el 2026-08-24 es criterio **bloqueante** del gate de promoción, `services/ml/promotion.py`). Con 27 ejemplos no sostiene ninguna de las dos: solo 6 son positivos humanos sin keyword, así que `recall_no_keyword` se mueve a saltos de 16,7 puntos y solo puede tomar 7 valores; un bootstrap sobre esos 27 da un umbral con sigma=0,084 y rango p5-p95 de [0,30, 0,56] sobre un rango útil de 0,65, y el F-beta reportado sobre el mismo conjunto donde se elegía el umbral sobreestimaba el real en +0,08 de media (+0,25 en el p90). El reparto tune/holdout ya está implementado; partir 27 en dos no arregla el tamaño. El golden multi-etiqueta (`golden_set_tech.jsonl`) tiene 23 ejemplos semilla y el mismo problema.
@@ -581,10 +569,10 @@ _Sin ítems abiertos._
 ### [P1] [Ola 1 · S1] Identidad y equipo: invitar sin cuenta previa, OIDC y el ratchet de `user_key`
 - **Área:** api/routes/auth.py, services/organizations.py, db/repositories/organizations.py, db/users.py, shared/identity.py, scripts/check_user_key_ratchet.py
 - **Problema:** una organización no puede incorporar a nadie que no tenga ya cuenta —`add_member_by_email` rechaza el email aunque `organization_memberships.status` admita `invited` desde `v61`—, el único OAuth es Google (un partner con Microsoft 365 no entra con su identidad), y la identidad interna sigue derivándose del email: `user_key` aparece en 60 ficheros (grep 2026-09-05), así que un cambio de email es un cambio de clave primaria de facto.
-- **Decisiones ya tomadas (2026-09-06):** D17 → Entra ID multi-tenant reutilizando `OAUTH_ALLOWED_DOMAINS` y `access_grants`; D18 → ratchet ahora y migración aditiva por olas después (esa segunda fase es T4 del plan, no este ítem).
+- **Decisiones ya tomadas (2026-09-06):** D17 → Entra ID multi-tenant reutilizando `OAUTH_ALLOWED_DOMAINS` y `access_grants` (revisada el 2026-10-23 por [ADR-037](adr/ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md): solo con `xms_edov`); D18 → ratchet ahora y migración aditiva por olas después (esa segunda fase es T4 del plan, no este ítem).
 - **Progreso T4 (2026-09-14, v129 · ADR-030 fase 2):** `user_id` junto a `user_key` en las doce tablas de usuario (nueve nuevas + FK e índice en las tres que ya la tenían), backfill por email en SQL y lectura dual + escritura doble en `db/`, `services/notifications.py`, `services/watchlist_rules.py` y los productores de alertas; GDPR exporta y borra por id o por clave (y cubre por fin `saved_filters`). Test de aceptación del ADR: `tests/test_user_id_cambio_email_integration.py`. **Queda la fase 3** (dejar de escribir `user_key`, recrear las PK de `user_profiles`/`radar_dismissals`, retirar `user_key` del payload de `watchlist_rule.matched` con RFC, y llevar el ratchet a cero).
 - **Progreso fase 3 (2026-09-18, v135, rama `worktree-agent-a8484f81d7c8a27e2`):** PK de `user_profiles` → `(user_id)` y de `radar_dismissals` → `(user_id, id_externo)`, con backfill y fallo ruidoso si queda alguna fila sin id o duplicada; `user_profiles` ya no escribe `user_key`; `log_event(actor=…)` saca seis ficheros del ratchet (69 → 63); RFC `draft` [2026-09-18](rfc/2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md) para el payload del webhook, con el campo intacto hasta la ventana y la sustitución pendiente de decisión humana. **Queda:** `user_notifications`/`follows`/`watchlist_*` siguen tecleadas por `user_key` (y con ellas `radar_dismissals` la sigue escribiendo); aplicar v135 en producción (antes del deploy del código) y regenerar `docs/database-schema.md`. *Estado (2026-09-19):* `docs/database-schema.md` ya está regenerado con v135 y v140 (`98f34bee`; su cabecera dice `v138_notice_type_code`).
-- *Nota (2026-10-17):* este ítem se lleva también la mayoría de las 64 `# noqa: S608` del repo (34 en producción; 18 entre `services/notifications.py` y `services/watchlist_rules.py`). No son inyección: interpolan `_IDENT`, el predicado constante de identidad dual `user_id`/`user_key`, y duplican cada consulta en una rama con y otra sin `organization_id`. Quitarlas antes obligaría a copiar el predicado en cada sentencia; cuando la lectura sea solo por `user_id` el fragmento desaparece y con él la supresión. Sacarlas en el mismo PR que retire la columna.
+- *Nota (2026-10-17):* este ítem se lleva también la mayoría de las 64 `# noqa: S608` del repo (34 en producción; 18 entre `services/notifications.py` y `services/watchlist_rules.py`). No son inyección: interpolan `_IDENT`, el predicado constante de identidad dual `user_id`/`user_key`, y duplican cada consulta en una rama con y otra sin `organization_id`. Quitarlas antes obligaría a copiar el predicado en cada sentencia; cuando la lectura sea solo por `user_id` el fragmento desaparece y con él la supresión. Sacarlas en el mismo PR que retire la columna. *Actualización (2026-10-23):* las 18 de esos dos servicios ya no existen: su SQL bajó a `db/`, donde `S608` está desactivado por fichero y `_IDENT` lleva escrito por qué no es inyección. El predicado dual sigue y se va con la columna.
 - **Acceptance criteria:** los de S1.1–S1.4 del plan v2, sin redefinirlos aquí. Los cuatro subítems son independientes y se pueden entregar por separado; S1.3 (dominio propio) es acción humana.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S1), [services/organizations.py](../services/organizations.py), [api/routes/auth.py](../api/routes/auth.py)
 - **Estado (2026-10-17):** el **Problema** ya no describe el código en su primera frase: invitar a quien no tiene cuenta existe (`services/organizations.py::invite_member_by_email`, tabla `organization_invitations`, aceptación por token y al iniciar sesión con `accept_invitations_for_email`). `add_member_by_email` sigue rechazando un correo sin cuenta porque es el alta directa, no la invitación. Lo abierto es lo de la fase 3 de `user_key` descrito arriba.
@@ -614,34 +602,17 @@ _Sin ítems abiertos._
 
 ### [P1] Recuperación de contraseña: comprobar la entrega en producción y decidir lo que la auditoría dejó fuera
 - **Área:** services/password_reset.py, api/routes/auth.py, api/middleware.py, observability/, config/settings.py, variables de Render (acción del usuario)
-- **Problema:** la auditoría del issue #243 (2026-10-09) cerró los huecos del flujo en el código —ver [el RFC](rfc/243-recuperacion-contrasena-local.md)—, pero dejó ocho cosas que no se arreglan con un commit: dos hay que mirarlas en producción y el resto son decisiones del dueño. Cada una lleva su prioridad.
+- **Problema:** la auditoría del issue #243 (2026-10-09) cerró los huecos del flujo en el código —ver [el RFC](rfc/243-recuperacion-contrasena-local.md)—, pero dejó ocho cosas que no se arreglan con un commit: dos hay que mirarlas en producción y el resto son decisiones del dueño. Cada una lleva su prioridad. **2026-10-23:** el dueño aprobó 3, 4, 5, 6 y 8 y están hechos (ver _Cerrados_ en el [archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md)); quedan 1, 2 y 7.
   1. **[P1] La entrega del correo en producción no está comprobada.** `render.yaml` no declara `EMAIL_*` ni `ALERT_SMTP_*` para `tenderflow-api` (solo para `tenderflow-alertmanager`), y ese fichero tampoco gobierna el servicio real (ítem P2 de más abajo), así que desde el repo no se sabe si la API tiene con qué enviar. Sin credenciales el transporte devuelve «no configurado» sin lanzar: quien pide el enlace lee «te llegará un enlace» y no llega nada. Desde este cambio queda `password_reset_email sent=false` a nivel `warning`; antes, solo un `info`. Lo mismo si falta la URL del frontend (`CORS_ALLOWED_ORIGINS` vacío y sin `OAUTH_REDIRECT_URI`): `password_reset_frontend_url_unavailable`.
      **Progreso 2026-10-21:** comprobado en el log de Render que **no sale ningún correo**: la aprobación de la solicitud 3 dejó `solicitud_acceso_aviso_persona enviado=false` sin `mailer_failed` alrededor, firma de `not_configured`. `render.yaml` declara ya las variables de correo en la API, el arranque avisa con `email_backend_not_configured` y `mailer_not_configured` pasó a `warning` ([RFC del alta](rfc/2026-10-21-rfc-alta-con-contrasena-tras-concesion.md) §7). Falta lo que solo hace el dueño: poner las credenciales en el panel de Render y el reset real de extremo a extremo del criterio (1). El alta con contraseña depende de lo mismo, y comparte con este ítem el riesgo del punto 2: sus cuotas por IP (`register`, `verify-email`) se repartirían entre todos los usuarios si la IP que ve la API es la de Vercel.
   2. **[P1] Hipótesis sin verificar: el límite por IP puede no distinguir clientes en producción.** El navegador llama a `/api/*` en Vercel y Vercel lo reenvía a Render (`rewrites()` de `web/next.config.ts`), así que quien abre la conexión con Render es Vercel. `_trusted_client_ip` recorre `X-Forwarded-For` desde el final y devuelve el primer salto que no esté en `FORWARDED_ALLOW_IPS` —el rango del proxy de Render—: ese salto sería la IP de salida de Vercel, no la del usuario. Si es así, las cuotas por IP de la recuperación (5 cada 15 minutos), el bloqueo de login (`_login_client_key`) y el tope global del middleware se reparten entre todos los usuarios, y cualquiera puede agotárselos a los demás. `web/src/lib/server-prefetch.ts` ya lo reconoce para las peticiones del SSR; nadie lo ha mirado para las del navegador. Depende de qué cabeceras pone Vercel y de qué hay en `FORWARDED_ALLOW_IPS` en el panel de Render, que desde aquí no se lee.
-  3. **[P2] No existe cambio de contraseña autenticado.** El issue lo nombra en el problema («ni recuperación ni cambio») y no en el alcance: quien conoce su contraseña y quiere cambiarla tiene que pasar por «¿Has olvidado tu contraseña?».
-  4. **[P2] El reset no revoca las claves de API del usuario.** Revoca las sesiones; una clave creada por quien tuviera la cuenta sigue valiendo después de que el titular la recupere.
-  5. **[P2] No se avisa al titular de que su contraseña ha cambiado.** El único rastro es `auth.password_reset_completed` en el audit log, que el titular no ve.
-  6. **[P2] El backend `console` del correo se admite en producción.** `_validate_prod_email_backend` solo exige credenciales para `resend`/`postmark`. Con `console` el correo no sale y su cuerpo va al log; el redactor ya quita el token del enlace (`#token=`), pero la recuperación deja de funcionar sin que nada falle. Prohibirlo en el arranque puede tumbar un despliegue que hoy lo tenga puesto: por eso no se tocó.
   7. **[P3] El login distingue por tiempo una cuenta inexistente de una contraseña mala.** Si el correo no existe (o la cuenta es solo-OAuth) responde sin pasar por el KDF; si existe, tarda lo que tarde `verify_password`. Falta verificar contra un hash ficticio en la rama sin cuenta.
-  8. **[P2] `log.exception` saca la traza sin pasar por el redactor.** `structlog.stdlib.BoundLogger.exception` entrega además `exc_info` a `logging`, y el `Formatter("%(message)s")` de `configure_logging` imprime la traza cruda debajo de la línea JSON ya redactada (medido el 2026-10-09: el mensaje de la excepción sale con el correo y el token en claro en esa segunda copia). El trabajo aplazado de la recuperación ya usa `log.error(..., exc_info=True)`, que no la duplica; quedan 18 llamadas a `log.exception` en `api/`, `services/`, `scheduler/` y `scraper/`, y el arreglo de raíz está en `configure_logging`, no en cada llamada.
 - **Acceptance criteria:**
   - (1) Un reset real de extremo a extremo en producción: pedir el enlace para una cuenta local, recibir el correo, cambiar la contraseña y entrar. Anotado con fecha, y con el backend de correo que usa la API.
   - (2) El `client_ip` de las líneas `http_request` del log de la API, comparado para dos usuarios en redes distintas: si coincide, la hipótesis es cierta y hace falta decidir de dónde sale la IP del cliente (una cabecera de Vercel verificable, o que el navegador llame a la API sin pasar por el rewrite).
-  - (3)–(7) Decisión escrita del dueño para cada uno: se hace, o se descarta con el motivo.
-  - (8) Una traza con un secreto en el mensaje sale redactada también en la copia de `logging`, con un test que lo fije.
+  - (7) Decisión escrita del dueño: se hace, o se descarta con el motivo.
 - **Files de partida:** [services/password_reset.py](../services/password_reset.py), [api/middleware.py](../api/middleware.py), [web/next.config.ts](../web/next.config.ts), [observability/logging.py](../observability/logging.py), [config/settings.py](../config/settings.py), [docs/runbooks/correo-transaccional.md](runbooks/correo-transaccional.md)
-- **Riesgo:** medio — (1) y (2) son comprobaciones; lo que salga de (2) toca la base del rate limiting, y (6) puede impedir un arranque.
-
-### [P1] Microsoft/Entra: la allowlist se decide sobre un correo que puede no estar verificado
-- **Área:** shared/identity.py, api/routes/auth.py, db/users.py, config/settings.py
-- **Problema:** hay que cerrarlo **antes de activar Microsoft en producción** (`OAUTH_MICROSOFT_CLIENT_ID`; vacío es apagado, y el 2026-10-09 no se comprobó qué valor tiene en Render). Comprobado en el código ese día: el camino de Google exige `email_verified` (`validate_google_id_token` en `shared/auth_core.py`) y el genérico que sirve a Entra no —`verify_oidc_id_token` lo dice en su docstring: Entra no emite ese claim—; sobre ese token, `_email_from_claims` toma `email` → `preferred_username` → `upn`; el tenant por defecto es `common` (`oauth_microsoft_tenant`) y `_issuer_matches` acepta el `tid` de cualquier tenant; y `get_or_create_oauth_user` **vincula por email**: si ya existe un usuario con esa dirección, le reescribe `oauth_provider`/`oauth_sub` y devuelve su `id`. Ninguno de esos tres claims acredita que quien entra controle ese buzón (Microsoft documenta `email` y `preferred_username` como modificables y no aptos para autorizar; contrastarlo con su documentación vigente al abordar el ítem, no se probó contra un tenant real). Si quien administra un tenant cualquiera puede presentarse con el correo de otra persona, pasa la allowlist —estática o `access_grants`— como si fuera ella y se queda con su cuenta: suplantación de un usuario existente, no solo un alta indebida. La decisión D17 (multi-tenant + allowlist por dominio) da por hecho que el dominio del correo dice de qué organización es la cuenta.
-- **Acceptance criteria:**
-  - El callback de Microsoft solo acepta un correo cuya propiedad conste (el claim opcional `xms_edov`, una lista de `tid` permitidos, o dejar de decidir sobre `email`). La elección queda escrita: toca ADR-030 y D17.
-  - `get_or_create_oauth_user` no vincula la identidad de otro proveedor a un usuario existente solo porque el correo coincide.
-  - Tests: un token de Entra firmado y válido cuyo correo no está verificado no entra, y no altera el `oauth_sub` de un usuario existente con esa dirección.
-  - Comprobado en Render que `OAUTH_MICROSOFT_CLIENT_ID` está vacío mientras esto siga abierto. Si no lo está, este ítem es P0.
-- **Files de partida:** [shared/identity.py](../shared/identity.py), [api/routes/auth.py](../api/routes/auth.py), [db/users.py](../db/users.py), [docs/adr/ADR-030-identidad-user-id-y-oidc.md](adr/ADR-030-identidad-user-id-y-oidc.md)
-- **Riesgo:** alto — toca el login y la vinculación de cuentas; el camino de Google no debe cambiar.
+- **Riesgo:** medio — (1) y (2) son comprobaciones; lo que salga de (2) toca la base del rate limiting.
 
 ### [P1] Poner en producción la rama `claude/funcionalidades-2026-10` (acción del propietario)
 - **Área:** db/alembic/versions (v147–v149), `.github/workflows/scrape-daily.yml`, variables de repo
@@ -674,6 +645,14 @@ _Sin ítems abiertos._
 - **Riesgo:** bajo-medio — las migraciones ya están; queda el primer reparto real de avisos de caducidad y de la campana nueva.
 
 ## P2 — Media
+
+### [P2] Antes de activar Microsoft en producción: dos comprobaciones del propietario
+- **Área:** variables de Render (`tenderflow-api`), registro de la aplicación en Entra ID
+- **Problema:** el código ya no deja entrar con un correo que Entra no acredita ([ADR-037](adr/ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md); el ítem P1 está en _Cerrados_). Quedan dos cosas que desde el repo no se ven: qué valor tiene hoy `OAUTH_MICROSOFT_CLIENT_ID` en Render (no se comprobó el 2026-10-09 ni el 2026-10-23), y que la aplicación de Entra emita el claim opcional `xms_edov`, sin el que nadie entra con Microsoft.
+- **Acceptance criteria:**
+  - Anotado con fecha el valor de `OAUTH_MICROSOFT_CLIENT_ID` en Render (vacío = Microsoft apagado).
+  - Antes de ponerlo: `email` y `xms_edov` añadidos como claims opcionales del ID token (ADR-037 §3), y un login real con una cuenta de trabajo sin `oidc_id_token_email_not_verified` en el log.
+- **Riesgo:** bajo — sin el claim el fallo es cerrado: nadie entra con Microsoft.
 
 ### [P2] Instalar la app de Renovate y ver su primer PR de Python (acción del propietario)
 - **Área:** GitHub (app), renovate.json, .github/dependabot.yml
@@ -778,14 +757,7 @@ _Sin ítems abiertos._
 - **Files de partida:** [db/upsert.py](../db/upsert.py), [shared/numeric.py](../shared/numeric.py), [services/contract_events.py](../services/contract_events.py), [db/alembic/versions/baseline002_pg_core_genesis.py](../db/alembic/versions/baseline002_pg_core_genesis.py)
 - **Riesgo:** alto — migra schema de la tabla núcleo con lock exclusivo sobre 1,3 M filas; la mitigación aplicada (tolerancia) es de riesgo bajo y ya cubre el síntoma.
 - **Progreso (2026-09-18, PARCIAL, rama `worktree-agent-ae7fea40cc310a705`):** unificado con T2 del plan de arquitectura v2. El plan de columna sombra está escrito con el nombre que fijó el plan, **`importe_num numeric(14,2)`** (no `importe_f8`: céntimos exactos en vez de otro float), más `duracion_valor_num numeric` (`v133_nucleo_tipado_sombra`, sólo catálogo, sin reescritura), escritura dual en `db/upsert.py` que traduce el `float` del conector **antes** de que pase por `real`, backfill por lotes (`scripts/backfill_nucleo_tipado.py`) y runbook de la ventana ([runbooks/nucleo-tipado-ventana.md](runbooks/nucleo-tipado-ventana.md)). `FLOAT_REL_TOL` **no se ha tocado**. Pendiente, todo en producción: aplicar la ventana, verificar cero divergencias, mover las lecturas de `importe` a la sombra, y sólo entonces bajar la tolerancia y limpiar `licitaciones_history`/`contrato_eventos`. El test de round-trip exacto contra Postgres (`tests/test_nucleo_tipado_pg.py`) está escrito y **no se ha ejecutado**.
-
-### [P2] Filas nuevas con importe y sin `importe_tipo`: la auditoría lo viola a diario y crece
-- **Área:** scraper/connectors/, db/upsert.py, scripts/audit_domain_truth.py
-- **Problema:** el umbral `importe/filas_nuevas_sin_tipo` (cero, sin margen, desde `v113`) se supera en las siete ejecuciones archivadas de `domain-truth.yml` del 12 al 18/09, y la cuenta **crece cada día**: 131, 131, 152, 190, 238, 279, 316 filas con importe desde el 2026-09-06 y sin base declarada. Algún camino de escritura no puebla `importe_tipo`; el correo de alerta lleva una semana diciendo lo mismo. (En la misma serie, `ml_proba` > 0,7 está en el 72,9 % de lo puntuado frente al 50 % del criterio: eso es el P2 del corpus de PSCP, ya abierto.)
-- **Acceptance criteria:** identificado el camino (por `fuente` de esas filas) y corregido en origen; la cuenta deja de crecer en `domain-truth.json`. El umbral no se relaja.
-- *Estado (2026-10-17):* la cuenta **ya no crece**. Medido en producción con el mismo predicado que la auditoría (`COALESCE(primera_extraccion, fecha_extraccion) >= '2026-09-06'`): quedan **4** filas con importe y sin `importe_tipo`, todas de `galicia_rss` y escritas entre el 10 y el 17/09; ninguna después. Las 316 del 18/09 no están: o las reescribió una reingesta con tipo o las purgó la limpieza de PSCP. El camino roto ya está cerrado: los RSS autonómicos, Galicia incluido, declaran la base desde `scraper/connectors/regional_rss.py::_tipo_de_importe` (#419), y cuando la prosa no la dice escriben `desconocido`, no `NULL`. Para cerrar el ítem solo queda decidir qué se hace con esas 4 filas para que el umbral de cero deje de saltar: reingerirlas o marcarlas `desconocido`, que es lo que habría escrito el conector de hoy.
-- **Files de partida:** [db/domain_truth_audit.py](../db/domain_truth_audit.py) (`importe_sin_base_declarada`), [scripts/audit_domain_truth.py](../scripts/audit_domain_truth.py)
-- **Riesgo:** bajo — corrección de ingesta; la serie está en el docstring del script.
+- **Progreso (2026-10-23, rama de la tanda paralela, OK del propietario a la migración):** escrita `v156_importes_double_precision`, que pasa a `double precision` `licitaciones.importe` y `duracion_valor` y los cuatro importes de `adjudicaciones` (`importe_adjudicado`, `importe_pagable`, `oferta_minima`, `oferta_maxima`). Inventario de dependencias con `pg_depend` en producción y en una base recién migrada: solo índices (los reconstruye el `ALTER`) y la vista `licitaciones_canonicas`, que la revisión tira y rehace con el cuerpo de `v102`; ningún trigger, función, `CHECK` ni `DEFAULT`. Un `ALTER TABLE` por tabla, para reescribir cada una una sola vez; `lock_timeout` 30 s y downgrade simétrico a `real` (con pérdida de precisión, documentada). El plan de columna sombra deja de ser el camino para `importe`: la tabla tiene hoy ~89 k filas vivas, no 1,3 M. `importe_num` **se conserva** (las filas antiguas conservan el redondeo de float4 hasta su reingesta; retirarla es decisión aparte). Ciclo `upgrade head` → `downgrade -1` ×3 → `upgrade head` verde en Postgres local. **Pendiente, propietario:** aplicarla con `migrate.yml` en ventana y con la ingesta parada (lock `ACCESS EXCLUSIVE` sobre `licitaciones` y `adjudicaciones` mientras se reescriben: 873 MB + 1,15 GB de índices y 280 MB; estimación sin medir, de uno a pocos minutos). **Después**, en otro cambio: bajar `FLOAT_REL_TOL` (o retirarla del campo) y limpiar `licitaciones_history`/`contrato_eventos`, como dicen los criterios.
 
 ### [P2] Modelo de baja por lote
 - **Área:** services/ml, db/alembic, api/routes/predicciones.py, web/
@@ -876,6 +848,7 @@ _Sin ítems abiertos._
 - **Riesgo:** medio — activar cambia lo que sirve `predicciones_baja` sin red que lo detecte.
 - **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — los dos primeros criterios ya estaban en código; queda solo la decisión humana.** Comprobado contra el código: el criterio escrito existe desde #274 (v2 S6.4) — `services.ml.promotion.evaluar_promocion_predictiva`: una versión solo es promocionable si su mejora sobre el baseline mide al menos `MIN_IMPROVEMENT_OVER_FOLD_DISPERSION` (1.0) veces la dispersión de la métrica entre folds, sin dispersión medida no se promociona, y los criterios del RFC entran como motivos extra. `baja_model.entrenar` y `retencion_model.entrenar` lo aplican y dejan el veredicto en `notes` (`promotion_reason`); retención registra `pr_auc_baseline` (prevalencia) y `pr_auc_std_folds` (bloques contiguos de validación). Tests en `tests/test_ml_promocion_predictiva.py`; el runbook `model-rollback.md` lo cita. Esta rama añade a retención el rival de antigüedad que pedía el criterio: `pr_auc_baseline_antiguedad` (ordenar por `antiguedad_relacion_meses`), **informativo, no gatea**. Aplicado a los números de arriba, baja v2 sale «indistinguible de ruido» (0.005 < 0.0129). **Falta (humano):** relanzar `train-predictivos.yml` para que retención tenga dispersión y rival registrados —v1 es anterior al gate—, y decidir activar o descartar con el `promotion_reason` delante.
 - **Progreso (2026-09-24, rama `claude/ml-scoring-improvements-da84e5`) — activar ya no rompe el scoring al mes siguiente.** Hasta hoy todas las versiones se publicaban como `baja_model.pkl`/`retencion_model.pkl` con `--clobber`: activar vN y dejar que el reentrenamiento mensual registrara vN+1 sin activar pisaba el asset de vN, y `ml-scoring.yml` caía cada día por `ModelArtifactMismatch` hasta activar vN+1. Ahora cada versión nueva lleva un nombre derivado de su contenido (`baja_model-<sha12>.pkl`) en la Release fija `ml-models`. La resolución busca por nombre en `ml-models` → *latest* → las 30 Releases más recientes, así que las filas actuales (v2 y v1, de nombre fijo) se siguen encontrando. La decisión pendiente es solo la de arriba.
+- **Progreso (2026-10-23):** el criterio aplicado a estas dos versiones, condición por condición y con sus constantes, está en `docs/runbooks/model-rollback.md` § «`baja_model` v2 y `retencion_model` v1: qué hace falta para decidir». Resultado con lo registrado: baja v2 **no promocionable** (falla la dispersión y el 10 % relativo); retención v1 **no decidible** (sin `pr_auc_std_folds`; su margen sobre la prevalencia, 0,135, tampoco llega al 0,15 del RFC). Sigue faltando relanzar `train-predictivos.yml` y decidir sobre la versión nueva. No se activó ni se descartó nada.
 
 ### [P2] ml-scoring: verificar en producción el arreglo del 2026-09-24 y cerrar sus flecos
 - **Área:** services/ml/, scheduler/jobs/ml_predicciones.py, .github/workflows/ml-scoring.yml, shared/release_assets.py
@@ -955,16 +928,11 @@ _Sin ítems abiertos._
 - **Relación:** S8.4 roza el P3 «Un solo transporte para bajar assets de la Release» (cerrado el 2026-09-18): los dos tocan cómo se resuelve un artefacto de modelo, y conviene decidirlos juntos.
 - **Riesgo:** medio — el coste del OCR por página se mide en el primer run nocturno y lo acota el tope de páginas.
 - **Progreso 2026-09-28:** el soporte de DOCX existía pero no se usaba en la mayoría de casos: PLACSP manda el tipo mal escrito (`…openxmlformatsofficedocument…`, sin guion) y 1.964 documentos acabaron en `unsupported`, el mayor agujero de cobertura medido. El formato lo decide ahora la firma del contenido (`_resolver_content_type`). Las filas ya marcadas no se recuperan solas: `unsupported` no vuelve a `list_pendientes`, así que hace falta reencolarlas (dato de producción, OK del mantenedor).
-
-### [P2] Retirar la excepción de `braces` en `npm audit` cuando haya versión corregida (caduca el 2026-11-03)
-- **Área:** scripts/check_npm_audit.py, web/package-lock.json, .github/workflows/ci.yml (job `audit`)
-- **Problema:** desde el 2026-10-03 el paso `npm audit --audit-level=high` del job «Security audit» fallaba en cualquier rama, también con el lockfile de master, por GHSA-vfj7-8cjw-p6xm (`braces <= 3.0.3`, alta, CVE-2026-93687: agotamiento de pila con patrones muy anidados). No hay versión corregida —3.0.3 es la última publicada; el arreglo es micromatch/braces#72, sin fusionar, en un repositorio sin commits desde 2025-01— y la cadena es solo de desarrollo: `eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob@3.3.1` → `micromatch` → `braces` (`npm audit --omit=dev` da 0). Subir `eslint-config-next` no la corta (la 16.3.8 y la canary 16.4 siguen fijando `fast-glob@3.3.1`) y `npm audit fix --force` lo baja a 14.2.35.
-- **Decisión (mantenedor, 2026-10-03):** excepción explícita y fechada. Se descartaron (a) auditar solo producción con `--omit=dev` y dejar las de desarrollo en un paso informativo —las deja sin puerta para siempre, contra el criterio que el mismo job aplica a `requirements-dev.txt`— y (b) aceptar el rojo hasta el parche —un check siempre rojo no distingue el aviso siguiente—. `npm audit` no tiene `--ignore`, así que el paso de CI pasa por `scripts/check_npm_audit.py`: mismo umbral (high/critical, desarrollo incluido), lista `EXCEPCIONES` con caducidad (90 días como máximo) y fallo si una excepción caduca o ya no tapa ningún aviso.
-- **Acceptance criteria:**
-  - `braces` corregido en `web/package-lock.json` (`npm update braces` si la versión nueva entra en el rango `^3.0.3` de `micromatch`; si no, `overrides` en `web/package.json`) y su entrada retirada de `EXCEPCIONES` en el mismo cambio: el script falla si sobra.
-  - Si el 2026-11-03 sigue sin parche (`npm view braces version`; `firstPatchedVersion` del aviso), renovar la fecha con el motivo al día, o reabrir la decisión si upstream sigue parado.
-- **Files de partida:** [scripts/check_npm_audit.py](../scripts/check_npm_audit.py), [tests/test_check_npm_audit.py](../tests/test_check_npm_audit.py), [web/package.json](../web/package.json)
-- **Riesgo:** bajo — solo dependencias de desarrollo. Desde el 2026-11-04 el job vuelve a fallar a propósito hasta que alguien re-evalúe.
+- **Progreso 2026-10-23 (tanda paralela, agente H):**
+  - **OpenDocument sin `odfpy`.** ODT, ODS y ODP se leen de `content.xml` con `zipfile` + `expat` (`_extract_odf_paginas`), con encabezados (`text:h`, que `odfpy` perdía), filas de tabla como una línea y sin el texto borrado del control de cambios. Un `content.xml` con `DOCTYPE` se rechaza antes de expandir entidades (`defusedxml` no es dependencia de producción). Al no depender de ningún extra, el ODT ya se lee también en la imagen de la API. `odfpy` queda sin uso en el extra `[pliegos]` de `pyproject.toml`: retirarlo es un cambio de dependencias (§6) y se deja para quien lo apruebe.
+  - **ZIP endurecido.** Tope por entrada (`_ZIP_MAX_BYTES_POR_ENTRADA`) además del total, ratio de compresión (`_ZIP_RATIO_MAX`, comprobado por bloques), rutas con `..`/absolutas/de unidad y restos de macOS ignorados, nombres UTF-8 sin bandera recuperados, ODT/ODS/ODP dentro del ZIP, y cada entrada abre su primera página con `── nombre ──`. Sigue sin recursión. Tests en `tests/test_unit_document_fetcher_odf_zip.py` (zip bomb y path traversal construidos en memoria).
+  - **Reencolado.** `make reencolar-documentos` (sin `APLICAR=1` solo cuenta) devuelve a `pending` las filas `unsupported` —y las `error` con «content-type no soportado:» de cuando aún no existía ese estado— cuyo tipo ya se lee, comparando sin guiones para recoger el DOCX mal escrito de PLACSP. Medido el 2026-10-23 por el MCP de solo lectura: ~2.140 DOCX (1.007 `unsupported` + 1.131 `error`), 48 ODT, 2 ODS y 215 ZIP. **Pendiente, propietario:** ejecutarlo contra producción ([runbooks/documentos-reencolar.md](runbooks/documentos-reencolar.md)). XLSX (337), XML (349), HTML (237), RTF, `.doc` y RAR siguen sin leerse y no se tocan.
+  - **OCR de escaneados: fuera de esta tanda.** S8.3 dejó `ocrmypdf` en el runner de `pliegos.yml`, pero el coste por página sigue sin medir (su propia aceptación), y sin ese número no se amplía: los 54 PDF «sin texto extraíble» en `error` no entran en el reencolado.
 
 ---
 
@@ -1028,6 +996,7 @@ _Sin ítems abiertos._
   - Decidido si la analítica de competidores sin filtro de tecnología debe contar los menores.
   - Variables en `vars.` según el runbook; las tres fuentes en `ok` en el healthcheck.
 - **Riesgo:** medio — volumen nuevo en `adjudicaciones` y `empresas`.
+- **Nota 2026-10-23 (tanda paralela):** no se encienden en esta tanda: dependen de `make medir-solape` contra producción (D16, D42 del plan de salida al mercado). El comando existe y funciona: se ejecutó en local contra una base migrada a head (vacía, así que solo prueba el camino). Contra producción lo ejecuta el propietario con un `DATABASE_URL` de lectura (`make medir-solape`, o `python scripts/medir_solape_agregados.py --json`); el script solo usa el pool de lectura (`default_transaction_read_only=on`). El número se anota aquí antes de decidir.
 
 ### [P2] Medir la cobertura de las condiciones oficiales de CODICE y verificar sus nombres
 - **Área:** scraper/codice_parser.py (`parse_condiciones`), scripts/medir_terminos_codice.py
@@ -1079,11 +1048,12 @@ _Sin ítems abiertos._
 - **Files de partida:** [requirements.in](../requirements.in), [pyproject.toml](../pyproject.toml), [renovate.json](../renovate.json), [scripts/gen_status.py](../scripts/gen_status.py), [scripts/check_requirements_sync.py](../scripts/check_requirements_sync.py)
 - **Riesgo:** medio — el salto de FastAPI toca todas las rutas; mitigado por el gate de arranque del job E2E y el fuzz de Schemathesis, que es justo lo que detectó la rotura en agosto.
 
-### [P2] La telemetría de producto tiene catálogo y no tiene emisores: medir el uso por espacio antes de la siguiente ola
+### [P2] La telemetría de producto: medir el uso por espacio antes de la siguiente ola
 - **Área:** web/src/lib/analytics.ts, web/src/components/layout/*, web/src/hooks/*, docs/UX_AUDIT.md
 - **Problema:** `web/src/lib/analytics.ts` nació en agosto para responder «qué se usa, qué se abandona y qué se puede retirar» con un catálogo de eventos categóricos y reglas de privacidad; medido el 2026-10-17 solo hay dos llamadas a `track()` fuera del propio módulo y las dos están en la superficie pública (solicitar acceso y su resultado). Dentro del producto —15 espacios, 297 operaciones, 30 casos de uso— sigue sin medirse nada, así que las decisiones de retirar o fusionar superficies (como la del 2026-10-12, que absorbió Empresas y unificó el asistente) se toman sin dato de uso. El punto 0 de AGENTS.md pide comprobar que una superficie nueva hace falta; sin esta medida no se puede comprobar que una existente sobra.
+- **Corrección (2026-10-23):** la medición del 2026-10-17 contó `track()`, que solo se llama dentro de `web/src/lib/analytics.ts`; los emisores del producto pasan por `registrarEvento()`. Auditado ese día: los **23** eventos del catálogo `EventosProducto` tienen al menos un emisor, en unos 30 ficheros (`espacio_abierto` sale del rail, del conmutador de `space-shell.tsx` y de cuatro piezas de pantalla). `web/src/lib/__tests__/analytics-emisores.test.ts` falla si un evento del catálogo se queda sin `registrarEvento("<evento>"` (con una lista de excepciones justificadas, hoy vacía) o si se emite uno fuera del catálogo. Queda abierto lo que necesita datos: la tabla de 30 días y el inventario de la API.
 - **Acceptance criteria:**
-  - Un evento por espacio al entrar (dimensión `espacio`, y `vista` cuando la haya) y los eventos de acción que el catálogo ya define, emitidos desde el marco de la consola, no desde cada pantalla; ninguna propiedad fuera de `PROPIEDADES_PERMITIDAS` (test).
+  - ~~Un evento por espacio al entrar (dimensión `espacio`, y `vista` cuando la haya) y los eventos de acción que el catálogo ya define, emitidos desde el marco de la consola, no desde cada pantalla; ninguna propiedad fuera de `PROPIEDADES_PERMITIDAS` (test).~~ Hecho (ver la corrección de arriba).
   - Tras 30 días, una tabla en `docs/UX_AUDIT.md` con sesiones por espacio y por vista, y una decisión escrita por cada espacio o vista con menos del 2 % de uso: se queda, se fusiona o se retira.
   - La misma pregunta para la API: `pursuits/metrics` o `admin/ejecuciones` ya existen; falta el inventario de operaciones sin ninguna llamada en 30 días (`http_requests_total` por handler ya está en Prometheus), y la lista va a `superficie_congelada.txt` como candidatas a encoger.
 - **Files de partida:** [web/src/lib/analytics.ts](../web/src/lib/analytics.ts), [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx), [web/src/lib/console-spaces.ts](../web/src/lib/console-spaces.ts), [api/superficie_congelada.txt](../api/superficie_congelada.txt)
@@ -1099,7 +1069,26 @@ _Sin ítems abiertos._
 - **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py), [db/connection.py](../db/connection.py), [llm/client.py](../llm/client.py), [services/ml/sap_classifier.py](../services/ml/sap_classifier.py)
 - **Riesgo:** medio — estrechar una excepción en el pipeline puede convertir un aviso en una pasada en rojo; es el objetivo, pero conviene hacerlo módulo a módulo y mirar `scrape-daily` después de cada uno.
 
+### [P2] La matriz go/no-go por criterio no tiene pantalla
+- **Área:** web/src/app/(dashboard)/oportunidades/[id], api/routes/pursuits.py
+- **Problema:** `GET/PUT /pursuits/{id}/go-no-go` (C6.4, D30) puntúa cinco criterios de 1 a 5, recomienda con la media ponderada y marca la decisión que la contradice (`discrepa`), pero ninguna pantalla lo pide: en la consola solo existe la decisión (`DecidirGoNoGo`) y el contraste con la capacidad (`ChecklistGoNoGo`). Desde el 2026-10-23 los **pesos** se editan en Equipo → Organización, así que hoy se configura algo que en la consola no se ve; la recomendación solo llega por la API, el MCP y `make product-status`.
+- **Acceptance criteria:**
+  - La ficha de la oportunidad puntúa cada criterio con su motivo, enseña el total, el umbral y la recomendación sobre cuántos criterios se calculó (`criterios_puntuados`, `completa`), y avisa cuando la decisión tomada discrepa.
+  - Cambiar los pesos en Equipo invalida la puntuación en caché de la ficha.
+  - Vitest de la sección y el E2E `recorrido-oportunidad.spec.ts` (CU-06) pasa por ella.
+- **Files de partida:** [api/routes/pursuits.py](../api/routes/pursuits.py) (`get_pursuit_go_no_go`, `put_pursuit_go_no_go`), [services/go_no_go_template.py](../services/go_no_go_template.py), [web/src/components/pursuits/decidir-go-no-go.tsx](../web/src/components/pursuits/decidir-go-no-go.tsx), [web/src/app/(dashboard)/equipo/_hooks/use-pesos-go-no-go.ts](../web/src/app/(dashboard)/equipo/_hooks/use-pesos-go-no-go.ts)
+- **Riesgo:** bajo — el backend y su escenario (`tests/test_escenario_gobierno_organizacion.py`) ya existen; es una sección nueva en la ficha.
+
 ## P3 — Nice to have
+
+### [P3] Referencias a documentos desde Galicia, Euskadi y TACRC
+- **Área:** scraper/connectors/{tacrc,regional_rss,galicia,euskadi}.py, db/resoluciones.py, config/settings.py
+- **Problema:** solo PLACSP, TED y PSCP emitían referencias a documentos; las otras tres fuentes registradas no aportaban ningún adjunto.
+- **Progreso 2026-10-23 (tanda paralela, agente H):**
+  - **TACRC — hecho en código.** El PDF de cada resolución **vinculada** a una licitación entra en `documentos` como adjunto `additional` de esa licitación (`scraper.connectors.tacrc.registrar_documentos`, tras `link_unlinked`), con `source_hash = tacrc-<número>` y upsert idempotente; `www.hacienda.gob.es` pasa a `dominios_documentos` y a `DOCUMENT_ALLOWED_HOSTS`, con su propio circuito en `scraper/resilience.py`. Efecto hoy: **cero**, porque en producción hay 19 resoluciones y ninguna vinculada (MCP, 2026-10-23); crece cuando se encienda el índice completo (ítem «Encender las fuentes nuevas») y la vinculación encuentre expedientes.
+  - **Galicia y Euskadi — no se emiten, a propósito.** Lo que su conector descarga es solo el RSS, y sus `item` traen título, enlace a la ficha, `pubDate` y una descripción en prosa (estado, órgano, tipo, importe, fechas) sin ningún enlace a pliegos ni anexos: no hay nada que emitir sin inventarlo. Los documentos están en la ficha HTML de cada licitación, que el conector no pide. Para traerlos haría falta una petición por ficha, revisar antes su `robots.txt` (el de PLACSP es `Disallow: /`, y por eso no se lee la suya) y una fixture real: la sesión del 2026-10-23 no tenía salida a `contratosdegalicia.gal` ni a `euskadi.eus`.
+- **Pendiente:** (1) si Render fija `DOCUMENT_ALLOWED_HOSTS` a mano, añadir `www.hacienda.gob.es` (acción del propietario; `.env.example` no se tocó, §6); (2) Galicia/Euskadi: `--dump` del RSS real para confirmar que no hay enlaces y decidir si merece la pena pedir la ficha.
+- **Riesgo:** bajo — volumen mínimo y fail-open por licitación.
 
 ### [P3] Pasar las fechas de `text` a `timestamptz`
 - **Área:** db/ (esquema), todo lector de fechas
@@ -1119,6 +1108,11 @@ _Sin ítems abiertos._
 - **Files de partida:** [services/investigador/search_engine.py](../services/investigador/search_engine.py), [services/embeddings.py](../services/embeddings.py), [requirements-api.in](../requirements-api.in)
 - **Riesgo:** medio — dependencia nueva y memoria del proceso de la API.
 - **Progreso (2026-10-17, rama `claude/quirky-wozniak-xp20q0`):** lo que la fusión haría al encenderse ya no empeora la pantalla. Hasta esa fecha, con embeddings la ruta respondía **solo** con la fusión: sin `coincide_en`, pasaje, resaltados ni `fecha_limite`, ignorando «las más recientes» y, en la lista vectorial, las comillas y la `-exclusión`. Ahora completa la lista del texto (`services/investigador/busqueda.py::combinar`): primero lo que casa con todos los términos, después lo que solo se parece por significado (`coincide_en=["significado"]`, con su fragmento), y al final lo parcial. No corre con operadores, con «recientes» ni con `alpha=0`. La decisión de servirla sigue pendiente.
+- **Progreso (2026-10-23) — decidido servirla con ONNX; código listo, falta el modelo en la imagen.** El propietario autorizó `onnxruntime` + `tokenizers` en `requirements-api.in` (~100 MB instalados frente a ~2 GB de PyTorch; `click` sube a 8.5.0 por `huggingface_hub`). `services/embeddings_onnx.py` reproduce la cuenta de sentence-transformers (truncado a 128 con los especiales dentro, mean pooling por máscara, L2) y `services/embeddings.py` elige motor: sentence-transformers si está, si no ONNX cuando `EMBEDDINGS_ONNX_DIR` (`config/settings_embeddings.py`) apunta a un modelo cuyo `origen.json` coincide con `EMBEDDING_MODEL`; un fallo de carga lo apaga hasta reiniciar. `hybrid_search` ya consultaba los fragmentos de `documento_chunks` por vector: con el motor ONNX, `/search/semantic` fusiona (`rrf`) y `/ask` con `RAG_HYBRID_ENABLED` también. `docker/Dockerfile.api` descarga el modelo con `scripts/descargar_modelo_embeddings.py` (commit fijo, sha256 obligatorio por fichero) y solo define `EMBEDDINGS_ONNX_DIR` si lo descargó. Tests: `tests/test_unit_embeddings_onnx.py` (sesión falsa + tokenizador real en memoria), `tests/test_unit_descargar_modelo_embeddings.py` y `tests/test_embeddings_onnx_paridad.py` (coseno ≥ 0,999 frente a sentence-transformers). Corpus al vuelo **no**: la afinidad del Radar (~1.600 candidatas por carga), el ranking de fragmentos del RAG (≤ 120) y el embebido de pliegos del worker de la API siguen gateados por sentence-transformers (`embeddings_masivos_disponibles`): con ONNX en un vCPU serían decenas de segundos por petición, estimado por FLOPs, sin medir. Similares y predecesor (≤ 100 títulos) sí lo usan. **Falta:**
+  - **Propietario:** el commit del repo de Hugging Face y los tres sha256 (`EMBEDDINGS_ONNX_REVISION`, `EMBEDDINGS_ONNX_SHA256_{MODELO,TOKENIZADOR,CONFIG}`) como variables de `tenderflow-api` en Render — desde la sesión que lo implementó Hugging Face no era accesible (proxy 403) y no se inventaron; pasos en `docs/runbooks/model-rollback.md` § «Modelo ONNX de embeddings».
+  - El test de paridad no se ha ejecutado nunca (sin modelo ni red a Hugging Face): correrlo con el modelo descargado antes de desplegar.
+  - Tras el deploy: `source=rrf` en `semantic_search.ok`, MRR de `tests/eval/test_eval_rag.py` antes/después, RSS de la API tras la primera búsqueda (~470 MB esperados) y latencia de la primera búsqueda (carga perezosa del modelo) y de los similares de la ficha.
+  - Para que el Radar puntúe por significado en la API hace falta **persistir** el embedding de cada licitación (columna o tabla `vector(384)` + backfill en el pipeline; migración, §6) y leerlo en `score_affinity_batch`, no calcularlo al vuelo.
 
 ### [P3] [Investigador] El historial de consultas sigue en `localStorage`
 - **Área:** web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts
@@ -1259,6 +1253,7 @@ _Sin ítems abiertos._
   - Si el lote viene en otra forma, añadirla a `_XPATHS_LOTE_RESULTADO` y relanzar `reproceso-lotes.yml` con `aplicar` sobre el rango afectado; si de verdad no viene, documentarlo en el docstring de `_lote_del_resultado` y cerrar.
 - **Files de partida:** [scraper/codice_parser.py](../scraper/codice_parser.py), [scraper/reproceso_lotes.py](../scraper/reproceso_lotes.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
 - **Riesgo:** bajo — es lectura del XML; el reproceso solo rellena `lote_id` vacío.
+- **Progreso (2026-10-23):** sin red a PLACSP desde la sesión, así que `26/AMLICENCIASCITI` no se capturó y el XML no se inventa. Medido con el MCP: quedan **121** filas sin lote en 58 expedientes multilote, y **113** de ellas tienen un `importe_adjudicado` que float4 no guarda en céntimos (39.567,94 € está guardado como 39.567,94140625); en los expedientes mixtos, 51 de 53 filas sin lote son así frente a 11 de 44 con lote. Es el emparejamiento de `db/repositories/reproceso_lotes.py`, no el XML: comparaba `importe_adjudicado` (`real`) por igualdad exacta con el float8 del parser, que no casa nunca en esos importes. Corregido comparando a la precisión de `real` (test `test_casa_el_importe_que_la_columna_real_redondeo`); vale antes y después de `v156`. **Pendiente, propietario:** relanzar `reproceso-lotes.yml` con `aplicar` sobre 2022-04..2026-10 y volver a medir. Si queda residuo (las ~8 filas con importe exacto), entonces sí capturar el XML con red y decidir entre ampliar `_XPATHS_LOTE_RESULTADO` o documentarlo en `_lote_del_resultado`.
 
 ### [P3] Partir los componentes con cinco o más booleanos de modo en variantes explícitas
 - **Área:** web/src (composición de componentes)
@@ -1291,9 +1286,9 @@ _Sin ítems abiertos._
 - **Área:** varios
 - **Problema:** lo que las seis líneas dejaron escrito como pendiente, para que no se pierda.
 - **Acceptance criteria:**
-  - RFC para retirar de `GET /notifications` los campos que la campana ya no usa (`items`, `unread_count`, `hoy`), y `POST /notifications/read` y `GET /licitaciones/stream`: quitarlos rompe el contrato.
+  - ~~RFC para retirar de `GET /notifications` los campos que la campana ya no usa (`items`, `unread_count`, `hoy`), y `POST /notifications/read` y `GET /licitaciones/stream`: quitarlos rompe el contrato.~~ Escrito el 2026-10-23: [2026-10-23-rfc-retirada-campana-antigua-y-stream](rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md) (`review`), que propone el 2027-02-01 y añade `forecast/retendering`. La fase 1 ya está en el código: `deprecated`, `Deprecation`/`Sunset`/`Link`. El borrado (fase 2) espera a que el propietario apruebe la RFC.
   - Decidir si la cuota de adjuntos (2 GiB por organización) debe descontar los retirados; hoy borrar no libera espacio.
-  - Alta del 2FA con QR (no hay librería instalada) y regenerar los códigos de recuperación sin desactivar el segundo factor.
+  - Regenerar los códigos de recuperación sin desactivar el segundo factor. (El QR en el alta del 2FA quedó **decidido no** el 2026-10-23: exige una dependencia nueva y D39 del [plan de funcionalidades](plans/2026-09-plan-funcionalidades.md) no la autoriza; el alta sigue ofreciendo la clave para teclearla y el enlace `otpauth://`.)
   - Renovar la captura de `/competencia` en `visual.spec.ts` (tiene dos pestañas más). `/empresas` ya salió de `web/bundle-budget.json`.
   - Validar con el dueño el reparto fabricante → familia de «Proyectos y módulos» (`FAMILIA_DE_FABRICANTE`; Oracle, Microsoft, IBM, ServiceNow y Sopra no cuentan en ninguna).
   - El digest dice «expedientes que sigues» también en los avisos de documentación.
@@ -1323,7 +1318,7 @@ _Sin ítems abiertos._
 
 ### [P3] Decidir qué hacer con los ratchets que llevan meses congelados sin bajar
 - **Área:** scripts/check_layers.py, pyproject.toml (TID251), scripts/check_user_key_ratchet.py, docs/STATUS.md
-- **Problema:** tres ratchets congelan deuda con nombre y ninguno tiene plan de bajada: 22 imports contra el orden de capas (los peores van de la capa inferior a la superior: `db/repositories/go_no_go.py -> services.go_no_go_template`, `db/repositories/licitaciones.py -> services.investigador.search_engine`, `db/access_grants.py -> services.access_grants`, `config/settings.py -> shared.*`), 22 ficheros con SQL fuera de `db/` (TID251: de 32 entradas en agosto a 22 hoy, según los comentarios de `pyproject.toml`) y 59 ficheros con `user_key` (el P1 de S1 lo lleva a cero con T4, pero el resto no tiene dueño). Un ratchet que solo impide crecer protege el futuro y deja el presente igual; medido el 2026-10-17 contra `docs/STATUS.md`.
+- **Problema:** tres ratchets congelan deuda con nombre y ninguno tiene plan de bajada: 22 imports contra el orden de capas (los peores van de la capa inferior a la superior: `db/repositories/go_no_go.py -> services.go_no_go_template`, `db/repositories/licitaciones.py -> services.investigador.search_engine`, `db/access_grants.py -> services.access_grants`, `config/settings.py -> shared.*`), 22 ficheros con SQL fuera de `db/` (TID251: de 32 entradas en agosto a 22 hoy, según los comentarios de `pyproject.toml`; 19 desde el 2026-10-23, y `tests/test_s4b_ratchet_tid251.py` falla ahora también ante una entrada que ya no abre conexiones) y 59 ficheros con `user_key` (el P1 de S1 lo lleva a cero con T4, pero el resto no tiene dueño). Un ratchet que solo impide crecer protege el futuro y deja el presente igual; medido el 2026-10-17 contra `docs/STATUS.md`.
 - **Acceptance criteria:**
   - Decisión escrita del dueño por ratchet: (a) cuota de bajada —por ejemplo, cada PR que toque un módulo de la lista saca ese módulo o explica por qué no—, (b) fecha objetivo para llegar a cero, o (c) aceptar la violación como diseño y borrarla de la lista (y, en el caso de capas, actualizar AGENTS.md §2).
   - Para capas: las cuatro violaciones `db/* -> services.*` tienen prioridad, porque son las únicas en que la persistencia conoce el dominio; la pieza compartida baja a `shared/` o a `db/`.
@@ -1371,10 +1366,10 @@ _Sin ítems abiertos._
 
 ### [P3] Los 41 `SELECT *` de `db/` y el SQL propio de `services/notifications.py` y `services/watchlist_rules.py`
 - **Área:** db/*.py, db/repositories/*.py, services/notifications.py, services/watchlist_rules.py, db/notifications.py, db/repositories/watchlist_rules.py
-- **Problema:** medido el 2026-10-17 hay 41 `SELECT *` en `db/`: cada columna nueva viaja en todas esas lecturas y el orden de las columnas pasa a ser contrato implícito (es lo que hace frágil `rows_to_dicts` ante un `ALTER TABLE`). Aparte, `services/notifications.py` (18 sentencias con `# noqa: S608`) y `services/watchlist_rules.py` (10) construyen y ejecutan SQL propio pese a existir `db/notifications.py`, `db/repositories/notification_preferences.py` y `db/repositories/watchlist_rules.py`: son dos de las 22 entradas del ratchet TID251 y las dos tienen ya un destino en `db/`.
+- **Problema:** medido el 2026-10-17 hay 41 `SELECT *` en `db/`: cada columna nueva viaja en todas esas lecturas y el orden de las columnas pasa a ser contrato implícito (es lo que hace frágil `rows_to_dicts` ante un `ALTER TABLE`). Aparte, `services/notifications.py` (10 sentencias con `# noqa: S608`) y `services/watchlist_rules.py` (8) —18 en total; el recuento anterior, «18 y 10», sumaba de más— construían y ejecutaban SQL propio pese a existir `db/notifications.py`, `db/repositories/notification_preferences.py` y `db/repositories/watchlist_rules.py`: son dos de las 22 entradas del ratchet TID251 y las dos tienen ya un destino en `db/`.
 - **Acceptance criteria:**
   - Las lecturas con `SELECT *` que sirven a la API nombran sus columnas (las de `pg_dump`/herramientas internas pueden quedarse con el motivo en la línea); el conteo baja y se fija.
-  - El SQL de `services/notifications.py` y `services/watchlist_rules.py` vive en sus módulos de `db/`; los dos ficheros salen de la whitelist TID251 de `pyproject.toml` (22 → 20) y `docs/STATUS.md` lo refleja.
+  - ~~El SQL de `services/notifications.py` y `services/watchlist_rules.py` vive en sus módulos de `db/`; los dos ficheros salen de la whitelist TID251 de `pyproject.toml` (22 → 20) y `docs/STATUS.md` lo refleja.~~ **Hecho el 2026-10-23:** el SQL bajó a `db/notifications.py` y `db/repositories/watchlist_rules.py` (incluida la ejecución del matching), los 18 `noqa: S608` desaparecieron y la whitelist queda en 19 (sale también el fósil `services/ml/tech_classifier.py`). Queda solo la mitad de los `SELECT *`.
 - **Files de partida:** [services/notifications.py](../services/notifications.py), [services/watchlist_rules.py](../services/watchlist_rules.py), [db/notifications.py](../db/notifications.py), [db/repositories/watchlist_rules.py](../db/repositories/watchlist_rules.py)
 - **Riesgo:** bajo — movimiento de SQL con tests de integración existentes para ambos módulos.
 
@@ -1395,7 +1390,108 @@ _Sin ítems abiertos._
 - **Files de partida:** [scraper/resilience.py](../scraper/resilience.py), [api/routes/pursuits.py](../api/routes/pursuits.py), [api/routes/security.py](../api/routes/security.py), [tests/test_ola1_fixes.py](../tests/test_ola1_fixes.py), [pyproject.toml](../pyproject.toml)
 - **Riesgo:** bajo — sustituciones de nombre.
 
+### [P3] SQLAlchemy se usa en producción y no está declarada como dependencia directa
+- **Área:** requirements.in, pyproject.toml (`[project] dependencies`)
+- **Problema:** `db/models.py`, `db/repositories/watchlist_rules.py`, `services/watchlist_rules.py` y otros construyen consultas con SQLAlchemy Core (`compile_query`), pero `sqlalchemy` no está en `requirements.in` ni en las dependencias de `pyproject.toml`: llega a `requirements.txt` solo como dependencia transitiva (`sqlalchemy==2.0.49`, «via» otra librería). El día que esa librería la suelte, o la fije a una major incompatible, la API deja de arrancar sin que ningún diff de dependencias lo haya avisado. Visto el 2026-10-23.
+- **Acceptance criteria:**
+  - `sqlalchemy` declarada en `requirements.in` y en `pyproject.toml` con el mismo rango, y `requirements.txt` regenerado con `pip-compile`; `scripts/check_requirements_sync.py` en verde.
+- **Pendiente de OK del propietario** (AGENTS.md §6: cambiar dependencias requiere confirmación explícita). No se toca hasta tenerlo.
+- **Files de partida:** [requirements.in](../requirements.in), [pyproject.toml](../pyproject.toml)
+- **Riesgo:** bajo — declara lo que ya está instalado; el riesgo es no hacerlo.
+
 ## Cerrados
+
+- [2026-10-23] **Excepción de `braces` en `npm audit` retirada** — el job «Security audit»
+  de la PR #529 falló porque `npm audit` ya no reporta GHSA-vfj7-8cjw-p6xm (el lockfile sigue en
+  `braces` 3.0.3 y `npm view braces version` también) y `scripts/check_npm_audit.py` exige quitar
+  una excepción que no tapa nada. `EXCEPCIONES` queda vacía; si el aviso vuelve, la puerta falla
+  y se re-evalúa con la plantilla del 2026-10-03.
+- [2026-10-23] **Higiene de la sección 6: SQL de servicios a `db/`, ratchet TID251 sin fósiles, deprecaciones con fecha y auditoría de telemetría** —
+  el SQL de `services/notifications.py` (alertas in-app y preferencias de correo) baja a
+  `db/notifications.py`, y el de `services/watchlist_rules.py` (CRUD de reglas y ejecución del
+  matching) a `db/repositories/watchlist_rules.py`; los servicios conservan la regla (modo de
+  correo por defecto, validación contra el catálogo, fail-safe de la lectura, normalización del
+  órgano, cláusulas del filtro). Desaparecen los 18 `noqa: S608` (eran 18, no 26). Salen de la
+  whitelist TID251 esos dos ficheros y el fósil `services/ml/tech_classifier.py`, que solo
+  nombraba `connect()` en un docstring: **22 → 19**. `test_sin_entradas_fosiles` falla ahora
+  también ante una entrada sin ningún uso real (`ast`, no texto) de `connect`/`connect_read`.
+  Las tres rutas de analítica de D19 y `forecast/retendering` envían `Deprecation`/`Sunset`/`Link`
+  (desde una dependencia, para que sobrevivan al acierto de `cache_response`); la fecha de D19
+  pasa del 2026-12-04 —89 días, fuera de la ventana de C8.1— al 2027-01-15 del listado por
+  offset, cuyo `summary` también decía 2026-12-04 (addendum en la RFC). RFC nueva
+  [2026-10-23-rfc-retirada-campana-antigua-y-stream](rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md)
+  para `GET /notifications` (campos), `POST /notifications/read`, `GET /licitaciones/stream` y
+  `forecast/retendering`, con su fase 1 aplicada. `tests/test_deprecacion_cabeceras.py` exige
+  fecha a toda operación `deprecated`. Telemetría: los 23 eventos del catálogo tienen emisor y
+  `analytics-emisores.test.ts` lo fija. Pendiente aparte: SQLAlchemy como dependencia directa
+  (ítem P3, espera OK del propietario).
+- [2026-10-23] **P2: Las colas de revisión del dato se llenaban y nadie podía vaciarlas;
+  la auditoría de verdad del dato solo llegaba por correo** (tanda paralela, tramo A) —
+  `licitaciones_duplicados` en `pending` (ADR-026) solo se resolvía desde un test, con el SQL
+  en `services/dedupe.py` (contra ADR-022), y `organo_review_queue` (ADR-032 §C) no tenía
+  ninguna función que la resolviera. El SQL de la cola de duplicados baja a
+  `db/repositories/dedupe.py` (`pendientes_de_revision`, `pendientes_count`,
+  `resolver_pendiente`; `review_pending`/`resolve_pending` desaparecen del servicio). Los
+  órganos se resuelven con `db.repositories.organos.resolver_revision` (reclama la fila) y la
+  regla `services.organos.decidir_revision`, calcada de `db.empresas.apply_review`: aceptar
+  registra la grafía como alias del candidato, rechazar crea un órgano propio, y en los dos
+  casos las licitaciones con esa grafía reciben su `organo_id`. Rutas de admin en
+  `api/routes/admin_revision.py` (`GET/POST /admin/revision/duplicados`, `…/organos` y
+  `GET /admin/revision/verdad`, cacheada una hora), auditadas como `dedupe.review_resolved` y
+  `organo.review_resolved`. Los umbrales, la medición de BD y `evaluar` de
+  `scripts/audit_domain_truth.py` bajan a `services/verdad_dominio.py` para que la API los
+  sirva sin importar el script; el script los re-exporta y añade la sección (b), que lee ZIP
+  con `scraper/`. `QualityResult` publica `duplicados_pendientes`. En la consola, Ops › Datos
+  monta tres tarjetas (`revision-duplicados-card`, `revision-organos-card`,
+  `verdad-dominio-card`). Lo fijan `tests/test_revision_datos.py`,
+  `tests/test_unit_admin_revision.py`, `tests/test_unit_verdad_dominio.py`, el escenario
+  CU-20 `tests/test_escenario_revision_datos.py` y
+  `web/src/app/(dashboard)/ops/__tests__/revision-datos-cards.test.tsx`. Sigue fuera: la
+  auditoría no persiste su serie en la BD (el histórico está en los artefactos de
+  `domain-truth.yml`), así que el panel enseña la medición de la última hora, no la tendencia.
+
+- [2026-10-23] **Backend sin pantalla en Competencia y Equipo: cuota, HHI y
+  bajas; pesos del go/no-go; rastro de auditoría de la organización** (tanda
+  paralela, agente D) — Competencia → Competidores gana «Concentración por
+  segmento» (`GET /competitive/hhi` por familia CPV, comunidad, órgano o
+  tecnología; al elegir un segmento, `/competitive/cuota` y
+  `/competitive/bajas/referencia` solo cuando el endpoint sabe filtrar ese
+  corte) y «Bajas medias» (`/competitive/bajas` por órgano, CPV o comunidad,
+  con la parte de la barra que el endpoint entiende y nombrando la que no).
+  Los umbrales del HHI salen de un solo sitio (`competencia/_hooks/mercado-segmentos.ts`)
+  para la cifra del ámbito y la lista de segmentos; la cifra ya era dato real
+  de `/analytics/competitors`. Equipo → Organización gana la tarjeta de pesos
+  del go/no-go (`GET/PUT /organizations/go-no-go/weights`; todos a cero se para
+  antes de la API) y Equipo → Actividad, para owner/admin, el rastro de
+  auditoría con filtro de fechas, paginación por cursor y CSV generado por la
+  API. **Bug arreglado de paso:** los pesos del go/no-go y la propuesta de
+  pesos aplicada se auditaban con `resource=organization:<id>` y el rastro solo
+  leía `org:<id>`, así que nunca aparecían; `AuditRepository.list_for_organization`
+  lee las dos formas (también lo ya persistido). Recorridos:
+  `tests/test_escenario_gobierno_organizacion.py` (CU-06 y CU-32 nuevo) y el
+  segundo test de `tests/test_escenario_competencia.py` (CU-18). Queda abierta
+  la pantalla de la matriz por criterio (ver P2 «La matriz go/no-go por
+  criterio no tiene pantalla»).
+- [2026-10-23] **P1: La vista canónica todavía puede preferir TED, y el bulk no cuenta como
+  PLACSP** (rama de la tanda paralela; OK del propietario a la migración) — el primer criterio de
+  canónica pasa a `db.sql_fragments.rango_de_fuente_sql`: PLACSP (`placsp` o `bulk_*`, prefijo
+  exacto con `left(..., 5)`, sin `LIKE` ni `%`) → resto → TED. Su gemelo
+  `services.dedupe._rango_canonico` cambia con él y `tests/test_canonica_orden_pg.py` ordena las mismas
+  filas en Postgres y en Python. `v157_mv_canonicas_fuente` reconstruye la vista por permuta (calcada
+  de `v102`); `tests/test_mv_canonicas_definicion.py` apunta a ella. Delta medido en producción el
+  mismo día con el MCP, sin aplicar nada: **32 de 40.545** contratos publicables cambian de fila
+  canónica (29 de TED a PLACSP-bulk, 3 de `placsp` a `bulk_*` del mismo expediente). Glosario del
+  MCP y ADR-026 actualizados. **Pendiente, propietario:** revisar el delta con
+  `ENV=dev python scripts/medir_delta_canonicas.py` (lista cada URL que cambia) y aplicar `v157` con
+  `migrate.yml`; va detrás de `v156`, así que se puede subir hasta `v156` sin mover URLs.
+
+- [2026-10-23] **P2: Filas nuevas con importe y sin `importe_tipo`** — las 4 filas de `galicia_rss`
+  (escritas entre el 10 y el 17/09, las únicas de toda la tabla, medido ese día) pasan a
+  `desconocido` con `v155_importe_tipo_galicia_desconocido`, acotada a esa fuente para que otro camino
+  roto siga saltando en la auditoría. Idempotente; downgrade no-op documentado. El conector de hoy ya
+  escribe la base (`regional_rss._tipo_de_importe`, test `test_rss_la_fila_de_galicia_lleva_tipo`).
+  **Pendiente, propietario:** aplicar `v155` con `migrate.yml`; tras ello `importe/filas_nuevas_sin_tipo`
+  vuelve a cero.
 
 - [2026-10-17] **P2: Decidir si el listado `/licitaciones` esconde duplicados (ADR-026 D23
   dice que sí)** (rama `claude/listado-esconde-duplicados`) — manda D23: el listado es
@@ -1542,7 +1638,8 @@ _Sin ítems abiertos._
   pausar la regla de una alerta. Las novedades de mercado se quedan en el
   Resumen; `get_resumen_novedades(user_id)` está retirada y un test vigila que
   nada lea `users.last_login`. Los campos deprecados de `GET /notifications`
-  siguen hasta su RFC (ítem P3 nuevo).
+  siguen hasta su RFC (ítem P3 nuevo; la RFC es
+  [2026-10-23-rfc-retirada-campana-antigua-y-stream](rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md)).
 - [2026-10-12] **P1: El despachador del outbox no lo invoca ningún plano** — el ítem
   estaba desfasado: el cierre de la pasada ya llama a `event_dispatch` entre
   `cartera_avisos` y `digests` (`scheduler/pipeline_runs.py`, `_run_event_dispatch`,

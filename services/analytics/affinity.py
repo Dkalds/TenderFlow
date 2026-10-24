@@ -303,9 +303,12 @@ def score_affinity_batch(df: pd.DataFrame, portfolio: AffinityPortfolio) -> Affi
     }
 
     try:
-        from services.embeddings import embeddings_available, encode_texts
+        from services.embeddings import embeddings_masivos_disponibles, encode_texts
 
-        if not embeddings_available():
+        # «Masivos» y no solo «disponibles»: esto codifica el lote entero
+        # (~1.600 candidatas por carga del Radar) dentro de la petición, y el
+        # motor ONNX de la API es para la consulta, no para eso.
+        if not embeddings_masivos_disponibles():
             return AffinityBatch(scores=fallback, method="keyword_cpv_fallback")
 
         portfolio_items = [

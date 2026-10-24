@@ -40,17 +40,26 @@ export const registro = esquemaDeDto("RegisterRequest")(
   {
     display_name: z.string(),
     email: correo,
-    password: z
-      .string()
-      .check(
-        z.minLength(10, "Mínimo 10 caracteres."),
-        z.regex(/[a-z]/, "Tiene que llevar alguna minúscula."),
-        z.regex(/[A-Z]/, "Tiene que llevar alguna mayúscula."),
-        z.regex(/\d/, "Tiene que llevar algún número."),
-      ),
+    password: contrasenaConPolitica(),
   },
   [],
 );
+
+/**
+ * Una contraseña nueva con la política de `check_account_password`: la del
+ * alta, la del reset y la del cambio desde Ajustes. Función y no constante
+ * para que cada esquema tenga su propia instancia.
+ */
+export function contrasenaConPolitica() {
+  return z
+    .string()
+    .check(
+      z.minLength(10, "Mínimo 10 caracteres."),
+      z.regex(/[a-z]/, "Tiene que llevar alguna minúscula."),
+      z.regex(/[A-Z]/, "Tiene que llevar alguna mayúscula."),
+      z.regex(/\d/, "Tiene que llevar algún número."),
+    );
+}
 
 /** El alta añade la confirmación, que es del formulario y no del contrato. */
 export const registroFormulario = z.extend(registro.esquema, { confirm_password: z.string() }).check(
