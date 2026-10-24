@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-10-23
+Generado: 2026-10-24
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -65,7 +65,7 @@ Generado: 2026-10-23
 
 ## Ratchet de capas — imports contra el orden de paquetes
 
-**22 imports** van de una capa a otra superior (lista congelada; solo puede decrecer).
+**21 imports** van de una capa a otra superior (lista congelada; solo puede decrecer).
 
 `scripts/check_layers.py` falla ante uno nuevo, también si está dentro de una función. Orden, de abajo arriba: `config < observability < shared < llm < db < services < scraper < scheduler < api`.
 
@@ -84,7 +84,6 @@ Generado: 2026-10-23
 - `observability/metrics.py -> services.extraction_runs`
 - `observability/ops_events.py -> db.connection`
 - `observability/runtime_metrics.py -> db.connection`
-- `services/ml/sap_classifier.py -> scraper.seed_negatives`
 - `services/rag/fact_sheet.py -> scraper.document_fetcher`
 - `services/source_health.py -> scraper.connectors`
 - `services/tech_signal.py -> scraper.filters`

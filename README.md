@@ -291,7 +291,7 @@ seguros. Las obligatorias en producción tienen que estar declaradas en
 python -m scheduler.run_update --backfill 2024 1   # primera carga: de enero 2024 a hoy
 python -m scheduler.run_update                     # refresca los últimos 3 meses (--months N)
 python -m scheduler.run_update --daily             # carril ligero: feed ATOM en vivo
-python -m services.ml.sap_classifier train         # entrena el clasificador SAP
+python scripts/ml_clasificadores.py train          # entrena el clasificador SAP
 ```
 
 Todas son **idempotentes**: el upsert va por `id_externo`, y ejecutarlas varias
