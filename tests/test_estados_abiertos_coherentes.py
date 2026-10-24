@@ -17,6 +17,7 @@ import pytest
 
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from db.repositories.licitaciones import LicitacionRepository
+from shared.dto import FiltrosLicitacion
 from shared.estados import ESTADOS_CERRADOS, abierta_sql
 
 # Un expediente por estado: los cinco terminales, tres abiertos conocidos, uno
@@ -103,7 +104,7 @@ def test_el_resumen_y_el_listado_cuentan_lo_mismo(estados_db):
         hace_24h_iso="2026-08-07T00:00:00+00:00",
     )
     listados, _ = LicitacionRepository().list_paginated(
-        limit=50, solo_abiertas=True, with_total=False
+        FiltrosLicitacion(solo_abiertas=True), limit=50, with_total=False
     )
 
     assert overview["total_activas"] == len(_ABIERTOS)

@@ -18,6 +18,7 @@ Lo que se fija:
 
 from __future__ import annotations
 
+from shared.dto import FiltrosLicitacion
 from tests.escenarios import Sesion, abrir_sesion, sembrar_licitacion
 
 
@@ -126,4 +127,4 @@ def test_una_etiqueta_sin_organizacion_no_llega_a_filtrar() -> None:
     from db.repositories.licitaciones import LicitacionRepository
 
     with pytest.raises(ValueError, match="organización"):
-        LicitacionRepository._base_filters(etiqueta_id=3)
+        LicitacionRepository._base_filters(FiltrosLicitacion(etiqueta_id=3))

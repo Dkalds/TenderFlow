@@ -7,6 +7,8 @@ en la ruta.
 
 from __future__ import annotations
 
+from shared.dto import FiltrosLicitacion
+
 
 def _seed(rows: list[dict]) -> None:
     from db.upsert import Licitacion, upsert_licitaciones
@@ -39,7 +41,7 @@ def _compiled_where(**kwargs) -> str:
     from db.models import compile_query, licitaciones
     from db.repositories.licitaciones import LicitacionRepository
 
-    clauses = LicitacionRepository._base_filters(only_classified=False, **kwargs)
+    clauses = LicitacionRepository._base_filters(FiltrosLicitacion(**kwargs), only_classified=False)
     sql, _ = compile_query(select(licitaciones.c.id_externo).where(and_(*clauses)))
     return sql
 
@@ -86,7 +88,7 @@ def test_listado_multivalor_y_multitecnologia(tmp_db):
     repo = _repo()
 
     def ids(**kwargs) -> set[str]:
-        items, _ = repo.list_paginated(**kwargs)
+        items, _ = repo.list_paginated(FiltrosLicitacion(**kwargs))
         return {row["id_externo"] for row in items}
 
     # Dos comunidades: unión, no vacío.
@@ -109,7 +111,7 @@ def test_listado_no_confunde_un_codigo_con_el_prefijo_de_otro(tmp_db):
             {"id_externo": "X3", "titulo": "c", "tecnologia": "SAP"},
         ]
     )
-    items, _ = _repo().list_paginated(tecnologia="SAP")
+    items, _ = _repo().list_paginated(FiltrosLicitacion(tecnologia="SAP"))
     assert {row["id_externo"] for row in items} == {"X3"}
 
 
@@ -131,7 +133,7 @@ def _compiled_where_params(**kwargs) -> tuple[str, list]:
     from db.models import compile_query, licitaciones
     from db.repositories.licitaciones import LicitacionRepository
 
-    clauses = LicitacionRepository._base_filters(only_classified=False, **kwargs)
+    clauses = LicitacionRepository._base_filters(FiltrosLicitacion(**kwargs), only_classified=False)
     return compile_query(select(licitaciones.c.id_externo).where(and_(*clauses)))
 
 
@@ -170,7 +172,7 @@ def _seed_cierres() -> None:
 
 
 def _ids(**kwargs) -> set[str]:
-    items, _ = _repo().list_paginated(**kwargs)
+    items, _ = _repo().list_paginated(FiltrosLicitacion(**kwargs))
     return {row["id_externo"] for row in items}
 
 

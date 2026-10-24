@@ -45,6 +45,7 @@ from db.sql_fragments import (
     tecnologia_en_csv_sql,
     tecnologia_tokens_sql,
 )
+from shared.dto import FiltrosLicitacion
 
 #: Columnas en las que busca ``q``, en el orden en que las emiten los dos lados.
 _COLUMNAS_Q = ("titulo", "descripcion", "organo_contratacion", "id_externo")
@@ -56,7 +57,9 @@ _PLEGADO_RE = re.compile(r"lower\(translate\(([\w.]+), ([^,)]+), ([^,)]+)\)\)")
 
 def _listado(**filtros: Any) -> tuple[str, list[Any]]:
     """SQL y parámetros del ``WHERE`` del listado, sin el filtro de clasificadas."""
-    clausulas = LicitacionRepository._base_filters(only_classified=False, **filtros)
+    clausulas = LicitacionRepository._base_filters(
+        FiltrosLicitacion(**filtros), only_classified=False
+    )
     return compile_query(select(licitaciones.c.id_externo).where(and_(*clausulas)))
 
 
@@ -339,6 +342,6 @@ def test_listado_y_agregados_cuentan_lo_mismo(
 ) -> None:
     from db.repositories.aggregates import AggregateRepository
 
-    total_listado = LicitacionRepository().count_cursor(**filtros)
+    total_listado = LicitacionRepository().count_cursor(FiltrosLicitacion(**filtros))
     total_agregados = AggregateRepository().overview_kpis(LicitacionesFilters(**filtros))["total"]
     assert total_listado == total_agregados == esperado

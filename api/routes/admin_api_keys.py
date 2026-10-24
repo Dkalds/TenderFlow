@@ -18,9 +18,10 @@ desactivar a un usuario, que revoca de golpe todas sus claves.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, ConfigDict, Field
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_admin
@@ -28,14 +29,82 @@ from db.audit import log_event
 from db.repositories.api_keys import ApiKeyRepository
 from observability.logging import get_logger
 from shared.audit_events import API_KEY_REVOKED
-from shared.dto import (
-    AdminApiKeyOut,
-    AdminApiKeyRevocadaOut,
-    AdminApiKeysOut,
-    AdminApiKeysResumen,
-)
 
 log = get_logger(__name__)
+
+
+# ── Claves de API de la instancia (Ops > Administración) ───────────────────────
+#
+# Viven junto a su ruta porque solo las usa este router (el criterio de
+# `shared/dto`). Ningún campo lleva el hash ni el token; `prefix` son los ocho
+# primeros caracteres del token, que no autentican.
+
+
+class AdminApiKeyOut(BaseModel):
+    """Una clave de la instancia, sin secreto."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    name: str
+    #: Primeros ocho caracteres del token: lo que el integrador reconoce en su
+    #: configuración. `null` en claves anteriores a v25.
+    prefix: str | None = None
+    tier: str | None = None
+    #: Separados por coma, como se guardan. `*` es «todos».
+    scopes: str
+    #: `null`: clave sin dueño. En producción no autentica (la validación las
+    #: rechaza desde 2026-07-27), y no se revoca al desactivar a nadie.
+    user_id: int | None = None
+    owner_email: str | None = None
+    owner_name: str | None = None
+    #: El dueño existe pero está desactivado: la clave ya no autentica.
+    owner_deactivated: bool = False
+    organization_id: int | None = None
+    created_at: str | None = None
+    #: `null`: no caduca nunca. Toda clave nueva nace con caducidad.
+    expires_at: str | None = None
+    #: Última petición autenticada con ella; `null` si nunca se usó (o si se
+    #: usó antes de que se registrara).
+    last_used: str | None = None
+    #: `revocada` (`is_active = 0`), `caducada` (activa con `expires_at` en el
+    #: pasado: no abre nada) o `activa`. Calculado en el servidor.
+    estado: Literal["activa", "caducada", "revocada"]
+
+
+class AdminApiKeysResumen(BaseModel):
+    """Recuento sobre la tabla entera, no sobre la página devuelta."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    total: int
+    #: Ni revocadas ni caducadas.
+    activas: int
+    activas_sin_dueno: int
+    activas_sin_caducidad: int
+
+
+class AdminApiKeysOut(BaseModel):
+    """Las claves de la instancia: las vivas primero, la más reciente arriba."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[AdminApiKeyOut] = Field(default_factory=list)
+    resumen: AdminApiKeysResumen
+    #: El listado llegó al límite pedido: hay más claves de las que se ven.
+    truncado: bool = False
+
+
+class AdminApiKeyRevocadaOut(BaseModel):
+    """La clave tras revocarla."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    name: str
+    user_id: int | None = None
+    estado: Literal["revocada"] = "revocada"
+
 
 router = APIRouter(prefix="/admin/api-keys", tags=["admin"])
 
