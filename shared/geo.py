@@ -45,6 +45,19 @@ for _ccaa, _codes in _CCAA_BLOCKS.items():
         NUTS3_TO_CCAA[_c] = _ccaa
 
 
+def es_nuts_de_pais(nuts: str | None) -> bool:
+    """¿Es un código NUTS de nivel país (NUTS0: ``"ES"``, ``"PT"``…)?
+
+    NUTS0 son las dos letras del país, sin dígitos. Un contrato localizado así
+    no dice en qué provincia ni en qué CCAA se ejecuta: PLACSP lo publica con
+    ``CountrySubentity`` «España», que no es una provincia.
+    """
+    if not nuts:
+        return False
+    n = nuts.strip()
+    return len(n) == 2 and n.isalpha()
+
+
 def nuts_to_ccaa(nuts: str | None) -> str | None:
     """Convierte un código NUTS3 (o NUTS2) a su Comunidad Autónoma.
 
