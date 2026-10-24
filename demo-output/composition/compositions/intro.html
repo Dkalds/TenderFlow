@@ -1,0 +1,41 @@
+<template>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+    #root { position: absolute; inset: 0; overflow: hidden; background: #0e0d0c; color: hsl(36 12% 93%); font-family: "Geist", sans-serif; }
+    #in-halo { position: absolute; left: 560px; top: 90px; width: 800px; height: 640px; border-radius: 50%; background: radial-gradient(ellipse, rgba(243, 147, 73, 0.28) 0%, rgba(243, 147, 73, 0.1) 40%, rgba(243, 147, 73, 0) 70%); }
+    #in-brand { position: absolute; left: 0; right: 0; top: 330px; display: flex; justify-content: center; align-items: center; gap: 34px; }
+    #in-box { width: 156px; height: 156px; border-radius: 40px; background: #f39349; display: flex; align-items: center; justify-content: center; }
+    #in-box svg { width: 90px; height: 90px; overflow: visible; }
+    #in-box path { fill: none; stroke: #1a130d; stroke-width: 2.7; stroke-linecap: round; }
+    #in-word { font-size: 108px; font-weight: 650; letter-spacing: -0.035em; }
+    #in-sub { position: absolute; left: 0; right: 0; top: 560px; text-align: center; font-family: "Fraunces", Georgia, serif; font-size: 64px; font-weight: 500; letter-spacing: -0.015em; }
+    #in-sub .w { display: inline-block; }
+    #in-kick { position: absolute; left: 0; right: 0; top: 670px; text-align: center; font-family: "Geist Mono", monospace; font-size: 28px; letter-spacing: 0.12em; color: hsl(34 8% 65%); }
+  </style>
+  <div id="root" data-composition-id="intro" data-width="1920" data-height="1080">
+    <div id="in-halo" class="clip" data-start="0" data-duration="4.014" data-layout-ignore></div>
+    <div id="in-brand" class="clip" data-start="0" data-duration="4.014">
+      <div id="in-box"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="in-p1" d="M3.5 6 H20.5" pathLength="1" /><path id="in-p2" d="M12 6 V19" pathLength="1" /><path id="in-p3" d="M12 12 H18.5" pathLength="1" /></svg></div>
+      <div id="in-word">TenderFlow</div>
+    </div>
+    <h1 id="in-sub" class="clip" data-start="0" data-duration="4.014"><span class="w">Recorrido</span> <span class="w">por</span> <span class="w">el</span> <span class="w">producto</span></h1>
+    <p id="in-kick" class="clip" data-start="0" data-duration="4.014">LICITACIONES TI · SECTOR PÚBLICO ESPAÑOL</p>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#in-halo", { opacity: 0 }, { opacity: 1, duration: 0.8, ease: "power2.out" }, 0);
+      tl.fromTo("#in-box", { scale: 0.7, opacity: 0, filter: "blur(10px)" }, { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.55, ease: "expo.out" }, 0.1);
+      ["#in-p1", "#in-p2", "#in-p3"].forEach(function (p, i) {
+        tl.fromTo(p, { strokeDasharray: 1, strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.22, ease: "power3.out" }, 0.22 + i * 0.12);
+      });
+      tl.fromTo("#in-word", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0.3);
+      tl.fromTo("#in-sub .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.75);
+      tl.fromTo("#in-kick", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, 1.1);
+      tl.to("#in-brand, #in-sub, #in-kick, #in-halo", { opacity: 0, filter: "blur(10px)", duration: 0.22, ease: "power3.in" }, 3.774);
+      window.__timelines["intro"] = tl;
+    })();
+  </script>
+</template>

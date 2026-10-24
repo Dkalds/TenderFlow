@@ -1,0 +1,96 @@
+<template>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+    #root { position: absolute; inset: 0; overflow: hidden; background: #0e0d0c; color: hsl(36 12% 93%); font-family: "Geist", sans-serif; }
+    .lbl { position: absolute; left: 192px; top: 34px; display: flex; align-items: baseline; gap: 18px; }
+    .lbl .n { font-family: "Geist Mono", monospace; font-size: 30px; color: #f39349; letter-spacing: 0.06em; }
+    .lbl .t { font-family: "Fraunces", Georgia, serif; font-size: 58px; font-weight: 540; letter-spacing: -0.02em; line-height: 1; }
+    .lbl .w { display: inline-block; }
+    .frame { position: absolute; left: 192px; top: 120px; width: 1536px; height: 864px; border-radius: 16px; overflow: hidden; background: #0f0e0d; box-shadow: 0 0 0 1.5px hsla(34, 12%, 60%, 0.22), 0 30px 80px -30px rgba(0, 0, 0, 0.9); }
+    .cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+    .shot { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+    .cur { position: absolute; left: 0; top: 0; width: 42px; height: 54px; }
+    .cap { position: absolute; left: 192px; right: 192px; top: 1006px; font-size: 32px; font-weight: 500; letter-spacing: -0.005em; }
+    .cap .w { display: inline-block; }
+    .demo { position: absolute; right: 192px; top: 52px; font-size: 24px; color: hsl(34 8% 65%); }
+  </style>
+  <div id="root" data-composition-id="oportunidad" data-width="1920" data-height="1080">
+    <div id="oportunidad-lbl" class="clip lbl" data-start="0" data-duration="16.973"><span class="n">03</span><span class="t"><span class="w">Oportunidad</span></span></div>
+    <div id="oportunidad-frame" class="clip frame" data-start="0" data-duration="16.973" data-layout-allow-overflow>
+      <div id="oportunidad-cam" class="cam">
+        <img id="oportunidad-i0" class="clip shot" data-start="0.0" data-duration="2.75" src="assets/shots/radar-02-pursuit-identificada.jpg" alt="" />
+        <img id="oportunidad-i1" class="clip shot" data-start="2.75" data-duration="1.6" src="assets/shots/pursuit-00-cualificacion.jpg" alt="" />
+        <img id="oportunidad-i2" class="clip shot" data-start="4.35" data-duration="1.7" src="assets/shots/pursuit-01-decision.jpg" alt="" />
+        <img id="oportunidad-i3" class="clip shot" data-start="6.05" data-duration="0.9" src="assets/shots/pursuit-02-go-elegido.jpg" alt="" />
+        <img id="oportunidad-i4" class="clip shot" data-start="6.95" data-duration="0.09" src="assets/shots/pursuit-03-motivo-t009.jpg" alt="" />
+        <img id="oportunidad-i5" class="clip shot" data-start="7.04" data-duration="0.09" src="assets/shots/pursuit-04-motivo-t018.jpg" alt="" />
+        <img id="oportunidad-i6" class="clip shot" data-start="7.13" data-duration="0.09" src="assets/shots/pursuit-05-motivo-t027.jpg" alt="" />
+        <img id="oportunidad-i7" class="clip shot" data-start="7.22" data-duration="0.09" src="assets/shots/pursuit-06-motivo-t036.jpg" alt="" />
+        <img id="oportunidad-i8" class="clip shot" data-start="7.31" data-duration="0.09" src="assets/shots/pursuit-07-motivo-t045.jpg" alt="" />
+        <img id="oportunidad-i9" class="clip shot" data-start="7.4" data-duration="0.09" src="assets/shots/pursuit-08-motivo-t054.jpg" alt="" />
+        <img id="oportunidad-i10" class="clip shot" data-start="7.49" data-duration="0.09" src="assets/shots/pursuit-09-motivo-t063.jpg" alt="" />
+        <img id="oportunidad-i11" class="clip shot" data-start="7.58" data-duration="0.09" src="assets/shots/pursuit-10-motivo-t068.jpg" alt="" />
+        <img id="oportunidad-i12" class="clip shot" data-start="7.67" data-duration="1.0" src="assets/shots/pursuit-11-motivo-escrito.jpg" alt="" />
+        <img id="oportunidad-i13" class="clip shot" data-start="8.67" data-duration="1.7" src="assets/shots/pursuit-12-decidida.jpg" alt="" />
+        <img id="oportunidad-i14" class="clip shot" data-start="10.37" data-duration="1.6" src="assets/shots/pursuit-13-preparando.jpg" alt="" />
+        <img id="oportunidad-i15" class="clip shot" data-start="11.97" data-duration="4.653" src="assets/shots/pursuit-14-precio.jpg" alt="" />
+        <svg id="oportunidad-cur" class="clip cur" data-start="0" data-duration="16.973" viewBox="0 0 34 44" aria-hidden="true"><path d="M3 2 L3 34 L11 26.5 L16.5 39 L22 36.5 L16.6 24.4 L27.5 24 Z" fill="#f4f1ec" stroke="#0e0d0c" stroke-width="2.2" stroke-linejoin="round" /></svg>
+      </div>
+    </div>
+    <p id="oportunidad-cap0" class="clip cap" data-start="0.0" data-duration="4.2"><span class="w">Del</span> <span class="w">Radar</span> <span class="w">a</span> <span class="w">la</span> <span class="w">oferta,</span> <span class="w">fase</span> <span class="w">a</span> <span class="w">fase.</span></p>
+    <p id="oportunidad-cap1" class="clip cap" data-start="4.2" data-duration="5.4"><span class="w">GO</span> <span class="w">o</span> <span class="w">NO-GO,</span> <span class="w">con</span> <span class="w">el</span> <span class="w">motivo</span> <span class="w">por</span> <span class="w">escrito.</span></p>
+    <p id="oportunidad-cap2" class="clip cap" data-start="9.6" data-duration="7.373"><span class="w">Escenarios</span> <span class="w">de</span> <span class="w">precio,</span> <span class="w">y</span> <span class="w">aviso</span> <span class="w">cuando</span> <span class="w">la</span> <span class="w">muestra</span> <span class="w">no</span> <span class="w">basta.</span></p>
+    <p id="oportunidad-demo" class="clip demo" data-start="0" data-duration="16.973">Datos de demostración</p>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      // Entrada: el marco llega con desenfoque sobre el mismo fondo; el rótulo, palabra a palabra.
+      tl.fromTo("#oportunidad-frame", { opacity: 0, y: 18, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.45, ease: "expo.out" }, 0);
+      tl.fromTo("#oportunidad-lbl .n, #oportunidad-lbl .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.05);
+      tl.fromTo('#oportunidad-demo', { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power2.out' }, 0.3);
+      // Cámara, cursor (sobre la caja real del elemento pulsado) y rótulos.
+      tl.set("#oportunidad-cam", { x: 0, y: 0, scale: 0.8 }, 0);
+      tl.to("#oportunidad-cam", { x: 0, y: 0, scale: 1.0, duration: 0.7, ease: "power2.inOut" }, 0.65);
+      tl.set("#oportunidad-cur", { x: 477.5, y: 693.0 }, 0);
+      tl.fromTo("#oportunidad-cur", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "none" }, 1.87);
+      tl.to("#oportunidad-cur", { x: 217.5, y: 473.0, duration: 0.65, ease: "power3.inOut" }, 1.98);
+      tl.to("#oportunidad-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 2.62);
+      tl.to("#oportunidad-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 2.67);
+      tl.to("#oportunidad-cur", { x: 205.5, y: 505.0, duration: 0.65, ease: "power3.inOut" }, 3.58);
+      tl.to("#oportunidad-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 4.22);
+      tl.to("#oportunidad-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 4.27);
+      tl.to("#oportunidad-cam", { x: -96.0, y: -259.2, scale: 1.08, duration: 0.7, ease: "power2.inOut" }, 4.35);
+      tl.to("#oportunidad-cur", { x: 174.0, y: 619.0, duration: 0.65, ease: "power3.inOut" }, 5.28);
+      tl.to("#oportunidad-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 5.92);
+      tl.to("#oportunidad-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 5.97);
+      tl.to("#oportunidad-cur", { x: 197, y: 716.0, duration: 0.6000000000000001, ease: "power3.inOut" }, 6.23);
+      tl.to("#oportunidad-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 6.82);
+      tl.to("#oportunidad-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 6.87);
+      tl.to("#oportunidad-cur", { x: 1381.0, y: 781.0, duration: 0.65, ease: "power3.inOut" }, 7.9);
+      tl.to("#oportunidad-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 8.54);
+      tl.to("#oportunidad-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 8.59);
+      tl.to("#oportunidad-cam", { x: 0, y: 0, scale: 1.0, duration: 0.7, ease: "power2.inOut" }, 8.67);
+      tl.to("#oportunidad-cur", { x: 208.5, y: 495.0, duration: 0.65, ease: "power3.inOut" }, 9.6);
+      tl.to("#oportunidad-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 10.24);
+      tl.to("#oportunidad-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 10.29);
+      tl.to("#oportunidad-cam", { x: 0, y: 0, scale: 0.92, duration: 0.7, ease: "power2.inOut" }, 10.37);
+      tl.to("#oportunidad-cur", { x: 418.5, y: 260.0, duration: 0.65, ease: "power3.inOut" }, 11.2);
+      tl.to("#oportunidad-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 11.84);
+      tl.to("#oportunidad-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 11.89);
+      tl.to("#oportunidad-cam", { x: 0, y: -388.8, scale: 1.16, duration: 0.7, ease: "power2.inOut" }, 12.27);
+      tl.to("#oportunidad-cur", { opacity: 0, duration: 0.2, ease: "power2.in" }, 12.37);
+      tl.fromTo("#oportunidad-cap0 .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.04 }, 0.25);
+      tl.to("#oportunidad-cap0", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 4.0);
+      tl.fromTo("#oportunidad-cap1 .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.04 }, 4.32);
+      tl.to("#oportunidad-cap1", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 9.4);
+      tl.fromTo("#oportunidad-cap2 .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.04 }, 9.72);
+      tl.to("#oportunidad-cap2", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 16.753);
+      // Salida.
+      tl.to("#oportunidad-frame, #oportunidad-lbl, #oportunidad-demo", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 16.753);
+      window.__timelines["oportunidad"] = tl;
+    })();
+  </script>
+</template>

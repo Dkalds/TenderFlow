@@ -1,0 +1,70 @@
+<template>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+    #root { position: absolute; inset: 0; overflow: hidden; background: #0e0d0c; color: hsl(36 12% 93%); font-family: "Geist", sans-serif; }
+    .lbl { position: absolute; left: 192px; top: 34px; display: flex; align-items: baseline; gap: 18px; }
+    .lbl .n { font-family: "Geist Mono", monospace; font-size: 30px; color: #f39349; letter-spacing: 0.06em; }
+    .lbl .t { font-family: "Fraunces", Georgia, serif; font-size: 58px; font-weight: 540; letter-spacing: -0.02em; line-height: 1; }
+    .lbl .w { display: inline-block; }
+    .frame { position: absolute; left: 192px; top: 120px; width: 1536px; height: 864px; border-radius: 16px; overflow: hidden; background: #0f0e0d; box-shadow: 0 0 0 1.5px hsla(34, 12%, 60%, 0.22), 0 30px 80px -30px rgba(0, 0, 0, 0.9); }
+    .cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+    .shot { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+    .cur { position: absolute; left: 0; top: 0; width: 42px; height: 54px; }
+    .cap { position: absolute; left: 192px; right: 192px; top: 1006px; font-size: 32px; font-weight: 500; letter-spacing: -0.005em; }
+    .cap .w { display: inline-block; }
+    .demo { position: absolute; right: 192px; top: 52px; font-size: 24px; color: hsl(34 8% 65%); }
+  </style>
+  <div id="root" data-composition-id="investigador" data-width="1920" data-height="1080">
+    <div id="investigador-lbl" class="clip lbl" data-start="0" data-duration="7.488"><span class="n">06</span><span class="t"><span class="w">Investigador</span></span></div>
+    <div id="investigador-frame" class="clip frame" data-start="0" data-duration="7.488" data-layout-allow-overflow>
+      <div id="investigador-cam" class="cam">
+        <img id="investigador-i0" class="clip shot" data-start="0.0" data-duration="1.55" src="assets/shots/investigador-00-vacio.jpg" alt="" />
+        <img id="investigador-i1" class="clip shot" data-start="1.55" data-duration="0.09" src="assets/shots/investigador-01-frase-t006.jpg" alt="" />
+        <img id="investigador-i2" class="clip shot" data-start="1.64" data-duration="0.09" src="assets/shots/investigador-02-frase-t012.jpg" alt="" />
+        <img id="investigador-i3" class="clip shot" data-start="1.73" data-duration="0.09" src="assets/shots/investigador-03-frase-t018.jpg" alt="" />
+        <img id="investigador-i4" class="clip shot" data-start="1.82" data-duration="0.09" src="assets/shots/investigador-04-frase-t024.jpg" alt="" />
+        <img id="investigador-i5" class="clip shot" data-start="1.91" data-duration="0.09" src="assets/shots/investigador-05-frase-t030.jpg" alt="" />
+        <img id="investigador-i6" class="clip shot" data-start="2.0" data-duration="0.09" src="assets/shots/investigador-06-frase-t036.jpg" alt="" />
+        <img id="investigador-i7" class="clip shot" data-start="2.09" data-duration="0.09" src="assets/shots/investigador-07-frase-t042.jpg" alt="" />
+        <img id="investigador-i8" class="clip shot" data-start="2.18" data-duration="0.09" src="assets/shots/investigador-08-frase-t048.jpg" alt="" />
+        <img id="investigador-i9" class="clip shot" data-start="2.27" data-duration="0.8" src="assets/shots/investigador-09-frase-escrita.jpg" alt="" />
+        <img id="investigador-i10" class="clip shot" data-start="3.07" data-duration="4.068" src="assets/shots/investigador-10-resultados.jpg" alt="" />
+        <svg id="investigador-cur" class="clip cur" data-start="0" data-duration="7.488" viewBox="0 0 34 44" aria-hidden="true"><path d="M3 2 L3 34 L11 26.5 L16.5 39 L22 36.5 L16.6 24.4 L27.5 24 Z" fill="#f4f1ec" stroke="#0e0d0c" stroke-width="2.2" stroke-linejoin="round" /></svg>
+      </div>
+    </div>
+    <p id="investigador-cap0" class="clip cap" data-start="0.0" data-duration="3.2"><span class="w">Pregunta</span> <span class="w">o</span> <span class="w">busca</span> <span class="w">dentro</span> <span class="w">de</span> <span class="w">las</span> <span class="w">licitaciones</span> <span class="w">y</span> <span class="w">sus</span> <span class="w">pliegos.</span></p>
+    <p id="investigador-cap1" class="clip cap" data-start="3.2" data-duration="4.288"><span class="w">Entiende</span> <span class="w">el</span> <span class="w">órgano</span> <span class="w">que</span> <span class="w">nombras</span> <span class="w">y</span> <span class="w">filtra</span> <span class="w">por</span> <span class="w">él.</span></p>
+    <p id="investigador-demo" class="clip demo" data-start="0" data-duration="7.488">Datos de demostración</p>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      // Entrada: el marco llega con desenfoque sobre el mismo fondo; el rótulo, palabra a palabra.
+      tl.fromTo("#investigador-frame", { opacity: 0, y: 18, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.45, ease: "expo.out" }, 0);
+      tl.fromTo("#investigador-lbl .n, #investigador-lbl .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.05);
+      tl.fromTo('#investigador-demo', { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power2.out' }, 0.3);
+      // Cámara, cursor (sobre la caja real del elemento pulsado) y rótulos.
+      tl.set("#investigador-cam", { x: 0, y: 0, scale: 0.8 }, 0);
+      tl.to("#investigador-cam", { x: -168.0, y: 0, scale: 1.04, duration: 0.7, ease: "power2.inOut" }, 0.35);
+      tl.set("#investigador-cur", { x: 457, y: 394.5 }, 0);
+      tl.fromTo("#investigador-cur", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "none" }, 0.67);
+      tl.to("#investigador-cur", { x: 197, y: 174.5, duration: 0.65, ease: "power3.inOut" }, 0.78);
+      tl.to("#investigador-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 1.42);
+      tl.to("#investigador-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 1.47);
+      tl.to("#investigador-cur", { x: 1831.0, y: 174.5, duration: 0.5, ease: "power3.inOut" }, 2.45);
+      tl.to("#investigador-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 2.94);
+      tl.to("#investigador-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 2.99);
+      tl.to("#investigador-cam", { x: -9.6, y: -172.8, scale: 1.08, duration: 0.7, ease: "power2.inOut" }, 3.27);
+      tl.to("#investigador-cur", { opacity: 0, duration: 0.2, ease: "power2.in" }, 3.47);
+      tl.fromTo("#investigador-cap0 .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.04 }, 0.25);
+      tl.to("#investigador-cap0", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 3.0);
+      tl.fromTo("#investigador-cap1 .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.04 }, 3.32);
+      tl.to("#investigador-cap1", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 7.268);
+      // Salida.
+      tl.to("#investigador-frame, #investigador-lbl, #investigador-demo", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 7.268);
+      window.__timelines["investigador"] = tl;
+    })();
+  </script>
+</template>

@@ -1,0 +1,47 @@
+<template>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+    #root { position: absolute; inset: 0; overflow: hidden; background: #0e0d0c; color: hsl(36 12% 93%); font-family: "Geist", sans-serif; }
+    .lbl { position: absolute; left: 192px; top: 34px; display: flex; align-items: baseline; gap: 18px; }
+    .lbl .n { font-family: "Geist Mono", monospace; font-size: 30px; color: #f39349; letter-spacing: 0.06em; }
+    .lbl .t { font-family: "Fraunces", Georgia, serif; font-size: 58px; font-weight: 540; letter-spacing: -0.02em; line-height: 1; }
+    .lbl .w { display: inline-block; }
+    .frame { position: absolute; left: 192px; top: 120px; width: 1536px; height: 864px; border-radius: 16px; overflow: hidden; background: #0f0e0d; box-shadow: 0 0 0 1.5px hsla(34, 12%, 60%, 0.22), 0 30px 80px -30px rgba(0, 0, 0, 0.9); }
+    .cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+    .shot { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+    .cur { position: absolute; left: 0; top: 0; width: 42px; height: 54px; }
+    .cap { position: absolute; left: 192px; right: 192px; top: 1006px; font-size: 32px; font-weight: 500; letter-spacing: -0.005em; }
+    .cap .w { display: inline-block; }
+    .demo { position: absolute; right: 192px; top: 52px; font-size: 24px; color: hsl(34 8% 65%); }
+  </style>
+  <div id="root" data-composition-id="detalle" data-width="1920" data-height="1080">
+    <div id="detalle-lbl" class="clip lbl" data-start="0" data-duration="5.491"><span class="n">05</span><span class="t"><span class="w">Detalle</span></span></div>
+    <div id="detalle-frame" class="clip frame" data-start="0" data-duration="5.491" data-layout-allow-overflow>
+      <div id="detalle-cam" class="cam">
+        <img id="detalle-i0" class="clip shot" data-start="0.0" data-duration="5.141" src="assets/shots/detalle-00-ficha.jpg" alt="" />
+        <svg id="detalle-cur" class="clip cur" data-start="0" data-duration="5.491" viewBox="0 0 34 44" aria-hidden="true"><path d="M3 2 L3 34 L11 26.5 L16.5 39 L22 36.5 L16.6 24.4 L27.5 24 Z" fill="#f4f1ec" stroke="#0e0d0c" stroke-width="2.2" stroke-linejoin="round" /></svg>
+      </div>
+    </div>
+    <p id="detalle-cap0" class="clip cap" data-start="0.0" data-duration="5.491"><span class="w">Todo</span> <span class="w">el</span> <span class="w">expediente:</span> <span class="w">importe,</span> <span class="w">plazo,</span> <span class="w">puntuación</span> <span class="w">y</span> <span class="w">baja</span> <span class="w">esperada.</span></p>
+    <p id="detalle-demo" class="clip demo" data-start="0" data-duration="5.491">Datos de demostración</p>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      // Entrada: el marco llega con desenfoque sobre el mismo fondo; el rótulo, palabra a palabra.
+      tl.fromTo("#detalle-frame", { opacity: 0, y: 18, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.45, ease: "expo.out" }, 0);
+      tl.fromTo("#detalle-lbl .n, #detalle-lbl .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.05);
+      tl.fromTo('#detalle-demo', { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power2.out' }, 0.3);
+      // Cámara, cursor (sobre la caja real del elemento pulsado) y rótulos.
+      tl.set("#detalle-cam", { x: 0, y: 0, scale: 0.8 }, 0);
+      tl.to("#detalle-cam", { x: -691.2, y: -8.8, scale: 1.16, duration: 0.7, ease: "power2.inOut" }, 1.15);
+      tl.fromTo("#detalle-cap0 .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.04 }, 0.25);
+      tl.to("#detalle-cap0", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 5.271);
+      // Salida.
+      tl.to("#detalle-frame, #detalle-lbl, #detalle-demo", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 5.271);
+      window.__timelines["detalle"] = tl;
+    })();
+  </script>
+</template>

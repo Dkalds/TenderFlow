@@ -1,0 +1,62 @@
+<template>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+    #root { position: absolute; inset: 0; overflow: hidden; background: #0e0d0c; color: hsl(36 12% 93%); font-family: "Geist", sans-serif; }
+    .lbl { position: absolute; left: 192px; top: 34px; display: flex; align-items: baseline; gap: 18px; }
+    .lbl .n { font-family: "Geist Mono", monospace; font-size: 30px; color: #f39349; letter-spacing: 0.06em; }
+    .lbl .t { font-family: "Fraunces", Georgia, serif; font-size: 58px; font-weight: 540; letter-spacing: -0.02em; line-height: 1; }
+    .lbl .w { display: inline-block; }
+    .frame { position: absolute; left: 192px; top: 120px; width: 1536px; height: 864px; border-radius: 16px; overflow: hidden; background: #0f0e0d; box-shadow: 0 0 0 1.5px hsla(34, 12%, 60%, 0.22), 0 30px 80px -30px rgba(0, 0, 0, 0.9); }
+    .cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+    .shot { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+    .cur { position: absolute; left: 0; top: 0; width: 42px; height: 54px; }
+    .cap { position: absolute; left: 192px; right: 192px; top: 1006px; font-size: 32px; font-weight: 500; letter-spacing: -0.005em; }
+    .cap .w { display: inline-block; }
+    .demo { position: absolute; right: 192px; top: 52px; font-size: 24px; color: hsl(34 8% 65%); }
+  </style>
+  <div id="root" data-composition-id="publico" data-width="1920" data-height="1080">
+    <div id="publico-lbl" class="clip lbl" data-start="0" data-duration="9.984"><span class="n">01</span><span class="t"><span class="w">La</span> <span class="w">parte</span> <span class="w">pública</span></span></div>
+    <div id="publico-frame" class="clip frame" data-start="0" data-duration="9.984" data-layout-allow-overflow>
+      <div id="publico-cam" class="cam">
+        <img id="publico-i0" class="clip shot" data-start="0.0" data-duration="2.95" src="assets/shots/publico-00-landing.jpg" alt="" />
+        <img id="publico-i1" class="clip shot" data-start="2.95" data-duration="1.9" src="assets/shots/publico-01-indice.jpg" alt="" />
+        <img id="publico-i2" class="clip shot" data-start="4.85" data-duration="1.9" src="assets/shots/publico-02-hub.jpg" alt="" />
+        <img id="publico-i3" class="clip shot" data-start="6.75" data-duration="2.884" src="assets/shots/publico-03-ficha.jpg" alt="" />
+        <svg id="publico-cur" class="clip cur" data-start="0" data-duration="9.984" viewBox="0 0 34 44" aria-hidden="true"><path d="M3 2 L3 34 L11 26.5 L16.5 39 L22 36.5 L16.6 24.4 L27.5 24 Z" fill="#f4f1ec" stroke="#0e0d0c" stroke-width="2.2" stroke-linejoin="round" /></svg>
+      </div>
+    </div>
+    <p id="publico-cap0" class="clip cap" data-start="0.0" data-duration="9.984"><span class="w">Cada</span> <span class="w">anuncio</span> <span class="w">TI</span> <span class="w">tiene</span> <span class="w">su</span> <span class="w">ficha</span> <span class="w">pública,</span> <span class="w">con</span> <span class="w">la</span> <span class="w">fuente</span> <span class="w">citada.</span></p>
+    
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      // Entrada: el marco llega con desenfoque sobre el mismo fondo; el rótulo, palabra a palabra.
+      tl.fromTo("#publico-frame", { opacity: 0, y: 18, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.45, ease: "expo.out" }, 0);
+      tl.fromTo("#publico-lbl .n, #publico-lbl .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.05);
+      
+      // Cámara, cursor (sobre la caja real del elemento pulsado) y rótulos.
+      tl.set("#publico-cam", { x: 0, y: 0, scale: 0.8 }, 0);
+      tl.to("#publico-cam", { x: 0, y: 0, scale: 0.96, duration: 0.7, ease: "power2.inOut" }, 0.85);
+      tl.set("#publico-cam", { x: 0, y: -4.8, scale: 1.04 }, 2.95);
+      tl.set("#publico-cur", { x: 615, y: 639.5 }, 0);
+      tl.fromTo("#publico-cur", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "none" }, 3.97);
+      tl.to("#publico-cur", { x: 355, y: 419.5, duration: 0.65, ease: "power3.inOut" }, 4.08);
+      tl.to("#publico-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 4.72);
+      tl.to("#publico-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 4.77);
+      tl.to("#publico-cam", { x: -96.0, y: -28.8, scale: 0.96, duration: 0.7, ease: "power2.inOut" }, 4.85);
+      tl.to("#publico-cur", { x: 417, y: 417.0, duration: 0.65, ease: "power3.inOut" }, 5.98);
+      tl.to("#publico-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 6.62);
+      tl.to("#publico-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 6.67);
+      tl.to("#publico-cam", { x: -52.0, y: -88.0, scale: 1.0, duration: 0.7, ease: "power2.inOut" }, 6.75);
+      tl.to("#publico-cur", { opacity: 0, duration: 0.2, ease: "power2.in" }, 7.15);
+      tl.fromTo("#publico-cap0 .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.04 }, 0.25);
+      tl.to("#publico-cap0", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 9.764);
+      // Salida.
+      tl.to("#publico-frame, #publico-lbl", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 9.764);
+      window.__timelines["publico"] = tl;
+    })();
+  </script>
+</template>

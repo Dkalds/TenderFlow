@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="es" data-resolution="landscape" data-composition-variables='[
+    {"id":"color-ground","type":"color","label":"Fondo","default":"#0E0D0C"},
+    {"id":"color-ink","type":"color","label":"Texto","default":"#EFEDEA"},
+    {"id":"color-accent","type":"color","label":"Acento","default":"#F39349"},
+    {"id":"font-display","type":"string","label":"Titulares","default":"Fraunces"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>TenderFlow · demo del producto</title>
+    <script src="assets/vendor/gsap.min.js"></script>
+    <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: #0e0d0c; }
+      #ground { position: absolute; inset: 0; background: #0e0d0c; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="134.305" data-width="1920" data-height="1080">
+      <div id="ground"></div>
+      <div id="intro" data-composition-id="intro" data-composition-src="compositions/intro.html" data-start="0" data-duration="4.014" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="publico" data-composition-id="publico" data-composition-src="compositions/publico.html" data-start="4.014" data-duration="9.984" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="radar" data-composition-id="radar" data-composition-src="compositions/radar.html" data-start="13.998" data-duration="7.987" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="oportunidad" data-composition-id="oportunidad" data-composition-src="compositions/oportunidad.html" data-start="21.985" data-duration="16.973" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="agenda" data-composition-id="agenda" data-composition-src="compositions/agenda.html" data-start="38.958" data-duration="10.982" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="detalle" data-composition-id="detalle" data-composition-src="compositions/detalle.html" data-start="49.94" data-duration="5.491" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="investigador" data-composition-id="investigador" data-composition-src="compositions/investigador.html" data-start="55.431" data-duration="7.488" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="alertas" data-composition-id="alertas" data-composition-src="compositions/alertas.html" data-start="62.919" data-duration="9.485" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="competencia" data-composition-id="competencia" data-composition-src="compositions/competencia.html" data-start="72.404" data-duration="8.986" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="mercado" data-composition-id="mercado" data-composition-src="compositions/mercado.html" data-start="81.39" data-duration="10.982" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="cuentas" data-composition-id="cuentas" data-composition-src="compositions/cuentas.html" data-start="92.372" data-duration="9.984" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="atajos" data-composition-id="atajos" data-composition-src="compositions/atajos.html" data-start="102.356" data-duration="6.49" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="equipo" data-composition-id="equipo" data-composition-src="compositions/equipo.html" data-start="108.846" data-duration="7.488" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="operacion" data-composition-id="operacion" data-composition-src="compositions/operacion.html" data-start="116.334" data-duration="6.489" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="resumen" data-composition-id="resumen" data-composition-src="compositions/resumen.html" data-start="122.823" data-duration="4.992" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <div id="outro" data-composition-id="outro" data-composition-src="compositions/outro.html" data-start="127.815" data-duration="6.49" data-track-index="1" data-track-kind="graphics" data-width="1920" data-height="1080"></div>
+      <audio id="bg-music" class="clip" data-start="0" data-duration="134.305" data-track-index="10" data-volume="0.34" data-fade-out="2.5" src="assets/music/happy-beats-business-moves-vol-1-by-ende-dot-app.mp3"></audio>
+      <audio id="clic-0" class="clip" data-start="8.784" data-duration="0.06" data-track-index="11" data-volume="0.55" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="clic-1" class="clip" data-start="10.684" data-duration="0.06" data-track-index="12" data-volume="0.55" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="clic-2" class="clip" data-start="17.468" data-duration="0.06" data-track-index="11" data-volume="0.55" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="clic-3" class="clip" data-start="21.555" data-duration="0.06" data-track-index="12" data-volume="0.55" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="clic-4" class="clip" data-start="24.655" data-duration="0.06" data-track-index="11" data-volume="0.55" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="clic-5" class="clip" data-start="26.255" data-duration="0.06" data-track-index="12" data-volume="0.55" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="clic-6" class="clip" data-start="27.955" data-duration="0.06" data-track-index="11" data-volume="0.55" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="clic-7" class="clip" data-start="28.855" data-duration="0.06" data-track-index="12" data-volume="0.55" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="clic-8" class="clip" data-start="30.575" data-duration="0.06" data-track-index="11" data-volume="0.55" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="clic-9" class="clip" data-start="32.275" data-duration="0.06" data-track-index="12" data-volume="0.55" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="clic-10" class="clip" data-start="33.875" data-duration="0.06" data-track-index="11" data-volume="0.55" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="clic-11" class="clip" data-start="43.728" data-duration="0.06" data-track-index="12" data-volume="0.55" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="clic-12" class="clip" data-start="45.028" data-duration="0.06" data-track-index="11" data-volume="0.55" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="clic-13" class="clip" data-start="46.368" data-duration="0.06" data-track-index="12" data-volume="0.55" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="clic-14" class="clip" data-start="47.368" data-duration="0.06" data-track-index="11" data-volume="0.55" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="clic-15" class="clip" data-start="56.901" data-duration="0.06" data-track-index="12" data-volume="0.55" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="clic-16" class="clip" data-start="58.421" data-duration="0.06" data-track-index="11" data-volume="0.55" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="clic-17" class="clip" data-start="64.489" data-duration="0.06" data-track-index="12" data-volume="0.55" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="clic-18" class="clip" data-start="65.869" data-duration="0.06" data-track-index="11" data-volume="0.55" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="clic-19" class="clip" data-start="68.069" data-duration="0.06" data-track-index="12" data-volume="0.55" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="clic-20" class="clip" data-start="77.774" data-duration="0.06" data-track-index="11" data-volume="0.55" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="clic-21" class="clip" data-start="94.142" data-duration="0.06" data-track-index="12" data-volume="0.55" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="clic-22" class="clip" data-start="95.142" data-duration="0.06" data-track-index="11" data-volume="0.55" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="clic-23" class="clip" data-start="96.522" data-duration="0.06" data-track-index="12" data-volume="0.55" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="clic-24" class="clip" data-start="97.422" data-duration="0.06" data-track-index="11" data-volume="0.55" src="assets/sfx/ui/click2.ogg"></audio>
+      <audio id="clic-25" class="clip" data-start="98.822" data-duration="0.06" data-track-index="12" data-volume="0.55" src="assets/sfx/ui/mouseclick1.ogg"></audio>
+      <audio id="tecla-0" class="clip" data-start="28.935" data-duration="0.25" data-track-index="13" data-volume="0.28" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio id="tecla-1" class="clip" data-start="29.025" data-duration="0.25" data-track-index="14" data-volume="0.28" src="assets/sfx/keyboard/keypress-011.wav"></audio>
+      <audio id="tecla-2" class="clip" data-start="29.115" data-duration="0.25" data-track-index="15" data-volume="0.28" src="assets/sfx/keyboard/keypress-019.wav"></audio>
+      <audio id="tecla-3" class="clip" data-start="29.205" data-duration="0.25" data-track-index="16" data-volume="0.28" src="assets/sfx/keyboard/keypress-027.wav"></audio>
+      <audio id="tecla-4" class="clip" data-start="29.295" data-duration="0.25" data-track-index="13" data-volume="0.28" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio id="tecla-5" class="clip" data-start="29.385" data-duration="0.25" data-track-index="14" data-volume="0.28" src="assets/sfx/keyboard/keypress-011.wav"></audio>
+      <audio id="tecla-6" class="clip" data-start="29.475" data-duration="0.25" data-track-index="15" data-volume="0.28" src="assets/sfx/keyboard/keypress-019.wav"></audio>
+      <audio id="tecla-7" class="clip" data-start="29.565" data-duration="0.25" data-track-index="16" data-volume="0.28" src="assets/sfx/keyboard/keypress-027.wav"></audio>
+      <audio id="tecla-8" class="clip" data-start="45.108" data-duration="0.25" data-track-index="13" data-volume="0.28" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio id="tecla-9" class="clip" data-start="45.198" data-duration="0.25" data-track-index="14" data-volume="0.28" src="assets/sfx/keyboard/keypress-011.wav"></audio>
+      <audio id="tecla-10" class="clip" data-start="45.288" data-duration="0.25" data-track-index="15" data-volume="0.28" src="assets/sfx/keyboard/keypress-019.wav"></audio>
+      <audio id="tecla-11" class="clip" data-start="45.378" data-duration="0.25" data-track-index="16" data-volume="0.28" src="assets/sfx/keyboard/keypress-027.wav"></audio>
+      <audio id="tecla-12" class="clip" data-start="45.468" data-duration="0.25" data-track-index="13" data-volume="0.28" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio id="tecla-13" class="clip" data-start="45.558" data-duration="0.25" data-track-index="14" data-volume="0.28" src="assets/sfx/keyboard/keypress-011.wav"></audio>
+      <audio id="tecla-14" class="clip" data-start="56.981" data-duration="0.25" data-track-index="15" data-volume="0.28" src="assets/sfx/keyboard/keypress-019.wav"></audio>
+      <audio id="tecla-15" class="clip" data-start="57.071" data-duration="0.25" data-track-index="16" data-volume="0.28" src="assets/sfx/keyboard/keypress-027.wav"></audio>
+      <audio id="tecla-16" class="clip" data-start="57.161" data-duration="0.25" data-track-index="13" data-volume="0.28" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio id="tecla-17" class="clip" data-start="57.251" data-duration="0.25" data-track-index="14" data-volume="0.28" src="assets/sfx/keyboard/keypress-011.wav"></audio>
+      <audio id="tecla-18" class="clip" data-start="57.341" data-duration="0.25" data-track-index="15" data-volume="0.28" src="assets/sfx/keyboard/keypress-019.wav"></audio>
+      <audio id="tecla-19" class="clip" data-start="57.431" data-duration="0.25" data-track-index="16" data-volume="0.28" src="assets/sfx/keyboard/keypress-027.wav"></audio>
+      <audio id="tecla-20" class="clip" data-start="57.521" data-duration="0.25" data-track-index="13" data-volume="0.28" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio id="tecla-21" class="clip" data-start="57.611" data-duration="0.25" data-track-index="14" data-volume="0.28" src="assets/sfx/keyboard/keypress-011.wav"></audio>
+      <audio id="tecla-22" class="clip" data-start="64.569" data-duration="0.25" data-track-index="15" data-volume="0.28" src="assets/sfx/keyboard/keypress-019.wav"></audio>
+      <audio id="tecla-23" class="clip" data-start="64.729" data-duration="0.25" data-track-index="16" data-volume="0.28" src="assets/sfx/keyboard/keypress-027.wav"></audio>
+      <audio id="tecla-24" class="clip" data-start="64.889" data-duration="0.25" data-track-index="13" data-volume="0.28" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio id="tecla-25" class="clip" data-start="95.222" data-duration="0.25" data-track-index="14" data-volume="0.28" src="assets/sfx/keyboard/keypress-011.wav"></audio>
+      <audio id="tecla-26" class="clip" data-start="95.342" data-duration="0.25" data-track-index="15" data-volume="0.28" src="assets/sfx/keyboard/keypress-019.wav"></audio>
+      <audio id="tecla-27" class="clip" data-start="95.462" data-duration="0.25" data-track-index="16" data-volume="0.28" src="assets/sfx/keyboard/keypress-027.wav"></audio>
+      <audio id="tecla-28" class="clip" data-start="95.582" data-duration="0.25" data-track-index="13" data-volume="0.28" src="assets/sfx/keyboard/keypress-003.wav"></audio>
+      <audio id="acento-in" class="clip" data-start="0.12" data-duration="0.13" data-track-index="17" data-volume="0.55" src="assets/sfx/interface/bong_001.ogg"></audio>
+      <audio id="acento-out" class="clip" data-start="127.935" data-duration="0.13" data-track-index="18" data-volume="0.55" src="assets/sfx/interface/bong_001.ogg"></audio>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>

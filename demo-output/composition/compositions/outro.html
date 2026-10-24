@@ -1,0 +1,43 @@
+<template>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+    #root { position: absolute; inset: 0; overflow: hidden; background: #0e0d0c; color: hsl(36 12% 93%); font-family: "Geist", sans-serif; }
+    #out-halo { position: absolute; left: 560px; top: 90px; width: 800px; height: 640px; border-radius: 50%; background: radial-gradient(ellipse, rgba(243, 147, 73, 0.28) 0%, rgba(243, 147, 73, 0.1) 40%, rgba(243, 147, 73, 0) 70%); }
+    #out-brand { position: absolute; left: 0; right: 0; top: 330px; display: flex; justify-content: center; align-items: center; gap: 34px; }
+    #out-box { width: 156px; height: 156px; border-radius: 40px; background: #f39349; display: flex; align-items: center; justify-content: center; }
+    #out-box svg { width: 90px; height: 90px; overflow: visible; }
+    #out-box path { fill: none; stroke: #1a130d; stroke-width: 2.7; stroke-linecap: round; }
+    #out-word { font-size: 108px; font-weight: 650; letter-spacing: -0.035em; }
+    #out-sub { position: absolute; left: 0; right: 0; top: 560px; text-align: center; font-family: "Fraunces", Georgia, serif; font-size: 64px; font-weight: 500; letter-spacing: -0.015em; }
+    #out-sub .w { display: inline-block; }
+    #out-btn { font-family: "Geist", sans-serif; letter-spacing: 0; background: #f39349; color: hsl(30 30% 8%); font-size: 34px; font-weight: 650; border-radius: 14px; padding: 18px 36px; margin-right: 30px; }
+    #out-url { font-size: 30px; letter-spacing: 0; }
+    #out-kick { position: absolute; left: 0; right: 0; top: 690px; text-align: center; font-family: "Geist Mono", monospace; font-size: 28px; letter-spacing: 0.12em; color: hsl(34 8% 65%); }
+  </style>
+  <div id="root" data-composition-id="outro" data-width="1920" data-height="1080">
+    <div id="out-halo" class="clip" data-start="0" data-duration="6.49" data-layout-ignore></div>
+    <div id="out-brand" class="clip" data-start="0" data-duration="6.49">
+      <div id="out-box"><svg viewBox="0 0 24 24" aria-hidden="true"><path id="out-p1" d="M3.5 6 H20.5" pathLength="1" /><path id="out-p2" d="M12 6 V19" pathLength="1" /><path id="out-p3" d="M12 12 H18.5" pathLength="1" /></svg></div>
+      <div id="out-word">TenderFlow</div>
+    </div>
+    <h1 id="out-sub" class="clip" data-start="0" data-duration="6.49"><span class="w">Dónde</span> <span class="w">pujar,</span> <span class="w">a</span> <span class="w">qué</span> <span class="w">precio,</span> <span class="w">contra</span> <span class="w">quién.</span></h1>
+    <div id="out-kick" class="clip" data-start="0" data-duration="6.49"><span id="out-btn">Solicita acceso</span><span id="out-url">tenderflow.es</span></div>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#out-halo", { opacity: 0 }, { opacity: 1, duration: 0.8, ease: "power2.out" }, 0);
+      tl.fromTo("#out-box", { scale: 0.7, opacity: 0, filter: "blur(10px)" }, { scale: 1, opacity: 1, filter: "blur(0px)", duration: 0.55, ease: "expo.out" }, 0.1);
+      ["#out-p1", "#out-p2", "#out-p3"].forEach(function (p, i) {
+        tl.fromTo(p, { strokeDasharray: 1, strokeDashoffset: 1 }, { strokeDashoffset: 0, duration: 0.22, ease: "power3.out" }, 0.22 + i * 0.12);
+      });
+      tl.fromTo("#out-word", { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.2, ease: "power4.out" }, 0.3);
+      tl.fromTo("#out-sub .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.75);
+      tl.fromTo("#out-kick", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, 1.1);
+      
+      window.__timelines["outro"] = tl;
+    })();
+  </script>
+</template>

@@ -1,0 +1,75 @@
+<template>
+  <style>
+    @font-face { font-family: "Geist"; src: url("assets/fonts/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Geist Mono"; src: url("assets/fonts/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+    @font-face { font-family: "Fraunces"; src: url("assets/fonts/Fraunces-opsz.woff2") format("woff2"); font-weight: 100 900; }
+    #root { position: absolute; inset: 0; overflow: hidden; background: #0e0d0c; color: hsl(36 12% 93%); font-family: "Geist", sans-serif; }
+    .lbl { position: absolute; left: 192px; top: 34px; display: flex; align-items: baseline; gap: 18px; }
+    .lbl .n { font-family: "Geist Mono", monospace; font-size: 30px; color: #f39349; letter-spacing: 0.06em; }
+    .lbl .t { font-family: "Fraunces", Georgia, serif; font-size: 58px; font-weight: 540; letter-spacing: -0.02em; line-height: 1; }
+    .lbl .w { display: inline-block; }
+    .frame { position: absolute; left: 192px; top: 120px; width: 1536px; height: 864px; border-radius: 16px; overflow: hidden; background: #0f0e0d; box-shadow: 0 0 0 1.5px hsla(34, 12%, 60%, 0.22), 0 30px 80px -30px rgba(0, 0, 0, 0.9); }
+    .cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+    .shot { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+    .cur { position: absolute; left: 0; top: 0; width: 42px; height: 54px; }
+    .cap { position: absolute; left: 192px; right: 192px; top: 1006px; font-size: 32px; font-weight: 500; letter-spacing: -0.005em; }
+    .cap .w { display: inline-block; }
+    .demo { position: absolute; right: 192px; top: 52px; font-size: 24px; color: hsl(34 8% 65%); }
+  </style>
+  <div id="root" data-composition-id="agenda" data-width="1920" data-height="1080">
+    <div id="agenda-lbl" class="clip lbl" data-start="0" data-duration="10.982"><span class="n">04</span><span class="t"><span class="w">Tablero</span> <span class="w">y</span> <span class="w">agenda</span></span></div>
+    <div id="agenda-frame" class="clip frame" data-start="0" data-duration="10.982" data-layout-allow-overflow>
+      <div id="agenda-cam" class="cam">
+        <img id="agenda-i0" class="clip shot" data-start="0.0" data-duration="3.15" src="assets/shots/tablero-00-kanban.jpg" alt="" />
+        <img id="agenda-i1" class="clip shot" data-start="3.15" data-duration="1.7" src="assets/shots/agenda-00-agenda.jpg" alt="" />
+        <img id="agenda-i2" class="clip shot" data-start="4.85" data-duration="1.3" src="assets/shots/agenda-01-detalle.jpg" alt="" />
+        <img id="agenda-i3" class="clip shot" data-start="6.15" data-duration="0.09" src="assets/shots/agenda-02-tarea-t008.jpg" alt="" />
+        <img id="agenda-i4" class="clip shot" data-start="6.24" data-duration="0.09" src="assets/shots/agenda-03-tarea-t016.jpg" alt="" />
+        <img id="agenda-i5" class="clip shot" data-start="6.33" data-duration="0.09" src="assets/shots/agenda-04-tarea-t024.jpg" alt="" />
+        <img id="agenda-i6" class="clip shot" data-start="6.42" data-duration="0.09" src="assets/shots/agenda-05-tarea-t032.jpg" alt="" />
+        <img id="agenda-i7" class="clip shot" data-start="6.51" data-duration="0.09" src="assets/shots/agenda-06-tarea-t040.jpg" alt="" />
+        <img id="agenda-i8" class="clip shot" data-start="6.6" data-duration="0.09" src="assets/shots/agenda-07-tarea-t041.jpg" alt="" />
+        <img id="agenda-i9" class="clip shot" data-start="6.69" data-duration="0.8" src="assets/shots/agenda-08-tarea-escrita.jpg" alt="" />
+        <img id="agenda-i10" class="clip shot" data-start="7.49" data-duration="1.0" src="assets/shots/agenda-09-tarea-creada.jpg" alt="" />
+        <img id="agenda-i11" class="clip shot" data-start="8.49" data-duration="2.142" src="assets/shots/agenda-10-tarea-hecha.jpg" alt="" />
+        <svg id="agenda-cur" class="clip cur" data-start="0" data-duration="10.982" viewBox="0 0 34 44" aria-hidden="true"><path d="M3 2 L3 34 L11 26.5 L16.5 39 L22 36.5 L16.6 24.4 L27.5 24 Z" fill="#f4f1ec" stroke="#0e0d0c" stroke-width="2.2" stroke-linejoin="round" /></svg>
+      </div>
+    </div>
+    <p id="agenda-cap0" class="clip cap" data-start="0.0" data-duration="10.982"><span class="w">El</span> <span class="w">tablero</span> <span class="w">del</span> <span class="w">equipo</span> <span class="w">y</span> <span class="w">la</span> <span class="w">agenda</span> <span class="w">de</span> <span class="w">cada</span> <span class="w">uno:</span> <span class="w">tareas,</span> <span class="w">plazos</span> <span class="w">y</span> <span class="w">próxima</span> <span class="w">acción.</span></p>
+    <p id="agenda-demo" class="clip demo" data-start="0" data-duration="10.982">Datos de demostración</p>
+  </div>
+  <script>
+    (function () {
+      const tl = gsap.timeline({ paused: true });
+      // Entrada: el marco llega con desenfoque sobre el mismo fondo; el rótulo, palabra a palabra.
+      tl.fromTo("#agenda-frame", { opacity: 0, y: 18, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.45, ease: "expo.out" }, 0);
+      tl.fromTo("#agenda-lbl .n, #agenda-lbl .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.05);
+      tl.fromTo('#agenda-demo', { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power2.out' }, 0.3);
+      // Cámara, cursor (sobre la caja real del elemento pulsado) y rótulos.
+      tl.set("#agenda-cam", { x: 0, y: 0, scale: 0.8 }, 0);
+      tl.to("#agenda-cam", { x: -168.0, y: -4.8, scale: 1.04, duration: 0.7, ease: "power2.inOut" }, 0.75);
+      tl.set("#agenda-cam", { x: 0, y: 0, scale: 0.8 }, 3.15);
+      tl.set("#agenda-cur", { x: 438, y: 519.5 }, 0);
+      tl.fromTo("#agenda-cur", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "none" }, 3.97);
+      tl.to("#agenda-cur", { x: 178, y: 299.5, duration: 0.65, ease: "power3.inOut" }, 4.08);
+      tl.to("#agenda-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 4.72);
+      tl.to("#agenda-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 4.77);
+      tl.to("#agenda-cam", { x: -691.2, y: -287.2, scale: 1.16, duration: 0.7, ease: "power2.inOut" }, 4.85);
+      tl.to("#agenda-cur", { x: 1594, y: 739.0, duration: 0.65, ease: "power3.inOut" }, 5.38);
+      tl.to("#agenda-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 6.02);
+      tl.to("#agenda-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 6.07);
+      tl.to("#agenda-cur", { x: 1842.0, y: 784.0, duration: 0.5, ease: "power3.inOut" }, 6.87);
+      tl.to("#agenda-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 7.36);
+      tl.to("#agenda-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 7.41);
+      tl.to("#agenda-cur", { x: 1542.5, y: 700.5, duration: 0.65, ease: "power3.inOut" }, 7.72);
+      tl.to("#agenda-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 8.36);
+      tl.to("#agenda-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 8.41);
+      tl.to("#agenda-cur", { opacity: 0, duration: 0.2, ease: "power2.in" }, 8.89);
+      tl.fromTo("#agenda-cap0 .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.04 }, 0.25);
+      tl.to("#agenda-cap0", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 10.762);
+      // Salida.
+      tl.to("#agenda-frame, #agenda-lbl, #agenda-demo", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 10.762);
+      window.__timelines["agenda"] = tl;
+    })();
+  </script>
+</template>
