@@ -21,7 +21,7 @@ ENV=dev python -m tests.test_codice_parser_golden --update   # regenera el golde
 
 ## Estado de los fixtures
 
-Los dieciocho casos son **sintéticos**: estructuralmente fieles al CODICE
+Los dieciocho primeros casos son **sintéticos**: estructuralmente fieles al CODICE
 que publica PLACSP, pero escritos a mano porque ni la sesión que creó el corpus
 ni las que lo ampliaron tenían ZIP cacheados a mano. La que añadió el 16 y el
 17 (v148, 2026-10-12) intentó leer el ATOM en vivo para recortar entradas
@@ -32,6 +32,15 @@ el resto, y `capture_placsp_fixtures.py` trae ya los casos `condiciones` y
 expedientes reales (`capture_placsp_fixtures.py`) es trabajo pendiente anotado
 en el backlog — el valor del corpus crece cuando codifica variabilidad que
 nadie imaginó.
+
+El 19 es el primero **real**: la entry de `B070005/2022-0071` (Diputación de
+Huesca) del ZIP mensual de 2026-06, recortada a mano con un script que solo
+quita, sin reordenar ni reescribir: condiciones (`TenderingTerms`), adjuntos,
+`GeneralDocument`, contactos y el detalle de cada anuncio salvo su
+`IssueDate`. Conserva lo que el feed trae y ningún fixture sintético tenía: los
+prefijos `cac-place-ext`/`cbc-place-ext`, `schemeName="ID_LOTE"` en el lote,
+un NIF con `schemeName="OTROS"`, un `&#13;` dentro de un texto y dos
+`ContractModification`.
 
 | Fixture | Qué congela |
 |---|---|
@@ -53,6 +62,7 @@ nadie imaginó.
 | `16_condiciones_expediente` | v148: `cac:TenderingTerms` del expediente con los tres bloques — tres criterios con tipo, subtipo y nota (escala porcentual), una garantía por porcentaje (`AmountRate`) y solvencia técnica, económica con `ThresholdAmount` y clasificación empresarial. Los códigos viajan crudos |
 | `17_condiciones_por_lote` | v148: cada lote con su `TenderingTerms` — el 1 con criterios en fracciones (0,8/0,2 → 80/20), el 2 con garantía por importe (`LiabilityAmount`), solvencia técnica y criterios en porcentaje — y una garantía a nivel de expediente declarada **después** de los lotes |
 | `18_lote_en_proyecto_adjudicado` | El lote del resultado dentro del proyecto adjudicado (`AwardedTenderedProject/cbc:ProcurementProjectLotID`), que es como lo publica CODICE; el tercer `TenderResult` no dice lote y queda `NULL`. Incidente del 2026-10-17: el parser solo leía la forma del caso 01 y ninguna adjudicación de producción resolvía su lote |
+| `19_multilote_real_por_lote` | **Real** (ZIP 2026-06). Cuatro lotes, cuatro `TenderResult` con su `ProcurementProjectLotID`; la misma empresa gana el 2 y el 3 por importes distintos. Incidente del 2026-10-24: en producción las adjudicaciones de los lotes 1 y 3 seguían sin `lote_id` aunque el XML lo publica, porque 188.800,9 y 24.545,6 no caben exactos en `real` y el reproceso comparaba el importe por igualdad |
 
 El caso 11 existe porque sin él invertir la prioridad en `_tender_deadline` no
 rompía ningún test del corpus: se detectó mutando el parser a propósito para

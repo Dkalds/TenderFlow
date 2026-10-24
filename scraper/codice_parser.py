@@ -117,6 +117,10 @@ def _int(elem: Any, xpath: str) -> int | None:
 # producción ninguna de las 1.619 adjudicaciones de expedientes multilote
 # (medido el 2026-10-17) resolvió su lote. Se conservan las otras dos formas:
 # leerlas no cuesta nada y un expediente que las use no debe perder el dato.
+# No hace falta una cuarta: en los ZIP reales de 2026-06 a 2026-10, los 776
+# `TenderResult` de las 295 entries multilote de los expedientes que seguían con
+# adjudicaciones sin lote (medido el 2026-10-24) traen todos la primera forma
+# (caso golden 19, real).
 _XPATHS_LOTE_RESULTADO = (
     "./cac:AwardedTenderedProject/cbc:ProcurementProjectLotID",
     "./cac:AwardedTenderedProject/cac:ProcurementProjectLot/cbc:ID",
