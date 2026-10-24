@@ -1,6 +1,12 @@
 # Cómo se regenera la demo
 
-1. Stack local con la BD de demo: `reset_db.sh` (crea `tenderflow_demo`, migra y siembra con `scripts/seed_dev.py --with-predicciones`; necesita `postgresql-16-pgvector`), API en `:8080` (`ENV=dev APP_PROFILE=api python -m uvicorn api.app:app`) y web en `:3000` (`npm run build && npm run start` con `API_BASE_URL=http://localhost:8080`).
-2. Rodaje: `DEMO_PW=… ADMIN_PW=… node shoot.mjs <dir-capturas>` con las credenciales del seed (`web/e2e/fixtures.ts`). Recorre la app real con Playwright y guarda cada estado (1920×1080) y la caja del elemento pulsado en `manifest.json`. Hace escrituras reales: ejecútalo sobre una BD recién sembrada.
-3. Composición: `python3 gen_demo.py <dir-capturas> ../composition <skills/brag/assets>` escribe la composición Hyperframes (guion al principio del script).
-4. `npx hyperframes check` y `npx hyperframes render --quality delivery` dentro de `../composition`.
+## Versión vigente: producción
+
+1. Entorno: `tenderflowesp.vercel.app` permitido en la red y `TF_DEMO_EMAIL` / `TF_DEMO_PASSWORD` como variables (cuenta con contraseña). `TF_ORG` (por defecto 10) es la organización donde se escribe: usa una personal o de demo, nunca la de un equipo.
+2. Rodaje: `node shoot_prod.mjs <dir-capturas> [escenas]`. Escribe de verdad (oportunidad, tarea, alerta, cuenta) y deja lo creado en `<dir-capturas>/creados.json`. Antes de cada captura sustituye correos y el usuario de la cuenta en el DOM.
+3. Limpieza, siempre: `node limpiar_prod.mjs <dir-capturas>/creados.json`. Borra tarea, alerta y cuenta y retira la oportunidad (la API no tiene borrado de oportunidades).
+4. Composición: `python3 gen_demo_prod.py <dir-capturas> ../composition <skills/brag/assets>`, y `npx hyperframes check` / `render --quality delivery` en `../composition`.
+
+## Primera versión: stack local con el seed
+
+`reset_db.sh` (BD `tenderflow_demo` migrada y sembrada; necesita `postgresql-16-pgvector`), API en `:8080` y web en `:3000`; rodaje con `shoot.mjs` (credenciales del seed en `web/e2e/fixtures.ts`) y composición con `gen_demo.py`.

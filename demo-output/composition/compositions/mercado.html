@@ -20,15 +20,15 @@
     <div id="mercado-lbl" class="clip lbl" data-start="0" data-duration="10.982"><span class="n">09</span><span class="t"><span class="w">Mercado</span></span></div>
     <div id="mercado-frame" class="clip frame" data-start="0" data-duration="10.982" data-layout-allow-overflow>
       <div id="mercado-cam" class="cam">
-        <img id="mercado-i0" class="clip shot" data-start="0.0" data-duration="2.55" src="assets/shots/mercado-00-tiempo.jpg" alt="" />
-        <img id="mercado-i1" class="clip shot" data-start="2.55" data-duration="3.0" src="assets/shots/mercado-01-geografia.jpg" alt="" />
-        <img id="mercado-i2" class="clip shot" data-start="5.55" data-duration="2.2" src="assets/shots/mercado-02-cpv.jpg" alt="" />
-        <img id="mercado-i3" class="clip shot" data-start="7.75" data-duration="2.882" src="assets/shots/mercado-03-organos.jpg" alt="" />
+        <img id="mercado-i0" class="clip shot" data-start="0.0" data-duration="2.95" src="assets/shots/mercado-00-tiempo.jpg" alt="" />
+        <img id="mercado-i1" class="clip shot" data-start="2.95" data-duration="2.2" src="assets/shots/mercado-01-geografia.jpg" alt="" />
+        <img id="mercado-i2" class="clip shot" data-start="5.15" data-duration="2.4" src="assets/shots/mercado-02-cpv.jpg" alt="" />
+        <img id="mercado-i3" class="clip shot" data-start="7.55" data-duration="3.082" src="assets/shots/mercado-03-organos.jpg" alt="" />
         <svg id="mercado-cur" class="clip cur" data-start="0" data-duration="10.982" viewBox="0 0 34 44" aria-hidden="true"><path d="M3 2 L3 34 L11 26.5 L16.5 39 L22 36.5 L16.6 24.4 L27.5 24 Z" fill="#f4f1ec" stroke="#0e0d0c" stroke-width="2.2" stroke-linejoin="round" /></svg>
       </div>
     </div>
     <p id="mercado-cap0" class="clip cap" data-start="0.0" data-duration="10.982"><span class="w">El</span> <span class="w">mercado</span> <span class="w">por</span> <span class="w">mes,</span> <span class="w">comunidad,</span> <span class="w">CPV</span> <span class="w">y</span> <span class="w">órgano.</span></p>
-    <p id="mercado-demo" class="clip demo" data-start="0" data-duration="10.982">Datos de demostración</p>
+    
   </div>
   <script>
     (function () {
@@ -36,16 +36,16 @@
       // Entrada: el marco llega con desenfoque sobre el mismo fondo; el rótulo, palabra a palabra.
       tl.fromTo("#mercado-frame", { opacity: 0, y: 18, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.45, ease: "expo.out" }, 0);
       tl.fromTo("#mercado-lbl .n, #mercado-lbl .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.05);
-      tl.fromTo('#mercado-demo', { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power2.out' }, 0.3);
+      
       // Cámara, cursor (sobre la caja real del elemento pulsado) y rótulos.
       tl.set("#mercado-cam", { x: 0, y: 0, scale: 0.8 }, 0);
-      tl.to("#mercado-cam", { x: -188.8, y: -212.8, scale: 1.04, duration: 0.7, ease: "power2.inOut" }, 2.75);
-      tl.set("#mercado-cam", { x: 0, y: 0, scale: 0.8 }, 5.55);
-      tl.to("#mercado-cam", { x: -96.0, y: -67.2, scale: 0.96, duration: 0.7, ease: "power2.inOut" }, 7.95);
+      tl.to("#mercado-cam", { x: -153.6, y: -105.6, scale: 0.96, duration: 0.7, ease: "power2.inOut" }, 0.75);
+      tl.set("#mercado-cam", { x: 0, y: 0, scale: 0.8 }, 5.15);
+      tl.to("#mercado-cam", { x: -96.0, y: -67.2, scale: 0.96, duration: 0.7, ease: "power2.inOut" }, 7.75);
       tl.fromTo("#mercado-cap0 .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.04 }, 0.25);
       tl.to("#mercado-cap0", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 10.762);
       // Salida.
-      tl.to("#mercado-frame, #mercado-lbl, #mercado-demo", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 10.762);
+      tl.to("#mercado-frame, #mercado-lbl", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 10.762);
       window.__timelines["mercado"] = tl;
     })();
   </script>

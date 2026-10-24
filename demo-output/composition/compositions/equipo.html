@@ -27,7 +27,7 @@
       </div>
     </div>
     <p id="equipo-cap0" class="clip cap" data-start="0.0" data-duration="7.488"><span class="w">Equipos</span> <span class="w">con</span> <span class="w">roles,</span> <span class="w">verificación</span> <span class="w">en</span> <span class="w">dos</span> <span class="w">pasos</span> <span class="w">y</span> <span class="w">claves</span> <span class="w">de</span> <span class="w">API.</span></p>
-    <p id="equipo-demo" class="clip demo" data-start="0" data-duration="7.488">Datos de demostración</p>
+    
   </div>
   <script>
     (function () {
@@ -35,16 +35,16 @@
       // Entrada: el marco llega con desenfoque sobre el mismo fondo; el rótulo, palabra a palabra.
       tl.fromTo("#equipo-frame", { opacity: 0, y: 18, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.45, ease: "expo.out" }, 0);
       tl.fromTo("#equipo-lbl .n, #equipo-lbl .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.05);
-      tl.fromTo('#equipo-demo', { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power2.out' }, 0.3);
+      
       // Cámara, cursor (sobre la caja real del elemento pulsado) y rótulos.
       tl.set("#equipo-cam", { x: 0, y: 0, scale: 0.8 }, 0);
-      tl.to("#equipo-cam", { x: -168.0, y: -259.2, scale: 1.04, duration: 0.7, ease: "power2.inOut" }, 0.65);
+      tl.to("#equipo-cam", { x: -22.4, y: -259.2, scale: 1.04, duration: 0.7, ease: "power2.inOut" }, 0.65);
       tl.set("#equipo-cam", { x: -83.2, y: 0, scale: 1.12 }, 3.15);
       tl.set("#equipo-cam", { x: -168.0, y: 0, scale: 1.04 }, 5.05);
       tl.fromTo("#equipo-cap0 .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.04 }, 0.25);
       tl.to("#equipo-cap0", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 7.268);
       // Salida.
-      tl.to("#equipo-frame, #equipo-lbl, #equipo-demo", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 7.268);
+      tl.to("#equipo-frame, #equipo-lbl", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 7.268);
       window.__timelines["equipo"] = tl;
     })();
   </script>

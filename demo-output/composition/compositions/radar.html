@@ -27,7 +27,7 @@
     </div>
     <p id="radar-cap0" class="clip cap" data-start="0.0" data-duration="3.3"><span class="w">Los</span> <span class="w">concursos</span> <span class="w">abiertos,</span> <span class="w">ordenados</span> <span class="w">por</span> <span class="w">lo</span> <span class="w">que</span> <span class="w">encajan</span> <span class="w">contigo.</span></p>
     <p id="radar-cap1" class="clip cap" data-start="3.3" data-duration="4.687"><span class="w">Cada</span> <span class="w">puntuación</span> <span class="w">dice</span> <span class="w">de</span> <span class="w">dónde</span> <span class="w">sale:</span> <span class="w">seis</span> <span class="w">dimensiones,</span> <span class="w">a</span> <span class="w">la</span> <span class="w">vista.</span></p>
-    <p id="radar-demo" class="clip demo" data-start="0" data-duration="7.987">Datos de demostración</p>
+    
   </div>
   <script>
     (function () {
@@ -35,13 +35,13 @@
       // Entrada: el marco llega con desenfoque sobre el mismo fondo; el rótulo, palabra a palabra.
       tl.fromTo("#radar-frame", { opacity: 0, y: 18, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.45, ease: "expo.out" }, 0);
       tl.fromTo("#radar-lbl .n, #radar-lbl .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.05);
-      tl.fromTo('#radar-demo', { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power2.out' }, 0.3);
+      
       // Cámara, cursor (sobre la caja real del elemento pulsado) y rótulos.
       tl.set("#radar-cam", { x: 0, y: 0, scale: 0.8 }, 0);
-      tl.to("#radar-cam", { x: 0, y: -108.8, scale: 1.04, duration: 0.7, ease: "power2.inOut" }, 0.85);
-      tl.set("#radar-cur", { x: 418, y: 645.0 }, 0);
+      tl.to("#radar-cam", { x: 0, y: -208.0, scale: 1.0, duration: 0.7, ease: "power2.inOut" }, 0.85);
+      tl.set("#radar-cur", { x: 418, y: 1143.0 }, 0);
       tl.fromTo("#radar-cur", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "none" }, 2.67);
-      tl.to("#radar-cur", { x: 158, y: 425.0, duration: 0.65, ease: "power3.inOut" }, 2.78);
+      tl.to("#radar-cur", { x: 158, y: 923.0, duration: 0.65, ease: "power3.inOut" }, 2.78);
       tl.to("#radar-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 3.42);
       tl.to("#radar-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 3.47);
       tl.to("#radar-cam", { x: -691.2, y: -380.0, scale: 1.16, duration: 0.7, ease: "power2.inOut" }, 3.7);
@@ -54,7 +54,7 @@
       tl.fromTo("#radar-cap1 .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.04 }, 3.42);
       tl.to("#radar-cap1", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 7.767);
       // Salida.
-      tl.to("#radar-frame, #radar-lbl, #radar-demo", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 7.767);
+      tl.to("#radar-frame, #radar-lbl", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 7.767);
       window.__timelines["radar"] = tl;
     })();
   </script>

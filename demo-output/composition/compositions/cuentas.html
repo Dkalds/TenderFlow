@@ -22,19 +22,18 @@
       <div id="cuentas-cam" class="cam">
         <img id="cuentas-i0" class="clip shot" data-start="0.0" data-duration="1.85" src="assets/shots/cuentas-00-vacio.jpg" alt="" />
         <img id="cuentas-i1" class="clip shot" data-start="1.85" data-duration="1.0" src="assets/shots/cuentas-01-dialogo.jpg" alt="" />
-        <img id="cuentas-i2" class="clip shot" data-start="2.85" data-duration="0.12" src="assets/shots/cuentas-02-organo-t006.jpg" alt="" />
-        <img id="cuentas-i3" class="clip shot" data-start="2.97" data-duration="0.12" src="assets/shots/cuentas-03-organo-t012.jpg" alt="" />
-        <img id="cuentas-i4" class="clip shot" data-start="3.09" data-duration="0.12" src="assets/shots/cuentas-04-organo-t018.jpg" alt="" />
-        <img id="cuentas-i5" class="clip shot" data-start="3.21" data-duration="0.12" src="assets/shots/cuentas-05-organo-t022.jpg" alt="" />
-        <img id="cuentas-i6" class="clip shot" data-start="3.33" data-duration="0.9" src="assets/shots/cuentas-06-opciones.jpg" alt="" />
-        <img id="cuentas-i7" class="clip shot" data-start="4.23" data-duration="0.9" src="assets/shots/cuentas-07-elegido.jpg" alt="" />
-        <img id="cuentas-i8" class="clip shot" data-start="5.13" data-duration="1.4" src="assets/shots/cuentas-08-lista.jpg" alt="" />
-        <img id="cuentas-i9" class="clip shot" data-start="6.53" data-duration="3.104" src="assets/shots/cuentas-09-ficha.jpg" alt="" />
+        <img id="cuentas-i2" class="clip shot" data-start="2.85" data-duration="0.12" src="assets/shots/cuentas-02-organo-t005.jpg" alt="" />
+        <img id="cuentas-i3" class="clip shot" data-start="2.97" data-duration="0.12" src="assets/shots/cuentas-03-organo-t010.jpg" alt="" />
+        <img id="cuentas-i4" class="clip shot" data-start="3.09" data-duration="0.12" src="assets/shots/cuentas-04-organo-t015.jpg" alt="" />
+        <img id="cuentas-i5" class="clip shot" data-start="3.21" data-duration="0.9" src="assets/shots/cuentas-05-opciones.jpg" alt="" />
+        <img id="cuentas-i6" class="clip shot" data-start="4.11" data-duration="0.9" src="assets/shots/cuentas-06-elegido.jpg" alt="" />
+        <img id="cuentas-i7" class="clip shot" data-start="5.01" data-duration="1.4" src="assets/shots/cuentas-07-lista.jpg" alt="" />
+        <img id="cuentas-i8" class="clip shot" data-start="6.41" data-duration="3.224" src="assets/shots/cuentas-08-ficha.jpg" alt="" />
         <svg id="cuentas-cur" class="clip cur" data-start="0" data-duration="9.984" viewBox="0 0 34 44" aria-hidden="true"><path d="M3 2 L3 34 L11 26.5 L16.5 39 L22 36.5 L16.6 24.4 L27.5 24 Z" fill="#f4f1ec" stroke="#0e0d0c" stroke-width="2.2" stroke-linejoin="round" /></svg>
       </div>
     </div>
     <p id="cuentas-cap0" class="clip cap" data-start="0.0" data-duration="9.984"><span class="w">Los</span> <span class="w">órganos</span> <span class="w">que</span> <span class="w">trabaja</span> <span class="w">tu</span> <span class="w">equipo:</span> <span class="w">lo</span> <span class="w">que</span> <span class="w">publican</span> <span class="w">y</span> <span class="w">lo</span> <span class="w">que</span> <span class="w">vence.</span></p>
-    <p id="cuentas-demo" class="clip demo" data-start="0" data-duration="9.984">Datos de demostración</p>
+    
   </div>
   <script>
     (function () {
@@ -42,7 +41,7 @@
       // Entrada: el marco llega con desenfoque sobre el mismo fondo; el rótulo, palabra a palabra.
       tl.fromTo("#cuentas-frame", { opacity: 0, y: 18, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.45, ease: "expo.out" }, 0);
       tl.fromTo("#cuentas-lbl .n, #cuentas-lbl .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.05);
-      tl.fromTo('#cuentas-demo', { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power2.out' }, 0.3);
+      
       // Cámara, cursor (sobre la caja real del elemento pulsado) y rótulos.
       tl.set("#cuentas-cam", { x: 0, y: 0, scale: 0.8 }, 0);
       tl.set("#cuentas-cur", { x: 2088.0, y: 307.0 }, 0);
@@ -54,22 +53,22 @@
       tl.to("#cuentas-cur", { x: 658, y: 437.5, duration: 0.65, ease: "power3.inOut" }, 2.08);
       tl.to("#cuentas-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 2.72);
       tl.to("#cuentas-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 2.77);
-      tl.to("#cuentas-cur", { x: 659, y: 493.5, duration: 0.6000000000000001, ease: "power3.inOut" }, 3.51);
-      tl.to("#cuentas-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 4.1);
-      tl.to("#cuentas-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 4.15);
-      tl.to("#cuentas-cur", { x: 1246.0, y: 819.5, duration: 0.6000000000000001, ease: "power3.inOut" }, 4.41);
-      tl.to("#cuentas-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 5.0);
-      tl.to("#cuentas-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 5.05);
-      tl.to("#cuentas-cam", { x: 0, y: 0, scale: 1.04, duration: 0.7, ease: "power2.inOut" }, 5.13);
-      tl.to("#cuentas-cur", { x: 187, y: 195.0, duration: 0.65, ease: "power3.inOut" }, 5.76);
-      tl.to("#cuentas-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 6.4);
-      tl.to("#cuentas-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 6.45);
-      tl.to("#cuentas-cam", { x: -60.0, y: 0, scale: 0.92, duration: 0.7, ease: "power2.inOut" }, 6.73);
-      tl.to("#cuentas-cur", { opacity: 0, duration: 0.2, ease: "power2.in" }, 6.93);
+      tl.to("#cuentas-cur", { x: 659, y: 493.5, duration: 0.6000000000000001, ease: "power3.inOut" }, 3.39);
+      tl.to("#cuentas-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 3.98);
+      tl.to("#cuentas-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 4.03);
+      tl.to("#cuentas-cur", { x: 1246.0, y: 819.5, duration: 0.6000000000000001, ease: "power3.inOut" }, 4.29);
+      tl.to("#cuentas-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 4.88);
+      tl.to("#cuentas-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 4.93);
+      tl.to("#cuentas-cam", { x: 0, y: 0, scale: 1.04, duration: 0.7, ease: "power2.inOut" }, 5.01);
+      tl.to("#cuentas-cur", { x: 187, y: 195.0, duration: 0.65, ease: "power3.inOut" }, 5.64);
+      tl.to("#cuentas-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 6.28);
+      tl.to("#cuentas-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 6.33);
+      tl.to("#cuentas-cam", { x: -19.2, y: -9.6, scale: 0.96, duration: 0.7, ease: "power2.inOut" }, 6.61);
+      tl.to("#cuentas-cur", { opacity: 0, duration: 0.2, ease: "power2.in" }, 6.81);
       tl.fromTo("#cuentas-cap0 .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.04 }, 0.25);
       tl.to("#cuentas-cap0", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 9.764);
       // Salida.
-      tl.to("#cuentas-frame, #cuentas-lbl, #cuentas-demo", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 9.764);
+      tl.to("#cuentas-frame, #cuentas-lbl", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 9.764);
       window.__timelines["cuentas"] = tl;
     })();
   </script>

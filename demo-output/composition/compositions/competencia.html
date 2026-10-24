@@ -21,13 +21,13 @@
     <div id="competencia-frame" class="clip frame" data-start="0" data-duration="8.986" data-layout-allow-overflow>
       <div id="competencia-cam" class="cam">
         <img id="competencia-i0" class="clip shot" data-start="0.0" data-duration="3.75" src="assets/shots/competencia-00-panorama.jpg" alt="" />
-        <img id="competencia-i1" class="clip shot" data-start="3.75" data-duration="1.7" src="assets/shots/competencia-01-ranking.jpg" alt="" />
-        <img id="competencia-i2" class="clip shot" data-start="5.45" data-duration="3.186" src="assets/shots/competencia-02-perfil.jpg" alt="" />
+        <img id="competencia-i1" class="clip shot" data-start="3.75" data-duration="1.8" src="assets/shots/competencia-01-ranking.jpg" alt="" />
+        <img id="competencia-i2" class="clip shot" data-start="5.55" data-duration="3.086" src="assets/shots/competencia-02-perfil.jpg" alt="" />
         <svg id="competencia-cur" class="clip cur" data-start="0" data-duration="8.986" viewBox="0 0 34 44" aria-hidden="true"><path d="M3 2 L3 34 L11 26.5 L16.5 39 L22 36.5 L16.6 24.4 L27.5 24 Z" fill="#f4f1ec" stroke="#0e0d0c" stroke-width="2.2" stroke-linejoin="round" /></svg>
       </div>
     </div>
     <p id="competencia-cap0" class="clip cap" data-start="0.0" data-duration="8.986"><span class="w">Quién</span> <span class="w">se</span> <span class="w">lleva</span> <span class="w">estos</span> <span class="w">contratos</span> <span class="w">y</span> <span class="w">con</span> <span class="w">qué</span> <span class="w">cuota.</span></p>
-    <p id="competencia-demo" class="clip demo" data-start="0" data-duration="8.986">Datos de demostración</p>
+    
   </div>
   <script>
     (function () {
@@ -35,22 +35,22 @@
       // Entrada: el marco llega con desenfoque sobre el mismo fondo; el rótulo, palabra a palabra.
       tl.fromTo("#competencia-frame", { opacity: 0, y: 18, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.45, ease: "expo.out" }, 0);
       tl.fromTo("#competencia-lbl .n, #competencia-lbl .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.05);
-      tl.fromTo('#competencia-demo', { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power2.out' }, 0.3);
+      
       // Cámara, cursor (sobre la caja real del elemento pulsado) y rótulos.
       tl.set("#competencia-cam", { x: 0, y: 0, scale: 0.8 }, 0);
       tl.to("#competencia-cam", { x: -83.2, y: 0, scale: 1.12, duration: 0.7, ease: "power2.inOut" }, 0.95);
-      tl.set("#competencia-cam", { x: -52.0, y: -216.0, scale: 1.0 }, 3.75);
-      tl.set("#competencia-cur", { x: 548.5, y: 1138.0 }, 0);
-      tl.fromTo("#competencia-cur", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "none" }, 4.57);
-      tl.to("#competencia-cur", { x: 288.5, y: 918.0, duration: 0.65, ease: "power3.inOut" }, 4.68);
-      tl.to("#competencia-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 5.32);
-      tl.to("#competencia-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 5.37);
-      tl.to("#competencia-cam", { x: 0, y: 0, scale: 0.92, duration: 0.7, ease: "power2.inOut" }, 5.45);
-      tl.to("#competencia-cur", { opacity: 0, duration: 0.2, ease: "power2.in" }, 5.85);
+      tl.set("#competencia-cam", { x: -52.0, y: -128.0, scale: 1.0 }, 3.75);
+      tl.set("#competencia-cur", { x: 506, y: 816.0 }, 0);
+      tl.fromTo("#competencia-cur", { opacity: 0 }, { opacity: 1, duration: 0.15, ease: "none" }, 4.67);
+      tl.to("#competencia-cur", { x: 246, y: 596.0, duration: 0.65, ease: "power3.inOut" }, 4.78);
+      tl.to("#competencia-cur", { scale: 0.86, duration: 0.05, ease: "power2.in", transformOrigin: "3px 2px" }, 5.42);
+      tl.to("#competencia-cur", { scale: 1, duration: 0.12, ease: "power2.out", transformOrigin: "3px 2px" }, 5.47);
+      tl.to("#competencia-cam", { x: -60.0, y: 0, scale: 0.92, duration: 0.7, ease: "power2.inOut" }, 5.55);
+      tl.to("#competencia-cur", { opacity: 0, duration: 0.2, ease: "power2.in" }, 5.95);
       tl.fromTo("#competencia-cap0 .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.04 }, 0.25);
       tl.to("#competencia-cap0", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 8.766);
       // Salida.
-      tl.to("#competencia-frame, #competencia-lbl, #competencia-demo", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 8.766);
+      tl.to("#competencia-frame, #competencia-lbl", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 8.766);
       window.__timelines["competencia"] = tl;
     })();
   </script>

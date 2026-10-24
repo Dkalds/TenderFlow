@@ -17,17 +17,16 @@
     .demo { position: absolute; right: 192px; top: 52px; font-size: 24px; color: hsl(34 8% 65%); }
   </style>
   <div id="root" data-composition-id="atajos" data-width="1920" data-height="1080">
-    <div id="atajos-lbl" class="clip lbl" data-start="0" data-duration="6.49"><span class="n">11</span><span class="t"><span class="w">Atajos</span></span></div>
-    <div id="atajos-frame" class="clip frame" data-start="0" data-duration="6.49" data-layout-allow-overflow>
+    <div id="atajos-lbl" class="clip lbl" data-start="0" data-duration="4.992"><span class="n">11</span><span class="t"><span class="w">Atajos</span></span></div>
+    <div id="atajos-frame" class="clip frame" data-start="0" data-duration="4.992" data-layout-allow-overflow>
       <div id="atajos-cam" class="cam">
         <img id="atajos-i0" class="clip shot" data-start="0.0" data-duration="1.65" src="assets/shots/paleta-00-abierta.jpg" alt="" />
-        <img id="atajos-i1" class="clip shot" data-start="1.65" data-duration="1.7" src="assets/shots/paleta-01-buscando.jpg" alt="" />
-        <img id="atajos-i2" class="clip shot" data-start="3.35" data-duration="2.79" src="assets/shots/paleta-02-campana.jpg" alt="" />
-        <svg id="atajos-cur" class="clip cur" data-start="0" data-duration="6.49" viewBox="0 0 34 44" aria-hidden="true"><path d="M3 2 L3 34 L11 26.5 L16.5 39 L22 36.5 L16.6 24.4 L27.5 24 Z" fill="#f4f1ec" stroke="#0e0d0c" stroke-width="2.2" stroke-linejoin="round" /></svg>
+        <img id="atajos-i1" class="clip shot" data-start="1.65" data-duration="2.992" src="assets/shots/paleta-01-buscando.jpg" alt="" />
+        <svg id="atajos-cur" class="clip cur" data-start="0" data-duration="4.992" viewBox="0 0 34 44" aria-hidden="true"><path d="M3 2 L3 34 L11 26.5 L16.5 39 L22 36.5 L16.6 24.4 L27.5 24 Z" fill="#f4f1ec" stroke="#0e0d0c" stroke-width="2.2" stroke-linejoin="round" /></svg>
       </div>
     </div>
-    <p id="atajos-cap0" class="clip cap" data-start="0.0" data-duration="6.49"><span class="w">⌘K</span> <span class="w">para</span> <span class="w">ir</span> <span class="w">a</span> <span class="w">cualquier</span> <span class="w">sitio.</span> <span class="w">Los</span> <span class="w">avisos,</span> <span class="w">en</span> <span class="w">la</span> <span class="w">campana.</span></p>
-    <p id="atajos-demo" class="clip demo" data-start="0" data-duration="6.49">Datos de demostración</p>
+    <p id="atajos-cap0" class="clip cap" data-start="0.0" data-duration="4.992"><span class="w">⌘K</span> <span class="w">para</span> <span class="w">ir</span> <span class="w">a</span> <span class="w">cualquier</span> <span class="w">sitio:</span> <span class="w">páginas,</span> <span class="w">expedientes</span> <span class="w">y</span> <span class="w">órganos.</span></p>
+    
   </div>
   <script>
     (function () {
@@ -35,15 +34,14 @@
       // Entrada: el marco llega con desenfoque sobre el mismo fondo; el rótulo, palabra a palabra.
       tl.fromTo("#atajos-frame", { opacity: 0, y: 18, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 0.45, ease: "expo.out" }, 0);
       tl.fromTo("#atajos-lbl .n, #atajos-lbl .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.067 }, 0.05);
-      tl.fromTo('#atajos-demo', { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'power2.out' }, 0.3);
+      
       // Cámara, cursor (sobre la caja real del elemento pulsado) y rótulos.
       tl.set("#atajos-cam", { x: 0, y: 0, scale: 0.8 }, 0);
       tl.to("#atajos-cam", { x: -307.2, y: -150.4, scale: 1.12, duration: 0.7, ease: "power2.inOut" }, 0.35);
-      tl.to("#atajos-cam", { x: -768.0, y: 0, scale: 1.2, duration: 0.7, ease: "power2.inOut" }, 3.45);
       tl.fromTo("#atajos-cap0 .w", { opacity: 0, filter: "blur(6px)" }, { opacity: 1, filter: "blur(0px)", duration: 0.14, ease: "power4.out", stagger: 0.04 }, 0.25);
-      tl.to("#atajos-cap0", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 6.27);
+      tl.to("#atajos-cap0", { opacity: 0, filter: "blur(6px)", duration: 0.16, ease: "power3.in" }, 4.772);
       // Salida.
-      tl.to("#atajos-frame, #atajos-lbl, #atajos-demo", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 6.27);
+      tl.to("#atajos-frame, #atajos-lbl", { opacity: 0, filter: "blur(10px)", duration: 0.2, ease: "power3.in" }, 4.772);
       window.__timelines["atajos"] = tl;
     })();
   </script>
