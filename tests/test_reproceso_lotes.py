@@ -21,7 +21,7 @@ from scraper.reproceso_lotes import asignaciones_de_entry, meses_entre, reproces
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "placsp" / "18_lote_en_proyecto_adjudicado.xml"
 _LIC = "2026-MULTILOTE-0018"
-_FIXTURE_REAL = Path(__file__).parent / "fixtures" / "placsp" / "19_multilote_real_por_lote.xml"
+_FIXTURE_REAL = Path(__file__).parent / "fixtures" / "placsp" / "25_multilote_real_por_lote.xml"
 
 
 def _entry() -> Any:
