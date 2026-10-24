@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -165,3 +165,46 @@ def test_get_table_columns_solo_absorbe_errores_de_la_base() -> None:
     con_bug.execute.side_effect = TypeError("bug")
     with pytest.raises(TypeError):
         conn_mod.get_table_columns(con_bug, "tabla")
+
+
+# ── llm/client.py ────────────────────────────────────────────────────────────
+
+
+def test_un_candidato_que_lanza_antes_del_primer_token_cuenta(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for var in ("NVIDIA_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")  # pragma: allowlist secret
+
+    def roto(system: Any, messages: Any, model: Any, api_key: Any, **kw: Any) -> Iterator[str]:
+        raise RuntimeError("410 Gone")
+        yield  # pragma: no cover
+
+    def sano(system: Any, messages: Any, model: Any, api_key: Any, **kw: Any) -> Iterator[str]:
+        yield "ok"
+
+    antes = _valor("llm_client_errores_total", "modelo_fallido")
+    with (
+        patch("llm.providers.openai_provider.stream", roto),
+        patch("llm.providers.anthropic_provider.stream", sano),
+    ):
+        from llm.client import stream_llm_response
+
+        assert list(stream_llm_response("pregunta de prueba", [], "gpt-4o-mini", [])) == ["ok"]
+
+    assert _valor("llm_client_errores_total", "modelo_fallido") == antes + 1
+
+
+def test_un_presupuesto_que_no_se_alimenta_cuenta() -> None:
+    from llm.client import _PRICE_PER_MTOK, _record_usage
+
+    modelo = next(iter(_PRICE_PER_MTOK))
+    guard = MagicMock()
+    guard.record.side_effect = RuntimeError("redis caído")
+    antes = _valor("llm_client_errores_total", "presupuesto")
+
+    with patch("llm.budget.get_budget_guard", return_value=guard):
+        _record_usage(modelo, "openai", {"input_tokens": 100, "output_tokens": 10})
+
+    assert _valor("llm_client_errores_total", "presupuesto") == antes + 1
