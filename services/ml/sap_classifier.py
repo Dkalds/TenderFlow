@@ -815,7 +815,20 @@ class SAPClassifier:
         repo: str = "Dkalds/TenderFlow",
         asset_name: str = "sap_classifier.pkl",
     ) -> bool:
-        """Descarga el modelo desde el último GitHub Release si no existe localmente.
+        """Descarga el asset de **nombre fijo** si no existe localmente.
+
+        Es el último recurso de :meth:`resolve_artifact`, para cuando
+        ``sap_classifier`` no tiene versión activa en ``model_versions``: sirve
+        el ``sap_classifier.pkl`` que haya publicado, **sin cotejarlo contra el
+        registro** (no hay fila contra la que cotejar). Las versiones
+        registradas desde 2026-10 llevan el sha256 en el nombre
+        (``sap_classifier-<sha12>.pkl``) y no pasan por aquí.
+
+        Busca como ``shared.model_artifacts``: Release de tag fijo
+        ``ml-models``, después *latest* y después las más recientes
+        (``shared.release_assets.locate_release_asset``). Hasta 2026-10 solo
+        miraba *latest*, y una Release de software nueva marcada como *latest*
+        dejaba el asset de mayo (en ``v1.0.0-models``) fuera de su alcance.
 
         Usa GITHUB_TOKEN del entorno si está disponible (necesario para repos privados
         y siempre disponible en GitHub Actions via secrets.GITHUB_TOKEN).
@@ -837,10 +850,10 @@ class SAPClassifier:
         import os
 
         from shared.release_assets import (
+            ML_MODELS_RELEASE_TAG,
             download_asset,
             download_checksum_sidecar,
-            fetch_latest_release,
-            find_asset_id,
+            locate_release_asset,
         )
 
         target = path or _MODEL_PATH
@@ -849,14 +862,19 @@ class SAPClassifier:
             return True
 
         github_token = os.environ.get("GITHUB_TOKEN", "")
-        release = fetch_latest_release(repo, token=github_token)
-        if release is None:
+        localizado = locate_release_asset(
+            repo, asset_name, token=github_token, tag_fijo=ML_MODELS_RELEASE_TAG
+        )
+        if localizado is None:
             return False
-        asset_id = find_asset_id(release, asset_name)
-        if asset_id is None:
-            return False
+        release, asset_id = localizado.release, localizado.asset_id
 
-        log.info("ml_classifier.downloading_model", asset_id=asset_id, dest=str(target))
+        log.info(
+            "ml_classifier.downloading_model",
+            asset_id=asset_id,
+            release=release.get("tag_name"),
+            dest=str(target),
+        )
         if not download_asset(repo, asset_id, target, token=github_token):
             return False
 
@@ -1012,20 +1030,31 @@ class SAPClassifier:
     def resolve_artifact(cls) -> Path | None:
         """Artefacto servible, bajándolo de la Release si hace falta.
 
+        Es **la** forma de cargar el clasificador fuera de un checkout: la usan
+        la ingesta (``scraper/pipeline.py::_load_classifiers``) y el
+        ``precompute`` de ``ml_proba``, y se carga con
+        ``SAPClassifier.load(artefacto)``. ``ensure_downloaded()`` +
+        ``load()`` sin ruta no sirve para eso: con una versión activa de nombre
+        por contenido, ``load()`` no encuentra su ``path`` en este runner y cae
+        al ``sap_classifier.pkl`` local —el de nombre fijo que acaba de bajar
+        ``ensure_downloaded``— sin cotejar nada.
+
         Tres canales, en orden de preferencia:
 
         1. La versión activa de ``model_versions``, verificada por sha256
-           (``shared/model_artifacts.py::resolve_servable_artifact``).
+           (``shared/model_artifacts.py::resolve_servable_artifact``), con su
+           nombre registrado: ``sap_classifier-<sha12>.pkl`` desde 2026-10.
         2. El artefacto local, si este runner ya lo tiene.
-        3. El asset de la última Release por nombre, vía
-           :meth:`ensure_downloaded` — **sin pasar por el registro**.
+        3. El asset de **nombre fijo** ``sap_classifier.pkl`` de las Releases,
+           vía :meth:`ensure_downloaded` — **sin pasar por el registro**.
 
         El tercero no es redundante: es el que sirve mientras ``sap_classifier``
         no tenga versión activa en ``model_versions`` — el gate de promoción
-        rechazó a los candidatos, o alguien la desactivó. Ahí 1 devuelve
-        ``None``; y ``data/models/`` está en ``.gitignore``, así que en un runner
-        efímero 2 también. Con solo esos dos, el paso saldría en ``no_model``
-        con el ``sap_classifier.pkl`` publicado en la Release y nadie bajándolo.
+        rechazó a los candidatos, o alguien la desactivó; hoy (2026-10) es el
+        asset de mayo de ``v1.0.0-models``. Ahí 1 devuelve ``None``; y
+        ``data/models/`` está en ``.gitignore``, así que en un runner efímero 2
+        también. Con solo esos dos, el paso saldría en ``no_model`` con el
+        ``sap_classifier.pkl`` publicado en la Release y nadie bajándolo.
 
         Con versión activa manda 1, y un artefacto publicado que no coincida con
         su sha256 lanza ``ModelArtifactMismatch`` en vez de caer al tercero: lo

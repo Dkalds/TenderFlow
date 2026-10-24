@@ -503,9 +503,15 @@ async def feedback_queue(
             texts = [f"{c['titulo']} {c.get('descripcion') or ''}" for c in candidates]
 
             def _predict() -> list[dict[str, Any]]:
-                from services.ml.sap_classifier import SAPClassifier
+                # La caché de proceso de la API y no `SAPClassifier.load()`: la
+                # caché resuelve la versión activa por
+                # `shared.model_artifacts.resolve_active_artifact` (cotejada
+                # por sha256, bajada a un directorio escribible) y no hace un
+                # `joblib.load` por petición. `load()` sin ruta buscaba un
+                # `data/models/sap_classifier.pkl` que en Render no existe.
+                from api.model_cache import get_classifier
 
-                clf = SAPClassifier.load()
+                clf = get_classifier()
                 # cpvs/importes son obligatorios aquí: el modelo se entrenó
                 # con los tokens estructurales de ``_augment_text`` y sin
                 # ellos la cola se ordena con una probabilidad que no es la

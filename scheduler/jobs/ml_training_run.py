@@ -5,8 +5,11 @@ a la Release en medio:
 
 1. ``python -m scheduler.jobs.ml_training_run`` — seed de negativos →
    entrenamiento → gate. El candidato que pasa el gate queda **registrado sin
-   activar**.
-2. *(el workflow sube el artefacto con ``gh release upload``)*
+   activar**, con su artefacto en ``data/models/sap_classifier-<sha12>.pkl``
+   (``artefactos`` en ``$GITHUB_OUTPUT``). La versión activa, si la hay, no se
+   toca: sigue sirviéndose, cotejada, hasta el paso 3.
+2. *(el workflow sube ese artefacto a la Release ``ml-models`` con
+   ``gh release upload``)*
 3. ``python -m scheduler.jobs.ml_training_run activar --version N`` — comprueba
    que la Release publica el sha256 registrado, activa la versión y recalcula
    ``ml_proba``.
@@ -14,7 +17,11 @@ a la Release en medio:
 Hasta 2026-10 el paso 1 activaba la versión y la subida iba después: un fallo
 en medio —el ``precompute`` forzado, que recorre toda la población, vivía
 ahí— dejaba activa una versión cuyo artefacto no estaba publicado, y todos los
-procesos caían por ``ModelArtifactMismatch``.
+procesos caían por ``ModelArtifactMismatch``. Después, y hasta que el asset
+llevó el sha256 en el nombre, el paso 1 retiraba la versión activa porque la
+subida iba a sustituir su asset de nombre fijo (``sap_classifier.pkl``): entre
+los dos pasos el modelo se servía sin cotejar, y un fallo de la subida tras
+borrar el asset dejaba a los runners sin modelo.
 
 ``python -m scheduler.jobs.ml_training_run rescore`` es el tercer subcomando,
 el de ``rescore-ml-proba.yml``: recalcula ``ml_proba`` con el modelo que se
@@ -54,7 +61,7 @@ _MODELO = "sap_classifier"
 # Cuántas veces se lee la Release antes de dar por no publicado el artefacto,
 # y cuánto se espera entre lecturas. La subida acaba de terminar: lo normal es
 # que la primera lectura ya lo traiga, y los reintentos solo cubren un fallo
-# pasajero de la API. Rendirse deja el modelo sin versión activa hasta que
+# pasajero de la API. Rendirse deja sin activar la versión nueva hasta que
 # alguien relance el paso, así que compensa insistir medio minuto.
 _INTENTOS_VERIFICACION = 3
 _ESPERA_VERIFICACION_SEGUNDOS = 10.0
@@ -64,13 +71,12 @@ def run() -> dict[str, Any]:
     """Siembra negativos y entrena desde BD. No activa ni recalcula ``ml_proba``.
 
     Si el candidato pasa el gate queda registrado sin activar, con su artefacto
-    en ``data/models/sap_classifier.pkl`` listo para subir, y **el modelo se
-    queda sin versión activa** hasta :func:`activar_publicada`. Es deliberado:
-    el asset se publica con nombre fijo, así que la subida va a sustituir el
-    de la versión que estuviera activa. Retirarla antes hace que ningún estado
-    intermedio —ni un fallo a mitad— deje una versión activa cuyo sha256 no es
-    el del asset publicado; sin versión activa los consumidores sirven el
-    asset de nombre fijo, el que haya en cada momento.
+    en ``data/models/sap_classifier-<sha256[:12]>.pkl`` listo para subir, hasta
+    :func:`activar_publicada`. La versión que estuviera activa **sigue
+    activa**: el asset nuevo lleva otro nombre, así que subirlo no sustituye el
+    suyo, y hasta la activación se sigue sirviendo, cotejada contra el
+    registro. Si algo falla entre este paso y la activación, no cambia nada de
+    lo que se sirve.
 
     Returns:
         Las métricas devueltas por ``train_from_db``.
@@ -97,17 +103,6 @@ def run() -> dict[str, Any]:
 
     if "error" in metrics:
         raise RuntimeError(f"Training failed: {metrics['error']}")
-
-    if promocionado(metrics):
-        from db.model_registry import deactivate
-
-        retiradas = deactivate(_MODELO)
-        log.info(
-            "ml_training_version_activa_retirada",
-            modelo=_MODELO,
-            retiradas=retiradas,
-            pendiente=(metrics.get("promotion") or {}).get("version"),
-        )
     return metrics
 
 
@@ -115,9 +110,9 @@ def promocionado(metrics: dict[str, Any]) -> bool:
     """¿Pasó el gate de promoción y hay artefacto nuevo que publicar?
 
     ``train_from_db`` delega en ``services.ml.promotion.promote_if_better``,
-    que **solo** escribe ``data/models/sap_classifier.pkl`` —el asset de la
-    Release que descargan la API y los runners— si el candidato supera el
-    gate. Un rechazo no es un error: es el mecanismo funcionando.
+    que **solo** escribe ``data/models/sap_classifier-<sha12>.pkl`` —el asset
+    que ``train-model.yml`` sube a la Release— si el candidato supera el gate.
+    Un rechazo no es un error: es el mecanismo funcionando.
 
     Cuenta tanto el candidato ya activado como el que espera a que su
     artefacto se publique (``pendiente_de_activar``, que es lo que devuelve
@@ -125,6 +120,25 @@ def promocionado(metrics: dict[str, Any]) -> bool:
     """
     promocion = metrics.get("promotion") or {}
     return bool(promocion.get("activada") or promocion.get("pendiente_de_activar"))
+
+
+def artefactos_publicados(metrics: dict[str, Any]) -> list[str]:
+    """El ``.pkl`` que publicó el gate y su ``.sha256``, si existen.
+
+    Rutas, no nombres: el workflow las pasa tal cual a ``gh release upload``.
+    El nombre lleva el sha256 (``sap_classifier-<sha12>.pkl``) y es el que
+    quedó registrado en ``model_versions``, que es por el que el resto de
+    procesos pedirá el asset. Lista vacía si no hubo promoción.
+    """
+    from pathlib import Path
+
+    if not promocionado(metrics):
+        return []
+    artefacto = (metrics.get("promotion") or {}).get("artefacto")
+    if not artefacto:
+        return []
+    pkl = Path(str(artefacto))
+    return [str(p) for p in (pkl, pkl.with_suffix(".sha256")) if p.exists()]
 
 
 def activar_publicada(
@@ -153,7 +167,7 @@ def activar_publicada(
     Raises:
         RuntimeError: Si la versión no existe, o si tras los reintentos la
             Release no publica un asset con el sha256 registrado. No se activa
-            nada: el modelo sigue sin versión activa.
+            nada: sigue activa la versión que lo estuviera (o ninguna).
     """
     from db.model_registry import activate_version, list_versions
     from services.ml.classifier_training import precompute_ml_proba
@@ -167,8 +181,8 @@ def activar_publicada(
         raise RuntimeError(
             f"{_MODELO} v{version} no se activa: la Release no publica su artefacto "
             f"({estado.estado}; asset {estado.asset}, registrado {estado.registrado}, "
-            f"publicado {estado.publicado} en {estado.release}). El modelo queda sin "
-            "versión activa; ver docs/runbooks/model-rollback.md."
+            f"publicado {estado.publicado} en {estado.release}). Se sigue sirviendo "
+            "la versión que estuviera activa; ver docs/runbooks/model-rollback.md."
         )
 
     if not activate_version(_MODELO, version):
@@ -250,6 +264,9 @@ def _emitir_salida_github(metrics: dict[str, Any]) -> None:
     lineas = [
         f"promoted={'true' if promocionado(metrics) else 'false'}",
         f"version={promocion.get('version') or ''}",
+        # Lo que el workflow sube, ya con el sha256 en el nombre, separado por
+        # espacios: mismo contrato que `artefactos` de `train-predictivos.yml`.
+        f"artefactos={' '.join(artefactos_publicados(metrics))}",
         # Una sola línea: los outputs multilinea necesitan heredoc y estos
         # motivos son frases cortas.
         f"rejection_reasons={motivos.replace(chr(10), ' ')}",

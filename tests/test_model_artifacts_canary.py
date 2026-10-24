@@ -162,6 +162,62 @@ def test_registro_y_release_coinciden() -> None:
     assert result == {"checked": 2, "divergentes": [], "sin_publicar": [], "error": None}
 
 
+def _con_sap_por_contenido(sha256: str) -> dict[str, object]:
+    """Producción tras la primera pasada nueva de ``train-model.yml``.
+
+    ``ml-models`` gana ``sap_classifier-<sha12>.pkl`` y ``v1.0.0-models`` sigue
+    con el ``sap_classifier.pkl`` de mayo, que nadie borra.
+    """
+    rutas = _releases_de_produccion()
+    fija = rutas[f"{_API}/tags/ml-models"]
+    assert isinstance(fija, dict)
+    fija["assets"].append(_asset(f"sap_classifier-{sha256[:12]}.pkl", 13, sha256))
+    return rutas
+
+
+def test_una_version_sap_con_nombre_por_contenido_cuadra_en_la_release_fija() -> None:
+    """El nombre nuevo se coteja por su nombre, en ``ml-models``, y el asset de
+    nombre fijo de mayo —otro contenido— no se mezcla."""
+    activa = _fila(
+        "sap_classifier",
+        3,
+        f"/home/runner/work/TenderFlow/TenderFlow/data/models/sap_classifier-{_SHA_REGISTRADO[:12]}.pkl",
+        _SHA_REGISTRADO,
+    )
+
+    result = _correr([activa], _GitHubFalso(_con_sap_por_contenido(_SHA_REGISTRADO)))
+
+    assert result == {"checked": 1, "divergentes": [], "sin_publicar": [], "error": None}
+
+
+def test_una_version_sap_por_contenido_sin_subir_es_un_hallazgo() -> None:
+    """Activada sin que su asset llegase a ``ml-models``: el de nombre fijo no
+    la cubre, porque se busca por el nombre registrado."""
+    activa = _fila(
+        "sap_classifier",
+        3,
+        f"data/models/sap_classifier-{_SHA_REGISTRADO[:12]}.pkl",
+        _SHA_REGISTRADO,
+    )
+
+    result = _correr([activa], _GitHubFalso(_releases_de_produccion()))
+
+    assert result["divergentes"] == []
+    assert [h["asset"] for h in result["sin_publicar"]] == [
+        f"sap_classifier-{_SHA_REGISTRADO[:12]}.pkl"
+    ]
+
+
+def test_el_nombre_fijo_se_sigue_cotejando_con_los_dos_nombres_publicados() -> None:
+    """Una fila antigua de nombre fijo se resuelve en ``v1.0.0-models`` aunque
+    ``ml-models`` ya publique versiones por contenido."""
+    activa = _fila("sap_classifier", 1, "data/models/sap_classifier.pkl", _SHA_PUBLICADO)
+
+    result = _correr([activa], _GitHubFalso(_con_sap_por_contenido(_SHA_REGISTRADO)))
+
+    assert result == {"checked": 1, "divergentes": [], "sin_publicar": [], "error": None}
+
+
 def test_una_version_activa_sin_asset_publicado_es_un_hallazgo() -> None:
     """El caso de activar una fila que registró el artefacto versionado.
 

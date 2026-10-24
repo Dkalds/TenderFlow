@@ -342,22 +342,16 @@ def _run_ml_scoring() -> str:
 
     **Propaga el resultado del precompute** (2026-09). Hasta ahora este paso
     reportaba ``ok`` pasara lo que pasara, y eso tapaba un acoplamiento real:
-    ``precompute_ml_proba`` solo comprueba ``SAPClassifier.is_available()`` —un
-    ``Path.exists()`` sobre el disco del runner— y si no hay artefacto devuelve
-    ``{"updated": 0, "skipped_no_model": True}`` sin puntuar nada. El fichero
-    solo estaba ahí porque la fase de ingesta previa, en el MISMO runner, lo
-    había descargado vía ``scraper/pipeline.py::_load_classifiers`` →
-    ``SAPClassifier.ensure_downloaded()``. En cuanto el cierre corre en un
-    runner distinto de la ingesta —que es exactamente lo que hace
-    ``--fase cierre``— no hay modelo, no se puntúa nada y el resumen decía
-    «ok».
+    ``precompute_ml_proba`` solo comprobaba ``SAPClassifier.is_available()`` —un
+    ``Path.exists()`` sobre el disco del runner— y si no había artefacto
+    devolvía ``{"updated": 0, "skipped_no_model": True}`` sin puntuar nada. El
+    fichero solo estaba ahí si la ingesta previa, en el MISMO runner, lo había
+    descargado. Hoy el precompute y la ingesta resuelven el artefacto cada uno
+    por ``SAPClassifier.resolve_artifact()``, que lo baja si falta.
 
-    Clave del dict que se lee: ``skipped_no_model`` (bool). Es el contrato con
-    el agente que está arreglando ``services/ml/classifier_training.py`` para que llame a
-    ``ensure_downloaded()``: cuando ese cambio entre, este paso volverá a
-    reportar ``ok`` solo. Si esa clave desapareciera del dict, este paso
-    reportaría ``ok`` de nuevo — por eso el nombre va documentado aquí y no
-    solo leído.
+    Clave del dict que se lee: ``skipped_no_model`` (bool). Si esa clave
+    desapareciera del dict, este paso reportaría ``ok`` sin modelo — por eso
+    el nombre va documentado aquí y no solo leído.
 
     Returns:
         ``"ok"`` si el precompute puntuó (o no tenía nada que puntuar),

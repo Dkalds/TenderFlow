@@ -14,6 +14,8 @@ Fija tres invariantes que el código violaba:
 
 from __future__ import annotations
 
+import hashlib
+
 import pytest
 
 from services.ml.promotion import MIN_RECALL_NO_KEYWORD, evaluar_gate
@@ -176,6 +178,10 @@ class TestMetricasOperativas:
 # scoring de la pipeline volvía a `no_model`. Se registra el publicado.
 
 
+_CONTENIDO_FALSO = b"artefacto-entrenado"
+_SHA_FALSO = hashlib.sha256(_CONTENIDO_FALSO).hexdigest()
+
+
 class _ClfFalso:
     """Mínimo que `promote_if_better` le pide a un clasificador: `save`."""
 
@@ -184,7 +190,7 @@ class _ClfFalso:
 
         destino = _P(path)
         destino.parent.mkdir(parents=True, exist_ok=True)
-        destino.write_bytes(b"artefacto-entrenado")
+        destino.write_bytes(_CONTENIDO_FALSO)
         return destino
 
 
@@ -200,7 +206,10 @@ def _promocionar(tmp_path, *, motivos, activa=None, siguiente=1, registrada=None
 
     from services.ml.promotion import promote_if_better
 
-    publicado = tmp_path / "publicado" / "sap_classifier.pkl"
+    base = tmp_path / "publicado" / "sap_classifier.pkl"
+    # Lo que el gate publica: la ruta base con el sha256 del contenido en el
+    # nombre (`shared.model_artifacts.content_addressed_path`).
+    publicado = tmp_path / "publicado" / f"sap_classifier-{_SHA_FALSO[:12]}.pkl"
     with (
         patch("db.model_registry.get_active", return_value=activa),
         patch("db.model_registry.next_version", return_value=siguiente),
@@ -215,7 +224,7 @@ def _promocionar(tmp_path, *, motivos, activa=None, siguiente=1, registrada=None
             _ClfFalso(),
             {"n_train": 100, "n_test": 50},
             models_dir=tmp_path / "versiones",
-            publicar_como=publicado,
+            publicar_como=base,
             **kwargs,
         )
     return resultado, register, publicado
@@ -230,7 +239,29 @@ def test_al_promocionar_se_registra_el_artefacto_publicado(tmp_path):
     assert registrado["path"] == str(publicado)
     assert registrado["activate"] is True
     # Y el fichero publicado existe de verdad, con el mismo contenido.
-    assert publicado.read_bytes() == b"artefacto-entrenado"
+    assert publicado.read_bytes() == _CONTENIDO_FALSO
+    assert resultado.artefacto == str(publicado)
+    assert resultado.as_dict()["artefacto"] == str(publicado)
+
+
+def test_el_publicado_lleva_el_sha256_en_el_nombre_y_no_pisa_el_fijo(tmp_path):
+    """`sap_classifier-<sha12>.pkl` con su `.sha256`, y el de nombre fijo intacto.
+
+    Con nombre fijo, subir el candidato sustituía el asset de la versión
+    activa; y el `sap_classifier.pkl` local es lo que se sirve sin versión
+    activa (`SAPClassifier.resolve_artifact`), así que tampoco se toca.
+    """
+    fijo = tmp_path / "publicado" / "sap_classifier.pkl"
+    fijo.parent.mkdir(parents=True)
+    fijo.write_bytes(b"modelo-de-mayo")
+
+    _resultado, _register, publicado = _promocionar(tmp_path, motivos=[])
+
+    assert publicado.name == f"sap_classifier-{_SHA_FALSO[:12]}.pkl"
+    sidecar = publicado.with_suffix(".sha256")
+    assert sidecar.read_text(encoding="utf-8").strip() == _SHA_FALSO
+    assert fijo.read_bytes() == b"modelo-de-mayo"
+    assert not fijo.with_suffix(".sha256").exists()
 
 
 def test_el_sha_registrado_describe_el_fichero_publicado(tmp_path):
@@ -277,7 +308,7 @@ def test_con_activar_false_el_candidato_se_publica_pero_no_se_activa(tmp_path):
     # El fichero y la ruta registrada son los que el workflow va a subir: es
     # por ese nombre por el que se cotejará la Release antes de activar.
     assert registrado["path"] == str(publicado)
-    assert publicado.read_bytes() == b"artefacto-entrenado"
+    assert publicado.read_bytes() == _CONTENIDO_FALSO
     assert resultado.as_dict()["pendiente_de_activar"] is True
 
 
@@ -290,6 +321,7 @@ def test_un_rechazo_no_queda_pendiente_de_activar(tmp_path):
     assert resultado.activada is False
     assert resultado.pendiente_de_activar is False
     assert "pendiente_de_activar" not in resultado.as_dict()
+    assert "artefacto" not in resultado.as_dict()
     assert not publicado.exists()
     assert register.call_args.kwargs["activate"] is False
 

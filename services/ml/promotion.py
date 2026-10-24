@@ -110,6 +110,10 @@ class ResultadoPromocion:
     #: activarlo todavía (``promote_if_better(activar=False)``): falta
     #: publicarlo y comprobar que lo publicado es lo registrado.
     pendiente_de_activar: bool = False
+    #: Ruta del artefacto publicado (``<stem>-<sha256[:12]>.pkl``) si el gate
+    #: pasó y había ``publicar_como``; es la registrada en ``model_versions`` y
+    #: la que ``train-model.yml`` sube a la Release. ``None`` si no se publicó.
+    artefacto: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -119,6 +123,7 @@ class ResultadoPromocion:
             "motivos_rechazo": self.motivos_rechazo,
             **({"golden": self.golden} if self.golden else {}),
             **({"pendiente_de_activar": True} if self.pendiente_de_activar else {}),
+            **({"artefacto": self.artefacto} if self.artefacto else {}),
         }
 
 
@@ -361,15 +366,25 @@ def promote_if_better(
     este punto y la subida dejaba activa una versión sin artefacto: lo mismo
     que pasó el 2026-09-29 por el camino del reentrenamiento automático.
 
-    **El rollback dejó de ser automático.** El ``path`` de una versión activada
-    es el artefacto publicado, no el versionado (ver el comentario junto a
-    ``register_version``), así que reactivar una fila antigua apunta al mismo
-    ``sap_classifier.pkl`` de la Release, cuyo contenido es el de la versión
-    vigente. La verificación de sha256 lo detecta y falla con
-    ``ModelArtifactMismatch`` en vez de servir el modelo equivocado -- ruidoso,
-    pero no silencioso. Para volver atrás de verdad hay que republicar en la
-    Release el ``.pkl`` de esa versión; el artefacto versionado se sigue
-    escribiendo en ``models_dir`` justamente para poder hacerlo.
+    **El artefacto publicado lleva su sha256 en el nombre** (2026-10):
+    ``publicar_como`` es la ruta *base* (``data/models/sap_classifier.pkl``) y
+    lo que se escribe y se registra es ``sap_classifier-<sha256[:12]>.pkl`` en
+    ese directorio (``shared.model_artifacts.content_addressed_path``), igual
+    que ``baja_model`` y ``retencion_model``. Con el nombre fijo, subir el
+    candidato sustituía el asset de la versión activa, y ``train-model.yml``
+    tenía que retirarla antes de subir: el modelo se servía sin cotejar hasta
+    activar el nuevo, y un fallo de la subida dejaba a los runners sin modelo.
+    El fichero de nombre fijo de ``publicar_como`` no se toca: es el que se
+    sirve como último recurso mientras no haya versión activa
+    (``SAPClassifier.resolve_artifact``).
+
+    Por lo mismo, **el rollback vuelve a ser ``activate_version``** para las
+    versiones publicadas así: el asset de cada una sigue en la Release y
+    ninguna otra lo pisa. Las anteriores, registradas como
+    ``sap_classifier.pkl``, siguen apuntando a un asset que otra versión pudo
+    sustituir; la verificación de sha256 lo detecta (``ModelArtifactMismatch``)
+    en vez de servir el modelo equivocado. El artefacto versionado
+    (``<name>_v{N}.pkl``) se sigue escribiendo en ``models_dir``.
 
     Args:
         clf: ``SAPClassifier`` ya entrenado (se le pide ``save`` y ``predict``).
@@ -378,9 +393,9 @@ def promote_if_better(
         n_feedbacks: Feedbacks humanos que dispararon el reentrenamiento.
         notes: Nota libre para el registry.
         models_dir: Directorio de los artefactos versionados.
-        publicar_como: Ruta del artefacto que sirve producción (el que
-            descargan API y runners). Solo se sobrescribe si el gate pasa; si
-            no, el modelo anterior queda intacto.
+        publicar_como: Ruta base del artefacto que sirve producción. Si el
+            gate pasa se publica como ``<stem>-<sha256[:12]><suffix>`` en su
+            directorio, con su ``.sha256``; si no, no se escribe nada.
         activar: ``False`` deja inactivo al candidato que pasa el gate, a la
             espera de que quien llama publique el artefacto y lo active.
     """
@@ -432,13 +447,20 @@ def promote_if_better(
     # ``asset_not_in_release`` y el paso de scoring volvía a ``no_model``. Es la
     # invariante que ya cumple ``train-predictivos.yml``: se sube el fichero
     # cuyo path se registró.
+    #
+    # Con el sha256 en el nombre: un fichero nuevo por versión, así que subirlo
+    # no sustituye el asset de la versión activa (ver el docstring).
     ruta_registrada = guardado
+    publicado: Path | None = None
     if pasa_el_gate and publicar_como is not None:
-        publicar_como.parent.mkdir(parents=True, exist_ok=True)
-        publicar_como.write_bytes(guardado.read_bytes())
-        _escribir_checksum(publicar_como)
-        log.info("promotion.artefacto_publicado", path=str(publicar_como))
-        ruta_registrada = publicar_como
+        from shared.model_artifacts import content_addressed_path
+
+        publicado = content_addressed_path(publicar_como, sha)
+        publicado.parent.mkdir(parents=True, exist_ok=True)
+        publicado.write_bytes(guardado.read_bytes())
+        _escribir_checksum(publicado)
+        log.info("promotion.artefacto_publicado", path=str(publicado), sha256=sha)
+        ruta_registrada = publicado
 
     n_samples = int(metrics.get("n_train") or 0) + int(metrics.get("n_test") or 0)
     # De aquí en adelante ``version`` es la que asignó el registro: es la que
@@ -446,7 +468,7 @@ def promote_if_better(
     # notificación y el resumen de ``train-model.yml``.
     version = register_version(
         name=name,
-        # Mismo sha en los dos: ``publicar_como`` es copia byte a byte de
+        # Mismo sha en los dos: el publicado es copia byte a byte de
         # ``guardado``, así que el hash registrado sigue describiendo el
         # contenido con independencia de cuál de los dos nombres se registre.
         path=str(ruta_registrada),
@@ -499,6 +521,7 @@ def promote_if_better(
         motivos_rechazo=motivos,
         golden=golden_dict,
         pendiente_de_activar=pasa_el_gate and not activar,
+        artefacto=str(publicado) if publicado is not None else None,
     )
 
 

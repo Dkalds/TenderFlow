@@ -87,7 +87,9 @@ class TestFeedbackEndpoints:
         mock_clf = MagicMock()
         mock_clf.predict_proba.return_value = fake_probs
 
-        with patch("services.ml.sap_classifier.SAPClassifier.load", return_value=mock_clf):
+        # La cola usa la caché de la API (versión activa por
+        # `resolve_active_artifact`), no un `SAPClassifier.load()` propio.
+        with patch("api.model_cache.get_classifier", return_value=mock_clf):
             resp = client.get("/api/v1/feedback/queue?strategy=uncertainty&limit=10", headers=auth)
         assert resp.status_code == 200
         data = resp.json()
