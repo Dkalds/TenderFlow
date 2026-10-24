@@ -328,3 +328,41 @@ def test_el_aviso_de_un_paso_roto_que_no_sale_cuenta(monkeypatch: pytest.MonkeyP
     pipeline_runs._notify_step_failure("dlq_retry", RuntimeError("roto"))
 
     assert _valor("pipeline_runs_errores_total", "aviso_paso") == antes + 1
+
+
+# ── scheduler/jobs/documentos_embeddings.py ──────────────────────────────────
+
+
+def _revivir(mod: Any, repo: Any) -> None:
+    mod._revivir_descargas_fallidas(repo)
+
+
+def _paginas(mod: Any, repo: Any) -> None:
+    mod._paginas_del_documento(repo, 7)
+
+
+def _marcar_error(mod: Any, repo: Any) -> None:
+    mod._marcar_error_inesperado(repo, {"id": 7}, ValueError("bytes NUL"))
+
+
+@pytest.mark.parametrize(
+    ("paso", "llamar"),
+    [
+        ("fetch_revivir", _revivir),
+        ("embed_paginas", _paginas),
+        ("fetch_marcar_error", _marcar_error),
+    ],
+)
+def test_las_fases_de_pliegos_cuentan_lo_que_capturan(paso: str, llamar: Any) -> None:
+    from scheduler.jobs import documentos_embeddings as mod
+
+    repo = MagicMock()
+    repo.revivir_descargas_fallidas.side_effect = RuntimeError("consulta caída")
+    repo.list_pages.side_effect = RuntimeError("consulta caída")
+    repo.mark_error.side_effect = RuntimeError("consulta caída")
+    antes = _valor("documentos_embeddings_errores_total", paso)
+
+    llamar(mod, repo)
+
+    assert _valor("documentos_embeddings_errores_total", paso) == antes + 1
+    assert _eventos(f"error_capturado:documentos_embeddings:{paso}")
