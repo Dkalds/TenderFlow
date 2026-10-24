@@ -25,6 +25,7 @@ from db.database import connect
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from db.repositories.licitaciones import LicitacionRepository
 from db.upsert import Licitacion, upsert_licitaciones
+from shared.dto import FiltrosLicitacion
 
 CANONICA = "PLACSP-1/2026"
 PENDING = "ted:111-2026"
@@ -103,7 +104,7 @@ class TestListado:
 
     def test_la_busqueda_de_texto_tambien_los_esconde(self) -> None:
         """La rama FTS construye su propio WHERE: tiene que aplicar la misma regla."""
-        items, total = LicitacionRepository().list_paginated(q="SAP", limit=50)
+        items, total = LicitacionRepository().list_paginated(FiltrosLicitacion(q="SAP"), limit=50)
         assert CANONICA in _ids(items), "la búsqueda de texto no encontró ni la canónica"
         assert _ids(items) == VISIBLES
         assert total == len(VISIBLES)
@@ -123,7 +124,9 @@ class TestListado:
 class TestLasCifrasDeEncima:
     def test_los_kpis_cuentan_lo_que_la_lista_ensena(self) -> None:
         """Los KPIs del ámbito y el listado comparten universo: mismo total."""
-        _items, total_listado = LicitacionRepository().list_paginated(limit=50, ccaa="Madrid")
+        _items, total_listado = LicitacionRepository().list_paginated(
+            FiltrosLicitacion(ccaa="Madrid"), limit=50
+        )
         kpis = AggregateRepository().overview_kpis(LicitacionesFilters(ccaa="Madrid"))
         assert kpis["total"] == total_listado == len(VISIBLES)
 

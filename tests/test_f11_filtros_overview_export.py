@@ -19,6 +19,7 @@ import pytest
 
 from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_where
 from services.analytics.overview import OverviewFilters, _to_repo_filters
+from shared.dto import FiltrosLicitacion
 
 # ── Overview ────────────────────────────────────────────────────────────────
 
@@ -198,7 +199,7 @@ def test_listado_overview_y_export_cuentan_lo_mismo(corpus: Any, filtros: dict[s
     from db.repositories.licitaciones import LicitacionRepository
 
     repo = LicitacionRepository()
-    _items, total_listado = repo.list_paginated(limit=200, **filtros)
+    _items, total_listado = repo.list_paginated(FiltrosLicitacion(**filtros), limit=200)
     total_overview = AggregateRepository().overview_kpis(LicitacionesFilters(**filtros))["total"]
     total_export = len(repo.fetch_for_pdf(limit=200, **filtros))
     assert total_listado == total_overview == total_export

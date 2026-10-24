@@ -27,13 +27,14 @@ from db.repositories.licitaciones import (
     _codigo_en,
     _normaliza_codigo,
 )
+from shared.dto import FiltrosLicitacion
 
 _repo = LicitacionRepository()
 
 
 def _sql(**filtros: Any) -> str:
     """El WHERE que produce `_base_filters`, como texto, para poder afirmar."""
-    clauses = _repo._base_filters(**filtros)
+    clauses = _repo._base_filters(FiltrosLicitacion(**filtros))
     stmt = select(licitaciones.c.id_externo).where(and_(*clauses))
     sql, _params = compile_query(stmt)
     return sql
@@ -200,12 +201,14 @@ class TestParidad:
 
     @staticmethod
     def _ids_offset(**filtros: Any) -> set[str]:
-        items, _total = _repo.list_paginated(limit=200, **filtros)
+        items, _total = _repo.list_paginated(FiltrosLicitacion(**filtros), limit=200)
         return {str(i["id_externo"]) for i in items}
 
     @staticmethod
     def _ids_cursor(**filtros: Any) -> set[str]:
-        return {str(i["id_externo"]) for i in _repo.list_cursor(limit=200, **filtros)}
+        return {
+            str(i["id_externo"]) for i in _repo.list_cursor(FiltrosLicitacion(**filtros), limit=200)
+        }
 
     @pytest.mark.parametrize(
         "filtros",
@@ -245,7 +248,9 @@ class TestParidad:
         """E2 dice «Serveis» y E1 «2»: los dos son servicios, en las tres rutas."""
         assert self._ids_offset(tipo_contrato="2") == {"E1", "E2"}
         assert self._ids_cursor(tipo_contrato="2") == {"E1", "E2"}
-        con_texto, _ = _repo.list_paginated(limit=200, q="SAP", tipo_contrato="2")
+        con_texto, _ = _repo.list_paginated(
+            FiltrosLicitacion(q="SAP", tipo_contrato="2"), limit=200
+        )
         assert {str(i["id_externo"]) for i in con_texto} == {"E1", "E2"}
         assert self._ids_offset(tipo_contrato="3") == {"E3"}
 

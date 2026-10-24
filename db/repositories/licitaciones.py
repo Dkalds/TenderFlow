@@ -50,6 +50,7 @@ from db.sql_fragments import (
     tecnologia_tokens_sql,
 )
 from observability.logging import get_logger
+from shared.dto import FiltrosLicitacion
 from shared.estados import (
     ESTADOS_CERRADOS,
     abierta_core,
@@ -454,32 +455,14 @@ class LicitacionRepository:
 
     @staticmethod
     def _base_filters(
+        filtros: FiltrosLicitacion | None = None,
         *,
-        q: str | None = None,
-        estado: str | None = None,
-        solo_abiertas: bool = False,
-        ccaa: str | None = None,
-        tecnologia: str | None = None,
-        tecnologia_predicha: str | None = None,
-        min_proba_tech: float | None = None,
-        fecha_desde: str | None = None,
-        fecha_hasta: str | None = None,
-        cierre_desde: str | None = None,
-        cierre_hasta: str | None = None,
-        importe_min: float | None = None,
-        importe_max: float | None = None,
-        cpv: str | None = None,
-        organo: str | None = None,
-        provincia: str | None = None,
-        procedimiento: str | None = None,
-        tramitacion: str | None = None,
-        tipo_contrato: str | None = None,
-        dias_restantes_max: int | None = None,
-        etiqueta_id: int | None = None,
-        etiqueta_organization_id: int | None = None,
         only_classified: bool = True,
     ) -> list[Any]:
         """Devuelve lista de cláusulas SA Core para WHERE.
+
+        Es el único sitio que traduce :class:`shared.dto.FiltrosLicitacion` a
+        SQL Core; ``None`` equivale a «sin filtros».
 
         ``fecha_desde``/``fecha_hasta`` acotan **publicación** y
         ``cierre_desde``/``cierre_hasta`` acotan **cierre** (``fecha_limite``).
@@ -495,6 +478,7 @@ class LicitacionRepository:
         por id no pasa por aquí: un enlace guardado sigue respondiendo, y
         declara ``republicacion_de``.
         """
+        filtros = filtros or FiltrosLicitacion()
         clauses: list[Any] = [_SIN_REPUBLICACIONES]
 
         if only_classified:
@@ -505,27 +489,27 @@ class LicitacionRepository:
                 )
             )
 
-        if q and q.strip():
-            like = f"%{escape_like(q.strip().translate(FOLD_TABLE).lower())}%"
+        if filtros.q and filtros.q.strip():
+            like = f"%{escape_like(filtros.q.strip().translate(FOLD_TABLE).lower())}%"
             clauses.append(or_(*[_plegado(c).like(like) for c in _COLUMNAS_BUSQUEDA]))
-        estados = csv_values(estado)
+        estados = csv_values(filtros.estado)
         if estados:
             clauses.append(_any_of(licitaciones.c.estado, estados))
-        if solo_abiertas:
+        if filtros.solo_abiertas:
             # El juicio «sigue abierta» sale de `shared.estados`, en su forma
             # para SA Core: el `COALESCE` (y no un `NOT IN` a secas, que en SQL
             # descarta el NULL en silencio) está allí, escrito una vez, junto a
             # la forma de texto que usan los agregados.
             clauses.append(abierta_core(licitaciones.c.estado))
-        ccaas = csv_values(ccaa)
+        ccaas = csv_values(filtros.ccaa)
         if ccaas:
             clauses.append(_any_of(licitaciones.c.ccaa, ccaas))
-        tecnologias = csv_values(tecnologia)
+        tecnologias = csv_values(filtros.tecnologia)
         if tecnologias:
             clauses.append(_tecnologia_en_csv(tecnologias))
 
-        if tecnologia_predicha:
-            if min_proba_tech is not None:
+        if filtros.tecnologia_predicha:
+            if filtros.min_proba_tech is not None:
                 # Subquery EXISTS en licitacion_tecnologia_score
                 sub = (
                     select(text("1"))
@@ -534,8 +518,9 @@ class LicitacionRepository:
                         and_(
                             licitacion_tecnologia_score.c.licitacion_id
                             == licitaciones.c.id_externo,
-                            licitacion_tecnologia_score.c.tecnologia == tecnologia_predicha,
-                            licitacion_tecnologia_score.c.probabilidad >= float(min_proba_tech),
+                            licitacion_tecnologia_score.c.tecnologia == filtros.tecnologia_predicha,
+                            licitacion_tecnologia_score.c.probabilidad
+                            >= float(filtros.min_proba_tech),
                         )
                     )
                 )
@@ -544,11 +529,11 @@ class LicitacionRepository:
                 # El valor va escapado dentro del patrón: llega de la query y
                 # un `%` lo convertía en comodín. La rama FTS escapa igual, de
                 # modo que las dos casan el mismo conjunto.
-                t = escape_like(tecnologia_predicha)
+                t = escape_like(filtros.tecnologia_predicha)
                 clauses.append(
                     or_(
-                        licitaciones.c.ml_tech_principal == tecnologia_predicha,
-                        licitaciones.c.ml_tecnologias == tecnologia_predicha,
+                        licitaciones.c.ml_tech_principal == filtros.tecnologia_predicha,
+                        licitaciones.c.ml_tecnologias == filtros.tecnologia_predicha,
                         licitaciones.c.ml_tecnologias.like(f"{t},%"),
                         licitaciones.c.ml_tecnologias.like(f"%,{t},%"),
                         licitaciones.c.ml_tecnologias.like(f"%,{t}"),
@@ -559,10 +544,10 @@ class LicitacionRepository:
         # decide `NUCLEO_TIPADO_LECTURA`. Apagado, es la de siempre.
         fecha_pub = _nucleo("fecha_publicacion")
         fecha_lim = _nucleo("fecha_limite")
-        if fecha_desde and _DATE_RE.match(fecha_desde):
-            clauses.append(fecha_pub >= fecha_desde)
-        if fecha_hasta and _DATE_RE.match(fecha_hasta):
-            clauses.append(fecha_pub <= fecha_hasta)
+        if filtros.fecha_desde and _DATE_RE.match(filtros.fecha_desde):
+            clauses.append(fecha_pub >= filtros.fecha_desde)
+        if filtros.fecha_hasta and _DATE_RE.match(filtros.fecha_hasta):
+            clauses.append(fecha_pub <= filtros.fecha_hasta)
 
         # Ventana de cierre. El guard ISO va una sola vez aunque haya dos cotas
         # —son rangos sobre la misma columna y Postgres los funde en un único
@@ -570,14 +555,16 @@ class LicitacionRepository:
         # el techo ``< '3000'`` no lo implica. Mismo par de predicados que
         # cuenta ``aggregates.overview_para_hoy`` para ``vencen_48h``, de modo
         # que la tarjeta y el listado que abre midan lo mismo.
-        cierre_desde_ok = bool(cierre_desde and _DATE_RE.match(cierre_desde))
+        cierre_desde_ok = bool(filtros.cierre_desde and _DATE_RE.match(filtros.cierre_desde))
         hasta_exclusivo = (
-            _dia_siguiente(cierre_hasta) if cierre_hasta and _DATE_RE.match(cierre_hasta) else None
+            _dia_siguiente(filtros.cierre_hasta)
+            if filtros.cierre_hasta and _DATE_RE.match(filtros.cierre_hasta)
+            else None
         )
         if cierre_desde_ok or hasta_exclusivo:
             clauses.append(_fecha_valida("fecha_limite"))
         if cierre_desde_ok:
-            clauses.append(fecha_lim >= cierre_desde)
+            clauses.append(fecha_lim >= filtros.cierre_desde)
         if hasta_exclusivo:
             clauses.append(fecha_lim < hasta_exclusivo)
 
@@ -592,15 +579,15 @@ class LicitacionRepository:
         # Importe: NULL queda fuera en cuanto se pide cualquiera de las cotas.
         # Es lo correcto y hay que decirlo: «de 100k a 500k» no puede incluir
         # expedientes sin importe publicado, aunque alguno lo tuviera.
-        if importe_min is not None:
-            clauses.append(_nucleo("importe") >= float(importe_min))
-        if importe_max is not None:
-            clauses.append(_nucleo("importe") <= float(importe_max))
+        if filtros.importe_min is not None:
+            clauses.append(_nucleo("importe") >= float(filtros.importe_min))
+        if filtros.importe_max is not None:
+            clauses.append(_nucleo("importe") <= float(filtros.importe_max))
 
         # CPV **por prefijo**: es como se usa de verdad. `72` es «servicios de
         # TI» entero y `7222` una familia dentro. Igualdad exacta obligaría a
         # conocer los ocho dígitos, que nadie recuerda.
-        cpvs = csv_values(cpv)
+        cpvs = csv_values(filtros.cpv)
         if cpvs:
             clauses.append(or_(*[licitaciones.c.cpv.like(f"{escape_like(c)}%") for c in cpvs]))
 
@@ -609,7 +596,7 @@ class LicitacionRepository:
         # que escribe «ayuntamiento de madrid» a mano tiene que encontrarlo
         # igual — y hasta que exista el maestro de órganos (C1.2) el nombre es
         # todo lo que hay.
-        organos = csv_values(organo)
+        organos = csv_values(filtros.organo)
         if organos:
             clauses.append(
                 or_(
@@ -622,7 +609,7 @@ class LicitacionRepository:
                 )
             )
 
-        provincias = csv_values(provincia)
+        provincias = csv_values(filtros.provincia)
         if provincias:
             clauses.append(_any_of(licitaciones.c.provincia, provincias))
 
@@ -632,19 +619,23 @@ class LicitacionRepository:
         # expedientes de algunos órganos. Es la misma normalización que aplica
         # `shared/procedimientos.py` al traducirlos.
         for columna, valores in (
-            (licitaciones.c.procedimiento, csv_values(procedimiento)),
-            (licitaciones.c.tramitacion, csv_values(tramitacion)),
+            (licitaciones.c.procedimiento, csv_values(filtros.procedimiento)),
+            (licitaciones.c.tramitacion, csv_values(filtros.tramitacion)),
         ):
             if valores:
                 clauses.append(_codigo_en(columna, valores))
-        if tipos := csv_values(tipo_contrato):
+        if tipos := csv_values(filtros.tipo_contrato):
             clauses.append(_tipo_contrato_en(tipos))
 
         # Plazo restante en días, calculado en SQL sobre `fecha_limite` y sin
         # los estados terminales: un expediente adjudicado con fecha límite
         # futura no «vence en 5 días», ya no se puede licitar.
-        if dias_restantes_max is not None:
-            tope = (datetime.now(UTC) + timedelta(days=int(dias_restantes_max))).date().isoformat()
+        if filtros.dias_restantes_max is not None:
+            tope = (
+                (datetime.now(UTC) + timedelta(days=int(filtros.dias_restantes_max)))
+                .date()
+                .isoformat()
+            )
             clauses.append(_fecha_valida("fecha_limite"))
             # `<` y no `<=`: `_dia_siguiente` produce una cota **exclusiva**
             # (lo dice su docstring, y así la usan `cierre_hasta` y la rama
@@ -662,7 +653,7 @@ class LicitacionRepository:
         # `EXISTS` —además del respaldo RLS de `v128`—: una etiqueta es dato de
         # un cliente, y sin ella en el predicado el filtro casaría con lo que
         # otra organización ha etiquetado con el mismo id.
-        if etiqueta := _etiqueta_requerida(etiqueta_id, etiqueta_organization_id):
+        if etiqueta := _etiqueta_requerida(filtros.etiqueta_id, filtros.etiqueta_organization_id):
             org, eid = etiqueta
             ea = etiquetas_aplicadas
             clauses.append(
@@ -685,35 +676,17 @@ class LicitacionRepository:
 
     def list_paginated(
         self,
+        filtros: FiltrosLicitacion | None = None,
         *,
-        q: str | None = None,
-        estado: str | None = None,
-        solo_abiertas: bool = False,
-        ccaa: str | None = None,
-        tecnologia: str | None = None,
-        tecnologia_predicha: str | None = None,
-        min_proba_tech: float | None = None,
-        fecha_desde: str | None = None,
-        fecha_hasta: str | None = None,
-        cierre_desde: str | None = None,
-        cierre_hasta: str | None = None,
-        importe_min: float | None = None,
-        importe_max: float | None = None,
-        cpv: str | None = None,
-        organo: str | None = None,
-        provincia: str | None = None,
-        procedimiento: str | None = None,
-        tramitacion: str | None = None,
-        tipo_contrato: str | None = None,
-        dias_restantes_max: int | None = None,
-        etiqueta_id: int | None = None,
-        etiqueta_organization_id: int | None = None,
         limit: int = 50,
         offset: int = 0,
         sort: str | None = None,
         with_total: bool = True,
     ) -> tuple[list[dict[str, Any]], int]:
         """Devuelve (items, total).  Si ``with_total=False`` total==-1.
+
+        Los filtros llegan juntos en ``filtros`` (:class:`shared.dto.FiltrosLicitacion`,
+        ``None`` = sin filtros); aquí solo viajan sueltos la página y el orden.
 
         ``solo_abiertas`` descarta los estados terminales de
         :data:`shared.estados.ESTADOS_CERRADOS` (resuelta, adjudicada,
@@ -725,61 +698,14 @@ class LicitacionRepository:
         cuanto se pide cualquiera de las dos cotas: NULL no cumple el guard
         ISO, igual que en los contadores de ``/analytics/resumen/hoy``.
         """
+        filtros = filtros or FiltrosLicitacion()
         order = _orden(sort)
-        clauses = self._base_filters(
-            q=q,
-            estado=estado,
-            solo_abiertas=solo_abiertas,
-            ccaa=ccaa,
-            tecnologia=tecnologia,
-            tecnologia_predicha=tecnologia_predicha,
-            min_proba_tech=min_proba_tech,
-            fecha_desde=fecha_desde,
-            fecha_hasta=fecha_hasta,
-            cierre_desde=cierre_desde,
-            cierre_hasta=cierre_hasta,
-            importe_min=importe_min,
-            importe_max=importe_max,
-            cpv=cpv,
-            organo=organo,
-            provincia=provincia,
-            procedimiento=procedimiento,
-            tramitacion=tramitacion,
-            tipo_contrato=tipo_contrato,
-            dias_restantes_max=dias_restantes_max,
-            etiqueta_id=etiqueta_id,
-            etiqueta_organization_id=etiqueta_organization_id,
-        )
+        clauses = self._base_filters(filtros)
 
         # Usar FTS5 para búsquedas de texto si disponible
-        if q and fts_available():
+        if filtros.q and fts_available():
             return self._list_fts(
-                q=q,
-                estado=estado,
-                solo_abiertas=solo_abiertas,
-                ccaa=ccaa,
-                tecnologia=tecnologia,
-                tecnologia_predicha=tecnologia_predicha,
-                min_proba_tech=min_proba_tech,
-                fecha_desde=fecha_desde,
-                fecha_hasta=fecha_hasta,
-                cierre_desde=cierre_desde,
-                cierre_hasta=cierre_hasta,
-                importe_min=importe_min,
-                importe_max=importe_max,
-                cpv=cpv,
-                organo=organo,
-                provincia=provincia,
-                procedimiento=procedimiento,
-                tramitacion=tramitacion,
-                tipo_contrato=tipo_contrato,
-                dias_restantes_max=dias_restantes_max,
-                etiqueta_id=etiqueta_id,
-                etiqueta_organization_id=etiqueta_organization_id,
-                limit=limit,
-                offset=offset,
-                order=order,
-                with_total=with_total,
+                filtros, limit=limit, offset=offset, order=order, with_total=with_total
             )
 
         # Query SA Core
@@ -892,35 +818,17 @@ class LicitacionRepository:
 
     def _list_fts(
         self,
+        filtros: FiltrosLicitacion,
         *,
-        q: str,
-        estado: str | None,
-        solo_abiertas: bool,
-        ccaa: str | None,
-        tecnologia: str | None,
-        tecnologia_predicha: str | None = None,
-        min_proba_tech: float | None = None,
-        fecha_desde: str | None,
-        fecha_hasta: str | None,
-        cierre_desde: str | None,
-        cierre_hasta: str | None,
-        importe_min: float | None = None,
-        importe_max: float | None = None,
-        cpv: str | None = None,
-        organo: str | None = None,
-        provincia: str | None = None,
-        procedimiento: str | None = None,
-        tramitacion: str | None = None,
-        tipo_contrato: str | None = None,
-        dias_restantes_max: int | None = None,
-        etiqueta_id: int | None = None,
-        etiqueta_organization_id: int | None = None,
         limit: int,
         offset: int,
         order: Any,
         with_total: bool,
     ) -> tuple[list[dict[str, Any]], int]:
-        """Búsqueda FTS5: usa SQL directo porque FTS MATCH no tiene soporte SA."""
+        """Búsqueda FTS5: usa SQL directo porque FTS MATCH no tiene soporte SA.
+
+        Solo se llega con ``filtros.q`` puesto (lo decide ``list_paginated``).
+        """
         # Núcleo tipado (T2): las mismas columnas que `_base_filters` elige vía
         # `_nucleo`, en su forma de texto. Apagado son `l.fecha_publicacion`,
         # `l.fecha_limite` y `l.importe`, como siempre.
@@ -937,22 +845,22 @@ class LicitacionRepository:
         # `csv_values` y no el valor crudo: la rama SA Core acepta multi-valor
         # (`?estado=A,B`) y ésta comparaba la cadena entera, de modo que el
         # mismo filtro devolvía cero al escribir texto en la caja.
-        if estados := csv_values(estado):
+        if estados := csv_values(filtros.estado):
             marcadores = ", ".join(["%s"] * len(estados))
             extra_conditions.append(f"l.estado IN ({marcadores})")
             extra_params.extend(estados)
-        if solo_abiertas:
+        if filtros.solo_abiertas:
             # Mismo criterio y ahora también misma grafía que la rama SA Core y
             # que los agregados: el predicado lo emite `shared.estados`. Antes
             # eran tres escrituras equivalentes del mismo juicio, y equivalente
             # no protege de que sólo una cambie.
             extra_conditions.append(abierta_sql_marcadores("l.estado", n=len(ESTADOS_CERRADOS)))
             extra_params.extend(ESTADOS_CERRADOS)
-        if ccaas := csv_values(ccaa):
+        if ccaas := csv_values(filtros.ccaa):
             marcadores = ", ".join(["%s"] * len(ccaas))
             extra_conditions.append(f"l.ccaa IN ({marcadores})")
             extra_params.extend(ccaas)
-        tecnologias = csv_values(tecnologia)
+        tecnologias = csv_values(filtros.tecnologia)
         if tecnologias:
             # Igualdad no: `tecnologia` guarda un CSV por fila, así que buscar
             # SAP escondía los expedientes que además llevan otra. La rama SA
@@ -967,43 +875,51 @@ class LicitacionRepository:
         # filtro en silencio y devolvía expedientes de cualquier tecnología.
         # Misma semántica que `_base_filters`: con umbral, EXISTS sobre los
         # scores; sin él, principal o pertenencia al CSV de predichas.
-        if tecnologia_predicha:
-            if min_proba_tech is not None:
+        if filtros.tecnologia_predicha:
+            if filtros.min_proba_tech is not None:
                 extra_conditions.append(
                     "EXISTS (SELECT 1 FROM licitacion_tecnologia_score s "
                     "WHERE s.licitacion_id = l.id_externo AND s.tecnologia = %s "
                     "  AND s.probabilidad >= %s)"
                 )
-                extra_params.extend([tecnologia_predicha, float(min_proba_tech)])
+                extra_params.extend([filtros.tecnologia_predicha, float(filtros.min_proba_tech)])
             else:
                 extra_conditions.append(
                     "(l.ml_tech_principal = %s OR l.ml_tecnologias = %s "
                     " OR l.ml_tecnologias LIKE %s OR l.ml_tecnologias LIKE %s "
                     " OR l.ml_tecnologias LIKE %s)"
                 )
-                t = escape_like(tecnologia_predicha)
+                t = escape_like(filtros.tecnologia_predicha)
                 extra_params.extend(
-                    [tecnologia_predicha, tecnologia_predicha, f"{t},%", f"%,{t},%", f"%,{t}"]
+                    [
+                        filtros.tecnologia_predicha,
+                        filtros.tecnologia_predicha,
+                        f"{t},%",
+                        f"%,{t},%",
+                        f"%,{t}",
+                    ]
                 )
 
-        if fecha_desde and _DATE_RE.match(fecha_desde):
+        if filtros.fecha_desde and _DATE_RE.match(filtros.fecha_desde):
             extra_conditions.append(f"{fpub} >= %s")
-            extra_params.append(fecha_desde)
-        if fecha_hasta and _DATE_RE.match(fecha_hasta):
+            extra_params.append(filtros.fecha_desde)
+        if filtros.fecha_hasta and _DATE_RE.match(filtros.fecha_hasta):
             extra_conditions.append(f"{fpub} <= %s")
-            extra_params.append(fecha_hasta)
+            extra_params.append(filtros.fecha_hasta)
         # La ventana de cierre también aquí: si esta rama se saltara el recorte,
         # escribir en la búsqueda global convertiría en silencio un listado de
         # «vencen esta semana» en el catálogo entero que casa con el texto.
-        cierre_desde_ok = bool(cierre_desde and _DATE_RE.match(cierre_desde))
+        cierre_desde_ok = bool(filtros.cierre_desde and _DATE_RE.match(filtros.cierre_desde))
         hasta_exclusivo = (
-            _dia_siguiente(cierre_hasta) if cierre_hasta and _DATE_RE.match(cierre_hasta) else None
+            _dia_siguiente(filtros.cierre_hasta)
+            if filtros.cierre_hasta and _DATE_RE.match(filtros.cierre_hasta)
+            else None
         )
         if cierre_desde_ok or hasta_exclusivo:
             extra_conditions.append(fecha_valida_sql("fecha_limite", "l"))
         if cierre_desde_ok:
             extra_conditions.append(f"{flim} >= %s")
-            extra_params.append(cierre_desde)
+            extra_params.append(filtros.cierre_desde)
         if hasta_exclusivo:
             extra_conditions.append(f"{flim} < %s")
             extra_params.append(hasta_exclusivo)
@@ -1016,19 +932,19 @@ class LicitacionRepository:
         # acabó comparándose por igualdad aquí y por CSV allí—, y por eso el
         # test de paridad de F1.1 compara el `COUNT(*)` de las dos ramas con
         # los mismos filtros: si una se queda atrás, falla.
-        if importe_min is not None:
+        if filtros.importe_min is not None:
             extra_conditions.append(f"{imp} >= %s")
-            extra_params.append(float(importe_min))
-        if importe_max is not None:
+            extra_params.append(float(filtros.importe_min))
+        if filtros.importe_max is not None:
             extra_conditions.append(f"{imp} <= %s")
-            extra_params.append(float(importe_max))
+            extra_params.append(float(filtros.importe_max))
 
-        cpvs = csv_values(cpv)
+        cpvs = csv_values(filtros.cpv)
         if cpvs:
             extra_conditions.append("(" + " OR ".join(["l.cpv LIKE %s" for _ in cpvs]) + ")")
             extra_params.extend(f"{escape_like(c)}%" for c in cpvs)
 
-        organos = csv_values(organo)
+        organos = csv_values(filtros.organo)
         if organos:
             plegado = fold_expr("l.organo_contratacion")
             extra_conditions.append(
@@ -1038,16 +954,16 @@ class LicitacionRepository:
                 f"%{escape_like(o.translate(FOLD_TABLE).lower())}%" for o in organos
             )
 
-        provincias = csv_values(provincia)
+        provincias = csv_values(filtros.provincia)
         if provincias:
             marcadores = ", ".join(["%s"] * len(provincias))
             extra_conditions.append(f"l.provincia IN ({marcadores})")
             extra_params.extend(provincias)
 
         for columna, valores in (
-            ("l.procedimiento", csv_values(procedimiento)),
-            ("l.tramitacion", csv_values(tramitacion)),
-            ("l.tipo_contrato", csv_values(tipo_contrato)),
+            ("l.procedimiento", csv_values(filtros.procedimiento)),
+            ("l.tramitacion", csv_values(filtros.tramitacion)),
+            ("l.tipo_contrato", csv_values(filtros.tipo_contrato)),
         ):
             textos: list[str] = []
             if columna == "l.tipo_contrato":
@@ -1066,8 +982,12 @@ class LicitacionRepository:
                     extra_params.extend(textos)
                 extra_conditions.append(condicion)
 
-        if dias_restantes_max is not None:
-            tope = (datetime.now(UTC) + timedelta(days=int(dias_restantes_max))).date().isoformat()
+        if filtros.dias_restantes_max is not None:
+            tope = (
+                (datetime.now(UTC) + timedelta(days=int(filtros.dias_restantes_max)))
+                .date()
+                .isoformat()
+            )
             extra_conditions.append(fecha_valida_sql("fecha_limite", "l"))
             extra_conditions.append(f"{flim} >= %s")
             extra_params.append(datetime.now(UTC).date().isoformat())
@@ -1078,7 +998,7 @@ class LicitacionRepository:
         # Mismo `EXISTS` que `_base_filters`: sin él, escribir en la caja de
         # búsqueda soltaría la etiqueta y devolvería el corpus que casa con el
         # texto.
-        if etiqueta := _etiqueta_requerida(etiqueta_id, etiqueta_organization_id):
+        if etiqueta := _etiqueta_requerida(filtros.etiqueta_id, filtros.etiqueta_organization_id):
             extra_conditions.append(
                 "EXISTS (SELECT 1 FROM etiquetas_aplicadas ea "
                 "WHERE ea.organization_id = %s AND ea.etiqueta_id = %s "
@@ -1100,41 +1020,22 @@ class LicitacionRepository:
         with connect_read() as c:
             total = -1
             if with_total:
-                count_row = c.execute(count_sql, [q, *extra_params]).fetchone()
+                count_row = c.execute(count_sql, [filtros.q, *extra_params]).fetchone()
                 total = int(count_row[0]) if count_row else 0
             items = rows_to_dicts(
                 c.execute(
                     base_sql + f" ORDER BY {compiled_order} LIMIT %s OFFSET %s",
-                    [q, *extra_params, limit, offset],
+                    [filtros.q, *extra_params, limit, offset],
                 )
             )
         return items, total
 
     def list_cursor(
         self,
+        filtros: FiltrosLicitacion | None = None,
         *,
         cursor_fecha: str | None = None,
         cursor_id: str | None = None,
-        q: str | None = None,
-        estado: str | None = None,
-        solo_abiertas: bool = False,
-        ccaa: str | None = None,
-        tecnologia: str | None = None,
-        fecha_desde: str | None = None,
-        fecha_hasta: str | None = None,
-        cierre_desde: str | None = None,
-        cierre_hasta: str | None = None,
-        importe_min: float | None = None,
-        importe_max: float | None = None,
-        cpv: str | None = None,
-        organo: str | None = None,
-        provincia: str | None = None,
-        procedimiento: str | None = None,
-        tramitacion: str | None = None,
-        tipo_contrato: str | None = None,
-        dias_restantes_max: int | None = None,
-        etiqueta_id: int | None = None,
-        etiqueta_organization_id: int | None = None,
         limit: int = 100,
         sort: str | None = None,
         cursor_orden: tuple[str | float | None, str] | None = None,
@@ -1150,36 +1051,15 @@ class LicitacionRepository:
         del offset (en retirada, RFC 2026-09-06) al cursor sin perder la
         ordenación por importe o por título.
 
-        Los filtros salen de :meth:`_base_filters`, los mismos que el listado
-        por offset. Antes esta función tenía su propio par de cláusulas
+        Los filtros salen de :meth:`_base_filters` con el mismo
+        :class:`shared.dto.FiltrosLicitacion` que el listado por offset. Antes esta función tenía su propio par de cláusulas
         —``tecnologia`` por **igualdad**, cuando la columna guarda un CSV— así
         que el endpoint «recomendado para datasets grandes» filtraba distinto
         que el que dice sustituir: pedir SAP aquí escondía los expedientes que
         además llevan otra tecnología. Compartir el constructor es lo que hace
         cierto el test de paridad de F1.1.
         """
-        clauses = self._base_filters(
-            q=q,
-            estado=estado,
-            solo_abiertas=solo_abiertas,
-            ccaa=ccaa,
-            tecnologia=tecnologia,
-            fecha_desde=fecha_desde,
-            fecha_hasta=fecha_hasta,
-            cierre_desde=cierre_desde,
-            cierre_hasta=cierre_hasta,
-            importe_min=importe_min,
-            importe_max=importe_max,
-            cpv=cpv,
-            organo=organo,
-            provincia=provincia,
-            procedimiento=procedimiento,
-            tramitacion=tramitacion,
-            tipo_contrato=tipo_contrato,
-            dias_restantes_max=dias_restantes_max,
-            etiqueta_id=etiqueta_id,
-            etiqueta_organization_id=etiqueta_organization_id,
-        )
+        clauses = self._base_filters(filtros)
 
         if sort and sort != "fecha_publicacion":
             return self._keyset_ordenado(clauses, sort=sort, cursor=cursor_orden, limit=limit)
@@ -1264,7 +1144,7 @@ class LicitacionRepository:
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, params))
 
-    def count_cursor(self, **filtros: Any) -> int:
+    def count_cursor(self, filtros: FiltrosLicitacion | None = None) -> int:
         """``COUNT(*)`` del universo que recorre :meth:`list_cursor` con esos filtros.
 
         Mismo constructor de cláusulas (:meth:`_base_filters`), así que el total
@@ -1272,7 +1152,7 @@ class LicitacionRepository:
         con ``with_total=true``: el cursor existe para no pagar este conteo en
         cada página, y quien lo quiere lo pide una vez.
         """
-        clauses = self._base_filters(**filtros)
+        clauses = self._base_filters(filtros)
         stmt = select(func.count()).select_from(licitaciones)
         if clauses:
             stmt = stmt.where(and_(*clauses))

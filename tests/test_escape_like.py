@@ -22,6 +22,8 @@ from typing import Any
 
 import pytest
 
+from shared.dto import FiltrosLicitacion
+
 LITERAL = r"C:\100%_x"
 
 # Una fila por forma de fallar. Solo ``LIT`` contiene el literal; cada una de
@@ -157,13 +159,13 @@ def test_agenda_una_keyword_acabada_en_barra_casa_con_la_barra(tmp_db):
 # `search_advanced`), la rama FTS del listado (`_list_fts`, que arma su propio
 # SQL) y las consultas a mano con `ESCAPE '\'`.
 _BUSQUEDAS: dict[str, Callable[[Any], set[str]]] = {
-    "cursor_q": lambda r: _ids(r.list_cursor(q=LITERAL)),
-    "cursor_cpv": lambda r: _ids(r.list_cursor(cpv=LITERAL)),
-    "cursor_organo": lambda r: _ids(r.list_cursor(organo=LITERAL)),
-    "listado_cpv": lambda r: _ids(r.list_paginated(cpv=LITERAL)[0]),
-    "listado_organo": lambda r: _ids(r.list_paginated(organo=LITERAL)[0]),
-    "fts_cpv": lambda r: _ids(r.list_paginated(q="nube", cpv=LITERAL)[0]),
-    "fts_organo": lambda r: _ids(r.list_paginated(q="nube", organo=LITERAL)[0]),
+    "cursor_q": lambda r: _ids(r.list_cursor(FiltrosLicitacion(q=LITERAL))),
+    "cursor_cpv": lambda r: _ids(r.list_cursor(FiltrosLicitacion(cpv=LITERAL))),
+    "cursor_organo": lambda r: _ids(r.list_cursor(FiltrosLicitacion(organo=LITERAL))),
+    "listado_cpv": lambda r: _ids(r.list_paginated(FiltrosLicitacion(cpv=LITERAL))[0]),
+    "listado_organo": lambda r: _ids(r.list_paginated(FiltrosLicitacion(organo=LITERAL))[0]),
+    "fts_cpv": lambda r: _ids(r.list_paginated(FiltrosLicitacion(q="nube", cpv=LITERAL))[0]),
+    "fts_organo": lambda r: _ids(r.list_paginated(FiltrosLicitacion(q="nube", organo=LITERAL))[0]),
     "avanzada_q": lambda r: _ids(r.search_advanced(q=LITERAL)[0]),
     "pdf_q": lambda r: _ids(r.fetch_for_pdf(q=LITERAL)),
     "ask": lambda r: _ids(r.search_like_for_ask(LITERAL)),
@@ -196,7 +198,9 @@ def test_licitaciones_una_tecnologia_predicha_acabada_en_barra_no_revienta(tmp_d
                 [predichas, id_externo],
             )
 
-    filas, _total = LicitacionRepository().list_paginated(q=q, tecnologia_predicha="SAP\\")
+    filas, _total = LicitacionRepository().list_paginated(
+        FiltrosLicitacion(q=q, tecnologia_predicha="SAP\\")
+    )
 
     assert _ids(filas) == {"LIT"}
 

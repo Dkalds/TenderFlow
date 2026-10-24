@@ -44,6 +44,7 @@ parche para eso; el paquete las sustituye:
 - ``agenda``: la agenda de Mi Pipeline.
 - ``jobs``: estado de la cola de trabajo.
 - ``condiciones``: condiciones oficiales de PLACSP.
+- ``filtros``: los filtros del listado de licitaciones (``FiltrosLicitacion``).
 
 Este ``__init__`` re-exporta todo lo público, así que **se importa siempre del
 paquete** (``from shared.dto import X``) y nunca del submódulo: dónde vive un
@@ -141,6 +142,7 @@ from shared.dto.cuentas import (
     PublicacionCuenta,
     VencimientoCuenta,
 )
+from shared.dto.filtros import FiltrosLicitacion
 from shared.dto.genericos import (
     CreatedId,
     DetailMessage,
@@ -299,6 +301,7 @@ __all__ = [
     "EtiquetaCreate",
     "ExpectedAward",
     "FichaCuenta",
+    "FiltrosLicitacion",
     "FollowItem",
     "FollowsResult",
     "GarantiaOficial",
