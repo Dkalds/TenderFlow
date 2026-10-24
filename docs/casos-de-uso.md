@@ -188,6 +188,9 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - **Quién:** administrador. **Dónde:** `/ops`.
 - Ve usuarios, banderas y ejecuciones; quien no es administrador recibe un
   aviso, no los datos.
+- Ve las claves de API de toda la instancia —de quién es cada una, también las
+  que no tienen dueño, cuándo caducan y cuándo se usaron— y revoca una, con
+  confirmación.
 
 ### CU-21 — Descubrir el producto en la web pública
 
@@ -340,7 +343,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-17** Ajustar mi perfil de puntuación | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-perfil.spec.ts](../web/e2e/recorrido-perfil.spec.ts) | [test_me_profile_routes.py](../tests/test_me_profile_routes.py) |
 | **CU-18** Estudiar a la competencia | [test_escenario_competencia.py](../tests/test_escenario_competencia.py) (x2) | [recorrido-competencia.spec.ts](../web/e2e/recorrido-competencia.spec.ts) | — |
 | **CU-19** Gobernar mi cuenta: preferencias, sesiones y contraseña | [test_escenario_cuenta_y_acceso.py](../tests/test_escenario_cuenta_y_acceso.py) | [ajustes.spec.ts](../web/e2e/ajustes.spec.ts) | [cambio-contrasena.test.tsx](../web/src/app/(dashboard)/ajustes/_components/__tests__/cambio-contrasena.test.tsx) |
-| **CU-20** Gestionar la plataforma como administrador | [test_escenario_revision_datos.py](../tests/test_escenario_revision_datos.py) | [admin-guard.spec.ts](../web/e2e/admin-guard.spec.ts) | — |
+| **CU-20** Gestionar la plataforma como administrador | [test_escenario_revision_datos.py](../tests/test_escenario_revision_datos.py) | [admin-guard.spec.ts](../web/e2e/admin-guard.spec.ts) | [test_admin_api_keys_route.py](../tests/test_admin_api_keys_route.py)<br>[claves-instancia-card.test.tsx](../web/src/app/(dashboard)/ops/_components/__tests__/claves-instancia-card.test.tsx) |
 | **CU-21** Descubrir el producto en la web pública | — | [seo.spec.ts](../web/e2e/seo.spec.ts) | — |
 | **CU-22** Leer el pliego con la cita delante | — | [pagina-cita.spec.ts](../web/e2e/pagina-cita.spec.ts) | — |
 | **CU-23** Preguntar al Investigador en lenguaje natural | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-investigador.spec.ts](../web/e2e/recorrido-investigador.spec.ts) | — |
