@@ -903,6 +903,65 @@ def feedback_humano_es_ti() -> list[dict[str, Any]]:
         )
 
 
+def filas_etiquetadas_nivel1() -> list[dict[str, Any]]:
+    """Filas de la población puntuada con alguna etiqueta independiente de las
+    reglas, para el modelo de nivel 1 («¿es TI?», plan de tres niveles, F3).
+
+    Dos etiquetas posibles por fila, y la decisión de cuál usar es del llamador
+    (``services.ml.nivel1.etiqueta_nivel1``):
+
+    - ``humano_es_ti``: ``relevante`` de la revisión ``revision_ti`` más
+      reciente del expediente (``None`` si no hay). Las filas ``human``
+      heredadas no cuentan: su ``relevante`` era «es SAP».
+    - ``llm_es_ti``: el marcador de nivel 1 de la versión vigente de
+      ``llm_metadata`` (misma ventana ``FIRST_VALUE`` que
+      ``TecnologiaPliegoRepository.respuestas_llm_vigentes``), con la regla de
+      ``__sin_evidencia__`` de
+      :func:`db.repositories.tecnologia_pliego.es_ti_de_version_vigente`.
+
+    Una fila sin ninguna de las dos no sale: sin etiqueta no es un negativo.
+    ``tecnologia`` viaja para el baseline de reglas y la subpoblación «CPV
+    48/72 sin keyword», no como etiqueta.
+    """
+    from db.repositories.tecnologia_pliego import es_ti_de_version_vigente
+
+    sql = f"""
+        WITH humano AS (
+            SELECT DISTINCT ON (f.expediente) f.expediente, f.relevante
+            FROM ml_feedback f
+            WHERE f.source = %s
+            ORDER BY f.expediente, f.created_at DESC, f.id DESC
+        ), llm AS (
+            SELECT v.licitacion_id, array_agg(v.tecnologia) AS tecnologias
+            FROM (
+                SELECT p.licitacion_id, p.tecnologia, p.signal_version,
+                       FIRST_VALUE(p.signal_version) OVER (
+                           PARTITION BY p.licitacion_id
+                           ORDER BY p.computed_at DESC, p.signal_version DESC
+                       ) AS version_vigente
+                FROM licitacion_tecnologia_pliego p
+                WHERE p.method = 'llm_metadata'
+            ) v
+            WHERE v.signal_version = v.version_vigente
+            GROUP BY v.licitacion_id
+        )
+        SELECT l.id_externo, l.fuente, l.fecha_publicacion, l.titulo, l.descripcion,
+               l.cpv, l.tecnologia, h.relevante AS humano_es_ti,
+               g.tecnologias AS llm_tecnologias
+        FROM licitaciones l
+        LEFT JOIN humano h ON h.expediente = l.id_externo
+        LEFT JOIN llm g ON g.licitacion_id = l.id_externo
+        WHERE (h.expediente IS NOT NULL OR g.licitacion_id IS NOT NULL)
+          AND {poblacion_clasificador_sql()}
+    """  # Interpola solo el predicado constante del módulo; el resto va como parámetro.
+    with connect_read() as c:
+        filas = rows_to_dicts(c.execute(sql, (FUENTE_REVISION_TI,)))
+    for fila in filas:
+        tecnologias = fila.pop("llm_tecnologias", None)
+        fila["llm_es_ti"] = es_ti_de_version_vigente(tecnologias) if tecnologias else None
+    return filas
+
+
 #: ``tecnologias_secundarias`` de una fila humana nombra alguna tecnología: una
 #: cadena JSON no vacía dentro del texto. Decide lo mismo que
 #: :func:`db.repositories.licitaciones.etiqueta_humana` para lo que escribe
