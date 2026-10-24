@@ -51,12 +51,17 @@ artefacto no está publicado, o alguien que sustituye el asset a mano.
 **Salidas**, por orden de preferencia:
 
 1. **El artefacto registrado existe todavía** (el job sigue en curso o lo
-   guardaste): subilo a la Release con el nombre registrado y no toques la BD.
+   guardaste): subilo a la Release `ml-models` con el nombre registrado
+   (`basename` del `path`, p. ej. `sap_classifier-<sha12>.pkl`) y no toques la
+   BD.
 2. **Hay otra versión cuyo artefacto sí está publicado**: `activate_version`,
-   como en «Marcar versión anterior como activa en BD».
+   como en «Marcar versión anterior como activa en BD». Desde 2026-10 es lo
+   normal para `sap_classifier`: cada versión publicada por `train-model.yml`
+   conserva su asset en `ml-models`.
 3. **Ninguna de las dos** (el caso del 2026-09-29: el `.pkl` murió con el
    runner): dejá el modelo sin versión activa. Los consumidores vuelven al
-   artefacto de nombre fijo de la Release, que es lo que servían antes.
+   artefacto de nombre fijo de la Release (`sap_classifier.pkl` de
+   `v1.0.0-models`, el de mayo), que es lo que servían antes.
 
    ```bash
    python - <<'EOF'
@@ -79,25 +84,36 @@ que ya no se sirve: ver «Recalcular `ml_proba`».
 
 ## `train-model.yml` falló después de «Train model»
 
-El workflow va en este orden: entrenar y pasar el gate → subir el artefacto a
-la Release → comprobar que lo publicado es lo registrado → activar → recalcular
-`ml_proba`. Si el candidato pasa el gate, «Train model» lo deja registrado
-**sin activar** y retira la versión que estuviera activa, porque la subida va a
-sustituir su asset.
+El workflow va en este orden: entrenar y pasar el gate → verificar que hay
+artefacto → subirlo a la Release `ml-models` → comprobar que lo publicado es lo
+registrado → activar → recalcular `ml_proba`. Si el candidato pasa el gate,
+«Train model» lo deja registrado **sin activar**, con su artefacto en
+`data/models/sap_classifier-<sha12>.pkl` (nombre por contenido; el output
+`artefactos` del paso lo lista junto a su `.sha256`).
 
-Así que un fallo a partir de ahí deja `sap_classifier` **sin versión activa**:
-los runners sirven el asset de nombre fijo que haya en la Release. Es un estado
-degradado —nada lo coteja contra el registro— pero ninguna pasada cae.
+**La versión activa no se toca.** El asset nuevo tiene otro nombre, así que la
+subida no sustituye el de la versión que se esté sirviendo, y no se borra
+ningún asset antes de subir. Un fallo a partir de «Train model» deja todo como
+estaba: sigue activa la versión anterior —cotejada contra el registro— o, si no
+había ninguna, se sirve el `sap_classifier.pkl` de nombre fijo de
+`v1.0.0-models`. La versión nueva queda registrada e inactiva, y es inofensiva.
 
-- **Falló la subida**: mirá qué publica la Release con el `gh api` de arriba.
-  Si `sap_classifier.pkl` sigue ahí, es el anterior: reactivá su versión con
-  `activate_version`, o relanzá el workflow. Si no está —el paso borra el asset
-  antes de subir el nuevo—, los runners no tienen modelo y `ml_scoring` sale
-  `skipped` hasta que un entrenamiento vuelva a publicar uno.
-- **Falló «Activar la versión publicada»**: el asset ya es el nuevo. El resumen
-  del run dice por qué no se activó. Si era un fallo pasajero de la API de
-  GitHub, se activa a mano, con la versión que emitió «Train model» y un token
-  que pueda leer la Release:
+Hasta 2026-10 el asset se llamaba siempre `sap_classifier.pkl` y vivía en
+*latest*: la subida pisaba el de la versión activa, así que «Train model» la
+retiraba antes, el modelo se servía sin cotejar hasta la activación, y un fallo
+de la subida tras borrar el asset dejaba a los runners sin modelo.
+
+- **Falló «Verify model artifact»** (`promoted=true` sin `artefactos`): el gate
+  dio por bueno al candidato pero no dejó fichero. No se subió nada; es un
+  fallo de código, no de datos: el log de «Train model» dice dónde quedó el
+  artefacto (`promotion.artefacto_publicado`).
+- **Falló la subida**: no cambió nada de lo que se sirve. Relanzá el workflow,
+  o subí a mano el `.pkl` y el `.sha256` que lista el output `artefactos` (si
+  el runner aún los tiene) a `ml-models` y activá como en el punto siguiente.
+- **Falló «Activar la versión publicada»**: el asset nuevo ya está en
+  `ml-models`. El resumen del run dice por qué no se activó. Si era un fallo
+  pasajero de la API de GitHub, se activa a mano, con la versión que emitió
+  «Train model» y un token que pueda leer la Release:
 
   ```bash
   GITHUB_TOKEN="$(gh auth token)" python -m scheduler.jobs.ml_training_run activar --version <N>
@@ -160,8 +176,32 @@ mensual subía con `--clobber`, así que con vN activa el siguiente
 entrenamiento pisaba su asset y el scoring caía por `ModelArtifactMismatch`.
 Las filas anteriores a ese cambio, con nombre fijo, se siguen resolviendo por
 nombre entre las 30 Releases más recientes. **No crees la Release `ml-models` a
-mano** (UI o token personal): dispararía `release-sdk.yml`. La crea
-`train-predictivos.yml` con su propio token.
+mano** (UI o token personal): dispararía `release-sdk.yml`. La crean
+`train-predictivos.yml` o `train-model.yml` con su propio token.
+
+**Artefactos del clasificador SAP (desde 2026-10).** Igual que los
+predictivos: `train-model.yml` sube `sap_classifier-<sha256[:12]>.pkl` y su
+`.sha256` a `ml-models`, sin borrar nada antes, y registra esa ruta en
+`model_versions`. Revertir a una versión publicada así es `activate_version`.
+Quién lo carga y cómo:
+
+| Proceso | Cómo resuelve `sap_classifier` |
+| --- | --- |
+| Ingesta (`scraper/pipeline.py`) y `precompute`/rescore de `ml_proba` | `SAPClassifier.resolve_artifact()` y después `SAPClassifier.load(ruta)` |
+| API (`/explain`, cola de feedback) | `api.model_cache` → `resolve_active_artifact` |
+| Canary (`model_artifacts_canary`) | `digest` del asset con el nombre registrado, sin descargar |
+
+`resolve_artifact()` busca la versión activa por su nombre registrado y coteja
+el sha256; un asset que no cuadra lanza `ModelArtifactMismatch` (la ingesta lo
+registra como `pipeline.ml_clf_artifact_mismatch` y sigue sin modelo). **Sin
+versión activa** —el estado de producción a 2026-10-24— cae al
+`sap_classifier.pkl` de nombre fijo, que `ensure_downloaded` busca en
+`ml-models`, *latest* y las recientes: hoy es el de mayo de `v1.0.0-models`
+(sha256 `5ddcc0ee…`), servido **sin cotejar**, como hasta ahora. Ese fallback
+deja de usarse en cuanto se active una versión publicada por el flujo nuevo; el
+asset de mayo no se borra, para poder volver a él desactivando. La API sin
+versión activa no cambia con esto: sigue haciendo `SAPClassifier.load()` sin
+ruta, que busca el `data/models/sap_classifier.pkl` local.
 
 Cada versión guarda el veredicto y su número en `notes` y en `metrics_json`
 (`promotion_reason`, `mejora_sobre_baseline`, `dispersion_entre_folds`,
@@ -239,9 +279,9 @@ saber antes de tocar el clasificador:
   fuera de `train-model.yml`, que activa **después** de subir y cotejar el
   `digest` (#404, #405); `model_artifacts_canary` coteja a diario. La v2 se
   desactivó a mano y no es recuperable: su artefacto no existe.
-- **Qué sigue abierto.** Ver correr el flujo nuevo de punta a punta, decidir
-  qué dataset entrena cada camino, y nombrar el asset por contenido como los
-  predictivos.
+- **Qué sigue abierto.** Ver correr el flujo nuevo de punta a punta —con el
+  asset ya nombrado por contenido en `ml-models` (2026-10), que nunca se ha
+  ejecutado en producción— y decidir qué dataset entrena cada camino.
 
 ## Ver modelos en disco
 
@@ -255,6 +295,9 @@ EOF
 ```
 
 ## Rollback al modelo anterior
+
+Solo para un checkout local que sirve desde `data/models/` sin registro. En
+producción el rollback es «Marcar versión anterior como activa en BD».
 
 ```bash
 python - <<'EOF'
@@ -278,10 +321,16 @@ EOF
 
 ## Verificar modelo restaurado
 
+Por el mismo camino que la ingesta: la versión activa cotejada por sha256 (o,
+sin versión activa, el asset de nombre fijo). Con `GITHUB_TOKEN` exportado si
+el artefacto no está en local.
+
 ```bash
 python - <<'EOF'
 from services.ml.sap_classifier import SAPClassifier
-clf = SAPClassifier.load()
+artefacto = SAPClassifier.resolve_artifact()
+print("artefacto:", artefacto)
+clf = SAPClassifier.load(artefacto)
 test_texts = [
     "Migración SAP S/4HANA",
     "Suministro de material de oficina",
@@ -298,6 +347,13 @@ Usá la función canónica del registry en vez de escribir el UPDATE a mano: hac
 el cambio en un solo statement por nombre de modelo (el SQL manual de este
 runbook desactivaba **todas** las filas de la tabla, no solo las del modelo que
 se estaba revirtiendo, y usaba el paramstyle `?` que se retiró con ADR-021).
+
+Mirá antes el `path` de la versión con «Ver versiones del modelo disponibles»:
+si su basename lleva el sha256 (`sap_classifier-<sha12>.pkl`), su asset sigue
+en `ml-models` y activarla basta. Si es `sap_classifier.pkl` (filas anteriores
+a 2026-10), el asset con ese nombre puede ser de otra versión y la activación
+acabará en `ModelArtifactMismatch`: comprobalo antes con el `gh api` de
+«`ModelArtifactMismatch`», o esperá al aviso de `model_artifacts_canary`.
 
 ```bash
 python - <<'EOF'
