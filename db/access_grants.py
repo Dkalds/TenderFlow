@@ -32,6 +32,12 @@ class AccessGrant(TypedDict):
     revoked_at: str | None
 
 
+class AccessGrantListado(AccessGrant):
+    """Una concesión tal como se lista: con el nombre de quien la concedió."""
+
+    granted_by_name: str | None
+
+
 class GrantedAccessRequest(TypedDict):
     grant: AccessGrant
     email: str
@@ -169,14 +175,28 @@ def revoke_access(grant_id: int) -> AccessGrant | None:
     return _row_to_grant(row) if row is not None else None
 
 
-def list_access_grants(*, include_inactive: bool = False) -> list[AccessGrant]:
-    where = "" if include_inactive else "WHERE active = TRUE"
+def list_access_grants(*, include_inactive: bool = False) -> list[AccessGrantListado]:
+    """Concesiones, vivas primero; con ``include_inactive`` también las revocadas.
+
+    ``granted_by_name`` resuelve ``granted_by`` a un nombre legible (nombre de
+    pantalla o, si no lo hay, el correo); es ``None`` si no se registró quién
+    concedió o esa cuenta ya no existe.
+    """
+    where = "" if include_inactive else "WHERE g.active = TRUE"
     with connect_read() as connection:
         rows = connection.execute(
-            "SELECT id, kind, value, active, granted_by, created_at, updated_at, revoked_at "
-            f"FROM access_grants {where} ORDER BY active DESC, updated_at DESC, id DESC"
+            "SELECT g.id, g.kind, g.value, g.active, g.granted_by, g.created_at, "
+            "g.updated_at, g.revoked_at, COALESCE(u.display_name, u.email) "
+            "FROM access_grants g LEFT JOIN users u ON u.id = g.granted_by "
+            f"{where} ORDER BY g.active DESC, g.updated_at DESC, g.id DESC"
         ).fetchall()
-    return [_row_to_grant(row) for row in rows]
+    return [
+        AccessGrantListado(
+            **_row_to_grant(row),
+            granted_by_name=str(row[8]) if row[8] is not None else None,
+        )
+        for row in rows
+    ]
 
 
 def _row_to_grant(row: Sequence[object]) -> AccessGrant:

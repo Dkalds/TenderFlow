@@ -405,7 +405,7 @@ def _validate_request(
 # ── Fallback de proveedor ──────────────────────────────────────────────────────
 
 
-def _provider_key_available(provider: str) -> bool:
+def provider_key_available(provider: str) -> bool:
     """True si el proveedor tiene API key configurada (secrets o entorno)."""
     env_var = _PROVIDER_KEY_ENV.get(provider)
     return bool(env_var and _get_key(env_var))
@@ -605,7 +605,7 @@ def stream_llm_response(
             continue
         # El modelo pedido se intenta siempre (si le falta la key, su stream
         # vacío activa el fallback); los de la cadena solo si tienen key.
-        if position > 0 and not _provider_key_available(proveedor):
+        if position > 0 and not provider_key_available(proveedor):
             continue
         emitted = False
         try:

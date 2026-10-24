@@ -6067,6 +6067,8 @@ export interface components {
             created_at: string;
             /** Granted By */
             granted_by?: number | null;
+            /** Granted By Name */
+            granted_by_name?: string | null;
             /** Id */
             id: number;
             /**

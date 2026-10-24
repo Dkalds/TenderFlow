@@ -1,0 +1,438 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entry xmlns="http://www.w3.org/2005/Atom" xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2" xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2" xmlns:cac-place-ext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2" xmlns:cbc-place-ext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2" xmlns:at="http://purl.org/atompub/tombstones/1.0" xmlns:ns7="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2">
+  <id>https://contrataciondelestado.es/sindicacion/licitacionesPerfilContratante/11309370</id>
+  <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=f6Fd99%2BERoQBPRBxZ4nJ%2Fg%3D%3D"/>
+  <summary type="text">Id licitación: B070005/2022-0071; Órgano de Contratación: Presidencia de la Diputación Provincial de Huesca; Importe: 490577.27 EUR; Estado: RES</summary>
+  <title>Contratación mixta, por lotes, de la mejora de la seguridad informática de las EELL de la provincia de Huesca; adecuación al Esquema Nacional de Seguridad (ENS) y servicios de vigilancia y respuesta a través de un Centro de Operaciones de Seguridad (SOC) provincial integrado en la Red Nacional de Centros de Operaciones de Seguridad (RNS) del Centro Criptológico Nacional (CCN)</title>
+  <updated>2026-06-15T11:36:32.483+02:00</updated>
+  <cac-place-ext:ContractFolderStatus>
+    <cbc:ContractFolderID>B070005/2022-0071</cbc:ContractFolderID>
+    <cbc-place-ext:ContractFolderStatusCode languageID="es" listURI="https://contrataciondelestado.es/codice/cl/2.04/SyndicationContractFolderStatusCode-2.04.gc">RES</cbc-place-ext:ContractFolderStatusCode>
+    <cbc:UUID schemeName="TED">1dd2214f-3630-4ad6-ae02-77fc93620b24</cbc:UUID>
+    <cac-place-ext:LocatedContractingParty>
+      <cbc:ContractingPartyTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityCode-2.10.gc">3</cbc:ContractingPartyTypeCode>
+      <cbc:ActivityCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityActivityCode-2.10.gc">1</cbc:ActivityCode>
+      <cbc:BuyerProfileURIID>https://contrataciondelestado.es/wps/poc?uri=deeplink:perfilContratante&amp;idBp=csIKfa2M3f4QK2TEfXGy%2BA%3D%3D</cbc:BuyerProfileURIID>
+      <cac:Party>
+        <cbc:WebsiteURI>https://sede.dphuesca.es</cbc:WebsiteURI>
+        <cac:PartyIdentification>
+          <cbc:ID schemeName="DIR3">L02000022</cbc:ID>
+        </cac:PartyIdentification>
+        <cac:PartyIdentification>
+          <cbc:ID schemeName="NIF">P2200000D</cbc:ID>
+        </cac:PartyIdentification>
+        <cac:PartyIdentification>
+          <cbc:ID schemeName="ID_PLATAFORMA">30550610096762</cbc:ID>
+        </cac:PartyIdentification>
+        <cac:PartyName>
+          <cbc:Name>Presidencia de la Diputación Provincial de Huesca</cbc:Name>
+        </cac:PartyName>
+        <cac:PostalAddress>
+          <cbc:CityName>Huesca</cbc:CityName>
+          <cbc:PostalZone>22071</cbc:PostalZone>
+          <cac:AddressLine>
+            <cbc:Line>Porches de Galicia, 4</cbc:Line>
+          </cac:AddressLine>
+          <cac:Country>
+            <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+            <cbc:Name>España</cbc:Name>
+          </cac:Country>
+        </cac:PostalAddress>
+      </cac:Party>
+      <cac-place-ext:ParentLocatedParty>
+        <cac:PartyName>
+          <cbc:Name>Diputación Provincial de Huesca</cbc:Name>
+        </cac:PartyName>
+        <cac-place-ext:ParentLocatedParty>
+          <cac:PartyName>
+            <cbc:Name>Huesca</cbc:Name>
+          </cac:PartyName>
+          <cac-place-ext:ParentLocatedParty>
+            <cac:PartyName>
+              <cbc:Name>Aragón</cbc:Name>
+            </cac:PartyName>
+            <cac-place-ext:ParentLocatedParty>
+              <cac:PartyName>
+                <cbc:Name>ENTIDADES LOCALES</cbc:Name>
+              </cac:PartyName>
+              <cac-place-ext:ParentLocatedParty>
+                <cac:PartyName>
+                  <cbc:Name>Sector Público</cbc:Name>
+                </cac:PartyName>
+              </cac-place-ext:ParentLocatedParty>
+            </cac-place-ext:ParentLocatedParty>
+          </cac-place-ext:ParentLocatedParty>
+        </cac-place-ext:ParentLocatedParty>
+      </cac-place-ext:ParentLocatedParty>
+    </cac-place-ext:LocatedContractingParty>
+    <cac:ProcurementProject>
+      <cbc:Name>Contratación mixta, por lotes, de la mejora de la seguridad informática de las EELL de la provincia de Huesca; adecuación al Esquema Nacional de Seguridad (ENS) y servicios de vigilancia y respuesta a través de un Centro de Operaciones de Seguridad (SOC) provincial integrado en la Red Nacional de Centros de Operaciones de Seguridad (RNS) del Centro Criptológico Nacional (CCN)</cbc:Name>
+      <cbc:TypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/ContractCode-2.08.gc">2</cbc:TypeCode>
+      <cbc:SubTypeCode listURI="http://contrataciondelestado.es/codice/cl/1.04/ServiceContractCode-1.04.gc">7</cbc:SubTypeCode>
+      <cbc:MixContractIndicator>true</cbc:MixContractIndicator>
+      <cac:BudgetAmount>
+        <cbc:EstimatedOverallContractAmount currencyID="EUR">1568008.1</cbc:EstimatedOverallContractAmount>
+        <cbc:TotalAmount currencyID="EUR">593598.5</cbc:TotalAmount>
+        <cbc:TaxExclusiveAmount currencyID="EUR">490577.27</cbc:TaxExclusiveAmount>
+      </cac:BudgetAmount>
+      <cac:RequiredCommodityClassification>
+        <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">72600000</cbc:ItemClassificationCode>
+      </cac:RequiredCommodityClassification>
+      <cac:RealizedLocation>
+        <cbc:CountrySubentity>Huesca</cbc:CountrySubentity>
+        <cbc:CountrySubentityCode listURI="http://contrataciondelestado.es/codice/cl/2.08/NUTS-2021.gc">ES241</cbc:CountrySubentityCode>
+        <cac:Address>
+          <cac:Country>
+            <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+            <cbc:Name>España</cbc:Name>
+          </cac:Country>
+        </cac:Address>
+      </cac:RealizedLocation>
+      <cac:PlannedPeriod>
+        <cbc:DurationMeasure unitCode="ANN">1</cbc:DurationMeasure>
+      </cac:PlannedPeriod>
+      <cac:ContractExtension>
+        <cbc:OptionsDescription>SÍ está prevista la posibilidad de prórroga del Lote A/1&#13;
+NO está prevista la prórroga en los lotes B/2, C/3 y D/4</cbc:OptionsDescription>
+        <cac:OptionValidityPeriod>
+          <cbc:Description>Duración de la prórroga Lote A/1: 3 años, de forma anual.</cbc:Description>
+        </cac:OptionValidityPeriod>
+      </cac:ContractExtension>
+    </cac:ProcurementProject>
+    <cac:ProcurementProjectLot>
+      <cbc:ID schemeName="ID_LOTE">1</cbc:ID>
+      <cac:ProcurementProject>
+        <cbc:Name>Lote A/1 Servicio de Centro de Operaciones de Seguridad (SOC), asesoría y apoyo en ciberseguridad y ENS, y software de protección de los ordenadores.</cbc:Name>
+        <cac:BudgetAmount>
+          <cbc:TotalAmount currencyID="EUR">335470.95</cbc:TotalAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">277248.72</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">72600000</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">48761000</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:RealizedLocation>
+          <cbc:CountrySubentity>Huesca</cbc:CountrySubentity>
+          <cbc:CountrySubentityCode listURI="http://contrataciondelestado.es/codice/cl/2.08/NUTS-2021.gc">ES241</cbc:CountrySubentityCode>
+          <cac:Address>
+            <cac:Country>
+              <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+              <cbc:Name>España</cbc:Name>
+            </cac:Country>
+          </cac:Address>
+        </cac:RealizedLocation>
+      </cac:ProcurementProject>
+    </cac:ProcurementProjectLot>
+    <cac:ProcurementProjectLot>
+      <cbc:ID schemeName="ID_LOTE">2</cbc:ID>
+      <cac:ProcurementProject>
+        <cbc:Name>Lote B/2 Suministro de licencias de programas de backup.</cbc:Name>
+        <cac:BudgetAmount>
+          <cbc:TotalAmount currencyID="EUR">84942</cbc:TotalAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">70200</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">48710000</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">72910000</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:RealizedLocation>
+          <cbc:CountrySubentity>Huesca</cbc:CountrySubentity>
+          <cbc:CountrySubentityCode listURI="http://contrataciondelestado.es/codice/cl/2.08/NUTS-2021.gc">ES241</cbc:CountrySubentityCode>
+          <cac:Address>
+            <cac:Country>
+              <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+              <cbc:Name>España</cbc:Name>
+            </cac:Country>
+          </cac:Address>
+        </cac:RealizedLocation>
+      </cac:ProcurementProject>
+    </cac:ProcurementProjectLot>
+    <cac:ProcurementProjectLot>
+      <cbc:ID schemeName="ID_LOTE">3</cbc:ID>
+      <cac:ProcurementProject>
+        <cbc:Name>Lote C/3 Suministro de licencias de programas de gestión remota.</cbc:Name>
+        <cac:BudgetAmount>
+          <cbc:TotalAmount currencyID="EUR">30889.55</cbc:TotalAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">25528.55</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">48781000</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">48511000</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">48960000</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">48982000</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">48421000</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:RealizedLocation>
+          <cbc:CountrySubentity>Huesca</cbc:CountrySubentity>
+          <cbc:CountrySubentityCode listURI="http://contrataciondelestado.es/codice/cl/2.08/NUTS-2021.gc">ES241</cbc:CountrySubentityCode>
+          <cac:Address>
+            <cac:Country>
+              <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+              <cbc:Name>España</cbc:Name>
+            </cac:Country>
+          </cac:Address>
+        </cac:RealizedLocation>
+      </cac:ProcurementProject>
+    </cac:ProcurementProjectLot>
+    <cac:ProcurementProjectLot>
+      <cbc:ID schemeName="ID_LOTE">4</cbc:ID>
+      <cac:ProcurementProject>
+        <cbc:Name>Lote D/4 Servicio de instalación y actualización en EE.LL. de programas, e inventario detallado de sus sistemas informáticos.</cbc:Name>
+        <cac:BudgetAmount>
+          <cbc:TotalAmount currencyID="EUR">142296</cbc:TotalAmount>
+          <cbc:TaxExclusiveAmount currencyID="EUR">117600</cbc:TaxExclusiveAmount>
+        </cac:BudgetAmount>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">72265000</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:RequiredCommodityClassification>
+          <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">72540000</cbc:ItemClassificationCode>
+        </cac:RequiredCommodityClassification>
+        <cac:RealizedLocation>
+          <cbc:CountrySubentity>Huesca</cbc:CountrySubentity>
+          <cbc:CountrySubentityCode listURI="http://contrataciondelestado.es/codice/cl/2.08/NUTS-2021.gc">ES241</cbc:CountrySubentityCode>
+          <cac:Address>
+            <cac:Country>
+              <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+              <cbc:Name>España</cbc:Name>
+            </cac:Country>
+          </cac:Address>
+        </cac:RealizedLocation>
+      </cac:ProcurementProject>
+    </cac:ProcurementProjectLot>
+    <cac:TenderResult>
+      <cbc:ResultCode listURI="http://contrataciondelestado.es/codice/cl/2.09/TenderResultCode-2.09.gc">9</cbc:ResultCode>
+      <cbc:Description>Oferta mejor valorada</cbc:Description>
+      <cbc:AwardDate>2023-04-04</cbc:AwardDate>
+      <cbc:ReceivedTenderQuantity>4</cbc:ReceivedTenderQuantity>
+      <cbc:SMEsReceivedTenderQuantity>0</cbc:SMEsReceivedTenderQuantity>
+      <cbc:SMEAwardedIndicator>false</cbc:SMEAwardedIndicator>
+      <cac:Contract>
+        <cbc:ID>B070005/2022-0071 L1</cbc:ID>
+        <cbc:IssueDate>2023-05-02</cbc:IssueDate>
+      </cac:Contract>
+      <cac:WinningParty>
+        <cac:PartyIdentification>
+          <cbc:ID schemeName="NIF">B74172537</cbc:ID>
+        </cac:PartyIdentification>
+        <cac:PartyName>
+          <cbc:Name>CIENCIA E INGENIERIA ECONÓMICA Y SOCIAL S.L.</cbc:Name>
+        </cac:PartyName>
+      </cac:WinningParty>
+      <cac:AwardedTenderedProject>
+        <cbc:ProcurementProjectLotID>1</cbc:ProcurementProjectLotID>
+        <cac:LegalMonetaryTotal>
+          <cbc:TaxExclusiveAmount currencyID="EUR">188800.9</cbc:TaxExclusiveAmount>
+          <cbc:PayableAmount currencyID="EUR">228449.09</cbc:PayableAmount>
+        </cac:LegalMonetaryTotal>
+      </cac:AwardedTenderedProject>
+    </cac:TenderResult>
+    <cac:TenderResult>
+      <cbc:ResultCode listURI="http://contrataciondelestado.es/codice/cl/2.09/TenderResultCode-2.09.gc">9</cbc:ResultCode>
+      <cbc:Description>Única oferta</cbc:Description>
+      <cbc:AwardDate>2023-01-19</cbc:AwardDate>
+      <cbc:ReceivedTenderQuantity>1</cbc:ReceivedTenderQuantity>
+      <cbc:SMEsReceivedTenderQuantity>0</cbc:SMEsReceivedTenderQuantity>
+      <cbc:SMEAwardedIndicator>false</cbc:SMEAwardedIndicator>
+      <cac:Contract>
+        <cbc:ID>B070005/2022-0071 L2</cbc:ID>
+        <cbc:IssueDate>2023-02-15</cbc:IssueDate>
+      </cac:Contract>
+      <cac:WinningParty>
+        <cac:PartyIdentification>
+          <cbc:ID schemeName="OTROS">B22171151</cbc:ID>
+        </cac:PartyIdentification>
+        <cac:PartyName>
+          <cbc:Name>COMPUTER HUESCA, S.L.</cbc:Name>
+        </cac:PartyName>
+      </cac:WinningParty>
+      <cac:AwardedTenderedProject>
+        <cbc:ProcurementProjectLotID>2</cbc:ProcurementProjectLotID>
+        <cac:LegalMonetaryTotal>
+          <cbc:TaxExclusiveAmount currencyID="EUR">65500</cbc:TaxExclusiveAmount>
+          <cbc:PayableAmount currencyID="EUR">79255</cbc:PayableAmount>
+        </cac:LegalMonetaryTotal>
+      </cac:AwardedTenderedProject>
+    </cac:TenderResult>
+    <cac:TenderResult>
+      <cbc:ResultCode listURI="http://contrataciondelestado.es/codice/cl/2.09/TenderResultCode-2.09.gc">9</cbc:ResultCode>
+      <cbc:Description>Única ofera</cbc:Description>
+      <cbc:AwardDate>2023-01-19</cbc:AwardDate>
+      <cbc:ReceivedTenderQuantity>1</cbc:ReceivedTenderQuantity>
+      <cbc:SMEsReceivedTenderQuantity>0</cbc:SMEsReceivedTenderQuantity>
+      <cbc:SMEAwardedIndicator>false</cbc:SMEAwardedIndicator>
+      <cac:Contract>
+        <cbc:ID>B070005/2022-0071 L3</cbc:ID>
+        <cbc:IssueDate>2023-02-15</cbc:IssueDate>
+      </cac:Contract>
+      <cac:WinningParty>
+        <cac:PartyIdentification>
+          <cbc:ID schemeName="OTROS">B22171151</cbc:ID>
+        </cac:PartyIdentification>
+        <cac:PartyName>
+          <cbc:Name>COMPUTER HUESCA, S.L.</cbc:Name>
+        </cac:PartyName>
+      </cac:WinningParty>
+      <cac:AwardedTenderedProject>
+        <cbc:ProcurementProjectLotID>3</cbc:ProcurementProjectLotID>
+        <cac:LegalMonetaryTotal>
+          <cbc:TaxExclusiveAmount currencyID="EUR">24545.6</cbc:TaxExclusiveAmount>
+          <cbc:PayableAmount currencyID="EUR">29700.18</cbc:PayableAmount>
+        </cac:LegalMonetaryTotal>
+      </cac:AwardedTenderedProject>
+    </cac:TenderResult>
+    <cac:TenderResult>
+      <cbc:ResultCode listURI="http://contrataciondelestado.es/codice/cl/2.09/TenderResultCode-2.09.gc">9</cbc:ResultCode>
+      <cbc:Description>Única oferta</cbc:Description>
+      <cbc:AwardDate>2023-02-07</cbc:AwardDate>
+      <cbc:ReceivedTenderQuantity>1</cbc:ReceivedTenderQuantity>
+      <cbc:SMEsReceivedTenderQuantity>0</cbc:SMEsReceivedTenderQuantity>
+      <cbc:SMEAwardedIndicator>false</cbc:SMEAwardedIndicator>
+      <cac:Contract>
+        <cbc:ID>B070005/2022-0071 L4</cbc:ID>
+        <cbc:IssueDate>2023-02-15</cbc:IssueDate>
+      </cac:Contract>
+      <cac:WinningParty>
+        <cac:PartyIdentification>
+          <cbc:ID schemeName="NIF">B88557061</cbc:ID>
+        </cac:PartyIdentification>
+        <cac:PartyName>
+          <cbc:Name>ICA SISTEMAS Y SEGURIDAD, S.L.</cbc:Name>
+        </cac:PartyName>
+      </cac:WinningParty>
+      <cac:AwardedTenderedProject>
+        <cbc:ProcurementProjectLotID>4</cbc:ProcurementProjectLotID>
+        <cac:LegalMonetaryTotal>
+          <cbc:TaxExclusiveAmount currencyID="EUR">100369</cbc:TaxExclusiveAmount>
+          <cbc:PayableAmount currencyID="EUR">121446.49</cbc:PayableAmount>
+        </cac:LegalMonetaryTotal>
+      </cac:AwardedTenderedProject>
+    </cac:TenderResult>
+    <cac:TenderingProcess>
+      <cbc:ProcedureCode listURI="https://contrataciondelestado.es/codice/cl/2.07/SyndicationTenderingProcessCode-2.07.gc">1</cbc:ProcedureCode>
+      <cbc:UrgencyCode listURI="http://contrataciondelestado.es/codice/cl/1.04/DiligenceTypeCode-1.04.gc">1</cbc:UrgencyCode>
+      <cbc:PartPresentationCode name="A uno o varios lotes" listURI="http://contrataciondelestado.es/codice/cl/1.04/TenderPresentationCode-1.04.gc">3</cbc:PartPresentationCode>
+      <cbc:ContractingSystemCode listURI="http://contrataciondelestado.es/codice/cl/2.08/ContractingSystemTypeCode-2.08.gc">0</cbc:ContractingSystemCode>
+      <cbc:SubmissionMethodCode listURI="http://contrataciondelestado.es/codice/cl/1.04/TenderDeliveryCode-1.04.gc">1</cbc:SubmissionMethodCode>
+      <cbc:MaximumLotPresentationQuantity>4</cbc:MaximumLotPresentationQuantity>
+      <cbc:MaximumTendererAwardedLotsQuantity>4</cbc:MaximumTendererAwardedLotsQuantity>
+      <cbc:OverThresholdIndicator>true</cbc:OverThresholdIndicator>
+      <cac:TenderSubmissionDeadlinePeriod>
+        <cbc:EndDate>2022-11-04</cbc:EndDate>
+        <cbc:EndTime>09:00:00</cbc:EndTime>
+      </cac:TenderSubmissionDeadlinePeriod>
+      <cac:AuctionTerms>
+        <cbc:AuctionConstraintIndicator>false</cbc:AuctionConstraintIndicator>
+      </cac:AuctionTerms>
+    </cac:TenderingProcess>
+    <cac-place-ext:ValidNoticeInfo>
+      <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CN</cbc-place-ext:NoticeTypeCode>
+      <cac-place-ext:AdditionalPublicationStatus>
+        <cbc-place-ext:PublicationMediaName>DOUE</cbc-place-ext:PublicationMediaName>
+        <cac-place-ext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2022-10-07</cbc:IssueDate>
+        </cac-place-ext:AdditionalPublicationDocumentReference>
+      </cac-place-ext:AdditionalPublicationStatus>
+    </cac-place-ext:ValidNoticeInfo>
+    <cac-place-ext:ValidNoticeInfo>
+      <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_FORM</cbc-place-ext:NoticeTypeCode>
+      <cac-place-ext:AdditionalPublicationStatus>
+        <cbc-place-ext:PublicationMediaName>DOUE</cbc-place-ext:PublicationMediaName>
+        <cac-place-ext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2023-02-21</cbc:IssueDate>
+        </cac-place-ext:AdditionalPublicationDocumentReference>
+      </cac-place-ext:AdditionalPublicationStatus>
+    </cac-place-ext:ValidNoticeInfo>
+    <cac-place-ext:ValidNoticeInfo>
+      <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CAN_ADJ</cbc-place-ext:NoticeTypeCode>
+      <cac-place-ext:AdditionalPublicationStatus>
+        <cbc-place-ext:PublicationMediaName>Perfil del contratante</cbc-place-ext:PublicationMediaName>
+        <cac-place-ext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2023-01-20</cbc:IssueDate>
+        </cac-place-ext:AdditionalPublicationDocumentReference>
+      </cac-place-ext:AdditionalPublicationStatus>
+    </cac-place-ext:ValidNoticeInfo>
+    <cac-place-ext:ValidNoticeInfo>
+      <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CCN</cbc-place-ext:NoticeTypeCode>
+      <cac-place-ext:AdditionalPublicationStatus>
+        <cbc-place-ext:PublicationMediaName>Perfil del contratante</cbc-place-ext:PublicationMediaName>
+        <cac-place-ext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2025-10-01</cbc:IssueDate>
+        </cac-place-ext:AdditionalPublicationDocumentReference>
+      </cac-place-ext:AdditionalPublicationStatus>
+    </cac-place-ext:ValidNoticeInfo>
+    <cac-place-ext:ValidNoticeInfo>
+      <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CD</cbc-place-ext:NoticeTypeCode>
+      <cac-place-ext:AdditionalPublicationStatus>
+        <cbc-place-ext:PublicationMediaName>Perfil del contratante</cbc-place-ext:PublicationMediaName>
+        <cac-place-ext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2022-10-06</cbc:IssueDate>
+        </cac-place-ext:AdditionalPublicationDocumentReference>
+      </cac-place-ext:AdditionalPublicationStatus>
+    </cac-place-ext:ValidNoticeInfo>
+    <cac-place-ext:ValidNoticeInfo>
+      <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CN</cbc-place-ext:NoticeTypeCode>
+      <cac-place-ext:AdditionalPublicationStatus>
+        <cbc-place-ext:PublicationMediaName>Perfil del contratante</cbc-place-ext:PublicationMediaName>
+        <cac-place-ext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2022-10-06</cbc:IssueDate>
+        </cac-place-ext:AdditionalPublicationDocumentReference>
+      </cac-place-ext:AdditionalPublicationStatus>
+    </cac-place-ext:ValidNoticeInfo>
+    <cac-place-ext:ValidNoticeInfo>
+      <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_FORM</cbc-place-ext:NoticeTypeCode>
+      <cac-place-ext:AdditionalPublicationStatus>
+        <cbc-place-ext:PublicationMediaName>Perfil del contratante</cbc-place-ext:PublicationMediaName>
+        <cac-place-ext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2023-02-18</cbc:IssueDate>
+        </cac-place-ext:AdditionalPublicationDocumentReference>
+      </cac-place-ext:AdditionalPublicationStatus>
+    </cac-place-ext:ValidNoticeInfo>
+    <cac-place-ext:ValidNoticeInfo>
+      <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_MOD</cbc-place-ext:NoticeTypeCode>
+      <cac-place-ext:AdditionalPublicationStatus>
+        <cbc-place-ext:PublicationMediaName>Perfil del contratante</cbc-place-ext:PublicationMediaName>
+        <cac-place-ext:AdditionalPublicationDocumentReference>
+          <cbc:IssueDate>2024-05-14</cbc:IssueDate>
+        </cac-place-ext:AdditionalPublicationDocumentReference>
+      </cac-place-ext:AdditionalPublicationStatus>
+    </cac-place-ext:ValidNoticeInfo>
+    <cac:ContractModification>
+      <cbc:ID>1</cbc:ID>
+      <cbc:Note>1ª Prórroga prevista en el contrato</cbc:Note>
+      <cbc:ContractModificationDurationMeasure unitCode="ANN">1</cbc:ContractModificationDurationMeasure>
+      <cbc:FinalDurationMeasure unitCode="ANN">2</cbc:FinalDurationMeasure>
+      <cbc:ContractID>B070005/2022-0071 L1</cbc:ContractID>
+      <cac:ContractModificationLegalMonetaryTotal>
+        <cbc:TaxExclusiveAmount currencyID="EUR">188800.89</cbc:TaxExclusiveAmount>
+      </cac:ContractModificationLegalMonetaryTotal>
+      <cac:FinalLegalMonetaryTotal>
+        <cbc:TaxExclusiveAmount currencyID="EUR">377601.79</cbc:TaxExclusiveAmount>
+      </cac:FinalLegalMonetaryTotal>
+    </cac:ContractModification>
+    <cac:ContractModification>
+      <cbc:ID>2</cbc:ID>
+      <cbc:ContractModificationDurationMeasure unitCode="ANN">1</cbc:ContractModificationDurationMeasure>
+      <cbc:FinalDurationMeasure unitCode="ANN">3</cbc:FinalDurationMeasure>
+      <cbc:ContractID>B070005/2022-0071 L1</cbc:ContractID>
+      <cac:ContractModificationLegalMonetaryTotal>
+        <cbc:TaxExclusiveAmount currencyID="EUR">188800.89</cbc:TaxExclusiveAmount>
+      </cac:ContractModificationLegalMonetaryTotal>
+      <cac:FinalLegalMonetaryTotal>
+        <cbc:TaxExclusiveAmount currencyID="EUR">566402.68</cbc:TaxExclusiveAmount>
+      </cac:FinalLegalMonetaryTotal>
+    </cac:ContractModification>
+  </cac-place-ext:ContractFolderStatus>
+</entry>

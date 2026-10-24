@@ -1,47 +1,127 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<entry xmlns="http://www.w3.org/2005/Atom"
-       xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2"
-       xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2"
-       xmlns:cacext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2"
-       xmlns:cbcext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2">
-  <id>https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-NOTI-0008</id>
-  <title>Servicio de limpieza de jardines municipales</title>
-  <updated>2026-06-14T09:12:33+02:00</updated>
-  <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-NOTI-0008" rel="alternate"/>
-  <summary type="text">Id licitación: 2026-NOTI-0008; Órgano de Contratación: Ayuntamiento de Cáceres; Importe: 88000.00 EUR; Estado: PUB</summary>
-  <cacext:ContractFolderStatus>
-    <cbc:ContractFolderID>2026-NOTI-0008</cbc:ContractFolderID>
-    <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
-    <cacext:LocatedContractingParty>
-      <cac:Party>
-        <cac:PartyName><cbc:Name>Ayuntamiento de Cáceres</cbc:Name></cac:PartyName>
-      </cac:Party>
-    </cacext:LocatedContractingParty>
-    <cacext:ValidNoticeInfo>
-      <cacext:AdditionalPublicationStatus>
-        <cacext:AdditionalPublicationDocumentReference>
-          <cbc:IssueDate>2026-05-30</cbc:IssueDate>
-        </cacext:AdditionalPublicationDocumentReference>
-      </cacext:AdditionalPublicationStatus>
-    </cacext:ValidNoticeInfo>
-    <cac:ProcurementProject>
-      <cbc:Name>Servicio de limpieza de jardines municipales</cbc:Name>
-      <cbc:TypeCode>2</cbc:TypeCode>
-      <cac:RequiredCommodityClassification>
-        <cbc:ItemClassificationCode>77310000-6</cbc:ItemClassificationCode>
-      </cac:RequiredCommodityClassification>
-      <cac:BudgetAmount>
-        <cbc:TaxExclusiveAmount currencyID="EUR">88000.00</cbc:TaxExclusiveAmount>
-      </cac:BudgetAmount>
-      <cac:RealizedLocation>
-        <cbc:CountrySubentity>Cáceres</cbc:CountrySubentity>
-        <cbc:CountrySubentityCode>ES431</cbc:CountrySubentityCode>
-      </cac:RealizedLocation>
-    </cac:ProcurementProject>
-    <cac:TenderingProcess>
-      <cac:TenderSubmissionDeadlinePeriod>
-        <cbc:EndDate>2026-06-30</cbc:EndDate>
-      </cac:TenderSubmissionDeadlinePeriod>
-    </cac:TenderingProcess>
-  </cacext:ContractFolderStatus>
-</entry>
+<entry xmlns="http://www.w3.org/2005/Atom" xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2" xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2" xmlns:cac-place-ext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2" xmlns:cbc-place-ext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2" xmlns:at="http://purl.org/atompub/tombstones/1.0" xmlns:ns7="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2">
+        <id>https://contrataciondelestado.es/sindicacion/licitacionesPerfilContratante/20767399</id>
+        <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=nuWIHsgrrq0mMOlAXxDEjw%3D%3D"/>
+        <summary type="text">Id licitación: 110/26 RTPA; Órgano de Contratación: Dirección General de Radiotelevisión del Principado de Asturias, S.A. Unipersonal; Importe: 330000 EUR; Estado: PRE</summary>
+        <title>Servicios de telefonía fija y móvil</title>
+        <updated>2026-10-23T14:19:38.503+02:00</updated>
+        <cac-place-ext:ContractFolderStatus>
+            <cbc:ContractFolderID>110/26 RTPA</cbc:ContractFolderID>
+            <cbc-place-ext:ContractFolderStatusCode languageID="es" listURI="https://contrataciondelestado.es/codice/cl/2.04/SyndicationContractFolderStatusCode-2.04.gc">PRE</cbc-place-ext:ContractFolderStatusCode>
+            <cbc:UUID schemeName="TED">786f5da3-ab6c-47c3-89a6-65c8994b3801</cbc:UUID>
+            <cac-place-ext:LocatedContractingParty>
+                <cbc:ContractingPartyTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityCode-2.10.gc">2</cbc:ContractingPartyTypeCode>
+                <cbc:ActivityCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityActivityCode-2.10.gc">8</cbc:ActivityCode>
+                <cbc:ActivityCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityActivityCode-2.10.gc">1</cbc:ActivityCode>
+                <cbc:BuyerProfileURIID>https://contrataciondelestado.es/wps/poc?uri=deeplink:perfilContratante&amp;idBp=69VbDrMCOAoSugstABGr5A%3D%3D</cbc:BuyerProfileURIID>
+                <cac:Party>
+                    <cbc:WebsiteURI>http://www.rtpa.es</cbc:WebsiteURI>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="NIF">A33924606</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="ID_PLATAFORMA">21299650173725</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyName>
+                        <cbc:Name>Dirección General de Radiotelevisión del Principado de Asturias, S.A. Unipersonal</cbc:Name>
+                    </cac:PartyName>
+                    <cac:PostalAddress>
+                        <cbc:CityName>Gijón</cbc:CityName>
+                        <cbc:PostalZone>33203</cbc:PostalZone>
+                        <cac:AddressLine>
+                            <cbc:Line>Camino de las Clarisas, 263</cbc:Line>
+                        </cac:AddressLine>
+                        <cac:Country>
+                            <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+                            <cbc:Name>España</cbc:Name>
+                        </cac:Country>
+                    </cac:PostalAddress>
+                    <cac:Contact>
+                        <cbc:Name>Dirección General de Radiotelevisión del Principado de Asturias, S.A. Unipersonal</cbc:Name>
+                        <cbc:Telephone>985185900</cbc:Telephone>
+                        <cbc:ElectronicMail>contratacion@rtpa.es</cbc:ElectronicMail>
+                    </cac:Contact>
+                </cac:Party>
+                <cac-place-ext:ParentLocatedParty>
+                    <cac:PartyName>
+                        <cbc:Name>Radiotelevisión del Principado de Asturias, S.A. Unipersonal</cbc:Name>
+                    </cac:PartyName>
+                    <cac-place-ext:ParentLocatedParty>
+                        <cac:PartyIdentification>
+                            <cbc:ID schemeName="DIR3">A03002951</cbc:ID>
+                        </cac:PartyIdentification>
+                        <cac:PartyName>
+                            <cbc:Name>Principado de Asturias</cbc:Name>
+                        </cac:PartyName>
+                        <cac-place-ext:ParentLocatedParty>
+                            <cac:PartyName>
+<cbc:Name>COMUNIDADES Y CIUDADES AUTÓNOMAS</cbc:Name>
+                            </cac:PartyName>
+                            <cac-place-ext:ParentLocatedParty>
+<cac:PartyName>
+    <cbc:Name>Sector Público</cbc:Name>
+</cac:PartyName>
+                            </cac-place-ext:ParentLocatedParty>
+                        </cac-place-ext:ParentLocatedParty>
+                    </cac-place-ext:ParentLocatedParty>
+                </cac-place-ext:ParentLocatedParty>
+            </cac-place-ext:LocatedContractingParty>
+            <cac:ProcurementProject>
+                <cbc:Name>Servicios de telefonía fija y móvil</cbc:Name>
+                <cbc:TypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/ContractCode-2.08.gc">2</cbc:TypeCode>
+                <cbc:SubTypeCode listURI="http://contrataciondelestado.es/codice/cl/1.04/ServiceContractCode-1.04.gc">27</cbc:SubTypeCode>
+                <cbc:MixContractIndicator>false</cbc:MixContractIndicator>
+                <cac:BudgetAmount>
+                    <cbc:EstimatedOverallContractAmount currencyID="EUR">330000</cbc:EstimatedOverallContractAmount>
+                    <cbc:TotalAmount currencyID="EUR">399300</cbc:TotalAmount>
+                    <cbc:TaxExclusiveAmount currencyID="EUR">330000</cbc:TaxExclusiveAmount>
+                </cac:BudgetAmount>
+                <cac:RequiredCommodityClassification>
+                    <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">64210000</cbc:ItemClassificationCode>
+                </cac:RequiredCommodityClassification>
+                <cac:RealizedLocation>
+                    <cbc:CountrySubentity>Asturias</cbc:CountrySubentity>
+                    <cbc:CountrySubentityCode listURI="http://contrataciondelestado.es/codice/cl/2.08/NUTS-2021.gc">ES120</cbc:CountrySubentityCode>
+                    <cac:Address>
+                        <cac:Country>
+                            <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+                            <cbc:Name>España</cbc:Name>
+                        </cac:Country>
+                    </cac:Address>
+                </cac:RealizedLocation>
+                <cac:PlannedPeriod>
+                    <cbc:DurationMeasure unitCode="ANN">5</cbc:DurationMeasure>
+                </cac:PlannedPeriod>
+            </cac:ProcurementProject>
+            <cac:TenderingTerms>
+                <cbc:RequiredCurriculaIndicator>false</cbc:RequiredCurriculaIndicator>
+                <cbc:FundingProgramCode name="No hay financiación con fondos de la UE" listURI="http://contrataciondelestado.es/codice/cl/2.08/FundingProgramCode-2.08.gc">NO-EU</cbc:FundingProgramCode>
+                <cbc:ProcurementNationalLegislationCode listURI="https://contrataciondelestado.es/codice/cl/2.08/ProcurementNationalLegislationCode-2.08.gc">3</cbc:ProcurementNationalLegislationCode>
+                <cac:ProcurementLegislationDocumentReference>
+                    <cbc:ID>2014/24/EU</cbc:ID>
+                </cac:ProcurementLegislationDocumentReference>
+                <cac:TenderRecipientParty>
+                    <cbc:EndpointID>https://contrataciondelestado.es</cbc:EndpointID>
+                </cac:TenderRecipientParty>
+                <cac:Language>
+                    <cbc:ID>es</cbc:ID>
+                </cac:Language>
+            </cac:TenderingTerms>
+            <cac:TenderingProcess>
+                <cbc:ProcedureCode listURI="https://contrataciondelestado.es/codice/cl/2.07/SyndicationTenderingProcessCode-2.07.gc">1</cbc:ProcedureCode>
+                <cbc:UrgencyCode listURI="http://contrataciondelestado.es/codice/cl/1.04/DiligenceTypeCode-1.04.gc">1</cbc:UrgencyCode>
+                <cbc:ContractingSystemCode listURI="http://contrataciondelestado.es/codice/cl/2.08/ContractingSystemTypeCode-2.08.gc">0</cbc:ContractingSystemCode>
+                <cbc:SubmissionMethodCode listURI="http://contrataciondelestado.es/codice/cl/1.04/TenderDeliveryCode-1.04.gc">1</cbc:SubmissionMethodCode>
+                <cbc:OverThresholdIndicator>true</cbc:OverThresholdIndicator>
+            </cac:TenderingProcess>
+            <cac-place-ext:ValidNoticeInfo>
+                <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_PIN</cbc-place-ext:NoticeTypeCode>
+                <cac-place-ext:AdditionalPublicationStatus>
+                    <cbc-place-ext:PublicationMediaName>Perfil del contratante</cbc-place-ext:PublicationMediaName>
+                    <cac-place-ext:AdditionalPublicationDocumentReference>
+                        <cbc:IssueDate>2026-10-23</cbc:IssueDate>
+                    </cac-place-ext:AdditionalPublicationDocumentReference>
+                </cac-place-ext:AdditionalPublicationStatus>
+            </cac-place-ext:ValidNoticeInfo>
+        </cac-place-ext:ContractFolderStatus>
+    </entry>

@@ -101,6 +101,24 @@ def test_es_idempotente(tmp_path):
     assert ruta.exists()
 
 
+def test_el_nombre_del_sap_sale_de_la_misma_regla(tmp_path):
+    """``promote_if_better`` (clasificador SAP, 2026-10) no renombra: escribe
+    directamente en ``content_addressed_path``, sin tocar el ``.pkl`` de
+    nombre fijo. Tiene que dar el mismo nombre que ``rename_to_content_address``
+    para que un asset no tenga dos nombres según quién lo publique."""
+    from shared.model_artifacts import content_addressed_path
+
+    sha256 = _sha(b"sap")
+    base = tmp_path / "sap_classifier.pkl"
+
+    assert content_addressed_path(base, sha256) == tmp_path / f"sap_classifier-{sha256[:12]}.pkl"
+    assert content_addressed_path(content_addressed_path(base, sha256), sha256) == (
+        content_addressed_path(base, sha256)
+    )
+    renombrado, _ = rename_to_content_address(_guardado(base, b"sap"))
+    assert renombrado == content_addressed_path(base, sha256)
+
+
 # ---------------------------------------------------------------------------
 # entrenar(): lo registrado es el nombre por contenido
 # ---------------------------------------------------------------------------

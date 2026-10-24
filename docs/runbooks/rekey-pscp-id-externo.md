@@ -78,6 +78,10 @@ con `row_security = off`: bajo un rol al que la RLS se le aplique falla en vez
 de saltarse filas de otras organizaciones. El `postgres` de Supabase tiene
 `BYPASSRLS` (medido el 2026-10-17) y no lo nota.
 
+Se le escapó `domain_events.aggregate_id` (el outbox no tiene FK): dejó 1.117
+eventos `licitacion.tecnologia_pliego` con la clave vieja. Los repunta `v158`
+(ver su docstring); un re-key futuro debe llevar esa columna en su lista.
+
 No limpia los restos de las colisiones (snapshots de `licitaciones_history` y
 eventos `modificacion` de contratos ajenos, p. ej. los 4 de `pscp:Factura` y
 `pscp:FACTURA`): siguen con la fila que los recibió. Si se quieren limpiar es

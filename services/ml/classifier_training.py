@@ -130,7 +130,9 @@ def train_from_db(*, activar: bool = True) -> dict[str, Any]:
     registro como ``train_population``.
 
     El gate de promoción (``services.ml.promotion``) decide si el candidato
-    llega a sobrescribir el artefacto que sirve producción.
+    se publica. El que lo pasa queda en ``data/models/sap_classifier-<sha12>.pkl``
+    (nombre por contenido; ``metrics["promotion"]["artefacto"]``), que es lo
+    que ``train-model.yml`` sube a la Release ``ml-models``.
     """
     import pandas as pd
 
@@ -172,8 +174,8 @@ def train_from_db(*, activar: bool = True) -> dict[str, Any]:
     if "error" in metrics:
         return metrics
 
-    # El artefacto de producción SOLO se sobrescribe si la versión nueva pasa
-    # el gate. Antes este camino —el que genera el asset de la Release que
+    # El artefacto de producción SOLO se publica si la versión nueva pasa
+    # el gate, y con el sha256 en el nombre: `publicar_como` es la ruta base. Antes este camino —el que genera el asset de la Release que
     # descargan la API y todos los runners— guardaba sin ninguna comprobación
     # y sin registrar versión, así que un entrenamiento con datos degradados
     # se promocionaba solo y no había versión previa a la que volver.

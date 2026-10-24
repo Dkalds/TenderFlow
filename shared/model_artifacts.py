@@ -30,12 +30,14 @@ En la Release, el asset se busca por el basename del ``path`` registrado en
 la de tag fijo ``ml-models``, después en *latest* y después en las más
 recientes (``shared.release_assets.locate_release_asset``).
 
-Nombres por contenido (2026-09)
--------------------------------
-``baja_model`` y ``retencion_model`` registran ``<stem>-<sha256[:12]>.pkl``
-(:func:`rename_to_content_address`), no una ruta fija: el asset de una versión
-ya no puede sobrescribirse con el de otra. Las filas anteriores, con nombre
-fijo, se siguen resolviendo igual, porque la búsqueda es por ``path.name``.
+Nombres por contenido (2026-09; ``sap_classifier`` desde 2026-10)
+------------------------------------------------------------------
+``baja_model``, ``retencion_model`` y ``sap_classifier`` registran
+``<stem>-<sha256[:12]>.pkl`` (:func:`content_addressed_path`), no una ruta
+fija: el asset de una versión ya no puede sobrescribirse con el de otra, y
+subir el de una versión nueva no toca el de la activa. Las filas anteriores,
+con nombre fijo, se siguen resolviendo igual, porque la búsqueda es por
+``path.name``.
 
 Uso::
 
@@ -58,7 +60,9 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 # Repo cuyas Releases publican los artefactos: la de tag fijo
-# (``train-predictivos.yml``) y *latest* (``train-model.yml``, ``train-tech.yml``).
+# (``train-predictivos.yml``, ``train-model.yml``) y *latest* (``train-tech.yml``
+# y los assets de nombre fijo anteriores, como el ``sap_classifier.pkl`` de mayo
+# en ``v1.0.0-models``).
 _RELEASE_REPO = "Dkalds/TenderFlow"
 _CHUNK = 1 << 20
 # Subcarpeta propia dentro del temp: los artefactos se nombran por el basename
@@ -244,6 +248,19 @@ def publish_artifact_to_bucket(path: Path, *, asset_name: str | None = None) -> 
     return True
 
 
+def content_addressed_path(path: Path, sha256: str) -> Path:
+    """``<stem>-<sha256[:12]><suffix>`` en el directorio de ``path``.
+
+    Es el nombre con el que se registra y se publica una versión. Idempotente:
+    un ``path`` que ya lleva su prefijo se devuelve tal cual, así que aplicarlo
+    dos veces no encadena sufijos.
+    """
+    sufijo = f"-{sha256[:_PREFIJO_SHA256]}"
+    if path.stem.endswith(sufijo):
+        return path
+    return path.with_name(f"{path.stem}{sufijo}{path.suffix}")
+
+
 def rename_to_content_address(path: Path) -> tuple[Path, str]:
     """Renombra un artefacto recién guardado a ``<stem>-<sha256[:12]><suffix>``.
 
@@ -267,10 +284,7 @@ def rename_to_content_address(path: Path) -> tuple[Path, str]:
     from shared.model_integrity import write_checksum
 
     sha256 = _sha256(path)
-    sufijo = f"-{sha256[:_PREFIJO_SHA256]}"
-    destino = (
-        path if path.stem.endswith(sufijo) else path.with_name(f"{path.stem}{sufijo}{path.suffix}")
-    )
+    destino = content_addressed_path(path, sha256)
     if destino != path:
         path.replace(destino)
         path.with_suffix(".sha256").unlink(missing_ok=True)
@@ -342,10 +356,11 @@ def resolve_active_artifact(name: str) -> Path | None:
         local.unlink(missing_ok=True)
         # Y con él su checksum co-ubicado, que describía el fichero que se
         # acaba de borrar. Una entrada de caché se reutiliza entre versiones
-        # cuando comparten basename: `sap_classifier.pkl`/`tech_classifier.pkl`
-        # (nombre fijo publicado) y las filas de `baja_model`/`retencion_model`
-        # anteriores a los nombres por contenido (`rename_to_content_address`),
-        # registradas con la ruta fija de `_MODEL_PATH`. Dejar el `.sha256`
+        # cuando comparten basename: `tech_classifier.pkl` (nombre fijo
+        # publicado) y las filas de `sap_classifier`/`baja_model`/
+        # `retencion_model` anteriores a los nombres por contenido
+        # (`content_addressed_path`), registradas con la ruta fija de
+        # `_MODEL_PATH`. Dejar el `.sha256`
         # viejo junto al `.pkl` nuevo hacía que `verify_model_integrity`
         # abortase la carga con «integridad comprometida» en ENV=prod — es
         # decir, activar una versión rompía el servicio en vez de cambiarlo,

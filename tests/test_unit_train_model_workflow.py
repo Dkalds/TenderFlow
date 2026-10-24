@@ -9,10 +9,13 @@ por ``ModelArtifactMismatch`` en todos los runners — lo que pasó el 2026-09-2
 por otro camino, el del reentrenamiento automático, que activaba sin subir nada.
 
 ``tests/test_ml_promotion_gate.py`` fija la primera mitad (la ruta y el hash
-registrados describen el fichero publicado). Estos fijan lo que vive en YAML,
-donde no llega ningún otro test: que el workflow sube **ese** fichero, que la
-activación va **después** de la subida, y que los dos workflows que rodean a
-este —quien lo lanza y quien recalcula ``ml_proba``— tienen lo que necesitan.
+registrados describen el fichero publicado, que lleva el sha256 en el nombre).
+Estos fijan lo que vive en YAML, donde no llega ningún otro test: que el
+workflow sube **ese** fichero —el que emite el entrenamiento, no un nombre
+escrito aquí— a la Release fija ``ml-models`` sin borrar antes ningún asset,
+que la activación va **después** de la subida, y que los dos workflows que
+rodean a este —quien lo lanza y quien recalcula ``ml_proba``— tienen lo que
+necesitan.
 """
 
 from __future__ import annotations
@@ -69,26 +72,87 @@ def _script(nombre: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def test_el_entrenamiento_publica_el_fichero_que_sirven_los_runners() -> None:
-    """``train_from_db`` publica en ``_MODEL_DIR/sap_classifier.pkl``.
+def test_la_ruta_base_del_publicado_es_la_del_nombre_fijo() -> None:
+    """``train_from_db`` pasa ``_MODEL_DIR/sap_classifier.pkl`` como ruta base.
 
-    Es el nombre por el que ``resolve_active_artifact`` pedirá el asset desde
-    otro runner (``Path(path).name``).
+    El gate publica junto a ella ``sap_classifier-<sha12>.pkl``
+    (``tests/test_ml_promotion_gate.py``), sin tocarla: el de nombre fijo es el
+    que ``SAPClassifier.resolve_artifact`` sirve sin versión activa.
     """
     assert _MODEL_PATH.parent == _MODEL_DIR
     assert _MODEL_PATH.name == "sap_classifier.pkl"
 
 
-def test_el_workflow_sube_ese_fichero_y_su_checksum() -> None:
-    subida = next(linea for linea in _script(_SUBIDA).splitlines() if "gh release upload" in linea)
+def test_el_workflow_sube_lo_que_emitio_el_entrenamiento() -> None:
+    """Las rutas de ``artefactos``, ya con el sha256 en el nombre, y nada fijo.
 
-    assert f"data/models/{_MODEL_PATH.name}" in subida.split()
-    assert f"data/models/{_MODEL_PATH.with_suffix('.sha256').name}" in subida.split()
+    Es el nombre registrado en ``model_versions``, el que pedirán los demás
+    procesos. Un nombre escrito en el YAML volvería a ser uno solo para todas
+    las versiones.
+    """
+    paso = _step(_SUBIDA)
+    script = _script(_SUBIDA)
+
+    assert paso["env"]["ARTEFACTOS"] == "${{ steps.train.outputs.artefactos }}"
+    assert 'gh release upload "$TAG" $ARTEFACTOS --clobber' in script
+    assert "sap_classifier.pkl" not in script
+    assert "sap_classifier.sha256" not in script
+
+
+def test_sube_a_la_release_fija_donde_se_busca_primero() -> None:
+    """``ml-models``, la primera que miran ``resolve_active_artifact`` y el
+    canary; no *latest*, que una Release de software puede desplazar."""
+    from shared.release_assets import ML_MODELS_RELEASE_TAG
+
+    assert _step(_SUBIDA)["env"]["TAG"] == ML_MODELS_RELEASE_TAG
+    crear = [linea for linea in _script(_SUBIDA).splitlines() if "gh release create" in linea]
+    assert len(crear) == 1
+    assert "--latest=false" in crear[0]
+    # Ya no se busca la *latest* para subir ahí.
+    assert "release_tag" not in {step.get("id") for step in _steps()}
+
+
+def test_no_retira_ningun_asset_antes_de_subir() -> None:
+    """Con nombre por contenido no hay asset anterior que borrar.
+
+    Borrarlo era lo que, si la subida fallaba después, dejaba a los runners
+    sin modelo; y sustituirlo era lo que obligaba a retirar la versión activa.
+    """
+    for step in _steps():
+        ordenes = [
+            linea
+            for linea in str(step.get("run", "")).splitlines()
+            if not linea.lstrip().startswith("#")
+        ]
+        assert not any("delete-asset" in linea for linea in ordenes), step.get("name")
+
+
+def test_comprueba_que_cada_asset_quedo_con_su_nombre() -> None:
+    """``gh release upload`` sale 0 aunque el asset acabe con otro nombre."""
+    script = _script(_SUBIDA)
+
+    assert "gh release view \"$TAG\" --json assets -q '.assets[].name'" in script
+    assert 'grep -Fqx "$nombre"' in script
 
 
 def test_solo_sube_lo_que_el_gate_publico() -> None:
-    """Un candidato rechazado no deja ``sap_classifier.pkl`` que subir."""
+    """Un candidato rechazado no deja artefacto que subir."""
     assert _step(_SUBIDA)["if"] == "steps.train.outputs.promoted == 'true'"
+
+
+def test_la_verificacion_falla_si_el_gate_paso_sin_artefacto() -> None:
+    paso = _step("Verify model artifact")
+
+    assert paso["env"]["ARTEFACTOS"] == "${{ steps.train.outputs.artefactos }}"
+    assert 'if [ -z "$ARTEFACTOS" ]' in str(paso["run"])
+    assert "exit 1" in str(paso["run"])
+
+
+def test_los_scripts_no_interpolan_expresiones() -> None:
+    """Todo lo que viene de outputs llega por ``env``: una expresión dentro de
+    ``run:`` se sustituye antes de que bash lea la línea."""
+    for step in _steps():
+        assert "${{" not in str(step.get("run", "")), step.get("name")
 
 
 # ---------------------------------------------------------------------------
@@ -97,9 +161,23 @@ def test_solo_sube_lo_que_el_gate_publico() -> None:
 
 
 def test_la_version_se_activa_despues_de_subir_el_artefacto() -> None:
-    """Entrenar → subir → activar. Con otro orden, un fallo en medio deja
-    activa una versión que nadie puede bajar."""
-    assert _posicion(_ENTRENAMIENTO) < _posicion(_SUBIDA) < _posicion(_ACTIVACION)
+    """Entrenar → verificar → subir → activar → medir, y nada más con efecto.
+
+    Con otro orden, un fallo en medio deja activa una versión que nadie puede
+    bajar. Y ya no hay paso entre el entrenamiento y la subida que toque la
+    Release (buscar *latest*, borrar el asset anterior).
+    """
+    nombres = [step.get("name") for step in _steps()]
+    posteriores = nombres[nombres.index(_ENTRENAMIENTO) :]
+
+    assert posteriores == [
+        _ENTRENAMIENTO,
+        "Report rejected candidate",
+        "Verify model artifact",
+        _SUBIDA,
+        _ACTIVACION,
+        _AUDITORIA,
+    ]
 
 
 def test_el_entrenamiento_no_activa() -> None:
@@ -137,7 +215,7 @@ def test_la_auditoria_mide_despues_de_recalcular_ml_proba() -> None:
 
 
 def test_dos_entrenamientos_no_corren_a_la_vez() -> None:
-    """Lo lanzan una persona y el paso semanal: los dos sobre el mismo asset."""
+    """Lo lanzan una persona y el paso semanal: los dos numeran y activan."""
     concurrencia = _doc(WORKFLOW)["concurrency"]
 
     assert concurrencia["group"] == "train-model"

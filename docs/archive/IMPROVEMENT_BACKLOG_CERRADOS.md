@@ -21,6 +21,89 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ---
 
+## Cerrados el 2026-10-24 (segunda tanda) — la matriz go/no-go se ve, el canary prueba el chat y `ops_events` ya escribe
+
+### [P2] El canary de modelos NIM no ve un modelo que sigue en el catálogo y no se sirve
+
+**Cerrado el 2026-10-24.** Con `NVIDIA_API_KEY`, `scheduler/jobs/llm_models_canary.py` hace además una petición de chat mínima (`max_tokens=8`) a cada modelo NIM que sigue en el catálogo, por `llm.client.stream_llm_response(fallback=False)`: pasa por el `BudgetGuard` y su coste se registra como el de cualquier llamada. Un 404/410 cuenta como modelo ausente (`llm_models_canary_models_missing`) y el paso falla nombrándolo; un stream vacío (timeout o 5xx tras los reintentos) queda `unverified` sin tumbar el paso; sin key, con key rechazada o con el presupuesto agotado en `enforce` se queda en el catálogo y lo dice (`chat_skipped`). `scrape-daily.yml` ya pasa `NVIDIA_API_KEY`. Tests en `tests/test_llm_models_canary.py`. Sin cubrir: un `unverified` que dure días solo avisa (fallar tras N pasadas exige guardar estado), y con el catálogo caído no se sondea el chat.
+
+- **Área:** scheduler/jobs/llm_models_canary.py, llm/client.py
+- **Problema:** el canary solo comprueba que cada modelo NIM de `AVAILABLE_MODELS` aparece en `GET /v1/models`. Desde el 2026-10-20 `nvidia/nemotron-3-super-120b-a12b` seguía listado y el chat respondía 404: el canary dio `llm_models_canary_ok` el 2026-10-21 a las 14:51, cuatro minutos después de que el etiquetado recibiera ese 404, y quien avisó fue el fallo de la ficha y del etiquetado (issue #523). El default se cambió a `nemotron-3-ultra` en la rama `claude/relaxed-noether-ghoqr4`; el punto ciego sigue.
+- **Acceptance criteria:**
+  - El canary hace además una petición mínima de chat (`max_tokens` pequeño, sin traza de razonamiento) a cada modelo NIM ofertado cuando hay `NVIDIA_API_KEY`, y un 404/410 cuenta como modelo ausente.
+  - Sin key, se queda en la comprobación del catálogo y lo dice en el log.
+  - Test que simula catálogo con el modelo y chat con 404, y espera `llm_models_canary_models_missing`.
+- **Files de partida:** [scheduler/jobs/llm_models_canary.py](../scheduler/jobs/llm_models_canary.py), [tests/test_llm_models_canary.py](../tests/test_llm_models_canary.py)
+- **Riesgo:** bajo — una llamada de pocos tokens por modelo y día, que entra en el BudgetGuard.
+
+### [P2] `ops_events` no recibe ningún evento en producción
+
+**Cerrado el 2026-10-24.** La causa ya estaba arreglada por #496 (2026-10-18): `_flush_postgres` abría la conexión sin `_pg_connect_kwargs`, le faltaba el `sslrootcert` que exige `verify-full` y el `except` se tragaba el fallo. Medido en producción ese día: 79 filas del 2026-10-18 04:57 al 2026-10-24 19:15 UTC (27 `mv_canonicas_refresh`, 26 `write_slow`, 12 `llm_tech_labeling`, 6 `follows_paridad_faltan` y uno de `drift_report`, `informe_semanal_vacio` y `placsp_atom_respaldo_zip`), sin ningún `ops_events_flush_failed` en Actions ni en Render. Faltaban dos cosas, hechas ahora: `tech_signal_merge` escribe su evento (`value` = `licitaciones_reparadas`, solo en la pasada sin ids), con lo que su criterio de retirada —siete días a cero— ya se puede medir; y el healthcheck avisa con `ops_events_sin_eventos_24h` (check `ops_events_recientes`) cuando la vista pública tiene datos y la tabla lleva 24 h sin nada. Pendiente: ver la primera fila `tech_signal_merge` tras el merge y contar los siete días.
+
+- **Área:** scheduler, db
+- **Problema:** el 2026-10-09 la tabla `ops_events` tenía **0 filas** (ya estaba vacía el 2026-09-18). La escriben el cierre de la pasada, el healthcheck, el drift report y el etiquetado por LLM, y de ella dependen criterios escritos en el código (`tech_signal_merge` se retira «con cero reparaciones en siete días, medido en `ops_events`»). Lo que sí llega a la BD son las filas de `jobs`, que es lo que lee Ops › Ejecuciones desde ese día; la telemetría fina de cada paso se pierde.
+- **Acceptance criteria:**
+  - Una pasada de `scrape-daily` deja filas en `ops_events`, y se sabe por qué no las dejaba.
+  - El healthcheck avisa si pasan 24 h sin ningún evento.
+- *Estado (2026-10-17):* **causa encontrada y corregida en código**, falta verlo en producción. `observability/ops_events.py::_flush_postgres` abre su propia conexión con `psycopg.connect(url, connect_timeout=5)` y no pasaba los parámetros de `db.connection._pg_connect_kwargs`. La URL de producción lleva `sslmode=verify-full` y la CA llega por `DATABASE_SSL_ROOT_CERT`, que es una ruta y solo ese helper pasa como `sslrootcert`. Sin ella libpq busca `~/.postgresql/root.crt`, la conexión falla y el `except Exception: pass` de `flush_events` se lo tragaba: ningún evento llegó nunca a la tabla (0 filas medidas el 2026-10-17). Consecuencia visible: el healthcheck lleva todas las pasadas en `degraded` con `canonicas_sin_registro_de_refresco` (no ve el `mv_canonicas_refresh`) y `ops_events_6h: {}`. Ahora el flush usa los mismos parámetros libpq que el pool y avisa una vez por proceso (`ops_events_flush_failed`) si vuelve a fallar. Queda el primer criterio: ver filas tras la siguiente pasada de `scrape-daily`. El segundo (avisar con 24 h sin eventos) lo cubre ya `canonicas_sin_registro_de_refresco` mientras el refresco de las vistas emita su evento en cada pasada.
+- **Files de partida:** [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [db/connection.py](../db/connection.py)
+- **Riesgo:** bajo — es observabilidad; nada lee todavía esos eventos para decidir.
+
+### [P2] La matriz go/no-go por criterio no tiene pantalla
+
+**Cerrado el 2026-10-24.** La pestaña Resumen de la ficha (`oportunidades/[id]/_components/matriz-go-no-go.tsx`, hook `web/src/hooks/use-pursuit-go-no-go.ts`) puntúa los cinco criterios con su motivo (un PUT por criterio), enseña total, umbral y recomendación con el recuento («Provisional: calculada solo sobre n de 5» si `completa` es falso) y avisa cuando la decisión discrepa; quien no puede escribir solo la lee. Guardar los pesos en Equipo invalida `pursuitKeys.goNoGoTodas`. Vitest de la sección y de la invalidación, y un paso en el E2E `recorrido-oportunidad.spec.ts` (CU-06), que no se pudo correr en local. La ficha no enseña el peso de cada criterio: la ruta no lo devuelve junto a la puntuación.
+
+- **Área:** web/src/app/(dashboard)/oportunidades/[id], api/routes/pursuits.py
+- **Problema:** `GET/PUT /pursuits/{id}/go-no-go` (C6.4, D30) puntúa cinco criterios de 1 a 5, recomienda con la media ponderada y marca la decisión que la contradice (`discrepa`), pero ninguna pantalla lo pide: en la consola solo existe la decisión (`DecidirGoNoGo`) y el contraste con la capacidad (`ChecklistGoNoGo`). Desde el 2026-10-23 los **pesos** se editan en Equipo → Organización, así que hoy se configura algo que en la consola no se ve; la recomendación solo llega por la API, el MCP y `make product-status`.
+- **Acceptance criteria:**
+  - La ficha de la oportunidad puntúa cada criterio con su motivo, enseña el total, el umbral y la recomendación sobre cuántos criterios se calculó (`criterios_puntuados`, `completa`), y avisa cuando la decisión tomada discrepa.
+  - Cambiar los pesos en Equipo invalida la puntuación en caché de la ficha.
+  - Vitest de la sección y el E2E `recorrido-oportunidad.spec.ts` (CU-06) pasa por ella.
+- **Files de partida:** [api/routes/pursuits.py](../api/routes/pursuits.py) (`get_pursuit_go_no_go`, `put_pursuit_go_no_go`), [services/go_no_go_template.py](../services/go_no_go_template.py), [web/src/components/pursuits/decidir-go-no-go.tsx](../web/src/components/pursuits/decidir-go-no-go.tsx), [web/src/app/(dashboard)/equipo/_hooks/use-pesos-go-no-go.ts](../web/src/app/(dashboard)/equipo/_hooks/use-pesos-go-no-go.ts)
+- **Riesgo:** bajo — el backend y su escenario (`tests/test_escenario_gobierno_organizacion.py`) ya existen; es una sección nueva en la ficha.
+
+### [P3] El panel de accesos no deja volver a conceder tras revocar ni dice quién concedió y cuándo
+
+**Cerrado el 2026-10-24.** El panel pide `/grants?include_inactive=true` y dice por concesión quién la concedió y cuándo (`AccessGrantOut.granted_by_name`, opcional, resuelto con `LEFT JOIN users` en `db/access_grants.py`; sin operaciones nuevas), lista aparte las revocadas con su fecha y deja volver a conceder con el `PATCH conceder` de la solicitud más reciente que casa con el correo o el dominio (sin solicitud que case, el botón queda deshabilitado y lo explica). «Conceder dominio», «Revocar» y «Volver a conceder» piden confirmación diciendo a quién afectan, y el último avisa de que la persona recibirá un correo. El 422 de un dominio no concedible sale en un solo aviso: las mutaciones ya no duplican el toast global de `MutationCache`. Queda opcional una ruta de concesión sin solicitud, que sería superficie nueva.
+
+- **Área:** web/src/app/(dashboard)/ops/_components/solicitudes-acceso, web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts, api/routes/admin_solicitudes.py
+- **Problema:** en Ops › Administración › Solicitudes de acceso, «Accesos dinámicos activos» lista solo las concesiones vivas, con su valor, su tipo y «Revocar». La API ya devuelve `granted_by`, `created_at`, `updated_at` y `revoked_at` (`AccessGrantOut`) y admite `GET /grants?include_inactive=true`, pero el panel no los pide ni los pinta: no se ve quién concedió ni cuándo, ni queda a la vista lo revocado. Las acciones de conceder solo aparecen en solicitudes pendientes, así que devolverle el acceso a alguien revocado exige que vuelva a rellenar el formulario público o llamar a la API a mano (el `PATCH` con `conceder` sobre su solicitud ya atendida reactiva la fila). Tampoco hay confirmación antes de «Conceder dominio» ni de «Revocar»: desde el 2026-10-09 el servidor rechaza el dominio de un proveedor de correo público, pero un clic sigue bastando para abrir el dominio entero de una empresa.
+- **Acceptance criteria:**
+  - Cada concesión muestra quién la concedió y cuándo (hay que resolver `granted_by` a un nombre: hoy la ruta devuelve el id).
+  - Las revocadas se pueden ver y volver a conceder desde el panel, sin pasar por una solicitud nueva.
+  - «Conceder dominio» y «Revocar» piden confirmación diciendo a quién afectan.
+  - El 422 de un dominio no concedible se enseña una sola vez, con su motivo (hoy salen dos avisos: el genérico del hook y el global con el `detail`).
+- **Files de partida:** [web/src/app/(dashboard)/ops/_components/solicitudes-acceso/accesos-dinamicos.tsx](../web/src/app/(dashboard)/ops/_components/solicitudes-acceso/accesos-dinamicos.tsx), [web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts](../web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts), [api/routes/admin_solicitudes.py](../api/routes/admin_solicitudes.py)
+- **Riesgo:** bajo — es interfaz sobre rutas que ya existen; lo único nuevo en la API es el nombre de quien concedió.
+
+### [P3] Purgar los tokens OAuth del MCP caducados o revocados
+
+**Cerrado el 2026-10-24** (el trabajo es del 2026-10-15 y el plazo del 2026-10-19; el ítem seguía abierto por descuido). Comprobado en el código: `db.mcp_oauth.purgar` borra pendientes y códigos caducados hace más de un día, y access/refresh revocados o caducados y clientes sin tokens con más de 30 días; `mcp_server/servidor.py::_purgar_periodicamente` la corre al arrancar y cada hora.
+
+- **Área:** db/mcp_oauth.py, scheduler/ (job de mantenimiento)
+- **Problema:** `mcp_oauth_tokens` solo crece: nada borra las filas caducadas ni las revocadas (access de 1 h, refresh de 30 días, códigos de 60 s). Con tres personas el volumen es mínimo, pero la tabla está en la ruta de cada petición y un refresh rotado deja una fila por rotación. El índice `idx_mcp_oauth_tokens_expires (expires_at)` ya existe para esto.
+- **Acceptance criteria:**
+  - Un job (el plano de cron del worker, ADR-033, o `retention_cleanup`) borra las filas con `expires_at` anterior a hace N días (N ≥ 30, para que la detección de reutilización de un refresh reciente siga viendo la familia) y las revocadas igual de antiguas.
+  - El SQL vive en `db/mcp_oauth.py`; test de integración que fija qué borra y qué conserva (una familia con un refresh vivo no pierde sus filas antiguas).
+  - Se anota en `docs/runbooks/mcp-interno.md` §7 que ya no es un seguimiento.
+- **Files de partida:** [db/mcp_oauth.py](../db/mcp_oauth.py), [docs/runbooks/mcp-interno.md](runbooks/mcp-interno.md)
+- **Riesgo:** bajo — borrado acotado a filas que ya no valen; lo delicado es no romper la detección de reutilización.
+- **Hecho el 2026-10-15** (rama `claude/laughing-newton-dbht10`, revisión final del MCP): `db.mcp_oauth.purgar`, que el propio servidor MCP corre al arrancar y cada hora (no el worker). Con los plazos que fijó la revisión, **más cortos que N ≥ 30**: pendientes/códigos caducados hace > 1 día, access/refresh revocados o caducados hace > 7 días (aunque la familia siga viva: un refresh rotado hace más de una semana deja de detectarse como reutilizado) y clientes de > 7 días sin tokens. Runbook §7 actualizado.
+- **Plazo confirmado (2026-10-19):** el dueño elige **30 días** para access/refresh y clientes huérfanos (pendientes y códigos siguen en 1 día). Con 30, lo que vive un refresh, un refresh rotado delata su reutilización durante toda su vida. En la misma conversación dio el OK, a posteriori, al cambio de `.env.example` (comentarios de las `MCP_*`) que entró con #473 fuera del plan.
+
+### [P3] Los avisos de deprecación que la suite ya emite
+
+**Cerrado el 2026-10-24.** `wait_exponential_jitter(multiplier=2, …)` en `scraper/resilience.py` (en tenacity 9.2.1 `initial` se copiaba a `multiplier`: mismo espaciado), `status.HTTP_413_CONTENT_TOO_LARGE` en `api/routes/pursuits.py` y `api/routes/security.py`, y `Settings.model_fields` en `tests/test_ola1_fixes.py`. La suite unitaria con `-W default` ya no emite avisos de deprecación propios. Para que no vuelvan haría falta un `filterwarnings` en `pyproject.toml`, que exige OK.
+
+- **Área:** scraper/resilience.py, api/routes/pursuits.py, api/routes/security.py, tests/test_ola1_fixes.py
+- **Problema:** la suite unitaria del 2026-10-17 (8.323 tests en verde) emite tres avisos de deprecación que, con la siguiente major de cada librería, pasan a ser errores: `wait_exponential_jitter(initial=…)` de tenacity en `scraper/resilience.py:93` (el parámetro es `multiplier`), `HTTP_413_REQUEST_ENTITY_TOO_LARGE` de Starlette (ahora `HTTP_413_CONTENT_TOO_LARGE`) en `api/routes/pursuits.py:1984` y `:2014` y en `api/routes/security.py:277`, y `Settings.__fields__` de Pydantic v1 en `tests/test_ola1_fixes.py:176` (`model_fields`). Son cambios de una línea y conviene hacerlos antes de que Renovate traiga la major.
+- **Acceptance criteria:**
+  - Los tres sustituidos y `pytest -W error::DeprecationWarning -m unit` en verde sobre esos módulos (o `filterwarnings = ["error::DeprecationWarning:tenacity", …]` en `pyproject.toml` para que no vuelvan).
+- **Files de partida:** [scraper/resilience.py](../scraper/resilience.py), [api/routes/pursuits.py](../api/routes/pursuits.py), [api/routes/security.py](../api/routes/security.py), [tests/test_ola1_fixes.py](../tests/test_ola1_fixes.py), [pyproject.toml](../pyproject.toml)
+- **Riesgo:** bajo — sustituciones de nombre.
+
+---
+
 ## Cerrados el 2026-10-24 — los pliegos de la PSCP se leen, y el login no delata cuentas por tiempo
 
 **(7) de «Recuperación de contraseña…», cerrado el 2026-10-24.** El login verifica contra un hash ficticio del mismo KDF y coste que `hash_password` cuando el correo no tiene cuenta o la cuenta es solo-OAuth (`shared/auth_core.py::verify_password_against_dummy`); test `tests/test_login_tiempo_sin_cuenta.py`, que comprueba con un espía que esas ramas pasan una vez por el KDF y no mide tiempos. Queda sin igualar la segunda búsqueda por correo en minúsculas (una consulta pequeña frente al KDF), las cuentas antiguas con hash bcrypt frente al argon2 del ficticio, y el primer login sin cuenta de cada proceso, que paga el cálculo del hash ficticio. El ítem padre sigue abierto con (1) y (2).

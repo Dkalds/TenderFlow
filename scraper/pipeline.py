@@ -172,16 +172,32 @@ def _load_classifiers() -> _ClassifierHolder:
     from config import settings as _settings
 
     # ── SAP binario ────────────────────────────────────────────────────────
+    # Por `resolve_artifact`, como el `precompute` de `ml_proba`: la versión
+    # activa cotejada por sha256 y, sin versión activa, el asset de nombre fijo.
+    # Hasta 2026-10 era `ensure_downloaded()` + `load()`: bajaba el
+    # `sap_classifier.pkl` de nombre fijo y `load()` lo servía cuando el `path`
+    # de la versión activa no estaba en este runner — con nombres por
+    # contenido, siempre —, así que la ingesta puntuaba con otro modelo que el
+    # registrado sin que nada lo dijera.
     ml: Any = None
     try:
         from services.ml.sap_classifier import SAPClassifier
 
-        SAPClassifier.ensure_downloaded()
-        if SAPClassifier.is_available():
-            ml = SAPClassifier.load()
-            log.info("pipeline.ml_clf_loaded", threshold=ml._threshold)
-    except Exception:
-        log.debug("pipeline.ml_clf_unavailable")
+        artefacto = SAPClassifier.resolve_artifact()
+        if artefacto is not None:
+            ml = SAPClassifier.load(artefacto)
+            log.info("pipeline.ml_clf_loaded", threshold=ml._threshold, path=str(artefacto))
+    except Exception as exc:
+        # La ingesta no se para por el clasificador: sin él, las entradas TI
+        # sin keyword se guardan como `cpv_ti_universe`. Pero un artefacto que
+        # no cuadra con el registro (`ModelArtifactMismatch`) no es «no hay
+        # modelo» y no puede quedarse en un debug.
+        from shared.model_artifacts import ModelArtifactMismatch
+
+        if isinstance(exc, ModelArtifactMismatch):
+            log.error("pipeline.ml_clf_artifact_mismatch", error=str(exc))
+        else:
+            log.debug("pipeline.ml_clf_unavailable", error=str(exc))
 
     # ── Multi-tecnología (solo si ML_TECH_ENABLED) ─────────────────────────
     tech: TechnologyClassifier | None = None

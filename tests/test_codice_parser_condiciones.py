@@ -459,6 +459,45 @@ def test_solvencia_tecnica_economica_y_clasificacion() -> None:
     ]
 
 
+def test_umbral_de_solvencia_economica_en_threshold_quantity() -> None:
+    """La forma que publica PLACSP (medido en el ATOM vivo el 2026-10-24).
+
+    El umbral viaja en ``ThresholdQuantity`` sin moneda. En la económica es
+    dinero y se guarda; un 0 es «sin cifra», no cero euros. En la técnica la
+    misma etiqueta trae a veces un número de trabajos, y no se lee como
+    importe.
+    """
+    entry = _entry(
+        terminos=_terminos(
+            "<cac:TendererQualificationRequest>"
+            "<cac:TechnicalEvaluationCriteria>"
+            "<cbc:EvaluationCriteriaTypeCode>OSR-COMPTASK</cbc:EvaluationCriteriaTypeCode>"
+            "<cbc:Description>Al menos dos obras de importe igual o superior</cbc:Description>"
+            "<cbc:ThresholdQuantity>2</cbc:ThresholdQuantity>"
+            "</cac:TechnicalEvaluationCriteria>"
+            "<cac:FinancialEvaluationCriteria>"
+            "<cbc:EvaluationCriteriaTypeCode>5</cbc:EvaluationCriteriaTypeCode>"
+            "<cbc:Description>Volumen anual de negocios</cbc:Description>"
+            "<cbc:ThresholdQuantity>384396.37</cbc:ThresholdQuantity>"
+            "</cac:FinancialEvaluationCriteria>"
+            "<cac:FinancialEvaluationCriteria>"
+            "<cbc:EvaluationCriteriaTypeCode>ZZZ</cbc:EvaluationCriteriaTypeCode>"
+            "<cbc:Description>Exento.</cbc:Description>"
+            "<cbc:ThresholdQuantity>0</cbc:ThresholdQuantity>"
+            "</cac:FinancialEvaluationCriteria>"
+            "</cac:TendererQualificationRequest>"
+        )
+    )
+
+    solvencia = parse_condiciones(entry).solvencia
+
+    assert [(s.clase, s.tipo_codigo, s.umbral_importe, s.moneda) for s in solvencia] == [
+        ("tecnica", "OSR-COMPTASK", None, None),
+        ("economica", "5", 384396.37, None),
+        ("economica", "ZZZ", None, None),
+    ]
+
+
 def test_solvencia_grafia_criterion_y_por_lote() -> None:
     entry = _entry(
         lotes=_lote(

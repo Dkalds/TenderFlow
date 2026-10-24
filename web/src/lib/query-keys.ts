@@ -358,6 +358,19 @@ export const pursuitKeys = {
   checklist: (pursuitId: number | string) =>
     ["pursuits", "checklist", String(pursuitId)] as const,
   /**
+   * Prefijo de todas las puntuaciones go/no-go. Cambiar los pesos de la
+   * organización (Equipo → Organización) recalcula el total y la recomendación
+   * de **todas** las oportunidades: la mutación de pesos invalida este prefijo
+   * sin saber cuáles hay abiertas.
+   */
+  goNoGoTodas: ["pursuits", "go-no-go"] as const,
+  /**
+   * Matriz go/no-go de una oportunidad (`GET /pursuits/{id}/go-no-go`, C6.4).
+   * Cuelga de la raíz `pursuits`: tomar la decisión cambia `discrepa`, y las
+   * mutaciones de pursuits ya invalidan por ese prefijo.
+   */
+  goNoGo: (pursuitId: number | string) => ["pursuits", "go-no-go", String(pursuitId)] as const,
+  /**
    * Tareas de una oportunidad (`GET /pursuits/{id}/tasks`, C6.1). Cuelga de la
    * raíz `pursuits` a propósito: crear o completar una tarea recalcula
    * `next_action` en servidor, así que la agenda y la ficha tienen que volver

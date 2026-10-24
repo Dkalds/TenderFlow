@@ -30,6 +30,13 @@
       "status": "200"
     },
     {
+      "fixture": "pursuits-go-no-go.json",
+      "method": "GET",
+      "path": "/api/v1/pursuits/{pursuit_id}/go-no-go",
+      "kind": "response",
+      "status": "200"
+    },
+    {
       "fixture": "meta-filters.json",
       "method": "GET",
       "path": "/api/v1/meta/filters",

@@ -102,10 +102,15 @@ def test_ensure_downloaded_baja_tambien_el_checksum_co_ubicado(tmp_path) -> None
     Bajar solo el ``.pkl`` cambiaba ``no_model`` por ``load_failed``: el paso
     seguía sin puntuar nada, solo que por otro motivo.
     """
+    from shared.release_assets import AssetLocalizado
+
     destino = tmp_path / "sap_classifier.pkl"
+    release = {"id": 2, "tag_name": "v1.0.0-models", "assets": []}
     with (
-        patch("shared.release_assets.fetch_latest_release", return_value={"assets": []}),
-        patch("shared.release_assets.find_asset_id", return_value=7),
+        patch(
+            "shared.release_assets.locate_release_asset",
+            return_value=AssetLocalizado(release, 7),
+        ),
         patch("shared.release_assets.download_asset", return_value=True) as descarga,
         patch("shared.release_assets.download_checksum_sidecar", return_value=True) as sidecar,
     ):
@@ -113,6 +118,57 @@ def test_ensure_downloaded_baja_tambien_el_checksum_co_ubicado(tmp_path) -> None
 
     assert descarga.call_args.args[2] == destino
     assert sidecar.call_args.args[2] == destino
+    # El sidecar, de la MISMA Release que el `.pkl`.
+    assert sidecar.call_args.args[1] is release
+
+
+def test_ensure_downloaded_busca_el_nombre_fijo_como_el_resolvedor(tmp_path) -> None:
+    """Release fija, *latest* y recientes, por el nombre fijo.
+
+    Solo miraba *latest*: una Release de software marcada como *latest* dejaba
+    fuera de alcance el ``sap_classifier.pkl`` de mayo (``v1.0.0-models``), que
+    es lo que se sirve sin versión activa. Y busca el nombre FIJO: los de
+    nombre por contenido son de versiones registradas, que resuelve
+    ``resolve_active_artifact`` cotejando su sha256.
+    """
+    with patch("shared.release_assets.locate_release_asset", return_value=None) as localizar:
+        assert SAPClassifier.ensure_downloaded(path=tmp_path / "sap_classifier.pkl") is False
+
+    args, kwargs = localizar.call_args
+    assert args == ("Dkalds/TenderFlow", "sap_classifier.pkl")
+    assert kwargs["tag_fijo"] == "ml-models"
+
+
+def test_ensure_downloaded_encuentra_el_asset_fuera_de_latest(tmp_path) -> None:
+    """*latest* es una Release de software sin modelos; el asset está en otra."""
+    from shared.release_assets import ML_MODELS_RELEASE_TAG
+
+    api = "https://api.github.com/repos/Dkalds/TenderFlow/releases"
+    fija = {"id": 1, "tag_name": ML_MODELS_RELEASE_TAG, "assets": []}
+    software = {"id": 3, "tag_name": "v2.0.0", "assets": []}
+    modelos = {
+        "id": 2,
+        "tag_name": "v1.0.0-models",
+        "assets": [{"name": "sap_classifier.pkl", "id": 21, "digest": None}],
+    }
+    respuestas = {
+        f"{api}/tags/{ML_MODELS_RELEASE_TAG}": fija,
+        f"{api}/latest": software,
+        f"{api}?per_page=30": [software, fija, modelos],
+    }
+
+    def _api(url: str, _repo: str, *, token: str) -> object | None:
+        return respuestas.get(url)
+
+    destino = tmp_path / "sap_classifier.pkl"
+    with (
+        patch("shared.release_assets._get_api_json", side_effect=_api),
+        patch("shared.release_assets.download_asset", return_value=True) as descarga,
+        patch("shared.release_assets.download_checksum_sidecar", return_value=True),
+    ):
+        assert SAPClassifier.ensure_downloaded(path=destino) is True
+
+    assert descarga.call_args.args[1] == 21
 
 
 # ── Tercer canal: la Release por nombre, sin pasar por el registro ──────────

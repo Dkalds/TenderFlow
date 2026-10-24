@@ -48,6 +48,35 @@ export interface AccessGrant {
   kind: "email" | "domain";
   value: string;
   active: boolean;
+  /** `users.id` de quien concedió; `null` si no se registró o la cuenta ya no existe. */
+  granted_by?: number | null;
+  /** Nombre (o correo) de quien concedió, resuelto por la API. */
+  granted_by_name?: string | null;
+  /** Primera vez que se concedió. */
+  created_at?: string | null;
+  /** Última vez que cambió: la concesión vigente, o la revocación si está revocada. */
+  updated_at?: string | null;
+  revoked_at?: string | null;
+}
+
+/**
+ * La solicitud sobre la que se vuelve a conceder una concesión revocada.
+ *
+ * La API no tiene una ruta para conceder sin solicitud: el único camino que
+ * reactiva la fila es el `PATCH … conceder` sobre una solicitud cuyo correo dé
+ * ese valor (el correo mismo, o su dominio). Se toma la más reciente —la lista
+ * viene por `created_at DESC`—. Sin solicitud que case no hay forma de volver a
+ * conceder desde aquí y el panel lo dice.
+ */
+export function solicitudParaConcesion(
+  grant: AccessGrant,
+  solicitudes: SolicitudAcceso[] | undefined,
+): SolicitudAcceso | undefined {
+  const valor = grant.value.trim().toLowerCase();
+  return solicitudes?.find((solicitud) => {
+    const correo = solicitud.email.trim().toLowerCase();
+    return grant.kind === "email" ? correo === valor : correo.endsWith(`@${valor}`);
+  });
 }
 
 /**
@@ -125,17 +154,24 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
   // El histórico sólo se pide si alguien lo abre: es la vista de consulta, no
   // la de trabajo, y no tiene por qué costar una petición a cada apertura del
   // panel.
-  const historicoQuery = useQuery<SolicitudAcceso[]>({
-    queryKey: [...adminKeys.solicitudes.vista("historico"), limite],
-    queryFn: () => cargarSolicitudes(`limit=${limite}`),
-    enabled: vista === "historico",
+  const grantsQuery = useQuery<AccessGrant[]>({
+    queryKey: adminKeys.accessGrants,
+    // Con las revocadas: el panel las enseña y deja volver a concederlas.
+    queryFn: () =>
+      fetchWithAuth<AccessGrant[]>("/api/v1/admin/solicitudes-acceso/grants?include_inactive=true"),
+    // También se pinta en el panel: un fallo aquí no es «no hay concesiones».
     meta: META_ERROR_EN_LINEA,
   });
 
-  const grantsQuery = useQuery<AccessGrant[]>({
-    queryKey: adminKeys.accessGrants,
-    queryFn: () => fetchWithAuth<AccessGrant[]>("/api/v1/admin/solicitudes-acceso/grants"),
-    // También se pinta en el panel: un fallo aquí no es «no hay concesiones».
+  // Volver a conceder una revocada necesita su solicitud (ver
+  // `solicitudParaConcesion`), que puede estar en cualquier estado: por eso el
+  // histórico también se pide cuando hay revocadas que mostrar, con la misma
+  // clave que la vista «Todas» y sin duplicar la petición.
+  const hayRevocadas = grantsQuery.data?.some((grant) => !grant.active) ?? false;
+  const historicoQuery = useQuery<SolicitudAcceso[]>({
+    queryKey: [...adminKeys.solicitudes.vista("historico"), limite],
+    queryFn: () => cargarSolicitudes(`limit=${limite}`),
+    enabled: vista === "historico" || hayRevocadas,
     meta: META_ERROR_EN_LINEA,
   });
 
@@ -166,7 +202,10 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
         toast.success("Solicitud actualizada");
       }
     },
-    onError: () => toast.error("No se pudo actualizar la solicitud"),
+    // Un solo aviso de error: el global (`providers.tsx`) lo pinta con este
+    // título y el `detail` de la API —p. ej. el motivo de un dominio no
+    // concedible, un 422—. Un `onError` con su propio toast lo duplicaba.
+    meta: { errorTitle: "No se pudo actualizar la solicitud" },
   });
 
   const revocar = useMutation({
@@ -176,7 +215,7 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
       queryClient.invalidateQueries({ queryKey: adminKeys.accessGrants });
       toast.success("Acceso revocado para nuevos inicios de sesión");
     },
-    onError: () => toast.error("No se pudo revocar el acceso"),
+    meta: { errorTitle: "No se pudo revocar el acceso" },
   });
 
   const solicitudes = activa.data ?? [];
@@ -201,6 +240,8 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
     grantsLoading: grantsQuery.isLoading,
     grantsError: grantsQuery.error,
     reintentarGrants: () => void grantsQuery.refetch(),
+    /** Todas las solicitudes, para casar una concesión revocada con la suya. */
+    historico: historicoQuery.data,
     cambiarEstado,
     revocar,
   };

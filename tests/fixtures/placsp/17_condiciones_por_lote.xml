@@ -1,113 +1,402 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<entry xmlns="http://www.w3.org/2005/Atom"
-       xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2"
-       xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2"
-       xmlns:cacext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2"
-       xmlns:cbcext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2">
-  <id>https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-CONDLOTES-0017</id>
-  <title>Suministro e implantación de licencias Microsoft y soporte Oracle en dos lotes</title>
-  <updated>2026-10-02T12:00:00+02:00</updated>
-  <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=2026-CONDLOTES-0017" rel="alternate"/>
-  <summary type="text">Id licitación: 2026-CONDLOTES-0017; Órgano de Contratación: Diputación Provincial; Importe: 410000.00 EUR; Estado: PUB</summary>
-  <cacext:ContractFolderStatus>
-    <cbc:ContractFolderID>2026-CONDLOTES-0017</cbc:ContractFolderID>
-    <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
-    <cacext:LocatedContractingParty>
-      <cac:Party>
-        <cac:PartyName><cbc:Name>Diputación Provincial</cbc:Name></cac:PartyName>
-      </cac:Party>
-    </cacext:LocatedContractingParty>
-    <cacext:ValidNoticeInfo>
-      <cbcext:NoticeTypeCode>DOC_CN</cbcext:NoticeTypeCode>
-      <cacext:AdditionalPublicationStatus>
-        <cacext:AdditionalPublicationDocumentReference>
-          <cbc:IssueDate>2026-10-01</cbc:IssueDate>
-        </cacext:AdditionalPublicationDocumentReference>
-      </cacext:AdditionalPublicationStatus>
-    </cacext:ValidNoticeInfo>
-    <cac:ProcurementProject>
-      <cbc:Name>Suministro e implantación de licencias Microsoft y soporte Oracle en dos lotes</cbc:Name>
-      <cbc:TypeCode>1</cbc:TypeCode>
-      <cac:RequiredCommodityClassification>
-        <cbc:ItemClassificationCode>48000000-8</cbc:ItemClassificationCode>
-      </cac:RequiredCommodityClassification>
-      <cac:BudgetAmount>
-        <cbc:TaxExclusiveAmount currencyID="EUR">410000.00</cbc:TaxExclusiveAmount>
-      </cac:BudgetAmount>
-      <cac:RealizedLocation>
-        <cbc:CountrySubentity>Valladolid</cbc:CountrySubentity>
-        <cbc:CountrySubentityCode>ES418</cbc:CountrySubentityCode>
-      </cac:RealizedLocation>
-    </cac:ProcurementProject>
-    <cac:ProcurementProjectLot>
-      <cbc:ID>1</cbc:ID>
-      <cac:ProcurementProject>
-        <cbc:Name>Licencias Microsoft 365</cbc:Name>
-        <cac:RequiredCommodityClassification>
-          <cbc:ItemClassificationCode>48000000-8</cbc:ItemClassificationCode>
-        </cac:RequiredCommodityClassification>
-        <cac:BudgetAmount>
-          <cbc:TaxExclusiveAmount currencyID="EUR">250000.00</cbc:TaxExclusiveAmount>
-        </cac:BudgetAmount>
-      </cac:ProcurementProject>
-      <cac:TenderingTerms>
-        <cac:AwardingTerms>
-          <cac:AwardingCriteria>
-            <cbc:Description>Precio</cbc:Description>
-            <cbc:WeightNumeric>0.8</cbc:WeightNumeric>
-          </cac:AwardingCriteria>
-          <cac:AwardingCriteria>
-            <cbc:Description>Plazo de entrega</cbc:Description>
-            <cbc:WeightNumeric>0.2</cbc:WeightNumeric>
-          </cac:AwardingCriteria>
-        </cac:AwardingTerms>
-      </cac:TenderingTerms>
-    </cac:ProcurementProjectLot>
-    <cac:ProcurementProjectLot>
-      <cbc:ID>2</cbc:ID>
-      <cac:ProcurementProject>
-        <cbc:Name>Soporte de bases de datos Oracle</cbc:Name>
-        <cac:RequiredCommodityClassification>
-          <cbc:ItemClassificationCode>72267000-4</cbc:ItemClassificationCode>
-        </cac:RequiredCommodityClassification>
-        <cac:BudgetAmount>
-          <cbc:TaxExclusiveAmount currencyID="EUR">160000.00</cbc:TaxExclusiveAmount>
-        </cac:BudgetAmount>
-      </cac:ProcurementProject>
-      <cac:TenderingTerms>
-        <cac:RequiredFinancialGuarantee>
-          <cbc:GuaranteeTypeCode>1</cbc:GuaranteeTypeCode>
-          <cbc:LiabilityAmount currencyID="EUR">4800.00</cbc:LiabilityAmount>
-        </cac:RequiredFinancialGuarantee>
-        <cac:TendererQualificationRequest>
-          <cac:TechnicalEvaluationCriteria>
-            <cbc:EvaluationCriteriaTypeCode>4</cbc:EvaluationCriteriaTypeCode>
-            <cbc:Description>Certificado de partner Oracle vigente</cbc:Description>
-          </cac:TechnicalEvaluationCriteria>
-        </cac:TendererQualificationRequest>
-        <cac:AwardingTerms>
-          <cac:AwardingCriteria>
-            <cbc:Description>Precio</cbc:Description>
-            <cbc:WeightNumeric>70</cbc:WeightNumeric>
-          </cac:AwardingCriteria>
-          <cac:AwardingCriteria>
-            <cbc:Description>Mejoras en el acuerdo de nivel de servicio</cbc:Description>
-            <cbc:WeightNumeric>30</cbc:WeightNumeric>
-          </cac:AwardingCriteria>
-        </cac:AwardingTerms>
-      </cac:TenderingTerms>
-    </cac:ProcurementProjectLot>
-    <cac:TenderingTerms>
-      <cac:RequiredFinancialGuarantee>
-        <cbc:GuaranteeTypeCode>2</cbc:GuaranteeTypeCode>
-        <cbc:AmountRate>5</cbc:AmountRate>
-      </cac:RequiredFinancialGuarantee>
-    </cac:TenderingTerms>
-    <cac:TenderingProcess>
-      <cbc:ProcedureCode>1</cbc:ProcedureCode>
-      <cac:TenderSubmissionDeadlinePeriod>
-        <cbc:EndDate>2026-11-03</cbc:EndDate>
-      </cac:TenderSubmissionDeadlinePeriod>
-    </cac:TenderingProcess>
-  </cacext:ContractFolderStatus>
-</entry>
+<entry xmlns="http://www.w3.org/2005/Atom" xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2" xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2" xmlns:cac-place-ext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2" xmlns:cbc-place-ext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2" xmlns:at="http://purl.org/atompub/tombstones/1.0" xmlns:ns7="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2">
+        <id>https://contrataciondelestado.es/sindicacion/licitacionesPerfilContratante/20767496</id>
+        <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=UtkDNURB5orN3k3tjedSGw%3D%3D"/>
+        <summary type="text">Id licitación: SUM/2026/0000195073; Órgano de Contratación: Dirección Gerente del Hospital Universitario Nuestra Señora de Candelaria; Importe: 84112.15 EUR; Estado: PUB</summary>
+        <title>Suministro de equipamiento TIC 17 Ordenadores de sobremesa con dos monitores y altavoces, 6 ordenadores portatiles y 8 sistemasinteractivos tactiles de gran formato destinado al Servicio de Psiquiatria del Complejo Hospitalario Universitario Nuestra Senorade Candelaria y su Red de Centros</title>
+        <updated>2026-10-23T13:29:56.885+02:00</updated>
+        <cac-place-ext:ContractFolderStatus>
+            <cbc:ContractFolderID>SUM/2026/0000195073</cbc:ContractFolderID>
+            <cbc-place-ext:ContractFolderStatusCode languageID="es" listURI="https://contrataciondelestado.es/codice/cl/2.04/SyndicationContractFolderStatusCode-2.04.gc">PUB</cbc-place-ext:ContractFolderStatusCode>
+            <cac-place-ext:LocatedContractingParty>
+                <cbc:ContractingPartyTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityCode-2.10.gc">2</cbc:ContractingPartyTypeCode>
+                <cbc:ActivityCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityActivityCode-2.10.gc">1</cbc:ActivityCode>
+                <cbc:ActivityCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityActivityCode-2.10.gc">7</cbc:ActivityCode>
+                <cbc:BuyerProfileURIID>https://contrataciondelestado.es/wps/poc?uri=deeplink:perfilContratante&amp;idBp=QURhzYampsiiEJrVRqloyA%3D%3D</cbc:BuyerProfileURIID>
+                <cac:Party>
+                    <cbc:WebsiteURI>http://www3.gobiernodecanarias.org/sanidad/scs/</cbc:WebsiteURI>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="DIR3">A05003608</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="NIF">Q8555011I</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="ID_PLATAFORMA">31087770152537</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyName>
+                        <cbc:Name>Dirección Gerente del Hospital Universitario Nuestra Señora de Candelaria</cbc:Name>
+                    </cac:PartyName>
+                    <cac:PostalAddress>
+                        <cbc:CityName>Santa Cruz de Tenerife</cbc:CityName>
+                        <cbc:PostalZone>38010</cbc:PostalZone>
+                        <cac:AddressLine>
+                            <cbc:Line>Carretera General del Rosario, 145</cbc:Line>
+                        </cac:AddressLine>
+                        <cac:Country>
+                            <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+                            <cbc:Name>España</cbc:Name>
+                        </cac:Country>
+                    </cac:PostalAddress>
+                    <cac:Contact>
+                        <cbc:Name>Dirección Gerente del Hospital Universitario Nuestra Señora de Candelaria</cbc:Name>
+                        <cbc:Telephone>922601800</cbc:Telephone>
+                        <cbc:Telefax>922602129</cbc:Telefax>
+                        <cbc:ElectronicMail>cadmhunsc.scs@gobiernodecanarias.org</cbc:ElectronicMail>
+                    </cac:Contact>
+                </cac:Party>
+                <cac-place-ext:ParentLocatedParty>
+                    <cac:PartyName>
+                        <cbc:Name>Servicio Canario de la Salud</cbc:Name>
+                    </cac:PartyName>
+                    <cac-place-ext:ParentLocatedParty>
+                        <cac:PartyIdentification>
+                            <cbc:ID schemeName="DIR3">A05002852</cbc:ID>
+                        </cac:PartyIdentification>
+                        <cac:PartyName>
+                            <cbc:Name>Consejería de Sanidad</cbc:Name>
+                        </cac:PartyName>
+                        <cac-place-ext:ParentLocatedParty>
+                            <cac:PartyName>
+<cbc:Name>Comunidad Autónoma de Canarias</cbc:Name>
+                            </cac:PartyName>
+                            <cac-place-ext:ParentLocatedParty>
+<cac:PartyName>
+    <cbc:Name>COMUNIDADES Y CIUDADES AUTÓNOMAS</cbc:Name>
+</cac:PartyName>
+<cac-place-ext:ParentLocatedParty>
+    <cac:PartyName>
+        <cbc:Name>Sector Público</cbc:Name>
+    </cac:PartyName>
+</cac-place-ext:ParentLocatedParty>
+                            </cac-place-ext:ParentLocatedParty>
+                        </cac-place-ext:ParentLocatedParty>
+                    </cac-place-ext:ParentLocatedParty>
+                </cac-place-ext:ParentLocatedParty>
+            </cac-place-ext:LocatedContractingParty>
+            <cac:ProcurementProject>
+                <cbc:Name>Suministro de equipamiento TIC 17 Ordenadores de sobremesa con dos monitores y altavoces, 6 ordenadores portatiles y 8 sistemasinteractivos tactiles de gran formato destinado al Servicio de Psiquiatria del Complejo Hospitalario Universitario Nuestra Senorade Candelaria y su Red de Centros</cbc:Name>
+                <cbc:TypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/ContractCode-2.08.gc">1</cbc:TypeCode>
+                <cbc:SubTypeCode listURI="http://contrataciondelestado.es/codice/cl/1.04/GoodsContractCode-1.04.gc">2</cbc:SubTypeCode>
+                <cbc:MixContractIndicator>false</cbc:MixContractIndicator>
+                <cac:BudgetAmount>
+                    <cbc:EstimatedOverallContractAmount currencyID="EUR">84112.15</cbc:EstimatedOverallContractAmount>
+                    <cbc:TotalAmount currencyID="EUR">90000</cbc:TotalAmount>
+                    <cbc:TaxExclusiveAmount currencyID="EUR">84112.15</cbc:TaxExclusiveAmount>
+                </cac:BudgetAmount>
+                <cac:RequiredCommodityClassification>
+                    <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">30200000</cbc:ItemClassificationCode>
+                </cac:RequiredCommodityClassification>
+                <cac:RealizedLocation>
+                    <cbc:CountrySubentity>Canarias</cbc:CountrySubentity>
+                    <cbc:CountrySubentityCode listURI="http://contrataciondelestado.es/codice/cl/2.08/NUTS-2021.gc">ES70</cbc:CountrySubentityCode>
+                    <cac:Address>
+                        <cac:Country>
+                            <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+                            <cbc:Name>España</cbc:Name>
+                        </cac:Country>
+                    </cac:Address>
+                </cac:RealizedLocation>
+                <cac:PlannedPeriod>
+                    <cbc:DurationMeasure unitCode="DAY">60</cbc:DurationMeasure>
+                </cac:PlannedPeriod>
+            </cac:ProcurementProject>
+            <cac:ProcurementProjectLot>
+                <cbc:ID schemeName="ID_LOTE">1</cbc:ID>
+                <cac:TenderingTerms>
+                    <cac:AwardingTerms>
+                        <cac:AwardingCriteria>
+                            <cbc:AwardingCriteriaTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.0/AwardingCriteriaCode-2.0.gc">OBJ</cbc:AwardingCriteriaTypeCode>
+                            <cbc:Description>E-1 LOTE 1: MENOR PRECIO</cbc:Description>
+                            <cbc:Note>CONFORME CLAUSULA 12 PCAP</cbc:Note>
+                            <cbc:AwardingCriteriaSubTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/AwardingCriteriaAutomaticallyEvaluatedSubTypeCode-2.09.gc">1</cbc:AwardingCriteriaSubTypeCode>
+                            <cbc:WeightNumeric>88</cbc:WeightNumeric>
+                        </cac:AwardingCriteria>
+                        <cac:AwardingCriteria>
+                            <cbc:AwardingCriteriaTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.0/AwardingCriteriaCode-2.0.gc">OBJ</cbc:AwardingCriteriaTypeCode>
+                            <cbc:Description>C-1 LOTE 1: Memoria RAM instalada ≥ 32 GB en la totalidad de los 17 ordenadores Mini/Micro PC</cbc:Description>
+                            <cbc:Note>CONFORME CLAUSULA 12 PCAP</cbc:Note>
+                            <cbc:AwardingCriteriaSubTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/AwardingCriteriaAutomaticallyEvaluatedSubTypeCode-2.09.gc">2</cbc:AwardingCriteriaSubTypeCode>
+                            <cbc:WeightNumeric>4</cbc:WeightNumeric>
+                        </cac:AwardingCriteria>
+                        <cac:AwardingCriteria>
+                            <cbc:AwardingCriteriaTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.0/AwardingCriteriaCode-2.0.gc">OBJ</cbc:AwardingCriteriaTypeCode>
+                            <cbc:Description>C-2 LOTE 1: Memoria RAM instalada ≥ 32 GB en la totalidad de los 6 ordenadores portátiles</cbc:Description>
+                            <cbc:Note>CONFORME CLAUSULA 12 PCAP</cbc:Note>
+                            <cbc:AwardingCriteriaSubTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/AwardingCriteriaAutomaticallyEvaluatedSubTypeCode-2.09.gc">2</cbc:AwardingCriteriaSubTypeCode>
+                            <cbc:WeightNumeric>3</cbc:WeightNumeric>
+                        </cac:AwardingCriteria>
+                        <cac:AwardingCriteria>
+                            <cbc:AwardingCriteriaTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.0/AwardingCriteriaCode-2.0.gc">OBJ</cbc:AwardingCriteriaTypeCode>
+                            <cbc:Description>C-3 LOTE 1: Ampliación del plazo de garantía hasta un mínimo de 5 años para la totalidad del equipamiento incluido en el Lote 1</cbc:Description>
+                            <cbc:Note>CONFORME CLAUSULA 12 PCAP</cbc:Note>
+                            <cbc:AwardingCriteriaSubTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/AwardingCriteriaAutomaticallyEvaluatedSubTypeCode-2.09.gc">2</cbc:AwardingCriteriaSubTypeCode>
+                            <cbc:WeightNumeric>5</cbc:WeightNumeric>
+                        </cac:AwardingCriteria>
+                    </cac:AwardingTerms>
+                </cac:TenderingTerms>
+                <cac:ProcurementProject>
+                    <cbc:Name>LOTE 1: Puerto de trabajo de sobremesa y ordenador portátil </cbc:Name>
+                    <cac:BudgetAmount>
+                        <cbc:TotalAmount currencyID="EUR">41628.38</cbc:TotalAmount>
+                        <cbc:TaxExclusiveAmount currencyID="EUR">38905.03</cbc:TaxExclusiveAmount>
+                    </cac:BudgetAmount>
+                    <cac:RequiredCommodityClassification>
+                        <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">30200000</cbc:ItemClassificationCode>
+                    </cac:RequiredCommodityClassification>
+                    <cac:RealizedLocation>
+                        <cbc:CountrySubentity>Canarias</cbc:CountrySubentity>
+                        <cbc:CountrySubentityCode listURI="http://contrataciondelestado.es/codice/cl/2.08/NUTS-2021.gc">ES70</cbc:CountrySubentityCode>
+                        <cac:Address>
+                            <cac:Country>
+<cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+<cbc:Name>España</cbc:Name>
+                            </cac:Country>
+                        </cac:Address>
+                    </cac:RealizedLocation>
+                </cac:ProcurementProject>
+            </cac:ProcurementProjectLot>
+            <cac:ProcurementProjectLot>
+                <cbc:ID schemeName="ID_LOTE">2</cbc:ID>
+                <cac:TenderingTerms>
+                    <cac:AwardingTerms>
+                        <cac:AwardingCriteria>
+                            <cbc:AwardingCriteriaTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.0/AwardingCriteriaCode-2.0.gc">OBJ</cbc:AwardingCriteriaTypeCode>
+                            <cbc:Description>C-3 LOTE 2: Campo de visión ampliado del sistema de videoconferencia: FOV diagonal ≥ 120° o FOV horizontal ≥ 110°</cbc:Description>
+                            <cbc:Note>CONFORME CLAUSULA 12 PCAP</cbc:Note>
+                            <cbc:AwardingCriteriaSubTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/AwardingCriteriaAutomaticallyEvaluatedSubTypeCode-2.09.gc">2</cbc:AwardingCriteriaSubTypeCode>
+                            <cbc:WeightNumeric>3</cbc:WeightNumeric>
+                        </cac:AwardingCriteria>
+                        <cac:AwardingCriteria>
+                            <cbc:AwardingCriteriaTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.0/AwardingCriteriaCode-2.0.gc">OBJ</cbc:AwardingCriteriaTypeCode>
+                            <cbc:Description>E-1 LOTE 2: Menor precio</cbc:Description>
+                            <cbc:Note>CONFORME CLAUSULA 12 PCAP</cbc:Note>
+                            <cbc:AwardingCriteriaSubTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/AwardingCriteriaAutomaticallyEvaluatedSubTypeCode-2.09.gc">1</cbc:AwardingCriteriaSubTypeCode>
+                            <cbc:WeightNumeric>85</cbc:WeightNumeric>
+                        </cac:AwardingCriteria>
+                        <cac:AwardingCriteria>
+                            <cbc:AwardingCriteriaTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.0/AwardingCriteriaCode-2.0.gc">OBJ</cbc:AwardingCriteriaTypeCode>
+                            <cbc:Description>C-4 LOTE 2: Seguimiento automático del interlocutor u orador activo</cbc:Description>
+                            <cbc:Note>CONFORME CLAUSULA 12 PCAP</cbc:Note>
+                            <cbc:AwardingCriteriaSubTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/AwardingCriteriaAutomaticallyEvaluatedSubTypeCode-2.09.gc">2</cbc:AwardingCriteriaSubTypeCode>
+                            <cbc:WeightNumeric>3</cbc:WeightNumeric>
+                        </cac:AwardingCriteria>
+                        <cac:AwardingCriteria>
+                            <cbc:AwardingCriteriaTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.0/AwardingCriteriaCode-2.0.gc">OBJ</cbc:AwardingCriteriaTypeCode>
+                            <cbc:Description>C-1 LOTE 2: Ampliación del plazo de garantía hasta un mínimo de 5 años para la totalidad del Sistema interactivo Suministrado</cbc:Description>
+                            <cbc:Note>CONFORME CLAUSULA 12 PCAP</cbc:Note>
+                            <cbc:AwardingCriteriaSubTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/AwardingCriteriaAutomaticallyEvaluatedSubTypeCode-2.09.gc">2</cbc:AwardingCriteriaSubTypeCode>
+                            <cbc:WeightNumeric>6</cbc:WeightNumeric>
+                        </cac:AwardingCriteria>
+                        <cac:AwardingCriteria>
+                            <cbc:AwardingCriteriaTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.0/AwardingCriteriaCode-2.0.gc">OBJ</cbc:AwardingCriteriaTypeCode>
+                            <cbc:Description>C-2 LOTE 2: Segundo puerto USB-C multifunción, adicional al exigido como requisito mínimo</cbc:Description>
+                            <cbc:Note>CONFORME CLAUSULA 12 PCAP</cbc:Note>
+                            <cbc:AwardingCriteriaSubTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/AwardingCriteriaAutomaticallyEvaluatedSubTypeCode-2.09.gc">2</cbc:AwardingCriteriaSubTypeCode>
+                            <cbc:WeightNumeric>3</cbc:WeightNumeric>
+                        </cac:AwardingCriteria>
+                    </cac:AwardingTerms>
+                </cac:TenderingTerms>
+                <cac:ProcurementProject>
+                    <cbc:Name>LOTE 2: sistemas interactivos de gran formato completo </cbc:Name>
+                    <cac:BudgetAmount>
+                        <cbc:TotalAmount currencyID="EUR">48371.62</cbc:TotalAmount>
+                        <cbc:TaxExclusiveAmount currencyID="EUR">45207.12</cbc:TaxExclusiveAmount>
+                    </cac:BudgetAmount>
+                    <cac:RequiredCommodityClassification>
+                        <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">30200000</cbc:ItemClassificationCode>
+                    </cac:RequiredCommodityClassification>
+                    <cac:RealizedLocation>
+                        <cbc:CountrySubentity>Canarias</cbc:CountrySubentity>
+                        <cbc:CountrySubentityCode listURI="http://contrataciondelestado.es/codice/cl/2.08/NUTS-2021.gc">ES70</cbc:CountrySubentityCode>
+                        <cac:Address>
+                            <cac:Country>
+<cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+<cbc:Name>España</cbc:Name>
+                            </cac:Country>
+                        </cac:Address>
+                    </cac:RealizedLocation>
+                </cac:ProcurementProject>
+            </cac:ProcurementProjectLot>
+            <cac:TenderingTerms>
+                <cbc:RequiredCurriculaIndicator>false</cbc:RequiredCurriculaIndicator>
+                <cbc:VariantConstraintIndicator>false</cbc:VariantConstraintIndicator>
+                <cbc:FundingProgramCode name="No hay financiación con fondos de la UE" listURI="http://contrataciondelestado.es/codice/cl/2.08/FundingProgramCode-2.08.gc">NO-EU</cbc:FundingProgramCode>
+                <cbc:ProcurementNationalLegislationCode listURI="https://contrataciondelestado.es/codice/cl/2.08/ProcurementNationalLegislationCode-2.08.gc">3</cbc:ProcurementNationalLegislationCode>
+                <cbc:ReceivedAppealQuantity>0</cbc:ReceivedAppealQuantity>
+                <cac:RequiredFinancialGuarantee>
+                    <cbc:GuaranteeTypeCode listURI="http://contrataciondelestado.es/codice/cl/1.04/GuaranteeTypeCode-1.04.gc">2</cbc:GuaranteeTypeCode>
+                    <cbc:AmountRate>5</cbc:AmountRate>
+                </cac:RequiredFinancialGuarantee>
+                <cac:ProcurementLegislationDocumentReference>
+                    <cbc:ID>2014/24/EU</cbc:ID>
+                </cac:ProcurementLegislationDocumentReference>
+                <cac:TendererQualificationRequest>
+                    <cac:TechnicalEvaluationCriteria>
+                        <cbc:EvaluationCriteriaTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.0/TechnicalCapabilityTypeCode-2.0.gc">OSR-COMPTASK</cbc:EvaluationCriteriaTypeCode>
+                        <cbc:Description>CONFORME CLÁUSULA 4.3.2 DEL PCAP </cbc:Description>
+                    </cac:TechnicalEvaluationCriteria>
+                    <cac:FinancialEvaluationCriteria>
+                        <cbc:EvaluationCriteriaTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.0/FinancialCapabilityTypeCode-2.0.gc">5</cbc:EvaluationCriteriaTypeCode>
+                        <cbc:Description>CONFORME CLÁUSULA 4.3.1 DEL PCAP </cbc:Description>
+                    </cac:FinancialEvaluationCriteria>
+                    <cac:SpecificTendererRequirement>
+                        <cbc:RequirementTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/DeclarationTypeCode-2.08.gc">1</cbc:RequirementTypeCode>
+                        <cbc:Description>Capacidad de obrar</cbc:Description>
+                    </cac:SpecificTendererRequirement>
+                    <cac:SpecificTendererRequirement>
+                        <cbc:RequirementTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/DeclarationTypeCode-2.08.gc">2</cbc:RequirementTypeCode>
+                        <cbc:Description>No prohibición para contratar</cbc:Description>
+                    </cac:SpecificTendererRequirement>
+                </cac:TendererQualificationRequest>
+                <cac:TenderRecipientParty>
+                    <cbc:EndpointID>https://contrataciondelestado.es</cbc:EndpointID>
+                </cac:TenderRecipientParty>
+                <cac:Language>
+                    <cbc:ID>es</cbc:ID>
+                </cac:Language>
+            </cac:TenderingTerms>
+            <cac:TenderingProcess>
+                <cbc:ProcedureCode listURI="https://contrataciondelestado.es/codice/cl/2.07/SyndicationTenderingProcessCode-2.07.gc">9</cbc:ProcedureCode>
+                <cbc:UrgencyCode listURI="http://contrataciondelestado.es/codice/cl/1.04/DiligenceTypeCode-1.04.gc">1</cbc:UrgencyCode>
+                <cbc:PartPresentationCode name="A uno o varios lotes" listURI="http://contrataciondelestado.es/codice/cl/1.04/TenderPresentationCode-1.04.gc">3</cbc:PartPresentationCode>
+                <cbc:ContractingSystemCode listURI="http://contrataciondelestado.es/codice/cl/2.08/ContractingSystemTypeCode-2.08.gc">0</cbc:ContractingSystemCode>
+                <cbc:SubmissionMethodCode listURI="http://contrataciondelestado.es/codice/cl/1.04/TenderDeliveryCode-1.04.gc">1</cbc:SubmissionMethodCode>
+                <cbc:MaximumLotPresentationQuantity>2</cbc:MaximumLotPresentationQuantity>
+                <cbc:MaximumTendererAwardedLotsQuantity>2</cbc:MaximumTendererAwardedLotsQuantity>
+                <cbc:OverThresholdIndicator>false</cbc:OverThresholdIndicator>
+                <cac:DocumentAvailabilityPeriod>
+                    <cbc:EndDate>2026-11-09</cbc:EndDate>
+                    <cbc:EndTime>23:59:00</cbc:EndTime>
+                </cac:DocumentAvailabilityPeriod>
+                <cac:TenderSubmissionDeadlinePeriod>
+                    <cbc:EndDate>2026-11-09</cbc:EndDate>
+                    <cbc:EndTime>23:59:00</cbc:EndTime>
+                    <cbc:Description>La hora de referencia es peninsular </cbc:Description>
+                </cac:TenderSubmissionDeadlinePeriod>
+                <cac:AuctionTerms>
+                    <cbc:AuctionConstraintIndicator>false</cbc:AuctionConstraintIndicator>
+                </cac:AuctionTerms>
+            </cac:TenderingProcess>
+            <cac:LegalDocumentReference>
+                <cbc:ID>3PCAP0147.pdf</cbc:ID>
+                <cac:Attachment>
+                    <cac:ExternalReference>
+                        <cbc:URI>https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&amp;DocumentIdParam=t21uqRHnVEiFyUB0Jrx7Q6fvifYDmHTI9pA9B3%2B3jLmpvbgysqNddyIyiuLxiYClX7F%2Ba3hMOJV9ZeymqmSmLFHJegP/Sl/ilB7Qn3wAezYC1/zDIE0Kw/PWNnLS0Z0z</cbc:URI>
+                        <cbc:DocumentHash>eyOhKm47NS0l+zShhActeTKCZBU=</cbc:DocumentHash>
+                    </cac:ExternalReference>
+                </cac:Attachment>
+            </cac:LegalDocumentReference>
+            <cac:TechnicalDocumentReference>
+                <cbc:ID>PPT 0147 fe.pdf</cbc:ID>
+                <cac:Attachment>
+                    <cac:ExternalReference>
+                        <cbc:URI>https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet?cifrado=QUC1GjXXSiLkydRHJBmbpw%3D%3D&amp;DocumentIdParam=J4VYxvIYvy/5WqFVzElKGD9DfdV9sqLEoQiuklf7oah9IS/S5ozmB%2BrKPjZ%2BJuv6ICO5flmOfjNF5St3kksnV83dxl8XT2X8FtNz8CemTs8ZyAJWGsSt0OzTSTyw9JAs</cbc:URI>
+                        <cbc:DocumentHash>cxGaCy0i+W/kbtpZnPUmEifq7B4=</cbc:DocumentHash>
+                    </cac:ExternalReference>
+                </cac:Attachment>
+            </cac:TechnicalDocumentReference>
+            <cac-place-ext:ValidNoticeInfo>
+                <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CD</cbc-place-ext:NoticeTypeCode>
+                <cac-place-ext:AdditionalPublicationStatus>
+                    <cbc-place-ext:PublicationMediaName>Perfil del contratante</cbc-place-ext:PublicationMediaName>
+                    <cac-place-ext:AdditionalPublicationDocumentReference>
+                        <cbc:IssueDate>2026-10-23</cbc:IssueDate>
+                    </cac-place-ext:AdditionalPublicationDocumentReference>
+                </cac-place-ext:AdditionalPublicationStatus>
+            </cac-place-ext:ValidNoticeInfo>
+            <cac-place-ext:ValidNoticeInfo>
+                <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CN</cbc-place-ext:NoticeTypeCode>
+                <cac-place-ext:AdditionalPublicationStatus>
+                    <cbc-place-ext:PublicationMediaName>Perfil del contratante</cbc-place-ext:PublicationMediaName>
+                    <cac-place-ext:AdditionalPublicationDocumentReference>
+                        <cbc:IssueDate>2026-10-23</cbc:IssueDate>
+                    </cac-place-ext:AdditionalPublicationDocumentReference>
+                </cac-place-ext:AdditionalPublicationStatus>
+            </cac-place-ext:ValidNoticeInfo>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-5326bc37-5017-4e9d-938a-d254b6800404</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/GeneralContractDocuments-2.08.gc">ZZZ</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-5326bc37-5017-4e9d-938a-d254b6800404</cbc:URI>
+                            <cbc:FileName>resolución rectificando resolución de inicio </cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-843a8aa8-83cb-4371-8401-1eb2073a73d8</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/GeneralContractDocuments-2.08.gc">9</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-843a8aa8-83cb-4371-8401-1eb2073a73d8</cbc:URI>
+                            <cbc:FileName>Memoria justificativa</cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-e5b04551-618b-4496-b0d8-f3e020ad3e01</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/GeneralContractDocuments-2.08.gc">8</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-e5b04551-618b-4496-b0d8-f3e020ad3e01</cbc:URI>
+                            <cbc:FileName>Acuerdo de iniciación del expediente</cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-88c0b651-f5cd-48f3-8d41-a5eb6953576f</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/GeneralContractDocuments-2.08.gc">11</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-88c0b651-f5cd-48f3-8d41-a5eb6953576f</cbc:URI>
+                            <cbc:FileName>Documento de aprobación del expediente</cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-b58530ec-aed1-4b62-be80-1534bec7902f</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/GeneralContractDocuments-2.08.gc">ZZZ</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-b58530ec-aed1-4b62-be80-1534bec7902f</cbc:URI>
+                            <cbc:FileName>informe categorización </cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-775756dc-5e71-4a21-ac52-6671bcaeba05</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/GeneralContractDocuments-2.08.gc">ZZZ</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-775756dc-5e71-4a21-ac52-6671bcaeba05</cbc:URI>
+                            <cbc:FileName>ASEI</cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-f601eb72-1eae-478f-8fc0-831b18579915</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/GeneralContractDocuments-2.08.gc">ZZZ</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-f601eb72-1eae-478f-8fc0-831b18579915</cbc:URI>
+                            <cbc:FileName>DGTDSP</cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+        </cac-place-ext:ContractFolderStatus>
+    </entry>

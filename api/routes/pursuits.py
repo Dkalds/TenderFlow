@@ -1515,7 +1515,7 @@ async def post_pursuit_adjunto(
     declarado = request.headers.get("content-length")
     if declarado and declarado.isdigit() and int(declarado) > MAX_BYTES:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"El fichero declara {declarado} bytes y el tope es {MAX_BYTES}.",
         )
 
@@ -1544,9 +1544,7 @@ async def post_pursuit_adjunto(
     except AttachmentStoreUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except AttachmentTooLarge as exc:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_413_CONTENT_TOO_LARGE, detail=str(exc)) from exc
     except AttachmentTypeRejected as exc:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=str(exc)

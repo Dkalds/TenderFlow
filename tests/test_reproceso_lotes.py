@@ -21,6 +21,7 @@ from scraper.reproceso_lotes import asignaciones_de_entry, meses_entre, reproces
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "placsp" / "18_lote_en_proyecto_adjudicado.xml"
 _LIC = "2026-MULTILOTE-0018"
+_FIXTURE_REAL = Path(__file__).parent / "fixtures" / "placsp" / "25_multilote_real_por_lote.xml"
 
 
 def _entry() -> Any:
@@ -57,6 +58,27 @@ def test_saca_las_adjudicaciones_con_lote_de_un_expediente_objetivo() -> None:
 
 def test_ignora_la_entry_de_un_expediente_que_no_es_objetivo() -> None:
     assert asignaciones_de_entry(_entry(), {"OTRO"}) == []
+
+
+def test_el_xml_real_publica_el_lote_de_cada_adjudicacion() -> None:
+    """Expediente real de PLACSP (ZIP de 2026-06): los cuatro resultados dicen su lote.
+
+    Es uno de los que el 2026-10-24 seguían en producción con adjudicaciones sin
+    ``lote_id``: las de los lotes 2 y 4 lo tenían y las de los lotes 1 y 3 no. El
+    XML lo publica en los cuatro; lo que separa a unas de otras es que 65.500 y
+    100.369 caben exactos en ``real`` y 188.800,9 y 24.545,6 no, que es el
+    emparejamiento que corrige ``_ASIGNAR_SQL``.
+    """
+    entry = etree.fromstring(_FIXTURE_REAL.read_bytes())
+
+    asignaciones = asignaciones_de_entry(entry, {"B070005/2022-0071"})
+
+    assert [(a.nif, a.importe_adjudicado, a.lote_numero) for a in asignaciones] == [
+        ("B74172537", 188800.9, "1"),
+        ("B22171151", 65500.0, "2"),
+        ("B22171151", 24545.6, "3"),
+        ("B88557061", 100369.0, "4"),
+    ]
 
 
 # ─── Contra Postgres ─────────────────────────────────────────────────────────

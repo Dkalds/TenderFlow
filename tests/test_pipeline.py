@@ -517,8 +517,7 @@ class TestClassifierHolder:
         monkeypatch.setattr(config.settings, "ML_TECH_ENABLED", False)
 
         with patch("services.ml.sap_classifier.SAPClassifier") as mock_clf:
-            mock_clf.ensure_downloaded = MagicMock()
-            mock_clf.is_available = MagicMock(return_value=False)
+            mock_clf.resolve_artifact = MagicMock(return_value=None)
 
             from scraper.pipeline import _load_classifiers
 
@@ -534,8 +533,7 @@ class TestClassifierHolder:
         monkeypatch.setattr(config.settings, "ML_TECH_ENABLED", False)
 
         with patch("services.ml.sap_classifier.SAPClassifier") as mock_clf:
-            mock_clf.ensure_downloaded = MagicMock()
-            mock_clf.is_available = MagicMock(return_value=False)
+            mock_clf.resolve_artifact = MagicMock(return_value=None)
 
             from scraper.pipeline import _load_classifiers
 
@@ -555,8 +553,7 @@ class TestClassifierHolder:
         _load_classifiers.cache_clear()
 
         with patch("services.ml.sap_classifier.SAPClassifier") as mock_clf:
-            mock_clf.ensure_downloaded = MagicMock()
-            mock_clf.is_available = MagicMock(return_value=False)
+            mock_clf.resolve_artifact = MagicMock(return_value=None)
             result = _get_ml_clf()
             assert result is None
 
@@ -568,8 +565,7 @@ class TestClassifierHolder:
         monkeypatch.setattr(config.settings, "ML_TECH_ENABLED", False)
 
         with patch("services.ml.sap_classifier.SAPClassifier") as mock_clf:
-            mock_clf.ensure_downloaded = MagicMock()
-            mock_clf.is_available = MagicMock(return_value=False)
+            mock_clf.resolve_artifact = MagicMock(return_value=None)
 
             _load_classifiers.cache_clear()
             holder1 = _load_classifiers()
@@ -577,3 +573,46 @@ class TestClassifierHolder:
             holder2 = _load_classifiers()
             # Después de clear, se crea un nuevo objeto
             assert holder1 is not holder2
+
+    def test_la_ingesta_carga_el_artefacto_que_resuelve_el_registro(self, monkeypatch, tmp_path):
+        """`resolve_artifact` + `load(ruta)`, no `ensure_downloaded` + `load()`.
+
+        Con la versión activa nombrada por contenido, `load()` sin ruta no
+        encuentra su `path` en el runner y sirve el `sap_classifier.pkl` de
+        nombre fijo que `ensure_downloaded` acaba de bajar, sin cotejar nada.
+        """
+        import config
+        from scraper.pipeline import _load_classifiers
+
+        monkeypatch.setattr(config.settings, "ML_TECH_ENABLED", False)
+        artefacto = tmp_path / "sap_classifier-0123456789ab.pkl"
+        cargado = MagicMock(_threshold=0.5)
+
+        with patch("services.ml.sap_classifier.SAPClassifier") as mock_clf:
+            mock_clf.resolve_artifact = MagicMock(return_value=artefacto)
+            mock_clf.load = MagicMock(return_value=cargado)
+            _load_classifiers.cache_clear()
+            holder = _load_classifiers()
+
+        assert holder.ml is cargado
+        mock_clf.load.assert_called_once_with(artefacto)
+        mock_clf.ensure_downloaded.assert_not_called()
+        _load_classifiers.cache_clear()
+
+    def test_un_artefacto_que_no_cuadra_deja_la_ingesta_sin_modelo(self, monkeypatch):
+        """La ingesta sigue (las TI sin keyword van a `cpv_ti_universe`), pero
+        no sirve el modelo equivocado ni cae a otro."""
+        import config
+        from scraper.pipeline import _load_classifiers
+        from shared.model_artifacts import ModelArtifactMismatch
+
+        monkeypatch.setattr(config.settings, "ML_TECH_ENABLED", False)
+
+        with patch("services.ml.sap_classifier.SAPClassifier") as mock_clf:
+            mock_clf.resolve_artifact = MagicMock(side_effect=ModelArtifactMismatch("no cuadra"))
+            _load_classifiers.cache_clear()
+            holder = _load_classifiers()
+
+        assert holder.ml is None
+        mock_clf.load.assert_not_called()
+        _load_classifiers.cache_clear()

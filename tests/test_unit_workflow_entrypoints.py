@@ -410,20 +410,25 @@ def test_training_run_entrena_sin_activar_y_no_precomputa():
         seed.assert_called_once_with(include_ti=True, spread_months=6)
 
 
-def test_training_run_retira_la_version_activa_antes_de_la_subida():
-    """La subida sustituye el asset de nombre fijo: la activa deja de tener el suyo.
+def test_training_run_no_retira_la_version_activa():
+    """El asset nuevo lleva el sha256 en el nombre: subirlo no sustituye el de
+    la versión activa, así que esta sigue activa —y servida, cotejada— hasta
+    que `activar_publicada` active la nueva.
 
-    Sin versión activa, ningún estado intermedio —ni un fallo a mitad— deja
-    registrado como activo un sha256 que no es el del asset publicado.
+    Hasta 2026-10 se retiraba aquí, porque la subida pisaba `sap_classifier.pkl`:
+    entre los dos pasos el modelo se servía sin cotejar, y un fallo de la subida
+    tras borrar el asset dejaba a los runners sin modelo.
     """
     with (
         patch("scraper.seed_negatives.seed_negatives"),
         patch("services.ml.classifier_training.train_from_db", return_value=_METRICAS_PENDIENTES),
         patch("db.model_registry.deactivate", return_value=1) as deactivate,
+        patch("db.model_registry.activate_version") as activate,
     ):
         training_job.run()
 
-    deactivate.assert_called_once_with("sap_classifier")
+    deactivate.assert_not_called()
+    activate.assert_not_called()
 
 
 def test_training_run_no_toca_la_version_activa_si_el_gate_rechaza():
@@ -452,32 +457,43 @@ def test_promocionado_distingue_los_desenlaces():
 # -- activar_publicada: el paso de después de la subida ----------------------
 
 _SHA_CANDIDATO = "ab" * 32
+_ASSET_CANDIDATO = f"sap_classifier-{_SHA_CANDIDATO[:12]}.pkl"
 
 
 def _fila_candidata(version: int = 3) -> dict[str, object]:
     return {
         "name": "sap_classifier",
         "version": version,
-        "path": "/home/runner/work/TenderFlow/TenderFlow/data/models/sap_classifier.pkl",
+        "path": f"/home/runner/work/TenderFlow/TenderFlow/data/models/{_ASSET_CANDIDATO}",
         "sha256": _SHA_CANDIDATO,
         "is_active": 0,
     }
 
 
 def _release_con(sha256: str | None) -> list[dict[str, object]]:
-    """La Release *latest* tal como la devuelve la API tras `gh release upload`."""
+    """Las Releases tal como las devuelve la API tras `gh release upload`.
+
+    `ml-models` con el asset del candidato, y *latest* (`v1.0.0-models`) con el
+    `sap_classifier.pkl` de nombre fijo de mayo, que no debe confundir al
+    cotejo: se busca por el nombre registrado.
+    """
     return [
         {
-            "id": 2,
-            "tag_name": "v1.0.0-models",
+            "id": 1,
+            "tag_name": "ml-models",
             "assets": [
                 {
-                    "name": "sap_classifier.pkl",
-                    "id": 21,
+                    "name": _ASSET_CANDIDATO,
+                    "id": 11,
                     "digest": f"sha256:{sha256}" if sha256 else None,
                 }
             ],
-        }
+        },
+        {
+            "id": 2,
+            "tag_name": "v1.0.0-models",
+            "assets": [{"name": "sap_classifier.pkl", "id": 21, "digest": "sha256:" + "5d" * 32}],
+        },
     ]
 
 
@@ -528,7 +544,7 @@ def test_activa_solo_despues_de_ver_el_artefacto_publicado():
     assert esperas == []
     assert resultado["version"] == 3
     assert resultado["sha256"] == _SHA_CANDIDATO
-    assert resultado["release"] == "v1.0.0-models"
+    assert resultado["release"] == "ml-models"
     assert resultado["ml_proba"]["updated"] == 24113
 
 
@@ -649,9 +665,50 @@ def test_salida_github_permite_al_workflow_distinguir_rechazo_de_fallo(tmp_path,
     assert salida["version"] == "4"
     assert "recall_no_keyword" in salida["rejection_reasons"]
     assert salida["n_train"] == "900"
+    # Rechazado: nada que subir.
+    assert salida["artefactos"] == ""
     # Una sola línea por clave: un salto dentro del valor rompería el parseo
     # de `$GITHUB_OUTPUT`.
-    assert len(destino.read_text(encoding="utf-8").strip().splitlines()) == 6
+    assert len(destino.read_text(encoding="utf-8").strip().splitlines()) == 7
+
+
+def test_salida_github_lleva_el_artefacto_con_nombre_por_contenido(tmp_path, monkeypatch):
+    """`artefactos` es lo que `train-model.yml` sube: el `.pkl` registrado y su
+    `.sha256`, por ruta y con el sha256 en el nombre."""
+    pkl = tmp_path / _ASSET_CANDIDATO
+    pkl.write_bytes(b"modelo")
+    pkl.with_suffix(".sha256").write_text(_SHA_CANDIDATO, encoding="utf-8")
+    destino = tmp_path / "gh_output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(destino))
+
+    training_job._emitir_salida_github(
+        {
+            **_METRICAS_PENDIENTES,
+            "promotion": {**_METRICAS_PENDIENTES["promotion"], "artefacto": str(pkl)},
+        }
+    )
+    salida = dict(linea.split("=", 1) for linea in destino.read_text(encoding="utf-8").splitlines())
+
+    assert salida["promoted"] == "true"
+    # El valor entero y no `split()`: `tmp_path` puede llevar espacios fuera de
+    # CI; las rutas del runner no.
+    assert salida["artefactos"] == f"{pkl} {pkl.with_suffix('.sha256')}"
+
+
+def test_artefactos_publicados_no_inventa_rutas(tmp_path):
+    """Sin promoción, sin `artefacto` o sin fichero en disco no hay nada que
+    subir: mejor un `promoted=true` sin artefactos, que el workflow para, que
+    subir un nombre que no se registró."""
+    assert training_job.artefactos_publicados(_METRICAS_RECHAZADAS) == []
+    assert training_job.artefactos_publicados(_METRICAS_PENDIENTES) == []
+    ausente = {
+        **_METRICAS_PENDIENTES,
+        "promotion": {
+            **_METRICAS_PENDIENTES["promotion"],
+            "artefacto": str(tmp_path / _ASSET_CANDIDATO),
+        },
+    }
+    assert training_job.artefactos_publicados(ausente) == []
 
 
 def test_salida_github_es_no_op_fuera_de_actions(monkeypatch):

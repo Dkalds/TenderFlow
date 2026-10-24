@@ -4,6 +4,17 @@ name: Train & publish ML model
 # en ese orden: entrenar → subir → comprobar lo subido → activar. Es el único
 # camino que publica el modelo, así que también es el único que lo activa.
 #
+# Dónde y con qué nombre (2026-10): en la Release de tag fijo `ml-models`, la
+# de los predictivos, y con el sha256 en el nombre
+# (`sap_classifier-<sha12>.pkl`, `shared.model_artifacts.content_addressed_path`).
+# Antes subía `sap_classifier.pkl` a *latest* borrando el asset anterior: la
+# subida sustituía el de la versión activa, así que «Train model» la retiraba
+# primero, el modelo se servía sin cotejar hasta la activación y un fallo de
+# la subida, ya borrado el asset, dejaba a los runners sin modelo. Ahora la
+# versión activa sigue activa, y servible, hasta que se activa la nueva. El
+# `sap_classifier.pkl` de nombre fijo de `v1.0.0-models` (mayo) no se toca: es
+# lo que se sirve mientras no haya versión activa.
+#
 # Lo lanza una persona, o el paso semanal `sap_active_learning` del cierre de
 # `scrape-daily.yml` cuando hay etiquetas humanas que el último entrenamiento
 # no vio (`scheduler/concept_drift.py::maybe_retrain_classifier`). Ese paso
@@ -22,8 +33,9 @@ on:
 permissions:
   contents: write  # necesario para crear/actualizar releases
 
-# Dos entrenamientos a la vez retirarían, subirían y activarían cada uno su
-# versión sobre el mismo asset de nombre fijo. El segundo espera.
+# Dos entrenamientos a la vez numerarían y activarían cada uno su versión sin
+# saber del otro, y el último en activar ganaría aunque fuera el peor. El
+# segundo espera.
 concurrency:
   group: train-model
   cancel-in-progress: false
@@ -58,8 +70,9 @@ jobs:
 
       # Entrena y pasa el gate, pero NO activa: el candidato que lo supera queda
       # registrado sin activar (`promoted=true`) hasta «Activar la versión
-      # publicada». Si lo supera, este paso deja además el modelo sin versión
-      # activa, porque la subida va a sustituir el asset de la que hubiera.
+      # publicada», y emite `artefactos` (su `.pkl` con el sha256 en el nombre
+      # y su `.sha256`). No toca la versión activa: el asset nuevo tiene otro
+      # nombre y no sustituye el suyo.
       - name: Train model
         id: train
         env:
@@ -73,9 +86,9 @@ jobs:
           LOG_FORMAT: json
         run: python -m scheduler.jobs.ml_training_run
 
-      # El gate de promoción (`services/ml/promotion.py`) solo escribe
-      # `sap_classifier.pkl` si el candidato lo supera, así que su ausencia es
-      # un desenlace legítimo y no un fallo. Sin este corte, el `ls` de abajo
+      # El gate de promoción (`services/ml/promotion.py`) solo escribe el
+      # artefacto si el candidato lo supera, así que su ausencia es un
+      # desenlace legítimo y no un fallo. Sin este corte, el `ls` de abajo
       # moría con "cannot access" sin explicar nada.
       - name: Report rejected candidate
         if: steps.train.outputs.promoted != 'true'
@@ -94,7 +107,7 @@ jobs:
             echo "## Modelo NO publicado"
             echo
             echo "El entrenamiento terminó correctamente, pero el candidato no superó el"
-            echo "gate de promoción, así que la Release conserva el modelo anterior."
+            echo "gate de promoción: no se subió nada y lo que se sirve no cambia."
             echo
             echo "- Versión registrada (sin activar): \`$VERSION\`"
             echo "- Motivos: \`$REASONS\`"
@@ -106,55 +119,77 @@ jobs:
 
       - name: Verify model artifact
         if: steps.train.outputs.promoted == 'true'
-        run: |
-          ls -lh data/models/sap_classifier.pkl
-          cat data/models/sap_classifier.sha256
-
-      - name: Get or create latest release tag
-        id: release_tag
-        if: steps.train.outputs.promoted == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          ARTEFACTOS: ${{ steps.train.outputs.artefactos }}
         run: |
-          # `gh release view` sin argumentos, no `gh release list --limit 1`:
-          # el primero resuelve la release marcada como **latest**, que es la
-          # que consulta `shared/release_assets.py` (`/releases/latest`); el
-          # segundo devuelve la más reciente por fecha de creación. Hoy
-          # coinciden porque solo hay una release, pero en cuanto haya dos el
-          # `.pkl` acabaría en un tag que `ensure_downloaded` no mira.
-          TAG=$(gh release view --json tagName -q '.tagName' 2>/dev/null || echo "")
-          if [ -z "$TAG" ]; then
-            TAG="v0.0.0-model"
-            echo "No releases found, will create $TAG"
+          set -euo pipefail
+          # `promoted=true` sin `artefactos` es un fallo de verdad: el gate dio
+          # el candidato por bueno y no dejó nada que subir.
+          if [ -z "$ARTEFACTOS" ]; then
+            echo "::error::El candidato pasó el gate pero no hay artefacto que subir"
+            exit 1
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          # shellcheck disable=SC2086 -- rutas sin espacios, split intencional
+          ls -lh $ARTEFACTOS
+          for ruta in $ARTEFACTOS; do
+            case "$ruta" in *.sha256) cat "$ruta"; echo ;; esac
+          done
 
       - name: Upload model to release
         if: steps.train.outputs.promoted == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.release_tag.outputs.tag }}
+          ARTEFACTOS: ${{ steps.train.outputs.artefactos }}
+          # Mismo literal que `shared.release_assets.ML_MODELS_RELEASE_TAG`, la
+          # primera Release en la que busca shared/model_artifacts.py. Lo fija
+          # tests/test_unit_train_model_workflow.py: si divergen, se publica
+          # donde nadie busca primero.
+          TAG: ml-models
           VERSION: ${{ steps.train.outputs.version }}
           RECALL_NO_KEYWORD: ${{ steps.train.outputs.recall_no_keyword }}
           N_TRAIN: ${{ steps.train.outputs.n_train }}
           N_TEST: ${{ steps.train.outputs.n_test }}
         run: |
-          # `TAG` llega por `env`, no interpolado: una expresión de Actions
-          # dentro de `run:` se sustituye antes de que bash lea la línea.
-          # Eliminar asset anterior si existe (gh ignora si no existe)
-          gh release delete-asset "$TAG" sap_classifier.pkl --yes 2>/dev/null || true
-          gh release delete-asset "$TAG" sap_classifier.sha256 --yes 2>/dev/null || true
-          # Subir nuevos assets
-          gh release upload "$TAG" \
-            data/models/sap_classifier.pkl \
-            data/models/sap_classifier.sha256 \
-            --clobber
-          echo "Model uploaded to release $TAG"
+          set -euo pipefail
+          # Los valores llegan por `env`, no interpolados: una expresión de
+          # Actions dentro de `run:` se sustituye antes de que bash lea la línea.
+          #
+          # Tag fijo y nunca *latest* (`--latest=false`), como en
+          # train-predictivos.yml, que normalmente ya la ha creado. La crea
+          # `github.token`, así que su `release: published` no dispara
+          # `release-sdk.yml`.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "No existe la Release $TAG; creándola"
+            gh release create "$TAG" --title "ML Models" \
+              --notes "Artefactos de modelo con el sha256 en el nombre (clasificador SAP, baja, retención). Los publican train-model.yml y train-predictivos.yml; no es una release de software." \
+              --latest=false
+          fi
+          # Sin `gh release delete-asset`: el nombre lleva el hash del
+          # contenido, así que no hay asset anterior que retirar y el de la
+          # versión activa sigue en su sitio. `--clobber` solo puede reescribir
+          # los mismos bytes; se conserva para que relanzar no falle.
+          # shellcheck disable=SC2086 -- rutas sin espacios, split intencional
+          gh release upload "$TAG" $ARTEFACTOS --clobber
+          echo "Artefactos publicados en $TAG: $ARTEFACTOS"
+
+          # `gh release upload` sale 0 aunque el asset acabe con otro nombre.
+          # Los procesos piden el asset por el nombre EXACTO registrado en
+          # model_versions: se comprueba nombre a nombre. El sha256 lo coteja
+          # «Activar la versión publicada».
+          PUBLICADOS=$(gh release view "$TAG" --json assets -q '.assets[].name')
+          for ruta in $ARTEFACTOS; do
+            nombre=$(basename "$ruta")
+            if ! echo "$PUBLICADOS" | grep -Fqx "$nombre"; then
+              echo "::error::$nombre no aparece en los assets de $TAG"
+              exit 1
+            fi
+          done
           {
             echo "## Modelo publicado"
             echo
             echo "- Release: \`$TAG\`"
             echo "- Versión: \`$VERSION\`"
+            for ruta in $ARTEFACTOS; do echo "- Asset: \`$(basename "$ruta")\`"; done
             echo "- recall_no_keyword: \`$RECALL_NO_KEYWORD\`"
             echo "- n_train / n_test: \`$N_TRAIN\` / \`$N_TEST\`"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -172,10 +207,10 @@ jobs:
       # `ModelArtifactMismatch`: lo mismo que ocurrió el 2026-09-29 por el
       # camino del reentrenamiento automático.
       #
-      # Si este paso falla, el modelo queda SIN versión activa («Train model»
-      # ya retiró la anterior) y los runners sirven el asset de nombre fijo
-      # que haya en la Release: degradado, no roto. Relanzar el workflow lo
-      # resuelve; ver docs/runbooks/model-rollback.md.
+      # Si este paso (o la subida) falla, no cambia lo que se sirve: sigue
+      # activa la versión que lo estuviera, con su asset intacto, o —sin
+      # versión activa— el `sap_classifier.pkl` de nombre fijo. Relanzar el
+      # workflow lo resuelve; ver docs/runbooks/model-rollback.md.
       - name: Activar la versión publicada
         if: steps.train.outputs.promoted == 'true'
         env:
