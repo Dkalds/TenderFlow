@@ -252,6 +252,8 @@ const FABRICAS: readonly Fabrica[] = [
       { nombre: "pursuitKeys.direccionCarga", clave: pursuitKeys.direccionCarga(21) },
       { nombre: "pursuitKeys.actividad", clave: pursuitKeys.actividad(21, null) },
       { nombre: "pursuitKeys.kit", clave: pursuitKeys.kit(7, 21) },
+      { nombre: "pursuitKeys.goNoGoTodas", clave: pursuitKeys.goNoGoTodas },
+      { nombre: "pursuitKeys.goNoGo", clave: pursuitKeys.goNoGo(7) },
       { nombre: "pursuitKeys.cartera", clave: pursuitKeys.cartera(21) },
     ],
   },

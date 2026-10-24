@@ -52,6 +52,7 @@ vi.mock("@/components/pursuits/kit-presentacion", () => ({ KitPresentacionPanel:
 vi.mock("@/components/etiquetas/etiquetas-objeto", () => ({ EtiquetaChips: () => null, EtiquetasEditor: () => null }));
 vi.mock("../_components/decision-comite", () => ({ DecisionComite: () => null }));
 vi.mock("../_components/ficha-datos", () => ({ FichaDatos: () => null }));
+vi.mock("../_components/matriz-go-no-go", () => ({ MatrizGoNoGo: () => null }));
 vi.mock("../_components/path-fases", () => ({ PathFases: () => null }));
 vi.mock("../_components/proxima-accion", () => ({ ProximaAccion: () => null }));
 vi.mock("../_components/salida-fase", () => ({ SalidaDeFase: () => null }));

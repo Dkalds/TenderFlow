@@ -23,6 +23,7 @@ test.use({ viewport: { width: 1440, height: 900 } });
 
 const TITULO = SEED_LICITACION.tituloRadar;
 const MOTIVO = "Encaja con la práctica de ERP y el plazo da para preparar la oferta.";
+const MOTIVO_ENCAJE = "Es la línea de negocio principal del equipo.";
 const TAREA = "Pedir el certificado de solvencia técnica";
 
 test("una oportunidad va del Radar a la oferta en preparación, con su decisión y su tarea", async ({ page }) => {
@@ -62,6 +63,29 @@ test("una oportunidad va del Radar a la oferta en preparación, con su decisión
   const empezarOferta = page.getByRole("button", { name: "Empezar la oferta" });
   await expect(empezarOferta).toBeDisabled();
   await expect(page.getByText("Preparar o presentar una oferta exige la decisión GO.")).toBeVisible();
+
+  // ── La matriz go/no-go: un criterio puntuado, con su motivo ──────────────
+  // Sin nada puntuado no hay recomendación; con un criterio en 4 la hay, y es
+  // provisional porque se calculó sobre uno de cinco.
+  const matriz = page.getByRole("region", { name: "Matriz go/no-go" });
+  await expect(matriz.getByText("Sin criterios puntuados")).toBeVisible();
+  await matriz
+    .getByRole("group", { name: "Puntuación de «Encaje estratégico»" })
+    .getByRole("button", { name: "4", exact: true })
+    .click();
+  await matriz.getByLabel("Motivo de «Encaje estratégico»").fill(MOTIVO_ENCAJE);
+  const puntuada = await escritura(page, "PUT", /\/api\/v1\/pursuits\/\d+\/go-no-go/, () =>
+    matriz.getByRole("button", { name: "Guardar «Encaje estratégico»" }).click(),
+  );
+  expect(puntuada.status(), "PUT de la puntuación").toBe(200);
+  expect(JSON.parse(puntuada.request().postData() ?? "{}")).toMatchObject({
+    criterio: "encaje",
+    puntuacion: 4,
+    motivo: MOTIVO_ENCAJE,
+  });
+  await expect(matriz.getByText("Recomienda GO")).toBeVisible();
+  await expect(matriz.getByText("1 de 5 puntuados")).toBeVisible();
+  await expect(matriz.getByText(/Provisional: calculada solo sobre 1 de 5 criterios/)).toBeVisible();
 
   // ── La decisión, con su motivo ───────────────────────────────────────────
   const decision = page.getByRole("region", { name: "Decisión del comité" });
@@ -130,7 +154,7 @@ function rutaApi(rutaFicha: string): RegExp {
  */
 async function escritura(
   page: Page,
-  metodo: "POST" | "PATCH",
+  metodo: "POST" | "PUT" | "PATCH",
   ruta: RegExp,
   accion: () => Promise<void>,
 ): Promise<Response> {

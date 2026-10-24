@@ -18,7 +18,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { gobiernoOrgKeys } from "@/lib/query-keys";
+import { gobiernoOrgKeys, pursuitKeys } from "@/lib/query-keys";
 
 export type PesosGoNoGo = Schemas["GoNoGoWeightsOut"];
 export type CriterioGoNoGo = Schemas["GoNoGoCriterioOut"];
@@ -47,7 +47,13 @@ export function useGuardarPesosGoNoGo(organizationId: number) {
       ),
     onSuccess: (guardados) => {
       queryClient.setQueryData(gobiernoOrgKeys.pesosGoNoGo(organizationId), guardados);
-      return queryClient.invalidateQueries({ queryKey: gobiernoOrgKeys.all });
+      // Cambiar los pesos recalcula el total y la recomendación de la matriz de
+      // cada oportunidad (`GET /pursuits/{id}/go-no-go`): sin invalidar su
+      // prefijo, la ficha enseñaría una puntuación con los pesos de antes.
+      return Promise.all([
+        queryClient.invalidateQueries({ queryKey: gobiernoOrgKeys.all }),
+        queryClient.invalidateQueries({ queryKey: pursuitKeys.goNoGoTodas }),
+      ]);
     },
   });
 }

@@ -24,6 +24,7 @@ import { ColumnaDatos, type Editable } from "./_components/columna-datos";
 import { DecisionComite } from "./_components/decision-comite";
 import { FichaEsqueleto } from "./_components/ficha-esqueleto";
 import { HistorialFicha } from "./_components/historial-ficha";
+import { MatrizGoNoGo } from "./_components/matriz-go-no-go";
 import { PathFases } from "./_components/path-fases";
 import { PrecargaFicha, idDeRuta } from "./_components/precarga-ficha";
 import { SalidaDeFase } from "./_components/salida-fase";
@@ -220,6 +221,7 @@ export default function OpportunityDetailPage() {
               {/* Lo que sostiene la decisión y el trabajo de la oferta, lo que
                   ha pasado y, plegado, el formulario entero. */}
               <div className="flex min-w-0 flex-col gap-3.5 xl:col-start-1">
+                <MatrizGoNoGo pursuit={pursuit} />
                 <ChecklistGoNoGo
                   pursuitId={pursuit.id}
                   licitacionId={pursuit.licitacion_id}
