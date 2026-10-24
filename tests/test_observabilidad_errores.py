@@ -8,8 +8,10 @@ healthcheck, y que cada camino instrumentado incrementa su contador.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -115,3 +117,51 @@ def test_la_regla_usa_el_umbral_del_codigo(alerta: str) -> None:
     assert regla["expr"].rstrip().endswith(f">= {UMBRAL_REPETIDO}")
     assert "sum by (paso)" in regla["expr"]
     assert regla["annotations"]["summary"]
+
+
+# ── db/connection.py ─────────────────────────────────────────────────────────
+
+
+def test_un_ping_fallido_cuenta(monkeypatch: pytest.MonkeyPatch) -> None:
+    import db.connection as conn_mod
+
+    def _caida() -> Iterator[Any]:
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(conn_mod, "connect_read", _caida)
+    antes = _valor("db_connection_errores_total", "ping")
+
+    assert conn_mod.ping() is False
+
+    assert _valor("db_connection_errores_total", "ping") == antes + 1
+
+
+def test_devolver_una_conexion_que_el_pool_rechaza_cuenta_y_la_cierra() -> None:
+    import db.connection as conn_mod
+
+    pool = MagicMock()
+    pool.putconn.side_effect = ValueError("it doesn't come from any pool")
+    raw = MagicMock()
+    adapter = conn_mod._PgConnAdapter(raw, pool=pool)
+    antes = _valor("db_connection_errores_total", "devolver_conexion")
+
+    conn_mod._return_pg_connection(adapter)
+
+    assert _valor("db_connection_errores_total", "devolver_conexion") == antes + 1
+    raw.close.assert_called_once()
+
+
+def test_get_table_columns_solo_absorbe_errores_de_la_base() -> None:
+    """Un ``psycopg.Error`` cae al fallback; un bug propio ya no se disfraza de «sin columnas»."""
+    import psycopg
+
+    import db.connection as conn_mod
+
+    rota = MagicMock()
+    rota.execute.side_effect = psycopg.OperationalError("relation does not exist")
+    assert conn_mod.get_table_columns(rota, "tabla") == set()
+
+    con_bug = MagicMock()
+    con_bug.execute.side_effect = TypeError("bug")
+    with pytest.raises(TypeError):
+        conn_mod.get_table_columns(con_bug, "tabla")

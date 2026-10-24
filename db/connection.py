@@ -32,13 +32,21 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+import psycopg
 from pydantic import SecretStr
 
 from config import settings
+from observability.errores import ContadorDeErrores
 from observability.logging import get_logger
+from observability.runtime_metrics import db_connection_errores_total
 from shared.tenant_context import current_organization
 
 log = get_logger(__name__)
+
+#: ``db_connection_errores_total{paso}``: los fallos que este módulo captura a
+#: propósito (purga del pool, devolución de conexiones, ping…) para que uno
+#: repetido alerte (``DbConnectionErroresCapturados`` en alert_rules.yml).
+_contar_error = ContadorDeErrores("db_connection", db_connection_errores_total)
 
 
 # ---------------------------------------------------------------------------
@@ -183,8 +191,10 @@ class _PgConnAdapter:
         if self._cur:
             try:
                 self._cur.close()
-            except Exception:
-                pass
+            except psycopg.Error:
+                # Cerrar el cursor de una conexión ya rota; la conexión se
+                # cierra justo debajo y el pool la descarta.
+                log.debug("pg_cursor_close_failed", exc_info=True)
         self._conn.close()
 
     def __enter__(self) -> _PgConnAdapter:
@@ -466,6 +476,7 @@ def _purgar_ociosas(*, read_only: bool) -> None:
     try:
         pool.check()
     except Exception:
+        _contar_error("purgar_ociosas")
         log.warning("pg_pool_purga_fallida", pool="read" if read_only else "write", exc_info=True)
 
 
@@ -579,7 +590,8 @@ def pool_stats() -> dict[str, dict[str, int]]:
         try:
             stats[name] = dict(pool.get_stats())
         except Exception:
-            log.debug("pg_pool_stats_unavailable", pool=name)
+            _contar_error("pool_stats")
+            log.warning("pg_pool_stats_unavailable", pool=name, exc_info=True)
     return stats
 
 
@@ -595,7 +607,11 @@ def _close_pg_pool() -> None:
             try:
                 pool.close()
             except Exception:
-                pass
+                # El proceso suele estar terminando (lifespan de la API, fin de
+                # un job), así que no se propaga; pero un cierre que falla
+                # siempre es un pool que no suelta sus conexiones.
+                _contar_error("cerrar_pool")
+                log.warning("pg_pool_close_failed", pool=pool.name, exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -638,15 +654,18 @@ def get_table_columns(conn: Any, table: str) -> set[str]:
         rows = cur.fetchall()
         if rows:
             return {r[0] for r in rows}
-    except Exception:
-        pass
+    except psycopg.Error:
+        # El contrato de la función: si no se puede inspeccionar, se prueba el
+        # fallback y, si tampoco, conjunto vacío. Un error de programación (no
+        # de la base) sí se propaga.
+        log.debug("table_columns_information_schema_failed", table=table, exc_info=True)
     # Fallback: SELECT * LIMIT 0
     try:
         cur = conn.execute(f"SELECT * FROM {table} LIMIT 0")
         if cur.description:
             return {d[0] for d in cur.description}
-    except Exception:
-        pass
+    except psycopg.Error:
+        log.debug("table_columns_select_failed", table=table, exc_info=True)
     return set()
 
 
@@ -686,10 +705,15 @@ def _return_pg_connection(adapter: _PgConnAdapter) -> None:
         try:
             pool.putconn(adapter._conn)
         except Exception:
+            # `putconn` no falla por una conexión rota (la descarta él); falla si
+            # la conexión no es de ese pool o el pool ya está cerrado. Raro, y
+            # por eso mismo tiene que verse.
+            _contar_error("devolver_conexion")
+            log.warning("pg_pool_putconn_failed", exc_info=True)
             try:
                 adapter._conn.close()
-            except Exception:
-                pass
+            except psycopg.Error:
+                log.debug("pg_conn_close_failed", exc_info=True)
 
 
 def _get_conn(*, read_only: bool = False) -> Any:
@@ -812,10 +836,11 @@ def _end_tenant_scope_read(conn: _PgConnAdapter) -> None:
     try:
         conn.rollback()
     except Exception:
+        _contar_error("rollback_lectura")
         log.warning("tenant_scope_rollback_failed", exc_info=True)
         try:
             conn._conn.close()
-        except Exception:
+        except psycopg.Error:
             # Cerrar una conexión ya rota puede fallar a su vez; el pool la
             # descartará igual. Queda constancia por si el patrón se repite.
             log.debug("tenant_scope_close_failed", exc_info=True)
@@ -1125,5 +1150,6 @@ def ping() -> bool:
             conn.execute("SELECT 1").fetchone()
         return True
     except Exception:
+        _contar_error("ping")
         log.warning("db_ping_failed", exc_info=True)
         return False
