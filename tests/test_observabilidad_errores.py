@@ -208,3 +208,59 @@ def test_un_presupuesto_que_no_se_alimenta_cuenta() -> None:
         _record_usage(modelo, "openai", {"input_tokens": 100, "output_tokens": 10})
 
     assert _valor("llm_client_errores_total", "presupuesto") == antes + 1
+
+
+# ── scraper/connectors/base.py ───────────────────────────────────────────────
+
+
+def test_un_paso_del_cierre_que_falla_cuenta_y_el_resto_sigue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scraper.connectors import base
+
+    llamados: list[str] = []
+
+    def _roto(**_: object) -> None:
+        raise RuntimeError("dedupe roto")
+
+    monkeypatch.setattr("services.entity_resolution.resolve_all_unlinked", lambda **_: None)
+    monkeypatch.setattr("services.dedupe.detect_duplicates", _roto)
+    monkeypatch.setattr(
+        "services.contract_events.derive_new_events", lambda: llamados.append("eventos")
+    )
+    monkeypatch.setattr("shared.cache_signal.signal_cache_invalidation", lambda: None)
+    antes = _valor("scraper_conector_errores_total", "dedupe")
+
+    base._post_ingestion("pscp")
+
+    assert _valor("scraper_conector_errores_total", "dedupe") == antes + 1
+    assert llamados == ["eventos"]
+    assert _eventos("error_capturado:scraper_conector:dedupe")
+
+
+def test_el_paso_de_documentos_que_falla_cuenta() -> None:
+    from scraper.connectors import base
+
+    def _roto() -> None:
+        raise RuntimeError("plataforma caída")
+
+    antes = _valor("scraper_conector_errores_total", "completar_documentos")
+
+    base._completar_documentos("pscp", _roto)
+
+    assert _valor("scraper_conector_errores_total", "completar_documentos") == antes + 1
+
+
+def test_la_salud_de_la_fuente_que_no_se_escribe_cuenta(monkeypatch: pytest.MonkeyPatch) -> None:
+    from db.repositories.source_health import SourceHealthRepository
+    from scraper.connectors import base
+
+    def _caida(self: object, source_id: str) -> None:
+        raise RuntimeError("BD caída")
+
+    monkeypatch.setattr(SourceHealthRepository, "mark_started", _caida)
+    antes = _valor("scraper_conector_errores_total", "salud_inicio")
+
+    base.record_source_started("pscp")
+
+    assert _valor("scraper_conector_errores_total", "salud_inicio") == antes + 1
