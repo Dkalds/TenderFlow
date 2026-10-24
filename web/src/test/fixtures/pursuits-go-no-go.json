@@ -1,0 +1,58 @@
+{
+  "pursuit_id": 9,
+  "organization_id": 7,
+  "criterios": [
+    {
+      "criterio": "encaje",
+      "etiqueta": "Encaje estratégico",
+      "invertido": false,
+      "peso": 0.3,
+      "puntuacion": 4,
+      "motivo": "Encaja con la práctica de ERP",
+      "author_name": "Ana Soria"
+    },
+    {
+      "criterio": "capacidad",
+      "etiqueta": "Capacidad de ejecución",
+      "invertido": false,
+      "peso": 0.2,
+      "puntuacion": 2,
+      "motivo": null,
+      "author_name": "Ana Soria"
+    },
+    {
+      "criterio": "competencia",
+      "etiqueta": "Posición frente a la competencia",
+      "invertido": false,
+      "peso": 0.2,
+      "puntuacion": 3,
+      "motivo": null,
+      "author_name": "Ana Soria"
+    },
+    {
+      "criterio": "rentabilidad",
+      "etiqueta": "Rentabilidad esperada",
+      "invertido": false,
+      "peso": 0.15,
+      "puntuacion": null,
+      "motivo": null,
+      "author_name": null
+    },
+    {
+      "criterio": "riesgo",
+      "etiqueta": "Riesgo (5 = riesgo bajo)",
+      "invertido": true,
+      "peso": 0.15,
+      "puntuacion": null,
+      "motivo": null,
+      "author_name": null
+    }
+  ],
+  "total": 3.1,
+  "umbral": 3,
+  "recomendacion": "go",
+  "criterios_puntuados": 3,
+  "completa": false,
+  "decision": "no_go",
+  "discrepa": true
+}
