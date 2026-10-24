@@ -202,8 +202,7 @@ def test_un_fallo_del_sondeo_se_loguea_con_el_evento_de_siempre_y_sin_credencial
     """``health_schema_check_failed`` sobrevive a la mudanza de la lógica a ``db/``.
 
     Y su ``error`` llega sin la contraseña, también en la forma
-    ``postgresql+psycopg://`` que construye el sondeo y que ``redact_dsn`` no
-    reconoce.
+    ``postgresql+psycopg://`` que construye el sondeo.
     """
     registro = MagicMock()
     monkeypatch.setattr(health, "log", registro)

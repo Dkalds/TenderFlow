@@ -197,6 +197,17 @@ def test_redact_dsn_masks_password():
     assert "sslmode=verify-full" in red  # se preserva lo no sensible
 
 
+@pytest.mark.parametrize(
+    "esquema", ["postgresql+psycopg", "postgresql+psycopg2", "postgres+asyncpg"]
+)
+def test_redact_dsn_masks_password_with_driver(esquema: str):
+    """La forma con driver que construye SQLAlchemy también se redacta."""
+    resto = "app:s3cr3tPass@db.example:5432/tf"  # pragma: allowlist secret
+    red = redact_dsn(f"fallo: {esquema}://{resto}")
+    assert "s3cr3tPass" not in red
+    assert f"{esquema}://app:***@db.example" in red
+
+
 def test_redact_dsn_noop_without_dsn():
     assert redact_dsn("no hay dsn aquí") == "no hay dsn aquí"
 
