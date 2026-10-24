@@ -234,7 +234,8 @@ _Sin ítems abiertos._
 ### [P1] La identidad de PLACSP no incluye el órgano: dos licitaciones con el mismo número de expediente se pisan
 - **Área:** scraper/connectors/placsp.py y el parser CODICE, carga bulk, `licitaciones.id_externo` y todo lo que lo referencia, services/dedupe.py (`natural_expediente`) y su gemelo en db/repositories/dedupe.py
 - **Problema:** el `id_externo` de las filas `placsp`/`bulk_*` es el `ContractFolderID` sin prefijo ni órgano, y es la PK de `licitaciones`. Cuando dos órganos usan el mismo número de expediente, la segunda licitación sobrescribe a la primera por `ON CONFLICT(id_externo)`. Medido el 2026-10-24 en `licitaciones_history` (fuentes `placsp` y `bulk_%`): **339 de 10.007** `id_externo` con historia tienen dos o más `organo_contratacion` distintos (3,4 %). En una muestra aleatoria de 8, siete eran licitaciones distintas —`2026/LIC/0049`: un servicio web de la Mutua Intercomarcal y un hosting de EGARSAT; `1681/2026`: el Ayuntamiento de Carlet y el de Sanlúcar de Barrameda— y una era un renombre del mismo órgano. En el feed vivo (8 páginas) salieron 67 de 3.646 expedientes compartidos (93 filas, 2,5 %), y en el de agregadas 74 de 7.956 (0,9 %). Las licitaciones pisadas desaparecen del producto sin error: el Radar, la ficha, las adjudicaciones y la analítica ven solo la última que llegó. Y lo que queda mezcla las dos: las adjudicaciones y los documentos no se reemplazan cuando la entrada nueva no trae los suyos, así que una licitación puede heredar el adjudicatario de otro órgano. El RFC cuenta, con órgano **y** título distintos, 379 `id_externo` y 570 pares perdidos (cota inferior: el histórico empieza el 2026-05-22).
-- **Hallazgo aparte, del mismo RFC (§«Riesgos y preguntas abiertas»):** la re-key de PSCP (`v153`) no repuntó `domain_events.aggregate_id`, y hoy hay 1.117 eventos de PSCP huérfanos. Se corrige con la misma fase o antes, por separado.
+- **Hallazgo aparte, del mismo RFC (§«Riesgos y preguntas abiertas»):** la re-key de PSCP (`v153`) no repuntó `domain_events.aggregate_id`, y hoy hay 1.117 eventos de PSCP huérfanos. **Escrito el 2026-10-24, pendiente de aplicar:** `v158_domain_events_pscp_rekey` repunta los 1.095 con una sola licitación `pscp:{uuid}:{codi}` candidata (0 ambiguos) y conserva los 22 que apuntan a 11 licitaciones que ya no existen —probablemente purgadas—. Es idempotente, no toca `payload_json` y su `downgrade` no hace nada. Aplicar con `migrate.yml` (`plan` → `apply`); la consulta de verificación está en su docstring y en `docs/runbooks/rekey-pscp-id-externo.md`. La fase B de este RFC debe llevar `domain_events.aggregate_id` en su lista de referencias.
+- **Más evidencia (2026-10-24, ítem de las adjudicaciones multilote):** 8 adjudicaciones sin lote son de otro órgano con el mismo `ContractFolderID` (`04/2026` CERSA/Pinto, `101/2026` ICEX/Collado Mediano, `36/2026`, `47/2026`, `48/2026`, `49/2026`, `51/2026`, `SUM005/2026` Univ. León/Fund. Univ. La Laguna).
 - **Cómo se arregló en los conectores nuevos:** contratos menores usa `placsp_menores:<ID_PLATAFORMA>:<ContractFolderID>` (rama `claude/mejoras-2026-10-24`; `ID_PLATAFORMA` viene en el 100 % de las entradas y es 1:1 con el órgano), y PSCP ya usaba `pscp:<uuid>:<expediente>`.
 - **Por qué no se cerró en el mismo cambio:** exige cambiar la clave de filas ya escritas y de todo lo que las referencia, URLs públicas incluidas. Es un cambio de persistencia irreversible: RFC y OK del dueño (AGENTS.md §5 y §6). RFC: [2026-10-24-rfc-identidad-placsp-organo-expediente](rfc/2026-10-24-rfc-identidad-placsp-organo-expediente.md) (`draft`).
 - **Acceptance criteria:** los del RFC una vez aprobado; como mínimo, que dos licitaciones de órganos distintos con el mismo expediente convivan (test de integración), que el dedupe con TED siga casando por expediente, que las URLs viejas redirijan, y una consulta que cuente cuántas filas pisadas se recuperan de `licitaciones_history` o de la reingesta.
@@ -320,6 +321,20 @@ _Sin ítems abiertos._
     a una Release fija» de «ml-scoring: verificar en producción el arreglo del
     2026-09-24», y exige que la ingesta resuelva el modelo por
     `resolve_artifact` y no por `ensure_downloaded` + `load()`.
+    **Hecho en código el 2026-10-24:** `promote_if_better` publica y registra
+    `sap_classifier-<sha12>.pkl` (`shared.model_artifacts.content_addressed_path`,
+    la misma regla que `rename_to_content_address`); `train-model.yml` lo sube
+    a la Release `ml-models` sin `delete-asset` ni retirar la versión activa
+    (entrenar → verificar artefactos → subir → activar → medir); la ingesta
+    carga por `SAPClassifier.resolve_artifact()` + `load(ruta)` y la cola de
+    feedback por `api.model_cache.get_classifier()`. Sin versión activa se
+    sigue sirviendo el `sap_classifier.pkl` de mayo de `v1.0.0-models`, que
+    `ensure_downloaded` busca ahora con `locate_release_asset`. Queda verlo en
+    la primera ejecución de `train-model.yml` (forma parte del primer
+    criterio): el resumen debe decir `Asset: sap_classifier-<sha12>.pkl` en
+    `ml-models`, el canary dar `ok` y la ingesta registrar
+    `pipeline.ml_clf_loaded` con esa ruta. `drift_report`, `ml_eval` y
+    `sample_golden_candidates` siguen con `SAPClassifier.load()`.
 - *Nota (2026-10-24):* el camino de F3 del plan de tres niveles (`scripts/entrenar_nivel1.py`, `services/ml/nivel1.py`) no registra ni activa nada. Al unificar los dos caminos, el que sobreviva debería ser ese y no `train_from_db`, cuya etiqueta es circular. Registrar en `model_versions` y la semana en sombra siguen pendientes de OK.
 - **Files de partida:** [scheduler/jobs/ml_training_run.py](../scheduler/jobs/ml_training_run.py), [scheduler/concept_drift.py](../scheduler/concept_drift.py), [services/ml/promotion.py](../services/ml/promotion.py), [.github/workflows/train-model.yml](../.github/workflows/train-model.yml), [docs/runbooks/model-rollback.md](runbooks/model-rollback.md)
 - **Riesgo:** bajo para las verificaciones; medio para el nombre por
@@ -558,6 +573,7 @@ _Sin ítems abiertos._
      **Progreso 2026-10-21:** comprobado en el log de Render que **no sale ningún correo**: la aprobación de la solicitud 3 dejó `solicitud_acceso_aviso_persona enviado=false` sin `mailer_failed` alrededor, firma de `not_configured`. `render.yaml` declara ya las variables de correo en la API, el arranque avisa con `email_backend_not_configured` y `mailer_not_configured` pasó a `warning` ([RFC del alta](rfc/2026-10-21-rfc-alta-con-contrasena-tras-concesion.md) §7). Falta lo que solo hace el dueño: poner las credenciales en el panel de Render y el reset real de extremo a extremo del criterio (1). El alta con contraseña depende de lo mismo, y comparte con este ítem el riesgo del punto 2: sus cuotas por IP (`register`, `verify-email`) se repartirían entre todos los usuarios si la IP que ve la API es la de Vercel.
   2. **[P1] Hipótesis sin verificar: el límite por IP puede no distinguir clientes en producción.** El navegador llama a `/api/*` en Vercel y Vercel lo reenvía a Render (`rewrites()` de `web/next.config.ts`), así que quien abre la conexión con Render es Vercel. `_trusted_client_ip` recorre `X-Forwarded-For` desde el final y devuelve el primer salto que no esté en `FORWARDED_ALLOW_IPS` —el rango del proxy de Render—: ese salto sería la IP de salida de Vercel, no la del usuario. Si es así, las cuotas por IP de la recuperación (5 cada 15 minutos), el bloqueo de login (`_login_client_key`) y el tope global del middleware se reparten entre todos los usuarios, y cualquiera puede agotárselos a los demás. `web/src/lib/server-prefetch.ts` ya lo reconoce para las peticiones del SSR; nadie lo ha mirado para las del navegador. Depende de qué cabeceras pone Vercel y de qué hay en `FORWARDED_ALLOW_IPS` en el panel de Render, que desde aquí no se lee.
      **Medido 2026-10-24 (log de Render, servicio `TenderFlow`):** es peor que la hipótesis. El `client_ip` de las líneas `http_request` es siempre una IP interna `10.19x.x.x` (seis distintas en dos minutos, también en el `INFO: 10.192.214.29:42670` de uvicorn), y cambia **dentro de la misma sesión**: la carga de una pantalla reparte sus peticiones entre `10.192.214.29`, `10.197.182.120`, `10.194.137.88`… No es la IP de salida de Vercel ni la del usuario, sino el salto interno del proxy de Render: las cuotas por IP son por nodo del proxy, compartidas por todos los usuarios y troceadas para cada uno. Hace falta decidir de dónde sale la IP del cliente (qué hay en `FORWARDED_ALLOW_IPS` y en `X-Forwarded-For`, o una cabecera de Vercel verificable).
+     **Diagnóstico y opciones (2026-10-24):** RFC [2026-10-24-rfc-ip-del-cliente-tras-vercel-y-render](rfc/2026-10-24-rfc-ip-del-cliente-tras-vercel-y-render.md) (`draft`). El peer que ve uvicorn es el nodo interno de Render y no se reescribe (puertos efímeros reales en el log), así que `FORWARDED_ALLOW_IPS` no cubre `10.x`; pero ampliarla tampoco basta: el salto siguiente es el borde de Cloudflare y, tras él, la salida de Vercel, común a todos. Efecto medido: la cuota de recuperación queda en ~30 peticiones cada 15 min para toda la plataforma (y `request` responde 202 igual), y ~30 fallos bloquean una cuenta para todo el mundo. Opción recomendada: **B**, una cabecera secreta que Vercel añade en el rewrite y la API verifica en tiempo constante antes de confiar en `x-real-ip`. Preguntas para el dueño en el RFC (rango de `FORWARDED_ALLOW_IPS`, secreto compartido y su rotación, plan de Vercel, clientes directos a `*.onrender.com`). Mientras se decide, `api/diagnostico_proxy.py` registra `proxy_cabeceras_diag` en `/api/v1/auth/*` con la forma de las cabeceras de reenvío —solo clase, red truncada y huella HMAC de cada IP, nunca la IP entera—; se retira al aplicar la opción.
      **Y el (1) sigue igual el 2026-10-24:** a las 01:17 UTC una petición de recuperación para una cuenta del dominio `deloitte.es` dejó `password_reset_email sent=false`. Hay usuarios reales pidiendo el enlace y no les llega.
 - **Acceptance criteria:**
   - (1) Un reset real de extremo a extremo en producción: pedir el enlace para una cuenta local, recibir el correo, cambiar la contraseña y entrar. Anotado con fecha, y con el backend de correo que usa la API.
@@ -642,16 +658,6 @@ _Sin ítems abiertos._
 - **Files de partida:** [web/e2e/capturas-landing.spec.ts](../web/e2e/capturas-landing.spec.ts), [web/src/app/(publico)/page.tsx](../web/src/app/%28publico%29/page.tsx)
 - **Riesgo:** bajo.
 
-### [P2] El canary de modelos NIM no ve un modelo que sigue en el catálogo y no se sirve
-- **Área:** scheduler/jobs/llm_models_canary.py, llm/client.py
-- **Problema:** el canary solo comprueba que cada modelo NIM de `AVAILABLE_MODELS` aparece en `GET /v1/models`. Desde el 2026-10-20 `nvidia/nemotron-3-super-120b-a12b` seguía listado y el chat respondía 404: el canary dio `llm_models_canary_ok` el 2026-10-21 a las 14:51, cuatro minutos después de que el etiquetado recibiera ese 404, y quien avisó fue el fallo de la ficha y del etiquetado (issue #523). El default se cambió a `nemotron-3-ultra` en la rama `claude/relaxed-noether-ghoqr4`; el punto ciego sigue.
-- **Acceptance criteria:**
-  - El canary hace además una petición mínima de chat (`max_tokens` pequeño, sin traza de razonamiento) a cada modelo NIM ofertado cuando hay `NVIDIA_API_KEY`, y un 404/410 cuenta como modelo ausente.
-  - Sin key, se queda en la comprobación del catálogo y lo dice en el log.
-  - Test que simula catálogo con el modelo y chat con 404, y espera `llm_models_canary_models_missing`.
-- **Files de partida:** [scheduler/jobs/llm_models_canary.py](../scheduler/jobs/llm_models_canary.py), [tests/test_llm_models_canary.py](../tests/test_llm_models_canary.py)
-- **Riesgo:** bajo — una llamada de pocos tokens por modelo y día, que entra en el BudgetGuard.
-
 ### [P2] Dar de alta el check externo del latido del healthcheck (acción del propietario)
 - **Área:** healthchecks.io (o equivalente), GitHub (variables cifradas de Actions), Render
 - **Problema:** `scheduler/latido.py` hace una petición a `HEALTHCHECK_HEARTBEAT_URL` tras cada healthcheck con alertas, pero la variable está vacía en todas partes: no hay check externo esperándola. Mientras tanto, si el cron deja de ejecutar el healthcheck o el correo deja de entregarse, nadie lo nota.
@@ -731,6 +737,7 @@ _Sin ítems abiertos._
   proxy de la sesión que los escribió denegaba PLACSP.
   `capture_placsp_fixtures.py --caso condiciones|condiciones_por_lote` ya sabe
   recortarlos de una muestra real.
+- **Estado (2026-10-24):** catorce casos reales en el corpus, del ATOM vivo, del ZIP de 2026-09 y del de 2026-06, recortados con `capture_placsp_fixtures.py --id` (acepta ya páginas ATOM y ZIP sueltos, y `--sustituir`). Siete sustituyen a su sintético (03, 08, 09, 13, 15, 16, 17) y siete son nuevos (19–24 y el 25 del ítem de las multilote). El README da la procedencia de cada uno (URL, entry, expediente, `updated`). Siguen sintéticos 01, 02, 04, 05, 06, 07, 10, 11, 12, 14 y 18: congelan construcciones que el feed no publica (el lote por `ProcurementProjectLotReference` del 01, los subcriterios anidados del 12, dos plazos con fechas distintas del 11…) o los leen otros tests por su id; de 02, 05 y 10 no hay ningún ejemplar en 99.813 entradas. **Queda decidir** si el ítem se cierra así o se borran los sintéticos de forma ficticia (01, 12).
 - **Files de partida:** [scripts/capture_placsp_fixtures.py](../scripts/capture_placsp_fixtures.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
 - **Riesgo:** bajo — solo tests.
 
@@ -826,7 +833,7 @@ _Sin ítems abiertos._
   - Decidir `ML_RETENCION_EXCLUIR_RESUELTOS` tras auditar una muestra de `resueltos_detectados`. Hoy está apagado: la heurística órgano + CPV-4 da falsos positivos en segmentos con mucha actividad, y excluir un contrato lo esconde del orden «score». `scripts/audit_retencion.py` solo audita pares de entrenamiento; hay que añadirle un modo `--resueltos`.
   - Que el entrenamiento de retención deje de ser cuadrático. `construir_pares` llama a `_features_historicas` por cada par (~5,5K pares × ~698K adjudicaciones × 2), y `_emparejar` es O(Σ n²) por segmento. Solución: índices por clave más bisect, con paridad contra la referencia como en `tests/test_ml_retencion_serving.py`.
   - Resolver la clave de `predicciones_retencion` **antes de activar `retencion_model`**; exige migración. La tabla guarda un riesgo por expediente (`licitacion_id` es la PK), pero Renovaciones pinta una fila por empresa adjudicataria. Con el modelo, que sí depende de la empresa, un expediente con varios adjudicatarios mostraría a todos el riesgo del primero.
-  - Pasar a `locate_release_asset` y a una Release fija lo que aún publica y busca solo en *latest*: `ensure_downloaded` de `services/ml/sap_classifier.py` y de `services/ml/tech_classifier.py`, más `train-model.yml` y `train-tech.yml`.
+  - Pasar a `locate_release_asset` y a una Release fija lo que aún publica y busca solo en *latest*: `ensure_downloaded` de `services/ml/sap_classifier.py` y de `services/ml/tech_classifier.py`, más `train-model.yml` y `train-tech.yml`. *SAP hecho el 2026-10-24* (`ensure_downloaded` busca con `locate_release_asset` y `train-model.yml` publica en `ml-models`); quedan `tech_classifier` y `train-tech.yml`.
   - Arreglar `observability/logging.py::redact_dsn`, que no redacta la contraseña de los DSN con driver (`postgresql+psycopg://…`). Hoy `db/schema_revision.py` lo cubre con su propia regex.
 - **Files de partida:** [scheduler/jobs/ml_predicciones.py](../scheduler/jobs/ml_predicciones.py), [services/ml/retencion_labels.py](../services/ml/retencion_labels.py), [shared/release_assets.py](../shared/release_assets.py), [.github/workflows/ml-scoring.yml](../.github/workflows/ml-scoring.yml)
 - **Riesgo:** bajo para las verificaciones; medio para la clave de `predicciones_retencion`, que exige migración.
@@ -907,16 +914,6 @@ _Sin ítems abiertos._
 - **Files de partida:** [observability/sentry.py](../observability/sentry.py), [render.yaml](../render.yaml)
 - **Riesgo:** bajo.
 
-### [P2] `ops_events` no recibe ningún evento en producción
-- **Área:** scheduler, db
-- **Problema:** el 2026-10-09 la tabla `ops_events` tenía **0 filas** (ya estaba vacía el 2026-09-18). La escriben el cierre de la pasada, el healthcheck, el drift report y el etiquetado por LLM, y de ella dependen criterios escritos en el código (`tech_signal_merge` se retira «con cero reparaciones en siete días, medido en `ops_events`»). Lo que sí llega a la BD son las filas de `jobs`, que es lo que lee Ops › Ejecuciones desde ese día; la telemetría fina de cada paso se pierde.
-- **Acceptance criteria:**
-  - Una pasada de `scrape-daily` deja filas en `ops_events`, y se sabe por qué no las dejaba.
-  - El healthcheck avisa si pasan 24 h sin ningún evento.
-- *Estado (2026-10-17):* **causa encontrada y corregida en código**, falta verlo en producción. `observability/ops_events.py::_flush_postgres` abre su propia conexión con `psycopg.connect(url, connect_timeout=5)` y no pasaba los parámetros de `db.connection._pg_connect_kwargs`. La URL de producción lleva `sslmode=verify-full` y la CA llega por `DATABASE_SSL_ROOT_CERT`, que es una ruta y solo ese helper pasa como `sslrootcert`. Sin ella libpq busca `~/.postgresql/root.crt`, la conexión falla y el `except Exception: pass` de `flush_events` se lo tragaba: ningún evento llegó nunca a la tabla (0 filas medidas el 2026-10-17). Consecuencia visible: el healthcheck lleva todas las pasadas en `degraded` con `canonicas_sin_registro_de_refresco` (no ve el `mv_canonicas_refresh`) y `ops_events_6h: {}`. Ahora el flush usa los mismos parámetros libpq que el pool y avisa una vez por proceso (`ops_events_flush_failed`) si vuelve a fallar. Queda el primer criterio: ver filas tras la siguiente pasada de `scrape-daily`. El segundo (avisar con 24 h sin eventos) lo cubre ya `canonicas_sin_registro_de_refresco` mientras el refresco de las vistas emita su evento en cada pasada.
-- **Files de partida:** [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [db/connection.py](../db/connection.py)
-- **Riesgo:** bajo — es observabilidad; nada lee todavía esos eventos para decidir.
-
 ### [P2] La auditoría de conceder y revocar acceso puede no escribirse, y la revocación no guarda quién la hizo
 - **Área:** db/audit.py, db/access_grants.py, api/routes/admin_solicitudes.py
 - **Problema:** `access_grant.granted` y `access_grant.revoked` se escriben con `db.audit.log_event` **después** de confirmar la transacción de la concesión, y `log_event`/`log_action` son best-effort por diseño en todo el producto: un fallo se queda en el log (`audit_log_persist_failed`) y no llega a quien llama. Puede existir, por tanto, una concesión —o una revocación— sin su fila de auditoría. De la concesión queda al menos `access_grants.granted_by`; de la revocación no queda nada más: la tabla guarda `revoked_at` pero no quién, así que el audit log es el único sitio donde consta. No se arregló al cerrar los huecos del RFC 242 (2026-10-09) porque hacerlo solo aquí deja dos semánticas de auditoría en el producto, y hacerlo para todo es un cambio de `db/audit.py` con alcance propio.
@@ -961,6 +958,11 @@ _Sin ítems abiertos._
   - `scripts/medir_terminos_codice.py --vivo --paginas 2 --guardar muestra/` ejecutado; porcentaje por bloque y nivel anotado aquí con fecha.
   - Nombres y escala corregidos si la muestra los desmiente; `parser_field_null_total` de las tres familias revisado en producción.
   - Decidido si se rellena el histórico (solo con los ZIP mensuales: la fase de adjudicación deja de publicar el bloque).
+- **Medido el 2026-10-24** (`scripts/medir_terminos_codice.py`, que ahora lee también ZIP mensuales y desglosa por estado): ocho páginas del ATOM vivo (3.903 entradas) y el ZIP de 2026-09 (95.910). Bloque presente en cualquier nivel, ATOM / ZIP: criterios 94,2 / 88,4 %, garantías 53,4 / 54,0 %, solvencia técnica 67,2 / 64,5 %, económica 66,5 / 64,1 %, clasificación 6,0 / 6,5 %. Garantías y clasificación solo vienen en el expediente; en el lote, criterios en el 6,9 % y solvencia en un 3 %. Producción, filas extraídas desde el 2026-10-15: 93,3 % criterios, 47,1 % garantías y 67,0 % solvencia sobre 5.565 licitaciones de PLACSP, coherente con el feed.
+  - **Nombres:** existen todos los que asume el parser salvo uno. PLACSP no publica `ThresholdAmount`: el umbral va en `cbc:ThresholdQuantity`, sin moneda, y producción tenía **0 de 4.069** requisitos económicos con `umbral_importe`. Arreglado solo para la solvencia económica (`_umbral_de_solvencia`; un 0 queda NULL); en la técnica esa cantidad mezcla importes y número de trabajos y no se lee (guardarla pediría una columna nueva). `AmountRate` va en porcentaje (mediana 5; 14 de 59.114 valores < 1). `SpecificTendererRequirement` son declaraciones responsables y se dejan fuera a propósito.
+  - **El supuesto del tercer criterio es falso:** las fases ADJ y RES siguen publicando el bloque (criterios en el 79 % y el 82,5 % del ZIP). Rellenar el histórico —y con él los 4.069 umbrales a NULL— es viable re-ingiriendo los ZIP mensuales; **queda la decisión del dueño**, por el coste (más de 2 h por mes con `scrape-bulk.yml`).
+  - Sin revisar `parser_field_null_total` (métrica de Prometheus sin acceso desde la sesión); se contaron las filas en BD en su lugar.
+  - Vistos y sin arreglar: `fecha_publicacion` es el `updated` completo cuando no hay `ValidNoticeInfo` (caso golden 24); adjudicaciones y garantías a 0 se guardan como 0; el NUTS `ES` da `provincia` «España»; lotes que repiten el presupuesto del expediente entero (caso 20), que afecta a la baja por lote.
 - **Riesgo:** bajo — solo lectura y parser.
 
 ### [P2] Partir `shared/dto.py` y las cuatro firmas de 26-28 parámetros del listado de licitaciones
@@ -1024,16 +1026,6 @@ _Sin ítems abiertos._
   - Cero `print()` en `scraper/`, `services/` y `scheduler/` fuera de un `__main__`; un ratchet stdlib lo fija.
 - **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py), [db/connection.py](../db/connection.py), [llm/client.py](../llm/client.py), [services/ml/sap_classifier.py](../services/ml/sap_classifier.py)
 - **Riesgo:** medio — estrechar una excepción en el pipeline puede convertir un aviso en una pasada en rojo; es el objetivo, pero conviene hacerlo módulo a módulo y mirar `scrape-daily` después de cada uno.
-
-### [P2] La matriz go/no-go por criterio no tiene pantalla
-- **Área:** web/src/app/(dashboard)/oportunidades/[id], api/routes/pursuits.py
-- **Problema:** `GET/PUT /pursuits/{id}/go-no-go` (C6.4, D30) puntúa cinco criterios de 1 a 5, recomienda con la media ponderada y marca la decisión que la contradice (`discrepa`), pero ninguna pantalla lo pide: en la consola solo existe la decisión (`DecidirGoNoGo`) y el contraste con la capacidad (`ChecklistGoNoGo`). Desde el 2026-10-23 los **pesos** se editan en Equipo → Organización, así que hoy se configura algo que en la consola no se ve; la recomendación solo llega por la API, el MCP y `make product-status`.
-- **Acceptance criteria:**
-  - La ficha de la oportunidad puntúa cada criterio con su motivo, enseña el total, el umbral y la recomendación sobre cuántos criterios se calculó (`criterios_puntuados`, `completa`), y avisa cuando la decisión tomada discrepa.
-  - Cambiar los pesos en Equipo invalida la puntuación en caché de la ficha.
-  - Vitest de la sección y el E2E `recorrido-oportunidad.spec.ts` (CU-06) pasa por ella.
-- **Files de partida:** [api/routes/pursuits.py](../api/routes/pursuits.py) (`get_pursuit_go_no_go`, `put_pursuit_go_no_go`), [services/go_no_go_template.py](../services/go_no_go_template.py), [web/src/components/pursuits/decidir-go-no-go.tsx](../web/src/components/pursuits/decidir-go-no-go.tsx), [web/src/app/(dashboard)/equipo/_hooks/use-pesos-go-no-go.ts](../web/src/app/(dashboard)/equipo/_hooks/use-pesos-go-no-go.ts)
-- **Riesgo:** bajo — el backend y su escenario (`tests/test_escenario_gobierno_organizacion.py`) ya existen; es una sección nueva en la ficha.
 
 ## P3 — Nice to have
 
@@ -1190,24 +1182,18 @@ _Sin ítems abiertos._
 - **Riesgo:** bajo — el guard de `feature_columns` de `BajaModel` degrada a baseline si se despliega el código sin reentrenar.
 - **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — la medición existe; el número no.** `ENV=dev python scripts/medir_cobertura_features.py` (o `--json` para archivarlo) imprime, contra la BD de `DATABASE_URL` y solo leyendo, la cobertura de los tres campos sobre dos poblaciones: `dataset_baja` (las filas exactas de entrenamiento, `_sql_agregado`) y `universo_abierto` (lo que puntúa el batch), cada una con total, por `fuente` y por año de publicación, y un veredicto contra el 50 % **solo sobre el total del dataset**. El SQL vive en `MlDatasetRepository.cobertura_features_pendientes`. Tests en `tests/test_medir_cobertura_features.py` (uno contra Postgres, no ejecutado en local). **Falta:** correrlo contra producción, anotar aquí el número con fecha y, según salga, seguir los cuatro pasos o dejar escrito el número que lo desaconseja.
 
-### [P3] El panel de accesos no deja volver a conceder tras revocar ni dice quién concedió y cuándo
-- **Área:** web/src/app/(dashboard)/ops/_components/solicitudes-acceso, web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts, api/routes/admin_solicitudes.py
-- **Problema:** en Ops › Administración › Solicitudes de acceso, «Accesos dinámicos activos» lista solo las concesiones vivas, con su valor, su tipo y «Revocar». La API ya devuelve `granted_by`, `created_at`, `updated_at` y `revoked_at` (`AccessGrantOut`) y admite `GET /grants?include_inactive=true`, pero el panel no los pide ni los pinta: no se ve quién concedió ni cuándo, ni queda a la vista lo revocado. Las acciones de conceder solo aparecen en solicitudes pendientes, así que devolverle el acceso a alguien revocado exige que vuelva a rellenar el formulario público o llamar a la API a mano (el `PATCH` con `conceder` sobre su solicitud ya atendida reactiva la fila). Tampoco hay confirmación antes de «Conceder dominio» ni de «Revocar»: desde el 2026-10-09 el servidor rechaza el dominio de un proveedor de correo público, pero un clic sigue bastando para abrir el dominio entero de una empresa.
-- **Acceptance criteria:**
-  - Cada concesión muestra quién la concedió y cuándo (hay que resolver `granted_by` a un nombre: hoy la ruta devuelve el id).
-  - Las revocadas se pueden ver y volver a conceder desde el panel, sin pasar por una solicitud nueva.
-  - «Conceder dominio» y «Revocar» piden confirmación diciendo a quién afectan.
-  - El 422 de un dominio no concedible se enseña una sola vez, con su motivo (hoy salen dos avisos: el genérico del hook y el global con el `detail`).
-- **Files de partida:** [web/src/app/(dashboard)/ops/_components/solicitudes-acceso/accesos-dinamicos.tsx](../web/src/app/(dashboard)/ops/_components/solicitudes-acceso/accesos-dinamicos.tsx), [web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts](../web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts), [api/routes/admin_solicitudes.py](../api/routes/admin_solicitudes.py)
-- **Riesgo:** bajo — es interfaz sobre rutas que ya existen; lo único nuevo en la API es el nombre de quien concedió.
-
-### [P3] 247 adjudicaciones de expedientes multilote siguen sin lote: ver cómo las publica PLACSP
+### [P3] 121 adjudicaciones de expedientes multilote siguen sin lote: relanzar `reproceso-lotes.yml` (acción del propietario)
 - **Área:** scraper/codice_parser.py (`_XPATHS_LOTE_RESULTADO`), tests/fixtures/placsp
 - **Problema:** tras el arreglo del parser (#479) y el reproceso de 2020-10 a 2026-10 (#484, #487), medido el 2026-10-18 en producción: de 1.246 adjudicaciones en expedientes con dos o más lotes, 999 tienen `lote_id` y **247 no**, repartidas en 113 expedientes. Todas son de PLACSP y todas tienen NIF, así que no es el emparejamiento por nombre. En 59 de esos expedientes conviven filas con lote y sin él, y 21 ya se han vuelto a ingerir con el parser nuevo y siguen igual: apunta a resultados que PLACSP publica sin referencia de lote, o con una forma que `_lote_del_resultado` no lee. La adjudicación más antigua sin lote es de 2022-04. La consecuencia es la de antes, acotada a esas filas: la agenda no cierra la oportunidad de un lote cuya adjudicación no dice de qué lote es (la regla conservadora).
 - **Acceptance criteria:**
   - Capturar al menos un expediente real con mezcla —p. ej. `26/AMLICENCIASCITI` (33 adjudicaciones, 15 con lote)— con `scripts/capture_placsp_fixtures.py` y añadirlo al corpus golden.
   - Si el lote viene en otra forma, añadirla a `_XPATHS_LOTE_RESULTADO` y relanzar `reproceso-lotes.yml` con `aplicar` sobre el rango afectado; si de verdad no viene, documentarlo en el docstring de `_lote_del_resultado` y cerrar.
 - **Files de partida:** [scraper/codice_parser.py](../scraper/codice_parser.py), [scraper/reproceso_lotes.py](../scraper/reproceso_lotes.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
+- **Estado (2026-10-24): PLACSP sí publica el lote; falta relanzar el reproceso.** Hoy quedan 121 filas sin `lote_id` en 58 expedientes. De los ZIP reales de 2026-05 a 2026-10 salen 966 entries de esos expedientes; las 295 multilote traen 776 `TenderResult` y los 776 llevan el lote en `AwardedTenderedProject/cbc:ProcurementProjectLotID`, la forma que ya lee `_lote_del_resultado`. Caso golden 19, el primero real del corpus (`B070005/2022-0071`), y test en `tests/test_reproceso_lotes.py`. Reparto, simulado contra producción:
+  - **109 filas (47 exp.):** el reproceso del 17/18-10 no casó un importe que venía de `real`; a71db23e ya lo corrige. **Acción del propietario:** `gh workflow run reproceso-lotes.yml -f desde=2026-06 -f hasta=2026-10 -f aplicar=false` para el recuento (≈109) y después con `aplicar=true`.
+  - **8 filas (8 exp.):** `ContractFolderID` compartido entre órganos (`04/2026`, `101/2026`, `36/2026`, `47/2026`, `48/2026`, `49/2026`, `51/2026`, `SUM005/2026`): la adjudicación es de otro expediente. No se les asigna lote; es el P1 de identidad de PLACSP.
+  - **4 filas (3 exp.):** misma empresa e importe en dos lotes, juntadas en una fila por `uq_adjudicaciones_lic_nif_importe_sin_lote` en la ingesta antigua. Solo se separan reingiriendo; para 4 filas no compensa.
+  - Se cierra cuando el reproceso deje el residuo en esas 12 filas.
 - **Riesgo:** bajo — es lectura del XML; el reproceso solo rellena `lote_id` vacío.
 - **Progreso (2026-10-23):** sin red a PLACSP desde la sesión, así que `26/AMLICENCIASCITI` no se capturó y el XML no se inventa. Medido con el MCP: quedan **121** filas sin lote en 58 expedientes multilote, y **113** de ellas tienen un `importe_adjudicado` que float4 no guarda en céntimos (39.567,94 € está guardado como 39.567,94140625); en los expedientes mixtos, 51 de 53 filas sin lote son así frente a 11 de 44 con lote. Es el emparejamiento de `db/repositories/reproceso_lotes.py`, no el XML: comparaba `importe_adjudicado` (`real`) por igualdad exacta con el float8 del parser, que no casa nunca en esos importes. Corregido comparando a la precisión de `real` (test `test_casa_el_importe_que_la_columna_real_redondeo`); vale antes y después de `v156`. **Pendiente, propietario:** relanzar `reproceso-lotes.yml` con `aplicar` sobre 2022-04..2026-10 y volver a medir. Si queda residuo (las ~8 filas con importe exacto), entonces sí capturar el XML con red y decidir entre ampliar `_XPATHS_LOTE_RESULTADO` o documentarlo en `_lote_del_resultado`.
 
@@ -1250,18 +1236,6 @@ _Sin ítems abiertos._
   - El digest dice «expedientes que sigues» también en los avisos de documentación.
   - `use-renovaciones` sigue leyendo `usePursuits()` con la página de 50.
 - **Riesgo:** bajo.
-
-### [P3] Purgar los tokens OAuth del MCP caducados o revocados
-- **Área:** db/mcp_oauth.py, scheduler/ (job de mantenimiento)
-- **Problema:** `mcp_oauth_tokens` solo crece: nada borra las filas caducadas ni las revocadas (access de 1 h, refresh de 30 días, códigos de 60 s). Con tres personas el volumen es mínimo, pero la tabla está en la ruta de cada petición y un refresh rotado deja una fila por rotación. El índice `idx_mcp_oauth_tokens_expires (expires_at)` ya existe para esto.
-- **Acceptance criteria:**
-  - Un job (el plano de cron del worker, ADR-033, o `retention_cleanup`) borra las filas con `expires_at` anterior a hace N días (N ≥ 30, para que la detección de reutilización de un refresh reciente siga viendo la familia) y las revocadas igual de antiguas.
-  - El SQL vive en `db/mcp_oauth.py`; test de integración que fija qué borra y qué conserva (una familia con un refresh vivo no pierde sus filas antiguas).
-  - Se anota en `docs/runbooks/mcp-interno.md` §7 que ya no es un seguimiento.
-- **Files de partida:** [db/mcp_oauth.py](../db/mcp_oauth.py), [docs/runbooks/mcp-interno.md](runbooks/mcp-interno.md)
-- **Riesgo:** bajo — borrado acotado a filas que ya no valen; lo delicado es no romper la detección de reutilización.
-- **Hecho el 2026-10-15** (rama `claude/laughing-newton-dbht10`, revisión final del MCP): `db.mcp_oauth.purgar`, que el propio servidor MCP corre al arrancar y cada hora (no el worker). Con los plazos que fijó la revisión, **más cortos que N ≥ 30**: pendientes/códigos caducados hace > 1 día, access/refresh revocados o caducados hace > 7 días (aunque la familia siga viva: un refresh rotado hace más de una semana deja de detectarse como reutilizado) y clientes de > 7 días sin tokens. Runbook §7 actualizado.
-- **Plazo confirmado (2026-10-19):** el dueño elige **30 días** para access/refresh y clientes huérfanos (pendientes y códigos siguen en 1 día). Con 30, lo que vive un refresh, un refresh rotado delata su reutilización durante toda su vida. En la misma conversación dio el OK, a posteriori, al cambio de `.env.example` (comentarios de las `MCP_*`) que entró con #473 fuera del plan.
 
 ### [P3] El `client_secret` del registro dinámico del MCP se guarda legible
 - **Área:** db/mcp_oauth.py, mcp_server/auth/
@@ -1337,14 +1311,6 @@ _Sin ítems abiertos._
   - Las 18 llamadas directas pasan por un hook de `web/src/hooks/` (o un `_hooks/` de su ruta) con clave en `query-keys.ts`; una regla de ESLint (`no-restricted-imports` de `api-client` fuera de `hooks/` y `lib/`) lo fija.
 - **Files de partida:** [web/src/lib/api-client.ts](../web/src/lib/api-client.ts), [web/src/app/login/_hooks/use-login-form.ts](../web/src/app/login/_hooks/use-login-form.ts), [web/eslint.config.mjs](../web/eslint.config.mjs), [web/src/lib/query-keys.ts](../web/src/lib/query-keys.ts)
 - **Riesgo:** bajo — refactor mecánico con tests de hooks existentes; el E2E de login cubre las recargas.
-
-### [P3] Los avisos de deprecación que la suite ya emite
-- **Área:** scraper/resilience.py, api/routes/pursuits.py, api/routes/security.py, tests/test_ola1_fixes.py
-- **Problema:** la suite unitaria del 2026-10-17 (8.323 tests en verde) emite tres avisos de deprecación que, con la siguiente major de cada librería, pasan a ser errores: `wait_exponential_jitter(initial=…)` de tenacity en `scraper/resilience.py:93` (el parámetro es `multiplier`), `HTTP_413_REQUEST_ENTITY_TOO_LARGE` de Starlette (ahora `HTTP_413_CONTENT_TOO_LARGE`) en `api/routes/pursuits.py:1984` y `:2014` y en `api/routes/security.py:277`, y `Settings.__fields__` de Pydantic v1 en `tests/test_ola1_fixes.py:176` (`model_fields`). Son cambios de una línea y conviene hacerlos antes de que Renovate traiga la major.
-- **Acceptance criteria:**
-  - Los tres sustituidos y `pytest -W error::DeprecationWarning -m unit` en verde sobre esos módulos (o `filterwarnings = ["error::DeprecationWarning:tenacity", …]` en `pyproject.toml` para que no vuelvan).
-- **Files de partida:** [scraper/resilience.py](../scraper/resilience.py), [api/routes/pursuits.py](../api/routes/pursuits.py), [api/routes/security.py](../api/routes/security.py), [tests/test_ola1_fixes.py](../tests/test_ola1_fixes.py), [pyproject.toml](../pyproject.toml)
-- **Riesgo:** bajo — sustituciones de nombre.
 
 ### [P3] SQLAlchemy se usa en producción y no está declarada como dependencia directa
 - **Área:** requirements.in, pyproject.toml (`[project] dependencies`)
