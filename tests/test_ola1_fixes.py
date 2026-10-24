@@ -5,7 +5,7 @@ Cubre:
 - Cardinalidad de métricas Prometheus (path template vs path crudo)
 - METRICS_ALLOWED_IPS declarado en Settings
 - connect_read en api/auth.py (sin regresión de autenticación)
-- create_api_key acepta user_id
+- create_api_key exige user_id y deja la caducidad puesta
 - retention_cleanup cubre idempotency_keys y webhook_deliveries
 - Graceful shutdown inicializa pending_background_tasks en app.state
 """
@@ -271,14 +271,30 @@ def test_create_api_key_accepts_user_id(api_db, monkeypatch):
     assert row[2] == user_id
 
 
-def test_create_api_key_backward_compat_no_user_id(api_db, monkeypatch):
-    """create_api_key sigue funcionando sin user_id (backward compat)."""
+def test_create_api_key_persiste_dueno_y_caducidad(api_db, monkeypatch):
+    """La fila nace con `user_id` y `expires_at`, también en desarrollo.
+
+    Sustituye a la «compatibilidad hacia atrás» que dejaba crear claves sin
+    dueño fuera de prod/staging (2026-10, backlog «Inventariar las claves de
+    API sin dueño»): que sin `user_id` se rechace lo fijan los tests unitarios
+    de `tests/test_auth.py`; aquí se mira lo que llega a la tabla.
+    """
+    import db.database as db_mod
+
     monkeypatch.setenv("ENV", "dev")
 
-    from api.auth import create_api_key
+    from tests.claves import clave_de_prueba
 
-    raw = create_api_key("compat-key")
+    raw = clave_de_prueba("compat-key")
     assert raw
+
+    with db_mod.connect_read() as c:
+        row = c.execute(
+            "SELECT user_id, expires_at FROM api_keys WHERE name = 'compat-key'"
+        ).fetchone()
+    assert row is not None
+    assert row[0] is not None
+    assert row[1]
 
 
 # ── OLA 1.6: retention_cleanup cubre nuevas tablas ───────────────────────────

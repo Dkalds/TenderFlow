@@ -101,17 +101,17 @@ class TestWebhookSSRFValidation:
 class TestApiKeyScopes:
     def test_wildcard_scope_allows_all(self, api_db, client):
         """Key con scope '*' puede acceder a todos los endpoints."""
-        from api.auth import create_api_key
+        from tests.claves import clave_de_prueba
 
-        wildcard_key = create_api_key("wildcard-reader", scopes="*")
+        wildcard_key = clave_de_prueba("wildcard-reader", scopes="*")
         resp = client.get("/api/v1/licitaciones", headers={"X-API-Key": wildcard_key})
         assert resp.status_code == 200
 
     def test_restricted_scope_key_cannot_write_webhooks(self, api_db, client):
         """Key con scope 'licitaciones:read' no puede crear webhooks."""
-        from api.auth import create_api_key
+        from tests.claves import clave_de_prueba
 
-        raw = create_api_key("restricted", scopes="licitaciones:read")
+        raw = clave_de_prueba("restricted", scopes="licitaciones:read")
         resp = client.post(
             "/api/v1/webhooks",
             json={"name": "x", "url": "https://httpbin.org/post", "event_types": ["*"]},
@@ -121,9 +121,9 @@ class TestApiKeyScopes:
 
     def test_restricted_scope_can_read_licitaciones(self, api_db, client):
         """Key con scope 'licitaciones:read' puede leer licitaciones."""
-        from api.auth import create_api_key
+        from tests.claves import clave_de_prueba
 
-        raw = create_api_key("reader", scopes="licitaciones:read")
+        raw = clave_de_prueba("reader", scopes="licitaciones:read")
         resp = client.get("/api/v1/licitaciones", headers={"X-API-Key": raw})
         assert resp.status_code == 200
 

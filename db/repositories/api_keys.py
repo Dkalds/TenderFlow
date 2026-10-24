@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import secrets
 from typing import Any
 
 from db.database import connect, connect_read, get_table_columns, now_utc_iso
@@ -166,14 +165,64 @@ class ApiKeyRepository:
 
     # ── Listings ─────────────────────────────────────────────
 
-    def list_all(self) -> list[dict[str, Any]]:
-        """Lista todas las API keys (sin exponer el hash)."""
+    def list_all(self, *, limit: int = 500) -> list[dict[str, Any]]:
+        """Lista las API keys de la instancia con su dueño. Nunca el hash ni el token.
+
+        Es lo que lee Ops > Administración: hasta 2026-10 no había ninguna
+        pantalla desde la que ver las claves de otros, y en producción había 89
+        activas sin dueño ni caducidad que nadie podía revocar. ``prefix`` son
+        los ocho primeros caracteres del token —los que el integrador reconoce
+        en su configuración— y no bastan para autenticar.
+
+        ``estado`` se calcula aquí, con el mismo reloj que usa la validación
+        (``expires_at`` contra ``now_utc_iso()``): una clave con ``is_active = 1``
+        pero caducada no abre nada, y pintarla como «activa» engañaría a quien
+        decide qué revocar. Las vivas primero; dentro, la más reciente arriba.
+        """
+        ahora = now_utc_iso()
         with connect_read() as c:
             cur = c.execute(
-                "SELECT id, name, created_at, last_used, is_active "
-                "FROM api_keys ORDER BY created_at DESC"
+                "SELECT k.id, k.name, k.prefix, k.tier, k.scopes, k.user_id, "
+                "u.email AS owner_email, u.display_name AS owner_name, "
+                "(u.deactivated_at IS NOT NULL) AS owner_deactivated, "
+                "k.organization_id, k.created_at, k.expires_at, k.last_used, k.is_active, "
+                "CASE WHEN k.is_active = 0 THEN 'revocada' "
+                "     WHEN k.expires_at IS NOT NULL AND k.expires_at <= %s THEN 'caducada' "
+                "     ELSE 'activa' END AS estado "
+                "FROM api_keys k LEFT JOIN users u ON u.id = k.user_id "
+                "ORDER BY (k.is_active = 1 AND (k.expires_at IS NULL OR k.expires_at > %s)) DESC, "
+                "k.created_at DESC, k.id DESC "
+                "LIMIT %s",
+                (ahora, ahora, limit),
             )
             return rows_to_dicts(cur)
+
+    def resumen_instancia(self) -> dict[str, int]:
+        """Cuántas claves hay y cuántas vivas carecen de dueño o de caducidad.
+
+        Se cuenta sobre la tabla entera, no sobre la página que devuelve
+        :meth:`list_all`: con el listado recortado, contar en el cliente daría
+        una cifra que no es la de la instancia.
+        """
+        ahora = now_utc_iso()
+        with connect_read() as c:
+            fila = c.execute(
+                "SELECT count(*), "
+                "count(*) FILTER (WHERE vivas), "
+                "count(*) FILTER (WHERE vivas AND user_id IS NULL), "
+                "count(*) FILTER (WHERE vivas AND expires_at IS NULL) "
+                "FROM (SELECT user_id, expires_at, "
+                "      (is_active = 1 AND (expires_at IS NULL OR expires_at > %s)) AS vivas "
+                "      FROM api_keys) k",
+                (ahora,),
+            ).fetchone()
+        total, activas, sin_dueno, sin_caducidad = (int(v or 0) for v in fila)
+        return {
+            "total": total,
+            "activas": activas,
+            "activas_sin_dueno": sin_dueno,
+            "activas_sin_caducidad": sin_caducidad,
+        }
 
     def list_for_export(self, key_hash: str) -> list[dict[str, Any]]:
         """Exporta las API keys vinculadas al ``key_hash`` (GDPR)."""
@@ -215,23 +264,6 @@ class ApiKeyRepository:
         except Exception:
             log.debug("api_key_update_last_used_failed", key_id=key_id, exc_info=True)
 
-    def create(self, name: str, scopes: str = "*") -> str:
-        raw = secrets.token_urlsafe(32)
-        key_hash = self._hash(raw)
-        with connect() as c:
-            cols_info = get_table_columns(c, "api_keys")
-            if "scopes" in cols_info:
-                c.execute(
-                    "INSERT INTO api_keys (key_hash, name, created_at, is_active, scopes) VALUES (%s, %s, %s, 1, %s)",
-                    (key_hash, name, now_utc_iso(), scopes),
-                )
-            else:
-                c.execute(
-                    "INSERT INTO api_keys (key_hash, name, created_at, is_active) VALUES (%s, %s, %s, 1)",
-                    (key_hash, name, now_utc_iso()),
-                )
-        return raw
-
     def insert(
         self,
         *,
@@ -239,10 +271,23 @@ class ApiKeyRepository:
         name: str,
         scopes: str,
         prefix: str,
-        user_id: int | None,
-        expires_at: str | None,
+        user_id: int,
+        expires_at: str,
     ) -> None:
-        """Inserta una API key pre-hasheada respetando columnas presentes."""
+        """Inserta una API key pre-hasheada respetando columnas presentes.
+
+        Es el único ``INSERT INTO api_keys`` del código de producción, y exige
+        dueño y caducidad. Hasta 2026-10 los dos eran opcionales —y había un
+        ``create()`` al lado que no aceptaba ninguno de los dos—: en producción
+        se acumularon 89 claves activas sin usuario ni ``expires_at``, que no se
+        revocan al dar de baja a nadie y no caducan nunca. El tipo ya lo pide;
+        la comprobación cubre a quien llegue con un ``0`` o una cadena vacía.
+        La restricción en la propia tabla (``NOT NULL``) necesita una migración.
+        """
+        if not user_id or user_id < 1:
+            raise ValueError("Una clave de API necesita dueño (user_id).")
+        if not expires_at:
+            raise ValueError("Una clave de API necesita caducidad (expires_at).")
         now = now_utc_iso()
         with connect() as c:
             cols = get_table_columns(c, "api_keys")
@@ -258,7 +303,7 @@ class ApiKeyRepository:
             if "prefix" in cols:
                 fields.append("prefix")
                 values.append(prefix)
-            if "expires_at" in cols and expires_at is not None:
+            if "expires_at" in cols:
                 fields.append("expires_at")
                 values.append(expires_at)
 
@@ -288,10 +333,26 @@ class ApiKeyRepository:
             )
             return bool(cur.rowcount)
 
-    def revoke_by_id(self, key_id: int) -> None:
-        """Revoca una API key por su ID interno."""
+    def revoke_by_id(self, key_id: int) -> dict[str, Any] | None:
+        """Revoca una API key por su ID interno, sea de quien sea.
+
+        Es la revocación de administración: no filtra por dueño, al contrario
+        que :meth:`revoke_for_user`. Devuelve ``{id, name, user_id}`` de la fila
+        para que quien audita sepa de quién era, o ``None`` si el id no existe.
+        Revocar una ya revocada devuelve la fila: el estado pedido es el que hay.
+        """
         with connect() as c:
-            c.execute("UPDATE api_keys SET is_active = 0 WHERE id = %s", (key_id,))
+            fila = c.execute(
+                "UPDATE api_keys SET is_active = 0 WHERE id = %s RETURNING id, name, user_id",
+                (key_id,),
+            ).fetchone()
+        if fila is None:
+            return None
+        return {
+            "id": int(fila[0]),
+            "name": str(fila[1]),
+            "user_id": int(fila[2]) if fila[2] is not None else None,
+        }
 
     def deactivate_by_id(self, key_id: int) -> None:
         """Desactiva una key por ID y actualiza ``last_used`` (GDPR)."""

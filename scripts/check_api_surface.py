@@ -70,6 +70,19 @@ NUEVAS: dict[str, str] = {
         "hiciera dos cosas según qué tabla guardara el token. POST "
         "/organizations/invitations/accept exige sesión, que es justo lo que aún no hay."
     ),
+    "GET /api/v1/admin/api-keys": (
+        "Se miró GET /me/keys, que lista solo las claves de quien pregunta (WHERE user_id = "
+        "el suyo), y GET /admin/users, que lista personas y no credenciales. Ninguna "
+        "enseña las claves de otros ni las que no tienen dueño, que es justo lo que hay "
+        "que inventariar: 89 activas en producción con user_id nulo y sin expires_at "
+        "(backlog, «Inventariar las claves de API sin dueño»)."
+    ),
+    "DELETE /api/v1/admin/api-keys/{key_id}": (
+        "Se miró DELETE /me/keys/{key_id}, que revoca solo una clave propia (el dueño va "
+        "en el WHERE), y POST /admin/users/{id}/deactivate, que revoca todas las de una "
+        "persona al darla de baja. Una clave sin dueño no la alcanza ninguna de las dos: "
+        "no es de nadie que se pueda desactivar ni de quien mira."
+    ),
     "GET /api/v1/admin/revision/duplicados": (
         "Se miró GET /empresas/reviews, que lista la cola de identidad de EMPRESAS "
         "(empresa_review_queue), no pares de licitaciones; GET /admin/dlq, que es de "

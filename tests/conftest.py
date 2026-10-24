@@ -938,9 +938,9 @@ def api_key(api_db):
     para que las pruebas de validación, respuesta y dominio no dependan de la
     taxonomía concreta de scopes de cada ruta.
     """
-    from api.auth import create_api_key
+    from tests.claves import clave_de_prueba
 
-    return create_api_key("test-key", scopes="*")
+    return clave_de_prueba("test-key", scopes="*")
 
 
 @pytest.fixture(autouse=True)

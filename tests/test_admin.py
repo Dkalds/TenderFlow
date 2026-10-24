@@ -24,12 +24,12 @@ def test_list_api_keys_empty_initially(tmp_db):
 
 def test_list_api_keys_shows_created_key(tmp_db):
     """Una vez creada una key, aparece en list_api_keys."""
-    from api.auth import create_api_key
     from db.repositories.api_keys import ApiKeyRepository
+    from tests.claves import clave_de_prueba
 
     list_api_keys = ApiKeyRepository().list_all
 
-    create_api_key("admin-test-key", scopes="read")
+    clave_de_prueba("admin-test-key", scopes="read")
     keys = list_api_keys()
     assert len(keys) >= 1
     names = [k["name"] for k in keys]
@@ -38,13 +38,13 @@ def test_list_api_keys_shows_created_key(tmp_db):
 
 def test_revoke_api_key_marks_as_inactive(tmp_db):
     """revoke_api_key desactiva la key y ya no aparece activa en list_api_keys."""
-    from api.auth import create_api_key
     from db.repositories.api_keys import ApiKeyRepository
+    from tests.claves import clave_de_prueba
 
     list_api_keys = ApiKeyRepository().list_all
     revoke_api_key = ApiKeyRepository().revoke_by_id
 
-    token = create_api_key("to-revoke", scopes="*")
+    token = clave_de_prueba("to-revoke", scopes="*")
     # Antes de revocar — debe estar activa
     keys_before = list_api_keys()
     active_before = [k for k in keys_before if k["name"] == "to-revoke" and k.get("is_active")]
