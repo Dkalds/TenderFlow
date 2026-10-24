@@ -950,3 +950,127 @@ def test_post_ingestion_scopes_resolution_to_its_own_source():
     dedupe.assert_called_once_with(fuente="ted")
     events.assert_called_once_with()
     cache.assert_called_once_with()
+
+
+class _LogQueApunta:
+    """Sustituye al logger del runner y apunta cada evento en ``traza``."""
+
+    def __init__(self, traza: list[tuple[str, dict[str, object]]]) -> None:
+        self._traza = traza
+
+    def info(self, evento: str, **campos: object) -> None:
+        self._traza.append((evento, campos))
+
+    def warning(self, evento: str, **campos: object) -> None:
+        self._traza.append((evento, campos))
+
+    def debug(self, evento: str, **campos: object) -> None:
+        pass
+
+
+def _cierre_trazado(monkeypatch, *, roto: str | None = None):
+    """``_post_ingestion`` con cada paso doblado; devuelve la traza intercalada.
+
+    Los pasos apuntan ``("llamada", {"paso": ...})`` en la misma lista que el
+    log, así que la traza dice también si el ``empieza`` sale antes del paso.
+    """
+    from scraper.connectors import base
+    from services.dedupe import ReferenciaCruzada
+
+    traza: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(base, "log", _LogQueApunta(traza))
+
+    def paso(nombre: str):
+        def _f(*a: object, **kw: object) -> None:
+            traza.append(("llamada", {"paso": nombre}))
+            if nombre == roto:
+                raise RuntimeError(f"{nombre} roto")
+
+        return _f
+
+    monkeypatch.setattr("services.entity_resolution.resolve_all_unlinked", paso("empresas"))
+    monkeypatch.setattr("services.dedupe.detect_duplicates", paso("dedupe"))
+    monkeypatch.setattr(
+        "services.dedupe.detect_duplicados_por_referencia", paso("dedupe_referencias")
+    )
+    monkeypatch.setattr("services.contract_events.derive_new_events", paso("eventos_contrato"))
+    monkeypatch.setattr("shared.cache_signal.signal_cache_invalidation", lambda: None)
+    monkeypatch.setattr("services.dedupe.dedupe_run_failed_total", _ContadorMudo())
+
+    base._post_ingestion(
+        "pscp",
+        referencias={"pscp:1": ReferenciaCruzada(id_evl="CEGLc1/kxg/E6P/uLemXRw==")},
+        completar_documentos=paso("documentos"),
+    )
+    return traza
+
+
+class _ContadorMudo:
+    def labels(self, **kw: object) -> _ContadorMudo:
+        return self
+
+    def inc(self) -> None:
+        pass
+
+
+def test_el_cierre_del_lote_deja_en_el_log_cuanto_dura_cada_paso(monkeypatch):
+    """El cierre decía nada de sí mismo y el corte del step no se podía atribuir.
+
+    El 2026-10-03 (run 37126368765) el step de PSCP murió a los 10 minutos con
+    el cursor como último log: el backlog sospechaba de la resolución de
+    empresas o del dedupe y nadie pudo medirlo. Ahora cada paso anuncia que
+    empieza **antes** de correr —si Actions mata el proceso, el último
+    ``connector_paso_empieza`` sin su ``termina`` señala al culpable— y al
+    acabar dice cuánto tardó.
+    """
+    traza = _cierre_trazado(monkeypatch)
+
+    pasos = ["empresas", "dedupe", "dedupe_referencias", "documentos", "eventos_contrato"]
+    esperado = [
+        (evento, p)
+        for p in pasos
+        for evento in ("connector_paso_empieza", "llamada", "connector_paso_termina")
+    ]
+    assert [(evento, campos["paso"]) for evento, campos in traza] == esperado
+    terminados = [campos for evento, campos in traza if evento == "connector_paso_termina"]
+    assert all(c["ok"] is True and c["source"] == "pscp" for c in terminados)
+    assert all(isinstance(c["duracion_s"], float) and c["duracion_s"] >= 0 for c in terminados)
+
+
+def test_un_paso_roto_se_cronometra_como_fallido_y_el_cierre_sigue(monkeypatch):
+    traza = _cierre_trazado(monkeypatch, roto="dedupe")
+
+    terminados = {
+        campos["paso"]: campos["ok"]
+        for evento, campos in traza
+        if evento == "connector_paso_termina"
+    }
+    assert terminados == {
+        "empresas": True,
+        "dedupe": False,
+        "dedupe_referencias": True,
+        "documentos": True,
+        "eventos_contrato": True,
+    }
+    # El cronómetro no se traga la excepción: el fail-open de siempre la avisa.
+    assert ("connector_dedupe_failed", {"source": "pscp", "error": "dedupe roto"}) in traza
+
+
+def test_el_paso_de_documentos_se_cronometra_tambien_fuera_del_cierre(monkeypatch):
+    """PSCP lo corre antes del cierre (``completar_documentos_primero``)."""
+    from scraper.connectors import base
+
+    traza: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setattr(base, "log", _LogQueApunta(traza))
+
+    def roto() -> None:
+        raise RuntimeError("plataforma caída")
+
+    base._completar_documentos("pscp", roto)
+
+    assert [evento for evento, _ in traza] == [
+        "connector_paso_empieza",
+        "connector_paso_termina",
+        "connector_completar_documentos_failed",
+    ]
+    assert traza[1][1]["ok"] is False

@@ -28,6 +28,7 @@ Invariantes que el conector debe respetar:
 from __future__ import annotations
 
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
@@ -388,12 +389,40 @@ def _completar_documentos_primero(connector: Connector) -> bool:
     return bool(getattr(connector, "completar_documentos_primero", False))
 
 
+@contextmanager
+def _cronometro(source_id: str, paso: str) -> Iterator[None]:
+    """Deja en el log cuándo empieza y cuánto dura un paso del cierre del lote.
+
+    Hasta 2026-10 el cierre no decía nada de sí mismo: el step de PSCP se
+    cortaba a los 10 minutos y solo se veía que el último log era el cursor
+    (run 37126368765). Con esto el último ``connector_paso_empieza`` sin su
+    ``connector_paso_termina`` dice en qué paso murió, y la duración de cada
+    uno se lee del log sin tener que restar marcas de tiempo. No captura nada:
+    la excepción sigue hacia el ``except`` fail-open de quien lo usa.
+    """
+    log.info("connector_paso_empieza", source=source_id, paso=paso)
+    inicio = time.monotonic()
+    ok = False
+    try:
+        yield
+        ok = True
+    finally:
+        log.info(
+            "connector_paso_termina",
+            source=source_id,
+            paso=paso,
+            ok=ok,
+            duracion_s=round(time.monotonic() - inicio, 2),
+        )
+
+
 def _completar_documentos(source_id: str, paso: Callable[[], object] | None) -> None:
     """Ejecuta el paso de documentos del conector. Fail-open: nunca tumba la pasada."""
     if paso is None:
         return
     try:
-        paso()
+        with _cronometro(source_id, "documentos"):
+            paso()
     except Exception as e:
         log.warning("connector_completar_documentos_failed", source=source_id, error=str(e))
 
@@ -413,6 +442,9 @@ def _post_ingestion(
     ``completar_documentos`` va **después** de los dos dedupes: un aviso TED que
     acaba de emparejarse lee los pliegos de su canónica y no necesita los suyos,
     y el paso lo sabe por la marca que el dedupe acaba de escribir.
+
+    Cada paso que toca la BD va cronometrado (:func:`_cronometro`): el log dice
+    cuánto tarda cada uno y, si el step se corta, en cuál estaba.
     """
     try:
         from services.entity_resolution import HOOK_TIME_BUDGET_S, resolve_all_unlinked
@@ -427,18 +459,20 @@ def _post_ingestion(
         # de contrato de más abajo -- que estuvieron una semana sin correr.
         # `source_id` vale como ámbito porque los conectores respetan la
         # invariante `Licitacion.fuente = source_id` (ver docstring del módulo).
-        resolve_all_unlinked(
-            fuente=source_id,
-            scope_fuente=source_id,
-            resume=True,
-            time_budget_s=HOOK_TIME_BUDGET_S,
-        )
+        with _cronometro(source_id, "empresas"):
+            resolve_all_unlinked(
+                fuente=source_id,
+                scope_fuente=source_id,
+                resume=True,
+                time_budget_s=HOOK_TIME_BUDGET_S,
+            )
     except Exception as e:
         log.warning("connector_entity_resolution_failed", source=source_id, error=str(e))
     try:
         from services.dedupe import detect_duplicates
 
-        detect_duplicates(fuente=source_id)
+        with _cronometro(source_id, "dedupe"):
+            detect_duplicates(fuente=source_id)
     except Exception as e:
         # Fail-open a propósito —un dedupe roto no puede tumbar una ingesta cuyas
         # filas ya están escritas— pero NO en silencio: hasta 2026-08 aquí sólo
@@ -451,7 +485,8 @@ def _post_ingestion(
         try:
             from services.dedupe import detect_duplicados_por_referencia
 
-            detect_duplicados_por_referencia(fuente=source_id, referencias=referencias)
+            with _cronometro(source_id, "dedupe_referencias"):
+                detect_duplicados_por_referencia(fuente=source_id, referencias=referencias)
         except Exception as e:
             # Mismo trato que el dedupe de arriba: fail-open, pero contado.
             _contar_dedupe_fallido(source_id)
@@ -460,7 +495,8 @@ def _post_ingestion(
     try:
         from services.contract_events import derive_new_events
 
-        derive_new_events()
+        with _cronometro(source_id, "eventos_contrato"):
+            derive_new_events()
     except Exception as e:
         log.warning("connector_contract_events_failed", source=source_id, error=str(e))
     try:
