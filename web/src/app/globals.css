@@ -315,7 +315,7 @@
    * casa en docs/UX_AUDIT.md). Llegó a haber 29 opacidades sueltas y luego 12;
    * ahora no se escribe ninguna (`restriccionesDeAspecto` lo impide):
    *
-   *   primary-hover        5 %   fondo al pasar; fondo de reposo muy leve
+   *   primary-hover        5 %   fondo al pasar; fondo de reposo muy tenue
    *   primary-selected    10 %   seleccionado, chip, fila activa (absorbió /9)
    *   primary-soft        15 %   énfasis; el máximo detrás de texto del mismo
    *                              color (≤ 16 %, `contraste-tokens.test.ts` lee
@@ -327,7 +327,7 @@
    *                              calor, barras, embudo, pista del slider);
    *                              absorbió /30 → 2, /50 y /60 → 3, /80 → 4
    *
-   * Los mapas de calor continuos (alfa calculada por valor) siguen escribiendo
+   * Los mapas de calor de escala continua (alfa calculada por valor) siguen escribiendo
    * `hsl(var(--primary) / α)` en un `style`: son una escala de dato, no un
    * tinte, y no pasan por clases. */
   --color-primary-hover: hsl(var(--primary) / 0.05);

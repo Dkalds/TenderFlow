@@ -659,7 +659,7 @@ src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
   `contraste-tokens.test.ts` lee ahora las alfas de los tintes del CSS (la fila
   activa del Radar pasa de 9 a 10 % y sigue sobre 4,5:1). El trinquete es una
   restricción más de `restriccionesDeAspecto`, sin allowlist. Fuera, a
-  propósito: los mapas de calor continuos que calculan `hsl(var(--primary) / α)`
+  propósito: los mapas de calor de escala continua, que calculan `hsl(var(--primary) / α)`
   por valor y los `fillOpacity` de SVG, que son escala de dato, no tinte.
   **Sin verificar a ojo**: no se levantó el dev server en la rama; la
   comprobación fue de tests y lint.
