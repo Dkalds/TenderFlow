@@ -4,7 +4,6 @@ import { useMemo } from "react";
 import {
   Aviso,
   EnlaceIr,
-  PanelEmpty,
   PanelError,
   PanelTitle,
   StatCell,
@@ -94,7 +93,7 @@ export function TuDia() {
     data?.pursuits_truncados || data?.tareas_truncadas || data?.senales_truncadas;
 
   return (
-    <section aria-labelledby="resumen-tu-dia" className="mb-5.5">
+    <section aria-labelledby="resumen-tu-dia">
       <PanelTitle
         as="h2"
         id="resumen-tu-dia"
@@ -174,24 +173,41 @@ export function TuDia() {
               </Aviso>
             )}
 
-            <div className={cn(SUPERFICIE_PANEL, "min-w-0 p-2.5")}>
-              {isPending ? (
-                <div className="flex flex-col gap-2 md:flex-row">
-                  {Array.from({ length: 4 }, (_, index) => (
-                    <Skeleton key={index} className="h-28 w-full rounded-lg" />
-                  ))}
-                </div>
-              ) : urgentes.length === 0 ? (
-                <PanelEmpty
-                  size="sm"
-                  title="Nada vence esta semana"
-                  hint="Aquí salen los plazos, las tareas y las renovaciones de los próximos siete días."
-                  action={<EnlaceIr href="/radar">Buscar oportunidades en el Radar</EnlaceIr>}
-                />
-              ) : (
-                <SemanaEnCarriles tramos={tramos} />
-              )}
-            </div>
+            {/* Una semana sin nada es una línea, no un panel de 150 px: con los
+                cuatro contadores a cero encima, el vacío ya está dicho, y el
+                panel grande empujaba el mercado media pantalla abajo. */}
+            {!isPending && urgentes.length === 0 ? (
+              <div
+                className={cn(
+                  SUPERFICIE_PANEL,
+                  "flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-2.5",
+                )}
+              >
+                {/* `basis-64`: por debajo de ese ancho el enlace baja de línea en vez
+                    de estrujar la frase en una columna de tres palabras. */}
+                <p className="min-w-0 flex-1 basis-64 text-tf-meta">
+                  <span className="font-medium">Nada vence esta semana.</span>{" "}
+                  <span className="text-muted-foreground">
+                    Aquí salen los plazos, las tareas y las renovaciones de los próximos siete días.
+                  </span>
+                </p>
+                <EnlaceIr href="/radar" className="flex-none">
+                  Buscar oportunidades en el Radar
+                </EnlaceIr>
+              </div>
+            ) : (
+              <div className={cn(SUPERFICIE_PANEL, "min-w-0 p-2.5")}>
+                {isPending ? (
+                  <div className="flex flex-col gap-2 md:flex-row">
+                    {Array.from({ length: 4 }, (_, index) => (
+                      <Skeleton key={index} className="h-28 w-full rounded-lg" />
+                    ))}
+                  </div>
+                ) : (
+                  <SemanaEnCarriles tramos={tramos} />
+                )}
+              </div>
+            )}
           </div>
 
           {/* La lista tiene un tope y se declara: unos contadores
