@@ -8,7 +8,7 @@
  */
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Pursuit } from "@/hooks/use-pursuits";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -55,6 +55,11 @@ const base = {
   version: 4,
 } as unknown as Pursuit;
 
+// Los editores de celda llegan con `next/dynamic` al pulsar el lápiz
+// (`ficha-datos.tsx`): el primer import transforma el módulo y, con la máquina
+// cargada, pasa de los 1 s por defecto de `findBy*`.
+const DESCARGA = { timeout: 15_000 };
+
 const en = (cambios: Partial<Pursuit>): Pursuit => ({ ...base, ...cambios }) as Pursuit;
 
 /** La ficha controla qué celda está en edición; aquí, un estado local. */
@@ -100,13 +105,13 @@ describe("FichaDatos — el importe de lo que se licita", () => {
   });
 });
 
-describe("FichaDatos — oferta y responsable en su celda", () => {
-  it("la oferta prevista se anota en su celda, con la misma regla que el formulario", () => {
+describe("FichaDatos — oferta y responsable en su celda", { timeout: 30_000 }, () => {
+  it("la oferta prevista se anota en su celda, con la misma regla que el formulario", async () => {
     render(<ConEdicion pursuit={base} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Anotar la oferta prevista" }));
-    const campo = screen.getByLabelText("Oferta prevista, en euros");
-    expect(campo).toHaveFocus();
+    const campo = await screen.findByLabelText("Oferta prevista, en euros", {}, DESCARGA);
+    await waitFor(() => expect(campo).toHaveFocus());
 
     fireEvent.change(campo, { target: { value: "12k" } });
     fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
@@ -121,18 +126,19 @@ describe("FichaDatos — oferta y responsable en su celda", () => {
     );
   });
 
-  it("Escape cierra el editor sin guardar", () => {
+  it("Escape cierra el editor sin guardar", async () => {
     render(<ConEdicion pursuit={en({ offer_price_eur: 2_080_000 })} />);
     fireEvent.click(screen.getByRole("button", { name: "Editar la oferta prevista" }));
-    fireEvent.keyDown(screen.getByLabelText("Oferta prevista, en euros"), { key: "Escape" });
+    fireEvent.keyDown(await screen.findByLabelText("Oferta prevista, en euros", {}, DESCARGA), { key: "Escape" });
     expect(screen.queryByLabelText("Oferta prevista, en euros")).not.toBeInTheDocument();
     expect(h.mutate).not.toHaveBeenCalled();
   });
 
-  it("el responsable se asigna desde su celda", () => {
+  it("el responsable se asigna desde su celda", async () => {
     render(<ConEdicion pursuit={base} />);
     fireEvent.click(screen.getByRole("button", { name: "Asignar un responsable" }));
-    expect(screen.getByRole("combobox", { name: "Responsable de la oportunidad" })).toHaveFocus();
+    const disparador = await screen.findByRole("combobox", { name: "Responsable de la oportunidad" }, DESCARGA);
+    await waitFor(() => expect(disparador).toHaveFocus());
   });
 
   it("sin quien controle la edición, la rejilla es solo lectura", () => {

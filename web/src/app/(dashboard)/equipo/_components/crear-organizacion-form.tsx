@@ -9,6 +9,7 @@
  * de 200 caracteres se explica debajo del campo en vez de volver como 422.
  */
 
+import * as React from "react";
 import { Plus } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,12 +21,25 @@ import { useCreateOrganization } from "@/hooks/use-organization";
 import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import { organizacion } from "@/lib/forms/esquemas";
 import { getErrorMessage } from "@/lib/query-feedback";
+import { CAMPO_NOMBRE_ORGANIZACION } from "./crear-organizacion";
 
-const CAMPO = "new-org-name";
+const CAMPO = CAMPO_NOMBRE_ORGANIZACION;
 
-export function CrearOrganizacionForm() {
+export function CrearOrganizacionForm({
+  nombreInicial = "",
+  enfocar = false,
+}: {
+  /** Lo escrito en la réplica inerte antes de que llegara este módulo (`crear-organizacion.tsx`). */
+  nombreInicial?: string;
+  /** La réplica tenía el foco: el campo lo recupera al sustituirla. */
+  enfocar?: boolean;
+} = {}) {
   const createOrganization = useCreateOrganization();
-  const form = useForm({ resolver: zodResolver(organizacion.esquema), defaultValues: { name: "" } });
+  const form = useForm({ resolver: zodResolver(organizacion.esquema), defaultValues: { name: nombreInicial } });
+  const { setFocus } = form;
+  React.useEffect(() => {
+    if (enfocar) setFocus("name");
+  }, [enfocar, setFocus]);
   const error = form.formState.errors.name?.message;
   const vacio = !useWatch({ control: form.control, name: "name" }).trim();
 

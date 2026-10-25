@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { DataTable, IndicadorOrden, type DataTableColumnDef } from "@/components/ui/data-table";
+import { DataTable, type DataTableColumnDef } from "@/components/ui/data-table";
+import { IndicadorOrden } from "@/components/ui/indicador-orden";
 
 interface Row {
   name: string;

@@ -59,7 +59,7 @@ vi.mock("@/hooks/use-organization", () => ({
 // `useSeguimiento` instancia también la fuente de cuentas (deshabilitada para
 // una licitación), que lee la organización activa: en blanco, como el resto de
 // fuentes que el Radar no usa.
-vi.mock("@/hooks/use-cuentas", () => ({
+vi.mock("@/hooks/use-seguir-cuenta", () => ({
   useCuentaDeOrgano: () => ({ data: undefined, isPending: false }),
   useSeguirCuenta: () => ({ mutate: vi.fn(), isPending: false }),
   useDejarDeSeguirOrgano: () => ({ mutate: vi.fn(), isPending: false }),

@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import { cn, formatCurrency, formatNumber } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PanelEmpty, PanelError } from "@/components/console/panel";
-import { IndicadorOrden } from "@/components/ui/data-table";
+import { IndicadorOrden } from "@/components/ui/indicador-orden";
 import { Pista } from "@/components/ui/pista";
 import { CABECERA_COLUMNA } from "@/components/ui/table";
 import { SeguirBoton } from "@/components/seguir-boton";

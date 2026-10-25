@@ -9,7 +9,7 @@
 import Link from "next/link";
 
 import { Panel, PanelEmpty, PanelTitle } from "@/components/console/panel";
-import { IndicadorOrden } from "@/components/ui/data-table";
+import { IndicadorOrden } from "@/components/ui/indicador-orden";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   CABECERA_COLUMNA,

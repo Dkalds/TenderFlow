@@ -57,6 +57,11 @@ vi.mock("@/lib/report-error", () => ({ reportError: vi.fn() }));
 
 import { ConsoleRail } from "@/components/layout/console-rail";
 
+// El cajón móvil y el selector de organización llegan con `next/dynamic` al
+// abrirse (`console-rail.tsx`): el primer import transforma el módulo, y con la
+// máquina cargada pasa del segundo por defecto de `findBy*`.
+const DESCARGA = { timeout: 15_000 };
+
 const ACME = { id: 1, name: "Acme", role: "admin", is_personal: false };
 
 const renderRail = (pathname = "/resumen", admin = true, organizacion = ACME) => {
@@ -188,11 +193,11 @@ describe("ConsoleRail", () => {
     }
   });
 
-  it("abre el cajón de navegación en móvil", () => {
+  it("abre el cajón de navegación en móvil", { timeout: 30_000 }, async () => {
     renderRail("/resumen");
     expect(screen.queryByRole("navigation", { name: "Navegación móvil" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Abrir navegación" }));
-    const cajon = screen.getByRole("navigation", { name: "Navegación móvil" });
+    const cajon = await screen.findByRole("navigation", { name: "Navegación móvil" }, DESCARGA);
     expect(within(cajon).getByRole("link", { name: "Radar" })).toBeInTheDocument();
   });
 
@@ -222,10 +227,10 @@ describe("ConsoleRail", () => {
     expect(within(barraMovil).getByText("TenderFlow")).toHaveClass("font-display", "text-tf-lede");
   });
 
-  it("nombra el rol de la organización en castellano", () => {
+  it("nombra el rol de la organización en castellano", { timeout: 30_000 }, async () => {
     renderRail("/resumen");
     fireEvent.pointerDown(screen.getAllByRole("button", { name: "Menú de cuenta" })[0]);
-    expect(screen.getByRole("combobox", { name: "Organización activa" })).toHaveTextContent(
+    expect(await screen.findByRole("combobox", { name: "Organización activa" }, DESCARGA)).toHaveTextContent(
       "Acme · Administrador",
     );
   });
@@ -253,11 +258,11 @@ describe("ConsoleRail", () => {
     expect(screen.getAllByRole("button", { name: "Menú de cuenta" })).toHaveLength(2);
   });
 
-  it("usa un selector Radix accesible para cambiar de organización", () => {
+  it("usa un selector Radix accesible para cambiar de organización", { timeout: 30_000 }, async () => {
     renderRail("/resumen");
     fireEvent.pointerDown(screen.getAllByRole("button", { name: "Menú de cuenta" })[0]);
 
-    const selector = screen.getByRole("combobox", { name: "Organización activa" });
+    const selector = await screen.findByRole("combobox", { name: "Organización activa" }, DESCARGA);
     expect(selector.tagName).toBe("BUTTON");
   });
 });

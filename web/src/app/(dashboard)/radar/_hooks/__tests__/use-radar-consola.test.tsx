@@ -74,7 +74,7 @@ vi.mock("@/hooks/use-empresas-watchlist", () => ({
   useEmpresasWatchlist: () => ({ watchedIds: new Set<number>(), isLoading: false }),
   useToggleEmpresaWatch: () => ({ mutate: vi.fn(), isPending: false }),
 }));
-vi.mock("@/hooks/use-cuentas", () => ({
+vi.mock("@/hooks/use-seguir-cuenta", () => ({
   useCuentaDeOrgano: () => ({ data: undefined, isPending: false }),
   useSeguirCuenta: () => ({ mutate: vi.fn(), isPending: false }),
   useDejarDeSeguirOrgano: () => ({ mutate: vi.fn(), isPending: false }),

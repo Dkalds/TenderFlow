@@ -21,6 +21,7 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { useBandejaComparacion } from "@/hooks/use-comparacion";
+import { alQuedarOcioso } from "@/lib/al-quedar-ocioso";
 import { useAsistente } from "@/lib/asistente-store";
 import { useUiStore } from "@/lib/ui-store";
 
@@ -81,17 +82,6 @@ function useAbiertoAlgunaVez(abierto: boolean): boolean {
   const [visto, setVisto] = React.useState(abierto);
   if (abierto && !visto) setVisto(true);
   return visto || abierto;
-}
-
-/** Ejecuta `fn` cuando el navegador esté ocioso; devuelve cómo cancelarlo. */
-function alQuedarOcioso(fn: () => void): () => void {
-  if (typeof window.requestIdleCallback === "function") {
-    const id = window.requestIdleCallback(fn, { timeout: 10_000 });
-    return () => window.cancelIdleCallback(id);
-  }
-  // Safari no tiene `requestIdleCallback`: un margen fijo tras la carga.
-  const id = window.setTimeout(fn, 3_000);
-  return () => window.clearTimeout(id);
 }
 
 function PaletaDiferida() {

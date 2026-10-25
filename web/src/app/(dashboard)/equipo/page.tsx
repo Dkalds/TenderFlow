@@ -41,7 +41,7 @@ import {
   useOrganizations,
   useOrganizationStore,
 } from "@/hooks/use-organization";
-import { CrearOrganizacionForm } from "./_components/crear-organizacion-form";
+import { CrearOrganizacion } from "./_components/crear-organizacion";
 import { InvitacionesPendientes } from "./_components/invitaciones-pendientes";
 import { MatrizPermisos } from "./_components/matriz-permisos";
 import { MiembrosCard } from "./_components/miembros-card";
@@ -90,7 +90,7 @@ export default function EquipoPage() {
       <div className="space-y-5">
         <Panel>
           <PanelTitle title="Crear organización" hint="para trabajar en equipo con otras personas" />
-          <CrearOrganizacionForm />
+          <CrearOrganizacion />
         </Panel>
 
         <Tabs defaultValue={pestanaInicial}>

@@ -10,6 +10,7 @@
  */
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +27,26 @@ import {
 } from "@/hooks/use-organization";
 import { getErrorMessage } from "@/lib/query-feedback";
 import { ROLE_LABELS, STATUS_LABELS, type RolAsignable } from "../_lib/etiquetas";
-import { AnadirMiembroForm } from "./anadir-miembro-form";
+
+// El alta solo la ve quien gestiona, y solo se sabe en el navegador (depende de
+// la organización activa): con react-hook-form y zod no tiene por qué viajar en
+// el First Load de quien no la va a ver. El hueco calca el formulario.
+const AnadirMiembroForm = dynamic(() => import("./anadir-miembro-form").then((modulo) => modulo.AnadirMiembroForm), {
+  ssr: false,
+  loading: () => (
+    <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-border/60 p-3" aria-hidden="true">
+      <div className="min-w-56 flex-1 space-y-1.5">
+        <Skeleton className="h-4 w-36" />
+        <Skeleton className="h-9 w-full" />
+      </div>
+      <div className="space-y-1.5">
+        <Skeleton className="h-4 w-10" />
+        <Skeleton className="h-9 w-40" />
+      </div>
+      <Skeleton className="h-9 w-20" />
+    </div>
+  ),
+});
 
 function MemberRow({
   member,

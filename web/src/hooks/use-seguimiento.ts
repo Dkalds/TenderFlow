@@ -58,7 +58,7 @@ import {
   useCuentaDeOrgano,
   useDejarDeSeguirOrgano,
   useSeguirCuenta,
-} from "@/hooks/use-cuentas";
+} from "@/hooks/use-seguir-cuenta";
 import {
   useDejarDeSeguir,
   useFollows,
