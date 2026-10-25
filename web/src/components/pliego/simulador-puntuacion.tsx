@@ -205,7 +205,7 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
           <table className="w-full text-tf-body">
             <caption className="sr-only">Puntos de precio por baja de referencia</caption>
             <thead>
-              <tr className="border-b border-border/60 text-left">
+              <tr className="border-b border-divider text-left">
                 <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5")}>
                   Baja
                 </th>
@@ -219,7 +219,7 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
             </thead>
             <tbody>
               {(data.escenarios ?? []).map((escenario) => (
-                <tr key={escenario.baja} className="border-b border-border/40 last:border-b-0">
+                <tr key={escenario.baja} className="border-b border-divider-subtle last:border-b-0">
                   <td className="tf-tnum py-1.5">{pctDe(escenario.baja)}</td>
                   <td className="tf-tnum py-1.5 font-medium">
                     {puntos(escenario.puntos)}
@@ -239,7 +239,7 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
             </tbody>
           </table>
 
-          <form onSubmit={simular} className="space-y-2 rounded-md border border-border/60 p-3" noValidate>
+          <form onSubmit={simular} className="space-y-2 rounded-md border border-divider p-3" noValidate>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <label htmlFor={idPropia} className={ETIQUETA_CAMPO}>

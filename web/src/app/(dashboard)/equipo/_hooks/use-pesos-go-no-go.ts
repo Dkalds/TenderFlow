@@ -38,6 +38,7 @@ export function usePesosGoNoGo(organizationId: number) {
 export function useGuardarPesosGoNoGo(organizationId: number) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "No se pudieron guardar los pesos" },
     mutationFn: (pesos: Record<string, number>) =>
       apiMutate<PesosGoNoGo>(
         "PUT",

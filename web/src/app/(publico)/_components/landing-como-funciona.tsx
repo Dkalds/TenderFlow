@@ -27,7 +27,7 @@ export function ComoFuncionaLanding() {
             {CONTENIDO.pilaresTitulo}
           </h2>
         </div>
-        <ol className="divide-border/50 border-border/50 divide-y border-t">
+        <ol className="divide-divider border-divider divide-y border-t">
           {CONTENIDO.pilares.map((pilar) => (
             <li key={pilar.titulo} className="py-8">
               <h3 className="font-display text-xl font-semibold tracking-[-0.01em]">{pilar.titulo}</h3>

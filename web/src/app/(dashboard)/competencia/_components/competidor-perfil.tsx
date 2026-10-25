@@ -92,7 +92,7 @@ export function CompetidorPerfil({
   return (
     <section
       aria-label={`Perfil de ${empresa.nombre}`}
-      className="rounded-xl border border-primary/30 bg-card px-4 py-3.5"
+      className="rounded-xl border border-primary-line bg-card px-4 py-3.5"
     >
       <div className="grid grid-cols-1 gap-x-7 gap-y-5 md:grid-cols-2 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.85fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <div className="flex min-w-0 flex-col gap-3">
@@ -124,7 +124,7 @@ export function CompetidorPerfil({
               type="button"
               aria-label="Cerrar perfil del competidor"
               onClick={() => startTransition(onClose)}
-              className="tf-pressable grid h-6 w-6 flex-none place-items-center rounded-md border border-border/60 text-muted-foreground hover:text-foreground"
+              className="tf-pressable grid h-6 w-6 flex-none place-items-center rounded-md border border-divider text-muted-foreground hover:text-foreground"
             >
               <X className="h-3 w-3" aria-hidden="true" />
             </button>

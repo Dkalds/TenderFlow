@@ -45,7 +45,7 @@ export function TableroMetricas({
   return (
     <section
       aria-label="Pipeline de la organización"
-      className="border-border/70 bg-border/60 grid flex-none grid-cols-2 gap-px border-b lg:grid-cols-4"
+      className="border-divider bg-divider grid flex-none grid-cols-2 gap-px border-b lg:grid-cols-4"
     >
       <StatCell
         label="Valor del pipeline"

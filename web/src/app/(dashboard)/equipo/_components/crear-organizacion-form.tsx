@@ -20,7 +20,6 @@ import { Input } from "@/components/ui/input";
 import { useCreateOrganization } from "@/hooks/use-organization";
 import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import { organizacion } from "@/lib/forms/esquemas";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { CAMPO_NOMBRE_ORGANIZACION } from "./crear-organizacion";
 
 const CAMPO = CAMPO_NOMBRE_ORGANIZACION;
@@ -48,8 +47,8 @@ export function CrearOrganizacionForm({
       await createOrganization.mutateAsync(name);
       toast.success("Organización creada");
       form.reset();
-    } catch (error) {
-      toast.error(getErrorMessage(error, "accion"));
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   });
 

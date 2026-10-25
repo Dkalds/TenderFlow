@@ -22,7 +22,7 @@ import type {
 } from "@/lib/api-types";
 import { organizationKeys } from "@/lib/query-keys";
 import { pursuitKeys } from "@/lib/query-keys";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
+import { descripcionDeConflicto, META_ERROR_EN_LINEA, type QueryFeedbackMeta } from "@/lib/query-feedback";
 
 export type Pursuit = PursuitDetail;
 export type PursuitStatus = Pursuit["status"];
@@ -159,10 +159,17 @@ function invalidatePursuits(queryClient: ReturnType<typeof useQueryClient>) {
   ]);
 }
 
-export function useCreatePursuit() {
+/**
+ * Las escrituras de oportunidad las llaman muchas pantallas, cada una con su
+ * frase. El aviso de error es el global de mutaciones; quien llama pasa su
+ * título en `meta` (D6) en vez de añadir su propio `toast.error`, que saldría
+ * además del global.
+ */
+export function useCreatePursuit(meta?: QueryFeedbackMeta) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo crear la oportunidad", ...meta },
     mutationFn: (input: CreatePursuitInput) =>
       apiMutate<Pursuit>("POST", "/api/v1/pursuits", {
         ...input,
@@ -178,11 +185,12 @@ export function useCreatePursuit() {
   });
 }
 
-export function useUpdatePursuit(id: string | number) {
+export function useUpdatePursuit(id: string | number, meta?: QueryFeedbackMeta) {
   const queryClient = useQueryClient();
   const pursuitId = String(id);
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo guardar la oportunidad", errorDescription: descripcionDeConflicto, ...meta },
     mutationFn: (input: UpdatePursuitInput) => {
       const params = new URLSearchParams();
       if (organizationId != null) params.set("organization_id", String(organizationId));
@@ -227,10 +235,11 @@ export function useUpdatePursuit(id: string | number) {
  * la misma tarjeta mientras ésta estaba en el aire, el backend rechaza el PATCH
  * en vez de pisar su cambio, y la pantalla deshace su movimiento optimista.
  */
-export function useMoverPursuit() {
+export function useMoverPursuit(meta?: QueryFeedbackMeta) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo mover la oportunidad", errorDescription: descripcionDeConflicto, ...meta },
     mutationFn: ({ id, ...input }: UpdatePursuitInput & { id: string | number }) => {
       const params = new URLSearchParams();
       if (organizationId != null) params.set("organization_id", String(organizationId));

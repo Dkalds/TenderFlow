@@ -59,7 +59,7 @@ export function Puerta({
 }) {
   return (
     <div className="bg-background relative isolate flex min-h-dvh flex-col">
-      <header className="border-border/60 border-b">
+      <header className="border-divider border-b">
         <div className="mx-auto flex w-full max-w-6xl items-center px-6 py-3.5">
           <Link
             href="/"
@@ -87,7 +87,7 @@ export function Puerta({
         </div>
 
         {panel != null && (
-          <div className="border-border/70 bg-card animate-in fade-in-0 slide-in-from-bottom-2 anim-duration-200 rounded-xl border p-6">
+          <div className="border-divider bg-card animate-in fade-in-0 slide-in-from-bottom-2 anim-duration-200 rounded-xl border p-6">
             {panel}
           </div>
         )}

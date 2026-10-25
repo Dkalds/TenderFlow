@@ -36,7 +36,7 @@ export function CamposCompletos({
       id={ANCLA_CAMPOS}
       tabIndex={-1}
       aria-label="Editar todos los campos"
-      className="border-border/60 bg-card rounded-xl border outline-none"
+      className="border-divider bg-card rounded-xl border outline-none"
     >
       <button
         type="button"
@@ -60,7 +60,7 @@ export function CamposCompletos({
         </span>
       </button>
       {abierto ? (
-        <div id={cuerpoId} className="border-border/60 border-t px-4 pt-3.5 pb-4">
+        <div id={cuerpoId} className="border-divider border-t px-4 pt-3.5 pb-4">
           <EditorCompleto pursuit={pursuit} decisiones={decisionesPermitidas(pursuit)} />
         </div>
       ) : null}

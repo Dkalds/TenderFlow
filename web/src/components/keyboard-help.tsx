@@ -23,7 +23,7 @@ function Keys({ keys }: { keys: string[] }) {
       {keys.map((key, index) => (
         <React.Fragment key={key}>
           {index > 0 && <span className="text-tf-micro text-muted-foreground">+</span>}
-          <kbd className="rounded-sm border border-border/70 bg-muted px-1.5 py-0.5 font-mono text-tf-micro text-foreground">
+          <kbd className="rounded-sm border border-divider bg-muted px-1.5 py-0.5 font-mono text-tf-micro text-foreground">
             {key}
           </kbd>
         </React.Fragment>

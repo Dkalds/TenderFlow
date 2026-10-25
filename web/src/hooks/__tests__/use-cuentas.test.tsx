@@ -44,6 +44,7 @@ import {
 } from "@/hooks/use-cuentas";
 import { cuentaKeys, organizationKeys } from "@/lib/query-keys";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
+import { crearQueryClientDePrueba } from "@/test/query-client";
 
 const PERSONAL = { id: 3, name: "Personal", role: "owner", is_personal: true };
 const EQUIPO = { id: 21, name: "Equipo", role: "member", is_personal: false };
@@ -91,11 +92,9 @@ function query(url: string): URLSearchParams {
   return new URL(url, "http://localhost").searchParams;
 }
 
-function crearCliente() {
-  return new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-}
+// Con el aviso global de mutaciones: el fallo lo dice él, con el título del
+// hook y el `detail` de la API de descripción (D6).
+const crearCliente = crearQueryClientDePrueba;
 
 function envoltorio(qc: QueryClient) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
@@ -260,7 +259,7 @@ describe("useSeguirCuenta", () => {
     });
 
     expect(qc.getQueryData(clave)).toBeNull();
-    expect(toast.error).toHaveBeenCalledWith("El rol viewer es de solo lectura.");
+    expect(toast.error).toHaveBeenCalledWith(expect.any(String), { description: "El rol viewer es de solo lectura." });
     expect(registrarEvento).not.toHaveBeenCalled();
   });
 });
@@ -311,7 +310,7 @@ describe("useDejarDeSeguirCuenta", () => {
     });
 
     expect(qc.getQueryData(cuentaKeys.lista(21))).toEqual([ALCALA]);
-    expect(toast.error).toHaveBeenCalledWith("Esa cuenta no existe en tu organización.");
+    expect(toast.error).toHaveBeenCalledWith(expect.any(String), { description: "Esa cuenta no existe en tu organización." });
     expect(registrarEvento).not.toHaveBeenCalled();
   });
 });
@@ -363,7 +362,7 @@ describe("useDejarDeSeguirOrgano", () => {
     });
 
     expect(qc.getQueryData(clave)).toEqual(ALCALA);
-    expect(toast.error).toHaveBeenCalledWith("El rol viewer es de solo lectura.");
+    expect(toast.error).toHaveBeenCalledWith(expect.any(String), { description: "El rol viewer es de solo lectura." });
     expect(registrarEvento).not.toHaveBeenCalled();
   });
 });

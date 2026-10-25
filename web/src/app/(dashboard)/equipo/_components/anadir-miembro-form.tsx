@@ -18,7 +18,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAddOrganizationMember } from "@/hooks/use-organization";
 import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import { invitacion } from "@/lib/forms/esquemas";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { cn } from "@/lib/utils";
 
 const CAMPO_CORREO = "member-email";
@@ -41,8 +40,8 @@ export function AnadirMiembroForm({ organizationId }: { organizationId: number }
       const invitado = resultado != null && "id" in resultado;
       toast.success(invitado ? "Invitación enviada por correo" : "Miembro añadido");
       form.reset();
-    } catch (error) {
-      toast.error(getErrorMessage(error, "accion"));
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   });
 
@@ -50,7 +49,7 @@ export function AnadirMiembroForm({ organizationId }: { organizationId: number }
     <form
       onSubmit={submit}
       noValidate
-      className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-border/60 p-3"
+      className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-divider p-3"
     >
       <Field label="Correo de la persona" htmlFor={CAMPO_CORREO} className="min-w-56 flex-1">
         <Input

@@ -20,7 +20,7 @@ export function RadarCabecera() {
   return (
     <div
       data-slot="radar-cabecera"
-      className={cn("hidden h-[30px] flex-none items-center border-b border-border/70 bg-card lg:grid", CABECERA_COLUMNA, RADAR_GRID)}
+      className={cn("hidden h-[30px] flex-none items-center border-b border-divider bg-card lg:grid", CABECERA_COLUMNA, RADAR_GRID)}
     >
       <span>Score</span>
       <span>Licitación</span>

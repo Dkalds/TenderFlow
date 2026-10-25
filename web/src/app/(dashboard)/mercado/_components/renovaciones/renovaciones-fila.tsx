@@ -152,7 +152,7 @@ export function CeldasRenovacion({
           // ni al táctil— y su disparador no es focusable, así que la tabla no
           // gana doscientas paradas de tabulación.
           <Pista contenido={propio.explicacion}>
-            <span className="inline-flex h-6 items-center rounded-md border border-border/60 bg-muted px-2 text-tf-micro font-medium text-muted-foreground">
+            <span className="inline-flex h-6 items-center rounded-md border border-divider bg-muted px-2 text-tf-micro font-medium text-muted-foreground">
               {propio.texto}
             </span>
           </Pista>
@@ -167,7 +167,7 @@ export function CeldasRenovacion({
               e.stopPropagation();
               onAnticipar(fila.licitacion_id);
             }}
-            className="tf-pressable h-6 rounded-md border border-primary/30 bg-primary/10 px-2 text-tf-micro font-medium text-primary hover:bg-primary/15"
+            className="tf-pressable h-6 rounded-md border border-primary-line bg-primary-selected px-2 text-tf-micro font-medium text-primary hover:bg-primary-soft"
           >
             Anticipar
           </button>

@@ -27,7 +27,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, apiGet, apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA, getErrorMessage } from "@/lib/query-feedback";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { adminKeys, analyticsKeys } from "@/lib/query-keys";
 import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
 
@@ -96,8 +96,8 @@ export function RevisionDuplicadosCard() {
       void queryClient.invalidateQueries({ queryKey: adminKeys.revision.duplicados });
       void queryClient.invalidateQueries({ queryKey: analyticsKeys.quality });
     },
-    onError: (e: unknown) => {
-      toast.error("No se pudo resolver el par", { description: getErrorMessage(e, "accion") });
+    meta: { errorTitle: "No se pudo resolver el par" },
+    onError: () => {
       // Un 404 es que otra persona ya lo decidió: la lista tiene que ponerse al día.
       void queryClient.invalidateQueries({ queryKey: adminKeys.revision.duplicados });
     },
@@ -133,7 +133,7 @@ export function RevisionDuplicadosCard() {
       ) : items.length === 0 ? (
         <PanelEmpty size="sm" title="No hay nada pendiente" hint="Ningún par espera una decisión." />
       ) : (
-        <ul className="divide-y divide-border/60 rounded-md border border-border/60" aria-label="Pares por decidir">
+        <ul className="divide-y divide-divider rounded-md border border-divider" aria-label="Pares por decidir">
           {items.map((par) => {
             const armada = confirmando?.id === par.licitacion_id ? confirmando.decision : null;
             const boton = (decision: Decision) => {

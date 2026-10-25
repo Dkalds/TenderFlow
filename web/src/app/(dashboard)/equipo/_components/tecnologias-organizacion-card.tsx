@@ -27,7 +27,6 @@ import {
   useOrganizationSettings,
   useUpdateOrganizationSettings,
 } from "@/hooks/use-organization-settings";
-import { getErrorMessage } from "@/lib/query-feedback";
 
 export function TecnologiasOrganizacionCard({
   organizationId,
@@ -112,7 +111,8 @@ export function TecnologiasOrganizacionCard({
                   setDirty(false);
                   toast.success("Tecnologías guardadas. El Radar ya usa este ámbito.");
                 })
-                .catch((error: unknown) => toast.error(getErrorMessage(error, "accion")))
+                // El aviso de error es el global de mutaciones (meta.errorTitle del hook, D6).
+                .catch(() => undefined)
             }
           >
             Guardar tecnologías

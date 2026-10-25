@@ -26,11 +26,11 @@ export function LotesLicitacion({ lotes }: { lotes: NonNullable<LicitacionPublic
         aria-label="Lotes del expediente"
         // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- región con scroll sin controles: WCAG 2.1.1 exige que el teclado pueda desplazarla (axe scrollable-region-focusable)
         tabIndex={0}
-        className="border-border/70 bg-card focus-visible:ring-ring mt-5 overflow-x-auto rounded-xl border px-5 py-2 focus-visible:ring-2 focus-visible:outline-none"
+        className="border-divider bg-card focus-visible:ring-ring mt-5 overflow-x-auto rounded-xl border px-5 py-2 focus-visible:ring-2 focus-visible:outline-none"
       >
         <table className="w-full min-w-[32rem] text-sm">
           <thead>
-            <tr className={cn("border-border/60 border-b text-left", CABECERA_COLUMNA)}>
+            <tr className={cn("border-divider border-b text-left", CABECERA_COLUMNA)}>
               <th scope="col" className="py-2.5 pr-4">
                 Nº
               </th>
@@ -47,7 +47,7 @@ export function LotesLicitacion({ lotes }: { lotes: NonNullable<LicitacionPublic
           </thead>
           <tbody>
             {lotes.map((lote) => (
-              <tr key={lote.numero} className="border-border/30 border-b last:border-b-0">
+              <tr key={lote.numero} className="border-divider-subtle border-b last:border-b-0">
                 <td className="tf-tnum py-2.5 pr-4">{lote.numero}</td>
                 <td className="py-2.5 pr-4">{lote.titulo ?? "—"}</td>
                 <td className="py-2.5 pr-4 font-mono text-xs">{lote.cpv ?? "—"}</td>

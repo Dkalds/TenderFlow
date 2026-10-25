@@ -119,7 +119,7 @@ export default function TableroView({
               cargadas={items.length}
               cargando={pursuits.isPending}
             />
-            <div className="bg-border/50 grid min-h-0 flex-1 grid-cols-1 gap-px md:grid-cols-3 xl:grid-cols-6">
+            <div className="bg-divider grid min-h-0 flex-1 grid-cols-1 gap-px md:grid-cols-3 xl:grid-cols-6">
               {FASES.map((fase) => (
                 <TableroColumna
                   key={fase.key}

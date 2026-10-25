@@ -262,7 +262,7 @@ function CommandPaletteInner() {
           }
         }}
       >
-        <div className="border-border/60 flex items-center gap-2 border-b px-3">
+        <div className="border-divider flex items-center gap-2 border-b px-3">
           {/* Es un buscador: lupa, no destello. */}
           <IconoBuscar className={ICONO_FILA} aria-hidden="true" />
           <Command.Input
@@ -272,7 +272,7 @@ function CommandPaletteInner() {
             placeholder="Buscar páginas, acciones o id de licitación…"
             className="h-12 w-full bg-transparent text-campo outline-none placeholder:text-muted-foreground focus-visible:outline-none"
           />
-          <kbd className="hidden rounded-sm border border-border/70 px-1.5 py-0.5 font-mono text-tf-micro text-muted-foreground sm:inline">
+          <kbd className="hidden rounded-sm border border-divider px-1.5 py-0.5 font-mono text-tf-micro text-muted-foreground sm:inline">
             Esc
           </kbd>
         </div>

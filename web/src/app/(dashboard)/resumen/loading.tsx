@@ -35,7 +35,7 @@ export default function ResumenLoading() {
         </div>
 
         {/* Mercado: filete, rótulo y atajos */}
-        <div className="mt-9 border-t border-border/60 pt-4">
+        <div className="mt-9 border-t border-divider pt-4">
           <Skeleton className="mb-4 h-5 w-28 rounded-sm" />
 
           {/* Abierto hoy: la cola a dos tercios, con su reloj, y dos tarjetas apiladas */}

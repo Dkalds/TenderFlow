@@ -59,6 +59,7 @@ export function cuerpoDeAjustes(
 export function useUpdateOrganizationSettings(organizationId: OrganizacionActiva) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "No se pudo guardar la configuración de la organización" },
     mutationFn: async (cambio: Partial<OrganizationSettings>) => {
       const url = `/api/v1/organizations/${organizationId}/settings`;
       // Lo guardado sale de la caché de la pantalla; si no está (nadie la ha

@@ -95,7 +95,7 @@ export function TecnologiasTopScore({ items }: { items: ScoredItem[] }) {
       <PanelTitle title="Las 20 licitaciones mejor puntuadas" />
       <ul className="grid gap-3 sm:grid-cols-2">
         {items.slice(0, 20).map((item, idx) => (
-          <li key={idx} className="space-y-1 rounded-md border border-border/60 p-3">
+          <li key={idx} className="space-y-1 rounded-md border border-divider p-3">
             <div className="flex items-start justify-between gap-2">
               <span className="font-mono text-tf-micro text-muted-foreground">{item.id}</span>
               <Badge variant={item.score >= 80 ? "default" : "secondary"} size="sm">

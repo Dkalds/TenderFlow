@@ -160,7 +160,23 @@ export function usePuedeEscribir(): boolean {
   return rol !== undefined && rol !== "viewer";
 }
 
-export function useOrganizationMembers(organizationId: OrganizacionActiva) {
+/**
+ * Miembros de una organización.
+ *
+ * Tiene siete consumidores y solo dos pintan el fallo en línea (`MiembrosCard`
+ * y `CicloOrganizacion`, en pestañas distintas de /equipo, que Radix monta de
+ * una en una). Los demás son selectores y nombres —responsable de una
+ * oportunidad, filtro del tablero, autores de la auditoría— para los que el
+ * toast global es el único aviso: silenciar la consulta entera los dejaría
+ * mudos. Por eso el silencio lo pide quien pinta el error, con
+ * `{ errorEnLinea: true }` (D6). El `meta` es el de `META_ERROR_EN_LINEA`
+ * escrito aquí: importar `lib/query-feedback` traería `sonner` y el cliente de
+ * API a todo el que importa este módulo.
+ */
+export function useOrganizationMembers(
+  organizationId: OrganizacionActiva,
+  { errorEnLinea = false }: { errorEnLinea?: boolean } = {},
+) {
   return useQuery({
     queryKey: organizationKeys.members(organizationId),
     queryFn: ({ signal }) =>
@@ -168,6 +184,7 @@ export function useOrganizationMembers(organizationId: OrganizacionActiva) {
     select: (members) => (Array.isArray(members) ? members : []),
     enabled: organizationId != null,
     staleTime: 30_000,
+    meta: errorEnLinea ? { silent: true } : undefined,
   });
 }
 
@@ -175,6 +192,7 @@ export function useCreateOrganization() {
   const queryClient = useQueryClient();
   const setActiveOrganizationId = useOrganizationStore((state) => state.setActiveOrganizationId);
   return useMutation({
+    meta: { errorTitle: "No se pudo crear la organización" },
     mutationFn: (name: string) => apiMutate<Organization>("POST", "/api/v1/organizations", { name }),
     onSuccess: async (organization) => {
       await queryClient.invalidateQueries({ queryKey: organizationKeys.all });
@@ -186,6 +204,7 @@ export function useCreateOrganization() {
 export function useAddOrganizationMember(organizationId: OrganizacionActiva) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "No se pudo añadir el miembro" },
     mutationFn: (input: AddOrganizationMemberInput) =>
       apiMutate<OrganizationMember>("POST", `/api/v1/organizations/${organizationId}/members`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: organizationKeys.members(organizationId) }),
@@ -195,6 +214,7 @@ export function useAddOrganizationMember(organizationId: OrganizacionActiva) {
 export function useUpdateOrganizationMember(organizationId: OrganizacionActiva) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "No se pudo cambiar el miembro" },
     mutationFn: (input: UpdateOrganizationMemberInput) =>
       apiMutate<OrganizationMember>("PUT", `/api/v1/organizations/${organizationId}/members/${input.user_id}`, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: organizationKeys.members(organizationId) }),

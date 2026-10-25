@@ -42,7 +42,7 @@ export function PerdidasPorMotivo({ metrics }: { metrics: PursuitMetrics }) {
           </thead>
           <tbody>
             {reparto.filas.map((fila) => (
-              <tr key={fila.motivo} className="border-t border-border/50">
+              <tr key={fila.motivo} className="border-t border-divider">
                 <td className="py-1.5">{etiquetaMotivo(fila.motivo)}</td>
                 <td className="tf-tnum py-1.5 text-right">{formatNumber(fila.n)}</td>
                 <td className="tf-tnum py-1.5 text-right">

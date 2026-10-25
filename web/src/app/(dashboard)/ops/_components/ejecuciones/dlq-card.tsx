@@ -31,7 +31,7 @@ import { Pista } from "@/components/ui/pista";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, apiGet, apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA, getErrorMessage } from "@/lib/query-feedback";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { adminKeys, analyticsKeys } from "@/lib/query-keys";
 import { formatDate, formatNumber } from "@/lib/utils";
 
@@ -78,9 +78,7 @@ export function DlqCard() {
       else toast.info(res.detalle);
       alTerminar();
     },
-    onError: (e: unknown) => {
-      toast.error("No se pudo reencolar la entrada", { description: getErrorMessage(e, "accion") });
-    },
+    meta: { errorTitle: "No se pudo reencolar la entrada" },
     onSettled: () => setConfirmando(null),
   });
 
@@ -91,9 +89,7 @@ export function DlqCard() {
       else toast.info(res.detalle);
       alTerminar();
     },
-    onError: (e: unknown) => {
-      toast.error("No se pudo descartar la entrada", { description: getErrorMessage(e, "accion") });
-    },
+    meta: { errorTitle: "No se pudo descartar la entrada" },
     onSettled: () => setConfirmando(null),
   });
 
@@ -157,7 +153,7 @@ export function DlqCard() {
           <PanelEmpty size="sm" title={VACIO[estado].title} hint={VACIO[estado].hint} />
         ) : (
           <ul
-            className="divide-y divide-border/60 rounded-md border border-border/60"
+            className="divide-y divide-divider rounded-md border border-divider"
             aria-label={`Entradas ${estado} de la cola de errores`}
           >
             {data.items.map((item) => {

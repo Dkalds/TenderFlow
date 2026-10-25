@@ -79,6 +79,7 @@ export interface GuardarProgramacion {
 export function useGuardarReportSchedule(organizationId: OrganizacionActiva) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "No se pudo guardar el informe semanal" },
     mutationFn: (cambios: GuardarProgramacion) =>
       apiMutate<ReportSchedule>(
         "PUT",

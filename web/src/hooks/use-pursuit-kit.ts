@@ -61,6 +61,7 @@ export function useMarcarKitItem(pursuitId: number) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo marcar el documento" },
     mutationFn: (input: Schemas["KitItemBody"]) =>
       apiMutate<KitPresentacion>("POST", kitUrl(pursuitId, organizationId), input),
     onSuccess: (kit) => {
@@ -73,6 +74,7 @@ export function useAsignarKitItem(pursuitId: number) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo asignar el documento" },
     mutationFn: (input: Schemas["KitResponsableBody"]) =>
       apiMutate<KitPresentacion>("POST", kitUrl(pursuitId, organizationId, "/responsable"), input),
     onSuccess: (kit) => {

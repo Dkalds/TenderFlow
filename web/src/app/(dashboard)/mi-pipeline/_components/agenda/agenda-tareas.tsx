@@ -20,7 +20,6 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { PanelError, SectionTitle } from "@/components/console/panel";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { cn, formatDate } from "@/lib/utils";
 import {
   tareaAbierta,
@@ -37,13 +36,7 @@ function FilaTarea({ tarea, pursuitId }: { tarea: PursuitTask; pursuitId: number
 
   const alternar = () => {
     const estado = abierta ? "hecha" : "pendiente";
-    actualizar.mutate(
-      { pursuitId, taskId: tarea.id, estado },
-      {
-        onError: (err) =>
-          toast.error("No se pudo actualizar la tarea", { description: getErrorMessage(err, "accion") }),
-      },
-    );
+    actualizar.mutate({ pursuitId, taskId: tarea.id, estado });
   };
 
   return (
@@ -100,8 +93,6 @@ export function AgendaTareas({ pursuitId }: { pursuitId: number }) {
           setVence("");
           toast.success("Tarea añadida");
         },
-        onError: (err) =>
-          toast.error("No se pudo crear la tarea", { description: getErrorMessage(err, "accion") }),
       },
     );
   };
@@ -127,7 +118,7 @@ export function AgendaTareas({ pursuitId }: { pursuitId: number }) {
           Sin tareas. La primera que añadas pasa a ser la próxima acción.
         </p>
       ) : (
-        <ul className="mb-2 divide-y divide-border/40">
+        <ul className="mb-2 divide-y divide-divider-subtle">
           {tareas.map((tarea) => (
             <FilaTarea key={tarea.id} tarea={tarea} pursuitId={pursuitId} />
           ))}
@@ -162,7 +153,7 @@ export function AgendaTareas({ pursuitId }: { pursuitId: number }) {
             variant="outline"
             size="sm"
             disabled={!titulo.trim() || crear.isPending}
-            className="flex-none border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary md:h-8"
+            className="flex-none border-primary-line bg-primary-selected text-primary hover:bg-primary-soft hover:text-primary md:h-8"
           >
             {crear.isPending ? "Añadiendo…" : "Añadir"}
           </Button>

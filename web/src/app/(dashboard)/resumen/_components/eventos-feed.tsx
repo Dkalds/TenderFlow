@@ -121,7 +121,7 @@ export function EventosFeed() {
         // clase —del color de su tramo— sobre la línea vertical.
         <div className="flex flex-col gap-1">
           {tramos.length > 0 && (
-            <div className="mb-2 flex flex-col gap-2 border-b border-border/60 pb-3">
+            <div className="mb-2 flex flex-col gap-2 border-b border-divider pb-3">
               <BarraApilada tramos={tramos} total={totalVentana} activos={tipo ? [tipo] : []} />
               <LeyendaTipos tramos={tramos} activo={tipo} onTipo={setTipo} />
             </div>
@@ -146,16 +146,17 @@ export function EventosFeed() {
           {dias.map((dia) => (
             <section key={dia.clave} aria-label={dia.etiqueta}>
               <h4 className="pb-0.5 pl-9 text-tf-micro font-semibold text-muted-foreground">{dia.etiqueta}</h4>
-              <ul className="relative before:absolute before:bottom-0 before:left-[13px] before:top-0 before:w-px before:bg-border/60">
+              <ul className="relative before:absolute before:bottom-0 before:left-[13px] before:top-0 before:w-px before:bg-divider">
+
                 {dia.eventos.map((evento, indice) => {
                   const Icon = TIPO_ICON[evento.tipo] ?? Activity;
                   return (
                     <li key={`${evento.licitacion_id}-${evento.tipo}-${indice}`}>
                       <Link
                         href={`/detalle?lic=${encodeURIComponent(evento.licitacion_id)}`}
-                        className="relative flex items-start gap-2.5 rounded-md py-1.5 pr-1 transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0"
+                        className="relative flex items-start gap-2.5 rounded-md py-1.5 pr-1 transition-colors hover:bg-primary-hover active:bg-primary-selected active:duration-0"
                       >
-                        <span className="grid h-7 w-7 flex-none place-items-center rounded-full border border-border/60 bg-card">
+                        <span className="grid h-7 w-7 flex-none place-items-center rounded-full border border-divider bg-card">
                           <Icon className="h-3.5 w-3.5" color={colorDeTipo(evento.tipo)} aria-hidden="true" />
                         </span>
                         <span className="flex min-w-0 flex-1 flex-col">

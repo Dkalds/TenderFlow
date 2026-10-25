@@ -75,7 +75,7 @@ export function FondoParticulas() {
         <button
           type="button"
           onClick={() => setPausado((valor) => !valor)}
-          className="tf-pressable border-border/70 bg-card text-muted-foreground hover:text-foreground focus-visible:ring-ring text-tf-meta absolute bottom-4 left-6 inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 focus-visible:ring-2 focus-visible:outline-none"
+          className="tf-pressable border-divider bg-card text-muted-foreground hover:text-foreground focus-visible:ring-ring text-tf-meta absolute bottom-4 left-6 inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 focus-visible:ring-2 focus-visible:outline-none"
         >
           {pausado ? (
             <Play className="h-3.5 w-3.5" aria-hidden="true" />

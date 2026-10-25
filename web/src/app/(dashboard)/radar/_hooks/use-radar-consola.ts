@@ -3,7 +3,6 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { type FiltroEtiqueta, useFiltroEtiqueta } from "@/components/etiquetas/filtro-etiqueta";
 import { useCreatePursuit } from "@/hooks/use-pursuits";
 import { useSeguimiento } from "@/hooks/use-seguimiento";
@@ -95,7 +94,7 @@ export function useRadarConsola(): RadarConsola {
   // El mismo estado que pinta `SeguirBoton` en cada fila y en el inspector
   // (ADR-031 §C): el atajo «S» y el botón pasan por el mismo sitio.
   const seguimiento = useSeguimiento("licitacion");
-  const createPursuit = useCreatePursuit();
+  const createPursuit = useCreatePursuit({ errorTitle: "No se pudo abrir la oportunidad" });
   const setActiveOrganizationId = useOrganizationStore((state) => state.setActiveOrganizationId);
 
   const [segment, setSegmentState] = React.useState<SegmentKey>("bandeja");
@@ -260,9 +259,8 @@ export function useRadarConsola(): RadarConsola {
         setActiveOrganizationId(pursuit.organization_id);
         toast.success("Oportunidad abierta para el equipo");
         router.push(`/oportunidades/${pursuit.id}`);
-      } catch (err) {
-        // Mensaje humano, no `err.message` crudo (D6); al actuar, el porqué va de descripción.
-        toast.error("No se pudo abrir la oportunidad", { description: getErrorMessage(err, "accion") });
+      } catch {
+        // El aviso lo da el global de mutaciones, con el título del hook (D6).
       }
     },
     [createPursuit, router, setActiveOrganizationId],

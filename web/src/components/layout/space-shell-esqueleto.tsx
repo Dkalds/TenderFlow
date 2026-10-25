@@ -30,7 +30,7 @@ export function SpaceShellEsqueleto({
       <div
         className={cn(
           "flex h-11 flex-none items-center gap-2.5 overflow-hidden px-4",
-          bleed && "border-border/60 border-b",
+          bleed && "border-divider border-b",
         )}
       >
         {/* El título del espacio va en `text-tf-lede` (15 px, 20 de línea). */}
@@ -39,7 +39,7 @@ export function SpaceShellEsqueleto({
             pestañas saltarían a la derecha al llegar la cabecera real. */}
         <Skeleton className="hidden h-3 w-56 rounded-sm xl:block" />
         {vistas.length > 1 && (
-          <div className="border-border/60 ml-2 flex items-center gap-0.5 border-l pl-2.5">
+          <div className="border-divider ml-2 flex items-center gap-0.5 border-l pl-2.5">
             {vistas.map((vista) => (
               <Skeleton key={vista.key} data-slot="pestana-esqueleto" className="h-8 w-16 rounded-md md:h-7" />
             ))}

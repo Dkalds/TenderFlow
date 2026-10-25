@@ -93,8 +93,8 @@ export function FunnelPanel({
                   <div
                     className={cn(
                       "h-full rounded-md",
-                      index === 0 && "bg-primary/30",
-                      index === 1 && "bg-primary/60",
+                      index === 0 && "bg-primary-ramp-2",
+                      index === 1 && "bg-primary-ramp-3",
                       index === 2 && "bg-primary",
                     )}
                     style={{ width: `${Math.max(valor > 0 ? 2 : 0, (valor / max) * 100)}%` }}

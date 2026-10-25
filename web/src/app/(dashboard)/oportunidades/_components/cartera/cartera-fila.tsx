@@ -105,8 +105,8 @@ export function CarteraFila({
           className={cn(
             "tf-pressable h-6 rounded-md border px-2 text-tf-micro font-medium",
             activo
-              ? "border-primary/30 bg-primary/10 text-primary"
-              : "border-border/70 text-muted-foreground hover:text-foreground",
+              ? "border-primary-line bg-primary-selected text-primary"
+              : "border-divider text-muted-foreground hover:text-foreground",
           )}
         >
           Detalle

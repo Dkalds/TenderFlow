@@ -121,7 +121,7 @@ export function SpaceShell({
         <header
           className={cn(
             "flex h-11 flex-none items-center gap-2.5 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-            bleed && "border-b border-border/60",
+            bleed && "border-b border-divider",
           )}
         >
           {/* El único nivel que manda en la pantalla: la display a 15 px (por
@@ -141,7 +141,7 @@ export function SpaceShell({
               ref={refPestanas}
               role="tablist"
               aria-label={`Vistas de ${space?.label}`}
-              className="ml-2 flex items-center gap-0.5 border-l border-border/60 pl-2.5"
+              className="ml-2 flex items-center gap-0.5 border-l border-divider pl-2.5"
             >
               {views.map((item) => {
                 const on = item.key === activa;

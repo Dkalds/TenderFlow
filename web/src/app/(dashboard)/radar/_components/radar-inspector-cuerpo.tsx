@@ -50,7 +50,7 @@ export function InspectorCuerpo({ tender }: { tender: RadarTender }) {
       tabIndex={0}
       className="relative min-h-0 flex-1 overflow-y-auto px-4.5 pt-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
     >
-      <div className="mb-5 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-border/60 bg-border/60">
+      <div className="mb-5 grid grid-cols-2 gap-px overflow-hidden rounded-md border border-divider bg-divider">
         <Fact label="Órgano" value={tender.organo_contratacion} />
         <Fact label="Importe" value={tender.importe != null ? formatCurrency(tender.importe) : null} variant="cifra" />
         <Fact

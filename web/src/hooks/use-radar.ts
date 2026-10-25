@@ -1,7 +1,6 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { apiGet, apiMutate } from "@/lib/api-client";
 import { registrarEvento } from "@/lib/analytics";
@@ -234,9 +233,9 @@ export function useDismissRadarTender() {
       qc.setQueryData<string[]>(DISMISSALS_KEY, (old) => [idExterno, ...(old ?? [])]);
       return { previous };
     },
+    meta: { errorTitle: "No se pudo quitar la señal de la bandeja" },
     onError: (_err, _descarte, ctx) => {
       qc.setQueryData(DISMISSALS_KEY, ctx?.previous);
-      toast.error("No se pudo quitar la señal de la bandeja");
     },
     onSuccess: (ids: string[], { accion = "descartar", explicacionAbierta }: DescarteRadar) => {
       qc.setQueryData<string[]>(DISMISSALS_KEY, ids);
@@ -271,9 +270,9 @@ export function useRestoreRadarTender() {
       qc.setQueryData<string[]>(DISMISSALS_KEY, (old) => (old ?? []).filter((id) => id !== idExterno));
       return { previous };
     },
+    meta: { errorTitle: "No se pudo recuperar la señal" },
     onError: (_err, _idExterno, ctx) => {
       qc.setQueryData(DISMISSALS_KEY, ctx?.previous);
-      toast.error("No se pudo recuperar la señal");
     },
     // Recuperar dice cuánto se arrepiente la gente del triaje: si sube, es que
     // la tarjeta no da suficiente para decidir de un vistazo.

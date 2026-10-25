@@ -57,7 +57,7 @@ export function RadarAcciones({
         // (ver `radar-fila.tsx`). Sin esto, la capa se comería los clics de
         // «Seguir» y «Descartar», que es el mismo síntoma que tenía el
         // `nested-interactive` de antes por otro motivo.
-        "relative z-10 flex items-center justify-end gap-2 border-t border-border/40 pt-2.5",
+        "relative z-10 flex items-center justify-end gap-2 border-t border-divider-subtle pt-2.5",
         "lg:gap-1.5 lg:border-t-0 lg:pt-0",
         !isActive && "lg:pointer-events-none lg:opacity-0",
       )}
@@ -74,7 +74,7 @@ export function RadarAcciones({
             // 36×36 en móvil. Los 26 px de la consola cumplen el
             // mínimo de WCAG 2.5.8 (24×24) pero se fallan con el
             // pulgar, y aquí el error cuesta una señal descartada.
-            className="tf-pressable grid h-9 w-9 flex-none place-items-center rounded-md border border-border/80 bg-card text-muted-foreground hover:border-destructive/50 hover:text-destructive lg:h-6.5 lg:w-6.5"
+            className="tf-pressable grid h-9 w-9 flex-none place-items-center rounded-md border border-border bg-card text-muted-foreground hover:border-destructive/50 hover:text-destructive lg:h-6.5 lg:w-6.5"
           >
             <X className="h-4 w-4 lg:h-3 lg:w-3" aria-hidden="true" />
           </button>
@@ -93,8 +93,8 @@ export function RadarAcciones({
             icono="estrella"
             clases={{
               base: "tf-pressable grid h-9 w-9 flex-none place-items-center rounded-md border lg:h-6.5 lg:w-6.5",
-              activo: "border-primary/50 bg-primary/15 text-primary",
-              inactivo: "border-border/80 bg-card text-muted-foreground hover:text-foreground",
+              activo: "border-primary-line-strong bg-primary-soft text-primary",
+              inactivo: "border-border bg-card text-muted-foreground hover:text-foreground",
               icono: "h-4 w-4 lg:h-3 lg:w-3",
             }}
             onAlternar={onFollowed}
@@ -112,7 +112,7 @@ export function RadarAcciones({
                 event.stopPropagation();
                 onOpenFicha();
               }}
-              className="tf-pressable grid h-9 w-9 flex-none place-items-center rounded-md border border-border/80 bg-card text-muted-foreground hover:text-foreground lg:h-6.5 lg:w-6.5"
+              className="tf-pressable grid h-9 w-9 flex-none place-items-center rounded-md border border-border bg-card text-muted-foreground hover:text-foreground lg:h-6.5 lg:w-6.5"
             >
               <PanelRight className="h-4 w-4 lg:h-3 lg:w-3" aria-hidden="true" />
             </button>
@@ -136,10 +136,10 @@ export function RadarAcciones({
             // alto táctil. En la tabla, el tamaño de la consola.
             //
             // Tinte al 5 % (10 % en hover) y no al 14/24: el botón vive dentro
-            // de la fila activa, que ya lleva `bg-primary/9`, y los dos tintes
+            // de la fila activa, que ya lleva `bg-primary-selected`, y los dos tintes
             // se suman — el texto quedaba en 4,32:1 (axe, /radar). Con el 6 %
             // eran 4,84 en reposo y 4,58 en hover sobre esa fila; al 5 %, algo más.
-            className="tf-pressable h-9 flex-1 whitespace-nowrap rounded-md border border-primary/30 bg-primary/5 px-2.5 text-tf-meta font-semibold text-primary hover:bg-primary/10 md:flex-none md:px-5 lg:h-6.5 lg:px-2.5 lg:text-tf-micro"
+            className="tf-pressable h-9 flex-1 whitespace-nowrap rounded-md border border-primary-line bg-primary-hover px-2.5 text-tf-meta font-semibold text-primary hover:bg-primary-selected md:flex-none md:px-5 lg:h-6.5 lg:px-2.5 lg:text-tf-micro"
           >
             Abrir
           </button>

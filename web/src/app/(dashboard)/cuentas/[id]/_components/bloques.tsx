@@ -59,7 +59,7 @@ export function BloquePublicaciones({ bloque }: { bloque: FichaCuenta["publicaci
       {items.length === 0 ? (
         <PanelEmpty size="sm" hint="Sus órganos no han publicado nada en la ventana." />
       ) : (
-        <ul className="flex flex-col divide-y divide-border/50">
+        <ul className="flex flex-col divide-y divide-divider">
           {items.map((publicacion) => (
             <li key={publicacion.id_externo} className="py-2 first:pt-0 last:pb-0">
               <div className="flex items-start justify-between gap-2">
@@ -105,7 +105,7 @@ export function BloqueVencimientos({ bloque }: { bloque: FichaCuenta["vencimient
       {items.length === 0 ? (
         <PanelEmpty size="sm" hint="Ningún contrato de sus órganos vence en la ventana." />
       ) : (
-        <ul className="flex flex-col divide-y divide-border/50">
+        <ul className="flex flex-col divide-y divide-divider">
           {items.map((contrato, indice) => (
             <li
               key={`${contrato.licitacion_id}-${contrato.empresa_id ?? contrato.empresa ?? indice}`}
@@ -164,7 +164,7 @@ export function BloqueOportunidades({ bloque }: { bloque: FichaCuenta["oportunid
       {items.length === 0 ? (
         <PanelEmpty size="sm" hint="El equipo no tiene oportunidades en expedientes de esta cuenta." />
       ) : (
-        <ul className="flex flex-col divide-y divide-border/50">
+        <ul className="flex flex-col divide-y divide-divider">
           {items.map((oportunidad) => (
             <li key={oportunidad.id} className="py-2 first:pt-0 last:pb-0">
               <div className="flex items-start justify-between gap-2">

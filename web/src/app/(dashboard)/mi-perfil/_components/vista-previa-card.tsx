@@ -31,7 +31,7 @@ function movimiento(item: ScoringPreviewItem, tope: number): string | null {
 function Fila({ item, tope }: { item: ScoringPreviewItem; tope: number }) {
   const salto = movimiento(item, tope);
   return (
-    <li className="flex items-baseline gap-3 border-b border-border/50 py-2 last:border-0">
+    <li className="flex items-baseline gap-3 border-b border-divider py-2 last:border-0">
       <span className="tf-tnum w-5 flex-none text-right text-tf-meta text-muted-foreground">{item.posicion}</span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-tf-body font-medium">{item.titulo ?? "Sin título"}</p>

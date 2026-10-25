@@ -55,8 +55,8 @@ function ProximaFila({ item }: { item: RadarProxima }) {
     <Link
       href={`/detalle?lic=${encodeURIComponent(item.id_externo)}`}
       className={cn(
-        "flex flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors md:px-3.5",
-        "hover:bg-primary/5 focus-visible:bg-primary/5 focus-visible:outline-none active:bg-primary/10 active:duration-0",
+        "flex flex-col gap-2 border-b border-divider-subtle px-3 py-3 transition-colors md:px-3.5",
+        "hover:bg-primary-hover focus-visible:bg-primary-hover focus-visible:outline-none active:bg-primary-selected active:duration-0",
         "lg:grid lg:grid-cols-[132px_1fr_176px_108px_120px] lg:items-center lg:gap-3 lg:px-3.5 lg:py-2.5",
       )}
     >
@@ -106,7 +106,7 @@ function ProximasCabecera({ consola }: { consola: RadarProximasConsola }) {
   const { total, conFechaPrevista, truncadas, estados } = consola;
 
   return (
-    <div className="flex-none border-b border-border/60 bg-card px-3 py-2 md:px-3.5">
+    <div className="flex-none border-b border-divider bg-card px-3 py-2 md:px-3.5">
       <p className="text-tf-meta text-muted-foreground">
         Compras que el órgano ya ha anunciado y que <strong className="font-semibold">todavía
         no han salido a licitación</strong>: aún no hay plazo al que presentarse, pero sirve para

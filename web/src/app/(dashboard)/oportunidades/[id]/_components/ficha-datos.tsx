@@ -67,7 +67,7 @@ export function FichaDatos({
     <div className="flex flex-col gap-1.5">
       <dl
         aria-label="Datos de la oportunidad"
-        className="border-border/60 bg-border/60 grid grid-cols-2 gap-px overflow-hidden rounded-xl border"
+        className="border-divider bg-divider grid grid-cols-2 gap-px overflow-hidden rounded-xl border"
       >
         <Celda
           etiqueta="Oferta prevista"
@@ -136,8 +136,8 @@ export function FichaDatos({
                 className={cn(
                   "grid h-5 w-5 flex-none place-items-center rounded-full text-tf-micro font-semibold",
                   pursuit.responsible_name
-                    ? "bg-primary/10 text-primary"
-                    : "border-border/60 text-muted-foreground border border-dashed",
+                    ? "bg-primary-selected text-primary"
+                    : "border-divider text-muted-foreground border border-dashed",
                 )}
               >
                 {iniciales(pursuit.responsible_name)}

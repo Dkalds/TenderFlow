@@ -24,7 +24,6 @@ import {
   useTenderFactSheetExtraction,
 } from "@/hooks/use-tender-fact-sheet";
 import type { DocumentoSummary } from "@/lib/api-types";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
 const categories: Array<{ key: keyof TenderFactSheet; label: string }> = [
@@ -129,7 +128,7 @@ function FactRow({
     dateValue ? formatDate(dateValue) : null,
   ].filter(Boolean);
   return (
-    <li className="rounded-md border border-border/70 bg-background p-3">
+    <li className="rounded-md border border-divider bg-background p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="min-w-0 text-tf-body font-medium leading-snug">{title}</p>
         <span className="tf-tnum shrink-0 text-tf-meta font-medium text-muted-foreground">
@@ -160,7 +159,7 @@ function FactRow({
             {evidence.length} cita{evidence.length === 1 ? "" : "s"} verificable
             {evidence.length === 1 ? "" : "s"}
           </summary>
-          <ul className="mt-2 space-y-2 border-l border-border/60 pl-3">
+          <ul className="mt-2 space-y-2 border-l border-divider pl-3">
             {evidence.map((cita, index) => {
               const fuente = citaPresentation(cita.documento_id, cita.page_number, docsById);
               return (
@@ -234,10 +233,8 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
     try {
       await extraction.start();
       toast.info("Extracción lanzada: la ficha aparecerá aquí en unos minutos");
-    } catch (error) {
-      toast.error("No se pudo lanzar la extracción de la ficha", {
-        description: getErrorMessage(error, "accion"),
-      });
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   };
 
@@ -266,7 +263,7 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
         actions={presentation ? <Badge variant={presentation.variant}>{presentation.label}</Badge> : undefined}
       />
       {hayOficiales && datosOficiales && (
-        <div className="mb-5 border-b border-border/60 pb-5">
+        <div className="mb-5 border-b border-divider pb-5">
           <CondicionesOficialesBloque datos={datosOficiales} licitacionId={licitacionId} />
         </div>
       )}
@@ -355,7 +352,7 @@ export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string })
                 </section>
               ) : null;
             })}
-            <div className="flex items-center justify-between border-t border-border/60 pt-4">
+            <div className="flex items-center justify-between border-t border-divider pt-4">
               <FeedbackButtons modo="ficha" />
               <Button
                 variant="outline"

@@ -84,7 +84,7 @@ export function TarjetasDireccion({
         Cifras del periodo
       </h2>
       <ul
-        className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60 sm:grid-cols-2 xl:grid-cols-4"
+        className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-divider bg-divider sm:grid-cols-2 xl:grid-cols-4"
         aria-label="Cifras de dirección"
       >
         {tarjetas.map((tarjeta) => (

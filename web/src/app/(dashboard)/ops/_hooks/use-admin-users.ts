@@ -19,7 +19,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ApiError, apiGet, apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA, getErrorMessage } from "@/lib/query-feedback";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { adminKeys } from "@/lib/query-keys";
 
 type AdminUserOut = Schemas["AdminUserOut"];
@@ -86,10 +86,10 @@ export function useAdminUsers() {
       alTerminar();
       toast.success(vars.is_admin ? "Ya es administrador" : "Ya no es administrador");
     },
-    // El motivo real viaja en el `detail` de la API; antes el toast preguntaba
-    // «¿Tienes permisos de administrador?» a quien acababa de usarlos.
-    onError: (e: unknown) =>
-      toast.error("No se pudo cambiar el rol", { description: getErrorMessage(e, "accion") }),
+    // El motivo real viaja en el `detail` de la API, que el aviso global pone
+    // de descripción; antes el toast preguntaba «¿Tienes permisos de
+    // administrador?» a quien acababa de usarlos.
+    meta: { errorTitle: "No se pudo cambiar el rol" },
   });
 
   const cambiarAcceso = useMutation({
@@ -103,8 +103,7 @@ export function useAdminUsers() {
           : "Usuario reactivado",
       );
     },
-    onError: (e: unknown) =>
-      toast.error("No se pudo cambiar el acceso", { description: getErrorMessage(e, "accion") }),
+    meta: { errorTitle: "No se pudo cambiar el acceso" },
   });
 
   return { users, isLoading, error, refetch: () => void refetch(), toggleAdmin, cambiarAcceso };

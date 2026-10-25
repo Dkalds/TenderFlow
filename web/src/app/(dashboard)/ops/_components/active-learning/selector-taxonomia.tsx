@@ -55,7 +55,7 @@ export function SelectorTaxonomia({
                   className={cn(
                     "rounded-md border px-2 py-0.5 text-tf-meta transition-colors duration-140 ease-out",
                     marcada
-                      ? "border-primary/40 bg-primary/10 font-medium text-primary"
+                      ? "border-primary-line bg-primary-selected font-medium text-primary"
                       : "border-border text-muted-foreground hover:text-foreground",
                   )}
                 >

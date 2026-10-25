@@ -34,7 +34,6 @@ import type { OrganizationSettingsOut } from "@/lib/api-types";
 import { probabilidadesEtapa } from "@/lib/forms/esquemas";
 import { numeroDeTexto } from "@/lib/forms/valores";
 import { etiquetaEtapa, ordenarEtapas } from "@/lib/pipeline-ponderado";
-import { getErrorMessage } from "@/lib/query-feedback";
 
 interface ValoresProbabilidades {
   probabilidades_etapa: Record<string, string>;
@@ -119,8 +118,8 @@ function FormularioProbabilidades({
     try {
       await guardar.mutateAsync({ probabilidades_etapa: probabilidadesDeValores(valores) });
       toast.success("Probabilidades guardadas. El valor ponderado ya las usa.");
-    } catch (error) {
-      toast.error(getErrorMessage(error, "accion"));
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   });
 

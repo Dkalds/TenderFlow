@@ -15,8 +15,8 @@
  * entera pasó a filete, así que aquí basta con la fila y su flecha. Al pasar el
  * ratón cambia el color del filete, nada se desplaza. */
 export const FILA_EXPLORAR =
-  "group flex items-baseline justify-between gap-4 border-b border-border/50 py-5 " +
-  "transition-colors hover:border-primary/50 " +
+  "group flex items-baseline justify-between gap-4 border-b border-divider py-5 " +
+  "transition-colors hover:border-primary-line-strong " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring " +
   "focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 

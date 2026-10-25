@@ -129,7 +129,7 @@ export function ResumenView() {
 
           {/* El mercado: el salto de ritmo (mt-9 y el filete) es lo que separa
               las dos zonas; dentro, el mismo gap 5 que arriba. */}
-          <section aria-labelledby="resumen-mercado" className="mt-9 border-t border-border/60 pt-4">
+          <section aria-labelledby="resumen-mercado" className="mt-9 border-t border-divider pt-4">
             <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-2">
               <h2 id="resumen-mercado" className="flex-none font-display text-tf-lede font-semibold">
                 Mercado
