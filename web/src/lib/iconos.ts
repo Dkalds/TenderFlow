@@ -128,4 +128,3 @@ export const ICONO_ESPACIO = {
 
 /** Icono del administrador (roles, permisos): no es un espacio. */
 export const ICONO_ADMIN: LucideIcon = ShieldCheck;
-
