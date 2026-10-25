@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-10-25
 
-Revisión Alembic aplicada: `v160_fechas_ts_indices`.
+Revisión Alembic aplicada: `v161_identidad_placsp_fase_a`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -24,7 +24,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 14 | 196 | 65 |
+| Licitaciones y fuente | 15 | 201 | 66 |
 | Documentos y pliegos | 4 | 46 | 11 |
 | Empresas y mercado | 6 | 34 | 8 |
 | Organizaciones y oportunidades | 15 | 143 | 31 |
@@ -33,7 +33,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 23 | 182 | 34 |
-| **Total** | **103** | **948** | **234** |
+| **Total** | **104** | **953** | **235** |
 
 ## Licitaciones y fuente
 
@@ -261,6 +261,7 @@ Claves: `PRIMARY KEY (id)`
 | `fecha_inicio_ts` | `timestamp with time zone` | sí |
 | `fecha_fin_ts` | `timestamp with time zone` | sí |
 | `fecha_actualizacion_fuente_ts` | `timestamp with time zone` | sí |
+| `organo_ref_fuente` | `text` | sí |
 
 Claves: `PRIMARY KEY (id_externo)`
 
@@ -298,6 +299,19 @@ Claves: `PRIMARY KEY (licitacion_id)`
 Claves: `PRIMARY KEY (id)`
 
 Índices: `idx_hist_externo`, `idx_lic_history_id_externo`, `idx_licitaciones_history_externo_date`
+
+### `licitaciones_id_anterior`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id_anterior` | `text` | no |
+| `id_externo` | `text` | no |
+| `motivo` | `text` | no |
+| `creado_en` | `text` | no |
+
+Claves: `PRIMARY KEY (id_anterior)`
+
+Índices: `idx_licitaciones_id_anterior_id_externo`
 
 ### `lotes`
 

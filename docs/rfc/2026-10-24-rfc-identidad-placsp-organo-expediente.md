@@ -4,7 +4,7 @@ title: "Identidad de las licitaciones de PLACSP: el expediente acotado por el ó
 issue: "(sin issue: P1 de docs/IMPROVEMENT_BACKLOG.md, «La identidad de PLACSP no incluye el órgano», 2026-10-24)"
 author: agent:claude-code
 date: 2026-10-24
-status: accepted
+status: approved
 related:
   - "[[ADR-009-framework-conectores-multifuente]]"
   - "[[ADR-026-caminos-de-lectura-y-precedencia-tecnologica]]"
@@ -13,7 +13,7 @@ related:
 
 ## Estado
 
-`accepted` el 2026-10-25: el dueño autorizó la fase 1 (migración A) y abrir
+`approved` el 2026-10-25: el dueño autorizó la fase 1 (migración A) y abrir
 el PR que la implementa. Las fases 2 a 5 siguen como están escritas abajo;
 las decisiones que la implementación de la fase A tomó donde este texto
 dejaba margen están en §«Decisiones de la fase A».
