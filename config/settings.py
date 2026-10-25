@@ -12,6 +12,7 @@ from pydantic import AnyUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from config.settings_embeddings import EmbeddingsOnnxSettings
+from config.settings_object_store import ObjectStoreSettings
 from config.settings_resumen import ResumenPregenSettings
 from shared.scoring_weights import validate_scoring_weights
 
@@ -65,7 +66,7 @@ if "site-packages" in str(_ROOT):
     _DEFAULT_DATA_DIR = Path("/tmp/licitaciones_data")  # noqa: S108
 
 
-class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, BaseSettings):
+class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, ObjectStoreSettings, BaseSettings):
     """Todas las variables de entorno del proyecto, validadas al arrancar."""
 
     model_config = SettingsConfigDict(

@@ -759,6 +759,42 @@ class TestFetchAndExtract:
         assert row["content_type"] == "text/html"
         assert "no soportado" in (row["error_detail"] or "")
 
+    def test_pdf_escaneado_sin_ocr_marca_sin_texto_no_error(self, repo, monkeypatch):
+        """``v159``: un escaneado que el OCR no lee tiene estado propio.
+
+        Ni descarga fallida ni PDF roto: el documento existe y se abre en el
+        navegador. ``sin_texto`` conserva el ``content_type`` y la huella de la
+        descarga, y ``status_counts`` lo publica aparte de ``error``.
+        """
+        from pathlib import Path
+
+        from scraper import document_fetcher
+
+        escaneado = (
+            Path(__file__).parent / "fixtures" / "documentos" / "pliego_escaneado.pdf"
+        ).read_bytes()
+        monkeypatch.setattr(document_fetcher, "_ocr_pdf", lambda _datos: None)
+        doc = _seed_documento(repo)
+
+        with patch(
+            "scraper.document_fetcher._download_bytes",
+            return_value=(escaneado, "application/pdf"),
+        ):
+            status = fetch_and_extract(doc)
+
+        assert status == "sin_texto"
+        row = repo.get(doc["id"])
+        assert row is not None
+        assert row["status"] == "sin_texto"
+        assert row["content_type"] == "application/pdf"
+        assert row["sha256"] is not None
+        assert "sin texto" in (row["error_detail"] or "")
+        counts = repo.status_counts()
+        assert counts["sin_texto"] == 1
+        assert counts["error"] == 0
+        (formato,) = [f for f in repo.formato_counts() if f["content_type"] == "application/pdf"]
+        assert formato["sin_texto"] == 1
+
     def test_text_plain_document_extracted(self, repo):
         doc = _seed_documento(repo)
 

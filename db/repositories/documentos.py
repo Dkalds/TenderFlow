@@ -892,6 +892,34 @@ class DocumentosRepository:
                 ),
             )
 
+    def mark_sin_texto(
+        self,
+        documento_id: int,
+        *,
+        content_type: str | None,
+        error_detail: str,
+    ) -> None:
+        """PDF escaneado sin capa de texto que el OCR no pudo leer (``v159``).
+
+        Terminal como ``unsupported`` y por el mismo motivo: reintentarlo con el
+        mismo proceso daría lo mismo. Se distingue de ``error`` para que la
+        ficha y ``/analytics/quality`` digan «escaneado, falta OCR» en vez de
+        «falló la descarga», y para que el día que el proceso tenga OCR se
+        sepa qué filas re-extraer (las que además tienen ``blob_key`` no
+        necesitan volver a la fuente).
+        """
+        with connect() as c:
+            c.execute(
+                "UPDATE documentos SET status = 'sin_texto', content_type = %s, "
+                "error_detail = %s, updated_at = %s WHERE id = %s",
+                (
+                    content_type,
+                    error_detail[:_MAX_ERROR_DETAIL_LEN],
+                    now_utc_iso(),
+                    documento_id,
+                ),
+            )
+
     def reencolar_formatos_soportados(
         self, content_types: Iterable[str], *, aplicar: bool
     ) -> list[dict[str, Any]]:
@@ -1289,6 +1317,8 @@ class DocumentosRepository:
             # v103: formato no soportado. Se declara como el resto para que el
             # informe del cron tenga siempre la misma forma.
             "unsupported": 0,
+            # v159: PDF escaneado sin texto y sin OCR que lo leyera.
+            "sin_texto": 0,
         }
         with connect_read() as c:
             cur = c.execute("SELECT status, COUNT(*) FROM documentos GROUP BY status")
@@ -1318,6 +1348,7 @@ class DocumentosRepository:
                 "SELECT content_type, COUNT(*) AS total, "
                 "COUNT(*) FILTER (WHERE status = 'extracted') AS extracted, "
                 "COUNT(*) FILTER (WHERE status = 'unsupported') AS unsupported, "
+                "COUNT(*) FILTER (WHERE status = 'sin_texto') AS sin_texto, "
                 "COUNT(*) FILTER (WHERE status = 'error') AS error, "
                 "COUNT(*) FILTER (WHERE status IN ('pending', 'downloaded')) AS pendientes "
                 "FROM documentos GROUP BY content_type ORDER BY total DESC, content_type"

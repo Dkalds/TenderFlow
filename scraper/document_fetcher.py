@@ -196,6 +196,10 @@ _ZIP_FLAG_UTF8 = 0x800
 #: cruce de procesos, y es justo en producción donde ese camino se usa.
 _MSG_PDF_SIN_TEXTO = "PDF sin texto extraíble (posible escaneado sin OCR)"
 
+#: Letras mínimas para dar un PDF por «con capa de texto» (ver
+#: :func:`_tiene_texto`).
+_MIN_LETRAS_CON_TEXTO = 8
+
 
 @dataclass(frozen=True)
 class PaginaExtraida:
@@ -217,6 +221,23 @@ class DocumentFetchError(RuntimeError):
     """Fallo recuperable de extracción (PDF corrupto, PDF sin texto ni OCR,
     ZIP que excede los límites). Distinto de fallos de descarga (red/SSRF/
     tamaño), que se propagan como la excepción original del transporte."""
+
+
+class PdfSinTextoError(DocumentFetchError):
+    """PDF sin capa de texto (escaneado) que el OCR no pudo leer.
+
+    Tiene estado propio (``documentos.status = 'sin_texto'``, ``v159``) en vez
+    de caer en ``error``: no es una descarga fallida ni un PDF roto, es un
+    documento que existe y se lee en el navegador pero del que este proceso no
+    sabe sacar texto. Quien lo cuenta (la ficha, ``/analytics/quality``, el
+    informe nocturno) tiene que poder decirlo así.
+
+    Punto de extensión del OCR: :func:`_ocr_pdf`. Hoy usa ``ocrmypdf`` si está
+    en el ``PATH`` (el runner de ``pliegos.yml`` lo instala; la imagen de la
+    API no). Una fila ``sin_texto`` con binario conservado (``blob_key``) se
+    re-extrae con :func:`reextract_from_blob` el día que el proceso tenga OCR,
+    sin volver a la fuente.
+    """
 
 
 class UnsupportedDocumentError(DocumentFetchError):
@@ -426,10 +447,27 @@ def _extract_pdf_pages_local(content: bytes, *, max_pages: int, max_text_chars: 
         # cualquier fallo aquí es "no se pudo extraer", no un bug de nuestro código.
         raise DocumentFetchError(f"PDF corrupto o ilegible: {e}") from e
 
-    texto = "\n".join(pages_text).strip()
-    if not texto:
-        raise DocumentFetchError(_MSG_PDF_SIN_TEXTO)
+    if not _tiene_texto(pages_text):
+        raise PdfSinTextoError(_MSG_PDF_SIN_TEXTO)
     return pages_text
+
+
+def _tiene_texto(paginas: list[str]) -> bool:
+    """¿El PDF tiene capa de texto? Detección de escaneado.
+
+    No basta con «la cadena no está vacía»: un escaneado sale a menudo con
+    restos sin contenido —saltos de página, guiones o puntos de la máquina que
+    lo digitalizó, un número de página suelto en una cabecera estampada—. Se
+    exigen al menos :data:`_MIN_LETRAS_CON_TEXTO` **letras** en el
+    documento entero (las cifras no cuentan: la paginación estampada de un
+    escaneo de cien páginas son doscientas cifras y ninguna palabra).
+    """
+    letras = 0
+    for texto in paginas:
+        letras += sum(1 for letra in texto if letra.isalpha())
+        if letras >= _MIN_LETRAS_CON_TEXTO:
+            return True
+    return False
 
 
 def _pdf_extraction_worker(
@@ -511,6 +549,9 @@ def _extract_pdf_pages(content: bytes) -> list[str]:
             process.join(timeout=1)
 
         if outcome != "ok":
+            # El tipo no cruza el ``Pipe``: se reconstruye por el mensaje.
+            if _MSG_PDF_SIN_TEXTO in str(payload):
+                raise PdfSinTextoError(str(payload))
             raise DocumentFetchError(str(payload))
         if not isinstance(payload, list) or not all(isinstance(page, str) for page in payload):
             raise DocumentFetchError("El extractor devolvió un resultado de páginas inválido")
@@ -634,7 +675,7 @@ def _ocr_pdf(content: bytes) -> bytes | None:
 
 
 def _es_pdf_sin_texto(exc: DocumentFetchError) -> bool:
-    return _MSG_PDF_SIN_TEXTO in str(exc)
+    return isinstance(exc, PdfSinTextoError) or _MSG_PDF_SIN_TEXTO in str(exc)
 
 
 def _extract_pdf_paginas_con_ocr(content: bytes) -> list[PaginaExtraida]:
@@ -652,7 +693,9 @@ def _extract_pdf_paginas_con_ocr(content: bytes) -> list[PaginaExtraida]:
             raise
         con_texto = _ocr_pdf(content)
         if con_texto is None:
-            raise
+            if isinstance(exc, PdfSinTextoError):
+                raise
+            raise PdfSinTextoError(str(exc)) from exc
         paginas = _extract_pdf_pages(con_texto)
         log.info("document_ocr_extracted", paginas=len(paginas))
         return [PaginaExtraida(texto=texto, ocr=True) for texto in paginas]
@@ -1012,6 +1055,7 @@ def _extract_zip_paginas(content: bytes) -> list[PaginaExtraida]:
         presupuesto = int(settings.MAX_DOCUMENT_SIZE_BYTES)
         paginas: list[PaginaExtraida] = []
         procesadas = 0
+        escaneados = 0
         for info in sorted(entradas, key=lambda i: i.filename):
             nombre = _nombre_de_entrada(info)
             if not _ruta_segura(nombre):
@@ -1047,6 +1091,8 @@ def _extract_zip_paginas(content: bytes) -> list[PaginaExtraida]:
             except DocumentFetchError as exc:
                 # Un adjunto roto dentro del ZIP no invalida los demás: mismo
                 # criterio fail-open que el lote diario.
+                if _es_pdf_sin_texto(exc):
+                    escaneados += 1
                 log.info("document_zip_entry_skipped", entry=nombre, error=str(exc))
                 continue
             if de_la_entrada:
@@ -1056,6 +1102,12 @@ def _extract_zip_paginas(content: bytes) -> list[PaginaExtraida]:
                 )
             paginas.extend(de_la_entrada)
 
+    if not paginas and escaneados:
+        # Lo único legible del ZIP eran escaneados: es el mismo caso que un
+        # PDF escaneado suelto, no un formato que falte.
+        raise PdfSinTextoError(
+            f"{_MSG_PDF_SIN_TEXTO}: {escaneados} de {procesadas} entradas del ZIP"
+        )
     if not paginas:
         raise UnsupportedDocumentError(
             f"ZIP sin documentos procesables ({procesadas} entradas candidatas)",
@@ -1217,13 +1269,15 @@ def fetch_and_extract(documento: dict[str, Any]) -> str:
     objetos cuando hay uno configurado, y es de ahí de donde se re-extrae si la
     fuente deja de responder.
 
-    Devuelve ``"extracted"``, ``"error"``, ``"unsupported"``, ``"skipped"`` o
-    ``"skipped_no_extra"`` — para que el llamador (job de embeddings, F8)
+    Devuelve ``"extracted"``, ``"error"``, ``"unsupported"``, ``"sin_texto"``,
+    ``"skipped"`` o ``"skipped_no_extra"`` — para que el llamador (job de embeddings, F8)
     instrumente métricas sin releer la fila. ``"skipped"`` significa que no se
     llegó a intentar nada (breaker abierto) y ``"skipped_no_extra"`` que el
     formato se sabe leer pero no en este proceso (:class:`ExtractorAusenteError`):
     en los dos casos la fila se queda en ``pending`` y entra en el lote siguiente.
-    ``"unsupported"`` es cobertura que falta, no un fallo.
+    ``"unsupported"`` es cobertura que falta, no un fallo, y ``"sin_texto"``
+    un PDF escaneado que el OCR de este proceso no pudo leer
+    (:class:`PdfSinTextoError`).
     """
     from db.repositories.documentos import DocumentosRepository
 
@@ -1347,6 +1401,21 @@ def fetch_and_extract(documento: dict[str, Any]) -> str:
             error_detail=str(e)[:_MAX_ERROR_DETAIL_LEN],
         )
         return "unsupported"
+    except PdfSinTextoError as e:
+        log.info("document_fetch_sin_texto", documento_id=documento_id, error=str(e))
+        repo.mark_downloaded(
+            documento_id,
+            filename=documento.get("filename"),
+            content_type=content_type,
+            size_bytes=size_bytes,
+            sha256=sha256,
+        )
+        repo.mark_sin_texto(
+            documento_id,
+            content_type=content_type,
+            error_detail=str(e)[:_MAX_ERROR_DETAIL_LEN],
+        )
+        return "sin_texto"
     except DocumentFetchError as e:
         log.warning("document_fetch_extract_failed", documento_id=documento_id, error=str(e))
         # Persistimos lo que sí se supo (descarga OK) antes de marcar error —
@@ -1415,6 +1484,13 @@ def reextract_from_blob(documento_id: int) -> str:
             error_detail=str(e)[:_MAX_ERROR_DETAIL_LEN],
         )
         return "unsupported"
+    except PdfSinTextoError as e:
+        repo.mark_sin_texto(
+            documento_id,
+            content_type=content_type,
+            error_detail=str(e)[:_MAX_ERROR_DETAIL_LEN],
+        )
+        return "sin_texto"
     except DocumentFetchError as e:
         repo.mark_error(documento_id, error_detail=str(e)[:_MAX_ERROR_DETAIL_LEN])
         return "error"

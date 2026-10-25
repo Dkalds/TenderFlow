@@ -50,6 +50,9 @@ class DocumentoFormatoCobertura(BaseModel):
     total: int = 0
     extracted: int = 0
     unsupported: int = 0
+    #: PDF escaneado sin capa de texto que el OCR no leyó (``v159``): cobertura
+    #: de OCR pendiente, no un fallo de descarga.
+    sin_texto: int = 0
     error: int = 0
     pendientes: int = 0
 

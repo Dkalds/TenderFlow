@@ -142,6 +142,7 @@ def _run_fetch_phase(
         "error": 0,
         "skipped": 0,
         "unsupported": 0,
+        "sin_texto": 0,
         "aplazados": 0,
         "revividos": revividos,
     }
@@ -706,7 +707,9 @@ def run_cli() -> int:
     fallo = False
 
     fetch = resumen["fetch"]
-    if fetch.get("error") and not (fetch.get("extracted") or fetch.get("unsupported")):
+    if fetch.get("error") and not (
+        fetch.get("extracted") or fetch.get("unsupported") or fetch.get("sin_texto")
+    ):
         log.error("documentos_embeddings_cli_batch_failed", fetch=fetch)
         fallo = True
 
@@ -745,6 +748,7 @@ def report_cli() -> int:
             total=fila.get("total"),
             extracted=fila.get("extracted"),
             unsupported=fila.get("unsupported"),
+            sin_texto=fila.get("sin_texto"),
             error=fila.get("error"),
             pendientes=fila.get("pendientes"),
         )

@@ -8755,6 +8755,11 @@ export interface components {
              */
             pendientes: number;
             /**
+             * Sin Texto
+             * @default 0
+             */
+            sin_texto: number;
+            /**
              * Total
              * @default 0
              */

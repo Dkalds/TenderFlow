@@ -13,9 +13,11 @@ Qué expone
 ----------
 - :class:`ObjectStore`, la interfaz mínima que necesita el fetcher: ``put``,
   ``get``, ``delete`` y ``stats``.
-- Tres implementaciones: :class:`S3ObjectStore` (cualquier bucket
-  S3-compatible — Cloudflare R2, Supabase Storage, MinIO), que es la de
-  producción; :class:`FilesystemObjectStore`, que cumple **la misma interfaz**
+- Cuatro implementaciones: :class:`S3ObjectStore` (cualquier bucket
+  S3-compatible — Cloudflare R2, el endpoint S3 de Supabase, MinIO, vía boto3);
+  :class:`SupabaseStorageObjectStore` (la API REST de Supabase Storage por
+  HTTPS con ``shared/outbound_http``, sin SDK y sin claves S3 aparte: basta la
+  clave de servidor del proyecto); :class:`FilesystemObjectStore`, que cumple **la misma interfaz**
   sobre un directorio y es la que ejercitan los tests y el desarrollo local; y
   :class:`NullObjectStore`, que es lo que hay cuando nadie ha configurado nada
   —conservar el binario es una mejora, no un requisito, así que su ausencia no
@@ -24,23 +26,27 @@ Qué expone
   :func:`model_artifact_key`, la de los artefactos de modelo (S8.4), que viven
   en el mismo bucket bajo otro prefijo.
 
-Configuración (variables de entorno)
-------------------------------------
-No viven en ``config/settings.py`` a propósito: ``settings`` es un
-``BaseSettings`` que se valida al arrancar **cualquier** proceso (API, scraper,
-scheduler) y este almacén es opcional y sólo lo tocan dos de ellos. Se leen
-aquí, una vez, y se cachean::
+Configuración
+-------------
+Declarada en ``config/settings_object_store.py`` (mezclada en ``Settings``),
+que la documenta con tipo y default y recoge el ``.env``. Una variable presente
+en el entorno del proceso **gana** a lo que ``settings`` cargó al arrancar: así
+un job o un test con ``monkeypatch.setenv`` ven el valor nuevo sin reconstruir
+``settings``::
 
-    DOCUMENT_BLOB_BACKEND     auto (defecto) | s3 | filesystem | disabled
-    DOCUMENT_BLOB_BUCKET      nombre del bucket S3-compatible
-    DOCUMENT_BLOB_ENDPOINT_URL  endpoint del proveedor (R2/Supabase/MinIO)
+    DOCUMENT_BLOB_BACKEND     auto (defecto) | s3 | supabase | filesystem | disabled
+    DOCUMENT_BLOB_BUCKET      nombre del bucket (S3-compatible o Supabase Storage)
+    DOCUMENT_BLOB_ENDPOINT_URL  endpoint S3 del proveedor (R2/Supabase/MinIO)
     DOCUMENT_BLOB_REGION      región del bucket (defecto: auto)
     DOCUMENT_BLOB_PREFIX      prefijo de las claves (defecto: documentos/)
     DOCUMENT_BLOB_DIR         raíz del backend de sistema de ficheros
+    DOCUMENT_BLOB_SUPABASE_URL  https://<ref>.supabase.co (backend supabase)
+    DOCUMENT_BLOB_SUPABASE_KEY  clave de servidor del proyecto (backend supabase)
     MODEL_BLOB_PREFIX         prefijo de los artefactos de modelo (defecto: modelos/)
 
-``auto`` resuelve a ``filesystem`` si hay ``DOCUMENT_BLOB_DIR``, a ``s3`` si hay
-``DOCUMENT_BLOB_BUCKET``, y a ``disabled`` si no hay ninguna de las dos.
+``auto`` resuelve a ``filesystem`` si hay ``DOCUMENT_BLOB_DIR``, a ``supabase``
+si hay bucket y ``DOCUMENT_BLOB_SUPABASE_URL``, a ``s3`` si hay bucket, y a
+``disabled`` si no hay nada.
 
 Todas las operaciones son **best-effort desde el punto de vista del llamante**:
 lanzan :class:`ObjectStoreError` y el fetcher decide (nunca se pierde un
@@ -51,13 +57,20 @@ from __future__ import annotations
 
 import abc
 import importlib
+import json
 import os
 import re
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar, Final
+from typing import Any, ClassVar, Final, Protocol
+from urllib.parse import quote, urlparse
 
+from pydantic import SecretStr
+
+from config.settings import settings
 from observability.logging import get_logger
+from shared.outbound_http import pinned_https_request
 
 log = get_logger(__name__)
 
@@ -304,6 +317,229 @@ class S3ObjectStore(ObjectStore):
         return ObjectStoreStats(objetos=objetos, bytes=total)
 
 
+class _RespuestaHttp(Protocol):
+    """Lo que el backend de Supabase usa de una respuesta HTTP.
+
+    Es el subconjunto de :class:`shared.outbound_http.PinnedHttpsResponse` que
+    hace falta, declarado como protocolo para que los tests inyecten un doble
+    sin red (ADR-029 §B).
+    """
+
+    status_code: int
+
+    def iter_content(self, chunk_size: int = ...) -> Iterator[bytes]: ...
+
+    def close(self) -> None: ...
+
+
+#: Firma del transporte: ``(método, url, cabeceras, cuerpo) -> respuesta``.
+TransporteHttp = Callable[[str, str, Mapping[str, str], bytes | None], _RespuestaHttp]
+
+
+class SupabaseStorageObjectStore(ObjectStore):
+    """Supabase Storage por su API REST, sobre ``shared/outbound_http``.
+
+    Alternativa a :class:`S3ObjectStore` para Supabase que no necesita SDK ni
+    un par de claves S3 aparte: autentica con la clave de servidor del proyecto
+    (``Authorization: Bearer`` + ``apikey``). El transporte es
+    :func:`shared.outbound_http.pinned_https_request` —DNS resuelto y validado
+    una vez, sin redirecciones— con el host del proyecto como única entrada de
+    la allowlist: aunque la clave de objeto venga de datos externos, la
+    petición no puede salir hacia otro sitio.
+
+    Endpoints (``/storage/v1``): ``POST object/{bucket}/{clave}`` con
+    ``x-upsert: true`` para guardar, ``GET object/authenticated/{bucket}/{clave}``
+    para leer, ``DELETE object/{bucket}/{clave}`` para borrar y
+    ``POST object/list/{bucket}`` (no recursivo: las carpetas se recorren) para
+    medir. Supabase contesta «no existe» unas veces con 404 y otras con 400 y
+    ``{"statusCode": "404"}`` en el cuerpo; las dos se tratan igual.
+    """
+
+    backend: ClassVar[str] = "supabase"
+
+    #: Tope de cada petición. Un pliego cabe holgado (``MAX_DOCUMENT_BYTES``).
+    TIMEOUT_SECONDS: ClassVar[float] = 60.0
+    #: Página del listado; el máximo que admite la API es 1000.
+    PAGINA_LISTADO: ClassVar[int] = 1000
+
+    def __init__(
+        self,
+        base_url: str,
+        bucket: str,
+        service_key: str,
+        *,
+        transporte: TransporteHttp | None = None,
+    ) -> None:
+        parsed = urlparse(base_url.strip())
+        if parsed.scheme != "https" or not parsed.hostname:
+            raise ObjectStoreError("DOCUMENT_BLOB_SUPABASE_URL debe ser una URL https")
+        if not bucket or not _SAFE_TOKEN.match(bucket):
+            raise ObjectStoreError(f"bucket de Supabase inválido: {bucket!r}")
+        if not service_key:
+            raise ObjectStoreError("el backend supabase exige DOCUMENT_BLOB_SUPABASE_KEY")
+        self.bucket = bucket
+        self._base = f"https://{parsed.netloc}/storage/v1"
+        self._host = parsed.hostname
+        self._key = service_key
+        self._transporte: TransporteHttp = transporte or self._transporte_por_defecto
+
+    def _transporte_por_defecto(
+        self, metodo: str, url: str, cabeceras: Mapping[str, str], cuerpo: bytes | None
+    ) -> _RespuestaHttp:
+        return pinned_https_request(
+            metodo,
+            url,
+            headers=cabeceras,
+            body=cuerpo,
+            timeout_seconds=self.TIMEOUT_SECONDS,
+            allowed_hosts=frozenset({self._host}),
+        )
+
+    def _cabeceras(self, extra: Mapping[str, str] | None = None) -> dict[str, str]:
+        cabeceras = {"Authorization": f"Bearer {self._key}", "apikey": self._key}
+        cabeceras.update(extra or {})
+        return cabeceras
+
+    def _url_objeto(self, key: str, *, autenticado: bool = False) -> str:
+        ruta = quote(_normalize_key(key), safe="/")
+        tramo = "object/authenticated" if autenticado else "object"
+        return f"{self._base}/{tramo}/{self.bucket}/{ruta}"
+
+    def _peticion(
+        self,
+        metodo: str,
+        url: str,
+        *,
+        cabeceras: Mapping[str, str] | None = None,
+        cuerpo: bytes | None = None,
+    ) -> tuple[int, bytes]:
+        """Hace la petición y devuelve ``(status, cuerpo)``.
+
+        Cualquier fallo de transporte se convierte en :class:`ObjectStoreError`
+        **sin** el detalle de la excepción original: la clave de servidor viaja
+        en las cabeceras y no puede acabar en un log.
+        """
+        try:
+            respuesta = self._transporte(metodo, url, self._cabeceras(cabeceras), cuerpo)
+        except Exception as exc:
+            raise ObjectStoreError(
+                f"Supabase Storage no responde ({metodo}): {type(exc).__name__}"
+            ) from exc
+        try:
+            datos = b"".join(respuesta.iter_content(65536))
+        except Exception as exc:
+            raise ObjectStoreError(
+                f"respuesta de Supabase Storage ilegible ({metodo}): {type(exc).__name__}"
+            ) from exc
+        finally:
+            respuesta.close()
+        return respuesta.status_code, datos
+
+    @staticmethod
+    def _es_no_encontrado(status: int, cuerpo: bytes) -> bool:
+        if status == 404:
+            return True
+        if status != 400:
+            return False
+        try:
+            datos = json.loads(cuerpo.decode("utf-8", errors="replace"))
+        except ValueError:
+            return False
+        if not isinstance(datos, dict):
+            return False
+        codigo = f"{datos.get('statusCode', '')} {datos.get('error', '')}"
+        return "404" in codigo or "not_found" in codigo.lower()
+
+    @staticmethod
+    def _fallo(operacion: str, key: str, status: int) -> ObjectStoreError:
+        # Solo el código: el cuerpo de un error puede reflejar la petición.
+        return ObjectStoreError(f"no se pudo {operacion} {key!r}: HTTP {status}")
+
+    def put(self, key: str, data: bytes, *, content_type: str | None = None) -> None:
+        status, _ = self._peticion(
+            "POST",
+            self._url_objeto(key),
+            cabeceras={
+                "Content-Type": content_type or "application/octet-stream",
+                "x-upsert": "true",
+            },
+            cuerpo=data,
+        )
+        if status >= 300:
+            raise self._fallo("guardar", key, status)
+
+    def get(self, key: str) -> bytes | None:
+        status, cuerpo = self._peticion("GET", self._url_objeto(key, autenticado=True))
+        if status < 300:
+            return cuerpo
+        if self._es_no_encontrado(status, cuerpo):
+            return None
+        raise self._fallo("leer", key, status)
+
+    def delete(self, key: str) -> bool:
+        status, cuerpo = self._peticion("DELETE", self._url_objeto(key))
+        if status < 300:
+            return True
+        if self._es_no_encontrado(status, cuerpo):
+            return False
+        raise self._fallo("borrar", key, status)
+
+    def _listar(self, prefijo: str, offset: int) -> list[dict[str, Any]]:
+        cuerpo = json.dumps(
+            {
+                "prefix": prefijo,
+                "limit": self.PAGINA_LISTADO,
+                "offset": offset,
+                "sortBy": {"column": "name", "order": "asc"},
+            }
+        ).encode("utf-8")
+        status, datos = self._peticion(
+            "POST",
+            f"{self._base}/object/list/{self.bucket}",
+            cabeceras={"Content-Type": "application/json"},
+            cuerpo=cuerpo,
+        )
+        if status >= 300:
+            raise ObjectStoreError(f"no se pudo listar el bucket: HTTP {status}")
+        try:
+            filas = json.loads(datos.decode("utf-8"))
+        except ValueError as exc:
+            raise ObjectStoreError("listado de Supabase Storage ilegible") from exc
+        if not isinstance(filas, list):
+            raise ObjectStoreError("listado de Supabase Storage con forma inesperada")
+        return [fila for fila in filas if isinstance(fila, dict)]
+
+    def stats(self, *, prefix: str = "") -> ObjectStoreStats:
+        """Recorre el prefijo carpeta a carpeta (la API no lista en recursivo).
+
+        Una fila sin ``id`` es una carpeta; las demás son objetos y llevan el
+        tamaño en ``metadata.size``.
+        """
+        objetos = 0
+        total = 0
+        pendientes = [prefix.rstrip("/")]
+        while pendientes:
+            carpeta = pendientes.pop()
+            offset = 0
+            while True:
+                filas = self._listar(carpeta, offset)
+                for fila in filas:
+                    nombre = str(fila.get("name") or "")
+                    if not nombre:
+                        continue
+                    if fila.get("id") is None:
+                        pendientes.append(f"{carpeta}/{nombre}" if carpeta else nombre)
+                        continue
+                    objetos += 1
+                    metadata = fila.get("metadata")
+                    if isinstance(metadata, dict):
+                        total += int(metadata.get("size") or 0)
+                if len(filas) < self.PAGINA_LISTADO:
+                    break
+                offset += len(filas)
+        return ObjectStoreStats(objetos=objetos, bytes=total)
+
+
 def _es_no_encontrado(exc: Exception) -> bool:
     """¿La excepción de boto3 dice «esa clave no existe»?
 
@@ -347,20 +583,41 @@ class ObjectStoreConfig:
     region: str
     prefix: str
     directory: str
+    supabase_url: str = ""
+    #: Fuera del ``repr``: la configuración se registra y se compara, y la
+    #: clave de servidor no puede acabar en un log.
+    supabase_key: str = field(default="", repr=False)
+
+
+def _valor(nombre: str) -> str:
+    """Valor de una variable: el entorno del proceso gana a ``settings``.
+
+    ``settings`` recoge el ``.env`` y los defaults declarados en
+    ``config/settings_object_store.py``; el entorno manda para que un job o un
+    test que cambie la variable lo vea sin reconstruir ``settings``.
+    """
+    if nombre in os.environ:
+        return os.environ[nombre].strip()
+    valor: object = getattr(settings, nombre, "")
+    if isinstance(valor, SecretStr):
+        valor = valor.get_secret_value()
+    return str(valor or "").strip()
 
 
 def load_config() -> ObjectStoreConfig:
-    """Lee la configuración del entorno (sin cachear)."""
-    prefijo = os.environ.get("DOCUMENT_BLOB_PREFIX", DEFAULT_PREFIX).strip()
-    if prefijo and not prefijo.endswith("/"):
+    """Lee la configuración (entorno sobre ``settings``, sin cachear)."""
+    prefijo = _valor("DOCUMENT_BLOB_PREFIX") or DEFAULT_PREFIX
+    if not prefijo.endswith("/"):
         prefijo += "/"
     return ObjectStoreConfig(
-        backend=os.environ.get("DOCUMENT_BLOB_BACKEND", "auto").strip().lower() or "auto",
-        bucket=os.environ.get("DOCUMENT_BLOB_BUCKET", "").strip(),
-        endpoint_url=os.environ.get("DOCUMENT_BLOB_ENDPOINT_URL", "").strip(),
-        region=os.environ.get("DOCUMENT_BLOB_REGION", "").strip(),
-        prefix=prefijo or DEFAULT_PREFIX,
-        directory=os.environ.get("DOCUMENT_BLOB_DIR", "").strip(),
+        backend=_valor("DOCUMENT_BLOB_BACKEND").lower() or "auto",
+        bucket=_valor("DOCUMENT_BLOB_BUCKET"),
+        endpoint_url=_valor("DOCUMENT_BLOB_ENDPOINT_URL"),
+        region=_valor("DOCUMENT_BLOB_REGION"),
+        prefix=prefijo,
+        directory=_valor("DOCUMENT_BLOB_DIR"),
+        supabase_url=_valor("DOCUMENT_BLOB_SUPABASE_URL"),
+        supabase_key=_valor("DOCUMENT_BLOB_SUPABASE_KEY"),
     )
 
 
@@ -371,6 +628,8 @@ def build_object_store(config: ObjectStoreConfig | None = None) -> ObjectStore:
     if backend == "auto":
         if cfg.directory:
             backend = "filesystem"
+        elif cfg.bucket and cfg.supabase_url:
+            backend = "supabase"
         elif cfg.bucket:
             backend = "s3"
         else:
@@ -388,6 +647,13 @@ def build_object_store(config: ObjectStoreConfig | None = None) -> ObjectStore:
             endpoint_url=cfg.endpoint_url or None,
             region_name=cfg.region or None,
         )
+    if backend == "supabase":
+        if not cfg.bucket or not cfg.supabase_url:
+            raise ObjectStoreError(
+                "DOCUMENT_BLOB_BACKEND=supabase exige DOCUMENT_BLOB_BUCKET "
+                "y DOCUMENT_BLOB_SUPABASE_URL"
+            )
+        return SupabaseStorageObjectStore(cfg.supabase_url, cfg.bucket, cfg.supabase_key)
     if backend == "disabled":
         return NullObjectStore()
     raise ObjectStoreError(f"DOCUMENT_BLOB_BACKEND desconocido: {backend!r}")
@@ -461,10 +727,10 @@ def model_artifact_key(asset_name: str) -> str | None:
     nombre = (asset_name or "").strip()
     if not nombre or not _SAFE_TOKEN.match(nombre):
         return None
-    prefijo = os.environ.get("MODEL_BLOB_PREFIX", DEFAULT_MODEL_PREFIX).strip()
-    if prefijo and not prefijo.endswith("/"):
+    prefijo = _valor("MODEL_BLOB_PREFIX") or DEFAULT_MODEL_PREFIX
+    if not prefijo.endswith("/"):
         prefijo += "/"
-    return f"{prefijo or DEFAULT_MODEL_PREFIX}{nombre}"
+    return f"{prefijo}{nombre}"
 
 
 def store_stats() -> ObjectStoreStats | None:
@@ -522,6 +788,8 @@ __all__ = [
     "ObjectStoreError",
     "ObjectStoreStats",
     "S3ObjectStore",
+    "SupabaseStorageObjectStore",
+    "TransporteHttp",
     "blob_prefix",
     "build_object_store",
     "disk_usage_bytes",
