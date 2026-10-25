@@ -449,6 +449,127 @@ def evaluate_classifier(
     return result
 
 
+#: Rango y paso del barrido de umbral. Compartidos por el tuning y por su
+#: bootstrap: medir la estabilidad con otra rejilla mediría otra cosa.
+UMBRAL_CLAMP: tuple[float, float] = (0.30, 0.95)
+UMBRAL_PASO = 0.01
+
+
+def elegir_umbral(
+    y_true: Sequence[int],
+    y_proba: Sequence[float],
+    *,
+    beta: float,
+    clamp: tuple[float, float] = UMBRAL_CLAMP,
+    grid_step: float = UMBRAL_PASO,
+) -> tuple[float, float]:
+    """Umbral de la rejilla que maximiza F-beta, y ese F-beta.
+
+    Núcleo puro de :func:`tune_threshold_on_golden`, separado para que el
+    bootstrap del umbral (:func:`umbral_bootstrap`) elija exactamente igual que
+    el tuning que alimenta producción. Empates: gana el umbral más bajo.
+    """
+    import numpy as np
+
+    yt = np.asarray(y_true, dtype=bool)
+    yp = np.asarray(y_proba, dtype=float)
+    lo, hi = clamp
+    grid = np.arange(lo, hi + 1e-9, grid_step)
+    # Vectorizado sobre la rejilla: el bootstrap lo llama cientos de veces.
+    # Misma definición que ``sklearn.metrics.fbeta_score(zero_division=0)``:
+    # (1+β²)·tp / ((1+β²)·tp + β²·fn + fp), y 0 cuando no hay ningún acierto.
+    preds = yp[None, :] >= grid[:, None]
+    tp = (preds & yt[None, :]).sum(axis=1).astype(float)
+    fp = (preds & ~yt[None, :]).sum(axis=1).astype(float)
+    fn = (~preds & yt[None, :]).sum(axis=1).astype(float)
+    b2 = beta * beta
+    denominador = (1 + b2) * tp + b2 * fn + fp
+    f = np.divide((1 + b2) * tp, denominador, out=np.zeros_like(tp), where=denominador > 0)
+    mejor = int(np.argmax(f))  # el primero: ante empate gana el umbral más bajo
+    return float(grid[mejor]), float(f[mejor])
+
+
+@dataclass(frozen=True)
+class UmbralBootstrap:
+    """Dispersión del umbral elegido al remuestrear el golden con reemplazo.
+
+    Es la cifra que dice si el golden **sostiene** el umbral servido: con 27
+    ejemplos daba sigma = 0,084 y p5-p95 = [0,30, 0,56] sobre un rango útil de
+    0,65, es decir, el umbral dependía más de qué ejemplos tocaban que del
+    modelo.
+    """
+
+    umbral: float  # el elegido sobre el conjunto entero
+    sigma: float
+    p5: float
+    p50: float
+    p95: float
+    validos: int  # remuestreos con las dos clases (los demás no eligen nada)
+
+    @property
+    def ancho_p5_p95(self) -> float:
+        return self.p95 - self.p5
+
+    def as_dict(self) -> dict[str, float | int]:
+        return {
+            "umbral": round(self.umbral, 4),
+            "sigma": round(self.sigma, 4),
+            "p5": round(self.p5, 4),
+            "p50": round(self.p50, 4),
+            "p95": round(self.p95, 4),
+            "ancho_p5_p95": round(self.ancho_p5_p95, 4),
+            "remuestreos_validos": self.validos,
+        }
+
+
+def umbral_bootstrap(
+    y_true: Sequence[int],
+    y_proba: Sequence[float],
+    *,
+    beta: float,
+    n_bootstrap: int = 500,
+    semilla: int = 20260824,
+    clamp: tuple[float, float] = UMBRAL_CLAMP,
+    grid_step: float = UMBRAL_PASO,
+) -> UmbralBootstrap | None:
+    """Remuestrea (y, proba) y repite :func:`elegir_umbral` en cada réplica.
+
+    ``None`` si el conjunto no tiene las dos clases: ahí no hay umbral que
+    elegir, y un intervalo de algo que no existe sería un número inventado.
+    """
+    import numpy as np
+
+    if len(y_true) != len(y_proba):
+        raise ValueError(f"y_true ({len(y_true)}) e y_proba ({len(y_proba)}) no miden lo mismo")
+    yt = np.asarray(y_true, dtype=int)
+    yp = np.asarray(y_proba, dtype=float)
+    if len(set(yt.tolist())) < 2:
+        return None
+    umbral, _ = elegir_umbral(y_true, y_proba, beta=beta, clamp=clamp, grid_step=grid_step)
+    rng = np.random.default_rng(semilla)
+    elegidos: list[float] = []
+    for _ in range(n_bootstrap):
+        idx = rng.integers(0, len(yt), size=len(yt))
+        y_rep: list[int] = yt[idx].tolist()
+        if len(set(y_rep)) < 2:
+            continue
+        p_rep: list[float] = yp[idx].tolist()
+        t, _f = elegir_umbral(y_rep, p_rep, beta=beta, clamp=clamp, grid_step=grid_step)
+        elegidos.append(t)
+    if not elegidos:
+        return None
+    arr = np.asarray(elegidos, dtype=float)
+    p5, p50, p95 = (float(v) for v in np.percentile(arr, [5, 50, 95]))
+    return UmbralBootstrap(
+        umbral=umbral,
+        sigma=float(arr.std()),
+        p5=p5,
+        p50=p50,
+        p95=p95,
+        validos=len(elegidos),
+    )
+
+
 def tune_threshold_on_golden(
     clf: _ProbaClassifier,
     examples: list[GoldenExample] | None = None,
@@ -456,8 +577,8 @@ def tune_threshold_on_golden(
     cost_fp: float = 1.0,
     cost_fn: float = 1.0,
     min_examples: int = 10,
-    clamp: tuple[float, float] = (0.30, 0.95),
-    grid_step: float = 0.01,
+    clamp: tuple[float, float] = UMBRAL_CLAMP,
+    grid_step: float = UMBRAL_PASO,
 ) -> dict[str, Any] | None:
     """Busca el threshold que maximiza F-beta sobre el golden set (labels humanas).
 
@@ -480,7 +601,6 @@ def tune_threshold_on_golden(
         datos suficientes (golden set pequeño o de una sola clase).
     """
     import numpy as np
-    from sklearn.metrics import fbeta_score
 
     if cost_fp <= 0 or cost_fn <= 0:
         raise ValueError("cost_fp y cost_fn deben ser positivos")
@@ -512,19 +632,7 @@ def tune_threshold_on_golden(
     beta = float(np.sqrt(cost_fn / cost_fp))
     probas = [float(clf.predict(ex.text, cpv=ex.cpv, importe=ex.importe)[1]) for ex in examples]
     kw = [ex.keyword_match for ex in examples]
-    yt = np.asarray(y_true, dtype=int)
-    yp = np.asarray(probas, dtype=float)
-
-    lo, hi = clamp
-    grid = np.arange(lo, hi + 1e-9, grid_step)
-    best_t = lo
-    best_f = -1.0
-    for t in grid:
-        preds = (yp >= t).astype(int)
-        f = float(fbeta_score(yt, preds, beta=beta, zero_division=0))
-        if f > best_f:
-            best_f = f
-            best_t = float(t)
+    best_t, best_f = elegir_umbral(y_true, probas, beta=beta, clamp=clamp, grid_step=grid_step)
 
     result = evaluate_probas(y_true, probas, keyword_match=kw, threshold=best_t, beta=beta)
     out = result.as_dict()
@@ -544,13 +652,18 @@ __all__ = [
     "MIN_TUNE_EXAMPLES",
     "SPLIT_HOLDOUT",
     "SPLIT_TUNE",
+    "UMBRAL_CLAMP",
+    "UMBRAL_PASO",
     "GoldenEvalResult",
     "GoldenExample",
+    "UmbralBootstrap",
     "asignar_splits",
+    "elegir_umbral",
     "evaluate_classifier",
     "evaluate_probas",
     "filtrar_split",
     "load_golden_set",
     "metricas_operativas",
     "tune_threshold_on_golden",
+    "umbral_bootstrap",
 ]
