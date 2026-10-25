@@ -72,6 +72,7 @@ from shared.events import (
     renderizar,
     suscripciones_validas,
 )
+from shared.identity import actor_del_principal
 from shared.outbound_http import pinned_https_request
 from shared.ssrf import validate_outbound_url
 
@@ -108,15 +109,9 @@ def _validate_webhook_url(url: str) -> str:
     return url
 
 
-def _actor_key(ctx: dict[str, Any]) -> str:
-    """Identificador corto para audit log — misma convención que feedback.py/me.py."""
-    material = str(ctx.get("user_key") or ctx.get("key_hash") or ctx.get("user_id") or "session")
-    return hashlib.sha256(material.encode()).hexdigest()[:16]
-
-
 def _idempotency_endpoint(ctx: dict[str, Any]) -> str:
     """Namespace an idempotency key by its authenticated owner."""
-    return f"webhook.create:{_actor_key(ctx)}"
+    return f"webhook.create:{actor_del_principal(ctx)}"
 
 
 # ── Modelos ──────────────────────────────────────────────────────────────────
@@ -395,7 +390,7 @@ async def create(
     await run_db(
         log_event,
         event_type="webhook.created",
-        user_key=_actor_key(ctx),
+        actor=actor_del_principal(ctx),
         resource=f"webhook:{webhook_id}",
         detail={
             "name": body.name,
@@ -565,7 +560,7 @@ async def update(
     await run_db(
         log_event,
         event_type="webhook.updated",
-        user_key=_actor_key(ctx),
+        actor=actor_del_principal(ctx),
         resource=f"webhook:{webhook_id}",
     )
     wh = await run_db(_repo.get_by_id, webhook_id, organization_id=organization_id)
@@ -592,7 +587,7 @@ async def delete(
     await run_db(
         log_event,
         event_type="webhook.deleted",
-        user_key=_actor_key(ctx),
+        actor=actor_del_principal(ctx),
         resource=f"webhook:{webhook_id}",
     )
 
@@ -735,7 +730,7 @@ async def rotate_secret(
     await run_db(
         log_event,
         event_type="webhook.secret_rotated",
-        user_key=_actor_key(ctx),
+        actor=actor_del_principal(ctx),
         resource=f"webhook:{webhook_id}",
         detail={"organization_id": organization_id, "rotated_at": rotated_at},
     )
@@ -799,7 +794,7 @@ async def redeliver(
     await run_db(
         log_event,
         event_type=WEBHOOK_REDELIVERED,
-        user_key=_actor_key(ctx),
+        actor=actor_del_principal(ctx),
         resource=f"webhook:{webhook_id}",
         detail={"organization_id": organization_id, "delivery_id": delivery_id},
     )

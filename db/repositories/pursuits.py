@@ -848,8 +848,9 @@ class PursuitRepository:
 
         Es la materia prima del cierre asistido: la ingesta conoce quién se
         llevó el contrato antes de que nadie abra la ficha, y esta consulta es
-        la que permite avisarlo. Trae al responsable con su email para derivar
-        su ``user_key``; sin responsable, el servicio avisa a la organización.
+        la que permite avisarlo. Trae al responsable con su email —si no lo
+        tiene es una cuenta anonimizada y no se le avisa—; sin responsable, el
+        servicio avisa a la organización.
         """
         with connect_read() as conn:
             cur = conn.execute(

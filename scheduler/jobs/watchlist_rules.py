@@ -8,10 +8,12 @@ ingesta — este job es el equivalente para el plano APScheduler/Docker
 ese plano pasa a ser el dueño.
 
 Idempotencia frente a doble ejecución (pipeline + este job activos a la
-vez): ``_write_user_notifications`` ya inserta con
-``ON CONFLICT(user_key, licitacion_id, type) DO NOTHING`` — una licitación
-ya notificada a un usuario (por cualquier regla, desde cualquiera de los
-dos caminos) no genera una segunda fila. Ver ``test_anti_doble_ejecucion``
+vez): ``_write_user_notifications`` escribe a través de la puerta
+`insert_user_notification` (``db/notifications.py``), que hace ``ON CONFLICT DO
+NOTHING`` sobre la identidad de la alerta (``user_id``, ``licitacion_id``,
+``type`` desde v162) — una licitación ya notificada a un usuario (por
+cualquier regla, desde cualquiera de los dos caminos) no genera una segunda
+fila. Ver ``test_anti_doble_ejecucion``
 en ``tests/test_watchlist_rules_job.py``.
 """
 
