@@ -469,9 +469,9 @@ def build_dataset_rows(df: pd.DataFrame) -> list[DatasetRow]:
 
     Fuentes de etiqueta (prioridad descendente):
       1. ``es_relevante`` cuando está presente para esa fila — es la etiqueta
-         ya resuelta por el caller (``train_from_db`` y
-         ``concept_drift._fetch_training_dataframe`` mezclan ahí keywords y
-         feedback humano, con el humano ganando).
+         ya resuelta por el caller (``train_from_db``, vía
+         ``etiquetar_dataset_sap``, mezcla ahí keywords y feedback humano,
+         con el humano ganando).
       2. ``raw_keywords`` no vacío → positivo, solo para las filas sin
          ``es_relevante``.
 

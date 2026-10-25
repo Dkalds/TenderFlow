@@ -42,11 +42,24 @@ gh api repos/Dkalds/TenderFlow/releases \
 
 Cómo se llega: algo activó una versión sin publicar su artefacto. El
 2026-09-29 fue el reentrenamiento automático dentro de un runner de
-`scrape-daily`; desde el 2026-10 ese paso ya no entrena: lanza
-`train-model.yml`, o avisa si no puede. Y `train-model.yml` activa **después**
-de subir, tras comprobar que la Release publica el sha256 registrado. Lo que
-queda son los caminos manuales: un `activate_version` sobre una versión cuyo
-artefacto no está publicado, o alguien que sustituye el asset a mano.
+`scrape-daily`. Desde 2026-10 hay **un solo camino de entrenamiento** y por
+código no puede repetirse:
+
+- El paso semanal `sap_active_learning` no entrena en ningún plano —tampoco
+  sin `SCHEDULER_PLANE`, en un checkout local—: lanza `train-model.yml`, o
+  avisa con el comando si no puede.
+- El gate (`services.ml.promotion.promote_if_better`) **no activa nunca**: ya
+  no tiene parámetro `activar`. Registra el candidato inactivo y, si pasa,
+  escribe `sap_classifier-<sha12>.pkl` (`pendiente_de_activar`). Vale también
+  para `python scripts/ml_clasificadores.py train`, que ahora dice «registrada
+  SIN activar» en vez de «Modelo guardado».
+- Lo único que activa es `python -m scheduler.jobs.ml_training_run activar
+  --version N`, el paso de `train-model.yml` posterior a la subida, y solo si
+  la Release publica el sha256 registrado.
+
+Lo que queda son los caminos manuales que se saltan todo eso: un
+`activate_version` a pelo sobre una versión cuyo artefacto no está publicado,
+o alguien que sustituye el asset a mano.
 
 **Salidas**, por orden de preferencia:
 
@@ -275,13 +288,67 @@ saber antes de tocar el clasificador:
   medido sobre **tres** ejemplos del golden legado (27 ejemplos escritos a
   mano). Un gate sobre un golden tan pequeño no protege: es la razón de fondo
   del golden real (`golden_ti.jsonl`, [etiquetado-ti.md](etiquetado-ti.md)).
-- **Qué se cambió.** Con `SCHEDULER_PLANE` declarado nadie entrena ni activa
-  fuera de `train-model.yml`, que activa **después** de subir y cotejar el
-  `digest` (#404, #405); `model_artifacts_canary` coteja a diario. La v2 se
+- **Qué se cambió.** Nadie entrena ni activa fuera de `train-model.yml`, que
+  activa **después** de subir y cotejar el `digest` (#404, #405);
+  `model_artifacts_canary` coteja a diario. En 2026-10 se retiró el segundo
+  camino: el reentrenamiento en proceso de `maybe_retrain_classifier` (que
+  seguía vivo sin plano declarado, con su propio dataset sobre
+  `licitaciones` entera) y el `activar=True` por defecto del gate. Queda un
+  dataset —el de `train_from_db`— y una sola puerta de activación. La v2 se
   desactivó a mano y no es recuperable: su artefacto no existe.
 - **Qué sigue abierto.** Ver correr el flujo nuevo de punta a punta —con el
   asset ya nombrado por contenido en `ml-models` (2026-10), que nunca se ha
-  ejecutado en producción— y decidir qué dataset entrena cada camino.
+  ejecutado en producción—: ver «Verificar la primera pasada de
+  `train-model.yml`» justo debajo. La etiqueta de `train_from_db` sigue siendo
+  circular (keywords); sustituirla por la de nivel 1 es otro ítem del backlog.
+
+## Verificar la primera pasada de `train-model.yml`
+
+Es la acción pendiente del dueño para cerrar el incidente. Con un token que
+pueda lanzar workflows y leer Releases, y `.env` apuntando a producción:
+
+```bash
+# 1. Lanzar y esperar.
+gh workflow run train-model.yml
+RUN="$(gh run list --workflow=train-model.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh run watch "$RUN"
+
+# 2. El resumen del run. Si el gate rechazó, lo dice con los motivos y sale
+#    en verde a propósito: no hay nada más que comprobar. Si pasó, tiene que
+#    listar «Asset: `sap_classifier-<sha12>.pkl`» y «Versión activada».
+gh run view "$RUN"
+
+# 3. El asset está en `ml-models` con nombre por contenido.
+gh release view ml-models --json assets \
+  --jq '.assets[] | select(.name | startswith("sap_classifier-")) | [.name, .digest] | @tsv'
+
+# 4. La versión activa apunta a ese asset y registra ese sha256.
+python - <<'PY'
+from pathlib import Path
+from db.model_registry import get_active
+a = get_active("sap_classifier")
+print(a and (a["version"], Path(a["path"]).name, a["sha256"]))
+PY
+```
+
+Lo de 3 y 4 tiene que coincidir: mismo nombre y `digest` = `sha256:<sha256>`.
+Después, en la siguiente pasada de `scrape-daily`, `model_artifacts_canary` y
+`ml_scoring` en `ok` (o en Ops › Ejecuciones):
+
+```sql
+SELECT payload_json, estado, updated_at
+FROM jobs
+WHERE tipo = 'paso_pipeline'
+  AND (payload_json LIKE '%model_artifacts_canary%' OR payload_json LIKE '%ml_scoring%')
+ORDER BY updated_at DESC
+LIMIT 6;
+```
+
+y en el log de la ingesta, `pipeline.ml_clf_loaded` con la ruta
+`sap_classifier-<sha12>.pkl`. El `workflow_dispatch` desde el paso semanal se
+ve igual: un run de `train-model.yml` con evento `workflow_dispatch`
+(`gh run list --workflow=train-model.yml`), tras el aviso «reentrenamiento del
+clasificador SAP lanzado».
 
 ## Ver modelos en disco
 
