@@ -256,7 +256,7 @@ class ApiKeyRepository:
         with connect() as c:
             cols = get_table_columns(c, "api_keys")
             fields = ["key_hash", "name", "created_at", "is_active"]
-            values: list[Any] = [key_hash, name, now, 1]
+            values: list[object] = [key_hash, name, now, 1]
 
             if "scopes" in cols:
                 fields.append("scopes")

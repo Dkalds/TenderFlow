@@ -126,7 +126,7 @@ class Ambito:
     def sql(self, alias: str = "l") -> tuple[list[str], list[Any]]:
         """``(cláusulas, parámetros)`` del ámbito sobre ``licitaciones``."""
         clausulas: list[str] = []
-        valores: list[Any] = []
+        valores: list[object] = []
         if self.ccaa_del_texto:
             una = (
                 f"({alias}.ccaa = %s OR (COALESCE({alias}.ccaa, '') = '' "

@@ -42,9 +42,9 @@ PRODUCTORES_DIRECTOS: frozenset[str] = frozenset(
         "services/deadline_reminders.py",
         # Adjudicación detectada sobre una oportunidad abierta.
         "services/pursuit_awards.py",
-        # Asignación de una oportunidad. Migra en la ola de S3, que es quien
-        # posee `services/pursuits.py`.
-        "services/pursuits.py",
+        # `services/pursuits.py` (asignación) salió el 2026-10-25: el
+        # repositorio escribe `pursuit.assigned` en la transacción de la
+        # asignación y lo reparte el despachador.
     }
 )
 

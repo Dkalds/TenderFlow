@@ -13,8 +13,12 @@ from __future__ import annotations
 from typing import Any
 
 from db.database import connect
+from db.events import append_domain_event
 
 ESTADOS = ("pendiente", "atendida", "descartada")
+
+#: Tipo del catálogo (``shared/events.py``) con el que se anuncia una solicitud.
+EVENTO_SOLICITUD_ACCESO = "solicitud_acceso.creada"
 
 
 def crear_solicitud(
@@ -24,7 +28,7 @@ def crear_solicitud(
     mensaje: str | None,
     origen: str | None,
 ) -> int:
-    """Registra una solicitud y devuelve su id.
+    """Registra una solicitud, escribe su evento en el outbox y devuelve su id.
 
     ``consentimiento_at`` se sella aquí con la hora del servidor y no con un
     valor que venga del cliente: es la prueba de que hubo consentimiento en
@@ -67,7 +71,30 @@ def crear_solicitud(
             (email, empresa, mensaje, origen),
         )
         fila = cur.fetchone()
-        return int(fila[0])
+        solicitud_id = int(fila[0])
+        pendientes = c.execute(
+            "SELECT COUNT(*) FROM solicitudes_acceso WHERE estado = 'pendiente'"
+        ).fetchone()
+        # Outbox (ADR-027): el aviso a las integraciones se escribe en la misma
+        # transacción que la solicitud y lo reparte el despachador; antes salía
+        # por HTTP síncrono (`trigger_event`) desde la tarea de fondo de la
+        # request. **Sin el email ni el mensaje**: un webhook sale del sistema
+        # y el aviso no necesita el dato personal —y este evento se guarda para
+        # siempre en una tabla append-only—. `empresa` sí va: es dato de
+        # negocio y lo que hace accionable el aviso.
+        append_domain_event(
+            EVENTO_SOLICITUD_ACCESO,
+            solicitud_id,
+            "solicitud_acceso",
+            {
+                "id": solicitud_id,
+                "empresa": empresa,
+                "origen": origen,
+                "pendientes": int(pendientes[0]) if pendientes else 0,
+            },
+            conn=c,
+        )
+        return solicitud_id
 
 
 def listar_solicitudes(*, estado: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
