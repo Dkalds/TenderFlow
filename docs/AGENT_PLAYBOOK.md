@@ -43,6 +43,7 @@ El [Makefile](../Makefile) es la fuente canónica. Targets habituales:
 | Dirección de imports entre paquetes | `make check-layers` |
 | `print()` fuera de un `__main__` en `scraper/`, `services/`, `scheduler/` | `make check-prints` |
 | Operación nueva de la API con su motivo | `make check-api-surface` |
+| Uso por espacio/vista (CSV de Vercel Analytics) y operaciones de la API sin llamadas en 30 días (Prometheus); sin datos imprime el catálogo con «pendiente de exportar» | `make inventario-uso` |
 | Validar invariantes analíticos del frontend | `make check-frontend-invariants` |
 | Lint / typecheck frontend | `make web-lint` / `make web-typecheck` |
 | Tests unitarios frontend | `make web-test` (con umbrales: `make web-test-coverage`) |
@@ -70,6 +71,7 @@ schema aislado mediante las fixtures de `tests/conftest.py`.
 | `make check-api-contract` | requiere deps | disponible tras `make openapi` |
 | `make check-layers`, `make check-prints` | disponible: stdlib + git | disponible |
 | `make check-api-surface` | requiere deps | disponible |
+| `make inventario-uso` | disponible: stdlib | disponible |
 | `make test-unit`, `make test`, `make check` | no disponible | no disponible sin `TEST_DATABASE_URL` |
 | `make web-test`, `make web-test-coverage` | no disponible | requiere `web/node_modules` (`cd web && npm ci`) |
 | `graphify *` | solo si el CLI está instalado | igual |

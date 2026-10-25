@@ -882,3 +882,166 @@ Decisiones que lo sostienen:
 - Se llama «Asistente» en todas partes: era «Copiloto» en el panel, «Asistente
   IA» en la ficha y «Asistente» en el Investigador. ⌘K lo sigue encontrando por
   «copiloto».
+
+---
+
+## Uso por espacio y por vista (2026-10-25)
+
+Criterio del ítem de backlog «La telemetría de producto»: tras 30 días, una
+tabla con el uso de cada espacio y de cada vista, y una decisión escrita —se
+queda, se fusiona o se retira— por cada uno que quede **por debajo del 2 %**.
+La misma pregunta para la API: qué operaciones no han recibido ninguna llamada
+en 30 días, como candidatas a encoger `api/superficie_congelada.txt`.
+
+**Estado: sin cifras, a propósito.** Las dos fuentes están fuera del repo y
+ninguna se puede leer sin credenciales del propietario:
+
+- **Espacios y vistas** — el evento `espacio_abierto` de
+  `web/src/lib/analytics.ts` va a Vercel Web Analytics (`track` de
+  `@vercel/analytics`). Ni el repo ni ningún endpoint público lo devuelven.
+- **API** — `http_requests_total` por `method`/`handler`
+  (`prometheus-fastapi-instrumentator`, `api/app.py`) lo guarda
+  `tenderflow-prometheus`, un `pserv` privado de Render con retención de 30
+  días. El `GET /metrics` de la API exige en producción una clave con scope
+  `metrics:read`, y además solo cuenta desde el último arranque del proceso.
+
+`make inventario-uso` (`scripts/inventario_uso.py`) produce las dos tablas en
+cuanto tiene los datos; sin ellos imprime el catálogo con «pendiente de
+exportar», que es lo que hay abajo. No se ha escrito ninguna cifra estimada.
+
+### Qué mide y qué no
+
+- `espacio_abierto` cuenta **navegaciones desde el rail** (y `rail_movil`), no
+  visitas totales: entrar por URL, por la paleta o por un enlace de otra
+  pantalla no emite. Las vistas solo se cuentan al **cambiar** de vista con el
+  conmutador (`origen: conmutador`), así que la vista por defecto de cada
+  espacio sale infravalorada; por eso el % de una vista se calcula sobre las
+  aperturas de vista de su espacio, no sobre el total.
+- La cifra que se pide al panel es **visitantes** del evento, que se parece
+  más a «sesiones» que el total de eventos. El script usa la primera columna
+  que encuentre de `visitantes`/`visitors`, `sesiones`, `eventos`/`events`/
+  `total`/`count`, y la nombra en la cabecera de la tabla.
+- La dimensión `vista` viaja desde 2026-09-02, así que la ventana de 30 días
+  ya cabe; el catálogo completo de emisores se auditó el 2026-10-23
+  (`web/src/lib/__tests__/analytics-emisores.test.ts`).
+
+### Pasos para el propietario
+
+**0. Comprobar que los eventos llegan.** Los eventos personalizados de Vercel
+Web Analytics son función del plan Pro. En el proyecto de Vercel → Analytics →
+Events, `espacio_abierto` tiene que aparecer con cifras; si no aparece, no hay
+nada que exportar y el resto de pasos espera a cambiar de plan (es la
+verificación contra producción que el backlog dejó pendiente el 2026-08-30,
+al arreglar `/_vercel` en el proxy de borde).
+
+**1. Espacios y vistas.** En Analytics → Events, periodo «Last 30 days»,
+evento `espacio_abierto`:
+
+1. Propiedad `espacio`: anotar los **visitantes** de cada valor. Cada uno es
+   una fila con la columna `vista` vacía.
+2. Para cada espacio con vistas (`mercado`, `competencia`, `oportunidades`,
+   `cuentas`, `direccion`, `ajustes`, `ops`, `mi-pipeline`): filtrar
+   `espacio = <ese>` y mirar la propiedad `vista`. Cada valor es una fila con
+   las dos columnas.
+3. Guardar como CSV (UTF-8) con la cabecera `espacio,vista,visitors`:
+
+   ```csv
+   espacio,vista,visitors
+   radar,,<n>
+   mercado,,<n>
+   mercado,tiempo,<n>
+   ```
+
+4. `make inventario-uso ARGS="espacios --csv ruta/al/export.csv"` y pegar la
+   tabla aquí, sustituyendo la de abajo. Las filas marcadas «**sí** (< umbral)»
+   necesitan su decisión escrita en la columna correspondiente; las «fuera del
+   catálogo» son claves que ya no existen (por ejemplo `empresas`, absorbido
+   por Competencia el 2026-10-12) y no cuentan como espacio vivo.
+
+Quien tenga el conector de Vercel en Claude puede sacar las mismas cifras con
+su agregación de eventos en vez de copiarlas del panel; el CSV de entrada es el
+mismo.
+
+**2. API.** En Render → `tenderflow-prometheus` → Shell:
+
+```sh
+wget -qO- 'http://localhost:9090/api/v1/query?query=sum+by+%28method%2C+handler%29+%28increase%28http_requests_total%7Bjob%3D%22tenderflow-api%22%7D%5B30d%5D%29%29'
+```
+
+Pegar la respuesta en un fichero local y ejecutar
+`make inventario-uso ARGS="api --prom-json ruta/respuesta.json"`. Antes,
+comprobar que hay 30 días de serie: si Prometheus se recreó hace menos (su
+disco es `prometheus-data`) o el scrape no tenía el secret file
+`/etc/secrets/metrics_token` (ver `observability/prometheus.render.yml`), la
+ventana real es más corta y una operación «sin llamadas» puede ser solo una
+operación que no se llamó en esos días. Desde dentro de la red privada de
+Render, `--prometheus http://tenderflow-prometheus:9090` hace la consulta
+directamente. La lista que salga se copia como bloque de comentario al final
+de `api/superficie_congelada.txt` (el script de la superficie ignora las
+líneas `#`) y cada candidata se decide aparte: sin llamadas en 30 días no es
+lo mismo que sin consumidor —hay operaciones de uso mensual o solo de
+administración—, igual que en la retirada de analítica de
+`docs/rfc/2026-09-06-rfc-retirada-endpoints-analitica.md`.
+
+### Tabla de espacios y vistas
+
+Catálogo de `web/src/lib/console-spaces.ts` y `web/src/lib/space-views.ts` a
+2026-10-25. `ops` solo lo ven administradores: su porcentaje bajo no es
+señal de sobra por sí solo.
+
+| Espacio | Vista | Visitantes 30 d | % | Decisión |
+|---|---|---:|---:|---|
+| `resumen` | — | pendiente de exportar | — | — |
+| `radar` | — | pendiente de exportar | — | — |
+| `detalle` | — | pendiente de exportar | — | — |
+| `oportunidades` | — | pendiente de exportar | — | — |
+| `oportunidades` | `tablero` | pendiente de exportar | — | — |
+| `oportunidades` | `cartera` | pendiente de exportar | — | — |
+| `oportunidades` | `rendimiento` | pendiente de exportar | — | — |
+| `mercado` | — | pendiente de exportar | — | — |
+| `mercado` | `tiempo` | pendiente de exportar | — | — |
+| `mercado` | `cpv` | pendiente de exportar | — | — |
+| `mercado` | `calendario` | pendiente de exportar | — | — |
+| `mercado` | `geografia` | pendiente de exportar | — | — |
+| `mercado` | `tecnologias` | pendiente de exportar | — | — |
+| `mercado` | `organos` | pendiente de exportar | — | — |
+| `mercado` | `clusters` | pendiente de exportar | — | — |
+| `mercado` | `proyectos` | pendiente de exportar | — | — |
+| `mercado` | `renovaciones` | pendiente de exportar | — | — |
+| `cuentas` | — | pendiente de exportar | — | — |
+| `cuentas` | `seguidas` | pendiente de exportar | — | — |
+| `cuentas` | `mercado` | pendiente de exportar | — | — |
+| `direccion` | — | pendiente de exportar | — | — |
+| `direccion` | `resultado` | pendiente de exportar | — | — |
+| `direccion` | `carga` | pendiente de exportar | — | — |
+| `direccion` | `actividad` | pendiente de exportar | — | — |
+| `competencia` | — | pendiente de exportar | — | — |
+| `competencia` | `competidores` | pendiente de exportar | — | — |
+| `competencia` | `utes` | pendiente de exportar | — | — |
+| `competencia` | `empresas` | pendiente de exportar | — | — |
+| `competencia` | `revision` | pendiente de exportar | — | — |
+| `investigador` | — | pendiente de exportar | — | — |
+| `mi-pipeline` | — | pendiente de exportar | — | — |
+| `mi-pipeline` | `agenda` | pendiente de exportar | — | — |
+| `mi-watchlist` | — | pendiente de exportar | — | — |
+| `mi-perfil` | — | pendiente de exportar | — | — |
+| `ajustes` | — | pendiente de exportar | — | — |
+| `ajustes` | `sesiones` | pendiente de exportar | — | — |
+| `ajustes` | `seguridad` | pendiente de exportar | — | — |
+| `ajustes` | `claves` | pendiente de exportar | — | — |
+| `ajustes` | `notificaciones` | pendiente de exportar | — | — |
+| `ajustes` | `cuenta` | pendiente de exportar | — | — |
+| `equipo` | — | pendiente de exportar | — | — |
+| `ops` | — | pendiente de exportar | — | — |
+| `ops` | `observabilidad` | pendiente de exportar | — | — |
+| `ops` | `ejecuciones` | pendiente de exportar | — | — |
+| `ops` | `calidad` | pendiente de exportar | — | — |
+| `ops` | `etiquetado` | pendiente de exportar | — | — |
+| `ops` | `administracion` | pendiente de exportar | — | — |
+
+### Operaciones de la API sin llamadas en 30 días
+
+Catálogo: las operaciones de `api/superficie_congelada.txt` más las `NUEVAS`
+justificadas de `scripts/check_api_surface.py`. Llamadas por operación:
+**pendiente de exportar** (paso 2). Ninguna operación se ha marcado todavía
+como candidata.
