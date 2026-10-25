@@ -42,9 +42,11 @@ from db.sql_fragments import (
     escape_like,
     exclude_duplicados_presentacion_sql,
     fecha_valida_sql,
+    fechas_ts_lectura_activa,
     fold_expr,
     importe_select_sql,
     importe_sql,
+    instante_sql,
     lectura_tipada_activa,
     tecnologia_en_csv_sql,
     tecnologia_tokens_sql,
@@ -1415,8 +1417,19 @@ class LicitacionRepository:
             }
 
     def get_last_extraction_date(self) -> str | None:
-        """MAX(fecha_extraccion) para Last-Modified header."""
+        """MAX(fecha_extraccion) para Last-Modified header.
+
+        Con ``FECHAS_TS_LECTURA`` lee primero ``MAX(fecha_extraccion_ts)``
+        (índice de ``v160``) y lo devuelve en ISO UTC; si la sombra está vacía
+        —backfill sin empezar— cae a la columna de texto. El máximo del texto
+        es un máximo lexicográfico: con ``' '`` y ``'T'`` mezclados en
+        producción, puede no ser el instante más reciente; el de la sombra sí.
+        """
         with connect_read() as c:
+            if fechas_ts_lectura_activa():
+                fila = c.execute("SELECT MAX(fecha_extraccion_ts) FROM licitaciones").fetchone()
+                if fila and isinstance(fila[0], datetime):
+                    return str(fila[0].astimezone(UTC).isoformat())
             row = c.execute("SELECT MAX(fecha_extraccion) FROM licitaciones").fetchone()
         return str(row[0]) if row and row[0] else None
 
@@ -1723,7 +1736,7 @@ class LicitacionRepository:
                 "SELECT id, id_externo, captured_at, source, snapshot_json, changed_fields "
                 "FROM licitaciones_history "
                 "WHERE id_externo = %s "
-                "ORDER BY captured_at DESC LIMIT %s",
+                f"ORDER BY {instante_sql('licitaciones_history', 'captured_at')} DESC LIMIT %s",
                 [id_externo, limit],
             )
             return rows_to_dicts(cur)
