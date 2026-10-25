@@ -83,7 +83,9 @@ referencia nombrado; el trabajo de diseño no inventa uno ni tablas comparativas
 - **Acceso B2B por invitación**: no hay alta self-service, ni pasarela de pago,
   ni planes, ni precio publicado. Se solicita acceso, un operador habilita el
   email o el dominio, y se entra con contraseña (alta con correo de activación)
-  o con Google. Ambos métodos son reales.
+  o con Google. Microsoft es un tercer método que solo aparece donde está
+  configurado `OAUTH_MICROSOFT_CLIENT_ID` (D17); sin él, el backend responde 501
+  y el botón no se muestra.
 - Roles de organización: propietaria, administradora, miembro y lector (solo
   lectura); además, administrador de plataforma.
 - El frontend solo consume la API tipada; no hay atajos a la base de datos
