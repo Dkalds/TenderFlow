@@ -83,7 +83,12 @@ def _entry(
 
 
 def _tender_result(
-    *, importe: str, pagable: str, minima: str, maxima: str, nif: str = "B12345678"
+    *,
+    importe: str,
+    pagable: str,
+    minima: str,
+    maxima: str,
+    nif: str = "B12345678",  # pragma: allowlist secret
 ) -> str:
     return (
         "<cac:TenderResult>"

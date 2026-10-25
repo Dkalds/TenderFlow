@@ -134,18 +134,7 @@ def test_shared_dto_does_not_shadow_route_models(openapi_schema: dict[str, Any])
 
     import shared.dto as shared_dto
 
-    # Desde 2026-10-25 ``shared.dto`` es un paquete: los modelos se definen en
-    # sus submódulos y el ``__init__`` los re-exporta todos, así que aquí cuentan
-    # los re-exportados cuyo módulo de origen es del paquete (con
-    # ``_models_defined_in`` el conjunto saldría vacío y el test pasaría solo).
-    shared_names = {
-        name
-        for name, obj in vars(shared_dto).items()
-        if inspect.isclass(obj)
-        and issubclass(obj, BaseModel)
-        and obj.__module__.startswith(f"{shared_dto.__name__}.")
-    }
-    assert shared_names, "shared.dto no re-exporta ningún modelo: el test pasaría vacío"
+    shared_names = _modelos_reexportados(shared_dto)
     colisiones: dict[str, list[str]] = {}
     for mod_name, module in sorted(sys.modules.items()):
         if not mod_name.startswith("api.routes.") or module is None:
@@ -438,3 +427,21 @@ def test_cluster_entry_in_schema(schema_components: dict[str, Any]) -> None:
 
     componente = set(schema_components["ClusterEntry"]["properties"])
     assert componente == set(ClusterEntry.model_fields)
+
+
+def _modelos_reexportados(paquete: Any) -> set[str]:
+    """Los modelos que re-exporta ``shared.dto`` desde sus submódulos.
+
+    Desde 2026-10-25 ``shared.dto`` es un paquete: los modelos se definen en sus
+    submódulos y el ``__init__`` los re-exporta todos. Con
+    ``_models_defined_in`` el conjunto saldría vacío y el test pasaría solo.
+    """
+    nombres = {
+        name
+        for name, obj in vars(paquete).items()
+        if inspect.isclass(obj)
+        and issubclass(obj, BaseModel)
+        and obj.__module__.startswith(f"{paquete.__name__}.")
+    }
+    assert nombres, "shared.dto no re-exporta ningún modelo: el test pasaría vacío"
+    return nombres
