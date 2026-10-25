@@ -663,6 +663,14 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, ObjectStoreSetting
     # fragmento devuelve la columna vieja byte a byte. La escritura dual no
     # depende de esto — `db/upsert.py` escribe las sombras en cuanto existen.
     NUCLEO_TIPADO_LECTURA: bool = False
+    # ── Fechas a timestamptz, fase 1 (v159/v160) ───────────────────────────
+    # Lectura de las sombras `<columna>_ts` de `db/fechas_ts.py` en los
+    # fragmentos de `db.sql_fragments.instante_sql` (novedades, historial,
+    # notificaciones) y en `MAX(fecha_extraccion_ts)`. Default False hasta que
+    # `scripts/backfill_fechas_ts.py --verificar` dé cero divergencias en
+    # producción Y `v160` esté aplicada con su índice válido
+    # (`docs/runbooks/fechas-ts-ventana.md`). La escritura no depende de esto.
+    FECHAS_TS_LECTURA: bool = False
     # ── Seguimiento unificado (T1, ADR-031 §B fase 2, v130) ────────────────
     # Con True, `GET /watchlist/items`, `GET /competitive/watchlist` y los
     # descartes del Radar deciden la pertenencia leyendo `follows`; la tabla de

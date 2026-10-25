@@ -1,30 +1,16 @@
 """Fragmentos SQL constantes que necesita el propio ``db/``.
 
-Gemelo de ``services/sql_fragments.py`` en el lado correcto de la frontera.
-Existe por la colisión de dos reglas del proyecto:
+Punto único de los fragmentos SQL constantes (antes había un gemelo en
+``services/sql_fragments.py``, retirado: ``services/`` importa de aquí).
+Existe por ADR-022 (todo el SQL vive en ``db/``) y ADR-024 (``db/`` no depende
+de ``services/``): los fragmentos que interpolan las queries de ``db/`` y las
+que aún quedan en ``services/`` tienen una sola definición, en el lado
+permitido de la dependencia.
 
-- **ADR-022**: todo el SQL vive en ``db/``. La migración del ratchet TID251 va
-  moviendo queries de ``services/`` a ``db/``, y esas queries se llevan consigo
-  los fragmentos que interpolan.
-- **ADR-024**: ``db/`` no puede depender de ``services/`` (capa superior). Un
-  ``from services.dedupe import ...`` dentro de ``db/`` invierte las capas.
-
-Hasta ahora la salida era duplicar el fragmento en ``db/`` con un comentario
-apuntando al original (``db/repositories/ml_dataset.py::_NO_DUPLICADOS``,
-``db/repositories/pricing.py`` con ``EFFECTIVE_BUDGET_SQL``). Eso funciona para
-una línea, pero :data:`FECHA_FIN_SQL` son doce con aritmética de intervalos: una
-tercera copia es una divergencia esperando a ocurrir.
-
-Así que la definición canónica de estos tres fragmentos baja aquí y
-``services/sql_fragments.py`` y ``services/dedupe.py`` los **reexportan**. Los
-call-sites de ``services/`` siguen importando de donde siempre; lo que cambia es
-la dirección de la dependencia, que ahora es ``services/ → db/``, la permitida.
-
-No se movieron los demás fragmentos de ``services/sql_fragments.py``: solo
-bajan los que ``db/`` consume hoy. Bajar el resto es trabajo de la misma ola del
-ratchet, cuando alguna query de ``db/`` los necesite. Así bajaron después
-:data:`WATCHED_COMPANY_AWARDS_SQL` y :func:`round_sql`, con el SQL de
-``services/competitive/mercado.py`` (``db/repositories/mercado.py``).
+Regla de composición: solo se interpolan con f-string fragmentos constantes de
+este módulo o whitelists internas de columnas; los valores de usuario van
+siempre con placeholders ``%s``, y cada query que interpola lleva
+``# noqa: S608`` con su justificación inline.
 
 Los fragmentos de **clave canónica** del final del módulo nacieron aquí, no
 bajaron de ``services/``. Viven en ``db/`` por ADR-022 —son SQL— y en este
@@ -771,6 +757,80 @@ def fecha_valida_sql(nombre: str, alias: str | None = "l", *, tipada: bool | Non
         f"({columna} >= TIMESTAMPTZ '{ISO_MIN}-01-01 00:00:00+00' "
         f"AND {columna} < TIMESTAMPTZ '{ISO_MAX}-01-01 00:00:00+00')"
     )
+
+
+# ── Lectura dual de las fechas de v159 (fase 1 de «fechas a timestamptz») ─
+# `v159` añade `<columna>_ts timestamptz` junto a catorce fechas de texto
+# (`db/fechas_ts.py`). Mismo esquema que el núcleo tipado de arriba, con su
+# propio interruptor, `FECHAS_TS_LECTURA`: son otra migración y otro backfill,
+# y la verificación de uno no dice nada del otro. Con el flag apagado cada
+# fragmento devuelve la columna de texto carácter a carácter.
+#
+# Encendido, la lectura **prefiere la sombra y cae al texto**:
+# `COALESCE(<col>_ts, nucleo_iso_a_timestamptz(<col>))`. Así una fila que el
+# backfill aún no alcanzó ordena y filtra igual que una rellenada, y ninguna
+# depende de que su escritor usara `now_utc_iso()`. Solo para filtros y
+# `ORDER BY` sobre conjuntos ya acotados por otra clave con índice: la
+# expresión no la sirve ningún índice. Lo que se **proyecta** sigue siendo el
+# texto, así que ningún DTO cambia de tipo en esta fase.
+
+#: `tabla.columna` con sombra en `v159`. Gemelo de `db.fechas_ts.TABLAS` (lo
+#: fija `tests/test_unit_fechas_ts.py`); aquí como constante para que este
+#: módulo no importe `db.connection`.
+FECHAS_CON_SOMBRA: frozenset[str] = frozenset(
+    {
+        "licitaciones.fecha_extraccion",
+        "licitaciones.primera_extraccion",
+        "licitaciones.fecha_inicio",
+        "licitaciones.fecha_fin",
+        "licitaciones.fecha_actualizacion_fuente",
+        "adjudicaciones.fecha_adjudicacion",
+        "licitaciones_history.captured_at",
+        "documentos.created_at",
+        "documentos.fetched_at",
+        "documentos.updated_at",
+        "pursuit_events.created_at",
+        "user_notifications.created_at",
+        "user_notifications.read_at",
+    }
+)
+
+
+def fechas_ts_lectura_activa() -> bool:
+    """Valor vigente de ``settings.FECHAS_TS_LECTURA`` (importación diferida)."""
+    from config import settings
+
+    return bool(settings.FECHAS_TS_LECTURA)
+
+
+def instante_sql(
+    tabla: str, columna: str, alias: str | None = None, *, tipada: bool | None = None
+) -> str:
+    """La fecha ``tabla.columna`` para filtrar u ordenar como instante.
+
+    Apagado (``tipada=False`` o el flag apagado): la columna de texto,
+    calificada con ``alias`` si lo hay. Encendido: la sombra, cayendo a la
+    conversión del texto donde la sombra falte. ``tabla`` solo sirve para
+    validar que la columna tiene sombra; el SQL usa ``alias``.
+    """
+    if f"{tabla}.{columna}" not in FECHAS_CON_SOMBRA:
+        raise ValueError(f"{tabla}.{columna} no tiene sombra _ts (v159)")
+    activa = fechas_ts_lectura_activa() if tipada is None else tipada
+    texto = _calificada(columna, alias)
+    if not activa:
+        return texto
+    return f"COALESCE({_calificada(columna + '_ts', alias)}, nucleo_iso_a_timestamptz({texto}))"
+
+
+def param_instante_sql(*, tipada: bool | None = None) -> str:
+    """El marcador de un parámetro que se compara con :func:`instante_sql`.
+
+    Encendido, el parámetro (un ISO de ``now_utc_iso`` o de la marca de última
+    visita) se castea a ``timestamptz``: comparar un instante con texto lo
+    resolvería Postgres con la zona de la sesión, no con el offset que trae.
+    """
+    activa = fechas_ts_lectura_activa() if tipada is None else tipada
+    return "%s::timestamptz" if activa else "%s"
 
 
 # ── Clave canónica de un contrato ─────────────────────────────────────────

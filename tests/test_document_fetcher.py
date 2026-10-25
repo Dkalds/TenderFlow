@@ -760,7 +760,7 @@ class TestFetchAndExtract:
         assert "no soportado" in (row["error_detail"] or "")
 
     def test_pdf_escaneado_sin_ocr_marca_sin_texto_no_error(self, repo, monkeypatch):
-        """``v159``: un escaneado que el OCR no lee tiene estado propio.
+        """``v161``: un escaneado que el OCR no lee tiene estado propio.
 
         Ni descarga fallida ni PDF roto: el documento existe y se abre en el
         navegador. ``sin_texto`` conserva el ``content_type`` y la huella de la

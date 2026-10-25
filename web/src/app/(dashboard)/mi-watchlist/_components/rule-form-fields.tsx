@@ -37,6 +37,7 @@ import {
   BANDA_OPTIONS,
   FREQ_NOTE,
   FREQ_OPTIONS,
+  ccaaLabel,
 } from "../_hooks/watchlist-rule-options";
 import type {
   CatalogosCodificados,
@@ -132,7 +133,7 @@ export function RuleFormFields({
           <SelectContent>
             {ccaaList.map((c) => (
               <SelectItem key={c} value={c}>
-                {c === "__all__" ? "Todas" : c}
+                {ccaaLabel(c)}
               </SelectItem>
             ))}
           </SelectContent>

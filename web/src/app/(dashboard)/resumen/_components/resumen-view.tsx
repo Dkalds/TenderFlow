@@ -17,6 +17,8 @@ import { PublicacionesPanel } from "./publicaciones-panel";
 import { UltimasPublicaciones } from "./ultimas-publicaciones";
 import { EventosFeed } from "./eventos-feed";
 import { AtajosAnalisis } from "./atajos-analisis";
+import { ComposicionPanel } from "./composicion-panel";
+import { ComunidadesPanel } from "./comunidades-panel";
 
 /**
  * Resumen — la entrada del producto. Es la parte cliente de la pantalla; el
@@ -25,43 +27,46 @@ import { AtajosAnalisis } from "./atajos-analisis";
  * El orden de la pantalla es su tesis, y la anterior tenía la tesis cambiada:
  * abría con «Total licitaciones» y «Órganos únicos» —una radiografía del
  * mercado español— en un producto cuyo usuario entra para saber qué tiene que
- * hacer hoy. Todo lo personal (pursuits con plazo, Go/No-go sin decidir,
- * señales de sus reglas sin triar) vivía en Mi Pipeline y la entrada no daba
- * ninguna pista de que existiera. Ahora la página va **de dentro hacia fuera**:
+ * hacer hoy. Ahora la página va **de dentro hacia fuera**, en dos zonas:
  *
- * 0. **Desde tu última visita** (F5.4) — qué se movió en lo que sigues y en el
- *    pipeline del equipo (`GET /analytics/resumen/desde-mi-ultima-visita`).
- *    Abre la pantalla porque es la pregunta de quien entra una vez al día, y
- *    con cero cambios lo dice en una línea en vez de desaparecer.
+ * **Lo tuyo** (sin cabecera de zona: es el principio de la página, y sus dos
+ * bandas no aplican el ámbito de la barra):
+ *
  * 1. **Tu día** — compromisos de tu organización (`GET /pursuits/agenda`).
- * 1b. **Primeros pasos** — sólo mientras al usuario le falte configurar algo que
- *    el producto necesita para hablar de su negocio. Va **debajo** de «Tu día»
- *    para no desplazar la tesis de la pantalla, salvo en una cuenta sin ningún
- *    paso hecho: ahí sube arriba del todo, porque lo que había encima eran
- *    ceros y listas vacías y la banda era lo único accionable
- *    (`primeros-pasos.tsx`, `posicionDe`).
- * 2. **Mercado abierto** — lo que exige mirar hoy en el corpus, con el destino
- *    real de cada tarjeta en su pie. La banda no reparte el espacio a partes
- *    iguales: lo que tiene plazo (la cola de cierre) ocupa dos tercios y trae
- *    sus primeras filas, para que lo urgente se resuelva sin salir. «Nuevas»
- *    cuenta desde tu última visita: es la única idea de «nuevo» del mercado
- *    en la pantalla (`_hooks/use-novedades.ts`).
- * 3. **Contexto de mercado** — tres cifras del ámbito: activas, publicadas y
- *    importe de los últimos 30 días. Aquí baja «Activas»: describe el ámbito,
- *    no pide nada para hoy. Fue una tira de siete magnitudes más otra de seis
- *    indicadores de competencia, medio globales; se retiraron (2026-10) porque
- *    son la radiografía del mercado que esta pantalla dejó de abrir, y viven en
- *    Mercado y Competencia.
- * 4. **Composición** — por estado, en la misma sección que el contexto: una
- *    barra apilada y un botón por estado que filtra el ámbito.
- * 5. **Publicaciones** y **Movimientos**, uno junto al otro: el ritmo del
- *    periodo y qué contratos se han movido en la ventana.
+ *    Abre la pantalla porque es lo que la descripción del espacio promete
+ *    primero, «qué tienes que hacer hoy».
+ * 2. **Desde tu última visita** (F5.4) — qué se movió en lo que sigues y en el
+ *    pipeline del equipo (`GET /analytics/resumen/desde-mi-ultima-visita`).
+ *    Con cero cambios lo dice en una línea en vez de desaparecer.
+ * 3. **Primeros pasos** — sólo mientras al usuario le falte configurar algo que
+ *    el producto necesita para hablar de su negocio. Va al cierre de la zona
+ *    para no desplazar su tesis, salvo en una cuenta sin ningún paso hecho:
+ *    ahí sube arriba del todo, porque lo que había encima eran ceros y listas
+ *    vacías y la banda era lo único accionable (`primeros-pasos.tsx`,
+ *    `posicionDe`).
+ *
+ * **Mercado** (con cabecera, filete encima y los atajos al análisis completo,
+ * porque desde ahí todo aplica el ámbito entero de la barra de filtros):
+ *
+ * 4. **Abierto hoy** — la cola de cierre a dos tercios con sus primeras filas
+ *    y, al lado, «Grandes en plazo» y «Nuevas» desde tu última visita
+ *    (`_hooks/use-novedades.ts`).
+ * 5. **El periodo** — las tres cifras del ámbito (activas, publicadas e
+ *    importe de 30 días) y, debajo, el ritmo de publicaciones junto a los
+ *    movimientos del mercado: la tira es el resumen en cifras de lo que los
+ *    dos paneles dibujan.
  * 6. **Últimas publicaciones** — la tabla, con el tope del endpoint declarado,
  *    el origen de cada expediente y las filas nuevas desde tu última visita.
- * 7. **Análisis completo** — los atajos, que arrastran el ámbito.
+ * 7. **Foto del ámbito** — la composición por estado y el reparto por
+ *    comunidad, que filtran al pulsarlos. Van al final: describen el ámbito,
+ *    no piden nada para hoy.
  *
- * Todas aplican el ámbito entero de la barra de filtros, salvo las personales
- * (0 y 1, que son de lo que sigues y de tu organización).
+ * **Por qué zonas** (2026-10-25): la pantalla tenía diez bandas apiladas con
+ * el mismo rótulo de 13 px sobre el mismo panel, unos 3.400 px a 1920 de
+ * ancho, y al entrecerrar los ojos nada mandaba. Lo personal y lo del ámbito
+ * se leían como una sola lista; ahora los separa un salto de ritmo —holgura
+ * entre zonas, apretado dentro— y el mercado tiene un rótulo que dice desde
+ * dónde empieza a contar la barra de filtros.
  *
  * Cada banda pide su propio dato y pinta su propio error. Antes un fallo de
  * `/analytics/overview` dejaba la pantalla entera en una tarjeta de error, con
@@ -112,24 +117,54 @@ export function ResumenView() {
           className="relative min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-6 outline-none"
         >
           <ScrollEdgeSentinel />
-          <BarraAsistente className="mb-4 max-w-[720px]" />
+          <BarraAsistente className="mb-5 max-w-[720px]" />
 
-          <PrimerosPasos posicion="arriba" onDescartar={recogerFoco} />
-          <DesdeUltimaVisita />
-          <TuDia />
-          <PrimerosPasos posicion="abajo" onDescartar={recogerFoco} />
-          <AtencionCards />
-          <ContextoStrip />
-          {/* El ritmo del periodo y lo que se movió en él, uno junto al otro; la
-              tabla que los desglosa, debajo y a todo el ancho. Las dos columnas
-              se estiran al mismo alto: el gráfico crece hasta el de los
-              movimientos en vez de dejar un hueco debajo. */}
-          <div className="mb-3.5 grid grid-cols-1 gap-3.5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-            <PublicacionesPanel />
-            <EventosFeed />
+          {/* Lo tuyo: apretado dentro (gap 5), y las bandas no aplican el ámbito. */}
+          <div className="flex flex-col gap-5">
+            <PrimerosPasos posicion="arriba" onDescartar={recogerFoco} />
+            <TuDia />
+            <DesdeUltimaVisita />
+            <PrimerosPasos posicion="abajo" onDescartar={recogerFoco} />
           </div>
-          <UltimasPublicaciones />
-          <AtajosAnalisis />
+
+          {/* El mercado: el salto de ritmo (mt-9 y el filete) es lo que separa
+              las dos zonas; dentro, el mismo gap 5 que arriba. */}
+          <section aria-labelledby="resumen-mercado" className="mt-9 border-t border-border/60 pt-4">
+            <div className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-2">
+              <h2 id="resumen-mercado" className="flex-none font-display text-tf-lede font-semibold">
+                Mercado
+              </h2>
+              <span className="min-w-0 text-tf-meta text-muted-foreground">con el ámbito de la barra</span>
+              <AtajosAnalisis className="sm:ml-auto" />
+            </div>
+
+            <div className="flex flex-col gap-5">
+              <AtencionCards />
+
+              {/* El periodo: la tira en cifras y, debajo, lo que dibuja. Las dos
+                  columnas se estiran al mismo alto: el gráfico crece hasta el
+                  de los movimientos en vez de dejar un hueco debajo. */}
+              <section aria-labelledby="resumen-periodo" className="flex flex-col gap-2.5">
+                <h3 id="resumen-periodo" className="sr-only">
+                  Últimos 30 días
+                </h3>
+                <ContextoStrip />
+                <div className="grid grid-cols-1 gap-2.5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                  <PublicacionesPanel />
+                  <EventosFeed />
+                </div>
+              </section>
+
+              <UltimasPublicaciones />
+
+              {/* La foto del ámbito: los dos cortes que filtran al pulsarlos,
+                  lado a lado desde `xl` y estirados al mismo alto. */}
+              <div className="grid grid-cols-1 gap-2.5 xl:grid-cols-2">
+                <ComposicionPanel />
+                <ComunidadesPanel />
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     </ScrollEdgeProvider>

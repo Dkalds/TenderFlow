@@ -226,7 +226,7 @@ class DocumentFetchError(RuntimeError):
 class PdfSinTextoError(DocumentFetchError):
     """PDF sin capa de texto (escaneado) que el OCR no pudo leer.
 
-    Tiene estado propio (``documentos.status = 'sin_texto'``, ``v159``) en vez
+    Tiene estado propio (``documentos.status = 'sin_texto'``, ``v161``) en vez
     de caer en ``error``: no es una descarga fallida ni un PDF roto, es un
     documento que existe y se lee en el navegador pero del que este proceso no
     sabe sacar texto. Quien lo cuenta (la ficha, ``/analytics/quality``, el

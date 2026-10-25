@@ -1,4 +1,4 @@
-"""Detección de PDF escaneado y estado ``sin_texto`` (``v159``).
+"""Detección de PDF escaneado y estado ``sin_texto`` (``v161``).
 
 Unitario: ni BD ni red. El repositorio se sustituye por un doble que registra
 qué se marcó, que es lo que importa aquí —que un escaneado sin OCR acabe en

@@ -276,8 +276,8 @@ _RETRAIN_FEEDBACK_THRESHOLD = 50
 def _plano_declarado() -> str:
     """Valor de ``SCHEDULER_PLANE``, o cadena vacía si nadie lo puso.
 
-    Vacío es el caso de quien corre esto a mano en su checkout, donde el
-    proceso que entrena y el que sirve comparten ``data/models/``.
+    Solo se usa para decir en el aviso desde dónde se intentó: ningún plano
+    entrena en proceso (ver :func:`maybe_retrain_classifier`).
     """
     return os.environ.get("SCHEDULER_PLANE", "").strip()
 
@@ -294,7 +294,8 @@ def _lanzar_entrenamiento() -> bool:
     workflow darle ``actions: write``), ``GITHUB_REPOSITORY`` y
     ``GITHUB_REF_NAME``. Se lanza sobre la misma rama que está corriendo, que en
     la pasada programada es la rama por defecto. Fuera de Actions —el worker de
-    Render, el scheduler de Compose— falta alguna y devuelve ``False``.
+    Render, el scheduler de Compose, un checkout local— falta alguna y devuelve
+    ``False``.
     """
     token = os.environ.get("GITHUB_TOKEN", "")
     repo = os.environ.get("GITHUB_REPOSITORY", "")
@@ -309,32 +310,38 @@ def _lanzar_entrenamiento() -> bool:
 def maybe_retrain_classifier(
     *, threshold: int = _RETRAIN_FEEDBACK_THRESHOLD, dry_run: bool = False
 ) -> dict[str, Any]:
-    """Re-entrena el clasificador si hay suficientes feedbacks nuevos (C1).
+    """Lanza el reentrenamiento del clasificador si hay feedback nuevo (C1).
 
     Cuenta cuántas filas de feedback humano en ``ml_feedback`` son posteriores
-    al ``trained_at`` de la **última versión registrada**, esté activa o no. Si
-    supera ``threshold``, dispara re-entrenamiento, registra la nueva versión
-    en el model registry y la activa automáticamente.
+    al ``trained_at`` de la **última versión registrada**, esté activa o no.
+    Si supera ``threshold``, lanza ``train-model.yml`` —el único camino que
+    entrena, publica el artefacto en la Release y solo entonces activa— y, si
+    no puede lanzarlo, avisa con el comando exacto.
 
     Desde la última registrada y no desde la activa: un candidato que el gate
     rechazó ya se entrenó con esas etiquetas, y reentrenar cada semana con las
     mismas solo repite el rechazo.
 
-    **Solo reentrena en proceso sin plano de orquestación declarado.** Con
-    ``SCHEDULER_PLANE`` puesto —producción incluida— no toca el registro:
-    activar una versión cuyo artefacto no se publica deja sin modelo a todos
-    los procesos. Lanza ``train-model.yml``, que entrena y publica; y si no
-    puede lanzarlo (sin token, fuera de Actions), avisa de que toca hacerlo a
-    mano.
+    **No entrena ni toca el registro, en ningún plano.** Hasta 2026-10, sin
+    ``SCHEDULER_PLANE`` declarado, entrenaba aquí con su propio dataset
+    (``licitaciones`` entera, sin la población acotada de ``train_from_db``) y
+    activaba la versión en el acto; con plano declarado ya solo lanzaba el
+    workflow. Eran dos caminos de entrenamiento con datasets distintos, y el
+    de aquí era el que el 2026-09-29 dejó activa en ``model_versions`` una v2
+    cuyo ``.pkl`` nadie publicó: ``ml_scoring`` cayó por
+    ``ModelArtifactMismatch`` en cada pasada. Un checkout local tampoco es
+    excepción: lo que escribe en su ``data/models/`` no llega a la API ni a los
+    runners que leen la misma BD.
 
     Args:
         threshold: Mínimo de feedbacks nuevos para disparar el retrain.
-        dry_run: Si True, solo reporta sin entrenar.
+        dry_run: Si True, solo reporta sin lanzar nada.
 
     Returns:
-        Dict con ``triggered``, ``feedbacks_new``, ``new_version`` (si aplica),
-        ``retrain_lanzado`` cuando se encoló ``train-model.yml`` y
-        ``retrain_pendiente`` cuando tocaba reentrenar y solo se pudo avisar.
+        Dict con ``triggered`` (siempre ``False`` salvo en ``dry_run``: aquí no
+        se entrena), ``feedbacks_new``, ``retrain_lanzado`` cuando se encoló
+        ``train-model.yml`` y ``retrain_pendiente`` cuando tocaba reentrenar y
+        solo se pudo avisar.
     """
     from db.model_registry import feedbacks_since_last_train, get_active
 
@@ -358,188 +365,38 @@ def maybe_retrain_classifier(
         result["dry_run"] = True
         return result
 
-    plano = _plano_declarado()
-    if plano:
-        # Con un plano de orquestación declarado (ADR-012), este proceso no es
-        # el que sirve el modelo y lo que escriba en ``data/models/`` no llega
-        # a quien sí: el runner de Actions se destruye al acabar el job, y ni
-        # el worker de Render ni el contenedor del scheduler de Compose
-        # comparten ese directorio con la API. Entrenar aquí dejaba activa en
-        # ``model_versions`` una versión que nadie podía bajar: el 2026-09-29
-        # ``ml_scoring`` cayó por ``ModelArtifactMismatch`` en cada pasada
-        # hasta que alguien miró. Quien entrena y publica en el mismo job es
-        # ``train-model.yml``: aquí se lanza, y si no se puede, se avisa.
-        if _lanzar_entrenamiento():
-            log.info("active_learning.retrain_lanzado", n_new=n_new, threshold=threshold)
-            result["retrain_lanzado"] = True
-            notify(
-                AlertLevel.INFO,
-                "Active learning: reentrenamiento del clasificador SAP lanzado",
-                f"Hay {n_new} feedbacks humanos desde el último entrenamiento "
-                f"(umbral: {threshold}), así que se lanzó {_WORKFLOW_ENTRENAMIENTO}.\n"
-                "Entrena, pasa el gate de promoción y, si lo supera, publica el "
-                "artefacto y activa la versión. El desenlace está en ese workflow.",
-            )
-            return result
-        log.warning(
-            "active_learning.retrain_pendiente",
-            n_new=n_new,
-            threshold=threshold,
-            plano=plano,
-        )
-        result["retrain_pendiente"] = True
+    if _lanzar_entrenamiento():
+        log.info("active_learning.retrain_lanzado", n_new=n_new, threshold=threshold)
+        result["retrain_lanzado"] = True
         notify(
-            AlertLevel.WARN,
-            "Active learning: toca reentrenar el clasificador SAP",
+            AlertLevel.INFO,
+            "Active learning: reentrenamiento del clasificador SAP lanzado",
             f"Hay {n_new} feedbacks humanos desde el último entrenamiento "
-            f"(umbral: {threshold}).\n"
-            f"El plano '{plano}' no puede publicar el artefacto ni ha podido "
-            f"lanzar {_WORKFLOW_ENTRENAMIENTO}, así que no reentrena por su "
-            "cuenta: una versión activa sin artefacto publicado deja sin modelo "
-            "a todos los procesos.\n"
-            f"Lanzá el workflow que entrena y publica: gh workflow run {_WORKFLOW_ENTRENAMIENTO}",
+            f"(umbral: {threshold}), así que se lanzó {_WORKFLOW_ENTRENAMIENTO}.\n"
+            "Entrena, pasa el gate de promoción y, si lo supera, publica el "
+            "artefacto y activa la versión. El desenlace está en ese workflow.",
         )
         return result
 
-    # Re-entrenar
-    try:
-        from pathlib import Path
-
-        from services.ml.classifier_training import precompute_ml_proba
-        from services.ml.promotion import promote_if_better
-        from services.ml.sap_classifier import SAPClassifier
-
-        df = _fetch_training_dataframe()
-        if df is None or df.empty:
-            log.warning("active_learning.no_data")
-            return result
-
-        clf = SAPClassifier()
-        metrics = clf.train(df)  # train() acepta df directamente
-
-        if "error" in metrics:
-            log.warning("active_learning.train_failed", metrics=metrics)
-            result["error"] = metrics.get("error")
-            return result
-
-        # Gate único, compartido con ``services.ml.classifier_training.train_from_db``:
-        # decide sobre el golden set humano (fijo entre versiones) en vez de
-        # comparar métricas medidas cada una sobre su propio test split, y
-        # bloquea si el modelo no aporta nada sobre el filtro de keywords.
-        models_dir = Path("data/models")
-        promocion = promote_if_better(
-            clf,
-            metrics,
-            name=name,
-            n_feedbacks=n_new,
-            notes="active_learning_auto_retrain",
-            models_dir=models_dir,
-            publicar_como=models_dir / "sap_classifier.pkl",
-        )
-        result["metrics"] = metrics
-        result["promotion"] = promocion.as_dict()
-
-        if not promocion.activada:
-            log.warning(
-                "active_learning.promotion_gate_rejected",
-                motivos=promocion.motivos_rechazo,
-                version=promocion.version,
-            )
-            result["promotion_rejected"] = True
-            result["failed_metrics"] = promocion.motivos_rechazo
-            return result
-
-        result["triggered"] = True
-        result["new_version"] = promocion.version
-        log.info("active_learning.retrain_ok", new_version=promocion.version, n_new=n_new)
-
-        notify(
-            AlertLevel.INFO,
-            f"Active learning: clasificador re-entrenado (v{promocion.version})",
-            f"Re-entrenamiento disparado por {n_new} feedbacks nuevos.\n"
-            f"Métricas: pr_auc={metrics.get('pr_auc')}, f1={metrics.get('f1')}, "
-            f"threshold={metrics.get('optimal_threshold')}, "
-            f"recall_no_keyword={promocion.golden.get('recall_no_keyword')}",
-        )
-
-        # Pre-computar ml_proba con el modelo nuevo: si no, la superficie de
-        # serving y el test de drift de predicciones siguen mostrando los
-        # scores del modelo anterior. ``force=True`` porque el objetivo es
-        # justamente sobrescribir los valores del modelo viejo.
-        try:
-            precompute_ml_proba(force=True)
-        except Exception as precomp_exc:
-            log.warning("active_learning.precompute_failed", error=str(precomp_exc))
-
-    except Exception as exc:
-        log.error("active_learning.retrain_failed", error=str(exc), exc_info=True)
-        result["error"] = str(exc)
-
+    plano = _plano_declarado() or "sin SCHEDULER_PLANE"
+    log.warning(
+        "active_learning.retrain_pendiente",
+        n_new=n_new,
+        threshold=threshold,
+        plano=plano,
+    )
+    result["retrain_pendiente"] = True
+    notify(
+        AlertLevel.WARN,
+        "Active learning: toca reentrenar el clasificador SAP",
+        f"Hay {n_new} feedbacks humanos desde el último entrenamiento "
+        f"(umbral: {threshold}).\n"
+        f"Este proceso ({plano}) no ha podido lanzar {_WORKFLOW_ENTRENAMIENTO} "
+        "y no reentrena por su cuenta: una versión activa sin artefacto "
+        "publicado deja sin modelo a todos los procesos.\n"
+        f"Lanzá el workflow que entrena y publica: gh workflow run {_WORKFLOW_ENTRENAMIENTO}",
+    )
     return result
-
-
-def _fetch_training_dataframe() -> Any:
-    """Construye un DataFrame con licitaciones + feedbacks para entrenamiento.
-
-    Incluye raw_keywords, cpv, importe y fecha_publicacion para que
-    _build_dataset() en ml_classifier.py pueda usar todos los features
-    disponibles (CPV tokens, importe bins, split temporal).
-    Enriquece las etiquetas con feedback humano de ml_feedback.
-
-    Los SELECT van por el protocolo DBAPI (``execute``/``fetchall``) y no por
-    ``pd.read_sql_query``: la conexión que devuelve ``connect()`` es
-    ``_PgConnAdapter``, que expone ``execute``/``executemany`` pero **no**
-    ``cursor()``, y pandas lo necesita para su camino no-SQLAlchemy. Usarlo
-    lanzaba ``AttributeError`` y dejaba el reentrenamiento semanal caído sin
-    que nada lo destapara. Mismo patrón que ``services/ml/classifier_training.py``, que ya
-    lo hacía así.
-    """
-    try:
-        import pandas as pd
-    except ImportError:
-        return None
-
-    from db.repositories.ml_dataset import feedback_humano_es_ti
-
-    with connect() as c:
-        lic_cur = c.execute(
-            "SELECT id_externo, titulo, descripcion, raw_keywords, cpv, "
-            "importe, fecha_publicacion, tecnologia "
-            "FROM licitaciones"
-        )
-        lic_rows = lic_cur.fetchall()
-        lic_cols = [d[0] for d in lic_cur.description]
-
-    # Solo ``revision_ti``: las filas ``human`` anteriores al plan de tres
-    # niveles significaban «es SAP», no «es TI», y este ``relevante`` se usa
-    # tal cual como etiqueta del binario. Las automáticas (source='llm_batch')
-    # son predicciones, y entrenar sobre ellas es enseñarle al modelo lo que
-    # ya cree -- el override de abajo es duro y sin pesos, así que una
-    # etiqueta del LLM pisaría la señal de keywords con su propia salida. Y
-    # una fila por expediente, la más reciente: con correcciones hay varias, y
-    # sin ese orden el dict de abajo se quedaba con la que el SELECT
-    # devolviera la última. Es la misma lectura que ``services.ml.classifier_training``.
-    lic = pd.DataFrame(lic_rows, columns=lic_cols)
-    fb = pd.DataFrame(feedback_humano_es_ti(), columns=["expediente", "relevante"])
-    if lic.empty:
-        return None
-
-    # Etiqueta base: raw_keywords notna OR tecnología detectada
-    lic["es_relevante"] = (
-        (lic["raw_keywords"].notna() & (lic["raw_keywords"] != ""))
-        | ((lic["tecnologia"].notna()) & (lic["tecnologia"] != ""))
-    ).astype(int)
-
-    # Sobreescribir con feedback humano explícito (mayor prioridad)
-    if not fb.empty:
-        fb_map = dict(zip(fb["expediente"], fb["relevante"], strict=False))
-        lic["es_relevante"] = lic.apply(
-            lambda r: (
-                int(fb_map[r["id_externo"]]) if r["id_externo"] in fb_map else r["es_relevante"]
-            ),
-            axis=1,
-        )
-    return lic
 
 
 # ────────────────── PSI — Population Stability Index ───────────────────────

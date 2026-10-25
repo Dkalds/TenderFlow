@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from api.routes.dual_auth import require_admin, require_any_auth
 from db.audit import log_event
-from db.feature_flags import list_flags, set_flag
+from db.feature_flags import FLAGS_DECLARADAS, list_flags, set_flag
 from observability.logging import get_logger
 from shared.audit_events import FEATURE_FLAG_SET
 from shared.dto import SafeStr, StatusOk
@@ -49,17 +49,29 @@ class SetFlagsBody(BaseModel):
 def get_feature_flags(
     _user: dict[str, Any] = Depends(require_any_auth),
 ) -> list[FlagOut]:
-    """Lista TODOS los flags del backend (incl. los que no estaban en ningún hardcode)."""
-    return [
+    """Lista TODOS los flags del backend (incl. los que no estaban en ningún hardcode).
+
+    Las declaradas en ``db.feature_flags.FLAGS_DECLARADAS`` que aún no tienen
+    fila salen apagadas y sin ``updated_at``: es su estado real (sin fila,
+    ``is_enabled`` dice False), y así Administración puede encenderlas.
+    """
+    guardadas = [
         FlagOut(
             flag=str(f["name"]),
             enabled=bool(f.get("enabled")),
             rollout_pct=int(f.get("rollout_pct") or 0),
-            description=str(f.get("description") or ""),
+            description=str(f.get("description") or FLAGS_DECLARADAS.get(str(f["name"]), "")),
             updated_at=f.get("updated_at"),
         )
         for f in list_flags()
     ]
+    con_fila = {f.flag for f in guardadas}
+    sin_fila = [
+        FlagOut(flag=nombre, enabled=False, rollout_pct=0, description=descripcion)
+        for nombre, descripcion in FLAGS_DECLARADAS.items()
+        if nombre not in con_fila
+    ]
+    return sorted([*guardadas, *sin_fila], key=lambda f: f.flag)
 
 
 @router.put("")
@@ -79,7 +91,7 @@ def set_feature_flags(
             enabled=f.enabled,
             rollout_pct=f.rollout_pct,
             user_emails=str(existing.get("user_emails") or ""),
-            description=str(existing.get("description") or ""),
+            description=str(existing.get("description") or FLAGS_DECLARADAS.get(f.flag, "")),
         )
         log_event(
             event_type=FEATURE_FLAG_SET,

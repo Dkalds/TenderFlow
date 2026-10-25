@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Panel, PanelEmpty, PanelError, PanelLoading, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
@@ -37,9 +37,18 @@ import { BarraApilada, tramosApilados } from "./contexto-graficos";
  *
  * Cada estado **filtra el ámbito al pulsarlo**, que es la regla dura del
  * sistema de gráficos de la consola: clic en una marca filtra, no navega.
+ *
+ * **Se ven los `VISIBLES` mayores; el resto, a un clic**, como el reparto por
+ * comunidad que tiene al lado. La lista entera eran 25 filas, 14 de ellas
+ * estados que el dato trae sin normalizar con uno o dos expedientes cada uno:
+ * el panel medía tres veces el de comunidades y dejaba un hueco a su lado.
+ * La barra apilada sigue contando todos los estados.
  */
 
 const ALTO = 56;
+
+/** Estados a la vista antes de «Ver los N»: los que se reparten casi todo el ámbito. */
+export const VISIBLES = 6;
 
 /**
  * La barra de una fila, medida contra el estado mayor. Con un mínimo visible:
@@ -73,6 +82,7 @@ function BarraEstado({
 
 export function ComposicionPanel({ className }: { className?: string }) {
   const { estados, setEstados } = useFilters();
+  const [todos, setTodos] = useState(false);
 
   const overview = useFilteredQuery<AnalyticsOverview>(
     ["analytics", "overview"],
@@ -102,6 +112,11 @@ export function ComposicionPanel({ className }: { className?: string }) {
 
   const totalEstado = tramos.reduce((suma, tramo) => suma + tramo.n, 0);
   const maximo = tramos.reduce((mayor, tramo) => Math.max(mayor, tramo.n), 0);
+  // Un estado filtrado del ámbito no se esconde tras «Ver los N»: es el que
+  // explica por qué el resto sale atenuado, y su botón es el que lo quita.
+  const visibles = todos
+    ? tramos
+    : tramos.filter((tramo, indice) => indice < VISIBLES || estados.includes(tramo.estado));
 
   return (
     <Panel className={className}>
@@ -151,7 +166,7 @@ export function ComposicionPanel({ className }: { className?: string }) {
             // con el reparto por comunidad y vuelve a una.
             className="grid grid-cols-1 gap-x-6 gap-y-0.5 lg:grid-cols-2 xl:grid-cols-1"
           >
-            {tramos.map((tramo) => {
+            {visibles.map((tramo) => {
               const activo = estados.includes(tramo.estado);
               const atenuado = estados.length > 0 && !activo;
               return (
@@ -182,6 +197,18 @@ export function ComposicionPanel({ className }: { className?: string }) {
               );
             })}
           </div>
+          {tramos.length > VISIBLES && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="-mt-2 self-start"
+              aria-expanded={todos}
+              onClick={() => setTodos((valor) => !valor)}
+            >
+              {todos ? "Ver menos" : `Ver los ${formatNumber(tramos.length)}`}
+            </Button>
+          )}
         </div>
       )}
     </Panel>

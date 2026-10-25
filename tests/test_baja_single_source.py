@@ -7,10 +7,10 @@ procedimiento con más de un lote. ``services/competitive/bajas.py`` y
 ``db/repositories/pricing.py`` reinventaban la fórmula cada uno por su
 cuenta -- este test evita que un fichero nuevo (o uno de estos dos, tras un
 refactor descuidado) vuelva a hacerlo en vez de importar
-``services.sql_fragments.BAJA_PCT_SQL``/``EFFECTIVE_BUDGET_SQL``. Desde la
+``db.sql_fragments.BAJA_PCT_SQL``/``EFFECTIVE_BUDGET_SQL``. Desde la
 competencia esperada de la ficha, ``BAJA_PCT_SQL`` se define en
 ``db/sql_fragments.py`` (``db/`` también la necesita y no puede importar de
-``services/``, ADR-024) y ``services/sql_fragments.py`` la reexporta.
+``services/``, ADR-024) y ``db/sql_fragments.py`` la reexporta.
 
 No es un parser SQL real (mismo espíritu que el ratchet TID251 o
 ``test_user_key_sql_isolation.py``): busca los literales de texto que
@@ -18,7 +18,7 @@ constituían la fórmula rota -- "(l.importe - a.importe_adjudicado)" y
 "a.importe_adjudicado) / l.importe" -- en cualquier .py del árbol de
 producción, con dos excepciones documentadas y auditadas a mano:
 
-- ``services/sql_fragments.py``: la reexporta; la definición, que no casa
+- ``db/sql_fragments.py``: la reexporta; la definición, que no casa
   con el patrón roto, vive en ``db/sql_fragments.py``.
 - ``db/repositories/pricing.py``: duplica ``EFFECTIVE_BUDGET_SQL`` porque
   ``db/`` no debe depender de ``services/`` (capa superior, ADR-024) -- su
@@ -41,7 +41,7 @@ _SCAN_DIRS = ("api", "db", "scheduler", "scraper", "services")
 
 _ALLOWED_FILES = frozenset(
     {
-        "services/sql_fragments.py",
+        "db/sql_fragments.py",
         "db/domain_truth_audit.py",
     }
 )
@@ -92,7 +92,7 @@ def test_no_file_reinvents_the_broken_per_row_baja_formula() -> None:
                 violations.append(rel)
                 break
     assert not violations, (
-        "Fórmula de baja por-fila reinventada fuera de services/sql_fragments.py "
+        "Fórmula de baja por-fila reinventada fuera de db/sql_fragments.py "
         f"(usa BAJA_PCT_SQL/EFFECTIVE_BUDGET_SQL en su lugar): {violations}"
     )
 
