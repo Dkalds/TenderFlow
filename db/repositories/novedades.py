@@ -12,6 +12,7 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
+from db.sql_fragments import fechas_ts_lectura_activa, instante_sql, param_instante_sql
 
 __all__ = ["AvisosSeguidosRepository", "NovedadesRepository"]
 
@@ -38,6 +39,9 @@ class NovedadesRepository:
         unión la consulta traería los cambios de todo el corpus, que son miles
         al día.
         """
+        # Con `FECHAS_TS_LECTURA`, el corte compara instantes (sombra de v159
+        # o, si falta, el texto convertido); apagado, el texto de siempre.
+        capturado = instante_sql("licitaciones_history", "captured_at", "h")
         with connect_read() as c:
             cur = c.execute(
                 "SELECT h.id_externo, h.captured_at, h.changed_fields, h.snapshot_json, "
@@ -45,8 +49,8 @@ class NovedadesRepository:
                 "FROM licitaciones_history h "
                 "JOIN watchlist_items w ON w.id_externo = h.id_externo "
                 "JOIN licitaciones l ON l.id_externo = h.id_externo "
-                f"WHERE {_IDENT_W} AND h.captured_at >= %s "
-                "ORDER BY h.captured_at DESC "
+                f"WHERE {_IDENT_W} AND {capturado} >= {param_instante_sql()} "
+                f"ORDER BY {capturado} DESC "
                 "LIMIT %s",
                 (user_id, user_key, user_id, desde_iso, limit),
             )
@@ -68,15 +72,24 @@ class NovedadesRepository:
         y el corte llega con ``T``, así que ``' ' < 'T'`` dejaba fuera todo
         pliego publicado el mismo día de la visita. Las filas anteriores a
         v151 que no se hayan normalizado siguen comparando bien así.
+
+        Con ``FECHAS_TS_LECTURA`` el instante sale de la sombra de ``v159``
+        (``created_at_ts``) y, donde falte, de la misma conversión que la
+        sombra; el cast directo de siempre queda para el flag apagado.
         """
+        creado = (
+            instante_sql("documentos", "created_at", "d")
+            if fechas_ts_lectura_activa()
+            else "d.created_at::timestamptz"
+        )
         with connect_read() as c:
             cur = c.execute(
                 "SELECT d.licitacion_id, d.tipo, d.filename, "
-                "       MIN(d.created_at::timestamptz) AS publicado_en, l.titulo "
+                f"       MIN({creado}) AS publicado_en, l.titulo "
                 "FROM documentos d "
                 "JOIN watchlist_items w ON w.id_externo = d.licitacion_id "
                 "JOIN licitaciones l ON l.id_externo = d.licitacion_id "
-                f"WHERE {_IDENT_W} AND d.created_at::timestamptz >= %s::timestamptz "
+                f"WHERE {_IDENT_W} AND {creado} >= %s::timestamptz "
                 "GROUP BY COALESCE(d.source_hash, d.uri), d.licitacion_id, d.tipo, "
                 "         d.filename, l.titulo "
                 "ORDER BY publicado_en DESC "
@@ -111,6 +124,7 @@ class NovedadesRepository:
         lo que interesa es **qué** se movió, y el ledger lo dice; la columna
         sólo diría que algo se tocó.
         """
+        creado = instante_sql("pursuit_events", "created_at", "e")
         with connect_read() as c:
             cur = c.execute(
                 "SELECT e.pursuit_id, e.event_type, e.created_at, e.actor_user_id, "
@@ -118,8 +132,8 @@ class NovedadesRepository:
                 "FROM pursuit_events e "
                 "JOIN pursuits p ON p.id = e.pursuit_id "
                 "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
-                "WHERE e.organization_id = %s AND e.created_at >= %s "
-                "ORDER BY e.created_at DESC "
+                f"WHERE e.organization_id = %s AND {creado} >= {param_instante_sql()} "
+                f"ORDER BY {creado} DESC "
                 "LIMIT %s",
                 (organization_id, desde_iso, limit),
             )
