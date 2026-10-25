@@ -1,4 +1,8 @@
-"""Repository para audit_log."""
+"""Repository para audit_log: lecturas para la API y la exportación RGPD.
+
+La escritura y la verificación de la cadena hash viven en ``db/audit.py``
+(ADR-022, «Entidades con las dos caras»).
+"""
 
 from __future__ import annotations
 
@@ -76,7 +80,7 @@ class AuditRepository:
         with connect_read() as c:
             try:
                 cur = c.execute(
-                    f"SELECT * FROM audit_log WHERE {_IDENT} ORDER BY created_at DESC LIMIT 1000",
+                    f"SELECT * FROM audit_log WHERE {_IDENT} ORDER BY created_at DESC LIMIT 1000",  # SELECT *: export RGPD: la fila entera es el contrato
                     (user_id, user_key, user_id),
                 )
                 return rows_to_dicts(cur)

@@ -9,7 +9,7 @@ desgloses, las medianas y los movimientos.
 **De dónde salen los fragmentos.** Todos de ``db/sql_fragments.py``: el universo
 estrecho y su grafía ``l2``, el universo de empresas vigiladas, el anti-join de
 duplicados y ``round_sql``. Son las mismas definiciones que ``services/`` sigue
-importando a través de los reexports de ``services/sql_fragments.py`` y
+importando a través de los reexports de ``db/sql_fragments.py`` y
 ``services/dedupe.py``, y la grafía ``l2`` sale del mismo helper que usaba el
 servicio, así que el SQL no cambia ni un carácter respecto a cuando se armaba
 allí. La excepción es el filtro por tecnologías: :func:`alcance_sql` lo arma con

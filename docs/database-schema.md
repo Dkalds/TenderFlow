@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-10-24
+Generado: 2026-10-25
 
-Revisión Alembic aplicada: `v158_domain_events_pscp_rekey`.
+Revisión Alembic aplicada: `v160_fechas_ts_indices`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -24,16 +24,16 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 14 | 189 | 64 |
-| Documentos y pliegos | 4 | 43 | 11 |
+| Licitaciones y fuente | 14 | 196 | 65 |
+| Documentos y pliegos | 4 | 46 | 11 |
 | Empresas y mercado | 6 | 34 | 8 |
-| Organizaciones y oportunidades | 15 | 142 | 31 |
+| Organizaciones y oportunidades | 15 | 143 | 31 |
 | Identidad, acceso y auditoría | 16 | 112 | 25 |
-| Seguimiento y notificaciones | 12 | 132 | 35 |
+| Seguimiento y notificaciones | 12 | 134 | 35 |
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 23 | 182 | 34 |
-| **Total** | **103** | **935** | **233** |
+| **Total** | **103** | **948** | **234** |
 
 ## Licitaciones y fuente
 
@@ -60,6 +60,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | `fecha_extraccion` | `text` | no |
 | `empresa_id` | `integer` | sí |
 | `lote_id` | `integer` | sí |
+| `fecha_adjudicacion_ts` | `timestamp with time zone` | sí |
 
 Claves: `PRIMARY KEY (id)`
 
@@ -255,10 +256,15 @@ Claves: `PRIMARY KEY (id)`
 | `importe_num` | `numeric` | sí |
 | `duracion_valor_num` | `numeric` | sí |
 | `tipos_anuncio` | `text` | sí |
+| `fecha_extraccion_ts` | `timestamp with time zone` | sí |
+| `primera_extraccion_ts` | `timestamp with time zone` | sí |
+| `fecha_inicio_ts` | `timestamp with time zone` | sí |
+| `fecha_fin_ts` | `timestamp with time zone` | sí |
+| `fecha_actualizacion_fuente_ts` | `timestamp with time zone` | sí |
 
 Claves: `PRIMARY KEY (id_externo)`
 
-Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_analitica`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_descripcion_plegada_trgm`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_limite`, `idx_lic_fecha_limite_ts`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fecha_publicacion_ts`, `idx_lic_fuente`, `idx_lic_id_externo_plegado_trgm`, `idx_lic_importe`, `idx_lic_importe_base_sin_iva`, `idx_lic_ml_proba`, `idx_lic_organo_id`, `idx_lic_organo_norm`, `idx_lic_organo_plegado_trgm`, `idx_lic_tecnologia`, `idx_lic_tecnologia_cubriente`, `idx_lic_tecnologia_tokens`, `idx_lic_titulo_plegado_trgm`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
+Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_analitica`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_descripcion_plegada_trgm`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_extraccion_ts`, `idx_lic_fecha_limite`, `idx_lic_fecha_limite_ts`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fecha_publicacion_ts`, `idx_lic_fuente`, `idx_lic_id_externo_plegado_trgm`, `idx_lic_importe`, `idx_lic_importe_base_sin_iva`, `idx_lic_ml_proba`, `idx_lic_organo_id`, `idx_lic_organo_norm`, `idx_lic_organo_plegado_trgm`, `idx_lic_tecnologia`, `idx_lic_tecnologia_cubriente`, `idx_lic_tecnologia_tokens`, `idx_lic_titulo_plegado_trgm`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
 
 ### `licitaciones_duplicados`
 
@@ -287,6 +293,7 @@ Claves: `PRIMARY KEY (licitacion_id)`
 | `source` | `text` | sí |
 | `snapshot_json` | `text` | no |
 | `changed_fields` | `text` | no |
+| `captured_at_ts` | `timestamp with time zone` | sí |
 
 Claves: `PRIMARY KEY (id)`
 
@@ -405,6 +412,9 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (documento_id, page_number)`
 | `updated_at` | `text` | no |
 | `source_hash` | `text` | sí |
 | `blob_key` | `text` | sí |
+| `created_at_ts` | `timestamp with time zone` | sí |
+| `fetched_at_ts` | `timestamp with time zone` | sí |
+| `updated_at_ts` | `timestamp with time zone` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (licitacion_id, uri)`
 
@@ -732,6 +742,7 @@ Claves: `PRIMARY KEY (id)`
 | `payload_json` | `text` | no |
 | `idempotency_key` | `text` | sí |
 | `created_at` | `text` | no |
+| `created_at_ts` | `timestamp with time zone` | sí |
 
 Claves: `PRIMARY KEY (id)`
 
@@ -1130,6 +1141,8 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, name)`
 | `read_at` | `text` | sí |
 | `organization_id` | `integer` | sí |
 | `user_id` | `integer` | sí |
+| `created_at_ts` | `timestamp with time zone` | sí |
+| `read_at_ts` | `timestamp with time zone` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, licitacion_id, type)`
 

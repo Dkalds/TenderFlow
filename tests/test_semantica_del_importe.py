@@ -113,7 +113,7 @@ class TestParidadDeBase:
         assert 17.0 < baja_falsa < 18.0
 
     def test_el_fragmento_prefiere_la_base_sin_iva(self) -> None:
-        from services.sql_fragments import BASE_COMPARABLE_SQL
+        from db.sql_fragments import BASE_COMPARABLE_SQL
 
         # El lote manda primero (su importe ya es base sin IVA del lote), luego
         # la base declarada, y solo entonces el histórico.
@@ -125,7 +125,7 @@ class TestParidadDeBase:
         )
 
     def test_lo_que_lleva_iva_queda_fuera(self) -> None:
-        from services.sql_fragments import SIN_IVA_CONOCIDO_SQL
+        from db.sql_fragments import SIN_IVA_CONOCIDO_SQL
 
         assert "'con_iva'" in SIN_IVA_CONOCIDO_SQL
         # `desconocido` sigue entrando: excluirlo hoy vaciaría el endpoint, y
@@ -133,7 +133,7 @@ class TestParidadDeBase:
         assert "desconocido" in SIN_IVA_CONOCIDO_SQL
 
     def test_el_modo_estricto_solo_admite_base_declarada(self) -> None:
-        from services.sql_fragments import BASE_DECLARADA_SQL
+        from db.sql_fragments import BASE_DECLARADA_SQL
 
         assert "'sin_iva'" in BASE_DECLARADA_SQL
         assert "importe_base_sin_iva IS NOT NULL" in BASE_DECLARADA_SQL
@@ -160,8 +160,8 @@ class TestContrato:
         `desconocido` sería la misma mentira que el ítem vino a quitar, con otra
         etiqueta.
         """
+        from db.sql_fragments import BASE_MIXTA, BASE_SIN_IVA
         from services.competitive.bajas import _filtro_de_base
-        from services.sql_fragments import BASE_MIXTA, BASE_SIN_IVA
 
         _, base_defecto = _filtro_de_base(False)
         _, base_estricta = _filtro_de_base(True)
