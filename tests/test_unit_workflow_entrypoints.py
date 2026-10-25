@@ -362,16 +362,12 @@ def test_training_run_raises_on_error_metrics():
         precompute.assert_not_called()
 
 
-_METRICAS_PROMOCIONADAS = {
-    "f1": 0.8,
-    "promotion": {"activada": True, "version": 3, "motivos_rechazo": []},
-}
-# Lo que devuelve `train_from_db(activar=False)` cuando el gate pasa: hay
-# artefacto que subir, y la versión espera a que esté publicado.
+# Lo que devuelve `train_from_db()` cuando el gate pasa: hay artefacto que
+# subir, y la versión espera a que esté publicado. Es el mejor desenlace
+# posible: el gate no activa nunca (2026-10).
 _METRICAS_PENDIENTES = {
     "f1": 0.8,
     "promotion": {
-        "activada": False,
         "pendiente_de_activar": True,
         "version": 3,
         "motivos_rechazo": [],
@@ -380,7 +376,6 @@ _METRICAS_PENDIENTES = {
 _METRICAS_RECHAZADAS = {
     "f1": 0.8,
     "promotion": {
-        "activada": False,
         "version": 4,
         "motivos_rechazo": ["recall_no_keyword 0.0000 < 0.05"],
     },
@@ -402,7 +397,7 @@ def test_training_run_entrena_sin_activar_y_no_precomputa():
         patch("db.model_registry.deactivate", return_value=1),
     ):
         assert training_job.run() == _METRICAS_PENDIENTES
-        train.assert_called_once_with(activar=False)
+        train.assert_called_once_with()
         precompute.assert_not_called()
         # Los negativos deben venir de la población de serving (CPV 48/72) y
         # de varios meses: sembrarlos de un solo mes y sin TI le enseña al
@@ -445,7 +440,6 @@ def test_training_run_no_toca_la_version_activa_si_el_gate_rechaza():
 
 
 def test_promocionado_distingue_los_desenlaces():
-    assert training_job.promocionado(_METRICAS_PROMOCIONADAS) is True
     # Pasó el gate y espera a que su artefacto se publique: hay fichero que subir.
     assert training_job.promocionado(_METRICAS_PENDIENTES) is True
     assert training_job.promocionado(_METRICAS_RECHAZADAS) is False
@@ -713,7 +707,7 @@ def test_artefactos_publicados_no_inventa_rutas(tmp_path):
 
 def test_salida_github_es_no_op_fuera_de_actions(monkeypatch):
     monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
-    training_job._emitir_salida_github(_METRICAS_PROMOCIONADAS)  # no debe lanzar
+    training_job._emitir_salida_github(_METRICAS_PENDIENTES)  # no debe lanzar
 
 
 # ---------------------------------------------------------------------------

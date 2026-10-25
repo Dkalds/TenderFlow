@@ -14,7 +14,12 @@ Diseño
   de Postgres sobre anuncios **y pliegos** (``fts``), coincidencia literal
   (``like``), lo más reciente del ámbito cuando la frase eran solo filtros
   (``filtros``) y ``rrf`` cuando la fusión con la similitud vectorial sobre
-  ``documento_chunks`` aportó algo. La fusión **completa** la lista del texto,
+  ``documento_chunks`` aportó algo. La fusión solo se intenta con la flag
+  ``busqueda_semantica`` encendida para quien busca (apagada por defecto) y
+  degrada al texto, sin error, si no hay modelo de embeddings, pgvector o
+  fragmentos embebidos; el log ``semantic_search.ok`` dice por qué
+  (``semantica``) y cuánto costó (``fusion_ms``; presupuesto en
+  ``docs/sli-slo.md``). La fusión **completa** la lista del texto,
   no la sustituye (:func:`services.investigador.busqueda.combinar`): cada
   resultado sigue diciendo dónde casa.
 * ``hay_mas`` dice si el motor tenía más resultados que ``top_k``: la pantalla
@@ -53,6 +58,7 @@ from services.investigador.busqueda import (
     FUENTE_LITERAL,
     FUENTE_TEXTO,
     FUENTES,
+    Resultado,
 )
 from services.investigador.busqueda import preparar as preparar_consulta
 from services.investigador.consulta import ConsultaInterpretada
@@ -305,10 +311,11 @@ class SemanticSearchResponse(BaseModel):
     summary="Búsqueda de texto completo en anuncios y pliegos, con fusión semántica",
     description=(
         "Interpreta los filtros que diga la frase, busca por texto completo en los "
-        "anuncios y en los pasajes de pliego (tsvector/ts_rank_cd) y, si la "
-        "instalación tiene embeddings con los que codificar la consulta, completa "
-        "la lista con lo que la fusión (RRF, ponderada por alpha) encuentra por "
-        "significado. Si el texto no encuentra nada degrada a coincidencia literal; "
+        "anuncios y en los pasajes de pliego (tsvector/ts_rank_cd) y, si la flag "
+        "busqueda_semantica está encendida para quien busca y la instalación tiene "
+        "embeddings con los que codificar la consulta, completa la lista con lo que "
+        "la fusión (RRF, ponderada por alpha) encuentra por significado; si no, o si "
+        "la fusión falla, responde solo por texto, sin error. Si el texto no encuentra nada degrada a coincidencia literal; "
         "el campo source de la respuesta dice cuál de los caminos se ejecutó."
     ),
 )
@@ -331,23 +338,29 @@ async def semantic_search(
         interpretar_filtros=body.interpretar,
     )
 
-    def _run() -> tuple[list[dict[str, Any]], str]:
-        from services.investigador.busqueda import buscar
+    def _run() -> Resultado:
+        from services.investigador.busqueda import buscar, semantica_activa
 
         # Uno de más: si llega, hay otra tanda que pedir.
-        resultado = buscar(consulta, ambito, body.top_k + 1, alpha=body.alpha)
-        return resultado.hits, resultado.fuente
+        return buscar(
+            consulta,
+            ambito,
+            body.top_k + 1,
+            alpha=body.alpha,
+            semantica=semantica_activa(ctx.get("email")),
+        )
 
     try:
-        hits, source = await run_ml(_run)
+        resultado = await run_ml(_run)
     except Exception as exc:
         log.error("semantic_search.failed", error=str(exc), q_len=len(body.q))
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="El servicio de búsqueda semántica no está disponible temporalmente.",
         ) from exc
-    hay_mas = len(hits) > body.top_k
-    hits = hits[: body.top_k]
+    source = resultado.fuente
+    hay_mas = len(resultado.hits) > body.top_k
+    hits = resultado.hits[: body.top_k]
 
     elapsed_ms = round((time.perf_counter() - t0) * 1000)
 
@@ -363,6 +376,11 @@ async def semantic_search(
         # juntos es lo que permite saber, sin abrir la BD, si esa instalación
         # tiene embeddings que fusionar.
         alpha=body.alpha,
+        # Qué fue de la búsqueda por significado (apagada, sin_motor,
+        # sin_aporte, error, servida…) y cuánto costó: con la flag encendida,
+        # es lo que distingue «sirve significado» de «degrada a texto».
+        semantica=resultado.semantica,
+        fusion_ms=resultado.fusion_ms,
         # Si la frase traía filtros y cuántos términos quedaron: una búsqueda
         # sin resultados se lee distinto si se entendió «en Madrid» que si no.
         filtros_entendidos=consulta.tiene_filtros,

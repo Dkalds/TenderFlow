@@ -1,16 +1,12 @@
 "use client";
 
-import { PanelError, PanelTitle, StatCell, StatStrip } from "@/components/console/panel";
+import { PanelError, StatCell, StatStrip } from "@/components/console/panel";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import { useFilters, useScopedHref } from "@/lib/filters";
+import { useScopedHref } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { formatCompactCurrency, formatNumber } from "@/lib/utils";
 import type { AnalyticsOverview, ResumenHoyResult } from "@/lib/api-types";
-import { useDesdeResumen, useRitmoDiario } from "../_hooks/use-publicaciones";
 import { Proporcion } from "./cifras-graficos";
-import { ComposicionPanel } from "./composicion-panel";
-import { ComunidadesPanel } from "./comunidades-panel";
-import { Sparkline } from "./contexto-graficos";
 
 /**
  * Contexto de mercado — tres cifras del ámbito, ninguna urgente.
@@ -37,21 +33,16 @@ import { Sparkline } from "./contexto-graficos";
  * cada una de una sola petición, y el prefetch en servidor
  * (`_lib/prefetch.ts`) las hidrata.
  *
- * Bajo «Publicadas 30 d» e «Importe 30 d» va el área del ritmo diario —el
- * `count` y el `importe` de cada día—, la misma serie que el panel de
- * publicaciones (`useRitmoDiario`), y solo cuando el ámbito no mueve las
- * fechas: con otra ventana, el área dibujaría otros días que la cifra.
- * La composición por estado vive en la misma sección, debajo: las dos son la
- * foto del ámbito.
+ * **Sin rótulo ni dibujo propio.** La tira abre el grupo del periodo en
+ * `resumen-view.tsx`, justo encima del ritmo de publicaciones y de los
+ * movimientos: es su resumen en cifras. Bajo «Publicadas 30 d» e «Importe
+ * 30 d» llevaba un área con la misma serie diaria que el gráfico de barras
+ * pintaba un palmo más abajo, así que salió. La composición por estado y el
+ * reparto por comunidad, que vivían en esta sección, son ahora un bloque
+ * propio al final de la zona: son la foto del ámbito, no el pulso del mes.
  */
 export function ContextoStrip() {
   const scopedHref = useScopedHref();
-  const { rango } = useFilters();
-  const ritmo = useRitmoDiario(useDesdeResumen());
-  const ventanaPorDefecto = rango.desde == null && rango.hasta == null;
-  const dias = ventanaPorDefecto && !ritmo.data?.serie_truncada ? (ritmo.data?.series ?? []) : [];
-  const publicadas = dias.map((punto) => punto.count);
-  const importes = dias.map((punto) => punto.importe);
   // El fallo se pinta aquí (y en la composición, que lee la misma consulta):
   // sin toast encima.
   const overview = useFilteredQuery<AnalyticsOverview>(
@@ -70,56 +61,46 @@ export function ContextoStrip() {
   const data = overview.data;
   const loading = overview.isLoading;
 
+  if (overview.error) {
+    return (
+      <PanelError
+        title="No se pudo cargar el contexto"
+        error={overview.error}
+        onRetry={() => void overview.refetch()}
+      />
+    );
+  }
+
+  // Tres cifras no caben en la rejilla de dos de un teléfono: la tercera
+  // quedaba sola junto a un hueco gris. Una por fila hasta `sm`, y tres desde
+  // ahí.
   return (
-    <section aria-labelledby="resumen-contexto" className="mb-5.5">
-      <PanelTitle as="h2" id="resumen-contexto" title="Contexto de mercado" hint="del ámbito" className="mb-2.5" />
-      {overview.error ? (
-        <PanelError
-          title="No se pudo cargar el contexto"
-          error={overview.error}
-          onRetry={() => void overview.refetch()}
-        />
-      ) : (
-        // Tres cifras no caben en la rejilla de dos de un teléfono: la tercera
-        // quedaba sola junto a un hueco gris. Una por fila hasta `sm`, y tres
-        // desde ahí.
-        <StatStrip columns={3} className="grid-cols-1 sm:grid-cols-3">
-          <StatCell
-            label="Activas"
-            loading={hoy.isLoading}
-            value={formatNumber(hoy.data?.total_activas)}
-            href={scopedHref("/detalle?solo_abiertas=true")}
-            grafico={
-              hoy.data && data && data.total_licitaciones > 0 ? (
-                <Proporcion parte={hoy.data.total_activas} total={data.total_licitaciones} de="del ámbito" />
-              ) : undefined
-            }
-            hint="sin adjudicar ni cerrar"
-          />
-          <StatCell
-            label="Publicadas 30 d"
-            loading={loading}
-            value={formatNumber(data?.licitaciones_30d)}
-            trend={data?.yoy_delta}
-            grafico={publicadas.length > 1 ? <Sparkline valores={publicadas} area className="h-8" /> : undefined}
-            hint="vs los 30 días previos"
-          />
-          <StatCell
-            label="Importe 30 d"
-            loading={loading}
-            value={formatCompactCurrency(data?.importe_30d)}
-            grafico={importes.length > 1 ? <Sparkline valores={importes} area className="h-8" /> : undefined}
-            hint="publicado en los últimos 30 días"
-          />
-        </StatStrip>
-      )}
-      {/* Los dos cortes del ámbito que filtran al pulsarlos: lado a lado desde
-          `xl`, apilados por debajo, y estirados al mismo alto para que sus
-          bordes casen. */}
-      <div className="mt-2.5 grid grid-cols-1 gap-2.5 xl:grid-cols-2">
-        <ComposicionPanel />
-        <ComunidadesPanel />
-      </div>
-    </section>
+    <StatStrip columns={3} className="grid-cols-1 sm:grid-cols-3">
+      <StatCell
+        label="Activas"
+        loading={hoy.isLoading}
+        value={formatNumber(hoy.data?.total_activas)}
+        href={scopedHref("/detalle?solo_abiertas=true")}
+        grafico={
+          hoy.data && data && data.total_licitaciones > 0 ? (
+            <Proporcion parte={hoy.data.total_activas} total={data.total_licitaciones} de="del ámbito" />
+          ) : undefined
+        }
+        hint="sin adjudicar ni cerrar"
+      />
+      <StatCell
+        label="Publicadas 30 d"
+        loading={loading}
+        value={formatNumber(data?.licitaciones_30d)}
+        trend={data?.yoy_delta}
+        hint="vs los 30 días previos"
+      />
+      <StatCell
+        label="Importe 30 d"
+        loading={loading}
+        value={formatCompactCurrency(data?.importe_30d)}
+        hint="publicado en los últimos 30 días"
+      />
+    </StatStrip>
   );
 }

@@ -1,4 +1,8 @@
-"""Repository para watchlist y pending_digests."""
+"""Repository para watchlist y pending_digests: ítems de seguimiento y digests.
+
+El CRUD por CPV y su matching viven en ``db/watchlist.py`` (ADR-022,
+«Entidades con las dos caras»).
+"""
 
 from __future__ import annotations
 
@@ -221,7 +225,7 @@ class WatchlistRepository:
         """
         with connect_read() as c:
             cur = c.execute(
-                f"SELECT * FROM watchlist_cpv WHERE {_IDENT} LIMIT 5000",
+                f"SELECT * FROM watchlist_cpv WHERE {_IDENT} LIMIT 5000",  # SELECT *: export RGPD: la fila entera es el contrato
                 (user_id, user_key, user_id),
             )
             return rows_to_dicts(cur)
@@ -443,7 +447,7 @@ class WatchlistRepository:
         with connect_read() as c:
             try:
                 cur = c.execute(
-                    f"SELECT * FROM watchlist_items WHERE {_IDENT} LIMIT 5000",
+                    f"SELECT * FROM watchlist_items WHERE {_IDENT} LIMIT 5000",  # SELECT *: export RGPD: la fila entera es el contrato
                     (user_id, user_key, user_id),
                 )
                 return rows_to_dicts(cur)

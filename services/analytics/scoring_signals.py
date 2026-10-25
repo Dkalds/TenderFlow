@@ -34,9 +34,9 @@ from db.database import connect_read
 from db.repositories.aggregates import AggregateRepository
 from db.repositories.base import rows_to_dicts
 from db.repositories.predicciones import PrediccionesRepository
+from db.sql_fragments import BAJA_PCT_SQL, TECHNOLOGY_OBSERVED_SQL, VALID_PAIR_LOTE
 from observability.logging import get_logger
 from services._data_cache import SignalAwareCache
-from services.sql_fragments import BAJA_PCT_SQL, TECHNOLOGY_OBSERVED_SQL, VALID_PAIR_LOTE
 
 log = get_logger(__name__)
 

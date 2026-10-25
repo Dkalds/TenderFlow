@@ -69,7 +69,7 @@ def _load_active_rules() -> list[dict[str, Any]]:
     try:
         with connect_read() as c:
             cur = c.execute(
-                f"SELECT {_COLS_ACTIVAS} FROM watchlist_rules WHERE active = 1"  # noqa: S608
+                f"SELECT {_COLS_ACTIVAS} FROM watchlist_rules WHERE active = 1"  # noqa: S608 — proyección constante, sin valores
             )
             cols = [d[0] for d in cur.description]
             rows = cur.fetchall()
@@ -77,7 +77,7 @@ def _load_active_rules() -> list[dict[str, Any]]:
     except Exception:
         with connect_read() as c:
             cur = c.execute(
-                f"SELECT {_COLS_ACTIVAS_LEGACY} FROM watchlist_rules WHERE active = 1"  # noqa: S608
+                f"SELECT {_COLS_ACTIVAS_LEGACY} FROM watchlist_rules WHERE active = 1"  # noqa: S608 — proyección constante, sin valores
             )
             cols = [d[0] for d in cur.description]
             rows = cur.fetchall()

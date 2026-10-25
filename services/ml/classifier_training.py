@@ -64,11 +64,12 @@ def read_registry(path: Path | None = None) -> list[dict[str, Any]]:
 def etiquetar_dataset_sap(lic: pd.DataFrame, feedback: list[dict[str, Any]]) -> pd.DataFrame:
     """Añade ``es_relevante`` al DataFrame de entrenamiento del clasificador SAP.
 
-    Usa las MISMAS etiquetas que el reentrenamiento semanal
-    (``scheduler.concept_drift._fetch_training_dataframe``): etiqueta base por
-    keyword/tecnología, SOBRESCRITA por el feedback humano de ``ml_feedback``.
-    La lógica se replica aquí (no se importa desde ``scheduler`` para no
-    invertir capas: ``services`` es capa inferior).
+    Etiqueta base por keyword/tecnología, SOBRESCRITA por el feedback humano
+    de ``ml_feedback`` (``db.repositories.ml_dataset.feedback_humano_es_ti``:
+    solo ``revision_ti``, una fila por expediente, la más reciente). Es la
+    única etiqueta del clasificador SAP desde que el reentrenamiento semanal
+    dejó de entrenar en proceso (2026-10): su copia,
+    ``scheduler.concept_drift._fetch_training_dataframe``, se retiró con él.
 
     Función aparte de :func:`train_from_db` para poder ejercitarla con un
     DataFrame en un test unitario, sin BD.
@@ -113,13 +114,15 @@ def resumen_poblacion_sap(lic: pd.DataFrame) -> dict[str, Any]:
     }
 
 
-def train_from_db(*, activar: bool = True) -> dict[str, Any]:
+def train_from_db() -> dict[str, Any]:
     """Entrena el clasificador usando datos de la BD activa y lo guarda.
 
-    ``activar=False`` es para quien todavía tiene que publicar el artefacto
-    (``scheduler/jobs/ml_training_run.py``, el entrypoint de
-    ``train-model.yml``): el candidato que pasa el gate queda registrado sin
-    activar, y ``metrics["promotion"]`` lo dice con ``pendiente_de_activar``.
+    **No activa nada.** El candidato que pasa el gate queda registrado sin
+    activar y ``metrics["promotion"]`` lo dice con ``pendiente_de_activar``;
+    lo activa ``scheduler.jobs.ml_training_run.activar_publicada`` cuando la
+    Release publica su sha256 (``train-model.yml``: entrenar → subir →
+    activar). Es el único camino de entrenamiento del clasificador SAP: el
+    reentrenamiento semanal por feedback lanza ese workflow en vez de entrenar.
 
     **Población acotada (S6.1).** El dataset ya no es ``licitaciones`` entera:
     son las fuentes cuyo conector filtró por señal tecnológica antes de
@@ -188,11 +191,10 @@ def train_from_db(*, activar: bool = True) -> dict[str, Any]:
         notes="train_from_db",
         models_dir=_MODEL_DIR,
         publicar_como=_MODEL_DIR / "sap_classifier.pkl",
-        activar=activar,
     )
     promocion = resultado.as_dict()
     metrics["promotion"] = promocion
-    if not (promocion.get("activada") or promocion.get("pendiente_de_activar")):
+    if not promocion.get("pendiente_de_activar"):
         log.warning(
             "train_from_db.no_promocionado",
             version=resultado.version,

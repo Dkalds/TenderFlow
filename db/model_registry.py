@@ -254,7 +254,7 @@ def feedbacks_since_last_train(
     Solo ``source`` en :data:`db.repositories.feedback.FUENTES_HUMANAS`
     (``human``, histórico, y ``revision_ti`` desde el plan de clasificación en
     tres niveles): el entrenamiento ignora el feedback automático (ver
-    ``scheduler/concept_drift.py::_fetch_training_dataframe``), así que
+    ``db.repositories.ml_dataset.feedback_humano_es_ti``), así que
     contarlo aquí dispararía reentrenamientos con dataset idéntico -- un lote
     de etiquetado por LLM supera el umbral de 50 sin aportar una sola etiqueta
     nueva al modelo.
