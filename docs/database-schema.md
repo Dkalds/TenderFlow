@@ -24,16 +24,16 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 14 | 189 | 64 |
-| Documentos y pliegos | 4 | 43 | 11 |
+| Licitaciones y fuente | 14 | 196 | 65 |
+| Documentos y pliegos | 4 | 46 | 11 |
 | Empresas y mercado | 6 | 34 | 8 |
-| Organizaciones y oportunidades | 15 | 142 | 31 |
+| Organizaciones y oportunidades | 15 | 143 | 31 |
 | Identidad, acceso y auditoría | 16 | 112 | 25 |
-| Seguimiento y notificaciones | 12 | 132 | 35 |
+| Seguimiento y notificaciones | 12 | 134 | 35 |
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 23 | 182 | 34 |
-| **Total** | **103** | **935** | **233** |
+| **Total** | **103** | **948** | **234** |
 
 ## Licitaciones y fuente
 
