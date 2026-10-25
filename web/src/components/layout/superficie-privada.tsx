@@ -39,6 +39,30 @@ export async function SuperficiePrivada({ children }: { children: React.ReactNod
       {children}
       <Toaster />
       <LiveRegion />
+      {process.env.NODE_ENV === "development" && nonce ? (
+        <script nonce={nonce} dangerouslySetInnerHTML={{ __html: CARGADOR_LIVE_IMPECCABLE }} />
+      ) : null}
     </Providers>
   );
 }
+
+/**
+ * Solo en desarrollo: deja cargar el selector del modo live de impeccable en
+ * las superficies con nonce.
+ *
+ * `impeccable live` inyecta en el layout raíz un `<script src>` hacia
+ * `localhost:8400` sin nonce. En la superficie pública basta con la excepción
+ * de host de la CSP; aquí rige `'strict-dynamic'`, que ignora los hosts y
+ * bloquea ese script. Lo que `'strict-dynamic'` sí deja pasar es un script
+ * creado desde otro que lleva el nonce, así que este, con el nonce, busca el
+ * bloqueado y lo vuelve a crear. Sin live arrancado no encuentra nada.
+ */
+const ORIGEN_LIVE_IMPECCABLE = "http://localhost:8400"; // fdi-allow:localhost-url — helper de desarrollo, no dato renderizado
+
+const CARGADOR_LIVE_IMPECCABLE = `document.addEventListener("DOMContentLoaded", function () {
+  var bloqueado = document.querySelector('script[src^="${ORIGEN_LIVE_IMPECCABLE}/live.js"]');
+  if (!bloqueado) return;
+  var script = document.createElement("script");
+  script.src = bloqueado.src;
+  document.body.appendChild(script);
+});`;

@@ -78,9 +78,13 @@ function esRutaPublica(pathname: string): boolean {
  */
 function buildCsp(nonce: string | null): string {
   const isDevelopment = process.env.NODE_ENV !== "production";
+  // Solo fuera de producción: el selector del modo live de impeccable
+  // (`.impeccable/live/config.json`) se sirve desde este puerto local. Con nonce
+  // rige 'strict-dynamic', que ignora los hosts, así que ahí no basta.
+  const liveDev = isDevelopment ? " http://localhost:8400" : ""; // fdi-allow:localhost-url — directiva CSP de desarrollo, no dato renderizado
   const scriptSrc = nonce
-    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDevelopment ? " 'unsafe-eval'" : ""}`
-    : `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}`;
+    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDevelopment ? " 'unsafe-eval'" : ""}${liveDev}`
+    : `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}${liveDev}`;
   return [
     "default-src 'self'",
     scriptSrc,
@@ -102,7 +106,7 @@ function buildCsp(nonce: string | null): string {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https://lh3.googleusercontent.com",
     "font-src 'self' data:",
-    "connect-src 'self'",
+    `connect-src 'self'${liveDev}`,
     "frame-src 'self'",
     "object-src 'none'",
     "base-uri 'self'",

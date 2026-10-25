@@ -101,6 +101,17 @@
       "trust": "community",
       "verifiedHash": "1acd28ae214873fcdf0b4de0eb5f8ad522e771d0549b1e1c4d410b7c10b08630"
     },
+    "impeccable": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "trust": "community",
+      "harnessVariants": {
+        ".agents/skills": "cf7203682f88851d0e885af1af04cc159198fca24f9684f042bc197d92769e6c",
+        ".claude/skills": "203bdcce9000ce7bf4dd11285ad0d5ebda900911ed797aa69ba1d486e703d43e",
+        ".github/skills": "4b7014bb297d1c9234b7b6f728a323b966d1f38e52bad0bd1bac1a1df826dee1",
+        ".opencode/skills": "ccbe301eb5dfc0e6a64052395546b6feebd7fd8eaea5a4ff681aba8496948634"
+      }
+    },
     "improve-animations": {
       "source": "emilkowalski/skill",
       "sourceType": "github",

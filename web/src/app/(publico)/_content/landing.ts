@@ -221,7 +221,7 @@ export const CONTENIDO: ContenidoLanding = {
     {
       pregunta: "¿Puedo crearme una cuenta yo mismo?",
       respuesta:
-        "Hoy no. El acceso es por invitación: se habilita tu email o el dominio de tu empresa y entras con Google. Por eso el botón principal es solicitar acceso y no crear una cuenta.",
+        "Hoy no. El acceso es por invitación: se habilita tu email o el dominio de tu empresa y entras con contraseña o con Google. Por eso el botón principal es solicitar acceso y no crear una cuenta.",
     },
     {
       pregunta: "¿Qué pasa con mis datos y con lo que guardo dentro?",

@@ -2,16 +2,22 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
+      # impeccable va vendored byte a byte en cuatro árboles y su hash vive en
+      # skills-lock.json (`harnessVariants`): reescribirlo rompería ese hash y
+      # divergiría del upstream en la próxima reinstalación.
       - id: trailing-whitespace
         args: ["--markdown-linebreak-ext=md"]
-        exclude: '^graphify-out/'
+        exclude: '^(graphify-out/|\.(claude|agents|github|opencode)/skills/impeccable/)'
       - id: end-of-file-fixer
-        exclude: '^graphify-out/'
+        exclude: '^(graphify-out/|\.(claude|agents|github|opencode)/skills/impeccable/)'
       - id: check-yaml
       - id: check-toml
       - id: check-merge-conflict
       - id: check-added-large-files
         args: ["--maxkb=1024"]
+        # El índice de fuentes de impeccable (~1,1 MB) lo lee su binario y viene
+        # vendored tal cual en cada árbol de skills; el binario no se versiona.
+        exclude: '^\.(claude|agents|github|opencode)/skills/impeccable/scripts/data/font-index\.json$'
       - id: detect-private-key
       - id: mixed-line-ending
         args: ["--fix=lf"]
@@ -79,7 +85,7 @@ repos:
         args:
           - "--ignore-words=.codespell-ignore-words.txt"
           - "--skip=*.lock,*.min.js,*.svg,.git,.venv,data,node_modules,.secrets.baseline,*.json,docs/adr/*,docs/rfc/*,db/alembic/versions/*,graphify-out/*"
-        exclude: '^(tests/fixtures/|\.agents/|\.claude/skills/|requirements.*\.txt$)'
+        exclude: '^(tests/fixtures/|\.agents/|\.claude/skills/|\.github/skills/|\.opencode/skills/|requirements.*\.txt$)'
 
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.5.0

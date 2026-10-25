@@ -45,4 +45,36 @@ describe("SuperficiePrivada", () => {
 
     expect(nonces.at(-1)).toBeUndefined();
   });
+
+  describe("cargador del modo live de impeccable", () => {
+    function cargador(container: HTMLElement): HTMLScriptElement | null {
+      return container.querySelector("script");
+    }
+
+    it("en desarrollo y con nonce monta un script con ese nonce", async () => {
+      vi.stubEnv("NODE_ENV", "development");
+      cabeceras.actual = new Headers({ "x-nonce": "n0nce" });
+      try {
+        const { container } = render(await SuperficiePrivada({ children: null }));
+
+        const script = cargador(container);
+        expect(script?.getAttribute("nonce")).toBe("n0nce");
+        expect(script?.innerHTML).toContain("localhost:8400/live.js");
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it("fuera de desarrollo no se monta", async () => {
+      vi.stubEnv("NODE_ENV", "production");
+      cabeceras.actual = new Headers({ "x-nonce": "n0nce" });
+      try {
+        const { container } = render(await SuperficiePrivada({ children: null }));
+
+        expect(cargador(container)).toBeNull();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+  });
 });
