@@ -249,7 +249,7 @@ async def download_export(
 async def _encolar_export_pdf(payload: dict[str, Any], ctx: dict[str, Any]) -> JSONResponse:
     """Encola el maquetado y responde 202 con el estado del trabajo."""
     from api.routes.jobs import a_dto
-    from shared.jobs import TIPO_EXPORT_PDF, enqueue, obtener
+    from services.jobs import TIPO_EXPORT_PDF, enqueue, obtener
 
     job_id = await run_db(
         enqueue,
@@ -310,8 +310,8 @@ async def descargar_export_encolado(
     motivo que en ``GET /jobs/{id}``: un 403 confirmaría que ese id existe.
     """
     from services.exports import get_export_filename
+    from services.jobs import CACHE_EXPORTS, TIPO_EXPORT_PDF, clave_cache_export, obtener
     from shared.cache import aget_cache
-    from shared.jobs import CACHE_EXPORTS, TIPO_EXPORT_PDF, clave_cache_export, obtener
 
     job = await run_db(obtener, job_id)
     if (

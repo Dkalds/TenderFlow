@@ -111,7 +111,7 @@ def _resolve_empresas_post_ingestion(fuente: str, *, scope_fuente: str | None) -
 
 
 def _signal_post_ingestion(fuente: str) -> None:
-    """Invalida la caché del API tras una ingestión (shared.cache_signal).
+    """Invalida la caché del API tras una ingestión (db.cache_signal).
 
     Fail-open: cualquier error se loguea como debug sin propagar. El evento
     ``faiss.index_stale`` que también se emitía aquí se retiró en 2026-08:
@@ -119,7 +119,7 @@ def _signal_post_ingestion(fuente: str) -> None:
     (2026-07-04) y ningún consumidor leía ese evento.
     """
     try:
-        from shared.cache_signal import signal_cache_invalidation
+        from db.cache_signal import signal_cache_invalidation
 
         signal_cache_invalidation()
     except Exception:
@@ -192,7 +192,7 @@ def _load_classifiers() -> _ClassifierHolder:
         # sin keyword se guardan como `cpv_ti_universe`. Pero un artefacto que
         # no cuadra con el registro (`ModelArtifactMismatch`) no es «no hay
         # modelo» y no puede quedarse en un debug.
-        from shared.model_artifacts import ModelArtifactMismatch
+        from services.ml.model_artifacts import ModelArtifactMismatch
 
         if isinstance(exc, ModelArtifactMismatch):
             log.error("pipeline.ml_clf_artifact_mismatch", error=str(exc))

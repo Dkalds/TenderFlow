@@ -158,11 +158,11 @@ el 2026-09-28 al delegar los backups en Supabase.
 | [P2] `render.yaml` no gobierna el servicio de producción | **Parcial** — la decisión se tomó el 2026-09-06 (O0.2 del plan v2: se vincula el Blueprint y `autoDeploy` se apaga); vincular y verificar en el dashboard sigue siendo acción del usuario |
 | [P2] Migrar las llamadas del frontend al cliente tipado | **Cerrado y movido** el 2026-09-06 a _Cerrados_ — no queda ningún `fetch("/api/…")` crudo fuera de `lib/`, y una regla ESLint impide que vuelva |
 | [P3] Vigilar el crecimiento de `predicciones_baja` | **Cerrado y movido** el 2026-09-06 a _Cerrados_ — el job de ML purga por antigüedad, y el consumidor distingue el p50 del modelo del del baseline histórico |
-| [P3] F5: refactor de repositories (ratchet TID251) | **Progresa** — la whitelist baja de 32 a 28 archivos, y a 26 el 2026-09-16 (`kpi_precompute`, `mercado`); el destino sigue siendo vaciarla |
+| [P3] F5: refactor de repositories (ratchet TID251) | **Progresa** — la whitelist baja de 32 a 28 archivos, y a 26 el 2026-09-16 (`kpi_precompute`, `mercado`); 12 el 2026-10-25; el destino sigue siendo vaciarla |
 | [P1] Cobertura de tests de las páginas del frontend | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — primera medición local completa; pisos globales y de `src/app/**` subidos a lo medido |
 | [P2] Contrato de paginación común | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — dependencia `limit`/`offset` compartida en `api/pagination.py`, primera ola de siete rutas; `trends` ya exponía `group_by` |
 | [P2] Remediación axe: 4 reglas desactivadas | **Cerrado y movido** el 2026-09-19 a _Cerrados_ — `nested-interactive` (C7.1), las tres restantes el 2026-09-18 y los rojos que destapó el E2E en `8a424967` y `0fd5082c`; sin `disableRules` ni `fixme` |
-| [P3] Los dos módulos-dios (`aggregates.py`, `settings.py`) | **Abierto** — sigue vigente la regla oportunista |
+| [P3] Los dos módulos-dios (`aggregates.py`, `settings.py`) | **Abierto** — sigue vigente la regla oportunista; plan de partición escrito en el ítem (2026-10-25) |
 | [P3] Unificar la definición de «Calientes» | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — se mantiene la heurística de importe como «Grandes en plazo», documentada en los DTOs |
 | [P3] Descartar los avisos fantasma de Dependabot | **Abierto** — acción del usuario en GitHub; 33 descartados el 2026-08-30 y 8 nuevos desde entonces (2026-09-24) |
 
@@ -242,7 +242,7 @@ _Sin ítems abiertos._
 - **Riesgo:** alto — cambia la PK de la tabla central y sus referencias.
 
 ### [P1] Cerrar el incidente de la v2 de `sap_classifier`: ver la pasada en verde y unificar los dos caminos de entrenamiento
-- **Área:** scheduler/concept_drift.py, scheduler/jobs/ml_training_run.py, services/ml/promotion.py, shared/model_artifacts.py, .github/workflows/train-model.yml, `model_versions` (producción)
+- **Área:** scheduler/concept_drift.py, scheduler/jobs/ml_training_run.py, services/ml/promotion.py, services/ml/model_artifacts.py, .github/workflows/train-model.yml, `model_versions` (producción)
 - **Problema:** `scrape-daily` está en rojo desde el 2026-09-29T18:08Z (15
   runs hasta el 2026-10-03T23:09Z). En el primero el paso semanal
   `sap_active_learning` contó 59
@@ -341,7 +341,7 @@ _Sin ítems abiertos._
     2026-09-24», y exige que la ingesta resuelva el modelo por
     `resolve_artifact` y no por `ensure_downloaded` + `load()`.
     **Hecho en código el 2026-10-24:** `promote_if_better` publica y registra
-    `sap_classifier-<sha12>.pkl` (`shared.model_artifacts.content_addressed_path`,
+    `sap_classifier-<sha12>.pkl` (`services.ml.model_artifacts.content_addressed_path`,
     la misma regla que `rename_to_content_address`); `train-model.yml` lo sube
     a la Release `ml-models` sin `delete-asset` ni retirar la versión activa
     (entrenar → verificar artefactos → subir → activar → medir); la ingesta
@@ -526,7 +526,7 @@ _Sin ítems abiertos._
 - **Riesgo:** medio — dos migraciones y una regla de producto nueva; el golden `golden_go_no_go.jsonl` es la red.
 
 ### [P1] [Ola 1 · S5] Cola de trabajo y worker: un despliegue mata lo que un usuario pidió
-- **Área:** shared/jobs.py, db/repositories/jobs.py, scheduler/worker.py, api/routes/jobs.py, scheduler/pipeline_runs.py, render.yaml
+- **Área:** services/jobs.py, db/repositories/jobs.py, scheduler/worker.py, api/routes/jobs.py, scheduler/pipeline_runs.py, render.yaml
 - **Problema:** la extracción asíncrona de la ficha corre en `BackgroundTasks` de la API con 30 s de drenado al apagar (`api/app.py`), y `autoDeploy` está activo en el servicio real: un push a `master` en mitad de una extracción la pierde, y el usuario ve un estado que nunca avanza. El cierre post-ingesta son quince pasos secuenciales dentro de un job de Actions cada cuatro horas, donde un paso caído arrastra a los que no dependen de él.
 - **Decisión ya tomada (2026-09-06):** D14 → worker en Render para lo que pide un usuario y Actions para lo programado, sobre la misma tabla de cola. El servicio nuevo exige O0.2 cerrado primero (un solo camino de despliegue).
 - **Acceptance criteria:** los de S5.1–S5.4 del plan v2, incluidos los dos que son medibles sin producción: dos consumidores concurrentes procesan cien jobs exactamente una vez, y `grep -rc "BackgroundTasks" api/routes/licitaciones/` = 0 (el fichero es un paquete desde 2026-09).
@@ -855,7 +855,7 @@ _Sin ítems abiertos._
 - **Riesgo:** medio en S7.1 (routing y datos iniciales), como ya dijo el plan anterior.
 
 ### [P2] [Ola 1 · S8] Documentos: solo se leen PDF con texto y texto plano
-- **Área:** scraper/document_fetcher.py, shared/object_store.py, .github/workflows/pliegos.yml, shared/model_artifacts.py
+- **Área:** scraper/document_fetcher.py, shared/object_store.py, .github/workflows/pliegos.yml, services/ml/model_artifacts.py
 - **Problema (diagnóstico del §1 del plan v2, medido el 2026-09-05):** `_SUPPORTED_CONTENT_TYPES` admitía dos content-types, así que un pliego en DOCX, ODT o dentro de un ZIP no se procesaba y un PDF escaneado terminaba en error por no haber OCR; y el binario se descartaba tras extraer, de modo que reprocesar exigía volver a PLACSP, cuyas URIs llevan un token que caduca. Es el techo real de la ficha del pliego: lo que no se puede leer no existe para el producto.
 - **Acceptance criteria:** los de S8.1–S8.4 del plan v2, sin redefinirlos aquí. Los cuatro son independientes y se entregan por separado; S8.1 y S8.2 llevan migración y dependencias nuevas, ambas pre-autorizadas por D20.
 - **Estado:** lo dice el §5 del plan cuando el stream se cierra, no este ítem — ver la nota de cabecera. S8 se está entregando en esta misma ola.
@@ -1070,6 +1070,9 @@ _Sin ítems abiertos._
 - *Estado (2026-09-19) — las cifras del problema están caducadas y la regla «no crecer» no se ha cumplido:* `db/repositories/aggregates.py` tiene hoy **1.980 líneas** (eran 1.327) y `AggregateRepository` **60 métodos** (eran 55); `config/settings.py`, **1.422 líneas** (eran 946) y **27 validadores**. `shared/dto.py` ya no es el contraejemplo sano: **1.904 líneas y 83 clases** (eran 620 / 45). Medido con `wc -l` y `grep` sobre el árbol.
 - *Progreso 2026-10-17 (rama `claude/nifty-turing-axm5xg`):* la misma regla aplicada a los dos módulos de oportunidades, que ya eran los más grandes después de `shared/dto.py` y `aggregates.py`. `services/pursuits.py` (2.308 → 1.758 líneas): las piezas de la agenda salen a `services/pursuits_agenda.py`; `get_agenda` y las señales de reglas se quedan porque reciben `user_key` y el ratchet no deja que un fichero nuevo herede esa deuda. `api/routes/pursuits.py` (2.112 → 1.646): las rutas de organizaciones salen a `api/routes/organizations.py`, con el OpenAPI idéntico (comparado antes y después). Siguen pendientes los dos de este ítem, `aggregates.py` (2.457) y `shared/dto.py` (2.482).
 - *Progreso 2026-10-25:* `shared/dto.py` es ya el paquete `shared/dto/` (14 submódulos; ver el cerrado «Partir `shared/dto.py`…» en el archivo). Queda `aggregates.py`.
+- *Plan de partición (2026-10-25, sin ejecutar — no cabía con calidad en el PR que bajó los ratchets):* medido hoy, `aggregates.py` 2.489 líneas y `config/settings.py` 1.711.
+  - **`db/repositories/aggregates.py` → paquete `db/repositories/aggregates/`** con `__init__.py` que reexporta `AggregateRepository`, `LicitacionesFilters`, `build_licitaciones_where`, `ParaHoy` y los privados que importa la suite, para no tocar importadores. Submódulos por familia de métodos (cada uno una clase mixin; `AggregateRepository` hereda de todas): `filtros.py` (`LicitacionesFilters`, `build_licitaciones_where`, `_in_clause`, `_lectura`), `overview.py` (`overview_*`, `importe_p75`, `count_total_activas`, `_para_hoy*`), `resumen.py` (`resumen_*`), `tecnologias.py` (`tecnologias_*`, `tecnologia_detalle_*`), `geografia_tendencias.py` (`geography_*`, `trends_*`, `vencimientos_*`), `organos.py` (`_organos_where`, `organos_*`), `proyectos.py` (`proyectos_*`, `_where_modulos`, `tipos_contrato_breakdown`, `tipo_estado_crosstab`, `cpv_top_por_count`, `codigos_codelist`), `calidad_forecast.py` (`quality_*`, `forecast_monthly`, `publicaciones_mensuales`, `retendering_universe`, `adjudicaciones_para_forecast`, `clustering_universe`) y `scoring.py` (`_scoring_cols`, `importe_percentiles*`, `competencia_ofertas_por_cpv4`, `scoring_candidates`, `licitaciones_by_ids`, `tech_signal_by_ids`, `pipeline_window`, `licitaciones_por_organo`). Riesgos a vigilar: `tests/test_dedup_guardrail.py` escanea por ruta (añadir los submódulos a `_SCANNED_FILES` en el mismo cambio) y los `patch("db.repositories.aggregates.connect_read")` de la suite, que hay que redirigir al submódulo que ejecuta.
+  - **`config/settings.py`**: seguir el patrón de `config/settings_resumen.py` — un `BaseSettings` mixin por eje (`settings_bd.py`, `settings_ml.py`, `settings_llm.py`, `settings_auth.py`, `settings_scraper.py`, `settings_observabilidad.py`) del que hereda `Settings`, con los validadores de cada eje dentro de su mixin. Mismos nombres de variable y mismo `settings.X`; el gate es `tests/test_config_settings.py` y `scripts/check_env_parity.py`.
 - **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo si se hace oportunista; medio si alguien intenta el big-bang.
 
@@ -1096,7 +1099,8 @@ _Sin ítems abiertos._
   2. **Tienta a invertir las capas.** Al mover una query se mueven con ella los fragmentos SQL que interpola, y el reflejo es importarlos de `services/` — que ADR-024 prohíbe (`db/` no depende de `services/`). El destino correcto es `db/sql_fragments.py`, creado el 2026-08-18 con `FECHA_FIN_SQL`, `TECHNOLOGY_OBSERVED_SQL` y `exclude_duplicados_sql`; `services/` los reexporta.
 - **Progreso 2026-09-24 — 26 → 25:** `services/ml/scoring.py` sale. El upsert de retención, duplicado en las ramas de modelo y de baseline, y la baja real por expediente (`_baja_real`) pasan a `db/repositories/predicciones.py` (`guardar_retencion`, `baja_real_de_expediente`); la división sigue en services. `db/repositories/predicciones.py` entra en `_SCANNED_FILES` del guardrail de dedupe en el mismo cambio, con sus dos purgas como exentas por diseño.
 - **Progreso 2026-09-16 — 28 → 26:** `scheduler/kpi_precompute.py` pasa a `db/kpi_precompute.py` (no a `db/repositories/kpi_snapshots.py`, que es de las métricas `ov_*` y advierte que no se mezclen) y `services/competitive/mercado.py` pasa a `db/repositories/mercado.py`, con el `WHERE` construido por `alcance_sql` en vez de interpolación suelta — el candidato «aparte» de más abajo queda cerrado. Equivalencia verificada con un arnés que compara SQL y parámetros contra `HEAD`; `db/repositories/mercado.py` entra en `_SCANNED_FILES` del guardrail de dedupe en el mismo cambio.
-- Siguientes candidatos por coste (conteo de `connect(`+`execute(`): `services/ml/calibration.py` (1), `services/entity_resolution.py` (1), `services/competitive/bajas.py` (2), `services/ml/features.py` (2).
+- **Progreso 2026-10-25 — 18 → 12** (rama `agente/ratchets-y-modulos-dios`; `MAX_ENTRADAS_WHITELIST = 12`). Salen seis, todos con su SQL en `db/`: `services/resoluciones.py` (vinculación en `db/resoluciones.py::vincular_pendientes`, con el emparejamiento por expediente + órgano como función pura en el servicio, y el listado en `listar_resoluciones`), `services/deadline_reminders.py` (tres métodos nuevos de `WatchlistRepository`; el barrido de usuarios entra en `_LEGITIMATE_SWEEPS` de `tests/test_user_key_sql_isolation.py` porque es la misma consulta que ya corría inline), `services/competitive/renovaciones.py` (los dos agregados a `db/repositories/renovaciones.py`, que ya estaba en `_SCANNED_FILES` del guardrail de dedupe y los dos llevan `exclude_duplicados_sql`; los umbrales de «caliente» se quedan en el servicio y entran como parámetros), `scheduler/competitor_alerts.py` (→ `db/watchlist_empresas.py::nuevas_adjudicaciones_de_empresa`), `scheduler/retention.py` (la purga con sus savepoints → `db/retention.py::purgar_por_fecha`; la política publicada se queda) y `scripts/rotate_api_keys.py` (→ `ApiKeyRepository.expirar_por_nombre`).
+- Siguientes candidatos por coste: `services/entity_resolution.py` (1 `connect`, pero solo abre la transacción del lote y el SQL ya está en `db/empresas.py`: hay que mover el bucle entero o pasar la transacción por un callback), `services/analytics/scoring_signals.py` (1; sus dos agregados de baja no llevan `exclude_duplicados_sql` y al bajar a un módulo escaneado necesitarían decisión sobre el guardrail), `services/competitive/bajas.py` (2), `scheduler/aggregates_precompute.py` (2).
 - **~~Candidato aparte~~ — hecho el 2026-09-16 (ver progreso arriba).** `services/competitive/mercado.py` concentraba ~12 de los ~30 `# noqa: S608` del repo (conteo del 2026-08-18). Cada supresión está justificada una por una y el idioma de fragmentos constantes está documentado en `services/sql_fragments.py`, así que no es un bug — pero es la mayor densidad de SQL interpolado del proyecto en un solo fichero, y cada filtro nuevo que se añade ahí es otra oportunidad de que un valor entre por concatenación sin que nadie lo note. Al moverlo a `db/`, hacerlo con un builder de `WHERE` testeado en lugar de arrastrar la interpolación tal cual (patrón de `tests/test_adjudicaciones_dedupe_sql.py`, que verifica que los `%s` siguen cuadrando con los parámetros).
 - **Orden de olas:** services/ → api/ → scheduler/ → scripts/ (por densidad; `services/` es además el único que viola la capa de dominio de ADR-007)
 - **Excepción declarada:** `services/sql_fragments.py` se queda — expone fragmentos SQL constantes pero no ejecuta nada (ADR-022 §3).
@@ -1205,6 +1209,12 @@ _Sin ítems abiertos._
   - Decisión escrita del dueño por ratchet: (a) cuota de bajada —por ejemplo, cada PR que toque un módulo de la lista saca ese módulo o explica por qué no—, (b) fecha objetivo para llegar a cero, o (c) aceptar la violación como diseño y borrarla de la lista (y, en el caso de capas, actualizar AGENTS.md §2).
   - Para capas: las cuatro violaciones `db/* -> services.*` tienen prioridad, porque son las únicas en que la persistencia conoce el dominio; la pieza compartida baja a `shared/` o a `db/`.
   - `docs/STATUS.md` muestra la tendencia (valor y fecha del último descenso), no solo el valor.
+- *Progreso 2026-10-25 (rama `agente/ratchets-y-modulos-dios`) — dos de los tres bajan más de un tercio:*
+  - **Capas: 21 → 12** (`python scripts/check_layers.py --count`). Las cuatro `db/* -> services.*` están a cero, que era la prioridad del criterio. Bajan a la capa inferior las piezas compartidas: `password_policy` y `scoring_weights` a `config/`; `webhook_retry`, `go_no_go_template`, el criterio de concesiones OAuth (`shared/concesiones_acceso.py`) y `extract_keywords`/`FTS5_STOPWORDS` (`shared/palabras_clave.py`, reexportados desde `services.investigador.search_engine`) a `shared/`. Suben a su capa los módulos de `shared/` que abrían la BD: `jobs` → `services/jobs.py`, `model_artifacts` → `services/ml/model_artifacts.py`, `cache_signal` → `db/cache_signal.py`. Quedan 12: seis de `observability/` contra `db`/`services`, tres de `services/` contra `scraper/`, `api/routes/publico.py -> scraper.connectors`, `config/secrets.py -> observability.logging` y `observability/mailer.py -> shared.outbound_http`.
+  - **TID251: 18 → 12** (ver el ítem F5).
+  - `user_key`: sin cambios (lo lleva T4).
+  - Comentarios de `.github/workflows/{ml-scoring,train-model,train-predictivos}.yml` siguen citando `shared/model_artifacts.py` (solo prosa; editar workflows pide OK humano, AGENTS.md §6).
+  - **Falta para cerrar:** la decisión del dueño de los criterios de aceptación (no la puede tomar un agente). Propuesta que este PR deja en marcha: (a) cuota —un PR que toque un módulo de una lista lo saca o dice por qué no—, con objetivo de capas ≤ 6 (las de `observability/` se resuelven pasando el colaborador por argumento) y TID251 ≤ 6 antes de 2027-01; y la tendencia en `docs/STATUS.md`, que todavía muestra solo el valor.
 - **Files de partida:** [scripts/check_layers.py](../scripts/check_layers.py), [pyproject.toml](../pyproject.toml), [docs/STATUS.md](STATUS.md)
 - **Riesgo:** bajo — es una decisión de política; cada bajada concreta tiene su propio riesgo.
 
@@ -1681,7 +1691,7 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   máquina que lo hizo; lo cubre el job de CI) y que Render pase
   `REQUIREMENTS_FILE` como build arg.
 - [2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2] **P3: un solo transporte para bajar
-  assets de la Release** — `shared/model_artifacts.py::_download_release_asset` delega en
+  assets de la Release** — `services/ml/model_artifacts.py::_download_release_asset` delega en
   `shared.release_assets` (`fetch_latest_release` → `find_asset_id` → `download_asset`): HTTPS
   pinned, allowlist por salto y sin reenviar el token al CDN. `requests` sale del módulo. La
   verificación del sha256 contra `model_versions` no se tocó: sigue en `resolve_active_artifact`,
@@ -1904,7 +1914,7 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   HMAC). Los 5 sitios migran y la propiedad se elimina del adaptador. Commit `187ff9d`.
 
 - [2026-08-08] **P2: un solo poller del centinela SSE por proceso** — Cada cliente conectado
-  consultaba `shared.cache_signal` cada 5 s por su cuenta: N clientes = N consultas por intervalo
+  consultaba `db.cache_signal` cada 5 s por su cuenta: N clientes = N consultas por intervalo
   compitiendo por el threadpool con el resto de la API. Ahora un `_SignalWatcher` por proceso
   publica el timestamp en memoria y cada cliente lo compara con su checkpoint — exactamente lo que
   evaluaba `check_cache_signal`, pero O(1) en conexiones. Arranca con el primer suscriptor y se

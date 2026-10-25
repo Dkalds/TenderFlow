@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 
 from db.repositories.jobs import JobsRepository
-from shared.jobs import (
+from services.jobs import (
     TIPO_FICHA_PLIEGO,
     JobDesconocido,
     ack,
@@ -37,7 +37,7 @@ _REPO = JobsRepository()
 
 
 def test_los_estados_del_codigo_son_los_del_check_de_la_migracion() -> None:
-    """``v106_jobs`` declara el ``CHECK``; ``shared/jobs`` declara el Literal.
+    """``v106_jobs`` declara el ``CHECK``; ``services/jobs`` declara el Literal.
 
     Un valor que exista en uno y no en el otro se traduce en un
     ``IntegrityError`` en producción o en un estado que el DTO no sabe
@@ -48,7 +48,7 @@ def test_los_estados_del_codigo_son_los_del_check_de_la_migracion() -> None:
     import importlib.util
     from pathlib import Path
 
-    from shared.jobs import _ESTADOS
+    from services.jobs import _ESTADOS
 
     ruta = Path(__file__).resolve().parents[1] / "db/alembic/versions/v106_jobs.py"
     spec = importlib.util.spec_from_file_location("v106_jobs_para_test", ruta)
@@ -102,7 +102,7 @@ def test_una_cola_vacia_no_da_trabajo(tmp_db) -> None:
 
 def test_el_worker_no_reclama_los_pasos_programados(tmp_db) -> None:
     """ADR-012: el cierre de la pasada no depende de que el worker esté vivo."""
-    from shared.jobs import TIPO_PASO_PIPELINE
+    from services.jobs import TIPO_PASO_PIPELINE
 
     enqueue(TIPO_PASO_PIPELINE, {"paso": "kpi_precompute"}, deduplicar=False)
     assert claim("worker-render") is None
@@ -308,12 +308,12 @@ def test_un_payload_corrupto_no_tumba_la_lectura(tmp_db) -> None:
 
 
 def test_ningun_modulo_de_la_cola_escribe_sql_fuera_de_db() -> None:
-    """``shared/jobs.py``, ``scheduler/worker.py`` y ``api/routes/jobs.py`` no
+    """``services/jobs.py``, ``scheduler/worker.py`` y ``api/routes/jobs.py`` no
     contienen SQL: todo pasa por el repositorio (invariante §3.10)."""
     from pathlib import Path
 
     raiz = Path(__file__).resolve().parents[1]
-    for relativo in ("shared/jobs.py", "scheduler/worker.py", "api/routes/jobs.py"):
+    for relativo in ("services/jobs.py", "scheduler/worker.py", "api/routes/jobs.py"):
         texto = (raiz / relativo).read_text(encoding="utf-8").upper()
         for palabra in ("SELECT ", "INSERT INTO", "UPDATE JOBS", "DELETE FROM"):
             assert palabra not in texto, f"{relativo} contiene SQL ({palabra.strip()})"

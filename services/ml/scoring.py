@@ -143,7 +143,7 @@ def _score_baja(
         return {"status": "sin_abiertas", "filas": 0, "granularidad": granularidad}
 
     from db.model_registry import get_active
-    from shared.model_artifacts import resolve_active_artifact
+    from services.ml.model_artifacts import resolve_active_artifact
 
     # resolve_active_artifact verifica el sha256 registrado (y descarga el
     # asset de la Release si el runner efímero no tiene el fichero). Un
@@ -411,7 +411,7 @@ def score_predicciones_retencion(
     from config import settings
     from db.model_registry import get_active
     from services.ml import retencion_labels
-    from shared.model_artifacts import resolve_active_artifact
+    from services.ml.model_artifacts import resolve_active_artifact
 
     activa = get_active("retencion_model")
     artefacto = resolve_active_artifact("retencion_model") if activa else None

@@ -155,6 +155,12 @@ _PURE_CALLS: frozenset[str] = frozenset(
         # test_investigador_consulta.py` lo ejercita sin BD). La búsqueda, que
         # sí va a BD, se despacha con `run_ml` unas líneas más abajo.
         "preparar_consulta",
+        # `services.jobs.clave_cache_export`: formatea la clave de caché del
+        # PDF de un job (`f"job:{job_id}"`). Contaba como puro mientras
+        # la cola vivía en `shared/`; al subir a `services/` (ratchet de capas,
+        # 2026-10-25) el test lo veía como síncrono por el paquete, no por lo
+        # que hace. La lectura del job sí va por `run_db`.
+        "clave_cache_export",
     }
 )
 

@@ -14,6 +14,13 @@ from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from config.scoring_weights import (
+    KNOWN_WEIGHT_KEYS,
+    WEIGHTS_TOTAL,
+    dimension_weights,
+    penalty_weights,
+    validate_scoring_weights,
+)
 from db.database import now_utc_iso
 from db.notifications import insert_user_notification
 from db.repositories.adjudicaciones import (
@@ -78,13 +85,6 @@ from shared.dto import (
     RadarQuality,
 )
 from shared.identity import user_key_from_email
-from shared.scoring_weights import (
-    KNOWN_WEIGHT_KEYS,
-    WEIGHTS_TOTAL,
-    dimension_weights,
-    penalty_weights,
-    validate_scoring_weights,
-)
 from shared.tender_facts import RequiredDocumentFact
 
 _repo = PursuitRepository()

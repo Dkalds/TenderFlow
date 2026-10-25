@@ -14,7 +14,7 @@ from urllib.parse import quote
 from pydantic import ValidationError
 
 from db.repositories.organizations import OrganizationRepository
-from db.users import get_active_user_by_email_ci
+from db.users import get_active_user_by_email_ci, get_user_by_id
 from observability.logging import get_logger
 from services.email_html import CERRAR_DOCUMENTO, ESTILO_ENLACE, abrir_documento
 from shared.dto import (
@@ -49,7 +49,7 @@ class OrganizationPermissionError(PermissionError):
 
 
 class OrganizationMemberNotFoundError(LookupError):
-    """No existe una cuenta activa con el correo indicado."""
+    """No existe la cuenta indicada (por correo activo o por ``user_id``)."""
 
 
 class OrganizationInvitationNotFoundError(LookupError):
@@ -185,6 +185,12 @@ def upsert_membership(
         raise OrganizationPermissionError("Solo owner o admin puede gestionar miembros.")
     if body.role == "owner" and role != "owner":
         raise OrganizationPermissionError("Solo un owner puede asignar otro owner.")
+    # Sin esta comprobación, un ``user_id`` que no existe llegaba al INSERT y
+    # salía como ``ForeignKeyViolation`` (500); el fuzzing de contrato lo
+    # encontró. Se mira con ``include_deactivated`` para no cambiar qué cuentas
+    # se pueden gestionar: solo se rechaza la que no existe.
+    if get_user_by_id(body.user_id, include_deactivated=True) is None:
+        raise OrganizationMemberNotFoundError("No existe ninguna cuenta con ese user_id.")
     _guard_owner_row(organization_id, body.user_id)
     row = _repo.add_membership(
         organization_id,

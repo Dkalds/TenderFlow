@@ -12,8 +12,9 @@ actual o se lo disputa quien llegue primero a la relicitación.
 Aquí quedan los DTOs del contrato API↔web y los dos agregados de la ventana.
 El **listado** (``proximas_renovaciones``, con su orden por score de
 oportunidad) se movió a ``db/repositories/renovaciones.py`` por ADR-022 y se
-re-exporta desde aquí; mover también los dos agregados dejaría quitar la
-entrada de este módulo del ratchet TID251.
+re-exporta desde aquí, y el SQL de los dos agregados bajó a ese mismo
+módulo el 2026-10-25: aquí queda la definición de «contrato caliente»
+(:data:`RIESGO_ALTO`, :data:`DIAS_CALIENTE`) y la forma de la respuesta.
 """
 
 from __future__ import annotations
@@ -21,14 +22,6 @@ from __future__ import annotations
 from typing import Any
 
 from pydantic import BaseModel, Field
-
-from db.database import connect_read
-from db.repositories.base import rows_to_dicts
-
-# El mismo tope que `GET /renovaciones` y que el horizonte del scoring de
-# retención: un clamp propio aquí dejaría el resumen y el listado midiendo
-# ventanas distintas el día que alguien cambie uno.
-from db.repositories.renovaciones import HORIZONTE_RENOVACIONES_MAX_MESES
 
 # `proximas_renovaciones` se re-exporta: su SQL se movió a `db/` (ADR-022) pero
 # el nombre sigue importándose desde aquí en `services/pursuits_agenda.py`,
@@ -42,12 +35,19 @@ from db.repositories.renovaciones import (
     rango_vencimiento_sql as rango_vencimiento_sql,
 )
 
+# Los dos agregados aplican el mismo tope que `GET /renovaciones` y que el
+# horizonte del scoring de retención (`HORIZONTE_RENOVACIONES_MAX_MESES`, en el
+# repositorio): un clamp propio aquí dejaría el resumen y el listado midiendo
+# ventanas distintas el día que alguien cambie uno.
+from db.repositories.renovaciones import (
+    resumen_por_empresa,
+    totales_ventana,
+)
+
 # FECHA_FIN_SQL se re-exporta por compatibilidad con imports externos.
 from db.sql_fragments import FECHA_FIN_SQL as FECHA_FIN_SQL
 from db.sql_fragments import TECHNOLOGY_OBSERVED_SQL as TECHNOLOGY_OBSERVED_SQL
 from db.sql_fragments import fecha_fin_sql as fecha_fin_sql
-from db.sql_fragments import tecnologia_en_csv_sql
-from services.dedupe import exclude_duplicados_sql
 
 # ── Umbrales de "contrato caliente" ───────────────────────────────────────
 # Definición canónica y única (ADR-014): vivía duplicada en el cliente
@@ -170,34 +170,7 @@ def resumen_renovaciones(
     Responde "¿qué cartera de cada competidor está en juego?": número de
     contratos e importe que vencen, con el vencimiento más próximo.
     """
-    months_ahead = max(1, min(int(months_ahead), HORIZONTE_RENOVACIONES_MAX_MESES))
-    fecha_fin = fecha_fin_sql()
-    sql = f"""
-        SELECT a.empresa_id,
-               COALESCE(e.nombre_canonico, a.nombre) AS empresa,
-               COUNT(*) AS contratos_venciendo,
-               COALESCE(SUM(a.importe_adjudicado), 0) AS importe_en_juego,
-               MIN({fecha_fin}) AS proximo_vencimiento
-        FROM adjudicaciones a
-        JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
-        WHERE {fecha_fin} {rango_vencimiento_sql()}
-          AND {TECHNOLOGY_OBSERVED_SQL}
-          AND {exclude_duplicados_sql()}
-    """  # noqa: S608 — fragmentos constantes de db.sql_fragments; valores con ?
-    params: list[Any] = [months_ahead]
-    tecnologias = [t for t in (tecnologias or []) if t]
-    if tecnologias:
-        # El fragmento del listado (`proximas_renovaciones`): «ERP,SAP» es SAP.
-        sql += f" AND {tecnologia_en_csv_sql('l.tecnologia', n=len(tecnologias))}"
-        params.extend(tecnologias)
-    sql += """
-        GROUP BY a.empresa_id, empresa
-        ORDER BY importe_en_juego DESC
-        LIMIT 100
-    """
-    with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, params))
+    return resumen_por_empresa(months_ahead=months_ahead, tecnologias=tecnologias)
 
 
 def totales_renovaciones(
@@ -217,33 +190,12 @@ def totales_renovaciones(
     ADR-014: si hay más contratos que el tope, el usuario ve cifras
     silenciosamente bajas.
     """
-    months_ahead = max(1, min(int(months_ahead), HORIZONTE_RENOVACIONES_MAX_MESES))
-    fecha_fin = fecha_fin_sql()
-    dias_restantes = dias_restantes_sql(fecha_fin)
-    sql = f"""
-        SELECT COUNT(*) AS contratos_venciendo,
-               COALESCE(SUM(a.importe_adjudicado), 0) AS importe_en_juego,
-               COALESCE(
-                   SUM(a.importe_adjudicado) FILTER (WHERE pr.riesgo_cambio >= %s), 0
-               ) AS importe_alto_riesgo,
-               COUNT(*) FILTER (
-                   WHERE pr.riesgo_cambio >= %s AND {dias_restantes} <= %s
-               ) AS calientes
-        FROM adjudicaciones a
-        JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        LEFT JOIN predicciones_retencion pr ON pr.licitacion_id = a.licitacion_id
-        WHERE {fecha_fin} {rango_vencimiento_sql()}
-          AND {TECHNOLOGY_OBSERVED_SQL}
-          AND {exclude_duplicados_sql()}
-    """  # noqa: S608 — fragmentos constantes de db.sql_fragments; valores con ?
-    params: list[Any] = [RIESGO_ALTO, RIESGO_ALTO, DIAS_CALIENTE, months_ahead]
-    tecnologias = [t for t in (tecnologias or []) if t]
-    if tecnologias:
-        # El fragmento del listado (`proximas_renovaciones`): «ERP,SAP» es SAP.
-        sql += f" AND {tecnologia_en_csv_sql('l.tecnologia', n=len(tecnologias))}"
-        params.extend(tecnologias)
-    with connect_read() as c:
-        rows = rows_to_dicts(c.execute(sql, params))
+    rows = totales_ventana(
+        months_ahead=months_ahead,
+        tecnologias=tecnologias,
+        riesgo_alto=RIESGO_ALTO,
+        dias_caliente=DIAS_CALIENTE,
+    )
     if not rows:
         return {
             "contratos_venciendo": 0,

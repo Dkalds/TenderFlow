@@ -935,7 +935,7 @@ def test_post_ingestion_scopes_resolution_to_its_own_source():
         patch("services.entity_resolution.resolve_all_unlinked") as resolve_all,
         patch("services.dedupe.detect_duplicates") as dedupe,
         patch("services.contract_events.derive_new_events") as events,
-        patch("shared.cache_signal.signal_cache_invalidation") as cache,
+        patch("db.cache_signal.signal_cache_invalidation") as cache,
     ):
         _post_ingestion("ted")
 
@@ -994,7 +994,7 @@ def _cierre_trazado(monkeypatch, *, roto: str | None = None):
         "services.dedupe.detect_duplicados_por_referencia", paso("dedupe_referencias")
     )
     monkeypatch.setattr("services.contract_events.derive_new_events", paso("eventos_contrato"))
-    monkeypatch.setattr("shared.cache_signal.signal_cache_invalidation", lambda: None)
+    monkeypatch.setattr("db.cache_signal.signal_cache_invalidation", lambda: None)
     monkeypatch.setattr("services.dedupe.dedupe_run_failed_total", _ContadorMudo())
 
     base._post_ingestion(

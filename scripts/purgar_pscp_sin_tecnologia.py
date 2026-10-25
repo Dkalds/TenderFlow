@@ -219,7 +219,7 @@ def _post_purga() -> None:
         log.warning("purga_pscp_refresco_canonicas_fallido", error=str(e))
         print(f"\nAVISO: no se pudo refrescar la vista de canónicas ({e}); lo hará el job.")
     try:
-        from shared.cache_signal import signal_cache_invalidation
+        from db.cache_signal import signal_cache_invalidation
 
         signal_cache_invalidation()
     except Exception:

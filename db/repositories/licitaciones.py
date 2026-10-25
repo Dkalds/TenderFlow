@@ -1759,7 +1759,7 @@ class LicitacionRepository:
         Solo miraba la CCAA: cuando el FTS no encontraba nada, el contexto de
         una pregunta filtrada por SAP podía traer cualquier tecnología.
         """
-        from services.investigador.search_engine import extract_keywords
+        from shared.palabras_clave import extract_keywords
 
         # Reutiliza la misma extracción de keywords que FTS5 (filtra stopwords
         # y palabras interrogativas) para no buscar por conectores genéricos

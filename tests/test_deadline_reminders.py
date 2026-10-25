@@ -329,7 +329,7 @@ def test_unit_el_aviso_lleva_la_organizacion_del_favorito_y_salta_al_huerfano():
     )
 
     with (
-        patch.object(mod, "connect_read", return_value=conexion),
+        patch("db.repositories.watchlist.connect_read", return_value=conexion),
         patch.object(mod, "insert_user_notification", side_effect=_insert),
     ):
         total = mod.check_deadlines_and_notify("alice")
@@ -347,7 +347,7 @@ def test_unit_todos_los_favoritos_huerfanos_equivalen_a_no_tener_favoritos():
     conexion = _ConexionFalsa(favoritos=[("EXP-X", None)], licitaciones=[])
 
     with (
-        patch.object(mod, "connect_read", return_value=conexion),
+        patch("db.repositories.watchlist.connect_read", return_value=conexion),
         patch.object(mod, "insert_user_notification") as insert,
     ):
         assert mod.check_deadlines_and_notify("alice") == 0

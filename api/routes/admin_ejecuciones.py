@@ -186,7 +186,7 @@ async def resumen_ejecuciones(
     # Import diferido, como el resto de usos de `scheduler` desde la API: el
     # módulo declara el cierre entero y no hace falta al arrancar.
     from scheduler.pipeline_runs import CANONICAL_STEPS, STEP_TIER
-    from shared.jobs import TIPO_PASO_PIPELINE
+    from services.jobs import TIPO_PASO_PIPELINE
 
     ahora = datetime.now(UTC)
     desde = ahora - timedelta(days=dias)

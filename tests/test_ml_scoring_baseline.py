@@ -283,7 +283,7 @@ def _filas_escritas(
         patch.object(rl, "_cargar_adjudicaciones", return_value=historico or _historico()),
         patch.object(rl, "vencimientos_proximos", return_value=vencimientos),
         patch("db.model_registry.get_active", return_value=None),
-        patch("shared.model_artifacts.resolve_active_artifact", return_value=None),
+        patch("services.ml.model_artifacts.resolve_active_artifact", return_value=None),
         patch.object(scoring, "PrediccionesRepository", return_value=repo),
     ):
         resultado = scoring.score_predicciones_retencion()

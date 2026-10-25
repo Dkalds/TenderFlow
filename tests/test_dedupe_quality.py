@@ -275,7 +275,7 @@ def test_dedupe_roto_en_la_ingesta_deja_senal_y_no_solo_un_log():
         patch("services.entity_resolution.resolve_all_unlinked"),
         patch.object(services.dedupe, "detect_duplicates", side_effect=RuntimeError("índice roto")),
         patch("services.contract_events.derive_new_events"),
-        patch("shared.cache_signal.signal_cache_invalidation"),
+        patch("db.cache_signal.signal_cache_invalidation"),
     ):
         _post_ingestion("pscp")  # no propaga: el fail-open sigue en pie
 

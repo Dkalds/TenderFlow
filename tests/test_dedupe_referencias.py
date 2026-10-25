@@ -415,7 +415,7 @@ def _post_ingestion(**kwargs: Any) -> MagicMock:
         patch("services.dedupe.detect_duplicates"),
         patch("services.dedupe.detect_duplicados_por_referencia") as por_referencia,
         patch("services.contract_events.derive_new_events"),
-        patch("shared.cache_signal.signal_cache_invalidation"),
+        patch("db.cache_signal.signal_cache_invalidation"),
     ):
         post("ted", **kwargs)
     return por_referencia

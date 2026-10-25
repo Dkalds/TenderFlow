@@ -75,7 +75,7 @@ locked_by, locked_at, resultado_json, error_detail)`, reclamada con
 Motivo: Postgres ya está, es transaccional con el resto de la escritura, y un
 broker (Redis Streams, SQS) añade un componente que hay que operar, pagar y
 vigilar para un volumen que hoy no lo justifica. Si el volumen lo justifica, la
-frontera `shared/jobs.py` (`enqueue`, `claim`, `ack`, `fail`) permite cambiar
+frontera `services/jobs.py` (`enqueue`, `claim`, `ack`, `fail`) permite cambiar
 el motor sin tocar los call-sites. Todo el SQL vive en
 `db/repositories/jobs.py` (ADR-022).
 
