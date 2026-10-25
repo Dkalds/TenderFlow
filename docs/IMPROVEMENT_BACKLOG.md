@@ -385,62 +385,11 @@ _Sin ítems abiertos._
       solo corre con `apply`, así que relanzarlo repite antes la purga.
     - Falta lo demás: balance, delta de `make audit-truth-check` y el RFC.
   - Tras el `VACUUM (ANALYZE)`, `pg_relation_size('licitaciones')` anotado aquí.
+    - **Medido el 2026-10-25 (MCP, solo lectura):** `pg_relation_size('licitaciones')` = **89 MB** (era ~870 MB); 88.925 filas en total, de las que 60.737 son `pscp` y **16.798 llevan `tecnologia`** (el ítem citaba 3.268 sobre 685.500: la cifra es anterior a la purga y a la reingesta). Siguen 195 filas `pscp` sin `fecha_actualizacion_fuente` (la decisión sobre ellas sigue abierta). La purga y la reingesta están hechas; lo único que falta para cerrar es el balance en el RFC y el delta de `make audit-truth-check`, que exige la BD real.
 - **Files de partida:** [.github/workflows/purga-pscp.yml](../.github/workflows/purga-pscp.yml) (dry-run por defecto; `apply` + `reingerir_desde`), [scripts/purgar_pscp_sin_tecnologia.py](../scripts/purgar_pscp_sin_tecnologia.py), [db/repositories/purga_licitaciones.py](../db/repositories/purga_licitaciones.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py) (`senal_tecnologica`)
 - **Riesgo:** alto — borra ~680.000 filas y sus dependientes. Mitigado: reevalúa con la
   misma puerta que el conector, conserva las filas con trabajo de usuario, es
   reanudable, y el dato es público y reingestable (`--desde`).
-
-### [P1] [Rendimiento 2026-09] Aplicar en producción los índices de la búsqueda `q` y del filtro de tecnología
-- **Área:** db/alembic/versions (`v142_lic_tecnologia_tokens_gin`, `v143_lic_busqueda_plegada_trgm`); aplicar con `migrate.yml` es acción del usuario
-- **Problema:** la búsqueda `q` del listado y de los agregados es un `LIKE '%q%'` sobre cuatro columnas plegadas, y el filtro de tecnología un solapamiento de arrays; sin índice, cada búsqueda y cada filtro recorren ~1,64 M filas. El código ya emite las expresiones indexables y las dos migraciones están escritas (rama de rendimiento), pero `migrate.yml` es manual y el índice de `descripcion` de `v143` puede ocupar mucho disco.
-- **Acceptance criteria:**
-  - Antes de `v143`, medido el volumen de `descripcion` frente al trigram de `titulo` de `v50` (consultas en [la propuesta](plans/2026-09-indices-busqueda-propuestos.md)); si no cabe, una de las alternativas que describe.
-  - `v142` y `v143` aplicadas con `migrate.yml`, en una ventana sin ingesta, y los cinco índices con `pg_index.indisvalid = true`.
-  - `EXPLAIN` con plan genérico usando los índices, y su `idx_scan` en `pg_stat_user_indexes` tras un día de tráfico.
-- **Files de partida:** [docs/plans/2026-09-indices-busqueda-propuestos.md](plans/2026-09-indices-busqueda-propuestos.md), [tests/test_indices_busqueda.py](../tests/test_indices_busqueda.py)
-- **Riesgo:** medio — índices grandes creados en caliente (`CONCURRENTLY`, dos pasadas por la tabla por índice).
-
-### [P1] Mercado sin filtros: aplicar `v144` en producción y medir
-- **Área:** db/alembic (`v144_lic_indices_analitica`), db/repositories/aggregates.py
-- **Problema:** `licitaciones` tiene ~713k filas y ~870 MB de heap (97 % PSCP) en un
-  Supabase Micro (`shared_buffers` 256 MB, E/S limitada), y cada `GROUP BY` que la
-  recorre tarda de 5 a 15 s según la caché (medido el 2026-09-25: `geography_by_ccaa`
-  sin filtros, 15,2 s, 87k páginas leídas de disco). Las vistas de Mercado encadenan de
-  2 a 6 recorridos: en los logs de Render, `/analytics/organos` y `/proyectos-modulos`
-  dan 500 por `statement_timeout` (30 s por sentencia), `/trends?group_by=month` tarda
-  20-72 s, `/trends-cpv` ~40 s y `/geography` ~30 s.
-- **Hecho (2026-09-25):**
-  - `?tecnologia=` va por índice de tecnología: vistas SAP de 33-41 s a 0,1-2 s (#347).
-    El filtro es el `&&` de la entrada anterior con `tecnologia IS NOT NULL` delante:
-    sin el GIN de `v142` aplicado, la guarda es lo que evita el Seq Scan.
-  - Órganos agrega por hash: el treemap, que era la sentencia que moría (buscaba los 30
-    órganos mayores y leía sus filas una a una por `idx_organo`), tarda 4,7 s sin
-    filtros; la moda y el recuento de órganos dejan de ordenar la tabla en disco.
-  - Migración `v144` (sobre `v143`): índice cubriente `idx_lic_analitica` para las agregaciones sin
-    filtros, `idx_lic_tecnologia_cubriente` para las del ámbito de tecnología y
-    autovacuum al 2 %. Con índices hipotéticos (`hypopg`) el planificador ya elige
-    Index Only Scan para geografía, tendencias y las tres de órganos.
-- **Acceptance criteria:**
-  - `migrate.yml` con `mode=apply` (acción con escritura en producción: la lanza el
-    usuario) y, después, `indisvalid` de los dos índices, su `pg_relation_size`
-    anotado aquí y un `EXPLAIN` de `geography_by_ccaa` sin filtros con Index Only Scan.
-  - Cada vista de Mercado sin filtros responde en < 3 s (p95 de `duration_ms` en los
-    logs `http_request` de Render) y siete días sin `QueryCanceled` en
-    `/api/v1/analytics/*`.
-- **Queda fuera:** `/proyectos-modulos` sin filtros sigue leyendo `titulo` (regex de
-  módulos SAP) y no cabe en el índice; `/competitive/renovaciones` sin tecnología
-  (8-31 s) va por otro SQL. Si el índice no basta: snapshot del ámbito por defecto en
-  `kpi_precompute` (ADR-026, camino 3; el cierre ya usa 9-15 de sus 20 minutos) o
-  subir el cómputo de Supabase (con 4 GB la tabla cabría en caché). Sigue abierta una
-  decisión de producto: acotar la analítica al universo tecnológico. El listado ya
-  enseña solo filas con `tecnologia`; la analítica cuenta además todo PSCP.
-  **(2026-09-26)** Esa decisión la resuelve en la base de datos el P1 «Ejecutar en
-  producción la purga de PSCP»: el 97 % del heap es el censo de PSCP que se borra.
-  Medir de nuevo estas vistas después de la purga, antes de invertir en snapshots o
-  en más cómputo.
-- **Files de partida:** [db/alembic/versions/v144_lic_indices_analitica.py](../db/alembic/versions/v144_lic_indices_analitica.py), [db/repositories/aggregates.py](../db/repositories/aggregates.py), [tests/test_v144_indices_analitica.py](../tests/test_v144_indices_analitica.py)
-- **Riesgo:** medio — los índices son aditivos, pero migran schema: +100-200 MB de disco
-  y más escritura por fila; el autovacuum al 2 % añade E/S de fondo.
 
 ### [P2] Medir en producción los documentos de TED y PSCP tras el despliegue
 - **Área:** scraper/documentos_plataforma.py, scraper/connectors/{ted,pscp,placsp}.py, config/settings.py
@@ -562,6 +511,7 @@ _Sin ítems abiertos._
 - **Actualización (2026-10-10):** la creación del servicio está escrita paso a paso, con todas sus variables, en el paso 1 del [runbook del cutover del cron](runbooks/cutover-cron-al-worker.md), y su plan declarado pasa a `standard`: con el plano de cron de ADR-033 corre la ingesta y el scoring en el mismo proceso que la cola. `deploy.yml` despliega también el worker, del mismo commit y tras verificar la API, si su deploy hook está en `RENDER_WORKER_DEPLOY_HOOK_URL` (en los de Actions); sin él no despliega ninguno de los dos.
 - **Actualización (2026-10-19):** el servicio se creó el 2026-10-10, pero en el plan `free` de Render, que lo hibernaba a los ~15 min: su consumidor y su plano de cron solo corrían tras cada deploy. Como `JOBS_CONSUMIDOR_EN_API` nunca se puso a `0`, la cola la siguió vaciando la API, y la ingesta y el scoring siguieron en Actions. Se retiró en vez de pagar `standard`: `render.yaml` ya no lo declara, `deploy.yml` no lo despliega y `scripts/check_job_parity.py` acepta a la API como consumidor ([ADR-028 §G](adr/ADR-028-cola-de-trabajo-y-worker.md), revisión del 2026-10-19). Lo que quedaba de este ítem —crear el servicio y apagar el consumidor de la API— deja de aplicar; el de §A (que la extracción no comparta proceso con la API) sigue abierto y es lo que justificaría recrearlo.
 - *Nota (2026-10-24):* el servicio sigue existiendo en Render: `TenderFlow-1` (`srv-db58n80473hc73a94rsg`), plan `free`, sin suspender y sin ningún log desde el 2026-10-19. No consume nada, pero si alguien lo despierta corre contra la misma base. Suspenderlo o borrarlo es acción del dueño.
+- *Nota (2026-10-25):* confirmado por la API de Render: `TenderFlow-1` (`srv-db58n80473hc73a94rsg`) está `suspended` por el usuario desde el 2026-10-24, plan `free`. Quedan dos servicios activos: `TenderFlow` (la API, `standard`) y `tenderflow-mcp` (`starter`). Retomar el worker exige un plan de pago y devolver a `deploy.yml` su paso: decisión del dueño, no de un agente.
 - **Riesgo:** medio — servicio nuevo en producción y cambio del camino por el que se sirve la ficha.
 
 ---
@@ -996,6 +946,7 @@ _Sin ítems abiertos._
   - Tras 30 días, una tabla en `docs/UX_AUDIT.md` con sesiones por espacio y por vista, y una decisión escrita por cada espacio o vista con menos del 2 % de uso: se queda, se fusiona o se retira.
   - La misma pregunta para la API: `pursuits/metrics` o `admin/ejecuciones` ya existen; falta el inventario de operaciones sin ninguna llamada en 30 días (`http_requests_total` por handler ya está en Prometheus), y la lista va a `superficie_congelada.txt` como candidatas a encoger.
 - **Files de partida:** [web/src/lib/analytics.ts](../web/src/lib/analytics.ts), [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx), [web/src/lib/console-spaces.ts](../web/src/lib/console-spaces.ts), [api/superficie_congelada.txt](../api/superficie_congelada.txt)
+- **Hallazgo (2026-10-25):** los eventos personalizados de Vercel Web Analytics exigen plan Pro y el proyecto `tenderflow` está en Hobby: la API de eventos responde `402 payment_required`. **Los 23 eventos del catálogo se emiten pero no se guardan en ningún sitio.** Lo que sí hay son pageviews por ruta, y con eso está hecha la primera tabla real (30 días) en [UX_AUDIT.md](UX_AUDIT.md#uso-real-por-ruta-pageviews-de-vercel-2026-09-25-a-2026-10-25). Decisión pendiente del dueño: pagar Pro, mandar los eventos a otro destino (la propia API ya tiene `http_requests_total` por handler) o conformarse con pageviews.
 - **Riesgo:** bajo — telemetría categórica sin identificadores; el filtro del módulo ya la acota.
 
 ## P3 — Nice to have
@@ -1287,6 +1238,7 @@ _Sin ítems abiertos._
 
 ## Cerrados
 
+- [2026-10-25] **Índices `v142`/`v143` (búsqueda `q`, tecnología) y `v144` (analítica) ya estaban aplicados en producción** — verificado con `migrate.yml` en `plan` (BD en `v158`) y `pg_stat_user_indexes`; los dos ítems P1 que pedían aplicarlos eran deuda documental y van al archivo con los `idx_scan` medidos.
 - [2026-10-23] **Excepción de `braces` en `npm audit` retirada** — el job «Security audit»
   de la PR #529 falló porque `npm audit` ya no reporta GHSA-vfj7-8cjw-p6xm (el lockfile sigue en
   `braces` 3.0.3 y `npm view braces version` también) y `scripts/check_npm_audit.py` exige quitar

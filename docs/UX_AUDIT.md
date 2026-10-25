@@ -880,3 +880,58 @@ Decisiones que lo sostienen:
 - Se llama «Asistente» en todas partes: era «Copiloto» en el panel, «Asistente
   IA» en la ficha y «Asistente» en el Investigador. ⌘K lo sigue encontrando por
   «copiloto».
+
+---
+
+## Uso real por ruta (pageviews de Vercel, 2026-09-25 a 2026-10-25)
+
+Primera medición con datos reales, tomada el 2026-10-25 desde Vercel Web
+Analytics por ruta de Next.js. **No son los eventos de producto**: el proyecto
+está en el plan Hobby y los eventos personalizados exigen Pro (la API responde
+`402`), así que el catálogo `EventosProducto` se emite y se pierde. Las
+pageviews sí se guardan, y una ruta equivale a un espacio o a una vista.
+
+| Ruta | Visitantes | Pageviews |
+|---|---:|---:|
+| `/resumen` | 61 | 235 |
+| `/detalle` | 47 | 146 |
+| `/login` | 40 | 80 |
+| `/oportunidades` | 27 | 48 |
+| `/mercado` | 24 | 56 |
+| `/oportunidades/[id]` | 21 | 35 |
+| `/radar` | 21 | 38 |
+| `/investigador` | 18 | 30 |
+| `/cuentas` | 17 | 26 |
+| `/ops` | 16 | 22 |
+| `/direccion` | 15 | 26 |
+| `/competencia` | 14 | 31 |
+| `/` (portada) | 13 | 17 |
+| `/mi-pipeline` | 13 | 22 |
+| `/equipo` | 12 | 15 |
+| `/mi-perfil` | 10 | 18 |
+| `/mi-watchlist` | 10 | 14 |
+| `/ajustes` | 9 | 14 |
+| `/cuentas/[id]` | 8 | 10 |
+| `/competencia/empresa/[empresaId]` | 7 | 10 |
+| `/empresas` | 7 | 11 |
+| `/restablecer-contrasena` | 6 | 10 |
+| `/licitaciones/[ccaa]/[slug]/[ref]` | 3 | 5 |
+| `/cpv/[codigo]` | 2 | 3 |
+| `/licitaciones` | 2 | 2 |
+| `/solicitud-recibida` | 2 | 2 |
+| `/cpv` | 1 | 2 |
+| `/licitaciones/[ccaa]` | 1 | 2 |
+| `/metodologia` | 1 | 1 |
+| `/verificar-correo` | 1 | 1 |
+
+Total: 61 visitantes únicos y 934 pageviews en 30 días. El umbral del 2 % del
+ítem de telemetría son 19 pageviews.
+
+**Lo que dice el dato, y lo que no.** Con este volumen ningún espacio de la
+consola está muerto: el que menos, Ajustes, tiene 9 visitantes. Lo que sí está
+por debajo del umbral es toda la **superficie pública** (`/licitaciones`,
+`/cpv`, `/metodologia`: 10 pageviews entre las tres), que existe para SEO y
+hoy no recibe tráfico orgánico; y `/empresas`, que ya se fusionó en
+Competencia el 2026-10-12 y sigue recibiendo visitas por enlaces viejos. Las
+decisiones por fila que pide el ítem no se pueden tomar con 61 visitantes y
+sin eventos de acción: la tabla fija la línea base, no cierra el ítem.
