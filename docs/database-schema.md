@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-10-25
 
-Revisión Alembic aplicada: `v160_fechas_ts_indices`.
+Revisión Alembic aplicada: `v161_user_notifications_user_id_fase3`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -29,11 +29,11 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Empresas y mercado | 6 | 34 | 8 |
 | Organizaciones y oportunidades | 15 | 143 | 31 |
 | Identidad, acceso y auditoría | 16 | 112 | 25 |
-| Seguimiento y notificaciones | 12 | 134 | 35 |
+| Seguimiento y notificaciones | 12 | 134 | 36 |
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 23 | 182 | 34 |
-| **Total** | **103** | **948** | **234** |
+| **Total** | **103** | **948** | **235** |
 
 ## Licitaciones y fuente
 
@@ -1131,7 +1131,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, name)`
 | Columna | Tipo | Nulo |
 |---|---|---|
 | `id` | `integer` | no |
-| `user_key` | `text` | no |
+| `user_key` | `text` | sí |
 | `created_at` | `text` | no |
 | `type` | `text` | no |
 | `title` | `text` | sí |
@@ -1146,7 +1146,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, name)`
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, licitacion_id, type)`
 
-Índices: `idx_user_notif_user_read`, `idx_user_notifications_organization`, `idx_user_notifications_user_id`
+Índices: `idx_user_notif_user_read`, `idx_user_notifications_organization`, `idx_user_notifications_user_id`, `uq_user_notifications_user_id` (único)
 
 ### `user_profiles`
 
