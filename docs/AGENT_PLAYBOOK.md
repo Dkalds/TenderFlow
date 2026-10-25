@@ -255,6 +255,7 @@ controles disponibles y reportá los tests como no ejecutados (AGENTS.md §4).
 | ¿Tabla nueva en la BD? | Además de la migración, **clasifícala en `mcp_server/catalogo.py`** (visible / columnas excluidas / oculta) y regenera el SQL del rol con `python scripts/gen_mcp_grants.py`; `tests/test_mcp_catalogo_integration.py` falla si queda sin clasificar. Una tabla con credenciales o secretos va como oculta. El SQL regenerado lo aplica a mano el dueño ([runbook](runbooks/mcp-interno.md), paso 1). |
 | ¿Rate limit? | `services/rate_limiting.py` (en BD) o `services/rate_limit_redis.py` (Redis, opcional). No reinventar. |
 | ¿Auth en endpoint nuevo? | `Depends(get_api_key)` + scope si aplica (ver `api/routes/webhooks.py` como referencia). |
+| ¿Ampliar el golden del clasificador SAP? | Tres pasos, todos en `scripts/`: muestrear con `sample_golden_candidates.py` (BD, o un export CSV/JSONL con `--desde`), etiquetar con `revisar_golden_candidates.py <fichero>` (terminal, guarda tras cada respuesta, reanudable, no enseña `keyword_match` ni `ml_proba`) y medir con `revisar_golden_candidates.py --estado` (mínimos de `services/ml_eval.py` y bootstrap del umbral con `ml_eval.umbral_bootstrap`). **Las etiquetas las pone una persona**: nunca se generan ni se rellenan con reglas o LLM. Detalle en [model-rollback.md](runbooks/model-rollback.md#ampliar-el-golden-del-clasificador-sap). El golden de «¿es TI?» tiene su propio flujo ([etiquetado-ti.md](runbooks/etiquetado-ti.md)). |
 
 ---
 

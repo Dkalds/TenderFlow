@@ -227,6 +227,50 @@ Una versión que **no** supera el criterio queda registrada igual, con
 `promotion_reason` explicando cuál de las dos cuentas falló: el histórico es lo
 que permite ver si la siguiente mejora de verdad o repite la anterior.
 
+### Ampliar el golden del clasificador SAP
+
+El gate del `sap_classifier` es tan bueno como `tests/fixtures/golden_set.jsonl`,
+y con 27 ejemplos (3 positivos sin keyword en cada mitad) no sostiene ni el
+umbral ni `recall_no_keyword`. Ampliarlo es trabajo humano; las herramientas
+solo quitan la fricción. **No se fabrican etiquetas** ni se rellenan con reglas
+o con el LLM: el golden juzga a esas fuentes.
+
+1. **Muestrear** (solo lectura). Con acceso a la BD:
+
+   ```bash
+   ENV=prod PYTHONPATH="$PWD" python -m scripts.sample_golden_candidates \
+       --n 400 --out data/etiquetado/candidatos_golden_sap.jsonl
+   ```
+
+   Sin acceso directo, exportar desde quien lo tenga (misma consulta que
+   `LicitacionRepository.get_unlabelled_candidates`) y muestrear el export:
+
+   ```bash
+   psql "$DATABASE_URL" -c "\copy (SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe, l.organo_contratacion, l.ml_proba FROM licitaciones l LEFT JOIN ml_feedback f ON l.id_externo = f.expediente AND f.source NOT LIKE 'reporte:%' WHERE f.expediente IS NULL ORDER BY l.fecha_publicacion DESC LIMIT 5000) TO 'export.csv' CSV HEADER"
+   python -m scripts.sample_golden_candidates --desde export.csv --n 400 \
+       --out data/etiquetado/candidatos_golden_sap.jsonl
+   ```
+
+   Si `ml_proba` viene en todas las filas del export se usa para estratificar;
+   si no, se puntúa con el modelo de `data/models/` (o se muestrea sin banda).
+   `data/` no se versiona: el fichero de candidatos no va al repo.
+
+2. **Etiquetar** en la terminal: `python -m scripts.revisar_golden_candidates
+   data/etiquetado/candidatos_golden_sap.jsonl`. `1` es SAP, `0` no, `d` dudoso
+   (sale de la cola; `--dudosos` lo vuelve a enseñar), `s` saltar, `q` salir.
+   Guarda tras cada respuesta y se reanuda donde quedó. Enseña título,
+   descripción, CPV, órgano e importe; **no** `keyword_match` ni la
+   probabilidad del modelo, para no anclar. Cada etiqueta lleva `source` y
+   `fecha`.
+
+3. **Anexar y medir**: `--anexar` añade lo etiquetado (nunca nulos ni
+   dudosos, nunca ids repetidos) al golden; `--estado` dice si cumple
+   (≥ 60 por mitad y ≥ 30 positivos sin keyword en holdout) y, con un modelo en
+   `data/models/`, el intervalo bootstrap del umbral elegido en `tune`
+   (`services.ml_eval.umbral_bootstrap`, misma rejilla que el tuning servido).
+   Con 27 ejemplos el ancho p5-p95 era 0,26; por debajo de 0,10 el informe lo
+   da por estable (orientativo, no entra en el gate).
+
 ### `baja_model` v2 y `retencion_model` v1: qué hace falta para decidir
 
 La decisión es humana (`train-predictivos.yml` no activa salvo
