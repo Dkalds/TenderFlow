@@ -239,7 +239,7 @@ CONGELADOS: frozenset[str] = frozenset(
         "services/watchlist.py",
         "services/watchlist_rules.py",
         "shared/cache.py",
-        "shared/dto.py",
+        "shared/dto/watchlist.py",
         "shared/events.py",
         "shared/identity.py",
         "shared/user_key.py",

@@ -1,7 +1,7 @@
 """Dependencia compartida de paginación por offset (`limit`/`offset`).
 
 La mitad de sobre del contrato común ya estaba hecha —`PaginatedResponse` y
-`CursorPaginatedResponse` viven en `shared/dto.py`—, pero cada ruta seguía
+`CursorPaginatedResponse` viven en `shared/dto/`—, pero cada ruta seguía
 declarando sus dos `Query(...)` a mano, y así fue como el tope de página llegó
 a tener cuatro valores distintos (100, 200, 500, 1000) antes de C8.5. Esta
 dependencia es la otra mitad: una sola declaración de los dos parámetros, con
@@ -10,7 +10,7 @@ dependencia es la otra mitad: una sola declaración de los dos parámetros, con
 Lo único que varía por ruta es el **default** de `limit`, porque es de
 producto (una bandeja de 25 filas, un hilo de 200 comentarios); el tope no:
 una ruta que necesite otro tope está pidiendo otro contrato, y eso se decide en
-`shared/dto.py`, no aquí.
+`shared/dto/`, no aquí.
 
 Uso::
 

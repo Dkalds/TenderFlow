@@ -64,7 +64,7 @@ Generado: 2026-10-25
 
 ## Ratchet de capas — imports contra el orden de paquetes
 
-**22 imports** van de una capa a otra superior (lista congelada; solo puede decrecer).
+**21 imports** van de una capa a otra superior (lista congelada; solo puede decrecer).
 
 `scripts/check_layers.py` falla ante uno nuevo, también si está dentro de una función. Orden, de abajo arriba: `config < observability < shared < llm < db < services < scraper < scheduler < api`.
 
@@ -83,7 +83,6 @@ Generado: 2026-10-25
 - `observability/metrics.py -> services.extraction_runs`
 - `observability/ops_events.py -> db.connection`
 - `observability/runtime_metrics.py -> db.connection`
-- `services/ml/sap_classifier.py -> scraper.seed_negatives`
 - `services/rag/fact_sheet.py -> scraper.document_fetcher`
 - `services/source_health.py -> scraper.connectors`
 - `services/tech_signal.py -> scraper.filters`
@@ -97,9 +96,9 @@ Generado: 2026-10-25
 
 ## Superficie de la API
 
-**304 endpoints** expuestos.
+**306 endpoints** expuestos.
 
-Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **12** (`scripts/check_api_surface.py`).
+Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **14** (`scripts/check_api_surface.py`).
 
 <details><summary>Ver listado</summary>
 
@@ -110,6 +109,8 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | GET | `/api/openapi.json` |
 | GET | `/api/redoc` |
 | GET | `/api/v1/adjudicaciones` |
+| GET | `/api/v1/admin/api-keys` |
+| DELETE | `/api/v1/admin/api-keys/{key_id}` |
 | GET | `/api/v1/admin/dlq` |
 | POST | `/api/v1/admin/dlq/{failure_id}/descartar` |
 | POST | `/api/v1/admin/dlq/{failure_id}/reintentar` |

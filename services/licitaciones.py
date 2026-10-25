@@ -17,6 +17,7 @@ from typing import Any
 from db.repositories.licitaciones import LicitacionRepository
 from observability.histograms import timed_query
 from observability.logging import get_logger
+from shared.dto import FiltrosLicitacion
 
 log = get_logger(__name__)
 
@@ -44,17 +45,15 @@ def list_licitaciones(
         (items, total) donde items son dicts con campos de resumen.
     """
     with timed_query("svc_list_licitaciones"):
-        return _repo.list_paginated(
+        filtros = FiltrosLicitacion(
             q=q,
             estado=estado,
             ccaa=ccaa,
             tecnologia=tecnologia,
             fecha_desde=fecha_desde,
             fecha_hasta=fecha_hasta,
-            limit=limit,
-            offset=offset,
-            sort=sort,
         )
+        return _repo.list_paginated(filtros, limit=limit, offset=offset, sort=sort)
 
 
 def get_licitacion_detail(id_externo: str) -> dict[str, Any] | None:

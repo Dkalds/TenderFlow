@@ -50,9 +50,9 @@ def test_create_api_key_stores_prefix(api_db, monkeypatch):
 
     monkeypatch.setenv("ENV", "dev")
 
-    from api.auth import create_api_key
+    from tests.claves import clave_de_prueba
 
-    raw = create_api_key("prefix-test", scopes="read")
+    raw = clave_de_prueba("prefix-test", scopes="read")
     expected_prefix = raw[:8]
 
     with db_mod.connect_read() as c:
@@ -157,9 +157,9 @@ def test_migration_28_adds_tier_column_to_api_keys(tmp_db, monkeypatch):
     monkeypatch.setenv("ENV", "dev")
     db_mod, _ = tmp_db
 
-    from api.auth import create_api_key
+    from tests.claves import clave_de_prueba
 
-    create_api_key("tier-test")
+    clave_de_prueba("tier-test")
 
     with db_mod.connect_read() as c:
         row = c.execute("SELECT tier FROM api_keys WHERE name = 'tier-test'").fetchone()

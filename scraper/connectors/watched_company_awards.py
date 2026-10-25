@@ -219,14 +219,10 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         close_pool()
     if result is None:
-        print("Empresas vigiladas: 0 NIF canónicos; no se descarga PLACSP.")
+        log.info("watched_company_awards_sin_nifs", motivo="0 NIF canónicos vigilados")
         return 0
-    print(
-        f"Adjudicaciones de empresas vigiladas: {result.fetched} avisos · "
-        f"{result.nuevas} nuevas · {result.actualizadas} actualizadas · "
-        f"{result.adjudicaciones} adjudicaciones · {result.descartadas} descartadas · "
-        f"{result.errores} errores"
-    )
+    # El resumen de la pasada ya lo deja `run_connector` en el log
+    # (`connector_run_done`, con las mismas cifras).
     return 0 if result.errores == 0 else 1
 
 

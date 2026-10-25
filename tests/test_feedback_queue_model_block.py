@@ -8,8 +8,8 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture()
 def seeded_db(api_db):
-    from api.auth import create_api_key
     from db.database import connect
+    from tests.claves import clave_de_prueba
 
     with connect() as c:
         c.execute(
@@ -65,7 +65,7 @@ def seeded_db(api_db):
     from api.app import app
 
     client = TestClient(app, raise_server_exceptions=True)
-    client._api_key = create_api_key("feedback-reader", scopes="feedback:read")
+    client._api_key = clave_de_prueba("feedback-reader", scopes="feedback:read")
     return client
 
 

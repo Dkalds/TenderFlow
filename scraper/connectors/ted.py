@@ -587,11 +587,8 @@ def main(argv: list[str] | None = None) -> int:
         result = ejecutar(cpv_families=tuple(args.cpv.split(",")), desde=args.desde)
     finally:
         close_pool()
-    print(
-        f"TED: {result.fetched} avisos · {result.nuevas} nuevas · "
-        f"{result.actualizadas} actualizadas · {result.adjudicaciones} adjudicaciones · "
-        f"{result.descartadas} descartadas · {result.errores} errores"
-    )
+    # El resumen de la pasada ya lo deja `run_connector` en el log
+    # (`connector_run_done`, con las mismas cifras).
     return 0 if result.errores == 0 else 1
 
 

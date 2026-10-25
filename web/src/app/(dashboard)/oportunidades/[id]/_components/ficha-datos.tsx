@@ -1,6 +1,7 @@
 "use client";
 
 import type * as React from "react";
+import dynamic from "next/dynamic";
 import { ROTULO_DATO } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,7 +10,27 @@ import { useLicitacion } from "@/hooks/use-licitacion";
 import { esTerminal, type Pursuit } from "@/hooks/use-pursuits";
 import { textoAdjudicacion } from "@/lib/adjudicacion-prevista";
 import { cn, formatCompactCurrency, formatDate } from "@/lib/utils";
-import { BotonEditar, EditorOferta, EditorResponsable } from "./ficha-datos-editores";
+import { BotonEditar } from "./boton-editar";
+
+// Los editores solo existen mientras se edita una celda, y son lo único de la
+// pestaña Resumen que valida con zod (`numeroDeTexto`) y pinta un `Select`:
+// llegan al pulsar el lápiz. El hueco tiene la forma del editor —campo y fila
+// de botones— para que la celda no salte cuando llega.
+function EsqueletoEditor() {
+  return (
+    <span className="flex flex-col gap-1.5" aria-hidden="true">
+      <Skeleton className="h-8 w-full" />
+      <Skeleton className="h-7 w-32" />
+    </span>
+  );
+}
+const EditorOferta = dynamic(() => import("./ficha-datos-editores").then((modulo) => modulo.EditorOferta), {
+  loading: EsqueletoEditor,
+});
+const EditorResponsable = dynamic(
+  () => import("./ficha-datos-editores").then((modulo) => modulo.EditorResponsable),
+  { loading: EsqueletoEditor },
+);
 
 /** Los dos datos de la rejilla que se editan en su propia celda. */
 export type CampoDeDatos = "oferta" | "responsable";

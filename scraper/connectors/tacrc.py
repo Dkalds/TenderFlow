@@ -557,17 +557,26 @@ def main(argv: list[str] | None = None) -> int:
             from pathlib import Path
 
             Path(args.dump).write_text(page, encoding="utf-8")
-            print(f"HTML recibido guardado en {args.dump} ({len(page)} bytes)")
+            log.info("tacrc_check_volcado", ruta=args.dump, bytes=len(page))
         items = parse_index(page, base_url=url_check)
-        print(f"TACRC --check: {len(items)} resoluciones detectadas en el índice")
-        for res in items[:5]:
-            print(f"  {res.numero_resolucion}  fecha={res.fecha}  sentido={res.sentido}")
+        log.info(
+            "tacrc_check",
+            url=url_check,
+            resoluciones=len(items),
+            muestra=[
+                {"numero": r.numero_resolucion, "fecha": r.fecha, "sentido": r.sentido}
+                for r in items[:5]
+            ],
+        )
         if not items:
-            print(
-                "Sin resultados: la página probablemente carga el listado por JS. "
-                "Reintentá con --dump diagnostico.html para inspeccionar lo recibido, "
-                "o localizá en las DevTools del navegador (pestaña Network) la URL "
-                "de la petición que devuelve el listado y pasala con --url."
+            log.warning(
+                "tacrc_check_sin_resultados",
+                pista=(
+                    "La página probablemente carga el listado por JS. Reintentá con "
+                    "--dump diagnostico.html para inspeccionar lo recibido, o localizá en "
+                    "las DevTools del navegador (pestaña Network) la URL de la petición "
+                    "que devuelve el listado y pasala con --url."
+                ),
             )
         return 0 if items else 1
 
@@ -579,14 +588,9 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         close_pool()
     if stats is None:
-        print("TACRC: sin TACRC_INDEX_URL configurada — fuente declarada 'disabled'.")
+        # Sin TACRC_INDEX_URL: `record_source_disabled` ya lo dejó en el log.
         return 0
-    print(
-        f"TACRC: {stats['fetched']} resoluciones · {stats['nuevas']} nuevas · "
-        f"{stats['actualizadas']} actualizadas · {stats.get('vinculadas', 0)} vinculadas · "
-        f"{stats.get('eventos', 0)} eventos · {stats.get('documentos', 0)} documentos · "
-        f"{stats['errores']} errores"
-    )
+    # El resumen ya lo deja `ejecutar` en el log (`tacrc_run_done`).
     return 0 if stats["errores"] == 0 else 1
 
 

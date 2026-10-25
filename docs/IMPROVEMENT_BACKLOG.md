@@ -549,7 +549,7 @@ _Sin ítems abiertos._
 - **Decisión ya tomada (2026-09-06):** D11 → tablas propias (`organization_nifs`, `organization_capabilities`), no un JSON en `settings_json`, porque el cierre por NIF y el contraste de solvencia se resuelven en SQL.
 - **Acceptance criteria:** los de S2.1–S2.4 del plan v2. El veredicto del checklist nunca decide por el usuario: `cumple | no_cumple | desconocido`, ningún `cumple` sin `EvidenceRef`, y `desconocido` cuando falta el dato — es la misma regla de ADR-014 aplicada a una decisión en vez de a una cifra.
 - **Estado:** lo dice el §5 del plan, no este ítem — ver la nota de cabecera. Dos precisiones sobre el **Problema** de arriba, que ya no describe el código: el docstring que citaba («el sistema no conoce el NIF de la organización») se corrigió el 2026-09-08 porque el código lo desmentía, y la exclusión de la propia organización de «contra quién» ya está viva. Lo que S2 tuvo que arreglar en esa tanda no fue escribir el motor —estaba escrito desde #274— sino enchufarlo: cuatro piezas probadas y sin ningún llamador de producción.
-- **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S2), [shared/dto.py](../shared/dto.py)
+- **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S2), [shared/dto/](../shared/dto/__init__.py)
 - **Riesgo:** medio — dos migraciones y una regla de producto nueva; el golden `golden_go_no_go.jsonl` es la red.
 
 ### [P1] [Ola 1 · S5] Cola de trabajo y worker: un despliegue mata lo que un usuario pidió
@@ -834,7 +834,7 @@ _Sin ítems abiertos._
   - Que el entrenamiento de retención deje de ser cuadrático. `construir_pares` llama a `_features_historicas` por cada par (~5,5K pares × ~698K adjudicaciones × 2), y `_emparejar` es O(Σ n²) por segmento. Solución: índices por clave más bisect, con paridad contra la referencia como en `tests/test_ml_retencion_serving.py`.
   - Resolver la clave de `predicciones_retencion` **antes de activar `retencion_model`**; exige migración. La tabla guarda un riesgo por expediente (`licitacion_id` es la PK), pero Renovaciones pinta una fila por empresa adjudicataria. Con el modelo, que sí depende de la empresa, un expediente con varios adjudicatarios mostraría a todos el riesgo del primero.
   - Pasar a `locate_release_asset` y a una Release fija lo que aún publica y busca solo en *latest*: `ensure_downloaded` de `services/ml/sap_classifier.py` y de `services/ml/tech_classifier.py`, más `train-model.yml` y `train-tech.yml`. *SAP hecho el 2026-10-24* (`ensure_downloaded` busca con `locate_release_asset` y `train-model.yml` publica en `ml-models`); quedan `tech_classifier` y `train-tech.yml`.
-  - Arreglar `observability/logging.py::redact_dsn`, que no redacta la contraseña de los DSN con driver (`postgresql+psycopg://…`). Hoy `db/schema_revision.py` lo cubre con su propia regex.
+  - ~~Arreglar `observability/logging.py::redact_dsn`, que no redacta la contraseña de los DSN con driver (`postgresql+psycopg://…`).~~ **Hecho el 2026-10-25:** la regex admite `+driver` y la propia de `db/schema_revision.py` se retira (test parametrizado en `tests/test_observability_logging.py`).
 - **Files de partida:** [scheduler/jobs/ml_predicciones.py](../scheduler/jobs/ml_predicciones.py), [services/ml/retencion_labels.py](../services/ml/retencion_labels.py), [shared/release_assets.py](../shared/release_assets.py), [.github/workflows/ml-scoring.yml](../.github/workflows/ml-scoring.yml)
 - **Riesgo:** bajo para las verificaciones; medio para la clave de `predicciones_retencion`, que exige migración.
 
@@ -904,6 +904,7 @@ _Sin ítems abiertos._
   - Una clave nueva no puede nacer sin dueño ni sin caducidad.
 - **Files de partida:** [api/routes/me.py](../api/routes/me.py), [services/auth.py](../services/auth.py), [web/src/app/(dashboard)/ops/_components/administracion-view.tsx](../web/src/app/(dashboard)/ops/_components/administracion-view.tsx)
 - **Riesgo:** medio — revocar una clave que sí usa una integración la rompe; primero el inventario.
+- **Progreso (2026-10-25, código):** `create_api_key` exige `user_id` en cualquier entorno y siempre fija `expires_at` (90 días por defecto, 365 como máximo). `ApiKeyRepository.create()`, que insertaba sin dueño ni caducidad, se eliminó; `insert()` exige los dos. `seed_dev.py` y el fuzzer dejaron de emitir claves sin dueño, y los tests usan `tests/claves.py`. Nuevas `GET /admin/api-keys` (todas las claves de la instancia sin hash ni token, con recuento de activas, sin dueño y sin caducidad) y `DELETE /admin/api-keys/{id}` (auditada con el `user_id` del actor), y una tarjeta en Ops › Administración que las lee y revoca con confirmación (CU-20). El inventario por el MCP no fue posible porque `api_keys` está excluida, pero desde el 2026-07-27 la validación ya rechaza en producción las claves sin dueño (`unbound_api_key_rejected`), así que las 89 no deberían autenticar (deducido del código, no medido). **Pendiente del propietario:** revisar el último uso en la tarjeta y revocarlas, y aprobar la migración `CHECK (is_active = 0 OR (user_id IS NOT NULL AND expires_at IS NOT NULL)) NOT VALID`, con `VALIDATE` tras la revocación. Los tests de integración nuevos (`tests/test_admin_api_keys_route.py`) y los 27 adaptados a una clave con dueño están sin ejecutar: falta correrlos contra Postgres.
 
 ### [P2] Confirmar que Sentry captura en el backend de producción (acción del propietario)
 - **Área:** Render (variables de `tenderflow-api` y `tenderflow-worker`), observability/sentry.py
@@ -963,17 +964,8 @@ _Sin ítems abiertos._
   - **El supuesto del tercer criterio es falso:** las fases ADJ y RES siguen publicando el bloque (criterios en el 79 % y el 82,5 % del ZIP). Rellenar el histórico —y con él los 4.069 umbrales a NULL— es viable re-ingiriendo los ZIP mensuales; **queda la decisión del dueño**, por el coste (más de 2 h por mes con `scrape-bulk.yml`).
   - Sin revisar `parser_field_null_total` (métrica de Prometheus sin acceso desde la sesión); se contaron las filas en BD en su lugar.
   - Vistos y sin arreglar: `fecha_publicacion` es el `updated` completo cuando no hay `ValidNoticeInfo` (caso golden 24); adjudicaciones y garantías a 0 se guardan como 0; el NUTS `ES` da `provincia` «España»; lotes que repiten el presupuesto del expediente entero (caso 20), que afecta a la baja por lote.
+  - **Arreglados el 2026-10-25** tres de los «vistos y sin arreglar»: sin `ValidNoticeInfo`, `fecha_publicacion` es el día del `updated` (`to_iso_date`, el mismo formato que el `IssueDate`) y no el timestamp entero (caso golden 24); un 0 en importe adjudicado, pagable, oferta mínima y máxima, y en el porcentaje y el importe de una garantía, queda NULL (`_importe_informado`, el criterio de `_umbral_de_solvencia`; presupuesto y valor estimado no se tocan; caso 15); con NUTS de nivel país (`ES`) `provincia` queda NULL en vez de «España» (`shared.geo.es_nuts_de_pais`; caso 09). El golden solo cambia en esos campos; tests en `tests/test_unit_codice_parser_no_informado.py`. Las filas de producción se corrigen al reingerir cada expediente (la reingesta pisa `provincia`, reescribe adjudicaciones y garantías y se queda con la fecha más temprana); ningún consumidor dependía del 0. Dos cosas vistas al hacerlo: los NUTS de nivel 1 y 2 siguen dando una región o una CCAA como provincia (el caso 17 publica `ES70` con «Canarias»), y `db/repositories/reproceso_lotes.py::asignar_lotes` compara el importe con `IS NOT DISTINCT FROM`, así que un reproceso futuro sobre filas que en BD aún tienen 0 no las casaría con el `None` que parsea ahora. Sigue abierto el caso 20, que es decisión de modelado.
 - **Riesgo:** bajo — solo lectura y parser.
-
-### [P2] Partir `shared/dto.py` y las cuatro firmas de 26-28 parámetros del listado de licitaciones
-- **Área:** shared/dto.py, api/routes/licitaciones/listado.py, db/repositories/licitaciones.py
-- **Problema:** el P3 de los módulos-dios nombra `aggregates.py` y `settings.py`, pero medido con AST el 2026-10-17 hay más y pesan más en el día a día: `shared/dto.py` tiene 2.482 líneas, 106 modelos y 45 módulos que lo importan —cada agente que añade un DTO toca el mismo fichero, y con varios en paralelo es el conflicto de merge más probable del repo—; `LicitacionRepository` tiene 1.470 líneas, con `_base_filters` de 218 líneas y 23 parámetros; y los filtros del listado viajan como parámetros sueltos por cuatro firmas hermanas que hay que mantener sincronizadas a mano: `list_licitaciones` (28 parámetros `Query`), `list_licitaciones_cursor` (25), `list_paginated` (27), `list_cursor` (26) y `_list_fts` (27). Un filtro nuevo son cinco ediciones y un sitio donde olvidarlo. En total hay 57 funciones de producción de 120 líneas o más y 61 con 9 o más parámetros.
-- **Acceptance criteria:**
-  - Un modelo `FiltrosLicitacion` (Pydantic) inyectado con `Depends()` en las dos rutas del listado y pasado entero hasta el repositorio; las cinco firmas de arriba reciben el objeto, no la lista de parámetros. El OpenAPI de las dos operaciones no cambia (los `Query` individuales siguen saliendo con el mismo nombre y descripción: `check_api_breaking.py` en verde).
-  - `shared/dto.py` partido en un paquete `shared/dto/` por dominio (público, paginación, watchlist, pursuits, analítica…) con re-export completo desde `shared/dto/__init__.py`: ningún `from shared.dto import X` cambia, y `components.schemas` de `api/openapi.json` queda idéntico (el nombre del componente sale de la clase, no del módulo).
-  - Ninguna función nueva de 120 líneas o más en los módulos tocados; el conteo total (57) solo baja.
-- **Files de partida:** [shared/dto.py](../shared/dto.py), [api/routes/licitaciones/listado.py](../api/routes/licitaciones/listado.py), [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [scripts/check_api_breaking.py](../scripts/check_api_breaking.py)
-- **Riesgo:** medio — toca el camino más usado de la API; mitigado porque el contrato OpenAPI es el oráculo (codegen-drift y check_api_breaking lo fijan).
 
 ### [P2] Fijar la convención de la API pública antes de más consumidores: idioma, errores y una sola paginación
 - **Área:** api/routes/*, api/errors.py, shared/dto.py, docs/api-design.md, .github/workflows/release-sdk.yml
@@ -984,17 +976,6 @@ _Sin ítems abiertos._
   - El SDK publicado tras la RFC tipa el error una sola vez.
 - **Files de partida:** [api/errors.py](../api/errors.py), [api/routes/licitaciones/listado.py](../api/routes/licitaciones/listado.py), [docs/api-design.md](api-design.md), [docs/STATUS.md](STATUS.md)
 - **Riesgo:** alto — breaking para los consumidores de la API; por eso nace como RFC y con periodo de alias, no como PR directo.
-
-### [P2] Un objetivo de bajada para el First Load JS del dashboard, no solo un techo
-- **Área:** web/bundle-budget.json, web/src/app/(dashboard)/*, web/src/lib/server-prefetch.ts
-- **Problema:** `bundle-budget.json` impide que cada ruta crezca, pero no fija adónde hay que llegar. Medido el 2026-10-17 en ese fichero: las rutas del dashboard cargan entre 1,1 y 1,6 MB de JS sin comprimir en el primer render (`/resumen` 1.630 KB, `/oportunidades/[id]` 1.372 KB, `/equipo` 1.267 KB, `/detalle` 1.265 KB), frente a 540 KB de la superficie pública. 416 de los 533 componentes (78 %) son `"use client"`, y el prefetch en servidor con hidratación (S7.1) existe en dos rutas de diecinueve (`resumen`, `radar`). La causa más probable son las librerías que viajan enteras con la pila común —recharts, leaflet, react-markdown, cmdk— pero no está medido por módulo.
-- **Acceptance criteria:**
-  - Informe de `@next/bundle-analyzer` (ya en `devDependencies`) sobre `/resumen`, `/detalle` y `/oportunidades/[id]`, anotado aquí: qué módulos pesan más de 100 KB en el First Load y en qué rutas se usan de verdad.
-  - Carga diferida (`next/dynamic`) de las librerías que solo necesita una parte de la pantalla (mapa, gráficos, markdown del asistente), con esqueleto propio; un test por ruta que fija que el chunk no está en el HTML inicial.
-  - `bundle-budget.json` baja al menos un 25 % en las cuatro rutas de más de 1,2 MB y se añade al fichero un campo `objetivo` por ruta, para que el ratchet tenga destino y no solo freno.
-  - Prefetch en servidor extendido a `detalle` y `oportunidades/[id]` siguiendo el patrón de `web/AGENTS.md` (módulo `_lib/prefetch`, página envuelta en `PrefetchServidor`, test de paridad de claves).
-- **Files de partida:** [web/bundle-budget.json](../web/bundle-budget.json), [web/src/lib/server-prefetch.ts](../web/src/lib/server-prefetch.ts), [web/src/app/(dashboard)/resumen/_lib/prefetch.ts](../web/src/app/(dashboard)/resumen/_lib/prefetch.ts), [scripts/check_bundle_budget.py](../scripts/check_bundle_budget.py)
-- **Riesgo:** bajo — cambios de carga, no de comportamiento; el E2E y el presupuesto de bundle los fijan.
 
 ### [P2] Desbloquear los pines que acumulan deuda: FastAPI, suelo de Python y las dos fuentes de dependencias
 - **Área:** requirements.in, requirements-api.in, pyproject.toml, renovate.json, scripts/gen_status.py, scripts/check_api_surface.py, tests que recorren `app.routes`
@@ -1016,16 +997,6 @@ _Sin ítems abiertos._
   - La misma pregunta para la API: `pursuits/metrics` o `admin/ejecuciones` ya existen; falta el inventario de operaciones sin ninguna llamada en 30 días (`http_requests_total` por handler ya está en Prometheus), y la lista va a `superficie_congelada.txt` como candidatas a encoger.
 - **Files de partida:** [web/src/lib/analytics.ts](../web/src/lib/analytics.ts), [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx), [web/src/lib/console-spaces.ts](../web/src/lib/console-spaces.ts), [api/superficie_congelada.txt](../api/superficie_congelada.txt)
 - **Riesgo:** bajo — telemetría categórica sin identificadores; el filtro del módulo ya la acota.
-
-### [P2] Los `except Exception` que tragan errores en los módulos calientes, y el CLI que vive dentro de `sap_classifier`
-- **Área:** scraper/connectors/base.py, scheduler/pipeline_runs.py, db/connection.py, llm/client.py, services/ml/sap_classifier.py, scraper/connectors/*
-- **Problema:** medido el 2026-10-17 hay 501 `except Exception` en código de producción; muchos son los «best-effort persisters» que el repo admite a propósito (`S110`/`B110` ignorados), pero los más concentrados están en el camino crítico —17 en `scraper/connectors/base.py`, 15 en `scheduler/pipeline_runs.py`, 15 en `db/connection.py`, 12 en `llm/client.py`, 12 en `scheduler/jobs/documentos_embeddings.py`— y es donde un error de programación se registra como un aviso más y la pasada sigue en verde (el P1 de los pliegos de PSCP que no se leen es un ejemplo de fallo silencioso en ese camino). Aparte, hay 58 `print()` en módulos de producción: 30 están en `services/ml/sap_classifier.py`, que lleva un CLI de entrenamiento bajo `if __name__ == "__main__"` —un módulo de dominio que escribe por `stdout` y que además fija el nombre de clase que los `.pkl` publicados esperan—, y el resto en conectores (`tacrc`, `sindicacion_placsp`, `ted`, `galicia`, `euskadi`, `watched_company_awards`) donde conviven con `structlog`.
-- **Acceptance criteria:**
-  - En los cinco módulos de arriba, cada `except Exception` o se estrecha a la excepción que de verdad se espera, o conserva el `exc_info` y el contexto en el log **y** cuenta en una métrica (`*_errores_total` con la etiqueta del paso), de modo que un fallo repetido salte en `observability/alert_rules.yml`. Lista antes/después anotada aquí.
-  - El CLI de `sap_classifier.py` se mueve a `scripts/` (o a `python -m services.ml.sap_classifier` con `logging`, no `print`) sin cambiar el nombre cualificado de `SAPClassifier`, que los pickles ya publicados resuelven; `tests/test_ml_*` siguen cargando los artefactos de la Release.
-  - Cero `print()` en `scraper/`, `services/` y `scheduler/` fuera de un `__main__`; un ratchet stdlib lo fija.
-- **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py), [db/connection.py](../db/connection.py), [llm/client.py](../llm/client.py), [services/ml/sap_classifier.py](../services/ml/sap_classifier.py)
-- **Riesgo:** medio — estrechar una excepción en el pipeline puede convertir un aviso en una pasada en rojo; es el objetivo, pero conviene hacerlo módulo a módulo y mirar `scrape-daily` después de cada uno.
 
 ## P3 — Nice to have
 
@@ -1103,6 +1074,7 @@ _Sin ítems abiertos._
 - **Progreso 2026-09-18 (rama worktree-agent-acad4a43a2c0f0bae):** primer módulo hermano de settings, `config/settings_resumen.py` (`ResumenPregenSettings`, de la que hereda `Settings`: mismos nombres de variable de entorno y mismo acceso `settings.X`). Es el patrón para los siguientes settings nuevos. En `aggregates.py` no hubo agregación nueva que mover.
 - *Estado (2026-09-19) — las cifras del problema están caducadas y la regla «no crecer» no se ha cumplido:* `db/repositories/aggregates.py` tiene hoy **1.980 líneas** (eran 1.327) y `AggregateRepository` **60 métodos** (eran 55); `config/settings.py`, **1.422 líneas** (eran 946) y **27 validadores**. `shared/dto.py` ya no es el contraejemplo sano: **1.904 líneas y 83 clases** (eran 620 / 45). Medido con `wc -l` y `grep` sobre el árbol.
 - *Progreso 2026-10-17 (rama `claude/nifty-turing-axm5xg`):* la misma regla aplicada a los dos módulos de oportunidades, que ya eran los más grandes después de `shared/dto.py` y `aggregates.py`. `services/pursuits.py` (2.308 → 1.758 líneas): las piezas de la agenda salen a `services/pursuits_agenda.py`; `get_agenda` y las señales de reglas se quedan porque reciben `user_key` y el ratchet no deja que un fichero nuevo herede esa deuda. `api/routes/pursuits.py` (2.112 → 1.646): las rutas de organizaciones salen a `api/routes/organizations.py`, con el OpenAPI idéntico (comparado antes y después). Siguen pendientes los dos de este ítem, `aggregates.py` (2.457) y `shared/dto.py` (2.482).
+- *Progreso 2026-10-25:* `shared/dto.py` es ya el paquete `shared/dto/` (14 submódulos; ver el cerrado «Partir `shared/dto.py`…» en el archivo). Queda `aggregates.py`.
 - **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo si se hace oportunista; medio si alguien intenta el big-bang.
 
@@ -1305,6 +1277,13 @@ _Sin ítems abiertos._
 - **Pendiente de OK del propietario** (AGENTS.md §6: cambiar dependencias requiere confirmación explícita). No se toca hasta tenerlo.
 - **Files de partida:** [requirements.in](../requirements.in), [pyproject.toml](../pyproject.toml)
 - **Riesgo:** bajo — declara lo que ya está instalado; el riesgo es no hacerlo.
+
+### [P3] El marco común del dashboard pesa ~850 KB y el paso de CI del analizador de bundle no produce nada
+- **Área:** web/src/components/layout/*, web/src/components/ui/*, .github/workflows/ci.yml (con OK del propietario)
+- **Problema:** tras el cierre del 2026-10-25 de «Un objetivo de bajada para el First Load JS», las cuatro rutas grandes rondan 0,9-1 MB y casi todo es el marco común (~850 KB, 453 de Next y React). Las palancas que quedan, medidas: sonner (34,5 KB; `toast()` se importa en 68 módulos), los menús y popovers de Radix del marco (~25 KB; cargar sus disparadores al usarlos), el editor del ámbito de la barra (~8 KB) y, en la ficha, el Select del kit de presentación. Además, el paso «Bundle analyzer report» de `ci.yml` usa `@next/bundle-analyzer`, que con Turbopack no escribe informe.
+- **Acceptance criteria:** las cuatro rutas en su `objetivo` de `web/bundle-budget.json`; el paso de CI cambiado a `next analyze --output` (editar `ci.yml` pide OK, AGENTS.md §6).
+- **Files de partida:** [web/bundle-budget.json](../web/bundle-budget.json), [web/src/__tests__/first-load-diferido.test.ts](../web/src/__tests__/first-load-diferido.test.ts), [scripts/check_bundle_budget.py](../scripts/check_bundle_budget.py)
+- **Riesgo:** bajo.
 
 ## Cerrados
 

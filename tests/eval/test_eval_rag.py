@@ -371,12 +371,12 @@ def test_ask_endpoint_context_includes_expected_licitacion(tmp_db):
     from fastapi.testclient import TestClient
 
     from api.app import app
-    from api.auth import create_api_key
+    from tests.claves import clave_de_prueba
 
     entries = _load_golden_set()
     _seed(entries)
 
-    key = create_api_key("eval-rag-key", scopes="ask:read")
+    key = clave_de_prueba("eval-rag-key", scopes="ask:read")
     client = TestClient(app, raise_server_exceptions=False)
     client.headers.update({"X-API-Key": key})
 

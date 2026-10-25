@@ -720,13 +720,10 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         close_pool()
     if result is None:
-        print("PSCP: sin PSCP_DATASET_ID configurado — fuente declarada 'disabled'.")
+        # Sin PSCP_DATASET_ID: `record_source_disabled` ya lo dejó en el log.
         return 0
-    print(
-        f"PSCP: {result.fetched} avisos · {result.nuevas} nuevas · "
-        f"{result.actualizadas} actualizadas · {result.adjudicaciones} adjudicaciones · "
-        f"{result.descartadas} descartadas · {result.errores} errores"
-    )
+    # El resumen de la pasada ya lo deja `run_connector` en el log
+    # (`connector_run_done`, con las mismas cifras).
     return 0 if result.errores == 0 else 1
 
 

@@ -181,7 +181,7 @@ def test_un_fallo_del_sondeo_bloquea_con_el_motivo_en_una_linea_y_sin_credencial
     """El motivo llega al run, pero nunca la contraseña del DSN.
 
     Las dos formas: la de ``DATABASE_URL`` y la ``postgresql+psycopg://`` que
-    se construye para SQLAlchemy, que ``redact_dsn`` no reconoce. Y en una sola
+    se construye para SQLAlchemy. Y en una sola
     línea, porque una anotación de Actions solo muestra la primera.
     """
     _fuentes(monkeypatch)

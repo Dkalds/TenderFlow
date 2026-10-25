@@ -50,10 +50,10 @@ def _sin_respuesta_cacheada():
 def ask_client(api_db):
     """TestClient con una API key que tiene scope ask:read."""
     from api.app import app
-    from api.auth import create_api_key
+    from tests.claves import clave_de_prueba
 
     # key con todos los scopes (*)
-    key = create_api_key("ask-test-key", scopes="ask:read,licitaciones:read")
+    key = clave_de_prueba("ask-test-key", scopes="ask:read,licitaciones:read")
     client = TestClient(app, raise_server_exceptions=False)
     client.headers.update({"X-API-Key": key})
     return client
@@ -63,9 +63,9 @@ def ask_client(api_db):
 def ask_client_no_scope(api_db):
     """TestClient con API key sin scope ask:read."""
     from api.app import app
-    from api.auth import create_api_key
+    from tests.claves import clave_de_prueba
 
-    key = create_api_key("no-scope-key", scopes="licitaciones:read")
+    key = clave_de_prueba("no-scope-key", scopes="licitaciones:read")
     client = TestClient(app, raise_server_exceptions=False)
     client.headers.update({"X-API-Key": key})
     return client

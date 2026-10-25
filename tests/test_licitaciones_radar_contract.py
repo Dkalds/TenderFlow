@@ -10,6 +10,7 @@ los expedientes ya cerrados no ocupen sitio en la bandeja.
 from __future__ import annotations
 
 from db.repositories.licitaciones import LicitacionRepository
+from shared.dto import FiltrosLicitacion
 
 _ROWS = (
     ("RADAR-OLD", "2020-01-01", "2020-06-01T00:00:00+00:00"),
@@ -128,7 +129,9 @@ def test_only_open_tenders_leaves_out_the_terminal_states(tmp_db):
     db_mod, _ = tmp_db
     _seed_estados(db_mod)
 
-    items, _ = LicitacionRepository().list_paginated(limit=10, solo_abiertas=True, with_total=False)
+    items, _ = LicitacionRepository().list_paginated(
+        FiltrosLicitacion(solo_abiertas=True), limit=10, with_total=False
+    )
 
     assert sorted(row["id_externo"] for row in items) == ["EST-EV", "EST-NULL", "EST-PUB"]
 
@@ -156,7 +159,9 @@ def test_a_state_the_source_has_not_documented_yet_counts_as_open(tmp_db):
             ),
         )
 
-    items, _ = LicitacionRepository().list_paginated(limit=10, solo_abiertas=True, with_total=False)
+    items, _ = LicitacionRepository().list_paginated(
+        FiltrosLicitacion(solo_abiertas=True), limit=10, with_total=False
+    )
 
     assert "EST-FUTURO" in {row["id_externo"] for row in items}
 
@@ -173,7 +178,7 @@ def test_the_filter_survives_the_full_text_search_branch(tmp_db):
     _seed_estados(db_mod)
 
     items, _ = LicitacionRepository().list_paginated(
-        q="bandeja", limit=10, solo_abiertas=True, with_total=False
+        FiltrosLicitacion(q="bandeja", solo_abiertas=True), limit=10, with_total=False
     )
 
     assert sorted(row["id_externo"] for row in items) == ["EST-EV", "EST-NULL", "EST-PUB"]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from shared.dto import FiltrosLicitacion
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -144,7 +146,7 @@ def test_repo_list_cursor_filtro_tecnologia(tmp_db):
     from db.repositories.licitaciones import LicitacionRepository
 
     repo = LicitacionRepository()
-    results = repo.list_cursor(tecnologia="SAP")
+    results = repo.list_cursor(FiltrosLicitacion(tecnologia="SAP"))
     for r in results:
         assert r["tecnologia"] == "SAP"
     ids = {r["id_externo"] for r in results}

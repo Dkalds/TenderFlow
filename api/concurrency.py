@@ -97,7 +97,7 @@ async def run_db(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
 
     Uso::
 
-        items, total = await run_db(repo.list_paginated, q=q, limit=limit)
+        items, total = await run_db(repo.list_paginated, filtros, limit=limit)
     """
     with _span("db.query", {"db.function": _fn_name(fn)}):
         return await to_thread.run_sync(lambda: fn(*args, **kwargs))

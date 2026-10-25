@@ -18,7 +18,7 @@ from shared.dto import RadarBanda
 
 RAIZ = Path(__file__).resolve().parents[1]
 PAQUETES = ("api", "services", "shared", "db", "scheduler", "scraper", "observability")
-CANONICA = RAIZ / "shared" / "dto.py"
+CANONICA = RAIZ / "shared" / "dto" / "pursuits.py"
 
 _LITERAL = re.compile(r"Literal\[([^\]]*)\]", re.DOTALL)
 _BANDAS = ("Caliente", "Atractiva", "Tibia", "Descarte")

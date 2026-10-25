@@ -1,8 +1,14 @@
-"""Tests for db/repositories/api_keys.py."""
+"""Tests for db/repositories/api_keys.py.
+
+Las claves se emiten por `create_api_key` (vía `tests.claves`): el repositorio
+ya no tiene un `create()` propio, que las dejaba sin dueño ni caducidad.
+"""
 
 from __future__ import annotations
 
 import pytest
+
+from tests.claves import clave_de_prueba
 
 
 @pytest.fixture()
@@ -17,23 +23,23 @@ def repo(db):
     return ApiKeyRepository()
 
 
-# ── create ────────────────────────────────────────────────────────────────────
+# ── emisión ────────────────────────────────────────────────────────────────────
 
 
 def test_create_returns_raw_token(db, repo):
-    raw = repo.create("test-key")
+    raw = clave_de_prueba("test-key")
     assert isinstance(raw, str)
     assert len(raw) > 20
 
 
 def test_create_different_keys_each_time(db, repo):
-    raw1 = repo.create("key-1")
-    raw2 = repo.create("key-2")
+    raw1 = clave_de_prueba("key-1")
+    raw2 = clave_de_prueba("key-2")
     assert raw1 != raw2
 
 
 def test_create_with_custom_scopes(db, repo):
-    raw = repo.create("scoped-key", scopes="read:licitaciones")
+    raw = clave_de_prueba("scoped-key", scopes="read:licitaciones")
     key_hash = repo._hash(raw)
     result = repo.get_by_hash(key_hash)
     assert result is not None
@@ -43,7 +49,7 @@ def test_create_with_custom_scopes(db, repo):
 
 
 def test_get_by_hash_returns_active_key(db, repo):
-    raw = repo.create("active-key")
+    raw = clave_de_prueba("active-key")
     key_hash = repo._hash(raw)
     result = repo.get_by_hash(key_hash)
     assert result is not None
@@ -56,7 +62,7 @@ def test_get_by_hash_returns_none_for_unknown_hash(db, repo):
 
 
 def test_get_by_hash_returns_none_after_revoke(db, repo):
-    raw = repo.create("revoked-key")
+    raw = clave_de_prueba("revoked-key")
     key_hash = repo._hash(raw)
     repo.revoke(key_hash)
     result = repo.get_by_hash(key_hash)
@@ -67,7 +73,7 @@ def test_get_by_hash_returns_none_after_revoke(db, repo):
 
 
 def test_revoke_returns_true_for_existing_key(db, repo):
-    raw = repo.create("to-revoke")
+    raw = clave_de_prueba("to-revoke")
     key_hash = repo._hash(raw)
     assert repo.revoke(key_hash) is True
 
@@ -77,7 +83,7 @@ def test_revoke_returns_false_for_nonexistent_key(db, repo):
 
 
 def test_revoke_is_idempotent(db, repo):
-    raw = repo.create("revoke-twice")
+    raw = clave_de_prueba("revoke-twice")
     key_hash = repo._hash(raw)
     repo.revoke(key_hash)
     # Second revoke: key still inactive; get_by_hash must return None both times
@@ -89,7 +95,7 @@ def test_revoke_is_idempotent(db, repo):
 
 
 def test_get_name_returns_name_for_existing_key(db, repo):
-    raw = repo.create("named-key")
+    raw = clave_de_prueba("named-key")
     key_hash = repo._hash(raw)
     assert repo.get_name(key_hash) == "named-key"
 
@@ -102,7 +108,7 @@ def test_get_name_returns_none_for_unknown_hash(db, repo):
 
 
 def test_update_last_used_does_not_raise(db, repo):
-    raw = repo.create("update-key")
+    raw = clave_de_prueba("update-key")
     key_hash = repo._hash(raw)
     key_info = repo.get_by_hash(key_hash)
     assert key_info is not None

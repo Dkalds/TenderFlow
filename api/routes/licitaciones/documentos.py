@@ -54,7 +54,7 @@ class DocumentoSummary(BaseModel):
     sin_publicar: bool = False
 
 
-# `PaginatedResponse` y `CursorPaginatedResponse` viven en `shared/dto.py`
+# `PaginatedResponse` y `CursorPaginatedResponse` viven en `shared/dto/`
 # (contrato de paginación común del API). Se importan arriba: la forma que
 # estas rutas ya usaban es la que ahora comparten las demás.
 

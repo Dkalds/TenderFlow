@@ -23,6 +23,8 @@ from typing import Any, ClassVar
 
 import pytest
 
+from shared.dto import FiltrosLicitacion
+
 _SOMBRAS = ("fecha_publicacion_ts", "fecha_limite_ts", "importe_num", "duracion_valor_num")
 
 
@@ -96,10 +98,10 @@ _FILTROS: dict[str, Any] = {
 # ── 1. Listado (rama SA Core) ─────────────────────────────────────────────
 
 
-def _listado(**extra: Any) -> None:
+def _listado(*, q: str | None = None, sort: str | None = None) -> None:
     from db.repositories.licitaciones import LicitacionRepository
 
-    LicitacionRepository().list_paginated(**_FILTROS, **extra)
+    LicitacionRepository().list_paginated(FiltrosLicitacion(**_FILTROS, q=q), sort=sort)
 
 
 def test_listado_apagado_no_toca_las_sombras(lectura: Any, sentencias: list[str]) -> None:
@@ -182,7 +184,9 @@ def _cursor() -> None:
     from db.repositories.licitaciones import LicitacionRepository
 
     LicitacionRepository().list_cursor(
-        cursor_fecha="2026-03-01T10:00:00+00:00", cursor_id="X-1", **_FILTROS
+        FiltrosLicitacion(**_FILTROS),
+        cursor_fecha="2026-03-01T10:00:00+00:00",
+        cursor_id="X-1",
     )
 
 

@@ -93,18 +93,19 @@ def test_auth_context_specific_scope_denied():
 
 def test_create_api_key_returns_token(api_db):
     """create_api_key devuelve un token en bruto no vacío."""
-    from api.auth import create_api_key
+    from tests.claves import clave_de_prueba
 
-    token = create_api_key("test-integration")
+    token = clave_de_prueba("test-integration")
     assert isinstance(token, str)
     assert len(token) > 10
 
 
 def test_revoke_api_key_deactivates(api_db):
     """Revocar una key existente devuelve True."""
-    from api.auth import create_api_key, hash_api_key, revoke_api_key
+    from api.auth import hash_api_key, revoke_api_key
+    from tests.claves import clave_de_prueba
 
-    token = create_api_key("revoke-test")
+    token = clave_de_prueba("revoke-test")
     key_hash = hash_api_key(token)
     assert revoke_api_key(key_hash) is True
 
@@ -118,18 +119,89 @@ def test_revoke_api_key_nonexistent_returns_false(api_db):
 
 def test_create_api_key_with_expiry(api_db):
     """create_api_key acepta expires_days sin error."""
-    from api.auth import create_api_key
+    from tests.claves import clave_de_prueba
 
-    token = create_api_key("expiry-test", expires_days=30)
+    token = clave_de_prueba("expiry-test", expires_days=30)
     assert isinstance(token, str)
     assert len(token) > 10
 
 
-def test_create_api_key_requires_owner_outside_dev(api_db, monkeypatch):
-    """Una clave nueva en producción no puede quedar sin propietario."""
+# ── Ninguna clave nace sin dueño ni sin caducidad ────────────────────────────
+#
+# Antes la exigencia de dueño era solo de prod/staging, y la caducidad podía
+# faltar en el INSERT: en producción se acumularon 89 claves activas sin
+# usuario ni `expires_at`. Estos tests no abren Postgres: la comprobación va
+# antes de escribir, y el INSERT se sustituye para ver qué llegaría a la tabla.
+
+
+@pytest.mark.parametrize("env", ["dev", "staging", "prod"])
+@pytest.mark.parametrize("dueno", [0, -1])
+def test_create_api_key_sin_dueno_falla_en_cualquier_entorno(monkeypatch, env, dueno):
     import config as _cfg
+    from api import auth as auth_mod
+
+    insertadas: list[dict[str, object]] = []
+    monkeypatch.setattr(_cfg.settings, "ENV", env)
+    monkeypatch.setattr(auth_mod.auth_service, "insert_api_key", lambda **kw: insertadas.append(kw))
+
+    with pytest.raises(ValueError, match="dueño"):
+        auth_mod.create_api_key("sin-dueno", user_id=dueno)
+    assert insertadas == []
+
+
+def test_create_api_key_sin_user_id_es_type_error():
+    """`user_id` es obligatorio y solo por nombre: olvidarlo es un TypeError."""
     from api.auth import create_api_key
 
-    monkeypatch.setattr(_cfg.settings, "ENV", "prod")
-    with pytest.raises(ValueError, match="must be bound"):
-        create_api_key("unbound-production-key")
+    with pytest.raises(TypeError):
+        create_api_key("sin-dueno")  # type: ignore[call-arg]  # es justo lo que se prueba
+
+
+def test_create_api_key_sin_ttl_usa_la_caducidad_por_defecto(monkeypatch):
+    """Sin `expires_days`, la clave caduca a los `API_KEY_DEFAULT_TTL_DAYS`."""
+    from datetime import UTC, datetime, timedelta
+
+    import config as _cfg
+    from api import auth as auth_mod
+
+    insertadas: list[dict[str, object]] = []
+    monkeypatch.setattr(auth_mod.auth_service, "insert_api_key", lambda **kw: insertadas.append(kw))
+
+    antes = datetime.now(UTC)
+    auth_mod.create_api_key("con-dueno", user_id=7)
+
+    (fila,) = insertadas
+    assert fila["user_id"] == 7
+    caduca = datetime.fromisoformat(str(fila["expires_at"]))
+    esperado = antes + timedelta(days=_cfg.settings.API_KEY_DEFAULT_TTL_DAYS)
+    assert abs((caduca - esperado).total_seconds()) < 60
+
+
+def test_create_api_key_rechaza_caducidad_por_encima_del_tope(monkeypatch):
+    import config as _cfg
+    from api import auth as auth_mod
+
+    monkeypatch.setattr(auth_mod.auth_service, "insert_api_key", lambda **kw: None)
+    with pytest.raises(ValueError):
+        auth_mod.create_api_key(
+            "perpetua", user_id=7, expires_days=_cfg.settings.API_KEY_MAX_TTL_DAYS + 1
+        )
+
+
+@pytest.mark.parametrize(
+    ("user_id", "expires_at", "falta"),
+    [(0, "2099-01-01T00:00:00+00:00", "dueño"), (7, "", "caducidad")],
+)
+def test_repositorio_rechaza_insertar_sin_dueno_o_sin_caducidad(user_id, expires_at, falta):
+    """El único INSERT de producción también lo comprueba, antes de conectar."""
+    from db.repositories.api_keys import ApiKeyRepository
+
+    with pytest.raises(ValueError, match=falta):
+        ApiKeyRepository().insert(
+            key_hash="h" * 64,
+            name="x",
+            scopes="*",
+            prefix="abcdefgh",
+            user_id=user_id,
+            expires_at=expires_at,
+        )

@@ -27,9 +27,21 @@ from typing import Any
 
 from llm.prompts import ChatMessage, PromptMode, build_messages
 from llm.providers import LLMAuthError, LLMModelUnavailableError
+from observability.errores import ContadorDeErrores
 from observability.logging import get_logger
+from observability.runtime_metrics import llm_client_errores_total
 
 log = get_logger(__name__)
+
+#: ``llm_client_errores_total{paso}``: lo que este módulo captura sin propagar
+#: (un candidato de la cadena que falla, el presupuesto que no se alimenta, el
+#: secreto que no se lee). ``LlmClientErroresCapturados`` en alert_rules.yml.
+_contar_error = ContadorDeErrores("llm_client", llm_client_errores_total)
+
+#: Lo que lanza ``prometheus_client`` al registrar una métrica: ``ImportError``
+#: sin la librería (D2: la instalación mínima no la trae) y ``ValueError`` si el
+#: nombre ya está registrado en el ``REGISTRY`` (un ``importlib.reload``).
+_FALLOS_DE_REGISTRO = (ImportError, ValueError)
 
 # ── Configuración de modelos ───────────────────────────────────────────────────
 
@@ -233,7 +245,8 @@ def _get_llm_histogram() -> Any:
             ["model", "provider", "status"],
             buckets=[0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 30.0, 60.0],
         )
-    except Exception:
+    except _FALLOS_DE_REGISTRO:
+        log.debug("llm_histogram_init_failed", exc_info=True)
         return None
 
 
@@ -250,10 +263,7 @@ def _histogram() -> Any:
     global _llm_histogram, _llm_histogram_init
     if not _llm_histogram_init:
         _llm_histogram_init = True
-        try:
-            _llm_histogram = _get_llm_histogram()
-        except Exception:
-            log.debug("llm_histogram_init_failed", exc_info=True)
+        _llm_histogram = _get_llm_histogram()
     return _llm_histogram
 
 
@@ -275,7 +285,7 @@ def _get_token_counters() -> tuple[Any, Any]:
                 "Coste estimado en USD por llamadas LLM",
                 ["model", "provider"],
             )
-        except Exception:
+        except _FALLOS_DE_REGISTRO:
             log.debug("llm_counters_init_failed", exc_info=True)
     return _llm_tokens_counter, _llm_cost_counter
 
@@ -297,8 +307,16 @@ def _record_usage(model: str, provider: str, usage: dict[str, int]) -> None:
             tokens_c.labels(
                 model=model, provider=provider, direction="output", source=source_label
             ).inc(output_tokens)
-        except Exception:
-            pass
+        except ValueError:
+            # `Counter.inc` rechaza cantidades negativas: un proveedor que
+            # reporta un uso negativo no puede romper el stream ya servido.
+            log.warning(
+                "llm_tokens_metric_rejected",
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                exc_info=True,
+            )
 
     if model in _PRICE_PER_MTOK:
         price_in, price_out = _PRICE_PER_MTOK[model]
@@ -306,8 +324,8 @@ def _record_usage(model: str, provider: str, usage: dict[str, int]) -> None:
         if cost_c is not None:
             try:
                 cost_c.labels(model=model, provider=provider).inc(cost)
-            except Exception:
-                pass
+            except ValueError:
+                log.warning("llm_cost_metric_rejected", model=model, cost=cost, exc_info=True)
         # Alimenta el presupuesto (RFC llm-dependencia-gestionada) con el mismo
         # cálculo que nutre llm_cost_usd_total. Best-effort: nunca rompe el stream.
         try:
@@ -315,7 +333,11 @@ def _record_usage(model: str, provider: str, usage: dict[str, int]) -> None:
 
             get_budget_guard().record(cost)
         except Exception:
-            log.debug("llm_budget_record_failed", exc_info=True)
+            # Best-effort a propósito (nunca rompe un stream ya servido), pero a
+            # warning y contado: un acumulador que no se alimenta deja el tope
+            # de LLM_BUDGET_* sin poder cortar nunca, y en silencio.
+            _contar_error("presupuesto")
+            log.warning("llm_budget_record_failed", model=model, exc_info=True)
     else:
         log.debug("llm_cost_unknown_model", model=model)
 
@@ -348,7 +370,8 @@ def _get_key(env_var: str) -> str:
         if key:
             return key
     except Exception as exc:
-        log.warning("llm_client.secret_read_failed", env_var=env_var, error=str(exc))
+        _contar_error("leer_secreto")
+        log.warning("llm_client.secret_read_failed", env_var=env_var, error=str(exc), exc_info=True)
     val = os.environ.get(env_var, "")
     if not val:
         log.debug("llm_client.api_key_empty", env_var=env_var)
@@ -429,13 +452,13 @@ def _note_fallback(model: str, reason: str) -> None:
                 "Intentos de modelo LLM fallidos antes del primer token",
                 ["model", "reason"],
             )
-        except Exception:
+        except _FALLOS_DE_REGISTRO:
             log.debug("llm_fallback_counter_init_failed", exc_info=True)
     if _llm_fallback_counter is not None:
         try:
             _llm_fallback_counter.labels(model=model, reason=reason).inc()
-        except Exception:
-            pass
+        except ValueError:
+            log.warning("llm_fallback_metric_failed", model=model, exc_info=True)
 
 
 def _stream_single_model(
@@ -502,8 +525,10 @@ def _stream_single_model(
         if hist is not None:
             try:
                 hist.labels(model=model, provider=p, status=status).observe(elapsed)
-            except Exception:
-                log.debug("llm_histogram_observe_failed", exc_info=True)
+            except ValueError:
+                # Etiquetas que no casan con la declaración: un bug de este
+                # módulo, pero en un `finally` no puede tapar la excepción real.
+                log.warning("llm_histogram_observe_failed", model=model, exc_info=True)
         _record_usage(model, p, usage)
         log.debug(
             "llm_client.stream_done",
@@ -616,6 +641,11 @@ def stream_llm_response(
             if emitted:
                 # Con tokens ya entregados no hay fallback limpio: propagar.
                 raise
+            # Si el siguiente candidato responde, esta excepción no llega a nadie:
+            # sin el traceback aquí, un proveedor roto por un bug propio (no por
+            # la red) solo se vería como `reason=error` en llm_fallback_total.
+            _contar_error("modelo_fallido")
+            log.warning("llm_client.model_raised", model=candidate, exc_info=True)
             last_error = exc
             if isinstance(exc, LLMAuthError):
                 rechazados.add(proveedor)

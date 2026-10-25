@@ -45,9 +45,16 @@ import time
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from observability.errores import ContadorDeErrores
 from observability.logging import get_logger
+from observability.runtime_metrics import documentos_embeddings_errores_total
 
 log = get_logger(__name__)
+
+#: ``documentos_embeddings_errores_total{paso}``: lo que cada fase captura por
+#: documento o por licitación para no tumbar el lote. Corre en el workflow de
+#: pliegos (efímero): alerta vía ``ops_events`` y el healthcheck.
+_contar_error = ContadorDeErrores("documentos_embeddings", documentos_embeddings_errores_total)
 
 _FETCH_BATCH_SIZE = 50
 _EMBED_BATCH_SIZE = 50
@@ -88,6 +95,7 @@ def _marcar_error_inesperado(repo: Any, doc: Mapping[str, Any], exc: Exception) 
     try:
         repo.mark_error(int(documento_id), error_detail=f"Error inesperado: {exc}")
     except Exception:
+        _contar_error("fetch_marcar_error")
         log.warning("documentos_fetch_mark_error_failed", documento_id=documento_id, exc_info=True)
 
 
@@ -101,6 +109,7 @@ def _revivir_descargas_fallidas(repo: Any) -> int:
     try:
         return int(repo.revivir_descargas_fallidas())
     except Exception:
+        _contar_error("fetch_revivir")
         log.warning("documentos_fetch_revivir_failed", exc_info=True)
         return 0
 
@@ -150,8 +159,12 @@ def _run_fetch_phase(
         try:
             status = fetch_and_extract(doc)
         except Exception as e:
+            _contar_error("fetch")
             log.warning(
-                "documentos_fetch_unexpected_error", documento_id=doc.get("id"), error=str(e)
+                "documentos_fetch_unexpected_error",
+                documento_id=doc.get("id"),
+                error=str(e),
+                exc_info=True,
             )
             _marcar_error_inesperado(repo, doc, e)
             status = "error"
@@ -169,6 +182,7 @@ def _paginas_del_documento(repo: Any, documento_id: int) -> list[tuple[int, int]
     try:
         paginas = repo.list_pages(documento_id)
     except Exception:
+        _contar_error("embed_paginas")
         log.warning("documentos_embed_paginas_failed", documento_id=documento_id, exc_info=True)
         return []
     return [
@@ -221,7 +235,10 @@ def _embeber_documentos(
                 paginas=paginas,
             )
         except Exception as e:
-            log.warning("documentos_embed_failed", documento_id=doc["id"], error=str(e))
+            _contar_error("embed")
+            log.warning(
+                "documentos_embed_failed", documento_id=doc["id"], error=str(e), exc_info=True
+            )
             counts["error"] += 1
             continue
         counts["documentos_procesados"] += 1
@@ -264,6 +281,7 @@ def _run_embed_phase(
         except Exception:
             # La columna puede no existir aún (entorno sin v120). El job sigue
             # haciendo su trabajo normal en vez de caerse por el añadido.
+            _contar_error("embed_obsoletos")
             log.warning("documentos_embed_version_query_failed", exc_info=True)
     if not candidatos and not obsoletos:
         return counts
@@ -374,10 +392,12 @@ def _run_facts_phase(
             break
         except Exception as exc:
             counts["error"] += 1
+            _contar_error("facts")
             log.warning(
                 "documentos_facts_failed",
                 licitacion_id=licitacion_id,
                 error=str(exc),
+                exc_info=True,
             )
             continue
         counts["procesadas"] += 1
@@ -386,10 +406,12 @@ def _run_facts_phase(
         try:
             ingest_llm_technologies(record)
         except Exception as exc:
+            _contar_error("facts_tecnologias")
             log.warning(
                 "documentos_facts_tech_ingest_failed",
                 licitacion_id=licitacion_id,
                 error=str(exc),
+                exc_info=True,
             )
     return counts
 
@@ -442,7 +464,10 @@ def _run_tech_signal_phase(limit: int = _TECH_SIGNAL_BATCH_SIZE) -> dict[str, in
         except Exception as e:
             counts["error"] += 1
             pliego_tech_signal_total.labels(method="keywords", status="error").inc()
-            log.warning("tech_signal_score_failed", licitacion_id=licitacion_id, error=str(e))
+            _contar_error("senal_tecnologia")
+            log.warning(
+                "tech_signal_score_failed", licitacion_id=licitacion_id, error=str(e), exc_info=True
+            )
             continue
         status = "scored" if scores else "no_signal"
         counts[status] += 1
@@ -491,7 +516,10 @@ def _candidatas_resumen(limit: int) -> list[str]:
         try:
             ids = fuente()
         except Exception as exc:
-            log.warning("resumen_pregen_fuente_failed", fuente=nombre, error=str(exc))
+            _contar_error("resumen_fuente")
+            log.warning(
+                "resumen_pregen_fuente_failed", fuente=nombre, error=str(exc), exc_info=True
+            )
             continue
         for id_externo in ids:
             vistas.setdefault(id_externo, None)
@@ -564,7 +592,10 @@ def _run_resumen_pregen_phase(limit: int = _RESUMEN_PREGEN_BATCH_SIZE) -> dict[s
             break
         except Exception as exc:
             counts["error"] += 1
-            log.warning("resumen_pregen_failed", id_externo=id_externo, error=str(exc))
+            _contar_error("resumen")
+            log.warning(
+                "resumen_pregen_failed", id_externo=id_externo, error=str(exc), exc_info=True
+            )
             continue
         clave = {
             "generado": "generados",
@@ -729,6 +760,7 @@ def report_cli() -> int:
     except Exception:
         # El reparto por versión es informativo: si la columna no está todavía
         # (v120 sin aplicar), el informe de estado no debe caerse por ello.
+        _contar_error("informe_versiones")
         log.warning("documentos_chunks_por_version_failed", exc_info=True)
         return 0
     pendientes = sum(int(f["n"]) for f in por_version if f["version"] != settings.EMBEDDING_VERSION)

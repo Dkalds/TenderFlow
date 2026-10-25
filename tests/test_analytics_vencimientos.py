@@ -28,6 +28,7 @@ from services.analytics.vencimientos import (
     validar_ventana,
     ventanas_kpi,
 )
+from shared.dto import FiltrosLicitacion
 
 # ---------------------------------------------------------------------------
 # Sin BD
@@ -209,7 +210,7 @@ def test_vencimientos_cuentan_lo_mismo_que_el_listado_del_dia(tmp_db):
 
     # Paridad con el listado que abre el enlace del día.
     _items, total = LicitacionRepository().list_paginated(
-        cierre_desde="2026-09-20", cierre_hasta="2026-09-20", limit=50
+        FiltrosLicitacion(cierre_desde="2026-09-20", cierre_hasta="2026-09-20"), limit=50
     )
     assert total == por_dia["2026-09-20"].count
 

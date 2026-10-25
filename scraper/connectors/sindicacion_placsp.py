@@ -136,7 +136,7 @@ def comprobar(conector: FeedSindicacionPlacsp, *, dump: str | None = None) -> in
         from pathlib import Path
 
         Path(dump).write_bytes(contenido)
-        print(f"Primera página guardada en {dump} ({len(contenido)} bytes)")
+        log.info("sindicacion_check_volcado", ruta=dump, bytes=len(contenido))
     parser = etree.XMLParser(huge_tree=False, recover=True, resolve_entities=False, no_network=True)
     raiz = etree.fromstring(contenido, parser=parser) if contenido else None
     entradas = raiz.findall(f"{{{ATOM_NS}}}entry") if raiz is not None else []
@@ -147,14 +147,14 @@ def comprobar(conector: FeedSindicacionPlacsp, *, dump: str | None = None) -> in
         updated = entry.findtext(f"{{{ATOM_NS}}}updated") or ""
         if conector.parse(RawNotice(natural_id=updated, payload=(entry, updated))) is not None:
             admitidas += 1
-    print(
-        f"{conector.source_id} --check: {len(entradas)} entradas en la primera página, "
-        f"{admitidas} admitidas por el filtro de tecnología"
-    )
     contadores = getattr(conector, "contadores_de_descarte", None)
-    if callable(contadores):
-        for motivo, n in contadores().items():
-            print(f"  {motivo}: {n}")
+    log.info(
+        "sindicacion_check",
+        source=conector.source_id,
+        entradas=len(entradas),
+        admitidas=admitidas,
+        descartes=dict(contadores()) if callable(contadores) else {},
+    )
     return 0 if entradas else 1
 
 
@@ -199,11 +199,8 @@ def main_sindicacion(
     finally:
         close_pool()
     if resultado is None:
-        print(f"{source_id}: sin {variable} configurada — fuente declarada 'disabled'.")
+        # Sin la variable de la URL: `record_source_disabled` ya lo dejó en el log.
         return 0
-    print(
-        f"{source_id}: {resultado.fetched} avisos · {resultado.nuevas} nuevas · "
-        f"{resultado.actualizadas} actualizadas · {resultado.adjudicaciones} adjudicaciones · "
-        f"{resultado.descartadas} descartadas · {resultado.errores} errores"
-    )
+    # El resumen de la pasada ya lo deja `run_connector` en el log
+    # (`connector_run_done`, con las mismas cifras).
     return 0 if resultado.errores == 0 else 1

@@ -89,7 +89,7 @@ def decodificar_ref(ref: str) -> str | None:
     except UnicodeDecodeError:
         return None
 
-    # El byte NUL no puede llegar a Postgres (ver `SafeStr` en shared/dto.py):
+    # El byte NUL no puede llegar a Postgres (ver `SafeStr` en shared/dto/):
     # psycopg lo rechaza y la excepción saldría como 500.
     if not id_externo or "\x00" in id_externo:
         return None

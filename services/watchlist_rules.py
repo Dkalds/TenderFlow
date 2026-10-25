@@ -49,7 +49,7 @@ from shared.procedimientos import codigo_tipo_contrato, textos_de_tipo_contrato
 
 Frequency = Literal["immediate", "daily", "weekly"]
 
-#: Las bandas son ``RadarBanda`` de ``shared/dto.py``, la declaración canónica.
+#: Las bandas son ``RadarBanda`` de ``shared/dto/``, la declaración canónica.
 #: Aquí vivía una copia (``Banda``) alineada a mano; como ``typing.Literal``
 #: compara por conjunto, dos copias en distinto orden hacían que el enumerado
 #: del contrato saliera en el orden de quien se importase antes, y el «Codegen

@@ -46,7 +46,8 @@ import { QueryClient, dehydrate, type DehydratedState, type QueryKey } from "@ta
  * **Coste conocido:** estas peticiones salen de la IP de egreso del servidor de
  * Next, no de la del usuario, y el rate-limit de la API es por IP
  * (`api/middleware.py::_client_key`). Con el tráfico actual —dos consultas por
- * entrada a Resumen o Radar— queda lejísimos del tope, pero si el dashboard
+ * entrada a Resumen, Radar o Detalle (una más si Detalle abre una ficha) y una
+ * por ficha de oportunidad— queda lejísimos del tope, pero si el dashboard
  * crece hay que darle a estas llamadas un bucket propio antes de añadir más.
  */
 
