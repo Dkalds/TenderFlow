@@ -351,6 +351,34 @@ class ApiKeyRepository:
                     (expires_at, key_id),
                 )
 
+    def expirar_por_nombre(
+        self, name: str, user_id: int, expires_at: str
+    ) -> tuple[str | None, int] | None:
+        """Pone ``expires_at`` a las claves vivas ``name`` de ``user_id``.
+
+        Es la mitad de BD de ``scripts/rotate_api_keys.py`` (bajó aquí el
+        2026-10-25, ADR-022): devuelve ``(scopes de la clave viva más reciente
+        o None, claves marcadas)``, o ``None`` si a la tabla le faltan las
+        columnas de seguridad (BD sin migrar).
+        """
+        with connect() as c:
+            cols = get_table_columns(c, "api_keys")
+            if not {"expires_at", "user_id", "scopes"}.issubset(cols):
+                return None
+            existing = c.execute(
+                "SELECT scopes FROM api_keys WHERE name = %s AND user_id = %s AND is_active = 1 "
+                "AND (expires_at IS NULL OR expires_at > %s) ORDER BY id DESC LIMIT 1",
+                (name, user_id, expires_at),
+            ).fetchone()
+            scopes = str(existing[0] or "*") if existing else None
+            cur = c.execute(
+                "UPDATE api_keys SET expires_at = %s "
+                "WHERE name = %s AND user_id = %s AND is_active = 1 "
+                "AND (expires_at IS NULL OR expires_at > %s)",
+                (expires_at, name, user_id, expires_at),
+            )
+            return scopes, int(cur.rowcount)
+
 
 def tier_limit_por_hash(key_hash: str) -> int | None:
     """Requests/minuto que el tier de esta API key permite (C2.3, D25).

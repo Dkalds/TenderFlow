@@ -251,3 +251,38 @@ def update_last_notified(entry_id: int, ts: str | None = None) -> None:
             "UPDATE watchlist_empresas SET last_notified_at = %s WHERE id = %s",
             (ts or now_utc_iso(), entry_id),
         )
+
+
+def nuevas_adjudicaciones_de_empresa(empresa_id: int, since: str) -> list[dict[str, Any]]:
+    """Adjudicaciones de la empresa extraídas después de ``since``.
+
+    Marca ``ccaa_nueva``/``cpv_nuevo`` comparando contra el historial previo
+    de la propia empresa (anterior a ``since``). La consume el job de alertas
+    de competidores (``scheduler/competitor_alerts.py``); bajó aquí desde ese
+    módulo el 2026-10-25 (ADR-022, ratchet TID251).
+    """
+    sql = """
+        SELECT a.licitacion_id, l.titulo, l.organo_contratacion, l.cpv, l.ccaa,
+               a.importe_adjudicado, a.fecha_adjudicacion, l.url,
+               (l.ccaa IS NOT NULL AND NOT EXISTS (
+                   SELECT 1 FROM adjudicaciones a2
+                   JOIN licitaciones l2 ON l2.id_externo = a2.licitacion_id
+                   WHERE a2.empresa_id = a.empresa_id
+                     AND l2.ccaa = l.ccaa
+                     AND a2.fecha_extraccion < %s
+               )) AS ccaa_nueva,
+               (l.cpv IS NOT NULL AND NOT EXISTS (
+                   SELECT 1 FROM adjudicaciones a3
+                   JOIN licitaciones l3 ON l3.id_externo = a3.licitacion_id
+                   WHERE a3.empresa_id = a.empresa_id
+                     AND substr(l3.cpv, 1, 2) = substr(l.cpv, 1, 2)
+                     AND a3.fecha_extraccion < %s
+               )) AS cpv_nuevo
+        FROM adjudicaciones a
+        JOIN licitaciones l ON l.id_externo = a.licitacion_id
+        WHERE a.empresa_id = %s AND a.fecha_extraccion >= %s
+        ORDER BY a.fecha_adjudicacion DESC
+        LIMIT 50
+    """
+    with connect_read() as c:
+        return rows_to_dicts(c.execute(sql, (since, since, empresa_id, since)))

@@ -17,48 +17,17 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from db.database import connect_read
-from db.repositories.base import rows_to_dicts
-from db.watchlist_empresas import list_all, update_last_notified
+from db.watchlist_empresas import (
+    list_all,
+    nuevas_adjudicaciones_de_empresa,
+    update_last_notified,
+)
 from observability import AlertLevel, get_logger, notify
 
 log = get_logger(__name__)
 
 # Ventana inicial cuando la entrada nunca ha notificado
 _LOOKBACK_DAYS = 30
-
-
-def _nuevas_adjudicaciones(empresa_id: int, since: str) -> list[dict[str, Any]]:
-    """Adjudicaciones de la empresa extraídas después de ``since``.
-
-    Marca ``ccaa_nueva``/``cpv_nuevo`` comparando contra el historial previo
-    de la propia empresa (anterior a ``since``).
-    """
-    sql = """
-        SELECT a.licitacion_id, l.titulo, l.organo_contratacion, l.cpv, l.ccaa,
-               a.importe_adjudicado, a.fecha_adjudicacion, l.url,
-               (l.ccaa IS NOT NULL AND NOT EXISTS (
-                   SELECT 1 FROM adjudicaciones a2
-                   JOIN licitaciones l2 ON l2.id_externo = a2.licitacion_id
-                   WHERE a2.empresa_id = a.empresa_id
-                     AND l2.ccaa = l.ccaa
-                     AND a2.fecha_extraccion < %s
-               )) AS ccaa_nueva,
-               (l.cpv IS NOT NULL AND NOT EXISTS (
-                   SELECT 1 FROM adjudicaciones a3
-                   JOIN licitaciones l3 ON l3.id_externo = a3.licitacion_id
-                   WHERE a3.empresa_id = a.empresa_id
-                     AND substr(l3.cpv, 1, 2) = substr(l.cpv, 1, 2)
-                     AND a3.fecha_extraccion < %s
-               )) AS cpv_nuevo
-        FROM adjudicaciones a
-        JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        WHERE a.empresa_id = %s AND a.fecha_extraccion >= %s
-        ORDER BY a.fecha_adjudicacion DESC
-        LIMIT 50
-    """
-    with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, (since, since, empresa_id, since)))
 
 
 def _vencimientos_proximos(empresa_id: int) -> list[dict[str, Any]]:
@@ -151,7 +120,7 @@ def check_and_notify() -> int:
         for entry in recipient_entries:
             since = entry.get("last_notified_at") or default_since
             try:
-                nuevas = _nuevas_adjudicaciones(int(entry["empresa_id"]), since)
+                nuevas = nuevas_adjudicaciones_de_empresa(int(entry["empresa_id"]), since)
                 vencimientos = _vencimientos_proximos(int(entry["empresa_id"]))
             except Exception as e:
                 log.warning(

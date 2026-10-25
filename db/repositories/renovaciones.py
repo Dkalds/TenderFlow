@@ -9,11 +9,9 @@ La fecha de fin efectiva se calcula en SQL con esta prioridad:
 Este módulo nace moviendo aquí el SQL del listado, que vivía en
 ``services/competitive/renovaciones.py`` — una de las entradas del ratchet
 TID251 de ``pyproject.toml``. ADR-022: todo el SQL vive en ``db/``. Los
-agregados de ese servicio (``resumen_renovaciones`` / ``totales_renovaciones``)
-siguen allí de momento y por eso la entrada del ratchet no se puede quitar
-todavía; los dos fragmentos compartidos con ellos
-(:func:`rango_vencimiento_sql` y :func:`dias_restantes_sql`) se exponen desde
-aquí para que exista un único sitio donde cambiarlos.
+dos agregados de la ventana (:func:`resumen_por_empresa` y
+:func:`totales_ventana`) bajaron también el 2026-10-25, y con ellos el servicio
+salió del ratchet.
 
 **Orden por oportunidad.** El listado se puede pedir ordenado por proximidad
 del vencimiento (``order_by="fecha"``, el histórico) o por *score de
@@ -255,5 +253,85 @@ def proximas_renovaciones(
     sql += " LIMIT %s OFFSET %s"
     params.extend([max(1, min(int(limit), MAX_LIMIT)), max(0, int(offset))])
 
+    with connect_read() as c:
+        return rows_to_dicts(c.execute(sql, params))
+
+
+def resumen_por_empresa(
+    *, months_ahead: int = 12, tecnologias: list[str] | None = None
+) -> list[dict[str, Any]]:
+    """Vencimientos de la ventana agregados por empresa (top 100 por importe).
+
+    SQL de ``services.competitive.renovaciones.resumen_renovaciones``, que bajó
+    aquí el 2026-10-25 junto con :func:`totales_ventana` (ADR-022).
+    """
+    months_ahead = max(1, min(int(months_ahead), HORIZONTE_RENOVACIONES_MAX_MESES))
+    fecha_fin = fecha_fin_sql()
+    sql = f"""
+        SELECT a.empresa_id,
+               COALESCE(e.nombre_canonico, a.nombre) AS empresa,
+               COUNT(*) AS contratos_venciendo,
+               COALESCE(SUM(a.importe_adjudicado), 0) AS importe_en_juego,
+               MIN({fecha_fin}) AS proximo_vencimiento
+        FROM adjudicaciones a
+        JOIN licitaciones l ON l.id_externo = a.licitacion_id
+        LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
+        WHERE {fecha_fin} {rango_vencimiento_sql()}
+          AND {TECHNOLOGY_OBSERVED_SQL}
+          AND {exclude_duplicados_sql()}
+    """
+    params: list[Any] = [months_ahead]
+    tecnologias = [t for t in (tecnologias or []) if t]
+    if tecnologias:
+        # El fragmento del listado (`proximas_renovaciones`): «ERP,SAP» es SAP.
+        sql += f" AND {tecnologia_en_csv_sql('l.tecnologia', n=len(tecnologias))}"
+        params.extend(tecnologias)
+    sql += """
+        GROUP BY a.empresa_id, empresa
+        ORDER BY importe_en_juego DESC
+        LIMIT 100
+    """
+    with connect_read() as c:
+        return rows_to_dicts(c.execute(sql, params))
+
+
+def totales_ventana(
+    *,
+    months_ahead: int,
+    tecnologias: list[str] | None,
+    riesgo_alto: float,
+    dias_caliente: int,
+) -> list[dict[str, Any]]:
+    """Las cuatro cifras del panel sobre el dataset completo (cero o una fila).
+
+    ``riesgo_alto`` y ``dias_caliente`` son la definición de «contrato
+    caliente», que es de dominio y vive en ``services/competitive/renovaciones.py``
+    (ADR-014); aquí solo entran como parámetros.
+    """
+    months_ahead = max(1, min(int(months_ahead), HORIZONTE_RENOVACIONES_MAX_MESES))
+    fecha_fin = fecha_fin_sql()
+    dias_restantes = dias_restantes_sql(fecha_fin)
+    sql = f"""
+        SELECT COUNT(*) AS contratos_venciendo,
+               COALESCE(SUM(a.importe_adjudicado), 0) AS importe_en_juego,
+               COALESCE(
+                   SUM(a.importe_adjudicado) FILTER (WHERE pr.riesgo_cambio >= %s), 0
+               ) AS importe_alto_riesgo,
+               COUNT(*) FILTER (
+                   WHERE pr.riesgo_cambio >= %s AND {dias_restantes} <= %s
+               ) AS calientes
+        FROM adjudicaciones a
+        JOIN licitaciones l ON l.id_externo = a.licitacion_id
+        LEFT JOIN predicciones_retencion pr ON pr.licitacion_id = a.licitacion_id
+        WHERE {fecha_fin} {rango_vencimiento_sql()}
+          AND {TECHNOLOGY_OBSERVED_SQL}
+          AND {exclude_duplicados_sql()}
+    """
+    params: list[Any] = [riesgo_alto, riesgo_alto, dias_caliente, months_ahead]
+    tecnologias = [t for t in (tecnologias or []) if t]
+    if tecnologias:
+        # El fragmento del listado (`proximas_renovaciones`): «ERP,SAP» es SAP.
+        sql += f" AND {tecnologia_en_csv_sql('l.tecnologia', n=len(tecnologias))}"
+        params.extend(tecnologias)
     with connect_read() as c:
         return rows_to_dicts(c.execute(sql, params))

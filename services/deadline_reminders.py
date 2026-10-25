@@ -14,13 +14,16 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from db.database import connect_read
 from db.notifications import insert_user_notification
 from db.repositories.pursuits import PursuitRepository
+from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
 from shared.identity import user_key_from_email
 
 log = get_logger(__name__)
+
+#: El SQL de favoritos y plazos vive en el repositorio (ADR-022).
+_repo_watchlist = WatchlistRepository()
 
 # Ventanas de alerta en dias
 _DEADLINE_WINDOWS = [30, 7, 1]
@@ -52,14 +55,8 @@ def _get_watchlist_items(user_key: str, user_id: int | None = None) -> dict[str,
     el favorito pasa a la organización personal de su dueño (lo hizo el
     backfill de tenencia, ya ejecutado), la siguiente pasada del job lo avisa.
     """
-    with connect_read() as c:
-        cur = c.execute(
-            "SELECT id_externo, organization_id FROM watchlist_items "
-            "WHERE (user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))",
-            (user_id, user_key, user_id),
-        )
-        filas = cur.fetchall()
-    items = {str(row[0]): int(row[1]) for row in filas if row[1] is not None}
+    filas = _repo_watchlist.favoritos_con_organizacion(user_key, user_id)
+    items = {lic: org for lic, org in filas if org is not None}
     descartados = len(filas) - len(items)
     if descartados:
         # Silenciarlo dejaría a un usuario sin recordatorios sin que nada lo
@@ -77,17 +74,7 @@ def _get_licitaciones_for_deadlines(
     ids: list[str],
 ) -> list[dict[str, Any]]:
     """Carga titulo, fecha_limite y fecha_fin de las licitaciones favoritas."""
-    if not ids:
-        return []
-    placeholders = ",".join(["%s"] * len(ids))
-    with connect_read() as c:
-        cur = c.execute(
-            f"SELECT id_externo, titulo, fecha_limite, fecha_fin "  # noqa: S608
-            f"FROM licitaciones WHERE id_externo IN ({placeholders})",
-            ids,
-        )
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+    return _repo_watchlist.plazos_de_licitaciones(ids)
 
 
 def _deadline_type(days_left: int, field: str) -> str:
@@ -256,13 +243,7 @@ def check_all_users_deadlines() -> int:
     Llamado desde ``_run_watchlist_notify`` (pipeline canónica, cada pasada).
     Returns: total de notificaciones escritas.
     """
-    # ``MAX(user_id)``: una clave con filas resueltas y sin resolver por el
-    # backfill de v129 es UN usuario, no dos pasadas.
-    with connect_read() as c:
-        cur = c.execute("SELECT user_key, MAX(user_id) FROM watchlist_items GROUP BY user_key")
-        usuarios = [
-            (str(row[0]), int(row[1]) if row[1] is not None else None) for row in cur.fetchall()
-        ]
+    usuarios = _repo_watchlist.usuarios_con_favoritos()
 
     total = 0
     for user_key, user_id in usuarios:

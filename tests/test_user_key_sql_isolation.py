@@ -317,6 +317,14 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # scheduler (scheduler/watchlist_alerts.py, corre tras cada pipeline);
         # no tiene ningún caller vía api/routes/*.py.
         "db/watchlist.py::update_last_notified",
+        # Lista de usuarios con favoritos que recorre el job de recordatorios
+        # de plazos (`services/deadline_reminders.py::check_all_users_deadlines`).
+        # No es una query nueva: es el mismo `SELECT user_key, MAX(user_id) ...
+        # GROUP BY user_key` que ese servicio ejecutaba inline y que bajó a
+        # `db/` el 2026-10-25 (ratchet TID251). Devuelve solo identidades, el
+        # job no corre en nombre de nadie y ninguna ruta de `api/routes/` la
+        # llama (`grep -rn usuarios_con_favoritos api/` vacío).
+        "db/repositories/watchlist.py::WatchlistRepository.usuarios_con_favoritos",
         # Barrido global de watchlist de empresas con email configurado, para
         # el job scheduler/competitor_alerts.py.
         "db/watchlist_empresas.py::list_all",
