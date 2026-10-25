@@ -28,7 +28,7 @@ export function PendientesResultado({ cuadro, titulo }: { cuadro: Cuadro; titulo
         title={titulo ?? "Presentadas sin resultado"}
         hint={`${formatNumber(total)} hoy, de la más antigua a la más reciente`}
       />
-      <ul className="divide-y divide-border/40 text-tf-meta">
+      <ul className="divide-y divide-divider-subtle text-tf-meta">
         {muestra.map((oportunidad) => (
           <li key={oportunidad.pursuit_id} className="flex items-baseline justify-between gap-3 py-1.5">
             <Link href={`/oportunidades/${oportunidad.pursuit_id}`} className="min-w-0 truncate hover:underline">

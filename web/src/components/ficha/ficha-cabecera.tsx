@@ -76,7 +76,7 @@ export function FichaAvisos({ flags, className }: { flags: string[] | undefined;
 
 const CLASES_SEGUIR = {
   base: cn(buttonVariants({ variant: "outline", size: "sm" }), "tf-pressable flex-none"),
-  activo: "border-primary/50 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
+  activo: "border-primary-line-strong bg-primary-selected text-primary hover:bg-primary-soft hover:text-primary",
   inactivo: "",
 };
 

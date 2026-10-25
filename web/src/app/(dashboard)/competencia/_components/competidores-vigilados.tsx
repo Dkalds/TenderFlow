@@ -144,7 +144,7 @@ export function CompetidoresVigilados() {
             {senales.length === 0 ? (
               <p className="text-tf-meta text-muted-foreground">Sin movimientos destacables en este periodo.</p>
             ) : (
-              <ul aria-label="Movimientos" className="divide-y divide-border/40">
+              <ul aria-label="Movimientos" className="divide-y divide-divider-subtle">
                 {senales.map((s, i) => (
                   <li
                     key={`${s.tipo}-${s.empresa_id}-${s.licitacion_id ?? i}`}

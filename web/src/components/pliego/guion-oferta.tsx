@@ -147,7 +147,7 @@ export function GuionOfertaPanel({ licitacionId }: { licitacionId: string }) {
                   <span className="font-normal text-muted-foreground"> · {criterio.peso_pct} puntos</span>
                 )}
               </h4>
-              <ul className="mt-1.5 space-y-2 border-l border-border/60 pl-3">
+              <ul className="mt-1.5 space-y-2 border-l border-divider pl-3">
                 {(criterio.puntos ?? []).map((punto, j) => (
                   <li key={j} className="text-tf-body">
                     <p>

@@ -106,7 +106,7 @@ export function RadarView() {
       <section
         className={cn(
           "flex min-w-0 flex-1 flex-col",
-          !enProximas && "xl:border-r xl:border-border/70",
+          !enProximas && "xl:border-r xl:border-divider",
         )}
       >
         <RadarControles

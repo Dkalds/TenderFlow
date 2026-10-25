@@ -207,7 +207,7 @@ export function CpvsInteresCard({
                   type="button"
                   onClick={() => onAdd(sugerencia.codigo)}
                   aria-label={`Añadir ${sugerencia.codigo}, ${sugerencia.nombre}`}
-                  className="flex min-h-6 w-full items-baseline gap-2 rounded-md px-2 py-1 text-left text-tf-meta transition-colors hover:bg-primary/5"
+                  className="flex min-h-6 w-full items-baseline gap-2 rounded-md px-2 py-1 text-left text-tf-meta transition-colors hover:bg-primary-hover"
                 >
                   <span className="font-mono">{sugerencia.codigo}</span>
                   <span className="min-w-0 truncate text-muted-foreground">{sugerencia.nombre}</span>

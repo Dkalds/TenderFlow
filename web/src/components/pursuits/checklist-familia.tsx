@@ -105,7 +105,7 @@ function ChecklistItemRow({
   const faltaDatoPropio = veredicto === "desconocido" && !item.dato_organizacion;
 
   return (
-    <li className="rounded-md border border-border/60 bg-background p-3">
+    <li className="rounded-md border border-divider bg-background p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="min-w-0 text-tf-body font-medium leading-snug">{item.requisito}</p>
         <VeredictoBadge veredicto={veredicto} />
@@ -135,7 +135,7 @@ function ChecklistItemRow({
           <summary className="cursor-pointer font-medium text-primary hover:underline">
             {evidencia.length} cita{evidencia.length === 1 ? "" : "s"} del pliego
           </summary>
-          <ul className="mt-2 space-y-2 border-l border-border/60 pl-3">
+          <ul className="mt-2 space-y-2 border-l border-divider pl-3">
             {evidencia.map((cita, index) => {
               const fuente = citaPresentation(cita.documento_id, cita.page_number, docsById);
               return (
@@ -192,7 +192,7 @@ export function ChecklistFamilia({
     // etiquetas de colores. `open` es constante, así que React no vuelve a
     // tocar el atributo y plegarla a mano se respeta. Las citas del pliego sí
     // van plegadas, como en la pestaña Pliego.
-    <details open className="rounded-xl border border-border/60 bg-card px-3 py-2.5">
+    <details open className="rounded-xl border border-divider bg-card px-3 py-2.5">
       <summary className="flex cursor-pointer flex-wrap items-center gap-2.5">
         <span className="min-w-0 flex-1 text-tf-body font-semibold">{familia.etiqueta}</span>
         {familia.fuente === "placsp" && (

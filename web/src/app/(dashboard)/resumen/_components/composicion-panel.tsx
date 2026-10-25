@@ -164,7 +164,7 @@ export function ComposicionPanel({ className }: { className?: string }) {
                     // En un teléfono la etiqueta y las cifras se estrechan para que a la
                     // barra le quede sitio: con 9rem de etiqueta medía unos 30 px.
                     "-mx-1.5 grid h-8 grid-cols-[minmax(0,6.5rem)_minmax(0,1fr)_3.5rem_2.75rem] items-center gap-2.5 rounded-md px-1.5 text-left text-tf-meta transition-colors active:duration-0 sm:grid-cols-[minmax(0,9rem)_minmax(0,1fr)_4.5rem_3.25rem]",
-                    activo ? "bg-primary/10" : "hover:bg-primary/5 active:bg-primary/10",
+                    activo ? "bg-primary-selected" : "hover:bg-primary-hover active:bg-primary-selected",
                   )}
                 >
                   <span className="flex min-w-0 items-center gap-2">

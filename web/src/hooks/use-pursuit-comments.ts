@@ -112,6 +112,7 @@ export function useAddPursuitComment(pursuitId: number | string) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo publicar el comentario" },
     mutationFn: ({ idempotencyKey, ...input }: AddPursuitCommentInput) =>
       fetchWithAuth<PursuitComment>(threadUrl(pursuitId, organizationId), {
         method: "POST",
@@ -126,6 +127,7 @@ export function useDeletePursuitComment(pursuitId: number | string) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo borrar el comentario" },
     mutationFn: (commentId: number) =>
       fetchWithAuth<void>(threadUrl(pursuitId, organizationId, { suffix: `/${commentId}` }), {
         method: "DELETE",

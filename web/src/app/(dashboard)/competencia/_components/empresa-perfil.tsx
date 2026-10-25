@@ -77,7 +77,7 @@ export function EmpresaPerfil({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-border/60 flex-none border-b px-5 py-4">
+      <div className="border-divider flex-none border-b px-5 py-4">
         <div className="mb-1.5 flex items-center gap-2.5">
           <h2 className="font-display text-tf-title font-semibold">{detail.nombre_canonico}</h2>
           <div className="flex-1" />
@@ -91,8 +91,8 @@ export function EmpresaPerfil({
             textos={{ seguir: "Vigilar", siguiendo: "En vigilancia" }}
             clases={{
               base: "tf-pressable text-tf-meta inline-flex h-8 flex-none items-center gap-1.5 rounded-md border px-2.5 font-medium md:h-7",
-              activo: "border-primary/30 bg-primary/10 text-primary",
-              inactivo: "border-border/70 text-foreground hover:border-primary/50",
+              activo: "border-primary-line bg-primary-selected text-primary",
+              inactivo: "border-divider text-foreground hover:border-primary-line-strong",
               icono: "h-3 w-3",
             }}
             onAlternar={onWatchToggled}
@@ -176,7 +176,7 @@ function Actividad({
 }) {
   const totales = perfil?.totales;
   return (
-    <div className="border-border/60 mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border px-3.5 py-3">
+    <div className="border-divider mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border px-3.5 py-3">
       <div className="min-w-0 flex-1">
         <SectionTitle as="h3">Actividad en todo el histórico</SectionTitle>
         {cargando ? (

@@ -15,8 +15,6 @@ import {
   type PursuitStatus,
   type UpdatePursuitInput,
 } from "@/hooks/use-pursuits";
-import { ApiError } from "@/lib/api-client";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { cn } from "@/lib/utils";
 /** Mismo motivo que en el tablero: sólo pesa cuando se va a cerrar de verdad. */
 const DialogoCierre = dynamic(
@@ -61,7 +59,7 @@ export function SalidaDeFase({
 }) {
   const kit = usePursuitKit(pursuit.id);
   const contraste = usePursuitChecklist(pursuit.id);
-  const actualizar = useUpdatePursuit(pursuit.id);
+  const actualizar = useUpdatePursuit(pursuit.id, { errorTitle: "No se pudo mover la oportunidad" });
   const [cerrando, setCerrando] = React.useState(false);
   const tituloId = React.useId();
 
@@ -78,13 +76,6 @@ export function SalidaDeFase({
   const aplicar = (cambios: UpdatePursuitInput & { status: PursuitStatus }) => {
     actualizar.mutate(cambios, {
       onSuccess: () => toast.success(`Pasa a ${statusLabel(cambios.status)}`),
-      onError: (error) =>
-        toast.error(
-          error instanceof ApiError && error.status === 409
-            ? "Alguien del equipo la cambió mientras la tenías abierta"
-            : "No se pudo mover la oportunidad",
-          { description: getErrorMessage(error, "accion") },
-        ),
     });
   };
 
@@ -118,8 +109,8 @@ export function SalidaDeFase({
                 paso.hecho === true
                   ? "bg-success text-success-foreground"
                   : paso.hecho === false
-                    ? "border-border/70 border-[1.5px]"
-                    : "border-border/70 border-[1.5px] border-dashed",
+                    ? "border-divider border-[1.5px]"
+                    : "border-divider border-[1.5px] border-dashed",
               )}
             >
               {paso.hecho === true ? <Check className="h-2.5 w-2.5" /> : null}
@@ -150,7 +141,7 @@ export function SalidaDeFase({
                 // distinguen nada para quien navega por controles.
                 aria-label={`${VERBO_DE_LUGAR[paso.lugar]}: ${paso.texto}`}
                 onClick={() => paso.lugar && onCompletar(paso.lugar)}
-                className="tf-pressable text-primary hover:bg-primary/10 -my-0.5 inline-flex min-h-6 flex-none items-center rounded-md px-1.5 text-tf-micro font-semibold"
+                className="tf-pressable text-primary hover:bg-primary-selected -my-0.5 inline-flex min-h-6 flex-none items-center rounded-md px-1.5 text-tf-micro font-semibold"
               >
                 {VERBO_DE_LUGAR[paso.lugar]}
               </button>

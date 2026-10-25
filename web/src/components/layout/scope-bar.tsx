@@ -151,14 +151,14 @@ function ScopeChip({ chip }: { chip: Chip }) {
     // ocupa 24×24 (WCAG 2.5.8), con el margen negativo para que el chip no
     // crezca. La clave va en frase y en sans, a 11 px, y el valor a 12 px en
     // medio: la jerarquía la da el peso, no una versal en mono.
-    <span className="border-primary/30 bg-primary/10 text-primary inline-flex h-6.5 items-center gap-1.5 rounded-md border pr-0.5 pl-2">
+    <span className="border-primary-line bg-primary-selected text-primary inline-flex h-6.5 items-center gap-1.5 rounded-md border pr-0.5 pl-2">
       <span className="text-tf-micro leading-none">{chip.key}</span>
       <span className="text-tf-meta max-w-40 truncate leading-none font-medium">{chip.value}</span>
       <button
         type="button"
         aria-label={`Quitar ${chip.key.toLowerCase()} ${chip.value}`}
         onClick={chip.remove}
-        className="hover:bg-primary/10 -ml-1 grid h-6 w-6 cursor-pointer place-items-center rounded-sm border-0 bg-transparent p-0 transition-colors"
+        className="hover:bg-primary-selected -ml-1 grid h-6 w-6 cursor-pointer place-items-center rounded-sm border-0 bg-transparent p-0 transition-colors"
       >
         <X className="h-3 w-3" aria-hidden="true" />
       </button>
@@ -172,7 +172,7 @@ function ScopeChip({ chip }: { chip: Chip }) {
  * pulsación.
  */
 const PRESET =
-  "tf-pressable inline-flex h-6 items-center rounded-md border border-border/70 px-2 text-tf-micro text-muted-foreground hover:border-primary/50 hover:text-foreground";
+  "tf-pressable inline-flex h-6 items-center rounded-md border border-divider px-2 text-tf-micro text-muted-foreground hover:border-primary-line-strong hover:text-foreground";
 
 /** Editor del ámbito: los seis controles que antes vivían sueltos en la barra. */
 function ScopeEditor({
@@ -567,7 +567,7 @@ export function ScopeBar() {
                   busqueda={busqueda}
                 />
                 {activeCount > 0 && (
-                  <div className="border-border/70 mt-1 border-t pt-2">
+                  <div className="border-divider mt-1 border-t pt-2">
                     <Button variant="ghost" size="sm" className="w-full justify-start" onClick={filters.resetFilters}>
                       <RotateCcw aria-hidden="true" />
                       Limpiar el ámbito
@@ -594,7 +594,7 @@ export function ScopeBar() {
             onSearch={() => setCommandOpen(true)}
           />
         )}
-        <div className="border-border/70 flex flex-none items-center gap-1 border-l pl-2.5">
+        <div className="border-divider flex flex-none items-center gap-1 border-l pl-2.5">
           {/* «Exportar ámbito», no «Exportar» a secas: varias pantallas tienen su
               propia exportación con el corte de esa sección, y dos botones con la
               misma etiqueta a cuatro dedos de distancia no se distinguen. Este
@@ -644,7 +644,7 @@ function BotonBuscar({
       Buscar
       <kbd
         aria-hidden="true"
-        className="border-border/70 text-tf-micro rounded-sm border px-1 py-0.5 font-mono leading-none font-normal"
+        className="border-divider text-tf-micro rounded-sm border px-1 py-0.5 font-mono leading-none font-normal"
       >
         ⌘K
       </kbd>
@@ -743,7 +743,7 @@ function BarraConAmbito({
   const { canUndo, canRedo, undo, redo } = historial;
   return (
     <>
-      <div className="border-border/70 flex flex-none items-center gap-1.5 border-r pr-2.5">
+      <div className="border-divider flex flex-none items-center gap-1.5 border-r pr-2.5">
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -754,8 +754,8 @@ function BarraConAmbito({
               className={cn(
                 NAV_BUTTON,
                 canUndo
-                  ? "border-border/80 text-muted-foreground hover:text-foreground cursor-pointer"
-                  : "border-border/40 text-muted-foreground/40 cursor-default",
+                  ? "border-border text-muted-foreground hover:text-foreground cursor-pointer"
+                  : "border-divider-subtle text-muted-foreground/40 cursor-default",
               )}
             >
               <Undo2 className="h-3 w-3" aria-hidden="true" />
@@ -773,8 +773,8 @@ function BarraConAmbito({
               className={cn(
                 NAV_BUTTON,
                 canRedo
-                  ? "border-border/80 text-muted-foreground hover:text-foreground cursor-pointer"
-                  : "border-border/40 text-muted-foreground/40 cursor-default",
+                  ? "border-border text-muted-foreground hover:text-foreground cursor-pointer"
+                  : "border-divider-subtle text-muted-foreground/40 cursor-default",
               )}
             >
               <Redo2 className="h-3 w-3" aria-hidden="true" />
@@ -804,7 +804,7 @@ function BarraConAmbito({
               aria-haspopup="dialog"
               onPointerEnter={onAcercarseAlEditor}
               onFocus={onAcercarseAlEditor}
-              className="border-border text-tf-meta text-muted-foreground hover:border-primary/50 hover:text-foreground inline-flex h-6.5 flex-none cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-transparent px-2.5 font-medium transition-colors"
+              className="border-border text-tf-meta text-muted-foreground hover:border-primary-line-strong hover:text-foreground inline-flex h-6.5 flex-none cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-transparent px-2.5 font-medium transition-colors"
             >
               + Añadir
             </button>

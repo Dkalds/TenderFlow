@@ -32,7 +32,7 @@ const ComparacionFichasTabla = dynamic(
  */
 const CLASE_COMPARAR = cn(
   buttonVariants({ variant: "outline", size: "sm" }),
-  "aria-pressed:border-primary/50 aria-pressed:bg-primary/10 aria-pressed:text-primary",
+  "aria-pressed:border-primary-line-strong aria-pressed:bg-primary-selected aria-pressed:text-primary",
 );
 
 export function CompararBoton({
@@ -104,7 +104,7 @@ export function BandejaComparacion() {
           {items.map((item) => (
             <li
               key={item.id}
-              className="inline-flex max-w-52 items-center gap-1 rounded-md border border-border/70 bg-background px-2 py-0.5 text-tf-meta"
+              className="inline-flex max-w-52 items-center gap-1 rounded-md border border-divider bg-background px-2 py-0.5 text-tf-meta"
             >
               <span className="truncate">
                 {item.titulo ? truncate(item.titulo, 40) : item.id}
@@ -136,7 +136,7 @@ export function BandejaComparacion() {
             la haces tú. Para preguntar sobre los expedientes a la vez, el asistente.
           </DialogDescription>
           {abierta && <ComparacionFichasTabla ids={ids} etiquetas={etiquetas} />}
-          <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border/70 pt-4">
+          <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-divider pt-4">
             <Button size="sm" variant="outline" onClick={preguntar}>
               Preguntar al asistente sobre estos {ids.length} expedientes
             </Button>

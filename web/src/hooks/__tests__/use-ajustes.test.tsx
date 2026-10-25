@@ -15,7 +15,7 @@
  */
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import {
   ajustesKeys,
@@ -29,14 +29,14 @@ import {
   useSesiones,
 } from "@/hooks/use-ajustes";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
+import { crearQueryClientDePrueba } from "@/test/query-client";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 /** Un `QueryClient` estable por test (ver `use-meta-filters.test.tsx`). */
 function crearEntorno() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
+  // Con el aviso global de mutaciones: el fallo lo dice él (D6).
+  const client = crearQueryClientDePrueba();
   function Wrapper({ children }: { children: React.ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
   }

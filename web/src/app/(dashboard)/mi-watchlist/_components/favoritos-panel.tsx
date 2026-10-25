@@ -72,7 +72,7 @@ export function FavoritosPanel() {
   }
 
   return (
-    <ul className="divide-border/50 border-border/60 bg-card divide-y rounded-xl border">
+    <ul className="divide-divider border-divider bg-card divide-y rounded-xl border">
       {items.map((item) => (
         <li key={item.id_externo} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:gap-3">
           <div className="min-w-0 flex-1">

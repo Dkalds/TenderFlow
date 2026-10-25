@@ -56,7 +56,7 @@ export function RadarDireccion({ cuadro }: { cuadro: Cuadro }) {
                 {banda.precision != null ? (
                   <svg className="h-3 w-full" viewBox="0 0 100 1" preserveAspectRatio="none" aria-hidden="true">
                     <rect className="fill-secondary/60" width="100" height="1" />
-                    <rect className="fill-primary/60" height="1" width={Math.max(1, banda.precision * 100)} />
+                    <rect className="fill-primary-ramp-3" height="1" width={Math.max(1, banda.precision * 100)} />
                   </svg>
                 ) : (
                   <span className="text-tf-micro text-muted-foreground">

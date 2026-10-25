@@ -35,7 +35,6 @@ import * as React from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
-import { toast } from "sonner";
 import { SUPERFICIE_PANEL } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -66,7 +65,7 @@ export function useMarcarVisto() {
         queryClient.invalidateQueries({ queryKey: ["analytics", "resumen", "desde-mi-ultima-visita"] }),
         queryClient.invalidateQueries({ queryKey: analyticsKeys.novedades }),
       ]),
-    onError: () => toast.error("No se pudo marcar como visto. Vuelve a intentarlo."),
+    meta: { errorTitle: "No se pudo marcar como visto" },
   });
 }
 
@@ -159,7 +158,7 @@ function LineaNovedad({ novedad }: { novedad: Novedad }) {
       {novedad.licitacion_id ? (
         <Link
           href={`/detalle?lic=${encodeURIComponent(novedad.licitacion_id)}`}
-          className="flex items-center gap-2.5 rounded-md px-1.5 py-1 transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0"
+          className="flex items-center gap-2.5 rounded-md px-1.5 py-1 transition-colors hover:bg-primary-hover active:bg-primary-selected active:duration-0"
         >
           {contenido}
         </Link>

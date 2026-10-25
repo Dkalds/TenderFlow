@@ -26,7 +26,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { META_ERROR_EN_LINEA, getErrorMessage } from "@/lib/query-feedback";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { useCreatePursuit, usePursuits } from "@/hooks/use-pursuits";
 import { useCartera } from "@/hooks/use-cartera";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -135,7 +135,7 @@ export function useRenovaciones() {
   // Anticipar: abre un pursuit sobre el contrato que vence, antes de que la
   // relicitación se publique. Mismo flujo de creación que el Radar; la Agenda
   // (`/mi-pipeline`) deja de listar la renovación en cuanto existe el pursuit.
-  const createPursuit = useCreatePursuit();
+  const createPursuit = useCreatePursuit({ errorTitle: "No se pudo anticipar la renovación" });
   const setActiveOrganizationId = useOrganizationStore((state) => state.setActiveOrganizationId);
   const anticipar = React.useCallback(
     async (licitacionId: string) => {
@@ -144,8 +144,8 @@ export function useRenovaciones() {
         setActiveOrganizationId(pursuit.organization_id);
         toast.success("Renovación anticipada como oportunidad");
         router.push(`/oportunidades/${pursuit.id}`);
-      } catch (err) {
-        toast.error("No se pudo anticipar la renovación", { description: getErrorMessage(err, "accion") });
+      } catch {
+        // El aviso lo da el global de mutaciones, con el título del hook (D6).
       }
     },
     [createPursuit, router, setActiveOrganizationId],

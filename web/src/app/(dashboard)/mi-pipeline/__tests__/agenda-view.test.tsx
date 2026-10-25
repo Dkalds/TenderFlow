@@ -627,10 +627,7 @@ describe("AgendaView — inspector", () => {
     expect(casillas[1]).toHaveAttribute("aria-checked", "true");
 
     fireEvent.click(casillas[0]);
-    expect(actualizarTarea).toHaveBeenCalledWith(
-      { pursuitId: 11, taskId: 77, estado: "hecha" },
-      expect.anything(),
-    );
+    expect(actualizarTarea).toHaveBeenCalledWith({ pursuitId: 11, taskId: 77, estado: "hecha" });
   });
 
   it("añade una tarea con su fecha desde el inspector", () => {

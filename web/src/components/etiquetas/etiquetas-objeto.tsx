@@ -10,7 +10,6 @@
  */
 import * as React from "react";
 import { Plus, Tag } from "lucide-react";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -27,7 +26,6 @@ import {
   useCrearEtiqueta,
   useEtiquetas,
 } from "@/hooks/use-etiquetas";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { cn } from "@/lib/utils";
 
 function EtiquetaChip({ etiqueta }: { etiqueta: Pick<EtiquetaAplicada, "nombre" | "color"> }) {
@@ -93,13 +91,7 @@ export function EtiquetasEditor({
   const baseId = `etiquetas-${objetoTipo}-${objetoId}`;
 
   const alternar = (etiquetaId: number, aplicar: boolean) =>
-    cambiar.mutate(
-      { etiquetaId, objetoTipo, objetoId, aplicar },
-      {
-        onError: (err) =>
-          toast.error("No se pudo cambiar la etiqueta", { description: getErrorMessage(err, "accion") }),
-      },
-    );
+    cambiar.mutate({ etiquetaId, objetoTipo, objetoId, aplicar });
 
   const crearYAplicar = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -109,8 +101,8 @@ export function EtiquetasEditor({
       const etiqueta = await crear.mutateAsync({ nombre: limpio, color });
       setNombre("");
       alternar(etiqueta.id, true);
-    } catch (err) {
-      toast.error("No se pudo crear la etiqueta", { description: getErrorMessage(err, "accion") });
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   };
 
@@ -162,7 +154,7 @@ export function EtiquetasEditor({
           )}
         </fieldset>
 
-        <form onSubmit={crearYAplicar} className="mt-3 space-y-2 border-t border-border/60 pt-3">
+        <form onSubmit={crearYAplicar} className="mt-3 space-y-2 border-t border-divider pt-3">
           <label htmlFor={`${baseId}-nueva`} className={ETIQUETA_CAMPO}>
             Nueva etiqueta
           </label>

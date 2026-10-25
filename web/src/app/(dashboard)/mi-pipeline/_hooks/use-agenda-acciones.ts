@@ -20,8 +20,6 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ApiError } from "@/lib/api-client";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { cambioDeDecision, type Decision } from "@/components/pursuits/decidir-go-no-go";
 import { decisionLabel } from "@/components/pursuits/pursuit-presenters";
 import { useFijarFechaFin } from "@/hooks/use-cartera";
@@ -35,12 +33,14 @@ import { useAgendaRetirada } from "./use-agenda-retirada";
 
 export function useAgendaAcciones() {
   const router = useRouter();
-  const createPursuit = useCreatePursuit();
-  const moverPursuit = useMoverPursuit();
+  // Cada escritura lleva su título en `meta`: el aviso de error es el global
+  // de mutaciones y aquí no se añade otro (D6).
+  const createPursuit = useCreatePursuit({ errorTitle: "No se pudo abrir la oportunidad" });
+  const moverPursuit = useMoverPursuit({ errorTitle: "No se pudo guardar la decisión" });
   const dismissTender = useDismissRadarTender();
   const restoreTender = useRestoreRadarTender();
   const actualizarTarea = useActualizarTarea();
-  const crearTarea = useCrearTarea();
+  const crearTarea = useCrearTarea({ errorTitle: "No se pudo apuntar la acción" });
   const fechaFin = useFijarFechaFin();
   const setActiveOrganizationId = useOrganizationStore((state) => state.setActiveOrganizationId);
   const retirada = useAgendaRetirada();
@@ -54,8 +54,8 @@ export function useAgendaAcciones() {
           item.kind === "renovacion" ? "Renovación anticipada como oportunidad" : "Oportunidad abierta",
         );
         router.push(`/oportunidades/${pursuit.id}`);
-      } catch (err) {
-        toast.error("No se pudo abrir la oportunidad", { description: getErrorMessage(err, "accion") });
+      } catch {
+        // El aviso lo da el global de mutaciones, con el título de arriba.
       }
     },
     [createPursuit, router, setActiveOrganizationId],
@@ -114,8 +114,6 @@ export function useAgendaAcciones() {
                   actualizarTarea.mutate({ pursuitId, taskId, estado: "pendiente" }),
               },
             }),
-          onError: (err) =>
-            toast.error("No se pudo completar la tarea", { description: getErrorMessage(err, "accion") }),
         },
       );
     },
@@ -141,8 +139,6 @@ export function useAgendaAcciones() {
             toast.success("Próxima acción apuntada", { description: accion.titulo });
             alGuardar?.();
           },
-          onError: (err) =>
-            toast.error("No se pudo apuntar la acción", { description: getErrorMessage(err, "accion") }),
         },
       );
     },
@@ -169,13 +165,6 @@ export function useAgendaAcciones() {
             );
             alGuardar?.();
           },
-          onError: (err) =>
-            toast.error(
-              err instanceof ApiError && err.status === 409
-                ? "Alguien del equipo la cambió mientras decidías"
-                : "No se pudo guardar la decisión",
-              { description: getErrorMessage(err, "accion") },
-            ),
         },
       );
     },
@@ -193,10 +182,6 @@ export function useAgendaAcciones() {
             toast.success("Fecha de fin guardada", { description: tituloDe(item) });
             alGuardar?.();
           },
-          onError: (err) =>
-            toast.error("No se pudo guardar la fecha de fin", {
-              description: getErrorMessage(err, "accion"),
-            }),
         },
       );
     },

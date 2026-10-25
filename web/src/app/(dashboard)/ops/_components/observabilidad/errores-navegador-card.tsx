@@ -60,7 +60,7 @@ export function ErroresNavegadorCard() {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-left text-tf-body">
             <caption className="sr-only">Errores de JavaScript del navegador, agrupados</caption>
-            <thead className="border-y border-border/70">
+            <thead className="border-y border-divider">
               <tr>
                 <th scope="col" className={cn(CABECERA_COLUMNA, "px-3 py-2")}>
                   Mensaje
@@ -78,7 +78,7 @@ export function ErroresNavegadorCard() {
             </thead>
             <tbody>
               {filas.map((fila) => (
-                <tr key={fila.fingerprint} className="border-b border-border/60 last:border-0">
+                <tr key={fila.fingerprint} className="border-b border-divider last:border-0">
                   <td className="max-w-0 px-3 py-2">
                     <Pista contenido={fila.mensaje ?? undefined}>
                       <span className="block truncate">{fila.mensaje ?? "sin mensaje"}</span>

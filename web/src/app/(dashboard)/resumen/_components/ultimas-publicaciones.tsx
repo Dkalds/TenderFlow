@@ -181,7 +181,7 @@ export function UltimasPublicaciones() {
       {ordenadas.length > ITEMS_PER_PAGE && (
         <nav
           aria-label="Paginación de publicaciones"
-          className="mt-2.5 hidden items-center gap-2 border-t border-border/40 pt-2.5 md:flex"
+          className="mt-2.5 hidden items-center gap-2 border-t border-divider-subtle pt-2.5 md:flex"
         >
           <span className="text-tf-micro text-muted-foreground">
             La barra del importe va en escala logarítmica, de 100 € a 10 M€.

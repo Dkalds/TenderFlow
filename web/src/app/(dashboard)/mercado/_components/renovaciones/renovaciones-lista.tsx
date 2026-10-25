@@ -108,7 +108,7 @@ export function RenovacionesLista({
           // El foco se ve en el contenedor, con el anillo de `Input`; el input
           // quita el contorno global (`!`: esa regla va sin capa y gana a
           // cualquier utilidad) para no pintar dos marcas.
-          <div className="flex h-8 w-56 items-center gap-1.5 rounded-md border border-border/60 bg-card px-2 transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring md:h-7">
+          <div className="flex h-8 w-56 items-center gap-1.5 rounded-md border border-divider bg-card px-2 transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring md:h-7">
             <Search className="h-3.5 w-3.5 flex-none text-muted-foreground" aria-hidden="true" />
             <input
               type="search"

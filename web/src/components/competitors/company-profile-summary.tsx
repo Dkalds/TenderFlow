@@ -168,7 +168,7 @@ export function CompanyProfileSummary({ profile }: { profile: CompanyProfileData
           title="Dónde y para quién opera"
           hint="Especialización, compradores recurrentes y huella territorial"
         />
-        <div className="grid divide-y divide-border/60 xl:grid-cols-3 xl:divide-x xl:divide-y-0">
+        <div className="grid divide-y divide-divider xl:grid-cols-3 xl:divide-x xl:divide-y-0">
           <BreakdownColumn
             title="Especialización"
             description="Familias CPV por peso económico"
@@ -189,7 +189,7 @@ export function CompanyProfileSummary({ profile }: { profile: CompanyProfileData
             empty="Sin territorio identificado"
           />
         </div>
-        <p className="border-t border-border/60 px-4 py-3 text-tf-meta text-muted-foreground">
+        <p className="border-t border-divider px-4 py-3 text-tf-meta text-muted-foreground">
           Dependencia del primer cliente: {formatPercent(profile.concentracion_clientes.top1_importe_pct)} del
           importe. La cobertura del número de ofertas es del {formatPercent(totals.cobertura_ofertas_pct)}.
         </p>
@@ -220,7 +220,7 @@ export function CompanyProfileSummary({ profile }: { profile: CompanyProfileData
               Señales que ayudan a interpretar el progreso reciente
             </p>
           </div>
-          <ul className={cn(SUPERFICIE_PANEL, "divide-y divide-border/60 overflow-hidden")}>
+          <ul className={cn(SUPERFICIE_PANEL, "divide-y divide-divider overflow-hidden")}>
             {profile.movimientos.slice(0, 4).map((movement, index) => (
               <li key={`${movement.kind}-${index}`} className="flex gap-2.5 px-4 py-3.5">
                 <span

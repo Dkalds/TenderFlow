@@ -464,10 +464,15 @@ números.
 5. **Superficies**: paneles en `bg-card` opaco; sin degradados decorativos;
    sombra solo en lo que flota (`shadow-md` en popover y menú, `shadow-lg` en
    modal); `tf-glass` solo donde de verdad pasa contenido por debajo.
-6. **Tintes**: `primary` y los tonos semánticos en /5 (hover), /10
-   (seleccionado, chip, fila activa) y /15 (énfasis; nunca más de /16 detrás de
-   texto del mismo color, lo mide `contraste-tokens.test.ts`); bordes tintados
-   en /30 o /50. Nada de la paleta cruda de Tailwind.
+6. **Tintes**: `primary` con nombre (globals.css, F10): `primary-hover` (5 %),
+   `primary-selected` (10 %: seleccionado, chip, fila activa) y `primary-soft`
+   (15 %, énfasis; nunca más de 16 % detrás de texto del mismo color, lo mide
+   `contraste-tokens.test.ts` leyendo esas alfas); bordes tintados en
+   `primary-line` (30 %) o `primary-line-strong` (50 %); hover del botón sólido
+   `primary-solid-hover`; intensidad de dato `primary-ramp-1…4`. Bordes neutros:
+   `border-border` en controles, `border-divider` y `border-divider-subtle` en
+   lo demás. Ninguna opacidad suelta de `primary` ni de borde. Los tonos
+   semánticos siguen en /5, /10 y /15. Nada de la paleta cruda de Tailwind.
 7. **Radios**: `rounded-md` en controles, chips y badges; `rounded-xl` en
    paneles; `rounded-full` en puntos y avatares. Nada de `rounded-2xl`,
    `rounded-[Npx]` ni `rounded` a secas.
@@ -506,7 +511,8 @@ números.
 | Ficheros que importan `console/panel` | 56 | 246 |
 | Ficheros con Sparkles | 7 | 0 (el grep da 1: un comentario de `lib/iconos.ts`) |
 | Clases de la paleta cruda de Tailwind | 171 | 0 (el grep da 2: un comentario que cuenta cuáles se quitaron) |
-| Opacidades distintas de `primary` | 29, en 181 usos | 12, en 143: los tintes de fondo van en /5, /10 o /15 (87 de 102 `bg-primary/N`) y los bordes en /30 o /50 (36 de 37) |
+| Opacidades distintas de `primary` | 29, en 181 usos | 0: los 185 usos (13 valores, contando `fill-` y `ring-`) pasaron a la escala con nombre de F10 (2026-10-25). El grep da 1: un comentario de `ui/badge.tsx` que cita el Badge de shadcn |
+| `border-border/N` (y `divide-`, `bg-`, `fill-`) | 344 usos en 189 ficheros, 7 valores | 0: `border` · `divider` · `divider-subtle` |
 | `rounded-2xl`, `-3xl` o `-[Npx]` · `rounded` desnudo | 19 · 90 | 0 · 0 |
 | Paneles translúcidos `bg-card/N` | 44 | 1: el aviso de reconexión, una capa `fixed` sobre contenido, justificada en su línea |
 | `transition-[…transform…]`, que en Tailwind v4 no anima `scale-*` | 23 | 0 (el grep da 1: un comentario) |
@@ -592,7 +598,7 @@ controles, los cuatro en el job `frontend` de CI (`npm run lint` y
 |---|---|---|---|
 | Primitivos retirados | `web/eslint.config.mjs`, `no-restricted-imports` (`importacionesRetiradas`) | Importar `ui/card`, `ui/empty-state` o `charts/kpi-card` fuera de sus tests | `deudaCard`: vacía desde que se escribió; solo encoge |
 | Iconos retirados | La misma regla, con `importNames` de `lucide-react` | Sparkles y las varitas (D5); `DollarSign` y `CircleDollarSign` en un producto en euros; `AlertTriangle`, el nombre viejo de `TriangleAlert` | Ninguna |
-| Aspecto | `web/eslint.config.mjs`, `no-restricted-syntax` (`restriccionesDeAspecto`), en todo `src` menos los tests, `src/lib` incluido | Tamaños a mano; la receta «mono + versal»; las clases retiradas de `globals.css`; la paleta cruda; radios fuera de escala; `bg-card/N`; `transition-[…transform…]`; `animate-ping` y `animate-bounce`; emojis y glifos (✓ ✕ ● ○) como iconos | Ninguna. Un caso legítimo se justifica en su línea (`eslint-disable-next-line no-restricted-syntax -- motivo`), como el aviso de reconexión |
+| Aspecto | `web/eslint.config.mjs`, `no-restricted-syntax` (`restriccionesDeAspecto`), en todo `src` menos los tests, `src/lib` incluido | Tamaños a mano; la receta «mono + versal»; las clases retiradas de `globals.css`; la paleta cruda; opacidades sueltas de `primary` y de borde (`bg-primary/10`, `border-border/60`, también sobre un token con nombre); radios fuera de escala; `bg-card/N`; `transition-[…transform…]`; `animate-ping` y `animate-bounce`; emojis y glifos (✓ ✕ ● ○) como iconos | Ninguna. Un caso legítimo se justifica en su línea (`eslint-disable-next-line no-restricted-syntax -- motivo`), como el aviso de reconexión |
 | Voz | `web/src/__tests__/voz-de-la-interfaz.test.ts` (vitest, con el AST de TypeScript) | Voseo y vosotros en todo `src`; en la consola —todo menos `lib/` y `app/(publico)/`— «backend», «frontend», «endpoint», «servidor», «corpus», «fixture», «payload», «se pinta», «denominador», «renderiza»… | `EXCEPCIONES`: vacía; el test falla si una entrada deja de hacer falta |
 
 Por qué así:
@@ -626,8 +632,8 @@ Por qué así:
   que comparten `useTeclasPestanas`, y el defecto de F12 eran conmutadores que
   *parecían* pestañas sin serlo, que una regla sobre el atributo no ve.
   `text-base` o mayor en la consola: hoy 0, pero la superficie pública los usa y
-  la regla pediría un bloque por superficie. Las opacidades y los bordes de F10,
-  que esperan a que la escala tenga nombre.
+  la regla pediría un bloque por superficie. (Las opacidades y los bordes de
+  F10 sí lo son desde el 2026-10-25, cuando la escala tuvo nombre.)
 
 Comandos: `cd web && npm run lint` (0 errores) y `npx vitest run
 src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
@@ -640,19 +646,41 @@ src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
   `charts/kpi-card.tsx` ya solo los importan sus tests. Con ellos pueden irse
   `ExportPopover.className` (deprecado y sin llamadores) y `NavPage.icon` /
   `NavSection.icon` de `lib/navigation.ts`, que ya no se pintan.
-- **Una escala de tintes con nombre (F10).** Quedan 12 opacidades de `primary`
-  en 143 usos. Faltan los tokens (`primary-hover`, `-selected`, `-soft`) y un
-  trinquete de opacidades sueltas. Los bordes, igual: `border-border/N` en 266
-  usos de 152 ficheros, con siete valores de /25 a /80; un `--divider` solo puede
-  entrar con el cambio de todos a la vez, o cada borde relativo se aclara un 30 %.
-- **D6 en las mutaciones.** Muchas llevan el toast global del `MutationCache` y,
-  además, su `onError` o su `catch` con otro toast (claves de API, cola de
-  errores, usuarios, RGPD, formularios de equipo, etiquetas, oportunidades,
-  tareas, comentarios…). Pide una decisión de conjunto —pasar el título local a
-  `meta.errorTitle` o silenciar el global— y no es mecánico, porque los tests
-  renderizan sin el `MutationCache`. Aparte, `useOrganizationMembers` tiene seis
-  consumidores y solo `/equipo` pinta su error: silenciarla dejaría mudos cinco
-  selectores.
+- ~~**Una escala de tintes con nombre (F10).**~~ ✅ **Cerrado el 2026-10-25.**
+  Tokens en `globals.css`: `primary-hover|selected|soft` (5 · 10 · 15 %),
+  `primary-line|line-strong` (30 · 50 %), `primary-solid-hover` (90 %) y
+  `primary-ramp-1…4` (20 · 35 · 55 · 90 %, intensidad de dato); y `--divider`
+  (el /60 de antes) y `--divider-subtle` (el /40), el mismo tono que `--border`
+  con la alfa multiplicada. Entraron con todos los usos a la vez: 185 de
+  `primary` en 13 valores y 344 de borde en 7 valores (189 ficheros), hoy 0 y
+  0. Al consolidar, /9 → 10 %, /40 de borde tintado → 30 %, /50 y /70 de borde
+  neutro → `divider`, /25 y /30 → `divider-subtle`, /80 → `border`, y en las
+  rampas de dato /30 → 35 %, /50 y /60 → 55 %, /80 → 90 %.
+  `contraste-tokens.test.ts` lee ahora las alfas de los tintes del CSS (la fila
+  activa del Radar pasa de 9 a 10 % y sigue sobre 4,5:1). El trinquete es una
+  restricción más de `restriccionesDeAspecto`, sin allowlist. Fuera, a
+  propósito: los mapas de calor continuos que calculan `hsl(var(--primary) / α)`
+  por valor y los `fillOpacity` de SVG, que son escala de dato, no tinte.
+  **Sin verificar a ojo**: no se levantó el dev server en la rama; la
+  comprobación fue de tests y lint.
+- ~~**D6 en las mutaciones.**~~ ✅ **Cerrado el 2026-10-25.** El global manda:
+  `toast.error` en `web/src` (sin tests) pasó de 100 a 23, y los 23 que quedan
+  no son de una mutación (validación previa, descargas y `fetch` directos,
+  portapapeles, los dos avisos de `query-feedback`) salvo el resumen de la
+  retirada en lote de la Agenda, que silencia su mutación (`{ silent: true }`)
+  para dar un único aviso agregado. Las mutaciones llevan su título en
+  `meta.errorTitle` (82 hoy, 5 antes), y `meta.errorDescription` cubre los
+  casos con frase propia (un 404 o un 409 que en esa acción significan algo;
+  `descripcionDeConflicto` es la del `expected_version`). Los hooks
+  compartidos (`useCreatePursuit`, `useUpdatePursuit`, `useMoverPursuit`,
+  `useCrearTarea`, `useActualizarTarea`) aceptan el `meta` de quien llama.
+  `useOrganizationMembers` no se silencia entera: la silencian solo
+  `MiembrosCard` y `CicloOrganizacion`, que pintan el fallo
+  (`{ errorEnLinea: true }`); los selectores conservan el toast. Los tests usan
+  `crearQueryClientDePrueba` (`src/test/query-client.ts`), con la misma
+  `MutationCache` que la aplicación (`crearMutationCache`, en
+  `lib/query-feedback.ts`). `motivo()` de `use-seguir-cuenta.ts`, que enseñaba
+  el `error.message` crudo de título, se fue con ellos.
 - **Ortografía de reserva.** `CCAA_FALLBACK`
   (`mi-watchlist/_hooks/watchlist-rule-options.ts`: «Andalucia»,
   «Cataluna»…) se enseña tal cual si `/meta/filters` falla. Son valores que

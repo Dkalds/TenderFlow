@@ -86,8 +86,10 @@ vi.mock("@/hooks/use-follows", () => ({
 }));
 
 const createPursuit = vi.fn();
+// El aviso de error es el global de mutaciones con el `meta` del hook (D6).
+const useCreatePursuitMock = vi.fn((_meta?: unknown) => ({ mutateAsync: createPursuit, isPending: false }));
 vi.mock("@/hooks/use-pursuits", () => ({
-  useCreatePursuit: () => ({ mutateAsync: createPursuit, isPending: false }),
+  useCreatePursuit: (meta?: unknown) => useCreatePursuitMock(meta),
 }));
 
 const setActiveOrganizationId = vi.fn();
@@ -296,10 +298,10 @@ describe("useRadarConsola", () => {
 
     createPursuit.mockRejectedValueOnce(new Error("Sin permisos en la organización"));
     await act(() => result.current.openPursuit(tender("A")));
-    // Un título humano y el porqué de la API como descripción (D6).
-    expect(toastError).toHaveBeenCalledWith("No se pudo abrir la oportunidad", {
-      description: "Sin permisos en la organización",
-    });
+    // Un título humano en el `meta` del hook, que el aviso global pinta con el
+    // porqué de la API de descripción; la consola no añade otro toast (D6).
+    expect(useCreatePursuitMock).toHaveBeenCalledWith({ errorTitle: "No se pudo abrir la oportunidad" });
+    expect(toastError).not.toHaveBeenCalled();
   });
 
   it("lee la última visita al montar y la reescribe al salir", () => {

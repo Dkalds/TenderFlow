@@ -26,7 +26,7 @@ const CIFRA = cn(CELDA, "tf-tnum text-right");
 
 function FilaTrabajo({ trabajo }: { trabajo: TrabajoResumen }) {
   return (
-    <tr className="border-b border-border/60 last:border-0">
+    <tr className="border-b border-divider last:border-0">
       <td className={CELDA}>
         <span className="font-medium">{TIPO[trabajo.tipo] ?? trabajo.tipo}</span>
         {trabajo.ultimo_error && (
@@ -70,7 +70,7 @@ export function TrabajosCard({ resumen }: { resumen: EjecucionesResumen }) {
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-tf-body">
             <caption className="sr-only">Cola de trabajo a demanda por tipo</caption>
-            <thead className="border-y border-border/70">
+            <thead className="border-y border-divider">
               <tr>
                 <th scope="col" className={cn(CABECERA_COLUMNA, "px-3 py-2")}>
                   Trabajo

@@ -16,6 +16,7 @@ import {
   organizacionPorDefecto,
   organizacionResuelta,
   useActiveOrganizationId,
+  useOrganizationMembers,
   useOrganizations,
   useOrganizationStore,
   type Organization,
@@ -295,5 +296,29 @@ describe("olvidarOrganizacionPorDefecto", () => {
     const estado = useOrganizationStore.getState();
     expect(estado.ultimaPorDefecto).toBeUndefined();
     expect(estado.activeOrganizationId).toBe(9);
+  });
+});
+
+/**
+ * D6: los miembros tienen siete consumidores y solo dos pintan su error en
+ * línea. El silencio lo pide quien lo pinta; los selectores se quedan con el
+ * toast global, que es su único aviso.
+ */
+describe("useOrganizationMembers", () => {
+  function metaDe(opciones?: { errorEnLinea?: boolean }) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse([])));
+    renderHook(() => useOrganizationMembers(5, opciones), {
+      wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    });
+    return client.getQueryCache().getAll()[0]?.meta;
+  }
+
+  it("por defecto deja el toast global: un selector no tiene otra forma de avisar", () => {
+    expect(metaDe()?.silent).toBeUndefined();
+  });
+
+  it("con errorEnLinea se silencia, porque el panel ya pinta el fallo", () => {
+    expect(metaDe({ errorEnLinea: true })).toEqual({ silent: true });
   });
 });

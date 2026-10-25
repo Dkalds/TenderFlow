@@ -86,7 +86,7 @@ function UrgentCard({ card }: { card: Tarjeta }) {
       href={scopedHref(card.href)}
       className={cn(
         SUPERFICIE_PANEL,
-        "flex flex-col px-3.5 py-3 text-left transition-colors hover:border-primary/50 active:duration-0",
+        "flex flex-col px-3.5 py-3 text-left transition-colors hover:border-primary-line-strong active:duration-0",
         PULSABLE_SOBRE_TARJETA,
       )}
     >
@@ -115,7 +115,7 @@ function UrgentCard({ card }: { card: Tarjeta }) {
           ))}
         </span>
       )}
-      <span className="mt-auto flex items-center gap-1.5 border-t border-border/40 pt-2">
+      <span className="mt-auto flex items-center gap-1.5 border-t border-divider-subtle pt-2">
         <span
           className={cn(
             "min-w-0 flex-1 truncate text-tf-micro",

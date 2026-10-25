@@ -103,7 +103,7 @@ export function NuevaReglaCard({
         </button>
       </h2>
       {open && (
-        <div id={cuerpoId} className="border-t border-border/60 px-4 pb-4 pt-3.5">
+        <div id={cuerpoId} className="border-t border-divider px-4 pb-4 pt-3.5">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Palabra clave *" htmlFor="wl-keyword" error={errores.keyword?.message}>
               <Input

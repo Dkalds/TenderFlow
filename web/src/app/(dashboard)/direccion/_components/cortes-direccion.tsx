@@ -47,7 +47,7 @@ function BarraCorte({ fila, media }: { fila: Fila; media: number | null | undefi
   return (
     <svg className="h-4 w-full" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true">
       <rect className="fill-secondary/60" width="100" height="10" rx="1" />
-      <rect className="fill-primary/55" y="2" height="6" width={Math.max(1, valor)} />
+      <rect className="fill-primary-ramp-3" y="2" height="6" width={Math.max(1, valor)} />
       <line
         className="stroke-foreground/70"
         x1={bajo}
@@ -145,7 +145,7 @@ export function CortePanel({ corte, minimo }: { corte: Corte; minimo: number }) 
           hint={`Una fila se publica a partir de ${minimo} cierres.`}
         />
       ) : (
-        <ul className="divide-y divide-border/40" aria-label={`Tasa de éxito ${titulo.toLowerCase()}`}>
+        <ul className="divide-y divide-divider-subtle" aria-label={`Tasa de éxito ${titulo.toLowerCase()}`}>
           {visibles.map((fila) => (
             <FilaCorte key={fila.clave} corte={corte} fila={fila} />
           ))}

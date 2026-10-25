@@ -25,7 +25,7 @@ export function ConsultasDeEjemplo({ onPick }: { onPick: (consulta: string) => v
             key={ejemplo}
             type="button"
             onClick={() => onPick(ejemplo)}
-            className="tf-pressable rounded-md border border-border/70 bg-card px-3 py-1.5 text-left text-tf-meta hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            className="tf-pressable rounded-md border border-divider bg-card px-3 py-1.5 text-left text-tf-meta hover:bg-primary-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             {ejemplo}
           </button>

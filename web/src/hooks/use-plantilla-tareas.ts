@@ -28,6 +28,7 @@ export function usePlantillaTareas(organizationId: number | null) {
 export function useGuardarPlantillaTareas(organizationId: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "No se pudo guardar la plantilla de tareas" },
     mutationFn: (tareas: TareaPlantilla[]) =>
       apiMutate<PlantillaTareas>(
         "PUT",

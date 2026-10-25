@@ -189,7 +189,7 @@ export function UtesRed({
               ))}
             </svg>
           </div>
-          <p className="mt-auto border-t border-border/60 pt-2.5 text-tf-meta text-muted-foreground">
+          <p className="mt-auto border-t border-divider pt-2.5 text-tf-meta text-muted-foreground">
             {pares === 1
               ? "El par con más UTE del ámbito. "
               : `Los ${formatNumber(pares)} pares con más UTE del ámbito, no todos. `}

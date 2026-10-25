@@ -26,7 +26,7 @@ const ORDEN_ESTADOS: readonly EstadoCobertura[] = ["activa", "opcional", "fuera_
  * fuente, que sí es un código, conserva la monoespaciada más abajo. */
 function EstadoFuente({ estado }: { estado: EstadoCobertura }) {
   return (
-    <span className="border-border/70 text-muted-foreground text-tf-meta rounded-md border px-2 py-0.5 font-medium">
+    <span className="border-divider text-muted-foreground text-tf-meta rounded-md border px-2 py-0.5 font-medium">
       {ESTADOS[estado].etiqueta}
     </span>
   );
@@ -40,7 +40,7 @@ export async function CoberturaDeclarada() {
   // página declara el hueco y la primera revalidación con backend lo rellena.
   if (!cobertura) {
     return (
-      <section className="border-border/60 bg-card border-t">
+      <section className="border-divider bg-card border-t">
         <div className="mx-auto w-full max-w-4xl px-6 py-12">
           <h2 className={TITULO_SECCION}>{FUENTES.titulo}</h2>
           <p className="text-muted-foreground mt-3 max-w-[68ch] text-sm leading-relaxed">{SIN_INVENTARIO}</p>
@@ -55,7 +55,7 @@ export async function CoberturaDeclarada() {
 
   return (
     <>
-      <section aria-labelledby="fuentes-declaradas" className="border-border/60 bg-card border-t">
+      <section aria-labelledby="fuentes-declaradas" className="border-divider bg-card border-t">
         <div className="mx-auto w-full max-w-4xl px-6 py-12">
           <h2 id="fuentes-declaradas" className={TITULO_SECCION}>
             {FUENTES.titulo}
@@ -66,7 +66,7 @@ export async function CoberturaDeclarada() {
 
           <ul className="mt-8">
             {cobertura.fuentes.map((fuente) => (
-              <li key={fuente.source_id} className="border-border/60 border-t py-5 first:border-t-0 first:pt-0">
+              <li key={fuente.source_id} className="border-divider border-t py-5 first:border-t-0 first:pt-0">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                   <h3 className="font-display text-base font-semibold tracking-normal">{fuente.nombre}</h3>
                   <EstadoFuente estado={fuente.estado} />
@@ -82,7 +82,7 @@ export async function CoberturaDeclarada() {
             ))}
           </ul>
 
-          <dl className="border-border/60 mt-8 grid gap-2 border-t pt-6 text-xs sm:grid-cols-3">
+          <dl className="border-divider mt-8 grid gap-2 border-t pt-6 text-xs sm:grid-cols-3">
             {estadosPresentes.map((estado) => (
               <div key={estado}>
                 <dt className="font-medium">{ESTADOS[estado].etiqueta}</dt>
@@ -95,7 +95,7 @@ export async function CoberturaDeclarada() {
         </div>
       </section>
 
-      <section aria-labelledby="fuera-de-alcance" className="border-border/60 border-t">
+      <section aria-labelledby="fuera-de-alcance" className="border-divider border-t">
         <div className="mx-auto w-full max-w-4xl px-6 py-12">
           <h2 id="fuera-de-alcance" className={TITULO_SECCION}>
             {EXCLUSIONES.titulo}
@@ -109,7 +109,7 @@ export async function CoberturaDeclarada() {
 
           <ul className="mt-8">
             {cobertura.fuera_de_alcance.map((excluido) => (
-              <li key={excluido.ambito} className="border-border/60 border-t py-5 first:border-t-0 first:pt-0">
+              <li key={excluido.ambito} className="border-divider border-t py-5 first:border-t-0 first:pt-0">
                 <h3 className="font-display text-base font-semibold tracking-normal">{excluido.ambito}</h3>
                 <p className="text-muted-foreground mt-2 max-w-[68ch] text-sm leading-relaxed">{excluido.motivo}</p>
                 <p className="text-muted-foreground mt-2 text-xs">

@@ -44,7 +44,7 @@ export function ResultadosCombinados({
             ))}
           </div>
         ) : combined && combined.length > 0 ? (
-          <ul className="divide-y divide-border/50 rounded-xl border border-border/60 bg-card">
+          <ul className="divide-y divide-divider rounded-xl border border-divider bg-card">
             {combined.map((item, i) => {
               const id = item.id_externo ?? String(i);
               return (

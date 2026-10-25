@@ -187,7 +187,7 @@ export function PriceScenariosPanel({
               const precio = Math.round(scenario.price_eur);
               const esLaPrevista = ofertaPrevista != null && Math.abs(ofertaPrevista - precio) < 1;
               return (
-                <div key={scenario.name} className="border-border/60 bg-background rounded-xl border p-3.5">
+                <div key={scenario.name} className="border-divider bg-background rounded-xl border p-3.5">
                   <p className={ROTULO_DATO}>{names[scenario.name]}</p>
                   <p className="tf-tnum mt-1.5 text-tf-title font-semibold">{eur(scenario.price_eur)}</p>
                   <p className="text-primary mt-1 text-tf-meta font-medium">Baja {percent(scenario.discount)}</p>

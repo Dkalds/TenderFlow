@@ -99,7 +99,7 @@ export default function NotificacionesView() {
       <PanelTitle title="Qué avisos quieres recibir" />
       <ul className="space-y-3">
         {tipos.map((t) => (
-          <li key={t.tipo} className="rounded-md border border-border/60 p-3">
+          <li key={t.tipo} className="rounded-md border border-divider p-3">
             <p className="text-tf-body font-medium">{t.label}</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-3">
               {CANALES.map(({ canal, label }) => {

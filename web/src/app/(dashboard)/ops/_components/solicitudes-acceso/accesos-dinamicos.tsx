@@ -77,7 +77,7 @@ export function AccesosDinamicos({
   const revocadas = grants?.filter((grant) => !grant.active) ?? [];
 
   return (
-    <div className="border-border/60 mt-5 border-t pt-4">
+    <div className="border-divider mt-5 border-t pt-4">
       <SectionTitle as="h3" className="mb-0">
         Accesos dinámicos activos
       </SectionTitle>
@@ -98,7 +98,7 @@ export function AccesosDinamicos({
               No hay concesiones dinámicas; pueden seguir aplicando las variables de entorno.
             </p>
           ) : (
-            <ul className="divide-border/60 mt-2 divide-y">
+            <ul className="divide-divider mt-2 divide-y">
               {activas.map((grant) => (
                 <li key={grant.id} className="flex items-center justify-between gap-3 py-2">
                   <div className="min-w-0">
@@ -123,7 +123,7 @@ export function AccesosDinamicos({
               <SectionTitle as="h3" className="mt-4 mb-0">
                 Accesos revocados
               </SectionTitle>
-              <ul className="divide-border/60 mt-2 divide-y">
+              <ul className="divide-divider mt-2 divide-y">
                 {revocadas.map((grant) => {
                   const solicitud = solicitudParaConcesion(grant, solicitudes);
                   return (

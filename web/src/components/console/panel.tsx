@@ -82,14 +82,14 @@ const TEXTO_TONO: Record<TonoDato, string> = {
  * con su propio `aria-labelledby`): `cn(SUPERFICIE_PANEL, TONO_PANEL.accent)`.
  */
 export const TONO_PANEL = {
-  accent: "border-primary/40",
+  accent: "border-primary-line",
   danger: "border-destructive/40",
 } as const;
 
 export type TonoPanel = keyof typeof TONO_PANEL;
 
 /** La superficie de un panel, para elementos que no pueden ser un `Panel`. */
-export const SUPERFICIE_PANEL = "rounded-xl border border-border/60 bg-card";
+export const SUPERFICIE_PANEL = "rounded-xl border border-divider bg-card";
 
 export function Panel({
   className,
@@ -180,7 +180,7 @@ const VALOR_FACT: Record<VarianteFact, string> = {
 
 /**
  * Un dato suelto con su rótulo: la celda de las rejillas de ficha e inspector
- * (van en una rejilla de 1 px: `grid gap-px bg-border/60`, como `StatStrip`).
+ * (van en una rejilla de 1 px: `grid gap-px bg-divider`, como `StatStrip`).
  *
  * `variant`: `texto` (por defecto), `cifra` (importe, días, score: sans con
  * cifras tabulares) o `codigo` (expediente, CPV, NIF: mono). La mono es para
@@ -223,7 +223,7 @@ export function Fact({
 /**
  * Tinte de una superficie pulsable que se apoya en otra (la celda de una tira
  * sobre la rejilla de 1 px): /5 al pasar y /10 al pulsar, mezclados con la
- * tarjeta y no transparentes, porque un `bg-primary/5` dejaba ver el gris de
+ * tarjeta y no transparentes, porque un `bg-primary-hover` dejaba ver el gris de
  * la rejilla y el hover salía sucio. El pulsado va sin transición (responde en
  * el mismo frame del pointer-down) y vuelve con la del elemento.
  */
@@ -378,7 +378,7 @@ export function StatStrip({
       className={cn(
         // Apretar seis KPIs en una pantalla de portátil los vuelve ilegibles
         // antes que compactos: dos columnas hasta `lg`.
-        "grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60",
+        "grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-divider bg-divider",
         "lg:grid-cols-[repeat(var(--console-stat-columns),minmax(0,1fr))]",
         // Una celda que trae su propio marco (`KpiCard` suelto) lo pierde dentro
         // de la tira: aquí el marco es la rejilla.
@@ -622,7 +622,7 @@ export function PanelTabs<T extends string>({
       ref={ref}
       role="tablist"
       aria-label={label}
-      className={cn("flex flex-wrap items-center gap-0.5 border-b border-border/60 pb-2", className)}
+      className={cn("flex flex-wrap items-center gap-0.5 border-b border-divider pb-2", className)}
     >
       {tabs.map((tab) => {
         const on = tab.key === value;

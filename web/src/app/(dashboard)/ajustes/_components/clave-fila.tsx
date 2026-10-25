@@ -59,7 +59,7 @@ export function ClaveFila({
   };
 
   return (
-    <li className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-border/60 p-3">
+    <li className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-divider p-3">
       <div className="min-w-0">
         <p className="flex flex-wrap items-center gap-2 text-tf-body font-medium">
           {clave.name || `Clave ${clave.id}`}

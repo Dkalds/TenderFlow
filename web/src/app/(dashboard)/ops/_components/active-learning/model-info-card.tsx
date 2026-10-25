@@ -25,7 +25,7 @@ const NOMBRE_METRICA: Record<string, string> = {
   recall: "Exhaustividad",
 };
 
-const REJILLA = "grid gap-px overflow-hidden rounded-md border border-border/60 bg-border/60";
+const REJILLA = "grid gap-px overflow-hidden rounded-md border border-divider bg-divider";
 
 /** Métrica de 0 a 1 con tres decimales y coma decimal (0,874). */
 const tresDecimales = (valor: number) => formatNumber(valor, "es-ES", { decimales: 3 });

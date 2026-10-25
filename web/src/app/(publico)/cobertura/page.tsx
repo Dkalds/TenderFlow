@@ -41,7 +41,7 @@ export default function CoberturaPage() {
         secciones={SECCIONES}
       />
       <CoberturaDeclarada />
-      <section className="border-border/60 bg-card border-t">
+      <section className="border-divider bg-card border-t">
         <div className="mx-auto w-full max-w-4xl px-6 py-12">
           <h2 className={TITULO_SECCION}>Familias observadas</h2>
           <p className="text-muted-foreground mt-3 max-w-[68ch] text-sm leading-relaxed">
@@ -49,7 +49,7 @@ export default function CoberturaPage() {
           </p>
           <ul className="mt-6 flex flex-wrap gap-2">
             {CONTENIDO.familias.map((familia) => (
-              <li key={familia} className="border-border/70 bg-background rounded-md border px-3 py-1.5 text-sm font-medium">
+              <li key={familia} className="border-divider bg-background rounded-md border px-3 py-1.5 text-sm font-medium">
                 {familia}
               </li>
             ))}

@@ -68,7 +68,7 @@ export function AtajosAnalisis() {
             <Link
               href={scopedHref(atajo.href)}
               aria-label={`Ir a ${atajo.label}, en Mercado`}
-              className="group inline-flex h-8 items-center gap-2 rounded-md border border-border/60 bg-card px-3 text-tf-meta font-medium transition-colors hover:border-primary/50 active:bg-primary/10 active:duration-0"
+              className="group inline-flex h-8 items-center gap-2 rounded-md border border-divider bg-card px-3 text-tf-meta font-medium transition-colors hover:border-primary-line-strong active:bg-primary-selected active:duration-0"
             >
               {atajo.label}
               <ArrowRight

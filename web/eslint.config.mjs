@@ -105,6 +105,19 @@ const restriccionesDeAspecto = [
     "Radio fuera de la escala: controles, chips y badges rounded-md; paneles rounded-xl; puntos y avatares rounded-full; rounded-sm donde iba el `rounded` desnudo. Nada de rounded-2xl, rounded-3xl ni rounded-[Npx].",
     CLASE(String.raw`(?<![\w-])rounded(?:-(?:2xl|3xl|\[[^\]]*\]))?(?![\w-])`),
   ),
+  // Regla 6 y F10: la escala de tintes y bordes tiene nombre (globals.css). Había
+  // 12 opacidades de `primary` en 143 usos y `border-border/N` en siete valores
+  // y 266 usos; el 2026-10-25 todas pasaron a `primary-hover|selected|soft|
+  // line|line-strong|solid-hover|ramp-1…4` y a `border` / `divider` /
+  // `divider-subtle`. Sin allowlist: no queda ninguna. Una opacidad sobre un
+  // token con nombre (el divisor o un tinte con una barra y un número) tampoco: es
+  // otra opacidad suelta con otro disfraz.
+  ...conMensaje(
+    "Opacidad suelta de primary o de borde: usa la escala con nombre de globals.css. Tintes: bg-primary-hover (5 %), -selected (10 %), -soft (15 %); bordes tintados: border-primary-line (30 %), -line-strong (50 %); hover del botón sólido: primary-solid-hover; dato: primary-ramp-1…4. Bordes neutros: border-border (controles), border-divider, border-divider-subtle.",
+    CLASE(
+      String.raw`(?<![\w-])(?:bg|text|border|ring|fill|stroke|from|via|to|divide|outline|decoration|caret|accent|shadow)-(?:primary(?:-(?:hover|selected|soft|line|line-strong|solid-hover|ramp-\d))?|border|divider(?:-subtle)?)\/(?:\d|\[)`,
+    ),
+  ),
   // Regla 5: panel opaco. `bg-card/70` sobre un fondo plano no deja ver nada
   // detrás: solo da un segundo blanco (44 usos). Las capas que flotan sobre
   // contenido lo justifican en su línea.

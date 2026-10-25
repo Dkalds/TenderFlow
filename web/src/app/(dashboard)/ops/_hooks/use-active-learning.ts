@@ -14,7 +14,6 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { feedbackKeys } from "@/lib/query-keys";
@@ -113,7 +112,7 @@ export function useActiveLearning(): ActiveLearning {
       setDismissed((prev) => new Set(prev).add(vars.expediente));
       queryClient.invalidateQueries({ queryKey: feedbackKeys.stats });
     },
-    onError: () => toast.error("No se pudo guardar la etiqueta. Vuelve a intentarlo."),
+    meta: { errorTitle: "No se pudo guardar la etiqueta" },
   });
 
   const items = useMemo(() => queue?.items ?? [], [queue]);

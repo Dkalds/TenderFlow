@@ -104,7 +104,7 @@ function Confirmacion({ items, retirando, onCancelar, onConfirmar }: Props) {
         </DialogDescription>
 
         {varias && (
-          <ul className="mb-4 max-h-[40vh] divide-y divide-border/40 overflow-y-auto">
+          <ul className="mb-4 max-h-[40vh] divide-y divide-divider-subtle overflow-y-auto">
             {items.map((item) => (
               <Fila
                 key={claveDe(item)}
