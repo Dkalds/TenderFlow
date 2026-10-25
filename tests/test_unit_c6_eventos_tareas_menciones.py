@@ -17,9 +17,7 @@ la decisión (a quién, cuándo, cuántas veces), no el SQL.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from contextlib import contextmanager
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -471,13 +469,13 @@ def test_los_eventos_de_s46_siguen_leyendo_user_event_prefs(
 def webhook_org(despacho: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Un webhook de la organización 7 suscrito a ``pursuit.*``; la salida HTTP se graba.
 
-    Se sustituyen el repositorio, el secret, la validación SSRF y el transporte
-    fijado: lo que se prueba es si el despachador **decide** entregar, no cómo
-    firma ni cómo conecta (eso lo cubren los tests de S4).
+    Se sustituyen el repositorio, el secret, la validación SSRF, el intento HTTP
+    y la escritura de la entrega: lo que se prueba es si el despachador
+    **decide** entregar, no cómo firma ni cómo conecta (eso lo cubren los tests
+    de ``db/webhooks.py``, que es la salida común desde 2026-10).
     """
     import db.repositories.webhooks as webhooks
-    import shared.outbound_http as outbound
-    import shared.ssrf as ssrf
+    import db.webhooks as salida
     from config.settings import settings
 
     despacho["entregas"] = []
@@ -499,18 +497,20 @@ def webhook_org(despacho: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> di
         ) -> list[dict[str, Any]]:
             return list(despacho["webhooks"])
 
-        def record_delivery(self, webhook_id: int, **kw: Any) -> None:
-            despacho["registros"].append({"webhook_id": webhook_id, **kw})
+    def _intento(*, url: str, headers: dict[str, str], body: bytes, **_: Any) -> tuple[int, None]:
+        despacho["entregas"].append({"url": url, "headers": headers, "body": body})
+        return 200, None
 
-    @contextmanager
-    def _post(method: str, url: str, **kw: Any) -> Iterator[SimpleNamespace]:
-        despacho["entregas"].append({"method": method, "url": url, **kw})
-        yield SimpleNamespace(status_code=200)
+    def _crear_entrega(*, webhook_id: int, **kw: Any) -> int:
+        despacho["registros"].append({"webhook_id": webhook_id, **kw})
+        return len(despacho["registros"])
 
     monkeypatch.setattr(webhooks, "WebhookRepository", _Repo)
-    monkeypatch.setattr(webhooks, "resolve_stored_secret", lambda webhook_id, stored: stored)
-    monkeypatch.setattr(ssrf, "validate_outbound_url", lambda url, **_: url)
-    monkeypatch.setattr(outbound, "pinned_https_request", _post)
+    monkeypatch.setattr(salida, "_resolve_secret", lambda webhook_id, stored: stored)
+    monkeypatch.setattr(salida, "validate_outbound_url", lambda url, **_: url)
+    monkeypatch.setattr(salida, "_intentar_entrega", _intento)
+    monkeypatch.setattr(salida, "crear_entrega", _crear_entrega)
+    monkeypatch.setattr(salida, "_aplicar_decision", lambda **_: None)
     # En prod/staging el canal exige allowlist; el test no prueba eso.
     monkeypatch.setattr(settings, "WEBHOOK_ALLOWED_HOSTS", "hooks.example.test")
     return despacho

@@ -31,6 +31,7 @@ def build_default_registry() -> list[ScheduledJob]:
     from scheduler.drift_report import run_drift_report
     from scheduler.jobs.daily_atom import run as run_daily_atom
     from scheduler.jobs.documentos_embeddings import run as run_documentos_embeddings
+    from scheduler.jobs.event_dispatch import run as run_event_dispatch
     from scheduler.jobs.llm_models_canary import run as run_llm_models_canary
     from scheduler.jobs.llm_tech_labeling import run as run_llm_tech_labeling
     from scheduler.jobs.ml_predicciones import run_retrain as run_ml_retrain
@@ -147,6 +148,23 @@ def build_default_registry() -> list[ScheduledJob]:
             interval_env="SCHEDULER_WEBHOOK_RETRY_INTERVAL_MINUTES",
             default_interval_minutes=5,
             initial_offset_minutes=2,
+        ),
+        ScheduledJob(
+            # Despachador del outbox (ADR-027 §C). En producción lo corre el
+            # paso `event_dispatch` del cierre (plano `pipeline`, cada pasada
+            # de ingesta) y, a demanda, el consumidor de la cola de ADR-028
+            # cuando una mutación escribe un evento que alguien espera ya
+            # (`services.jobs.solicitar_despacho_de_eventos`). Hasta 2026-10 no
+            # estaba en el registry: el plano APScheduler (docker-compose) no lo
+            # corría nunca y los avisos del stack local no salían. Cinco
+            # minutos porque es ligero —una consulta cuando la cola está vacía—
+            # y es la latencia que se nota en la campana.
+            name="event_dispatch",
+            plane="pipeline",
+            fn=run_event_dispatch,
+            interval_env="SCHEDULER_EVENT_DISPATCH_INTERVAL_MINUTES",
+            default_interval_minutes=5,
+            initial_offset_minutes=3,
         ),
         ScheduledJob(
             name="digest_daily",

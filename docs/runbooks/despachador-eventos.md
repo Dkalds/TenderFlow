@@ -12,6 +12,26 @@ tags: [runbook, operacion, eventos, notificaciones]
 ([ADR-027](../adr/ADR-027-backbone-de-eventos-outbox.md)). Estuvo escrito y sin
 cablear desde S4.1 hasta el 2026-09-19: ningún evento se entregaba.
 
+## Pasadas a demanda (2026-10)
+
+Además del cierre, el despachador corre **a demanda** en el consumidor de la
+cola de trabajo (ADR-028, job `despacho_eventos`,
+`scheduler/worker.py::ejecutar_despacho_eventos`). Lo encola
+`services.jobs.solicitar_despacho_de_eventos` después del commit de una mutación
+cuyo aviso alguien espera ya: hoy la asignación de una oportunidad
+(`pursuit.assigned`) y la solicitud de acceso de la landing
+(`solicitud_acceso.creada`). La pasada a demanda **solo reparte**
+(`dispatch_pending`); los productores sin mutación de abajo siguen siendo del
+cierre. Si la cola no responde no pasa nada: el evento ya está en
+`domain_events` y sale en el siguiente cierre.
+
+Dos pasadas a la vez (cierre y worker) no duplican: el reclamo
+`(event_id, canal)` es único, y un canal que falla libera su reclamo **y
+reabre el evento** (`db.events.release_channel`), así que no se pierde aunque
+la otra pasada ya lo hubiera dado por despachado. En el stack local
+(docker-compose) el job `event_dispatch` del registry lo corre cada cinco
+minutos (`SCHEDULER_EVENT_DISPATCH_INTERVAL_MINUTES`).
+
 ## Orden dentro de una pasada
 
 1. `emitir_tareas_que_vencen` — `pursuit.task_due` del día (C6.1).

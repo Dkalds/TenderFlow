@@ -52,12 +52,6 @@ log = get_logger(__name__)
 
 _DELIVERY_TIMEOUT_S = 5.0
 
-#: Solicitud de acceso nueva desde la landing. La emite
-#: ``api/routes/publico_solicitudes.py`` y la acepta como suscripción
-#: ``api/routes/webhooks.py``; el nombre vive aquí, con el resto de la
-#: maquinaria de entrega, para que los dos extremos no puedan escribirlo
-#: distinto y el evento se pierda sin que falle nada.
-EVENTO_SOLICITUD_ACCESO = "solicitud_acceso.creada"
 _MAX_FAILURES_BEFORE_DISABLE = 10
 
 
@@ -192,6 +186,83 @@ def _aplicar_decision(*, webhook_id: int, status_code: int, exito: bool, decisio
         marcar_webhook_tras_intento(webhook_id, status_code=status_code, exito=False)
 
 
+def entregar_firmado(
+    *,
+    webhook_id: int,
+    url: str,
+    stored_secret: str,
+    event_type: str,
+    body: bytes,
+    momento_iso: str,
+    allowed_hosts: frozenset[str] | None = None,
+) -> bool:
+    """Primer intento de UNA entrega firmada, con su fila y su reintento (C2.4).
+
+    Es el único camino de salida de un evento hacia un webhook: lo usan
+    :func:`trigger_event` y el despachador del outbox
+    (``scheduler/jobs/event_dispatch.py``). Antes el despachador tenía su propia
+    copia sin ``webhook_deliveries.payload_json`` ni ``X-Webhook-Delivery``, así
+    que una entrega del outbox que fallaba **no se reintentaba nunca**: el
+    receptor en despliegue perdía el evento, que es justo lo que C2.4 vino a
+    cerrar para ``trigger_event``.
+
+    ``body`` llega ya renderizado (el formato del webhook lo decide quien
+    llama) y ``momento_iso`` es el instante que va dentro del cuerpo: el mismo
+    sella ``X-Webhook-Timestamp`` y la fila, para que el reintento vuelva a
+    firmar exactamente lo mismo. Devuelve si el primer intento fue 2xx.
+    """
+    from config.settings import settings
+    from shared.webhook_retry import decidir
+
+    hosts = _allowed_webhook_hosts() if allowed_hosts is None else allowed_hosts
+    try:
+        if settings.ENV in ("prod", "staging") and not hosts:
+            raise ValueError("WEBHOOK_ALLOWED_HOSTS no está configurado")
+        validate_outbound_url(url, allowed_hosts=hosts or None)
+    except ValueError as exc:
+        # Un bloqueo SSRF no se reintenta: el destino no va a dejar de ser
+        # una IP privada dentro de seis horas, y encolarlo solo repetiría la
+        # resolución DNS que se acaba de rechazar.
+        log.warning("webhook_trigger_ssrf_blocked", webhook_id=webhook_id, error=str(exc))
+        _record_delivery(webhook_id, 0, False)
+        return False
+
+    try:
+        timestamp = segundos_unix(momento_iso)
+    except ValueError:
+        timestamp = segundos_unix(now_utc())
+    delivery_uid = uuid.uuid4().hex
+    headers = _cabeceras(
+        secret=_resolve_secret(webhook_id, stored_secret),
+        body=body,
+        event_type=event_type,
+        delivery_uid=delivery_uid,
+        timestamp=timestamp,
+    )
+    status_code, error = _intentar_entrega(url=url, headers=headers, body=body, allowed_hosts=hosts)
+    ok = 200 <= status_code < 300
+    if not ok and error:
+        log.warning("webhook_delivery_failed", webhook_id=webhook_id, error=error)
+
+    decision = decidir(exito=ok, intentos_hechos=1)
+    crear_entrega(
+        webhook_id=webhook_id,
+        event_type=event_type,
+        payload_json=body.decode("utf-8"),
+        delivery_uid=delivery_uid,
+        estado=decision.estado,
+        status_code=status_code,
+        success=ok,
+        proximo_intento=(
+            decision.proximo_intento.isoformat() if decision.proximo_intento else None
+        ),
+        error=error,
+        created_at=momento_iso,
+    )
+    _aplicar_decision(webhook_id=webhook_id, status_code=status_code, exito=ok, decision=decision)
+    return ok
+
+
 def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
     """Dispara ``event_type`` a todos los webhooks activos suscritos.
 
@@ -200,14 +271,14 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
     fecha del siguiente intento; las reenvía
     ``scheduler.jobs.webhook_reintentos``. Antes de C2.4 se perdían: un receptor
     en despliegue no recibía los eventos de esos minutos y nadie se lo decía.
-    """
-    from shared.webhook_retry import decidir
 
+    Queda un llamante, y es legado de antes del catálogo: ``watchlist_match``
+    (``scheduler/watchlist_alerts.py``). Los eventos del catálogo salen por el
+    outbox (ADR-027), que entrega con :func:`entregar_firmado`.
+    """
     # Un solo instante para el cuerpo, la cabecera y la fila de la entrega:
     # es lo que permite al reintento volver a sellar exactamente lo mismo.
-    momento = now_utc()
-    momento_iso = momento.isoformat()
-    timestamp = segundos_unix(momento)
+    momento_iso = now_utc().isoformat()
     body = json.dumps(
         {"event": event_type, "data": payload, "timestamp": momento_iso},
         ensure_ascii=False,
@@ -220,59 +291,20 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
             "SELECT id, url, secret, event_types FROM webhooks WHERE active = 1"
         ).fetchall()
 
+    allowed_hosts = _allowed_webhook_hosts()
     for wid, url, stored_secret, events_csv in rows:
         events = {e.strip() for e in events_csv.split(",")}
         if event_type not in events and "*" not in events:
             continue
-
-        try:
-            allowed_hosts = _allowed_webhook_hosts()
-            from config.settings import settings
-
-            if settings.ENV in ("prod", "staging") and not allowed_hosts:
-                raise ValueError("WEBHOOK_ALLOWED_HOSTS no está configurado")
-            validate_outbound_url(url, allowed_hosts=allowed_hosts or None)
-        except ValueError as exc:
-            # Un bloqueo SSRF no se reintenta: el destino no va a dejar de ser
-            # una IP privada dentro de seis horas, y encolarlo solo repetiría la
-            # resolución DNS que se acaba de rechazar.
-            log.warning("webhook_trigger_ssrf_blocked", webhook_id=wid, error=str(exc))
-            _record_delivery(wid, 0, False)
-            continue
-
-        delivery_uid = uuid.uuid4().hex
-        secret = _resolve_secret(wid, stored_secret)
-        headers = _cabeceras(
-            secret=secret,
-            body=body,
-            event_type=event_type,
-            delivery_uid=delivery_uid,
-            timestamp=timestamp,
-        )
-        status_code, error = _intentar_entrega(
-            url=url, headers=headers, body=body, allowed_hosts=allowed_hosts
-        )
-        ok = 200 <= status_code < 300
-        if not ok and error:
-            log.warning("webhook_delivery_failed", webhook_id=wid, error=error)
-
-        decision = decidir(exito=ok, intentos_hechos=1)
-        crear_entrega(
+        if entregar_firmado(
             webhook_id=wid,
+            url=url,
+            stored_secret=stored_secret,
             event_type=event_type,
-            payload_json=body.decode("utf-8"),
-            delivery_uid=delivery_uid,
-            estado=decision.estado,
-            status_code=status_code,
-            success=ok,
-            proximo_intento=(
-                decision.proximo_intento.isoformat() if decision.proximo_intento else None
-            ),
-            error=error,
-            created_at=momento_iso,
-        )
-        _aplicar_decision(webhook_id=wid, status_code=status_code, exito=ok, decision=decision)
-        if ok:
+            body=body,
+            momento_iso=momento_iso,
+            allowed_hosts=allowed_hosts,
+        ):
             successful += 1
 
     return successful

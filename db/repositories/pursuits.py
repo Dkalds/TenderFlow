@@ -8,8 +8,10 @@ from decimal import Decimal
 from typing import Any, TypedDict
 
 from db.database import connect, connect_read, now_utc_iso
+from db.events import append_domain_event
 from db.repositories.base import ambito_agenda_sql, rows_to_dicts, typed_rows
 from db.sql_fragments import FOLD_TABLE, empresa_key_sql, escape_like, fold_expr, iso_guard
+from shared.events import payload_asignacion
 
 # El LEFT JOIN contra ``lotes`` va por la clave de negocio ``(licitacion_id,
 # numero)`` y no por un id guardado: hasta 2026-10 ``db/upsert.py::replace_lotes``
@@ -461,6 +463,7 @@ class PursuitRepository:
                     idempotency_key=idempotency_key,
                     created_at=now,
                 )
+                self._emitir_asignacion(conn, pursuit, actor_user_id=actor_user_id)
             return pursuit, was_created
 
     def get(self, organization_id: int, pursuit_id: int) -> PursuitRow | None:
@@ -655,7 +658,15 @@ class PursuitRepository:
                 idempotency_key=idempotency_key,
                 created_at=now,
             )
-            return self._get_scoped(conn, organization_id, pursuit_id=pursuit_id)
+            resultado = self._get_scoped(conn, organization_id, pursuit_id=pursuit_id)
+            if (
+                resultado is not None
+                and "responsible_user_id" in changes
+                and changes["responsible_user_id"] is not None
+                and current.get("responsible_user_id") != changes["responsible_user_id"]
+            ):
+                self._emitir_asignacion(conn, resultado, actor_user_id=actor_user_id)
+            return resultado
 
     def set_next_action_derivada(
         self,
@@ -1073,6 +1084,45 @@ class PursuitRepository:
                 (pursuit_id, idempotency_key),
             ).fetchone()
             is not None
+        )
+
+    @staticmethod
+    def _emitir_asignacion(conn: Any, pursuit: PursuitRow, *, actor_user_id: int) -> None:
+        """Escribe ``pursuit.assigned`` en el outbox, **en la transacción de la mutación**.
+
+        Es el patrón outbox de ADR-027: si la asignación se revierte, su evento
+        se va con ella, y nadie recibe un «te han asignado» de algo que no pasó.
+        Hasta 2026-10 el aviso lo escribía ``services/pursuits.py`` directamente
+        en ``user_notifications`` *después* del commit; ahora lo reparte
+        ``scheduler/jobs/event_dispatch.py`` hacia la campana, el correo
+        (preferencia S4.6) y los webhooks suscritos a ``pursuit.*``.
+
+        Asignarse a uno mismo no es un aviso: no se escribe evento (la regla de
+        siempre, que el despachador además repite al excluir al actor).
+        """
+        responsable = pursuit.get("responsible_user_id")
+        if responsable is None or int(responsable) == int(actor_user_id):
+            return
+        fila = conn.execute(
+            "SELECT display_name FROM users WHERE id = %s", (int(actor_user_id),)
+        ).fetchone()
+        organization_id = int(pursuit["organization_id"])
+        append_domain_event(
+            "pursuit.assigned",
+            int(pursuit["id"]),
+            "pursuit",
+            payload_asignacion(
+                pursuit_id=int(pursuit["id"]),
+                licitacion_id=str(pursuit["licitacion_id"]),
+                organization_id=organization_id,
+                responsible_user_id=int(responsable),
+                actor_user_id=int(actor_user_id),
+                titulo=pursuit.get("tender_title"),
+                actor_nombre=str(fila[0]) if fila and fila[0] else None,
+            ),
+            organization_id=organization_id,
+            actor_id=int(actor_user_id),
+            conn=conn,
         )
 
     @staticmethod

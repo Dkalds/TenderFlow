@@ -42,7 +42,6 @@ from db.events import (
     release_channel,
 )
 from observability.logging import get_logger
-from shared.crypto import cabeceras_de_firma, segundos_unix
 from shared.events import CATALOGO, Canal, EspecificacionEvento, renderizar, suscripcion_cubre
 
 log = get_logger(__name__)
@@ -52,8 +51,6 @@ log = get_logger(__name__)
 #: dejar miles de ``licitacion.cambiada`` de golpe) para que una pasada no se
 #: coma la ventana del cierre entero.
 LOTE_POR_PASADA = 200
-
-_TIMEOUT_ENTREGA_S = 5.0
 
 
 @dataclass(frozen=True)
@@ -527,28 +524,17 @@ def _email_de(destinatario: Destinatario) -> str | None:
     return str(email) if email else None
 
 
-def _sello_unix(marca: str) -> int:
-    """Segundos Unix del ``created_at`` del evento, que es lo que lleva el cuerpo.
-
-    Sellar la cabecera con el mismo instante que el cuerpo es lo que hace que
-    ``X-Webhook-Timestamp`` describa el evento y no la pasada del despachador.
-    Si la marca no parsea (no debería: la escribe ``append_domain_event``) se
-    sella con «ahora» antes que no entregar.
-    """
-    try:
-        return segundos_unix(marca)
-    except ValueError:
-        return segundos_unix(now_utc())
-
-
 def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
     """Entrega el evento a los webhooks suscritos. Devuelve entregas con 2xx.
 
-    Las firmas HMAC (``shared.crypto.cabeceras_de_firma``), la allowlist y el
-    pinning de DNS son **los mismos** que ya usaban el ping manual y
-    ``db/webhooks.py``: lo único nuevo es de dónde sale el cuerpo (la plantilla
-    del formato del webhook) y qué filas se consultan (las de la organización
-    del evento, más las globales sin dueño).
+    La salida es :func:`db.webhooks.entregar_firmado`, la misma que usa
+    ``trigger_event``: firmas HMAC v1 y v2, allowlist SSRF, pinning de DNS,
+    ``X-Webhook-Delivery`` estable y, si el primer intento falla, reintento con
+    backoff por ``webhook_reintentos`` (C2.4). Hasta 2026-10 el despachador
+    tenía su propia copia sin reintento, así que un receptor caído perdía el
+    evento del outbox. Lo propio de este canal es de dónde sale el cuerpo (la
+    plantilla del formato del webhook) y qué filas se consultan (las de la
+    organización del evento, más las globales sin dueño).
 
     **Preferencia personal sobre una suscripción de organización (R7.2).** El
     webhook es de la organización (``webhooks`` no tiene ``user_id``) y la
@@ -572,12 +558,8 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
     Un aviso bloqueado no deja fila en ``webhook_deliveries``: no hubo intento
     de entrega que registrar. Documentado en ``docs/integraciones/webhooks.md``.
     """
-    import requests
-
-    from config.settings import settings
-    from db.repositories.webhooks import WebhookRepository, resolve_stored_secret
-    from shared.outbound_http import pinned_https_request
-    from shared.ssrf import validate_outbound_url
+    from db.repositories.webhooks import WebhookRepository
+    from db.webhooks import entregar_firmado
 
     repo = WebhookRepository()
     organization_id = evento.get("organization_id")
@@ -602,14 +584,9 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
         )
         return 0
 
-    permitidos = frozenset(
-        host.strip() for host in settings.WEBHOOK_ALLOWED_HOSTS.split(",") if host.strip()
-    )
+    marca = str(evento.get("created_at") or now_utc_iso())
     entregados = 0
     for fila in candidatos:
-        webhook_id = int(fila["id"])
-        url = str(fila["url"])
-        marca = str(evento.get("created_at") or now_utc_iso())
         cuerpo = json.dumps(
             renderizar(
                 spec.tipo,
@@ -620,55 +597,21 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode("utf-8")
-        try:
-            if settings.ENV in ("prod", "staging") and not permitidos:
-                raise ValueError("WEBHOOK_ALLOWED_HOSTS no está configurado")
-            validate_outbound_url(url, allowed_hosts=permitidos or None)
-        except ValueError as exc:
-            log.warning("event_dispatch_webhook_ssrf", webhook_id=webhook_id, error=str(exc))
-            repo.record_delivery(
-                webhook_id,
-                status_code=0,
-                success=False,
-                event_type=spec.tipo,
-                payload_size=len(cuerpo),
-            )
-            continue
-
-        secret = resolve_stored_secret(webhook_id, str(fila["secret"]))
-        cabeceras = {
-            "Content-Type": "application/json",
-            **cabeceras_de_firma(secret=secret, body=cuerpo, timestamp=_sello_unix(marca)),
-            "X-Webhook-Event": spec.tipo,
-            "User-Agent": "licitaciones-sap-webhook/1.0",
-        }
-        try:
-            with pinned_https_request(
-                "POST",
-                url,
-                headers=cabeceras,
-                body=cuerpo,
-                timeout_seconds=_TIMEOUT_ENTREGA_S,
-                allowed_hosts=permitidos or None,
-            ) as respuesta:
-                ok = 200 <= respuesta.status_code < 300
-                repo.record_delivery(
-                    webhook_id,
-                    status_code=respuesta.status_code,
-                    success=ok,
-                    event_type=spec.tipo,
-                    payload_size=len(cuerpo),
-                )
-                entregados += int(ok)
-        except (requests.RequestException, ValueError) as exc:
-            log.warning("event_dispatch_webhook_failed", webhook_id=webhook_id, error=str(exc))
-            repo.record_delivery(
-                webhook_id,
-                status_code=0,
-                success=False,
-                event_type=spec.tipo,
-                payload_size=len(cuerpo),
-            )
+        # Misma salida que `trigger_event`: firma v1 y v2, allowlist SSRF,
+        # pinning de DNS, fila en `webhook_deliveries` con el cuerpo y, si el
+        # primer intento falla, reintento por `webhook_reintentos` (C2.4). El
+        # fallo HTTP no lanza: el canal queda resuelto y lo que falta es del
+        # reintento, no de otra pasada del despachador —que duplicaría la
+        # entrega con otro `X-Webhook-Delivery`—.
+        if entregar_firmado(
+            webhook_id=int(fila["id"]),
+            url=str(fila["url"]),
+            stored_secret=str(fila["secret"]),
+            event_type=spec.tipo,
+            body=cuerpo,
+            momento_iso=marca,
+        ):
+            entregados += 1
     return entregados
 
 
