@@ -48,13 +48,13 @@ def _bloque(css: str, selector: str) -> str:
     inicio = css.index(f"{selector} {{") + len(selector) + 2
     profundidad, fin, plano = 1, inicio, []
     while profundidad:
-        caracter = css[fin]
-        if caracter == "{":
+        letra = css[fin]
+        if letra == "{":
             profundidad += 1
-        elif caracter == "}":
+        elif letra == "}":
             profundidad -= 1
         elif profundidad == 1:
-            plano.append(caracter)
+            plano.append(letra)
         fin += 1
     return "".join(plano)
 
