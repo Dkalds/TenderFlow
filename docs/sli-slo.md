@@ -14,6 +14,7 @@ Definición de los indicadores de nivel de servicio (SLI) y objetivos (SLO) del 
 | Tasa de éxito del pipeline | ≥ 95% de runs | 30 días | `extraction_runs` vía healthcheck |
 | Cobertura de datos (importe presente) | ≥ 80% | 30 días | `extraction_runs` vía healthcheck |
 | Tiempo de respuesta API REST | P99 < 500 ms | 7 días | `http_request_duration_seconds` (Prometheus) + alerta `ApiLatencyP99High` desde 2026-09-06 |
+| Búsqueda por significado (flag `busqueda_semantica`) | `fusion_ms` P95 ≤ 1,5 s; respuesta P95 ≤ 2,5 s; `semantica=error` < 1 % | 7 días | log `semantic_search.ok` (sin alerta: presupuesto para decidir la flag) |
 
 ### Nota sobre la medición real (2026-07-26)
 
@@ -154,6 +155,45 @@ este dato.
 
 Lo que sí está fijado por test, sin necesidad del run: un PDF **con** texto no
 pasa por OCR, así que el coste solo lo pagan los escaneados.
+
+---
+
+### 8. Búsqueda por significado (`POST /search/semantic` con la flag `busqueda_semantica`)
+
+La fusión vectorial del Investigador se sirve detrás de la flag
+`busqueda_semantica` (Administración → Feature flags), **apagada por defecto**.
+Con la flag encendida, cada búsqueda con texto suma al motor de texto dos pasos:
+codificar la consulta con el modelo ONNX (`services/embeddings_onnx.py`) y la
+consulta HNSW sobre `documento_chunks`. Este presupuesto dice cuánto pueden
+costar esos dos pasos antes de que la flag se apague.
+
+| Campo | Valor |
+|-------|-------|
+| **SLI** | `fusion_ms` del log `semantic_search.ok` (codificar + consulta vectorial + completar la lista) y su `elapsed_ms` total, solo en las peticiones con `semantica` en `servida`, `sin_aporte` o `error` |
+| **SLO** | `fusion_ms` P95 ≤ 1.500 ms; `elapsed_ms` P95 ≤ 2.500 ms; `semantica=error` en menos del 1 % de las búsquedas con la flag encendida |
+| **Excepción** | La **primera** búsqueda de cada proceso carga el modelo (perezosamente, ~470 MB): ≤ 10 s, fuera del percentil. El RSS de la API sube a ~470 MB más tras ella |
+| **Medición** | Log estructurado `semantic_search.ok` (`semantica`, `fusion_ms`, `elapsed_ms`, `source`). No hay métrica Prometheus propia: `/search/semantic` cae en `http_request_duration_seconds` pero queda fuera del SLO 6, que es de `GET /api/v1/licitaciones` |
+| **Alerta** | No hay. Es un presupuesto de decisión: si se incumple una semana, se apaga la flag (la búsqueda vuelve a ser la de texto, sin desplegar) y se anota aquí |
+
+**Medido el 2026-10-25, antes de servirla** (rama `agente/busqueda-semantica-servida`):
+
+- Codificar una consulta con el modelo ONNX (onnxruntime 1.31, revisión
+  `e8f8c211` del repo de Hugging Face), en un portátil multinúcleo: carga del
+  modelo 1,95 s; por consulta, P50 10,7 ms, P95 20,7 ms, máximo 29 ms (50
+  consultas). Render con 1 vCPU será más lento; aun multiplicado por 5 queda
+  muy por debajo del presupuesto.
+- Paridad con lo guardado: los vectores ONNX de tres fragmentos de producción
+  coinciden con los que el pipeline guardó con sentence-transformers (coseno
+  1,00000 con cinco decimales, el `md5` del texto cotejado).
+- Consulta HNSW de 50 vecinos sobre los fragmentos de producción, sin filtros,
+  por el MCP de solo lectura: 0,9–1,6 s con el viaje del MCP incluido. Es el
+  paso que se come el presupuesto; si `fusion_ms` lo supera, lo primero que
+  mirar es `hnsw.ef_search` y si los filtros del ámbito obligan a recorrer
+  más candidatos.
+
+Pendiente tras encender la flag: P95 real de `fusion_ms` en Render, el MRR de
+`tests/eval/test_eval_rag.py` antes/después, y el RSS tras la primera
+búsqueda.
 
 ---
 

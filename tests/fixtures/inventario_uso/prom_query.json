@@ -1,0 +1,7 @@
+{"status": "success", "data": {"resultType": "vector", "result": [
+  {"metric": {"method": "GET", "handler": "/api/v1/radar"}, "value": [1761350400, "1520.4"]},
+  {"metric": {"method": "GET", "handler": "/api/v1/licitaciones/{id_externo:path}"}, "value": [1761350400, "33"]},
+  {"metric": {"method": "DELETE", "handler": "/api/v1/etiquetas/{etiqueta_id}"}, "value": [1761350400, "0.2"]},
+  {"metric": {"method": "GET", "handler": "/api/v1/fantasma"}, "value": [1761350400, "7"]},
+  {"metric": {"method": "GET", "handler": "none"}, "value": [1761350400, "0"]}
+]}}

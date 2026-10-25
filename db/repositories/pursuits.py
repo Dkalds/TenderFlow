@@ -565,7 +565,7 @@ class PursuitRepository:
         with connect_read() as conn:
             pursuits = rows_to_dicts(
                 conn.execute(
-                    "SELECT * FROM pursuits WHERE responsible_user_id = %s "
+                    "SELECT * FROM pursuits WHERE responsible_user_id = %s "  # SELECT *: export RGPD: la fila entera es el contrato
                     "OR created_by_user_id = %s OR updated_by_user_id = %s "
                     "ORDER BY id LIMIT 5000",
                     (user_id, user_id, user_id),

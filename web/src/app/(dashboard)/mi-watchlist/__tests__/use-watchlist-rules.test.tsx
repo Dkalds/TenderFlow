@@ -31,6 +31,7 @@ import {
   FREQ_LABEL,
   FREQ_OPTIONS,
   ccaaOptions,
+  ccaaLabel,
 } from "../_hooks/watchlist-rule-options";
 import type { ApiRule, MatchItem, RuleFormState } from "../_hooks/watchlist-rule-types";
 
@@ -268,6 +269,16 @@ describe("ccaaOptions", () => {
       "Madrid",
       "Galicia",
     ]);
+  });
+
+  it("el fallback se enseña con tilde sin cambiar el valor que viaja al filtro", () => {
+    expect(ccaaLabel("__all__")).toBe("Todas");
+    expect(ccaaLabel("Andalucia")).toBe("Andalucía");
+    expect(ccaaLabel("Cataluna")).toBe("Cataluña");
+    expect(ccaaLabel("Castilla y Leon")).toBe("Castilla y León");
+    expect(ccaaLabel("Pais Vasco")).toBe("País Vasco");
+    expect(ccaaLabel("Madrid")).toBe("Madrid");
+    expect(CCAA_FALLBACK).toContain("Andalucia");
   });
 
   it("el fallback ya trae la opción «todas»", () => {

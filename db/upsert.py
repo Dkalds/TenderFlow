@@ -14,7 +14,9 @@ from typing import Any, Literal
 from config import HISTORY_TRACKED_FIELDS
 from db.connection import connect, now_utc_iso
 from db.dlq import record_failure
+from db.fechas_ts import LIC_COLUMNAS_UPSERT, sombra, sombras_presentes, valores_lic
 from db.nucleo_tipado import COLUMNAS_SOMBRA, sombras_disponibles, valores_sombra
+from db.sql_fragments import instante_sql
 from observability.logging import get_logger
 from observability.runtime_metrics import upsert_rows_dropped_total
 from shared.numeric import values_equal
@@ -464,18 +466,41 @@ _LIC_SOMBRA_UPDATES = ", ".join(
 )
 
 
-def _sql_upsert_licitaciones(*, con_sombras: bool) -> str:
+# ── Escritura dual de las fechas de v159 (fase 1 de «fechas a timestamptz») ──
+# Mismo contrato que las sombras de v133: valor traducido en Python con la
+# gemela de `nucleo_iso_a_timestamptz`, y la regla del UPDATE de su columna
+# vieja. Se pregunta al catálogo por separado de v133: son dos migraciones y
+# producción puede tener una sin la otra.
+_LIC_FECHAS_TS_PARES = tuple((sombra(col), col) for col in LIC_COLUMNAS_UPSERT)
+_LIC_FECHAS_TS_KEYS = tuple(s for s, _ in _LIC_FECHAS_TS_PARES)
+_LIC_FECHAS_TS_UPDATES = ", ".join(
+    f"{s}=CASE WHEN excluded.{vieja} IS NULL THEN licitaciones.{s} ELSE excluded.{s} END"
+    if vieja in _LIC_COALESCE_UPDATE_FIELDS
+    else f"{s}=excluded.{s}"
+    for s, vieja in _LIC_FECHAS_TS_PARES
+)
+
+
+def _sql_upsert_licitaciones(*, con_sombras: bool, con_fechas_ts: bool = False) -> str:
     """El ``INSERT ... ON CONFLICT`` de licitaciones, con o sin las sombras."""
-    if not con_sombras:
+    if not con_sombras and not con_fechas_ts:
         return (
             f"INSERT INTO licitaciones ({_LIC_COLS}) VALUES ({_LIC_PLACEHOLDERS}) "
             f"ON CONFLICT(id_externo) DO UPDATE SET {_LIC_UPDATES}"
         )
-    cols = ", ".join((*_LIC_KEYS, *_LIC_SOMBRA_KEYS))
-    placeholders = ", ".join("%s" for _ in (*_LIC_KEYS, *_LIC_SOMBRA_KEYS))
+    claves: tuple[str, ...] = _LIC_KEYS
+    updates = [_LIC_UPDATES]
+    if con_sombras:
+        claves = (*claves, *_LIC_SOMBRA_KEYS)
+        updates.append(_LIC_SOMBRA_UPDATES)
+    if con_fechas_ts:
+        claves = (*claves, *_LIC_FECHAS_TS_KEYS)
+        updates.append(_LIC_FECHAS_TS_UPDATES)
+    cols = ", ".join(claves)
+    placeholders = ", ".join("%s" for _ in claves)
     return (
         f"INSERT INTO licitaciones ({cols}) VALUES ({placeholders}) "
-        f"ON CONFLICT(id_externo) DO UPDATE SET {_LIC_UPDATES}, {_LIC_SOMBRA_UPDATES}"
+        f"ON CONFLICT(id_externo) DO UPDATE SET {', '.join(updates)}"
     )
 
 
@@ -492,10 +517,19 @@ def _con_sombras(c: Any) -> bool:
     return sombras_disponibles(c)
 
 
-def _fila_licitacion(data: dict[str, Any], *, con_sombras: bool) -> list[Any]:
+def _con_fechas_ts(c: Any) -> bool:
+    """¿Escribe este chunk las sombras de ``v159``? Sin caché, como ``_con_sombras``."""
+    return sombras_presentes(c, "licitaciones", LIC_COLUMNAS_UPSERT)
+
+
+def _fila_licitacion(
+    data: dict[str, Any], *, con_sombras: bool, con_fechas_ts: bool = False
+) -> list[Any]:
     fila = [data[k] for k in _LIC_KEYS]
     if con_sombras:
         fila.extend(valores_sombra(data))
+    if con_fechas_ts:
+        fila.extend(valores_lic(data))
     return fila
 
 
@@ -633,6 +667,7 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
             existing_pub.update((row[0], row[1]) for row in rows)
 
         con_sombras = _con_sombras(c)
+        con_fechas_ts = _con_fechas_ts(c)
         lic_rows: list[list[Any]] = []
         for lic in batch:
             data = asdict(lic)
@@ -642,14 +677,19 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
                 data["fecha_publicacion"] = _earliest_iso_date(
                     existing_pub[lic.id_externo], data["fecha_publicacion"]
                 )
-            lic_rows.append(_fila_licitacion(data, con_sombras=con_sombras))
+            lic_rows.append(
+                _fila_licitacion(data, con_sombras=con_sombras, con_fechas_ts=con_fechas_ts)
+            )
 
         # Un único executemany en vez de un execute por fila: contra una BD
         # remota lo que domina es el round trip, no el coste del INSERT
         # (psycopg3 agrupa el executemany en un solo viaje). Column names come
         # from dataclass fields (controlled code) — safe.
         if lic_rows:
-            c.executemany(_sql_upsert_licitaciones(con_sombras=con_sombras), lic_rows)
+            c.executemany(
+                _sql_upsert_licitaciones(con_sombras=con_sombras, con_fechas_ts=con_fechas_ts),
+                lic_rows,
+            )
         _replace_condiciones(c, batch)
 
     existing_ids = set(existing_pub)
@@ -1084,6 +1124,7 @@ def _upsert_chunk(
         existing_pub: dict[str, str | None] = {row[0]: row[-1] for row in existing_rows}
 
         con_sombras = _con_sombras(c)
+        con_fechas_ts = _con_fechas_ts(c)
         lic_rows: list[list[Any]] = []
         history_rows: list[tuple[str, str, str, str, str]] = []
 
@@ -1095,7 +1136,9 @@ def _upsert_chunk(
                 data["fecha_publicacion"] = _earliest_iso_date(
                     existing_pub[lic.id_externo], data["fecha_publicacion"]
                 )
-            lic_rows.append(_fila_licitacion(data, con_sombras=con_sombras))
+            lic_rows.append(
+                _fila_licitacion(data, con_sombras=con_sombras, con_fechas_ts=con_fechas_ts)
+            )
             old_record = existing.get(lic.id_externo)
 
             if old_record is not None:
@@ -1143,7 +1186,10 @@ def _upsert_chunk(
                 history_rows,
             )
         if lic_rows:
-            c.executemany(_sql_upsert_licitaciones(con_sombras=con_sombras), lic_rows)
+            c.executemany(
+                _sql_upsert_licitaciones(con_sombras=con_sombras, con_fechas_ts=con_fechas_ts),
+                lic_rows,
+            )
         # v148: en la misma transacción, después de las licitaciones (FK).
         _replace_condiciones(c, chunk)
 
@@ -1214,7 +1260,7 @@ def get_history(id_externo: str, limit: int = 50) -> list[dict[str, Any]]:
             "SELECT id, id_externo, captured_at, source, snapshot_json, changed_fields "
             "FROM licitaciones_history "
             "WHERE id_externo = %s "
-            "ORDER BY captured_at DESC LIMIT %s",
+            f"ORDER BY {instante_sql('licitaciones_history', 'captured_at')} DESC LIMIT %s",
             [id_externo, limit],
         )
         cols = [d[0] for d in cur.description]
@@ -1251,7 +1297,7 @@ def search_fts(query: str, limit: int = 50, offset: int = 0) -> tuple[list[dict[
         ).fetchone()
         total = int(count_row[0])
         cur = c.execute(
-            "SELECT * FROM licitaciones "
+            "SELECT * FROM licitaciones "  # SELECT *: ficha completa por búsqueda FTS; se descarta search_vector abajo
             "WHERE search_vector @@ websearch_to_tsquery('spanish', %s) "
             "ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('spanish', %s)) DESC "
             "LIMIT %s OFFSET %s",

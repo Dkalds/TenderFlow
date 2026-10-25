@@ -47,9 +47,13 @@ def search_client(api_db, api_key):
 def embeddings_simulados(monkeypatch):
     """El modelo dice estar disponible y codifica cualquier consulta al eje 0."""
     import services.embeddings as emb
+    from db.feature_flags import FLAG_BUSQUEDA_SEMANTICA, set_flag
 
     monkeypatch.setattr(emb, "embeddings_available", lambda: True)
     monkeypatch.setattr(emb, "encode_texts", lambda texts, **kw: np.array([_vec(0)]))
+    # La fusión se sirve detrás de la flag, apagada por defecto: aquí se
+    # enciende de verdad, en la tabla, como lo haría Administración.
+    set_flag(FLAG_BUSQUEDA_SEMANTICA, enabled=True, rollout_pct=100)
 
 
 def _seed_licitaciones() -> None:
@@ -122,6 +126,20 @@ class TestFuenteDerivadaDelCaminoEjecutado:
         _seed_licitaciones()
         _seed_chunk("L-VEC", _vec(0))
         assert _buscar(search_client)["source"] == "fts"
+
+    def test_con_la_flag_apagada_responde_fts_aunque_pueda_fusionar(
+        self, search_client, embeddings_simulados
+    ):
+        """La flag ``busqueda_semantica`` manda: con modelo y chunks, apagada
+        es la búsqueda por texto de siempre."""
+        from db.feature_flags import FLAG_BUSQUEDA_SEMANTICA, set_flag
+
+        set_flag(FLAG_BUSQUEDA_SEMANTICA, enabled=False, rollout_pct=100)
+        _seed_licitaciones()
+        _seed_chunk("L-VEC", _vec(0))
+        data = _buscar(search_client)
+        assert data["source"] == "fts"
+        assert "L-VEC" not in {h["id_externo"] for h in data["hits"]}
 
     def test_con_chunks_embebidos_responde_rrf(self, search_client, embeddings_simulados):
         _seed_licitaciones()

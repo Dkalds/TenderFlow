@@ -18,11 +18,15 @@ está:
 Dentro de cada escalón manda el orden de ``db.repositories.investigador``.
 Si nada casa, queda un último recurso por subcadena (``like``).
 
-Si la instalación puede codificar la consulta, :func:`buscar` completa esa
+Si la flag ``busqueda_semantica`` está encendida para quien busca y la
+instalación puede codificar la consulta, :func:`buscar` completa esa
 lista con lo que la fusión RRF (texto + similitud vectorial sobre los pliegos)
 encuentra **por significado**, entre el primer escalón y el tercero
 (:func:`combinar`). La fusión ya no sustituye a la lista: un resultado que solo
-llega por ahí lo dice (``coincide_en=["significado"]``).
+llega por ahí lo dice (``coincide_en=["significado"]``). Si la fusión no
+está disponible (sin modelo de embeddings, sin pgvector o sin fragmentos
+embebidos) o falla, la respuesta es la del texto, sin error: ``semantica`` en
+el :class:`Resultado` dice por qué.
 
 ``preparar`` es pura; ``buscar_por_texto`` y ``buscar`` son las que consultan.
 """
@@ -31,11 +35,13 @@ from __future__ import annotations
 
 import dataclasses
 import re
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
+from db.feature_flags import FLAG_BUSQUEDA_SEMANTICA, is_enabled
 from db.repositories import investigador as repo
 from db.repositories.investigador import MARCA_FIN, MARCA_INICIO, Ambito
 from observability.logging import get_logger
@@ -51,6 +57,26 @@ FUENTE_TEXTO = "fts"
 FUENTE_LITERAL = "like"
 FUENTE_FILTROS = "filtros"
 FUENTES: tuple[str, ...] = (FUENTE_FUSION, FUENTE_TEXTO, FUENTE_LITERAL, FUENTE_FILTROS)
+
+# Qué fue de la búsqueda por significado en una petición. No viaja en la
+# respuesta —``source`` ya dice si la fusión aportó—: va al log
+# ``semantic_search.ok``, que es donde se lee si una instalación con la flag
+# encendida está sirviendo significado o degradando, y por qué.
+#: La flag está apagada para quien busca (el valor por defecto).
+SEMANTICA_APAGADA = "apagada"
+#: La consulta no admite fusión: sin texto, con operadores, «las más
+#: recientes» o ``alpha=0``.
+SEMANTICA_NO_APLICA = "no_aplica"
+#: No hay con qué codificar la consulta (ni sentence-transformers ni el modelo
+#: ONNX de ``EMBEDDINGS_ONNX_DIR``).
+SEMANTICA_SIN_MOTOR = "sin_motor"
+#: La fusión corrió y no trajo nada que la lista del texto no tuviera, o no
+#: hay fragmentos embebidos / pgvector con los que fusionar.
+SEMANTICA_SIN_APORTE = "sin_aporte"
+#: La fusión lanzó una excepción: se responde con el texto.
+SEMANTICA_ERROR = "error"
+#: La respuesta lleva lo que la fusión encontró (``source=rrf``).
+SEMANTICA_SERVIDA = "servida"
 
 EN_ANUNCIO = "anuncio"
 EN_PLIEGO = "pliego"
@@ -88,6 +114,12 @@ class Resultado:
     hits: list[dict[str, Any]]
     #: Camino REALMENTE ejecutado: uno de :data:`FUENTES`.
     fuente: str
+    #: Qué fue de la búsqueda por significado: uno de los ``SEMANTICA_*``.
+    semantica: str = SEMANTICA_APAGADA
+    #: Milisegundos que costó el paso de la fusión (codificar la consulta y
+    #: la consulta vectorial), ``None`` si no corrió. El presupuesto está en
+    #: ``docs/sli-slo.md`` § «Búsqueda por significado».
+    fusion_ms: int | None = None
 
 
 def preparar(
@@ -454,35 +486,79 @@ def combinar(por_texto: Resultado, fusion: list[dict[str, Any]], top_k: int) -> 
     return Resultado([*fuertes, *parecidos, *debiles][:top_k], FUENTE_FUSION)
 
 
+def semantica_activa(user_email: str | None) -> bool:
+    """Si la búsqueda por significado está encendida para quien busca.
+
+    La gobierna la flag ``busqueda_semantica`` (``db.feature_flags``), apagada
+    mientras no exista su fila: encenderla, o graduarla por porcentaje o por
+    correo, es cosa de Administración, sin desplegar. Fail-closed: si la tabla
+    no responde, se busca por texto, que es la búsqueda de siempre.
+    """
+    try:
+        return is_enabled(FLAG_BUSQUEDA_SEMANTICA, user_email=user_email)
+    except Exception:
+        log.warning("busqueda.flag_semantica_ilegible", exc_info=True)
+        return False
+
+
 def buscar(
     consulta: ConsultaInterpretada,
     ambito: Ambito,
     top_k: int,
     *,
     alpha: float | None = None,
+    semantica: bool = False,
 ) -> Resultado:
-    """La búsqueda del Investigador: el texto y, si la instalación puede, la fusión.
+    """La búsqueda del Investigador: el texto y, si se pide y se puede, la fusión.
 
-    La fusión (``search_engine.hybrid_search``) no corre cuando no aporta o
-    contradiría lo pedido: sin texto que buscar, con operadores (la lista
-    vectorial no sabe excluir ``-palabra`` ni respetar comillas), con «las
-    más recientes» (su orden es de parecido, no de fecha) y con ``alpha=0``
-    (el significado no pesa: la lista es la del texto).
+    ``semantica`` dice si quien busca tiene encendida la búsqueda por
+    significado (:func:`semantica_activa`); sin ella la respuesta es la del
+    texto. Con ella, la fusión (``search_engine.hybrid_search``) tampoco corre
+    cuando no aporta o contradiría lo pedido: sin texto que buscar, con
+    operadores (la lista vectorial no sabe excluir ``-palabra`` ni respetar
+    comillas), con «las más recientes» (su orden es de parecido, no de fecha)
+    y con ``alpha=0`` (el significado no pesa: la lista es la del texto).
+
+    La degradación es limpia: sin modelo de embeddings, sin pgvector o sin
+    fragmentos embebidos, o si la fusión falla, se devuelve la lista del texto
+    tal cual y ``Resultado.semantica`` dice por qué. Una búsqueda que el texto
+    resolvía no se convierte en un 503 porque el lado vectorial no esté.
     """
+    from services.embeddings import embeddings_available
     from services.investigador.search_engine import hybrid_search
 
     por_texto = buscar_por_texto(consulta, ambito, top_k)
+    if not semantica:
+        return por_texto
     if (
         not consulta.tiene_texto
         or consulta.con_operadores
         or consulta.orden == "recientes"
         or (alpha is not None and alpha <= 0)
     ):
-        return por_texto
-    fusion = hybrid_search(
-        consulta.texto, min(top_k * 2, 200), alpha=alpha, filtros=filtros_de_fusion(ambito)
+        return dataclasses.replace(por_texto, semantica=SEMANTICA_NO_APLICA)
+    if not embeddings_available():
+        return dataclasses.replace(por_texto, semantica=SEMANTICA_SIN_MOTOR)
+    t0 = time.perf_counter()
+    try:
+        fusion = hybrid_search(
+            consulta.texto, min(top_k * 2, 200), alpha=alpha, filtros=filtros_de_fusion(ambito)
+        )
+        combinado = combinar(por_texto, fusion, top_k)
+    except Exception:
+        log.warning("busqueda.fusion_fallida", exc_info=True)
+        return dataclasses.replace(
+            por_texto,
+            semantica=SEMANTICA_ERROR,
+            fusion_ms=round((time.perf_counter() - t0) * 1000),
+        )
+    fusion_ms = round((time.perf_counter() - t0) * 1000)
+    servida = combinado.fuente == FUENTE_FUSION
+    return dataclasses.replace(
+        combinado,
+        semantica=SEMANTICA_SERVIDA if servida else SEMANTICA_SIN_APORTE,
+        fusion_ms=fusion_ms,
     )
-    return combinar(por_texto, fusion, top_k)
 
 
 def documentos_de_contexto(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:

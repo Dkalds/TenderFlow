@@ -6,7 +6,7 @@ Solo lectura, sin transformación de negocio: expone números crudos que
 consume ``scripts/audit_domain_truth.py``.
 
 ``_TECHNOLOGY_OBSERVED`` y ``_EXCLUDE_DUPLICADOS`` eran copias literales de
-``services/sql_fragments.py``/``services/dedupe.py``, justificadas porque
+``db/sql_fragments.py``/``services/dedupe.py``, justificadas porque
 ``db/`` no puede depender de ``services/`` (capa superior, ADR-024). Desde que
 las dos definiciones canónicas viven en ``db/sql_fragments.py`` —el lado
 correcto de la frontera— esa justificación ya no existe, y aquí se importan:
@@ -14,7 +14,7 @@ una auditoría de la verdad del dato que mide sobre un universo distinto del que
 mide el producto no audita nada, y una copia divergente no se ve.
 
 ``_VALID_PAIR`` sigue siendo copia: su definición canónica está en
-``services/sql_fragments.py`` y no ha bajado a ``db/`` todavía.
+``db/sql_fragments.py`` y no ha bajado a ``db/`` todavía.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ from db.connection import connect_read
 from db.repositories.base import rows_to_dicts
 from db.sql_fragments import TECHNOLOGY_OBSERVED_SQL, exclude_duplicados_sql
 
-# Espejo de services/sql_fragments.py::VALID_PAIR.
+# Espejo de db/sql_fragments.py::VALID_PAIR.
 _VALID_PAIR = (
     "l.importe > 0 AND a.importe_adjudicado > 0 AND a.importe_adjudicado <= l.importe * 1.5"
 )

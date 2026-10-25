@@ -67,9 +67,9 @@ export function useDesdeResumen(): string {
 }
 
 /**
- * Publicaciones por día de la ventana (`/analytics/trends?group_by=day`). La
- * piden el ritmo del panel y la línea de «Publicadas 30 d» de la tira de
- * contexto: misma clave, una sola petición.
+ * Publicaciones por día de la ventana (`/analytics/trends?group_by=day`), la
+ * serie del ritmo del panel. La tira de contexto pintaba con ella un área bajo
+ * «Publicadas 30 d»; salió por repetir el gráfico que va debajo.
  */
 export function useRitmoDiario(desde: string) {
   return useFilteredQuery<TrendsResult>(

@@ -35,16 +35,27 @@ Uso::
 
     python -m scripts.sample_golden_candidates --n 400 --out /tmp/candidatos.jsonl
 
-Después: etiquetar ``label`` a mano (1 = es SAP, 0 = no), revisar
-``keyword_match`` y anexar las líneas a ``tests/fixtures/golden_set.jsonl``.
-El campo ``split`` se puede dejar vacío: ``services.ml_eval.asignar_splits`` lo
-reparte por hash del ``id`` de forma estable, así que añadir ejemplos nuevos no
-reasigna los que ya estaban.
+Sin acceso directo a la BD desde la máquina que muestrea, ``--desde`` toma un
+export CSV o JSONL con las columnas de
+``LicitacionRepository.get_unlabelled_candidates`` (``id_externo``, ``titulo``,
+``descripcion``, ``cpv``, ``importe``, ``organo_contratacion``; ``ml_proba`` es
+opcional y, si viene en todas las filas, sustituye a puntuar con el modelo
+local)::
+
+    python -m scripts.sample_golden_candidates --desde export.csv --n 400 \\
+        --out data/etiquetado/candidatos_golden_sap.jsonl
+
+Después: etiquetar con ``python -m scripts.revisar_golden_candidates <fichero>``
+(1 = es SAP, 0 = no; guarda tras cada respuesta) y anexar con ``--anexar`` a
+``tests/fixtures/golden_set.jsonl``. El campo ``split`` se deja vacío:
+``services.ml_eval.asignar_splits`` lo reparte por hash del ``id`` de forma
+estable, así que añadir ejemplos nuevos no reasigna los que ya estaban.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import random
 import sys
@@ -109,6 +120,55 @@ def _cargar_candidatos(pool: int) -> list[dict[str, Any]]:
     return LicitacionRepository().get_unlabelled_candidates(limit=pool)
 
 
+def _vacio_a_none(valor: Any) -> Any:
+    """En un CSV todo es texto: la celda vacía es la ausencia, no ``""``."""
+    if isinstance(valor, str) and not valor.strip():
+        return None
+    return valor
+
+
+def _leer_export(ruta: Path, pool: int) -> list[dict[str, Any]]:
+    """Lee un export CSV o JSONL de candidatos (las primeras ``pool`` filas).
+
+    Acepta ``id`` como sinónimo de ``id_externo`` y ``organo`` de
+    ``organo_contratacion``, para poder reutilizar un JSONL ya muestreado. El
+    formato se decide por la extensión: ``.csv`` es CSV con cabecera; lo demás,
+    JSONL (con ``#`` de comentario permitidos).
+    """
+    filas: list[dict[str, Any]] = []
+    if ruta.suffix.lower() == ".csv":
+        with ruta.open(encoding="utf-8", newline="") as fh:
+            filas = [dict(f) for f in csv.DictReader(fh)]
+    else:
+        for linea in ruta.read_text(encoding="utf-8").splitlines():
+            limpia = linea.strip()
+            if limpia and not limpia.startswith("#"):
+                filas.append(json.loads(limpia))
+    salida: list[dict[str, Any]] = []
+    for fila in filas[:pool]:
+        normal = {k: _vacio_a_none(v) for k, v in fila.items()}
+        normal.setdefault("id_externo", normal.get("id"))
+        normal.setdefault("organo_contratacion", normal.get("organo"))
+        if normal.get("importe") is not None:
+            normal["importe"] = float(normal["importe"])
+        if not normal.get("id_externo") or not normal.get("titulo"):
+            continue  # sin id ni título no hay ejemplo que etiquetar
+        salida.append(normal)
+    return salida
+
+
+def _probas_del_export(candidatos: list[dict[str, Any]]) -> list[float | None] | None:
+    """``ml_proba`` del export si viene en **todas** las filas; si no, ``None``.
+
+    Mezclar filas con probabilidad y filas sin ella metería las segundas en los
+    estratos de acuerdo por defecto y desequilibraría el muestreo sin avisar.
+    """
+    valores: list[Any] = [c.get("ml_proba") for c in candidatos]
+    if not valores or any(v is None for v in valores):
+        return None
+    return [float(v) for v in valores]
+
+
 def _puntuar(candidatos: list[dict[str, Any]]) -> list[float | None]:
     """Puntúa con el clasificador activo; ``None`` si no hay modelo disponible."""
     try:
@@ -143,12 +203,17 @@ def _keyword_match(candidato: dict[str, Any]) -> bool:
     return bool(encontrado)
 
 
-def muestrear(n: int, pool: int, seed: int) -> list[dict[str, Any]]:
-    """Devuelve ``n`` candidatos estratificados, listos para etiquetar a mano."""
-    candidatos = _cargar_candidatos(pool)
+def muestrear(n: int, pool: int, seed: int, desde: Path | None = None) -> list[dict[str, Any]]:
+    """Devuelve ``n`` candidatos estratificados, listos para etiquetar a mano.
+
+    ``desde``: export CSV/JSONL en vez de la BD (ver :func:`_leer_export`).
+    """
+    candidatos = _leer_export(desde, pool) if desde is not None else _cargar_candidatos(pool)
     if not candidatos:
         return []
-    probas = _puntuar(candidatos)
+    probas = _probas_del_export(candidatos) if desde is not None else None
+    if probas is None:
+        probas = _puntuar(candidatos)
 
     por_estrato: dict[str, list[tuple[dict[str, Any], float | None, bool]]] = defaultdict(list)
     for candidato, proba in zip(candidatos, probas, strict=True):
@@ -178,6 +243,8 @@ def muestrear(n: int, pool: int, seed: int) -> list[dict[str, Any]]:
                     "label": None,  # ← lo rellena una persona: 1 = SAP, 0 = no
                     "cpv": candidato.get("cpv"),
                     "importe": candidato.get("importe"),
+                    # Para decidir, no para el modelo: el golden no lo usa.
+                    "organo": candidato.get("organo_contratacion"),
                     "keyword_match": kw,
                     "split": "",  # asignado por hash al cargar
                     "note": (
@@ -195,11 +262,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pool", type=int, default=5000, help="filas a considerar")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--out", type=Path, required=True, help="JSONL de salida")
+    parser.add_argument(
+        "--desde",
+        type=Path,
+        default=None,
+        help="export CSV/JSONL de candidatos en vez de leer la BD",
+    )
     args = parser.parse_args(argv)
 
-    filas = muestrear(args.n, args.pool, args.seed)
+    filas = muestrear(args.n, args.pool, args.seed, desde=args.desde)
     if not filas:
-        print("No hay candidatos sin etiquetar en la BD.", file=sys.stderr)
+        origen = args.desde or "la BD"
+        print(f"No hay candidatos sin etiquetar en {origen}.", file=sys.stderr)
         return 1
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
@@ -211,7 +285,7 @@ def main(argv: list[str] | None = None) -> int:
             fh.write(json.dumps(fila, ensure_ascii=False) + "\n")
 
     print(f"\n{len(filas)} candidatos escritos en {args.out}")
-    print("Siguiente paso: etiquetar `label` a mano y anexar a tests/fixtures/golden_set.jsonl")
+    print(f"Siguiente paso: python -m scripts.revisar_golden_candidates {args.out}")
     return 0
 
 

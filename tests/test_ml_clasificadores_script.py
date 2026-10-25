@@ -61,9 +61,31 @@ def test_precompute_pasa_force(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_el_informe_de_entrenamiento_sap() -> None:
     ruta = Path("data/models/sap_classifier.pkl")
 
-    ok = cli.lineas_entrenamiento_sap({"f1": 0.9}, min_muestras=50, ruta_modelo=ruta)
+    # `train_from_db` no activa: el informe no puede decir que ya se sirve.
+    ok = cli.lineas_entrenamiento_sap(
+        {
+            "f1": 0.9,
+            "promotion": {
+                "version": 4,
+                "pendiente_de_activar": True,
+                "artefacto": "data/models/sap_classifier-abc123def456.pkl",
+            },
+        },
+        min_muestras=50,
+        ruta_modelo=ruta,
+    )
     assert ok[0] == "  f1: 0.9"
-    assert ok[-1] == f"Modelo guardado en: {ruta}"
+    assert not any("promotion" in linea for linea in ok)
+    assert any("Versión 4 registrada SIN activar" in linea for linea in ok)
+    assert any("sap_classifier-abc123def456.pkl" in linea for linea in ok)
+    assert ok[-1].endswith("gh workflow run train-model.yml")
+
+    rechazo = cli.lineas_entrenamiento_sap(
+        {"f1": 0.2, "promotion": {"version": 5, "motivos_rechazo": ["recall_no_keyword"]}},
+        min_muestras=50,
+        ruta_modelo=ruta,
+    )
+    assert "rechazó la versión 5: recall_no_keyword" in rechazo[-1]
 
     una_clase = cli.lineas_entrenamiento_sap(
         {"error": "single_class", "n_positive": 80, "n_negative": 0},
