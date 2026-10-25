@@ -19,6 +19,7 @@ El PDF se genera con ``reportlab`` (ya en dependencies del proyecto).
 from __future__ import annotations
 
 import io
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -195,7 +196,7 @@ async def download_export(
 
         from services.licitaciones import fetch_for_pdf
 
-        rows = fetch_for_pdf(
+        rows: Sequence[Mapping[str, object]] = fetch_for_pdf(
             ccaa=ccaa,
             estado=estado,
             q=q,
@@ -650,14 +651,14 @@ def _eventos_calendario(user_key: str, user_id: int, organization_id: int) -> li
                 }
             )
 
-    for row in _repo_watchlist.calendar_items(user_key, organization_id, user_id):
-        id_ext = str(row.get("id_externo", ""))
+    for favorito in _repo_watchlist.calendar_items(user_key, organization_id, user_id):
+        id_ext = str(favorito.get("id_externo", ""))
         if id_ext in con_pursuit:
             continue
-        titulo = str(row.get("titulo") or id_ext)[:200]
-        url = str(row.get("url") or "")
+        titulo = str(favorito.get("titulo") or id_ext)[:200]
+        url = str(favorito.get("url") or "")
         for field, label in (("fecha_limite", "Plazo"), ("fecha_fin", "Fin contrato")):
-            raw = row.get(field)
+            raw = favorito.get(field)
             if not raw:
                 continue
             events.append(

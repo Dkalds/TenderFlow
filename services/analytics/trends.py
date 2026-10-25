@@ -23,7 +23,11 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
+from db.repositories.aggregates import (
+    AggregateRepository,
+    DiaImporteFila,
+    LicitacionesFilters,
+)
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -182,7 +186,7 @@ def _period_label(dia: str, freq: str) -> str | None:
     return monday.strftime("%Y-W%V")
 
 
-def _build_series(daily: list[dict[str, Any]], freq: str) -> list[TrendPoint]:
+def _build_series(daily: list[DiaImporteFila], freq: str) -> list[TrendPoint]:
     buckets: dict[str, list[float]] = {}
     for row in daily:
         label = _period_label(str(row["dia"]), freq)
@@ -237,7 +241,7 @@ def _build_waterfall(series: list[TrendPoint]) -> list[WaterfallPoint]:
     return result
 
 
-def _find_mes_pico(daily: list[dict[str, Any]]) -> dict[str, Any] | None:
+def _find_mes_pico(daily: list[DiaImporteFila]) -> dict[str, Any] | None:
     """Mes con mayor importe total (primer máximo en caso de empate)."""
     monthly: dict[str, list[float]] = {}
     for row in daily:

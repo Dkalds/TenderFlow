@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
-from typing import Any
+from typing import Any, TypeVar, cast
+
+#: La forma de una fila tipada (un ``TypedDict`` declarado junto a su SELECT).
+RowT = TypeVar("RowT", bound=Mapping[str, object])
 
 # Identificadores SQL que se pueden interpolar: los nombres de tabla y columna
 # viajan concatenados (no admiten placeholder), así que se validan antes.
@@ -265,6 +268,26 @@ def rows_to_dicts(cursor: Any) -> list[dict[str, Any]]:
     """Convierte todas las filas de un cursor en lista de dicts."""
     cols = [d[0] for d in cursor.description]
     return [dict(zip(cols, row, strict=False)) for row in cursor.fetchall()]
+
+
+def typed_rows(row_type: type[RowT], rows: list[dict[str, Any]]) -> list[RowT]:
+    """Las filas de :func:`rows_to_dicts` con la forma que declara su SELECT.
+
+    Uso: ``typed_rows(PorEstadoRow, rows_to_dicts(cur))``. ``row_type`` es el
+    ``TypedDict`` cuyas claves son los alias del SELECT y cuyos tipos son los
+    que psycopg devuelve para esas columnas; desde ahí mypy comprueba cada
+    acceso del servicio o la ruta que construye el DTO, en vez de dejar pasar
+    cualquier ``row["columna"]`` como ``Any``.
+
+    No valida en runtime: es una aserción de forma, y por eso vive en un solo
+    sitio en vez de repartida en un ``cast`` por consulta. ``rows_to_dicts`` se
+    sigue llamando en el módulo del repositorio, así que los tests que lo
+    doblan y ``scripts/check_analytics_unbounded.py`` siguen viéndolo.
+    """
+    del row_type  # solo fija ``RowT``; la fila no cambia en runtime
+    # cast: psycopg no tipa las filas; la correspondencia alias→clave la fija el
+    # TypedDict declarado junto al SELECT y la comprueban sus tests de integración.
+    return cast("list[RowT]", rows)
 
 
 def count_where(conn: Any, table: str, where: str, params: tuple[Any, ...]) -> int:

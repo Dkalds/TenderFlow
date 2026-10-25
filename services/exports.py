@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any, Literal
 
@@ -64,7 +65,7 @@ PURSUIT_COLUMNS = [
 
 
 def generate_csv(
-    records: list[dict[str, object]],
+    records: Sequence[Mapping[str, object]],
     columns: list[str] | None = None,
 ) -> bytes:
     """Generate CSV bytes with UTF-8 BOM and semicolon delimiter for Excel compat."""
@@ -81,7 +82,7 @@ def generate_csv(
 
 
 def generate_excel(
-    records: list[dict[str, object]],
+    records: Sequence[Mapping[str, object]],
     columns: list[str] | None = None,
     sheet_name: str = "Licitaciones",
 ) -> bytes:

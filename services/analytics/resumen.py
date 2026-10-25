@@ -248,7 +248,7 @@ def get_resumen_novedades_desde(
         ResumenNovedadesSample(
             id_externo=str(row["id_externo"]),
             titulo=row.get("titulo"),
-            importe=float(row["importe"]) if row.get("importe") is not None else None,
+            importe=float(row["importe"]) if row["importe"] is not None else None,
             organo_contratacion=row.get("organo_contratacion"),
         )
         for row in rows
@@ -309,7 +309,7 @@ def get_timeline_scatter(filters: TimelineScatterFilters) -> TimelineScatterResu
         TimelineScatterItem(
             id_externo=str(row["id_externo"]),
             titulo=row.get("titulo"),
-            importe=float(row["importe"]) if row.get("importe") is not None else None,
+            importe=float(row["importe"]) if row["importe"] is not None else None,
             fecha_publicacion=row.get("fecha_publicacion"),
             estado=row.get("estado"),
             organo_contratacion=row.get("organo_contratacion"),

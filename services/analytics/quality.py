@@ -10,7 +10,6 @@ pandas perdía al convertir la columna a ``Timestamp``.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pandas as pd
 from pydantic import BaseModel, Field
@@ -359,17 +358,17 @@ def _adjudicaciones_por_fuente() -> list[AdjudicacionesPorFuente]:
         if n <= 0:
             continue
 
-        def _pct(clave: str, total: int = n, f: dict[str, Any] = fila) -> float:
-            return round(100.0 * int(f.get(clave) or 0) / total, 1)
+        def _pct(con_dato: int, total: int = n) -> float:
+            return round(100.0 * int(con_dato or 0) / total, 1)
 
         salida.append(
             AdjudicacionesPorFuente(
                 fuente=str(fila.get("fuente") or "(sin fuente)"),
                 filas=n,
-                pct_n_ofertas=_pct("con_n_ofertas"),
-                pct_oferta_minima=_pct("con_oferta_minima"),
-                pct_oferta_maxima=_pct("con_oferta_maxima"),
-                pct_es_pyme=_pct("con_es_pyme"),
+                pct_n_ofertas=_pct(fila.get("con_n_ofertas", 0)),
+                pct_oferta_minima=_pct(fila.get("con_oferta_minima", 0)),
+                pct_oferta_maxima=_pct(fila.get("con_oferta_maxima", 0)),
+                pct_es_pyme=_pct(fila.get("con_es_pyme", 0)),
             )
         )
     return salida
@@ -397,17 +396,17 @@ def _tendencia_completitud(hoy: datetime | None = None) -> list[CompletitudMes]:
         if total <= 0:
             continue
 
-        def _pct(clave: str, n: int = total, f: dict[str, Any] = fila) -> float:
-            return round(100.0 * int(f.get(clave) or 0) / n, 1)
+        def _pct(con_valor: int, n: int = total) -> float:
+            return round(100.0 * int(con_valor or 0) / n, 1)
 
         serie.append(
             CompletitudMes(
                 mes=str(fila["mes"]),
                 total=total,
-                pct_cpv=_pct("con_cpv"),
-                pct_importe=_pct("con_importe"),
-                pct_organo=_pct("con_organo"),
-                pct_fecha_limite=_pct("con_fecha_limite"),
+                pct_cpv=_pct(fila.get("con_cpv", 0)),
+                pct_importe=_pct(fila.get("con_importe", 0)),
+                pct_organo=_pct(fila.get("con_organo", 0)),
+                pct_fecha_limite=_pct(fila.get("con_fecha_limite", 0)),
             )
         )
     return serie

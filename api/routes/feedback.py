@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -126,7 +127,7 @@ class FeedbackQueueResult(BaseModel):
 
 
 def _build_queue_items(
-    candidates: list[dict[str, Any]],
+    candidates: Sequence[Mapping[str, Any]],
     *,
     include_model: bool = True,
     tech_classifier: Any = None,
@@ -522,11 +523,11 @@ async def feedback_queue(
                         (str(c["cpv"]) if c.get("cpv") is not None else None) for c in candidates
                     ],
                     importes=[
-                        (float(c["importe"]) if c.get("importe") is not None else None)
+                        (float(importe) if (importe := c["importe"]) is not None else None)
                         for c in candidates
                     ],
                 )
-                scores = []
+                scores: list[dict[str, Any]] = []
                 for i, row in enumerate(candidates):
                     p = float(probs[i][1]) if hasattr(probs[i], "__len__") else 0.5
                     uncertainty = abs(p - 0.5)

@@ -27,6 +27,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Any
 
+from db.repositories.adjudicaciones import LeadTimeOrgano
 from shared.dates import a_fecha
 from shared.dto import ExpectedAward
 
@@ -38,7 +39,7 @@ __all__ = ["estimar_adjudicacion"]
 
 def estimar_adjudicacion(
     fecha_limite: Any,
-    stats: dict[str, Any] | None,
+    stats: LeadTimeOrgano | None,
 ) -> ExpectedAward | None:
     """Fecha prevista de adjudicación, o ``None`` si no hay base para darla.
 
