@@ -98,9 +98,9 @@ export function UltimasPublicaciones() {
       : `${paginaVisible * ITEMS_PER_PAGE + 1}–${Math.min((paginaVisible + 1) * ITEMS_PER_PAGE, ordenadas.length)} de ${formatNumber(ordenadas.length)}${soloNuevas ? " nuevas" : topeAlcanzado ? " más recientes" : ""}`;
 
   return (
-    <Panel className="mb-5.5">
+    <Panel>
       <PanelTitle
-        as="h2"
+        as="h3"
         title="Últimas publicaciones"
         hint={
           hayNuevas ? (

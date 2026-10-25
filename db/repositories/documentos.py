@@ -899,7 +899,7 @@ class DocumentosRepository:
         content_type: str | None,
         error_detail: str,
     ) -> None:
-        """PDF escaneado sin capa de texto que el OCR no pudo leer (``v159``).
+        """PDF escaneado sin capa de texto que el OCR no pudo leer (``v161``).
 
         Terminal como ``unsupported`` y por el mismo motivo: reintentarlo con el
         mismo proceso daría lo mismo. Se distingue de ``error`` para que la
@@ -1317,7 +1317,7 @@ class DocumentosRepository:
             # v103: formato no soportado. Se declara como el resto para que el
             # informe del cron tenga siempre la misma forma.
             "unsupported": 0,
-            # v159: PDF escaneado sin texto y sin OCR que lo leyera.
+            # v161: PDF escaneado sin texto y sin OCR que lo leyera.
             "sin_texto": 0,
         }
         with connect_read() as c:

@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal, TypedDict
 
 from db.database import connect, connect_read, now_utc_iso
+from db.sql_fragments import instante_sql
 
 #: Predicado de identidad dual. Parámetros: ``(user_id, user_key, user_id)``;
 #: con ``user_id=None`` se reduce a ``user_key = %s``. El razonamiento está en
@@ -248,7 +249,8 @@ def listar_alertas(
             "LEFT JOIN pursuits p ON p.organization_id = n.organization_id "
             "AND p.licitacion_id = n.licitacion_id "
             f"WHERE {_IDENT_N} AND n.organization_id = %s{filtro} "
-            "ORDER BY n.created_at DESC, n.id DESC LIMIT %s OFFSET %s",
+            f"ORDER BY {instante_sql('user_notifications', 'created_at', 'n')} DESC, "
+            "n.id DESC LIMIT %s OFFSET %s",
             (*ident, organization_id, limit, offset),
         )
         cols = [d[0] for d in cur.description]
@@ -295,18 +297,17 @@ def alertas_de_usuario(
         "LEFT JOIN pursuits p ON p.organization_id = n.organization_id "
         "AND p.licitacion_id = n.licitacion_id "
     )
+    creado = instante_sql("user_notifications", "created_at", "n")
     with connect_read() as c:
         if organization_id is None:
             cur = c.execute(
-                select + f"WHERE {_IDENT_N} "
-                "ORDER BY n.read_at IS NOT NULL, n.created_at DESC "
-                "LIMIT %s",
+                select + f"WHERE {_IDENT_N} ORDER BY n.read_at IS NOT NULL, {creado} DESC LIMIT %s",
                 (user_id, user_key, user_id, limit),
             )
         else:
             cur = c.execute(
                 select + f"WHERE {_IDENT_N} AND n.organization_id = %s "
-                "ORDER BY n.read_at IS NOT NULL, n.created_at DESC "
+                f"ORDER BY n.read_at IS NOT NULL, {creado} DESC "
                 "LIMIT %s",
                 (user_id, user_key, user_id, organization_id, limit),
             )

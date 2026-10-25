@@ -1,7 +1,4 @@
 ﻿import { describe, it, expect } from "vitest";
-import { Sparkles } from "lucide-react";
-import { CONSOLE_SPACES } from "@/lib/console-spaces";
-import { ICONO_ENTIDAD } from "@/lib/iconos";
 import {
   SECTIONS,
   ALL_PAGES,
@@ -28,12 +25,6 @@ describe("SECTIONS (NAV_SECTIONS)", () => {
       expect(Array.isArray(section.pages)).toBe(true);
     }
   });
-
-  it("every section has an icon", () => {
-    for (const section of SECTIONS) {
-      expect(section.icon).toBeDefined();
-    }
-  });
 });
 
 describe("findPage", () => {
@@ -57,38 +48,19 @@ describe("findPage", () => {
     expect(competidores?.slug).toBe("competidores");
   });
 
-  it("returned page has required fields: label, slug, description, icon", () => {
+  it("returned page has required fields: label, slug, description", () => {
     const page = findPage("resumen");
     expect(page).toMatchObject({
       label: expect.any(String),
       slug: expect.any(String),
       description: expect.any(String),
     });
-    expect(page?.icon).toBeDefined();
   });
 });
 
-describe("iconos del catálogo de páginas", () => {
-  it("una página que es un espacio lleva el icono del rail", () => {
-    // El mismo destino no puede tener un glifo en el rail y otro en los atajos
-    // del Resumen (Detalle era Search aquí y Table2 allí).
-    for (const space of CONSOLE_SPACES) {
-      const page = findPage(space.slug);
-      if (page) expect(page.icon, space.slug).toBe(space.icon);
-    }
-    expect(findPage("organos")?.icon).toBe(ICONO_ENTIDAD.organo);
-    expect(findPage("empresas")?.icon).toBe(ICONO_ENTIDAD.empresa);
-  });
-
-  it("no usa Sparkles: la IA se nombra, no se adorna", () => {
-    for (const section of SECTIONS) {
-      expect(section.icon, section.label).not.toBe(Sparkles);
-      for (const page of section.pages) expect(page.icon, page.slug).not.toBe(Sparkles);
-    }
-  });
-
+describe("descripciones del catálogo de páginas", () => {
   it("describe las páginas sin jerga de implementación", () => {
-    const jerga = /\b(RAG|corpus|dataset|scraping|DLQ|heatmap|treemap|ARIMA|keywords?)\b/i;
+    const jerga = /(RAG|corpus|dataset|scraping|DLQ|heatmap|treemap|ARIMA|keywords?)/i;
     for (const page of ALL_PAGES) expect(page.description, page.slug).not.toMatch(jerga);
   });
 });

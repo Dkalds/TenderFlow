@@ -1696,19 +1696,37 @@ class TestWriteFeedback:
         assert "EXP-F7" not in [c["id_externo"] for c in despues]
 
 
+def _dataset_de_entrenamiento(*ids: str):
+    """Las etiquetas del único camino de entrenamiento del clasificador SAP.
+
+    ``train_from_db`` etiqueta con ``etiquetar_dataset_sap`` sobre lo que lee
+    ``feedback_humano_es_ti``. Estos tests apuntaban a
+    ``scheduler.concept_drift._fetch_training_dataframe``, la copia del
+    reentrenamiento semanal en proceso, que se retiró con él en 2026-10; las
+    garantías son las mismas y se comprueban ahora sobre el camino que queda.
+    Las licitaciones van sin keyword ni tecnología: etiqueta base 0.
+    """
+    import pandas as pd
+
+    from db.repositories.ml_dataset import feedback_humano_es_ti
+    from services.ml.classifier_training import etiquetar_dataset_sap
+
+    lic = pd.DataFrame([{"id_externo": i, "raw_keywords": None, "tecnologia": None} for i in ids])
+    return etiquetar_dataset_sap(lic, feedback_humano_es_ti())
+
+
 class TestTrainingIgnoresAutomaticFeedback:
     """Guard anti-realimentación: el modelo no aprende de sus propias etiquetas."""
 
     def test_llm_feedback_does_not_override_the_training_label(self, tmp_db):
         from db.repositories.feedback import FeedbackRepository
-        from scheduler.concept_drift import _fetch_training_dataframe
 
         _insert_licitacion("EXP-T1")
         FeedbackRepository().insert(
             expediente="EXP-T1", relevante=True, nota="llm", tecnologia="SAP", source="llm_batch"
         )
 
-        df = _fetch_training_dataframe()
+        df = _dataset_de_entrenamiento("EXP-T1")
 
         fila = df[df["id_externo"] == "EXP-T1"].iloc[0]
         assert fila["es_relevante"] == 0
@@ -1719,14 +1737,13 @@ class TestTrainingIgnoresAutomaticFeedback:
         fila `human` (histórica, «es SAP») ya no participa aquí -- lo cubre
         `test_human_feedback_no_longer_overrides` más abajo."""
         from db.repositories.feedback import FUENTE_REVISION_TI, FeedbackRepository
-        from scheduler.concept_drift import _fetch_training_dataframe
 
         _insert_licitacion("EXP-T2")
         FeedbackRepository().insert(
             expediente="EXP-T2", relevante=True, nota="a mano", source=FUENTE_REVISION_TI
         )
 
-        df = _fetch_training_dataframe()
+        df = _dataset_de_entrenamiento("EXP-T2")
 
         fila = df[df["id_externo"] == "EXP-T2"].iloc[0]
         assert fila["es_relevante"] == 1
@@ -1736,12 +1753,11 @@ class TestTrainingIgnoresAutomaticFeedback:
         el plan de clasificación en tres niveles ya no puede pisar la etiqueta
         base de este entrenamiento, que es «es TI»."""
         from db.repositories.feedback import FeedbackRepository
-        from scheduler.concept_drift import _fetch_training_dataframe
 
         _insert_licitacion("EXP-T2B")
         FeedbackRepository().insert(expediente="EXP-T2B", relevante=True, nota="a mano")
 
-        df = _fetch_training_dataframe()
+        df = _dataset_de_entrenamiento("EXP-T2B")
 
         fila = df[df["id_externo"] == "EXP-T2B"].iloc[0]
         assert fila["es_relevante"] == 0
@@ -1753,7 +1769,6 @@ class TestTrainingIgnoresAutomaticFeedback:
         última fila que devolviera el SELECT, que en orden físico es la vieja."""
         from db.database import connect
         from db.repositories.feedback import FUENTE_REVISION_TI
-        from scheduler.concept_drift import _fetch_training_dataframe
 
         _insert_licitacion("EXP-T3")
         with connect() as c:
@@ -1767,58 +1782,21 @@ class TestTrainingIgnoresAutomaticFeedback:
                     ("EXP-T3", relevante, FUENTE_REVISION_TI, created_at),
                 )
 
-        df = _fetch_training_dataframe()
+        df = _dataset_de_entrenamiento("EXP-T3")
 
         fila = df[df["id_externo"] == "EXP-T3"].iloc[0]
         assert fila["es_relevante"] == 1
 
-    def test_la_etiqueta_sale_de_la_revision_vigente_sin_bd(self, monkeypatch):
-        """Sin BD: la etiqueta sale de ``feedback_humano_es_ti`` (una fila por
-        expediente, la más reciente). La conexión falsa sirve la licitación y,
-        a quien vuelva a leer ``ml_feedback`` a mano, la revisión vigente
-        seguida de la vieja que la contradice: lo que un SELECT sin orden
-        puede devolver."""
-        import scheduler.concept_drift as concept_drift
+    def test_la_etiqueta_sale_de_la_revision_vigente_sin_bd(self):
+        """Sin BD: la etiqueta sale de lo que da ``feedback_humano_es_ti`` (una
+        fila por expediente, la más reciente) y pisa la etiqueta base."""
+        import pandas as pd
 
-        columnas_lic = [
-            "id_externo",
-            "titulo",
-            "descripcion",
-            "raw_keywords",
-            "cpv",
-            "importe",
-            "fecha_publicacion",
-            "tecnologia",
-        ]
+        from services.ml.classifier_training import etiquetar_dataset_sap
 
-        class _Cursor:
-            def __init__(self, filas: list[tuple[object, ...]], columnas: list[str]) -> None:
-                self._filas = filas
-                self.description = [(c,) for c in columnas]
+        lic = pd.DataFrame([{"id_externo": "EXP-K", "raw_keywords": None, "tecnologia": None}])
 
-            def fetchall(self) -> list[tuple[object, ...]]:
-                return self._filas
-
-        class _Conexion:
-            def execute(self, sql: str, params: object = None) -> _Cursor:
-                if "FROM licitaciones" in sql:
-                    fila = ("EXP-K", "t", "d", None, None, None, "2026-06-01", None)
-                    return _Cursor([fila], columnas_lic)
-                return _Cursor([("EXP-K", 1), ("EXP-K", 0)], ["expediente", "relevante"])
-
-            def __enter__(self) -> _Conexion:
-                return self
-
-            def __exit__(self, *_exc: object) -> None:
-                return None
-
-        monkeypatch.setattr(concept_drift, "connect", lambda: _Conexion())
-        monkeypatch.setattr(
-            "db.repositories.ml_dataset.feedback_humano_es_ti",
-            lambda: [{"expediente": "EXP-K", "relevante": 1}],
-        )
-
-        df = concept_drift._fetch_training_dataframe()
+        df = etiquetar_dataset_sap(lic, [{"expediente": "EXP-K", "relevante": 1}])
 
         assert df[df["id_externo"] == "EXP-K"].iloc[0]["es_relevante"] == 1
 

@@ -707,37 +707,27 @@ def _run_retention_cleanup() -> str:
 def _run_sap_active_learning() -> str:
     """Active learning del clasificador SAP (una vez por semana).
 
-    ``maybe_retrain_classifier`` (feedback ≥50 → retrain + gate de promoción
-    de tres métricas) estaba implementado y testeado pero SIN ningún caller de
-    producción: el feedback se acumulaba en ``ml_feedback`` para un contador
-    de UI y nada lo consumía (revisión de arquitectura 2026-08). La función ya
-    no-opea por debajo del umbral, así que la ventana semanal solo limita el
-    coste del conteo.
+    ``maybe_retrain_classifier`` (feedback ≥50) estaba implementado y testeado
+    pero SIN ningún caller de producción: el feedback se acumulaba en
+    ``ml_feedback`` para un contador de UI y nada lo consumía (revisión de
+    arquitectura 2026-08). La función no-opea por debajo del umbral, así que la
+    ventana semanal solo limita el coste del conteo.
 
-    **En producción avisa, no entrena** (2026-10). Con ``SCHEDULER_PLANE``
-    declarado la función no reentrena: manda la alerta de que toca lanzar
-    ``train-model.yml`` y devuelve ``retrain_pendiente``. Hasta entonces
-    entrenaba y activaba la versión aquí mismo, en un runner que se destruye
-    al acabar el job, con un aviso en el log —el de abajo— como único
-    recordatorio de subir el ``.pkl`` a la Release. El 2026-09-29 ese aviso ni
-    llegó a escribirse: el ``precompute_ml_proba(force=True)`` posterior agotó
-    los 20 minutos del step, y la versión quedó activa sin artefacto. El aviso
-    se conserva para quien corra esto sin plano declarado.
+    **Lanza, no entrena** (2026-10). Por encima del umbral encola
+    ``train-model.yml`` —el único camino que entrena, publica y solo entonces
+    activa— o, si no puede, avisa con el comando. Hasta entonces entrenaba y
+    activaba la versión aquí mismo, en un runner que se destruye al acabar el
+    job, con un aviso en el log como único recordatorio de subir el ``.pkl`` a
+    la Release. El 2026-09-29 ese aviso ni llegó a escribirse: el
+    ``precompute_ml_proba(force=True)`` posterior agotó los 20 minutos del
+    step, y la versión quedó activa sin artefacto. Como este paso ya no puede
+    activar nada, el aviso se retiró con el camino que lo necesitaba.
     """
 
     def _run() -> None:
         from scheduler.concept_drift import maybe_retrain_classifier
 
-        result = maybe_retrain_classifier()
-        if result.get("triggered") and result.get("new_version") is not None:
-            log.warning(
-                "sap_active_learning_promoted_artifact_needs_release_upload",
-                detail=(
-                    "una versión nueva quedó activa en model_versions; subir el "
-                    ".pkl a la Release de GitHub o el siguiente runner no podrá "
-                    "resolver el artefacto (shared/model_artifacts.py)"
-                ),
-            )
+        maybe_retrain_classifier()
 
     return _run_periodic("sap_active_learning", _SEGUNDOS_SEMANA, _run)
 

@@ -1,7 +1,7 @@
-"""v159: ``documentos.status`` admite ``'sin_texto'`` (PDF escaneado sin OCR).
+"""v161: ``documentos.status`` admite ``'sin_texto'`` (PDF escaneado sin OCR).
 
-Revision ID: v159_documentos_sin_texto
-Revises: v158_domain_events_pscp_rekey
+Revision ID: v161_documentos_sin_texto
+Revises: v160_fechas_ts_indices
 Create Date: 2026-10-25
 
 Qué falla hoy
@@ -45,8 +45,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "v159_documentos_sin_texto"
-down_revision: str | Sequence[str] | None = "v158_domain_events_pscp_rekey"
+revision: str = "v161_documentos_sin_texto"
+down_revision: str | Sequence[str] | None = "v160_fechas_ts_indices"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

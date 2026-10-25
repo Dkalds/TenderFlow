@@ -8,7 +8,6 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { useFilterParams } from "@/lib/filters";
 import { buildExportUrl, triggerDownload } from "@/lib/export";
@@ -16,12 +15,6 @@ import { buildExportUrl, triggerDownload } from "@/lib/export";
 interface ExportPopoverProps {
   endpoint?: string;
   extraParams?: Record<string, string>;
-  /**
-   * @deprecated Se aplica al disparador. Los `[&>button]:…` que le pasaban
-   * algunas pantallas para achicarlo nunca llegaron a nada; la talla la da
-   * `size`.
-   */
-  className?: string;
   /**
    * Etiqueta del disparador. Por defecto «Exportar»; la barra de ámbito la
    * cambia a «Exportar ámbito», y cada exportación de sección nombra su objeto
@@ -41,7 +34,6 @@ interface ExportPopoverProps {
 export function ExportPopover({
   endpoint = "/api/v1/exports/download",
   extraParams,
-  className,
   label = "Exportar",
   size = "sm",
 }: ExportPopoverProps) {
@@ -56,7 +48,7 @@ export function ExportPopover({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className={cn(buttonVariants({ variant: "outline", size }), className)}>
+      <DropdownMenuTrigger className={buttonVariants({ variant: "outline", size })}>
         <Download aria-hidden="true" />
         {label}
       </DropdownMenuTrigger>
