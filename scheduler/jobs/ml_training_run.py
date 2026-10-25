@@ -98,7 +98,7 @@ def run() -> dict[str, Any]:
     # señal. Es exactamente lo que el docstring de
     # ``_collect_negatives_from_month`` dice querer evitar.
     seed_negatives(include_ti=True, spread_months=6)
-    metrics = train_from_db(activar=False)
+    metrics = train_from_db()
     log.info("ml_training_metrics", **{k: v for k, v in metrics.items() if k != "error"})
 
     if "error" in metrics:
@@ -114,12 +114,11 @@ def promocionado(metrics: dict[str, Any]) -> bool:
     que ``train-model.yml`` sube a la Release— si el candidato supera el gate.
     Un rechazo no es un error: es el mecanismo funcionando.
 
-    Cuenta tanto el candidato ya activado como el que espera a que su
-    artefacto se publique (``pendiente_de_activar``, que es lo que devuelve
-    :func:`run`): en los dos hay fichero que subir.
+    El candidato que pasa queda ``pendiente_de_activar``: el gate no activa
+    nunca, y quien lo hace es :func:`activar_publicada`.
     """
     promocion = metrics.get("promotion") or {}
-    return bool(promocion.get("activada") or promocion.get("pendiente_de_activar"))
+    return bool(promocion.get("pendiente_de_activar"))
 
 
 def artefactos_publicados(metrics: dict[str, Any]) -> list[str]:

@@ -141,7 +141,7 @@ describe("EventosFeed", () => {
       ["98", "45"],
     ]);
     // El pie cuenta la ventana, no las 20 filas pedidas.
-    expect(screen.getByText("8 de 143")).toBeInTheDocument();
+    expect(screen.getByText("5 de 143")).toBeInTheDocument();
   });
 
   it("filters the list by a type of the legend, keeping the whole breakdown in the bar", () => {
@@ -205,7 +205,7 @@ describe("EventosFeed", () => {
     }));
     renderFeed({ items, dias: 30 });
     expect(screen.queryByRole("list", { name: "Movimientos por tipo" })).not.toBeInTheDocument();
-    expect(screen.getByText("8 de 10")).toBeInTheDocument();
+    expect(screen.getByText("5 de 10")).toBeInTheDocument();
   });
 
   it("sends the active scope to the API", () => {

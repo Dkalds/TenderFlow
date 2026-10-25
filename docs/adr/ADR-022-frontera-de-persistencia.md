@@ -68,6 +68,25 @@ migra al otro por el hecho de existir.
 Regla práctica: si la clase no tiene `__init__` ni atributos, es un namespace
 disfrazado y sobra.
 
+#### Entidades con las dos caras (módulo y repositorio)
+
+`audit`, `webhooks` y `watchlist` tienen un módulo `db/<x>.py` **y** un
+repositorio `db/repositories/<x>.py` sobre las mismas tablas. No es un descuido
+por entidad: es una división por responsabilidad que cada cabecera debe decir.
+
+| Entidad | Módulo `db/<x>.py` | Repositorio `db/repositories/<x>.py` |
+|---|---|---|
+| `audit` | escritura y verificación de la cadena hash (`log_action`, `log_event`, `verify_hash_chain`) | lecturas para la API y la exportación RGPD |
+| `webhooks` | entrega saliente firmada (`trigger_event`, `reenviar`) | CRUD de suscripciones, entregas, reintentos e idempotencia |
+| `watchlist` | CRUD de entradas por CPV y su matching | ítems de seguimiento, digests pendientes y exportación/anonimización |
+| `empresas` | resolución de entidades, aliases y cola de revisión (escritura) | buscador y detalle (lectura) |
+
+Regla para una entidad nueva: **un solo sitio**. Solo se admite la pareja
+cuando el módulo trae una lógica con estado propio (cadena hash, firma HMAC,
+backfill) que no es acceso a tabla, y entonces la cabecera de ambos ficheros
+nombra al otro y el reparto. Quien busca «dónde está el SQL de X» abre primero
+el repositorio.
+
 ### 3. Lo que sí es una violación: SQL en `services/`
 
 `services/` es la capa de dominio (ADR-007): orquesta, calcula, decide. **No

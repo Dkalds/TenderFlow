@@ -238,7 +238,7 @@ def _sql_por_lote(hasta: str | None) -> tuple[str, list[Any]]:
 
     ``COALESCE(lo.importe, l.importe)`` es la regla de denominador por fila que
     ``db.repositories.pricing`` ya usa (gemela de
-    ``services.sql_fragments.EFFECTIVE_BUDGET_SQL``); la diferencia es que aquí
+    ``db.sql_fragments.EFFECTIVE_BUDGET_SQL``); la diferencia es que aquí
     el ``COALESCE`` nunca cae al expediente para una fila **con** lote, porque
     esas se exigen con ``lo.importe > 0``: un lote sin presupuesto publicado no
     tiene denominador propio y no puede entrar en el dataset por lote.

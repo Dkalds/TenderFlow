@@ -82,7 +82,7 @@ def _get_licitaciones_for_deadlines(
     placeholders = ",".join(["%s"] * len(ids))
     with connect_read() as c:
         cur = c.execute(
-            f"SELECT id_externo, titulo, fecha_limite, fecha_fin "  # noqa: S608
+            "SELECT id_externo, titulo, fecha_limite, fecha_fin "  # noqa: S608 — solo %s
             f"FROM licitaciones WHERE id_externo IN ({placeholders})",
             ids,
         )

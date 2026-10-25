@@ -13,8 +13,16 @@ Coexistían dos caminos de reentrenamiento con garantías opuestas:
   lo admitía. Un entrenamiento con datos degradados se promocionaba solo, y no
   había versión anterior registrada a la que volver.
 
-Este módulo concentra la decisión para que ambos caminos pasen por la misma
-puerta.
+Este módulo concentró primero la decisión para que ambos caminos pasaran por
+la misma puerta. Desde 2026-10 queda **un solo camino**: el reentrenamiento
+semanal ya no entrena, lanza ``train-model.yml``
+(``scheduler.concept_drift.maybe_retrain_classifier``), y este gate **no
+activa nunca**. Registra el candidato —inactivo— y, si pasa, escribe el
+artefacto que hay que publicar; activarlo es cosa de
+``scheduler.jobs.ml_training_run.activar_publicada``, y solo después de
+comprobar que la Release publica ese mismo sha256. Una versión activa sin
+artefacto publicado —el incidente del 2026-09-29— deja de poder escribirse
+por aquí.
 
 Qué mide el gate
 ----------------
@@ -99,16 +107,19 @@ class _ClasificadorEvaluable(Protocol):
 
 @dataclass
 class ResultadoPromocion:
-    """Qué decidió el gate y por qué."""
+    """Qué decidió el gate y por qué.
+
+    No hay campo ``activada``: :func:`promote_if_better` no activa nunca, así
+    que el mejor desenlace posible es ``pendiente_de_activar``.
+    """
 
     registrada: bool
-    activada: bool
     version: int | None
     motivos_rechazo: list[str] = field(default_factory=list)
     golden: dict[str, Any] = field(default_factory=dict)
-    #: Pasó el gate y su artefacto está escrito, pero quien llamó pidió no
-    #: activarlo todavía (``promote_if_better(activar=False)``): falta
-    #: publicarlo y comprobar que lo publicado es lo registrado.
+    #: Pasó el gate y su artefacto está escrito, registrado e inactivo: falta
+    #: publicarlo y comprobar que lo publicado es lo registrado
+    #: (``scheduler.jobs.ml_training_run.activar_publicada``).
     pendiente_de_activar: bool = False
     #: Ruta del artefacto publicado (``<stem>-<sha256[:12]>.pkl``) si el gate
     #: pasó y había ``publicar_como``; es la registrada en ``model_versions`` y
@@ -118,7 +129,6 @@ class ResultadoPromocion:
     def as_dict(self) -> dict[str, Any]:
         return {
             "registrada": self.registrada,
-            "activada": self.activada,
             "version": self.version,
             "motivos_rechazo": self.motivos_rechazo,
             **({"golden": self.golden} if self.golden else {}),
@@ -348,23 +358,23 @@ def promote_if_better(
     notes: str | None = None,
     models_dir: Path | None = None,
     publicar_como: Path | None = None,
-    activar: bool = True,
 ) -> ResultadoPromocion:
-    """Registra la versión y la activa **solo si** pasa el gate.
+    """Registra la versión, **inactiva**, y escribe su artefacto si pasa el gate.
 
     La versión se registra SIEMPRE (aunque no pase): es lo que permite ver el
-    histórico. Lo que el gate decide es la *activación* y la publicación del
-    artefacto que sirve producción.
+    histórico. Lo que el gate decide es si el candidato es publicable: si lo
+    es, se escribe el artefacto y la fila queda ``pendiente_de_activar``.
 
-    **Activar es afirmar que el artefacto se puede bajar.** Quien corre en un
-    sitio donde ``publicar_como`` todavía no ha llegado a nadie —el job de
-    ``train-model.yml``, antes de su ``gh release upload``— pasa
-    ``activar=False``: el candidato que supera el gate se escribe y se registra
-    igual, pero inactivo (``pendiente_de_activar``), y lo activa
-    ``scheduler.jobs.ml_training_run.activar_publicada`` después de comprobar
-    que la Release publica ese mismo sha256. Activando aquí, un fallo entre
-    este punto y la subida dejaba activa una versión sin artefacto: lo mismo
-    que pasó el 2026-09-29 por el camino del reentrenamiento automático.
+    **Aquí no se activa nada.** Activar es afirmar que el artefacto se puede
+    bajar, y en el momento de esta llamada ``publicar_como`` no ha llegado a
+    ningún otro proceso: está en el disco de quien entrena. Lo activa
+    ``scheduler.jobs.ml_training_run.activar_publicada``, después de comprobar
+    que la Release publica ese mismo sha256. Hasta 2026-10 esta función
+    activaba por defecto (``activar=True``), y el reentrenamiento semanal la
+    llamaba así dentro de un runner efímero: el 2026-09-29 dejó activa una v2
+    cuyo ``.pkl`` murió con el runner, y ``ml_scoring`` cayó por
+    ``ModelArtifactMismatch`` en cada pasada. El parámetro se retiró para que
+    ningún camino —tampoco uno nuevo— pueda repetirlo.
 
     **El artefacto publicado lleva su sha256 en el nombre** (2026-10):
     ``publicar_como`` es la ruta *base* (``data/models/sap_classifier.pkl``) y
@@ -396,8 +406,6 @@ def promote_if_better(
         publicar_como: Ruta base del artefacto que sirve producción. Si el
             gate pasa se publica como ``<stem>-<sha256[:12]><suffix>`` en su
             directorio, con su ``.sha256``; si no, no se escribe nada.
-        activar: ``False`` deja inactivo al candidato que pasa el gate, a la
-            espera de que quien llama publique el artefacto y lo active.
     """
     from db.model_registry import get_active, next_version, register_version
 
@@ -435,7 +443,6 @@ def promote_if_better(
         golden_activo=golden_activo,
     )
     pasa_el_gate = not motivos
-    debe_activar = pasa_el_gate and activar
 
     # Publicar ANTES de registrar: el ``path`` que queda en ``model_versions``
     # tiene que ser el del fichero que de verdad viaja a la Release, porque es
@@ -481,7 +488,9 @@ def promote_if_better(
         n_samples=n_samples,
         n_feedbacks=n_feedbacks,
         notes=notes,
-        activate=debe_activar,
+        # Nunca activa: ver el docstring. La activación vive en
+        # ``scheduler.jobs.ml_training_run.activar_publicada``.
+        activate=False,
     )
     if version != prevista:
         # Otro proceso registró entre ``next_version`` y el INSERT. El fichero
@@ -495,9 +504,7 @@ def promote_if_better(
             path=str(guardado),
         )
 
-    if debe_activar:
-        log.info("promotion.activada", name=name, version=version, golden=golden_dict)
-    elif pasa_el_gate:
+    if pasa_el_gate:
         log.info(
             "promotion.pendiente_de_activar",
             name=name,
@@ -516,11 +523,10 @@ def promote_if_better(
 
     return ResultadoPromocion(
         registrada=True,
-        activada=debe_activar,
         version=version,
         motivos_rechazo=motivos,
         golden=golden_dict,
-        pendiente_de_activar=pasa_el_gate and not activar,
+        pendiente_de_activar=pasa_el_gate,
         artefacto=str(publicado) if publicado is not None else None,
     )
 

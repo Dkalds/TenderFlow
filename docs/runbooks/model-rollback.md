@@ -42,11 +42,24 @@ gh api repos/Dkalds/TenderFlow/releases \
 
 Cómo se llega: algo activó una versión sin publicar su artefacto. El
 2026-09-29 fue el reentrenamiento automático dentro de un runner de
-`scrape-daily`; desde el 2026-10 ese paso ya no entrena: lanza
-`train-model.yml`, o avisa si no puede. Y `train-model.yml` activa **después**
-de subir, tras comprobar que la Release publica el sha256 registrado. Lo que
-queda son los caminos manuales: un `activate_version` sobre una versión cuyo
-artefacto no está publicado, o alguien que sustituye el asset a mano.
+`scrape-daily`. Desde 2026-10 hay **un solo camino de entrenamiento** y por
+código no puede repetirse:
+
+- El paso semanal `sap_active_learning` no entrena en ningún plano —tampoco
+  sin `SCHEDULER_PLANE`, en un checkout local—: lanza `train-model.yml`, o
+  avisa con el comando si no puede.
+- El gate (`services.ml.promotion.promote_if_better`) **no activa nunca**: ya
+  no tiene parámetro `activar`. Registra el candidato inactivo y, si pasa,
+  escribe `sap_classifier-<sha12>.pkl` (`pendiente_de_activar`). Vale también
+  para `python scripts/ml_clasificadores.py train`, que ahora dice «registrada
+  SIN activar» en vez de «Modelo guardado».
+- Lo único que activa es `python -m scheduler.jobs.ml_training_run activar
+  --version N`, el paso de `train-model.yml` posterior a la subida, y solo si
+  la Release publica el sha256 registrado.
+
+Lo que queda son los caminos manuales que se saltan todo eso: un
+`activate_version` a pelo sobre una versión cuyo artefacto no está publicado,
+o alguien que sustituye el asset a mano.
 
 **Salidas**, por orden de preferencia:
 
@@ -227,6 +240,50 @@ Una versión que **no** supera el criterio queda registrada igual, con
 `promotion_reason` explicando cuál de las dos cuentas falló: el histórico es lo
 que permite ver si la siguiente mejora de verdad o repite la anterior.
 
+### Ampliar el golden del clasificador SAP
+
+El gate del `sap_classifier` es tan bueno como `tests/fixtures/golden_set.jsonl`,
+y con 27 ejemplos (3 positivos sin keyword en cada mitad) no sostiene ni el
+umbral ni `recall_no_keyword`. Ampliarlo es trabajo humano; las herramientas
+solo quitan la fricción. **No se fabrican etiquetas** ni se rellenan con reglas
+o con el LLM: el golden juzga a esas fuentes.
+
+1. **Muestrear** (solo lectura). Con acceso a la BD:
+
+   ```bash
+   ENV=prod PYTHONPATH="$PWD" python -m scripts.sample_golden_candidates \
+       --n 400 --out data/etiquetado/candidatos_golden_sap.jsonl
+   ```
+
+   Sin acceso directo, exportar desde quien lo tenga (misma consulta que
+   `LicitacionRepository.get_unlabelled_candidates`) y muestrear el export:
+
+   ```bash
+   psql "$DATABASE_URL" -c "\copy (SELECT l.id_externo, l.titulo, l.descripcion, l.cpv, l.importe, l.organo_contratacion, l.ml_proba FROM licitaciones l LEFT JOIN ml_feedback f ON l.id_externo = f.expediente AND f.source NOT LIKE 'reporte:%' WHERE f.expediente IS NULL ORDER BY l.fecha_publicacion DESC LIMIT 5000) TO 'export.csv' CSV HEADER"
+   python -m scripts.sample_golden_candidates --desde export.csv --n 400 \
+       --out data/etiquetado/candidatos_golden_sap.jsonl
+   ```
+
+   Si `ml_proba` viene en todas las filas del export se usa para estratificar;
+   si no, se puntúa con el modelo de `data/models/` (o se muestrea sin banda).
+   `data/` no se versiona: el fichero de candidatos no va al repo.
+
+2. **Etiquetar** en la terminal: `python -m scripts.revisar_golden_candidates
+   data/etiquetado/candidatos_golden_sap.jsonl`. `1` es SAP, `0` no, `d` dudoso
+   (sale de la cola; `--dudosos` lo vuelve a enseñar), `s` saltar, `q` salir.
+   Guarda tras cada respuesta y se reanuda donde quedó. Enseña título,
+   descripción, CPV, órgano e importe; **no** `keyword_match` ni la
+   probabilidad del modelo, para no anclar. Cada etiqueta lleva `source` y
+   `fecha`.
+
+3. **Anexar y medir**: `--anexar` añade lo etiquetado (nunca nulos ni
+   dudosos, nunca ids repetidos) al golden; `--estado` dice si cumple
+   (≥ 60 por mitad y ≥ 30 positivos sin keyword en holdout) y, con un modelo en
+   `data/models/`, el intervalo bootstrap del umbral elegido en `tune`
+   (`services.ml_eval.umbral_bootstrap`, misma rejilla que el tuning servido).
+   Con 27 ejemplos el ancho p5-p95 era 0,26; por debajo de 0,10 el informe lo
+   da por estable (orientativo, no entra en el gate).
+
 ### `baja_model` v2 y `retencion_model` v1: qué hace falta para decidir
 
 La decisión es humana (`train-predictivos.yml` no activa salvo
@@ -275,13 +332,67 @@ saber antes de tocar el clasificador:
   medido sobre **tres** ejemplos del golden legado (27 ejemplos escritos a
   mano). Un gate sobre un golden tan pequeño no protege: es la razón de fondo
   del golden real (`golden_ti.jsonl`, [etiquetado-ti.md](etiquetado-ti.md)).
-- **Qué se cambió.** Con `SCHEDULER_PLANE` declarado nadie entrena ni activa
-  fuera de `train-model.yml`, que activa **después** de subir y cotejar el
-  `digest` (#404, #405); `model_artifacts_canary` coteja a diario. La v2 se
+- **Qué se cambió.** Nadie entrena ni activa fuera de `train-model.yml`, que
+  activa **después** de subir y cotejar el `digest` (#404, #405);
+  `model_artifacts_canary` coteja a diario. En 2026-10 se retiró el segundo
+  camino: el reentrenamiento en proceso de `maybe_retrain_classifier` (que
+  seguía vivo sin plano declarado, con su propio dataset sobre
+  `licitaciones` entera) y el `activar=True` por defecto del gate. Queda un
+  dataset —el de `train_from_db`— y una sola puerta de activación. La v2 se
   desactivó a mano y no es recuperable: su artefacto no existe.
 - **Qué sigue abierto.** Ver correr el flujo nuevo de punta a punta —con el
   asset ya nombrado por contenido en `ml-models` (2026-10), que nunca se ha
-  ejecutado en producción— y decidir qué dataset entrena cada camino.
+  ejecutado en producción—: ver «Verificar la primera pasada de
+  `train-model.yml`» justo debajo. La etiqueta de `train_from_db` sigue siendo
+  circular (keywords); sustituirla por la de nivel 1 es otro ítem del backlog.
+
+## Verificar la primera pasada de `train-model.yml`
+
+Es la acción pendiente del dueño para cerrar el incidente. Con un token que
+pueda lanzar workflows y leer Releases, y `.env` apuntando a producción:
+
+```bash
+# 1. Lanzar y esperar.
+gh workflow run train-model.yml
+RUN="$(gh run list --workflow=train-model.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh run watch "$RUN"
+
+# 2. El resumen del run. Si el gate rechazó, lo dice con los motivos y sale
+#    en verde a propósito: no hay nada más que comprobar. Si pasó, tiene que
+#    listar «Asset: `sap_classifier-<sha12>.pkl`» y «Versión activada».
+gh run view "$RUN"
+
+# 3. El asset está en `ml-models` con nombre por contenido.
+gh release view ml-models --json assets \
+  --jq '.assets[] | select(.name | startswith("sap_classifier-")) | [.name, .digest] | @tsv'
+
+# 4. La versión activa apunta a ese asset y registra ese sha256.
+python - <<'PY'
+from pathlib import Path
+from db.model_registry import get_active
+a = get_active("sap_classifier")
+print(a and (a["version"], Path(a["path"]).name, a["sha256"]))
+PY
+```
+
+Lo de 3 y 4 tiene que coincidir: mismo nombre y `digest` = `sha256:<sha256>`.
+Después, en la siguiente pasada de `scrape-daily`, `model_artifacts_canary` y
+`ml_scoring` en `ok` (o en Ops › Ejecuciones):
+
+```sql
+SELECT payload_json, estado, updated_at
+FROM jobs
+WHERE tipo = 'paso_pipeline'
+  AND (payload_json LIKE '%model_artifacts_canary%' OR payload_json LIKE '%ml_scoring%')
+ORDER BY updated_at DESC
+LIMIT 6;
+```
+
+y en el log de la ingesta, `pipeline.ml_clf_loaded` con la ruta
+`sap_classifier-<sha12>.pkl`. El `workflow_dispatch` desde el paso semanal se
+ve igual: un run de `train-model.yml` con evento `workflow_dispatch`
+(`gh run list --workflow=train-model.yml`), tras el aviso «reentrenamiento del
+clasificador SAP lanzado».
 
 ## Ver modelos en disco
 
@@ -432,15 +543,47 @@ sha256 de cada fichero, sin modo «sin verificar». Los argumentos se declaran
 como variables del servicio `tenderflow-api` en Render, que las pasa como build
 args:
 
-| Variable | Valor |
-| --- | --- |
-| `EMBEDDINGS_ONNX_REVISION` | Commit (40 hex) de `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
-| `EMBEDDINGS_ONNX_SHA256_MODELO` | sha256 de `onnx/model.onnx` en ese commit |
-| `EMBEDDINGS_ONNX_SHA256_TOKENIZADOR` | sha256 de `tokenizer.json` |
-| `EMBEDDINGS_ONNX_SHA256_CONFIG` | sha256 de `sentence_bert_config.json` |
+| Variable | Qué es | Valor verificado (2026-10-25) |
+| --- | --- | --- |
+| `EMBEDDINGS_ONNX_REVISION` | Commit (40 hex) de `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | `e8f8c211226b894fcb81acc59f3b34ba3efd5f42` |
+| `EMBEDDINGS_ONNX_SHA256_MODELO` | sha256 de `onnx/model.onnx` en ese commit (470.301.610 bytes) | `10f7a088420252b26caf819236ca2c9d2987afd0fc06fec7553b542a5655a05a` |
+| `EMBEDDINGS_ONNX_SHA256_TOKENIZADOR` | sha256 de `tokenizer.json` | `2c3387be76557bd40970cec13153b3bbf80407865484b209e655e5e4729076b8` |
+| `EMBEDDINGS_ONNX_SHA256_CONFIG` | sha256 de `sentence_bert_config.json` | `70f4448f31320443fe3557cacea5abf2dcc4915dda8c80646bec9f3bb0aa5a1f` |
+
+Cómo se verificaron: commit y sha256 LFS de la API de Hugging Face
+(`/api/models/<repo>/revision/main?blobs=true`), el del config con `sha256sum`
+del fichero de ese commit; `descargar_modelo_embeddings.py` los bajó y los
+aceptó; y los vectores que el modelo ONNX produce para tres fragmentos de
+`documento_chunks` de producción coinciden con los que el pipeline guardó con
+sentence-transformers (coseno 1,00000, `md5` del texto cotejado; detalle en
+[docs/sli-slo.md](../sli-slo.md) § 8). El test de paridad frente a
+sentence-transformers en local sigue sin ejecutarse (no hay PyTorch en la
+máquina de quien lo verificó); la comparación con los vectores guardados mide
+lo mismo contra lo que de verdad se consulta.
 
 Sin `EMBEDDINGS_ONNX_REVISION` el build no descarga nada y la imagen no define
 `EMBEDDINGS_ONNX_DIR`: así se construyen el CI, el worker y el MCP.
+
+**Encenderlo en producción (propietario):**
+
+1. En Render, servicio `tenderflow-api` → *Environment*: añadir las cuatro
+   variables de la tabla con esos valores. No van en `render.yaml`: el
+   Blueprint no gobierna el servicio (cabecera de `render.yaml`) y
+   `check_env_parity` exigiría declararlas también en `.env.example`.
+2. *Manual Deploy → Clear build cache & deploy*. En el log del build tiene que
+   salir `descargar_modelo_embeddings: sentence-transformers/…@e8f8c211… en
+   /modelos/embeddings`; si sale «sin revisión», las variables no llegaron como
+   build args.
+3. Con el deploy vivo, la búsqueda sigue siendo por texto: la fusión está
+   detrás de la flag `busqueda_semantica`, **apagada por defecto**. Encenderla
+   en Administración → Feature flags (primero por correo o con un porcentaje
+   bajo, si se quiere graduar).
+4. Comprobar en los logs: `semantic_search.ok` con `semantica=servida` y
+   `source=rrf` en alguna búsqueda; `semantica=sin_motor` significa que el
+   modelo no está en la imagen (paso 2) y `sin_aporte` en todas, que no hay
+   fragmentos embebidos o pgvector no responde. Vigilar `fusion_ms` contra el
+   presupuesto de [docs/sli-slo.md](../sli-slo.md) § 8 y el RSS tras la
+   primera búsqueda.
 
 **Cómo obtener los valores.** El commit, de la pestaña *Files and versions* del
 repo (no `main`: una rama puede cambiar entre dos builds). Los sha256 de
@@ -468,6 +611,9 @@ petición y siguen exigiendo sentence-transformers
 (`services.embeddings.embeddings_masivos_disponibles`). Los similares y el
 predecesor de la ficha (≤ 100 títulos) sí lo usan.
 
-**Revertir.** Declarar `EMBEDDINGS_ONNX_DIR` **vacía** en el entorno del
+**Revertir.** Para la búsqueda del Investigador basta con apagar la flag
+`busqueda_semantica` en Administración: sin desplegar, la siguiente búsqueda ya
+es por texto. Para soltar el modelo entero (también los similares de la ficha y
+la memoria), declarar `EMBEDDINGS_ONNX_DIR` **vacía** en el entorno del
 servicio (borrarla no basta: la imagen la define) apaga el motor sin rebuild;
 la búsqueda vuelve a FTS.

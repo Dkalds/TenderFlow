@@ -6,7 +6,6 @@ import hashlib
 import sqlite3
 import tempfile
 from contextlib import contextmanager
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -183,100 +182,59 @@ class TestModelRegistry:
 
 
 class TestPromotionGate:
-    """El gate de promoción que aplica ``maybe_retrain_classifier``.
+    """El reentrenamiento semanal ya no pasa por el gate: lanza el workflow.
 
-    Ya no vive inline: ambos caminos de reentrenamiento (este y
-    ``services.ml.classifier_training.train_from_db``) delegan en
-    ``services.ml.promotion.promote_if_better``, que decide sobre el golden set
-    humano en vez de comparar métricas medidas cada una sobre su propio test
-    split. La lógica del gate se testea en ``tests/test_ml_promotion_gate.py``;
-    aquí solo se comprueba el cableado y qué devuelve el job.
+    Hasta 2026-10 ``maybe_retrain_classifier`` entrenaba en proceso (sin
+    ``SCHEDULER_PLANE``) y delegaba en ``services.ml.promotion.promote_if_better``
+    con activación inmediata. Desde que hay un solo camino de entrenamiento
+    —``train-model.yml`` → ``scheduler.jobs.ml_training_run``— el job no
+    entrena, no evalúa y no registra nada en ningún plano. La lógica del gate
+    se testea en ``tests/test_ml_promotion_gate.py`` y el lanzamiento en
+    ``tests/test_active_learning_publicacion.py``; aquí solo el cableado.
     """
 
     @pytest.fixture(autouse=True)
-    def _sin_plano_declarado(self, monkeypatch):
-        """El reentrenamiento en proceso solo existe sin ``SCHEDULER_PLANE``.
+    def _sin_plano_ni_actions(self, monkeypatch):
+        """El caso que antes entrenaba: sin plano y fuera de Actions."""
+        for nombre in ("SCHEDULER_PLANE", "GITHUB_TOKEN", "GITHUB_REPOSITORY", "GITHUB_REF_NAME"):
+            monkeypatch.delenv(nombre, raising=False)
 
-        Con un plano declarado el job avisa y no entrena (ver
-        ``tests/test_active_learning_publicacion.py``); sin fijarlo aquí, estos
-        tests dependerían del entorno de quien los corre.
-        """
-        monkeypatch.delenv("SCHEDULER_PLANE", raising=False)
+    def _correr(self, n_feedbacks: int):
+        from scheduler.concept_drift import maybe_retrain_classifier
 
-    def _patches(self, promocion: SimpleNamespace):
-        import pandas as pd
-
-        return (
-            patch("db.model_registry.feedbacks_since_last_train", return_value=200),
+        with (
+            patch("db.model_registry.feedbacks_since_last_train", return_value=n_feedbacks),
             patch("db.model_registry.get_active", return_value={"version": 1, "metrics": {}}),
-            patch(
-                "scheduler.concept_drift._fetch_training_dataframe",
-                return_value=pd.DataFrame({"col": [1]}),
-            ),
-            patch("services.ml.sap_classifier.SAPClassifier"),
-            patch("services.ml.classifier_training.precompute_ml_proba"),
-            patch("services.ml.promotion.promote_if_better", return_value=promocion),
-            patch("scheduler.concept_drift.notify"),
-        )
+            patch("services.ml.sap_classifier.SAPClassifier") as clf,
+            patch("services.ml.classifier_training.precompute_ml_proba") as precompute,
+            patch("services.ml.promotion.promote_if_better") as promote,
+            patch("scheduler.concept_drift.notify") as notificar,
+        ):
+            result = maybe_retrain_classifier(threshold=100)
+        return result, clf, precompute, promote, notificar
 
     def test_promotion_rejected_when_gate_fails(self):
-        """Si el gate rechaza, no se activa nada y el motivo llega al resultado."""
-        from scheduler.concept_drift import maybe_retrain_classifier
+        """Por encima del umbral no hay candidato que el gate pueda rechazar:
+        no se entrena, y la versión activa sigue siendo la misma."""
+        result, clf, precompute, promote, notificar = self._correr(200)
 
-        promocion = SimpleNamespace(
-            activada=False,
-            version=2,
-            motivos_rechazo=["recall_no_keyword 0.0000 < 0.05"],
-            golden={},
-            as_dict=lambda: {"activada": False, "version": 2},
-        )
-        patches = self._patches(promocion)
-        with (
-            patches[0],
-            patches[1],
-            patches[2],
-            patches[3] as MockClf,
-            patches[4],
-            patches[5],
-            patches[6],
-        ):
-            MockClf.return_value.train.return_value = {"f1": 0.80, "n_train": 50, "n_test": 10}
-            result = maybe_retrain_classifier(threshold=100)
-
-        assert result.get("promotion_rejected") is True
-        assert result["failed_metrics"] == ["recall_no_keyword 0.0000 < 0.05"]
-        assert "new_version" not in result
+        clf.assert_not_called()
+        promote.assert_not_called()
+        precompute.assert_not_called()
+        assert result["current_version"] == 1
+        assert result.get("promotion_rejected") is None
+        assert result["retrain_pendiente"] is True
+        notificar.assert_called_once()
 
     def test_promotion_passes_when_gate_accepts(self):
-        """Si el gate acepta, se reporta la versión nueva y se recomputa ml_proba."""
-        from scheduler.concept_drift import maybe_retrain_classifier
+        """Tampoco hay versión nueva que activar ni ``ml_proba`` que recalcular:
+        eso lo hace ``activar_publicada`` cuando la Release publica el artefacto."""
+        result, _clf, precompute, promote, _notificar = self._correr(200)
 
-        promocion = SimpleNamespace(
-            activada=True,
-            version=2,
-            motivos_rechazo=[],
-            golden={"recall_no_keyword": 0.6},
-            as_dict=lambda: {"activada": True, "version": 2},
-        )
-        patches = self._patches(promocion)
-        with (
-            patches[0],
-            patches[1],
-            patches[2],
-            patches[3] as MockClf,
-            patches[4] as mock_precompute,
-            patches[5] as mock_promote,
-            patches[6],
-        ):
-            MockClf.return_value.train.return_value = {"f1": 0.84, "n_train": 50, "n_test": 10}
-            result = maybe_retrain_classifier(threshold=100)
-
-        assert result.get("promotion_rejected") is None
-        assert result["new_version"] == 2
-        mock_promote.assert_called_once()
-        # force=True: si no, la superficie de serving y el test de drift de
-        # predicciones se quedan con los scores del modelo anterior.
-        mock_precompute.assert_called_once_with(force=True)
+        assert "new_version" not in result
+        assert result["triggered"] is False
+        promote.assert_not_called()
+        precompute.assert_not_called()
 
 
 # ─── compute_psi tests ───────────────────────────────────────────────────────

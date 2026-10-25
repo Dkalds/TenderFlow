@@ -1,6 +1,10 @@
 # Línea base de la superficie de la API — medida el 2026-10-10.
 # NO se añaden líneas: una operación nueva va a NUEVAS, con su motivo, en
 # scripts/check_api_surface.py. Cuando una operación se retira, se borra aquí.
+# Candidatas a encoger: las que `make inventario-uso` (scripts/inventario_uso.py)
+# encuentre sin llamadas en 30 días van en un bloque de comentario al final.
+# Pendiente de exportar los conteos de Prometheus (docs/UX_AUDIT.md, «Uso por
+# espacio y por vista»): aún no hay ninguna marcada.
 DELETE /api/v1/admin/solicitudes-acceso/grants/{grant_id}
 DELETE /api/v1/auth/totp
 DELETE /api/v1/competitive/watchlist/{empresa_id}

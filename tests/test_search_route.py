@@ -31,11 +31,14 @@ def search_client(api_db, api_key):
 
 
 def _patch_empty_search():
-    """Parchea el motor para devolver resultados vacíos (fuerza LIKE path)."""
-    return patch(
-        "api.routes.search.run_ml",
-        return_value=([], "LIKE"),
-    )
+    """Parchea el motor para devolver resultados vacíos (fuerza LIKE path).
+
+    ``run_ml`` devuelve lo que devuelve el trabajo que se le pasa: el
+    ``Resultado`` de ``services.investigador.busqueda.buscar``.
+    """
+    from services.investigador.busqueda import FUENTE_LITERAL, Resultado
+
+    return patch("api.routes.search.run_ml", return_value=Resultado([], FUENTE_LITERAL))
 
 
 def _patch_one_hit():
@@ -59,7 +62,9 @@ def _patch_one_hit():
         "extracto": [],
         "pasaje": None,
     }
-    return patch("api.routes.search.run_ml", return_value=([hit], "FTS5"))
+    from services.investigador.busqueda import FUENTE_TEXTO, Resultado
+
+    return patch("api.routes.search.run_ml", return_value=Resultado([hit], FUENTE_TEXTO))
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
