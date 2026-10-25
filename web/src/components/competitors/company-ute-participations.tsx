@@ -49,7 +49,7 @@ export function CompanyUteParticipations({
         dinero dos veces.
       </Aviso>
 
-      <ul className="divide-y divide-border/60">
+      <ul className="divide-y divide-divider">
           {participations.map((participation) => (
             <li key={participation.ute_empresa_id} className="px-4 py-3.5">
               <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
@@ -88,7 +88,7 @@ export function CompanyUteParticipations({
           ))}
         </ul>
 
-      <p className="border-t border-border/60 px-4 py-3 text-tf-meta text-muted-foreground">
+      <p className="border-t border-divider px-4 py-3 text-tf-meta text-muted-foreground">
         Los totales del dossier miden solo lo adjudicado directamente a {companyName}. Para el alcance completo,
         léelos junto a esta sección, no sumados con ella.
       </p>

@@ -194,7 +194,7 @@ def test_la_ruta_pide_al_repositorio_la_ventana_y_el_horizonte(monkeypatch):
 
 
 def _correr_paso(paso: str, *, resultado: str | None = None, error: str | None = None) -> int:
-    from shared.jobs import TIPO_PASO_PIPELINE, ack, claim, enqueue, fail
+    from services.jobs import TIPO_PASO_PIPELINE, ack, claim, enqueue, fail
 
     job_id = enqueue(TIPO_PASO_PIPELINE, {"paso": paso, "lane": "bulk"}, deduplicar=False)
     job = claim("cierre-test", tipos=(TIPO_PASO_PIPELINE,))
@@ -215,7 +215,7 @@ def _envejecer(job_id: int, cuando: datetime) -> None:
 
 def _resumen_pasos(ahora: datetime) -> dict[str, dict[str, Any]]:
     from db.repositories.jobs import JobsRepository
-    from shared.jobs import TIPO_PASO_PIPELINE
+    from services.jobs import TIPO_PASO_PIPELINE
 
     filas = JobsRepository().resumen_por_paso(
         tipo=TIPO_PASO_PIPELINE,
@@ -285,7 +285,7 @@ def test_resumen_por_paso_no_mira_mas_alla_del_horizonte(tmp_db):
 
 def test_resumen_por_tipo_cuenta_la_cola_a_demanda_sin_los_pasos(tmp_db):
     from db.repositories.jobs import JobsRepository
-    from shared.jobs import TIPO_FICHA_PLIEGO, TIPO_PASO_PIPELINE, claim, enqueue, fail
+    from services.jobs import TIPO_FICHA_PLIEGO, TIPO_PASO_PIPELINE, claim, enqueue, fail
 
     ahora = datetime.now(UTC) + timedelta(minutes=1)
     _correr_paso("ml_scoring", resultado="ok")

@@ -183,7 +183,7 @@ def test_ensure_downloaded_encuentra_el_asset_fuera_de_latest(tmp_path) -> None:
 def test_resolve_artifact_prefiere_el_registro_y_no_descarga(tmp_path) -> None:
     with (
         patch(
-            "shared.model_artifacts.resolve_servable_artifact",
+            "services.ml.model_artifacts.resolve_servable_artifact",
             return_value=tmp_path / "del_registro.pkl",
         ),
         patch.object(SAPClassifier, "ensure_downloaded") as descarga,
@@ -196,7 +196,7 @@ def test_resolve_artifact_prefiere_el_registro_y_no_descarga(tmp_path) -> None:
 def test_resolve_artifact_cae_a_la_release_cuando_no_hay_ni_registro_ni_local() -> None:
     """El caso de producción: sin fila en `model_versions` y sin fichero local."""
     with (
-        patch("shared.model_artifacts.resolve_servable_artifact", return_value=None),
+        patch("services.ml.model_artifacts.resolve_servable_artifact", return_value=None),
         patch.object(SAPClassifier, "ensure_downloaded", return_value=True) as descarga,
     ):
         resuelto = SAPClassifier.resolve_artifact()
@@ -208,7 +208,7 @@ def test_resolve_artifact_cae_a_la_release_cuando_no_hay_ni_registro_ni_local() 
 
 def test_resolve_artifact_devuelve_none_si_la_release_tampoco_lo_tiene() -> None:
     with (
-        patch("shared.model_artifacts.resolve_servable_artifact", return_value=None),
+        patch("services.ml.model_artifacts.resolve_servable_artifact", return_value=None),
         patch.object(SAPClassifier, "ensure_downloaded", return_value=False),
     ):
         assert SAPClassifier.resolve_artifact() is None
@@ -219,7 +219,7 @@ def test_tech_resolve_artifact_tambien_cae_a_la_release() -> None:
     from services.ml.tech_classifier import TechnologyClassifier
 
     with (
-        patch("shared.model_artifacts.resolve_servable_artifact", return_value=None),
+        patch("services.ml.model_artifacts.resolve_servable_artifact", return_value=None),
         patch.object(TechnologyClassifier, "ensure_downloaded", return_value=True) as descarga,
     ):
         resuelto = TechnologyClassifier.resolve_artifact()

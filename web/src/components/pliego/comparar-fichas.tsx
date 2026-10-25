@@ -41,7 +41,7 @@ function Filas({ filas, ids }: { filas: FilaComparacion[]; ids: string[] }) {
   return (
     <>
       {filas.map((fila) => (
-        <tr key={fila.familia} className="border-b border-border/50 align-top last:border-b-0">
+        <tr key={fila.familia} className="border-b border-divider align-top last:border-b-0">
           <th scope="row" className="w-44 py-2 pr-3 text-left font-medium text-muted-foreground">
             {fila.etiqueta}
           </th>

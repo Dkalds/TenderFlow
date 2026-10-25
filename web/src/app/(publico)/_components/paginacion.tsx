@@ -61,7 +61,7 @@ export function Paginacion({
   const href = (pagina: number) => (pagina === 1 ? base : `${base}?p=${pagina}`);
 
   return (
-    <nav aria-label="Paginación" className="border-border/50 mt-10 border-t pt-6">
+    <nav aria-label="Paginación" className="border-divider mt-10 border-t pt-6">
       <p className="text-muted-foreground text-tf-meta">
         Página {paginaActual} de {ultima} · {formatNumber(total)} licitaciones
       </p>

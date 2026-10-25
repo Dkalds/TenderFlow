@@ -54,7 +54,7 @@ export function FichaSimilares({ licitacionId, as = "h3" }: { licitacionId: stri
         />
       ) : (
         <>
-          <ul className="divide-border/60 divide-y">
+          <ul className="divide-divider divide-y">
             {similares.map((similar) => (
               <li key={similar.id_externo} className="py-2 first:pt-0">
                 <Link

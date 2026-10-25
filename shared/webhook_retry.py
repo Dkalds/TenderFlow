@@ -12,6 +12,10 @@ por qué.
 Aquí vive el **criterio** (cuándo toca el siguiente intento, cuándo se da por
 perdido, cuándo se desactiva el webhook). El SQL está en
 ``db/repositories/webhooks.py`` y el transporte HTTP sigue en ``db/webhooks.py``.
+
+Vive en ``shared/`` (y no en ``services/``) porque quien lo consulta es
+``db/webhooks.py``: la persistencia no puede importar de la capa de dominio
+(AGENTS.md §2), así que el criterio baja a la capa compartida.
 """
 
 from __future__ import annotations

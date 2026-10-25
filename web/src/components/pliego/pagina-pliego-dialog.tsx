@@ -138,7 +138,7 @@ export function PaginaPliegoDialog({
           // Sin `tabIndex`: jsx-a11y lo prohíbe en un elemento no interactivo,
           // y los navegadores actuales ya hacen enfocable con teclado una
           // región con scroll que no contiene nada enfocable.
-          className="min-h-40 flex-1 overflow-y-auto rounded-md border border-border/60 bg-background p-3 text-tf-body leading-relaxed whitespace-pre-wrap"
+          className="min-h-40 flex-1 overflow-y-auto rounded-md border border-divider bg-background p-3 text-tf-body leading-relaxed whitespace-pre-wrap"
         >
           {consulta.isLoading ? (
             <div className="space-y-2">
@@ -160,7 +160,7 @@ export function PaginaPliegoDialog({
             trozos ? (
               <>
                 {trozos.antes}
-                <mark ref={marca} className="rounded-sm bg-primary/15 px-0.5 text-foreground">
+                <mark ref={marca} className="rounded-sm bg-primary-soft px-0.5 text-foreground">
                   {trozos.cita}
                 </mark>
                 {trozos.despues}

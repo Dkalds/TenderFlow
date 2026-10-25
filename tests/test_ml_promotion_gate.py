@@ -208,7 +208,7 @@ def _promocionar(tmp_path, *, motivos, activa=None, siguiente=1, registrada=None
 
     base = tmp_path / "publicado" / "sap_classifier.pkl"
     # Lo que el gate publica: la ruta base con el sha256 del contenido en el
-    # nombre (`shared.model_artifacts.content_addressed_path`).
+    # nombre (`services.ml.model_artifacts.content_addressed_path`).
     publicado = tmp_path / "publicado" / f"sap_classifier-{_SHA_FALSO[:12]}.pkl"
     with (
         patch("db.model_registry.get_active", return_value=activa),

@@ -14,7 +14,7 @@ export function DireccionEsqueleto() {
         <Skeleton className="h-4 w-72 rounded-sm" />
         <Skeleton className="h-7 w-64 rounded-md" />
       </div>
-      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-divider bg-divider sm:grid-cols-2 xl:grid-cols-4">
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="flex flex-col gap-2 bg-card px-3.5 py-3">
             <Skeleton className="h-3 w-32 rounded-sm" />

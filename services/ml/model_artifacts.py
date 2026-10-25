@@ -41,7 +41,7 @@ con nombre fijo, se siguen resolviendo igual, porque la búsqueda es por
 
 Uso::
 
-    from shared.model_artifacts import resolve_active_artifact
+    from services.ml.model_artifacts import resolve_active_artifact
 
     path = resolve_active_artifact("baja_model")   # Path verificado, o None
 """

@@ -46,7 +46,7 @@ export function PathFases({ pursuit, className }: { pursuit: Pursuit; className?
                 actual
                   ? "bg-primary text-primary-foreground font-semibold"
                   : hecha
-                    ? "bg-primary/15 text-primary font-medium"
+                    ? "bg-primary-soft text-primary font-medium"
                     : "bg-muted text-muted-foreground font-medium",
               )}
             >

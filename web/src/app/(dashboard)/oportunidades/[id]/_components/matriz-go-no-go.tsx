@@ -22,7 +22,6 @@ import {
   type CriterioPuntuado,
 } from "@/hooks/use-pursuit-go-no-go";
 import type { Pursuit } from "@/hooks/use-pursuits";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { cn, EMPTY, formatNumber } from "@/lib/utils";
 
 /**
@@ -89,7 +88,7 @@ function FilaCriterio({
     puntuacion !== (criterio.puntuacion ?? null) || motivo.trim() !== (criterio.motivo ?? "").trim();
 
   return (
-    <li className="border-border/60 border-t py-2.5 first:border-t-0 first:pt-0 last:pb-0">
+    <li className="border-divider border-t py-2.5 first:border-t-0 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
         <p className="text-tf-body font-medium">{criterio.etiqueta}</p>
         {editable ? (
@@ -188,10 +187,6 @@ export function MatrizGoNoGo({ pursuit }: { pursuit: Pursuit }) {
           });
           toast.success("Puntuación guardada");
         },
-        onError: (fallo) =>
-          toast.error("No se pudo guardar la puntuación", {
-            description: getErrorMessage(fallo, "accion"),
-          }),
         onSettled: () => setGuardandoCriterio(null),
       },
     );

@@ -96,7 +96,7 @@ def listar(user_id: int, *, organization_id: int | None = None) -> list[dict[str
     `shared/events.py` (ADR-027)— desde la capa de persistencia.
     """
     condiciones = ["user_id = %s"]
-    params: list[Any] = [user_id]
+    params: list[object] = [user_id]
     if organization_id is not None:
         # Las globales (organization_id NULL) también aplican en esa
         # organización: son el ajuste "en todas partes" del usuario.

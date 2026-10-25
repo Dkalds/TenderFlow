@@ -59,7 +59,7 @@ export function ApuntarAccion({
           onClick={(event) => event.stopPropagation()}
           className={cn(
             buttonVariants({ variant: "outline", size: "sm" }),
-            "truncate border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary",
+            "truncate border-primary-line bg-primary-selected text-primary hover:bg-primary-soft hover:text-primary",
           )}
         >
           Apuntar acción

@@ -51,17 +51,27 @@ const mockNotifyQueryError = vi.fn();
 const mockNotifyMutationError = vi.fn();
 const mockNotifyMutationSuccess = vi.fn();
 
-vi.mock("@/lib/query-feedback", () => ({
+vi.mock("@/lib/query-feedback", async () => {
+  const { MutationCache } = await vi.importActual<typeof import("@tanstack/react-query")>("@tanstack/react-query");
+  return {
   notifyQueryError: (...args: unknown[]) => mockNotifyQueryError(...args),
   notifyMutationError: (...args: unknown[]) => mockNotifyMutationError(...args),
   notifyMutationSuccess: (...args: unknown[]) => mockNotifyMutationSuccess(...args),
+  // La `MutationCache` también sale de aquí (la comparten los tests con
+  // `crearQueryClientDePrueba`); el doble la cablea a los espías de arriba.
+  crearMutationCache: () =>
+    new MutationCache({
+      onError: (error, _vars, _ctx, mutation) => mockNotifyMutationError(error, mutation.meta),
+      onSuccess: (_data, _vars, _ctx, mutation) => mockNotifyMutationSuccess(mutation.meta),
+    }),
   // La política de reintentos vive en el mismo módulo y `Providers` la pasa a
   // `defaultOptions.queries`. El doble tiene que exportarla: si falta, el
   // QueryClient se construye con `retry: undefined` y el render revienta.
   // Su comportamiento se fija en `lib/__tests__/query-retry.test.ts`.
   debeReintentar: () => false,
   retrasoDeReintento: () => 0,
-}));
+  };
+});
 
 // ── Subject under test ─────────────────────────────────────────────────────────
 import { QueryObserver } from "@tanstack/react-query";

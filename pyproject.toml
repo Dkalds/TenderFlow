@@ -172,24 +172,26 @@ ignore = [
 # (su SQL y sus 18 `noqa: S608` bajan a `db/notifications.py` y
 # `db/repositories/watchlist_rules.py`) y `services/ml/tech_classifier.py`, que
 # ya no abría conexiones: solo nombraba `connect()` en un docstring. 22 → 19.
+# 2026-10-25: 18 → 12. Su SQL baja a `db/`: `services/resoluciones.py`
+# (vinculación y listado → `db/resoluciones.py`), `services/deadline_reminders.py`
+# (favoritos, plazos y barrido de usuarios → `db/repositories/watchlist.py`),
+# `services/competitive/renovaciones.py` (los dos agregados →
+# `db/repositories/renovaciones.py`), `scheduler/competitor_alerts.py`
+# (→ `db/watchlist_empresas.py`), `scheduler/retention.py` (la purga →
+# `db/retention.py`; la política se queda) y `scripts/rotate_api_keys.py`
+# (→ `ApiKeyRepository.expirar_por_nombre`).
 "scheduler/aggregates_precompute.py" = ["TID251"]
 "scheduler/anomaly_alerts.py" = ["TID251"]
-"scheduler/competitor_alerts.py" = ["TID251"]
 "scheduler/concept_drift.py" = ["TID251"]
 "scheduler/drift_report.py" = ["TID251"]
 "scheduler/healthcheck.py" = ["TID251"]
-"scheduler/retention.py" = ["TID251"]
 "scheduler/watchlist_rules_alerts.py" = ["TID251"]
 "scraper/seed_negatives.py" = ["TID251", "S608"]  # SQL built from internal schema strings
-"scripts/rotate_api_keys.py" = ["TID251"]
 "scripts/seed_dev.py" = ["TID251"]
 "services/analytics/scoring_signals.py" = ["TID251"]
 "services/competitive/bajas.py" = ["TID251"]
-"services/competitive/renovaciones.py" = ["TID251"]
 "services/contract_events.py" = ["TID251"]
-"services/deadline_reminders.py" = ["TID251"]
 "services/entity_resolution.py" = ["TID251"]
-"services/resoluciones.py" = ["TID251"]
 # ── fin RATCHET TID251 ──
 # Archivos no-TID con permisos especiales
 "db/database.py" = ["E402", "RUF022"]  # E402 intentional facade re-exports
@@ -218,7 +220,7 @@ ignore = [
 "services/gdpr.py" = ["S608"]
 "services/watchlist.py" = ["S608"]
 # S608 removed from these files — handled inline with # noqa: S608 + justification:
-#   db/events.py, db/feature_store.py, db/repositories/base.py, scheduler/retention.py
+#   db/events.py, db/feature_store.py, db/repositories/base.py, db/retention.py
 
 [tool.ruff.format]
 quote-style = "double"

@@ -16,7 +16,7 @@ export function clasePestana(on: boolean): string {
   return cn(
     "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border px-2.5 text-tf-meta font-medium transition-colors md:h-7",
     "disabled:pointer-events-none disabled:opacity-50 [&_svg]:h-3.5 [&_svg]:w-3.5 [&_svg]:flex-none",
-    on ? "border-border/70 bg-secondary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
+    on ? "border-divider bg-secondary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
   );
 }
 
@@ -28,7 +28,7 @@ export function clasePestana(on: boolean): string {
 export function claseContador(on: boolean): string {
   return cn(
     "tf-tnum rounded-sm px-1 text-tf-micro font-medium",
-    on ? "bg-primary/10 text-primary" : "bg-muted-foreground/10 text-muted-foreground",
+    on ? "bg-primary-selected text-primary" : "bg-muted-foreground/10 text-muted-foreground",
   );
 }
 

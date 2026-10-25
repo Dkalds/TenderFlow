@@ -111,8 +111,8 @@ export function BotonComparar({
       className={cn(
         "tf-pressable h-6 whitespace-nowrap rounded-md border px-2 text-tf-micro font-medium disabled:pointer-events-none disabled:opacity-50",
         comparando
-          ? "border-primary/30 bg-primary/10 text-primary"
-          : "border-border/60 text-muted-foreground hover:text-foreground",
+          ? "border-primary-line bg-primary-selected text-primary"
+          : "border-divider text-muted-foreground hover:text-foreground",
       )}
     >
       {comparando ? "Comparando" : "Comparar"}

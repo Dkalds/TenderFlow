@@ -248,7 +248,7 @@ class TestReintentoDeWebhooks:
     def test_el_backoff_es_exponencial_desde_un_minuto(self) -> None:
         from datetime import timedelta
 
-        from services.webhook_retry import espera_para
+        from shared.webhook_retry import espera_para
 
         assert espera_para(1) == timedelta(0)
         assert espera_para(2) == timedelta(minutes=1)
@@ -259,7 +259,7 @@ class TestReintentoDeWebhooks:
 
     def test_agotados_los_intentos_no_hay_espera(self) -> None:
         """`None` y no cero: confundirlas haría un bucle."""
-        from services.webhook_retry import MAX_INTENTOS, espera_para
+        from shared.webhook_retry import MAX_INTENTOS, espera_para
 
         assert espera_para(MAX_INTENTOS + 1) is None
 
@@ -267,14 +267,14 @@ class TestReintentoDeWebhooks:
         """Subir MAX_INTENTOS no puede mandar un reintento a dos días vista."""
         from datetime import timedelta
 
-        from services.webhook_retry import ESPERA_MAXIMA, espera_para
+        from shared.webhook_retry import ESPERA_MAXIMA, espera_para
 
         assert timedelta(hours=6) == ESPERA_MAXIMA
         assert espera_para(20) is None  # el tope de intentos manda antes
 
     def test_tres_fallos_y_un_exito_dejan_la_entrega_entregada(self) -> None:
         """El criterio de aceptación del ítem, literal."""
-        from services.webhook_retry import decidir
+        from shared.webhook_retry import decidir
 
         intentos = 0
         for _ in range(3):
@@ -291,7 +291,7 @@ class TestReintentoDeWebhooks:
         assert final.desactivar is False
 
     def test_solo_se_desactiva_tras_agotar_los_reintentos(self) -> None:
-        from services.webhook_retry import MAX_INTENTOS, decidir
+        from shared.webhook_retry import MAX_INTENTOS, decidir
 
         for intentos in range(1, MAX_INTENTOS):
             assert decidir(exito=False, intentos_hechos=intentos).desactivar is False

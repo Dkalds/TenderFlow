@@ -10,7 +10,7 @@ lock legítimamente— al terminar borraba el lock ajeno y habilitaba una tercer
 ejecución simultánea. Es exactamente el escenario del que este módulo protege.
 Para jobs que puedan exceder su ventana, ``renew`` extiende el TTL sin soltarlo.
 
-**Qué NO sustituye a esto: la cola de trabajo** (``shared/jobs.py``, tabla
+**Qué NO sustituye a esto: la cola de trabajo** (``services/jobs.py``, tabla
 ``jobs``, revisión ``v106``). S5.1 del plan de arquitectura 2026-09 v2 dejaba
 abierta la retirada de este módulo «si la cola lo cubre», y se comprobó que no
 lo cubre. Son dos primitivas distintas:

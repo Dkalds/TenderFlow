@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ApiError, apiGet, apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA, getErrorMessage } from "@/lib/query-feedback";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { adminKeys, analyticsKeys } from "@/lib/query-keys";
 import { formatNumber, formatPercent } from "@/lib/utils";
 
@@ -61,8 +61,8 @@ export function RevisionOrganosCard() {
       void queryClient.invalidateQueries({ queryKey: adminKeys.revision.organos });
       void queryClient.invalidateQueries({ queryKey: analyticsKeys.quality });
     },
-    onError: (e: unknown) => {
-      toast.error("No se pudo resolver la revisión", { description: getErrorMessage(e, "accion") });
+    meta: { errorTitle: "No se pudo resolver la revisión" },
+    onError: () => {
       void queryClient.invalidateQueries({ queryKey: adminKeys.revision.organos });
     },
     onSettled: () => setConfirmando(null),
@@ -97,7 +97,7 @@ export function RevisionOrganosCard() {
       ) : items.length === 0 ? (
         <PanelEmpty size="sm" title="No hay nada pendiente" hint="Ningún nombre de órgano espera una decisión." />
       ) : (
-        <ul className="divide-y divide-border/60 rounded-md border border-border/60" aria-label="Órganos por decidir">
+        <ul className="divide-y divide-divider rounded-md border border-divider" aria-label="Órganos por decidir">
           {items.map((item) => {
             const armada = confirmando?.id === item.id ? confirmando.decision : null;
             const boton = (decision: Decision) => {

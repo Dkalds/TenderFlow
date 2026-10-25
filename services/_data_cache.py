@@ -3,7 +3,7 @@
 Envuelve cargas de datos costosas de la capa de servicios. Sirve el valor
 cacheado mientras (a) no haya expirado el TTL y (b) no exista una señal de
 invalidación de caché más reciente que la última carga (ver
-:mod:`shared.cache_signal`, que el scraper actualiza al final de cada
+:mod:`db.cache_signal`, que el scraper actualiza al final de cada
 ingesta exitosa).
 
 Pensado para cargas sin argumentos que devuelven estructuras de **solo
@@ -20,7 +20,7 @@ import time
 from collections.abc import Callable
 from typing import Generic, TypeVar
 
-from shared.cache_signal import get_signal_timestamp
+from db.cache_signal import get_signal_timestamp
 
 _T = TypeVar("_T")
 

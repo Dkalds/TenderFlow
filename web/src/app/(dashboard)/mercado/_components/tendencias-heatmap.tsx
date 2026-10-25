@@ -113,7 +113,7 @@ export function TendenciasHeatmap({
                 {HEATMAP_LEGEND_STEPS.map((alpha, i) => (
                   <div
                     key={i}
-                    className="w-6 h-4 rounded-sm border border-border/40"
+                    className="w-6 h-4 rounded-sm border border-divider-subtle"
                     style={{
                       backgroundColor:
                         alpha === 0

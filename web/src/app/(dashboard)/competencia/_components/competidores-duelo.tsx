@@ -63,7 +63,7 @@ export function CompetidoresDuelo({
           <button
             type="button"
             onClick={onQuitar}
-            className="tf-pressable inline-flex h-6 items-center gap-1 rounded-md border border-border/60 px-1.5 text-tf-micro font-medium text-muted-foreground hover:text-foreground"
+            className="tf-pressable inline-flex h-6 items-center gap-1 rounded-md border border-divider px-1.5 text-tf-micro font-medium text-muted-foreground hover:text-foreground"
           >
             <X className="h-3 w-3" aria-hidden="true" />
             Quitar

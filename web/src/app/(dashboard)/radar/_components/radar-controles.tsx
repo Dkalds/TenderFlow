@@ -65,7 +65,7 @@ export function RadarControles({
   return (
     <div
       data-slot="radar-controles"
-      className="flex min-h-11 flex-none flex-wrap items-center gap-x-1 gap-y-1.5 border-b border-border/60 px-3 py-2 md:px-3.5"
+      className="flex min-h-11 flex-none flex-wrap items-center gap-x-1 gap-y-1.5 border-b border-divider px-3 py-2 md:px-3.5"
     >
       {/* 32 px de alto en móvil (la talla `sm` de Segmented): es un control
           que se pulsa con el pulgar, y 28 px queda justo por encima del mínimo

@@ -515,7 +515,7 @@ def _activar(releases, *, versiones=None, version: int = 3):
             return_value=[_fila_candidata()] if versiones is None else versiones,
         ),
         patch("db.model_registry.activate_version", side_effect=_activate),
-        patch("shared.model_artifacts.fetch_model_releases", side_effect=releases),
+        patch("services.ml.model_artifacts.fetch_model_releases", side_effect=releases),
         patch("services.ml.classifier_training.precompute_ml_proba", side_effect=_precompute),
     ):
         try:
@@ -594,7 +594,7 @@ def test_activar_cli_sale_con_0_y_deja_el_resumen(tmp_path, monkeypatch, sin_ent
         patch("db.model_registry.list_versions", return_value=[_fila_candidata()]),
         patch("db.model_registry.activate_version", return_value=True),
         patch(
-            "shared.model_artifacts.fetch_model_releases",
+            "services.ml.model_artifacts.fetch_model_releases",
             return_value=_release_con(_SHA_CANDIDATO),
         ),
         patch("services.ml.classifier_training.precompute_ml_proba", return_value={"updated": 7}),

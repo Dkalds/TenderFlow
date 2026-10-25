@@ -88,12 +88,12 @@ export function AgendaFila({
         if (event.key === "Enter" && event.target === event.currentTarget) acciones.onAbrir();
       }}
       className={cn(
-        "flex cursor-pointer flex-col gap-2 border-b border-border/40 px-3 py-3 transition-colors",
+        "flex cursor-pointer flex-col gap-2 border-b border-divider-subtle px-3 py-3 transition-colors",
         "md:grid md:items-center md:py-0",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-inset",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-line-strong focus-visible:ring-inset",
         GRID,
         rowPad,
-        activa ? "bg-primary/10" : "hover:bg-secondary/60",
+        activa ? "bg-primary-selected" : "hover:bg-secondary/60",
       )}
     >
       {/* Envoltorios de la ficha: `md:contents` los disuelve
@@ -141,7 +141,7 @@ export function AgendaFila({
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3 border-t border-border/40 pt-2 md:contents">
+      <div className="flex items-center justify-between gap-3 border-t border-divider-subtle pt-2 md:contents">
         <span className="tf-tnum text-tf-meta text-foreground/85 md:text-right">
           {/* El importe es de la licitación: va una vez, en su fila, y no en
               cada tarea suya (tres tareas no son tres veces 2,3 M €). */}

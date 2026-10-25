@@ -82,19 +82,19 @@ export function RadarFila({
       // ocupa dos líneas y recortarla a 44 px la dejaría sin nada.
       style={{ "--tf-radar-fila": `${rowHeight}px` } as React.CSSProperties}
       className={cn(
-        "relative flex flex-col gap-2 border-b border-border/40 px-3 py-3 md:px-3.5",
+        "relative flex flex-col gap-2 border-b border-divider-subtle px-3 py-3 md:px-3.5",
         "lg:grid lg:h-[var(--tf-radar-fila)] lg:items-center lg:py-0",
         RADAR_GRID,
         // `/9` y no `/10` en la fila activa: es el tinte que mide
         // `contraste-tokens.test.ts` con las cifras de banda encima.
         isActive
-          ? "bg-primary/9"
+          ? "bg-primary-selected"
           : cn(
-              "hover:bg-primary/5 hover:transition-colors hover:duration-110",
+              "hover:bg-primary-hover hover:transition-colors hover:duration-110",
               // Pulsado: el tinte de la fila activa en el mismo frame, sin el
               // fundido del hover. Solo el botón en capa, no «Seguir» ni
               // «Descartar»: `:active` sube a los ancestros.
-              "has-[[data-slot=radar-fila-seleccion]:active]:bg-primary/9 has-[[data-slot=radar-fila-seleccion]:active]:duration-0",
+              "has-[[data-slot=radar-fila-seleccion]:active]:bg-primary-selected has-[[data-slot=radar-fila-seleccion]:active]:duration-0",
             ),
       )}
     >

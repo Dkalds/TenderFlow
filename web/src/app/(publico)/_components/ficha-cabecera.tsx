@@ -12,7 +12,7 @@ export interface Miga {
 
 /* Chip de metadato: `rounded-md` como todo chip de la casa (la píldora es para
  * puntos y avatares), sin fondo translúcido. */
-const CHIP = "inline-flex items-center rounded-md border border-border/60 px-2 py-0.5 text-tf-meta font-medium";
+const CHIP = "inline-flex items-center rounded-md border border-divider px-2 py-0.5 text-tf-meta font-medium";
 
 function nombreFuente(lic: LicitacionPublica): string {
   return lic.fuente === "ted" ? "TED · Unión Europea" : "PLACSP";
@@ -52,7 +52,7 @@ export function CabeceraFicha({ lic, migas }: { lic: LicitacionPublica; migas: M
       {/* Cabecera del anuncio: fuente, estado y expediente, tal como los da
           el endpoint. */}
       <p className="flex flex-wrap items-center gap-1.5">
-        <span className={cn(CHIP, "border-primary/30 bg-primary/10 text-primary")}>{nombreFuente(lic)}</span>
+        <span className={cn(CHIP, "border-primary-line bg-primary-selected text-primary")}>{nombreFuente(lic)}</span>
         {lic.estado && <span className={cn(CHIP, "text-muted-foreground")}>{estadoLabel(lic.estado)}</span>}
         {lic.expediente && (
           <span className={cn(CHIP, "text-muted-foreground")}>

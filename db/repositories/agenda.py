@@ -93,7 +93,7 @@ def signal_rows(
         "       AND (rd.user_id IS NULL OR %s::int IS NULL))) "
         f"AND rd.id_externo = l.id_externo AND {VIGENTE_SQL})",
     ]
-    params: list[Any] = [organization_id, user_id, user_key, user_id]
+    params: list[object] = [organization_id, user_id, user_key, user_id]
     if criteria.keyword:
         like = f"%{escape_like(criteria.keyword)}%"
         clauses.append("(l.titulo LIKE %s OR l.descripcion LIKE %s)")

@@ -91,7 +91,7 @@ def list_unresolved(
             donde las entradas ``bulk_`` son las más numerosas).
     """
     where = "WHERE resolved_at IS NULL AND exhausted_at IS NULL"
-    params: list[Any] = []
+    params: list[object] = []
     if exclude_fuente_prefix:
         # `%%`: psycopg interpreta `%` dentro del literal como placeholder
         # cuando la sentencia lleva parámetros.

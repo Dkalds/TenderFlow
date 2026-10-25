@@ -43,7 +43,7 @@ function cifra(valor: number | null | undefined, unidad: string): string {
 
 function FilaMetrica({ metrica }: { metrica: Metrica }) {
   return (
-    <tr className="border-b border-border/40 last:border-b-0">
+    <tr className="border-b border-divider-subtle last:border-b-0">
       <td className="py-1.5 pr-3">
         {metrica.etiqueta}
         {metrica.detalle ? <span className="block text-tf-meta text-muted-foreground">{metrica.detalle}</span> : null}

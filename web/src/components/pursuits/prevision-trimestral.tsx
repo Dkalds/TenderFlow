@@ -75,7 +75,7 @@ export function PrevisionTrimestral({
                 {/* Barra en SVG: el ancho es un atributo, no un estilo inline (C2.8). */}
                 <svg className="h-full w-full" preserveAspectRatio="none" viewBox="0 0 100 1">
                   <rect
-                    className="fill-primary/60"
+                    className="fill-primary-ramp-3"
                     height="1"
                     width={Math.max(2, (t.valor / maxTrimestre) * 100)}
                   />

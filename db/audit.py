@@ -331,7 +331,7 @@ def list_recent(
             ``user_key`` es la lectura dual, solo o sin clave es ``user_id = %s``.
     """
     clauses: list[str] = []
-    params: list[Any] = []
+    params: list[object] = []
     if user_key and user_id is not None:
         clauses.append("(user_id = %s OR (user_key = %s AND user_id IS NULL))")
         params.extend([user_id, user_key])

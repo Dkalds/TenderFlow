@@ -5,7 +5,9 @@ después nadie podía responder «¿en qué nos equivocamos al decidir?», que e
 única pregunta que convierte un histórico de decisiones en aprendizaje.
 
 Aquí vive el **criterio** (qué se puntúa, cómo se pondera, cuándo la puntuación
-recomienda ir). El SQL está en `db/repositories/go_no_go.py`.
+recomienda ir). El SQL está en `db/repositories/go_no_go.py`, que valida los
+criterios con estas mismas constantes: por eso vive en `shared/` y no en
+`services/` (la persistencia no importa de la capa de dominio, AGENTS.md §2).
 """
 
 from __future__ import annotations

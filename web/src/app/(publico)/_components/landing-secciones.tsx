@@ -17,7 +17,7 @@ import { KICKER } from "./piel-publica";
 
 function CuerpoSeccion({ seccion }: { seccion: SeccionLanding }) {
   return (
-    <section className="border-border/40 grid gap-6 border-b py-16 last:border-b-0 md:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] md:gap-14">
+    <section className="border-divider-subtle grid gap-6 border-b py-16 last:border-b-0 md:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] md:gap-14">
       {/* La columna de cabecera acompaña al texto largo con sticky:
           en pantallas cortas el lector nunca pierde de vista en qué
           parte del producto está.
@@ -41,7 +41,7 @@ function CuerpoSeccion({ seccion }: { seccion: SeccionLanding }) {
         {/* Los bullets eran filas con un icono de check delante. El
             check no aportaba información —no hay nada que marcar— y
             teñía de folleto una lista de afirmaciones técnicas. */}
-        <ul className="border-border/40 mt-8 space-y-3 border-t pt-6">
+        <ul className="border-divider-subtle mt-8 space-y-3 border-t pt-6">
           {seccion.bullets.map((bullet) => (
             <li key={bullet} className="text-foreground/85 text-base leading-relaxed">
               {bullet}
@@ -86,7 +86,7 @@ function CuerpoSeccion({ seccion }: { seccion: SeccionLanding }) {
  */
 function CtaIntermedio() {
   return (
-    <div className="border-border/40 flex flex-wrap items-center justify-between gap-x-8 gap-y-4 border-b py-10">
+    <div className="border-divider-subtle flex flex-wrap items-center justify-between gap-x-8 gap-y-4 border-b py-10">
       <div className="max-w-[46ch]">
         <p className="font-display text-lg font-semibold tracking-[-0.01em]">{CONTENIDO.ctaIntermedioTitulo}</p>
         <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">{CONTENIDO.ctaIntermedioTexto}</p>
@@ -98,7 +98,7 @@ function CtaIntermedio() {
 
 export function SeccionesLanding() {
   return (
-    <div className="border-border/60 border-t">
+    <div className="border-divider border-t">
       <div className="mx-auto w-full max-w-6xl px-6">
         {CONTENIDO.secciones.map((seccion) => (
           <Fragment key={seccion.h2}>

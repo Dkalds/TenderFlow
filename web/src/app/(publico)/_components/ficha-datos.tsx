@@ -64,7 +64,7 @@ export function DatosDelAnuncio({ lic }: { lic: LicitacionPublica }) {
       {destacados.length > 0 && (
         <dl className="mt-8 grid gap-3 sm:grid-cols-3">
           {destacados.map(([etiqueta, valor]) => (
-            <div key={etiqueta} className="border-border/70 bg-card rounded-xl border p-4">
+            <div key={etiqueta} className="border-divider bg-card rounded-xl border p-4">
               <dt className={ROTULO}>{etiqueta}</dt>
               <dd className="text-tf-title tf-tnum mt-1">{valor}</dd>
             </div>
@@ -73,7 +73,7 @@ export function DatosDelAnuncio({ lic }: { lic: LicitacionPublica }) {
       )}
 
       <h2 className={cn(TITULO_BLOQUE, "mt-12")}>Datos del anuncio</h2>
-      <dl className="border-border/70 bg-card mt-5 grid gap-x-10 gap-y-4 rounded-xl border p-6 sm:grid-cols-2">
+      <dl className="border-divider bg-card mt-5 grid gap-x-10 gap-y-4 rounded-xl border p-6 sm:grid-cols-2">
         {datos.map(([etiqueta, valor]) => (
           <div key={etiqueta}>
             <dt className={ROTULO}>{etiqueta}</dt>

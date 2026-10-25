@@ -30,7 +30,7 @@ export function AuthModeTabs({ mode, onChange }: { mode: Mode; onChange: (next: 
       ref={ref}
       role="tablist"
       aria-label="Iniciar sesión o crear cuenta"
-      className="border-border/60 mb-5 flex items-center gap-0.5 border-b pb-2"
+      className="border-divider mb-5 flex items-center gap-0.5 border-b pb-2"
     >
       {MODOS.map((m) => (
         <button

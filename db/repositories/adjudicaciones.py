@@ -226,7 +226,7 @@ def _adj_filter_conditions(
     desalinea ``params`` con los ``%s`` de los filtros que vienen detrás.
     """
     conditions: list[str] = [exclude_duplicados_sql("a.licitacion_id")]
-    params: list[Any] = []
+    params: list[object] = []
     if ccaa_filter:
         placeholders = ",".join("%s" for _ in ccaa_filter)
         conditions.append(f"a.ccaa IN ({placeholders})")
@@ -371,7 +371,7 @@ class AdjudicacionRepository:
         # columna de la derecha, una fila huérfana daría NULL y `NULL NOT IN`
         # la descartaría en silencio.
         conditions: list[str] = [exclude_duplicados_sql("a.licitacion_id")]
-        params: list[Any] = []
+        params: list[object] = []
         if ccaa:
             conditions.append("a.ccaa = %s")
             params.append(ccaa)
@@ -421,7 +421,7 @@ class AdjudicacionRepository:
         # Dedupe cross-fuente obligatorio: una adjudicación duplicada entre
         # fuentes cuenta dos veces en el ranking de licitadores.
         conditions: list[str] = [exclude_duplicados_sql("a.licitacion_id")]
-        params: list[Any] = []
+        params: list[object] = []
         if ccaa_filter:
             placeholders = ",".join("%s" for _ in ccaa_filter)
             conditions.append(f"a.ccaa IN ({placeholders})")

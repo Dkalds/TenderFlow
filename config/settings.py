@@ -11,9 +11,9 @@ from typing import Literal
 from pydantic import AnyUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from config.scoring_weights import validate_scoring_weights
 from config.settings_embeddings import EmbeddingsOnnxSettings
 from config.settings_resumen import ResumenPregenSettings
-from shared.scoring_weights import validate_scoring_weights
 
 _ROOT = Path(__file__).resolve().parent.parent
 
@@ -526,7 +526,7 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, BaseSettings):
 
     # ── Scoring de oportunidades ─────────────────────────────────────────
     # Pesos por dimensión (enteros, deben sumar 100). Validados al arrancar por
-    # shared/scoring_weights.py, el mismo validador que aplica el perfil de
+    # config/scoring_weights.py, el mismo validador que aplica el perfil de
     # usuario.
     #
     # `senal_tecnica` (2026-08) mide cuán confirmada está la tecnología en el
@@ -854,7 +854,7 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, BaseSettings):
     def _validate_scoring_weights(self) -> Settings:
         # Misma regla que aplica el perfil de usuario en `PUT /me/profile`: los
         # dos caminos por los que entran pesos comparten validador para que no
-        # puedan divergir (shared/scoring_weights.py).
+        # puedan divergir (config/scoring_weights.py).
         validate_scoring_weights(self.SCORING_WEIGHTS, source="SCORING_WEIGHTS")
         return self
 
@@ -1155,7 +1155,7 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, BaseSettings):
         """
         if not self._is_prod_data:
             return self
-        from shared.password_policy import check_password_strength
+        from config.password_policy import check_password_strength
 
         # Validar GF_SECURITY_ADMIN_PASSWORD
         gf_pw = self.GF_SECURITY_ADMIN_PASSWORD.get_secret_value()

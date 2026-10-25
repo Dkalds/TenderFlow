@@ -1,6 +1,6 @@
 """Persistencia de la cola de trabajo (`jobs`) — plan 2026-09 v2, S5.1.
 
-**Todo el SQL de la cola vive aquí** (ADR-022). ``shared/jobs.py`` es la capa de
+**Todo el SQL de la cola vive aquí** (ADR-022). ``services/jobs.py`` es la capa de
 dominio (qué tipos existen, qué handler ejecuta cada uno, cuándo se reintenta) y
 no escribe una sola sentencia.
 
@@ -36,7 +36,7 @@ from typing import Any
 from db.database import connect, connect_read
 
 #: Columnas que devuelve cualquier lectura. Una sola constante para que el
-#: mapeo a ``shared.jobs.Job`` no dependa del orden que escriba cada consulta.
+#: mapeo a ``services.jobs.Job`` no dependa del orden que escriba cada consulta.
 _COLUMNAS = (
     "id",
     "tipo",
@@ -108,7 +108,7 @@ class JobsRepository:
         no sabe ejecutar y lo haría fallar tres veces antes de rendirse.
         """
         filtro_tipo = "" if tipos is None else " AND tipo = ANY(%s)"
-        params: list[Any] = []
+        params: list[object] = []
         if tipos is not None:
             params.append(list(tipos))
         params.append(worker_id)
@@ -230,7 +230,7 @@ class JobsRepository:
         escritura para ahorrar en un scan de decenas de filas.
         """
         filtro_org = ""
-        params: list[Any] = [tipo, campo, valor]
+        params: list[object] = [tipo, campo, valor]
         if filtrar_organizacion:
             filtro_org = " AND organization_id IS NOT DISTINCT FROM %s"
             params.append(organization_id)

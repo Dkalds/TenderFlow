@@ -31,7 +31,7 @@ const badgeVariants = cva(
          * @deprecated Era el primario macizo de shadcn. Ahora es el tinte
          * primario; elige el tono que corresponda (`success`, `info`…).
          */
-        default: "border-primary/30 bg-primary/10 text-primary",
+        default: "border-primary-line bg-primary-selected text-primary",
       },
       size: {
         /** 20 px de alto, 11 px: filas de tabla, cabeceras de lista. */

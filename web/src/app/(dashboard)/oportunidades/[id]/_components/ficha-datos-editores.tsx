@@ -7,8 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useOrganizationMembers } from "@/hooks/use-organization";
 import { useUpdatePursuit, type Pursuit, type UpdatePursuitInput } from "@/hooks/use-pursuits";
-import { ApiError } from "@/lib/api-client";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { numeroDeTexto } from "@/lib/forms/valores";
 import { formatCompactCurrency } from "@/lib/utils";
 
@@ -21,16 +19,14 @@ import { formatCompactCurrency } from "@/lib/utils";
 
 const SIN_ASIGNAR = "sin-asignar";
 
-function mensajeDeError(error: unknown, porDefecto: string): string {
-  return error instanceof ApiError && error.status === 409
-    ? "Alguien del equipo la cambió mientras la tenías abierta"
-    : porDefecto;
-}
-
-/** Guarda un cambio de la rejilla con `expected_version`, como el resto de la ficha. */
-function useGuardarDato(pursuit: Pursuit, onCerrar: () => void) {
-  const actualizar = useUpdatePursuit(pursuit.id);
-  const guardar = (cambios: UpdatePursuitInput, exito: string, fallo: string) =>
+/**
+ * Guarda un cambio de la rejilla con `expected_version`, como el resto de la
+ * ficha. `fallo` es el título del aviso de error, que da el global de
+ * mutaciones (con el 409 explicado en la descripción, D6).
+ */
+function useGuardarDato(pursuit: Pursuit, onCerrar: () => void, fallo: string) {
+  const actualizar = useUpdatePursuit(pursuit.id, { errorTitle: fallo });
+  const guardar = (cambios: UpdatePursuitInput, exito: string) =>
     actualizar.mutate(
       { ...cambios, expected_version: pursuit.version },
       {
@@ -38,8 +34,6 @@ function useGuardarDato(pursuit: Pursuit, onCerrar: () => void) {
           onCerrar();
           toast.success(exito);
         },
-        onError: (error) =>
-          toast.error(mensajeDeError(error, fallo), { description: getErrorMessage(error, "accion") }),
       },
     );
   return { guardar, guardando: actualizar.isPending };
@@ -48,7 +42,7 @@ function useGuardarDato(pursuit: Pursuit, onCerrar: () => void) {
 export function EditorOferta({ pursuit, onCerrar }: { pursuit: Pursuit; onCerrar: () => void }) {
   const [texto, setTexto] = React.useState(pursuit.offer_price_eur?.toString() ?? "");
   const [error, setError] = React.useState<string | null>(null);
-  const { guardar, guardando } = useGuardarDato(pursuit, onCerrar);
+  const { guardar, guardando } = useGuardarDato(pursuit, onCerrar, "No se pudo guardar la oferta prevista");
   const entrada = React.useRef<HTMLInputElement>(null);
   const inputId = React.useId();
   const errorId = React.useId();
@@ -67,7 +61,6 @@ export function EditorOferta({ pursuit, onCerrar }: { pursuit: Pursuit; onCerrar
     guardar(
       { offer_price_eur: importe },
       importe == null ? "Oferta prevista borrada" : `Oferta prevista: ${formatCompactCurrency(importe)}`,
-      "No se pudo guardar la oferta prevista",
     );
   };
 
@@ -112,7 +105,7 @@ export function EditorOferta({ pursuit, onCerrar }: { pursuit: Pursuit; onCerrar
 
 export function EditorResponsable({ pursuit, onCerrar }: { pursuit: Pursuit; onCerrar: () => void }) {
   const miembros = useOrganizationMembers(pursuit.organization_id).data ?? [];
-  const { guardar, guardando } = useGuardarDato(pursuit, onCerrar);
+  const { guardar, guardando } = useGuardarDato(pursuit, onCerrar, "No se pudo cambiar el responsable");
   const disparador = React.useRef<HTMLButtonElement>(null);
 
   React.useEffect(() => disparador.current?.focus(), []);
@@ -129,7 +122,6 @@ export function EditorResponsable({ pursuit, onCerrar }: { pursuit: Pursuit; onC
       id == null
         ? "Oportunidad sin responsable"
         : `Responsable: ${nombre?.display_name ?? nombre?.email ?? `Usuario ${id}`}`,
-      "No se pudo cambiar el responsable",
     );
   };
 

@@ -92,7 +92,7 @@ export function MiBajaPanel({ organo }: { organo?: string | null }) {
         <>
           <div className="overflow-x-auto">
             <table className="w-full text-tf-meta">
-              <thead className="border-b border-border/60">
+              <thead className="border-b border-divider">
                 <tr>
                   <th scope="col" className={cn("px-3 py-2 text-left", CABECERA_COLUMNA)}>
                     Segmento
@@ -117,7 +117,7 @@ export function MiBajaPanel({ organo }: { organo?: string | null }) {
                   return (
                     <tr
                       key={`${s.segmento}:${s.clave}`}
-                      className={cn("border-b border-border/40 last:border-0", esEste && "bg-muted/40")}
+                      className={cn("border-b border-divider-subtle last:border-0", esEste && "bg-muted/40")}
                     >
                       <th scope="row" className="px-3 py-2 text-left font-normal">
                         <span className="flex flex-wrap items-center gap-1.5">

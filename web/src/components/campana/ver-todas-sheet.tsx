@@ -111,7 +111,7 @@ export function VerTodasSheet({
           />
         ) : datos && datos.items.length > 0 ? (
           <>
-            <ul className="divide-y divide-border/60">
+            <ul className="divide-y divide-divider">
               {datos.items.map((aviso) => (
                 <FilaAviso
                   key={aviso.id}

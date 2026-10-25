@@ -287,7 +287,7 @@ otra firma.
 ### Reintentos
 
 Una entrega que falla se reintenta con backoff (hasta seis intentos, ver
-`services/webhook_retry.py`). El reintento reenvía **el mismo cuerpo, el mismo
+`shared/webhook_retry.py`). El reintento reenvía **el mismo cuerpo, el mismo
 `X-Webhook-Delivery` y el mismo `X-Webhook-Timestamp`** que el primer intento,
 así que las dos firmas son idénticas en todos los intentos. Consecuencia para
 la ventana de replay: un reintento tardío (el sexto cae a unos treinta minutos

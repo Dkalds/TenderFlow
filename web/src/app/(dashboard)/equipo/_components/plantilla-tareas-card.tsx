@@ -24,7 +24,6 @@ import {
   useGuardarPlantillaTareas,
   usePlantillaTareas,
 } from "@/hooks/use-plantilla-tareas";
-import { getErrorMessage } from "@/lib/query-feedback";
 
 export function PlantillaTareasCard({ organizationId }: { organizationId: number }) {
   const { data, isLoading, error, refetch } = usePlantillaTareas(organizationId);
@@ -105,8 +104,8 @@ function EditorPlantilla({
     try {
       await guardar.mutateAsync(resultado.tareas);
       toast.success("Plantilla de tareas guardada");
-    } catch (err) {
-      toast.error(getErrorMessage(err, "accion"));
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   };
 

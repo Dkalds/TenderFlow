@@ -36,7 +36,7 @@ export function InspectorCabecera({ tender, onClose }: { tender: RadarTender; on
   const sinPuntuar = tender.score == null;
 
   return (
-    <div className="flex-none border-b border-border/60 px-4.5 pb-3.5 pt-4">
+    <div className="flex-none border-b border-divider px-4.5 pb-3.5 pt-4">
       <div className="mb-2.5 flex items-center gap-2">
         {(sinPuntuar || esBandaConocida(band)) && <ChipBanda banda={sinPuntuar ? null : band} size="md" />}
         <span className="font-mono text-tf-micro text-muted-foreground">{tender.id_externo}</span>

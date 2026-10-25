@@ -80,7 +80,7 @@ export function DeliveriesPanel({
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-tf-meta">
-        <thead className="border-b border-border/60">
+        <thead className="border-b border-divider">
           <tr>
             <th scope="col" className={cn("px-3 py-2 text-left", CABECERA_COLUMNA)}>
               Evento
@@ -100,7 +100,7 @@ export function DeliveriesPanel({
         </thead>
         <tbody>
           {data.map((delivery) => (
-            <tr key={delivery.id} className="border-b border-border/40 last:border-0">
+            <tr key={delivery.id} className="border-b border-divider-subtle last:border-0">
               <td className="px-3 py-2 font-mono">{delivery.event_type}</td>
               <td className="px-3 py-2">
                 <Resultado delivery={delivery} />

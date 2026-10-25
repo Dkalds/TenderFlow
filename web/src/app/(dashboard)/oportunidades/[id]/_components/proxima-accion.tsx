@@ -7,8 +7,6 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { plazoVisual } from "@/components/pursuits/pursuit-presenters";
 import { useUpdatePursuit, type Pursuit } from "@/hooks/use-pursuits";
-import { ApiError } from "@/lib/api-client";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { cn } from "@/lib/utils";
 
 /**
@@ -34,7 +32,7 @@ export function ProximaAccion({
   editando: boolean;
   onEditar: (abierto: boolean) => void;
 }) {
-  const actualizar = useUpdatePursuit(pursuit.id);
+  const actualizar = useUpdatePursuit(pursuit.id, { errorTitle: "No se pudo guardar la próxima acción" });
   const [accion, setAccion] = React.useState(pursuit.next_action ?? "");
   const [vence, setVence] = React.useState(pursuit.next_action_due ?? "");
   const accionId = React.useId();
@@ -79,13 +77,6 @@ export function ProximaAccion({
           onEditar(false);
           toast.success("Próxima acción guardada");
         },
-        onError: (error) =>
-          toast.error(
-            error instanceof ApiError && error.status === 409
-              ? "Alguien del equipo la cambió mientras la tenías abierta"
-              : "No se pudo guardar la próxima acción",
-            { description: getErrorMessage(error, "accion") },
-          ),
       },
     );
   };
@@ -96,7 +87,7 @@ export function ProximaAccion({
       aria-label="Próxima acción"
       className={cn(
         "bg-card rounded-xl border px-4 py-3",
-        urgente ? "border-[hsl(var(--urgency-critical)/0.5)]" : "border-border/60",
+        urgente ? "border-[hsl(var(--urgency-critical)/0.5)]" : "border-divider",
       )}
     >
       {editando ? (

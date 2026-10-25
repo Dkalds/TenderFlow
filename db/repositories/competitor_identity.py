@@ -350,7 +350,7 @@ def load_competitor_identity(
     """
     nifs = list(curated_groups.keys())
     keys = [curated_groups[n] for n in nifs]
-    params: list[Any] = [
+    params: list[object] = [
         SUFFIX_RE_ARE,
         list(placeholder_nifs),
         nifs,
@@ -428,7 +428,7 @@ def resolve_identity_for_rows(
     if n == 0:
         return []
     curated_nifs = list(curated_groups.keys())
-    params: list[Any] = [
+    params: list[object] = [
         SUFFIX_RE_ARE,
         list(placeholder_nifs),
         curated_nifs,

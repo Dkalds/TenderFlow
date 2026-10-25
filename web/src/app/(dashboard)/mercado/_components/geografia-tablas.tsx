@@ -138,7 +138,7 @@ export function GeografiaTablaCcaa({
                 <TableRow
                   key={idx}
                   onClick={() => onToggleCcaa(item.ccaa)}
-                  className={cn("cursor-pointer", isActive && "bg-primary/10 hover:bg-primary/10")}
+                  className={cn("cursor-pointer", isActive && "bg-primary-selected hover:bg-primary-selected")}
                 >
                   {/* El conmutador es un botón real dentro de la celda, no
                       la fila. `aria-pressed` sobre un `<tr>` no lo lee

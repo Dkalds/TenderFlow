@@ -69,8 +69,7 @@ class TipoJob:
     ``handler`` es una ruta ``modulo:funcion`` y no la función misma para que
     importar este módulo no arrastre el RAG, reportlab ni sentence-transformers:
     la API lo importa solo para encolar, y quien resuelve el handler es el
-    consumidor (``scheduler/worker.py``). Es también lo que mantiene la
-    dirección de las dependencias: ``shared/`` no importa ``services/``.
+    consumidor (``scheduler/worker.py``).
 
     ``clave_dedupe`` es el campo del payload que identifica el trabajo. Dos
     peticiones con el mismo valor y la organización de la primera todavía en

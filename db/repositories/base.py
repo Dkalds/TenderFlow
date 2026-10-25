@@ -172,7 +172,7 @@ def ambito_busqueda_sql(
     from shared.estados import abierta_sql
 
     clauses: list[str] = []
-    params: list[Any] = []
+    params: list[object] = []
     regiones = _valores_filtro(ccaa)
     if len(regiones) == 1:
         clauses.append(f"{alias}.ccaa = %s")

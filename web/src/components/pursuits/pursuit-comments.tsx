@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { Loader2, MessageSquare, SendHorizontal, Trash2, UserRound } from "lucide-react";
-import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,7 +23,6 @@ import {
 } from "@/hooks/use-pursuit-comments";
 import type { Pursuit } from "@/hooks/use-pursuits";
 import { useSession } from "@/lib/auth";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { cn, formatDateTime, formatRelativeTime } from "@/lib/utils";
 
 /**
@@ -72,7 +70,7 @@ function CommentAvatar({ comment }: { comment: PursuitComment }) {
       aria-hidden="true"
       className={cn(
         "grid h-7 w-7 flex-none place-items-center rounded-full text-tf-micro font-semibold",
-        anonymous ? "bg-muted-foreground/10 text-muted-foreground" : "bg-primary/10 text-primary",
+        anonymous ? "bg-muted-foreground/10 text-muted-foreground" : "bg-primary-selected text-primary",
       )}
     >
       {anonymous ? <UserRound className="h-3.5 w-3.5" /> : initials(authorLabel(comment))}
@@ -181,8 +179,8 @@ function CommentComposer({ pursuitId, onSent }: { pursuitId: number; onSent?: ()
       setDraft("");
       keyRef.current = newIdempotencyKey();
       onSent?.();
-    } catch (error) {
-      toast.error("No se pudo publicar el comentario", { description: getErrorMessage(error, "accion") });
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   };
 
@@ -192,7 +190,7 @@ function CommentComposer({ pursuitId, onSent }: { pursuitId: number; onSent?: ()
         event.preventDefault();
         void send();
       }}
-      className="flex-none border-t border-border/60 pt-3"
+      className="flex-none border-t border-divider pt-3"
     >
       <label className="sr-only" htmlFor={inputId}>
         Escribe un comentario para el equipo
@@ -275,8 +273,8 @@ export function PursuitCommentsThread({
   const deleteComment = async (commentId: number) => {
     try {
       await remove.mutateAsync(commentId);
-    } catch (error) {
-      toast.error("No se pudo borrar el comentario", { description: getErrorMessage(error, "accion") });
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   };
 
@@ -311,7 +309,7 @@ export function PursuitCommentsThread({
                 Se muestran los {items.length} comentarios más recientes de {thread.data?.total}.
               </p>
             )}
-            <ol className="divide-y divide-border/40" aria-label="Comentarios">
+            <ol className="divide-y divide-divider-subtle" aria-label="Comentarios">
               {items.map((comment) => (
                 <CommentItem
                   key={comment.id}
@@ -343,7 +341,7 @@ export function PursuitCommentsSheet({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
-        <SheetHeader className="flex-none border-b border-border/60 px-4 pb-3 pt-4 text-left">
+        <SheetHeader className="flex-none border-b border-divider px-4 pb-3 pt-4 text-left">
           <SheetTitle className="pr-8 text-tf-body font-semibold text-pretty">
             {pursuit.tender_title ?? `Licitación ${pursuit.licitacion_id}`}
           </SheetTitle>
@@ -383,7 +381,7 @@ export function PursuitCommentsButton({ pursuit }: { pursuit: Pursuit }) {
         className={cn(
           "tf-pressable inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-tf-meta font-medium",
           count > 0
-            ? "text-primary hover:bg-primary/10"
+            ? "text-primary hover:bg-primary-selected"
             : "text-muted-foreground hover:bg-muted hover:text-foreground",
         )}
       >

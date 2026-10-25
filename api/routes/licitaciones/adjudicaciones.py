@@ -25,7 +25,7 @@ from api.routes.licitaciones._base import (
 )
 from observability.logging import get_logger
 from shared.dto import (
-    PaginatedResponse,
+    Pagina,
 )
 
 log = get_logger(__name__)
@@ -50,7 +50,7 @@ class AdjudicacionSummary(BaseModel):
 
 @router.get(
     "/adjudicaciones",
-    response_model=PaginatedResponse[AdjudicacionSummary],
+    response_model=Pagina[AdjudicacionSummary],
     summary="Listado paginado de adjudicaciones",
     responses={
         401: {"description": "API key inválida"},
@@ -65,7 +65,7 @@ async def list_adjudicaciones(
     with_total: bool = Query(True, description="Incluir total"),
     page: PageParams = Depends(pagina(50)),
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> PaginatedResponse[AdjudicacionSummary]:
+) -> Pagina[AdjudicacionSummary]:
     """Devuelve lista paginada de adjudicaciones."""
     _validate_date(fecha_desde, "fecha_desde")
     _validate_date(fecha_hasta, "fecha_hasta")
@@ -81,7 +81,7 @@ async def list_adjudicaciones(
         with_total=with_total,
     )
 
-    return PaginatedResponse[AdjudicacionSummary](
+    return Pagina[AdjudicacionSummary](
         total=total,
         limit=page.limit,
         offset=page.offset,

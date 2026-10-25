@@ -52,7 +52,7 @@ function Criterio({ criterio, hijos }: { criterio: CriterioOficial; hijos: Crite
         ? `Peso publicado: ${formatNumber(criterio.peso)}`
         : null;
   return (
-    <li className="rounded-md border border-border/70 bg-background p-3">
+    <li className="rounded-md border border-divider bg-background p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="min-w-0 text-tf-body font-medium leading-snug">
           {criterio.descripcion ?? "Criterio sin descripción"}
@@ -72,7 +72,7 @@ function Criterio({ criterio, hijos }: { criterio: CriterioOficial; hijos: Crite
       </div>
       {criterio.nota && <p className="mt-1 text-tf-meta text-muted-foreground">{criterio.nota}</p>}
       {hijos.length > 0 && (
-        <ul className="mt-2 space-y-1.5 border-l border-border/60 pl-3">
+        <ul className="mt-2 space-y-1.5 border-l border-divider pl-3">
           {hijos.map((hijo) => (
             <li key={hijo.orden} className="flex flex-wrap items-baseline justify-between gap-2 text-tf-meta">
               <span>{hijo.descripcion ?? "Subcriterio sin descripción"}</span>
@@ -95,7 +95,7 @@ function Garantia({ garantia }: { garantia: GarantiaOficial }) {
     garantia.importe != null ? importe(garantia.importe, garantia.moneda) : null,
   ].filter((valor): valor is string => valor != null);
   return (
-    <li className="flex flex-wrap items-baseline justify-between gap-2 rounded-md border border-border/70 bg-background px-3 py-2">
+    <li className="flex flex-wrap items-baseline justify-between gap-2 rounded-md border border-divider bg-background px-3 py-2">
       <span className="text-tf-body">
         {cifras.length > 0 ? (
           <span className="tf-tnum font-medium">{cifras.join(" · ")}</span>
@@ -117,7 +117,7 @@ function Requisito({ requisito, vacio }: { requisito: RequisitoSolvenciaOficial;
       ? [requisito.tipo_codigo, requisito.descripcion].filter(Boolean).join(" · ") || vacio
       : (requisito.descripcion ?? vacio);
   return (
-    <li className="rounded-md border border-border/70 bg-background px-3 py-2">
+    <li className="rounded-md border border-divider bg-background px-3 py-2">
       <p className="text-tf-body leading-snug">{texto}</p>
       {requisito.umbral_importe != null && (
         <p className="tf-tnum mt-1 text-tf-meta text-muted-foreground">

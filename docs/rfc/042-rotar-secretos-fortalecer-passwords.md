@@ -29,7 +29,7 @@ La rotación de secretos en sí es una acción operativa que requiere intervenci
 
 3. **`observability/logging.py`**: Añadir a `_SENSITIVE_ENV_VARS`: `API_HMAC_SECRET`, `SIGNING_KEY`, `REDIS_PASSWORD`, `GF_SECURITY_ADMIN_PASSWORD`
 
-4. **`shared/password_policy.py`** (nuevo): Módulo con función `check_password_strength()` reutilizable por `scripts/hash_password.py` y validadores de settings
+4. **`config/password_policy.py`** (nuevo): Módulo con función `check_password_strength()` reutilizable por `scripts/hash_password.py` y validadores de settings
 
 5. **`scripts/hash_password.py`**: Integrar `check_password_strength()` para advertir sobre contraseñas débiles
 
@@ -61,7 +61,7 @@ La rotación de secretos en sí es una acción operativa que requiere intervenci
 
 ## Plan de implementación
 
-1. Crear `shared/password_policy.py` con `check_password_strength()`
+1. Crear `config/password_policy.py` con `check_password_strength()`
 2. Añadir campo `GF_SECURITY_ADMIN_PASSWORD` y validadores en `config/settings.py`
 3. Añadir secretos faltantes a `observability/logging.py` redaction list
 4. Integrar policy check en `scripts/hash_password.py`
@@ -82,4 +82,4 @@ La rotación de secretos en sí es una acción operativa que requiere intervenci
 
 ## Notas de review
 
-2026-05-24T00:00Z agent:reviewer — RFC aprobado. No toca denylist paths. Fortalece §3.6 sin debilitar. Validadores son fail-fast en arranque, no afectan runtime. Nuevo módulo `shared/password_policy.py` está en área strict — asegurar typing completo.
+2026-05-24T00:00Z agent:reviewer — RFC aprobado. No toca denylist paths. Fortalece §3.6 sin debilitar. Validadores son fail-fast en arranque, no afectan runtime. Nuevo módulo `config/password_policy.py` está en área strict — asegurar typing completo.

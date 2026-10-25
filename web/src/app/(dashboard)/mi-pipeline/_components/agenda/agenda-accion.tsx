@@ -49,7 +49,7 @@ import { FechaFinContrato } from "./fecha-fin-contrato";
  */
 const BOTON = cn(buttonVariants({ variant: "outline", size: "sm" }), "truncate");
 const NEUTRO = "text-muted-foreground hover:text-foreground";
-const PRIMARIO = "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary";
+const PRIMARIO = "border-primary-line bg-primary-selected text-primary hover:bg-primary-soft hover:text-primary";
 
 export interface AccionesFila {
   onAbrir: () => void;

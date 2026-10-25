@@ -167,7 +167,7 @@ class PursuitTasksRepository:
             "t.estado IN ('pendiente', 'en_curso')",
             "p.status NOT IN " + _ESTADOS_TERMINALES_SQL,
         ]
-        params: list[Any] = [organization_id]
+        params: list[object] = [organization_id]
         if responsible_user_id is not None:
             clauses.append("p.responsible_user_id = %s")
             params.append(responsible_user_id)
@@ -210,7 +210,7 @@ class PursuitTasksRepository:
         sería imposible o borrar la fecha sería el efecto de no mandarla.
         """
         sets: list[str] = []
-        params: list[Any] = []
+        params: list[object] = []
         if titulo is not None:
             sets.append("titulo = %s")
             params.append(titulo[:MAX_TITULO])

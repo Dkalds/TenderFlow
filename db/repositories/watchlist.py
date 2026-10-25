@@ -38,6 +38,57 @@ _IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NUL
 class WatchlistRepository:
     """Acceso a las tablas ``watchlist_cpv``, ``watchlist_items`` y ``pending_digests``."""
 
+    # ── Recordatorios de plazos (``services/deadline_reminders.py``) ─────────
+    # Bajaron aquí desde ese servicio el 2026-10-25 (ADR-022, ratchet TID251).
+    # Devuelven tuplas y no dicts porque el servicio solo necesita dos columnas
+    # y decide qué hacer con las filas sin organización (ver su docstring).
+
+    def favoritos_con_organizacion(
+        self, user_key: str, user_id: int | None = None
+    ) -> list[tuple[str, int | None]]:
+        """``(id_externo, organization_id)`` de los favoritos del usuario.
+
+        Con ``user_id`` (v129) la lectura es dual: sin él, los favoritos
+        guardados bajo la clave de un correo anterior no tendrían recordatorio.
+        Las filas legacy con ``organization_id IS NULL`` se devuelven tal cual:
+        el servicio las cuenta y las descarta.
+        """
+        with connect_read() as c:
+            filas = c.execute(
+                "SELECT id_externo, organization_id FROM watchlist_items "
+                "WHERE (user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))",
+                (user_id, user_key, user_id),
+            ).fetchall()
+        return [(str(fila[0]), None if fila[1] is None else int(fila[1])) for fila in filas]
+
+    def plazos_de_licitaciones(self, ids: list[str]) -> list[dict[str, Any]]:
+        """``titulo``, ``fecha_limite`` y ``fecha_fin`` de esas licitaciones."""
+        if not ids:
+            return []
+        placeholders = ",".join(["%s"] * len(ids))
+        with connect_read() as c:
+            cur = c.execute(
+                f"SELECT id_externo, titulo, fecha_limite, fecha_fin "
+                f"FROM licitaciones WHERE id_externo IN ({placeholders})",
+                ids,
+            )
+            cols = [d[0] for d in cur.description]
+            return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+
+    def usuarios_con_favoritos(self) -> list[tuple[str, int | None]]:
+        """``(user_key, user_id)`` de cada usuario con algún favorito.
+
+        Barrido global por diseño: lo recorre el job de recordatorios, que no
+        corre en nombre de nadie. ``MAX(user_id)``: una clave con filas
+        resueltas y sin resolver por el backfill de v129 es UN usuario, no dos
+        pasadas.
+        """
+        with connect_read() as c:
+            filas = c.execute(
+                "SELECT user_key, MAX(user_id) FROM watchlist_items GROUP BY user_key"
+            ).fetchall()
+        return [(str(fila[0]), None if fila[1] is None else int(fila[1])) for fila in filas]
+
     def query_licitaciones_batch(
         self, entries: list[dict[str, Any]], default_since: str
     ) -> dict[str, list[dict[str, Any]]]:
@@ -55,7 +106,7 @@ class WatchlistRepository:
             for since_date, grp_entries in by_since.items():
                 cpv_prefixes = [e["cpv_prefix"] for e in grp_entries]
                 placeholders = " OR ".join("cpv LIKE %s" for _ in cpv_prefixes)
-                params: list[Any] = [since_date] + [p + "%" for p in cpv_prefixes]
+                params: list[object] = [since_date] + [p + "%" for p in cpv_prefixes]
                 cur = c.execute(
                     "SELECT " + _WATCHLIST_LIC_COLS + " FROM licitaciones "
                     "WHERE fecha_publicacion >= %s AND (" + placeholders + ") "

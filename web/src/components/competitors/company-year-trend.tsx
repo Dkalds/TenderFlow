@@ -110,8 +110,8 @@ export function CompanyYearTrend({ rows, compact = false }: CompanyYearTrendProp
                       className={cn(
                         "w-full rounded-sm transition-colors",
                         isCurrentPartial
-                          ? "bg-primary/30 ring-1 ring-inset ring-primary/50"
-                          : "bg-primary/80 group-hover:bg-primary",
+                          ? "bg-primary-ramp-2 ring-1 ring-inset ring-primary-line-strong"
+                          : "bg-primary-ramp-4 group-hover:bg-primary",
                       )}
                       style={{ height: `${height}%` }}
                       aria-hidden="true"

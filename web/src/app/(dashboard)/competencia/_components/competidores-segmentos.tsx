@@ -62,7 +62,7 @@ function FilaSegmento({
         onClick={onElegir}
         className={cn(
           "w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/60",
-          elegido && "bg-primary/10",
+          elegido && "bg-primary-selected",
         )}
       >
         <span className="flex min-w-0 items-baseline justify-between gap-3">
@@ -153,7 +153,7 @@ export function CompetidoresSegmentos() {
             ))}
           </ul>
           {abierto && (
-            <div className="border-t border-border/60 pt-3">
+            <div className="border-t border-divider pt-3">
               <p className="mb-2 text-tf-body font-semibold">{nombreSegmento(por, abierto.segmento)}</p>
               <DetalleSegmento por={por} item={abierto} />
             </div>

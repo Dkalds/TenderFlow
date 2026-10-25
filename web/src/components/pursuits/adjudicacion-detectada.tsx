@@ -27,7 +27,6 @@ import { toast } from "sonner";
 import { SUPERFICIE_PANEL, TONO_PANEL } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { useUpdatePursuit, type Pursuit } from "@/hooks/use-pursuits";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { cn, EMPTY, formatCurrency } from "@/lib/utils";
 import { formatDate } from "@/components/pursuits/pursuit-presenters";
 
@@ -41,7 +40,7 @@ const ETIQUETA: Record<Resultado, string> = { won: "La ganamos", lost: "La perdi
 
 export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
   const adjudicacion = pursuit.adjudicacion;
-  const update = useUpdatePursuit(pursuit.id);
+  const update = useUpdatePursuit(pursuit.id, { errorTitle: "No se pudo cerrar la oportunidad" });
   const sugerido = adjudicacion?.resultado_sugerido ?? null;
   // Sólo se guarda lo que la persona ha cambiado; la preselección sale de la
   // propuesta en cada render. Va atada al `id` porque la ruta reutiliza el
@@ -70,8 +69,8 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
         expected_version: pursuit.version,
       });
       toast.success(outcome === "won" ? "Oportunidad cerrada como ganada" : "Oportunidad cerrada como perdida");
-    } catch (error) {
-      toast.error("No se pudo cerrar la oportunidad", { description: getErrorMessage(error, "accion") });
+    } catch {
+      // El aviso lo da el global de mutaciones, con el título del hook (D6).
     }
   };
 
@@ -79,8 +78,8 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
     try {
       await update.mutateAsync({ status: "withdrawn", expected_version: pursuit.version });
       toast.success("Oportunidad retirada");
-    } catch (error) {
-      toast.error("No se pudo retirar la oportunidad", { description: getErrorMessage(error, "accion") });
+    } catch {
+      // El aviso lo da el global de mutaciones, con el título del hook (D6).
     }
   };
 

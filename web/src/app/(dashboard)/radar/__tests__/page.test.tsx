@@ -27,12 +27,15 @@ vi.mock("sonner", () => {
 });
 
 const createPursuit = vi.fn().mockResolvedValue({ id: 7, organization_id: 3 });
+// El aviso de error es el global de mutaciones con el `meta` que recibe el
+// hook (D6): el test comprueba el título que se le pasa, no un toast propio.
+const useCreatePursuitMock = vi.fn((_meta?: unknown) => ({ mutateAsync: createPursuit, isPending: false }));
 // La franja de calidad del Radar (S3.2) lee `radar_quality` de
 // `GET /pursuits/metrics`. Sin métrica no se pinta, que es el caso por defecto
 // de casi todos los tests de este fichero.
 const metricsState: { data?: { radar_quality?: unknown } } = { data: undefined };
 vi.mock("@/hooks/use-pursuits", () => ({
-  useCreatePursuit: () => ({ mutateAsync: createPursuit, isPending: false }),
+  useCreatePursuit: (meta?: unknown) => useCreatePursuitMock(meta),
   usePursuitMetrics: () => metricsState,
 }));
 
@@ -330,12 +333,10 @@ describe("RadarPage", () => {
     renderRadar();
     fireEvent.click(screen.getByRole("button", { name: /Abrir oportunidad/ }));
 
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith(
-        "No se pudo abrir la oportunidad",
-        expect.objectContaining({ description: "403" }),
-      ),
-    );
+    await waitFor(() => expect(createPursuit).toHaveBeenCalled());
+    expect(useCreatePursuitMock).toHaveBeenCalledWith({ errorTitle: "No se pudo abrir la oportunidad" });
+    // Un solo aviso: el global. La pantalla no añade el suyo.
+    expect(toastError).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
   });
 

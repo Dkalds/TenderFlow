@@ -125,7 +125,7 @@ export function ScoreDesglose({
         <ul
           className={cn(
             "flex flex-col gap-1 text-tf-meta leading-snug text-foreground/85",
-            filas.length > 0 && "mb-1 border-b border-border/60 pb-2",
+            filas.length > 0 && "mb-1 border-b border-divider pb-2",
           )}
         >
           {frases.map((frase) => (

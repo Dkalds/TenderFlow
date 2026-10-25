@@ -241,7 +241,7 @@ export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
             />
           </div>
 
-          <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-border/60 pt-4">
+          <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-divider pt-4">
             <div className="flex flex-wrap items-center gap-2">
               <span className={ROTULO_DATO} aria-hidden="true">
                 Alcance

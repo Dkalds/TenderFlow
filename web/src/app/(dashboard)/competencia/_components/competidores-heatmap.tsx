@@ -27,11 +27,11 @@ const ALTO = 300;
 /** Clase de cada paso de intensidad; el más alto invierte el texto. */
 const PASO = [
   "",
-  "bg-primary/10",
-  "bg-primary/20",
-  "bg-primary/35",
-  "bg-primary/50",
-  "bg-primary/90 text-primary-foreground",
+  "bg-primary-selected",
+  "bg-primary-ramp-1",
+  "bg-primary-ramp-2",
+  "bg-primary-ramp-3",
+  "bg-primary-ramp-4 text-primary-foreground",
 ];
 
 export function CompetidoresHeatmap({
@@ -92,8 +92,8 @@ export function CompetidoresHeatmap({
                               aria-pressed={activa}
                               aria-label={`Filtrar por ${ccaa}`}
                               className={cn(
-                                "block w-full cursor-pointer truncate rounded-sm px-0.5 py-1 text-center transition-colors hover:bg-primary/5",
-                                activa ? "bg-primary/10 text-primary" : "text-muted-foreground",
+                                "block w-full cursor-pointer truncate rounded-sm px-0.5 py-1 text-center transition-colors hover:bg-primary-hover",
+                                activa ? "bg-primary-selected text-primary" : "text-muted-foreground",
                               )}
                             >
                               {ccaa}

@@ -40,7 +40,7 @@ from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 from api.concurrency import run_db
 from db.repositories.publico import FilaLicitacionPublica, FilaLotePublico, PublicoRepository
 from observability.logging import get_logger
-from shared.dto import LicitacionPublica, LotePublico, PaginatedResponse, PgDateTime
+from shared.dto import LicitacionPublica, LotePublico, Pagina, PgDateTime
 from shared.public_ref import codificar_ref, decodificar_ref
 
 log = get_logger(__name__)
@@ -192,7 +192,7 @@ def _a_dto(
 
 @router.get(
     "/publico/licitaciones",
-    response_model=PaginatedResponse[LicitacionPublica],
+    response_model=Pagina[LicitacionPublica],
     summary="Listado público de licitaciones",
     responses={
         200: {"description": "Página de anuncios publicables"},
@@ -220,7 +220,7 @@ async def listar_publicas(
     ),
     limit: int = Query(50, ge=1, le=_MAX_LIMITE_PUBLICO),
     offset: int = Query(0, ge=0, le=1_000_000),
-) -> PaginatedResponse[LicitacionPublica]:
+) -> Pagina[LicitacionPublica]:
     """Anuncios publicables, del más reciente al más antiguo.
 
     ``total`` es el recuento real con los filtros aplicados, no el tamaño de la
@@ -240,7 +240,7 @@ async def listar_publicas(
     )
     total = await run_db(_repo.contar, ccaa_slug=ccaa, cpv_prefijo=cpv, organo_slug=organo)
     response.headers["Cache-Control"] = _CACHE_PUBLICA
-    return PaginatedResponse[LicitacionPublica](
+    return Pagina[LicitacionPublica](
         total=total, limit=limit, offset=offset, items=[_a_dto(f) for f in filas]
     )
 

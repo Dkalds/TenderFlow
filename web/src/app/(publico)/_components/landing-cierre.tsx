@@ -11,7 +11,7 @@ import { FormularioSolicitud } from "./formulario-solicitud";
  */
 export function CierreLanding() {
   return (
-    <section className="border-border/60 border-t">
+    <section className="border-divider border-t">
       <div className="mx-auto w-full max-w-6xl px-6 py-20">
         {/* `lg` y no `md`: a 768 px el contenedor deja 664 px para las dos
             pistas, la fija se lleva sus 32rem y a la columna de texto le

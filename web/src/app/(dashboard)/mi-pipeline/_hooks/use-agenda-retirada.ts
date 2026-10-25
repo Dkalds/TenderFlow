@@ -32,7 +32,10 @@ function titulos(items: readonly PipelineAgendaItem[]): string {
 }
 
 export function useAgendaRetirada() {
-  const moverPursuit = useMoverPursuit();
+  // Silenciada a propósito: van varias en lote y el aviso es uno solo, el
+  // resumen de abajo («2 de 5 no se pudieron retirar»). Sin `silent`, cada
+  // fallo sumaría además su toast global (D6).
+  const moverPursuit = useMoverPursuit({ silent: true });
 
   /** Las oportunidades que esperan confirmación para retirarse; vacío si ninguna. */
   const [porRetirar, setPorRetirar] = React.useState<PipelineAgendaItem[]>([]);

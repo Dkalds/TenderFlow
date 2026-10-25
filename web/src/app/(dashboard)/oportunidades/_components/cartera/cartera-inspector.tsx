@@ -32,7 +32,7 @@ export function CarteraInspector({ contrato }: { contrato: ContratoCartera | nul
   return (
     <aside
       aria-label="Detalle del contrato seleccionado"
-      className="hidden min-w-0 self-start rounded-xl border border-border/60 bg-card p-4 xl:sticky xl:top-0 xl:block"
+      className="hidden min-w-0 self-start rounded-xl border border-divider bg-card p-4 xl:sticky xl:top-0 xl:block"
     >
       {!contrato ? (
         <PanelEmpty size="sm" hint="Selecciona un contrato para ver su detalle y su cronología." />
@@ -135,7 +135,7 @@ export function CarteraInspector({ contrato }: { contrato: ContratoCartera | nul
             </div>
           </dl>
 
-          <div className="border-t border-border/50 pt-3">
+          <div className="border-t border-divider pt-3">
             <SectionTitle>Cronología del contrato</SectionTitle>
             {/* `key` por contrato: al cambiar de fila el bloque se remonta con
                 su propio estado de carga en vez de enseñar los eventos del
@@ -143,7 +143,7 @@ export function CarteraInspector({ contrato }: { contrato: ContratoCartera | nul
             <CarteraEventos key={contrato.id} carteraId={contrato.id} />
           </div>
 
-          <div className="border-t border-border/50 pt-3">
+          <div className="border-t border-divider pt-3">
             <SectionTitle>Renovación</SectionTitle>
             {contrato.renovacion_pursuit_id ? (
               <EnlaceIr href={`/oportunidades/${contrato.renovacion_pursuit_id}`}>
