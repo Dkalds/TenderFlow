@@ -267,11 +267,12 @@ CATALOGO: dict[str, EspecificacionEvento] = dict(
         ),
         # Ya existía como suscripción de webhook antes de S4 (la emite
         # `api/routes/publico_solicitudes.py`). Entra al catálogo para que el
-        # vocabulario sea uno solo y no dos listas que se contradicen.
+        # vocabulario sea uno solo y no dos listas que se contradicen. Exige solo
+        # `id`: el aviso sale del sistema por webhook y no lleva el email.
         _spec(
             "solicitud_acceso.creada",
             "Nueva solicitud de acceso",
-            ("email",),
+            ("id",),
             ("webhook",),
         ),
         # F3.4. Lo emite `scheduler/competitor_alerts.check_and_notify` cuando
