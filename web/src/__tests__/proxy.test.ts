@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { proxy, config } from "@/proxy";
 import { RUTA_TUNEL_SENTRY } from "@/lib/sentry-opciones";
@@ -127,6 +127,21 @@ describe("CSP", () => {
       const politica = csp(proxy(peticion(ruta, { conSesion: true })));
       expect(politica).toContain("nonce-");
       expect(politica).toContain("strict-dynamic");
+    }
+  });
+
+  it("el puerto del modo live de impeccable solo se abre fuera de producción", () => {
+    const enDesarrollo = csp(proxy(peticion("/")));
+    expect(enDesarrollo).toMatch(/script-src [^;]*http:\/\/localhost:8400/);
+    expect(enDesarrollo).toMatch(/connect-src [^;]*http:\/\/localhost:8400/);
+
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      for (const ruta of ["/", "/resumen"]) {
+        expect(csp(proxy(peticion(ruta, { conSesion: true })))).not.toContain("localhost");
+      }
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 

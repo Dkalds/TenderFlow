@@ -1,10 +1,134 @@
-# Sistema de diseño de TenderFlow
+---
+name: TenderFlow
+description: Inteligencia de licitaciones TI del sector público español; consola densa, papel cálido, un solo acento.
+colors:
+  primary: "hsl(22 78% 34%)"
+  primary-foreground: "hsl(36 100% 97%)"
+  accent: "hsl(26 70% 92%)"
+  accent-foreground: "hsl(22 75% 28%)"
+  ring: "hsl(22 78% 34%)"
+  background: "hsl(40 22% 96%)"
+  foreground: "hsl(30 14% 10%)"
+  card: "hsl(0 0% 100%)"
+  muted: "hsl(42 14% 91%)"
+  muted-foreground: "hsl(34 8% 34%)"
+  secondary: "hsl(42 14% 91%)"
+  secondary-foreground: "hsl(30 14% 12%)"
+  border: "hsl(30 12% 40% / 0.28)"
+  input: "hsl(30 12% 40% / 0.3)"
+  shadow-ink: "hsl(30 20% 10%)"
+  success: "hsl(150 70% 25%)"
+  warning: "hsl(42 95% 25%)"
+  info: "hsl(210 90% 37%)"
+  destructive: "hsl(355 75% 42%)"
+  primary-dark: "hsl(26 88% 62%)"
+  background-dark: "hsl(30 8% 5%)"
+  foreground-dark: "hsl(36 12% 93%)"
+  card-dark: "hsl(30 8% 8%)"
+  muted-foreground-dark: "hsl(34 8% 65%)"
+typography:
+  display:
+    fontFamily: "Fraunces, Georgia, serif"
+    fontSize: "2rem"
+    fontWeight: 650
+    lineHeight: 1.05
+    letterSpacing: "-0.02em"
+  headline:
+    fontFamily: "Fraunces, Georgia, serif"
+    fontSize: "1.25rem"
+    fontWeight: 600
+    lineHeight: 1.2
+    letterSpacing: "-0.015em"
+  kpi:
+    fontFamily: "Geist, system-ui, sans-serif"
+    fontSize: "1.25rem"
+    fontWeight: 600
+    lineHeight: 1.2
+    fontFeature: "'tnum'"
+  title:
+    fontFamily: "Geist, system-ui, sans-serif"
+    fontSize: "0.9375rem"
+    fontWeight: 600
+    lineHeight: 1.3
+    letterSpacing: "-0.005em"
+  body:
+    fontFamily: "Geist, system-ui, sans-serif"
+    fontSize: "0.8125rem"
+    lineHeight: 1.4
+    fontFeature: "'tnum'"
+  meta:
+    fontFamily: "Geist, system-ui, sans-serif"
+    fontSize: "0.75rem"
+    lineHeight: 1.35
+  label:
+    fontFamily: "Geist, system-ui, sans-serif"
+    fontSize: "0.6875rem"
+    fontWeight: 500
+    lineHeight: 1.2
+  label-column:
+    fontFamily: "Geist, system-ui, sans-serif"
+    fontSize: "0.6875rem"
+    fontWeight: 600
+    lineHeight: 1.2
+    letterSpacing: "0.04em"
+  mono:
+    fontFamily: "Geist Mono, ui-monospace, monospace"
+    fontSize: "0.75rem"
+    lineHeight: 1.35
+rounded:
+  sm: "6px"
+  md: "8px"
+  lg: "10px"
+  xl: "14px"
+  full: "9999px"
+components:
+  button-primary:
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.primary-foreground}"
+    rounded: "{rounded.md}"
+    height: "36px"
+    padding: "8px 16px"
+  button-primary-console:
+    backgroundColor: "{colors.primary}"
+    textColor: "{colors.primary-foreground}"
+    typography: "{typography.meta}"
+    rounded: "{rounded.md}"
+    height: "28px"
+    padding: "0 10px"
+  button-outline:
+    backgroundColor: "{colors.card}"
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.md}"
+    height: "36px"
+    padding: "8px 16px"
+  button-ghost-hover:
+    backgroundColor: "{colors.accent}"
+    textColor: "{colors.accent-foreground}"
+    rounded: "{rounded.md}"
+  input:
+    textColor: "{colors.foreground}"
+    rounded: "{rounded.md}"
+    height: "36px"
+    padding: "4px 12px"
+  panel:
+    backgroundColor: "{colors.card}"
+    rounded: "{rounded.xl}"
+  badge-neutral:
+    textColor: "{colors.muted-foreground}"
+    typography: "{typography.label}"
+    rounded: "{rounded.md}"
+---
 
-Resumen del lenguaje visual de `web/` (Next.js 16, React 19, Tailwind v4,
-primitivos Radix e iconos lucide). **Este fichero no es la fuente de verdad**:
-cada regla vive en el código o en el documento que la decidió, y aquí solo se
-enlaza. Si algo de abajo contradice a su fuente, manda la fuente y este fichero
-se corrige en el mismo cambio.
+# Design System: TenderFlow
+
+Lenguaje visual de `web/` (Next.js 16, React 19, Tailwind v4, primitivos Radix e
+iconos lucide). **El código manda**: cada regla vive en el código o en el
+documento que la decidió, y aquí se resume y se enlaza. El frontmatter de arriba
+es la copia legible por máquina (la consumen Impeccable y su panel live) de los
+tokens de `globals.css`; `tests/test_unit_design_md_tokens.py` falla si un valor
+se desincroniza, así que un cambio de token se hace en los dos sitios en el
+mismo commit. La verdad de producto (usuarios, voz, posicionamiento) está en
+[PRODUCT.md](PRODUCT.md).
 
 | Tema | Fuente de verdad |
 |---|---|
@@ -16,118 +140,240 @@ se corrige en el mismo cambio.
 | Invariantes de datos en el frontend | [docs/frontend-data-invariants.md](docs/frontend-data-invariants.md) |
 | Trinquetes de aspecto (`restriccionesDeAspecto`) | [web/eslint.config.mjs](web/eslint.config.mjs) |
 
-## Carácter
+## Overview
 
-Una herramienta de trabajo diario para leer un mercado: consola densa, papel
-cálido, un solo acento. La portada pública habla el mismo idioma con más aire y
-composición editorial (texto a la izquierda, sin ornamento de fondo). Nada se
-mueve si no explica algo.
+**Creative North Star: "El parte de la mañana"**
 
-## Color
+Un boletín diario denso y fiable: se lee rápido, de arriba abajo, y cada cifra
+lleva su fuente. La consola es una herramienta de trabajo para leer un mercado:
+papel cálido, tinta oscura y un solo acento naranja para lo que se puede hacer.
+La densidad es la de un documento de trabajo, no la de un panel de marketing.
 
-Tokens HSL en `:root` (claro) y `.dark`, expuestos a Tailwind como
-`bg-background`, `text-foreground`, `border-border`, etc.
+La portada pública habla el mismo idioma con más aire y composición editorial
+(texto a la izquierda, sin ornamento de fondo). Nada se mueve si no explica
+algo; el movimiento completo está en [docs/frontend-motion.md](docs/frontend-motion.md).
 
-- **Neutros cálidos.** Papel `40 22% 96%`, tinta `30 14% 10%`, gris secundario
-  `34 8% 34%`; en oscuro, fondo `30 8% 5%` (`#0E0D0C`). Una sola familia de
-  gris en todo el producto: nada de pizarra (tono ~200) al lado del papel.
-- **Un acento.** Naranja tostado `--primary` (`22 78% 34%` en claro,
-  `26 88% 62%` en oscuro). Es «lo que se puede hacer»; no decora.
-- **Rampa semántica** (`success`, `warning`, `info`, `destructive`, urgencia,
-  bandas de score): luminosidades fijadas por contraste WCAG, no por gusto.
-  [contraste-tokens.test.ts](web/src/lib/__tests__/contraste-tokens.test.ts)
-  recalcula los ratios leyendo `globals.css`: un token que se aclare de más
-  rompe el test.
-- **Tintes**: `/5` hover, `/10` seleccionado, `/15` énfasis; nunca más de `/16`
-  detrás de texto del mismo color. Nada de la paleta cruda de Tailwind
-  (`bg-black`, `text-slate-500`…).
-- **Velo de modales**: `bg-scrim` (la tinta de sombra al 50 %), no negro puro.
-- **Series de gráficos**: `--chart-1` … `--chart-10`, medidos a 3:1 como objeto
-  gráfico.
+**Key Characteristics:**
 
-## Tipografía
+- Neutros cálidos de una sola familia y un único acento.
+- Densidad alta en la consola: cuerpo a 13 px, cifras tabulares.
+- Fraunces solo en titulares; todo lo demás en Geist.
+- Paneles opacos con borde; la sombra solo en lo que flota.
+- Movimiento corto (150 ms) y únicamente cuando explica un cambio.
 
-| Familia | Papel |
-|---|---|
-| Geist (`font-sans`) | Todo el texto, cifras incluidas (el body activa `tnum`) |
-| Geist Mono (`font-mono`) | Solo identificadores y código: expediente, CPV, ids, claves, `<kbd>` |
-| Fraunces (`font-display`) | Solo titulares de 15 px o más (decisión D1) |
+## Colors
 
-Escala de seis pasos, sin `text-[Npx]` (lo bloquea el lint):
-`text-tf-micro` 11 · `text-tf-meta` 12 · `text-tf-body` 13 (cuerpo de la
-consola) · `text-tf-lede` 15 · `text-tf-title` 20 · `text-tf-hero` 32. La
-superficie pública trabaja con `text-sm`/`text-base` y tamaños de titular
-propios.
+Papel y tinta cálidos con un naranja tostado como única voz de acción. Los
+tokens viven en `:root` (claro) y `.dark` como tripletes HSL, expuestos a
+Tailwind como `bg-background`, `text-foreground`, `border-border`, etc.
 
-Rótulos de dato en sans, en frase, a 11 px (`ROTULO_DATO`); la versal queda
-solo para cabeceras de columna (`CABECERA_COLUMNA`).
+### Primary
 
-## Superficies y forma
+- **Naranja tostado** (`primary`; en oscuro `primary-dark`): «lo que se puede
+  hacer». Botón principal, enlaces de acción, anillo de foco (`ring`) y el tono
+  de `accent` para hover y selección. No decora.
 
-- Paneles en `bg-card` opaco con borde (`SUPERFICIE_PANEL`, `rounded-xl`).
-- Sombra solo en lo que flota: `shadow-md` para lo anclado a un control
-  (popover, menú, tooltip, toast), `shadow-lg` para lo modal. Las sombras usan
-  `--shadow-ink`, teñida del mismo tono que los neutros.
-- Radios: `rounded-md` en controles, chips y badges; `rounded-xl` en paneles;
-  `rounded-full` en puntos y avatares.
+### Neutral
+
+- **Papel** (`background`): el fondo de toda la aplicación; en oscuro
+  `background-dark` (#0E0D0C).
+- **Blanco de panel** (`card`): la superficie de paneles, popovers y campos.
+- **Tinta** (`foreground`): texto principal.
+- **Gris cálido** (`muted-foreground`): texto secundario, rótulos de dato.
+- **Arena** (`muted`, `secondary`): fondos de chips, pistas y botones secundarios.
+- **Línea** (`border`, `input`): bordes semitransparentes del mismo tono.
+- **Tinta de sombra** (`shadow-ink`): tiñe sombras y el velo de modales
+  (`bg-scrim`, al 50 %).
+
+### Semantic
+
+`success`, `warning`, `info` y `destructive`, más la rampa de urgencia y las
+bandas de score. Sus luminosidades están fijadas por contraste WCAG, no por
+gusto: [contraste-tokens.test.ts](web/src/lib/__tests__/contraste-tokens.test.ts)
+recalcula los ratios leyendo `globals.css`, y un token que se aclare de más
+rompe el test. Las series de gráficos (`--chart-1` … `--chart-10`) están
+medidas a 3:1 como objeto gráfico.
+
+### Named Rules
+
+**The One Accent Rule.** El naranja es la única voz de acción; nada más en la
+pantalla compite con él.
+
+**The One Grey Family Rule.** Un solo gris, cálido, en todo el producto: nada de
+pizarra (tono ~200) junto al papel, ni negro puro, ni la paleta cruda de
+Tailwind (`bg-black`, `text-slate-500`…).
+
+**The Tint Ladder Rule.** Tintes del mismo color a `/5` en hover, `/10` en
+seleccionado y `/15` en énfasis; nunca más de `/16` detrás de texto del mismo
+color.
+
+## Typography
+
+**Display Font:** Fraunces (con Georgia, serif)
+**Body Font:** Geist (con system-ui)
+**Label/Mono Font:** Geist Mono, solo para identificadores
+
+**Character:** una serif con eje óptico para dar voz a los titulares sobre una
+sans técnica y neutra que carga con todas las cifras.
+
+### Hierarchy
+
+Escala de seis pasos (`text-tf-*` en `globals.css`); el lint bloquea
+`text-[Npx]`. La superficie pública trabaja con `text-sm`/`text-base` y tamaños
+de titular propios.
+
+- **Display** (`text-tf-hero`, 32 px, Fraunces): titular de portada y de
+  pantalla destacada.
+- **Headline** (`text-tf-title`, 20 px, Fraunces): titulares de sección.
+- **KPI** (`text-tf-title`, 20 px, Geist con `tnum`): cifras de `StatCell`
+  (decisión D7).
+- **Title** (`text-tf-lede`, 15 px, 600): títulos de panel; en Fraunces solo
+  cuando es titular.
+- **Body** (`text-tf-body`, 13 px): cuerpo de la consola; el body activa `tnum`.
+- **Meta** (`text-tf-meta`, 12 px): metadatos y botones `size="sm"`.
+- **Label** (`text-tf-micro`, 11 px, 500): rótulos de dato (`ROTULO_DATO`), en
+  frase.
+- **Mono** (Geist Mono): expediente, CPV, ids, claves y `<kbd>`, nada más.
+
+### Named Rules
+
+**The Fifteen Pixel Rule.** Fraunces solo a 15 px o más (D1); por debajo,
+Geist.
+
+**The Sentence Case Rule.** Los rótulos de dato van en sans, en frase, a 11 px
+(D2); la versal queda solo para cabeceras de columna (`CABECERA_COLUMNA`,
+`label-column`).
+
+## Layout
+
+Consola densa para escritorio, organizada en espacios a los que se llega desde
+el rail (D3). El móvil cubre consulta y triaje (Radar, ficha,
+watchlist, agenda), no la edición de matrices.
+
 - Alturas de pantalla completa en `dvh` (`h-dvh`, `min-h-dvh`), no `h-screen`:
   en iOS Safari `100vh` no descuenta la barra de direcciones.
+- Los campos usan `text-campo`: 16 px en móvil (iOS no hace zoom al enfocar) y
+  14 px desde `md`.
+- La portada no usa filas de tres columnas iguales (`landing-como-funciona.tsx`
+  es asimétrica).
 
-## Primitivos
+## Elevation & Depth
 
-Antes de escribir una receta a mano, usa el primitivo:
+Plano por defecto: la separación la hacen el borde y el cambio de superficie.
+La sombra dice «esto flota», así que solo la llevan las capas que flotan, y
+siempre teñida con `shadow-ink`.
 
-- [console/panel.tsx](web/src/components/console/panel.tsx): `Panel`,
-  `PanelTitle`, `SectionTitle`, `Fact`, `StatCell`/`StatStrip` (el KPI
-  canónico), `PanelLoading`, `PanelEmpty`, `PanelError`, `PanelTabs`,
-  `Segmented`, `EnlaceIr`.
-- [ui/field.tsx](web/src/components/ui/field.tsx): `Field` con la etiqueta
-  encima, la ayuda debajo y el error debajo de la ayuda (`ETIQUETA_CAMPO`,
-  `AYUDA_CAMPO`, `ERROR_CAMPO`).
-- [ui/skeleton.tsx](web/src/components/ui/skeleton.tsx): el único lenguaje de
-  carga de contenido (barrido `tf-shimmer`, quieto con reduced-motion). Los
-  spinners quedan para acciones en curso dentro de un botón, no para contenido
-  que llega.
-- `Button` (`size="sm"` en la consola), `Badge`, los overlays Radix de
-  `components/ui/` y `Aviso` (`components/console/aviso.tsx`) para las bandas
-  info, warning, danger y success.
+### Shadow Vocabulary
 
-## Estados
+- **Anclada** (`shadow-md`): lo que cuelga de un control (popover, menú,
+  select, tooltip, toast, barra de selección).
+- **Modal** (`shadow-lg`): diálogo, sheet, paleta de comandos.
+- **Interior** (`shadow-sm`): piezas dentro de un control, como el pulgar del
+  switch.
 
-- **Carga**: `Skeleton`/`PanelLoading` con la forma de lo que va a llegar, para
-  que la pantalla no salte.
-- **Vacío**: `PanelEmpty` con título y pista concretos («Ningún CPV con
+### Named Rules
+
+**The Floating Only Rule.** Paneles, tarjetas, botones, campos y badges no
+llevan sombra.
+
+## Shapes
+
+Esquinas suaves y contenidas: `rounded-md` (8 px) en controles, chips y badges;
+`rounded-xl` (14 px) en paneles; `rounded-full` solo en puntos y avatares. Sin
+píldoras ni radios grandes. Bordes finos semitransparentes del mismo tono que
+los neutros.
+
+## Components
+
+Antes de escribir una receta a mano, usa el primitivo. En la consola no se usan
+`Card`, `EmptyState` ni `KpiCard` (los retira el lint).
+
+### Buttons
+
+- **Shape:** `rounded-md` (8 px).
+- **Primary:** fondo `primary`, texto `primary-foreground`; 36 px de alto, y en
+  la consola `size="sm"` (28 px desde `md`, `text-tf-meta`).
+- **Hover / Focus:** el fondo baja a `/90`; foco con anillo de 2 px en `ring`
+  separado del fondo; al pulsar escala a 0,97 (sin escala con reduced-motion).
+- **Outline / Ghost / Link:** outline sobre `card` con borde `input`; ghost sin
+  fondo hasta el hover en `accent`; link en `primary` subrayado al hover.
+
+### Chips
+
+- **Style:** `Badge`, `rounded-md` con borde fino y tinte `/10` del color
+  semántico (`neutral`, `success`, `warning`, `info`, `destructive`).
+
+### Cards / Containers
+
+- **Corner Style:** `rounded-xl` (14 px).
+- **Background:** `card` opaco, borde `border/60` (`SUPERFICIE_PANEL`).
+- **Shadow Strategy:** ninguna (ver Elevation & Depth).
+- **Primitivos:** [console/panel.tsx](web/src/components/console/panel.tsx):
+  `Panel`, `PanelTitle`, `SectionTitle`, `Fact`, `PanelTabs`, `Segmented`,
+  `EnlaceIr`.
+
+### Inputs / Fields
+
+- **Style:** borde `input`, fondo transparente, `rounded-md`, 36 px de alto.
+- **Focus:** anillo de 1 px en `ring`.
+- **Estructura:** [ui/field.tsx](web/src/components/ui/field.tsx): `Field` con
+  la etiqueta encima, la ayuda debajo y el error debajo de la ayuda
+  (`ETIQUETA_CAMPO`, `AYUDA_CAMPO`, `ERROR_CAMPO`).
+
+### Navigation
+
+- **Rail:** icono propio por espacio y, debajo, la palabra completa en
+  castellano; unos 72 px de ancho (D3).
+
+### StatStrip
+
+El KPI canónico: `StatCell`/`StatStrip`, cifra a 20 px sans tabular y rótulo
+en frase debajo (D7).
+
+### Estados
+
+- **Carga:** `Skeleton`/`PanelLoading` con la forma de lo que va a llegar
+  (barrido `tf-shimmer`, quieto con reduced-motion). Los spinners quedan para
+  acciones en curso dentro de un botón.
+- **Vacío:** `PanelEmpty` con título y pista concretos («Ningún CPV con
   adjudicaciones en el ámbito actual. Amplía las fechas.»), no «Sin datos».
-- **Error**: `PanelError` en línea con «Detalle técnico» plegado y Reintentar;
+- **Error:** `PanelError` en línea con «Detalle técnico» plegado y Reintentar;
   un solo aviso por fallo (lo que se pinta en línea no lanza además un toast).
+- **Avisos:** `Aviso` (`components/console/aviso.tsx`) para las bandas info,
+  warning, danger y success.
 
-## Movimiento
+### Iconos
 
-Resumen de [docs/frontend-motion.md](docs/frontend-motion.md):
+Solo lucide, a `h-3`, `h-3.5` o `h-4`; un icono, un concepto
+([lib/iconos.ts](web/src/lib/iconos.ts)). Sin emojis ni Sparkles (D5).
 
-- Curvas propias (`--ease-out`, `--ease-in-out`, `--ease-drawer`) y 150 ms por
-  defecto; ≤ 200 ms en la UI operativa.
-- No se anima lo que se usa cien veces al día (teclado, navegación, cambio de
-  pestaña) ni los datos que el usuario vino a leer (cifras, barras de
-  puntuación y de progreso: se pintan en su valor).
-- Hover de filas y celdas solo de color; sin `translate` de hover ni pulsos
-  infinitos decorativos.
-- Solo se mueve con `transform` y `opacity`, nunca con `width`, `height`, `top`
-  o `left`; los cambios de estado sí transicionan color, fondo y borde.
-- Sin Framer Motion: los enter/exit son los primitivos CSS de `globals.css`.
-- Todo respeta `prefers-reduced-motion`, que no quiere decir cero movimiento:
-  se conservan los fundidos de opacidad y color. La red de `/login` se queda en
-  un fotograma y tiene botón de pausa.
+## Do's and Don'ts
 
-## Iconos y voz
+### Do:
 
-- Solo lucide, a `h-3`, `h-3.5` o `h-4`; un icono, un concepto
-  ([lib/iconos.ts](web/src/lib/iconos.ts)). Sin emojis ni Sparkles.
-- Castellano peninsular con tuteo. La interfaz no narra su implementación.
+- **Do** usa los tokens semánticos (`bg-card`, `text-muted-foreground`) y la
+  escala `text-tf-*`.
+- **Do** transiciona color, fondo y borde en los cambios de estado, a 150 ms por
+  defecto y ≤ 200 ms en la UI operativa, con las curvas propias (`--ease-out`,
+  `--ease-in-out`, `--ease-drawer`).
+- **Do** mueve solo con `transform` y `opacity`, y respeta
+  `prefers-reduced-motion` conservando los fundidos de opacidad y color.
+- **Do** pinta las cifras, las barras de puntuación y las de progreso en su
+  valor.
+
+### Don't:
+
+- **Don't** animes lo que se usa cien veces al día (teclado, navegación, cambio
+  de pestaña) ni los datos que el usuario vino a leer.
+- **Don't** uses `translate` en hover, pulsos infinitos decorativos ni Framer
+  Motion: los enter/exit son los primitivos CSS de `globals.css`.
+- **Don't** pongas sombra a lo que vive en la página, ni cristal, grano, mallas
+  de degradado o negro puro.
+- **Don't** escribas `text-[Npx]` ni uses la paleta cruda de Tailwind.
 
 ## Skills de diseño: cuál usar y qué no aplica
 
-Las skills viven en `.claude/skills/` (Claude Code) y en su copia idéntica
+Las skills viven en `.claude/skills/` (Claude Code) y en su copia
 `.agents/skills/` (resto de herramientas); el inventario está en
 [docs/skills-inventory.md](docs/skills-inventory.md). Son heurísticas
 generales: donde chocan con una decisión registrada, manda la decisión.
@@ -138,9 +384,15 @@ true`): `frontend-design`, `design-taste-frontend`, `minimalist-ui` y
 Motion, una fuente distinta en cada página) que contradice este fichero si se
 aplica a la consola. Se piden por nombre y para la portada.
 
+`impeccable` sí se invoca sola y lee este fichero y [PRODUCT.md](PRODUCT.md)
+antes de tocar nada; su regla «el brief manda» hace que respete lo de aquí. Su
+instalador compila una variante por herramienta (`.claude`, `.agents`,
+`.github`, `.opencode`), así que es la excepción a la copia idéntica (ver
+`harnessVariants` en `skills-lock.json`).
+
 | Tarea | Skill | Cómo se carga |
 |---|---|---|
-| Pantalla o componente de la consola | Ninguna de estética: este fichero y las reglas de la casa de [docs/UX_AUDIT.md](docs/UX_AUDIT.md) | — |
+| Pantalla o componente de la consola | Este fichero y las reglas de la casa de [docs/UX_AUDIT.md](docs/UX_AUDIT.md); `impeccable` para criticar, auditar o pulir sin salirse de ellos | Sola |
 | Añadir o cambiar una animación | `emil-design-eng`, `apple-design` y [docs/frontend-motion.md](docs/frontend-motion.md) | Solas |
 | Revisar un diff con movimiento | `review-animations` | Por nombre |
 | Buscar dónde falta movimiento, o auditar el que hay | `find-animation-opportunities` / `improve-animations` | Sola / por nombre |
@@ -183,7 +435,7 @@ Antes de reinstalar alguna, mirá por qué salió.
 | «Randomize dates to appear real» (`redesign-existing-projects`) | **Nunca**: el frontend no fabrica datos ([docs/frontend-data-invariants.md](docs/frontend-data-invariants.md)) |
 | `dvh` en vez de `h-screen` | Aplica |
 | Neutros de una sola familia, sin negro puro | Aplica (neutros cálidos, `bg-scrim`) |
-| Skeletons en vez de spinners para contenido; estados vacío, error y carga | Aplica (ver «Estados») |
+| Skeletons en vez de spinners para contenido; estados vacío, error y carga | Aplica (ver «Estados» en Components) |
 | Sin filas de tres columnas iguales en la portada | Aplica (`landing-como-funciona.tsx`, asimétrica) |
 | Mover solo con `transform`/`opacity` | Aplica al movimiento; color, fondo y borde sí transicionan |
 | Cifras tabulares | Aplica (el body activa `tnum`) |

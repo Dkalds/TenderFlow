@@ -100,6 +100,17 @@ htmlcov/
 # Los ajustes compartidos van en .claude/settings.json, que sí se commitea.
 .claude/settings.local.json
 
+# Impeccable: el binario (~20 MB por plataforma) lo descarga el lanzador
+# `scripts/impeccable` la primera vez, verificado contra su .sha256; no se
+# versiona. Los ajustes por persona y la caché del hook tampoco.
+.claude/skills/impeccable/scripts/bin/
+.agents/skills/impeccable/scripts/bin/
+.github/skills/impeccable/scripts/bin/
+.opencode/skills/impeccable/scripts/bin/
+.impeccable/config.local.json
+.impeccable/hook.cache.json
+.impeccable/live/inject-journal.json
+
 # graphify: el grafo es una caché local, no se versiona (AGENTS.md §1). Lo
 # reconstruyen los hooks de git de graphify en la máquina que tiene el CLI, y
 # .claude/hooks/session_start_contexto.py lo siembra en los worktrees nuevos.

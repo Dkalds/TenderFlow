@@ -12,6 +12,9 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
         args: ["--maxkb=1024"]
+        # El índice de fuentes de impeccable (~1,1 MB) lo lee su binario y viene
+        # vendored tal cual en cada árbol de skills; el binario no se versiona.
+        exclude: '^\.(claude|agents|github|opencode)/skills/impeccable/scripts/data/font-index\.json$'
       - id: detect-private-key
       - id: mixed-line-ending
         args: ["--fix=lf"]

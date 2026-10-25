@@ -13,7 +13,9 @@ herramienta (`.claude/`, `.agents/`, `.codex/`, `.opencode/`):
    coincide con el contenido instalado (detecta tamperizado o un lock
    desactualizado; ver `scripts/update_skills_lock_hashes.py`). Cada skill
    también declara `trust` (`first-party`/`community`; ver
-   `scripts/classify_skill_trust.py`).
+   `scripts/classify_skill_trust.py`). Un skill compilado por herramienta
+   declara `harnessVariants` (un hash por árbol) en vez de `verifiedHash`.
+   Los ficheros ignorados por git no entran en el hash.
 5. Toda ruta del repo citada entre backticks o como link markdown existe.
 6. Los hooks apuntan a scripts existentes y sin rutas absolutas de una máquina.
 7. Los comandos de `.claude/commands/` y sus copias
@@ -216,15 +218,36 @@ def contenido_normalizado(path: Path) -> bytes:
     return path.read_bytes().replace(b"\r\n", b"\n")
 
 
-def tree_hashes(root: Path) -> dict[str, str]:
-    """Return stable SHA-256 hashes for every file below ``root``.
+def ficheros_versionables(root: Path) -> list[Path]:
+    """Los ficheros bajo ``root`` que git versiona o versionaría.
 
-    «Stable» incluye *entre plataformas*: ver :func:`contenido_normalizado`.
+    Un skill puede traer ficheros que no se commitean: el binario que
+    `impeccable` descarga en ``scripts/bin/`` pesa ~20 MB y está en
+    `.gitignore`. Si entrara en el hash, el lock dependería de si esa máquina
+    ya lo descargó. Fuera de un repo git (los tests) se recorre el árbol.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "ls-files", "-z", "-co", "--exclude-standard", "--", "."],  # noqa: S607 -- git del PATH, argumentos fijos
+            cwd=root,
+            capture_output=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return sorted(path for path in root.rglob("*") if path.is_file())
+    rutas = {root / rel for rel in proc.stdout.decode("utf-8").split("\0") if rel}
+    return sorted(path for path in rutas if path.is_file())
+
+
+def tree_hashes(root: Path) -> dict[str, str]:
+    """Return stable SHA-256 hashes for every versionable file below ``root``.
+
+    «Stable» incluye *entre plataformas*: ver :func:`contenido_normalizado`, y
+    *entre máquinas*: ver :func:`ficheros_versionables`.
     """
     return {
         path.relative_to(root).as_posix(): hashlib.sha256(contenido_normalizado(path)).hexdigest()
-        for path in sorted(root.rglob("*"))
-        if path.is_file()
+        for path in ficheros_versionables(root)
     }
 
 
@@ -273,6 +296,52 @@ def check_claude_skills() -> None:
                 )
 
 
+def check_trust(name: str, entry: dict[str, object]) -> None:
+    trust = entry.get("trust")
+    if trust is None:
+        fail(
+            "skills-lock.json",
+            f"`{name}` no tiene `trust` (first-party/community); corré "
+            "`python scripts/classify_skill_trust.py`",
+        )
+    elif trust not in VALID_TRUST_LEVELS:
+        fail(
+            "skills-lock.json",
+            f"`{name}` tiene `trust` inválido ({trust!r}); debe ser first-party o community",
+        )
+
+
+def check_harness_variants(name: str, entry: dict[str, object]) -> None:
+    """Un skill que el instalador compila distinto para cada herramienta.
+
+    `impeccable` escribe en `.agents/skills/` otra variante que en
+    `.claude/skills/` (rutas, `$impeccable` en vez de `/impeccable`, la
+    herramienta de preguntas de Codex, subagentes `.toml`): igualarlas daría a
+    cada cliente instrucciones de otro. Para esos skills el lock guarda en
+    `harnessVariants` un hash por árbol, y lo que se verifica es que cada árbol
+    siga siendo el que se instaló; los dos árboles obligatorios siguen siéndolo.
+    """
+    variants = entry["harnessVariants"]
+    if not isinstance(variants, dict):
+        fail("skills-lock.json", f"`{name}`: `harnessVariants` debe ser un objeto árbol → hash")
+        return
+    for tree in (CLAUDE_SKILLS, AGENTS_SKILLS):
+        rel = tree.relative_to(ROOT).as_posix()
+        if rel not in variants:
+            fail("skills-lock.json", f"`{name}`: `harnessVariants` no incluye {rel}")
+    for rel, locked_hash in sorted(variants.items()):
+        skill_dir = ROOT / rel / name
+        if not (skill_dir / "SKILL.md").exists():
+            fail("skills-lock.json", f"declara `{name}` en {rel}/ pero no está instalado ahí")
+            continue
+        if combined_hash(tree_hashes(skill_dir)) != locked_hash:
+            fail(
+                "skills-lock.json",
+                f"`{name}` cambió de contenido en {rel}/ sin actualizar `harnessVariants` "
+                "(revisá el cambio y corré `python scripts/update_skills_lock_hashes.py`)",
+            )
+
+
 def check_skill_trees() -> None:
     lock_path = ROOT / "skills-lock.json"
     if not lock_path.exists():
@@ -280,6 +349,10 @@ def check_skill_trees() -> None:
     lock = json.loads(lock_path.read_text(encoding="utf-8")).get("skills", {})
     locked_names = set(lock)
     for name in sorted(lock):
+        if "harnessVariants" in lock[name]:
+            check_harness_variants(name, lock[name])
+            check_trust(name, lock[name])
+            continue
         skill_dirs = [tree / name for tree in (CLAUDE_SKILLS, AGENTS_SKILLS)]
         for skill_dir in skill_dirs:
             if not (skill_dir / "SKILL.md").exists():
@@ -315,19 +388,7 @@ def check_skill_trees() -> None:
                     f"`{name}` cambió de contenido sin actualizar `verifiedHash` en el lock "
                     "(revisá el cambio y corré `python scripts/update_skills_lock_hashes.py`)",
                 )
-            trust = lock[name].get("trust")
-            if trust is None:
-                fail(
-                    "skills-lock.json",
-                    f"`{name}` no tiene `trust` (first-party/community); corré "
-                    "`python scripts/classify_skill_trust.py`",
-                )
-            elif trust not in VALID_TRUST_LEVELS:
-                fail(
-                    "skills-lock.json",
-                    f"`{name}` tiene `trust` inválido ({trust!r}); debe ser "
-                    "first-party o community",
-                )
+            check_trust(name, lock[name])
     for tree in (CLAUDE_SKILLS, AGENTS_SKILLS):
         installed = {path.parent.name for path in tree.glob("*/SKILL.md")}
         extras = installed - locked_names

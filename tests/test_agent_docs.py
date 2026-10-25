@@ -133,6 +133,69 @@ class AgentDocsCheckerTests(unittest.TestCase):
             any("cambió de contenido sin actualizar" in error for error in check_agent_docs.errors)
         )
 
+    def _install_variant_skill(self) -> None:
+        for tree, body in ((".claude/skills", "/demo"), (".agents/skills", "$demo")):
+            _write(
+                self.root / tree / "demo/SKILL.md",
+                f"---\nname: demo\ndescription: Demo skill\n---\n\nRun {body}\n",
+            )
+        variants = {
+            tree: check_agent_docs.combined_hash(
+                check_agent_docs.tree_hashes(self.root / tree / "demo")
+            )
+            for tree in (".claude/skills", ".agents/skills")
+        }
+        _write(
+            self.root / "skills-lock.json",
+            json.dumps({"skills": {"demo": {"harnessVariants": variants, "trust": "community"}}}),
+        )
+
+    def test_skill_trees_accept_locked_harness_variants(self) -> None:
+        self._install_variant_skill()
+
+        check_agent_docs.check_skill_trees()
+
+        self.assertEqual(check_agent_docs.errors, [])
+
+    def test_skill_trees_reject_drifted_harness_variant(self) -> None:
+        self._install_variant_skill()
+        _write(self.root / ".agents/skills/demo/extra.md", "nuevo\n")
+
+        check_agent_docs.check_skill_trees()
+
+        self.assertTrue(
+            any(
+                "cambió de contenido en .agents/skills/" in error
+                for error in check_agent_docs.errors
+            )
+        )
+
+    def test_skill_trees_reject_harness_variants_without_required_tree(self) -> None:
+        self._install_variant_skill()
+        lock_path = self.root / "skills-lock.json"
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+        del lock["skills"]["demo"]["harnessVariants"][".agents/skills"]
+        _write(lock_path, json.dumps(lock))
+
+        check_agent_docs.check_skill_trees()
+
+        self.assertTrue(
+            any("no incluye .agents/skills" in error for error in check_agent_docs.errors)
+        )
+
+    def test_tree_hashes_skip_git_ignored_files(self) -> None:
+        skill = self.root / "skill"
+        _write(skill / "SKILL.md", "demo\n")
+        _write(skill / ".gitignore", "bin/\n")
+        before = check_agent_docs.tree_hashes(skill)
+        subprocess.run(["git", "init", "-q"], cwd=skill, check=True)
+        _write(skill / "bin/tool.exe", "binario descargado\n")
+
+        after = check_agent_docs.tree_hashes(skill)
+
+        self.assertNotIn("bin/tool.exe", after)
+        self.assertEqual(set(after), set(before))
+
     def test_command_copies_reject_missing_portable_adapter(self) -> None:
         _write(
             self.root / ".claude/commands/area.md",

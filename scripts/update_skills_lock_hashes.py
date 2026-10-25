@@ -17,11 +17,27 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 AGENTS_SKILLS = ROOT / ".agents/skills"
 LOCK_PATH = ROOT / "skills-lock.json"
+
+
+def ficheros_versionables(root: Path) -> list[Path]:
+    """Gemelo exacto de ``scripts/check_agent_docs.py::ficheros_versionables``."""
+    try:
+        proc = subprocess.run(
+            ["git", "ls-files", "-z", "-co", "--exclude-standard", "--", "."],  # noqa: S607 -- git del PATH, argumentos fijos
+            cwd=root,
+            capture_output=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return sorted(path for path in root.rglob("*") if path.is_file())
+    rutas = {root / rel for rel in proc.stdout.decode("utf-8").split("\0") if rel}
+    return sorted(path for path in rutas if path.is_file())
 
 
 def tree_hashes(root: Path) -> dict[str, str]:
@@ -31,14 +47,14 @@ def tree_hashes(root: Path) -> dict[str, str]:
     lo valida aquél. La normalización de finales de línea a LF está explicada
     allí (``contenido_normalizado``): sin ella el hash depende de cómo hizo el
     checkout cada máquina, y en Windows el lock quedaba permanentemente
-    «desactualizado» sin que nadie hubiera tocado un skill.
+    «desactualizado» sin que nadie hubiera tocado un skill. Los ficheros
+    ignorados por git (el binario que descarga `impeccable`) no entran.
     """
     return {
         path.relative_to(root).as_posix(): hashlib.sha256(
             path.read_bytes().replace(b"\r\n", b"\n")
         ).hexdigest()
-        for path in sorted(root.rglob("*"))
-        if path.is_file()
+        for path in ficheros_versionables(root)
     }
 
 
@@ -52,6 +68,20 @@ def main() -> int:
     skills = lock.get("skills", {})
     updated = 0
     for name in sorted(skills):
+        variants = skills[name].get("harnessVariants")
+        if isinstance(variants, dict):
+            # Variante por herramienta (ver check_agent_docs.check_harness_variants):
+            # un hash por árbol en vez de uno común.
+            for rel in sorted(variants):
+                variant_dir = ROOT / rel / name
+                if not (variant_dir / "SKILL.md").exists():
+                    print(f"WARN  {name}: no está instalado en {rel}/, se omite")
+                    continue
+                new_hash = combined_hash(tree_hashes(variant_dir))
+                if variants[rel] != new_hash:
+                    variants[rel] = new_hash
+                    updated += 1
+            continue
         skill_dir = AGENTS_SKILLS / name
         if not (skill_dir / "SKILL.md").exists():
             print(f"WARN  {name}: no está instalado en .agents/skills/, se omite")

@@ -1,0 +1,568 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-25T00:13:56+00:00",
+  "title": "Design System: TenderFlow",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Naranja tostado",
+        "canonical": "hsl(22 78% 34%)",
+        "tonalRamp": [
+          "hsl(22 78% 15%)",
+          "hsl(22 78% 25%)",
+          "hsl(22 78% 35%)",
+          "hsl(22 78% 45%)",
+          "hsl(22 78% 55%)",
+          "hsl(22 78% 65%)",
+          "hsl(22 78% 80%)",
+          "hsl(22 78% 95%)"
+        ]
+      },
+      "primary-foreground": {
+        "role": "primary",
+        "displayName": "Crema sobre naranja",
+        "canonical": "hsl(36 100% 97%)",
+        "tonalRamp": [
+          "hsl(36 100% 15%)",
+          "hsl(36 100% 25%)",
+          "hsl(36 100% 35%)",
+          "hsl(36 100% 45%)",
+          "hsl(36 100% 55%)",
+          "hsl(36 100% 65%)",
+          "hsl(36 100% 80%)",
+          "hsl(36 100% 95%)"
+        ]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Naranja velado",
+        "canonical": "hsl(26 70% 92%)",
+        "tonalRamp": [
+          "hsl(26 70% 15%)",
+          "hsl(26 70% 25%)",
+          "hsl(26 70% 35%)",
+          "hsl(26 70% 45%)",
+          "hsl(26 70% 55%)",
+          "hsl(26 70% 65%)",
+          "hsl(26 70% 80%)",
+          "hsl(26 70% 95%)"
+        ]
+      },
+      "accent-foreground": {
+        "role": "primary",
+        "displayName": "Óxido de acento",
+        "canonical": "hsl(22 75% 28%)",
+        "tonalRamp": [
+          "hsl(22 75% 15%)",
+          "hsl(22 75% 25%)",
+          "hsl(22 75% 35%)",
+          "hsl(22 75% 45%)",
+          "hsl(22 75% 55%)",
+          "hsl(22 75% 65%)",
+          "hsl(22 75% 80%)",
+          "hsl(22 75% 95%)"
+        ]
+      },
+      "ring": {
+        "role": "primary",
+        "displayName": "Anillo de foco",
+        "canonical": "hsl(22 78% 34%)",
+        "tonalRamp": [
+          "hsl(22 78% 15%)",
+          "hsl(22 78% 25%)",
+          "hsl(22 78% 35%)",
+          "hsl(22 78% 45%)",
+          "hsl(22 78% 55%)",
+          "hsl(22 78% 65%)",
+          "hsl(22 78% 80%)",
+          "hsl(22 78% 95%)"
+        ]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Papel",
+        "canonical": "hsl(40 22% 96%)",
+        "tonalRamp": [
+          "hsl(40 22% 15%)",
+          "hsl(40 22% 25%)",
+          "hsl(40 22% 35%)",
+          "hsl(40 22% 45%)",
+          "hsl(40 22% 55%)",
+          "hsl(40 22% 65%)",
+          "hsl(40 22% 80%)",
+          "hsl(40 22% 95%)"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Tinta",
+        "canonical": "hsl(30 14% 10%)",
+        "tonalRamp": [
+          "hsl(30 14% 15%)",
+          "hsl(30 14% 25%)",
+          "hsl(30 14% 35%)",
+          "hsl(30 14% 45%)",
+          "hsl(30 14% 55%)",
+          "hsl(30 14% 65%)",
+          "hsl(30 14% 80%)",
+          "hsl(30 14% 95%)"
+        ]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Blanco de panel",
+        "canonical": "hsl(0 0% 100%)",
+        "tonalRamp": [
+          "hsl(0 0% 15%)",
+          "hsl(0 0% 25%)",
+          "hsl(0 0% 35%)",
+          "hsl(0 0% 45%)",
+          "hsl(0 0% 55%)",
+          "hsl(0 0% 65%)",
+          "hsl(0 0% 80%)",
+          "hsl(0 0% 95%)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Arena",
+        "canonical": "hsl(42 14% 91%)",
+        "tonalRamp": [
+          "hsl(42 14% 15%)",
+          "hsl(42 14% 25%)",
+          "hsl(42 14% 35%)",
+          "hsl(42 14% 45%)",
+          "hsl(42 14% 55%)",
+          "hsl(42 14% 65%)",
+          "hsl(42 14% 80%)",
+          "hsl(42 14% 95%)"
+        ]
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Gris cálido",
+        "canonical": "hsl(34 8% 34%)",
+        "tonalRamp": [
+          "hsl(34 8% 15%)",
+          "hsl(34 8% 25%)",
+          "hsl(34 8% 35%)",
+          "hsl(34 8% 45%)",
+          "hsl(34 8% 55%)",
+          "hsl(34 8% 65%)",
+          "hsl(34 8% 80%)",
+          "hsl(34 8% 95%)"
+        ]
+      },
+      "secondary": {
+        "role": "neutral",
+        "displayName": "Arena secundaria",
+        "canonical": "hsl(42 14% 91%)",
+        "tonalRamp": [
+          "hsl(42 14% 15%)",
+          "hsl(42 14% 25%)",
+          "hsl(42 14% 35%)",
+          "hsl(42 14% 45%)",
+          "hsl(42 14% 55%)",
+          "hsl(42 14% 65%)",
+          "hsl(42 14% 80%)",
+          "hsl(42 14% 95%)"
+        ]
+      },
+      "secondary-foreground": {
+        "role": "neutral",
+        "displayName": "Tinta secundaria",
+        "canonical": "hsl(30 14% 12%)",
+        "tonalRamp": [
+          "hsl(30 14% 15%)",
+          "hsl(30 14% 25%)",
+          "hsl(30 14% 35%)",
+          "hsl(30 14% 45%)",
+          "hsl(30 14% 55%)",
+          "hsl(30 14% 65%)",
+          "hsl(30 14% 80%)",
+          "hsl(30 14% 95%)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Línea",
+        "canonical": "hsl(30 12% 40% / 0.28)",
+        "tonalRamp": [
+          "hsl(30 12% 15%)",
+          "hsl(30 12% 25%)",
+          "hsl(30 12% 35%)",
+          "hsl(30 12% 45%)",
+          "hsl(30 12% 55%)",
+          "hsl(30 12% 65%)",
+          "hsl(30 12% 80%)",
+          "hsl(30 12% 95%)"
+        ]
+      },
+      "input": {
+        "role": "neutral",
+        "displayName": "Línea de campo",
+        "canonical": "hsl(30 12% 40% / 0.3)",
+        "tonalRamp": [
+          "hsl(30 12% 15%)",
+          "hsl(30 12% 25%)",
+          "hsl(30 12% 35%)",
+          "hsl(30 12% 45%)",
+          "hsl(30 12% 55%)",
+          "hsl(30 12% 65%)",
+          "hsl(30 12% 80%)",
+          "hsl(30 12% 95%)"
+        ]
+      },
+      "shadow-ink": {
+        "role": "neutral",
+        "displayName": "Tinta de sombra",
+        "canonical": "hsl(30 20% 10%)",
+        "tonalRamp": [
+          "hsl(30 20% 15%)",
+          "hsl(30 20% 25%)",
+          "hsl(30 20% 35%)",
+          "hsl(30 20% 45%)",
+          "hsl(30 20% 55%)",
+          "hsl(30 20% 65%)",
+          "hsl(30 20% 80%)",
+          "hsl(30 20% 95%)"
+        ]
+      },
+      "success": {
+        "role": "semantic",
+        "displayName": "Verde de éxito",
+        "canonical": "hsl(150 70% 25%)",
+        "tonalRamp": [
+          "hsl(150 70% 15%)",
+          "hsl(150 70% 25%)",
+          "hsl(150 70% 35%)",
+          "hsl(150 70% 45%)",
+          "hsl(150 70% 55%)",
+          "hsl(150 70% 65%)",
+          "hsl(150 70% 80%)",
+          "hsl(150 70% 95%)"
+        ]
+      },
+      "warning": {
+        "role": "semantic",
+        "displayName": "Ámbar de aviso",
+        "canonical": "hsl(42 95% 25%)",
+        "tonalRamp": [
+          "hsl(42 95% 15%)",
+          "hsl(42 95% 25%)",
+          "hsl(42 95% 35%)",
+          "hsl(42 95% 45%)",
+          "hsl(42 95% 55%)",
+          "hsl(42 95% 65%)",
+          "hsl(42 95% 80%)",
+          "hsl(42 95% 95%)"
+        ]
+      },
+      "info": {
+        "role": "semantic",
+        "displayName": "Azul informativo",
+        "canonical": "hsl(210 90% 37%)",
+        "tonalRamp": [
+          "hsl(210 90% 15%)",
+          "hsl(210 90% 25%)",
+          "hsl(210 90% 35%)",
+          "hsl(210 90% 45%)",
+          "hsl(210 90% 55%)",
+          "hsl(210 90% 65%)",
+          "hsl(210 90% 80%)",
+          "hsl(210 90% 95%)"
+        ]
+      },
+      "destructive": {
+        "role": "semantic",
+        "displayName": "Rojo destructivo",
+        "canonical": "hsl(355 75% 42%)",
+        "tonalRamp": [
+          "hsl(355 75% 15%)",
+          "hsl(355 75% 25%)",
+          "hsl(355 75% 35%)",
+          "hsl(355 75% 45%)",
+          "hsl(355 75% 55%)",
+          "hsl(355 75% 65%)",
+          "hsl(355 75% 80%)",
+          "hsl(355 75% 95%)"
+        ]
+      },
+      "primary-dark": {
+        "role": "primary",
+        "displayName": "Naranja tostado (oscuro)",
+        "canonical": "hsl(26 88% 62%)",
+        "tonalRamp": [
+          "hsl(26 88% 15%)",
+          "hsl(26 88% 25%)",
+          "hsl(26 88% 35%)",
+          "hsl(26 88% 45%)",
+          "hsl(26 88% 55%)",
+          "hsl(26 88% 65%)",
+          "hsl(26 88% 80%)",
+          "hsl(26 88% 95%)"
+        ]
+      },
+      "background-dark": {
+        "role": "neutral",
+        "displayName": "Papel (oscuro)",
+        "canonical": "hsl(30 8% 5%)",
+        "tonalRamp": [
+          "hsl(30 8% 15%)",
+          "hsl(30 8% 25%)",
+          "hsl(30 8% 35%)",
+          "hsl(30 8% 45%)",
+          "hsl(30 8% 55%)",
+          "hsl(30 8% 65%)",
+          "hsl(30 8% 80%)",
+          "hsl(30 8% 95%)"
+        ]
+      },
+      "foreground-dark": {
+        "role": "neutral",
+        "displayName": "Tinta (oscuro)",
+        "canonical": "hsl(36 12% 93%)",
+        "tonalRamp": [
+          "hsl(36 12% 15%)",
+          "hsl(36 12% 25%)",
+          "hsl(36 12% 35%)",
+          "hsl(36 12% 45%)",
+          "hsl(36 12% 55%)",
+          "hsl(36 12% 65%)",
+          "hsl(36 12% 80%)",
+          "hsl(36 12% 95%)"
+        ]
+      },
+      "card-dark": {
+        "role": "neutral",
+        "displayName": "Panel (oscuro)",
+        "canonical": "hsl(30 8% 8%)",
+        "tonalRamp": [
+          "hsl(30 8% 15%)",
+          "hsl(30 8% 25%)",
+          "hsl(30 8% 35%)",
+          "hsl(30 8% 45%)",
+          "hsl(30 8% 55%)",
+          "hsl(30 8% 65%)",
+          "hsl(30 8% 80%)",
+          "hsl(30 8% 95%)"
+        ]
+      },
+      "muted-foreground-dark": {
+        "role": "neutral",
+        "displayName": "Gris cálido (oscuro)",
+        "canonical": "hsl(34 8% 65%)",
+        "tonalRamp": [
+          "hsl(34 8% 15%)",
+          "hsl(34 8% 25%)",
+          "hsl(34 8% 35%)",
+          "hsl(34 8% 45%)",
+          "hsl(34 8% 55%)",
+          "hsl(34 8% 65%)",
+          "hsl(34 8% 80%)",
+          "hsl(34 8% 95%)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Titular de portada y de pantalla destacada (text-tf-hero, Fraunces)."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Titulares de sección (text-tf-title, Fraunces)."
+      },
+      "kpi": {
+        "displayName": "Kpi",
+        "purpose": "Cifras de StatCell: 20 px sans tabular (D7)."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Títulos de panel (text-tf-lede)."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Cuerpo de la consola (text-tf-body, 13 px)."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "Metadatos y botones size=sm (text-tf-meta)."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Rótulos de dato en frase (ROTULO_DATO)."
+      },
+      "label-column": {
+        "displayName": "Label Column",
+        "purpose": "Cabeceras de columna en versal (CABECERA_COLUMNA)."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Solo identificadores: expediente, CPV, ids, claves, kbd."
+      }
+    },
+    "shadows": [
+      {
+        "name": "anclada",
+        "value": "0 2px 4px hsl(var(--shadow-ink) / 0.05), 0 8px 20px -10px hsl(var(--shadow-ink) / 0.18)",
+        "purpose": "shadow-md: lo que cuelga de un control (popover, menú, select, tooltip, toast)."
+      },
+      {
+        "name": "modal",
+        "value": "0 1px 0 hsl(0 0% 100% / 0.6) inset, 0 12px 36px -12px hsl(var(--shadow-ink) / 0.22)",
+        "purpose": "shadow-lg: diálogo, sheet, paleta de comandos."
+      },
+      {
+        "name": "interior",
+        "value": "0 1px 2px hsl(var(--shadow-ink) / 0.06), 0 1px 1px hsl(var(--shadow-ink) / 0.04)",
+        "purpose": "shadow-sm: piezas dentro de un control, como el pulgar del switch."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.23, 1, 0.32, 1)",
+        "purpose": "Curva por defecto de entradas y cambios de estado; 150 ms."
+      },
+      {
+        "name": "ease-in-out",
+        "value": "cubic-bezier(0.77, 0, 0.175, 1)",
+        "purpose": "Movimientos que salen y llegan dentro de la pantalla."
+      },
+      {
+        "name": "ease-drawer",
+        "value": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "purpose": "Sheets y cajones."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "md",
+        "value": "768px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botón principal",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "La acción principal de una vista; el único sitio donde el naranja se usa lleno.",
+      "html": "<button class=\"ds-btn-primary\">Guardar regla</button>",
+      "css": ".ds-btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;border-radius:8px;font-family:Geist,system-ui,sans-serif;font-size:14px;font-weight:500;height:36px;padding:8px 16px;border:0;cursor:pointer;transition:background-color 150ms cubic-bezier(0.23,1,0.32,1),color 150ms cubic-bezier(0.23,1,0.32,1),scale 150ms cubic-bezier(0.23,1,0.32,1);background:hsl(var(--primary));color:hsl(var(--primary-foreground));}.ds-btn-primary:hover{background:hsl(var(--primary) / 0.9);}.ds-btn-primary:focus-visible{outline:none;box-shadow:0 0 0 2px hsl(var(--background)),0 0 0 4px hsl(var(--ring));}.ds-btn-primary:active{scale:0.97;}"
+    },
+    {
+      "name": "Botón de consola (sm)",
+      "kind": "button",
+      "refersTo": "button-primary-console",
+      "description": "Tamaño por defecto dentro de la consola: 28 px desde md, texto a 12 px.",
+      "html": "<button class=\"ds-btn-sm\">Seguir</button>",
+      "css": ".ds-btn-sm{display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;border-radius:8px;font-family:Geist,system-ui,sans-serif;font-size:14px;font-weight:500;height:36px;padding:8px 16px;border:0;cursor:pointer;transition:background-color 150ms cubic-bezier(0.23,1,0.32,1),color 150ms cubic-bezier(0.23,1,0.32,1),scale 150ms cubic-bezier(0.23,1,0.32,1);height:28px;padding:0 10px;gap:6px;font-size:12px;background:hsl(var(--primary));color:hsl(var(--primary-foreground));}.ds-btn-sm:hover{background:hsl(var(--primary) / 0.9);}.ds-btn-sm:focus-visible{outline:none;box-shadow:0 0 0 2px hsl(var(--background)),0 0 0 4px hsl(var(--ring));}.ds-btn-sm:active{scale:0.97;}"
+    },
+    {
+      "name": "Botón outline",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Acción secundaria sobre panel: borde de campo, hover en acento velado.",
+      "html": "<button class=\"ds-btn-outline\">Exportar CSV</button>",
+      "css": ".ds-btn-outline{display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;border-radius:8px;font-family:Geist,system-ui,sans-serif;font-size:14px;font-weight:500;height:36px;padding:8px 16px;border:0;cursor:pointer;transition:background-color 150ms cubic-bezier(0.23,1,0.32,1),color 150ms cubic-bezier(0.23,1,0.32,1),scale 150ms cubic-bezier(0.23,1,0.32,1);background:hsl(var(--card));color:hsl(var(--foreground));border:1px solid hsl(var(--input));}.ds-btn-outline:hover{background:hsl(var(--accent));color:hsl(var(--accent-foreground));}.ds-btn-outline:focus-visible{outline:none;box-shadow:0 0 0 2px hsl(var(--background)),0 0 0 4px hsl(var(--ring));}"
+    },
+    {
+      "name": "Botón ghost",
+      "kind": "button",
+      "refersTo": "button-ghost-hover",
+      "description": "Acción terciaria sin fondo hasta el hover.",
+      "html": "<button class=\"ds-btn-ghost\">Descartar</button>",
+      "css": ".ds-btn-ghost{display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;border-radius:8px;font-family:Geist,system-ui,sans-serif;font-size:14px;font-weight:500;height:36px;padding:8px 16px;border:0;cursor:pointer;transition:background-color 150ms cubic-bezier(0.23,1,0.32,1),color 150ms cubic-bezier(0.23,1,0.32,1),scale 150ms cubic-bezier(0.23,1,0.32,1);background:transparent;color:hsl(var(--foreground));}.ds-btn-ghost:hover{background:hsl(var(--accent));color:hsl(var(--accent-foreground));}.ds-btn-ghost:focus-visible{outline:none;box-shadow:0 0 0 2px hsl(var(--background)),0 0 0 4px hsl(var(--ring));}"
+    },
+    {
+      "name": "Campo de texto",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Input con borde de campo y anillo de 1 px al enfocar; 16 px en móvil, 14 desde md.",
+      "html": "<input class=\"ds-input\" placeholder=\"Buscar por órgano o CPV\" />",
+      "css": ".ds-input{display:flex;width:100%;height:36px;border-radius:8px;border:1px solid hsl(var(--input));background:transparent;padding:4px 12px;font-family:Geist,system-ui,sans-serif;font-size:14px;color:hsl(var(--foreground));transition:border-color 150ms,box-shadow 150ms;}.ds-input::placeholder{color:hsl(var(--muted-foreground));}.ds-input:focus-visible{outline:none;box-shadow:0 0 0 1px hsl(var(--ring));}"
+    },
+    {
+      "name": "Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Superficie canónica de la consola: opaca, con borde y sin sombra (SUPERFICIE_PANEL).",
+      "html": "<section class=\"ds-panel\"><h3 class=\"ds-panel-title\">Renovaciones en riesgo</h3><p class=\"ds-panel-body\">12 contratos vencen en los próximos 90 días.</p></section>",
+      "css": ".ds-panel{border-radius:14px;border:1px solid hsl(var(--border) / 0.6);background:hsl(var(--card));padding:16px;}.ds-panel-title{margin:0 0 6px;font-family:Geist,system-ui,sans-serif;font-size:15px;font-weight:600;line-height:1.3;letter-spacing:-0.005em;color:hsl(var(--foreground));}.ds-panel-body{margin:0;font-family:Geist,system-ui,sans-serif;font-size:13px;line-height:1.4;color:hsl(var(--muted-foreground));}"
+    },
+    {
+      "name": "StatCell",
+      "kind": "custom",
+      "refersTo": "panel",
+      "description": "El KPI canónico: cifra a 20 px sans tabular y rótulo en frase a 11 px (D7, D2).",
+      "html": "<div class=\"ds-stat\"><span class=\"ds-stat-label\">Baja de referencia</span><span class=\"ds-stat-value\">18,4 %</span></div>",
+      "css": ".ds-stat{display:flex;flex-direction:column;gap:4px;font-family:Geist,system-ui,sans-serif;}.ds-stat-label{font-size:11px;font-weight:500;line-height:1.2;color:hsl(var(--muted-foreground));}.ds-stat-value{font-size:20px;font-weight:600;line-height:1.2;font-variant-numeric:tabular-nums;color:hsl(var(--foreground));}"
+    },
+    {
+      "name": "Badge semántico",
+      "kind": "chip",
+      "refersTo": "badge-neutral",
+      "description": "Chip con borde fino y tinte /10 del color semántico.",
+      "html": "<span class=\"ds-badge ds-badge-success\">Caliente</span> <span class=\"ds-badge ds-badge-neutral\">Tibia</span>",
+      "css": ".ds-badge{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;border-radius:8px;border:1px solid;padding:1px 6px;font-family:Geist,system-ui,sans-serif;font-size:11px;font-weight:500;line-height:1.2;}.ds-badge-success{border-color:hsl(var(--success) / 0.3);background:hsl(var(--success) / 0.1);color:hsl(var(--success));}.ds-badge-neutral{border-color:hsl(var(--muted-foreground) / 0.2);background:hsl(var(--muted-foreground) / 0.1);color:hsl(var(--muted-foreground));}"
+    }
+  ],
+  "narrative": {
+    "northStar": "El parte de la mañana",
+    "overview": "Un boletín diario denso y fiable: se lee rápido, de arriba abajo, y cada cifra lleva su fuente. La consola es una herramienta de trabajo para leer un mercado: papel cálido, tinta oscura y un solo acento naranja para lo que se puede hacer. La densidad es la de un documento de trabajo, no la de un panel de marketing.",
+    "keyCharacteristics": [
+      "Neutros cálidos de una sola familia y un único acento.",
+      "Densidad alta en la consola: cuerpo a 13 px, cifras tabulares.",
+      "Fraunces solo en titulares; todo lo demás en Geist.",
+      "Paneles opacos con borde; la sombra solo en lo que flota.",
+      "Movimiento corto (150 ms) y únicamente cuando explica un cambio."
+    ],
+    "rules": [
+      {
+        "name": "The One Accent Rule",
+        "body": "El naranja es la única voz de acción; nada más en la pantalla compite con él.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Grey Family Rule",
+        "body": "Un solo gris, cálido, en todo el producto: nada de pizarra (tono ~200) junto al papel, ni negro puro, ni la paleta cruda de Tailwind (`bg-black`, `text-slate-500`…).",
+        "section": "colors"
+      },
+      {
+        "name": "The Tint Ladder Rule",
+        "body": "Tintes del mismo color a `/5` en hover, `/10` en seleccionado y `/15` en énfasis; nunca más de `/16` detrás de texto del mismo color.",
+        "section": "colors"
+      },
+      {
+        "name": "The Fifteen Pixel Rule",
+        "body": "Fraunces solo a 15 px o más (D1); por debajo, Geist.",
+        "section": "typography"
+      },
+      {
+        "name": "The Sentence Case Rule",
+        "body": "Los rótulos de dato van en sans, en frase, a 11 px (D2); la versal queda solo para cabeceras de columna (`CABECERA_COLUMNA`, `label-column`).",
+        "section": "typography"
+      },
+      {
+        "name": "The Floating Only Rule",
+        "body": "Paneles, tarjetas, botones, campos y badges no llevan sombra.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do usa los tokens semánticos (`bg-card`, `text-muted-foreground`) y la escala `text-tf-*`.",
+      "Do transiciona color, fondo y borde en los cambios de estado, a 150 ms por defecto y ≤ 200 ms en la UI operativa, con las curvas propias (`--ease-out`, `--ease-in-out`, `--ease-drawer`).",
+      "Do mueve solo con `transform` y `opacity`, y respeta `prefers-reduced-motion` conservando los fundidos de opacidad y color.",
+      "Do pinta las cifras, las barras de puntuación y las de progreso en su valor."
+    ],
+    "donts": [
+      "Don't animes lo que se usa cien veces al día (teclado, navegación, cambio de pestaña) ni los datos que el usuario vino a leer.",
+      "Don't uses `translate` en hover, pulsos infinitos decorativos ni Framer Motion: los enter/exit son los primitivos CSS de `globals.css`.",
+      "Don't pongas sombra a lo que vive en la página, ni cristal, grano, mallas de degradado o negro puro.",
+      "Don't escribas `text-[Npx]` ni uses la paleta cruda de Tailwind."
+    ]
+  }
+}
