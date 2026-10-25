@@ -110,7 +110,7 @@ def test_los_triggers_mantienen_las_sombras_con_cualquier_escritor(db: Any) -> N
         # El DEFAULT de created_at/updated_at (v151) también pasa por el trigger.
         doc_id = c.execute(
             "INSERT INTO documentos (licitacion_id, tipo, uri, status) "
-            "VALUES ('FTS-001', 'pcap', 'https://x/1', 'pending') RETURNING id"
+            "VALUES ('FTS-001', 'legal', 'https://x/1', 'pending') RETURNING id"
         ).fetchone()[0]
         creado, creado_ts, fetched_ts = c.execute(
             "SELECT created_at, created_at_ts, fetched_at_ts FROM documentos WHERE id = %s",
@@ -220,7 +220,9 @@ def test_la_verificacion_cuenta_aparte_lo_que_no_es_iso(db: Any) -> None:
     from db.fechas_ts import verificar_lote
     from db.upsert import upsert_licitaciones_with_history
 
-    upsert_licitaciones_with_history([_lic(fecha_inicio="31/12/2026")], source="test")
+    # El CHECK de v59 solo exige el prefijo AAAA-MM-DD: un 30 de febrero pasa
+    # y es justo la «fecha no ISO» que la sombra deja a NULL.
+    upsert_licitaciones_with_history([_lic(fecha_inicio="2026-02-30")], source="test")
     divergentes, detalle = _recorrer(verificar_lote, "licitaciones")
     assert divergentes == 0
     assert detalle["fecha_inicio_no_iso"] == 1
@@ -231,8 +233,11 @@ def test_la_verificacion_cuenta_aparte_lo_que_no_es_iso(db: Any) -> None:
 def test_el_historial_ordena_por_instante_con_la_lectura_dual(db: Any, lectura: Any) -> None:
     from db.database import connect
     from db.repositories.licitaciones import LicitacionRepository
+    from db.upsert import upsert_licitaciones_with_history
 
+    upsert_licitaciones_with_history([_lic()], source="test")
     with connect() as c:
+        c.execute("DELETE FROM licitaciones_history WHERE id_externo = 'FTS-001'")
         c.executemany(
             "INSERT INTO licitaciones_history (id_externo, captured_at, source, "
             "snapshot_json, changed_fields) VALUES ('FTS-001', %s, 'test', '{}', '[]')",
