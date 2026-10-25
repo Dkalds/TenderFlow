@@ -41,13 +41,13 @@ from db.repositories.renovaciones import (
 from db.repositories.renovaciones import (
     rango_vencimiento_sql as rango_vencimiento_sql,
 )
-from db.sql_fragments import tecnologia_en_csv_sql
-from services.dedupe import exclude_duplicados_sql
 
 # FECHA_FIN_SQL se re-exporta por compatibilidad con imports externos.
-from services.sql_fragments import FECHA_FIN_SQL as FECHA_FIN_SQL
-from services.sql_fragments import TECHNOLOGY_OBSERVED_SQL as TECHNOLOGY_OBSERVED_SQL
-from services.sql_fragments import fecha_fin_sql as fecha_fin_sql
+from db.sql_fragments import FECHA_FIN_SQL as FECHA_FIN_SQL
+from db.sql_fragments import TECHNOLOGY_OBSERVED_SQL as TECHNOLOGY_OBSERVED_SQL
+from db.sql_fragments import fecha_fin_sql as fecha_fin_sql
+from db.sql_fragments import tecnologia_en_csv_sql
+from services.dedupe import exclude_duplicados_sql
 
 # ── Umbrales de "contrato caliente" ───────────────────────────────────────
 # Definición canónica y única (ADR-014): vivía duplicada en el cliente
@@ -184,7 +184,7 @@ def resumen_renovaciones(
         WHERE {fecha_fin} {rango_vencimiento_sql()}
           AND {TECHNOLOGY_OBSERVED_SQL}
           AND {exclude_duplicados_sql()}
-    """  # noqa: S608 — fragmentos constantes de services.sql_fragments; valores con ?
+    """  # noqa: S608 — fragmentos constantes de db.sql_fragments; valores con ?
     params: list[Any] = [months_ahead]
     tecnologias = [t for t in (tecnologias or []) if t]
     if tecnologias:
@@ -235,7 +235,7 @@ def totales_renovaciones(
         WHERE {fecha_fin} {rango_vencimiento_sql()}
           AND {TECHNOLOGY_OBSERVED_SQL}
           AND {exclude_duplicados_sql()}
-    """  # noqa: S608 — fragmentos constantes de services.sql_fragments; valores con ?
+    """  # noqa: S608 — fragmentos constantes de db.sql_fragments; valores con ?
     params: list[Any] = [RIESGO_ALTO, RIESGO_ALTO, DIAS_CALIENTE, months_ahead]
     tecnologias = [t for t in (tecnologias or []) if t]
     if tecnologias:

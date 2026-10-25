@@ -420,7 +420,7 @@ def compute_f1_drop(
                 # filas ``human`` anteriores al plan de tres niveles
                 # significaban «es SAP» -- mezclarlas mediría el acuerdo
                 # contra una pregunta distinta. Mismo motivo que en
-                # ``_fetch_training_dataframe``: el feedback automático del
+                # ``feedback_humano_es_ti``: el feedback automático del
                 # etiquetado por LLM son predicciones, no ground truth.
                 # Usarlas aquí medía el acuerdo entre dos modelos y lo
                 # reportaba como degradación frente a la realidad.

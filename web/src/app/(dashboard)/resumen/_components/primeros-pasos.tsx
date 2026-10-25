@@ -167,7 +167,7 @@ export function PrimerosPasos({
   }
 
   return (
-    <section aria-labelledby="resumen-primeros-pasos" className="mb-5.5">
+    <section aria-labelledby="resumen-primeros-pasos">
       <PanelTitle
         as="h2"
         id="resumen-primeros-pasos"

@@ -45,11 +45,32 @@ COMANDOS = ("train", "seed-negatives", "precompute", "info", "train-tech", "prec
 def lineas_entrenamiento_sap(
     result: Mapping[str, Any], *, min_muestras: int, ruta_modelo: Path
 ) -> list[str]:
-    """El informe de ``train`` a partir de lo que devuelve ``train_from_db``."""
+    """El informe de ``train`` a partir de lo que devuelve ``train_from_db``.
+
+    ``train_from_db`` no activa nada (2026-10): el candidato que pasa el gate
+    queda registrado e inactivo, con su artefacto por contenido escrito en
+    local. El informe lo dice y da el camino para servirlo —el workflow que lo
+    publica y lo activa—, en vez del «Modelo guardado» de antes, que hacía
+    creer que ya se servía.
+    """
     if "error" not in result:
-        return [f"  {k}: {v}" for k, v in result.items()] + [
+        promocion = result.get("promotion") or {}
+        metricas = [f"  {k}: {v}" for k, v in result.items() if k != "promotion"]
+        if promocion.get("pendiente_de_activar"):
+            return [
+                *metricas,
+                "",
+                f"Versión {promocion.get('version')} registrada SIN activar; "
+                f"artefacto en: {promocion.get('artefacto') or ruta_modelo}",
+                "Para servirla hay que publicarla y activarla, en ese orden: "
+                "gh workflow run train-model.yml",
+            ]
+        motivos = "; ".join(str(m) for m in promocion.get("motivos_rechazo") or [])
+        return [
+            *metricas,
             "",
-            f"Modelo guardado en: {ruta_modelo}",
+            f"[AVISO] El gate rechazó la versión {promocion.get('version')}: "
+            f"{motivos or 'sin motivo registrado'}. No se publica nada.",
         ]
     error = result["error"]
     if error == "single_class":

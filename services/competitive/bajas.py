@@ -17,8 +17,7 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
-from services.dedupe import exclude_duplicados_sql
-from services.sql_fragments import (
+from db.sql_fragments import (
     BAJA_PCT_SQL,
     BASE_DECLARADA_SQL,
     BASE_MIXTA,
@@ -28,6 +27,7 @@ from services.sql_fragments import (
     VALID_PAIR_LOTE,
     round_sql,
 )
+from services.dedupe import exclude_duplicados_sql
 
 _GROUP_COLUMNS = {
     "empresa": ("a.empresa_id", "COALESCE(e.nombre_canonico, a.nombre)"),
@@ -73,7 +73,7 @@ def bajas_agregadas(
 
     ``baja_pct`` = (presupuesto - adjudicado) / presupuesto * 100, con
     presupuesto = el del lote si la adjudicación lo tiene resuelto (ver
-    :data:`services.sql_fragments.EFFECTIVE_BUDGET_SQL`). Devuelve media,
+    :data:`db.sql_fragments.EFFECTIVE_BUDGET_SQL`). Devuelve media,
     mínimo, máximo, nº de contratos e importe total por grupo;
     ``min_contratos`` filtra grupos sin masa estadística.
 
@@ -115,7 +115,7 @@ def bajas_agregadas(
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
         WHERE {VALID_PAIR_LOTE} AND {TECHNOLOGY_OBSERVED_SQL} AND {exclude_duplicados_sql()}
           AND {filtro_base}
-    """  # noqa: S608
+    """  # noqa: S608 — columnas de _GROUP_COLUMNS y fragmentos constantes; valores con %s
     params: list[Any] = []
     if cpv_prefix:
         sql += " AND l.cpv LIKE %s"

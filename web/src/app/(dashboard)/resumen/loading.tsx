@@ -3,17 +3,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 /**
  * Esqueleto de ruta del Resumen.
  *
- * Pintaba todavía la pantalla de dos generaciones atrás —cuatro tarjetas de KPI
- * y una rejilla 2×2 de gráficos— que la página dejó de tener hace dos
- * rediseños: el usuario veía aparecer una estructura y llegar otra distinta.
- * Esto replica las bandas reales y sus altos, para que la carga no salte: la
- * cabecera sin borde (el borde lo pone el scroll), el campo del asistente, la
- * banda de «Desde tu última visita», «Tu día» con sus contadores y la semana,
- * la banda de «Mercado abierto» con la cola a dos tercios y las dos tarjetas
- * apiladas, y el contexto con su composición. Las cifras llevan su dibujo
- * debajo (puntos, áreas, el reloj de cierre), y los altos ya lo cuentan:
- * medidos a 1440 px con datos y redondeados (2026-10), con cambios en
- * «Desde tu última visita» y compromisos en la semana, que es lo habitual.
+ * Replica las bandas reales y sus altos para que la carga no salte: la
+ * cabecera sin borde (el borde lo pone el scroll), el campo del asistente y
+ * las dos zonas de `resumen-view.tsx`. Lo tuyo: «Tu día» con sus contadores y
+ * la semana, y la banda de «Desde tu última visita». El mercado, tras su
+ * filete y su rótulo: la cola a dos tercios con las dos tarjetas apiladas, y
+ * la tira del periodo con el ritmo y los movimientos al lado. Altos medidos a
+ * 1440 px con datos y redondeados (2026-10), con cambios en «Desde tu última
+ * visita» y compromisos en la semana, que es lo habitual.
  */
 export default function ResumenLoading() {
   return (
@@ -23,33 +20,39 @@ export default function ResumenLoading() {
       </div>
       <div className="min-h-0 flex-1 overflow-hidden px-4 pt-4 pb-6">
         {/* Asistente */}
-        <Skeleton className="mb-4 h-10 max-w-[720px] rounded-md" />
+        <Skeleton className="mb-5 h-10 max-w-[720px] rounded-md" />
 
-        {/* Desde tu última visita: el reparto a la izquierda y los cambios a la derecha */}
-        <Skeleton className="mb-3.5 h-[180px] w-full rounded-xl" />
-
-        {/* Tu día: la tira de cuatro con sus puntos y, debajo, la semana en carriles */}
-        <Skeleton className="mb-2.5 h-4 w-28 rounded-sm" />
-        <Skeleton className="mb-2.5 h-[100px] w-full rounded-xl" />
-        <Skeleton className="mb-5.5 h-[260px] w-full rounded-xl" />
-
-        {/* Mercado abierto: la cola a dos tercios, con su reloj, y dos tarjetas apiladas */}
-        <Skeleton className="mb-2.5 h-4 w-32 rounded-sm" />
-        <div className="mb-5.5 grid gap-3 lg:grid-cols-3">
-          <Skeleton className="h-[340px] rounded-xl lg:col-span-2" />
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-            <Skeleton className="h-[138px] rounded-xl" />
-            <Skeleton className="h-[190px] rounded-xl" />
+        <div className="flex flex-col gap-5">
+          {/* Tu día: el rótulo, la tira de cuatro con sus puntos y la semana en carriles */}
+          <div className="flex flex-col gap-2.5">
+            <Skeleton className="h-4 w-28 rounded-sm" />
+            <Skeleton className="h-[100px] w-full rounded-xl" />
+            <Skeleton className="h-[260px] w-full rounded-xl" />
           </div>
+
+          {/* Desde tu última visita: el reparto a la izquierda y los cambios a la derecha */}
+          <Skeleton className="h-[180px] w-full rounded-xl" />
         </div>
 
-        {/* Contexto de mercado: la tira de tres con sus áreas, y la composición
-            por estado y el reparto por comunidad, lado a lado desde `xl` */}
-        <Skeleton className="mb-2.5 h-4 w-36 rounded-sm" />
-        <Skeleton className="mb-2.5 h-[124px] w-full rounded-xl" />
-        <div className="grid grid-cols-1 gap-2.5 xl:grid-cols-2">
-          <Skeleton className="h-[336px] w-full rounded-xl" />
-          <Skeleton className="h-[336px] w-full rounded-xl" />
+        {/* Mercado: filete, rótulo y atajos */}
+        <div className="mt-9 border-t border-divider pt-4">
+          <Skeleton className="mb-4 h-5 w-28 rounded-sm" />
+
+          {/* Abierto hoy: la cola a dos tercios, con su reloj, y dos tarjetas apiladas */}
+          <div className="mb-5 grid gap-3 lg:grid-cols-3">
+            <Skeleton className="h-[340px] rounded-xl lg:col-span-2" />
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+              <Skeleton className="h-[138px] rounded-xl" />
+              <Skeleton className="h-[190px] rounded-xl" />
+            </div>
+          </div>
+
+          {/* El periodo: la tira de tres y, debajo, el ritmo junto a los movimientos */}
+          <Skeleton className="mb-2.5 h-[92px] w-full rounded-xl" />
+          <div className="grid grid-cols-1 gap-2.5 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <Skeleton className="h-[400px] w-full rounded-xl" />
+            <Skeleton className="h-[400px] w-full rounded-xl" />
+          </div>
         </div>
       </div>
     </div>

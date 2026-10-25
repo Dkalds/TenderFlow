@@ -3,7 +3,7 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { PanelTitle } from "@/components/console/panel";
+import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { findPage } from "@/lib/navigation";
 import { useScopedHref } from "@/lib/filters";
@@ -21,6 +21,12 @@ import { SPACE_VIEWS } from "@/lib/space-views";
  * espacio que los absorbe). La descripción pasa a un tooltip, que a diferencia
  * del `title` nativo también se abre con el teclado. El hover solo cambia el
  * color: se ven a diario y nada se desplaza.
+ *
+ * **Sitio.** Fueron una banda propia al pie de la pantalla, con su rótulo, y
+ * cerraban el Resumen con un bloque más del mismo peso que los demás. Ahora
+ * van en la cabecera de la zona de mercado (`resumen-view.tsx`): son la salida
+ * natural de lo que esa zona resume, y donde está la zona está el ámbito que
+ * arrastran.
  *
  * **Destinos.** Apuntaban a las rutas heredadas (`/tendencias`, `/organos`…),
  * que llegan a su vista de Mercado por un 301, y uno era Proyectos y módulos,
@@ -50,29 +56,28 @@ const ATAJOS = VISTAS.flatMap((clave) => {
   ];
 });
 
-export function AtajosAnalisis() {
+export function AtajosAnalisis({ className }: { className?: string }) {
   const scopedHref = useScopedHref();
 
   return (
-    <section aria-labelledby="atajos-analisis-title">
-      <PanelTitle
-        as="h2"
-        id="atajos-analisis-title"
-        title="Análisis completo"
-        hint="con tu ámbito aplicado"
-        className="mb-2.5"
-      />
-      <div className="flex flex-wrap gap-2">
+    <nav
+      aria-label="Análisis completo, con tu ámbito aplicado"
+      className={cn("flex flex-wrap items-center gap-x-1 gap-y-1", className)}
+    >
+      <span className="text-tf-meta text-muted-foreground mr-1">Análisis completo:</span>
+      {/* Los tres enlaces van juntos: en un teléfono bajan de línea en bloque,
+          en vez de dejar el último solo en una tercera. */}
+      <span className="flex flex-wrap items-center gap-x-1">
         {ATAJOS.map((atajo) => {
           const enlace = (
             <Link
               href={scopedHref(atajo.href)}
               aria-label={`Ir a ${atajo.label}, en Mercado`}
-              className="group inline-flex h-8 items-center gap-2 rounded-md border border-divider bg-card px-3 text-tf-meta font-medium transition-colors hover:border-primary-line-strong active:bg-primary-selected active:duration-0"
+              className="group text-tf-meta hover:bg-primary-hover hover:text-primary active:bg-primary-selected inline-flex h-7 items-center gap-1 rounded-md px-1.5 font-medium transition-colors active:duration-0"
             >
               {atajo.label}
               <ArrowRight
-                className="h-3 w-3 flex-none text-muted-foreground transition-colors group-hover:text-primary"
+                className="text-muted-foreground group-hover:text-primary h-3 w-3 flex-none transition-colors"
                 aria-hidden="true"
               />
             </Link>
@@ -85,7 +90,7 @@ export function AtajosAnalisis() {
             </Tooltip>
           );
         })}
-      </div>
-    </section>
+      </span>
+    </nav>
   );
 }

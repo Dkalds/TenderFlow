@@ -154,10 +154,10 @@ class TestTrainFromDb:
             patch("services.ml.promotion.promote_if_better") as mock_promote,
         ):
             mock_promote.return_value = SimpleNamespace(
-                activada=True,
+                pendiente_de_activar=True,
                 version=3,
                 motivos_rechazo=[],
-                as_dict=lambda: {"activada": True, "version": 3},
+                as_dict=lambda: {"pendiente_de_activar": True, "version": 3},
             )
             from services.ml.classifier_training import train_from_db
 
@@ -165,7 +165,10 @@ class TestTrainFromDb:
 
         mock_clf.train.assert_called_once()
         mock_promote.assert_called_once()
-        assert metrics["promotion"]["activada"] is True
+        # Ni pide activar ni puede: el gate registra inactivo y activa
+        # `ml_training_run.activar_publicada` cuando la Release lo publica.
+        assert "activar" not in mock_promote.call_args.kwargs
+        assert metrics["promotion"]["pendiente_de_activar"] is True
 
     def test_registra_la_poblacion_de_entrenamiento(self) -> None:
         """Sin ``train_population``, dos versiones entrenadas sobre poblaciones
@@ -182,7 +185,10 @@ class TestTrainFromDb:
             patch("services.ml.promotion.promote_if_better") as mock_promote,
         ):
             mock_promote.return_value = SimpleNamespace(
-                activada=True, version=1, motivos_rechazo=[], as_dict=lambda: {"activada": True}
+                pendiente_de_activar=True,
+                version=1,
+                motivos_rechazo=[],
+                as_dict=lambda: {"pendiente_de_activar": True},
             )
             from services.ml.classifier_training import train_from_db
 
@@ -259,16 +265,16 @@ class TestTrainFromDb:
             patch("services.ml.promotion.promote_if_better") as mock_promote,
         ):
             mock_promote.return_value = SimpleNamespace(
-                activada=False,
+                pendiente_de_activar=False,
                 version=4,
                 motivos_rechazo=["recall_no_keyword 0.0000 < 0.05"],
-                as_dict=lambda: {"activada": False, "version": 4},
+                as_dict=lambda: {"version": 4},
             )
             from services.ml.classifier_training import train_from_db
 
             metrics = train_from_db()
 
-        assert metrics["promotion"]["activada"] is False
+        assert "pendiente_de_activar" not in metrics["promotion"]
 
     def test_sin_filas_no_entrena(self) -> None:
         lecturas = self._dataset([])

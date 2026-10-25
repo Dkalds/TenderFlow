@@ -14,7 +14,7 @@ import { agruparPorDia } from "@/lib/agrupar-por-dia";
 import { BarraApilada, tramosApilados } from "./contexto-graficos";
 import { colorDeTipo, ImporteDelta, LeyendaTipos, TIPO_ICON, TIPO_LABEL } from "./eventos-tipos";
 
-const MAX_FILAS = 8;
+const MAX_FILAS = 5;
 
 /** Ventana del feed en palabras, para que el panel diga qué está midiendo
  * cuando el ámbito mueve las fechas. */
@@ -81,8 +81,8 @@ export function EventosFeed() {
   return (
     <Panel>
       <PanelTitle
-        // `h2`, como «Publicaciones»: es una sección de la página, y sus días van en `h3`.
-        as="h2"
+        // `h3`, como «Publicaciones»: un apartado de la zona de mercado, y sus días van en `h4`.
+        as="h3"
         title="Movimientos del mercado"
         hint={`${ventanaLabel(rango.desde, rango.hasta)} · del ámbito`}
         actions={
@@ -145,8 +145,9 @@ export function EventosFeed() {
           ) : null}
           {dias.map((dia) => (
             <section key={dia.clave} aria-label={dia.etiqueta}>
-              <h3 className="pb-0.5 pl-9 text-tf-micro font-semibold text-muted-foreground">{dia.etiqueta}</h3>
+              <h4 className="pb-0.5 pl-9 text-tf-micro font-semibold text-muted-foreground">{dia.etiqueta}</h4>
               <ul className="relative before:absolute before:bottom-0 before:left-[13px] before:top-0 before:w-px before:bg-divider">
+
                 {dia.eventos.map((evento, indice) => {
                   const Icon = TIPO_ICON[evento.tipo] ?? Activity;
                   return (

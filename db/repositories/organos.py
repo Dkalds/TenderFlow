@@ -21,7 +21,9 @@ log = get_logger(__name__)
 def get_by_dir3(dir3: str) -> dict[str, Any] | None:
     """Órgano por su código DIR3. Es la resolución sin ambigüedad."""
     with connect_read() as c:
-        filas = rows_to_dicts(c.execute("SELECT * FROM organos WHERE dir3 = %s LIMIT 1", (dir3,)))
+        filas = rows_to_dicts(
+            c.execute("SELECT * FROM organos WHERE dir3 = %s LIMIT 1", (dir3,))
+        )  # SELECT *: el maestro entero lo consume services/organos.py
     return filas[0] if filas else None
 
 

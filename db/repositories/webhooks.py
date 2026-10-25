@@ -1,4 +1,8 @@
-"""Repository para webhooks."""
+"""Repository para webhooks: CRUD de suscripciones, entregas, reintentos e idempotencia.
+
+La entrega saliente firmada (``trigger_event``, ``reenviar``) vive en
+``db/webhooks.py`` (ADR-022, «Entidades con las dos caras»).
+"""
 
 from __future__ import annotations
 
