@@ -2309,6 +2309,10 @@ export interface paths {
         /**
          * Get Feature Flags
          * @description Lista TODOS los flags del backend (incl. los que no estaban en ningún hardcode).
+         *
+         *     Las declaradas en ``db.feature_flags.FLAGS_DECLARADAS`` que aún no tienen
+         *     fila salen apagadas y sin ``updated_at``: es su estado real (sin fila,
+         *     ``is_enabled`` dice False), y así Administración puede encenderlas.
          */
         get: operations["get_feature_flags_api_v1_feature_flags_get"];
         /**
@@ -5528,7 +5532,7 @@ export interface paths {
         put?: never;
         /**
          * Búsqueda de texto completo en anuncios y pliegos, con fusión semántica
-         * @description Interpreta los filtros que diga la frase, busca por texto completo en los anuncios y en los pasajes de pliego (tsvector/ts_rank_cd) y, si la instalación tiene embeddings con los que codificar la consulta, completa la lista con lo que la fusión (RRF, ponderada por alpha) encuentra por significado. Si el texto no encuentra nada degrada a coincidencia literal; el campo source de la respuesta dice cuál de los caminos se ejecutó.
+         * @description Interpreta los filtros que diga la frase, busca por texto completo en los anuncios y en los pasajes de pliego (tsvector/ts_rank_cd) y, si la flag busqueda_semantica está encendida para quien busca y la instalación tiene embeddings con los que codificar la consulta, completa la lista con lo que la fusión (RRF, ponderada por alpha) encuentra por significado; si no, o si la fusión falla, responde solo por texto, sin error. Si el texto no encuentra nada degrada a coincidencia literal; el campo source de la respuesta dice cuál de los caminos se ejecutó.
          */
         post: operations["semantic_search_api_v1_search_semantic_post"];
         delete?: never;

@@ -7,9 +7,11 @@ desapareció con él; nadie lo subió a la Release. Desde entonces el registro
 pedía un sha256 que ningún artefacto publicado tenía, y ``ml_scoring`` cayó
 por ``ModelArtifactMismatch`` en cada pasada.
 
-Con un plano de orquestación declarado el job ya no entrena: lanza
-``train-model.yml``, que es el único camino que entrena **y** publica, y si no
-puede lanzarlo avisa de que toca hacerlo a mano.
+El job ya no entrena en ningún plano —tampoco sin ``SCHEDULER_PLANE``, en un
+checkout local—: lanza ``train-model.yml``, que es el único camino que entrena
+**y** publica, y si no puede lanzarlo avisa de que toca hacerlo a mano. El
+reentrenamiento en proceso y su dataset propio
+(``_fetch_training_dataframe``) se retiraron en 2026-10.
 """
 
 from __future__ import annotations
@@ -50,7 +52,6 @@ def _correr(
             "db.model_registry.feedbacks_since_last_train", return_value=n_feedbacks
         ) as feedbacks,
         patch("db.model_registry.get_active", return_value=None),
-        patch("scheduler.concept_drift._fetch_training_dataframe") as fetch,
         patch("services.ml.sap_classifier.SAPClassifier") as clf,
         patch("services.ml.classifier_training.precompute_ml_proba") as precompute,
         patch("services.ml.promotion.promote_if_better") as promote,
@@ -60,7 +61,6 @@ def _correr(
         result = maybe_retrain_classifier(**kwargs)
     return result, {
         "feedbacks": feedbacks,
-        "fetch": fetch,
         "clf": clf,
         "precompute": precompute,
         "promote": promote,
@@ -82,7 +82,6 @@ def test_en_el_plano_actions_ni_entrena_ni_activa(monkeypatch: pytest.MonkeyPatc
 
     assert result["triggered"] is False
     assert "new_version" not in result
-    mocks["fetch"].assert_not_called()
     mocks["clf"].assert_not_called()
     mocks["promote"].assert_not_called()
     # El `precompute(force=True)` de después del reentrenamiento fue además lo
@@ -185,37 +184,51 @@ def test_el_dry_run_no_lanza_nada(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Sin plano declarado: como antes
+# Sin plano declarado: tampoco entrena (2026-10)
 # ---------------------------------------------------------------------------
 
 
-def test_sin_plano_declarado_reentrena_como_antes(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A mano en un checkout, quien entrena y quien sirve comparten ``data/models/``."""
-    import pandas as pd
-
+def test_sin_plano_declarado_tampoco_entrena(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Hasta 2026-10, sin ``SCHEDULER_PLANE`` entrenaba y activaba aquí mismo,
+    con su propio dataset. Un checkout local que comparte BD con producción
+    deja la versión activa en el mismo ``model_versions`` que leen la API y
+    los runners, y su ``.pkl`` en un disco que ninguno de ellos ve."""
     monkeypatch.delenv("SCHEDULER_PLANE", raising=False)
-    promocion = MagicMock(activada=True, version=3, motivos_rechazo=[], golden={})
-    promocion.as_dict.return_value = {"activada": True, "version": 3}
 
-    from scheduler.concept_drift import maybe_retrain_classifier
+    result, mocks = _correr(59, dispatch=True)
 
-    with (
-        patch("db.model_registry.feedbacks_since_last_train", return_value=59),
-        patch("db.model_registry.get_active", return_value=None),
-        patch(
-            "scheduler.concept_drift._fetch_training_dataframe",
-            return_value=pd.DataFrame({"col": [1]}),
-        ),
-        patch("services.ml.sap_classifier.SAPClassifier") as clf,
-        patch("services.ml.classifier_training.precompute_ml_proba"),
-        patch("services.ml.promotion.promote_if_better", return_value=promocion) as promote,
-        patch("shared.github_actions.dispatch_workflow") as lanzar,
-        patch("scheduler.concept_drift.notify"),
-    ):
-        clf.return_value.train.return_value = {"f1": 0.8, "n_train": 50, "n_test": 10}
-        result = maybe_retrain_classifier()
+    mocks["clf"].assert_not_called()
+    mocks["promote"].assert_not_called()
+    mocks["precompute"].assert_not_called()
+    mocks["dispatch"].assert_not_called()
+    assert result["triggered"] is False
+    assert "new_version" not in result
+    assert result["retrain_pendiente"] is True
+    _nivel, _titulo, cuerpo = mocks["notify"].call_args[0]
+    assert "sin SCHEDULER_PLANE" in cuerpo
+    assert "gh workflow run train-model.yml" in cuerpo
 
-    promote.assert_called_once()
-    lanzar.assert_not_called()
-    assert result["new_version"] == 3
-    assert "retrain_pendiente" not in result
+
+def test_sin_plano_pero_con_entorno_de_actions_lanza(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lo que decide es poder lanzar el workflow, no el plano declarado."""
+    _en_actions(monkeypatch)
+    monkeypatch.delenv("SCHEDULER_PLANE")
+
+    result, mocks = _correr(59, dispatch=True)
+
+    mocks["dispatch"].assert_called_once()
+    mocks["promote"].assert_not_called()
+    assert result["retrain_lanzado"] is True
+
+
+def test_el_modulo_ya_no_tiene_camino_de_entrenamiento_propio() -> None:
+    """Ni el dataset propio ni nada que importe el gate o el clasificador: el
+    único camino que entrena es ``scheduler.jobs.ml_training_run``."""
+    import inspect
+
+    import scheduler.concept_drift as concept_drift
+
+    assert not hasattr(concept_drift, "_fetch_training_dataframe")
+    fuente = inspect.getsource(concept_drift.maybe_retrain_classifier)
+    for pieza in ("promote_if_better", "SAPClassifier", "precompute_ml_proba", "register_version"):
+        assert pieza not in fuente, pieza

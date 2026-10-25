@@ -18,7 +18,7 @@ Fuente única de la política. De este módulo salen tres cosas, y solo estas:
 
 Sobre la regla «todo el SQL vive en ``db/``» (AGENTS.md §3): este módulo solo
 **genera cadenas** SQL para un script de administración y para un test; nunca
-las ejecuta, igual que ``services/sql_fragments.py`` solo compone fragmentos.
+las ejecuta, igual que ``db/sql_fragments.py`` solo compone fragmentos.
 Quien las ejecuta es un humano con el rol dueño (el script) o el test, contra
 un rol efímero. Por eso los identificadores se validan aquí con una lista
 blanca estricta (``^[a-z_][a-z0-9_]*$``) antes de quedar entre comillas dobles.

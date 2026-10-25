@@ -181,7 +181,7 @@ def test_la_version_se_activa_despues_de_subir_el_artefacto() -> None:
 
 
 def test_el_entrenamiento_no_activa() -> None:
-    """Sin subcomando el entrypoint entrena con ``activar=False``; el que
+    """Sin subcomando el entrypoint entrena sin activar (el gate no activa); el que
     activa es ``activar``, y solo aparece en su paso."""
     assert str(_step(_ENTRENAMIENTO)["run"]).strip() == "python -m scheduler.jobs.ml_training_run"
     con_activar = [

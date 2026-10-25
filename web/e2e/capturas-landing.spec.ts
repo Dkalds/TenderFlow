@@ -39,13 +39,13 @@ import { SEED_LICITACION } from "./fixtures";
  * emular la preferencia del sistema es exactamente lo que hará el navegador de
  * un visitante.
  *
- * Se capturan **los dos ficheros que la portada importa hoy**, en oscuro. La
- * variante clara —servirla con un `<source media="(prefers-color-scheme: dark)">`
- * para que quien tiene el sistema en claro no vea una consola oscura— es el paso
- * siguiente y no se anticipa aquí: añadir al repositorio dos `.webp` que ningún
- * import consume es peso muerto, y el orden correcto es generarlos y usarlos en
- * el mismo cambio. Cuando toque, esta constante crece y `CapturaProducto` gana
- * un `<source>`.
+ * Se capturan los dos recortes en **los dos temas**: `radar-hero.webp` y
+ * `radar-hero-movil.webp` (oscuro, los que la portada importa hoy) y sus
+ * variantes `-claro` (`radar-hero-claro.webp`, `radar-hero-movil-claro.webp`).
+ * La portada las servirá con un `<source media="(prefers-color-scheme: dark)">`
+ * para que quien tiene el sistema en claro no vea una consola oscura; el
+ * `<picture>` de `CapturaProducto` se cambia en el mismo commit que añade los
+ * `.webp` claros, porque un import a un fichero que no existe rompe el build.
  *
  * El recorte estrecho no es la misma imagen reducida: una consola de escritorio
  * a 375 px deja el texto de la tabla por debajo de 2 px. Se captura el panel de
@@ -93,29 +93,33 @@ test.describe("Capturas de la landing", () => {
   test.skip(!process.env.CAPTURAS, "Herramienta, no test: se ejecuta con CAPTURAS=1");
   test.skip(({ browserName }) => browserName !== "chromium", "Una sola familia de capturas");
 
-  test("bandeja del Radar", async ({ page }) => {
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.setViewportSize(ESCRITORIO);
-    await page.goto("/radar");
+  for (const tema of ["dark", "light"] as const) {
+    const sufijo = tema === "light" ? "-claro" : "";
 
-    // La fila del expediente con histórico: sin ella la bandeja podría estar
-    // aún cargando y la captura saldría con esqueletos.
-    await page.getByText(SEED_LICITACION.tituloRadar).first().waitFor();
-    // Abrir su panel de detalle, que es la mitad derecha de la composición.
-    await page.getByText(SEED_LICITACION.tituloRadar).first().click();
-    await page.getByText("Desglose de score").waitFor();
+    test(`bandeja del Radar (${tema})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.setViewportSize(ESCRITORIO);
+      await page.goto("/radar");
 
-    const png = await page.screenshot({ animations: "disabled" });
-    await guardarWebp(png, "radar-hero.webp");
-  });
+      // La fila del expediente con histórico: sin ella la bandeja podría estar
+      // aún cargando y la captura saldría con esqueletos.
+      await page.getByText(SEED_LICITACION.tituloRadar).first().waitFor();
+      // Abrir su panel de detalle, que es la mitad derecha de la composición.
+      await page.getByText(SEED_LICITACION.tituloRadar).first().click();
+      await page.getByText("Desglose de score").waitFor();
 
-  test("recorte estrecho del detalle", async ({ page }) => {
-    await page.emulateMedia({ colorScheme: "dark" });
-    await page.setViewportSize(MOVIL);
-    await page.goto(`/detalle?lic=${SEED_LICITACION.radarId}`);
-    await page.getByText("Desglose de score").waitFor();
+      const png = await page.screenshot({ animations: "disabled" });
+      await guardarWebp(png, `radar-hero${sufijo}.webp`);
+    });
 
-    const png = await page.screenshot({ animations: "disabled" });
-    await guardarWebp(png, "radar-hero-movil.webp");
-  });
+    test(`recorte estrecho del detalle (${tema})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: tema });
+      await page.setViewportSize(MOVIL);
+      await page.goto(`/detalle?lic=${SEED_LICITACION.radarId}`);
+      await page.getByText("Desglose de score").waitFor();
+
+      const png = await page.screenshot({ animations: "disabled" });
+      await guardarWebp(png, `radar-hero-movil${sufijo}.webp`);
+    });
+  }
 });

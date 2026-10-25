@@ -200,7 +200,7 @@ def _promocionar(tmp_path, *, motivos, activa=None, siguiente=1, registrada=None
     ``siguiente`` es lo que el registro dice que toca (el máximo de TODAS las
     filas más uno) y ``registrada`` lo que `register_version` acaba asignando.
     Por defecto coinciden, que es lo que pasa si nadie registra entre medias.
-    ``kwargs`` llega tal cual a `promote_if_better` (p. ej. ``activar=False``).
+    ``kwargs`` llega tal cual a `promote_if_better`.
     """
     from unittest.mock import patch
 
@@ -234,10 +234,10 @@ def test_al_promocionar_se_registra_el_artefacto_publicado(tmp_path):
     """El nombre registrado tiene que ser el que viaja a la Release."""
     resultado, register, publicado = _promocionar(tmp_path, motivos=[])
 
-    assert resultado.activada is True
+    assert resultado.pendiente_de_activar is True
     registrado = register.call_args.kwargs
     assert registrado["path"] == str(publicado)
-    assert registrado["activate"] is True
+    assert registrado["activate"] is False
     # Y el fichero publicado existe de verdad, con el mismo contenido.
     assert publicado.read_bytes() == _CONTENIDO_FALSO
     assert resultado.artefacto == str(publicado)
@@ -280,7 +280,7 @@ def test_si_el_gate_rechaza_no_se_publica_y_se_registra_el_versionado(tmp_path):
     su ruta sería mentir: la fila inactiva apunta al versionado."""
     resultado, register, publicado = _promocionar(tmp_path, motivos=["recall_no_keyword"])
 
-    assert resultado.activada is False
+    assert resultado.pendiente_de_activar is False
     assert not publicado.exists()
     registrado = register.call_args.kwargs
     assert registrado["path"].endswith("sap_classifier_v1.pkl")
@@ -288,20 +288,21 @@ def test_si_el_gate_rechaza_no_se_publica_y_se_registra_el_versionado(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Activar después de publicar (2026-10)
+# El gate no activa nunca (2026-10)
 # ---------------------------------------------------------------------------
 #
 # `train-model.yml` sube el artefacto DESPUÉS del paso que entrena. Activando
 # dentro de `promote_if_better`, un fallo entre los dos dejaba activa una
-# versión sin artefacto publicado. Con `activar=False` el candidato que pasa
-# el gate se escribe y se registra, pero inactivo; lo activa
+# versión sin artefacto publicado; y el reentrenamiento semanal la llamaba con
+# el `activar=True` por defecto dentro de un runner efímero, que es como quedó
+# activa la v2 del 2026-09-29. El candidato que pasa el gate se escribe y se
+# registra, pero inactivo; lo activa
 # `scheduler.jobs.ml_training_run.activar_publicada` tras cotejar la Release.
 
 
-def test_con_activar_false_el_candidato_se_publica_pero_no_se_activa(tmp_path):
-    resultado, register, publicado = _promocionar(tmp_path, motivos=[], activar=False)
+def test_el_candidato_que_pasa_se_publica_pero_no_se_activa(tmp_path):
+    resultado, register, publicado = _promocionar(tmp_path, motivos=[])
 
-    assert resultado.activada is False
     assert resultado.pendiente_de_activar is True
     registrado = register.call_args.kwargs
     assert registrado["activate"] is False
@@ -313,12 +314,9 @@ def test_con_activar_false_el_candidato_se_publica_pero_no_se_activa(tmp_path):
 
 
 def test_un_rechazo_no_queda_pendiente_de_activar(tmp_path):
-    """`activar=False` no convierte un rechazo en algo que subir."""
-    resultado, register, publicado = _promocionar(
-        tmp_path, motivos=["recall_no_keyword"], activar=False
-    )
+    """Un rechazo no deja nada que subir."""
+    resultado, register, publicado = _promocionar(tmp_path, motivos=["recall_no_keyword"])
 
-    assert resultado.activada is False
     assert resultado.pendiente_de_activar is False
     assert "pendiente_de_activar" not in resultado.as_dict()
     assert "artefacto" not in resultado.as_dict()
@@ -326,13 +324,17 @@ def test_un_rechazo_no_queda_pendiente_de_activar(tmp_path):
     assert register.call_args.kwargs["activate"] is False
 
 
-def test_por_defecto_sigue_activando(tmp_path):
-    """Quien corre a mano en un checkout sirve desde el mismo `data/models/`."""
-    resultado, _register, _publicado = _promocionar(tmp_path, motivos=[])
+def test_no_hay_forma_de_pedirle_al_gate_que_active(tmp_path):
+    """Ni por defecto ni pidiéndolo: el parámetro `activar` ya no existe.
 
-    assert resultado.activada is True
-    assert resultado.pendiente_de_activar is False
-    assert "pendiente_de_activar" not in resultado.as_dict()
+    Un camino nuevo que quisiera activar en el acto tendría que pasar por
+    `activar_publicada`, que antes coteja el sha256 con la Release.
+    """
+    with pytest.raises(TypeError):
+        _promocionar(tmp_path, motivos=[], activar=True)
+
+    resultado, _register, _publicado = _promocionar(tmp_path, motivos=[])
+    assert "activada" not in resultado.as_dict()
 
 
 # ---------------------------------------------------------------------------
@@ -395,10 +397,11 @@ def test_el_resultado_lleva_la_version_que_asigno_el_registro(tmp_path):
 
 def test_con_una_version_inactiva_registrada_el_candidato_es_la_v2(tmp_db, tmp_path):
     """El caso real, contra el registro de verdad: existe una v1 inactiva y
-    ninguna activa. Fichero versionado, resultado y fila tienen que decir 2."""
+    ninguna activa. Fichero versionado, resultado y fila tienen que decir 2,
+    y la v2 queda registrada pero sin activar: falta publicarla."""
     from unittest.mock import patch
 
-    from db.model_registry import get_active, register_version
+    from db.model_registry import get_active, list_versions, register_version
     from services.ml.promotion import promote_if_better
 
     register_version(name="sap_classifier", path="data/models/sap_classifier_v1.pkl", sha256="a")
@@ -417,6 +420,6 @@ def test_con_una_version_inactiva_registrada_el_candidato_es_la_v2(tmp_db, tmp_p
 
     assert resultado.version == 2
     assert [p.name for p in (tmp_path / "versiones").iterdir()] == ["sap_classifier_v2.pkl"]
-    activa = get_active("sap_classifier")
-    assert activa is not None
-    assert activa["version"] == 2
+    assert get_active("sap_classifier") is None
+    v2 = next(f for f in list_versions("sap_classifier") if int(f["version"]) == 2)
+    assert not v2["is_active"]

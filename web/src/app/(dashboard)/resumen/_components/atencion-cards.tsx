@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useMemo } from "react";
 import {
   PanelError,
-  PanelTitle,
   PULSABLE_SOBRE_TARJETA,
   SUPERFICIE_PANEL,
 } from "@/components/console/panel";
@@ -49,6 +48,11 @@ import { BarraImporte } from "./ultimas-publicaciones-tabla";
  * Las tarjetas no llevan baldosa de icono ni color propio en la cifra: la
  * cifra es el dato (20 px, como un `StatCell`) y el color queda para lo que
  * tiene plazo, que es la cola de cierre.
+ *
+ * **Sin rótulo a la vista.** Abre la zona de mercado del Resumen, cuya
+ * cabecera ya dice «Mercado» y el ámbito; con su «Mercado abierto · hoy»
+ * debajo eran dos rótulos seguidos para el mismo bloque. El `h3` se queda para
+ * el lector de encabezados, y cada tarjeta lleva su propio título.
  *
  * «Grandes en plazo» lleva debajo su parte de las activas, en barra. Las dos
  * cifras salen de la misma consulta de `/resumen/hoy` sobre el mismo conjunto
@@ -242,8 +246,10 @@ export function AtencionCards() {
   ];
 
   return (
-    <section aria-labelledby="resumen-atencion" className="mb-5.5">
-      <PanelTitle as="h2" id="resumen-atencion" title="Mercado abierto" hint="hoy" className="mb-2.5" />
+    <section aria-labelledby="resumen-atencion">
+      <h3 id="resumen-atencion" className="sr-only">
+        Mercado abierto hoy
+      </h3>
 
       {hoy.error ? (
         <PanelError

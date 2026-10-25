@@ -34,6 +34,25 @@ export const CCAA_FALLBACK = [
 ];
 
 /**
+ * Valor del filtro → etiqueta con ortografía. Los valores de `CCAA_FALLBACK`
+ * son los del filtro (viajan tal cual a la API, sin tilde), así que el texto
+ * que lee el usuario sale de aquí y no se reescribe el valor. Los valores que
+ * llegan de `meta/filters` y no están en el mapa se enseñan como vienen.
+ */
+const CCAA_ETIQUETA: Record<string, string> = {
+  __all__: "Todas",
+  Andalucia: "Andalucía",
+  Aragon: "Aragón",
+  "Castilla y Leon": "Castilla y León",
+  Cataluna: "Cataluña",
+  "Pais Vasco": "País Vasco",
+};
+
+export function ccaaLabel(valor: string): string {
+  return CCAA_ETIQUETA[valor] ?? valor;
+}
+
+/**
  * Etiquetas del selector de frecuencia.
  *
  * `immediate` NO es inmediata y llamarla así prometía una actualidad que la

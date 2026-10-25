@@ -1,6 +1,6 @@
 .PHONY: status schema-doc product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker
 .PHONY: web-test web-test-coverage check-env-parity check-public-surface check-layers check-prints check-any-count check-api-surface
-.PHONY: check-casos-uso casos-uso web-mutation reencolar-documentos
+.PHONY: check-casos-uso casos-uso web-mutation reencolar-documentos inventario-uso
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -60,6 +60,9 @@ check-any-count:  ## El número de Any en producción no sube (ratchet, solo enc
 
 check-api-surface:  ## Una operación nueva de la API llega con su motivo (AGENTS.md §0)
 	ENV=dev APP_PROFILE=api python scripts/check_api_surface.py
+
+inventario-uso:  ## Uso por espacio/vista y operaciones de la API sin llamadas (ARGS="espacios --csv f.csv" o "api --prom-json f.json")
+	python scripts/inventario_uso.py $(ARGS)
 
 check-casos-uso:  ## Cada caso de uso tiene un recorrido (escenario o E2E) y la tabla está al día
 	python scripts/check_casos_uso.py

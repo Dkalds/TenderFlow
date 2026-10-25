@@ -53,3 +53,36 @@ def test_set_feature_flags_preserves_description(tmp_db):
     # Preservados: el toggle no debe borrarlos.
     assert row["description"] == "desc original"
     assert row["user_emails"] == "a@b.com"
+
+
+def test_flag_declarada_sin_fila_sale_apagada(client, api_db):
+    """Una flag que el código consulta aparece en Administración aunque no
+    tenga fila, apagada, que es lo que ``is_enabled`` dice de ella."""
+    from db.feature_flags import FLAG_BUSQUEDA_SEMANTICA, FLAGS_DECLARADAS, get_flag
+    from tests.claves import clave_de_prueba
+
+    assert get_flag(FLAG_BUSQUEDA_SEMANTICA) is None
+    reader_key = clave_de_prueba("feature-flags-declaradas", scopes="feature_flags:read")
+    res = client.get("/api/v1/feature-flags", headers={"X-API-Key": reader_key})
+    assert res.status_code == 200
+    by_name = {f["flag"]: f for f in res.json()}
+    f = by_name[FLAG_BUSQUEDA_SEMANTICA]
+    assert f["enabled"] is False
+    assert f["rollout_pct"] == 0
+    assert f["updated_at"] is None
+    assert f["description"] == FLAGS_DECLARADAS[FLAG_BUSQUEDA_SEMANTICA]
+
+
+def test_encender_una_flag_declarada_guarda_su_descripcion(tmp_db):
+    from api.routes.feature_flags import FlagIn, SetFlagsBody, set_feature_flags
+    from db.feature_flags import FLAG_BUSQUEDA_SEMANTICA, FLAGS_DECLARADAS, get_flag, is_enabled
+
+    set_feature_flags(
+        SetFlagsBody(flags=[FlagIn(flag=FLAG_BUSQUEDA_SEMANTICA, enabled=True, rollout_pct=100)]),
+        admin={"user_id": 1, "is_admin": True},
+    )
+
+    row = get_flag(FLAG_BUSQUEDA_SEMANTICA)
+    assert row is not None
+    assert row["description"] == FLAGS_DECLARADAS[FLAG_BUSQUEDA_SEMANTICA]
+    assert is_enabled(FLAG_BUSQUEDA_SEMANTICA) is True

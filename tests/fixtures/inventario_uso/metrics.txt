@@ -1,0 +1,7 @@
+# HELP http_requests_total Total number of requests by method, status and handler.
+# TYPE http_requests_total counter
+http_requests_total{handler="/api/v1/radar",method="GET",status="200"} 10.0
+http_requests_total{handler="/api/v1/radar",method="GET",status="500"} 2.0
+http_requests_total{handler="/api/v1/licitaciones/{id_externo:path}",method="GET",status="200"} 1.0
+# HELP http_requests_created Created.
+http_requests_created{handler="/api/v1/radar",method="GET",status="200"} 1.76e+09

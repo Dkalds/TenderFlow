@@ -30,7 +30,7 @@ import { Field, ariaDeField } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { FREQ_NOTE, FREQ_OPTIONS } from "../_hooks/watchlist-rule-options";
+import { FREQ_NOTE, FREQ_OPTIONS, ccaaLabel } from "../_hooks/watchlist-rule-options";
 import type { NuevaReglaForm } from "../_hooks/use-mi-watchlist";
 import type { CatalogosCodificados, OpcionCodificada } from "../_hooks/watchlist-rule-types";
 import { type CriteriosDelPrefill, hayCriteriosDelPrefill } from "../_hooks/use-preview-regla";
@@ -134,7 +134,7 @@ export function NuevaReglaCard({
                     <SelectContent>
                       {ccaaList.map((c) => (
                         <SelectItem key={c} value={c}>
-                          {c === "__all__" ? "Todas" : c}
+                          {ccaaLabel(c)}
                         </SelectItem>
                       ))}
                     </SelectContent>
