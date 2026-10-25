@@ -78,7 +78,7 @@ Persistencia:
     data/models/tech_classifier.sha256
 
 Uso CLI:
-    python -m services.ml.sap_classifier train-tech
+    python scripts/ml_clasificadores.py train-tech
 """
 
 from __future__ import annotations

@@ -470,16 +470,22 @@ def test_desde_anio_fuerza_un_backfill_que_ignora_el_cursor(db, monkeypatch):
     assert stats["nuevas"] == 1
 
 
-def test_check_con_indice_por_anios_mira_el_anio_en_curso(monkeypatch, capsys):
+def test_check_con_indice_por_anios_mira_el_anio_en_curso(monkeypatch):
+    from unittest.mock import MagicMock
+
+    registro = MagicMock()
     fetch, pedidos = _fetch_por_anio()
     monkeypatch.setattr("scraper.connectors.tacrc.fetch_index", fetch)
     monkeypatch.setattr(tacrc, "_hoy", lambda: date(2023, 11, 2))
+    monkeypatch.setattr(tacrc, "log", registro)
 
     codigo = tacrc.main(["--check", "--url", _URL_ANIO])
 
     assert codigo == 0
     assert pedidos == [2023]
-    assert "2 resoluciones" in capsys.readouterr().out
+    # El informe del --check va al log estructurado (sin print() en scraper/).
+    informe = next(c.kwargs for c in registro.info.call_args_list if c.args == ("tacrc_check",))
+    assert informe["resoluciones"] == 2
 
 
 def test_upsert_por_lotes_cuenta_bien_y_no_pisa_la_vinculacion(db):

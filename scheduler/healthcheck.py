@@ -33,6 +33,7 @@ import re
 import shutil
 import sys
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,7 @@ from db.repositories.client_errors import (  # noqa: E402
 from db.repositories.publico import estado_refresco_canonicas  # noqa: E402
 from observability import AlertLevel, configure_logging, get_logger, notify  # noqa: E402
 from observability.alerts import COOLDOWN_RECORDATORIO_DIARIO_S  # noqa: E402
+from observability.errores import errores_repetidos  # noqa: E402
 from scheduler.latido import enviar_latido  # noqa: E402
 
 log = get_logger(__name__)
@@ -628,6 +630,18 @@ def run_check(
                 warnings.append(f"writers_high:{n_wh}")
             checks.append({"name": "ops_events_writers_high", "ok": n_wh == 0})
 
+            # Errores capturados repetidos (observability/errores.py): el mismo
+            # paso de un módulo caliente fallando una y otra vez sin tumbar la
+            # pasada. Es el espejo de `DbConnectionErroresCapturados` y
+            # `LlmClientErroresCapturados` para los procesos efímeros (scraper,
+            # cierre de la pasada, pliegos), que Prometheus no ve.
+            repetidos = errores_repetidos(ops_counts)
+            for clave, n in repetidos.items():
+                warnings.append(f"errores_capturados:{clave}:{n}")
+            if repetidos:
+                info["errores_capturados_repetidos"] = repetidos
+            checks.append({"name": "ops_events_errores_capturados", "ok": not repetidos})
+
             # Silencio: cada pasada de cierre emite varios eventos, así que un
             # día entero sin ninguno es que no llegan, no que no pase nada. Es
             # el estado en que estuvo la tabla de septiembre a octubre de 2026
@@ -659,6 +673,7 @@ def run_check(
                 info["ops_events_missing"] = True
                 checks.append({"name": "ops_events_write_slow", "ok": True})
                 checks.append({"name": "ops_events_writers_high", "ok": True})
+                checks.append({"name": "ops_events_errores_capturados", "ok": True})
                 checks.append({"name": "ops_events_recientes", "ok": True})
             else:
                 info["ops_events_error"] = str(exc)[:200]
@@ -729,7 +744,25 @@ def comprobar_y_alertar() -> dict[str, Any]:
     return result
 
 
-def main() -> int:
+def _informe_al_log(result: dict[str, Any]) -> None:
+    log.info(
+        "healthcheck_resultado",
+        status=result.get("status"),
+        warnings=result.get("warnings"),
+        errors=result.get("errors"),
+        checks=result.get("checks"),
+        info=result.get("info"),
+    )
+
+
+def main(informe: Callable[[dict[str, Any]], None] = _informe_al_log) -> int:
+    """La CLI del healthcheck. Devuelve el exit code.
+
+    ``informe`` decide dónde va el resultado: al log si se llama importada (los
+    tests, otro proceso), y como JSON legible por ``stdout`` cuando corre como
+    programa (el bloque ``__main__`` de abajo), que es lo que se lee en el run
+    de Actions y a mano.
+    """
     p = argparse.ArgumentParser()
     p.add_argument("--freshness-hours", type=int, default=36)
     p.add_argument("--dlq-threshold", type=int, default=50)
@@ -757,7 +790,7 @@ def main() -> int:
         args.canonicas_stale_hours,
         args.client_errors_min,
     )
-    print(json.dumps(result, indent=2, default=str))
+    informe(result)
 
     if args.alert:
         alertar(result)
@@ -778,4 +811,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # Como programa, el informe es su salida: JSON legible por stdout.
+    sys.exit(main(informe=lambda result: print(json.dumps(result, indent=2, default=str))))

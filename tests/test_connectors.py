@@ -1053,7 +1053,10 @@ def test_un_paso_roto_se_cronometra_como_fallido_y_el_cierre_sigue(monkeypatch):
         "eventos_contrato": True,
     }
     # El cronómetro no se traga la excepción: el fail-open de siempre la avisa.
-    assert ("connector_dedupe_failed", {"source": "pscp", "error": "dedupe roto"}) in traza
+    assert (
+        "connector_dedupe_failed",
+        {"source": "pscp", "error": "dedupe roto", "exc_info": True},
+    ) in traza
 
 
 def test_el_paso_de_documentos_se_cronometra_tambien_fuera_del_cierre(monkeypatch):

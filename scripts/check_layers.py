@@ -106,7 +106,6 @@ CONGELADAS: frozenset[str] = frozenset(
         "observability/metrics.py -> services.extraction_runs",
         "observability/ops_events.py -> db.connection",
         "observability/runtime_metrics.py -> db.connection",
-        "services/ml/sap_classifier.py -> scraper.seed_negatives",
         "services/rag/fact_sheet.py -> scraper.document_fetcher",
         "services/source_health.py -> scraper.connectors",
         "services/tech_signal.py -> scraper.filters",

@@ -253,6 +253,55 @@ groups:
             El scrape de Prometheus a tenderflow-api devuelve 0 durante 2 minutos.
             Verificar DATABASE_URL, pool psycopg y Supabase status.
 
+  - name: errores_capturados
+    # Los `except Exception` que los modulos calientes capturan a proposito
+    # (best-effort: no pueden tumbar a quien llama) cuentan en
+    # `<modulo>_errores_total{paso}` (observability/errores.py). Un fallo suelto
+    # es ruido; el mismo paso fallando una y otra vez es un error de
+    # programacion o una dependencia rota que la pasada esconde en verde.
+    #
+    # Solo hay regla para los dos modulos que corren en la API, que es lo unico
+    # scrapeable: db/connection.py y llm/client.py. Los contadores de
+    # scraper/connectors/base.py, scheduler/pipeline_runs.py y
+    # scheduler/jobs/documentos_embeddings.py se emiten en procesos efimeros de
+    # GH Actions y NO tienen regla aqui, igual que la frescura del dato: seria
+    # una alerta muerta. Los vigila scheduler/healthcheck.py (check
+    # "ops_events_errores_capturados") con el evento
+    # `error_capturado:<modulo>:<paso>` de ops_events y el mismo umbral,
+    # `UMBRAL_REPETIDO` de observability/errores.py (tests/test_observabilidad_errores.py
+    # compara los dos).
+    rules:
+      - alert: DbConnectionErroresCapturados
+        # `for: 10m`: el umbral se cruza en un instante y una rafaga de un
+        # despliegue (pool que se recrea, BD reiniciandose) puede cruzarlo
+        # sin que nada siga roto diez minutos despues.
+        expr: sum by (paso) (increase(db_connection_errores_total[1h])) >= 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "db/connection: el paso {{ $labels.paso }} falla de forma repetida"
+          description: >
+            db_connection_errores_total{paso} ha sumado 5 o mas en la ultima
+            hora. Son errores que el modulo captura sin propagar (ping, purga
+            de ociosas, devolucion de conexiones, rollback de lectura...): el
+            traceback esta en el log de la API con el evento del paso y
+            exc_info. `ping` repetido es la BD inalcanzable.
+
+      - alert: LlmClientErroresCapturados
+        expr: sum by (paso) (increase(llm_client_errores_total[1h])) >= 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "llm/client: el paso {{ $labels.paso }} falla de forma repetida"
+          description: >
+            llm_client_errores_total{paso} ha sumado 5 o mas en la ultima hora.
+            `modelo_fallido` es un candidato de la cadena que lanza antes del
+            primer token (la cadena cae al siguiente y el usuario no lo ve);
+            `presupuesto` es el acumulador de gasto que no se alimenta, y con
+            el el tope de LLM_BUDGET_* no puede cortar nunca.
+
   - name: api_latency
     # SLO 6 (P99 < 500 ms) y la mitad servidor del SLO 3, que hasta 2026-09-06
     # no tenian NINGUNA regla -- `docs/sli-slo.md` lo reconocia en las dos

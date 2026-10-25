@@ -236,6 +236,42 @@ try:
         ["canal", "motivo"],  # canal: email · motivo: not_configured|smtp|network
     )
 
+    # ── Errores capturados en los módulos calientes ───────────────────────
+    # Un contador por módulo, con el paso como etiqueta (literal en el código:
+    # cardinalidad acotada). Los incrementa `observability.errores.
+    # ContadorDeErrores`, que además deja el evento en ops_events para los
+    # planos efímeros. Las reglas están en alert_rules.yml (grupo
+    # `errores_capturados`) solo para los dos que corren en la API.
+    scraper_conector_errores_total: _CounterMetric = Counter(
+        "scraper_conector_errores_total",
+        "Errores capturados sin propagar en scraper/connectors/base.py, por paso",
+        ["paso"],
+    )
+
+    pipeline_runs_errores_total: _CounterMetric = Counter(
+        "pipeline_runs_errores_total",
+        "Errores capturados sin propagar en scheduler/pipeline_runs.py, por paso",
+        ["paso"],
+    )
+
+    db_connection_errores_total: _CounterMetric = Counter(
+        "db_connection_errores_total",
+        "Errores capturados sin propagar en db/connection.py, por paso",
+        ["paso"],
+    )
+
+    llm_client_errores_total: _CounterMetric = Counter(
+        "llm_client_errores_total",
+        "Errores capturados sin propagar en llm/client.py, por paso",
+        ["paso"],
+    )
+
+    documentos_embeddings_errores_total: _CounterMetric = Counter(
+        "documentos_embeddings_errores_total",
+        "Errores capturados sin propagar en el job de pliegos y embeddings, por paso",
+        ["paso"],
+    )
+
     _AVAILABLE = True
 except ImportError:  # pragma: no cover
     log.warning("prometheus_client_unavailable_metrics_disabled")
@@ -274,6 +310,11 @@ except ImportError:  # pragma: no cover
     dedupe_marked_total = _NoopMetric()
     dedupe_match_rate = _NoopMetric()
     alert_delivery_failed_total = _NoopMetric()
+    scraper_conector_errores_total = _NoopMetric()
+    pipeline_runs_errores_total = _NoopMetric()
+    db_connection_errores_total = _NoopMetric()
+    llm_client_errores_total = _NoopMetric()
+    documentos_embeddings_errores_total = _NoopMetric()
     _AVAILABLE = False
 
 

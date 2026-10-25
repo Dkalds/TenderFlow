@@ -123,6 +123,33 @@ def test_healthcheck_ops_events_check_warn(tmp_db):
     assert any("write_slow_high" in w for w in result["warnings"])
 
 
+def test_healthcheck_avisa_de_errores_capturados_repetidos(tmp_db):
+    """El espejo de `*ErroresCapturados` para los procesos efímeros."""
+    from datetime import UTC, datetime, timedelta
+
+    import db.database as db_mod
+    from observability.errores import UMBRAL_REPETIDO
+    from scheduler.healthcheck import run_check
+
+    with db_mod.connect() as c:
+        hace_una_hora = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        for _ in range(UMBRAL_REPETIDO):
+            c.execute(
+                "INSERT INTO ops_events (ts, event_type, value) VALUES (%s, %s, 1)",
+                (hace_una_hora, "error_capturado:scraper_conector:dedupe"),
+            )
+        c.execute(
+            "INSERT INTO ops_events (ts, event_type, value) VALUES (%s, %s, 1)",
+            (hace_una_hora, "error_capturado:pipeline_runs:analytics_export"),
+        )
+
+    result = run_check(freshness_hours=9999, dlq_threshold=9999)
+
+    assert f"errores_capturados:scraper_conector:dedupe:{UMBRAL_REPETIDO}" in result["warnings"]
+    assert not any("pipeline_runs" in w for w in result["warnings"])
+    assert {"name": "ops_events_errores_capturados", "ok": False} in result["checks"]
+
+
 def test_healthcheck_ops_events_check_ok(tmp_db):
     """run_check pasa limpio si no hay eventos problematicos."""
     from scheduler.healthcheck import run_check

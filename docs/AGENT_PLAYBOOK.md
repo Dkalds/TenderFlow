@@ -41,6 +41,7 @@ El [Makefile](../Makefile) es la fuente canónica. Targets habituales:
 | Validar customizaciones agénticas | `make check-agent-docs` |
 | Validar contrato API | `make check-api-contract` |
 | Dirección de imports entre paquetes | `make check-layers` |
+| `print()` fuera de un `__main__` en `scraper/`, `services/`, `scheduler/` | `make check-prints` |
 | Operación nueva de la API con su motivo | `make check-api-surface` |
 | Validar invariantes analíticos del frontend | `make check-frontend-invariants` |
 | Lint / typecheck frontend | `make web-lint` / `make web-typecheck` |
@@ -67,7 +68,7 @@ schema aislado mediante las fixtures de `tests/conftest.py`.
 | `make typecheck` | requiere deps y mypy | disponible |
 | `make status`, `make job-parity` | requiere deps | disponible |
 | `make check-api-contract` | requiere deps | disponible tras `make openapi` |
-| `make check-layers` | disponible: stdlib + git | disponible |
+| `make check-layers`, `make check-prints` | disponible: stdlib + git | disponible |
 | `make check-api-surface` | requiere deps | disponible |
 | `make test-unit`, `make test`, `make check` | no disponible | no disponible sin `TEST_DATABASE_URL` |
 | `make web-test`, `make web-test-coverage` | no disponible | requiere `web/node_modules` (`cd web && npm ci`) |
