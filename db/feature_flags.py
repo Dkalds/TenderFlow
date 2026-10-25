@@ -21,6 +21,24 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
+#: Búsqueda por significado del Investigador (``POST /search/semantic``):
+#: completa la lista del texto con la fusión vectorial sobre los pliegos. La
+#: lee ``services.investigador.busqueda.semantica_activa``.
+FLAG_BUSQUEDA_SEMANTICA = "busqueda_semantica"
+
+#: Flags que el código consulta, con la descripción que ve Administración.
+#: Una flag sin fila está apagada (``is_enabled`` → False), pero sin fila
+#: tampoco aparecía en la lista de Administración, así que no había forma de
+#: encenderla sin SQL a mano. ``GET /feature-flags`` añade las de aquí que aún
+#: no tengan fila, apagadas, y ``PUT`` guarda esta descripción al crearla.
+FLAGS_DECLARADAS: dict[str, str] = {
+    FLAG_BUSQUEDA_SEMANTICA: (
+        "Investigador: completa la búsqueda por texto con lo que se parece por "
+        "significado en los pliegos. Necesita el modelo de embeddings en la API; "
+        "sin él responde por texto."
+    ),
+}
+
 
 def is_enabled(name: str, user_email: str | None = None) -> bool:
     """Devuelve True si el flag está activo para el usuario/porcentaje dado.

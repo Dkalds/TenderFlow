@@ -89,7 +89,14 @@ class _MotorFalso:
         fused: list[dict[str, Any]] | None = None,
         texto: list[dict[str, Any]] | None = None,
         fuente: str = SOURCE_FTS,
+        semantica: bool = True,
+        embeddings: bool = True,
+        fusion_falla: bool = False,
     ) -> None:
+        self._semantica = semantica
+        self._embeddings = embeddings
+        self._fusion_falla = fusion_falla
+        self.email_de_la_flag: str | None = None
         self._fused = fused or []
         self._texto = texto or []
         self._fuente = fuente
@@ -112,7 +119,13 @@ class _MotorFalso:
         self.alpha_recibido = alpha
         self.filtros_de_la_fusion = dict(filtros or {})
         self.pregunta_de_la_fusion = question
+        if self._fusion_falla:
+            raise RuntimeError("pgvector no responde")
         return list(self._fused)
+
+    def semantica_activa(self, user_email: str | None) -> bool:
+        self.email_de_la_flag = user_email
+        return self._semantica
 
     def buscar_por_texto(self, consulta: Any, ambito: Any, top_k: int, **_: Any) -> Any:
         from services.investigador.busqueda import Resultado
@@ -123,10 +136,15 @@ class _MotorFalso:
         return Resultado(list(self._texto)[:top_k], self._fuente)
 
     def instalar(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import services.embeddings as emb
         import services.investigador.busqueda as busqueda
         import services.investigador.search_engine as motor
 
         monkeypatch.setattr(motor, "hybrid_search", self.hybrid_search)
+        # La flag ``busqueda_semantica`` vive en BD: aquí la decide el doble
+        # (encendida por defecto, para que estos tests ejerzan la fusión).
+        monkeypatch.setattr(busqueda, "semantica_activa", self.semantica_activa)
+        monkeypatch.setattr(emb, "embeddings_available", lambda: self._embeddings)
         monkeypatch.setattr(busqueda, "buscar_por_texto", self.buscar_por_texto)
         # Lo que solo trae la fusión se completa con su fila de anuncio.
         monkeypatch.setattr(
@@ -143,9 +161,140 @@ def _buscar(q: str = "sap", **body: Any) -> SemanticSearchResponse:
     from api.routes.search import SemanticSearchRequest, semantic_search
 
     peticion = SemanticSearchRequest(q=q, **body)
-    # ``ctx`` es lo que inyectaría ``require_any_auth``; la ruta solo lee de él
-    # ``user_id``, para el log.
-    return anyio.run(semantic_search, peticion, {"user_id": "test"})
+    # ``ctx`` es lo que inyectaría ``require_any_auth``; la ruta lee de él
+    # ``user_id``, para el log, y ``email``, para la flag.
+    return anyio.run(semantic_search, peticion, {"user_id": "test", "email": "ana@example.com"})
+
+
+class _LogCapturado:
+    def __init__(self) -> None:
+        self.eventos: list[dict[str, Any]] = []
+
+    def info(self, evento: str, **campos: Any) -> None:
+        self.eventos.append({"evento": evento, **campos})
+
+    def error(self, evento: str, **campos: Any) -> None:
+        self.eventos.append({"evento": evento, **campos})
+
+
+class TestFlagYDegradacion:
+    """La búsqueda por significado se sirve detrás de la flag
+    ``busqueda_semantica`` (apagada por defecto) y, encendida, degrada al texto
+    sin error si no hay con qué fusionar o la fusión falla."""
+
+    def _log(self, monkeypatch: pytest.MonkeyPatch) -> _LogCapturado:
+        import api.routes.search as ruta
+
+        log = _LogCapturado()
+        monkeypatch.setattr(ruta, "log", log)
+        return log
+
+    def test_con_la_flag_apagada_no_se_intenta_la_fusion(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        log = self._log(monkeypatch)
+        motor = _MotorFalso(fused=[_doc("A", 0.03)], texto=[_hit("B")], semantica=False)
+        motor.instalar(monkeypatch)
+        resp = _buscar()
+        assert motor.llamadas == ["texto"]
+        assert resp.source == SOURCE_FTS
+        assert [h.id_externo for h in resp.hits] == ["B"]
+        (evento,) = log.eventos
+        assert evento["semantica"] == "apagada"
+        assert evento["fusion_ms"] is None
+
+    def test_la_flag_se_evalua_para_quien_busca(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """El despliegue por porcentaje o por correo necesita el correo."""
+        motor = _MotorFalso(texto=[_hit("B")])
+        motor.instalar(monkeypatch)
+        _buscar()
+        assert motor.email_de_la_flag == "ana@example.com"
+
+    def test_sin_modelo_de_embeddings_responde_por_texto(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        log = self._log(monkeypatch)
+        motor = _MotorFalso(fused=[_doc("A", 0.03)], texto=[_hit("B")], embeddings=False)
+        motor.instalar(monkeypatch)
+        resp = _buscar()
+        assert motor.llamadas == ["texto"]
+        assert resp.source == SOURCE_FTS
+        assert log.eventos[0]["semantica"] == "sin_motor"
+
+    def test_si_la_fusion_falla_responde_por_texto_sin_503(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Un fallo del lado vectorial (pgvector caído, modelo roto) no tumba
+        una búsqueda que el texto resolvía."""
+        log = self._log(monkeypatch)
+        motor = _MotorFalso(fused=[_doc("A", 0.03)], texto=[_hit("B")], fusion_falla=True)
+        motor.instalar(monkeypatch)
+        resp = _buscar()
+        assert resp.source == SOURCE_FTS
+        assert [h.id_externo for h in resp.hits] == ["B"]
+        (evento,) = log.eventos
+        assert evento["evento"] == "semantic_search.ok"
+        assert evento["semantica"] == "error"
+        assert isinstance(evento["fusion_ms"], int)
+
+    def test_sin_aporte_lo_dice_el_log(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        log = self._log(monkeypatch)
+        _MotorFalso(fused=[], texto=[_hit("B")]).instalar(monkeypatch)
+        assert _buscar().source == SOURCE_FTS
+        assert log.eventos[0]["semantica"] == "sin_aporte"
+
+    def test_servida_lo_dice_el_log(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        log = self._log(monkeypatch)
+        _MotorFalso(fused=[_doc("A", 0.03)], texto=[_hit("B")]).instalar(monkeypatch)
+        assert _buscar().source == SOURCE_RRF
+        assert log.eventos[0]["semantica"] == "servida"
+        assert isinstance(log.eventos[0]["fusion_ms"], int)
+
+    def test_con_operadores_no_aplica(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        log = self._log(monkeypatch)
+        _MotorFalso(fused=[_doc("A", 0.03)], texto=[_hit("B")]).instalar(monkeypatch)
+        _buscar("mantenimiento -limpieza")
+        assert log.eventos[0]["semantica"] == "no_aplica"
+
+
+class TestSemanticaActiva:
+    """``semantica_activa`` lee la flag y, si no puede, apaga."""
+
+    def test_pregunta_por_la_flag_y_el_correo(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import services.investigador.busqueda as busqueda
+
+        llamadas: list[tuple[str, str | None]] = []
+
+        def _is_enabled(nombre: str, user_email: str | None = None) -> bool:
+            llamadas.append((nombre, user_email))
+            return False
+
+        monkeypatch.setattr(busqueda, "is_enabled", _is_enabled)
+        assert busqueda.semantica_activa("ana@example.com") is False
+        assert llamadas == [("busqueda_semantica", "ana@example.com")]
+
+    def test_encendida(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import services.investigador.busqueda as busqueda
+
+        monkeypatch.setattr(busqueda, "is_enabled", lambda nombre, user_email=None: True)
+        assert busqueda.semantica_activa(None) is True
+
+    def test_si_la_tabla_no_responde_apaga(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import services.investigador.busqueda as busqueda
+
+        def _rota(nombre: str, user_email: str | None = None) -> bool:
+            raise RuntimeError("BD caída")
+
+        monkeypatch.setattr(busqueda, "is_enabled", _rota)
+        assert busqueda.semantica_activa("ana@example.com") is False
+
+    def test_la_flag_esta_declarada_para_administracion(self) -> None:
+        """Sin fila no aparecía en Administración: declararla es lo que deja
+        encenderla sin SQL a mano."""
+        from db.feature_flags import FLAG_BUSQUEDA_SEMANTICA, FLAGS_DECLARADAS
+
+        assert FLAG_BUSQUEDA_SEMANTICA == "busqueda_semantica"
+        assert FLAGS_DECLARADAS[FLAG_BUSQUEDA_SEMANTICA]
 
 
 class TestFuenteDerivadaDelCamino:
