@@ -34,7 +34,7 @@ def expediente_completo(id_externo: str) -> dict[str, Any] | None:
     oficiales; listas vacías si el anuncio no las publicó) y ``ficha_pliego``
     (la ficha extraída de los pliegos, o ``None`` si aún no hay).
     """
-    # Un id anterior a una re-key (`licitaciones_id_anterior`, v159) resuelve
+    # Un id anterior a una re-key (`licitaciones_id_anterior`, v161) resuelve
     # a su fila vigente: el dict devuelto lleva el `id_externo` de hoy.
     resuelto = resolver_id_licitacion(id_externo)
     if resuelto is None:

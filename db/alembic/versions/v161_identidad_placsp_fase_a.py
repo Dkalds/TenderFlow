@@ -1,7 +1,7 @@
-"""v159: identidad PLACSP, fase A — el órgano de la fuente y los ids anteriores.
+"""v161: identidad PLACSP, fase A — el órgano de la fuente y los ids anteriores.
 
-Revision ID: v159_identidad_placsp_fase_a
-Revises: v158_domain_events_pscp_rekey
+Revision ID: v161_identidad_placsp_fase_a
+Revises: v160_fechas_ts_indices
 Create Date: 2026-10-25
 
 Qué falla hoy
@@ -50,8 +50,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "v159_identidad_placsp_fase_a"
-down_revision: str | None = "v158_domain_events_pscp_rekey"
+revision: str = "v161_identidad_placsp_fase_a"
+down_revision: str | None = "v160_fechas_ts_indices"
 branch_labels: str | tuple[str, ...] | None = None
 depends_on: str | tuple[str, ...] | None = None
 
