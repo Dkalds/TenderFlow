@@ -1039,6 +1039,13 @@ _Sin ítems abiertos._
   - El test de paridad no se ha ejecutado nunca (sin modelo ni red a Hugging Face): correrlo con el modelo descargado antes de desplegar.
   - Tras el deploy: `source=rrf` en `semantic_search.ok`, MRR de `tests/eval/test_eval_rag.py` antes/después, RSS de la API tras la primera búsqueda (~470 MB esperados) y latencia de la primera búsqueda (carga perezosa del modelo) y de los similares de la ficha.
   - Para que el Radar puntúe por significado en la API hace falta **persistir** el embedding de cada licitación (columna o tabla `vector(384)` + backfill en el pipeline; migración, §6) y leerlo en `score_affinity_batch`, no calcularlo al vuelo.
+- **Progreso (2026-10-25, rama `agente/busqueda-semantica-servida`) — se sirve detrás de una flag, con los valores del modelo verificados.** Por qué seguía sin correr: la imagen de la API se construía sin modelo, porque `tenderflow-api` no declara en Render `EMBEDDINGS_ONNX_REVISION` ni los tres sha256; sin revisión el build no descarga nada, `EMBEDDINGS_ONNX_DIR` queda vacía y `hybrid_search` devuelve `[]`. Hecho:
+  - Valores verificados desde la API de Hugging Face (commit `e8f8c211…`, sha256 de `model.onnx`, `tokenizer.json` y `sentence_bert_config.json`), aceptados por `scripts/descargar_modelo_embeddings.py`, y **paridad medida contra producción**: los vectores ONNX de tres fragmentos de `documento_chunks` coinciden con los guardados por sentence-transformers (coseno 1,00000, `md5` del texto cotejado). Tabla y pasos en `docs/runbooks/model-rollback.md` § «Modelo ONNX de embeddings». El test de paridad local (`tests/test_embeddings_onnx_paridad.py`) sigue sin ejecutarse: no hay PyTorch en esa máquina.
+  - Flag `busqueda_semantica` (`db/feature_flags.py`), **apagada por defecto**: `services/investigador/busqueda.py::semantica_activa` la lee por usuario (fail-closed) y `buscar(..., semantica=)` solo intenta la fusión con ella. `FLAGS_DECLARADAS` hace que `GET /feature-flags` la liste aunque no tenga fila, para encenderla desde Administración sin SQL.
+  - Degradación limpia: sin motor de embeddings, sin pgvector o fragmentos, o si la fusión lanza, la respuesta es la del texto (antes, un fallo al completar la lista con lo que trajo la fusión —abrir la conexión, `anuncios_por_id`— salía como 503). El log `semantic_search.ok` lleva `semantica` (`apagada`, `no_aplica`, `sin_motor`, `sin_aporte`, `error`, `servida`) y `fusion_ms`. Tests: `tests/test_search_semantic_ruta.py` (`TestFlagYDegradacion`, `TestSemanticaActiva`), `tests/test_search_semantic_hybrid.py` y `tests/test_feature_flags_route.py`.
+  - Presupuesto de latencia en `docs/sli-slo.md` § 8 (`fusion_ms` P95 ≤ 1,5 s; respuesta P95 ≤ 2,5 s; `error` < 1 %), con lo medido: codificar P95 21 ms en local, consulta HNSW 0,9–1,6 s por el MCP.
+  - La pantalla ya decía qué modo respondió: la insignia de `source` (`rrf` = «Por significado y texto», `fts` = «Por texto»), así que el DTO no cambia.
+  - **Falta (propietario):** las cuatro variables en `tenderflow-api` (Render) y un deploy con caché limpia; encender la flag; después, `source=rrf` en `semantic_search.ok`, MRR antes/después, RSS y `fusion_ms` real contra el presupuesto. Con eso se cierra.
 
 ### [P3] [Investigador] El historial de consultas sigue en `localStorage`
 - **Área:** web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts
@@ -1048,6 +1055,7 @@ _Sin ítems abiertos._
   - El término no llega a la telemetría de producto (sigue siendo «la estrategia comercial de quien lo escribe»).
 - **Files de partida:** [web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts](<../web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts>)
 - **Riesgo:** bajo.
+- **Nota (2026-10-25):** no se hizo junto con la búsqueda por significado: la tabla nueva es una migración en `db/alembic/`, que pide OK del propietario (AGENTS.md §6).
 
 ### [P3] [Rendimiento 2026-09] Flecos de la rama de rendimiento
 - **Área:** web/bundle-budget.json, .env.example (OK humano), varios

@@ -476,15 +476,47 @@ sha256 de cada fichero, sin modo «sin verificar». Los argumentos se declaran
 como variables del servicio `tenderflow-api` en Render, que las pasa como build
 args:
 
-| Variable | Valor |
-| --- | --- |
-| `EMBEDDINGS_ONNX_REVISION` | Commit (40 hex) de `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
-| `EMBEDDINGS_ONNX_SHA256_MODELO` | sha256 de `onnx/model.onnx` en ese commit |
-| `EMBEDDINGS_ONNX_SHA256_TOKENIZADOR` | sha256 de `tokenizer.json` |
-| `EMBEDDINGS_ONNX_SHA256_CONFIG` | sha256 de `sentence_bert_config.json` |
+| Variable | Qué es | Valor verificado (2026-10-25) |
+| --- | --- | --- |
+| `EMBEDDINGS_ONNX_REVISION` | Commit (40 hex) de `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | `e8f8c211226b894fcb81acc59f3b34ba3efd5f42` |
+| `EMBEDDINGS_ONNX_SHA256_MODELO` | sha256 de `onnx/model.onnx` en ese commit (470.301.610 bytes) | `10f7a088420252b26caf819236ca2c9d2987afd0fc06fec7553b542a5655a05a` |
+| `EMBEDDINGS_ONNX_SHA256_TOKENIZADOR` | sha256 de `tokenizer.json` | `2c3387be76557bd40970cec13153b3bbf80407865484b209e655e5e4729076b8` |
+| `EMBEDDINGS_ONNX_SHA256_CONFIG` | sha256 de `sentence_bert_config.json` | `70f4448f31320443fe3557cacea5abf2dcc4915dda8c80646bec9f3bb0aa5a1f` |
+
+Cómo se verificaron: commit y sha256 LFS de la API de Hugging Face
+(`/api/models/<repo>/revision/main?blobs=true`), el del config con `sha256sum`
+del fichero de ese commit; `descargar_modelo_embeddings.py` los bajó y los
+aceptó; y los vectores que el modelo ONNX produce para tres fragmentos de
+`documento_chunks` de producción coinciden con los que el pipeline guardó con
+sentence-transformers (coseno 1,00000, `md5` del texto cotejado; detalle en
+[docs/sli-slo.md](../sli-slo.md) § 8). El test de paridad frente a
+sentence-transformers en local sigue sin ejecutarse (no hay PyTorch en la
+máquina de quien lo verificó); la comparación con los vectores guardados mide
+lo mismo contra lo que de verdad se consulta.
 
 Sin `EMBEDDINGS_ONNX_REVISION` el build no descarga nada y la imagen no define
 `EMBEDDINGS_ONNX_DIR`: así se construyen el CI, el worker y el MCP.
+
+**Encenderlo en producción (propietario):**
+
+1. En Render, servicio `tenderflow-api` → *Environment*: añadir las cuatro
+   variables de la tabla con esos valores. No van en `render.yaml`: el
+   Blueprint no gobierna el servicio (cabecera de `render.yaml`) y
+   `check_env_parity` exigiría declararlas también en `.env.example`.
+2. *Manual Deploy → Clear build cache & deploy*. En el log del build tiene que
+   salir `descargar_modelo_embeddings: sentence-transformers/…@e8f8c211… en
+   /modelos/embeddings`; si sale «sin revisión», las variables no llegaron como
+   build args.
+3. Con el deploy vivo, la búsqueda sigue siendo por texto: la fusión está
+   detrás de la flag `busqueda_semantica`, **apagada por defecto**. Encenderla
+   en Administración → Feature flags (primero por correo o con un porcentaje
+   bajo, si se quiere graduar).
+4. Comprobar en los logs: `semantic_search.ok` con `semantica=servida` y
+   `source=rrf` en alguna búsqueda; `semantica=sin_motor` significa que el
+   modelo no está en la imagen (paso 2) y `sin_aporte` en todas, que no hay
+   fragmentos embebidos o pgvector no responde. Vigilar `fusion_ms` contra el
+   presupuesto de [docs/sli-slo.md](../sli-slo.md) § 8 y el RSS tras la
+   primera búsqueda.
 
 **Cómo obtener los valores.** El commit, de la pestaña *Files and versions* del
 repo (no `main`: una rama puede cambiar entre dos builds). Los sha256 de
@@ -512,6 +544,9 @@ petición y siguen exigiendo sentence-transformers
 (`services.embeddings.embeddings_masivos_disponibles`). Los similares y el
 predecesor de la ficha (≤ 100 títulos) sí lo usan.
 
-**Revertir.** Declarar `EMBEDDINGS_ONNX_DIR` **vacía** en el entorno del
+**Revertir.** Para la búsqueda del Investigador basta con apagar la flag
+`busqueda_semantica` en Administración: sin desplegar, la siguiente búsqueda ya
+es por texto. Para soltar el modelo entero (también los similares de la ficha y
+la memoria), declarar `EMBEDDINGS_ONNX_DIR` **vacía** en el entorno del
 servicio (borrarla no basta: la imagen la define) apaga el motor sin rebuild;
 la búsqueda vuelve a FTS.

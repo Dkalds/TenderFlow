@@ -61,8 +61,10 @@ RUN pip install --upgrade "pip>=26.1" \
 # worker y el MCP no codifican consultas). Render pasa las variables del
 # servicio como build args, así que se declaran en `tenderflow-api`; los
 # valores y cómo obtenerlos están en `docs/runbooks/model-rollback.md`
-# § «Modelo ONNX de embeddings». No hay valores por defecto porque no se han
-# podido verificar desde aquí: un hash inventado es peor que ninguno.
+# § «Modelo ONNX de embeddings», verificados el 2026-10-25. No van como valores
+# por defecto aquí porque esta imagen también la construyen el CI y servicios
+# que no codifican consultas: con defaults, todos bajarían ~470 MB. La fusión
+# que el modelo habilita está además detrás de la flag `busqueda_semantica`.
 ARG EMBEDDINGS_ONNX_REPO=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
 ARG EMBEDDINGS_ONNX_REVISION=
 ARG EMBEDDINGS_ONNX_SHA256_MODELO=
