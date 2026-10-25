@@ -551,6 +551,8 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
         "skipped": 0,
         "skipped_no_extra": 0,
         "unsupported": 0,
+        # ``sin_texto``: PDF escaneado sin capa de texto que el OCR no leyó.
+        "sin_texto": 0,
     }
     for row in candidates[:_ONDEMAND_MAX_DOCUMENTS]:
         counts["attempted"] += 1
@@ -612,12 +614,31 @@ def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
             f"se sabe leer ({', '.join(formatos)}); no hay texto del que extraer "
             "la ficha."
         )
+    # Escaneados sin OCR: el documento existe y se lee en el navegador, pero no
+    # tiene capa de texto. Decir «descargas fallidas» mandaría a esperar a la
+    # ingesta diaria, que no lo arregla; lo que falta es OCR.
+    escaneados = [row for row in rows if row.get("status") == "sin_texto"]
+    if escaneados and not any(row.get("status") == "error" for row in rows):
+        return (
+            f"{_plural_pliegos(len(escaneados), len(rows))} un PDF escaneado sin capa de "
+            "texto, y este servidor no pudo aplicarle OCR; no hay texto del que "
+            "extraer la ficha. Se puede consultar abriendo el documento original."
+        )
     errores = sum(1 for row in rows if row.get("status") == "error")
     return (
         f"No se pudo extraer texto de los pliegos ({errores} de {len(rows)} "
         "descargas fallaron). Los enlaces de PLACSP caducan por tokens "
         "rotativos; suelen volver a estar disponibles tras la ingesta diaria."
     )
+
+
+def _plural_pliegos(escaneados: int, total: int) -> str:
+    """«El pliego es» / «Los 3 pliegos son» / «2 de los 3 pliegos son»."""
+    if total == 1:
+        return "El pliego de esta licitación es"
+    if escaneados == total:
+        return f"Los {total} pliegos de esta licitación son cada uno"
+    return f"{escaneados} de los {total} pliegos de esta licitación son"
 
 
 class SinPaginasError(ValueError):

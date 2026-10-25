@@ -52,6 +52,7 @@ export function useOrganizationNifs(organizationId: number | null, enabled: bool
 export function useSaveOrganizationNifs(organizationId: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "No se pudo guardar la identidad fiscal" },
     mutationFn: (nifs: OrganizationNifIn[]) =>
       apiMutate<OrganizationNifs>("PUT", `/api/v1/organizations/${organizationId}/nifs`, {
         nifs,
@@ -82,6 +83,7 @@ export function useOrganizationCapabilities(organizationId: number | null) {
 export function useSaveOrganizationCapabilities(organizationId: number | null) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { errorTitle: "No se pudo guardar el perfil de capacidad" },
     mutationFn: (body: OrganizationCapabilitiesIn) =>
       apiMutate<OrganizationCapabilities>(
         "PUT",

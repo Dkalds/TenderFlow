@@ -9,7 +9,7 @@
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
@@ -17,6 +17,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: v
 import { toast } from "sonner";
 import { WebhookRow } from "../webhook-row";
 import type { WebhookAmpliado } from "../../../_hooks/use-webhooks-ambito";
+import { crearQueryClientDePrueba } from "@/test/query-client";
 
 const WEBHOOK: WebhookAmpliado = {
   id: 5,
@@ -42,7 +43,8 @@ function llamadas(m: string, ruta: string) {
 }
 
 function pintar(webhook: WebhookAmpliado = WEBHOOK, editable = true) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  // Con el aviso global de mutaciones: el fallo lo dice él (D6).
+  const client = crearQueryClientDePrueba();
   render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
@@ -152,7 +154,9 @@ describe("WebhookRow: reenviar una entrega", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Reenviar la entrega/ }));
 
     await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith("Esa entrega ya se completó o no se puede reenviar"),
+      expect(toast.error).toHaveBeenCalledWith("No se pudo reenviar la entrega", {
+        description: "Esa entrega ya se completó o no se puede reenviar",
+      }),
     );
   });
 

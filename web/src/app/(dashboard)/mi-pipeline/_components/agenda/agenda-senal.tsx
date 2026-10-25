@@ -49,7 +49,7 @@ export function AgendaSenal({
           variant="outline"
           size="sm"
           onClick={onSeguir}
-          className="flex-1 border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
+          className="flex-1 border-primary-line bg-primary-selected text-primary hover:bg-primary-soft hover:text-primary"
         >
           Seguir
         </Button>

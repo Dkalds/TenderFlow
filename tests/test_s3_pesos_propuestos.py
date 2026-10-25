@@ -20,12 +20,12 @@ from typing import Any
 import pytest
 
 import services.pursuits as pursuits_svc
+from config.scoring_weights import WEIGHTS_TOTAL, validate_scoring_weights
 from services.pursuits import (
     PESOS_MINIMO_CIERRES,
     PursuitValidationError,
     proponer_pesos,
 )
-from shared.scoring_weights import WEIGHTS_TOTAL, validate_scoring_weights
 from tests.dobles_tenencia import alcance_fijo
 
 _PESOS_BASE = {

@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 /** Chip de un recorte activo, que se quita al pulsarlo. */
 const CHIP_RECORTE =
-  "tf-pressable inline-flex h-6 items-center gap-1.5 rounded-md border border-primary/30 bg-primary/10 px-2 text-tf-micro font-medium text-primary hover:bg-primary/15";
+  "tf-pressable inline-flex h-6 items-center gap-1.5 rounded-md border border-primary-line bg-primary-selected px-2 text-tf-micro font-medium text-primary hover:bg-primary-soft";
 
 const DENSIDADES = [
   { value: "comoda", label: "Cómoda" },
@@ -45,7 +45,7 @@ export function DetalleBarra({
     // `overflow-x-auto` y hijos `flex-none`: a 375 px, con los dos chips de
     // recorte puestos, la barra no cabe; antes empujaba el documento entero a
     // scroll horizontal y ahora se desplaza ella sola (móvil es consulta).
-    <div className="flex h-11 flex-none items-center gap-2.5 overflow-x-auto border-b border-border/60 px-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:flex-none">
+    <div className="flex h-11 flex-none items-center gap-2.5 overflow-x-auto border-b border-divider px-3.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:flex-none">
       <span className="text-tf-body font-semibold">Detalle</span>
       <span className="hidden text-tf-meta text-muted-foreground lg:inline">
         Las licitaciones del ámbito, campo a campo

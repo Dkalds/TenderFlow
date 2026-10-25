@@ -37,11 +37,6 @@ export function conOrganizacion(
   return query ? `${url}?${query}` : url;
 }
 
-/** El `detail` de la API cuando lo hay: «El rol viewer es de solo lectura.» dice más que un genérico. */
-export function motivo(error: unknown, porDefecto: string): string {
-  return error instanceof Error && error.message ? error.message : porDefecto;
-}
-
 /**
  * La cuenta que contiene un órgano, o `null` si la organización no lo sigue.
  *
@@ -111,9 +106,9 @@ export function useSeguirCuenta() {
       qc.setQueryData<Cuenta | null>(clave, optimista);
       return { clave, previa };
     },
-    onError: (error, _organo, ctx) => {
+    meta: { errorTitle: "No se pudo seguir el órgano" },
+    onError: (_error, _organo, ctx) => {
       if (ctx) qc.setQueryData(ctx.clave, ctx.previa);
-      toast.error(motivo(error, "No se pudo seguir el órgano"));
     },
     onSuccess: (cuenta, _organo, ctx) => {
       // La cuenta real sustituye a la optimista antes de la relectura.
@@ -150,9 +145,9 @@ export function useDejarDeSeguirOrgano() {
       qc.setQueryData<Cuenta | null>(clave, null);
       return { clave, previa };
     },
-    onError: (error, _organo, ctx) => {
+    meta: { errorTitle: "No se pudo dejar de seguir el órgano" },
+    onError: (_error, _organo, ctx) => {
       if (ctx) qc.setQueryData(ctx.clave, ctx.previa);
-      toast.error(motivo(error, "No se pudo dejar de seguir el órgano"));
     },
     onSuccess: () => registrarEvento("organo_seguido", { accion: "dejar_de_seguir" }),
     onSettled: () => void qc.invalidateQueries({ queryKey: cuentaKeys.all }),

@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-10-25
 
-Revisión Alembic aplicada: `v161_user_notifications_user_id_fase3`.
+Revisión Alembic aplicada: `v162_user_notifications_user_id_fase3`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas

@@ -22,7 +22,7 @@ import sys
 from datetime import UTC, datetime, timedelta
 
 from api.auth import _hash_key, create_api_key
-from db.database import connect, get_table_columns
+from db.repositories.api_keys import ApiKeyRepository
 
 
 def rotate(name: str, user_id: int, grace_days: int, scopes: str = "*") -> int:
@@ -40,27 +40,15 @@ def rotate(name: str, user_id: int, grace_days: int, scopes: str = "*") -> int:
     expires_at = (datetime.now(UTC) + timedelta(days=grace_days)).isoformat()
 
     # Marcar las claves activas existentes con ese nombre como expirando
-    with connect() as c:
-        cols = get_table_columns(c, "api_keys")
-        if not {"expires_at", "user_id", "scopes"}.issubset(cols):
-            print(
-                "ERROR: faltan columnas de seguridad. Ejecuta: alembic upgrade head",
-                file=sys.stderr,
-            )
-            return 2
-        existing = c.execute(
-            "SELECT scopes FROM api_keys WHERE name = %s AND user_id = %s AND is_active = 1 "
-            "AND (expires_at IS NULL OR expires_at > %s) ORDER BY id DESC LIMIT 1",
-            (name, user_id, expires_at),
-        ).fetchone()
-        effective_scopes = str(existing[0] or "*") if existing else scopes
-        cur = c.execute(
-            "UPDATE api_keys SET expires_at = %s "
-            "WHERE name = %s AND user_id = %s AND is_active = 1 "
-            "AND (expires_at IS NULL OR expires_at > %s)",
-            (expires_at, name, user_id, expires_at),
+    marcadas = ApiKeyRepository().expirar_por_nombre(name, user_id, expires_at)
+    if marcadas is None:
+        print(
+            "ERROR: faltan columnas de seguridad. Ejecuta: alembic upgrade head",
+            file=sys.stderr,
         )
-        rotated = cur.rowcount
+        return 2
+    scopes_previos, rotated = marcadas
+    effective_scopes = scopes_previos if scopes_previos is not None else scopes
 
     new_token = create_api_key(name, scopes=effective_scopes, user_id=user_id)
 

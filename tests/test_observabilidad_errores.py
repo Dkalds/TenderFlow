@@ -228,7 +228,7 @@ def test_un_paso_del_cierre_que_falla_cuenta_y_el_resto_sigue(
     monkeypatch.setattr(
         "services.contract_events.derive_new_events", lambda: llamados.append("eventos")
     )
-    monkeypatch.setattr("shared.cache_signal.signal_cache_invalidation", lambda: None)
+    monkeypatch.setattr("db.cache_signal.signal_cache_invalidation", lambda: None)
     antes = _valor("scraper_conector_errores_total", "dedupe")
 
     base._post_ingestion("pscp")

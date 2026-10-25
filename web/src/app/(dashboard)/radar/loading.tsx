@@ -13,8 +13,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function RadarLoading() {
   return (
     <div className="flex h-full min-h-0">
-      <section className="xl:border-border/70 flex min-w-0 flex-1 flex-col xl:border-r">
-        <div className="border-border/60 flex min-h-11 flex-none items-center gap-2 border-b px-3 py-2 md:px-3.5">
+      <section className="xl:border-divider flex min-w-0 flex-1 flex-col xl:border-r">
+        <div className="border-divider flex min-h-11 flex-none items-center gap-2 border-b px-3 py-2 md:px-3.5">
           {Array.from({ length: 4 }, (_, index) => (
             <Skeleton key={index} className="h-7 w-20 rounded-md" />
           ))}
@@ -24,7 +24,7 @@ export default function RadarLoading() {
             <Skeleton key={index} data-slot="fila-esqueleto" className="h-11 w-full rounded-md" />
           ))}
         </div>
-        <div className="border-border/70 flex h-[34px] flex-none items-center border-t px-3 md:px-3.5">
+        <div className="border-divider flex h-[34px] flex-none items-center border-t px-3 md:px-3.5">
           <Skeleton className="h-3 w-48 rounded-sm" />
         </div>
       </section>

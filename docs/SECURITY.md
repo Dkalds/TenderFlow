@@ -254,7 +254,7 @@ cualquier otro pendiente de la cuenta y revoca todas sus sesiones activas y sus
 claves de API personales (`db/password_reset.py::_revocar_credenciales`). Las
 cuentas solo-OAuth y las desactivadas no reciben token ni pueden consumirlo. La
 contraseña nueva pasa por la misma política que el alta
-(`shared/password_policy.py::check_account_password`), antes de tocar el token:
+(`config/password_policy.py::check_account_password`), antes de tocar el token:
 un rechazo no gasta el enlace. El segundo factor no se toca: una cuenta con
 TOTP lo sigue pidiendo en el siguiente login.
 

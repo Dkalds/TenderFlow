@@ -67,7 +67,7 @@ export function posicionDe(progreso: Progreso): PosicionPrimerosPasos {
 // (viaja en el texto y en el icono ✓), así que la semántica queda en el fondo.
 const CHIP: Record<EstadoPaso, string> = {
   hecho: "bg-success/10 text-foreground",
-  pendiente: "bg-primary/10 text-foreground",
+  pendiente: "bg-primary-selected text-foreground",
   cargando: "bg-secondary text-muted-foreground",
   desconocido: "bg-secondary text-muted-foreground",
 };
@@ -190,13 +190,13 @@ export function PrimerosPasos({
 
       <ol className={cn(SUPERFICIE_PANEL, "overflow-hidden")}>
         {pasos.map((paso) => (
-          <li key={paso.id} className="border-b border-border/25 last:border-b-0">
+          <li key={paso.id} className="border-b border-divider-subtle last:border-b-0">
             {paso.estado === "pendiente" ? (
               <Link
                 href={paso.href}
                 className={cn(
                   FILA,
-                  "transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0",
+                  "transition-colors hover:bg-primary-hover active:bg-primary-selected active:duration-0",
                 )}
               >
                 <ContenidoFila paso={paso} />

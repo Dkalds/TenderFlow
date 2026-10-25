@@ -158,11 +158,11 @@ el 2026-09-28 al delegar los backups en Supabase.
 | [P2] `render.yaml` no gobierna el servicio de producción | **Parcial** — la decisión se tomó el 2026-09-06 (O0.2 del plan v2: se vincula el Blueprint y `autoDeploy` se apaga); vincular y verificar en el dashboard sigue siendo acción del usuario |
 | [P2] Migrar las llamadas del frontend al cliente tipado | **Cerrado y movido** el 2026-09-06 a _Cerrados_ — no queda ningún `fetch("/api/…")` crudo fuera de `lib/`, y una regla ESLint impide que vuelva |
 | [P3] Vigilar el crecimiento de `predicciones_baja` | **Cerrado y movido** el 2026-09-06 a _Cerrados_ — el job de ML purga por antigüedad, y el consumidor distingue el p50 del modelo del del baseline histórico |
-| [P3] F5: refactor de repositories (ratchet TID251) | **Progresa** — la whitelist baja de 32 a 28 archivos, y a 26 el 2026-09-16 (`kpi_precompute`, `mercado`); el destino sigue siendo vaciarla |
+| [P3] F5: refactor de repositories (ratchet TID251) | **Progresa** — la whitelist baja de 32 a 28 archivos, y a 26 el 2026-09-16 (`kpi_precompute`, `mercado`); 12 el 2026-10-25; el destino sigue siendo vaciarla |
 | [P1] Cobertura de tests de las páginas del frontend | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — primera medición local completa; pisos globales y de `src/app/**` subidos a lo medido |
 | [P2] Contrato de paginación común | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — dependencia `limit`/`offset` compartida en `api/pagination.py`, primera ola de siete rutas; `trends` ya exponía `group_by` |
 | [P2] Remediación axe: 4 reglas desactivadas | **Cerrado y movido** el 2026-09-19 a _Cerrados_ — `nested-interactive` (C7.1), las tres restantes el 2026-09-18 y los rojos que destapó el E2E en `8a424967` y `0fd5082c`; sin `disableRules` ni `fixme` |
-| [P3] Los dos módulos-dios (`aggregates.py`, `settings.py`) | **Abierto** — sigue vigente la regla oportunista |
+| [P3] Los dos módulos-dios (`aggregates.py`, `settings.py`) | **Abierto** — sigue vigente la regla oportunista; plan de partición escrito en el ítem (2026-10-25) |
 | [P3] Unificar la definición de «Calientes» | **Cerrado y movido** el 2026-09-18 a _Cerrados_ — se mantiene la heurística de importe como «Grandes en plazo», documentada en los DTOs |
 | [P3] Descartar los avisos fantasma de Dependabot | **Abierto** — acción del usuario en GitHub; 33 descartados el 2026-08-30 y 8 nuevos desde entonces (2026-09-24) |
 
@@ -242,7 +242,7 @@ _Sin ítems abiertos._
 - **Riesgo:** alto — cambia la PK de la tabla central y sus referencias.
 
 ### [P1] Cerrar el incidente de la v2 de `sap_classifier`: ver la pasada en verde y unificar los dos caminos de entrenamiento
-- **Área:** scheduler/concept_drift.py, scheduler/jobs/ml_training_run.py, services/ml/promotion.py, shared/model_artifacts.py, .github/workflows/train-model.yml, `model_versions` (producción)
+- **Área:** scheduler/concept_drift.py, scheduler/jobs/ml_training_run.py, services/ml/promotion.py, services/ml/model_artifacts.py, .github/workflows/train-model.yml, `model_versions` (producción)
 - **Problema:** `scrape-daily` está en rojo desde el 2026-09-29T18:08Z (15
   runs hasta el 2026-10-03T23:09Z). En el primero el paso semanal
   `sap_active_learning` contó 59
@@ -341,7 +341,7 @@ _Sin ítems abiertos._
     2026-09-24», y exige que la ingesta resuelva el modelo por
     `resolve_artifact` y no por `ensure_downloaded` + `load()`.
     **Hecho en código el 2026-10-24:** `promote_if_better` publica y registra
-    `sap_classifier-<sha12>.pkl` (`shared.model_artifacts.content_addressed_path`,
+    `sap_classifier-<sha12>.pkl` (`services.ml.model_artifacts.content_addressed_path`,
     la misma regla que `rename_to_content_address`); `train-model.yml` lo sube
     a la Release `ml-models` sin `delete-asset` ni retirar la versión activa
     (entrenar → verificar artefactos → subir → activar → medir); la ingesta
@@ -404,62 +404,11 @@ _Sin ítems abiertos._
       solo corre con `apply`, así que relanzarlo repite antes la purga.
     - Falta lo demás: balance, delta de `make audit-truth-check` y el RFC.
   - Tras el `VACUUM (ANALYZE)`, `pg_relation_size('licitaciones')` anotado aquí.
+    - **Medido el 2026-10-25 (MCP, solo lectura):** `pg_relation_size('licitaciones')` = **89 MB** (era ~870 MB); 88.925 filas en total, de las que 60.737 son `pscp` y **16.798 llevan `tecnologia`** (el ítem citaba 3.268 sobre 685.500: la cifra es anterior a la purga y a la reingesta). Siguen 195 filas `pscp` sin `fecha_actualizacion_fuente` (la decisión sobre ellas sigue abierta). La purga y la reingesta están hechas; lo único que falta para cerrar es el balance en el RFC y el delta de `make audit-truth-check`, que exige la BD real.
 - **Files de partida:** [.github/workflows/purga-pscp.yml](../.github/workflows/purga-pscp.yml) (dry-run por defecto; `apply` + `reingerir_desde`), [scripts/purgar_pscp_sin_tecnologia.py](../scripts/purgar_pscp_sin_tecnologia.py), [db/repositories/purga_licitaciones.py](../db/repositories/purga_licitaciones.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py) (`senal_tecnologica`)
 - **Riesgo:** alto — borra ~680.000 filas y sus dependientes. Mitigado: reevalúa con la
   misma puerta que el conector, conserva las filas con trabajo de usuario, es
   reanudable, y el dato es público y reingestable (`--desde`).
-
-### [P1] [Rendimiento 2026-09] Aplicar en producción los índices de la búsqueda `q` y del filtro de tecnología
-- **Área:** db/alembic/versions (`v142_lic_tecnologia_tokens_gin`, `v143_lic_busqueda_plegada_trgm`); aplicar con `migrate.yml` es acción del usuario
-- **Problema:** la búsqueda `q` del listado y de los agregados es un `LIKE '%q%'` sobre cuatro columnas plegadas, y el filtro de tecnología un solapamiento de arrays; sin índice, cada búsqueda y cada filtro recorren ~1,64 M filas. El código ya emite las expresiones indexables y las dos migraciones están escritas (rama de rendimiento), pero `migrate.yml` es manual y el índice de `descripcion` de `v143` puede ocupar mucho disco.
-- **Acceptance criteria:**
-  - Antes de `v143`, medido el volumen de `descripcion` frente al trigram de `titulo` de `v50` (consultas en [la propuesta](plans/2026-09-indices-busqueda-propuestos.md)); si no cabe, una de las alternativas que describe.
-  - `v142` y `v143` aplicadas con `migrate.yml`, en una ventana sin ingesta, y los cinco índices con `pg_index.indisvalid = true`.
-  - `EXPLAIN` con plan genérico usando los índices, y su `idx_scan` en `pg_stat_user_indexes` tras un día de tráfico.
-- **Files de partida:** [docs/plans/2026-09-indices-busqueda-propuestos.md](plans/2026-09-indices-busqueda-propuestos.md), [tests/test_indices_busqueda.py](../tests/test_indices_busqueda.py)
-- **Riesgo:** medio — índices grandes creados en caliente (`CONCURRENTLY`, dos pasadas por la tabla por índice).
-
-### [P1] Mercado sin filtros: aplicar `v144` en producción y medir
-- **Área:** db/alembic (`v144_lic_indices_analitica`), db/repositories/aggregates.py
-- **Problema:** `licitaciones` tiene ~713k filas y ~870 MB de heap (97 % PSCP) en un
-  Supabase Micro (`shared_buffers` 256 MB, E/S limitada), y cada `GROUP BY` que la
-  recorre tarda de 5 a 15 s según la caché (medido el 2026-09-25: `geography_by_ccaa`
-  sin filtros, 15,2 s, 87k páginas leídas de disco). Las vistas de Mercado encadenan de
-  2 a 6 recorridos: en los logs de Render, `/analytics/organos` y `/proyectos-modulos`
-  dan 500 por `statement_timeout` (30 s por sentencia), `/trends?group_by=month` tarda
-  20-72 s, `/trends-cpv` ~40 s y `/geography` ~30 s.
-- **Hecho (2026-09-25):**
-  - `?tecnologia=` va por índice de tecnología: vistas SAP de 33-41 s a 0,1-2 s (#347).
-    El filtro es el `&&` de la entrada anterior con `tecnologia IS NOT NULL` delante:
-    sin el GIN de `v142` aplicado, la guarda es lo que evita el Seq Scan.
-  - Órganos agrega por hash: el treemap, que era la sentencia que moría (buscaba los 30
-    órganos mayores y leía sus filas una a una por `idx_organo`), tarda 4,7 s sin
-    filtros; la moda y el recuento de órganos dejan de ordenar la tabla en disco.
-  - Migración `v144` (sobre `v143`): índice cubriente `idx_lic_analitica` para las agregaciones sin
-    filtros, `idx_lic_tecnologia_cubriente` para las del ámbito de tecnología y
-    autovacuum al 2 %. Con índices hipotéticos (`hypopg`) el planificador ya elige
-    Index Only Scan para geografía, tendencias y las tres de órganos.
-- **Acceptance criteria:**
-  - `migrate.yml` con `mode=apply` (acción con escritura en producción: la lanza el
-    usuario) y, después, `indisvalid` de los dos índices, su `pg_relation_size`
-    anotado aquí y un `EXPLAIN` de `geography_by_ccaa` sin filtros con Index Only Scan.
-  - Cada vista de Mercado sin filtros responde en < 3 s (p95 de `duration_ms` en los
-    logs `http_request` de Render) y siete días sin `QueryCanceled` en
-    `/api/v1/analytics/*`.
-- **Queda fuera:** `/proyectos-modulos` sin filtros sigue leyendo `titulo` (regex de
-  módulos SAP) y no cabe en el índice; `/competitive/renovaciones` sin tecnología
-  (8-31 s) va por otro SQL. Si el índice no basta: snapshot del ámbito por defecto en
-  `kpi_precompute` (ADR-026, camino 3; el cierre ya usa 9-15 de sus 20 minutos) o
-  subir el cómputo de Supabase (con 4 GB la tabla cabría en caché). Sigue abierta una
-  decisión de producto: acotar la analítica al universo tecnológico. El listado ya
-  enseña solo filas con `tecnologia`; la analítica cuenta además todo PSCP.
-  **(2026-09-26)** Esa decisión la resuelve en la base de datos el P1 «Ejecutar en
-  producción la purga de PSCP»: el 97 % del heap es el censo de PSCP que se borra.
-  Medir de nuevo estas vistas después de la purga, antes de invertir en snapshots o
-  en más cómputo.
-- **Files de partida:** [db/alembic/versions/v144_lic_indices_analitica.py](../db/alembic/versions/v144_lic_indices_analitica.py), [db/repositories/aggregates.py](../db/repositories/aggregates.py), [tests/test_v144_indices_analitica.py](../tests/test_v144_indices_analitica.py)
-- **Riesgo:** medio — los índices son aditivos, pero migran schema: +100-200 MB de disco
-  y más escritura por fila; el autovacuum al 2 % añade E/S de fondo.
 
 ### [P2] Medir en producción los documentos de TED y PSCP tras el despliegue
 - **Área:** scraper/documentos_plataforma.py, scraper/connectors/{ted,pscp,placsp}.py, config/settings.py
@@ -562,7 +511,7 @@ _Sin ítems abiertos._
 - **Progreso T4 (2026-09-14, v129 · ADR-030 fase 2):** `user_id` junto a `user_key` en las doce tablas de usuario (nueve nuevas + FK e índice en las tres que ya la tenían), backfill por email en SQL y lectura dual + escritura doble en `db/`, `services/notifications.py`, `services/watchlist_rules.py` y los productores de alertas; GDPR exporta y borra por id o por clave (y cubre por fin `saved_filters`). Test de aceptación del ADR: `tests/test_user_id_cambio_email_integration.py`. **Queda la fase 3** (dejar de escribir `user_key`, recrear las PK de `user_profiles`/`radar_dismissals`, retirar `user_key` del payload de `watchlist_rule.matched` con RFC, y llevar el ratchet a cero).
 - **Progreso fase 3 (2026-09-18, v135, rama `worktree-agent-a8484f81d7c8a27e2`):** PK de `user_profiles` → `(user_id)` y de `radar_dismissals` → `(user_id, id_externo)`, con backfill y fallo ruidoso si queda alguna fila sin id o duplicada; `user_profiles` ya no escribe `user_key`; `log_event(actor=…)` saca seis ficheros del ratchet (69 → 63); RFC `draft` [2026-09-18](rfc/2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md) para el payload del webhook, con el campo intacto hasta la ventana y la sustitución pendiente de decisión humana. **Queda:** `user_notifications`/`follows`/`watchlist_*` siguen tecleadas por `user_key` (y con ellas `radar_dismissals` la sigue escribiendo); aplicar v135 en producción (antes del deploy del código) y regenerar `docs/database-schema.md`. *Estado (2026-09-19):* `docs/database-schema.md` ya está regenerado con v135 y v140 (`98f34bee`; su cabecera dice `v138_notice_type_code`).
 - *Nota (2026-10-17):* este ítem se lleva también la mayoría de las 64 `# noqa: S608` del repo (34 en producción; 18 entre `services/notifications.py` y `services/watchlist_rules.py`). No son inyección: interpolan `_IDENT`, el predicado constante de identidad dual `user_id`/`user_key`, y duplican cada consulta en una rama con y otra sin `organization_id`. Quitarlas antes obligaría a copiar el predicado en cada sentencia; cuando la lectura sea solo por `user_id` el fragmento desaparece y con él la supresión. Sacarlas en el mismo PR que retire la columna. *Actualización (2026-10-23):* las 18 de esos dos servicios ya no existen: su SQL bajó a `db/`, donde `S608` está desactivado por fichero y `_IDENT` lleva escrito por qué no es inyección. El predicado dual sigue y se va con la columna.
-- **Progreso fase 3, segunda tanda (2026-10-25, v161, rama `agente/user-id-columna-doble`):** `user_notifications` pasa a teclearse por `(user_id, licitacion_id, type)` —índice único parcial `uq_user_notifications_user_id`; el `UNIQUE` por `user_key` de v48 se conserva como árbitro de las filas sin id y del código anterior durante el despliegue— y `db.notifications.insert_user_notification` deja de escribir `user_key` cuando conoce el id (producción medida ese día: 0 filas sin `user_id` en las once tablas). Con eso ningún productor de alertas deriva ya la clave del correo (`services/pursuit_awards.py`, `services/pursuits.py`, `services/deadline_reminders.py`; `scheduler/watchlist_rules_alerts.py` deja de tener su propio `INSERT`) y `shared.identity.actor_del_principal` sustituye las tres copias del actor de auditoría (`webhooks`, `feedback`, `me`, esta última recortaba el correo). Ratchet **59 → 53** (salen `pursuit_awards`, `webhooks`, `feedback`, `db/repositories/pursuits`, `scheduler/jobs/watchlist_rules`, `services/analytics/quality`). Tests: `tests/test_v161_user_notifications_user_id_fase3.py`. **Queda:** aplicar v161 en producción *antes* del deploy del código y regenerar `docs/database-schema.md` (`make schema-doc`); `user_id NOT NULL` en `user_notifications` cuando `watchlist_items` deje de admitir favoritos sin id (hoy `check_deadlines_and_notify(user_key)` y una veintena de tests escriben sólo con clave); `notification_reads` y `user_event_prefs` con el mismo patrón (índice parcial por id, clave opcional); después `watchlist_*`, `saved_filters`, `follows` y `pending_digests`, que son las que retienen a los 53 restantes (ver `python scripts/check_user_key_ratchet.py --list`).
+- **Progreso fase 3, segunda tanda (2026-10-25, v162, rama `agente/user-id-columna-doble`):** `user_notifications` pasa a teclearse por `(user_id, licitacion_id, type)` —índice único parcial `uq_user_notifications_user_id`; el `UNIQUE` por `user_key` de v48 se conserva como árbitro de las filas sin id y del código anterior durante el despliegue— y `db.notifications.insert_user_notification` deja de escribir `user_key` cuando conoce el id (producción medida ese día: 0 filas sin `user_id` en las once tablas). Con eso ningún productor de alertas deriva ya la clave del correo (`services/pursuit_awards.py`, `services/pursuits.py`, `services/deadline_reminders.py`; `scheduler/watchlist_rules_alerts.py` deja de tener su propio `INSERT`) y `shared.identity.actor_del_principal` sustituye las tres copias del actor de auditoría (`webhooks`, `feedback`, `me`, esta última recortaba el correo). Ratchet **59 → 53** (salen `pursuit_awards`, `webhooks`, `feedback`, `db/repositories/pursuits`, `scheduler/jobs/watchlist_rules`, `services/analytics/quality`). Tests: `tests/test_v161_user_notifications_user_id_fase3.py`. **Queda:** aplicar v161 en producción *antes* del deploy del código y regenerar `docs/database-schema.md` (`make schema-doc`); `user_id NOT NULL` en `user_notifications` cuando `watchlist_items` deje de admitir favoritos sin id (hoy `check_deadlines_and_notify(user_key)` y una veintena de tests escriben sólo con clave); `notification_reads` y `user_event_prefs` con el mismo patrón (índice parcial por id, clave opcional); después `watchlist_*`, `saved_filters`, `follows` y `pending_digests`, que son las que retienen a los 53 restantes (ver `python scripts/check_user_key_ratchet.py --list`).
 - **Acceptance criteria:** los de S1.1–S1.4 del plan v2, sin redefinirlos aquí. Los cuatro subítems son independientes y se pueden entregar por separado; S1.3 (dominio propio) es acción humana.
 - **Files de partida:** [docs/plans/2026-09-plan-arquitectura-v2.md](plans/2026-09-plan-arquitectura-v2.md) (§5, S1), [services/organizations.py](../services/organizations.py), [api/routes/auth.py](../api/routes/auth.py)
 - **Estado (2026-10-17):** el **Problema** ya no describe el código en su primera frase: invitar a quien no tiene cuenta existe (`services/organizations.py::invite_member_by_email`, tabla `organization_invitations`, aceptación por token y al iniciar sesión con `accept_invitations_for_email`). `add_member_by_email` sigue rechazando un correo sin cuenta porque es el alta directa, no la invitación. Lo abierto es lo de la fase 3 de `user_key` descrito arriba.
@@ -578,7 +527,7 @@ _Sin ítems abiertos._
 - **Riesgo:** medio — dos migraciones y una regla de producto nueva; el golden `golden_go_no_go.jsonl` es la red.
 
 ### [P1] [Ola 1 · S5] Cola de trabajo y worker: un despliegue mata lo que un usuario pidió
-- **Área:** shared/jobs.py, db/repositories/jobs.py, scheduler/worker.py, api/routes/jobs.py, scheduler/pipeline_runs.py, render.yaml
+- **Área:** services/jobs.py, db/repositories/jobs.py, scheduler/worker.py, api/routes/jobs.py, scheduler/pipeline_runs.py, render.yaml
 - **Problema:** la extracción asíncrona de la ficha corre en `BackgroundTasks` de la API con 30 s de drenado al apagar (`api/app.py`), y `autoDeploy` está activo en el servicio real: un push a `master` en mitad de una extracción la pierde, y el usuario ve un estado que nunca avanza. El cierre post-ingesta son quince pasos secuenciales dentro de un job de Actions cada cuatro horas, donde un paso caído arrastra a los que no dependen de él.
 - **Decisión ya tomada (2026-09-06):** D14 → worker en Render para lo que pide un usuario y Actions para lo programado, sobre la misma tabla de cola. El servicio nuevo exige O0.2 cerrado primero (un solo camino de despliegue).
 - **Acceptance criteria:** los de S5.1–S5.4 del plan v2, incluidos los dos que son medibles sin producción: dos consumidores concurrentes procesan cien jobs exactamente una vez, y `grep -rc "BackgroundTasks" api/routes/licitaciones/` = 0 (el fichero es un paquete desde 2026-09).
@@ -587,6 +536,7 @@ _Sin ítems abiertos._
 - **Actualización (2026-10-10):** la creación del servicio está escrita paso a paso, con todas sus variables, en el paso 1 del [runbook del cutover del cron](runbooks/cutover-cron-al-worker.md), y su plan declarado pasa a `standard`: con el plano de cron de ADR-033 corre la ingesta y el scoring en el mismo proceso que la cola. `deploy.yml` despliega también el worker, del mismo commit y tras verificar la API, si su deploy hook está en `RENDER_WORKER_DEPLOY_HOOK_URL` (en los de Actions); sin él no despliega ninguno de los dos.
 - **Actualización (2026-10-19):** el servicio se creó el 2026-10-10, pero en el plan `free` de Render, que lo hibernaba a los ~15 min: su consumidor y su plano de cron solo corrían tras cada deploy. Como `JOBS_CONSUMIDOR_EN_API` nunca se puso a `0`, la cola la siguió vaciando la API, y la ingesta y el scoring siguieron en Actions. Se retiró en vez de pagar `standard`: `render.yaml` ya no lo declara, `deploy.yml` no lo despliega y `scripts/check_job_parity.py` acepta a la API como consumidor ([ADR-028 §G](adr/ADR-028-cola-de-trabajo-y-worker.md), revisión del 2026-10-19). Lo que quedaba de este ítem —crear el servicio y apagar el consumidor de la API— deja de aplicar; el de §A (que la extracción no comparta proceso con la API) sigue abierto y es lo que justificaría recrearlo.
 - *Nota (2026-10-24):* el servicio sigue existiendo en Render: `TenderFlow-1` (`srv-db58n80473hc73a94rsg`), plan `free`, sin suspender y sin ningún log desde el 2026-10-19. No consume nada, pero si alguien lo despierta corre contra la misma base. Suspenderlo o borrarlo es acción del dueño.
+- *Nota (2026-10-25):* confirmado por la API de Render: `TenderFlow-1` (`srv-db58n80473hc73a94rsg`) está `suspended` por el usuario desde el 2026-10-24, plan `free`. Quedan dos servicios activos: `TenderFlow` (la API, `standard`) y `tenderflow-mcp` (`starter`). Retomar el worker exige un plan de pago y devolver a `deploy.yml` su paso: decisión del dueño, no de un agente.
 - **Riesgo:** medio — servicio nuevo en producción y cambio del camino por el que se sirve la ficha.
 
 ---
@@ -906,7 +856,7 @@ _Sin ítems abiertos._
 - **Riesgo:** medio en S7.1 (routing y datos iniciales), como ya dijo el plan anterior.
 
 ### [P2] [Ola 1 · S8] Documentos: solo se leen PDF con texto y texto plano
-- **Área:** scraper/document_fetcher.py, shared/object_store.py, .github/workflows/pliegos.yml, shared/model_artifacts.py
+- **Área:** scraper/document_fetcher.py, shared/object_store.py, .github/workflows/pliegos.yml, services/ml/model_artifacts.py
 - **Problema (diagnóstico del §1 del plan v2, medido el 2026-09-05):** `_SUPPORTED_CONTENT_TYPES` admitía dos content-types, así que un pliego en DOCX, ODT o dentro de un ZIP no se procesaba y un PDF escaneado terminaba en error por no haber OCR; y el binario se descartaba tras extraer, de modo que reprocesar exigía volver a PLACSP, cuyas URIs llevan un token que caduca. Es el techo real de la ficha del pliego: lo que no se puede leer no existe para el producto.
 - **Acceptance criteria:** los de S8.1–S8.4 del plan v2, sin redefinirlos aquí. Los cuatro son independientes y se entregan por separado; S8.1 y S8.2 llevan migración y dependencias nuevas, ambas pre-autorizadas por D20.
 - **Estado:** lo dice el §5 del plan cuando el stream se cierra, no este ítem — ver la nota de cabecera. S8 se está entregando en esta misma ola.
@@ -919,6 +869,10 @@ _Sin ítems abiertos._
   - **ZIP endurecido.** Tope por entrada (`_ZIP_MAX_BYTES_POR_ENTRADA`) además del total, ratio de compresión (`_ZIP_RATIO_MAX`, comprobado por bloques), rutas con `..`/absolutas/de unidad y restos de macOS ignorados, nombres UTF-8 sin bandera recuperados, ODT/ODS/ODP dentro del ZIP, y cada entrada abre su primera página con `── nombre ──`. Sigue sin recursión. Tests en `tests/test_unit_document_fetcher_odf_zip.py` (zip bomb y path traversal construidos en memoria).
   - **Reencolado.** `make reencolar-documentos` (sin `APLICAR=1` solo cuenta) devuelve a `pending` las filas `unsupported` —y las `error` con «content-type no soportado:» de cuando aún no existía ese estado— cuyo tipo ya se lee, comparando sin guiones para recoger el DOCX mal escrito de PLACSP. Medido el 2026-10-23 por el MCP de solo lectura: ~2.140 DOCX (1.007 `unsupported` + 1.131 `error`), 48 ODT, 2 ODS y 215 ZIP. **Pendiente, propietario:** ejecutarlo contra producción ([runbooks/documentos-reencolar.md](runbooks/documentos-reencolar.md)). XLSX (337), XML (349), HTML (237), RTF, `.doc` y RAR siguen sin leerse y no se tocan.
   - **OCR de escaneados: fuera de esta tanda.** S8.3 dejó `ocrmypdf` en el runner de `pliegos.yml`, pero el coste por página sigue sin medir (su propia aceptación), y sin ese número no se amplía: los 54 PDF «sin texto extraíble» en `error` no entran en el reencolado.
+- **Progreso 2026-10-25 (escaneados con estado propio y backend Supabase Storage):**
+  - **`sin_texto`** (`v161`, aditiva sobre el `CHECK` de `documentos.status`): un PDF sin capa de texto que el OCR no lee lanza `PdfSinTextoError` y la fila queda `sin_texto` (con `content_type` y huella de la descarga), no `error`. La migración pasa a `sin_texto` las filas `error` con «PDF sin texto extraíble» (~54 en producción). La detección exige letras, no solo una cadena no vacía: la paginación estampada o la puntuación de un escaneo no cuentan como texto. Un ZIP cuyos únicos legibles son escaneados también es `sin_texto`. La ficha bajo demanda lo dice («PDF escaneado sin capa de texto, este servidor no pudo aplicarle OCR») en vez de «descargas fallidas, los enlaces caducan»; `status_counts`, `formato_counts`, `/analytics/quality` (`documentos_por_formato[].sin_texto`) y el informe nocturno lo cuentan aparte; la UI lo rotula en Documentos y en el asistente.
+  - **Almacén:** `shared/object_store.py` gana `SupabaseStorageObjectStore` (API REST de Supabase Storage sobre `shared/outbound_http`, sin SDK nuevo, host del proyecto como única entrada de la allowlist). La configuración pasa a `config/settings_object_store.py` (recoge el `.env`; el entorno del proceso sigue ganando). Tests sin red de los dos backends HTTP en `tests/test_unit_object_store_supabase.py`.
+  - **Pendiente:** OCR real fuera del runner de `pliegos.yml` (la imagen de la API no trae `ocrmypdf`/tesseract; añadirlo es decisión de despliegue y dependencia de sistema, no de `requirements`). Con OCR disponible, las filas `sin_texto` con `blob_key` se re-extraen con `reextract_from_blob` sin volver a PLACSP; falta un comando que las recorra (gemelo de `make reencolar-documentos`). Aplicar `v161` en producción.
 
 ---
 
@@ -1003,6 +957,8 @@ _Sin ítems abiertos._
   - El SDK publicado tras la RFC tipa el error una sola vez.
 - **Files de partida:** [api/errors.py](../api/errors.py), [api/routes/licitaciones/listado.py](../api/routes/licitaciones/listado.py), [docs/api-design.md](api-design.md), [docs/STATUS.md](STATUS.md)
 - **Riesgo:** alto — breaking para los consumidores de la API; por eso nace como RFC y con periodo de alias, no como PR directo.
+- **Progreso (2026-10-25, rama `agente/convencion-api-publica`) — la parte compatible, hecha:** convención escrita en `docs/api-design.md` («Convención de la API»): español en paths y campos nuevos sin renombrar lo existente en `/api/v1`; un solo error, `ProblemDetail` (RFC 9457, `application/problem+json`), y una sola paginación, `limit`/`offset` con `Pagina[T]` (11 de las 13 operaciones que paginaban ya eran offset). `shared/dto/errores.py` trae `ProblemDetail`/`Error`/`ErrorDeValidacion` y `shared/dto/paginacion.py` el alias `Pagina` (mismo componente OpenAPI, nada se rompe). `api/errors.py::documentar_errores`, enganchado a `app.openapi()`, declara el error en todas las operaciones (422, 4xx declarados y `default`) en vez del `HTTPValidationError` de FastAPI que la API nunca emitía: el cliente generado ya tipa el error una vez. Ratchet nuevo `scripts/check_api_convencion.py` (`make check-api-convencion`, test `tests/test_unit_ratchet_api_convencion.py`): paginación fuera de `Pagina[T]`, errores con otro esquema y `JSONResponse` de error a mano en `api/` fallan; 11 salidas heredadas congeladas con motivo. Migradas a `Pagina[T]` en código: `GET /publico/licitaciones`, `GET /adjudicaciones`, `GET /licitaciones`, `POST /licitaciones/search`. El MCP no consume la API por HTTP (llama a `services/` y `db/`), así que no había rutas suyas que migrar.
+  - **Queda (pide RFC, es incompatible):** las 10 paginaciones congeladas (`/empresas`, `/pursuits`, `/pursuits/{id}/comments`, `/radar/proximas`, `/notifications/alerts`, `/competitive/empresas/{id}/adjudicaciones`, `/competitive/renovaciones`, `/publico/sitemap/entradas` y los dos cursores) y el `503` de `/health/ready`; los renombres de idioma y la convivencia offset/cursor de `/licitaciones`; un `type` estable por condición (hoy uno por código HTTP salvo `query-timeout` y `reauthentication-required`) y la tabla de códigos generada desde `api/errors.py`. No se añadió el ratchet de `HTTPException(` con cadena literal: con la convención escrita, `HTTPException` es la forma sancionada de lanzar un error (el manejador único lo formatea), y contarlo solo tiene sentido cuando exista el catálogo de `type`.
 
 ### [P2] Desbloquear los pines que acumulan deuda: FastAPI, suelo de Python y las dos fuentes de dependencias
 - **Área:** requirements.in, requirements-api.in, pyproject.toml, renovate.json, scripts/gen_status.py, scripts/check_api_surface.py, tests que recorren `app.routes`
@@ -1024,6 +980,7 @@ _Sin ítems abiertos._
   - Tras 30 días, una tabla en `docs/UX_AUDIT.md` con sesiones por espacio y por vista, y una decisión escrita por cada espacio o vista con menos del 2 % de uso: se queda, se fusiona o se retira.
   - La misma pregunta para la API: `pursuits/metrics` o `admin/ejecuciones` ya existen; falta el inventario de operaciones sin ninguna llamada en 30 días (`http_requests_total` por handler ya está en Prometheus), y la lista va a `superficie_congelada.txt` como candidatas a encoger.
 - **Files de partida:** [web/src/lib/analytics.ts](../web/src/lib/analytics.ts), [web/src/components/layout/console-rail.tsx](../web/src/components/layout/console-rail.tsx), [web/src/lib/console-spaces.ts](../web/src/lib/console-spaces.ts), [api/superficie_congelada.txt](../api/superficie_congelada.txt)
+- **Hallazgo (2026-10-25):** los eventos personalizados de Vercel Web Analytics exigen plan Pro y el proyecto `tenderflow` está en Hobby: la API de eventos responde `402 payment_required`. **Los 23 eventos del catálogo se emiten pero no se guardan en ningún sitio.** Lo que sí hay son pageviews por ruta, y con eso está hecha la primera tabla real (30 días) en [UX_AUDIT.md](UX_AUDIT.md#uso-real-por-ruta-pageviews-de-vercel-2026-09-25-a-2026-10-25). Decisión pendiente del dueño: pagar Pro, mandar los eventos a otro destino (la propia API ya tiene `http_requests_total` por handler) o conformarse con pageviews.
 - **Riesgo:** bajo — telemetría categórica sin identificadores; el filtro del módulo ya la acota.
 
 ## P3 — Nice to have
@@ -1052,7 +1009,7 @@ _Sin ítems abiertos._
   - Lectura dual detrás de `FECHAS_TS_LECTURA` (apagado; con él apagado el SQL es el de siempre): `db.sql_fragments.instante_sql` → `COALESCE(<col>_ts, nucleo_iso_a_timestamptz(<col>))` en «desde tu última visita» (historial, documentos, oportunidades), el orden del historial, el de las alertas y `get_last_extraction_date`. Lo proyectado sigue siendo texto: ningún DTO cambia en esta fase.
   - Tests: `tests/test_unit_fechas_ts.py` (formatos de producción, corpus golden CODICE, forma de migraciones, upsert, backfill, script, lectura dual) y `tests/test_fechas_ts_pg.py` (paridad SQL/Python, triggers, escritura dual, backfill idempotente, orden por instante) — este último **no ejecutado** en la sesión que lo escribió (sin Postgres).
   - Runbook: [runbooks/fechas-ts-ventana.md](runbooks/fechas-ts-ventana.md).
-- **Pendiente (fase 1, producción):** `v161` por `migrate.yml` → despliegue → backfill → `--verificar` en cero → `v160` → `FECHAS_TS_LECTURA=true`. Luego, mover más lectores a `instante_sql` (p. ej. `fetch_recent` del SSE, agregados por `fecha_adjudicacion`) y repetir la receta con las tablas restantes del inventario.
+- **Pendiente (fase 1, producción):** `v159` por `migrate.yml` → despliegue → backfill → `--verificar` en cero → `v160` → `FECHAS_TS_LECTURA=true`. Luego, mover más lectores a `instante_sql` (p. ej. `fetch_recent` del SSE, agregados por `fecha_adjudicacion`) y repetir la receta con las tablas restantes del inventario.
 - **Fase 2 (corte, NO hecho):** con todos los lectores de una tabla ya en la sombra y su verificación en cero (incluidos los `*_no_iso` revisados a mano), en una revisión nueva por tabla: (1) los escritores dejan de escribir el texto y la API proyecta la sombra serializada en ISO (cambio de tipo en psycopg: `str` → `datetime`, revisar slicing `[:10]` y comparaciones de texto en Python); (2) `DROP` de triggers y columna de texto y `RENAME <col>_ts TO <col>` (solo catálogo, con `lock_timeout`), reconstruyendo antes con `CONCURRENTLY` los índices que hoy viven sobre el texto (`idx_lic_fecha_extraccion`, `idx_adj_fecha`, `idx_hist_externo`, `idx_documentos_status_created`); (3) RFC previo por ser cambio de persistencia irreversible (§5). La clave canónica (`periodo_publicacion_sql`, `v92/v101/v102`) sigue leyendo `fecha_publicacion`/`fecha_extraccion` en texto hasta que esa fase la mueva explícitamente.
 
 ### [P2] [Investigador] La búsqueda por significado no corre en producción: decidir si se sirve
@@ -1120,6 +1077,9 @@ _Sin ítems abiertos._
 - *Estado (2026-09-19) — las cifras del problema están caducadas y la regla «no crecer» no se ha cumplido:* `db/repositories/aggregates.py` tiene hoy **1.980 líneas** (eran 1.327) y `AggregateRepository` **60 métodos** (eran 55); `config/settings.py`, **1.422 líneas** (eran 946) y **27 validadores**. `shared/dto.py` ya no es el contraejemplo sano: **1.904 líneas y 83 clases** (eran 620 / 45). Medido con `wc -l` y `grep` sobre el árbol.
 - *Progreso 2026-10-17 (rama `claude/nifty-turing-axm5xg`):* la misma regla aplicada a los dos módulos de oportunidades, que ya eran los más grandes después de `shared/dto.py` y `aggregates.py`. `services/pursuits.py` (2.308 → 1.758 líneas): las piezas de la agenda salen a `services/pursuits_agenda.py`; `get_agenda` y las señales de reglas se quedan porque reciben `user_key` y el ratchet no deja que un fichero nuevo herede esa deuda. `api/routes/pursuits.py` (2.112 → 1.646): las rutas de organizaciones salen a `api/routes/organizations.py`, con el OpenAPI idéntico (comparado antes y después). Siguen pendientes los dos de este ítem, `aggregates.py` (2.457) y `shared/dto.py` (2.482).
 - *Progreso 2026-10-25:* `shared/dto.py` es ya el paquete `shared/dto/` (14 submódulos; ver el cerrado «Partir `shared/dto.py`…» en el archivo). Queda `aggregates.py`.
+- *Plan de partición (2026-10-25, sin ejecutar — no cabía con calidad en el PR que bajó los ratchets):* medido hoy, `aggregates.py` 2.489 líneas y `config/settings.py` 1.711.
+  - **`db/repositories/aggregates.py` → paquete `db/repositories/aggregates/`** con `__init__.py` que reexporta `AggregateRepository`, `LicitacionesFilters`, `build_licitaciones_where`, `ParaHoy` y los privados que importa la suite, para no tocar importadores. Submódulos por familia de métodos (cada uno una clase mixin; `AggregateRepository` hereda de todas): `filtros.py` (`LicitacionesFilters`, `build_licitaciones_where`, `_in_clause`, `_lectura`), `overview.py` (`overview_*`, `importe_p75`, `count_total_activas`, `_para_hoy*`), `resumen.py` (`resumen_*`), `tecnologias.py` (`tecnologias_*`, `tecnologia_detalle_*`), `geografia_tendencias.py` (`geography_*`, `trends_*`, `vencimientos_*`), `organos.py` (`_organos_where`, `organos_*`), `proyectos.py` (`proyectos_*`, `_where_modulos`, `tipos_contrato_breakdown`, `tipo_estado_crosstab`, `cpv_top_por_count`, `codigos_codelist`), `calidad_forecast.py` (`quality_*`, `forecast_monthly`, `publicaciones_mensuales`, `retendering_universe`, `adjudicaciones_para_forecast`, `clustering_universe`) y `scoring.py` (`_scoring_cols`, `importe_percentiles*`, `competencia_ofertas_por_cpv4`, `scoring_candidates`, `licitaciones_by_ids`, `tech_signal_by_ids`, `pipeline_window`, `licitaciones_por_organo`). Riesgos a vigilar: `tests/test_dedup_guardrail.py` escanea por ruta (añadir los submódulos a `_SCANNED_FILES` en el mismo cambio) y los `patch("db.repositories.aggregates.connect_read")` de la suite, que hay que redirigir al submódulo que ejecuta.
+  - **`config/settings.py`**: seguir el patrón de `config/settings_resumen.py` — un `BaseSettings` mixin por eje (`settings_bd.py`, `settings_ml.py`, `settings_llm.py`, `settings_auth.py`, `settings_scraper.py`, `settings_observabilidad.py`) del que hereda `Settings`, con los validadores de cada eje dentro de su mixin. Mismos nombres de variable y mismo `settings.X`; el gate es `tests/test_config_settings.py` y `scripts/check_env_parity.py`.
 - **Files de partida:** [db/repositories/aggregates.py](../db/repositories/aggregates.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo si se hace oportunista; medio si alguien intenta el big-bang.
 
@@ -1146,7 +1106,8 @@ _Sin ítems abiertos._
   2. **Tienta a invertir las capas.** Al mover una query se mueven con ella los fragmentos SQL que interpola, y el reflejo es importarlos de `services/` — que ADR-024 prohíbe (`db/` no depende de `services/`). El destino correcto es `db/sql_fragments.py`, creado el 2026-08-18 con `FECHA_FIN_SQL`, `TECHNOLOGY_OBSERVED_SQL` y `exclude_duplicados_sql`; `services/` los reexporta.
 - **Progreso 2026-09-24 — 26 → 25:** `services/ml/scoring.py` sale. El upsert de retención, duplicado en las ramas de modelo y de baseline, y la baja real por expediente (`_baja_real`) pasan a `db/repositories/predicciones.py` (`guardar_retencion`, `baja_real_de_expediente`); la división sigue en services. `db/repositories/predicciones.py` entra en `_SCANNED_FILES` del guardrail de dedupe en el mismo cambio, con sus dos purgas como exentas por diseño.
 - **Progreso 2026-09-16 — 28 → 26:** `scheduler/kpi_precompute.py` pasa a `db/kpi_precompute.py` (no a `db/repositories/kpi_snapshots.py`, que es de las métricas `ov_*` y advierte que no se mezclen) y `services/competitive/mercado.py` pasa a `db/repositories/mercado.py`, con el `WHERE` construido por `alcance_sql` en vez de interpolación suelta — el candidato «aparte» de más abajo queda cerrado. Equivalencia verificada con un arnés que compara SQL y parámetros contra `HEAD`; `db/repositories/mercado.py` entra en `_SCANNED_FILES` del guardrail de dedupe en el mismo cambio.
-- Siguientes candidatos por coste (conteo de `connect(`+`execute(`): `services/ml/calibration.py` (1), `services/entity_resolution.py` (1), `services/competitive/bajas.py` (2), `services/ml/features.py` (2).
+- **Progreso 2026-10-25 — 18 → 12** (rama `agente/ratchets-y-modulos-dios`; `MAX_ENTRADAS_WHITELIST = 12`). Salen seis, todos con su SQL en `db/`: `services/resoluciones.py` (vinculación en `db/resoluciones.py::vincular_pendientes`, con el emparejamiento por expediente + órgano como función pura en el servicio, y el listado en `listar_resoluciones`), `services/deadline_reminders.py` (tres métodos nuevos de `WatchlistRepository`; el barrido de usuarios entra en `_LEGITIMATE_SWEEPS` de `tests/test_user_key_sql_isolation.py` porque es la misma consulta que ya corría inline), `services/competitive/renovaciones.py` (los dos agregados a `db/repositories/renovaciones.py`, que ya estaba en `_SCANNED_FILES` del guardrail de dedupe y los dos llevan `exclude_duplicados_sql`; los umbrales de «caliente» se quedan en el servicio y entran como parámetros), `scheduler/competitor_alerts.py` (→ `db/watchlist_empresas.py::nuevas_adjudicaciones_de_empresa`), `scheduler/retention.py` (la purga con sus savepoints → `db/retention.py::purgar_por_fecha`; la política publicada se queda) y `scripts/rotate_api_keys.py` (→ `ApiKeyRepository.expirar_por_nombre`).
+- Siguientes candidatos por coste: `services/entity_resolution.py` (1 `connect`, pero solo abre la transacción del lote y el SQL ya está en `db/empresas.py`: hay que mover el bucle entero o pasar la transacción por un callback), `services/analytics/scoring_signals.py` (1; sus dos agregados de baja no llevan `exclude_duplicados_sql` y al bajar a un módulo escaneado necesitarían decisión sobre el guardrail), `services/competitive/bajas.py` (2), `scheduler/aggregates_precompute.py` (2).
 - **~~Candidato aparte~~ — hecho el 2026-09-16 (ver progreso arriba).** `services/competitive/mercado.py` concentraba ~12 de los ~30 `# noqa: S608` del repo (conteo del 2026-08-18). Cada supresión está justificada una por una y el idioma de fragmentos constantes está documentado en `services/sql_fragments.py`, así que no es un bug — pero es la mayor densidad de SQL interpolado del proyecto en un solo fichero, y cada filtro nuevo que se añade ahí es otra oportunidad de que un valor entre por concatenación sin que nadie lo note. Al moverlo a `db/`, hacerlo con un builder de `WHERE` testeado en lugar de arrastrar la interpolación tal cual (patrón de `tests/test_adjudicaciones_dedupe_sql.py`, que verifica que los `%s` siguen cuadrando con los parámetros).
 - **Orden de olas:** services/ → api/ → scheduler/ → scripts/ (por densidad; `services/` es además el único que viola la capa de dominio de ADR-007)
 - **Excepción declarada:** `services/sql_fragments.py` se queda — expone fragmentos SQL constantes pero no ejecuta nada (ADR-022 §3).
@@ -1255,6 +1216,12 @@ _Sin ítems abiertos._
   - Decisión escrita del dueño por ratchet: (a) cuota de bajada —por ejemplo, cada PR que toque un módulo de la lista saca ese módulo o explica por qué no—, (b) fecha objetivo para llegar a cero, o (c) aceptar la violación como diseño y borrarla de la lista (y, en el caso de capas, actualizar AGENTS.md §2).
   - Para capas: las cuatro violaciones `db/* -> services.*` tienen prioridad, porque son las únicas en que la persistencia conoce el dominio; la pieza compartida baja a `shared/` o a `db/`.
   - `docs/STATUS.md` muestra la tendencia (valor y fecha del último descenso), no solo el valor.
+- *Progreso 2026-10-25 (rama `agente/ratchets-y-modulos-dios`) — dos de los tres bajan más de un tercio:*
+  - **Capas: 21 → 12** (`python scripts/check_layers.py --count`). Las cuatro `db/* -> services.*` están a cero, que era la prioridad del criterio. Bajan a la capa inferior las piezas compartidas: `password_policy` y `scoring_weights` a `config/`; `webhook_retry`, `go_no_go_template`, el criterio de concesiones OAuth (`shared/concesiones_acceso.py`) y `extract_keywords`/`FTS5_STOPWORDS` (`shared/palabras_clave.py`, reexportados desde `services.investigador.search_engine`) a `shared/`. Suben a su capa los módulos de `shared/` que abrían la BD: `jobs` → `services/jobs.py`, `model_artifacts` → `services/ml/model_artifacts.py`, `cache_signal` → `db/cache_signal.py`. Quedan 12: seis de `observability/` contra `db`/`services`, tres de `services/` contra `scraper/`, `api/routes/publico.py -> scraper.connectors`, `config/secrets.py -> observability.logging` y `observability/mailer.py -> shared.outbound_http`.
+  - **TID251: 18 → 12** (ver el ítem F5).
+  - `user_key`: sin cambios (lo lleva T4).
+  - Comentarios de `.github/workflows/{ml-scoring,train-model,train-predictivos}.yml` siguen citando `shared/model_artifacts.py` (solo prosa; editar workflows pide OK humano, AGENTS.md §6).
+  - **Falta para cerrar:** la decisión del dueño de los criterios de aceptación (no la puede tomar un agente). Propuesta que este PR deja en marcha: (a) cuota —un PR que toque un módulo de una lista lo saca o dice por qué no—, con objetivo de capas ≤ 6 (las de `observability/` se resuelven pasando el colaborador por argumento) y TID251 ≤ 6 antes de 2027-01; y la tendencia en `docs/STATUS.md`, que todavía muestra solo el valor.
 - **Files de partida:** [scripts/check_layers.py](../scripts/check_layers.py), [pyproject.toml](../pyproject.toml), [docs/STATUS.md](STATUS.md)
 - **Riesgo:** bajo — es una decisión de política; cada bajada concreta tiene su propio riesgo.
 
@@ -1334,6 +1301,7 @@ _Sin ítems abiertos._
 
 ## Cerrados
 
+- [2026-10-25] **Índices `v142`/`v143` (búsqueda `q`, tecnología) y `v144` (analítica) ya estaban aplicados en producción** — verificado con `migrate.yml` en `plan` (BD en `v158`) y `pg_stat_user_indexes`; los dos ítems P1 que pedían aplicarlos eran deuda documental y van al archivo con los `idx_scan` medidos.
 - [2026-10-23] **Excepción de `braces` en `npm audit` retirada** — el job «Security audit»
   de la PR #529 falló porque `npm audit` ya no reporta GHSA-vfj7-8cjw-p6xm (el lockfile sigue en
   `braces` 3.0.3 y `npm view braces version` también) y `scripts/check_npm_audit.py` exige quitar
@@ -1730,7 +1698,7 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   máquina que lo hizo; lo cubre el job de CI) y que Render pase
   `REQUIREMENTS_FILE` como build arg.
 - [2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2] **P3: un solo transporte para bajar
-  assets de la Release** — `shared/model_artifacts.py::_download_release_asset` delega en
+  assets de la Release** — `services/ml/model_artifacts.py::_download_release_asset` delega en
   `shared.release_assets` (`fetch_latest_release` → `find_asset_id` → `download_asset`): HTTPS
   pinned, allowlist por salto y sin reenviar el token al CDN. `requests` sale del módulo. La
   verificación del sha256 contra `model_versions` no se tocó: sigue en `resolve_active_artifact`,
@@ -1953,7 +1921,7 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   HMAC). Los 5 sitios migran y la propiedad se elimina del adaptador. Commit `187ff9d`.
 
 - [2026-08-08] **P2: un solo poller del centinela SSE por proceso** — Cada cliente conectado
-  consultaba `shared.cache_signal` cada 5 s por su cuenta: N clientes = N consultas por intervalo
+  consultaba `db.cache_signal` cada 5 s por su cuenta: N clientes = N consultas por intervalo
   compitiendo por el threadpool con el resto de la API. Ahora un `_SignalWatcher` por proceso
   publica el timestamp en memoria y cada cliente lo compara con su checkpoint — exactamente lo que
   evaluaba `check_cache_signal`, pero O(1) en conexiones. Arranca con el primer suscriptor y se

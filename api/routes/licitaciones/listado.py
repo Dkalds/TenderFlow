@@ -45,7 +45,7 @@ from shared.dto import (
     MAX_PAGE_LIMIT,
     CursorPaginatedResponseWithTotal,
     FiltrosLicitacion,
-    PaginatedResponse,
+    Pagina,
     SafeStr,
 )
 from shared.export_safety import sanitize_spreadsheet_record
@@ -321,7 +321,7 @@ def _orden_del_cursor(
 
 @router.get(
     "/licitaciones",
-    response_model=PaginatedResponse[LicitacionSummary],
+    response_model=Pagina[LicitacionSummary],
     summary="[DEPRECADO 2027-01-15] Listado paginado de licitaciones (offset)",
     deprecated=True,
     responses={
@@ -337,7 +337,7 @@ async def list_licitaciones(
     orden: _OrdenListado = Depends(_orden_offset),
     page: PageParams = Depends(pagina(50)),
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> PaginatedResponse[LicitacionSummary]:
+) -> Pagina[LicitacionSummary]:
     """Devuelve lista paginada con filtros opcionales.
 
     > **Deprecado**: deja de responder el 2027-01-15 (cabeceras `Deprecation`
@@ -371,7 +371,7 @@ async def list_licitaciones(
     if last_mod:
         response.headers["Last-Modified"] = last_mod
 
-    return PaginatedResponse[LicitacionSummary](
+    return Pagina[LicitacionSummary](
         total=total,
         limit=page.limit,
         offset=page.offset,
@@ -481,14 +481,14 @@ class SearchRequest(BaseModel):
 
 @router.post(
     "/licitaciones/search",
-    response_model=PaginatedResponse[LicitacionSummary],
+    response_model=Pagina[LicitacionSummary],
     summary="Búsqueda avanzada de licitaciones (POST)",
     responses={401: {"description": "API key inválida"}, 422: {"description": "Body inválido"}},
 )
 async def search_licitaciones(
     body: SearchRequest,
     _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> PaginatedResponse[LicitacionSummary]:
+) -> Pagina[LicitacionSummary]:
     """Búsqueda con criterios complejos que no caben en query string.
 
     Soporta múltiples CCAA, múltiples tecnologías y rangos de importe.
@@ -516,7 +516,7 @@ async def search_licitaciones(
 
     items, total = await run_db(_run)
 
-    return PaginatedResponse[LicitacionSummary](
+    return Pagina[LicitacionSummary](
         total=total,
         limit=limit,
         offset=offset,

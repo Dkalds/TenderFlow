@@ -54,6 +54,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 
 from config import settings
+from config.scoring_weights import dimension_weights
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
 from services.ambito_mercado import AmbitoMercado, resolver_ambito
@@ -70,7 +71,6 @@ from services.analytics.scoring_signals import (
     load_margen_stats,
 )
 from shared.dto import OrganizationSettings
-from shared.scoring_weights import dimension_weights
 
 log = get_logger(__name__)
 

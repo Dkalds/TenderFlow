@@ -176,7 +176,7 @@ export function FeatureFlagsCard() {
           hint="Cuando la instancia declare alguno, aparecerá aquí con su interruptor."
         />
       ) : (
-        <ul className="divide-y divide-border/60">
+        <ul className="divide-y divide-divider">
           {flags.map((flag) => {
             const { enabled, rollout_pct } = efectivo(flag);
             return (

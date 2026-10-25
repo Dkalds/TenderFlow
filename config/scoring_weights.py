@@ -6,8 +6,9 @@ primera estaba bien defendida; la segunda solo comprobaba que sumaran 100, así
 que aceptaba ``{"foo": 100}`` —que deja las cinco dimensiones reales a 0 y
 manda todo el corpus a la banda Descarte— y también pesos negativos.
 
-Este módulo vive en ``shared/`` porque lo consumen ``config/`` y ``api/``, y
-ninguno de los dos puede depender del otro.
+Este módulo vive en ``config/`` porque lo consumen ``config/settings.py`` y
+``api/``: ``config`` es la capa más baja, y la pieza que dos capas comparten
+baja a la inferior (AGENTS.md §2). Solo usa la biblioteca estándar.
 """
 
 from __future__ import annotations

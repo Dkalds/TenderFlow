@@ -119,7 +119,7 @@ export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) 
       </p>
       <div className="relative h-2 w-full rounded-full bg-muted" aria-hidden>
         <div
-          className="absolute h-2 rounded-full bg-primary/30"
+          className="absolute h-2 rounded-full bg-primary-ramp-2"
           style={{ left: `${left}%`, width: `${width}%` }}
         />
         <div

@@ -115,7 +115,7 @@ export function LeyendaTipos({
               onClick={() => onTipo(pulsado ? null : tramo.estado)}
               className={cn(
                 "inline-flex h-6 items-center gap-1.5 rounded-md px-1.5 text-tf-micro text-muted-foreground transition-colors active:duration-0",
-                pulsado ? "bg-primary/10 text-foreground" : "hover:bg-primary/5 active:bg-primary/10",
+                pulsado ? "bg-primary-selected text-foreground" : "hover:bg-primary-hover active:bg-primary-selected",
               )}
             >
               {/* Con otro tipo pulsado se atenúa solo el punto: el texto atenuado

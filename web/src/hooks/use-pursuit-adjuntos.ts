@@ -69,6 +69,7 @@ export function useSubirAdjunto(pursuitId: number) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo subir el adjunto" },
     mutationFn: ({ fichero, contentType }: { fichero: File; contentType: string }) =>
       fetchWithAuth<Adjunto>(rutaAdjuntos(pursuitId, organizationId), {
         method: "POST",
@@ -84,6 +85,7 @@ export function useRetirarAdjunto(pursuitId: number) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo retirar el adjunto" },
     mutationFn: (attachmentId: number) =>
       apiMutate<void>("DELETE", `/api/v1/pursuits/adjuntos/${attachmentId}${conOrganizacion(organizationId)}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: pursuitKeys.adjuntos(pursuitId) }),
@@ -100,6 +102,7 @@ export function useRetirarAdjunto(pursuitId: number) {
 export function useDescargarAdjunto() {
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo descargar el adjunto" },
     mutationFn: async (adjunto: Adjunto) => {
       const enlace = await fetchWithAuth<EnlaceAdjunto>(
         `/api/v1/pursuits/adjuntos/${adjunto.id}/enlace${conOrganizacion(organizationId)}`,

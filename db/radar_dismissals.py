@@ -79,7 +79,7 @@ def add(
     fila existente no se toca— porque ``follows``, al que esta tabla alimenta
     con escritura doble (ADR-031), sigue tecleada por ella; a
     ``user_notifications`` el recordatorio de :func:`pospuestos_vencidos` ya
-    llega por ``user_id`` (v161).
+    llega por ``user_id`` (v162).
     """
     with connect() as c:
         c.execute(

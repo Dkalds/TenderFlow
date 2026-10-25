@@ -57,7 +57,7 @@ export function ContextLine({ items }: { items: ContextItem[] }) {
         );
         const clases = cn(
           "flex h-[22px] items-baseline gap-2 px-4",
-          index > 0 && "border-l border-border/60",
+          index > 0 && "border-l border-divider",
           item.onClick && "cursor-pointer",
         );
         // La explicación era un `title` nativo. En el botón y en el enlace pasa

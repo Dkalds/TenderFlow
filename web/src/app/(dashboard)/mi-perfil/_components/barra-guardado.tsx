@@ -46,7 +46,7 @@ export function BarraGuardado({
     <div
       className={cn(
         "flex flex-wrap items-center gap-x-3 gap-y-2",
-        dirty && "tf-glass-strong sticky bottom-3 z-10 rounded-xl border border-border/70 px-3.5 py-2.5 shadow-md",
+        dirty && "tf-glass-strong sticky bottom-3 z-10 rounded-xl border border-divider px-3.5 py-2.5 shadow-md",
       )}
     >
       {dirty ? (

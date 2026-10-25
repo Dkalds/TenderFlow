@@ -54,7 +54,7 @@
     --muted: 42 14% 91%;
     /* 40% -> 34% (2026-09-19, axe `color-contrast` en /detalle). El gris
      * secundario va sobre superficies que no son la página: el badge neutro
-     * (`bg-muted-foreground/10`) dentro de la fila activa (`bg-primary/9`)
+     * (`bg-muted-foreground/10`) dentro de la fila activa (`bg-primary-selected`, 10 %; era `bg-primary/9`)
      * daba 4,04:1. A 34 % esa misma pila da 5,05:1 y la página limpia 6,59:1,
      * lejos aún de los ~16:1 del `--foreground`: la jerarquía primario /
      * secundario se conserva. Lo fija `contraste-tokens.test.ts`.
@@ -116,6 +116,18 @@
     --info: 210 90% 37%;
     --info-foreground: 0 0% 100%;
     --border: 30 12% 40% / 0.28;
+    /* Escala de bordes con nombre (F10, 2026-10-25). Había `border-border/N` en
+     * siete valores (/25 a /80) repartidos por ~190 ficheros; ahora son tres
+     * pasos: `border` (controles y lo que se pulsa), `divider` (≈ el /60 de
+     * antes: paneles, filas, separadores; absorbió /50, /60 y /70) y
+     * `divider-subtle` (≈ el /40: filas densas y rejillas; absorbió /25, /30 y
+     * /40). El /80 pasó a `border`. Son el mismo tono que `--border` con su
+     * alfa multiplicada (0,28 × 0,6 y × 0,4): entraron con el cambio de todos
+     * los bordes a la vez, porque una opacidad encima del divisor aclararía otra vez lo
+     * que el token ya aclara. Lo vigila `restriccionesDeAspecto`
+     * (web/eslint.config.mjs): nada de `-border/N` ni `-divider/N`. */
+    --divider: 30 12% 40% / 0.17;
+    --divider-subtle: 30 12% 40% / 0.11;
     --input: 30 12% 40% / 0.3;
     --ring: 22 78% 34%;
     --radius: 0.625rem;
@@ -163,7 +175,7 @@
     /* hot/cold/skip bajan (2026-09-19, axe `color-contrast` en /radar): la
      * cifra del score del Radar es texto de 15 px sobre el fondo de página, no
      * sobre la tarjeta, y daba 4,43 (cold) y 4,19 (skip); con la fila en hover
-     * (`bg-primary/5`) o activa (`bg-primary/9`), aún menos. Ratios en página
+     * (`bg-primary-hover`) o activa (`bg-primary-selected`, 10 %; era `bg-primary/9`), aún menos. Ratios en página
      * · fila activa, antes -> ahora:
      *
      *   --score-hot   48% -> 42%   4,67 · 4,10 -> 5,79 · 5,08
@@ -206,6 +218,8 @@
     --info: 207 90% 64%;
     --info-foreground: 210 100% 8%;
     --border: 34 12% 60% / 0.22;
+    --divider: 34 12% 60% / 0.13;
+    --divider-subtle: 34 12% 60% / 0.09;
     --input: 34 12% 60% / 0.26;
     --ring: 26 88% 62%;
 
@@ -295,6 +309,37 @@
   --color-info: hsl(var(--info));
   --color-info-foreground: hsl(var(--info-foreground));
   --color-border: hsl(var(--border));
+  --color-divider: hsl(var(--divider));
+  --color-divider-subtle: hsl(var(--divider-subtle));
+  /* Escala de tintes de `primary` con nombre (F10, 2026-10-25; regla 6 de la
+   * casa en docs/UX_AUDIT.md). Llegó a haber 29 opacidades sueltas y luego 12;
+   * ahora no se escribe ninguna (`restriccionesDeAspecto` lo impide):
+   *
+   *   primary-hover        5 %   fondo al pasar; fondo de reposo muy tenue
+   *   primary-selected    10 %   seleccionado, chip, fila activa (absorbió /9)
+   *   primary-soft        15 %   énfasis; el máximo detrás de texto del mismo
+   *                              color (≤ 16 %, `contraste-tokens.test.ts` lee
+   *                              estas tres alfas de aquí y mide sus pilas)
+   *   primary-line        30 %   borde y anillo tintados (absorbió /40)
+   *   primary-line-strong 50 %   borde tintado de énfasis, hover del borde
+   *   primary-solid-hover 90 %   hover del botón sólido (absorbió el /80)
+   *   primary-ramp-1…4   20 · 35 · 55 · 90 %   intensidad de dato (mapas de
+   *                              calor, barras, embudo, pista del slider);
+   *                              absorbió /30 → 2, /50 y /60 → 3, /80 → 4
+   *
+   * Los mapas de calor de escala continua (alfa calculada por valor) siguen escribiendo
+   * `hsl(var(--primary) / α)` en un `style`: son una escala de dato, no un
+   * tinte, y no pasan por clases. */
+  --color-primary-hover: hsl(var(--primary) / 0.05);
+  --color-primary-selected: hsl(var(--primary) / 0.1);
+  --color-primary-soft: hsl(var(--primary) / 0.15);
+  --color-primary-line: hsl(var(--primary) / 0.3);
+  --color-primary-line-strong: hsl(var(--primary) / 0.5);
+  --color-primary-solid-hover: hsl(var(--primary) / 0.9);
+  --color-primary-ramp-1: hsl(var(--primary) / 0.2);
+  --color-primary-ramp-2: hsl(var(--primary) / 0.35);
+  --color-primary-ramp-3: hsl(var(--primary) / 0.55);
+  --color-primary-ramp-4: hsl(var(--primary) / 0.9);
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
   /* Velo de los modales (diálogo, sheet, paleta, overlays de la consola). Era

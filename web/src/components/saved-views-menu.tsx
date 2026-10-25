@@ -84,7 +84,7 @@ export function SavedViewsMenu() {
           </Button>
         </form>
 
-        <div className="bg-border/60 my-1 h-px" />
+        <div className="bg-divider my-1 h-px" />
 
         <ListaDeVistas
           onAplicar={(view) => {

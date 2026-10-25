@@ -19,7 +19,6 @@ import { MOTIVOS_PERDIDA, errorDeCierre, esMotivoPerdida, pideCodificar } from "
 import { ariaCampo, CampoError } from "@/lib/forms/campo";
 import { oportunidad } from "@/lib/forms/esquemas";
 import { numeroDeTexto } from "@/lib/forms/valores";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { cn } from "@/lib/utils";
 
 /** Valores del formulario: claves de `PursuitUpdate`, del esquema de S7.2. */
@@ -76,7 +75,7 @@ function PursuitEditorForm({
   pursuit: Pursuit;
   decisiones: readonly PursuitDecision[];
 }) {
-  const update = useUpdatePursuit(pursuit.id);
+  const update = useUpdatePursuit(pursuit.id, { errorTitle: "No se pudo guardar la oportunidad" });
   const members = useOrganizationMembers(pursuit.organization_id).data ?? [];
   // react-hook-form + esquema de `PursuitUpdate` (S7.2): un importe ilegible
   // o negativo se explica bajo su campo en vez de viajar como `null`.
@@ -120,8 +119,8 @@ function PursuitEditorForm({
         expected_version: pursuit.version,
       });
       toast.success("Oportunidad actualizada");
-    } catch (error) {
-      toast.error("No se pudo guardar la oportunidad", { description: getErrorMessage(error, "accion") });
+    } catch {
+      // El aviso lo da el global de mutaciones, con el título del hook (D6).
     }
   };
 

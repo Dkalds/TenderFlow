@@ -6,6 +6,10 @@ al arranque), ``scripts/hash_password.py`` (advertencia interactiva) y
 ``api/routes/auth.py`` (contraseña de las cuentas locales, vía
 :func:`check_account_password`).
 
+Vive en ``config/`` y no en ``shared/`` porque ``config.settings`` la usa al
+arrancar y ``config`` es la capa más baja (AGENTS.md §2). Solo usa la
+biblioteca estándar.
+
 Typing strict — no usar ``Any`` ni ``# type: ignore`` sin justificación.
 """
 

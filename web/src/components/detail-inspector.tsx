@@ -104,7 +104,7 @@ export function DetailInspector({
 
   return (
     <aside aria-label="Ficha de la licitación" className={cn("flex min-h-0 flex-1 flex-col bg-card", className)}>
-      <div className="flex flex-none items-center gap-2 border-b border-border/60 px-4 py-2">
+      <div className="flex flex-none items-center gap-2 border-b border-divider px-4 py-2">
         <FichaEstado licitacion={l} className="flex-1" />
         {onExpandir && (
           <Tooltip>
@@ -156,7 +156,7 @@ export function DetailInspector({
           <FichaAcciones licitacion={l} />
         </div>
 
-        <div className="sticky top-0 z-10 border-b border-border/60 bg-card px-4 pt-2">
+        <div className="sticky top-0 z-10 border-b border-divider bg-card px-4 pt-2">
           <PanelTabs
             tabs={pestanas}
             value={tab}
@@ -188,7 +188,7 @@ export function DetailInspector({
               <div className="[&>*:first-child]:mt-0">
                 <TecnologiasBlock licitacionId={l.id_externo} />
               </div>
-              <div className="border-t border-border/50 pt-4">
+              <div className="border-t border-divider pt-4">
                 <FichaEventos licitacionId={l.id_externo} />
               </div>
             </div>

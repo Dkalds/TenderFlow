@@ -1018,9 +1018,9 @@ def ejecutar_paso(name: str, *, lane: str = LANE_BULK) -> str:
 
 
 def ejecutar_paso_encolado(job: Any) -> dict[str, Any]:
-    """Handler del tipo ``paso_pipeline`` de la cola (``shared/jobs.py``).
+    """Handler del tipo ``paso_pipeline`` de la cola (``services/jobs.py``).
 
-    ``job`` es un ``shared.jobs.Job``; se anota ``Any`` para no importar la cola
+    ``job`` es un ``services.jobs.Job``; se anota ``Any`` para no importar la cola
     al cargar este módulo, que es el que arrastra la pipeline entera y también
     se importa desde ``scripts/check_job_parity.py``.
     """
@@ -1060,7 +1060,7 @@ def _cierre_por_cola(*, lane: str) -> dict[str, str]:
             que la cola no esté (una migración sin aplicar) no puede costar el
             cierre entero de la pasada.
     """
-    from shared.jobs import TIPO_PASO_PIPELINE, ack, claim, ejecutar, enqueue, fail
+    from services.jobs import TIPO_PASO_PIPELINE, ack, claim, ejecutar, enqueue, fail
 
     tipos = (TIPO_PASO_PIPELINE,)
 

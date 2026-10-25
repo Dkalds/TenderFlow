@@ -379,7 +379,7 @@ def promote_if_better(
     **El artefacto publicado lleva su sha256 en el nombre** (2026-10):
     ``publicar_como`` es la ruta *base* (``data/models/sap_classifier.pkl``) y
     lo que se escribe y se registra es ``sap_classifier-<sha256[:12]>.pkl`` en
-    ese directorio (``shared.model_artifacts.content_addressed_path``), igual
+    ese directorio (``services.ml.model_artifacts.content_addressed_path``), igual
     que ``baja_model`` y ``retencion_model``. Con el nombre fijo, subir el
     candidato sustituía el asset de la versión activa, y ``train-model.yml``
     tenía que retirarla antes de subir: el modelo se servía sin cotejar hasta
@@ -460,7 +460,7 @@ def promote_if_better(
     ruta_registrada = guardado
     publicado: Path | None = None
     if pasa_el_gate and publicar_como is not None:
-        from shared.model_artifacts import content_addressed_path
+        from services.ml.model_artifacts import content_addressed_path
 
         publicado = content_addressed_path(publicar_como, sha)
         publicado.parent.mkdir(parents=True, exist_ok=True)

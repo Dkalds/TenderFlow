@@ -33,7 +33,6 @@ import {
   useSubirAdjunto,
 } from "@/hooks/use-pursuit-adjuntos";
 import { extensionesAdmitidas, validarFichero, type Adjunto } from "@/lib/adjuntos";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { formatDate, formatTamano } from "@/lib/utils";
 
 export function AdjuntosPanel({ pursuitId }: { pursuitId: number }) {
@@ -62,8 +61,6 @@ export function AdjuntosPanel({ pursuitId }: { pursuitId: number }) {
       { fichero, contentType: validacion.contentType },
       {
         onSuccess: () => toast.success(`«${fichero.name}» adjuntado a la oportunidad`),
-        onError: (error) =>
-          toast.error(`No se pudo subir «${fichero.name}»`, { description: getErrorMessage(error, "accion") }),
       },
     );
   };
@@ -173,7 +170,7 @@ function ListaAdjuntos({
     );
   }
   return (
-    <ul className="divide-border/60 divide-y" aria-label="Adjuntos de la oportunidad">
+    <ul className="divide-divider divide-y" aria-label="Adjuntos de la oportunidad">
       {adjuntos.map((adjunto) => (
         <FilaAdjunto
           key={adjunto.id}
@@ -226,10 +223,7 @@ function FilaAdjunto({
             onClick={() =>
               retirar.mutate(adjunto.id, {
                 onSuccess: () => toast.success(`«${adjunto.filename}» retirado de la oportunidad`),
-                onError: (error) => {
-                  setConfirmando(false);
-                  toast.error("No se pudo retirar el adjunto", { description: getErrorMessage(error, "accion") });
-                },
+                onError: () => setConfirmando(false),
               })
             }
           >
@@ -249,10 +243,7 @@ function FilaAdjunto({
               disabled={descargar.isPending}
               aria-label={`Descargar ${adjunto.filename}`}
               onClick={() =>
-                descargar.mutate(adjunto, {
-                  onError: (error) =>
-                    toast.error("No se pudo descargar el adjunto", { description: getErrorMessage(error, "accion") }),
-                })
+                descargar.mutate(adjunto)
               }
             >
               <Download aria-hidden="true" />

@@ -196,7 +196,7 @@ class TestSharedSignalWatcher:
                     await asyncio.sleep(0.01)
                 return watcher._signal_ts
 
-        with patch("shared.cache_signal.get_signal_timestamp", _counting_signal):
+        with patch("db.cache_signal.get_signal_timestamp", _counting_signal):
             signal_ts = asyncio.run(_exercise())
 
         assert signal_ts == 123.0, "el poller no llegó a publicar la marca del centinela"
@@ -214,7 +214,7 @@ class TestSharedSignalWatcher:
                 running = watcher._task is not None
             return running, watcher._task is None
 
-        with patch("shared.cache_signal.get_signal_timestamp", lambda: 1.0):
+        with patch("db.cache_signal.get_signal_timestamp", lambda: 1.0):
             running_with_client, stopped_without = asyncio.run(_exercise())
 
         assert running_with_client

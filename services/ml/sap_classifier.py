@@ -825,7 +825,7 @@ class SAPClassifier:
         registradas desde 2026-10 llevan el sha256 en el nombre
         (``sap_classifier-<sha12>.pkl``) y no pasan por aquí.
 
-        Busca como ``shared.model_artifacts``: Release de tag fijo
+        Busca como ``services.ml.model_artifacts``: Release de tag fijo
         ``ml-models``, después *latest* y después las más recientes
         (``shared.release_assets.locate_release_asset``). Hasta 2026-10 solo
         miraba *latest*, y una Release de software nueva marcada como *latest*
@@ -1043,7 +1043,7 @@ class SAPClassifier:
         Tres canales, en orden de preferencia:
 
         1. La versión activa de ``model_versions``, verificada por sha256
-           (``shared/model_artifacts.py::resolve_servable_artifact``), con su
+           (``services/ml/model_artifacts.py::resolve_servable_artifact``), con su
            nombre registrado: ``sap_classifier-<sha12>.pkl`` desde 2026-10.
         2. El artefacto local, si este runner ya lo tiene.
         3. El asset de **nombre fijo** ``sap_classifier.pkl`` de las Releases,
@@ -1061,7 +1061,7 @@ class SAPClassifier:
         su sha256 lanza ``ModelArtifactMismatch`` en vez de caer al tercero: lo
         vigila ``scheduler/jobs/model_artifacts_canary.py``.
         """
-        from shared.model_artifacts import resolve_servable_artifact
+        from services.ml.model_artifacts import resolve_servable_artifact
 
         artefacto = resolve_servable_artifact("sap_classifier", _MODEL_PATH)
         if artefacto is not None:

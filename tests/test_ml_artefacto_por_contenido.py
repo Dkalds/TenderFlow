@@ -24,7 +24,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from shared.model_artifacts import rename_to_content_address
+from services.ml.model_artifacts import rename_to_content_address
 from shared.model_integrity import verify_model_integrity
 
 
@@ -106,7 +106,7 @@ def test_el_nombre_del_sap_sale_de_la_misma_regla(tmp_path):
     directamente en ``content_addressed_path``, sin tocar el ``.pkl`` de
     nombre fijo. Tiene que dar el mismo nombre que ``rename_to_content_address``
     para que un asset no tenga dos nombres según quién lo publique."""
-    from shared.model_artifacts import content_addressed_path
+    from services.ml.model_artifacts import content_addressed_path
 
     sha256 = _sha(b"sap")
     base = tmp_path / "sap_classifier.pkl"

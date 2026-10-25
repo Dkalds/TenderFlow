@@ -1,4 +1,4 @@
-"""v161 (ADR-030 fase 3): ``user_notifications`` se teclea por ``user_id``.
+"""v162 (ADR-030 fase 3): ``user_notifications`` se teclea por ``user_id``.
 
 Dos bloques, como ``tests/test_v135_user_id_pk_fase3.py``:
 
@@ -20,7 +20,7 @@ from typing import Any
 
 import pytest
 
-_MIGRACION = "db.alembic.versions.v161_user_notifications_user_id_fase3"
+_MIGRACION = "db.alembic.versions.v162_user_notifications_user_id_fase3"
 
 
 def _load() -> Any:
@@ -58,8 +58,8 @@ def _ejecutar(monkeypatch: pytest.MonkeyPatch, paso: str) -> str:
 
 def test_cadena_e_identidad() -> None:
     migracion = _load()
-    assert migracion.revision == "v161_user_notifications_user_id_fase3"
-    assert migracion.down_revision == "v160_fechas_ts_indices"
+    assert migracion.revision == "v162_user_notifications_user_id_fase3"
+    assert migracion.down_revision == "v161_documentos_sin_texto"
     assert migracion.CLAVE_NUEVA == ("user_id", "licitacion_id", "type")
     assert migracion.CLAVE_VIEJA == ("user_key", "licitacion_id", "type")
 
@@ -210,7 +210,7 @@ def _alerta(**extra: Any) -> bool:
 def test_con_user_id_la_alerta_nace_sin_clave_y_la_base_impide_el_duplicado(tmp_db: Any) -> None:
     """Dos claves de dos correos del mismo usuario caen en la misma fila: lo
     impide el índice parcial, no un ``SELECT`` previo del repositorio."""
-    user_id = _crear_usuario("alerta@v161.test")
+    user_id = _crear_usuario("alerta@v162.test")
     org = _organizacion_personal(user_id)
 
     assert _alerta(user_id=user_id, user_key="clave-vieja", organization_id=org) is True
@@ -228,11 +228,11 @@ def test_con_user_id_la_alerta_nace_sin_clave_y_la_base_impide_el_duplicado(tmp_
 
 
 def test_la_alerta_escrita_por_la_fase_2_frena_a_la_nueva(tmp_db: Any) -> None:
-    """Una fila con las dos columnas (código anterior a v161, o un correo
+    """Una fila con las dos columnas (código anterior a v162, o un correo
     anterior) y la nueva sin clave son la misma alerta."""
     from db.database import connect, now_utc_iso
 
-    user_id = _crear_usuario("transicion@v161.test")
+    user_id = _crear_usuario("transicion@v162.test")
     org = _organizacion_personal(user_id)
     with connect() as c:
         c.execute(
@@ -249,7 +249,7 @@ def test_la_alerta_escrita_por_la_fase_2_frena_a_la_nueva(tmp_db: Any) -> None:
 def test_sin_user_id_sigue_valiendo_la_clave(tmp_db: Any) -> None:
     """Favoritos que el backfill no resolvió: la alerta sale sólo con clave y
     la identidad vieja sigue deduplicando."""
-    user_id = _crear_usuario("legacy@v161.test")
+    user_id = _crear_usuario("legacy@v162.test")
     org = _organizacion_personal(user_id)
     assert _alerta(user_key="solo-clave", organization_id=org) is True
     assert _alerta(user_key="solo-clave", organization_id=org) is False
@@ -267,11 +267,11 @@ def test_la_bandeja_y_el_gdpr_ven_la_alerta_sin_clave_tras_cambiar_de_correo(
     from services.gdpr import anonymize_user_data, export_user_notifications
     from shared.identity import user_key_from_email
 
-    user_id = _crear_usuario("Antes@v161.test")
+    user_id = _crear_usuario("Antes@v162.test")
     org = _organizacion_personal(user_id)
     assert _alerta(user_id=user_id, organization_id=org) is True
 
-    clave_nueva = user_key_from_email("despues@v161.test", user_id)
+    clave_nueva = user_key_from_email("despues@v162.test", user_id)
     assert [
         a["licitacion_id"] for a in export_user_notifications(clave_nueva, user_id=user_id)
     ] == ["LIC-1"]
@@ -292,10 +292,10 @@ def test_la_campana_lee_una_alerta_escrita_solo_con_user_id(tmp_db: Any) -> None
     )
     from shared.identity import user_key_from_email
 
-    user_id = _crear_usuario("Solo-Id@v161.test")
+    user_id = _crear_usuario("Solo-Id@v162.test")
     org = _organizacion_personal(user_id)
     assert _alerta(user_id=user_id, organization_id=org) is True
-    clave = user_key_from_email("otro-correo@v161.test", user_id)
+    clave = user_key_from_email("otro-correo@v162.test", user_id)
 
     assert [a["licitacion_id"] for a in alertas_de_usuario(clave, 10, org, user_id=user_id)] == [
         "LIC-1"
@@ -322,16 +322,16 @@ def test_la_comprobacion_aborta_con_dos_avisos_de_la_misma_persona(tmp_db: Any) 
     from db.database import connect
 
     migracion = _load()
-    consulta = migracion.sql_duplicados().replace("FROM user_notifications", "FROM v161_prueba")
+    consulta = migracion.sql_duplicados().replace("FROM user_notifications", "FROM v162_prueba")
     # Exactamente un grupo: el par con ``licitacion_id IS NULL`` no cuenta,
     # porque tampoco chocaría en el índice.
-    with pytest.raises(psycopg.errors.RaiseException, match="v161: 1 identidad"), connect() as c:
+    with pytest.raises(psycopg.errors.RaiseException, match="v162: 1 identidad"), connect() as c:
         c.execute(
-            "CREATE TEMPORARY TABLE v161_prueba "
+            "CREATE TEMPORARY TABLE v162_prueba "
             "(user_key TEXT, user_id INTEGER, licitacion_id TEXT, type TEXT) ON COMMIT DROP"
         )
         c.execute(
-            "INSERT INTO v161_prueba VALUES ('k1', 7, 'LIC-1', 't'), ('k2', 7, 'LIC-1', 't'), "
+            "INSERT INTO v162_prueba VALUES ('k1', 7, 'LIC-1', 't'), ('k2', 7, 'LIC-1', 't'), "
             "('k3', 7, NULL, 't'), ('k4', 7, NULL, 't')"
         )
         c.execute(migracion._exigir_vacio(consulta, "identidad(es) duplicada(s)"))

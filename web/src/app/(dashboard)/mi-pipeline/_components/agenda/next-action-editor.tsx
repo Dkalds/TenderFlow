@@ -25,7 +25,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { type PipelineAgendaItem, useUpdatePursuit } from "@/hooks/use-pursuits";
 
 export function NextActionEditor({
@@ -40,7 +39,7 @@ export function NextActionEditor({
    */
   enfoque?: number;
 }) {
-  const updatePursuit = useUpdatePursuit(item.pursuit_id ?? "");
+  const updatePursuit = useUpdatePursuit(item.pursuit_id ?? "", { errorTitle: "No se pudo guardar la próxima acción" });
   const [accion, setAccion] = React.useState(item.next_action ?? "");
   const [vence, setVence] = React.useState(item.next_action_due ?? "");
   const campo = React.useRef<HTMLInputElement>(null);
@@ -63,8 +62,6 @@ export function NextActionEditor({
       },
       {
         onSuccess: () => toast.success("Próxima acción guardada"),
-        onError: (err) =>
-          toast.error("No se pudo guardar la próxima acción", { description: getErrorMessage(err, "accion") }),
       },
     );
   };
@@ -98,7 +95,7 @@ export function NextActionEditor({
         size="sm"
         disabled={!dirty || updatePursuit.isPending}
         onClick={guardar}
-        className="w-full border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
+        className="w-full border-primary-line bg-primary-selected text-primary hover:bg-primary-soft hover:text-primary"
       >
         {updatePursuit.isPending ? "Guardando…" : "Guardar"}
       </Button>

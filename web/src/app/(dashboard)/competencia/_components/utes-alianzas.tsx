@@ -76,7 +76,7 @@ export function UtesAlianzas({
               <button
                 type="button"
                 onClick={() => onElegir(fila.empresa)}
-                className="flex w-full flex-col gap-1 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-primary/5"
+                className="flex w-full flex-col gap-1 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-primary-hover"
               >
                 <span className="sr-only">Ver las alianzas de {fila.empresa}: </span>
                 <span className="flex items-baseline justify-between gap-2">

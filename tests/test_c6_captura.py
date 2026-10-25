@@ -24,20 +24,20 @@ class TestPlantillaGoNoGo:
     """C6.4 / D30 — cinco criterios fijos, pesos por organización."""
 
     def test_los_cinco_criterios_de_la_decision(self) -> None:
-        from services.go_no_go_template import CRITERIOS
+        from shared.go_no_go_template import CRITERIOS
 
         assert CRITERIOS == ("encaje", "capacidad", "competencia", "rentabilidad", "riesgo")
 
     def test_el_riesgo_puntua_invertido(self) -> None:
         """5 = poco riesgo, para que la suma tenga una sola dirección."""
-        from services.go_no_go_template import CRITERIO_INVERTIDO, ETIQUETAS
+        from shared.go_no_go_template import CRITERIO_INVERTIDO, ETIQUETAS
 
         assert CRITERIO_INVERTIDO == "riesgo"
         assert "riesgo bajo" in ETIQUETAS["riesgo"]
 
     def test_solo_se_promedian_los_criterios_puntuados(self) -> None:
         """Contar los ausentes como cero haría que media ficha dijera «no go»."""
-        from services.go_no_go_template import calcular
+        from shared.go_no_go_template import calcular
 
         resultado = calcular({"encaje": 5, "capacidad": 5})
         assert resultado.total == 5.0
@@ -46,14 +46,14 @@ class TestPlantillaGoNoGo:
         assert resultado.recomendacion == "go"
 
     def test_una_ficha_vacia_no_recomienda_nada(self) -> None:
-        from services.go_no_go_template import calcular
+        from shared.go_no_go_template import calcular
 
         resultado = calcular({})
         assert resultado.recomendacion == "sin_datos"
         assert resultado.completa is False
 
     def test_los_pesos_mueven_el_resultado(self) -> None:
-        from services.go_no_go_template import calcular
+        from shared.go_no_go_template import calcular
 
         puntuaciones = {"encaje": 5, "rentabilidad": 1}
         neutral = calcular(puntuaciones)
@@ -63,26 +63,26 @@ class TestPlantillaGoNoGo:
 
     def test_un_criterio_sin_peso_usa_el_default_y_no_cero(self) -> None:
         """«No configurado» y «no cuenta» son cosas distintas."""
-        from services.go_no_go_template import PESO_DEFECTO, normalizar_pesos
+        from shared.go_no_go_template import PESO_DEFECTO, normalizar_pesos
 
         pesos = normalizar_pesos({"encaje": 4})
         assert pesos["encaje"] == 4
         assert pesos["riesgo"] == PESO_DEFECTO
 
     def test_todos_los_pesos_a_cero_no_deja_el_total_indefinido(self) -> None:
-        from services.go_no_go_template import calcular
+        from shared.go_no_go_template import calcular
 
         resultado = calcular({"encaje": 4}, dict.fromkeys(["encaje", "riesgo"], 0.0))
         assert resultado.total == 4.0
 
     def test_la_puntuacion_fuera_de_rango_se_descarta(self) -> None:
-        from services.go_no_go_template import calcular
+        from shared.go_no_go_template import calcular
 
         assert calcular({"encaje": 9, "capacidad": 3}).criterios_puntuados == 1
 
     def test_la_discrepancia_se_señala_pero_no_bloquea(self) -> None:
         """Una plantilla que bloquea se rellena para pasarla."""
-        from services.go_no_go_template import calcular, discrepa
+        from shared.go_no_go_template import calcular, discrepa
 
         flojo = calcular(dict.fromkeys(("encaje", "capacidad"), 1))
         assert flojo.recomendacion == "no_go"
@@ -90,7 +90,7 @@ class TestPlantillaGoNoGo:
         assert discrepa("no_go", flojo) is False
 
     def test_sin_decision_no_hay_discrepancia(self) -> None:
-        from services.go_no_go_template import calcular, discrepa
+        from shared.go_no_go_template import calcular, discrepa
 
         assert discrepa(None, calcular({"encaje": 5})) is False
 

@@ -94,6 +94,7 @@ class TestFetchConTope:
             "error": 0,
             "skipped": 0,
             "unsupported": 0,
+            "sin_texto": 0,
             "aplazados": 3,
             "revividos": 0,
         }

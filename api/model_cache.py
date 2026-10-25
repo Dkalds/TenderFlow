@@ -26,9 +26,9 @@ Tres problemas que este módulo resuelve y que el singleton anterior
    llamaba a ``ensure_downloaded()`` salvo ``scraper/pipeline.py``—, así que
    ``/explain`` degradaba a 503 de forma permanente y el rollback no cambiaba
    nada de lo servido. Además había DOS resolvedores de la misma tabla
-   ``model_versions``: este y ``shared.model_artifacts.resolve_active_artifact``,
+   ``model_versions``: este y ``services.ml.model_artifacts.resolve_active_artifact``,
    que sí descarga. Ahora **solo queda el segundo**, y su descarga aterriza en
-   un directorio escribible (``shared.model_artifacts.artifact_cache_dir``).
+   un directorio escribible (``services.ml.model_artifacts.artifact_cache_dir``).
 
 Degradación visible
 -------------------
@@ -72,11 +72,11 @@ def _ttl_seconds() -> float:
 def _resolve_artifact(name: str) -> Path | None:
     """Resuelve el artefacto de la versión activa. Punto de inyección en tests.
 
-    Envuelve ``shared.model_artifacts.resolve_active_artifact`` en una función
+    Envuelve ``services.ml.model_artifacts.resolve_active_artifact`` en una función
     de módulo para que los tests puedan sustituirla sin red ni BD: es la única
     dependencia externa de :func:`get_classifier`.
     """
-    from shared.model_artifacts import resolve_active_artifact
+    from services.ml.model_artifacts import resolve_active_artifact
 
     return resolve_active_artifact(name)
 
@@ -89,8 +89,8 @@ def _cargar() -> tuple[Any, str | None]:
     Cualquier otro fallo de resolución degrada al artefacto local, que es lo
     que se venía sirviendo — pero dejando dicho que es una degradación.
     """
+    from services.ml.model_artifacts import ModelArtifactMismatch
     from services.ml.sap_classifier import SAPClassifier
-    from shared.model_artifacts import ModelArtifactMismatch
 
     artefacto: Path | None = None
     degradado: str | None = None

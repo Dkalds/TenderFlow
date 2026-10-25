@@ -43,6 +43,7 @@ export function useApplyWeightsProposal() {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudieron aplicar los pesos" },
     mutationFn: () => {
       const params = new URLSearchParams();
       if (organizationId != null) params.set("organization_id", String(organizationId));

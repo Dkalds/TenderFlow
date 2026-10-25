@@ -64,7 +64,7 @@ function TechScoreRow({
       className={cn(
         "w-full flex items-center gap-2 px-2 py-1 rounded-md text-tf-body transition-colors",
         "hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        isSelected && "ring-2 ring-primary bg-primary/5",
+        isSelected && "ring-2 ring-primary bg-primary-hover",
         isSecondary && !isSelected && "ring-1 ring-info/50 bg-info/5",
       )}
       /* Aquí no va `Tooltip`: son ~12 filas de score por

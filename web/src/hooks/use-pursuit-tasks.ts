@@ -21,7 +21,7 @@ import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import type { Schemas } from "@/lib/api-types";
 import { organizationKeys, pursuitKeys } from "@/lib/query-keys";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
+import { META_ERROR_EN_LINEA, type QueryFeedbackMeta } from "@/lib/query-feedback";
 
 export type PursuitTask = Schemas["PursuitTaskOut"];
 export type PursuitTaskCreate = Schemas["PursuitTaskCreate"];
@@ -96,10 +96,11 @@ function invalidarTareas(queryClient: ReturnType<typeof useQueryClient>) {
  * la fila activa, y cuál es no se sabe hasta que el usuario pulsa. Ligar el id
  * al hook obligaría a montar uno por fila.
  */
-export function useCrearTarea() {
+export function useCrearTarea(meta?: QueryFeedbackMeta) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo crear la tarea", ...meta },
     mutationFn: ({ pursuitId, ...input }: PursuitTaskCreate & { pursuitId: number }) =>
       apiMutate<PursuitTask>("POST", rutaTareas(pursuitId, organizationId), input),
     onSuccess: () => invalidarTareas(queryClient),
@@ -111,10 +112,11 @@ export function useCrearTarea() {
  * pidan: el contrato usa `null` para «no tocar», así que sin esas dos banderas
  * no habría forma de distinguir «deja la fecha como está» de «quítasela».
  */
-export function useActualizarTarea() {
+export function useActualizarTarea(meta?: QueryFeedbackMeta) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo actualizar la tarea", ...meta },
     mutationFn: ({
       pursuitId,
       taskId,

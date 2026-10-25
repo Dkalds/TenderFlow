@@ -30,7 +30,7 @@ function DetalleCabecera({
 }) {
   return (
     <thead className="sticky top-0 z-10 bg-card">
-      <tr className="h-[30px] border-b border-border/70">
+      <tr className="h-[30px] border-b border-divider">
         <th scope="col" className="px-1 pl-3.5">
           <Checkbox
             className="h-3.5 w-3.5"
@@ -125,7 +125,7 @@ export function DetalleTabla(props: DetalleTablaProps) {
           <tbody>
             {isLoading ? (
               Array.from({ length: 12 }, (_, index) => (
-                <tr key={index} className="border-b border-border/30">
+                <tr key={index} className="border-b border-divider-subtle">
                   <td colSpan={COLUMNS.length} className="px-3.5 py-1.5">
                     <Skeleton className="h-6 w-full rounded-sm" />
                   </td>

@@ -90,7 +90,7 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" disableTransitionOnChange>
       <div className="bg-background flex min-h-dvh flex-col">
-        <header className="tf-glass border-border/60 sticky top-0 z-40 border-b">
+        <header className="tf-glass border-divider sticky top-0 z-40 border-b">
           {/* El header se reparte en varias filas por debajo de `sm` y vuelve a
               una sola línea a partir de ahí, con una sola nav en el DOM. Antes
               era `hidden sm:flex` sin alternativa, así que en un teléfono
@@ -163,7 +163,7 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
               <EnlaceSolicitarAcceso
                 href={solicitarAccesoHref()}
                 ubicacion="header"
-                className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-ring focus-visible:ring-offset-background inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium transition-[scale,background-color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.97]"
+                className="bg-primary text-primary-foreground hover:bg-primary-solid-hover focus-visible:ring-ring focus-visible:ring-offset-background inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium transition-[scale,background-color] duration-150 ease-out focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.97]"
               >
                 {CONTENIDO.ctaPrimario}
               </EnlaceSolicitarAcceso>
@@ -179,7 +179,7 @@ export default function PublicoLayout({ children }: { children: React.ReactNode 
           {children}
         </main>
 
-        <footer className="border-border/60 border-t">
+        <footer className="border-divider border-t">
           <div className="mx-auto w-full max-w-6xl px-6 py-10">
             <div className="flex flex-wrap items-start justify-between gap-6">
               <div className="max-w-[38ch]">

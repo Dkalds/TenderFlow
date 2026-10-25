@@ -58,7 +58,7 @@ export function useRevocarSesion() {
       toast.success("Sesión cerrada");
       void queryClient.invalidateQueries({ queryKey: ajustesKeys.sesiones });
     },
-    onError: () => toast.error("No se pudo cerrar la sesión"),
+    meta: { errorTitle: "No se pudo cerrar la sesión" },
   });
 }
 
@@ -152,6 +152,6 @@ export function useGuardarPreferencias() {
       toast.success("Preferencias guardadas");
       void queryClient.invalidateQueries({ queryKey: ajustesKeys.notificaciones });
     },
-    onError: () => toast.error("No se pudieron guardar las preferencias"),
+    meta: { errorTitle: "No se pudieron guardar las preferencias" },
   });
 }

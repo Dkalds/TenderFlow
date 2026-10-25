@@ -115,7 +115,7 @@ export function SelectorOrganos({
           {seleccionados.map((nombre) => (
             <li
               key={nombre}
-              className="inline-flex max-w-full items-center gap-1 rounded-md border border-primary/30 bg-primary/10 py-0.5 pr-0.5 pl-2 text-tf-meta"
+              className="inline-flex max-w-full items-center gap-1 rounded-md border border-primary-line bg-primary-selected py-0.5 pr-0.5 pl-2 text-tf-meta"
             >
               <span className="truncate">{nombre}</span>
               <button
@@ -171,7 +171,7 @@ export function SelectorOrganos({
           role="listbox"
           aria-multiselectable="true"
           aria-label="Órganos que coinciden"
-          className="max-h-64 overflow-y-auto rounded-md border border-border/60"
+          className="max-h-64 overflow-y-auto rounded-md border border-divider"
         >
           {candidatos.map((candidato, indice) => {
             const marcado = elegido(candidato) || deEstaCuenta(candidato);
@@ -192,7 +192,7 @@ export function SelectorOrganos({
                 }}
                 onMouseEnter={() => setActivo(() => indice)}
                 className={cn(
-                  "flex cursor-pointer items-start gap-2 border-b border-border/40 px-2.5 py-2 text-tf-body last:border-b-0",
+                  "flex cursor-pointer items-start gap-2 border-b border-divider-subtle px-2.5 py-2 text-tf-body last:border-b-0",
                   indice === activo && "bg-accent",
                   bloqueado && "cursor-not-allowed opacity-60",
                 )}

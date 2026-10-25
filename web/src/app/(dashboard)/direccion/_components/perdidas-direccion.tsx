@@ -55,7 +55,7 @@ function SinMotivo({ cuadro }: { cuadro: Cuadro }) {
   if (sinMotivo === 0) return null;
   const muestra = cuadro.perdidas_sin_motivo_muestra ?? [];
   return (
-    <div className="mt-4 border-t border-border/40 pt-3">
+    <div className="mt-4 border-t border-divider-subtle pt-3">
       <SectionTitle hint={`${formatNumber(sinMotivo)} de ${formatNumber(cuadro.perdidas ?? 0)}`}>
         Pérdidas sin motivo codificado
       </SectionTitle>

@@ -42,7 +42,7 @@ Lo que la invalida son tres hechos posteriores:
 2. **`documentos.source_hash` (`v88`) existe para deduplicar** un binario que
    no se conserva: se calcula el hash de algo que se tira.
 3. **Los artefactos de modelo ya necesitan un bucket.**
-   `shared/model_artifacts.py` resuelve hoy contra Releases de GitHub, que
+   `services/ml/model_artifacts.py` resuelve hoy contra Releases de GitHub, que
    exige token y no es un almacén de objetos.
 
 ---
@@ -80,7 +80,7 @@ que aparece en la factura.
 
 ### E. Los artefactos de modelo usan el mismo bucket
 
-`shared/model_artifacts.py` resuelve **primero** el bucket y después la Release
+`services/ml/model_artifacts.py` resuelve **primero** el bucket y después la Release
 de GitHub, con el mismo sha256. El fallback se conserva: quita el token de
 GitHub del camino crítico sin romper lo que ya funciona.
 

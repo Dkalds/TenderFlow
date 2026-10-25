@@ -311,8 +311,8 @@ async def _lanzar_ficha_si_falta(
     if not settings.PLIEGO_FACTS_ON_PURSUIT:
         return
     try:
+        from services.jobs import TIPO_FICHA_PLIEGO, enqueue
         from services.rag.fact_sheet import get_fact_sheet
-        from shared.jobs import TIPO_FICHA_PLIEGO, enqueue
 
         if await run_db(get_fact_sheet, licitacion_id) is not None:
             return

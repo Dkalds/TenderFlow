@@ -301,7 +301,7 @@ async def extract_tender_fact_sheet_async(
     responde 202 con el mismo ``job_id``.
     """
     from config import settings
-    from shared.jobs import TIPO_FICHA_PLIEGO, enqueue
+    from services.jobs import TIPO_FICHA_PLIEGO, enqueue
 
     # 404 ANTES de encolar: con un id inexistente el trabajo acabaría
     # intentando persistir el estado `failed` y violando la FK de
@@ -353,7 +353,7 @@ async def enqueue_expediente_embeddings(
     tienen de dónde leer. Esta ruta adelanta el del expediente que alguien está
     mirando. Idempotente: si ya hay uno en cola devuelve el mismo ``job_id``.
     """
-    from shared.jobs import TIPO_EMBEDDINGS_EXPEDIENTE, enqueue
+    from services.jobs import TIPO_EMBEDDINGS_EXPEDIENTE, enqueue
 
     if await run_db(_lic_repo.get_by_id, id_externo) is None:
         raise HTTPException(
@@ -393,7 +393,7 @@ async def get_tender_fact_sheet_state(
     lanzar una segunda contra el mismo expediente), pero el identificador de
     ese trabajo no es suyo y su ``GET /jobs/{id}`` daría 404.
     """
-    from shared.jobs import TIPO_FICHA_PLIEGO, job_activo
+    from services.jobs import TIPO_FICHA_PLIEGO, job_activo
 
     job = await run_db(job_activo, TIPO_FICHA_PLIEGO, campo="licitacion_id", valor=id_externo)
     propio = job is not None and job.organization_id == int(ctx["organization_id"])

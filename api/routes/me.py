@@ -35,6 +35,7 @@ from api.concurrency import run_cpu, run_db
 from api.routes.dual_auth import require_any_auth, require_recent_session
 from api.techo_analitica import techo_sentencia_analitica
 from api.tenancy import require_organization, resolve_organization_ctx
+from config.scoring_weights import validate_scoring_weights
 from db.audit import log_event
 from db.database import now_utc_iso
 from db.repositories.api_keys import ApiKeyRepository
@@ -73,7 +74,6 @@ from shared.audit_events import (
 from shared.cache import ainvalidate_organization_scoped, ainvalidate_user_scoped
 from shared.dto import SessionsRevoked, StatusMessage, StatusOk
 from shared.identity import actor_del_principal
-from shared.scoring_weights import validate_scoring_weights
 
 log = get_logger(__name__)
 

@@ -33,7 +33,7 @@ def _regla(user_key: str, rule: WatchlistRule) -> int:
     """Una regla como las crea la API: con organización.
 
     `POST /watchlist/rules` exige organización desde S4.3, y una alerta sin
-    ella no aparece en ninguna campana: desde v161 el job la descarta en vez
+    ella no aparece en ninguna campana: desde v162 el job la descarta en vez
     de escribirla invisible, así que una regla sin organización ya no sirve
     para probar que notifica.
     """

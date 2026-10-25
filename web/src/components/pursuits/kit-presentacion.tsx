@@ -21,7 +21,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Panel, PanelEmpty, PanelError, PanelLoading, ROTULO_DATO, SectionTitle } from "@/components/console/panel";
 import { formatDate } from "@/components/pursuits/pursuit-presenters";
 import { useOrganizationMembers } from "@/hooks/use-organization";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { cn } from "@/lib/utils";
 import {
   type ItemKit,
@@ -68,9 +67,6 @@ export function KitPresentacionPanel({
     }
   }, [kit]);
 
-  const onError = (mensaje: string) => (err: unknown) =>
-    toast.error(mensaje, { description: getErrorMessage(err, "accion") });
-
   if (isPending) {
     return (
       <Panel id="ficha-kit">
@@ -116,7 +112,7 @@ export function KitPresentacionPanel({
             return (
               <section key={sobre.key} aria-label={sobre.titulo}>
                 <h5 className={cn("mb-1.5", ROTULO_DATO)}>{sobre.titulo}</h5>
-                <ul className="divide-y divide-border/50">
+                <ul className="divide-y divide-divider">
                   {items.map((item) => {
                     const checkId = `kit-${pursuitId}-${item.clave}`;
                     const selectId = `${checkId}-responsable`;
@@ -132,10 +128,7 @@ export function KitPresentacionPanel({
                             checked={item.listo}
                             disabled={marcar.isPending}
                             onCheckedChange={(value) =>
-                              marcar.mutate(
-                                { clave: item.clave, listo: value === true },
-                                { onError: onError("No se pudo marcar el documento") },
-                              )
+                              marcar.mutate({ clave: item.clave, listo: value === true })
                             }
                           />
                           <div className="min-w-0">
@@ -170,7 +163,6 @@ export function KitPresentacionPanel({
                                 { clave: item.clave, responsable_user_id: Number(value) },
                                 {
                                   onSuccess: () => toast.success("Responsable asignado: tarea creada"),
-                                  onError: onError("No se pudo asignar el documento"),
                                 },
                               );
                             }}

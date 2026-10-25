@@ -254,7 +254,7 @@ describe("tema claro sobre el fondo de página", () => {
 
 /**
  * Chips, badges y paginación pintan el token como texto **sobre su propio
- * tinte** (`bg-primary/10 text-primary`, `bg-warning/15 text-warning`…). El
+ * tinte** (`bg-primary-selected text-primary`, `bg-warning/15 text-warning`…). El
  * tinte aclara la superficie y el ratio cae ~0,9 puntos respecto al fondo
  * limpio: es lo que el E2E de axe marcaba en el Radar y el Detalle. Se mide
  * sobre el fondo de página, la superficie opaca más oscura, con el tinte más
@@ -266,6 +266,28 @@ const TEXTO_SOBRE_SU_TINTE = ["primary", "success", "warning", "info", "score-wa
 function mezcla(frente: Rgb, fondo: Rgb, alfa: number): Rgb {
   return [0, 1, 2].map((i) => frente[i] * alfa + fondo[i] * (1 - alfa)) as unknown as Rgb;
 }
+
+/**
+ * Alfa de un tinte con nombre de `primary` (`--color-primary-hover: hsl(var(--primary) / 0.05)`,
+ * F10). Se lee del propio `globals.css` por lo mismo que los HSL: si alguien
+ * sube el tinte de la fila activa, las pilas de abajo se recalculan solas.
+ */
+function alfaTinte(nombre: string): number {
+  const m = new RegExp(String.raw`--color-primary-${nombre}\s*:\s*hsl\(var\(--primary\)\s*/\s*([\d.]+)\)`).exec(CSS);
+  if (!m) throw new Error(`No se encontró el tinte --color-primary-${nombre} en globals.css`);
+  return Number(m[1]);
+}
+const HOVER = alfaTinte("hover");
+const SELECCIONADO = alfaTinte("selected");
+const SUAVE = alfaTinte("soft");
+
+describe("escala de tintes de primary", () => {
+  it("va de menos a más y el más denso no pasa del tinte máximo medido", () => {
+    expect(HOVER).toBeLessThan(SELECCIONADO);
+    expect(SELECCIONADO).toBeLessThan(SUAVE);
+    expect(SUAVE).toBeLessThanOrEqual(TINTE_MAXIMO);
+  });
+});
 
 describe("tema claro: texto sobre su propio tinte", () => {
   it.each(TEXTO_SOBRE_SU_TINTE)(`--%s pasa 4,5:1 sobre un tinte del ${TINTE_MAXIMO * 100} %% de sí mismo`, (token) => {
@@ -279,13 +301,13 @@ describe("tema claro: texto sobre su propio tinte", () => {
 /**
  * El gris secundario sobre la pila más densa que axe encontró en la UI: el
  * badge neutro de `StatusBadge` (`bg-muted-foreground/10 text-muted-foreground`)
- * dentro de la fila activa de una tabla (`bg-primary/9`), sobre el fondo de
+ * dentro de la fila activa de una tabla (`bg-primary-selected`), sobre el fondo de
  * página. Con `--muted-foreground` al 40 % daba 4,04:1 en /detalle.
  */
 describe("tema claro: gris secundario sobre el badge neutro de una fila activa", () => {
-  it("--muted-foreground pasa 4,5:1 sobre muted/10 encima de primary/9", () => {
+  it("--muted-foreground pasa 4,5:1 sobre muted/10 encima de la fila activa", () => {
     const tinta = color("claro", "muted-foreground");
-    const fila = mezcla(color("claro", "primary"), color("claro", "background"), 0.09);
+    const fila = mezcla(color("claro", "primary"), color("claro", "background"), SELECCIONADO);
     const superficie = mezcla(tinta, fila, 0.1);
     const medido = ratioContraste(tinta, superficie);
     expect(medido, `--muted-foreground da ${medido.toFixed(2)}:1 sobre el badge neutro`).toBeGreaterThanOrEqual(
@@ -297,7 +319,7 @@ describe("tema claro: gris secundario sobre el badge neutro de una fila activa",
 /**
  * Pilas de tintes del Radar (axe `color-contrast`, /radar, 2026-09-19). Los
  * tintes se suman: un texto sobre su tinte dentro de la fila activa
- * (`bg-primary/9`) queda por debajo de lo que el test de «su propio tinte»
+ * (`bg-primary-selected`) queda por debajo de lo que el test de «su propio tinte»
  * mide sobre la página limpia.
  */
 describe("tema claro: el Radar sobre sus filas tintadas", () => {
@@ -305,30 +327,30 @@ describe("tema claro: el Radar sobre sus filas tintadas", () => {
 
   // La cifra del score (`radar-fila.tsx`) sobre la fila activa y en hover.
   it.each(["score-hot", "score-warm", "score-cold", "score-skip"] as const)(
-    "--%s pasa 4,5:1 sobre la fila activa (primary 9 %%) y en hover (5 %%)",
+    "--%s pasa 4,5:1 sobre la fila activa (primary-selected) y en hover (primary-hover)",
     (token) => {
-      for (const alfa of [0.05, 0.09]) {
+      for (const alfa of [HOVER, SELECCIONADO]) {
         const medido = ratioContraste(color("claro", token), fila(alfa));
-        expect(medido, `--${token} da ${medido.toFixed(2)}:1 sobre primary/${alfa * 100}`).toBeGreaterThanOrEqual(
+        expect(medido, `--${token} da ${medido.toFixed(2)}:1 sobre primary al ${alfa * 100} %`).toBeGreaterThanOrEqual(
           AA_TEXTO,
         );
       }
     },
   );
 
-  // «Abrir» (`radar-acciones.tsx`): `bg-primary/6`, `hover:bg-primary/10`,
+  // «Abrir» (`radar-acciones.tsx`): `bg-primary-hover`, `hover:bg-primary-selected`,
   // dentro de la fila activa.
-  it.each([0.06, 0.1])("--primary pasa 4,5:1 sobre un tinte del %s dentro de la fila activa", (alfa) => {
+  it.each([HOVER, SELECCIONADO])("--primary pasa 4,5:1 sobre un tinte del %s dentro de la fila activa", (alfa) => {
     const tinta = color("claro", "primary");
-    const medido = ratioContraste(tinta, mezcla(tinta, fila(0.09), alfa));
+    const medido = ratioContraste(tinta, mezcla(tinta, fila(SELECCIONADO), alfa));
     expect(medido, `--primary da ${medido.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA_TEXTO);
   });
 
-  // Recuento del segmento activo (`radar-controles.tsx`): `bg-primary/10`
+  // Recuento del segmento activo (`radar-controles.tsx`): `bg-primary-selected`
   // sobre `bg-secondary`, más oscuro que la página.
-  it("--primary pasa 4,5:1 sobre primary/10 encima de --secondary", () => {
+  it("--primary pasa 4,5:1 sobre primary-selected encima de --secondary", () => {
     const tinta = color("claro", "primary");
-    const medido = ratioContraste(tinta, mezcla(tinta, color("claro", "secondary"), 0.1));
+    const medido = ratioContraste(tinta, mezcla(tinta, color("claro", "secondary"), SELECCIONADO));
     expect(medido, `--primary da ${medido.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA_TEXTO);
   });
 });

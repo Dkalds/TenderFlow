@@ -50,7 +50,7 @@ export async function UltimosPublicados() {
   const masReciente = items[0].fecha_publicacion;
 
   return (
-    <section aria-labelledby="ultimos-titulo" className="border-border/60 border-t pt-6">
+    <section aria-labelledby="ultimos-titulo" className="border-divider border-t pt-6">
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
         <h2 id="ultimos-titulo" className="text-sm font-semibold">
           {CONTENIDO.ultimosTitulo}
@@ -65,7 +65,7 @@ export async function UltimosPublicados() {
         )}
       </div>
 
-      <ul className="divide-border/40 mt-2 divide-y">
+      <ul className="divide-divider-subtle mt-2 divide-y">
         {items.map((lic) => {
           const plazo = plazoPresentacion(lic.fecha_limite, ahora);
           return (

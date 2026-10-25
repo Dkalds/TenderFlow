@@ -39,7 +39,7 @@ export function RadarCalidad() {
   const hayCaliente = bandas.some((banda) => banda.banda === "Caliente");
 
   return (
-    <div className="flex-none border-b border-border/60 bg-card px-3 py-1.5 md:px-3.5">
+    <div className="flex-none border-b border-divider bg-card px-3 py-1.5 md:px-3.5">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         {hayCaliente ? (
           <RadarQualityNota

@@ -73,7 +73,7 @@ export function AtajosAnalisis({ className }: { className?: string }) {
             <Link
               href={scopedHref(atajo.href)}
               aria-label={`Ir a ${atajo.label}, en Mercado`}
-              className="group text-tf-meta hover:bg-primary/5 hover:text-primary active:bg-primary/10 inline-flex h-7 items-center gap-1 rounded-md px-1.5 font-medium transition-colors active:duration-0"
+              className="group text-tf-meta hover:bg-primary-hover hover:text-primary active:bg-primary-selected inline-flex h-7 items-center gap-1 rounded-md px-1.5 font-medium transition-colors active:duration-0"
             >
               {atajo.label}
               <ArrowRight

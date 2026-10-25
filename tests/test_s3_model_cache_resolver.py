@@ -138,7 +138,7 @@ class TestDegradacion:
 
     def test_mismatch_de_sha256_propaga(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Servir explicaciones de otro modelo es peor que un 500."""
-        from shared.model_artifacts import ModelArtifactMismatch
+        from services.ml.model_artifacts import ModelArtifactMismatch
 
         def _mismatch(_name: str) -> Path | None:
             raise ModelArtifactMismatch("el sha256 no coincide")
@@ -175,7 +175,7 @@ class TestDegradacion:
 class TestDirectorioDeDescarga:
     def test_es_escribible(self) -> None:
         """En Render no hay disco propio: el destino tiene que poder crearse."""
-        from shared.model_artifacts import artifact_cache_dir
+        from services.ml.model_artifacts import artifact_cache_dir
 
         destino = artifact_cache_dir()
 
@@ -190,7 +190,7 @@ class TestDirectorioDeDescarga:
         import tempfile
 
         from config.settings import settings
-        from shared.model_artifacts import artifact_cache_dir
+        from services.ml.model_artifacts import artifact_cache_dir
 
         # DATA_DIR apuntando a un FICHERO: crear `<fichero>/models` es un
         # OSError en cualquier plataforma. Es el equivalente portable del

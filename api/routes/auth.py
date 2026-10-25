@@ -32,6 +32,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from api.concurrency import run_db
 from config import settings
+from config.password_policy import check_account_password
 from db.audit import log_event
 from db.sessions import (
     create_session,
@@ -77,7 +78,6 @@ from shared.auth_core import (
 from shared.csrf import csrf_token_valido, generate_csrf_token
 from shared.dto import DetailMessage, StatusOk
 from shared.identity import fetch_discovery_document, user_key_from_email, verify_oidc_id_token
-from shared.password_policy import check_account_password
 
 log = get_logger(__name__)
 

@@ -173,7 +173,7 @@ export function DetalleView() {
         />
       ) : (
         <>
-          <section className="flex min-w-0 flex-1 flex-col border-r border-border/70">
+          <section className="flex min-w-0 flex-1 flex-col border-r border-divider">
             <DetalleBarra
               cierreLabel={cierre.label}
               onClearCierre={() => {

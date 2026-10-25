@@ -33,7 +33,8 @@ parche para eso; el paquete las sustituye:
 
 - ``primitivas``: ``PgDateTime`` y ``SafeStr``.
 - ``publico``: la proyección pública indexable (``LicitacionPublica``).
-- ``paginacion``: ``PaginatedResponse``, ``CursorPaginatedResponse`` y topes.
+- ``paginacion``: ``Pagina`` (``PaginatedResponse``), ``CursorPaginatedResponse`` y topes.
+- ``errores``: ``Error`` (``ProblemDetail``), la forma única del error (RFC 9457).
 - ``genericos``: ``StatusOk``, ``CreatedId``, ``TotalCount``…
 - ``watchlist``: favoritos, reglas y seguimientos.
 - ``analitica``: cobertura de métricas y dosier competitivo.
@@ -142,6 +143,7 @@ from shared.dto.cuentas import (
     PublicacionCuenta,
     VencimientoCuenta,
 )
+from shared.dto.errores import Error, ErrorDeValidacion, ProblemDetail
 from shared.dto.filtros import FiltrosLicitacion
 from shared.dto.genericos import (
     CreatedId,
@@ -178,6 +180,7 @@ from shared.dto.paginacion import (
     MAX_PAGE_LIMIT,
     CursorPaginatedResponse,
     CursorPaginatedResponseWithTotal,
+    Pagina,
     PaginatedResponse,
 )
 from shared.dto.primitivas import (
@@ -294,6 +297,8 @@ __all__ = [
     "CursorPaginatedResponse",
     "CursorPaginatedResponseWithTotal",
     "DetailMessage",
+    "Error",
+    "ErrorDeValidacion",
     "EstadoVigencia",
     "Etiqueta",
     "EtiquetaAplicacion",
@@ -339,6 +344,7 @@ __all__ = [
     "OrganizationTeamProfile",
     "OrganoCandidato",
     "OrganoDeCuenta",
+    "Pagina",
     "PaginatedResponse",
     "PerdidaPorMotivo",
     "PgDateTime",
@@ -346,6 +352,7 @@ __all__ = [
     "PipelineAgendaItem",
     "PipelineAgendaKpis",
     "PipelineAgendaResponse",
+    "ProblemDetail",
     "PublicacionCuenta",
     "PursuitAdjudicacionDetectada",
     "PursuitAdjudicatario",

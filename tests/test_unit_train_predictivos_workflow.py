@@ -5,7 +5,7 @@ crea una *latest* nueva —sin assets de modelo— con cada tag ``v*``: publicar
 software dejaba a ``ml-scoring`` sin artefactos. Ahora publica en una Release
 de tag fijo que nunca pasa a *latest*, y el tag vive dos veces —en el YAML y en
 ``shared.release_assets.ML_MODELS_RELEASE_TAG`` (lo que consulta
-``shared/model_artifacts.py``)—: estos tests impiden que diverjan en silencio.
+``services/ml/model_artifacts.py``)—: estos tests impiden que diverjan en silencio.
 
 También fijan la higiene de ``ALERT_MIN_LEVEL``: sin ``|| 'literal'`` en el
 YAML, el default vigente es el de ``config/settings.py``.

@@ -5,7 +5,7 @@ contraste entre la ficha del pliego y la capacidad declarada (S2.3): son dos
 cosas distintas que se leen en la misma pestaña, y compartir módulo haría que
 un cambio en una arrastrase a la otra.
 
-El criterio de cálculo vive en `services/go_no_go_template.py` y el SQL en
+El criterio de cálculo vive en `shared/go_no_go_template.py` y el SQL en
 `db/repositories/go_no_go.py`. Aquí, quién puede qué.
 """
 
@@ -15,12 +15,12 @@ from typing import Any
 
 from db.repositories.go_no_go import GoNoGoRepository
 from db.repositories.pursuits import PursuitRepository
-from services import go_no_go_template as plantilla
 from services.organizations import (
     OrganizationPermissionError,
     alcance_resuelto,
 )
 from services.pursuits import PursuitNotFoundError
+from shared import go_no_go_template as plantilla
 from shared.audit_events import GO_NO_GO_WEIGHTS_UPDATED
 
 _repo = GoNoGoRepository()

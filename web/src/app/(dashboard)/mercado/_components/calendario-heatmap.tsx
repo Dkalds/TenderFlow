@@ -91,7 +91,7 @@ function Celda({
     "block w-5 h-5 m-[1px] rounded-sm",
     getColorClass(cell.count),
     cell.esHoy && "ring-2 ring-primary ring-offset-1 ring-offset-background",
-    !cell.esHoy && cell.proximos7 && modo === "vencimientos" && "ring-1 ring-primary/50",
+    !cell.esHoy && cell.proximos7 && modo === "vencimientos" && "ring-1 ring-primary-line-strong",
   );
   if (modo === "vencimientos" && cell.count > 0) {
     return (

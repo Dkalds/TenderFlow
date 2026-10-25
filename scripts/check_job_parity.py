@@ -21,10 +21,10 @@ Este script convierte esa afirmación en invariante verificado. Por cada job de
 - ``loop``     → nada que verificar (solo corre en Docker Compose, y se
   considera una decisión explícita, no un olvido).
 
-Desde S5 comprueba además **la cola de trabajo** (``shared/jobs.py``), que es el
+Desde S5 comprueba además **la cola de trabajo** (``services/jobs.py``), que es el
 otro sitio donde un trabajo puede quedarse sin nadie que lo ejecute:
 
-- Cada tipo de :data:`shared.jobs.TIPOS_A_DEMANDA` debe tener su handler
+- Cada tipo de :data:`services.jobs.TIPOS_A_DEMANDA` debe tener su handler
   resoluble (``modulo:funcion``). Un tipo con handler roto se encolaría desde la
   API y giraría hasta agotar intentos, con el usuario mirando un spinner.
 - La cola a demanda debe tener **consumidor declarado** en producción: un
@@ -161,7 +161,7 @@ def check_cola() -> tuple[list[dict[str, Any]], list[str]]:
     """Paridad de la cola de trabajo: handler resoluble y consumidor declarado."""
     import importlib
 
-    from shared.jobs import TIPOS_A_DEMANDA, TIPOS_PROGRAMADOS
+    from services.jobs import TIPOS_A_DEMANDA, TIPOS_PROGRAMADOS
 
     consumidor = consumidor_de_la_cola()
     rows: list[dict[str, Any]] = []

@@ -114,6 +114,7 @@ class TestRunFetchPhase:
             "error": 1,
             "skipped": 0,
             "unsupported": 0,
+            "sin_texto": 0,
             "aplazados": 0,
             "revividos": 0,
         }
@@ -124,6 +125,7 @@ class TestRunFetchPhase:
             "error": 0,
             "skipped": 0,
             "unsupported": 0,
+            "sin_texto": 0,
             # Documentos que no cupieron en el tope de reloj de la fase
             # (PLIEGO_FETCH_MAX_SECONDS). Sin tope, siempre 0, pero la clave
             # está para que el informe tenga siempre la misma forma.
@@ -194,6 +196,7 @@ class TestRunFetchPhase:
             "error": 0,
             "skipped": 1,
             "unsupported": 0,
+            "sin_texto": 0,
             "aplazados": 0,
             "revividos": 0,
         }
@@ -218,6 +221,7 @@ class TestRunFetchPhase:
             "error": 0,
             "skipped": 0,
             "unsupported": 1,
+            "sin_texto": 0,
             "aplazados": 0,
             "revividos": 0,
         }

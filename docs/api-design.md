@@ -108,21 +108,56 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 
 <!-- END scopes -->
 
-## Contrato de errores (RFC 7807)
+## Convención de la API
 
-Todas las respuestas de error usan el formato [RFC 7807 Problem Details](https://datatracker.ietf.org/doc/html/rfc7807) con `Content-Type: application/problem+json`.
+Fijada el 2026-10-25, antes de que más consumidores externos (claves de CU-14,
+el SDK de `release-sdk.yml`) dependan de la forma de hoy. Rige para **toda
+operación nueva**; lo heredado que no cumple está congelado, con su motivo, en
+`scripts/check_api_convencion.py` (`make check-api-convencion`, y dentro de la
+suite por `tests/test_unit_ratchet_api_convencion.py`). Esas listas solo
+encogen: una ruta nueva se ajusta a la convención, no se añade a la lista.
+
+| Tema | Regla | Dónde vive |
+|---|---|---|
+| Idioma de paths y campos | Español en lo nuevo (`/licitaciones`, `fecha_limite`) | revisión |
+| Idioma de mensajes | `detail` en español, para la persona; `title`, frase HTTP estándar | `api/errors.py` |
+| Error | Uno solo: `ProblemDetail`, RFC 9457, `application/problem+json` | `shared/dto/errores.py` |
+| Paginación | Una sola: `limit`/`offset` y `Pagina[T]` | `shared/dto/paginacion.py`, `api/pagination.py` |
+
+### Idioma
+
+Lo nuevo —paths, parámetros y campos— va en español, que es el idioma del
+dominio y el de la mayoría de la superficie (`/licitaciones`, `/adjudicaciones`,
+`/cuentas`, `/etiquetas`, `/resoluciones`, `/publico`). Lo que ya existe en
+inglés (`/pursuits`, `/organizations`, `/follows`, `/saved-filters`,
+`/feature-flags`) **no se renombra en la versión 1 de la API**: renombrar es quitar una ruta,
+que es incompatible y va por RFC con alias y `Sunset` (política de
+deprecación, abajo). Las claves de los dos sobres comunes (`items`, `total`,
+`limit`, `offset`; `type`, `title`, `status`, `detail`) se quedan como están: son
+el contrato que el cliente generado ya parsea, y la RFC 9457 fija las del error.
+
+Los mensajes para personas (`detail`) van en español. El `type` del error es un
+URI opaco y estable por condición —es lo que un cliente compara, nunca el
+texto— y conserva el namespace histórico `licitaciones-sap` (ver la nota del
+principio y [ADR-015](adr/ADR-015-identidad-tenderflow.md)).
+
+### Errores: RFC 9457 `application/problem+json`
+
+Toda respuesta de error tiene esta forma (RFC 9457 sustituye a la 7807 sin
+cambiar el formato):
 
 ```json
 {
   "type": "https://licitaciones-sap/errors/not-found",
   "title": "Not Found",
   "status": 404,
-  "detail": "Recurso no encontrado.",
-  "instance": "/api/v1/licitaciones/xyz"
+  "detail": "No encontrada.",
+  "instance": "/api/v1/publico/licitaciones/xyz"
 }
 ```
 
-Errores de validación (422) incluyen un campo `errors` con detalle por campo:
+El 422 añade `errors`, un elemento por campo (`ErrorDeValidacion`: `loc`,
+`msg`, `type`):
 
 ```json
 {
@@ -130,40 +165,81 @@ Errores de validación (422) incluyen un campo `errors` con detalle por campo:
   "title": "Unprocessable Entity",
   "status": 422,
   "detail": "La solicitud contiene datos inválidos.",
-  "errors": [{"loc": ["body", "limit"], "msg": "...", "type": "..."}]
+  "errors": [{"loc": ["query", "limit"], "msg": "...", "type": "less_than_equal"}]
 }
 ```
 
-Constructores disponibles: `problem_400`, `problem_401`, `problem_403`, `problem_404`, `problem_409`, `problem_422`, `problem_429`, `problem_500`, `problem_503`.
+- **El tipo** es `ProblemDetail` (alias `Error`) en `shared/dto/errores.py`.
+- **Un solo manejador**: `api/errors.py::register_exception_handlers`. Una ruta
+  lanza `HTTPException(status_code=..., detail="motivo en español")` (o una
+  subclase con `tipo` propio, como `ReautenticacionRequerida`) y el manejador
+  la convierte; no construye una `JSONResponse` de error a mano. Los cuerpos
+  crudos del middleware ASGI (413, NUL, 429) emiten la misma forma.
+- **El esquema lo declara**: `api/errors.py::documentar_errores` —enganchado a
+  `app.openapi()`— pone `ProblemDetail` en `application/problem+json` en el 422,
+  en todo 4xx/5xx que una ruta declare solo con `description`, y como `default`
+  de cada operación. Hasta esta fecha el cliente generado solo conocía el 422
+  que inventa FastAPI (`HTTPValidationError`, `{"detail": [...]}`), una forma
+  que la API nunca emitía.
+- **Tipos con significado propio** para el cliente: `query-timeout` (503, no
+  reintentar) y `reauthentication-required` (403 que se arregla volviendo a
+  entrar). Constructores: `problem_400` … `problem_503`.
 
-## Paginación
-
-### Offset/limit (deprecated)
+### Paginación: `limit`/`offset` y `Pagina[T]`
 
 ```
-GET /api/v1/licitaciones?offset=0&limit=50
+GET /api/v1/adjudicaciones?limit=50&offset=100
 ```
 
-Respuesta incluye header `Link` apuntando al endpoint cursor como sucesor.
+```json
+{"items": [...], "total": 1234, "limit": 50, "offset": 100}
+```
 
-### Cursor (recomendado)
+- Los parámetros salen de `Depends(api.pagination.pagina(default_limit))`, con
+  `MAX_PAGE_LIMIT` como tope único; la respuesta es `Pagina[T]`
+  (`shared/dto/paginacion.py`). `Pagina` es un alias de `PaginatedResponse`: el
+  componente OpenAPI sigue siendo `PaginatedResponse_<T>_`, así que adoptarla no
+  cambia nada para el cliente.
+- `total` vale `-1` cuando la ruta admite `with_total=false` y no se pidió.
+
+**Por qué offset y no cursor.** Es lo que domina: de las 13 operaciones que
+paginaban el 2026-10-25, 11 lo hacen por offset y 2 por cursor, y todas las
+listas del contrato público salvo una (`/adjudicaciones`, `/empresas`,
+`/licitaciones/search`, `/publico/licitaciones`) ya son offset. Además es la que
+un integrador entiende sin documentación, permite saltar a una página y dar
+«de N». El coste conocido del offset —un `OFFSET` profundo sobre una tabla de
+cientos de miles de filas— solo se paga en el volcado del corpus entero, y para
+ese caso existe ya `GET /licitaciones/cursor`.
+
+**El cursor queda congelado donde está**: `GET /licitaciones/cursor` (la
+sucesora del listado por offset del corpus, decidida en la
+[RFC 2026-09-06](rfc/2026-09-06-rfc-retirada-endpoints-analitica.md), que sigue
+vigente con su `Sunset`) y `GET /organizations/{id}/audit` (log append-only).
+Una ruta nueva no pagina por cursor; si un listado nuevo crece sin techo y se
+vuelca entero, eso se decide en una RFC, no en la PR.
 
 ```
 GET /api/v1/licitaciones/cursor?limit=50
 GET /api/v1/licitaciones/cursor?cursor=<opaque>&limit=50
 ```
 
-El cursor es un token opaco (base64) basado en `(fecha_publicacion, id_externo)`. Más eficiente que offset: no requiere `COUNT(*)` y no se ve afectado por inserciones concurrentes.
+El cursor es un token opaco (base64) sobre `(fecha_publicacion, id_externo)`;
+la respuesta es `{items, next_cursor, has_more, limit}` más `total` si se pide
+`with_total=true`.
 
-Respuesta:
+### Rutas fuera de la convención (congeladas)
 
-```json
-{
-  "data": [...],
-  "total": 1234,
-  "next_cursor": "eyJmZWNoYS..."
-}
-```
+Están en `scripts/check_api_convencion.py` con su motivo. Migrarlas cambia el
+nombre del componente o la forma de la respuesta que el frontend consume
+(`web/src/lib/api-types.ts`), así que cada una pide RFC (AGENTS.md §5):
+
+| Operación | Qué incumple |
+|---|---|
+| `GET /licitaciones/cursor`, `GET /organizations/{id}/audit` | cursor (ver arriba) |
+| `GET /empresas`, `GET /pursuits`, `GET /pursuits/{id}/comments`, `GET /radar/proximas`, `GET /notifications/alerts`, `GET /competitive/empresas/{id}/adjudicaciones` | offset con sobre propio (`EmpresasListResult`, `PursuitListResponse`…) en vez de `Pagina[T]` |
+| `GET /competitive/renovaciones` | `offset` sin `total` ni `offset` en el sobre |
+| `GET /publico/sitemap/entradas` | lista desnuda con offset (la trocea el sitemap del sitio) |
+| `GET /health/ready` | su 503 lleva el `HealthResponse` completo para el balanceador |
 
 ## Rutas disponibles
 

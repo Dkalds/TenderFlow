@@ -78,7 +78,7 @@ export default function FichaCuentaPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex-none border-b border-border/60 bg-card px-4 py-3.5">
+      <header className="flex-none border-b border-divider bg-card px-4 py-3.5">
         {/* `flex-wrap`: en una pantalla estrecha las acciones bajan de línea
             en vez de salirse por la derecha. */}
         <div className="flex flex-wrap items-start gap-3">

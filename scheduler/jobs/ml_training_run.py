@@ -52,7 +52,7 @@ from typing import TYPE_CHECKING, Any
 from observability.logging import get_logger
 
 if TYPE_CHECKING:
-    from shared.model_artifacts import ArtefactoPublicado
+    from services.ml.model_artifacts import ArtefactoPublicado
 
 log = get_logger(__name__)
 
@@ -205,7 +205,7 @@ def _verificar_publicacion(
     fila: dict[str, Any], sleep: Callable[[float], None]
 ) -> ArtefactoPublicado:
     """Coteja ``fila`` con la Release, reintentando si todavía no cuadra."""
-    from shared.model_artifacts import check_published_artifact, fetch_model_releases
+    from services.ml.model_artifacts import check_published_artifact, fetch_model_releases
 
     intento = 1
     while True:

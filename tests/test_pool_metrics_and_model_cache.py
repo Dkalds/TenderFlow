@@ -117,7 +117,7 @@ class _FakeClassifier:
     """Doble del SAPClassifier que cuenta cargas.
 
     ``load`` acepta la ruta porque desde 2026-09 la caché resuelve el artefacto
-    con ``shared.model_artifacts.resolve_active_artifact`` y se la pasa: sin
+    con ``services.ml.model_artifacts.resolve_active_artifact`` y se la pasa: sin
     ruta, la API recargaba siempre el mismo fichero local (inexistente en
     Render) y el rollback de modelo no cambiaba nada de lo servido.
     """

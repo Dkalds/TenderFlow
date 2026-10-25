@@ -17,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { formatDate } from "@/lib/utils";
 import {
   type OrganizationInvitation,
@@ -44,8 +43,8 @@ export function InvitacionesPendientes({
     try {
       await resend.mutateAsync(invitation.id);
       toast.success("Invitación reenviada");
-    } catch (error) {
-      toast.error(getErrorMessage(error, "accion"));
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   };
 
@@ -53,8 +52,8 @@ export function InvitacionesPendientes({
     try {
       await revoke.mutateAsync(invitation.id);
       toast.success("Invitación revocada");
-    } catch (error) {
-      toast.error(getErrorMessage(error, "accion"));
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   };
 

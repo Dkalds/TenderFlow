@@ -9,7 +9,7 @@ Modelo simple:
 
 Desde v129 (ADR-030 fase 2) ``notification_reads`` y ``user_notifications``
 llevan ``user_id`` junto a ``user_key`` y la lectura es dual (ver
-``db/repositories/watchlist.py``). Desde v161 (fase 3) una alerta de
+``db/repositories/watchlist.py``). Desde v162 (fase 3) una alerta de
 ``user_notifications`` con ``user_id`` ya no lleva clave: la identidad de la
 fila es ``(user_id, licitacion_id, type)``. ``notification_reads`` y
 ``user_event_prefs`` siguen escribiendo las dos columnas hasta su tanda.
@@ -125,7 +125,7 @@ def marcar_visita(user_key: str, *, user_id: int | None = None) -> str:
 
 
 #: Árbitro del ``ON CONFLICT`` según la identidad con la que llega la alerta
-#: (v161). Con ``user_id`` la clave es el índice parcial por id; sin él, el
+#: (v162). Con ``user_id`` la clave es el índice parcial por id; sin él, el
 #: ``UNIQUE`` de v48 por clave derivada del correo.
 _ARBITRO_POR_ID = "ON CONFLICT (user_id, licitacion_id, type) WHERE user_id IS NOT NULL DO NOTHING"
 _ARBITRO_POR_CLAVE = "ON CONFLICT (user_key, licitacion_id, type) DO NOTHING"
@@ -146,7 +146,7 @@ def insert_user_notification(
     """Escribe una alerta in-app en ``user_notifications``; idempotente.
 
     La identidad de la alerta es ``(user_id, licitacion_id, type)`` (índice
-    único parcial de v161), así que quien llama codifica en ``type_`` lo que
+    único parcial de v162), así que quien llama codifica en ``type_`` lo que
     hace única a la alerta (``deadline_7``, ``pursuit_asignada``,
     ``adjudicacion_detectada``…) y repetir la llamada no duplica la fila,
     tampoco tras un cambio de correo. Devuelve ``True`` sólo si insertó.

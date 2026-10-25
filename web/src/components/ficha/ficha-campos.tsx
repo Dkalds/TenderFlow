@@ -28,7 +28,7 @@ export function FichaCampos({
   return (
     <div
       className={cn(
-        "grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60",
+        "grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-divider bg-divider",
         variante === "completa" && "lg:grid-cols-4",
         className,
       )}
