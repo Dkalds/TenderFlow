@@ -149,6 +149,9 @@ export function DocumentosBlock({
         {items.map((doc) => {
           const sinPublicar = doc.sin_publicar;
           const caducado = !sinPublicar && doc.status === "error";
+          // PDF escaneado sin capa de texto: el enlace abre bien, pero la ficha
+          // y el asistente no han podido leerlo (falta OCR).
+          const escaneado = !sinPublicar && doc.status === "sin_texto";
           const apagado = sinPublicar || caducado;
           return (
             <li key={doc.id} className="flex items-start gap-2">
@@ -186,6 +189,7 @@ export function DocumentosBlock({
                   {doc.size_bytes != null && ` · ${formatBytes(doc.size_bytes)}`}
                   {sinPublicar && " · sin publicar todavía"}
                   {caducado && " · el enlace original puede haber caducado"}
+                  {escaneado && " · escaneado sin texto: la ficha no lo ha podido leer"}
                 </p>
               </div>
             </li>
