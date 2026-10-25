@@ -188,7 +188,7 @@ export function DesdeUltimaVisita() {
   // El alto de la banda con cambios, que es lo habitual y lo que pinta el
   // esqueleto de la ruta (`loading.tsx`): con 44 px la pantalla saltaba
   // ~140 px al llegar el dato.
-  if (isPending) return <Skeleton className="mb-3.5 h-[180px] w-full rounded-xl" />;
+  if (isPending) return <Skeleton className="h-[180px] w-full rounded-xl" />;
   // Un fallo no tumba el Resumen: la banda es un añadido sobre lo que ya había.
   if (isError || !data) return null;
 
@@ -199,7 +199,7 @@ export function DesdeUltimaVisita() {
   const hayCambios = items.length > 0;
 
   return (
-    <section aria-labelledby="desde-ultima-visita-titulo" className={cn(SUPERFICIE_PANEL, "mb-3.5 px-4 py-3.5")}>
+    <section aria-labelledby="desde-ultima-visita-titulo" className={cn(SUPERFICIE_PANEL, "px-4 py-3.5")}>
       {/* Dos columnas en escritorio: a la izquierda cuánto y de qué clase, a la
           derecha qué en concreto. Sin cambios, una sola línea que lo dice. */}
       <div className={cn("grid gap-x-8 gap-y-3", hayCambios && "lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]")}>
