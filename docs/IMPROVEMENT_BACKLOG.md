@@ -312,6 +312,25 @@ _Sin ítems abiertos._
     el dispatch, el automático entrena ya por el camino de `train-model.yml`;
     queda retirar o alinear el dataset del otro, que solo corre sin plano
     declarado. Ver «Ampliar el golden set del clasificador SAP».
+    **Hecho en código el 2026-10-25 (un solo camino):** se retiró el
+    reentrenamiento en proceso de `maybe_retrain_classifier` y su dataset
+    (`_fetch_training_dataframe`); el paso semanal lanza `train-model.yml` o
+    avisa con el comando en **cualquier** plano, también sin
+    `SCHEDULER_PLANE`. `promote_if_better` ya no tiene parámetro `activar` ni
+    campo `activada`: registra siempre inactivo y deja el candidato que pasa
+    en `pendiente_de_activar`; `train_from_db()` tampoco activa, y
+    `scripts/ml_clasificadores.py train` lo dice («registrada SIN activar»).
+    La única activación es `ml_training_run activar --version N`, que coteja
+    el sha256 con la Release antes. Tests: `test_active_learning_publicacion.py`
+    (sin plano no entrena; el módulo ya no importa gate ni clasificador),
+    `test_ml_promotion_gate.py::test_no_hay_forma_de_pedirle_al_gate_que_active`.
+    Runbook: «Verificar la primera pasada de `train-model.yml`» en
+    [model-rollback.md](runbooks/model-rollback.md). Queda el primer criterio
+    (acción del dueño): `gh workflow run train-model.yml` y comprobar lo que
+    lista esa sección —resumen con `Asset: sap_classifier-<sha12>.pkl` y
+    «Versión activada», asset en `ml-models` con `digest` igual al `sha256`
+    de `get_active("sap_classifier")`, y `model_artifacts_canary`/`ml_scoring`
+    en `ok` en la pasada siguiente—.
   - Nombrar el asset de `sap_classifier` por contenido, como los predictivos
     (`rename_to_content_address`). Con nombre fijo, la subida sustituye el
     asset de la versión activa, y por eso «Train model» la retira antes: entre
@@ -335,7 +354,7 @@ _Sin ítems abiertos._
     `ml-models`, el canary dar `ok` y la ingesta registrar
     `pipeline.ml_clf_loaded` con esa ruta. `drift_report`, `ml_eval` y
     `sample_golden_candidates` siguen con `SAPClassifier.load()`.
-- *Nota (2026-10-24):* el camino de F3 del plan de tres niveles (`scripts/entrenar_nivel1.py`, `services/ml/nivel1.py`) no registra ni activa nada. Al unificar los dos caminos, el que sobreviva debería ser ese y no `train_from_db`, cuya etiqueta es circular. Registrar en `model_versions` y la semana en sombra siguen pendientes de OK.
+- *Nota (2026-10-24):* el camino de F3 del plan de tres niveles (`scripts/entrenar_nivel1.py`, `services/ml/nivel1.py`) no registra ni activa nada. Al unificar los dos caminos, el que sobreviva debería ser ese y no `train_from_db`, cuya etiqueta es circular. *(2026-10-25: se unificaron quedándose `train_from_db`, que es el que publica y activa por `train-model.yml`; cambiar su etiqueta por la de nivel 1 sigue abierto y no exige otro camino.)* Registrar en `model_versions` y la semana en sombra siguen pendientes de OK.
 - **Files de partida:** [scheduler/jobs/ml_training_run.py](../scheduler/jobs/ml_training_run.py), [scheduler/concept_drift.py](../scheduler/concept_drift.py), [services/ml/promotion.py](../services/ml/promotion.py), [.github/workflows/train-model.yml](../.github/workflows/train-model.yml), [docs/runbooks/model-rollback.md](runbooks/model-rollback.md)
 - **Riesgo:** bajo para las verificaciones; medio para el nombre por
   contenido, que toca el camino por el que la ingesta y la API cargan el
