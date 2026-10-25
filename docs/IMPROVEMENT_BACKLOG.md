@@ -643,6 +643,7 @@ _Sin ítems abiertos._
 - **Área:** producción (acción del usuario) + web/src/app/(publico)/_components/franja-datos.tsx
 - **Problema:** la franja de la portada publica el total del corpus público —medido el 2026-09-03 en producción: 417.182 expedientes— justo encima de una sección titulada «Un radar tecnológico, no un censo de toda la contratación pública». Las dos cosas son honestas por separado: el número sale tal cual de `/publico/sitemap/resumen` (ADR-014) y el titular describe la regla de entrada. Lo que las hace incompatibles es que la migración **v98**, que acota la superficie pública al universo tecnológico, está mergeada y **sin aplicar**: `migrate.yml` es `workflow_dispatch` y el `autoDeploy` de Render no migra. Ver el ítem cerrado del 2026-09-02 en [el archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 - **Por qué importa más que un número feo:** es la única cifra que la portada aporta como prueba, en un producto que vende confianza en el dato. Un visitante que compruebe los CPV más frecuentes en `/cpv` encuentra reactivos de laboratorio.
+- **Estado (2026-10):** v158 está aplicada en producción, así que v98 también; el código ya cuenta sobre el universo tecnológico. Queda solo verificar la cifra publicada y los CPV de `/cpv`.
 - **Acceptance criteria:**
   - `migrate.yml` ejecutado y `alembic current` en v98 (se lee en el log del step "Estado actual del schema").
   - `/publico/hubs` deja de listar CPV ajenos a tecnología.
@@ -653,7 +654,7 @@ _Sin ítems abiertos._
 ### [P2] La portada sirve una captura oscura a quien tiene el sistema en claro
 - **Área:** web/src/app/(publico)/page.tsx, web/e2e/capturas-landing.spec.ts
 - **Problema:** la superficie pública usa `defaultTheme="system"` y no tiene selector de tema, así que un visitante con el sistema en claro ve una página clara con una captura del producto en oscuro incrustada. Las dos imágenes de `_assets/` son las únicas que hay.
-- **Cómo empezar:** el trabajo está a medias hecho. `npm run capturas:landing` regenera las capturas desde el seed con el stack levantado; falta añadirle la variante `light` (el spec ya usa `page.emulateMedia({ colorScheme })`, sólo hay que parametrizarlo) y dar a `CapturaProducto` un `<source media="(prefers-color-scheme: dark)">`. No se anticiparon los ficheros claros a propósito: dos `.webp` que ningún import consume son peso muerto.
+- **Cómo empezar:** el spec ya genera las variantes `-claro` (`npm run capturas:landing`, con el stack sembrado). Falta ejecutarlo, commitear `radar-hero-claro.webp` y `radar-hero-movil-claro.webp` y dar a `CapturaProducto` los `<source media="(prefers-color-scheme: dark)">` con los oscuros en el mismo cambio.
 - **Acceptance criteria:** las dos variantes existen, se sirve una sola por visita (no dos descargas), y el spec de capturas las genera juntas.
 - **Files de partida:** [web/e2e/capturas-landing.spec.ts](../web/e2e/capturas-landing.spec.ts), [web/src/app/(publico)/page.tsx](../web/src/app/%28publico%29/page.tsx)
 - **Riesgo:** bajo.
