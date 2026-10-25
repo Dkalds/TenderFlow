@@ -130,7 +130,7 @@ def ejecutar_embeddings_expediente(job: Job) -> dict[str, Any]:
     }
 
 
-def ejecutar_despacho_eventos(job: Job) -> dict[str, Any]:
+def ejecutar_despacho_eventos(job: Job) -> dict[str, object]:
     """Una pasada del despachador del outbox, a demanda (ADR-027 §C).
 
     Solo reparte: los productores sin mutación (vencimientos de tareas,

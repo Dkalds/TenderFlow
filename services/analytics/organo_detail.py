@@ -25,7 +25,7 @@ from typing import Any
 import pandas as pd
 from pydantic import BaseModel, Field
 
-from db.repositories.adjudicaciones import AdjudicacionRepository
+from db.repositories.adjudicaciones import AdjudicacionRepository, MejorAdjudicacionRow
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from observability.logging import get_logger
 from services.analytics.scoring import score_dataframe
@@ -160,7 +160,7 @@ def _numero(valor: object) -> float | None:
     return None if math.isnan(numero) else numero
 
 
-def _adj_lookup_for(filas: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def _adj_lookup_for(filas: list[MejorAdjudicacionRow]) -> dict[str, dict[str, Any]]:
     """Empresa, baja y fecha de la mejor adjudicación de cada licitación.
 
     ``filas`` ya viene con una adjudicación por licitación —la de mayor
@@ -175,9 +175,10 @@ def _adj_lookup_for(filas: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         if importe_adj is not None and importe_lic is not None and importe_lic > 0:
             baja = float((1 - importe_adj / importe_lic) * 100)
         fecha_adj = None
-        if pd.notna(row.get("fecha_adjudicacion")):
+        fecha_cruda = row.get("fecha_adjudicacion")
+        if fecha_cruda is not None and pd.notna(fecha_cruda):
             try:
-                fecha_adj = str(pd.Timestamp(row["fecha_adjudicacion"]).strftime("%d/%m/%Y"))
+                fecha_adj = str(pd.Timestamp(fecha_cruda).strftime("%d/%m/%Y"))
             except (ValueError, TypeError):
                 pass
         lookup[str(row["licitacion_id"])] = {

@@ -377,7 +377,7 @@ def payload_asignacion(
     actor_user_id: int,
     titulo: str | None,
     actor_nombre: str | None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Payload de ``pursuit.assigned`` con el texto que ya enseñaba la campana.
 
     Hasta 2026-10 el aviso de asignación lo escribía ``services/pursuits.py``

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
-from typing import Any
+from collections.abc import Mapping, Sequence
+from decimal import Decimal
+from typing import Any, TypedDict
 
 from db.database import connect, connect_read, now_utc_iso
 from db.events import append_domain_event
-from db.repositories.base import ambito_agenda_sql, rows_to_dicts
+from db.repositories.base import ambito_agenda_sql, rows_to_dicts, typed_rows
 from db.sql_fragments import FOLD_TABLE, empresa_key_sql, escape_like, fold_expr, iso_guard
 from shared.events import payload_asignacion
 
@@ -98,6 +99,240 @@ _AGENDA_SELECT = (
 )
 
 
+# ── Formas de fila ────────────────────────────────────────────────────────
+# Una por SELECT, con las claves de sus alias y los tipos que psycopg devuelve
+# (``numeric`` → ``Decimal``, ``double precision`` → ``float``; las fechas de
+# ``pursuits`` y ``licitaciones`` son ``text`` ISO).
+
+
+class PursuitRow(TypedDict):
+    """Una fila de ``_PURSUIT_SELECT``: la oportunidad con su expediente y lote."""
+
+    id: int
+    organization_id: int
+    licitacion_id: str
+    lote_numero: str | None
+    lote_id: int | None
+    lote_titulo: str | None
+    tender_title: str
+    tender_deadline: str | None
+    tender_organo: str | None
+    responsible_user_id: int | None
+    responsible_name: str | None
+    status: str
+    decision: str
+    decision_reason: str | None
+    offer_price_eur: Decimal | None
+    outcome: str
+    awarded_amount_eur: Decimal | None
+    outcome_reason: str | None
+    outcome_reason_code: str | None
+    next_action: str | None
+    next_action_due: str | None
+    identified_at: str
+    decision_at: str | None
+    submitted_at: str | None
+    closed_at: str | None
+    created_at: str
+    updated_at: str
+    version: int
+    comments_count: int
+
+
+class LoteRow(TypedDict):
+    """Un lote de :meth:`PursuitRepository.lote_by_id`."""
+
+    id: int
+    numero: str
+    titulo: str | None
+
+
+class AgendaPursuitRow(TypedDict):
+    """Una fila de ``_AGENDA_SELECT``."""
+
+    pursuit_id: int
+    licitacion_id: str
+    titulo: str
+    tender_deadline: str | None
+    importe_eur: float | None
+    organo: str | None
+    ccaa: str | None
+    tecnologia: str | None
+    url: str | None
+    responsible_user_id: int | None
+    responsible_name: str | None
+    status: str
+    decision: str
+    next_action: str | None
+    next_action_due: str | None
+    version: int
+    tender_estado: str | None
+    adjudicatarios: str | None
+
+
+class _PursuitEventRaw(TypedDict):
+    id: int
+    pursuit_id: int
+    event_type: str
+    actor_user_id: int | None
+    payload_json: str
+    created_at: str
+
+
+class PursuitEventRow(TypedDict):
+    """Un evento del ledger con su ``payload_json`` ya decodificado."""
+
+    id: int
+    pursuit_id: int
+    event_type: str
+    actor_user_id: int | None
+    created_at: str
+    payload: object
+
+
+class MetricRow(TypedDict):
+    """Una fila de :meth:`PursuitRepository.metric_rows`."""
+
+    status: str
+    outcome: str
+    awarded_amount_eur: Decimal | None
+    outcome_reason_code: str | None
+    identified_at: str
+    decision_at: str | None
+    submitted_at: str | None
+    closed_at: str | None
+    banda_al_abrir: str | None
+    tender_importe: float | None
+    tender_deadline: str | None
+    tender_organo: str | None
+    tender_tecnologia: str | None
+    tender_procedimiento: str | None
+    pursuit_id: int
+    licitacion_id: str
+    titulo: str
+
+
+class ClosedScoredRow(TypedDict):
+    """Una fila de :meth:`PursuitRepository.closed_scored_rows`."""
+
+    id: int
+    outcome: str
+    desglose_al_abrir: str
+    banda_al_abrir: str | None
+    closed_at: str | None
+
+
+class OpenWithAwardRow(TypedDict):
+    """Una fila de :meth:`PursuitRepository.open_with_award_rows`."""
+
+    pursuit_id: int
+    organization_id: int
+    licitacion_id: str
+    responsible_user_id: int | None
+    responsible_email: str | None
+    titulo: str
+    tender_estado: str | None
+    adjudicatarios: str | None
+    importe_total: float | None
+
+
+class DeadlineRow(TypedDict):
+    """Una fila de :meth:`PursuitRepository.deadline_rows`."""
+
+    pursuit_id: int
+    organization_id: int
+    licitacion_id: str
+    responsible_user_id: int
+    responsible_email: str | None
+    next_action: str | None
+    next_action_due: str | None
+    titulo: str
+    fecha_limite: str | None
+
+
+class CalendarRow(TypedDict):
+    """Una fila de :meth:`PursuitRepository.calendar_rows`."""
+
+    pursuit_id: int
+    licitacion_id: str
+    next_action: str | None
+    next_action_due: str | None
+    organization_name: str
+    lote_numero: str | None
+    titulo: str
+    fecha_limite: str | None
+    fecha_fin: str | None
+    url: str | None
+
+
+class OfertaPresentadaRow(TypedDict):
+    """Una fila de :meth:`PursuitRepository.ofertas_presentadas`."""
+
+    id: int
+    licitacion_id: str
+    offer_price_eur: Decimal
+    cpv: str | None
+    organo_contratacion: str | None
+    presupuesto: float
+
+
+class ExportPursuitRow(TypedDict):
+    """Una fila de :meth:`PursuitRepository.export_rows`."""
+
+    id: int
+    licitacion_id: str
+    tender_title: str
+    organo_contratacion: str | None
+    cpv: str | None
+    tender_deadline: str | None
+    responsable: str | None
+    status: str
+    decision: str
+    decision_reason: str | None
+    offer_price_eur: Decimal | None
+    outcome: str
+    awarded_amount_eur: Decimal | None
+    outcome_reason: str | None
+    next_action: str | None
+    next_action_due: str | None
+    identified_at: str
+    decision_at: str | None
+    submitted_at: str | None
+    closed_at: str | None
+    updated_at: str
+    tender_importe: float | None
+    tender_url: str | None
+    organizacion_id: int
+    exportado_en: str
+
+
+class KitEventRow(TypedDict):
+    """Una fila de :meth:`PursuitRepository.kit_events`."""
+
+    actor_user_id: int | None
+    payload_json: str
+    created_at: str
+
+
+class CruceCompetidorRow(TypedDict):
+    """Una fila de :meth:`PursuitRepository.cruces_con_competidor`.
+
+    Las columnas de ``adjudicaciones`` van por ``LEFT JOIN``: nullable todas.
+    """
+
+    licitacion_id: str
+    titulo: str
+    organo_contratacion: str | None
+    importe: float | None
+    offer_price_eur: Decimal | None
+    outcome: str
+    importe_adjudicado: float | None
+    fecha_adjudicacion: str | None
+    adjudicatario_nif: str | None
+    adjudicatario_empresa_id: int | None
+    adjudicatario_key: str | None
+
+
 class PursuitConcurrencyError(RuntimeError):
     """La versión cambió entre lectura y escritura."""
 
@@ -115,7 +350,7 @@ class PursuitRepository:
                 is not None
             )
 
-    def lote_by_id(self, licitacion_id: str, lote_id: int) -> dict[str, Any] | None:
+    def lote_by_id(self, licitacion_id: str, lote_id: int) -> LoteRow | None:
         """El lote ``lote_id`` **si pertenece** a ``licitacion_id``, o ``None``.
 
         La comprobación de pertenencia va en el mismo WHERE a propósito: el
@@ -129,7 +364,7 @@ class PursuitRepository:
                 "SELECT id, numero, titulo FROM lotes WHERE id = %s AND licitacion_id = %s",
                 (lote_id, licitacion_id),
             )
-            rows = rows_to_dicts(cur)
+            rows = typed_rows(LoteRow, rows_to_dicts(cur))
         return rows[0] if rows else None
 
     def create(
@@ -144,7 +379,7 @@ class PursuitRepository:
         banda_al_abrir: str | None = None,
         lote_numero: str | None = None,
         desglose_al_abrir: str | None = None,
-    ) -> tuple[dict[str, Any], bool]:
+    ) -> tuple[PursuitRow, bool]:
         """Crea idempotentemente y registra exactamente un evento inicial.
 
         La unidad es ``(organización, expediente, lote)``: dos lotes distintos
@@ -231,7 +466,7 @@ class PursuitRepository:
                 self._emitir_asignacion(conn, pursuit, actor_user_id=actor_user_id)
             return pursuit, was_created
 
-    def get(self, organization_id: int, pursuit_id: int) -> dict[str, Any] | None:
+    def get(self, organization_id: int, pursuit_id: int) -> PursuitRow | None:
         with connect_read() as conn:
             return self._get_scoped(conn, organization_id, pursuit_id=pursuit_id)
 
@@ -248,7 +483,7 @@ class PursuitRepository:
         excluir_estados: Sequence[str] = (),
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[list[dict[str, Any]], int]:
+    ) -> tuple[list[PursuitRow], int]:
         """Página de oportunidades de la organización y el total del conjunto filtrado.
 
         - ``q``: subcadena plegada (sin tildes ni mayúsculas) del título del
@@ -268,7 +503,7 @@ class PursuitRepository:
         antes, sobre ``pursuits`` a secas, el total no habría podido filtrarse.
         """
         clauses = ["p.organization_id = %s"]
-        params: list[Any] = [organization_id]
+        params: list[object] = [organization_id]
         if status is not None:
             clauses.append("p.status = %s")
             params.append(status)
@@ -316,7 +551,7 @@ class PursuitRepository:
                 + " ORDER BY p.updated_at DESC, p.id DESC LIMIT %s OFFSET %s",
                 tuple([*params, limit, offset]),
             )
-            items = rows_to_dicts(cur)
+            items = typed_rows(PursuitRow, rows_to_dicts(cur))
         return items, int(total_row[0] if total_row else 0)
 
     def agenda_rows(
@@ -327,7 +562,7 @@ class PursuitRepository:
         tecnologias: Sequence[str] | None = None,
         ccaas: Sequence[str] | None = None,
         limit: int = 500,
-    ) -> tuple[list[dict[str, Any]], bool]:
+    ) -> tuple[list[AgendaPursuitRow], bool]:
         """Pursuits abiertos de la organización con su licitación, para la agenda.
 
         Devuelve ``(filas, truncado)``: se pide ``limit + 1`` y se recorta, para
@@ -343,7 +578,7 @@ class PursuitRepository:
             "p.organization_id = %s",
             "p.status NOT IN " + _ESTADOS_TERMINALES_SQL,
         ]
-        params: list[Any] = [organization_id]
+        params: list[object] = [organization_id]
         if responsible_user_id is not None:
             clauses.append("p.responsible_user_id = %s")
             params.append(responsible_user_id)
@@ -355,7 +590,7 @@ class PursuitRepository:
                 _AGENDA_SELECT + " WHERE " + " AND ".join(clauses) + " ORDER BY p.id LIMIT %s",
                 tuple([*params, limit + 1]),
             )
-            rows = rows_to_dicts(cur)
+            rows = typed_rows(AgendaPursuitRow, rows_to_dicts(cur))
         return rows[:limit], len(rows) > limit
 
     def licitacion_ids(self, organization_id: int) -> set[str]:
@@ -377,11 +612,11 @@ class PursuitRepository:
         organization_id: int,
         pursuit_id: int,
         actor_user_id: int,
-        changes: dict[str, Any],
+        changes: Mapping[str, object],
         expected_version: int,
-        event_payload: dict[str, Any],
+        event_payload: Mapping[str, object],
         idempotency_key: str | None = None,
-    ) -> dict[str, Any] | None:
+    ) -> PursuitRow | None:
         """Actualiza y añade el evento en la misma transacción."""
         invalid = set(changes) - _UPDATABLE_COLUMNS
         if invalid:
@@ -465,7 +700,7 @@ class PursuitRepository:
                 (titulo, vence, organization_id, pursuit_id),
             )
 
-    def list_events(self, organization_id: int, pursuit_id: int) -> list[dict[str, Any]]:
+    def list_events(self, organization_id: int, pursuit_id: int) -> list[PursuitEventRow]:
         with connect_read() as conn:
             cur = conn.execute(
                 "SELECT id, pursuit_id, event_type, actor_user_id, payload_json, created_at "
@@ -473,12 +708,24 @@ class PursuitRepository:
                 "ORDER BY id",
                 (organization_id, pursuit_id),
             )
-            events = rows_to_dicts(cur)
-        for event in events:
+            filas = typed_rows(_PursuitEventRaw, rows_to_dicts(cur))
+        events: list[PursuitEventRow] = []
+        for fila in filas:
+            payload: object
             try:
-                event["payload"] = json.loads(str(event.pop("payload_json")))
+                payload = json.loads(str(fila["payload_json"]))
             except (TypeError, json.JSONDecodeError):
-                event["payload"] = {}
+                payload = {}
+            events.append(
+                {
+                    "id": fila["id"],
+                    "pursuit_id": fila["pursuit_id"],
+                    "event_type": fila["event_type"],
+                    "actor_user_id": fila["actor_user_id"],
+                    "created_at": fila["created_at"],
+                    "payload": payload,
+                }
+            )
         return events
 
     def metric_rows(
@@ -487,9 +734,9 @@ class PursuitRepository:
         *,
         period_from: str | None = None,
         period_to: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[MetricRow]:
         clauses = ["p.organization_id = %s"]
-        params: list[Any] = [organization_id]
+        params: list[object] = [organization_id]
         if period_from is not None:
             clauses.append("p.identified_at >= %s")
             params.append(period_from)
@@ -529,14 +776,14 @@ class PursuitRepository:
                 "WHERE " + " AND ".join(clauses),
                 tuple(params),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(MetricRow, rows_to_dicts(cur))
 
     def closed_scored_rows(
         self,
         organization_id: int,
         *,
         limit: int = 2000,
-    ) -> list[dict[str, Any]]:
+    ) -> list[ClosedScoredRow]:
         """Oportunidades cerradas con desenlace y desglose sellado (S3.3).
 
         Sólo ``won``/``lost``: una retirada no dice si el Radar puntuó bien.
@@ -553,7 +800,7 @@ class PursuitRepository:
                 "ORDER BY closed_at DESC NULLS LAST, id DESC LIMIT %s",
                 (organization_id, max(1, min(int(limit), 20000))),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(ClosedScoredRow, rows_to_dicts(cur))
 
     def export_personal_data(self, user_id: int) -> dict[str, list[dict[str, Any]]]:
         """Exporta solo filas vinculadas personalmente al usuario.
@@ -596,7 +843,7 @@ class PursuitRepository:
                 (user_id, user_id, user_id, user_id, user_id, user_id),
             )
 
-    def open_with_award_rows(self, *, limit: int = 500) -> list[dict[str, Any]]:
+    def open_with_award_rows(self, *, limit: int = 500) -> list[OpenWithAwardRow]:
         """Pursuits abiertos cuyo expediente ya tiene adjudicación publicada.
 
         Es la materia prima del cierre asistido: la ingesta conoce quién se
@@ -622,7 +869,7 @@ class PursuitRepository:
                 "ORDER BY p.id LIMIT %s",
                 (max(1, min(int(limit), 5000)),),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(OpenWithAwardRow, rows_to_dicts(cur))
 
     def deadline_rows(
         self,
@@ -631,7 +878,7 @@ class PursuitRepository:
         desde: str | None = None,
         hasta: str | None = None,
         limit: int = 5000,
-    ) -> list[dict[str, Any]]:
+    ) -> list[DeadlineRow]:
         """Pursuits abiertos con responsable y alguna fecha que recordar.
 
         ``fecha_limite`` es la de presentación del expediente;
@@ -656,7 +903,7 @@ class PursuitRepository:
             "p.status NOT IN " + _ESTADOS_TERMINALES_SQL,
             "(l.fecha_limite IS NOT NULL OR p.next_action_due IS NOT NULL)",
         ]
-        parametros: list[Any] = []
+        parametros: list[object] = []
         if organization_id is not None:
             condiciones.append("p.organization_id = %s")
             parametros.append(int(organization_id))
@@ -685,9 +932,9 @@ class PursuitRepository:
                 ") LIMIT %s",
                 tuple(parametros),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(DeadlineRow, rows_to_dicts(cur))
 
-    def calendar_rows(self, user_id: int) -> list[dict[str, Any]]:
+    def calendar_rows(self, user_id: int) -> list[CalendarRow]:
         """Pursuits abiertos de todas las organizaciones activas del usuario,
         con las fechas que un calendario externo debe mostrar.
 
@@ -720,7 +967,7 @@ class PursuitRepository:
                 "ORDER BY p.id",
                 (user_id,),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(CalendarRow, rows_to_dicts(cur))
 
     @staticmethod
     def _get_scoped(
@@ -730,10 +977,10 @@ class PursuitRepository:
         pursuit_id: int | None = None,
         licitacion_id: str | None = None,
         lote_numero: str | None = None,
-    ) -> dict[str, Any] | None:
+    ) -> PursuitRow | None:
         if pursuit_id is not None:
             suffix = " WHERE p.organization_id = %s AND p.id = %s"
-            params: tuple[Any, ...] = (organization_id, pursuit_id)
+            params: tuple[object, ...] = (organization_id, pursuit_id)
         elif licitacion_id is not None:
             # ``IS NOT DISTINCT FROM`` y no ``=``: el caso «expediente
             # completo» es ``lote_numero`` NULL, y ``NULL = NULL`` no encuentra
@@ -746,10 +993,10 @@ class PursuitRepository:
         else:
             raise ValueError("Se requiere pursuit_id o licitacion_id.")
         cur = conn.execute(_PURSUIT_SELECT + suffix, params)
-        rows = rows_to_dicts(cur)
+        rows = typed_rows(PursuitRow, rows_to_dicts(cur))
         return rows[0] if rows else None
 
-    def ofertas_presentadas(self, organization_id: int) -> list[dict[str, Any]]:
+    def ofertas_presentadas(self, organization_id: int) -> list[OfertaPresentadaRow]:
         """Oportunidades con oferta presentada, para «mi baja» (C6.5).
 
         El presupuesto es **`importe_base_sin_iva`** y no `importe`: la columna
@@ -774,7 +1021,7 @@ class PursuitRepository:
                 "  AND l.importe_tipo = 'sin_iva' AND l.importe_base_sin_iva > 0",
                 (organization_id,),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(OfertaPresentadaRow, rows_to_dicts(cur))
 
     def export_rows(
         self,
@@ -783,7 +1030,7 @@ class PursuitRepository:
         status: str | None = None,
         responsible_user_id: int | None = None,
         limit: int = 10_000,
-    ) -> list[dict[str, Any]]:
+    ) -> list[ExportPursuitRow]:
         """Filas del tablero para el export CSV/Excel (C6.7).
 
         Mismos filtros que `list_scoped` —el export tiene que traer lo que el
@@ -798,7 +1045,7 @@ class PursuitRepository:
         reenvíe media hoja.
         """
         clauses = ["p.organization_id = %s"]
-        params: list[Any] = [organization_id]
+        params: list[object] = [organization_id]
         if status is not None:
             clauses.append("p.status = %s")
             params.append(status)
@@ -826,7 +1073,7 @@ class PursuitRepository:
                 "ORDER BY p.updated_at DESC, p.id DESC LIMIT %s",
                 tuple([organization_id, ahora, *params, max(1, min(int(limit), 50_000))]),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(ExportPursuitRow, rows_to_dicts(cur))
 
     @staticmethod
     def _event_key_exists(conn: Any, pursuit_id: int, idempotency_key: str) -> bool:
@@ -839,7 +1086,7 @@ class PursuitRepository:
         )
 
     @staticmethod
-    def _emitir_asignacion(conn: Any, pursuit: dict[str, Any], *, actor_user_id: int) -> None:
+    def _emitir_asignacion(conn: Any, pursuit: PursuitRow, *, actor_user_id: int) -> None:
         """Escribe ``pursuit.assigned`` en el outbox, **en la transacción de la mutación**.
 
         Es el patrón outbox de ADR-027: si la asignación se revierte, su evento
@@ -885,7 +1132,7 @@ class PursuitRepository:
         organization_id: int,
         event_type: str,
         actor_user_id: int,
-        payload: dict[str, Any],
+        payload: Mapping[str, object],
         idempotency_key: str | None,
         created_at: str,
     ) -> None:
@@ -915,7 +1162,7 @@ class PursuitRepository:
 
     KIT_EVENT_TYPE = "kit_item_marcado"
 
-    def kit_events(self, organization_id: int, pursuit_id: int) -> list[dict[str, Any]]:
+    def kit_events(self, organization_id: int, pursuit_id: int) -> list[KitEventRow]:
         """Eventos del kit de una oportunidad, en orden de escritura.
 
         Se devuelven todos y los reduce el servicio: son decenas por
@@ -930,7 +1177,7 @@ class PursuitRepository:
                 "ORDER BY id",
                 (organization_id, pursuit_id, self.KIT_EVENT_TYPE),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(KitEventRow, rows_to_dicts(cur))
 
     def append_kit_event(
         self,
@@ -938,7 +1185,7 @@ class PursuitRepository:
         organization_id: int,
         pursuit_id: int,
         actor_user_id: int,
-        payload: dict[str, Any],
+        payload: Mapping[str, object],
     ) -> None:
         """Anota un marcado del kit. Sin ``UPDATE``: el ledger es append-only."""
         with connect() as conn:
@@ -961,7 +1208,7 @@ class PursuitRepository:
         actor_user_id: int,
         event_type: str,
         idempotency_key: str,
-        payload: dict[str, Any],
+        payload: Mapping[str, object],
     ) -> bool:
         """Anota un evento que sólo puede existir una vez. ``True`` si es nuevo.
 
@@ -997,7 +1244,7 @@ class PursuitRepository:
         *,
         desde_iso: str,
         limit: int = 100,
-    ) -> list[dict[str, Any]]:
+    ) -> list[CruceCompetidorRow]:
         """F3.2 — expedientes donde coincidimos con un competidor.
 
         Une **nuestras** oportunidades presentadas con las adjudicaciones
@@ -1047,4 +1294,4 @@ class PursuitRepository:
                 "LIMIT %s",
                 (organization_id, desde_iso, list(empresa_keys), list(empresa_keys), limit),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(CruceCompetidorRow, rows_to_dicts(cur))

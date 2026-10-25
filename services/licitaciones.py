@@ -14,7 +14,15 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-from db.repositories.licitaciones import LicitacionRepository
+from db.repositories.licitaciones import (
+    DriftRow,
+    ExportPdfRow,
+    HistorialRow,
+    LicitacionRepository,
+    LicitacionResumenRow,
+    RecienteRow,
+    ZonaIncertidumbreRow,
+)
 from observability.histograms import timed_query
 from observability.logging import get_logger
 from shared.dto import FiltrosLicitacion
@@ -38,7 +46,7 @@ def list_licitaciones(
     limit: int = 50,
     offset: int = 0,
     sort: str | None = None,
-) -> tuple[list[dict[str, Any]], int]:
+) -> tuple[list[LicitacionResumenRow], int]:
     """Lista paginada de licitaciones para consumidores de la aplicación.
 
     Returns:
@@ -65,7 +73,7 @@ def get_licitacion_detail(id_externo: str) -> dict[str, Any] | None:
 # ── Búsquedas especializadas ─────────────────────────────────────────────
 
 
-def load_uncertainty_zone(lo: float, hi: float, limit: int) -> list[dict[str, Any]]:
+def load_uncertainty_zone(lo: float, hi: float, limit: int) -> list[ZonaIncertidumbreRow]:
     """Licitaciones con ``ml_proba`` en zona de incertidumbre (active learning)."""
     return _repo.load_uncertainty_zone(lo, hi, limit)
 
@@ -95,7 +103,7 @@ def search_advanced(
     limit: int = 50,
     offset: int = 0,
     with_total: bool = True,
-) -> tuple[list[dict[str, Any]], int]:
+) -> tuple[list[LicitacionResumenRow], int]:
     """Búsqueda avanzada con criterios complejos (multi-CCAA, rangos de importe...).
 
     Usada por el endpoint POST ``/licitaciones/search``.
@@ -122,7 +130,7 @@ def search_advanced(
 # ── Carga para drift detection ───────────────────────────────────────────
 
 
-def load_drift_window(days: int, offset_days: int = 0) -> list[dict[str, Any]]:
+def load_drift_window(days: int, offset_days: int = 0) -> list[DriftRow]:
     """Carga licitaciones de un rango de días para drift detection."""
     from datetime import UTC, datetime, timedelta
 
@@ -131,12 +139,12 @@ def load_drift_window(days: int, offset_days: int = 0) -> list[dict[str, Any]]:
     return _repo.load_drift_window(cutoff, end)
 
 
-def get_history(id_externo: str, limit: int = 50) -> list[dict[str, Any]]:
+def get_history(id_externo: str, limit: int = 50) -> list[HistorialRow]:
     """Devuelve el historial de cambios de una licitación."""
     return _repo.get_history(id_externo, limit)
 
 
-def fetch_recent(since_iso: str, limit: int = 20) -> list[dict[str, Any]]:
+def fetch_recent(since_iso: str, limit: int = 20) -> list[RecienteRow]:
     """Licitaciones publicadas/actualizadas desde ``since_iso`` (para SSE stream)."""
     return _repo.fetch_recent(
         since_extraccion=since_iso,
@@ -158,7 +166,7 @@ def fetch_for_pdf(
     provincia: str | None = None,
     procedimiento: str | None = None,
     limit: int = 500,
-) -> list[dict[str, Any]]:
+) -> list[ExportPdfRow]:
     """Carga licitaciones para exportación (CSV, Excel y PDF)."""
     return _repo.fetch_for_pdf(
         ccaa=ccaa,

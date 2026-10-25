@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from db.repositories.adjudicaciones import AdjudicacionRepository
+from db.repositories.adjudicaciones import AdjudicacionRepository, LicitadorRow
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -47,6 +47,6 @@ def load_for_competitors(
 def load_licitadores(
     ccaa_filter: tuple[str, ...] | None = None,
     limit: int = 10000,
-) -> list[dict[str, Any]]:
+) -> list[LicitadorRow]:
     """Carga adjudicaciones con datos para el ranking de licitadores."""
     return _repo.load_licitadores(ccaa_filter=ccaa_filter, limit=limit)

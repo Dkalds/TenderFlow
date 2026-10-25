@@ -116,7 +116,7 @@ def bajas_agregadas(
         WHERE {VALID_PAIR_LOTE} AND {TECHNOLOGY_OBSERVED_SQL} AND {exclude_duplicados_sql()}
           AND {filtro_base}
     """  # noqa: S608 — columnas de _GROUP_COLUMNS y fragmentos constantes; valores con %s
-    params: list[Any] = []
+    params: list[object] = []
     if cpv_prefix:
         sql += " AND l.cpv LIKE %s"
         params.append(f"{cpv_prefix}%")
@@ -178,7 +178,7 @@ def baja_de_referencia(
         WHERE {VALID_PAIR_LOTE} AND {TECHNOLOGY_OBSERVED_SQL} AND {exclude_duplicados_sql()}
           AND {filtro_base}
     """  # noqa: S608 — VALID_PAIR_LOTE es un fragmento constante; valores con ?
-    params: list[Any] = []
+    params: list[object] = []
     if organo:
         sql += " AND l.organo_contratacion = %s"
         params.append(organo)

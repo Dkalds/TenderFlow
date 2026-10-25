@@ -26,10 +26,12 @@ from __future__ import annotations
 
 import csv
 import io
+from collections.abc import Sequence
 from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict
 
+from db.repositories.pursuits import ExportPursuitRow
 from shared.export_safety import sanitize_spreadsheet_value
 
 __all__ = [
@@ -141,7 +143,7 @@ def a_csv_fila(payload: PayloadCRM) -> list[Any]:
     return [sanitize_spreadsheet_value(datos[clave]) for clave in CABECERAS_CSV]
 
 
-def csv_crm(filas: list[dict[str, Any]]) -> bytes:
+def csv_crm(filas: Sequence[ExportPursuitRow]) -> bytes:
     """El CSV del mapeo a partir de las filas del tablero. Puro.
 
     ``filas`` son las de ``PursuitRepository.export_rows`` (las mismas del

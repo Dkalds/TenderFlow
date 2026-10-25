@@ -68,6 +68,7 @@ from fastapi.responses import StreamingResponse
 from api.concurrency import run_db
 from api.errors import deprecate_route, sunset_anunciado
 from api.routes.dual_auth import require_any_auth
+from db.repositories.licitaciones import RecienteRow
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -119,9 +120,7 @@ def _desde_iso(since_ts: float, ahora: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(since_ts))
 
 
-def _fetch_recent(
-    since_ts: float, limit: int, *, ahora: float | None = None
-) -> list[dict[str, Any]]:
+def _fetch_recent(since_ts: float, limit: int, *, ahora: float | None = None) -> list[RecienteRow]:
     """Recupera licitaciones publicadas/actualizadas desde ``since_ts``.
 
     ``ahora`` fija el instante contra el que se acota la ventana; el watcher lo
@@ -142,11 +141,11 @@ def _fetch_recent(
 class _Lote:
     """Una consulta de ``fetch_recent`` compartida, en vuelo o recién terminada."""
 
-    tarea: asyncio.Task[list[dict[str, Any]]]
+    tarea: asyncio.Task[list[RecienteRow]]
     creado: float  # time.monotonic()
 
 
-def _recoger_excepcion(tarea: asyncio.Task[list[dict[str, Any]]]) -> None:
+def _recoger_excepcion(tarea: asyncio.Task[list[RecienteRow]]) -> None:
     """Evita el aviso de «excepción nunca recuperada» si ya nadie esperaba el lote."""
     if not tarea.cancelled():
         tarea.exception()
@@ -251,7 +250,7 @@ class _SignalWatcher:
                 return None
             return self._signal_ts if _hay_novedad() else None
 
-    async def recientes(self, since_ts: float, batch: int) -> list[dict[str, Any]]:
+    async def recientes(self, since_ts: float, batch: int) -> list[RecienteRow]:
         """Lo que devolvería ``_fetch_recent(since_ts, batch)``, con una consulta compartida.
 
         Los clientes que despierta la misma señal piden, casi todos, lo mismo:

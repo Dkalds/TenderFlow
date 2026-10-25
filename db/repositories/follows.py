@@ -197,7 +197,7 @@ def listar(
     Pedir `vigentes=False` es lo que quiere la auditoría, no la interfaz.
     """
     condiciones = [f"({_IDENT} OR (organization_id = %s AND visibility = 'organization'))"]
-    params: list[Any] = [user_id, user_key, user_id, organization_id]
+    params: list[object] = [user_id, user_key, user_id, organization_id]
     condiciones.append("kind = %s")
     params.append(kind)
     if target_type is not None:

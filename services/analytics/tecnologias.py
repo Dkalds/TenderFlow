@@ -12,11 +12,14 @@ ligero).
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
 
 from pydantic import BaseModel, Field
 
-from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
+from db.repositories.aggregates import (
+    AggregateRepository,
+    LicitacionesFilters,
+    TecnologiaEntradaFila,
+)
 from observability.logging import get_logger
 from services.classification import TECHNOLOGY_LABELS, estado_label, tecnologia_label
 
@@ -172,7 +175,9 @@ def _codes_for_label(tecnologia: str) -> list[str]:
     return codes
 
 
-def _merge_entries_by_label(raw_entries: list[dict[str, Any]], total: int) -> list[TecnologiaEntry]:
+def _merge_entries_by_label(
+    raw_entries: list[TecnologiaEntradaFila], total: int
+) -> list[TecnologiaEntry]:
     """Re-agrupa por label legible (varios códigos pueden compartir label)."""
     merged: dict[str, dict[str, float]] = {}
     for row in raw_entries:
