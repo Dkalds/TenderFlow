@@ -55,7 +55,6 @@ evalúa filas nuevas de la pasada — sin full scan de pares.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, Self
 from urllib.parse import unquote, urlparse
@@ -73,6 +72,7 @@ from db.sql_fragments import periodo_canonico, plegar_organo
 from observability.logging import get_logger
 from observability.runtime_metrics import dedupe_marked_total, dedupe_match_rate
 from services.normalization import normalize_company
+from shared.identidad_placsp import es_fuente_placsp, expediente_natural
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -146,18 +146,20 @@ def normalize_organo(name: str | None) -> str | None:
 #: El UUID de ficha con que PSCP acota su ``codi_expedient`` al órgano
 #: (``pscp:{uuid}:{codi_expedient}``, ver ``scraper.connectors.pscp._natural_id``).
 #: Gemelo de ``db.repositories.dedupe._EXPEDIENTE_NATURAL_SQL``.
-_UUID_FICHA_PSCP = re.compile(r"^[0-9a-f-]{36}:")
 
 
 def natural_expediente(id_externo: str) -> str:
     """Expediente nacional: el id natural sin el namespace de fuente (ADR-009).
 
-    Sin el UUID de ficha de PSCP tampoco: lo que casa con el expediente de otra
-    fuente es el ``codi_expedient``, no la ficha en la que lo publicó la
-    Generalitat. Que órgano y CPV coincidan lo sigue exigiendo el matching.
+    Sin el UUID de ficha de PSCP tampoco, ni el órgano que acota la clave nueva
+    de PLACSP (``placsp:<órgano>:<expediente>``): lo que casa con el expediente
+    de otra fuente es el ``codi_expedient`` o el ``ContractFolderID``, no la
+    ficha ni el órgano que lo publicó. Que órgano y CPV coincidan lo sigue
+    exigiendo el matching. La definición vive en
+    :func:`shared.identidad_placsp.expediente_natural`, de donde sale también su
+    gemelo SQL (``db/repositories/dedupe.py``).
     """
-    _, sep, rest = id_externo.partition(":")
-    return _UUID_FICHA_PSCP.sub("", rest, count=1) if sep else id_externo
+    return expediente_natural(id_externo)
 
 
 def _cpv4(cpv: str | None) -> str | None:
@@ -828,7 +830,12 @@ def marcar_republicaciones_ted(canonica_id: str, numeros_ted: Sequence[str]) -> 
         for id_ted in existentes
     ]
     dedupe_repo.marcar_duplicados_por_referencia(marcas)
-    fuente_canonica = canonica_id.split(":", 1)[0] if ":" in canonica_id else "placsp"
+    # La fuente se lee de la fila, no del prefijo del id: la clave nueva de
+    # PLACSP lleva prefijo y la vieja no, y `bulk_YYYYMM` es el mismo carril.
+    fuente_fila = next(
+        (str(f.get("fuente") or "") for f in dedupe_repo.filas_por_id([canonica_id])), ""
+    )
+    fuente_canonica = "placsp" if es_fuente_placsp(fuente_fila) else fuente_fila or "placsp"
     source_pair = "|".join(sorted((FUENTE_TED, fuente_canonica)))
     dedupe_marked_total.labels(source_pair=source_pair, status="confirmed").inc(len(marcas))
     log.info("dedupe_publicacion_oficial", canonica=canonica_id, marcadas=existentes)

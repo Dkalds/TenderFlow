@@ -15,11 +15,13 @@ import re
 from datetime import date
 from typing import Any
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Response, status
 
-from api.errors import sunset_anunciado
+from api.concurrency import run_db
+from api.errors import deprecate_route, sunset_anunciado
 from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.documentos import DocumentosRepository
+from db.repositories.identidad import resolver_id_licitacion
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
 
@@ -29,6 +31,42 @@ log = get_logger(__name__)
 #: de 90 días de `DEPRECATION_WINDOW_DAYS`; la sucesora es
 #: `/licitaciones/cursor`, que ya sirve el mismo dato sin `COUNT(*)`.
 SUNSET_LISTADO_POR_OFFSET = sunset_anunciado(date(2027, 1, 15), anunciado=date(2026, 9, 6))
+
+#: Hasta cuándo la API resuelve un `id_externo` anterior a una re-key
+#: (`licitaciones_id_anterior`, v159) en vez de responder 404. Lo fija el RFC
+#: de identidad PLACSP: seis meses desde la fase B prevista; la ficha pública
+#: sigue redirigiendo (308) después. Anunciado con la fase A, el 2026-10-25.
+SUNSET_IDS_ANTERIORES = sunset_anunciado(date(2027, 4, 30), anunciado=date(2026, 10, 25))
+RFC_IDENTIDAD_PLACSP = "docs/rfc/2026-10-24-rfc-identidad-placsp-organo-expediente.md"
+
+
+async def resolver_id_externo(id_externo: str, response: Response) -> str:
+    """Dependencia de las rutas `/licitaciones/{id_externo:path}/…`: el id vigente.
+
+    Un cliente que guardó un `id_externo` antes de una re-key (la de PSCP en
+    v153, la de PLACSP en la fase B del RFC) sigue obteniendo su expediente: si
+    el id no existe pero está en `licitaciones_id_anterior`, la ruta trabaja
+    con el id al que redirige y la respuesta lleva `Deprecation: true` y
+    `Sunset` (RFC 8594) para que el cliente actualice lo que guardó. Pasado el
+    *sunset*, esto devolverá el id tal cual y la ruta responderá su 404.
+
+    Si el id no existe ni tiene alias, se devuelve tal cual: cada ruta conserva
+    su propio 404 y este punto no decide por ella. Se declara **después** de la
+    dependencia de autenticación: las dependencias se resuelven en el orden de
+    los parámetros y un 401 no debe necesitar la base de datos.
+    """
+    resuelto = await run_db(resolver_id_licitacion, id_externo)
+    if resuelto is None or not resuelto.via_alias:
+        return id_externo
+    deprecate_route(
+        response,
+        sunset=SUNSET_IDS_ANTERIORES,
+        successor=f"/api/v1/licitaciones/{resuelto.id_externo}",
+        rfc=RFC_IDENTIDAD_PLACSP,
+    )
+    log.info("licitacion_id_anterior_resuelto", pedido=id_externo, vigente=resuelto.id_externo)
+    return resuelto.id_externo
+
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _MAX_QUERY_LENGTH = 200

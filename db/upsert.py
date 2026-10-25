@@ -18,7 +18,11 @@ from db.fechas_ts import LIC_COLUMNAS_UPSERT, sombra, sombras_presentes, valores
 from db.nucleo_tipado import COLUMNAS_SOMBRA, sombras_disponibles, valores_sombra
 from db.sql_fragments import instante_sql
 from observability.logging import get_logger
-from observability.runtime_metrics import upsert_rows_dropped_total
+from observability.runtime_metrics import (
+    placsp_colision_expediente_total,
+    upsert_rows_dropped_total,
+)
+from shared.identidad_placsp import descomponer_clave_placsp
 from shared.numeric import values_equal
 
 _log = get_logger(__name__)
@@ -308,6 +312,12 @@ class Licitacion:
     # Fuente de ingesta (ADR-009): 'placsp', 'ted', 'pscp_cat'… Las fuentes
     # nuevas namespacean ademas su id_externo como "{fuente}:{id_natural}".
     fuente: str = "placsp"
+    #: Identificador del órgano en la plataforma de origen (`ID_PLATAFORMA` de
+    #: PLACSP, con `NIF`/`DIR3` de respaldo; `ID_OC_PLAT` en agregadas), tal
+    #: como entra en la clave acotada por órgano de `shared/identidad_placsp.py`
+    #: (v159, fase A del RFC de identidad PLACSP). Lo rellena el parser CODICE;
+    #: el resto de caminos lo dejan a `None` y el upsert no pisa lo que haya.
+    organo_ref_fuente: str | None = None
     #: Código DIR3 del órgano, **parse-only** (C1.2). No es columna de
     #: `licitaciones`: el DIR3 vive en el maestro `organos` (v114), que es
     #: donde identifica a la entidad. Viaja aquí para que la resolución del
@@ -420,6 +430,11 @@ _LIC_COALESCE_UPDATE_FIELDS = frozenset(
         "ml_tecnologias",
         "ml_proba_max",
         "ml_tech_principal",
+        # ── Órgano de la fuente (v159): solo lo lee el parser CODICE ──
+        # Es el mapa viejo → nuevo de la re-key del RFC de identidad PLACSP:
+        # un camino que no lo conoce (TED, el reintento de la DLQ con una
+        # `Licitacion` reconstruida…) no puede borrarlo.
+        "organo_ref_fuente",
     }
 )
 
@@ -654,17 +669,19 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
         # Bulk SELECT para determinar qué IDs ya existen — evita N+1.
         # Particionado en grupos de 500 para respetar SQLITE_MAX_VARIABLE_NUMBER.
         existing_pub: dict[str, str | None] = {}
+        existing_organo: dict[str, str | None] = {}
         _CHUNK = 500
         for i in range(0, len(batch), _CHUNK):
             chunk = batch[i : i + _CHUNK]
             placeholders = ", ".join("%s" for _ in chunk)
             chunk_ids = [lic.id_externo for lic in chunk]
             rows = c.execute(
-                f"SELECT id_externo, fecha_publicacion FROM licitaciones "
+                f"SELECT id_externo, fecha_publicacion, organo_ref_fuente FROM licitaciones "
                 f"WHERE id_externo IN ({placeholders})",
                 chunk_ids,
             ).fetchall()
             existing_pub.update((row[0], row[1]) for row in rows)
+            existing_organo.update((row[0], row[2]) for row in rows)
 
         con_sombras = _con_sombras(c)
         con_fechas_ts = _con_fechas_ts(c)
@@ -677,6 +694,7 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
                 data["fecha_publicacion"] = _earliest_iso_date(
                     existing_pub[lic.id_externo], data["fecha_publicacion"]
                 )
+                _detectar_colision_de_organo(lic, existing_organo.get(lic.id_externo))
             lic_rows.append(
                 _fila_licitacion(data, con_sombras=con_sombras, con_fechas_ts=con_fechas_ts)
             )
@@ -696,6 +714,45 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
     nuevas = sum(1 for lic in batch if lic.id_externo not in existing_ids)
     actualizadas = len(batch) - nuevas
     return nuevas, actualizadas
+
+
+def _detectar_colision_de_organo(lic: Licitacion, organo_guardado: str | None) -> None:
+    """Cuenta una fila PLACSP que otro órgano está a punto de pisar (fase A del RFC).
+
+    Con la clave vieja (``ContractFolderID`` sin órgano) la pisada es silenciosa:
+    el ``ON CONFLICT`` de abajo la ejecuta igual. Lo que cambia en la fase A es
+    que, si la fila guardada ya dice de qué órgano era (``organo_ref_fuente``,
+    v159) y la entrada trae otro, queda rastro: un log con los dos órganos y un
+    contador. No se rechaza la escritura —perder la nueva en vez de la vieja no
+    es mejor— ni se bifurca la clave —escribir ``placsp:<órgano>:<exp>`` sobre
+    una base sin re-key partiría cada expediente republicado en dos filas—. El
+    contador es la medida en vivo de lo que la fase B tiene que recuperar.
+
+    Solo compara órganos **conocidos**: la fila anterior a v159 tiene ``NULL`` y
+    el primer refresco se lo pone sin que eso sea una colisión.
+    """
+    nuevo = lic.organo_ref_fuente
+    if not nuevo or not organo_guardado or nuevo == organo_guardado:
+        return
+    if descomponer_clave_placsp(lic.id_externo) is not None:
+        # Clave ya acotada por órgano: el órgano está en el id y no puede
+        # discrepar salvo que alguien construyera mal la clave. Se loguea igual.
+        _log.error(
+            "placsp_clave_acotada_con_otro_organo",
+            id_externo=lic.id_externo,
+            organo_guardado=organo_guardado,
+            organo_nuevo=nuevo,
+        )
+        return
+    placsp_colision_expediente_total.labels(fuente=lic.fuente).inc()
+    _log.warning(
+        "placsp_colision_de_expediente",
+        id_externo=lic.id_externo,
+        fuente=lic.fuente,
+        organo_guardado=organo_guardado,
+        organo_nuevo=nuevo,
+        organo_contratacion=lic.organo_contratacion,
+    )
 
 
 def _dedup_adj_rows(

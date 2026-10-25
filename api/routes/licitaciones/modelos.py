@@ -21,11 +21,20 @@ mismo nombre y campos distintos hacen que nadie sepa cuál está leyendo.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from shared.identidad_placsp import expediente_natural
 
 
 class LicitacionSummary(BaseModel):
     id_externo: str
+    #: Número de expediente tal como lo publica el órgano: el `id_externo` sin
+    #: el prefijo de fuente, el UUID de ficha de PSCP ni el órgano que acota la
+    #: clave de PLACSP (`shared/identidad_placsp.py`). Es lo que la consola
+    #: enseña como expediente; `id_externo` es la clave, no el número. Aditivo
+    #: (fase A del RFC de identidad PLACSP): hoy coincide con `id_externo` en
+    #: las filas PLACSP y dejará de hacerlo cuando la fase B les ponga órgano.
+    expediente: str | None = None
     titulo: str
     organo_contratacion: str | None = None
     importe: float | None = None
@@ -47,6 +56,12 @@ class LicitacionSummary(BaseModel):
     # nuevo llegue como código nuevo y la consola lo marque «no catalogado».
     procedimiento: str | None = None
     tramitacion: str | None = None
+
+    @model_validator(mode="after")
+    def _expediente_desde_id(self) -> LicitacionSummary:
+        if self.expediente is None:
+            self.expediente = expediente_natural(self.id_externo)
+        return self
 
 
 class LoteOut(BaseModel):

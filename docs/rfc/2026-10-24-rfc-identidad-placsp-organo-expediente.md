@@ -4,12 +4,19 @@ title: "Identidad de las licitaciones de PLACSP: el expediente acotado por el ó
 issue: "(sin issue: P1 de docs/IMPROVEMENT_BACKLOG.md, «La identidad de PLACSP no incluye el órgano», 2026-10-24)"
 author: agent:claude-code
 date: 2026-10-24
-status: draft
+status: accepted
 related:
   - "[[ADR-009-framework-conectores-multifuente]]"
   - "[[ADR-026-caminos-de-lectura-y-precedencia-tecnologica]]"
   - "[[ADR-032-semantica-del-importe-y-maestro-de-organos]]"
 ---
+
+## Estado
+
+`accepted` el 2026-10-25: el dueño autorizó la fase 1 (migración A) y abrir
+el PR que la implementa. Las fases 2 a 5 siguen como están escritas abajo;
+las decisiones que la implementación de la fase A tomó donde este texto
+dejaba margen están en §«Decisiones de la fase A».
 
 ## Por qué hace falta un RFC
 
@@ -632,3 +639,56 @@ migración B aborta con cada una de sus guardas (como
   `mcp_server/glosario.md` («PLACSP va sin prefijo»), los docstrings de
   `scraper/connectors/placsp.py` y `placsp_agregadas.py`, y
   `docs/runbooks/rekey-placsp-organo.md` (nuevo).
+
+## Decisiones de la fase A (2026-10-25)
+
+Lo que la fase 1 del plan dejaba abierto, tal como se implementó:
+
+1. **Dónde vive la clave.** No en `scraper/codice_parser.py` sino en
+   `shared/identidad_placsp.py`: `services/dedupe.py` y su gemelo SQL en
+   `db/repositories/dedupe.py` tienen que importarla y ninguno puede importar
+   de `scraper/` (AGENTS.md §2). El parser importa de `shared/` como el resto.
+   Allí están `clave_placsp`, `descomponer_clave_placsp`, `codificar_organo`,
+   `expediente_natural` y `expediente_natural_sql(columna)`, que genera el
+   SQL del gemelo desde la misma tupla de prefijos. Los dos se fijan con la
+   tabla de §2 (`tests/test_identidad_placsp.py`).
+2. **Los escritores no cambian de clave todavía**, como dice §«Compatibilidad
+   durante la transición». Lo que sí hace el upsert desde ya es **contar la
+   colisión en vez de pisar en silencio**: si la fila guardada tiene
+   `organo_ref_fuente` y la entrada trae otro, loguea los dos órganos y suma
+   `placsp_colision_expediente_total{fuente}`. La escritura sigue (perder la
+   nueva en vez de la vieja no es mejor) y la clave no se bifurca (escribir
+   `placsp:<órgano>:<exp>` sobre una base sin re-key partiría cada expediente
+   republicado). El contador es la medida en vivo de lo que la fase 4 recupera.
+3. **`organo_ref_fuente` está en `_LIC_COALESCE_UPDATE_FIELDS`**: un camino que
+   no lo conoce no lo borra. La extracción (`identificador_organo`) salió de
+   `placsp_menores.py` a `codice_parser.py`, parametrizada por esquemas; menores
+   la reexporta.
+4. **Resolución de ids anteriores.** `db/repositories/identidad.py::
+   resolver_id_licitacion` (exacto primero, alias después). En la API es una
+   dependencia (`api/routes/licitaciones/_base.py::resolver_id_externo`) que
+   pone `Deprecation`, `Sunset` (2027-04-30) y `Link` cuando resuelve por
+   alias, aplicada al detalle, `/documentos`, `/similares` y
+   `/competencia-esperada`; el resto de rutas `/licitaciones/{id}/…` la adoptan
+   en la fase 3, cuando haya alias que resolver. `expediente_completo` (MCP) y
+   `GET /publico/licitaciones/{ref}` resuelven igual; la página pública compara
+   la `ref` devuelta con la pedida y responde 308 (`permanentRedirect`).
+5. **`expediente`** es campo aditivo de `LicitacionSummary` (y por herencia de
+   `LicitacionDetail`), calculado con `expediente_natural`; la consola lo
+   muestra en vez de `id_externo`. `LicitacionPublica.expediente` pasa a ser el
+   expediente natural (para PLACSP, hoy, el mismo valor).
+6. **El inventario de pisadas** es `inventario_pisadas_placsp` (la consulta de
+   §«Las filas ya pisadas») con `scripts/inventario_pisadas_placsp.py`, que
+   además imprime la puerta 1 de la fase B (filas PLACSP sin
+   `organo_ref_fuente`) y los expedientes con clave nueva que ya conviven
+   (consulta 9). Solo lectura.
+7. **Lista de referencias de la fase B.** Es la tabla de §4 **con**
+   `domain_events.aggregate_id` (los huérfanos de PSCP ya los reparó `v158`) y
+   `licitaciones_id_anterior.id_externo`, que la migración de re-key tiene que
+   rellenar y repuntar. No se re-escribe ninguna fila existente en esta fase:
+   la migración B queda para su propio PR, con `plan` y paso manual
+   (`migrate.yml`), como describe §«Plan por fases».
+8. **Qué no entra.** El ADR que revisa ADR-009, el runbook
+   `rekey-placsp-organo.md`, la corrección de `mcp_server/glosario.md` y la fila
+   de deprecación por ids viejos pasan a tener fecha: con la fase B. La fila de
+   `docs/api-design.md` se añadió ya porque el mecanismo existe.

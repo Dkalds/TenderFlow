@@ -2820,7 +2820,8 @@ export interface paths {
          * Detalle de una licitación
          * @description Devuelve todos los campos de una licitación por su ID externo.
          *
-         *     Soporta caching via ETag / If-None-Match.
+         *     Soporta caching via ETag / If-None-Match. Un id anterior a una re-key se
+         *     resuelve por `licitaciones_id_anterior` (ver `resolver_id_externo`).
          */
         get: operations["get_licitacion_api_v1_licitaciones__id_externo__get"];
         put?: never;
@@ -10558,6 +10559,8 @@ export interface components {
             duracion_valor?: number | null;
             /** Estado */
             estado?: string | null;
+            /** Expediente */
+            expediente?: string | null;
             /** Fecha Extraccion */
             fecha_extraccion?: string | null;
             /** Fecha Fin */
@@ -10676,6 +10679,8 @@ export interface components {
             cpv?: string | null;
             /** Estado */
             estado?: string | null;
+            /** Expediente */
+            expediente?: string | null;
             /** Fecha Limite */
             fecha_limite?: string | null;
             /** Fecha Publicacion */

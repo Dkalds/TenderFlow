@@ -65,7 +65,9 @@ class LicitacionPublica(BaseModel):
     #: `id_externo` reales llevan espacios y barras y no caben en un segmento
     #: de ruta.
     ref: str
-    #: Número de expediente tal cual lo publica el órgano.
+    #: Número de expediente tal cual lo publica el órgano: el expediente
+    #: natural del `id_externo` (`shared/identidad_placsp.py`), sin prefijo de
+    #: fuente ni el órgano que acota la clave de PLACSP.
     expediente: str
     titulo: str
     descripcion: str | None = None

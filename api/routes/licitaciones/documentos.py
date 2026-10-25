@@ -22,6 +22,7 @@ from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
     _doc_repo,
+    resolver_id_externo,
 )
 from observability.logging import get_logger
 from services.rag.paginas import PaginaDocumento, get_pagina
@@ -72,8 +73,8 @@ class DocumentosResult(BaseModel):
     responses={401: {"description": "API key inválida"}},
 )
 async def get_documentos(
-    id_externo: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> DocumentosResult:
     """Metadatos de los adjuntos (pliegos) parseados del CODICE/UBL para esta
     licitación — sin el texto extraído, que solo usa internamente el pipeline

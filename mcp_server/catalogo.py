@@ -157,6 +157,12 @@ _TABLAS: tuple[tuple[str, Visibilidad, str, str], ...] = (
         _LIC,
         "Histórico de capturas de cada licitación, con los campos que cambiaron.",
     ),
+    (
+        "licitaciones_id_anterior",
+        _V,
+        _LIC,
+        "Ids anteriores de una licitación re-escrita (alias viejo -> id_externo vigente).",
+    ),
     ("lotes", _V, _LIC, "Lotes de cada licitación con su CPV, importe y plazo."),
     ("resoluciones_recurso", _V, _LIC, "Resoluciones de tribunales de recursos contractuales."),
     (

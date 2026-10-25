@@ -156,6 +156,15 @@ try:
         ["table"],
     )
 
+    # ── Identidad PLACSP (RFC identidad-placsp-organo-expediente, fase A) ──
+    # Filas PLACSP con la clave vieja que otro órgano pisa en el upsert: la
+    # fila guardada ya tenía `organo_ref_fuente` y la entrada trae otro.
+    placsp_colision_expediente_total: _CounterMetric = Counter(
+        "placsp_colision_expediente_total",
+        "Licitaciones PLACSP pisadas por otro órgano con el mismo número de expediente",
+        ["fuente"],
+    )
+
     # ── LLM budget (RFC llm-dependencia-gestionada) ───────────────────────
     llm_budget_exceeded_total: _CounterMetric = Counter(
         "llm_budget_exceeded_total",
@@ -301,6 +310,7 @@ except ImportError:  # pragma: no cover
     parser_field_null_total = _NoopMetric()
     parser_entries_total = _NoopMetric()
     upsert_rows_dropped_total = _NoopMetric()
+    placsp_colision_expediente_total = _NoopMetric()
     llm_budget_exceeded_total = _NoopMetric()
     documentos_fetched_total = _NoopMetric()
     documento_chunks_total = _NoopMetric()
