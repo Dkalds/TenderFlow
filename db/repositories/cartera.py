@@ -175,7 +175,7 @@ class CarteraRepository:
         backfill y la resincronización diaria, que corren sin ámbito.
         """
         clauses = ["p.status = 'won'"]
-        params: list[Any] = []
+        params: list[object] = []
         if organization_id is not None:
             clauses.append("p.organization_id = %s")
             params.append(organization_id)
@@ -241,7 +241,7 @@ class PlantillasRepository:
         self, organization_id: int, tipo: str | None = None
     ) -> list[dict[str, Any]]:
         clauses = ["organization_id = %s"]
-        params: list[Any] = [organization_id]
+        params: list[object] = [organization_id]
         if tipo is not None:
             clauses.append("tipo = %s")
             params.append(tipo)

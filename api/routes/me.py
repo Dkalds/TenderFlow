@@ -73,6 +73,7 @@ from shared.audit_events import (
 )
 from shared.cache import ainvalidate_organization_scoped, ainvalidate_user_scoped
 from shared.dto import SessionsRevoked, StatusMessage, StatusOk
+from shared.identity import actor_del_principal
 
 log = get_logger(__name__)
 
@@ -120,8 +121,12 @@ async def _invalidate_profile_scoring(user_key: str, *organization_ids: int | No
 
 
 def _actor_key(ctx: dict[str, Any]) -> str:
-    """Identificador corto para audit log — misma convención que feedback.py."""
-    return str(ctx.get("key_hash") or ctx.get("email") or "session")[:8]
+    """Quién actúa, para el audit log: la convención única de ``shared.identity``.
+
+    Hasta 2026-10 recortaba ``key_hash`` o el **correo** a ocho caracteres;
+    ADR-030 §D no admite correos en ``audit_log``.
+    """
+    return actor_del_principal(ctx)
 
 
 # response_class evita el content application/json {} por defecto: la

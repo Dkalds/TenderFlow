@@ -172,7 +172,7 @@ def get_events(
     limit: int = 1000,
 ) -> list[dict[str, Any]]:
     """Devuelve todos los eventos de un agregado, ordenados por created_at."""
-    params: list[Any] = [aggregate_type, str(aggregate_id)]
+    params: list[object] = [aggregate_type, str(aggregate_id)]
     extra = ""
     if event_type:
         extra = " AND event_type=%s"
@@ -203,7 +203,7 @@ def get_events_by_type(
     limit: int = 500,
 ) -> list[dict[str, Any]]:
     """Devuelve eventos de un tipo concreto, opcionalmente desde una fecha ISO."""
-    params: list[Any] = [event_type]
+    params: list[object] = [event_type]
     extra = ""
     if since:
         extra = " AND created_at >= %s"
@@ -284,11 +284,23 @@ def release_channel(event_id: int, canal: Canal) -> None:
     Sin esto, un webhook caído consumiría su reserva en el primer intento y la
     entrega no se volvería a intentar jamás: la idempotencia se convertiría en
     pérdida de mensajes.
+
+    Además **reabre el evento** (``dispatched_at = NULL``) en la misma
+    transacción. Desde que el despachador también corre a demanda en el worker
+    (ADR-027 §C) puede haber dos pasadas a la vez: la que no consigue ningún
+    reclamo da el evento por despachado mientras la otra sigue entregando, y si
+    a esa otra le falla un canal, el evento ya estaba fuera de la cola y el
+    canal no se reintentaba nunca. Reabrirlo lo devuelve a la cola; los canales
+    que sí salieron siguen reclamados y no se repiten.
     """
     with connect() as c:
         c.execute(
             "DELETE FROM domain_event_dispatches WHERE event_id = %s AND canal = %s",
             (event_id, canal),
+        )
+        c.execute(
+            "UPDATE domain_events SET dispatched_at = NULL WHERE id = %s",
+            (event_id,),
         )
 
 

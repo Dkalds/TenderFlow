@@ -60,6 +60,11 @@ TIPO_EXPORT_PDF = "export_pdf"
 #: Un paso del cierre post-ingesta (S5.4). No es trabajo a demanda: lo encola y
 #: lo consume el propio job de Actions.
 TIPO_PASO_PIPELINE = "paso_pipeline"
+#: Una pasada del despachador del outbox (ADR-027 §C, «a demanda dentro del
+#: worker de ADR-028»). La encola quien acaba de escribir un evento que una
+#: persona espera ver ya —una asignación, una solicitud de acceso— para no
+#: esperar al cierre de la siguiente ingesta, que corre cada cuatro horas.
+TIPO_DESPACHO_EVENTOS = "despacho_eventos"
 
 
 @dataclass(frozen=True)
@@ -102,6 +107,16 @@ TIPOS_A_DEMANDA: dict[str, TipoJob] = {
         handler="scheduler.worker:ejecutar_export_pdf",
         clave_dedupe=None,
         descripcion="Maqueta el PDF de exportación por encima del umbral de filas.",
+    ),
+    # Sin deduplicar a propósito: un job ya `running` puede haber leído la cola
+    # antes de que llegara el evento nuevo, y devolverlo como «equivalente»
+    # dejaría ese evento esperando al cierre. Dos pasadas a la vez no duplican
+    # nada: el despachador es idempotente por `(event_id, canal)`.
+    TIPO_DESPACHO_EVENTOS: TipoJob(
+        nombre=TIPO_DESPACHO_EVENTOS,
+        handler="scheduler.worker:ejecutar_despacho_eventos",
+        clave_dedupe=None,
+        descripcion="Reparte los eventos pendientes del outbox (domain_events).",
     ),
 }
 
@@ -286,6 +301,21 @@ def enqueue(
     )
     log.info("job_encolado", tipo=tipo, job_id=job_id, organization_id=organization_id)
     return job_id
+
+
+def solicitar_despacho_de_eventos(motivo: str) -> int | None:
+    """Pide una pasada del despachador del outbox. Devuelve el id del job o ``None``.
+
+    Se llama **después** del commit de la mutación que escribió el evento: el
+    evento ya está a salvo en ``domain_events``, así que esto solo adelanta su
+    entrega. Por eso nunca lanza: si la cola no responde, el evento sale igual
+    en el paso ``event_dispatch`` del siguiente cierre (ADR-027 §C).
+    """
+    try:
+        return enqueue(TIPO_DESPACHO_EVENTOS, {"motivo": motivo}, deduplicar=False)
+    except Exception as exc:
+        log.warning("despacho_eventos_no_encolado", motivo=motivo, error=str(exc)[:200])
+        return None
 
 
 def claim(worker_id: str, *, tipos: tuple[str, ...] | None = None) -> Job | None:

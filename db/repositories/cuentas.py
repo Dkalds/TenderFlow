@@ -568,7 +568,7 @@ class CuentasRepository:
         cuenta ya se llama así.
         """
         asignaciones: list[str] = []
-        params: list[Any] = []
+        params: list[object] = []
         if nombre is not None:
             asignaciones.append("nombre = %s, nombre_norm = %s")
             params.extend([nombre.strip(), clave_de_nombre(nombre)])
@@ -1198,7 +1198,7 @@ class ActividadRepository:
         eventos del mismo segundo podrían repetirse o perderse entre páginas.
         """
         clauses = ["e.organization_id = %s"]
-        params: list[Any] = [organization_id]
+        params: list[object] = [organization_id]
         if antes_de_id is not None:
             clauses.append("e.id < %s")
             params.append(antes_de_id)

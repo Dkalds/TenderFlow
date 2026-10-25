@@ -539,7 +539,7 @@ def _con_fechas_ts(c: Any) -> bool:
 
 def _fila_licitacion(
     data: dict[str, Any], *, con_sombras: bool, con_fechas_ts: bool = False
-) -> list[Any]:
+) -> list[object]:
     fila = [data[k] for k in _LIC_KEYS]
     if con_sombras:
         fila.extend(valores_sombra(data))

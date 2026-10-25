@@ -267,11 +267,12 @@ CATALOGO: dict[str, EspecificacionEvento] = dict(
         ),
         # Ya existía como suscripción de webhook antes de S4 (la emite
         # `api/routes/publico_solicitudes.py`). Entra al catálogo para que el
-        # vocabulario sea uno solo y no dos listas que se contradicen.
+        # vocabulario sea uno solo y no dos listas que se contradicen. Exige solo
+        # `id`: el aviso sale del sistema por webhook y no lleva el email.
         _spec(
             "solicitud_acceso.creada",
             "Nueva solicitud de acceso",
-            ("email",),
+            ("id",),
             ("webhook",),
         ),
         # F3.4. Lo emite `scheduler/competitor_alerts.check_and_notify` cuando
@@ -361,6 +362,48 @@ def validar_payload(tipo: str, payload: dict[str, Any]) -> None:
     faltan = [campo for campo in especificacion(tipo).campos if campo not in payload]
     if faltan:
         raise PayloadIncompleto(f"El evento {tipo!r} exige {faltan} en su payload.")
+
+
+#: Quién firma el aviso de asignación cuando el actor no tiene nombre visible.
+ACTOR_ANONIMO_ASIGNACION = "Alguien de tu equipo"
+
+
+def payload_asignacion(
+    *,
+    pursuit_id: int,
+    licitacion_id: str,
+    organization_id: int,
+    responsible_user_id: int,
+    actor_user_id: int,
+    titulo: str | None,
+    actor_nombre: str | None,
+) -> dict[str, object]:
+    """Payload de ``pursuit.assigned`` con el texto que ya enseñaba la campana.
+
+    Hasta 2026-10 el aviso de asignación lo escribía ``services/pursuits.py``
+    directamente en ``user_notifications`` («Te han asignado: <título>» y «<quién>
+    te asignó esta oportunidad…»). Ahora sale del outbox, y para que la campana
+    no cambie de texto el payload lleva el titular (``aviso_titulo``) y el
+    cuerpo (``detalle``) que el despachador ya sabe pintar.
+
+    El actor viaja **por nombre visible y nunca por email**: el evento se guarda
+    para siempre en una tabla append-only y el correo es dato personal
+    (ADR-030). Sin nombre visible, firma «Alguien de tu equipo».
+    """
+    quien = (actor_nombre or "").strip() or ACTOR_ANONIMO_ASIGNACION
+    return {
+        "pursuit_id": int(pursuit_id),
+        "licitacion_id": str(licitacion_id),
+        "organization_id": int(organization_id),
+        "responsible_user_id": int(responsible_user_id),
+        "actor_user_id": int(actor_user_id),
+        "titulo": str(titulo or licitacion_id)[:80],
+        "aviso_titulo": "Te han asignado",
+        "detalle": (
+            f"{quien} te asignó esta oportunidad. Ábrela para ver la decisión pendiente "
+            "y la próxima acción."
+        ),
+    }
 
 
 def tipos_de_canal(canal: Canal) -> list[str]:

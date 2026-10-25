@@ -25,10 +25,11 @@ Solo lectura salvo :func:`registrar_id_anterior`. Todo el SQL vive aquí
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from datetime import datetime
+from typing import NamedTuple, TypedDict
 
 from db.database import connect, connect_read, now_utc_iso
-from db.repositories.base import rows_to_dicts
+from db.repositories.base import rows_to_dicts, typed_rows
 from shared.identidad_placsp import PREFIJOS_ACOTADOS_POR_ORGANO
 
 __all__ = [
@@ -144,7 +145,22 @@ ORDER BY s.id_externo, lower(btrim(s.organo))
 """
 
 
-def inventario_pisadas_placsp() -> list[dict[str, Any]]:
+class PisadaPlacsp(TypedDict):
+    """Una fila de :func:`inventario_pisadas_placsp` (los alias de su `SELECT`)."""
+
+    id_externo: str
+    organo_actual: str | None
+    organo_ref_fuente_actual: str | None
+    organo_perdido: str
+    primera: datetime | str
+    ultima: datetime | str
+    snapshots: int
+    carriles: list[str]
+    sim_organo: float | None
+    sim_titulo: float | None
+
+
+def inventario_pisadas_placsp() -> list[PisadaPlacsp]:
     """Un par (``id_externo``, órgano perdido) por fila PLACSP con otro órgano en su historial.
 
     Columnas: ``id_externo``, ``organo_actual``, ``organo_ref_fuente_actual``,
@@ -154,7 +170,7 @@ def inventario_pisadas_placsp() -> list[dict[str, Any]]:
     la fila actual). Requiere ``pg_trgm`` (v143).
     """
     with connect_read() as c:
-        return rows_to_dicts(c.execute(_INVENTARIO_SQL))
+        return typed_rows(PisadaPlacsp, rows_to_dicts(c.execute(_INVENTARIO_SQL)))
 
 
 class ResumenPisadas(NamedTuple):
@@ -167,7 +183,7 @@ class ResumenPisadas(NamedTuple):
 
 
 def resumen_pisadas_placsp(
-    pares: list[dict[str, Any]], *, umbral: float = UMBRAL_SIMILITUD
+    pares: list[PisadaPlacsp], *, umbral: float = UMBRAL_SIMILITUD
 ) -> ResumenPisadas:
     """Agrega el inventario: cuántos ids, cuántos pares y cuántos son pisada segura."""
     seguros = sum(

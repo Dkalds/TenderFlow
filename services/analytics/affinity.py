@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -59,7 +60,7 @@ class AffinityBatch:
     method: str = "unavailable"
 
 
-def _clean(values: list[Any] | tuple[Any, ...] | None) -> tuple[str, ...]:
+def _clean(values: Sequence[object] | None) -> tuple[str, ...]:
     if not values:
         return ()
     return tuple(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))

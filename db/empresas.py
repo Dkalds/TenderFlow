@@ -183,7 +183,7 @@ def fetch_unlinked(
         "SELECT a.id, a.nombre, a.nif, a.es_pyme FROM adjudicaciones a ",
         "WHERE a.empresa_id IS NULL AND a.nombre IS NOT NULL AND a.id > %s ",
     ]
-    params: list[Any] = [after_id]
+    params: list[object] = [after_id]
     if fuente is not None:
         sql.append(
             "AND EXISTS (SELECT 1 FROM licitaciones l "

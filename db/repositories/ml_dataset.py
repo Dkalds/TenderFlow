@@ -108,7 +108,7 @@ def _filtro_fecha_adj(columna: str, hasta: str | None) -> tuple[str, list[Any]]:
     adjudicación sin fecha que la CTE principal nunca vio.
     """
     sql = f" AND {columna} >= %s"
-    params: list[Any] = [_FECHA_ADJ_MINIMA]
+    params: list[object] = [_FECHA_ADJ_MINIMA]
     if hasta:
         sql += f" AND {columna} <= %s"
         params.append(hasta)

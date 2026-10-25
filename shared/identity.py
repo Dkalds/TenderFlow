@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import json
 import time
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 from observability.logging import get_logger
@@ -42,6 +43,32 @@ def user_key_from_email(email: str | None, user_id: int) -> str:
     """
     seed = (email or f"user:{user_id}").strip().lower()
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
+
+
+def actor_del_principal(ctx: Mapping[str, Any]) -> str:
+    """Quién actúa, para ``db.audit.log_event(actor=…)``, a partir del principal.
+
+    Es el único sitio que decide cómo se nombra al autor en ``audit_log``
+    (ADR-030 §D: la auditoría guarda ids, no correos ni claves derivadas de
+    ellos). Hasta 2026-10 cada ruta tenía su copia —``webhooks`` hacheaba la
+    ``user_key``, ``feedback`` recortaba la misma clave a ocho caracteres,
+    ``me`` el ``key_hash`` o el **correo**— y ninguna coincidía con la de las
+    rutas de administración, que ya pasaban el ``user_id`` en texto.
+
+    * Con ``user_id`` (toda sesión y toda API key con dueño): ese id en texto.
+      Es la forma que el backfill de v129 resuelve a ``audit_log.user_id`` y
+      la que llevan ``admin_users``, ``admin_solicitudes`` o ``feature_flags``.
+    * Una API key sin dueño: un prefijo del hash de su ``key_hash``, para que
+      el rastro sea estable sin copiar la credencial.
+    * Nada de lo anterior: ``"session"``.
+    """
+    user_id = ctx.get("user_id")
+    if user_id is not None:
+        return str(user_id)
+    key_hash = ctx.get("key_hash")
+    if key_hash:
+        return hashlib.sha256(str(key_hash).encode("utf-8")).hexdigest()[:16]
+    return "session"
 
 
 # ── Verificación genérica de id_token OIDC (S1.2) ──────────────────────────

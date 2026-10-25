@@ -872,7 +872,7 @@ def _ajustes(organization_id: int) -> OrganizationSettings:
 
 def construir_cuadro(
     organization_id: int,
-    filas: list[dict[str, Any]],
+    filas: Sequence[Mapping[str, Any]],
     ajustes: OrganizationSettings,
     *,
     ventana: Ventana | None = None,

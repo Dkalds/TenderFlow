@@ -55,7 +55,7 @@ def test_sin_responsable_avisa_a_todo_el_equipo_activo() -> None:
     ]
     with patch.object(mod.OrganizationRepository, "list_members", return_value=miembros):
         destinatarios = mod._destinatarios(_fila(responsible_user_id=None, responsible_email=None))
-    assert destinatarios == [(1, "a@example.com")]
+    assert destinatarios == [1]
 
 
 def test_un_fallo_al_escribir_no_detiene_al_resto() -> None:

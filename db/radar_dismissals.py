@@ -76,8 +76,10 @@ def add(
     ``user_id`` es obligatorio y un solo ``ON CONFLICT`` encuentra el descarte
     aunque se hubiera escrito bajo otra clave: ya no hace falta localizarlo
     antes por identidad dual. ``user_key`` se sigue escribiendo —y la de la
-    fila existente no se toca— porque el recordatorio de :func:`pospuestos_vencidos`
-    la entrega a ``user_notifications``, que todavía se teclea por ella.
+    fila existente no se toca— porque ``follows``, al que esta tabla alimenta
+    con escritura doble (ADR-031), sigue tecleada por ella; a
+    ``user_notifications`` el recordatorio de :func:`pospuestos_vencidos` ya
+    llega por ``user_id`` (v162).
     """
     with connect() as c:
         c.execute(
@@ -222,8 +224,8 @@ def pospuestos_vencidos(*, desde_iso: str) -> list[dict[str, Any]]:
 
     Es lo que consume el job de recordatorios (F5.6: «el recordatorio llega
     como alerta en la fecha elegida»). Se acota por ventana inferior y no se
-    marca nada aquí: la idempotencia la da la clave
-    ``UNIQUE(user_key, licitacion_id, type)`` de ``user_notifications``, igual
+    marca nada aquí: la idempotencia la da la identidad única de
+    ``user_notifications`` (``user_id``, ``licitacion_id``, ``type``), igual
     que en el resto de productores de alertas. Sin esa ventana, cada pasada
     del job recorrería todos los aplazamientos vencidos de la historia para
     que el ``ON CONFLICT`` los descartara uno a uno.

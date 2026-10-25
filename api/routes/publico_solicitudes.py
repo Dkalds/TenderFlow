@@ -41,8 +41,9 @@ divergir.
 **Avisa de lo que encola, por dos canales.** Una solicitud guardada y no vista
 no sirve de nada, y la concesión de acceso es manual: sin aviso, el embudo
 terminaba en una fila de Postgres que solo se descubría abriendo el panel. Se
-emite ``EVENTO_SOLICITUD_ACCESO`` por el sistema de webhooks existente —con su
-firma HMAC y su allowlist anti-SSRF— **y además un email al operador**
+escribe ``solicitud_acceso.creada`` en el outbox (ADR-027), que lo entrega por
+el sistema de webhooks existente —con su firma HMAC, su allowlist anti-SSRF y su
+reintento— **y además un email al operador**
 (``services/solicitudes_acceso.py``), porque el webhook exige que alguien lo
 haya configurado y un canal opcional no puede ser el único que hay. Los dos van
 **sin el email ni el mensaje** de quien escribe: el aviso dice que hay algo que
@@ -84,8 +85,8 @@ from fastapi.responses import RedirectResponse
 from api.concurrency import run_db
 from config.settings import settings
 from db.solicitudes_acceso import contar_pendientes, crear_solicitud
-from db.webhooks import EVENTO_SOLICITUD_ACCESO, trigger_event
 from observability.logging import get_logger
+from services.jobs import solicitar_despacho_de_eventos
 from services.solicitudes_acceso import avisar_operador_de_solicitud
 
 log = get_logger(__name__)
@@ -184,45 +185,33 @@ def _campo(datos: dict[str, list[str]], nombre: str) -> str:
 
 
 def _avisar_operador(solicitud_id: int, empresa: str | None, origen: str | None) -> None:
-    """Anuncia una solicitud nueva por webhook.
+    """Anuncia una solicitud nueva: webhook (por el outbox) y correo al operador.
 
     Sin esto el embudo terminaba en una fila de Postgres que nadie miraba: el
     formulario funcionaba, la cola crecía y la concesión de acceso —que es
-    manual— dependía de que alguien se acordara de abrir el panel. Se reutiliza
-    el sistema de webhooks que ya existe, con su firma HMAC y su allowlist
-    anti-SSRF, en vez de añadir un canal nuevo.
+    manual— dependía de que alguien se acordara de abrir el panel.
 
-    **No viaja ni el email ni el mensaje.** Un webhook sale del sistema hacia un
-    endpoint configurado por el operador, y el aviso no necesita el dato
-    personal para cumplir su función: dice que hay algo que atender y cuántas
-    esperan; la dirección se lee en el panel, que ya exige ser admin. `empresa`
-    sí va, porque es dato de negocio y es lo que hace accionable el aviso.
+    **El webhook ya no sale de aquí.** ``crear_solicitud`` escribe
+    ``solicitud_acceso.creada`` en el outbox en la misma transacción que la
+    fila (ADR-027), sin el email ni el mensaje, y lo entrega el despachador con
+    la misma firma HMAC, la misma allowlist anti-SSRF y, ahora también, el
+    reintento de C2.4. Lo que se hace aquí es pedir una pasada a demanda para
+    que el aviso no espere al cierre de la siguiente ingesta.
 
-    Corre como ``BackgroundTasks``, o sea **después** de enviar la respuesta:
-    la entrega tiene cinco segundos de timeout por webhook y el visitante no
-    tiene por qué esperarlos. Y no propaga: un webhook mal configurado no puede
-    convertirse en un fallo de un formulario público.
+    Corre como ``BackgroundTasks``, o sea **después** de enviar la respuesta, y
+    no propaga: un aviso que falla no puede convertirse en un fallo de un
+    formulario público.
     """
+    solicitar_despacho_de_eventos("solicitud_acceso.creada")
     pendientes = 0
     try:
         pendientes = contar_pendientes()
-        entregados = trigger_event(
-            EVENTO_SOLICITUD_ACCESO,
-            {
-                "id": solicitud_id,
-                "empresa": empresa,
-                "origen": origen,
-                "pendientes": pendientes,
-            },
-        )
-        log.info("solicitud_acceso_aviso", solicitud_id=solicitud_id, entregados=entregados)
     except Exception:
         log.exception("solicitud_acceso_aviso_fallido", solicitud_id=solicitud_id)
 
-    # Segundo canal, en su propio try: el webhook sólo avisa si alguien lo ha
-    # configurado —con su suscripción y su `WEBHOOK_ALLOWED_HOSTS`—, y un canal
-    # opcional no puede ser el único que hay. Si el webhook falló arriba, este
-    # aviso tiene que salir igualmente: por eso no comparte el bloque.
+    # Segundo canal: el webhook sólo avisa si alguien lo ha configurado —con su
+    # suscripción y su `WEBHOOK_ALLOWED_HOSTS`—, y un canal opcional no puede
+    # ser el único que hay.
     #
     # Devuelve False también cuando se agrupa con un aviso reciente, que no es
     # un fallo: el correo agrupado lleva la cuenta de pendientes. Por eso no se

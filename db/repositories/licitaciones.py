@@ -10,7 +10,7 @@ import json
 import re
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, Final
+from typing import Any, Final, TypedDict
 
 from sqlalchemy import Select, Text, and_, cast, func, literal_column, or_, select, text
 from sqlalchemy.dialects.postgresql import ARRAY, array
@@ -28,8 +28,10 @@ from db.repositories.base import (
     csv_values,
     loose_distinct_strings,
     rows_to_dicts,
+    typed_rows,
 )
 from db.repositories.feedback import FUENTE_REVISION_TI, FUENTES_HUMANAS
+from db.repositories.publico import FilaLotePublico
 from db.sql_fragments import (
     FOLD_DST_SQL,
     FOLD_SRC_SQL,
@@ -64,6 +66,170 @@ from shared.procedimientos import codigo_tipo_contrato, textos_de_tipo_contrato
 log = get_logger(__name__)
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+# ── Formas de fila ──────────────────────────────────────────────────────────
+# Un ``TypedDict`` por SELECT de columnas fijas: las claves son sus alias y los
+# tipos, lo que psycopg devuelve para esas columnas (``db/models.py``): TEXT y
+# VARCHAR → ``str``, ``Float``/``double precision`` → ``float``, todo nulable
+# salvo ``id_externo``, ``titulo`` y ``fecha_extraccion`` (``NOT NULL``). El
+# importe proyectado por el núcleo tipado (``importe_sql``) se castea a
+# ``double precision``, así que también es ``float``. ``get_by_id`` (``SELECT *``)
+# queda como ``dict[str, Any]``: sus columnas cambian con cada migración.
+
+
+class LicitacionResumenRow(TypedDict):
+    """Una fila de listado: las columnas de ``_SUMMARY_COLS``."""
+
+    id_externo: str
+    titulo: str
+    organo_contratacion: str | None
+    importe: float | None
+    estado: str | None
+    fecha_publicacion: str | None
+    fecha_limite: str | None
+    ccaa: str | None
+    cpv: str | None
+    url: str | None
+    tecnologia: str | None
+    ml_tecnologias: str | None
+    ml_proba_max: float | None
+    ml_tech_principal: str | None
+    procedimiento: str | None
+    tramitacion: str | None
+
+
+class ProximaRow(TypedDict):
+    """Una fila de la bandeja «Próximas» (``_PROXIMAS_COLS``)."""
+
+    id_externo: str
+    titulo: str
+    organo_contratacion: str | None
+    importe: float | None
+    estado: str | None
+    fecha_publicacion: str | None
+    fecha_inicio: str | None
+    ccaa: str | None
+    cpv: str | None
+    url: str | None
+    tecnologia: str | None
+
+
+class TechScoreRow(TypedDict):
+    """Una fila de ``licitacion_tecnologia_score`` (todas ``NOT NULL``)."""
+
+    tecnologia: str
+    probabilidad: float
+    threshold_aplicado: float
+    computed_at: str
+
+
+class CandidatoEtiquetadoRow(TypedDict):
+    """Un expediente sin etiquetar para la cola de active learning."""
+
+    id_externo: str
+    titulo: str
+    descripcion: str | None
+    cpv: str | None
+    importe: float | None
+    organo_contratacion: str | None
+    ccaa: str | None
+    fecha_publicacion: str | None
+    url: str | None
+    tecnologia: str | None
+    ml_tecnologias: str | None
+    ml_proba_max: float | None
+    ml_tech_principal: str | None
+
+
+class ZonaIncertidumbreRow(TypedDict):
+    """Un expediente con ``ml_proba`` en la zona de incertidumbre (no nula: la filtra)."""
+
+    id_externo: str
+    titulo: str
+    descripcion: str | None
+    organo_contratacion: str | None
+    importe: float | None
+    fecha_publicacion: str | None
+    cpv: str | None
+    ml_proba: float
+
+
+class DriftRow(TypedDict):
+    """Una fila de la ventana de drift."""
+
+    importe: float | None
+    cpv: str | None
+    ccaa: str | None
+    tecnologia: str | None
+    estado: str | None
+
+
+class RecienteRow(TypedDict):
+    """Una fila del feed en vivo (SSE)."""
+
+    id_externo: str
+    titulo: str
+    organo_contratacion: str | None
+    importe: float | None
+    estado: str | None
+    url: str | None
+    fecha_publicacion: str | None
+    ccaa: str | None
+    tecnologia: str | None
+    fecha_extraccion: str
+    fecha_actualizacion_fuente: str | None
+
+
+class ExportPdfRow(TypedDict):
+    """Una fila de la exportación PDF/CSV."""
+
+    id_externo: str
+    titulo: str
+    organo_contratacion: str | None
+    importe: float | None
+    estado: str | None
+    fecha_publicacion: str | None
+    ccaa: str | None
+    cpv: str | None
+    url: str | None
+    tecnologia: str | None
+
+
+class HistorialRow(TypedDict):
+    """Una fila de ``licitaciones_history``."""
+
+    id: int
+    id_externo: str
+    captured_at: str
+    source: str | None
+    snapshot_json: str
+    changed_fields: str
+
+
+class LicitacionLoteRow(TypedDict):
+    """Una fila del export por lote: el expediente y, si los tiene, uno de sus lotes.
+
+    Los campos ``lote_*`` vienen del ``LEFT JOIN``: ``NULL`` en un expediente
+    sin lotes aunque ``lotes.numero`` sea ``NOT NULL``.
+    """
+
+    id_externo: str
+    titulo: str
+    organo_contratacion: str | None
+    importe: float | None
+    cpv: str | None
+    estado: str | None
+    ccaa: str | None
+    fecha_publicacion: str | None
+    fecha_limite: str | None
+    url: str | None
+    lote_numero: str | None
+    lote_titulo: str | None
+    lote_cpv: str | None
+    lote_importe: float | None
+    lote_fecha_limite: str | None
+
 
 # Cotas del guard ISO de las columnas de fecha. Vienen de
 # ``db/sql_fragments.iso_guard``, que las documenta: rango lexicográfico y no
@@ -659,7 +825,7 @@ class LicitacionRepository:
         offset: int = 0,
         sort: str | None = None,
         with_total: bool = True,
-    ) -> tuple[list[dict[str, Any]], int]:
+    ) -> tuple[list[LicitacionResumenRow], int]:
         """Devuelve (items, total).  Si ``with_total=False`` total==-1.
 
         Los filtros llegan juntos en ``filtros`` (:class:`shared.dto.FiltrosLicitacion`,
@@ -701,7 +867,9 @@ class LicitacionRepository:
             if with_total:
                 row = c.execute(count_sql, count_params).fetchone()
                 total = int(row[0]) if row else 0
-            items = rows_to_dicts(c.execute(data_sql, data_params))
+            items = typed_rows(
+                LicitacionResumenRow, rows_to_dicts(c.execute(data_sql, data_params))
+            )
 
         return items, total
 
@@ -711,7 +879,7 @@ class LicitacionRepository:
         estados: Sequence[str],
         limit: int = 50,
         offset: int = 0,
-    ) -> tuple[list[dict[str, Any]], int, int]:
+    ) -> tuple[list[ProximaRow], int, int]:
         """Compras anunciadas que aún no han salido a licitación.
 
         Devuelve ``(items, total, con_fecha_prevista)``. Los tres números son
@@ -789,7 +957,7 @@ class LicitacionRepository:
             fila = c.execute(conteos_sql, conteos_params).fetchone()
             total = int(fila[0]) if fila else 0
             con_fecha = int(fila[1]) if fila else 0
-            items = rows_to_dicts(c.execute(data_sql, data_params))
+            items = typed_rows(ProximaRow, rows_to_dicts(c.execute(data_sql, data_params)))
 
         return items, total, con_fecha
 
@@ -801,7 +969,7 @@ class LicitacionRepository:
         offset: int,
         order: Any,
         with_total: bool,
-    ) -> tuple[list[dict[str, Any]], int]:
+    ) -> tuple[list[LicitacionResumenRow], int]:
         """Búsqueda FTS5: usa SQL directo porque FTS MATCH no tiene soporte SA.
 
         Solo se llega con ``filtros.q`` puesto (lo decide ``list_paginated``).
@@ -818,7 +986,7 @@ class LicitacionRepository:
             # búsqueda de texto es otro camino al mismo listado.
             exclude_duplicados_presentacion_sql("l.id_externo"),
         ]
-        extra_params: list[Any] = []
+        extra_params: list[object] = []
         # `csv_values` y no el valor crudo: la rama SA Core acepta multi-valor
         # (`?estado=A,B`) y ésta comparaba la cadena entera, de modo que el
         # mismo filtro devolvía cero al escribir texto en la caja.
@@ -999,11 +1167,14 @@ class LicitacionRepository:
             if with_total:
                 count_row = c.execute(count_sql, [filtros.q, *extra_params]).fetchone()
                 total = int(count_row[0]) if count_row else 0
-            items = rows_to_dicts(
-                c.execute(
-                    base_sql + f" ORDER BY {compiled_order} LIMIT %s OFFSET %s",
-                    [filtros.q, *extra_params, limit, offset],
-                )
+            items = typed_rows(
+                LicitacionResumenRow,
+                rows_to_dicts(
+                    c.execute(
+                        base_sql + f" ORDER BY {compiled_order} LIMIT %s OFFSET %s",
+                        [filtros.q, *extra_params, limit, offset],
+                    )
+                ),
             )
         return items, total
 
@@ -1016,7 +1187,7 @@ class LicitacionRepository:
         limit: int = 100,
         sort: str | None = None,
         cursor_orden: tuple[str | float | None, str] | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[LicitacionResumenRow]:
         """Paginación por cursor (fecha_publicacion, id_externo) DESC.
 
         ``sort`` admite los mismos seis valores que el listado por offset
@@ -1069,7 +1240,7 @@ class LicitacionRepository:
         )
         sql, params = compile_query(stmt)
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(LicitacionResumenRow, rows_to_dicts(c.execute(sql, params)))
 
     @staticmethod
     def _keyset_ordenado(
@@ -1078,7 +1249,7 @@ class LicitacionRepository:
         sort: str,
         cursor: tuple[str | float | None, str] | None,
         limit: int,
-    ) -> list[dict[str, Any]]:
+    ) -> list[LicitacionResumenRow]:
         """Keyset ``(columna, id_externo)`` para los órdenes distintos del de fecha.
 
         **Nulos al final en los dos sentidos** (``NULLS LAST``). El listado por
@@ -1119,7 +1290,7 @@ class LicitacionRepository:
         )
         sql, params = compile_query(stmt)
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(LicitacionResumenRow, rows_to_dicts(c.execute(sql, params)))
 
     def count_cursor(self, filtros: FiltrosLicitacion | None = None) -> int:
         """``COUNT(*)`` del universo que recorre :meth:`list_cursor` con esos filtros.
@@ -1174,7 +1345,7 @@ class LicitacionRepository:
             ).fetchone()
         return (str(row[0] or ""), str(row[1] or ""), row[2]) if row else None
 
-    def get_unlabelled_candidates(self, limit: int = 500) -> list[dict[str, Any]]:
+    def get_unlabelled_candidates(self, limit: int = 500) -> list[CandidatoEtiquetadoRow]:
         """Licitaciones sin etiqueta humana en ml_feedback, para active learning.
 
         «Sin etiquetar» significa **sin etiqueta**, no «sin fila»:
@@ -1200,7 +1371,7 @@ class LicitacionRepository:
                 "ORDER BY l.fecha_publicacion DESC LIMIT %s",
                 (limit,),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(CandidatoEtiquetadoRow, rows_to_dicts(cur))
 
     def etiquetas_tecnologia_no_circulares(self) -> dict[str, dict[str, str | None]]:
         """Etiquetas de tecnología **independientes del regex de keywords**.
@@ -1372,7 +1543,7 @@ class LicitacionRepository:
         )
         return salida
 
-    def get_unlabelled_random(self, limit: int = 20) -> list[dict[str, Any]]:
+    def get_unlabelled_random(self, limit: int = 20) -> list[CandidatoEtiquetadoRow]:
         """Muestra aleatoria sin etiquetar. Mismo criterio que
         :meth:`get_unlabelled_candidates`: se excluyen las etiquetas (humanas y
         de LLM), no los reportes de dato."""
@@ -1388,7 +1559,7 @@ class LicitacionRepository:
                 "ORDER BY RANDOM() LIMIT %s",
                 (limit,),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(CandidatoEtiquetadoRow, rows_to_dicts(cur))
 
     def get_filter_options(self, *, cpv_values: list[str] | None = None) -> dict[str, list[str]]:
         """Devuelve listas de valores únicos para filtros (CCAA, estado, tecnologia, CPV).
@@ -1435,7 +1606,7 @@ class LicitacionRepository:
             row = c.execute("SELECT MAX(fecha_extraccion) FROM licitaciones").fetchone()
         return str(row[0]) if row and row[0] else None
 
-    def get_by_ids(self, ids: list[str]) -> list[dict[str, Any]]:
+    def get_by_ids(self, ids: list[str]) -> list[LicitacionResumenRow]:
         """Obtiene múltiples licitaciones por id_externo en una sola query.
 
         Preserva el orden de entrada. IDs no encontrados se omiten.
@@ -1450,9 +1621,9 @@ class LicitacionRepository:
                 f"SELECT {col_names} FROM licitaciones WHERE id_externo IN ({placeholders})",
                 ids,
             )
-            rows = rows_to_dicts(cur)
+            rows = typed_rows(LicitacionResumenRow, rows_to_dicts(cur))
         order = {id_: i for i, id_ in enumerate(ids)}
-        return sorted(rows, key=lambda r: order.get(r.get("id_externo", ""), 999))
+        return sorted(rows, key=lambda r: order.get(r["id_externo"], 999))
 
     def search_advanced(
         self,
@@ -1469,7 +1640,7 @@ class LicitacionRepository:
         limit: int = 50,
         offset: int = 0,
         with_total: bool = True,
-    ) -> tuple[list[dict[str, Any]], int]:
+    ) -> tuple[list[LicitacionResumenRow], int]:
         """Búsqueda avanzada con criterios complejos (multi-valor, rangos de importe).
 
         Extiende ``list_paginated`` con soporte para listas de estado/ccaa
@@ -1518,11 +1689,13 @@ class LicitacionRepository:
             if with_total:
                 row = c.execute(count_sql, count_params).fetchone()
                 total = int(row[0]) if row else 0
-            items = rows_to_dicts(c.execute(data_sql, data_params))
+            items = typed_rows(
+                LicitacionResumenRow, rows_to_dicts(c.execute(data_sql, data_params))
+            )
 
         return items, total
 
-    def tech_scores_for(self, id_externo: str) -> list[dict[str, Any]]:
+    def tech_scores_for(self, id_externo: str) -> list[TechScoreRow]:
         """Devuelve scores por tecnología desde ``licitacion_tecnologia_score``."""
         stmt = (
             select(
@@ -1536,11 +1709,11 @@ class LicitacionRepository:
         )
         sql, params = compile_query(stmt)
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(TechScoreRow, rows_to_dicts(c.execute(sql, params)))
 
     # ── Métodos para services (carga raw/stats/FTS/drift/stream) ─────────
 
-    def load_uncertainty_zone(self, lo: float, hi: float, limit: int) -> list[dict[str, Any]]:
+    def load_uncertainty_zone(self, lo: float, hi: float, limit: int) -> list[ZonaIncertidumbreRow]:
         """Licitaciones con ``ml_proba`` en zona de incertidumbre (active learning)."""
         with connect_read() as c:
             cur = c.execute(
@@ -1550,7 +1723,7 @@ class LicitacionRepository:
                 "ORDER BY (importe IS NULL), importe DESC, ml_proba LIMIT %s",
                 (lo, hi, limit),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(ZonaIncertidumbreRow, rows_to_dicts(cur))
 
     def search_fts_ids(self, query: str, limit: int = 1000) -> list[str] | None:
         """Busca con FTS5/search_vector y devuelve id_externo ordenados por rank.
@@ -1573,7 +1746,7 @@ class LicitacionRepository:
             log.warning("fts_ids_search_failed", exc_info=True)
             return None
 
-    def load_drift_window(self, start: str, end: str) -> list[dict[str, Any]]:
+    def load_drift_window(self, start: str, end: str) -> list[DriftRow]:
         """Carga licitaciones de un rango de fechas para drift detection."""
         with connect_read() as c:
             cur = c.execute(
@@ -1582,7 +1755,7 @@ class LicitacionRepository:
                 "WHERE fecha_publicacion >= %s AND fecha_publicacion <= %s",
                 (start, end),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(DriftRow, rows_to_dicts(cur))
 
     def fetch_recent(
         self,
@@ -1590,7 +1763,7 @@ class LicitacionRepository:
         since_extraccion: str,
         since_actualizacion: str,
         limit: int,
-    ) -> list[dict[str, Any]]:
+    ) -> list[RecienteRow]:
         """Carga licitaciones recientes para SSE streaming.
 
         Es el feed en vivo del dashboard, otra cara del listado: esconde las
@@ -1610,7 +1783,7 @@ class LicitacionRepository:
                 "LIMIT %s",
                 (since_extraccion, since_actualizacion, limit),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(RecienteRow, rows_to_dicts(cur))
 
     def fetch_for_pdf(
         self,
@@ -1626,7 +1799,7 @@ class LicitacionRepository:
         provincia: str | None = None,
         procedimiento: str | None = None,
         limit: int = 500,
-    ) -> list[dict[str, Any]]:
+    ) -> list[ExportPdfRow]:
         """Carga licitaciones para exportación PDF.
 
         ``tecnologia``/``fecha_desde``/``fecha_hasta`` se filtran aquí y no en
@@ -1645,7 +1818,7 @@ class LicitacionRepository:
         las republicaciones ``pending`` y ``confirmed`` que la lista esconde.
         """
         conditions: list[str] = [exclude_duplicados_presentacion_sql("id_externo")]
-        params: list[Any] = []
+        params: list[object] = []
         if ccaa:
             conditions.append("ccaa = %s")
             params.append(ccaa)
@@ -1695,7 +1868,7 @@ class LicitacionRepository:
                 "FROM licitaciones" + where + " ORDER BY fecha_publicacion DESC LIMIT %s",
                 [*params, limit],
             )
-            return rows_to_dicts(cur)
+            return typed_rows(ExportPdfRow, rows_to_dicts(cur))
 
     def search_fts_docs(
         self,
@@ -1730,7 +1903,7 @@ class LicitacionRepository:
             )
             return rows_to_dicts(cur)
 
-    def get_history(self, id_externo: str, limit: int = 50) -> list[dict[str, Any]]:
+    def get_history(self, id_externo: str, limit: int = 50) -> list[HistorialRow]:
         """Devuelve el historial de cambios de una licitación."""
         limit = max(1, min(limit, 1000))
         with connect_read() as c:
@@ -1741,7 +1914,7 @@ class LicitacionRepository:
                 f"ORDER BY {instante_sql('licitaciones_history', 'captured_at')} DESC LIMIT %s",
                 [id_externo, limit],
             )
-            return rows_to_dicts(cur)
+            return typed_rows(HistorialRow, rows_to_dicts(cur))
 
     def search_like_for_ask(
         self,
@@ -1774,7 +1947,7 @@ class LicitacionRepository:
             f"titulo {like_op} %s ESCAPE '\\' OR descripcion {like_op} %s ESCAPE '\\'"
             for _ in words
         )
-        params: list[Any] = []
+        params: list[object] = []
         for w in words:
             escaped = f"%{escape_like(w)}%"
             params.extend([escaped, escaped])
@@ -1797,7 +1970,7 @@ class LicitacionRepository:
             return []
 
 
-def lotes_de(id_externo: str) -> list[dict[str, Any]]:
+def lotes_de(id_externo: str) -> list[FilaLotePublico]:
     """Lotes de un expediente, ordenados por número (C1.4).
 
     `db/repositories/publico.py` ya tenía esta consulta para la superficie
@@ -1817,10 +1990,10 @@ def lotes_de(id_externo: str) -> list[dict[str, Any]]:
         "ORDER BY CASE WHEN numero ~ '^[0-9]+$' THEN CAST(numero AS INTEGER) END, numero"
     )
     with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, (id_externo,)))
+        return typed_rows(FilaLotePublico, rows_to_dicts(c.execute(sql, (id_externo,))))
 
 
-def licitaciones_por_lote(ids: list[str]) -> list[dict[str, Any]]:
+def licitaciones_por_lote(ids: list[str]) -> list[LicitacionLoteRow]:
     """Una fila por lote para los expedientes dados (C1.4, export).
 
     Los expedientes **sin** lotes salen igual, con los campos de lote a `NULL`:
@@ -1842,4 +2015,4 @@ def licitaciones_por_lote(ids: list[str]) -> list[dict[str, Any]]:
         "  CASE WHEN lo.numero ~ '^[0-9]+$' THEN CAST(lo.numero AS INTEGER) END, lo.numero"
     )
     with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, ids))
+        return typed_rows(LicitacionLoteRow, rows_to_dicts(c.execute(sql, ids)))

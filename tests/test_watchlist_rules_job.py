@@ -26,6 +26,26 @@ def _insert_lic(c, lic_id, *, titulo="Lic", fecha=None):
     )
 
 
+def _regla(user_key: str, rule: WatchlistRule) -> int:
+    """Una regla como las crea la API: con organización.
+
+    `POST /watchlist/rules` exige organización desde S4.3, y una alerta sin
+    ella no aparece en ninguna campana: desde v162 el job la descarta en vez
+    de escribirla invisible, así que una regla sin organización ya no sirve
+    para probar que notifica.
+    """
+    from db.repositories.organizations import OrganizationRepository
+    from db.users import create_user
+
+    owner = create_user(
+        email=f"{user_key}-{rule.keyword.lower()}-{rule.frequency}@example.test",
+        password_hash="test-hash",  # pragma: allowlist secret -- literal de test
+        display_name=user_key,
+    )
+    org = int(OrganizationRepository().create_organization(f"org-{owner}", owner)["id"])
+    return create_rule(user_key, rule, organization_id=org)
+
+
 def test_run_disabled_by_default_is_noop(tmp_db, monkeypatch):
     from config import settings
 
@@ -33,7 +53,7 @@ def test_run_disabled_by_default_is_noop(tmp_db, monkeypatch):
     _, _ = tmp_db
     from db.database import connect
 
-    create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
+    _regla("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
     with connect() as c:
         _insert_lic(c, "L1", titulo="Implantacion SAP")
 
@@ -52,7 +72,7 @@ def test_run_enabled_delegates_to_check_rules_and_notify(tmp_db, monkeypatch):
     _, _ = tmp_db
     from db.database import connect
 
-    create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
+    _regla("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
     with connect() as c:
         _insert_lic(c, "L1", titulo="Implantacion SAP")
 
@@ -78,7 +98,7 @@ def test_anti_doble_ejecucion_pipeline_y_job_activos_una_sola_notificacion(tmp_d
     from db.database import connect
     from scheduler.watchlist_rules_alerts import check_rules_and_notify
 
-    create_rule("user-a", WatchlistRule(keyword="SAP", frequency="immediate"))
+    _regla("user-a", WatchlistRule(keyword="SAP", frequency="immediate"))
     with connect() as c:
         _insert_lic(c, "L1", titulo="Implantacion SAP S/4HANA")
 

@@ -77,6 +77,7 @@ _REPORTEROS = frozenset(
 # ── RATCHET: ficheros de producción que todavía usan ``user_key`` ───────────
 # Medido con este mismo script el 2026-09-06 sobre la cabeza del repo.
 # Remedido el 2026-09-18 (ADR-030 fase 3): 69 → 63 entradas.
+# Remedido el 2026-10-25 (ADR-030 fase 3, v162): 59 → 53 entradas.
 # **Añadir líneas está prohibido.** Para quitar una: deja de usar ``user_key``
 # en ese fichero y borra su entrada.
 #
@@ -178,6 +179,19 @@ _REPORTEROS = frozenset(
 #
 # Las tres salen de aquí con la fase 3 de ADR-030, que es cuando `user_key` se
 # retira de verdad — no antes, y no fichero a fichero.
+#
+# ── Segunda tanda de la fase 3 (v162), 2026-10-25: 59 → 53 ─────────────────
+#
+# `user_notifications` pasa a teclearse por `(user_id, licitacion_id, type)` y
+# `insert_user_notification` deja de escribir la clave cuando conoce el id. Con
+# eso salen los productores que sólo la derivaban del correo para poder
+# insertar (`services/pursuit_awards.py`) y los que la nombraban en un
+# docstring que ya no era verdad (`db/repositories/pursuits.py`,
+# `scheduler/jobs/watchlist_rules.py`, `services/analytics/quality.py`). Los
+# dos restantes (`api/routes/webhooks.py`, `api/routes/feedback.py`) eran el
+# caso de la cuarta tanda —`log_event(user_key=…)` con un actor que no era la
+# clave— y pasan `actor=shared.identity.actor_del_principal(ctx)`, la
+# convención única del autor en `audit_log` (ADR-030 §D).
 CONGELADOS: frozenset[str] = frozenset(
     {
         "api/routes/follows.py",
@@ -189,7 +203,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "api/routes/competitive.py",
         "api/routes/dual_auth.py",
         "api/routes/exports.py",
-        "api/routes/feedback.py",
         # `api/routes/licitaciones.py` se partió en paquete por familias
         # (2026-09). El único uso de `user_key` era `_budget_subject`, que
         # atribuye el gasto LLM, y se fue entero con la familia `pliegos`.
@@ -203,7 +216,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "api/routes/watchlist_feed.py",
         "api/routes/watchlist_items.py",
         "api/routes/watchlist_rules.py",
-        "api/routes/webhooks.py",
         "db/audit.py",
         "db/events.py",
         "db/notifications.py",
@@ -212,7 +224,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "db/repositories/audit.py",
         "db/repositories/novedades.py",
         "db/repositories/organizations.py",
-        "db/repositories/pursuits.py",
         "db/repositories/user_profiles.py",
         "db/repositories/watchlist.py",
         "db/repositories/watchlist_rules.py",
@@ -221,10 +232,8 @@ CONGELADOS: frozenset[str] = frozenset(
         "db/watchlist_empresas.py",
         "llm/budget.py",
         "scheduler/jobs/event_dispatch.py",
-        "scheduler/jobs/watchlist_rules.py",
         "scheduler/watchlist_alerts.py",
         "scheduler/watchlist_rules_alerts.py",
-        "services/analytics/quality.py",
         "services/analytics/scoring.py",
         "services/contract_events.py",
         "services/cuentas.py",
@@ -234,7 +243,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "services/notifications.py",
         "services/novedades.py",
         "services/organizations.py",
-        "services/pursuit_awards.py",
         "services/pursuits.py",
         "services/watchlist.py",
         "services/watchlist_rules.py",

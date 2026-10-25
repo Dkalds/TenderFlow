@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
@@ -15,6 +16,7 @@ from db.repositories.feedback import FUENTE_REVISION_TI, FeedbackRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
 from shared.audit_events import FEEDBACK_SUBMITTED
+from shared.identity import actor_del_principal
 
 log = get_logger(__name__)
 
@@ -126,7 +128,7 @@ class FeedbackQueueResult(BaseModel):
 
 
 def _build_queue_items(
-    candidates: list[dict[str, Any]],
+    candidates: Sequence[Mapping[str, Any]],
     *,
     include_model: bool = True,
     tech_classifier: Any = None,
@@ -366,7 +368,7 @@ async def submit_feedback(
     await run_db(
         log_event,
         event_type=FEEDBACK_SUBMITTED,
-        user_key=str(ctx.get("user_key", "system"))[:8],
+        actor=actor_del_principal(ctx),
         resource=f"licitacion:{body.expediente}",
         detail={
             "relevante": body.relevante,
@@ -522,11 +524,11 @@ async def feedback_queue(
                         (str(c["cpv"]) if c.get("cpv") is not None else None) for c in candidates
                     ],
                     importes=[
-                        (float(c["importe"]) if c.get("importe") is not None else None)
+                        (float(importe) if (importe := c.get("importe")) is not None else None)
                         for c in candidates
                     ],
                 )
-                scores = []
+                scores: list[dict[str, Any]] = []
                 for i, row in enumerate(candidates):
                     p = float(probs[i][1]) if hasattr(probs[i], "__len__") else 0.5
                     uncertainty = abs(p - 0.5)

@@ -108,7 +108,7 @@ class JobsRepository:
         no sabe ejecutar y lo haría fallar tres veces antes de rendirse.
         """
         filtro_tipo = "" if tipos is None else " AND tipo = ANY(%s)"
-        params: list[Any] = []
+        params: list[object] = []
         if tipos is not None:
             params.append(list(tipos))
         params.append(worker_id)
@@ -230,7 +230,7 @@ class JobsRepository:
         escritura para ahorrar en un scan de decenas de filas.
         """
         filtro_org = ""
-        params: list[Any] = [tipo, campo, valor]
+        params: list[object] = [tipo, campo, valor]
         if filtrar_organizacion:
             filtro_org = " AND organization_id IS NOT DISTINCT FROM %s"
             params.append(organization_id)

@@ -80,7 +80,7 @@ def candidatos_a_predecesor(
         "l.cpv LIKE %s",
         exclude_duplicados_presentacion_sql("l.id_externo"),
     ]
-    params: list[Any] = [id_externo, f"{cpv4}%"]
+    params: list[object] = [id_externo, f"{cpv4}%"]
 
     plegado = plegar_organo(organo_contratacion)
     if organo_id is not None:

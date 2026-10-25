@@ -220,7 +220,7 @@ def proximas_renovaciones(
           AND {TECHNOLOGY_OBSERVED_SQL}
           AND {exclude_duplicados_sql()}
     """
-    params: list[Any] = [months_ahead]
+    params: list[object] = [months_ahead]
     if empresa_id is not None:
         sql += " AND a.empresa_id = %s"
         params.append(empresa_id)
@@ -280,7 +280,7 @@ def resumen_por_empresa(
           AND {TECHNOLOGY_OBSERVED_SQL}
           AND {exclude_duplicados_sql()}
     """
-    params: list[Any] = [months_ahead]
+    params: list[object] = [months_ahead]
     tecnologias = [t for t in (tecnologias or []) if t]
     if tecnologias:
         # El fragmento del listado (`proximas_renovaciones`): «ERP,SAP» es SAP.
@@ -327,7 +327,7 @@ def totales_ventana(
           AND {TECHNOLOGY_OBSERVED_SQL}
           AND {exclude_duplicados_sql()}
     """
-    params: list[Any] = [riesgo_alto, riesgo_alto, dias_caliente, months_ahead]
+    params: list[object] = [riesgo_alto, riesgo_alto, dias_caliente, months_ahead]
     tecnologias = [t for t in (tecnologias or []) if t]
     if tecnologias:
         # El fragmento del listado (`proximas_renovaciones`): «ERP,SAP» es SAP.

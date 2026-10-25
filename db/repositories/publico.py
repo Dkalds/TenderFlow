@@ -43,7 +43,7 @@ from __future__ import annotations
 from typing import Any, TypedDict, TypeVar, cast
 
 from db.database import connect, connect_read
-from db.repositories.base import rows_to_dicts
+from db.repositories.base import rows_to_dicts, typed_rows
 from db.sql_fragments import (
     FOLD_DST,
     FOLD_SRC,
@@ -56,8 +56,13 @@ from db.sql_fragments import (
 
 __all__ = [
     "EVENTO_REFRESCO_CANONICAS",
+    "EntradaSitemapRow",
+    "EstadoRefrescoCanonicas",
     "FilaLicitacionPublica",
     "FilaLotePublico",
+    "HubCcaaRow",
+    "HubCpvRow",
+    "HubOrganoRow",
     "PublicoRepository",
     "estado_refresco_canonicas",
     "refrescar_vista_canonicas",
@@ -200,6 +205,49 @@ class FilaLotePublico(TypedDict):
     cpv: str | None
     importe: float | None
     fecha_limite: str | None
+
+
+class HubCcaaRow(TypedDict):
+    """Una fila de :meth:`PublicoRepository.hubs_ccaa`."""
+
+    slug: str
+    nombre: str
+    total: int
+
+
+class HubCpvRow(TypedDict):
+    """Una fila de :meth:`PublicoRepository.hubs_cpv`."""
+
+    codigo: str
+    total: int
+
+
+class HubOrganoRow(TypedDict):
+    """Una fila de :meth:`PublicoRepository.hubs_organo`."""
+
+    slug: str
+    nombre: str
+    total: int
+
+
+class EntradaSitemapRow(TypedDict):
+    """Una fila de :meth:`PublicoRepository.pagina_de_sitemap`."""
+
+    id_externo: str
+    ccaa: str | None
+    titulo: str | None
+    fecha_extraccion: str
+
+
+class EstadoRefrescoCanonicas(TypedDict):
+    """Lo que devuelve :func:`estado_refresco_canonicas`.
+
+    ``eventos`` son pares ``(ops_events.ts, ops_events.value)``: texto ISO y
+    ``double precision`` nullable.
+    """
+
+    con_datos: bool
+    eventos: list[tuple[str, float | None]]
 
 
 _FilaT = TypeVar("_FilaT", FilaLicitacionPublica, FilaLotePublico)
@@ -475,7 +523,9 @@ def refrescar_vista_canonicas(*, conn: Any | None = None) -> int:
 EVENTO_REFRESCO_CANONICAS = "mv_canonicas_refresh"
 
 
-def estado_refresco_canonicas(*, conn: Any | None = None, historico: int = 2) -> dict[str, Any]:
+def estado_refresco_canonicas(
+    *, conn: Any | None = None, historico: int = 2
+) -> EstadoRefrescoCanonicas:
     """Con qué frescura y qué tamaño se sirve hoy la superficie pública.
 
     Devuelve ``{"con_datos": bool, "eventos": [(ts, valor), …]}``, del más
@@ -499,7 +549,7 @@ def estado_refresco_canonicas(*, conn: Any | None = None, historico: int = 2) ->
     respuesta es no.
     """
 
-    def _consultar(c: Any) -> dict[str, Any]:
+    def _consultar(c: Any) -> EstadoRefrescoCanonicas:
         # `to_regclass` resuelve por `search_path` (el schema aislado de cada
         # test) y devuelve NULL en vez de lanzar si la vista no existe: una base
         # anterior a v94 se comporta como una sin datos, no como un error.
@@ -579,7 +629,7 @@ class PublicoRepository:
         ccaa_slug: str | None,
         cpv_prefijo: str | None,
         organo_slug: str | None,
-    ) -> tuple[list[str], list[Any]]:
+    ) -> tuple[list[str], list[object]]:
         """Las condiciones que comparten ``listar`` y ``contar``.
 
         Se escriben una sola vez porque el hub necesita que los dos vean el
@@ -589,7 +639,7 @@ class PublicoRepository:
         Google indexa.
         """
         condiciones: list[str] = []
-        params: list[Any] = []
+        params: list[object] = []
         if ccaa_slug:
             condiciones.append(f"{_ccaa_slug_sql('c')} = %s")
             params.append(ccaa_slug)
@@ -727,7 +777,7 @@ class PublicoRepository:
         with connect_read() as c:
             return _consultar(c)
 
-    def hubs_ccaa(self, *, conn: Any | None = None) -> list[dict[str, Any]]:
+    def hubs_ccaa(self, *, conn: Any | None = None) -> list[HubCcaaRow]:
         """Comunidades autónomas con volumen suficiente para tener página.
 
         El umbral no es decorativo: un hub con dos licitaciones es contenido
@@ -742,15 +792,15 @@ class PublicoRepository:
             "ORDER BY total DESC"
         )
 
-        def _consultar(c: Any) -> list[dict[str, Any]]:
-            return rows_to_dicts(c.execute(sql))
+        def _consultar(c: Any) -> list[HubCcaaRow]:
+            return typed_rows(HubCcaaRow, rows_to_dicts(c.execute(sql)))
 
         if conn is not None:
             return _consultar(conn)
         with connect_read() as c:
             return _consultar(c)
 
-    def hubs_cpv(self, *, conn: Any | None = None) -> list[dict[str, Any]]:
+    def hubs_cpv(self, *, conn: Any | None = None) -> list[HubCpvRow]:
         """Códigos CPV con volumen suficiente para tener página."""
         sql = (
             "SELECT c.cpv AS codigo, COUNT(*) AS total "
@@ -759,15 +809,15 @@ class PublicoRepository:
             "ORDER BY total DESC"
         )
 
-        def _consultar(c: Any) -> list[dict[str, Any]]:
-            return rows_to_dicts(c.execute(sql))
+        def _consultar(c: Any) -> list[HubCpvRow]:
+            return typed_rows(HubCpvRow, rows_to_dicts(c.execute(sql)))
 
         if conn is not None:
             return _consultar(conn)
         with connect_read() as c:
             return _consultar(c)
 
-    def hubs_organo(self, *, conn: Any | None = None) -> list[dict[str, Any]]:
+    def hubs_organo(self, *, conn: Any | None = None) -> list[HubOrganoRow]:
         """Órganos con volumen suficiente para tener página propia (F6.5).
 
         Mismo umbral que los otros dos hubs. No expone nada nuevo: el nombre
@@ -791,8 +841,8 @@ class PublicoRepository:
             "ORDER BY total DESC"
         )
 
-        def _consultar(c: Any) -> list[dict[str, Any]]:
-            return rows_to_dicts(c.execute(sql))
+        def _consultar(c: Any) -> list[HubOrganoRow]:
+            return typed_rows(HubOrganoRow, rows_to_dicts(c.execute(sql)))
 
         if conn is not None:
             return _consultar(conn)
@@ -801,7 +851,7 @@ class PublicoRepository:
 
     def pagina_de_sitemap(
         self, *, desplazamiento: int, tamano: int, conn: Any | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[EntradaSitemapRow]:
         """Un tramo de ids para un fichero de sitemap.
 
         Devuelve solo ``id_externo``, ``ccaa``, ``titulo`` y la fecha de
@@ -828,8 +878,8 @@ class PublicoRepository:
         )
         params = (max(1, min(tamano, 50_000)), max(0, desplazamiento))
 
-        def _consultar(c: Any) -> list[dict[str, Any]]:
-            return rows_to_dicts(c.execute(sql, params))
+        def _consultar(c: Any) -> list[EntradaSitemapRow]:
+            return typed_rows(EntradaSitemapRow, rows_to_dicts(c.execute(sql, params)))
 
         if conn is not None:
             return _consultar(conn)

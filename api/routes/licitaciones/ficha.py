@@ -34,7 +34,9 @@ from api.routes.licitaciones.modelos import (
 )
 from api.tenancy import require_organization
 from db.repositories import dedupe as _dedupe_repo
+from db.repositories.adjudicaciones import AdjudicacionFichaRow
 from db.repositories.licitaciones import lotes_de
+from db.repositories.publico import FilaLotePublico
 from observability.logging import get_logger
 from services.comparador_fichas import (
     MAX_EXPEDIENTES as MAX_EXPEDIENTES_COMPARAR,
@@ -119,7 +121,7 @@ async def get_licitacion(
     # el middleware en cada respuesta. Dos implementaciones de lo mismo en una
     # ruta, y la que se leía en el código era la que no corría.
 
-    def _relacionados() -> tuple[str | None, list[dict[str, Any]], list[dict[str, Any]]]:
+    def _relacionados() -> tuple[str | None, list[FilaLotePublico], list[AdjudicacionFichaRow]]:
         # Las tres lecturas que cuelgan del expediente, en un solo salto al
         # threadpool: son independientes y cada `run_db` es una espera más.
         return (

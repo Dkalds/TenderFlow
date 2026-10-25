@@ -452,7 +452,7 @@ def _filtro_eventos(
     """
     cutoff_expr = "to_char(CURRENT_DATE - (%s * INTERVAL '1 day'), 'YYYY-MM-DD')"
     clauses: list[str] = []
-    params: list[Any] = []
+    params: list[object] = []
     if desde:
         clauses.append("ev.fecha >= %s")
         params.append(desde)

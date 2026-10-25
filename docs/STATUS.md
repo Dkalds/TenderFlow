@@ -20,6 +20,7 @@ Generado: 2026-10-25
 | `documentos_embeddings` | actions | python -m scheduler.jobs.documentos_embeddings |
 | `dlq_retry` | pipeline | CANONICAL_STEPS[dlq_retry] |
 | `webhook_reintentos` | pipeline | CANONICAL_STEPS[webhook_reintentos] |
+| `event_dispatch` | pipeline | CANONICAL_STEPS[event_dispatch] |
 | `digest_daily` | pipeline | CANONICAL_STEPS[digests] |
 | `watchlist_rules` | pipeline | CANONICAL_STEPS[watchlist_notify] |
 | `llm_tech_labeling` | pipeline | CANONICAL_STEPS[llm_tech_labeling] |
@@ -29,9 +30,10 @@ Generado: 2026-10-25
 | `ficha_pliego` | cola | tenderflow-api (ADR-028 §G) |
 | `embeddings_expediente` | cola | tenderflow-api (ADR-028 §G) |
 | `export_pdf` | cola | tenderflow-api (ADR-028 §G) |
+| `despacho_eventos` | cola | tenderflow-api (ADR-028 §G) |
 | `paso_pipeline` | pipeline | cierre de la pasada (Actions) |
 
-**18 jobs, todos con plano verificado.**
+**20 jobs, todos con plano verificado.**
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 
@@ -52,7 +54,7 @@ Generado: 2026-10-25
 
 ## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)
 
-**59 ficheros** de producción usan `user_key` (lista congelada: 59; solo puede decrecer).
+**53 ficheros** de producción usan `user_key` (lista congelada: 53; solo puede decrecer).
 
 `scripts/check_user_key_ratchet.py` falla ante un fichero nuevo que la use. Llega a cero con T4, que migra a `user_id` con columna doble y lectura dual; hasta entonces cambiar de correo pierde los datos que cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.
 
