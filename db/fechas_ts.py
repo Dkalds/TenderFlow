@@ -188,7 +188,9 @@ def _sql_fin_de_lote(t: TablaFechas) -> str:
     )
 
 
-def _fin_de_lote(c: Any, t: TablaFechas, desde: str | int, tamano: int) -> tuple[str | int | None, int]:
+def _fin_de_lote(
+    c: Any, t: TablaFechas, desde: str | int, tamano: int
+) -> tuple[str | int | None, int]:
     fila = c.execute(_sql_fin_de_lote(t), (desde, tamano)).fetchone()
     if fila is None or fila[0] is None:
         return None, 0
