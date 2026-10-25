@@ -85,9 +85,10 @@ _EXCLUIDOS = ("db/alembic/versions/",)
 # ── RATCHET: imports que hoy van contra el orden de capas ───────────────────
 # Medido con este mismo script el 2026-10-10 sobre la cabeza del repo (21).
 # 2026-10-25: 21 → 12. Bajan a la capa inferior las piezas que dos capas
-# compartían: `password_policy`/`scoring_weights` a `config/`; `webhook_retry`,
-# `go_no_go_template`, el criterio de concesiones (`concesiones_acceso`) y las
-# palabras clave de `/ask` (`palabras_clave`) a `shared/`. Y suben a su capa
+# compartían: la política de contraseñas y los pesos del scoring a `config/`;
+# `webhook_retry`, `go_no_go_template`, el criterio de concesiones
+# (`concesiones_acceso`) y las palabras clave de `/ask` (`palabras_clave`) a
+# `shared/`. Y suben a su capa
 # los módulos de `shared/` que abrían la BD: `jobs` a `services/`,
 # `model_artifacts` a `services/ml/`, `cache_signal` a `db/`. Ya no queda
 # ninguna violación `db/* -> services.*`.
