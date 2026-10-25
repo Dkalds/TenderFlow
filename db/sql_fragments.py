@@ -1,30 +1,16 @@
 """Fragmentos SQL constantes que necesita el propio ``db/``.
 
-Gemelo de ``services/sql_fragments.py`` en el lado correcto de la frontera.
-Existe por la colisión de dos reglas del proyecto:
+Punto único de los fragmentos SQL constantes (antes había un gemelo en
+``services/sql_fragments.py``, retirado: ``services/`` importa de aquí).
+Existe por ADR-022 (todo el SQL vive en ``db/``) y ADR-024 (``db/`` no depende
+de ``services/``): los fragmentos que interpolan las queries de ``db/`` y las
+que aún quedan en ``services/`` tienen una sola definición, en el lado
+permitido de la dependencia.
 
-- **ADR-022**: todo el SQL vive en ``db/``. La migración del ratchet TID251 va
-  moviendo queries de ``services/`` a ``db/``, y esas queries se llevan consigo
-  los fragmentos que interpolan.
-- **ADR-024**: ``db/`` no puede depender de ``services/`` (capa superior). Un
-  ``from services.dedupe import ...`` dentro de ``db/`` invierte las capas.
-
-Hasta ahora la salida era duplicar el fragmento en ``db/`` con un comentario
-apuntando al original (``db/repositories/ml_dataset.py::_NO_DUPLICADOS``,
-``db/repositories/pricing.py`` con ``EFFECTIVE_BUDGET_SQL``). Eso funciona para
-una línea, pero :data:`FECHA_FIN_SQL` son doce con aritmética de intervalos: una
-tercera copia es una divergencia esperando a ocurrir.
-
-Así que la definición canónica de estos tres fragmentos baja aquí y
-``services/sql_fragments.py`` y ``services/dedupe.py`` los **reexportan**. Los
-call-sites de ``services/`` siguen importando de donde siempre; lo que cambia es
-la dirección de la dependencia, que ahora es ``services/ → db/``, la permitida.
-
-No se movieron los demás fragmentos de ``services/sql_fragments.py``: solo
-bajan los que ``db/`` consume hoy. Bajar el resto es trabajo de la misma ola del
-ratchet, cuando alguna query de ``db/`` los necesite. Así bajaron después
-:data:`WATCHED_COMPANY_AWARDS_SQL` y :func:`round_sql`, con el SQL de
-``services/competitive/mercado.py`` (``db/repositories/mercado.py``).
+Regla de composición: solo se interpolan con f-string fragmentos constantes de
+este módulo o whitelists internas de columnas; los valores de usuario van
+siempre con placeholders ``%s``, y cada query que interpola lleva
+``# noqa: S608`` con su justificación inline.
 
 Los fragmentos de **clave canónica** del final del módulo nacieron aquí, no
 bajaron de ``services/``. Viven en ``db/`` por ADR-022 —son SQL— y en este

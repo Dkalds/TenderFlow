@@ -1139,7 +1139,9 @@ class LicitacionRepository:
     def get_by_id(self, id_externo: str) -> dict[str, Any] | None:
         """Devuelve el registro completo o None."""
         with connect_read() as c:
-            cur = c.execute("SELECT * FROM licitaciones WHERE id_externo = %s", (id_externo,))
+            cur = c.execute(
+                "SELECT * FROM licitaciones WHERE id_externo = %s", (id_externo,)
+            )  # SELECT *: ficha completa: get_by_id devuelve toda la fila (db/repositories/publico.py la recorta)
             row = cur.fetchone()
             if row is None:
                 return None

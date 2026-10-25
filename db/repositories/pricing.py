@@ -60,7 +60,7 @@ class PricingRepository:
         ``importe_licitacion`` es el presupuesto del LOTE cuando la
         adjudicación tiene uno resuelto (v65_lotes), o el del expediente
         completo si no (mismo criterio que
-        ``services.sql_fragments.EFFECTIVE_BUDGET_SQL`` -- duplicado aquí
+        ``db.sql_fragments.EFFECTIVE_BUDGET_SQL`` -- duplicado aquí
         porque ``db/`` no debe depender de ``services/``, capa superior).
         Antes de v65_lotes esto comparaba siempre contra el expediente
         completo, así que un lote cuyo importe superaba el presupuesto TOTAL

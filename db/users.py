@@ -126,7 +126,7 @@ def get_user_by_id(user_id: int, *, include_deactivated: bool = False) -> dict[s
     sin confirmar de quien lo llamara: lee exactamente lo mismo.
     """
     with connect_read() as c:
-        sql = "SELECT * FROM users WHERE id = %s"
+        sql = "SELECT * FROM users WHERE id = %s"  # SELECT *: fila de cuenta entera: la leen auth y /notifications
         if not include_deactivated:
             sql += " AND deactivated_at IS NULL"
         cur = c.execute(sql, (user_id,))
@@ -140,7 +140,7 @@ def get_user_by_id(user_id: int, *, include_deactivated: bool = False) -> dict[s
 def get_user_by_email(email: str, *, include_deactivated: bool = False) -> dict[str, Any] | None:
     """Busca usuario por email."""
     with connect() as c:
-        sql = "SELECT * FROM users WHERE email = %s"
+        sql = "SELECT * FROM users WHERE email = %s"  # SELECT *: fila de cuenta entera
         if not include_deactivated:
             sql += " AND deactivated_at IS NULL"
         cur = c.execute(sql, (email,))
@@ -160,7 +160,7 @@ def get_users_by_email_ci(email: str, *, include_deactivated: bool = False) -> l
     mano (``scripts/mcp_revocar.py``) debe poder alcanzar las mismas cuentas, y
     por eso devuelve todas las que casan, no una.
     """
-    sql = "SELECT * FROM users WHERE lower(email) = lower(%s)"
+    sql = "SELECT * FROM users WHERE lower(email) = lower(%s)"  # SELECT *: fila de cuenta entera
     if not include_deactivated:
         sql += " AND deactivated_at IS NULL"
     with connect() as c:
@@ -179,7 +179,7 @@ def get_active_user_by_email_ci(email: str) -> dict[str, Any] | None:
     """
     with connect() as c:
         cur = c.execute(
-            "SELECT * FROM users WHERE lower(email) = lower(%s) AND deactivated_at IS NULL",
+            "SELECT * FROM users WHERE lower(email) = lower(%s) AND deactivated_at IS NULL",  # SELECT *: fila de cuenta entera
             (email,),
         )
         row = cur.fetchone()

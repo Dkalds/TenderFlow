@@ -1236,6 +1236,7 @@ _Sin ítems abiertos._
   - ADR-022 (o una nota en AGENTS.md §3.10) fija la regla: escritura en módulo / lectura en repositorio, o un solo sitio por entidad; `watchlist`, `webhooks` y `audit` quedan con la cabecera que lo diga, como `db/repositories/empresas.py` ya hace.
   - `services/sql_fragments.py` desaparece (sus dos constantes van a `db/sql_fragments.py`) y la excepción se borra de AGENTS.md §3.10.
   - `drift_monitor.py` se retira o se registra en el plano del worker (ADR-033) con su job en `docs/STATUS.md`; no hay módulo del scheduler que solo exista para APScheduler.
+  - **Progreso 2026-10-25:** hecho el reparto de las dos caras (ADR-022, «Entidades con las dos caras», con cabecera en `db/repositories/{audit,webhooks,watchlist}.py` y nota en el playbook) y retirado `services/sql_fragments.py` (los importadores van a `db/sql_fragments.py`; la excepción sale de AGENTS.md §3.10). Queda `scheduler/drift_monitor.py`.
 - **Files de partida:** [db/webhooks.py](../db/webhooks.py), [db/repositories/webhooks.py](../db/repositories/webhooks.py), [services/sql_fragments.py](../services/sql_fragments.py), [scheduler/drift_monitor.py](../scheduler/drift_monitor.py), [docs/adr/ADR-022-frontera-de-persistencia.md](adr/ADR-022-frontera-de-persistencia.md)
 - **Riesgo:** bajo — reorganización sin cambio de SQL; TID251 y los tests de repositorio lo fijan.
 
@@ -1264,6 +1265,7 @@ _Sin ítems abiertos._
 - **Acceptance criteria:**
   - Las lecturas con `SELECT *` que sirven a la API nombran sus columnas (las de `pg_dump`/herramientas internas pueden quedarse con el motivo en la línea); el conteo baja y se fija.
   - ~~El SQL de `services/notifications.py` y `services/watchlist_rules.py` vive en sus módulos de `db/`; los dos ficheros salen de la whitelist TID251 de `pyproject.toml` (22 → 20) y `docs/STATUS.md` lo refleja.~~ **Hecho el 2026-10-23:** el SQL bajó a `db/notifications.py` y `db/repositories/watchlist_rules.py` (incluida la ejecución del matching), los 18 `noqa: S608` desaparecieron y la whitelist queda en 19 (sale también el fósil `services/ml/tech_classifier.py`). Queda solo la mitad de los `SELECT *`.
+  - **Progreso 2026-10-25:** `db/mcp_oauth.py` nombra sus columnas (`SELECT *` y `RETURNING *` fuera) y las lecturas que devuelven la fila entera por contrato (exportaciones RGPD de `audit`, `feedback`, `pursuits` y `watchlist`; `users`; `licitaciones.get_by_id`; `organos`; la búsqueda FTS de `db/upsert.py`) llevan `# SELECT *: <motivo>` en la línea. Quedan sin tocar los `SELECT *` que no leen una tabla (envoltorios `FROM (...)`, `unnest`, `LIMIT 0` de `db/connection.py`). Pendiente: sustituir los de `users`, `organos` y `get_by_id` por columnas nombradas, lo que exige inventariar quién consume cada clave del dict.
 - **Files de partida:** [services/notifications.py](../services/notifications.py), [services/watchlist_rules.py](../services/watchlist_rules.py), [db/notifications.py](../db/notifications.py), [db/repositories/watchlist_rules.py](../db/repositories/watchlist_rules.py)
 - **Riesgo:** bajo — movimiento de SQL con tests de integración existentes para ambos módulos.
 
