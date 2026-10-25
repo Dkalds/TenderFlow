@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import check_job_parity
 
 from shared.jobs import (
+    TIPO_DESPACHO_EVENTOS,
     TIPO_EMBEDDINGS_EXPEDIENTE,
     TIPO_EXPORT_PDF,
     TIPO_FICHA_PLIEGO,
@@ -144,10 +145,14 @@ def test_los_tipos_a_demanda_y_los_programados_no_se_solapan() -> None:
 
 
 def test_los_tipos_a_demanda_son_los_tres_del_plan() -> None:
+    # Más el despacho del outbox a demanda (ADR-027 §C): una mutación que
+    # escribe un evento que alguien espera ya pide una pasada sin esperar al
+    # cierre de la siguiente ingesta.
     assert set(TIPOS_A_DEMANDA) == {
         TIPO_FICHA_PLIEGO,
         TIPO_EMBEDDINGS_EXPEDIENTE,
         TIPO_EXPORT_PDF,
+        TIPO_DESPACHO_EVENTOS,
     }
 
 

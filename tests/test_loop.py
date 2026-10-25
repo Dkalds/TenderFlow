@@ -257,7 +257,10 @@ class TestJobRegistry:
         # `trigger_event` no dejaba nada `pending` y ningún job leía la cola,
         # así que un endpoint caído perdía la entrega en el primer fallo.
         assert "webhook_reintentos" in names
-        assert len(registry) == 14
+        # 14 -> 15 con `event_dispatch` (ADR-027): el despachador del outbox
+        # solo vivía como paso del cierre y el plano APScheduler no lo corría.
+        assert "event_dispatch" in names
+        assert len(registry) == 15
 
     def test_heavy_jobs_marked_correctly(self):
         from scheduler.jobs import build_default_registry

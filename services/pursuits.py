@@ -15,7 +15,6 @@ from typing import Any, Literal, get_args
 from pydantic import BaseModel, ConfigDict, Field
 
 from db.database import now_utc_iso
-from db.notifications import insert_user_notification
 from db.repositories.adjudicaciones import (
     LEAD_TIME_MESES,
     AdjudicacionRepository,
@@ -27,7 +26,6 @@ from db.repositories.licitaciones import LicitacionRepository
 from db.repositories.organizations import OrganizationRepository
 from db.repositories.pursuit_tasks import PursuitTasksRepository
 from db.repositories.pursuits import PursuitConcurrencyError, PursuitRepository
-from db.users import get_user_by_id
 from observability.logging import get_logger
 from services.analytics.lead_time import estimar_adjudicacion
 from services.cartera import listar_cartera
@@ -77,7 +75,7 @@ from shared.dto import (
     RadarBandaCalidad,
     RadarQuality,
 )
-from shared.identity import user_key_from_email
+from shared.jobs import solicitar_despacho_de_eventos
 from shared.scoring_weights import (
     KNOWN_WEIGHT_KEYS,
     WEIGHTS_TOTAL,
@@ -93,7 +91,6 @@ _adj_repo = AdjudicacionRepository()
 _lic_repo = LicitacionRepository()
 log = get_logger(__name__)
 
-TIPO_NOTIFICACION_ASIGNACION = "pursuit_asignada"
 _ESTADOS_TERMINALES = frozenset({"won", "lost", "withdrawn"})
 
 # ── Calidad del Radar (S3.2) ────────────────────────────────────────────────
@@ -191,7 +188,7 @@ def create_pursuit(
             desglose_al_abrir=_serializar_desglose(body.desglose_al_abrir),
         )
         if created:
-            _notificar_asignacion(row, actor_user_id=user_id)
+            _adelantar_aviso_de_asignacion(row, actor_user_id=user_id)
         return PursuitSummary.model_validate(row), created
 
 
@@ -220,41 +217,19 @@ def _serializar_desglose(desglose: dict[str, float] | None) -> str | None:
     return json.dumps(desglose, ensure_ascii=False, sort_keys=True)
 
 
-def _notificar_asignacion(row: dict[str, Any], *, actor_user_id: int) -> None:
-    """Alerta in-app a quien acaba de recibir la oportunidad.
+def _adelantar_aviso_de_asignacion(row: dict[str, Any], *, actor_user_id: int) -> None:
+    """Pide al worker que reparta ya el ``pursuit.assigned`` recién escrito.
 
-    Asignar a alguien no le decía nada hasta 2026-09: la fila cambiaba de
-    responsable y la persona se enteraba al abrir Mi Pipeline, si lo abría.
-    Nunca lanza —la asignación ya está escrita— y no avisa a quien se asigna a
-    sí mismo. La clave única de ``user_notifications`` hace que reasignar el
-    mismo expediente a la misma persona no repita el aviso.
+    El aviso ya no se escribe aquí: lo deja el repositorio en el outbox, en la
+    misma transacción que la asignación (ADR-027), y lo reparte el despachador.
+    Esto solo adelanta la entrega para que la persona asignada no espere al
+    cierre de la siguiente ingesta. Asignarse a uno mismo no escribe evento,
+    así que tampoco hay nada que adelantar. Nunca lanza.
     """
     responsable = row.get("responsible_user_id")
     if responsable is None or int(responsable) == actor_user_id:
         return
-    try:
-        usuario = get_user_by_id(int(responsable))
-        if usuario is None:
-            return
-        actor = get_user_by_id(actor_user_id) or {}
-        quien = str(actor.get("display_name") or actor.get("email") or "Alguien de tu equipo")
-        titulo = str(row.get("tender_title") or row.get("licitacion_id") or "")[:80]
-        insert_user_notification(
-            user_key=user_key_from_email(usuario.get("email"), int(responsable)),
-            user_id=int(responsable),
-            type_=TIPO_NOTIFICACION_ASIGNACION,
-            title=f"Te han asignado: {titulo}",
-            body=f"{quien} te asignó esta oportunidad. Ábrela para ver la decisión pendiente "
-            "y la próxima acción.",
-            licitacion_id=str(row["licitacion_id"]),
-            organization_id=int(row["organization_id"]),
-        )
-    except Exception as exc:
-        log.warning(
-            "pursuit_assignment_notification_failed",
-            pursuit_id=row.get("id"),
-            error=str(exc)[:200],
-        )
+    solicitar_despacho_de_eventos("pursuit.assigned")
 
 
 def _resultado_sugerido(
@@ -508,7 +483,7 @@ def update_pursuit(
         if updated is None:
             raise PursuitNotFoundError("Oportunidad no encontrada.")
         if changes.get("responsible_user_id") is not None:
-            _notificar_asignacion(updated, actor_user_id=user_id)
+            _adelantar_aviso_de_asignacion(updated, actor_user_id=user_id)
         if changes.get("status") == "preparing":
             _instanciar_plantilla_tareas(updated, resolved_id, pursuit_id, user_id)
         if updated.get("status") == "won" and (

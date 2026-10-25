@@ -166,16 +166,18 @@ def test_la_unicidad_no_bloquea_pedir_acceso_otra_vez(client):
 def test_una_solicitud_nueva_avisa_al_operador(client, monkeypatch):
     """El embudo no puede terminar en una fila que nadie mira.
 
-    El aviso sale por el sistema de webhooks que ya existe, y **sin el email**:
-    un webhook sale del sistema y el aviso no necesita el dato personal para
-    cumplir su función. La dirección se lee en el panel, que exige ser admin.
+    El aviso a las integraciones se escribe en el outbox (ADR-027) en la misma
+    transacción que la solicitud, y **sin el email ni el mensaje**: un webhook
+    sale del sistema y el aviso no necesita el dato personal para cumplir su
+    función. La dirección se lee en el panel, que exige ser admin. La ruta pide
+    además una pasada a demanda del despachador para no esperar al cierre.
     """
     import api.routes.publico_solicitudes as modulo
+    from db.events import get_events_by_type
 
-    emitidos: list[tuple[str, dict[str, object]]] = []
-    monkeypatch.setattr(
-        modulo, "trigger_event", lambda evento, payload: emitidos.append((evento, payload)) or 1
-    )
+    pedidas: list[str] = []
+    monkeypatch.setattr(modulo, "solicitar_despacho_de_eventos", pedidas.append)
+    antes = {e["id"] for e in get_events_by_type("solicitud_acceso.creada", limit=5000)}
 
     client.post(
         RUTA,
@@ -184,22 +186,26 @@ def test_una_solicitud_nueva_avisa_al_operador(client, monkeypatch):
         follow_redirects=False,
     )
 
-    assert len(emitidos) == 1
-    evento, payload = emitidos[0]
-    assert evento == "solicitud_acceso.creada"
+    nuevos = [
+        e for e in get_events_by_type("solicitud_acceso.creada", limit=5000) if e["id"] not in antes
+    ]
+    assert len(nuevos) == 1
+    payload = nuevos[0]["payload"]
     assert payload["empresa"] == "Acme"
+    assert payload["pendientes"] >= 1
     assert "avisa@empresa.example" not in str(payload)
     assert "secreto" not in str(payload)
+    assert pedidas == ["solicitud_acceso.creada"]
 
 
 def test_un_webhook_roto_no_rompe_el_formulario(client, monkeypatch):
-    """El aviso es un efecto lateral: no puede tumbar un formulario público."""
-    import api.routes.publico_solicitudes as modulo
+    """El aviso es un efecto lateral: ni la cola de trabajo caída puede tumbar
+    un formulario público. El evento ya está en el outbox y sale en el cierre."""
 
     def _revienta(*_a, **_k):
-        raise RuntimeError("endpoint del operador caído")
+        raise RuntimeError("cola de trabajo caída")
 
-    monkeypatch.setattr(modulo, "trigger_event", _revienta)
+    monkeypatch.setattr("shared.jobs.enqueue", _revienta)
     antes = _contar()
 
     respuesta = client.post(

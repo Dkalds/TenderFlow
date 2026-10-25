@@ -130,6 +130,27 @@ def ejecutar_embeddings_expediente(job: Job) -> dict[str, Any]:
     }
 
 
+def ejecutar_despacho_eventos(job: Job) -> dict[str, Any]:
+    """Una pasada del despachador del outbox, a demanda (ADR-027 §C).
+
+    Solo reparte: los productores sin mutación (vencimientos de tareas,
+    documentos nuevos, avisos de cuentas) siguen siendo del paso
+    ``event_dispatch`` del cierre, que es quien tiene su cadencia y sus
+    cursores. Lo que se adelanta aquí es la entrega de lo que una persona
+    acaba de provocar.
+    """
+    from scheduler.jobs.event_dispatch import dispatch_pending
+
+    resultado = dispatch_pending()
+    return {
+        "motivo": str(job.payload.get("motivo") or ""),
+        "procesados": resultado.procesados,
+        "fallidos": resultado.fallidos,
+        "in_app": resultado.in_app,
+        "webhooks": resultado.webhooks,
+    }
+
+
 def ejecutar_export_pdf(job: Job) -> dict[str, Any]:
     """Maqueta el PDF de exportación fuera de la request.
 

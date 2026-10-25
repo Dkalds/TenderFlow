@@ -185,7 +185,11 @@ evento en el catálogo seguido de `titulo`, `licitacion_id`, `id_externo` o
 ## Eventos de avisos sobre lo que sigues
 
 Los reparte el despachador del outbox (`scheduler/jobs/event_dispatch.py`),
-que corre en cada pasada del cierre (paso `event_dispatch`, cada cuatro horas).
+que corre en cada pasada del cierre (paso `event_dispatch`, cada cuatro horas)
+y, a demanda, en cuanto una persona provoca un evento que alguien espera ya
+—una asignación (`pursuit.assigned`) o una solicitud de acceso
+(`solicitud_acceso.creada`)—: esos salen en segundos, no en la siguiente
+pasada.
 Todos llevan `organization_id` y sólo llegan a los webhooks de esa
 organización (más los globales sin dueño). La lista completa y vigente es la de
 `GET /api/v1/webhooks/event-types`; esta tabla describe los que avisan de algo
@@ -277,7 +281,7 @@ pueden renovar el documento y cambiar el perfil. Es un evento con
 | `X-Webhook-Timestamp` | Segundos Unix (entero) de la entrega original | El sello que la firma v2 liga al cuerpo. |
 | `X-Webhook-Signature-V2` | `v2=<hex>`, con `hex = HMAC-SHA256(secret, "{timestamp}." + cuerpo)` | Firma **v2**: la misma clave, pero sobre el sello y el cuerpo. Verificarla más la ventana de tiempo cierra el replay. |
 | `X-Webhook-Event` | Tipo de evento (`pursuit.created`, `ping`…) | Enrutar sin parsear el cuerpo. |
-| `X-Webhook-Delivery` | Identificador de la entrega (solo en eventos con reintento) | Deduplicar: un reintento repite el mismo valor. |
+| `X-Webhook-Delivery` | Identificador de la entrega (en todos los eventos; no en el `ping`) | Deduplicar: un reintento repite el mismo valor. |
 
 La firma v2 se calcula sobre los **bytes crudos** del cuerpo tal como llegan,
 precedidos del sello y un punto (`.`), en ASCII. No re-serialices el JSON
@@ -287,7 +291,10 @@ otra firma.
 ### Reintentos
 
 Una entrega que falla se reintenta con backoff (hasta seis intentos, ver
-`services/webhook_retry.py`). El reintento reenvía **el mismo cuerpo, el mismo
+`services/webhook_retry.py`). Vale para todos los eventos, también los del
+catálogo que reparte el despachador del outbox: desde 2026-10 los dos caminos
+salen por la misma función (`db/webhooks.py::entregar_firmado`); antes una
+entrega del outbox que fallaba no se reintentaba. El reintento reenvía **el mismo cuerpo, el mismo
 `X-Webhook-Delivery` y el mismo `X-Webhook-Timestamp`** que el primer intento,
 así que las dos firmas son idénticas en todos los intentos. Consecuencia para
 la ventana de replay: un reintento tardío (el sexto cae a unos treinta minutos
