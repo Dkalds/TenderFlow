@@ -258,26 +258,38 @@ def require_scope(scope: str) -> Callable[..., Coroutine[Any, Any, AuthContext]]
 
 def create_api_key(
     name: str,
+    *,
+    user_id: int,
     scopes: str | None = None,
-    user_id: int | None = None,
     expires_days: int | None = None,
 ) -> str:
     """Genera una nueva API Key segura, la persiste y devuelve el token en bruto.
 
     El token devuelto no es recuperable — el llamante debe guardarlo.
 
+    **Toda clave nace con dueño y con caducidad**, en cualquier entorno. Hasta
+    2026-10 ``user_id`` era opcional fuera de prod/staging, y en producción
+    había 89 claves activas sin usuario ni ``expires_at``: no se revocan al
+    desactivar a nadie y no caducan nunca. Desde el 2026-07-27 la validación
+    ya rechazaba en producción las que no tienen dueño, así que una clave sin
+    él solo servía en desarrollo y en los tests.
+
     Args:
         name: Nombre descriptivo de la key (p.ej. nombre del integrador).
+        user_id: Dueño (``users.id``). Obligatorio: es quien la ve en Ajustes,
+            por quien se revoca al darle de baja y a quien sigue la auditoría.
         scopes: Scopes autorizados, separados por coma. Si se omite usa el
             mínimo ``API_KEY_DEFAULT_SCOPES`` configurado.
-        user_id: FK opcional a la tabla de usuarios/admin (para GDPR export).
-        expires_days: Si se omite, usa ``API_KEY_DEFAULT_TTL_DAYS``. ``None``
-            ya no crea credenciales perpetuas por defecto.
+        expires_days: Si se omite, ``API_KEY_DEFAULT_TTL_DAYS`` (90). Nunca
+            más de ``API_KEY_MAX_TTL_DAYS`` (365): no hay claves perpetuas.
+
+    Raises:
+        ValueError: sin dueño, o con una caducidad fuera del rango permitido.
     """
     from config import settings
 
-    if user_id is None and settings.ENV in ("prod", "staging"):
-        raise ValueError("Production API keys must be bound to a user_id")
+    if not user_id or user_id < 1:
+        raise ValueError("Una clave de API necesita dueño (user_id).")
     effective_scopes = scopes if scopes is not None else settings.API_KEY_DEFAULT_SCOPES
     effective_ttl_days = (
         expires_days if expires_days is not None else settings.API_KEY_DEFAULT_TTL_DAYS
@@ -288,11 +300,9 @@ def create_api_key(
     raw = secrets.token_urlsafe(32)
     key_hash = hash_api_key(raw)
     prefix = raw[:8]  # Primeros 8 chars — suficiente para identificar sin exponer
-    expires_at: str | None = None
-    if effective_ttl_days is not None:
-        from datetime import UTC, datetime, timedelta
+    from datetime import UTC, datetime, timedelta
 
-        expires_at = (datetime.now(UTC) + timedelta(days=effective_ttl_days)).isoformat()
+    expires_at = (datetime.now(UTC) + timedelta(days=effective_ttl_days)).isoformat()
 
     auth_service.insert_api_key(
         key_hash=key_hash,
@@ -302,7 +312,7 @@ def create_api_key(
         user_id=user_id,
         expires_at=expires_at,
     )
-    log.info("api_key_created", name=name, has_user_id=user_id is not None, prefix=prefix)
+    log.info("api_key_created", name=name, user_id=user_id, prefix=prefix)
     return raw
 
 

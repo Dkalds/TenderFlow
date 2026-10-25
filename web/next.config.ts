@@ -239,11 +239,14 @@ const nextConfig: NextConfig = {
  *
  * Detrás de `ANALYZE=true` para que un `npm run build` normal no pague la
  * generación de los informes. El **gate** de CI no es este plugin sino
- * `scripts/check_bundle_budget.py`, que mide el First Load JS por ruta desde
- * `.next/app-build-manifest.json` y lo compara con `bundle-budget.json`: un
- * techo que solo puede bajar. El plugin es la herramienta para *entender* una
- * regresión que el gate ya detectó — sin él, «esta ruta engordó 40 KB» no dice
- * qué la engordó.
+ * `scripts/check_bundle_budget.py`, que lee el First Load JS por ruta de
+ * `.next/diagnostics/route-bundle-stats.json` y lo compara con
+ * `bundle-budget.json`: un techo que solo puede bajar, y un objetivo por ruta.
+ *
+ * Con Turbopack este plugin no escribe nada (lo avisa al arrancar: es de
+ * webpack). Para *entender* una regresión —qué módulo engordó la ruta— la
+ * herramienta es `npx next analyze --output` y su `export --route`; así se
+ * midió el desglose del 2026-10-25 (ver `scripts/check_bundle_budget.py`).
  */
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === "true",

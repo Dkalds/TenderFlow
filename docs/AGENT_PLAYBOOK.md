@@ -12,7 +12,7 @@ paquetes exentos — no reproduzcas aquí un estado por paquete, envejece mal.
 | Paquete | Propósito | Entry / fachada | Docs relacionados |
 |---|---|---|---|
 | `config/` | Settings (pydantic-settings), keywords SAP, constantes PLACSP, secrets | `config/settings.py` | [ADR-004](adr/ADR-004-sqlite-turso-vs-postgres.md) (histórico; superado por [ADR-016](adr/ADR-016-destino-persistencia-supabase.md)/[ADR-021](adr/ADR-021-retirada-sqlite.md)) |
-| `shared/` | auth_core, dto, geo (NUTS3→CCAA), i18n, signing (JWKS), ssrf, csrf, types | `shared/dto.py` | [SECURITY.md](SECURITY.md) |
+| `shared/` | auth_core, dto, geo (NUTS3→CCAA), i18n, signing (JWKS), ssrf, csrf, types | `shared/dto/__init__.py` | [SECURITY.md](SECURITY.md) |
 | `services/` | Biblioteca de dominio: licitaciones, normalization, classification, clusters, rate_limiting, `analytics_engine.py` (DuckDB) + subpaquetes `analytics/`, `competitive/`, `investigador/` (FTS Postgres `tsvector`), `ml/` (todo el ML: clasificadores SAP y de tecnología —`sap_classifier.py`, `tech_classifier.py`, `classifier_pipeline.py`, `classifier_training.py`— y los modelos de baja y retención), `rag/` | `services/licitaciones.py` | [ADR-007](adr/ADR-007-services-domain-layer.md), [ADR-024](adr/ADR-024-services-biblioteca-no-frontera.md), [ADR-005](adr/ADR-005-clustering-ctfidf-minibatch.md) |
 | `db/` | Postgres (motor único), upsert batcheado e idempotente, migraciones solo Alembic, repositorios | `db/database.py` (fachada) → `db/connection.py`, `db/schema.py`, `db/upsert.py`; repos en `db/repositories/` | [database-schema.md](database-schema.md), [ADR-001](adr/ADR-001-sql-crudo-vs-orm.md), [ADR-022](adr/ADR-022-frontera-de-persistencia.md), [ADR-016](adr/ADR-016-destino-persistencia-supabase.md), [ADR-021](adr/ADR-021-retirada-sqlite.md) |
 | `api/` | FastAPI REST `/api/v1/*` con X-API-Key, ETag, rate limit, CORS, exception handlers | `api/app.py`; routers en `api/routes/` | [ADR-006](adr/ADR-006-etag-pdf-export-ratelimit-redis.md), [api-design.md](api-design.md) |
@@ -41,6 +41,7 @@ El [Makefile](../Makefile) es la fuente canónica. Targets habituales:
 | Validar customizaciones agénticas | `make check-agent-docs` |
 | Validar contrato API | `make check-api-contract` |
 | Dirección de imports entre paquetes | `make check-layers` |
+| `print()` fuera de un `__main__` en `scraper/`, `services/`, `scheduler/` | `make check-prints` |
 | Operación nueva de la API con su motivo | `make check-api-surface` |
 | Validar invariantes analíticos del frontend | `make check-frontend-invariants` |
 | Lint / typecheck frontend | `make web-lint` / `make web-typecheck` |
@@ -67,7 +68,7 @@ schema aislado mediante las fixtures de `tests/conftest.py`.
 | `make typecheck` | requiere deps y mypy | disponible |
 | `make status`, `make job-parity` | requiere deps | disponible |
 | `make check-api-contract` | requiere deps | disponible tras `make openapi` |
-| `make check-layers` | disponible: stdlib + git | disponible |
+| `make check-layers`, `make check-prints` | disponible: stdlib + git | disponible |
 | `make check-api-surface` | requiere deps | disponible |
 | `make test-unit`, `make test`, `make check` | no disponible | no disponible sin `TEST_DATABASE_URL` |
 | `make web-test`, `make web-test-coverage` | no disponible | requiere `web/node_modules` (`cd web && npm ci`) |
@@ -196,7 +197,7 @@ controles disponibles y reportá los tests como no ejecutados (AGENTS.md §4).
 
 ### 3.1 Añadir un endpoint a la API
 
-1. **Define el contrato**: añade el DTO request/response en `shared/dto.py` (Pydantic v2).
+1. **Define el contrato**: el DTO request/response (Pydantic v2) va junto a su ruta si solo lo usa ella; si lo comparten dos o más rutas, en el submódulo de su dominio de `shared/dto/`, re-exportado desde `shared/dto/__init__.py` (el criterio está en su docstring).
 2. **Repositorio**: si lee/escribe datos nuevos, añade método en `db/repositories/<entidad>.py` (patrón existente: ver `db/repositories/licitaciones.py`). Si requiere SQL nuevo, mantén upsert idempotente.
 3. **Lógica de dominio**: si el endpoint transforma datos o aplica una regla de negocio, añade función en `services/<dominio>.py`. Si es CRUD passthrough, la ruta puede llamar a `db.*` directo ([ADR-024](adr/ADR-024-services-biblioteca-no-frontera.md)). SQL nuevo nunca va en la ruta: vive en `db/` (§3).
 4. **Ruta**: crea o edita el router en `api/routes/<recurso>.py`. Inyectá `Depends(get_api_key)` si requiere auth. Registralo en `api/app.py` (sección `include_router`).

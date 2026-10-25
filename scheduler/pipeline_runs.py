@@ -43,10 +43,18 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Any, Literal
 
+from observability.errores import ContadorDeErrores
 from observability.logging import get_logger
 from observability.ops_events import record_event
+from observability.runtime_metrics import pipeline_runs_errores_total
 
 log = get_logger(__name__)
+
+#: ``pipeline_runs_errores_total{paso}``: los sub-pasos best-effort del cierre
+#: (avisos, export analítico, alertas de la propia pasada) que fallan sin poner
+#: el paso en rojo. Los pasos canónicos que fallan ya van a ``STEP_ERROR`` y
+#: avisan por correo; esto es lo que quedaba por debajo de ese radar.
+_contar_error = ContadorDeErrores("pipeline_runs", pipeline_runs_errores_total)
 
 #: Tipo de evento con el que ``tech_signal_merge`` deja en ``ops_events`` las
 #: reparaciones de cada pasada. Es la serie que mide su criterio de retirada.
@@ -515,7 +523,8 @@ def _run_analytics_export() -> None:
 
         run_analytics_export()
     except Exception as exc:
-        log.warning("pipeline_analytics_export_failed", error=str(exc))
+        _contar_error("analytics_export")
+        log.warning("pipeline_analytics_export_failed", error=str(exc), exc_info=True)
 
 
 def _run_kpi_precompute() -> dict[str, Any]:
@@ -551,14 +560,16 @@ def _run_watchlist_notify() -> None:
 
         check_competitors()
     except Exception as e:
-        log.warning("competitor_alerts_failed", error=str(e))
+        _contar_error("avisos_competidores")
+        log.warning("competitor_alerts_failed", error=str(e), exc_info=True)
     # Alertas de reglas de watchlist por criterio (mi-watchlist, v43)
     try:
         from scheduler.watchlist_rules_alerts import check_rules_and_notify
 
         check_rules_and_notify()
     except Exception as e:
-        log.warning("watchlist_rules_alerts_failed", error=str(e))
+        _contar_error("avisos_reglas_watchlist")
+        log.warning("watchlist_rules_alerts_failed", error=str(e), exc_info=True)
     # Recordatorios de plazo (favoritos y pursuits). Existían desde la Feature D
     # y nadie los invocaba desde ningún plano: en producción nunca corrieron.
     try:
@@ -566,14 +577,16 @@ def _run_watchlist_notify() -> None:
 
         check_all_users_deadlines()
     except Exception as e:
-        log.warning("deadline_reminders_failed", error=str(e))
+        _contar_error("recordatorios_plazo")
+        log.warning("deadline_reminders_failed", error=str(e), exc_info=True)
     # Cierre asistido: oportunidades abiertas cuyo expediente ya se adjudicó.
     try:
         from services.pursuit_awards import notify_detected_awards
 
         notify_detected_awards()
     except Exception as e:
-        log.warning("pursuit_awards_failed", error=str(e))
+        _contar_error("adjudicaciones_oportunidades")
+        log.warning("pursuit_awards_failed", error=str(e), exc_info=True)
 
 
 #: Horas locales (Madrid) en las que se entregan los digests diario y semanal:
@@ -596,7 +609,9 @@ def _es_ventana_matinal(ahora: Any | None = None) -> bool:
         from zoneinfo import ZoneInfo
 
         local = momento.astimezone(ZoneInfo("Europe/Madrid"))
-    except Exception:  # sin tzdata: aproximar con el horario de invierno
+    # Sin tzdata: aproximar con el horario de invierno. `ZoneInfoNotFoundError`
+    # es un `KeyError`; el `ImportError` cubre un intérprete sin `zoneinfo`.
+    except (ImportError, KeyError):
         local = momento.astimezone(timezone(timedelta(hours=1)))
     inicio, fin = _VENTANA_MATINAL_HORAS
     return inicio <= local.hour < fin
@@ -920,7 +935,10 @@ def _notify_step_failure(step: str, exc: Exception) -> None:
             step=step,
         )
     except Exception:
-        log.warning("pipeline_step_alert_failed", step=step)
+        # El aviso de un paso roto que no sale es el peor silencio posible: el
+        # paso ya está en rojo y nadie se entera.
+        _contar_error("aviso_paso")
+        log.warning("pipeline_step_alert_failed", step=step, exc_info=True)
 
 
 def _clave_aviso_de_paso(step: str) -> str:
@@ -941,7 +959,8 @@ def _cerrar_avisos_de_pasos_recuperados(results: dict[str, str]) -> None:
             _clave_aviso_de_paso(name) for name, estado in results.items() if estado == STEP_OK
         )
     except Exception:
-        log.warning("pipeline_step_alert_close_failed")
+        _contar_error("cerrar_avisos")
+        log.warning("pipeline_step_alert_close_failed", exc_info=True)
 
 
 def _run_post_ingestion_steps(*, lane: str = LANE_BULK) -> dict[str, str]:
@@ -1255,7 +1274,8 @@ def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
                     body="run_connector(placsp) abortó en fetch; detalle en DLQ.",
                 )
             except Exception:
-                log.debug("daily_connector_notify_failed")
+                _contar_error("aviso_feed_diario")
+                log.warning("daily_connector_notify_failed", exc_info=True)
         else:
             metrics.status = "ok"
             metrics.licitaciones_nuevas = run_result.nuevas
@@ -1311,7 +1331,8 @@ def _notify_degraded(label: str, failed: list[dict[str, Any]]) -> None:
             failed_months=failed,
         )
     except Exception:
-        log.debug("degraded_notify_failed", label=label)
+        _contar_error("aviso_degradado")
+        log.warning("degraded_notify_failed", label=label, exc_info=True)
 
 
 def _finalize_ingestion(results: list[dict[str, Any]], *, label: str) -> dict[str, Any]:

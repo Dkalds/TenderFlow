@@ -179,9 +179,9 @@ def test_download_pdf_returns_document_inline(client, api_db):
     Es el camino que sustituye a los jobs asíncronos, cuyo almacén en memoria
     de proceso no sobrevive a un reinicio ni a una segunda instancia.
     """
-    from api.auth import create_api_key
+    from tests.claves import clave_de_prueba
 
-    create_api_key("pdf-download", scopes="*")
+    clave_de_prueba("pdf-download", scopes="*")
 
     resp = client.get("/api/v1/exports/download?format=pdf")
 

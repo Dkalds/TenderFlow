@@ -9,7 +9,7 @@ ninguna lleva ``{id_externo}`` y todas devuelven un envoltorio paginado.
 from __future__ import annotations
 
 from collections.abc import Generator
-from typing import Any
+from typing import Any, NamedTuple
 
 from fastapi import (
     APIRouter,
@@ -44,6 +44,7 @@ from observability.logging import get_logger
 from shared.dto import (
     MAX_PAGE_LIMIT,
     CursorPaginatedResponseWithTotal,
+    FiltrosLicitacion,
     PaginatedResponse,
     SafeStr,
 )
@@ -61,6 +62,66 @@ _DESC_ETIQUETA = (
 _DESC_ORGANIZACION_ETIQUETA = (
     "Organización dueña de `etiqueta`; por defecto la personal. Sólo se usa con "
     "`etiqueta`: sin ella el listado es el mismo para cualquier organización."
+)
+
+# Descripciones largas de los filtros de `GET /licitaciones`. Viven fuera de la
+# firma solo para que la dependencia se lea entera; el texto es el del contrato
+# OpenAPI y cambiarlo cambia `api.d.ts`.
+_DESC_SOLO_ABIERTAS = (
+    "Excluye los expedientes en estado terminal (RES, ADJ, ANUL). "
+    "Lo usan las superficies de oportunidad —el Radar— para no "
+    "proponer licitaciones que ya no se pueden licitar."
+)
+_DESC_TECNOLOGIA_PREDICHA = (
+    "Filtra por tecnología predicha por el clasificador multi-label "
+    "(ml_tech_principal o cualquiera en ml_tecnologias). Combinable "
+    "con min_proba_tech para usar la tabla licitacion_tecnologia_score."
+)
+_DESC_MIN_PROBA_TECH = (
+    "Si se especifica junto con tecnologia_predicha, sólo devuelve "
+    "licitaciones cuyo score para esa tecnología es >= este umbral."
+)
+_DESC_CIERRE_DESDE = (
+    "Fecha límite de presentación desde (YYYY-MM-DD). Eje distinto de "
+    "fecha_desde/fecha_hasta, que acotan publicación: éste acota el "
+    "cierre. Lo pide cualquier superficie que cuente plazos —la tarjeta "
+    "«Vencen 48h» de /resumen— para poder abrir el listado que enseña "
+    "justo lo que cuenta. Los expedientes sin plazo publicado quedan "
+    "fuera en cuanto se usa cualquiera de las dos cotas."
+)
+_DESC_CIERRE_HASTA = (
+    "Fecha límite de presentación hasta (YYYY-MM-DD), inclusive el día "
+    "entero: fecha_limite guarda la hora de cierre, así que la cota "
+    "incluye los expedientes que cierran ese mismo día a cualquier hora."
+)
+_DESC_CPV = (
+    "CPV por PREFIJO, separados por comas. `72` trae todos los "
+    "servicios de TI y `7222` una familia dentro. Es prefijo y no "
+    "igualdad porque nadie recuerda los ocho dígitos."
+)
+_DESC_ORGANO = (
+    "Órgano de contratación por subcadena, sin distinguir acentos ni "
+    "mayúsculas. Varios separados por comas."
+)
+_DESC_PROCEDIMIENTO = (
+    "Código CODICE de procedimiento (multi-valor). Las etiquetas y el "
+    "catálogo completo los sirve `GET /meta/filters`."
+)
+_DESC_DIAS_RESTANTES_MAX = (
+    "Sólo expedientes cuyo plazo vence dentro de N días. Se calcula en "
+    "SQL sobre `fecha_limite` y excluye los estados terminales: un "
+    "expediente ya adjudicado con fecha límite futura no vence, no se "
+    "puede licitar."
+)
+_DESC_SORT_CURSOR = (
+    "Orden, con los mismos valores que `/licitaciones`: `fecha_publicacion` "
+    "(recientes primero, el de por defecto), `importe`, `titulo` y sus "
+    "inversos con `-`. Los nulos van al final en los dos sentidos. El "
+    "cursor lleva el orden dentro: no vale para otro."
+)
+_DESC_WITH_TOTAL_CURSOR = (
+    "Añade `total`: un COUNT(*) con los mismos filtros. Pídelo sólo en la "
+    "primera página; el cursor existe para no pagarlo en cada una."
 )
 
 
@@ -81,107 +142,62 @@ async def _organizacion_de_la_etiqueta(
     return int(resuelto["organization_id"])
 
 
-# ── /licitaciones (offset pagination — marcado deprecated) ───────────────
+async def _validados(
+    ctx: dict[str, Any], filtros: FiltrosLicitacion, organization_id: int | None
+) -> FiltrosLicitacion:
+    """Valida los filtros y les pone la organización ya resuelta de la etiqueta.
+
+    Es lo que las dos dependencias de abajo comparten: la forma de los
+    parámetros la fija cada ruta (sus descripciones son contrato y no son las
+    mismas), pero qué se comprueba y cómo se resuelve la organización es una
+    sola cosa. La organización entra en el objeto **solo** resuelta, así que el
+    repositorio nunca ve la que pidió el cliente sin validar.
+    """
+    _validate_query(filtros.q)
+    _validate_date(filtros.fecha_desde, "fecha_desde")
+    _validate_date(filtros.fecha_hasta, "fecha_hasta")
+    _validate_date(filtros.cierre_desde, "cierre_desde")
+    _validate_date(filtros.cierre_hasta, "cierre_hasta")
+    organizacion = await _organizacion_de_la_etiqueta(ctx, filtros.etiqueta_id, organization_id)
+    return filtros.model_copy(update={"etiqueta_organization_id": organizacion})
 
 
-@router.get(
-    "/licitaciones",
-    response_model=PaginatedResponse[LicitacionSummary],
-    summary="[DEPRECADO 2027-01-15] Listado paginado de licitaciones (offset)",
-    deprecated=True,
-    responses={
-        200: {"description": "Lista de licitaciones"},
-        401: {"description": "API key inválida"},
-        422: {"description": "Parámetros inválidos"},
-    },
-)
-async def list_licitaciones(
-    request: Request,
-    response: Response,
+class _OrdenListado(NamedTuple):
+    """``sort`` y ``with_total``: no filtran, pero van detrás de los filtros.
+
+    Son una dependencia aparte y no parámetros de la ruta porque FastAPI lista
+    en el OpenAPI primero los parámetros propios de la ruta y después los de
+    sus dependencias: declarados en la ruta habrían saltado delante de `q`.
+    """
+
+    sort: str | None
+    with_total: bool
+
+
+async def _filtros_offset(
     q: str | None = Query(
         None, max_length=_MAX_QUERY_LENGTH, description="Búsqueda en título y descripción"
     ),
     estado: str | None = Query(None, description="Código de estado (PUB, EV, ADJ…)"),
-    solo_abiertas: bool = Query(
-        False,
-        description=(
-            "Excluye los expedientes en estado terminal (RES, ADJ, ANUL). "
-            "Lo usan las superficies de oportunidad —el Radar— para no "
-            "proponer licitaciones que ya no se pueden licitar."
-        ),
-    ),
+    solo_abiertas: bool = Query(False, description=_DESC_SOLO_ABIERTAS),
     ccaa: str | None = Query(None, description="Comunidad Autónoma"),
     tecnologia: str | None = Query(None, description="Tecnología (SAP, ORACLE…)"),
-    tecnologia_predicha: str | None = Query(
-        None,
-        description=(
-            "Filtra por tecnología predicha por el clasificador multi-label "
-            "(ml_tech_principal o cualquiera en ml_tecnologias). Combinable "
-            "con min_proba_tech para usar la tabla licitacion_tecnologia_score."
-        ),
-    ),
-    min_proba_tech: float | None = Query(
-        None,
-        ge=0.0,
-        le=1.0,
-        description=(
-            "Si se especifica junto con tecnologia_predicha, sólo devuelve "
-            "licitaciones cuyo score para esa tecnología es >= este umbral."
-        ),
-    ),
+    tecnologia_predicha: str | None = Query(None, description=_DESC_TECNOLOGIA_PREDICHA),
+    min_proba_tech: float | None = Query(None, ge=0.0, le=1.0, description=_DESC_MIN_PROBA_TECH),
     fecha_desde: str | None = Query(None, description="Fecha publicación desde (YYYY-MM-DD)"),
     fecha_hasta: str | None = Query(None, description="Fecha publicación hasta (YYYY-MM-DD)"),
-    cierre_desde: str | None = Query(
-        None,
-        description=(
-            "Fecha límite de presentación desde (YYYY-MM-DD). Eje distinto de "
-            "fecha_desde/fecha_hasta, que acotan publicación: éste acota el "
-            "cierre. Lo pide cualquier superficie que cuente plazos —la tarjeta "
-            "«Vencen 48h» de /resumen— para poder abrir el listado que enseña "
-            "justo lo que cuenta. Los expedientes sin plazo publicado quedan "
-            "fuera en cuanto se usa cualquiera de las dos cotas."
-        ),
-    ),
-    cierre_hasta: str | None = Query(
-        None,
-        description=(
-            "Fecha límite de presentación hasta (YYYY-MM-DD), inclusive el día "
-            "entero: fecha_limite guarda la hora de cierre, así que la cota "
-            "incluye los expedientes que cierran ese mismo día a cualquier hora."
-        ),
-    ),
+    cierre_desde: str | None = Query(None, description=_DESC_CIERRE_DESDE),
+    cierre_hasta: str | None = Query(None, description=_DESC_CIERRE_HASTA),
     importe_min: float | None = Query(
         None, ge=0, description="Importe de licitación mínimo, en euros (inclusive)"
     ),
     importe_max: float | None = Query(
         None, ge=0, description="Importe de licitación máximo, en euros (inclusive)"
     ),
-    cpv: str | None = Query(
-        None,
-        max_length=200,
-        description=(
-            "CPV por PREFIJO, separados por comas. `72` trae todos los "
-            "servicios de TI y `7222` una familia dentro. Es prefijo y no "
-            "igualdad porque nadie recuerda los ocho dígitos."
-        ),
-    ),
-    organo: str | None = Query(
-        None,
-        max_length=300,
-        description=(
-            "Órgano de contratación por subcadena, sin distinguir acentos ni "
-            "mayúsculas. Varios separados por comas."
-        ),
-    ),
+    cpv: str | None = Query(None, max_length=200, description=_DESC_CPV),
+    organo: str | None = Query(None, max_length=300, description=_DESC_ORGANO),
     provincia: str | None = Query(None, max_length=200, description="Provincia (multi-valor)"),
-    procedimiento: str | None = Query(
-        None,
-        max_length=100,
-        description=(
-            "Código CODICE de procedimiento (multi-valor). Las etiquetas y el "
-            "catálogo completo los sirve `GET /meta/filters`."
-        ),
-    ),
+    procedimiento: str | None = Query(None, max_length=100, description=_DESC_PROCEDIMIENTO),
     tramitacion: str | None = Query(
         None, max_length=100, description="Código CODICE de tramitación (multi-valor)"
     ),
@@ -189,53 +205,14 @@ async def list_licitaciones(
         None, max_length=100, description="Código CODICE de tipo de contrato (multi-valor)"
     ),
     dias_restantes_max: int | None = Query(
-        None,
-        ge=0,
-        le=3650,
-        description=(
-            "Sólo expedientes cuyo plazo vence dentro de N días. Se calcula en "
-            "SQL sobre `fecha_limite` y excluye los estados terminales: un "
-            "expediente ya adjudicado con fecha límite futura no vence, no se "
-            "puede licitar."
-        ),
+        None, ge=0, le=3650, description=_DESC_DIAS_RESTANTES_MAX
     ),
     etiqueta: int | None = Query(None, ge=1, description=_DESC_ETIQUETA),
     organization_id: int | None = Query(None, ge=1, description=_DESC_ORGANIZACION_ETIQUETA),
-    sort: str | None = Query(
-        None, description="Orden: fecha_publicacion (default), -importe, importe, titulo"
-    ),
-    with_total: bool = Query(
-        True, description="Incluir total (false = más rápido para paginación)"
-    ),
-    page: PageParams = Depends(pagina(50)),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
-) -> PaginatedResponse[LicitacionSummary]:
-    """Devuelve lista paginada con filtros opcionales.
-
-    > **Deprecado**: deja de responder el 2027-01-15 (cabeceras `Deprecation`
-    > y `Sunset`; docs/rfc/2026-09-06-rfc-retirada-endpoints-analitica.md).
-    > La sucesora es `/licitaciones/cursor`, que sirve el mismo dato sin
-    > `COUNT(*)` ni `OFFSET`.
-    """
-    _validate_query(q)
-    _validate_date(fecha_desde, "fecha_desde")
-    _validate_date(fecha_hasta, "fecha_hasta")
-    _validate_date(cierre_desde, "cierre_desde")
-    _validate_date(cierre_hasta, "cierre_hasta")
-
-    # Cabecera de deprecación con fecha de apagado (C8.1). Antes emitía
-    # `Deprecation: true` y `Link` pero no `Sunset`: le decía al cliente que se
-    # preparase sin decirle para cuándo, que es la mitad inútil del aviso.
-    deprecate_route(
-        response,
-        sunset=SUNSET_LISTADO_POR_OFFSET,
-        successor="/api/v1/licitaciones/cursor",
-    )
-
-    etiqueta_org = await _organizacion_de_la_etiqueta(_ctx, etiqueta, organization_id)
-
-    items, total = await run_db(
-        _lic_repo.list_paginated,
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> FiltrosLicitacion:
+    """Los filtros de ``GET /licitaciones``, validados y con la etiqueta resuelta."""
+    filtros = FiltrosLicitacion(
         q=q,
         estado=estado,
         solo_abiertas=solo_abiertas,
@@ -257,14 +234,136 @@ async def list_licitaciones(
         tipo_contrato=tipo_contrato,
         dias_restantes_max=dias_restantes_max,
         etiqueta_id=etiqueta,
-        etiqueta_organization_id=etiqueta_org,
-        limit=page.limit,
-        offset=page.offset,
-        sort=sort,
-        with_total=with_total,
+    )
+    return await _validados(ctx, filtros, organization_id)
+
+
+def _orden_offset(
+    sort: str | None = Query(
+        None, description="Orden: fecha_publicacion (default), -importe, importe, titulo"
+    ),
+    with_total: bool = Query(
+        True, description="Incluir total (false = más rápido para paginación)"
+    ),
+) -> _OrdenListado:
+    return _OrdenListado(sort=sort, with_total=with_total)
+
+
+async def _filtros_cursor(
+    q: str | None = Query(
+        None, max_length=_MAX_QUERY_LENGTH, description="Búsqueda en título y descripción"
+    ),
+    estado: str | None = Query(None, description="Código de estado (PUB, EV, ADJ…)"),
+    solo_abiertas: bool = Query(False, description="Excluye los expedientes en estado terminal"),
+    ccaa: str | None = Query(None, description="Comunidad Autónoma"),
+    tecnologia: str | None = Query(None, description="Tecnología (SAP, ORACLE…)"),
+    fecha_desde: str | None = Query(None, description="Fecha publicación desde (YYYY-MM-DD)"),
+    fecha_hasta: str | None = Query(None, description="Fecha publicación hasta (YYYY-MM-DD)"),
+    cierre_desde: str | None = Query(None, description="Fecha límite desde (YYYY-MM-DD)"),
+    cierre_hasta: str | None = Query(None, description="Fecha límite hasta (YYYY-MM-DD)"),
+    importe_min: float | None = Query(None, ge=0, description="Importe mínimo, en euros"),
+    importe_max: float | None = Query(None, ge=0, description="Importe máximo, en euros"),
+    cpv: str | None = Query(None, max_length=200, description="CPV por prefijo (multi-valor)"),
+    organo: str | None = Query(None, max_length=300, description="Órgano por subcadena"),
+    provincia: str | None = Query(None, max_length=200, description="Provincia (multi-valor)"),
+    procedimiento: str | None = Query(
+        None, max_length=100, description="Código CODICE de procedimiento (multi-valor)"
+    ),
+    tramitacion: str | None = Query(
+        None, max_length=100, description="Código CODICE de tramitación (multi-valor)"
+    ),
+    tipo_contrato: str | None = Query(
+        None, max_length=100, description="Código CODICE de tipo de contrato (multi-valor)"
+    ),
+    dias_restantes_max: int | None = Query(
+        None, ge=0, le=3650, description="Plazo que vence dentro de N días"
+    ),
+    etiqueta: int | None = Query(None, ge=1, description=_DESC_ETIQUETA),
+    organization_id: int | None = Query(None, ge=1, description=_DESC_ORGANIZACION_ETIQUETA),
+    ctx: dict[str, Any] = Depends(require_any_auth),
+) -> FiltrosLicitacion:
+    """Los filtros de ``GET /licitaciones/cursor``: los de offset salvo la tecnología predicha."""
+    filtros = FiltrosLicitacion(
+        q=q,
+        estado=estado,
+        solo_abiertas=solo_abiertas,
+        ccaa=ccaa,
+        tecnologia=tecnologia,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        cierre_desde=cierre_desde,
+        cierre_hasta=cierre_hasta,
+        importe_min=importe_min,
+        importe_max=importe_max,
+        cpv=cpv,
+        organo=organo,
+        provincia=provincia,
+        procedimiento=procedimiento,
+        tramitacion=tramitacion,
+        tipo_contrato=tipo_contrato,
+        dias_restantes_max=dias_restantes_max,
+        etiqueta_id=etiqueta,
+    )
+    return await _validados(ctx, filtros, organization_id)
+
+
+def _orden_del_cursor(
+    sort: str | None = Query(
+        None, pattern="^-?(fecha_publicacion|importe|titulo)$", description=_DESC_SORT_CURSOR
+    ),
+    with_total: bool = Query(False, description=_DESC_WITH_TOTAL_CURSOR),
+) -> _OrdenListado:
+    return _OrdenListado(sort=sort, with_total=with_total)
+
+
+# ── /licitaciones (offset pagination — marcado deprecated) ───────────────
+
+
+@router.get(
+    "/licitaciones",
+    response_model=PaginatedResponse[LicitacionSummary],
+    summary="[DEPRECADO 2027-01-15] Listado paginado de licitaciones (offset)",
+    deprecated=True,
+    responses={
+        200: {"description": "Lista de licitaciones"},
+        401: {"description": "API key inválida"},
+        422: {"description": "Parámetros inválidos"},
+    },
+)
+async def list_licitaciones(
+    request: Request,
+    response: Response,
+    filtros: FiltrosLicitacion = Depends(_filtros_offset),
+    orden: _OrdenListado = Depends(_orden_offset),
+    page: PageParams = Depends(pagina(50)),
+    _ctx: dict[str, Any] = Depends(require_any_auth),
+) -> PaginatedResponse[LicitacionSummary]:
+    """Devuelve lista paginada con filtros opcionales.
+
+    > **Deprecado**: deja de responder el 2027-01-15 (cabeceras `Deprecation`
+    > y `Sunset`; docs/rfc/2026-09-06-rfc-retirada-endpoints-analitica.md).
+    > La sucesora es `/licitaciones/cursor`, que sirve el mismo dato sin
+    > `COUNT(*)` ni `OFFSET`.
+    """
+    # Cabecera de deprecación con fecha de apagado (C8.1). Antes emitía
+    # `Deprecation: true` y `Link` pero no `Sunset`: le decía al cliente que se
+    # preparase sin decirle para cuándo, que es la mitad inútil del aviso.
+    deprecate_route(
+        response,
+        sunset=SUNSET_LISTADO_POR_OFFSET,
+        successor="/api/v1/licitaciones/cursor",
     )
 
-    if not with_total:
+    items, total = await run_db(
+        _lic_repo.list_paginated,
+        filtros,
+        limit=page.limit,
+        offset=page.offset,
+        sort=orden.sort,
+        with_total=orden.with_total,
+    )
+
+    if not orden.with_total:
         total = -1
 
     # Last-Modified
@@ -296,53 +395,8 @@ async def list_licitaciones(
 async def list_licitaciones_cursor(
     cursor: str | None = Query(None, description="Cursor opaco devuelto en la página anterior"),
     limit: int = Query(100, ge=1, le=MAX_PAGE_LIMIT),
-    q: str | None = Query(
-        None, max_length=_MAX_QUERY_LENGTH, description="Búsqueda en título y descripción"
-    ),
-    estado: str | None = Query(None, description="Código de estado (PUB, EV, ADJ…)"),
-    solo_abiertas: bool = Query(False, description="Excluye los expedientes en estado terminal"),
-    ccaa: str | None = Query(None, description="Comunidad Autónoma"),
-    tecnologia: str | None = Query(None, description="Tecnología (SAP, ORACLE…)"),
-    fecha_desde: str | None = Query(None, description="Fecha publicación desde (YYYY-MM-DD)"),
-    fecha_hasta: str | None = Query(None, description="Fecha publicación hasta (YYYY-MM-DD)"),
-    cierre_desde: str | None = Query(None, description="Fecha límite desde (YYYY-MM-DD)"),
-    cierre_hasta: str | None = Query(None, description="Fecha límite hasta (YYYY-MM-DD)"),
-    importe_min: float | None = Query(None, ge=0, description="Importe mínimo, en euros"),
-    importe_max: float | None = Query(None, ge=0, description="Importe máximo, en euros"),
-    cpv: str | None = Query(None, max_length=200, description="CPV por prefijo (multi-valor)"),
-    organo: str | None = Query(None, max_length=300, description="Órgano por subcadena"),
-    provincia: str | None = Query(None, max_length=200, description="Provincia (multi-valor)"),
-    procedimiento: str | None = Query(
-        None, max_length=100, description="Código CODICE de procedimiento (multi-valor)"
-    ),
-    tramitacion: str | None = Query(
-        None, max_length=100, description="Código CODICE de tramitación (multi-valor)"
-    ),
-    tipo_contrato: str | None = Query(
-        None, max_length=100, description="Código CODICE de tipo de contrato (multi-valor)"
-    ),
-    dias_restantes_max: int | None = Query(
-        None, ge=0, le=3650, description="Plazo que vence dentro de N días"
-    ),
-    etiqueta: int | None = Query(None, ge=1, description=_DESC_ETIQUETA),
-    organization_id: int | None = Query(None, ge=1, description=_DESC_ORGANIZACION_ETIQUETA),
-    sort: str | None = Query(
-        None,
-        pattern="^-?(fecha_publicacion|importe|titulo)$",
-        description=(
-            "Orden, con los mismos valores que `/licitaciones`: `fecha_publicacion` "
-            "(recientes primero, el de por defecto), `importe`, `titulo` y sus "
-            "inversos con `-`. Los nulos van al final en los dos sentidos. El "
-            "cursor lleva el orden dentro: no vale para otro."
-        ),
-    ),
-    with_total: bool = Query(
-        False,
-        description=(
-            "Añade `total`: un COUNT(*) con los mismos filtros. Pídelo sólo en la "
-            "primera página; el cursor existe para no pagarlo en cada una."
-        ),
-    ),
+    filtros: FiltrosLicitacion = Depends(_filtros_cursor),
+    orden: _OrdenListado = Depends(_orden_del_cursor),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> CursorPaginatedResponseWithTotal[LicitacionSummary]:
     """Paginación estable por cursor (fecha_publicacion, id_externo).
@@ -355,12 +409,7 @@ async def list_licitaciones_cursor(
     grandes no podía sustituir al que dice reemplazar en cuanto había un filtro
     puesto.
     """
-    _validate_query(q)
-    _validate_date(fecha_desde, "fecha_desde")
-    _validate_date(fecha_hasta, "fecha_hasta")
-    _validate_date(cierre_desde, "cierre_desde")
-    _validate_date(cierre_hasta, "cierre_hasta")
-
+    sort = orden.sort
     # El orden de fecha (sin `sort` o con `fecha_publicacion`) conserva su
     # cursor de siempre, `fecha|id`: los tokens ya emitidos siguen valiendo.
     # Los demás órdenes llevan el orden dentro del cursor (`_encode_cursor_orden`).
@@ -374,44 +423,19 @@ async def list_licitaciones_cursor(
         else:
             cursor_orden = _decode_cursor_orden(cursor, str(sort))
 
-    filtros: dict[str, Any] = {
-        "q": q,
-        "estado": estado,
-        "solo_abiertas": solo_abiertas,
-        "ccaa": ccaa,
-        "tecnologia": tecnologia,
-        "fecha_desde": fecha_desde,
-        "fecha_hasta": fecha_hasta,
-        "cierre_desde": cierre_desde,
-        "cierre_hasta": cierre_hasta,
-        "importe_min": importe_min,
-        "importe_max": importe_max,
-        "cpv": cpv,
-        "organo": organo,
-        "provincia": provincia,
-        "procedimiento": procedimiento,
-        "tramitacion": tramitacion,
-        "tipo_contrato": tipo_contrato,
-        "dias_restantes_max": dias_restantes_max,
-        "etiqueta_id": etiqueta,
-        "etiqueta_organization_id": await _organizacion_de_la_etiqueta(
-            _ctx, etiqueta, organization_id
-        ),
-    }
-
     def _leer() -> tuple[list[dict[str, Any]], int | None]:
         # Página y total en UN salto al threadpool (ver
         # `tests/test_async_handlers_no_blocking_io.py`): el conteo sólo si se
         # pide, y con los mismos filtros que la página.
         filas = _lic_repo.list_cursor(
+            filtros,
             cursor_fecha=cursor_fecha,
             cursor_id=cursor_id,
             sort=sort,
             cursor_orden=cursor_orden,
             limit=limit,
-            **filtros,
         )
-        return filas, (_lic_repo.count_cursor(**filtros) if with_total else None)
+        return filas, (_lic_repo.count_cursor(filtros) if orden.with_total else None)
 
     items, total = await run_db(_leer)
 

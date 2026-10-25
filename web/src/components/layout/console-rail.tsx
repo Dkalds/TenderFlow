@@ -1,22 +1,16 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
 import { AlignJustify, LayoutGrid, LogOut, Menu, Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,12 +30,22 @@ import {
 import { useAccesoEspacios } from "@/hooks/use-acceso-espacios";
 import { useWithFilters } from "@/lib/filters";
 import { useDensity, initDensity } from "@/lib/density";
-import { useActiveOrganizationId, useOrganizations, useOrganizationStore } from "@/hooks/use-organization";
 import { apiMutate } from "@/lib/api-client";
 import { reportError } from "@/lib/report-error";
 import { registrarEvento } from "@/lib/analytics";
 import { ICONO_ENTIDAD, ICONO_ESPACIO } from "@/lib/iconos";
-import { ROLE_LABELS } from "@/app/(dashboard)/equipo/_lib/etiquetas";
+
+// Lo que solo existe abierto llega al abrirlo (ver cada módulo): el selector
+// de organización, dentro del menú de cuenta, y el cajón de móvil. El hueco del
+// selector mide lo mismo que su disparador para que el menú no salte.
+const SelectorOrganizacion = dynamic(
+  () => import("@/components/layout/selector-organizacion").then((modulo) => modulo.SelectorOrganizacion),
+  { ssr: false, loading: () => <Skeleton className="h-8 w-full" /> },
+);
+const NavegacionMovil = dynamic(
+  () => import("@/components/layout/navegacion-movil").then((modulo) => modulo.NavegacionMovil),
+  { ssr: false },
+);
 
 /**
  * Rail de espacios, el único cromo permanente a la izquierda.
@@ -126,9 +130,6 @@ function AccountMenu() {
   // siguiente tema a partir del que se está viendo de verdad.
   const { resolvedTheme, setTheme } = useTheme();
   const { compact, toggleCompact } = useDensity();
-  const organizations = useOrganizations();
-  const activeOrganizationId = useActiveOrganizationId();
-  const setActiveOrganizationId = useOrganizationStore((state) => state.setActiveOrganizationId);
 
   React.useEffect(() => {
     initDensity();
@@ -159,26 +160,7 @@ function AccountMenu() {
       <DropdownMenuContent side="right" align="end" className="w-60">
         <p className="px-2 pt-1 pb-1.5 text-tf-micro font-medium text-muted-foreground">Organización activa</p>
         <div className="px-2 pb-2">
-          <Select
-            aria-label="Organización activa"
-            value={activeOrganizationId != null ? String(activeOrganizationId) : "personal"}
-            onValueChange={(value) => setActiveOrganizationId(value === "personal" ? null : Number(value))}
-            disabled={organizations.isLoading || !organizations.data?.length}
-          >
-            <SelectTrigger className="h-8 text-tf-meta font-medium" aria-label="Organización activa">
-              <SelectValue placeholder="Organización personal" />
-            </SelectTrigger>
-            <SelectContent>
-              {!organizations.data?.length && (
-                <SelectItem value="personal">Organización personal</SelectItem>
-              )}
-              {organizations.data?.map((organization) => (
-                <SelectItem key={organization.id} value={String(organization.id)}>
-                  {organization.name} · {ROLE_LABELS[organization.role]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SelectorOrganizacion />
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
@@ -228,6 +210,9 @@ export function ConsoleRail() {
   const acceso = useAccesoEspacios();
   const withFilters = useWithFilters();
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  // Se monta al abrirlo por primera vez y se queda montado: así el cajón anima
+  // también al cerrarse, y reabrirlo no vuelve a pedir nada.
+  const [navegacionMontada, setNavegacionMontada] = React.useState(false);
 
   const spaces = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, acceso));
 
@@ -282,7 +267,11 @@ export function ConsoleRail() {
           logotipo es el de la marca (`TenderFlowLogo`), con el wordmark en la
           display a 15 px: a 14 px en negrita era una cara más del nombre. */}
       <div className="sticky top-0 z-40 flex h-12 items-center gap-2 bg-background px-3 md:hidden">
-        <Button variant="ghost" size="icon" onClick={() => setMobileOpen(true)} aria-label="Abrir navegación">
+        <Button variant="ghost" size="icon" onClick={() => {
+            setNavegacionMontada(true);
+            setMobileOpen(true);
+          }}
+          aria-label="Abrir navegación">
           <Menu aria-hidden="true" />
         </Button>
         <Link href={withFilters("/resumen")} className="min-w-0 rounded-md">
@@ -293,48 +282,15 @@ export function ConsoleRail() {
         </span>
       </div>
 
-      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent side="left" className="w-72 overflow-y-auto p-3 md:hidden">
-          <SheetTitle className="px-2 pb-2 text-tf-meta font-semibold text-muted-foreground">Espacios</SheetTitle>
-          <nav aria-label="Navegación móvil" className="space-y-0.5">
-            {groups.map((entry, index) => (
-              <React.Fragment key={entry.group}>
-                {index > 0 && <span className="bg-border/70 my-2 block h-px" aria-hidden="true" />}
-                {entry.items.map((space) => {
-                  const Icon = space.icon;
-                  const active = activeKey === space.key;
-                  return (
-                    <Link
-                      key={space.key}
-                      href={withFilters(landingHref(space))}
-                      // Mismo evento, distinto origen: el cajón móvil se usa
-                      // sobre un diseño pensado para escritorio, y saber cuánto
-                      // pesa es la mitad de la decisión de invertir en él.
-                      onClick={() => {
-                        registrarEvento("espacio_abierto", {
-                          espacio: space.key,
-                          origen: "rail_movil",
-                        });
-                        setMobileOpen(false);
-                      }}
-                      aria-current={active ? "page" : undefined}
-                      className={cn(
-                        "flex items-center gap-2.5 rounded-md px-3 py-2 text-tf-body font-medium transition-colors",
-                        active
-                          ? "bg-primary/10 text-foreground"
-                          : "text-muted-foreground hover:bg-primary/5 hover:text-foreground",
-                      )}
-                    >
-                      <Icon className={cn("h-4 w-4 shrink-0", active && "text-primary")} aria-hidden="true" />
-                      {space.label}
-                    </Link>
-                  );
-                })}
-              </React.Fragment>
-            ))}
-          </nav>
-        </SheetContent>
-      </Sheet>
+      {navegacionMontada && (
+        <NavegacionMovil
+          open={mobileOpen}
+          onOpenChange={setMobileOpen}
+          groups={groups}
+          activeKey={activeKey}
+          withFilters={withFilters}
+        />
+      )}
     </>
   );
 }

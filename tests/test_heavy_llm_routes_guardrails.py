@@ -67,9 +67,9 @@ class TestExtractRechazaClavesDeSoloLectura:
     """
 
     def test_key_data_read_recibe_403(self, api_db, client) -> None:
-        from api.auth import create_api_key
+        from tests.claves import clave_de_prueba
 
-        raw = create_api_key("solo-lectura", scopes="data:read")
+        raw = clave_de_prueba("solo-lectura", scopes="data:read")
         resp = client.post(
             "/api/v1/licitaciones/ABC-123/ficha-pliego/extract",
             headers={"X-API-Key": raw},
@@ -83,9 +83,9 @@ class TestExtractRechazaClavesDeSoloLectura:
         extraer— sino que la respuesta ya no es 403: si lo fuera, el scope
         nuevo sería inalcanzable y el arreglo habría cerrado la ruta entera.
         """
-        from api.auth import create_api_key
+        from tests.claves import clave_de_prueba
 
-        raw = create_api_key("escritura", scopes="licitaciones:write")
+        raw = clave_de_prueba("escritura", scopes="licitaciones:write")
         resp = client.post(
             "/api/v1/licitaciones/ABC-123/ficha-pliego/extract",
             headers={"X-API-Key": raw},
@@ -94,9 +94,9 @@ class TestExtractRechazaClavesDeSoloLectura:
 
     def test_key_data_read_sigue_leyendo_la_ficha(self, api_db, client) -> None:
         """El arreglo no debe convertir el subárbol entero en escritura."""
-        from api.auth import create_api_key
+        from tests.claves import clave_de_prueba
 
-        raw = create_api_key("solo-lectura-get", scopes="data:read")
+        raw = clave_de_prueba("solo-lectura-get", scopes="data:read")
         resp = client.get(
             "/api/v1/licitaciones/ABC-123/ficha-pliego",
             headers={"X-API-Key": raw},

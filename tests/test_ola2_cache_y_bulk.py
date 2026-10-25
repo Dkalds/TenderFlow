@@ -30,9 +30,9 @@ def app_and_client(api_db, monkeypatch):
 
 @pytest.fixture()
 def api_key(app_and_client):
-    from api.auth import create_api_key
+    from tests.claves import clave_de_prueba
 
-    return create_api_key("ola2-test", scopes="*")
+    return clave_de_prueba("ola2-test", scopes="*")
 
 
 # ── OLA 2.1: Cache de respuestas de la API ───────────────────────────────────

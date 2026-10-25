@@ -220,9 +220,9 @@ def ask_client(api_db):
     from fastapi.testclient import TestClient
 
     from api.app import app
-    from api.auth import create_api_key
+    from tests.claves import clave_de_prueba
 
-    key = create_api_key("budget-test-key", scopes="ask:read")
+    key = clave_de_prueba("budget-test-key", scopes="ask:read")
     client = TestClient(app, raise_server_exceptions=False)
     client.headers.update({"X-API-Key": key})
     return client

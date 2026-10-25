@@ -59,8 +59,11 @@ el último apartado de [`DESIGN.md`](../DESIGN.md).
 
 Las pantallas del dashboard son `"use client"`, pero su primer dato puede
 pedirse en servidor y llegar hidratado al `QueryClient` del navegador. Patrón
-de referencia: `resumen` (con el ámbito de la URL) y `radar` (sin él); en los
-dos, una `page.tsx` de servidor envuelve la vista cliente. Piezas:
+de referencia: `resumen` (con el ámbito de la URL) y `radar` (sin él); lo
+siguen también `detalle` (ámbito, ventana de cierre y `?lic=`) y
+`oportunidades/[id]` (solo `GET /api/v1/organizations`: todo lo demás de la ficha depende
+de la organización activa, regla 2). En todas, una `page.tsx` de servidor
+envuelve la vista cliente. Piezas:
 `web/src/lib/server-prefetch.ts` (reglas y límites),
 `web/src/components/prefetch-servidor.tsx` y un módulo `_lib/prefetch` por ruta con
 sus consultas.
@@ -116,3 +119,11 @@ módulo compartido vive en uno propio y pequeño
 (`web/src/lib/claves-raiz.ts`, `web/src/lib/organization-store.ts`,
 `web/src/lib/forms/esquemas-acceso.ts`), y su techo en `web/bundle-budget.json`
 es el que avisa cuando alguien vuelve a colgarle uno grande.
+
+Lo mismo vale dentro del dashboard: importar `IndicadorOrden` de
+`web/src/components/ui/data-table.tsx` metía TanStack Table entero en /resumen y /detalle, y por
+eso vive en `web/src/components/ui/indicador-orden.tsx`. Lo que una pantalla carga solo al usarse
+(`next/dynamic` o `React.lazy`: editores, selectores dentro de menús, cajones,
+formularios poco usados) lo fija `web/src/__tests__/first-load-diferido.test.ts`,
+que falla si un import estático lo devuelve al First Load; el techo y el
+objetivo por ruta están en `web/bundle-budget.json`.

@@ -30,12 +30,27 @@ Un umbral fijo se elige una vez, se queda grande y deja de morder. El techo de
 ruta que adelgaza fija el techo nuevo, una que engorda falla. Es el mismo patrón
 que `check_inline_styles.py` y `check_title_attrs.py`.
 
+Un destino, no solo un freno
+----------------------------
+El techo impide engordar pero no dice adónde hay que llegar. Por eso el fichero
+lleva además ``objetivos``: ``{ruta: bytes}`` para las rutas con una bajada
+comprometida, y el motivo de cada cifra en ``_comentario_objetivos``. El
+objetivo no hace fallar la build —es un destino, no un techo—, pero el control
+lo valida (entero, de una ruta que existe y por debajo de su techo) y dice
+cuánto falta o que ya se alcanzó, que es cuando toca fijar el siguiente.
+``--update`` lo conserva: lo baja una persona, con su motivo, no la medición.
+
 Uso::
 
     cd web && npm run build          # escribe .next/diagnostics/
     python scripts/check_bundle_budget.py
     python scripts/check_bundle_budget.py --update   # baja los techos medidos
-    ANALYZE=true npm run build       # informes de @next/bundle-analyzer
+    cd web && npx next analyze --output  # qué módulos pesan en cada ruta
+
+``@next/bundle-analyzer`` (``ANALYZE=true npm run build``) no genera informe con
+Turbopack: lo avisa al arrancar y no escribe nada. El desglose por módulo sale
+de ``next analyze``; ``next analyze export --route <ruta>`` lo vuelca en JSON
+Lines (así se midió el 2026-10-25; resumen en ``docs/IMPROVEMENT_BACKLOG.md``).
 
 ``--update`` **solo baja**, así que no sirve para deshacer un techo editado a
 mano por debajo de lo real: para rehacer el fichero desde la medición hay que
@@ -78,31 +93,108 @@ def medir() -> dict[str, int]:
     }
 
 
-def _cargar_presupuesto() -> dict[str, int]:
+_COMENTARIO = (
+    "First Load JS por ruta, en bytes sin comprimir. Lo genera "
+    "`python scripts/check_bundle_budget.py --update` desde "
+    ".next/diagnostics/route-bundle-stats.json y SOLO PUEDE BAJAR: subir "
+    "un techo es aceptar una regresión de rendimiento, y eso se decide a "
+    "propósito, no de pasada."
+)
+
+
+def _leer() -> dict[str, object]:
     if not _PRESUPUESTO.exists():
         return {}
-    datos = json.loads(_PRESUPUESTO.read_text(encoding="utf-8"))
-    return {k: int(v) for k, v in datos.get("rutas", {}).items()}
+    datos: dict[str, object] = json.loads(_PRESUPUESTO.read_text(encoding="utf-8"))
+    return datos
+
+
+def _cargar_presupuesto() -> dict[str, int]:
+    rutas = _leer().get("rutas", {})
+    if not isinstance(rutas, dict):
+        raise SystemExit("`rutas` de web/bundle-budget.json tiene que ser un objeto {ruta: bytes}.")
+    return {str(k): int(v) for k, v in rutas.items()}
+
+
+def _cargar_objetivos() -> dict[str, object]:
+    """`{ruta: bytes}` de destino. Opcional: un fichero sin `objetivos` vale."""
+    objetivos = _leer().get("objetivos", {})
+    if not isinstance(objetivos, dict):
+        raise SystemExit(
+            "`objetivos` de web/bundle-budget.json tiene que ser un objeto {ruta: bytes}."
+        )
+    return {str(k): v for k, v in objetivos.items()}
+
+
+def _es_bytes(valor: object) -> bool:
+    return isinstance(valor, int) and not isinstance(valor, bool) and valor > 0
+
+
+def validar_objetivos(objetivos: dict[str, object], techos: dict[str, int]) -> list[str]:
+    """Errores de forma de los objetivos.
+
+    Un objetivo tiene que ser un entero positivo de bytes, de una ruta con techo
+    (si no, la ruta ya no existe o el nombre está mal escrito) y estar por debajo
+    de su techo: uno por encima ya estaría cumplido por construcción y no sería
+    un destino.
+    """
+    errores: list[str] = []
+    for ruta, objetivo in sorted(objetivos.items()):
+        if not _es_bytes(objetivo):
+            errores.append(
+                f"{ruta}: el objetivo tiene que ser un entero positivo de bytes ({objetivo!r})"
+            )
+            continue
+        assert isinstance(objetivo, int)
+        techo = techos.get(ruta)
+        if techo is None:
+            errores.append(
+                f"{ruta}: tiene objetivo pero no techo; la ruta ya no existe o está mal escrita"
+            )
+        elif objetivo > techo:
+            errores.append(
+                f"{ruta}: el objetivo ({objetivo / 1024:.0f} KB) está por encima del techo "
+                f"({techo / 1024:.0f} KB); un destino tiene que quedar por debajo"
+            )
+    return errores
+
+
+def progreso_objetivos(medido: dict[str, int], objetivos: dict[str, object]) -> list[str]:
+    """Una línea por objetivo: cuánto falta, o que se alcanzó y toca fijar otro."""
+    lineas: list[str] = []
+    for ruta, objetivo in sorted(objetivos.items()):
+        bytes_ = medido.get(ruta)
+        if bytes_ is None or not _es_bytes(objetivo):
+            continue
+        assert isinstance(objetivo, int)
+        if bytes_ <= objetivo:
+            lineas.append(
+                f"META   {ruta}: {bytes_ / 1024:.0f} KB, objetivo de {objetivo / 1024:.0f} KB "
+                "alcanzado; toca fijar el siguiente"
+            )
+        else:
+            lineas.append(
+                f"META   {ruta}: {bytes_ / 1024:.0f} KB, faltan {(bytes_ - objetivo) / 1024:.0f} KB "
+                f"para el objetivo de {objetivo / 1024:.0f} KB"
+            )
+    return lineas
 
 
 def _guardar_presupuesto(techos: dict[str, int]) -> None:
+    datos = _leer()
+    nuevo: dict[str, object] = {
+        "_comentario": datos.get("_comentario", _COMENTARIO),
+        "rutas": dict(sorted(techos.items())),
+    }
+    # Los objetivos los fija una persona, con su motivo: `--update` los
+    # conserva, salvo los de rutas que ya no existen (no medirían nada).
+    objetivos = datos.get("objetivos")
+    if isinstance(objetivos, dict):
+        if "_comentario_objetivos" in datos:
+            nuevo["_comentario_objetivos"] = datos["_comentario_objetivos"]
+        nuevo["objetivos"] = {r: v for r, v in sorted(objetivos.items()) if r in techos}
     _PRESUPUESTO.write_text(
-        json.dumps(
-            {
-                "_comentario": (
-                    "First Load JS por ruta, en bytes sin comprimir. Lo genera "
-                    "`python scripts/check_bundle_budget.py --update` desde "
-                    ".next/diagnostics/route-bundle-stats.json y SOLO PUEDE BAJAR: subir "
-                    "un techo es aceptar una regresión de rendimiento, y eso se decide a "
-                    "propósito, no de pasada."
-                ),
-                "rutas": dict(sorted(techos.items())),
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
-        + "\n",
-        encoding="utf-8",
+        json.dumps(nuevo, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
 
 
@@ -142,6 +234,9 @@ def main(argv: list[str]) -> int:
         )
         return 1
 
+    objetivos = _cargar_objetivos()
+    errores_objetivo = validar_objetivos(objetivos, techos)
+
     excesos: list[str] = []
     for ruta, bytes_ in sorted(medido.items()):
         techo = techos.get(ruta)
@@ -158,8 +253,12 @@ def main(argv: list[str]) -> int:
 
     for e in excesos:
         print(f"ERROR  {e}", file=sys.stderr)
+    for e in errores_objetivo:
+        print(f"ERROR  objetivo de {e}", file=sys.stderr)
+    for linea in progreso_objetivos(medido, objetivos):
+        print(linea)
     print(f"Presupuesto de bundle: {len(medido)} rutas medidas, {len(excesos)} por encima.")
-    return 1 if excesos else 0
+    return 1 if excesos or errores_objetivo else 0
 
 
 if __name__ == "__main__":

@@ -28,7 +28,7 @@ vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
 // `SeguirBoton` instancia también la fuente de cuentas, que pregunta por la
 // organización activa: en blanco, para que las respuestas en orden de este
 // fichero sigan siendo las de `/follows` (las cuentas tienen su propio test).
-vi.mock("@/hooks/use-cuentas", () => ({
+vi.mock("@/hooks/use-seguir-cuenta", () => ({
   useCuentaDeOrgano: () => ({ data: undefined, isPending: false }),
   useSeguirCuenta: () => ({ mutate: vi.fn(), isPending: false }),
   useDejarDeSeguirOrgano: () => ({ mutate: vi.fn(), isPending: false }),

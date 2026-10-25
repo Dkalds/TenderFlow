@@ -41,6 +41,8 @@ from db.database import (
 )
 from db.dlq import record_failure
 from observability import get_logger
+from observability.errores import ContadorDeErrores
+from observability.runtime_metrics import scraper_conector_errores_total
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -49,6 +51,12 @@ if TYPE_CHECKING:
     from services.dedupe import ReferenciaCruzada
 
 log = get_logger(__name__)
+
+#: ``scraper_conector_errores_total{paso}``: lo que el runner captura sin tumbar
+#: la ingesta (salud de la fuente, cierre del lote, aviso que no parsea…). El
+#: proceso es efímero: lo que alerta es el evento en ``ops_events`` que lee el
+#: healthcheck (``observability/errores.py``).
+_contar_error = ContadorDeErrores("scraper_conector", scraper_conector_errores_total)
 
 # Reintentos de un lote ante contención transitoria de Postgres (lock esperando
 # a otro writer, deadlock, serialization failure). Observado en producción:
@@ -98,7 +106,8 @@ def record_source_started(source_id: str) -> None:
 
         SourceHealthRepository().mark_started(source_id)
     except Exception:
-        log.debug("connector_source_health_start_failed", source=source_id, exc_info=True)
+        _contar_error("salud_inicio")
+        log.warning("connector_source_health_start_failed", source=source_id, exc_info=True)
 
 
 def record_source_health(
@@ -135,7 +144,8 @@ def record_source_health(
             cursor_value=str(cursor.get("last_seen_updated") or "") or None,
         )
     except Exception:
-        log.debug("connector_source_health_write_failed", source=source_id, exc_info=True)
+        _contar_error("salud_escritura")
+        log.warning("connector_source_health_write_failed", source=source_id, exc_info=True)
 
 
 def record_source_disabled(source_id: str, *, motivo: str) -> None:
@@ -166,7 +176,10 @@ def _record_source_completed(result: ConnectorRunResult) -> None:
             cursor_value=str(cursor.get("last_seen_updated") or "") or None,
         )
     except Exception:
-        log.debug("connector_source_health_finish_failed", source=result.source_id, exc_info=True)
+        # Sin esta fila el chequeo de frescura ve la fuente como caída aunque
+        # la pasada haya ido bien: best-effort, pero que se vea.
+        _contar_error("salud_fin")
+        log.warning("connector_source_health_finish_failed", source=result.source_id, exc_info=True)
 
 
 @dataclass
@@ -306,22 +319,25 @@ def _persist_documentos(
     pedir hasta que PLACSP re-publicara el expediente."""
     try:
         from db.repositories.documentos import DocumentosRepository
-
-        repo = DocumentosRepository()
-    except Exception as e:
-        log.warning("connector_documentos_persist_failed", source=source_id, error=str(e))
+    except ImportError:
+        # `DocumentosRepository()` no tiene estado que pueda fallar al crearse:
+        # lo único que puede romperse aquí es el import.
+        _contar_error("documentos")
+        log.warning("connector_documentos_persist_failed", source=source_id, exc_info=True)
         return
+    repo = DocumentosRepository()
     fallidas = 0
     for licitacion_id, refs in docs_por_lic.items():
         try:
             repo.upsert_meta(licitacion_id, refs)
-        except Exception as e:
+        except Exception:
             fallidas += 1
+            _contar_error("documentos")
             log.warning(
                 "connector_documentos_persist_failed",
                 source=source_id,
                 licitacion_id=licitacion_id,
-                error=str(e),
+                exc_info=True,
             )
     if fallidas:
         log.warning(
@@ -360,6 +376,7 @@ def _referencias_de(connector: Connector) -> Mapping[str, ReferenciaCruzada]:
     try:
         return dict(referencias())
     except Exception:
+        _contar_error("referencias")
         log.warning("connector_referencias_fallaron", source=connector.source_id, exc_info=True)
         return {}
 
@@ -424,7 +441,10 @@ def _completar_documentos(source_id: str, paso: Callable[[], object] | None) -> 
         with _cronometro(source_id, "documentos"):
             paso()
     except Exception as e:
-        log.warning("connector_completar_documentos_failed", source=source_id, error=str(e))
+        _contar_error("completar_documentos")
+        log.warning(
+            "connector_completar_documentos_failed", source=source_id, error=str(e), exc_info=True
+        )
 
 
 def _post_ingestion(
@@ -467,7 +487,10 @@ def _post_ingestion(
                 time_budget_s=HOOK_TIME_BUDGET_S,
             )
     except Exception as e:
-        log.warning("connector_entity_resolution_failed", source=source_id, error=str(e))
+        _contar_error("empresas")
+        log.warning(
+            "connector_entity_resolution_failed", source=source_id, error=str(e), exc_info=True
+        )
     try:
         from services.dedupe import detect_duplicates
 
@@ -480,7 +503,8 @@ def _post_ingestion(
         # todas las pasadas dejaba el run marcado como exitoso y sin ninguna
         # serie temporal donde se viera. El contador es lo alertable.
         _contar_dedupe_fallido(source_id)
-        log.warning("connector_dedupe_failed", source=source_id, error=str(e))
+        _contar_error("dedupe")
+        log.warning("connector_dedupe_failed", source=source_id, error=str(e), exc_info=True)
     if referencias:
         try:
             from services.dedupe import detect_duplicados_por_referencia
@@ -490,7 +514,13 @@ def _post_ingestion(
         except Exception as e:
             # Mismo trato que el dedupe de arriba: fail-open, pero contado.
             _contar_dedupe_fallido(source_id)
-            log.warning("connector_dedupe_referencias_failed", source=source_id, error=str(e))
+            _contar_error("dedupe_referencias")
+            log.warning(
+                "connector_dedupe_referencias_failed",
+                source=source_id,
+                error=str(e),
+                exc_info=True,
+            )
     _completar_documentos(source_id, completar_documentos)
     try:
         from services.contract_events import derive_new_events
@@ -498,13 +528,19 @@ def _post_ingestion(
         with _cronometro(source_id, "eventos_contrato"):
             derive_new_events()
     except Exception as e:
-        log.warning("connector_contract_events_failed", source=source_id, error=str(e))
+        _contar_error("eventos_contrato")
+        log.warning(
+            "connector_contract_events_failed", source=source_id, error=str(e), exc_info=True
+        )
+    # `signal_cache_invalidation` no lanza (captura y avisa de lo suyo): lo único
+    # que puede fallar aquí es el import.
     try:
         from shared.cache_signal import signal_cache_invalidation
-
+    except ImportError:
+        _contar_error("senal_cache")
+        log.warning("connector_cache_signal_failed", source=source_id, exc_info=True)
+    else:
         signal_cache_invalidation()
-    except Exception:
-        log.debug("connector_cache_signal_failed", source=source_id)
 
 
 def resolver_lotes_adjudicaciones(
@@ -667,7 +703,11 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
             try:
                 parsed = connector.parse(raw)
             except Exception as e:
+                # Un aviso que no parsea va a la DLQ y no para el resto. El
+                # contador es lo que distingue «un aviso raro» de «el parser ya
+                # no entiende el formato»: lo segundo falla en todos.
                 result.errores += 1
+                _contar_error("parse")
                 record_failure(None, source_id, e, scope="parse", payload_ref=raw.natural_id)
                 continue
             if parsed is None:
@@ -712,8 +752,9 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         # en el momento del fallo -- la próxima corrida no reinicia desde cero.
         result.errores += 1
         result.fetch_failed = True
+        _contar_error("fetch")
         record_failure(None, source_id, e, scope="fetch")
-        log.error("connector_run_failed", source=source_id, error=str(e))
+        log.error("connector_run_failed", source=source_id, error=str(e), exc_info=True)
         _record_source_completed(result)
         return result
 
@@ -760,7 +801,8 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         try:
             result.detalles.update(contadores())
         except Exception:
-            log.debug("connector_contadores_fallaron", source=source_id, exc_info=True)
+            _contar_error("contadores_descarte")
+            log.warning("connector_contadores_fallaron", source=source_id, exc_info=True)
 
     log.info("connector_run_done", **result.as_dict())
     _record_source_completed(result)

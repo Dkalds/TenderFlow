@@ -99,7 +99,7 @@ import { useEtiquetas, useEtiquetasDe } from "@/hooks/use-etiquetas";
 import { useOrganizationMembers } from "@/hooks/use-organization";
 import { usePursuitChecklist } from "@/hooks/use-pursuit-checklist";
 import { usePursuitKit } from "@/hooks/use-pursuit-kit";
-import OpportunityDetailPage from "../page";
+import { FichaOportunidad as OpportunityDetailPage } from "../_components/ficha-view";
 
 const PURSUIT = {
   id: 9,

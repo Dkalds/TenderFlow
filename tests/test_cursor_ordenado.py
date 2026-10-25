@@ -14,6 +14,8 @@ from typing import Any, ClassVar
 import pytest
 from fastapi import HTTPException
 
+from shared.dto import FiltrosLicitacion
+
 
 class _Cursor:
     description: ClassVar[list[tuple[str]]] = [("x",)]
@@ -118,7 +120,7 @@ def test_en_la_cola_de_nulos_solo_avanza_el_id(sentencias: list[Any]) -> None:
 
 
 def test_titulo_ascendente_primera_pagina(sentencias: list[Any]) -> None:
-    _repo().list_cursor(sort="titulo", limit=25, ccaa="Madrid")
+    _repo().list_cursor(FiltrosLicitacion(ccaa="Madrid"), sort="titulo", limit=25)
     ((sql, params),) = sentencias
     assert "ORDER BY licitaciones.titulo ASC NULLS LAST, licitaciones.id_externo ASC" in sql
     assert "Madrid" in params
@@ -126,7 +128,7 @@ def test_titulo_ascendente_primera_pagina(sentencias: list[Any]) -> None:
 
 
 def test_el_total_cuenta_el_mismo_universo(sentencias: list[Any]) -> None:
-    total = _repo().count_cursor(ccaa="Madrid", importe_min=10.0)
+    total = _repo().count_cursor(FiltrosLicitacion(ccaa="Madrid", importe_min=10.0))
     ((sql, params),) = sentencias
     assert total == 7
     assert sql.startswith("SELECT count(*)")

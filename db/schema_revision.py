@@ -51,7 +51,6 @@ el proceso termina en cuanto imprime: no quedan hilos del pool que esperar.
 
 from __future__ import annotations
 
-import re
 import sys
 from collections.abc import Callable, Collection
 from dataclasses import dataclass
@@ -71,12 +70,6 @@ _LOGGER = "db.schema_revision"
 _log = get_logger(_LOGGER)
 
 ALEMBIC_DIR = Path(__file__).resolve().parent / "alembic"
-
-# `redact_dsn` redacta la contraseña de un DSN `postgresql://`, pero no la de la
-# forma con driver (`postgresql+psycopg://`) que construye `revisiones_aplicadas` para
-# SQLAlchemy. Un mensaje de error que la arrastrase dejaría la contraseña en el
-# log del run, y los secrets de Actions solo se enmascaran con su valor exacto.
-_DSN_CON_DRIVER = re.compile(r"(postgres(?:ql)?\+[\w.]+://[^:/?#@\s]+:)[^@/?#\s]+(@)")
 
 _FuenteUrl = Callable[[], str]
 _FuenteRepo = Callable[[], tuple[tuple[str, ...], tuple[str, ...]]]
@@ -240,7 +233,7 @@ def _describir(exc: BaseException) -> str:
     daría un motivo vacío).
     """
     texto = " ".join(f"{type(exc).__name__}: {exc}".split())
-    return _DSN_CON_DRIVER.sub(r"\1***\2", redact_dsn(texto))
+    return redact_dsn(texto)
 
 
 def diagnosticar(

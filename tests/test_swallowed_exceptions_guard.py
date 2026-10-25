@@ -189,18 +189,10 @@ def _scan_files(paths: list[Path]) -> set[str]:
 
 _LEGITIMATE_SILENT: frozenset[str] = frozenset(
     {
-        # Cierre del pool en shutdown: si `close()` falla, el proceso está
-        # terminando de todos modos y no hay nadie que lea el log.
-        "db/connection.py::_close_pg_pool",
-        "db/connection.py::_PgConnAdapter.close",
-        # Devolver la conexión al pool, con `close()` como último recurso. Ruta
-        # caliente por request; loguear aquí sería ruido en cada fallo de red
-        # que el propio pool ya reintenta.
-        "db/connection.py::_return_pg_connection",
-        # El fallback está en el contrato de la función ("devuelve conjunto
-        # vacío si la tabla no existe o no se puede inspeccionar"): quien la
-        # llama distingue el caso vacío, no queda enmascarado.
-        "db/connection.py::get_table_columns",
+        # Las cuatro de `db/connection.py` (`_close_pg_pool`,
+        # `_PgConnAdapter.close`, `_return_pg_connection`, `get_table_columns`)
+        # salieron el 2026-10-25: se estrecharon a `psycopg.Error` o cuentan en
+        # `db_connection_errores_total`.
         # Probes de disponibilidad: el `return False` ES el resultado que el
         # llamante espera, no un fallback que oculte un fallo.
         "db/search_backend.py::PgTsBackend.available",

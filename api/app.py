@@ -52,6 +52,7 @@ from api.middleware import (
     _MaxBodyMiddleware,
     _RejectNulMiddleware,
 )
+from api.routes.admin_api_keys import router as admin_api_keys_router
 from api.routes.admin_dlq import router as admin_dlq_router
 from api.routes.admin_ejecuciones import router as admin_ejecuciones_router
 from api.routes.admin_revision import router as admin_revision_router
@@ -531,6 +532,7 @@ if not _ES_WORKER:
     app.include_router(saved_filters_router, prefix="/api/v1")
     app.include_router(notifications_router, prefix="/api/v1")
     app.include_router(admin_users_router, prefix="/api/v1")
+    app.include_router(admin_api_keys_router, prefix="/api/v1")
     app.include_router(admin_solicitudes_router, prefix="/api/v1")
     app.include_router(admin_dlq_router, prefix="/api/v1")
     app.include_router(admin_ejecuciones_router, prefix="/api/v1")

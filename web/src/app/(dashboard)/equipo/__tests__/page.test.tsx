@@ -26,7 +26,7 @@ vi.mock("next/navigation", () => import("@/test/navegacion-superficial"));
 vi.mock("@/components/layout/space-shell", () => ({
   SpaceShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
-vi.mock("../_components/crear-organizacion-form", () => ({ CrearOrganizacionForm: () => null }));
+vi.mock("../_components/crear-organizacion", () => ({ CrearOrganizacion: () => null }));
 vi.mock("../_components/invitaciones-pendientes", () => ({ InvitacionesPendientes: () => null }));
 vi.mock("../_components/matriz-permisos", () => ({ MatrizPermisos: () => null }));
 vi.mock("../_components/miembros-card", () => ({ MiembrosCard: () => <p>miembros</p> }));

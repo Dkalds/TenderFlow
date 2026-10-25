@@ -1,0 +1,368 @@
+"""Los errores capturados en los módulos calientes cuentan y pueden alertar.
+
+``observability/errores.py`` da a cada módulo un ``<modulo>_errores_total{paso}``
+y un evento ``error_capturado:<modulo>:<paso>`` en ``ops_events``. Aquí se
+comprueba el helper, que el umbral es el mismo en Prometheus y en el
+healthcheck, y que cada camino instrumentado incrementa su contador.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+yaml = pytest.importorskip("yaml")
+prometheus_client = pytest.importorskip("prometheus_client")
+
+_RULES = Path(__file__).resolve().parent.parent / "observability" / "alert_rules.yml"
+
+
+def _valor(metrica: str, paso: str) -> float:
+    valor = prometheus_client.REGISTRY.get_sample_value(metrica, {"paso": paso})
+    return float(valor or 0.0)
+
+
+def _eventos(prefijo: str) -> list[dict[str, Any]]:
+    import observability.ops_events as oe
+
+    with oe._lock:
+        return [e for e in oe._buffer if str(e["event_type"]).startswith(prefijo)]
+
+
+# ── El helper ────────────────────────────────────────────────────────────────
+
+
+def test_el_contador_suma_por_paso_y_deja_el_evento() -> None:
+    from observability.errores import ContadorDeErrores
+    from observability.runtime_metrics import db_connection_errores_total
+
+    contar = ContadorDeErrores("db_connection", db_connection_errores_total)
+    antes = _valor("db_connection_errores_total", "prueba_helper")
+
+    contar("prueba_helper")
+
+    assert _valor("db_connection_errores_total", "prueba_helper") == antes + 1
+    eventos = _eventos("error_capturado:db_connection:prueba_helper")
+    assert len(eventos) == 1
+    assert eventos[0]["value"] == 1.0
+
+
+def test_los_eventos_tienen_tope_por_paso_pero_el_contador_no() -> None:
+    """Diez mil documentos fallando igual no son diez mil filas de ops_events."""
+    from observability import errores
+    from observability.runtime_metrics import db_connection_errores_total
+
+    contar = errores.ContadorDeErrores("db_connection", db_connection_errores_total)
+    antes = _valor("db_connection_errores_total", "prueba_tope")
+    veces = errores._TOPE_EVENTOS_POR_PASO + 7
+
+    for _ in range(veces):
+        contar("prueba_tope")
+
+    assert _valor("db_connection_errores_total", "prueba_tope") == antes + veces
+    eventos = _eventos("error_capturado:db_connection:prueba_tope")
+    assert len(eventos) == errores._TOPE_EVENTOS_POR_PASO
+    assert errores._TOPE_EVENTOS_POR_PASO > errores.UMBRAL_REPETIDO
+
+
+def test_errores_repetidos_aplica_el_umbral_y_quita_el_prefijo() -> None:
+    from observability.errores import UMBRAL_REPETIDO, errores_repetidos
+
+    conteos = {
+        "write_slow": 99,
+        "error_capturado:scraper_conector:dedupe": UMBRAL_REPETIDO,
+        "error_capturado:pipeline_runs:avisos_competidores": UMBRAL_REPETIDO - 1,
+    }
+
+    assert errores_repetidos(conteos) == {"scraper_conector:dedupe": UMBRAL_REPETIDO}
+
+
+# ── Las reglas de Prometheus ─────────────────────────────────────────────────
+
+
+def _reglas_del_grupo(nombre: str) -> dict[str, dict[str, Any]]:
+    data = yaml.safe_load(_RULES.read_text(encoding="utf-8"))
+    for group in data["groups"]:
+        if group["name"] == nombre:
+            return {r["alert"]: r for r in group["rules"]}
+    raise AssertionError(f"alert_rules.yml sin el grupo {nombre}")
+
+
+def test_solo_hay_regla_para_los_contadores_que_la_api_emite() -> None:
+    """Los de los procesos efímeros serían alertas muertas: los vigila el healthcheck."""
+    reglas = _reglas_del_grupo("errores_capturados")
+    exprs = " ".join(r["expr"] for r in reglas.values())
+
+    assert set(reglas) == {"DbConnectionErroresCapturados", "LlmClientErroresCapturados"}
+    assert "db_connection_errores_total" in exprs
+    assert "llm_client_errores_total" in exprs
+    for efimero in (
+        "scraper_conector_errores_total",
+        "pipeline_runs_errores_total",
+        "documentos_embeddings_errores_total",
+    ):
+        assert efimero not in exprs
+
+
+@pytest.mark.parametrize("alerta", ["DbConnectionErroresCapturados", "LlmClientErroresCapturados"])
+def test_la_regla_usa_el_umbral_del_codigo(alerta: str) -> None:
+    """El umbral vive en dos sitios (Python y la regla); si cambia uno, mienten."""
+    from observability.errores import UMBRAL_REPETIDO
+
+    regla = _reglas_del_grupo("errores_capturados")[alerta]
+    assert regla["expr"].rstrip().endswith(f">= {UMBRAL_REPETIDO}")
+    assert "sum by (paso)" in regla["expr"]
+    assert regla["annotations"]["summary"]
+
+
+# ── db/connection.py ─────────────────────────────────────────────────────────
+
+
+def test_un_ping_fallido_cuenta(monkeypatch: pytest.MonkeyPatch) -> None:
+    import db.connection as conn_mod
+
+    def _caida() -> Iterator[Any]:
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(conn_mod, "connect_read", _caida)
+    antes = _valor("db_connection_errores_total", "ping")
+
+    assert conn_mod.ping() is False
+
+    assert _valor("db_connection_errores_total", "ping") == antes + 1
+
+
+def test_devolver_una_conexion_que_el_pool_rechaza_cuenta_y_la_cierra() -> None:
+    import db.connection as conn_mod
+
+    pool = MagicMock()
+    pool.putconn.side_effect = ValueError("it doesn't come from any pool")
+    raw = MagicMock()
+    adapter = conn_mod._PgConnAdapter(raw, pool=pool)
+    antes = _valor("db_connection_errores_total", "devolver_conexion")
+
+    conn_mod._return_pg_connection(adapter)
+
+    assert _valor("db_connection_errores_total", "devolver_conexion") == antes + 1
+    raw.close.assert_called_once()
+
+
+def test_get_table_columns_solo_absorbe_errores_de_la_base() -> None:
+    """Un ``psycopg.Error`` cae al fallback; un bug propio ya no se disfraza de «sin columnas»."""
+    import psycopg
+
+    import db.connection as conn_mod
+
+    rota = MagicMock()
+    rota.execute.side_effect = psycopg.OperationalError("relation does not exist")
+    assert conn_mod.get_table_columns(rota, "tabla") == set()
+
+    con_bug = MagicMock()
+    con_bug.execute.side_effect = TypeError("bug")
+    with pytest.raises(TypeError):
+        conn_mod.get_table_columns(con_bug, "tabla")
+
+
+# ── llm/client.py ────────────────────────────────────────────────────────────
+
+
+def test_un_candidato_que_lanza_antes_del_primer_token_cuenta(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for var in ("NVIDIA_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")  # pragma: allowlist secret
+
+    def roto(system: Any, messages: Any, model: Any, api_key: Any, **kw: Any) -> Iterator[str]:
+        raise RuntimeError("410 Gone")
+        yield  # pragma: no cover
+
+    def sano(system: Any, messages: Any, model: Any, api_key: Any, **kw: Any) -> Iterator[str]:
+        yield "ok"
+
+    antes = _valor("llm_client_errores_total", "modelo_fallido")
+    with (
+        patch("llm.providers.openai_provider.stream", roto),
+        patch("llm.providers.anthropic_provider.stream", sano),
+    ):
+        from llm.client import stream_llm_response
+
+        assert list(stream_llm_response("pregunta de prueba", [], "gpt-4o-mini", [])) == ["ok"]
+
+    assert _valor("llm_client_errores_total", "modelo_fallido") == antes + 1
+
+
+def test_un_presupuesto_que_no_se_alimenta_cuenta() -> None:
+    from llm.client import _PRICE_PER_MTOK, _record_usage
+
+    modelo = next(iter(_PRICE_PER_MTOK))
+    guard = MagicMock()
+    guard.record.side_effect = RuntimeError("redis caído")
+    antes = _valor("llm_client_errores_total", "presupuesto")
+
+    with patch("llm.budget.get_budget_guard", return_value=guard):
+        _record_usage(modelo, "openai", {"input_tokens": 100, "output_tokens": 10})
+
+    assert _valor("llm_client_errores_total", "presupuesto") == antes + 1
+
+
+# ── scraper/connectors/base.py ───────────────────────────────────────────────
+
+
+def test_un_paso_del_cierre_que_falla_cuenta_y_el_resto_sigue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scraper.connectors import base
+
+    llamados: list[str] = []
+
+    def _roto(**_: object) -> None:
+        raise RuntimeError("dedupe roto")
+
+    monkeypatch.setattr("services.entity_resolution.resolve_all_unlinked", lambda **_: None)
+    monkeypatch.setattr("services.dedupe.detect_duplicates", _roto)
+    monkeypatch.setattr(
+        "services.contract_events.derive_new_events", lambda: llamados.append("eventos")
+    )
+    monkeypatch.setattr("shared.cache_signal.signal_cache_invalidation", lambda: None)
+    antes = _valor("scraper_conector_errores_total", "dedupe")
+
+    base._post_ingestion("pscp")
+
+    assert _valor("scraper_conector_errores_total", "dedupe") == antes + 1
+    assert llamados == ["eventos"]
+    assert _eventos("error_capturado:scraper_conector:dedupe")
+
+
+def test_el_paso_de_documentos_que_falla_cuenta() -> None:
+    from scraper.connectors import base
+
+    def _roto() -> None:
+        raise RuntimeError("plataforma caída")
+
+    antes = _valor("scraper_conector_errores_total", "completar_documentos")
+
+    base._completar_documentos("pscp", _roto)
+
+    assert _valor("scraper_conector_errores_total", "completar_documentos") == antes + 1
+
+
+def test_la_salud_de_la_fuente_que_no_se_escribe_cuenta(monkeypatch: pytest.MonkeyPatch) -> None:
+    from db.repositories.source_health import SourceHealthRepository
+    from scraper.connectors import base
+
+    def _caida(self: object, source_id: str) -> None:
+        raise RuntimeError("BD caída")
+
+    monkeypatch.setattr(SourceHealthRepository, "mark_started", _caida)
+    antes = _valor("scraper_conector_errores_total", "salud_inicio")
+
+    base.record_source_started("pscp")
+
+    assert _valor("scraper_conector_errores_total", "salud_inicio") == antes + 1
+
+
+# ── scheduler/pipeline_runs.py ───────────────────────────────────────────────
+
+
+def test_un_export_analitico_roto_cuenta(monkeypatch: pytest.MonkeyPatch) -> None:
+    from scheduler import pipeline_runs
+
+    def _roto() -> None:
+        raise RuntimeError("duckdb sin postgres_scanner")
+
+    monkeypatch.setattr("db.analytics.run_analytics_export", _roto)
+    antes = _valor("pipeline_runs_errores_total", "analytics_export")
+
+    pipeline_runs._run_analytics_export()
+
+    assert _valor("pipeline_runs_errores_total", "analytics_export") == antes + 1
+    assert _eventos("error_capturado:pipeline_runs:analytics_export")
+
+
+def test_un_aviso_secundario_roto_cuenta_y_los_demas_corren(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scheduler import pipeline_runs
+
+    corridos: list[str] = []
+
+    def _roto() -> None:
+        raise RuntimeError("smtp caído")
+
+    monkeypatch.setattr("scheduler.watchlist_alerts.check_and_notify", lambda: None)
+    monkeypatch.setattr("scheduler.competitor_alerts.check_and_notify", _roto)
+    monkeypatch.setattr(
+        "scheduler.watchlist_rules_alerts.check_rules_and_notify",
+        lambda: corridos.append("reglas"),
+    )
+    monkeypatch.setattr(
+        "services.deadline_reminders.check_all_users_deadlines",
+        lambda: corridos.append("plazos"),
+    )
+    monkeypatch.setattr(
+        "services.pursuit_awards.notify_detected_awards",
+        lambda: corridos.append("adjudicaciones"),
+    )
+    antes = _valor("pipeline_runs_errores_total", "avisos_competidores")
+
+    pipeline_runs._run_watchlist_notify()
+
+    assert _valor("pipeline_runs_errores_total", "avisos_competidores") == antes + 1
+    assert corridos == ["reglas", "plazos", "adjudicaciones"]
+
+
+def test_el_aviso_de_un_paso_roto_que_no_sale_cuenta(monkeypatch: pytest.MonkeyPatch) -> None:
+    from scheduler import pipeline_runs
+
+    def _roto(*_: object, **__: object) -> None:
+        raise RuntimeError("buzón caído")
+
+    monkeypatch.setattr("observability.alerts.notify", _roto)
+    antes = _valor("pipeline_runs_errores_total", "aviso_paso")
+
+    pipeline_runs._notify_step_failure("dlq_retry", RuntimeError("roto"))
+
+    assert _valor("pipeline_runs_errores_total", "aviso_paso") == antes + 1
+
+
+# ── scheduler/jobs/documentos_embeddings.py ──────────────────────────────────
+
+
+def _revivir(mod: Any, repo: Any) -> None:
+    mod._revivir_descargas_fallidas(repo)
+
+
+def _paginas(mod: Any, repo: Any) -> None:
+    mod._paginas_del_documento(repo, 7)
+
+
+def _marcar_error(mod: Any, repo: Any) -> None:
+    mod._marcar_error_inesperado(repo, {"id": 7}, ValueError("bytes NUL"))
+
+
+@pytest.mark.parametrize(
+    ("paso", "llamar"),
+    [
+        ("fetch_revivir", _revivir),
+        ("embed_paginas", _paginas),
+        ("fetch_marcar_error", _marcar_error),
+    ],
+)
+def test_las_fases_de_pliegos_cuentan_lo_que_capturan(paso: str, llamar: Any) -> None:
+    from scheduler.jobs import documentos_embeddings as mod
+
+    repo = MagicMock()
+    repo.revivir_descargas_fallidas.side_effect = RuntimeError("consulta caída")
+    repo.list_pages.side_effect = RuntimeError("consulta caída")
+    repo.mark_error.side_effect = RuntimeError("consulta caída")
+    antes = _valor("documentos_embeddings_errores_total", paso)
+
+    llamar(mod, repo)
+
+    assert _valor("documentos_embeddings_errores_total", paso) == antes + 1
+    assert _eventos(f"error_capturado:documentos_embeddings:{paso}")

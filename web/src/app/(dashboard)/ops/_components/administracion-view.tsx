@@ -17,8 +17,9 @@
  * - La **cola de errores** se fue a Ejecuciones, con el resto de lo que falla.
  * - Las **claves de API** que había aquí eran las del propio administrador,
  *   rotuladas como «de la instancia», leídas con una forma que la API no
- *   devuelve y con un botón que respondía siempre 400. La pantalla que funciona
- *   está en Ajustes; aquí queda el camino.
+ *   devuelve y con un botón que respondía siempre 400. Desde 2026-10 la
+ *   tarjeta sí es de la instancia (`GET /admin/api-keys`): todas las claves,
+ *   también las que no tienen dueño, con revocación confirmada.
  * - La tarjeta de **webhooks** con alta y borrado operaba sobre la organización
  *   de quien la miraba: era Equipo › Integraciones con otro título. Queda la
  *   lista global de la instancia, que es lo que solo se puede ver desde aquí.
@@ -29,10 +30,10 @@
  */
 
 import * as React from "react";
-import { EnlaceIr, Panel, PanelTitle } from "@/components/console/panel";
 import { Separator } from "@/components/ui/separator";
 import { AdminGuard } from "@/components/admin-guard";
 import { SolicitudesAccesoCard } from "./solicitudes-acceso-card";
+import { ClavesInstanciaCard } from "./administracion/claves-instancia-card";
 import { FeatureFlagsCard } from "./administracion/feature-flags-card";
 import { UsuariosCard } from "./administracion/usuarios-card";
 import { WebhooksGlobales } from "./webhooks-view";
@@ -62,7 +63,7 @@ function AdministracionContent({ ancla }: { ancla?: string }) {
       <div>
         <h1 className="sr-only">Administración</h1>
         <p className="text-tf-meta text-muted-foreground">
-          Solicitudes de acceso, usuarios, feature flags y webhooks de la instancia.
+          Solicitudes de acceso, usuarios, claves de API, feature flags y webhooks de la instancia.
         </p>
       </div>
 
@@ -73,13 +74,7 @@ function AdministracionContent({ ancla }: { ancla?: string }) {
 
       <UsuariosCard />
 
-      <Panel>
-        <PanelTitle as="h2" title="Claves de API" />
-        <p className="mb-2 max-w-prose text-tf-meta text-muted-foreground">
-          Cada persona crea, rota y revoca las suyas. Desactivar a un usuario revoca las que tuviera.
-        </p>
-        <EnlaceIr href="/ajustes?vista=claves">Tus claves, en Ajustes</EnlaceIr>
-      </Panel>
+      <ClavesInstanciaCard />
 
       <Separator />
 

@@ -30,7 +30,7 @@ from typing import Any
 from shared.dates import a_fecha
 from shared.dto import ExpectedAward
 
-# `ExpectedAward` vive en `shared/dto.py` porque es contrato API↔web
+# `ExpectedAward` vive en `shared/dto/` porque es contrato API↔web
 # (invariante 5) y `shared` no puede importar de `services`. Aquí sólo
 # está la regla que decide si se publica y con qué números.
 __all__ = ["estimar_adjudicacion"]

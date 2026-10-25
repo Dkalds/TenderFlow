@@ -20,7 +20,6 @@ Las licitaciones de seed se identifican por fuente='seed' y llevan el prefijo
 from __future__ import annotations
 
 import argparse
-import secrets
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -469,7 +468,6 @@ def step_usuario_demo() -> tuple[int, str]:
     """
     import argon2
 
-    from db.database import connect
     from db.users import create_user, get_user_by_email
 
     email = "demo@tenderflow.dev"
@@ -487,19 +485,13 @@ def step_usuario_demo() -> tuple[int, str]:
         )
         print(f"[seed] Usuario demo creado (id={user_id}, email={email})")
 
-    # Crear API key
-    raw_key = f"tf_dev_{secrets.token_urlsafe(24)}"
-    import hashlib
+    # Crear API key. Por `create_api_key`, el único camino que emite claves:
+    # el INSERT a mano que había aquí la dejaba sin dueño y sin caducidad, y
+    # con SHA-256 plano, que no casa si `API_HMAC_SECRET` está definido. El
+    # scope `*` es el que le daba el default de la columna.
+    from api.auth import create_api_key
 
-    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
-    with connect() as c:
-        from db.database import now_utc_iso
-
-        c.execute(
-            "INSERT INTO api_keys (key_hash, name, created_at, is_active) "
-            "VALUES (%s, %s, %s, 1) ON CONFLICT (key_hash) DO NOTHING",
-            (key_hash, "seed-demo-key", now_utc_iso()),
-        )
+    raw_key = create_api_key("seed-demo-key", user_id=user_id, scopes="*")
     print(f"[seed] API key demo: {raw_key}")
     return user_id, raw_key
 

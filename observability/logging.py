@@ -45,7 +45,8 @@ _SENSITIVE_ENV_VARS = (
 # Password embebida en un DSN Postgres/Supabase (el tramo entre el ':' del usuario
 # y el '@' del host). Se redacta aunque el DSN no coincida con el valor cacheado en
 # env (p.ej. reformateado por psycopg/SQLAlchemy dentro de un mensaje de error).
-_DSN_PASSWORD_RE = re.compile(r"(postgres(?:ql)?://[^:/?#@\s]+:)[^@/?#\s]+(@)")
+# Con o sin driver: SQLAlchemy construye `postgresql+psycopg://…`.
+_DSN_PASSWORD_RE = re.compile(r"(postgres(?:ql)?(?:\+[\w.]+)?://[^:/?#@\s]+:)[^@/?#\s]+(@)")
 
 
 def redact_dsn(text: str) -> str:

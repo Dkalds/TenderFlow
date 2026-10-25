@@ -31,7 +31,7 @@ vi.mock("@/lib/filters", () => ({
 // `fetch` falso de este fichero —respuestas sin cabeceras, pensadas para el
 // ranking y el drill-down— no sabe contestar. Se prueba en `use-seguimiento`.
 vi.mock("@/hooks/use-organization", () => ({ usePuedeEscribir: () => false }));
-vi.mock("@/hooks/use-cuentas", () => ({
+vi.mock("@/hooks/use-seguir-cuenta", () => ({
   useCuentaDeOrgano: () => ({ data: null, isPending: false }),
 }));
 

@@ -109,10 +109,10 @@ plano B sigue sin receptor.**
 
 ---
 
-## 2. Las diez reglas y por dónde sale cada una
+## 2. Las reglas y por dónde sale cada una
 
-`observability/alert_rules.yml` define **10 reglas en 5 grupos** (conteo del
-2026-09-06). El enrutado sale de `observability/alertmanager.yml`: receptor por
+`observability/alert_rules.yml` define las reglas de la tabla, agrupadas como
+dice la columna «Grupo». El enrutado sale de `observability/alertmanager.yml`: receptor por
 defecto `email`; el `Watchdog` se desvía a `webhook` y corta (`continue:
 false`); `severity = critical` casa dos rutas seguidas (`continue: true`), así
 que va a los dos canales; y todo lo demás cae al receptor por defecto.
@@ -129,8 +129,24 @@ que va a los dos canales; y todo lo demás cae al receptor por defecto.
 | `PgWriteLatencyHigh` | `postgres_pool_alerts` | `warning` | sí | no |
 | `PgReadLatencyHigh` | `postgres_pool_alerts` | `warning` | sí | no |
 | `PgConcurrentWritersHigh` | `postgres_pool_alerts` | `warning` | sí | no |
+| `DbConnectionErroresCapturados` | `errores_capturados` | `warning` | sí | no |
+| `LlmClientErroresCapturados` | `errores_capturados` | `warning` | sí | no |
+| `ApiLatencyP99High` | `api_latency` | `warning` | sí | no |
+| `PublicSurfaceSlow` | `api_latency` | `warning` | sí | no |
+| `DomainEventsBacklogHigh` | `domain_events` | `warning` | sí | no |
 
-Nueve de las diez llegan al correo; el `Watchdog` es la única que no, y a
+Las dos de `errores_capturados` cuentan los `except Exception` que
+`db/connection.py` y `llm/client.py` capturan sin propagar
+(`<modulo>_errores_total{paso}`, ver `observability/errores.py`): saltan cuando
+el mismo paso suma 5 o más en una hora. Los mismos contadores de
+`scraper/connectors/base.py`, `scheduler/pipeline_runs.py` y
+`scheduler/jobs/documentos_embeddings.py` viven en procesos efímeros y no tienen
+regla aquí; salen por el plano A, como aviso `errores_capturados:<modulo>:<paso>:<n>`
+del healthcheck (check `ops_events_errores_capturados`), con el mismo umbral
+sobre la ventana de 6 h de `ops_events`. El traceback está en el log del
+proceso, con el evento del paso y `exc_info`.
+
+Todas menos el `Watchdog` llegan al correo; el `Watchdog` no, y a
 propósito (§3). Dos —las `critical`— llegan por los dos canales, que es lo que
 hace que un incidente grave no dependa de un solo transporte.
 

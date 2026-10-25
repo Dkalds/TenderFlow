@@ -340,6 +340,23 @@ def _clear_service_data_caches():
     clear_scoring_signals_cache()
 
 
+@pytest.fixture(autouse=True)
+def _vacia_buffer_ops_events():
+    """Empieza cada test con el buffer de ``ops_events`` vacío.
+
+    Los caminos de error que un test ejercita dejan eventos en el buffer en
+    memoria (``observability.errores.ContadorDeErrores``), y el siguiente
+    ``connect()`` con commit los vuelca a la base del test que toque: un test de
+    healthcheck que espera ``ops_events_6h == {}`` vería los de otro.
+    """
+    import observability.errores as errores
+    import observability.ops_events as ops_events
+
+    with ops_events._lock:
+        ops_events._buffer.clear()
+    errores._reiniciar_para_tests()
+
+
 # ── Backend de la suite: Postgres (único motor, ADR-021) ────────────────────
 #
 # ``TEST_DATABASE_URL`` es **obligatoria**: las fixtures ``tmp_db`` y ``api_db``
@@ -938,9 +955,9 @@ def api_key(api_db):
     para que las pruebas de validación, respuesta y dominio no dependan de la
     taxonomía concreta de scopes de cada ruta.
     """
-    from api.auth import create_api_key
+    from tests.claves import clave_de_prueba
 
-    return create_api_key("test-key", scopes="*")
+    return clave_de_prueba("test-key", scopes="*")
 
 
 @pytest.fixture(autouse=True)

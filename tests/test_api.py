@@ -244,11 +244,12 @@ class TestCursorPagination:
 class TestApiKeyExpiration:
     def test_expired_key_returns_401(self, client, api_db):
         """Una API key con expires_at en el pasado devuelve 401."""
-        from api.auth import create_api_key, hash_api_key
+        from api.auth import hash_api_key
         from db.connection import close_pool
         from db.database import connect
+        from tests.claves import clave_de_prueba
 
-        raw = create_api_key("expiring-key")
+        raw = clave_de_prueba("expiring-key")
         key_hash = hash_api_key(raw)
 
         # Forzar expires_at al pasado
@@ -267,10 +268,11 @@ class TestApiKeyExpiration:
 
     def test_future_expiry_is_valid(self, client, api_db):
         """Una API key con expires_at en el futuro es válida."""
-        from api.auth import create_api_key, hash_api_key
+        from api.auth import hash_api_key
         from db.database import connect
+        from tests.claves import clave_de_prueba
 
-        raw = create_api_key("future-key")
+        raw = clave_de_prueba("future-key")
         key_hash = hash_api_key(raw)
 
         future = "2099-12-31T23:59:59+00:00"

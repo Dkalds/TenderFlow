@@ -176,8 +176,14 @@ def _crear_api_key() -> str:
     from db.users import get_user_by_email
 
     admin = get_user_by_email("admin@tenderflow.dev")
-    user_id = int(admin["id"]) if admin else None
-    return create_api_key("fuzz-ci", scopes="*", user_id=user_id)
+    if not admin:
+        # Antes caía a una clave sin dueño; desde 2026-10 no se puede emitir
+        # ninguna (`create_api_key` exige `user_id`), y sin el admin el fuzzer
+        # tampoco alcanzaría las rutas de administración por su camino de éxito.
+        raise SystemExit(
+            "fuzz_api_contract: falta admin@tenderflow.dev; siembra la BD con scripts/seed_dev.py"
+        )
+    return create_api_key("fuzz-ci", scopes="*", user_id=int(admin["id"]))
 
 
 def _fuzzear_operacion(

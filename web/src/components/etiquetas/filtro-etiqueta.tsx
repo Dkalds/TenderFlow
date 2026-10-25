@@ -17,7 +17,7 @@
  */
 
 import * as React from "react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   type EtiquetaAplicada,
   type ObjetoEtiquetable,
@@ -74,6 +74,14 @@ export function useFiltroEtiqueta(
   return { filtro, setFiltro, activo, cargando, pasa };
 }
 
+// `React.lazy` y no `next/dynamic`: el hueco tiene que medir lo mismo que el
+// disparador, y su tamaño llega por `className` (el Radar lo cambia), que el
+// `loading` de `next/dynamic` no recibe. En servidor nunca se llega a pintar:
+// sin etiquetas cargadas el filtro devuelve `null`.
+const SelectorEtiqueta = React.lazy(() =>
+  import("./selector-etiqueta").then((modulo) => ({ default: modulo.SelectorEtiqueta })),
+);
+
 export function FiltroEtiquetaSelect({
   value,
   onChange,
@@ -89,21 +97,8 @@ export function FiltroEtiquetaSelect({
   const etiquetas = useEtiquetas().data ?? [];
   if (etiquetas.length === 0) return null;
   return (
-    <Select value={value} onValueChange={onChange}>
-      <SelectTrigger
-        className={cn("h-7 w-44 text-tf-meta", className)}
-        aria-label={alcance ? `Filtrar por etiqueta ${alcance}` : "Filtrar por etiqueta"}
-      >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={TODAS_LAS_ETIQUETAS}>Todas las etiquetas</SelectItem>
-        {etiquetas.map((etiqueta) => (
-          <SelectItem key={etiqueta.id} value={String(etiqueta.id)}>
-            {etiqueta.nombre}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <React.Suspense fallback={<Skeleton className={cn("h-7 w-44", className)} />}>
+      <SelectorEtiqueta etiquetas={etiquetas} value={value} onChange={onChange} alcance={alcance} className={className} />
+    </React.Suspense>
   );
 }

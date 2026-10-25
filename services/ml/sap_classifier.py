@@ -45,8 +45,9 @@ porque de ahí salen las etiquetas. Lo que mide su valor real es
 ``recall_no_keyword`` sobre el golden set humano (``services.ml_eval``).
 
 Uso:
-    # Entrenar (una vez, o periódicamente):
-    python -m services.ml.sap_classifier train
+    # Entrenar (una vez, o periódicamente). El CLI vive en scripts/;
+    # `python -m services.ml.sap_classifier train` sigue delegando en él:
+    python scripts/ml_clasificadores.py train
 
     # En el pipeline (predicción):
     from services.ml.sap_classifier import SAPClassifier
@@ -1068,158 +1069,17 @@ class SAPClassifier:
         return _MODEL_PATH if cls.ensure_downloaded() else None
 
 
-# ── Utilidades de entrenamiento que usan este módulo y su CLI ────────────────
-from services.ml.classifier_training import (
-    _append_to_registry,
-    train_from_db,
-)
+# ── Utilidad de entrenamiento que usa este módulo ────────────────────────────
+from services.ml.classifier_training import _append_to_registry
 
-# ── CLI entry point ───────────────────────────────────────────────────────────
-
-# ── Multi-label classifier (H4) ───────────────────────────────────────────────
-
-#: Labels soportados. El label "SAP" se mapea al clasificador binario existente.
-
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - lo cubre un test por subproceso
+    # El CLI vive en `scripts/ml_clasificadores.py`; esta entrada se conserva
+    # para que `python -m services.ml.sap_classifier <cmd>` (y el alias
+    # `python -m scraper.ml_classifier`) sigan funcionando. Se carga por ruta,
+    # no por import: `scripts/` no es un paquete ni una capa de la que
+    # `services/` pueda depender.
+    import runpy
     import sys
 
-    cmd = sys.argv[1] if len(sys.argv) > 1 else "train"
-    if cmd == "train":
-        print("Entrenando clasificador SAP desde la BD...")
-        result = train_from_db()
-        if "error" in result:
-            err = result["error"]
-            if err == "single_class":
-                print(
-                    "\n[AVISO] Entrenamiento no posible: todos los ejemplos son SAP (clase única).\n"
-                    f"  n_positive={result.get('n_positive', 0)}, n_negative={result.get('n_negative', 0)}\n"
-                    "  El clasificador ML necesita licitaciones sin keywords SAP con CPV fuera de 48xxx/72xxx.\n"
-                    "  Solución: ejecuta primero: python -m services.ml.sap_classifier seed-negatives"
-                )
-            elif err == "insufficient_data":
-                print(
-                    f"\n[AVISO] Datos insuficientes: {result.get('n_samples', 0)} muestras "
-                    f"(mínimo {MIN_TRAIN_SAMPLES})."
-                )
-            else:
-                print(f"\n[ERROR] {result}")
-        else:
-            for k, v in result.items():
-                print(f"  {k}: {v}")
-            print(f"\nModelo guardado en: {_MODEL_PATH}")
-    elif cmd == "seed-negatives":
-        import argparse
-
-        parser_cli = argparse.ArgumentParser(prog="ml_classifier seed-negatives")
-        parser_cli.add_argument("--year", type=int, default=None)
-        parser_cli.add_argument("--month", type=int, default=None)
-        parser_cli.add_argument("--max", type=int, default=2000, dest="max_negatives")
-        args = parser_cli.parse_args(sys.argv[2:])
-        # La siembra es ingesta y vive en `scraper/`; este CLI es el único punto
-        # de `services/ml` que la alcanza, y solo al ejecutarse como programa.
-        from scraper.seed_negatives import seed_negatives
-
-        print(
-            f"Descargando negativos del bulk "
-            f"{args.year or 'mes anterior'}/{args.month or ''}  (máx {args.max_negatives})..."
-        )
-        seed_result = seed_negatives(
-            year=args.year, month=args.month, max_negatives=args.max_negatives
-        )
-        print(
-            f"  Descargadas : {seed_result['downloaded']}\n"
-            f"  Insertadas  : {seed_result['inserted']}\n"
-            f"  Omitidas TI : {seed_result['skipped_ti']}\n"
-            f"  Ya existían : {seed_result['already_exists']}\n"
-            "\nAhora puedes entrenar: python -m services.ml.sap_classifier train"
-        )
-    elif cmd == "precompute":
-        import argparse
-
-        parser_pre = argparse.ArgumentParser(prog="ml_classifier precompute")
-        parser_pre.add_argument(
-            "--force", action="store_true", help="Recalcular incluso filas ya clasificadas"
-        )
-        args_pre = parser_pre.parse_args(sys.argv[2:])
-        from services.ml.classifier_training import precompute_ml_proba
-
-        print("Precomputando ml_proba para licitaciones pendientes...")
-        result = precompute_ml_proba(force=args_pre.force)
-        print(f"  Actualizadas : {result.get('updated', 0)}")
-        if result.get("skipped_no_model"):
-            print("  [AVISO] No hay modelo disponible.")
-    elif cmd == "info":
-        if SAPClassifier.is_available():
-            print(f"Modelo disponible: {_MODEL_PATH}")
-        else:
-            print("No hay modelo entrenado. Ejecuta: python -m services.ml.sap_classifier train")
-    elif cmd == "train-tech":
-        from services.ml.tech_classifier import _MODEL_PATH as _TECH_MODEL_PATH
-        from services.ml.tech_classifier import train_from_db as _train_tech_from_db
-
-        print("Entrenando TechnologyClassifier multi-label desde la BD...")
-        tech_metrics = _train_tech_from_db()
-        if "error" in tech_metrics:
-            print(f"\n[ERROR] {tech_metrics}")
-        else:
-            # `macro_f1_ml_ready_only` promedia SOLO las etiquetas con
-            # suficientes positivos: es un promedio de los aprobados. Las dos
-            # de al lado son las que cubren las 13 tecnologías.
-            print(f"  micro_f1 (todas)  : {tech_metrics.get('micro_f1_all_labels')}")
-            print(f"  macro_f1 (todas)  : {tech_metrics.get('macro_f1_all_labels')}")
-            print(f"  macro_f1 ml_ready : {tech_metrics.get('macro_f1_ml_ready_only')}")
-            # Si las etiquetas salen del regex de keywords, las métricas de
-            # arriba miden imitación, no detección. Este es el dato que decide
-            # si significan algo.
-            print(f"  labels circulares : {tech_metrics.get('labels_circulares')}")
-            print(f"  n_models          : {tech_metrics.get('n_models')}")
-            print(f"  n_rules_fallback  : {tech_metrics.get('n_rules_fallback')}")
-            print(
-                f"  n_train/val/test  : {tech_metrics.get('n_train')} / "
-                f"{tech_metrics.get('n_val')} / {tech_metrics.get('n_test')}"
-            )
-            print("\nDesglose por tecnología:")
-            per_tech = tech_metrics.get("per_tech", {})
-            for label, info in per_tech.items():
-                tier = info.get("tier")
-                n_pos = info.get("n_positive")
-                f1 = info.get("f1")
-                prec = info.get("precision")
-                rec = info.get("recall")
-                thr = info.get("threshold")
-                f1_s = f"{f1:.3f}" if isinstance(f1, float) else "—"
-                prec_s = f"{prec:.3f}" if isinstance(prec, float) else "—"
-                rec_s = f"{rec:.3f}" if isinstance(rec, float) else "—"
-                print(
-                    f"  - {label:<12} tier={tier:<9} n+={n_pos:<5} "
-                    f"thr={thr:<5} F1={f1_s} P={prec_s} R={rec_s}"
-                )
-            print(f"\nModelo guardado en: {_TECH_MODEL_PATH}")
-    elif cmd == "precompute-tech":
-        import argparse
-
-        parser_pt = argparse.ArgumentParser(prog="ml_classifier precompute-tech")
-        parser_pt.add_argument(
-            "--force",
-            action="store_true",
-            help="Recalcular incluso filas ya clasificadas",
-        )
-        args_pt = parser_pt.parse_args(sys.argv[2:])
-        from services.ml.classifier_training import precompute_ml_tecnologias
-
-        print("Precomputando ml_tecnologias/ml_proba_max para licitaciones pendientes...")
-        tech_result = precompute_ml_tecnologias(force=args_pt.force)
-        print(f"  Actualizadas      : {tech_result.get('updated', 0)}")
-        print(f"  Scores insertados : {tech_result.get('scores_inserted', 0)}")
-        if tech_result.get("skipped_no_model"):
-            print(
-                "  [AVISO] No hay TechnologyClassifier entrenado. "
-                "Ejecuta primero: python -m services.ml.sap_classifier train-tech"
-            )
-    else:
-        print(
-            f"Comando desconocido: {cmd}. "
-            "Usa 'train', 'precompute', 'seed-negatives', 'info', "
-            "'train-tech' o 'precompute-tech'."
-        )
-        sys.exit(1)
+    _cli = Path(__file__).resolve().parents[2] / "scripts" / "ml_clasificadores.py"
+    sys.exit(runpy.run_path(str(_cli), run_name="ml_clasificadores")["main"](sys.argv[1:]))
