@@ -257,6 +257,49 @@ class TestFlagYDegradacion:
         assert log.eventos[0]["semantica"] == "no_aplica"
 
 
+class TestContratoConElPool:
+    """Lo que la ruta despacha a ``run_ml`` devuelve un ``Resultado``.
+
+    Hasta la flag, el trabajo devolvía la tupla ``(hits, fuente)``, y los dobles
+    de ``run_ml`` de ``tests/test_search_route.py`` (integración, con BD)
+    seguían devolviendo esa tupla: la ruta respondía 500. Este test, sin BD,
+    fija la forma para que un doble desfasado se vea aquí y no en CI.
+    """
+
+    def test_el_trabajo_del_pool_devuelve_un_resultado(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import api.routes.search as ruta
+        from services.investigador.busqueda import Resultado
+
+        devuelto: list[object] = []
+
+        async def _run_ml(fn: Any, *args: Any, **kwargs: Any) -> Any:
+            valor = fn(*args, **kwargs)
+            devuelto.append(valor)
+            return valor
+
+        monkeypatch.setattr(ruta, "run_ml", _run_ml)
+        _MotorFalso(texto=[_hit("B")]).instalar(monkeypatch)
+        resp = _buscar()
+        (valor,) = devuelto
+        assert isinstance(valor, Resultado)
+        assert [h.id_externo for h in resp.hits] == ["B"]
+
+    def test_la_ruta_acepta_un_resultado_de_run_ml(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """El doble que usan los tests de integración, con la forma buena."""
+        import api.routes.search as ruta
+        from services.investigador.busqueda import FUENTE_LITERAL, Resultado
+
+        async def _run_ml(fn: Any, *args: Any, **kwargs: Any) -> Resultado:
+            return Resultado([], FUENTE_LITERAL)
+
+        monkeypatch.setattr(ruta, "run_ml", _run_ml)
+        resp = _buscar()
+        assert resp.hits == []
+        assert resp.source == SOURCE_LIKE
+
+
 class TestSemanticaActiva:
     """``semantica_activa`` lee la flag y, si no puede, apaga."""
 
