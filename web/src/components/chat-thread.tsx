@@ -212,6 +212,8 @@ const ESTADO_DOCUMENTO: Record<string, string> = {
   downloaded: "descargado",
   extracted: "procesado",
   error: "error",
+  unsupported: "formato no soportado",
+  sin_texto: "escaneado sin texto",
 };
 
 /**
