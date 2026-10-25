@@ -94,24 +94,6 @@ def test_build_body_no_importe_shows_dash():
 
 
 # ---------------------------------------------------------------------------
-# _query_licitaciones_since
-# ---------------------------------------------------------------------------
-
-
-def test_query_licitaciones_since_empty_db(tmp_db):
-    _, _ = tmp_db
-    import importlib
-
-    from scheduler import watchlist_alerts
-
-    importlib.reload(watchlist_alerts)
-
-    result = watchlist_alerts._query_licitaciones_since("48", "2024-01-01")
-    assert isinstance(result, list)
-    assert result == []
-
-
-# ---------------------------------------------------------------------------
 # check_and_notify — empty watchlist
 # ---------------------------------------------------------------------------
 
@@ -155,7 +137,6 @@ def test_check_and_notify_no_email_no_notify(tmp_db, monkeypatch):
 
     with (
         patch("scheduler.watchlist_alerts.list_entries", return_value=[entry]),
-        patch("scheduler.watchlist_alerts._query_licitaciones_since", return_value=[]),
         patch("scheduler.watchlist_alerts.update_last_notified") as mock_update,
         patch("scheduler.watchlist_alerts.notify") as mock_notify,
     ):
@@ -239,7 +220,6 @@ def test_check_and_notify_with_email_no_matches_no_notify(tmp_db):
 
     with (
         patch("scheduler.watchlist_alerts.list_entries", return_value=[entry]),
-        patch("scheduler.watchlist_alerts._query_licitaciones_since", return_value=[]),
         patch("scheduler.watchlist_alerts.update_last_notified"),
         patch("scheduler.watchlist_alerts.notify") as mock_notify,
     ):

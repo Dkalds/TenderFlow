@@ -52,21 +52,6 @@ def test_roundtrip_sqlite_direct_engine(tmp_path):
     assert read_back.source_db_mtime == 1700000000.5
 
 
-def test_generated_at_timestamp_parses_iso_string(tmp_path):
-    """generated_at_timestamp() convierte el ISO timestamp a epoch float."""
-    path = tmp_path / "_manifest.json"
-    written = write_manifest(
-        path,
-        engine="duckdb-parquet",
-        row_counts={"licitaciones": 1, "adjudicaciones": 1},
-        source_db_mtime=123.0,
-    )
-
-    ts = written.generated_at_timestamp()
-    assert isinstance(ts, float)
-    assert ts > 0
-
-
 # ── escritura atómica ────────────────────────────────────────────────────────
 
 

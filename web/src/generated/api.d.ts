@@ -3382,7 +3382,7 @@ export interface paths {
         };
         /**
          * GDPR — exportar todos mis datos
-         * @description Exporta watchlist, reglas, perfil, notificaciones, feedback, API keys y
+         * @description Exporta watchlist, seguimientos, reglas, perfil, notificaciones, feedback, API keys y
          *     audit log en un ZIP JSON. Funciona con sesión OAuth o API key.
          */
         get: operations["export_my_data_api_v1_me_data_get"];

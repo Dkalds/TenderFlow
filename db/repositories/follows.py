@@ -411,13 +411,12 @@ PARES_DE_ORIGEN: tuple[tuple[str, str, str, str], ...] = (
 )
 
 
-def paridad_con_origen(
-    tabla: str, target_expr: str, target_type: str, kind: str, *, ejemplos: int = 5
-) -> dict[str, Any]:
+def paridad_con_origen(tabla: str, target_expr: str, target_type: str, kind: str) -> dict[str, Any]:
     """Compara una tabla de origen con su proyección en ``follows``.
 
-    Devuelve filas de cada lado, cuántas faltan y cuántas sobran, y hasta
-    ``ejemplos`` de cada clase. ``EXCEPT`` y no un ``LEFT JOIN ... IS NULL``: la
+    Devuelve filas de cada lado y las parejas ``(user_key, target_id)`` que
+    faltan y que sobran, completas: acotar cuántas se enseñan es cosa de quien
+    llama. ``EXCEPT`` y no un ``LEFT JOIN ... IS NULL``: la
     comparación es sobre la tupla entera (usuario + objetivo), y ``EXCEPT`` la
     escribe una vez en vez de repetir la condición con sus NULLs.
 

@@ -15,8 +15,6 @@ import ast
 import pathlib
 from unittest.mock import MagicMock, patch
 
-import pandas as pd
-
 import services.licitaciones as svc
 
 _SERVICE_SRC = pathlib.Path(svc.__file__)
@@ -119,34 +117,3 @@ class TestDbSearchBackendAbreLaConexion:
         assert kwargs["ccaa"] == "Madrid"
         assert kwargs["tecnologia"] is None
         assert kwargs["limit"] == 7
-
-
-class TestLoadForIndexDelegado:
-    def test_delega_en_el_repository(self):
-        df = pd.DataFrame({"id_externo": ["A"], "titulo": ["t"], "descripcion": ["d"]})
-        with patch.object(svc._repo, "load_for_index", return_value=df) as mock_load:
-            out = svc.load_licitaciones_for_index()
-
-        mock_load.assert_called_once_with()
-        assert out is df
-
-    def test_repository_conserva_las_columnas_con_tabla_vacia(self):
-        """Las columnas salen de ``cursor.description``, no de las filas."""
-        from db.repositories.licitaciones import LicitacionRepository
-
-        cursor = MagicMock()
-        cursor.fetchall.return_value = []
-        cursor.description = [("id_externo",), ("titulo",), ("descripcion",)]
-        conn = MagicMock()
-        conn.execute.return_value = cursor
-        cm = MagicMock()
-        cm.__enter__.return_value = conn
-
-        with (
-            patch("db.database.init_db"),
-            patch("db.database.connect", return_value=cm),
-        ):
-            out = LicitacionRepository().load_for_index()
-
-        assert list(out.columns) == ["id_externo", "titulo", "descripcion"]
-        assert out.empty

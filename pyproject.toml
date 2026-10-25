@@ -188,7 +188,6 @@ ignore = [
 "services/competitive/renovaciones.py" = ["TID251"]
 "services/contract_events.py" = ["TID251"]
 "services/deadline_reminders.py" = ["TID251"]
-"services/dedupe.py" = ["TID251"]
 "services/entity_resolution.py" = ["TID251"]
 "services/resoluciones.py" = ["TID251"]
 # ── fin RATCHET TID251 ──

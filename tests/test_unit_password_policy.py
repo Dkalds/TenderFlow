@@ -8,7 +8,6 @@ from shared.password_policy import (
     PasswordCheckResult,
     check_account_password,
     check_password_strength,
-    check_secret_strength,
 )
 
 # ---------------------------------------------------------------------------
@@ -88,28 +87,6 @@ def test_custom_label_in_messages():
     result = check_password_strength("short", min_length=16, label="MY_SECRET")
     assert not result.is_strong
     assert any("MY_SECRET" in i for i in result.issues)
-
-
-# ---------------------------------------------------------------------------
-# check_secret_strength
-# ---------------------------------------------------------------------------
-
-
-def test_secret_strong_hex():
-    result = check_secret_strength("a" * 64, min_length=32)
-    assert result.is_strong
-
-
-def test_secret_too_short():
-    result = check_secret_strength("abc", min_length=32, label="API_KEY")
-    assert not result.is_strong
-    assert any("demasiado corto" in i for i in result.issues)
-
-
-def test_secret_with_weak_pattern():
-    result = check_secret_strength("deloitte" * 10, min_length=32)
-    assert not result.is_strong
-    assert any("patrón débil" in i for i in result.issues)
 
 
 # ---------------------------------------------------------------------------

@@ -35,3 +35,24 @@ class TestRunRetentionCleanup:
         blobs = run()["documento_blobs"]
         assert set(blobs) == {"candidatos", "borrados", "claves_olvidadas"}
         assert all(isinstance(v, int) for v in blobs.values())
+
+
+class TestPurgaDeSesiones:
+    """``purge_expired_sessions`` existía sin llamador: la tabla solo crecía."""
+
+    @patch("scheduler.jobs.retention_cleanup._purgar_binarios_expedientes_cerrados")
+    @patch("scheduler.retention.run_retention", return_value={})
+    @patch("db.sessions.purge_expired_sessions", return_value=7)
+    def test_el_job_purga_las_sesiones_y_lo_cuenta(
+        self, mock_purga: MagicMock, _retention: MagicMock, _blobs: MagicMock
+    ) -> None:
+        from scheduler.jobs.retention_cleanup import run
+
+        assert run()["sessions"] == 7
+        mock_purga.assert_called_once_with()
+
+    @patch("db.sessions.purge_expired_sessions", side_effect=RuntimeError("bd caída"))
+    def test_un_fallo_no_tumba_el_resto_de_la_retencion(self, _purga: MagicMock) -> None:
+        from scheduler.jobs.retention_cleanup import _purgar_sesiones_caducadas
+
+        assert _purgar_sesiones_caducadas() == -1

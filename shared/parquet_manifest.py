@@ -73,10 +73,6 @@ class Manifest:
     row_counts: dict[str, int]
     source_db_mtime: float
 
-    def generated_at_timestamp(self) -> float:
-        """Devuelve ``generated_at`` parseado a epoch (segundos, UTC)."""
-        return datetime.fromisoformat(self.generated_at).timestamp()
-
 
 def _validate_engine(engine: str) -> ManifestEngine:
     if engine not in _VALID_ENGINES:

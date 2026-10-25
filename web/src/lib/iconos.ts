@@ -128,7 +128,3 @@ export const ICONO_ESPACIO = {
 
 /** Icono del administrador (roles, permisos): no es un espacio. */
 export const ICONO_ADMIN: LucideIcon = ShieldCheck;
-
-export type EntidadConIcono = keyof typeof ICONO_ENTIDAD;
-export type ConceptoConIcono = keyof typeof ICONO_CONCEPTO;
-export type EspacioConIcono = keyof typeof ICONO_ESPACIO;

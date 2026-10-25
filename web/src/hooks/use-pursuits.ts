@@ -16,7 +16,6 @@ import type {
   PipelineAgendaResponse,
   PursuitCreate,
   PursuitDetail,
-  PursuitListResponse,
   PursuitMetrics as PursuitMetricsDTO,
   PursuitPlazo,
   PursuitUpdate,
@@ -56,13 +55,11 @@ export function esTerminal(status: PursuitStatus): status is EstadoTerminal {
 
 export type PursuitDecision = Pursuit["decision"];
 export type PursuitOutcome = Pursuit["outcome"];
-export type PursuitList = PursuitListResponse;
 export type PursuitMetrics = PursuitMetricsDTO;
 export type CreatePursuitInput = PursuitCreate;
 export type UpdatePursuitInput = PursuitUpdate;
 export type PipelineAgenda = PipelineAgendaResponse;
 export type PipelineAgendaItem = PipelineAgendaItemDTO;
-export type AgendaUrgencia = PipelineAgendaItem["urgencia"];
 export type AgendaKind = PipelineAgendaItem["kind"];
 
 export { pursuitKeys } from "@/lib/query-keys";

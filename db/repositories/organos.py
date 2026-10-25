@@ -17,9 +17,6 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
-#: Estados de la cola de revisión. Mismo vocabulario que `empresa_review_queue`.
-ESTADOS_REVISION = ("pending", "accepted", "rejected")
-
 
 def get_by_dir3(dir3: str) -> dict[str, Any] | None:
     """Órgano por su código DIR3. Es la resolución sin ambigüedad."""

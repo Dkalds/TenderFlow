@@ -8,49 +8,6 @@ from unittest.mock import patch
 _REPO_PATH = "services.watchlist._repo"
 
 
-# ── query_licitaciones_since ──────────────────────────────────────────────────
-
-
-def test_query_licitaciones_since_returns_dicts():
-    """query_licitaciones_since devuelve lista de dicts con las columnas correctas."""
-    from services.watchlist import query_licitaciones_since
-
-    expected = [
-        {
-            "id_externo": "LIC-001",
-            "titulo": "Título SAP",
-            "descripcion": "Desc",
-            "organo_contratacion": "Órgano",
-            "cpv": "72210000",
-            "importe": 50000.0,
-            "ccaa": "Madrid",
-            "estado": "PUB",
-            "fecha_publicacion": "2026-01-01",
-            "url": "https://example.com",
-        }
-    ]
-
-    with patch(_REPO_PATH) as mock_repo:
-        mock_repo.query_licitaciones_since.return_value = expected
-        results = query_licitaciones_since("72210000", "2026-01-01")
-
-    assert len(results) == 1
-    assert results[0]["id_externo"] == "LIC-001"
-    assert results[0]["titulo"] == "Título SAP"
-    mock_repo.query_licitaciones_since.assert_called_once_with("72210000", "2026-01-01")
-
-
-def test_query_licitaciones_since_empty():
-    """query_licitaciones_since devuelve lista vacía cuando no hay resultados."""
-    from services.watchlist import query_licitaciones_since
-
-    with patch(_REPO_PATH) as mock_repo:
-        mock_repo.query_licitaciones_since.return_value = []
-        results = query_licitaciones_since("99999999", "2026-01-01")
-
-    assert results == []
-
-
 # ── query_licitaciones_batch ──────────────────────────────────────────────────
 
 

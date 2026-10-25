@@ -26,8 +26,6 @@ log = get_logger(__name__)
 
 # Ventana inicial cuando la entrada nunca ha notificado
 _LOOKBACK_DAYS = 30
-# Horizonte de vencimientos incluidos en la alerta
-_RENOVACION_DIAS = 90
 
 
 def _nuevas_adjudicaciones(empresa_id: int, since: str) -> list[dict[str, Any]]:

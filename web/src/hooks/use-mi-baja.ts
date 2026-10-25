@@ -16,7 +16,6 @@ import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { pursuitKeys } from "@/lib/query-keys";
 
-export type MiBaja = Schemas["MiBajaOut"];
 export type MiBajaSegmento = Schemas["MiBajaSegmento"];
 
 export function useMiBaja() {

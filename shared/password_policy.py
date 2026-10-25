@@ -114,25 +114,3 @@ def check_account_password(password: str) -> PasswordCheckResult:
         require_special=False,
         label="contraseña",
     )
-
-
-def check_secret_strength(
-    secret: str,
-    *,
-    min_length: int = 32,
-    label: str = "secret",
-) -> PasswordCheckResult:
-    """Validación simplificada para secretos (tokens, HMAC keys, etc.).
-
-    Solo valida longitud mínima y ausencia de patrones débiles.
-    No exige complejidad de caracteres (los secretos suelen ser hex/base64).
-    """
-    return check_password_strength(
-        secret,
-        min_length=min_length,
-        require_mixed_case=False,
-        require_digit=False,
-        require_special=False,
-        check_weak_patterns=True,
-        label=label,
-    )

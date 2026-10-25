@@ -14,8 +14,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-import pandas as pd
-
 from db.repositories.licitaciones import LicitacionRepository
 from observability.histograms import timed_query
 from observability.logging import get_logger
@@ -337,8 +335,3 @@ def _try_hybrid_search(
         log.debug("hybrid_search_query_failed", error=str(e))
         return None
     return docs or None
-
-
-def load_licitaciones_for_index() -> pd.DataFrame:
-    """Load id_externo, titulo, descripcion for FAISS index building (§3.8)."""
-    return _repo.load_for_index()
