@@ -1251,7 +1251,7 @@ def search_fts(query: str, limit: int = 50, offset: int = 0) -> tuple[list[dict[
         ).fetchone()
         total = int(count_row[0])
         cur = c.execute(
-            "SELECT * FROM licitaciones "
+            "SELECT * FROM licitaciones "  # SELECT *: ficha completa por búsqueda FTS; se descarta search_vector abajo
             "WHERE search_vector @@ websearch_to_tsquery('spanish', %s) "
             "ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('spanish', %s)) DESC "
             "LIMIT %s OFFSET %s",

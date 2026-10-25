@@ -198,7 +198,7 @@ controles disponibles y reportá los tests como no ejecutados (AGENTS.md §4).
 ### 3.1 Añadir un endpoint a la API
 
 1. **Define el contrato**: el DTO request/response (Pydantic v2) va junto a su ruta si solo lo usa ella; si lo comparten dos o más rutas, en el submódulo de su dominio de `shared/dto/`, re-exportado desde `shared/dto/__init__.py` (el criterio está en su docstring).
-2. **Repositorio**: si lee/escribe datos nuevos, añade método en `db/repositories/<entidad>.py` (patrón existente: ver `db/repositories/licitaciones.py`). Si requiere SQL nuevo, mantén upsert idempotente.
+2. **Repositorio**: si lee/escribe datos nuevos, añade método en `db/repositories/<entidad>.py` (patrón existente: ver `db/repositories/licitaciones.py`). Si requiere SQL nuevo, mantén upsert idempotente. Un solo sitio por entidad: `audit`, `webhooks`, `watchlist` y `empresas` tienen además un módulo `db/<x>.py` con la lógica con estado (cadena hash, firma, backfill); el reparto está en [ADR-022](adr/ADR-022-frontera-de-persistencia.md) y en la cabecera de cada fichero.
 3. **Lógica de dominio**: si el endpoint transforma datos o aplica una regla de negocio, añade función en `services/<dominio>.py`. Si es CRUD passthrough, la ruta puede llamar a `db.*` directo ([ADR-024](adr/ADR-024-services-biblioteca-no-frontera.md)). SQL nuevo nunca va en la ruta: vive en `db/` (§3).
 4. **Ruta**: crea o edita el router en `api/routes/<recurso>.py`. Inyectá `Depends(get_api_key)` si requiere auth. Registralo en `api/app.py` (sección `include_router`).
 5. **Errores**: si hay condiciones nuevas de error, registra el handler en `api/errors.py` (no lances HTTPException con strings sueltos).

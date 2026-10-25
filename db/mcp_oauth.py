@@ -43,6 +43,15 @@ TipoToken = Literal["pendiente", "code", "access", "refresh"]
 
 _VIGENTE = "revoked_at IS NULL AND expires_at > now()"
 
+#: Columnas de ``mcp_oauth_tokens`` / ``mcp_oauth_clients`` (v150) que consume el
+#: proveedor OAuth: la fila entera, nombrada para que una columna nueva no viaje
+#: sin que alguien decida que hace falta.
+_COLS_OAUTH = (
+    "token_hash, kind, client_id, user_id, family_id, scopes, datos, "
+    "expires_at, revoked_at, created_at"
+)
+_COLS_CLIENTE = "client_id, client_name, redirect_uris, datos, created_at"
+
 
 def hash_token(token: str) -> str:
     """``sha256`` hexadecimal del token: lo único que se persiste."""
@@ -138,7 +147,10 @@ def guardar_cliente(
 def obtener_cliente(client_id: str) -> dict[str, Any] | None:
     with connect_read() as c:
         return _fila(
-            c.execute("SELECT * FROM mcp_oauth_clients WHERE client_id = %s", (client_id,))
+            c.execute(
+                f"SELECT {_COLS_CLIENTE} FROM mcp_oauth_clients WHERE client_id = %s",
+                (client_id,),
+            )
         )
 
 
@@ -183,7 +195,8 @@ def obtener_token(token: str, kind: TipoToken) -> dict[str, Any] | None:
     with connect_read() as c:
         return _fila(
             c.execute(
-                f"SELECT * FROM mcp_oauth_tokens WHERE token_hash = %s AND kind = %s AND {_VIGENTE}",
+                f"SELECT {_COLS_OAUTH} FROM mcp_oauth_tokens "
+                f"WHERE token_hash = %s AND kind = %s AND {_VIGENTE}",
                 (hash_token(token), kind),
             )
         )
@@ -199,7 +212,7 @@ def buscar_token(token: str, kind: TipoToken) -> dict[str, Any] | None:
     with connect_read() as c:
         return _fila(
             c.execute(
-                "SELECT * FROM mcp_oauth_tokens WHERE token_hash = %s AND kind = %s",
+                f"SELECT {_COLS_OAUTH} FROM mcp_oauth_tokens WHERE token_hash = %s AND kind = %s",
                 (hash_token(token), kind),
             )
         )
@@ -219,7 +232,7 @@ def consumir_token(token: str, kind: Literal["pendiente"]) -> tuple[dict[str, An
         fila = _fila(
             c.execute(
                 "UPDATE mcp_oauth_tokens SET revoked_at = now() "
-                f"WHERE token_hash = %s AND kind = %s AND {_VIGENTE} RETURNING *",
+                f"WHERE token_hash = %s AND kind = %s AND {_VIGENTE} RETURNING {_COLS_OAUTH}",
                 (th, kind),
             )
         )
@@ -301,7 +314,7 @@ def consumir_y_emitir(
         fila = _fila(
             c.execute(
                 "UPDATE mcp_oauth_tokens SET revoked_at = now(), family_id = %s "
-                f"WHERE token_hash = %s AND kind = %s AND {_VIGENTE} RETURNING *",
+                f"WHERE token_hash = %s AND kind = %s AND {_VIGENTE} RETURNING {_COLS_OAUTH}",
                 (familia, th, kind),
             )
         )
@@ -323,7 +336,7 @@ def consumir_y_emitir(
             return fila, False
         previo = _fila(
             c.execute(
-                "SELECT * FROM mcp_oauth_tokens "
+                f"SELECT {_COLS_OAUTH} FROM mcp_oauth_tokens "
                 "WHERE token_hash = %s AND kind = %s AND revoked_at IS NOT NULL",
                 (th, kind),
             )

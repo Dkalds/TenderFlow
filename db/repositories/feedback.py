@@ -141,7 +141,8 @@ class FeedbackRepository:
         """Exporta exclusivamente el feedback atribuible a un usuario."""
         with connect_read() as c:
             cur = c.execute(
-                "SELECT * FROM ml_feedback WHERE user_id = %s LIMIT %s", (user_id, limit)
+                "SELECT * FROM ml_feedback WHERE user_id = %s LIMIT %s",
+                (user_id, limit),  # SELECT *: export RGPD: la fila entera es el contrato
             )
             return rows_to_dicts(cur)
 
