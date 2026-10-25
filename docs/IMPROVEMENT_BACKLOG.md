@@ -242,7 +242,7 @@ _Sin ítems abiertos._
 - **Riesgo:** alto — cambia la PK de la tabla central y sus referencias.
 
 ### [P1] Cerrar el incidente de la v2 de `sap_classifier`: ver la pasada en verde y unificar los dos caminos de entrenamiento
-- **Área:** scheduler/concept_drift.py, scheduler/jobs/ml_training_run.py, services/ml/promotion.py, shared/model_artifacts.py, .github/workflows/train-model.yml, `model_versions` (producción)
+- **Área:** scheduler/concept_drift.py, scheduler/jobs/ml_training_run.py, services/ml/promotion.py, services/ml/model_artifacts.py, .github/workflows/train-model.yml, `model_versions` (producción)
 - **Problema:** `scrape-daily` está en rojo desde el 2026-09-29T18:08Z (15
   runs hasta el 2026-10-03T23:09Z). En el primero el paso semanal
   `sap_active_learning` contó 59
@@ -322,7 +322,7 @@ _Sin ítems abiertos._
     2026-09-24», y exige que la ingesta resuelva el modelo por
     `resolve_artifact` y no por `ensure_downloaded` + `load()`.
     **Hecho en código el 2026-10-24:** `promote_if_better` publica y registra
-    `sap_classifier-<sha12>.pkl` (`shared.model_artifacts.content_addressed_path`,
+    `sap_classifier-<sha12>.pkl` (`services.ml.model_artifacts.content_addressed_path`,
     la misma regla que `rename_to_content_address`); `train-model.yml` lo sube
     a la Release `ml-models` sin `delete-asset` ni retirar la versión activa
     (entrenar → verificar artefactos → subir → activar → medir); la ingesta
@@ -553,7 +553,7 @@ _Sin ítems abiertos._
 - **Riesgo:** medio — dos migraciones y una regla de producto nueva; el golden `golden_go_no_go.jsonl` es la red.
 
 ### [P1] [Ola 1 · S5] Cola de trabajo y worker: un despliegue mata lo que un usuario pidió
-- **Área:** shared/jobs.py, db/repositories/jobs.py, scheduler/worker.py, api/routes/jobs.py, scheduler/pipeline_runs.py, render.yaml
+- **Área:** services/jobs.py, db/repositories/jobs.py, scheduler/worker.py, api/routes/jobs.py, scheduler/pipeline_runs.py, render.yaml
 - **Problema:** la extracción asíncrona de la ficha corre en `BackgroundTasks` de la API con 30 s de drenado al apagar (`api/app.py`), y `autoDeploy` está activo en el servicio real: un push a `master` en mitad de una extracción la pierde, y el usuario ve un estado que nunca avanza. El cierre post-ingesta son quince pasos secuenciales dentro de un job de Actions cada cuatro horas, donde un paso caído arrastra a los que no dependen de él.
 - **Decisión ya tomada (2026-09-06):** D14 → worker en Render para lo que pide un usuario y Actions para lo programado, sobre la misma tabla de cola. El servicio nuevo exige O0.2 cerrado primero (un solo camino de despliegue).
 - **Acceptance criteria:** los de S5.1–S5.4 del plan v2, incluidos los dos que son medibles sin producción: dos consumidores concurrentes procesan cien jobs exactamente una vez, y `grep -rc "BackgroundTasks" api/routes/licitaciones/` = 0 (el fichero es un paquete desde 2026-09).
@@ -879,7 +879,7 @@ _Sin ítems abiertos._
 - **Riesgo:** medio en S7.1 (routing y datos iniciales), como ya dijo el plan anterior.
 
 ### [P2] [Ola 1 · S8] Documentos: solo se leen PDF con texto y texto plano
-- **Área:** scraper/document_fetcher.py, shared/object_store.py, .github/workflows/pliegos.yml, shared/model_artifacts.py
+- **Área:** scraper/document_fetcher.py, shared/object_store.py, .github/workflows/pliegos.yml, services/ml/model_artifacts.py
 - **Problema (diagnóstico del §1 del plan v2, medido el 2026-09-05):** `_SUPPORTED_CONTENT_TYPES` admitía dos content-types, así que un pliego en DOCX, ODT o dentro de un ZIP no se procesaba y un PDF escaneado terminaba en error por no haber OCR; y el binario se descartaba tras extraer, de modo que reprocesar exigía volver a PLACSP, cuyas URIs llevan un token que caduca. Es el techo real de la ficha del pliego: lo que no se puede leer no existe para el producto.
 - **Acceptance criteria:** los de S8.1–S8.4 del plan v2, sin redefinirlos aquí. Los cuatro son independientes y se entregan por separado; S8.1 y S8.2 llevan migración y dependencias nuevas, ambas pre-autorizadas por D20.
 - **Estado:** lo dice el §5 del plan cuando el stream se cierra, no este ítem — ver la nota de cabecera. S8 se está entregando en esta misma ola.
@@ -1683,7 +1683,7 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   máquina que lo hizo; lo cubre el job de CI) y que Render pase
   `REQUIREMENTS_FILE` como build arg.
 - [2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2] **P3: un solo transporte para bajar
-  assets de la Release** — `shared/model_artifacts.py::_download_release_asset` delega en
+  assets de la Release** — `services/ml/model_artifacts.py::_download_release_asset` delega en
   `shared.release_assets` (`fetch_latest_release` → `find_asset_id` → `download_asset`): HTTPS
   pinned, allowlist por salto y sin reenviar el token al CDN. `requests` sale del módulo. La
   verificación del sha256 contra `model_versions` no se tocó: sigue en `resolve_active_artifact`,
@@ -1906,7 +1906,7 @@ cabecera de este fichero: los seis se comprobaron contra el código.
   HMAC). Los 5 sitios migran y la propiedad se elimina del adaptador. Commit `187ff9d`.
 
 - [2026-08-08] **P2: un solo poller del centinela SSE por proceso** — Cada cliente conectado
-  consultaba `shared.cache_signal` cada 5 s por su cuenta: N clientes = N consultas por intervalo
+  consultaba `db.cache_signal` cada 5 s por su cuenta: N clientes = N consultas por intervalo
   compitiendo por el threadpool con el resto de la API. Ahora un `_SignalWatcher` por proceso
   publica el timestamp en memoria y cada cliente lo compara con su checkpoint — exactamente lo que
   evaluaba `check_cache_signal`, pero O(1) en conexiones. Arranca con el primer suscriptor y se

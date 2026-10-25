@@ -230,7 +230,7 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
     # sobre `data/models/`, que está en .gitignore y viene vacío en el runner,
     # así que este paso salía en `no_model` **por construcción** en cada pasada
     # de la pipeline diaria -- con el artefacto publicado en la Release desde
-    # mayo y nadie bajándolo. Ver `shared/model_artifacts.py`.
+    # mayo y nadie bajándolo. Ver `services/ml/model_artifacts.py`.
     artefacto = SAPClassifier.resolve_artifact()
     if artefacto is None:
         log.warning("precompute_ml_proba.no_model")

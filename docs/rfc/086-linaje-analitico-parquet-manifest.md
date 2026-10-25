@@ -21,7 +21,7 @@ Hoy coexisten cuatro materializaciones derivadas de los datos operacionales:
    se ejecuta vía `python -m scheduler.kpi_precompute --export-parquet`. Ningún
    job del scheduler la llama.
 4. **Attach DuckDB** (`services/analytics_engine.py`) — ataca SQLite en memoria,
-   se invalida con `shared/cache_signal.py`.
+   se invalida con `db/cache_signal.py`.
 
 Problemas detectados:
 
@@ -129,7 +129,7 @@ Cambios concretos:
 
 **Archivos de partida**: `scheduler/jobs/daily_atom.py`,
 `scheduler/jobs/recent_bulk.py`, `scheduler/kpi_precompute.py`,
-`db/analytics.py`, `services/analytics_engine.py`, `shared/cache_signal.py`
+`db/analytics.py`, `services/analytics_engine.py`, `db/cache_signal.py`
 (solo lectura, no cambia), `dashboard/data_loader.py`.
 **Riesgo estimado**: bajo (aditivo; ningún consumidor existente cambia de fuente
 salvo `maybe_refresh`).

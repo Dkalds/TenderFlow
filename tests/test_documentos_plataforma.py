@@ -494,9 +494,7 @@ def test_post_ingestion_completa_documentos_tras_el_dedupe_y_es_fail_open(monkey
     monkeypatch.setattr(
         "services.contract_events.derive_new_events", lambda: orden.append("eventos")
     )
-    monkeypatch.setattr(
-        "shared.cache_signal.signal_cache_invalidation", lambda: orden.append("cache")
-    )
+    monkeypatch.setattr("db.cache_signal.signal_cache_invalidation", lambda: orden.append("cache"))
 
     def completar() -> None:
         orden.append("documentos")
@@ -679,7 +677,7 @@ def test_con_lote_el_paso_primero_no_se_repite_dentro_del_cierre(runner_con_lote
     ):
         monkeypatch.setattr(paso, lambda **kw: None)
     monkeypatch.setattr("services.contract_events.derive_new_events", lambda: None)
-    monkeypatch.setattr("shared.cache_signal.signal_cache_invalidation", lambda: None)
+    monkeypatch.setattr("db.cache_signal.signal_cache_invalidation", lambda: None)
 
     conector = _ConectorConLote("pscp", lambda: llamadas.append("x"), primero=True)
     resultado = runner_con_lote.run_connector(conector)
@@ -700,7 +698,7 @@ def test_sin_declararlo_el_paso_sigue_detras_de_los_dedupes(runner_con_lote, mon
     )
     monkeypatch.setattr("services.dedupe.detect_duplicates", lambda **kw: orden.append("dedupe"))
     monkeypatch.setattr("services.contract_events.derive_new_events", lambda: None)
-    monkeypatch.setattr("shared.cache_signal.signal_cache_invalidation", lambda: None)
+    monkeypatch.setattr("db.cache_signal.signal_cache_invalidation", lambda: None)
 
     conector = _ConectorConLote("ted", lambda: orden.append("documentos"), primero=False)
     runner_con_lote.run_connector(conector)

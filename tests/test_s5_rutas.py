@@ -127,8 +127,8 @@ def test_extract_async_devuelve_202_con_job_id_sin_llamar_al_llm(client, cabecer
     doblado, hacer la extracción en línea añade ~6 ms a una respuesta de ~14,
     así que ningún umbral que aguante un runner cargado la separa de encolar.
     """
+    from services.jobs import TIPO_FICHA_PLIEGO, obtener
     from services.rag.fact_sheet import get_fact_sheet
-    from shared.jobs import TIPO_FICHA_PLIEGO, obtener
 
     llamadas_al_proveedor: list[str] = []
 
@@ -189,7 +189,7 @@ def test_el_estado_de_la_ficha_lee_la_cola(client, cabeceras):
     Antes leía una bandera en la caché del proceso, invisible desde cualquier
     otra instancia de la API.
     """
-    from shared.jobs import ack
+    from services.jobs import ack
 
     _seed_licitacion("EXP-ASYNC-3")
 
@@ -219,7 +219,7 @@ def test_embeddings_async_encola_el_expediente_abierto(client, cabeceras):
     assert resp.status_code == 202, resp.text
     assert resp.json()["licitacion_id"] == "EXP-EMB-1"
 
-    from shared.jobs import TIPO_EMBEDDINGS_EXPEDIENTE, obtener
+    from services.jobs import TIPO_EMBEDDINGS_EXPEDIENTE, obtener
 
     job = obtener(int(resp.json()["job_id"]))
     assert job is not None and job.tipo == TIPO_EMBEDDINGS_EXPEDIENTE
@@ -249,7 +249,7 @@ def test_get_job_devuelve_el_estado_tipado(client, cabeceras):
 
 def test_get_job_publica_el_resultado_tipado_al_terminar(client, cabeceras):
     """El resultado NO es un ``dict[str, Any]``: el cliente TS recibe forma."""
-    from shared.jobs import ack
+    from services.jobs import ack
 
     _seed_licitacion("EXP-JOB-2")
     job_id = client.post(
@@ -269,7 +269,7 @@ def test_get_job_de_otra_organizacion_responde_404_y_no_403(client, cabeceras, u
     """404 a propósito: un 403 confirmaría que ese id existe, y con ids
     correlativos eso convierte la ruta en un contador del trabajo ajeno."""
     from db.repositories.organizations import OrganizationRepository
-    from shared.jobs import TIPO_FICHA_PLIEGO, enqueue
+    from services.jobs import TIPO_FICHA_PLIEGO, enqueue
 
     _token, user_id = usuario_con_key
     otra = int(OrganizationRepository().create_organization("Otro equipo", user_id)["id"])
@@ -285,7 +285,7 @@ def test_get_job_de_otra_organizacion_responde_404_y_no_403(client, cabeceras, u
 
 def test_get_job_del_sistema_no_se_sirve_a_nadie(client, cabeceras):
     """Los pasos del cierre no tienen organización, así que no son de nadie."""
-    from shared.jobs import TIPO_PASO_PIPELINE, enqueue
+    from services.jobs import TIPO_PASO_PIPELINE, enqueue
 
     job_id = enqueue(TIPO_PASO_PIPELINE, {"paso": "kpi_precompute"}, deduplicar=False)
     assert client.get(f"/api/v1/jobs/{job_id}", headers=cabeceras).status_code == 404
@@ -355,7 +355,7 @@ def test_download_no_acepta_un_identificador_de_trabajo(client, cabeceras):
 
 def test_la_descarga_encolada_de_otra_organizacion_responde_404(client, cabeceras, usuario_con_key):
     from db.repositories.organizations import OrganizationRepository
-    from shared.jobs import TIPO_EXPORT_PDF, enqueue
+    from services.jobs import TIPO_EXPORT_PDF, enqueue
 
     _token, user_id = usuario_con_key
     otra = int(OrganizationRepository().create_organization("Otro equipo", user_id)["id"])
@@ -377,7 +377,7 @@ def test_la_descarga_de_un_trabajo_sin_terminar_responde_409(client, cabeceras):
 def test_la_descarga_encolada_sirve_el_pdf_que_dejo_el_worker(client, cabeceras):
     """El circuito completo: 202 → worker → /descargas/{id} devuelve el PDF."""
     from scheduler.worker import Worker
-    from shared.jobs import TIPO_EXPORT_PDF
+    from services.jobs import TIPO_EXPORT_PDF
 
     _seed_licitacion("EXP-PDF-2")
 

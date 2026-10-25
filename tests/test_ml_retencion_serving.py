@@ -539,7 +539,7 @@ def _correr_batch(
         patch.object(rl, "_eventos_por_licitacion", return_value={}),
         patch("db.model_registry.get_active", return_value=activa),
         patch(
-            "shared.model_artifacts.resolve_active_artifact",
+            "services.ml.model_artifacts.resolve_active_artifact",
             return_value="retencion_model.pkl" if activa else None,
         ),
         patch.object(scoring, "PrediccionesRepository", return_value=repo),
@@ -613,7 +613,7 @@ def test_modelo_activo_con_artefacto_irresoluble_degrada_al_baseline():
     with (
         patch.object(rl, "_cargar_adjudicaciones", return_value=_historico_batch()),
         patch("db.model_registry.get_active", return_value={"version": 7}),
-        patch("shared.model_artifacts.resolve_active_artifact", return_value=None),
+        patch("services.ml.model_artifacts.resolve_active_artifact", return_value=None),
         patch.object(scoring, "PrediccionesRepository", return_value=repo),
     ):
         resultado = scoring.score_predicciones_retencion()
@@ -677,7 +677,7 @@ def test_sin_vencimientos_no_escribe_nada():
     with (
         patch.object(rl, "_cargar_adjudicaciones", return_value=[]),
         patch("db.model_registry.get_active", return_value=None),
-        patch("shared.model_artifacts.resolve_active_artifact", return_value=None),
+        patch("services.ml.model_artifacts.resolve_active_artifact", return_value=None),
         patch.object(scoring, "PrediccionesRepository", return_value=repo),
     ):
         resultado = scoring.score_predicciones_retencion()

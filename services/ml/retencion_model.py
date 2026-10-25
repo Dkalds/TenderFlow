@@ -316,7 +316,7 @@ def entrenar(
     )
     # Nombre por contenido, por lo mismo que en `baja_model.entrenar`: el
     # asset de la versión activa no puede quedar pisado por el de la nueva.
-    from shared.model_artifacts import rename_to_content_address
+    from services.ml.model_artifacts import rename_to_content_address
 
     path, sha256 = rename_to_content_address(modelo.save(model_path))
 

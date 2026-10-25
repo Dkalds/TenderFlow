@@ -3,7 +3,7 @@
 ``model_versions`` dice qué versión de cada modelo está activa y con qué
 sha256; las Releases de GitHub guardan los ficheros. Son dos sitios que se
 escriben por separado, y cuando dejan de coincidir nadie puede servir el
-modelo: ``shared.model_artifacts.resolve_active_artifact`` baja el asset, ve
+modelo: ``services.ml.model_artifacts.resolve_active_artifact`` baja el asset, ve
 que el hash no es el registrado y lanza ``ModelArtifactMismatch``.
 
 Pasó el 2026-09-29. El paso semanal ``sap_active_learning`` reentrenó dentro
@@ -44,7 +44,7 @@ def run() -> dict[str, Any]:
     y no marca ninguna versión (fail-open, igual que ``llm_models_canary``).
     """
     from db.model_registry import list_active
-    from shared.model_artifacts import check_published_artifact, fetch_model_releases
+    from services.ml.model_artifacts import check_published_artifact, fetch_model_releases
 
     result: dict[str, Any] = {"checked": 0, "divergentes": [], "sin_publicar": [], "error": None}
     activas = list_active()
