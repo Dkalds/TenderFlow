@@ -523,7 +523,7 @@ async def feedback_queue(
                         (str(c["cpv"]) if c.get("cpv") is not None else None) for c in candidates
                     ],
                     importes=[
-                        (float(importe) if (importe := c["importe"]) is not None else None)
+                        (float(importe) if (importe := c.get("importe")) is not None else None)
                         for c in candidates
                     ],
                 )
