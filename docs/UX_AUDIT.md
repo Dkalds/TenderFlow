@@ -357,13 +357,18 @@ en las tres páginas de evidencia, enlazadas desde el cuerpo y desde el pie.
 
 ### Lo que queda abierto
 
-- **La franja contradice al hero.** La portada cita el tamaño del corpus público
-  mientras la migración v98 —que lo acota al universo tecnológico— siga sin
-  aplicarse en producción (`migrate.yml` es manual). Hasta entonces la cifra es
-  la del censo PSCP bajo un titular que promete lo contrario.
+- **La franja y el hero (a verificar en producción).** La cifra sale de
+  `licitaciones_canonicas`, que desde v98 se acota al universo tecnológico, y
+  v158 ya está aplicada en producción (la cadena es lineal, así que v98 también).
+  No hay cambio de código pendiente: falta comprobar que la cifra publicada bajó
+  de los 417.182 del censo PSCP.
 - **La variante clara de las capturas.** Se sirve una sola imagen, oscura, a
-  quien tiene el sistema en claro. El script ya existe; falta generarlas y añadir
-  el `<source media="(prefers-color-scheme: dark)">`.
+  quien tiene el sistema en claro. `e2e/capturas-landing.spec.ts` ya genera
+  también `radar-hero-claro.webp` y `radar-hero-movil-claro.webp`, pero
+  necesita el stack sembrado (Postgres + API + dev server): `cd web && npm run
+  capturas:landing`. Falta ejecutarlo, commitear los dos `.webp` y poner en
+  `CapturaProducto` los `<source media="(prefers-color-scheme: dark)">` con los
+  oscuros, en el mismo cambio (un import a un fichero inexistente rompe el build).
 - **Identidad publicada.** Razón social, NIF, domicilio y un buzón de contacto
   del dominio son variables de entorno que sólo el responsable puede rellenar.
 - **Dominio propio.** El sitio se sirve desde `*.vercel.app`.
@@ -636,10 +641,9 @@ src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
 
 **Deuda medida:**
 
-- **Borrar los primitivos retirados.** `ui/card.tsx`, `ui/empty-state.tsx` y
-  `charts/kpi-card.tsx` ya solo los importan sus tests. Con ellos pueden irse
-  `ExportPopover.className` (deprecado y sin llamadores) y `NavPage.icon` /
-  `NavSection.icon` de `lib/navigation.ts`, que ya no se pintan.
+- ~~**Borrar los primitivos retirados.**~~ ✅ `ui/card.tsx`, `ui/empty-state.tsx` y
+  `charts/kpi-card.tsx` ya no existían en master; se retiraron además
+  `ExportPopover.className` y `NavPage.icon` / `NavSection.icon`.
 - **Una escala de tintes con nombre (F10).** Quedan 12 opacidades de `primary`
   en 143 usos. Faltan los tokens (`primary-hover`, `-selected`, `-soft`) y un
   trinquete de opacidades sueltas. Los bordes, igual: `border-border/N` en 266
@@ -653,11 +657,9 @@ src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
   renderizan sin el `MutationCache`. Aparte, `useOrganizationMembers` tiene seis
   consumidores y solo `/equipo` pinta su error: silenciarla dejaría mudos cinco
   selectores.
-- **Ortografía de reserva.** `CCAA_FALLBACK`
-  (`mi-watchlist/_hooks/watchlist-rule-options.ts`: «Andalucia»,
-  «Cataluna»…) se enseña tal cual si `/meta/filters` falla. Son valores que
-  viajan al filtro: hace falta un mapa valor → etiqueta, como el de
-  `spain-map.tsx`, no un reemplazo de texto.
+- ~~**Ortografía de reserva.**~~ ✅ `ccaaLabel` (`watchlist-rule-options.ts`)
+  mapea valor → etiqueta («Andalucia» → «Andalucía»); el valor sigue viajando
+  sin tilde al filtro.
 - **El gate de tildes lee texto JSX de una sola línea.** Medido con el AST, hoy
   no esconde nada; pero el hueco existe (lo dice el propio script).
 - `animate-pulse` queda en un sitio, a propósito: el cursor que parpadea
