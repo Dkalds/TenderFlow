@@ -117,7 +117,9 @@ def test_licitaciones_usa_el_envelope_compartido():
     """
     from api.routes.licitaciones import listado
 
-    assert listado.PaginatedResponse is PaginatedResponse
+    # Desde la convención (docs/api-design.md) la ruta lo importa por su nombre
+    # corto, `Pagina`, que es la misma clase: el componente OpenAPI no cambia.
+    assert listado.Pagina is PaginatedResponse
     # El cursor de licitaciones usa la subclase con `total` opcional; sigue
     # siendo el envoltorio compartido, con las claves de la base intactas.
     assert issubclass(listado.CursorPaginatedResponseWithTotal, CursorPaginatedResponse)
