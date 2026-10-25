@@ -114,7 +114,6 @@ def _count_and_delete(
 #: el aviso en una promesa falsa sin que falle nada.
 SOLICITUDES_ACCESO_RETENTION_MESES = settings.RETENTION_SOLICITUDES_ACCESO_MESES
 SOLICITUDES_ACCESO_RETENTION_DAYS = SOLICITUDES_ACCESO_RETENTION_MESES * 30
-PASSWORD_RESET_RETENTION_DAYS = settings.RETENTION_PASSWORD_RESET_DAYS
 
 # Columna de fecha por la que se purga cada tabla. Vive fuera de
 # ``run_retention`` para que un test la pueda cotejar contra el schema real,

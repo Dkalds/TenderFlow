@@ -72,6 +72,13 @@ def export_watchlist_items(key_hash: str, *, user_id: int | None = None) -> list
     return _watchlist_repo.export_items_by_user_key(key_hash, user_id)
 
 
+def export_follows(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+    """Exporta los seguimientos unificados (``follows``) del usuario."""
+    from db.repositories import follows
+
+    return follows.exportar_de_usuario(user_key, user_id=user_id)
+
+
 def export_watchlist_rules(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
     """Exporta las reglas de watchlist por criterio (mi-watchlist) del usuario."""
     from services.watchlist_rules import list_rules
@@ -133,12 +140,14 @@ def anonymize_user_data(
     """Anonimiza/borra los datos personales del usuario (RGPD Art. 17).
 
     Cubre watchlist (empresa/CPV), favoritos, reglas de watchlist por criterio,
-    perfil de scoring, alertas in-app, descartes del Radar y preferencias de
+    perfil de scoring, alertas in-app, descartes del Radar, seguimientos
+    (``follows``), votos del asistente y preferencias de notificación y de
     correo — todo lo persistido bajo ``user_key`` **o** ``user_id`` (v129: un
     borrado que sólo mirase la clave del correo actual dejaría vivo lo
     guardado con el anterior). Si se pasa ``key_id`` (autenticación por API
     key), además revoca esa key.
     """
+    from db.repositories import asistente_feedback, follows, notification_preferences
     from db.saved_filters import delete_all_for_user as delete_all_saved_filters
     from services.notifications import delete_all_alerts, delete_email_prefs
     from services.watchlist_rules import delete_all_for_user
@@ -151,8 +160,11 @@ def anonymize_user_data(
     delete_all_alerts(user_key, user_id=user_id)
     delete_email_prefs(user_key, user_id=user_id)
     radar_dismissals.delete_all_for_user(user_key, user_id=user_id)
+    follows.borrar_de_usuario(user_key, user_id=user_id)
     if user_id is not None:
         _feedback_repo.delete_for_user(user_id)
+        asistente_feedback.borrar_de_usuario(user_id)
+        notification_preferences.borrar_de_usuario(user_id)
         _pursuit_repo.anonymize_user_references(user_id)
         _pursuit_comment_repo.anonymize_author(user_id)
         _organization_repo.remove_memberships_for_user(user_id)

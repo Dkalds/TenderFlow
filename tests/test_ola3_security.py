@@ -41,20 +41,6 @@ def client(api_db, monkeypatch):
         yield c
 
 
-@pytest.fixture()
-def admin_key(api_db, monkeypatch):
-    """Devuelve (raw_key, client) con scope '*' para tests que requieren auth."""
-    monkeypatch.setenv("ENV", "dev")
-
-    from api.app import app
-    from api.auth import create_api_key
-
-    raw = create_api_key("test-admin", scopes="*")
-
-    with TestClient(app, raise_server_exceptions=True) as c:
-        yield raw, c
-
-
 # ── 3.2 — API key prefix ──────────────────────────────────────────────────────
 
 

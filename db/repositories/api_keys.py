@@ -91,14 +91,6 @@ class ApiKeyRepository:
                 log.warning("api_key_user_id_lookup_failed", key_id=key_id, exc_info=True)
                 return None
 
-    def get_name_and_scopes(self, key_id: int) -> tuple[str, str] | None:
-        """Obtiene nombre y scopes de una API key por ID."""
-        with connect_read() as c:
-            row = c.execute("SELECT name, scopes FROM api_keys WHERE id = %s", (key_id,)).fetchone()
-        if not row:
-            return None
-        return row[0], str(row[1] or "*")
-
     def get_rotatable(self, key_id: int) -> dict[str, Any] | None:
         """Devuelve ``{user_id, name, scopes}`` de una key rotable, o ``None``.
 
@@ -174,34 +166,6 @@ class ApiKeyRepository:
                 "FROM api_keys ORDER BY created_at DESC"
             )
             return rows_to_dicts(cur)
-
-    def list_for_export(self, key_hash: str) -> list[dict[str, Any]]:
-        """Exporta las API keys vinculadas al ``key_hash`` (GDPR)."""
-        with connect_read() as c:
-            cur = c.execute(
-                "SELECT name, created_at, expires_at FROM api_keys WHERE key_hash = %s",
-                (key_hash,),
-            )
-            return rows_to_dicts(cur)
-
-    def get_by_key_id(self, key_id: int) -> list[dict[str, Any]]:
-        """Devuelve datos de la API key por ID con columnas dinámicas."""
-        with connect_read() as c:
-            try:
-                cols_info = get_table_columns(c, "api_keys")
-                select_cols = "id, name, created_at, is_active, scopes"
-                if "prefix" in cols_info:
-                    select_cols += ", prefix"
-                if "expires_at" in cols_info:
-                    select_cols += ", expires_at"
-                cur = c.execute(
-                    "SELECT " + select_cols + " FROM api_keys WHERE id = %s",
-                    (key_id,),
-                )
-                return rows_to_dicts(cur)
-            except Exception:
-                log.warning("api_key_lookup_by_id_failed", key_id=key_id, exc_info=True)
-                return []
 
     # ── Mutations ────────────────────────────────────────────
 

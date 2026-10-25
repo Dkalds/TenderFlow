@@ -44,9 +44,10 @@ _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 #: `fix_dates_adjudicaciones`, `retrain`), y a 19 el 2026-10-23 al sacar
 #: `services/notifications.py` y `services/watchlist_rules.py` (su SQL bajó a
 #: `db/`) y el fósil `services/ml/tech_classifier.py`, que solo nombraba
-#: `connect()` en un docstring.
+#: `connect()` en un docstring, y a 18 el 2026-10-25 al borrar `medir_solape`,
+#: lo último que abría conexión en `services/dedupe.py`.
 #: El objetivo del plan de arquitectura de septiembre (≤ 24) queda cumplido.
-MAX_ENTRADAS_WHITELIST = 19
+MAX_ENTRADAS_WHITELIST = 18
 
 #: Las cuatro rutas liberadas en esta ola. Su SQL vive ahora en
 #: ``db/repositories/{empresas,licitaciones,watchlist,watchlist_rules}.py``.

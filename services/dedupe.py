@@ -60,7 +60,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, Self
 from urllib.parse import unquote, urlparse
 
-from db.database import connect_read, get_cursor, set_cursor
+from db.database import get_cursor, set_cursor
 from db.repositories import dedupe as dedupe_repo
 
 # Reexport: el fragmento SQL bajó a ``db/sql_fragments.py`` (ADR-022) para que
@@ -851,23 +851,3 @@ def expediente_del_pliego(licitacion_id: str) -> str:
     detección por referencia ya descarta como canónica una fila marcada.
     """
     return dedupe_repo.canonical_for(licitacion_id, solo_confirmadas=True) or licitacion_id
-
-
-def medir_solape(fuente_a: str = "pscp", fuente_b: str = "placsp") -> dict[str, Any]:
-    """Mide el solape detectado entre dos fuentes (acceptance del RFC)."""
-    with connect_read() as c:
-        total_a = c.execute(
-            "SELECT COUNT(*) FROM licitaciones WHERE fuente = %s", (fuente_a,)
-        ).fetchone()[0]
-        solapadas = c.execute(
-            """
-            SELECT COUNT(*) FROM licitaciones_duplicados d
-            JOIN licitaciones l  ON l.id_externo  = d.licitacion_id
-            JOIN licitaciones lc ON lc.id_externo = d.canonical_id
-            WHERE d.status != 'rejected'
-              AND ((l.fuente = %s AND lc.fuente = %s) OR (l.fuente = %s AND lc.fuente = %s))
-            """,
-            (fuente_a, fuente_b, fuente_b, fuente_a),
-        ).fetchone()[0]
-    pct = round(solapadas * 100.0 / total_a, 2) if total_a else 0.0
-    return {"fuente": fuente_a, "total": total_a, "solapadas": solapadas, "solape_pct": pct}

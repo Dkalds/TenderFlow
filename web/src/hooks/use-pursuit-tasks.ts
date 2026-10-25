@@ -35,8 +35,6 @@ export type PursuitTaskPatch = Schemas["PursuitTaskPatch"];
  */
 export const ESTADOS_TAREA = ["pendiente", "en_curso", "hecha", "descartada"] as const;
 
-export type EstadoTarea = (typeof ESTADOS_TAREA)[number];
-
 /** Abierta = todavía cuenta como compromiso. Es el criterio del SQL. */
 export function tareaAbierta(tarea: PursuitTask): boolean {
   return tarea.estado === "pendiente" || tarea.estado === "en_curso";

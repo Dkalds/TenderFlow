@@ -23,9 +23,6 @@ log = get_logger(__name__)
 
 ESTADOS = frozenset({"pendiente", "en_curso", "hecha", "descartada"})
 
-#: Estados que la agenda considera trabajo por hacer.
-ESTADOS_ABIERTOS = ("pendiente", "en_curso")
-
 MAX_TITULO = 300
 
 _SELECT = (

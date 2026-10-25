@@ -21,7 +21,6 @@ from services.watchlist import (
     load_pending_digests,
     mark_digests_sent,
     query_licitaciones_batch,
-    query_licitaciones_since,
     store_pending_digest,
 )
 
@@ -29,8 +28,6 @@ log = get_logger(__name__)
 
 # Ventana de búsqueda inicial cuando no hay last_notified_at previo
 _LOOKBACK_DAYS = 30
-# Máximo de emails inmediatos enviados por usuario por ejecución
-_MAX_IMMEDIATE_EMAILS_PER_RUN = 1
 
 
 def _user_key() -> str:
@@ -38,13 +35,6 @@ def _user_key() -> str:
     from shared.user_key import user_key
 
     return user_key()
-
-
-def _query_licitaciones_since(cpv_prefix: str, since_date: str) -> list[dict[str, Any]]:
-    """Devuelve licitaciones con fecha_publicacion >= since_date y CPV que empiece
-    por cpv_prefix. El filtrado fino (keyword, importe, ccaa) lo hace
-    matches_licitacion() en Python."""
-    return query_licitaciones_since(cpv_prefix, since_date)
 
 
 def _query_licitaciones_batch(

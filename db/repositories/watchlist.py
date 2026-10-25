@@ -34,18 +34,6 @@ _IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NUL
 class WatchlistRepository:
     """Acceso a las tablas ``watchlist_cpv``, ``watchlist_items`` y ``pending_digests``."""
 
-    def query_licitaciones_since(self, cpv_prefix: str, since_date: str) -> list[dict[str, Any]]:
-        """Licitaciones con CPV que empiece por ``cpv_prefix`` desde ``since_date``."""
-        pattern = cpv_prefix + "%"
-        with connect_read() as c:
-            cur = c.execute(
-                "SELECT " + _WATCHLIST_LIC_COLS + " FROM licitaciones "
-                "WHERE fecha_publicacion >= %s AND cpv LIKE %s "
-                "ORDER BY fecha_publicacion DESC",
-                (since_date, pattern),
-            )
-            return rows_to_dicts(cur)
-
     def query_licitaciones_batch(
         self, entries: list[dict[str, Any]], default_since: str
     ) -> dict[str, list[dict[str, Any]]]:

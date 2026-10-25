@@ -8,7 +8,6 @@ from services.dedupe import (
     detect_duplicates,
     exclude_duplicados_sql,
     match_key,
-    medir_solape,
     natural_expediente,
     normalize_organo,
 )
@@ -109,9 +108,6 @@ def test_detect_marca_duplicado_exacto_y_excluye_en_analytics(db):
     acme = [r for r in cuota if r["empresa"] == "Acme Consulting SL"]
     assert acme and acme[0]["contratos"] == 1
     assert acme[0]["importe"] == 100000.0
-
-    solape = medir_solape("pscp", "placsp")
-    assert solape["solapadas"] == 1 and solape["solape_pct"] == 100.0
 
 
 def test_detect_cpv_distinto_va_a_revision(db):

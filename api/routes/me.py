@@ -51,6 +51,7 @@ from services.gdpr import (
     export_audit_log,
     export_collaboration_data,
     export_feedback,
+    export_follows,
     export_saved_filters,
     export_user_notifications,
     export_user_profile,
@@ -132,7 +133,7 @@ def _actor_key(ctx: dict[str, Any]) -> str:
     responses={200: {"content": {"application/zip": {}}}},
 )
 def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> StreamingResponse:
-    """Exporta watchlist, reglas, perfil, notificaciones, feedback, API keys y
+    """Exporta watchlist, seguimientos, reglas, perfil, notificaciones, feedback, API keys y
     audit log en un ZIP JSON. Funciona con sesión OAuth o API key.
     """
     user_key = _user_key(ctx)
@@ -153,6 +154,9 @@ def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> Streaming
         zf.writestr(
             "watchlist_items.json", json.dumps(watchlist_items, ensure_ascii=False, indent=2)
         )
+
+        seguimientos = export_follows(user_key, user_id=uid)
+        zf.writestr("follows.json", json.dumps(seguimientos, ensure_ascii=False, indent=2))
 
         watchlist_rules = export_watchlist_rules(user_key, user_id=uid)
         zf.writestr(

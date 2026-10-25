@@ -97,7 +97,7 @@ def medir(detalle: int = 5) -> list[Diferencia]:
 
     salida: list[Diferencia] = []
     for tabla, expr, target_type, kind in PARES_DE_ORIGEN:
-        crudo = paridad_con_origen(tabla, expr, target_type, kind, ejemplos=detalle)
+        crudo = paridad_con_origen(tabla, expr, target_type, kind)
         faltan = crudo["faltan"]
         sobran = crudo["sobran"]
         salida.append(

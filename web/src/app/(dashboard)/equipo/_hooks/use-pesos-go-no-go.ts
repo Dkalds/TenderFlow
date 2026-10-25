@@ -21,7 +21,6 @@ import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { gobiernoOrgKeys, pursuitKeys } from "@/lib/query-keys";
 
 export type PesosGoNoGo = Schemas["GoNoGoWeightsOut"];
-export type CriterioGoNoGo = Schemas["GoNoGoCriterioOut"];
 
 export function usePesosGoNoGo(organizationId: number) {
   return useQuery({

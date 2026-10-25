@@ -21,12 +21,6 @@ log = get_logger(__name__)
 _repo = WatchlistRepository()
 
 
-def query_licitaciones_since(cpv_prefix: str, since_date: str) -> list[dict[str, Any]]:
-    """Devuelve licitaciones con ``fecha_publicacion >= since_date`` y CPV que empiece
-    por ``cpv_prefix``."""
-    return _repo.query_licitaciones_since(cpv_prefix, since_date)
-
-
 def query_licitaciones_batch(
     entries: list[dict[str, Any]], default_since: str
 ) -> dict[str, list[dict[str, Any]]]:

@@ -10,7 +10,7 @@ import json
 import re
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
-from typing import TYPE_CHECKING, Any, Final
+from typing import Any, Final
 
 from sqlalchemy import Select, Text, and_, cast, func, literal_column, or_, select, text
 from sqlalchemy.dialects.postgresql import ARRAY, array
@@ -57,9 +57,6 @@ from shared.estados import (
     abierta_sql_marcadores,
 )
 from shared.procedimientos import codigo_tipo_contrato, textos_de_tipo_contrato
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 log = get_logger(__name__)
 
@@ -388,28 +385,6 @@ def _columnas_resumen_sql(alias: str) -> str:
         importe_select_sql(alias) if c is licitaciones.c.importe else f"{alias}.{c.key}"
         for c in _SUMMARY_COLS
     )
-
-
-# ---------------------------------------------------------------------------
-# Backward-compat string aliases (used by services/licitaciones.py)
-# ---------------------------------------------------------------------------
-
-_SUMMARY_COLS_STR = (
-    "id_externo, titulo, organo_contratacion, importe, estado, "
-    "fecha_publicacion, fecha_limite, ccaa, cpv, url, tecnologia, "
-    "ml_tecnologias, ml_proba_max, ml_tech_principal, procedimiento, tramitacion"
-)
-
-_SORT_WHITELIST: dict[str, str] = {
-    "fecha_publicacion": "fecha_publicacion DESC",
-    "-fecha_publicacion": "fecha_publicacion ASC",
-    "importe": "importe ASC",
-    "-importe": "importe DESC",
-    "titulo": "titulo ASC",
-    "-titulo": "titulo DESC",
-}
-
-_DEFAULT_SORT = "fecha_publicacion DESC"
 
 
 #: Prefijo de ``ml_feedback.source`` con el que se guardan los reportes de dato
@@ -1702,33 +1677,6 @@ class LicitacionRepository:
         except Exception:
             log.warning("fts_ids_search_failed", exc_info=True)
             return None
-
-    def load_for_index(self) -> pd.DataFrame:
-        """``id_externo``/``titulo``/``descripcion`` de toda la tabla, como DataFrame.
-
-        Carga full-table para construir índices de búsqueda offline (AGENTS.md
-        §3.8). Las columnas se toman de ``cursor.description``, no de las
-        filas: con la tabla vacía el DataFrame sale igualmente **con las tres
-        columnas**, que es lo que espera cualquier consumidor que indexe por
-        nombre de columna.
-
-        El SQL vivía en ``services/licitaciones.py``; se movió aquí al sacar
-        ese módulo del ratchet TID251 (ADR-022).
-        """
-        import pandas as pd
-
-        from db.database import connect, init_db
-
-        # `connect()` y no `connect_read()`: se conserva el pool de escritura
-        # que usaba el call-site original. El de lectura tiene otra sesión
-        # (autocommit, read-only) y cambiarlo aquí de paso mezclaría el
-        # traslado del SQL con una decisión de routing que nadie ha evaluado.
-        init_db()
-        with connect() as c:
-            cursor = c.execute("SELECT id_externo, titulo, descripcion FROM licitaciones")
-            rows = cursor.fetchall()
-            cols = [d[0] for d in cursor.description]
-        return pd.DataFrame(rows, columns=cols)
 
     def load_drift_window(self, start: str, end: str) -> list[dict[str, Any]]:
         """Carga licitaciones de un rango de fechas para drift detection."""

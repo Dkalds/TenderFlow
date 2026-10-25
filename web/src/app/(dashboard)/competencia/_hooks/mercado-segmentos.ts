@@ -28,8 +28,6 @@ export const HHI_CONCENTRADO = 2500;
 
 export type ZonaHhi = "competitivo" | "moderado" | "concentrado";
 
-export const ZONAS_HHI: readonly ZonaHhi[] = ["competitivo", "moderado", "concentrado"];
-
 export function zonaHhi(hhi: number): ZonaHhi {
   if (hhi < HHI_MODERADO) return "competitivo";
   if (hhi < HHI_CONCENTRADO) return "moderado";

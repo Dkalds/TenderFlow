@@ -72,6 +72,26 @@ def _purgar_binarios_expedientes_cerrados(*, apply: bool = True) -> dict[str, in
     return resultado
 
 
+def _purgar_sesiones_caducadas() -> int:
+    """Borra las sesiones revocadas o caducadas hace más de 30 días.
+
+    El plazo vive en ``db.sessions.purge_expired_sessions`` (no es una regla de
+    ``POLITICA_RETENCION``: una sesión no es un dato que se conserve por
+    política, sino basura que la renovación deslizante ya no puede revivir).
+    Sin esta llamada la tabla solo crecía. Fail-open, como la purga de binarios:
+    devuelve ``-1`` si falla y el resto de la retención sigue.
+    """
+    try:
+        from db.sessions import purge_expired_sessions
+
+        borradas = purge_expired_sessions()
+    except Exception as exc:
+        log.warning("retention_sessions_failed", error=str(exc))
+        return -1
+    log.info("retention_sessions", borradas=borradas)
+    return borradas
+
+
 def run() -> dict[str, Any]:
     """Purga los datos históricos según la política de retención publicada.
 
@@ -86,4 +106,5 @@ def run() -> dict[str, Any]:
     # un dict anidado, así que el resultado del job se ensancha a ``Any``.
     resultado: dict[str, Any] = dict(run_retention(apply=True))
     resultado["documento_blobs"] = _purgar_binarios_expedientes_cerrados(apply=True)
+    resultado["sessions"] = _purgar_sesiones_caducadas()
     return resultado
