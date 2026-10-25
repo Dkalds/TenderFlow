@@ -11,7 +11,7 @@ organización y adivinarlo sería fabricar el dato que las métricas de producto
 existen para medir.
 
 Idempotente por construcción: la identidad de ``user_notifications`` es
-``(user_id, licitacion_id, type)`` (v159), así que repetir la pasada no vuelve
+``(user_id, licitacion_id, type)`` (v161), así que repetir la pasada no vuelve
 a avisar, tampoco si la persona cambió de correo entre una y otra.
 
 **Desde S2.1 el sistema sí conoce el NIF de la organización** (tabla
@@ -139,7 +139,7 @@ def _formatear_importe(valor: Any) -> str | None:
 def _destinatarios(row: dict[str, Any]) -> list[int]:
     """``user_id`` de quien debe enterarse: el responsable, o el equipo activo.
 
-    La alerta se teclea por ``user_id`` (v159), así que el correo ya no hace
+    La alerta se teclea por ``user_id`` (v161), así que el correo ya no hace
     falta para escribirla; sigue decidiendo *a quién*: una cuenta sin correo
     es una cuenta anonimizada por GDPR, y avisarla sería escribir a nadie.
     """

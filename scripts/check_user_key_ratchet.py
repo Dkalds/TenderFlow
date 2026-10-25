@@ -77,7 +77,7 @@ _REPORTEROS = frozenset(
 # ── RATCHET: ficheros de producción que todavía usan ``user_key`` ───────────
 # Medido con este mismo script el 2026-09-06 sobre la cabeza del repo.
 # Remedido el 2026-09-18 (ADR-030 fase 3): 69 → 63 entradas.
-# Remedido el 2026-10-25 (ADR-030 fase 3, v159): 59 → 53 entradas.
+# Remedido el 2026-10-25 (ADR-030 fase 3, v161): 59 → 53 entradas.
 # **Añadir líneas está prohibido.** Para quitar una: deja de usar ``user_key``
 # en ese fichero y borra su entrada.
 #
@@ -180,7 +180,7 @@ _REPORTEROS = frozenset(
 # Las tres salen de aquí con la fase 3 de ADR-030, que es cuando `user_key` se
 # retira de verdad — no antes, y no fichero a fichero.
 #
-# ── Segunda tanda de la fase 3 (v159), 2026-10-25: 59 → 53 ─────────────────
+# ── Segunda tanda de la fase 3 (v161), 2026-10-25: 59 → 53 ─────────────────
 #
 # `user_notifications` pasa a teclearse por `(user_id, licitacion_id, type)` y
 # `insert_user_notification` deja de escribir la clave cuando conoce el id. Con

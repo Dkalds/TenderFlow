@@ -29,6 +29,26 @@ def _insert_lic(c, lic_id, *, titulo="Lic", cpv=None, importe=None, ccaa=None, f
     )
 
 
+def _regla(user_key: str, rule: WatchlistRule) -> int:
+    """Una regla como las crea la API: con organización.
+
+    `POST /watchlist/rules` exige organización desde S4.3, y una alerta sin
+    ella no aparece en ninguna campana: desde v161 el job la descarta en vez
+    de escribirla invisible, así que una regla sin organización ya no sirve
+    para probar que notifica.
+    """
+    from db.repositories.organizations import OrganizationRepository
+    from db.users import create_user
+
+    owner = create_user(
+        email=f"{user_key}-{rule.keyword.lower()}-{rule.frequency}@example.test",
+        password_hash="test-hash",  # pragma: allowlist secret -- literal de test
+        display_name=user_key,
+    )
+    org = int(OrganizationRepository().create_organization(f"org-{owner}", owner)["id"])
+    return create_rule(user_key, rule, organization_id=org)
+
+
 def _set_last_notified(c, rule_id, iso_ts):
     c.execute("UPDATE watchlist_rules SET last_notified_at = %s WHERE id = %s", (iso_ts, rule_id))
 
@@ -42,7 +62,7 @@ def test_regla_due_con_matches_nuevos_notifica(tmp_db):
     from db.database import connect
 
     _, _ = tmp_db
-    rid = create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
+    rid = _regla("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
     with connect() as c:
         _insert_lic(c, "L1", titulo="Implantacion SAP", fecha=_recent(3))
 
@@ -68,7 +88,7 @@ def test_regla_inactiva_se_ignora(tmp_db):
     from db.database import connect
 
     _, _ = tmp_db
-    rid = create_rule("user-a", WatchlistRule(keyword="SAP"))
+    rid = _regla("user-a", WatchlistRule(keyword="SAP"))
     with connect() as c:
         c.execute("UPDATE watchlist_rules SET active = 0 WHERE id = %s", (rid,))
         _insert_lic(c, "L1", titulo="SAP", fecha=_recent(3))
@@ -80,7 +100,7 @@ def test_regla_no_due_se_salta(tmp_db):
     from db.database import connect
 
     _, _ = tmp_db
-    rid = create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
+    rid = _regla("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
     with connect() as c:
         _set_last_notified(c, rid, datetime.now(UTC).isoformat())  # recien notificada
         _insert_lic(c, "L1", titulo="SAP", fecha=_recent(1))
@@ -92,7 +112,7 @@ def test_sin_matches_no_notifica_pero_mueve_ventana(tmp_db):
     from db.database import connect
 
     _, _ = tmp_db
-    rid = create_rule("user-a", WatchlistRule(keyword="NOEXISTE"))
+    rid = _regla("user-a", WatchlistRule(keyword="NOEXISTE"))
     assert watchlist_rules_alerts.check_rules_and_notify() == 0
     with connect() as c:
         last = c.execute(
@@ -128,7 +148,7 @@ def test_regla_due_con_matches_escribe_el_evento_en_el_outbox(tmp_db):
     from db.database import connect
 
     _, _ = tmp_db
-    rid = create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
+    rid = _regla("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
     with connect() as c:
         _insert_lic(c, "L1", titulo="Implantacion SAP", fecha=_recent(3))
 
@@ -157,7 +177,7 @@ def test_fallo_al_registrar_el_evento_no_rompe_la_notificacion(tmp_db, monkeypat
     # va sobre el módulo de origen y no sobre una referencia ya resuelta.
     monkeypatch.setattr("db.events.append_domain_event", _boom)
 
-    create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
+    _regla("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
     with connect() as c:
         _insert_lic(c, "L1", titulo="Implantacion SAP", fecha=_recent(3))
 
@@ -173,7 +193,7 @@ def test_fallo_al_registrar_el_evento_no_rompe_la_notificacion(tmp_db, monkeypat
 
 def test_sin_matches_no_escribe_evento(tmp_db):
     _, _ = tmp_db
-    create_rule("user-a", WatchlistRule(keyword="NOEXISTE"))
+    _regla("user-a", WatchlistRule(keyword="NOEXISTE"))
     assert watchlist_rules_alerts.check_rules_and_notify() == 0
     assert _eventos_de_regla() == []
 
@@ -182,7 +202,7 @@ def test_solo_matches_posteriores_a_last_notified(tmp_db):
     from db.database import connect
 
     _, _ = tmp_db
-    rid = create_rule("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
+    rid = _regla("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
     with connect() as c:
         _set_last_notified(c, rid, (datetime.now(UTC) - timedelta(days=2)).isoformat())
         # El corte efectivo es `last_notified_at - _VENTANA_GRACIA_DIAS`, o sea
@@ -223,7 +243,7 @@ def test_notifica_lo_publicado_el_mismo_dia_en_que_la_regla_ya_se_evaluo(tmp_db)
     from db.database import connect
 
     _, _ = tmp_db
-    rid = create_rule("user-a", WatchlistRule(keyword="SAP", frequency="immediate"))
+    rid = _regla("user-a", WatchlistRule(keyword="SAP", frequency="immediate"))
     hoy = datetime.now(UTC)
     with connect() as c:
         # La regla ya se evaluó hoy — es el estado normal de producción, no un
@@ -245,7 +265,7 @@ def test_no_repite_una_notificacion_ya_escrita(tmp_db):
     from db.database import connect
 
     _, _ = tmp_db
-    create_rule("user-a", WatchlistRule(keyword="SAP", frequency="immediate"))
+    _regla("user-a", WatchlistRule(keyword="SAP", frequency="immediate"))
     with connect() as c:
         _insert_lic(c, "L1", titulo="SAP", fecha=_recent(0))
 
@@ -272,7 +292,7 @@ def test_el_tope_no_se_gasta_en_lo_ya_notificado(tmp_db):
     from db.database import connect
 
     _, _ = tmp_db
-    create_rule("user-a", WatchlistRule(keyword="SAP", frequency="immediate"))
+    _regla("user-a", WatchlistRule(keyword="SAP", frequency="immediate"))
     with connect() as c:
         for i, dias in enumerate((0, 1, 2)):
             _insert_lic(c, f"L{i}", titulo="SAP", fecha=_recent(dias))

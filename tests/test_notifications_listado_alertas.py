@@ -46,7 +46,7 @@ def _aviso(clave: str, org: int, n: int, *, leida: bool = False, user_id: int | 
         created_at=f"2026-10-{n:02d}T09:00:00+00:00",
     )
     with connect() as c:
-        # Con ``user_id`` la fila nace sin clave (v159): se localiza por el id.
+        # Con ``user_id`` la fila nace sin clave (v161): se localiza por el id.
         fila = c.execute(
             "SELECT id FROM user_notifications WHERE type = %s "
             "AND (user_id = %s OR (user_id IS NULL AND user_key = %s))",

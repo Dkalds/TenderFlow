@@ -234,7 +234,7 @@ def _tipo_notificacion(evento: dict[str, Any], spec: EspecificacionEvento) -> st
     """Valor de ``user_notifications.type`` para este evento concreto.
 
     El único de ``user_notifications`` es ``(user_id, licitacion_id, type)``
-    (v159; por ``user_key`` en las filas sin id), así que un ``type`` fijo por familia haría que el **segundo** cambio del
+    (v161; por ``user_key`` en las filas sin id), así que un ``type`` fijo por familia haría que el **segundo** cambio del
     mismo expediente no llegara nunca: la fila ya existiría. Añadir el id del
     evento hace que cada cambio real sea una alerta distinta y que reintentar
     el mismo evento siga siendo un no-op, que es justo la idempotencia que se

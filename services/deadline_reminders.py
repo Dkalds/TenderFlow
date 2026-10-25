@@ -6,7 +6,7 @@ fin de contrato (fecha_fin) se aproxima.
 
 Ventanas: 30 dias, 7 dias, 1 dia.
 El tipo de notificacion incluye la ventana para que la identidad de la alerta
-—``(user_id, licitacion_id, type)`` desde v159; por ``user_key`` solo en los
+—``(user_id, licitacion_id, type)`` desde v161; por ``user_key`` solo en los
 favoritos que el backfill de v129 no resolvió— evite duplicados entre runs.
 """
 

@@ -203,7 +203,7 @@ def _write_user_notifications(
     """Escribe notificaciones in-app (idempotentes) para los matches de una regla.
 
     Pasa por :func:`db.notifications.insert_user_notification`, la única
-    escritura de alertas: hasta v159 este módulo repetía aquí su propio
+    escritura de alertas: hasta v161 este módulo repetía aquí su propio
     ``INSERT ... ON CONFLICT (user_key, …)``, y al cambiar la identidad de la
     tabla a ``user_id`` habría quedado tecleado por la clave vieja. ``user_id``
     es el de la regla; sin él (regla que el backfill de v129 no resolvió) la

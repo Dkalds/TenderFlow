@@ -1,7 +1,7 @@
-"""v159: ``user_notifications`` se teclea por ``user_id`` (ADR-030 fase 3, segunda tanda).
+"""v161: ``user_notifications`` se teclea por ``user_id`` (ADR-030 fase 3, segunda tanda).
 
-Revision ID: v159_user_notifications_user_id_fase3
-Revises: v158_domain_events_pscp_rekey
+Revision ID: v161_user_notifications_user_id_fase3
+Revises: v160_fechas_ts_indices
 Create Date: 2026-10-25
 
 Qué corrige
@@ -72,7 +72,7 @@ funciona: el código viejo escribe las dos columnas y su arbitro sigue
 existiendo (punto 4).
 
 Antes del ``apply`` en producción: ``alembic upgrade
-v159_user_notifications_user_id_fase3 --sql`` para revisar el DDL, y
+v161_user_notifications_user_id_fase3 --sql`` para revisar el DDL, y
 ``sql_duplicados()`` a mano para saber si el ``RAISE`` va a saltar.
 
 Downgrade: recupera ``user_key`` en las filas escritas sin ella derivándola de
@@ -89,8 +89,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "v159_user_notifications_user_id_fase3"
-down_revision: str | Sequence[str] | None = "v158_domain_events_pscp_rekey"
+revision: str = "v161_user_notifications_user_id_fase3"
+down_revision: str | Sequence[str] | None = "v160_fechas_ts_indices"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -111,12 +111,12 @@ CLAVE_SQL = (
 )
 
 _CREAR_CLAVES = (
-    "CREATE TEMPORARY TABLE v159_claves ("
+    "CREATE TEMPORARY TABLE v161_claves ("
     "user_key TEXT PRIMARY KEY, user_id INTEGER NOT NULL) ON COMMIT DROP"
 )
 
 _SEMBRAR_CLAVES = (
-    "INSERT INTO v159_claves (user_key, user_id) "
+    "INSERT INTO v161_claves (user_key, user_id) "
     f"SELECT {CLAVE_SQL}, u.id FROM users u "
     "ON CONFLICT (user_key) DO NOTHING"
 )
@@ -130,7 +130,7 @@ def sql_backfill() -> str:
     """``UPDATE`` que resuelve ``user_id`` por ``user_key`` (igual que v129)."""
     return (
         f"UPDATE {TABLA} AS x SET user_id = k.user_id "
-        "FROM v159_claves AS k "
+        "FROM v161_claves AS k "
         "WHERE x.user_id IS NULL AND x.user_key = k.user_key"
     )
 
@@ -161,7 +161,7 @@ def _exigir_vacio(consulta: str, que: str) -> str:
         "DO $$ DECLARE n bigint; BEGIN "
         f"SELECT count(*) INTO n FROM ({consulta}) AS q; "
         "IF n > 0 THEN RAISE EXCEPTION "
-        f"'v159: % {que}. Nada se ha modificado. Revísalas con: {literal}', n; "
+        f"'v161: % {que}. Nada se ha modificado. Revísalas con: {literal}', n; "
         "END IF; END $$"
     )
 
