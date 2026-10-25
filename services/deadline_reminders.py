@@ -5,8 +5,9 @@ para licitaciones favoritas del usuario cuyo plazo (fecha_limite) o
 fin de contrato (fecha_fin) se aproxima.
 
 Ventanas: 30 dias, 7 dias, 1 dia.
-El tipo de notificacion incluye la ventana para garantizar el UNIQUE
-(user_key, licitacion_id, type) y evitar duplicados entre runs.
+El tipo de notificacion incluye la ventana para que la identidad de la alerta
+—``(user_id, licitacion_id, type)`` desde v159; por ``user_key`` solo en los
+favoritos que el backfill de v129 no resolvió— evite duplicados entre runs.
 """
 
 from __future__ import annotations
@@ -18,7 +19,6 @@ from db.database import connect_read
 from db.notifications import insert_user_notification
 from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
-from shared.identity import user_key_from_email
 
 log = get_logger(__name__)
 
@@ -47,8 +47,8 @@ def _get_watchlist_items(user_key: str, user_id: int | None = None) -> dict[str,
     Las filas legacy con ``organization_id IS NULL`` —las que se escribieron
     cuando la columna era opcional— se descartan aquí en vez de propagar el
     ``None`` hasta la escritura. Crear la alerta huérfana sería peor que no
-    crearla: gasta la clave ``UNIQUE(user_key, licitacion_id, type)`` con una
-    fila que el usuario no ve. Descartarlas se cura solo: en cuanto
+    crearla: gasta la identidad única de la alerta con una fila que el usuario
+    no ve. Descartarlas se cura solo: en cuanto
     el favorito pasa a la organización personal de su dueño (lo hizo el
     backfill de tenencia, ya ejecutado), la siguiente pasada del job lo avisa.
     """
@@ -99,7 +99,8 @@ def _deadline_type(days_left: int, field: str) -> str:
 def check_deadlines_and_notify(user_key: str, *, user_id: int | None = None) -> int:
     """Genera notificaciones de deadline para los favoritos del usuario.
 
-    Idempotente: upsert (ON CONFLICT DO NOTHING) en user_notifications (UNIQUE por user_key, licitacion_id, type).
+    Idempotente: ``ON CONFLICT DO NOTHING`` sobre la identidad de
+    ``user_notifications`` (``user_id``, o ``user_key`` si el favorito no tiene id).
 
     La escritura pasa por :func:`db.notifications.insert_user_notification`, el
     único productor de alertas de producto, para que la alerta lleve la
@@ -203,7 +204,6 @@ def check_pursuit_deadlines() -> int:
         responsable = row.get("responsible_user_id")
         if not email or responsable is None:
             continue
-        user_key = user_key_from_email(str(email), int(responsable))
         lic_id = str(row["licitacion_id"])
         titulo = str(row.get("titulo") or lic_id)
         organization_id = int(row["organization_id"])
@@ -215,7 +215,6 @@ def check_pursuit_deadlines() -> int:
                     continue
                 written += int(
                     insert_user_notification(
-                        user_key=user_key,
                         type_=_deadline_type(window, "fecha_limite"),
                         title=f"Plazo de presentacion en {dias} dia(s): {titulo[:80]}",
                         body=f"La oportunidad '{titulo}' vence el "
@@ -235,7 +234,6 @@ def check_pursuit_deadlines() -> int:
                     continue
                 written += int(
                     insert_user_notification(
-                        user_key=user_key,
                         type_=f"accion_{window}",
                         title=f"Proxima accion {cuando}: {accion}",
                         body=f"Oportunidad '{titulo[:80]}'.",
@@ -287,7 +285,7 @@ def check_radar_postponements() -> int:
     «Recuérdamelo en N días» sólo es una promesa si alguien la cumple. Este
     check convierte cada aplazamiento vencido en una alerta in-app, con la
     misma idempotencia que el resto: el ``type_`` lleva la fecha del
-    vencimiento, así que la clave ``UNIQUE(user_key, licitacion_id, type)``
+    vencimiento, así que la identidad única de ``user_notifications``
     impide repetirla aunque el job pase cada hora, y un segundo aplazamiento
     del mismo expediente —con otra fecha— sí genera su propio aviso.
 

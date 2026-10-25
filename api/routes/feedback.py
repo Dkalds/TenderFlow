@@ -15,6 +15,7 @@ from db.repositories.feedback import FUENTE_REVISION_TI, FeedbackRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
 from shared.audit_events import FEEDBACK_SUBMITTED
+from shared.identity import actor_del_principal
 
 log = get_logger(__name__)
 
@@ -366,7 +367,7 @@ async def submit_feedback(
     await run_db(
         log_event,
         event_type=FEEDBACK_SUBMITTED,
-        user_key=str(ctx.get("user_key", "system"))[:8],
+        actor=actor_del_principal(ctx),
         resource=f"licitacion:{body.expediente}",
         detail={
             "relevante": body.relevante,

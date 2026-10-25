@@ -33,7 +33,7 @@ def test_va_al_responsable_si_lo_hay() -> None:
     destinatarios = _destinatarios(
         {"organization_id": 7, "responsible_user_id": 3, "responsible_email": "ana@example.com"}
     )
-    assert destinatarios == [(3, "ana@example.com")]
+    assert destinatarios == [3]
 
 
 def test_sin_responsable_va_a_los_miembros_activos() -> None:
@@ -48,4 +48,4 @@ def test_sin_responsable_va_a_los_miembros_activos() -> None:
         destinatarios = _destinatarios(
             {"organization_id": 7, "responsible_user_id": None, "responsible_email": None}
         )
-    assert destinatarios == [(1, "a@example.com")]
+    assert destinatarios == [1]

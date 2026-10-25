@@ -27,6 +27,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from db.database import connect, connect_read
+from db.notifications import insert_user_notification
 from observability import get_logger
 from services.watchlist_rules import WatchlistRule, matches_since
 
@@ -199,39 +200,45 @@ def _write_user_notifications(
     now_ts: str,
     user_id: int | None = None,
 ) -> int:
-    """Escribe notificaciones in-app con INSERT OR IGNORE (idempotente).
+    """Escribe notificaciones in-app (idempotentes) para los matches de una regla.
+
+    Pasa por :func:`db.notifications.insert_user_notification`, la única
+    escritura de alertas: hasta v159 este módulo repetía aquí su propio
+    ``INSERT ... ON CONFLICT (user_key, …)``, y al cambiar la identidad de la
+    tabla a ``user_id`` habría quedado tecleado por la clave vieja. ``user_id``
+    es el de la regla; sin él (regla que el backfill de v129 no resolvió) la
+    alerta sale sólo con la clave, como siempre.
 
     Tolerante a la ausencia de la tabla (BDs sin migracion v48).
-    ``user_id`` (v129) es el de la regla y se escribe junto a la clave.
     Returns: numero de filas insertadas (las que no eran duplicados).
     """
     inserted = 0
+    if rule.organization_id is None:
+        # Una alerta sin ámbito no aparece en ninguna campana (misma regla que
+        # `services/deadline_reminders`): antes el INSERT la escribía igual y
+        # gastaba la identidad única con una fila que nadie veía.
+        log.warning("user_notifications_sin_organizacion", rule_id=rule_id, matches=len(matches))
+        return 0
     title = _build_title(rule, len(matches))
     try:
-        with connect() as c:
-            for lic in matches:
-                lic_id = str(lic.get("id_externo") or "")
-                if not lic_id:
-                    continue
-                body = f"{lic.get('titulo', '?')} | {lic.get('organo_contratacion', '?')}"
-                cur = c.execute(
-                    "INSERT INTO user_notifications "
-                    "(user_key, user_id, created_at, type, title, body, licitacion_id, rule_id, "
-                    " organization_id) "
-                    "VALUES (%s, %s, %s, 'rule_match', %s, %s, %s, %s, %s) "
-                    "ON CONFLICT(user_key, licitacion_id, type) DO NOTHING",
-                    (
-                        user_key,
-                        user_id,
-                        now_ts,
-                        title,
-                        body,
-                        lic_id,
-                        rule_id,
-                        rule.organization_id,
-                    ),
+        for lic in matches:
+            lic_id = str(lic.get("id_externo") or "")
+            if not lic_id:
+                continue
+            body = f"{lic.get('titulo', '?')} | {lic.get('organo_contratacion', '?')}"
+            inserted += int(
+                insert_user_notification(
+                    type_="rule_match",
+                    title=title,
+                    body=body,
+                    licitacion_id=lic_id,
+                    organization_id=rule.organization_id,
+                    user_id=user_id,
+                    user_key=user_key,
+                    rule_id=rule_id,
+                    created_at=now_ts,
                 )
-                inserted += cur.rowcount
+            )
     except Exception as exc:
         # Si la tabla no existe (BD legacy sin migrar), continuar sin crash
         log.debug("user_notifications_write_skip", error=str(exc)[:100])

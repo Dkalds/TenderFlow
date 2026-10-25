@@ -77,7 +77,6 @@ from shared.dto import (
     RadarBandaCalidad,
     RadarQuality,
 )
-from shared.identity import user_key_from_email
 from shared.scoring_weights import (
     KNOWN_WEIGHT_KEYS,
     WEIGHTS_TOTAL,
@@ -240,7 +239,6 @@ def _notificar_asignacion(row: dict[str, Any], *, actor_user_id: int) -> None:
         quien = str(actor.get("display_name") or actor.get("email") or "Alguien de tu equipo")
         titulo = str(row.get("tender_title") or row.get("licitacion_id") or "")[:80]
         insert_user_notification(
-            user_key=user_key_from_email(usuario.get("email"), int(responsable)),
             user_id=int(responsable),
             type_=TIPO_NOTIFICACION_ASIGNACION,
             title=f"Te han asignado: {titulo}",

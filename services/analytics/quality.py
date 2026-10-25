@@ -121,7 +121,7 @@ class QualityResult(BaseModel):
     fechas_no_iso: int = 0
     # Cobertura de tenencia por organización (v64) sobre las 7 tablas
     # user-scoped que la soportan. Métrica de cuándo se puede retirar el
-    # scope legacy user_key-only (ver docs/IMPROVEMENT_BACKLOG.md).
+    # scope legacy sin organización (ver docs/IMPROVEMENT_BACKLOG.md).
     pct_organization_scoped: float = 100.0
     filas_sin_organizacion: int = 0
     # ── Documentos (S8) ────────────────────────────────────────────────

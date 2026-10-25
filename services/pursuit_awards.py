@@ -10,8 +10,9 @@ Quién ganó lo confirma una persona: el sistema no conoce el NIF de la
 organización y adivinarlo sería fabricar el dato que las métricas de producto
 existen para medir.
 
-Idempotente por construcción: ``user_notifications`` lleva ``UNIQUE(user_key,
-licitacion_id, type)``, así que repetir la pasada no vuelve a avisar.
+Idempotente por construcción: la identidad de ``user_notifications`` es
+``(user_id, licitacion_id, type)`` (v159), así que repetir la pasada no vuelve
+a avisar, tampoco si la persona cambió de correo entre una y otra.
 
 **Desde S2.1 el sistema sí conoce el NIF de la organización** (tabla
 ``organization_nifs``), así que la ficha ya no llega en blanco: propone
@@ -34,7 +35,6 @@ from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
 from services.normalization import normalize_nif
 from shared.dto import PursuitAdjudicatario
-from shared.identity import user_key_from_email
 
 log = get_logger(__name__)
 
@@ -136,18 +136,18 @@ def _formatear_importe(valor: Any) -> str | None:
     return f"{numero:,.0f} EUR".replace(",", ".")
 
 
-def _destinatarios(row: dict[str, Any]) -> list[tuple[int, str]]:
-    """``(user_id, email)`` de quien debe enterarse: responsable, o el equipo."""
+def _destinatarios(row: dict[str, Any]) -> list[int]:
+    """``user_id`` de quien debe enterarse: el responsable, o el equipo activo.
+
+    La alerta se teclea por ``user_id`` (v159), así que el correo ya no hace
+    falta para escribirla; sigue decidiendo *a quién*: una cuenta sin correo
+    es una cuenta anonimizada por GDPR, y avisarla sería escribir a nadie.
+    """
     responsable = row.get("responsible_user_id")
-    email = row.get("responsible_email")
-    if responsable is not None and email:
-        return [(int(responsable), str(email))]
+    if responsable is not None and row.get("responsible_email"):
+        return [int(responsable)]
     miembros = OrganizationRepository().list_members(int(row["organization_id"]))
-    return [
-        (int(m["user_id"]), str(m["email"]))
-        for m in miembros
-        if m.get("status") == "active" and m.get("email")
-    ]
+    return [int(m["user_id"]) for m in miembros if m.get("status") == "active" and m.get("email")]
 
 
 def build_notification(row: dict[str, Any]) -> tuple[str, str]:
@@ -170,10 +170,9 @@ def notify_detected_awards(*, limit: int = 500) -> int:
     written = 0
     for row in rows:
         title, body = build_notification(row)
-        for user_id, email in _destinatarios(row):
+        for user_id in _destinatarios(row):
             try:
                 inserted = insert_user_notification(
-                    user_key=user_key_from_email(email, user_id),
                     user_id=user_id,
                     type_=TIPO_NOTIFICACION,
                     title=title,

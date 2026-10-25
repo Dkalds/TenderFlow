@@ -8,8 +8,11 @@ Modelo simple:
   - Un ``notification_id`` es simplemente el ``id_externo`` de la licitación.
 
 Desde v129 (ADR-030 fase 2) ``notification_reads`` y ``user_notifications``
-llevan ``user_id`` junto a ``user_key``: se escriben los dos y la lectura es
-dual (ver ``db/repositories/watchlist.py``).
+llevan ``user_id`` junto a ``user_key`` y la lectura es dual (ver
+``db/repositories/watchlist.py``). Desde v159 (fase 3) una alerta de
+``user_notifications`` con ``user_id`` ya no lleva clave: la identidad de la
+fila es ``(user_id, licitacion_id, type)``. ``notification_reads`` y
+``user_event_prefs`` siguen escribiendo las dos columnas hasta su tanda.
 """
 
 from __future__ import annotations
@@ -121,57 +124,62 @@ def marcar_visita(user_key: str, *, user_id: int | None = None) -> str:
     return ahora
 
 
+#: Árbitro del ``ON CONFLICT`` según la identidad con la que llega la alerta
+#: (v159). Con ``user_id`` la clave es el índice parcial por id; sin él, el
+#: ``UNIQUE`` de v48 por clave derivada del correo.
+_ARBITRO_POR_ID = "ON CONFLICT (user_id, licitacion_id, type) WHERE user_id IS NOT NULL DO NOTHING"
+_ARBITRO_POR_CLAVE = "ON CONFLICT (user_key, licitacion_id, type) DO NOTHING"
+
+
 def insert_user_notification(
     *,
-    user_key: str,
     type_: str,
     title: str,
     body: str | None,
     licitacion_id: str | None,
     organization_id: int,
+    user_id: int | None = None,
+    user_key: str | None = None,
     rule_id: int | None = None,
     created_at: str | None = None,
-    user_id: int | None = None,
 ) -> bool:
     """Escribe una alerta in-app en ``user_notifications``; idempotente.
 
-    La tabla lleva ``UNIQUE(user_key, licitacion_id, type)``, así que quien
-    llama codifica en ``type_`` lo que hace única a la alerta (``deadline_7``,
-    ``pursuit_asignada``, ``adjudicacion_detectada``…) y repetir la llamada no
-    duplica la fila. Devuelve ``True`` sólo si insertó.
+    La identidad de la alerta es ``(user_id, licitacion_id, type)`` (índice
+    único parcial de v159), así que quien llama codifica en ``type_`` lo que
+    hace única a la alerta (``deadline_7``, ``pursuit_asignada``,
+    ``adjudicacion_detectada``…) y repetir la llamada no duplica la fila,
+    tampoco tras un cambio de correo. Devuelve ``True`` sólo si insertó.
 
-    Es la única escritura de alertas de producto fuera de los jobs de reglas:
-    hasta ahora cada productor (reglas, recordatorios) repetía su propio
-    ``INSERT`` con el mismo ``ON CONFLICT``, y un tercero —las asignaciones de
-    pursuits— habría sido la tercera copia.
+    Es la única escritura de alertas de producto: cada productor (reglas,
+    recordatorios, pursuits, adjudicaciones, el despachador de eventos) pasa
+    por aquí y ninguno repite su propio ``INSERT``.
 
     ``organization_id`` no admite ``None``: una alerta sin organización queda
     fuera del alcance de cualquier lectura con ámbito y el usuario no la ve en
-    ningún sitio. Los tres productores (reglas, recordatorios, pursuits) la
-    tienen a mano; que sea obligatoria impide que un cuarto la olvide.
+    ningún sitio. Los productores la tienen a mano; que sea obligatoria impide
+    que uno nuevo la olvide.
 
-    ``user_id`` (v129) se escribe junto a la clave. Cuando se conoce, la
-    idempotencia se comprueba además por identidad dual: la clave única sigue
-    tecleada por ``user_key`` y, tras un cambio de correo, no frenaría una
-    segunda alerta del mismo expediente bajo la clave nueva.
+    Identidad (ADR-030 fase 3). Con ``user_id`` la fila nace **sin**
+    ``user_key`` —la clave derivada del correo ya no se escribe para quien
+    tiene id— y la idempotencia la vigila la base, no un ``SELECT`` previo.
+    ``user_key`` sólo se usa cuando no hay ``user_id``: favoritos que el
+    backfill de v129 no resolvió y eventos en cola anteriores a esa revisión.
+    Entonces la fila se escribe como siempre y la lectura dual la sirve. Hace
+    falta al menos una de las dos.
     """
+    if user_id is None and not user_key:
+        raise ValueError("insert_user_notification: hace falta user_id o user_key")
+    clave = None if user_id is not None else user_key
+    arbitro = _ARBITRO_POR_ID if user_id is not None else _ARBITRO_POR_CLAVE
     with connect() as c:
-        if user_id is not None and licitacion_id is not None:
-            repetida = c.execute(
-                f"SELECT 1 FROM user_notifications WHERE {_IDENT} "
-                "AND licitacion_id = %s AND type = %s LIMIT 1",
-                (user_id, user_key, user_id, licitacion_id, type_),
-            ).fetchone()
-            if repetida is not None:
-                return False
         cur = c.execute(
             "INSERT INTO user_notifications "
             "(user_key, user_id, created_at, type, title, body, licitacion_id, rule_id, "
             " organization_id) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
-            "ON CONFLICT(user_key, licitacion_id, type) DO NOTHING",
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) {arbitro}",
             (
-                user_key,
+                clave,
                 user_id,
                 created_at or now_utc_iso(),
                 type_,
