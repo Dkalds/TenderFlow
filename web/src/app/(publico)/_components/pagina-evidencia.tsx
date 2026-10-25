@@ -52,7 +52,7 @@ export function PaginaEvidencia({
 
       <div className="mt-12">
         {secciones.map((seccion) => (
-          <section key={seccion.titulo} className="border-border/60 border-t py-9">
+          <section key={seccion.titulo} className="border-divider border-t py-9">
             <div className="max-w-[68ch]">
               <h2 className={TITULO_SECCION}>{seccion.titulo}</h2>
               {seccion.texto.map((parrafo) => (
@@ -61,7 +61,7 @@ export function PaginaEvidencia({
                 </p>
               ))}
               {seccion.puntos ? (
-                <ul className="border-border/60 mt-6 space-y-3 border-l pl-4">
+                <ul className="border-divider mt-6 space-y-3 border-l pl-4">
                   {seccion.puntos.map((punto) => (
                     <li key={punto} className="text-sm leading-relaxed md:text-base">
                       {punto}
@@ -74,7 +74,7 @@ export function PaginaEvidencia({
         ))}
       </div>
 
-      <footer className="border-border/60 mt-4 border-t pt-10">
+      <footer className="border-divider mt-4 border-t pt-10">
         <p className={cn(TITULO_SECCION, "max-w-[34ch]")}>Contrasta estas reglas con tus propios expedientes.</p>
         {/* Misma etiqueta que los otros cuatro CTA del sitio. Decía «Solicitar
             revisión», que nombraba una acción distinta de la que ocurre y

@@ -132,7 +132,7 @@ function Incumbente({ data, Sub }: { data: CompetenciaEsperada; Sub: Subtitulo }
     <div>
       <Sub className={ROTULO_DATO}>Quién lo tiene hoy</Sub>
       {incumbente ? (
-        <div className="mt-1 rounded-md border border-border/60 bg-card px-2.5 py-2">
+        <div className="mt-1 rounded-md border border-divider bg-card px-2.5 py-2">
           <div className="flex flex-wrap items-center gap-1.5 text-tf-meta">
             <NombreEmpresa
               nombre={incumbente.adjudicatario ?? "Adjudicatario sin nombre publicado"}
@@ -170,7 +170,7 @@ function FilaRival({ rival, vigilada }: { rival: RivalEsperado; vigilada: boolea
   const conDetalle =
     rival.es_incumbente || vigilada || rival.baja_mediana_pct != null || Boolean(rival.ultima_adjudicacion);
   return (
-    <li className="rounded-md border border-border/60 bg-card px-2.5 py-2">
+    <li className="rounded-md border border-divider bg-card px-2.5 py-2">
       <div className="flex items-baseline gap-2">
         <span className="min-w-0 flex-1 break-words text-tf-meta">
           <NombreEmpresa nombre={rival.nombre} empresaId={rival.empresa_id} />

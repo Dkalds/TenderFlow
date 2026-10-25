@@ -679,7 +679,7 @@ def _canal_cache() -> None:
     comparan), así que el «qué» cambió no la afina. Es el mismo mecanismo que
     ya usaba el scraper, no uno nuevo.
     """
-    from shared.cache_signal import signal_cache_invalidation
+    from db.cache_signal import signal_cache_invalidation
 
     signal_cache_invalidation()
 

@@ -38,7 +38,7 @@ export const CompetitorRow = React.memo(function CompetitorRow({
   const cifs = (c.nifs?.length ?? 0) > 1 ? c.nifs! : c.nif ? [c.nif] : (c.nifs ?? []);
 
   return (
-    <TableRow className={cn(abierta && "bg-primary/10")}>
+    <TableRow className={cn(abierta && "bg-primary-selected")}>
       <TableCell>
         <CompetidorNombre competitor={c} abierta={abierta} vigilada={vigilada} onAbrir={onAbrir} />
       </TableCell>

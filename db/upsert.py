@@ -315,7 +315,7 @@ class Licitacion:
     #: Identificador del órgano en la plataforma de origen (`ID_PLATAFORMA` de
     #: PLACSP, con `NIF`/`DIR3` de respaldo; `ID_OC_PLAT` en agregadas), tal
     #: como entra en la clave acotada por órgano de `shared/identidad_placsp.py`
-    #: (v161, fase A del RFC de identidad PLACSP). Lo rellena el parser CODICE;
+    #: (v163, fase A del RFC de identidad PLACSP). Lo rellena el parser CODICE;
     #: el resto de caminos lo dejan a `None` y el upsert no pisa lo que haya.
     organo_ref_fuente: str | None = None
     #: Código DIR3 del órgano, **parse-only** (C1.2). No es columna de
@@ -430,7 +430,7 @@ _LIC_COALESCE_UPDATE_FIELDS = frozenset(
         "ml_tecnologias",
         "ml_proba_max",
         "ml_tech_principal",
-        # ── Órgano de la fuente (v161): solo lo lee el parser CODICE ──
+        # ── Órgano de la fuente (v163): solo lo lee el parser CODICE ──
         # Es el mapa viejo → nuevo de la re-key del RFC de identidad PLACSP:
         # un camino que no lo conoce (TED, el reintento de la DLQ con una
         # `Licitacion` reconstruida…) no puede borrarlo.
@@ -481,7 +481,7 @@ _LIC_SOMBRA_UPDATES = ", ".join(
 )
 
 
-# ── Escritura dual de las fechas de v161 (fase 1 de «fechas a timestamptz») ──
+# ── Escritura dual de las fechas de v163 (fase 1 de «fechas a timestamptz») ──
 # Mismo contrato que las sombras de v133: valor traducido en Python con la
 # gemela de `nucleo_iso_a_timestamptz`, y la regla del UPDATE de su columna
 # vieja. Se pregunta al catálogo por separado de v133: son dos migraciones y
@@ -722,13 +722,13 @@ def _detectar_colision_de_organo(lic: Licitacion, organo_guardado: str | None) -
     Con la clave vieja (``ContractFolderID`` sin órgano) la pisada es silenciosa:
     el ``ON CONFLICT`` de abajo la ejecuta igual. Lo que cambia en la fase A es
     que, si la fila guardada ya dice de qué órgano era (``organo_ref_fuente``,
-    v161) y la entrada trae otro, queda rastro: un log con los dos órganos y un
+    v163) y la entrada trae otro, queda rastro: un log con los dos órganos y un
     contador. No se rechaza la escritura —perder la nueva en vez de la vieja no
     es mejor— ni se bifurca la clave —escribir ``placsp:<órgano>:<exp>`` sobre
     una base sin re-key partiría cada expediente republicado en dos filas—. El
     contador es la medida en vivo de lo que la fase B tiene que recuperar.
 
-    Solo compara órganos **conocidos**: la fila anterior a v161 tiene ``NULL`` y
+    Solo compara órganos **conocidos**: la fila anterior a v163 tiene ``NULL`` y
     el primer refresco se lo pone sin que eso sea una colisión.
     """
     nuevo = lic.organo_ref_fuente

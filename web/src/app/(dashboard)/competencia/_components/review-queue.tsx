@@ -64,7 +64,7 @@ export function ReviewQueue({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-border/60 flex flex-none items-center gap-2 border-b px-5 py-3">
+      <div className="border-divider flex flex-none items-center gap-2 border-b px-5 py-3">
         <span className="text-tf-body text-muted-foreground">
           {items.length === 0
             ? "Sin coincidencias pendientes"
@@ -146,7 +146,7 @@ export function ReviewQueue({
           className={cn(
             GRID,
             CABECERA_COLUMNA,
-            "border-border/70 bg-background sticky top-0 z-10 h-[34px] border-b",
+            "border-divider bg-background sticky top-0 z-10 h-[34px] border-b",
           )}
         >
           <span>Visto en fuente</span>
@@ -176,7 +176,7 @@ export function ReviewQueue({
             const conflicto = nifEnConflicto(item);
             const score = Math.round((item.score ?? 0) * 100);
             return (
-              <div key={item.id} className={cn(GRID, "border-border/30 hover:bg-primary/5 h-[52px] border-b transition-colors")}>
+              <div key={item.id} className={cn(GRID, "border-divider-subtle hover:bg-primary-hover h-[52px] border-b transition-colors")}>
                 <div className="min-w-0">
                   <div className="text-tf-body text-foreground truncate font-medium">{item.nombre_original ?? "—"}</div>
                   <div className={cn("text-tf-meta text-muted-foreground mt-0.5", item.nif && "font-mono")}>

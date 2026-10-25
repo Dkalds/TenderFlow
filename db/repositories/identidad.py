@@ -1,7 +1,7 @@
 """Identidad de una licitación: resolución de ids anteriores e inventario de pisadas.
 
 Fase A del RFC ``2026-10-24-rfc-identidad-placsp-organo-expediente``. Tres
-preguntas, todas sobre ``licitaciones`` y ``licitaciones_id_anterior`` (v161):
+preguntas, todas sobre ``licitaciones`` y ``licitaciones_id_anterior`` (v163):
 
 1. **¿A qué fila apunta este id?** :func:`resolver_id_licitacion` devuelve el
    id exacto si existe y, si no, la fila a la que su alias redirige. Es la única

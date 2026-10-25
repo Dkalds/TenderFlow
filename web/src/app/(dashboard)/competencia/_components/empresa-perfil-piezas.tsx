@@ -42,7 +42,7 @@ export function Relacionadas({
             key={item.empresa_id}
             type="button"
             onClick={() => onOpen(item.empresa_id)}
-            className="tf-pressable border-border/70 text-tf-meta text-foreground hover:border-primary/50 inline-flex h-6.5 items-center rounded-md border px-2.5 font-medium"
+            className="tf-pressable border-divider text-tf-meta text-foreground hover:border-primary-line-strong inline-flex h-6.5 items-center rounded-md border px-2.5 font-medium"
           >
             {item.nombre_canonico}
           </button>

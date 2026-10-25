@@ -134,6 +134,7 @@ export function useTenderFactSheetExtraction(licitacionId: string) {
   }, [running, licitacionId, queryClient]);
 
   const start = useMutation({
+    meta: { errorTitle: "No se pudo lanzar la extracción de la ficha" },
     mutationFn: () =>
       apiMutate<FactSheetExtractionState>(
         "POST",

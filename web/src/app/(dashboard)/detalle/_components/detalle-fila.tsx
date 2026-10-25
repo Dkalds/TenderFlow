@@ -96,14 +96,14 @@ export function DetalleFila({
       }}
       style={{ height: rowHeight }}
       className={cn(
-        "relative cursor-pointer border-b border-border/30 transition-colors duration-110 ease-out",
+        "relative cursor-pointer border-b border-divider-subtle transition-colors duration-110 ease-out",
         atenuada && "opacity-60",
-        open ? "bg-primary/10" : picked ? "bg-primary/5" : "hover:bg-primary/5",
+        open ? "bg-primary-selected" : picked ? "bg-primary-hover" : "hover:bg-primary-hover",
         // Pulsado de la fila, salvo cuando lo pulsado es la casilla, «Seguir» o
         // un filtro: `:active` sube a los ancestros. Llega sin transición y se
         // va con la de la fila.
-        !open && "[&:active:not(:has(button:active))]:bg-primary/10 [&:active:not(:has(button:active))]:duration-0",
-        isCursor && !open && "ring-1 ring-inset ring-primary/30",
+        !open && "[&:active:not(:has(button:active))]:bg-primary-selected [&:active:not(:has(button:active))]:duration-0",
+        isCursor && !open && "ring-1 ring-inset ring-primary-line",
       )}
     >
       <td className="relative px-1 pl-3.5">
@@ -220,7 +220,7 @@ export function DetalleFila({
                 className={cn(
                   "block max-w-full truncate rounded-md px-1.5 py-0.5 text-left text-tf-meta transition-colors",
                   ccaaOn
-                    ? "border border-primary/30 bg-primary/10 font-medium text-primary"
+                    ? "border border-primary-line bg-primary-selected font-medium text-primary"
                     : "border border-transparent text-muted-foreground hover:text-foreground",
                 )}
               >

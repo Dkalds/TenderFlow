@@ -54,7 +54,7 @@ function personaDeUrl(valor: string | null): number | null {
 function FilaActividad({ item }: { item: ItemActividad }) {
   const cambios = item.cambios ?? [];
   return (
-    <li className="border-border/60 flex flex-col gap-0.5 border-b py-2.5 last:border-b-0">
+    <li className="border-divider flex flex-col gap-0.5 border-b py-2.5 last:border-b-0">
       <p className="text-tf-body leading-snug">
         {/* `actor` es null cuando la cuenta se dio de baja: el ledger es
             inmutable y se dice quién fue sin inventar un nombre. */}

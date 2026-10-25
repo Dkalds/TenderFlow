@@ -37,8 +37,8 @@ const MAX_POR_CARRIL = 3;
 
 const CARRIL_POR_TONO: Record<TonoCarril, { caja: string; titulo: string }> = {
   vencido: { caja: "border-destructive/30 bg-destructive/5", titulo: "text-destructive" },
-  hoy: { caja: "border-primary/30 bg-primary/5", titulo: "text-primary" },
-  dia: { caja: "border-border/60", titulo: "text-foreground" },
+  hoy: { caja: "border-primary-line bg-primary-hover", titulo: "text-primary" },
+  dia: { caja: "border-divider", titulo: "text-foreground" },
 };
 
 /**
@@ -51,7 +51,7 @@ function TarjetaCompromiso({ item }: { item: PipelineAgendaItem }) {
   return (
     <Link
       href={destinoDe(item)}
-      className="flex min-w-0 flex-col gap-1 rounded-md border border-border/60 bg-card px-2 py-1.5 transition-colors hover:border-primary/50 active:bg-primary/10 active:duration-0"
+      className="flex min-w-0 flex-col gap-1 rounded-md border border-divider bg-card px-2 py-1.5 transition-colors hover:border-primary-line-strong active:bg-primary-selected active:duration-0"
     >
       <span className="flex items-center gap-1.5">
         <Icono className="h-3 w-3 flex-none text-muted-foreground" aria-hidden="true" />

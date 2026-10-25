@@ -36,7 +36,7 @@ export function VistaPreviaRuido({ preview }: { preview: PreviewRegla }) {
   const yUmbral = umbral != null ? ALTO - (umbral / tope) * ALTO : null;
 
   return (
-    <figure className="space-y-2 rounded-md border border-border/70 p-3">
+    <figure className="space-y-2 rounded-md border border-divider p-3">
       <figcaption className="text-tf-meta font-medium">
         {formatNumber(preview.total)} licitación(es) coincidirían hoy · coincidencias por semana,
         últimas {serie.length}

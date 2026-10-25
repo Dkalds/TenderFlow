@@ -34,7 +34,6 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { type OrganizacionActiva } from "@/hooks/use-organization";
 import { DIAS, useGuardarReportSchedule, useReportSchedule } from "@/hooks/use-report-schedule";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { formatDateTime, formatDiaYHora } from "@/lib/utils";
 import {
   aHorarioLocal,
@@ -147,7 +146,8 @@ export function InformeSemanalCard({
             : "Informe semanal desactivado.",
         );
       })
-      .catch((error: unknown) => toast.error(getErrorMessage(error, "accion")));
+      // El aviso de error es el global de mutaciones (meta.errorTitle del hook, D6).
+      .catch(() => undefined);
   };
 
   return (

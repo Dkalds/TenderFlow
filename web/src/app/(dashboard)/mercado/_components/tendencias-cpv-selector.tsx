@@ -40,7 +40,7 @@ export function TendenciasCpvSelector({
               return (
                 <label
                   key={cpvItem.cpv}
-                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-2.5 py-1.5 text-tf-meta transition-colors hover:bg-primary/5"
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-divider px-2.5 py-1.5 text-tf-meta transition-colors hover:bg-primary-hover"
                   style={isSelected ? { borderColor: getSeriesColor(idx) } : undefined}
                 >
                   <Checkbox

@@ -90,7 +90,7 @@ MIN_TRAIN_SAMPLES = 200
 _MIN_VALID_SAMPLES = 30
 # Rutas BASE de los artefactos. `entrenar` no publica aquí sino en
 # `<stem>-<sha256[:12]>.pkl` del mismo directorio (ver `rename_to_content_address`
-# en shared/model_artifacts.py); `save()`/`load()` sin ruta siguen usándolas tal
+# en services/ml/model_artifacts.py); `save()`/`load()` sin ruta siguen usándolas tal
 # cual para el uso local.
 _MODEL_PATH = Path(__file__).parents[2] / "data" / "models" / "baja_model.pkl"
 _MODEL_PATH_LOTE = Path(__file__).parents[2] / "data" / "models" / "baja_model_lote.pkl"
@@ -1042,7 +1042,7 @@ def entrenar(
     # Nombre por contenido: con la ruta fija, el reentrenamiento pisaba en la
     # Release (`--clobber`) el asset de la versión activa y `ml-scoring` caía
     # con `ModelArtifactMismatch` hasta que alguien activara la nueva.
-    from shared.model_artifacts import rename_to_content_address
+    from services.ml.model_artifacts import rename_to_content_address
 
     path, sha256 = rename_to_content_address(modelo.save(model_path))
 

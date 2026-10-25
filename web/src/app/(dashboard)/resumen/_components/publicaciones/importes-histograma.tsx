@@ -55,7 +55,7 @@ export function ImportesHistograma({ histograma, total, maximo }: ImportesHistog
                   {formatNumber(bin.count)}
                 </span>
               </span>
-              <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-border/40">
+              <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-divider-subtle">
                 <span
                   className="block h-full rounded-full"
                   style={{

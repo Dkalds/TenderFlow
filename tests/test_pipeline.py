@@ -194,7 +194,7 @@ class TestSignalPostIngestion:
         with patch.dict(
             "sys.modules",
             {
-                "shared.cache_signal": MagicMock(),
+                "db.cache_signal": MagicMock(),
                 "db.events": MagicMock(),
             },
         ):
@@ -207,7 +207,7 @@ class TestSignalPostIngestion:
         # Remove cached module to force re-import failure
         mod = MagicMock()
         mod.signal_cache_invalidation.side_effect = RuntimeError("boom")
-        with patch.dict("sys.modules", {"shared.cache_signal": mod, "db.events": MagicMock()}):
+        with patch.dict("sys.modules", {"db.cache_signal": mod, "db.events": MagicMock()}):
             from scraper.pipeline import _signal_post_ingestion
 
             _signal_post_ingestion("test")
@@ -218,7 +218,7 @@ class TestSignalPostIngestion:
         cache_mod = MagicMock()
         events_mod = MagicMock()
         events_mod.append_event.side_effect = RuntimeError("boom")
-        with patch.dict("sys.modules", {"shared.cache_signal": cache_mod, "db.events": events_mod}):
+        with patch.dict("sys.modules", {"db.cache_signal": cache_mod, "db.events": events_mod}):
             from scraper.pipeline import _signal_post_ingestion
 
             _signal_post_ingestion("test")
@@ -604,7 +604,7 @@ class TestClassifierHolder:
         no sirve el modelo equivocado ni cae a otro."""
         import config
         from scraper.pipeline import _load_classifiers
-        from shared.model_artifacts import ModelArtifactMismatch
+        from services.ml.model_artifacts import ModelArtifactMismatch
 
         monkeypatch.setattr(config.settings, "ML_TECH_ENABLED", False)
 

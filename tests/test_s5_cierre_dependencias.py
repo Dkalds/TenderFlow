@@ -193,7 +193,7 @@ def test_si_la_cola_no_esta_disponible_el_cierre_corre_igual_en_linea() -> None:
     with (
         _patch_todos(),
         patch(
-            "shared.jobs.enqueue",
+            "services.jobs.enqueue",
             side_effect=RuntimeError('relation "jobs" does not exist'),
         ),
     ):
@@ -216,7 +216,7 @@ def test_la_cola_no_disponible_no_tapa_un_paso_sin_tier() -> None:
         patch.object(pipeline_runs, "CANONICAL_STEPS", ["ml_scoring", "paso_sin_tier"]),
         patch.object(pipeline_runs, "_run_ml_scoring", MagicMock()),
         patch.object(pipeline_runs, "_run_paso_sin_tier", MagicMock(), create=True),
-        patch("shared.jobs.enqueue") as encolar,
+        patch("services.jobs.enqueue") as encolar,
     ):
         try:
             pipeline_runs._cierre_por_cola(lane="daily")

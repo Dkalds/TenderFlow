@@ -33,7 +33,7 @@ export function SecretNotice({
         recuperarlo después.
       </p>
       {children && <p className="mt-1">{children}</p>}
-      <code className="bg-background mt-2 block truncate rounded-sm border border-border/60 px-2 py-1.5 font-mono text-tf-meta">
+      <code className="bg-background mt-2 block truncate rounded-sm border border-divider px-2 py-1.5 font-mono text-tf-meta">
         {secret}
       </code>
       <div className="mt-2 flex gap-2">

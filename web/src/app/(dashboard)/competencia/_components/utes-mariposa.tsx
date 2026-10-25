@@ -129,7 +129,7 @@ export function UtesMariposa({
               ))}
             </TableBody>
           </Table>
-          <p className="mt-3 border-t border-border/60 pt-2.5 text-tf-meta text-muted-foreground">
+          <p className="mt-3 border-t border-divider pt-2.5 text-tf-meta text-muted-foreground">
             {formatNumber(filas.length)} de {formatNumber(total)} UTE. Una UTE con el ala derecha más larga que la
             izquierda gana pocos contratos, pero grandes.
           </p>

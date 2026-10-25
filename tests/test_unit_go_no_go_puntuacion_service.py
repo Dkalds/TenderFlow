@@ -70,7 +70,7 @@ class TestPesos:
     def test_los_pesos_salen_con_los_cinco_criterios_y_su_etiqueta(
         self, mod: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from services.go_no_go_template import CRITERIOS, UMBRAL_DEFECTO
+        from shared.go_no_go_template import CRITERIOS, UMBRAL_DEFECTO
 
         monkeypatch.setattr(mod, "_repo", _RepoDoble(pesos={}))
 
@@ -141,7 +141,7 @@ class TestPuntuacion:
         self, mod: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """La UI necesita las cinco filas para poder pedir la que falta."""
-        from services.go_no_go_template import CRITERIOS
+        from shared.go_no_go_template import CRITERIOS
 
         monkeypatch.setattr(
             mod,

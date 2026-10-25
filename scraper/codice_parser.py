@@ -450,7 +450,7 @@ def identificador_organo(
     CODICE, así que la extracción es una sola; agregadas pasa sus propios
     esquemas (``ID_OC_PLAT``, ``DIR3``).
 
-    Es el valor que va a ``licitaciones.organo_ref_fuente`` (v161) y el que
+    Es el valor que va a ``licitaciones.organo_ref_fuente`` (v163) y el que
     ``placsp_menores`` ya escribe en su clave.
     """
     base = f"{cfs}/cacext:LocatedContractingParty/cac:Party/cac:PartyIdentification"

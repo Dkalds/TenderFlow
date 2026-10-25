@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import api.routes.pursuits as rutas
 from config import settings
-from shared.jobs import TIPO_FICHA_PLIEGO
+from services.jobs import TIPO_FICHA_PLIEGO
 
 
 async def _run_db_directo(fn: Any, *args: Any, **kwargs: Any) -> Any:
@@ -19,7 +19,7 @@ def _lanzar(**parches: Any) -> MagicMock:
     with (
         patch.object(rutas, "run_db", side_effect=_run_db_directo),
         patch("services.rag.fact_sheet.get_fact_sheet", return_value=parches.get("ficha")),
-        patch("shared.jobs.enqueue", return_value=7) as encolar,
+        patch("services.jobs.enqueue", return_value=7) as encolar,
     ):
         asyncio.run(rutas._lanzar_ficha_si_falta("LIC-1", 3, {"user_key": "k1"}))
     return encolar
@@ -56,7 +56,7 @@ def test_un_fallo_al_encolar_no_rompe_la_creacion(monkeypatch: Any) -> None:
     monkeypatch.setattr(settings, "PLIEGO_FACTS_ON_PURSUIT", True)
     with (
         patch.object(rutas, "run_db", side_effect=RuntimeError("sin base de datos")),
-        patch("shared.jobs.enqueue") as encolar,
+        patch("services.jobs.enqueue") as encolar,
     ):
         asyncio.run(rutas._lanzar_ficha_si_falta("LIC-1", 3, {}))  # no lanza
     assert encolar.called is False

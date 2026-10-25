@@ -73,8 +73,8 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
   }, [activeIndex, carril, filtro]);
 
   return (
-    <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card md:min-h-0">
-      <div className="flex flex-none flex-wrap items-center gap-2 border-b border-border/60 px-3 py-2 md:px-3.5">
+    <section className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-divider bg-card md:min-h-0">
+      <div className="flex flex-none flex-wrap items-center gap-2 border-b border-divider px-3 py-2 md:px-3.5">
         {agenda.sinReglas ? (
           <h2 className="px-1 text-tf-body font-semibold">Compromisos</h2>
         ) : (
@@ -109,8 +109,8 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
             // 32 px de alto en móvil: el filtro se pulsa con el pulgar.
             "tf-pressable h-8 flex-none rounded-md border px-2.5 text-tf-meta font-medium md:h-7",
             agenda.soloMios
-              ? "border-primary/30 bg-primary/10 text-primary"
-              : "border-border/70 text-muted-foreground hover:text-foreground",
+              ? "border-primary-line bg-primary-selected text-primary"
+              : "border-divider text-muted-foreground hover:text-foreground",
           )}
         >
           Solo míos
@@ -137,7 +137,7 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
               key={shortcut.key}
               className="flex items-center gap-1 text-tf-micro text-muted-foreground/70"
             >
-              <kbd className="rounded-sm border border-border/70 bg-secondary px-1 font-mono text-tf-micro">
+              <kbd className="rounded-sm border border-divider bg-secondary px-1 font-mono text-tf-micro">
                 {shortcut.key}
               </kbd>
               {shortcut.label}
@@ -209,7 +209,7 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
                     por debajo del borde, con las filas asomando por encima. */}
                 {/* Envuelve: en una ficha estrecha el botón de «Por cerrar»
                     baja debajo del texto en vez de estrujarlo a su lado. */}
-                <div className="z-10 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-border/50 bg-card px-3 py-1 md:sticky md:top-0 md:px-3.5">
+                <div className="z-10 flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-divider bg-card px-3 py-1 md:sticky md:top-0 md:px-3.5">
                   <div className="min-w-[14rem] flex-1">
                     <p className={cn("text-tf-meta font-semibold", banda.tone)}>
                       {banda.label} · {filas.length}

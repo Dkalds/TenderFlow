@@ -42,7 +42,7 @@ export function FichaAdjudicatarios({
           hint="El expediente consta como adjudicado, pero el anuncio no dice a quién."
         />
       ) : (
-        <ul className="divide-border/60 divide-y">
+        <ul className="divide-divider divide-y">
           {adjudicatarios.map((adjudicatario, indice) => (
             <li key={`${adjudicatario.lote_numero ?? "exp"}-${adjudicatario.nif ?? adjudicatario.nombre}-${indice}`} className="py-2 first:pt-0 last:pb-0">
               <p className="flex flex-wrap items-baseline gap-x-2 text-tf-body font-medium">

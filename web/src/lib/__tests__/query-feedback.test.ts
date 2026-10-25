@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { QueryClient } from "@tanstack/react-query";
 import {
+  crearMutationCache,
+  descripcionDeConflicto,
   detalleTecnico,
   esErrorTransitorio,
   getErrorMessage,
@@ -199,6 +202,43 @@ describe("notifyMutationError", () => {
       "La acción no se pudo completar",
       expect.any(Object),
     );
+  });
+
+  it("meta.errorDescription manda sobre el detail cuando devuelve texto, y si no, el detail", () => {
+    const meta = { errorTitle: "No se pudo guardar", errorDescription: descripcionDeConflicto };
+    notifyMutationError(new ApiError(409, "version mismatch"), meta);
+    expect(toast.error).toHaveBeenLastCalledWith("No se pudo guardar", {
+      description: expect.stringContaining("Alguien del equipo la cambió"),
+    });
+    notifyMutationError(new ApiError(400, "Nombre duplicado"), meta);
+    expect(toast.error).toHaveBeenLastCalledWith("No se pudo guardar", { description: "Nombre duplicado" });
+  });
+});
+
+/**
+ * D6: un fallo de mutación es **un** aviso. La `MutationCache` común avisa con
+ * el `meta.errorTitle` de la mutación aunque esta tenga su propio `onError`
+ * (para deshacer un optimismo, por ejemplo), y ese `onError` no avisa.
+ */
+describe("crearMutationCache", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("avisa una sola vez, con el título del meta, aunque la mutación tenga onError", async () => {
+    const qc = new QueryClient({ mutationCache: crearMutationCache() });
+    const deshacer = vi.fn();
+    const mutacion = qc.getMutationCache().build(qc, {
+      mutationFn: () => Promise.reject(new ApiError(403, "El rol viewer es de solo lectura.")),
+      meta: { errorTitle: "No se pudo crear la cuenta" },
+      onError: deshacer,
+    });
+    await expect(mutacion.execute(undefined)).rejects.toThrow();
+    expect(deshacer).toHaveBeenCalledTimes(1);
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(toast.error).toHaveBeenCalledWith("No se pudo crear la cuenta", {
+      description: "El rol viewer es de solo lectura.",
+    });
   });
 });
 

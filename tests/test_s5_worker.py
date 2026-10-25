@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import check_job_parity
 
-from shared.jobs import (
+from services.jobs import (
     TIPO_EMBEDDINGS_EXPEDIENTE,
     TIPO_EXPORT_PDF,
     TIPO_FICHA_PLIEGO,
@@ -114,7 +114,7 @@ def test_el_worker_declarado_sigue_contando_como_consumidor(tmp_path: Path) -> N
 
 
 def test_check_job_parity_detecta_un_handler_que_no_existe() -> None:
-    from shared.jobs import TipoJob
+    from services.jobs import TipoJob
 
     roto = {
         "tipo_roto": TipoJob(
@@ -124,7 +124,7 @@ def test_check_job_parity_detecta_un_handler_que_no_existe() -> None:
             descripcion="doble",
         )
     }
-    with patch("shared.jobs.TIPOS_A_DEMANDA", roto):
+    with patch("services.jobs.TIPOS_A_DEMANDA", roto):
         _rows, problems = check_job_parity.check_cola()
 
     assert any("no existe" in p for p in problems)
@@ -246,10 +246,10 @@ def test_el_handler_de_embeddings_no_falla_sin_el_extra_de_ml() -> None:
 
 
 def test_el_handler_del_export_guarda_el_pdf_bajo_la_clave_del_job() -> None:
-    """Las dos puntas del cable (worker escribe, API lee) viven en shared/jobs."""
+    """Las dos puntas del cable (worker escribe, API lee) viven en services/jobs."""
     from scheduler.worker import ejecutar_export_pdf
+    from services.jobs import CACHE_EXPORTS, clave_cache_export
     from shared.cache import get_cache, reset_cache
-    from shared.jobs import CACHE_EXPORTS, clave_cache_export
 
     reset_cache(CACHE_EXPORTS)
     with patch("services.exports.build_pdf_export", return_value=(b"%PDF-falso", 42)):
@@ -273,7 +273,7 @@ def test_la_descarga_que_publica_el_worker_es_una_ruta_que_existe() -> None:
     de los filtros por defecto en vez del que pidió.
     """
     from api.app import app
-    from shared.jobs import RUTA_DESCARGA_EXPORT, ruta_descarga_export
+    from services.jobs import RUTA_DESCARGA_EXPORT, ruta_descarga_export
 
     plantillas = {getattr(r, "path", "") for r in app.routes}
     assert RUTA_DESCARGA_EXPORT in plantillas, (
@@ -292,7 +292,7 @@ def test_la_descarga_que_publica_el_worker_es_una_ruta_que_existe() -> None:
 def test_procesar_tanda_vacia_no_hace_nada() -> None:
     from scheduler.worker import Worker
 
-    # Se parchea en `scheduler.worker` y no en `shared.jobs`: el módulo importa
+    # Se parchea en `scheduler.worker` y no en `services.jobs`: el módulo importa
     # el símbolo al cargarse, así que parchear el origen no cambia la
     # referencia que el bucle ya tiene.
     with patch("scheduler.worker.procesar_uno", return_value=None) as procesar:
@@ -313,7 +313,7 @@ def test_el_worker_detenido_no_reclama_mas() -> None:
 def test_el_worker_solo_reclama_los_tipos_a_demanda(tmp_db) -> None:
     """ADR-012 en ejecución: el cierre de la pasada no es del worker."""
     from scheduler.worker import Worker
-    from shared.jobs import enqueue
+    from services.jobs import enqueue
 
     enqueue(TIPO_PASO_PIPELINE, {"paso": "kpi_precompute"}, deduplicar=False)
     assert Worker(worker_id="w").procesar_tanda() == 0
@@ -322,7 +322,7 @@ def test_el_worker_solo_reclama_los_tipos_a_demanda(tmp_db) -> None:
 def test_un_handler_roto_deja_el_error_en_la_fila_y_no_tumba_el_bucle(tmp_db) -> None:
     """El contrato de ``procesar_uno``: un job roto no es un worker roto."""
     from scheduler.worker import Worker
-    from shared.jobs import enqueue, obtener
+    from services.jobs import enqueue, obtener
 
     job_id = enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-BOOM", "model": "m"})
     with patch(
@@ -344,7 +344,7 @@ def test_un_despliegue_a_mitad_no_pierde_el_trabajo(tmp_db) -> None:
     devuelve a la cola y el segundo lo termina.
     """
     from scheduler.worker import Worker
-    from shared.jobs import claim, enqueue, obtener, reclamar_caducados
+    from services.jobs import claim, enqueue, obtener, reclamar_caducados
 
     job_id = enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-DEPLOY", "model": "m"})
 

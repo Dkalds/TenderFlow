@@ -3,7 +3,6 @@
 import * as React from "react";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api-client";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { useMoverPursuit } from "@/hooks/use-pursuits";
 import type { Pursuit, PursuitStatus, UpdatePursuitInput } from "@/hooks/use-pursuits";
 import { FASES, faseDe, type FaseKey } from "../_lib/fases";
@@ -40,7 +39,15 @@ function nombreFase(key: FaseKey): string {
  *   mintiendo hasta el siguiente refetch.
  */
 export function useTablero() {
-  const mover = useMoverPursuit();
+  // El aviso de error es el global de mutaciones con este `meta` (D6): un 409
+  // aquí es que otra persona movió la tarjeta mientras se arrastraba.
+  const mover = useMoverPursuit({
+    errorTitle: "No se pudo mover la oportunidad",
+    errorDescription: (error) =>
+      error instanceof ApiError && error.status === 409
+        ? "Alguien del equipo la movió mientras la arrastrabas. El tablero se ha recargado con su cambio."
+        : undefined,
+  });
   const [overrides, setOverrides] = React.useState<Record<string, PursuitStatus>>({});
   const [arrastrandoId, setArrastrandoId] = React.useState<number | null>(null);
   const [columnaActiva, setColumnaActiva] = React.useState<FaseKey | null>(null);
@@ -61,19 +68,8 @@ export function useTablero() {
         await mover.mutateAsync({ id: pursuit.id, ...cambios });
         quitarOverride(pursuit.id);
         toast.success(`«${tituloDe(pursuit)}» pasa a ${nombreFase(faseDe(cambios.status))}`);
-      } catch (error) {
+      } catch {
         quitarOverride(pursuit.id);
-        const conflicto = error instanceof ApiError && error.status === 409;
-        toast.error(
-          conflicto
-            ? "Alguien del equipo movió esta oportunidad mientras la arrastrabas"
-            : "No se pudo mover la oportunidad",
-          {
-            description: conflicto
-              ? "El tablero se ha recargado con su cambio. Vuelve a intentarlo si sigue haciendo falta."
-              : getErrorMessage(error, "accion"),
-          },
-        );
       }
     },
     [mover, quitarOverride],

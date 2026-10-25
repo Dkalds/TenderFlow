@@ -27,7 +27,7 @@ del último evento procesado (reconexión idempotente).
 Diseño
 ------
 * **Un solo poller por proceso** (``_SignalWatcher``) lee el centinela de
-  ``shared.cache_signal`` cada ``POLL_INTERVAL`` segundos y publica el
+  ``db.cache_signal`` cada ``POLL_INTERVAL`` segundos y publica el
   timestamp en memoria. Antes cada cliente conectado hacía su propia consulta
   cada 5 s: con N clientes eran N consultas por intervalo, casi todas sin
   novedades, compitiendo por el threadpool con el resto de la API. Ahora la
@@ -208,7 +208,7 @@ class _SignalWatcher:
                     self._lotes.clear()
 
     async def _run(self) -> None:
-        from shared.cache_signal import get_signal_timestamp
+        from db.cache_signal import get_signal_timestamp
 
         while True:
             try:

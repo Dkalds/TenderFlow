@@ -35,7 +35,7 @@ export function EstadoSistemaCard({ health, isLoading, isError }: EstadoSistemaC
           message="La API no responde. Comprueba que el servicio esté levantado."
         />
       ) : (
-        <dl className="divide-y divide-border/60">
+        <dl className="divide-y divide-divider">
           {Object.entries(health ?? {}).map(([key, value]) => (
             <div key={key} className="flex items-start justify-between gap-4 py-1.5">
               <dt className="font-mono text-tf-meta text-muted-foreground">{key}</dt>

@@ -79,7 +79,7 @@ export function DetalleFichaCompleta({
   const { posicion, anterior, siguiente } = pasos;
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <div className="flex min-h-11 flex-none flex-wrap items-center gap-2 border-b border-border/60 px-3.5 py-1.5">
+      <div className="flex min-h-11 flex-none flex-wrap items-center gap-2 border-b border-divider px-3.5 py-1.5">
         <Button type="button" variant="ghost" size="sm" onClick={onVolver} className="-ml-1.5">
           <ArrowLeft aria-hidden="true" />
           Volver a la tabla
@@ -120,7 +120,7 @@ export function DetalleFichaCompleta({
       </div>
 
       {licitacion?.url && (
-        <div className="flex flex-none border-t border-border/60 bg-card px-4 py-3 md:hidden">
+        <div className="flex flex-none border-t border-divider bg-card px-4 py-3 md:hidden">
           <Button asChild className="h-11 w-full">
             <a href={licitacion.url} target="_blank" rel="noopener noreferrer">
               {fuenteLinkLabel(licitacion.fuente, licitacion.url)}

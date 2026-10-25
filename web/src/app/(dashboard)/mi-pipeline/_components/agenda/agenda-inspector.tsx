@@ -78,7 +78,7 @@ function Cabecera({ item }: { item: PipelineAgendaItem }) {
   );
 }
 
-const PRIMARIO = "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary";
+const PRIMARIO = "border-primary-line bg-primary-selected text-primary hover:bg-primary-soft hover:text-primary";
 
 export function AgendaInspector({ agenda }: { agenda: Agenda }) {
   const item = agenda.active;
@@ -89,7 +89,7 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
   return (
     <aside
       aria-label="Detalle del compromiso"
-      className="hidden min-w-0 self-start rounded-xl border border-border/60 bg-card p-4 xl:block xl:max-h-full xl:overflow-y-auto"
+      className="hidden min-w-0 self-start rounded-xl border border-divider bg-card p-4 xl:block xl:max-h-full xl:overflow-y-auto"
     >
       {!item ? (
         <PanelEmpty size="sm" hint="Selecciona un compromiso para ver su detalle." />
@@ -151,7 +151,7 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
             />
           )}
 
-          <dl className="space-y-1.5 border-t border-border/50 pt-3 text-tf-meta">
+          <dl className="space-y-1.5 border-t border-divider pt-3 text-tf-meta">
             {item.organo && <Dato label="Órgano" valor={truncate(item.organo, 40)} />}
             <Dato
               label="Importe"

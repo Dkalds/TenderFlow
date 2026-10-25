@@ -134,7 +134,7 @@ ADR-021. Diagnóstico y restauración (backups gestionados por Supabase) en
 ```bash
 # ¿Se invalidó la caché?
 python -c "
-from shared.cache_signal import read_signal_timestamp
+from db.cache_signal import read_signal_timestamp
 import time
 print(f'Señal: {read_signal_timestamp()}, ahora: {time.time()}')
 "
@@ -150,7 +150,7 @@ print(connect().__enter__().execute('SELECT COUNT(*), MAX(fecha_publicacion) FRO
 
 ```bash
 # Forzar invalidación de caché de la aplicación (crea el fichero de señal)
-python -c "from shared.cache_signal import write_cache_signal; write_cache_signal()"
+python -c "from db.cache_signal import write_cache_signal; write_cache_signal()"
 
 # Si la app está en ejecución, también se puede usar la acción
 # de observabilidad para invalidar la caché

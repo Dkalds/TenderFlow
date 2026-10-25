@@ -101,6 +101,9 @@ export function useFijarFechaFin() {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    // El aviso de error es el global, con este título (D6). Antes iba en
+    // `silent` y quien llamaba ponía su propio toast.
+    meta: { errorTitle: "No se pudo guardar la fecha de fin" },
     mutationFn: ({ carteraId, fechaFin }: { carteraId: number; fechaFin: string }) => {
       const ruta = `/api/v1/pursuits/cartera/${carteraId}`;
       return apiMutate<Schemas["ContratoCartera"]>(
@@ -110,8 +113,6 @@ export function useFijarFechaFin() {
       );
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: pursuitKeys.all }),
-    // El fallo lo dice quien pidió el cambio, con el contrato delante.
-    meta: { silent: true },
   });
 }
 

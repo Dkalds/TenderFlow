@@ -14,8 +14,6 @@ import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { Panel, PanelLoading } from "@/components/console/panel";
 import { useUpdatePursuit, type Pursuit } from "@/hooks/use-pursuits";
-import { ApiError } from "@/lib/api-client";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { formatCurrency } from "@/lib/utils";
 
 export type TabKey = "resumen" | "expediente" | "pliego" | "precio" | "adjuntos" | "conversacion";
@@ -98,19 +96,12 @@ export const EditorCompleto = dynamic(
  * panel lo vuelva a resolver por ruta.
  */
 function PestanaPrecio({ pursuit }: { pursuit: Pursuit }) {
-  const actualizar = useUpdatePursuit(pursuit.id);
+  const actualizar = useUpdatePursuit(pursuit.id, { errorTitle: "No se pudo guardar la oferta prevista" });
   const usar = (precio: number) =>
     actualizar.mutate(
       { offer_price_eur: precio, expected_version: pursuit.version },
       {
         onSuccess: () => toast.success(`Oferta prevista: ${formatCurrency(precio)}`),
-        onError: (error) =>
-          toast.error(
-            error instanceof ApiError && error.status === 409
-              ? "Alguien del equipo la cambió mientras la tenías abierta"
-              : "No se pudo guardar la oferta prevista",
-            { description: getErrorMessage(error, "accion") },
-          ),
       },
     );
 

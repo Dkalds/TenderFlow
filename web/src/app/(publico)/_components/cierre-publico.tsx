@@ -25,7 +25,7 @@ import { CTA_PRIMARIO } from "./piel-publica";
  */
 export function CierrePublico({ ubicacion }: { ubicacion: string }) {
   return (
-    <aside className="border-border/60 bg-card mt-14 rounded-xl border p-6 sm:flex sm:items-center sm:justify-between sm:gap-8">
+    <aside className="border-divider bg-card mt-14 rounded-xl border p-6 sm:flex sm:items-center sm:justify-between sm:gap-8">
       <div className="max-w-[52ch]">
         <p className="font-display text-lg font-semibold tracking-[-0.01em]">{CONTENIDO.publicoCierreTitulo}</p>
         <p className="text-muted-foreground mt-1.5 text-sm leading-relaxed">{CONTENIDO.publicoCierreTexto}</p>

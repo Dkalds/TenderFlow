@@ -33,7 +33,7 @@ log = get_logger(__name__)
 SUNSET_LISTADO_POR_OFFSET = sunset_anunciado(date(2027, 1, 15), anunciado=date(2026, 9, 6))
 
 #: Hasta cuándo la API resuelve un `id_externo` anterior a una re-key
-#: (`licitaciones_id_anterior`, v161) en vez de responder 404. Lo fija el RFC
+#: (`licitaciones_id_anterior`, v163) en vez de responder 404. Lo fija el RFC
 #: de identidad PLACSP: seis meses desde la fase B prevista; la ficha pública
 #: sigue redirigiendo (308) después. Anunciado con la fase A, el 2026-10-25.
 SUNSET_IDS_ANTERIORES = sunset_anunciado(date(2027, 4, 30), anunciado=date(2026, 10, 25))

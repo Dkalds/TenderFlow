@@ -99,7 +99,7 @@ export function useCreateWebhook() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: WEBHOOKS_KEY });
     },
-    onError: () => toast.error("No se pudo crear el webhook"),
+    meta: { errorTitle: "No se pudo crear el webhook" },
   });
 }
 
@@ -111,7 +111,7 @@ export function useUpdateWebhook(organizationId?: number | null) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: WEBHOOKS_KEY });
     },
-    onError: () => toast.error("No se pudo actualizar el webhook"),
+    meta: { errorTitle: "No se pudo actualizar el webhook" },
   });
 }
 
@@ -123,7 +123,7 @@ export function useDeleteWebhook(organizationId?: number | null) {
       void qc.invalidateQueries({ queryKey: WEBHOOKS_KEY });
       toast.success("Webhook eliminado");
     },
-    onError: () => toast.error("No se pudo eliminar el webhook"),
+    meta: { errorTitle: "No se pudo eliminar el webhook" },
   });
 }
 
@@ -143,7 +143,7 @@ export function usePingWebhook(organizationId?: number | null) {
         toast.warning(`La entrega falló tras ${result.attempts ?? 1} intento(s): ${result.error ?? "sin detalle"}`);
       }
     },
-    onError: () => toast.error("No se pudo enviar la entrega de prueba"),
+    meta: { errorTitle: "No se pudo enviar la entrega de prueba" },
   });
 }
 
@@ -165,7 +165,7 @@ export function useRotateWebhookSecret(organizationId?: number | null) {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: WEBHOOKS_KEY });
     },
-    onError: () => toast.error("No se pudo rotar el secreto"),
+    meta: { errorTitle: "No se pudo rotar el secreto" },
   });
 }
 
@@ -187,12 +187,13 @@ export function useRedeliverWebhook(webhookId: number, organizationId?: number |
     onSuccess: () => {
       toast.success("Entrega en cola: se reenviará en el próximo ciclo de reintentos");
     },
-    onError: (error) =>
-      toast.error(
+    meta: {
+      errorTitle: "No se pudo reenviar la entrega",
+      errorDescription: (error: unknown) =>
         error instanceof ApiError && error.status === 409
           ? "Esa entrega ya se completó o no se puede reenviar"
-          : "No se pudo reenviar la entrega",
-      ),
+          : undefined,
+    },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: webhookKeys.deliveries(webhookId) });
     },

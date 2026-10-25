@@ -45,7 +45,7 @@ export function BarraImporte({ importe }: { importe: number | null }) {
       preserveAspectRatio="none"
       className="h-1 w-12 flex-none overflow-hidden rounded-full"
     >
-      <rect width="100" height="4" className="fill-border/40" />
+      <rect width="100" height="4" className="fill-divider-subtle" />
       {ancho > 0 && <rect width={ancho} height="4" fill={CHART_SERIES[0]} />}
     </svg>
   );
@@ -89,7 +89,7 @@ export function TablaPublicaciones({
           ))}
         </colgroup>
         <thead>
-          <tr className="border-b border-border/70">
+          <tr className="border-b border-divider">
             {COLUMNAS.map((columna) => {
               const activa = clave === columna.key;
               return (
@@ -126,7 +126,7 @@ export function TablaPublicaciones({
                 </tr>
               ))
             : filas.map((item) => (
-                <tr key={item.id_externo} className="border-b border-border/25 transition-colors hover:bg-primary/5">
+                <tr key={item.id_externo} className="border-b border-divider-subtle transition-colors hover:bg-primary-hover">
                   <td className="px-1 py-1.5">
                     <Link
                       href={`/detalle?lic=${encodeURIComponent(item.id_externo)}`}
@@ -186,10 +186,10 @@ export function ListaPublicacionesMovil({
       {filas.map((item) => {
         const origen = fuenteOrigen(item.fuente);
         return (
-          <li key={item.id_externo} className="border-b border-border/25 last:border-b-0">
+          <li key={item.id_externo} className="border-b border-divider-subtle last:border-b-0">
             <Link
               href={`/detalle?lic=${encodeURIComponent(item.id_externo)}`}
-              className="flex min-h-11 flex-col justify-center gap-1 py-2 transition-colors active:bg-primary/10 active:duration-0"
+              className="flex min-h-11 flex-col justify-center gap-1 py-2 transition-colors active:bg-primary-selected active:duration-0"
             >
               <span className="flex items-center gap-2">
                 <PuntoNueva nueva={esNueva(item.fecha_publicacion, corteNovedades)} />

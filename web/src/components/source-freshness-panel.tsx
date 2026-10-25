@@ -33,7 +33,7 @@ const CELDA = "px-3 py-2.5";
 function SourceRow({ source }: { source: SourceFreshness }) {
   const state = sourceStatus(source);
   return (
-    <tr className={cn("border-b border-border/60 last:border-0", source.is_degraded && "bg-destructive/5")}>
+    <tr className={cn("border-b border-divider last:border-0", source.is_degraded && "bg-destructive/5")}>
       <td className={cn(CELDA, "font-medium")}>{source.source}</td>
       <td className={CELDA}>
         <Badge size="sm" variant={state.variant}>
@@ -65,7 +65,7 @@ function estadoLote(source: SourceFreshness) {
 function LoteRow({ source }: { source: SourceFreshness }) {
   const state = estadoLote(source);
   return (
-    <tr className="border-b border-border/60 last:border-0">
+    <tr className="border-b border-divider last:border-0">
       <td className={cn(CELDA, "font-mono text-tf-meta")}>{source.source}</td>
       <td className={CELDA}>
         <Badge size="sm" variant={state.variant}>
@@ -156,7 +156,7 @@ export function SourceFreshnessPanel() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-tf-body">
               <caption className="sr-only">Frescura, latencia y cobertura por fuente</caption>
-              <thead className="border-y border-border/70">
+              <thead className="border-y border-divider">
                 <tr>
                   <th scope="col" className={cn(CABECERA_COLUMNA, "px-3 py-2")}>
                     Fuente
@@ -198,7 +198,7 @@ export function SourceFreshnessPanel() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[560px] text-left text-tf-body">
               <caption className="sr-only">Cargas históricas por mes</caption>
-              <thead className="border-y border-border/70">
+              <thead className="border-y border-divider">
                 <tr>
                   <th scope="col" className={cn(CABECERA_COLUMNA, "px-3 py-2")}>
                     Lote

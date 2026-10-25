@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function EmpresasEsqueleto() {
   return (
     <div className="flex h-full min-h-0" data-slot="empresas-esqueleto">
-      <div className="border-border/60 flex w-[560px] flex-none flex-col gap-2 border-r p-4">
+      <div className="border-divider flex w-[560px] flex-none flex-col gap-2 border-r p-4">
         <Skeleton className="mb-1 h-8 w-full rounded-md" />
         {Array.from({ length: 8 }).map((_, i) => (
           <Skeleton key={i} className="h-8 w-full rounded-md" />

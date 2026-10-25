@@ -2,10 +2,10 @@
 
 Dos cosas viven aquí:
 
-1. **Los handlers** de los tipos a demanda declarados en ``shared/jobs.py``.
+1. **Los handlers** de los tipos a demanda declarados en ``services/jobs.py``.
    Están en ``scheduler/`` y no en ``shared/`` a propósito: tiran de
    ``services/``, ``scraper/`` y ``reportlab``, y ``shared/`` no importa hacia
-   arriba. La API solo importa ``shared/jobs.py`` para encolar, así que jamás
+   arriba. La API solo importa ``services/jobs.py`` para encolar, así que jamás
    carga nada de esto.
 2. **El bucle** que reclama, ejecuta y cierra jobs, más su arranque como hilo
    dentro del proceso ``APP_PROFILE=worker`` (ver ``api/app.py``).
@@ -40,7 +40,7 @@ from types import FrameType
 from typing import Any
 
 from observability.logging import get_logger
-from shared.jobs import (
+from services.jobs import (
     CACHE_EXPORTS,
     EXPORT_TTL_SEGUNDOS,
     Job,

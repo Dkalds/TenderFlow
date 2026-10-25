@@ -82,11 +82,11 @@ export function PursuitCard({
       }}
       onDragEnd={() => onSoltar?.()}
       className={cn(
-        "border-border/60 bg-card flex flex-col gap-1.5 rounded-xl border p-2.5 transition-colors",
+        "border-divider bg-card flex flex-col gap-1.5 rounded-xl border p-2.5 transition-colors",
         onArrastrar && "cursor-grab active:cursor-grabbing",
         // Hover solo de borde: la sombra es de las capas flotantes, no de una
         // tarjeta que se ve decenas de veces al día.
-        "hover:border-primary/30",
+        "hover:border-primary-line",
         arrastrando && "opacity-45",
       )}
     >
@@ -132,13 +132,13 @@ export function PursuitCard({
 
       <EtiquetaChips etiquetas={etiquetas} />
 
-      <div className="border-border/40 flex items-center gap-1.5 border-t pt-1.5">
+      <div className="border-divider-subtle flex items-center gap-1.5 border-t pt-1.5">
         <span
           className={cn(
             "grid h-5 w-5 flex-none place-items-center rounded-full text-tf-micro font-semibold",
             pursuit.responsible_name
-              ? "bg-primary/10 text-primary"
-              : "border-border/60 text-muted-foreground border border-dashed",
+              ? "bg-primary-selected text-primary"
+              : "border-divider text-muted-foreground border border-dashed",
           )}
           aria-hidden="true"
         >
@@ -160,7 +160,7 @@ export function PursuitCard({
           {/* Decorativa: los días ya van en el texto de arriba, así que la barra
               no añade nada que leer y sí ruido si se anuncia. Va en SVG, como la
               del embudo: el ancho es un atributo, no un estilo inline (C2.8). */}
-          <div className="bg-border/40 h-[3px] overflow-hidden rounded-full" aria-hidden="true">
+          <div className="bg-divider-subtle h-[3px] overflow-hidden rounded-full" aria-hidden="true">
             <svg className="h-full w-full" preserveAspectRatio="none" viewBox="0 0 100 1">
               <rect className={plazo.clases.barra} height="1" width={plazo.pct} />
             </svg>

@@ -50,7 +50,7 @@ export function AmbitoIntro() {
       aria-label="Qué es el ámbito"
       data-slot="ambito-intro"
       // Sin fundido de entrada: sale al cargar la pantalla, con el resto.
-      className="hidden flex-none items-start gap-2.5 border-b border-border/60 bg-card px-3.5 py-2.5 text-tf-meta md:flex"
+      className="hidden flex-none items-start gap-2.5 border-b border-divider bg-card px-3.5 py-2.5 text-tf-meta md:flex"
     >
       <Info className="mt-0.5 h-3.5 w-3.5 flex-none text-muted-foreground" aria-hidden="true" />
       <div className="min-w-0 flex-1 space-y-0.5">

@@ -130,7 +130,7 @@ def test_la_clave_es_la_misma_que_escribe_el_conector(tmp_db) -> None:
 #: fase B del RFC de identidad PLACSP) las lleva en su propia lista; esta solo
 #: dice qué no podía conocer v153.
 _FK_POSTERIORES_A_V153: dict[str, str] = {
-    "licitaciones_id_anterior.id_externo": "v161_identidad_placsp_fase_a",
+    "licitaciones_id_anterior.id_externo": "v163_identidad_placsp_fase_a",
 }
 
 

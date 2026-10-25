@@ -1,10 +1,10 @@
-"""Tests unitarios para shared.password_policy — validación de fortaleza de contraseñas."""
+"""Tests unitarios para config.password_policy — validación de fortaleza de contraseñas."""
 
 from __future__ import annotations
 
 import pytest
 
-from shared.password_policy import (
+from config.password_policy import (
     PasswordCheckResult,
     check_account_password,
     check_password_strength,

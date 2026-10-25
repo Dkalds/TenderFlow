@@ -1,7 +1,7 @@
 """Pesos y puntuaciones de la plantilla go/no-go (C6.4, v123).
 
 El criterio —qué se puntúa, cómo se pondera, cuándo recomienda ir— vive en
-`services/go_no_go_template.py`. Aquí solo está el SQL.
+`shared/go_no_go_template.py`. Aquí solo está el SQL.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from typing import Any
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
-from services.go_no_go_template import CRITERIOS, PUNTUACION_MAX, PUNTUACION_MIN
+from shared.go_no_go_template import CRITERIOS, PUNTUACION_MAX, PUNTUACION_MIN
 
 log = get_logger(__name__)
 

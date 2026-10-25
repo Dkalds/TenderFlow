@@ -34,7 +34,7 @@ function TablaCorte({
         <table className="mt-4 w-full text-left text-tf-body">
           <caption className="sr-only">{titulo}</caption>
           <thead>
-            <tr className="border-b border-border/60">
+            <tr className="border-b border-divider">
               <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3")}>
                 Corte
               </th>
@@ -53,7 +53,7 @@ function TablaCorte({
             {celdas.map((celda) => {
               const insuficiente = celda.n < minimo;
               return (
-                <tr key={celda.clave} className="border-b border-border/30 last:border-b-0">
+                <tr key={celda.clave} className="border-b border-divider-subtle last:border-b-0">
                   <td className="py-2 pr-3 font-medium">{celda.clave}</td>
                   <td className="py-2 pr-3 text-right">{formatNumber(celda.n)}</td>
                   <td className="py-2 pr-3 text-right">
@@ -90,7 +90,7 @@ export function CompanyCortes({
   minimo: number;
 }) {
   return (
-    <div className="grid divide-y divide-border/60 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+    <div className="grid divide-y divide-divider lg:grid-cols-2 lg:divide-x lg:divide-y-0">
       <TablaCorte
         titulo="Por procedimiento"
         descripcion="Adjudicaciones y baja media según el tipo de procedimiento"

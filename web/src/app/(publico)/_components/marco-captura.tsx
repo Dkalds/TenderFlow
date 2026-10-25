@@ -27,8 +27,8 @@ export function MarcoCaptura({
   className?: string;
 }) {
   return (
-    <div className={cn("border-border/70 bg-card overflow-hidden rounded-xl border", className)}>
-      <div className="border-border/60 flex items-center border-b px-4 py-2.5">
+    <div className={cn("border-divider bg-card overflow-hidden rounded-xl border", className)}>
+      <div className="border-divider flex items-center border-b px-4 py-2.5">
         <span className="text-muted-foreground text-tf-micro min-w-0 truncate font-medium">{etiqueta}</span>
       </div>
       {children}

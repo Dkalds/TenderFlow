@@ -72,12 +72,12 @@ export function MaestroList({
   const hasta = Math.min((page + 1) * PAGE_SIZE, total);
 
   return (
-    <div className="border-border/60 flex w-[560px] flex-none flex-col border-r">
+    <div className="border-divider flex w-[560px] flex-none flex-col border-r">
       {/* El buscador vive en la columna que busca. Estaba en la barra del
           espacio, encima de las dos vistas, así que seguía visible en la cola
           de revisión —donde no busca nada— y parecía global. */}
-      <div className="border-border/60 flex flex-none items-center gap-2 border-b px-4 py-3">
-        <div className="border-border/70 bg-background focus-within:border-ring focus-within:ring-ring flex h-8 flex-1 items-center gap-2 rounded-md border px-2.5 transition-colors focus-within:ring-1">
+      <div className="border-divider flex flex-none items-center gap-2 border-b px-4 py-3">
+        <div className="border-divider bg-background focus-within:border-ring focus-within:ring-ring flex h-8 flex-1 items-center gap-2 rounded-md border px-2.5 transition-colors focus-within:ring-1">
           <Search className="text-muted-foreground h-3.5 w-3.5 flex-none" aria-hidden="true" />
           <input
             type="text"
@@ -89,7 +89,7 @@ export function MaestroList({
           />
           {fromDeepLink && (
             <Pista contenido="La búsqueda venía en el enlace con el que has llegado">
-              <span className="bg-primary/10 text-tf-micro text-primary flex h-5 flex-none items-center rounded-sm px-1.5 font-medium">
+              <span className="bg-primary-selected text-tf-micro text-primary flex h-5 flex-none items-center rounded-sm px-1.5 font-medium">
                 desde enlace
               </span>
             </Pista>
@@ -117,7 +117,7 @@ export function MaestroList({
       ) : (
         <>
           <div className="relative min-h-0 flex-1 overflow-y-auto">
-            <div className={cn(GRID, "border-border/70 bg-background sticky top-0 z-10 h-[34px] border-b")}>
+            <div className={cn(GRID, "border-divider bg-background sticky top-0 z-10 h-[34px] border-b")}>
               {COLUMNAS.map((columna) => {
                 const on = columna.key === sortKey;
                 // Sin `<table>` no hay `aria-sort`: el orden va en el nombre.
@@ -166,8 +166,8 @@ export function MaestroList({
                     key={row.empresa_id}
                     className={cn(
                       GRID,
-                      "border-border/30 h-10 border-b transition-colors",
-                      on ? "bg-primary/10" : "hover:bg-primary/5",
+                      "border-divider-subtle h-10 border-b transition-colors",
+                      on ? "bg-primary-selected" : "hover:bg-primary-hover",
                     )}
                   >
                     <button
@@ -222,7 +222,7 @@ export function MaestroList({
           </div>
 
           {!loading && total > 0 && (
-            <div className="border-border/60 flex flex-none items-center gap-2 border-t px-4 py-2.5">
+            <div className="border-divider flex flex-none items-center gap-2 border-t px-4 py-2.5">
               {/* El total es el del filtro, que manda la API.
                   Antes se listaban 14 de 1.284 sin forma de ver la 15.
                   `agruparSiempre` porque las tres cifras se leen como una
@@ -244,7 +244,7 @@ export function MaestroList({
                   className={cn(
                     "tf-pressable tf-tnum text-tf-meta h-6.5 min-w-6.5 rounded-md border px-1.5",
                     n === page
-                      ? "border-primary/30 bg-primary/10 text-primary"
+                      ? "border-primary-line bg-primary-selected text-primary"
                       : "text-muted-foreground hover:text-foreground border-transparent",
                   )}
                 >
@@ -279,7 +279,7 @@ function PageButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className="tf-pressable border-border/70 text-muted-foreground hover:text-foreground disabled:border-border/25 disabled:text-muted-foreground/40 disabled:hover:text-muted-foreground/40 grid h-6.5 w-6.5 place-items-center rounded-md border"
+      className="tf-pressable border-divider text-muted-foreground hover:text-foreground disabled:border-divider-subtle disabled:text-muted-foreground/40 disabled:hover:text-muted-foreground/40 grid h-6.5 w-6.5 place-items-center rounded-md border"
     >
       {children}
     </button>

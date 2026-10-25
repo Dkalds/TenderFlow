@@ -72,7 +72,7 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
           </SectionTitle>
           {/* Rótulos y valores con el `Fact` de la consola, el mismo del
               inspector de Detalle: cifras en sans y mono solo para el CPV. */}
-          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border/60 bg-border/60">
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-divider bg-divider">
             <Fact label="Órgano" value={l.organo_contratacion || null} />
             <Fact
               label="Importe de licitación"

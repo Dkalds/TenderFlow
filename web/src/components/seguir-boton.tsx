@@ -176,8 +176,8 @@ export function SeguirBoton({
         "disabled:pointer-events-none disabled:opacity-60",
         variante === "texto" ? "h-8 px-2.5 md:h-7" : "h-7 w-7 justify-center",
         sigue
-          ? "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15"
-          : "border-border/70 text-muted-foreground hover:text-foreground",
+          ? "border-primary-line bg-primary-selected text-primary hover:bg-primary-soft"
+          : "border-divider text-muted-foreground hover:text-foreground",
       );
 
   return (

@@ -45,7 +45,7 @@ export function PuntosUnidad({
   return (
     <span aria-hidden="true" className={cn("flex h-2 items-center gap-0.5", className)}>
       {visibles === 0 ? (
-        <span className="h-px w-full bg-border/60" />
+        <span className="h-px w-full bg-divider" />
       ) : (
         Array.from({ length: visibles }, (_, indice) => (
           <span key={indice} className={cn("h-2 w-2 flex-none rounded-sm", RELLENO_PUNTO[tono])} />

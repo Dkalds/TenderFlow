@@ -37,7 +37,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { MIN_LONGITUD_BUSQUEDA } from "@/hooks/use-busqueda-global";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { conOrganizacion, motivo } from "@/hooks/use-seguir-cuenta";
+import { conOrganizacion } from "@/hooks/use-seguir-cuenta";
 
 // Seguir y dejar de seguir un órgano viven en `use-seguir-cuenta.ts` (ver allí
 // por qué); se reexportan para quien gestiona cuentas desde aquí.
@@ -158,7 +158,7 @@ export function useCrearCuenta() {
         ...(nombre?.trim() ? { nombre: nombre.trim() } : {}),
         ...(nota?.trim() ? { nota: nota.trim() } : {}),
       }),
-    onError: (error) => toast.error(motivo(error, "No se pudo crear la cuenta")),
+    meta: { errorTitle: "No se pudo crear la cuenta" },
     onSuccess: (cuenta) => {
       registrarEvento("organo_seguido", { accion: "seguir" });
       toast.success(`Cuenta «${cuenta.nombre}» creada: avisará a todo el equipo`);
@@ -186,7 +186,7 @@ export function useEditarCuenta() {
         conOrganizacion(`/api/v1/cuentas/${cuentaId}`, organizationId),
         cambios,
       ),
-    onError: (error) => toast.error(motivo(error, "No se pudo guardar la cuenta")),
+    meta: { errorTitle: "No se pudo guardar la cuenta" },
     onSettled: () => void qc.invalidateQueries({ queryKey: cuentaKeys.all }),
   });
 }
@@ -203,7 +203,7 @@ export function useAnadirOrganos() {
         conOrganizacion(`/api/v1/cuentas/${cuentaId}/organos`, organizationId),
         { organos },
       ),
-    onError: (error) => toast.error(motivo(error, "No se pudieron añadir los órganos")),
+    meta: { errorTitle: "No se pudieron añadir los órganos" },
     onSettled: () => void qc.invalidateQueries({ queryKey: cuentaKeys.all }),
   });
 }
@@ -219,7 +219,7 @@ export function useQuitarOrgano() {
         "DELETE",
         conOrganizacion(`/api/v1/cuentas/${cuentaId}/organos/${cuentaOrganoId}`, organizationId),
       ),
-    onError: (error) => toast.error(motivo(error, "No se pudo quitar el órgano")),
+    meta: { errorTitle: "No se pudo quitar el órgano" },
     onSettled: () => void qc.invalidateQueries({ queryKey: cuentaKeys.all }),
   });
 }
@@ -246,9 +246,9 @@ export function useDejarDeSeguirCuenta() {
       qc.setQueryData<Cuenta[]>(claveLista, (vieja) => vieja?.filter((c) => c.id !== id));
       return { lista };
     },
-    onError: (error, _baja, ctx) => {
+    meta: { errorTitle: "No se pudo dejar de seguir" },
+    onError: (_error, _baja, ctx) => {
       if (ctx?.lista) qc.setQueryData(cuentaKeys.lista(organizationId), ctx.lista);
-      toast.error(motivo(error, "No se pudo dejar de seguir"));
     },
     onSuccess: () => registrarEvento("organo_seguido", { accion: "dejar_de_seguir" }),
     onSettled: () => void qc.invalidateQueries({ queryKey: cuentaKeys.all }),
@@ -293,7 +293,7 @@ export function useRecuperarCuenta() {
       }
       return cuenta;
     },
-    onError: (error) => toast.error(motivo(error, "No se pudo recuperar la cuenta")),
+    meta: { errorTitle: "No se pudo recuperar la cuenta" },
     // Deshace el «dejar de seguir» que ya se midió: sin esto, la cuenta
     // recuperada contaría como una baja.
     onSuccess: () => registrarEvento("organo_seguido", { accion: "seguir" }),

@@ -39,6 +39,7 @@ import { registrarEvento } from "@/lib/analytics";
 import { useFollows, useSeguir, useDejarDeSeguir, type Follow } from "@/hooks/use-follows";
 import { SeguirBoton } from "@/components/seguir-boton";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
+import { crearQueryClientDePrueba } from "@/test/query-client";
 
 const CPV: Follow = {
   id: 1,
@@ -65,11 +66,8 @@ function respuestas(...cuerpos: Array<[unknown, number]>) {
   });
 }
 
-function crearCliente() {
-  return new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-}
+// Con el aviso global de mutaciones: el fallo lo dice él (D6).
+const crearCliente = crearQueryClientDePrueba;
 
 function envoltorio(qc: QueryClient) {
   return function Wrapper({ children }: { children: React.ReactNode }) {

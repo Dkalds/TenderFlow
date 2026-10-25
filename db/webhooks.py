@@ -201,7 +201,7 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
     ``scheduler.jobs.webhook_reintentos``. Antes de C2.4 se perdían: un receptor
     en despliegue no recibía los eventos de esos minutos y nadie se lo decía.
     """
-    from services.webhook_retry import decidir
+    from shared.webhook_retry import decidir
 
     # Un solo instante para el cuerpo, la cabecera y la fila de la entrega:
     # es lo que permite al reintento volver a sellar exactamente lo mismo.
@@ -286,7 +286,7 @@ def reenviar(entrega: dict[str, Any]) -> bool:
     receptor ve el mismo mensaje con las mismas firmas (v1 y v2) y puede
     deduplicar por ``X-Webhook-Delivery``.
     """
-    from services.webhook_retry import decidir
+    from shared.webhook_retry import decidir
 
     wid = int(entrega["webhook_id"])
     entrega_id = int(entrega["id"])

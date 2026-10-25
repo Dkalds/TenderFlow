@@ -20,6 +20,12 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
+from config.scoring_weights import (
+    PENALTY_MAX,
+    dimension_weights,
+    penalty_weights,
+    validate_scoring_weights,
+)
 from services.analytics import scoring as sc_mod
 from services.analytics.scoring import (
     ANULACION_MINIMO_EXPEDIENTES,
@@ -30,12 +36,6 @@ from services.analytics.scoring import (
     tasa_anulacion,
 )
 from services.analytics.scoring_signals import CompetenciaStats, MargenStats
-from shared.scoring_weights import (
-    PENALTY_MAX,
-    dimension_weights,
-    penalty_weights,
-    validate_scoring_weights,
-)
 
 _AHORA = pd.Timestamp("2026-09-19T00:00:00Z")
 _ORGANO = "Ayuntamiento de Anulaciones"

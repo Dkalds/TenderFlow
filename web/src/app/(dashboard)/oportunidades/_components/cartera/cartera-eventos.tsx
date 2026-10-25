@@ -55,7 +55,7 @@ export function CarteraEventos({ carteraId }: { carteraId: number }) {
   }
 
   return (
-    <ol className="space-y-2 border-l border-border/60 pl-3">
+    <ol className="space-y-2 border-l border-divider pl-3">
       {eventos.map((evento, indice) => (
         <li key={`${evento.fecha}-${evento.tipo}-${indice}`} className="relative">
           <span

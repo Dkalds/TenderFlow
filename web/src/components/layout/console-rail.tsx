@@ -103,7 +103,7 @@ function RailButton({ space, active, href }: { space: ConsoleSpace; active: bool
             aria-hidden="true"
             className={cn(
               "grid h-6 w-10 place-items-center rounded-md transition-colors",
-              active ? "bg-primary/10 text-primary" : "group-hover:bg-primary/5",
+              active ? "bg-primary-selected text-primary" : "group-hover:bg-primary-hover",
             )}
           >
             <Icon className="h-4 w-4" />
@@ -152,7 +152,7 @@ function AccountMenu() {
           aria-label="Menú de cuenta"
           // Neutro: el naranja es de la acción y del destino activo, no de un
           // avatar que está siempre ahí.
-          className="tf-pressable grid h-8 w-8 place-items-center rounded-full border border-border/70 bg-secondary text-muted-foreground hover:text-foreground"
+          className="tf-pressable grid h-8 w-8 place-items-center rounded-full border border-divider bg-secondary text-muted-foreground hover:text-foreground"
         >
           <IconoCuenta className="h-4 w-4" aria-hidden="true" />
         </button>
@@ -238,7 +238,7 @@ export function ConsoleRail() {
         <div className="relative flex min-h-0 w-full flex-1 [scrollbar-width:none] flex-col items-center overflow-y-auto [&::-webkit-scrollbar]:hidden">
           {groups.map((entry, index) => (
             <React.Fragment key={entry.group}>
-              {index > 0 && <span className="my-1.5 h-px w-8 flex-none bg-border/70" aria-hidden="true" />}
+              {index > 0 && <span className="my-1.5 h-px w-8 flex-none bg-divider" aria-hidden="true" />}
               {entry.items.map((space) => (
                 <RailButton
                   key={space.key}

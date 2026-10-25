@@ -48,7 +48,7 @@ export function BarraAsistente({ className }: { className?: string }) {
       // global de `:focus-visible` (globals.css) no tiene capa y gana a
       // cualquier utilidad.
       className={cn(
-        "border-border/60 bg-card focus-within:border-ring focus-within:ring-ring flex h-10 items-center gap-2 rounded-md border pr-1 pl-3 transition-colors focus-within:ring-1",
+        "border-divider bg-card focus-within:border-ring focus-within:ring-ring flex h-10 items-center gap-2 rounded-md border pr-1 pl-3 transition-colors focus-within:ring-1",
         className,
       )}
     >

@@ -33,7 +33,6 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 
 import { apiGet, apiMutate } from "@/lib/api-client";
 
@@ -124,9 +123,9 @@ export function useSeguir(tipo: TargetType, kind: FollowKind = "seguir") {
       ]);
       return { previo };
     },
+    meta: { errorTitle: "No se pudo guardar el seguimiento" },
     onError: (_err, _targetId, ctx) => {
       qc.setQueryData(clave, ctx?.previo);
-      toast.error("No se pudo guardar el seguimiento");
     },
     // Sin telemetría. Emitía `organo_seguido` con cualquier `kind: "seguir"`
     // —también con un CPV—, y ese evento mide si se trabaja por cuentas: lo
@@ -153,9 +152,9 @@ export function useDejarDeSeguir(tipo: TargetType, kind: FollowKind = "seguir") 
       );
       return { previo };
     },
+    meta: { errorTitle: "No se pudo dejar de seguir" },
     onError: (_err, _targetId, ctx) => {
       qc.setQueryData(clave, ctx?.previo);
-      toast.error("No se pudo dejar de seguir");
     },
     onSettled: () => void qc.invalidateQueries({ queryKey: clave }),
   });

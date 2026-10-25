@@ -83,7 +83,15 @@ PROHIBIDAS: frozenset[tuple[str, str]] = frozenset(
 _EXCLUIDOS = ("db/alembic/versions/",)
 
 # ── RATCHET: imports que hoy van contra el orden de capas ───────────────────
-# Medido con este mismo script el 2026-10-10 sobre la cabeza del repo.
+# Medido con este mismo script el 2026-10-10 sobre la cabeza del repo (21).
+# 2026-10-25: 21 → 12. Bajan a la capa inferior las piezas que dos capas
+# compartían: la política de contraseñas y los pesos del scoring a `config/`;
+# `webhook_retry`, `go_no_go_template`, el criterio de concesiones
+# (`concesiones_acceso`) y las palabras clave de `/ask` (`palabras_clave`) a
+# `shared/`. Y suben a su capa
+# los módulos de `shared/` que abrían la BD: `jobs` a `services/`,
+# `model_artifacts` a `services/ml/`, `cache_signal` a `db/`. Ya no queda
+# ninguna violación `db/* -> services.*`.
 # **Añadir líneas está prohibido.** Para quitar una: mové la pieza compartida a
 # la capa de abajo (o invertí la dependencia pasando el colaborador como
 # argumento) y borrá su entrada.
@@ -93,12 +101,6 @@ CONGELADAS: frozenset[str] = frozenset(
     {
         "api/routes/publico.py -> scraper.connectors",
         "config/secrets.py -> observability.logging",
-        "config/settings.py -> shared.password_policy",
-        "config/settings.py -> shared.scoring_weights",
-        "db/access_grants.py -> services.access_grants",
-        "db/repositories/go_no_go.py -> services.go_no_go_template",
-        "db/repositories/licitaciones.py -> services.investigador.search_engine",
-        "db/webhooks.py -> services.webhook_retry",
         "observability/alerts.py -> db.database",
         "observability/alerts.py -> db.job_locks",
         "observability/alerts.py -> services.extraction_runs",
@@ -109,9 +111,6 @@ CONGELADAS: frozenset[str] = frozenset(
         "services/rag/fact_sheet.py -> scraper.document_fetcher",
         "services/source_health.py -> scraper.connectors",
         "services/tech_signal.py -> scraper.filters",
-        "shared/cache_signal.py -> db.events",
-        "shared/jobs.py -> db.repositories.jobs",
-        "shared/model_artifacts.py -> db.model_registry",
     }
 )
 

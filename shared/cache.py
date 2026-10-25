@@ -59,7 +59,7 @@ Capa                           Qué guarda                           Quién la i
 (``SignalAwareCache``)         capa de servicios (señales de          escribe la marca al terminar y la
                                scoring)                              siguiente lectura recarga. Es la única
                                                                      capa que se entera de la ingesta sola.
-``shared/cache_signal``        La marca de tiempo de esa señal       Se **escribe** en la ingesta (event log
+``db/cache_signal``        La marca de tiempo de esa señal       Se **escribe** en la ingesta (event log
                                (event log de Postgres + fichero      de Postgres); las lecturas se memoizan
                                centinela como fallback)              5 s.
 ETag (``api/middleware``)      Nada en servidor: emite ``ETag`` y    El **cuerpo de la respuesta**. Si el

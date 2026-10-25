@@ -58,12 +58,12 @@ export const CASILLAS: readonly CasillaBase[] = REJILLA.map(({ alias: _alias, ..
  * los mapas de casillas de Competencia y del Resumen.
  */
 export const PASO_CASILLA = [
-  "border border-border/60 text-muted-foreground",
-  "bg-primary/10",
-  "bg-primary/20",
-  "bg-primary/35",
-  "bg-primary/50",
-  "bg-primary/90 text-primary-foreground",
+  "border border-divider text-muted-foreground",
+  "bg-primary-selected",
+  "bg-primary-ramp-1",
+  "bg-primary-ramp-2",
+  "bg-primary-ramp-3",
+  "bg-primary-ramp-4 text-primary-foreground",
 ];
 
 // Las clases de posición van escritas enteras: Tailwind no ve una clase que se

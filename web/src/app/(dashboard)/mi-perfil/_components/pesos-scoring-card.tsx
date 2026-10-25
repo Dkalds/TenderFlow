@@ -218,7 +218,7 @@ export function PesosScoringCard({
 
         {/* F1.4: una penalización no es una dimensión. No suma en el 100: se
             enciende o se apaga, con los puntos que resta a la vista. */}
-        <div className="flex items-start justify-between gap-4 rounded-md border border-border/60 px-3 py-2">
+        <div className="flex items-start justify-between gap-4 rounded-md border border-divider px-3 py-2">
           <div>
             <label htmlFor="pen-anulacion" className="text-tf-body font-medium">
               Penalizar órganos que anulan a menudo

@@ -17,13 +17,13 @@ import { FILA_EXPLORAR } from "./landing-piel";
  */
 export function ExplorarLanding() {
   return (
-    <div className="border-border/60 border-t">
+    <div className="border-divider border-t">
       <section className="mx-auto w-full max-w-6xl px-6 py-16">
         <h2 className="font-display text-2xl font-semibold tracking-[-0.02em] md:text-3xl">
           {CONTENIDO.explorarTitulo}
         </h2>
         <p className="text-muted-foreground mt-3 max-w-[62ch] text-base leading-relaxed">{CONTENIDO.explorarTexto}</p>
-        <div className="border-border/50 mt-8 border-t">
+        <div className="border-divider mt-8 border-t">
           {CONTENIDO.explorar.map((destino) => (
             <Link key={destino.href} href={destino.href} className={FILA_EXPLORAR}>
               <span className="min-w-0">
