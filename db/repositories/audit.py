@@ -121,7 +121,7 @@ class AuditRepository:
         """
         patron = rf"(^|\| )resource=(org|organization):{int(organization_id)}( \||$)"
         clausulas = ["detail ~ %s"]
-        params: list[Any] = [patron]
+        params: list[object] = [patron]
         if desde:
             clausulas.append("created_at >= %s")
             params.append(desde)

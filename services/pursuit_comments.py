@@ -12,7 +12,7 @@ from typing import Any
 
 from db.repositories.organizations import OrganizationRepository
 from db.repositories.pursuit_comments import PursuitCommentRepository
-from db.repositories.pursuits import PursuitRepository
+from db.repositories.pursuits import PursuitRepository, PursuitRow
 from observability.logging import get_logger
 from services.organizations import (
     OrganizationPermissionError,
@@ -92,7 +92,7 @@ _EXTRACTO_MENCION = 280
 
 def _emitir_mencion(
     organization_id: int,
-    pursuit: dict[str, Any],
+    pursuit: PursuitRow,
     comment_id: int,
     autor_user_id: int,
     mencionados: list[int],
@@ -200,7 +200,7 @@ def delete_comment(
             raise PursuitCommentNotFoundError("Comentario no encontrado.")
 
 
-def _require_pursuit(organization_id: int, pursuit_id: int) -> dict[str, Any]:
+def _require_pursuit(organization_id: int, pursuit_id: int) -> PursuitRow:
     pursuit = _pursuits.get(organization_id, pursuit_id)
     if pursuit is None:
         raise PursuitNotFoundError("Oportunidad no encontrada.")

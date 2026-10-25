@@ -14,11 +14,12 @@ herede esa deuda.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from typing import Any, get_args
 
 from db.repositories.base import csv_values
+from db.repositories.pursuits import AgendaPursuitRow
 from services.cartera import ContratoCartera
 from services.competitive.renovaciones import proximas_renovaciones
 from shared.dates import a_fecha, hora_local_de_plazo
@@ -175,7 +176,7 @@ def _ordenar_agenda(items: Sequence[PipelineAgendaItem]) -> list[PipelineAgendaI
     return sorted(items, key=posicion)
 
 
-def _campos_pursuit(row: dict[str, Any]) -> dict[str, Any]:
+def _campos_pursuit(row: Mapping[str, Any]) -> dict[str, Any]:
     """Los campos que ``pursuit`` y ``tarea`` comparten: la tarea hereda su oportunidad.
 
     La fila de una tarea (``PursuitTasksRepository.agenda_rows``) trae las
@@ -205,7 +206,7 @@ def _campos_pursuit(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _pursuit_item(row: dict[str, Any], hoy: date) -> PipelineAgendaItem:
+def _pursuit_item(row: AgendaPursuitRow, hoy: date) -> PipelineAgendaItem:
     """Un pursuit abierto: su fecha es **solo** el plazo de presentación.
 
     ``next_action``/``next_action_due`` siguen viajando como dato, pero ya no
@@ -242,7 +243,7 @@ def _pursuit_item(row: dict[str, Any], hoy: date) -> PipelineAgendaItem:
 
 
 def _tarea_item(
-    row: dict[str, Any],
+    row: Mapping[str, Any],
     hoy: date,
     *,
     tarea_id: int | None,
@@ -275,7 +276,7 @@ def _tarea_item(
 
 
 def _agenda_tareas(
-    pursuit_rows: list[dict[str, Any]],
+    pursuit_rows: Sequence[AgendaPursuitRow],
     tarea_rows: list[dict[str, Any]],
     hoy: date,
 ) -> list[PipelineAgendaItem]:

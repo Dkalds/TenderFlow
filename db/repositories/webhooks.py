@@ -157,7 +157,7 @@ class WebhookRepository:
         comparando en el handler, que es donde se olvida.
         """
         sql = f"SELECT {_COLUMNAS} FROM webhooks WHERE id = %s"
-        params: list[Any] = [webhook_id]
+        params: list[object] = [webhook_id]
         if organization_id is not None:
             sql += " AND organization_id = %s"
             params.append(organization_id)
@@ -186,7 +186,7 @@ class WebhookRepository:
         webhooks y por la integración de instancia, nunca por los de la 8.
         """
         sql = "SELECT id, url, secret, event_types, formato, organization_id FROM webhooks WHERE active = 1"
-        params: list[Any] = []
+        params: list[object] = []
         if organization_id is not None:
             sql += " AND (organization_id = %s OR organization_id IS NULL)"
             params.append(organization_id)
@@ -198,7 +198,7 @@ class WebhookRepository:
 
     def delete(self, webhook_id: int, *, organization_id: int | None = None) -> bool:
         sql = "DELETE FROM webhooks WHERE id = %s"
-        params: list[Any] = [webhook_id]
+        params: list[object] = [webhook_id]
         if organization_id is not None:
             sql += " AND organization_id = %s"
             params.append(organization_id)
@@ -223,7 +223,7 @@ class WebhookRepository:
         cambia: un webhook no se muda de organización, se borra y se crea.
         """
         sets: list[str] = []
-        params: list[Any] = []
+        params: list[object] = []
         if name is not None:
             sets.append("name = %s")
             params.append(name)
@@ -298,7 +298,7 @@ class WebhookRepository:
             stored = secret
 
         sql = "UPDATE webhooks SET secret = %s WHERE id = %s"
-        params: list[Any] = [stored, webhook_id]
+        params: list[object] = [stored, webhook_id]
         if organization_id is not None:
             sql += " AND organization_id = %s"
             params.append(organization_id)

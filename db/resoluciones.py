@@ -196,7 +196,7 @@ def listar_resoluciones(
         "LEFT JOIN licitaciones l ON l.id_externo = r.licitacion_id "
         "WHERE 1=1"
     )
-    params: list[Any] = []
+    params: list[object] = []
     if organo:
         sql += " AND r.organo LIKE %s"
         params.append(f"%{organo}%")

@@ -521,7 +521,7 @@ class TecnologiaPliegoRepository:
         bastaría para fusionar ``__es_ti__`` en ``ml_tecnologias``.
         """
         sentinels = list(SENTINELS)
-        params: list[Any] = [min_score, sentinels]
+        params: list[object] = [min_score, sentinels]
         if licitacion_ids:
             placeholders = ",".join("%s" for _ in licitacion_ids)
             extra = f" AND p.licitacion_id IN ({placeholders})"

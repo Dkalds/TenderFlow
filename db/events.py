@@ -172,7 +172,7 @@ def get_events(
     limit: int = 1000,
 ) -> list[dict[str, Any]]:
     """Devuelve todos los eventos de un agregado, ordenados por created_at."""
-    params: list[Any] = [aggregate_type, str(aggregate_id)]
+    params: list[object] = [aggregate_type, str(aggregate_id)]
     extra = ""
     if event_type:
         extra = " AND event_type=%s"
@@ -203,7 +203,7 @@ def get_events_by_type(
     limit: int = 500,
 ) -> list[dict[str, Any]]:
     """Devuelve eventos de un tipo concreto, opcionalmente desde una fecha ISO."""
-    params: list[Any] = [event_type]
+    params: list[object] = [event_type]
     extra = ""
     if since:
         extra = " AND created_at >= %s"

@@ -36,11 +36,12 @@ siguiente lectura.
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from db.repositories.pursuits import PursuitRepository
+from db.repositories.pursuits import KitEventRow, PursuitRepository
 from observability.logging import get_logger
 from shared.tender_facts import RequiredDocumentFact
 
@@ -136,7 +137,7 @@ def _estado_actual(organization_id: int, pursuit_id: int) -> dict[str, dict[str,
     return reducir_eventos(_repo.kit_events(organization_id, pursuit_id))
 
 
-def reducir_eventos(filas: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def reducir_eventos(filas: Sequence[KitEventRow]) -> dict[str, dict[str, Any]]:
     """Estado por clave a partir de los eventos del ledger, en orden.
 
     Hay dos clases de evento bajo el mismo tipo: el marcado (``listo``) y la

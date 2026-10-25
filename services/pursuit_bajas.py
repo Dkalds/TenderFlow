@@ -13,8 +13,13 @@ Aquí vive el criterio. El SQL de la referencia sigue en
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from decimal import Decimal
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from db.repositories.pursuits import OfertaPresentadaRow
 
 #: Mínimo de ofertas propias por segmento para publicar una media.
 #:
@@ -62,7 +67,9 @@ class SegmentoBaja:
         }
 
 
-def baja_propia_pct(presupuesto: float | None, oferta: float | None) -> float | None:
+def baja_propia_pct(
+    presupuesto: float | Decimal | None, oferta: float | Decimal | None
+) -> float | None:
     """`(presupuesto - oferta) / presupuesto * 100`, o `None` si no se puede.
 
     Se descarta el presupuesto no positivo (no hay baja sobre cero) y la oferta
@@ -83,7 +90,7 @@ def baja_propia_pct(presupuesto: float | None, oferta: float | None) -> float | 
 
 
 def agrupar(
-    ofertas: list[dict[str, Any]],
+    ofertas: Sequence[OfertaPresentadaRow],
     referencias: dict[tuple[str, str], dict[str, Any]],
 ) -> list[SegmentoBaja]:
     """Agrupa mis ofertas por CPV4 y por órgano, y las cruza con el mercado.

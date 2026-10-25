@@ -58,14 +58,14 @@ class TestConsultas:
     def test_los_lotes_se_ordenan_numericamente(self) -> None:
         """`ORDER BY numero` como texto pone el lote 10 antes del 2."""
         fuente = (ROOT / "db" / "repositories" / "licitaciones.py").read_text(encoding="utf-8")
-        cuerpo = re.search(r"def lotes_de\(.*?return rows_to_dicts", fuente, re.S)
+        cuerpo = re.search(r"def lotes_de\(.*?rows_to_dicts", fuente, re.S)
         assert cuerpo, "no se encontró lotes_de"
         assert "CAST(numero AS INTEGER)" in cuerpo.group(0)
 
     def test_el_export_por_lote_conserva_los_sin_lote(self) -> None:
         """Un LEFT JOIN, no un INNER: si no, el export pierde la mayoría."""
         fuente = (ROOT / "db" / "repositories" / "licitaciones.py").read_text(encoding="utf-8")
-        cuerpo = re.search(r"def licitaciones_por_lote\(.*?return rows_to_dicts", fuente, re.S)
+        cuerpo = re.search(r"def licitaciones_por_lote\(.*?rows_to_dicts", fuente, re.S)
         assert cuerpo, "no se encontró licitaciones_por_lote"
         assert "LEFT JOIN lotes" in cuerpo.group(0)
         assert "INNER JOIN lotes" not in cuerpo.group(0)

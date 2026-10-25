@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, TypedDict
 
 from db.database import connect_read
 from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_where
-from db.repositories.base import count_where, csv_values, rows_to_dicts
+from db.repositories.base import count_where, csv_values, rows_to_dicts, typed_rows
 from db.sql_fragments import (
     exclude_duplicados_sql,
     fecha_fin_sql,
@@ -16,6 +16,139 @@ from db.sql_fragments import (
 )
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+# ── Formas de fila ──────────────────────────────────────────────────────────
+# Tipos de ``adjudicaciones`` (``db/models.py``): ``nombre``, ``licitacion_id`` y
+# ``fecha_extraccion`` son ``NOT NULL``; los importes son ``double precision``
+# (v156) → ``float``; ``es_pyme`` y ``n_ofertas_recibidas`` son ``INTEGER``.
+# ``COUNT`` → ``int`` y ``COALESCE(SUM(double), 0)`` → ``float``. Las consultas
+# que alimentan un DataFrame con columnas de varias tablas
+# (``load_for_competitors``, ``load_para_retencion``) siguen como
+# ``dict[str, Any]``: su forma la fija pandas, no un DTO.
+
+
+class AdjudicacionFichaRow(TypedDict):
+    """Un adjudicatario de la ficha (:meth:`AdjudicacionRepository.list_for_licitacion`)."""
+
+    id: int
+    licitacion_id: str
+    nombre: str
+    nif: str | None
+    importe_adjudicado: float | None
+    fecha_adjudicacion: str | None
+    n_ofertas_recibidas: int | None
+    lote_id: int | None
+    result_code: str | None
+    lote_numero: str | None
+    lote_titulo: str | None
+
+
+class AdjudicacionResumenRow(TypedDict):
+    """Una fila del listado paginado (``_SUMMARY_COLS``)."""
+
+    id: int
+    licitacion_id: str
+    nombre: str
+    nif: str | None
+    importe_adjudicado: float | None
+    fecha_adjudicacion: str | None
+    ccaa: str | None
+    es_pyme: int | None
+    n_ofertas_recibidas: int | None
+
+
+class LicitadorRow(TypedDict):
+    """Una adjudicación con su licitación, para el ranking de licitadores."""
+
+    id: int
+    licitacion_id: str
+    nif: str | None
+    nombre: str
+    ccaa: str | None
+    provincia: str | None
+    importe_adjudicado: float | None
+    importe_pagable: float | None
+    fecha_adjudicacion: str | None
+    es_pyme: int | None
+    n_ofertas_recibidas: int | None
+    titulo: str
+    organo_contratacion: str | None
+    cpv: str | None
+    tecnologia: str | None
+
+
+class PublicacionPosteriorRow(TypedDict):
+    """Una licitación publicada después de su primera adjudicación."""
+
+    id_externo: str
+    fuente: str
+    pub: str
+    min_adj: str
+
+
+class UteKpis(TypedDict):
+    """Los KPIs UTE frente a individual de :meth:`AdjudicacionRepository.ute_kpis`."""
+
+    total_ute: int
+    importe_ute: float
+    total_individual: int
+    importe_individual: float
+    empresas_distintas: int
+
+
+class NombreConteoImporteRow(TypedDict):
+    """``{nombre, count, importe}``: ranking de adjudicatarios por nº de adjudicaciones."""
+
+    nombre: str
+    count: int
+    importe: float
+
+
+class UteEvolucionRow(TypedDict):
+    """Un mes (``YYYY-MM``) de la serie de adjudicaciones UTE."""
+
+    period: str
+    contratos: int
+    importe: float
+
+
+class UteFilaRow(TypedDict):
+    """Una fila UTE para el grafo de co-licitación."""
+
+    nombre: str
+    importe_adjudicado: float | None
+
+
+class MejorAdjudicacionRow(TypedDict):
+    """La adjudicación de mayor importe de una licitación del órgano."""
+
+    licitacion_id: str
+    nombre: str
+    importe_adjudicado: float | None
+    fecha_adjudicacion: str | None
+    importe_licitacion: float | None
+
+
+class LeadTimeOrgano(TypedDict):
+    """Percentiles del lead-time de un órgano, en días."""
+
+    n: int
+    p25: float
+    p50: float
+    p75: float
+
+
+class CompletitudFuenteRow(TypedDict):
+    """Cobertura de los campos de adjudicación de una fuente."""
+
+    fuente: str
+    filas: int
+    con_n_ofertas: int
+    con_oferta_minima: int
+    con_oferta_maxima: int
+    con_es_pyme: int
+
 
 #: Techo de filas de :meth:`AdjudicacionRepository.load_for_competitors`.
 #:
@@ -93,7 +226,7 @@ def _adj_filter_conditions(
     desalinea ``params`` con los ``%s`` de los filtros que vienen detrás.
     """
     conditions: list[str] = [exclude_duplicados_sql("a.licitacion_id")]
-    params: list[Any] = []
+    params: list[object] = []
     if ccaa_filter:
         placeholders = ",".join("%s" for _ in ccaa_filter)
         conditions.append(f"a.ccaa IN ({placeholders})")
@@ -108,7 +241,7 @@ def _adj_filter_conditions(
 
 
 class AdjudicacionRepository:
-    def list_for_licitacion(self, licitacion_id: str) -> list[dict[str, Any]]:
+    def list_for_licitacion(self, licitacion_id: str) -> list[AdjudicacionFichaRow]:
         """Adjudicatarios de un expediente, tal como los publicó la fuente.
 
         Es lo que la ficha de una oportunidad necesita para proponer su cierre:
@@ -134,7 +267,7 @@ class AdjudicacionRepository:
                 "ORDER BY a.lote_id NULLS FIRST, a.importe_adjudicado DESC NULLS LAST, a.id",
                 (licitacion_id,),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(AdjudicacionFichaRow, rows_to_dicts(cur))
 
     def list_paginated(
         self,
@@ -146,9 +279,9 @@ class AdjudicacionRepository:
         limit: int = 50,
         offset: int = 0,
         with_total: bool = True,
-    ) -> tuple[list[dict[str, Any]], int]:
+    ) -> tuple[list[AdjudicacionResumenRow], int]:
         conditions: list[str] = []
-        params: list[Any] = []
+        params: list[object] = []
 
         if licitacion_id:
             conditions.append("licitacion_id = %s")
@@ -171,7 +304,7 @@ class AdjudicacionRepository:
                 sql += " WHERE " + where
             sql += " ORDER BY fecha_adjudicacion DESC LIMIT %s OFFSET %s"
             params.extend([limit, offset])
-            items = rows_to_dicts(c.execute(sql, tuple(params)))
+            items = typed_rows(AdjudicacionResumenRow, rows_to_dicts(c.execute(sql, tuple(params))))
 
         return items, total
 
@@ -238,7 +371,7 @@ class AdjudicacionRepository:
         # columna de la derecha, una fila huérfana daría NULL y `NULL NOT IN`
         # la descartaría en silencio.
         conditions: list[str] = [exclude_duplicados_sql("a.licitacion_id")]
-        params: list[Any] = []
+        params: list[object] = []
         if ccaa:
             conditions.append("a.ccaa = %s")
             params.append(ccaa)
@@ -275,7 +408,7 @@ class AdjudicacionRepository:
         *,
         ccaa_filter: tuple[str, ...] | None = None,
         limit: int = 10000,
-    ) -> list[dict[str, Any]]:
+    ) -> list[LicitadorRow]:
         """Carga adjudicaciones con datos para el ranking de licitadores."""
         sql = (
             "SELECT a.id, a.licitacion_id, a.nif, a.nombre, a.ccaa, a.provincia, "
@@ -288,7 +421,7 @@ class AdjudicacionRepository:
         # Dedupe cross-fuente obligatorio: una adjudicación duplicada entre
         # fuentes cuenta dos veces en el ranking de licitadores.
         conditions: list[str] = [exclude_duplicados_sql("a.licitacion_id")]
-        params: list[Any] = []
+        params: list[object] = []
         if ccaa_filter:
             placeholders = ",".join("%s" for _ in ccaa_filter)
             conditions.append(f"a.ccaa IN ({placeholders})")
@@ -296,11 +429,11 @@ class AdjudicacionRepository:
         sql += "WHERE " + " AND ".join(conditions) + " "
         sql += f"ORDER BY a.fecha_adjudicacion DESC LIMIT {int(limit)}"
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(LicitadorRow, rows_to_dicts(c.execute(sql, params)))
 
     def find_publicacion_posterior_a_adjudicacion(
         self, *, fuentes: tuple[str, ...] | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[PublicacionPosteriorRow]:
         """Licitaciones con ``fecha_publicacion`` posterior a su primera adjudicación.
 
         Devuelve una fila por licitación con ``id_externo``, ``fuente``, ``pub``
@@ -323,7 +456,7 @@ class AdjudicacionRepository:
             "ORDER BY l.fuente, min_adj"
         )
         with connect_read() as c:
-            rows = rows_to_dicts(c.execute(sql))
+            rows = typed_rows(PublicacionPosteriorRow, rows_to_dicts(c.execute(sql)))
         if fuentes is not None:
             rows = [r for r in rows if (r.get("fuente") or "").lower() in fuentes]
         return rows
@@ -342,7 +475,7 @@ class AdjudicacionRepository:
         ccaa_filter: tuple[str, ...] | None = None,
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> UteKpis:
         """Conteos/importes UTE vs individual + nº de nombres UTE distintos."""
         conditions, params = _adj_filter_conditions(
             ccaa_filter=ccaa_filter, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
@@ -385,7 +518,7 @@ class AdjudicacionRepository:
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
         limit: int = 20,
-    ) -> list[dict[str, Any]]:
+    ) -> list[NombreConteoImporteRow]:
         """Ranking de nombres UTE por nº de adjudicaciones (nombre completo)."""
         conditions, params = _adj_filter_conditions(
             ccaa_filter=ccaa_filter, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
@@ -398,7 +531,9 @@ class AdjudicacionRepository:
             "GROUP BY a.nombre ORDER BY count DESC, importe DESC, nombre LIMIT %s"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [pattern, *params, limit]))
+            return typed_rows(
+                NombreConteoImporteRow, rows_to_dicts(c.execute(sql, [pattern, *params, limit]))
+            )
 
     def ute_evolucion(
         self,
@@ -407,7 +542,7 @@ class AdjudicacionRepository:
         ccaa_filter: tuple[str, ...] | None = None,
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[UteEvolucionRow]:
         """Serie mensual (period YYYY-MM) de adjudicaciones UTE.
 
         El guard sargable ``>= '1900' AND < '3000'`` descarta fechas no-ISO
@@ -433,7 +568,7 @@ class AdjudicacionRepository:
             "GROUP BY period ORDER BY period"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [pattern, *params]))
+            return typed_rows(UteEvolucionRow, rows_to_dicts(c.execute(sql, [pattern, *params])))
 
     def load_ute_rows(
         self,
@@ -442,7 +577,7 @@ class AdjudicacionRepository:
         ccaa_filter: tuple[str, ...] | None = None,
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[UteFilaRow]:
         """Proyección ACOTADA de filas UTE para el grafo de co-licitación.
 
         Justificación ADR-023: el parseo de miembros de una UTE
@@ -456,7 +591,7 @@ class AdjudicacionRepository:
         where = " AND ".join(["COALESCE(a.nombre ~* %s, FALSE)", *conditions])
         sql = f"SELECT a.nombre, a.importe_adjudicado FROM adjudicaciones a WHERE {where}"
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [pattern, *params]))
+            return typed_rows(UteFilaRow, rows_to_dicts(c.execute(sql, [pattern, *params])))
 
     # ── Drill-down por órgano (ADR-023) ──────────────────────────────────
 
@@ -476,7 +611,7 @@ class AdjudicacionRepository:
         filters: LicitacionesFilters | None = None,
         *,
         limit: int = 20,
-    ) -> list[dict[str, Any]]:
+    ) -> list[NombreConteoImporteRow]:
         """``[{nombre, count, importe}]`` de un órgano, por número de adjudicaciones.
 
         ``nombre`` aplica la identidad maestro-canónico-o-raw (la misma que los
@@ -500,7 +635,10 @@ class AdjudicacionRepository:
             "LIMIT %s"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, organo, max(1, int(limit))]))
+            return typed_rows(
+                NombreConteoImporteRow,
+                rows_to_dicts(c.execute(sql, [*params, organo, max(1, int(limit))])),
+            )
 
     def lead_time_mediano_por_organo(
         self, organo: str, filters: LicitacionesFilters | None = None
@@ -542,7 +680,7 @@ class AdjudicacionRepository:
         organo: str,
         licitacion_ids: list[str],
         filters: LicitacionesFilters | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[MejorAdjudicacionRow]:
         """La adjudicación de mayor importe de cada licitación pedida, dentro del órgano.
 
         Acotada por identidad: una fila como mucho por id de ``licitacion_ids``
@@ -564,7 +702,10 @@ class AdjudicacionRepository:
         )
         ids = list(dict.fromkeys(licitacion_ids))
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [ids, *params, organo, len(ids)]))
+            return typed_rows(
+                MejorAdjudicacionRow,
+                rows_to_dicts(c.execute(sql, [ids, *params, organo, len(ids)])),
+            )
 
     # ── Etiquetado de retención (Fase 6.2) ───────────────────────────────
 
@@ -618,7 +759,7 @@ LEAD_TIME_MESES = 24
 
 def lead_time_por_organo(
     organos: list[str], *, desde_iso: str, n_minimo: int = LEAD_TIME_N_MINIMO
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, LeadTimeOrgano]:
     """``{órgano: {n, p25, p50, p75}}`` en días, sólo para los que llegan al mínimo.
 
     El lead-time es el hueco entre publicar y adjudicar, que es exactamente lo
@@ -694,7 +835,7 @@ def lead_time_por_organo(
     }
 
 
-def completitud_por_fuente(*, min_filas: int = 50) -> list[dict[str, Any]]:
+def completitud_por_fuente(*, min_filas: int = 50) -> list[CompletitudFuenteRow]:
     """Cobertura de los campos de adjudicación, por fuente de ingesta (C4.7).
 
     Cuatro campos que el producto usa y que no todas las fuentes traen:
@@ -730,4 +871,4 @@ def completitud_por_fuente(*, min_filas: int = 50) -> list[dict[str, Any]]:
         ORDER BY COUNT(*) DESC
     """
     with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, (min_filas,)))
+        return typed_rows(CompletitudFuenteRow, rows_to_dicts(c.execute(sql, (min_filas,))))

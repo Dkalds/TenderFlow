@@ -31,7 +31,7 @@ from typing import Any, Literal
 from db.notifications import insert_user_notification
 from db.repositories.organization_nifs import OrganizationNifRepository
 from db.repositories.organizations import OrganizationRepository
-from db.repositories.pursuits import PursuitRepository
+from db.repositories.pursuits import OpenWithAwardRow, PursuitRepository
 from observability.logging import get_logger
 from services.normalization import normalize_nif
 from shared.dto import PursuitAdjudicatario
@@ -136,7 +136,7 @@ def _formatear_importe(valor: Any) -> str | None:
     return f"{numero:,.0f} EUR".replace(",", ".")
 
 
-def _destinatarios(row: dict[str, Any]) -> list[int]:
+def _destinatarios(row: OpenWithAwardRow) -> list[int]:
     """``user_id`` de quien debe enterarse: el responsable, o el equipo activo.
 
     La alerta se teclea por ``user_id`` (v162), así que el correo ya no hace
@@ -150,7 +150,7 @@ def _destinatarios(row: dict[str, Any]) -> list[int]:
     return [int(m["user_id"]) for m in miembros if m.get("status") == "active" and m.get("email")]
 
 
-def build_notification(row: dict[str, Any]) -> tuple[str, str]:
+def build_notification(row: OpenWithAwardRow) -> tuple[str, str]:
     """Título y cuerpo de la alerta a partir de una fila de ``open_with_award_rows``."""
     titulo = str(row.get("titulo") or row.get("licitacion_id") or "")[:_MAX_TITULO]
     adjudicatarios = str(row.get("adjudicatarios") or "").strip() or "adjudicatario no publicado"
