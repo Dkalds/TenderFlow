@@ -80,7 +80,7 @@ class EmpresasReadRepository:
         que las cuatro de :meth:`get_empresa`: son la misma pantalla.
         """
         where = _LISTA_WHERE_BUSQUEDA if q else ""
-        params: list[Any] = []
+        params: list[object] = []
         if q:
             like = f"%{q.upper()}%"
             params.extend([like, like, like])

@@ -49,11 +49,12 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from decimal import Decimal
 from types import MappingProxyType
 from typing import Any, Final, TypedDict
 
 from db.database import connect_read
-from db.repositories.base import csv_values, loose_distinct_count, rows_to_dicts
+from db.repositories.base import csv_values, loose_distinct_count, rows_to_dicts, typed_rows
 from db.repositories.tecnologia_pliego import SENTINELS
 from db.sql_fragments import (
     FOLD_TABLE,
@@ -190,7 +191,7 @@ def build_licitaciones_where(
     alias: str | None = None,
     nucleo: bool = False,
     presentacion: bool = False,
-) -> tuple[str, list[Any]]:
+) -> tuple[str, list[object]]:
     """Construye el ``WHERE`` (dialecto qmark) desde :class:`LicitacionesFilters`.
 
     ``alias`` califica las columnas (``l.estado``) para las consultas que cruzan
@@ -254,7 +255,7 @@ def build_licitaciones_where(
         return columna_nucleo_sql(name, alias) if nucleo else col(name)
 
     clauses: list[str] = ["1 = 1"]
-    params: list[Any] = []
+    params: list[object] = []
     if presentacion:
         # Va justo detrás de la base y antes de cualquier filtro: así el
         # ``WHERE`` de una superficie de presentación sin filtros es
@@ -371,6 +372,274 @@ def _para_hoy_vacio() -> ParaHoy:
     }
 
 
+# ── Formas de fila ──────────────────────────────────────────────────────
+#
+# Un ``TypedDict`` por SELECT: las claves son sus alias y los tipos los que
+# psycopg devuelve para esas columnas (``COUNT`` → ``int``; ``SUM``/``AVG``
+# de ``importe``, que es ``double precision`` → ``float``; ``AVG`` de un
+# entero → ``Decimal``; las columnas de texto que admiten ``NULL`` →
+# ``str | None``). Así un cambio de alias en el SQL lo detecta mypy en el
+# servicio que construye el DTO, no un test de integración (si lo hay).
+
+
+class KpisOverview(TypedDict):
+    """Lo que devuelve :meth:`AggregateRepository.overview_kpis`."""
+
+    total: int
+    importe_total: float
+    importe_medio: float
+    organos: int
+
+
+class EstadoConteoFila(TypedDict):
+    estado: str
+    n: int
+
+
+class MesImporteFila(TypedDict):
+    mes: str
+    n_licitaciones: int
+    importe: float
+
+
+class OrganoTopFila(TypedDict):
+    organo_contratacion: str
+    n: int
+    importe: float
+
+
+class CcaaConteoFila(TypedDict):
+    ccaa: str
+    n: int
+    #: ``NULL`` si ninguna fila de la comunidad trae importe.
+    importe: float | None
+
+
+class TimelineItemFila(TypedDict):
+    id_externo: str
+    titulo: str
+    importe: float | None
+    fecha_publicacion: str | None
+    estado: str | None
+    organo_contratacion: str | None
+    tipo_contrato: str | None
+    ccaa: str | None
+    fuente: str
+
+
+class NovedadFila(TypedDict):
+    id_externo: str
+    titulo: str
+    importe: float | None
+    organo_contratacion: str | None
+
+
+class TecnologiaEntradaFila(TypedDict):
+    code: str
+    count: int
+    importe: float
+    adjudicadas: int
+
+
+class TecnologiaOrganoFila(TypedDict):
+    organo: str
+    code: str
+    count: int
+
+
+class TecnologiaCcaaFila(TypedDict):
+    ccaa: str
+    code: str
+    count: int
+
+
+class TecnologiaMesFila(TypedDict):
+    mes: str
+    tech_grp: str
+    count: int
+    importe: float
+
+
+class TecnologiaItemFila(TypedDict):
+    id_externo: str
+    titulo: str
+    organo_contratacion: str | None
+    importe: float | None
+    estado: str | None
+    ccaa: str | None
+    fecha_publicacion: str | None
+
+
+class CcaaImporteFila(TypedDict):
+    ccaa: str
+    count: int
+    importe: float
+
+
+class ProvinciaImporteFila(TypedDict):
+    provincia: str
+    count: int
+    importe: float
+
+
+class DiaImporteFila(TypedDict):
+    #: ``YYYY-MM-DD``.
+    dia: str
+    count: int
+    importe: float
+
+
+class MesEstadoFila(TypedDict):
+    mes: str
+    estado: str
+    value: int
+
+
+class OrganoRankingFila(TypedDict):
+    organo_contratacion: str
+    count: int
+    importe: float
+    ccaa_mode: str | None
+    organo_id: int | None
+    dir3: str | None
+    url_perfil: str | None
+
+
+class TreemapFila(TypedDict):
+    organo: str
+    tipo_contrato: str
+    importe: float
+
+
+class TipoEstadoValorFila(TypedDict):
+    tipo_contrato: str
+    estado: str
+    value: int
+
+
+class TopLicitacionFila(TypedDict):
+    id_externo: str
+    titulo: str
+    organo_contratacion: str | None
+    importe: float
+    estado: str | None
+    adjudicatario: str | None
+    sum_adj: float | None
+    n_adj: int
+
+
+class CpvImporteTotalFila(TypedDict):
+    cpv: str
+    importe_total: float
+    count: int
+
+
+class CpvMesFila(TypedDict):
+    cpv: str
+    mes: str
+    count: int
+    importe: float
+
+
+class TipoContratoFila(TypedDict):
+    tipo_contrato: str
+    count: int
+    importe: float
+
+
+class TipoEstadoConteoFila(TypedDict):
+    tipo_contrato: str
+    estado: str
+    n: int
+
+
+class CpvConteoFila(TypedDict):
+    cpv: str
+    count: int
+    importe: float
+
+
+class CompletitudGlobal(TypedDict):
+    """Lo que devuelve :meth:`AggregateRepository.quality_completitud`."""
+
+    total: int
+    #: Filas con valor no vacío, por columna de texto.
+    cols: dict[str, int]
+    importe: int
+    fecha_iso: int
+
+
+class CompletitudMesFila(TypedDict):
+    mes: str
+    total: int
+    con_cpv: int
+    con_importe: int
+    con_organo: int
+    con_fecha_limite: int
+
+
+class SerieMensualFila(TypedDict):
+    mes: str
+    #: ``COUNT(*)`` (``int``) o ``SUM(importe)`` (``float``) según ``metric``.
+    valor: float
+
+
+class PublicacionesMesFila(TypedDict):
+    mes: str
+    publicaciones: int
+
+
+class RetenderingFila(TypedDict):
+    id_externo: str
+    titulo: str
+    organo_contratacion: str | None
+    importe: float | None
+    fecha_publicacion: str | None
+    duracion_valor: float | None
+    duracion_unidad: str | None
+    fecha_inicio: str | None
+    fecha_fin: str | None
+
+
+class AdjudicacionForecastFila(TypedDict):
+    licitacion_id: str
+    fecha_adjudicacion: str | None
+    importe_adjudicado: float | None
+    n_ofertas_recibidas: int | None
+    nombre: str
+
+
+class ClusteringFila(TypedDict):
+    id_externo: str
+    titulo: str
+    organo_contratacion: str | None
+    importe: float | None
+    ccaa: str | None
+    estado: str | None
+    cpv: str | None
+
+
+class OrganoLicitacionFila(TypedDict):
+    id_externo: str
+    titulo: str
+    organo_contratacion: str
+    importe: float | None
+    cpv: str | None
+    tipo_contrato: str | None
+    estado: str | None
+    fecha_publicacion: str | None
+    fecha_limite: str | None
+    ccaa: str | None
+    tecnologia: str | None
+    url: str | None
+
+
+class CompetenciaCpv4Fila(TypedDict):
+    cpv4: str
+    #: ``AVG`` de un entero: ``numeric`` en Postgres, ``Decimal`` en Python.
+    media_ofertas: Decimal
+
+
 class AggregateRepository:
     """Acceso a las vistas materializadas de aggregates y a agregaciones en vivo."""
 
@@ -378,7 +647,7 @@ class AggregateRepository:
 
     def overview_kpis(
         self, filters: LicitacionesFilters, *, conn: Any | None = None
-    ) -> dict[str, Any]:
+    ) -> KpisOverview:
         """total, importe_total, importe_medio, organos_unicos — un SELECT.
 
         Una de las cinco consultas calientes de T2: filtros e importe pasan por
@@ -404,7 +673,7 @@ class AggregateRepository:
             "organos": int(row[3] or 0),
         }
 
-    def overview_por_estado(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+    def overview_por_estado(self, filters: LicitacionesFilters) -> list[EstadoConteoFila]:
         where, params = _build_where(filters, presentacion=True)
         sql = (
             "SELECT estado, COUNT(*) AS n FROM licitaciones "
@@ -412,9 +681,9 @@ class AggregateRepository:
             "GROUP BY estado ORDER BY n DESC"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(EstadoConteoFila, rows_to_dicts(c.execute(sql, params)))
 
-    def overview_por_mes(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+    def overview_por_mes(self, filters: LicitacionesFilters) -> list[MesImporteFila]:
         where, params = _build_where(filters, presentacion=True)
         sql = (
             "SELECT substr(fecha_publicacion, 1, 7) AS mes, "
@@ -425,11 +694,11 @@ class AggregateRepository:
             "GROUP BY mes ORDER BY mes"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(MesImporteFila, rows_to_dicts(c.execute(sql, params)))
 
     def overview_top_organos(
         self, filters: LicitacionesFilters, n: int = 15
-    ) -> list[dict[str, Any]]:
+    ) -> list[OrganoTopFila]:
         where, params = _build_where(filters, presentacion=True)
         sql = (
             "SELECT organo_contratacion, COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe "
@@ -438,7 +707,7 @@ class AggregateRepository:
             "GROUP BY organo_contratacion ORDER BY n DESC LIMIT %s"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, n]))
+            return typed_rows(OrganoTopFila, rows_to_dicts(c.execute(sql, [*params, n])))
 
     def overview_funnel(self, filters: LicitacionesFilters) -> dict[str, int]:
         where, params = _build_where(filters, presentacion=True)
@@ -621,7 +890,7 @@ class AggregateRepository:
         sums = [float(r[0]) for r in rows]
         return sum(sums[:top_n]), sum(sums)
 
-    def overview_por_ccaa(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+    def overview_por_ccaa(self, filters: LicitacionesFilters) -> list[CcaaConteoFila]:
         """(ccaa, n, importe) por comunidad, de más a menos expedientes.
 
         ``importe`` es ``SUM(importe)`` tal cual: ``NULL`` si ninguna fila de la
@@ -637,7 +906,7 @@ class AggregateRepository:
             "GROUP BY ccaa ORDER BY n DESC, ccaa"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(CcaaConteoFila, rows_to_dicts(c.execute(sql, params)))
 
     def overview_ccaa_cubiertas(self, filters: LicitacionesFilters) -> int:
         """CCAA distintas presentes en el ámbito.
@@ -845,7 +1114,7 @@ class AggregateRepository:
             "  (SELECT COUNT(*) FROM licitaciones "
             f"    WHERE {pub_guard} AND fecha_publicacion >= %s) AS nuevas_24h"
         )
-        run_params: list[Any] = [hoy_iso, p75, hoy_iso, limite_48h_iso, hace_24h_iso]
+        run_params: list[object] = [hoy_iso, p75, hoy_iso, limite_48h_iso, hace_24h_iso]
         with connect_read() as c:
             row = c.execute(sql, run_params).fetchone()
         if row is None:
@@ -867,7 +1136,7 @@ class AggregateRepository:
 
     def resumen_timeline_items(
         self, filters: LicitacionesFilters, *, limit: int, muestrear: bool = False
-    ) -> tuple[list[dict[str, Any]], int]:
+    ) -> tuple[list[TimelineItemFila], int]:
         """Filas del scatter de ``/resumen/timeline`` y total de la ventana.
 
         Dos modos, porque el mismo endpoint alimenta dos preguntas distintas:
@@ -900,7 +1169,8 @@ class AggregateRepository:
                 "ORDER BY fecha_publicacion DESC LIMIT %s"
             )
             with connect_read() as c:
-                return rows_to_dicts(c.execute(sql, [*params, limit])), total
+                filas = rows_to_dicts(c.execute(sql, [*params, limit]))
+            return typed_rows(TimelineItemFila, filas), total
 
         # `(rn - 1) % stride = 0` y no `rn % stride = 1`: con stride 1 —la
         # ventana cabe entera— el segundo no selecciona nada, porque `rn % 1`
@@ -923,9 +1193,9 @@ class AggregateRepository:
         total = int(rows[0]["total"]) if rows else 0
         for row in rows:
             row.pop("total", None)
-        return rows, total
+        return typed_rows(TimelineItemFila, rows), total
 
-    def _resumen_timeline_total(self, where: str, params: list[Any]) -> int:
+    def _resumen_timeline_total(self, where: str, params: list[object]) -> int:
         """Expedientes de la ventana, para poder declarar el recorte."""
         guard = iso_guard("fecha_publicacion")
         sql = f"SELECT count(*) FROM licitaciones WHERE {where} AND {guard}"
@@ -939,7 +1209,7 @@ class AggregateRepository:
         *,
         desde_iso: str,
         sample_limit: int,
-    ) -> tuple[int, list[dict[str, Any]]]:
+    ) -> tuple[int, list[NovedadFila]]:
         """(total, muestra) de licitaciones publicadas después de ``desde_iso``.
 
         La muestra va ordenada por ``fecha_publicacion`` descendente — el
@@ -968,7 +1238,7 @@ class AggregateRepository:
                     [*params, desde_iso, sample_limit],
                 )
             )
-        return count, sample
+        return count, typed_rows(NovedadFila, sample)
 
     # ── Tecnologias ──────────────────────────────────────────────────────
     #
@@ -1038,7 +1308,7 @@ class AggregateRepository:
         total = int(row[0] or 0)
         return total, total - int(row[1] or 0)
 
-    def tecnologias_entries(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+    def tecnologias_entries(self, filters: LicitacionesFilters) -> list[TecnologiaEntradaFila]:
         """Explode de ``tecnologia`` (CSV) vía ``unnest(string_to_array(...))``.
 
         Agrupa por CÓDIGO crudo (no por label legible) — el mapeo código→label
@@ -1058,11 +1328,11 @@ class AggregateRepository:
             "GROUP BY trim(code)"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(TecnologiaEntradaFila, rows_to_dicts(c.execute(sql, params)))
 
     def tecnologias_cross_organo(
         self, filters: LicitacionesFilters, *, top_organos: int, top_techs: int
-    ) -> list[dict[str, Any]]:
+    ) -> list[TecnologiaOrganoFila]:
         where, params = _build_where(filters)
         sql = (
             "WITH exploded AS ("
@@ -1082,11 +1352,14 @@ class AggregateRepository:
             "GROUP BY e.organo, e.code"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, top_organos, top_techs]))
+            return typed_rows(
+                TecnologiaOrganoFila,
+                rows_to_dicts(c.execute(sql, [*params, top_organos, top_techs])),
+            )
 
     def tecnologias_cross_geo(
         self, filters: LicitacionesFilters, *, top_ccaa: int, top_techs: int
-    ) -> list[dict[str, Any]]:
+    ) -> list[TecnologiaCcaaFila]:
         where, params = _build_where(filters)
         sql = (
             "WITH exploded AS ("
@@ -1105,11 +1378,13 @@ class AggregateRepository:
             "GROUP BY e.ccaa, e.code"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, top_ccaa, top_techs]))
+            return typed_rows(
+                TecnologiaCcaaFila, rows_to_dicts(c.execute(sql, [*params, top_ccaa, top_techs]))
+            )
 
     def tecnologias_evolucion(
         self, filters: LicitacionesFilters, *, top_techs: int
-    ) -> list[dict[str, Any]]:
+    ) -> list[TecnologiaMesFila]:
         where, params = _build_where(filters)
         guard = iso_guard("fecha_publicacion")
         sql = (
@@ -1129,11 +1404,13 @@ class AggregateRepository:
             "ORDER BY mes"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, top_techs]))
+            return typed_rows(
+                TecnologiaMesFila, rows_to_dicts(c.execute(sql, [*params, top_techs]))
+            )
 
     def tecnologia_detalle_items(
         self, filters: LicitacionesFilters, *, tech_codes: list[str], limit: int
-    ) -> list[dict[str, Any]]:
+    ) -> list[TecnologiaItemFila]:
         """Top-N licitaciones (por importe) para los códigos crudos de UN label.
 
         ``tech_codes`` es la lista de códigos de ``tecnologia`` que mapean al
@@ -1171,11 +1448,13 @@ class AggregateRepository:
             "LIMIT %s"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, *tech_codes, limit]))
+            return typed_rows(
+                TecnologiaItemFila, rows_to_dicts(c.execute(sql, [*params, *tech_codes, limit]))
+            )
 
     # ── Geography ────────────────────────────────────────────────────────
 
-    def geography_by_ccaa(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+    def geography_by_ccaa(self, filters: LicitacionesFilters) -> list[CcaaImporteFila]:
         """(ccaa, count, importe) ordenado por count DESC; ccaa NULL excluida."""
         where, params = _build_where(filters)
         sql = (
@@ -1185,9 +1464,9 @@ class AggregateRepository:
             "GROUP BY ccaa ORDER BY count DESC, ccaa"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(CcaaImporteFila, rows_to_dicts(c.execute(sql, params)))
 
-    def geography_by_provincia(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+    def geography_by_provincia(self, filters: LicitacionesFilters) -> list[ProvinciaImporteFila]:
         """(provincia, count, importe) sobre TODO el dataset filtrado."""
         where, params = _build_where(filters)
         sql = (
@@ -1197,11 +1476,11 @@ class AggregateRepository:
             "GROUP BY provincia ORDER BY count DESC, provincia"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(ProvinciaImporteFila, rows_to_dicts(c.execute(sql, params)))
 
     # ── Trends ───────────────────────────────────────────────────────────
 
-    def trends_daily(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+    def trends_daily(self, filters: LicitacionesFilters) -> list[DiaImporteFila]:
         """(dia YYYY-MM-DD, count, importe) — base para series month/week/day.
 
         El roll-up a semana/mes se hace en Python sobre este resultado ya
@@ -1219,9 +1498,9 @@ class AggregateRepository:
             "GROUP BY dia ORDER BY dia"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(DiaImporteFila, rows_to_dicts(c.execute(sql, params)))
 
-    def trends_heatmap(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+    def trends_heatmap(self, filters: LicitacionesFilters) -> list[MesEstadoFila]:
         """(mes YYYY-MM, estado, value) para el heatmap mes x estado."""
         where, params = _build_where(filters)
         guard = iso_guard("fecha_publicacion")
@@ -1232,7 +1511,7 @@ class AggregateRepository:
             "GROUP BY mes, estado ORDER BY mes, estado"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(MesEstadoFila, rows_to_dicts(c.execute(sql, params)))
 
     def trends_yoy(
         self,
@@ -1335,7 +1614,7 @@ class AggregateRepository:
 
     def vencimientos_diarios(
         self, filters: LicitacionesFilters, *, desde_iso: str, hasta_exclusivo_iso: str
-    ) -> list[dict[str, Any]]:
+    ) -> list[DiaImporteFila]:
         """(dia YYYY-MM-DD, count, importe) de cierres en ``[desde, hasta)``.
 
         El tamaño está acotado por la ventana (un día por fila), que el servicio
@@ -1352,7 +1631,10 @@ class AggregateRepository:
             "GROUP BY dia ORDER BY dia"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, desde_iso, hasta_exclusivo_iso]))
+            return typed_rows(
+                DiaImporteFila,
+                rows_to_dicts(c.execute(sql, [*params, desde_iso, hasta_exclusivo_iso])),
+            )
 
     def vencimientos_kpis(
         self,
@@ -1414,7 +1696,9 @@ class AggregateRepository:
     # que se ordena después es ese resultado, no la tabla: el treemap reescrito
     # tarda 4,7 s sin filtros donde el anterior pasaba de 30.
 
-    def _organos_where(self, filters: LicitacionesFilters, q: str | None) -> tuple[str, list[Any]]:
+    def _organos_where(
+        self, filters: LicitacionesFilters, q: str | None
+    ) -> tuple[str, list[object]]:
         """WHERE común de /organos: filtros estándar + búsqueda plegada en el nombre.
 
         ``q`` llega YA plegado por el servicio (``fold_text``); aquí solo se
@@ -1457,7 +1741,7 @@ class AggregateRepository:
 
     def organos_ranking(
         self, filters: LicitacionesFilters, *, q_folded: str | None, limit: int
-    ) -> list[dict[str, Any]]:
+    ) -> list[OrganoRankingFila]:
         """Ranking (count DESC) con la CCAA modal por órgano.
 
         La CCAA modal replica el ``mode().iloc[0]`` de pandas: la más frecuente,
@@ -1508,11 +1792,11 @@ class AggregateRepository:
             "ORDER BY count DESC, p.nombre LIMIT %s"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, limit]))
+            return typed_rows(OrganoRankingFila, rows_to_dicts(c.execute(sql, [*params, limit])))
 
     def organos_treemap(
         self, filters: LicitacionesFilters, *, q_folded: str | None, top_organos: int
-    ) -> list[dict[str, Any]]:
+    ) -> list[TreemapFila]:
         """(organo, tipo_contrato, importe) para los top-N órganos por count.
 
         Un solo recorrido: ``por_tipo`` agrega por órgano y tipo, y de ese
@@ -1541,11 +1825,11 @@ class AggregateRepository:
             "  AND p.tipo_contrato IS NOT NULL AND p.importe > 0"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, top_organos]))
+            return typed_rows(TreemapFila, rows_to_dicts(c.execute(sql, [*params, top_organos])))
 
     # ── Resumen: sankey y top licitaciones ───────────────────────────────
 
-    def resumen_sankey(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+    def resumen_sankey(self, filters: LicitacionesFilters) -> list[TipoEstadoValorFila]:
         """(tipo_contrato, estado, value) — flujo tipo→estado, NULLs excluidos."""
         where, params = _build_where(filters, presentacion=True)
         sql = (
@@ -1554,11 +1838,11 @@ class AggregateRepository:
             "GROUP BY tipo_contrato, estado ORDER BY tipo_contrato, estado"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(TipoEstadoValorFila, rows_to_dicts(c.execute(sql, params)))
 
     def resumen_top_licitaciones(
         self, filters: LicitacionesFilters, *, n: int
-    ) -> list[dict[str, Any]]:
+    ) -> list[TopLicitacionFila]:
         """Top-N por importe con adjudicatario y agregados de adjudicación.
 
         ``adjudicatario`` es el primer nombre no nulo del grupo (determinista
@@ -1585,13 +1869,13 @@ class AggregateRepository:
             "ORDER BY l.importe DESC LIMIT %s"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, n]))
+            return typed_rows(TopLicitacionFila, rows_to_dicts(c.execute(sql, [*params, n])))
 
     # ── Trends CPV ───────────────────────────────────────────────────────
 
     def trends_cpv_ranking(
         self, filters: LicitacionesFilters, *, top_n: int
-    ) -> tuple[int, list[dict[str, Any]], str | None, str | None]:
+    ) -> tuple[int, list[CpvImporteTotalFila], str | None, str | None]:
         """(total_cpvs, top-N por importe, periodo_inicio, periodo_fin)."""
         where, params = _build_where(filters)
         guard = iso_guard("fecha_publicacion")
@@ -1615,11 +1899,11 @@ class AggregateRepository:
                     [*params, top_n],
                 )
             )
-        return total, top, inicio, fin
+        return total, typed_rows(CpvImporteTotalFila, top), inicio, fin
 
     def trends_cpv_series(
         self, filters: LicitacionesFilters, *, cpvs: list[str]
-    ) -> list[dict[str, Any]]:
+    ) -> list[CpvMesFila]:
         """(cpv, mes, count, importe) para los CPVs del top."""
         if not cpvs:
             return []
@@ -1634,7 +1918,7 @@ class AggregateRepository:
             "GROUP BY cpv, mes ORDER BY cpv, mes"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, *cpvs]))
+            return typed_rows(CpvMesFila, rows_to_dicts(c.execute(sql, [*params, *cpvs])))
 
     # ── Proyectos por familia (2026-10) ──────────────────────────────────
     #
@@ -1661,7 +1945,7 @@ class AggregateRepository:
             return {}, 0, 0.0
         where, params = _build_where(filters)
         selects: list[str] = []
-        run_params: list[Any] = []
+        run_params: list[object] = []
         for codigos in [*codigos_por_familia.values(), todos]:
             pertenece = tecnologia_en_csv_sql("tecnologia", n=len(codigos))
             selects.append(f"COUNT(*) FILTER (WHERE {pertenece})")
@@ -1697,7 +1981,7 @@ class AggregateRepository:
         col = "fecha_publicacion"
         guard = iso_guard(col)
         selects: list[str] = []
-        run_params: list[Any] = []
+        run_params: list[object] = []
         for codigos in codigos_por_familia.values():
             pertenece = tecnologia_en_csv_sql("tecnologia", n=len(codigos))
             selects.append(f"COUNT(*) FILTER (WHERE {pertenece} AND {guard} AND {col} >= %s)")
@@ -1723,7 +2007,7 @@ class AggregateRepository:
     @staticmethod
     def _where_modulos(
         filters: LicitacionesFilters, solo_codigos: list[str] | None
-    ) -> tuple[str, list[Any]]:
+    ) -> tuple[str, list[object]]:
         """El ``WHERE`` del ámbito, acotado a las filas con alguno de ``solo_codigos``.
 
         Desde 2026-10 los módulos SAP son el desglose de la familia ERP, así que
@@ -1756,7 +2040,7 @@ class AggregateRepository:
         """
         where, params = self._where_modulos(filters, solo_codigos)
         selects: list[str] = []
-        run_params: list[Any] = []
+        run_params: list[object] = []
         for pattern in module_patterns.values():
             selects.append("COUNT(*) FILTER (WHERE titulo ~* %s)")
             selects.append("COALESCE(SUM(importe) FILTER (WHERE titulo ~* %s), 0)")
@@ -1793,7 +2077,7 @@ class AggregateRepository:
         col = "fecha_publicacion"
         guard = iso_guard(col)
         selects: list[str] = []
-        run_params: list[Any] = []
+        run_params: list[object] = []
         for pattern in module_patterns.values():
             selects.append(f"COUNT(*) FILTER (WHERE titulo ~* %s AND {guard} AND {col} >= %s)")
             selects.append(
@@ -1810,7 +2094,7 @@ class AggregateRepository:
             for i, mod in enumerate(module_patterns)
         }
 
-    def tipos_contrato_breakdown(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+    def tipos_contrato_breakdown(self, filters: LicitacionesFilters) -> list[TipoContratoFila]:
         """(tipo_contrato, count, importe) — NULL/'' excluidos, count DESC."""
         where, params = _build_where(filters)
         sql = (
@@ -1820,9 +2104,9 @@ class AggregateRepository:
             "GROUP BY tipo_contrato ORDER BY count DESC, tipo_contrato"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(TipoContratoFila, rows_to_dicts(c.execute(sql, params)))
 
-    def tipo_estado_crosstab(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+    def tipo_estado_crosstab(self, filters: LicitacionesFilters) -> list[TipoEstadoConteoFila]:
         """(tipo_contrato, estado, n) — tipo NULL/'' y estado NULL excluidos.
 
         Paridad con el ``groupby(["tipo","estado"])`` de pandas, que descartaba
@@ -1836,9 +2120,9 @@ class AggregateRepository:
             "GROUP BY tipo_contrato, estado ORDER BY tipo_contrato, estado"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(TipoEstadoConteoFila, rows_to_dicts(c.execute(sql, params)))
 
-    def cpv_top_por_count(self, filters: LicitacionesFilters, *, n: int) -> list[dict[str, Any]]:
+    def cpv_top_por_count(self, filters: LicitacionesFilters, *, n: int) -> list[CpvConteoFila]:
         """(cpv, count, importe) top-N por count — cpv NULL/'' excluido."""
         where, params = _build_where(filters)
         sql = (
@@ -1848,7 +2132,7 @@ class AggregateRepository:
             "GROUP BY cpv ORDER BY count DESC, cpv LIMIT %s"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, n]))
+            return typed_rows(CpvConteoFila, rows_to_dicts(c.execute(sql, [*params, n])))
 
     # ── Quality ──────────────────────────────────────────────────────────
 
@@ -1906,7 +2190,7 @@ class AggregateRepository:
                 }
         return resultado
 
-    def quality_completitud(self) -> dict[str, Any]:
+    def quality_completitud(self) -> CompletitudGlobal:
         """Total, conteos de completitud por columna y formato ISO de fechas.
 
         El check ISO opera sobre el STRING crudo de ``fecha_publicacion`` —
@@ -1935,7 +2219,7 @@ class AggregateRepository:
             "fecha_iso": int(row[len(self._QUALITY_TEXT_COLS) + 2] or 0),
         }
 
-    def quality_completitud_mensual(self, *, desde_iso: str) -> list[dict[str, Any]]:
+    def quality_completitud_mensual(self, *, desde_iso: str) -> list[CompletitudMesFila]:
         """Completitud por mes de PUBLICACIÓN desde ``desde_iso`` (RFC calidad #3).
 
         Una serie de completitud sin tabla de histórico: cada mes es la cohorte
@@ -1962,13 +2246,13 @@ class AggregateRepository:
             "GROUP BY mes ORDER BY mes"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [desde_iso]))
+            return typed_rows(CompletitudMesFila, rows_to_dicts(c.execute(sql, [desde_iso])))
 
     # ── Forecast ─────────────────────────────────────────────────────────
 
     def forecast_monthly(
         self, filters: LicitacionesFilters, *, metric: str
-    ) -> list[dict[str, Any]]:
+    ) -> list[SerieMensualFila]:
         """Serie mensual (mes YYYY-MM, valor) para el forecast de volumen."""
         where, params = _build_where(filters)
         guard = iso_guard("fecha_publicacion")
@@ -1980,11 +2264,11 @@ class AggregateRepository:
             "GROUP BY mes ORDER BY mes"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(SerieMensualFila, rows_to_dicts(c.execute(sql, params)))
 
     def publicaciones_mensuales(
         self, filters: LicitacionesFilters, *, mes_desde: str, mes_hasta: str
-    ) -> list[dict[str, Any]]:
+    ) -> list[PublicacionesMesFila]:
         """(mes ``YYYY-MM``, publicaciones) dentro de una ventana cerrada de meses.
 
         Hermana de :meth:`forecast_monthly`, con dos diferencias que justifican
@@ -2016,9 +2300,12 @@ class AggregateRepository:
             "GROUP BY mes ORDER BY mes"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, f"{mes_desde}-01", tras_el_fin]))
+            return typed_rows(
+                PublicacionesMesFila,
+                rows_to_dicts(c.execute(sql, [*params, f"{mes_desde}-01", tras_el_fin])),
+            )
 
-    def retendering_universe(self, filters: LicitacionesFilters) -> list[dict[str, Any]]:
+    def retendering_universe(self, filters: LicitacionesFilters) -> list[RetenderingFila]:
         """Proyección acotada para el forecast de re-licitación (ADR-023).
 
         Solo filas que PUEDEN producir una fecha de fin estimada (duración
@@ -2035,9 +2322,9 @@ class AggregateRepository:
             "       OR fecha_fin IS NOT NULL)"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, params))
+            return typed_rows(RetenderingFila, rows_to_dicts(c.execute(sql, params)))
 
-    def adjudicaciones_para_forecast(self, ids: list[str]) -> list[dict[str, Any]]:
+    def adjudicaciones_para_forecast(self, ids: list[str]) -> list[AdjudicacionForecastFila]:
         """Adjudicaciones (columnas del forecast) para una lista de licitaciones."""
         if not ids:
             return []
@@ -2047,13 +2334,13 @@ class AggregateRepository:
             "FROM adjudicaciones WHERE licitacion_id = ANY(%s)"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [ids]))
+            return typed_rows(AdjudicacionForecastFila, rows_to_dicts(c.execute(sql, [ids])))
 
     # ── Clustering online ────────────────────────────────────────────────
 
     def clustering_universe(
         self, filters: LicitacionesFilters, *, max_rows: int
-    ) -> tuple[list[dict[str, Any]], int]:
+    ) -> tuple[list[ClusteringFila], int]:
         """(filas proyectadas, total sin recortar) para el clustering online.
 
         Justificación ADR-023: el clustering TF-IDF + KMeans no es expresable
@@ -2078,13 +2365,13 @@ class AggregateRepository:
                     [*params, max_rows],
                 )
             )
-        return rows, total
+        return typed_rows(ClusteringFila, rows), total
 
     # ── Drill-down por órgano ────────────────────────────────────────────
 
     def licitaciones_por_organo(
         self, organo: str, filters: LicitacionesFilters
-    ) -> list[dict[str, Any]]:
+    ) -> list[OrganoLicitacionFila]:
         """Proyección ACOTADA de las licitaciones de UN órgano (ADR-023).
 
         El scoring y la estacionalidad del drill-down operan en pandas sobre
@@ -2102,7 +2389,9 @@ class AggregateRepository:
             f"WHERE {where} AND organo_contratacion = %s"
         )
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql, [*params, organo]))
+            return typed_rows(
+                OrganoLicitacionFila, rows_to_dicts(c.execute(sql, [*params, organo]))
+            )
 
     # ── Scoring / pipeline: proyecciones acotadas y contexto ─────────────
 
@@ -2213,7 +2502,7 @@ class AggregateRepository:
 
     def competencia_ofertas_por_cpv4(
         self, *, cutoff_iso: str
-    ) -> tuple[list[dict[str, Any]], float | None]:
+    ) -> tuple[list[CompetenciaCpv4Fila], float | None]:
         """(filas ``cpv4``/``media_ofertas``, media global) del universo del radar.
 
         Señal de competencia del scoring: cuántas ofertas suele recibir un
@@ -2265,7 +2554,7 @@ class AggregateRepository:
         media_global = (
             float(row_global[0]) if row_global is not None and row_global[0] is not None else None
         )
-        return rows, media_global
+        return typed_rows(CompetenciaCpv4Fila, rows), media_global
 
     def scoring_candidates(
         self,
@@ -2404,7 +2693,7 @@ class AggregateRepository:
         filtro_tech = " AND tecnologia = %s" if tecnologia else ""
         # Los sentinels («sin tecnología», «etiquetas sin cita») no son señal:
         # con su score 0 convertirían un «no se sabe» en fuerza 0.0.
-        params: list[Any] = [ids, list(SENTINELS)]
+        params: list[object] = [ids, list(SENTINELS)]
         if tecnologia:
             params.append(tecnologia)
         params.append(ids)

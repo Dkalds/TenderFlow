@@ -106,7 +106,7 @@ class WatchlistRepository:
             for since_date, grp_entries in by_since.items():
                 cpv_prefixes = [e["cpv_prefix"] for e in grp_entries]
                 placeholders = " OR ".join("cpv LIKE %s" for _ in cpv_prefixes)
-                params: list[Any] = [since_date] + [p + "%" for p in cpv_prefixes]
+                params: list[object] = [since_date] + [p + "%" for p in cpv_prefixes]
                 cur = c.execute(
                     "SELECT " + _WATCHLIST_LIC_COLS + " FROM licitaciones "
                     "WHERE fecha_publicacion >= %s AND (" + placeholders + ") "

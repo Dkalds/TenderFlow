@@ -34,6 +34,7 @@ Límites deliberados
 from __future__ import annotations
 
 import io
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from html import escape
 from typing import Any
@@ -93,7 +94,7 @@ def _estilo_tabla() -> Any:
     )
 
 
-def _tabla(rows: list[dict[str, Any]]) -> Any:
+def _tabla(rows: Sequence[Mapping[str, object]]) -> Any:
     """Una ``Table`` de reportlab a partir de las filas, o ``None`` si no hay."""
     from reportlab.platypus import Table
 
@@ -110,7 +111,7 @@ def _tabla(rows: list[dict[str, Any]]) -> Any:
     return tabla
 
 
-def construir_pdf_tabular(rows: list[dict[str, Any]], title: str) -> bytes:
+def construir_pdf_tabular(rows: Sequence[Mapping[str, object]], title: str) -> bytes:
     """Genera un PDF tabular simple con reportlab.
 
     Es el cuerpo que servía ``GET /exports/download?format=pdf`` desde F5, con
@@ -121,7 +122,7 @@ def construir_pdf_tabular(rows: list[dict[str, Any]], title: str) -> bytes:
 
 def construir_pdf_secciones(
     title: str,
-    secciones: list[tuple[str | None, list[dict[str, Any]]]],
+    secciones: Sequence[tuple[str | None, Sequence[Mapping[str, object]]]],
     *,
     subtitulo: str | None = None,
     pie: str | None = None,

@@ -279,7 +279,7 @@ def iter_candidatas_por_referencia(
     por pasada de TED, con los ~400 avisos de su ventana de solapamiento.
     """
     condiciones: list[str] = []
-    params: list[Any] = [fuente]
+    params: list[object] = [fuente]
     if expedientes:
         condiciones.append(f"{_EXPEDIENTE_NATURAL_SQL} = ANY(%s)")
         params.append(list(expedientes))

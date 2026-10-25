@@ -26,6 +26,7 @@ cambian nada hasta que se enciende ``FECHAS_TS_LECTURA``.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
@@ -123,7 +124,7 @@ LIC_COLUMNAS_UPSERT: tuple[str, ...] = (
 )
 
 
-def valores_lic(data: dict[str, Any]) -> list[datetime | None]:
+def valores_lic(data: Mapping[str, str | None]) -> list[datetime | None]:
     """Sombras de :data:`LIC_COLUMNAS_UPSERT` para una fila del upsert, en orden."""
     return [a_timestamptz(data.get(col)) for col in LIC_COLUMNAS_UPSERT]
 
@@ -187,7 +188,9 @@ def _sql_fin_de_lote(t: TablaFechas) -> str:
     )
 
 
-def _fin_de_lote(c: Any, t: TablaFechas, desde: str | int, tamano: int) -> tuple[Any, int]:
+def _fin_de_lote(
+    c: Any, t: TablaFechas, desde: str | int, tamano: int
+) -> tuple[str | int | None, int]:
     fila = c.execute(_sql_fin_de_lote(t), (desde, tamano)).fetchone()
     if fila is None or fila[0] is None:
         return None, 0

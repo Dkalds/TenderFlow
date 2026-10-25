@@ -31,6 +31,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from observability.logging import get_logger
 
 if TYPE_CHECKING:
+    from db.repositories.pursuits import CruceCompetidorRow
     from services.pursuit_awards import IdentidadFiscal
 
 log = get_logger(__name__)
@@ -135,7 +136,7 @@ def _claves(empresa_key: str, grupo: Iterable[str]) -> tuple[str, ...]:
 
 def construir_batallas(
     empresa_key: str,
-    cruces: list[dict[str, Any]],
+    cruces: Sequence[CruceCompetidorRow],
     *,
     nif_propio: str | None = None,
     identidad: IdentidadFiscal | None = None,
@@ -169,7 +170,10 @@ def construir_batallas(
     batallas: list[Batalla] = []
     for fila in cruces:
         importe = fila.get("importe")
-        nuestro_precio = fila.get("offer_price_eur")
+        # `offer_price_eur` es `numeric` (llega como `Decimal`) y el importe es
+        # `double precision`: `Decimal / float` lanza TypeError en `_baja`.
+        precio = fila.get("offer_price_eur")
+        nuestro_precio = float(precio) if precio is not None else None
         adjudicado = fila.get("importe_adjudicado")
         outcome = str(fila.get("outcome") or "")
         adjudicatario = str(fila.get("adjudicatario_key") or "")

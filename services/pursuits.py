@@ -26,6 +26,7 @@ from db.notifications import insert_user_notification
 from db.repositories.adjudicaciones import (
     LEAD_TIME_MESES,
     AdjudicacionRepository,
+    LeadTimeOrgano,
     lead_time_por_organo,
 )
 from db.repositories.agenda import SignalCriteria, signal_rows
@@ -33,7 +34,11 @@ from db.repositories.base import csv_values
 from db.repositories.licitaciones import LicitacionRepository
 from db.repositories.organizations import OrganizationRepository
 from db.repositories.pursuit_tasks import PursuitTasksRepository
-from db.repositories.pursuits import PursuitConcurrencyError, PursuitRepository
+from db.repositories.pursuits import (
+    PursuitConcurrencyError,
+    PursuitRepository,
+    PursuitRow,
+)
 from db.users import get_user_by_id
 from observability.logging import get_logger
 from services.analytics.lead_time import estimar_adjudicacion
@@ -220,7 +225,7 @@ def _serializar_desglose(desglose: dict[str, float] | None) -> str | None:
     return json.dumps(desglose, ensure_ascii=False, sort_keys=True)
 
 
-def _notificar_asignacion(row: dict[str, Any], *, actor_user_id: int) -> None:
+def _notificar_asignacion(row: PursuitRow, *, actor_user_id: int) -> None:
     """Alerta in-app a quien acaba de recibir la oportunidad.
 
     Asignar a alguien no le decía nada hasta 2026-09: la fila cambiaba de
@@ -284,7 +289,7 @@ def _resultado_sugerido(
 
 
 def _adjudicacion_detectada(
-    row: dict[str, Any], *, organization_id: int | None = None
+    row: PursuitRow, *, organization_id: int | None = None
 ) -> PursuitAdjudicacionDetectada | None:
     """Lo que la ingesta ya sabe del resultado del expediente, o ``None``.
 
@@ -303,8 +308,8 @@ def _adjudicacion_detectada(
     if not filas:
         return None
     licitacion = _lic_repo.get_by_id(licitacion_id) or {}
-    importes = [float(f["importe_adjudicado"]) for f in filas if f.get("importe_adjudicado")]
-    ofertas = [int(f["n_ofertas_recibidas"]) for f in filas if f.get("n_ofertas_recibidas")]
+    importes = [float(v) for f in filas if (v := f.get("importe_adjudicado"))]
+    ofertas = [int(v) for f in filas if (v := f.get("n_ofertas_recibidas"))]
     adjudicatarios = [
         PursuitAdjudicatario(
             nombre=str(f.get("nombre") or "Adjudicatario sin nombre publicado"),
@@ -328,7 +333,7 @@ def _adjudicacion_detectada(
     )
 
 
-def _detalle(row: dict[str, Any], organization_id: int, pursuit_id: int) -> PursuitDetail:
+def _detalle(row: PursuitRow, organization_id: int, pursuit_id: int) -> PursuitDetail:
     detalle = PursuitDetail.model_validate(
         {
             **row,
@@ -350,7 +355,7 @@ def _detalle(row: dict[str, Any], organization_id: int, pursuit_id: int) -> Purs
     return detalle
 
 
-def _lead_time_por_organo(organos: list[str]) -> dict[str, dict[str, Any]]:
+def _lead_time_por_organo(organos: list[str]) -> dict[str, LeadTimeOrgano]:
     """Percentiles de lead-time de esos órganos, o ``{}`` si la consulta falla.
 
     Un fallo aquí **no** tumba a quien llama: la fecha prevista es información
@@ -369,7 +374,7 @@ def _lead_time_por_organo(organos: list[str]) -> dict[str, dict[str, Any]]:
         return {}
 
 
-def _con_fecha_prevista(rows: list[dict[str, Any]]) -> list[PursuitSummary]:
+def _con_fecha_prevista(rows: Sequence[PursuitRow]) -> list[PursuitSummary]:
     """Añade `expected_award` (F4.4) a las filas ya leídas.
 
     Una sola consulta para toda la página, no una por oportunidad: el tablero
@@ -540,7 +545,7 @@ def _registrar_en_cartera(organization_id: int, pursuit_id: int) -> None:
 
 
 def _instanciar_plantilla_tareas(
-    pursuit: dict[str, Any], organization_id: int, pursuit_id: int, actor_user_id: int
+    pursuit: PursuitRow, organization_id: int, pursuit_id: int, actor_user_id: int
 ) -> None:
     """F4.6 — crea las tareas de la plantilla al entrar en ``preparing``.
 
@@ -584,7 +589,7 @@ MINIMO_PERDIDAS_POR_MOTIVO = 5
 SIN_CODIFICAR = "sin_codificar"
 
 
-def _perdidas_por_motivo(rows: list[dict[str, Any]]) -> list[PerdidaPorMotivo]:
+def _perdidas_por_motivo(rows: Sequence[Mapping[str, Any]]) -> list[PerdidaPorMotivo]:
     """Reparto de las pérdidas por motivo, o lista vacía si no hay base.
 
     Por debajo de `MINIMO_PERDIDAS_POR_MOTIVO` devuelve **vacío**, no los
@@ -615,7 +620,7 @@ def _trimestre(iso: Any) -> str | None:
 
 
 def _valor_ponderado(
-    rows: list[dict[str, Any]],
+    rows: Sequence[Mapping[str, Any]],
     ajustes: OrganizationSettings,
 ) -> tuple[float, dict[str, float], int, dict[str, int]]:
     """``(valor, previsión por trimestre, sin importe, probabilidades usadas)``.
@@ -918,7 +923,7 @@ def get_agenda(
 
 
 def _normalize_and_validate_update(
-    current: dict[str, Any],
+    current: PursuitRow,
     requested: dict[str, Any],
     organization_id: int,
 ) -> dict[str, Any]:

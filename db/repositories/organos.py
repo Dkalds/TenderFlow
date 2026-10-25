@@ -252,7 +252,7 @@ def cobertura(*, fuente: str | None = None, desde: str | None = None) -> dict[st
     de devolver solo el total.
     """
     condiciones = ["organo_contratacion IS NOT NULL"]
-    params: list[Any] = []
+    params: list[object] = []
     if fuente:
         condiciones.append("fuente = %s")
         params.append(fuente)
@@ -283,7 +283,7 @@ def candidatos_por_palabras(palabras: list[str], *, limit: int = 50) -> list[dic
     if not palabras:
         return []
     condiciones = " OR ".join(["nombre_normalizado LIKE %s"] * len(palabras))
-    params: list[Any] = [f"%{p}%" for p in palabras]
+    params: list[object] = [f"%{p}%" for p in palabras]
     params.append(limit)
     with connect_read() as c:
         return rows_to_dicts(
