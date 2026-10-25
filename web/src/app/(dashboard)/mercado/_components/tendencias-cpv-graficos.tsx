@@ -134,7 +134,7 @@ export function TendenciasCpvForecast({
             <label className="flex items-center gap-2 text-tf-meta">
               <span className="text-muted-foreground">Prever</span>
               <select
-                className="h-8 rounded-md border border-border/60 bg-card px-2 text-tf-meta md:h-7"
+                className="h-8 rounded-md border border-divider bg-card px-2 text-tf-meta md:h-7"
                 value={cpv ?? ""}
                 onChange={(e) => onCpvChange(e.target.value === "" ? null : e.target.value)}
               >

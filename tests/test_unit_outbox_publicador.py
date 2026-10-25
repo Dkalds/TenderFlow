@@ -180,7 +180,7 @@ def test_el_worker_a_demanda_solo_reparte(monkeypatch: pytest.MonkeyPatch) -> No
     documentos nuevos): esos tienen su cadencia y su cursor en el paso
     ``event_dispatch``."""
     from scheduler import worker
-    from shared.jobs import TIPO_DESPACHO_EVENTOS, TIPOS_A_DEMANDA, Job
+    from services.jobs import TIPO_DESPACHO_EVENTOS, TIPOS_A_DEMANDA, Job
 
     llamadas: list[str] = []
 

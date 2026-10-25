@@ -81,7 +81,7 @@ export function TarifasPresupuesto({ licitacionId }: { licitacionId: string }) {
               Tarifas máximas por perfil. Son techos del pliego, no los costes de tu empresa.
             </caption>
             <thead>
-              <tr className="border-b border-border/70">
+              <tr className="border-b border-divider">
                 <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3")}>Perfil</th>
                 <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3 text-right")}>Tarifa máx.</th>
                 <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3 text-right")}>Horas estimadas</th>
@@ -90,7 +90,7 @@ export function TarifasPresupuesto({ licitacionId }: { licitacionId: string }) {
             </thead>
             <tbody>
               {tarifas.map((tarifa, i) => (
-                <tr key={`${tarifa.role}-${i}`} className="border-b border-border/40">
+                <tr key={`${tarifa.role}-${i}`} className="border-b border-divider-subtle">
                   <td className="py-1.5 pr-3">{tarifa.role}</td>
                   <td className="tf-tnum py-1.5 pr-3 text-right">
                     {tarifa.max_rate_eur_hour != null ? `${formatCurrency(tarifa.max_rate_eur_hour)}/h` : "—"}
@@ -115,7 +115,7 @@ export function TarifasPresupuesto({ licitacionId }: { licitacionId: string }) {
               Desglose del presupuesto publicado (art. 100 LCSP).
             </caption>
             <thead>
-              <tr className="border-b border-border/70">
+              <tr className="border-b border-divider">
                 <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3")}>Concepto</th>
                 <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3")}>Partida</th>
                 <th scope="col" className={cn(CABECERA_COLUMNA, "py-1.5 pr-3 text-right")}>Importe</th>
@@ -125,7 +125,7 @@ export function TarifasPresupuesto({ licitacionId }: { licitacionId: string }) {
             </thead>
             <tbody>
               {partidas.map((partida, i) => (
-                <tr key={`${partida.concept}-${i}`} className="border-b border-border/40">
+                <tr key={`${partida.concept}-${i}`} className="border-b border-divider-subtle">
                   <td className="py-1.5 pr-3">{partida.concept}</td>
                   <td className="py-1.5 pr-3 text-muted-foreground">{PARTIDA[partida.category]}</td>
                   <td className="tf-tnum py-1.5 pr-3 text-right">

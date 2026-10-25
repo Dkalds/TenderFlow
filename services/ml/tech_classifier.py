@@ -1231,7 +1231,7 @@ class TechnologyClassifier:
         lo descarga de GitHub, así que un test que llegue hasta este método sin
         mocks sale a la red.
         """
-        from shared.model_artifacts import resolve_servable_artifact
+        from services.ml.model_artifacts import resolve_servable_artifact
 
         artefacto = resolve_servable_artifact("tech_classifier", _MODEL_PATH)
         if artefacto is not None:

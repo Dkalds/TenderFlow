@@ -100,7 +100,7 @@ def test_check_all_users_suma_favoritos_y_pursuits_y_sobrevive_a_un_fallo() -> N
             return False
 
     with (
-        patch.object(mod, "connect_read", return_value=_Conn()),
+        patch("db.repositories.watchlist.connect_read", return_value=_Conn()),
         patch.object(mod, "check_deadlines_and_notify", side_effect=[2, RuntimeError("boom")]),
         patch.object(mod, "check_pursuit_deadlines", side_effect=RuntimeError("sin tabla")),
     ):

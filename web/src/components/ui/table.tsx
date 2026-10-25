@@ -55,7 +55,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
         // Tintes de la escala: /5 al pasar, /10 la fila seleccionada. 110 ms,
         // solo color: una fila se cruza con el ratón decenas de veces por minuto
         // (docs/frontend-motion.md).
-        "border-b border-border/30 transition-colors duration-110 hover:bg-primary/5 data-[state=selected]:bg-primary/10",
+        "border-b border-divider-subtle transition-colors duration-110 hover:bg-primary-hover data-[state=selected]:bg-primary-selected",
         className
       )}
       {...props}

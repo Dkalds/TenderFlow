@@ -30,6 +30,7 @@ import {
   type WatchlistItem,
 } from "@/hooks/use-watchlist-items";
 import { callCredentials, callMethod, callUrl, jsonResponse } from "./fetch-call";
+import { crearQueryClientDePrueba } from "@/test/query-client";
 
 const WATCHLIST_ITEMS_KEY = ["watchlist-items"];
 
@@ -71,14 +72,8 @@ function makeResponse(body: unknown, status = 200): Response {
   } as unknown as Response;
 }
 
-function createClient() {
-  return new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-}
+// Con el aviso global de mutaciones: el fallo lo dice él (D6).
+const createClient = crearQueryClientDePrueba;
 
 function createWrapper(qc: QueryClient) {
   return function Wrapper({ children }: { children: React.ReactNode }) {
@@ -186,7 +181,7 @@ describe("useAddWatchlistItem", () => {
 
     const cached = qc.getQueryData<WatchlistItem[]>(WATCHLIST_ITEMS_KEY);
     expect(cached).toEqual([ITEMS[0]]);
-    expect(toast.error).toHaveBeenCalledWith("No se pudo añadir a favoritos");
+    expect(toast.error).toHaveBeenCalledWith("No se pudo añadir a favoritos", expect.anything());
     // Un POST que falló no es un seguimiento: contarlo inflaría la métrica con
     // decisiones que el usuario no llegó a tomar.
     expect(registrarEvento).not.toHaveBeenCalled();
@@ -247,7 +242,7 @@ describe("useRemoveWatchlistItem", () => {
 
     const cached = qc.getQueryData<WatchlistItem[]>(WATCHLIST_ITEMS_KEY);
     expect(cached).toEqual(ITEMS);
-    expect(toast.error).toHaveBeenCalledWith("No se pudo quitar de favoritos");
+    expect(toast.error).toHaveBeenCalledWith("No se pudo quitar de favoritos", expect.anything());
   });
 });
 
@@ -319,6 +314,8 @@ describe("useSetWatchlistNota (CU-03)", () => {
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(notaEnCache(qc, "EXT-1")).toBe("anterior");
-    expect(toast.error).toHaveBeenCalledWith("Solo puedes anotar los favoritos que sigues tú");
+    expect(toast.error).toHaveBeenCalledWith("No se pudo guardar la nota", {
+      description: "Solo puedes anotar los favoritos que sigues tú",
+    });
   });
 });

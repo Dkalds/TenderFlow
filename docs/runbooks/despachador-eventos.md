@@ -17,7 +17,7 @@ cablear desde S4.1 hasta el 2026-09-19: ningún evento se entregaba.
 Además del cierre, el despachador corre **a demanda** en el consumidor de la
 cola de trabajo (ADR-028, job `despacho_eventos`,
 `scheduler/worker.py::ejecutar_despacho_eventos`). Lo encola
-`shared.jobs.solicitar_despacho_de_eventos` después del commit de una mutación
+`services.jobs.solicitar_despacho_de_eventos` después del commit de una mutación
 cuyo aviso alguien espera ya: hoy la asignación de una oportunidad
 (`pursuit.assigned`) y la solicitud de acceso de la landing
 (`solicitud_acceso.creada`). La pasada a demanda **solo reparte**

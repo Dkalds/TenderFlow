@@ -25,7 +25,6 @@ import {
   useOrganizationCapabilities,
   useSaveOrganizationCapabilities,
 } from "../_hooks/use-organization-capacidad";
-import { getErrorMessage } from "@/lib/query-feedback";
 import {
   type Certificacion,
   type Facturacion,
@@ -85,8 +84,8 @@ export function OrganizacionCapacidadCard({
       await guardar.mutateAsync(valores as OrganizationCapabilitiesIn);
       setBorrador(null);
       toast.success("Perfil de capacidad guardado");
-    } catch (error) {
-      toast.error(getErrorMessage(error, "accion"));
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   };
 

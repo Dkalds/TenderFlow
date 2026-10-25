@@ -149,7 +149,7 @@ export function FichaOportunidad() {
           <ScrollEdgeDelProveedor />
         </div>
       </ScrollEdgeProvider>
-      <header className="border-border/60 bg-card flex-none border-b px-4 pt-3.5">
+      <header className="border-divider bg-card flex-none border-b px-4 pt-3.5">
         {/* Bajo `md` las acciones van debajo del título: en la misma fila sus
             ~290px dejaban el título a una palabra por línea. */}
         <div className="flex flex-col gap-2.5 md:flex-row md:items-start md:gap-3">

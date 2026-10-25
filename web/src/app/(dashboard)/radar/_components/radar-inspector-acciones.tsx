@@ -65,7 +65,7 @@ export function InspectorAcciones({
   const selectId = React.useId();
 
   return (
-    <div data-slot="radar-inspector-acciones" className="flex-none border-t border-border/60 bg-card">
+    <div data-slot="radar-inspector-acciones" className="flex-none border-t border-divider bg-card">
       {/* A 11 px y sin iconos: a 12 px la fila cabía en Windows con 4 px de
           aire, pero no en el Chromium de Linux del E2E, que redondea el avance de
           cada glifo a píxel entero y la ensanchaba unos 6 px. Por eso no son
@@ -73,12 +73,12 @@ export function InspectorAcciones({
       <div
         role="group"
         aria-label="Más tarde"
-        className="flex flex-wrap items-center gap-[7px] border-b border-border/40 px-4.5 py-2 text-tf-micro"
+        className="flex flex-wrap items-center gap-[7px] border-b border-divider-subtle px-4.5 py-2 text-tf-micro"
       >
         <button
           type="button"
           onClick={() => onAplazar("silenciar", DIAS_SILENCIO)}
-          className="tf-pressable inline-flex h-7 items-center rounded-md border border-border/80 px-2.5 font-medium text-muted-foreground hover:text-foreground"
+          className="tf-pressable inline-flex h-7 items-center rounded-md border border-border px-2.5 font-medium text-muted-foreground hover:text-foreground"
         >
           Silenciar {DIAS_SILENCIO} días
         </button>
@@ -94,7 +94,7 @@ export function InspectorAcciones({
             id={selectId}
             value={plazo}
             onChange={(event) => setPlazo(Number(event.target.value))}
-            className="h-7 rounded-md border border-border/80 bg-card px-1.5 text-tf-micro"
+            className="h-7 rounded-md border border-border bg-card px-1.5 text-tf-micro"
           >
             {PLAZOS_RECORDATORIO.map((dias) => (
               <option key={dias} value={dias}>
@@ -105,7 +105,7 @@ export function InspectorAcciones({
           <button
             type="button"
             onClick={() => onAplazar("posponer", plazo)}
-            className="tf-pressable inline-flex h-7 items-center rounded-md border border-border/80 px-2.5 font-medium text-muted-foreground hover:text-foreground"
+            className="tf-pressable inline-flex h-7 items-center rounded-md border border-border px-2.5 font-medium text-muted-foreground hover:text-foreground"
           >
             Posponer
           </button>
@@ -116,7 +116,7 @@ export function InspectorAcciones({
           <button
             type="button"
             onClick={onDismiss}
-            className="tf-pressable h-8.5 flex-none rounded-md border border-border/80 px-3 text-tf-body font-medium text-muted-foreground hover:border-destructive/50 hover:text-destructive"
+            className="tf-pressable h-8.5 flex-none rounded-md border border-border px-3 text-tf-body font-medium text-muted-foreground hover:border-destructive/50 hover:text-destructive"
           >
             Descartar
           </button>
@@ -129,8 +129,8 @@ export function InspectorAcciones({
             nombreAccesible="visible"
             clases={{
               base: "tf-pressable inline-flex h-8.5 flex-none items-center gap-1.5 rounded-md border px-3 text-tf-body font-medium",
-              activo: "border-primary/50 bg-primary/15 text-primary",
-              inactivo: "border-border/80 text-muted-foreground hover:text-foreground",
+              activo: "border-primary-line-strong bg-primary-soft text-primary",
+              inactivo: "border-border text-muted-foreground hover:text-foreground",
             }}
             onAlternar={onFollowed}
           />
@@ -139,7 +139,7 @@ export function InspectorAcciones({
           <CompararBoton
             id={tender.id_externo}
             titulo={tender.titulo}
-            className="tf-pressable inline-flex h-8.5 flex-none items-center gap-1.5 rounded-md border border-border/80 px-3 text-tf-body font-medium text-muted-foreground hover:text-foreground aria-pressed:border-primary/50 aria-pressed:bg-primary/15 aria-pressed:text-primary"
+            className="tf-pressable inline-flex h-8.5 flex-none items-center gap-1.5 rounded-md border border-border px-3 text-tf-body font-medium text-muted-foreground hover:text-foreground aria-pressed:border-primary-line-strong aria-pressed:bg-primary-soft aria-pressed:text-primary"
           />
         </div>
         <div className="flex items-center gap-[7px]">
@@ -158,7 +158,7 @@ export function InspectorAcciones({
               target="_blank"
               rel="noreferrer"
               aria-label={`${fuenteLinkLabel(tender.fuente, tender.url)}${AVISO_PESTANA_NUEVA}`}
-              className="tf-pressable grid size-8.5 flex-none place-items-center rounded-md border border-border/80 text-muted-foreground hover:text-foreground"
+              className="tf-pressable grid size-8.5 flex-none place-items-center rounded-md border border-border text-muted-foreground hover:text-foreground"
             >
               <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             </a>

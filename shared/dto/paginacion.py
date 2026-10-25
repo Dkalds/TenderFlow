@@ -85,3 +85,12 @@ class CursorPaginatedResponseWithTotal(CursorPaginatedResponse[_ItemT], Generic[
     """
 
     total: int | None = None
+
+
+#: **La** paginación de la convención (``docs/api-design.md``): ``limit`` y
+#: ``offset`` en la query (``api.pagination.pagina()``) y este sobre en la
+#: respuesta. Es un alias y no una clase nueva a propósito: ``Pagina[X]`` produce
+#: el mismo componente OpenAPI (``PaginatedResponse_X_``) que el cliente generado
+#: ya referencia, así que adoptarla no rompe a nadie. El cursor queda para las
+#: operaciones congeladas en ``scripts/check_api_convencion.py``.
+Pagina = PaginatedResponse

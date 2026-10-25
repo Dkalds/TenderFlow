@@ -33,7 +33,7 @@ import { plazoPresentacion } from "./plazo";
  */
 
 /* Chip de metadato: `rounded-md` como todo chip de la casa, sin fondo. */
-const CHIP = "inline-flex items-center rounded-md border border-border/60 px-2 py-0.5 text-tf-meta";
+const CHIP = "inline-flex items-center rounded-md border border-divider px-2 py-0.5 text-tf-meta";
 
 export function ListadoLicitaciones({
   licitaciones,
@@ -59,14 +59,14 @@ export function ListadoLicitaciones({
         dangerouslySetInnerHTML={{ __html: serializarJsonLd(listaJsonLd(jsonLdNombre, entradas)) }}
       />
 
-      <ul className="divide-border/50 border-border/50 mt-10 divide-y border-t">
+      <ul className="divide-divider border-divider mt-10 divide-y border-t">
         {licitaciones.map((lic, indice) => {
           const plazo = plazoPresentacion(lic.fecha_limite, ahora);
           return (
             <li key={lic.ref}>
               <EnlacePrecargaIntencion
                 href={entradas[indice].ruta}
-                className="group focus-visible:ring-ring hover:bg-primary/5 -mx-3 block rounded-md px-3 py-4 transition-colors focus-visible:ring-2 focus-visible:outline-none sm:py-5"
+                className="group focus-visible:ring-ring hover:bg-primary-hover -mx-3 block rounded-md px-3 py-4 transition-colors focus-visible:ring-2 focus-visible:outline-none sm:py-5"
               >
                 <h2 className="text-base leading-snug font-semibold underline-offset-4 group-hover:underline">
                   {lic.titulo}

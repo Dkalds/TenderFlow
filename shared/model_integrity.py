@@ -139,7 +139,7 @@ def write_checksum(target: Path, sha256: str | None = None) -> str:
     Args:
         target: artefacto ``.pkl`` cuyo checksum se persiste.
         sha256: hash ya calculado sobre ``target``. Lo pasa
-            ``shared.model_artifacts`` para no releer un artefacto de cientos
+            ``services.ml.model_artifacts`` para no releer un artefacto de cientos
             de MB que acaba de hashear; omitido, se calcula aquí.
 
     Returns:

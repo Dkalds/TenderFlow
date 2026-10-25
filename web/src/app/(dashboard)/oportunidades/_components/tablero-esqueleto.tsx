@@ -19,7 +19,7 @@ const COLUMNAS = 6;
 export function TableroEsqueleto() {
   return (
     <div data-slot="tablero-esqueleto" className="flex h-full min-h-0 flex-col">
-      <div className="border-border/70 bg-border/60 grid flex-none grid-cols-2 gap-px border-b lg:grid-cols-4">
+      <div className="border-divider bg-divider grid flex-none grid-cols-2 gap-px border-b lg:grid-cols-4">
         {Array.from({ length: METRICAS }, (_, indice) => (
           <div key={indice} className="bg-card px-3.5 py-2.5">
             <Skeleton className="mb-1 h-3.5 w-24 rounded-sm" />
@@ -28,14 +28,14 @@ export function TableroEsqueleto() {
           </div>
         ))}
       </div>
-      <div className="bg-border/50 grid min-h-0 flex-1 grid-cols-1 gap-px md:grid-cols-3 xl:grid-cols-6">
+      <div className="bg-divider grid min-h-0 flex-1 grid-cols-1 gap-px md:grid-cols-3 xl:grid-cols-6">
         {Array.from({ length: COLUMNAS }, (_, indice) => (
           <div key={indice} className="bg-background flex min-h-0 min-w-0 flex-col">
             <div className="flex-none px-3 pt-2.5">
               <Skeleton className="h-4 w-24 rounded-sm" />
               <Skeleton className="mt-1 h-7 w-full rounded-sm" />
             </div>
-            <div className="border-border/40 flex flex-col gap-2 border-t px-2.5 py-2.5">
+            <div className="border-divider-subtle flex flex-col gap-2 border-t px-2.5 py-2.5">
               <Skeleton className="h-32 rounded-xl" />
               <Skeleton className="h-32 rounded-xl" />
             </div>

@@ -14,6 +14,13 @@ from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from config.scoring_weights import (
+    KNOWN_WEIGHT_KEYS,
+    WEIGHTS_TOTAL,
+    dimension_weights,
+    penalty_weights,
+    validate_scoring_weights,
+)
 from db.database import now_utc_iso
 from db.repositories.adjudicaciones import (
     LEAD_TIME_MESES,
@@ -30,6 +37,7 @@ from observability.logging import get_logger
 from services.analytics.lead_time import estimar_adjudicacion
 from services.cartera import listar_cartera
 from services.ficha_pdf import BloqueFicha, FichaOportunidad, construir_pdf
+from services.jobs import solicitar_despacho_de_eventos
 from services.kit_presentacion import KitPresentacion, construir_kit, marcar_item
 from services.organizations import alcance_resuelto, require_active_member
 from services.pursuit_awards import resultado_sugerido
@@ -74,14 +82,6 @@ from shared.dto import (
     RadarBanda,
     RadarBandaCalidad,
     RadarQuality,
-)
-from shared.jobs import solicitar_despacho_de_eventos
-from shared.scoring_weights import (
-    KNOWN_WEIGHT_KEYS,
-    WEIGHTS_TOTAL,
-    dimension_weights,
-    penalty_weights,
-    validate_scoring_weights,
 )
 from shared.tender_facts import RequiredDocumentFact
 

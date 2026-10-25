@@ -165,7 +165,7 @@ def test_alta_y_confirm_rechazan_lo_mismo_con_el_mismo_mensaje(password: str):
 
 def test_alta_y_confirm_pasan_por_la_misma_funcion_de_politica():
     """Si una ruta vuelve a llamar a la política con sus propios argumentos, esto falla."""
-    from shared.password_policy import PasswordCheckResult
+    from config.password_policy import PasswordCheckResult
 
     veredicto = PasswordCheckResult(is_strong=False, issues=("veredicto de la única política",))
     client = TestClient(app)

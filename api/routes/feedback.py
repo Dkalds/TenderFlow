@@ -505,7 +505,7 @@ async def feedback_queue(
             def _predict() -> list[dict[str, Any]]:
                 # La caché de proceso de la API y no `SAPClassifier.load()`: la
                 # caché resuelve la versión activa por
-                # `shared.model_artifacts.resolve_active_artifact` (cotejada
+                # `services.ml.model_artifacts.resolve_active_artifact` (cotejada
                 # por sha256, bajada a un directorio escribible) y no hace un
                 # `joblib.load` por petición. `load()` sin ruta buscaba un
                 # `data/models/sap_classifier.pkl` que en Render no existe.

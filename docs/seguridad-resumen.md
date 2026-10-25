@@ -39,7 +39,7 @@ Lista completa de subencargados y mecanismos de transferencia:
 ## 3. Identidad y acceso
 
 - **Autenticación:** contraseña con Argon2id y política de complejidad
-  (`shared/password_policy.py`); OIDC con Google y Microsoft Entra ID (PKCE,
+  (`config/password_policy.py`); OIDC con Google y Microsoft Entra ID (PKCE,
   `nonce`, `state` firmado con HMAC, anti-replay en Redis); TOTP como segundo
   factor, obligatorio en `ENV=prod` para acciones sensibles.
 - **Sesiones:** cookie `HttpOnly`, `Secure`, `SameSite=Lax`; renovación por

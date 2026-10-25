@@ -55,6 +55,7 @@ export function usePuntuarCriterio(pursuitId: number) {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo guardar la puntuación" },
     mutationFn: (entrada: PuntuarCriterioInput) =>
       apiMutate<PuntuacionGoNoGo>("PUT", ruta(pursuitId, organizationId), entrada),
     onSuccess: (puntuacion) => {

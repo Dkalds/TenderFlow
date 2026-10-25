@@ -106,12 +106,12 @@ export function ProximosSieteDias({ weeks }: { weeks: CalendarWeek[] }) {
                 <Link
                   href={scopedHref(cierreHref(d.dateStr, d.dateStr))}
                   aria-label={`${d.dateStr}: ${d.count} cierres. Ver licitaciones`}
-                  className="flex min-h-11 items-center justify-center rounded-md border border-border/60 px-2 text-tf-body font-medium transition-colors hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex min-h-11 items-center justify-center rounded-md border border-divider px-2 text-tf-body font-medium transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {texto}
                 </Link>
               ) : (
-                <span className="flex min-h-11 items-center justify-center rounded-md border border-border/40 px-2 text-tf-body text-muted-foreground">
+                <span className="flex min-h-11 items-center justify-center rounded-md border border-divider-subtle px-2 text-tf-body text-muted-foreground">
                   {texto}
                 </span>
               )}

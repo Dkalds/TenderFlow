@@ -49,7 +49,7 @@ export const TITULO_BLOQUE = "font-display text-xl font-semibold tracking-[-0.02
  * el color del nombre (`group-hover:text-primary` en el hijo), nada se desplaza
  * ni gana sombra. Estaba copiada en los tres índices. */
 export const TARJETA_INDICE =
-  "group border-border/70 bg-card focus-visible:ring-ring hover:border-primary/50 block rounded-xl border px-5 py-4 " +
+  "group border-divider bg-card focus-visible:ring-ring hover:border-primary-line-strong block rounded-xl border px-5 py-4 " +
   "transition-colors focus-visible:ring-2 focus-visible:outline-none";
 
 const FOCO =
@@ -67,7 +67,7 @@ const FOCO =
 export const CTA_PRIMARIO =
   "group inline-flex h-11 items-center justify-center gap-2 rounded-md bg-primary px-6 " +
   "text-sm font-semibold text-primary-foreground transition-[scale,background-color] " +
-  `hover:bg-primary/90 active:scale-[0.97] ${FOCO}`;
+  `hover:bg-primary-solid-hover active:scale-[0.97] ${FOCO}`;
 
 /* Botón secundario grande (hero, página de gracias). */
 export const CTA_SECUNDARIO =

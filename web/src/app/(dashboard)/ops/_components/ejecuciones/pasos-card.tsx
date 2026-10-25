@@ -50,7 +50,7 @@ function FilaPaso({ paso }: { paso: PasoEjecucion }) {
   const roto = paso.ultimo_estado === "error";
 
   return (
-    <tr className={cn("border-b border-border/60 last:border-0", roto && "bg-destructive/5")}>
+    <tr className={cn("border-b border-divider last:border-0", roto && "bg-destructive/5")}>
       <td className={CELDA}>
         <span className="font-mono text-tf-body">{paso.paso}</span>
         {/* El último error se enseña mientras el paso lo arrastre en la
@@ -122,7 +122,7 @@ export function PasosCard({ resumen }: { resumen: EjecucionesResumen }) {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-tf-body">
           <caption className="sr-only">Pasos del cierre post-ingesta y su última ejecución</caption>
-          <thead className="border-y border-border/70">
+          <thead className="border-y border-divider">
             <tr>
               <th scope="col" className={cn(CABECERA_COLUMNA, "px-3 py-2")}>
                 Paso

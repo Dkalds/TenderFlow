@@ -85,6 +85,7 @@ export function useCrearEtiqueta() {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo crear la etiqueta" },
     mutationFn: (input: { nombre: string; color: string }) =>
       apiMutate<Etiqueta>("POST", conOrganizacion("/api/v1/etiquetas", organizationId), input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: etiquetaKeys.all }),
@@ -103,6 +104,7 @@ export function useCambiarEtiqueta() {
   const queryClient = useQueryClient();
   const organizationId = useActiveOrganizationId();
   return useMutation({
+    meta: { errorTitle: "No se pudo cambiar la etiqueta" },
     mutationFn: ({ etiquetaId, objetoTipo, objetoId, aplicar }: CambioEtiqueta) =>
       apiMutate<Schemas["ResultadoEtiquetado"]>(
         "POST",

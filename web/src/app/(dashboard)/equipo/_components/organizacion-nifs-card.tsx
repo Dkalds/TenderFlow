@@ -25,7 +25,6 @@ import {
   useOrganizationNifs,
   useSaveOrganizationNifs,
 } from "../_hooks/use-organization-capacidad";
-import { getErrorMessage } from "@/lib/query-feedback";
 
 function aBorrador(nifs: OrganizationNifIn[]): OrganizationNifIn[] {
   return nifs.map((fila) => ({
@@ -73,8 +72,8 @@ export function OrganizacionNifsCard({
       );
       setBorrador(null);
       toast.success("Identidad fiscal guardada");
-    } catch (error) {
-      toast.error(getErrorMessage(error, "accion"));
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   };
 

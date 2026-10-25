@@ -47,7 +47,8 @@ function SalirPanel({ organizacion }: { organizacion: Organization }) {
 
 function TraspasarPanel({ organizacion }: { organizacion: Organization }) {
   const { user } = useSession();
-  const miembros = useOrganizationMembers(organizacion.id);
+  // El fallo se pinta en este panel con PanelError: sin toast además.
+  const miembros = useOrganizationMembers(organizacion.id, { errorEnLinea: true });
   const [elegido, setElegido] = React.useState("");
   const [abierto, setAbierto] = React.useState(false);
   const id = React.useId();
@@ -86,7 +87,7 @@ function TraspasarPanel({ organizacion }: { organizacion: Organization }) {
               id={`${id}-destino`}
               value={elegido}
               onChange={(evento) => setElegido(evento.target.value)}
-              className="h-8 min-w-64 rounded-md border border-border/80 bg-card px-2 text-tf-body"
+              className="h-8 min-w-64 rounded-md border border-border bg-card px-2 text-tf-body"
             >
               <option value="">Elige a alguien</option>
               {candidatos.map((miembro) => (

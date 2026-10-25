@@ -11,7 +11,6 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { ApiError, apiGet, apiMutate } from "@/lib/api-client";
 import { registrarEvento } from "@/lib/analytics";
 import type { Schemas, WatchlistFavoriteCreated, WatchlistFavoriteItem } from "@/lib/api-types";
@@ -74,9 +73,9 @@ export function useAddWatchlistItem() {
       ]);
       return { previous };
     },
+    meta: { errorTitle: "No se pudo añadir a favoritos" },
     onError: (_err, _idExterno, ctx) => {
       qc.setQueryData(WATCHLIST_ITEMS_KEY, ctx?.previous);
-      toast.error("No se pudo añadir a favoritos");
     },
     // `POST /watchlist/items` devuelve `WatchlistFavoriteCreated`: trae el `id`
     // real pero NO los campos enriquecidos (titulo/importe/estado/fecha) que sí
@@ -118,9 +117,9 @@ export function useRemoveWatchlistItem() {
       );
       return { previous };
     },
+    meta: { errorTitle: "No se pudo quitar de favoritos" },
     onError: (_err, _idExterno, ctx) => {
       qc.setQueryData(WATCHLIST_ITEMS_KEY, ctx?.previous);
-      toast.error("No se pudo quitar de favoritos");
     },
     // La otra mitad del par: sin ella, "500 seguimientos" no dice si la lista
     // crece o si la gente entra y sale de las mismas licitaciones.
@@ -169,13 +168,13 @@ export function useSetWatchlistNota() {
       );
       return { previous };
     },
-    onError: (error, _input, ctx) => {
+    meta: {
+      errorTitle: "No se pudo guardar la nota",
+      errorDescription: (error: unknown) =>
+        error instanceof ApiError && error.status === 404 ? "Solo puedes anotar los favoritos que sigues tú" : undefined,
+    },
+    onError: (_error, _input, ctx) => {
       qc.setQueryData(WATCHLIST_ITEMS_KEY, ctx?.previous);
-      toast.error(
-        error instanceof ApiError && error.status === 404
-          ? "Solo puedes anotar los favoritos que sigues tú"
-          : "No se pudo guardar la nota",
-      );
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: WATCHLIST_ITEMS_KEY });

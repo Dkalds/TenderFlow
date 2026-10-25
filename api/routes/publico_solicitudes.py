@@ -86,8 +86,8 @@ from api.concurrency import run_db
 from config.settings import settings
 from db.solicitudes_acceso import contar_pendientes, crear_solicitud
 from observability.logging import get_logger
+from services.jobs import solicitar_despacho_de_eventos
 from services.solicitudes_acceso import avisar_operador_de_solicitud
-from shared.jobs import solicitar_despacho_de_eventos
 
 log = get_logger(__name__)
 

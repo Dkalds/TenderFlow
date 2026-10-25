@@ -144,7 +144,7 @@ export function usePerfilScoring() {
       registrarEvento("perfil_configurado", { primera_vez: primeraVez("perfil") });
       toast.success("Perfil guardado. La puntuación ya usa tus pesos.");
     },
-    onError: () => toast.error("No se pudo guardar el perfil."),
+    meta: { errorTitle: "No se pudo guardar el perfil" },
   });
 
   const deleteMut = useMutation({
@@ -155,7 +155,7 @@ export function usePerfilScoring() {
       queryClient.invalidateQueries({ queryKey: radarKeys.scoring });
       toast.success("Perfil eliminado. La puntuación vuelve a los pesos globales.");
     },
-    onError: () => toast.error("No se pudo eliminar el perfil."),
+    meta: { errorTitle: "No se pudo eliminar el perfil" },
   });
 
   function addKeyword() {

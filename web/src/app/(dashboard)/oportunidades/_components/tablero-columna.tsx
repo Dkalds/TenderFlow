@@ -83,7 +83,7 @@ export function TableroColumna({
       aria-label={fase.titulo}
       className={cn(
         "flex min-h-0 min-w-0 flex-col transition-[background-color,opacity] duration-150 ease-out",
-        activa ? "bg-primary/5" : "bg-background",
+        activa ? "bg-primary-hover" : "bg-background",
         arrastrandoAjena && "opacity-55",
       )}
     >
@@ -115,7 +115,7 @@ export function TableroColumna({
         }}
         className={cn(
           "relative flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto border-t px-2.5 py-2.5",
-          activa ? "border-primary/50" : "border-border/40",
+          activa ? "border-primary-line-strong" : "border-divider-subtle",
         )}
       >
         {cargando ? (
@@ -131,7 +131,7 @@ export function TableroColumna({
               <section
                 key={grupo.licitacionId}
                 aria-label={grupo.titulo}
-                className="border-border/50 bg-muted/20 rounded-xl border p-1.5"
+                className="border-divider bg-muted/20 rounded-xl border p-1.5"
               >
                 <div className="px-1.5 pt-1 pb-1.5">
                   <p className="truncate text-tf-micro leading-snug font-semibold">{grupo.titulo}</p>

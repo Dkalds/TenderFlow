@@ -12,6 +12,7 @@
  * decidir *qué se le cuenta al usuario* son la misma clasificación: "el
  * servidor no respondió" frente a "el servidor respondió que no".
  */
+import { MutationCache } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ApiError, MENSAJE_SIN_CONEXION, mensajePorEstado } from "@/lib/api-client";
 
@@ -23,8 +24,20 @@ export interface QueryFeedbackMeta extends Record<string, unknown> {
    * ya lo dice, el toast lo repite. Usa `META_ERROR_EN_LINEA`.
    */
   silent?: boolean;
-  /** Headline for the error toast (e.g. "No se pudo guardar el filtro"). */
+  /**
+   * Título del toast de error (p. ej. «No se pudo guardar el filtro»). En una
+   * mutación es **la** forma de personalizar su aviso (D6, 2026-10-25): el
+   * global de `MutationCache` es el único que avisa, y la mutación no añade su
+   * propio `toast.error` en `onError` ni en el `catch` de quien la llama, o el
+   * mismo fallo sale dos veces.
+   */
   errorTitle?: string;
+  /**
+   * Descripción propia para ciertos errores de una mutación (un 404 o un 409
+   * que en esa acción significan algo concreto). Si devuelve `undefined`, se
+   * usa la de siempre: el `detail` de la API en castellano.
+   */
+  errorDescription?: (error: unknown) => string | undefined;
   /** Toast shown when a mutation succeeds. */
   successMessage?: string;
 }
@@ -35,6 +48,17 @@ export interface QueryFeedbackMeta extends Record<string, unknown> {
  * global queda para mutaciones y para fallos sin superficie donde pintarse.
  */
 export const META_ERROR_EN_LINEA = { silent: true } as const satisfies QueryFeedbackMeta;
+
+/**
+ * `errorDescription` de las escrituras con `expected_version`: un 409 es que
+ * otra persona guardó antes, y eso es lo que hay que decir (el `detail` de la
+ * API habla de versiones). Cualquier otro error, la descripción de siempre.
+ */
+export function descripcionDeConflicto(error: unknown): string | undefined {
+  return error instanceof ApiError && error.status === 409
+    ? "Alguien del equipo la cambió mientras la tenías abierta. Recarga para ver lo último."
+    : undefined;
+}
 
 /**
  * Estados con mensaje propio al leer datos. El `detail` que manda la API para
@@ -273,10 +297,24 @@ export function notifyQueryError(error: unknown, meta?: QueryFeedbackMeta): void
 export function notifyMutationError(error: unknown, meta?: QueryFeedbackMeta): void {
   if (meta?.silent || isAuthError(error)) return;
   toast.error(meta?.errorTitle ?? "La acción no se pudo completar", {
-    description: getErrorMessage(error, "accion"),
+    description: meta?.errorDescription?.(error) ?? getErrorMessage(error, "accion"),
   });
 }
 
 export function notifyMutationSuccess(meta?: QueryFeedbackMeta): void {
   if (meta?.successMessage) toast.success(meta.successMessage);
+}
+
+/**
+ * La `MutationCache` que avisa de los fallos y éxitos de toda mutación. Vive
+ * aquí, y no dentro de `crearQueryClient` (`components/providers.tsx`), para
+ * que los tests monten **la misma** con `crearQueryClientDePrueba`
+ * (`src/test/query-client.ts`): una prueba que renderiza sin ella no ve el
+ * aviso que el usuario sí ve, y empuja a repetirlo a mano en el componente.
+ */
+export function crearMutationCache(): MutationCache {
+  return new MutationCache({
+    onError: (error, _vars, _ctx, mutation) => notifyMutationError(error, mutation.meta as QueryFeedbackMeta | undefined),
+    onSuccess: (_data, _vars, _ctx, mutation) => notifyMutationSuccess(mutation.meta as QueryFeedbackMeta | undefined),
+  });
 }

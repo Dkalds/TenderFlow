@@ -3,22 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Literal, TypedDict, cast
+from typing import TypedDict, cast
 
 from db.database import connect, connect_read
 from shared.auth_core import oauth_email_parts
-
-AccessGrantKind = Literal["email", "domain"]
-
-
-class ConcesionInvalida(ValueError):
-    """La concesión pedida no se puede escribir.
-
-    Su mensaje está escrito para el administrador: la ruta lo devuelve tal cual
-    en un 422. Es un ``ValueError`` con nombre propio justo por eso —el
-    manejador global de ``ValueError`` (``api/errors.py``) enmascara el mensaje
-    a propósito, y aquí publicarlo es una decisión, no un descuido—.
-    """
+from shared.concesiones_acceso import AccessGrantKind as AccessGrantKind
+from shared.concesiones_acceso import ConcesionInvalida as ConcesionInvalida
+from shared.concesiones_acceso import validar_concesion
 
 
 class AccessGrant(TypedDict):
@@ -60,13 +51,10 @@ def _valor_concedible(kind: AccessGrantKind, value: str) -> str:
     """Valor normalizado de una concesión que sí se puede escribir.
 
     El criterio de qué no se concede (hoy: el dominio de un proveedor de correo
-    público) vive en ``services/access_grants.py``; aquí solo se le pregunta. Se
-    le pregunta en las dos funciones que escriben, y no en la ruta, para que
+    público) vive en ``shared/concesiones_acceso.py``; aquí solo se le pregunta.
+    Se le pregunta en las dos funciones que escriben, y no en la ruta, para que
     ningún llamador pueda saltárselo.
     """
-    # Diferido: `services.access_grants` importa este módulo.
-    from services.access_grants import validar_concesion
-
     normalized = normalize_grant(kind, value)
     validar_concesion(kind, normalized)
     return normalized

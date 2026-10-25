@@ -41,7 +41,7 @@ export function ReportesCard({ reportes, isLoading }: ReportesCardProps) {
         <table className="w-full max-w-md text-tf-body">
           <caption className="sr-only">Reportes abiertos por tipo</caption>
           <thead>
-            <tr className="border-b border-border/60 text-left">
+            <tr className="border-b border-divider text-left">
               <th scope="col" className={cn("py-1.5", CABECERA_COLUMNA)}>
                 Tipo
               </th>
@@ -52,7 +52,7 @@ export function ReportesCard({ reportes, isLoading }: ReportesCardProps) {
           </thead>
           <tbody>
             {filas.map(([tipo, n]) => (
-              <tr key={tipo} className="border-b border-border/40 last:border-b-0">
+              <tr key={tipo} className="border-b border-divider-subtle last:border-b-0">
                 <td className="py-1.5">{TIPOS_REPORTE[tipo as TipoReporte] ?? tipo}</td>
                 <td className="tf-tnum py-1.5 text-right font-medium">{formatNumber(n)}</td>
               </tr>

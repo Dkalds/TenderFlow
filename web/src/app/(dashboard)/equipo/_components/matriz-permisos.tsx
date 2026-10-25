@@ -39,7 +39,7 @@ export function MatrizPermisos() {
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-tf-meta">
           <thead>
-            <tr className="border-b border-border/60">
+            <tr className="border-b border-divider">
               <th scope="col" className={cn("px-2 py-2 text-left", CABECERA_COLUMNA)}>
                 Capacidad
               </th>
@@ -52,7 +52,7 @@ export function MatrizPermisos() {
           </thead>
           <tbody>
             {PERMISSIONS.map((permission) => (
-              <tr key={permission.capability} className="border-b border-border/40 last:border-b-0">
+              <tr key={permission.capability} className="border-b border-divider-subtle last:border-b-0">
                 <td className="px-2 py-2">
                   <div className="text-tf-body font-medium">{permission.capability}</div>
                   <div className="text-tf-micro text-muted-foreground">{permission.detail}</div>

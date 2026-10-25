@@ -190,7 +190,7 @@ def test_de_extremo_a_extremo_n_conexiones_una_consulta(
     monkeypatch.setattr(stream, "_POLL_INTERVAL", 0.02)
     monkeypatch.setattr(stream, "_HEARTBEAT_INTERVAL", 3600.0)
     monkeypatch.setattr(stream, "_MAX_DURATION_SECONDS", 20)
-    monkeypatch.setattr("shared.cache_signal.get_signal_timestamp", lambda: 100.0)
+    monkeypatch.setattr("db.cache_signal.get_signal_timestamp", lambda: 100.0)
 
     async def _cliente() -> list[str]:
         peticion = _Peticion()

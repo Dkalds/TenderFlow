@@ -491,6 +491,8 @@ async def put_organization_member(
         )
     except (OrganizationAccessError, OrganizationPermissionError) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OrganizationMemberNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     # Un upsert que deja la membresía fuera de `active` es una baja, aunque la
     # ruta sea la misma: el rastro lo nombra como tal.
     evento = ORG_MEMBER_ROLE_CHANGED if body.status == "active" else ORG_MEMBER_REMOVED

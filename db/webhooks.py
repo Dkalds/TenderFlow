@@ -212,7 +212,7 @@ def entregar_firmado(
     firmar exactamente lo mismo. Devuelve si el primer intento fue 2xx.
     """
     from config.settings import settings
-    from services.webhook_retry import decidir
+    from shared.webhook_retry import decidir
 
     hosts = _allowed_webhook_hosts() if allowed_hosts is None else allowed_hosts
     try:
@@ -318,7 +318,7 @@ def reenviar(entrega: dict[str, Any]) -> bool:
     receptor ve el mismo mensaje con las mismas firmas (v1 y v2) y puede
     deduplicar por ``X-Webhook-Delivery``.
     """
-    from services.webhook_retry import decidir
+    from shared.webhook_retry import decidir
 
     wid = int(entrega["webhook_id"])
     entrega_id = int(entrega["id"])

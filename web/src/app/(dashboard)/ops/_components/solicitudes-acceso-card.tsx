@@ -130,7 +130,7 @@ export function SolicitudesAccesoCard(opciones: OpcionesSolicitudesAcceso) {
         </p>
       )}
       {!isLoading && !error && solicitudes.length > 0 && (
-        <ul className="divide-border/60 divide-y">
+        <ul className="divide-divider divide-y">
           {solicitudes.map((solicitud) => (
             <SolicitudItem
               key={solicitud.id}

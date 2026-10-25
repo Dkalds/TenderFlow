@@ -40,7 +40,7 @@ export function NavegacionMovil({
         <nav aria-label="Navegación móvil" className="space-y-0.5">
           {groups.map((entry, index) => (
             <React.Fragment key={entry.group}>
-              {index > 0 && <span className="bg-border/70 my-2 block h-px" aria-hidden="true" />}
+              {index > 0 && <span className="bg-divider my-2 block h-px" aria-hidden="true" />}
               {entry.items.map((space) => {
                 const Icon = space.icon;
                 const active = activeKey === space.key;
@@ -62,8 +62,8 @@ export function NavegacionMovil({
                     className={cn(
                       "flex items-center gap-2.5 rounded-md px-3 py-2 text-tf-body font-medium transition-colors",
                       active
-                        ? "bg-primary/10 text-foreground"
-                        : "text-muted-foreground hover:bg-primary/5 hover:text-foreground",
+                        ? "bg-primary-selected text-foreground"
+                        : "text-muted-foreground hover:bg-primary-hover hover:text-foreground",
                     )}
                   >
                     <Icon className={cn("h-4 w-4 shrink-0", active && "text-primary")} aria-hidden="true" />

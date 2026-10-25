@@ -54,7 +54,7 @@ function FilaCarga({ persona, maximo }: { persona: Responsable; maximo: number }
         <div className="flex items-center gap-2">
           <svg className="h-3 w-24 flex-none" viewBox="0 0 100 1" preserveAspectRatio="none" aria-hidden="true">
             <rect className="fill-secondary/60" width="100" height="1" />
-            <rect className="fill-primary/60" height="1" width={(abiertas / maximo) * 100} />
+            <rect className="fill-primary-ramp-3" height="1" width={(abiertas / maximo) * 100} />
           </svg>
           <span className="tf-tnum font-semibold">{formatNumber(abiertas)}</span>
         </div>

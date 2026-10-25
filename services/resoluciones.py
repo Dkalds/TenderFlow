@@ -17,13 +17,11 @@ Fase 4:
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from db.connection import now_utc_iso
-from db.database import connect, connect_read
-from db.repositories.base import rows_to_dicts
-from db.resoluciones import upsert_resoluciones_lote
+from db.resoluciones import listar_resoluciones, upsert_resoluciones_lote, vincular_pendientes
 from observability.logging import get_logger
 from services.dedupe import natural_expediente, normalize_organo
 
@@ -56,22 +54,33 @@ def upsert_resoluciones(items: list[Resolucion]) -> tuple[int, int]:
     return upsert_resoluciones_lote([asdict(res) for res in items])
 
 
-def _registrar_evento_recurso(c: Any, licitacion_id: str, res: dict[str, Any]) -> bool:
-    """Evento ``recurso`` en la línea de tiempo (solo resoluciones estimatorias)."""
-    detalle = f"Resolución {res['tribunal'].upper()} {res['numero_resolucion']} ({res['sentido']})"
-    ya_existe = c.execute(
-        "SELECT 1 FROM contrato_eventos "
-        "WHERE licitacion_id = %s AND tipo = 'recurso' AND detalle = %s",
-        (licitacion_id, detalle),
-    ).fetchone()
-    if ya_existe:
-        return False
-    c.execute(
-        "INSERT INTO contrato_eventos (licitacion_id, tipo, fecha, campo, detalle) "
-        "VALUES (%s, 'recurso', %s, 'resolucion', %s)",
-        (licitacion_id, str(res.get("fecha") or now_utc_iso())[:10], detalle),
-    )
-    return True
+def _emparejar(
+    pendientes: Sequence[dict[str, Any]], licitaciones: Sequence[dict[str, Any]]
+) -> Iterator[tuple[dict[str, Any], str]]:
+    """Criterio de la vinculación débil: expediente natural + órgano normalizado.
+
+    El expediente de la resolución debe coincidir con el expediente nacional de
+    una licitación (id natural sin namespace). Si la resolución trae órgano,
+    además debe coincidir normalizado; sin órgano se exige que el expediente
+    sea unívoco. El SQL y la transacción están en
+    :func:`db.resoluciones.vincular_pendientes`.
+    """
+    por_expediente: dict[str, list[dict[str, Any]]] = {}
+    for lic in licitaciones:
+        por_expediente.setdefault(natural_expediente(lic["id_externo"]), []).append(lic)
+    for res in pendientes:
+        candidatas = por_expediente.get(str(res["expediente"]).strip(), [])
+        organo_res = normalize_organo(res.get("organo"))
+        if organo_res:
+            matches = [
+                lic
+                for lic in candidatas
+                if normalize_organo(lic.get("organo_contratacion")) == organo_res
+            ]
+        else:
+            matches = candidatas if len(candidatas) == 1 else []
+        if len(matches) == 1:
+            yield res, str(matches[0]["id_externo"])
 
 
 def link_unlinked() -> dict[str, int]:
@@ -82,47 +91,7 @@ def link_unlinked() -> dict[str, int]:
     resolución trae órgano, además debe coincidir normalizado; sin órgano se
     exige que el expediente sea unívoco. Devuelve contadores.
     """
-    stats = {"vinculadas": 0, "eventos": 0}
-    with connect() as c:
-        pendientes = rows_to_dicts(
-            c.execute(
-                "SELECT id, tribunal, numero_resolucion, fecha, expediente, organo, sentido "
-                "FROM resoluciones_recurso "
-                "WHERE licitacion_id IS NULL AND expediente IS NOT NULL"
-            )
-        )
-        if not pendientes:
-            return stats
-        licitaciones = rows_to_dicts(
-            c.execute("SELECT id_externo, organo_contratacion FROM licitaciones")
-        )
-        por_expediente: dict[str, list[dict[str, Any]]] = {}
-        for lic in licitaciones:
-            por_expediente.setdefault(natural_expediente(lic["id_externo"]), []).append(lic)
-
-        for res in pendientes:
-            candidatas = por_expediente.get(str(res["expediente"]).strip(), [])
-            organo_res = normalize_organo(res.get("organo"))
-            if organo_res:
-                matches = [
-                    lic
-                    for lic in candidatas
-                    if normalize_organo(lic.get("organo_contratacion")) == organo_res
-                ]
-            else:
-                matches = candidatas if len(candidatas) == 1 else []
-            if len(matches) != 1:
-                continue
-            licitacion_id = matches[0]["id_externo"]
-            c.execute(
-                "UPDATE resoluciones_recurso SET licitacion_id = %s WHERE id = %s",
-                (licitacion_id, res["id"]),
-            )
-            stats["vinculadas"] += 1
-            if res.get("sentido") == "estimado" and _registrar_evento_recurso(
-                c, licitacion_id, res
-            ):
-                stats["eventos"] += 1
+    stats = vincular_pendientes(_emparejar)
     if stats["vinculadas"]:
         log.info("resoluciones_linked", **stats)
     return stats
@@ -137,28 +106,6 @@ def resoluciones(
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     """Listado filtrable de resoluciones (feed de jurisprudencia + detail panel)."""
-    sql = (
-        "SELECT r.id, r.tribunal, r.numero_resolucion, r.numero_recurso, r.fecha, "
-        "       r.expediente, r.organo, r.sentido, r.url_pdf, r.resumen, "
-        "       r.licitacion_id, l.titulo AS licitacion_titulo "
-        "FROM resoluciones_recurso r "
-        "LEFT JOIN licitaciones l ON l.id_externo = r.licitacion_id "
-        "WHERE 1=1"
+    return listar_resoluciones(
+        organo=organo, sentido=sentido, desde=desde, licitacion_id=licitacion_id, limit=limit
     )
-    params: list[Any] = []
-    if organo:
-        sql += " AND r.organo LIKE %s"
-        params.append(f"%{organo}%")
-    if sentido:
-        sql += " AND r.sentido = %s"
-        params.append(sentido)
-    if desde:
-        sql += " AND r.fecha >= %s"
-        params.append(desde)
-    if licitacion_id:
-        sql += " AND r.licitacion_id = %s"
-        params.append(licitacion_id)
-    sql += " ORDER BY r.fecha DESC, r.numero_resolucion DESC LIMIT %s"
-    params.append(max(1, min(int(limit), 500)))
-    with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, params))

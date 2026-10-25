@@ -826,7 +826,7 @@ def test_scoring_degrada_a_baseline_si_el_layout_no_coincide(db, monkeypatch, tm
     modelo.metadata["feature_columns"] = ["cpv2", "n_ofertas"]
     modelo.save(model_path)
     monkeypatch.setattr(
-        "shared.model_artifacts.resolve_active_artifact", lambda *_a, **_k: model_path
+        "services.ml.model_artifacts.resolve_active_artifact", lambda *_a, **_k: model_path
     )
 
     stats = score_predicciones_baja()
@@ -853,7 +853,9 @@ def test_scoring_marca_degradado_si_el_artefacto_no_resuelve(db, monkeypatch):
         _insertar_abierta(c)
 
     register_version(name=MODEL_NAME, path="data/models/no-existe.pkl", sha256="", activate=True)
-    monkeypatch.setattr("shared.model_artifacts.resolve_active_artifact", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "services.ml.model_artifacts.resolve_active_artifact", lambda *_a, **_k: None
+    )
 
     stats = score_predicciones_baja()
 

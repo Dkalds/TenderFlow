@@ -1,4 +1,4 @@
-"""Tests de shared/model_artifacts — resolución verificada por sha256.
+"""Tests de services/ml/model_artifacts — resolución verificada por sha256.
 
 Cierra el ítem del backlog «db/model_registry.py no verifica el sha256 del
 modelo servido contra el registrado»: registrar una versión, mutar el fichero
@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
-from shared.model_artifacts import ModelArtifactMismatch, resolve_active_artifact
+from services.ml.model_artifacts import ModelArtifactMismatch, resolve_active_artifact
 
 
 def _register(name: str, path: Path, sha256: str) -> None:
@@ -111,7 +111,7 @@ def test_fichero_ausente_con_sha_intenta_descarga(tmp_db, tmp_path, cache_dir):
         pedidos.append(asset_name)
         return _descarga_falsa(contenido, destinos)(asset_name, dest)
 
-    with patch("shared.model_artifacts._download_release_asset", side_effect=_fake_download):
+    with patch("services.ml.model_artifacts._download_release_asset", side_effect=_fake_download):
         resolved = resolve_active_artifact("baja")
 
     assert pedidos == ["baja_model.pkl"]
@@ -137,7 +137,7 @@ def test_descarga_deja_el_checksum_colocado(tmp_db, tmp_path, cache_dir):
     _register("baja", registrado, _sha(contenido))
 
     with patch(
-        "shared.model_artifacts._download_release_asset",
+        "services.ml.model_artifacts._download_release_asset",
         side_effect=_descarga_falsa(contenido),
     ):
         resuelto = resolve_active_artifact("baja")
@@ -168,14 +168,14 @@ def test_activar_otra_version_renueva_el_checksum_de_la_cache(tmp_db, tmp_path, 
 
     _register("baja", registrado, _sha(vieja))
     with patch(
-        "shared.model_artifacts._download_release_asset", side_effect=_descarga_falsa(vieja)
+        "services.ml.model_artifacts._download_release_asset", side_effect=_descarga_falsa(vieja)
     ):
         resolve_active_artifact("baja")
 
     # `POST /models/baja/activate/2`: otra versión activa, mismo basename.
     _register("baja", registrado, _sha(nueva))
     with patch(
-        "shared.model_artifacts._download_release_asset", side_effect=_descarga_falsa(nueva)
+        "services.ml.model_artifacts._download_release_asset", side_effect=_descarga_falsa(nueva)
     ):
         resuelto = resolve_active_artifact("baja")
 
@@ -209,7 +209,7 @@ def test_un_sidecar_huerfano_en_la_cache_no_bloquea_la_descarga(tmp_db, tmp_path
     (cache_dir / "baja_model.sha256").write_text("hash-de-un-pkl-que-ya-no-esta", encoding="utf-8")
 
     with patch(
-        "shared.model_artifacts._download_release_asset",
+        "services.ml.model_artifacts._download_release_asset",
         side_effect=_descarga_falsa(contenido),
     ):
         resuelto = resolve_active_artifact("baja")
@@ -237,7 +237,7 @@ def test_descarga_con_sha_incorrecto_falla(tmp_db, tmp_path, cache_dir):
 
     with (
         patch(
-            "shared.model_artifacts._download_release_asset",
+            "services.ml.model_artifacts._download_release_asset",
             side_effect=_descarga_falsa(b"otra-cosa"),
         ),
         pytest.raises(ModelArtifactMismatch),
@@ -286,31 +286,31 @@ def test_sap_active_learning_invoca_maybe_retrain(tmp_db, monkeypatch):
 
 
 def test_servable_prefiere_la_version_activa_sobre_el_local(tmp_path):
-    from shared.model_artifacts import resolve_servable_artifact
+    from services.ml.model_artifacts import resolve_servable_artifact
 
     activo = tmp_path / "del-registro.pkl"
     local = tmp_path / "local.pkl"
     local.write_bytes(b"local")
 
-    with patch("shared.model_artifacts.resolve_active_artifact", return_value=activo):
+    with patch("services.ml.model_artifacts.resolve_active_artifact", return_value=activo):
         assert resolve_servable_artifact("sap_classifier", local) == activo
 
 
 def test_servable_cae_al_local_sin_version_activa(tmp_path):
-    from shared.model_artifacts import resolve_servable_artifact
+    from services.ml.model_artifacts import resolve_servable_artifact
 
     local = tmp_path / "local.pkl"
     local.write_bytes(b"local")
 
-    with patch("shared.model_artifacts.resolve_active_artifact", return_value=None):
+    with patch("services.ml.model_artifacts.resolve_active_artifact", return_value=None):
         assert resolve_servable_artifact("sap_classifier", local) == local
 
 
 def test_servable_sin_activa_ni_local_devuelve_none(tmp_path):
     """El caso del runner efímero: `data/models/` vacío y sin versión activa."""
-    from shared.model_artifacts import resolve_servable_artifact
+    from services.ml.model_artifacts import resolve_servable_artifact
 
-    with patch("shared.model_artifacts.resolve_active_artifact", return_value=None):
+    with patch("services.ml.model_artifacts.resolve_active_artifact", return_value=None):
         assert resolve_servable_artifact("sap_classifier", tmp_path / "no-existe.pkl") is None
 
 
@@ -318,13 +318,13 @@ def test_servable_propaga_el_mismatch_en_vez_de_caer_al_local(tmp_path):
     """Servir el artefacto equivocado es peor que no servir ninguno: si la
     versión activa no cuadra con su sha256, el fallo sube -- no se sirve por
     detrás un local que nadie ha verificado."""
-    from shared.model_artifacts import resolve_servable_artifact
+    from services.ml.model_artifacts import resolve_servable_artifact
 
     local = tmp_path / "local.pkl"
     local.write_bytes(b"local")
 
     with patch(
-        "shared.model_artifacts.resolve_active_artifact",
+        "services.ml.model_artifacts.resolve_active_artifact",
         side_effect=ModelArtifactMismatch("sha distinto"),
     ):
         with pytest.raises(ModelArtifactMismatch):
@@ -339,7 +339,7 @@ def test_los_clasificadores_de_scraper_resuelven_por_el_canal():
     from services.ml.tech_classifier import _MODEL_PATH as TECH_PATH
     from services.ml.tech_classifier import TechnologyClassifier
 
-    with patch("shared.model_artifacts.resolve_servable_artifact") as resolver:
+    with patch("services.ml.model_artifacts.resolve_servable_artifact") as resolver:
         SAPClassifier.resolve_artifact()
         TechnologyClassifier.resolve_artifact()
 
@@ -394,7 +394,7 @@ def bucket(tmp_path, monkeypatch):
 
 def _publicar_en_bucket(path_registrado: Path, contenido: bytes) -> None:
     """Deja el artefacto en el bucket con el nombre por el que se pedirá."""
-    from shared.model_artifacts import publish_artifact_to_bucket
+    from services.ml.model_artifacts import publish_artifact_to_bucket
 
     fuente = path_registrado.parent / "publicado" / path_registrado.name
     fuente.parent.mkdir(parents=True, exist_ok=True)
@@ -413,7 +413,9 @@ def test_el_bucket_resuelve_sin_token_de_github(tmp_db, tmp_path, cache_dir, buc
     def _release_prohibida(_asset: str, _dest: Path) -> bool:
         raise AssertionError("la Release no debería intentarse si el bucket resuelve")
 
-    with patch("shared.model_artifacts._download_release_asset", side_effect=_release_prohibida):
+    with patch(
+        "services.ml.model_artifacts._download_release_asset", side_effect=_release_prohibida
+    ):
         resolved = resolve_active_artifact("baja")
 
     assert resolved == cache_dir / "baja_model.pkl"
@@ -427,7 +429,7 @@ def test_si_el_bucket_no_lo_tiene_se_cae_a_la_release(tmp_db, tmp_path, cache_di
     _register("baja", registrado, _sha(contenido))
 
     with patch(
-        "shared.model_artifacts._download_release_asset",
+        "services.ml.model_artifacts._download_release_asset",
         side_effect=_descarga_falsa(contenido),
     ) as release:
         resolved = resolve_active_artifact("baja")
@@ -443,7 +445,7 @@ def test_el_sha256_se_verifica_igual_viniendo_del_bucket(tmp_db, tmp_path, cache
     _publicar_en_bucket(registrado, b"otro modelo distinto")
 
     with (
-        patch("shared.model_artifacts._download_release_asset", return_value=False),
+        patch("services.ml.model_artifacts._download_release_asset", return_value=False),
         pytest.raises(ModelArtifactMismatch),
     ):
         resolve_active_artifact("baja")
@@ -451,7 +453,7 @@ def test_el_sha256_se_verifica_igual_viniendo_del_bucket(tmp_db, tmp_path, cache
 
 def test_sin_bucket_configurado_el_camino_es_el_de_siempre(tmp_db, tmp_path, cache_dir):
     """La degradación: sin almacén, S8.4 no cambia nada de lo que ya había."""
-    from shared.model_artifacts import _download_bucket_asset
+    from services.ml.model_artifacts import _download_bucket_asset
 
     assert _download_bucket_asset("baja_model.pkl", tmp_path / "destino.pkl") is False
 
@@ -462,7 +464,7 @@ def test_sin_bucket_configurado_el_camino_es_el_de_siempre(tmp_db, tmp_path, cac
 def test_la_descarga_de_la_release_delega_en_release_assets(tmp_path, monkeypatch):
     """``_download_release_asset`` usa el transporte pinned, no ``requests``,
     y localiza el asset empezando por la Release de tag fijo."""
-    from shared import model_artifacts
+    from services.ml import model_artifacts
     from shared.release_assets import ML_MODELS_RELEASE_TAG, AssetLocalizado
 
     monkeypatch.setenv("GITHUB_TOKEN", "tok")
@@ -482,7 +484,7 @@ def test_la_descarga_de_la_release_delega_en_release_assets(tmp_path, monkeypatc
 
 
 def test_la_release_sin_el_asset_no_intenta_descargar(tmp_path):
-    from shared import model_artifacts
+    from services.ml import model_artifacts
 
     with (
         patch("shared.release_assets.locate_release_asset", return_value=None),
@@ -496,7 +498,7 @@ def test_la_release_inaccesible_devuelve_false(tmp_path):
     """Sin red, las tres candidatas fallan y el resultado es False, sin excepción."""
     import requests
 
-    from shared import model_artifacts
+    from services.ml import model_artifacts
 
     with patch(
         "shared.release_assets.pinned_https_request",
@@ -507,7 +509,7 @@ def test_la_release_inaccesible_devuelve_false(tmp_path):
 
 
 def test_una_descarga_fallida_devuelve_false(tmp_path):
-    from shared import model_artifacts
+    from services.ml import model_artifacts
     from shared.release_assets import AssetLocalizado
 
     with (
@@ -597,7 +599,7 @@ def test_una_release_de_software_posterior_no_deja_sin_artefacto(tmp_path, cache
     )
     with (
         patch("db.model_registry.get_active", return_value=_fila_activa(registrado, contenido)),
-        patch("shared.model_artifacts._download_bucket_asset", return_value=False),
+        patch("services.ml.model_artifacts._download_bucket_asset", return_value=False),
         patch("shared.release_assets.pinned_https_request", side_effect=github),
     ):
         resuelto = resolve_active_artifact("baja_model")
@@ -633,7 +635,7 @@ def test_una_fila_con_nombre_fijo_se_sigue_resolviendo(tmp_path, cache_dir):
     )
     with (
         patch("db.model_registry.get_active", return_value=_fila_activa(registrado, contenido)),
-        patch("shared.model_artifacts._download_bucket_asset", return_value=False),
+        patch("services.ml.model_artifacts._download_bucket_asset", return_value=False),
         patch("shared.release_assets.pinned_https_request", side_effect=github),
     ):
         resuelto = resolve_active_artifact("baja_model")
@@ -657,9 +659,9 @@ def test_dos_versiones_con_nombre_por_contenido_no_comparten_cache(tmp_path, cac
     for ruta, contenido in ((ruta_v1, v1), (ruta_v2, v2)):
         with (
             patch("db.model_registry.get_active", return_value=_fila_activa(ruta, contenido)),
-            patch("shared.model_artifacts._download_bucket_asset", return_value=False),
+            patch("services.ml.model_artifacts._download_bucket_asset", return_value=False),
             patch(
-                "shared.model_artifacts._download_release_asset",
+                "services.ml.model_artifacts._download_release_asset",
                 side_effect=_descarga_falsa(contenido),
             ),
         ):
@@ -675,7 +677,7 @@ def test_model_artifacts_no_usa_requests():
     import ast
     import inspect
 
-    from shared import model_artifacts
+    from services.ml import model_artifacts
 
     arbol = ast.parse(inspect.getsource(model_artifacts))
     importados = {

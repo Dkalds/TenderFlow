@@ -33,7 +33,6 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { esquemaDeDto } from "@/lib/forms/dto-schema";
 import { numeroDeTexto } from "@/lib/forms/valores";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { formatNumber, formatPercent } from "@/lib/utils";
 
 import { type PesosGoNoGo, useGuardarPesosGoNoGo, usePesosGoNoGo } from "../_hooks/use-pesos-go-no-go";
@@ -151,8 +150,8 @@ function FormularioPesos({
     try {
       await guardar.mutateAsync(pesosDeValores(valores));
       toast.success("Pesos guardados. La recomendación de cada oportunidad ya los usa.");
-    } catch (fallo) {
-      toast.error(getErrorMessage(fallo, "accion"));
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   });
 

@@ -291,7 +291,7 @@ otra firma.
 ### Reintentos
 
 Una entrega que falla se reintenta con backoff (hasta seis intentos, ver
-`services/webhook_retry.py`). Vale para todos los eventos, también los del
+`shared/webhook_retry.py`). Vale para todos los eventos, también los del
 catálogo que reparte el despachador del outbox: desde 2026-10 los dos caminos
 salen por la misma función (`db/webhooks.py::entregar_firmado`); antes una
 entrega del outbox que fallaba no se reintentaba. El reintento reenvía **el mismo cuerpo, el mismo

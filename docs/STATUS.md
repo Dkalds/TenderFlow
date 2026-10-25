@@ -37,26 +37,20 @@ Generado: 2026-10-25
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 
-**18 archivos** en whitelist (solo puede decrecer).
+**12 archivos** en whitelist (solo puede decrecer).
 
 - `scheduler/aggregates_precompute.py`
 - `scheduler/anomaly_alerts.py`
-- `scheduler/competitor_alerts.py`
 - `scheduler/concept_drift.py`
 - `scheduler/drift_report.py`
 - `scheduler/healthcheck.py`
-- `scheduler/retention.py`
 - `scheduler/watchlist_rules_alerts.py`
 - `scraper/seed_negatives.py`
-- `scripts/rotate_api_keys.py`
 - `scripts/seed_dev.py`
 - `services/analytics/scoring_signals.py`
 - `services/competitive/bajas.py`
-- `services/competitive/renovaciones.py`
 - `services/contract_events.py`
-- `services/deadline_reminders.py`
 - `services/entity_resolution.py`
-- `services/resoluciones.py`
 
 ## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)
 
@@ -66,18 +60,12 @@ Generado: 2026-10-25
 
 ## Ratchet de capas — imports contra el orden de paquetes
 
-**21 imports** van de una capa a otra superior (lista congelada; solo puede decrecer).
+**12 imports** van de una capa a otra superior (lista congelada; solo puede decrecer).
 
 `scripts/check_layers.py` falla ante uno nuevo, también si está dentro de una función. Orden, de abajo arriba: `config < observability < shared < llm < db < services < scraper < scheduler < api`.
 
 - `api/routes/publico.py -> scraper.connectors`
 - `config/secrets.py -> observability.logging`
-- `config/settings.py -> shared.password_policy`
-- `config/settings.py -> shared.scoring_weights`
-- `db/access_grants.py -> services.access_grants`
-- `db/repositories/go_no_go.py -> services.go_no_go_template`
-- `db/repositories/licitaciones.py -> services.investigador.search_engine`
-- `db/webhooks.py -> services.webhook_retry`
 - `observability/alerts.py -> db.database`
 - `observability/alerts.py -> db.job_locks`
 - `observability/alerts.py -> services.extraction_runs`
@@ -88,9 +76,6 @@ Generado: 2026-10-25
 - `services/rag/fact_sheet.py -> scraper.document_fetcher`
 - `services/source_health.py -> scraper.connectors`
 - `services/tech_signal.py -> scraper.filters`
-- `shared/cache_signal.py -> db.events`
-- `shared/jobs.py -> db.repositories.jobs`
-- `shared/model_artifacts.py -> db.model_registry`
 
 ## Motor de la suite de tests (ADR-018)
 

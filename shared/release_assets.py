@@ -182,7 +182,7 @@ def locate_release_asset(
     asset está en la Release fija no se toca ni *latest* ni el listado.
 
     No verifica contenido: el sha256 lo coteja el llamante contra
-    ``model_versions`` (``shared.model_artifacts``), venga de la Release que
+    ``model_versions`` (``services.ml.model_artifacts``), venga de la Release que
     venga. Los borradores se saltan: un draft no está publicado.
     """
     if not REPO_RE.fullmatch(repo):

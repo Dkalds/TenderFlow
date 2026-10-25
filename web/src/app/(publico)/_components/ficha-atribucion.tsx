@@ -19,7 +19,7 @@ export function AtribucionFuente({ lic }: { lic: LicitacionPublica }) {
   const actualizado = fechaOpcional(lic.actualizado);
 
   return (
-    <aside className="border-border/60 bg-card mt-12 rounded-xl border p-5 text-sm">
+    <aside className="border-divider bg-card mt-12 rounded-xl border p-5 text-sm">
       <p className="text-muted-foreground">
         Datos procedentes de la{" "}
         <span className="text-foreground font-medium">

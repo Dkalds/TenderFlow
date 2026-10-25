@@ -127,7 +127,7 @@ export function SociosUte({ cpv, ccaa }: { cpv: string | null | undefined; ccaa:
       ) : (
         <ul className="flex flex-col gap-2.5" aria-label="Socios sugeridos">
           {socios.map((socio) => (
-            <li key={socio.empresa_key} className="rounded-md border border-border/60 px-2.5 py-2">
+            <li key={socio.empresa_key} className="rounded-md border border-divider px-2.5 py-2">
               <div className="flex items-baseline justify-between gap-2">
                 <Empresa nombre={socio.empresa} clave={socio.empresa_key} />
                 <span className="flex-none text-tf-micro text-muted-foreground">

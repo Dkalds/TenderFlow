@@ -9,8 +9,6 @@ import { SUPERFICIE_PANEL, SectionTitle } from "@/components/console/panel";
 import { cambioDeDecision, type Decision, DecidirGoNoGo } from "@/components/pursuits/decidir-go-no-go";
 import { decisionLabel } from "@/components/pursuits/pursuit-presenters";
 import { useUpdatePursuit, type Pursuit, type PursuitDecision } from "@/hooks/use-pursuits";
-import { ApiError } from "@/lib/api-client";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { EMPTY, cn, formatDate } from "@/lib/utils";
 
 const OPCIONES: readonly PursuitDecision[] = ["go", "no_go"];
@@ -43,7 +41,7 @@ export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
   const editable = pursuit.status === "go_no_go";
   const todaviaNo =
     pursuit.decision === "pending" && (pursuit.status === "identified" || pursuit.status === "qualifying");
-  const actualizar = useUpdatePursuit(pursuit.id);
+  const actualizar = useUpdatePursuit(pursuit.id, { errorTitle: "No se pudo guardar la decisión" });
   const [decision, setDecision] = React.useState<PursuitDecision>(pursuit.decision);
   const [motivo, setMotivo] = React.useState(pursuit.decision_reason ?? "");
   const motivoId = React.useId();
@@ -68,13 +66,6 @@ export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
       },
       {
         onSuccess: () => toast.success("Decisión guardada"),
-        onError: (error) =>
-          toast.error(
-            error instanceof ApiError && error.status === 409
-              ? "Alguien del equipo la cambió mientras la tenías abierta"
-              : "No se pudo guardar la decisión",
-            { description: getErrorMessage(error, "accion") },
-          ),
       },
     );
   };
@@ -85,13 +76,6 @@ export function DecisionComite({ pursuit }: { pursuit: Pursuit }) {
         toast.success("Decisión guardada");
         alGuardar();
       },
-      onError: (error) =>
-        toast.error(
-          error instanceof ApiError && error.status === 409
-            ? "Alguien del equipo la cambió mientras la tenías abierta"
-            : "No se pudo guardar la decisión",
-          { description: getErrorMessage(error, "accion") },
-        ),
     });
   };
 

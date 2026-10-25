@@ -102,7 +102,7 @@ function BarraPlazo({ horas }: { horas: number }) {
       preserveAspectRatio="none"
       className="hidden h-1.5 w-full overflow-hidden rounded-full sm:block"
     >
-      <rect width="100" height="6" className="fill-border/40" />
+      <rect width="100" height="6" className="fill-divider-subtle" />
       <rect width={ancho} height="6" className={horas <= 24 ? "fill-destructive" : "fill-warning"} />
       {/* La marca de las 24 horas, para leer la barra sin contar. */}
       <rect x="49.6" width="0.8" height="6" className="fill-card" />
@@ -218,7 +218,7 @@ export function ColaCierre({
 
       {cargandoFilas &&
         Array.from({ length: VISIBLES }, (_, index) => (
-          <Skeleton key={index} className="mt-0 h-10 w-full rounded-none border-t border-border/40" />
+          <Skeleton key={index} className="mt-0 h-10 w-full rounded-none border-t border-divider-subtle" />
         ))}
 
       {conLista && horas.length > 0 && (
@@ -237,7 +237,7 @@ export function ColaCierre({
               <li key={fila.id}>
                 <Link
                   href={`/detalle?lic=${encodeURIComponent(fila.id)}`}
-                  className="-mx-1.5 grid h-10 grid-cols-[minmax(0,1fr)_88px_60px] items-center gap-3 rounded-md border-t border-border/40 px-1.5 transition-colors hover:bg-primary/5 active:bg-primary/10 active:duration-0 sm:grid-cols-[minmax(0,1fr)_88px_minmax(80px,160px)_60px]"
+                  className="-mx-1.5 grid h-10 grid-cols-[minmax(0,1fr)_88px_60px] items-center gap-3 rounded-md border-t border-divider-subtle px-1.5 transition-colors hover:bg-primary-hover active:bg-primary-selected active:duration-0 sm:grid-cols-[minmax(0,1fr)_88px_minmax(80px,160px)_60px]"
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-tf-meta font-medium">{fila.titulo}</span>
@@ -284,7 +284,7 @@ export function ColaCierre({
         />
       )}
 
-      <div className="mt-auto flex items-center gap-1.5 border-t border-border/40 pt-2">
+      <div className="mt-auto flex items-center gap-1.5 border-t border-divider-subtle pt-2">
         <span className="min-w-0 flex-1 truncate text-tf-micro text-muted-foreground">{target}</span>
       </div>
     </div>

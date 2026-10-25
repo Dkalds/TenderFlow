@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function DetalleLoading() {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-11 flex-none items-center gap-2.5 border-b border-border/60 px-3.5">
+      <div className="flex h-11 flex-none items-center gap-2.5 border-b border-divider px-3.5">
         <Skeleton className="h-4 w-16" />
         <div className="flex-1" />
         <Skeleton className="h-6 w-36" />
@@ -19,7 +19,7 @@ export default function DetalleLoading() {
           <Skeleton key={i} className="h-7 w-full rounded-sm" />
         ))}
       </div>
-      <div className="flex h-11 flex-none items-center gap-3 border-t border-border/70 px-3.5">
+      <div className="flex h-11 flex-none items-center gap-3 border-t border-divider px-3.5">
         <Skeleton className="h-4 w-40" />
         <div className="flex-1" />
         <Skeleton className="h-6 w-48" />

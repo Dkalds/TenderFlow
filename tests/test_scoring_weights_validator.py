@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from shared.scoring_weights import KNOWN_WEIGHT_KEYS, validate_scoring_weights
+from config.scoring_weights import KNOWN_WEIGHT_KEYS, validate_scoring_weights
 
 _VALIDOS = {
     "importe": 20,

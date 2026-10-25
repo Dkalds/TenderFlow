@@ -175,7 +175,7 @@ export function CompetidoresRanking({
                 {visibles.map((c, idx) => {
                   const esAbierta = c.nombre === abierta;
                   return (
-                    <TableRow key={rowKey(c, idx)} className={cn(esAbierta && "bg-primary/10")}>
+                    <TableRow key={rowKey(c, idx)} className={cn(esAbierta && "bg-primary-selected")}>
                       <TableCell
                         numeric
                         className={cn("font-semibold", esAbierta ? "text-primary" : "text-muted-foreground")}
@@ -257,7 +257,7 @@ export function CompetidoresRanking({
               </TableBody>
             </Table>
           )}
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-2.5">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-divider pt-2.5">
             <p className="text-tf-meta text-muted-foreground">
               Mostrando {formatNumber(enPantalla)} de{" "}
               {formatNumber(totalEmpresas != null && totalEmpresas > 0 ? totalEmpresas : ordenados.length)} competidores

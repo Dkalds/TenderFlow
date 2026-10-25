@@ -268,9 +268,10 @@ def test_renovaciones_filtra_la_tecnologia_igual_en_el_listado_y_los_totales(
     def _connect_read() -> Any:
         yield _Conexion()
 
-    for modulo in (repo_mod, svc_mod):
-        monkeypatch.setattr(modulo, "connect_read", _connect_read)
-        monkeypatch.setattr(modulo, "rows_to_dicts", lambda _cur: [])
+    # Los dos agregados del servicio ejecutan su SQL en el repositorio desde
+    # 2026-10-25: basta con sustituir la conexión allí.
+    monkeypatch.setattr(repo_mod, "connect_read", _connect_read)
+    monkeypatch.setattr(repo_mod, "rows_to_dicts", lambda _cur: [])
 
     codigos = ["SAP", "ORACLE"]
     repo_mod.proximas_renovaciones(tecnologias=codigos)

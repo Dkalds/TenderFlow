@@ -16,8 +16,8 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 
 from api.concurrency import run_db
 from api.tenancy import require_organization
+from services.jobs import Job
 from shared.dto import JobEstadoDTO, JobResultado
-from shared.jobs import Job
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 def a_dto(job: Job) -> JobEstadoDTO:
     """Traduce el job de dominio a su forma publicada.
 
-    Vive aquí y no en ``shared/jobs.py`` para que la capa de dominio no dependa
+    Vive aquí y no en ``services/jobs.py`` para que la capa de dominio no dependa
     del contrato HTTP: la cola la consume también el worker, que no publica
     nada.
     """
@@ -63,7 +63,7 @@ async def get_job(
     pasos del cierre de la pasada, sin organización): no se sirve a nadie por
     aquí.
     """
-    from shared.jobs import obtener
+    from services.jobs import obtener
 
     job = await run_db(obtener, job_id)
     if job is None or job.organization_id != int(ctx["organization_id"]):

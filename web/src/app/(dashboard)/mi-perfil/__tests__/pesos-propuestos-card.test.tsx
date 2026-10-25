@@ -38,6 +38,7 @@ vi.mock("@/hooks/use-organization", () => ({
 }));
 
 import { PesosPropuestosCard } from "@/app/(dashboard)/mi-perfil/_components/pesos-propuestos-card";
+import { crearQueryClientDePrueba } from "@/test/query-client";
 
 const INSUFICIENTE = {
   estado: "insuficiente",
@@ -84,9 +85,8 @@ const PROPUESTA = {
 
 function renderCard(propuesta: unknown = PROPUESTA, bloqueada = false) {
   apiGet.mockResolvedValue(propuesta);
-  const qc = new QueryClient({
-    defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
-  });
+  // Con el aviso global de mutaciones: el fallo lo dice él (D6).
+  const qc = crearQueryClientDePrueba();
   return render(
     <QueryClientProvider client={qc}>
       <PesosPropuestosCard bloqueada={bloqueada} />
@@ -165,7 +165,10 @@ describe("pesos propuestos en /mi-perfil", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Aplicar la propuesta" }));
     fireEvent.click(screen.getByRole("button", { name: "¿Aplicar estos pesos a tu perfil?" }));
 
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith("403"));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith("No se pudieron aplicar los pesos", { description: "403" }),
+    );
+    expect(toastError).toHaveBeenCalledTimes(1);
     expect(toastSuccess).not.toHaveBeenCalled();
   });
 

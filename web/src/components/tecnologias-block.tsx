@@ -54,7 +54,7 @@ function TecnologiaRow({ item }: { item: TecnologiaDetalle }) {
   const expandable = hasEvidence(item);
 
   return (
-    <li className="rounded-md border border-border/60 px-3 py-2">
+    <li className="rounded-md border border-divider px-3 py-2">
       <button
         type="button"
         onClick={() => expandable && setExpanded((v) => !v)}

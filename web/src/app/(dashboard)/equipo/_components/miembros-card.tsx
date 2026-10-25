@@ -25,7 +25,6 @@ import {
   useOrganizationMembers,
   useUpdateOrganizationMember,
 } from "@/hooks/use-organization";
-import { getErrorMessage } from "@/lib/query-feedback";
 import { ROLE_LABELS, STATUS_LABELS, type RolAsignable } from "../_lib/etiquetas";
 
 // El alta solo la ve quien gestiona, y solo se sabe en el navegador (depende de
@@ -34,7 +33,7 @@ import { ROLE_LABELS, STATUS_LABELS, type RolAsignable } from "../_lib/etiquetas
 const AnadirMiembroForm = dynamic(() => import("./anadir-miembro-form").then((modulo) => modulo.AnadirMiembroForm), {
   ssr: false,
   loading: () => (
-    <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-border/60 p-3" aria-hidden="true">
+    <div className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-divider p-3" aria-hidden="true">
       <div className="min-w-56 flex-1 space-y-1.5">
         <Skeleton className="h-4 w-36" />
         <Skeleton className="h-9 w-full" />
@@ -63,8 +62,8 @@ function MemberRow({
   const changeRole = async (role: RolAsignable) => {
     try {
       await updateMember.mutateAsync({ user_id: member.user_id, role, status: member.status });
-    } catch (error) {
-      toast.error(getErrorMessage(error, "accion"));
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   };
 
@@ -72,8 +71,8 @@ function MemberRow({
     try {
       await updateMember.mutateAsync({ user_id: member.user_id, role: member.role, status });
       toast.success(status === "active" ? "Miembro reactivado" : "Miembro revocado");
-    } catch (error) {
-      toast.error(getErrorMessage(error, "accion"));
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook (D6).
     }
   };
 
@@ -138,7 +137,8 @@ export function MiembrosCard({
   onSelectOrganization: (id: number | null) => void;
   canManage: boolean;
 }) {
-  const members = useOrganizationMembers(activeOrganizationId);
+  // El fallo se pinta abajo con PanelError: sin toast además.
+  const members = useOrganizationMembers(activeOrganizationId, { errorEnLinea: true });
   const rows = members.data ?? [];
 
   return (

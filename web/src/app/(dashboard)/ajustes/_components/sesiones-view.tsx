@@ -90,7 +90,7 @@ export default function SesionesView() {
         {sesiones.map((sesion) => (
           <li
             key={sesion.id}
-            className="flex items-start justify-between gap-3 rounded-md border border-border/60 p-3"
+            className="flex items-start justify-between gap-3 rounded-md border border-divider p-3"
           >
             <div className="min-w-0">
               <p className="flex flex-wrap items-center gap-2 text-tf-body font-medium">

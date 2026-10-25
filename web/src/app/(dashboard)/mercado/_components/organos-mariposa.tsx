@@ -110,7 +110,7 @@ export function OrganosMariposa({
             {filas.map((fila, idx) => (
               <TableRow
                 key={fila.organo}
-                className={cn("cursor-pointer", fila.seleccionado && "bg-primary/10")}
+                className={cn("cursor-pointer", fila.seleccionado && "bg-primary-selected")}
                 onClick={() => onOrganoClick(fila.organo)}
               >
                 <TableCell>
@@ -168,7 +168,7 @@ export function OrganosMariposa({
         </Table>
       )}
       {!isLoading && filas.length > 0 && (
-        <p className="mt-3 border-t border-border/60 pt-2.5 text-tf-meta text-muted-foreground">
+        <p className="mt-3 border-t border-divider pt-2.5 text-tf-meta text-muted-foreground">
           {totalOrganos != null && totalOrganos > filas.length
             ? `${formatNumber(filas.length)} de ${formatNumber(totalOrganos)} órganos. `
             : ""}

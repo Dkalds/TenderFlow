@@ -83,8 +83,8 @@ export function AgendaContadores({
                     // 32 px de alto en móvil: se pulsa con el pulgar.
                     "tf-pressable inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded-md border px-2.5 py-1 text-left text-tf-meta font-medium md:min-h-7 md:flex-none",
                     on
-                      ? "border-primary/30 bg-primary/10 text-primary"
-                      : "border-border/70 text-muted-foreground hover:text-foreground",
+                      ? "border-primary-line bg-primary-selected text-primary"
+                      : "border-divider text-muted-foreground hover:text-foreground",
                     "disabled:pointer-events-none disabled:opacity-70",
                   )}
                 >

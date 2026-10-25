@@ -49,7 +49,7 @@ export function OrganizacionVigencias({ vigencias }: { vigencias: Vigencia[] }) 
           caducar.
         </p>
       </div>
-      <ul className="divide-y divide-border/60">
+      <ul className="divide-y divide-divider">
         {vigencias.map((vigencia) => {
           const { texto, tono } = estadoDeVigencia(vigencia);
           return (

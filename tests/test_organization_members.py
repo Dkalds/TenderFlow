@@ -109,6 +109,22 @@ def test_upsert_membership_can_change_role_of_a_non_owner_member(tmp_db):
     assert result.role == "admin"
 
 
+def test_upsert_membership_de_un_user_id_inexistente_es_not_found(tmp_db):
+    """El fuzzing de contrato lo encontró: sin la comprobación, el INSERT
+    reventaba con ``ForeignKeyViolation`` y la ruta devolvía 500."""
+    _db_mod, _ = tmp_db
+    owner = _user("owner-fantasma@example.test")
+    organizations = OrganizationRepository()
+    organization_id = int(organizations.create_organization("Equipo fantasma", owner)["id"])
+
+    with pytest.raises(OrganizationMemberNotFoundError):
+        upsert_membership(
+            owner,
+            organization_id,
+            OrganizationMembershipUpsert(user_id=owner + 10_000, role="member", status="active"),
+        )
+
+
 def _seed_api(api_db) -> tuple[int, int]:
     owner = _user("api-owner@example.com", display_name="Owner API")
     _user("api-invitee@example.com", display_name="Invitada API")

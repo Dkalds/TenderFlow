@@ -154,7 +154,7 @@ def build_default_registry() -> list[ScheduledJob]:
             # paso `event_dispatch` del cierre (plano `pipeline`, cada pasada
             # de ingesta) y, a demanda, el consumidor de la cola de ADR-028
             # cuando una mutación escribe un evento que alguien espera ya
-            # (`shared.jobs.solicitar_despacho_de_eventos`). Hasta 2026-10 no
+            # (`services.jobs.solicitar_despacho_de_eventos`). Hasta 2026-10 no
             # estaba en el registry: el plano APScheduler (docker-compose) no lo
             # corría nunca y los avisos del stack local no salían. Cinco
             # minutos porque es ligero —una consulta cuando la cola está vacía—

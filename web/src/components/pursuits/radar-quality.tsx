@@ -183,7 +183,7 @@ export function RadarQualityTabla({
         </thead>
         <tbody>
           {bandas.map((banda) => (
-            <tr key={banda.banda} className="border-t border-border/50">
+            <tr key={banda.banda} className="border-t border-divider">
               <th scope="row" className="py-1.5 text-left font-medium">
                 {banda.banda}
               </th>

@@ -535,7 +535,7 @@ def _post_ingestion(
     # `signal_cache_invalidation` no lanza (captura y avisa de lo suyo): lo único
     # que puede fallar aquí es el import.
     try:
-        from shared.cache_signal import signal_cache_invalidation
+        from db.cache_signal import signal_cache_invalidation
     except ImportError:
         _contar_error("senal_cache")
         log.warning("connector_cache_signal_failed", source=source_id, exc_info=True)

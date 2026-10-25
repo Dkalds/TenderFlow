@@ -205,7 +205,7 @@ def test_un_webhook_roto_no_rompe_el_formulario(client, monkeypatch):
     def _revienta(*_a, **_k):
         raise RuntimeError("cola de trabajo caída")
 
-    monkeypatch.setattr("shared.jobs.enqueue", _revienta)
+    monkeypatch.setattr("services.jobs.enqueue", _revienta)
     antes = _contar()
 
     respuesta = client.post(

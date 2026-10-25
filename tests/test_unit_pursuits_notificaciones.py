@@ -61,8 +61,8 @@ def test_el_aviso_no_guarda_el_email_del_actor_y_no_se_propaga() -> None:
     """El evento vive para siempre en una tabla append-only: el actor viaja por
     nombre visible, nunca por correo. Y pedir la pasada nunca lanza: si la cola
     no responde, el evento sale en el siguiente cierre."""
+    from services.jobs import solicitar_despacho_de_eventos
     from shared.events import ACTOR_ANONIMO_ASIGNACION, payload_asignacion
-    from shared.jobs import solicitar_despacho_de_eventos
 
     payload = payload_asignacion(
         pursuit_id=5,
@@ -77,7 +77,7 @@ def test_el_aviso_no_guarda_el_email_del_actor_y_no_se_propaga() -> None:
     assert payload["titulo"] == "LIC-1"
     assert "@" not in str(payload)
 
-    with patch("shared.jobs.enqueue", side_effect=RuntimeError("cola caída")):
+    with patch("services.jobs.enqueue", side_effect=RuntimeError("cola caída")):
         assert solicitar_despacho_de_eventos("pursuit.assigned") is None
 
 

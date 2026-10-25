@@ -59,6 +59,7 @@ function useInvalidateTeam(organizationId: number | null) {
 export function useResendInvitation(organizationId: number | null) {
   const invalidate = useInvalidateTeam(organizationId);
   return useMutation({
+    meta: { errorTitle: "No se pudo reenviar la invitación" },
     mutationFn: (invitationId: number) =>
       apiMutate<OrganizationInvitation>(
         "POST",
@@ -71,6 +72,7 @@ export function useResendInvitation(organizationId: number | null) {
 export function useRevokeInvitation(organizationId: number | null) {
   const invalidate = useInvalidateTeam(organizationId);
   return useMutation({
+    meta: { errorTitle: "No se pudo revocar la invitación" },
     mutationFn: (invitationId: number) =>
       apiMutate<{ status: string }>(
         "DELETE",

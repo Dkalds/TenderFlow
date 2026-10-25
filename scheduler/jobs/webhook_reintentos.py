@@ -1,6 +1,6 @@
 """Reenvío de las entregas de webhook pendientes (C2.4).
 
-`services/webhook_retry.py` decide **cuándo** toca el siguiente intento y
+`shared/webhook_retry.py` decide **cuándo** toca el siguiente intento y
 `db/webhooks.py::reenviar` sabe **cómo** repetirlo sin cambiar el cuerpo ni el
 identificador. Sin este job las dos cosas serían una capacidad sin puerta: la
 entrega quedaría `pending` con su `proximo_intento` puesto y nadie la miraría

@@ -142,11 +142,15 @@ def test_ningun_header_de_respuesta_lleva_bytes_no_ascii(api_db, api_key, path):
 
 
 def test_pasar_un_campo_del_modelo_como_header_es_un_error():
-    """`.response(instance=...)` era silencioso: creaba el header y perdía el campo."""
-    from api.errors import problem_500
+    """`.response(instance=...)` era silencioso: creaba el header y perdía el campo.
+
+    El método pasó a `respuesta_problema()` cuando el modelo bajó a `shared/dto/`;
+    la guarda es la misma.
+    """
+    from api.errors import problem_500, respuesta_problema
 
     with pytest.raises(TypeError, match="no headers"):
-        problem_500().response(instance="http://x/y")
+        respuesta_problema(problem_500(), instance="http://x/y")
 
 
 def test_el_instance_llega_al_body_y_no_a_los_headers(client, api_key):

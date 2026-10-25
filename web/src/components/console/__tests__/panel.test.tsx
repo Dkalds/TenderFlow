@@ -458,7 +458,7 @@ describe("Segmented", () => {
   it("el contador es una cifra en sans con el tinte /10", () => {
     render(<Segmented aria-label="Densidad" value="compacta" onChange={vi.fn()} options={opciones} />);
     const contador = screen.getByText("3");
-    expect(contador).toHaveClass("bg-primary/10", "text-primary");
+    expect(contador).toHaveClass("bg-primary-selected", "text-primary");
     expect(contador.className).not.toMatch(/font-mono/);
   });
 });
@@ -502,7 +502,7 @@ describe("PanelTabs", () => {
   it("el contador de la activa usa el tinte /10 que pasa axe, en sans", () => {
     render(<PanelTabs tabs={tabs} value="dos" onChange={vi.fn()} label="Cortes" />);
     const contador = screen.getByText("12");
-    expect(contador).toHaveClass("bg-primary/10", "text-primary", "text-tf-micro");
+    expect(contador).toHaveClass("bg-primary-selected", "text-primary", "text-tf-micro");
     expect(contador.className).not.toMatch(/font-mono|primary[/]16/);
   });
 
