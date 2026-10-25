@@ -43,7 +43,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator as _PFI
 
-from api.errors import register_exception_handlers
+from api.errors import instalar_openapi_con_errores, register_exception_handlers
 from api.middleware import (
     ETagMiddleware,
     ObservabilityMiddleware,
@@ -322,8 +322,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Registrar exception handlers RFC 7807
+# Un solo manejador de errores (RFC 9457) y su forma declarada en el esquema
 register_exception_handlers(app)
+instalar_openapi_con_errores(app)
 
 # Prometheus auto-instrumentación HTTP — métricas RED estándar por handler
 # (prometheus-fastapi-instrumentator es dependencia hard; no usar try/except aquí)

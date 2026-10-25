@@ -587,14 +587,15 @@ class RateLimitMiddleware:
         # `application/problem+json` como el resto de la API (RFC 7807). El
         # 429 cortocircuita antes del router, así que se construye aquí en
         # vez de en un exception handler; `problem_429` ya existía sin uso.
-        from api.errors import problem_429
+        from api.errors import problem_429, respuesta_problema
 
-        return problem_429(effective_max, int(self._window)).response(
+        return respuesta_problema(
+            problem_429(effective_max, int(self._window)),
             **{
                 "Retry-After": str(int(self._window)),
                 "X-RateLimit-Limit": str(effective_max),
                 "X-RateLimit-Window": str(int(self._window)),
-            }
+            },
         )
 
 

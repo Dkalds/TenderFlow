@@ -1,4 +1,4 @@
-"""Manejo de errores RFC 7807 y deprecación de rutas.
+"""Manejo de errores RFC 9457 (``problem+json``) y deprecación de rutas.
 
 Registrar los manejadores con ``register_exception_handlers(app)`` en la
 creación de la app; marcar una ruta deprecada con ``deprecate_route``.
@@ -13,46 +13,47 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import TypeAdapter
+
+from shared.dto import ErrorDeValidacion, ProblemDetail
+
+#: Media type de todo error de la API (RFC 9457).
+MEDIA_TYPE_PROBLEMA = "application/problem+json"
 
 
-class ProblemDetail(BaseModel):
-    """RFC 7807 Problem Details.
+def respuesta_problema(problem: ProblemDetail, **extra_headers: str) -> JSONResponse:
+    """La respuesta HTTP de un ``ProblemDetail``: ``application/problem+json``.
 
-    https://datatracker.ietf.org/doc/html/rfc7807
+    Era el método ``ProblemDetail.response()``; el modelo bajó a
+    ``shared/dto/errores.py`` (que no conoce Starlette) para que el esquema
+    OpenAPI lo declare, y la respuesta se queda aquí.
+
+    ``**extra_headers`` acepta cualquier nombre, así que pasar un campo del
+    modelo —``instance=...``— no era un error: se convertía en un header HTTP y
+    el campo se quedaba en ``None``, fuera del body. Además metía la URL cruda
+    (con los bytes que mandó el cliente) en un header, que es donde reventaba
+    el transporte. Se detecta aquí en vez de confiar en que nadie repita la
+    confusión.
     """
-
-    type: str = "about:blank"
-    title: str
-    status: int
-    detail: str | None = None
-    instance: str | None = None
-    # Campos de extensión opcionales
-    errors: list[dict[str, Any]] | None = None
-
-    def response(self, **extra_headers: str) -> JSONResponse:
-        # `**extra_headers` acepta cualquier nombre, así que pasar un campo del
-        # modelo —`instance=...`— no era un error: se convertía en un header
-        # HTTP y el campo se quedaba en `None`, fuera del body. Además metía la
-        # URL cruda (con los bytes que mandó el cliente) en un header, que es
-        # donde reventaba el transporte. Se detecta aquí en vez de confiar en
-        # que nadie repita la confusión.
-        colisiones = sorted(set(extra_headers) & set(type(self).model_fields))
-        if colisiones:
-            raise TypeError(
-                f"{colisiones} son campos de ProblemDetail, no headers: pasalos al "
-                "constructor. `.response()` sólo acepta headers HTTP extra."
-            )
-        headers = {"Content-Type": "application/problem+json"}
-        headers.update(extra_headers)
-        return JSONResponse(
-            status_code=self.status,
-            content=self.model_dump(exclude_none=True),
-            headers=headers,
+    colisiones = sorted(set(extra_headers) & set(type(problem).model_fields))
+    if colisiones:
+        raise TypeError(
+            f"{colisiones} son campos de ProblemDetail, no headers: pasalos al "
+            "constructor. `respuesta_problema()` sólo acepta headers HTTP extra."
         )
+    headers = {"Content-Type": MEDIA_TYPE_PROBLEMA}
+    headers.update(extra_headers)
+    return JSONResponse(
+        status_code=problem.status,
+        content=problem.model_dump(exclude_none=True),
+        headers=headers,
+    )
 
 
 # ── Constructores de errores estándar ────────────────────────────────────────
+
+
+_ERRORES_DE_CAMPO = TypeAdapter(list[ErrorDeValidacion])
 
 
 def problem_400(detail: str, instance: str | None = None) -> ProblemDetail:
@@ -108,7 +109,7 @@ def problem_422(errors: list[dict[str, Any]], instance: str | None = None) -> Pr
         status=422,
         detail="La solicitud contiene datos inválidos.",
         instance=instance,
-        errors=errors,
+        errors=_ERRORES_DE_CAMPO.validate_python(errors),
     )
 
 
@@ -264,6 +265,122 @@ def deprecate_route(
         response.headers["Link"] = ", ".join(enlaces)
 
 
+# ── El error en el esquema OpenAPI ──────────────────────────────────────────
+
+_METODOS_HTTP = frozenset({"get", "put", "post", "delete", "options", "head", "patch", "trace"})
+_REF_PROBLEMA = "#/components/schemas/ProblemDetail"
+#: Los dos esquemas que FastAPI inventa para su 422 automático. Describen un
+#: cuerpo (``{"detail": [...]}``) que esta API nunca emite: el manejador de
+#: ``RequestValidationError`` responde con ``ProblemDetail``.
+_ESQUEMAS_422_DE_FASTAPI = ("HTTPValidationError", "ValidationError")
+
+
+def _contenido_problema() -> dict[str, Any]:
+    return {MEDIA_TYPE_PROBLEMA: {"schema": {"$ref": _REF_PROBLEMA}}}
+
+
+def _es_422_de_fastapi(respuesta: dict[str, Any]) -> bool:
+    esquema = respuesta.get("content", {}).get("application/json", {}).get("schema", {})
+    return bool(esquema.get("$ref") == "#/components/schemas/HTTPValidationError")
+
+
+def _referencias(nodo: object) -> set[str]:
+    vistos: set[str] = set()
+    pendientes: list[object] = [nodo]
+    while pendientes:
+        actual = pendientes.pop()
+        if isinstance(actual, dict):
+            ref = actual.get("$ref")
+            if isinstance(ref, str):
+                vistos.add(ref.rsplit("/", 1)[-1])
+            pendientes.extend(actual.values())
+        elif isinstance(actual, list):
+            pendientes.extend(actual)
+    return vistos
+
+
+def documentar_errores(schema: dict[str, Any]) -> dict[str, Any]:
+    """Declara en el esquema OpenAPI la forma única del error. Muta y devuelve.
+
+    En tiempo de ejecución todos los errores ya salían como ``ProblemDetail``
+    (los manejadores de abajo y los cuerpos crudos del middleware), pero el
+    esquema no lo decía: el cliente generado solo conocía el 422 inventado por
+    FastAPI, con otra forma. Aquí, en un solo sitio y para todas las
+    operaciones:
+
+    - el 422 automático pasa a ``ProblemDetail`` en ``application/problem+json``;
+    - un 4xx/5xx que la ruta declaró solo con ``description`` recibe ese mismo
+      contenido, y uno declarado con ``model=ProblemDetail`` se mueve de
+      ``application/json`` a ``application/problem+json``;
+    - cada operación lleva ``default`` → ``ProblemDetail``, que es lo que
+      responde a cualquier código que no documente.
+
+    Un 4xx/5xx declarado con **otro** esquema no se toca: es una salida de la
+    convención y ``scripts/check_api_convencion.py`` la caza.
+    """
+    componentes = schema.setdefault("components", {}).setdefault("schemas", {})
+    esquema_problema = ProblemDetail.model_json_schema(
+        ref_template="#/components/schemas/{model}", mode="serialization"
+    )
+    componentes.update(esquema_problema.pop("$defs", {}))
+    componentes["ProblemDetail"] = esquema_problema
+
+    for operaciones in schema.get("paths", {}).values():
+        for metodo, operacion in operaciones.items():
+            if metodo not in _METODOS_HTTP or not isinstance(operacion, dict):
+                continue
+            respuestas: dict[str, Any] = operacion.setdefault("responses", {})
+            for codigo, respuesta in list(respuestas.items()):
+                if codigo[:1] not in {"4", "5"} or not isinstance(respuesta, dict):
+                    continue
+                if codigo == "422" and _es_422_de_fastapi(respuesta):
+                    respuestas[codigo] = {
+                        "description": "La petición no pasó la validación (``errors`` por campo).",
+                        "content": _contenido_problema(),
+                    }
+                    continue
+                contenido = respuesta.get("content")
+                if not contenido:
+                    respuesta["content"] = _contenido_problema()
+                    continue
+                json_ = contenido.get("application/json")
+                if isinstance(json_, dict) and json_.get("schema", {}).get("$ref") == _REF_PROBLEMA:
+                    del contenido["application/json"]
+                    contenido.update(_contenido_problema())
+            respuestas.setdefault(
+                "default",
+                {
+                    "description": "Error: cualquier código no listado (RFC 9457).",
+                    "content": _contenido_problema(),
+                },
+            )
+
+    usados = _referencias(schema.get("paths", {})) | _referencias(componentes)
+    for nombre in _ESQUEMAS_422_DE_FASTAPI:
+        if nombre not in usados - {nombre}:
+            componentes.pop(nombre, None)
+    return schema
+
+
+def instalar_openapi_con_errores(app: FastAPI) -> None:
+    """Hace que ``app.openapi()`` devuelva el esquema ya pasado por ``documentar_errores``.
+
+    Es el patrón documentado de FastAPI para extender el esquema: se envuelve el
+    generador y se cachea en ``app.openapi_schema``. ``scripts/export_openapi.py``
+    y ``/api/openapi.json`` leen los dos de ``app.openapi()``.
+    """
+    generar = app.openapi
+
+    def openapi_con_errores() -> dict[str, Any]:
+        if app.openapi_schema is None:
+            app.openapi_schema = documentar_errores(generar())
+        return app.openapi_schema
+
+    # mypy no deja reasignar un método; es el punto de extensión que FastAPI
+    # documenta para personalizar el esquema.
+    app.openapi = openapi_con_errores  # type: ignore[method-assign]
+
+
 # ── Exception handlers ───────────────────────────────────────────────────────
 
 
@@ -323,7 +440,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             extra["WWW-Authenticate"] = "ApiKey"
         if exc.headers:
             extra.update(exc.headers)
-        return problem.response(**extra)
+        return respuesta_problema(problem, **extra)
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
@@ -337,7 +454,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             }
             for e in exc.errors()
         ]
-        return problem_422(errors, _instance(request)).response()
+        return respuesta_problema(problem_422(errors, _instance(request)))
 
     @app.exception_handler(ValueError)
     async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
@@ -362,9 +479,9 @@ def register_exception_handlers(app: FastAPI) -> None:
             exc_type=type(exc).__name__,
             error=str(exc),
         )
-        return problem_400(
-            "La solicitud contiene un valor inválido.", _instance(request)
-        ).response()
+        return respuesta_problema(
+            problem_400("La solicitud contiene un valor inválido.", _instance(request))
+        )
 
     from psycopg.errors import QueryCanceled
 
@@ -387,7 +504,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             path=str(request.url.path),
             error=str(exc),
         )
-        return problem_consulta_cancelada().response(**{"Retry-After": "30"})
+        return respuesta_problema(problem_consulta_cancelada(), **{"Retry-After": "30"})
 
     @app.exception_handler(Exception)
     async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -400,4 +517,4 @@ def register_exception_handlers(app: FastAPI) -> None:
             exc_type=type(exc).__name__,
             error=str(exc),
         )
-        return problem_500(instance=_instance(request)).response()
+        return respuesta_problema(problem_500(instance=_instance(request)))
