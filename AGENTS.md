@@ -58,9 +58,11 @@ crear otro RFC; las excepciones están en la política de §5.
 
 Usá este orden para preguntas de arquitectura y relaciones cross-file:
 
-1. Si el ejecutable `graphify` está disponible, usá `graphify query`,
-    `graphify path` o `graphify explain`. Es una herramienta local del mantenedor:
-    **no está en PyPI ni npm y no debe instalarse**.
+1. Si el ejecutable `graphify` está disponible y existe `graphify-out/graph.json`,
+    usá `graphify query`, `graphify path` o `graphify explain`. El CLI es opcional
+    y el paquete publicado se llama `graphifyy`; no lo añadas a las dependencias
+    del proyecto ni ejecutes su instalación salvo que la tarea pida configurar
+    Graphify.
 2. Si el CLI no está, usá `python scripts/code_map.py` (solo biblioteca
     estándar, lee el árbol tal como está): `simbolo <nombre>` da la definición y
     sus usos, `importadores <módulo>` quién lo importa, `paquete <paquete>` y
@@ -72,14 +74,20 @@ Usá este orden para preguntas de arquitectura y relaciones cross-file:
 Leé archivos raw cuando vayas a modificar o depurar código concreto, o cuando
 ninguna de las dos herramientas tenga el detalle necesario.
 
-**`graphify-out/` no se versiona**: es una caché local que mantienen los hooks
-de git de graphify en la máquina que tiene el CLI, y
-`.claude/hooks/session_start_contexto.py` la siembra en un worktree nuevo
-copiándola del checkout principal. Sin el CLI, `scripts/code_map.py` cubre el
-mismo uso y no puede quedarse viejo porque no guarda nada. No la añadas al
-repo: commiteada iba por detrás del código, nadie podía abrir un `graph.json`
-de decenas de MB y los hooks de graphify dejaban el árbol sucio tras cada
-commit y cambio de rama.
+**Graphify local es opcional.** La configuración MCP compartida de VS Code vive
+en `.vscode/mcp.json` y ejecuta `graphify-mcp` sobre
+`graphify-out/graph.json`. Para usarla, instala el extra MCP de Graphify
+(`uv tool install "graphifyy[mcp]"`) y genera el grafo local
+(`graphify extract . --code-only`). MCP consulta ese archivo; no construye ni
+actualiza el grafo. La configuración presupone que `graphify-mcp` está en el
+`PATH`.
+
+**`graphify-out/` no se versiona**: es una caché local. El grafo puede quedar
+desactualizado respecto del código y debe actualizarse con `graphify update .`
+cuando el CLI esté disponible. `--code-only` excluye documentación y otros
+archivos no reconocidos como código; la cobertura de SQL también depende de
+que esté instalado su parser. Usa el grafo como mapa y verifica en los archivos
+fuente los detalles que importen.
 
 ---
 
@@ -178,7 +186,7 @@ mano.
 
 **Post-flight (siempre tras editar `.py`):**
 1. Corré `/check` o los tres controles Python de §4. Si faltan prerrequisitos, reportá los controles no ejecutados.
-2. Si el CLI está disponible, corré `graphify update .`; usá `--force` para módulos nuevos, renames o moves. Si no está, omitilo.
+2. Si el CLI y `graphify-out/graph.json` están disponibles, corré `graphify update .`; usá `--force` para módulos nuevos, renames o moves. Si no están, omitilo.
 3. Si el cambio contradice una decisión registrada en `docs/adr/` o un invariante de la sección 3, abrí una nueva revisión ADR en `docs/adr/` antes de mergear.
 4. Si el cambio resuelve (total o parcialmente) un ítem de [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md), movélo a **Cerrados** (o anotá progreso parcial) en ese mismo momento. No dejarlo para después.
 5. Si tocaste customizaciones de agentes, corré `make check-agent-docs`.

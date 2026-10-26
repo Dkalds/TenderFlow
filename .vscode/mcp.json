@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "graphify": {
+      "type": "stdio",
+      "command": "graphify-mcp",
+      "args": [
+        "${workspaceFolder}\\graphify-out\\graph.json"
+      ]
+    }
+  }
+}

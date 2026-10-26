@@ -92,6 +92,10 @@ htmlcov/
 
 # Editor config
 .vscode/
+# Keep other editor settings local; share only the portable Graphify MCP config.
+!.vscode/
+.vscode/*
+!.vscode/mcp.json
 
 # Claude worktrees (local-only)
 .claude/worktrees/
