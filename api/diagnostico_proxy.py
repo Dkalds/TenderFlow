@@ -121,6 +121,18 @@ def _saltos(cabecera: str) -> tuple[list[dict[str, str]], int]:
     return descritos, len(partes)
 
 
+def _origen_acreditado_seguro(conexion: HTTPConnection) -> bool:
+    """Si la petición trae un secreto de origen aceptado; False ante cualquier fallo."""
+    # Import diferido: api.middleware importa este módulo.
+    from api.middleware import _origen_acreditado, _secretos_de_origen
+    from config import settings
+
+    try:
+        return _origen_acreditado(conexion, _secretos_de_origen(settings))
+    except Exception:
+        return False
+
+
 def describir_peticion(conexion: HTTPConnection, ip_elegida: str) -> dict[str, object]:
     """Campos de la línea ``proxy_cabeceras_diag`` para una petición."""
     cabeceras = conexion.headers
@@ -134,6 +146,9 @@ def describir_peticion(conexion: HTTPConnection, ip_elegida: str) -> dict[str, o
         # trae: un puerto efímero real dice que no lo reescribió.
         "peer_reescrito": bool(peer and peer.port == 0),
         "ip_elegida": describir_ip(ip_elegida),
+        # Opción B aplicada: si la cabecera del secreto casó. Solo el booleano;
+        # el valor de la cabecera no sale nunca (su nombre sí, en `cabeceras`).
+        "origen_acreditado": _origen_acreditado_seguro(conexion),
     }
     xff = cabeceras.get("x-forwarded-for")
     if xff is not None:

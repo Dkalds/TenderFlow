@@ -43,7 +43,7 @@ _LOCAL_DB_HOSTS = {"localhost", "127.0.0.1", "::1"}
 _BATCH_STATEMENT_TIMEOUT_MS = 300_000
 
 # Longitud mínima de las claves que firman cosas en producción (``SIGNING_KEY``,
-# ``AUDIT_HMAC_KEY``). La usan los validators de ``Settings`` y, para el
+# ``AUDIT_HMAC_KEY``) y del secreto de origen (``API_ORIGIN_SECRET``). La usan los validators de ``Settings`` y, para el
 # servidor MCP, ``mcp_server.servidor.validar_configuracion``: una sola cifra.
 LONGITUD_MINIMA_CLAVE = 32
 
@@ -625,6 +625,22 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, ObjectStoreSetting
     # getattr de api/middleware.py caía siempre al default. Si alguien la vuelve
     # a quitar, la defensa deja de ser configurable sin que nada falle.
     FORWARDED_ALLOW_IPS: str = "127.0.0.1"
+    # Secreto compartido con el frontend de Vercel (RFC 2026-10-24, opción B).
+    # Detrás de Render la API ve como peer un nodo interno 10.19x de su proxy, y
+    # recorrer X-Forwarded-For solo llega al egreso de Vercel, compartido por
+    # todos: ninguna de las dos es la IP de una persona. Vercel añade este
+    # secreto en la cabecera ``x-tf-origin-secret`` de cada petición que reenvía
+    # a /api/* (``web/vercel.json``) y el prefetch SSR de Next lo manda también
+    # (``web/src/lib/server-prefetch.ts``). Si la cabecera casa con alguno de los
+    # dos valores, api.middleware._trusted_client_ip toma la IP del visitante de
+    # ``x-real-ip``; si falta o no casa, el comportamiento es el de siempre.
+    #
+    # Dos valores para rotar sin corte: el nuevo en API_ORIGIN_SECRET y el
+    # anterior en API_ORIGIN_SECRET_PREVIOUS mientras Vercel se redespliega
+    # (docs/runbooks/ip-del-cliente.md). Vacío = la verificación no existe.
+    # Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"
+    API_ORIGIN_SECRET: SecretStr = SecretStr("")
+    API_ORIGIN_SECRET_PREVIOUS: SecretStr = SecretStr("")
 
     # ── Cache (Redis opcional) ────────────────────────────────────────────
     # Si se deja vacío se usa cache en memoria por proceso (default).
@@ -1100,6 +1116,31 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, ObjectStoreSetting
                 "Configura la IP o el rango CIDR del reverse proxy que tenés delante "
                 '(ej: FORWARDED_ALLOW_IPS="10.0.0.0/8").'
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_api_origin_secret(self) -> Settings:
+        """Un secreto de origen corto es un error, en cualquier entorno.
+
+        Quien lo conozca elige la IP con la que cuentan las cuotas por IP
+        (login, recuperación de contraseña, tope global), así que tiene que ser
+        imposible de adivinar. Hay además un motivo concreto para el mínimo: si
+        la variable falta en un entorno de Vercel, su transform manda el texto
+        literal ``$API_ORIGIN_SECRET``, y ese texto no puede ser nunca un valor
+        aceptado. Vacío sí vale: es «sin verificación», el comportamiento de
+        antes de la opción B.
+        """
+        for nombre, campo in (
+            ("API_ORIGIN_SECRET", self.API_ORIGIN_SECRET),
+            ("API_ORIGIN_SECRET_PREVIOUS", self.API_ORIGIN_SECRET_PREVIOUS),
+        ):
+            valor = campo.get_secret_value()
+            if valor and len(valor) < LONGITUD_MINIMA_CLAVE:
+                raise ValueError(
+                    f"{nombre} tiene que tener al menos {LONGITUD_MINIMA_CLAVE} "
+                    "caracteres (o estar vacío). "
+                    'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
+                )
         return self
 
     @model_validator(mode="after")

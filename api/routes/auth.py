@@ -228,9 +228,14 @@ def _set_session_cookie(
     puede vivir; caducar la cookie antes dejaría la renovación en servidor sin
     efecto.
     """
+    from api.middleware import _trusted_client_ip
+
+    # La misma IP que el rate limiting y el access log. Con ``request.client``
+    # /me/sesiones enseñaba el nodo del proxy de Render (RFC 2026-10-24).
+    ip_cliente = _trusted_client_ip(request)
     session_token = create_session(
         user_id,
-        ip=request.client.host if request.client else None,
+        ip=None if ip_cliente == "unknown" else ip_cliente,
         user_agent=request.headers.get("User-Agent"),
         remember=remember,
     )

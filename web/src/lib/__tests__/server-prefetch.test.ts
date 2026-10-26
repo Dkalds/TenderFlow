@@ -14,7 +14,12 @@ import { QueryClient, hydrate } from "@tanstack/react-query";
 const cabeceras = vi.hoisted(() => ({ actual: new Headers() }));
 vi.mock("next/headers", () => ({ headers: async () => cabeceras.actual }));
 
-import { PRESUPUESTO_PREFETCH_MS, prefetchEnServidor } from "@/lib/server-prefetch";
+import {
+  CABECERA_SECRETO_ORIGEN,
+  PRESUPUESTO_PREFETCH_MS,
+  cabecerasHaciaApi,
+  prefetchEnServidor,
+} from "@/lib/server-prefetch";
 
 function respuesta(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -140,5 +145,56 @@ describe("prefetchEnServidor", () => {
     } finally {
       timeout.mockRestore();
     }
+  });
+});
+
+/**
+ * Opción B del RFC 2026-10-24: con el secreto de origen, la API cuenta estas
+ * llamadas por la IP del visitante y no por la del servidor de Next.
+ */
+describe("secreto de origen hacia la API", () => {
+  function cabecerasEnviadas(fetchMock: ReturnType<typeof vi.fn>): Record<string, string> {
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    return init.headers as Record<string, string>;
+  }
+
+  it("con API_ORIGIN_SECRET manda el secreto y el x-real-ip de la request", async () => {
+    vi.stubEnv("API_ORIGIN_SECRET", "s".repeat(64));
+    cabeceras.actual = new Headers({ cookie: "session=abc", "x-real-ip": "81.33.120.45" });
+    const fetchMock = vi.fn().mockResolvedValue(respuesta({ ok: 1 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await prefetchEnServidor([{ queryKey: ["a"], path: "/api/v1/a" }]);
+
+    const enviadas = cabecerasEnviadas(fetchMock);
+    expect(enviadas[CABECERA_SECRETO_ORIGEN]).toBe("s".repeat(64));
+    expect(enviadas["x-real-ip"]).toBe("81.33.120.45");
+    expect(CABECERA_SECRETO_ORIGEN).toBe("x-tf-origin-secret");
+  });
+
+  it("sin la variable no manda ni el secreto ni la IP", async () => {
+    vi.stubEnv("API_ORIGIN_SECRET", "");
+    cabeceras.actual = new Headers({ cookie: "session=abc", "x-real-ip": "81.33.120.45" });
+    const fetchMock = vi.fn().mockResolvedValue(respuesta({ ok: 1 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await prefetchEnServidor([{ queryKey: ["a"], path: "/api/v1/a" }]);
+
+    const enviadas = cabecerasEnviadas(fetchMock);
+    expect(enviadas).not.toHaveProperty(CABECERA_SECRETO_ORIGEN);
+    expect(enviadas).not.toHaveProperty("x-real-ip");
+  });
+
+  it("no reenvía cabeceras de la request que no sean la cookie y la IP", () => {
+    vi.stubEnv("API_ORIGIN_SECRET", "s".repeat(64));
+    const entrantes = new Headers({
+      cookie: "session=abc",
+      [CABECERA_SECRETO_ORIGEN]: "falso",
+      "x-forwarded-for": "6.6.6.6",
+    });
+    const enviadas = cabecerasHaciaApi("session=abc", entrantes);
+    expect(enviadas[CABECERA_SECRETO_ORIGEN]).toBe("s".repeat(64));
+    expect(enviadas).not.toHaveProperty("x-forwarded-for");
+    expect(enviadas).not.toHaveProperty("x-real-ip");
   });
 });

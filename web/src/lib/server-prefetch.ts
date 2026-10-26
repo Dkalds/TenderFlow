@@ -43,12 +43,16 @@ import { QueryClient, dehydrate, type DehydratedState, type QueryKey } from "@ta
  * `force-dynamic` sigue en `(dashboard)/layout.tsx` por privacidad; ahora
  * además el render de servidor hace algo útil.
  *
- * **Coste conocido:** estas peticiones salen de la IP de egreso del servidor de
- * Next, no de la del usuario, y el rate-limit de la API es por IP
- * (`api/middleware.py::_client_key`). Con el tráfico actual —dos consultas por
- * entrada a Resumen, Radar o Detalle (una más si Detalle abre una ficha) y una
- * por ficha de oportunidad— queda lejísimos del tope, pero si el dashboard
- * crece hay que darle a estas llamadas un bucket propio antes de añadir más.
+ * **Cuentan por la IP del visitante, no por la del servidor de Next.** Estas
+ * peticiones salen de la IP de egreso de Vercel, compartida por todos, y el
+ * rate-limit de la API es por IP (`api/middleware.py::_client_key`). Por eso
+ * mandan el `x-real-ip` que Vercel puso en la request y, para que la API se lo
+ * crea, el secreto de origen en {@link CABECERA_SECRETO_ORIGEN} (opción B del
+ * RFC 2026-10-24). El secreto es una variable **de servidor**
+ * (`API_ORIGIN_SECRET`, nunca `NEXT_PUBLIC_*`): este módulo solo corre en el
+ * servidor (`next/headers`) y Next no inyecta en el bundle del navegador las
+ * variables sin ese prefijo. Sin la variable no se manda nada y la API cuenta
+ * estas llamadas como antes. Aun así, que sean pocas por ruta.
  */
 
 /**
@@ -87,12 +91,37 @@ function origenApi(): string {
   return process.env.API_BASE_URL ?? "http://localhost:8080";
 }
 
-async function pedir(consulta: ConsultaServidor, cookie: string): Promise<unknown> {
+/**
+ * Cabecera del secreto compartido con la API. La misma que pone
+ * `web/vercel.json` al reenviar `/api/*` y que verifica
+ * `api/middleware.py::_trusted_client_ip` (`CABECERA_SECRETO_ORIGEN`).
+ */
+export const CABECERA_SECRETO_ORIGEN = "x-tf-origin-secret";
+
+/**
+ * Cabeceras de cada petición del prefetch. La cookie de sesión es de este
+ * origen (el navegador la manda a `/api/*` porque `next.config.ts` lo proxya);
+ * reenviarla es lo mismo que hace el rewrite, sólo que desde el servidor. El
+ * secreto y la IP del visitante, solo si hay secreto: sin él la API no se
+ * creería la IP y no hay por qué mandarla.
+ */
+export function cabecerasHaciaApi(
+  cookie: string,
+  entrantes: Pick<Headers, "get">,
+): Record<string, string> {
+  const cabeceras: Record<string, string> = { cookie, accept: "application/json" };
+  const secreto = process.env.API_ORIGIN_SECRET;
+  const ipVisitante = entrantes.get("x-real-ip");
+  if (secreto) {
+    cabeceras[CABECERA_SECRETO_ORIGEN] = secreto;
+    if (ipVisitante) cabeceras["x-real-ip"] = ipVisitante;
+  }
+  return cabeceras;
+}
+
+async function pedir(consulta: ConsultaServidor, cabeceras: Record<string, string>): Promise<unknown> {
   const res = await fetch(`${origenApi()}${consulta.path}`, {
-    // La cookie de sesión es de este origen (el navegador la manda a `/api/*`
-    // porque `next.config.ts` lo proxya); reenviarla es lo mismo que hace el
-    // rewrite, sólo que desde el servidor.
-    headers: { cookie, accept: "application/json" },
+    headers: cabeceras,
     cache: "no-store",
     signal: AbortSignal.timeout(PRESUPUESTO_PREFETCH_MS),
   });
@@ -112,13 +141,15 @@ export async function prefetchEnServidor(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const cookie = (await headers()).get("cookie");
+  const entrantes = await headers();
+  const cookie = entrantes.get("cookie");
   if (cookie) {
+    const cabeceras = cabecerasHaciaApi(cookie, entrantes);
     await Promise.all(
       consultas.map((consulta) =>
         queryClient.prefetchQuery({
           queryKey: consulta.queryKey,
-          queryFn: () => pedir(consulta, cookie),
+          queryFn: () => pedir(consulta, cabeceras),
         }),
       ),
     );
