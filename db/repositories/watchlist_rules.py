@@ -479,6 +479,19 @@ def filas_de_reglas(
         return rows_to_dicts(cur)
 
 
+def filas_de_reglas_activas() -> list[dict[str, Any]]:
+    """Las reglas activas de **todos** los usuarios, por id.
+
+    Barrido global a propósito: lo usa la priorización nocturna de la ficha del
+    pliego (``scheduler/jobs/documentos_embeddings.py``), que pregunta «¿este
+    expediente le importa a alguien?» y no «¿a quién?». Devuelve los criterios
+    de la regla, no su dueño ni su correo.
+    """
+    with connect_read() as c:
+        cur = c.execute(f"SELECT {_COLS_REGLA} FROM watchlist_rules WHERE active = 1 ORDER BY id")
+        return rows_to_dicts(cur)
+
+
 def actualizar_regla(
     user_key: str,
     rule_id: int,

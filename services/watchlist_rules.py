@@ -35,6 +35,7 @@ from db.repositories.watchlist_rules import (
     contar_matches,
     daily_match_counts,
     filas_de_reglas,
+    filas_de_reglas_activas,
     ids_que_casan,
     insertar_regla,
     listar_matches,
@@ -42,10 +43,13 @@ from db.repositories.watchlist_rules import (
     pausar_reglas_de_usuario,
 )
 from db.sql_fragments import FOLD_TABLE, escape_like, fold_expr, iso_guard, palabras_de_organo
+from observability.logging import get_logger
 from services.dedupe import normalize_organo
 from shared.dto import RadarBanda
 from shared.estados import abierta_core
 from shared.procedimientos import codigo_tipo_contrato, textos_de_tipo_contrato
+
+log = get_logger(__name__)
 
 Frequency = Literal["immediate", "daily", "weekly"]
 
@@ -553,6 +557,58 @@ def list_matches(
             return []
         clauses = [licitaciones.c.id_externo.in_(ids)]
     return listar_matches(clauses, _MATCH_COLS, limit=limit)
+
+
+def reglas_activas() -> list[WatchlistRule]:
+    """Las reglas activas de todos los usuarios (barrido del job nocturno)."""
+    return [_fila_a_regla(fila) for fila in filas_de_reglas_activas()]
+
+
+def ids_abiertas_que_casan(
+    reglas: Sequence[WatchlistRule] | None = None, *, hoy_iso: str | None = None
+) -> list[str]:
+    """``id_externo`` abiertos con plazo vigente que casan con alguna regla.
+
+    Es la selección de D52 (plan 2026-10): la ficha del pliego nocturna va
+    primero a lo que el resumen diario va a enseñar. Cada regla se evalúa con
+    **su** predicado de siempre (:func:`_rule_clauses`, el mismo de la vista
+    previa, el detalle y el job de alertas) acotado al universo «abierta con
+    plazo vigente» (:func:`_clausulas_universo_puntuable`, la definición de
+    ``mcp_server/glosario.md`` §3). Con ``banda_min`` se resuelve con
+    :func:`_ids_desde_banda`, que ya trae ese universo.
+
+    El techo por regla es :data:`MAX_CANDIDATAS_BANDA`: lo abierto con plazo
+    son del orden de mil filas en total, así que no recorta en la práctica.
+
+    Fail-open por regla: una regla que no se puede evaluar (un criterio
+    corrupto, el scorer caído) se registra y se salta. Lo que está en juego es
+    un orden, y perderlo para todas por una regla rota sería peor.
+    """
+    if reglas is None:
+        reglas = reglas_activas()
+    vistos: dict[str, None] = {}
+    for regla in reglas:
+        try:
+            if regla.banda_min:
+                ids = _ids_desde_banda(regla, hoy_iso=hoy_iso)
+            else:
+                ids = ids_que_casan(
+                    [
+                        *_rule_clauses(regla, hoy_iso=hoy_iso),
+                        *_clausulas_universo_puntuable(hoy_iso),
+                    ],
+                    limit=MAX_CANDIDATAS_BANDA,
+                )
+        except Exception as exc:
+            log.warning(
+                "watchlist_rule_match_failed",
+                rule_id=regla.id,
+                error=str(exc),
+                exc_info=True,
+            )
+            continue
+        vistos.update(dict.fromkeys(ids))
+    return list(vistos)
 
 
 def matches_since(

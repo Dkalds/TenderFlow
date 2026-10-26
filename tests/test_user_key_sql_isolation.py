@@ -346,6 +346,14 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         "db/repositories/documentos.py::DocumentosRepository.list_pendientes",
         "db/repositories/tender_fact_sheets.py::"
         "TenderFactSheetsRepository.list_pending_licitaciones",
+        # La misma pregunta para el tercer nivel de ese orden (D52 del plan
+        # 2026-10): las reglas de vigilancia activas de todos los usuarios, para
+        # saber qué expediente abierto casa con alguna. Devuelve solo los
+        # criterios (sin `user_key`, `user_id` ni `email`); su único llamador es
+        # `services/watchlist_rules.py::reglas_activas`, que usa el job y no
+        # alcanza ninguna ruta (`grep -rn "reglas_activas\|ids_abiertas_que_casan"
+        # api/` vacío).
+        "db/repositories/watchlist_rules.py::filas_de_reglas_activas",
         # La misma pregunta para la fase 5 de ese job (pre-generación del
         # resumen IA, 2026-09-18): devuelve solo ids de licitación ordenados
         # por demanda, y el resumen que se calienta es el del expediente, no el

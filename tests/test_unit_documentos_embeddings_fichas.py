@@ -97,6 +97,14 @@ def _pagina() -> dict[str, Any]:
     }
 
 
+@pytest.fixture(autouse=True)
+def sin_reglas_de_vigilancia(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """El casado con reglas (D52) va a la BD: aquí no hay BD, así que no casa nada."""
+    casado = MagicMock(return_value=[])
+    monkeypatch.setattr("services.watchlist_rules.ids_abiertas_que_casan", casado)
+    return casado
+
+
 @pytest.fixture()
 def fase_activada(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "PLIEGO_FACTS_ENABLED", True, raising=False)
@@ -241,6 +249,46 @@ class TestTopeDeRelojDeLasFichas:
         assert counts["procesadas"] == 2
         assert counts["aplazados"] == 1
         assert counts["error"] == 0
+        assert facts_failed_systemically(counts) is False
+
+
+@pytest.mark.usefixtures("fase_activada")
+class TestLoQueCasaConReglasVaDetrasDeLaDemanda:
+    """D52: la fase pasa al selector lo abierto que casa con alguna regla."""
+
+    def test_los_ids_que_casan_llegan_al_selector(
+        self, sin_reglas_de_vigilancia: MagicMock
+    ) -> None:
+        sin_reglas_de_vigilancia.return_value = ["EXP-R1", "EXP-R2"]
+        fichas = MagicMock()
+        fichas.list_pending_licitaciones.return_value = []
+
+        with patch(
+            "db.repositories.tender_fact_sheets.TenderFactSheetsRepository",
+            return_value=fichas,
+        ):
+            counts = _run_facts_phase(limit=3)
+
+        kwargs = fichas.list_pending_licitaciones.call_args.kwargs
+        assert kwargs["casan_regla"] == ["EXP-R1", "EXP-R2"]
+        assert kwargs["limit"] == 3
+        assert counts["casan_regla"] == 2
+
+    def test_si_el_casado_falla_el_lote_sale_con_el_orden_de_antes(
+        self, sin_reglas_de_vigilancia: MagicMock
+    ) -> None:
+        sin_reglas_de_vigilancia.side_effect = RuntimeError("scorer caído")
+        fichas = MagicMock()
+        fichas.list_pending_licitaciones.return_value = []
+
+        with patch(
+            "db.repositories.tender_fact_sheets.TenderFactSheetsRepository",
+            return_value=fichas,
+        ):
+            counts = _run_facts_phase(limit=3)
+
+        assert fichas.list_pending_licitaciones.call_args.kwargs["casan_regla"] == []
+        assert counts["casan_regla"] == 0
         assert facts_failed_systemically(counts) is False
 
 
