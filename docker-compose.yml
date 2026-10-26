@@ -173,7 +173,7 @@ services:
   # Prometheus/Grafana son la definición de referencia de los umbrales; alerting
   # de producción se realiza via scheduler/healthcheck.py + ops_events en BD.
   prometheus:
-    image: prom/prometheus:v2.53.0
+    image: prom/prometheus:v2.55.1
     container_name: tenderflow-prometheus
     profiles: ["monitoring"]
     restart: unless-stopped
