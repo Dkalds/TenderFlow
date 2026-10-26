@@ -24,7 +24,7 @@ import { ColumnaDatos, type Editable } from "./columna-datos";
 import { DecisionComite } from "./decision-comite";
 import { FichaEsqueleto } from "./ficha-esqueleto";
 import { HistorialFicha } from "./historial-ficha";
-import { MatrizGoNoGo } from "./matriz-go-no-go";
+import { MatrizPlegada } from "./matriz-plegada";
 import { PathFases } from "./path-fases";
 import { PrecargaFicha, idDeRuta } from "./precarga-ficha";
 import { SalidaDeFase } from "./salida-fase";
@@ -34,10 +34,14 @@ import { PestanaDiferida, pestanasDeFicha, type TabKey } from "./secciones-difer
 const ANCLA_DE_LUGAR = { decision: "ficha-decision", contraste: "ficha-requisitos", kit: "ficha-kit" } as const;
 
 /**
- * Ficha de la oportunidad — el path de fases primero.
+ * Ficha de la oportunidad — el checklist primero.
  *
- * La cabecera dice **en qué punto del workflow está** y el primer bloque, qué
- * falta para salir de esa fase y cuál es el único paso posible. Antes la ficha
+ * La cabecera dice **en qué punto del workflow está**; el primer bloque, qué
+ * pide el pliego y si la organización lo cumple (`cumple | no_cumple |
+ * desconocido`, D54 del plan 2026-10), y el siguiente, qué falta para salir
+ * de la fase y cuál es el único paso posible. La matriz ponderada, que en
+ * producción no tenía ni una puntuación, va plegada al final
+ * (`matriz-plegada.tsx`). Antes la ficha
  * abría con el formulario completo: para avanzar había que saber que el estado
  * es un desplegable, y nada decía qué se esperaba de la fase actual.
  *
@@ -212,16 +216,8 @@ export function FichaOportunidad() {
                 {/* Cierre asistido: sólo aparece cuando la ingesta ya conoce una
                     adjudicación de este expediente. */}
                 <AdjudicacionDetectada pursuit={pursuit} />
-                <SalidaDeFase pursuit={pursuit} onCompletar={completar} />
-                <DecisionComite key={version} pursuit={pursuit} />
-              </div>
-
-              {columnaDatos}
-
-              {/* Lo que sostiene la decisión y el trabajo de la oferta, lo que
-                  ha pasado y, plegado, el formulario entero. */}
-              <div className="flex min-w-0 flex-col gap-3.5 xl:col-start-1">
-                <MatrizGoNoGo pursuit={pursuit} />
+                {/* D54: lo primero es qué pide el pliego y si la organización
+                    lo cumple; la decisión se toma debajo, con eso delante. */}
                 <ChecklistGoNoGo
                   pursuitId={pursuit.id}
                   licitacionId={pursuit.licitacion_id}
@@ -232,8 +228,18 @@ export function FichaOportunidad() {
                     requestAnimationFrame(() => document.getElementById("ficha-tab-pliego")?.focus());
                   }}
                 />
+                <SalidaDeFase pursuit={pursuit} onCompletar={completar} />
+                <DecisionComite key={version} pursuit={pursuit} />
+              </div>
+
+              {columnaDatos}
+
+              {/* El trabajo de la oferta, lo que ha pasado y, plegados, la
+                  matriz ponderada y el formulario entero. */}
+              <div className="flex min-w-0 flex-col gap-3.5 xl:col-start-1">
                 <KitPresentacionPanel pursuitId={pursuit.id} organizationId={pursuit.organization_id} />
                 <HistorialFicha pursuit={pursuit} miembros={miembros.data ?? []} />
+                <MatrizPlegada pursuit={pursuit} />
                 <CamposCompletos pursuit={pursuit} abierto={camposAbiertos} onAlternar={setCamposAbiertos} />
               </div>
             </div>

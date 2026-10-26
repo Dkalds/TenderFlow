@@ -3,6 +3,11 @@
 /**
  * Contraste de la ficha del pliego con la capacidad declarada (S2.3).
  *
+ * **Es la primera vista de la oportunidad (D54, plan 2026-10).** Va arriba de
+ * la pestaña Resumen, antes de la salida de fase y de la decisión; la matriz
+ * ponderada quedó plegada al final. Por eso el panel es una región con nombre
+ * propio, «Checklist go/no-go», y su pie remite a la decisión «más abajo».
+ *
  * El motor (`services/go_no_go.py`) y su endpoint existían desde el PR #274 y
  * ninguna pantalla los montaba: la pestaña Decisión pedía decidir sin enseñar
  * contra qué se decide. Esto lo enseña, y **sólo** lo enseña:
@@ -11,7 +16,7 @@
  *   decisión que hay justo encima, y el panel lo dice en su pie.
  * - `desconocido` se muestra como tal, con el motivo que da la API, y
  *   cuando lo que falta es el dato de la organización enlaza a donde se
- *   rellena (`/equipo`, pestaña Organización).
+ *   rellena (`/equipo?tab=organizacion`, que abre esa pestaña).
  * - Declara sobre qué ficha se evaluó: `extraction_version` y su fecha. Un
  *   veredicto sin decir de qué versión del pliego sale no es verificable.
  *
@@ -52,6 +57,9 @@ function enumerar(etiquetas: string[], ultimo: "y" | "ni"): string {
 /** Ancla y foco de la ficha: el paso «Requisitos del pliego contrastados» lleva aquí. */
 const ANCLA = "ficha-requisitos";
 
+/** Nombre del panel y de su región: lo que D54 llama el checklist. */
+const TITULO = "Checklist go/no-go";
+
 /** Qué ficha se evaluó. Sin esto el veredicto no se puede volver a comprobar. */
 function Procedencia({
   extractionVersion,
@@ -91,8 +99,8 @@ export function ChecklistGoNoGo({
 
   if (isPending) {
     return (
-      <Panel id={ANCLA}>
-        <SectionTitle>Requisitos del pliego</SectionTitle>
+      <Panel id={ANCLA} role="region" aria-label={TITULO}>
+        <SectionTitle>{TITULO}</SectionTitle>
         <Skeleton className="h-[132px] w-full rounded-md" />
       </Panel>
     );
@@ -100,8 +108,8 @@ export function ChecklistGoNoGo({
 
   if (error || !data) {
     return (
-      <Panel id={ANCLA}>
-        <SectionTitle>Requisitos del pliego</SectionTitle>
+      <Panel id={ANCLA} role="region" aria-label={TITULO}>
+        <SectionTitle>{TITULO}</SectionTitle>
         <PanelError
           variant="inline"
           title="No se pudo contrastar el pliego con tu capacidad"
@@ -136,7 +144,7 @@ export function ChecklistGoNoGo({
   ) : null;
 
   return (
-    <Panel id={ANCLA} tabIndex={-1} className="outline-none">
+    <Panel id={ANCLA} role="region" aria-label={TITULO} tabIndex={-1} className="outline-none">
       <SectionTitle
         hint={
           <Procedencia
@@ -146,7 +154,7 @@ export function ChecklistGoNoGo({
           />
         }
       >
-        Requisitos del pliego
+        {TITULO}
       </SectionTitle>
 
       {!hayFuente ? (
@@ -197,7 +205,7 @@ export function ChecklistGoNoGo({
       {hayFuente && data.requisitos_extraidos > 0 ? (
         <p className="text-muted-foreground mt-3 text-tf-micro leading-relaxed">
           Esto no decide el Go/No-Go: lo propone. La decisión se marca a mano en «Decisión del
-          comité», arriba, y un «desconocido» es una pregunta abierta, no un no.
+          comité», más abajo, y un «desconocido» es una pregunta abierta, no un no.
         </p>
       ) : null}
     </Panel>
