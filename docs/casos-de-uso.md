@@ -78,14 +78,21 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   codificado y ganar, importe o justificación.
 - Las cifras del embudo reflejan lo que pasó.
 
-### CU-06 — Decidir GO o NO-GO con la matriz
+### CU-06 — Decidir GO o NO-GO frente a lo que pide el pliego
 
-- **Quién:** responsable y dirección. **Dónde:** ficha de la oportunidad.
-- Puntúa los criterios y recibe una recomendación; la decisión exige motivo.
-- Sin GO no hay oferta, y un NO-GO solo puede retirarse.
-- Quien dirige la organización pondera los criterios en Equipo ›
-  Organización, y la misma ficha cambia de recomendación sin tocar las
-  puntuaciones; quien solo lee ve los pesos y no los cambia.
+- **Quién:** responsable y dirección. **Dónde:** ficha de la oportunidad, que
+  abre en el checklist.
+- Lo primero que ve es cada requisito del pliego contrastado con la capacidad
+  de su organización: «cumple», «no cumple» o «desconocido», con la cita del
+  pliego. Nunca «cumple» sin cita; cuando lo que falta es el dato de su
+  organización, el requisito lo dice y lleva a completarlo en Equipo ›
+  Organización.
+- La decisión la toma a mano, debajo, y exige motivo. Sin GO no hay oferta, y
+  un NO-GO solo puede retirarse.
+- Si quiere, abre la matriz ponderada, que va plegada, puntúa los criterios y
+  recibe una recomendación. Quien dirige la organización pondera los criterios
+  en Equipo › Organización, y la misma ficha cambia de recomendación sin tocar
+  las puntuaciones; quien solo lee ve los pesos y no los cambia.
 
 ### CU-07 — Preparar la oferta con tareas
 
@@ -318,6 +325,20 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   el siguiente ciclo de reintentos.
 - Otra organización no ve el webhook ni puede rotarlo ni reenviar sus entregas.
 
+### CU-34 — Arrancar por lo que da valor
+
+- **Quién:** quien entra en una organización recién creada. **Dónde:**
+  `/resumen`, banda «Primeros pasos».
+- Ve tres pasos, cada uno con lo que gana y el enlace a donde se hace:
+  completar la capacidad de su organización (NIF, certificaciones y
+  facturación, en Equipo › Organización), revisar su alerta (Mi Watchlist) y
+  abrir su primera oportunidad (Radar).
+- Cada paso se marca hecho solo, con lo que ya dice la API; lo que no se puede
+  comprobar dice «sin comprobar», nunca «pendiente». Quien no gestiona la
+  organización no puede leer sus NIFs, así que para esa persona el paso de
+  capacidad sale pendiente o sin comprobar, nunca hecho.
+- Con los tres hechos la banda desaparece; también se puede ocultar.
+
 ## Trazabilidad
 
 <!-- trazabilidad: generado por scripts/check_casos_uso.py — no editar a mano -->
@@ -329,7 +350,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-03** Seguir un expediente y anotarlo | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | [favoritos-nota.test.tsx](../web/src/app/(dashboard)/mi-watchlist/__tests__/favoritos-nota.test.tsx)<br>[use-watchlist-items.test.ts](../web/src/hooks/__tests__/use-watchlist-items.test.ts) |
 | **CU-04** Vigilar el mercado con una alerta | [test_escenario_feed_alertas.py](../tests/test_escenario_feed_alertas.py)<br>[test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-alerta.spec.ts](../web/e2e/recorrido-alerta.spec.ts) | [test_watchlist_rules_maquina_property.py](../tests/test_watchlist_rules_maquina_property.py) |
 | **CU-05** Llevar una oportunidad del expediente al cierre | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x3) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py)<br>[test_pursuits_filtros_tablero.py](../tests/test_pursuits_filtros_tablero.py) |
-| **CU-06** Decidir GO o NO-GO con la matriz | [test_escenario_gobierno_organizacion.py](../tests/test_escenario_gobierno_organizacion.py)<br>[test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x2) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py)<br>[pesos-go-no-go-card.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/pesos-go-no-go-card.test.tsx)<br>[matriz-go-no-go.test.tsx](../web/src/app/(dashboard)/oportunidades/[id]/__tests__/matriz-go-no-go.test.tsx) |
+| **CU-06** Decidir GO o NO-GO frente a lo que pide el pliego | [test_escenario_gobierno_organizacion.py](../tests/test_escenario_gobierno_organizacion.py)<br>[test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x2) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py)<br>[pesos-go-no-go-card.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/pesos-go-no-go-card.test.tsx)<br>[matriz-go-no-go.test.tsx](../web/src/app/(dashboard)/oportunidades/[id]/__tests__/matriz-go-no-go.test.tsx)<br>[checklist-go-no-go.test.tsx](../web/src/app/(dashboard)/oportunidades/__tests__/checklist-go-no-go.test.tsx) |
 | **CU-07** Preparar la oferta con tareas | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | — |
 | **CU-08** Vigilar la cartera y preparar la renovación | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) | — | — |
 | **CU-09** Guardar una vista del ámbito | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
@@ -357,7 +378,8 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-31** Pedir acceso, recibirlo y crearme la cuenta | [test_escenario_alta_tras_concesion.py](../tests/test_escenario_alta_tras_concesion.py) | — | — |
 | **CU-32** Revisar y exportar lo que cambió en la organización | [test_escenario_gobierno_organizacion.py](../tests/test_escenario_gobierno_organizacion.py) | — | [auditoria-organizacion-card.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/auditoria-organizacion-card.test.tsx) |
 | **CU-33** Mantener la integración del equipo por webhook | [test_escenario_webhooks.py](../tests/test_escenario_webhooks.py) | — | [webhook-row.test.tsx](../web/src/app/(dashboard)/ops/_components/webhooks/__tests__/webhook-row.test.tsx) |
+| **CU-34** Arrancar por lo que da valor | — | [recorrido-primeros-pasos.spec.ts](../web/e2e/recorrido-primeros-pasos.spec.ts) | [primeros-pasos.test.tsx](../web/src/app/(dashboard)/resumen/_components/__tests__/primeros-pasos.test.tsx) |
 
-**33 casos**, 33 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
+**34 casos**, 34 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
 
 <!-- fin trazabilidad -->

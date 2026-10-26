@@ -134,10 +134,10 @@ export function usePerfilScoring() {
       queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
       queryClient.invalidateQueries({ queryKey: radarKeys.scoring });
       form.reset(v);
-      // Primer paso del embudo de activación («Primeros pasos» en /resumen) y
-      // el que más pesa: hasta que existe este perfil, el Radar puntúa con los
-      // pesos genéricos de `settings.SCORING_WEIGHTS` y el orden que ve el
-      // usuario es el de otro. `primeraVez` separa esa configuración inicial de
+      // Configuración inicial del perfil (fue el primer paso de «Primeros
+      // pasos» en /resumen hasta B5, plan 2026-10): hasta que existe este
+      // perfil, el Radar puntúa con los pesos genéricos de
+      // `settings.SCORING_WEIGHTS` y el orden que ve el usuario es el de otro. `primeraVez` separa esa configuración inicial de
       // los reajustes, que son uso normal. Sin propiedades del contenido: los
       // pesos, las keywords y los CPV son la estrategia comercial de quien los
       // pone, no una dimensión de producto.

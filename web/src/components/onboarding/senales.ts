@@ -1,4 +1,4 @@
-import type { Schemas, WatchlistRuleOut } from "@/lib/api-types";
+import type { Schemas } from "@/lib/api-types";
 
 /**
  * Qué cuenta como «hecho» en cada paso, leído del contrato de la API.
@@ -8,30 +8,36 @@ import type { Schemas, WatchlistRuleOut } from "@/lib/api-types";
  * montar React ni doblar el cliente HTTP.
  */
 
+/** Las familias de capacidad que pide el primer paso, además del NIF. */
+const FAMILIAS_DEL_PASO = ["certificaciones", "facturacion"] as const;
+
 /**
- * `GET /me/profile` devuelve un `UserProfileOut` **vacío** —no un 404— cuando el
- * usuario no tiene perfil, así que no vale con que la respuesta llegue: hay que
- * mirar si trae algo suyo dentro. Se aceptan todas las señales porque un perfil
- * creado antes de que existiera una dimensión puede no traer `weights`.
+ * ¿Faltan certificaciones o facturación en el perfil de capacidad?
+ *
+ * Lo decide el backend con `campos_incompletos`
+ * (`GET /organizations/{id}/capabilities`), no este fichero: «certificaciones»
+ * cuenta solo las técnicas, porque con únicamente documentación administrativa
+ * el checklist sigue contestando «desconocido» en esa familia. Referencias y
+ * perfiles de equipo también los marca el backend, pero el paso no los exige:
+ * son el siguiente nivel, no el mínimo para que el checklist diga algo.
  */
-export function perfilConfigurado(perfil: Schemas["UserProfileOut"]): boolean {
-  return (
-    perfil.updated_at != null ||
-    (perfil.weights != null && Object.keys(perfil.weights).length > 0) ||
-    (perfil.afinidad_keywords?.length ?? 0) > 0 ||
-    (perfil.cpvs?.length ?? 0) > 0 ||
-    perfil.importe_min != null ||
-    perfil.importe_max != null
-  );
+export function faltaCapacidad(capacidad: Schemas["OrganizationCapabilitiesOut"]): boolean {
+  const incompletos = capacidad.campos_incompletos ?? [];
+  return FAMILIAS_DEL_PASO.some((familia) => incompletos.includes(familia));
+}
+
+/** Al menos un NIF declarado: sin él, el cierre por NIF no reconoce lo ganado. */
+export function hayNif(nifs: Schemas["OrganizationNifsOut"]): boolean {
+  return (nifs.nifs ?? []).length > 0;
 }
 
 /**
- * Una regla desactivada no vigila nada: el usuario no recibiría ni una señal por
- * ella, así que contarla como paso hecho sería darle por resuelto algo que no lo
- * está.
+ * El paso es **revisar** la alerta, no crearla (B1 la crea al guardar las
+ * tecnologías de la organización): hecho en cuanto hay una regla, también si
+ * quien la revisó decidió pausarla.
  */
-export function hayReglaActiva(reglas: readonly WatchlistRuleOut[]): boolean {
-  return reglas.some((regla) => regla.active);
+export function hayRegla(reglas: readonly unknown[]): boolean {
+  return reglas.length > 0;
 }
 
 /** El total lo cuenta el backend (`PursuitListResponse.total`), no el frontend. */

@@ -3,7 +3,8 @@ import { fireEvent, render, screen, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 /**
- * S2.3 — el contraste ficha × capacidad, tal y como lo ve la pestaña Decisión.
+ * S2.3 — el contraste ficha × capacidad, la primera vista de la oportunidad
+ * desde D54 (CU-06).
  *
  * El suite vive junto a la pantalla que monta el componente (`oportunidades`)
  * porque lo que se fija aquí es de producto y no de layout: qué se le promete
@@ -242,9 +243,10 @@ describe("checklist go/no-go en la pestaña Decisión", () => {
     ).toBeVisible();
     // Sólo el requisito sin dato propio ofrece el enlace: los otros tres sí
     // tienen contra qué contrastarse.
-    const enlaces = screen.getAllByRole("link", { name: /Completar el perfil de capacidad/ });
+    const enlaces = screen.getAllByRole("link", { name: /Completar la capacidad de tu organización/ });
     expect(enlaces).toHaveLength(1);
-    expect(enlaces[0]).toHaveAttribute("href", "/equipo");
+    // Directo a la pestaña donde se completa, no a «Miembros».
+    expect(enlaces[0]).toHaveAttribute("href", "/equipo?tab=organizacion");
   });
 
   it("no pinta como cumplido un requisito que llega sin cita del pliego", async () => {
@@ -288,10 +290,20 @@ describe("checklist go/no-go en la pestaña Decisión", () => {
     expect(screen.getByText(/sin versión de ficha declarada/)).toBeInTheDocument();
   });
 
-  it("no decide: lo dice en su pie y no toca la decisión", async () => {
+  it("no decide: lo dice en su pie y remite a la decisión, que va debajo", async () => {
     renderChecklist();
 
     expect(await screen.findByText(/Esto no decide el Go\/No-Go: lo propone/)).toBeInTheDocument();
+    // D54: el checklist es lo primero de la ficha, así que la decisión ya no
+    // está «arriba».
+    expect(screen.getByText(/«Decisión del\s+comité», más abajo/)).toBeInTheDocument();
+  });
+
+  it("es una región con nombre propio: la primera vista de la oportunidad", async () => {
+    renderChecklist();
+
+    const region = await screen.findByRole("region", { name: "Checklist go/no-go" });
+    expect(region).toHaveAttribute("id", "ficha-requisitos");
   });
 
   it("contrasta contra la organización activa", async () => {
@@ -324,7 +336,9 @@ describe("checklist go/no-go — familias de las que la ficha no sacó nada", ()
     expect(screen.queryByText(/requisitos extraídos del pliego:/)).not.toBeInTheDocument();
     expect(screen.queryAllByRole("group")).toHaveLength(0);
     // Completar el perfil no arregla un pliego vacío: el enlace no se ofrece.
-    expect(screen.queryByRole("link", { name: /Completar el perfil de capacidad/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /Completar la capacidad de tu organización/ }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/Esto no decide el Go\/No-Go/)).not.toBeInTheDocument();
   });
 
