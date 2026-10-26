@@ -24,9 +24,11 @@ Cómo funciona
 No es un congelamiento: añadir un endpoint cuesta una línea. Lo que impide es
 añadirlo sin haberse hecho la pregunta.
 
-La superficie se lee de ``app.routes`` con ``ENV=dev`` y ``APP_PROFILE=api``,
-igual que ``scripts/gen_status.py``: en ``dev`` existe ``/auth/dev-login``, y el
-perfil ``worker`` solo monta ``health``. Con otro entorno la lista sería otra.
+La superficie la calcula ``api.rutas.operaciones`` (anclada en
+``app.openapi()``, más las rutas fuera del esquema) con ``ENV=dev`` y
+``APP_PROFILE=api``, igual que ``scripts/gen_status.py``: en ``dev`` existe
+``/auth/dev-login``, y el perfil ``worker`` solo monta ``health``. Con otro
+entorno la lista sería otra.
 
 Uso::
 

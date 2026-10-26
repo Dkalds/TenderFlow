@@ -57,8 +57,9 @@ _PREFIJO = "/api/v1/licitaciones"
 def _rutas_de_licitaciones() -> list[Any]:
     """Rutas de la aplicación bajo ``/api/v1/licitaciones``, en orden de registro."""
     from api.app import app
+    from api.rutas import rutas_planas
 
-    return [r for r in app.routes if str(getattr(r, "path", "")).startswith(_PREFIJO)]
+    return [r for r in rutas_planas(app.routes) if r.plantilla.startswith(_PREFIJO)]
 
 
 #: Las tres que siguen direccionando por ``{licitacion_id:path}``, congeladas
@@ -80,7 +81,7 @@ def test_toda_ruta_de_expediente_usa_el_mismo_parametro() -> None:
     """
     desviadas = []
     for ruta in _rutas_de_licitaciones():
-        path = str(ruta.path)
+        path = ruta.plantilla
         # Sólo las que direccionan un expediente concreto; `/licitaciones`,
         # `/cursor`, `/search`, `/comparar` y `/bulk-get` no llevan parámetro.
         if not path.startswith(f"{_PREFIJO}/{{"):
@@ -105,7 +106,7 @@ def test_la_excepcion_del_nombre_viejo_no_crece() -> None:
     que aparezca una cuarta: una ruta nueva no tiene ninguna excusa para nacer
     con el nombre viejo.
     """
-    vivas = {str(r.path) for r in _rutas_de_licitaciones() if "{licitacion_id" in str(r.path)}
+    vivas = {r.plantilla for r in _rutas_de_licitaciones() if "{licitacion_id" in r.plantilla}
     assert vivas <= _EXCEPCIONES_NOMBRE_VIEJO, (
         "Rutas nuevas con el nombre viejo del parámetro: "
         + "; ".join(sorted(vivas - _EXCEPCIONES_NOMBRE_VIEJO))
@@ -124,12 +125,12 @@ def test_el_detalle_glotón_se_registra_el_ultimo() -> None:
     """
     rutas = _rutas_de_licitaciones()
     detalle = f"{_PREFIJO}/{{id_externo:path}}"
-    posiciones = [i for i, r in enumerate(rutas) if str(r.path) == detalle]
+    posiciones = [i for i, r in enumerate(rutas) if r.plantilla == detalle]
     assert posiciones, "No existe la ruta de detalle con el conversor :path"
     assert posiciones[-1] == len(rutas) - 1, (
         "La ruta de detalle ya no es la última bajo /api/v1/licitaciones. "
         "Algo se registró después y queda inalcanzable: "
-        f"{[str(r.path) for r in rutas[posiciones[-1] + 1 :]]}"
+        f"{[r.plantilla for r in rutas[posiciones[-1] + 1 :]]}"
     )
 
 
@@ -182,9 +183,10 @@ def test_ninguna_familia_se_queda_sin_incluir() -> None:
     import pkgutil
 
     import api.routes.licitaciones as paquete
+    from api.rutas import rutas_planas
 
-    registradas = {str(r.path) for r in paquete.router.routes}
-    registradas |= {str(r.path) for r in paquete.router_detalle.routes}
+    registradas = {r.plantilla for r in rutas_planas(paquete.router.routes)}
+    registradas |= {r.plantilla for r in rutas_planas(paquete.router_detalle.routes)}
 
     huerfanas: list[str] = []
     for info in pkgutil.iter_modules(paquete.__path__):
@@ -194,9 +196,9 @@ def test_ninguna_familia_se_queda_sin_incluir() -> None:
         propio = getattr(modulo, "router", None)
         if propio is None:
             continue
-        for ruta in propio.routes:
-            if str(ruta.path) not in registradas:
-                huerfanas.append(f"{info.name}: {ruta.path}")
+        for ruta in rutas_planas(propio.routes):
+            if ruta.plantilla not in registradas:
+                huerfanas.append(f"{info.name}: {ruta.plantilla}")
 
     assert not huerfanas, (
         "Estas rutas existen en su familia pero el paquete no las incluye, así "
