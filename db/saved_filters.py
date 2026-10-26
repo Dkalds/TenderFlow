@@ -10,7 +10,10 @@ obtenía por descuido, y el repositorio caía a una query sin ámbito sin
 decir nada. Ahora un llamador que la omita falla al tipar.
 
 Desde v129 (ADR-030 fase 2) la fila lleva también ``user_id`` y la lectura es
-dual: ver ``db/repositories/watchlist.py``.
+dual: ver ``db/repositories/watchlist.py``. Desde v165 (fase 3) la vista se
+teclea por ``(user_id, name)`` —índice único parcial— y quien la guarda con id
+ya no escribe ``user_key``; el ``UNIQUE (user_key, name)`` queda para las filas
+sin id (API keys sin usuario).
 """
 
 from __future__ import annotations
@@ -21,6 +24,17 @@ from db.database import connect, now_utc_iso
 
 #: Predicado de identidad dual. Parámetros: ``(user_id, user_key, user_id)``.
 _IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
+
+#: El mismo predicado con el alias ``f`` (el ``UPDATE`` de :func:`save_filter`).
+_IDENT_F = "(f.user_id = %s OR (f.user_key = %s AND (f.user_id IS NULL OR %s::int IS NULL)))"
+
+#: El id que adopta una vista sin él al actualizarla: ``NULL`` si la persona ya
+#: tiene otra vista con ese nombre bajo su id (adoptarlo chocaría con el índice
+#: parcial de v165). Parámetros: ``(user_id, user_id)``.
+_ADOPTAR_ID = (
+    "CASE WHEN EXISTS (SELECT 1 FROM saved_filters o WHERE o.user_id = %s "
+    "AND o.name = f.name) THEN NULL ELSE %s::int END"
+)
 
 
 def save_filter(
@@ -40,18 +54,29 @@ def save_filter(
     ``ON CONFLICT`` a secas habría creado una segunda «Mi vista» en vez de
     actualizar la que existe. Primero se intenta el ``UPDATE`` por identidad;
     el ``INSERT ... ON CONFLICT`` queda para la fila nueva y para la carrera.
+
+    Con ``user_id`` la vista nueva nace **sin** ``user_key`` y el árbitro es el
+    índice parcial ``(user_id, name)`` de v165; sin él, la clave y el
+    ``UNIQUE (user_key, name)`` de siempre. El ``UPDATE`` adopta el id en una
+    vista que no lo tenía salvo que ya haya otra con ese nombre bajo el id.
     """
     now = now_utc_iso()
+    if user_id is not None:
+        clave, conflicto = None, "ON CONFLICT (user_id, name) WHERE user_id IS NOT NULL"
+    else:
+        clave, conflicto = user_key, "ON CONFLICT (user_key, name)"
     with connect() as c:
         cur = c.execute(
-            "UPDATE saved_filters SET filters_json = %s, created_at = %s, "
-            "organization_id = %s, visibility = %s, user_id = COALESCE(user_id, %s) "
-            f"WHERE {_IDENT} AND name = %s",
+            "UPDATE saved_filters AS f SET filters_json = %s, created_at = %s, "
+            "organization_id = %s, visibility = %s, "
+            f"user_id = COALESCE(f.user_id, {_ADOPTAR_ID}) "
+            f"WHERE {_IDENT_F} AND f.name = %s",
             (
                 filters_json,
                 now,
                 organization_id,
                 visibility,
+                user_id,
                 user_id,
                 user_id,
                 user_key,
@@ -62,18 +87,12 @@ def save_filter(
         if int(getattr(cur, "rowcount", 0) or 0) > 0:
             return
         c.execute(
-            """
-            INSERT INTO saved_filters
-                (user_key, user_id, name, filters_json, created_at, organization_id, visibility)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(user_key, name) DO UPDATE SET
-                user_id = COALESCE(saved_filters.user_id, excluded.user_id),
-                filters_json = excluded.filters_json,
-                created_at   = excluded.created_at,
-                organization_id = excluded.organization_id,
-                visibility = excluded.visibility
-            """,
-            (user_key, user_id, name, filters_json, now, organization_id, visibility),
+            "INSERT INTO saved_filters "
+            "(user_key, user_id, name, filters_json, created_at, organization_id, visibility) "
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s) {conflicto} DO UPDATE SET "
+            "filters_json = excluded.filters_json, created_at = excluded.created_at, "
+            "organization_id = excluded.organization_id, visibility = excluded.visibility",
+            (clave, user_id, name, filters_json, now, organization_id, visibility),
         )
 
 
