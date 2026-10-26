@@ -90,6 +90,7 @@ from shared.dto.analitica import (
     CompetitiveCompanyTotalsDTO,
     CompetitiveCompanyUteParticipationDTO,
     CompetitiveCompanyYearDTO,
+    SenalClasificadorDTO,
 )
 from shared.dto.capacidad import (
     EstadoVigencia,
@@ -378,6 +379,7 @@ __all__ = [
     "ReportScheduleOut",
     "RequisitoSolvenciaOficial",
     "SafeStr",
+    "SenalClasificadorDTO",
     "SessionsRevoked",
     "StatusMessage",
     "StatusOk",
