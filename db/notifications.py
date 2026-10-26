@@ -402,8 +402,17 @@ def marcar_todas_alertas_leidas(
 
 
 def borrar_alertas_de_usuario(user_key: str, *, user_id: int | None = None) -> int:
-    """Borra todas las alertas in-app del usuario (GDPR). Filas borradas."""
+    """Borra todas las alertas in-app del usuario (GDPR). Filas borradas.
+
+    Se lleva también sus marcas de lectura: ``notification_reads`` guarda qué
+    vio y cuándo (de ahí sale su «última visita»), que es dato personal. Las
+    marcas no cuentan en lo que devuelve, que siguen siendo alertas.
+    """
     with connect() as c:
+        c.execute(
+            f"DELETE FROM notification_reads WHERE {_IDENT}",
+            (user_id, user_key, user_id),
+        )
         cur = c.execute(
             f"DELETE FROM user_notifications WHERE {_IDENT}",
             (user_id, user_key, user_id),
