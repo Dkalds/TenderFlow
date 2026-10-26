@@ -11,7 +11,7 @@
 #
 # En docker-compose la configuración se monta por volumen; Render no tiene ese
 # hook, así que la vía es construir la imagen.
-FROM prom/prometheus:v2.53.0
+FROM prom/prometheus:v2.55.1
 
 COPY observability/prometheus.render.yml /etc/prometheus/prometheus.yml
 COPY observability/alert_rules.yml /etc/prometheus/alert_rules.yml
