@@ -311,10 +311,14 @@ def test_cerrojo_de_la_cadena_de_auditoria_no_se_puede_tomar(rol_mcp: str, tmp_d
     ):
         err = _err(sql)
         assert err.sqlstate is None and "advisory" in err.mensaje
-    # Nadie lo tiene: la aplicación lo toma sin esperar.
+    # Ninguno de los intentos lo dejó tomado: la aplicación lo consigue. No vale
+    # ``pg_try_advisory_xact_lock`` esperando ``True``: el cerrojo es de la BD y
+    # no del schema, así que bajo xdist otro worker que esté escribiendo
+    # auditoría lo tiene un instante (#573). Se espera con tope: uno que se
+    # hubiera quedado tomado agota el ``lock_timeout`` y el test falla igual.
     with db_mod.connect() as c:
-        fila = c.execute(f"SELECT pg_try_advisory_xact_lock({clave})").fetchone()
-        assert fila is not None and fila[0] is True
+        c.execute("SET LOCAL lock_timeout = '15s'")
+        c.execute(f"SELECT pg_advisory_xact_lock({clave})")
 
 
 # ── Lectura por lotes con cursor de servidor (R19) ─────────────────────────
