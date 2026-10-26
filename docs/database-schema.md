@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-10-25
 
-Revisión Alembic aplicada: `v163_identidad_placsp_fase_a`.
+Revisión Alembic aplicada: `v164_identidad_placsp_rekey`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
