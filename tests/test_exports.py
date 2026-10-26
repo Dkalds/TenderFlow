@@ -282,14 +282,12 @@ def _resuelve(path: str) -> str | None:
     ``tests/test_routing_id_externo_con_barras.py``.
 
     Antes recorría ``app.routes`` buscando ``Match.FULL`` y devolvía
-    ``route.name``. Eso funciona con el fastapi que fija el pin
-    (``>=0.110,<0.137``), pero depende de que ``include_router`` aplane las
-    ``APIRoute`` en ``app.routes``, que es justo lo que deja de ser cierto a
-    partir de 0.141: los routers incluidos pasan a ser objetos
-    ``_IncludedRouter`` opacos, sin ``.name`` ni ``.path``. Ver el porqué del
-    techo en ``requirements.in`` (PR #187). Resolver por ``scope["route"]`` no
-    mira la representación interna, así que el guard sobrevive a esa subida en
-    vez de convertirse en un ``AttributeError`` el día que se haga.
+    ``route.name``. Eso funcionaba hasta fastapi 0.136, porque dependía de que
+    ``include_router`` aplanase las ``APIRoute`` en ``app.routes``; desde 0.137
+    los routers incluidos son objetos ``_IncludedRouter`` opacos, sin ``.name``
+    ni ``.path`` (PR #187; la superficie se recorre ahora con ``api/rutas.py``).
+    Resolver por ``scope["route"]`` no mira la representación interna: el
+    ``endpoint`` de la ruta casada es el mismo con cualquier versión.
 
     Devuelve ``None`` si ninguna ruta casó (404 de enrutado). No necesita BD ni
     credenciales: el enrutado ocurre antes que la autenticación, y el ``route``

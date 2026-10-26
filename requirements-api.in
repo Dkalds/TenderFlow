@@ -46,12 +46,10 @@
 # Lo que la API NO necesita está en requirements-pipeline.in.
 
 # ── Servidor y contrato HTTP ─────────────────────────────────────────────────
-# Los techos de fastapi/starlette/uvicorn NO son arbitrarios: desde fastapi
-# 0.141 los routers montados aparecen en `app.routes` como `_IncludedRouter`
-# opacos y la API devuelve 500 en todas las rutas. Ver requirements.in.
-fastapi>=0.110.0,<0.137
-starlette>=1.0.1,<1.4
-uvicorn>=0.30.0,<0.47
+# El suelo de fastapi (0.141) lo pide api/rutas.py. Ver requirements.in.
+fastapi>=0.141,<1
+starlette>=1.0.1,<2
+uvicorn>=0.30.0,<1
 brotli-asgi>=1.4.0,<2
 pydantic-settings>=2.0.0,<3
 email-validator>=2.0.0,<3

@@ -12,8 +12,8 @@ y el access log y la métrica de coste habrían perdido el prefijo (PR #187).
 Este módulo es el único sitio que sabe de esa diferencia:
 
 * :func:`rutas_planas` recorre con ``fastapi.routing.iter_route_contexts``, la
-  función pública con la que el propio ``app.openapi()`` aplana los routers
-  desde 0.141, y con ``.routes`` tal cual en las versiones que ya las aplanaban.
+  función pública (desde 0.141, el suelo de ``requirements.in``) con la que el
+  propio ``app.openapi()`` aplana los routers.
 * :func:`operaciones` es la superficie como pares ``(MÉTODO, plantilla)``. El
   ancla es ``app.openapi()``: cada operación del esquema tiene que aparecer en
   el recorrido, o falla. El recorrido aporta lo que el esquema no puede decir
@@ -27,12 +27,12 @@ from __future__ import annotations
 
 import re
 import weakref
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import cast
 
-import fastapi.routing
+import fastapi
 from fastapi.dependencies.models import Dependant
+from fastapi.routing import RouteContext, iter_route_contexts
 from starlette.routing import BaseRoute
 from starlette.types import Scope
 
@@ -61,38 +61,28 @@ class RutaPlana:
     dependant: Dependant | None
 
 
-def _contextos(rutas: Sequence[BaseRoute]) -> list[object]:
-    # `iter_route_contexts` existe desde fastapi 0.141; antes `.routes` ya venía
-    # aplanado y cada ruta es su propio contexto. Se lee con getattr porque su
-    # tipo (`RouteContext`) no existe en las versiones viejas.
-    iterar = getattr(fastapi.routing, "iter_route_contexts", None)
-    if callable(iterar):
-        return list(cast("Iterable[object]", iterar(rutas)))
-    return list(rutas)
-
-
-def rutas_planas(rutas: Sequence[BaseRoute]) -> list[RutaPlana]:
+def rutas_planas(rutas: Sequence[BaseRoute | RouteContext]) -> list[RutaPlana]:
     """Rutas con plantilla y métodos, en orden de registro (el de enrutado).
 
     Acepta ``app.routes`` o el ``.routes`` de un ``APIRouter`` suelto. Omite
     lo que no tiene plantilla o métodos (un ``Mount``, un websocket).
     """
     planas: list[RutaPlana] = []
-    for contexto in _contextos(rutas):
-        plantilla = getattr(contexto, "path", None)
-        metodos = getattr(contexto, "methods", None)
-        if not isinstance(plantilla, str) or not plantilla or not metodos:
+    for contexto in iter_route_contexts(rutas):
+        plantilla = contexto.path
+        metodos = contexto.methods
+        if not plantilla or not metodos:
             continue
-        original = getattr(contexto, "original_route", contexto)
-        if not isinstance(original, BaseRoute):
-            continue
+        # `dependant` no es propiedad declarada de `RouteContext`: lo resuelve su
+        # `__getattr__` contra la ruta efectiva, y una `Route` de Starlette no lo tiene.
+        dependant = getattr(contexto, "dependant", None)
         planas.append(
             RutaPlana(
                 plantilla=plantilla,
-                metodos=frozenset(str(m) for m in metodos),
-                original=original,
-                endpoint=getattr(contexto, "endpoint", None),
-                dependant=getattr(contexto, "dependant", None),
+                metodos=frozenset(metodos),
+                original=contexto.original_route,
+                endpoint=contexto.endpoint,
+                dependant=dependant if isinstance(dependant, Dependant) else None,
             )
         )
     return planas
