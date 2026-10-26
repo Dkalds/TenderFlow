@@ -80,6 +80,45 @@ def test_backfill_futuro_no_devuelve_meses() -> None:
     assert meses_a_procesar(desde=(2027, 1), hoy=date(2026, 9, 15)) == []
 
 
+def test_backfill_con_hasta_para_en_ese_mes_y_sigue_ascendente() -> None:
+    """Un tramo de la reingesta: de enero a marzo de 2025, en orden.
+
+    Así una reingesta de veintidós meses se parte en jobs que caben en los
+    240 minutos de ``scrape-bulk.yml`` sin perder el orden ascendente que
+    decide qué versión de cada expediente gana.
+    """
+    assert meses_a_procesar(desde=(2025, 1), hasta=(2025, 3), hoy=date(2026, 9, 15)) == [
+        (2025, 1),
+        (2025, 2),
+        (2025, 3),
+    ]
+
+
+def test_backfill_de_un_solo_mes() -> None:
+    assert meses_a_procesar(desde=(2025, 6), hasta=(2025, 6), hoy=date(2026, 9, 15)) == [(2025, 6)]
+
+
+def test_backfill_hasta_en_el_futuro_se_acota_a_hoy() -> None:
+    assert meses_a_procesar(desde=(2026, 8), hasta=(2027, 3), hoy=date(2026, 9, 15)) == [
+        (2026, 8),
+        (2026, 9),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("desde", "hasta"),
+    [((2025, 5), (2025, 4)), ((2025, 5), (2024, 12)), ((2025, 5), (2025, 13))],
+)
+def test_backfill_hasta_invalido_falla(desde: tuple[int, int], hasta: tuple[int, int]) -> None:
+    with pytest.raises(ValueError):
+        meses_a_procesar(desde=desde, hasta=hasta, hoy=date(2026, 9, 15))
+
+
+def test_hasta_sin_desde_falla() -> None:
+    with pytest.raises(ValueError):
+        meses_a_procesar(3, hasta=(2026, 1), hoy=date(2026, 9, 15))
+
+
 def test_backfill_valida_el_mes() -> None:
     """Mismo contrato que tenía ``scraper.pipeline.backfill``."""
     with pytest.raises(ValueError, match="start_month must be 1-12"):
@@ -203,6 +242,17 @@ def test_run_backfill_pipeline_delega_en_el_bucle_por_conectores() -> None:
         run_backfill_pipeline(2024, 3)
 
     assert bucle.call_args.kwargs["desde"] == (2024, 3)
+    assert bucle.call_args.kwargs["hasta"] is None
+
+
+def test_run_backfill_pipeline_pasa_el_tramo() -> None:
+    from scheduler.pipeline_runs import run_backfill_pipeline
+
+    with patch("scheduler.pipeline_runs._run_bulk_pipeline_connector") as bucle:
+        run_backfill_pipeline(2025, 1, hasta=(2025, 2))
+
+    assert bucle.call_args.kwargs["desde"] == (2025, 1)
+    assert bucle.call_args.kwargs["hasta"] == (2025, 2)
 
 
 def test_run_bulk_pipeline_delega_en_el_bucle_por_conectores() -> None:

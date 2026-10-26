@@ -153,10 +153,20 @@ Ascendente desde enero de 2025, por una de estas dos vías:
   se relanza con `--backfill <año> <mes>` del mes que estaba en curso: el orden
   sigue siendo ascendente y repetir meses es idempotente.
 
-- **(b) Desde Actions**, con un input `desde` en `scrape-bulk.yml` que llame a
-  `--backfill`. **Editar el workflow necesita el OK del propietario**
-  (AGENTS.md §6) y aun así un job de 240 min no llega a dos meses: habría que
-  lanzarlo mes a mes en orden, o subir el `timeout-minutes`.
+- **(b) Desde Actions**, un tramo por job, en orden: `scrape-bulk.yml` con
+  `backfill_desde` (y `backfill_hasta`, por defecto el mismo mes) llama a
+  `run_update --backfill <año> <mes> --hasta <año> <mes>`. Un mes pasa de 2 h,
+  así que un job de 240 min cubre un mes; se lanza el siguiente cuando termina
+  el anterior (`concurrency: scrape` ya impide que se solapen):
+
+  ```bash
+  gh workflow run scrape-bulk.yml -f backfill_desde=2025-01
+  # … al terminar:
+  gh workflow run scrape-bulk.yml -f backfill_desde=2025-02
+  ```
+
+  Cada job corre además los pasos post-ingesta; es más lento en total que (a),
+  pero no necesita una máquina con acceso a producción.
 
 Los pasos post-ingesta (resolución de empresas, dedupe, `dlq_retry`…) corren
 una vez al final.
