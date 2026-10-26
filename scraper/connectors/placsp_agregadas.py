@@ -20,9 +20,11 @@ métrica puede separarlas.
 también fuente propia (la PSCP catalana lo es), y el mismo contrato puede estar
 ya en el feed principal. Tres capas, ninguna nueva:
 
-- ``id_externo = placsp_agregadas:<ContractFolderID>`` (ADR-009): nunca pisa la
-  fila de otra fuente, y su expediente natural (lo que va tras el ``:``) es el
-  mismo que el de esa fila.
+- ``id_externo = placsp_agregadas:<ID_OC_PLAT>:<ContractFolderID>`` (ADR-009,
+  ADR-038): nunca pisa la fila de otra fuente ni la de otro órgano, y su
+  expediente natural (lo que va tras el segundo ``:``,
+  ``shared.identidad_placsp.expediente_natural``) es el mismo que el de esa
+  fila.
 - ``detect_duplicates(fuente="placsp_agregadas")``, que ``run_connector`` lanza
   tras cada lote, casa por expediente natural + órgano + CPV4 y marca la
   duplicada (``confirmed`` con CPV4 igual). La canónica es la de PLACSP si la
@@ -46,12 +48,15 @@ habrían descartado todas. Los dos últimos hosts siguen fuera de la allowlist y
 se cuentan (``placsp_agregadas_documentos_de_otro_host``): ampliarla es una
 decisión de seguridad del propietario (ver el backlog).
 
-**Identidad.** ``placsp_agregadas:<ContractFolderID>`` se mantiene porque el
-dedupe casa por expediente natural, pero tiene el mismo defecto que tenía
-menores: en el muestreo 57 ``ContractFolderID`` los comparten órganos distintos
-(74 filas pisadas de 7.956, el 0,9 %). Ver el backlog: el feed principal
-(``placsp``, sin prefijo) tiene el problema con más peso (67 de 3.646, el 2,5 %)
-y arreglarlo exige migrar filas escritas.
+**Identidad.** El ``ContractFolderID`` solo es único dentro del órgano: en el
+muestreo 57 los comparten órganos distintos (74 filas que se habrían pisado de
+7.956, el 0,9 %). Por eso la clave lo acota con el órgano, como el feed
+principal (RFC ``2026-10-24-rfc-identidad-placsp-organo-expediente``): aquí el
+órgano viene en ``ID_OC_PLAT`` (100 % de las entradas) y, sin él, en DIR3
+(``scraper.codice_parser.ESQUEMAS_ORGANO_AGREGADAS``); sin ninguno la entrada se
+descarta y se cuenta (``placsp_agregadas_sin_identificador_de_organo``). El
+conector nunca se encendió en producción (0 filas), así que
+``v164_identidad_placsp_rekey`` no tuvo nada suyo que mover.
 
 Uso::
 
@@ -106,11 +111,14 @@ class PlacspAgregadasConnector(FeedSindicacionPlacsp):
     source_id = SOURCE_ID
 
     def __init__(self, url: str) -> None:
+        from scraper.codice_parser import ESQUEMAS_ORGANO_AGREGADAS
         from scraper.connectors.placsp import _PlacspParseCore
         from scraper.documentos_plataforma import RescatePliegosPlacsp
 
         super().__init__(url)
-        self._core = _PlacspParseCore()
+        # El núcleo pone la clave `placsp_agregadas:<ID_OC_PLAT>:<expediente>`
+        # antes de copiar el id a adjudicaciones y lotes.
+        self._core = _PlacspParseCore(prefijo=SOURCE_ID, esquemas=ESQUEMAS_ORGANO_AGREGADAS)
         # El rescate de pliegos para avisos TED es del feed principal: aquí se
         # apaga con un mapa vacío, que además evita su consulta a la BD.
         self._core.rescate = RescatePliegosPlacsp(cargar=list)
@@ -119,26 +127,23 @@ class PlacspAgregadasConnector(FeedSindicacionPlacsp):
 
     def parse(self, raw: RawNotice) -> ParsedTender | None:
         entry, updated = raw.payload
+        sin_organo_antes = self._core.contadores["sin_organo"]
         parsed = self._core.parse_entry_elem(entry, fuente=SOURCE_ID, updated_str=updated or None)
         if parsed is None:
-            self._fuera_de_universo += 1
+            # La que se descarta por no traer órgano ya la cuenta el núcleo.
+            if self._core.contadores["sin_organo"] == sin_organo_antes:
+                self._fuera_de_universo += 1
             return None
 
-        id_externo = f"{SOURCE_ID}:{parsed.licitacion.id_externo}"
-        parsed.licitacion.id_externo = id_externo
         documentos = [d for d in parsed.documentos if _host_permitido(d)]
         self._documentos_de_otro_host += len(parsed.documentos) - len(documentos)
-        return ParsedTender(
-            licitacion=parsed.licitacion,
-            adjudicaciones=[replace(a, licitacion_id=id_externo) for a in parsed.adjudicaciones],
-            documentos=documentos,
-            lotes=[replace(lote, licitacion_id=id_externo) for lote in parsed.lotes],
-        )
+        return replace(parsed, documentos=documentos)
 
     def contadores_de_descarte(self) -> dict[str, int]:
         return {
             "placsp_agregadas_fuera_de_universo": self._fuera_de_universo,
             "placsp_agregadas_documentos_de_otro_host": self._documentos_de_otro_host,
+            **self._core.contadores_de_descarte(),
         }
 
 

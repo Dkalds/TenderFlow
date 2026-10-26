@@ -43,6 +43,9 @@ def _sap_entry_with_documentos(id_externo: str = "EXP-DOC-001") -> str:
             <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
             <cacext:LocatedContractingParty>
               <cac:Party>
+                <cac:PartyIdentification>
+                  <cbc:ID schemeName="ID_PLATAFORMA">10000000000001</cbc:ID>
+                </cac:PartyIdentification>
                 <cac:PartyName><cbc:Name>Ministerio</cbc:Name></cac:PartyName>
               </cac:Party>
             </cacext:LocatedContractingParty>
@@ -117,6 +120,13 @@ def test_parse_entry_elem_no_documentos_returns_empty_list():
           <cacext:ContractFolderStatus>
             <cbc:ContractFolderID>EXP-NODOC</cbc:ContractFolderID>
             <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
+            <cacext:LocatedContractingParty>
+              <cac:Party>
+                <cac:PartyIdentification>
+                  <cbc:ID schemeName="ID_PLATAFORMA">10000000000001</cbc:ID>
+                </cac:PartyIdentification>
+              </cac:Party>
+            </cacext:LocatedContractingParty>
             <cac:ProcurementProject>
               <cbc:Name>Mantenimiento SAP sin pliegos</cbc:Name>
               <cac:RequiredCommodityClassification>

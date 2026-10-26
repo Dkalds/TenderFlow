@@ -20,7 +20,9 @@ from scraper import reproceso_lotes
 from scraper.reproceso_lotes import asignaciones_de_entry, meses_entre, reprocesar
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "placsp" / "18_lote_en_proyecto_adjudicado.xml"
-_LIC = "2026-MULTILOTE-0018"
+#: La clave que escribe el conector (RFC de identidad PLACSP, fase B): el
+#: reproceso la reconstruye de la entry con ``clave_de_entry``.
+_LIC = "placsp:99000000000011:2026-MULTILOTE-0018"
 _FIXTURE_REAL = Path(__file__).parent / "fixtures" / "placsp" / "25_multilote_real_por_lote.xml"
 
 
@@ -58,6 +60,8 @@ def test_saca_las_adjudicaciones_con_lote_de_un_expediente_objetivo() -> None:
 
 def test_ignora_la_entry_de_un_expediente_que_no_es_objetivo() -> None:
     assert asignaciones_de_entry(_entry(), {"OTRO"}) == []
+    # La clave vieja (el expediente sin órgano) ya no reconoce la entry.
+    assert asignaciones_de_entry(_entry(), {"2026-MULTILOTE-0018"}) == []
 
 
 def test_el_xml_real_publica_el_lote_de_cada_adjudicacion() -> None:
@@ -71,7 +75,7 @@ def test_el_xml_real_publica_el_lote_de_cada_adjudicacion() -> None:
     """
     entry = etree.fromstring(_FIXTURE_REAL.read_bytes())
 
-    asignaciones = asignaciones_de_entry(entry, {"B070005/2022-0071"})
+    asignaciones = asignaciones_de_entry(entry, {"placsp:30550610096762:B070005/2022-0071"})
 
     assert [(a.nif, a.importe_adjudicado, a.lote_numero) for a in asignaciones] == [
         ("B74172537", 188800.9, "1"),

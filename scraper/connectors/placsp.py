@@ -5,15 +5,24 @@ Dos conectores independientes que comparten _PlacspParseCore:
 - PlacspAtomConnector  : feed ATOM en vivo (incremental por cursor etag/updated)
 - PlacspBulkConnector  : descarga ZIPs mensuales (paramétrico por mes, cursor=None)
 
-``id_externo`` **sin prefijo** para preservar paridad de datos con el pipeline
-legacy (los IDs ya existen en BD sin namespace). ``fuente = "placsp"`` o
-``"bulk_YYYYMM"`` según el conector (misma convención que pipeline.py).
+``id_externo = placsp:<órgano>:<ContractFolderID>`` (RFC
+``2026-10-24-rfc-identidad-placsp-organo-expediente``, fase B; ADR-038): el
+número de expediente lo teclea cada órgano y se repite entre órganos, así que
+la clave lo acota con el ``ID_PLATAFORMA`` del órgano (respaldo ``NIF`` y
+``DIR3``). El prefijo es de la familia, no del carril: el feed vivo y el ZIP
+escriben la **misma** fila, y ``fuente = "placsp"`` o ``"bulk_YYYYMM"`` dice
+cuál la refrescó por última vez (misma convención que pipeline.py). Una entrada
+sin órgano se descarta y se cuenta (``placsp_sin_identificador_de_organo``).
+Hasta la fase B la clave era el ``ContractFolderID`` sin prefijo y dos órganos
+con el mismo número se pisaban; ``v164_identidad_placsp_rekey`` llevó las filas
+escritas a la clave nueva.
 
 Ver docs/rfc/2026-06-30-rfc-retrofit-pipeline-placsp-connector.md.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion, Lote
@@ -44,12 +53,37 @@ class _PlacspParseCore:
     aviso TED sin pareja (``rescate``; ver
     ``scraper.documentos_plataforma.RescatePliegosPlacsp``). El conector los
     persiste tras la ingesta con ``completar_documentos``.
+
+    La clave acotada por órgano se pone aquí, antes de copiar el id a las
+    hijas (``scraper.codice_parser.acotar_por_organo``). ``prefijo`` y
+    ``esquemas`` cambian para agregadas (``placsp_agregadas``, ``ID_OC_PLAT``).
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        prefijo: str = SOURCE_ID,
+        esquemas: tuple[str, ...] | None = None,
+    ) -> None:
+        from scraper.codice_parser import ESQUEMAS_ORGANO_PLACSP
         from scraper.documentos_plataforma import RescatePliegosPlacsp
 
         self.rescate = RescatePliegosPlacsp()
+        self.prefijo = prefijo
+        self.esquemas = esquemas or ESQUEMAS_ORGANO_PLACSP
+        #: Descartes por falta de órgano y claves hechas con un esquema de
+        #: respaldo; el conector los expone en ``contadores_de_descarte``.
+        self.contadores: Counter[str] = Counter()
+
+    def contadores_de_descarte(self) -> dict[str, int]:
+        """``<prefijo>_sin_identificador_de_organo`` y ``<prefijo>_organo_por_respaldo_<esquema>``."""
+        return {
+            f"{self.prefijo}_sin_identificador_de_organo": self.contadores["sin_organo"],
+            **{
+                f"{self.prefijo}_organo_por_respaldo_{esquema.lower()}": self.contadores[esquema]
+                for esquema in self.esquemas[1:]
+            },
+        }
 
     def _rescatar_pliegos(self, entry_elem: Any) -> None:
         """Ofrece al rescate los pliegos de una entry descartada. Nunca lanza.
@@ -82,6 +116,7 @@ class _PlacspParseCore:
         directo) o por el clasificador ML (si el modelo no supera el umbral).
         """
         from scraper.codice_parser import (
+            acotar_por_organo,
             parse_adjudicaciones,
             parse_document_references,
             parse_entry,
@@ -102,6 +137,21 @@ class _PlacspParseCore:
             if lic is None:
                 self._rescatar_pliegos(entry_elem)
                 return None
+            # La clave va antes de parsear adjudicaciones y lotes, que heredan el id.
+            organo = acotar_por_organo(
+                lic, entry_elem, prefijo=self.prefijo, esquemas=self.esquemas
+            )
+            if organo is None:
+                self.contadores["sin_organo"] += 1
+                log.warning(
+                    "placsp_sin_identificador_de_organo",
+                    prefijo=self.prefijo,
+                    expediente=lic.id_externo,
+                    organo=lic.organo_contratacion,
+                )
+                return None
+            if organo.esquema != self.esquemas[0]:
+                self.contadores[organo.esquema] += 1
             lic.filter_version = current_filter_version()
             lic.inclusion_reason = inclusion_reason
             lic.analysis_universe = "technology_observed"
@@ -203,6 +253,10 @@ class PlacspAtomConnector:
         """Persiste los pliegos rescatados de entries descartadas (ver ``_PlacspParseCore``)."""
         self._core.rescate.persistir()
 
+    def contadores_de_descarte(self) -> dict[str, int]:
+        """Entradas sin órgano y claves por esquema de respaldo (ver ``_PlacspParseCore``)."""
+        return self._core.contadores_de_descarte()
+
     def new_cursor(self) -> dict[str, Any] | None:
         """Cursor con el timestamp más nuevo visto + etag/last_modified."""
         newest = self._meta.get("newest_updated") or self._last_seen_updated
@@ -291,6 +345,10 @@ class PlacspBulkConnector:
     def completar_documentos(self) -> None:
         """Persiste los pliegos rescatados de entries descartadas (ver ``_PlacspParseCore``)."""
         self._core.rescate.persistir()
+
+    def contadores_de_descarte(self) -> dict[str, int]:
+        """Entradas sin órgano y claves por esquema de respaldo (ver ``_PlacspParseCore``)."""
+        return self._core.contadores_de_descarte()
 
     def new_cursor(self) -> dict[str, Any] | None:
         """Bulk no avanza cursor — la parametrización es por mes."""

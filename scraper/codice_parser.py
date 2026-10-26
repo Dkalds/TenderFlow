@@ -35,6 +35,7 @@ from observability.logging import get_logger
 from scraper.puerta_tecnologica import MOTIVO_ADMITIDA, senal_tecnologica
 from shared.dates import to_iso_date, to_iso_datetime
 from shared.geo import es_nuts_de_pais, nuts_to_ccaa
+from shared.identidad_placsp import clave_placsp
 
 log = get_logger(__name__)
 
@@ -436,22 +437,35 @@ def _dir3_del_organo(entry: Any, cfs: str) -> str | None:
 ESQUEMAS_ORGANO_PLACSP: tuple[str, ...] = ("ID_PLATAFORMA", "NIF", "DIR3")
 
 
-def identificador_organo(
+#: Esquemas del órgano en la sindicación 1044 (plataformas agregadas): el
+#: órgano viene en ``ID_OC_PLAT`` (100 % de las entradas medidas el
+#: 2026-10-24), no en ``ID_PLATAFORMA`` (0 %); DIR3 solo en el 37 %.
+ESQUEMAS_ORGANO_AGREGADAS: tuple[str, ...] = ("ID_OC_PLAT", "DIR3")
+
+
+class OrganoDeEntry(NamedTuple):
+    """El identificador del órgano de una entrada y el esquema del que salió."""
+
+    valor: str
+    esquema: str
+
+
+def organo_de_entry(
     entry: Any,  # Any: elemento lxml, sin stubs
     cfs: str = "./cacext:ContractFolderStatus",
     *,
     esquemas: tuple[str, ...] = ESQUEMAS_ORGANO_PLACSP,
-) -> str | None:
-    """Identificador del órgano de contratación que acota el expediente, o ``None``.
+) -> OrganoDeEntry | None:
+    """Identificador del órgano de contratación que acota el expediente, con su esquema.
 
     Lee ``LocatedContractingParty/cac:Party/cac:PartyIdentification/cbc:ID`` con
     su ``schemeName`` y devuelve el primer esquema de ``esquemas`` presente. Los
     tres carriles de PLACSP (feed vivo, ZIP mensual, menores) leen el mismo nodo
     CODICE, así que la extracción es una sola; agregadas pasa sus propios
-    esquemas (``ID_OC_PLAT``, ``DIR3``).
+    esquemas (:data:`ESQUEMAS_ORGANO_AGREGADAS`).
 
-    Es el valor que va a ``licitaciones.organo_ref_fuente`` (v163) y el que
-    ``placsp_menores`` ya escribe en su clave.
+    El esquema se devuelve para contar los respaldos: un órgano que unas veces
+    trae ``ID_PLATAFORMA`` y otras no partiría su expediente en dos filas.
     """
     base = f"{cfs}/cacext:LocatedContractingParty/cac:Party/cac:PartyIdentification"
     por_esquema: dict[str, str] = {}
@@ -462,8 +476,76 @@ def identificador_organo(
             por_esquema[esquema] = valor
     for esquema in esquemas:
         if esquema in por_esquema:
-            return por_esquema[esquema]
+            return OrganoDeEntry(por_esquema[esquema], esquema)
     return None
+
+
+def identificador_organo(
+    entry: object,  # el elemento lxml; solo se reenvía a organo_de_entry/_text
+    cfs: str = "./cacext:ContractFolderStatus",
+    *,
+    esquemas: tuple[str, ...] = ESQUEMAS_ORGANO_PLACSP,
+) -> str | None:
+    """El valor de :func:`organo_de_entry`, o ``None``.
+
+    Es el valor que va a ``licitaciones.organo_ref_fuente`` (v163) y el que
+    acota el expediente en la clave (``placsp:<órgano>:<expediente>``).
+    """
+    organo = organo_de_entry(entry, cfs, esquemas=esquemas)
+    return organo.valor if organo is not None else None
+
+
+def acotar_por_organo(
+    lic: Licitacion,
+    entry: object,  # el elemento lxml; solo se reenvía a organo_de_entry/_text
+    *,
+    prefijo: str = "placsp",
+    esquemas: tuple[str, ...] = ESQUEMAS_ORGANO_PLACSP,
+) -> OrganoDeEntry | None:
+    """Da a ``lic`` la clave acotada por órgano (fase B del RFC de identidad PLACSP).
+
+    ``lic.id_externo`` llega del parser con el ``ContractFolderID`` (o su
+    respaldo: el id del ``summary`` y, si no, el ``<id>`` Atom) y sale como
+    ``<prefijo>:<órgano>:<expediente>`` (``shared.identidad_placsp.clave_placsp``).
+    ``lic.organo_ref_fuente`` queda con el órgano que entra en la clave, que con
+    los esquemas de agregadas no es el que el parser leyó por defecto.
+
+    Devuelve el órgano usado, o ``None`` si la entrada no trae ninguno de
+    ``esquemas``: **sin órgano no se escribe** (una clave sin órgano es justo la
+    que pisa), y el llamador descarta la entrada y la cuenta. Llamarla antes de
+    ``parse_adjudicaciones``/``parse_lotes``, que copian el id a las hijas.
+
+    Es la única puerta de todos los escritores de la familia: el conector
+    PLACSP (feed vivo y ZIP), agregadas, empresas vigiladas, el carril legacy
+    ``process_daily``, ``seed_negatives`` y ``reproceso_lotes`` (este último
+    con :func:`clave_de_entry`, sin ``Licitacion``).
+    """
+    organo = organo_de_entry(entry, esquemas=esquemas)
+    if organo is None or not lic.id_externo:
+        return None
+    lic.id_externo = clave_placsp(prefijo, organo.valor, lic.id_externo)
+    lic.organo_ref_fuente = organo.valor
+    return organo
+
+
+def clave_de_entry(
+    entry: object,  # el elemento lxml; solo se reenvía a organo_de_entry/_text
+    *,
+    prefijo: str = "placsp",
+    esquemas: tuple[str, ...] = ESQUEMAS_ORGANO_PLACSP,
+) -> str | None:
+    """La clave acotada de una entrada sin parsearla entera, o ``None``.
+
+    Para quien solo necesita reconocer el expediente (``reproceso_lotes``
+    recorre ZIPs enteros buscando unos cientos). Usa el ``ContractFolderID``;
+    una entrada sin él no se reconoce aquí (el parser completo cae a otros
+    respaldos que no merecen el coste en este camino).
+    """
+    expediente = _text(entry, "./cacext:ContractFolderStatus/cbc:ContractFolderID")
+    organo = organo_de_entry(entry, esquemas=esquemas)
+    if not expediente or organo is None:
+        return None
+    return clave_placsp(prefijo, organo.valor, expediente)
 
 
 def _tender_deadline(root: Any, tendering_process_prefix: str) -> str | None:
