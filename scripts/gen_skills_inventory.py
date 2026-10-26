@@ -40,6 +40,15 @@ def _description(name: str) -> str:
     if not match:
         return "—"
     desc = match.group(1).strip()
+    if desc in (">", "|", ">-", "|-"):
+        # Escalar plegado de YAML (`description: >`): el texto son las líneas
+        # indentadas que siguen, unidas por espacios.
+        continuacion = []
+        for line in text[match.end() :].splitlines()[1:]:
+            if not line.startswith(" "):
+                break
+            continuacion.append(line.strip())
+        desc = " ".join(continuacion)
     if len(desc) > 140:
         # Cortar en el último espacio dentro del límite: un corte a lo bruto
         # parte palabras a la mitad, que codespell considera errores.

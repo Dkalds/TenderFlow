@@ -21,6 +21,18 @@ muestra datos reales desde el primer commit: el producto llegó a acumular 154
 endpoints y 13 espacios de consola en doce días, y varias de esas superficies
 mostraban datos fabricados o placeholder.
 
+La misma pregunta vale para cualquier cambio, no solo para superficies. El
+skill `ponytail` (instalado desde `skills-lock.json`, se usa en nivel lite)
+fija la escalera que se recorre antes de escribir: ¿hace falta?, ¿ya existe
+en el repo?, ¿lo da la biblioteca estándar o una dependencia instalada?,
+¿cabe en una línea legible?; y pide nombrar en una línea lo que se dejó
+fuera y lo que no se comprobó. Es un criterio sobre el tamaño del cambio, no
+una licencia para recortar §3 y §4: el typing strict, los DTOs tipados, el
+test que cubre el caso de uso y los docs generados forman parte del «cambio
+completo», no del adorno. Un atajo deliberado con límite conocido se marca en
+el código como `shortcut: <límite>, <cuándo subirlo>` en vez de `TODO`, para
+que `git grep 'shortcut:'` sea el libro de deuda.
+
 Para la API esa comprobación deja rastro: `scripts/check_api_surface.py` falla
 ante una operación que no esté en la línea base
 (`api/superficie_congelada.txt`, que solo encoge) ni en su lista `NUEVAS`, donde
@@ -282,8 +294,11 @@ se edita a mano.
 Los skills instalados son genéricos y de terceros: donde choquen con este
 archivo, manda este archivo. Choques ya vistos: markers manuales de categoría,
 SQLite o una carpeta por tipo de test (§3.4, §4); handlers `async` sobre el
-`db/` síncrono; cambios de esquema fuera de Alembic (§3.3), e instalar skills
-en global (`-g`) o sin pasar por `skills-lock.json` y los dos árboles.
+`db/` síncrono; cambios de esquema fuera de Alembic (§3.3); instalar skills
+en global (`-g`) o sin pasar por `skills-lock.json` y los dos árboles; y,
+con `ponytail`, tratar el typing strict, los DTOs, el test del caso de uso o
+los docs generados como «boilerplate que nadie pidió», o dar por hecho un
+cambio con un self-check de asserts en lugar de los controles de §4.
 
 **Asimetría de enforcement entre clientes**: solo `.claude/settings.json`
 declara un `permissions.allow` (allow-list de comandos Bash auto-aprobados).

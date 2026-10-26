@@ -7,7 +7,7 @@ Derivado de [`skills-lock.json`](../skills-lock.json) y el frontmatter de cada
 `python scripts/gen_skills_inventory.py` tras instalar/actualizar un skill.
 Ver AGENTS.md §7 para qué significa `trust`.
 
-Total: 33 skills.
+Total: 34 skills.
 
 | Skill | Trust | Source | Descripción |
 | --- | --- | --- | --- |
@@ -25,6 +25,7 @@ Total: 33 skills.
 | `minimalist-ui` | community | Leonxlnx/taste-skill | Clean editorial-style interfaces. Warm monochrome palette, typographic contrast, flat bento grids, muted pastels. No gradients, no… |
 | `pandas-pro` | community | jeffallan/claude-skills | Performs pandas DataFrame operations for data analysis, manipulation, and transformation. Use when working with pandas DataFrames, data… |
 | `pick-ui-library` | community | emilkowalski/skill | Pick the right library for a given frontend task from a curated, opinionated list — numbers, OTP inputs, charts, command menus,… |
+| `ponytail` | community | DietrichGebert/ponytail | Lazy senior dev mode: the smallest change that fully solves the task, and a reply a busy human understands in one read. Use on any… |
 | `pydantic` | community | bobmatnyc/claude-mpm-skills | Python data validation using type hints and runtime type checking with Pydantic v2's Rust-powered core for high-performance validation… |
 | `python-patterns` | community | affaan-m/everything-claude-code | Pythonic idioms, PEP 8 standards, type hints, and best practices for building robust, efficient, and maintainable Python applications. |
 | `python-testing-patterns` | community | wshobson/agents | Implement comprehensive testing strategies with pytest, fixtures, mocking, and test-driven development. Use when writing Python tests,… |

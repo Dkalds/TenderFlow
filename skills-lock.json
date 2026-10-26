@@ -143,6 +143,13 @@
       "verifiedHash": "6fcfd2b85c02e12d3c23455ad3e436fe96d1dd3f3337d228f450b4a894eb06d6",
       "trust": "community"
     },
+    "ponytail": {
+      "source": "DietrichGebert/ponytail",
+      "sourceType": "github",
+      "skillPath": "skills/ponytail/SKILL.md",
+      "trust": "community",
+      "verifiedHash": "2b41d7d1304e88ad8e237a3420cf5790e10e81a3053a8c49350b49d58b4adab2"
+    },
     "pydantic": {
       "source": "bobmatnyc/claude-mpm-skills",
       "sourceType": "autoskills-registry",
