@@ -14,6 +14,7 @@ from typing import Any
 from db.repositories import dedupe
 from db.repositories.adjudicaciones import AdjudicacionRepository
 from db.repositories.condiciones_oficiales import CondicionesOficialesRepository
+from db.repositories.identidad import resolver_id_licitacion
 from db.repositories.licitaciones import lotes_de
 from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
 from services.licitaciones import get_licitacion_detail
@@ -33,6 +34,12 @@ def expediente_completo(id_externo: str) -> dict[str, Any] | None:
     oficiales; listas vacías si el anuncio no las publicó) y ``ficha_pliego``
     (la ficha extraída de los pliegos, o ``None`` si aún no hay).
     """
+    # Un id anterior a una re-key (`licitaciones_id_anterior`, v163) resuelve
+    # a su fila vigente: el dict devuelto lleva el `id_externo` de hoy.
+    resuelto = resolver_id_licitacion(id_externo)
+    if resuelto is None:
+        return None
+    id_externo = resuelto.id_externo
     detalle = get_licitacion_detail(id_externo)
     if detalle is None:
         return None

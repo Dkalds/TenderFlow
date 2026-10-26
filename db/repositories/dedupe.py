@@ -55,6 +55,7 @@ from db.repositories.base import rows_to_dicts
 # detector volvería a proponer canónicas que la superficie no publica.
 from db.repositories.publico import _publicable_sql
 from db.sql_fragments import exclude_duplicados_presentacion_sql, organo_normalizado_sql
+from shared.identidad_placsp import expediente_natural_sql
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -75,20 +76,14 @@ _COLUMNAS = (
 )
 
 #: Expediente natural: el ``id_externo`` sin el namespace de fuente (ADR-009).
-#: Gemelo SQL de ``services.dedupe.natural_expediente`` — corta por el PRIMER
-#: ``':'`` y devuelve el id entero cuando no hay separador, que es el caso de
-#: PLACSP (sus ``id_externo`` no llevan prefijo); luego quita el UUID de ficha
-#: con que PSCP acota su código (``pscp:{uuid}:{codi_expedient}``). Si las dos
-#: definiciones divergieran, el prefiltro de este módulo escondería pares que el
-#: matching de Python sí considera, y el dedupe dejaría de ver duplicados sin
-#: decir nada.
-_EXPEDIENTE_NATURAL_SQL = (
-    "regexp_replace("
-    "CASE WHEN position(':' in l.id_externo) > 0 "
-    "THEN substr(l.id_externo, position(':' in l.id_externo) + 1) "
-    "ELSE l.id_externo END, "
-    "'^[0-9a-f-]{36}:', '')"
-)
+#: Gemelo SQL de ``services.dedupe.natural_expediente``; los dos salen de
+#: ``shared/identidad_placsp.py`` para que no puedan divergir: si lo hicieran,
+#: el prefiltro de este módulo escondería pares que el matching de Python sí
+#: considera, y el dedupe dejaría de ver duplicados sin decir nada. Entiende
+#: la clave vieja de PLACSP (sin prefijo: el id entero), la nueva
+#: (``placsp:<órgano>:<expediente>``: lo que sigue al segundo ``:``), el UUID de
+#: ficha con que PSCP acota su código y el prefijo del resto de fuentes.
+_EXPEDIENTE_NATURAL_SQL = expediente_natural_sql("l.id_externo")
 
 
 def _deshacer_escape(expr: str, escape: str, decodificado: str) -> str:

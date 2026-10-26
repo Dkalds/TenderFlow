@@ -25,6 +25,7 @@ from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
     _adj_repo,
     _lic_repo,
+    resolver_id_externo,
 )
 from api.routes.licitaciones.modelos import (
     AdjudicatarioOut,
@@ -95,12 +96,13 @@ router_detalle = APIRouter(tags=["licitaciones"])
     },
 )
 async def get_licitacion(
-    id_externo: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> Any:
     """Devuelve todos los campos de una licitación por su ID externo.
 
-    Soporta caching via ETag / If-None-Match.
+    Soporta caching via ETag / If-None-Match. Un id anterior a una re-key se
+    resuelve por `licitaciones_id_anterior` (ver `resolver_id_externo`).
     """
     data = await run_db(_lic_repo.get_by_id, id_externo)
     if data is None:
@@ -203,9 +205,9 @@ class SimilaresResult(BaseModel):
     summary="Predecesor y expedientes similares",
 )
 async def get_similares(
-    id_externo: str,
-    limit: int = Query(10, ge=1, le=50, description="Máximo de similares"),
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
+    limit: int = Query(10, ge=1, le=50, description="Máximo de similares"),
 ) -> SimilaresResult:
     """¿Este contrato ya se licitó antes? ¿Quién lo tiene hoy?
 
@@ -249,8 +251,8 @@ async def get_similares(
 # los rivales a la organización que mira y declara su cuota aparte.
 @cache_response(ttl=300)
 async def get_competencia_esperada(
-    id_externo: str,
     _ctx: dict[str, Any] = Depends(require_organization()),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> CompetenciaEsperada:
     """Lo que se viene a preguntar al abrir el expediente, sobre su propio segmento.
 

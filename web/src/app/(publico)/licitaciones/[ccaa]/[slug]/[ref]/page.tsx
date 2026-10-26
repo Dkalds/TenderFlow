@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { obtenerLicitacion, type LicitacionPublica } from "@/lib/publico-api";
 import { TWITTER_COMPARTIDO } from "@/lib/site";
 import { migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
@@ -112,6 +112,14 @@ export default async function FichaLicitacion({ params }: { params: Promise<Para
   // y en una URL nunca generada devuelve un 500 —que Googlebot reintenta— en vez
   // de un 404 que la borra del índice. Ver `lib/publico-api.ts`.
   if (!lic) notFound();
+
+  // La API resuelve una `ref` anterior a una re-key del `id_externo` (tabla
+  // `licitaciones_id_anterior`) y devuelve la ficha con su `ref` vigente. Si no
+  // coinciden, la URL pedida es la vieja: 308 a la canónica, para que Google y
+  // los enlaces copiados sigan al expediente en vez de indexar dos URLs.
+  if (lic.ref !== ref) {
+    permanentRedirect(rutaLicitacion({ ccaa: lic.ccaa, titulo: lic.titulo, ref: lic.ref }));
+  }
 
   const migas = migasDe(lic);
 

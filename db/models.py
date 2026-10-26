@@ -100,6 +100,11 @@ licitaciones = Table(
     Column("duracion_valor_num", Numeric),
     Column("fuente", String, nullable=False, default="placsp"),
     Column("fecha_extraccion", String, nullable=False),
+    # v163_identidad_placsp_fase_a: identificador del órgano en la plataforma de
+    # origen (`ID_PLATAFORMA`…), tal como entra en la clave acotada por órgano
+    # (`shared/identidad_placsp.py`). NULL en lo anterior a v163 y en las
+    # fuentes que no lo publican.
+    Column("organo_ref_fuente", Text),
 )
 
 # ---------------------------------------------------------------------------

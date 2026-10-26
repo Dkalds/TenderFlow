@@ -332,6 +332,7 @@ opcional **no** es incompatible: un cliente que los ignora sigue funcionando.
 | `POST /notifications/read` | 2027-02-01 | `POST /notifications/alerts/read` |
 | `GET /licitaciones/stream` | 2027-02-01 | `GET /licitaciones/cursor` |
 | Campos `items`, `unread_count` y `hoy` de `GET /notifications` (la operación sigue) | 2027-02-01 | `GET /notifications/alerts`, `GET /analytics/resumen/hoy` |
+| Un `id_externo` anterior a una re-key en `GET /licitaciones/{id_externo}`, `GET /licitaciones/{id_externo}/documentos`, `GET /licitaciones/{id_externo}/similares` y `GET /licitaciones/{id_externo}/competencia-esperada` (resuelto por `licitaciones_id_anterior`; la operación sigue) | 2027-04-30 | El `id_externo` vigente, que va en `Link rel="successor-version"` ([RFC identidad PLACSP](rfc/2026-10-24-rfc-identidad-placsp-organo-expediente.md)) |
 
 Las cuatro últimas filas las propone
 [2026-10-23-rfc-retirada-campana-antigua-y-stream](rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md).

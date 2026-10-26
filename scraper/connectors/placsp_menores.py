@@ -125,29 +125,19 @@ _CPVS_XPATH = (
     "./cacext:ContractFolderStatus/cac:ProcurementProject"
     "/cac:RequiredCommodityClassification/cbc:ItemClassificationCode/text()"
 )
-_ORGANO_IDS_XPATH = (
-    "./cacext:ContractFolderStatus/cacext:LocatedContractingParty"
-    "/cac:Party/cac:PartyIdentification/cbc:ID"
-)
-#: Orden de preferencia del identificador del órgano en la clave (ver el
-#: docstring del módulo): el de la Plataforma, el NIF y el DIR3.
-_ESQUEMAS_ORGANO = ("ID_PLATAFORMA", "NIF", "DIR3")
 
 
 def identificador_organo(entry: Any) -> str | None:  # Any: elemento lxml, sin stubs
-    """Identificador del órgano de contratación que acota el expediente, o ``None``."""
-    from scraper.codice_parser import NS
+    """Identificador del órgano que acota el expediente, o ``None``.
 
-    por_esquema: dict[str, str] = {}
-    for nodo in entry.xpath(_ORGANO_IDS_XPATH, namespaces=NS):
-        valor = (nodo.text or "").strip()
-        esquema = (nodo.get("schemeName") or "").strip().upper()
-        if valor and esquema not in por_esquema:
-            por_esquema[esquema] = valor
-    for esquema in _ESQUEMAS_ORGANO:
-        if esquema in por_esquema:
-            return por_esquema[esquema]
-    return None
+    La extracción vive en ``scraper.codice_parser.identificador_organo`` desde
+    la fase A del RFC de identidad PLACSP: el feed principal y el bulk leen el
+    mismo nodo y guardan el mismo valor en ``licitaciones.organo_ref_fuente``.
+    Aquí queda el nombre que usan este conector y sus tests.
+    """
+    from scraper.codice_parser import identificador_organo as _identificador_codice
+
+    return _identificador_codice(entry)
 
 
 def id_externo_menor(organo: str, expediente: str) -> str:

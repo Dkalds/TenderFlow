@@ -426,6 +426,46 @@ def _dir3_del_organo(entry: Any, cfs: str) -> str | None:
     return con_esquema or por_forma
 
 
+#: Orden de preferencia del identificador del órgano que acota el expediente
+#: en la clave (``shared/identidad_placsp.py``): el de la Plataforma, el NIF y
+#: el DIR3. Medido el 2026-10-24 sobre el feed vivo: ``ID_PLATAFORMA`` viene en
+#: el 100 % de las entradas y es 1:1 con el órgano; DIR3 falta en el 25 % y el
+#: NIF lo comparten 123 órganos de la muestra. Los respaldos existen por
+#: robustez, no por uso: un órgano que unas veces trae ``ID_PLATAFORMA`` y otras
+#: no partiría su expediente en dos filas, así que se cuenta por esquema usado.
+ESQUEMAS_ORGANO_PLACSP: tuple[str, ...] = ("ID_PLATAFORMA", "NIF", "DIR3")
+
+
+def identificador_organo(
+    entry: Any,  # Any: elemento lxml, sin stubs
+    cfs: str = "./cacext:ContractFolderStatus",
+    *,
+    esquemas: tuple[str, ...] = ESQUEMAS_ORGANO_PLACSP,
+) -> str | None:
+    """Identificador del órgano de contratación que acota el expediente, o ``None``.
+
+    Lee ``LocatedContractingParty/cac:Party/cac:PartyIdentification/cbc:ID`` con
+    su ``schemeName`` y devuelve el primer esquema de ``esquemas`` presente. Los
+    tres carriles de PLACSP (feed vivo, ZIP mensual, menores) leen el mismo nodo
+    CODICE, así que la extracción es una sola; agregadas pasa sus propios
+    esquemas (``ID_OC_PLAT``, ``DIR3``).
+
+    Es el valor que va a ``licitaciones.organo_ref_fuente`` (v163) y el que
+    ``placsp_menores`` ya escribe en su clave.
+    """
+    base = f"{cfs}/cacext:LocatedContractingParty/cac:Party/cac:PartyIdentification"
+    por_esquema: dict[str, str] = {}
+    for nodo in entry.xpath(f"{base}/cbc:ID", namespaces=NS):
+        valor = (nodo.text or "").strip()
+        esquema = (nodo.get("schemeName") or "").strip().upper()
+        if valor and esquema not in por_esquema:
+            por_esquema[esquema] = valor
+    for esquema in esquemas:
+        if esquema in por_esquema:
+            return por_esquema[esquema]
+    return None
+
+
 def _tender_deadline(root: Any, tendering_process_prefix: str) -> str | None:
     """Extrae el fin del plazo de presentación de ofertas.
 
@@ -1073,6 +1113,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
         f"{cfs}/cacext:LocatedContractingParty/cac:Party/cac:PartyName/cbc:Name",
     )
     organo_dir3 = _dir3_del_organo(entry, cfs)
+    organo_ref_fuente = identificador_organo(entry, cfs)
 
     project_xp = f"{cfs}/cac:ProcurementProject"
     nombre_proyecto = _text(entry, f"{project_xp}/cbc:Name")
@@ -1147,6 +1188,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
         descripcion=summary,
         organo_contratacion=organo_codice or s.get("organo_contratacion"),
         organo_dir3=organo_dir3,
+        organo_ref_fuente=organo_ref_fuente,
         importe=importe if importe is not None else s.get("importe"),
         importe_base_sin_iva=importes.base_sin_iva,
         importe_con_iva=importes.con_iva,
@@ -1236,6 +1278,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
         f"{cfs}/cacext:LocatedContractingParty/cac:Party/cac:PartyName/cbc:Name",
     )
     organo_dir3 = _dir3_del_organo(entry, cfs)
+    organo_ref_fuente = identificador_organo(entry, cfs)
 
     project_xp = f"{cfs}/cac:ProcurementProject"
     nombre_proyecto = _text(entry, f"{project_xp}/cbc:Name")
@@ -1285,6 +1328,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
         descripcion=summary,
         organo_contratacion=organo_codice or s.get("organo_contratacion"),
         organo_dir3=organo_dir3,
+        organo_ref_fuente=organo_ref_fuente,
         importe=importe if importe is not None else s.get("importe"),
         importe_base_sin_iva=importes.base_sin_iva,
         importe_con_iva=importes.con_iva,

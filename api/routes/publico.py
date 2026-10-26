@@ -38,9 +38,11 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from api.concurrency import run_db
+from db.repositories.identidad import resolver_id_licitacion
 from db.repositories.publico import FilaLicitacionPublica, FilaLotePublico, PublicoRepository
 from observability.logging import get_logger
 from shared.dto import LicitacionPublica, LotePublico, Pagina, PgDateTime
+from shared.identidad_placsp import expediente_natural
 from shared.public_ref import codificar_ref, decodificar_ref
 
 log = get_logger(__name__)
@@ -154,7 +156,7 @@ def _a_dto(
     id_externo = fila["id_externo"]
     return LicitacionPublica(
         ref=codificar_ref(id_externo),
-        expediente=id_externo,
+        expediente=expediente_natural(id_externo),
         titulo=fila["titulo"],
         descripcion=fila["descripcion"],
         organo_contratacion=fila["organo_contratacion"],
@@ -262,9 +264,16 @@ async def ficha_publica(ref: str, response: Response) -> LicitacionPublica:
     propósito: para el visitante son el mismo caso, y distinguirlos filtraría
     qué expedientes existen en la base pero se ocultan.
     """
-    id_externo = decodificar_ref(ref)
-    if id_externo is None:
+    id_pedido = decodificar_ref(ref)
+    if id_pedido is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrada.")
+
+    # Una `ref` anterior a una re-key (un enlace indexado o copiado en un
+    # correo) sigue resolviendo: la ficha sale con su `ref` vigente y la página
+    # compara y redirige con 308. La redirección es indefinida: la tabla de
+    # alias es pequeña y un enlace en Google no caduca.
+    resuelto = await run_db(resolver_id_licitacion, id_pedido)
+    id_externo = resuelto.id_externo if resuelto is not None else id_pedido
 
     fila = await run_db(_repo.ficha, id_externo)
     if fila is None:

@@ -109,6 +109,7 @@ def test_la_clave_es_la_misma_que_escribe_el_conector(tmp_db) -> None:
     assert parsed is not None
 
     with connect() as c:
+        _como_en_v153(c)
         _licitacion(c, "pscp:Obert", url=_ficha(_CLINIC.upper()))
         for sentencia in _cargar().sentencias_upgrade():
             c.execute(sentencia)
@@ -119,6 +120,34 @@ def test_la_clave_es_la_misma_que_escribe_el_conector(tmp_db) -> None:
 # ---------------------------------------------------------------------------
 # Con base
 # ---------------------------------------------------------------------------
+
+
+#: FK a ``licitaciones`` nacidas **después** de v153, con la revisión que las
+#: creó. En producción v153 ya había corrido cuando aparecieron, así que su
+#: guarda nunca las vio; estos tests la reproducen sobre el esquema completo
+#: (``alembic upgrade head``) y tienen que quitarlas antes, como estaban cuando
+#: v153 se aplicó (v153 es append-only y no se edita). Una re-key futura (la
+#: fase B del RFC de identidad PLACSP) las lleva en su propia lista; esta solo
+#: dice qué no podía conocer v153.
+_FK_POSTERIORES_A_V153: dict[str, str] = {
+    "licitaciones_id_anterior.id_externo": "v163_identidad_placsp_fase_a",
+}
+
+
+def _como_en_v153(c: Any) -> None:
+    """Quita del esquema desechable las FK que v153 no podía conocer."""
+    for referencia in _FK_POSTERIORES_A_V153:
+        tabla, columna = referencia.split(".")
+        nombres = c.execute(
+            "SELECT k.conname FROM pg_constraint k "
+            "JOIN pg_class r ON r.oid = k.conrelid "
+            "JOIN pg_attribute a ON a.attrelid = k.conrelid AND a.attnum = ANY (k.conkey) "
+            "WHERE k.contype = 'f' AND k.confrelid = 'licitaciones'::regclass "
+            "AND r.relname = %s AND a.attname = %s",
+            (tabla, columna),
+        ).fetchall()
+        for (nombre,) in nombres:
+            c.execute(f'ALTER TABLE "{tabla}" DROP CONSTRAINT "{nombre}"')
 
 
 def _licitacion(c: Any, id_externo: str, *, url: str | None, fuente: str = "pscp") -> None:
@@ -139,6 +168,7 @@ def _sembrar(c: Any) -> int:
     con ellos Postgres no deja desactivarlo (en prod la migración abre una
     transacción limpia).
     """
+    _como_en_v153(c)
     _licitacion(c, "pscp:Obert", url=_ficha(_CLINIC))
     _licitacion(c, "pscp:2026/18", url=_ficha(_UB, "300000001"))
     _licitacion(c, f"pscp:{_UB}:YA-NUEVA", url=_ficha(_UB, "300000002"))
@@ -319,9 +349,13 @@ def test_si_el_conector_nuevo_ya_escribio_la_clave_aborta_sin_tocar_nada(tmp_db)
 
 
 def test_cubre_todas_las_fk_a_licitaciones(tmp_db) -> None:
-    """La guarda de la migración, comprobada aparte: si una FK nueva no
-    estuviera en `_REFERENCIAS`, la migración abortaría en prod."""
+    """La guarda de la migración, comprobada aparte: toda FK a `licitaciones`
+    que existía al correr v153 está en `_REFERENCIAS`; las posteriores están
+    nombradas en `_FK_POSTERIORES_A_V153` con la revisión que las creó (que
+    tiene que existir), y ninguna otra."""
     cubiertas = {f"{t}.{c}" for t, c, _ in _cargar()._REFERENCIAS}
+    for revision in _FK_POSTERIORES_A_V153.values():
+        assert (_RUTA.parent / f"{revision}.py").is_file(), revision
     with connect() as c:
         fks = {
             f"{tabla}.{columna}"
@@ -332,4 +366,4 @@ def test_cubre_todas_las_fk_a_licitaciones(tmp_db) -> None:
                 "WHERE k.contype = 'f' AND k.confrelid = 'licitaciones'::regclass"
             ).fetchall()
         }
-    assert fks <= cubiertas, fks - cubiertas
+    assert fks - cubiertas == set(_FK_POSTERIORES_A_V153), fks - cubiertas

@@ -155,7 +155,9 @@ export function DetalleFila({
         />
       </td>
       <td className="truncate px-1 font-mono text-tf-micro text-muted-foreground">
-        {row.id_externo.replace("PLACSP-", "")}
+        {/* El número de expediente, no la clave: `expediente` es el id sin
+            prefijo de fuente ni órgano (fase A del RFC de identidad PLACSP). */}
+        {row.expediente ?? row.id_externo}
       </td>
       {/* Título y órgano: el texto entero va en el DOM (lo recorta el CSS, así
           que el lector lo lee completo) y la `Pista` lo enseña al puntero. Un
