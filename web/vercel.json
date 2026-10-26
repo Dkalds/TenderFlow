@@ -3,5 +3,25 @@
   "framework": "nextjs",
   "buildCommand": "npm run build",
   "installCommand": "npm ci",
-  "regions": ["fra1"]
+  "regions": ["fra1"],
+  "routes": [
+    {
+      "src": "^/api/(.*)$",
+      "transforms": [
+        {
+          "type": "request.headers",
+          "op": "delete",
+          "target": { "key": "x-tf-origin-secret" }
+        },
+        {
+          "type": "request.headers",
+          "op": "set",
+          "target": { "key": "x-tf-origin-secret" },
+          "args": "$API_ORIGIN_SECRET",
+          "env": ["API_ORIGIN_SECRET"]
+        }
+      ],
+      "continue": true
+    }
+  ]
 }

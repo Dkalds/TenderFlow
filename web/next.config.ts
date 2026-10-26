@@ -89,6 +89,12 @@ const nextConfig: NextConfig = {
   /**
    * Proxy de `/api/*` al backend FastAPI.
    *
+   * Este rewrite no puede añadir cabeceras a la petición. La del secreto de
+   * origen (`x-tf-origin-secret`, que le dice a la API que la IP de `x-real-ip`
+   * es la del visitante; RFC 2026-10-24, opción B) la pone una ruta de
+   * `web/vercel.json` con `continue: true` antes de que llegue aquí, con el
+   * valor de la variable de servidor `API_ORIGIN_SECRET`.
+   *
    * Los rewrites se hornean en el build, así que el valor que tenga
    * `API_BASE_URL` en ese momento es el que queda grabado en el despliegue.
    * Frontend (Vercel) y API (Render) están en orígenes distintos, de modo que

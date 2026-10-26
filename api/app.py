@@ -151,6 +151,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
                 backend=str(settings.EMAIL_BACKEND),
                 missing=faltan,
             )
+        # Lo mismo con el secreto de origen (RFC 2026-10-24, opción B): sin él
+        # la API arranca y las cuotas por IP cuentan por nodo del proxy de
+        # Render, no por persona. Solo el nombre de la variable, nunca un valor.
+        if not settings.API_ORIGIN_SECRET.get_secret_value():
+            log.warning(
+                "api_origin_secret_not_configured",
+                missing="API_ORIGIN_SECRET",
+                hint="docs/runbooks/ip-del-cliente.md",
+            )
 
     # Exponer el set de pending tasks en app.state para que middlewares puedan registrarlas
     app.state.pending_background_tasks = set()

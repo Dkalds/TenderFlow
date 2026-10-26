@@ -46,12 +46,15 @@ Lo que ve el cliente no cambia, salvo en lo que era artefacto de esos relés:
 from __future__ import annotations
 
 import hashlib
+import hmac
+import ipaddress
 import re
 import threading
 import time
 import uuid
 
 from anyio import CapacityLimiter, to_thread
+from pydantic import SecretStr
 from starlette import status
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.requests import HTTPConnection
@@ -144,21 +147,100 @@ class SecurityHeadersMiddleware:
 # ───────────────────────────── Rate limiting ────────────────────────────────
 
 
+#: Cabecera con el secreto compartido que Vercel añade al reenviar ``/api/*``
+#: (``web/vercel.json``) y que manda el prefetch SSR de Next
+#: (``web/src/lib/server-prefetch.ts``). RFC 2026-10-24, opción B.
+CABECERA_SECRETO_ORIGEN = "x-tf-origin-secret"  # pragma: allowlist secret -- nombre de cabecera
+
+
+def _secretos_de_origen(settings: object) -> tuple[bytes, ...]:
+    """Valores aceptados de :data:`CABECERA_SECRETO_ORIGEN`: el vigente y el anterior.
+
+    Lee los ``SecretStr`` de settings sin asumir que existen: los tests que
+    sustituyen ``config.settings`` por un doble no los declaran, y entonces no
+    hay verificación (el comportamiento de antes de la opción B).
+    """
+    secretos: list[bytes] = []
+    # Nombres literales a propósito: así los vigila el ratchet de
+    # tests/test_unit_settings_getattr_guard.py si alguien renombra el campo.
+    for campo in (
+        getattr(settings, "API_ORIGIN_SECRET", None),
+        getattr(settings, "API_ORIGIN_SECRET_PREVIOUS", None),
+    ):
+        if isinstance(campo, SecretStr):
+            valor = campo.get_secret_value()
+            if valor:
+                secretos.append(valor.encode())
+    return tuple(secretos)
+
+
+def _origen_acreditado(request: HTTPConnection, secretos: tuple[bytes, ...]) -> bool:
+    """True si la petición trae un secreto de origen aceptado.
+
+    Compara en tiempo constante contra **todos** los valores aceptados, sin
+    cortar al primer acierto: cuánto tarda no dice cuál casó ni cuánto se
+    pareció el valor enviado.
+    """
+    if not secretos:
+        return False
+    recibido = request.headers.get(CABECERA_SECRETO_ORIGEN)
+    if not isinstance(recibido, str) or not recibido:
+        return False
+    enviado = recibido.encode()
+    acierto = False
+    for secreto in secretos:
+        acierto |= hmac.compare_digest(enviado, secreto)
+    return acierto
+
+
+def _ip_normalizada(valor: str | None) -> str | None:
+    """La IP de ``valor`` (primer elemento si es una lista), o None si no es una IP."""
+    if not valor:
+        return None
+    try:
+        return str(ipaddress.ip_address(valor.split(",")[0].strip()))
+    except ValueError:
+        return None
+
+
+def _ip_del_visitante(request: HTTPConnection) -> str | None:
+    """IP del visitante en una petición que ya pasó la verificación del secreto.
+
+    Vercel sobrescribe ``x-real-ip`` y ``x-forwarded-for`` con la IP pública
+    del visitante antes de reenviar a un origen externo; el prefetch SSR copia
+    el ``x-real-ip`` que recibió. Por detrás, Cloudflare y Render **añaden**
+    saltos a ``X-Forwarded-For`` sin tocar el primero, así que ``x-real-ip`` es
+    la fuente y el primer salto de ``X-Forwarded-For`` el respaldo.
+    """
+    return _ip_normalizada(request.headers.get("x-real-ip")) or _ip_normalizada(
+        request.headers.get("x-forwarded-for")
+    )
+
+
 def _trusted_client_ip(request: HTTPConnection) -> str:
     """Extrae la IP real del cliente validando proxies de confianza.
 
-    Solo honra ``X-Forwarded-For`` si la conexión TCP directa viene de una IP
-    en ``FORWARDED_ALLOW_IPS`` (configurado en settings). Esto evita que un
-    cliente externo inyecte una IP falsa en la cabecera y eluda el rate-limit
-    basado en IP.
+    Primero, la opción B del RFC 2026-10-24: si la petición trae en
+    :data:`CABECERA_SECRETO_ORIGEN` uno de los secretos aceptados
+    (``API_ORIGIN_SECRET`` o ``API_ORIGIN_SECRET_PREVIOUS``), pasó por Vercel y
+    la IP es la del visitante (:func:`_ip_del_visitante`). Sin secreto, con uno
+    que no casa o sin una IP válida, se sigue como antes.
+
+    Después, solo honra ``X-Forwarded-For`` si la conexión TCP directa viene de
+    una IP en ``FORWARDED_ALLOW_IPS`` (configurado en settings). Esto evita que
+    un cliente externo inyecte una IP falsa en la cabecera y eluda el
+    rate-limit basado en IP.
 
     Returns:
         IP del cliente (string). Nunca lanza — devuelve "unknown" ante errores.
     """
     try:
-        import ipaddress
-
         from config import settings
+
+        if _origen_acreditado(request, _secretos_de_origen(settings)):
+            visitante = _ip_del_visitante(request)
+            if visitante:
+                return visitante
 
         allowed_proxies: set[str] = {
             ip.strip()

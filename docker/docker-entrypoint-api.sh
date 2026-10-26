@@ -9,7 +9,8 @@ export WEB_CONCURRENCY=0
 # uvicorn reescribe la IP del cliente con el X-Forwarded-For de cualquier peer,
 # que el propio cliente controla. Un despliegue tras proxy debe pasar el rango
 # real del proxy por entorno; olvidarlo degrada a "no confío en nadie", no a
-# "confío en todos".
+# "confío en todos". En Render, tras Vercel, esta variable no da la IP del
+# visitante: la da API_ORIGIN_SECRET (RFC 2026-10-24, opción B; ver render.yaml).
 # --limit-concurrency: por encima de ese número de conexiones abiertas (las
 # keep-alive ociosas cuentan) o de tareas, uvicorn responde 503 a todo lo demás.
 # Con 20 bastaba una decena de pestañas del dashboard —cada una mantiene su SSE
