@@ -70,7 +70,9 @@ def test_render_incluye_datos_y_escapa_html() -> None:
     )
     assert "Implantación de SAP S/4HANA <corporativo>" in texto
     assert "Ayuntamiento de Prueba" in texto
-    assert "250.000 €" in texto
+    # Sin `importe_tipo` la base no se sabe (ADR-032): no se enseña la cifra.
+    assert "base desconocida" in texto
+    assert "250.000 €" not in texto
     assert "2026-10-15" in texto
     assert "https://app.example/detalle?lic=PA-S%202026%2F000058" in texto
     assert "Dejar de recibir estos correos" in texto

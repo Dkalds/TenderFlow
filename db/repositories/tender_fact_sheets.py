@@ -170,6 +170,31 @@ class TenderFactSheetsRepository:
         row["facts"] = json.loads(str(raw)) if raw else None
         return row
 
+    def get_many(self, licitacion_ids: list[str]) -> dict[str, dict[str, object]]:
+        """Las fichas de varias licitaciones en una consulta, por ``licitacion_id``.
+
+        Misma forma por fila que :meth:`get`. Las que no tienen ficha no
+        aparecen. Existe para el resumen diario (B3 del plan 2026-10), que
+        enseña la solvencia de cada licitación del correo: una consulta por
+        licitación sería un N+1 por destinatario.
+        """
+        if not licitacion_ids:
+            return {}
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT licitacion_id, status, extraction_version, model, data_json, "
+                "field_count, evidence_count, error_detail, extracted_at, updated_at "
+                "FROM tender_fact_sheets WHERE licitacion_id = ANY(%s)",
+                (list(licitacion_ids),),
+            )
+            rows = rows_to_dicts(cur)
+        fichas: dict[str, dict[str, object]] = {}
+        for row in rows:
+            raw = row.pop("data_json", None)
+            row["facts"] = json.loads(str(raw)) if raw else None
+            fichas[str(row["licitacion_id"])] = row
+        return fichas
+
     def upsert(
         self,
         *,

@@ -170,6 +170,9 @@ class WatchlistRepository:
         Desde v129 la correlación admite también ``user_id``: una regla creada
         tras un cambio de correo lleva otra ``user_key`` que el digest que la
         cita, y sin el id el correo saldría sin sus criterios.
+
+        ``rule_organization_id`` es la organización de la regla: contra su
+        capacidad se calcula el checklist que el correo enseña (B3).
         """
         with connect_read() as c:
             cur = c.execute(
@@ -177,11 +180,14 @@ class WatchlistRepository:
                 "       l.titulo, l.descripcion, l.organo_contratacion, "
                 "       l.cpv, l.importe, l.ccaa, l.estado, l.fecha_publicacion, "
                 "       l.fecha_limite, l.tecnologia, l.url, "
+                # Base del importe (ADR-032): el correo dice «sin IVA» o
+                # «base desconocida», nunca un importe de base ignorada.
+                "       l.importe_tipo, l.importe_base_sin_iva, l.importe_con_iva, "
                 "       COALESCE(r.cpv, w.cpv_prefix) AS cpv_prefix, "
                 "       COALESCE(r.keyword, w.keyword) AS keyword, "
                 "       COALESCE(r.min_importe, w.min_importe) AS min_importe, "
                 "       COALESCE(r.ccaa, w.ccaa) AS entry_ccaa, "
-                "       r.nombre AS rule_nombre, "
+                "       r.nombre AS rule_nombre, r.organization_id AS rule_organization_id, "
                 "       de.event_type AS evento_tipo, de.payload_json AS evento_payload "
                 "FROM pending_digests pd "
                 "LEFT JOIN licitaciones l ON l.id_externo = pd.licitacion_id "
