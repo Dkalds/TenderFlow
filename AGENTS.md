@@ -40,6 +40,13 @@ cada operación añadida lleva escrito qué superficie existente se miró y por 
 no alcanza. No es un congelamiento —añadir un endpoint cuesta una línea—; lo
 que impide es añadirlo sin haberse hecho la pregunta.
 
+**Foco de piloto (D50).** Mientras dure el
+[plan 2026-10](docs/plans/2026-10-plan-foco-piloto.md), hasta su criterio de
+salida, no se añade superficie nueva (endpoint, espacio, pantalla) que no sirva
+al ciclo central de su Ola 2: me entero → decido → preparo. Cada entrada nueva
+de `NUEVAS` cita en su motivo el ítem del plan que la justifica —`(plan
+2026-10, B3)`—, y el gate lo exige a todas las posteriores al 2026-10-26.
+
 Salvo que el usuario priorice otra cosa, seguí el orden de
 [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md). Los ítems cerrados
 se archivan en
