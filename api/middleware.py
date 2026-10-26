@@ -150,7 +150,7 @@ class SecurityHeadersMiddleware:
 #: Cabecera con el secreto compartido que Vercel añade al reenviar ``/api/*``
 #: (``web/vercel.json``) y que manda el prefetch SSR de Next
 #: (``web/src/lib/server-prefetch.ts``). RFC 2026-10-24, opción B.
-CABECERA_SECRETO_ORIGEN = "x-tf-origin-secret"
+CABECERA_SECRETO_ORIGEN = "x-tf-origin-secret"  # pragma: allowlist secret -- nombre de cabecera
 
 
 def _secretos_de_origen(settings: object) -> tuple[bytes, ...]:

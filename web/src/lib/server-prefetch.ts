@@ -96,7 +96,7 @@ function origenApi(): string {
  * `web/vercel.json` al reenviar `/api/*` y que verifica
  * `api/middleware.py::_trusted_client_ip` (`CABECERA_SECRETO_ORIGEN`).
  */
-export const CABECERA_SECRETO_ORIGEN = "x-tf-origin-secret";
+export const CABECERA_SECRETO_ORIGEN = "x-tf-origin-secret"; // pragma: allowlist secret -- nombre de cabecera
 
 /**
  * Cabeceras de cada petición del prefetch. La cookie de sesión es de este
@@ -105,10 +105,7 @@ export const CABECERA_SECRETO_ORIGEN = "x-tf-origin-secret";
  * secreto y la IP del visitante, solo si hay secreto: sin él la API no se
  * creería la IP y no hay por qué mandarla.
  */
-export function cabecerasHaciaApi(
-  cookie: string,
-  entrantes: Pick<Headers, "get">,
-): Record<string, string> {
+export function cabecerasHaciaApi(cookie: string, entrantes: Pick<Headers, "get">): Record<string, string> {
   const cabeceras: Record<string, string> = { cookie, accept: "application/json" };
   const secreto = process.env.API_ORIGIN_SECRET;
   const ipVisitante = entrantes.get("x-real-ip");

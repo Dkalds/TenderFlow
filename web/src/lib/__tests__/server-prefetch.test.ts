@@ -189,7 +189,7 @@ describe("secreto de origen hacia la API", () => {
     vi.stubEnv("API_ORIGIN_SECRET", "s".repeat(64));
     const entrantes = new Headers({
       cookie: "session=abc",
-      [CABECERA_SECRETO_ORIGEN]: "falso",
+      [CABECERA_SECRETO_ORIGEN]: "falso", // pragma: allowlist secret -- valor de prueba
       "x-forwarded-for": "6.6.6.6",
     });
     const enviadas = cabecerasHaciaApi("session=abc", entrantes);
