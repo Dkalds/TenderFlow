@@ -49,7 +49,8 @@ Usá este orden para preguntas de arquitectura y relaciones cross-file:
 1. Si el ejecutable `graphify` está disponible y existe `graphify-out/graph.json`,
     usá `graphify query`, `graphify path` o `graphify explain`. El CLI es opcional
     y el paquete publicado se llama `graphifyy`; no lo añadas a las dependencias
-    del proyecto ni lo instales salvo que la tarea pida configurar Graphify.
+    del proyecto ni ejecutes su instalación salvo que la tarea pida configurar
+    Graphify.
 2. Si el CLI no está, usá `python scripts/code_map.py` (solo biblioteca
     estándar, lee el árbol tal como está): `simbolo <nombre>` da la definición y
     sus usos, `importadores <módulo>` quién lo importa, `paquete <paquete>` y
