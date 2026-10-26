@@ -5,22 +5,19 @@ on:
     branches: ["master", "main", "develop"]
   pull_request:
     branches: ["master", "main", "develop"]
-  # Barrido semanal. Existe por una sola razón: es donde vive ahora la matriz de
-  # Python 3.12 (ver el job `test`). Producción está fijada a `python:3.13.13`
-  # en docker/Dockerfile.api, así que pagar 3.12 en cada PR era duplicar el job
-  # más caro de la suite (35 min de techo) para verificar una versión que no se despliega
-  # en ningún sitio. Semanal basta para detectar que 3.12 dejó de funcionar
-  # antes de que a alguien le haga falta.
-  schedule:
-    - cron: "0 3 * * 1"  # Lunes 03:00 UTC, antes del barrido de security.yml
+  # Sin `schedule`: el barrido semanal existía solo para la matriz de Python
+  # 3.12 del job `test`. Desde 2026-10 `requires-python` es `>=3.13`, la misma
+  # menor de `.python-version`, la imagen y los lockfiles, y no queda otra
+  # versión que probar.
 
 permissions:
   contents: read
 
 concurrency:
-  # El evento entra en el grupo: sin él, el cron semanal sobre `master` cancela
-  # (cancel-in-progress) el run del push que estuviera en curso sobre la misma
-  # ref, y el commit se queda sin CI.
+  # El evento entra en el grupo: sin él, un run de otro evento sobre la misma
+  # ref (el cron semanal que hubo hasta 2026-10, un `push` y un `pull_request`)
+  # cancela (cancel-in-progress) el que estuviera en curso, y el commit se queda
+  # sin CI.
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
@@ -190,15 +187,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.13 en cada PR; 3.12 SOLO en el barrido semanal (`schedule`).
-        #
-        # Producción corre `python:3.13.13-slim-bookworm` (docker/Dockerfile.api,
-        # y `.python-version` fija lo mismo), así que 3.12 no se despliega en
-        # ningún sitio: pagarlo en cada PR duplicaba el job más caro de la suite
-        # —35 minutos de techo, ~8.900 tests con `-n auto`— para verificar una
-        # versión que nadie ejecuta. Semanal detecta que 3.12 dejó de funcionar
-        # con semanas de antelación sobre el día en que hiciera falta.
-        python-version: ${{ github.event_name == 'schedule' && fromJSON('["3.12","3.13"]') || fromJSON('["3.13"]') }}
+        # Una sola versión: la de `.python-version`, la imagen de producción y
+        # `requires-python` (>=3.13). Hasta 2026-10 el barrido semanal añadía
+        # 3.12; con el suelo en 3.13 ya no es una versión soportada. Sigue siendo
+        # matriz para que el check conserve su nombre, `Tests (Postgres) (3.13)`,
+        # que es el que exige la protección de `master`.
+        # tests/test_unit_version_python.py ata esta lista a `.python-version`.
+        python-version: ["3.13"]
     # Postgres es el único motor desde ADR-021: la suite ya no tiene camino
     # SQLite, así que este job necesita una instancia real. Imagen pgvector
     # porque la migración v56 hace `CREATE EXTENSION vector`.
@@ -272,10 +267,7 @@ jobs:
       # `test` invertiría el orden y le añadiría 25 min. Este es el único job con
       # los datos delante y no cuesta un runner extra.
       #
-      # Solo en 3.13: en el barrido semanal la matriz añade 3.12 y el gate
-      # duplicado no aporta nada — la cobertura no depende del intérprete.
       - name: Coverage floors per module
-        if: matrix.python-version == '3.13'
         run: python scripts/check_coverage_per_module.py
 
       - name: Upload coverage XML

@@ -6,7 +6,7 @@ Salida con código != 0 si alguno de los checks críticos falla, para integrar
 en CI o pre-flight de despliegues.
 
 Checks disponibles:
-  - Python >= 3.11
+  - Python >= 3.13
   - Paquetes core instalados
   - .env presente
   - DATABASE_URL alcanzable (Postgres — único motor, ADR-021)
@@ -47,13 +47,11 @@ def _err(msg: str) -> None:
 
 def check_python() -> bool:
     major, minor = sys.version_info[:2]
-    if (major, minor) < (3, 11):
-        _err(f"Python {major}.{minor} es muy antiguo (mínimo 3.11)")
+    # Mínimo = `requires-python` de pyproject.toml (y `.python-version`).
+    if (major, minor) < (3, 13):
+        _err(f"Python {major}.{minor} es muy antiguo (mínimo 3.13)")
         return False
-    if (major, minor) < (3, 12):
-        _warn(f"Python {major}.{minor} OK (recomendado 3.12+)")
-    else:
-        _ok(f"Python {major}.{minor}")
+    _ok(f"Python {major}.{minor}")
     return True
 
 

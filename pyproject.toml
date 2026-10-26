@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "tenderflow"
 version = "1.0.0"
 description = "Inteligencia de licitaciones del Sector Público español"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = [
     "requests>=2.31.0,<3",
     "lxml>=5.0.0,<7",
@@ -115,7 +115,7 @@ shared = ["py.typed"]
 mcp_server = ["glosario.md"]
 
 [tool.ruff]
-target-version = "py311"
+target-version = "py313"
 line-length = 100
 # Skills vendored desde skills-lock.json: código de terceros, no del proyecto.
 # `.claude/skills` y `.agents/skills` son el mismo contenido para dos herramientas.
@@ -145,6 +145,15 @@ ignore = [
     "PERF401", # list.append in loops is often more readable than extend
     "SIM105",  # contextlib.suppress is less explicit than try/except pass
     "B008",    # FastAPI Depends/Query/Header in argument defaults is the canonical pattern
+    # Sintaxis PEP 695 (`type X = ...`, `def f[T]`, `class C[T]`): con el suelo en
+    # 3.13 ya se puede escribir, pero ruff marca la reescritura de lo existente
+    # como insegura y lo es: `type X = ...` crea un `TypeAliasType` que Pydantic y
+    # el OpenAPI no tratan igual que un alias, y los modelos genéricos de
+    # `shared/dto/paginacion.py` dan nombre a esquemas del contrato con la web.
+    # Código nuevo puede usarla; migrar lo viejo es un cambio propio, no un `--fix`.
+    "UP040",   # non-pep695-type-alias
+    "UP046",   # non-pep695-generic-class
+    "UP047",   # non-pep695-generic-function
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -194,7 +203,6 @@ ignore = [
 # Archivos no-TID con permisos especiales
 "db/database.py" = ["E402", "RUF022"]  # E402 intentional facade re-exports
 "services/ml/sap_classifier.py" = ["E402"]  # E402 re-exports at module bottom
-"api/routes/licitaciones.py" = ["E402"]  # TypeVar declared before imports for Python 3.11 compatibility
 # S608: SQL built from internal dataclass-field/schema constants, not user input.
 # These files ONLY construct SQL from controlled code constants — no user data reaches the column/table names.
 "db/acl.py" = ["S608"]
@@ -244,7 +252,7 @@ exclude = ["db/alembic/versions/v58_security_identity_hardening.py", "*.md"]
 "scraper.ml_pipeline".msg = "Alias de compatibilidad para pickles: importá de services.ml.classifier_pipeline."
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 strict = true
 exclude = ["scripts/"]
 
