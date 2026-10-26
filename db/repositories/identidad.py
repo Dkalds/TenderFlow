@@ -10,7 +10,14 @@ preguntas, todas sobre ``licitaciones`` y ``licitaciones_id_anterior`` (v163):
 2. **¿Qué ids viejos tuvo una fila?** :func:`registrar_id_anterior` escribe el
    alias (lo usará la migración de re-key de la fase B, con ``motivo`` propio) e
    :func:`ids_anteriores_de` los lista.
-3. **¿Cuántas filas PLACSP pisó otro órgano?** :func:`inventario_pisadas_placsp`
+3. **¿De qué órgano es cada fila ya escrita?** :func:`filas_placsp_sin_organo_ref`
+   y :func:`rellenar_organo_ref_fuente` sostienen la fase 2 del RFC
+   (``scripts/rellenar_organo_ref_placsp.py``, lógica en
+   ``scraper.relleno_organo_placsp``): el cruce por ``idEvl`` con los ZIP
+   mensuales que da a cada fila el órgano que la escribió, sin el que la
+   re-key (``v164_identidad_placsp_rekey``) no puede construir su clave.
+   :func:`organo_ref_por_nombre` es su último respaldo, opt-in.
+4. **¿Cuántas filas PLACSP pisó otro órgano?** :func:`inventario_pisadas_placsp`
    es la consulta de detección del RFC (§«Las filas ya pisadas») sobre
    ``licitaciones_history``: para cada ``id_externo`` de PLACSP, los órganos que
    aparecen en algún snapshot y no son el de la fila actual, con la similitud de
@@ -19,12 +26,13 @@ preguntas, todas sobre ``licitaciones`` y ``licitaciones_id_anterior`` (v163):
    historial empieza el 2026-05-22 y solo escribe snapshot cuando cambia un
    campo de ``HISTORY_TRACKED_FIELDS``.
 
-Solo lectura salvo :func:`registrar_id_anterior`. Todo el SQL vive aquí
-(ADR-022).
+Solo lectura salvo :func:`registrar_id_anterior` y
+:func:`rellenar_organo_ref_fuente`. Todo el SQL vive aquí (ADR-022).
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import NamedTuple, TypedDict
 
@@ -33,13 +41,17 @@ from db.repositories.base import rows_to_dicts, typed_rows
 from shared.identidad_placsp import PREFIJOS_ACOTADOS_POR_ORGANO
 
 __all__ = [
+    "FilaSinOrgano",
     "IdResuelto",
     "ResumenPisadas",
     "contar_expedientes_que_conviven",
     "contar_placsp_sin_organo_ref",
+    "filas_placsp_sin_organo_ref",
     "ids_anteriores_de",
     "inventario_pisadas_placsp",
+    "organo_ref_por_nombre",
     "registrar_id_anterior",
+    "rellenar_organo_ref_fuente",
     "resolver_id_licitacion",
     "resumen_pisadas_placsp",
 ]
@@ -51,6 +63,16 @@ UMBRAL_SIMILITUD = 0.5
 
 #: Filas del feed principal de PLACSP, en los dos carriles.
 _ES_PLACSP_SQL = "(l.fuente = 'placsp' OR l.fuente LIKE 'bulk\\_%')"
+
+#: Toda fila cuya clave re-escribe ``v164_identidad_placsp_rekey``: el feed
+#: principal, empresas vigiladas (y su carril bulk) y agregadas. Contratos
+#: menores no: nació acotada.
+_FAMILIA_REKEY_SQL = (
+    "(l.fuente = 'placsp' OR l.fuente LIKE 'bulk\\_%' "
+    "OR l.fuente = 'placsp_watched_company_awards' "
+    "OR l.fuente LIKE 'placsp\\_watched\\_company\\_awards\\_bulk\\_%' "
+    "OR l.fuente = 'placsp_agregadas')"
+)
 
 #: Clave ya acotada por órgano: ``^(placsp|…):[^:]*:`` (misma alternancia que
 #: ``shared.identidad_placsp``).
@@ -208,8 +230,8 @@ def contar_placsp_sin_organo_ref() -> dict[str, int]:
     with connect_read() as c:
         filas = c.execute(
             "SELECT l.fuente, count(*) FROM licitaciones l "
-            f"WHERE ({_ES_PLACSP_SQL} OR l.fuente = 'placsp_watched_company_awards') "
-            "AND l.organo_ref_fuente IS NULL GROUP BY l.fuente ORDER BY l.fuente"
+            f"WHERE {_FAMILIA_REKEY_SQL} "
+            "AND coalesce(l.organo_ref_fuente, '') = '' GROUP BY l.fuente ORDER BY l.fuente"
         ).fetchall()
     return {str(f[0]): int(f[1]) for f in filas}
 
@@ -230,3 +252,83 @@ def contar_expedientes_que_conviven() -> int:
             ") x"
         ).fetchone()
     return int(fila[0]) if fila else 0
+
+
+# ── Relleno de ``organo_ref_fuente`` (fase 2 del RFC) ───────────────────────
+
+
+class FilaSinOrgano(TypedDict):
+    """Una fila de la familia de la re-key sin ``organo_ref_fuente``."""
+
+    id_externo: str
+    fuente: str
+    url: str | None
+    organo_contratacion: str | None
+    fecha_actualizacion_fuente: str | None
+    fecha_publicacion: str | None
+
+
+def filas_placsp_sin_organo_ref() -> list[FilaSinOrgano]:
+    """Las filas que la re-key no puede re-escribir todavía: sin órgano de la fuente.
+
+    Es la entrada del cruce de ``scripts/rellenar_organo_ref_placsp.py``. Unas
+    25.000 filas en producción como mucho (2026-10-25): caben en memoria.
+    """
+    with connect_read() as c:
+        cur = c.execute(
+            "SELECT l.id_externo, l.fuente, l.url, l.organo_contratacion, "
+            "l.fecha_actualizacion_fuente::text AS fecha_actualizacion_fuente, "
+            "l.fecha_publicacion::text AS fecha_publicacion "
+            f"FROM licitaciones l WHERE {_FAMILIA_REKEY_SQL} "
+            "AND coalesce(l.organo_ref_fuente, '') = '' ORDER BY l.id_externo"
+        )
+        return typed_rows(FilaSinOrgano, rows_to_dicts(cur))
+
+
+def rellenar_organo_ref_fuente(asignaciones: Sequence[tuple[str, str]]) -> int:
+    """Escribe ``organo_ref_fuente`` en las filas que aún no lo tienen. Devuelve cuántas.
+
+    ``asignaciones`` son pares ``(id_externo, órgano)``. **Nunca pisa** un valor
+    ya escrito (solo toca filas con la columna vacía): reejecutar el relleno, o
+    cruzarse con la ingesta —que desde la fase A la escribe con el valor de la
+    entrada—, no cambia nada. Es lo que hace idempotente al script.
+    """
+    if not asignaciones:
+        return 0
+    actualizadas = 0
+    with connect() as c:
+        for id_externo, organo in asignaciones:
+            cur = c.execute(
+                "UPDATE licitaciones SET organo_ref_fuente = %s "
+                "WHERE id_externo = %s AND coalesce(organo_ref_fuente, '') = ''",
+                (organo, id_externo),
+            )
+            actualizadas += cur.rowcount or 0
+    return actualizadas
+
+
+def organo_ref_por_nombre() -> dict[str, str]:
+    """Último respaldo del relleno: el órgano deducido del nombre, solo si es inequívoco.
+
+    Para cada fila sin órgano, el ``organo_ref_fuente`` que **todas** las filas
+    de la familia con el mismo ``organo_contratacion`` (plegado) ya tienen,
+    cuando es uno solo. ``ID_PLATAFORMA`` es 1:1 con el nombre del órgano en el
+    feed (0 de 4.830 entradas con dos nombres, RFC §«Lo medido»), pero un nombre
+    genérico podría no serlo: por eso se exige unanimidad y el script lo usa
+    solo con ``--respaldo-por-nombre``, después del cruce por ``idEvl``.
+    """
+    with connect_read() as c:
+        filas = c.execute(
+            "WITH conocidos AS ("
+            "  SELECT lower(btrim(l.organo_contratacion)) AS nombre, "
+            "         min(l.organo_ref_fuente) AS organo "
+            f"  FROM licitaciones l WHERE {_FAMILIA_REKEY_SQL} "
+            "    AND coalesce(l.organo_ref_fuente, '') <> '' "
+            "    AND coalesce(btrim(l.organo_contratacion), '') <> '' "
+            "  GROUP BY 1 HAVING count(DISTINCT l.organo_ref_fuente) = 1"
+            ") "
+            "SELECT l.id_externo, k.organo FROM licitaciones l "
+            "JOIN conocidos k ON k.nombre = lower(btrim(l.organo_contratacion)) "
+            f"WHERE {_FAMILIA_REKEY_SQL} AND coalesce(l.organo_ref_fuente, '') = ''"
+        ).fetchall()
+    return {str(f[0]): str(f[1]) for f in filas}
