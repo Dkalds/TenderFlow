@@ -74,7 +74,18 @@ def test_ci_ejecuta_el_guard() -> None:
     workflow = yaml.safe_load(_CI.read_text(encoding="utf-8"))
     comandos = _pasos_run(workflow)
     invocaciones = [c for c in comandos if _SCRIPT in c]
-    assert invocaciones, f"ci.yml no ejecuta {_SCRIPT} en ningún job"
+    if not invocaciones and any("make gates" in c for c in comandos):
+        # Desde 2026-10-26 los gates stdlib corren agrupados (`make gates` →
+        # scripts/run_gates.py): el guard cuenta como cableado si está en ese
+        # grupo, y con los mismos argumentos.
+        from scripts.run_gates import STDLIB
+
+        invocaciones = [
+            " ".join((g.script, *g.args))
+            for g in STDLIB
+            if g.script.endswith(_SCRIPT.split("/")[-1])
+        ]
+    assert invocaciones, f"ci.yml no ejecuta {_SCRIPT} en ningún job (ni directo ni vía make gates)"
     # `--strict` o el guard informa y sale 0: el modo aviso es el estado del
     # que venimos, y es indistinguible de no tener gate.
     assert any("--strict" in c for c in invocaciones), (

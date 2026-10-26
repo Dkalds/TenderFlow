@@ -83,73 +83,22 @@ jobs:
       - name: Type check (mypy)
         run: make typecheck
 
-      # Previene el patrón que causó el incidente de psycopg-pool: alguien
-      # agrega una dependencia a requirements.in y olvida recompilar
-      # requirements.txt, que es lo que instala docker/Dockerfile.api.
-      - name: Verify requirements.txt is in sync with requirements.in
-        run: python scripts/check_requirements_sync.py
+      # Los gates y ratchets de scripts/check_*.py corren agrupados: la lista,
+      # el grupo de cada uno y el motivo de los que no corren aquí viven en
+      # scripts/run_gates.py (tests/test_unit_run_gates.py falla ante un
+      # check_* sin clasificar). Ninguno corta a los demás: el resumen final
+      # dice todos los que fallan, no solo el primero.
+      - name: Gates stdlib (make gates)
+        run: make gates
 
-      # Convierte ADR-012 ("un solo plano de orquestación") en invariante
-      # verificado. Sin esto, un job puede quedar registrado pero sin ningún
-      # plano que lo ejecute — el fallo que dejó los digests diarios sin
-      # enviar y la retención sin purgar durante meses.
-      # ADR-014 — integridad analítica del frontend. Bloqueante desde
-      # 2026-07-28: los cinco patrones sistémicos que diagnosticó la ADR están
-      # a cero, así que el gate pasa de "modo aviso" (que nadie ejecutaba, ni
-      # siquiera en CI) a invariante ejecutable. Un hallazgo nuevo se justifica
-      # en su línea con `fdi-allow:<categoria>` o se corrige. Vive en este job
-      # y no en `frontend` porque el checker es Python y `frontend` es Node.
-      - name: Verify no unbounded analytics scans (ADR-023, C3.2)
-        run: python scripts/check_analytics_unbounded.py
+      - name: Gates que importan la app (make gates-deps)
+        run: make gates-deps
 
-      - name: Verify generated docs (retención, índices RFC y ADR, backlog)
+      - name: Verify generated docs (retención, índices RFC y ADR)
         run: |
           python scripts/gen_retention_doc.py --check
           python scripts/gen_rfc_index.py --check
           python scripts/gen_adr_index.py --check
-          python scripts/check_backlog_freshness.py
-
-      - name: Verify frontend analytical integrity (ADR-014)
-        run: python scripts/check_frontend_invariants.py --strict
-
-      # C2.8: el ratchet de estilos inline. No endurece la CSP por sí solo —
-      # eso exige llegar a cero primero—, pero impide que el número suba y
-      # deje el endurecimiento más lejos que ayer.
-      - name: Verify inline style ratchet (C2.8)
-        run: python scripts/check_inline_styles.py
-
-      # C7.4: `title` nativo. La regla ESLint impide que aparezcan en ficheros
-      # limpios; este contador impide que crezcan en los que aún los tienen.
-      - name: Verify native title ratchet (C7.4)
-        run: python scripts/check_title_attrs.py
-
-      # C7.8: el barrido de tildes ya estaba hecho al medirlo; esto lo mantiene
-      # cerrado. Solo mira texto visible y props de copy — `"tecnologia"` como
-      # clave de la API no es una falta de ortografía.
-      - name: Verify Spanish spelling of UI copy (C7.8)
-        run: python scripts/check_ortografia_ui.py
-
-      # Misma lección otra vez: el guard de la superficie pública estaba
-      # escrito y pasando limpio, pero no lo invocaba nadie (ni el Makefile, ni
-      # este workflow, ni pre-commit) mientras varios docstrings afirmaban que
-      # corría en CI. Es el único control automático de la restricción dura del
-      # producto —la superficie anónima publica solo el dato base del anuncio
-      # oficial, nada de adjudicatarios, NIF ni analítica propia— y la fuga que
-      # vigila no rompe nada: el endpoint responde 200 con un campo de más.
-      - name: Verify public surface (sin adjudicatarios, NIF ni analítica propia)
-        run: python scripts/check_public_surface.py --strict
-
-      - name: Verify scheduler job parity (ADR-012)
-        env:
-          ENV: dev
-        run: python scripts/check_job_parity.py
-
-      # D18 fase 1: `user_key` deriva la identidad interna del correo, así que
-      # cambiar de dirección pierde los datos de una persona. La migración a
-      # `user_id` es T4; hasta entonces el gate impide que la deuda crezca —la
-      # lista de ficheros que la usan está congelada y solo puede encoger.
-      - name: Verify user_key ratchet (D18)
-        run: python scripts/check_user_key_ratchet.py
 
       # docs/STATUS.md se deriva del código: paridad de jobs, ratchet TID251,
       # motor de la suite, superficie de la API. Si un hecho se puede calcular,
@@ -168,14 +117,6 @@ jobs:
           ENV: dev
           TEST_DATABASE_URL: postgresql://tenderflow:tenderflow@localhost:5432/tenderflow_schema_doc  # pragma: allowlist secret
         run: python scripts/gen_schema_doc.py --check
-
-      # Un validador nuevo en Settings que exija una variable en producción pasa
-      # CI en verde y revienta al arrancar el contenedor. Aquí se comprueba que
-      # todo lo obligatorio esté declarado en render.yaml.
-      - name: Verify env parity (settings ↔ render.yaml ↔ .env.example)
-        env:
-          ENV: dev
-        run: python scripts/check_env_parity.py
 
       - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
 
