@@ -67,6 +67,7 @@ sí valen `docker logs tenderflow-api` y los `docker compose` de más abajo.
 - **Núcleo tipado** (`importe_num`) — [nucleo-tipado-ventana.md](nucleo-tipado-ventana.md)
 - **Fechas a `timestamptz`, fase 1** (sombras `*_ts`, v159/v160) — [fechas-ts-ventana.md](fechas-ts-ventana.md)
 - **Re-key de `id_externo` PSCP** (v153; pausar la ingesta PSCP antes del merge) — [rekey-pscp-id-externo.md](rekey-pscp-id-externo.md)
+- **Re-key de `id_externo` PLACSP a `placsp:<órgano>:<expediente>`** (relleno de `organo_ref_fuente`, v164; ingesta parada antes del merge; ADR-038) — [rekey-placsp-organo.md](rekey-placsp-organo.md)
 
 Los runbooks ya ejecutados (p. ej. el cutover a Supabase) viven en
 [../archive/runbooks/](../archive/runbooks/).
