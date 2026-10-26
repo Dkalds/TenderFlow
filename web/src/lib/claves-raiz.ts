@@ -37,4 +37,15 @@ export const organizationKeys = {
    */
   plantillaTareas: (organizationId: OrganizacionDeClave) =>
     ["organizations", "plantilla-tareas", organizationId] as const,
+  /**
+   * Identidad fiscal y perfil de capacidad (S2.1 y S2.2,
+   * `GET /organizations/{id}/nifs` y `/capabilities`). Cuelgan de `members`
+   * como cuando eran claves privadas de `/equipo`; están aquí porque ahora
+   * las leen dos pantallas —`/equipo` y los primeros pasos del Resumen— y
+   * tienen que ser la misma entrada de caché: guardar la capacidad en Equipo
+   * marca hecho el paso sin pedir otra vez.
+   */
+  nifs: (organizationId: OrganizacionDeClave) => ["organization-members", organizationId, "nifs"] as const,
+  capabilities: (organizationId: OrganizacionDeClave) =>
+    ["organization-members", organizationId, "capabilities"] as const,
 };

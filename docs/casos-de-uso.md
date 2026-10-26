@@ -325,6 +325,20 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   el siguiente ciclo de reintentos.
 - Otra organización no ve el webhook ni puede rotarlo ni reenviar sus entregas.
 
+### CU-34 — Arrancar por lo que da valor
+
+- **Quién:** quien entra en una organización recién creada. **Dónde:**
+  `/resumen`, banda «Primeros pasos».
+- Ve tres pasos, cada uno con lo que gana y el enlace a donde se hace:
+  completar la capacidad de su organización (NIF, certificaciones y
+  facturación, en Equipo › Organización), revisar su alerta (Mi Watchlist) y
+  abrir su primera oportunidad (Radar).
+- Cada paso se marca hecho solo, con lo que ya dice la API; lo que no se puede
+  comprobar dice «sin comprobar», nunca «pendiente». Quien no gestiona la
+  organización no puede leer sus NIFs, así que para esa persona el paso de
+  capacidad sale pendiente o sin comprobar, nunca hecho.
+- Con los tres hechos la banda desaparece; también se puede ocultar.
+
 ## Trazabilidad
 
 <!-- trazabilidad: generado por scripts/check_casos_uso.py — no editar a mano -->
@@ -364,7 +378,8 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-31** Pedir acceso, recibirlo y crearme la cuenta | [test_escenario_alta_tras_concesion.py](../tests/test_escenario_alta_tras_concesion.py) | — | — |
 | **CU-32** Revisar y exportar lo que cambió en la organización | [test_escenario_gobierno_organizacion.py](../tests/test_escenario_gobierno_organizacion.py) | — | [auditoria-organizacion-card.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/auditoria-organizacion-card.test.tsx) |
 | **CU-33** Mantener la integración del equipo por webhook | [test_escenario_webhooks.py](../tests/test_escenario_webhooks.py) | — | [webhook-row.test.tsx](../web/src/app/(dashboard)/ops/_components/webhooks/__tests__/webhook-row.test.tsx) |
+| **CU-34** Arrancar por lo que da valor | — | [recorrido-primeros-pasos.spec.ts](../web/e2e/recorrido-primeros-pasos.spec.ts) | [primeros-pasos.test.tsx](../web/src/app/(dashboard)/resumen/_components/__tests__/primeros-pasos.test.tsx) |
 
-**33 casos**, 33 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
+**34 casos**, 34 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
 
 <!-- fin trazabilidad -->

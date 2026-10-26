@@ -6,11 +6,22 @@ import { ICONO_ESPACIO } from "@/lib/iconos";
  *
  * El acceso al producto es por invitación y se aprueba a mano: cada usuario que
  * entra ha costado mucho. Y hasta ahora aterrizaba en `/resumen` sin un solo
- * hilo del que tirar salvo «Buscar oportunidades en el Radar». Lo que hace útil
- * a TenderFlow —el perfil de scoring con tus pesos y keywords, las reglas que
- * vigilan el corpus por ti, el pursuit que pone un expediente en Tu día con
- * plazo y próximo paso— quedaba a descubrimiento espontáneo entre catorce
- * espacios.
+ * hilo del que tirar salvo «Buscar oportunidades en el Radar».
+ *
+ * **Los tres pasos son los del bucle del piloto** (B5 del plan 2026-10): me
+ * entero → decido → preparo. Antes eran «perfil de scoring / regla de
+ * vigilancia / primer pursuit», y medían configuración, no valor:
+ *
+ * 1. **Capacidad de la organización** (NIF, certificaciones, facturación). Sin
+ *    ella el checklist de cada pliego —la primera vista de una oportunidad
+ *    (D54)— contesta «desconocido» en todo, y el cierre por NIF no reconoce
+ *    lo ganado.
+ * 2. **Revisa tu alerta.** Con D53 la alerta diaria nace sola al guardar las
+ *    tecnologías de la organización (B1), así que el paso es revisarla, no
+ *    crearla: está hecho en cuanto hay una regla. Quien no tenga ninguna la
+ *    crea en el mismo sitio.
+ * 3. **Abre tu primera oportunidad**: lo que da plazo, checklist y decisión a
+ *    un expediente.
  *
  * Dos restricciones gobiernan este módulo, y son las que explican por qué no es
  * un tour ni un checklist con un flag:
@@ -22,14 +33,14 @@ import { ICONO_ESPACIO } from "@/lib/iconos";
  *    es «te falta este paso»: es `cargando`/`desconocido`, y ninguno de los dos
  *    enciende la banda ni cuenta como hecho.
  *
- * Los tres pasos son cosas que cualquier usuario acaba haciendo, y por eso la
- * banda puede desaparecer sola. Invitar al equipo **no** es un paso a propósito:
+ * Los tres pasos son cosas que cualquier organización acaba haciendo, y por
+ * eso la banda puede desaparecer sola. Invitar al equipo **no** es un paso a propósito:
  * quien trabaja solo no lo hará nunca y dejaría la banda encendida para siempre;
  * va como nota al pie, que no puntúa.
  */
 
 /** Identificador estable de cada paso (usado en tests y en los mapas de estado). */
-export type PasoId = "perfil" | "reglas" | "pursuit";
+export type PasoId = "capacidad" | "alerta" | "pursuit";
 
 /**
  * Lo que se sabe de un paso.
@@ -57,25 +68,25 @@ export interface DefinicionPaso {
 
 export const PASOS: readonly DefinicionPaso[] = [
   {
-    id: "perfil",
-    titulo: "Ajusta tu perfil de scoring",
-    gana: "el Radar puntúa con pesos genéricos hasta que pongas los tuyos",
-    href: "/mi-perfil",
-    cta: "Definir pesos y keywords",
-    icon: ICONO_ESPACIO["mi-perfil"],
+    id: "capacidad",
+    titulo: "Completa la capacidad de tu organización",
+    gana: "NIF, certificaciones y facturación: sin ellos, el checklist de cada pliego contesta «desconocido»",
+    href: "/equipo?tab=organizacion",
+    cta: "Completar en Equipo",
+    icon: ICONO_ESPACIO.equipo,
   },
   {
-    id: "reglas",
-    titulo: "Crea una regla de vigilancia",
-    gana: "una regla vigila las licitaciones por ti y lo que encuentra llega a Tu día",
+    id: "alerta",
+    titulo: "Revisa tu alerta",
+    gana: "vigila las licitaciones nuevas por ti; ajusta qué busca y cada cuánto te avisa",
     href: "/mi-watchlist",
-    cta: "Crear la primera regla",
+    cta: "Revisar la alerta",
     icon: ICONO_ESPACIO["mi-watchlist"],
   },
   {
     id: "pursuit",
-    titulo: "Abre tu primer pursuit",
-    gana: "es lo que da plazo, decisión Go/No-go y próximo paso a un expediente",
+    titulo: "Abre tu primera oportunidad",
+    gana: "le da plazo, checklist de requisitos y decisión Go/No-Go a un expediente",
     href: "/radar",
     cta: "Elegir una en el Radar",
     icon: ICONO_ESPACIO.radar,
