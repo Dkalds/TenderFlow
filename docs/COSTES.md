@@ -101,6 +101,42 @@ La alerta `LLMBudgetExceeded` ya existe en
 `observability/alert_rules.yml`. Es el único coste de esta página que avisa
 solo.
 
+### 5.1 Ficha nocturna del pliego (D52 del plan 2026-10)
+
+La fase de fichas de `pliegos.yml` (`scheduler/jobs/documentos_embeddings.py`,
+`_run_facts_phase`) hace una llamada al LLM por expediente. Su gasto mensual es
+
+> **gasto mensual ≈ fichas por noche × noches al mes × coste por ficha**
+
+y cada factor sale de algo que el código ya mide o declara:
+
+| Factor | De dónde sale | Cómo leerlo |
+|---|---|---|
+| Fichas por noche | Tope: `PLIEGO_FACTS_BATCH` (25) y `PLIEGO_FACTS_MAX_SECONDS` (1800 s), una corrida al día (`cron: "0 9 * * *"`). Real: `counts["procesadas"]` del log del job, o la tabla | `SELECT left(updated_at::text, 10) AS dia, count(*) FROM tender_fact_sheets WHERE updated_at::text >= to_char(now() - interval '30 days', 'YYYY-MM-DD') GROUP BY 1 ORDER BY 1` |
+| Coste por ficha | `llm/client.py::_record_usage`: tokens de entrada y salida × `_PRICE_PER_MTOK[modelo]`. Lo mismo alimenta `llm_cost_usd_total` y el acumulador del `BudgetGuard` | Con `REDIS_URL` en `pliegos.yml`: diferencia de la clave `llm:budget:daily:<AAAA-MM-DD>` antes y después de la corrida, dividida entre `procesadas`. Sin Redis el acumulador arranca de cero en cada corrida y no sirve para medir |
+| Cota superior por ficha | `services/rag/fact_sheet.py`: `_MAX_CONTEXT_CHARS` (56 000) + la plantilla de extracción (≤ `MAX_INTERNAL_QUESTION_LEN`, 12 000) de entrada, ≤ `_MAX_OUTPUT_TOKENS` (8 000) de salida | Con `nvidia/nemotron-3-ultra-550b-a55b` a su precio **nocional** (0,90 / 3,60 USD por millón): ~20 000 tokens de entrada y 8 000 de salida dan ≤ 0,05 USD por ficha |
+
+Medido el 2026-10-26 (MCP de solo lectura): del 2026-09-26 al 2026-10-19 salieron
+25 fichas por noche, casi siempre el lote entero; del 20 al 26 de octubre, entre 1
+y 17. Con el tope actual son ≤ 750 fichas al mes y, con la cota de arriba,
+**≤ 37,5 USD nocionales al mes** (750 × 0,05). NVIDIA no factura el free tier, así que el
+**facturado es 0 mientras se use ese modelo**; el nocional cuenta igual contra
+`LLM_BUDGET_USD_MONTHLY` (50 USD, compartido con `/ask` y el resto) si
+`pliegos.yml` y la API comparten Redis, y en modo `enforce` un lote grande puede
+dejar sin presupuesto al asistente ese mes.
+
+Desde el 2026-10-26 el lote ordena oportunidad abierta → favorito → **abierta
+con plazo que casa con alguna regla de vigilancia activa** → el resto
+(`TenderFactSheetsRepository.list_pending_licitaciones`). Cambia qué fichas se
+pagan, no cuántas: el número lo sigue fijando `PLIEGO_FACTS_BATCH`.
+
+| Concepto | Valor |
+|---|---|
+| Coste por ficha medido (USD, con fecha) | **por medir** tras la primera semana con Redis compartido |
+| Gasto mensual medido (USD, con fecha) | **por medir** |
+| **Tope mensual acordado para la ficha nocturna** | **por fijar — lo decide el propietario (D52)** |
+| Qué se hace al alcanzarlo | **por fijar** (bajar `PLIEGO_FACTS_BATCH`, o `PLIEGO_FACTS_ENABLED=false`) |
+
 ---
 
 ## 6. GitHub Actions

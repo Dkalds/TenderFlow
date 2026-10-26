@@ -258,6 +258,10 @@ def test_anonymize_user_data_covers_rules_profile_and_notifications(tmp_db):
             "VALUES (%s, %s, 'rule_match', %s, %s)",
             ("uk1", now_utc_iso(), "titulo", organizacion),
         )
+    from db.notifications import mark_all_read
+
+    # La marca de lectura también es dato personal (dice qué vio y cuándo).
+    mark_all_read("uk1", ["n-1", "n-2"], user_id=owner)
 
     anonymize_user_data("uk1", user_id=owner)
 
@@ -271,9 +275,14 @@ def test_anonymize_user_data_covers_rules_profile_and_notifications(tmp_db):
         n_notif = c.execute(
             "SELECT COUNT(*) FROM user_notifications WHERE user_key = %s", ("uk1",)
         ).fetchone()[0]
+        n_reads = c.execute(
+            "SELECT COUNT(*) FROM notification_reads WHERE user_id = %s OR user_key = %s",
+            (owner, "uk1"),
+        ).fetchone()[0]
     assert n_rules == 0
     assert n_profile == 0
     assert n_notif == 0
+    assert n_reads == 0
 
 
 def test_revoke_all_api_keys_for_user(tmp_db):

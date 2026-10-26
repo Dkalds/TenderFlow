@@ -1,0 +1,20 @@
+3 licitaciones nuevas de hoy para tus reglas de seguimiento.
+
+== Alerta por defecto · SAP (3) ==
+* Soporte SAP S/4HANA
+  Consejería de Hacienda | 250.000 € sin IVA | fecha límite 2026-11-20 | Madrid · SAP
+  Solvencia que pide el pliego:
+  - Solvencia económica: Volumen anual de negocios en el mejor de los tres últimos ejercicios. (cumple)
+  - Solvencia técnica: Contratos similares por importe igual o superior a 200.000 EUR. (sin dato suficiente)
+  - Solvencia técnica: Certificado de buena ejecución de al menos dos servicios SAP. (sin dato suficiente)
+  Checklist frente a la capacidad de tu organización: sin dato suficiente (1 cumple · 0 no cumple · 3 sin dato)
+  Ficha: https://app.example/detalle?lic=EXP-1
+* Mantenimiento SAP BW
+  Ayuntamiento de Prueba | base desconocida | fecha límite 2026-11-05 | SAP
+  Ficha: https://app.example/detalle?lic=EXP-2
+* Licencias SAP
+  Diputación de Prueba | base desconocida (60.500 € con IVA) | fecha límite —
+  Ficha: https://app.example/detalle?lic=EXP-3
+
+Mi Watchlist: https://app.example/mi-watchlist
+Dejar de recibir estos correos: https://app.example/api/v1/watchlist/rules/baja?k=abc&t=kid.sig

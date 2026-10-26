@@ -280,7 +280,7 @@ def test_la_descarga_que_publica_el_worker_es_una_ruta_que_existe() -> None:
     from api.app import app
     from services.jobs import RUTA_DESCARGA_EXPORT, ruta_descarga_export
 
-    plantillas = {getattr(r, "path", "") for r in app.routes}
+    plantillas = set(app.openapi()["paths"])
     assert RUTA_DESCARGA_EXPORT in plantillas, (
         f"el worker publica {RUTA_DESCARGA_EXPORT}, que no es ninguna ruta de la app"
     )

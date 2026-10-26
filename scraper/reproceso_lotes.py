@@ -57,15 +57,15 @@ def _mes(texto: str) -> tuple[int, int]:
 def asignaciones_de_entry(entry: Any, objetivo: set[str]) -> list[AsignacionLote]:
     """Las adjudicaciones con lote de una entry, si es de un expediente objetivo.
 
-    El id sale de ``ContractFolderID``, que es lo que ``parse_entry`` usa como
-    ``id_externo`` en PLACSP; mirarlo antes de parsear nada más es lo que hace
-    barato recorrer un ZIP entero buscando unos cientos de expedientes.
+    El id es la clave que el conector escribe, ``placsp:<órgano>:<ContractFolderID>``
+    (``scraper.codice_parser.clave_de_entry``); sacarlo con dos XPath antes de
+    parsear nada más es lo que hace barato recorrer un ZIP entero buscando unos
+    cientos de expedientes.
     """
-    from scraper.codice_parser import NS, parse_adjudicaciones
+    from scraper.codice_parser import clave_de_entry, parse_adjudicaciones
 
-    ids = entry.xpath("./cacext:ContractFolderStatus/cbc:ContractFolderID/text()", namespaces=NS)
-    licitacion_id = str(ids[0]).strip() if ids else ""
-    if licitacion_id not in objetivo:
+    licitacion_id = clave_de_entry(entry)
+    if licitacion_id is None or licitacion_id not in objetivo:
         return []
     return [
         AsignacionLote(

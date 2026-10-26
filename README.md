@@ -192,7 +192,7 @@ jobs, ratchets), en [docs/STATUS.md](docs/STATUS.md), que genera `make status`.
 
 ## Puesta en marcha en local
 
-Requiere Python 3.11+ (CI y producción usan 3.13, el de `.python-version`),
+Requiere Python 3.13 (el de `.python-version`, el mismo de CI y producción),
 Node para `web/` y Docker para Postgres.
 
 ```bash

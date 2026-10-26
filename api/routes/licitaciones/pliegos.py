@@ -25,6 +25,7 @@ from fastapi import (
 from pydantic import BaseModel
 
 from api.concurrency import run_db
+from api.identidad import resolver_id_externo
 from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
     _lic_repo,
@@ -49,8 +50,8 @@ router = APIRouter(tags=["licitaciones"])
     },
 )
 async def post_guion_oferta(
-    id_externo: str,
     ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> GuionOferta:
     """F2.6 — sólo esquema, nunca prosa (D33).
 
@@ -86,8 +87,8 @@ async def post_guion_oferta(
     },
 )
 async def get_guion_oferta_pdf(
-    id_externo: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> Response:
     """F2.6 — descarga en PDF del guion **ya generado**.
 
@@ -120,8 +121,8 @@ async def get_guion_oferta_pdf(
     },
 )
 async def get_tender_fact_sheet(
-    id_externo: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> TenderFactSheetRecord:
     """Lee la extracción vigente sin invocar al proveedor LLM."""
     from services.rag.fact_sheet import get_fact_sheet
@@ -145,8 +146,8 @@ async def get_tender_fact_sheet(
     },
 )
 async def get_condiciones_oficiales(
-    id_externo: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> CondicionesOficiales:
     """Lo que el anuncio CODICE publica en ``cac:TenderingTerms`` (v148).
 
@@ -193,8 +194,8 @@ def _budget_subject(ctx: dict[str, Any]) -> str | None:
     },
 )
 async def extract_tender_fact_sheet(
-    id_externo: str,
     ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> TenderFactSheetRecord:
     """Reextracción explícita; descarga bajo demanda los pliegos que aún
     estén pendientes (el cron nocturno drena el backlog global por lotes y
@@ -288,8 +289,8 @@ class ExpedienteJobEncolado(BaseModel):
     },
 )
 async def extract_tender_fact_sheet_async(
-    id_externo: str,
     ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> FactSheetExtractionState:
     """Variante asíncrona de ``…/ficha-pliego/extract`` para la UI.
 
@@ -342,8 +343,8 @@ async def extract_tender_fact_sheet_async(
     },
 )
 async def enqueue_expediente_embeddings(
-    id_externo: str,
     ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> ExpedienteJobEncolado:
     """Calcula los embeddings de los pliegos de ESTE expediente, ya.
 
@@ -377,8 +378,8 @@ async def enqueue_expediente_embeddings(
     responses={401: {"description": "Autenticación inválida"}},
 )
 async def get_tender_fact_sheet_state(
-    id_externo: str,
     ctx: dict[str, Any] = Depends(require_organization()),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> FactSheetExtractionState:
     """Estado de la extracción para el polling de la UI. El resultado en sí se
     lee de ``…/ficha-pliego``.

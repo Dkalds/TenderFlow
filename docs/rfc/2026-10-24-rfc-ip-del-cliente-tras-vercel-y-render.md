@@ -4,10 +4,53 @@ title: De dónde sale la IP del cliente cuando la API está detrás de Vercel y 
 issue: "(sin issue: punto 2 del P1 «Recuperación de contraseña: comprobar la entrega en producción…» de docs/IMPROVEMENT_BACKLOG.md, 2026-10-24)"
 author: agent:claude-code
 date: 2026-10-24
-status: draft
+status: approved
 related:
   - "[[ADR-006-etag-pdf-export-ratelimit-redis]]"
 ---
+
+## Decisión (2026-10-26)
+
+**Opción B**, aceptada por el propietario como D58 del
+[plan 2026-10](../plans/2026-10-plan-foco-piloto.md). La parte de código está en
+el árbol; falta la del propietario (secreto en Vercel y Render) y la
+verificación en producción de §7, sin las cuales el comportamiento es el de
+antes. Pasos en [el runbook](../runbooks/ip-del-cliente.md).
+
+Cómo quedó, frente al plan de §6:
+
+- **Cabecera** `x-tf-origin-secret`; **variable** `API_ORIGIN_SECRET` con el
+  mismo nombre en los dos paneles (en Vercel, variable de servidor sensible de
+  *Production*, nunca `NEXT_PUBLIC_*`), y `API_ORIGIN_SECRET_PREVIOUS` solo en
+  Render durante una rotación. Mínimo 32 caracteres: `config/settings.py` no
+  arranca con uno más corto, y así el texto literal `$API_ORIGIN_SECRET` que
+  manda el transform de Vercel en un entorno sin la variable nunca puede casar.
+- **Vercel** (`web/vercel.json`): una ruta `^/api/(.*)$` **sin `dest` y con
+  `continue: true`**, cuyo transform primero borra la cabecera que traiga el
+  visitante y luego pone el secreto. El rewrite sigue en `next.config.ts`. La
+  documentación de Vercel dice que `routes` convive con las propiedades de alto
+  nivel; que conviva también con el rewrite que genera Next **se verifica en un
+  preview** (paso 3 del runbook). Si no, el rewrite se muda a esa misma ruta
+  con `dest: "${API_BASE_URL}/api/$1"` y `env`.
+- **API** (`api/middleware.py::_trusted_client_ip`): si la cabecera casa con
+  alguno de los dos valores —`hmac.compare_digest` contra todos, sin cortar al
+  primer acierto—, la IP es `x-real-ip` validada con `ipaddress`, o el primer
+  salto de `X-Forwarded-For` si falta. Sin cabecera, con una que no casa o sin
+  IP válida, lo de siempre. La variante A2 (`CF-Connecting-IP`) **no** se
+  implementó: espera a lo que diga el diagnóstico.
+- **SSR** (`web/src/lib/server-prefetch.ts`): manda el secreto y el `x-real-ip`
+  de la request entrante; sin la variable no manda ninguno de los dos. Las
+  lecturas de la superficie pública (`lib/publico-api.ts`, sitemap, cobertura)
+  no lo mandan: se generan en build o ISR, sin un visitante detrás.
+- `api/routes/auth.py::_set_session_cookie` guarda la IP de
+  `_trusted_client_ip`, no `request.client.host`.
+- `observability/sentry.py` no necesitó cambio: envía solo `host`,
+  `user-agent` y `referer`; un test fija que la cabecera no sale.
+- El secreto no se registra en ningún sitio. El arranque en `ENV=prod` sin él
+  emite `api_origin_secret_not_configured` (solo el nombre de la variable).
+- **`api/diagnostico_proxy.py` se queda** hasta que el propietario haga la
+  verificación de §7 en producción; ahora añade `origen_acreditado` (booleano)
+  para ver si el secreto casó. Se retira en el cambio que anote esa verificación.
 
 ## Por qué hace falta un RFC
 
@@ -342,7 +385,9 @@ nadie.
 ## Acceptance criteria
 
 - [ ] Diagnóstico leído en producción y la cadena real anotada en §2.
-- [ ] Opción elegida por el propietario y anotada aquí.
+- [x] Opción elegida por el propietario y anotada aquí (B, 2026-10-26).
 - [ ] Verificación de §7 hecha y anotada con fecha.
-- [ ] `api/diagnostico_proxy.py` retirado.
+- [ ] Secreto puesto en Vercel y Render, y la regla de `web/vercel.json`
+  validada en un preview.
+- [ ] `api/diagnostico_proxy.py` retirado (tras la verificación de §7).
 - [ ] `make lint && make typecheck && make test-unit` en verde.

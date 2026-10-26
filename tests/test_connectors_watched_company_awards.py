@@ -17,8 +17,19 @@ from scraper.connectors.watched_company_awards import (
     PlacspWatchedCompanyAwardsConnector,
 )
 
+_ORGANO = "10000000000042"
 
-def _entry(*, nif: str, contract_id: str = "WATCH-001") -> tuple[Any, str]:
+
+def _entry(
+    *, nif: str, contract_id: str = "WATCH-001", organo: str | None = _ORGANO
+) -> tuple[Any, str]:
+    party = (
+        "<cacext:LocatedContractingParty><cac:Party><cac:PartyIdentification>"
+        f'<cbc:ID schemeName="ID_PLATAFORMA">{organo}</cbc:ID>'
+        "</cac:PartyIdentification></cac:Party></cacext:LocatedContractingParty>"
+        if organo
+        else ""
+    )
     xml = textwrap.dedent(
         f"""\
         <feed xmlns="http://www.w3.org/2005/Atom"
@@ -33,6 +44,7 @@ def _entry(*, nif: str, contract_id: str = "WATCH-001") -> tuple[Any, str]:
             <link href="https://contratacion.example/{contract_id}"/>
             <cacext:ContractFolderStatus>
               <cbc:ContractFolderID>{contract_id}</cbc:ContractFolderID>
+              {party}
               <cac:ProcurementProject>
                 <cbc:Name>Servicio no tecnológico observado por empresa</cbc:Name>
               </cac:ProcurementProject>
@@ -61,13 +73,37 @@ def test_parse_unfiltered_persists_non_technology_award_for_watched_nif() -> Non
     parsed = connector.parse(RawNotice(natural_id="notice", payload=(entry, updated)))
 
     assert parsed is not None
-    assert parsed.licitacion.id_externo == f"{SOURCE_ID}:WATCH-001"
+    # Acotada por el órgano, como la del feed principal (RFC de identidad PLACSP).
+    assert parsed.licitacion.id_externo == f"{SOURCE_ID}:{_ORGANO}:WATCH-001"
+    assert parsed.licitacion.organo_ref_fuente == _ORGANO
     assert parsed.licitacion.fuente == SOURCE_ID
     assert parsed.licitacion.tecnologia is None
     assert parsed.licitacion.analysis_universe == ANALYSIS_UNIVERSE
     assert parsed.licitacion.inclusion_reason == INCLUSION_REASON
     assert parsed.adjudicaciones[0].licitacion_id == parsed.licitacion.id_externo
     assert parsed.adjudicaciones[0].nif == "B-12345674"
+
+
+def test_sin_organo_no_se_escribe_y_se_cuenta() -> None:
+    entry, updated = _entry(nif="B12345674", organo=None)
+    connector = PlacspWatchedCompanyAwardsConnector({"B12345674"})
+
+    assert connector.parse(RawNotice(natural_id="notice", payload=(entry, updated))) is None
+    assert connector.contadores_de_descarte() == {f"{SOURCE_ID}_sin_identificador_de_organo": 1}
+
+
+def test_el_carril_bulk_escribe_la_misma_clave_que_el_vivo() -> None:
+    """El prefijo es de la familia, no del carril: vivo y bulk, la misma fila."""
+    entry, updated = _entry(nif="B12345674")
+    vivo = PlacspWatchedCompanyAwardsConnector({"B12345674"}).parse(
+        RawNotice(natural_id="n", payload=(entry, updated))
+    )
+    bulk = PlacspWatchedCompanyAwardsBulkConnector(2026, 7, {"B12345674"}).parse(
+        RawNotice(natural_id="n", payload=(entry, updated))
+    )
+    assert vivo is not None and bulk is not None
+    assert vivo.licitacion.id_externo == bulk.licitacion.id_externo
+    assert bulk.licitacion.fuente == f"{SOURCE_ID}_bulk_202607"
 
 
 def test_parse_discards_award_without_watched_nif() -> None:

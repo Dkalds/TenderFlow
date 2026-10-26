@@ -239,9 +239,13 @@ services:
         sync: false
       - key: FRONTEND_URL
         sync: false
-      # IPs o rangos CIDR del proxy de Render cuyo X-Forwarded-For se honra.
-      # Gestionado por entorno (sync: false) porque el rango depende de la
-      # región/plan: cópialo del panel de Render y ponlo aquí, nunca "*".
+      # IPs o rangos CIDR del proxy cuyo X-Forwarded-For se honra.
+      # **No es lo que da la IP del visitante** (RFC 2026-10-24): tras Vercel,
+      # Cloudflare y el proxy de Render, recorrer X-Forwarded-For solo llega al
+      # egreso de Vercel, compartido por todos. Eso lo resuelve
+      # API_ORIGIN_SECRET, más abajo. No la abras a 10.0.0.0/8 por separado:
+      # uvicorn reescribiría el peer con un salto igual de compartido.
+      # Gestionado por entorno (sync: false); nunca "*".
       # Con "*" uvicorn acepta la cabecera de cualquier peer y el cliente elige
       # qué IP ve la aplicación, tumbando rate limiting, lockout de login y la
       # trazabilidad del audit log. El validator
@@ -253,6 +257,18 @@ services:
       # appendea el proxy), nunca el primero (que escribe el cliente) — ver
       # RFC-051. No sustituye al validator: es la red bajo la red.
       - key: FORWARDED_ALLOW_IPS
+        sync: false
+      # Secreto compartido con Vercel (RFC 2026-10-24, opción B): Vercel lo
+      # pone en x-tf-origin-secret al reenviar /api/* y, si casa, la API toma
+      # la IP del visitante de x-real-ip para el rate limiting, el bloqueo de
+      # login y el access log. El mismo valor, como variable sensible de
+      # Production, en el proyecto de Vercel. _PREVIOUS solo durante una
+      # rotación. Alta, verificación y rotación: docs/runbooks/ip-del-cliente.md.
+      # Sin él la API arranca (aviso api_origin_secret_not_configured) y cuenta
+      # por el nodo del proxy, como antes.
+      - key: API_ORIGIN_SECRET
+        sync: false
+      - key: API_ORIGIN_SECRET_PREVIOUS
         sync: false
       # Sentry: observability/sentry.py es opt-in por SENTRY_DSN. Sin esta
       # variable, configure_sentry() en api/app.py es un no-op y producción

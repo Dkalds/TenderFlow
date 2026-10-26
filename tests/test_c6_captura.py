@@ -342,8 +342,10 @@ class TestNotaDelFavorito:
 
     def test_la_ruta_existe(self) -> None:
         from api.app import app
+        from api.rutas import rutas_planas
 
-        rutas = {r.path for r in app.routes if hasattr(r, "path")}
+        # OpenAPI borra el conversor: hay que mirar la plantilla registrada.
+        rutas = {r.plantilla for r in rutas_planas(app.routes)}
         # `:path` en el patrón: los identificadores de PLACSP llevan barras.
         assert "/api/v1/watchlist/items/{id_externo:path}/nota" in rutas
 
@@ -417,15 +419,16 @@ class TestOrdenDeRutas:
     )
     def test_la_estatica_va_antes_que_la_parametrica(self, estatica: str) -> None:
         from api.app import app
+        from api.rutas import rutas_planas
 
-        rutas = [getattr(r, "path", "") for r in app.routes]
+        rutas = [r.plantilla for r in rutas_planas(app.routes)]
         assert estatica in rutas, f"{estatica} no está registrada"
         assert rutas.index(estatica) < rutas.index("/api/v1/pursuits/{pursuit_id}")
 
     def test_las_rutas_de_tareas_y_go_no_go_existen(self) -> None:
         from api.app import app
 
-        rutas = {r.path for r in app.routes if hasattr(r, "path")}
+        rutas = set(app.openapi()["paths"])
         for ruta in (
             "/api/v1/pursuits/{pursuit_id}/tasks",
             "/api/v1/pursuits/{pursuit_id}/tasks/{task_id}",

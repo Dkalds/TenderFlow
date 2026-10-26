@@ -28,8 +28,21 @@ on:
   workflow_dispatch:
     inputs:
       months:
-        description: "Cuántos meses recientes refrescar"
+        description: "Cuántos meses recientes refrescar (se ignora si hay backfill_desde)"
         default: "3"
+        required: false
+      # Reingesta histórica en orden ascendente (runbook reingesta-unica-placsp):
+      # el ZIP mensual no trae <updated>, así que gana el último mes escrito y
+      # `months` (de nuevo a viejo) dejaría cada expediente en su versión más
+      # vieja. Un mes de PLACSP pasa de 2 h: un tramo por job, cada uno empieza
+      # donde terminó el anterior.
+      backfill_desde:
+        description: "Reingesta: primer mes, YYYY-MM (vacío = refresco por months)"
+        default: ""
+        required: false
+      backfill_hasta:
+        description: "Reingesta: último mes incluido, YYYY-MM (vacío = el mismo que backfill_desde)"
+        default: ""
         required: false
 
 permissions:
@@ -128,17 +141,35 @@ jobs:
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
           GITHUB_TOKEN: ${{ github.token }}
           SCRAPER_MONTHS: ${{ inputs.months || 3 }}
+          BACKFILL_DESDE: ${{ inputs.backfill_desde }}
+          BACKFILL_HASTA: ${{ inputs.backfill_hasta }}
           # El bulk también corre los pasos post-ingesta, así que ejecuta
           # `llm_tech_labeling` igual que el carril diario. Sin estas variables,
           # un bulk manual consumiría la ventana diaria del paso sin clasificar
           # nada (ver `_run_periodic`: el lock solo se suelta si el paso falla).
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
         run: |
+          # Los inputs llegan por env y se validan antes de usarse: nunca se
+          # interpolan dentro del script.
+          if [ -n "${BACKFILL_DESDE}" ]; then
+            HASTA="${BACKFILL_HASTA:-$BACKFILL_DESDE}"
+            for v in "$BACKFILL_DESDE" "$HASTA"; do
+              if ! [[ "$v" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]]; then
+                echo "::error::Mes inválido '$v': se espera YYYY-MM"
+                exit 1
+              fi
+            done
+            ARGS=(--backfill "${BACKFILL_DESDE%-*}" "$((10#${BACKFILL_DESDE#*-}))"
+                  --hasta "${HASTA%-*}" "$((10#${HASTA#*-}))")
+          else
+            ARGS=(--months "$SCRAPER_MONTHS")
+          fi
+          echo "run_update ${ARGS[*]}"
           MAX_RETRIES=2
           DELAY_SECS=90
           for attempt in $(seq 1 $MAX_RETRIES); do
             echo "=== Intento $attempt/$MAX_RETRIES ==="
-            python -m scheduler.run_update --months "$SCRAPER_MONTHS" && exit 0
+            python -m scheduler.run_update "${ARGS[@]}" && exit 0
             echo "Intento $attempt fallido."
             if [ "$attempt" -lt "$MAX_RETRIES" ]; then
               echo "Reintentando en ${DELAY_SECS}s..."

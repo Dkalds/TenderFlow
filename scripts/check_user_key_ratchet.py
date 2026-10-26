@@ -71,6 +71,10 @@ _REPORTEROS = frozenset(
         # congelarlo inflaría el conteo de STATUS.md con un fichero sin nada
         # que migrar.
         "mcp_server/catalogo.py",
+        # El runner de `make gates` nombra este script para ejecutarlo
+        # (``check_user_key_ratchet.py``): es el termómetro llamando al
+        # termómetro, no una identidad que migrar.
+        "scripts/run_gates.py",
     }
 )
 

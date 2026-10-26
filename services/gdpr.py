@@ -140,7 +140,7 @@ def anonymize_user_data(
     """Anonimiza/borra los datos personales del usuario (RGPD Art. 17).
 
     Cubre watchlist (empresa/CPV), favoritos, reglas de watchlist por criterio,
-    perfil de scoring, alertas in-app, descartes del Radar, seguimientos
+    perfil de scoring, alertas in-app y sus marcas de lectura, descartes del Radar, seguimientos
     (``follows``), votos del asistente y preferencias de notificación y de
     correo — todo lo persistido bajo ``user_key`` **o** ``user_id`` (v129: un
     borrado que sólo mirase la clave del correo actual dejaría vivo lo

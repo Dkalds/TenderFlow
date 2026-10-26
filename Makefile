@@ -1,6 +1,6 @@
 .PHONY: status schema-doc product-status job-parity skills-inventory install dev lint format typecheck audit audit-truth-check fuzz-api mutation-sample capture-placsp-fixtures test test-all test-parallel test-unit test-integration test-e2e test-property test-load lock lock-hashes scrape scrape-daily scrape-bulk api doctor seed seed-full seed-reset clean kpi kpi-export-parquet runbook-dlq-replay runbook-rate-limit-reset runbook-model-rollback runbook-disaster-recovery check check-frontend-invariants check-api-contract check-agent-docs audit-truth help migrate-alembic migrate-status migrate-history web-dev web-build web-codegen web-lint web-typecheck web-test-e2e web-test-e2e-ui web-docker
 .PHONY: web-test web-test-coverage check-env-parity check-public-surface check-layers check-prints check-any-count check-api-surface check-api-convencion
-.PHONY: check-casos-uso casos-uso web-mutation reencolar-documentos inventario-uso
+.PHONY: check-casos-uso casos-uso web-mutation reencolar-documentos inventario-uso gates gates-deps
 
 # ── Ayuda ────────────────────────────────────────────────────────────────
 help:  ## Muestra esta ayuda
@@ -39,6 +39,16 @@ check:  ## Lint + typecheck + tests unit+integration (ideal para desarrollo)
 	ruff check .
 	mypy .
 	pytest tests/ -m "(unit or integration) and not slow" -q
+
+# Todos los `scripts/check_*.py` en un paso, sin cortar en el primero que
+# falla: la lista y el motivo de los que quedan fuera están en
+# `scripts/run_gates.py` (`--list`), y un script nuevo sin clasificar rompe
+# `tests/test_unit_run_gates.py`.
+gates:  ## Todos los gates y ratchets que solo necesitan la stdlib, con resumen (no fail-fast)
+	python scripts/run_gates.py
+
+gates-deps:  ## Los gates que importan la app (superficie, convención, contrato, paridad de jobs)
+	python scripts/run_gates.py --deps
 
 check-analytics-unbounded:  ## Ningún método analítico materializa sin cota (ADR-023, C3.2)
 	python scripts/check_analytics_unbounded.py

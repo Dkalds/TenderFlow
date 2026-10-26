@@ -573,6 +573,24 @@ def get_settings(user_id: int, organization_id: int) -> OrganizationSettingsOut:
     )
 
 
+def _alerta_por_defecto(organization_id: int, user_id: int, ajustes: OrganizationSettings) -> None:
+    """Primera alerta de la organización al guardar su ámbito (D53, B1).
+
+    Va después de escribir y **no puede tumbar el guardado**: los ajustes ya
+    están confirmados, y responder 500 por la alerta haría creer al
+    administrador que no se guardaron. Si falla queda en el log, y
+    ``scripts/crear_alertas_por_defecto.py`` la crea después. El a nombre de
+    quién y la idempotencia están en
+    ``services.watchlist_rules.asegurar_alerta_por_defecto``.
+    """
+    from services.watchlist_rules import asegurar_alerta_por_defecto
+
+    try:
+        asegurar_alerta_por_defecto(organization_id, user_id, ajustes)
+    except Exception:
+        log.warning("alerta_por_defecto_fallida", organization_id=organization_id, exc_info=True)
+
+
 def update_settings(
     user_id: int, organization_id: int, body: OrganizationSettings
 ) -> OrganizationSettingsOut:
@@ -581,6 +599,9 @@ def update_settings(
     Las familias se validan contra el diccionario (``config/keywords.py``): una
     familia que no existe no filtraría nada y dejaría el Radar vacío sin que
     nadie supiera por qué.
+
+    Si la organización no tiene ninguna regla de vigilancia, guardar su ámbito
+    le crea la alerta diaria por defecto (D53; ver :func:`_alerta_por_defecto`).
     """
     _, role = resolve_organization(user_id, organization_id, write=True)
     if role not in {"owner", "admin"}:
@@ -598,6 +619,7 @@ def update_settings(
     # seguía sin acotar—.
     merged = _repo.update_settings(organization_id, body.model_dump(mode="json"))
     guardados = ajustes_guardados(merged, organization_id)
+    _alerta_por_defecto(organization_id, user_id, guardados)
     return OrganizationSettingsOut(
         organization_id=organization_id,
         **guardados.model_dump(),

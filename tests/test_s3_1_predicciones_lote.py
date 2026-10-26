@@ -298,7 +298,7 @@ def test_el_lote_de_otro_expediente_no_tiene_escenario() -> None:
 def test_la_ruta_de_escenarios_devuelve_404_para_un_lote_ajeno() -> None:
     with patch("api.routes.predicciones.get_price_scenarios", return_value=None):
         with pytest.raises(HTTPException) as error:
-            asyncio.run(get_escenarios_precio(_LICITACION, lote_id=99, _ctx={}))
+            asyncio.run(get_escenarios_precio(licitacion_id=_LICITACION, lote_id=99, _ctx={}))
 
     assert error.value.status_code == 404
     assert error.value.detail == "Lote no encontrado en esa licitación."
@@ -307,7 +307,7 @@ def test_la_ruta_de_escenarios_devuelve_404_para_un_lote_ajeno() -> None:
 def test_la_ruta_sin_lote_conserva_su_404_de_siempre() -> None:
     with patch("api.routes.predicciones.get_price_scenarios", return_value=None):
         with pytest.raises(HTTPException) as error:
-            asyncio.run(get_escenarios_precio("NO-EXISTE", _ctx={}))
+            asyncio.run(get_escenarios_precio(licitacion_id="NO-EXISTE", _ctx={}))
 
     assert error.value.detail == "Licitación no encontrada."
 
@@ -321,7 +321,9 @@ def test_la_ruta_pasa_el_lote_al_servicio() -> None:
                 *args, **kwargs, repository=_FakePricing(_lote())
             ),
         ):
-            servido = asyncio.run(get_escenarios_precio(_LICITACION, lote_id=7, _ctx={}))
+            servido = asyncio.run(
+                get_escenarios_precio(licitacion_id=_LICITACION, lote_id=7, _ctx={})
+            )
 
     assert servido.lote_id == 7
     assert servido.tender_amount_eur == 40_000.0
@@ -405,7 +407,7 @@ def test_sin_prediccion_ni_adjudicacion_el_lote_da_404() -> None:
         assert prediccion_baja(_LICITACION, 7) is None
 
         with pytest.raises(HTTPException) as error:
-            asyncio.run(get_prediccion_baja(_LICITACION, lote_id=7, _ctx={}))
+            asyncio.run(get_prediccion_baja(licitacion_id=_LICITACION, lote_id=7, _ctx={}))
     assert error.value.status_code == 404
     assert error.value.detail == "Sin predicción ni adjudicación registrada para ese lote."
 
@@ -417,7 +419,7 @@ def test_un_lote_ajeno_es_un_error_distinto_de_no_tener_datos() -> None:
             prediccion_baja(_LICITACION, 99)
 
         with pytest.raises(HTTPException) as error:
-            asyncio.run(get_prediccion_baja(_LICITACION, lote_id=99, _ctx={}))
+            asyncio.run(get_prediccion_baja(licitacion_id=_LICITACION, lote_id=99, _ctx={}))
 
     assert error.value.status_code == 404
     assert "no pertenece" in error.value.detail
@@ -449,6 +451,6 @@ def test_sin_lote_la_prediccion_no_emite_ninguno_de_los_campos_nuevos() -> None:
 def test_la_ruta_sin_lote_conserva_su_404_y_su_mensaje() -> None:
     with patch("api.routes.predicciones.prediccion_baja", return_value=None):
         with pytest.raises(HTTPException) as error:
-            asyncio.run(get_prediccion_baja("SIN-DATOS", _ctx={}))
+            asyncio.run(get_prediccion_baja(licitacion_id="SIN-DATOS", _ctx={}))
 
     assert error.value.detail == "Sin predicción ni adjudicación registrada para esa licitación."

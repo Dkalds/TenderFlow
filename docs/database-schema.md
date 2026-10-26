@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-10-25
+Generado: 2026-10-26
 
-Revisión Alembic aplicada: `v163_identidad_placsp_fase_a`.
+Revisión Alembic aplicada: `v165_user_id_fase3_tanda3`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -29,11 +29,11 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Empresas y mercado | 6 | 34 | 8 |
 | Organizaciones y oportunidades | 15 | 143 | 31 |
 | Identidad, acceso y auditoría | 16 | 112 | 25 |
-| Seguimiento y notificaciones | 12 | 134 | 36 |
+| Seguimiento y notificaciones | 12 | 134 | 38 |
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
-| Otras | 23 | 182 | 34 |
-| **Total** | **104** | **953** | **236** |
+| Otras | 23 | 182 | 35 |
+| **Total** | **104** | **953** | **239** |
 
 ## Licitaciones y fuente
 
@@ -1078,14 +1078,14 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (email)` · `UNIQUE (oauth_provider, oauth
 | Columna | Tipo | Nulo |
 |---|---|---|
 | `id` | `integer` | no |
-| `user_key` | `text` | no |
+| `user_key` | `text` | sí |
 | `notification_id` | `text` | no |
 | `read_at` | `text` | no |
 | `user_id` | `integer` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, notification_id)`
 
-Índices: `idx_notif_reads_user`, `idx_notification_reads_user_id`
+Índices: `idx_notif_reads_user`, `idx_notification_reads_user_id`, `uq_notification_reads_user_id` (único)
 
 ### `pending_digests`
 
@@ -1128,7 +1128,7 @@ Claves: `PRIMARY KEY (user_id, id_externo)`
 | Columna | Tipo | Nulo |
 |---|---|---|
 | `id` | `integer` | no |
-| `user_key` | `text` | no |
+| `user_key` | `text` | sí |
 | `name` | `text` | no |
 | `filters_json` | `text` | no |
 | `created_at` | `text` | no |
@@ -1138,7 +1138,7 @@ Claves: `PRIMARY KEY (user_id, id_externo)`
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, name)`
 
-Índices: `idx_saved_filters_organization`, `idx_saved_filters_user`, `idx_saved_filters_user_id`
+Índices: `idx_saved_filters_organization`, `idx_saved_filters_user`, `idx_saved_filters_user_id`, `uq_saved_filters_user_id` (único)
 
 ### `user_notifications`
 
@@ -1902,7 +1902,7 @@ Claves: `PRIMARY KEY (id)`
 | Columna | Tipo | Nulo |
 |---|---|---|
 | `id` | `integer` | no |
-| `user_key` | `text` | no |
+| `user_key` | `text` | sí |
 | `event_type` | `text` | no |
 | `modo` | `text` | no |
 | `updated_at` | `text` | no |
@@ -1910,7 +1910,7 @@ Claves: `PRIMARY KEY (id)`
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, event_type)`
 
-Índices: `idx_user_event_prefs_user_id`
+Índices: `idx_user_event_prefs_user_id`, `uq_user_event_prefs_user_id` (único)
 
 ## Vistas materializadas
 

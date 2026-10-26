@@ -68,6 +68,35 @@ class CondicionesOficialesRepository:
         except pg_errors.UndefinedTable:
             return {**_vacio(), **base}
 
+    def solvencia_de(self, licitacion_ids: list[str]) -> dict[str, list[dict[str, object]]]:
+        """Las filas de ``licitacion_solvencia`` de varios expedientes, por id.
+
+        Mismas columnas y orden que la familia ``solvencia`` de :meth:`get`;
+        los expedientes sin solvencia publicada no aparecen. Es la lectura en
+        lote del resumen diario (B3 del plan 2026-10): solo la solvencia,
+        porque es lo único de las condiciones que el correo contrasta.
+
+        Sin la tabla (código desplegado antes que v148) responde vacío, igual
+        que :meth:`get`.
+        """
+        if not licitacion_ids:
+            return {}
+        try:
+            with connect_read() as c:
+                filas = rows_to_dicts(
+                    c.execute(
+                        f"SELECT licitacion_id, {_COLUMNAS_SOLVENCIA} FROM licitacion_solvencia "
+                        f"WHERE licitacion_id = ANY(%s) {_ORDEN}",
+                        (list(licitacion_ids),),
+                    )
+                )
+        except pg_errors.UndefinedTable:
+            return {}
+        por_id: dict[str, list[dict[str, object]]] = {}
+        for fila in filas:
+            por_id.setdefault(str(fila.pop("licitacion_id")), []).append(fila)
+        return por_id
+
     def _leer(self, licitacion_id: str) -> dict[str, Any]:
         with connect_read() as c:
             criterios = rows_to_dicts(

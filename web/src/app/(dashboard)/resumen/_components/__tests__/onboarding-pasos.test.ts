@@ -8,7 +8,8 @@ import {
   progresoParaTelemetria,
   PASOS,
 } from "@/components/onboarding/pasos";
-import { hayReglaActiva, perfilConfigurado, tienePursuits } from "@/components/onboarding/senales";
+import { faltaCapacidad, hayNif, hayRegla, tienePursuits } from "@/components/onboarding/senales";
+import { senalCapacidad } from "@/components/onboarding/use-estado-onboarding";
 import type { Schemas, WatchlistRuleOut } from "@/lib/api-types";
 import { findConsoleSpace } from "@/lib/console-spaces";
 
@@ -31,29 +32,29 @@ describe("estadoDe", () => {
 
 describe("debeMostrarse", () => {
   it("con todo hecho, la banda no existe", () => {
-    const pasos = derivarPasos({ perfil: true, reglas: true, pursuit: true });
+    const pasos = derivarPasos({ capacidad: true, alerta: true, pursuit: true });
     expect(debeMostrarse(pasos)).toBe(false);
   });
 
   it("mientras se comprueba tampoco aparece", () => {
-    const pasos = derivarPasos({ perfil: "cargando", reglas: "cargando", pursuit: "cargando" });
+    const pasos = derivarPasos({ capacidad: "cargando", alerta: "cargando", pursuit: "cargando" });
     expect(debeMostrarse(pasos)).toBe(false);
   });
 
   it("una API rota no inventa una banda de bienvenida", () => {
-    const pasos = derivarPasos({ perfil: "error", reglas: "error", pursuit: "error" });
+    const pasos = derivarPasos({ capacidad: "error", alerta: "error", pursuit: "error" });
     expect(debeMostrarse(pasos)).toBe(false);
   });
 
   it("basta un pendiente acreditado para que valga la pena", () => {
-    const pasos = derivarPasos({ perfil: true, reglas: false, pursuit: "cargando" });
+    const pasos = derivarPasos({ capacidad: true, alerta: false, pursuit: "cargando" });
     expect(debeMostrarse(pasos)).toBe(true);
   });
 });
 
 describe("progresoDe / etiquetaProgreso", () => {
   it("no cuenta como hecho lo que no ha resuelto", () => {
-    const progreso = progresoDe(derivarPasos({ perfil: true, reglas: false, pursuit: "cargando" }));
+    const progreso = progresoDe(derivarPasos({ capacidad: true, alerta: false, pursuit: "cargando" }));
     expect(progreso).toEqual({ hechos: 1, total: PASOS.length, sinResolver: 1 });
   });
 
@@ -78,7 +79,7 @@ describe("progresoParaTelemetria", () => {
   });
 
   it("lo que está sin comprobar no cuenta como hecho", () => {
-    const progreso = progresoDe(derivarPasos({ perfil: true, reglas: "error", pursuit: false }));
+    const progreso = progresoDe(derivarPasos({ capacidad: true, alerta: "error", pursuit: false }));
     expect(progresoParaTelemetria(progreso)).toBe("1");
   });
 
@@ -90,29 +91,57 @@ describe("progresoParaTelemetria", () => {
   });
 });
 
-describe("perfilConfigurado", () => {
-  const vacio: Schemas["UserProfileOut"] = { visibility: "private", inherited: false };
+describe("faltaCapacidad", () => {
+  const capacidad = (
+    campos_incompletos: Schemas["OrganizationCapabilitiesOut"]["campos_incompletos"],
+  ): Schemas["OrganizationCapabilitiesOut"] => ({ organization_id: 1, campos_incompletos });
 
-  it("el objeto vacío que devuelve la API sin perfil es «no configurado»", () => {
-    expect(perfilConfigurado(vacio)).toBe(false);
-  });
-
-  it("acepta cualquier señal de que el usuario tocó el perfil", () => {
-    expect(perfilConfigurado({ ...vacio, updated_at: "2026-08-01T00:00:00Z" })).toBe(true);
-    expect(perfilConfigurado({ ...vacio, afinidad_keywords: ["SAP"] })).toBe(true);
-    expect(perfilConfigurado({ ...vacio, cpvs: ["72000000"] })).toBe(true);
-    expect(perfilConfigurado({ ...vacio, importe_min: 100_000 })).toBe(true);
-    expect(perfilConfigurado({ ...vacio, weights: { importe: 100 } })).toBe(true);
-  });
-
-  it("no confunde listas vacías con contenido", () => {
-    expect(perfilConfigurado({ ...vacio, afinidad_keywords: [], cpvs: [], weights: {} })).toBe(
-      false,
+  it("lo decide `campos_incompletos` del backend, no una cuenta del cliente", () => {
+    expect(faltaCapacidad(capacidad(["certificaciones", "facturacion", "referencias", "perfiles_equipo"]))).toBe(
+      true,
     );
+    expect(faltaCapacidad(capacidad(["facturacion"]))).toBe(true);
+    expect(faltaCapacidad(capacidad(["certificaciones"]))).toBe(true);
+  });
+
+  it("referencias y perfiles de equipo no los exige el paso", () => {
+    expect(faltaCapacidad(capacidad(["referencias", "perfiles_equipo"]))).toBe(false);
+    expect(faltaCapacidad(capacidad([]))).toBe(false);
   });
 });
 
-describe("hayReglaActiva", () => {
+describe("hayNif", () => {
+  it("hace falta al menos uno", () => {
+    expect(hayNif({ organization_id: 1, nifs: [] })).toBe(false);
+    expect(
+      hayNif({ organization_id: 1, nifs: [{ id: 1, nif: "B12345678", razon_social: "Acme", principal: true, created_at: "2026-10-01T00:00:00Z" }] }),
+    ).toBe(true);
+  });
+});
+
+describe("senalCapacidad", () => {
+  it("lo que falta del perfil basta para «pendiente», sin esperar al NIF", () => {
+    expect(senalCapacidad(false, "cargando")).toBe(false);
+    expect(senalCapacidad(false, "error")).toBe(false);
+  });
+
+  it("«hecho» exige perfil completo y NIF", () => {
+    expect(senalCapacidad(true, true)).toBe(true);
+    expect(senalCapacidad(true, false)).toBe(false);
+  });
+
+  it("sin poder leer el NIF no se afirma hecho", () => {
+    expect(senalCapacidad(true, "error")).toBe("error");
+    expect(senalCapacidad(true, "cargando")).toBe("cargando");
+  });
+
+  it("mientras el perfil carga o falla, eso es lo que se dice", () => {
+    expect(senalCapacidad("cargando", true)).toBe("cargando");
+    expect(senalCapacidad("error", true)).toBe("error");
+  });
+});
+
+describe("hayRegla", () => {
   const regla = (active: boolean): WatchlistRuleOut => ({
     id: 1,
     active,
@@ -123,15 +152,12 @@ describe("hayReglaActiva", () => {
   });
 
   it("sin reglas, paso pendiente", () => {
-    expect(hayReglaActiva([])).toBe(false);
+    expect(hayRegla([])).toBe(false);
   });
 
-  it("una regla desactivada no vigila nada, así que no cuenta", () => {
-    expect(hayReglaActiva([regla(false)])).toBe(false);
-  });
-
-  it("basta una activa", () => {
-    expect(hayReglaActiva([regla(false), regla(true)])).toBe(true);
+  it("el paso es revisarla: una regla pausada también está revisada", () => {
+    expect(hayRegla([regla(false)])).toBe(true);
+    expect(hayRegla([regla(true)])).toBe(true);
   });
 });
 

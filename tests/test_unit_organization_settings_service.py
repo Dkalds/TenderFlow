@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import services.organizations as mod
 from shared.dto import OrganizationSettings
+
+
+@pytest.fixture(autouse=True)
+def alerta() -> Iterator[MagicMock]:
+    """Guardar crea la alerta por defecto (D53), que escribe en la base: aquí
+    se sustituye por un doble para que los tests sigan sin BD."""
+    with patch("services.watchlist_rules.asegurar_alerta_por_defecto") as doble:
+        yield doble
 
 
 def _membresia(role: str) -> dict[str, Any]:
@@ -110,3 +119,34 @@ def test_una_clave_desconocida_no_tira_el_resto_de_la_configuracion() -> None:
         ),
     ):
         assert mod.get_settings(1, 7).tecnologias == ["SAP"]
+
+
+def test_guardar_el_ambito_pide_la_alerta_por_defecto(alerta: MagicMock) -> None:
+    """D53: la alerta se pide con lo que quedó guardado y a nombre de quien guarda."""
+    with (
+        patch.object(mod._repo, "get_active_membership", return_value=_membresia("owner")),
+        patch.object(mod._repo, "update_settings", return_value={"tecnologias": ["SAP"]}),
+    ):
+        mod.update_settings(1, 7, OrganizationSettings(tecnologias=["sap"]))
+    alerta.assert_called_once()
+    organization_id, user_id, ajustes = alerta.call_args.args
+    assert (organization_id, user_id) == (7, 1)
+    assert ajustes.tecnologias == ["SAP"]
+
+
+def test_un_fallo_de_la_alerta_no_tumba_el_guardado(alerta: MagicMock) -> None:
+    """Los ajustes ya están escritos: responder error haría creer que no."""
+    alerta.side_effect = RuntimeError("sin base")
+    with (
+        patch.object(mod._repo, "get_active_membership", return_value=_membresia("admin")),
+        patch.object(mod._repo, "update_settings", return_value={"tecnologias": ["SAP"]}),
+    ):
+        out = mod.update_settings(1, 7, OrganizationSettings(tecnologias=["SAP"]))
+    assert out.tecnologias == ["SAP"]
+
+
+def test_quien_no_puede_escribir_no_crea_alerta(alerta: MagicMock) -> None:
+    with patch.object(mod._repo, "get_active_membership", return_value=_membresia("member")):
+        with pytest.raises(mod.OrganizationPermissionError):
+            mod.update_settings(1, 7, OrganizationSettings(tecnologias=["SAP"]))
+    alerta.assert_not_called()

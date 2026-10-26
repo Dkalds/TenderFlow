@@ -3,17 +3,19 @@ import { render, screen, cleanup, fireEvent, waitFor, within } from "@testing-li
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 /**
- * La banda de primeros pasos sólo vale si se apaga sola. Lo que estos tests
+ * CU-34. La banda de primeros pasos sólo vale si se apaga sola. Lo que estos tests
  * fijan no es el marcado: es que el estado venga del servidor y que ningún
  * estado intermedio se lea como una carencia del usuario.
  *
  * Se dobla el cliente tipado entero y se responde por ruta, que es como se
  * comporta de verdad: así el test ejercita también el gateo por `organizations`
- * y las tres señales a la vez.
+ * y las tres señales a la vez. La capacidad y los NIFs van por `fetchWithAuth`
+ * (ruta con id), las demás por `apiGet`; los dos dobles comparten respuestas.
  */
 
 interface RespuestasFalsas {
-  perfil: unknown;
+  capacidad: unknown;
+  nifs: unknown;
   reglas: unknown;
   pursuits: unknown;
   organizations: unknown;
@@ -26,7 +28,11 @@ interface RespuestasFalsas {
 const backend = vi.hoisted(
   () =>
     ({
-      perfil: {},
+      capacidad: {
+        organization_id: 1,
+        campos_incompletos: ["certificaciones", "facturacion", "referencias", "perfiles_equipo"],
+      },
+      nifs: { organization_id: 1, nifs: [] },
       reglas: { items: [] },
       pursuits: { items: [], total: 0, limit: 50, offset: 0, organization_id: 1 },
       organizations: [{ id: 1, name: "Acme", role: "owner" }],
@@ -39,7 +45,8 @@ const apiGet = vi.hoisted(() =>
   vi.fn((path: string) => {
     if (backend.cuelgan.has(path)) return new Promise(() => {});
     if (backend.fallan.has(path)) return Promise.reject(new Error("boom"));
-    if (path === "/api/v1/me/profile") return Promise.resolve(backend.perfil);
+    if (path === "/api/v1/organizations/1/capabilities") return Promise.resolve(backend.capacidad);
+    if (path === "/api/v1/organizations/1/nifs") return Promise.resolve(backend.nifs);
     if (path === "/api/v1/watchlist/rules") return Promise.resolve(backend.reglas);
     if (path === "/api/v1/pursuits") return Promise.resolve(backend.pursuits);
     if (path === "/api/v1/organizations") return Promise.resolve(backend.organizations);
@@ -50,7 +57,9 @@ const apiGet = vi.hoisted(() =>
 vi.mock("@/lib/api-client", () => ({
   apiGet,
   apiMutate: vi.fn(),
-  fetchWithAuth: vi.fn(() => new Promise(() => {})),
+  // La misma tabla de rutas: lo que distingue a los dos es solo si la ruta
+  // lleva un id.
+  fetchWithAuth: apiGet,
 }));
 
 vi.mock("@/lib/analytics", () => ({
@@ -64,15 +73,21 @@ import { registrarEvento } from "@/lib/analytics";
 
 const eventos = vi.mocked(registrarEvento);
 
-const PERFIL_HECHO = {
-  weights: { importe: 100 },
-  afinidad_keywords: ["SAP"],
-  updated_at: "2026-08-01T00:00:00Z",
-  visibility: "private",
+const CAPACIDAD_COMPLETA = {
+  organization_id: 1,
+  // Referencias y perfiles de equipo no los exige el paso.
+  campos_incompletos: ["referencias", "perfiles_equipo"],
+};
+const UN_NIF = {
+  organization_id: 1,
+  nifs: [{ id: 1, nif: "B12345678", razon_social: "Acme", principal: true, created_at: "2026-10-01T00:00:00Z" }],
 };
 const REGLA_ACTIVA = {
   items: [{ id: 1, active: true, email: null, frequency: "daily", match_count: 3 }],
 };
+const CAPACIDAD = "Completa la capacidad de tu organización";
+const ALERTA = "Revisa tu alerta";
+const OPORTUNIDAD = "Abre tu primera oportunidad";
 
 function renderBanda(
   props: { onDescartar?: () => void; posicion?: "arriba" | "abajo" } = {},
@@ -110,18 +125,27 @@ async function noApareceLaBanda(): Promise<void> {
   ).rejects.toThrow();
 }
 
+/** La cuenta recién creada: nada declarado, nada abierto. */
+function cuentaNueva() {
+  backend.capacidad = {
+    organization_id: 1,
+    campos_incompletos: ["certificaciones", "facturacion", "referencias", "perfiles_equipo"],
+  };
+  backend.nifs = { organization_id: 1, nifs: [] };
+  backend.reglas = { items: [] };
+  backend.pursuits = { items: [], total: 0, limit: 50, offset: 0, organization_id: 1 };
+  backend.organizations = [{ id: 1, name: "Acme", role: "owner" }];
+  backend.fallan = new Set();
+  backend.cuelgan = new Set();
+}
+
 describe("PrimerosPasos", () => {
   beforeEach(() => {
     cleanup();
     window.localStorage.clear();
     apiGet.mockClear();
     eventos.mockClear();
-    backend.perfil = {};
-    backend.reglas = { items: [] };
-    backend.pursuits = { items: [], total: 0, limit: 50, offset: 0, organization_id: 1 };
-    backend.organizations = [{ id: 1, name: "Acme", role: "owner" }];
-    backend.fallan = new Set();
-    backend.cuelgan = new Set();
+    cuentaNueva();
   });
 
   it("con una cuenta recién creada saca los tres pasos y adónde va cada uno", async () => {
@@ -130,9 +154,9 @@ describe("PrimerosPasos", () => {
     await esperarResuelto(0);
 
     for (const [titulo, destino] of [
-      ["Ajusta tu perfil de scoring", "/mi-perfil"],
-      ["Crea una regla de vigilancia", "/mi-watchlist"],
-      ["Abre tu primer pursuit", "/radar"],
+      [CAPACIDAD, "/equipo?tab=organizacion"],
+      [ALERTA, "/mi-watchlist"],
+      [OPORTUNIDAD, "/radar"],
     ]) {
       expect(screen.getByText(titulo).closest("a")?.getAttribute("href")).toBe(destino);
     }
@@ -141,28 +165,64 @@ describe("PrimerosPasos", () => {
   it("dice qué gana el usuario, no «bienvenido a TenderFlow»", async () => {
     renderBanda();
     await screen.findByRole("heading", { name: "Primeros pasos" });
-    expect(screen.getByText(/el Radar puntúa con pesos genéricos/)).toBeInTheDocument();
+    expect(screen.getByText(/el checklist de cada pliego contesta «desconocido»/)).toBeInTheDocument();
     expect(screen.queryByText(/bienvenid/i)).not.toBeInTheDocument();
   });
 
-  it("el paso ya hecho no se pide otra vez", async () => {
-    backend.perfil = PERFIL_HECHO;
+  it("la capacidad está hecha con certificaciones, facturación y un NIF", async () => {
+    backend.capacidad = CAPACIDAD_COMPLETA;
+    backend.nifs = UN_NIF;
     renderBanda();
     await esperarResuelto(1);
 
-    const fila = filaDe("Ajusta tu perfil de scoring");
+    const fila = filaDe(CAPACIDAD);
     expect(within(fila).getByText("hecho")).toBeInTheDocument();
     expect(within(fila).queryByRole("link")).toBeNull();
   });
 
-  it("con todo configurado no se muestra nada", async () => {
+  it("sin NIF la capacidad sigue pendiente aunque el perfil esté completo", async () => {
+    backend.capacidad = CAPACIDAD_COMPLETA;
+    renderBanda();
+    await esperarResuelto(0);
+    expect(within(filaDe(CAPACIDAD)).getByText("pendiente")).toBeInTheDocument();
+  });
+
+  it("con NIF pero sin facturación, también pendiente", async () => {
+    backend.capacidad = { organization_id: 1, campos_incompletos: ["facturacion"] };
+    backend.nifs = UN_NIF;
+    renderBanda();
+    await esperarResuelto(0);
+    expect(within(filaDe(CAPACIDAD)).getByText("pendiente")).toBeInTheDocument();
+  });
+
+  it("a quien no gestiona la organización no le pide los NIFs ni le da la capacidad por hecha", async () => {
+    // La API solo sirve los NIFs a owner y admin: pedirlos como `member` es un
+    // 403 seguro, y sin ellos no se sabe si el paso está hecho.
+    backend.organizations = [{ id: 1, name: "Acme", role: "member" }];
+    backend.capacidad = CAPACIDAD_COMPLETA;
+    renderBanda();
+    await screen.findByText("0 de 3 hechos · 1 sin comprobar");
+
+    expect(within(filaDe(CAPACIDAD)).getByText("sin comprobar")).toBeInTheDocument();
+    expect(rutasPedidas()).not.toContain("/api/v1/organizations/1/nifs");
+  });
+
+  it("a quien no gestiona sí le dice lo que falta del perfil, que puede leer", async () => {
+    backend.organizations = [{ id: 1, name: "Acme", role: "member" }];
+    renderBanda();
+    await esperarResuelto(0);
+    expect(within(filaDe(CAPACIDAD)).getByText("pendiente")).toBeInTheDocument();
+  });
+
+  it("con todo hecho no se muestra nada", async () => {
     // Control primero: con la cuenta vacía la banda SÍ sale, así que la
     // ausencia de abajo no puede ser un falso verde del montaje.
     renderBanda();
     await screen.findByRole("heading", { name: "Primeros pasos" });
     cleanup();
 
-    backend.perfil = PERFIL_HECHO;
+    backend.capacidad = CAPACIDAD_COMPLETA;
+    backend.nifs = UN_NIF;
     backend.reglas = REGLA_ACTIVA;
     backend.pursuits = { items: [], total: 4, limit: 50, offset: 0, organization_id: 1 };
     apiGet.mockClear();
@@ -172,23 +232,29 @@ describe("PrimerosPasos", () => {
     await noApareceLaBanda();
   });
 
-  it("una regla desactivada no cuenta como regla creada", async () => {
+  it("revisar la alerta es tenerla: una pausada también cuenta", async () => {
     backend.reglas = {
       items: [{ id: 1, active: false, email: null, frequency: "daily", match_count: 0 }],
     };
     renderBanda();
-    await esperarResuelto(0);
-    // No vigila nada: el usuario no recibiría ni una señal por ella.
-    expect(within(filaDe("Crea una regla de vigilancia")).getByText("pendiente")).toBeInTheDocument();
+    await esperarResuelto(1);
+    expect(within(filaDe(ALERTA)).getByText("hecho")).toBeInTheDocument();
+  });
+
+  it("con una oportunidad abierta, ese paso está hecho", async () => {
+    backend.pursuits = { items: [], total: 1, limit: 50, offset: 0, organization_id: 1 };
+    renderBanda();
+    await esperarResuelto(1);
+    expect(within(filaDe(OPORTUNIDAD)).getByText("hecho")).toBeInTheDocument();
   });
 
   it("mientras una query carga no afirma que el paso esté pendiente", async () => {
     backend.cuelgan = new Set(["/api/v1/watchlist/rules"]);
     renderBanda();
-    // El perfil sí está acreditadamente pendiente, así que la banda se enciende.
+    // La capacidad sí está acreditadamente pendiente, así que la banda se enciende.
     await screen.findByText("0 de 3 hechos · 1 sin comprobar");
 
-    const fila = filaDe("Crea una regla de vigilancia");
+    const fila = filaDe(ALERTA);
     expect(within(fila).getByText("comprobando")).toBeInTheDocument();
     expect(within(fila).queryByText("pendiente")).toBeNull();
     // Y su fila no es un enlace: no se le pide algo que quizá ya tenga hecho.
@@ -197,7 +263,7 @@ describe("PrimerosPasos", () => {
 
   it("no se enciende cuando todavía no se sabe nada de ningún paso", async () => {
     backend.cuelgan = new Set([
-      "/api/v1/me/profile",
+      "/api/v1/organizations/1/capabilities",
       "/api/v1/watchlist/rules",
       "/api/v1/pursuits",
     ]);
@@ -211,7 +277,7 @@ describe("PrimerosPasos", () => {
     renderBanda();
     await screen.findByText("0 de 3 hechos · 1 sin comprobar");
 
-    const fila = filaDe("Crea una regla de vigilancia");
+    const fila = filaDe(ALERTA);
     expect(within(fila).getByText("sin comprobar")).toBeInTheDocument();
     expect(within(fila).queryByRole("link")).toBeNull();
   });
@@ -244,7 +310,7 @@ describe("PrimerosPasos", () => {
   });
 
   it("distingue el rechazo de entrada del abandono con trabajo hecho", async () => {
-    backend.perfil = PERFIL_HECHO;
+    backend.reglas = REGLA_ACTIVA;
     renderBanda();
     await esperarResuelto(1);
 
@@ -259,9 +325,10 @@ describe("PrimerosPasos", () => {
     await waitFor(() => expect(rutasPedidas()).toContain("/api/v1/organizations"));
     await noApareceLaBanda();
 
-    // Un veterano no paga tres peticiones para no ver nada; `/organizations` la
+    // Un veterano no paga peticiones para no ver nada; `/organizations` la
     // pide el resto de la pantalla igualmente.
-    expect(rutasPedidas()).not.toContain("/api/v1/me/profile");
+    expect(rutasPedidas()).not.toContain("/api/v1/organizations/1/capabilities");
+    expect(rutasPedidas()).not.toContain("/api/v1/organizations/1/nifs");
     expect(rutasPedidas()).not.toContain("/api/v1/watchlist/rules");
     expect(rutasPedidas()).not.toContain("/api/v1/pursuits");
   });
@@ -278,12 +345,7 @@ describe("PrimerosPasos · posición", () => {
     cleanup();
     window.localStorage.clear();
     apiGet.mockClear();
-    backend.perfil = {};
-    backend.reglas = { items: [] };
-    backend.pursuits = { items: [], total: 0, limit: 50, offset: 0, organization_id: 1 };
-    backend.organizations = [{ id: 1, name: "Acme", role: "owner" }];
-    backend.fallan = new Set();
-    backend.cuelgan = new Set();
+    cuentaNueva();
   });
 
   it("en una cuenta recién creada sube arriba", async () => {
@@ -298,7 +360,7 @@ describe("PrimerosPasos · posición", () => {
   });
 
   it("con un paso hecho vuelve debajo de «Tu día»", async () => {
-    backend.perfil = PERFIL_HECHO;
+    backend.reglas = REGLA_ACTIVA;
     renderBanda({ posicion: "abajo" });
     await esperarResuelto(1);
     cleanup();
@@ -308,7 +370,7 @@ describe("PrimerosPasos · posición", () => {
   });
 
   it("con un paso sin comprobar no sube", async () => {
-    backend.fallan = new Set(["/api/v1/me/profile"]);
+    backend.fallan = new Set(["/api/v1/watchlist/rules"]);
     renderBanda({ posicion: "arriba" });
     await noApareceLaBanda();
     cleanup();

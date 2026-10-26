@@ -309,7 +309,7 @@ async def _event_generator(
     request: Request,
     last_event_id: float,
     batch: int,
-) -> AsyncGenerator[str, None]:
+) -> AsyncGenerator[str]:
     """Generador asíncrono de eventos SSE."""
     deadline = time.monotonic() + _MAX_DURATION_SECONDS
     last_signal_check = last_event_id  # timestamp del último evento conocido por el cliente

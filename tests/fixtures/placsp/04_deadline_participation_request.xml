@@ -14,6 +14,7 @@
     <cbcext:ContractFolderStatusCode>PUB</cbcext:ContractFolderStatusCode>
     <cacext:LocatedContractingParty>
       <cac:Party>
+        <cac:PartyIdentification><cbc:ID schemeName="ID_PLATAFORMA">99000000000003</cbc:ID></cac:PartyIdentification>
         <cac:PartyName><cbc:Name>Junta de Andalucía</cbc:Name></cac:PartyName>
       </cac:Party>
     </cacext:LocatedContractingParty>

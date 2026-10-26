@@ -377,12 +377,14 @@ def test_integration_el_respaldo_ingiere_el_zip_sin_tocar_el_cursor_del_atom(
 
     assert pedidos == [(2026, 9), (2026, 9)]
     assert resultado["resultados"][0]["status"] == "ok"
+    # La clave acotada por el órgano del fixture (`ID_PLATAFORMA`, ADR-038).
+    clave = "placsp:99000000000006:2026-PYME-0007"
     with db_mod.connect_read() as c:
         filas = c.execute(
-            "SELECT fuente FROM licitaciones WHERE id_externo = %s", ("2026-PYME-0007",)
+            "SELECT fuente FROM licitaciones WHERE id_externo = %s", (clave,)
         ).fetchall()
         adjudicaciones = c.execute(
-            "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = %s", ("2026-PYME-0007",)
+            "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = %s", (clave,)
         ).fetchone()
     # Idempotente: dos respaldos, una fila y sus adjudicaciones una sola vez.
     assert [f[0] for f in filas] == ["bulk_202609"]

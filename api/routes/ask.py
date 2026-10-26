@@ -42,6 +42,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from api.concurrency import run_db
+from api.identidad import id_vigente, resolver_id_externo
 from api.routes.dual_auth import require_any_auth
 from config import settings
 from llm.prompts import ChatMessage, PromptMode
@@ -405,7 +406,7 @@ def _stream_sse(
     degraded_docs: list[dict[str, Any]],
     pre_events: list[dict[str, Any]] | None = None,
     post_event: Callable[[str], dict[str, Any] | None] | None = None,
-) -> AsyncGenerator[str, None]:
+) -> AsyncGenerator[str]:
     """Generator SSE compartido por ``/ask`` y ``/resumen``.
 
     Envuelve el stream LLM síncrono con ``asyncio.wait_for`` + executor para
@@ -428,7 +429,7 @@ def _stream_sse(
     llegó a escribir.
     """
 
-    async def _generate() -> AsyncGenerator[str, None]:
+    async def _generate() -> AsyncGenerator[str]:
         timeout_seconds = float(settings.ASK_LLM_TIMEOUT_SECONDS)
         loop = asyncio.get_running_loop()
         # Cola thread-safe para pasar (kind, payload) del executor al event loop
@@ -665,7 +666,7 @@ def _prepare_ask_context(
 
 async def _stream_ask(
     request: AskRequest, scope_key: str | None, org_key: str | None = None
-) -> AsyncGenerator[str, None]:
+) -> AsyncGenerator[str]:
     """Prepara contexto + historial y devuelve el stream SSE del LLM."""
     from llm.budget import bind_budget_org, bind_budget_subject
     from llm.client import stream_llm_response
@@ -850,6 +851,22 @@ async def ask_question(
     """
     _check_ask_scope(user)
 
+    # Un id anterior a una re-key pregunta por la licitación vigente. Sin
+    # cabecera de aviso: la respuesta es un stream propio (ver `id_vigente`).
+    if body.id_externo or body.ids_externos:
+        body = body.model_copy(
+            update={
+                "id_externo": (
+                    await id_vigente(body.id_externo, None) if body.id_externo else None
+                ),
+                "ids_externos": (
+                    [await id_vigente(i, None) for i in body.ids_externos]
+                    if body.ids_externos
+                    else body.ids_externos
+                ),
+            }
+        )
+
     log.info(
         "ask.request",
         model=body.model,
@@ -892,9 +909,9 @@ async def ask_question(
     },
 )
 async def resumen_licitacion(
-    id_externo: str,
     body: ResumenRequest,
     user: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> StreamingResponse:
     """Genera (o sirve cacheado) el resumen ejecutivo de la licitación.
 

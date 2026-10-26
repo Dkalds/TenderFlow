@@ -11,8 +11,10 @@ Desde v129 (ADR-030 fase 2) ``notification_reads`` y ``user_notifications``
 llevan ``user_id`` junto a ``user_key`` y la lectura es dual (ver
 ``db/repositories/watchlist.py``). Desde v162 (fase 3) una alerta de
 ``user_notifications`` con ``user_id`` ya no lleva clave: la identidad de la
-fila es ``(user_id, licitacion_id, type)``. ``notification_reads`` y
-``user_event_prefs`` siguen escribiendo las dos columnas hasta su tanda.
+fila es ``(user_id, licitacion_id, type)``. Desde v165 lo mismo vale para
+``notification_reads`` (``(user_id, notification_id)``) y ``user_event_prefs``
+(``(user_id, event_type)``): quien escribe con id no escribe la clave. Las
+lecturas siguen siendo duales para las filas que sólo tienen clave.
 """
 
 from __future__ import annotations
@@ -38,17 +40,25 @@ _IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NUL
 # confirmar por el pool de escritura no cambia: es la misma base de datos.
 
 
+def _identidad_de_escritura(
+    user_key: str | None, user_id: int | None, resto: str
+) -> tuple[str | None, str]:
+    """Clave a escribir y objetivo del ``ON CONFLICT`` (ADR-030 fase 3).
+
+    Con ``user_id`` la fila nace **sin** ``user_key`` y su identidad la vigila
+    el índice único parcial ``(user_id, resto) WHERE user_id IS NOT NULL``
+    (v162/v165). Sin él —una API key sin usuario— se escribe la clave y arbitra
+    el ``UNIQUE`` por ``(user_key, resto)`` de siempre. ``resto`` es una lista
+    de columnas constante del módulo, nunca entrada externa.
+    """
+    if user_id is not None:
+        return None, f"ON CONFLICT (user_id, {resto}) WHERE user_id IS NOT NULL"
+    return user_key, f"ON CONFLICT (user_key, {resto})"
+
+
 def mark_read(user_key: str, notification_id: str, *, user_id: int | None = None) -> None:
     """Marca una notificación como leída para el usuario (idempotente)."""
-    with connect() as c:
-        c.execute(
-            """
-            INSERT INTO notification_reads (user_key, user_id, notification_id, read_at)
-            VALUES (%s, %s, %s, %s)
-            ON CONFLICT(user_key, notification_id) DO NOTHING
-            """,
-            (user_key, user_id, notification_id, now_utc_iso()),
-        )
+    mark_all_read(user_key, [notification_id], user_id=user_id)
 
 
 def mark_all_read(
@@ -58,11 +68,12 @@ def mark_all_read(
     if not notification_ids:
         return
     ts = now_utc_iso()
+    clave, conflicto = _identidad_de_escritura(user_key, user_id, "notification_id")
     with connect() as c:
         c.executemany(
             "INSERT INTO notification_reads (user_key, user_id, notification_id, read_at) "
-            "VALUES (%s, %s, %s, %s) ON CONFLICT(user_key, notification_id) DO NOTHING",
-            [(user_key, user_id, nid, ts) for nid in notification_ids],
+            f"VALUES (%s, %s, %s, %s) {conflicto} DO NOTHING",
+            [(clave, user_id, nid, ts) for nid in notification_ids],
         )
 
 
@@ -112,23 +123,14 @@ def marcar_visita(user_key: str, *, user_id: int | None = None) -> str:
     Devuelve la marca escrita.
     """
     ahora = now_utc_iso()
+    clave, conflicto = _identidad_de_escritura(user_key, user_id, "notification_id")
     with connect() as c:
         c.execute(
             "INSERT INTO notification_reads (user_key, user_id, notification_id, read_at) "
-            "VALUES (%s, %s, %s, %s) "
-            "ON CONFLICT(user_key, notification_id) DO UPDATE SET "
-            "read_at = excluded.read_at, user_id = COALESCE(excluded.user_id, "
-            "notification_reads.user_id)",
-            (user_key, user_id, MARCA_VISITA, ahora),
+            f"VALUES (%s, %s, %s, %s) {conflicto} DO UPDATE SET read_at = excluded.read_at",
+            (clave, user_id, MARCA_VISITA, ahora),
         )
     return ahora
-
-
-#: Árbitro del ``ON CONFLICT`` según la identidad con la que llega la alerta
-#: (v162). Con ``user_id`` la clave es el índice parcial por id; sin él, el
-#: ``UNIQUE`` de v48 por clave derivada del correo.
-_ARBITRO_POR_ID = "ON CONFLICT (user_id, licitacion_id, type) WHERE user_id IS NOT NULL DO NOTHING"
-_ARBITRO_POR_CLAVE = "ON CONFLICT (user_key, licitacion_id, type) DO NOTHING"
 
 
 def insert_user_notification(
@@ -170,14 +172,13 @@ def insert_user_notification(
     """
     if user_id is None and not user_key:
         raise ValueError("insert_user_notification: hace falta user_id o user_key")
-    clave = None if user_id is not None else user_key
-    arbitro = _ARBITRO_POR_ID if user_id is not None else _ARBITRO_POR_CLAVE
+    clave, conflicto = _identidad_de_escritura(user_key, user_id, "licitacion_id, type")
     with connect() as c:
         cur = c.execute(
             "INSERT INTO user_notifications "
             "(user_key, user_id, created_at, type, title, body, licitacion_id, rule_id, "
             " organization_id) "
-            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) {arbitro}",
+            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) {conflicto} DO NOTHING",
             (
                 clave,
                 user_id,
@@ -205,6 +206,17 @@ _PREDICADO_LECTURA: dict[str, str] = {
 
 #: Predicado de identidad dual con el alias de ``user_notifications``.
 _IDENT_N = "(n.user_id = %s OR (n.user_key = %s AND (n.user_id IS NULL OR %s::int IS NULL)))"
+
+#: Predicado de identidad dual con el alias ``p`` de ``user_event_prefs``.
+_IDENT_P = "(p.user_id = %s OR (p.user_key = %s AND (p.user_id IS NULL OR %s::int IS NULL)))"
+
+#: El id que adopta una fila de ``user_event_prefs`` sin él al actualizarla:
+#: ``NULL`` si la persona ya tiene la fila del id para ese evento (adoptarlo
+#: chocaría con el índice parcial de v165). Parámetros: ``(user_id, user_id)``.
+_ADOPTAR_ID = (
+    "CASE WHEN EXISTS (SELECT 1 FROM user_event_prefs o WHERE o.user_id = %s "
+    "AND o.event_type = p.event_type) THEN NULL ELSE %s::int END"
+)
 
 
 class PaginaAlertas(TypedDict):
@@ -390,8 +402,17 @@ def marcar_todas_alertas_leidas(
 
 
 def borrar_alertas_de_usuario(user_key: str, *, user_id: int | None = None) -> int:
-    """Borra todas las alertas in-app del usuario (GDPR). Filas borradas."""
+    """Borra todas las alertas in-app del usuario (GDPR). Filas borradas.
+
+    Se lleva también sus marcas de lectura: ``notification_reads`` guarda qué
+    vio y cuándo (de ahí sale su «última visita»), que es dato personal. Las
+    marcas no cuentan en lo que devuelve, que siguen siendo alertas.
+    """
     with connect() as c:
+        c.execute(
+            f"DELETE FROM notification_reads WHERE {_IDENT}",
+            (user_id, user_key, user_id),
+        )
         cur = c.execute(
             f"DELETE FROM user_notifications WHERE {_IDENT}",
             (user_id, user_key, user_id),
@@ -402,16 +423,18 @@ def borrar_alertas_de_usuario(user_key: str, *, user_id: int | None = None) -> i
 def leer_modo_email(user_key: str, event_type: str, *, user_id: int | None = None) -> str | None:
     """El ``modo`` guardado para ese usuario y evento, o ``None`` si no hay fila.
 
-    Con identidad dual pueden convivir dos filas (la de la clave actual y la de
-    un correo anterior): gana la de la clave actual y, entre iguales, la más
-    reciente. No captura errores: el fail-safe hacia el modo por defecto es
-    regla del servicio (``services.notifications.modo_email_de``).
+    Con identidad dual pueden convivir dos filas: la del ``user_id`` (desde
+    v165 una sola, y sin clave) y una que el backfill no resolvió, sólo con
+    clave. Gana la del id; si no la hay, la de la clave actual; entre iguales,
+    la más reciente. No captura errores: el fail-safe hacia el modo por defecto
+    es regla del servicio (``services.notifications.modo_email_de``).
     """
     with connect_read() as c:
         row = c.execute(
             f"SELECT modo FROM user_event_prefs WHERE {_IDENT} AND event_type = %s "
-            "ORDER BY CASE WHEN user_key = %s THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
-            (user_id, user_key, user_id, event_type, user_key),
+            "ORDER BY CASE WHEN user_id = %s THEN 0 WHEN user_key = %s THEN 1 ELSE 2 END, "
+            "updated_at DESC LIMIT 1",
+            (user_id, user_key, user_id, event_type, user_id, user_key),
         ).fetchone()
     if row is None:
         return None
@@ -423,27 +446,32 @@ def guardar_modo_email(
 ) -> None:
     """Escribe la preferencia de correo; el modo llega ya validado.
 
-    La fila se localiza primero por identidad dual (v129): tras un cambio de
-    correo vive bajo la clave antigua y ``ON CONFLICT(user_key, event_type)`` a
-    secas guardaría una segunda preferencia en vez de cambiar la que hay. Solo
-    si no hay ninguna se inserta.
+    La fila se localiza primero por identidad dual (v129): una que el
+    backfill no resolvió vive sólo bajo la clave, y un ``INSERT`` a secas
+    guardaría una segunda preferencia en vez de cambiar la que hay. Solo si no
+    hay ninguna se inserta, y con ``user_id`` la fila nace sin clave (v165).
+
+    El ``UPDATE`` adopta el id en la fila sin él **salvo** que ya exista la
+    fila del id para ese evento: adoptarlo entonces violaría el índice único
+    parcial de v165. La sin id se queda como está; la lectura prefiere la del
+    id y las dos reciben el mismo modo.
     """
     now = now_utc_iso()
+    clave, conflicto = _identidad_de_escritura(user_key, user_id, "event_type")
     with connect() as c:
         cur = c.execute(
-            "UPDATE user_event_prefs SET modo = %s, updated_at = %s, "
-            f"user_id = COALESCE(user_id, %s) WHERE {_IDENT} AND event_type = %s",
-            (modo, now, user_id, user_id, user_key, user_id, event_type),
+            "UPDATE user_event_prefs AS p SET modo = %s, updated_at = %s, "
+            f"user_id = COALESCE(p.user_id, {_ADOPTAR_ID}) "
+            f"WHERE {_IDENT_P} AND p.event_type = %s",
+            (modo, now, user_id, user_id, user_id, user_key, user_id, event_type),
         )
         if int(getattr(cur, "rowcount", 0) or 0) > 0:
             return
         c.execute(
             "INSERT INTO user_event_prefs (user_key, user_id, event_type, modo, updated_at) "
-            "VALUES (%s, %s, %s, %s, %s) "
-            "ON CONFLICT(user_key, event_type) DO UPDATE SET "
-            "modo = excluded.modo, updated_at = excluded.updated_at, "
-            "user_id = COALESCE(user_event_prefs.user_id, excluded.user_id)",
-            (user_key, user_id, event_type, modo, now),
+            f"VALUES (%s, %s, %s, %s, %s) {conflicto} DO UPDATE SET "
+            "modo = excluded.modo, updated_at = excluded.updated_at",
+            (clave, user_id, event_type, modo, now),
         )
 
 

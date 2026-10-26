@@ -5,17 +5,20 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, field_validator
 
 from api.concurrency import run_db, run_ml
+from api.identidad import id_vigente
 from api.routes.dual_auth import require_admin, require_any_auth
 from config.keywords import TECH_CATEGORIAS, TECH_LABEL_TIPO, TECH_LABELS, TipoLabel
 from db.audit import log_event
 from db.repositories.feedback import FUENTE_REVISION_TI, FeedbackRepository
 from db.repositories.licitaciones import LicitacionRepository
 from observability.logging import get_logger
+from services.ml.senal_clasificador import EstadoSenal, estado_senal_sap
 from shared.audit_events import FEEDBACK_SUBMITTED
+from shared.dto import SenalClasificadorDTO
 from shared.identity import actor_del_principal
 
 log = get_logger(__name__)
@@ -125,6 +128,27 @@ class FeedbackQueueResult(BaseModel):
     items: list[FeedbackQueueItem]
     strategy: str
     model_version: str | None
+    # D55: si la confianza del `sap_classifier` que llevan las estrategias
+    # `desacuerdo` e `uncertainty` es una señal. Mientras no lo sea, esos ítems
+    # salen con `sin_confianza` y el relleno 0,5/0,0, y la cola sigue
+    # sirviendo para etiquetar.
+    senal_clasificador: SenalClasificadorDTO | None = None
+
+
+def _senal_clasificador() -> EstadoSenal:
+    """Estado de la señal del ``sap_classifier`` (D55). Punto de inyección en tests."""
+    return estado_senal_sap()
+
+
+def _senal_dto(estado: EstadoSenal) -> SenalClasificadorDTO:
+    return SenalClasificadorDTO(
+        validada=estado.validada, motivo=estado.motivo, version=estado.version
+    )
+
+
+def _sin_confianza(item: dict[str, object]) -> None:
+    """Sustituye la confianza del ``sap_classifier`` por el relleno declarado."""
+    item["confidence"], item["uncertainty"], item["sin_confianza"] = 0.5, 0.0, True
 
 
 def _build_queue_items(
@@ -304,6 +328,7 @@ class FeedbackResponse(BaseModel):
 )
 async def submit_feedback(
     body: FeedbackRequest,
+    response: Response,
     ctx: dict[str, Any] = Depends(require_any_auth),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> FeedbackResponse:
@@ -333,6 +358,8 @@ async def submit_feedback(
             log.info("feedback_idempotent_hit", key=idempotency_key[:16])
             return FeedbackResponse(**cached)
 
+    # Un id anterior a una re-key se etiqueta con el id vigente.
+    body = body.model_copy(update={"expediente": await id_vigente(body.expediente, response)})
     try:
         stored_at = await run_db(
             _repo.insert,
@@ -467,6 +494,13 @@ async def feedback_queue(
     """
     limit = max(1, min(limit, 200))
 
+    # D55: la probabilidad del `sap_classifier` solo se enseña si tiene una
+    # versión activa que ha pasado el gate. Las estrategias que la usan siguen
+    # eligiendo candidatos con ella (es muestreo para etiquetar, no una señal
+    # para nadie), pero la tarjeta no la pinta.
+    estado = await run_db(_senal_clasificador)
+    senal = _senal_dto(estado)
+
     # TechnologyClassifier perezoso, en el pool de ML (``None`` si no carga).
     tech_clf: Any = await run_ml(_cargar_tech_classifier)
 
@@ -490,10 +524,13 @@ async def feedback_queue(
                 "sin_evidencia": c["llm_sin_evidencia"],
             }
             item["sin_confianza"] = c.get("ml_proba") is None
+            if not senal.validada:
+                _sin_confianza(item)
         return FeedbackQueueResult(
             items=[FeedbackQueueItem(**item) for item in items],
             strategy=strategy,
             model_version=None,
+            senal_clasificador=senal,
         )
 
     if strategy == "uncertainty":
@@ -540,10 +577,14 @@ async def feedback_queue(
             items = _build_queue_items(
                 sorted_candidates, include_model=True, tech_classifier=tech_clf
             )
+            if not senal.validada:
+                for item in items:
+                    _sin_confianza(item)
             return FeedbackQueueResult(
                 items=[FeedbackQueueItem(**item) for item in items],
                 strategy=strategy,
                 model_version=None,
+                senal_clasificador=senal,
             )
 
         except Exception as exc:
@@ -552,10 +593,13 @@ async def feedback_queue(
     # Random / fallback
     candidates = await run_db(_lic_repo.get_unlabelled_random, limit)
     items = _build_queue_items(candidates, include_model=True, tech_classifier=tech_clf)
+    # `confidence` es aquí `ml_proba_max` (clasificador multi-etiqueta), no la
+    # probabilidad del `sap_classifier`: no la toca D55.
     return FeedbackQueueResult(
         items=[FeedbackQueueItem(**item) for item in items],
         strategy="random",
         model_version=None,
+        senal_clasificador=senal,
     )
 
 
@@ -644,6 +688,7 @@ class AsistentePeorPregunta(BaseModel):
 )
 async def submit_asistente_feedback(
     body: AsistenteFeedbackRequest,
+    response: Response,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> AsistenteFeedbackResponse:
     """Persiste el voto del chat, que hasta C5.4 moría como evento de telemetría.
@@ -654,6 +699,10 @@ async def submit_asistente_feedback(
     """
     from db.repositories.asistente_feedback import registrar
 
+    if body.licitacion_id:
+        body = body.model_copy(
+            update={"licitacion_id": await id_vigente(body.licitacion_id, response)}
+        )
     fila_id = await run_db(
         registrar,
         pregunta=body.pregunta,

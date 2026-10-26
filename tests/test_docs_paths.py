@@ -180,11 +180,12 @@ def test_el_frontmatter_de_docs_es_yaml_valido() -> None:
 
 def _rutas_reales_de_la_api() -> set[str]:
     from api.app import app
+    from api.rutas import rutas_planas
 
     rutas: set[str] = set()
-    for route in app.routes:
-        path = getattr(route, "path", None)
-        if isinstance(path, str) and path.startswith("/api/v1"):
+    for ruta in rutas_planas(app.routes):
+        path = ruta.plantilla
+        if path.startswith("/api/v1"):
             # Se normaliza el nombre del parámetro: el doc puede escribir
             # `{id}` donde el código escribe `{webhook_id}`, y eso no es una
             # mentira sobre la existencia de la ruta.

@@ -24,9 +24,17 @@ Cómo funciona
 No es un congelamiento: añadir un endpoint cuesta una línea. Lo que impide es
 añadirlo sin haberse hecho la pregunta.
 
-La superficie se lee de ``app.routes`` con ``ENV=dev`` y ``APP_PROFILE=api``,
-igual que ``scripts/gen_status.py``: en ``dev`` existe ``/auth/dev-login``, y el
-perfil ``worker`` solo monta ``health``. Con otro entorno la lista sería otra.
+Foco de piloto (D50 del plan 2026-10, AGENTS.md §0): mientras dure el plan,
+una entrada de ``NUEVAS`` que no esté en ``ANTERIORES_A_D50`` cita además en su
+motivo el ítem del plan que la justifica —``plan 2026-10`` y su identificador,
+por ejemplo ``(plan 2026-10, B3)``—. Las catorce anteriores al 2026-10-26 no se
+reescriben; esa lista solo encoge, como la línea base.
+
+La superficie la calcula ``api.rutas.operaciones`` (anclada en
+``app.openapi()``, más las rutas fuera del esquema) con ``ENV=dev`` y
+``APP_PROFILE=api``, igual que ``scripts/gen_status.py``: en ``dev`` existe
+``/auth/dev-login``, y el perfil ``worker`` solo monta ``health``. Con otro
+entorno la lista sería otra.
 
 Uso::
 
@@ -38,6 +46,7 @@ Uso::
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -49,10 +58,40 @@ _BASE = _ROOT / "api" / "superficie_congelada.txt"
 #: impide el ``"hace falta"``.
 MOTIVO_MINIMO = 40
 
+#: D50 (docs/plans/2026-10-plan-foco-piloto.md): el motivo de una entrada nueva
+#: nombra el plan y uno de sus ítems (``O0.2``, ``V1``, ``B3``, ``R2``…). Que el
+#: ítem sirva de verdad al ciclo central de la Ola 2 lo juzga la revisión, no
+#: este patrón.
+CITA_PLAN = re.compile(r"plan 2026-10\b.*?\b(?:O0\.\d+|[VBR]\d+)\b", re.IGNORECASE | re.DOTALL)
+
+#: Entradas de ``NUEVAS`` anteriores a D50 (2026-10-26): no citan el plan
+#: porque no existía. Solo puede encoger: una operación que se retira sale de
+#: ``NUEVAS`` y de aquí; ninguna entrada nueva se añade a esta lista.
+ANTERIORES_A_D50: frozenset[str] = frozenset(
+    {
+        "DELETE /api/v1/admin/api-keys/{key_id}",
+        "DELETE /api/v1/me/keys/{key_id}",
+        "GET /api/v1/admin/api-keys",
+        "GET /api/v1/admin/revision/duplicados",
+        "GET /api/v1/admin/revision/organos",
+        "GET /api/v1/admin/revision/verdad",
+        "GET /api/v1/licitaciones/{id_externo:path}/condiciones-oficiales",
+        "GET /api/v1/notifications/alerts",
+        "GET /api/v1/pursuits/adjuntos/politica",
+        "POST /api/v1/admin/revision/duplicados/{id_externo:path}/resolver",
+        "POST /api/v1/admin/revision/organos/{revision_id}/resolver",
+        "POST /api/v1/auth/password/change",
+        "POST /api/v1/auth/verify-email",
+        "POST /api/v1/me/profile/preview",
+    }
+)
+
 # ── Operaciones añadidas después de la línea base ───────────────────────────
 # Formato: ``"MÉTODO /ruta": "qué superficie existente se miró y por qué no
-# alcanza"``. Una por línea, en orden alfabético de ruta, para que dos ramas
-# que añaden operaciones distintas no choquen al fusionar.
+# alcanza (plan 2026-10, <ítem>)"``. Una por línea, en orden alfabético de
+# ruta, para que dos ramas que añaden operaciones distintas no choquen al
+# fusionar. La cita del plan la exige D50 a toda entrada fuera de
+# ``ANTERIORES_A_D50``.
 NUEVAS: dict[str, str] = {
     "POST /api/v1/auth/password/change": (
         "Se miró POST /auth/password-reset/confirm, que cambia la contraseña pero exige el "
@@ -200,6 +239,12 @@ def main(argv: list[str]) -> int:
     motivos_cortos = sorted(
         op for op, motivo in NUEVAS.items() if len(motivo.strip()) < MOTIVO_MINIMO
     )
+    sin_cita_plan = sorted(
+        op
+        for op, motivo in NUEVAS.items()
+        if op not in ANTERIORES_A_D50 and not CITA_PLAN.search(motivo)
+    )
+    fosiles_d50 = sorted(ANTERIORES_A_D50 - set(NUEVAS))
 
     if sin_justificar:
         print(
@@ -248,8 +293,35 @@ def main(argv: list[str]) -> int:
         )
         for op in motivos_cortos:
             print(f"  - {op}", file=sys.stderr)
+    if sin_cita_plan:
+        print(
+            f"\n{len(sin_cita_plan)} entrada(s) de NUEVAS no citan el ítem del plan que "
+            "las justifica. D50 (AGENTS.md §0): mientras dure "
+            "docs/plans/2026-10-plan-foco-piloto.md no se añade superficie que no sirva "
+            "al ciclo central de su Ola 2; el motivo termina con «(plan 2026-10, B3)» "
+            "o el ítem que corresponda:",
+            file=sys.stderr,
+        )
+        for op in sin_cita_plan:
+            print(f"  - {op}", file=sys.stderr)
+    if fosiles_d50:
+        print(
+            f"\n{len(fosiles_d50)} entrada(s) de ANTERIORES_A_D50 ya no están en NUEVAS: "
+            "bórralas, esa lista solo encoge.",
+            file=sys.stderr,
+        )
+        for op in fosiles_d50:
+            print(f"  - {op}", file=sys.stderr)
 
-    if sin_justificar or fosiles_base or fosiles_nuevas or duplicadas or motivos_cortos:
+    if (
+        sin_justificar
+        or fosiles_base
+        or fosiles_nuevas
+        or duplicadas
+        or motivos_cortos
+        or sin_cita_plan
+        or fosiles_d50
+    ):
         return 1
 
     heredadas = len(actuales & base)
