@@ -10,8 +10,10 @@ y a [2026-09-plan-salida-al-mercado.md](2026-09-plan-salida-al-mercado.md): no
 redefine sus criterios, decide **en qué orden** se ejecuta lo que queda y **qué
 se deja de hacer**.
 
-**Estado: PROPUESTO el 2026-10-26.** Las decisiones de §2 son del propietario;
-hasta que estén tomadas, ningún agente ejecuta un ítem que dependa de ellas.
+**Estado: EN EJECUCIÓN desde el 2026-10-26.** El propietario aceptó ese día las
+recomendaciones de D50–D58 y autorizó escribir las migraciones de V1 y de la
+fase 3 de `user_id`, los cambios de CI y la subida de pines. Lo entregado está
+en §8; lo que queda es, sobre todo, acción del propietario (§7).
 
 Convención de los planes anteriores: «hecho» es código en el árbol con pruebas
 verdes; «parcial» entrega valor sin cumplir todos sus criterios; **«acción del
@@ -82,7 +84,7 @@ trabajo en ese sentido.
 |---|---|---|---|
 | D50 | **Foco de piloto.** Hasta cumplir el criterio de salida de §5, no se añade superficie nueva (endpoint, espacio, pantalla) que no sirva al bucle de §3, Ola 2. | Sí. La lista `NUEVAS` de `scripts/check_api_surface.py` cita este plan en cada alta. | pendiente |
 | D51 | **Destino de la telemetría.** Los 23 eventos de `web/src/lib/analytics.ts` se pierden (Vercel Hobby responde `402`). | Treinta días con pageviews por ruta + `http_requests_total` por handler, sin coste ni superficie nueva; revisar después si hace falta medir acciones. | pendiente |
-| D52 | **Ficha nocturna.** Encender `PLIEGO_FACTS_ENABLED` con la selección de R2 (lo abierto que casa con alguna organización) y un tope de gasto mensual escrito en [COSTES.md](../COSTES.md). | Sí, con tope. | pendiente |
+| D52 | **Ficha nocturna.** Priorizar lo abierto que casa con alguna regla (B2) y fijar un tope de gasto mensual en [COSTES.md](../COSTES.md) §5.1. *Corrección del 2026-10-26:* `PLIEGO_FACTS_ENABLED` ya era `true` desde el 2026-08-14 (25 fichas por noche); el 11 % venía de un selector que no filtraba por «abierta», no de la variable. | Sí, con tope. | aceptada; falta el tope |
 | D53 | **Alerta por defecto.** Al completar el perfil de una organización se crea una regla de vigilancia a partir de sus tecnologías, CPV y CCAA, editable y con baja en un clic. | Sí. | pendiente |
 | D54 | **GO/NO-GO.** El checklist asistido (`cumple | no_cumple | desconocido`, ya en [services/go_no_go.py](../../services/go_no_go.py)) pasa a ser la vista principal de la oportunidad; la matriz ponderada queda secundaria y se retira si sigue sin uso a los 30 días de R4. | Sí. | pendiente |
 | D55 | **Señal del clasificador.** Mientras el golden set no cumpla su gate (27 etiquetados frente a ≥ 60 en el holdout, 2026-10-25), `ml_proba` del `sap_classifier` no se muestra como señal ni ordena el Radar; quedan palabras clave + etiquetado LLM + señal del pliego. | Sí. | pendiente |
@@ -234,8 +236,16 @@ norte durante cuatro semanas seguidas. Entonces se revisan D50 y la tabla de
 - [ ] O0.6 revocar las claves sin dueño y aprobar el `CHECK`.
 - [ ] V1/V2 aprobar la migración de re-key, fijar la ventana y lanzar la reingesta.
 - [ ] V4 etiquetar el golden set.
-- [ ] B2 `PLIEGO_FACTS_ENABLED=true` y tope de gasto.
+- [ ] B2 tope de gasto en COSTES.md §5.1 (la variable ya está a `true`).
 - [ ] R1 exportar pageviews o dar lectura a `http_requests_total`.
+
+Añadidas al ejecutar (2026-10-26):
+
+- [ ] O0.2 generar `API_ORIGIN_SECRET`, ponerlo en Render y en Vercel, probar la regla de `web/vercel.json` en un preview y verificar con dos redes ([runbook](../runbooks/ip-del-cliente.md)).
+- [ ] Antes del despliegue de esta rama: aplicar `v164` (con la ingesta parada, según su runbook) y `v165` con `plan` → `apply`. El código nuevo necesita los índices de `v165`.
+- [ ] B1 `python scripts/crear_alertas_por_defecto.py` contra producción; si el recuento cuadra, `--aplicar`.
+- [ ] V2 la reingesta por `run_update --backfill` ascendente ([runbook](../runbooks/reingesta-unica-placsp.md)), no por `scrape-bulk.yml`.
+- [ ] Tras el despliegue: confirmar en Prometheus que `http_requests_total` y `api_cost_estimate_total` siguen con el prefijo `/api/v1` (FastAPI 0.146 cambió `scope["route"].path`).
 
 ---
 
@@ -244,9 +254,31 @@ norte durante cuatro semanas seguidas. Entonces se revisan D50 y la tabla de
 Cada ítem anota aquí lo entregado al cerrarse (fecha, PR, evidencia). El
 backlog remite a esta tabla en vez de copiar su estado.
 
+Todo lo de abajo está en la rama `agente/plan-arquitectura-2026-10`. Los
+controles sin base de datos pasan en esa rama (ruff, mypy strict, 9.262 tests
+`unit`, gates, `gen_status --check`, lint, typecheck y vitest del frontend); los
+tests de integración, los E2E y el fuzz quedan para CI.
+
 | Id | Estado | Evidencia |
 |---|---|---|
-| O0.1–O0.6 | pendiente | — |
-| V1–V4 | pendiente | — |
-| B1–B6 | pendiente | — |
-| R1–R3 | pendiente | — |
+| D50 | **hecho** | Párrafo en AGENTS.md §0; `scripts/check_api_surface.py` exige `plan 2026-10, <ítem>` en cada entrada nueva de `NUEVAS` (`ANTERIORES_A_D50` solo encoge) |
+| O0.1, O0.3–O0.6 | propietario | Sin cambios de código: ver §7 |
+| O0.2 | **hecho en código**, falta producción | `API_ORIGIN_SECRET` (+ `_PREVIOUS`), `hmac.compare_digest` en `api/middleware.py`, cabecera desde `web/vercel.json` y del SSR; RFC `approved`; [runbook](../runbooks/ip-del-cliente.md). `api/diagnostico_proxy.py` sigue hasta verificar con dos redes |
+| V1 | en curso | Migración `v164_identidad_placsp_rekey` y escritores con `clave_placsp` |
+| V2 | **hecho en código**, falta producción | [Runbook](../runbooks/reingesta-unica-placsp.md) y `scripts/verificar_reingesta.py`. Una reingesta ya corrige importes, `provincia`, garantías, solvencia y adjudicaciones; se arregló `fecha_publicacion` (`db/upsert.py`). **No puede ir por `scrape-bulk.yml`** (recorre los meses de nuevo a viejo y no cabe en 240 min): el runbook usa `run_update --backfill` ascendente. En PLACSP el desconocido de `importe_tipo` es del 72,6 %, no del 42 % |
+| V3 | **hecho** | `services/ml/senal_clasificador.py`. El Radar ya no leía `ml_proba` (el orden cambia 0); la cola de etiquetado y `/explain` declaran `senal_clasificador.validada=false` |
+| V4 | propietario | Golden set: 27 etiquetados de ≥ 60 |
+| B1 | **hecho en código** | `asegurar_alerta_por_defecto` al guardar los ajustes; una regla diaria por tecnología (≤ 5), idempotente y con baja definitiva; `scripts/crear_alertas_por_defecto.py` (dry-run, `--aplicar`). CU-04 |
+| B2 | **hecho en código** | Nivel «abierta con plazo que casa con una regla» en `list_pending_licitaciones`; COSTES.md §5.1 con la fórmula y la cota (≤ 0,05 USD por ficha). Vacío hasta que existan reglas (B1) |
+| B3 | **hecho en código** | `services/email_digest.py` + `services/digest_pliego.py`: plazo, base (ADR-032), hasta tres requisitos de solvencia y veredicto del checklist; golden `tests/fixtures/golden_resumen_diario.txt`. El envío real depende de O0.1 |
+| B4 | **hecho** | La oportunidad abre en el checklist; la matriz pasa a `matriz-plegada.tsx` y solo se descarga al abrirla. CU-06 |
+| B5 | **hecho** | Pasos `capacidad` / `alerta` / `pursuit` en `components/onboarding/pasos.ts`. CU-34 |
+| B6 | **medido** | Datos de producción del 2026-10-26: 15 de las 16 oportunidades son de una sola organización (la 21). El cierre asistido avisó una vez (oportunidad 4, 2026-09-02) y nadie la cerró en 54 días; la «ganada» (7) y la «perdida» (10) se cerraron a mano sobre expedientes sin adjudicación (EV y PUB): la tasa de acierto no es un dato fiable todavía. Hubo 34 avisos `rule_match` hasta el 2026-09-23 y hoy 0 reglas: `watchlist_rules` no se audita, así que no consta quién las borró. Lo más usado es el MCP interno: 458 `mcp.consultar_sql` frente a 15 inicios de sesión en `audit_log` |
+| R1 | parcial | Pageviews por ruta en UX_AUDIT.md; `http_requests_total` sigue sin lectura |
+| R2, R3 | pendiente | Tras los 30 días de R1 |
+| Ola 4 · `user_id` | **hecho en código** | `v165_user_id_fase3_tanda3`: `notification_reads`, `user_event_prefs` y `saved_filters` por `user_id`. `follows` y `pending_digests` van con `watchlist_*`. Ratchet 53 → 53. Aplicar **antes** del despliegue del código |
+| Ola 4 · RGPD | **hecho** | El borrado del art. 17 se lleva también `notification_reads` (no lo hacía) |
+| Ola 4 · S4 | **hecho** | El ratchet de productores del outbox lee el AST (antes se escapaba por un docstring); 4 productores |
+| Ola 4 · gates | **hecho** | `make gates` / `make gates-deps` (`scripts/run_gates.py`) y CI los usa en vez de once pasos sueltos |
+| Ola 4 · pines | **hecho en código** | fastapi 0.136.3 → 0.146.0, starlette 1.3.1 → 1.9.0, uvicorn 0.46 → 0.54; `api/rutas.py` lee la superficie anclada en `app.openapi()`; Python ≥ 3.13; `pyproject.toml` lee sus dependencias de `requirements.in`; sin `faiss`. OpenAPI idéntico byte a byte |
+| Ola 4 · ratchets | medido | Propuesta de bajada barata por ratchet en el informe del 2026-10-26: capas −2, TID251 −4, `user_key` −1 y `_GRANDFATHERED_NON_DB_FILES` −3 |
