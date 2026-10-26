@@ -1,7 +1,7 @@
 """v165: ``notification_reads``, ``user_event_prefs`` y ``saved_filters`` se teclean por ``user_id``.
 
 Revision ID: v165_user_id_fase3_tanda3
-Revises: v163_identidad_placsp_fase_a
+Revises: v164_identidad_placsp_rekey
 Create Date: 2026-10-26
 
 ADR-030 fase 3, tercera tanda. Mismo patrón que v162 con ``user_notifications``.
@@ -90,7 +90,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "v165_user_id_fase3_tanda3"
-down_revision: str | Sequence[str] | None = "v163_identidad_placsp_fase_a"
+down_revision: str | Sequence[str] | None = "v164_identidad_placsp_rekey"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -4,7 +4,7 @@ Base: Postgres, solo lectura, 500 filas por consulta y 15 s por sentencia. `lici
 
 ## 1. Duplicados entre fuentes: cuenta solo la canónica
 
-Un mismo contrato puede estar varias veces en `licitaciones`: lo publican PLACSP, TED (DOUE), la PSCP catalana y los RSS regionales, y cada corrigendo o aviso de adjudicación puede traer otra fila. `fuente` dice de dónde viene la fila (`placsp`, `bulk_YYYYMM` para la carga masiva de PLACSP, `ted`, `pscp_cat`…); `id_externo` lleva el prefijo de la fuente en las nuevas (`ted:…`) y PLACSP va sin prefijo.
+Un mismo contrato puede estar varias veces en `licitaciones`: lo publican PLACSP, TED (DOUE), la PSCP catalana y los RSS regionales, y cada corrigendo o aviso de adjudicación puede traer otra fila. `fuente` dice de dónde viene la fila (`placsp`, `bulk_YYYYMM` para la carga masiva de PLACSP, `ted`, `pscp_cat`…); `id_externo` lleva siempre el prefijo de la fuente (`ted:…`, `pscp:…`). En PLACSP va acotado por el órgano, porque el número de expediente lo teclea cada órgano y se repite: `placsp:<órgano>:<expediente>` (`placsp:11778670221627:2026/LIC/0049`), igual para `bulk_YYYYMM` (es la misma fila que el feed vivo), `placsp_watched_company_awards:<órgano>:<expediente>` y `placsp_agregadas:<órgano>:<expediente>`; el órgano es `licitaciones.organo_ref_fuente` (el `ID_PLATAFORMA` de la Plataforma). Todo lo que sigue al segundo `:` es el expediente tal cual, con sus `:` si los lleva.
 
 `licitaciones_duplicados` marca las filas que NO son la canónica:
 - `licitacion_id`: la fila duplicada (clave primaria). `canonical_id`: la fila canónica que se queda.
@@ -94,6 +94,14 @@ WHERE (estado IS NULL OR estado NOT IN ('RES','ADJ','ANUL','AGR','EJEC'))
 ## 4. Claves de unión
 
 - `licitaciones.id_externo` (texto, PK) es la clave de cualquier tabla hija: `adjudicaciones.licitacion_id`, `lotes.licitacion_id`, `pursuits.licitacion_id`, `licitaciones_duplicados.licitacion_id`/`canonical_id`.
+- Ids viejos: hasta la re-key de 2026-10 (`v164`) las filas de PLACSP llevaban el expediente sin prefijo (`2026/LIC/0049`). Ese id ya no existe en `licitaciones`; `licitaciones_id_anterior` dice a qué fila apunta (`id_anterior` → `id_externo`, `motivo = 'rekey_placsp_organo'`). Un id que alguien te dé y no esté en `licitaciones` puede ser uno viejo: búscalo ahí antes de decir que no existe. Para buscar por número de expediente, compara con lo que sigue al órgano, no con el id entero:
+
+```sql
+SELECT a.id_anterior, l.id_externo, l.titulo, l.organo_contratacion
+FROM licitaciones_id_anterior a
+JOIN licitaciones l ON l.id_externo = a.id_externo
+WHERE a.id_anterior = '2026/LIC/0049'
+```
 - Empresas: `adjudicaciones.nif` es el NIF tal como lo publica la fuente (texto, puede faltar o venir con variantes). `adjudicaciones.empresa_id` apunta a `empresas.empresa_id` (empresa canónica con `nif_canonico`, `es_ute`, `es_pyme`); las variantes de nombre y NIF están en `empresa_aliases`. Une por `empresa_id` si existe; si no, por `nif`. Nunca por nombre.
 - Órganos: `licitaciones.organo_contratacion` es texto libre («Ayuntamiento de Madrid» y «AYUNTAMIENTO DE MADRID» cuentan como dos). `licitaciones.organo_id` apunta al maestro `organos.organo_id`, que lleva el código oficial DIR3 en `dir3`; las grafías están en `organo_aliases`. `organo_id` puede ser `NULL` (aún sin resolver): para no perder esas filas, agrupa por `COALESCE(organo_id::text, organo_contratacion)`.
 - Clientes: `organizations.id` es el `organization_id` del resto de tablas de cliente (`pursuits`, `organization_memberships`, `organization_nifs`…). `users.id` es `user_id`. `organization_nifs.nif` enlaza una organización cliente con su empresa (`empresas.nif_canonico`).

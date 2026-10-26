@@ -4,6 +4,7 @@ title: "Framework de conectores multi-fuente y namespacing de id_externo"
 status: accepted
 date: 2026-06-11
 deciders: "Daniel Kalitovics"
+superseded_parcialmente_por: "[[ADR-038-clave-de-placsp-acotada-por-organo]]"
 tags: [adr]
 ---
 
@@ -43,6 +44,11 @@ decisiones bloqueantes:
    invalidación de caché.
 
 ## Rationale
+
+> **Revisado por [ADR-038](ADR-038-clave-de-placsp-acotada-por-organo.md)
+> (2026-10-26):** el primer punto de abajo se demostró falso. El expediente de
+> PLACSP no es único entre órganos y dos licitaciones se pisaban; las filas
+> PLACSP pasan a `placsp:<órgano>:<expediente>` (`v164_identidad_placsp_rekey`).
 
 - Migrar las PKs existentes a `placsp:...` tocaría todas las FKs
   (adjudicaciones, history, FTS, tecnologia_score), las URLs de la API y los

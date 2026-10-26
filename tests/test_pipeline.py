@@ -279,12 +279,47 @@ class TestProcessDaily:
                         return_value=upsert_result,
                     ):
                         with patch("scraper.pipeline.log"):
-                            from scraper.pipeline import process_daily
+                            # La entrada es un MagicMock sin órgano: se fija aquí.
+                            with patch("scraper.pipeline.acotar_por_organo", return_value=True):
+                                from scraper.pipeline import process_daily
 
-                            result = process_daily()
+                                result = process_daily()
 
         assert result["status"] == "ok"
         assert result["tech_matches"] == 1
+
+    @patch("scraper.pipeline.set_cursor")
+    @patch("scraper.pipeline.get_cursor", return_value=None)
+    @patch("scraper.pipeline.init_db")
+    def test_sin_organo_la_entrada_no_se_escribe(self, init, get_cur, set_cur):
+        """Misma regla que el conector (RFC de identidad PLACSP): sin órgano, fuera."""
+        from db.upsert import Licitacion, UpsertResult
+
+        lic = Licitacion(id_externo="D1", titulo="Daily test")
+        entries = [(MagicMock(), "2024-01-02T00:00:00")]
+        meta = {
+            "pages_fetched": 1,
+            "entries_seen": 1,
+            "etag": None,
+            "last_modified": None,
+            "newest_updated": "2024-01-02T00:00:00",
+        }
+        vacio = UpsertResult(inserted=[], modified=[], unchanged=[])
+        with (
+            patch("scraper.atom_live.iter_live_entries", return_value=(entries, meta)),
+            patch("scraper.pipeline.parse_entry", return_value=lic),
+            patch("scraper.pipeline.acotar_por_organo", return_value=None),
+            patch(
+                "scraper.pipeline.upsert_licitaciones_with_history", return_value=vacio
+            ) as upsert,
+            patch("scraper.pipeline.log"),
+        ):
+            from scraper.pipeline import process_daily
+
+            result = process_daily()
+
+        assert result["tech_matches"] == 0
+        assert upsert.call_args.args[0] == []
 
     @patch("scraper.pipeline.record_failure")
     @patch("scraper.pipeline.notify")

@@ -11,10 +11,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
+from api.identidad import id_vigente, resolver_id_externo
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
 from db.idempotency import cached_response, store_response
@@ -91,6 +92,7 @@ async def get_items(
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Añadir un favorito")
 async def post_item(
     body: WatchlistItemBody,
+    response: Response,
     idempotency_key: str | None = Header(
         default=None,
         alias="X-Idempotency-Key",
@@ -103,6 +105,8 @@ async def post_item(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> WatchlistFavoriteCreated:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
+    # Un id anterior a una re-key se guarda con el id vigente.
+    body = body.model_copy(update={"id_externo": await id_vigente(body.id_externo, response)})
     ambito = idem_scope(
         "watchlist_items",
         actor=_user_key(ctx),
@@ -144,8 +148,8 @@ async def post_item(
     summary="Eliminar un favorito propio",
 )
 async def delete_item(
-    id_externo: str,
     ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> None:
     ok = await run_db(
         _repo.remove_item, _user_key(ctx), id_externo, ctx["organization_id"], _user_id(ctx)
@@ -163,9 +167,9 @@ async def delete_item(
     responses={404: {"description": "El favorito no es tuyo o no existe"}},
 )
 async def put_item_nota(
-    id_externo: str,
     body: WatchlistNotaBody,
     ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> WatchlistNotaBody:
     """La nota es de quien la escribe, no de la organización.
 

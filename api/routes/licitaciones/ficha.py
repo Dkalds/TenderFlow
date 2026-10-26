@@ -21,11 +21,11 @@ from fastapi import (
 from pydantic import BaseModel, Field, field_validator
 
 from api.concurrency import run_db
+from api.identidad import resolver_id_externo
 from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
     _adj_repo,
     _lic_repo,
-    resolver_id_externo,
 )
 from api.routes.licitaciones.modelos import (
     AdjudicatarioOut,

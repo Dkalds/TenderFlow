@@ -22,6 +22,7 @@ from fastapi import (
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
+from api.identidad import id_vigente
 from api.pagination import PageParams, pagina
 from api.routes.dual_auth import require_any_auth
 from observability.logging import get_logger
@@ -263,6 +264,7 @@ class MiBajaOut(BaseModel):
 )
 async def post_pursuit(
     body: PursuitCreate,
+    response: Response,
     idempotency_key: str | None = Header(
         default=None,
         alias="X-Idempotency-Key",
@@ -277,6 +279,10 @@ async def post_pursuit(
     (``PLIEGO_FACTS_ON_PURSUIT``): quien acaba de comprometerse abrirá la
     pestaña Pliego hoy, no cuando el lote nocturno llegue a ese expediente.
     """
+    # Un `licitacion_id` anterior a una re-key se guarda con el id vigente y
+    # la respuesta lleva `Deprecation` (comentario y no docstring: el docstring
+    # es parte del contrato OpenAPI).
+    body = body.model_copy(update={"licitacion_id": await id_vigente(body.licitacion_id, response)})
     try:
         pursuit, created = await run_db(
             create_pursuit,
@@ -634,6 +640,7 @@ async def patch_cartera_fecha_fin(
 async def post_cartera_renovacion(
     cartera_id: int,
     body: PrepararRenovacionIn,
+    response: Response,
     organization_id: int | None = Query(default=None, ge=1),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> RenovacionPreparada:
@@ -642,12 +649,13 @@ async def post_cartera_renovacion(
     Idempotente: si el contrato ya tenía oportunidad de renovación, devuelve
     esa con ``creada=false`` y no crea otra.
     """
+    licitacion_id = await id_vigente(body.licitacion_id, response)
     try:
         return await run_db(
             preparar_renovacion,
             int(ctx["user_id"]),
             cartera_id,
-            body.licitacion_id,
+            licitacion_id,
             organization_id=organization_id,
         )
     except (OrganizationAccessError, OrganizationPermissionError) as exc:

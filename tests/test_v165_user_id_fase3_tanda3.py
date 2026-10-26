@@ -74,7 +74,7 @@ def _sql(llamada: Any) -> str:
 def test_cadena_e_identidad() -> None:
     migracion = _load()
     assert migracion.revision == "v165_user_id_fase3_tanda3"
-    assert migracion.down_revision == "v163_identidad_placsp_fase_a"
+    assert migracion.down_revision == "v164_identidad_placsp_rekey"
     assert migracion.TABLAS == {
         "notification_reads": "notification_id",
         "user_event_prefs": "event_type",

@@ -325,7 +325,10 @@ def test_una_licitacion_agregada_entra_como_oportunidad_con_su_namespace():
     assert parsed is not None
     lic = parsed.licitacion
 
-    assert lic.id_externo == "placsp_agregadas:2026/15089Q"
+    # Acotada por el órgano de agregadas (`ID_OC_PLAT`), como la del feed
+    # principal (RFC de identidad PLACSP, fase B).
+    assert lic.id_externo == "placsp_agregadas:935078:2026/15089Q"
+    assert lic.organo_ref_fuente == "935078"
     assert lic.fuente == "placsp_agregadas"
     assert lic.analysis_universe == "technology_observed"
     assert lic.estado == "PUB"
@@ -355,8 +358,12 @@ def test_las_agregadas_pasan_el_filtro_de_tecnologia_de_placsp():
 
     assert parseadas[4] is None  # parques infantiles
     assert all(p is not None for p in parseadas[:4])
-    assert parseadas[0].licitacion.id_externo == "placsp_agregadas:AM2024.01ACM_BAM1L2"
-    assert conector.contadores_de_descarte()["placsp_agregadas_fuera_de_universo"] == 1
+    assert parseadas[0].licitacion.id_externo == "placsp_agregadas:16191149:AM2024.01ACM_BAM1L2"
+    contadores = conector.contadores_de_descarte()
+    assert contadores["placsp_agregadas_fuera_de_universo"] == 1
+    # Todas traen `ID_OC_PLAT`: ningún descarte ni respaldo por el órgano.
+    assert contadores["placsp_agregadas_sin_identificador_de_organo"] == 0
+    assert contadores["placsp_agregadas_organo_por_respaldo_dir3"] == 0
 
 
 def test_los_lotes_de_una_agregada_cuelgan_de_su_clave_con_namespace():
@@ -372,6 +379,7 @@ def test_el_expediente_natural_de_una_agregada_es_el_de_placsp():
     """Es lo que permite al dedupe casarla con la misma fila de otra fuente."""
     from services.dedupe import natural_expediente
 
+    assert natural_expediente("placsp_agregadas:935078:EXP-2026-77") == "EXP-2026-77"
     assert natural_expediente("placsp_agregadas:EXP-2026-77") == "EXP-2026-77"
 
 

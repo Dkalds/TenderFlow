@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from api.concurrency import run_db, run_ml
 from api.dependencias_pipeline import paquete_del_pipeline_ausente
+from api.identidad import resolver_id_externo
 from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
     _get_classifier,
@@ -88,9 +89,9 @@ class ExplainResult(BaseModel):
     },
 )
 async def explain_licitacion(
-    id_externo: str,
     top_k: int = Query(5, ge=1, le=20),
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> ExplainResult:
     """Devuelve los top-K términos que más influyen en la clasificación."""
     result = await run_db(_lic_repo.get_text_for_ml, id_externo)
@@ -154,7 +155,6 @@ async def explain_licitacion(
     responses={401: {"description": "Autenticación inválida"}},
 )
 async def get_simulador_precio(
-    id_externo: str,
     baja: list[float] = Query(
         default=[],
         description=(
@@ -169,6 +169,7 @@ async def get_simulador_precio(
         description="Baja del rival contra el que medirse (p. ej. el p90 de la predicción)",
     ),
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> SimulacionPrecio:
     """F2.2 — el simulador de puntuación de la oferta.
 
@@ -209,8 +210,8 @@ class TechScoresResult(BaseModel):
     },
 )
 async def get_tech_scores(
-    id_externo: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> TechScoresResult:
     """Devuelve los scores por tecnología desde ``licitacion_tecnologia_score``.
 
@@ -265,8 +266,8 @@ class TecnologiasSenalResult(BaseModel):
     },
 )
 async def get_tecnologias(
-    id_externo: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> TecnologiasSenalResult:
     """Une por nombre de tecnología las tres fuentes de la categorización:
     título/descripción (keywords), el clasificador ML, y la señal detectada

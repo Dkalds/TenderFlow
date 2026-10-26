@@ -361,7 +361,7 @@ def test_explain_responde_503_sin_sklearn(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(analitica, "_get_classifier", sin_sklearn)
 
     with pytest.raises(HTTPException) as info:
-        asyncio.run(analitica.explain_licitacion("X-1", top_k=5, _ctx={}))
+        asyncio.run(analitica.explain_licitacion(id_externo="X-1", top_k=5, _ctx={}))
     assert info.value.status_code == 503
 
 
@@ -382,7 +382,7 @@ def test_explain_sigue_dando_500_ante_otro_error(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(analitica, "_get_classifier", roto)
 
     with pytest.raises(HTTPException) as info:
-        asyncio.run(analitica.explain_licitacion("X-1", top_k=5, _ctx={}))
+        asyncio.run(analitica.explain_licitacion(id_externo="X-1", top_k=5, _ctx={}))
     assert info.value.status_code == 500
 
 

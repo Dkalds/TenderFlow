@@ -21,10 +21,11 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from pydantic import BaseModel, Field, model_validator
 
 from api.concurrency import run_db
+from api.identidad import id_vigente, resolver_id_externo
 from api.pagination import PageParams, pagina
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import resolve_organization_ctx
@@ -202,6 +203,7 @@ async def get_dismissals(
 )
 async def post_dismissal(
     body: RadarDismissalBody,
+    response: Response,
     idempotency_key: str | None = Header(
         default=None,
         alias="X-Idempotency-Key",
@@ -226,6 +228,8 @@ async def post_dismissal(
     # Fuera del threadpool porque resolverla es `async`, y sólo para `posponer`:
     # es lo único que necesita ámbito de organización para poder recordar.
     organization_id = await _organizacion_activa(ctx) if body.accion == "posponer" else None
+    # Un id anterior a una re-key se descarta con el id vigente.
+    body = body.model_copy(update={"id_externo": await id_vigente(body.id_externo, response)})
 
     def _trabajo() -> dict[str, Any]:
         """Clave, descarte y lectura del listado, en UN salto al threadpool.
@@ -279,8 +283,8 @@ async def post_dismissal(
     summary="Deshacer el descarte de una señal",
 )
 async def delete_dismissal(
-    id_externo: str,
     ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> None:
     ok = await run_db(radar_dismissals.remove, _user_key(ctx), id_externo, user_id=_user_id(ctx))
     if not ok:
