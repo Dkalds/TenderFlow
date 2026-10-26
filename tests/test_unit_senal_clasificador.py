@@ -376,7 +376,9 @@ def test_explain_declara_que_la_probabilidad_no_es_senal(monkeypatch: pytest.Mon
     monkeypatch.setattr(analitica, "run_ml", fake_run_ml)
     monkeypatch.setattr(analitica, "_get_classifier", _Clf)
 
-    resultado = asyncio.run(analitica.explain_licitacion("X-1", top_k=5, _ctx={}))
+    # Desde la fase B de identidad el id llega resuelto por la dependencia
+    # `resolver_id_externo`, no como parámetro de ruta posicional.
+    resultado = asyncio.run(analitica.explain_licitacion(top_k=5, _ctx={}, id_externo="X-1"))
 
     assert resultado.senal_clasificador is not None
     assert resultado.senal_clasificador.validada is False
