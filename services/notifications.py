@@ -14,8 +14,8 @@ mecanica de reparto: la misma preferencia la leera la pantalla de perfil.
 Desde v129 (ADR-030 fase 2) ``user_notifications`` y ``user_event_prefs``
 llevan ``user_id`` junto a ``user_key``. Todas las funciones aceptan
 ``user_id`` opcional: con él la lectura es dual (por id, o por clave en las
-filas que el backfill no resolvió) y la escritura pone las dos columnas; sin
-él se comportan exactamente como antes.
+filas que el backfill no resolvió) y, desde v162/v165 (fase 3), la escritura
+pone sólo el id; sin él se comportan exactamente como antes.
 """
 
 from __future__ import annotations
