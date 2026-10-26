@@ -23,9 +23,12 @@ ADR-022: el SQL vive en ``db/``. Las cláusulas del filtro las construye
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from typing import Any, TypedDict
 
+from psycopg import Connection
+from psycopg.rows import TupleRow
 from sqlalchemy import Select, and_, func, literal, literal_column, select, text
 
 from db.database import connect, connect_read
@@ -411,6 +414,60 @@ def _valores_set(valores: ValoresRegla) -> tuple[Any, ...]:
     )
 
 
+_INSERT_REGLA = (
+    "INSERT INTO watchlist_rules "
+    "(user_key, user_id, nombre, keyword, cpv, min_importe, ccaa, "
+    " frequency, active, organization_id, visibility, "
+    " tecnologia, organo, organo_norm, procedimiento, tipo_contrato, "
+    " banda_min, plazo_min_dias, email) "
+    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+    "        %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"
+)
+
+
+def _insertar_en(
+    c: Connection[TupleRow],
+    user_key: str,
+    valores: ValoresRegla,
+    *,
+    user_id: int | None,
+    organization_id: int | None,
+    visibility: str,
+    email: str | None = None,
+) -> int:
+    """El ``INSERT`` de una regla sobre una conexión ya abierta.
+
+    Separado de :func:`insertar_regla` para que :func:`crear_reglas_por_defecto`
+    pueda insertar varias reglas dentro de **su** transacción, la que bloquea
+    la fila de la organización.
+    """
+    row = c.execute(
+        _INSERT_REGLA,
+        (
+            user_key,
+            user_id,
+            valores["nombre"],
+            valores["keyword"],
+            valores["cpv"],
+            valores["min_importe"],
+            valores["ccaa"],
+            valores["frequency"],
+            valores["active"],
+            organization_id,
+            visibility,
+            valores["tecnologia"],
+            valores["organo"],
+            valores["organo_norm"],
+            valores["procedimiento"],
+            valores["tipo_contrato"],
+            valores["banda_min"],
+            valores["plazo_min_dias"],
+            email,
+        ),
+    ).fetchone()
+    return int(row[0]) if row else 0
+
+
 def insertar_regla(
     user_key: str,
     valores: ValoresRegla,
@@ -421,36 +478,94 @@ def insertar_regla(
 ) -> int:
     """Persiste una regla nueva y devuelve su id."""
     with connect() as c:
-        row = c.execute(
-            "INSERT INTO watchlist_rules "
-            "(user_key, user_id, nombre, keyword, cpv, min_importe, ccaa, "
-            " frequency, active, organization_id, visibility, "
-            " tecnologia, organo, organo_norm, procedimiento, tipo_contrato, "
-            " banda_min, plazo_min_dias) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
-            "        %s, %s, %s, %s, %s, %s, %s) RETURNING id",
-            (
-                user_key,
-                user_id,
-                valores["nombre"],
-                valores["keyword"],
-                valores["cpv"],
-                valores["min_importe"],
-                valores["ccaa"],
-                valores["frequency"],
-                valores["active"],
-                organization_id,
-                visibility,
-                valores["tecnologia"],
-                valores["organo"],
-                valores["organo_norm"],
-                valores["procedimiento"],
-                valores["tipo_contrato"],
-                valores["banda_min"],
-                valores["plazo_min_dias"],
-            ),
+        return _insertar_en(
+            c,
+            user_key,
+            valores,
+            user_id=user_id,
+            organization_id=organization_id,
+            visibility=visibility,
+        )
+
+
+# ── Alerta por defecto de una organización (D53, B1 del plan 2026-10) ────────
+
+#: Clave de ``organizations.settings_json`` que deja constancia de que la
+#: organización ya recibió su alerta por defecto. Sin ella, quien borra la
+#: regla y vuelve a guardar los ajustes la vería reaparecer: la baja tiene que
+#: ser definitiva. ``services.organizations.ajustes_guardados`` solo lee las
+#: claves que declara ``OrganizationSettings``, así que esta no llega al GET, y
+#: el ``PUT`` fusiona en vez de reemplazar, así que tampoco la borra.
+MARCA_ALERTA_POR_DEFECTO = "alerta_por_defecto"
+
+
+def crear_reglas_por_defecto(
+    organization_id: int,
+    user_key: str,
+    valores: Sequence[ValoresRegla],
+    *,
+    user_id: int,
+    email: str,
+    creada_en: str,
+) -> list[int]:
+    """Inserta las reglas por defecto si la organización no tiene ninguna.
+
+    Devuelve los ids creados, o ``[]`` si no tocaba: la organización no existe,
+    ya tiene alguna regla (de cualquier miembro) o ya recibió su alerta por
+    defecto alguna vez (:data:`MARCA_ALERTA_POR_DEFECTO`).
+
+    Todo en **una** transacción que empieza bloqueando la fila de la
+    organización (``FOR UPDATE``, el mismo cerrojo que toma
+    ``OrganizationRepository.update_settings``): dos guardados simultáneos de
+    los ajustes no pueden ver los dos «cero reglas» y crear dos juegos.
+    """
+    if not valores:
+        return []
+    with connect() as c:
+        fila = c.execute(
+            "SELECT settings_json FROM organizations WHERE id = %s FOR UPDATE",
+            (organization_id,),
         ).fetchone()
-    return int(row[0]) if row else 0
+        if fila is None:
+            return []
+        ajustes: dict[str, object] = {}
+        if fila[0]:
+            try:
+                leido = json.loads(str(fila[0]))
+                ajustes = leido if isinstance(leido, dict) else {}
+            except (json.JSONDecodeError, TypeError):
+                ajustes = {}
+        if MARCA_ALERTA_POR_DEFECTO in ajustes:
+            return []
+        if c.execute(
+            "SELECT 1 FROM watchlist_rules WHERE organization_id = %s LIMIT 1",
+            (organization_id,),
+        ).fetchone():
+            return []
+        ids = [
+            _insertar_en(
+                c,
+                user_key,
+                v,
+                user_id=user_id,
+                organization_id=organization_id,
+                visibility="private",
+                email=email,
+            )
+            for v in valores
+        ]
+        ajustes[MARCA_ALERTA_POR_DEFECTO] = {
+            "reglas": ids,
+            "user_id": user_id,
+            "creada_en": creada_en,
+        }
+        # Sin tocar `updated_at`: la marca no es configuración que alguien
+        # haya cambiado, y la fecha de los ajustes la enseña la consola.
+        c.execute(
+            "UPDATE organizations SET settings_json = %s WHERE id = %s",
+            (json.dumps(ajustes, ensure_ascii=False), organization_id),
+        )
+    return ids
 
 
 def filas_de_reglas(

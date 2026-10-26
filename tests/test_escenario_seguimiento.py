@@ -130,6 +130,40 @@ def test_cu04_regla_de_alerta_de_la_vista_previa_a_los_avisos(client, api_db):
     assert sesion.get(f"/watchlist/rules/{rid}/matches").status_code == 404
 
 
+def test_cu04_alerta_por_defecto_al_guardar_el_ambito(client, api_db):
+    """CU-04 — guardar las tecnologías de la organización deja una alerta editable."""
+    _sembrar_mercado()
+    sesion = abrir_sesion("ambito@example.com", client)
+    ajustes = f"/organizations/{sesion.organization_id}/settings"
+    assert sesion.get("/watchlist/rules").json()["items"] == []
+
+    guardado = sesion.put(ajustes, json={"tecnologias": ["SAP"], "ccaas": ["Madrid"]})
+    assert guardado.status_code == 200, guardado.text
+
+    # La alerta aparece en Mi Watchlist, diaria y con el correo de quien guardó.
+    (regla,) = sesion.get("/watchlist/rules").json()["items"]
+    assert (regla["tecnologia"], regla["ccaa"]) == ("SAP", "Madrid")
+    assert regla["frequency"] == "daily"
+    assert regla["email"] == "ambito@example.com"
+    casan = sesion.get(f"/watchlist/rules/{regla['id']}/matches").json()
+    assert [m["id_externo"] for m in casan["items"]] == ["EXP-SEG-SAP"]
+
+    # Se edita como cualquier otra, y volver a guardar el ámbito no la duplica.
+    editada = sesion.put(
+        f"/watchlist/rules/{regla['id']}",
+        json={"nombre": "SAP en Madrid", "tecnologia": "SAP", "frequency": "weekly"},
+    )
+    assert editada.status_code == 200, editada.text
+    assert sesion.put(ajustes, json={"tecnologias": ["SAP", "ORACLE"]}).status_code == 200
+    (regla,) = sesion.get("/watchlist/rules").json()["items"]
+    assert (regla["nombre"], regla["frequency"]) == ("SAP en Madrid", "weekly")
+
+    # Borrarla es la baja: no vuelve al guardar otra vez.
+    assert sesion.delete(f"/watchlist/rules/{regla['id']}").status_code == 200
+    assert sesion.put(ajustes, json={"tecnologias": ["SAP"]}).status_code == 200
+    assert sesion.get("/watchlist/rules").json()["items"] == []
+
+
 def test_cu09_vista_guardada_sobrevive_y_se_borra(client, api_db):
     """CU-09 — guardar un ámbito con nombre, recuperarlo tal cual y borrarlo."""
     sesion = abrir_sesion("vistas@example.com", client)
