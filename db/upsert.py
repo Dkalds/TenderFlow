@@ -84,12 +84,34 @@ def _earliest_iso_date(a: str | None, b: str | None) -> str | None:
     que ``min`` sobre strings es correcto. Se usa para que ``fecha_publicacion``
     conserve el primer anuncio del expediente y no retroceda/avance cuando una
     fase posterior (adjudicación, formalización) trae la fecha de SU anuncio.
+
+    Los dos lados se comparan y se devuelven **como día** (:func:`_dia_iso`).
+    Hasta el 2026-10-25 el parser CODICE guardaba el ``<updated>`` completo
+    (``2026-05-22T10:11:12.155+02:00``) cuando el aviso no traía
+    ``ValidNoticeInfo``, y quedan ~400 filas PLACSP así. Comparando el texto tal
+    cual, ese timestamp solo cedía ante una fecha del **mismo** día (prefijo más
+    corto); con cualquier versión posterior se conservaba para siempre, y la
+    reingesta que debe corregirlo (runbook ``reingesta-unica-placsp.md``) no lo
+    corregía.
     """
     if a is None:
-        return b
+        return None if b is None else _dia_iso(b)
     if b is None:
-        return a
+        return _dia_iso(a)
+    a, b = _dia_iso(a), _dia_iso(b)
     return a if a <= b else b
+
+
+def _dia_iso(valor: str) -> str:
+    """``YYYY-MM-DD`` de un timestamp ISO (``…T…`` o ``… …``); el resto, intacto.
+
+    Solo recorta lo que **es** una fecha ISO con hora: un texto en otro formato
+    se devuelve tal cual, como ``shared.dates.to_iso_date``, para que el CHECK
+    de la columna lo siga atrapando en vez de esconderlo aquí.
+    """
+    if len(valor) > 10 and valor[4] == "-" and valor[7] == "-" and valor[10] in "T ":
+        return valor[:10]
+    return valor
 
 
 # ---------------------------------------------------------------------------

@@ -138,6 +138,30 @@ def test_upsert_with_history_keeps_earliest_fecha_publicacion(db):
     assert row[1] == "ADJ"
 
 
+def test_reingerir_corrige_la_fecha_guardada_con_hora(db):
+    """Las ~400 filas PLACSP con el ``<updated>`` entero (antes del 2026-10-25).
+
+    La reingesta trae la versión de un día posterior: la fecha se queda en el
+    día del primer anuncio, pero sin la hora. Antes el timestamp ganaba por
+    orden de texto y la reingesta no lo corregía nunca.
+    """
+    from db.database import connect
+    from db.upsert import upsert_licitaciones_with_history
+
+    upsert_licitaciones_with_history(
+        [make_licitacion(fecha_publicacion="2026-05-22T10:11:12.155+02:00")], source="atom"
+    )
+    upsert_licitaciones_with_history(
+        [make_licitacion(fecha_publicacion="2026-06-03", estado="ADJ")], source="bulk_202606"
+    )
+
+    with connect() as c:
+        row = c.execute(
+            "SELECT fecha_publicacion FROM licitaciones WHERE id_externo = %s", ["TEST-001"]
+        ).fetchone()
+    assert row[0] == "2026-05-22"
+
+
 # ---------------------------------------------------------------------------
 # fecha_limite: COALESCE en el upsert (Ola 1, docs/IMPROVEMENT_BACKLOG.md)
 # ---------------------------------------------------------------------------

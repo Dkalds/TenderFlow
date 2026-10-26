@@ -312,6 +312,22 @@ def _run_embed_phase(
     return counts
 
 
+def _abiertas_que_casan_reglas() -> list[str]:
+    """Lo abierto con plazo que casa con alguna regla de vigilancia activa.
+
+    Es el tercer nivel de prioridad de la ficha (D52 del plan 2026-10), tras
+    oportunidades y favoritos. Fail-open: si el casado falla, el lote sale con
+    el orden de antes en vez de no salir.
+    """
+    from services.watchlist_rules import ids_abiertas_que_casan
+
+    try:
+        return ids_abiertas_que_casan()
+    except Exception as exc:
+        log.warning("documentos_facts_rule_match_failed", error=str(exc), exc_info=True)
+        return []
+
+
 def _run_facts_phase(
     limit: int = _FACTS_BATCH_SIZE, max_seconds: float | None = None
 ) -> dict[str, Any]:
@@ -347,7 +363,11 @@ def _run_facts_phase(
     from services.tech_signal import ingest_llm_technologies
 
     repo = TenderFactSheetsRepository()
-    pendientes = repo.list_pending_licitaciones(extraction_version=EXTRACTION_VERSION, limit=limit)
+    casan_regla = _abiertas_que_casan_reglas()
+    counts["casan_regla"] = len(casan_regla)
+    pendientes = repo.list_pending_licitaciones(
+        extraction_version=EXTRACTION_VERSION, limit=limit, casan_regla=casan_regla
+    )
     inicio = time.monotonic()
     for posicion, licitacion_id in enumerate(pendientes):
         if _presupuesto_agotado(inicio, max_seconds):
