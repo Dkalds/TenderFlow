@@ -68,6 +68,14 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Lo que escribe se busca como texto: `%`, `_` y `\` no son comodines.
 - Lo sigue también desde un lector de feeds, con la URL que le da Ajustes ›
   Claves al crear una clave con permiso para leer sus alertas.
+- No empieza de cero: al guardar las tecnologías de su organización, si nadie
+  en ella tiene aún una regla, recibe una alerta diaria por cada tecnología
+  (hasta cinco), a su nombre y con su correo. La ve, la edita y la borra como
+  cualquier otra; volver a guardar el ámbito no la duplica ni la resucita.
+- El resumen diario le dice, por licitación, la fecha límite, el importe base
+  sin IVA (o «base desconocida»), hasta tres requisitos de solvencia del pliego
+  y, si su organización declaró su capacidad, el veredicto del checklist, con
+  el enlace a la ficha.
 
 ### CU-05 — Llevar una oportunidad del expediente al cierre
 
@@ -348,7 +356,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-01** Entrar y salir de la consola | — | [login.spec.ts](../web/e2e/login.spec.ts) | — |
 | **CU-02** Buscar un expediente y abrir su ficha | [test_escenario_ficha_y_filtros.py](../tests/test_escenario_ficha_y_filtros.py)<br>[test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [detail-permalink.spec.ts](../web/e2e/detail-permalink.spec.ts) | — |
 | **CU-03** Seguir un expediente y anotarlo | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | [favoritos-nota.test.tsx](../web/src/app/(dashboard)/mi-watchlist/__tests__/favoritos-nota.test.tsx)<br>[use-watchlist-items.test.ts](../web/src/hooks/__tests__/use-watchlist-items.test.ts) |
-| **CU-04** Vigilar el mercado con una alerta | [test_escenario_feed_alertas.py](../tests/test_escenario_feed_alertas.py)<br>[test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-alerta.spec.ts](../web/e2e/recorrido-alerta.spec.ts) | [test_watchlist_rules_maquina_property.py](../tests/test_watchlist_rules_maquina_property.py) |
+| **CU-04** Vigilar el mercado con una alerta | [test_escenario_feed_alertas.py](../tests/test_escenario_feed_alertas.py)<br>[test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) (x2) | [recorrido-alerta.spec.ts](../web/e2e/recorrido-alerta.spec.ts) | [test_resumen_diario_integracion.py](../tests/test_resumen_diario_integracion.py)<br>[test_watchlist_rules_maquina_property.py](../tests/test_watchlist_rules_maquina_property.py) |
 | **CU-05** Llevar una oportunidad del expediente al cierre | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x3) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py)<br>[test_pursuits_filtros_tablero.py](../tests/test_pursuits_filtros_tablero.py) |
 | **CU-06** Decidir GO o NO-GO frente a lo que pide el pliego | [test_escenario_gobierno_organizacion.py](../tests/test_escenario_gobierno_organizacion.py)<br>[test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x2) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py)<br>[pesos-go-no-go-card.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/pesos-go-no-go-card.test.tsx)<br>[matriz-go-no-go.test.tsx](../web/src/app/(dashboard)/oportunidades/[id]/__tests__/matriz-go-no-go.test.tsx)<br>[checklist-go-no-go.test.tsx](../web/src/app/(dashboard)/oportunidades/__tests__/checklist-go-no-go.test.tsx) |
 | **CU-07** Preparar la oferta con tareas | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | — |
