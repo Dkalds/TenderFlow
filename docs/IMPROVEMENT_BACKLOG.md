@@ -9,6 +9,23 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - Si añadís un ítem nuevo, copiá la plantilla del final.
 - Al cerrarlo, no lo dejes tachado aquí: **movélo entero a la sección _Cerrados_** del final con la fecha y el commit/PR que lo resolvió. Las secciones P1/P2/P3 contienen **solo ítems abiertos**.
 
+## Plan 2026-10 — foco de piloto (PROPUESTO el 2026-10-26)
+
+[plans/2026-10-plan-foco-piloto.md](plans/2026-10-plan-foco-piloto.md) fija
+**el orden** de lo que queda abierto aquí y **qué se aplaza**. No redefine
+criterios: cada ítem conserva los suyos, y el estado se anota en el §8 del plan.
+Hasta que el propietario tome sus decisiones D50–D58, el orden de abajo es una
+propuesta.
+
+| Ola | Ítems de este backlog |
+|---|---|
+| 0 — que funcione lo prometido | P1 «Recuperación de contraseña» (1) y (2); P1 «[Ola 1 · S5]» (suspender `TenderFlow-1`); P2 «[Ola 1 · S8]» (reencolado); P2 «Sentry»; P2 «latido del healthcheck»; P2 «claves de API sin dueño» |
+| 1 — verdad del dato | P1 «La identidad de PLACSP no incluye el órgano» (fase B), con P2 «condiciones oficiales de CODICE» en la misma reingesta; P1 «sap_classifier»; P1 «Ampliar el golden set»; P2 «El corpus de PSCP ahoga…» |
+| 2 — ciclo central | Ítems nuevos B1–B6 del plan (alerta por defecto, ficha para lo que casa, resumen con ficha, checklist asistido, primeros pasos, cierre por NIF) |
+| 3 — medir y recortar | P2 «La telemetría de producto» |
+| 4 — plataforma y proceso | P1 «[Ola 1 · S1]» (fase 3 de `user_key`); P3 «fechas a `timestamptz`»; P2 «[Ola 1 · S4]»; P2 «Desbloquear los pines»; P3 «gates stdlib»; P3 «ratchets congelados»; P3 «El coste de leer el repo» |
+| Aplazados (§4 del plan) | P2 «Encender las fuentes nuevas»; P2 «Antes de activar Microsoft»; P2 «Modelo de baja por lote»; P2 «`baja_model` v2 y `retencion_model` v1»; P2 «[Investigador] búsqueda por significado»; P3 «Entorno de staging» |
+
 ## Rendimiento 2026-09 — rama `claude/app-performance-optimization-222a43`
 
 Revisión de rendimiento del 2026-09-24 y su implementación (2026-09-25). Punto
