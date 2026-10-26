@@ -639,11 +639,11 @@ def test_integration_una_agregada_que_ya_entra_por_pscp_queda_marcada_como_dupli
     with db.connect_read() as c:
         marca = c.execute(
             "SELECT canonical_id, status FROM licitaciones_duplicados WHERE licitacion_id = %s",
-            ("placsp_agregadas:2026/15089Q",),
+            ("placsp_agregadas:935078:2026/15089Q",),
         ).fetchone()
         documentos = c.execute(
             "SELECT uri FROM documentos WHERE licitacion_id = %s ORDER BY uri",
-            ("placsp_agregadas:2026/15089Q",),
+            ("placsp_agregadas:935078:2026/15089Q",),
         ).fetchall()
     assert marca is not None
     assert tuple(marca) == ("pscp:2026/15089Q", "confirmed")
@@ -653,5 +653,5 @@ def test_integration_una_agregada_que_ya_entra_por_pscp_queda_marcada_como_dupli
     radar = {
         str(r["id_externo"]) for r in AggregateRepository().scoring_candidates(hoy_iso="2026-10-24")
     }
-    assert "placsp_agregadas:09-7-9.02-0016/2026" in radar
-    assert "placsp_agregadas:2026/15089Q" not in radar
+    assert "placsp_agregadas:207:09-7-9.02-0016/2026" in radar
+    assert "placsp_agregadas:935078:2026/15089Q" not in radar
