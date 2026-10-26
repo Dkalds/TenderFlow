@@ -98,7 +98,7 @@ copia coincida:
 | `make gates` | `check_layers.py` | imports hacia abajo entre capas (ratchet) |
 | `make gates` | `check_prints.py` | ningún `print()` fuera de un `__main__` |
 | `make gates` | `check_any_count.py` | usos de Any en producción (ratchet) |
-| `make gates` | `check_user_key_ratchet.py` | ficheros con user_key (ratchet, ADR-030) |
+| `make gates` | `check_user_key_ratchet.py` | identidad derivada del correo (ratchet, ADR-030) |
 | `make gates` | `check_analytics_unbounded.py` | analítica sin cota (ADR-023) |
 | `make gates` | `check_public_surface.py --strict` | superficie anónima sin NIF ni analítica |
 | `make gates` | `check_frontend_invariants.py --strict` | integridad analítica (ADR-014) |
