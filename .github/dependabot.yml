@@ -29,18 +29,11 @@ updates:
     labels:
       - "dependencies"
       - "python"
-    # El trío fastapi/starlette/uvicorn sale del grupo automático (2026-08-17,
-    # PR #187). Dependabot los etiquetaba como "minor" —0.136→0.141, 1.3→1.6,
-    # 0.46→0.52— pero ese salto deja `include_router` devolviendo objetos
-    # `_IncludedRouter` opacos en `app.routes`: la API responde 500 en todas las
-    # rutas y no supera ni el gate de arranque del job E2E. Actualizarlos exige
-    # auditar todo lo que recorre `app.routes` (api/, scripts/gen_status.py,
-    # tests/test_exports.py), así que va en un PR propio y a mano. Los topes que
-    # lo hacen efectivo están en requirements.in y pyproject.toml.
+    # El trío fastapi/starlette/uvicorn estuvo aquí del 2026-08-17 (PR #187) al
+    # 2026-10: el salto a fastapi 0.137 dejaba los routers incluidos como
+    # `_IncludedRouter` opacos en `app.routes`. Desde que la superficie se lee
+    # con api/rutas.py ya no hay motivo para ignorarlos.
     ignore:
-      - dependency-name: "fastapi"
-      - dependency-name: "starlette"
-      - dependency-name: "uvicorn"
       # scikit-learn 1.9.x: regresión de HistGradientBoostingRegressor con una
       # columna numérica 100% NaN (detalle en requirements.in). El techo `<1.9`
       # de los .in no basta por sí solo: Dependabot lo ensancha al proponer la

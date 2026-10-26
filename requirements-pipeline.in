@@ -29,6 +29,7 @@ lxml>=5.0.0,<7
 # con una columna entera a NaN. El detalle está en requirements.in y en
 # tests/test_s3_feature_todo_nan.py.
 scikit-learn>=1.3.0,<1.9
+joblib>=1.3.0,<2
 statsmodels>=0.15.0,<1
 networkx>=3.0,<4
 

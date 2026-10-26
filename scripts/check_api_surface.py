@@ -30,9 +30,11 @@ motivo el ítem del plan que la justifica —``plan 2026-10`` y su identificador
 por ejemplo ``(plan 2026-10, B3)``—. Las catorce anteriores al 2026-10-26 no se
 reescriben; esa lista solo encoge, como la línea base.
 
-La superficie se lee de ``app.routes`` con ``ENV=dev`` y ``APP_PROFILE=api``,
-igual que ``scripts/gen_status.py``: en ``dev`` existe ``/auth/dev-login``, y el
-perfil ``worker`` solo monta ``health``. Con otro entorno la lista sería otra.
+La superficie la calcula ``api.rutas.operaciones`` (anclada en
+``app.openapi()``, más las rutas fuera del esquema) con ``ENV=dev`` y
+``APP_PROFILE=api``, igual que ``scripts/gen_status.py``: en ``dev`` existe
+``/auth/dev-login``, y el perfil ``worker`` solo monta ``health``. Con otro
+entorno la lista sería otra.
 
 Uso::
 

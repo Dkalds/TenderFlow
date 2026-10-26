@@ -405,7 +405,7 @@ def _stream_sse(
     degraded_docs: list[dict[str, Any]],
     pre_events: list[dict[str, Any]] | None = None,
     post_event: Callable[[str], dict[str, Any] | None] | None = None,
-) -> AsyncGenerator[str, None]:
+) -> AsyncGenerator[str]:
     """Generator SSE compartido por ``/ask`` y ``/resumen``.
 
     Envuelve el stream LLM síncrono con ``asyncio.wait_for`` + executor para
@@ -428,7 +428,7 @@ def _stream_sse(
     llegó a escribir.
     """
 
-    async def _generate() -> AsyncGenerator[str, None]:
+    async def _generate() -> AsyncGenerator[str]:
         timeout_seconds = float(settings.ASK_LLM_TIMEOUT_SECONDS)
         loop = asyncio.get_running_loop()
         # Cola thread-safe para pasar (kind, payload) del executor al event loop
@@ -665,7 +665,7 @@ def _prepare_ask_context(
 
 async def _stream_ask(
     request: AskRequest, scope_key: str | None, org_key: str | None = None
-) -> AsyncGenerator[str, None]:
+) -> AsyncGenerator[str]:
     """Prepara contexto + historial y devuelve el stream SSE del LLM."""
     from llm.budget import bind_budget_org, bind_budget_subject
     from llm.client import stream_llm_response

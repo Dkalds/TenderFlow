@@ -46,16 +46,15 @@ _SCOPES_SIN_RUTA: dict[str, str] = {
 def _iter_routes() -> list[tuple[str, str]]:
     """Devuelve los pares ``(método, path)`` de la API, ordenados."""
     from api.app import app
+    from api.rutas import rutas_planas
 
     pares: set[tuple[str, str]] = set()
-    for route in app.routes:
-        path = getattr(route, "path", None)
-        methods = getattr(route, "methods", None)
-        if not path or not methods or not path.startswith("/api/v1"):
+    for ruta in rutas_planas(app.routes):
+        if not ruta.plantilla.startswith("/api/v1"):
             continue
-        for method in methods:
+        for method in ruta.metodos:
             if method in _METHODS:
-                pares.add((method, path))
+                pares.add((method, ruta.plantilla))
     return sorted(pares, key=lambda p: (p[1], p[0]))
 
 

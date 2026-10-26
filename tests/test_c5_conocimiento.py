@@ -399,7 +399,7 @@ class TestFeedbackDelAsistente:
     def test_las_rutas_existen(self, ruta: str) -> None:
         from api.app import app
 
-        assert ruta in {r.path for r in app.routes if hasattr(r, "path")}
+        assert ruta in app.openapi()["paths"]
 
     def test_el_panel_exige_admin(self) -> None:
         """Las preguntas agrupadas son datos de operación, no de producto."""

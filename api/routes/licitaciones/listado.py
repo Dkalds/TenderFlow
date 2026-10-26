@@ -590,7 +590,7 @@ async def bulk_get_licitaciones(
         import csv
         import io
 
-        def _generate_csv() -> Generator[str, None, None]:
+        def _generate_csv() -> Generator[str]:
             if not items:
                 yield "id_externo,titulo,organo_contratacion,importe,estado,fecha_publicacion,ccaa,cpv,url,tecnologia\n"
                 return

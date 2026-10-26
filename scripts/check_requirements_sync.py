@@ -16,6 +16,11 @@ más nuevas por parches transitivos; eso es esperado y no es un bug). Solo
 verifica que el CONJUNTO de paquetes de primer nivel de requirements.in está
 presente en requirements.txt.
 
+Además (2026-10) comprueba que ``pyproject.toml`` no vuelve a tener su propia
+lista de ``dependencies``: las lee de ``requirements.in`` (``[tool.setuptools.dynamic]``),
+y ``requirements.in`` tiene que seguir siendo legible para setuptools. Antes eran
+dos listas escritas a mano que no coincidían.
+
 Uso:
   python scripts/check_requirements_sync.py   # sale con 1 si falta algún paquete
 """
@@ -24,9 +29,11 @@ from __future__ import annotations
 
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
+PYPROJECT = REPO_ROOT / "pyproject.toml"
 REQUIREMENTS_IN = REPO_ROOT / "requirements.in"
 REQUIREMENTS_TXT = REPO_ROOT / "requirements.txt"
 
@@ -53,8 +60,10 @@ REQUIREMENTS_MCP_TXT = REPO_ROOT / "requirements-mcp.txt"
 #: usaba en caminos de request que ahora degradan sin ellos (ver la cabecera de
 #: requirements-api.in). tenacity y pybreaker salieron el 2026-10-01: la API
 #: descarga pliegos para la ficha bajo demanda, y sin ellos esa extracción
-#: moría en el import de `scraper/resilience.py`.
-SOLO_PIPELINE = frozenset({"lxml", "scikit-learn", "statsmodels", "networkx"})
+#: moría en el import de `scraper/resilience.py`. joblib entró el 2026-10, al
+#: pasar `requirements.in` a ser también las dependencias del paquete: llega con
+#: scikit-learn y solo lo importan los modelos de `services/ml/`.
+SOLO_PIPELINE = frozenset({"lxml", "scikit-learn", "joblib", "statsmodels", "networkx"})
 
 #: Paquetes de `requirements.in` que solo instala el proceso MCP
 #: (`requirements-mcp.in`). Siguen en `requirements.in` para que el lock que
@@ -243,8 +252,66 @@ def _comprueba_corte() -> int:
     return 0
 
 
+def _comprueba_pyproject() -> int:
+    """`pyproject.toml` toma sus `dependencies` de `requirements.in`, y solo de ahí.
+
+    Hasta 2026-10 las declaraba a mano y no coincidían con `requirements.in`
+    (faltaban httpx, uvicorn, starlette, pypdf, mcp…): dos fuentes de verdad, y
+    `pip install -e .` pedía otra cosa que el lock. Ahora `[project]` las
+    declara `dynamic` y `[tool.setuptools.dynamic]` las lee del fichero, que por
+    eso tiene que seguir en el formato que setuptools entiende: sin `-r`, `-c`,
+    `-e` ni opciones, y sin comentarios al final de una línea.
+    """
+    datos = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+    proyecto = datos.get("project", {})
+    errores: list[str] = []
+    if "dependencies" in proyecto:
+        errores.append(
+            "[project] declara `dependencies` a mano: es una segunda lista. "
+            "Las dependencias van en requirements.in."
+        )
+    if "dependencies" not in proyecto.get("dynamic", []):
+        errores.append('[project] no declara `dynamic = ["dependencies"]`.')
+    dinamico = datos.get("tool", {}).get("setuptools", {}).get("dynamic", {})
+    fichero = dinamico.get("dependencies", {}).get("file")
+    if fichero != [REQUIREMENTS_IN.name]:
+        errores.append(
+            "[tool.setuptools.dynamic] dependencies tiene que ser "
+            f'{{ file = ["{REQUIREMENTS_IN.name}"] }} (es: {fichero!r}).'
+        )
+
+    for numero, linea in enumerate(REQUIREMENTS_IN.read_text(encoding="utf-8").splitlines(), 1):
+        limpia = linea.strip()
+        if not limpia or limpia.startswith("#"):
+            continue
+        if limpia.startswith("-"):
+            errores.append(
+                f"{REQUIREMENTS_IN.name}:{numero}: `{limpia}` es una opción de pip; "
+                "setuptools no la entiende al leer las dependencias del paquete."
+            )
+        elif "#" in limpia:
+            errores.append(
+                f"{REQUIREMENTS_IN.name}:{numero}: comentario al final de la línea; "
+                "setuptools lo leería como parte del especificador. Subilo a su propia línea."
+            )
+
+    if errores:
+        print(
+            "[check-requirements-sync] pyproject.toml y requirements.in no son una sola fuente:\n"
+        )
+        for error in errores:
+            print(f"  - {error}")
+        return 1
+    print(
+        "[check-requirements-sync] OK — pyproject.toml lee sus dependencias de "
+        f"{REQUIREMENTS_IN.name}."
+    )
+    return 0
+
+
 def main() -> int:
     codigo = 0
+    codigo |= _comprueba_pyproject()
     codigo |= _comprueba_par(REQUIREMENTS_IN, REQUIREMENTS_TXT)
     codigo |= _comprueba_par(REQUIREMENTS_API_IN, REQUIREMENTS_API_TXT)
     codigo |= _comprueba_par(REQUIREMENTS_PIPELINE_IN, REQUIREMENTS_PIPELINE_TXT)

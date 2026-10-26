@@ -63,6 +63,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from api.diagnostico_proxy import registrar_cabeceras_proxy
+from api.rutas import plantilla_de_ruta
 from observability.logging import get_logger
 from services.rate_limiting import get_rate_limiter
 from shared.etag import coincide_if_none_match, etag_debil
@@ -688,9 +689,10 @@ def _registrar_acceso(conexion: HTTPConnection, scope: Scope, status_code: int, 
     """Línea ``http_request`` del access log."""
     # Usar el path template de la ruta (e.g. "/licitaciones/{id}") en lugar
     # del path crudo ("/licitaciones/123") para evitar cardinalidad explosiva
-    # en métricas Prometheus cuando los IDs forman parte de la URL.
-    route = scope.get("route")
-    path = getattr(route, "path", None) or scope["path"]
+    # en métricas Prometheus cuando los IDs forman parte de la URL. Con el
+    # prefijo del include_router, que `scope["route"].path` ya no trae desde
+    # fastapi 0.137 (api/rutas.py).
+    path = plantilla_de_ruta(scope) or scope["path"]
     # Usar hash prefix en lugar de los primeros caracteres del API key
     # para evitar reducir el espacio de brute-force en los logs.
     raw_key = conexion.headers.get("x-api-key") or ""
@@ -802,8 +804,7 @@ class ObservabilityMiddleware:
             from observability.runtime_metrics import api_cost_estimate_total
 
             # Usar route template para evitar cardinalidad explosiva
-            route = scope.get("route")
-            op = getattr(route, "path", None) or "unmatched"
+            op = plantilla_de_ruta(scope) or "unmatched"
             api_cost_estimate_total.labels(operation=op).inc(int(usd * 1e6))
         except Exception:
             pass
