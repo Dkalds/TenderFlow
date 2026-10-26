@@ -42,6 +42,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from api.concurrency import run_db
+from api.identidad import id_vigente, resolver_id_externo
 from api.routes.dual_auth import require_any_auth
 from config import settings
 from llm.prompts import ChatMessage, PromptMode
@@ -850,6 +851,22 @@ async def ask_question(
     """
     _check_ask_scope(user)
 
+    # Un id anterior a una re-key pregunta por la licitación vigente. Sin
+    # cabecera de aviso: la respuesta es un stream propio (ver `id_vigente`).
+    if body.id_externo or body.ids_externos:
+        body = body.model_copy(
+            update={
+                "id_externo": (
+                    await id_vigente(body.id_externo, None) if body.id_externo else None
+                ),
+                "ids_externos": (
+                    [await id_vigente(i, None) for i in body.ids_externos]
+                    if body.ids_externos
+                    else body.ids_externos
+                ),
+            }
+        )
+
     log.info(
         "ask.request",
         model=body.model,
@@ -892,9 +909,9 @@ async def ask_question(
     },
 )
 async def resumen_licitacion(
-    id_externo: str,
     body: ResumenRequest,
     user: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> StreamingResponse:
     """Genera (o sirve cacheado) el resumen ejecutivo de la licitación.
 

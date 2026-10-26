@@ -14,16 +14,15 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Response,
     status,
 )
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
+from api.identidad import id_vigente, resolver_id_externo
 from api.routes.dual_auth import require_any_auth
-from api.routes.licitaciones._base import (
-    _doc_repo,
-    resolver_id_externo,
-)
+from api.routes.licitaciones._base import _doc_repo
 from observability.logging import get_logger
 from services.rag.paginas import PaginaDocumento, get_pagina
 from services.reportes_dato import COLA_POR_TIPO, TipoReporte, registrar_reporte
@@ -122,9 +121,9 @@ class ReporteDatoResult(BaseModel):
     responses={401: {"description": "Autenticación inválida"}},
 )
 async def post_reporte_dato(
-    id_externo: str,
     body: ReporteDatoBody,
     ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> ReporteDatoResult:
     """F6.2 — «este dato está mal», desde la ficha.
 
@@ -160,6 +159,7 @@ async def get_pagina_documento(
     id_externo: str,
     documento_id: int,
     page_number: int,
+    response: Response,
     inicio: int | None = Query(
         default=None, ge=0, description="Offset absoluto de inicio de la cita"
     ),
@@ -177,6 +177,9 @@ async def get_pagina_documento(
     medio de la ruta y un comodín de camino se comería los segmentos
     siguientes. Los ids con barra se piden con la barra codificada.
     """
+    # Aquí y no como dependencia: el orden de los parámetros de ruta es
+    # contrato (OpenAPI → SDK) y el id va el primero.
+    id_externo = await id_vigente(id_externo, response)
     pagina = await run_db(
         get_pagina,
         id_externo,

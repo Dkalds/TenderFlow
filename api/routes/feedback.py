@@ -5,10 +5,11 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, field_validator
 
 from api.concurrency import run_db, run_ml
+from api.identidad import id_vigente
 from api.routes.dual_auth import require_admin, require_any_auth
 from config.keywords import TECH_CATEGORIAS, TECH_LABEL_TIPO, TECH_LABELS, TipoLabel
 from db.audit import log_event
@@ -304,6 +305,7 @@ class FeedbackResponse(BaseModel):
 )
 async def submit_feedback(
     body: FeedbackRequest,
+    response: Response,
     ctx: dict[str, Any] = Depends(require_any_auth),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> FeedbackResponse:
@@ -333,6 +335,8 @@ async def submit_feedback(
             log.info("feedback_idempotent_hit", key=idempotency_key[:16])
             return FeedbackResponse(**cached)
 
+    # Un id anterior a una re-key se etiqueta con el id vigente.
+    body = body.model_copy(update={"expediente": await id_vigente(body.expediente, response)})
     try:
         stored_at = await run_db(
             _repo.insert,
@@ -644,6 +648,7 @@ class AsistentePeorPregunta(BaseModel):
 )
 async def submit_asistente_feedback(
     body: AsistenteFeedbackRequest,
+    response: Response,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> AsistenteFeedbackResponse:
     """Persiste el voto del chat, que hasta C5.4 moría como evento de telemetría.
@@ -654,6 +659,10 @@ async def submit_asistente_feedback(
     """
     from db.repositories.asistente_feedback import registrar
 
+    if body.licitacion_id:
+        body = body.model_copy(
+            update={"licitacion_id": await id_vigente(body.licitacion_id, response)}
+        )
     fila_id = await run_db(
         registrar,
         pregunta=body.pregunta,

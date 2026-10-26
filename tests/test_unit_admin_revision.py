@@ -12,7 +12,7 @@ import asyncio
 from typing import Any
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Response
 
 import api.routes.admin_revision as ruta_mod
 from services.organos import DecisionRevision
@@ -62,6 +62,11 @@ def test_listado_de_duplicados_mapea_las_dos_filas(monkeypatch) -> None:
     assert item.fuente_canonica == "placsp" and item.importe_canonica is None
 
 
+async def _sin_alias(id_licitacion: str, _response: object) -> str:
+    """Sin BD: ningún id es un alias (``api.identidad.id_vigente``)."""
+    return id_licitacion
+
+
 @pytest.mark.parametrize(("aceptar", "estado"), [(True, "confirmed"), (False, "rejected")])
 def test_resolver_duplicado_audita_con_el_id_del_admin(
     monkeypatch, auditoria, aceptar: bool, estado: str
@@ -73,11 +78,13 @@ def test_resolver_duplicado_audita_con_el_id_del_admin(
         return True
 
     monkeypatch.setattr(ruta_mod, "resolver_pendiente", _resolver)
+    monkeypatch.setattr(ruta_mod, "id_vigente", _sin_alias)
 
     res = asyncio.run(
         ruta_mod.resolver_duplicado(
             id_externo="ted:1-2026",
             body=ruta_mod.RevisionDecision(aceptar=aceptar),
+            response=Response(),
             admin=ADMIN,
         )
     )
@@ -98,11 +105,15 @@ def test_resolver_duplicado_audita_con_el_id_del_admin(
 
 def test_duplicado_ya_resuelto_es_404_y_no_se_audita(monkeypatch, auditoria) -> None:
     monkeypatch.setattr(ruta_mod, "resolver_pendiente", lambda *_a, **_k: False)
+    monkeypatch.setattr(ruta_mod, "id_vigente", _sin_alias)
 
     with pytest.raises(HTTPException) as exc:
         asyncio.run(
             ruta_mod.resolver_duplicado(
-                id_externo="X", body=ruta_mod.RevisionDecision(aceptar=True), admin=ADMIN
+                id_externo="X",
+                body=ruta_mod.RevisionDecision(aceptar=True),
+                response=Response(),
+                admin=ADMIN,
             )
         )
 

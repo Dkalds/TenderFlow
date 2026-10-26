@@ -41,10 +41,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
+from api.identidad import id_vigente
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
 from db.repositories import follows as repo
@@ -119,6 +120,7 @@ async def get_follows(
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Seguir algo")
 async def post_follow(
     body: FollowBody,
+    response: Response,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> FollowItem:
     """Idempotente: seguir dos veces lo mismo devuelve la misma fila.
@@ -129,6 +131,9 @@ async def post_follow(
     tabla que mantener.
     """
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
+    if body.target_type == "licitacion":
+        # Un id anterior a una re-key se sigue con el id vigente.
+        body = body.model_copy(update={"target_id": await id_vigente(body.target_id, response)})
     fila = await run_db(
         repo.registrar,
         user_key=_user_key(ctx),

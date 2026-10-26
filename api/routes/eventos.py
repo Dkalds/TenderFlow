@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from api.concurrency import run_db
+from api.identidad import resolver_licitacion_id
 from api.routes.dual_auth import require_any_auth
 from db.repositories.aggregates import LicitacionesFilters
 from db.repositories.licitaciones import LicitacionRepository
@@ -66,8 +67,8 @@ class TimelineResult(BaseModel):
     responses={404: {"description": "Licitación no encontrada"}},
 )
 async def get_timeline(
-    licitacion_id: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    licitacion_id: str = Depends(resolver_licitacion_id),
 ) -> TimelineResult:
     """Hitos del ciclo de vida: publicación → adjudicación → formalización →
     modificaciones/prórrogas → anulación, ordenados cronológicamente."""
