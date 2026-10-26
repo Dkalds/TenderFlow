@@ -29,7 +29,9 @@ from api.routes.licitaciones._base import (
     _lic_repo,
 )
 from observability.logging import get_logger
+from services.ml.senal_clasificador import estado_senal_sap
 from services.simulador_precio import SimulacionPrecio, simular_precio_de
+from shared.dto import SenalClasificadorDTO
 from shared.tender_facts import EvidenceRef
 
 log = get_logger(__name__)
@@ -57,6 +59,12 @@ class ExplainPayload(BaseModel):
     warning: str | None = None
 
 
+AVISO_SENAL_NO_VALIDADA = (
+    "El clasificador SAP no tiene una versión activa que haya pasado el gate: "
+    "su probabilidad no es una señal (ver `senal_clasificador`)."
+)
+
+
 class ExplainResult(BaseModel):
     """Explicabilidad de la clasificación de una licitación."""
 
@@ -64,6 +72,10 @@ class ExplainResult(BaseModel):
     tecnologia: str | None
     explanation: ExplainPayload | None
     warning: str | None = None
+    # D55: si `explanation.confidence` es una señal. Sin versión activa que
+    # haya pasado el gate, la explicación describe el modelo servido (para
+    # auditarlo) pero su probabilidad no sostiene ninguna decisión.
+    senal_clasificador: SenalClasificadorDTO | None = None
 
 
 @router.get(
@@ -123,10 +135,16 @@ async def explain_licitacion(
             detail="Error generando explicación.",
         ) from exc
 
+    estado = await run_db(estado_senal_sap)
+    senal = SenalClasificadorDTO(
+        validada=estado.validada, motivo=estado.motivo, version=estado.version
+    )
     return ExplainResult(
         id_externo=id_externo,
         tecnologia=tecnologia,
         explanation=ExplainPayload(**explanation),
+        warning=None if senal.validada else AVISO_SENAL_NO_VALIDADA,
+        senal_clasificador=senal,
     )
 
 

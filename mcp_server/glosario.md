@@ -148,6 +148,7 @@ LIMIT 10
 
 `licitaciones.tecnologia` guarda códigos separados por coma, a veces con espacios: `SAP,SALESFORCE`. Son claves en mayúsculas del diccionario de tecnologías (`SAP`, `SALESFORCE`, `ORACLE`, `MICROSOFT`, `ERP`, `CRM`, `CIBERSEGURIDAD`, `DATOS_IA`…). `tecnologia = 'SAP'` pierde los multi-tecnología y `LIKE '%SAP%'` casa con códigos que solo lo contienen: explota el CSV.
 - `tecnologia` es la señal por palabras clave de la ingesta. `ml_tecnologias` (CSV por probabilidad), `ml_tech_principal` y `ml_proba_max` las derivan el clasificador, el etiquetado LLM y la señal de pliego (`licitacion_tecnologia_score`). Una fila con `tecnologia IS NULL` puede ser tecnología igualmente si `ml_tecnologias` trae algo. Para «es tecnología» usa ambas (ADR-026).
+- `ml_proba` es otra cosa: la P(SAP) del clasificador binario `sap_classifier`. Sin una versión activa de ese modelo que haya pasado el gate (`model_versions`, `name = 'sap_classifier'`, `is_active = 1`) **no es señal** (D55): da ≥ 0,69 a la mayoría de su población. No la uses para decidir ni ordenar; la superficie del producto tampoco la usa.
 
 ```sql
 SELECT t AS tecnologia, count(*) AS n

@@ -26,6 +26,7 @@ import {
   type ModelVersionInfo,
   type QueueItem,
   type QueueResponse,
+  type SenalClasificador,
   type Strategy,
 } from "../_lib/active-learning";
 import { useSeleccionEtiquetas, type SeleccionEtiquetas } from "./use-seleccion-etiquetas";
@@ -41,6 +42,8 @@ export interface ActiveLearning extends SeleccionEtiquetas {
   dismissedCount: number;
   strategy: Strategy;
   setStrategy: (strategy: Strategy) => void;
+  /** D55: si la confianza del clasificador SAP se puede enseñar; `null` sin respuesta. */
+  senalClasificador: SenalClasificador | null;
   stats: FeedbackStats | undefined;
   statsLoading: boolean;
   activeModel: ModelVersionInfo | null;
@@ -228,6 +231,7 @@ export function useActiveLearning(): ActiveLearning {
     dismissedCount: dismissed.size,
     strategy,
     setStrategy,
+    senalClasificador: queue?.senal_clasificador ?? null,
     stats,
     statsLoading,
     activeModel,

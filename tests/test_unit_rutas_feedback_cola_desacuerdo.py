@@ -14,6 +14,8 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from services.ml.senal_clasificador import EstadoSenal
+
 _CANDIDATO: dict[str, Any] = {
     "id_externo": "EXP-9",
     "titulo": "Manteniment del gestor documental",
@@ -46,6 +48,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
 
     monkeypatch.setattr(revision, "candidatos_desacuerdo", lambda limit: [dict(_CANDIDATO)])
     monkeypatch.setattr(rutas, "_cargar_tech_classifier", lambda: None)
+    # Estos tests describen la cola con un clasificador validado; la regla de
+    # D55 (sin versión activa no se enseña su confianza) tiene los suyos en
+    # `test_unit_senal_clasificador.py`.
+    monkeypatch.setattr(rutas, "_senal_clasificador", lambda: EstadoSenal(validada=True, version=3))
     app.dependency_overrides[require_any_auth] = lambda: {"user_id": 1, "is_admin": True}
     try:
         yield TestClient(app, raise_server_exceptions=True)

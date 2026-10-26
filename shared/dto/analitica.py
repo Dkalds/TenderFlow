@@ -259,3 +259,32 @@ class CompetitiveCompanyAwardsDTO(BaseModel):
     total: int = Field(default=0, ge=0)
     limit: int = Field(ge=1, le=500)
     offset: int = Field(default=0, ge=0)
+
+
+# ── Señal del clasificador SAP (D55, plan 2026-10) ──────────────────────────
+
+
+class SenalClasificadorDTO(BaseModel):
+    """Si la probabilidad del ``sap_classifier`` (``ml_proba``) es una señal utilizable.
+
+    Solo lo es cuando el modelo tiene una versión activa que ha pasado el gate
+    (``services/ml/senal_clasificador.py``). Mientras no, las respuestas que
+    llevaban esa probabilidad la sustituyen por un relleno marcado como tal
+    —el contrato no cambia de tipo— y este bloque dice por qué.
+    """
+
+    validada: bool = Field(
+        description=(
+            "True solo si `sap_classifier` tiene una versión activa que ha pasado el "
+            "gate; si es False, ninguna probabilidad de ese modelo es una señal."
+        )
+    )
+    motivo: str | None = Field(
+        default=None,
+        description=(
+            "Por qué no está validada: `sin_version_activa`, "
+            "`artefacto_no_publicado_por_el_gate`, `no_pasa_el_gate` o "
+            "`registry_ilegible`. Nulo si está validada."
+        ),
+    )
+    version: int | None = Field(default=None, description="Versión activa evaluada, si hay alguna.")
