@@ -26,7 +26,7 @@ const MOTIVO = "Encaja con la práctica de ERP y el plazo da para preparar la of
 const MOTIVO_ENCAJE = "Es la línea de negocio principal del equipo.";
 const TAREA = "Pedir el certificado de solvencia técnica";
 
-test("una oportunidad va del Radar a la oferta en preparación, con su decisión y su tarea", async ({ page }) => {
+test("una oportunidad va del Radar a la oferta en preparación, abriendo en su checklist, con su decisión y su tarea", async ({ page }) => {
   // CU-05 CU-06 CU-07
   //
   // El presupuesto por defecto (30 s) se queda corto para un runner lento:
@@ -48,6 +48,19 @@ test("una oportunidad va del Radar a la oferta en preparación, con su decisión
   await expect(page.getByRole("heading", { level: 1, name: TITULO })).toBeVisible();
   await esperarFase(page, "Identificada");
 
+  // ── La ficha abre en el checklist (D54) ──────────────────────────────────
+  // Lo primero es qué pide el pliego frente a la capacidad de la
+  // organización; la decisión va debajo y la matriz ponderada, plegada.
+  const checklist = page.getByRole("region", { name: "Checklist go/no-go" });
+  await expect(checklist).toBeVisible();
+  const decisionDebajo = await checklist.evaluate((nodo) => {
+    const decision = document.getElementById("ficha-decision");
+    return decision != null && Boolean(nodo.compareDocumentPosition(decision) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  expect(decisionDebajo, "la decisión va después del checklist").toBe(true);
+  await expect(page.getByRole("button", { name: /^Matriz ponderada/ })).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("region", { name: "Matriz go/no-go" })).toHaveCount(0);
+
   // ── Está en el tablero, en su columna ────────────────────────────────────
   await page.getByRole("link", { name: "Cerrar la ficha" }).click();
   await page.waitForURL(/\/oportunidades$/);
@@ -65,8 +78,10 @@ test("una oportunidad va del Radar a la oferta en preparación, con su decisión
   await expect(page.getByText("Preparar o presentar una oferta exige la decisión GO.")).toBeVisible();
 
   // ── La matriz go/no-go: un criterio puntuado, con su motivo ──────────────
-  // Sin nada puntuado no hay recomendación; con un criterio en 4 la hay, y es
-  // provisional porque se calculó sobre uno de cinco.
+  // Va plegada y es opcional: se abre a mano. Sin nada puntuado no hay
+  // recomendación; con un criterio en 4 la hay, y es provisional porque se
+  // calculó sobre uno de cinco.
+  await page.getByRole("button", { name: /^Matriz ponderada/ }).click();
   const matriz = page.getByRole("region", { name: "Matriz go/no-go" });
   await expect(matriz.getByText("Sin criterios puntuados")).toBeVisible();
   await matriz

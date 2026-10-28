@@ -12,7 +12,7 @@ Lógica:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from db.watchlist import list_entries, matches_licitacion, update_last_notified
 from observability import AlertLevel, get_logger, notify
@@ -23,6 +23,9 @@ from services.watchlist import (
     query_licitaciones_batch,
     store_pending_digest,
 )
+
+if TYPE_CHECKING:
+    from services.email_digest import BloqueDigest
 
 log = get_logger(__name__)
 
@@ -236,6 +239,22 @@ def check_and_notify() -> int:
     return total_notified
 
 
+def _con_pliegos(bloques: list[BloqueDigest]) -> list[BloqueDigest]:
+    """Añade solvencia y checklist a cada licitación (B3), sin poder tumbar el envío.
+
+    Es un añadido sobre el resumen: si la ficha o la capacidad no se pueden
+    leer, el correo sale como antes —plazo, importe y enlace— y queda en el
+    log. Un resumen sin requisitos es peor; ninguno, mucho peor.
+    """
+    from services.digest_pliego import con_pliegos
+
+    try:
+        return con_pliegos(bloques)
+    except Exception:
+        log.warning("watchlist_digest_sin_pliegos", exc_info=True)
+        return bloques
+
+
 #: Frecuencias que ``pending_digests`` puede llevar y que este módulo drena.
 FRECUENCIAS_DIGEST: tuple[str, ...] = ("immediate", "daily", "weekly")
 
@@ -310,9 +329,11 @@ def send_pending_digests(frequency: str = "daily") -> int:
                 min_importe=first.get("min_importe"),
                 ccaa=first.get("entry_ccaa"),
             )
+            org_regla = first.get("rule_organization_id")
             bloques.append(
                 BloqueDigest(
                     etiqueta=etiqueta,
+                    organization_id=int(org_regla) if org_regla is not None else None,
                     licitaciones=[
                         {
                             "id_externo": r["licitacion_id"],
@@ -320,6 +341,9 @@ def send_pending_digests(frequency: str = "daily") -> int:
                             "organo_contratacion": r.get("organo_contratacion"),
                             "cpv": r.get("cpv"),
                             "importe": r.get("importe"),
+                            "importe_tipo": r.get("importe_tipo"),
+                            "importe_base_sin_iva": r.get("importe_base_sin_iva"),
+                            "importe_con_iva": r.get("importe_con_iva"),
                             "ccaa": r.get("ccaa"),
                             "tecnologia": r.get("tecnologia"),
                             "estado": r.get("estado"),
@@ -333,6 +357,7 @@ def send_pending_digests(frequency: str = "daily") -> int:
             )
 
         bloques.extend(bloques_de_avisos(avisos_de.get(recipient, [])))
+        bloques = _con_pliegos(bloques)
 
         n = sum(len(b.licitaciones) for b in bloques if not b.es_aviso)
         n_avisos = sum(len(b.licitaciones) for b in bloques if b.es_aviso)

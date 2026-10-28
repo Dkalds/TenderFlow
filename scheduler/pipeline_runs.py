@@ -1393,8 +1393,10 @@ def run_bulk_pipeline(months: int = 3) -> dict[str, Any]:
     return _run_bulk_pipeline_connector(months)
 
 
-def run_backfill_pipeline(year: int, month: int) -> dict[str, Any]:
-    """Pipeline canónica para backfill histórico (desde año/mes hasta hoy).
+def run_backfill_pipeline(
+    year: int, month: int, *, hasta: tuple[int, int] | None = None
+) -> dict[str, Any]:
+    """Pipeline canónica para backfill histórico (desde año/mes hasta hoy, o hasta ``hasta``).
 
     Aplica la misma tolerancia a fallos parciales que ``run_bulk_pipeline``, y
     desde 2026-09 **el mismo camino**: ``PlacspBulkConnector`` mes a mes vía
@@ -1411,6 +1413,9 @@ def run_backfill_pipeline(year: int, month: int) -> dict[str, Any]:
     Args:
         year: Año de inicio del backfill.
         month: Mes de inicio del backfill.
+        hasta: ``(año, mes)`` final, incluido; por defecto el mes en curso.
+            Una reingesta de muchos meses se parte así en tramos que caben en
+            un job (`scrape-bulk.yml`, inputs ``backfill_desde``/``backfill_hasta``).
 
     Returns:
         Dict con ``status`` (``ok``/``degraded``), ``ingestion_results``,
@@ -1420,13 +1425,16 @@ def run_backfill_pipeline(year: int, month: int) -> dict[str, Any]:
         ValueError: Si ``year``/``month`` no son un mes válido ≥ 2000.
         RuntimeError: Solo si fallan todos los meses del backfill.
     """
-    return _run_bulk_pipeline_connector(desde=(year, month), label="backfill (connector)")
+    return _run_bulk_pipeline_connector(
+        desde=(year, month), hasta=hasta, label="backfill (connector)"
+    )
 
 
 def meses_a_procesar(
     months: int = 3,
     *,
     desde: tuple[int, int] | None = None,
+    hasta: tuple[int, int] | None = None,
     hoy: date | None = None,
 ) -> list[tuple[int, int]]:
     """Lista de ``(año, mes)`` que recorre el carril bulk.
@@ -1448,12 +1456,17 @@ def meses_a_procesar(
     Args:
         months: Número de meses recientes (ignorado si se pasa ``desde``).
         desde: ``(año, mes)`` de inicio del backfill.
+        hasta: ``(año, mes)`` en el que termina el backfill, incluido; por
+            defecto el mes en curso. Sirve para partir una reingesta larga en
+            tramos que quepan en un job, sin perder el orden ascendente: cada
+            tramo empieza donde terminó el anterior.
         hoy: Fecha de referencia; por defecto hoy en UTC. Inyectable para
             fijar el borde de fin de año en los tests sin congelar el reloj.
 
     Raises:
-        ValueError: si ``desde`` no es un mes válido de un año ≥ 2000, o si
-            ``months`` no es positivo. Mismo contrato de validación que tenía
+        ValueError: si ``desde`` o ``hasta`` no son un mes válido de un año
+            ≥ 2000, si ``hasta`` es anterior a ``desde``, si ``hasta`` llega
+            sin ``desde``, o si ``months`` no es positivo. Mismo contrato de validación que tenía
             ``scraper.pipeline.backfill``, que era donde vivía antes.
     """
     from dateutil.relativedelta import relativedelta
@@ -1461,6 +1474,8 @@ def meses_a_procesar(
     referencia = hoy or datetime.now(UTC).date()
 
     if desde is None:
+        if hasta is not None:
+            raise ValueError("hasta solo tiene sentido con desde (backfill)")
         if months < 1:
             raise ValueError(f"months must be >= 1, got {months}")
         return [
@@ -1477,9 +1492,17 @@ def meses_a_procesar(
     if start_year < 2000:
         raise ValueError(f"start_year must be >= 2000, got {start_year}")
 
+    fin = date(referencia.year, referencia.month, 1)
+    if hasta is not None:
+        end_year, end_month = hasta
+        if not (1 <= end_month <= 12):
+            raise ValueError(f"end_month must be 1-12, got {end_month}")
+        if (end_year, end_month) < (start_year, start_month):
+            raise ValueError(f"hasta {hasta} es anterior a desde {desde}")
+        fin = min(fin, date(end_year, end_month, 1))
+
     meses: list[tuple[int, int]] = []
     cur = date(start_year, start_month, 1)
-    fin = date(referencia.year, referencia.month, 1)
     while cur <= fin:
         meses.append((cur.year, cur.month))
         cur += relativedelta(months=1)
@@ -1490,6 +1513,7 @@ def _run_bulk_pipeline_connector(
     months: int = 3,
     *,
     desde: tuple[int, int] | None = None,
+    hasta: tuple[int, int] | None = None,
     label: str = "bulk refresh (connector)",
 ) -> dict[str, Any]:
     """Carril bulk y backfill sobre ``PlacspBulkConnector`` (F2 + S2.1).
@@ -1512,6 +1536,8 @@ def _run_bulk_pipeline_connector(
     Args:
         months: Meses recientes a refrescar (ignorado si se pasa ``desde``).
         desde: ``(año, mes)`` de inicio para el backfill histórico.
+        hasta: ``(año, mes)`` final del backfill, incluido (ver
+            :func:`meses_a_procesar`).
         label: Etiqueta del run en logs y alertas de degradación.
     """
     from observability import bind_run_context, record_run
@@ -1519,13 +1545,14 @@ def _run_bulk_pipeline_connector(
     from scraper.connectors.placsp import PlacspBulkConnector
     from scraper.pipeline import _summarize
 
-    meses = meses_a_procesar(months, desde=desde)
+    meses = meses_a_procesar(months, desde=desde, hasta=hasta)
     month_results: list[dict[str, Any]] = []
 
     run_id = bind_run_context(
         entrypoint="run_bulk_pipeline_connector",
         months=len(meses),
         desde=f"{desde[0]}-{desde[1]:02d}" if desde else None,
+        hasta=f"{hasta[0]}-{hasta[1]:02d}" if hasta else None,
     )
     with record_run(run_id) as metrics:
         for year, month in meses:

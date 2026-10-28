@@ -33,8 +33,10 @@ from db.repositories.watchlist_rules import (
     borrar_reglas_de_usuario,
     bounded_match_counts,
     contar_matches,
+    crear_reglas_por_defecto,
     daily_match_counts,
     filas_de_reglas,
+    filas_de_reglas_activas,
     ids_que_casan,
     insertar_regla,
     listar_matches,
@@ -42,10 +44,13 @@ from db.repositories.watchlist_rules import (
     pausar_reglas_de_usuario,
 )
 from db.sql_fragments import FOLD_TABLE, escape_like, fold_expr, iso_guard, palabras_de_organo
+from observability.logging import get_logger
 from services.dedupe import normalize_organo
-from shared.dto import RadarBanda
+from shared.dto import OrganizationSettings, RadarBanda
 from shared.estados import abierta_core
 from shared.procedimientos import codigo_tipo_contrato, textos_de_tipo_contrato
+
+log = get_logger(__name__)
 
 Frequency = Literal["immediate", "daily", "weekly"]
 
@@ -137,6 +142,118 @@ def create_rule(
         organization_id=organization_id,
         visibility=visibility,
     )
+
+
+# ── Alerta por defecto (D53, B1 del plan 2026-10) ─────────────────────────────
+#
+# En producción había cero reglas el 2026-10-26, y el resumen diario sale de
+# ellas: nadie recibía nada. Quien configura las tecnologías de su organización
+# ya ha dicho qué mercado le interesa; con eso basta para una primera alerta,
+# que después se edita, se pausa o se borra en /mi-watchlist como cualquier otra.
+
+#: Techo de reglas que crea la alerta por defecto. Una por tecnología, y la
+#: organización puede declarar hasta treinta: treinta bloques diarios no son
+#: una alerta, son un boletín que nadie lee. Las primeras cinco, en el orden en
+#: que se guardaron, que es el que el administrador eligió.
+MAX_REGLAS_POR_DEFECTO = 5
+
+
+def reglas_por_defecto(ajustes: OrganizationSettings) -> list[WatchlistRule]:
+    """Las reglas que le tocan a una organización por su configuración. Pura.
+
+    **Una regla por tecnología** (hasta :data:`MAX_REGLAS_POR_DEFECTO`): la
+    regla guarda una sola (``watchlist_rules.tecnologia``) y su formulario en
+    /mi-watchlist también, así que juntar varias en una no se podría editar.
+    Sin tecnologías pero con CPVs, una por prefijo CPV. Sin ninguno de los dos,
+    ninguna: una regla sin criterio casaría con el corpus entero.
+
+    El resto del ámbito se copia **solo si cabe en la regla sin ensancharla ni
+    estrecharla**: la CCAA y el CPV cuando la organización declaró exactamente
+    uno (con varios, la regla —que admite uno— dejaría fuera los demás, así que
+    no filtra por ese campo), y el importe mínimo tal cual. Es la misma
+    conjunción que aplica el Radar (``services.analytics.scoring``): tecnología
+    *y* CPV *y* CCAA *y* importe.
+
+    Frecuencia diaria: es la mitigación del riesgo «correos que nadie pidió»
+    del plan (§6) —un resumen por la mañana, nunca un aviso por expediente—.
+    """
+    ccaa = ajustes.ccaas[0] if len(ajustes.ccaas) == 1 else None
+    cpv_unico = ajustes.cpvs[0] if len(ajustes.cpvs) == 1 else None
+    importe = ajustes.importe_min if ajustes.importe_min else None
+    if ajustes.tecnologias:
+        return [
+            WatchlistRule(
+                nombre=f"Alerta por defecto · {tecnologia}",
+                tecnologia=tecnologia,
+                cpv=cpv_unico,
+                ccaa=ccaa,
+                min_importe=importe,
+                frequency="daily",
+            )
+            for tecnologia in ajustes.tecnologias[:MAX_REGLAS_POR_DEFECTO]
+        ]
+    return [
+        WatchlistRule(
+            nombre=f"Alerta por defecto · CPV {cpv}",
+            cpv=cpv,
+            ccaa=ccaa,
+            min_importe=importe,
+            frequency="daily",
+        )
+        for cpv in ajustes.cpvs[:MAX_REGLAS_POR_DEFECTO]
+    ]
+
+
+def asegurar_alerta_por_defecto(
+    organization_id: int, user_id: int, ajustes: OrganizationSettings
+) -> list[int]:
+    """Crea la alerta por defecto de la organización si no tiene ninguna regla.
+
+    Devuelve los ids creados; ``[]`` si no tocaba. Idempotente: con alguna
+    regla en la organización —de quien sea— o con la alerta por defecto ya
+    creada alguna vez, no hace nada (``db.repositories.watchlist_rules.
+    crear_reglas_por_defecto``, que decide bajo el cerrojo de la fila de la
+    organización). Por eso volver a guardar los ajustes no duplica, y borrar la
+    regla es una baja definitiva.
+
+    **A nombre de quién queda.** De ``user_id``: quien guarda los ajustes
+    (owner o admin, los únicos que pueden) o, desde
+    ``scripts/crear_alertas_por_defecto.py``, el owner de la organización. Una
+    regla es de una persona *dentro* de una organización (``user_id`` +
+    ``organization_id``), y el correo sale a la dirección guardada en la regla:
+    no existe una regla «de la organización» que mande correo a nadie. Se
+    escribe con la identidad dual de ADR-030 —``user_id`` y la clave heredada
+    derivada del correo, igual que en el login y que
+    ``services.cuentas._copiar_para_miembro``—, así que aparece en su
+    /mi-watchlist, la edita y la da de baja como cualquier otra. Visibilidad
+    ``private``: con ``organization`` la verían los demás miembros sin poder
+    editarla ni recibirla.
+
+    Sin correo en la cuenta no se crea: una alerta sin destinatario no avisaría
+    a nadie y además bloquearía, por existir, la de quien sí lo tiene.
+    """
+    reglas = reglas_por_defecto(ajustes)
+    if not reglas:
+        return []
+    from db.users import get_user_by_id
+    from shared.identity import user_key_from_email
+
+    usuario = get_user_by_id(user_id)
+    email = str((usuario or {}).get("email") or "").strip()
+    if not email:
+        log.info("alerta_por_defecto_sin_email", organization_id=organization_id)
+        return []
+    ids = crear_reglas_por_defecto(
+        organization_id,
+        user_key_from_email(email, user_id),
+        [_valores(regla) for regla in reglas],
+        user_id=user_id,
+        email=email,
+        creada_en=datetime.now(UTC).isoformat(),
+    )
+    if ids:
+        log.info("alerta_por_defecto_creada", organization_id=organization_id, reglas=len(ids))
+    return ids
 
 
 def _fila_a_regla(row: Mapping[str, Any]) -> WatchlistRule:
@@ -553,6 +670,58 @@ def list_matches(
             return []
         clauses = [licitaciones.c.id_externo.in_(ids)]
     return listar_matches(clauses, _MATCH_COLS, limit=limit)
+
+
+def reglas_activas() -> list[WatchlistRule]:
+    """Las reglas activas de todos los usuarios (barrido del job nocturno)."""
+    return [_fila_a_regla(fila) for fila in filas_de_reglas_activas()]
+
+
+def ids_abiertas_que_casan(
+    reglas: Sequence[WatchlistRule] | None = None, *, hoy_iso: str | None = None
+) -> list[str]:
+    """``id_externo`` abiertos con plazo vigente que casan con alguna regla.
+
+    Es la selección de D52 (plan 2026-10): la ficha del pliego nocturna va
+    primero a lo que el resumen diario va a enseñar. Cada regla se evalúa con
+    **su** predicado de siempre (:func:`_rule_clauses`, el mismo de la vista
+    previa, el detalle y el job de alertas) acotado al universo «abierta con
+    plazo vigente» (:func:`_clausulas_universo_puntuable`, la definición de
+    ``mcp_server/glosario.md`` §3). Con ``banda_min`` se resuelve con
+    :func:`_ids_desde_banda`, que ya trae ese universo.
+
+    El techo por regla es :data:`MAX_CANDIDATAS_BANDA`: lo abierto con plazo
+    son del orden de mil filas en total, así que no recorta en la práctica.
+
+    Fail-open por regla: una regla que no se puede evaluar (un criterio
+    corrupto, el scorer caído) se registra y se salta. Lo que está en juego es
+    un orden, y perderlo para todas por una regla rota sería peor.
+    """
+    if reglas is None:
+        reglas = reglas_activas()
+    vistos: dict[str, None] = {}
+    for regla in reglas:
+        try:
+            if regla.banda_min:
+                ids = _ids_desde_banda(regla, hoy_iso=hoy_iso)
+            else:
+                ids = ids_que_casan(
+                    [
+                        *_rule_clauses(regla, hoy_iso=hoy_iso),
+                        *_clausulas_universo_puntuable(hoy_iso),
+                    ],
+                    limit=MAX_CANDIDATAS_BANDA,
+                )
+        except Exception as exc:
+            log.warning(
+                "watchlist_rule_match_failed",
+                rule_id=regla.id,
+                error=str(exc),
+                exc_info=True,
+            )
+            continue
+        vistos.update(dict.fromkeys(ids))
+    return list(vistos)
 
 
 def matches_since(

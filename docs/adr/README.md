@@ -43,7 +43,7 @@ el cuerpo.
 
 <!-- BEGIN indice-adr (generado por scripts/gen_adr_index.py — no editar a mano) -->
 
-**36 ADR**, de los cuales **31** están vigentes. `accepted` 31 · `rejected` 1 · `superseded` 4.
+**37 ADR**, de los cuales **32** están vigentes. `accepted` 32 · `rejected` 1 · `superseded` 4.
 
 Esta tabla se genera con `python scripts/gen_adr_index.py` a partir del frontmatter de cada ADR; CI la verifica con `--check`, igual que `make check-agent-docs` y la suite (`tests/test_unit_ratchet_indice_adr.py`). Un ADR sin `id` o `status` —o con un estado fuera del vocabulario— la hace fallar.
 
@@ -64,7 +64,7 @@ Esta tabla se genera con `python scripts/gen_adr_index.py` a partir del frontmat
 | [ADR-006](ADR-006-etag-pdf-export-ratelimit-redis.md) | ETag middleware + async PDF export endpoint | `accepted` | 2026-05-19 | — |
 | [ADR-007](ADR-007-services-domain-layer.md) | Capa `services/` como dominio compartido | `accepted` | 2026-05-19 | — |
 | [ADR-008](ADR-008-consolidacion-migraciones-alembic.md) | Consolidación hacia Alembic como sistema canónico de migraciones | `accepted` | 2026-05-23 | — |
-| [ADR-009](ADR-009-framework-conectores-multifuente.md) | Framework de conectores multi-fuente y namespacing de id_externo | `accepted` | 2026-06-11 | — |
+| [ADR-009](ADR-009-framework-conectores-multifuente.md) | Framework de conectores multi-fuente y namespacing de id_externo | `accepted` | 2026-06-11 | [ADR-038](ADR-038-clave-de-placsp-acotada-por-organo.md) (en parte) |
 | [ADR-0011](0011-cdc-debezium.md) | CDC con Debezium — Decisión y Alternativas | `rejected` | 2026-05-16 | — |
 | [ADR-012](ADR-012-plano-unico-orquestacion.md) | Plano único de orquestación por entorno + convergencia de entrypoints | `accepted` | 2026-06-10 | [ADR-028](ADR-028-cola-de-trabajo-y-worker.md) (en parte) |
 | [ADR-013](ADR-013-jerarquia-materializaciones-analiticas.md) | Jerarquía de materializaciones analíticas | `superseded` | 2026-06-10 | [ADR-017](ADR-017-camino-lectura-analitico.md) |
@@ -92,5 +92,6 @@ Esta tabla se genera con `python scripts/gen_adr_index.py` a partir del frontmat
 | [ADR-035](ADR-035-camino-de-peticion-sin-bloquear-el-event-loop.md) | El camino de cada petición no bloquea el event loop: cuota en Redis por defecto, ETag al cachear y consulta cancelada como 503 | `accepted` | 2026-09-25 | — |
 | [ADR-036](ADR-036-acceso-interno-por-mcp.md) | Acceso interno por MCP con rol de solo lectura: un servicio aparte, OAuth propio y el SQL lo limita Postgres | `accepted` | 2026-10-15 | — |
 | [ADR-037](ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md) | Un correo solo cuenta si el proveedor lo acredita, y no une cuentas de proveedores distintos | `accepted` | 2026-10-23 | — |
+| [ADR-038](ADR-038-clave-de-placsp-acotada-por-organo.md) | El id_externo de una fuente cuyo expediente no es único entre órganos se acota por el órgano: PLACSP pasa a placsp:<órgano>:<expediente> | `accepted` | 2026-10-26 | — |
 
 <!-- END indice-adr -->

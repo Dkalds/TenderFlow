@@ -9,7 +9,7 @@
  * solo desplazaría el mismo acoplamiento a la firma.
  */
 
-import { Panel, PanelEmpty, PanelError, PanelTitle, Segmented } from "@/components/console/panel";
+import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle, Segmented } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -78,6 +78,15 @@ export function LabelingQueue({ estado }: { estado: ActiveLearning }) {
           />
         </div>
       </div>
+
+      {/* D55: las estrategias por desacuerdo e incertidumbre llevaban la
+          probabilidad del clasificador SAP; sin versión validada no se enseña. */}
+      {strategy !== "random" && estado.senalClasificador?.validada === false && (
+        <Aviso tone="info" role="note">
+          La confianza del clasificador SAP no se muestra: no tiene una versión activa que haya
+          pasado el gate de evaluación, así que su probabilidad no es una señal.
+        </Aviso>
+      )}
 
       {queueError != null && (
         <PanelError title="No se pudo cargar la cola de etiquetado" error={queueError} onRetry={estado.retryQueue} />

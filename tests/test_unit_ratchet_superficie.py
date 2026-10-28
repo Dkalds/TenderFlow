@@ -41,6 +41,7 @@ def simulada(superficie, monkeypatch):
     monkeypatch.setattr(superficie, "operaciones", lambda: sorted(base))
     monkeypatch.setattr(superficie, "leer_base", lambda: set(base))
     monkeypatch.setattr(superficie, "NUEVAS", {})
+    monkeypatch.setattr(superficie, "ANTERIORES_A_D50", frozenset())
     return superficie
 
 
@@ -95,7 +96,12 @@ def test_una_operacion_nueva_con_motivo_pasa(simulada, monkeypatch, capsys):
     monkeypatch.setattr(
         simulada,
         "NUEVAS",
-        {"GET /nueva": "GET /a devuelve el recurso entero y aquí hace falta solo su resumen."},
+        {
+            "GET /nueva": (
+                "GET /a devuelve el recurso entero y aquí hace falta solo su resumen "
+                "(plan 2026-10, B3)."
+            )
+        },
     )
 
     assert simulada.main([]) == 0
@@ -149,3 +155,69 @@ def test_las_nuevas_reales_llevan_todas_motivo(superficie):
     ]
 
     assert cortos == []
+
+
+# ── D50: foco de piloto ─────────────────────────────────────────────────────
+
+_MOTIVO_SIN_CITA = "GET /a devuelve el recurso entero y aquí hace falta solo su resumen."
+
+
+def test_d50_una_entrada_nueva_sin_cita_del_plan_falla(simulada, monkeypatch, capsys):
+    """Desde el 2026-10-26 el motivo nombra también el ítem del plan."""
+    monkeypatch.setattr(simulada, "operaciones", lambda: ["GET /a", "GET /nueva", "POST /a"])
+    monkeypatch.setattr(simulada, "NUEVAS", {"GET /nueva": _MOTIVO_SIN_CITA})
+
+    assert simulada.main([]) == 1
+    error = capsys.readouterr().err
+    assert "GET /nueva" in error
+    assert "D50" in error
+
+
+@pytest.mark.parametrize(
+    "motivo",
+    [
+        f"{_MOTIVO_SIN_CITA} (plan 2026-10, B3)",
+        f"{_MOTIVO_SIN_CITA} Lo pide el Plan 2026-10 en su ítem O0.2.",
+    ],
+)
+def test_d50_la_cita_admite_cualquier_item_del_plan(simulada, monkeypatch, motivo):
+    monkeypatch.setattr(simulada, "operaciones", lambda: ["GET /a", "GET /nueva", "POST /a"])
+    monkeypatch.setattr(simulada, "NUEVAS", {"GET /nueva": motivo})
+
+    assert simulada.main([]) == 0
+
+
+@pytest.mark.parametrize(
+    "motivo",
+    [
+        f"{_MOTIVO_SIN_CITA} (plan 2026-10)",  # el plan sin ítem
+        f"{_MOTIVO_SIN_CITA} (B3)",  # el ítem sin plan
+        f"{_MOTIVO_SIN_CITA} (plan 2026-09, B3)",  # otro plan
+    ],
+)
+def test_d50_una_cita_incompleta_no_vale(simulada, monkeypatch, motivo):
+    monkeypatch.setattr(simulada, "operaciones", lambda: ["GET /a", "GET /nueva", "POST /a"])
+    monkeypatch.setattr(simulada, "NUEVAS", {"GET /nueva": motivo})
+
+    assert simulada.main([]) == 1
+
+
+def test_d50_las_entradas_anteriores_no_se_reescriben(simulada, monkeypatch):
+    monkeypatch.setattr(simulada, "operaciones", lambda: ["GET /a", "GET /vieja", "POST /a"])
+    monkeypatch.setattr(simulada, "NUEVAS", {"GET /vieja": _MOTIVO_SIN_CITA})
+    monkeypatch.setattr(simulada, "ANTERIORES_A_D50", frozenset({"GET /vieja"}))
+
+    assert simulada.main([]) == 0
+
+
+def test_d50_la_lista_de_anteriores_solo_encoge(simulada, monkeypatch, capsys):
+    """Si una operación anterior se retira, sale de NUEVAS y de ANTERIORES_A_D50."""
+    monkeypatch.setattr(simulada, "ANTERIORES_A_D50", frozenset({"GET /retirada"}))
+
+    assert simulada.main([]) == 1
+    assert "GET /retirada" in capsys.readouterr().err
+
+
+def test_d50_las_anteriores_reales_siguen_en_nuevas(superficie):
+    """Sin importar la app: la lista congelada describe entradas que existen."""
+    assert set(superficie.NUEVAS) >= superficie.ANTERIORES_A_D50

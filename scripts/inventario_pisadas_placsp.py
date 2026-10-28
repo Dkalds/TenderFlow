@@ -24,9 +24,10 @@ snapshot cuando cambia un campo de `HISTORY_TRACKED_FIELDS` (que no incluye el
 Medido el 2026-10-24 en producción: 456 ids / 661 pares, de los que 379 ids /
 570 pares son pisada segura.
 
-Además imprime las dos cifras que la fase B necesita: cuántas filas PLACSP
-siguen sin `organo_ref_fuente` (la puerta 1 del RFC: la fase B no empieza
-mientras quede alguna) y cuántos expedientes con la clave nueva conviven ya
+Además imprime las dos cifras que la fase B necesita: cuántas filas de la familia
+siguen sin `organo_ref_fuente` (la puerta 1 del RFC: la re-key no empieza
+mientras quede alguna; las rellena `scripts/rellenar_organo_ref_placsp.py`, y
+`v164_identidad_placsp_rekey` aborta si queda una) y cuántos expedientes con la clave nueva conviven ya
 con más de una fila (0 hasta que la fase B escriba esa clave; después, la
 medida directa de lo recuperado).
 

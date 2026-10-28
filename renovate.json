@@ -95,25 +95,6 @@
       "enabled": false
     },
     {
-      "description": "fastapi >= 0.141 devuelve `_IncludedRouter` opacos en app.routes y la API responde 500 en todas las rutas (PR #187). Subir es una migración a mano; los tres van juntos. Detalle en requirements.in.",
-      "matchManagers": ["pip-compile"],
-      "matchPackageNames": ["fastapi"],
-      "minimumReleaseAge": "7 days",
-      "allowedVersions": "<0.137"
-    },
-    {
-      "matchManagers": ["pip-compile"],
-      "matchPackageNames": ["starlette"],
-      "minimumReleaseAge": "7 days",
-      "allowedVersions": "<1.4"
-    },
-    {
-      "matchManagers": ["pip-compile"],
-      "matchPackageNames": ["uvicorn"],
-      "minimumReleaseAge": "7 days",
-      "allowedVersions": "<0.47"
-    },
-    {
       "description": "scikit-learn 1.9.x: regresión de HistGradientBoostingRegressor con una columna numérica 100% NaN. La 1.10 no se veta: su PR tiene que pasar tests/test_s3_feature_todo_nan.py.",
       "matchManagers": ["pip-compile"],
       "matchPackageNames": ["scikit-learn"],

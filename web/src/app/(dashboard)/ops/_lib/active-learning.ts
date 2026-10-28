@@ -45,9 +45,16 @@ export interface QueueItem {
   [key: string]: unknown;
 }
 
+/**
+ * Si la confianza del clasificador SAP es una señal (D55): solo con una versión
+ * activa que haya pasado el gate. Sin ella, los ítems llegan con `sin_confianza`.
+ */
+export type SenalClasificador = Schemas["SenalClasificadorDTO"];
+
 export interface QueueResponse {
   items?: QueueItem[];
   total?: number;
+  senal_clasificador?: SenalClasificador | null;
 }
 
 export interface ModelVersionInfo {

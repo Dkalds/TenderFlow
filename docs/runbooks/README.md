@@ -55,6 +55,7 @@ sí valen `docker logs tenderflow-api` y los `docker compose` de más abajo.
 - **Etiquetado humano de «¿es TI?»** (muestra estratificada, instrucciones, volcado al golden) — [etiquetado-ti.md](etiquetado-ti.md)
 - **MCP interno** (alta, revocación, rotación del rol, diagnóstico, auditoría; ADR-036) — [mcp-interno.md](mcp-interno.md)
 - **Correo transaccional** (ESP, dominio, rotación de clave) — [correo-transaccional.md](correo-transaccional.md)
+- **IP del cliente tras Vercel y Render** (secreto de origen: alta, verificación con dos redes, rotación) — [ip-del-cliente.md](ip-del-cliente.md)
 - **Alertas y receptor de guardia** — [observability-alerts.md](observability-alerts.md)
 - **Despachador de eventos** (outbox, ADR-027) — [despachador-eventos.md](despachador-eventos.md)
 - **Tripwires de persistencia** — [persistence-tripwires.md](persistence-tripwires.md)
@@ -67,6 +68,8 @@ sí valen `docker logs tenderflow-api` y los `docker compose` de más abajo.
 - **Núcleo tipado** (`importe_num`) — [nucleo-tipado-ventana.md](nucleo-tipado-ventana.md)
 - **Fechas a `timestamptz`, fase 1** (sombras `*_ts`, v159/v160) — [fechas-ts-ventana.md](fechas-ts-ventana.md)
 - **Re-key de `id_externo` PSCP** (v153; pausar la ingesta PSCP antes del merge) — [rekey-pscp-id-externo.md](rekey-pscp-id-externo.md)
+- **Re-key de `id_externo` PLACSP a `placsp:<órgano>:<expediente>`** (relleno de `organo_ref_fuente`, v164; ingesta parada antes del merge; ADR-038) — [rekey-placsp-organo.md](rekey-placsp-organo.md)
+- **Reingesta única de PLACSP** (fase 4 del RFC de identidad más importe, condiciones CODICE y arreglos del parser; `--backfill` ascendente, con el diario pausado) — [reingesta-unica-placsp.md](reingesta-unica-placsp.md)
 
 Los runbooks ya ejecutados (p. ej. el cutover a Supabase) viven en
 [../archive/runbooks/](../archive/runbooks/).

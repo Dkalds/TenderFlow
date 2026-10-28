@@ -41,6 +41,13 @@ const SIN_CITA =
   "Llegó marcado como cumplido pero sin ninguna cita del pliego que lo respalde, " +
   "así que no se presenta como cumplido.";
 
+/**
+ * Donde se completa la capacidad: la pestaña «Organización» de `/equipo`, que
+ * se abre directamente con `?tab=` (`PESTANAS_ENLAZABLES` de su página). Sin
+ * el parámetro la página abría en «Miembros» y el usuario tenía que adivinar.
+ */
+const COMPLETAR_CAPACIDAD = "/equipo?tab=organizacion";
+
 /** Etiqueta de procedencia de lo que viene de la publicación oficial. */
 const PUBLICACION_OFICIAL = "Publicación oficial (PLACSP)";
 
@@ -125,8 +132,8 @@ function ChecklistItemRow({
       </p>
 
       {faltaDatoPropio && (
-        <EnlaceIr href="/equipo" className="mt-1.5">
-          Completar el perfil de capacidad (Equipo › Organización)
+        <EnlaceIr href={COMPLETAR_CAPACIDAD} className="mt-1.5">
+          Completar la capacidad de tu organización (Equipo › Organización)
         </EnlaceIr>
       )}
 

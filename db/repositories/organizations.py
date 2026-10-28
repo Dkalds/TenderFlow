@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, TypedDict
 
 from db.database import connect, connect_read, now_utc, now_utc_iso
 from db.repositories.base import rows_to_dicts
@@ -20,6 +20,15 @@ _INVITATION_COLUMNS = (
     "id, organization_id, email, role, invited_by_user_id, created_at, "
     "expires_at, accepted_at, accepted_user_id, revoked_at"
 )
+
+
+class OrganizacionParaAlerta(TypedDict):
+    """Una fila de :meth:`OrganizationRepository.para_alerta_por_defecto`."""
+
+    id: int
+    settings_json: str | None
+    owner_user_id: int | None
+    tiene_reglas: bool
 
 
 class OrganizationRepository:
@@ -475,6 +484,42 @@ class OrganizationRepository:
                 (json.dumps(merged, ensure_ascii=False), now_utc_iso(), organization_id),
             )
         return merged
+
+    def para_alerta_por_defecto(self) -> list[OrganizacionParaAlerta]:
+        """Cada organización con lo que hace falta para darle su alerta por defecto.
+
+        Una fila por organización (:class:`OrganizacionParaAlerta`). El owner es
+        el de membresía activa más antigua (una organización tiene uno, pero el
+        traspaso deja un instante con dos filas y el orden lo hace
+        determinista). ``tiene_reglas`` cuenta las de cualquier miembro: es la
+        misma condición que comprueba
+        ``db.repositories.watchlist_rules.crear_reglas_por_defecto`` bajo
+        cerrojo, aquí solo para contar sin escribir.
+
+        La consume ``scripts/crear_alertas_por_defecto.py`` (B1 del plan
+        2026-10).
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT o.id, o.settings_json, "
+                "  (SELECT m.user_id FROM organization_memberships m "
+                "    WHERE m.organization_id = o.id AND m.role = 'owner' "
+                "      AND m.status = 'active' "
+                "    ORDER BY m.created_at, m.user_id LIMIT 1) AS owner_user_id, "
+                "  EXISTS (SELECT 1 FROM watchlist_rules r "
+                "           WHERE r.organization_id = o.id) AS tiene_reglas "
+                "FROM organizations o ORDER BY o.id"
+            )
+            filas = rows_to_dicts(cur)
+        return [
+            OrganizacionParaAlerta(
+                id=int(f["id"]),
+                settings_json=str(f["settings_json"]) if f["settings_json"] else None,
+                owner_user_id=int(f["owner_user_id"]) if f["owner_user_id"] is not None else None,
+                tiene_reglas=bool(f["tiene_reglas"]),
+            )
+            for f in filas
+        ]
 
     def scope_coverage(self) -> dict[str, int]:
         """Filas totales y sin ``organization_id`` en las tablas escopadas (v64).

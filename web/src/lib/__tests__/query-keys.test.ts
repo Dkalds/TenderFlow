@@ -291,6 +291,8 @@ const FABRICAS: readonly Fabrica[] = [
       { nombre: "organizationKeys.members", clave: organizationKeys.members(1) },
       { nombre: "organizationKeys.settings", clave: organizationKeys.settings(1) },
       { nombre: "organizationKeys.plantillaTareas", clave: organizationKeys.plantillaTareas(1) },
+      { nombre: "organizationKeys.nifs", clave: organizationKeys.nifs(1) },
+      { nombre: "organizationKeys.capabilities", clave: organizationKeys.capabilities(1) },
     ],
   },
   {
@@ -564,6 +566,8 @@ describe("las fábricas parametrizadas", () => {
     { nombre: "cuentaKeys.buscarOrganos", conA: () => cuentaKeys.buscarOrganos(21, "soria"), conB: () => cuentaKeys.buscarOrganos(21, "segovia") },
     { nombre: "organizationKeys.members", conA: () => organizationKeys.members(1), conB: () => organizationKeys.members(2) },
     { nombre: "organizationKeys.settings", conA: () => organizationKeys.settings(1), conB: () => organizationKeys.settings(null) },
+    { nombre: "organizationKeys.nifs", conA: () => organizationKeys.nifs(1), conB: () => organizationKeys.nifs(2) },
+    { nombre: "organizationKeys.capabilities", conA: () => organizationKeys.capabilities(1), conB: () => organizationKeys.capabilities(2) },
     { nombre: "feedbackKeys.queue", conA: () => feedbackKeys.queue("uncertainty"), conB: () => feedbackKeys.queue("random") },
     { nombre: "webhookKeys.deliveries", conA: () => webhookKeys.deliveries(3), conB: () => webhookKeys.deliveries(null) },
     { nombre: "adminKeys.solicitudes.vista", conA: () => adminKeys.solicitudes.vista("pendiente"), conB: () => adminKeys.solicitudes.vista("historico") },
@@ -654,6 +658,8 @@ const FABRICAS_CON_ARGUMENTOS: readonly string[] = [
   "cuentaKeys.buscarOrganos",
   "organizationKeys.members",
   "organizationKeys.settings",
+  "organizationKeys.nifs",
+  "organizationKeys.capabilities",
   "feedbackKeys.queue",
   "webhookKeys.deliveries",
   "adminKeys.solicitudes.vista",
@@ -765,7 +771,11 @@ describe("`all` invalida de verdad a sus hijas", () => {
       "feedbackKeys.queue",
       "feedbackKeys.stats",
       "fichaKeys.estado",
+      // Eran claves privadas de /equipo colgadas de `members`; al registrarse
+      // (las leen también los primeros pasos) conservan su literal.
+      "organizationKeys.capabilities",
       "organizationKeys.members",
+      "organizationKeys.nifs",
       "organizationKeys.settings",
       "renovacionesKeys.resumen",
       "watchlistKeys.combined",

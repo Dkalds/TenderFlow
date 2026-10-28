@@ -28,6 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 
 from api.concurrency import run_db
+from api.identidad import resolver_licitacion_id
 from api.routes.dual_auth import require_any_auth
 from services.ml.calibration import CalibracionBajaDTO, calibracion_baja_dto
 from services.ml.pricing_scenarios import PriceScenariosResult, get_price_scenarios
@@ -127,9 +128,9 @@ class PrediccionBajaResult(BaseModel):
     response_model_exclude_unset=True,
 )
 async def get_prediccion_baja(
-    licitacion_id: str,
     lote_id: int | None = None,
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    licitacion_id: str = Depends(resolver_licitacion_id),
 ) -> PrediccionBajaResult:
     try:
         data = await run_db(prediccion_baja, licitacion_id, lote_id)
@@ -189,10 +190,10 @@ async def get_calibracion_baja(
     responses={404: {"description": "Licitación (o lote) inexistente"}},
 )
 async def get_escenarios_precio(
-    licitacion_id: str,
     lote_id: int | None = None,
     competencia_esperada: int | None = None,
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    licitacion_id: str = Depends(resolver_licitacion_id),
 ) -> PriceScenariosResult:
     """Devuelve cuantiles históricos; deliberadamente no devuelve P(ganar).
 

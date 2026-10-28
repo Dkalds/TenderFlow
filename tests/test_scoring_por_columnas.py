@@ -23,7 +23,6 @@ from __future__ import annotations
 import dataclasses
 import math
 import random
-import sys
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from typing import Any
@@ -1208,7 +1207,6 @@ def test_sumar_como_python_es_sum_bit_a_bit():
         _mismos_bits(obtenido, [sum(fila) for fila in filas])
 
 
-@pytest.mark.skipif(sys.version_info < (3, 12), reason="la sum compensada llega en 3.12")
 def test_sum_de_python_es_compensada():
     """Guardia del helper: con una suma ingenua bastaría `np.sum`."""
     assert sum([0.1, 0.2, 0.3]) != (0.1 + 0.2) + 0.3

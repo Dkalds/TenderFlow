@@ -255,9 +255,10 @@ def test_las_dos_rutas_de_admin_aceptan_sesion(ruta: str, metodo: str) -> None:
     lleva scope ``admin`` o ``*`` (api/routes/dual_auth.py).
     """
     from api.app import app
+    from api.rutas import rutas_planas
 
-    for route in app.routes:
-        if getattr(route, "path", None) == ruta and metodo in getattr(route, "methods", set()):
+    for route in rutas_planas(app.routes):
+        if route.plantilla == ruta and metodo in route.metodos:
             nombres = _cadena_de_dependencias(route.dependant)
             assert "require_admin" in nombres, f"{metodo} {ruta} no depende de require_admin"
             assert "require_scope" not in nombres

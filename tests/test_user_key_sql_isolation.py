@@ -346,6 +346,14 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         "db/repositories/documentos.py::DocumentosRepository.list_pendientes",
         "db/repositories/tender_fact_sheets.py::"
         "TenderFactSheetsRepository.list_pending_licitaciones",
+        # La misma pregunta para el tercer nivel de ese orden (D52 del plan
+        # 2026-10): las reglas de vigilancia activas de todos los usuarios, para
+        # saber qué expediente abierto casa con alguna. Devuelve solo los
+        # criterios (sin `user_key`, `user_id` ni `email`); su único llamador es
+        # `services/watchlist_rules.py::reglas_activas`, que usa el job y no
+        # alcanza ninguna ruta (`grep -rn "reglas_activas\|ids_abiertas_que_casan"
+        # api/` vacío).
+        "db/repositories/watchlist_rules.py::filas_de_reglas_activas",
         # La misma pregunta para la fase 5 de ese job (pre-generación del
         # resumen IA, 2026-09-18): devuelve solo ids de licitación ordenados
         # por demanda, y el resumen que se calienta es el del expediente, no el
@@ -413,6 +421,18 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # sobre `detail` es la frontera; el día que la tenga, esta entrada sale
         # de aquí y pasa a ser un filtro normal.
         "db/repositories/audit.py::AuditRepository.list_for_organization",
+        # Alerta por defecto (D53, B1 del plan 2026-10). Las dos preguntan
+        # «¿tiene ESTA organización alguna regla, de quien sea?» —`SELECT 1 …
+        # WHERE organization_id = %s LIMIT 1` y su `EXISTS` gemelo— porque la
+        # alerta se crea solo si nadie en la organización vigila nada todavía.
+        # Acotarlo por `user_key` cambiaría la regla: cada miembro que guardara
+        # los ajustes recibiría la suya. Devuelven un booleano, nunca contenido
+        # de una regla; la primera la llama `services/watchlist_rules.py` tras
+        # la autorización owner/admin de `update_settings`, y la segunda solo
+        # `scripts/crear_alertas_por_defecto.py` (`grep -rn
+        # para_alerta_por_defecto api/` vacío). La frontera es la organización.
+        "db/repositories/watchlist_rules.py::crear_reglas_por_defecto",
+        "db/repositories/organizations.py::OrganizationRepository.para_alerta_por_defecto",
     }
 )
 

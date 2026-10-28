@@ -5,6 +5,12 @@ oficial y conserva únicamente expedientes cuya adjudicación incluya uno de los
 NIF canónicos vigilados. Su namespace evita que una observación de empresa
 sobrescriba la misma licitación ya persistida por el radar de tecnología.
 
+Clave: ``placsp_watched_company_awards:<órgano>:<ContractFolderID>``, acotada por
+el ``ID_PLATAFORMA`` del órgano como la del feed principal (RFC
+``2026-10-24-rfc-identidad-placsp-organo-expediente``, fase B): el número de
+expediente se repite entre órganos. Una entrada sin órgano se descarta y se
+cuenta (``placsp_watched_company_awards_sin_identificador_de_organo``).
+
 No es una búsqueda por NIF en PLACSP ni pretende cubrir el histórico completo:
 la cobertura empieza cuando se ejecuta el conector y se limita a las entradas
 que todavía estén disponibles desde su cursor en el feed.
@@ -49,6 +55,7 @@ class PlacspWatchedCompanyAwardsConnector:
         self._watched_nifs = frozenset(nif for nif in normalizados if nif not in invalidos)
         self._meta: dict[str, Any] = {}
         self._last_seen_updated: str | None = None
+        self._sin_organo = 0
 
     @property
     def source_id(self) -> str:
@@ -78,7 +85,11 @@ class PlacspWatchedCompanyAwardsConnector:
 
     def parse(self, raw: RawNotice) -> ParsedTender | None:
         """Persiste solo si alguna adjudicación coincide por NIF normalizado."""
-        from scraper.codice_parser import parse_adjudicaciones, parse_entry_unfiltered
+        from scraper.codice_parser import (
+            acotar_por_organo,
+            parse_adjudicaciones,
+            parse_entry_unfiltered,
+        )
 
         entry_elem, updated_str = raw.payload
         lic = parse_entry_unfiltered(entry_elem)
@@ -89,9 +100,11 @@ class PlacspWatchedCompanyAwardsConnector:
         if not any(normalize_nif(adj.nif) in self._watched_nifs for adj in adjudicaciones):
             return None
 
-        original_id = lic.id_externo
-        persisted_id = f"{self.source_id}:{original_id}"
-        lic.id_externo = persisted_id
+        if acotar_por_organo(lic, entry_elem, prefijo=SOURCE_ID) is None:
+            # Sin órgano no hay clave que no pueda pisar a otro expediente.
+            self._sin_organo += 1
+            return None
+        persisted_id = lic.id_externo
         lic.fuente = self.source_id
         lic.analysis_universe = ANALYSIS_UNIVERSE
         lic.inclusion_reason = INCLUSION_REASON
@@ -102,6 +115,10 @@ class PlacspWatchedCompanyAwardsConnector:
             replace(adjudicacion, licitacion_id=persisted_id) for adjudicacion in adjudicaciones
         ]
         return ParsedTender(licitacion=lic, adjudicaciones=persisted_awards)
+
+    def contadores_de_descarte(self) -> dict[str, int]:
+        """Entradas con NIF vigilado descartadas por no traer órgano."""
+        return {f"{SOURCE_ID}_sin_identificador_de_organo": self._sin_organo}
 
     def new_cursor(self) -> dict[str, Any] | None:
         """Cursor propio de este carril, separado del radar tecnológico."""

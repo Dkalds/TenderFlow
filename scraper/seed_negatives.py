@@ -30,7 +30,7 @@ def _collect_negatives_from_month(
     ventana, que el split temporal del entrenamiento podría aprender como atajo).
     """
     from scraper.bulk_downloader import download_month, iter_xml_files
-    from scraper.codice_parser import _text, parse_entry_unfiltered
+    from scraper.codice_parser import _text, acotar_por_organo, parse_entry_unfiltered
 
     rows: list[tuple[Any, ...]] = []
     downloaded = 0
@@ -87,6 +87,11 @@ def _collect_negatives_from_month(
                     lic = parse_entry_unfiltered(entry)
                     if lic is None:
                         continue
+                    # La misma clave que el conector PLACSP (`placsp:<órgano>:
+                    # <expediente>`): con otra, el ON CONFLICT de abajo no
+                    # reconocería la fila que el radar ya tiene.
+                    if acotar_por_organo(lic, entry) is None:
+                        continue
                     downloaded += 1
                     rows.append(
                         (
@@ -110,6 +115,7 @@ def _collect_negatives_from_month(
                             lic.fecha_inicio,
                             lic.fecha_fin,
                             lic.prorroga_descripcion,
+                            lic.organo_ref_fuente,
                         )
                     )
                 except Exception:
@@ -225,8 +231,8 @@ def seed_negatives(
                         fecha_publicacion, fecha_extraccion, url, raw_keywords,
                         provincia, nuts_code, ccaa,
                         duracion_valor, duracion_unidad, fecha_inicio,
-                        fecha_fin, prorroga_descripcion{extra_cols})
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,{now_sql},%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s{extra_vals})
+                        fecha_fin, prorroga_descripcion, organo_ref_fuente{extra_cols})
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,{now_sql},%s,NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s{extra_vals})
                        ON CONFLICT(id_externo) DO NOTHING""",
                     (
                         row[0],
@@ -248,6 +254,7 @@ def seed_negatives(
                         row[17],
                         row[18],
                         row[19],
+                        row[20],
                         *extra_params,
                     ),
                 )

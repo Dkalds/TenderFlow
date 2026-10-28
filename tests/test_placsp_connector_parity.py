@@ -41,9 +41,9 @@ from scraper.connectors.placsp import (
 _SAMPLE_ATOM_FEED = textwrap.dedent("""\
     <?xml version="1.0" encoding="UTF-8"?>
     <feed xmlns="http://www.w3.org/2005/Atom"
-          xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
-          xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
-          xmlns:cacext="urn:dgpe:names:draft:codice:schema:xsd:CACExtension-2">
+          xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2"
+          xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2"
+          xmlns:cacext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2">
       <title>PLACE feed</title>
       <updated>2026-07-05T00:00:00Z</updated>
       <entry>
@@ -51,28 +51,29 @@ _SAMPLE_ATOM_FEED = textwrap.dedent("""\
         <title>Test licitacion SAP Basis</title>
         <updated>2026-07-05T10:00:00Z</updated>
         <summary>Importe: 100.000 EUR. CPV 72212000.</summary>
-        <content type="application/xml">
-          <cacext:ContractFolderStatus>
-            <cbc:ContractFolderID>TEST-001</cbc:ContractFolderID>
-            <cbc:ContractFolderStatusCode listURI="http://contrataciondelestado.es/codice/cl/2.02/ContractFolderStatus">ADM</cbc:ContractFolderStatusCode>
-            <cacext:LocatedContractingParty>
-              <cac:Party>
-                <cac:PartyName>
-                  <cbc:Name>Ministerio de Test</cbc:Name>
-                </cac:PartyName>
-              </cac:Party>
-            </cacext:LocatedContractingParty>
-            <cac:ProcurementProject>
-              <cbc:Name>Test licitacion SAP Basis</cbc:Name>
-              <cbc:Description>Implementacion SAP BASIS para administracion publica</cbc:Description>
-              <cbc:EstimatedOverallContractAmount currencyID="EUR">100000.00</cbc:EstimatedOverallContractAmount>
-              <cbc:TypeCode listURI="http://contrataciondelestado.es/codice/cl/2.02/ContractType">2</cbc:TypeCode>
-              <cac:RequiredCommodityClassification>
-                <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.02/CPVCodes">72212000</cbc:ItemClassificationCode>
-              </cac:RequiredCommodityClassification>
-            </cac:ProcurementProject>
-          </cacext:ContractFolderStatus>
-        </content>
+        <cacext:ContractFolderStatus>
+          <cbc:ContractFolderID>TEST-001</cbc:ContractFolderID>
+          <cbc:ContractFolderStatusCode listURI="http://contrataciondelestado.es/codice/cl/2.02/ContractFolderStatus">ADM</cbc:ContractFolderStatusCode>
+          <cacext:LocatedContractingParty>
+            <cac:Party>
+              <cac:PartyIdentification>
+                <cbc:ID schemeName="ID_PLATAFORMA">10000000000001</cbc:ID>
+              </cac:PartyIdentification>
+              <cac:PartyName>
+                <cbc:Name>Ministerio de Test</cbc:Name>
+              </cac:PartyName>
+            </cac:Party>
+          </cacext:LocatedContractingParty>
+          <cac:ProcurementProject>
+            <cbc:Name>Test licitacion SAP Basis</cbc:Name>
+            <cbc:Description>Implementacion SAP BASIS para administracion publica</cbc:Description>
+            <cbc:EstimatedOverallContractAmount currencyID="EUR">100000.00</cbc:EstimatedOverallContractAmount>
+            <cbc:TypeCode listURI="http://contrataciondelestado.es/codice/cl/2.02/ContractType">2</cbc:TypeCode>
+            <cac:RequiredCommodityClassification>
+              <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.02/CPVCodes">72212000</cbc:ItemClassificationCode>
+            </cac:RequiredCommodityClassification>
+          </cac:ProcurementProject>
+        </cacext:ContractFolderStatus>
       </entry>
     </feed>
 """).encode("utf-8")
@@ -265,8 +266,13 @@ class TestPlacspDataParity:
         entries = _parse_feed_entries()
         entry_elem, updated = entries[0]
 
-        # Resultado del pipeline legacy
+        # Resultado del pipeline legacy: `parse_entry` y después la misma puerta
+        # de identidad que aplican sus llamadores desde la fase B (ADR-038).
         legacy_lic = parse_entry(entry_elem)
+        if legacy_lic is not None:
+            from scraper.codice_parser import acotar_por_organo
+
+            assert acotar_por_organo(legacy_lic, entry_elem) is not None
 
         # Resultado del núcleo del conector
         core = _PlacspParseCore()

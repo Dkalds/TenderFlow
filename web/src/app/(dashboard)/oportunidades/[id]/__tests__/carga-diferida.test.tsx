@@ -50,14 +50,17 @@ vi.mock("@/components/pursuits/adjudicacion-detectada", () => ({ AdjudicacionDet
 vi.mock("@/components/pursuits/pursuit-activity", () => ({ PursuitActivity: () => null }));
 vi.mock("@/components/pursuits/kit-presentacion", () => ({ KitPresentacionPanel: () => null }));
 vi.mock("@/components/etiquetas/etiquetas-objeto", () => ({ EtiquetaChips: () => null, EtiquetasEditor: () => null }));
-vi.mock("../_components/decision-comite", () => ({ DecisionComite: () => null }));
+vi.mock("../_components/decision-comite", () => ({ DecisionComite: () => <p>decisión del comité</p> }));
 vi.mock("../_components/ficha-datos", () => ({ FichaDatos: () => null }));
-vi.mock("../_components/matriz-go-no-go", () => ({ MatrizGoNoGo: () => null }));
 vi.mock("../_components/path-fases", () => ({ PathFases: () => null }));
 vi.mock("../_components/proxima-accion", () => ({ ProximaAccion: () => null }));
 vi.mock("../_components/salida-fase", () => ({ SalidaDeFase: () => null }));
 
 // Lo diferido: cada factoría anota su descarga.
+vi.mock("../_components/matriz-go-no-go", () => {
+  h.descargados.add("matriz");
+  return { MatrizGoNoGo: () => <p>criterios de la matriz</p> };
+});
 vi.mock("@/components/pursuits/pursuit-editor", () => {
   h.descargados.add("editor");
   return { PursuitEditor: () => <p>todos los campos</p> };
@@ -150,6 +153,29 @@ describe("ficha de la oportunidad — pestañas bajo demanda", TEST_LENTO, () =>
     expect(desplegar).toHaveAttribute("aria-expanded", "true");
     expect(await screen.findByText("todos los campos", {}, DESCARGA)).toBeInTheDocument();
     expect(h.descargados.has("editor")).toBe(true);
+  });
+
+  it("abre en el checklist: va antes que la decisión (D54)", () => {
+    render(<OpportunityDetailPage />);
+
+    const checklist = screen.getByText("contraste");
+    const decision = screen.getByText("decisión del comité");
+    expect(checklist.compareDocumentPosition(decision) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("la matriz ponderada va plegada y no se descarga hasta abrirla", async () => {
+    render(<OpportunityDetailPage />);
+
+    const abrir = screen.getByRole("button", { name: /Matriz ponderada/ });
+    expect(abrir).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("criterios de la matriz")).toBeNull();
+    expect(h.descargados.has("matriz")).toBe(false);
+
+    fireEvent.click(abrir);
+
+    expect(abrir).toHaveAttribute("aria-expanded", "true");
+    expect(await screen.findByText("criterios de la matriz", {}, DESCARGA)).toBeInTheDocument();
+    expect(h.descargados.has("matriz")).toBe(true);
   });
 
   it("el contenido es el panel de su pestaña, y la pestaña apunta a él", () => {

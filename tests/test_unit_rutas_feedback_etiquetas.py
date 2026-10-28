@@ -36,8 +36,12 @@ def escrituras(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
         filas.append(kwargs)
         return "2026-09-27T00:00:00+00:00"
 
+    async def _id_vigente(id_licitacion: str, _response: Any) -> str:
+        return id_licitacion  # sin BD: ningún id es un alias
+
     monkeypatch.setattr(rutas._repo, "insert", _insert)
     monkeypatch.setattr(rutas, "log_event", lambda **kwargs: None)
+    monkeypatch.setattr(rutas, "id_vigente", _id_vigente)
     return filas
 
 

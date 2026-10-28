@@ -11,14 +11,27 @@ dependencia para dos correos no compensa.
 
 Funciones puras: reciben los datos ya cargados y devuelven cadenas. Así se
 prueban sin SMTP ni base de datos.
+
+**El resumen como producto (B3 del plan 2026-10).** Por licitación el correo
+dice lo que hace falta para decidir si abrirla: la fecha límite, el importe
+base **sin IVA** —o «base desconocida» cuando la fila no la declara
+(ADR-032: nunca se presenta un importe de base ignorada como si fuera la
+base)—, hasta tres requisitos de solvencia de la ficha del pliego y, si se
+puede calcular, el veredicto del checklist frente a la capacidad de la
+organización, con el enlace a la ficha. Los requisitos y el checklist los
+calcula ``services.digest_pliego`` (con su SQL en ``db/``) y llegan aquí ya
+hechos, en la clave ``pliego`` de cada licitación. El tamaño del correo está
+acotado por bloque y en total (:data:`_MAX_POR_BLOQUE`, :data:`_MAX_TOTAL`).
 """
 
 from __future__ import annotations
 
 import html
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from decimal import Decimal
+from typing import Any, TypedDict, cast
 
 from observability.logging import get_logger
 from services.email_html import (
@@ -34,11 +47,47 @@ from services.email_html import (
 log = get_logger(__name__)
 
 _MAX_POR_BLOQUE = 10
+#: Techo de licitaciones en un correo, sumando todos los bloques. Con la
+#: alerta por defecto (hasta cinco reglas) más las del usuario y los avisos,
+#: diez por bloque podían ser sesenta tarjetas: lo que sobra se cuenta y se
+#: manda a la consola.
+_MAX_TOTAL = 30
+#: Requisitos de solvencia por licitación, y su largo máximo en caracteres.
+MAX_REQUISITOS = 3
+_MAX_LARGO_REQUISITO = 140
 _ETIQUETA_FRECUENCIA = {
     "immediate": "nuevas ahora",
     "daily": "de hoy",
     "weekly": "de la semana",
 }
+
+
+class RequisitoDigest(TypedDict):
+    """Un requisito de solvencia tal y como lo pinta el correo."""
+
+    #: «Solvencia económica» / «Solvencia técnica».
+    familia: str
+    texto: str
+    #: ``cumple | no_cumple | desconocido``, o ``None`` cuando no hay
+    #: capacidad declarada contra la que contrastarlo.
+    veredicto: str | None
+
+
+class ChecklistDigest(TypedDict):
+    """El checklist frente a la capacidad de la organización, resumido."""
+
+    veredicto: str
+    cumple: int
+    no_cumple: int
+    desconocido: int
+
+
+class PliegoDigest(TypedDict):
+    """Lo que el correo cuenta de la ficha del pliego de una licitación."""
+
+    requisitos: list[RequisitoDigest]
+    #: ``None`` cuando no se puede calcular (sin requisitos o sin capacidad).
+    checklist: ChecklistDigest | None
 
 
 @dataclass(frozen=True)
@@ -53,6 +102,9 @@ class BloqueDigest:
     #: cabecera del correo: contar un plazo ampliado como «licitación nueva»
     #: sería mentir en la primera línea.
     es_aviso: bool = False
+    #: Organización de la regla: contra su capacidad se calcula el checklist
+    #: (B3). ``None`` en los avisos y en las entradas legadas.
+    organization_id: int | None = None
 
 
 def _payload(crudo: Any) -> dict[str, Any]:
@@ -104,6 +156,9 @@ def bloques_de_avisos(filas: list[dict[str, Any]]) -> list[BloqueDigest]:
             "titulo": fila.get("titulo") or payload.get("titulo") or fila.get("licitacion_id"),
             "organo_contratacion": fila.get("organo_contratacion"),
             "importe": fila.get("importe"),
+            "importe_tipo": fila.get("importe_tipo"),
+            "importe_base_sin_iva": fila.get("importe_base_sin_iva"),
+            "importe_con_iva": fila.get("importe_con_iva"),
             "fecha_limite": fila.get("fecha_limite"),
             "url": fila.get("url"),
             "aviso": payload.get("aviso_titulo"),
@@ -156,7 +211,105 @@ def _fecha(valor: Any) -> str:
     return texto or "—"
 
 
-def enlace_ficha(licitacion: dict[str, Any], base_url: str | None) -> str | None:
+def _positivo(valor: object) -> float | None:
+    """``valor`` como número positivo, o ``None``. ``numeric`` llega como ``Decimal``."""
+    if isinstance(valor, bool) or not isinstance(valor, int | float | str | Decimal):
+        return None
+    try:
+        numero = float(valor)
+    except ValueError:
+        return None
+    return numero if numero > 0 else None
+
+
+def importe_base(licitacion: Mapping[str, object]) -> str:
+    """El importe base sin IVA, o «base desconocida». Nunca mezcla bases.
+
+    En este orden (ADR-032 y ``mcp_server/glosario.md`` §2):
+
+    1. ``importe_base_sin_iva``: es la base sin IVA por definición.
+    2. ``importe`` cuando ``importe_tipo = 'sin_iva'``: la fila declara que su
+       importe es esa base.
+    3. ``importe_tipo = 'con_iva'``: la base no se sabe, pero sí el total con
+       IVA, y se dice como tal.
+    4. Lo demás —``desconocido`` o ``NULL``, el 42 % del corpus el 2026-10-26—
+       es «base desconocida», sin cifra: el ``importe`` histórico mezcla bases
+       y enseñarlo pelado sería presentar como base algo que puede llevar IVA.
+    """
+    tipo = str(licitacion.get("importe_tipo") or "desconocido")
+    base = _positivo(licitacion.get("importe_base_sin_iva"))
+    if base is None and tipo == "sin_iva":
+        base = _positivo(licitacion.get("importe"))
+    if base is not None:
+        return f"{_importe(base)} sin IVA"
+    if tipo == "con_iva":
+        total = _positivo(licitacion.get("importe_con_iva")) or _positivo(licitacion.get("importe"))
+        if total is not None:
+            return f"base desconocida ({_importe(total)} con IVA)"
+    return "base desconocida"
+
+
+def visibles_por_bloque(
+    bloques: list[BloqueDigest],
+    *,
+    max_por_bloque: int = _MAX_POR_BLOQUE,
+    max_total: int = _MAX_TOTAL,
+) -> list[int]:
+    """Cuántas licitaciones de cada bloque caben en el correo.
+
+    Es la única definición del recorte: la usa :func:`render_digest` para
+    pintar y ``services.digest_pliego`` para no cargar fichas que no se van a
+    enseñar.
+    """
+    restantes = max(0, max_total)
+    cuantas: list[int] = []
+    for bloque in bloques:
+        n = min(len(bloque.licitaciones), max(0, max_por_bloque), restantes)
+        cuantas.append(n)
+        restantes -= n
+    return cuantas
+
+
+_ETIQUETA_VEREDICTO = {
+    "cumple": "cumple",
+    "no_cumple": "no cumple",
+    "desconocido": "sin dato suficiente",
+}
+
+
+def _recortar(texto: str, largo: int = _MAX_LARGO_REQUISITO) -> str:
+    limpio = " ".join(texto.split())
+    return limpio if len(limpio) <= largo else limpio[: largo - 1].rstrip() + "…"
+
+
+def lineas_de_pliego(pliego: PliegoDigest | None) -> list[str]:
+    """Las líneas del pliego de una licitación, en texto plano. Pura.
+
+    Sin ficha ni condiciones oficiales no hay nada que contar y devuelve
+    ``[]``: el correo no dice «sin requisitos» de lo que no se ha leído.
+    """
+    if not pliego:
+        return []
+    lineas: list[str] = []
+    requisitos = list(pliego.get("requisitos") or [])[:MAX_REQUISITOS]
+    if requisitos:
+        lineas.append("Solvencia que pide el pliego:")
+        for req in requisitos:
+            veredicto = req.get("veredicto")
+            sufijo = f" ({_ETIQUETA_VEREDICTO.get(veredicto, veredicto)})" if veredicto else ""
+            lineas.append(f"- {req['familia']}: {_recortar(str(req['texto']))}{sufijo}")
+    checklist = pliego.get("checklist")
+    if checklist:
+        veredicto = _ETIQUETA_VEREDICTO.get(checklist["veredicto"], checklist["veredicto"])
+        lineas.append(
+            f"Checklist frente a la capacidad de tu organización: {veredicto} "
+            f"({checklist['cumple']} cumple · {checklist['no_cumple']} no cumple · "
+            f"{checklist['desconocido']} sin dato)"
+        )
+    return lineas
+
+
+def enlace_ficha(licitacion: Mapping[str, object], base_url: str | None) -> str | None:
     """A la ficha de la consola si se conoce el sitio; si no, al anuncio oficial."""
     id_externo = str(licitacion.get("id_externo") or "")
     if base_url and id_externo:
@@ -206,10 +359,12 @@ def render_digest(
     base_url: str | None,
     baja_url: str | None,
     max_por_bloque: int = _MAX_POR_BLOQUE,
+    max_total: int = _MAX_TOTAL,
 ) -> tuple[str, str]:
     """Devuelve ``(texto_plano, html)`` del digest."""
     cuando = _ETIQUETA_FRECUENCIA.get(frecuencia, "")
     cabecera = _cabecera(bloques, cuando)
+    cupo = visibles_por_bloque(bloques, max_por_bloque=max_por_bloque, max_total=max_total)
 
     texto: list[str] = [cabecera, ""]
     partes_html: list[str] = [
@@ -217,50 +372,18 @@ def render_digest(
         f'<p style="font-size:15px">{html.escape(cabecera)}</p>',
     ]
 
-    for bloque in bloques:
+    for bloque, visibles in zip(bloques, cupo, strict=True):
         texto.append(f"== {bloque.etiqueta} ({len(bloque.licitaciones)}) ==")
         partes_html.append(
             f'<h3 style="margin:20px 0 8px;font-size:14px;color:{SECUNDARIO};'
             f'text-transform:uppercase;letter-spacing:.04em">{html.escape(bloque.etiqueta)}'
             f' <span style="font-weight:normal">· {len(bloque.licitaciones)}</span></h3>'
         )
-        for lic in bloque.licitaciones[:max_por_bloque]:
-            titulo = str(lic.get("titulo") or lic.get("id_externo") or "Sin título")
-            organo = str(lic.get("organo_contratacion") or "Órgano no publicado")
-            importe = _importe(lic.get("importe")) if lic.get("importe") else "—"
-            plazo = _fecha(lic.get("fecha_limite"))
-            extras = " · ".join(str(x) for x in (lic.get("ccaa"), lic.get("tecnologia")) if x)
-            enlace = enlace_ficha(lic, base_url)
-
-            aviso = " — ".join(str(x) for x in (lic.get("aviso"), lic.get("aviso_detalle")) if x)
-
-            texto.append(f"* {titulo}")
-            if aviso:
-                texto.append(f"  {aviso}")
-            texto.append(
-                f"  {organo} | {importe} | plazo {plazo}" + (f" | {extras}" if extras else "")
-            )
-            if enlace:
-                texto.append(f"  {enlace}")
-
-            titulo_html = html.escape(titulo)
-            if enlace:
-                titulo_html = (
-                    f'<a href="{html.escape(enlace, quote=True)}" '
-                    f'style="{ESTILO_ENLACE};text-decoration:none">{titulo_html}</a>'
-                )
-            partes_html.append(
-                f'<div style="padding:10px 12px;margin:0 0 8px;border:1px solid {PAPEL};'
-                'border-radius:8px">'
-                f'<div style="font-weight:600">{titulo_html}</div>'
-                + (f"<div>{html.escape(aviso)}</div>" if aviso else "")
-                + f'<div style="color:{SECUNDARIO}">{html.escape(organo)}</div>'
-                f"<div><strong>{html.escape(importe)}</strong>"
-                f" · plazo {html.escape(plazo)}"
-                + (f" · {html.escape(extras)}" if extras else "")
-                + "</div></div>"
-            )
-        resto = len(bloque.licitaciones) - max_por_bloque
+        for lic in bloque.licitaciones[:visibles]:
+            tarjeta = _datos_tarjeta(lic, base_url)
+            texto.extend(_tarjeta_texto(tarjeta))
+            partes_html.append(_tarjeta_html(tarjeta))
+        resto = len(bloque.licitaciones) - visibles
         if resto > 0:
             texto.append(f"  … y {resto} más.")
             partes_html.append(f'<p style="color:{SECUNDARIO}">… y {resto} más en la consola.</p>')
@@ -285,6 +408,83 @@ def render_digest(
         "inteligencia de licitaciones públicas de tecnología</p>" + CERRAR_DOCUMENTO
     )
     return "\n".join(texto).rstrip() + "\n", "".join(partes_html)
+
+
+@dataclass(frozen=True)
+class _Tarjeta:
+    """Lo que pintan las dos versiones de una tarjeta, calculado una vez."""
+
+    titulo: str
+    organo: str
+    importe: str
+    plazo: str
+    extras: str
+    enlace: str | None
+    aviso: str
+    pliego: list[str]
+
+
+def _datos_tarjeta(lic: Mapping[str, object], base_url: str | None) -> _Tarjeta:
+    pliego = lic.get("pliego")
+    return _Tarjeta(
+        titulo=str(lic.get("titulo") or lic.get("id_externo") or "Sin título"),
+        organo=str(lic.get("organo_contratacion") or "Órgano no publicado"),
+        importe=importe_base(lic),
+        plazo=_fecha(lic.get("fecha_limite")),
+        extras=" · ".join(str(x) for x in (lic.get("ccaa"), lic.get("tecnologia")) if x),
+        enlace=enlace_ficha(lic, base_url),
+        aviso=" — ".join(str(x) for x in (lic.get("aviso"), lic.get("aviso_detalle")) if x),
+        pliego=lineas_de_pliego(cast(PliegoDigest, pliego) if isinstance(pliego, dict) else None),
+    )
+
+
+def _tarjeta_texto(t: _Tarjeta) -> list[str]:
+    lineas = [f"* {t.titulo}"]
+    if t.aviso:
+        lineas.append(f"  {t.aviso}")
+    lineas.append(
+        f"  {t.organo} | {t.importe} | fecha límite {t.plazo}"
+        + (f" | {t.extras}" if t.extras else "")
+    )
+    lineas.extend(f"  {linea}" for linea in t.pliego)
+    if t.enlace:
+        lineas.append(f"  Ficha: {t.enlace}")
+    return lineas
+
+
+def _tarjeta_html(t: _Tarjeta) -> str:
+    titulo_html = html.escape(t.titulo)
+    enlace_html = ""
+    if t.enlace:
+        href = html.escape(t.enlace, quote=True)
+        titulo_html = (
+            f'<a href="{href}" style="{ESTILO_ENLACE};text-decoration:none">{titulo_html}</a>'
+        )
+        enlace_html = (
+            f'<div style="margin-top:6px"><a href="{href}" style="{ESTILO_ENLACE}">'
+            "Abrir la ficha</a></div>"
+        )
+    pliego_html = ""
+    if t.pliego:
+        pliego_html = (
+            f'<div style="margin-top:6px;color:{SECUNDARIO}">'
+            + "<br>".join(html.escape(linea) for linea in t.pliego)
+            + "</div>"
+        )
+    return (
+        f'<div style="padding:10px 12px;margin:0 0 8px;border:1px solid {PAPEL};'
+        'border-radius:8px">'
+        f'<div style="font-weight:600">{titulo_html}</div>'
+        + (f"<div>{html.escape(t.aviso)}</div>" if t.aviso else "")
+        + f'<div style="color:{SECUNDARIO}">{html.escape(t.organo)}</div>'
+        f"<div><strong>{html.escape(t.importe)}</strong>"
+        f" · fecha límite {html.escape(t.plazo)}"
+        + (f" · {html.escape(t.extras)}" if t.extras else "")
+        + "</div>"
+        + pliego_html
+        + enlace_html
+        + "</div>"
+    )
 
 
 # ── Correo de un solo evento (S4.6) ─────────────────────────────────────────

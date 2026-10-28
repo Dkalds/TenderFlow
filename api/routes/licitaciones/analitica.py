@@ -23,13 +23,16 @@ from pydantic import BaseModel
 
 from api.concurrency import run_db, run_ml
 from api.dependencias_pipeline import paquete_del_pipeline_ausente
+from api.identidad import resolver_id_externo
 from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
     _get_classifier,
     _lic_repo,
 )
 from observability.logging import get_logger
+from services.ml.senal_clasificador import estado_senal_sap
 from services.simulador_precio import SimulacionPrecio, simular_precio_de
+from shared.dto import SenalClasificadorDTO
 from shared.tender_facts import EvidenceRef
 
 log = get_logger(__name__)
@@ -57,6 +60,12 @@ class ExplainPayload(BaseModel):
     warning: str | None = None
 
 
+AVISO_SENAL_NO_VALIDADA = (
+    "El clasificador SAP no tiene una versión activa que haya pasado el gate: "
+    "su probabilidad no es una señal (ver `senal_clasificador`)."
+)
+
+
 class ExplainResult(BaseModel):
     """Explicabilidad de la clasificación de una licitación."""
 
@@ -64,6 +73,10 @@ class ExplainResult(BaseModel):
     tecnologia: str | None
     explanation: ExplainPayload | None
     warning: str | None = None
+    # D55: si `explanation.confidence` es una señal. Sin versión activa que
+    # haya pasado el gate, la explicación describe el modelo servido (para
+    # auditarlo) pero su probabilidad no sostiene ninguna decisión.
+    senal_clasificador: SenalClasificadorDTO | None = None
 
 
 @router.get(
@@ -76,9 +89,9 @@ class ExplainResult(BaseModel):
     },
 )
 async def explain_licitacion(
-    id_externo: str,
     top_k: int = Query(5, ge=1, le=20),
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> ExplainResult:
     """Devuelve los top-K términos que más influyen en la clasificación."""
     result = await run_db(_lic_repo.get_text_for_ml, id_externo)
@@ -123,10 +136,16 @@ async def explain_licitacion(
             detail="Error generando explicación.",
         ) from exc
 
+    estado = await run_db(estado_senal_sap)
+    senal = SenalClasificadorDTO(
+        validada=estado.validada, motivo=estado.motivo, version=estado.version
+    )
     return ExplainResult(
         id_externo=id_externo,
         tecnologia=tecnologia,
         explanation=ExplainPayload(**explanation),
+        warning=None if senal.validada else AVISO_SENAL_NO_VALIDADA,
+        senal_clasificador=senal,
     )
 
 
@@ -136,7 +155,6 @@ async def explain_licitacion(
     responses={401: {"description": "Autenticación inválida"}},
 )
 async def get_simulador_precio(
-    id_externo: str,
     baja: list[float] = Query(
         default=[],
         description=(
@@ -151,6 +169,7 @@ async def get_simulador_precio(
         description="Baja del rival contra el que medirse (p. ej. el p90 de la predicción)",
     ),
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> SimulacionPrecio:
     """F2.2 — el simulador de puntuación de la oferta.
 
@@ -191,8 +210,8 @@ class TechScoresResult(BaseModel):
     },
 )
 async def get_tech_scores(
-    id_externo: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> TechScoresResult:
     """Devuelve los scores por tecnología desde ``licitacion_tecnologia_score``.
 
@@ -247,8 +266,8 @@ class TecnologiasSenalResult(BaseModel):
     },
 )
 async def get_tecnologias(
-    id_externo: str,
     _ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
 ) -> TecnologiasSenalResult:
     """Une por nombre de tecnología las tres fuentes de la categorización:
     título/descripción (keywords), el clasificador ML, y la señal detectada

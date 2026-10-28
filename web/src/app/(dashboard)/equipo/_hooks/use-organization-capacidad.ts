@@ -29,12 +29,13 @@ export type OrganizationCapabilityField = NonNullable<
   OrganizationCapabilities["campos_incompletos"]
 >[number];
 
-/** Claves de caché propias: `organizationKeys` no las declara y no es su fichero. */
+/**
+ * Las claves viven en `organizationKeys`: los primeros pasos del Resumen leen
+ * los mismos dos recursos y tienen que compartir su entrada de caché.
+ */
 const capacidadKeys = {
-  nifs: (organizationId: number | null) =>
-    [...organizationKeys.members(organizationId), "nifs"] as const,
-  capabilities: (organizationId: number | null) =>
-    [...organizationKeys.members(organizationId), "capabilities"] as const,
+  nifs: organizationKeys.nifs,
+  capabilities: organizationKeys.capabilities,
 };
 
 export function useOrganizationNifs(organizationId: number | null, enabled: boolean) {

@@ -440,7 +440,7 @@ class TestCicloDeVidaDeLaOrganizacion:
     def test_las_rutas_existen(self) -> None:
         from api.app import app
 
-        rutas = {r.path for r in app.routes if hasattr(r, "path")}
+        rutas = set(app.openapi()["paths"])
         for ruta in (
             "/api/v1/organizations/{organization_id}/transfer-ownership",
             "/api/v1/organizations/{organization_id}/leave",

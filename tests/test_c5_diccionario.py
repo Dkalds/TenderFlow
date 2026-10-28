@@ -276,11 +276,12 @@ class TestRetiradaYAuditoria:
     def test_las_rutas_existen(self, ruta: str) -> None:
         from api.app import app
 
-        assert ruta in {r.path for r in app.routes if hasattr(r, "path")}
+        assert ruta in app.openapi()["paths"]
 
     def test_la_ruta_estatica_no_queda_ensombrecida(self) -> None:
         """`/impacto` y `/sembrar` cuelgan del mismo prefijo que el listado."""
         from api.app import app
+        from api.rutas import rutas_planas
 
-        rutas = [getattr(r, "path", "") for r in app.routes]
+        rutas = [r.plantilla for r in rutas_planas(app.routes)]
         assert "/api/v1/tecnologias/keywords/impacto" in rutas

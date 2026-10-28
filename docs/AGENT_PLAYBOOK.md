@@ -33,6 +33,7 @@ El [Makefile](../Makefile) es la fuente canónica. Targets habituales:
 | Necesidad | Comando |
 |---|---|
 | Lint + typecheck + tests unitarios, fail-fast | `make check` |
+| Todos los gates y ratchets stdlib, con resumen y sin cortar en el primero | `make gates` (los que importan la app: `make gates-deps`) |
 | Lint Python | `make lint` |
 | Typecheck Python | `make typecheck` |
 | Tests unitarios rápidos | `make test-unit` |
@@ -64,6 +65,8 @@ schema aislado mediante las fixtures de `tests/conftest.py`.
 
 | Control | Sin dependencias | Con dependencias, sin Postgres |
 |---|---|---|
+| `make gates` | disponible: stdlib + git | disponible |
+| `make gates-deps` | requiere deps | disponible |
 | `make check-agent-docs` | disponible: stdlib | disponible |
 | `make check-frontend-invariants` | disponible: stdlib | disponible |
 | `make lint` | requiere ruff | disponible |
@@ -80,6 +83,46 @@ schema aislado mediante las fixtures de `tests/conftest.py`.
 
 Un control no ejecutado se reporta como tal; no cuenta como verde ni se
 sustituye por otro motor. El catálogo completo sigue disponible con `make help`.
+
+**Qué gate corre dónde.** `scripts/run_gates.py` es la lista: cada
+`scripts/check_*.py` está en uno de tres grupos, y `tests/test_unit_run_gates.py`
+falla ante uno sin clasificar o ante un gate del grupo stdlib que importe algo
+de fuera. `make gates` y `make gates-deps` no
+cortan en el primer fallo: corren el grupo entero y resumen al final. La tabla
+sale de `python scripts/run_gates.py --list` y el mismo test exige que esta
+copia coincida:
+
+<!-- run_gates:inicio -->
+| Grupo | Script | Qué comprueba |
+|---|---|---|
+| `make gates` | `check_layers.py` | imports hacia abajo entre capas (ratchet) |
+| `make gates` | `check_prints.py` | ningún `print()` fuera de un `__main__` |
+| `make gates` | `check_any_count.py` | usos de Any en producción (ratchet) |
+| `make gates` | `check_user_key_ratchet.py` | identidad derivada del correo (ratchet, ADR-030) |
+| `make gates` | `check_analytics_unbounded.py` | analítica sin cota (ADR-023) |
+| `make gates` | `check_public_surface.py --strict` | superficie anónima sin NIF ni analítica |
+| `make gates` | `check_frontend_invariants.py --strict` | integridad analítica (ADR-014) |
+| `make gates` | `check_inline_styles.py` | estilos inline del frontend (ratchet) |
+| `make gates` | `check_title_attrs.py` | title nativo en el frontend (ratchet) |
+| `make gates` | `check_ortografia_ui.py` | tildes del copy de la UI |
+| `make gates` | `check_casos_uso.py` | cada caso de uso tiene recorrido |
+| `make gates` | `check_env_parity.py` | settings ↔ render.yaml ↔ .env.example |
+| `make gates` | `check_requirements_sync.py` | requirements.txt cubre requirements.in |
+| `make gates` | `check_backlog_freshness.py` | frescura del backlog (informe) |
+| `make gates` | `check_agent_docs.py` | instrucciones, skills, commands y hooks |
+| `make gates-deps` | `check_job_parity.py` | todo job tiene plano (ADR-012) |
+| `make gates-deps` | `check_api_surface.py` | operación nueva con motivo (AGENTS.md §0) |
+| `make gates-deps` | `check_api_convencion.py` | paginación y errores (ratchet) |
+| `make gates-deps` | `export_openapi.py {openapi}` | exporta el esquema de los dos siguientes |
+| `make gates-deps` | `check_openapi_contract.py --spec {openapi}` | respuestas opacas (ratchet) |
+| `make gates-deps` | `check_contract_fixtures.py --openapi {openapi}` | fixtures del frontend |
+| fuera | `check_api_breaking.py` | compara el OpenAPI de la base con el de la PR (api-contract-compat) |
+| fuera | `check_bundle_budget.py` | necesita el build de producción de web/ (job frontend) |
+| fuera | `check_coverage_per_module.py` | necesita coverage.xml de la suite (job test) |
+| fuera | `check_follows_paridad.py` | mide contra una base de datos real; es un informe, no un gate |
+| fuera | `check_npm_audit.py` | necesita npm y la red (job audit) |
+| fuera | `check_security_alerts.py` | consulta la API de GitHub; informe |
+<!-- run_gates:fin -->
 
 **`make web-test` no es `vitest run` a pelo.** Pasa por
 `web/scripts/run-vitest.mjs`, que además del exit code comprueba cuántos
@@ -203,7 +246,7 @@ controles disponibles y reportá los tests como no ejecutados (AGENTS.md §4).
 1. **Define el contrato**: el DTO request/response (Pydantic v2) va junto a su ruta si solo lo usa ella; si lo comparten dos o más rutas, en el submódulo de su dominio de `shared/dto/`, re-exportado desde `shared/dto/__init__.py` (el criterio está en su docstring).
 2. **Repositorio**: si lee/escribe datos nuevos, añade método en `db/repositories/<entidad>.py` (patrón existente: ver `db/repositories/licitaciones.py`). Si requiere SQL nuevo, mantén upsert idempotente. Un solo sitio por entidad: `audit`, `webhooks`, `watchlist` y `empresas` tienen además un módulo `db/<x>.py` con la lógica con estado (cadena hash, firma, backfill); el reparto está en [ADR-022](adr/ADR-022-frontera-de-persistencia.md) y en la cabecera de cada fichero.
 3. **Lógica de dominio**: si el endpoint transforma datos o aplica una regla de negocio, añade función en `services/<dominio>.py`. Si es CRUD passthrough, la ruta puede llamar a `db.*` directo ([ADR-024](adr/ADR-024-services-biblioteca-no-frontera.md)). SQL nuevo nunca va en la ruta: vive en `db/` (§3).
-4. **Ruta**: crea o edita el router en `api/routes/<recurso>.py`. Inyectá `Depends(get_api_key)` si requiere auth. Registralo en `api/app.py` (sección `include_router`).
+4. **Ruta**: crea o edita el router en `api/routes/<recurso>.py`. Inyectá `Depends(get_api_key)` si requiere auth. Registralo en `api/app.py` (sección `include_router`). Cada operación nueva entra en `NUEVAS` de `scripts/check_api_surface.py` con su motivo y, mientras dure el plan 2026-10, el ítem que la justifica (D50, AGENTS.md §0); `make check-api-surface` lo comprueba.
 5. **Errores**: si hay condiciones nuevas de error, registra el handler en `api/errors.py` (no lances HTTPException con strings sueltos).
 6. **Tests**: crea `tests/test_<recurso>_api.py` con `fastapi.testclient.TestClient`. Si hace BD, usa fixture `tmp_db` de `conftest.py`. El marker se aplica solo si el nombre del archivo encaja con un token de `_INTEGRATION_TOKENS`.
 7. **Documenta**: actualiza el docstring de módulo de `api/app.py` (lista de endpoints en la cabecera).

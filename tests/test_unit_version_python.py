@@ -10,7 +10,7 @@ el lint, los crons de scraping y los entrenamientos en 3.14.
 
 Si este test falla en un PR de Renovate: ese PR no se fusiona tal cual. Subir
 de menor es un cambio a mano en ``.python-version``, ``docker/Dockerfile.api``,
-los workflows y ``make lock``.
+los workflows, ``pyproject.toml`` (suelo, ruff y mypy) y ``make lock``.
 """
 
 from __future__ import annotations
@@ -22,8 +22,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 VERSION = (REPO / ".python-version").read_text(encoding="utf-8").strip()
 
-# Solo literales: la matriz del job `test` es una expresión `${{ … }}`.
+# Literales sueltos y listas de matriz (`python-version: ["3.13"]`, el job `test`).
 _PYTHON_VERSION_LITERAL = re.compile(r"""^\s*python-version:\s*["']?(\d[\d.]*)["']?\s*$""")
+_PYTHON_VERSION_LISTA = re.compile(r"""^\s*python-version:\s*\[([^\]]*)\]\s*$""")
 _FROM_PYTHON = re.compile(r"^FROM python:(\S+)")
 
 
@@ -33,6 +34,11 @@ def test_los_workflows_usan_la_version_de_python_version() -> None:
         for numero, linea in enumerate(workflow.read_text(encoding="utf-8").splitlines(), 1):
             if casa := _PYTHON_VERSION_LITERAL.match(linea):
                 encontrados.append((workflow.name, numero, casa.group(1)))
+            elif casa := _PYTHON_VERSION_LISTA.match(linea):
+                encontrados += [
+                    (workflow.name, numero, valor.strip().strip("\"'"))
+                    for valor in casa.group(1).split(",")
+                ]
 
     assert encontrados, "ningún workflow fija python-version: la regex ya no casa"
     distintos = [
@@ -73,3 +79,17 @@ def test_renovate_no_propone_la_version_de_python_de_los_workflows() -> None:
     assert permitidas.search(f"{VERSION}.0")
     menor_siguiente = f"{VERSION.split('.')[0]}.{int(VERSION.split('.')[1]) + 1}.0"
     assert not permitidas.search(menor_siguiente)
+
+
+def test_pyproject_comprueba_contra_la_version_que_se_despliega() -> None:
+    """Suelo, ruff y mypy apuntan a la menor de producción.
+
+    Hasta 2026-10 decían 3.11 con producción en 3.13: ningún módulo podía usar
+    sintaxis de 3.12+ y mypy comprobaba contra un intérprete que no se desplegaba.
+    """
+    import tomllib
+
+    datos = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+    assert datos["project"]["requires-python"] == f">={VERSION}"
+    assert datos["tool"]["ruff"]["target-version"] == "py" + VERSION.replace(".", "")
+    assert datos["tool"]["mypy"]["python_version"] == VERSION

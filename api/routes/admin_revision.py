@@ -27,10 +27,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
+from api.identidad import id_vigente
 from api.routes.dual_auth import require_admin
 from db.audit import log_event
 from db.repositories.dedupe import pendientes_count, pendientes_de_revision, resolver_pendiente
@@ -247,6 +248,7 @@ _DETALLE_DUPLICADO = {
 )
 async def resolver_duplicado(
     body: RevisionDecision,
+    response: Response,
     id_externo: str = Path(
         min_length=1, max_length=512, description="La fila marcada como duplicada."
     ),
@@ -254,7 +256,9 @@ async def resolver_duplicado(
 ) -> DuplicadoResuelto:
     # `{id_externo:path}`, como el resto de rutas que direccionan un expediente
     # (`tests/test_licitaciones_identificador.py`): un id de PLACSP lleva barras.
-    licitacion_id = id_externo
+    # Un id anterior a la re-key (RFC de identidad PLACSP) resuelve a la fila
+    # vigente, después de la autenticación.
+    licitacion_id = await id_vigente(id_externo, response)
     actor = _actor(admin)
     cambiado = await run_db(
         resolver_pendiente, licitacion_id, accept=body.aceptar, resolved_by=actor

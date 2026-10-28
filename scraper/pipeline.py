@@ -56,6 +56,7 @@ from observability import (
 )
 from scraper.codice_parser import (
     NS,
+    acotar_por_organo,
     parse_adjudicaciones,
     parse_entry,
     parse_entry_unfiltered,
@@ -418,6 +419,7 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
     encontradas = []
     adj_por_lic: dict[str, list[Any]] = {}
     entries_error = 0
+    sin_organo = 0
 
     for entry_elem, updated_str in entries:
         try:
@@ -429,6 +431,11 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
                 inclusion_reason = (
                     (lic.inclusion_reason or INCLUSION_ML_RESCUE) if lic else INCLUSION_ML_RESCUE
                 )
+            if lic and acotar_por_organo(lic, entry_elem) is None:
+                # Misma clave que el conector (`placsp:<órgano>:<expediente>`,
+                # RFC de identidad PLACSP): sin órgano no se escribe.
+                sin_organo += 1
+                lic = None
             if lic:
                 from scraper.lineage import current_filter_version
 
@@ -486,6 +493,7 @@ def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
         modified=len(upsert_result.modified),
         unchanged=len(upsert_result.unchanged),
         adjudicaciones=n_adj,
+        placsp_sin_identificador_de_organo=sin_organo,
         pages=meta["pages_fetched"],
         entries_seen=meta["entries_seen"],
     )

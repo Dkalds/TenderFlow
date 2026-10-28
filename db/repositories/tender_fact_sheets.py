@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
@@ -12,7 +13,13 @@ from db.repositories.base import rows_to_dicts
 class TenderFactSheetsRepository:
     """Repositorio fino para ``tender_fact_sheets``."""
 
-    def list_pending_licitaciones(self, *, extraction_version: str, limit: int = 20) -> list[str]:
+    def list_pending_licitaciones(
+        self,
+        *,
+        extraction_version: str,
+        limit: int = 20,
+        casan_regla: Sequence[str] = (),
+    ) -> list[str]:
         """Licitaciones con páginas persistidas y pendientes de una ficha
         vigente. "Pendiente" cubre tres casos, en este orden de prioridad
         (el lote LLM es el caro, así que nunca-intentadas van primero):
@@ -26,6 +33,14 @@ class TenderFactSheetsRepository:
         3. ``status = 'failed'`` (cualquier versión), ordenadas por
            ``updated_at ASC`` -- sin columna ``attempts``, esto hace rotar
            los "poison pills" en vez de bloquearlos para siempre.
+
+        Por encima de esos tres casos manda la **demanda**: oportunidad
+        abierta, después favorito y después ``casan_regla``, el resto al
+        final. ``casan_regla`` son los ``id_externo`` abiertos con plazo
+        vigente que casan con alguna regla de vigilancia activa (D52 del plan
+        2026-10). Llegan ya calculados porque el casado vive en
+        ``services/watchlist_rules.py`` y ``db/`` no puede importarlo: aquí
+        solo se ordena con ellos. Vacío deja el orden como estaba.
         """
         with connect_read() as c:
             rows = c.execute(
@@ -55,7 +70,11 @@ class TenderFactSheetsRepository:
                 "        AND p.status NOT IN ('won', 'lost', 'withdrawn')) THEN 0 "
                 "       WHEN EXISTS (SELECT 1 FROM watchlist_items w "
                 "        WHERE w.id_externo = c.licitacion_id) THEN 1 "
-                "       ELSE 2 END AS demanda, "
+                # Lo abierto que casa con una regla de vigilancia es lo que el
+                # resumen diario va a enseñar: sin ficha, el correo no puede
+                # decir qué pide el pliego (D52, B3 del plan 2026-10).
+                "       WHEN c.licitacion_id = ANY(%s::text[]) THEN 2 "
+                "       ELSE 3 END AS demanda, "
                 "  tf.updated_at "
                 "  FROM candidatos c "
                 "  JOIN licitaciones l ON l.id_externo = c.licitacion_id "
@@ -75,7 +94,12 @@ class TenderFactSheetsRepository:
                 "ORDER BY demanda, tier, CASE WHEN tier = 0 THEN tech_priority ELSE 0 END, "
                 "updated_at ASC, licitacion_id "
                 "LIMIT %s",
-                (extraction_version, extraction_version, max(1, min(int(limit), 200))),
+                (
+                    extraction_version,
+                    list(casan_regla),
+                    extraction_version,
+                    max(1, min(int(limit), 200)),
+                ),
             ).fetchall()
             return [str(row[0]) for row in rows]
 
@@ -169,6 +193,31 @@ class TenderFactSheetsRepository:
         raw = row.pop("data_json", None)
         row["facts"] = json.loads(str(raw)) if raw else None
         return row
+
+    def get_many(self, licitacion_ids: list[str]) -> dict[str, dict[str, object]]:
+        """Las fichas de varias licitaciones en una consulta, por ``licitacion_id``.
+
+        Misma forma por fila que :meth:`get`. Las que no tienen ficha no
+        aparecen. Existe para el resumen diario (B3 del plan 2026-10), que
+        enseña la solvencia de cada licitación del correo: una consulta por
+        licitación sería un N+1 por destinatario.
+        """
+        if not licitacion_ids:
+            return {}
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT licitacion_id, status, extraction_version, model, data_json, "
+                "field_count, evidence_count, error_detail, extracted_at, updated_at "
+                "FROM tender_fact_sheets WHERE licitacion_id = ANY(%s)",
+                (list(licitacion_ids),),
+            )
+            rows = rows_to_dicts(cur)
+        fichas: dict[str, dict[str, object]] = {}
+        for row in rows:
+            raw = row.pop("data_json", None)
+            row["facts"] = json.loads(str(raw)) if raw else None
+            fichas[str(row["licitacion_id"])] = row
+        return fichas
 
     def upsert(
         self,

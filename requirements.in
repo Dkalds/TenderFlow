@@ -1,4 +1,7 @@
-# Dependencias productivas — compiladas con pip-compile a requirements.txt
+# Dependencias productivas — compiladas con `make lock` (uv pip compile) a
+# requirements.txt. Es también la lista de `dependencies` del paquete:
+# pyproject.toml la lee de aquí, así que solo especificadores y comentarios de
+# línea entera (nada de `-r`, `-c` ni comentarios al final de una línea).
 requests>=2.31.0,<3
 httpx>=0.27.0,<1
 lxml>=5.0.0,<7
@@ -32,6 +35,9 @@ pillow>=13,<14
 # sin que nadie lo notara), así que la serie 1.9 está además en el `ignore` de
 # .github/dependabot.yml y vetada en renovate.json (`allowedVersions`).
 scikit-learn>=1.3.0,<1.9
+# Persistencia de los modelos (services/ml/*: `joblib.dump`/`joblib.load`). Llega
+# con scikit-learn, pero el código lo importa directamente.
+joblib>=1.3.0,<2
 # LLM — SDK OpenAI: cubre OpenAI y NVIDIA NIM (API compatible vía base_url).
 # Necesario para el endpoint RAG /api/v1/ask (default: llm.client.DEFAULT_MODEL).
 openai>=1.30.0,<4
@@ -40,9 +46,8 @@ openai>=1.30.0,<4
 # opentelemetry-api>=1.20.0,<3
 # opentelemetry-sdk>=1.20.0,<3
 # opentelemetry-exporter-otlp-proto-http>=1.20.0,<3
-# Búsqueda semántica vectorial (opcional — instalar manualmente si se necesita)
-# faiss-cpu>=1.7.4,<2
-# sentence-transformers>=2.2.0,<4  # arrastra torch (~2 GB)
+# sentence-transformers (arrastra torch, ~2 GB) no está aquí: es el extra
+# `[ml]` de pyproject.toml, que solo instalan los entrenamientos y el embebido.
 # Métricas Prometheus (opcional — fallback a fichero texto si no está instalado)
 prometheus_client>=0.19.0,<1
 # Prometheus auto-instrumentación HTTP para FastAPI (métricas RED por handler)
@@ -69,29 +74,22 @@ argon2-cffi>=23.1.0,<26
 alembic>=1.13.0,<2
 # API REST
 #
-# Techo en 0.137 a propósito (2026-08-17, PR #187): desde fastapi 0.141 los
-# routers montados con `include_router` aparecen en `app.routes` como objetos
-# `_IncludedRouter` opacos, sin `.path` ni `.methods`. Con ese salto la API
-# devuelve 500 en *todas* las rutas —`AttributeError: '_IncludedRouter' object
-# has no attribute 'path'`— y ni siquiera pasa el gate de arranque
-# (`/api/v1/health/ready`) del job E2E. `scripts/gen_status.py` tampoco revienta:
-# pasa de detectar 154 endpoints a 7, en silencio.
-#
-# Subir de aquí es una migración con trabajo propio (auditar todo el código y
-# los tests que recorren `app.routes`), no una recompilación de lockfile; por eso
-# fastapi/starlette/uvicorn están además en el `ignore` de .github/dependabot.yml
-# y topados en renovate.json (`allowedVersions`).
-fastapi>=0.110.0,<0.137
+# Del 2026-08-17 (PR #187) al 2026-10 hubo aquí un techo `<0.137`: desde esa
+# versión los routers montados con `include_router` quedan en `app.routes` como
+# objetos `_IncludedRouter` opacos, sin `.path` ni `.methods`, y lo que recorría
+# esa lista a mano (`scripts/gen_status.py`, el ratchet de superficie, una decena
+# de tests) dejaba de ver la API. Ahora todo eso pasa por `api/rutas.py`, que
+# aplana con `fastapi.routing.iter_route_contexts` y se ancla en `app.openapi()`.
+# El suelo 0.141 es la primera versión con esa función pública.
+fastapi>=0.141,<1
 # Starlette pinned explicitly — fastapi 0.136 ships with 0.52.x but >=1.0.1
 # is needed for bugfixes; without this pin the Dockerfile had a force-reinstall hack.
-# Techo en 1.4: 1.6.0 solo entra acompañando al salto de fastapi de arriba.
-starlette>=1.0.1,<1.4
+starlette>=1.0.1,<2
 # Servidor ASGI que ejecuta la API (ver docker/docker-entrypoint-api.sh). Se había
 # perdido de este archivo en algún momento y sobrevivía solo porque requirements.txt
 # no se había vuelto a compilar desde entonces (mismo patrón que el incidente de
 # psycopg-pool — ver scripts/check_requirements_sync.py).
-# Techo en 0.47 por coherencia con el par fastapi/starlette de arriba.
-uvicorn>=0.30.0,<0.47
+uvicorn>=0.30.0,<1
 # Backend de rate limiting distribuido (services/rate_limit_redis.py, RATE_LIMIT_BACKEND=redis).
 # Mismo motivo que uvicorn: presente en pyproject.toml pero faltaba aquí.
 redis>=5.0,<9

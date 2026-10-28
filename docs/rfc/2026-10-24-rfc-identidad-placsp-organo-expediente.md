@@ -692,3 +692,42 @@ Lo que la fase 1 del plan dejaba abierto, tal como se implementó:
    `rekey-placsp-organo.md`, la corrección de `mcp_server/glosario.md` y la fila
    de deprecación por ids viejos pasan a tener fecha: con la fase B. La fila de
    `docs/api-design.md` se añadió ya porque el mecanismo existe.
+
+## Decisiones de la fase B (2026-10-26)
+
+Lo que el código de las fases 2 y 3 decidió donde este texto dejaba margen
+(rama `agente/identidad-fase-b`; ventana y pasos de producción en
+[rekey-placsp-organo.md](../runbooks/rekey-placsp-organo.md), decisión en
+[ADR-038](../adr/ADR-038-clave-de-placsp-acotada-por-organo.md)):
+
+1. **Una puerta para todos los escritores**:
+   `scraper.codice_parser.acotar_por_organo` (y `clave_de_entry`, sin
+   `Licitacion`, para `reproceso_lotes`). La usan el núcleo del conector (feed
+   vivo, ZIP y agregadas, con `prefijo`/`esquemas` propios), empresas
+   vigiladas, `process_daily`, `seed_negatives` (que además inserta
+   `organo_ref_fuente`) y `reproceso_lotes`. Contratos menores no cambia: su
+   prefijo no es de la familia y ya nació acotado.
+2. **El carril bulk de empresas vigiladas** escribía
+   `placsp_watched_company_awards_bulk_YYYYMM:<exp>`, una fila distinta de la
+   del carril vivo. Pasa a la clave de la familia (la misma fila), con
+   `fuente` del carril; no había ninguna en producción.
+3. **El relleno** es `scripts/rellenar_organo_ref_placsp.py` (lógica en
+   `scraper/relleno_organo_placsp.py`): los meses salen de las filas
+   pendientes, no solo de los 22 ZIP (hay filas `placsp` actualizadas desde
+   2017), y añade un tercer respaldo opt-in, por nombre del órgano con
+   unanimidad, para lo que no esté en ningún ZIP leído.
+4. **La migración B es `v164_identidad_placsp_rekey`**: mapa por `fuente`,
+   guardas de §«Plan por fases» más «forma vieja» (fila de la familia sin su
+   prefijo), 31 referencias (las 27 de `v153`, `domain_events.aggregate_id`,
+   `licitaciones_id_anterior.id_externo`, `ml_feedback.expediente` y
+   `organization_references.expediente_id`), payload de los eventos no
+   despachados y alias con `motivo = 'rekey_placsp_organo'`. El refresco de
+   `licitaciones_canonicas` y la invalidación de cachés quedan fuera, en el
+   runbook: un `REFRESH` no concurrente dentro de la transacción bloquearía la
+   lectura pública.
+5. **`resolver_id_externo` en todas las rutas** con el id en la ruta y
+   `api.identidad.id_vigente` en los cuerpos (lista en la fila de
+   `docs/api-design.md`). Las rutas que devuelven su propia `Response` (el PDF
+   del guion, los streams de `/ask` y `/resumen`) resuelven el id pero no
+   pueden llevar `Deprecation`: FastAPI no copia a ellas las cabeceras del
+   parámetro.

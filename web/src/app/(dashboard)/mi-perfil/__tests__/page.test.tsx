@@ -3,14 +3,13 @@ import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 /**
- * Lo que este fichero fija es el **primer paso del embudo de activación**.
+ * Lo que este fichero fija es la **configuración del perfil de scoring**.
  *
- * Ajustar el perfil de scoring es lo que más pesa de los tres pasos de la banda
- * «Primeros pasos» —hasta que se hace, el Radar puntúa con los pesos genéricos
- * de `settings.SCORING_WEIGHTS` y lo que el usuario ve arriba está ordenado
- * para otro—, y sin embargo era el único de los tres que no emitía nada: el
- * embudo se medía desde el segundo escalón, así que la caída más cara era
- * justamente la invisible.
+ * Hasta que se hace, el Radar puntúa con los pesos genéricos de
+ * `settings.SCORING_WEIGHTS` y lo que el usuario ve arriba está ordenado para
+ * otro. Fue el primer paso de la banda «Primeros pasos» hasta el plan 2026-10
+ * (B5), que los cambió por los del bucle del piloto; el evento sigue midiendo
+ * cuándo alguien configura su perfil por primera vez.
  *
  * La otra mitad de lo que se comprueba aquí es de privacidad: por este evento
  * no puede viajar el contenido del perfil. Los pesos, las keywords y los CPV de

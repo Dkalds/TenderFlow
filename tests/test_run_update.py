@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # main() — modos de ejecución (delegando en pipeline_runs)
 # ---------------------------------------------------------------------------
@@ -126,6 +128,37 @@ def test_main_backfill_ok():
         code = run_update.main()
 
     assert code == 0
+
+
+def test_main_backfill_con_hasta_pasa_el_tramo():
+    """--backfill 2025 1 --hasta 2025 2 pide solo ese tramo, en orden."""
+    pipeline_result = {"status": "ok", "ingestion_results": [], "steps": {}}
+
+    with (
+        patch(
+            "scheduler.run_update.run_backfill_pipeline", return_value=pipeline_result
+        ) as mock_backfill,
+        patch("scheduler.run_update.count_licitaciones", return_value=300),
+        patch("sys.argv", ["run_update", "--backfill", "2025", "1", "--hasta", "2025", "2"]),
+    ):
+        from scheduler import run_update
+
+        code = run_update.main()
+
+    assert code == 0
+    mock_backfill.assert_called_once_with(2025, 1, hasta=(2025, 2))
+
+
+def test_main_hasta_sin_backfill_es_error_de_uso():
+    with (
+        patch("sys.argv", ["run_update", "--hasta", "2025", "2"]),
+        pytest.raises(SystemExit) as exc,
+    ):
+        from scheduler import run_update
+
+        run_update.main()
+
+    assert exc.value.code == 2
 
 
 # ---------------------------------------------------------------------------

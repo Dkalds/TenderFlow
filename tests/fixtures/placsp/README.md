@@ -76,6 +76,13 @@ universo tecnológico; para el 04 (solo `ParticipationRequestReceptionPeriod`)
 hay 55 (51 en el ZIP y 4 en el ATOM), ninguno tecnológico. El resto fija una construcción concreta
 que el real no trae, y la forma real de lo mismo está en los casos 19-24.
 
+Desde la fase B del RFC de identidad PLACSP (2026-10-26) los sintéticos llevan
+un `PartyIdentification` con `schemeName="ID_PLATAFORMA"` inventado
+(`990000000000NN`): la clave es `placsp:<ID_PLATAFORMA>:<ContractFolderID>` y
+el conector descarta la entrada que no trae órgano, cosa que el feed real no
+hace nunca (100 % de las entradas lo traen, medido el 2026-10-24). Sin él, los
+once casos habrían pasado a congelar un descarte.
+
 El 25, del ítem de las adjudicaciones multilote, también es **real**: la entry de `B070005/2022-0071` (Diputación de
 Huesca) del ZIP mensual de 2026-06, recortada a mano con un script que solo
 quita, sin reordenar ni reescribir: condiciones (`TenderingTerms`), adjuntos,

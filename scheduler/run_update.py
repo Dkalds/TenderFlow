@@ -45,7 +45,14 @@ def main() -> int:
         nargs=2,
         type=int,
         metavar=("YEAR", "MONTH"),
-        help="Backfill desde año/mes hasta hoy",
+        help="Backfill desde año/mes hasta hoy (o hasta --hasta), en orden ascendente",
+    )
+    p.add_argument(
+        "--hasta",
+        nargs=2,
+        type=int,
+        metavar=("YEAR", "MONTH"),
+        help="Último mes del backfill, incluido (solo con --backfill)",
     )
     p.add_argument(
         "--daily",
@@ -72,6 +79,8 @@ def main() -> int:
         help="Formato de logs (default: auto)",
     )
     args = p.parse_args()
+    if args.hasta and not args.backfill:
+        p.error("--hasta solo se usa con --backfill")
 
     configure_logging(
         level="DEBUG" if args.verbose else "INFO",
@@ -101,7 +110,11 @@ def main() -> int:
             code = 0 if ingestion_status == "ok" else 1
             return _apply_step_failures(pipeline_result, code, log)
         elif args.backfill:
-            pipeline_result = run_backfill_pipeline(args.backfill[0], args.backfill[1])
+            pipeline_result = run_backfill_pipeline(
+                args.backfill[0],
+                args.backfill[1],
+                hasta=(args.hasta[0], args.hasta[1]) if args.hasta else None,
+            )
         else:
             pipeline_result = run_bulk_pipeline(args.months)
     except Exception as e:

@@ -75,7 +75,8 @@ def _reglas(email: str, user_id: int, org: int) -> list[tuple[Any, ...]]:
 def _vistas(email: str, user_id: int, org: int) -> list[tuple[Any, ...]]:
     return [
         (v["name"], json.loads(v["filters_json"]), v["visibility"])
-        for v in list_saved_filters(user_key_from_email(email, user_id), org)
+        # Con id, la vista nace sin clave (v165): se lee como la API, con los dos.
+        for v in list_saved_filters(user_key_from_email(email, user_id), org, user_id=user_id)
     ]
 
 
@@ -159,10 +160,12 @@ def test_el_miembro_borra_sus_copias_y_la_plantilla_sigue_intacta(tmp_db: object
 
     user_key = user_key_from_email(e.miembro_email, e.miembro)
     [regla_copiada] = list_rules(user_key, e.org)
-    [vista_copiada] = list_saved_filters(user_key, e.org)
+    [vista_copiada] = list_saved_filters(user_key, e.org, user_id=e.miembro)
     assert regla_copiada.id is not None
     assert delete_rule(user_key, regla_copiada.id, e.org)
-    assert delete_saved_filter(int(vista_copiada["id"]), user_key=user_key, organization_id=e.org)
+    assert delete_saved_filter(
+        int(vista_copiada["id"]), user_key=user_key, organization_id=e.org, user_id=e.miembro
+    )
     assert _reglas(e.miembro_email, e.miembro, e.org) == []
     assert _vistas(e.miembro_email, e.miembro, e.org) == []
 

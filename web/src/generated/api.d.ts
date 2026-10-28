@@ -9479,6 +9479,7 @@ export interface components {
             explanation: components["schemas"]["ExplainPayload"] | null;
             /** Id Externo */
             id_externo: string;
+            senal_clasificador?: components["schemas"]["SenalClasificadorDTO"] | null;
             /** Tecnologia */
             tecnologia: string | null;
             /** Warning */
@@ -9597,6 +9598,7 @@ export interface components {
             items: components["schemas"]["FeedbackQueueItem"][];
             /** Model Version */
             model_version: string | null;
+            senal_clasificador?: components["schemas"]["SenalClasificadorDTO"] | null;
             /** Strategy */
             strategy: string;
         };
@@ -15143,6 +15145,32 @@ export interface components {
             source: string;
             /** Top K */
             top_k: number;
+        };
+        /**
+         * SenalClasificadorDTO
+         * @description Si la probabilidad del ``sap_classifier`` (``ml_proba``) es una señal utilizable.
+         *
+         *     Solo lo es cuando el modelo tiene una versión activa que ha pasado el gate
+         *     (``services/ml/senal_clasificador.py``). Mientras no, las respuestas que
+         *     llevaban esa probabilidad la sustituyen por un relleno marcado como tal
+         *     —el contrato no cambia de tipo— y este bloque dice por qué.
+         */
+        SenalClasificadorDTO: {
+            /**
+             * Motivo
+             * @description Por qué no está validada: `sin_version_activa`, `artefacto_no_publicado_por_el_gate`, `no_pasa_el_gate` o `registry_ilegible`. Nulo si está validada.
+             */
+            motivo?: string | null;
+            /**
+             * Validada
+             * @description True solo si `sap_classifier` tiene una versión activa que ha pasado el gate; si es False, ninguna probabilidad de ese modelo es una señal.
+             */
+            validada: boolean;
+            /**
+             * Version
+             * @description Versión activa evaluada, si hay alguna.
+             */
+            version?: number | null;
         };
         /**
          * SenalCompetitiva
