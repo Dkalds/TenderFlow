@@ -15,7 +15,8 @@ vetan unas pocas funciones (defensa en profundidad, no frontera):
 * a lo sumo ``MAX_FILAS`` filas (se pide una de más para detectar truncado),
   leídas por lotes con un cursor de servidor que deja de pedir en cuanto la
   respuesta ya no cabe;
-* celdas de texto recortadas a ``MAX_CHARS_CELDA`` y respuesta serializada de
+* celdas de texto recortadas a ``MAX_CHARS_CELDA`` (las ``text``/``varchar``/``xml``
+  ya en el servidor, :func:`envolver_con_recorte`) y respuesta serializada de
   como mucho ``MAX_CHARS_RESPUESTA`` caracteres (se quitan filas del final);
 * ninguna llamada a las funciones vetadas (cerrojos de aviso, ``pg_notify``,
   ``set_config``, las que ejecutan SQL en texto…): ver :func:`normalizar_sql`.
@@ -55,6 +56,7 @@ __all__ = [
     "MAX_CHARS_RESPUESTA",
     "MAX_CHARS_SQL",
     "MAX_FILAS",
+    "OIDS_TEXTO",
     "PISTAS",
     "ErrorConsulta",
     "JSONValue",
@@ -65,6 +67,7 @@ __all__ = [
     "ejecutar_select",
     "ejemplo_de",
     "envolver",
+    "envolver_con_recorte",
     "filas_aproximadas",
     "normalizar_sql",
     "serializar_valor",
@@ -481,6 +484,46 @@ def envolver(sql: str, max_filas: int) -> str:
     return f"SELECT * FROM (\n{literal}\n) AS q LIMIT %s"
 
 
+#: OIDs de ``text``, ``varchar`` y ``xml``: las columnas que
+#: :func:`envolver_con_recorte` acota en el servidor (``char(n)`` no: es de
+#: ancho fijo y el ``::text`` le quitaría los espacios finales).
+# shortcut: json/jsonb y arrays siguen llegando enteros a Python antes de
+# recortarse; subirlo si un OOM se repite con ellos (`jsonb_agg`, `array_agg`).
+OIDS_TEXTO = frozenset({25, 1043, 142})
+
+
+def _recorte_sql(columna: str) -> str:
+    """La celda de ``columna`` ya recortada en el servidor, con la marca de :func:`_recortar`."""
+    texto = f"{columna}::text"
+    tope = MAX_CHARS_CELDA
+    return (
+        f"CASE WHEN length({texto}) > {tope} "
+        f"THEN left({texto}, {tope}) || '…[+' || (length({texto}) - {tope}) || ']' "
+        f"ELSE {texto} END"
+    )
+
+
+def envolver_con_recorte(sql: str, tipos: Sequence[int]) -> tuple[str, frozenset[int]]:
+    """Como :func:`envolver`, pero las columnas de texto llegan ya recortadas.
+
+    Sin esto, un único valor gigante (``string_agg`` de ``documentos.texto``,
+    ``database_to_xml``) llegaba entero a la memoria del proceso antes de
+    recortarse a :data:`MAX_CHARS_CELDA`. ``tipos`` son los OID de las columnas
+    del resultado (``cursor.description``); las columnas se renombran por
+    posición (``q(c0, c1, …)``) para que nombres repetidos o raros no estorben.
+    Devuelve la sentencia y las posiciones de las columnas ya recortadas.
+    """
+    recortadas = frozenset(i for i, oid in enumerate(tipos) if oid in OIDS_TEXTO)
+    if not recortadas:
+        return envolver(sql, 0), recortadas
+    literal = "%%".join(sql.split("%"))
+    alias = ", ".join(f"c{i}" for i in range(len(tipos)))
+    columnas = ", ".join(
+        _recorte_sql(f"q.c{i}") if i in recortadas else f"q.c{i}" for i in range(len(tipos))
+    )
+    return f"SELECT {columnas} FROM (\n{literal}\n) AS q({alias}) LIMIT %s", recortadas
+
+
 # ── Serialización ──────────────────────────────────────────────────────────
 
 
@@ -701,7 +744,7 @@ def _error_de_tiempo() -> ErrorConsulta:
 
 
 def _leer_por_lotes(
-    conn: psycopg.Connection[tuple[object, ...]], envuelta: str, max_filas: int
+    conn: psycopg.Connection[tuple[object, ...]], sql: str, max_filas: int
 ) -> tuple[list[str], list[list[JSONValue]]]:
     """Lee el resultado con un cursor de servidor, lote a lote, y para en cuanto sobra.
 
@@ -710,6 +753,8 @@ def _leer_por_lotes(
     lote se serializa (celdas ya recortadas) y se deja de pedir en cuanto hay
     ``max_filas + 1`` filas o la respuesta ya pasa de ``MAX_CHARS_RESPUESTA``:
     :func:`_acotar_respuesta` quitará filas y marcará ``truncado`` igual que antes.
+    Antes, una sonda con ``LIMIT 0`` da los nombres y tipos de las columnas, y
+    las de texto se piden ya recortadas (:func:`envolver_con_recorte`).
 
     Con cursor, ``statement_timeout`` vale por sentencia (el ``DECLARE`` y cada
     ``FETCH``); para que el tope del rol siga siendo de la consulta entera, antes
@@ -718,9 +763,12 @@ def _leer_por_lotes(
     inicio = time.monotonic()
     fila_tope = conn.execute(_SQL_STATEMENT_TIMEOUT).fetchone()
     tope_ms = int(str(fila_tope[0])) if fila_tope is not None else 0
+    # Con parámetro enlazado, como la consulta real: protocolo extendido, una sola sentencia.
+    descripcion = conn.execute(envolver(sql, 0), (0,)).description or []
+    columnas = [str(d.name) for d in descripcion]
+    envuelta, recortadas = envolver_con_recorte(sql, [d.type_code for d in descripcion])
     with conn.cursor(name="mcp_consulta") as cur:
         cur.execute(envuelta, (max_filas + 1,))
-        columnas = [str(d.name) for d in (cur.description or [])]
         filas: list[list[JSONValue]] = []
         tamano = 0
         while len(filas) <= max_filas and tamano <= MAX_CHARS_RESPUESTA:
@@ -733,7 +781,11 @@ def _leer_por_lotes(
             if not lote:
                 break
             for cruda in lote:
-                fila = [serializar_valor(v) for v in cruda]
+                # Las recortadas ya traen la marca `…[+N]`: recortarlas otra vez la falsearía.
+                fila = [
+                    v if i in recortadas and isinstance(v, str) else serializar_valor(v)
+                    for i, v in enumerate(cruda)
+                ]
                 filas.append(fila)
                 tamano += len(json.dumps(fila)) + 2
     return columnas, filas
@@ -749,13 +801,13 @@ def ejecutar_select(sql: str, *, max_filas: int = MAX_FILAS) -> ResultadoConsult
     url = mcp_database_url()
     if not url:
         raise ErrorConsulta(None, "MCP_DATABASE_URL no configurada", None)
-    envuelta = envolver(normalizar_sql(sql), max_filas)
+    limpio = normalizar_sql(sql)
     pool = _get_pool(url)
     inicio = time.perf_counter()
     try:
         with pool.connection() as conn, conn.transaction():
             conn.execute("SET TRANSACTION READ ONLY")
-            columnas, filas = _leer_por_lotes(conn, envuelta, max_filas)
+            columnas, filas = _leer_por_lotes(conn, limpio, max_filas)
     except psycopg.Error as exc:
         raise _traducir(exc) from None
     duracion_ms = int((time.perf_counter() - inicio) * 1000)

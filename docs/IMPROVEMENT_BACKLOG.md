@@ -1226,15 +1226,6 @@ _Sin ítems abiertos._
   - `use-renovaciones` sigue leyendo `usePursuits()` con la página de 50.
 - **Riesgo:** bajo.
 
-### [P3] El `client_secret` del registro dinámico del MCP se guarda legible
-- **Área:** db/mcp_oauth.py, mcp_server/auth/
-- **Problema:** `mcp_oauth_clients.datos` guarda el `client_secret` que emite el DCR en claro, porque el SDK de `mcp` lo compara tal cual al autenticar el cliente en `/token`. Está oculto para el rol `tenderflow_mcp` (la tabla es `OCULTA` en el catálogo), pero lo ve cualquiera con el rol de la app, un volcado o un backup. Los tokens, en cambio, sí van como `sha256`.
-- **Acceptance criteria:**
-  - Decidir con el conector real de claude.ai delante (checklist de `docs/runbooks/mcp-interno.md` §6): o los clientes se registran como públicos (`token_endpoint_auth_method = none`, que además obliga a que los metadatos OAuth lo anuncien) o el secreto se guarda hasheado/cifrado y se compara sin exponerlo.
-  - Test que fija que ninguna columna de `mcp_oauth_clients` contiene el secreto en claro tras el registro.
-- **Files de partida:** [db/mcp_oauth.py](../db/mcp_oauth.py), [mcp_server/auth/proveedor.py](../mcp_server/auth/proveedor.py)
-- **Riesgo:** medio — toca el contrato de autenticación de los clientes; un cambio equivocado deja a claude.ai sin poder canjear el código.
-
 ### [P3] Decidir qué hacer con los ratchets que llevan meses congelados sin bajar
 - **Área:** scripts/check_layers.py, pyproject.toml (TID251), scripts/check_user_key_ratchet.py, docs/STATUS.md
 - **Problema:** tres ratchets congelan deuda con nombre y ninguno tiene plan de bajada: 22 imports contra el orden de capas (los peores van de la capa inferior a la superior: `db/repositories/go_no_go.py -> services.go_no_go_template`, `db/repositories/licitaciones.py -> services.investigador.search_engine`, `db/access_grants.py -> services.access_grants`, `config/settings.py -> shared.*`), 22 ficheros con SQL fuera de `db/` (TID251: de 32 entradas en agosto a 22 hoy, según los comentarios de `pyproject.toml`; 19 desde el 2026-10-23, y `tests/test_s4b_ratchet_tid251.py` falla ahora también ante una entrada que ya no abre conexiones) y 59 ficheros con `user_key` (el P1 de S1 lo lleva a cero con T4, pero el resto no tiene dueño). Un ratchet que solo impide crecer protege el futuro y deja el presente igual; medido el 2026-10-17 contra `docs/STATUS.md`.

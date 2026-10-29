@@ -27,6 +27,8 @@ Tokens opacos (``secrets.token_urlsafe(32)``); solo su ``sha256`` llega a la bas
 from __future__ import annotations
 
 import functools
+import hashlib
+import hmac
 import json
 import secrets
 import time
@@ -50,6 +52,7 @@ from mcp.server.auth.provider import (
 )
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
+from config import settings
 from config.settings import mcp_redirect_uris_extra
 from db import mcp_oauth
 from db.audit import log_action
@@ -68,6 +71,7 @@ __all__ = [
     "ProveedorTenderFlow",
     "auditar_oauth",
     "redirect_uri_admitido",
+    "secreto_de_cliente",
 ]
 
 log = get_logger(__name__)
@@ -101,6 +105,8 @@ LIMITE_AUTORIZAR = ("mcp:oauth:autorizar", 600, 3600)
 LIMITE_AUTORIZAR_CLIENTE = 60
 
 _LOOPBACK = frozenset({"localhost", "127.0.0.1"})
+#: Métodos de ``/token`` en los que el cliente presenta un secreto.
+_CON_SECRETO = frozenset({"client_secret_post", "client_secret_basic"})
 #: Callbacks documentados de Anthropic para conectores MCP (claude.ai / claude.com).
 REDIRECTS_CLAUDE = (
     "https://claude.ai/api/mcp/auth_callback",
@@ -207,6 +213,18 @@ def auditar_oauth(accion: str, user_id: int | None, detalle: Mapping[str, object
     # en posición para no nombrar el parámetro en un fichero nuevo.
     clave = f"user:{user_id}" if user_id is not None else "anon"
     log_action(clave, "mcp", accion, json.dumps(dict(detalle), ensure_ascii=False), user_id=user_id)
+
+
+def secreto_de_cliente(client_id: str) -> str:
+    """``client_secret`` de un cliente del DCR: ``HMAC-SHA256(SIGNING_KEY, client_id)``.
+
+    El SDK compara el secreto en claro en ``/token``, así que no puede guardarse
+    hasheado; derivarlo evita guardarlo: un volcado de ``mcp_oauth_clients`` no
+    trae ninguno. Rotar ``SIGNING_KEY`` invalida los secretos de todos los
+    clientes, que tienen que volver a añadirse.
+    """
+    clave = settings.SIGNING_KEY.get_secret_value().encode()
+    return hmac.new(clave, f"mcp-client-secret:{client_id}".encode(), hashlib.sha256).hexdigest()
 
 
 def _es_loopback(uri: str) -> bool:
@@ -444,7 +462,12 @@ class ProveedorTenderFlow(
         if not uris or not all(redirect_uri_admitido(u) for u in uris):
             log.warning("mcp_oauth_cliente_fuera_de_allowlist", client_id=client_id)
             return None
-        return OAuthClientInformationFull.model_validate(fila["datos"])
+        datos = dict(fila["datos"])
+        # Sin la clave, el secreto no se guardó: se deriva (ver `register_client`).
+        # Los clientes registrados antes la conservan, con su secreto aleatorio.
+        if "client_secret" not in datos and datos.get("token_endpoint_auth_method") in _CON_SECRETO:
+            datos["client_secret"] = secreto_de_cliente(client_id)
+        return OAuthClientInformationFull.model_validate(datos)
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
         if not await self._cabe(*LIMITE_REGISTRO):
@@ -452,7 +475,12 @@ class ProveedorTenderFlow(
                 "invalid_client_metadata",
                 "Demasiados registros de clientes en la última hora; inténtalo más tarde.",
             )
+        if client_info.client_secret is not None and client_info.client_id is not None:
+            # El SDK devuelve al cliente este mismo objeto tras llamarnos: el
+            # secreto que recibe es el derivado, y en la base no queda ninguno.
+            client_info.client_secret = secreto_de_cliente(client_info.client_id)
         datos = client_info.model_dump(mode="json")
+        datos.pop("client_secret", None)
         if (exceso := _exceso_de_cliente(datos)) is not None:
             raise RegistrationError("invalid_client_metadata", f"Registro desmedido: {exceso}.")
         uris = [str(u) for u in client_info.redirect_uris or []]

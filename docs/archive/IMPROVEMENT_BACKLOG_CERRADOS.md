@@ -21,6 +21,21 @@ No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 
 ---
 
+## Cerrados el 2026-10-29 — MCP interno
+
+### [P3] El `client_secret` del registro dinámico del MCP se guarda legible
+
+**Cerrado el 2026-10-29.** Ni clientes públicos ni hash: el SDK compara el secreto en claro, así que en vez de guardarlo se deriva. `mcp_server.auth.proveedor.secreto_de_cliente` lo calcula como `HMAC-SHA256(SIGNING_KEY, "mcp-client-secret:" + client_id)`; `register_client` sustituye el aleatorio del SDK por ese valor (el SDK devuelve el mismo objeto al cliente) y guarda `datos` sin la clave `client_secret`, y `get_client` lo recalcula si falta. Para el conector no cambia nada: sigue siendo un cliente confidencial con `client_secret_post`, por eso no hizo falta probarlo con claude.ai delante. Los clientes registrados antes conservan su secreto guardado hasta volver a registrarse. Contrapartida, anotada en el runbook: rotar `SIGNING_KEY` obliga a volver a añadir los conectores. Tests: `tests/test_mcp_proveedor_oauth.py` (`/register` → `/token` por los handlers del SDK sin el secreto en el almacén, secreto equivocado → `invalid_client`, cliente antiguo).
+
+- **Área:** db/mcp_oauth.py, mcp_server/auth/
+- **Problema:** `mcp_oauth_clients.datos` guarda el `client_secret` que emite el DCR en claro, porque el SDK de `mcp` lo compara tal cual al autenticar el cliente en `/token`. Está oculto para el rol `tenderflow_mcp` (la tabla es `OCULTA` en el catálogo), pero lo ve cualquiera con el rol de la app, un volcado o un backup. Los tokens, en cambio, sí van como `sha256`.
+- **Acceptance criteria:**
+  - Decidir con el conector real de claude.ai delante (checklist de `docs/runbooks/mcp-interno.md` §6): o los clientes se registran como públicos (`token_endpoint_auth_method = none`, que además obliga a que los metadatos OAuth lo anuncien) o el secreto se guarda hasheado/cifrado y se compara sin exponerlo.
+  - Test que fija que ninguna columna de `mcp_oauth_clients` contiene el secreto en claro tras el registro.
+- **Riesgo:** medio — toca el contrato de autenticación de los clientes; un cambio equivocado deja a claude.ai sin poder canjear el código.
+
+---
+
 ## Cerrados el 2026-10-25 — índices de búsqueda y analítica ya aplicados en producción
 
 Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate.yml`. Al comprobarlo el 2026-10-25, la BD estaba en `v158`: llevaban semanas aplicadas y nadie había cerrado los ítems. Se archivan con la evidencia medida.

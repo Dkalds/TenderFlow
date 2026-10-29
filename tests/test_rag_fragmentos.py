@@ -34,12 +34,15 @@ class _DocumentosFalso:
 
 
 class _LicitacionesFalso:
-    def __init__(self, ids: list[str]) -> None:
+    def __init__(self, ids: list[str], *, solo_con: str | None = None) -> None:
         self._ids = ids
+        self._solo_con = solo_con
         self.llamadas: list[tuple[str, int]] = []
 
     def search_fts_docs(self, query: str, *, limit: int = 20) -> list[dict[str, Any]]:
         self.llamadas.append((query, limit))
+        if self._solo_con is not None and self._solo_con not in query:
+            return []
         return [{"id_externo": i} for i in self._ids[:limit]]
 
 
@@ -103,6 +106,30 @@ def test_fragmentos_sin_chunks_devuelve_lista_vacia(monkeypatch: pytest.MonkeyPa
     _instalar(monkeypatch, {}, fts=["A"])
     assert fragmentos_de_pliego("lo que sea", id_externo="NADA") == []
     assert fragmentos_de_pliego("lo que sea") == []
+
+
+def test_fragmentos_sin_coincidencia_completa_reintenta_con_cualquier_termino(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    docs = _DocumentosFalso({"A": [_chunk(1, 0, "penalidades por retraso")]})
+    lics = _LicitacionesFalso(["A"], solo_con=" or ")
+    monkeypatch.setattr(modulo, "_repo_documentos", lambda: docs)
+    monkeypatch.setattr(modulo, "_repo_licitaciones", lambda: lics)
+
+    res = fragmentos_de_pliego("penalidades por retraso en la entrega", limite=3)
+
+    assert [f.id_externo for f in res] == ["A"]
+    (primera, _), (segunda, _) = lics.llamadas
+    assert primera == "penalidades por retraso en la entrega"
+    assert set(segunda.split(" or ")) == {"penalidades", "retraso", "entrega"}
+
+
+def test_fragmentos_con_una_sola_palabra_clave_no_reintenta(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, lics = _instalar(monkeypatch, {}, fts=[])
+    assert fragmentos_de_pliego("penalidades") == []
+    assert len(lics.llamadas) == 1
 
 
 def test_fragmentos_recorta_el_texto_a_1500(monkeypatch: pytest.MonkeyPatch) -> None:

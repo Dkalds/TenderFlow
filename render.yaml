@@ -349,7 +349,8 @@ services:
   # SIN VERIFICAR: que `plan: starter` (512 MB) baste bajo uso real. El proceso
   # es uvicorn + el SDK y un pool de 5 conexiones; las respuestas están acotadas
   # a 100 000 caracteres y `consultar_sql` lee por lotes de 50 filas (para en
-  # cuanto no caben). Una sola celda enorme sí se carga entera. Si hay OOM,
+  # cuanto no caben). Las celdas `text`/`varchar`/`xml` llegan ya recortadas de
+  # Postgres; un `json`/`jsonb` o un array enorme sí se carga entero. Si hay OOM,
   # `standard`.
   #
   # `APP_PROFILE: mcp` es un perfil propio (config/settings.py): no es la API

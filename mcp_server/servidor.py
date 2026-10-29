@@ -61,7 +61,7 @@ from mcp_server.envoltura import (
 )
 from mcp_server.tools.consulta import consultar_sql
 from mcp_server.tools.dominio import buscar_en_pliegos, buscar_licitaciones, ficha_licitacion
-from mcp_server.tools.esquema import describir_esquema, describir_tabla, glosario
+from mcp_server.tools.esquema import describir_esquema, describir_tabla
 from observability.logging import get_logger
 
 __all__ = [
@@ -91,7 +91,8 @@ _ORIGENES_CLIENTES = ("https://claude.ai", "https://claude.com", "https://chatgp
 
 _INSTRUCCIONES = """\
 Servidor de solo lectura sobre la base de datos de licitaciones públicas de TenderFlow.
-Empieza por describir_esquema (tablas y glosario) y describir_tabla; agrega, cuenta y cruza con consultar_sql (SELECT de PostgreSQL, 500 filas como máximo).
+Llama primero a describir_esquema: trae las tablas y el glosario de negocio (qué fila contar cuando una licitación llega por varias fuentes, qué base lleva cada importe, los valores de estado); sin él el SQL suele contar duplicados o mezclar importes.
+Luego describir_tabla para las columnas, y consultar_sql para agregar, contar y cruzar (SELECT de PostgreSQL, 500 filas como máximo).
 Para expedientes concretos usa buscar_licitaciones y ficha_licitacion, y buscar_en_pliegos para el texto de los pliegos.
 """
 
@@ -283,7 +284,10 @@ def crear_servidor(proveedor: ProveedorTenderFlow | None = None) -> MCPServer[No
     servidor = _ServidorTenderFlow(
         "tenderflow",
         title="TenderFlow",
-        instructions=f"{_INSTRUCCIONES}\n{glosario()}",
+        # El glosario no va aquí: lo devuelve `describir_esquema`, que llega al
+        # modelo en cualquier cliente (las `instructions` son opcionales para el
+        # cliente) y así no se paga dos veces por sesión.
+        instructions=_INSTRUCCIONES,
         auth_server_provider=proveedor,
         auth=_ajustes_auth(url),
         lifespan=_ciclo_de_vida,

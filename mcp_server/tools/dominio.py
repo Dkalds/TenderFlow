@@ -167,7 +167,8 @@ def buscar_licitaciones(
     ``desde`` no puede ser posterior a ``hasta``. Devuelve ``{"total": N,
     "resultados": [...]}``: ``total`` cuenta todas las coincidencias,
     ``resultados`` solo las primeras ``limite`` (más recientes primero); los
-    textos largos de cada fila se recortan a 1 000 caracteres.
+    textos largos de cada fila se recortan a 1 000 caracteres. Sin coincidencias
+    añade un ``aviso`` que remite a ``consultar_sql``.
     """
     e = _EntradaBuscarLicitaciones(
         texto=texto,
@@ -191,7 +192,14 @@ def buscar_licitaciones(
         fecha_hasta=e.hasta,
         limit=e.limite,
     )
-    return _como_dict(serializar_valor({"total": total, "resultados": filas}))
+    salida = _como_dict(serializar_valor({"total": total, "resultados": filas}))
+    if total == 0:
+        salida["aviso"] = (
+            "Ninguna coincidencia entre las licitaciones con tecnología asignada, que es "
+            "todo lo que cubre esta herramienta. Que no aparezca aquí no significa que no "
+            "exista: búscala en toda la tabla licitaciones con consultar_sql."
+        )
+    return salida
 
 
 def buscar_en_pliegos(
@@ -225,7 +233,8 @@ def buscar_en_pliegos(
 
     Con ``id_externo`` busca en los pliegos de ese expediente. Sin él, busca
     primero los 5 expedientes que mejor casan con la pregunta por texto
-    completo y devuelve fragmentos de todos ellos, mezclados por relevancia.
+    completo (con todos sus términos y, si ninguno los reúne, con alguno de
+    ellos) y devuelve fragmentos de todos ellos, mezclados por relevancia.
     ``limite``: de 1 a 20 fragmentos (por defecto 10); cada texto se recorta a
     1 500 caracteres.
 
@@ -239,9 +248,9 @@ def buscar_en_pliegos(
     if not fragmentos:
         salida["aviso"] = (
             "No hay fragmentos de pliego para esta consulta: el expediente no existe, no "
-            "tiene pliegos indexados o ningún expediente casa con la pregunta. Sin "
-            "id_externo la búsqueda exige todos los términos a la vez: reintenta con menos "
-            "palabras clave, o con el id_externo del expediente (ver buscar_licitaciones)."
+            "tiene pliegos indexados o ningún expediente casa con la pregunta (ni con "
+            "todos los términos ni con alguno). Reintenta con otras palabras clave, o con "
+            "el id_externo del expediente (ver buscar_licitaciones)."
             if e.id_externo is None
             else "No hay fragmentos de pliego para este expediente: no existe o no tiene "
             "pliegos indexados."

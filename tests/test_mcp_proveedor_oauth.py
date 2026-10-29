@@ -1320,3 +1320,76 @@ async def test_flujo_completo_por_los_handlers_del_sdk(
         assert r.status_code == 400 and r.json()["error"] == "invalid_grant"
         assert await proveedor.load_access_token(t2["access_token"]) is None
     assert mundo.acciones().count("mcp.refresh_reutilizado") == 1
+
+
+async def test_cliente_confidencial_sin_secreto_en_el_almacen(
+    proveedor: ProveedorTenderFlow,
+    almacen: AlmacenEnMemoria,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``/register`` con secreto: el almacén no lo guarda y ``/token`` lo comprueba igual."""
+    from mcp.server.auth.routes import create_auth_routes
+    from mcp.server.auth.settings import ClientRegistrationOptions
+    from pydantic import AnyHttpUrl, SecretStr
+    from starlette.applications import Starlette
+
+    from config import settings
+    from mcp_server.auth.proveedor import secreto_de_cliente
+
+    monkeypatch.setattr(settings, "SIGNING_KEY", SecretStr("k" * 40))
+    rutas = create_auth_routes(
+        proveedor,
+        AnyHttpUrl("https://mcp.tenderflow.example"),
+        client_registration_options=ClientRegistrationOptions(
+            enabled=True, valid_scopes=["mcp"], default_scopes=["mcp"]
+        ),
+    )
+    transporte = httpx.ASGITransport(app=Starlette(routes=rutas))
+    async with httpx.AsyncClient(
+        transport=transporte, base_url="https://mcp.tenderflow.example"
+    ) as http:
+        r = await http.post(
+            "/register",
+            json={"redirect_uris": [REDIRECT], "token_endpoint_auth_method": "client_secret_post"},
+        )
+        assert r.status_code == 201, r.text
+        client_id, secreto = r.json()["client_id"], r.json()["client_secret"]
+        assert secreto == secreto_de_cliente(client_id)
+        assert secreto not in json.dumps(almacen.clientes)
+        assert "client_secret" not in almacen.clientes[client_id]["datos"]
+
+        verifier, challenge = _pkce()
+        canje = {
+            "grant_type": "authorization_code",
+            "code": await _codigo_por_el_sdk(http, proveedor, client_id, challenge),
+            "redirect_uri": REDIRECT,
+            "client_id": client_id,
+            "client_secret": "otro-" + secreto,  # pragma: allowlist secret
+            "code_verifier": verifier,
+        }
+        r = await http.post("/token", data=canje)
+        assert r.status_code == 401 and r.json()["error"] == "invalid_client"
+        canje["client_secret"] = secreto
+        r = await http.post("/token", data=canje)
+        assert r.status_code == 200, r.text
+
+    # Rotar SIGNING_KEY invalida el secreto derivado.
+    monkeypatch.setattr(settings, "SIGNING_KEY", SecretStr("z" * 40))
+    rotado = await proveedor.get_client(client_id)
+    assert rotado is not None and rotado.client_secret != secreto
+
+
+async def test_cliente_registrado_antes_conserva_su_secreto(
+    proveedor: ProveedorTenderFlow, almacen: AlmacenEnMemoria
+) -> None:
+    """Un cliente con el secreto guardado (anterior al derivado) sigue autenticando con él."""
+    datos = {
+        "client_id": "viejo",
+        "client_secret": "aleatorio-de-antes",  # pragma: allowlist secret
+        "redirect_uris": [REDIRECT],
+        "token_endpoint_auth_method": "client_secret_post",
+    }
+    almacen.guardar_cliente("viejo", None, [REDIRECT], datos)
+    leido = await proveedor.get_client("viejo")
+    assert leido is not None
+    assert leido.client_secret == datos["client_secret"]
