@@ -343,7 +343,7 @@ def _normaliza(code: str | None) -> str | None:
     limpio = code.strip()
     if not limpio:
         return None
-    if limpio.isdigit():
+    if limpio.isascii() and limpio.isdigit():  # "²".isdigit() es True y int("²") lanza
         return str(int(limpio))
     return limpio
 

@@ -440,6 +440,10 @@ def quality(
     response_model=SourceFreshnessResult,
     summary="Frescura y SLA por fuente de ingesta",
 )
+# Sin caché, cada sondeo del panel de Ops (cada 5 min por pestaña) traía 50 000
+# muestras de latencia a Python. Un minuto no tapa nada: la ingesta más rápida
+# corre cada cuatro horas.
+@cache_response(ttl=60, cpu_bound=True, user_scoped=False)
 def source_freshness(
     _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> SourceFreshnessResult:

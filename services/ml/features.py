@@ -215,7 +215,19 @@ def _fecha_dt(fecha: str) -> datetime:
     iso = to_iso_date(fecha)
     if not iso:
         raise ValueError(f"fecha vacía: {fecha!r}")
-    return datetime.strptime(iso[:10], "%Y-%m-%d")
+    dia = iso[:10]
+    # Camino rápido para la forma canónica `AAAA-MM-DD` (unas 40 veces más rápido que
+    # `strptime`, y el baseline de baja lo llama por fila en cada fold). Solo con
+    # esa forma exacta: `fromisoformat` acepta además semanas ISO y la forma
+    # compacta, que `strptime` rechaza y aquí deben seguir lanzando.
+    if (
+        len(dia) == 10
+        and dia[4] == dia[7] == "-"
+        and dia.isascii()
+        and dia.replace("-", "").isdigit()
+    ):
+        return datetime.fromisoformat(dia)
+    return datetime.strptime(dia, "%Y-%m-%d")
 
 
 def _fecha_opt(fecha: Any) -> datetime | None:

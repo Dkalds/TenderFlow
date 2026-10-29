@@ -610,6 +610,21 @@ _Sin ítems abiertos._
 
 ## P2 — Media
 
+### [P2] [Rendimiento 2026-10] Lo que quedó de la revisión de rendimiento y código
+- **Área:** db/upsert.py, services/entity_resolution.py, scheduler/{watchlist_rules_alerts,competitor_alerts}.py, services/deadline_reminders.py, db/repositories/aggregates.py, observability/alerts.py, varios helpers duplicados
+- **Problema:** la revisión del 2026-10-26 (lo hecho está en _Cerrados_ con esa fecha) dejó abierto lo que necesita una decisión, una medición en producción o el OK del propietario:
+  - **Adjudicaciones re-ingeridas en cada pasada.** `replace_adjudicaciones_batch` borra y reinserta las de cada expediente que el ATOM reenvía (cada ~4 h), con ids nuevos y `empresa_id` a NULL, que la resolución de empresas vuelve a calcular. Conservar `empresa_id` o saltarse los expedientes cuyas adjudicaciones no cambian es más rápido, pero una re-resolución hoy recoge alias y revisiones nuevas: decisión de producto.
+  - **`entity_resolution`** recarga todos los alias y NIF cada 5.000 filas, y el fuzzy compara cada nombre con todos los alias de longitud parecida (~0,3 s por búsqueda con 200k alias, medido en memoria). Llevar las cachés entre lotes puede enlazar a una empresa que otro proceso fusionó entre medias; acotar candidatos puede perder casamientos.
+  - **Jobs de avisos fila a fila:** `watchlist_rules_alerts` (una conexión por coincidencia), `competitor_alerts` (hasta ~52 consultas por entrada, repetidas por cada usuario que sigue a la misma empresa), `deadline_reminders` (2-3 viajes por usuario × favorito × ventana, casi todos `ON CONFLICT DO NOTHING`) y la derivación de eventos (`derive_new_events`: una consulta de estado y de seguidores por fila de historial; el recorrido cuadrático ya está corregido). SQL nuevo, con su sitio en `db/`.
+  - **Overview de analítica:** `overview_funnel` y `overview_por_estado` recorren el mismo conjunto; `overview_ccaa_cubiertas` filtrado es `len(por_ccaa)`; `overview_concentracion_organos` trae todos los órganos a Python para sumar diez.
+  - **`NOT IN (subconsulta)` de duplicados** (`db/sql_fragments.py`) en casi todo listado y agregado: comprobar con `EXPLAIN` que sigue siendo *hashed SubPlan*; si no, `NOT EXISTS` (ojo con la semántica ante NULL y los tests que fijan el SQL).
+  - **Código muerto que exige borrar tests (§6):** `check_daily_lag`, `check_daily_consecutive_failures` y `check_ml_model_staleness` en `observability/alerts.py` no los llama nadie y el runbook de alertas los da por activos; borrarlos quita además dos importaciones congeladas del ratchet de capas.
+  - **Helpers duplicados que ya divergen:** plegado de tildes (~9 copias, `services/pursuit_menciones.py` con NFD), `cpv4` (7), «ISO a instante UTC» (~15), parseo de importes en texto (`regional_rss` acepta «1.5 €» como 15), verificación OIDC de Google frente a la genérica.
+  - **NIF de relleno** (`N/A`, `000000000`…): `services/entity_resolution.py` crea una empresa con ese NIF y le enlaza todas las adjudicaciones que lo traen; tres normalizaciones SQL distintas del NIF en `db/`. Contar en producción antes de tocar.
+- **Acceptance criteria:** cada viñeta cerrada o convertida en su propio ítem, con la medición o la decisión que la justifica.
+- **Files de partida:** [db/upsert.py](../db/upsert.py), [services/entity_resolution.py](../services/entity_resolution.py), [scheduler/watchlist_rules_alerts.py](../scheduler/watchlist_rules_alerts.py), [db/repositories/aggregates.py](../db/repositories/aggregates.py), [observability/alerts.py](../observability/alerts.py)
+- **Riesgo:** medio — casi todo toca la ingesta o el dato publicado.
+
 ### [P2] Antes de activar Microsoft en producción: dos comprobaciones del propietario
 - **Área:** variables de Render (`tenderflow-api`), registro de la aplicación en Entra ID
 - **Problema:** el código ya no deja entrar con un correo que Entra no acredita ([ADR-037](adr/ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md); el ítem P1 está en _Cerrados_). Quedan dos cosas que desde el repo no se ven: qué valor tiene hoy `OAUTH_MICROSOFT_CLIENT_ID` en Render (no se comprobó el 2026-10-09 ni el 2026-10-23), y que la aplicación de Entra emita el claim opcional `xms_edov`, sin el que nadie entra con Microsoft.
@@ -1321,6 +1336,41 @@ _Sin ítems abiertos._
 ## Cerrados
 
 - [2026-10-25] **Índices `v142`/`v143` (búsqueda `q`, tecnología) y `v144` (analítica) ya estaban aplicados en producción** — verificado con `migrate.yml` en `plan` (BD en `v158`) y `pg_stat_user_indexes`; los dos ítems P1 que pedían aplicarlos eran deuda documental y van al archivo con los `idx_scan` medidos.
+- [2026-10-26] **Revisión de rendimiento y código (rama `agente/optimizacion-rendimiento-2026-10`)** —
+  API: la validación de API keys hacía tres lecturas de BD en el event loop
+  (`api/auth.py`, fuera del barrido de `test_async_handlers_no_blocking_io.py`, que ahora
+  mira también los módulos de primer nivel de `api/`); el dueño viaja en el contexto y
+  `dual_auth` ya no lo relee; las columnas de `api_keys` se leen una vez por proceso;
+  `last_used` se escribe como mucho una vez por minuto y clave. Las descargas (CSV, Excel,
+  PDF, CRM, RGPD) salen en un cuerpo con `Content-Length` en vez de un salto al threadpool
+  por línea. `/metrics` serializa en un hilo; la validación del listado por cursor y de
+  `/search` va en el hilo de la consulta; `/tecnologias` hace un salto en vez de tres;
+  `fts_available` recuerda el `True`; `/source-freshness` cachea 60 s; el health check
+  cierra su cliente Redis; la invalidación de caché barre Redis de 1.000 en 1.000 y borra
+  en tanda; `get_tracer` no reintenta el import fallido de OpenTelemetry en cada `run_db`.
+  Logging: `filter_by_level` primero (un `log.debug` suprimido pasa de ~18 µs a ~1,4 µs).
+  Ingesta: XPath compiladas una vez por hilo (`parse_entry_unfiltered` 0,55 → 0,31 ms por
+  entry, fixtures); PSCP extrae importes y estado después de la puerta tecnológica; el
+  rescate de pliegos pregunta si alguien espera la entry antes de leer sus referencias;
+  `replace_lotes_batch` es una transacción con dos `DELETE` y un upsert multi-fila (antes,
+  una transacción y 3+N viajes por licitación); `upsert_meta_batch` escribe los documentos
+  del flush con un `SELECT` y tres `executemany`, con fail-open por licitación vía
+  `SAVEPOINT`. BD: la asignación de órganos para tras un lote incompleto (un recorrido
+  menos por grafía); `list_extracted_without_chunks` con `NOT EXISTS`; `scope_coverage` en
+  una consulta; preferencias de notificación en una transacción y todas o ninguna.
+  Servicios: `derive_new_events` sin el recorrido cuadrático; clustering sin el ajuste
+  repetido de KMeans ni la concatenación cuadrática; `normalize_company` memoizada; fecha
+  ISO por `fromisoformat` en ML. Bugs: `int("²")` en la normalización de códigos (y una
+  copia duplicada menos), `_rfc3339` del feed Atom sellaba como UTC horas con zona,
+  temporal fijo en `LocalObjectStore.put`, cuatro `except` del healthcheck sin `ROLLBACK`
+  (el de `pg_database_size` dejaba la transacción abortada y tumbaba el healthcheck entero),
+  carrera de versión en `tech_signal.score_documents`. Frontend: recharts fuera del First
+  Load de Competidores y Órganos, panel de opciones del Investigador bajo demanda,
+  `staleTime` del overview sin rebajar, tablero sin re-render en cada `dragleave`,
+  `useFilters` estable, cola de cierre cancelable. Verificado contra Postgres 16 + pgvector
+  local: suite `integration and not slow` (3.123 verdes; los 5 rojos de esa pasada, arreglados
+  y re-ejecutados) y 495 tests de BD de lotes, documentos y conectores tras el lote. Lo que
+  quedó abierto: el P2 «[Rendimiento 2026-10] Lo que quedó de la revisión».
 - [2026-10-23] **Excepción de `braces` en `npm audit` retirada** — el job «Security audit»
   de la PR #529 falló porque `npm audit` ya no reporta GHSA-vfj7-8cjw-p6xm (el lockfile sigue en
   `braces` 3.0.3 y `npm view braces version` también) y `scripts/check_npm_audit.py` exige quitar

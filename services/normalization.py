@@ -14,6 +14,7 @@ Las funciones públicas son:
 
 from __future__ import annotations
 
+import functools
 import re
 import unicodedata
 from typing import Literal
@@ -72,9 +73,19 @@ def normalize_company(name: str | None) -> str | None:
     strip puntuación → quita sufijos descubiertos tras puntuación → colapsa espacios.
 
     La función es idempotente: normalize(normalize(x)) == normalize(x).
+
+    Memoizada: es pura, cuesta ~18 µs y los mismos nombres vuelven una y otra
+    vez —el dedupe la aplica al órgano de cada candidato, la analítica de
+    competidores a miles de filas por petición, las etiquetas de retención dos
+    veces por adjudicación—.
     """
     if not name or not isinstance(name, str):
         return None
+    return _normalize_company(name)
+
+
+@functools.lru_cache(maxsize=65_536)
+def _normalize_company(name: str) -> str | None:
     s = name.strip().upper()
     s = _strip_accents(s).upper()
     # Pass 1: remove terminal legal suffixes before punctuation normalization

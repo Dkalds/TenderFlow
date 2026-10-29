@@ -471,8 +471,6 @@ export function ScopeBar() {
         { signal },
       );
     },
-    staleTime: 60_000,
-    retry: 1,
     enabled: filtersApply,
     // Mismo comportamiento que `useFilteredQuery`: al cambiar el ámbito se
     // mantiene el número anterior en vez de parpadear a «—».

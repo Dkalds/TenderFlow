@@ -55,7 +55,8 @@ Limitaciones conocidas
 - No sigue llamadas: si un handler llama a un helper propio del módulo que a su
   vez va a BD (``_check_db()`` en ``health.py``), este test no lo ve. Cubre la
   forma dominante — la llamada directa a ``db.*``/``services.*`` —, no todas.
-- Mira ``api/routes/`` y los wrappers async de ``shared/cache.py`` (abajo). El
+- Mira ``api/routes/``, los módulos de primer nivel de ``api/`` (dependencias
+  como ``api/auth.py``) y los wrappers async de ``shared/cache.py`` (abajo). El
   resto de la app (scheduler, scraper) es síncrono de principio a fin y no
   tiene event loop que bloquear. ``api/middleware.py`` tampoco entra: sus
   capas ASGI tienen sus propios tests, que comprueban que la cuota se consulta
@@ -161,6 +162,10 @@ _PURE_CALLS: frozenset[str] = frozenset(
         # 2026-10-25) el test lo veía como síncrono por el paquete, no por lo
         # que hace. La lectura del job sí va por `run_db`.
         "clave_cache_export",
+        # `db.connection.fijar_techo_de_sentencia`: fija un `ContextVar` con el
+        # `statement_timeout` de la petición. No abre conexión: lo leen las
+        # lecturas que el handler despacha después con `run_db`.
+        "fijar_techo_de_sentencia",
     }
 )
 
@@ -266,11 +271,30 @@ def _route_files() -> list[Path]:
     return sorted(_ROUTES_DIR.rglob("*.py"))
 
 
+# Módulos de primer nivel de ``api/`` que no entran en el barrido: las capas
+# ASGI tienen sus propios tests (ver «Limitaciones conocidas»).
+_API_TOP_EXCLUIDOS: frozenset[str] = frozenset({"middleware.py"})
+
+# ``async def`` que corren antes de que el proceso acepte tráfico: no hay
+# ninguna petición a la que bloquear.
+_ARRANQUE: frozenset[str] = frozenset({"api/app.py::lifespan"})
+
+
+def _api_top_files() -> list[Path]:
+    """Los ``.py`` de primer nivel de ``api/`` (dependencias como ``api/auth.py``).
+
+    Hasta 2026-10 el barrido solo miraba ``api/routes/``, y
+    ``api/auth.py::validate_api_key_credential`` —de la que cuelga toda petición
+    con API key— hacía tres lecturas de BD en el loop sin que nada fallara.
+    """
+    return sorted(p for p in (_REPO_ROOT / "api").glob("*.py") if p.name not in _API_TOP_EXCLUIDOS)
+
+
 def _scan_routes() -> set[str]:
     found: set[str] = set()
-    for path in _route_files():
+    for path in [*_route_files(), *_api_top_files()]:
         found |= _scan_file(path)
-    return found
+    return found - _ARRANQUE
 
 
 # ── shared/cache.py ─────────────────────────────────────────────────────────

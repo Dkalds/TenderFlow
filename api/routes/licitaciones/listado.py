@@ -424,11 +424,12 @@ async def list_licitaciones_cursor(
         else:
             cursor_orden = _decode_cursor_orden(cursor, str(sort))
 
-    def _leer() -> tuple[list[LicitacionResumenRow], int | None]:
+    def _leer() -> tuple[list[LicitacionSummary], bool, str | None, int | None]:
         # Página y total en UN salto al threadpool (ver
         # `tests/test_async_handlers_no_blocking_io.py`): el conteo sólo si se
-        # pide, y con los mismos filtros que la página.
-        filas = _lic_repo.list_cursor(
+        # pide, y con los mismos filtros que la página. Validar hasta 500 filas
+        # también va aquí: en el handler corría sobre el event loop.
+        filas: list[LicitacionResumenRow] = _lic_repo.list_cursor(
             filtros,
             cursor_fecha=cursor_fecha,
             cursor_id=cursor_id,
@@ -436,32 +437,33 @@ async def list_licitaciones_cursor(
             cursor_orden=cursor_orden,
             limit=limit,
         )
-        return filas, (_lic_repo.count_cursor(filtros) if orden.with_total else None)
+        total = _lic_repo.count_cursor(filtros) if orden.with_total else None
 
-    items, total = await run_db(_leer)
+        has_more = len(filas) > limit
+        if has_more:
+            filas = filas[:limit]
 
-    has_more = len(items) > limit
-    if has_more:
-        items = items[:limit]
+        next_cursor: str | None = None
+        if has_more and filas:
+            last = filas[-1]
+            if orden_por_fecha:
+                next_cursor = _encode_cursor(last.get("fecha_publicacion"), last["id_externo"])
+            else:
+                columna = str(sort).lstrip("-")
+                # La columna de orden es dinámica: su valor llega como ``object``. Las
+                # ordenables son texto o número; cualquier otra cosa no se podía
+                # serializar en el cursor JSON, así que viaja como texto.
+                valor = last.get(columna)
+                valor_cursor = (
+                    valor if valor is None or isinstance(valor, str | int | float) else str(valor)
+                )
+                next_cursor = _encode_cursor_orden(str(sort), valor_cursor, last["id_externo"])
+        return [LicitacionSummary.model_validate(d) for d in filas], has_more, next_cursor, total
 
-    next_cursor: str | None = None
-    if has_more and items:
-        last = items[-1]
-        if orden_por_fecha:
-            next_cursor = _encode_cursor(last.get("fecha_publicacion"), last["id_externo"])
-        else:
-            columna = str(sort).lstrip("-")
-            # La columna de orden es dinámica: su valor llega como ``object``. Las
-            # ordenables son texto o número; cualquier otra cosa no se podía
-            # serializar en el cursor JSON, así que viaja como texto.
-            valor = last.get(columna)
-            valor_cursor = (
-                valor if valor is None or isinstance(valor, str | int | float) else str(valor)
-            )
-            next_cursor = _encode_cursor_orden(str(sort), valor_cursor, last["id_externo"])
+    items, has_more, next_cursor, total = await run_db(_leer)
 
     return CursorPaginatedResponseWithTotal[LicitacionSummary](
-        items=[LicitacionSummary.model_validate(d) for d in items],
+        items=items,
         next_cursor=next_cursor,
         has_more=has_more,
         limit=limit,
@@ -506,8 +508,9 @@ async def search_licitaciones(
     limit = max(1, min(body.limit, MAX_PAGE_LIMIT))
     offset = max(0, body.offset)
 
-    def _run() -> tuple[list[LicitacionResumenRow], int]:
-        return search_advanced(
+    def _run() -> tuple[list[LicitacionSummary], int]:
+        filas: list[LicitacionResumenRow]
+        filas, total = search_advanced(
             q=body.q,
             estado=body.estado,
             ccaa=body.ccaa,
@@ -521,6 +524,8 @@ async def search_licitaciones(
             offset=offset,
             with_total=body.with_total,
         )
+        # Validar en el hilo, no en el event loop (hasta 500 filas).
+        return [LicitacionSummary.model_validate(d) for d in filas], total
 
     items, total = await run_db(_run)
 
@@ -528,7 +533,7 @@ async def search_licitaciones(
         total=total,
         limit=limit,
         offset=offset,
-        items=[LicitacionSummary.model_validate(d) for d in items],
+        items=items,
     )
 
 

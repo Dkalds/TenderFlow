@@ -18,7 +18,7 @@ import dynamic from "next/dynamic";
 
 import { Panel, PanelEmpty, PanelLoading, PanelTitle, Segmented } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
-import { ALTO_MAPA_COMPETIDORES } from "@/components/charts/competitors-charts";
+import { ALTO_MAPA_COMPETIDORES } from "@/components/charts/alturas";
 import { CHART_SERIES } from "@/lib/chart-colors";
 import { formatNumber } from "@/lib/utils";
 

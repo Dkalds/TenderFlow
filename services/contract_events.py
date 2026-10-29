@@ -299,23 +299,33 @@ def derive_new_events(batch_size: int = 1000) -> int:
         inserted = 0
         avisados = 0
         max_id = last_id
+        # Snapshot parseado de cada fila (``None`` si no parsea), una sola vez,
+        # y el índice de la siguiente fila de la misma licitación dentro del
+        # lote, en una pasada hacia atrás. Antes cada fila recorría (y copiaba)
+        # el resto del lote buscando su siguiente: cuadrático con 1000 filas.
+        snapshots: list[dict[str, object] | None] = []
+        for row in rows:
+            try:
+                snapshots.append(json.loads(row["snapshot_json"]))
+            except (TypeError, ValueError):
+                snapshots.append(None)
+        siguiente: list[int | None] = [None] * len(rows)
+        ultima_vista: dict[str, int] = {}
+        for i in range(len(rows) - 1, -1, -1):
+            clave = str(rows[i]["id_externo"])
+            siguiente[i] = ultima_vista.get(clave)
+            ultima_vista[clave] = i
+
         for i, row in enumerate(rows):
             max_id = max(max_id, int(row["id"]))
-            try:
-                snapshot = json.loads(row["snapshot_json"])
-            except (TypeError, ValueError):
+            snapshot = snapshots[i]
+            if snapshot is None:
                 continue
 
             # Estado "después": snapshot del siguiente cambio de la misma
             # licitación dentro del lote, o la fila actual de licitaciones.
-            despues_state: dict[str, Any] | None = None
-            for nxt in rows[i + 1 :]:
-                if nxt["id_externo"] == row["id_externo"]:
-                    try:
-                        despues_state = json.loads(nxt["snapshot_json"])
-                    except (TypeError, ValueError):
-                        despues_state = None
-                    break
+            j = siguiente[i]
+            despues_state: dict[str, Any] | None = snapshots[j] if j is not None else None
             if despues_state is None:
                 # La proyección incluye `fecha_limite`, `cpv`, `url` y `titulo`
                 # además de los cinco campos de contrato: el aviso al seguidor

@@ -439,6 +439,12 @@ def run_check(
                 c.execute("SELECT pg_database_size(current_database())").fetchone()[0]
             )
         except Exception:
+            # ROLLBACK, como en los demás bloques: sin él, la transacción queda
+            # abortada y el recuento de licitaciones de justo debajo —que no
+            # captura nada— tumbaba el healthcheck entero con
+            # InFailedSqlTransaction.
+            with contextlib.suppress(Exception):
+                c.rollback()
             info["db_size_bytes"] = 0
 
         t0 = time.monotonic()
@@ -597,6 +603,11 @@ def run_check(
                 {"name": r[0], "holder": r[1], "expires_at": r[2]} for r in active_locks
             ]
         except Exception:
+            # ROLLBACK, como en los demás bloques: sin él, el de ops_events de
+            # abajo moría con InFailedSqlTransaction y se informaba como
+            # `ops_events_error` un fallo que era de `job_locks`.
+            with contextlib.suppress(Exception):
+                c.rollback()
             info["active_locks"] = []
 
         # ── Tripwires de persistencia (ops_events, ADR-004) ───────────
@@ -660,9 +671,14 @@ def run_check(
                 retention_cutoff = (datetime.now(UTC) - timedelta(days=30)).isoformat()
                 c.execute("DELETE FROM ops_events WHERE ts < %s", (retention_cutoff,))
             except Exception:
-                pass
+                # Best-effort, pero sin dejar la transacción abortada: el
+                # `with connect()` intentaría confirmarla al salir.
+                with contextlib.suppress(Exception):
+                    c.rollback()
 
         except Exception as exc:
+            with contextlib.suppress(Exception):
+                c.rollback()
             exc_msg = str(exc).lower()
             # Postgres dice 'relation "ops_events" does not exist' (o su
             # traducción, según `lc_messages`).

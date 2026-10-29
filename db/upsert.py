@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Literal
 
 from config import HISTORY_TRACKED_FIELDS
-from db.connection import connect, now_utc_iso
+from db.connection import connect, connect_read, now_utc_iso
 from db.dlq import record_failure
 from db.fechas_ts import LIC_COLUMNAS_UPSERT, sombra, sombras_presentes, valores_lic
 from db.nucleo_tipado import COLUMNAS_SOMBRA, sombras_disponibles, valores_sombra
@@ -995,12 +995,23 @@ def replace_adjudicaciones_batch(
     return persisted, dropped, failed
 
 
-_LOTE_UPSERT_SQL = (
-    f"INSERT INTO lotes ({_LOTE_COLS}) VALUES ({_LOTE_PLACEHOLDERS}) "
-    "ON CONFLICT (licitacion_id, numero) DO UPDATE SET "
-    + ", ".join(f"{k} = EXCLUDED.{k}" for k in _LOTE_KEYS if k not in ("licitacion_id", "numero"))
-    + " RETURNING id"
+_LOTE_ACTUALIZAR = ", ".join(
+    f"{k} = EXCLUDED.{k}" for k in _LOTE_KEYS if k not in ("licitacion_id", "numero")
 )
+
+# Lotes que la fuente ya no publica: los de las licitaciones del lote de
+# escritura cuyo `(licitacion_id, numero)` no viene en él. Tres parámetros:
+# las licitaciones y los pares que se conservan, como dos arrays paralelos.
+_LOTES_RETIRADOS_SQL = (
+    "SELECT l.id FROM lotes l WHERE l.licitacion_id = ANY(%s) AND NOT EXISTS ("
+    "  SELECT 1 FROM unnest(%s::text[], %s::text[]) AS k(lic, num)"
+    "  WHERE k.lic = l.licitacion_id AND k.num = l.numero"
+    ")"
+)
+
+# Filas por sentencia del upsert multi-fila: ~8 parámetros por lote deja muy
+# lejos el tope de 65 535 de Postgres.
+_LOTES_POR_SENTENCIA = 500
 
 
 def replace_lotes(licitacion_id: str, items: Iterable[Lote]) -> dict[str, int]:
@@ -1022,42 +1033,63 @@ def replace_lotes(licitacion_id: str, items: Iterable[Lote]) -> dict[str, int]:
     Devuelve el mapeo ``numero -> id`` para que el llamador resuelva
     ``Adjudicacion.lote_id`` a partir de ``lote_numero_raw``.
     """
-    rows = list(items)
-    numeros = [lote.numero for lote in rows]
-    with connect() as c:
-        c.execute(
-            "DELETE FROM adjudicaciones WHERE lote_id IN ("
-            "  SELECT id FROM lotes WHERE licitacion_id = %s AND NOT (numero = ANY(%s))"
-            ")",
-            [licitacion_id, numeros],
-        )
-        c.execute(
-            "DELETE FROM lotes WHERE licitacion_id = %s AND NOT (numero = ANY(%s))",
-            [licitacion_id, numeros],
-        )
-        mapping: dict[str, int] = {}
-        for lote in rows:
-            data = asdict(lote)
-            vals = [data[k] for k in _LOTE_KEYS]
-            row = c.execute(_LOTE_UPSERT_SQL, vals).fetchone()
-            mapping[lote.numero] = int(row[0])
-    return mapping
+    return replace_lotes_batch({licitacion_id: list(items)})[licitacion_id]
 
 
 def replace_lotes_batch(lotes_por_lic: dict[str, list[Lote]]) -> dict[str, dict[str, int]]:
-    """Aplica ``replace_lotes`` a varias licitaciones. Devuelve
-    ``{licitacion_id: {numero: lote_id}}`` para resolver adjudicaciones.
+    """Aplica :func:`replace_lotes` a varias licitaciones en una transacción.
 
-    Sin el camino "un solo executemany" de ``replace_adjudicaciones_batch``:
-    el volumen de lotes por ciclo de ingesta (cientos de licitaciones con
-    unos pocos lotes cada una) no justifica esa complejidad, y aquí hace
-    falta el ``id`` de cada fila insertada (``RETURNING``), que un
-    ``executemany`` no expone de forma portable.
+    Devuelve ``{licitacion_id: {numero: lote_id}}`` —con una entrada, vacía si
+    no tiene lotes, por cada licitación pedida— para resolver adjudicaciones.
+
+    Hasta 2026-10 era un bucle de ``replace_lotes``: una transacción por
+    licitación con dos ``DELETE`` y un ``INSERT … RETURNING`` por lote, cientos
+    de viajes a la BD por flush de ingesta. Ahora son dos ``DELETE`` para todo
+    el lote de escritura y un upsert multi-fila por cada
+    :data:`_LOTES_POR_SENTENCIA` lotes. Si la misma licitación trae dos veces
+    el mismo número, gana el último, como en el bucle de antes.
     """
-    return {
-        licitacion_id: replace_lotes(licitacion_id, items)
-        for licitacion_id, items in lotes_por_lic.items()
-    }
+    mapping: dict[str, dict[str, int]] = {lic: {} for lic in lotes_por_lic}
+    if not mapping:
+        return mapping
+
+    # Último por (licitación, número): dos filas con la misma clave en un mismo
+    # `INSERT … ON CONFLICT DO UPDATE` hacen fallar la sentencia entera.
+    ultimos: dict[tuple[str, str], Lote] = {}
+    for licitacion_id, items in lotes_por_lic.items():
+        for lote in items:
+            ultimos[(licitacion_id, lote.numero)] = lote
+    claves_lic = [lic for lic, _ in ultimos]
+    claves_num = [num for _, num in ultimos]
+    retirados = [list(mapping), claves_lic, claves_num]
+
+    with connect() as c:
+        c.execute(
+            "DELETE FROM adjudicaciones WHERE lote_id IN (" + _LOTES_RETIRADOS_SQL + ")",
+            retirados,
+        )
+        c.execute("DELETE FROM lotes WHERE id IN (" + _LOTES_RETIRADOS_SQL + ")", retirados)
+
+        filas = list(ultimos.items())
+        for inicio in range(0, len(filas), _LOTES_POR_SENTENCIA):
+            tanda = filas[inicio : inicio + _LOTES_POR_SENTENCIA]
+            valores: list[object] = []
+            for (licitacion_id, _numero), lote in tanda:
+                data = asdict(lote)
+                # La licitación sale de la clave del dict, como hacía
+                # `replace_lotes(licitacion_id, …)` con su argumento.
+                data["licitacion_id"] = licitacion_id
+                valores.extend(data[k] for k in _LOTE_KEYS)
+            sql = (
+                f"INSERT INTO lotes ({_LOTE_COLS}) VALUES "
+                + ", ".join(f"({_LOTE_PLACEHOLDERS})" for _ in tanda)
+                + " ON CONFLICT (licitacion_id, numero) DO UPDATE SET "
+                + _LOTE_ACTUALIZAR
+                + " RETURNING licitacion_id, numero, id"
+            )
+            for licitacion_id, numero, lote_id in c.execute(sql, valores).fetchall():
+                mapping[str(licitacion_id)][str(numero)] = int(lote_id)
+    return mapping
 
 
 def estimar_filas(c: Any, tabla: str) -> int | None:
@@ -1351,14 +1383,28 @@ def get_history(id_externo: str, limit: int = 50) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+_fts_confirmado = False
+
+
 def fts_available() -> bool:
-    """True si la columna ``search_vector`` existe (búsqueda de texto completo)."""
-    with connect() as c:
+    """True si la columna ``search_vector`` existe (búsqueda de texto completo).
+
+    Una vez vista se recuerda en el proceso: la columna existe desde hace
+    decenas de migraciones y ninguna la quita, y esta comprobación corría en
+    cada búsqueda con ``q`` —una transacción de escritura contra
+    ``information_schema``—. Un ``False`` no se recuerda: sigue preguntando
+    hasta que la migración la cree.
+    """
+    global _fts_confirmado
+    if _fts_confirmado:
+        return True
+    with connect_read() as c:
         row = c.execute(
             "SELECT 1 FROM information_schema.columns "
             "WHERE table_name='licitaciones' AND column_name='search_vector' LIMIT 1"
         ).fetchone()
-        return row is not None
+    _fts_confirmado = row is not None
+    return _fts_confirmado
 
 
 def search_fts(query: str, limit: int = 50, offset: int = 0) -> tuple[list[dict[str, Any]], int]:

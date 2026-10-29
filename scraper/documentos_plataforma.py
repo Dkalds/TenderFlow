@@ -317,6 +317,16 @@ class RescatePliegosPlacsp:
             self._esperadas = esperadas
         return self._esperadas
 
+    def espera(self, url_entry: str | None) -> bool:
+        """``True`` si alguna fila TED espera la entry de *url_entry*.
+
+        Para preguntarlo **antes** de leer sus pliegos: casi ninguna entry
+        descartada tiene un aviso TED esperándola, y extraer sus referencias
+        cuesta varias evaluaciones XPath por documento.
+        """
+        evl = id_evl_de_url(url_entry)
+        return evl is not None and bool(self._mapa().get(evl))
+
     def considerar(
         self,
         url_entry: str | None,

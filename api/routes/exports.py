@@ -18,7 +18,6 @@ El PDF se genera con ``reportlab`` (ya en dependencies del proyecto).
 
 from __future__ import annotations
 
-import io
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -56,6 +55,23 @@ from shared.dto import CalendarioEnlace, JobEstadoDTO
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/exports", tags=["exports"])
+
+
+def _adjunto(contenido: bytes, media_type: str, filename: str) -> Response:
+    """El fichero ya generado, como adjunto y en un único cuerpo.
+
+    Hasta 2026-10 se servía con ``StreamingResponse(io.BytesIO(...))``: iterar
+    un ``BytesIO`` da líneas, y Starlette despacha cada una a un hilo, así que
+    un CSV de 50 000 filas eran 50 000 saltos al threadpool y otros tantos
+    envíos ASGI por toda la pila de middlewares. Los bytes ya están en memoria;
+    con ``Response`` sale entero y con ``Content-Length``.
+    """
+    return Response(
+        content=contenido,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
 
 # ── Synchronous CSV/Excel download ───────────────────────────────────────────
 
@@ -240,11 +256,7 @@ async def download_export(
         detail={"recurso": recurso, "format": format, "n_rows": n_rows, "por_lote": por_lote},
     )
     log.info("export_download", format=format, n_rows=n_rows)
-    return StreamingResponse(
-        io.BytesIO(content),
-        media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return _adjunto(content, media_type, filename)
 
 
 async def _encolar_export_pdf(payload: dict[str, Any], ctx: dict[str, Any]) -> JSONResponse:
@@ -294,7 +306,7 @@ async def _encolar_export_pdf(payload: dict[str, Any], ctx: dict[str, Any]) -> J
 async def descargar_export_encolado(
     job_id: int = Path(ge=1, description="Identificador que devolvió el 202 de /download"),
     ctx: dict[str, Any] = Depends(require_organization()),
-) -> StreamingResponse:
+) -> Response:
     """Sirve el PDF que dejó maquetado el worker, mientras siga en caché.
 
     Es una ruta separada de ``/download`` a propósito. El issue #50 fue un IDOR
@@ -349,13 +361,7 @@ async def descargar_export_encolado(
             "job_id": job_id,
         },
     )
-    return StreamingResponse(
-        io.BytesIO(contenido),
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'attachment; filename="{get_export_filename("pdf")}"',
-        },
-    )
+    return _adjunto(contenido, "application/pdf", get_export_filename("pdf"))
 
 
 async def _download_pursuits(
@@ -365,7 +371,7 @@ async def _download_pursuits(
     responsible_user_id: int | None,
     limit: int,
     user: dict[str, Any],
-) -> StreamingResponse:
+) -> Response:
     """Export del tablero de oportunidades (C6.7).
 
     **PDF queda fuera**: su maquetación es una tabla por expediente del corpus
@@ -408,11 +414,7 @@ async def _download_pursuits(
         detail={"recurso": "pursuits", "format": format, "n_rows": n_rows},
     )
     log.info("export_download", format=format, recurso="pursuits", n_rows=n_rows)
-    return StreamingResponse(
-        io.BytesIO(content),
-        media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return _adjunto(content, media_type, filename)
 
 
 # ---------------------------------------------------------------------------
@@ -443,7 +445,7 @@ async def download_crm(
     responsible_user_id: int | None = Query(None, ge=1, description="Filtro de responsable"),
     limit: int = Query(10000, ge=1, le=50000),
     user: dict[str, Any] = Depends(require_any_auth),
-) -> StreamingResponse:
+) -> Response:
     """F6.3 — el tablero de oportunidades en el vocabulario de un CRM.
 
     D35: CSV con mapeo documentado (Salesforce y Dynamics lo importan sin
@@ -477,14 +479,10 @@ async def download_crm(
         detail={"recurso": "pursuits", "format": "crm", "n_rows": n_rows},
     )
     log.info("export_download", format="crm", recurso="pursuits", n_rows=n_rows)
-    return StreamingResponse(
-        io.BytesIO(content),
-        media_type="text/csv; charset=utf-8",
-        headers={
-            "Content-Disposition": (
-                f'attachment; filename="{get_export_filename("csv", prefix="oportunidades_crm")}"'
-            )
-        },
+    return _adjunto(
+        content,
+        "text/csv; charset=utf-8",
+        get_export_filename("csv", prefix="oportunidades_crm"),
     )
 
 

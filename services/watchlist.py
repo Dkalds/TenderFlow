@@ -99,13 +99,20 @@ MAX_REGLAS_FEED = 25
 
 
 def _rfc3339(valor: object, por_defecto: str) -> str:
-    """Fecha de la licitación en el formato que exige Atom, o ``por_defecto``."""
-    from datetime import datetime
+    """Fecha de la licitación en el formato que exige Atom, o ``por_defecto``.
+
+    Una fecha con zona se pasa a UTC antes de escribirle la ``Z``: sellar
+    ``10:00+02:00`` como ``10:00Z`` la adelantaba dos horas. Una sin zona (las
+    de solo día, que son casi todas) se toma como UTC, igual que antes.
+    """
+    from datetime import UTC, datetime
 
     try:
         fecha = datetime.fromisoformat(str(valor).replace("Z", "+00:00"))
     except ValueError:
         return por_defecto
+    if fecha.tzinfo is not None:
+        fecha = fecha.astimezone(UTC)
     return fecha.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 

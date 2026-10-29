@@ -146,8 +146,7 @@ def test_el_csv_tambien_los_respeta() -> None:
     }
 
     async def _correr() -> None:
-        respuesta = await exports_mod.download_export(**parametros, _user={"user_id": 1})
-        b"".join([trozo async for trozo in respuesta.body_iterator])
+        await exports_mod.download_export(**parametros, _user={"user_id": 1})
 
     with (
         patch("services.licitaciones.fetch_for_pdf", return_value=[]) as consultar,

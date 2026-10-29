@@ -22,7 +22,8 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Callable
-from typing import Any, ParamSpec, TypeVar
+from types import ModuleType
+from typing import Any, Literal, ParamSpec, TypeVar
 
 from observability.logging import get_logger
 
@@ -178,14 +179,26 @@ def configure_tracing(service_name: str | None = None) -> None:
         _configured = True
 
 
+# Módulo ``opentelemetry.trace`` resuelto una sola vez; ``False`` si no está
+# instalado. Python no cachea los imports fallidos: sin esto, cada ``run_db`` de
+# la imagen de la API (que no instala OTEL) recorría ``sys.path`` y lanzaba un
+# ``ImportError``.
+_otel_trace: ModuleType | Literal[False] | None = None
+
+
 def get_tracer(name: str) -> Any:
     """Retorna un tracer de OpenTelemetry (o NoOp si no está configurado)."""
-    try:
-        from opentelemetry import trace
+    global _otel_trace
+    if _otel_trace is None:
+        try:
+            from opentelemetry import trace
 
-        return trace.get_tracer(name)
-    except ImportError:
+            _otel_trace = trace
+        except ImportError:
+            _otel_trace = False
+    if _otel_trace is False:
         return _NoOpTracer()
+    return _otel_trace.get_tracer(name)
 
 
 class _NoOpTracer:

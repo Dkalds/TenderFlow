@@ -65,6 +65,61 @@ def _set_created_at(documento_id: int, created_at: str) -> None:
         )
 
 
+class TestUpsertMetaBatch:
+    """``upsert_meta_batch``: lo que escribe la ingesta, una conexión por flush."""
+
+    def test_escribe_varias_licitaciones_como_upsert_meta(self, repo):
+        _insert_licitacion("EXP-B1")
+        _insert_licitacion("EXP-B2")
+
+        fallos = repo.upsert_meta_batch(
+            {
+                "EXP-B1": [DocumentoReferencia(tipo="legal", uri="https://x/b1.pdf")],
+                "EXP-B2": [
+                    DocumentoReferencia(tipo="legal", uri="https://x/b2.pdf"),
+                    DocumentoReferencia(tipo="technical", uri="https://x/b2t.pdf"),
+                ],
+                "EXP-VACIA": [],
+            }
+        )
+
+        assert fallos == {}
+        por_lic: dict[str, set[str]] = {}
+        for doc in repo.list_pendientes():
+            por_lic.setdefault(doc["licitacion_id"], set()).add(doc["uri"])
+        assert por_lic == {
+            "EXP-B1": {"https://x/b1.pdf"},
+            "EXP-B2": {"https://x/b2.pdf", "https://x/b2t.pdf"},
+        }
+
+    def test_reingesta_en_lote_refresca_por_hash_sin_duplicar(self, repo):
+        _insert_licitacion("EXP-B3")
+        repo.upsert_meta_batch(
+            {"EXP-B3": [DocumentoReferencia(tipo="legal", uri="https://x/d?t=1", source_hash="H")]}
+        )
+        repo.upsert_meta_batch(
+            {"EXP-B3": [DocumentoReferencia(tipo="legal", uri="https://x/d?t=2", source_hash="H")]}
+        )
+
+        docs = repo.list_pendientes()
+        assert [d["uri"] for d in docs] == ["https://x/d?t=2"]
+
+    def test_una_licitacion_que_falla_no_deja_sin_documentos_a_las_demas(self, repo):
+        """Fail-open por licitación: la FK hace fallar la escritura conjunta, y
+        el reintento una a una escribe las buenas y devuelve la mala."""
+        _insert_licitacion("EXP-B4")
+
+        fallos = repo.upsert_meta_batch(
+            {
+                "EXP-B4": [DocumentoReferencia(tipo="legal", uri="https://x/b4.pdf")],
+                "EXP-NO-EXISTE": [DocumentoReferencia(tipo="legal", uri="https://x/no.pdf")],
+            }
+        )
+
+        assert set(fallos) == {"EXP-NO-EXISTE"}
+        assert [d["uri"] for d in repo.list_pendientes()] == ["https://x/b4.pdf"]
+
+
 class TestUpsertMeta:
     def test_inserts_new_documentos_as_pending(self, repo):
         _insert_licitacion("EXP-1")

@@ -152,9 +152,10 @@ export function ColaCierre({
 
   const cola = useQuery<LicitacionesCursorPage>({
     queryKey: ["licitaciones", "cola-cierre", params],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       fetchWithAuth<LicitacionesCursorPage>(
         `/api/v1/licitaciones/cursor?${new URLSearchParams(params)}`,
+        { signal },
       ),
     staleTime: 2 * 60 * 1000,
     // Sin cola que desglosar la petición no aporta nada: la tarjeta ya sabe que

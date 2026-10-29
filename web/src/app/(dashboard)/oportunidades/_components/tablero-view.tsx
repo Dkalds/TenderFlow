@@ -1,11 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useMemo } from "react";
 import { Aviso, PanelEmpty, PanelError } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useEtiquetasDe } from "@/hooks/use-etiquetas";
-import { usePursuitMetrics, usePursuits } from "@/hooks/use-pursuits";
+import { usePursuitMetrics, usePursuits, type Pursuit } from "@/hooks/use-pursuits";
 import { formatNumber } from "@/lib/utils";
 /**
  * El diálogo de cierre, sólo cuando se cierra algo.
@@ -24,7 +25,7 @@ import { TableroColumna } from "./tablero-columna";
 import { TableroMetricas } from "./tablero-metricas";
 import { TableroVacio } from "./tablero-vacio";
 import { useTablero } from "../_hooks/use-tablero";
-import { FASES, faseDe } from "../_lib/fases";
+import { FASES, faseDe, type FaseKey } from "../_lib/fases";
 import { consultaDelTablero, hayFiltros, type FiltrosTablero } from "../_lib/filtros-tablero";
 import { bloqueoDeFase, resultadosPermitidos } from "../_lib/flujo";
 
@@ -74,11 +75,20 @@ export default function TableroView({
   const pursuits = usePursuits(consultaDelTablero({ ...filtros, q }));
   const metrics = usePursuitMetrics();
   const tablero = useTablero();
+  const { estadoDe } = tablero;
 
   // F1.6 — una sola petición con las etiquetas de todas las tarjetas.
-  const items = pursuits.data?.items ?? [];
+  const items = useMemo(() => pursuits.data?.items ?? [], [pursuits.data?.items]);
   const ids = items.map((pursuit) => String(pursuit.id));
   const etiquetasPorId = useEtiquetasDe("oportunidad", ids).data ?? {};
+
+  // El reparto por columna solo cambia con la lista o con un movimiento
+  // optimista (`estadoDe`), no con cada `dragover` que enciende una columna.
+  const porFase = useMemo(() => {
+    const reparto = new Map<FaseKey, Pursuit[]>(FASES.map((fase) => [fase.key, []]));
+    for (const item of items) reparto.get(faseDe(estadoDe(item)))?.push(item);
+    return reparto;
+  }, [items, estadoDe]);
 
   const sinResultados = !pursuits.isPending && !pursuits.error && items.length === 0;
   const total = pursuits.data?.total ?? 0;
@@ -124,7 +134,7 @@ export default function TableroView({
                 <TableroColumna
                   key={fase.key}
                   fase={fase}
-                  items={items.filter((item) => faseDe(tablero.estadoDe(item)) === fase.key)}
+                  items={porFase.get(fase.key) ?? []}
                   etiquetasPorId={etiquetasPorId}
                   cargando={pursuits.isPending}
                   activa={tablero.columnaActiva === fase.key}

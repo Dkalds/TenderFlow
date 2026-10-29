@@ -27,7 +27,7 @@ import zipfile
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from api.auth import create_api_key
@@ -137,7 +137,7 @@ def _actor_key(ctx: dict[str, Any]) -> str:
     response_class=StreamingResponse,
     responses={200: {"content": {"application/zip": {}}}},
 )
-def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> StreamingResponse:
+def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> Response:
     """Exporta watchlist, seguimientos, reglas, perfil, notificaciones, feedback, API keys y
     audit log en un ZIP JSON. Funciona con sesión OAuth o API key.
     """
@@ -204,8 +204,10 @@ def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> Streaming
         outcome="success",
     )
     log.info("gdpr_export_generated", key_name=key_name)
-    return StreamingResponse(
-        buf,
+    # Cuerpo único: el ZIP ya está entero en memoria, e iterarlo como stream lo
+    # partía por cada byte `\n` en un salto al threadpool por trozo.
+    return Response(
+        content=buf.getvalue(),
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename=my_data_{now_utc_iso()[:10]}.zip"},
     )
@@ -514,14 +516,11 @@ async def put_notification_preferences(
         raise HTTPException(status_code=401, detail="No autenticado.")
 
     def _guardar() -> None:
-        for pref in body:
-            prefs.guardar(
-                user_id,
-                tipo=pref.tipo,
-                canal=pref.canal,
-                frecuencia=pref.frecuencia,
-                organization_id=pref.organization_id,
-            )
+        # Todas en una transacción: una inválida no deja guardadas las demás.
+        prefs.guardar_varias(
+            user_id,
+            [(p.tipo, p.canal, p.frecuencia, p.organization_id) for p in body],
+        )
 
     try:
         await run_db(_guardar)

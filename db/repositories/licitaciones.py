@@ -50,6 +50,7 @@ from db.sql_fragments import (
     importe_sql,
     instante_sql,
     lectura_tipada_activa,
+    normaliza_codigo,
     tecnologia_en_csv_sql,
     tecnologia_tokens_sql,
 )
@@ -374,10 +375,10 @@ def _normaliza_codigo(code: str) -> str:
     emisor. Es la misma normalización que hace ``shared/procedimientos.py`` al
     traducirlos a etiqueta; si el filtro no la aplicara, «Abierto» dejaría
     fuera a la mitad de los expedientes de algunos órganos y el desplegable
-    parecería roto.
+    parecería roto. Delega en ``db.sql_fragments.normaliza_codigo``: eran dos
+    copias idénticas de la misma regla.
     """
-    limpio = code.strip()
-    return str(int(limpio)) if limpio.isdigit() else limpio
+    return normaliza_codigo(code)
 
 
 def _codigo_en(column: Any, values: list[str]) -> Any:

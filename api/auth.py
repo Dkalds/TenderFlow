@@ -21,13 +21,15 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
+import time
 from collections.abc import Callable, Coroutine
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import BackgroundTasks, Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
 
+from api.concurrency import run_db
 from api.scopes import has_scope, required_scope_for_request
 from db.database import now_utc_iso
 from db.users import get_user_by_id
@@ -53,6 +55,8 @@ class AuthContext:
     key_id: int
     scopes: frozenset[str]
     user_id: int | None = None
+    # Fila del propietario tal como la leyó la validación (``None`` sin dueño).
+    owner: dict[str, Any] | None = field(default=None, compare=False, hash=False, repr=False)
 
     def has_scope(self, scope: str) -> bool:
         """True si el contexto tiene el scope o es wildcard."""
@@ -113,11 +117,43 @@ async def validate_api_key_credential(
     - Comparación de hash en tiempo constante (``hmac.compare_digest``).
     - Rechaza keys sin usuario propietario en prod/staging.
     - Con ``method``/``path``: aplica el scope requerido por la ruta.
-    - Con ``background_tasks``: actualiza ``last_used`` sin penalizar latencia.
+    - Con ``background_tasks``: actualiza ``last_used`` sin penalizar latencia,
+      como mucho una vez por minuto y clave en cada proceso.
+
+    Las lecturas de BD corren en el threadpool (``run_db``): hasta 2026-10 se
+    hacían aquí mismo, en el event loop, y cada petición con API key —feeds,
+    calendario, ``/metrics``— dejaba esperando a todas las demás.
 
     Raises:
         HTTPException 401/403/503 según credencial, scope o error de BD.
     """
+    ctx = await run_db(_validar_credencial, api_key_raw, method, path)
+    if background_tasks is not None and _toca_apuntar_last_used(ctx.key_hash):
+        background_tasks.add_task(_update_last_used, ctx.key_id)
+    return ctx
+
+
+# Último ``last_used`` escrito por este proceso, por clave (reloj monotónico).
+# Escribirlo en cada petición era un UPDATE con COMMIT por llamada de un feed o
+# de Prometheus; con un minuto de resolución la columna sigue diciendo lo que se
+# lee de ella —qué clave se usa y cuál lleva meses quieta—. Va por el hash y no
+# por el id: el id es un número de fila que se repite entre bases (los tests
+# corren cada uno en su schema), el hash identifica la credencial.
+_LAST_USED_INTERVALO_S = 60.0
+_last_used_escrito: dict[str, float] = {}
+
+
+def _toca_apuntar_last_used(key_hash: str) -> bool:
+    ahora = time.monotonic()
+    previo = _last_used_escrito.get(key_hash)
+    if previo is not None and ahora - previo < _LAST_USED_INTERVALO_S:
+        return False
+    _last_used_escrito[key_hash] = ahora
+    return True
+
+
+def _validar_credencial(api_key_raw: str, method: str | None, path: str | None) -> AuthContext:
+    """Parte síncrona de :func:`validate_api_key_credential` (lee la BD)."""
     key_hash = hash_api_key(api_key_raw)
 
     try:
@@ -165,15 +201,12 @@ async def validate_api_key_credential(
     # Dar de baja una cuenta tiene que cerrar también sus credenciales de
     # máquina. Sin esta lectura, `deactivate_user` solo bloqueaba el login por
     # sesión y las API keys del usuario seguían abriendo todas las rutas que no
-    # pasan por `dual_auth.require_any_auth` (que sí carga al propietario).
-    # Cuesta una consulta por request; la corrección pesa más que el ahorro.
-    if record.user_id is not None and get_user_by_id(record.user_id) is None:
+    # pasan por `dual_auth.require_any_auth`. La fila viaja en el contexto para
+    # que `require_any_auth` no la vuelva a leer.
+    owner = get_user_by_id(record.user_id) if record.user_id is not None else None
+    if record.user_id is not None and owner is None:
         log.warning("api_key_owner_inactive", key_id=key_id)
         raise _UNAUTHORIZED
-
-    # Actualizar last_used en background
-    if background_tasks is not None:
-        background_tasks.add_task(_update_last_used, key_id)
 
     scopes = frozenset(s.strip() for s in scopes_str.split(",") if s.strip())
     if method is not None and path is not None:
@@ -191,6 +224,7 @@ async def validate_api_key_credential(
         key_id=key_id,
         scopes=scopes,
         user_id=record.user_id,
+        owner=owner,
     )
 
 

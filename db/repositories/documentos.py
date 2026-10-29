@@ -22,10 +22,10 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, TypedDict
 
 from db.database import DocumentoReferencia, connect, connect_read, now_utc_iso
-from db.repositories.base import rows_to_dicts
+from db.repositories.base import rows_to_dicts, typed_rows
 from db.sql_fragments import columna_nucleo, columna_nucleo_sql, universo_tecnologico_sql
 from observability.logging import get_logger
 from shared.estados import ESTADOS_CERRADOS, abierta_sql
@@ -246,6 +246,251 @@ def _to_pg_vector_literal(vec: Sequence[float]) -> str:
     return "[" + ",".join(repr(float(x)) for x in vec) + "]"
 
 
+class _DocumentoExistente(TypedDict):
+    """Fila de ``documentos`` que lee :meth:`DocumentosRepository.upsert_meta`."""
+
+    id: int
+    licitacion_id: str
+    tipo: str
+    uri: str
+    filename: str | None
+    source_hash: str | None
+    status: str
+    error_detail: str | None
+
+
+_SQL_DOCUMENTOS_EXISTENTES = (
+    "SELECT id, licitacion_id, tipo, uri, filename, source_hash, status, error_detail "
+    "FROM documentos WHERE licitacion_id = ANY(%s)"
+)
+
+#: ``(tipo, uri, filename, source_hash, updated_at, id)`` de un ``UPDATE``.
+_FilaActualizar = tuple[str, str, str | None, str | None, str, int]
+#: ``(licitacion_id, tipo, uri, filename, source_hash)`` de un ``INSERT``.
+_FilaInsertar = tuple[str, str, str, str | None, str | None]
+
+
+@dataclass
+class _PlanDocumentos:
+    """Escrituras que necesita una licitación para quedar como dicen sus referencias."""
+
+    updates: list[_FilaActualizar]
+    updates_revive: list[_FilaActualizar]
+    inserts: list[_FilaInsertar]
+    intactas: list[int]
+    duplicadas_en_lote: int
+
+
+def _planificar_documentos(
+    licitacion_id: str,
+    refs: list[DocumentoReferencia],
+    existentes: list[_DocumentoExistente],
+    ahora: str,
+) -> _PlanDocumentos:
+    """Reparte las referencias de una licitación contra sus filas existentes.
+
+    Pura: no toca la BD. Las reglas (refresco por hash, adopción por URI o por
+    tipo único, inserción y revive) están en el docstring de
+    :meth:`DocumentosRepository.upsert_meta`.
+    """
+    por_hash = {(f["tipo"], f["source_hash"]): f for f in existentes if f["source_hash"]}
+    por_uri = {f["uri"]: f for f in existentes}
+    legacy_por_tipo: dict[str, list[_DocumentoExistente]] = {}
+    for existente in existentes:
+        if not existente["source_hash"]:
+            legacy_por_tipo.setdefault(existente["tipo"], []).append(existente)
+    # ``uri -> id`` de las filas vivas; se mantiene al día según se
+    # planifican movimientos, para que dos referencias del mismo lote no
+    # se peleen por la misma URI.
+    duenio_de_uri = {f["uri"]: f["id"] for f in existentes}
+
+    updates: list[_FilaActualizar] = []
+    updates_revive: list[_FilaActualizar] = []
+    intactas: list[int] = []
+    inserts: list[_FilaInsertar] = []
+    huerfanas: list[DocumentoReferencia] = []
+    vistas_hash: set[tuple[str, str]] = set()
+    vistas_uri: set[str] = set()
+    # Filas ya reclamadas por una referencia de este lote: no pueden
+    # volver a serlo como candidatas de la adopción por tipo único.
+    filas_tocadas: set[int] = set()
+    duplicadas_en_lote = 0
+
+    def _planificar(fila: _DocumentoExistente, ref: DocumentoReferencia) -> None:
+        """Encola el UPDATE de ``fila`` con los datos de ``ref``."""
+        nueva_uri = ref.uri
+        ocupante = duenio_de_uri.get(nueva_uri)
+        if ocupante is not None and ocupante != fila["id"]:
+            # Otra fila de esta licitación ya usa esa URI (el mismo
+            # fichero referenciado desde dos bloques del CODICE).
+            # Moverla violaría UNIQUE(licitacion_id, uri): conservamos
+            # la que tiene y solo actualizamos el resto.
+            log.info(
+                "documentos_upsert_uri_ocupada",
+                licitacion_id=licitacion_id,
+                documento_id=fila["id"],
+                uri=nueva_uri,
+            )
+            nueva_uri = fila["uri"]
+
+        cambio_uri = nueva_uri != fila["uri"]
+        if cambio_uri:
+            duenio_de_uri.pop(fila["uri"], None)
+            duenio_de_uri[nueva_uri] = fila["id"]
+        filas_tocadas.add(fila["id"])
+
+        if (
+            not cambio_uri
+            and ref.tipo == fila["tipo"]
+            and ref.filename in (None, fila["filename"])
+            and ref.source_hash in (None, fila["source_hash"])
+        ):
+            # La referencia no trae nada que la fila no tenga. Escribirla
+            # solo movería ``updated_at``, que en una fila en ``error`` es
+            # el momento de su último intento de descarga
+            # (:func:`_toca_reintentar_descarga`): la pasada de la PSCP
+            # relee las mismas fichas cada ~4 h y su espera no vencería
+            # nunca.
+            intactas.append(fila["id"])
+            return
+
+        revive = (
+            cambio_uri
+            and fila["status"] == "error"
+            and (fila["error_detail"] or "").startswith(_FALLO_DE_DESCARGA)
+        )
+        destino = updates_revive if revive else updates
+        # ``tipo`` se refresca junto al resto: la adopción por URI casa
+        # solo por ``uri``, así que sin esto una fila clasificada como
+        # 'legal' podría quedarse con el hash de un 'technical'. Es
+        # seguro frente a ``uq_documentos_lic_tipo_hash`` porque solo se
+        # llega aquí cuando ``(ref.tipo, ref.source_hash)`` no existía
+        # entre las filas de la licitación.
+        destino.append(
+            (ref.tipo, nueva_uri, ref.filename, ref.source_hash, ahora, fila["id"]),
+        )
+
+    # ── Pasada 1: refresco por hash y adopción por URI ──────────────
+    for ref in refs:
+        clave_hash = (ref.tipo, ref.source_hash) if ref.source_hash else None
+        if clave_hash is not None and clave_hash in vistas_hash:
+            duplicadas_en_lote += 1  # el CODICE repitió la referencia
+            continue
+        if ref.uri in vistas_uri:
+            duplicadas_en_lote += 1
+            continue
+        if clave_hash is not None:
+            vistas_hash.add(clave_hash)
+        vistas_uri.add(ref.uri)
+
+        fila = por_hash.get(clave_hash) if clave_hash is not None else None
+        if fila is None:
+            candidata = por_uri.get(ref.uri)
+            # Solo adoptamos si la fila no tenía identidad. Si ya tiene
+            # otra distinta, el contenido cambió bajo la misma URI
+            # estable: eso es un documento nuevo, no un refresco.
+            if candidata is not None and not candidata["source_hash"]:
+                fila = candidata
+            elif candidata is not None:
+                # Misma URI estable, hash distinto: el contenido cambió
+                # sin cambiar el enlace. No se toca (pisar el hash
+                # ataría la identidad nueva al texto ya extraído del
+                # contenido viejo) ni se inserta (violaría el UNIQUE).
+                log.info(
+                    "documentos_upsert_hash_divergente",
+                    licitacion_id=licitacion_id,
+                    documento_id=candidata["id"],
+                )
+                continue
+
+        if fila is not None:
+            _planificar(fila, ref)
+        else:
+            huerfanas.append(ref)
+
+    # ── Pasada 2: adopción por tipo único, o inserción ──────────────
+    huerfanas_por_tipo: dict[str, list[DocumentoReferencia]] = {}
+    for ref in huerfanas:
+        huerfanas_por_tipo.setdefault(ref.tipo, []).append(ref)
+
+    for tipo, refs_tipo in huerfanas_por_tipo.items():
+        # Solo se adoptan filas sin contenido descargado. La adopción
+        # por tipo único es una inferencia, no una prueba de identidad
+        # como el hash: si la fila ya está ``extracted``, atarle una
+        # identidad nueva dejaría el texto (y los chunks) del documento
+        # ANTERIOR asociados al documento NUEVO, y de forma permanente
+        # —la fila no volvería ni a ``list_pendientes`` (no está
+        # 'pending') ni a ``list_extracted_without_chunks`` (ya tiene
+        # chunks)—, así que el asistente citaría el pliego viejo
+        # mientras la UI enlaza al nuevo. Excluyéndolas, la referencia
+        # nueva cae a INSERT y se descarga como lo que es.
+        candidatas = [
+            f
+            for f in legacy_por_tipo.get(tipo, [])
+            if f["id"] not in filas_tocadas and f["status"] in ("pending", "error")
+        ]
+        # Solo cuando el mapeo es 1↔1 e inequívoco. Con dos filas legacy
+        # del mismo tipo (los 637 sobrantes que dejó la rotación antes
+        # de v88) no hay forma de saber cuál corresponde: se insertan y
+        # las viejas quedan relegadas por el orden de list_by_licitacion.
+        if len(refs_tipo) == 1 and len(candidatas) == 1 and refs_tipo[0].source_hash:
+            _planificar(candidatas[0], refs_tipo[0])
+            continue
+        inserts.extend((licitacion_id, r.tipo, r.uri, r.filename, r.source_hash) for r in refs_tipo)
+
+    return _PlanDocumentos(
+        updates=updates,
+        updates_revive=updates_revive,
+        inserts=inserts,
+        intactas=intactas,
+        duplicadas_en_lote=duplicadas_en_lote,
+    )
+
+
+def _escribir_planes(c: Any, planes: list[_PlanDocumentos]) -> None:
+    """Las escrituras de varios planes, un ``executemany`` por tipo de escritura."""
+    updates = [u for plan in planes for u in plan.updates]
+    updates_revive = [u for plan in planes for u in plan.updates_revive]
+    inserts = [i for plan in planes for i in plan.inserts]
+    if updates:
+        c.executemany(
+            "UPDATE documentos SET tipo = %s, uri = %s, "
+            "filename = COALESCE(%s, filename), "
+            "source_hash = COALESCE(%s, source_hash), updated_at = %s WHERE id = %s",
+            updates,
+        )
+    if updates_revive:
+        c.executemany(
+            "UPDATE documentos SET tipo = %s, uri = %s, "
+            "filename = COALESCE(%s, filename), "
+            "source_hash = COALESCE(%s, source_hash), updated_at = %s, "
+            "status = 'pending', error_detail = NULL WHERE id = %s",
+            updates_revive,
+        )
+    if inserts:
+        # ``ON CONFLICT DO NOTHING`` sin árbitro: así lo absorben tanto
+        # el UNIQUE de la URI como el índice de identidad de v88 si dos
+        # procesos ingieren la misma licitación a la vez.
+        c.executemany(
+            "INSERT INTO documentos (licitacion_id, tipo, uri, filename, source_hash) "
+            "VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+            inserts,
+        )
+
+
+def _log_plan(licitacion_id: str, referencias: int, plan: _PlanDocumentos) -> None:
+    log.info(
+        "documentos_upsert",
+        licitacion_id=licitacion_id,
+        referencias=referencias,
+        insertados=len(plan.inserts),
+        refrescados=len(plan.updates),
+        sin_cambios=len(plan.intactas),
+        revividos=len(plan.updates_revive),
+        duplicadas_en_lote=plan.duplicadas_en_lote,
+    )
+
+
 class DocumentosRepository:
     """Acceso a la tabla ``documentos`` (TID251: SQL nuevo solo aquí)."""
 
@@ -266,7 +511,8 @@ class DocumentosRepository:
         falta ver el conjunto entero para no violar ``UNIQUE(licitacion_id,
         uri)`` al mover una URI y para decidir las adopciones. Son ~4 viajes por
         licitación (el ``SELECT`` más los buckets no vacíos, que psycopg
-        canaliza), frente a 1 antes.
+        canaliza), frente a 1 antes. Para varias licitaciones a la vez, como en
+        la ingesta, :meth:`upsert_meta_batch` lo hace con un viaje por paso.
 
         Cuatro destinos posibles para cada referencia:
 
@@ -306,199 +552,85 @@ class DocumentosRepository:
         """
         if not refs:
             return 0
-
         ahora = now_utc_iso()
         with connect() as c:
-            cur = c.execute(
-                "SELECT id, tipo, uri, filename, source_hash, status, error_detail "
-                "FROM documentos WHERE licitacion_id = %s",
-                (licitacion_id,),
+            existentes = typed_rows(
+                _DocumentoExistente,
+                rows_to_dicts(c.execute(_SQL_DOCUMENTOS_EXISTENTES, ([licitacion_id],))),
             )
-            existentes = rows_to_dicts(cur)
-
-            por_hash = {(f["tipo"], f["source_hash"]): f for f in existentes if f["source_hash"]}
-            por_uri = {f["uri"]: f for f in existentes}
-            legacy_por_tipo: dict[str, list[dict[str, Any]]] = {}
-            for existente in existentes:
-                if not existente["source_hash"]:
-                    legacy_por_tipo.setdefault(existente["tipo"], []).append(existente)
-            # ``uri -> id`` de las filas vivas; se mantiene al día según se
-            # planifican movimientos, para que dos referencias del mismo lote no
-            # se peleen por la misma URI.
-            duenio_de_uri = {f["uri"]: f["id"] for f in existentes}
-
-            updates: list[tuple[Any, ...]] = []
-            updates_revive: list[tuple[Any, ...]] = []
-            intactas: list[int] = []
-            inserts: list[tuple[Any, ...]] = []
-            huerfanas: list[DocumentoReferencia] = []
-            vistas_hash: set[tuple[str, str]] = set()
-            vistas_uri: set[str] = set()
-            # Filas ya reclamadas por una referencia de este lote: no pueden
-            # volver a serlo como candidatas de la adopción por tipo único.
-            filas_tocadas: set[int] = set()
-            duplicadas_en_lote = 0
-
-            def _planificar(fila: dict[str, Any], ref: DocumentoReferencia) -> None:
-                """Encola el UPDATE de ``fila`` con los datos de ``ref``."""
-                nueva_uri = ref.uri
-                ocupante = duenio_de_uri.get(nueva_uri)
-                if ocupante is not None and ocupante != fila["id"]:
-                    # Otra fila de esta licitación ya usa esa URI (el mismo
-                    # fichero referenciado desde dos bloques del CODICE).
-                    # Moverla violaría UNIQUE(licitacion_id, uri): conservamos
-                    # la que tiene y solo actualizamos el resto.
-                    log.info(
-                        "documentos_upsert_uri_ocupada",
-                        licitacion_id=licitacion_id,
-                        documento_id=fila["id"],
-                        uri=nueva_uri,
-                    )
-                    nueva_uri = fila["uri"]
-
-                cambio_uri = nueva_uri != fila["uri"]
-                if cambio_uri:
-                    duenio_de_uri.pop(fila["uri"], None)
-                    duenio_de_uri[nueva_uri] = fila["id"]
-                filas_tocadas.add(fila["id"])
-
-                if (
-                    not cambio_uri
-                    and ref.tipo == fila["tipo"]
-                    and ref.filename in (None, fila["filename"])
-                    and ref.source_hash in (None, fila["source_hash"])
-                ):
-                    # La referencia no trae nada que la fila no tenga. Escribirla
-                    # solo movería ``updated_at``, que en una fila en ``error`` es
-                    # el momento de su último intento de descarga
-                    # (:func:`_toca_reintentar_descarga`): la pasada de la PSCP
-                    # relee las mismas fichas cada ~4 h y su espera no vencería
-                    # nunca.
-                    intactas.append(fila["id"])
-                    return
-
-                revive = (
-                    cambio_uri
-                    and fila["status"] == "error"
-                    and (fila["error_detail"] or "").startswith(_FALLO_DE_DESCARGA)
-                )
-                destino = updates_revive if revive else updates
-                # ``tipo`` se refresca junto al resto: la adopción por URI casa
-                # solo por ``uri``, así que sin esto una fila clasificada como
-                # 'legal' podría quedarse con el hash de un 'technical'. Es
-                # seguro frente a ``uq_documentos_lic_tipo_hash`` porque solo se
-                # llega aquí cuando ``(ref.tipo, ref.source_hash)`` no existía
-                # entre las filas de la licitación.
-                destino.append(
-                    (ref.tipo, nueva_uri, ref.filename, ref.source_hash, ahora, fila["id"]),
-                )
-
-            # ── Pasada 1: refresco por hash y adopción por URI ──────────────
-            for ref in refs:
-                clave_hash = (ref.tipo, ref.source_hash) if ref.source_hash else None
-                if clave_hash is not None and clave_hash in vistas_hash:
-                    duplicadas_en_lote += 1  # el CODICE repitió la referencia
-                    continue
-                if ref.uri in vistas_uri:
-                    duplicadas_en_lote += 1
-                    continue
-                if clave_hash is not None:
-                    vistas_hash.add(clave_hash)
-                vistas_uri.add(ref.uri)
-
-                fila = por_hash.get(clave_hash) if clave_hash is not None else None
-                if fila is None:
-                    candidata = por_uri.get(ref.uri)
-                    # Solo adoptamos si la fila no tenía identidad. Si ya tiene
-                    # otra distinta, el contenido cambió bajo la misma URI
-                    # estable: eso es un documento nuevo, no un refresco.
-                    if candidata is not None and not candidata["source_hash"]:
-                        fila = candidata
-                    elif candidata is not None:
-                        # Misma URI estable, hash distinto: el contenido cambió
-                        # sin cambiar el enlace. No se toca (pisar el hash
-                        # ataría la identidad nueva al texto ya extraído del
-                        # contenido viejo) ni se inserta (violaría el UNIQUE).
-                        log.info(
-                            "documentos_upsert_hash_divergente",
-                            licitacion_id=licitacion_id,
-                            documento_id=candidata["id"],
-                        )
-                        continue
-
-                if fila is not None:
-                    _planificar(fila, ref)
-                else:
-                    huerfanas.append(ref)
-
-            # ── Pasada 2: adopción por tipo único, o inserción ──────────────
-            huerfanas_por_tipo: dict[str, list[DocumentoReferencia]] = {}
-            for ref in huerfanas:
-                huerfanas_por_tipo.setdefault(ref.tipo, []).append(ref)
-
-            for tipo, refs_tipo in huerfanas_por_tipo.items():
-                # Solo se adoptan filas sin contenido descargado. La adopción
-                # por tipo único es una inferencia, no una prueba de identidad
-                # como el hash: si la fila ya está ``extracted``, atarle una
-                # identidad nueva dejaría el texto (y los chunks) del documento
-                # ANTERIOR asociados al documento NUEVO, y de forma permanente
-                # —la fila no volvería ni a ``list_pendientes`` (no está
-                # 'pending') ni a ``list_extracted_without_chunks`` (ya tiene
-                # chunks)—, así que el asistente citaría el pliego viejo
-                # mientras la UI enlaza al nuevo. Excluyéndolas, la referencia
-                # nueva cae a INSERT y se descarga como lo que es.
-                candidatas = [
-                    f
-                    for f in legacy_por_tipo.get(tipo, [])
-                    if f["id"] not in filas_tocadas and f["status"] in ("pending", "error")
-                ]
-                # Solo cuando el mapeo es 1↔1 e inequívoco. Con dos filas legacy
-                # del mismo tipo (los 637 sobrantes que dejó la rotación antes
-                # de v88) no hay forma de saber cuál corresponde: se insertan y
-                # las viejas quedan relegadas por el orden de list_by_licitacion.
-                if len(refs_tipo) == 1 and len(candidatas) == 1 and refs_tipo[0].source_hash:
-                    _planificar(candidatas[0], refs_tipo[0])
-                    continue
-                inserts.extend(
-                    (licitacion_id, r.tipo, r.uri, r.filename, r.source_hash) for r in refs_tipo
-                )
-
-            if updates:
-                c.executemany(
-                    "UPDATE documentos SET tipo = %s, uri = %s, "
-                    "filename = COALESCE(%s, filename), "
-                    "source_hash = COALESCE(%s, source_hash), updated_at = %s WHERE id = %s",
-                    updates,
-                )
-            if updates_revive:
-                c.executemany(
-                    "UPDATE documentos SET tipo = %s, uri = %s, "
-                    "filename = COALESCE(%s, filename), "
-                    "source_hash = COALESCE(%s, source_hash), updated_at = %s, "
-                    "status = 'pending', error_detail = NULL WHERE id = %s",
-                    updates_revive,
-                )
-            if inserts:
-                # ``ON CONFLICT DO NOTHING`` sin árbitro: así lo absorben tanto
-                # el UNIQUE de la URI como el índice de identidad de v88 si dos
-                # procesos ingieren la misma licitación a la vez.
-                c.executemany(
-                    "INSERT INTO documentos (licitacion_id, tipo, uri, filename, source_hash) "
-                    "VALUES (%s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                    inserts,
-                )
-
-        log.info(
-            "documentos_upsert",
-            licitacion_id=licitacion_id,
-            referencias=len(refs),
-            insertados=len(inserts),
-            refrescados=len(updates),
-            sin_cambios=len(intactas),
-            revividos=len(updates_revive),
-            duplicadas_en_lote=duplicadas_en_lote,
-        )
+            plan = _planificar_documentos(licitacion_id, refs, existentes, ahora)
+            _escribir_planes(c, [plan])
+        _log_plan(licitacion_id, len(refs), plan)
         return len(refs)
+
+    def upsert_meta_batch(
+        self, docs_por_lic: dict[str, list[DocumentoReferencia]]
+    ) -> dict[str, Exception]:
+        """:meth:`upsert_meta` para varias licitaciones con una conexión.
+
+        Devuelve las licitaciones que no se pudieron escribir, con su error; las
+        demás quedan escritas. Hasta 2026-10 la ingesta llamaba a
+        :meth:`upsert_meta` una vez por licitación: una transacción y ~4 viajes
+        a la BD cada una, cientos por flush (el bulk tardaba más de dos horas por
+        mes, ``db/repositories/reproceso_lotes.py``). Ahora es un ``SELECT`` para
+        todas, la misma planificación por licitación en Python y tres
+        ``executemany`` para todo el lote.
+
+        El fail-open sigue siendo **por licitación**: si la escritura conjunta
+        falla, se deshace (``SAVEPOINT``) y se repite una a una, cada una en su
+        propio ``SAVEPOINT``, para que una fila problemática no deje sin
+        documentos al resto del lote. Un error al leer, o al abrir la conexión,
+        se propaga: no hay ninguna licitación escrita de la que presumir.
+        """
+        pendientes = {lic: refs for lic, refs in docs_por_lic.items() if refs}
+        if not pendientes:
+            return {}
+
+        ahora = now_utc_iso()
+        fallos: dict[str, Exception] = {}
+        with connect() as c:
+            existentes: dict[str, list[_DocumentoExistente]] = {lic: [] for lic in pendientes}
+            for fila in typed_rows(
+                _DocumentoExistente,
+                rows_to_dicts(c.execute(_SQL_DOCUMENTOS_EXISTENTES, (list(pendientes),))),
+            ):
+                existentes[fila["licitacion_id"]].append(fila)
+
+            planes: dict[str, _PlanDocumentos] = {}
+            for lic, refs in pendientes.items():
+                try:
+                    planes[lic] = _planificar_documentos(lic, refs, existentes[lic], ahora)
+                except Exception as exc:
+                    log.warning("documentos_upsert_plan_fallido", licitacion_id=lic, exc_info=True)
+                    fallos[lic] = exc
+
+            c.execute("SAVEPOINT documentos_lote")
+            try:
+                _escribir_planes(c, list(planes.values()))
+            except Exception:
+                # No es un fallo todavía: se repite una a una para aislar la que
+                # lo provocó. Se registra para que el camino lento se vea.
+                log.warning("documentos_upsert_lote_reintento", n=len(planes), exc_info=True)
+                c.execute("ROLLBACK TO SAVEPOINT documentos_lote")
+                for lic, plan in list(planes.items()):
+                    c.execute("SAVEPOINT documentos_uno")
+                    try:
+                        _escribir_planes(c, [plan])
+                    except Exception as exc:
+                        log.warning(
+                            "documentos_upsert_licitacion_fallida", licitacion_id=lic, exc_info=True
+                        )
+                        c.execute("ROLLBACK TO SAVEPOINT documentos_uno")
+                        fallos[lic] = exc
+                        del planes[lic]
+                    else:
+                        c.execute("RELEASE SAVEPOINT documentos_uno")
+            else:
+                c.execute("RELEASE SAVEPOINT documentos_lote")
+
+        for lic, plan in planes.items():
+            _log_plan(lic, len(pendientes[lic]), plan)
+        return fallos
 
     def revivir_descargas_fallidas(self) -> int:
         """Devuelve a ``pending`` las descargas fallidas a las que les toca otro intento.
@@ -1080,7 +1212,8 @@ class DocumentosRepository:
             cur = c.execute(
                 "SELECT id, licitacion_id, texto FROM documentos "
                 "WHERE status = 'extracted' "
-                "AND id NOT IN (SELECT DISTINCT documento_id FROM documento_chunks) "
+                "AND NOT EXISTS (SELECT 1 FROM documento_chunks dc "
+                "                WHERE dc.documento_id = documentos.id) "
                 "ORDER BY updated_at LIMIT %s",
                 (max(1, min(int(limit), 1000)),),
             )

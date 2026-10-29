@@ -70,16 +70,14 @@ _SIN_FILTROS: dict[str, Any] = {
 def _descargar(formato: str = "pdf", **filtros: Any) -> tuple[Any, bytes]:
     """Ejecuta ``download_export`` y devuelve ``(respuesta, cuerpo)``.
 
-    El cuerpo se agota desde ``body_iterator`` porque la respuesta es un
-    ``StreamingResponse``: el fichero va en la propia respuesta, que es
-    justamente lo que sustituyó al 202 + sondeo.
+    El fichero va en la propia respuesta, que es justamente lo que sustituyó al
+    202 + sondeo; desde 2026-10 en un único cuerpo (``Response.body``).
     """
     parametros = {**_SIN_FILTROS, **filtros, "format": formato}
 
     async def _correr() -> tuple[Any, bytes]:
         respuesta = await exports_mod.download_export(**parametros, _user={"user_id": 1})
-        cuerpo = b"".join([trozo async for trozo in respuesta.body_iterator])
-        return respuesta, cuerpo
+        return respuesta, bytes(respuesta.body)
 
     return asyncio.run(_correr())
 

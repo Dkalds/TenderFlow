@@ -13,6 +13,7 @@ XPath, por eso los remapeamos a 'cacext' y 'cbcext'.
 from __future__ import annotations
 
 import re
+import threading
 import unicodedata
 from collections.abc import Iterable, Iterator
 from typing import Any, NamedTuple
@@ -58,10 +59,31 @@ _SUMMARY_RE = re.compile(
 )
 
 
+_xpath_por_hilo = threading.local()
+
+
+def _xpath(expr: str) -> etree.XPath:
+    """``expr`` compilada una vez por hilo.
+
+    ``elem.xpath(expr)`` la compila en cada llamada: ~18 µs frente a ~4 µs con
+    la compilada, y ``_text`` corre unas treinta veces por entrada del ATOM. La
+    caché es por hilo porque lxml no garantiza que un ``XPath`` compilado se
+    pueda evaluar desde varios a la vez; las expresiones son las constantes de
+    este módulo, así que el diccionario no crece.
+    """
+    cache: dict[str, etree.XPath] | None = getattr(_xpath_por_hilo, "cache", None)
+    if cache is None:
+        cache = _xpath_por_hilo.cache = {}
+    compilada = cache.get(expr)
+    if compilada is None:
+        compilada = cache[expr] = etree.XPath(expr, namespaces=NS)
+    return compilada
+
+
 def _text(elem: Any, xpath: str) -> str | None:
     if elem is None:
         return None
-    found = elem.xpath(xpath, namespaces=NS)
+    found = _xpath(xpath)(elem)
     if not found:
         return None
     val = found[0]

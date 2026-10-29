@@ -509,13 +509,7 @@ class PscpConnector:
         if not titulo:
             return None  # sin objeto de contrato no hay nada que indexar
 
-        organo = _text(record, "organo")
-        estado = _fase_to_estado(_text(record, "fase"))
         cpv_crudo = _text(record, "cpv")
-        cpv = cpv_crudo
-        if cpv:
-            cpv = cpv.split(",")[0].split(";")[0].strip() or None
-        importes = _importes(record)
 
         # C4.1 / D24 — el conector acota al universo tecnológico.
         #
@@ -551,6 +545,16 @@ class PscpConnector:
             return None
         tecnologias = senal.tecnologias
         keywords = senal.keywords
+
+        # Lo demás se extrae después de la puerta: descarta ~99 % de las filas
+        # del dataset, y plegar el estado o leer los importes de una fila que
+        # no se va a guardar era trabajo tirado.
+        organo = _text(record, "organo")
+        estado = _fase_to_estado(_text(record, "fase"))
+        cpv = cpv_crudo
+        if cpv:
+            cpv = cpv.split(",")[0].split(";")[0].strip() or None
+        importes = _importes(record)
 
         nuts = (_text(record, "nuts") or _NUTS_CATALUNYA).upper()
         ccaa = nuts_to_ccaa(nuts) or nuts_to_ccaa(_NUTS_CATALUNYA)

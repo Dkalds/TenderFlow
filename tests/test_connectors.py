@@ -453,10 +453,10 @@ def test_runner_documentos_persist_failure_no_aborta_el_run(db, monkeypatch):
     from db.database import connect
     from db.repositories.documentos import DocumentosRepository
 
-    def _broken_upsert(self, licitacion_id, refs):
+    def _broken_upsert(self, docs_por_lic):
         raise RuntimeError("BD de documentos caída")
 
-    monkeypatch.setattr(DocumentosRepository, "upsert_meta", _broken_upsert)
+    monkeypatch.setattr(DocumentosRepository, "upsert_meta_batch", _broken_upsert)
 
     notices = [
         {

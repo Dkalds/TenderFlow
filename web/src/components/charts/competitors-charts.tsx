@@ -15,6 +15,7 @@ import {
   YAxis,
   ZAxis,
 } from "recharts";
+import { ALTO_MAPA_COMPETIDORES } from "@/components/charts/alturas";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { CAJA_TOOLTIP } from "@/components/charts/chart-tooltip";
 import type { Schemas } from "@/lib/api-types";
@@ -23,7 +24,7 @@ import { formatCompactCurrency, formatCurrency, formatNumber, formatPercent } fr
 
 /* ── Mapa de competidores ──────────────────────────────────────── */
 
-export const ALTO_MAPA_COMPETIDORES = 380;
+export { ALTO_MAPA_COMPETIDORES };
 
 export type LenteMapa = "precio" | "clientes";
 
