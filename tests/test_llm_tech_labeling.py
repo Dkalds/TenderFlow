@@ -965,6 +965,73 @@ class TestPipelineStepReleasesTheWindow:
         ):
             _run_llm_tech_labeling()
 
+    def test_el_paso_acota_el_lote_por_reloj(self, monkeypatch):
+        """#581: el lote comparte el step de cierre con lo que viene detrás."""
+        from scheduler.pipeline_runs import _run_llm_tech_labeling
+
+        monkeypatch.setattr(settings, "LLM_TECH_LABELING_BUDGET_S", 321, raising=False)
+        bien = {"scored": 1, "no_signal": 0, "error": 0, "disabled": 0}
+        with (
+            patch("scheduler.jobs.llm_tech_labeling.run", return_value=bien) as run,
+            patch("scheduler.pipeline_runs._run_periodic", side_effect=lambda _n, _t, fn: fn()),
+        ):
+            _run_llm_tech_labeling()
+
+        run.assert_called_once_with(presupuesto_s=321.0)
+
+
+class TestTiempoAgotadoCortaElLote:
+    """Sin BD: lo que se prueba es el corte del bucle por reloj."""
+
+    @staticmethod
+    def _run(monkeypatch, *, presupuesto_s, instantes):
+        from unittest.mock import MagicMock
+
+        from scheduler.jobs.llm_tech_labeling import batch_failed_systemically, run
+
+        monkeypatch.setattr(settings, "LLM_TECH_LABELING_ENABLED", True, raising=False)
+        monkeypatch.setattr(settings, "LLM_TECH_FEEDBACK_ENABLED", False, raising=False)
+        repo = MagicMock()
+        repo.list_metadata_pending_llm_signal.return_value = [
+            {"id_externo": f"EXP-T{i}", "titulo": "t", "descripcion": "d"} for i in range(3)
+        ]
+        with (
+            patch(
+                "db.repositories.tecnologia_pliego.TecnologiaPliegoRepository", return_value=repo
+            ),
+            patch("llm.budget.get_budget_guard"),
+            patch("observability.ops_events.record_event"),
+            patch(
+                "services.tech_signal.merge_doc_signals", return_value={"licitaciones_merged": 1}
+            ),
+            patch(
+                "services.llm_tech_labeling.stream_llm_response",
+                side_effect=lambda *_a, **_k: iter(['{"tecnologias": []}']),
+            ),
+            patch("scheduler.jobs.llm_tech_labeling.time") as reloj,
+        ):
+            reloj.monotonic.side_effect = instantes
+            counts = run(presupuesto_s=presupuesto_s)
+        return counts, repo, batch_failed_systemically(counts)
+
+    def test_agotado_el_reloj_lo_que_queda_sigue_pendiente(self, monkeypatch):
+        # inicio, antes del 1.º (cabe) y antes del 2.º (agotado).
+        counts, repo, sistemico = self._run(
+            monkeypatch, presupuesto_s=600.0, instantes=[0.0, 0.0, 700.0]
+        )
+
+        assert repo.upsert_signals.call_count == 1
+        assert counts["no_signal"] == 1
+        assert counts["tiempo_agotado"] == 1
+        # Cortar por tiempo no es un lote caído: no suelta la ventana diaria.
+        assert sistemico is False
+
+    def test_sin_presupuesto_procesa_el_lote_entero(self, monkeypatch):
+        counts, repo, _ = self._run(monkeypatch, presupuesto_s=None, instantes=[0.0])
+
+        assert repo.upsert_signals.call_count == 3
+        assert counts["tiempo_agotado"] == 0
+
 
 class TestRejectedKeyStopsTheBatch:
     """Con la key rechazada el lote se corta en el primer item y dice por qué.

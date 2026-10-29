@@ -477,12 +477,17 @@ def _run_llm_tech_labeling() -> str:
     falla, así que tragarse el fallo dejaría la cadencia diaria consumida sin
     haber clasificado nada. Lanzando, el paso sale en rojo (con su email) y la
     siguiente pasada de la pipeline, 4h después, lo reintenta.
+
+    El lote va acotado por ``LLM_TECH_LABELING_BUDGET_S``: comparte el step de
+    cierre con los pasos que vienen detrás, y un proveedor lento no puede
+    dejarlos sin correr (#581).
     """
+    from config import settings as _settings
     from scheduler.jobs.llm_tech_labeling import batch_failed_systemically
     from scheduler.jobs.llm_tech_labeling import run as run_llm_tech_labeling
 
     def _run_and_check() -> None:
-        counts = run_llm_tech_labeling()
+        counts = run_llm_tech_labeling(presupuesto_s=float(_settings.LLM_TECH_LABELING_BUDGET_S))
         if batch_failed_systemically(counts):
             raise RuntimeError(f"El lote de etiquetado por LLM falló entero: {counts}")
 
