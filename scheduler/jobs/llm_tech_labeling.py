@@ -34,6 +34,11 @@ Contratos de fallo (importantes para no corromper el estado):
   ``counts["modelo_no_disponible"]``. Del 2026-09-21 al 2026-09-24 el cierre de
   ``scrape-daily`` estuvo en rojo por el 410 de ``deepseek-v4-flash-0731``, y
   el log solo decía «El LLM devolvió una respuesta vacía».
+- El paso canónico acota el lote por reloj (``LLM_TECH_LABELING_BUDGET_S``):
+  el 2026-10-28 el proveedor respondió con timeouts, el lote tardó 18 de los
+  20 minutos del step de cierre y los pasos de detrás (vista pública, alertas)
+  no llegaron a correr (#581). Lo que no cabe sigue pendiente para la
+  siguiente corrida y se cuenta en ``tiempo_agotado``.
 - Si el lote entero se cae, ``batch_failed_systemically`` lo detecta y el paso
   canónico lanza, de forma que ``_run_periodic`` suelte la ventana diaria y la
   siguiente pasada reintente en vez de dar el día por consumido.
@@ -52,6 +57,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from typing import TYPE_CHECKING, Any
 
 from observability.logging import get_logger
@@ -151,7 +157,12 @@ def batch_failed_systemically(counts: dict[str, Any]) -> bool:
     return bool(counts["error"]) and not procesadas
 
 
-def run(*, muestra: int | None = None, semilla: str = SEMILLA_POR_DEFECTO) -> dict[str, Any]:
+def run(
+    *,
+    muestra: int | None = None,
+    semilla: str = SEMILLA_POR_DEFECTO,
+    presupuesto_s: float | None = None,
+) -> dict[str, Any]:
     """Clasifica un lote de licitaciones pendientes. Fail-open por item.
 
     Sin ``muestra`` (``None``), recorre el backlog de lo más nuevo a lo más
@@ -170,6 +181,11 @@ def run(*, muestra: int | None = None, semilla: str = SEMILLA_POR_DEFECTO) -> di
     drenado manual de un lote ya acotado por diseño; el guard de presupuesto
     sigue vigilando cada llamada igual que en el backlog. Es resumible:
     ``semilla`` fija el universo seleccionado entre corridas.
+
+    ``presupuesto_s`` acota el lote por reloj (``None`` o ``0``: sin tope, que
+    es lo que quieren los drenados manuales). Se comprueba antes de cada
+    licitación, nunca a mitad: el lote puede pasarse lo que tarde la última
+    que empezó, como mucho los reintentos de una llamada al proveedor.
     """
     from config import settings
 
@@ -183,6 +199,7 @@ def run(*, muestra: int | None = None, semilla: str = SEMILLA_POR_DEFECTO) -> di
         "error": 0,
         "disabled": 0,
         "budget_exhausted": 0,
+        "tiempo_agotado": 0,
         "merged": 0,
         "feedback_escrito": 0,
         "feedback_omitido": 0,
@@ -232,9 +249,18 @@ def run(*, muestra: int | None = None, semilla: str = SEMILLA_POR_DEFECTO) -> di
 
     procesadas: list[str] = []
     clasificadas: dict[str, Clasificacion] = {}
+    inicio = time.monotonic()
 
-    for lic in pendientes:
+    for indice, lic in enumerate(pendientes):
         licitacion_id = str(lic["id_externo"])
+        if presupuesto_s and time.monotonic() - inicio >= presupuesto_s:
+            counts["tiempo_agotado"] = 1
+            log.warning(
+                "llm_tech_labeling_tiempo_agotado",
+                presupuesto_s=presupuesto_s,
+                pendientes_sin_procesar=len(pendientes) - indice,
+            )
+            break
         try:
             guard.check()
         except LLMBudgetExceeded as exc:
