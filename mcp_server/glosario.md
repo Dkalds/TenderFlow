@@ -178,6 +178,7 @@ WHERE 'SAP' = ANY (string_to_array(replace(COALESCE(tecnologia, ''), ' ', ''), '
 Casi todas las fechas son `text` ISO-8601 (`2026-09-01`, o `2026-09-01T10:00:00+00:00`): `fecha_publicacion`, `fecha_limite`, `fecha_extraccion`, `fecha_adjudicacion`, `created_at`, `identified_at`, etc. Orden y comparación por texto funcionan; no uses `now()` ni `interval` contra ellas sin convertir.
 - Rangos: `fecha_publicacion >= '2026-01-01' AND fecha_publicacion < '2027-01-01'`. Mes: `substr(fecha_publicacion, 1, 7)`. Hoy: `to_char(now(), 'YYYY-MM-DD')`.
 - Evita `::date` sobre columnas texto: una sola fila mal formada tumba la consulta. Existen columnas tipadas `fecha_pub_d` (date), `fecha_publicacion_ts` y `fecha_limite_ts` (timestamptz), pero pueden ser `NULL` en filas no rellenadas.
+- `fecha_extraccion_ts`, `primera_extraccion_ts`, `fecha_inicio_ts`, `fecha_fin_ts`, `fecha_actualizacion_fuente_ts` y `fecha_adjudicacion_ts` (en `adjudicaciones`) son sombras timestamptz en migración: mientras no se rellenen, muchas filas las tienen `NULL`. Filtra y ordena por la columna de texto.
 - `fecha_publicacion` es la del anuncio; `fecha_extraccion` es cuándo lo leyó el scraper y se reescribe en cada pasada; `primera_extraccion` es el primer avistamiento. Para «cuándo se publicó» usa la primera.
 - Las columnas `timestamp with time zone` (`deleted_at`, `created_at` de algunas tablas) sí admiten `now() - interval '7 days'`.
 

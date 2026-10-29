@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from functools import cache
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, TypedDict
 
 from pydantic import Field
 
@@ -35,13 +35,54 @@ from mcp_server.catalogo import (
     tablas_visibles,
 )
 from mcp_server.tools import ErrorHerramienta
+from mcp_server.tools.consulta import SalidaConsulta
 
 __all__ = [
+    "SalidaDescribirEsquema",
+    "SalidaDescribirTabla",
     "describir_esquema",
     "describir_tabla",
     "ejemplos_sql_del_glosario",
     "glosario",
 ]
+
+
+class _Tabla(TypedDict):
+    tabla: str
+    descripcion: str
+    filas_aprox: int
+
+
+class _Dominio(TypedDict):
+    dominio: str
+    tablas: list[_Tabla]
+
+
+class SalidaDescribirEsquema(TypedDict):
+    dominios: list[_Dominio]
+    glosario: str
+
+
+class _Columna(TypedDict):
+    nombre: str
+    tipo: str
+    nulo: bool
+
+
+class _ClaveForanea(TypedDict):
+    columna: str
+    tabla_destino: str
+    columna_destino: str
+
+
+class SalidaDescribirTabla(TypedDict):
+    tabla: str
+    dominio: str
+    descripcion: str
+    columnas: list[_Columna]
+    claves_foraneas: list[_ClaveForanea]
+    ejemplo: SalidaConsulta
+
 
 _RUTA_GLOSARIO = Path(__file__).resolve().parent.parent / "glosario.md"
 _BLOQUE_SQL = re.compile(r"^```sql\n(.*?)^```", re.DOTALL | re.MULTILINE)

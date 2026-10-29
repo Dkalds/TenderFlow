@@ -261,7 +261,7 @@ vivas hasta que el reinicio las cierre; no hace falta cortarlas.
 ## 4. Diagnóstico
 
 Logs: Render → `tenderflow-mcp` → *Logs*. Los propios del MCP salen en JSON
-(`mcp_server`); los de acceso de uvicorn, en texto plano (ver sección 7).
+(`mcp_server`); el log de acceso de uvicorn está apagado (sección 7).
 
 | Síntoma | Causa probable | Qué hacer |
 |---|---|---|
@@ -280,6 +280,7 @@ Logs: Render → `tenderflow-mcp` → *Logs*. Los propios del MCP salen en JSON
 | `25006` (read-only) | Se intentó escribir; está bloqueado a propósito | — |
 | Error de conexión / agotado el pool | El rol tiene `CONNECTION LIMIT 5` y el pool llega a 5 | Esperar; si es continuo, mirar `pg_stat_activity` por `usename = 'tenderflow_mcp'` y consultas colgadas |
 | Llamadas con error de cuota | Rate limit por usuario: 60/min, 1 000/día | El mensaje dice cuánto esperar |
+| Una tool responde un error genérico y el log trae `Tool '<nombre>' raised an unexpected exception`, pero `audit_log` la da por buena | Lo que devolvió no casa con su `outputSchema` (el `TypedDict` `Salida*` de `mcp_server/tools/`): el SDK lo valida después de la auditoría | Ajustar el `TypedDict` a la forma real; `tests/test_mcp_servidor_integration.py` llama a las seis con datos sembrados |
 | Las llamadas funcionan pero **no hay filas `mcp.*` en `audit_log`** | `AUDIT_HMAC_KEY` ausente o distinta (`log_action` no lanza: `audit_log_persist_failed` en logs) | Poner la clave de la API |
 | Render marca el deploy como fallido tras un health check | `/healthz` responde 421/404, o el arranque abortó por configuración | Ver los logs del arranque; ver sección 6 sobre el `Host` del health check |
 
@@ -319,6 +320,17 @@ SELECT a.created_at, a.action, a.detail
 FROM audit_log a
 WHERE a.action IN ('mcp.login_denegado', 'mcp.refresh_reutilizado', 'mcp.codigo_reutilizado')
 ORDER BY a.id DESC LIMIT 50;
+
+-- Errores de consultar_sql por SQLSTATE en 30 días: los frecuentes piden
+-- corregir el glosario o la pista, no la consulta de quien preguntó
+SELECT COALESCE(substring(a.detail::json->>'error' FROM 'SQLSTATE ([0-9A-Z]{5})'),
+                'sin SQLSTATE') AS sqlstate,
+       count(*) AS n,
+       min(left(a.detail::json->>'error', 160)) AS ejemplo
+FROM audit_log a
+WHERE a.action = 'mcp.consultar_sql' AND a.detail::json->>'error' IS NOT NULL
+  AND a.created_at >= to_char(now() - interval '30 days', 'YYYY-MM-DD')
+GROUP BY 1 ORDER BY 2 DESC;
 ```
 
 **`audit_log` es visible para el MCP.** Por decisión (todo visible salvo
@@ -441,7 +453,9 @@ Entradas equivalentes en [`docs/IMPROVEMENT_BACKLOG.md`](../IMPROVEMENT_BACKLOG.
 - **Log de acceso de uvicorn apagado** (`access_log=False`, 2026-10-29): llevaba
   la query string del callback de OAuth (`code` y `state`). Las peticiones a las
   tools siguen en el log `mcp_tool` y en `audit_log`.
-- El SDK registra el texto de los errores de tool (puede contener literales
-  SQL) a nivel INFO en `mcp.server.mcpserver.server`.
+- El SDK repetía a INFO el texto de cada error de tool (puede traer literales
+  SQL) en `mcp.server.mcpserver.server`; desde el 2026-10-29 `python -m
+  mcp_server` sube ese logger a WARNING. Los fallos siguen en `mcp_tool`
+  (`ok=false`) y en `audit_log`, y los inesperados del SDK, a ERROR.
 - El CI construye la variante `requirements-mcp.txt` de la imagen y comprueba
   que importa el servidor (`ci.yml::docker-build`, desde el 2026-10-29).

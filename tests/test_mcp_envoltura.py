@@ -304,6 +304,17 @@ def test_conserva_firma_y_documentacion() -> None:
     assert inspect.iscoroutinefunction(tool)
 
 
+def test_la_salida_declarada_se_publica_como_output_schema() -> None:
+    from mcp.server.mcpserver.utilities.func_metadata import func_metadata
+
+    con = envoltura.herramienta("consultar_sql", consulta.consultar_sql, consulta.SalidaConsulta)
+    esquema = func_metadata(con).output_schema
+    assert esquema is not None
+    assert esquema["required"] == ["columnas", "filas", "n_filas", "truncado", "duracion_ms"]
+    sin = envoltura.herramienta("consultar_sql", consulta.consultar_sql)
+    assert func_metadata(sin).output_schema is None
+
+
 @pytest.mark.usefixtures("token", "limiter")
 async def test_n_filas_de_las_tools_de_dominio(auditoria: list[Any]) -> None:
     tool = envoltura.herramienta("buscar_en_pliegos", lambda: {"fragmentos": [{}, {}, {}]})

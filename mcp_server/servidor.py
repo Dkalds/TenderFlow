@@ -59,9 +59,21 @@ from mcp_server.envoltura import (
     limitar_llamada,
     resumir_validacion,
 )
-from mcp_server.tools.consulta import consultar_sql
-from mcp_server.tools.dominio import buscar_en_pliegos, buscar_licitaciones, ficha_licitacion
-from mcp_server.tools.esquema import describir_esquema, describir_tabla
+from mcp_server.tools.consulta import SalidaConsulta, consultar_sql
+from mcp_server.tools.dominio import (
+    SalidaBuscarEnPliegos,
+    SalidaBuscarLicitaciones,
+    SalidaFicha,
+    buscar_en_pliegos,
+    buscar_licitaciones,
+    ficha_licitacion,
+)
+from mcp_server.tools.esquema import (
+    SalidaDescribirEsquema,
+    SalidaDescribirTabla,
+    describir_esquema,
+    describir_tabla,
+)
 from observability.logging import get_logger
 
 __all__ = [
@@ -102,16 +114,16 @@ _SOLO_LECTURA = ToolAnnotations(
     read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False
 )
 
-#: ``(nombre, título, función)`` de las seis tools, en el orden en que se listan.
-_TOOLS: tuple[tuple[str, str, Callable[..., Mapping[str, JSONValue]]], ...] = (
-    ("describir_esquema", "Describir el esquema", describir_esquema),
-    ("describir_tabla", "Describir una tabla", describir_tabla),
-    ("consultar_sql", "Consultar con SQL", consultar_sql),
-    ("buscar_licitaciones", "Buscar licitaciones", buscar_licitaciones),
-    ("buscar_en_pliegos", "Buscar en los pliegos", buscar_en_pliegos),
-    ("ficha_licitacion", "Ficha de una licitación", ficha_licitacion),
+#: ``(nombre, título, función, salida)`` de las seis tools, en el orden en que se listan.
+_TOOLS: tuple[tuple[str, str, Callable[..., Mapping[str, JSONValue]], object], ...] = (
+    ("describir_esquema", "Describir el esquema", describir_esquema, SalidaDescribirEsquema),
+    ("describir_tabla", "Describir una tabla", describir_tabla, SalidaDescribirTabla),
+    ("consultar_sql", "Consultar con SQL", consultar_sql, SalidaConsulta),
+    ("buscar_licitaciones", "Buscar licitaciones", buscar_licitaciones, SalidaBuscarLicitaciones),
+    ("buscar_en_pliegos", "Buscar en los pliegos", buscar_en_pliegos, SalidaBuscarEnPliegos),
+    ("ficha_licitacion", "Ficha de una licitación", ficha_licitacion, SalidaFicha),
 )
-_NOMBRES = frozenset(nombre for nombre, _, _ in _TOOLS)
+_NOMBRES = frozenset(nombre for nombre, _, _, _ in _TOOLS)
 
 
 def validar_configuracion() -> list[str]:
@@ -292,8 +304,10 @@ def crear_servidor(proveedor: ProveedorTenderFlow | None = None) -> MCPServer[No
         auth=_ajustes_auth(url),
         lifespan=_ciclo_de_vida,
     )
-    for nombre, titulo, fn in _TOOLS:
-        servidor.tool(name=nombre, title=titulo, annotations=_SOLO_LECTURA)(herramienta(nombre, fn))
+    for nombre, titulo, fn, salida in _TOOLS:
+        servidor.tool(name=nombre, title=titulo, annotations=_SOLO_LECTURA)(
+            herramienta(nombre, fn, salida)
+        )
 
     async def healthz(_: Request) -> Response:
         return JSONResponse({"ok": True})

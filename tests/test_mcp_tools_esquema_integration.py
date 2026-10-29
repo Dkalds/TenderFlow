@@ -182,3 +182,35 @@ def test_describir_tabla_funciona_en_todas_las_tablas_visibles(rol_mcp: str) -> 
         d = describir_tabla(entrada.tabla)
         assert _nombres_de_columnas(d), entrada.tabla
         json.dumps(d)
+
+
+#: Tipo de cada fecha que nombra el §7 del glosario, tal como lo afirma el texto.
+_TIPOS_DEL_GLOSARIO_7 = {
+    ("licitaciones", "fecha_publicacion"): "text",
+    ("licitaciones", "fecha_limite"): "text",
+    ("licitaciones", "fecha_extraccion"): "text",
+    ("licitaciones", "primera_extraccion"): "text",
+    ("adjudicaciones", "fecha_adjudicacion"): "text",
+    ("licitaciones", "fecha_pub_d"): "date",
+    ("licitaciones", "fecha_publicacion_ts"): "timestamp with time zone",
+    ("licitaciones", "fecha_limite_ts"): "timestamp with time zone",
+    ("licitaciones", "fecha_extraccion_ts"): "timestamp with time zone",
+    ("licitaciones", "primera_extraccion_ts"): "timestamp with time zone",
+    ("licitaciones", "fecha_inicio_ts"): "timestamp with time zone",
+    ("licitaciones", "fecha_fin_ts"): "timestamp with time zone",
+    ("licitaciones", "fecha_actualizacion_fuente_ts"): "timestamp with time zone",
+    ("adjudicaciones", "fecha_adjudicacion_ts"): "timestamp with time zone",
+}
+
+
+def test_el_glosario_dice_el_tipo_real_de_las_fechas(rol_mcp: str) -> None:
+    """Si la migración de fechas cambia un tipo (fase 2), el §7 del glosario tiene que cambiar."""
+    seccion = glosario().split("## 7.", 1)[1].split("\n## ", 1)[0]
+    tipos = {
+        (tabla, str(c["nombre"])): str(c["tipo"])
+        for tabla in {t for t, _ in _TIPOS_DEL_GLOSARIO_7}
+        for c in columnas_de(tabla)
+    }
+    for (tabla, columna), tipo in _TIPOS_DEL_GLOSARIO_7.items():
+        assert f"`{columna}`" in seccion, columna
+        assert tipos.get((tabla, columna)) == tipo, f"{tabla}.{columna}: actualiza el §7"
