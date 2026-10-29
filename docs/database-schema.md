@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-10-26
 
-Revisión Alembic aplicada: `v165_user_id_fase3_tanda3`.
+Revisión Alembic aplicada: `v166_source_health_status_disabled`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
