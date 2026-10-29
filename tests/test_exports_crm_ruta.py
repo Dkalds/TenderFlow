@@ -111,8 +111,7 @@ def test_la_ruta_devuelve_el_csv_y_audita_formato_crm() -> None:
             limit=100,
             user={"user_id": 3},
         )
-        cuerpo = b"".join([trozo async for trozo in respuesta.body_iterator])
-        return respuesta, cuerpo
+        return respuesta, bytes(respuesta.body)
 
     with (
         patch(

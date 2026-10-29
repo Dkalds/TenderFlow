@@ -268,6 +268,12 @@ def configure_logging(
         json_logs = _detect_json_default()
 
     shared_processors: list[structlog.types.Processor] = [
+        # Primero: un evento por debajo del nivel del logger se descarta antes
+        # de sellarlo, redactarlo y renderizarlo. Sin esto, cada `log.debug`
+        # suprimido costaba ~18 µs (medido 2026-10) —y los conectores emiten
+        # uno por fila descartada, cientos de miles por pasada— para que luego
+        # el logger de stdlib lo tirara igual.
+        structlog.stdlib.filter_by_level,
         merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,

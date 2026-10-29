@@ -280,8 +280,8 @@ class TestPreferenciasDeNotificacion:
     ) -> None:
         from db.repositories import notification_preferences as prefs
 
-        guardadas: list[dict[str, Any]] = []
-        monkeypatch.setattr(prefs, "guardar", lambda uid, **kw: guardadas.append(kw))
+        guardadas: list[tuple[str, str, str, int | None]] = []
+        monkeypatch.setattr(prefs, "guardar_varias", lambda uid, lote: guardadas.extend(lote))
 
         respuesta = client.put(
             self.RUTA,
@@ -291,17 +291,17 @@ class TestPreferenciasDeNotificacion:
             ],
         )
         assert respuesta.status_code == 200
-        assert [g["tipo"] for g in guardadas] == ["daily_summary", "pursuit.mention"]
+        assert [g[0] for g in guardadas] == ["daily_summary", "pursuit.mention"]
 
     def test_un_vocabulario_desconocido_es_422(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from db.repositories import notification_preferences as prefs
 
-        def _explota(uid: int, **kw: Any) -> None:
+        def _explota(uid: int, lote: Any) -> None:
             raise ValueError("tipo desconocido: humo")
 
-        monkeypatch.setattr(prefs, "guardar", _explota)
+        monkeypatch.setattr(prefs, "guardar_varias", _explota)
 
         respuesta = client.put(
             self.RUTA, json=[{"tipo": "humo", "canal": "email", "frecuencia": "daily"}]

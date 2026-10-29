@@ -603,7 +603,9 @@ def normaliza_codigo(code: str) -> str:
     (el listado, en SA Core) y que ``shared/procedimientos.py`` al traducir.
     """
     limpio = code.strip()
-    return str(int(limpio)) if limpio.isdigit() else limpio
+    # `isascii`: `"²".isdigit()` es True y `int("²")` lanza; y un dígito no
+    # ASCII tampoco lo trataría igual el `ltrim(..., '0')` del lado SQL.
+    return str(int(limpio)) if limpio.isascii() and limpio.isdigit() else limpio
 
 
 def codigo_normalizado_sql(column: str) -> str:

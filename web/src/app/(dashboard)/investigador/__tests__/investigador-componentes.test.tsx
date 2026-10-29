@@ -451,38 +451,43 @@ describe("InvestigadorSearchBar", () => {
 describe("InvestigadorConfigPanel", () => {
   const base = { config: DEFAULT_CONFIG, onChange: vi.fn(), models: ["modelo-a"] };
 
-  it("arranca plegado y se abre con su botón", () => {
+  // El cuerpo llega en un chunk aparte al desplegarse: se espera con `findBy*`.
+  it("arranca plegado y se abre con su botón", async () => {
     render(<InvestigadorConfigPanel {...base} fusionDisponible={false} />);
     const boton = screen.getByRole("button", { name: "Opciones avanzadas" });
     expect(boton).toHaveAttribute("aria-expanded", "false");
+    expect(boton).toHaveAttribute("aria-controls");
+    expect(document.getElementById(boton.getAttribute("aria-controls") ?? "")).not.toBeNull();
+    expect(screen.queryByText("Resultados")).toBeNull();
 
     fireEvent.click(boton);
 
     expect(boton).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("Resultados")).toBeVisible();
+    expect(await screen.findByText("Resultados")).toBeVisible();
   });
 
-  it("«Tipo de coincidencia» no se ofrece si no gobierna nada", () => {
+  it("«Tipo de coincidencia» no se ofrece si no gobierna nada", async () => {
     render(<InvestigadorConfigPanel {...base} fusionDisponible={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Opciones avanzadas" }));
+    await screen.findByText("Resultados");
 
     expect(screen.queryByText("Tipo de coincidencia")).toBeNull();
     expect(screen.queryByText("Por significado")).toBeNull();
   });
 
-  it("y sí cuando la búsqueda combina significado y texto", () => {
+  it("y sí cuando la búsqueda combina significado y texto", async () => {
     render(<InvestigadorConfigPanel {...base} fusionDisponible />);
     fireEvent.click(screen.getByRole("button", { name: "Opciones avanzadas" }));
 
-    expect(screen.getByText("Tipo de coincidencia")).toBeInTheDocument();
+    expect(await screen.findByText("Tipo de coincidencia")).toBeInTheDocument();
     expect(screen.getByText("Solo palabras")).toBeInTheDocument();
   });
 
-  it("arrastrar «Resultados» no aplica nada hasta soltar", () => {
+  it("arrastrar «Resultados» no aplica nada hasta soltar", async () => {
     const onChange = vi.fn();
     render(<InvestigadorConfigPanel {...base} onChange={onChange} fusionDisponible={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Opciones avanzadas" }));
-    const deslizador = screen.getByRole("slider", { name: "Resultados" });
+    const deslizador = await screen.findByRole("slider", { name: "Resultados" });
 
     // Cada flecha es un cambio terminado para Radix: se aplica una vez por
     // tecla. Lo que no puede pasar es aplicar en cada paso de un arrastre;
@@ -494,12 +499,12 @@ describe("InvestigadorConfigPanel", () => {
     expect(screen.getByText(String(DEFAULT_CONFIG.topK + 1))).toBeInTheDocument();
   });
 
-  it("el ámbito se enciende con su casilla", () => {
+  it("el ámbito se enciende con su casilla", async () => {
     const onChange = vi.fn();
     render(<InvestigadorConfigPanel {...base} onChange={onChange} fusionDisponible={false} />);
     fireEvent.click(screen.getByRole("button", { name: "Opciones avanzadas" }));
 
-    fireEvent.click(screen.getByRole("checkbox", { name: /Aplicar el ámbito/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Aplicar el ámbito/ }));
 
     expect(onChange).toHaveBeenCalledWith({ useGlobalFilters: true });
   });

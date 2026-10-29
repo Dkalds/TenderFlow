@@ -60,6 +60,7 @@ import importlib
 import json
 import os
 import re
+import uuid
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -186,10 +187,17 @@ class FilesystemObjectStore(ObjectStore):
         destino.parent.mkdir(parents=True, exist_ok=True)
         # Escritura en dos pasos: un proceso que lea mientras otro escribe no
         # puede encontrarse medio fichero (el fetcher y la re-extracción pueden
-        # correr a la vez sobre el mismo documento).
-        temporal = destino.with_name(f".{destino.name}.tmp")
-        temporal.write_bytes(data)
-        temporal.replace(destino)
+        # correr a la vez sobre el mismo documento). El temporal es único por
+        # escritura: con un nombre fijo, dos escritores de la misma clave
+        # compartían fichero y uno podía publicar lo que el otro iba por la
+        # mitad, o fallar con `FileNotFoundError` al renombrar el que ya no estaba.
+        temporal = destino.with_name(f".{destino.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            temporal.write_bytes(data)
+            temporal.replace(destino)
+        except BaseException:
+            temporal.unlink(missing_ok=True)
+            raise
 
     def get(self, key: str) -> bytes | None:
         origen = self._path(key)

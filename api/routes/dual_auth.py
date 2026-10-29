@@ -76,7 +76,6 @@ async def require_any_auth(
 
     if api_key_raw:
         from api.auth import validate_api_key_credential
-        from db.users import get_user_by_id
 
         ctx = await validate_api_key_credential(
             api_key_raw,
@@ -91,10 +90,14 @@ async def require_any_auth(
             user_id = ctx.key_id
             owner: dict[str, Any] | None = None
         else:
-            # Esta dependencia cuelga de casi toda la API: `get_user_by_id` es
-            # síncrono (psycopg3), así que sin `run_db` bloquearía el event
-            # loop en cada petición autenticada por API key.
-            owner = await run_db(get_user_by_id, user_id)
+            # La validación ya leyó al propietario (y rechazó la clave si la
+            # cuenta está dada de baja); volver a pedirlo era otra consulta por
+            # cada petición autenticada con API key.
+            owner = ctx.owner
+            if owner is None:
+                from db.users import get_user_by_id
+
+                owner = await run_db(get_user_by_id, user_id)
             if owner is None:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner inactive"

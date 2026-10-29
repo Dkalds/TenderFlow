@@ -29,6 +29,7 @@ Lo único propio de este endpoint es **de dónde sale la credencial**:
 
 from __future__ import annotations
 
+from anyio import to_thread
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Security, status
 from fastapi.responses import Response
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
@@ -106,8 +107,15 @@ async def prometheus_metrics(
     # instrumentar cada adquisición de conexión.
     from observability.runtime_metrics import refresh_db_pool_metrics
 
-    refresh_db_pool_metrics()
-    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+    def _exponer() -> bytes:
+        refresh_db_pool_metrics()
+        return bytes(generate_latest())
+
+    # Serializar el registro entero crece con rutas, códigos y buckets: en un
+    # hilo, no en el event loop que atiende al resto de peticiones. Fuera del
+    # carril de `run_cpu` a propósito: si la analítica lo satura, que es
+    # justamente cuando más interesa, el scrape no debe quedarse esperando.
+    return Response(await to_thread.run_sync(_exponer), media_type=CONTENT_TYPE_LATEST)
 
 
 __all__ = ["SCOPE_METRICAS", "require_metrics_reader", "router"]

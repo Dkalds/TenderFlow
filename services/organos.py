@@ -267,6 +267,11 @@ def resolver_pendientes(
             if n <= 0:
                 break
             resumen.filas_actualizadas += n
+            # Un lote incompleto es el último: sin índice sobre
+            # `lower(btrim(...))` cada llamada recorre la tabla entera, y la
+            # que confirmaba el cero era un recorrido más por grafía.
+            if n < batch:
+                break
     if resumen.grafias_vistas:
         log.info("organos_resolver_pendientes", **resumen.as_dict())
     return resumen
@@ -360,6 +365,8 @@ def decidir_revision(
         if n <= 0:
             break
         filas_asignadas += n
+        if n < batch:  # lote incompleto: no queda nada que asignar
+            break
 
     log.info(
         "organo_revision_resuelta",

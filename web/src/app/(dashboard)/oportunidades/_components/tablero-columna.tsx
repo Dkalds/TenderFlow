@@ -108,7 +108,15 @@ export function TableroColumna({
           event.preventDefault();
           onSobrevolar();
         }}
-        onDragLeave={onSalir}
+        onDragLeave={(event) => {
+          // `dragleave` también salta al pasar de la zona a una tarjeta suya:
+          // eso no es salir, y apagar la columna para volver a encenderla en el
+          // siguiente `dragover` hacía parpadear el resalte y re-renderizaba el
+          // tablero entero en cada cruce.
+          const destino = event.relatedTarget;
+          if (destino instanceof Node && event.currentTarget.contains(destino)) return;
+          onSalir();
+        }}
         onDrop={(event) => {
           event.preventDefault();
           if (aceptaSoltar) onSoltarEnColumna();

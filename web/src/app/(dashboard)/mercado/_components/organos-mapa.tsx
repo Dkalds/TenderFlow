@@ -15,7 +15,7 @@ import dynamic from "next/dynamic";
 
 import { Panel, PanelEmpty, PanelLoading, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
-import { ALTO_MAPA } from "@/components/charts/organos-charts";
+import { ALTO_MAPA } from "@/components/charts/alturas";
 import { CHART_SERIES } from "@/lib/chart-colors";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 

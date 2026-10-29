@@ -96,6 +96,8 @@ class _PlacspParseCore:
 
             enlaces = entry_elem.xpath("./atom:link/@href", namespaces=NS)
             url = str(enlaces[0]) if enlaces else None
+            if not self.rescate.espera(url):
+                return
             fechas = entry_elem.xpath("./atom:updated/text()", namespaces=NS)
             actualizado = str(fechas[0]).strip() if fechas else None
             self.rescate.considerar(url, parse_document_references(entry_elem), actualizado)

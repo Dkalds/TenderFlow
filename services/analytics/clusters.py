@@ -179,6 +179,18 @@ def _k_max_for(n_samples: int, hard_cap: int = _MAX_CLUSTERS) -> int:
 
 
 def _optimal_k(embeddings: np.ndarray, k_min: int = 3, k_max: int | None = None) -> int:
+    return _optimal_k_con_etiquetas(embeddings, k_min, k_max)[0]
+
+
+def _optimal_k_con_etiquetas(
+    embeddings: np.ndarray, k_min: int = 3, k_max: int | None = None
+) -> tuple[int, np.ndarray | None]:
+    """``(k, etiquetas)`` del mejor ajuste por silhouette.
+
+    Las etiquetas son las del ajuste ganador (``None`` si no se probó ninguno):
+    con ``random_state`` fijo, volver a ajustar el mismo ``k`` daba exactamente
+    las mismas, y era un KMeans más (``n_init=10``) sobre hasta 30k filas.
+    """
     from sklearn.metrics import silhouette_score
 
     n_samples = len(embeddings)
@@ -186,8 +198,9 @@ def _optimal_k(embeddings: np.ndarray, k_min: int = 3, k_max: int | None = None)
         k_max = _k_max_for(n_samples)
     k_max = min(k_max, n_samples - 1)
     if k_max < k_min:
-        return max(2, k_min)
+        return max(2, k_min), None
     best_k, best_score = k_min, -1.0
+    best_labels: np.ndarray | None = None
     for k in range(k_min, k_max + 1):
         labels = _kmeans_factory(k, n_samples).fit_predict(embeddings)
         try:
@@ -195,8 +208,8 @@ def _optimal_k(embeddings: np.ndarray, k_min: int = 3, k_max: int | None = None)
         except ValueError:
             score = -1.0
         if score > best_score:
-            best_score, best_k = score, k
-    return best_k
+            best_score, best_k, best_labels = score, k, labels
+    return best_k, best_labels
 
 
 def _ctfidf_labels(texts: Iterable[str], labels: np.ndarray, top_n: int = 3) -> dict[int, str]:
@@ -207,10 +220,12 @@ def _ctfidf_labels(texts: Iterable[str], labels: np.ndarray, top_n: int = 3) -> 
     unique = sorted(set(labels.tolist()))
     if not unique:
         return {}
-    grouped: dict[int, str] = {cid: "" for cid in unique}
+    grouped: dict[int, list[str]] = {cid: [] for cid in unique}
     for txt, cid in zip(texts_list, labels.tolist(), strict=False):
-        grouped[int(cid)] += " " + (txt or "")
-    docs = [grouped[cid] for cid in unique]
+        grouped[int(cid)].append(txt or "")
+    # `join` al final: concatenar con `+=` copiaba el documento entero del
+    # cluster en cada fila (cuadrático con hasta 30k títulos).
+    docs = [" " + " ".join(grouped[cid]) if grouped[cid] else "" for cid in unique]
     if not any(d.strip() for d in docs):
         return {cid: "otros" for cid in unique}
     vec = TfidfVectorizer(
@@ -251,11 +266,14 @@ def _to_repo_filters(filters: ClustersFilters) -> LicitacionesFilters:
     )
 
 
-def _resolve_k(embeddings: np.ndarray, filters: ClustersFilters, n: int) -> int:
+def _resolve_k(
+    embeddings: np.ndarray, filters: ClustersFilters, n: int
+) -> tuple[int, np.ndarray | None]:
+    """``(k, etiquetas)``; las etiquetas solo si la búsqueda de ``k`` ya las calculó."""
     if filters.auto_k:
-        return _optimal_k(embeddings, k_min=3, k_max=_k_max_for(n))
+        return _optimal_k_con_etiquetas(embeddings, k_min=3, k_max=_k_max_for(n))
     k = filters.n_clusters or _DEFAULT_CLUSTERS
-    return max(2, min(k, _MAX_CLUSTERS, n - 1))
+    return max(2, min(k, _MAX_CLUSTERS, n - 1)), None
 
 
 def _box(importes: pd.Series) -> ImporteBox | None:
@@ -325,8 +343,9 @@ def get_clusters(filters: ClustersFilters) -> ClustersResult:
 
     try:
         embeddings = _tfidf_embeddings(texts)
-        k = _resolve_k(embeddings, filters, len(work))
-        labels = _kmeans_factory(k, len(work)).fit_predict(embeddings)
+        k, labels = _resolve_k(embeddings, filters, len(work))
+        if labels is None:
+            labels = _kmeans_factory(k, len(work)).fit_predict(embeddings)
     except (ValueError, RuntimeError, MemoryError) as exc:
         log.warning("analytics_clusters_failed", error=str(exc))
         return ClustersResult(total=total)

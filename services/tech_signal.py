@@ -65,8 +65,12 @@ def score_documents(pages: list[dict[str, Any]]) -> dict[str, TechSignal]:
     hace falta un mapa aparte documento→tipo. Devuelve solo las tecnologías
     que superan ``_MIN_WEIGHTED_HITS``.
     """
-    weighted_hits: dict[str, float] = dict.fromkeys(_tech_patterns(), 0.0)
-    matched: dict[str, set[str]] = {tech: set() for tech in _tech_patterns()}
+    # Una sola lectura de los patrones para toda la pasada: pedirlos por página
+    # tomaba el lock del diccionario cada vez y, si su versión cambiaba a mitad
+    # del bucle, una tecnología nueva hacía saltar `KeyError` en `weighted_hits`.
+    patrones = _tech_patterns()
+    weighted_hits: dict[str, float] = dict.fromkeys(patrones, 0.0)
+    matched: dict[str, set[str]] = {tech: set() for tech in patrones}
 
     for page in pages:
         # NFC: el texto extraído de un PDF llega a menudo con la tilde como
@@ -75,7 +79,7 @@ def score_documents(pages: list[dict[str, Any]]) -> dict[str, TechSignal]:
         if not text:
             continue
         weight = _DOC_TYPE_WEIGHT.get(str(page.get("tipo") or ""), _DEFAULT_DOC_WEIGHT)
-        for tech, pattern in _tech_patterns().items():
+        for tech, pattern in patrones.items():
             hits = pattern.findall(text)
             if not hits:
                 continue

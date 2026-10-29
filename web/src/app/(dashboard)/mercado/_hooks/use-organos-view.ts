@@ -156,7 +156,7 @@ export function useOrganosView() {
   const { data: overview } = useFilteredQuery<OverviewTotales>(
     ["analytics", "overview"],
     "/api/v1/analytics/overview",
-    { staleTime: 60_000, meta: META_ERROR_EN_LINEA },
+    { meta: META_ERROR_EN_LINEA },
   );
 
   const items = useMemo(() => data?.organos ?? [], [data]);

@@ -56,7 +56,7 @@ PAQUETES: tuple[str, ...] = (
 )
 
 #: Usos de ``Any`` congelados. Solo baja: al tipar, actualizalo en el mismo PR.
-LIMITE = 2162
+LIMITE = 2159
 
 
 def _ficheros() -> list[str]:

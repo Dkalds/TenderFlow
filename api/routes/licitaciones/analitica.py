@@ -29,6 +29,7 @@ from api.routes.licitaciones._base import (
     _get_classifier,
     _lic_repo,
 )
+from db.repositories.licitaciones import TechScoreRow
 from observability.logging import get_logger
 from services.ml.senal_clasificador import estado_senal_sap
 from services.simulador_precio import SimulacionPrecio, simular_precio_de
@@ -275,14 +276,21 @@ async def get_tecnologias(
     """
     from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
 
-    data = await run_db(_lic_repo.get_by_id, id_externo)
-    if data is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
+    def _leer() -> tuple[str, list[TechScoreRow]] | None:
+        # La ficha y las probabilidades en un salto al threadpool; de la ficha
+        # solo hace falta su `tecnologia`.
+        fila = _lic_repo.get_by_id(id_externo)
+        if fila is None:
+            return None
+        return str(fila.get("tecnologia") or ""), _lic_repo.tech_scores_for(id_externo)
 
-    en_titulo = {t.strip() for t in str(data.get("tecnologia") or "").split(",") if t.strip()}
-    ml_scores = await run_db(_lic_repo.tech_scores_for, id_externo)
-    pliego_repo = TecnologiaPliegoRepository()
-    pliego_rows = await run_db(pliego_repo.list_for_licitacion, id_externo)
+    leido = await run_db(_leer)
+    if leido is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
+    tecnologia, ml_scores = leido
+    pliego_rows = await run_db(TecnologiaPliegoRepository().list_for_licitacion, id_externo)
+
+    en_titulo = {t.strip() for t in tecnologia.split(",") if t.strip()}
 
     items: dict[str, TecnologiaDetalle] = {}
 

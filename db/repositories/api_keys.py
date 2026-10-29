@@ -12,6 +12,12 @@ from observability.logging import get_logger
 
 log = get_logger(__name__)
 
+# Columnas de ``api_keys``, leídas una vez por proceso: ``get_by_hash`` corre en
+# cada petición con API key y la consulta a ``information_schema`` costaba un
+# viaje más a la BD cada vez. Las columnas solo cambian con una migración, que
+# reinicia el proceso al desplegar.
+_COLUMNAS_API_KEYS: frozenset[str] | None = None
+
 
 class ApiKeyRepository:
     def _hash(self, raw: str) -> str:
@@ -25,8 +31,13 @@ class ApiKeyRepository:
     # ── Lookups ──────────────────────────────────────────────
 
     def get_by_hash(self, key_hash: str) -> dict[str, Any] | None:
+        global _COLUMNAS_API_KEYS
         with connect_read() as c:
-            cols_info = get_table_columns(c, "api_keys")
+            cols_info = _COLUMNAS_API_KEYS
+            if cols_info is None:
+                cols_info = frozenset(get_table_columns(c, "api_keys"))
+                if cols_info:  # una tabla aún sin crear no se recuerda
+                    _COLUMNAS_API_KEYS = cols_info
             select_parts = [
                 "id",
                 "expires_at" if "expires_at" in cols_info else "NULL AS expires_at",

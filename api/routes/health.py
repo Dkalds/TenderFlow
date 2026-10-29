@@ -279,7 +279,12 @@ def _check_redis() -> str:
 
         from_url: Any = _redis.from_url
         client = from_url(redis_url, socket_connect_timeout=2)
-        client.ping()
+        try:
+            client.ping()
+        finally:
+            # Sin cerrar, cada sondeo (Render y el HEALTHCHECK de Docker, cada
+            # 30 s) dejaba un pool con su socket abierto hasta el GC.
+            client.close()
         return "ok"
     except Exception:
         return "degraded"

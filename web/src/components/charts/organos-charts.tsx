@@ -16,6 +16,7 @@ import {
   YAxis,
   ZAxis,
 } from "recharts";
+import { ALTO_MAPA } from "@/components/charts/alturas";
 import { ChartErrorBoundary } from "@/components/charts/chart-error-boundary";
 import { CAJA_TOOLTIP } from "@/components/charts/chart-tooltip";
 import { formatCompactCurrency, formatCurrency, formatNumber } from "@/lib/utils";
@@ -50,7 +51,7 @@ const MONTH_LABELS = [
 
 /* ── Mapa de compradores ───────────────────────────────────────── */
 
-export const ALTO_MAPA = 380;
+export { ALTO_MAPA };
 
 const ETIQUETA_CUADRANTE = { fontSize: 11, className: "fill-muted-foreground" } as const;
 

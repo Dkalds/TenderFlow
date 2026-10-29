@@ -538,16 +538,16 @@ class OrganizationRepository:
             "user_profiles",
             "user_notifications",
         )
-        total = 0
-        sin_organizacion = 0
+        # Un solo recorrido por tabla y un solo viaje: las dos cuentas salen del
+        # mismo `COUNT` con `FILTER`, y las siete tablas van en un `UNION ALL`.
+        consulta = " UNION ALL ".join(
+            f"SELECT COUNT(*), COUNT(*) FILTER (WHERE organization_id IS NULL) FROM {table}"
+            for table in tables
+        )
         with connect_read() as conn:
-            for table in tables:
-                row = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
-                total += int(row[0]) if row else 0
-                row = conn.execute(
-                    f"SELECT COUNT(*) FROM {table} WHERE organization_id IS NULL"
-                ).fetchone()
-                sin_organizacion += int(row[0]) if row else 0
+            filas = conn.execute(consulta).fetchall()
+        total = sum(int(fila[0] or 0) for fila in filas)
+        sin_organizacion = sum(int(fila[1] or 0) for fila in filas)
         return {"total": total, "sin_organizacion": sin_organizacion}
 
     def claim_legacy_rows(self, user_id: int, user_key: str) -> int:

@@ -90,6 +90,30 @@ describe("First Load del dashboard: lo que se carga al usarse", LENTO, () => {
     expect(cargados).toEqual([]);
   });
 
+  it("/competencia no carga recharts: el mapa de competidores lo pide al pintarse", async () => {
+    const cargados = await cargadosAlImportar(
+      () => import("@/app/(dashboard)/competencia/_components/competidores-view"),
+      ["recharts"],
+    );
+    expect(cargados).toEqual([]);
+  });
+
+  it("/mercado (órganos) no carga recharts: el mapa de compradores lo pide al pintarse", async () => {
+    const cargados = await cargadosAlImportar(
+      () => import("@/app/(dashboard)/mercado/_components/organos-view"),
+      ["recharts"],
+    );
+    expect(cargados).toEqual([]);
+  });
+
+  it("/investigador no carga Radix Select: las opciones avanzadas llegan al desplegarse", async () => {
+    const cargados = await cargadosAlImportar(
+      () => import("@/app/(dashboard)/investigador/page"),
+      ["ui/select (Radix Select)"],
+    );
+    expect(cargados).toEqual([]);
+  });
+
   it("/oportunidades/[id] no carga zod ni los editores de celda", async () => {
     const cargados = await cargadosAlImportar(
       () => import("@/app/(dashboard)/oportunidades/[id]/_components/ficha-view"),

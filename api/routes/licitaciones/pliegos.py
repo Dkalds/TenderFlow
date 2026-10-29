@@ -307,7 +307,7 @@ async def extract_tender_fact_sheet_async(
     # 404 ANTES de encolar: con un id inexistente el trabajo acabaría
     # intentando persistir el estado `failed` y violando la FK de
     # ``tender_fact_sheets`` — exactamente el 5xx que cazó Schemathesis.
-    if await run_db(_lic_repo.get_by_id, id_externo) is None:
+    if not await run_db(_lic_repo.exists, id_externo):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Licitación '{id_externo}' no encontrada.",
@@ -356,7 +356,7 @@ async def enqueue_expediente_embeddings(
     """
     from services.jobs import TIPO_EMBEDDINGS_EXPEDIENTE, enqueue
 
-    if await run_db(_lic_repo.get_by_id, id_externo) is None:
+    if not await run_db(_lic_repo.exists, id_externo):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Licitación '{id_externo}' no encontrada.",

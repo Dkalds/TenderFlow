@@ -10,6 +10,7 @@ El esquema lo crea ``v118``.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
@@ -149,6 +150,22 @@ def resolver(user_id: int, *, tipo: str, canal: str, organization_id: int | None
     return explicita if explicita is not None else frecuencia_por_defecto(canal)
 
 
+_SQL_GUARDAR = (
+    "INSERT INTO notification_preferences "
+    "(user_id, organization_id, tipo, canal, frecuencia, created_at, updated_at) "
+    "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+    "ON CONFLICT (user_id, COALESCE(organization_id, 0), tipo, canal) DO UPDATE SET "
+    "  frecuencia = excluded.frecuencia, updated_at = excluded.updated_at"
+)
+
+
+def _validar(canal: str, frecuencia: str) -> None:
+    if frecuencia not in FRECUENCIAS:
+        raise ValueError(f"frecuencia inválida: {frecuencia!r} (válidas: {FRECUENCIAS})")
+    if canal not in CANALES:
+        raise ValueError(f"canal inválido: {canal!r} (válidos: {CANALES})")
+
+
 def guardar(
     user_id: int,
     *,
@@ -158,19 +175,28 @@ def guardar(
     organization_id: int | None = None,
 ) -> None:
     """Fija una preferencia. Idempotente por `(usuario, org, tipo, canal)`."""
-    if frecuencia not in FRECUENCIAS:
-        raise ValueError(f"frecuencia inválida: {frecuencia!r} (válidas: {FRECUENCIAS})")
-    if canal not in CANALES:
-        raise ValueError(f"canal inválido: {canal!r} (válidos: {CANALES})")
+    guardar_varias(user_id, [(tipo, canal, frecuencia, organization_id)])
+
+
+def guardar_varias(user_id: int, preferencias: Sequence[tuple[str, str, str, int | None]]) -> None:
+    """Fija varias preferencias ``(tipo, canal, frecuencia, organization_id)`` de golpe.
+
+    Todas o ninguna: se validan antes de escribir y van en una transacción. El
+    `PUT` de Ajustes las guardaba de una en una —hasta 24 transacciones— y una
+    inválida a mitad dejaba guardadas las anteriores.
+    """
+    for _tipo, canal, frecuencia, _org in preferencias:
+        _validar(canal, frecuencia)
+    if not preferencias:
+        return
     ahora = now_utc_iso()
     with connect() as c:
-        c.execute(
-            "INSERT INTO notification_preferences "
-            "(user_id, organization_id, tipo, canal, frecuencia, created_at, updated_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s) "
-            "ON CONFLICT (user_id, COALESCE(organization_id, 0), tipo, canal) DO UPDATE SET "
-            "  frecuencia = excluded.frecuencia, updated_at = excluded.updated_at",
-            (user_id, organization_id, tipo, canal, frecuencia, ahora, ahora),
+        c.executemany(
+            _SQL_GUARDAR,
+            [
+                (user_id, org, tipo, canal, frecuencia, ahora, ahora)
+                for tipo, canal, frecuencia, org in preferencias
+            ],
         )
 
 

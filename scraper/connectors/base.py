@@ -326,24 +326,25 @@ def _persist_documentos(
         log.warning("connector_documentos_persist_failed", source=source_id, exc_info=True)
         return
     repo = DocumentosRepository()
-    fallidas = 0
-    for licitacion_id, refs in docs_por_lic.items():
-        try:
-            repo.upsert_meta(licitacion_id, refs)
-        except Exception:
-            fallidas += 1
-            _contar_error("documentos")
-            log.warning(
-                "connector_documentos_persist_failed",
-                source=source_id,
-                licitacion_id=licitacion_id,
-                exc_info=True,
-            )
-    if fallidas:
+    try:
+        fallos = repo.upsert_meta_batch(docs_por_lic)
+    except Exception as error_lectura:
+        # Ni la lectura ni la conexión: no se escribió ninguna. Se cuentan todas,
+        # como cuando cada una fallaba por su lado.
+        fallos = dict.fromkeys(docs_por_lic, error_lectura)
+    for licitacion_id, fallo in fallos.items():
+        _contar_error("documentos")
+        log.warning(
+            "connector_documentos_persist_failed",
+            source=source_id,
+            licitacion_id=licitacion_id,
+            exc_info=fallo,
+        )
+    if fallos:
         log.warning(
             "connector_documentos_persist_parcial",
             source=source_id,
-            fallidas=fallidas,
+            fallidas=len(fallos),
             total=len(docs_por_lic),
         )
 

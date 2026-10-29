@@ -291,6 +291,11 @@ class _MemoryBackend:
         with self._lock:
             self._store.pop(key, None)
 
+    def delete_many(self, keys: list[str]) -> None:
+        with self._lock:
+            for key in keys:
+                self._store.pop(key, None)
+
     def clear(self) -> None:
         with self._lock:
             self._store.clear()
@@ -339,6 +344,12 @@ class _MemoryBackend:
         self, key: str, entrada: _RespuestaCacheada, ttl: float = 60.0
     ) -> None:
         self.set_respuesta(key, entrada, ttl)
+
+
+# Claves por viaje a Redis al barrer (``SCAN ... COUNT``) y al borrar en tanda.
+# Con 100, invalidar la caché de un usuario recorría el keyspace entero —cuota
+# de rate limit incluida— de cien en cien, y luego borraba clave a clave.
+_TANDA_SCAN = 1000
 
 
 class _RedisBackend:
@@ -513,6 +524,19 @@ class _RedisBackend:
             return
         self._registrar_exito()
 
+    def delete_many(self, keys: list[str]) -> None:
+        """Borra varias claves con un ``DEL`` por tanda, no uno por clave."""
+        self._memoria().delete_many(keys)
+        if not keys or not self._redis_activo():
+            return
+        try:
+            for inicio in range(0, len(keys), _TANDA_SCAN):
+                self._r.delete(*(self._k(k) for k in keys[inicio : inicio + _TANDA_SCAN]))
+        except Exception as exc:
+            self._registrar_fallo("delete", exc)
+            return
+        self._registrar_exito()
+
     def clear(self) -> None:
         """Elimina solo las keys con el namespace actual (no flushdb)."""
         self._memoria().clear()
@@ -522,7 +546,7 @@ class _RedisBackend:
             pattern = f"{self._ns}*" if self._ns else "*"
             cursor = 0
             while True:
-                cursor, keys = self._r.scan(cursor=cursor, match=pattern, count=100)
+                cursor, keys = self._r.scan(cursor=cursor, match=pattern, count=_TANDA_SCAN)
                 if keys:
                     self._r.delete(*keys)
                 if cursor == 0:
@@ -541,7 +565,7 @@ class _RedisBackend:
             cursor = 0
             ns_len = len(self._ns)
             while True:
-                cursor, keys = self._r.scan(cursor=cursor, match=full_pattern, count=100)
+                cursor, keys = self._r.scan(cursor=cursor, match=full_pattern, count=_TANDA_SCAN)
                 result.extend(k[ns_len:] for k in keys)
                 if cursor == 0:
                     break
@@ -1165,11 +1189,9 @@ def invalidate_user_scoped(namespace: str, func_name: str, user_key: str) -> int
     """
     cache = get_cache(namespace)
     marca = _marca_de_identidad("principal", user_key)
-    borradas = 0
-    for key in cache.keys(f"{func_name}|*"):
-        if marca in key:
-            cache.delete(key)
-            borradas += 1
+    claves = [key for key in cache.keys(f"{func_name}|*") if marca in key]
+    cache.delete_many(claves)
+    borradas = len(claves)
     if borradas:
         log.debug("cache_invalidated_user_scoped", func=func_name, borradas=borradas)
     return borradas
@@ -1185,11 +1207,9 @@ def invalidate_organization_scoped(namespace: str, func_name: str, organization_
     """
     cache = get_cache(namespace)
     marca = _marca_de_identidad("organization", organization_id)
-    borradas = 0
-    for key in cache.keys(f"{func_name}|*"):
-        if marca in key:
-            cache.delete(key)
-            borradas += 1
+    claves = [key for key in cache.keys(f"{func_name}|*") if marca in key]
+    cache.delete_many(claves)
+    borradas = len(claves)
     if borradas:
         log.debug(
             "cache_invalidated_organization_scoped",
