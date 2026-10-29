@@ -97,6 +97,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # Mismo preflight que `scrape-daily.yml` y `ml-scoring.yml`: el
+      # 2026-10-27 (run 40437624919) este carril escribió tres meses con el
+      # código de la fase B de identidad PLACSP contra una BD sin `v164`
+      # (#577). Si la BD no es de la misma generación que el código, el
+      # refresco (`success()` implícito) no arranca.
+      - name: Preflight de schema
+        timeout-minutes: 3
+        run: python -m db.schema_revision
+
       # Overrides de repositorio → $GITHUB_ENV, y SOLO si están definidos.
       #
       # Antes esto vivía como `X: ${{ vars.X || 'literal' }}` en el `env:` del

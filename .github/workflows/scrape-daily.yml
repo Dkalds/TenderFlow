@@ -80,6 +80,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # Código y schema se despliegan por caminos distintos (`migrate.yml` es
+      # manual) y este job hace checkout de `master` en cada pasada. Del
+      # 2026-10-26 al 10-28 corrió con el código de la fase B de identidad
+      # PLACSP contra una BD sin `v164` y salió en VERDE mientras escribía
+      # claves nuevas junto a las viejas (#577): justo las filas que hacen
+      # abortar a `v164`. Mismo preflight que `ml-scoring.yml`: si la BD no es
+      # de la misma generación que el código, no se escribe nada.
+      #
+      # Los pasos que escriben en la BD lo exigen de forma explícita
+      # (`steps.schema.outcome == 'success'`) porque los conectores y el cierre
+      # usan `!cancelled()` y, si no, correrían aunque este step fallara. El
+      # healthcheck final (`always()`) sigue corriendo y avisa.
+      - name: Preflight de schema
+        id: schema
+        timeout-minutes: 3
+        run: python -m db.schema_revision
+
       # Overrides de repositorio → $GITHUB_ENV, y SOLO si están definidos.
       #
       # Antes esto vivía como `X: ${{ vars.X || 'literal' }}` en el `env:` del
@@ -182,7 +199,7 @@ jobs:
       # sin gate de variable (a diferencia de PSCP/TACRC más abajo).
       - name: Run TED connector
         id: ted
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.schema.outcome == 'success' }}
         continue-on-error: true
         # Presupuesto propio: no debe consumir el timeout del job si la API
         # pública se degrada.
@@ -194,14 +211,14 @@ jobs:
       # impida la actualización nacional ni las demás fuentes.
       - name: Run Galicia RSS connector
         id: galicia
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.schema.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 5
         run: python -m scraper.connectors.galicia
 
       - name: Run Euskadi RSS connector
         id: euskadi
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.schema.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 5
         run: python -m scraper.connectors.euskadi
@@ -211,7 +228,7 @@ jobs:
       # descargar el feed; el timeout aísla cualquier degradación de PLACE.
       - name: Run watched-company awards connector
         id: watched_awards
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.schema.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 5
         run: python -m scraper.connectors.watched_company_awards
@@ -236,7 +253,7 @@ jobs:
       # el presupuesto del job.
       - name: Run PSCP Catalunya connector
         id: pscp
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.schema.outcome == 'success' }}
         continue-on-error: true
         # Presupuesto propio: si la API pública de Catalunya se cuelga o
         # pagina muchísimo, no debe consumir todo el timeout del job y dejar
@@ -249,7 +266,7 @@ jobs:
 
       - name: Run TACRC resoluciones connector
         id: tacrc
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.schema.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 10
         env:
@@ -262,7 +279,7 @@ jobs:
       # documentada en la variable (docs/runbooks/fuentes-opcionales.md).
       - name: Run PLACSP agregadas connector
         id: placsp_agregadas
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.schema.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 10
         env:
@@ -271,7 +288,7 @@ jobs:
 
       - name: Run PLACSP contratos menores connector
         id: placsp_menores
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.schema.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 10
         env:
@@ -288,7 +305,7 @@ jobs:
       # cambio: un cierre roto SÍ debe poner el job en rojo — es donde viven el
       # refresco de la vista pública y las alertas de vigilancia.
       - name: Cierre de la pasada (pasos post-ingesta)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.schema.outcome == 'success' }}
         timeout-minutes: 20
         env:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}

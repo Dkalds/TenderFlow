@@ -67,6 +67,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # Mismo preflight que `scrape-daily.yml` (#577): el reproceso re-parsea
+      # entradas PLACSP y escribe con la clave del código; contra una BD de
+      # otra generación crearía filas nuevas junto a las viejas.
+      - name: Preflight de schema
+        timeout-minutes: 3
+        run: python -m db.schema_revision
+
       - name: Reprocesar
         env:
           DESDE: ${{ inputs.desde }}
