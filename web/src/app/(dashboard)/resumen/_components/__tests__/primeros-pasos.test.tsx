@@ -80,7 +80,7 @@ const CAPACIDAD_COMPLETA = {
 };
 const UN_NIF = {
   organization_id: 1,
-  nifs: [{ id: 1, nif: "B12345678", razon_social: "Acme", principal: true, created_at: "2026-10-01T00:00:00Z" }],
+  nifs: [{ id: 1, nif: "B12345678", razon_social: "Acme", principal: true, created_at: "2026-10-01T00:00:00Z" }], // pragma: allowlist secret
 };
 const REGLA_ACTIVA = {
   items: [{ id: 1, active: true, email: null, frequency: "daily", match_count: 3 }],

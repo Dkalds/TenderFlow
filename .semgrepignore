@@ -1,0 +1,48 @@
+# Rutas que Semgrep (`security.yml`) no escanea.
+#
+# Con este fichero presente Semgrep deja de aplicar su `.semgrepignore` por
+# defecto, así que el primer bloque lo reproduce tal cual (plantilla de
+# semgrep/semgrep, cli/src/semgrep/templates/.semgrepignore): sin él entrarían
+# `tests/` y compañía en el barrido.
+
+# Administrative folder or file used by popular version control systems
+.git
+.svn
+.hg
+_darcs
+CVS
+
+# Paths to files and folders that are typically large and ignorable
+build/
+vendor/
+dist/
+*.min.js
+.env/
+.tox/
+
+# Package managers
+node_modules/
+.npm/
+.yarn/
+.venv/
+_opam/
+_build/
+_cargo/
+
+# Common test paths
+test/
+tests/
+testsuite/
+*_test.go
+
+# ── Propias del repo ─────────────────────────────────────────────────────────
+# Skills de agentes: código de terceros fijado en `skills-lock.json` y copiado
+# byte a byte en cuatro árboles (`make check-agent-docs` exige la paridad), así
+# que no se puede anotar con `nosemgrep`. No forman parte del producto ni corren
+# en CI. El `live-browser.js` de impeccable dejaba 12 hallazgos bloqueantes
+# (`wildcard-postmessage-configuration`, 3 por copia) y `security.yml` en rojo
+# (issue #470).
+.agents/skills/
+.claude/skills/
+.github/skills/
+.opencode/skills/

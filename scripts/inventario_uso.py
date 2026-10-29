@@ -298,7 +298,7 @@ def consultar_prometheus(url: str, token_file: Path | None = None) -> dict[str, 
     if token_file is not None:
         token = token_file.read_text(encoding="utf-8").strip()
         peticion.add_header("Authorization", f"Bearer {token}")
-    with urllib.request.urlopen(peticion, timeout=60) as respuesta:  # noqa: S310  # nosec B310 — idem
+    with urllib.request.urlopen(peticion, timeout=60) as respuesta:  # noqa: S310  # nosec B310  # nosemgrep — idem
         return contar_prom_json(json.loads(respuesta.read().decode("utf-8")))
 
 

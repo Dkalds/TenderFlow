@@ -100,7 +100,7 @@ def _abrir_url(url: str) -> _Respuesta:
     if not url.startswith("https://"):
         raise DescargaInvalida(f"Solo se descarga por HTTPS: {url}")
     peticion = urllib.request.Request(url, headers={"User-Agent": "tenderflow-build"})  # noqa: S310  # URL https fija, comprobada arriba
-    return _Respuesta(urllib.request.urlopen(peticion, timeout=_TIMEOUT_S))  # noqa: S310  # idem
+    return _Respuesta(urllib.request.urlopen(peticion, timeout=_TIMEOUT_S))  # noqa: S310  # nosemgrep — idem
 
 
 def ficheros(sha256_modelo: str, sha256_tokenizador: str, sha256_config: str) -> list[Fichero]:
