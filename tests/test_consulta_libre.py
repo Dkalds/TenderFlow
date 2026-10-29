@@ -16,6 +16,7 @@ from db.consulta_libre import (
     ErrorConsulta,
     ejemplo_de,
     envolver,
+    envolver_con_recorte,
     normalizar_sql,
     serializar_valor,
 )
@@ -75,6 +76,22 @@ def test_envolver_duplica_los_porcentajes() -> None:
     assert envolver("SELECT 'a' LIKE '%b%'", 5) == (
         "SELECT * FROM (\nSELECT 'a' LIKE '%%b%%'\n) AS q LIMIT %s"
     )
+
+
+def test_envolver_con_recorte_sin_columnas_de_texto_es_el_envoltorio_de_siempre() -> None:
+    assert envolver_con_recorte("SELECT 1, now()", [23, 1184]) == (
+        envolver("SELECT 1, now()", 0),
+        frozenset(),
+    )
+
+
+def test_envolver_con_recorte_acota_solo_las_de_texto_por_posicion() -> None:
+    sql, recortadas = envolver_con_recorte("SELECT a, b, c FROM t WHERE a LIKE '%x'", [25, 23, 142])
+    assert recortadas == {0, 2}
+    assert sql.startswith("SELECT CASE WHEN length(q.c0::text) > 1000 ")
+    assert ", q.c1, CASE WHEN length(q.c2::text)" in sql
+    assert sql.endswith(") AS q(c0, c1, c2) LIMIT %s")
+    assert "LIKE '%%x'" in sql  # los % del usuario, duplicados como en `envolver`
 
 
 @pytest.mark.parametrize(

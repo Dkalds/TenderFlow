@@ -496,8 +496,8 @@ jobs:
     name: Docker build + Trivy scan
     needs: [test]
     runs-on: ubuntu-latest
-    # 10 → 15 min: desde C3.1 se construyen dos variantes de la imagen.
-    timeout-minutes: 15
+    # 10 → 15 min: desde C3.1 se construyen dos variantes de la imagen; 20 con la del MCP.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -532,6 +532,21 @@ jobs:
           docker run --rm -e ENV=dev -e APP_PROFILE=worker --entrypoint python licitaciones-sap:ci-pipeline -c "
           import api.app, scheduler.worker, scheduler.cron_plane, scheduler.jobs
           import sklearn, statsmodels, networkx, lxml
+          print('imports OK')
+          "
+
+      # La variante de `tenderflow-mcp` (render.yaml) instala `requirements-mcp.txt`:
+      # sin este paso, su primer build real era el de Render.
+      - name: Build Docker image — variante MCP
+        run: |
+          docker build -f docker/Dockerfile.api --target runtime \
+            --build-arg REQUIREMENTS_FILE=requirements-mcp.txt \
+            --tag licitaciones-sap:ci-mcp .
+
+      - name: Smoke test — variante MCP importa el servidor
+        run: |
+          docker run --rm -e ENV=dev -e APP_PROFILE=mcp --entrypoint python licitaciones-sap:ci-mcp -c "
+          import mcp_server.__main__, mcp_server.servidor
           print('imports OK')
           "
 

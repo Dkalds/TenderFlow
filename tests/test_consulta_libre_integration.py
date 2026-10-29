@@ -16,6 +16,7 @@ import pytest
 from config.settings import mcp_database_url
 from db import consulta_libre
 from db.consulta_libre import (
+    MAX_CHARS_CELDA,
     MAX_CHARS_RESPUESTA,
     ErrorConsulta,
     ejecutar_select,
@@ -340,6 +341,23 @@ def test_deja_de_leer_cuando_la_respuesta_ya_no_cabe(rol_mcp: str) -> None:
     assert 0 < r.n_filas < 300
     assert len(json.dumps(r.como_dict())) <= MAX_CHARS_RESPUESTA
     assert time.perf_counter() - inicio < 5
+
+
+def test_las_celdas_de_texto_llegan_recortadas_desde_el_servidor(rol_mcp: str) -> None:
+    """La celda gigante se recorta en Postgres, con la marca exacta y los nombres originales."""
+    r = ejecutar_select(
+        "SELECT repeat('x', 5000000) AS t, 7 AS n, 'corto'::varchar AS t, "
+        "'<a/>'::xml AS x, '{\"k\": 1}'::jsonb AS j"
+    )
+    assert r.columnas == ["t", "n", "t", "x", "j"]
+    ((largo, n, corto, xml, j),) = r.filas
+    assert largo == "x" * MAX_CHARS_CELDA + f"…[+{5_000_000 - MAX_CHARS_CELDA}]"
+    assert (n, corto, xml, j) == (7, "corto", "<a/>", {"k": 1})
+
+
+def test_un_texto_de_exactamente_el_tope_no_lleva_marca(rol_mcp: str) -> None:
+    r = ejecutar_select(f"SELECT repeat('x', {MAX_CHARS_CELDA}) AS t")
+    assert r.filas == [["x" * MAX_CHARS_CELDA]]
 
 
 def test_tope_de_tiempo_es_de_la_consulta_entera(rol_mcp: str) -> None:

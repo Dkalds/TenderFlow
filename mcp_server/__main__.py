@@ -34,6 +34,9 @@ def main() -> None:
         # Sin la configuración de logging de uvicorn: sus logs van al handler
         # estructurado que acaba de instalar `configure_logging`.
         log_config=None,
+        # Sin log de acceso: la línea de `/oauth/google/callback` llevaría `code` y
+        # `state` en la query string. Las tools ya dejan su propio log `mcp_tool`.
+        access_log=False,
     )
 
 

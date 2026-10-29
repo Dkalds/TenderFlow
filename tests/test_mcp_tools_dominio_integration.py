@@ -191,6 +191,15 @@ def test_tool_buscar_licitaciones_rechaza_desde_posterior_a_hasta(tmp_db: Any) -
 
 def test_tool_buscar_en_pliegos_aviso_sugiere_reintentar(tmp_db: Any) -> None:
     sin_id = buscar_en_pliegos("palabras que no existen en ninguna parte")
-    assert "menos palabras" in str(sin_id["aviso"])
+    assert "otras palabras clave" in str(sin_id["aviso"])
     con_id = buscar_en_pliegos("nada", id_externo="NO-EXISTE")
-    assert "menos palabras" not in str(con_id["aviso"])
+    assert "otras palabras clave" not in str(con_id["aviso"])
+
+
+def test_tool_buscar_licitaciones_sin_resultados_remite_a_sql(
+    licitacion_con_lote_y_adjudicacion: str,
+) -> None:
+    vacio = buscar_licitaciones("", importe_max=5_000)
+    assert vacio["total"] == 0
+    assert "consultar_sql" in str(vacio["aviso"])
+    assert "aviso" not in buscar_licitaciones("sap")

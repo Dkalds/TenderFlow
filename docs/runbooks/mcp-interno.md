@@ -267,7 +267,7 @@ Logs: Render → `tenderflow-mcp` → *Logs*. Los propios del MCP salen en JSON
 |---|---|---|
 | El servicio no arranca: `Configuración del MCP incompleta o inválida: …` | Falta (o está mal formada) una variable. El mensaje lista cuáles | Corregir en Render. Incluye `AUDIT_HMAC_KEY` y que `MCP_GOOGLE_REDIRECT_URI` sea exactamente `MCP_PUBLIC_URL` + `/oauth/google/callback` |
 | claude.ai: «Tenderflow wasn't connected. If you didn't cancel the sign-in, ask your Tenderflow admin for access.» En los logs, `GET /oauth/google/callback` → `302` y **ningún** `POST /token` después | El callback denegó el login y devolvió `access_denied`. `audit_log` tiene `mcp.login_denegado` con `motivo`: `fuera_de_allowlist` (el correo no está en `OAUTH_ALLOWED_EMAILS`/`OAUTH_ALLOWED_DOMAINS` **del servicio MCP** ni en `access_grants`; fue el caso del primer alta), `no_admin` o `sin_usuario_activo` (no hay cuenta activa con ese correo de Google) | `SELECT detail, created_at FROM audit_log WHERE action = 'mcp.login_denegado' ORDER BY id DESC LIMIT 3`. Para `fuera_de_allowlist`, añadir el correo a `OAUTH_ALLOWED_EMAILS` en `tenderflow-mcp` y reintentar tras el redeploy |
-| El cliente da vueltas pidiendo login (**401 en bucle**) | (a) la persona ya no es admin/activa o no pasa la allowlist (`mcp.login_denegado` en auditoría con `motivo`); (b) el cliente tiene un token de otro `MCP_PUBLIC_URL`/servicio; (c) `SIGNING_KEY` cambió y las peticiones pendientes (10 min) ya no verifican | Mirar `mcp.login_denegado`. Quitar y volver a añadir el conector. Si cambió `SIGNING_KEY`, solo afecta a los logins en curso |
+| El cliente da vueltas pidiendo login (**401 en bucle**) | (a) la persona ya no es admin/activa o no pasa la allowlist (`mcp.login_denegado` en auditoría con `motivo`); (b) el cliente tiene un token de otro `MCP_PUBLIC_URL`/servicio; (c) `SIGNING_KEY` cambió: las peticiones pendientes (10 min) ya no verifican y el `client_secret` de los clientes registrados (derivado de esa clave) deja de valer en `/token` | Mirar `mcp.login_denegado`. Quitar y volver a añadir el conector. Si cambió `SIGNING_KEY`, cada persona tiene que quitar y volver a añadir el conector (se registra un cliente nuevo) |
 | `redirect_uri_mismatch` en Google | El paso 2 no coincide al carácter con `MCP_GOOGLE_REDIRECT_URI` | Corregir en Google Cloud o en la variable |
 | El registro del cliente falla (`invalid_redirect_uri` en `/register`) | Un cliente con callback propio (ChatGPT) | Añadirlo a `MCP_REDIRECT_URIS_EXTRA` (paso 4) |
 | `/register` responde `invalid_client_metadata` «Demasiados registros…» o «Registro desmedido…»; `/authorize` vuelve con `error=temporarily_unavailable` | Topes y rate limit del DCR abierto: 30 registros/h y 600 autorizaciones/h **globales**, 60/h por cliente; campos de más de 500 caracteres, registro de más de 8 KB. No hay límite por IP | Si es un abuso, esperar a que pase la hora (o vaciar las claves `mcp:oauth:*` de `rate_limits`/Redis, ver `rate-limit-reset.md`); si es un cliente legítimo con metadatos enormes, es un cambio de código en `mcp_server/auth/proveedor.py` |
@@ -386,6 +386,30 @@ Se hace una vez, tras el alta (pasos 1–3). Lo marcado se comprobó el
       cliente falla y vuelve a pedir login.
 - [ ] Anotar aquí la fecha y lo que difiera del runbook.
 
+### Pasar la evaluación (`mcp_server/evaluacion.xml`)
+
+Diez preguntas con respuesta verificada sobre datos de producción. Se pasan
+tras cambiar el glosario, la descripción de una tool o lo que devuelve, y el
+resultado se compara con la pasada anterior. Es un informe, no un gate, y cuesta
+llamadas al modelo.
+
+1. Sacar un access token: MCP Inspector (`npx @modelcontextprotocol/inspector`)
+   → *Streamable HTTP* → `https://<host>/mcp` → *OAuth* con un admin. El token
+   aparece en el panel de autenticación; vale una hora.
+2. Ejecutar el script de evaluación del skill `mcp-builder` (no está en el
+   repo: `scripts/evaluation.py` dentro de la carpeta del skill), con
+   `pip install anthropic mcp` y `ANTHROPIC_API_KEY`, desde la raíz del repo:
+
+   ```bash
+   python <carpeta-del-skill>/scripts/evaluation.py -t http -u https://<host>/mcp \
+     -H "Authorization: Bearer <token>" -o informe.md mcp_server/evaluacion.xml
+   ```
+
+3. Una pregunta que falla se arregla en el glosario o en la descripción de la
+   tool, nunca en la pregunta. El token caduca solo en una hora; `mcp_revocar.py`
+   no sirve para cerrarlo antes, porque revoca **todos** los de la persona,
+   también los de su conector.
+
 ---
 
 ## 7. Seguimientos conocidos
@@ -401,22 +425,23 @@ Entradas equivalentes en [`docs/IMPROVEMENT_BACKLOG.md`](../IMPROVEMENT_BACKLOG.
   refresh— ya no se reconoce como reutilizado (se rechaza como desconocido, sin
   revocar la familia), y un conector sin tokens durante un mes pierde su
   registro y tiene que volver a añadirse.
-- **Una celda enorme de `consultar_sql` se carga entera**: el ejecutor lee por
-  lotes y para en cuanto la respuesta no cabe, pero un único valor gigante
-  (`string_agg` de `documentos.texto`, `database_to_xml`) llega completo a la
-  memoria del proceso antes de recortarse a 1 000 caracteres. Si hay OOM en
-  `starter`, ese es el sospechoso.
-- **El `client_secret` del DCR se guarda legible** en
-  `mcp_oauth_clients.datos`: el SDK lo compara en claro. Queda oculto para el
-  rol `tenderflow_mcp` (la tabla es `OCULTA` en el catálogo), pero un volcado de
-  la BD con el rol de la app lo incluye. Opciones: clientes públicos
-  (`token_endpoint_auth_method = none`, ligado a la comprobación de arriba) o
-  guardarlo cifrado/hasheado.
-- **Los logs de acceso de uvicorn son texto plano** (no JSON) y **incluyen la
-  query string del callback de OAuth** (`code` y `state`). El `code` ya está
-  gastado cuando se escribe (un solo uso, 60 s), pero conviene `access_log=False`
-  o un filtro. Los logs propios del MCP sí van en JSON.
+- **Celdas enormes de `consultar_sql`** (resuelto en parte el 2026-10-29): las
+  columnas `text`, `varchar` y `xml` llegan ya recortadas desde Postgres
+  (`db.consulta_libre.envolver_con_recorte`), así que un `string_agg` de
+  `documentos.texto` o un `database_to_xml` ya no entra entero en memoria. Los
+  `json`/`jsonb` y los arrays (`jsonb_agg`, `array_agg`) siguen llegando enteros
+  antes de recortarse: si hay OOM en `starter`, son los sospechosos.
+- **El `client_secret` del DCR ya no se guarda** (2026-10-29): es
+  `HMAC-SHA256(SIGNING_KEY, client_id)` y se recalcula en cada `/token`
+  (`mcp_server.auth.proveedor.secreto_de_cliente`). Los clientes registrados
+  antes conservan su secreto aleatorio en `mcp_oauth_clients.datos` hasta que se
+  vuelvan a registrar (quitar y volver a añadir el conector) o los purgue la
+  limpieza. Contrapartida: rotar `SIGNING_KEY` obliga a volver a añadir todos
+  los conectores (sección 4).
+- **Log de acceso de uvicorn apagado** (`access_log=False`, 2026-10-29): llevaba
+  la query string del callback de OAuth (`code` y `state`). Las peticiones a las
+  tools siguen en el log `mcp_tool` y en `audit_log`.
 - El SDK registra el texto de los errores de tool (puede contener literales
   SQL) a nivel INFO en `mcp.server.mcpserver.server`.
-- El CI no construye la variante `requirements-mcp.txt` de la imagen
-  (`ci.yml::docker-build`): el primer build real será el de Render.
+- El CI construye la variante `requirements-mcp.txt` de la imagen y comprueba
+  que importa el servidor (`ci.yml::docker-build`, desde el 2026-10-29).

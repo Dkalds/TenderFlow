@@ -212,3 +212,7 @@ estas tres personas, esta decisión se revisa antes.
   para el rol MCP); los logs de acceso de uvicorn son texto plano e incluyen la
   query string del callback de OAuth; una única celda enorme del resultado de
   `consultar_sql` se carga entera en memoria antes de recortarse.
+  *Actualización 2026-10-29:* el `client_secret` ya no se guarda (se deriva de
+  `SIGNING_KEY` y el `client_id`), el log de acceso de uvicorn está apagado y
+  las celdas `text`/`varchar`/`xml` se recortan en Postgres; quedan los
+  `json`/`jsonb` y los arrays enormes (runbook `mcp-interno.md` §7).

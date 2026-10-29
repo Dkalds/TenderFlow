@@ -30,6 +30,7 @@ from db.connection import connect_read
 from db.upsert import Licitacion, upsert_licitaciones
 from db.users import create_user, set_admin
 from mcp_server.servidor import crear_app
+from mcp_server.tools.esquema import glosario
 
 URL_PUBLICA = "http://localhost:8080"
 CLIENTE = "cliente-e2e"
@@ -187,13 +188,15 @@ def test_metadatos_oauth_publicados(app_cliente: TestClient) -> None:
     assert recurso.json()["authorization_servers"] == [URL_PUBLICA]
 
 
-def test_initialize_trae_instrucciones_y_glosario(
+def test_initialize_trae_instrucciones_sin_el_glosario(
     app_cliente: TestClient, token_admin: str
 ) -> None:
     inicial = _handshake(app_cliente, token_admin)
     assert inicial["serverInfo"]["name"] == "tenderflow"
     assert "describir_esquema" in inicial["instructions"]
-    assert "importe" in inicial["instructions"]  # el glosario va detrás
+    # El glosario solo viaja en `describir_esquema`: no se paga dos veces por sesión.
+    assert glosario()[:200] not in inicial["instructions"]
+    assert len(inicial["instructions"]) < 1_000
 
 
 def test_lista_las_seis_tools_de_solo_lectura(app_cliente: TestClient, token_admin: str) -> None:

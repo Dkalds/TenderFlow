@@ -16,6 +16,7 @@ from typing import Any
 from db.repositories.documentos import DocumentosRepository
 from db.repositories.licitaciones import LicitacionRepository
 from services.rag.context import rank_by_question
+from shared.palabras_clave import extract_keywords
 
 __all__ = ["MAX_CHARS_FRAGMENTO", "Fragmento", "fragmentos_de_pliego"]
 
@@ -78,14 +79,23 @@ def fragmentos_de_pliego(
     Con ``id_externo``: los chunks de ese expediente, ordenados por relevancia.
     Sin él: los primeros 5 expedientes de la búsqueda de texto completo y sus
     chunks, mezclados por rango (el mejor de cada expediente, luego el segundo,
-    etc.). Devuelve ``[]`` si no hay texto de pliego indexado.
+    etc.). Si ningún expediente reúne todos los términos, se repite la búsqueda
+    con cualquiera de las palabras clave. Devuelve ``[]`` si no hay texto de
+    pliego indexado.
     """
     if limite < 1:
         return []
     if id_externo is not None:
         return _ordenados(pregunta, id_externo)[:limite]
 
-    filas = _repo_licitaciones().search_fts_docs(pregunta, limit=_MAX_EXPEDIENTES)
+    repo = _repo_licitaciones()
+    filas = repo.search_fts_docs(pregunta, limit=_MAX_EXPEDIENTES)
+    claves = extract_keywords(pregunta)
+    if not filas and len(claves) > 1:
+        # La búsqueda exige todos los términos; una pregunta en lenguaje natural
+        # rara vez los reúne. Segunda pasada con cualquiera de ellos (``or`` de
+        # ``websearch_to_tsquery``): el rango premia a quien casa con más.
+        filas = repo.search_fts_docs(" or ".join(claves), limit=_MAX_EXPEDIENTES)
     por_expediente = [_ordenados(pregunta, str(f["id_externo"])) for f in filas]
     mezclados: list[Fragmento] = []
     for rango in range(max((len(lista) for lista in por_expediente), default=0)):
