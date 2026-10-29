@@ -88,3 +88,24 @@ def test_mcp_redirect_uris_extra_se_normalizan_como_pydantic(
     assert extra == ("https://chatgpt.com/", "https://otro.example/cb")
     monkeypatch.setenv("MCP_REDIRECT_URIS_EXTRA", "https://Chatgpt.COM")
     assert redirect_uri_admitido(str(AnyUrl("https://chatgpt.com")))
+
+
+def test_main_silencia_el_eco_de_errores_del_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
+    """El SDK repite a INFO el texto de cada error de tool; el arranque lo sube a WARNING."""
+    import logging
+
+    from mcp_server import __main__ as arranque
+
+    sdk = logging.getLogger(arranque.LOGGER_ERRORES_SDK)
+    monkeypatch.setattr(arranque, "configure_logging", lambda: None)
+    monkeypatch.setattr(arranque, "validar_configuracion", list)
+    monkeypatch.setattr(arranque, "crear_app", object)
+    monkeypatch.setattr(arranque.uvicorn, "run", lambda *a, **k: None)
+    previo = sdk.level
+    try:
+        sdk.setLevel(logging.NOTSET)
+        arranque.main()
+        assert not sdk.isEnabledFor(logging.INFO)
+        assert sdk.isEnabledFor(logging.ERROR)
+    finally:
+        sdk.setLevel(previo)

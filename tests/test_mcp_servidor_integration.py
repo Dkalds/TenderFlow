@@ -216,6 +216,34 @@ def test_lista_las_seis_tools_de_solo_lectura(app_cliente: TestClient, token_adm
     assert buscar["inputSchema"]["required"] == ["texto"]
 
 
+def test_cada_tool_publica_su_output_schema(app_cliente: TestClient, token_admin: str) -> None:
+    for t in _tools_list(app_cliente, token_admin):
+        esquema = t["outputSchema"]
+        assert esquema["type"] == "object" and esquema["required"], t["name"]
+
+
+def test_las_salidas_reales_casan_con_su_output_schema(
+    app_cliente: TestClient, token_admin: str
+) -> None:
+    """El SDK valida cada ``structuredContent`` contra el ``outputSchema``: un desajuste es error."""
+    upsert_licitaciones(
+        [Licitacion(id_externo="EXP-SAL-1", titulo="Soporte SAP", tecnologia="SAP")]
+    )
+    llamadas: dict[str, dict[str, Any]] = {
+        "describir_esquema": {},
+        "describir_tabla": {"tabla": "licitaciones"},
+        "consultar_sql": {"sql": "SELECT 1 AS uno"},
+        "buscar_licitaciones": {"texto": "SAP"},
+        "buscar_en_pliegos": {"pregunta": "penalidades"},
+        "ficha_licitacion": {"id_externo": "EXP-SAL-1"},
+    }
+    esquemas = {t["name"]: t["outputSchema"] for t in _tools_list(app_cliente, token_admin)}
+    for nombre, args in llamadas.items():
+        resultado = _llamar(app_cliente, token_admin, nombre, args)
+        assert resultado["isError"] is False, (nombre, resultado["content"])
+        assert set(esquemas[nombre]["required"]) <= set(resultado["structuredContent"]), nombre
+
+
 def test_consultar_sql_devuelve_filas_y_audita(
     app_cliente: TestClient, token_admin: str, usuarios: dict[str, int]
 ) -> None:

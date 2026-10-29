@@ -16,12 +16,13 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from typing import Annotated
+from typing import Annotated, NotRequired, TypedDict
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     StringConstraints,
     field_validator,
     model_validator,
@@ -33,7 +34,48 @@ from services.expediente import expediente_completo
 from services.licitaciones import search_advanced
 from services.rag.fragmentos import Fragmento, fragmentos_de_pliego
 
-__all__ = ["buscar_en_pliegos", "buscar_licitaciones", "ficha_licitacion"]
+__all__ = [
+    "SalidaBuscarEnPliegos",
+    "SalidaBuscarLicitaciones",
+    "SalidaFicha",
+    "buscar_en_pliegos",
+    "buscar_licitaciones",
+    "ficha_licitacion",
+]
+
+#: Una fila de la base ya pasada por ``serializar_valor``: sus columnas no se fijan aquí.
+_Fila = dict[str, JsonValue]
+
+
+class SalidaBuscarLicitaciones(TypedDict):
+    total: int
+    resultados: list[_Fila]
+    aviso: NotRequired[str]
+
+
+class _Fragmento(TypedDict):
+    id_externo: str
+    documento: str | None
+    tipo: str | None
+    pagina: int | None
+    texto: str
+
+
+class SalidaBuscarEnPliegos(TypedDict):
+    fragmentos: list[_Fragmento]
+    aviso: NotRequired[str]
+
+
+class SalidaFicha(TypedDict):
+    licitacion: _Fila
+    canonica: str | None
+    lotes: list[_Fila]
+    adjudicaciones: list[_Fila]
+    criterios: list[_Fila]
+    solvencia: list[_Fila]
+    garantias: list[_Fila]
+    ficha_pliego: _Fila | None
+
 
 #: Tope del identificador que se repite en un mensaje de error.
 _MAX_ECO = 60

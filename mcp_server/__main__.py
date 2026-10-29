@@ -7,6 +7,7 @@ arranca igual. Escucha en ``$PORT`` (Render lo fija; 8080 por defecto).
 
 from __future__ import annotations
 
+import logging
 import os
 
 import uvicorn
@@ -18,9 +19,14 @@ from observability.logging import get_logger
 
 log = get_logger("mcp_server")  # con `-m`, __name__ sería "__main__"
 
+#: Logger del SDK que repite a INFO el texto de cada error de tool (puede traer
+#: literales del SQL); el fallo ya queda en `mcp_tool` y en `audit_log`.
+LOGGER_ERRORES_SDK = "mcp.server.mcpserver.server"
+
 
 def main() -> None:
     configure_logging()
+    logging.getLogger(LOGGER_ERRORES_SDK).setLevel(logging.WARNING)
     faltan = validar_configuracion()
     if faltan:  # las que faltan y las mal formadas
         if settings.ENV == "prod":

@@ -39,7 +39,7 @@ import inspect
 import json
 import time
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any, ParamSpec
+from typing import Annotated, Any, ParamSpec
 
 import anyio
 import anyio.to_thread
@@ -263,13 +263,15 @@ async def auditar_rechazo(nombre: str, argumentos: Mapping[str, Any], error: str
 
 
 def herramienta(
-    nombre: str, fn: Callable[P, Mapping[str, JSONValue]]
+    nombre: str, fn: Callable[P, Mapping[str, JSONValue]], salida: object = None
 ) -> Callable[P, Awaitable[CallToolResult]]:
     """Envuelve la tool ``fn`` (síncrona) para registrarla en el servidor como ``nombre``.
 
     Conserva el nombre, el docstring (la descripción de la tool) y la firma de
     ``fn`` con sus anotaciones evaluadas: el SDK construye con ella el esquema
-    JSON de la entrada y valida los argumentos antes de llamar.
+    JSON de la entrada y valida los argumentos antes de llamar. ``salida`` (un
+    ``TypedDict``) es la forma de lo que devuelve: el SDK la publica como
+    ``outputSchema``.
     """
     firma = inspect.signature(fn, eval_str=True)
 
@@ -306,7 +308,10 @@ def herramienta(
     # El SDK lee la firma con `inspect.signature(..., eval_str=True)`: se le da
     # la de `fn` ya evaluada (sus módulos usan `from __future__ import
     # annotations`) y con el tipo de retorno real de la envoltura.
+    # `Annotated[CallToolResult, salida]` es la forma del SDK de publicar
+    # `outputSchema` y validar contra él el `structuredContent`.
+    retorno = CallToolResult if salida is None else Annotated[CallToolResult, salida]
     envuelta.__signature__ = firma.replace(  # type: ignore[attr-defined]  # atributo estándar de inspect
-        return_annotation=CallToolResult
+        return_annotation=retorno
     )
     return envuelta

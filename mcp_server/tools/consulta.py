@@ -9,14 +9,24 @@ de las tools.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, TypedDict
 
-from pydantic import Field
+from pydantic import Field, JsonValue
 
 from db.consulta_libre import MAX_CHARS_SQL, ErrorConsulta, JSONValue, ejecutar_select
 from mcp_server.tools import ErrorHerramienta
 
-__all__ = ["consultar_sql", "error_de_consulta"]
+__all__ = ["SalidaConsulta", "consultar_sql", "error_de_consulta"]
+
+
+class SalidaConsulta(TypedDict):
+    """Lo que devuelve ``consultar_sql`` (y el ``ejemplo`` de ``describir_tabla``)."""
+
+    columnas: list[str]
+    filas: list[list[JsonValue]]
+    n_filas: int
+    truncado: bool
+    duracion_ms: int
 
 
 def error_de_consulta(exc: ErrorConsulta) -> ErrorHerramienta:
