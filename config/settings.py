@@ -766,6 +766,11 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, ObjectStoreSetting
     # sin REDIS_URL en el runner, el presupuesto LLM arranca de 0 en cada
     # corrida y el tope real de gasto es este tamaño de lote (~$0.07 por 200).
     LLM_TECH_LABELING_BATCH: int = 200
+    # Tope de reloj del lote dentro del cierre de la pasada (#581). El step de
+    # cierre de scrape-daily tiene 20 min y el resto de pasos tarda ~5; con el
+    # proveedor lento, 200 llamadas con reintentos se comían el step entero.
+    # Lo que no cabe queda pendiente para la siguiente corrida.
+    LLM_TECH_LABELING_BUDGET_S: int = 600
     # F2.6 — tope de tokens por guion de oferta técnica. Es un tope **por
     # respuesta**, no un presupuesto: el gasto acumulado lo gobierna el
     # `BudgetGuard` de `llm/budget.py`, atado al sujeto por la ruta.

@@ -13,9 +13,11 @@
 # formato que Renovate no admite (`tests/test_unit_lock_cabeceras.py` lo
 # detecta). Se arregla con `make lock` sobre la rama del PR.
 #
-# Los grupos y el cooldown se fueron con las version updates: solo aplicaban a
-# ellas. Sus equivalentes están en renovate.json (`groupName`,
-# `minimumReleaseAge`).
+# Los grupos se fueron con las version updates: solo aplicaban a ellas. Su
+# equivalente está en renovate.json (`groupName`, `minimumReleaseAge`). El
+# `cooldown` de cada bloque no cambia nada —GitHub no lo aplica a las security
+# updates, que son lo único que queda aquí—, pero sin él la regla de Semgrep
+# `dependabot-missing-cooldown` deja `security.yml` en rojo (issue #470).
 version: 2
 updates:
   - package-ecosystem: "pip"
@@ -26,6 +28,8 @@ updates:
       time: "06:00"
       timezone: "Europe/Madrid"
     open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
     labels:
       - "dependencies"
       - "python"
@@ -50,6 +54,8 @@ updates:
       time: "06:00"
       timezone: "Europe/Madrid"
     open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
     labels:
       - "dependencies"
       - "javascript"
@@ -81,6 +87,8 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
     labels:
       - "dependencies"
       - "github-actions"

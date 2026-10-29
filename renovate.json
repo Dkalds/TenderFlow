@@ -3,7 +3,8 @@
   "description": [
     "Actualizaciones de versión de todo el repo. Sustituye a las version updates de Dependabot (.github/dependabot.yml las deja a cero y conserva sus ignore para las security updates).",
     "Por qué Renovate: recompila los cuatro lockfiles con el mismo `uv pip compile` de `make lock` (Dependabot borraba el pin de setuptools y los `# via` de api/pipeline en cada PR), no ensancha los techos de los .in y mueve a la vez el pin de una herramienta y el `rev` de su hook de pre-commit.",
-    "Nada se fusiona solo: sin automerge. Cada PR pasa por los checks requeridos de master y lo fusiona una persona."
+    "Nada se fusiona solo: sin automerge. Cada PR pasa por los checks requeridos de master y lo fusiona una persona.",
+    "El `minimumReleaseAge` de las packageRules con `matchPackageNames` repite el global a propósito: la regla de Semgrep `renovate-missing-minimum-release-age` (security.yml) no ve el de arriba y marca cada una (issue #470)."
   ],
   "extends": [
     "config:recommended",
@@ -84,29 +85,34 @@
         "detect-secrets",
         "Yelp/detect-secrets"
       ],
+      "minimumReleaseAge": "7 days",
       "groupName": "lint (lockfile + hooks de pre-commit)"
     },
     {
       "description": "codespell 2.4.x marca como erratas inglesas ~150 palabras españolas del repo (argumentos, administrativo, alternar…) y rompe el hook; 2.3.0 va limpio. Se sube a mano cuando el diccionario lo permita.",
       "matchPackageNames": ["codespell", "codespell-project/codespell"],
+      "minimumReleaseAge": "7 days",
       "enabled": false
     },
     {
       "description": "scikit-learn 1.9.x: regresión de HistGradientBoostingRegressor con una columna numérica 100% NaN. La 1.10 no se veta: su PR tiene que pasar tests/test_s3_feature_todo_nan.py.",
       "matchManagers": ["pip-compile"],
       "matchPackageNames": ["scikit-learn"],
+      "minimumReleaseAge": "7 days",
       "allowedVersions": "!/^1\\.9\\./"
     },
     {
       "description": "eslint 10 rompe `npm ci` (ERESOLVE): eslint-plugin-jsx-a11y, que trae eslint-config-next, solo declara peer hasta ^9 (PR #284). Se quita cuando esa cadena lo soporte.",
       "matchManagers": ["npm"],
       "matchPackageNames": ["eslint"],
+      "minimumReleaseAge": "7 days",
       "allowedVersions": "<10"
     },
     {
       "description": "La imagen base sigue la versión de Python de CI y del lockfile (`--python-version 3.13`): solo parches de 3.13.",
       "matchManagers": ["dockerfile"],
       "matchPackageNames": ["python"],
+      "minimumReleaseAge": "7 days",
       "allowedVersions": "/^3\\.13\\./"
     },
     {
@@ -124,6 +130,7 @@
     {
       "description": "La mayor de Postgres de CI y del compose local es una decisión de paridad con producción, no una actualización: no se propone.",
       "matchPackageNames": ["pgvector/pgvector"],
+      "minimumReleaseAge": "7 days",
       "enabled": false
     }
   ]
