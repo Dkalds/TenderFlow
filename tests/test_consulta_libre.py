@@ -11,12 +11,14 @@ from uuid import UUID
 import pytest
 
 from db.consulta_libre import (
+    MAX_CHARS_ESTRUCTURA,
     MAX_CHARS_SQL,
     PISTAS,
     ErrorConsulta,
     ejemplo_de,
     envolver,
     envolver_con_recorte,
+    es_estructurada,
     normalizar_sql,
     serializar_valor,
 )
@@ -92,6 +94,26 @@ def test_envolver_con_recorte_acota_solo_las_de_texto_por_posicion() -> None:
     assert ", q.c1, CASE WHEN length(q.c2::text)" in sql
     assert sql.endswith(") AS q(c0, c1, c2) LIMIT %s")
     assert "LIKE '%%x'" in sql  # los % del usuario, duplicados como en `envolver`
+
+
+@pytest.mark.parametrize(
+    ("oid", "esperado"),
+    [(114, True), (3802, True), (1007, True), (1009, True), (23, False), (25, False)],
+)
+def test_es_estructurada_json_y_arrays_nativos(oid: int, esperado: bool) -> None:
+    assert es_estructurada(oid) is esperado
+
+
+def test_envolver_con_recorte_pasa_las_estructuras_por_jsonb() -> None:
+    sql, recortadas = envolver_con_recorte("SELECT j, n, a FROM t", [3802, 23, 1007])
+    assert (
+        recortadas == frozenset()
+    )  # solo las de texto: las estructuras pueden no venir recortadas
+    assert sql.startswith(
+        f"SELECT CASE WHEN length(q.c0::text) > {MAX_CHARS_ESTRUCTURA} THEN to_jsonb("
+    )
+    assert "ELSE to_jsonb(q.c0) END, q.c1, CASE WHEN length(q.c2::text)" in sql
+    assert sql.endswith(") AS q(c0, c1, c2) LIMIT %s")
 
 
 @pytest.mark.parametrize(

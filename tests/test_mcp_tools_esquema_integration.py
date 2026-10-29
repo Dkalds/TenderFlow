@@ -57,6 +57,9 @@ def test_describir_esquema_lista_solo_visibles(rol_mcp: str) -> None:
 def test_describir_esquema_forma_y_glosario(rol_mcp: str) -> None:
     esquema = describir_esquema()
     assert esquema["glosario"] == glosario()
+    sin_glosario = describir_esquema(incluir_glosario=False)
+    assert "glosario" not in sin_glosario
+    assert sin_glosario["dominios"] == esquema["dominios"]
     dominios = [_dict(d) for d in _lista(esquema["dominios"])]
     orden = [d["dominio"] for d in dominios]
     assert orden == [d for d in DOMINIOS if d in orden]

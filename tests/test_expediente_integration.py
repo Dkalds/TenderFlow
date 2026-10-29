@@ -110,6 +110,12 @@ def test_expediente_completo_trae_lotes_y_adjudicaciones(
     }
     assert exp["licitacion"]["titulo"] == "Soporte SAP S/4HANA"
     assert "search_vector" not in exp["licitacion"]
+    # Ni trazas del pipeline, ni `ml_proba` (D55), ni sombras de fechas que ya van en texto.
+    for interna in ("raw_keywords", "filter_version", "ml_proba", "fecha_pub_d"):
+        assert interna not in exp["licitacion"], interna
+    assert "fecha_publicacion" in exp["licitacion"]
+    assert "fecha_publicacion_ts" not in exp["licitacion"]
+    assert "importe_num" in exp["licitacion"]  # el importe exacto sí es dato (glosario §2)
     assert exp["canonica"] == "EXP-ORIGINAL"
     assert [lote["numero"] for lote in exp["lotes"]] == ["1"]
     assert [a["nombre"] for a in exp["adjudicaciones"]] == ["ALFA CONSULTORÍA SA"]

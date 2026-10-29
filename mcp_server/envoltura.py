@@ -11,7 +11,10 @@ y ``services/``; :func:`herramienta` les pone lo que exige el servidor:
    para que cuente **cada intento**, también los que el SDK rechaza antes de
    llegar a la tool (argumentos fuera de esquema, tool inexistente).
 3. **Ejecución** en el threadpool (``anyio.to_thread``): las tools hacen E/S
-   bloqueante (psycopg) y no pueden ocupar el bucle de eventos.
+   bloqueante (psycopg) y no pueden ocupar el bucle de eventos. Sus lecturas
+   por el pool de la app llevan un techo de 15 s (``techo_de_sentencia``), el
+   mismo que el rol del SQL libre; la salida se comprueba contra su
+   ``outputSchema`` antes de auditar.
 4. **Auditoría siempre**, también si la llamada falla o la corta el límite
    (las denegaciones por límite, una fila por usuario, ventana y minuto):
    ``audit_log`` con ``action = "mcp.<tool>"`` y en ``detail`` los argumentos
@@ -24,7 +27,8 @@ y ``services/``; :func:`herramienta` les pone lo que exige el servidor:
    argumentos ni filas (eso es de la auditoría).
 6. **Errores para el LLM**: ``ErrorHerramienta`` y ``ErrorConsulta`` salen como
    ``ToolError`` con ``"{mensaje}\\nPista: {pista}"``; una ``ValidationError`` de
-   los modelos de entrada, como lista compacta de campos; cualquier otra cosa
+   los modelos de entrada, como lista compacta de campos; una consulta cortada
+   por el techo, con su pista; cualquier otra cosa
    se registra con traza en el log y sale como un mensaje genérico, sin ella.
 
 La salida va dos veces, como pide la especificación MCP: ``structuredContent``
@@ -46,8 +50,10 @@ import anyio.to_thread
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent
-from pydantic import ValidationError
+from psycopg.errors import QueryCanceled
+from pydantic import TypeAdapter, ValidationError
 
+from db.connection import techo_de_sentencia
 from db.consulta_libre import MAX_CHARS_SQL, ErrorConsulta, JSONValue
 from mcp_server.auth.proveedor import auditar_oauth
 from mcp_server.tools import ErrorHerramienta
@@ -57,7 +63,10 @@ from services.rate_limiting import get_rate_limiter
 
 __all__ = [
     "ERROR_INTERNO",
+    "ERROR_TIEMPO",
     "LIMITES",
+    "TECHO_SENTENCIA_MS",
+    "SalidaFueraDeEsquema",
     "auditar_rechazo",
     "herramienta",
     "limitar_llamada",
@@ -74,6 +83,12 @@ LIMITES: tuple[tuple[str, int, int, str], ...] = (
     ("dia", 1_000, 86_400, "inténtalo mañana"),
 )
 ERROR_INTERNO = "Error interno; revisa los logs del servidor"
+#: `statement_timeout` de las lecturas de las tools de dominio: el mismo que tiene el rol del SQL libre.
+TECHO_SENTENCIA_MS = 15_000
+ERROR_TIEMPO = (
+    "La consulta tardó más de 15 s y se cortó.\n"
+    "Pista: acota con filtros (fechas, estado, tecnología) o con el id_externo"
+)
 #: Tope de cada texto auditado (argumento o error): el del SQL que admite el esquema.
 MAX_CHARS_AUDITADO = MAX_CHARS_SQL
 #: Tope del ``detail`` entero: un SQL máximo más los metadatos, con holgura.
@@ -253,6 +268,19 @@ async def _auditar(
     log.info("mcp_tool", tool=nombre, user_id=user_id, duracion_ms=duracion_ms, ok=error is None)
 
 
+class SalidaFueraDeEsquema(Exception):
+    """Lo que devolvió una tool no casa con su ``outputSchema``: es un fallo del servidor."""
+
+
+def _validar_salida(validador: TypeAdapter[Any], resultado: Mapping[str, JSONValue]) -> None:
+    # La misma comprobación que hará el SDK, pero antes de auditar: así el fallo queda en audit_log.
+    try:
+        validador.validate_python(resultado)
+    except ValidationError as exc:
+        campos = sorted({".".join(str(p) for p in e["loc"]) for e in exc.errors()})
+        raise SalidaFueraDeEsquema(", ".join(campos)) from exc
+
+
 async def auditar_rechazo(nombre: str, argumentos: Mapping[str, Any], error: str) -> None:
     """Audita una llamada que el SDK rechazó sin llegar a :func:`herramienta`.
 
@@ -274,6 +302,7 @@ def herramienta(
     ``outputSchema``.
     """
     firma = inspect.signature(fn, eval_str=True)
+    validador: TypeAdapter[Any] | None = None if salida is None else TypeAdapter(salida)
 
     @functools.wraps(fn)
     async def envuelta(*args: P.args, **kwargs: P.kwargs) -> CallToolResult:
@@ -285,7 +314,10 @@ def herramienta(
         try:
             argumentos = dict(firma.bind(*args, **kwargs).arguments)
             user_id = _usuario()
-            resultado = await anyio.to_thread.run_sync(functools.partial(fn, *args, **kwargs))
+            with techo_de_sentencia(TECHO_SENTENCIA_MS):
+                resultado = await anyio.to_thread.run_sync(functools.partial(fn, *args, **kwargs))
+            if validador is not None:
+                _validar_salida(validador, resultado)
             n_filas = _contar_filas(resultado)
             return _respuesta(resultado)
         except ErrorHerramienta as exc:
@@ -293,6 +325,9 @@ def herramienta(
             raise ToolError(error) from None
         except ErrorConsulta as exc:
             error = _texto_herramienta(error_de_consulta(exc))
+            raise ToolError(error) from None
+        except QueryCanceled:
+            error = ERROR_TIEMPO
             raise ToolError(error) from None
         except ValidationError as exc:
             error = resumir_validacion(exc)

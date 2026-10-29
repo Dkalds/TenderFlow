@@ -16,7 +16,8 @@ vetan unas pocas funciones (defensa en profundidad, no frontera):
   leídas por lotes con un cursor de servidor que deja de pedir en cuanto la
   respuesta ya no cabe;
 * celdas de texto recortadas a ``MAX_CHARS_CELDA`` (las ``text``/``varchar``/``xml``
-  ya en el servidor, :func:`envolver_con_recorte`) y respuesta serializada de
+  ya en el servidor, :func:`envolver_con_recorte`, que también convierte en texto
+  recortado un ``json``/``jsonb``/array desmedido) y respuesta serializada de
   como mucho ``MAX_CHARS_RESPUESTA`` caracteres (se quitan filas del final);
 * ninguna llamada a las funciones vetadas (cerrojos de aviso, ``pg_notify``,
   ``set_config``, las que ejecutan SQL en texto…): ver :func:`normalizar_sql`.
@@ -42,10 +43,11 @@ from datetime import date, datetime, timedelta
 from datetime import time as hora
 from decimal import Decimal
 from types import MappingProxyType
-from typing import TypeAlias
+from typing import TypeAlias, TypeGuard
 from uuid import UUID
 
 import psycopg
+from psycopg.postgres import types as tipos_nativos
 from psycopg_pool import ConnectionPool
 
 from config.settings import mcp_database_url
@@ -53,9 +55,11 @@ from db.connection import EXTRA_FLOAT_DIGITS, _pg_connect_kwargs
 
 __all__ = [
     "MAX_CHARS_CELDA",
+    "MAX_CHARS_ESTRUCTURA",
     "MAX_CHARS_RESPUESTA",
     "MAX_CHARS_SQL",
     "MAX_FILAS",
+    "OIDS_JSON",
     "OIDS_TEXTO",
     "PISTAS",
     "ErrorConsulta",
@@ -68,6 +72,7 @@ __all__ = [
     "ejemplo_de",
     "envolver",
     "envolver_con_recorte",
+    "es_estructurada",
     "filas_aproximadas",
     "normalizar_sql",
     "serializar_valor",
@@ -487,9 +492,24 @@ def envolver(sql: str, max_filas: int) -> str:
 #: OIDs de ``text``, ``varchar`` y ``xml``: las columnas que
 #: :func:`envolver_con_recorte` acota en el servidor (``char(n)`` no: es de
 #: ancho fijo y el ``::text`` le quitaría los espacios finales).
-# shortcut: json/jsonb y arrays siguen llegando enteros a Python antes de
-# recortarse; subirlo si un OOM se repite con ellos (`jsonb_agg`, `array_agg`).
 OIDS_TEXTO = frozenset({25, 1043, 142})
+#: OIDs de ``json`` y ``jsonb``: junto con los arrays nativos, las celdas con estructura.
+OIDS_JSON = frozenset({114, 3802})
+#: Una celda con estructura más larga que esto no cabría ni sola en la respuesta:
+#: llega del servidor ya convertida en texto recortado.
+MAX_CHARS_ESTRUCTURA = MAX_CHARS_RESPUESTA
+#: Una celda con estructura que el servidor ya recortó (texto con la marca de :func:`_recortar`).
+_YA_RECORTADA = re.compile(rf"(?s).{{{MAX_CHARS_CELDA}}}…\[\+\d+\]")
+
+
+def es_estructurada(oid: int) -> bool:
+    """``json``/``jsonb`` o un array de un tipo nativo de Postgres."""
+    # shortcut: los arrays de tipos propios (enums) no están en el registro nativo
+    # y siguen llegando enteros; subirlo si alguno da problemas de memoria.
+    if oid in OIDS_JSON:
+        return True
+    info = tipos_nativos.get(oid)
+    return info is not None and info.array_oid == oid
 
 
 def _recorte_sql(columna: str) -> str:
@@ -503,24 +523,45 @@ def _recorte_sql(columna: str) -> str:
     )
 
 
+def _recorte_estructura_sql(columna: str) -> str:
+    """La celda de ``columna`` como ``jsonb``, o como texto recortado si es desmedida."""
+    texto = f"{columna}::text"
+    tope = MAX_CHARS_CELDA
+    return (
+        f"CASE WHEN length({texto}) > {MAX_CHARS_ESTRUCTURA} "
+        f"THEN to_jsonb(left({texto}, {tope}) || '…[+' || (length({texto}) - {tope}) || ']') "
+        f"ELSE to_jsonb({columna}) END"
+    )
+
+
 def envolver_con_recorte(sql: str, tipos: Sequence[int]) -> tuple[str, frozenset[int]]:
     """Como :func:`envolver`, pero las columnas de texto llegan ya recortadas.
 
     Sin esto, un único valor gigante (``string_agg`` de ``documentos.texto``,
     ``database_to_xml``) llegaba entero a la memoria del proceso antes de
-    recortarse a :data:`MAX_CHARS_CELDA`. ``tipos`` son los OID de las columnas
-    del resultado (``cursor.description``); las columnas se renombran por
-    posición (``q(c0, c1, …)``) para que nombres repetidos o raros no estorben.
-    Devuelve la sentencia y las posiciones de las columnas ya recortadas.
+    recortarse a :data:`MAX_CHARS_CELDA`. Las celdas con estructura
+    (:func:`es_estructurada`) llegan como ``jsonb``; si pasan de
+    :data:`MAX_CHARS_ESTRUCTURA`, como texto recortado. ``tipos`` son los OID de
+    las columnas del resultado (``cursor.description``); las columnas se
+    renombran por posición (``q(c0, c1, …)``) para que nombres repetidos o raros
+    no estorben. Devuelve la sentencia y las posiciones de las columnas de texto
+    ya recortadas.
     """
     recortadas = frozenset(i for i, oid in enumerate(tipos) if oid in OIDS_TEXTO)
-    if not recortadas:
+    estructuradas = frozenset(i for i, oid in enumerate(tipos) if es_estructurada(oid))
+    if not recortadas and not estructuradas:
         return envolver(sql, 0), recortadas
+
+    def columna(i: int) -> str:
+        if i in recortadas:
+            return _recorte_sql(f"q.c{i}")
+        if i in estructuradas:
+            return _recorte_estructura_sql(f"q.c{i}")
+        return f"q.c{i}"
+
     literal = "%%".join(sql.split("%"))
     alias = ", ".join(f"c{i}" for i in range(len(tipos)))
-    columnas = ", ".join(
-        _recorte_sql(f"q.c{i}") if i in recortadas else f"q.c{i}" for i in range(len(tipos))
-    )
+    columnas = ", ".join(columna(i) for i in range(len(tipos)))
     return f"SELECT {columnas} FROM (\n{literal}\n) AS q({alias}) LIMIT %s", recortadas
 
 
@@ -743,6 +784,15 @@ def _error_de_tiempo() -> ErrorConsulta:
     return ErrorConsulta("57014", "canceling statement due to statement timeout", PISTAS["57014"])
 
 
+def _ya_recortada(
+    v: object, i: int, recortadas: frozenset[int], estructuradas: frozenset[int]
+) -> TypeGuard[str]:
+    """¿La celda ``i`` ya viene recortada del servidor? Recortarla otra vez falsearía la marca."""
+    if not isinstance(v, str):
+        return False
+    return i in recortadas or (i in estructuradas and _YA_RECORTADA.fullmatch(v) is not None)
+
+
 def _leer_por_lotes(
     conn: psycopg.Connection[tuple[object, ...]], sql: str, max_filas: int
 ) -> tuple[list[str], list[list[JSONValue]]]:
@@ -766,7 +816,9 @@ def _leer_por_lotes(
     # Con parámetro enlazado, como la consulta real: protocolo extendido, una sola sentencia.
     descripcion = conn.execute(envolver(sql, 0), (0,)).description or []
     columnas = [str(d.name) for d in descripcion]
-    envuelta, recortadas = envolver_con_recorte(sql, [d.type_code for d in descripcion])
+    tipos = [d.type_code for d in descripcion]
+    envuelta, recortadas = envolver_con_recorte(sql, tipos)
+    estructuradas = frozenset(i for i, oid in enumerate(tipos) if es_estructurada(oid))
     with conn.cursor(name="mcp_consulta") as cur:
         cur.execute(envuelta, (max_filas + 1,))
         filas: list[list[JSONValue]] = []
@@ -783,7 +835,7 @@ def _leer_por_lotes(
             for cruda in lote:
                 # Las recortadas ya traen la marca `…[+N]`: recortarlas otra vez la falsearía.
                 fila = [
-                    v if i in recortadas and isinstance(v, str) else serializar_valor(v)
+                    v if _ya_recortada(v, i, recortadas, estructuradas) else serializar_valor(v)
                     for i, v in enumerate(cruda)
                 ]
                 filas.append(fila)

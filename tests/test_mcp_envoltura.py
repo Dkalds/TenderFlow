@@ -256,6 +256,45 @@ async def test_excepcion_inesperada_no_filtra_traza(
     assert _detalle(auditoria)["error"] == "interno: RuntimeError"
 
 
+@pytest.mark.usefixtures("token", "limiter")
+async def test_salida_fuera_de_esquema_se_audita_como_error(auditoria: list[Any]) -> None:
+    """El SDK la rechazaría después; aquí se comprueba antes para que la auditoría no diga «bien»."""
+    tool = envoltura.herramienta(
+        "consultar_sql", lambda sql: {"columnas": "no es lista"}, consulta.SalidaConsulta
+    )
+    with pytest.raises(ToolError) as exc:
+        await tool(sql="SELECT 1")
+    assert str(exc.value) == envoltura.ERROR_INTERNO
+    assert _detalle(auditoria)["error"] == "interno: SalidaFueraDeEsquema"
+
+
+@pytest.mark.usefixtures("token", "limiter", "auditoria")
+async def test_las_tools_leen_con_el_techo_de_15_s() -> None:
+    from db import connection
+
+    tool = envoltura.herramienta(
+        "describir_esquema", lambda: {"techo": connection._techo_sentencia.get()}
+    )
+    resultado = await tool()
+    assert resultado.structured_content == {"techo": envoltura.TECHO_SENTENCIA_MS}
+    assert connection._techo_sentencia.get() is None
+
+
+@pytest.mark.usefixtures("token", "limiter")
+async def test_lectura_cortada_por_el_techo_trae_pista(auditoria: list[Any]) -> None:
+    from psycopg.errors import QueryCanceled
+
+    def lenta() -> dict[str, Any]:
+        raise QueryCanceled("canceling statement due to statement timeout")
+
+    tool = envoltura.herramienta("ficha_licitacion", lenta)
+    with pytest.raises(ToolError) as exc:
+        await tool()
+    assert str(exc.value) == envoltura.ERROR_TIEMPO
+    assert "Pista:" in envoltura.ERROR_TIEMPO
+    assert _detalle(auditoria)["error"] == envoltura.ERROR_TIEMPO
+
+
 @pytest.mark.usefixtures("token", "limiter", "auditoria")
 async def test_error_herramienta_con_pista() -> None:
     def no_existe(id_externo: str) -> dict[str, Any]:

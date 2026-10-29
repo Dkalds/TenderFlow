@@ -79,6 +79,8 @@ class SalidaFicha(TypedDict):
 
 #: Tope del identificador que se repite en un mensaje de error.
 _MAX_ECO = 60
+#: Más allá, el `OFFSET` recorre demasiadas filas: para eso está `consultar_sql`.
+_MAX_DESPLAZAMIENTO = 10_000
 _FECHA = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 _IdExterno = Annotated[str, StringConstraints(min_length=1, max_length=200)]
@@ -99,6 +101,7 @@ class _EntradaBuscarLicitaciones(_Entrada):
     desde: str | None = None
     hasta: str | None = None
     limite: int = Field(default=20, ge=1, le=50)
+    desplazamiento: int = Field(default=0, ge=0, le=_MAX_DESPLAZAMIENTO)
 
     @field_validator("desde", "hasta")
     @classmethod
@@ -188,6 +191,15 @@ def buscar_licitaciones(
     limite: Annotated[
         int, Field(ge=1, le=50, description="Cuántos resultados devolver (1-50)")
     ] = 20,
+    desplazamiento: Annotated[
+        int,
+        Field(
+            ge=0,
+            le=_MAX_DESPLAZAMIENTO,
+            description="Cuántos resultados saltar, para pedir la página siguiente. "
+            "Ejemplo: 20 con limite=20 da los resultados 21-40",
+        ),
+    ] = 0,
 ) -> dict[str, JSONValue]:
     """Busca licitaciones por texto (título, descripción, órgano...) con filtros opcionales.
 
@@ -204,11 +216,13 @@ def buscar_licitaciones(
     valores exactos (los códigos de ``estado`` y las tecnologías se ven con
     ``describir_esquema``). ``importe_min``/``importe_max`` acotan el importe en
     euros; ``desde``/``hasta`` acotan la fecha de publicación (``YYYY-MM-DD``,
-    ambos incluidos). ``limite``: de 1 a 50 (por defecto 20).
+    ambos incluidos). ``limite``: de 1 a 50 (por defecto 20); ``desplazamiento``
+    salta los primeros resultados para pedir la página siguiente.
 
     ``desde`` no puede ser posterior a ``hasta``. Devuelve ``{"total": N,
     "resultados": [...]}``: ``total`` cuenta todas las coincidencias,
-    ``resultados`` solo las primeras ``limite`` (más recientes primero); los
+    ``resultados`` solo ``limite`` a partir de ``desplazamiento`` (más recientes
+    primero); los
     textos largos de cada fila se recortan a 1 000 caracteres. Sin coincidencias
     añade un ``aviso`` que remite a ``consultar_sql``.
     """
@@ -222,6 +236,7 @@ def buscar_licitaciones(
         desde=desde,
         hasta=hasta,
         limite=limite,
+        desplazamiento=desplazamiento,
     )
     filas, total = search_advanced(
         q=e.texto or None,
@@ -233,6 +248,7 @@ def buscar_licitaciones(
         fecha_desde=e.desde,
         fecha_hasta=e.hasta,
         limit=e.limite,
+        offset=e.desplazamiento,
     )
     salida = _como_dict(serializar_valor({"total": total, "resultados": filas}))
     if total == 0:
@@ -313,7 +329,8 @@ def ficha_licitacion(
 ) -> dict[str, JSONValue]:
     """Devuelve el expediente completo de una licitación por su ``id_externo``.
 
-    Reúne en una sola llamada: ``licitacion`` (todas las columnas del anuncio),
+    Reúne en una sola llamada: ``licitacion`` (las columnas del anuncio, sin
+    las internas del pipeline ni ``ml_proba``),
     ``canonica`` (``id_externo`` del anuncio original si este es una
     republicación), ``lotes``, ``adjudicaciones`` (con lote y adjudicatario),
     ``criterios`` de adjudicación, ``solvencia`` y ``garantias`` exigidas

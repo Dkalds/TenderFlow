@@ -215,4 +215,5 @@ estas tres personas, esta decisión se revisa antes.
   *Actualización 2026-10-29:* el `client_secret` ya no se guarda (se deriva de
   `SIGNING_KEY` y el `client_id`), el log de acceso de uvicorn está apagado y
   las celdas `text`/`varchar`/`xml` se recortan en Postgres; quedan los
-  `json`/`jsonb` y los arrays enormes (runbook `mcp-interno.md` §7).
+  `json`/`jsonb` y los arrays enormes (runbook `mcp-interno.md` §7). Después,
+  ese mismo día, también los `json`/`jsonb` y los arrays de tipos nativos.
