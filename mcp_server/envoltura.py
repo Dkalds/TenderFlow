@@ -272,7 +272,7 @@ class SalidaFueraDeEsquema(Exception):
     """Lo que devolvió una tool no casa con su ``outputSchema``: es un fallo del servidor."""
 
 
-def _validar_salida(validador: TypeAdapter[Any], resultado: Mapping[str, JSONValue]) -> None:
+def _validar_salida(validador: TypeAdapter[object], resultado: Mapping[str, JSONValue]) -> None:
     # La misma comprobación que hará el SDK, pero antes de auditar: así el fallo queda en audit_log.
     try:
         validador.validate_python(resultado)
@@ -302,7 +302,7 @@ def herramienta(
     ``outputSchema``.
     """
     firma = inspect.signature(fn, eval_str=True)
-    validador: TypeAdapter[Any] | None = None if salida is None else TypeAdapter(salida)
+    validador: TypeAdapter[object] | None = None if salida is None else TypeAdapter(salida)
 
     @functools.wraps(fn)
     async def envuelta(*args: P.args, **kwargs: P.kwargs) -> CallToolResult:

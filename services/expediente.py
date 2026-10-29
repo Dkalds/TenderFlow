@@ -36,7 +36,7 @@ _COLUMNAS_INTERNAS = frozenset(
 )
 
 
-def _fila_del_anuncio(detalle: dict[str, Any]) -> dict[str, Any]:
+def _fila_del_anuncio(detalle: dict[str, object]) -> dict[str, object]:
     """La fila sin columnas internas ni las sombras ``<col>_ts`` de una fecha que ya va en texto."""
     return {
         k: v
