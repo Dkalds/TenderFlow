@@ -128,6 +128,24 @@ def test_tool_buscar_licitaciones_encuentra_y_filtra(
     assert buscar_licitaciones("", tecnologia=["ORACLE"])["total"] == 1
 
 
+def test_tool_buscar_licitaciones_pagina_con_desplazamiento(
+    licitacion_con_lote_y_adjudicacion: str,
+) -> None:
+    def ids(res: dict[str, JSONValue]) -> list[str]:
+        filas = res["resultados"]
+        assert isinstance(filas, list)
+        return [str(_dict(r)["id_externo"]) for r in filas]
+
+    primera = buscar_licitaciones("", limite=1)
+    segunda = buscar_licitaciones("", limite=1, desplazamiento=1)
+    assert primera["total"] == segunda["total"] == 2
+    assert len(ids(primera)) == len(ids(segunda)) == 1
+    assert ids(primera) != ids(segunda)
+    assert ids(buscar_licitaciones("", desplazamiento=2)) == []
+    with pytest.raises(ValidationError):
+        buscar_licitaciones("", desplazamiento=-1)
+
+
 def test_tool_ficha_inexistente(tmp_db: Any) -> None:
     with pytest.raises(ErrorHerramienta) as e:
         ficha_licitacion("NO-EXISTE")

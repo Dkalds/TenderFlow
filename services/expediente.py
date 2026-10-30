@@ -21,14 +21,36 @@ from services.licitaciones import get_licitacion_detail
 
 __all__ = ["expediente_completo"]
 
-#: Columnas internas de búsqueda: no son datos del expediente y pesan.
-_COLUMNAS_INTERNAS = frozenset({"search_vector", "embedding"})
+#: Columnas que no son datos del expediente: índices de búsqueda, trazas del
+#: pipeline, `ml_proba` (no es señal sin modelo activo, D55) y la fecha duplicada.
+_COLUMNAS_INTERNAS = frozenset(
+    {
+        "search_vector",
+        "embedding",
+        "raw_keywords",
+        "filter_version",
+        "classifier_model_version",
+        "ml_proba",
+        "fecha_pub_d",
+    }
+)
+
+
+def _fila_del_anuncio(detalle: dict[str, object]) -> dict[str, object]:
+    """La fila sin columnas internas ni las sombras ``<col>_ts`` de una fecha que ya va en texto."""
+    return {
+        k: v
+        for k, v in detalle.items()
+        if k not in _COLUMNAS_INTERNAS
+        and not (k.endswith("_ts") and k.removesuffix("_ts") in detalle)
+    }
 
 
 def expediente_completo(id_externo: str) -> dict[str, Any] | None:
     """Expediente ``id_externo`` con todo lo que cuelga de él, o ``None`` si no existe.
 
-    Claves: ``licitacion`` (fila completa), ``canonica`` (``id_externo`` del
+    Claves: ``licitacion`` (la fila del anuncio sin columnas internas),
+    ``canonica`` (``id_externo`` del
     anuncio original si este es una republicación, si no ``None``), ``lotes``,
     ``adjudicaciones``, ``criterios``, ``solvencia``, ``garantias`` (condiciones
     oficiales; listas vacías si el anuncio no las publicó) y ``ficha_pliego``
@@ -45,7 +67,7 @@ def expediente_completo(id_externo: str) -> dict[str, Any] | None:
         return None
     condiciones = CondicionesOficialesRepository().get(id_externo)
     return {
-        "licitacion": {k: v for k, v in detalle.items() if k not in _COLUMNAS_INTERNAS},
+        "licitacion": _fila_del_anuncio(detalle),
         "canonica": dedupe.canonical_for(id_externo),
         "lotes": lotes_de(id_externo),
         "adjudicaciones": AdjudicacionRepository().list_for_licitacion(id_externo),

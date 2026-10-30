@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from functools import cache
 from pathlib import Path
-from typing import Annotated, TypedDict
+from typing import Annotated, NotRequired, TypedDict
 
 from pydantic import Field
 
@@ -60,7 +60,7 @@ class _Dominio(TypedDict):
 
 class SalidaDescribirEsquema(TypedDict):
     dominios: list[_Dominio]
-    glosario: str
+    glosario: NotRequired[str]
 
 
 class _Columna(TypedDict):
@@ -101,18 +101,27 @@ def ejemplos_sql_del_glosario() -> list[str]:
     return [m.group(1).strip() for m in _BLOQUE_SQL.finditer(glosario())]
 
 
-def describir_esquema() -> dict[str, JSONValue]:
+def describir_esquema(
+    incluir_glosario: Annotated[
+        bool,
+        Field(
+            description="Si se añade el glosario de negocio (largo). "
+            "Pásalo a false si ya lo tienes de una llamada anterior"
+        ),
+    ] = True,
+) -> dict[str, JSONValue]:
     """Mapa de la base de datos: tablas visibles por dominio, más el glosario de negocio.
 
     Llámala antes de escribir SQL. Cada tabla trae una línea de descripción y
     sus filas aproximadas (``filas_aprox``, de las estadísticas de Postgres).
     El ``glosario`` explica las trampas del dominio: qué fila contar cuando una
     licitación llega por varias fuentes, qué base lleva cada importe, los
-    valores de ``estado``, las claves de unión y ejemplos de SQL válidos.
+    valores de ``estado``, las claves de unión y ejemplos de SQL válidos. Si
+    vuelves a llamarla en la misma conversación, pasa ``incluir_glosario=false``.
 
     Devuelve ``{"dominios": [{"dominio", "tablas": [{"tabla", "descripcion",
-    "filas_aprox"}, ...]}, ...], "glosario": "..."}``. Las columnas de una
-    tabla se ven con ``describir_tabla``.
+    "filas_aprox"}, ...]}, ...], "glosario": "..."}`` (sin ``glosario`` si se
+    pidió así). Las columnas de una tabla se ven con ``describir_tabla``.
     """
     visibles = tablas_visibles()
     filas = filas_aproximadas([e.tabla for e in visibles])
@@ -125,6 +134,8 @@ def describir_esquema() -> dict[str, JSONValue]:
         ]
         if tablas:
             dominios.append({"dominio": dominio, "tablas": tablas})
+    if not incluir_glosario:
+        return {"dominios": dominios}
     return {"dominios": dominios, "glosario": glosario()}
 
 

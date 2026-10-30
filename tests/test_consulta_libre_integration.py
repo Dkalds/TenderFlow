@@ -360,6 +360,19 @@ def test_un_texto_de_exactamente_el_tope_no_lleva_marca(rol_mcp: str) -> None:
     assert r.filas == [["x" * MAX_CHARS_CELDA]]
 
 
+def test_una_estructura_desmedida_llega_recortada_desde_el_servidor(rol_mcp: str) -> None:
+    """``jsonb_agg``/``array_agg`` gigantes llegan como texto recortado; las normales, como estructura."""
+    r = ejecutar_select(
+        "SELECT jsonb_agg(g) AS j, array_agg(g) AS a, ARRAY[1, 2] AS corto, "
+        "'[\"x\"]'::json AS js FROM generate_series(1, 200000) AS g"
+    )
+    ((j, a, corto, js),) = r.filas
+    for celda in (j, a):
+        assert isinstance(celda, str)
+        assert len(celda) < MAX_CHARS_CELDA + 20 and "…[+" in celda
+    assert (corto, js) == ([1, 2], ["x"])
+
+
 def test_tope_de_tiempo_es_de_la_consulta_entera(rol_mcp: str) -> None:
     """Con el cursor, ``statement_timeout`` vale por ``FETCH``: el plazo es del total.
 

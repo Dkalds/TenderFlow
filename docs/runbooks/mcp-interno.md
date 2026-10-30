@@ -277,10 +277,11 @@ Logs: Render → `tenderflow-mcp` → *Logs*. Los propios del MCP salen en JSON
 | **403** con `Origin` en `/mcp` | Petición de navegador desde un origen que no es el del propio servicio, claude.ai/claude.com, chatgpt.com o localhost | Si es un cliente legítimo nuevo, requiere un cambio de código en `mcp_server/servidor.py::_ORIGENES_CLIENTES` |
 | `consultar_sql` devuelve **`42501`** inesperado | La tabla/columna no está concedida al rol: o es oculta a propósito (`api_keys`, `sessions`, `users.password_hash`…), o es nueva y falta clasificarla en `mcp_server/catalogo.py` y regenerar | Si es nueva: clasificar, `python scripts/gen_mcp_grants.py` y reaplicar el SQL (paso 1.3; la contraseña ya existe, el script no la toca) |
 | **`57014`** (timeout) | Consulta > `statement_timeout = 15s` del rol | Acotar por fecha o agregar antes; no se sube el límite desde el cliente |
+| Una tool de dominio responde «La consulta tardó más de 15 s y se cortó» | Sus lecturas por el pool de la app llevan el mismo techo de 15 s (`TECHO_SENTENCIA_MS` en `mcp_server/envoltura.py`): con 2 conexiones en el pool, dos llamadas lentas lo dejarían sin servicio | Acotar con filtros o con el `id_externo`; si una consulta concreta lo necesita a menudo, es un índice o un cambio en su repositorio |
 | `25006` (read-only) | Se intentó escribir; está bloqueado a propósito | — |
 | Error de conexión / agotado el pool | El rol tiene `CONNECTION LIMIT 5` y el pool llega a 5 | Esperar; si es continuo, mirar `pg_stat_activity` por `usename = 'tenderflow_mcp'` y consultas colgadas |
 | Llamadas con error de cuota | Rate limit por usuario: 60/min, 1 000/día | El mensaje dice cuánto esperar |
-| Una tool responde un error genérico y el log trae `Tool '<nombre>' raised an unexpected exception`, pero `audit_log` la da por buena | Lo que devolvió no casa con su `outputSchema` (el `TypedDict` `Salida*` de `mcp_server/tools/`): el SDK lo valida después de la auditoría | Ajustar el `TypedDict` a la forma real; `tests/test_mcp_servidor_integration.py` llama a las seis con datos sembrados |
+| Una tool responde «Error interno» y `audit_log` trae `error = "interno: SalidaFueraDeEsquema"` | Lo que devolvió no casa con su `outputSchema` (el `TypedDict` `Salida*` de `mcp_server/tools/`); el log `mcp_tool_error_interno` lista los campos | Ajustar el `TypedDict` a la forma real; `tests/test_mcp_servidor_integration.py` llama a las seis con datos sembrados |
 | Las llamadas funcionan pero **no hay filas `mcp.*` en `audit_log`** | `AUDIT_HMAC_KEY` ausente o distinta (`log_action` no lanza: `audit_log_persist_failed` en logs) | Poner la clave de la API |
 | Render marca el deploy como fallido tras un health check | `/healthz` responde 421/404, o el arranque abortó por configuración | Ver los logs del arranque; ver sección 6 sobre el `Host` del health check |
 
@@ -437,12 +438,14 @@ Entradas equivalentes en [`docs/IMPROVEMENT_BACKLOG.md`](../IMPROVEMENT_BACKLOG.
   refresh— ya no se reconoce como reutilizado (se rechaza como desconocido, sin
   revocar la familia), y un conector sin tokens durante un mes pierde su
   registro y tiene que volver a añadirse.
-- **Celdas enormes de `consultar_sql`** (resuelto en parte el 2026-10-29): las
+- **Celdas enormes de `consultar_sql`** (resuelto el 2026-10-29): las
   columnas `text`, `varchar` y `xml` llegan ya recortadas desde Postgres
   (`db.consulta_libre.envolver_con_recorte`), así que un `string_agg` de
   `documentos.texto` o un `database_to_xml` ya no entra entero en memoria. Los
-  `json`/`jsonb` y los arrays (`jsonb_agg`, `array_agg`) siguen llegando enteros
-  antes de recortarse: si hay OOM en `starter`, son los sospechosos.
+  `json`/`jsonb` y los arrays de tipos nativos llegan como `jsonb` y, si pasan
+  de 100 000 caracteres (no cabrían ni solos en la respuesta), como texto
+  recortado con la marca `…[+N]`. Quedan fuera los arrays de tipos propios
+  (enums): si hay OOM en `starter`, son los sospechosos.
 - **El `client_secret` del DCR ya no se guarda** (2026-10-29): es
   `HMAC-SHA256(SIGNING_KEY, client_id)` y se recalcula en cada `/token`
   (`mcp_server.auth.proveedor.secreto_de_cliente`). Los clientes registrados
