@@ -11,13 +11,21 @@ dedupe de evento por ``merged_at``). Las pruebas contra un repo real viven en
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
+from config.keywords import patron_de_keywords
 from db.repositories.tecnologia_pliego import MergeOutcome
 from services.tech_signal import _build_merge_result, merge_doc_signals, score_documents
 
+_DICCIONARIO_MINIMO: dict[str, list[str]] = {
+    "SAP": ["sap", "hana"],
+    "ORACLE": ["oracle"],
+}
 
-def _patched_patterns():
+
+@contextmanager
+def _patched_patterns(diccionario: dict[str, list[str]] | None = None):
     """Fija un diccionario mínimo para los tests de puntuación.
 
     Antes parcheaba el `dict` de nivel de módulo `_TECH_PATTERNS`. Desde C5.6 los
@@ -25,15 +33,19 @@ def _patched_patterns():
     que puede venir de la tabla `tecnologias_keywords`, así que lo que hay que
     fijar es la función que los devuelve — parchear una constante que ya no
     existe pasaría desapercibido hasta que el test empezara a puntuar contra el
-    diccionario real, que tiene doscientas keywords y otros umbrales.
+    diccionario real, que tiene doscientas keywords y otros umbrales. Desde el
+    2026-10-30 la señal cuenta por término canónico, así que se fijan los
+    patrones y las keywords, compilados de la misma lista.
     """
-    return patch(
-        "services.tech_signal._tech_patterns",
-        return_value={
-            "SAP": re.compile(r"\b(sap|hana)\b", re.IGNORECASE),
-            "ORACLE": re.compile(r"\b(oracle)\b", re.IGNORECASE),
-        },
-    )
+    diccionario = diccionario or _DICCIONARIO_MINIMO
+    patrones: dict[str, re.Pattern[str]] = {
+        tec: patron_de_keywords(kws) for tec, kws in diccionario.items()
+    }
+    with (
+        patch("services.tech_signal._tech_patterns", return_value=patrones),
+        patch("services.tech_signal._tech_keywords", return_value=diccionario),
+    ):
+        yield
 
 
 class TestScoreDocuments:
@@ -70,9 +82,59 @@ class TestScoreDocuments:
         assert result["SAP"].matched_terms == ["hana", "sap"]
 
     def test_score_saturates_at_one(self):
-        pages = [{"tipo": "technical", "texto": "sap " * 50}]
+        # Dos términos: cada uno aporta como mucho _TOPE_POR_TERMINO (3) y
+        # la saturación está en 6.
+        pages = [{"tipo": "technical", "texto": "sap hana " * 50}]
         with _patched_patterns():
             assert score_documents(pages)["SAP"].score == 1.0
+
+    def test_repeating_one_term_does_not_saturate(self):
+        """La misma frase cien veces no es más evidencia que dicha tres."""
+        pages = [{"tipo": "technical", "texto": "hana " * 100}]
+        with _patched_patterns():
+            assert score_documents(pages)["SAP"].score == 0.5
+
+    def test_legal_only_mentions_never_label(self):
+        """El legal repite plantilla («Esquema Nacional de Seguridad» en
+        cualquier contrato con datos): por muchas veces que lo diga, si el
+        técnico no lo menciona no hay etiqueta."""
+        pages = [{"tipo": "legal", "texto": "Oracle " * 40}]
+        with _patched_patterns():
+            assert score_documents(pages) == {}
+
+    def test_legal_mentions_add_to_a_technical_one(self):
+        pages = [
+            {"tipo": "technical", "texto": "Base de datos Oracle."},
+            {"tipo": "legal", "texto": "Oracle " * 5},
+        ]
+        with _patched_patterns():
+            # 1 (técnico) + 1,5 (legal) = 2,5 menciones ponderadas.
+            assert score_documents(pages)["ORACLE"].score == round(2.5 / 6, 4)
+
+    def test_only_ambiguous_terms_do_not_label(self):
+        """`sap` está en KEYWORDS_AMBIGUAS: el Servei d'Atenció Primària o un
+        «CODI SAP» de material no son SAP, y en un pliego no hay CPV que lo
+        corrobore."""
+        pages = [{"tipo": "technical", "texto": "SAP " * 10}]
+        with _patched_patterns():
+            assert "SAP" not in score_documents(pages)
+
+    def test_category_needs_two_distinct_terms(self):
+        diccionario = {
+            "CLOUD_INFRA": ["copia de seguridad", "copias de seguridad", "kubernetes"],
+        }
+        una_idea = [{"tipo": "technical", "texto": "Copias de seguridad. Copia de seguridad. " * 3}]
+        dos_ideas = [
+            {"tipo": "technical", "texto": "Copias de seguridad y clúster Kubernetes. " * 2}
+        ]
+        with _patched_patterns(diccionario):
+            assert score_documents(una_idea) == {}
+            assert "CLOUD_INFRA" in score_documents(dos_ideas)
+
+    def test_a_vendor_needs_only_one_firm_term(self):
+        pages = [{"tipo": "technical", "texto": "Oracle Database. Oracle RAC."}]
+        with _patched_patterns():
+            assert "ORACLE" in score_documents(pages)
 
     def test_multiple_technologies_scored_independently(self):
         pages = [
@@ -95,15 +157,15 @@ class TestScoreDocuments:
             assert score_documents(pages) == {}
 
     def test_unknown_tipo_defaults_to_legal_weight(self):
-        """Un tipo de documento inesperado no debe pesar como 'technical'."""
-        # * 6 (12 hits): a peso legal/desconocido (0.3) hacen falta >= 6.67
-        # hits ponderados para cruzar _MIN_WEIGHTED_HITS (2.0); menos
-        # repeticiones dejaban el resultado por debajo del mínimo y
-        # score_documents devolvía {} -- KeyError al indexar ["SAP"].
+        """Un tipo de documento inesperado no debe pesar como 'technical'
+        (ni etiquetar solo): suma lo mismo que el legal junto a un técnico."""
+        tecnico = {"tipo": "technical", "texto": "hana"}
         with _patched_patterns():
-            unknown = score_documents([{"tipo": "unexpected", "texto": "SAP HANA " * 6}])
-            legal = score_documents([{"tipo": "legal", "texto": "SAP HANA " * 6}])
+            unknown = score_documents([tecnico, {"tipo": "unexpected", "texto": "SAP HANA " * 6}])
+            legal = score_documents([tecnico, {"tipo": "legal", "texto": "SAP HANA " * 6}])
+            solo_unknown = score_documents([{"tipo": "unexpected", "texto": "SAP HANA " * 6}])
         assert unknown["SAP"].score == legal["SAP"].score
+        assert solo_unknown == {}
 
 
 def _signal_row(**overrides: object) -> dict[str, object]:

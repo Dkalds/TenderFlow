@@ -1466,6 +1466,125 @@ def codigos_de_familia(familia: str) -> list[str]:
     return [familia, *(fab for fab, fam in FAMILIA_DE_FABRICANTE.items() if fam == familia)]
 
 
+# ── Keywords ambiguas (2026-09-26, bajada aquí el 2026-10-30) ───────────────
+#
+# Nació en la puerta tecnológica (`scraper/puerta_tecnologica.py`), que la sigue
+# re-exportando. Vive aquí porque la necesitan también quienes etiquetan fuera
+# de la ingesta —la señal de pliegos (`services/tech_signal.py`) y el tier
+# `rules` del clasificador (`services/ml/classifier_pipeline.py`)—, y `services/`
+# no puede importar de `scraper/` (AGENTS.md §2).
+
+#: Keywords que en la contratación pública casan **fuera** de TI. Cada una con
+#: el falso positivo que la mete aquí, observado en filas reales de producción:
+#: una keyword entra en esta lista por un ejemplo, no por sospecha.
+#:
+#: Una keyword ambigua no basta por sí sola para poner una etiqueta: en la
+#: puerta necesita que el CPV la corrobore (`senal_tecnologica`), y al etiquetar
+#: una fila que ya tiene señal firme no añade etiqueta propia
+#: (:func:`etiquetas_con_senal_firme`). Una sola keyword fuera de la lista basta,
+#: como siempre: «Llicències SAP S/4HANA» entra por `s/4hana`.
+#:
+#: Se comparan con `casefold()` contra la forma canónica que devuelve
+#: :func:`keywords_presentes`; `tests/test_connectors_pscp.py` exige que cada una
+#: siga existiendo en la semilla del diccionario, para que un renombrado no deje
+#: aquí una entrada muerta.
+KEYWORDS_AMBIGUAS: frozenset[str] = frozenset(
+    {
+        # 609 filas con CPV ajeno a TI: códigos de material del ICS en compras
+        # menores («CODI SAP 7107067», «SAP 30053588 MAQUINETA RASURAT»), el
+        # Servei d'Atenció Primària («SAP CENTRE»), un «servei d'assessorament
+        # psicològic (SAP)».
+        "sap",
+        # «Concurs» (concurso, en catalán) sin la ese o partido por un guion de
+        # final de línea: «Concur monòlegs alumnat» (CPV 98), «competiciones y
+        # concur-sos deportivos» (CPV 92). SAP Concur nombrado entero casa
+        # además con `sap concur`, que no es ambigua.
+        "concur",
+        # Cables y adaptadores Apple Lightning, AirPods; kits de anticuerpos
+        # «Lightning-Link». Casa incluso con CPV de material informático (302),
+        # por eso la corroboración es 48/72 y no «cualquier cosa informática».
+        "lightning",
+        # Galerías API de bioMérieux para identificar bacterias («API 20
+        # enterobacterias», CPV 33696500 de reactivos).
+        "api",
+        "apis",
+        # Centre de Recerca Matemàtica (inscripciones «barccsyn (CRM)»),
+        # estaciones «LMT i CRM» de mantenimiento de puertas.
+        "crm",
+        # Obras, climatización, SAI y extintores de la sala del CPD.
+        "cpd",
+        # Policloruro de aluminio para potabilizar agua (CPV 24312123).
+        "pacs",
+        # Electrodiálisis reversible de las potabilizadoras (ETAP Llobregat).
+        "edr",
+        # Reglamento de productos sanitarios (Medical Device Regulation).
+        "mdr",
+        # Planes de alquiler de impresoras, líneas 5G de respaldo.
+        "backup",
+        # Nombres de hotel (CPV 55).
+        "sopra",
+        # Telones cortafuegos textiles; franjas cortafuegos forestales.
+        "tallafocs",
+        "cortafuegos",
+        # Ascensores, alumbrado, grupos electrógenos, carpintería, pintura...
+        "manteniment correctiu",
+        "mantenimiento correctivo",
+        "mantemento correctivo",
+        "mantentze zuzentzailea",
+        # Carpetas portafirmas físicas (CPV 30197000, material de oficina).
+        "portasignatures",
+        "portafirmas",
+        "portasinaturas",
+        # Sistemas de gestión ISO (calidad y medio ambiente): auditorías y
+        # consultoría de certificación, no software.
+        "sistema integrat de gestió",
+        "sistema de gestió integrat",
+        "sistema integrado de gestión",
+        "sistema de gestión integrado",
+        "sistema integrado de xestión",
+        "sistema de xestión integrado",
+        "kudeaketa sistema integratua",
+        # Seguridad física del perímetro: vallas, CCTV, vigilancia.
+        "seguretat perimetral",
+        "seguridad perimetral",
+        "seguridade perimetral",
+        "segurtasun perimetrala",
+        # Cuadros eléctricos de mando y protección del alumbrado público.
+        "quadre de comandament",
+        "quadres de comandament",
+        "cuadro de mando",
+        "cuadros de mando",
+        "cadro de mando",
+        "cadros de mando",
+    }
+)
+
+
+def es_ambigua(keyword: str) -> bool:
+    """¿Está ``keyword`` (en cualquier caja) en :data:`KEYWORDS_AMBIGUAS`?"""
+    return keyword.casefold() in KEYWORDS_AMBIGUAS
+
+
+def etiquetas_con_senal_firme(coincidencias: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Quita las etiquetas sostenidas solo por keywords ambiguas, si hay otras.
+
+    «Mantenimiento correctivo de la aplicación SAP S/4HANA» casa `SAP` por
+    `s/4hana` y `DESARROLLO` por `mantenimiento correctivo`, y la segunda es la
+    misma frase que aparece en el contrato de los ascensores. Cuando otra
+    etiqueta de la fila ya tiene una keyword firme, la ambigua no añade nada que
+    se pueda creer: se cae. Si **todas** son ambiguas no se toca nada, porque
+    entonces decidir es cosa del CPV y eso lo hace quien lo tiene
+    (`scraper.puerta_tecnologica.senal_tecnologica`).
+
+    ``coincidencias`` es la salida de ``scraper.filters.matches_technology``:
+    ``{etiqueta: [keywords canónicas]}``.
+    """
+    firmes = {
+        tec: kws for tec, kws in coincidencias.items() if any(not es_ambigua(kw) for kw in kws)
+    }
+    return firmes or coincidencias
+
+
 # ── Límites de palabra para keywords que no empiezan (o acaban) en letra ────
 #
 # El patrón de siempre era ``\b(kw1|kw2|...)\b``, y con él **`.net` no puede
@@ -1511,8 +1630,12 @@ def codigos_de_familia(familia: str) -> list[str]:
 #: Versión de la forma de casar. Entra en el hash de `filter_version`
 #: (`services.tecnologias_diccionario._hash_de`): dos filas filtradas con el
 #: mismo diccionario pero con matchers distintos no se filtraron igual, y el
-#: linaje tiene que poder decirlo. Se cambia a mano cuando cambia `con_limites`.
-VERSION_MATCHER = "2026-10-11-fabricantes-sin-plural"
+#: linaje tiene que poder decirlo. Se cambia a mano cuando cambia `con_limites`
+#: o la forma de decidir qué etiquetas sostiene lo casado (2026-10-30: las
+#: etiquetas solo ambiguas y las reglas de precisión de la señal de pliegos). Un
+#: cambio aquí cambia `filter_version`, y con él la señal de pliegos se vuelve a
+#: puntuar entera (`list_licitaciones_pending_signal`).
+VERSION_MATCHER = "2026-10-30-etiquetas-con-senal-firme"
 
 #: Letras que un título escribe con o sin diacrítico. La keyword se pliega
 #: antes, y cada una de estas letras se convierte en la clase con sus variantes.

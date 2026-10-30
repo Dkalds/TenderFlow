@@ -146,6 +146,40 @@ Dos particularidades:
   social), «gestión documental» a secas (custodia física), «página web» a secas
   (aparece en descripciones como «consultar en la página web»).
 
+## Cuántas etiquetas lleva una licitación (2026-10-30)
+
+El detalle llegó a enseñar muchas más etiquetas de las que nadie había
+predicho. Causas y reglas que las acotan, todas con test:
+
+- **El bloque «Tecnologías» enseña lo que cada fuente predice**, no lo que
+  puntúa (`GET /licitaciones/{id}/tecnologias`). El clasificador guarda una
+  fila por etiqueta con probabilidad > 0 —casi todas, con una regresión
+  logística— y antes cada una salía con la insignia «ML». Ahora entran el
+  título, las filas de ML con `probabilidad >= threshold_aplicado` y las
+  señales de pliego (`keywords`, `llm`) con `score >= PLIEGO_TECH_MIN_SCORE`.
+- **Keywords ambiguas** (`config.keywords.KEYWORDS_AMBIGUAS`, antes solo en la
+  puerta de ingesta): «cpd», «backup», «api», «mantenimiento correctivo»,
+  «cuadro de mando»… no ponen etiqueta propia en una fila que ya tiene una
+  keyword firme (`etiquetas_con_senal_firme`, en PSCP, PLACSP, TED y los RSS
+  regionales). Si todo lo casado es ambiguo, decide el CPV como antes. El tier
+  `rules` del clasificador les da score 0 salvo que el CPV sea 48/72. Una
+  keyword entra en la lista por un ejemplo real; los candidatos salen de
+  `scripts/medir_etiquetas_tecnologia.py resumen`.
+- **Señal de pliegos** (`services/tech_signal.score_documents`): lo que solo
+  aparece en el pliego administrativo no etiqueta; un término cuenta como
+  mucho tres menciones; si todos los términos son ambiguos no hay etiqueta; y
+  una categoría necesita dos términos distintos (un fabricante, uno).
+- **Medir**: `scripts/medir_etiquetas_tecnologia.py` da el reparto de
+  etiquetas por licitación en cada vista, una muestra para revisar a mano y la
+  precisión de esa muestra por etiqueta y por fuente.
+
+Lo ya guardado no se corrige solo del todo: el cambio de `VERSION_MATCHER`
+hace que la señal de pliegos se vuelva a puntuar entera, pero el merge nunca
+borra, así que las filas de `licitacion_tecnologia_score` fundidas desde
+señales que ya no pasan siguen ahí hasta un
+`python scripts/ml_clasificadores.py precompute-tech --force` seguido del paso
+`tech_signal_merge`; y `tecnologia` solo se reescribe al reingerir.
+
 ## Familias (2026-10)
 
 Mercado › Proyectos y módulos agrupa lo licitado por **familias**: las

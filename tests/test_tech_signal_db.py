@@ -916,6 +916,40 @@ class TestTecnologiasEndpoint:
         r = client.get("/api/v1/licitaciones/NOPE-TECH/tecnologias", headers=auth)
         assert r.status_code == 404
 
+    def test_only_lists_what_each_source_predicts(self, client, auth):
+        """El clasificador guarda una fila por etiqueta con probabilidad > 0 y
+        la tabla de pliegos guarda señales bajo el corte de fusión: listarlas
+        todas llenaba el detalle de etiquetas que nadie había predicho."""
+        _insert_licitacion("EP-5", tecnologia="SAP")
+        with connect() as c:
+            c.executemany(
+                "INSERT INTO licitacion_tecnologia_score "
+                "(licitacion_id, tecnologia, probabilidad, threshold_aplicado, computed_at) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                [
+                    ("EP-5", "SAP", 0.92, 0.5, "2026-08-01T00:00:00+00:00"),
+                    ("EP-5", "ORACLE", 0.12, 0.5, "2026-08-01T00:00:00+00:00"),
+                ],
+            )
+        repo = TecnologiaPliegoRepository()
+        repo.upsert_signals(
+            "EP-5",
+            method="keywords",
+            signal_version="v1",
+            scores={"CLOUD_INFRA": TechSignal(score=0.34, matched_terms=["backup", "cpd"])},
+        )
+        repo.upsert_signals(
+            "EP-5",
+            method="llm_metadata",
+            signal_version="v1",
+            scores={"GIS": TechSignal(score=0.9, evidence=[])},
+        )
+
+        r = client.get("/api/v1/licitaciones/EP-5/tecnologias", headers=auth)
+
+        assert r.status_code == 200
+        assert [item["tecnologia"] for item in r.json()["items"]] == ["SAP"]
+
     def test_requires_auth(self, client):
         _insert_licitacion("EP-2")
         r = client.get("/api/v1/licitaciones/EP-2/tecnologias")

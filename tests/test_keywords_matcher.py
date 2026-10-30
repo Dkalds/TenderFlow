@@ -177,7 +177,9 @@ class TestSenalDePliegos:
     def test_texto_de_pdf_con_tildes_descompuestas(self) -> None:
         from services.tech_signal import score_documents
 
-        texto = unicodedata.normalize("NFD", "Implantación de la administración electrónica.")
+        texto = unicodedata.normalize(
+            "NFD", "Implantación de la administración electrónica y de la sede electrónica."
+        )
         paginas = [{"texto": texto, "tipo": "technical"}, {"texto": texto, "tipo": "technical"}]
         assert "ADMIN_ELECTRONICA" in score_documents(paginas)
 
@@ -288,6 +290,47 @@ class TestPuertaPscp:
         assert senal.motivo == MOTIVO_ADMITIDA
         assert senal.tecnologias == ("SAP",)
 
+    def test_una_ambigua_no_anade_etiqueta_a_una_fila_con_senal_firme(self) -> None:
+        """«mantenimiento correctivo» es la frase del contrato de ascensores:
+        junto a `s/4hana` no convierte la fila en DESARROLLO."""
+        from scraper.connectors.pscp import MOTIVO_ADMITIDA, senal_tecnologica
+
+        senal = senal_tecnologica(
+            "Mantenimiento correctivo de la plataforma SAP S/4HANA", "72267000-4"
+        )
+        assert senal.motivo == MOTIVO_ADMITIDA
+        assert senal.tecnologias == ("SAP",)
+        assert "mantenimiento correctivo" not in senal.keywords
+
+    def test_si_todo_es_ambiguo_decide_el_cpv_como_antes(self) -> None:
+        from scraper.connectors.pscp import MOTIVO_ADMITIDA, senal_tecnologica
+
+        senal = senal_tecnologica("Ampliació de la cabina de backup del CPD", "30233000-1")
+        assert senal.motivo == MOTIVO_ADMITIDA
+        assert senal.tecnologias == ("CLOUD_INFRA",)
+
+
+class TestEtiquetasConSenalFirme:
+    def test_quita_la_etiqueta_que_solo_sostiene_una_ambigua(self) -> None:
+        from config.keywords import etiquetas_con_senal_firme
+
+        assert etiquetas_con_senal_firme(
+            {"SAP": ["s/4hana", "sap"], "DESARROLLO": ["mantenimiento correctivo"]}
+        ) == {"SAP": ["s/4hana", "sap"]}
+
+    def test_si_todas_son_ambiguas_no_toca_nada(self) -> None:
+        from config.keywords import etiquetas_con_senal_firme
+
+        coincidencias = {"CLOUD_INFRA": ["cpd", "backup"], "CRM": ["crm"]}
+        assert etiquetas_con_senal_firme(coincidencias) == coincidencias
+
+    def test_las_ambiguas_viven_en_config(self) -> None:
+        """`services/` las necesita y no puede importar de `scraper/`."""
+        from config.keywords import KEYWORDS_AMBIGUAS
+        from scraper.puerta_tecnologica import KEYWORDS_AMBIGUAS as de_la_puerta
+
+        assert de_la_puerta is KEYWORDS_AMBIGUAS
+
 
 # ── 4. El tier `rules` del clasificador ─────────────────────────────────────
 
@@ -307,6 +350,18 @@ class TestTierRules:
         from services.ml.classifier_pipeline import _keyword_fallback_score
 
         assert _keyword_fallback_score("Desarrollo en plataforma .NET", [".net"]) == 1.0
+
+    def test_solo_ambiguas_necesitan_cpv_ti(self) -> None:
+        """Mismo criterio que la puerta: «cpd» a secas es la limpieza de la sala."""
+        from services.ml.classifier_pipeline import _augment_text, _keyword_fallback_score
+
+        kws = ["cpd", "kubernetes"]
+        sin_ti = _augment_text("Limpieza de la sala del CPD", cpv="90910000")
+        con_ti = _augment_text("Ampliación del CPD", cpv="72000000")
+        assert _keyword_fallback_score(sin_ti, kws) == 0.0
+        assert _keyword_fallback_score("Limpieza de la sala del CPD", kws) == 0.0
+        assert _keyword_fallback_score(con_ti, kws) == 0.5
+        assert _keyword_fallback_score("CPD con Kubernetes", kws) == 1.0
 
 
 # ── 5. Versión ──────────────────────────────────────────────────────────────

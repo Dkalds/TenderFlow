@@ -44,6 +44,7 @@ from urllib.parse import urlparse
 import requests
 
 from config import CPV_PREFIXES_UNIVERSO
+from config.keywords import etiquetas_con_senal_firme
 from db.upsert import Adjudicacion, Licitacion
 from observability import get_logger
 from scraper.connectors.base import ParsedTender, RawNotice
@@ -461,6 +462,7 @@ class TedConnector:
         tipo = str(naturalezas[0]) if isinstance(naturalezas, list) and naturalezas else None
 
         _, tech_matches = matches_technology(titulo, descripcion)
+        tech_matches = etiquetas_con_senal_firme(tech_matches)
         tecnologias = sorted(tech_matches)
         keywords = sorted({kw for kws in tech_matches.values() for kw in kws})
 

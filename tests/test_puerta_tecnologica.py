@@ -105,10 +105,21 @@ class TestAmbiguasEnPlacsp:
 
     def test_una_ambigua_con_cpv_de_ti_entra(self) -> None:
         lic = parse_entry(
+            _entry(
+                "Mantenimiento correctivo del sistema de información corporativo", ["72267000-4"]
+            )
+        )
+        assert lic is not None
+        assert lic.tecnologia == "DESARROLLO"
+
+    def test_la_ambigua_no_suma_etiqueta_a_una_keyword_firme(self) -> None:
+        """Entra por `aplicación de nóminas`; «mantenimiento correctivo» es la
+        frase de los ascensores y no la hace además DESARROLLO."""
+        lic = parse_entry(
             _entry("Mantenimiento correctivo de la aplicación de nóminas", ["72267000-4"])
         )
         assert lic is not None
-        assert "DESARROLLO" in (lic.tecnologia or "")
+        assert lic.tecnologia == "RRHH_NOMINA"
 
     def test_mira_todos_los_cpv_no_solo_el_primero(self) -> None:
         lic = parse_entry(

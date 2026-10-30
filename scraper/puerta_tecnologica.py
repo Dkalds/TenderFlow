@@ -18,6 +18,8 @@ import re
 from dataclasses import dataclass
 
 from config import CPV_PREFIXES_TI, CPV_PREFIXES_UNIVERSO
+from config.keywords import KEYWORDS_AMBIGUAS as KEYWORDS_AMBIGUAS
+from config.keywords import etiquetas_con_senal_firme
 from scraper.filters import matches_technology
 
 # ── Puerta tecnológica (C4.1 / D24, endurecida 2026-09-26) ──────────────────
@@ -26,91 +28,13 @@ from scraper.filters import matches_technology
 # eso solo, en producción seguían entrando falsos positivos que un vistazo a la
 # fila delata: medido el 2026-09-26, de 3.268 filas de PSCP con `tecnologia`,
 # 1.318 no traían ningún CPV 48/72, y la mitad larga eran estas.
+#
+# Las keywords que casan fuera de TI son `config.keywords.KEYWORDS_AMBIGUAS`
+# (re-exportada aquí): una fila cuya ÚNICA señal son keywords de esa lista
+# necesita que el CPV lo corrobore (:func:`senal_tecnologica`), porque los
+# contratos menores traen CPV absurdos a menudo (licencias de Office 365
+# codificadas como obra de puentes, 45221119) y una keyword firme basta.
 
-#: Keywords que en la contratación catalana casan **fuera** de TI. Cada una con
-#: el falso positivo que la mete aquí, observado en filas reales de producción:
-#: una keyword entra en esta lista por un ejemplo, no por sospecha.
-#:
-#: Una fila cuya ÚNICA señal son keywords de esta lista necesita que el CPV lo
-#: corrobore (:func:`senal_tecnologica`). Una sola keyword fuera de la lista
-#: basta, como siempre: «Llicències SAP S/4HANA» entra por `s/4hana` tenga el
-#: CPV que tenga, porque los contratos menores traen CPV absurdos a menudo
-#: (licencias de Office 365 codificadas como obra de puentes, 45221119).
-#:
-#: Se comparan con `casefold()` contra lo que devuelve `matches_technology`,
-#: que es el texto casado en minúsculas; `tests/test_connectors_pscp.py` exige
-#: que cada una siga existiendo en la semilla del diccionario, para que un
-#: renombrado no deje aquí una entrada muerta.
-KEYWORDS_AMBIGUAS: frozenset[str] = frozenset(
-    {
-        # 609 filas con CPV ajeno a TI: códigos de material del ICS en compras
-        # menores («CODI SAP 7107067», «SAP 30053588 MAQUINETA RASURAT»), el
-        # Servei d'Atenció Primària («SAP CENTRE»), un «servei d'assessorament
-        # psicològic (SAP)».
-        "sap",
-        # «Concurs» (concurso, en catalán) sin la ese o partido por un guion de
-        # final de línea: «Concur monòlegs alumnat» (CPV 98), «competiciones y
-        # concur-sos deportivos» (CPV 92). SAP Concur nombrado entero casa
-        # además con `sap concur`, que no es ambigua.
-        "concur",
-        # Cables y adaptadores Apple Lightning, AirPods; kits de anticuerpos
-        # «Lightning-Link». Casa incluso con CPV de material informático (302),
-        # por eso la corroboración es 48/72 y no «cualquier cosa informática».
-        "lightning",
-        # Galerías API de bioMérieux para identificar bacterias («API 20
-        # enterobacterias», CPV 33696500 de reactivos).
-        "api",
-        "apis",
-        # Centre de Recerca Matemàtica (inscripciones «barccsyn (CRM)»),
-        # estaciones «LMT i CRM» de mantenimiento de puertas.
-        "crm",
-        # Obras, climatización, SAI y extintores de la sala del CPD.
-        "cpd",
-        # Policloruro de aluminio para potabilizar agua (CPV 24312123).
-        "pacs",
-        # Electrodiálisis reversible de las potabilizadoras (ETAP Llobregat).
-        "edr",
-        # Reglamento de productos sanitarios (Medical Device Regulation).
-        "mdr",
-        # Planes de alquiler de impresoras, líneas 5G de respaldo.
-        "backup",
-        # Nombres de hotel (CPV 55).
-        "sopra",
-        # Telones cortafuegos textiles; franjas cortafuegos forestales.
-        "tallafocs",
-        "cortafuegos",
-        # Ascensores, alumbrado, grupos electrógenos, carpintería, pintura...
-        "manteniment correctiu",
-        "mantenimiento correctivo",
-        "mantemento correctivo",
-        "mantentze zuzentzailea",
-        # Carpetas portafirmas físicas (CPV 30197000, material de oficina).
-        "portasignatures",
-        "portafirmas",
-        "portasinaturas",
-        # Sistemas de gestión ISO (calidad y medio ambiente): auditorías y
-        # consultoría de certificación, no software.
-        "sistema integrat de gestió",
-        "sistema de gestió integrat",
-        "sistema integrado de gestión",
-        "sistema de gestión integrado",
-        "sistema integrado de xestión",
-        "sistema de xestión integrado",
-        "kudeaketa sistema integratua",
-        # Seguridad física del perímetro: vallas, CCTV, vigilancia.
-        "seguretat perimetral",
-        "seguridad perimetral",
-        "seguridade perimetral",
-        "segurtasun perimetrala",
-        # Cuadros eléctricos de mando y protección del alumbrado público.
-        "quadre de comandament",
-        "quadres de comandament",
-        "cuadro de mando",
-        "cuadros de mando",
-        "cadro de mando",
-        "cadros de mando",
-    }
-)
 
 #: Un CPV de 8 cifras, con o sin dígito de control y con cualquier separador:
 #: PSCP publica `codi_cpv` como `72267000-4||72262000-9`.
@@ -199,7 +123,10 @@ def senal_tecnologica(titulo: str | None, cpv: str | None) -> SenalTecnologica:
        los apóstrofos tipográficos normalizados), entra con sus etiquetas…
     2. …salvo que todo lo que casó esté en :data:`KEYWORDS_AMBIGUAS` y el CPV
        la contradiga (:func:`_cpv_contradice`).
-    3. Si no casa nada, entra **sin etiquetas** cuando algún CPV es del
+    3. Si casó alguna keyword firme, las etiquetas sostenidas solo por
+       ambiguas se caen (:func:`config.keywords.etiquetas_con_senal_firme`):
+       «mantenimiento correctivo de SAP S/4HANA» es `SAP`, no `SAP,DESARROLLO`.
+    4. Si no casa nada, entra **sin etiquetas** cuando algún CPV es del
        universo de ingesta, 48/72/32 (:data:`MOTIVO_CPV_TI`); si tampoco, se
        descarta.
     """
@@ -209,6 +136,7 @@ def senal_tecnologica(titulo: str | None, cpv: str | None) -> SenalTecnologica:
         if _algun_cpv_con(cpv, tuple(CPV_PREFIXES_UNIVERSO)):
             return SenalTecnologica(MOTIVO_CPV_TI)
         return SenalTecnologica(MOTIVO_SIN_SENAL)
+    coincidencias = etiquetas_con_senal_firme(coincidencias)
     keywords = tuple(sorted({kw for kws in coincidencias.values() for kw in kws}))
     solo_ambiguas = all(kw.casefold() in KEYWORDS_AMBIGUAS for kw in keywords)
     if solo_ambiguas and _cpv_contradice(cpv, keywords):
