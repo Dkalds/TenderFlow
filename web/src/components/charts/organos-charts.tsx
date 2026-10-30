@@ -56,10 +56,24 @@ export { ALTO_MAPA };
 const ETIQUETA_CUADRANTE = { fontSize: 11, className: "fill-muted-foreground" } as const;
 
 /**
+ * Margen de los ejes logarítmicos: un tercio de década a cada lado, para que el
+ * órgano mayor y el menor no queden pegados al borde con la etiqueta cortada.
+ */
+const HOLGURA_LOG: [(min: number) => number, (max: number) => number] = [
+  (min) => min / 2,
+  (max) => max * 2,
+];
+
+/**
  * Cada órgano es un punto: licitaciones en horizontal, importe en vertical y el
  * importe medio por licitación como tamaño. Las medianas de los órganos
  * dibujados parten el plano en cuatro perfiles de comprador; el cuadrante de
  * arriba a la derecha lleva un tinte porque es el que se busca.
+ *
+ * Los dos ejes son logarítmicos: unos pocos órganos (ministerios, servicios de
+ * salud) suman cien veces más que la mediana, y en lineal dejaban al resto
+ * apelotonado contra el origen. Un eje logarítmico no tiene cero, así que los
+ * puntos sin licitaciones o sin importe no llegan aquí (los filtra el panel).
  */
 export function OrganosMapaChart({
   puntos,
@@ -72,17 +86,22 @@ export function OrganosMapaChart({
   medianaImporte: number | null;
   onOrganoClick: (organo: string) => void;
 }) {
-  const conMedianas = medianaCount != null && medianaImporte != null;
+  // Una mediana de 0 no tiene sitio en un eje logarítmico.
+  const conMedianas = medianaCount != null && medianaImporte != null && medianaCount > 0 && medianaImporte > 0;
   return (
     <ChartErrorBoundary>
       <ResponsiveContainer width="100%" height={ALTO_MAPA}>
         <ScatterChart accessibilityLayer margin={{ top: 12, right: 28, bottom: 8, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+          {/* `allowDataOverflow` y dominio explícito, no `auto`: con `auto`,
+              recharts añade un tick de 0 a un eje logarítmico. */}
           <XAxis
             type="number"
             dataKey="count"
             name="Licitaciones"
-            domain={[0, "dataMax"]}
+            scale="log"
+            domain={HOLGURA_LOG}
+            allowDataOverflow
             tick={{ fontSize: 11 }}
             tickFormatter={(v: number) => formatNumber(v)}
           />
@@ -90,7 +109,9 @@ export function OrganosMapaChart({
             type="number"
             dataKey="importe"
             name="Importe"
-            domain={[0, "dataMax"]}
+            scale="log"
+            domain={HOLGURA_LOG}
+            allowDataOverflow
             tick={{ fontSize: 11 }}
             tickFormatter={(v: number) => formatCompactCurrency(v)}
             width={72}
