@@ -331,7 +331,7 @@ class Licitacion:
     #: `"DOC_CD,DOC_CN,DOC_PIN_RTL"`—. Dice qué anuncios tuvo el expediente;
     #: `DOC_PIN*` es el anuncio de información previa (spike T5).
     tipos_anuncio: str | None = None
-    # Fuente de ingesta (ADR-009): 'placsp', 'ted', 'pscp_cat'… Las fuentes
+    # Fuente de ingesta (ADR-009): 'placsp', 'ted', 'pscp'… Las fuentes
     # nuevas namespacean ademas su id_externo como "{fuente}:{id_natural}".
     fuente: str = "placsp"
     #: Identificador del órgano en la plataforma de origen (`ID_PLATAFORMA` de

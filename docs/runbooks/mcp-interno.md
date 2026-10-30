@@ -423,6 +423,43 @@ llamadas al modelo.
    no sirve para cerrarlo antes, porque revoca **todos** los de la persona,
    también los de su conector.
 
+### Medir el uso antes de cambiar el glosario o una tool
+
+Cada llamada queda en `audit_log` (`action = 'mcp.<tool>'`, `detail` en JSON con
+`args`, `n_filas`, `duracion_ms` y `error`), y la tabla es visible para el propio
+MCP: estas consultas se lanzan con `consultar_sql`. Las filas OAuth
+(`mcp.login_denegado`…) no llevan `duracion_ms` y quedan fuera.
+
+Llamadas, errores y P95 por tool:
+
+```sql
+SELECT action,
+       count(*) AS llamadas,
+       count(*) FILTER (WHERE detail::jsonb->>'error' IS NOT NULL) AS errores,
+       percentile_disc(0.95) WITHIN GROUP (ORDER BY (detail::jsonb->>'duracion_ms')::int) AS p95_ms
+FROM audit_log
+WHERE action LIKE 'mcp.%' AND detail::jsonb ? 'duracion_ms'
+  AND created_at >= '2026-10-01'
+GROUP BY action
+ORDER BY llamadas DESC
+```
+
+Errores de `consultar_sql` por SQLSTATE (`57014` = cortada a los 15 s, `42P01`/`42703`
+= tabla o columna mal nombrada, `22007`/`22008` = fecha en texto mal convertida):
+
+```sql
+SELECT substring(detail::jsonb->>'error' FROM 'SQLSTATE ([0-9A-Z]{5})') AS sqlstate,
+       count(*) AS n,
+       min(left(detail::jsonb->>'error', 120)) AS ejemplo
+FROM audit_log
+WHERE action = 'mcp.consultar_sql' AND detail::jsonb->>'error' IS NOT NULL
+GROUP BY 1
+ORDER BY n DESC
+```
+
+Un SQLSTATE que se repite señala la sección del glosario que falta o no se
+entiende; una tool sin llamadas, una descripción que el modelo no reconoce.
+
 ---
 
 ## 7. Seguimientos conocidos
