@@ -3,6 +3,7 @@
 Uso:
   python -m scheduler.run_update                # actualiza últimos 3 meses
   python -m scheduler.run_update --backfill 2024 1   # desde ene-2024
+  python -m scheduler.run_update --backfill 2025 1 --solo-cpv 32  # solo una familia CPV
   python -m scheduler.run_update --months 6     # últimos 6 meses
   python -m scheduler.run_update --daily        # feed ATOM en vivo
 
@@ -55,6 +56,16 @@ def main() -> int:
         help="Último mes del backfill, incluido (solo con --backfill)",
     )
     p.add_argument(
+        "--solo-cpv",
+        default="",
+        metavar="PREFIJOS",
+        help=(
+            "Prefijos CPV separados por coma (p. ej. 32): el backfill solo parsea las "
+            "entries con algún CPV así. Para rellenar una familia recién añadida al "
+            "universo sin reescribir el mes entero (solo con --backfill)"
+        ),
+    )
+    p.add_argument(
         "--daily",
         action="store_true",
         help="Ejecutar carril diario (feed ATOM en vivo)",
@@ -81,6 +92,9 @@ def main() -> int:
     args = p.parse_args()
     if args.hasta and not args.backfill:
         p.error("--hasta solo se usa con --backfill")
+    solo_cpv = tuple(c.strip() for c in args.solo_cpv.split(",") if c.strip())
+    if solo_cpv and not args.backfill:
+        p.error("--solo-cpv solo se usa con --backfill")
 
     configure_logging(
         level="DEBUG" if args.verbose else "INFO",
@@ -114,6 +128,7 @@ def main() -> int:
                 args.backfill[0],
                 args.backfill[1],
                 hasta=(args.hasta[0], args.hasta[1]) if args.hasta else None,
+                solo_cpv=solo_cpv,
             )
         else:
             pipeline_result = run_bulk_pipeline(args.months)

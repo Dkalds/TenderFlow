@@ -1189,7 +1189,9 @@ def parse_lotes(
     return lotes
 
 
-def _cpvs_del_proyecto(entry: Any, project_xp: str) -> list[str]:
+def cpvs_del_proyecto(
+    entry: Any, project_xp: str = "./cacext:ContractFolderStatus/cac:ProcurementProject"
+) -> list[str]:
     """Todos los CPV del proyecto, no solo el primero que guarda `cpv`."""
     codigos = entry.xpath(
         f"{project_xp}/cac:RequiredCommodityClassification/cbc:ItemClassificationCode/text()",
@@ -1278,7 +1280,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
     # algún CPV del proyecto las corrobore, y se miran todos, no solo el primero.
     # Lo que no entra por keyword sigue su camino por el CPV
     # (`scraper.pipeline`), como antes.
-    senal = senal_tecnologica(titulo, " ".join(_cpvs_del_proyecto(entry, project_xp)))
+    senal = senal_tecnologica(titulo, " ".join(cpvs_del_proyecto(entry, project_xp)))
     if senal.motivo != MOTIVO_ADMITIDA:
         return None
     tecnologias = list(senal.tecnologias)

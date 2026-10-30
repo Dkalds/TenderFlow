@@ -39,6 +39,7 @@ import dataclasses
 import functools
 from typing import TYPE_CHECKING, Any
 
+from config import CPV_PREFIXES_TI, CPV_PREFIXES_UNIVERSO
 from db.database import (
     Licitacion,
     UpsertResult,
@@ -128,11 +129,15 @@ def _signal_post_ingestion(fuente: str) -> None:
 
 
 # ── ML fallback para entries sin keywords ─────────────────────────────────
-# Solo se aplica al carril diario (ATOM feed). Las entradas TI (CPV 48/72)
-# que no tienen keywords de tecnología se pasan al modelo para decidir si
-# incluirlas o marcarlas para revisión manual.
+# Las entradas del universo CPV (`config.CPV_PREFIXES_UNIVERSO`: 48/72/32) que
+# no tienen keywords de tecnología se guardan como `cpv_ti_universe`; las TI
+# (48/72) pasan además por el modelo para decidir si se rescatan o se marcan
+# para revisión manual.
 
-_TI_PREFIXES = ("48", "72")
+#: Población del clasificador: con lo que se entrenó. La 32 (telecomunicaciones,
+#: 2026-10-30) entra en el universo pero no se puntúa: el modelo no la ha visto.
+_TI_PREFIXES = tuple(CPV_PREFIXES_TI)
+_UNIVERSO_PREFIXES = tuple(CPV_PREFIXES_UNIVERSO)
 
 # Motivos de inclusión que persiste el linaje (``licitaciones.inclusion_reason``).
 # ``cpv_ti_universe`` es nuevo desde 2026-09: antes un expediente de CPV 48/72
@@ -253,12 +258,13 @@ def _apply_tech_prediction(lic: Licitacion) -> dict[str, Any] | None:
 
 
 def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
-    """Entradas TI (CPV 48/72) sin keywords de tecnología: parse + score ML.
+    """Entradas del universo CPV (48/72/32) sin keywords: parse + score ML.
 
     Devuelve la ``Licitacion`` con ``inclusion_reason`` ya decidido, o ``None``
     sólo si la entry no es TI o no se puede parsear:
 
-      1. Comprobación rápida de CPV — descarta no-TI sin parsear.
+      1. Comprobación rápida de CPV — descarta lo de fuera del universo sin
+         parsear.
       2. Parse completo con parse_entry_unfiltered.
       3. Score con SAPClassifier (si hay modelo):
            - ml_proba < ML_UNCERTAINTY_LO   → se conserva como ``cpv_ti_universe``
@@ -266,7 +272,8 @@ def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
                                               clasificador, pero expediente TI)
            - [ML_UNCERTAINTY_LO, threshold) → ``ml_cpv_rescue`` para revisión manual
            - [threshold, 1]                 → ``ml_cpv_rescue`` positivo confiable
-         Sin modelo, o si el score falla, la entry se conserva como
+         Sin modelo, si el score falla o si el CPV no es 48/72 (la 32 queda
+         fuera de la población del modelo), la entry se conserva como
          ``cpv_ti_universe``: la regla de CPV no depende del clasificador.
     """
     from config import settings
@@ -278,7 +285,7 @@ def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
         namespaces=NS,
     )
     cpv = cpv_vals[0] if cpv_vals else None
-    if not cpv or not any(cpv.startswith(p) for p in _TI_PREFIXES):
+    if not cpv or not cpv.startswith(_UNIVERSO_PREFIXES):
         return None
 
     # 2 — Parse completo sin filtro de keywords
@@ -287,7 +294,9 @@ def _ml_classify_entry(entry_elem: Any) -> Licitacion | None:
         return None
     lic.inclusion_reason = INCLUSION_CPV_TI
 
-    # 3 — Score ML con texto aumentado (si hay modelo)
+    # 3 — Score ML con texto aumentado (si hay modelo y el CPV es de su población)
+    if not cpv.startswith(_TI_PREFIXES):
+        return lic
     clf = _get_ml_clf()
     if clf is None:
         return lic

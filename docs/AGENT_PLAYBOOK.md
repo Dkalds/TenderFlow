@@ -311,7 +311,7 @@ controles disponibles y reportá los tests como no ejecutados (AGENTS.md §4).
 |---|---|
 | **PLACSP** | Plataforma de Contratación del Sector Público (España) — fuente de las licitaciones. |
 | **CODICE / UBL** | Formato XML estándar europeo en que PLACSP publica los anuncios. |
-| **CPV** | Common Procurement Vocabulary — códigos UE para clasificar bienes/servicios licitados. `CPV_PREFIXES_TI` en `config/constants.py` filtra prefijos relacionados con tecnología. |
+| **CPV** | Common Procurement Vocabulary — códigos UE para clasificar bienes/servicios licitados. `CPV_PREFIXES_TI` en `config/constants.py` son los prefijos de software y servicios TI (48/72: corroboran keywords ambiguas y son la población del clasificador); `CPV_PREFIXES_UNIVERSO` añade la 32 (telecomunicaciones) y decide qué se ingiere sin keyword (`cpv_ti_universe`) en todas las fuentes con CPV. |
 | **CCAA** | Comunidad Autónoma — mapeada desde NUTS3 vía `shared/geo.py`. |
 | **NUTS3** | Nomenclatura europea de unidades territoriales nivel 3 (provincia ES). |
 | **Licitación** | Anuncio de contratación pública (pre-info, anuncio, adjudicación, formalización). |

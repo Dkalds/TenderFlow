@@ -8,13 +8,14 @@ que importan directamente desde ``config``:
 Estructura interna:
   - ``config.settings``   — clase Settings, singleton, ensure_data_dirs()
   - ``config.keywords``   — SAP_KEYWORDS, TECHNOLOGY_KEYWORDS
-  - ``config.constants``  — URLs, CPV_PREFIXES_TI, HISTORY_TRACKED_FIELDS
+  - ``config.constants``  — URLs, CPV_PREFIXES_TI/_UNIVERSO, HISTORY_TRACKED_FIELDS
 """
 
 from __future__ import annotations
 
 from config.constants import (
     CPV_PREFIXES_TI,
+    CPV_PREFIXES_UNIVERSO,
     HISTORY_TRACKED_FIELDS,
     PLACE_BASE_URL,
     PLACE_LIVE_ATOM_URL,
@@ -27,6 +28,7 @@ from config.settings import _ROOT, Settings, ensure_data_dirs, settings
 
 __all__ = [
     "CPV_PREFIXES_TI",
+    "CPV_PREFIXES_UNIVERSO",
     "HISTORY_TRACKED_FIELDS",
     "PLACE_BASE_URL",
     "PLACE_LIVE_ATOM_URL",

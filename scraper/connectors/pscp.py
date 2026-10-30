@@ -18,6 +18,7 @@ tolera catalán; ver acceptance criteria del RFC).
 Uso directo (backfill o cron):
     python -m scraper.connectors.pscp                     # incremental
     python -m scraper.connectors.pscp --desde 2024-01-01  # backfill
+    python -m scraper.connectors.pscp --desde 2000-01-01 --solo-cpv 32  # una familia
 """
 
 from __future__ import annotations
@@ -169,6 +170,11 @@ def _field(record: dict[str, Any], concept: str) -> Any:
         if value not in (None, ""):
             return value
     return None
+
+
+def _filtro_cpv(prefijos: tuple[str, ...]) -> str:
+    """Condición SoQL: algún código de `codi_cpv` empieza por uno de ``prefijos``."""
+    return " OR ".join(f"codi_cpv like '{p}%' OR codi_cpv like '%||{p}%'" for p in prefijos)
 
 
 def _soql_escape(value: str) -> str:
@@ -349,8 +355,17 @@ class PscpConnector:
         app_token: str | None = None,
         default_lookback_days: int = 30,
         session: requests.Session | None = None,
+        solo_cpv: tuple[str, ...] = (),
     ) -> None:
+        if not all(p.isdigit() for p in solo_cpv):
+            # Van dentro del `$where`: solo dígitos, nada que escapar.
+            raise ValueError(f"solo_cpv admite prefijos numéricos, no {solo_cpv!r}")
         self.dataset_id = dataset_id or settings.PSCP_DATASET_ID
+        #: Prefijos CPV a los que se limita la consulta: el backfill de una
+        #: familia recién añadida al universo (la 32, el 2026-10-30) lee las
+        #: ~20 mil filas que la llevan en vez de los ~2 millones del dataset.
+        #: Una pasada así no mueve el cursor (ver :meth:`new_cursor`).
+        self.solo_cpv = solo_cpv
         self.domain = domain or settings.PSCP_DOMAIN
         self.app_token = (
             app_token if app_token is not None else settings.PSCP_APP_TOKEN.get_secret_value()
@@ -447,6 +462,9 @@ class PscpConnector:
                 )
             else:
                 where = f"{_CURSOR_FIELD} >= '{last_updated}'"
+            if self.solo_cpv:
+                # `codi_cpv` lista los códigos separados por `||`.
+                where = f"({where}) AND ({_filtro_cpv(self.solo_cpv)})"
             resp = _pedir_pagina(
                 self._session,
                 self._resource_url,
@@ -673,13 +691,15 @@ class PscpConnector:
     # ── cursor ───────────────────────────────────────────────────────────
 
     def new_cursor(self) -> dict[str, Any] | None:
-        if self._max_pub_date is None:
+        # Filtrada por CPV, la marca más alta vista no dice nada de las filas de
+        # otras familias que quedan detrás: moverla las saltaría para siempre.
+        if self._max_pub_date is None or self.solo_cpv:
             return None
         return {"last_seen_updated": self._max_pub_date, "last_entry_id": self._max_pub_id}
 
 
 def ejecutar(
-    *, dataset_id: str | None = None, desde: str | None = None
+    *, dataset_id: str | None = None, desde: str | None = None, solo_cpv: tuple[str, ...] = ()
 ) -> ConnectorRunResult | None:
     """Una pasada incremental de PSCP; ``None`` si la fuente está apagada.
 
@@ -702,7 +722,7 @@ def ejecutar(
             ),
         )
         return None
-    connector = PscpConnector(dataset_id=dataset)
+    connector = PscpConnector(dataset_id=dataset, solo_cpv=solo_cpv)
     if desde:
         connector._since = lambda cursor: desde  # type: ignore[method-assign]  # --desde sustituye _since en la instancia, como en TED
     return run_connector(connector)
@@ -714,13 +734,19 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Ingesta PSCP Catalunya (Socrata)")
     parser.add_argument("--desde", help="Fecha inicial YYYY-MM-DD (ignora el cursor)")
     parser.add_argument("--dataset", help="Override de PSCP_DATASET_ID")
+    parser.add_argument(
+        "--solo-cpv",
+        default="",
+        help="Prefijos CPV separados por coma: solo las filas con alguno (no mueve el cursor)",
+    )
     args = parser.parse_args(argv)
+    solo_cpv = tuple(c.strip() for c in args.solo_cpv.split(",") if c.strip())
 
     from db.database import close_pool, init_db
 
     init_db()
     try:
-        result = ejecutar(dataset_id=args.dataset, desde=args.desde)
+        result = ejecutar(dataset_id=args.dataset, desde=args.desde, solo_cpv=solo_cpv)
     finally:
         close_pool()
     if result is None:

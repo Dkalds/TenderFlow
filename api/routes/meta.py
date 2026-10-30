@@ -66,7 +66,8 @@ class MetaFilters(BaseModel):
     tramitacion: list[OpcionCodificada] = Field(default_factory=list)
     tipo_contrato: list[OpcionCodificada] = Field(default_factory=list)
     # Campo ADITIVO: los CPV que el producto sabe nombrar (`CPV_NAMES`, las
-    # divisiones 48 y 72 que filtra la ingesta). `cpv` son los 18.203 códigos
+    # divisiones 48 y 72; la 32, que la ingesta admite desde 2026-10-30, aún no
+    # tiene nombres). `cpv` son los 18.203 códigos
     # presentes en la tabla, sin nombre; esto es el catálogo corto con el que
     # un formulario puede sugerir y rotular. Un código que no esté aquí sigue
     # siendo válido: solo se queda sin nombre.

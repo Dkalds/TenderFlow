@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from config import CPV_PREFIXES_TI
+from config import CPV_PREFIXES_TI, CPV_PREFIXES_UNIVERSO
 from scraper.filters import matches_technology
 
 # ── Puerta tecnológica (C4.1 / D24, endurecida 2026-09-26) ──────────────────
@@ -139,11 +139,12 @@ _AMBIGUAS_ESTRICTAS: frozenset[str] = frozenset({"sap", "concur", "lightning"})
 #: Motivos del veredicto. Los dos de descarte son también los contadores del
 #: resumen del run (ver `PscpConnector.contadores_de_descarte`).
 MOTIVO_ADMITIDA = "keyword"
-#: Sin keyword, pero con CPV de software o servicios TI (48/72). Es la regla que
-#: PLACSP aplica desde 2026-09 (`cpv_ti_universe`): la LCSP limita nombrar
-#: marcas en los pliegos, así que «Llicències Google Workspace» o «Programari
-#: Factorial» no casan con el diccionario y son TI. Entran sin `tecnologia`, es
-#: decir, fuera del universo que enseñan el Radar y la analítica.
+#: Sin keyword, pero con CPV del universo de ingesta (`CPV_PREFIXES_UNIVERSO`:
+#: software y servicios TI 48/72 y, desde 2026-10-30, telecomunicaciones 32). Es
+#: la regla que PLACSP aplica desde 2026-09 (`cpv_ti_universe`): la LCSP limita
+#: nombrar marcas en los pliegos, así que «Llicències Google Workspace» o
+#: «Programari Factorial» no casan con el diccionario y son TI. Entran sin
+#: `tecnologia`, es decir, fuera del universo que enseñan el Radar y la analítica.
 MOTIVO_CPV_TI = "cpv_ti"
 MOTIVO_SIN_SENAL = "sin_senal_tecnologica"
 MOTIVO_AMBIGUA_SIN_CPV_TI = "keyword_ambigua_sin_cpv_ti"
@@ -198,13 +199,14 @@ def senal_tecnologica(titulo: str | None, cpv: str | None) -> SenalTecnologica:
        los apóstrofos tipográficos normalizados), entra con sus etiquetas…
     2. …salvo que todo lo que casó esté en :data:`KEYWORDS_AMBIGUAS` y el CPV
        la contradiga (:func:`_cpv_contradice`).
-    3. Si no casa nada, entra **sin etiquetas** cuando algún CPV es 48/72
-       (:data:`MOTIVO_CPV_TI`); si tampoco, se descarta.
+    3. Si no casa nada, entra **sin etiquetas** cuando algún CPV es del
+       universo de ingesta, 48/72/32 (:data:`MOTIVO_CPV_TI`); si tampoco, se
+       descarta.
     """
     texto = (titulo or "").translate(_APOSTROFOS)
     _, coincidencias = matches_technology(texto, None)
     if not coincidencias:
-        if _algun_cpv_con(cpv, tuple(CPV_PREFIXES_TI)):
+        if _algun_cpv_con(cpv, tuple(CPV_PREFIXES_UNIVERSO)):
             return SenalTecnologica(MOTIVO_CPV_TI)
         return SenalTecnologica(MOTIVO_SIN_SENAL)
     keywords = tuple(sorted({kw for kws in coincidencias.values() for kw in kws}))
