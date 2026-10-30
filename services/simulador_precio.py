@@ -167,7 +167,9 @@ def simular(
         # una temeraria justificada se acepta, y decidir eso no le toca a él.
         return _puntos_proporcional_inversa(baja, mayor, maximo)
 
-    umbral = formula.umbral_temeridad
+    # Un umbral de 0 marcaría temeraria cualquier baja: es el extractor
+    # rellenando el campo, no un pliego.
+    umbral = formula.umbral_temeridad or None
     escenarios = [
         EscenarioPuntos(
             baja=baja,

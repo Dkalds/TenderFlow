@@ -610,6 +610,16 @@ _Sin ítems abiertos._
 
 ## P2 — Media
 
+### [P2] Medir y recalcular las etiquetas de tecnología tras las reglas de precisión (2026-10-30)
+- **Área:** services/tech_signal.py, config/keywords.py, api/routes/licitaciones/analitica.py, scripts/medir_etiquetas_tecnologia.py (acción del propietario: medir en producción, revisar la muestra y recalcular)
+- **Problema:** el detalle enseñaba demasiadas etiquetas de tecnología. El código ya está cambiado (ver «Cuántas etiquetas lleva una licitación» en [taxonomia-tecnologica.md](taxonomia-tecnologica.md)): el bloque del detalle solo lista lo que cada fuente predice, las keywords ambiguas no añaden etiqueta a una fila con señal firme y la señal de pliegos ignora lo que solo dice el pliego administrativo, topa las repeticiones y pide dos términos a las categorías. No hay cifra de antes ni de después: no se ejecutó contra producción.
+- **Acceptance criteria:**
+  - `scripts/medir_etiquetas_tecnologia.py resumen` ejecutado en producción antes y después del despliegue, con la media de etiquetas por licitación de cada vista anotada aquí.
+  - Una muestra de 100 revisada a mano (`muestra` → rellenar `correcta` → `precision`), con la precisión por fuente anotada; si «solo_pliego» sigue baja, los términos de `terminos_solo_pliego` con un ejemplo real entran en `KEYWORDS_AMBIGUAS`.
+  - Tras el despliegue y la re-puntuación de pliegos (la dispara el cambio de `VERSION_MATCHER`), `precompute-tech --force` y el paso `tech_signal_merge`, para que `ml_tecnologias` pierda lo fundido desde señales que ya no pasan.
+- **Files de partida:** [scripts/medir_etiquetas_tecnologia.py](../scripts/medir_etiquetas_tecnologia.py), [services/tech_signal.py](../services/tech_signal.py), [config/keywords.py](../config/keywords.py)
+- **Riesgo:** medio — las reglas cambian lo que se guarda: menos etiquetas por fila y algún verdadero positivo perdido (el golden de PLACSP pierde `DATOS_IA` en «Consultoría SAP BW … cuadro de mando»).
+
 ### [P2] [Rendimiento 2026-10] Lo que quedó de la revisión de rendimiento y código
 - **Área:** db/upsert.py, services/entity_resolution.py, scheduler/{watchlist_rules_alerts,competitor_alerts}.py, services/deadline_reminders.py, db/repositories/aggregates.py, observability/alerts.py, varios helpers duplicados
 - **Problema:** la revisión del 2026-10-26 (lo hecho está en _Cerrados_ con esa fecha) dejó abierto lo que necesita una decisión, una medición en producción o el OK del propietario:
@@ -766,6 +776,7 @@ _Sin ítems abiertos._
 - *Estado (2026-10-11):* **código escrito, sin casos todavía.** Diseño y cambios al implementarlo en [plans/2026-10-eval-ficha-pliego.md](plans/2026-10-eval-ficha-pliego.md); queda el trabajo del propietario (su §8): capturar diez pliegos con `scripts/capturar_ficha_golden.py`, revisarlos con `scripts/revisar_ficha_golden.py` y fijar la base con `python scripts/eval_ficha.py --fijar-minimos`. Cambia un criterio de arriba: diez pliegos revisados, de los que tres se etiquetan además a fondo, en vez de diez desde cero. El ítem no se cierra hasta que existan los casos y `minimos.json`.
 - **Nota 2026-09-28 (`tender-facts-v6`):** el selector de páginas **se cambió sin este eval**, a sabiendas, porque la ficha v5 no tenía nada que proteger: de 886 filas en producción, 17 `extracted` y 70 `needs_review`, casi todas con 0 hechos; el resto `failed`. Medición manual (Nemotron super, mismos pliegos, antes → después): `2025/191` 0 → 7 hechos, `20/026` fallo → 20, `2025/000423-PEA` 0 → 14, `1934/2026` 0 → 22; la fórmula de precio aparece en tres de los cuatro. Es una comparación de cuatro pliegos sin etiquetas, no un baseline: sigue haciendo falta el golden set para medir **precisión**, que esta nota no mide.
 - **Nota 2026-10-29 (`tender-facts-v7`):** también sin este eval, una segunda llamada solo para `required_documents` con sus propias páginas (`_select_document_pages`). No cambia lo que ve la pasada general, así que no puede empeorar las demás familias; lo único medido es que en el PCAP de la oportunidad 17 entran las dos páginas del Sobre nº 1 que antes quedaban fuera. `cobertura_selector` cuenta ya esas páginas para `required_documents`, para que la base del eval no la infravalore.
+- **Nota 2026-10-30 (`tender-facts-v8`):** solo la pregunta: `price_formula` acotada a la fórmula del precio. En la oportunidad 18 el modelo guardó ahí la de experiencia de perfiles (`otra`, 100 puntos) y el simulador decía «fórmula no calculable» con la proporcionalidad inversa de 40 puntos citada en `award_criteria`. Sin este eval no se sabe en cuántas fichas pasaba; el caso de la 18 es lo único comprobado.
 
 ### [P2] Unificar la selección de páginas de la ficha con el retrieval pgvector
 - **Área:** services/rag/fact_sheet.py, services/rag/context.py

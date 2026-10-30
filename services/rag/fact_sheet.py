@@ -67,7 +67,14 @@ log = get_logger(__name__)
 # una pasada aparte no toca lo que ya se extraía. El bump reencola primero las
 # fichas con oportunidad abierta (`list_pending_licitaciones`), con el mismo
 # tope por noche.
-EXTRACTION_VERSION = "tender-facts-v7"
+#
+# v8 (2026-10-30): `price_formula` acotada a la fórmula del precio. En el PCAP
+# de la oportunidad 18 el modelo guardó ahí la de experiencia de perfiles
+# («P = Σ min(años; umbral) · 100 / Σ umbrales», tipo `otra`, 100 puntos) y la
+# del precio —proporcionalidad inversa, 40 puntos— solo quedó en prosa en
+# `award_criteria`: el simulador respondía «fórmula no calculable». El bump
+# reencola las fichas ya extraídas con esa mezcla.
+EXTRACTION_VERSION = "tender-facts-v8"
 # Por debajo de ``MAX_CONTEXT_CHARS_EXTRACTION`` (llm/prompts.py): cada página
 # añade su cabecera ``--- Fragmento de pliego (…) ---``, y el bloque de CONTEXTO
 # que se pasa del presupuesto se corta por el final — justo las últimas páginas.
@@ -177,6 +184,9 @@ del servicio" / "99,9% mensual"); sus penalizaciones van en penalties.
 technologies: solo plataformas que el contrato implanta, mantiene, migra o
 licencia ("migración a SAP S/4HANA"), nunca menciones incidentales.
 date_value: fecha ISO AAAA-MM-DD, o null si el pliego no fija una exacta.
+price_formula: solo la fórmula que puntúa la oferta económica (precio o baja);
+las de otros criterios (experiencia, mejoras, plazos) nunca van aquí. Si el
+pliego no da la del precio, lista vacía. max_points: los del criterio precio.
 formula_type: solo "proporcional_inversa" (puntos = max * baja_propia /
 baja_mayor), "lineal_por_tramos", "con_umbral_temeridad" u "otra"; usa "otra"
 cuando la fórmula no encaje, nunca la más parecida. params es un objeto
