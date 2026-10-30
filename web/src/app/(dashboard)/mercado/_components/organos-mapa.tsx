@@ -43,11 +43,15 @@ export function OrganosMapa({
   onOrganoClick: (organo: string) => void;
 }) {
   const conMedianas = medianas.count != null && medianas.importe != null;
+  // Los ejes son logarítmicos y no tienen cero: un órgano sin importe conocido
+  // no se puede situar. Se dice cuántos quedan fuera en vez de esconderlos.
+  const dibujables = puntos.filter((p) => p.count > 0 && p.importe > 0);
+  const sinImporte = puntos.length - dibujables.length;
   return (
     <Panel>
       <PanelTitle
         title="Mapa de compradores"
-        hint="cuántas licitaciones publica cada órgano y cuánto importe suman · pulsa un punto para abrir su perfil"
+        hint="cuántas licitaciones publica cada órgano y cuánto importe suman, en escala logarítmica · pulsa un punto para abrir su perfil"
         actions={
           filtrado ? (
             <Badge variant="neutral" size="sm">
@@ -58,12 +62,12 @@ export function OrganosMapa({
       />
       {isLoading ? (
         <PanelLoading height={ALTO_MAPA} />
-      ) : puntos.length === 0 ? (
+      ) : dibujables.length === 0 ? (
         <PanelEmpty title="Ningún órgano" hint={VACIO} height={ALTO_MAPA} />
       ) : (
         <>
           <OrganosMapaChart
-            puntos={puntos}
+            puntos={dibujables}
             medianaCount={medianas.count}
             medianaImporte={medianas.importe}
             onOrganoClick={onOrganoClick}
@@ -86,10 +90,17 @@ export function OrganosMapa({
                 <svg aria-hidden="true" className="h-2.5 w-4 flex-none" viewBox="0 0 16 10">
                   <line x1="0" y1="5" x2="16" y2="5" stroke="currentColor" strokeDasharray="3 2" />
                 </svg>
-                Medianas de los {formatNumber(puntos.length)} órganos del mapa:{" "}
+                Medianas de los {formatNumber(puntos.length)} órganos:{" "}
                 <span className="tf-tnum">
                   {formatNumber(medianas.count)} licitaciones y {formatCurrency(medianas.importe)}
                 </span>
+              </li>
+            )}
+            {sinImporte > 0 && (
+              <li>
+                {sinImporte === 1
+                  ? "1 órgano sin importe conocido no aparece en el mapa"
+                  : `${formatNumber(sinImporte)} órganos sin importe conocido no aparecen en el mapa`}
               </li>
             )}
           </ul>
