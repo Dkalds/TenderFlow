@@ -11,6 +11,10 @@
   Uso: pasarla con un cliente conectado al MCP que NO vea este fichero. Si una
   respuesta falla, se corrige el glosario o la descripción de la tool, no la
   pregunta (Task 10, paso 3).
+
+  Los ids de los comentarios son anteriores a la re-key v164 (PLACSP sin prefijo).
+  Después de aplicarla, ficha_licitacion y buscar_en_pliegos los siguen resolviendo
+  por licitaciones_id_anterior; en consultar_sql hay que pasar por esa tabla.
 -->
 <evaluation>
   <!-- 1. Tecnología por CSV (tecnologia/ml_tecnologias) + adjudicaciones + ventana 2025.
@@ -83,9 +87,11 @@
   </qa_pair>
 
   <!-- 9. Duplicados entre fuentes: ted:615809-2026 y ted:660367-2026 son duplicados
-       confirmados de 2026/032169 (Castilla-La Mancha, 95 100 200 €). -->
+       confirmados de 2026/032169 (Castilla-La Mancha, 95 100 200 €). Se pide el número
+       de expediente y no el id_externo: con la re-key v164 la fila canónica pasa a
+       placsp:<órgano>:2026/032169 y el número sigue siendo el mismo. -->
   <qa_pair>
-    <question>El mayor contrato de telecomunicaciones y ciberseguridad que publicó la Junta de Comunidades de Castilla-La Mancha en el primer semestre de 2026 aparece varias veces en la base porque también se anunció en el Diario Oficial de la Unión Europea. ¿Cuál es el identificador (id_externo) de la fila canónica? Responde solo con el identificador.</question>
+    <question>El mayor contrato de telecomunicaciones y ciberseguridad que publicó la Junta de Comunidades de Castilla-La Mancha en el primer semestre de 2026 aparece varias veces en la base porque también se anunció en el Diario Oficial de la Unión Europea. ¿Cuál es el número de expediente de la fila canónica, sin prefijos de fuente ni de órgano? Responde solo con el número de expediente.</question>
     <answer>2026/032169</answer>
   </qa_pair>
 

@@ -220,4 +220,24 @@ def test_tool_buscar_licitaciones_sin_resultados_remite_a_sql(
     vacio = buscar_licitaciones("", importe_max=5_000)
     assert vacio["total"] == 0
     assert "consultar_sql" in str(vacio["aviso"])
-    assert "aviso" not in buscar_licitaciones("sap")
+
+
+def test_tool_buscar_licitaciones_con_resultados_avisa_de_la_cobertura(
+    licitacion_con_lote_y_adjudicacion: str,
+) -> None:
+    res = buscar_licitaciones("sap")
+    assert res["total"] == 1
+    assert "ml_tecnologias" in str(res["aviso"])
+    assert "consultar_sql" in str(res["aviso"])
+
+
+def test_tool_buscar_en_pliegos_resuelve_un_id_anterior(pliego_con_chunks: str) -> None:
+    from db.repositories.identidad import registrar_id_anterior
+
+    assert registrar_id_anterior("EXP-VIEJO-1", pliego_con_chunks, motivo="rekey_placsp_organo")
+
+    res = buscar_en_pliegos("solvencia económica", id_externo="EXP-VIEJO-1")
+    fragmentos = _lista(res["fragmentos"])
+    assert fragmentos
+    assert {_dict(f)["id_externo"] for f in fragmentos} == {pliego_con_chunks}
+    assert "aviso" not in res
