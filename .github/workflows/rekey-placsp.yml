@@ -14,6 +14,13 @@ name: Re-key PLACSP — relleno de organo_ref_fuente (manual)
 #   plan       — descarga y cuenta lo que escribiría, sin escribir (default).
 #   aplicar    — escribe mes a mes. Idempotente (solo filas con la columna
 #                vacía) y reanudable: si el job se corta, relanzarlo continúa.
+#   colisiones — lista las filas escritas ya con la clave nueva que la guarda
+#                «ya existen con la clave nueva» de v164 encontraría (solo
+#                lectura). Tiene sentido tras el relleno.
+#   borrar-colisiones — las borra, salvo las que tengan datos de usuario
+#                (`scripts/borrar_colisiones_rekey_placsp.py`).
+#   refrescar  — tras migrar: refresca `licitaciones_canonicas` e invalida las
+#                cachés (paso 6 de la ventana).
 # Todos terminan con el inventario en el resumen del run.
 #
 # **Sin el preflight de schema de los carriles de ingesta, a propósito**: la BD
@@ -26,13 +33,16 @@ on:
   workflow_dispatch:
     inputs:
       modo:
-        description: "inventario · meses · plan (cuenta, no escribe) · aplicar"
+        description: "inventario · meses · plan (cuenta, no escribe) · aplicar · colisiones · borrar-colisiones · refrescar"
         type: choice
         options:
           - inventario
           - meses
           - plan
           - aplicar
+          - colisiones
+          - borrar-colisiones
+          - refrescar
         default: plan
         required: true
       desde:
@@ -87,7 +97,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Relleno de organo_ref_fuente
-        if: inputs.modo != 'inventario'
+        if: contains(fromJSON('["meses", "plan", "aplicar"]'), inputs.modo)
         shell: bash
         env:
           MODO: ${{ inputs.modo }}
@@ -120,6 +130,27 @@ jobs:
             python -m scripts.rellenar_organo_ref_placsp "${ARGS[@]}"
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Colisiones con la clave nueva
+        if: inputs.modo == 'colisiones' || inputs.modo == 'borrar-colisiones'
+        shell: bash
+        env:
+          MODO: ${{ inputs.modo }}
+        run: |
+          ARGS=()
+          [ "$MODO" = "borrar-colisiones" ] && ARGS+=(--aplicar)
+          {
+            echo "### Colisiones ($MODO)"
+            echo '```'
+            python -m scripts.borrar_colisiones_rekey_placsp "${ARGS[@]}"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Refrescar canónicas e invalidar cachés
+        if: inputs.modo == 'refrescar'
+        run: |
+          python -c "from db.repositories.publico import refrescar_vista_canonicas as r; print(r())"
+          python -c "from db.cache_signal import signal_cache_invalidation as s; s()"
 
       # Corre también si el relleno falla o se corta: lo escrito hasta entonces
       # cuenta, y la cifra dice desde dónde relanzar.
