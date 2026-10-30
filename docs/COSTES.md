@@ -130,6 +130,14 @@ su presupuesto, pero **la cota ya supera los 50 USD de `LLM_BUDGET_USD_MONTHLY`*
 `pliegos.yml` y la API comparten Redis, y en modo `enforce` un lote grande puede
 dejar sin presupuesto al asistente ese mes.
 
+**Decisión del propietario (2026-10-30):** se acepta que la cota de
+`tender-facts-v7` supere `LLM_BUDGET_USD_MONTHLY`, sin subir ese presupuesto ni
+bajar `PLIEGO_FACTS_BATCH`. Motivo: con NVIDIA el facturado es 0. Riesgo
+aceptado: en modo `enforce`, un mes con los lotes llenos puede agotar el
+presupuesto compartido y dejar sin servicio al asistente. Se revisa cuando haya
+coste por ficha medido (tabla de abajo) o si se cambia a un modelo que factura.
+El tope mensual propio de la ficha (D52) sigue por fijar.
+
 Desde el 2026-10-26 el lote ordena oportunidad abierta → favorito → **abierta
 con plazo que casa con alguna regla de vigilancia activa** → el resto
 (`TenderFactSheetsRepository.list_pending_licitaciones`). Cambia qué fichas se
