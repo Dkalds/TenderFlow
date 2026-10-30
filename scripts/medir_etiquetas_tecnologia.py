@@ -24,15 +24,27 @@ cifra no se sabe si un cambio de reglas ayuda. Tres subcomandos:
 ``precision``
     Lee ese JSONL revisado y da la precisión por etiqueta y por fuente.
 
+``recalcular``
+    **Escribe en la BD.** Aplica las reglas del 2026-10-30 a lo ya guardado:
+    vuelve a puntuar la señal de pliegos de la versión vigente (lo que el
+    cron nocturno de ``pliegos.yml`` haría en semanas, a 500 por noche), y
+    solo cuando no queda ninguna pendiente rehace ``licitacion_tecnologia_score``
+    (``precompute_ml_tecnologias(force=True)``) y vuelve a fundir los pliegos
+    (``merge_doc_signals``). El orden importa: rehacer antes de re-puntuar
+    volvería a fundir las señales viejas. Si se agota ``--presupuesto-s`` con
+    pliegos pendientes, para sin rehacer nada y hay que relanzarlo.
+
 Uso::
 
     ENV=prod PYTHONPATH="$PWD" python -m scripts.medir_etiquetas_tecnologia resumen
     ENV=prod PYTHONPATH="$PWD" python -m scripts.medir_etiquetas_tecnologia muestra \\
         --n 100 --out data/etiquetado/muestra_etiquetas.jsonl
     python -m scripts.medir_etiquetas_tecnologia precision data/etiquetado/muestra_etiquetas.jsonl
+    ENV=prod PYTHONPATH="$PWD" python -m scripts.medir_etiquetas_tecnologia recalcular
 
 ``resumen`` y ``muestra`` leen la base de datos (solo lectura); ``precision``
-solo el fichero.
+solo el fichero. En producción se lanzan desde
+``.github/workflows/etiquetas-tecnologia.yml``.
 """
 
 from __future__ import annotations
@@ -215,6 +227,38 @@ def _imprimir_precision(r: dict[str, Any]) -> None:
         print(f"\nEtiquetas que faltaban: {r['faltan']}")
 
 
+def recalcular(*, presupuesto_s: float, lote: int = 500) -> dict[str, Any]:
+    """Re-puntúa los pliegos pendientes y, si no queda ninguno, rehace ML y fusiona.
+
+    Ver el docstring del módulo. Devuelve lo hecho en cada fase; ``completo``
+    dice si llegó a rehacer ``licitacion_tecnologia_score``.
+    """
+    import time
+
+    from scheduler.jobs.documentos_embeddings import _run_tech_signal_phase
+    from services.ml.classifier_training import precompute_ml_tecnologias
+    from services.tech_signal import merge_doc_signals
+
+    inicio = time.monotonic()
+    pliegos: Counter[str] = Counter()
+    pendientes = True
+    while time.monotonic() - inicio < presupuesto_s:
+        lote_hecho = _run_tech_signal_phase(limit=lote)
+        pliegos.update(lote_hecho)
+        # Las que fallan siguen pendientes: si un lote solo trae fallos, otra
+        # vuelta no avanza, y se para para no girar hasta agotar el presupuesto.
+        if not (lote_hecho.get("scored", 0) or lote_hecho.get("no_signal", 0)):
+            pendientes = bool(lote_hecho.get("error", 0))
+            break
+    resultado: dict[str, Any] = {"pliegos": dict(pliegos), "completo": False}
+    if pendientes:
+        return resultado
+    resultado["ml"] = precompute_ml_tecnologias(force=True)
+    resultado["fusion"] = merge_doc_signals()
+    resultado["completo"] = True
+    return resultado
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0] if __doc__ else None)
     sub = parser.add_subparsers(dest="comando", required=True)
@@ -224,6 +268,8 @@ def main(argv: list[str] | None = None) -> int:
     p_muestra.add_argument("--out", type=Path, required=True)
     p_precision = sub.add_parser("precision", help="precisión de un JSONL revisado")
     p_precision.add_argument("fichero", type=Path)
+    p_recalcular = sub.add_parser("recalcular", help="ESCRIBE: aplica las reglas a lo guardado")
+    p_recalcular.add_argument("--presupuesto-s", type=float, default=2400.0)
     args = parser.parse_args(argv)
 
     if args.comando == "precision":
@@ -233,6 +279,17 @@ def main(argv: list[str] | None = None) -> int:
             if linea.strip()
         ]
         _imprimir_precision(precision(lineas))
+        return 0
+
+    if args.comando == "recalcular":
+        hecho = recalcular(presupuesto_s=args.presupuesto_s)
+        print(json.dumps(hecho, ensure_ascii=False, indent=2, default=str))
+        if not hecho["completo"]:
+            print(
+                "Quedan pliegos por re-puntuar: no se rehízo licitacion_tecnologia_score. "
+                "Vuelve a lanzarlo.",
+                file=sys.stderr,
+            )
         return 0
 
     from config import settings

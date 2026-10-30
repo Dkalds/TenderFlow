@@ -174,11 +174,13 @@ predicho. Causas y reglas que las acotan, todas con test:
   precisión de esa muestra por etiqueta y por fuente.
 
 Lo ya guardado no se corrige solo del todo: el cambio de `VERSION_MATCHER`
-hace que la señal de pliegos se vuelva a puntuar entera, pero el merge nunca
-borra, así que las filas de `licitacion_tecnologia_score` fundidas desde
-señales que ya no pasan siguen ahí hasta un
-`python scripts/ml_clasificadores.py precompute-tech --force` seguido del paso
-`tech_signal_merge`; y `tecnologia` solo se reescribe al reingerir.
+hace que la señal de pliegos se vuelva a puntuar entera (a ~500 por noche en
+`pliegos.yml`), pero el merge nunca borra, así que las filas de
+`licitacion_tecnologia_score` fundidas desde señales que ya no pasan siguen ahí
+hasta rehacer la tabla. `.github/workflows/etiquetas-tecnologia.yml` lo hace a
+demanda: `medir` (solo lectura) y `recalcular` (re-puntúa lo pendiente y, solo
+entonces, `precompute_ml_tecnologias(force=True)` + `merge_doc_signals`).
+`tecnologia` solo se reescribe al reingerir.
 
 ## Familias (2026-10)
 
