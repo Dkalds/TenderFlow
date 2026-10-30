@@ -131,6 +131,12 @@ class TestTemeridad:
         )
         assert sim.escenarios[0].temeraria is False
 
+    def test_umbral_cero_no_es_un_umbral(self) -> None:
+        """Un 0 marcaría temeraria cualquier baja; es el extractor rellenando el campo."""
+        formula = _formula(formula_type="proporcional_inversa", max_points=40, umbral_temeridad=0)
+        sim = simular("EXP-1", [formula], bajas=[0.05, 0.25])
+        assert [e.temeraria for e in sim.escenarios] == [False, False]
+
 
 class TestHuecoContraElRival:
     def test_ventaja_positiva(self) -> None:
