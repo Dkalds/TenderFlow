@@ -3282,6 +3282,12 @@ export interface paths {
          * @description Une por nombre de tecnología las tres fuentes de la categorización:
          *     título/descripción (keywords), el clasificador ML, y la señal detectada
          *     en el texto de los pliegos con su evidencia (términos o citas).
+         *
+         *     Solo entra lo que cada fuente **predice**, no todo lo que puntúa: el
+         *     clasificador guarda una fila por etiqueta con probabilidad > 0 (casi todas,
+         *     con una regresión logística), y la tabla de pliegos guarda señales por
+         *     debajo del corte de fusión. Listarlas todas era la mayor parte de las
+         *     etiquetas de más que se veían en el detalle.
          */
         get: operations["get_tecnologias_api_v1_licitaciones__id_externo__tecnologias_get"];
         put?: never;
