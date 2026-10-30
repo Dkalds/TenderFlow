@@ -51,6 +51,7 @@ _repo = PursuitRepository()
 
 __all__ = [
     "EVENTO_KIT",
+    "EstadoFicha",
     "ItemKit",
     "KitPresentacion",
     "anotar_tarea",
@@ -71,6 +72,10 @@ EVENTO_KIT = PursuitRepository.KIT_EVENT_TYPE
 ORDEN_SOBRES: tuple[str, ...] = ("sobre_a", "sobre_b", "sobre_c", "otro")
 
 EtiquetaSobre = Literal["sobre_a", "sobre_b", "sobre_c", "otro"]
+
+#: De dónde sale el kit: si aún no hay ficha del pliego, si la última
+#: extracción falló, o si hay ficha (con o sin documentos exigidos).
+EstadoFicha = Literal["sin_ficha", "fallida", "extraida"]
 
 
 class ItemKit(BaseModel):
@@ -110,6 +115,10 @@ class KitPresentacion(BaseModel):
     #: lo dice explícitamente en vez de enseñar una lista vacía, que se lee
     #: como que la pieza está rota.
     sin_extraccion: bool = False
+    #: Por qué está vacío un kit vacío. «Sin ficha» se arregla extrayéndola;
+    #: «extraída» sin documentos es que el pliego no los dijo donde se leyó, y
+    #: hay que mirarlo a mano. Con un solo booleano la UI no podía distinguirlos.
+    estado_ficha: EstadoFicha = "extraida"
 
     @property
     def listos(self) -> int:
@@ -175,6 +184,7 @@ def construir_kit(
     organization_id: int | None = None,
     pursuit_id: int | None = None,
     tareas: dict[int, dict[str, Any]] | None = None,
+    estado_ficha: EstadoFicha = "extraida",
 ) -> KitPresentacion:
     """El kit, con el estado de la oportunidad si la hay.
 
@@ -187,7 +197,9 @@ def construir_kit(
     quien la tenía sería afirmar un reparto que el equipo deshizo.
     """
     if not documentos:
-        return KitPresentacion(licitacion_id=licitacion_id, sin_extraccion=True)
+        return KitPresentacion(
+            licitacion_id=licitacion_id, sin_extraccion=True, estado_ficha=estado_ficha
+        )
 
     estado: dict[str, dict[str, Any]] = {}
     if organization_id is not None and pursuit_id is not None:
@@ -220,7 +232,7 @@ def construir_kit(
         )
 
     items.sort(key=lambda i: (ORDEN_SOBRES.index(i.sobre), i.clave))
-    return KitPresentacion(licitacion_id=licitacion_id, items=items)
+    return KitPresentacion(licitacion_id=licitacion_id, items=items, estado_ficha=estado_ficha)
 
 
 def marcar_item(

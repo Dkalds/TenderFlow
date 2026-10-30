@@ -15,15 +15,19 @@
  * darían por leídos del pliego).
  */
 import * as React from "react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Panel, PanelEmpty, PanelError, PanelLoading, ROTULO_DATO, SectionTitle } from "@/components/console/panel";
 import { formatDate } from "@/components/pursuits/pursuit-presenters";
 import { useOrganizationMembers } from "@/hooks/use-organization";
+import { useTenderFactSheetExtraction } from "@/hooks/use-tender-fact-sheet";
 import { cn } from "@/lib/utils";
 import {
   type ItemKit,
+  type KitPresentacion,
   registrarKitAbierto,
   resumenKit,
   useAsignarKitItem,
@@ -99,11 +103,7 @@ export function KitPresentacionPanel({
         <span id={`kit-${pursuitId}`}>Kit de presentación</span>
       </SectionTitle>
       {kit.sin_extraccion || total === 0 ? (
-        <PanelEmpty
-          size="sm"
-          title="Sin documentos exigidos extraídos del pliego"
-          hint="El kit no propone una lista genérica: revisa el pliego en la pestaña «Pliego» antes de dar la oferta por completa."
-        />
+        <KitSinDocumentos licitacionId={kit.licitacion_id} estadoFicha={kit.estado_ficha} />
       ) : (
         <div className="space-y-4">
           {SOBRES.map((sobre) => {
@@ -196,5 +196,78 @@ export function KitPresentacionPanel({
         </div>
       )}
     </Panel>
+  );
+}
+
+/**
+ * Un kit vacío dice por qué. Sin ficha (o con la última extracción fallida) se
+ * puede lanzar desde aquí, y el kit se rellena solo al terminar
+ * (`useTenderFactSheetExtraction` invalida el kit). Con ficha y sin documentos
+ * no hay botón: volver a extraer el mismo pliego no los hace aparecer.
+ *
+ * Componente aparte para que el sondeo del estado de la extracción solo exista
+ * cuando el kit está vacío.
+ */
+function KitSinDocumentos({
+  licitacionId,
+  estadoFicha,
+}: {
+  licitacionId: string;
+  estadoFicha: KitPresentacion["estado_ficha"];
+}) {
+  const extraction = useTenderFactSheetExtraction(licitacionId);
+  const extrayendo = extraction.isStarting || extraction.running;
+
+  if (estadoFicha === "extraida") {
+    return (
+      <PanelEmpty
+        size="sm"
+        title="La ficha del pliego no recoge documentos exigidos"
+        hint="El kit no propone una lista genérica: revisa el pliego en la pestaña «Pliego» antes de dar la oferta por completa."
+      />
+    );
+  }
+
+  const lanzar = async () => {
+    try {
+      await extraction.start();
+      toast.info("Extracción lanzada: el kit se rellenará al terminar");
+    } catch {
+      // El aviso lo da el global de mutaciones, con el meta.errorTitle del hook.
+    }
+  };
+
+  return (
+    <PanelEmpty
+      size="sm"
+      title={
+        extrayendo
+          ? "Extrayendo la ficha del pliego…"
+          : estadoFicha === "fallida"
+            ? "La última extracción de la ficha falló"
+            : "Aún no hay ficha del pliego"
+      }
+      hint={
+        extrayendo
+          ? "Puedes seguir trabajando: el kit aparecerá aquí al terminar."
+          : estadoFicha === "fallida"
+            ? "El motivo está en la pestaña «Pliego». Puedes volver a intentarlo."
+            : "Los documentos del kit salen de la ficha del pliego. Extráela para ver qué pide y en qué sobre."
+      }
+      action={
+        <Button size="sm" onClick={() => void lanzar()} disabled={extrayendo}>
+          {extrayendo ? (
+            <>
+              <Loader2 className="animate-spin" aria-hidden="true" />
+              Extrayendo…
+            </>
+          ) : estadoFicha === "fallida" ? (
+            "Reintentar"
+          ) : (
+            "Extraer ficha"
+          )}
+        </Button>
+      }
+    />
   );
 }

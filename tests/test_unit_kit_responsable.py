@@ -151,7 +151,7 @@ def entorno(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
     monkeypatch.setattr(mod, "alcance_resuelto", alcance_fijo(7, "member"))
     monkeypatch.setattr(mod, "get_pursuit", lambda *a, **k: _Detalle())
-    monkeypatch.setattr(mod, "_documentos_del_pliego", lambda lic: [documento])
+    monkeypatch.setattr(mod, "_documentos_del_pliego", lambda lic: ("extraida", [documento]))
     monkeypatch.setattr(mod, "_tareas_vivas", lambda org, pid: dict(tareas_vivas))
     monkeypatch.setattr(kit_mod._repo, "kit_events", lambda org, pid: list(eventos))
     monkeypatch.setattr(

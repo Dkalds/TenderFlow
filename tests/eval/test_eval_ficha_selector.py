@@ -33,7 +33,7 @@ from typing import Any
 
 import pytest
 
-from services.rag.fact_sheet import _select_pages, _validated_evidence
+from services.rag.fact_sheet import _select_document_pages, _select_pages, _validated_evidence
 from services.rag.ficha_eval import cobertura_selector
 from services.rag.ficha_golden import (
     FAMILIAS,
@@ -104,7 +104,9 @@ def _cobertura(casos: list[Caso]) -> dict[str, tuple[int, int]]:
     suma: dict[str, tuple[int, int]] = {}
     for caso in casos:
         for familia, (cubiertos, total) in cobertura_selector(
-            caso, _select_pages(caso.paginas)
+            caso,
+            _select_pages(caso.paginas),
+            documentos=_select_document_pages(caso.paginas),
         ).items():
             previos = suma.get(familia, (0, 0))
             suma[familia] = (previos[0] + cubiertos, previos[1] + total)

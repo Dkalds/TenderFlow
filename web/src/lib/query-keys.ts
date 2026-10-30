@@ -358,6 +358,13 @@ export const pursuitKeys = {
   checklist: (pursuitId: number | string) =>
     ["pursuits", "checklist", String(pursuitId)] as const,
   /**
+   * Prefijos del contraste y del kit de todas las oportunidades. Los dos salen
+   * de la ficha del pliego, que es de la licitación y no de la oportunidad:
+   * al terminar una extracción se invalidan sin saber qué oportunidad la mira.
+   */
+  checklistTodos: ["pursuits", "checklist"] as const,
+  kitTodos: ["pursuits", "kit"] as const,
+  /**
    * Prefijo de todas las puntuaciones go/no-go. Cambiar los pesos de la
    * organización (Equipo → Organización) recalcula el total y la recomendación
    * de **todas** las oportunidades: la mutación de pesos invalida este prefijo

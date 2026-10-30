@@ -61,6 +61,7 @@ from llm.client import DEFAULT_MODEL  # noqa: E402
 from services.rag.fact_sheet import (  # noqa: E402
     EXTRACTION_VERSION,
     ExtraccionHechos,
+    _select_document_pages,
     _select_pages,
     extraer_hechos,
 )
@@ -149,7 +150,9 @@ def evaluar(
             resultados.append(medir_caso(caso, extraccion))
         # El selector es determinista y no depende de que el modelo responda.
         for familia, (cubiertos, total) in cobertura_selector(
-            caso, _select_pages(caso.paginas)
+            caso,
+            _select_pages(caso.paginas),
+            documentos=_select_document_pages(caso.paginas),
         ).items():
             previos = selector.get(familia, (0, 0))
             selector[familia] = (previos[0] + cubiertos, previos[1] + total)

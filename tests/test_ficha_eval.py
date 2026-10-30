@@ -584,6 +584,41 @@ def test_cobertura_selector_cuenta_el_positivo_si_su_pagina_entro() -> None:
     }
 
 
+def test_las_paginas_de_la_pasada_de_documentos_solo_cubren_documentos() -> None:
+    def entrada(familia: str, campos: dict[str, Any]) -> dict[str, Any]:
+        hecho = _hecho(familia, campos, pagina=6)
+        return {"veredicto": "correcto", "hecho": hecho.model_dump(mode="json")}
+
+    golden = CasoGolden.model_validate(
+        {
+            "licitacion_id": "EXP-1",
+            "completo": False,
+            "capturado_el": "2026-10-29",
+            "extraction_version": "tender-facts-v7",
+            "model": "modelo-x",
+            "status_origen": "extracted",
+            "hechos": {
+                "required_documents": [entrada("required_documents", {"name": "DEUC"})],
+                "award_criteria": [entrada("award_criteria", {"weight_pct": 60})],
+            },
+        }
+    )
+    caso = Caso(nombre="caso", golden=golden, paginas=[])
+    general = [{"documento_id": 7, "page_number": 3}]
+    documentos = [{"documento_id": 7, "page_number": 6}]
+
+    assert cobertura_selector(caso, general) == {
+        "required_documents": (0, 1),
+        "award_criteria": (0, 1),
+    }
+    # La segunda llamada solo pide documentos: un criterio en esa página no
+    # llega a extraerse por haberla visto.
+    assert cobertura_selector(caso, general, documentos=documentos) == {
+        "required_documents": (1, 1),
+        "award_criteria": (0, 1),
+    }
+
+
 def test_minimos_desde_toma_la_peor_ejecucion_menos_dos_puntos() -> None:
     ejecuciones = [
         {"precision_completos": 0.80, "cobertura_completos": 0.61, "conservados_parciales": 0.9},

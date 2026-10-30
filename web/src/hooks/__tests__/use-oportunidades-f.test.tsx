@@ -5,10 +5,11 @@
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { useOrganizationStore } from "@/hooks/use-organization";
 import { useCambiarEtiqueta, useEtiquetasDe } from "@/hooks/use-etiquetas";
 import { resumenKit, useAsignarKitItem, usePursuitKit } from "@/hooks/use-pursuit-kit";
+import { useTenderFactSheetExtraction } from "@/hooks/use-tender-fact-sheet";
 import { useCartera } from "@/hooks/use-cartera";
 import { filasATareas, tareasAFilas } from "@/hooks/use-plantilla-tareas";
 import { pursuitKeys } from "@/lib/query-keys";
@@ -44,6 +45,7 @@ function clienteYWrapper() {
 const KIT = {
   licitacion_id: "L1",
   sin_extraccion: false,
+  estado_ficha: "extraida",
   items: [
     { clave: "0:deuc", nombre: "DEUC", sobre: "sobre_a", listo: true },
     { clave: "1:garantia", nombre: "Garantía", sobre: "sobre_a", listo: false },
@@ -135,6 +137,24 @@ describe("kit de presentación (F2.3)", () => {
 
   it("resumenKit sin kit es cero de cero", () => {
     expect(resumenKit(undefined)).toEqual({ listos: 0, total: 0 });
+  });
+
+  it("al terminar una extracción de la ficha se vuelve a pedir el kit y el contraste", async () => {
+    stub(() => ({ running: true }));
+    const { client, wrapper } = clienteYWrapper();
+    client.setQueryData(pursuitKeys.kit(3, 7), KIT);
+    client.setQueryData(pursuitKeys.checklist(3), {});
+
+    renderHook(() => useTenderFactSheetExtraction("L1"), { wrapper });
+    await waitFor(() =>
+      expect(client.getQueryData(["tender-fact-sheet-estado", "L1"])).toEqual({ running: true }),
+    );
+    expect(client.getQueryState(pursuitKeys.kit(3, 7))?.isInvalidated).toBe(false);
+
+    act(() => client.setQueryData(["tender-fact-sheet-estado", "L1"], { running: false }));
+
+    await waitFor(() => expect(client.getQueryState(pursuitKeys.kit(3, 7))?.isInvalidated).toBe(true));
+    expect(client.getQueryState(pursuitKeys.checklist(3))?.isInvalidated).toBe(true);
   });
 });
 
