@@ -16,8 +16,10 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
+from collections.abc import Iterable
 from typing import Any
 
+from config.keywords import TECH_LABEL_TIPO, es_ambigua, patron_de_keyword, plegar
 from db.database import now_utc_iso
 from db.events import append_event
 from db.repositories.tecnologia_pliego import TechSignal, TecnologiaPliegoRepository
@@ -43,6 +45,13 @@ def _tech_patterns() -> dict[str, re.Pattern[str]]:
     return patrones()
 
 
+def _tech_keywords() -> dict[str, list[str]]:
+    """Keywords del diccionario vigente, para contar por término canónico."""
+    from services.tecnologias_diccionario import vigente
+
+    return vigente()[0]
+
+
 # Un pliego técnico que menciona una tecnología es señal más fuerte que una
 # mención de pasada en el legal (plantillas administrativas repiten términos
 # genéricos). "additional" es intermedio (anexos técnicos variopintos).
@@ -56,6 +65,23 @@ _DEFAULT_DOC_WEIGHT = _DOC_TYPE_WEIGHT["legal"]
 _MIN_WEIGHTED_HITS = 2.0
 _SCORE_SATURATION = 6.0
 
+# Precisión de la señal (2026-10-30). Las etiquetas sobraban porque un pliego
+# de cien páginas repite su plantilla: el legal nombra el «Esquema Nacional de
+# Seguridad» diez veces en cualquier contrato con datos, y a peso 0,3 eso ya
+# fusionaba CIBERSEGURIDAD. Cuatro reglas, todas por tecnología:
+#
+# 1. Lo que solo aparece en el legal (o en un documento sin tipo) no etiqueta.
+# 2. Un término cuenta como mucho ``_TOPE_POR_TERMINO`` menciones ponderadas:
+#    la misma frase repetida no es más evidencia que dicha tres veces.
+# 3. Si todos los términos son ambiguos (``config.keywords.KEYWORDS_AMBIGUAS``),
+#    no etiqueta: aquí no hay CPV que los corrobore.
+# 4. Una categoría (ERP, CLOUD_INFRA…) necesita ``_MIN_TERMINOS_CATEGORIA``
+#    términos distintos; un fabricante, uno: «SAP S/4HANA» no es vocabulario
+#    genérico, «copias de seguridad» sí.
+_TIPOS_QUE_ETIQUETAN = frozenset({"technical", "additional"})
+_TOPE_POR_TERMINO = 3.0
+_MIN_TERMINOS_CATEGORIA = 2
+
 
 def score_documents(pages: list[dict[str, Any]]) -> dict[str, TechSignal]:
     """Puntúa cada tecnología por menciones ponderadas por tipo de documento.
@@ -63,14 +89,19 @@ def score_documents(pages: list[dict[str, Any]]) -> dict[str, TechSignal]:
     ``pages`` es la salida de ``DocumentosRepository.list_pages_by_licitacion``
     -- cada fila ya trae ``tipo`` (join contra ``documentos``), así que no
     hace falta un mapa aparte documento→tipo. Devuelve solo las tecnologías
-    que superan ``_MIN_WEIGHTED_HITS``.
+    que pasan las reglas de precisión de arriba y superan ``_MIN_WEIGHTED_HITS``.
+    ``matched_terms`` son las keywords en su forma canónica del diccionario.
     """
-    # Una sola lectura de los patrones para toda la pasada: pedirlos por página
-    # tomaba el lock del diccionario cada vez y, si su versión cambiaba a mitad
-    # del bucle, una tecnología nueva hacía saltar `KeyError` en `weighted_hits`.
+    # Una sola lectura del diccionario para toda la pasada: pedirlo por página
+    # tomaba el lock cada vez y, si su versión cambiaba a mitad del bucle, una
+    # tecnología nueva hacía saltar `KeyError`. Los patrones solo descartan
+    # rápido las tecnologías que no aparecen; si su versión no coincidiera con
+    # la del diccionario, una tecnología sin keywords simplemente no puntúa.
     patrones = _tech_patterns()
-    weighted_hits: dict[str, float] = dict.fromkeys(patrones, 0.0)
-    matched: dict[str, set[str]] = {tech: set() for tech in patrones}
+    diccionario = _tech_keywords()
+    por_termino: dict[str, dict[str, float]] = {tech: {} for tech in patrones}
+    fuera_del_legal: set[str] = set()
+    canonicas: dict[tuple[str, str], str] = {}
 
     for page in pages:
         # NFC: el texto extraído de un PDF llega a menudo con la tilde como
@@ -78,21 +109,73 @@ def score_documents(pages: list[dict[str, Any]]) -> dict[str, TechSignal]:
         text = unicodedata.normalize("NFC", str(page.get("texto") or ""))
         if not text:
             continue
-        weight = _DOC_TYPE_WEIGHT.get(str(page.get("tipo") or ""), _DEFAULT_DOC_WEIGHT)
+        tipo = str(page.get("tipo") or "")
+        weight = _DOC_TYPE_WEIGHT.get(tipo, _DEFAULT_DOC_WEIGHT)
         for tech, pattern in patrones.items():
-            hits = pattern.findall(text)
-            if not hits:
-                continue
-            weighted_hits[tech] += weight * len(hits)
-            matched[tech].update(h.lower() for h in hits)
+            # `finditer` sobre la alternancia (de la keyword más larga a la más
+            # corta) da una mención por posición: «SAP HANA» es `sap hana` y
+            # no además `sap` y `hana`, que contarían como tres términos.
+            for match in pattern.finditer(text):
+                casado = match.group().lower()
+                clave = (tech, casado)
+                if clave not in canonicas:
+                    canonicas[clave] = _forma_canonica(casado, diccionario.get(tech, ()))
+                terminos = por_termino[tech]
+                canonica = canonicas[clave]
+                terminos[canonica] = terminos.get(canonica, 0.0) + weight
+                if tipo in _TIPOS_QUE_ETIQUETAN:
+                    fuera_del_legal.add(tech)
 
     results: dict[str, TechSignal] = {}
-    for tech, weighted in weighted_hits.items():
+    for tech, terminos in por_termino.items():
+        if not terminos or tech not in fuera_del_legal:
+            continue
+        if all(es_ambigua(t) for t in terminos):
+            continue
+        if (
+            TECH_LABEL_TIPO.get(tech) == "categoria"
+            and _terminos_distintos(terminos) < _MIN_TERMINOS_CATEGORIA
+        ):
+            continue
+        weighted = sum(min(v, _TOPE_POR_TERMINO) for v in terminos.values())
         if weighted < _MIN_WEIGHTED_HITS:
             continue
         score = round(min(1.0, weighted / _SCORE_SATURATION), 4)
-        results[tech] = TechSignal(score=score, matched_terms=sorted(matched[tech]))
+        results[tech] = TechSignal(score=score, matched_terms=sorted(terminos))
     return results
+
+
+def _forma_canonica(casado: str, keywords: Iterable[str]) -> str:
+    """La keyword del diccionario que nombra el texto casado.
+
+    El patrón casa sin tildes y con plural, así que «COPIAS DE SEGURIDAD»
+    puede venir de `copia de seguridad` o de `copias de seguridad`: se elige la
+    más larga que casa entera, que es la que eligió la alternancia. Si ninguna
+    casa (patrones y diccionario de versiones distintas) vale el texto casado.
+    """
+    candidatas = [kw for kw in keywords if patron_de_keyword(kw).fullmatch(casado)]
+    if not candidatas:
+        return casado
+    return max(candidatas, key=lambda kw: len(plegar(kw))).lower()
+
+
+def _terminos_distintos(terminos: Iterable[str]) -> int:
+    """Cuántos términos **distintos** hay, contando como uno sus variantes.
+
+    `copia de seguridad` y `copias de seguridad` son dos entradas del
+    diccionario y una sola idea: sin esto, un pliego que dice las dos cumple
+    la regla de «dos términos distintos» con un único concepto. Dos términos
+    son el mismo si el patrón de uno casa entero con el otro, que es el mismo
+    criterio (tildes, plural) con el que se casaron.
+    """
+    representantes: list[str] = []
+    for termino in sorted(terminos, key=len):
+        if not any(
+            patron_de_keyword(r).fullmatch(termino) or patron_de_keyword(termino).fullmatch(r)
+            for r in representantes
+        ):
+            representantes.append(termino)
+    return len(representantes)
 
 
 def _decode_evidence(row: dict[str, Any]) -> Any:

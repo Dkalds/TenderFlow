@@ -273,7 +273,14 @@ async def get_tecnologias(
     """Une por nombre de tecnología las tres fuentes de la categorización:
     título/descripción (keywords), el clasificador ML, y la señal detectada
     en el texto de los pliegos con su evidencia (términos o citas).
+
+    Solo entra lo que cada fuente **predice**, no todo lo que puntúa: el
+    clasificador guarda una fila por etiqueta con probabilidad > 0 (casi todas,
+    con una regresión logística), y la tabla de pliegos guarda señales por
+    debajo del corte de fusión. Listarlas todas era la mayor parte de las
+    etiquetas de más que se veían en el detalle.
     """
+    from config import settings
     from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
 
     def _leer() -> tuple[str, list[TechScoreRow]] | None:
@@ -303,11 +310,20 @@ async def get_tecnologias(
         _entry(tech)
 
     for score in ml_scores:
+        probabilidad = score.get("probabilidad")
+        umbral = score.get("threshold_aplicado")
+        if probabilidad is None or (umbral is not None and probabilidad < umbral):
+            continue
         entry = _entry(str(score["tecnologia"]))
-        entry.ml_probabilidad = score.get("probabilidad")
-        entry.ml_threshold_aplicado = score.get("threshold_aplicado")
+        entry.ml_probabilidad = probabilidad
+        entry.ml_threshold_aplicado = umbral
 
+    min_pliego = settings.PLIEGO_TECH_MIN_SCORE
     for row in pliego_rows:
+        # `llm_metadata` (etiquetado LLM sobre los metadatos) no tiene campo
+        # propio: lo que pasa el corte ya llega fusionado como fila de ML.
+        if row["method"] not in ("keywords", "llm") or row["score"] < min_pliego:
+            continue
         entry = _entry(str(row["tecnologia"]))
         if row["method"] == "keywords":
             entry.pliego_keywords_score = row["score"]

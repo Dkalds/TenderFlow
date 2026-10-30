@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlparse
 import requests
 from lxml import etree
 
+from config.keywords import etiquetas_con_senal_firme
 from db.upsert import Licitacion
 from scraper.connectors.base import ParsedTender, RawNotice
 from scraper.filters import matches_technology
@@ -206,6 +207,7 @@ class RegionalRssConnector:
         _, matches = matches_technology(f"{tender_title} {description}", None)
         if not matches:
             return None
+        matches = etiquetas_con_senal_firme(matches)
         technologies = sorted(matches)
         keywords = sorted({keyword for values in matches.values() for keyword in values})
         published = payload.get("published")

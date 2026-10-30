@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Literal, overload
 
 from sklearn.base import BaseEstimator, TransformerMixin
 
-from config.keywords import TECH_LABELS, patron_de_keyword
+from config.keywords import TECH_LABELS, es_ambigua, patron_de_keyword
 from observability.logging import get_logger
 
 if TYPE_CHECKING:
@@ -220,6 +220,11 @@ def _tune_pipeline(
     return search.best_estimator_, search.best_params_
 
 
+#: Token que :func:`_augment_text` añade cuando el CPV es 48/72. Lo lee también
+#: :func:`_keyword_fallback_score` para corroborar las keywords ambiguas.
+_MARCA_CPV_TI = "CPV_TI"
+
+
 def _augment_text(
     text: str,
     *,
@@ -245,7 +250,7 @@ def _augment_text(
     if cpv:
         cpv_clean = cpv.strip()[:8]
         if cpv_clean.startswith(("48", "72")):
-            parts.append("CPV_TI CPV_TI")  # duplicado para mayor peso
+            parts.append(f"{_MARCA_CPV_TI} {_MARCA_CPV_TI}")  # duplicado para mayor peso
         else:
             parts.append("CPV_NO_TI")
         # Enriched CPV taxonomy: division (2 digits) and group (4 digits)
@@ -1063,8 +1068,16 @@ def _keyword_fallback_score(text: str, keywords: list[str]) -> float:
     Usado para tecnologías en tier "rules" (sin modelo entrenado por falta
     de positivos). Devuelve un valor en ``[0, 1]`` apto para usarse como
     proxy de probabilidad — no calibrado, pero monótono en señal.
+
+    Si todo lo que casa son keywords ambiguas (``config.keywords.KEYWORDS_AMBIGUAS``:
+    «cpd», «backup», «mantenimiento correctivo»…) el score es 0 salvo que el
+    texto aumentado traiga el token ``CPV_TI`` de :func:`_augment_text`: es la
+    misma corroboración por CPV que pide la puerta de ingesta, y sin ella el
+    tier etiquetaba ``CLOUD_INFRA`` la limpieza de la sala del CPD.
     """
     if not keywords:
         return 0.0
-    matches = sum(1 for kw in keywords if _keyword_pattern(kw).search(text))
-    return matches / len(keywords)
+    presentes = [kw for kw in keywords if _keyword_pattern(kw).search(text)]
+    if presentes and all(es_ambigua(kw) for kw in presentes) and _MARCA_CPV_TI not in text.split():
+        return 0.0
+    return len(presentes) / len(keywords)
