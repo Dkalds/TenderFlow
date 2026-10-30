@@ -1,0 +1,135 @@
+name: Re-key PLACSP — relleno de organo_ref_fuente (manual)
+
+# «Antes de la ventana», pasos 3 y 4 de docs/runbooks/rekey-placsp-organo.md:
+# rellena `licitaciones.organo_ref_fuente` del histórico PLACSP desde los ZIP
+# mensuales (`scripts/rellenar_organo_ref_placsp.py`) y mide la puerta 1 con
+# `scripts/inventario_pisadas_placsp.py`. `v164_identidad_placsp_rekey` aborta
+# mientras quede una fila de la familia sin órgano (run 41076300422 del
+# 2026-10-30: 24.763), y el script necesita el DATABASE_URL de producción, que
+# solo tienen los secrets del repo.
+#
+# Modos:
+#   inventario — solo mide (solo lectura).
+#   meses      — lista los ZIP que leería, sin descargar.
+#   plan       — descarga y cuenta lo que escribiría, sin escribir (default).
+#   aplicar    — escribe mes a mes. Idempotente (solo filas con la columna
+#                vacía) y reanudable: si el job se corta, relanzarlo continúa.
+# Todos terminan con el inventario en el resumen del run.
+#
+# **Sin el preflight de schema de los carriles de ingesta, a propósito**: la BD
+# está en v163 y el código de master exige v166, justo porque v164 espera a este
+# relleno. El script solo escribe `organo_ref_fuente`, que existe desde v163.
+#
+# Comparte `concurrency.group: scrape` con los carriles de ingesta (ADR-012).
+
+on:
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "inventario · meses · plan (cuenta, no escribe) · aplicar"
+        type: choice
+        options:
+          - inventario
+          - meses
+          - plan
+          - aplicar
+        default: plan
+        required: true
+      desde:
+        description: "Primer mes YYYY-MM (con hasta, fuerza el rango; vacío = los meses pendientes)"
+        default: ""
+        required: false
+      hasta:
+        description: "Último mes YYYY-MM, incluido"
+        default: ""
+        required: false
+      respaldo_por_nombre:
+        description: "Al final, deducir el órgano del nombre cuando las demás filas son unánimes"
+        type: boolean
+        default: false
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  relleno:
+    runs-on: ubuntu-latest
+    # Un ZIP mensual por mes pendiente, y hay filas `placsp` actualizadas desde
+    # 2017: holgura hasta el máximo de un runner alojado. Si se corta, relanzar.
+    timeout-minutes: 350
+
+    env:
+      ENV: prod
+      APP_PROFILE: scraper
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Relleno de organo_ref_fuente
+        if: inputs.modo != 'inventario'
+        shell: bash
+        env:
+          MODO: ${{ inputs.modo }}
+          DESDE: ${{ inputs.desde }}
+          HASTA: ${{ inputs.hasta }}
+          RESPALDO: ${{ inputs.respaldo_por_nombre }}
+        # `shell: bash` es `bash -eo pipefail`: si el script falla, el `tee` no
+        # tapa su código de salida.
+        run: |
+          # Los inputs llegan por env y se validan antes de usarse.
+          ARGS=()
+          for par in "desde:$DESDE" "hasta:$HASTA"; do
+            v="${par#*:}"
+            if [ -n "$v" ] && ! [[ "$v" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]]; then
+              echo "::error::${par%%:*} inválido '$v': se espera YYYY-MM"
+              exit 1
+            fi
+          done
+          [ -n "$DESDE" ] && ARGS+=(--desde "$DESDE")
+          [ -n "$HASTA" ] && ARGS+=(--hasta "$HASTA")
+          [ "$RESPALDO" = "true" ] && ARGS+=(--respaldo-por-nombre)
+          case "$MODO" in
+            meses) ARGS+=(--solo-meses) ;;
+            aplicar) ARGS+=(--aplicar) ;;
+          esac
+          echo "Args: ${ARGS[*]}"
+          {
+            echo "### Relleno ($MODO)"
+            echo '```'
+            python -m scripts.rellenar_organo_ref_placsp "${ARGS[@]}"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      # Corre también si el relleno falla o se corta: lo escrito hasta entonces
+      # cuenta, y la cifra dice desde dónde relanzar.
+      - name: Inventario (puerta 1 del runbook)
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          {
+            echo "### Inventario"
+            echo '```'
+            python -m scripts.inventario_pisadas_placsp
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
