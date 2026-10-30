@@ -765,6 +765,7 @@ _Sin ítems abiertos._
 - **Riesgo:** bajo en código; el coste real es el etiquetado manual (decisión/tiempo del mantenedor).
 - *Estado (2026-10-11):* **código escrito, sin casos todavía.** Diseño y cambios al implementarlo en [plans/2026-10-eval-ficha-pliego.md](plans/2026-10-eval-ficha-pliego.md); queda el trabajo del propietario (su §8): capturar diez pliegos con `scripts/capturar_ficha_golden.py`, revisarlos con `scripts/revisar_ficha_golden.py` y fijar la base con `python scripts/eval_ficha.py --fijar-minimos`. Cambia un criterio de arriba: diez pliegos revisados, de los que tres se etiquetan además a fondo, en vez de diez desde cero. El ítem no se cierra hasta que existan los casos y `minimos.json`.
 - **Nota 2026-09-28 (`tender-facts-v6`):** el selector de páginas **se cambió sin este eval**, a sabiendas, porque la ficha v5 no tenía nada que proteger: de 886 filas en producción, 17 `extracted` y 70 `needs_review`, casi todas con 0 hechos; el resto `failed`. Medición manual (Nemotron super, mismos pliegos, antes → después): `2025/191` 0 → 7 hechos, `20/026` fallo → 20, `2025/000423-PEA` 0 → 14, `1934/2026` 0 → 22; la fórmula de precio aparece en tres de los cuatro. Es una comparación de cuatro pliegos sin etiquetas, no un baseline: sigue haciendo falta el golden set para medir **precisión**, que esta nota no mide.
+- **Nota 2026-10-29 (`tender-facts-v7`):** también sin este eval, una segunda llamada solo para `required_documents` con sus propias páginas (`_select_document_pages`). No cambia lo que ve la pasada general, así que no puede empeorar las demás familias; lo único medido es que en el PCAP de la oportunidad 17 entran las dos páginas del Sobre nº 1 que antes quedaban fuera. `cobertura_selector` cuenta ya esas páginas para `required_documents`, para que la base del eval no la infravalore.
 
 ### [P2] Unificar la selección de páginas de la ficha con el retrieval pgvector
 - **Área:** services/rag/fact_sheet.py, services/rag/context.py
@@ -773,6 +774,16 @@ _Sin ítems abiertos._
 - **Acceptance criteria:** un único camino de selección de contexto de pliegos parametrizado por caso de uso; `_TOPIC_TERMS`/`_TECH_TERMS` retirados; el eval de extracción igual o mejor que el baseline medido.
 - **Files de partida:** [services/rag/fact_sheet.py](../services/rag/fact_sheet.py), [services/rag/context.py](../services/rag/context.py), [db/repositories/documentos.py](../db/repositories/documentos.py)
 - **Riesgo:** medio — toca el camino que produce el dato más confiable del producto; por eso va detrás del eval.
+
+### [P2] Hay PDFs cuyo texto sale con las tildes cambiadas («Nœmero», «ClÆusula») y nada lo detecta
+- **Área:** scraper/document_fetcher.py (`page.extract_text()` de pypdf), services/rag/fact_sheet.py
+- **Problema:** en el PCAP de `placsp:10000400045061:IPA 1/27` (documento 235069, oportunidad 17), visto el 2026-10-29 desde la API de páginas, el texto persistido trae `á→Æ`, `é→Ø`, `ú→œ` y la `ó` intacta: «Sobre Nœmero», «ClÆusula», «tambiØn». Es el patrón de una fuente con codificación propia que pypdf decodifica con la tabla equivocada. El texto entra así en `documento_pages` y de ahí a todo lo que lo lee: cualquier término con á, é o ú del selector de la ficha (`_TOPIC_TERMS`, `_DOC_TERMS`) no puntúa esa página, la búsqueda por texto y los embeddings ven otra palabra, y la cita literal que enseña la UI sale rota. Nadie sabe cuántos documentos están así.
+- **Acceptance criteria:**
+  - Medido en producción cuántos documentos `extracted` tienen el patrón (p. ej. páginas con `Æ`, `Ø` o `œ` dentro de una palabra en minúscula), con fecha.
+  - Si son una fracción relevante: la extracción repara o evita el patrón (otro extractor para ese PDF, o reparar la tabla conocida) con un test sobre un PDF que lo reproduzca, y un comando que re-extraiga los afectados. Las citas ya guardadas en `tender_fact_sheets` dejan de casar con el texto nuevo, así que esas fichas se reprocesan también.
+  - Si son residuales: el porqué, escrito aquí, y el ítem se cierra.
+- **Files de partida:** [scraper/document_fetcher.py](../scraper/document_fetcher.py), [services/rag/fact_sheet.py](../services/rag/fact_sheet.py)
+- **Riesgo:** medio — cambiar el texto persistido invalida las citas verificadas de las fichas que lo usan; por eso el reproceso va en el mismo cambio.
 
 ### [P2] El corpus de PSCP ahoga el dataset del clasificador SAP: no se puede reentrenar, y el modelo servido no discrimina
 - **Área:** services/ml/classifier_training.py (`train_from_db`), scraper/connectors/pscp.py, services/ml/classifier_pipeline.py (`validate_training_data`)

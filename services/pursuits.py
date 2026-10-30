@@ -43,7 +43,7 @@ from services.analytics.lead_time import estimar_adjudicacion
 from services.cartera import listar_cartera
 from services.ficha_pdf import BloqueFicha, FichaOportunidad, construir_pdf
 from services.jobs import solicitar_despacho_de_eventos
-from services.kit_presentacion import KitPresentacion, construir_kit, marcar_item
+from services.kit_presentacion import EstadoFicha, KitPresentacion, construir_kit, marcar_item
 from services.organizations import alcance_resuelto, require_active_member
 from services.pursuit_awards import resultado_sugerido
 from services.pursuits_agenda import (
@@ -1606,12 +1606,16 @@ def ficha_pdf(user_id: int, pursuit_id: int, *, organization_id: int | None = No
     )
 
 
-def _documentos_del_pliego(licitacion_id: str) -> list[RequiredDocumentFact]:
-    """Los documentos exigidos de la ficha, o lista vacía si no hay ficha."""
+def _documentos_del_pliego(licitacion_id: str) -> tuple[EstadoFicha, list[RequiredDocumentFact]]:
+    """Los documentos exigidos de la ficha, y en qué estado está esa ficha."""
     from services.rag.fact_sheet import get_fact_sheet
 
     record = get_fact_sheet(licitacion_id)
-    return list(record.facts.required_documents) if record and record.facts else []
+    if record is None or record.status == "pending":
+        return "sin_ficha", []
+    if record.facts is None:
+        return "fallida", []
+    return "extraida", list(record.facts.required_documents)
 
 
 def kit_de_pursuit(
@@ -1645,12 +1649,14 @@ def _tareas_vivas(organization_id: int, pursuit_id: int) -> dict[int, dict[str, 
 
 
 def _kit(licitacion_id: str, organization_id: int, pursuit_id: int) -> KitPresentacion:
+    estado_ficha, documentos = _documentos_del_pliego(licitacion_id)
     return construir_kit(
         licitacion_id,
-        _documentos_del_pliego(licitacion_id),
+        documentos,
         organization_id=organization_id,
         pursuit_id=pursuit_id,
         tareas=_tareas_vivas(organization_id, pursuit_id),
+        estado_ficha=estado_ficha,
     )
 
 

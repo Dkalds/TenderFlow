@@ -10539,6 +10539,12 @@ export interface components {
          * @description El kit completo de una oportunidad.
          */
         KitPresentacion: {
+            /**
+             * Estado Ficha
+             * @default extraida
+             * @enum {string}
+             */
+            estado_ficha: "sin_ficha" | "fallida" | "extraida";
             /** Items */
             items?: components["schemas"]["ItemKit"][];
             /** Licitacion Id */

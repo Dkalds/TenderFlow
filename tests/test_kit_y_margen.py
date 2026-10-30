@@ -8,6 +8,8 @@ coste bajo y un margen alto, que es la dirección peligrosa—.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from services.kit_presentacion import ORDEN_SOBRES, clave_de, construir_kit
@@ -53,6 +55,52 @@ class TestKitVacio:
         kit = construir_kit("EXP-1", [_doc("DEUC", "sobre_a")])
         assert kit.sin_extraccion is False
         assert len(kit.items) == 1
+
+    def test_un_kit_vacio_dice_si_falta_la_ficha(self) -> None:
+        """«Sin ficha» se arregla extrayéndola; «extraída» y vacía, no."""
+        assert construir_kit("EXP-1", [], estado_ficha="sin_ficha").estado_ficha == "sin_ficha"
+        assert construir_kit("EXP-1", []).estado_ficha == "extraida"
+
+    @pytest.mark.parametrize(
+        ("ficha", "estado", "documentos"),
+        [
+            (None, "sin_ficha", 0),
+            ({"status": "pending"}, "sin_ficha", 0),
+            ({"status": "failed", "error_detail": "proveedor caído"}, "fallida", 0),
+            ({"status": "needs_review", "facts": {}}, "extraida", 0),
+            ({"status": "extracted", "facts": {"required_documents": ["DEUC"]}}, "extraida", 1),
+        ],
+    )
+    def test_estado_de_la_ficha(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        ficha: dict[str, Any] | None,
+        estado: str,
+        documentos: int,
+    ) -> None:
+        import services.rag.fact_sheet as fact_sheet
+        from services.pursuits import _documentos_del_pliego
+        from shared.tender_facts import TenderFactSheetRecord
+
+        record = None
+        if ficha is not None:
+            if "facts" in ficha:
+                nombres = ficha["facts"].get("required_documents", [])
+                ficha = {
+                    **ficha,
+                    "facts": {
+                        "required_documents": [_doc(n, "sobre_a").model_dump() for n in nombres]
+                    },
+                }
+            record = TenderFactSheetRecord.model_validate(
+                {"licitacion_id": "EXP-1", "extraction_version": "v", "updated_at": "x", **ficha}
+            )
+        monkeypatch.setattr(fact_sheet, "get_fact_sheet", lambda lic: record)
+
+        obtenido, docs = _documentos_del_pliego("EXP-1")
+
+        assert obtenido == estado
+        assert len(docs) == documentos
 
 
 class TestOrdenDelKit:

@@ -18,7 +18,7 @@ import type {
   TenderFactSheetRecord,
   WeightedCriterion,
 } from "@/lib/api-types";
-import { documentosKeys } from "@/lib/query-keys";
+import { documentosKeys, pursuitKeys } from "@/lib/query-keys";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 /**
@@ -125,10 +125,14 @@ export function useTenderFactSheetExtraction(licitacionId: string) {
   const running = estado.data?.running === true;
 
   // Transición running → parado: la ficha (nueva o failed) ya está persistida.
+  // El kit y el contraste de la oportunidad salen de ella: sin esto seguían
+  // diciendo «sin ficha» en el Resumen hasta recargar.
   const wasRunning = React.useRef(false);
   React.useEffect(() => {
     if (wasRunning.current && !running) {
       void queryClient.invalidateQueries({ queryKey: key(licitacionId) });
+      void queryClient.invalidateQueries({ queryKey: pursuitKeys.kitTodos });
+      void queryClient.invalidateQueries({ queryKey: pursuitKeys.checklistTodos });
     }
     wasRunning.current = running;
   }, [running, licitacionId, queryClient]);

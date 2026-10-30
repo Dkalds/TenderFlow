@@ -538,22 +538,33 @@ def cobertura_selector(
     caso: Caso,
     # `Any`: páginas tal como las devuelve `_select_pages` (filas de la BD).
     seleccionadas: Sequence[Mapping[str, Any]],
+    *,
+    documentos: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, tuple[int, int]]:
     """Por familia con positivos: (cubiertos, positivos).
 
     Un positivo está cubierto si alguna de sus citas cae en una página que el
     selector le dio al modelo. Lo que no entra en el contexto no se puede
     extraer, por bueno que sea el prompt.
+
+    ``documentos`` son las páginas de la pasada de documentos a presentar
+    (v7): cuentan solo para ``required_documents``, que es lo único que esa
+    llamada pide. Sin ellas, la cobertura de esa familia se quedaba en lo que
+    veía la pasada general.
     """
     paginas = {(int(p["documento_id"]), int(p["page_number"])) for p in seleccionadas}
+    paginas_documentos = paginas | {
+        (int(p["documento_id"]), int(p["page_number"])) for p in documentos
+    }
     resultado: dict[str, tuple[int, int]] = {}
     for familia, hechos in positivos(caso.golden).items():
         if not hechos:
             continue
+        vistas = paginas_documentos if familia == "required_documents" else paginas
         cubiertos = sum(
             1
             for hecho in hechos
-            if any((cita.documento_id, cita.page_number) in paginas for cita in hecho.evidence)
+            if any((cita.documento_id, cita.page_number) in vistas for cita in hecho.evidence)
         )
         resultado[familia] = (cubiertos, len(hechos))
     return resultado

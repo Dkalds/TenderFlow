@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, get_args
 
@@ -16,7 +17,12 @@ from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
 from llm.client import DEFAULT_MODEL, stream_llm_response
 from llm.json_utils import extract_json_object
 from observability.logging import get_logger
-from shared.tender_facts import EvidenceRef, TenderFactSheet, TenderFactSheetRecord
+from shared.tender_facts import (
+    EvidenceRef,
+    RequiredDocumentFact,
+    TenderFactSheet,
+    TenderFactSheetRecord,
+)
 
 log = get_logger(__name__)
 
@@ -51,7 +57,17 @@ log = get_logger(__name__)
 # 4. Una cita más larga que el tope del esquema tiraba el hecho; ahora se
 #    recorta (sigue siendo literal: un prefijo de la cita está en la página).
 # El bump es obligatorio: las `needs_review` vacías de v5 no se reencolan solas.
-EXTRACTION_VERSION = "tender-facts-v6"
+#
+# v7 (2026-10-29): segunda llamada al modelo solo para `required_documents`
+# (`_extraer_documentos`), con sus propias páginas. El presupuesto de 56k es de
+# suma cero y ninguna página de documentación puntuaba: en el PCAP de la
+# oportunidad 17 (93 páginas, 290k chars) entraban 15 y se quedaban fuera las
+# dos que listan el Sobre nº 1 —el kit salía sin DEUC ni compromiso de UTE—.
+# Reservarles sitio desplazaba páginas de otras familias sin eval para medirlo;
+# una pasada aparte no toca lo que ya se extraía. El bump reencola primero las
+# fichas con oportunidad abierta (`list_pending_licitaciones`), con el mismo
+# tope por noche.
+EXTRACTION_VERSION = "tender-facts-v7"
 # Por debajo de ``MAX_CONTEXT_CHARS_EXTRACTION`` (llm/prompts.py): cada página
 # añade su cabecera ``--- Fragmento de pliego (…) ---``, y el bloque de CONTEXTO
 # que se pasa del presupuesto se corta por el final — justo las últimas páginas.
@@ -182,11 +198,11 @@ no haya evidencia.
 """.strip()
 
 
-def _page_score(page: dict[str, Any]) -> int:
+def _page_score(
+    page: dict[str, Any], terminos: tuple[str, ...] = _TOPIC_TERMS + _TECH_TERMS
+) -> int:
     text = str(page.get("texto") or "").casefold()
-    topic_hits = sum(text.count(term.casefold()) for term in _TOPIC_TERMS)
-    tech_hits = sum(text.count(term.casefold()) for term in _TECH_TERMS)
-    return topic_hits + tech_hits
+    return sum(text.count(term.casefold()) for term in terminos)
 
 
 #: Tipos de documento cuya portada entra siempre. La del PCAP suele ser el
@@ -197,13 +213,26 @@ def _page_score(page: dict[str, Any]) -> int:
 _PORTADA_SIEMPRE = frozenset({"legal", "technical"})
 
 
-def _select_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Selecciona portadas del pliego + páginas densas en requisitos."""
+def _select_pages(
+    pages: list[dict[str, Any]],
+    *,
+    terminos: tuple[str, ...] = _TOPIC_TERMS + _TECH_TERMS,
+    con_portadas: bool = True,
+    presupuesto: int | None = None,
+    max_paginas: int | None = None,
+) -> list[dict[str, Any]]:
+    """Selecciona portadas del pliego + páginas densas en ``terminos``.
+
+    Sin ``presupuesto`` ni ``max_paginas``, los de la pasada general, leídos
+    en cada llamada y no al definir la función.
+    """
     if not pages:
         return []
+    presupuesto = _MAX_CONTEXT_CHARS if presupuesto is None else presupuesto
+    max_paginas = _MAX_PAGES if max_paginas is None else max_paginas
     portadas: set[tuple[int, int]] = set()
     vistos: set[int] = set()
-    for page in pages:
+    for page in pages if con_portadas else ():
         documento_id = int(page["documento_id"])
         if documento_id in vistos:
             continue
@@ -214,7 +243,7 @@ def _select_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         pages,
         key=lambda p: (
             (int(p["documento_id"]), int(p["page_number"])) not in portadas,
-            -_page_score(p),
+            -_page_score(p, terminos),
             int(p["documento_id"]),
             int(p["page_number"]),
         ),
@@ -225,16 +254,66 @@ def _select_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         text = str(page.get("texto") or "").strip()
         if not text:
             continue
-        if selected and used + len(text) > _MAX_CONTEXT_CHARS:
+        if selected and used + len(text) > presupuesto:
             continue
         selected.append(page)
         used += len(text)
-        if len(selected) >= _MAX_PAGES:
+        if len(selected) >= max_paginas:
             break
     return sorted(
         selected,
         key=lambda p: (int(p["documento_id"]), int(p["page_number"])),
     )
+
+
+# ── Pasada de documentos a presentar (v7) ──────────────────────────────────────
+
+#: Lo que dice dónde y qué se entrega. Sin «sobre a/b/c» por lo mismo que en
+#: ``_TOPIC_TERMS``; «sobre nº» sí es seguro. Ojo: hay PDFs que salen con los
+#: acentos rotos («Sobre Nœmero»), así que «número» solo no basta y «nº» y
+#: «deuc» llevan el peso.
+_DOC_TERMS = (
+    "deuc",
+    "documento europeo único",
+    "declaración responsable",
+    "documentación general",
+    "documentación administrativa",
+    "documentación a presentar",
+    "sobre nº",
+    "sobre n.º",
+    "sobre número",
+    "archivo nº",
+    "archivo electrónico nº",
+    "contenido del sobre",
+    "contenido del archivo",
+    "compromiso de constitución",
+    "garantía provisional",
+)
+_DOC_MAX_CONTEXT_CHARS = 32_000
+_DOC_MAX_PAGES = 10
+_DOC_MAX_OUTPUT_TOKENS = 4000
+
+_DOCUMENTS_QUESTION = """
+Devuelve un objeto JSON con una sola clave, required_documents: la lista de los
+documentos que el licitador tiene que presentar con su oferta, un objeto por
+documento con {description, confidence, evidence, name, scope, subsanable}.
+description, confidence y evidence son OBLIGATORIOS. description es una frase
+corta (máx. 200 caracteres); confidence es un número de 0 a 1.
+name: el documento como lo llama el pliego («DEUC», «Compromiso de constitución
+de UTE», «Garantía provisional»), uno por elemento y no uno por sobre.
+scope: "sobre_a" (documentación administrativa o general), "sobre_b" (criterios
+sujetos a juicio de valor), "sobre_c" (criterios automáticos y oferta
+económica) u "otro" si el pliego no dice en qué sobre va. Si el pliego numera
+los sobres o archivos («Sobre nº 1», «archivo electrónico 2»), clasifica por lo
+que dice que contiene cada uno, no por el número.
+Incluye los documentos que solo se piden en un caso («en caso de UTE…»,
+«si recurre a medios de otras empresas…») y di el caso en description.
+subsanable solo si el pliego lo dice; si no, null.
+evidence es una lista de citas [{documento_id, page_number, quote}]:
+documento_id y page_number son los números N y M de la cabecera [doc:N p.M] del
+fragmento, y quote se copia literalmente de él, en menos de 300 caracteres.
+Lista vacía si el pliego no enumera documentos a presentar.
+""".strip()
 
 
 def _normalize_quote(value: str) -> str:
@@ -350,7 +429,7 @@ def _family_limit(field: FieldInfo) -> int:
     )
 
 
-def _params_numericos(params: Any) -> dict[str, float]:
+def _params_numericos(params: object) -> dict[str, float]:
     """Las entradas de ``params`` que son un número (o «0,25» escrito como texto)."""
     if not isinstance(params, dict):
         return {}
@@ -368,7 +447,7 @@ def _params_numericos(params: Any) -> dict[str, float]:
     return numericos
 
 
-def _normalizar_item(item: Any) -> Any:
+def _normalizar_item(item: object) -> object:
     """Arregla las desviaciones de forma que no cambian el significado.
 
     - ``params`` de la fórmula con prosa entre los números: se quedan los
@@ -395,7 +474,7 @@ def _normalizar_item(item: Any) -> Any:
     if isinstance(evidencia, dict):
         evidencia = [evidencia]
     if isinstance(evidencia, list):
-        normalizada: list[Any] = []
+        normalizada: list[object] = []
         for ref in evidencia:
             if isinstance(ref, dict) and isinstance(ref.get("quote"), str):
                 ref = {**ref, "quote": ref["quote"].strip()[:_MAX_QUOTE_CHARS]}
@@ -404,7 +483,7 @@ def _normalizar_item(item: Any) -> Any:
     return item
 
 
-def _parse_facts(payload: dict[str, Any]) -> tuple[TenderFactSheet, int]:
+def _parse_facts(payload: Mapping[str, object]) -> tuple[TenderFactSheet, int]:
     """Valida la respuesta del LLM hecho a hecho, no todo o nada.
 
     ``TenderFactSheet.model_validate`` sobre el objeto entero es todo-o-nada:
@@ -436,7 +515,7 @@ def _parse_facts(payload: dict[str, Any]) -> tuple[TenderFactSheet, int]:
             continue
         (item_model,) = get_args(field.annotation)
         limit = _family_limit(field)
-        kept: list[Any] = []
+        kept: list[object] = []
         for index, item in enumerate(items):
             if len(kept) >= limit:
                 dropped += len(items) - index
@@ -465,7 +544,7 @@ def _validate_fact_evidence(
     page_index = {(int(page["documento_id"]), int(page["page_number"])): page for page in pages}
     rejected = 0
     for field_name in TenderFactSheet.model_fields:
-        kept: list[Any] = []
+        kept: list[object] = []
         for fact in getattr(facts, field_name):
             valid = [
                 checked
@@ -702,14 +781,16 @@ class ExtraccionHechos:
     seleccionadas: list[dict[str, Any]]
 
 
-def _extraer_de_seleccion(
-    pages: list[dict[str, Any]],
+def _llamar_modelo(
+    question: str,
     selected: list[dict[str, Any]],
     *,
     licitacion_id: str,
     model: str,
-) -> ExtraccionHechos:
-    """De las páginas seleccionadas a hechos con cita validada. Sin persistencia."""
+    keywords: tuple[str, ...],
+    max_tokens: int,
+) -> str:
+    """Una llamada de extracción sobre unas páginas; el texto crudo devuelto."""
     chunks = [
         {
             "documento_id": int(page["documento_id"]),
@@ -730,12 +811,12 @@ def _extraer_de_seleccion(
     ]
     raw = "".join(
         stream_llm_response(
-            question=_EXTRACTION_QUESTION,
+            question=question,
             docs=docs,
             model=model,
-            keywords=list(_TOPIC_TERMS),
+            keywords=list(keywords),
             mode="extraction",
-            max_tokens=_MAX_OUTPUT_TOKENS,
+            max_tokens=max_tokens,
             # Sin fallback de proveedor: la fila persiste `model`, y un
             # cambio silencioso de modelo la haría mentir sobre quién
             # extrajo. Si el proveedor está caído, la extracción falla
@@ -751,14 +832,110 @@ def _extraer_de_seleccion(
             f"El modelo {model} devolvió una respuesta vacía "
             "(proveedor saturado o caído); se reintentará en el próximo lote."
         )
+    return raw
+
+
+def _nombre_documento(nombre: str) -> str:
+    return " ".join(nombre.casefold().split())
+
+
+def _select_document_pages(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Las páginas de la pasada de documentos. Vacío si ninguna habla de ellos.
+
+    Sin páginas que hablen de sobres ni de DEUC no se hace la llamada: sería
+    gastarla en las menos malas de un pliego que no lo dice. El eval la usa
+    para medir qué documentos llegan al modelo.
+    """
+    return _select_pages(
+        [page for page in pages if _page_score(page, _DOC_TERMS) > 0],
+        terminos=_DOC_TERMS,
+        con_portadas=False,
+        presupuesto=_DOC_MAX_CONTEXT_CHARS,
+        max_paginas=_DOC_MAX_PAGES,
+    )
+
+
+def _extraer_documentos(
+    pages: list[dict[str, Any]],
+    *,
+    licitacion_id: str,
+    model: str,
+) -> tuple[list[RequiredDocumentFact], int, int]:
+    """La pasada dedicada a ``required_documents``: documentos, inválidos, inverificables.
+
+    Fail-open: si esta llamada falla, la ficha sale con los documentos de la
+    pasada general, como hasta v6. Perder la ficha entera por la segunda
+    llamada sería peor que un kit más corto.
+    """
+    selected = _select_document_pages(pages)
+    if not selected:
+        return [], 0, 0
+    try:
+        raw = _llamar_modelo(
+            _DOCUMENTS_QUESTION,
+            selected,
+            licitacion_id=licitacion_id,
+            model=model,
+            keywords=_DOC_TERMS,
+            max_tokens=_DOC_MAX_OUTPUT_TOKENS,
+        )
+        payload = extract_json_object(raw)
+    except Exception as exc:
+        log.warning(
+            "fact_sheet_documents_pass_failed", licitacion_id=licitacion_id, error=str(exc)[:200]
+        )
+        return [], 0, 0
+    # Solo la familia pedida: si el modelo devuelve más, no se cuenta dos veces.
+    facts, invalid = _parse_facts({"required_documents": payload.get("required_documents")})
+    facts, unverifiable = _validate_fact_evidence(facts, pages)
+    return facts.required_documents, invalid, unverifiable
+
+
+def _fusionar_documentos(
+    dedicados: list[RequiredDocumentFact], generales: list[RequiredDocumentFact]
+) -> list[RequiredDocumentFact]:
+    """Primero los de la pasada dedicada; de la general, los que no repiten nombre."""
+    limite = _family_limit(TenderFactSheet.model_fields["required_documents"])
+    vistos: set[str] = set()
+    fusion: list[RequiredDocumentFact] = []
+    for documento in [*dedicados, *generales]:
+        clave = _nombre_documento(documento.name)
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        fusion.append(documento)
+    return fusion[:limite]
+
+
+def _extraer_de_seleccion(
+    pages: list[dict[str, Any]],
+    selected: list[dict[str, Any]],
+    *,
+    licitacion_id: str,
+    model: str,
+) -> ExtraccionHechos:
+    """De las páginas seleccionadas a hechos con cita validada. Sin persistencia."""
+    raw = _llamar_modelo(
+        _EXTRACTION_QUESTION,
+        selected,
+        licitacion_id=licitacion_id,
+        model=model,
+        keywords=_TOPIC_TERMS,
+        max_tokens=_MAX_OUTPUT_TOKENS,
+    )
     facts, invalid = _parse_facts(extract_json_object(raw))
     # Contra todas las páginas, no solo las seleccionadas: una cita que el
     # modelo atribuye a la página contigua se corrige si el texto está allí.
     facts, unverifiable = _validate_fact_evidence(facts, pages)
+
+    documentos, invalid_docs, unverifiable_docs = _extraer_documentos(
+        pages, licitacion_id=licitacion_id, model=model
+    )
+    facts.required_documents = _fusionar_documentos(documentos, facts.required_documents)
     return ExtraccionHechos(
         facts=facts,
-        invalidos=invalid,
-        inverificables=unverifiable,
+        invalidos=invalid + invalid_docs,
+        inverificables=unverifiable + unverifiable_docs,
         seleccionadas=selected,
     )
 
