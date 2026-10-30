@@ -1,0 +1,99 @@
+name: Etiquetas de tecnología (medir / recalcular)
+
+# Por qué existe: las reglas de precisión del 2026-10-30 (#599) cambian qué
+# etiquetas de tecnología se ponen, pero lo ya guardado no se corrige solo: el
+# merge de la señal de pliegos nunca borra, y el cron de `pliegos.yml`
+# re-puntúa ~500 licitaciones por noche. Este workflow mide (solo lectura) y,
+# a demanda, aplica las reglas a lo guardado. Detalle de cada modo en
+# `scripts/medir_etiquetas_tecnologia.py`.
+#
+#   medir      → `resumen` en el resumen del job y `muestra` (100) como
+#                artefacto, para revisar a mano y pasarle `precision`.
+#   recalcular → ESCRIBE: re-puntúa los pliegos pendientes y, solo si no queda
+#                ninguno, rehace `licitacion_tecnologia_score` y vuelve a
+#                fundir los pliegos. Si se agota el presupuesto, relanzar.
+on:
+  workflow_dispatch:
+    inputs:
+      modo:
+        description: "medir (solo lectura) o recalcular (escribe en producción)"
+        required: true
+        default: medir
+        type: choice
+        options: [medir, recalcular]
+
+permissions:
+  contents: read
+
+# Mismo grupo que `pliegos.yml`: los dos puntúan la señal de pliegos y no deben
+# pisarse.
+concurrency:
+  group: pliegos
+  cancel-in-progress: false
+
+jobs:
+  etiquetas:
+    name: Etiquetas de tecnología (${{ inputs.modo }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      # ENV=prod porque lee (y en `recalcular` escribe) la BD de producción.
+      # APP_PROFILE=scraper omite los secretos que solo exige el proceso HTTP.
+      ENV: prod
+      APP_PROFILE: scraper
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      # `recalcular` descarga el artefacto del clasificador de las Releases;
+      # sin token la llamada va anónima y se queda sin cuota.
+      GITHUB_TOKEN: ${{ github.token }}
+      PYTHONPATH: ${{ github.workspace }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Medir
+        if: inputs.modo == 'medir'
+        run: |
+          set -euo pipefail
+          python -m scripts.medir_etiquetas_tecnologia resumen | tee resumen.txt
+          python -m scripts.medir_etiquetas_tecnologia muestra --n 100 --out muestra_etiquetas.jsonl
+          {
+            echo '## Etiquetas de tecnología'
+            echo '```'
+            cat resumen.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Subir la medición
+        if: inputs.modo == 'medir'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: etiquetas-tecnologia
+          path: |
+            resumen.txt
+            muestra_etiquetas.jsonl
+          retention-days: 30
+
+      - name: Recalcular
+        if: inputs.modo == 'recalcular'
+        run: |
+          set -euo pipefail
+          python -m scripts.medir_etiquetas_tecnologia recalcular --presupuesto-s 2700 | tee recalculo.json
+          {
+            echo '## Recálculo de etiquetas de tecnología'
+            echo '```json'
+            cat recalculo.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

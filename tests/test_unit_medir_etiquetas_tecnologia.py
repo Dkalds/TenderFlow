@@ -3,15 +3,56 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import patch
 
 from scripts.medir_etiquetas_tecnologia import (
     fuentes_por_etiqueta,
     main,
     muestra,
     precision,
+    recalcular,
     resumir,
     vistas,
 )
+
+_FASE = "scheduler.jobs.documentos_embeddings._run_tech_signal_phase"
+_ML = "services.ml.classifier_training.precompute_ml_tecnologias"
+_FUSION = "services.tech_signal.merge_doc_signals"
+
+
+def test_recalcular_rehace_ml_solo_cuando_no_quedan_pliegos() -> None:
+    lotes = [{"scored": 500, "no_signal": 0, "error": 0}, {"scored": 0, "no_signal": 0, "error": 0}]
+    with (
+        patch(_FASE, side_effect=lotes),
+        patch(_ML, return_value={"updated": 9}) as ml,
+        patch(_FUSION, return_value={"licitaciones_merged": 3}) as fusion,
+    ):
+        hecho = recalcular(presupuesto_s=60)
+    assert hecho["completo"] is True
+    assert hecho["pliegos"]["scored"] == 500
+    ml.assert_called_once_with(force=True)
+    fusion.assert_called_once_with()
+
+
+def test_recalcular_no_rehace_ml_con_pliegos_atascados() -> None:
+    """Rehacer antes de re-puntuar volvería a fundir las señales viejas."""
+    with (
+        patch(_FASE, return_value={"scored": 0, "no_signal": 0, "error": 4}),
+        patch(_ML) as ml,
+        patch(_FUSION) as fusion,
+    ):
+        hecho = recalcular(presupuesto_s=60)
+    assert hecho["completo"] is False
+    ml.assert_not_called()
+    fusion.assert_not_called()
+
+
+def test_recalcular_para_al_agotar_el_presupuesto() -> None:
+    with patch(_FASE) as fase, patch(_ML) as ml, patch(_FUSION):
+        hecho = recalcular(presupuesto_s=0)
+    assert hecho["completo"] is False
+    fase.assert_not_called()
+    ml.assert_not_called()
 
 
 def _fila(**extra: object) -> dict[str, object]:

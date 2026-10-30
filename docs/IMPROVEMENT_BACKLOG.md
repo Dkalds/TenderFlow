@@ -616,7 +616,7 @@ _Sin ítems abiertos._
 - **Acceptance criteria:**
   - `scripts/medir_etiquetas_tecnologia.py resumen` ejecutado en producción antes y después del despliegue, con la media de etiquetas por licitación de cada vista anotada aquí.
   - Una muestra de 100 revisada a mano (`muestra` → rellenar `correcta` → `precision`), con la precisión por fuente anotada; si «solo_pliego» sigue baja, los términos de `terminos_solo_pliego` con un ejemplo real entran en `KEYWORDS_AMBIGUAS`.
-  - Tras el despliegue y la re-puntuación de pliegos (la dispara el cambio de `VERSION_MATCHER`), `precompute-tech --force` y el paso `tech_signal_merge`, para que `ml_tecnologias` pierda lo fundido desde señales que ya no pasan.
+  - Tras el despliegue, `etiquetas-tecnologia.yml` en modo `recalcular` (re-puntúa los pliegos pendientes y luego rehace `licitacion_tecnologia_score` y la fusión), para que `ml_tecnologias` pierda lo fundido desde señales que ya no pasan.
 - **Files de partida:** [scripts/medir_etiquetas_tecnologia.py](../scripts/medir_etiquetas_tecnologia.py), [services/tech_signal.py](../services/tech_signal.py), [config/keywords.py](../config/keywords.py)
 - **Riesgo:** medio — las reglas cambian lo que se guarda: menos etiquetas por fila y algún verdadero positivo perdido (el golden de PLACSP pierde `DATOS_IA` en «Consultoría SAP BW … cuadro de mando»).
 
