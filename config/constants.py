@@ -5,10 +5,23 @@ Consumidores: ``scraper.atom_live``, ``scraper.bulk_downloader``, ``db.database`
 
 from __future__ import annotations
 
-# CPV codes relevantes (servicios TI / software)
+# CPV codes relevantes (servicios TI / software). Corroboran las keywords
+# ambiguas de la puerta tecnológica y son la población del clasificador: no
+# se amplían sin reentrenar.
 CPV_PREFIXES_TI = [
     "72",  # Servicios TI
     "48",  # Paquetes de software
+]
+
+# Universo de ingesta: un aviso con algún CPV de estas divisiones se guarda
+# aunque el título no case con el diccionario (`cpv_ti_universe`, sin
+# `tecnologia`), en todas las fuentes con CPV. La 32 (equipos de radio,
+# televisión, comunicaciones y telecomunicaciones) entró el 2026-10-30; no
+# corrobora keywords ambiguas, porque «seguridad perimetral» con CCTV
+# (32323500) es justo el falso positivo que la regla evita.
+CPV_PREFIXES_UNIVERSO = [
+    *CPV_PREFIXES_TI,
+    "32",  # Equipos de radio, TV, comunicaciones y telecomunicaciones
 ]
 
 # URL base de la Plataforma de Contratación

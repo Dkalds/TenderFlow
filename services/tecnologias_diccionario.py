@@ -36,6 +36,7 @@ import threading
 import time
 from typing import Any
 
+from config import CPV_PREFIXES_UNIVERSO
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -69,7 +70,9 @@ def _hash_de(diccionario: dict[str, list[str]]) -> str:
         tecnologia: sorted({kw.casefold() for kw in keywords})
         for tecnologia, keywords in sorted(diccionario.items())
     }
-    canonical["__universo__"] = {"cpv_ti": ["48", "72"], "version": 1}
+    # El universo CPV de ingesta (48/72; la 32 desde 2026-10-30): con otro
+    # universo, las mismas keywords no dejan entrar lo mismo.
+    canonical["__universo__"] = {"cpv_ti": sorted(CPV_PREFIXES_UNIVERSO), "version": 1}
     canonical["__matcher__"] = keywords_mod.VERSION_MATCHER
     payload = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return "keywords-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]

@@ -286,9 +286,17 @@ class PlacspBulkConnector:
         year: Año del mes a descargar.
         month: Mes (1-12) a descargar.
         force: Si True, re-descarga aunque el ZIP ya esté cacheado.
+        solo_cpv: Prefijos CPV; si se dan, solo se parsean las entries con algún
+            CPV del proyecto que empiece por uno de ellos. Es para el backfill
+            de una familia que acaba de entrar en el universo (la 32, el
+            2026-10-30): reingerir el mes entero pasa de dos horas y vuelve a
+            escribir lo que ya estaba. Lo que pasa el filtro sigue la regla de
+            siempre, así que no entra nada que la ingesta viva no admitiría.
     """
 
-    def __init__(self, year: int, month: int, *, force: bool = False) -> None:
+    def __init__(
+        self, year: int, month: int, *, force: bool = False, solo_cpv: tuple[str, ...] = ()
+    ) -> None:
         if not (1 <= month <= 12):
             raise ValueError(f"month must be 1-12, got {month}")
         if year < 2000:
@@ -296,6 +304,7 @@ class PlacspBulkConnector:
         self.year = year
         self.month = month
         self.force = force
+        self.solo_cpv = solo_cpv
         self._core = _PlacspParseCore()
 
     @property
@@ -337,6 +346,11 @@ class PlacspBulkConnector:
 
     def parse(self, raw: RawNotice) -> ParsedTender | None:
         entry_elem, updated_str = raw.payload
+        if self.solo_cpv:
+            from scraper.codice_parser import cpvs_del_proyecto
+
+            if not any(c.startswith(self.solo_cpv) for c in cpvs_del_proyecto(entry_elem)):
+                return None
         fuente = self.source_id
         return self._core.parse_entry_elem(
             entry_elem,

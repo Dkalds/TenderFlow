@@ -2,7 +2,8 @@
 
 API pública sin autenticación: ``POST https://api.ted.europa.eu/v3/notices/search``
 con sintaxis de expert query. Filtra por país de ejecución España y familias
-CPV configurables (por defecto 48 software y 72 servicios TI).
+CPV configurables (por defecto el universo de ingesta, ``CPV_PREFIXES_UNIVERSO``:
+48 software, 72 servicios TI y 32 telecomunicaciones).
 
 Mapeo eForms → modelo canónico:
 - ``id_externo`` = ``ted:{publication-number}`` (namespacing ADR-009).
@@ -30,7 +31,7 @@ consultar nunca. Ver ``_OVERLAP_DAYS``.
 
 Uso directo (backfill o cron):
     python -m scraper.connectors.ted                 # incremental desde cursor
-    python -m scraper.connectors.ted --desde 20250101 --cpv 48,72
+    python -m scraper.connectors.ted --desde 20250101 --cpv 48,72,32
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ from urllib.parse import urlparse
 
 import requests
 
+from config import CPV_PREFIXES_UNIVERSO
 from db.upsert import Adjudicacion, Licitacion
 from observability import get_logger
 from scraper.connectors.base import ParsedTender, RawNotice
@@ -324,7 +326,7 @@ class TedConnector:
     def __init__(
         self,
         *,
-        cpv_families: tuple[str, ...] = ("48", "72"),
+        cpv_families: tuple[str, ...] = tuple(CPV_PREFIXES_UNIVERSO),
         country: str = "ESP",
         default_lookback_days: int = 30,
         overlap_days: int = _OVERLAP_DAYS,
@@ -556,7 +558,7 @@ class TedConnector:
 
 
 def ejecutar(
-    *, cpv_families: tuple[str, ...] = ("48", "72"), desde: str | None = None
+    *, cpv_families: tuple[str, ...] = tuple(CPV_PREFIXES_UNIVERSO), desde: str | None = None
 ) -> ConnectorRunResult:
     """Una pasada incremental de TED.
 
@@ -577,7 +579,11 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description="Ingesta TED (Search API v3)")
     parser.add_argument("--desde", help="Fecha inicial YYYYMMDD (ignora el cursor)")
-    parser.add_argument("--cpv", default="48,72", help="Familias CPV separadas por coma")
+    parser.add_argument(
+        "--cpv",
+        default=",".join(CPV_PREFIXES_UNIVERSO),
+        help="Familias CPV separadas por coma (un backfill de una familia nueva: --cpv 32)",
+    )
     args = parser.parse_args(argv)
 
     from db.database import close_pool, init_db

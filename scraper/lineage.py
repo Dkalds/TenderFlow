@@ -14,7 +14,8 @@ def current_filter_version() -> str:
     las filas nuevas sin necesidad de un despliegue.
 
     La regla de universo forma parte del filtro tanto como el diccionario: desde
-    2026-09 PLACSP conserva todo su CPV 48/72 (``cpv_ti_universe``), así que las
+    2026-09 PLACSP conserva todo su CPV 48/72 (``cpv_ti_universe``; la 32 desde
+    2026-10-30, ``config.CPV_PREFIXES_UNIVERSO``), así que las
     series anteriores y posteriores no son comparables y el hash tiene que
     cambiar aunque no cambie una sola keyword. Esa regla la incorpora
     `services.tecnologias_diccionario._hash_de`, que es donde vive ahora el

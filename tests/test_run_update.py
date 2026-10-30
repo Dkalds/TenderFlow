@@ -146,7 +146,36 @@ def test_main_backfill_con_hasta_pasa_el_tramo():
         code = run_update.main()
 
     assert code == 0
-    mock_backfill.assert_called_once_with(2025, 1, hasta=(2025, 2))
+    mock_backfill.assert_called_once_with(2025, 1, hasta=(2025, 2), solo_cpv=())
+
+
+def test_main_backfill_solo_cpv_pasa_los_prefijos():
+    """--solo-cpv 32 limita el backfill a esa familia (CPV 32, 2026-10-30)."""
+    pipeline_result = {"status": "ok", "ingestion_results": [], "steps": {}}
+
+    with (
+        patch(
+            "scheduler.run_update.run_backfill_pipeline", return_value=pipeline_result
+        ) as mock_backfill,
+        patch("scheduler.run_update.count_licitaciones", return_value=300),
+        patch("sys.argv", ["run_update", "--backfill", "2025", "1", "--solo-cpv", "32"]),
+    ):
+        from scheduler import run_update
+
+        assert run_update.main() == 0
+
+    mock_backfill.assert_called_once_with(2025, 1, hasta=None, solo_cpv=("32",))
+
+
+def test_main_solo_cpv_sin_backfill_es_error_de_uso():
+    with (
+        patch("sys.argv", ["run_update", "--solo-cpv", "32"]),
+        pytest.raises(SystemExit) as exc,
+    ):
+        from scheduler import run_update
+
+        run_update.main()
+    assert exc.value.code == 2
 
 
 def test_main_hasta_sin_backfill_es_error_de_uso():

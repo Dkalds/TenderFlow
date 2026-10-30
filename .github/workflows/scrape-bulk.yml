@@ -44,6 +44,18 @@ on:
         description: "Reingesta: último mes incluido, YYYY-MM (vacío = el mismo que backfill_desde)"
         default: ""
         required: false
+      # Backfill de una familia CPV recién añadida al universo de ingesta (la 32,
+      # 2026-10-30): la reingesta de PLACSP solo parsea las entries con esa
+      # familia (minutos por mes en vez de horas) y, antes, TED y PSCP leen solo
+      # sus avisos de esa familia. Ninguna de las tres pasadas mueve un cursor.
+      solo_cpv:
+        description: "Backfill de una familia CPV, p. ej. 32 (vacío = todo). Exige backfill_desde"
+        default: ""
+        required: false
+      ted_desde:
+        description: "Con solo_cpv: primer día de TED, YYYYMMDD (su corpus empieza el 2026-06-01)"
+        default: "20260601"
+        required: false
 
 permissions:
   contents: read
@@ -143,6 +155,36 @@ jobs:
             echo "LLM_TECH_FEEDBACK_ENABLED=$IN_LLM_TECH_FEEDBACK_ENABLED" >> "$GITHUB_ENV"
           fi
 
+      # Antes de PLACSP para que los pasos post-ingesta del bulk (vista pública,
+      # dedupe, empresas) vean también lo que entra por aquí.
+      - name: Backfill TED y PSCP de la familia CPV
+        if: inputs.solo_cpv != ''
+        timeout-minutes: 30
+        env:
+          ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
+          ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
+          ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
+          PSCP_DATASET_ID: ${{ vars.PSCP_DATASET_ID }}
+          PSCP_APP_TOKEN: ${{ secrets.PSCP_APP_TOKEN }}
+          SOLO_CPV: ${{ inputs.solo_cpv }}
+          TED_DESDE: ${{ inputs.ted_desde }}
+          BACKFILL_DESDE: ${{ inputs.backfill_desde }}
+        run: |
+          if [ -z "$BACKFILL_DESDE" ]; then
+            echo "::error::solo_cpv exige backfill_desde"
+            exit 1
+          fi
+          if ! [[ "$SOLO_CPV" =~ ^[0-9]{2,8}(,[0-9]{2,8})*$ ]]; then
+            echo "::error::solo_cpv inválido '$SOLO_CPV': prefijos numéricos separados por coma"
+            exit 1
+          fi
+          if ! [[ "$TED_DESDE" =~ ^[0-9]{8}$ ]]; then
+            echo "::error::ted_desde inválido '$TED_DESDE': se espera YYYYMMDD"
+            exit 1
+          fi
+          python -m scraper.connectors.ted --desde "$TED_DESDE" --cpv "$SOLO_CPV"
+          python -m scraper.connectors.pscp --desde 2000-01-01 --solo-cpv "$SOLO_CPV"
+
       - name: Run bulk refresh
         env:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
@@ -152,6 +194,7 @@ jobs:
           SCRAPER_MONTHS: ${{ inputs.months || 3 }}
           BACKFILL_DESDE: ${{ inputs.backfill_desde }}
           BACKFILL_HASTA: ${{ inputs.backfill_hasta }}
+          SOLO_CPV: ${{ inputs.solo_cpv }}
           # El bulk también corre los pasos post-ingesta, así que ejecuta
           # `llm_tech_labeling` igual que el carril diario. Sin estas variables,
           # un bulk manual consumiría la ventana diaria del paso sin clasificar
@@ -170,6 +213,16 @@ jobs:
             done
             ARGS=(--backfill "${BACKFILL_DESDE%-*}" "$((10#${BACKFILL_DESDE#*-}))"
                   --hasta "${HASTA%-*}" "$((10#${HASTA#*-}))")
+            if [ -n "${SOLO_CPV}" ]; then
+              if ! [[ "$SOLO_CPV" =~ ^[0-9]{2,8}(,[0-9]{2,8})*$ ]]; then
+                echo "::error::solo_cpv inválido '$SOLO_CPV'"
+                exit 1
+              fi
+              ARGS+=(--solo-cpv "$SOLO_CPV")
+            fi
+          elif [ -n "${SOLO_CPV}" ]; then
+            echo "::error::solo_cpv exige backfill_desde"
+            exit 1
           else
             ARGS=(--months "$SCRAPER_MONTHS")
           fi

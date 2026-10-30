@@ -1399,7 +1399,11 @@ def run_bulk_pipeline(months: int = 3) -> dict[str, Any]:
 
 
 def run_backfill_pipeline(
-    year: int, month: int, *, hasta: tuple[int, int] | None = None
+    year: int,
+    month: int,
+    *,
+    hasta: tuple[int, int] | None = None,
+    solo_cpv: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Pipeline canónica para backfill histórico (desde año/mes hasta hoy, o hasta ``hasta``).
 
@@ -1421,6 +1425,9 @@ def run_backfill_pipeline(
         hasta: ``(año, mes)`` final, incluido; por defecto el mes en curso.
             Una reingesta de muchos meses se parte así en tramos que caben en
             un job (`scrape-bulk.yml`, inputs ``backfill_desde``/``backfill_hasta``).
+        solo_cpv: Prefijos CPV a los que se limita el backfill (ver
+            ``PlacspBulkConnector``): rellena una familia recién añadida al
+            universo sin reescribir el resto del mes.
 
     Returns:
         Dict con ``status`` (``ok``/``degraded``), ``ingestion_results``,
@@ -1431,7 +1438,7 @@ def run_backfill_pipeline(
         RuntimeError: Solo si fallan todos los meses del backfill.
     """
     return _run_bulk_pipeline_connector(
-        desde=(year, month), hasta=hasta, label="backfill (connector)"
+        desde=(year, month), hasta=hasta, solo_cpv=solo_cpv, label="backfill (connector)"
     )
 
 
@@ -1519,6 +1526,7 @@ def _run_bulk_pipeline_connector(
     *,
     desde: tuple[int, int] | None = None,
     hasta: tuple[int, int] | None = None,
+    solo_cpv: tuple[str, ...] = (),
     label: str = "bulk refresh (connector)",
 ) -> dict[str, Any]:
     """Carril bulk y backfill sobre ``PlacspBulkConnector`` (F2 + S2.1).
@@ -1543,6 +1551,8 @@ def _run_bulk_pipeline_connector(
         desde: ``(año, mes)`` de inicio para el backfill histórico.
         hasta: ``(año, mes)`` final del backfill, incluido (ver
             :func:`meses_a_procesar`).
+        solo_cpv: Prefijos CPV a los que se limita cada mes (ver
+            ``PlacspBulkConnector``); vacío, el mes entero.
         label: Etiqueta del run en logs y alertas de degradación.
     """
     from observability import bind_run_context, record_run
@@ -1558,10 +1568,11 @@ def _run_bulk_pipeline_connector(
         months=len(meses),
         desde=f"{desde[0]}-{desde[1]:02d}" if desde else None,
         hasta=f"{hasta[0]}-{hasta[1]:02d}" if hasta else None,
+        solo_cpv=",".join(solo_cpv) or None,
     )
     with record_run(run_id) as metrics:
         for year, month in meses:
-            connector = PlacspBulkConnector(year, month)
+            connector = PlacspBulkConnector(year, month, solo_cpv=solo_cpv)
             try:
                 r = run_connector(connector)
                 status = "error" if r.fetch_failed else "ok"
