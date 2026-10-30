@@ -37,7 +37,7 @@ import { TITULO_BLOQUE, TITULO_PAGINA } from "../_components/piel-publica";
  */
 export const metadata: Metadata = {
   title: "Aviso legal",
-  description: `Origen de los datos, marco de reutilización y contacto de ${SITE_NAME}.`,
+  description: `Origen de los datos, marco de reutilización, propiedad intelectual y contacto de ${SITE_NAME}.`,
   robots: { index: false, follow: true },
   alternates: { canonical: "/aviso-legal" },
 };
@@ -80,6 +80,29 @@ export default function AvisoLegal() {
         Este sitio es una herramienta de análisis. Para preparar o presentar una oferta, los documentos válidos son
         exclusivamente los publicados en el perfil del contratante del órgano correspondiente, con sus plazos y
         condiciones. No asumimos responsabilidad por decisiones tomadas a partir de la información aquí mostrada.
+      </p>
+
+      {/* El aviso declaraba de quién es el dato público pero no de quién es lo
+          que el sitio le añade, y sin esa reserva escrita no hay a qué remitir
+          a quien extrae el catálogo entero. Se separan las dos cosas: el dato
+          de cada licitación sigue siendo reutilizable desde su fuente (Ley
+          37/2007), y lo que se reserva es el software y la base de datos
+          resultante, cuyo derecho sui generis (art. 133 LPI) cubre también la
+          extracción repetida de partes no sustanciales. */}
+      <h2 className={cn(TITULO_BLOQUE, "mt-10")}>Propiedad intelectual</h2>
+      <p className="text-muted-foreground mt-3 text-base leading-relaxed">
+        Los datos de cada licitación son información del sector público y no nos pertenecen: puedes reutilizarlos desde
+        su fuente original en las condiciones de la Ley 37/2007. Lo que sí es nuestro es lo que este sitio añade a esos
+        datos: el software, el diseño y los textos del sitio, el nombre y los signos distintivos de {SITE_NAME}, y la
+        base de datos que resulta de reunirlos, deduplicarlos, clasificarlos y normalizarlos. Están protegidos por el
+        texto refundido de la Ley de Propiedad Intelectual (Real Decreto Legislativo 1/1996) —la base de datos, además,
+        por el derecho <i>sui generis</i> de su artículo 133— y nos reservamos todos los derechos sobre ellos.
+      </p>
+      <p className="text-muted-foreground mt-3 text-base leading-relaxed">
+        Puedes consultar las fichas, citarlas y enlazarlas. Sin autorización expresa y por escrito no está permitido
+        extraer ni reutilizar la totalidad o una parte sustancial de la base de datos, ni partes no sustanciales de forma
+        repetida y sistemática, mediante robots, scrapers u otros procedimientos automatizados, ni usar este contenido
+        para construir un servicio que compita con este.
       </p>
 
       <h2 className={cn(TITULO_BLOQUE, "mt-10")}>Datos de adjudicatarios</h2>
@@ -220,7 +243,7 @@ export default function AvisoLegal() {
         </p>
       ) : null}
       <p className="text-muted-foreground mt-6 text-sm">
-        Última actualización de este aviso: agosto de 2026.
+        Última actualización de este aviso: octubre de 2026.
       </p>
     </article>
   );
