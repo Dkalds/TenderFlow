@@ -137,7 +137,10 @@ jobs:
     needs: repuntuar
     if: inputs.modo == 'recalcular'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # El precompute con force=True puntúa todas las licitaciones (~89.000 el
+    # 2026-10-31, ~15 s por lote de 500): unos 45 minutos, y con 45 de tope la
+    # primera corrida se cortó en la fila 84.000 antes de fundir los pliegos.
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
