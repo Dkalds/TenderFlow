@@ -10,11 +10,11 @@ name: Etiquetas de tecnología (medir / recalcular)
 #
 #   medir      → `resumen` en el resumen del job y `muestra` (100) como
 #                artefacto, para revisar a mano y pasarle `precision`.
-#   recalcular → ESCRIBE: cuatro jobs re-puntúan en paralelo las licitaciones
-#                con señal de pliego fundible de otra versión, y después
-#                `rehacer` rehace `licitacion_tecnologia_score` y vuelve a fundir
-#                los pliegos, solo si ya no queda ninguna. Si se agota el
-#                presupuesto, relanzar: lo hecho no se repite.
+#   recalcular → ESCRIBE: cuatro jobs, uno detrás de otro, re-puntúan las
+#                licitaciones con señal de pliego fundible de otra versión, y
+#                después `rehacer` rehace `licitacion_tecnologia_score` y vuelve
+#                a fundir los pliegos, solo si ya no queda ninguna. Si se agota
+#                el presupuesto, relanzar: lo hecho no se repite.
 on:
   workflow_dispatch:
     inputs:
@@ -96,6 +96,11 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
+      # Uno a la vez. Con los cuatro en paralelo (2026-10-31) el pooler de
+      # Supabase en modo sesión se quedó sin clientes («EMAXCONNSESSION max
+      # clients reached … pool_size: 30»): cada proceso abre su pool de lectura
+      # y el de escritura, y la API y los demás jobs comparten ese mismo tope.
+      max-parallel: 1
       matrix:
         shard: [0, 1, 2, 3]
     steps:
