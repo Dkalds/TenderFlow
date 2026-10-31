@@ -15,6 +15,7 @@ import { FichaAcciones, FichaAvisos, FichaEstado, FichaOrgano } from "@/componen
 import { FichaCifras } from "@/components/ficha/ficha-cifras";
 import { FichaCampos } from "@/components/ficha/ficha-campos";
 import { FichaAdjudicatarios } from "@/components/ficha/ficha-adjudicatarios";
+import { FichaComoSeAdjudica, FichaRequisitos } from "@/components/ficha/ficha-requisitos";
 import { FichaSimilares } from "@/components/ficha/ficha-similares";
 import {
   FichaDescripcion,
@@ -37,15 +38,22 @@ import type { LicitacionDetail } from "@/lib/licitacion-detail";
  * y la fecha límite vivía en la rejilla de campos, por debajo de cinco bloques
  * de la pestaña Resumen.
  *
- * Debajo, cuatro pestañas con lo que antes se apilaba en cuatro:
+ * Bajo las cifras, «Cómo se adjudica»: el reparto de los criterios que publica
+ * el anuncio, cuando trae sus pesos.
+ *
+ * Debajo, cinco pestañas con lo que antes se apilaba en una:
  *
  * - **Resumen**: los campos, quién lo ganó (si ya tiene adjudicatario), el
  *   desglose de la puntuación, la descripción (recortada), las tecnologías, el
  *   enlace al portal y los eventos.
+ * - **Requisitos**: lotes, criterios, garantías y solvencia tal como los
+ *   publica el anuncio. Antes iban dentro de la ficha de los pliegos, en la
+ *   pestaña Pliegos, y eran lo último que se veía de lo que decide si te
+ *   presentas.
  * - **Competencia**: competencia esperada, baja esperada, simulador de
  *   puntuación y los expedientes parecidos, que antes alargaban el Resumen.
- * - **Pliegos**: documentos, ficha estructurada del pliego (lotes, criterios,
- *   ANS, certificaciones citables) y el guion de oferta que se apoya en ella.
+ * - **Pliegos**: documentos, lo extraído del pliego (lotes, criterios, ANS,
+ *   certificaciones citables) y el guion de oferta que se apoya en ello.
  * - (Hasta 2026-10 había una quinta, **IA**, con su propio chat y su resumen.
  *   Hoy «Preguntar a la IA» de la cabecera abre el asistente único con este
  *   expediente, y el resumen es un turno de esa conversación.)
@@ -59,10 +67,11 @@ import type { LicitacionDetail } from "@/lib/licitacion-detail";
  * vez, a pantalla entera).
  */
 
-type TabKey = "resumen" | "competencia" | "pliegos" | "recursos";
+type TabKey = "resumen" | "requisitos" | "competencia" | "pliegos" | "recursos";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "resumen", label: "Resumen" },
+  { key: "requisitos", label: "Requisitos" },
   { key: "competencia", label: "Competencia" },
   { key: "pliegos", label: "Pliegos" },
   { key: "recursos", label: "Recursos" },
@@ -153,6 +162,7 @@ export function DetailInspector({
           </div>
           <FichaCifras licitacion={l} columnas={2} />
           <FichaAvisos flags={l.risk_flags} />
+          <FichaComoSeAdjudica licitacionId={l.id_externo} />
           <FichaAcciones licitacion={l} />
         </div>
 
@@ -194,6 +204,7 @@ export function DetailInspector({
             </div>
           )}
 
+          {tab === "requisitos" && <FichaRequisitos licitacion={l} />}
           {tab === "competencia" && (
             <div>
               {/* Contra cuántos y contra quién, antes de la baja esperada y del
@@ -223,7 +234,7 @@ export function DetailInspector({
                   con citas verificables; «Extraer ficha» descarga los pliegos
                   pendientes bajo demanda. */}
               <div className="mt-6">
-                <TenderFactSheetPanel licitacionId={l.id_externo} />
+                <TenderFactSheetPanel licitacionId={l.id_externo} conCondiciones={false} />
               </div>
               {/* F2.6 — se construye sobre los criterios de esa misma ficha. */}
               <GuionOfertaPanel licitacionId={l.id_externo} />

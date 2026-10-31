@@ -96,6 +96,27 @@ describe("DetalleFichaCompleta", () => {
     expect(screen.queryByRole("tablist", { name: "Secciones de la ficha" })).not.toBeInTheDocument();
   });
 
+  it("ordena el resto en secciones, con un índice que salta a cada una", () => {
+    pintar();
+    const indice = screen.getByRole("navigation", { name: "Secciones de la ficha" });
+    expect(
+      within(indice)
+        .getAllByRole("link")
+        .map((enlace) => [enlace.textContent, enlace.getAttribute("href")]),
+    ).toEqual([
+      ["Expediente", "#ficha-expediente"],
+      ["Requisitos", "#ficha-requisitos"],
+      ["Pliegos", "#ficha-pliegos"],
+      ["Competencia", "#ficha-competencia"],
+      ["Historia", "#ficha-historia"],
+    ]);
+    for (const nombre of ["Expediente", "Requisitos", "Pliegos", "Competencia", "Historia"]) {
+      expect(screen.getByRole("region", { name: nombre })).toBeInTheDocument();
+    }
+    // Lista vacía de lotes = un solo contrato (C1.4), no «sin medir».
+    expect(screen.getByText("Un solo contrato, sin división en lotes.")).toBeInTheDocument();
+  });
+
   it("pasa a la anterior o la siguiente de la página, y dice dónde está", () => {
     const pasos: PasosDeFicha = {
       posicion: { indice: 2, total: 25 },

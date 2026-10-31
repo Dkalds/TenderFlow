@@ -11,15 +11,16 @@ import type { ModoInspector } from "../../radar/_hooks/use-media-query";
  * - **≥ xl — anclado.** El inspector escala con la pantalla en vez de quedarse
  *   en 428px fijos. Con ese ancho la ficha era la parte estrecha del plano: el
  *   título rompía en tres líneas, los diez campos vivían en dos columnas de
- *   200px y el chat de IA leía como una columna de móvil. El suelo de 28rem
- *   mantiene el panel usable en un portátil de 1280 y el techo de 42rem evita
- *   que en un monitor de 2560 la ficha se estire sin ganar nada.
+ *   200px y el chat de IA leía como una columna de móvil. Desde que la tabla
+ *   agrupa sus datos en la celda «Licitación» (2026-10) le basta con menos
+ *   ancho, y el inspector sube al 40% de la pantalla: 576px a 1440. El suelo
+ *   de 30rem lo mantiene usable en un portátil de 1280 y el techo de 46rem
+ *   evita que en un monitor de 2560 la ficha se estire sin ganar nada.
  * - **md–xl — `Sheet`.** Aquí no caben tabla e inspector a la vez, pero el
  *   `?lic=` ya existía y no pintaba nada: abrir una fila era un clic sin
  *   respuesta. Ahora la ficha entra como panel lateral sobre la tabla y se
  *   cierra con Esc, con la X o navegando atrás.
- * - **< md — la ficha completa.** La tabla mide 1358 px y no deja sitio a un
- *   panel: abrir una fila (o un permalink) cambia la tabla por la ficha
+ * - **< md — la ficha completa.** La tabla no deja sitio a un panel: abrir una fila (o un permalink) cambia la tabla por la ficha
  *   completa (`detalle-ficha-completa.tsx`), y este componente no se monta.
  *
  * En los tres casos la fuente es la misma `LicitacionDetail`: no hay dos
@@ -49,7 +50,7 @@ export function DetalleInspectorPanel({
           // `p-0` porque el inspector trae su propio ritmo de márgenes, y
           // `[&>button]:hidden` esconde la X que el Sheet pone en `right-4
           // top-4`: la cabecera de la ficha ya tiene su propio «Cerrar · Esc».
-          className="flex w-[min(32rem,94vw)] flex-col gap-0 p-0 sm:max-w-none [&>button]:hidden"
+          className="flex w-[min(36rem,94vw)] flex-col gap-0 p-0 sm:max-w-none [&>button]:hidden"
           aria-describedby={undefined}
         >
           <SheetTitle className="sr-only">Ficha de la licitación</SheetTitle>
@@ -67,7 +68,7 @@ export function DetalleInspectorPanel({
   }
 
   return (
-    <div className="hidden w-[clamp(28rem,32vw,42rem)] flex-none xl:flex">
+    <div className="hidden w-[clamp(30rem,40vw,46rem)] flex-none xl:flex">
       <DetailInspector
         key={licitacion.id_externo}
         licitacion={licitacion}

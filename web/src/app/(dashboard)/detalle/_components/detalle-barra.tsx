@@ -1,9 +1,10 @@
 "use client";
 
-import { X } from "lucide-react";
+import { ArrowDownUp, X } from "lucide-react";
 import { Segmented } from "@/components/console/panel";
 import { FiltroEtiquetaSelect } from "@/components/etiquetas/filtro-etiqueta";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ORDENES } from "./detalle-columnas";
 
 /** Chip de un recorte activo, que se quita al pulsarlo. */
 const CHIP_RECORTE =
@@ -15,8 +16,13 @@ const DENSIDADES = [
 ] as const;
 
 /**
- * Barra de la tabla: qué recortes están activos (y cómo quitarlos) y la
- * densidad. Exportar vive en la barra del ámbito («Exportar ámbito»), con el
+ * Barra de la tabla: qué recortes están activos (y cómo quitarlos), por qué
+ * se ordena y la densidad.
+ *
+ * «Ordenar por» existe desde que la tabla agrupa seis datos en la celda
+ * «Licitación» (2026-10): órgano, procedimiento, CCAA, CPV, expediente y
+ * publicación ya no tienen cabecera que pulsar, y sin él no habría forma de
+ * ordenar por ellos. Exportar vive en la barra del ámbito («Exportar ámbito»), con el
  * mismo destino y los mismos filtros: aquí era un segundo botón para lo mismo.
  *
  * Los dos chips —ventana de cierre y orden— son la única pista de que la tabla
@@ -28,6 +34,8 @@ export function DetalleBarra({
   onClearCierre,
   sortLabel,
   onClearSort,
+  orden,
+  onOrdenar,
   compact,
   onCompactChange,
   etiqueta,
@@ -36,6 +44,8 @@ export function DetalleBarra({
   onClearCierre: () => void;
   sortLabel: string | null;
   onClearSort: () => void;
+  orden: { id: string; desc: boolean } | null;
+  onOrdenar: (orden: { id: string; desc: boolean } | null) => void;
   compact: boolean;
   onCompactChange: (compact: boolean) => void;
   /** F1.6 — filtro por etiqueta de favorito, sobre el listado entero (CU-28). */
@@ -72,6 +82,38 @@ export function DetalleBarra({
           <X className="h-3 w-3" aria-hidden="true" />
           <span className="sr-only">(quitar)</span>
         </button>
+      )}
+      <label className="flex items-center gap-1.5 text-tf-micro text-muted-foreground">
+        Ordenar por
+        <select
+          value={orden?.id ?? ""}
+          onChange={(event) =>
+            onOrdenar(event.target.value ? { id: event.target.value, desc: orden?.desc ?? false } : null)
+          }
+          className="h-7 rounded-md border border-border bg-card px-1.5 text-tf-micro text-foreground"
+        >
+          <option value="">Sin orden</option>
+          {ORDENES.map((opcion) => (
+            <option key={opcion.key} value={opcion.key}>
+              {opcion.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {orden && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => onOrdenar({ ...orden, desc: !orden.desc })}
+              aria-label={orden.desc ? "Ordenar de menor a mayor" : "Ordenar de mayor a menor"}
+              className="tf-pressable grid h-7 w-7 place-items-center rounded-md border border-border bg-card text-muted-foreground hover:text-foreground"
+            >
+              <ArrowDownUp className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Invertir el orden</TooltipContent>
+        </Tooltip>
       )}
       {etiqueta && (
         // Filtra en servidor: el listado, sus páginas y su total son los del

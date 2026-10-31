@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CABECERA_COLUMNA } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import type { MergedRow } from "../_hooks/detalle-table-model";
-import { COLUMNS, TABLE_MIN_WIDTH } from "./detalle-columnas";
+import { COLUMNAS_DE_DATO, COLUMNS, TABLE_MIN_WIDTH } from "./detalle-columnas";
 import { DetalleFila } from "./detalle-fila";
 
 /**
@@ -39,9 +39,8 @@ function DetalleCabecera({
             onCheckedChange={onToggleAllPage}
           />
         </th>
-        <th scope="col" aria-label="Novedad" />
-        <th scope="col" aria-label="Favorito" />
-        {COLUMNS.slice(3).map((column) => {
+        <th scope="col" aria-label="Novedad y favorito" />
+        {COLUMNAS_DE_DATO.map((column, indice) => {
           const active = sorting[0]?.id === column.key;
           const direction = active ? (sorting[0].desc ? "descending" : "ascending") : "none";
           return (
@@ -52,7 +51,7 @@ function DetalleCabecera({
               className={cn(
                 "px-1",
                 column.align === "right" ? "text-right" : "text-left",
-                column.key === "tecnologia" && "pr-3.5",
+                indice === COLUMNAS_DE_DATO.length - 1 && "pr-3.5",
               )}
             >
               <button

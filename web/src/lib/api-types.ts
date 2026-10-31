@@ -22,6 +22,8 @@ export type LicitacionesCursorPage = Schemas["CursorPaginatedResponseWithTotal_L
 export type LicitacionDetail = Schemas["LicitacionDetail"];
 /** Quién ganó el expediente o uno de sus lotes, tal como lo publicó la fuente. */
 export type Adjudicatario = Schemas["AdjudicatarioOut"];
+/** Un lote del expediente (C1.4), tal como lo devuelve la ficha. */
+export type Lote = Schemas["LoteOut"];
 /** `GET /licitaciones/{id}/similares`: predecesor y parecidos, con método y `n`. */
 export type SimilaresResult = Schemas["SimilaresResult"];
 export type TrendPoint = Schemas["TrendPoint"];

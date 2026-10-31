@@ -1,7 +1,8 @@
 /**
  * El inspector de /detalle: lo que decide si mirar una licitación va arriba,
- * sin pestañas, y el resto se reparte en cuatro. La quinta, IA, se fue en
- * 2026-10: «Preguntar a la IA» abre el asistente único con este expediente.
+ * sin pestañas, y el resto se reparte en cinco. La de IA se fue en 2026-10:
+ * «Preguntar a la IA» abre el asistente único con este expediente. Requisitos
+ * llegó el mismo mes, con lo que antes vivía al fondo de Pliegos.
  *
  * Se fija lo que motivó el rediseño: la fecha límite y el órgano estaban por
  * debajo de cinco bloques de la pestaña Resumen, y la cabecera solo enseñaba
@@ -80,6 +81,28 @@ function responder(url: string): Promise<unknown> {
     });
   }
   if (url.includes("/resoluciones")) return Promise.resolve({ items: [] });
+  if (url.includes("/condiciones-oficiales")) {
+    return Promise.resolve({
+      licitacion_id: "PLACSP-1",
+      fuente: "placsp",
+      url_publicacion: null,
+      actualizado: "2026-10-27",
+      ambitos: [
+        {
+          lote_numero: null,
+          lote_titulo: null,
+          criterios: [
+            { orden: 1, padre_orden: null, descripcion: "Oferta económica", peso: 80, peso_pct: 80, es_precio: true, tipo_codigo: "OBJ", subtipo_codigo: "1", nota: null },
+            { orden: 2, padre_orden: null, descripcion: "Otros criterios automáticos", peso: 20, peso_pct: 20, es_precio: false, tipo_codigo: "OBJ", subtipo_codigo: "2", nota: "Acuerdos de nivel de servicio (ANS)" },
+          ],
+          garantias: [],
+          solvencia: [
+            { orden: 1, clase: "tecnica", tipo_codigo: "OSR-COMPTASK", descripcion: "Relación de los principales servicios realizados", umbral_importe: null, moneda: null },
+          ],
+        },
+      ],
+    });
+  }
   // El resto de bloques se quedan cargando: no son lo que se mira aquí.
   return new Promise(() => {});
 }
@@ -131,14 +154,31 @@ describe("DetailInspector", () => {
     expect(await screen.findByText("~4")).toBeInTheDocument();
   });
 
-  it("reparte el resto en cuatro pestañas y Competencia trae la competencia esperada", async () => {
+  it("reparte el resto en cinco pestañas y Competencia trae la competencia esperada", async () => {
     pintar();
     const pestanas = screen.getAllByRole("tab").map((tab) => tab.textContent);
-    expect(pestanas).toEqual(["Resumen", "Competencia", "Pliegos", "Recursos"]);
+    expect(pestanas).toEqual(["Resumen", "Requisitos", "Competencia", "Pliegos", "Recursos"]);
 
     fireEvent.click(screen.getByRole("tab", { name: "Competencia" }));
     expect(screen.getByRole("tab", { name: "Competencia" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByRole("heading", { name: "Competencia esperada" })).toBeInTheDocument();
+  });
+
+  it("resume bajo las cifras cómo se adjudica y detalla los requisitos en su pestaña", async () => {
+    pintar({}, { duracion_valor: 3, duracion_unidad: "ANN", lotes: [] });
+    const resumen = (await screen.findByRole("heading", { name: "Cómo se adjudica" })).closest("section")!;
+    expect(within(resumen).getByText("Oferta económica")).toBeInTheDocument();
+    expect(within(resumen).getByText("80%")).toBeInTheDocument();
+    expect(within(resumen).getByText(/Acuerdos de nivel de servicio/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Requisitos" }));
+    expect(screen.getByText("Un solo contrato, sin división en lotes.")).toBeInTheDocument();
+    expect(await screen.findByText("Relación de los principales servicios realizados")).toBeInTheDocument();
+  });
+
+  it("enseña la duración publicada cuando no hay fechas de inicio y fin", () => {
+    pintar({}, { fecha_inicio: null, fecha_fin: null, duracion_valor: 3, duracion_unidad: "ANN", importe_tipo: "sin_iva", importe_con_iva: 1_510_080 });
+    expect(screen.getByText(/^Sin IVA · 1\.510\.080\s€ con IVA · ejecución de 3 años$/)).toBeInTheDocument();
   });
 
   it("«Preguntar a la IA» abre el asistente con este expediente", async () => {

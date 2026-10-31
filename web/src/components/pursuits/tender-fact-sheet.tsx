@@ -208,11 +208,21 @@ function FactRow({
  * cuando la API los trae, van primero y con su procedencia, y lo extraído del
  * pliego por el LLM queda debajo, rotulado como tal y con sus citas. Las dos
  * fuentes no se mezclan en una misma lista: cada una dice de dónde sale.
+ *
+ * `conCondiciones={false}` la deja solo con lo extraído del pliego: /detalle
+ * enseña la publicación oficial en su propia sección, Requisitos
+ * (`ficha/ficha-requisitos.tsx`), y repetirla aquí sería decirla dos veces.
  */
-export function TenderFactSheetPanel({ licitacionId }: { licitacionId: string }) {
-  const oficiales = useCondicionesOficiales(licitacionId);
+export function TenderFactSheetPanel({
+  licitacionId,
+  conCondiciones = true,
+}: {
+  licitacionId: string;
+  conCondiciones?: boolean;
+}) {
+  const oficiales = useCondicionesOficiales(conCondiciones ? licitacionId : null);
   const datosOficiales = oficiales.data;
-  const hayOficiales = (datosOficiales?.ambitos?.length ?? 0) > 0;
+  const hayOficiales = conCondiciones && (datosOficiales?.ambitos?.length ?? 0) > 0;
   const factSheet = useTenderFactSheet(licitacionId);
   const extraction = useTenderFactSheetExtraction(licitacionId);
   const documentos = useFactSheetDocumentos(licitacionId);

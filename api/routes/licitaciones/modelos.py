@@ -111,10 +111,23 @@ class LicitacionDetail(LicitacionSummary):
     nuts_code: str | None = None
     duracion_valor: float | None = None
     duracion_unidad: str | None = None
+    #: Texto de la fuente sobre prórrogas («El presente contrato no prevé
+    #: prórrogas.»). Tal cual: no se interpreta.
+    prorroga_descripcion: str | None = None
     fecha_inicio: str | None = None
     fecha_fin: str | None = None
+    # ADR-032 §A — los importes con su base. `importe` (heredado del resumen)
+    # es el alias de la base sin IVA y `importe_tipo` dice si esta fila lo es
+    # de verdad (`sin_iva`, `con_iva`, `desconocido`).
+    importe_tipo: str | None = None
+    importe_con_iva: float | None = None
+    #: Valor estimado del contrato: prórrogas y modificaciones incluidas.
+    valor_estimado: float | None = None
     raw_keywords: str | None = None
     fecha_extraccion: str | None = None
+    #: Última modificación del anuncio en la fuente (ISO 8601), para que la
+    #: ficha diga cómo de fresco es lo que enseña.
+    fecha_actualizacion_fuente: str | None = None
     # Fuente de ingesta (ADR-009): 'placsp', 'ted', 'pscp', 'euskadi_rss'… La
     # ficha etiquetaba su enlace externo como «Ver en PLACSP» pasara lo que
     # pasara, y con TED/PSCP/Euskadi el `url` no lleva a PLACSP: el texto

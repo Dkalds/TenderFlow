@@ -8,7 +8,28 @@ import { useCompetenciaEsperada } from "@/hooks/use-competencia-esperada";
 import { usePrediccionBaja } from "@/hooks/use-prediccion-baja";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
 import { cn, formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
-import { mesesDeEjecucion } from "./ficha-fechas";
+import { duracionLegible, mesesDeEjecucion } from "./ficha-fechas";
+
+/**
+ * Debajo del importe: su base (ADR-032 §A), el mismo importe con IVA cuando la
+ * fuente lo publica y cuánto dura el contrato. La duración sale de las fechas
+ * de inicio y fin; sin ellas, de la que publica el anuncio.
+ */
+export function pieDeImporte(l: LicitacionDetail): string | undefined {
+  const base = l.importe_tipo === "sin_iva" ? "Sin IVA" : l.importe_tipo === "con_iva" ? "Con IVA" : null;
+  const conIva =
+    l.importe_tipo !== "con_iva" && l.importe_con_iva != null
+      ? `${formatCurrency(l.importe_con_iva)} con IVA`
+      : null;
+  const meses = mesesDeEjecucion(l.fecha_inicio, l.fecha_fin);
+  const duracion = meses
+    ? `${formatNumber(meses)} ${meses === 1 ? "mes" : "meses"}`
+    : duracionLegible(l.duracion_valor, l.duracion_unidad);
+  const partes = [base, conIva, duracion ? `ejecución de ${duracion}` : null].filter(Boolean);
+  if (partes.length === 0) return undefined;
+  const texto = partes.join(" · ");
+  return texto.charAt(0).toLocaleUpperCase("es") + texto.slice(1);
+}
 
 /**
  * Las cifras con las que se decide si mirar una licitación, arriba y pegadas
@@ -86,15 +107,9 @@ export function FichaCifras({
   className?: string;
 }) {
   const plazo = plazoVisual(l.fecha_limite);
-  const meses = mesesDeEjecucion(l.fecha_inicio, l.fecha_fin);
 
   const celdas = [
-    <StatCell
-      key="importe"
-      label="Importe"
-      value={formatCurrency(l.importe)}
-      hint={meses ? `Ejecución de ${formatNumber(meses)} ${meses === 1 ? "mes" : "meses"}` : undefined}
-    />,
+    <StatCell key="importe" label="Importe" value={formatCurrency(l.importe)} hint={pieDeImporte(l)} />,
     <StatCell
       key="plazo"
       label="Fecha límite"
