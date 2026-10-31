@@ -9,7 +9,7 @@ import { ScoreDesglose } from "@/components/score-desglose";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { fuenteLinkLabel } from "@/lib/fuentes";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 
 /**
  * Secciones de la ficha que el inspector y la ficha completa pintan igual.
@@ -80,21 +80,30 @@ export function FichaDescripcion({
   );
 }
 
-/** El enlace al portal de origen, rotulado con el nombre de la fuente. */
+/**
+ * El enlace al portal de origen, rotulado con el nombre de la fuente, y cuándo
+ * cambió el anuncio por última vez allí: lo que se lee en la ficha es tan
+ * fresco como esa fecha.
+ */
 export function FichaFuente({ licitacion: l, className }: { licitacion: LicitacionDetail; className?: string }) {
   if (!l.url) return null;
   return (
-    <a
-      href={l.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      // `flex w-fit` en vez de `inline-flex`: el margen de una caja en línea no
-      // separa de lo que viene detrás.
-      className={cn("flex w-fit items-center gap-1.5 text-tf-body font-medium", className)}
-    >
-      {fuenteLinkLabel(l.fuente, l.url)} <ExternalLink className="h-3 w-3" aria-hidden="true" />
-      <AvisoPestanaNueva />
-    </a>
+    <p className={cn("flex flex-wrap items-baseline gap-x-2 gap-y-0.5", className)}>
+      <a
+        href={l.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 text-tf-body font-medium"
+      >
+        {fuenteLinkLabel(l.fuente, l.url)} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        <AvisoPestanaNueva />
+      </a>
+      {l.fecha_actualizacion_fuente && (
+        <span className="text-tf-meta text-muted-foreground">
+          Actualizado en la fuente el {formatDate(l.fecha_actualizacion_fuente)}
+        </span>
+      )}
+    </p>
   );
 }
 

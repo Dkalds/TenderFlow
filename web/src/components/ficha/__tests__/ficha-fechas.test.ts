@@ -5,7 +5,7 @@
  * test atado al reloj caducaría solo.
  */
 import { describe, expect, it } from "vitest";
-import { hitosDelExpediente, mesesDeEjecucion } from "@/components/ficha/ficha-fechas";
+import { duracionLegible, hitosDelExpediente, mesesDeEjecucion } from "@/components/ficha/ficha-fechas";
 
 const HOY = new Date("2026-10-05T10:00:00Z");
 
@@ -66,5 +66,23 @@ describe("hitosDelExpediente", () => {
         HOY,
       ),
     ).toEqual([]);
+  });
+});
+
+describe("duracionLegible", () => {
+  it("dice en palabras las tres unidades que publica CODICE", () => {
+    expect(duracionLegible(3, "ANN")).toBe("3 años");
+    expect(duracionLegible(1, "ANN")).toBe("1 año");
+    expect(duracionLegible(18, "MON")).toBe("18 meses");
+    expect(duracionLegible(1, "MON")).toBe("1 mes");
+    expect(duracionLegible(90, "DAY")).toBe("90 días");
+    expect(duracionLegible(1.5, "ANN")).toBe("1,5 años");
+  });
+
+  it("una unidad desconocida va con su código, y sin valor no hay duración", () => {
+    expect(duracionLegible(2, "HUR")).toBe("2 HUR");
+    expect(duracionLegible(null, "ANN")).toBeNull();
+    expect(duracionLegible(0, "ANN")).toBeNull();
+    expect(duracionLegible(3, null)).toBeNull();
   });
 });

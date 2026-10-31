@@ -30,6 +30,30 @@ export function getSeriesColor(i: number): string {
 }
 
 /**
+ * La misma paleta como clase de color de texto, para pintar sin `style={{}}`
+ * (`scripts/check_inline_styles.py`): un SVG con `fill="currentColor"` o un
+ * punto con `bg-current`. Literales enteros para que Tailwind los encuentre.
+ */
+const CHART_SERIES_TEXTO = [
+  "text-[hsl(var(--chart-1))]",
+  "text-[hsl(var(--chart-2))]",
+  "text-[hsl(var(--chart-3))]",
+  "text-[hsl(var(--chart-4))]",
+  "text-[hsl(var(--chart-5))]",
+  "text-[hsl(var(--chart-6))]",
+  "text-[hsl(var(--chart-7))]",
+  "text-[hsl(var(--chart-8))]",
+  "text-[hsl(var(--chart-9))]",
+  "text-[hsl(var(--chart-10))]",
+] as const;
+
+/** Clase de color de texto de la serie `i`, con la misma vuelta que `getSeriesColor`. */
+export function getSeriesTextClass(i: number): string {
+  const n = CHART_SERIES_TEXTO.length;
+  return CHART_SERIES_TEXTO[((i % n) + n) % n];
+}
+
+/**
  * Tender state -> chart fill color (token-based). Use `getEstadoChartColor`
  * for a safe lookup that falls back to the first series color.
  *

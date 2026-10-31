@@ -10596,6 +10596,8 @@ export interface components {
             estado?: string | null;
             /** Expediente */
             expediente?: string | null;
+            /** Fecha Actualizacion Fuente */
+            fecha_actualizacion_fuente?: string | null;
             /** Fecha Extraccion */
             fecha_extraccion?: string | null;
             /** Fecha Fin */
@@ -10612,6 +10614,10 @@ export interface components {
             id_externo: string;
             /** Importe */
             importe?: number | null;
+            /** Importe Con Iva */
+            importe_con_iva?: number | null;
+            /** Importe Tipo */
+            importe_tipo?: string | null;
             /** Lotes */
             lotes?: components["schemas"]["LoteOut"][];
             /** Ml Proba Max */
@@ -10628,6 +10634,8 @@ export interface components {
             organo_contratacion?: string | null;
             /** Procedimiento */
             procedimiento?: string | null;
+            /** Prorroga Descripcion */
+            prorroga_descripcion?: string | null;
             /** Provincia */
             provincia?: string | null;
             /** Raw Keywords */
@@ -10644,6 +10652,8 @@ export interface components {
             tramitacion?: string | null;
             /** Url */
             url?: string | null;
+            /** Valor Estimado */
+            valor_estimado?: number | null;
         };
         /**
          * LicitacionPublica

@@ -31,9 +31,12 @@ import { PARAMETRO_FICHA } from "../_lib/prefetch";
  * la ficha completa (`?ficha=completa`), que ocupa el sitio de la tabla con
  * todo a la vez; por debajo de `md`, donde no hay inspector, es la ficha.
  *
- * La tabla conserva las catorce columnas, el orden asc/desc/none con cabecera
- * pegajosa, la selección múltiple con select-all, el punto de «nueva», la
- * estrella de watchlist, el cross-filter desde CCAA y Tecnología, la densidad,
+ * La tabla conserva todos sus datos —desde 2026-10 en ocho columnas, con
+ * órgano, CCAA, procedimiento, expediente, CPV y publicación dentro de la
+ * celda «Licitación», y la fecha límite con su plazo como columna propia—, el
+ * orden asc/desc/none con cabecera pegajosa y «Ordenar por» en la barra, la
+ * selección múltiple con select-all, el punto de «nueva», la estrella de
+ * watchlist, el cross-filter desde CCAA y Tecnología, la densidad,
  * la paginación completa con contador, la exportación y los estados de carga,
  * vacío y error.
  *
@@ -184,6 +187,8 @@ export function DetalleView() {
               }}
               sortLabel={sortLabel}
               onClearSort={() => setSorting([])}
+              orden={sorting[0] ?? null}
+              onOrdenar={(orden) => setSorting(orden ? [orden] : [])}
               etiqueta={etiqueta}
               compact={compact}
               onCompactChange={(next) => {
@@ -215,7 +220,7 @@ export function DetalleView() {
               ccaas={ccaas}
               tecnologias={tecnologias}
               compact={compact}
-              rowHeight={compact ? 34 : 44}
+              rowHeight={compact ? 44 : 64}
               onOpen={(index, id) => {
                 setCursor(index);
                 openDetail(id);

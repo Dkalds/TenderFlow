@@ -3,8 +3,8 @@
 import { Fact, ROTULO_DATO } from "@/components/console/panel";
 import { CodigoLegible } from "@/components/codigo-legible";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
-import { cn, formatDate } from "@/lib/utils";
-import { hitosDelExpediente, type Hito } from "./ficha-fechas";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { duracionLegible, hitosDelExpediente, type Hito } from "./ficha-fechas";
 
 /**
  * Los campos publicados del expediente, en la rejilla de 1 px de la consola.
@@ -57,10 +57,30 @@ export function FichaCampos({
       ) : (
         <>
           <Fact label="Comunidad autónoma" value={l.ccaa} />
-          <Fact label="Provincia" value={l.provincia} />
+          <Fact
+            label="Provincia"
+            value={
+              l.provincia && l.nuts_code ? (
+                <>
+                  {l.provincia} <span className="font-mono text-tf-micro text-muted-foreground">{l.nuts_code}</span>
+                </>
+              ) : (
+                l.provincia
+              )
+            }
+          />
           <Fact label="Publicación" value={formatDate(l.fecha_publicacion)} variant="cifra" />
+          <Fact
+            label="Valor estimado"
+            value={l.valor_estimado != null ? formatCurrency(l.valor_estimado) : null}
+            variant="cifra"
+          />
         </>
       )}
+      {/* La duración y las prórrogas, tal como las publica el anuncio: con el
+          importe son lo que dice de qué tamaño es el contrato. */}
+      <Fact label="Duración" value={duracionLegible(l.duracion_valor, l.duracion_unidad)} />
+      <Fact label="Prórroga" value={l.prorroga_descripcion} className={variante === "completa" ? "col-span-2" : undefined} />
     </div>
   );
 }

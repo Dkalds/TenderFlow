@@ -1,5 +1,6 @@
 import { plazoVisual, type BandaPlazo } from "@/components/pursuits/pursuit-presenters";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
+import { formatNumber } from "@/lib/utils";
 
 /**
  * Las fechas de un expediente, leídas para la ficha.
@@ -33,6 +34,28 @@ export function mesesDeEjecucion(
   if (!desde || !hasta) return null;
   const meses = Math.round((hasta.getTime() - desde.getTime()) / MS_DIA / 30.44);
   return meses >= 1 ? meses : null;
+}
+
+/** Unidades de duración que publica CODICE (UN/ECE rec. 20): las tres que hay en los datos. */
+const UNIDADES_DURACION: Record<string, [singular: string, plural: string]> = {
+  ANN: ["año", "años"],
+  MON: ["mes", "meses"],
+  DAY: ["día", "días"],
+};
+
+/**
+ * La duración publicada, en palabras: «3 años», «18 meses». Una unidad que no
+ * está en la tabla se enseña tal cual, con su código, en vez de adivinarla.
+ */
+export function duracionLegible(
+  valor: number | null | undefined,
+  unidad: string | null | undefined,
+): string | null {
+  if (valor == null || !(valor > 0)) return null;
+  const numero = formatNumber(valor, "es-ES", Number.isInteger(valor) ? {} : { decimales: 1 });
+  const nombres = unidad ? UNIDADES_DURACION[unidad] : undefined;
+  if (!nombres) return unidad ? `${numero} ${unidad}` : null;
+  return `${numero} ${valor === 1 ? nombres[0] : nombres[1]}`;
 }
 
 export type ClaveHito = "publicacion" | "hoy" | "limite" | "inicio" | "fin";
