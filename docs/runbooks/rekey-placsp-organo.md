@@ -190,6 +190,29 @@ devuelve `308` con `Location` a la `ref` nueva; `GET
 4. El 2027-04-30, retirar la resolución por alias en la API (la 308 pública se
    queda) y mover este runbook a `docs/archive/runbooks/`.
 
+### Corrección del 2026-10-31: claves con un órgano antiguo (`v167`)
+
+El relleno corrió por tramos de meses en paralelo y escribía al terminar cada
+mes, así que un `idEvl` con dos órganos en meses distintos se quedó con el
+primero que vio su tramo. De 24.742 filas re-keyed, 602 tienen dos órganos en
+los ZIP y **452 llevan en la clave uno que no es el del mes más reciente**: 436
+un NIF de 2018 donde hoy PLACSP publica el `ID_PLATAFORMA`, y 16 por una
+reorganización administrativa. El conector escribe la clave con el órgano
+actual, así que cada republicación crea un duplicado (95 a mediodía, 107 por la
+tarde).
+
+`v167_rekey_placsp_organo_reciente` lleva esas 452 a la clave correcta, con un
+mapa fijo generado desde los ZIP. Borra antes los duplicados que la ingesta ya
+escribió con la clave correcta, salvo que tengan datos de usuario (entonces
+aborta). No hace falta parar la ingesta: lo que llegue antes de aplicarla es un
+duplicado más y se borra igual. Se aplica con `migrate.yml` en modo `apply`;
+después hay que refrescar `licitaciones_canonicas`, como en el paso 6 de la
+ventana.
+
+El relleno de `master` sigue escribiendo el primer órgano de un conflicto, y
+con tramos en paralelo no ve los conflictos que cruzan tramos: no repetirlo
+sin corregirlo antes y sin leer todos los meses en una sola pasada.
+
 ## Rollback
 
 `v164` no tiene `downgrade` (como `v153`): la inversa vuelve a juntar
