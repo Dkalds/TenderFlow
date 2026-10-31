@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-10-26
 
-Revisión Alembic aplicada: `v167_rekey_placsp_organo_reciente`.
+Revisión Alembic aplicada: `v168_mv_canonicas_universo_producto`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas

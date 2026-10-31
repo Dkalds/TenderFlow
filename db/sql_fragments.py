@@ -157,8 +157,9 @@ def universo_producto_sql(alias: str = "l") -> str:
     15.359 de las 67.572 filas publicadas desde 2025 y 528 de las 13.079 de la
     CPV 32, mientras la analítica contaba 39.668. Con este predicado son 67.473.
 
-    La vista ``licitaciones_canonicas`` sigue con :func:`universo_tecnologico_sql`
-    hasta que una migración la reconstruya con éste.
+    Desde ``v168`` es también el de la vista ``licitaciones_canonicas``
+    (superficie pública, sitemap y hubs), el de los KPIs del radar
+    (``db/kpi_precompute.py``) y el de la cobertura.
     """
     return f"({universo_tecnologico_sql(alias)} OR {alias}.inclusion_reason = 'cpv_ti_universe')"
 

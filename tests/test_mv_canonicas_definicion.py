@@ -3,8 +3,9 @@
 Desde la revisión ``v94`` la definición de «qué contrato se publica» vive en la
 vista ``licitaciones_canonicas`` (redefinida en ``v98`` para acotarla al universo
 tecnológico, en ``v99`` para admitir la señal de ML/LLM/pliego, en ``v102`` para
-agrupar por una clave que el upsert no reescribe y en ``v157`` para contar el bulk
-como PLACSP y poner TED al final), y las seis superficies
+agrupar por una clave que el upsert no reescribe, en ``v157`` para contar el bulk
+como PLACSP y poner TED al final y en ``v168`` para admitir lo que entra por su
+CPV, como el listado), y las seis superficies
 indexables se limitan a leer de ella. Eso resuelve el coste —de ~200 s por petición a ~10 s por pasada
 del pipeline— pero abre un modo de fallo nuevo: la vista congela su cuerpo en la
 migración, y si ese cuerpo se separa de los fragmentos que el repositorio
@@ -22,7 +23,7 @@ Si este fichero falla, la corrección **no** es editar la constante de la
 revisión vigente: esa migración ya corrió y describe la vista que existe en
 producción. Es escribir una revisión nueva que reconstruya la vista con la
 definición nueva y mover ``_RUTA_VISTA`` a ella (v94 → v98 fue la primera vez;
-v99, v102 y v157, las siguientes).
+v99, v102, v157 y v168, las siguientes).
 """
 
 from __future__ import annotations
@@ -41,7 +42,8 @@ from db.sql_fragments import (
 # v94 la creó; v98 la acotó al universo tecnológico; v99 le añadió la señal de
 # ML/LLM/pliego; v102 cambió la componente temporal de la clave por una que el
 # upsert no reescribe; v157 cambió el primer criterio de orden (PLACSP con el
-# bulk → resto → TED). (v156 también la rehace, pero con el cuerpo de v102: solo
+# bulk → resto → TED); v168 admitió lo que entra por su CPV, el universo del
+# listado. (v156 también la rehace, pero con el cuerpo de v102: solo
 # cambia el tipo de `importe`.) Apuntar a una revisión vieja haría pasar el test contra
 # una vista que ya no existe en producción.
 _RUTA_VISTA = (
@@ -49,13 +51,15 @@ _RUTA_VISTA = (
     / "db"
     / "alembic"
     / "versions"
-    / "v157_mv_canonicas_fuente.py"
+    / "v168_mv_canonicas_universo_producto.py"
 )
 
 
 def _cargar_revision_vigente() -> Any:
     """Carga la revisión por ruta: ``db/alembic/versions/`` no es un paquete."""
-    spec = importlib.util.spec_from_file_location("v157_mv_canonicas_fuente", _RUTA_VISTA)
+    spec = importlib.util.spec_from_file_location(
+        "v168_mv_canonicas_universo_producto", _RUTA_VISTA
+    )
     assert spec is not None and spec.loader is not None
     modulo = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(modulo)
