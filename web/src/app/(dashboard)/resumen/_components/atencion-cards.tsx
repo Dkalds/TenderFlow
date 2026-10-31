@@ -1,26 +1,19 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo } from "react";
-import {
-  PanelError,
-  PULSABLE_SOBRE_TARJETA,
-  SUPERFICIE_PANEL,
-} from "@/components/console/panel";
-import { Skeleton } from "@/components/ui/skeleton";
+import { PanelError, StatCell, StatStrip } from "@/components/console/panel";
 import { useAnnounceOnChange } from "@/components/live-region";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useScopedHref } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { cn, formatCompactCurrency, formatDate, formatDateTime, formatNumber } from "@/lib/utils";
-import type { ResumenHoyResult } from "@/lib/api-types";
+import { EMPTY, formatCompactCurrency, formatDate, formatNumber } from "@/lib/utils";
+import type { AnalyticsOverview, ResumenHoyResult } from "@/lib/api-types";
 import { useNovedades } from "../_hooks/use-novedades";
 import { Proporcion } from "./cifras-graficos";
 import { ColaCierre } from "./cola-cierre";
-import { BarraImporte } from "./ultimas-publicaciones-tabla";
 
 /**
- * Mercado abierto — lo que exige mirar hoy en el mercado.
+ * Mercado hoy — cuatro cifras del ámbito, en una tira junto a «Tu día».
  *
  * Tres cosas siguen siendo verdad desde la versión anterior, y conviene no
  * perderlas de vista al leer el layout:
@@ -32,141 +25,93 @@ import { BarraImporte } from "./ultimas-publicaciones-tabla";
  *    publica `/resumen/hoy`, que es el del ámbito activo. «Aprox.» queda para
  *    el único caso que no puede ser exacto: un ámbito sin ningún importe, sin
  *    umbral por el que cortar (ADR-014).
- * 3. **El ámbito es el mismo en toda la banda.** `/analytics/resumen/hoy`
- *    aplica la barra de filtros entera, con la semántica del listado. Solo
- *    aplicaba fecha, CCAA y tecnología, y la banda tenía que avisar de qué
- *    chips no estaba mirando.
+ * 3. **El ámbito es el mismo en toda la tira.** `/analytics/resumen/hoy`
+ *    aplica la barra de filtros entera, con la semántica del listado.
  *
- * Lo que cambia es el reparto. Las cuatro tarjetas eran del mismo tamaño y
- * decían lo mismo —un número y una flecha—, así que la banda no tenía tesis: la
- * más urgente y la más inerte pesaban igual. Ahora la que tiene plazo **enseña
- * la cola** (`cola-cierre.tsx`) y ocupa el alto que sobra; las dos que se
- * consultan de pasada van encima, lado a lado, con su deep-link intacto; y
- * «Total activas», que no exige ninguna acción hoy, baja a la tira de
- * contexto, que es donde vive el resto de la foto del ámbito.
+ * **Una tira y no tarjetas** (2026-10-31, el diseño aprobado del Resumen
+ * compacto). «Grandes en plazo» y «Nuevas» eran tarjetas con su muestra de
+ * filas, y la cola de cierre iba debajo, en la misma columna: tres alturas
+ * distintas en la primera pantalla y «Tu día» apretado a su lado. Ahora el
+ * mercado de hoy es una tira de cuatro cifras al lado de los cuatro contadores
+ * de «Tu día», con el mismo peso, y la cola de cierre baja a la fila
+ * siguiente con el sitio que necesita (`ColaCierreHoy`). «Activas» vuelve
+ * aquí desde la tira de contexto: es el total del que salen las otras tres.
  *
- * La banda es la columna derecha de la primera fila del Resumen (2026-10-31):
- * las tarjetas arriba y la cola debajo, estirada hasta el alto de «Tu día» y
- * «Desde tu última visita», que van a la izquierda.
- *
- * Las tarjetas no llevan baldosa de icono ni color propio en la cifra: la
- * cifra es el dato (20 px, como un `StatCell`) y el color queda para lo que
- * tiene plazo, que es la cola de cierre.
- *
- * **Sin rótulo a la vista.** Abre la zona de mercado del Resumen, cuya
- * cabecera ya dice «Mercado» y el ámbito; con su «Mercado abierto · hoy»
- * debajo eran dos rótulos seguidos para el mismo bloque. El `h3` se queda para
- * el lector de encabezados, y cada tarjeta lleva su propio título.
- *
- * «Grandes en plazo» lleva debajo su parte de las activas, en barra. Las dos
- * cifras salen de la misma consulta de `/resumen/hoy` sobre el mismo conjunto
- * y con la misma guardia de «abierta», así que la una está dentro de la otra y
- * la proporción es la del dato, no una cuenta del navegador entre universos
- * distintos.
+ * «Grandes en plazo» y «Activas» llevan debajo su parte, en barra. Cada par
+ * sale de una consulta sobre el mismo conjunto —las grandes dentro de las
+ * activas de `/resumen/hoy`, las activas dentro del ámbito de
+ * `/analytics/overview`—, así que la proporción es la del dato, no una
+ * cuenta del navegador entre universos distintos.
  */
 
-/** Publicaciones de muestra bajo la cifra de «Nuevas». */
-const MUESTRA_NUEVAS = 3;
-
-interface Tarjeta {
-  key: string;
-  title: string;
-  value: number | undefined;
-  subtitle: string;
-  /** Path con su propio recorte; el ámbito activo se fusiona encima. */
-  href: string;
-  /** Qué abre de verdad. `exacto: false` ⇒ el listado es más ancho que la cifra. */
-  target: string;
-  exacto: boolean;
-  /** Cada tarjeta carga de su propio endpoint. */
-  cargando: boolean;
-  /** Lo que la cifra resume, cuando el endpoint lo trae: unas filas de muestra. */
-  muestra?: { id: string; titulo: string; importe: number | null }[];
-  /** La cifra como parte de su total, cuando los dos miden el mismo conjunto. */
-  proporcion?: { parte: number; total: number; de: string };
-}
-
-function UrgentCard({ card }: { card: Tarjeta }) {
-  const scopedHref = useScopedHref();
-
-  return (
-    <Link
-      href={scopedHref(card.href)}
-      className={cn(
-        SUPERFICIE_PANEL,
-        "flex flex-col px-3.5 py-3 text-left transition-colors hover:border-primary-line-strong active:duration-0",
-        PULSABLE_SOBRE_TARJETA,
-      )}
-    >
-      <span className="mb-1.5 text-tf-meta font-medium">{card.title}</span>
-      {card.cargando ? (
-        <Skeleton className="h-6 w-16 rounded-sm" />
-      ) : (
-        <span className="tf-tnum text-tf-title font-semibold">{formatNumber(card.value)}</span>
-      )}
-      {!card.cargando && card.proporcion && card.proporcion.total > 0 && (
-        <Proporcion {...card.proporcion} className="mt-2.5" />
-      )}
-      <span className="mt-1 text-tf-meta text-muted-foreground">{card.subtitle}</span>
-      {card.muestra && card.muestra.length > 0 && (
-        // Texto y no enlaces: la tarjeta entera ya es un enlace.
-        <span className="mb-3 mt-2.5 flex flex-col gap-1">
-          {card.muestra.map((fila) => (
-            <span key={fila.id} className="flex min-w-0 items-center gap-2">
-              <span className="h-1.5 w-1.5 flex-none rounded-full bg-primary" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate text-tf-meta">{fila.titulo}</span>
-              <BarraImporte importe={fila.importe} />
-              <span className="tf-tnum w-14 flex-none text-right text-tf-micro font-semibold text-muted-foreground">
-                {formatCompactCurrency(fila.importe)}
-              </span>
-            </span>
-          ))}
-        </span>
-      )}
-      <span className="mt-auto flex items-center gap-1.5 border-t border-divider-subtle pt-2">
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate text-tf-micro",
-            card.exacto ? "text-muted-foreground" : "text-warning",
-          )}
-        >
-          {card.exacto ? card.target : `Aprox. · ${card.target}`}
-        </span>
-      </span>
-    </Link>
-  );
-}
-
-export function AtencionCards({ className }: { className?: string }) {
-  const scopedHref = useScopedHref();
-
-  // El fallo se pinta aquí mismo (`PanelError`): sin toast encima. Misma
-  // clave y mismas opciones en `contexto-strip.tsx`, que lee «Activas».
-  const hoy = useFilteredQuery<ResumenHoyResult>(
+/** `/analytics/resumen/hoy` con la clave y las opciones que comparten la tira y la cola. */
+function useResumenHoy() {
+  // El fallo se pinta en el sitio (`PanelError`): sin toast encima.
+  return useFilteredQuery<ResumenHoyResult>(
     ["analytics", "resumen", "hoy"],
     "/api/v1/analytics/resumen/hoy",
     { staleTime: 2 * 60 * 1000, meta: META_ERROR_EN_LINEA },
     undefined,
     true,
   );
+}
 
-  // Deep-link de la cola de cierre: `cierre_desde`/`cierre_hasta` acotan
-  // `fecha_limite`, la misma columna sobre la que el KPI cuenta, y
-  // `solo_abiertas` es la misma guardia de estado: el KPI ya no cuenta las
-  // anuladas o adjudicadas con plazo en la ventana.
-  //
-  // El recorte es por día y el contador por hora, así que el listado va de las
-  // 00:00 de hoy al final de pasado mañana: los mismos dos días, con los
-  // extremos redondeados. Es la granularidad que aceptan los parámetros —una
-  // fecha en la URL tiene que poder escribirla una persona— y la que mantiene
-  // el enlace legible cuando se comparte.
-  const vencenHref = useMemo(() => {
+/**
+ * Deep-link de la cola de cierre: `cierre_desde`/`cierre_hasta` acotan
+ * `fecha_limite`, la misma columna sobre la que el KPI cuenta, y
+ * `solo_abiertas` es la misma guardia de estado.
+ *
+ * El recorte es por día y el contador por hora, así que el listado va de las
+ * 00:00 de hoy al final de pasado mañana: los mismos dos días, con los
+ * extremos redondeados. Es la granularidad que aceptan los parámetros —una
+ * fecha en la URL tiene que poder escribirla una persona— y la que mantiene
+ * el enlace legible cuando se comparte.
+ */
+function useVencenHref(): string {
+  return useMemo(() => {
     // eslint-disable-next-line react-hooks/purity
     const ahora = Date.now();
     const desde = new Date(ahora).toISOString().slice(0, 10);
     const hasta = new Date(ahora + 2 * 86400000).toISOString().slice(0, 10);
     return `/detalle?solo_abiertas=true&cierre_desde=${desde}&cierre_hasta=${hasta}`;
   }, []);
+}
+
+/** La cola de cierre de 48 h con su recuento: la fila de debajo de la tira. */
+export function ColaCierreHoy() {
+  const scopedHref = useScopedHref();
+  const hoy = useResumenHoy();
+  const vencenHref = useVencenHref();
+
+  if (hoy.error) {
+    return (
+      <PanelError
+        title="No se pudo cargar la cola de cierre"
+        error={hoy.error}
+        onRetry={() => void hoy.refetch()}
+      />
+    );
+  }
+  return (
+    <ColaCierre
+      total={hoy.data?.vencen_48h}
+      loading={hoy.isLoading}
+      href={scopedHref(vencenHref)}
+      target="Abre Detalle: cierran en 48 h"
+    />
+  );
+}
+
+export function AtencionCards() {
+  const scopedHref = useScopedHref();
+  const hoy = useResumenHoy();
+  // Misma clave y opciones que `composicion-panel.tsx`: una sola petición.
+  const overview = useFilteredQuery<AnalyticsOverview>(
+    ["analytics", "overview"],
+    "/api/v1/analytics/overview",
+    { staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
+  );
+  const vencenHref = useVencenHref();
 
   // «En plazo» del contador de grandes: plazo posterior a ahora. El listado
   // corta por día, así que abre también las que cerraron hoy antes de esta
@@ -178,16 +123,15 @@ export function AtencionCards({ className }: { className?: string }) {
   );
 
   // «Nuevas» cuenta desde tu última visita y en tu ámbito: la misma marca que
-  // la banda de arriba, y la misma consulta que marca las filas nuevas de la
-  // tabla de publicaciones (`_hooks/use-novedades.ts`). Sustituye a «Nuevas
-  // 24h», que contaba otra ventana, y a la línea de novedades de todo el
-  // mercado que había encima de la tabla: eran tres ideas de «nuevo».
+  // «Desde tu última visita», y la misma consulta que marca las filas nuevas
+  // de la tabla de publicaciones (`_hooks/use-novedades.ts`).
   const novedades = useNovedades();
   const desde = novedades.data?.desde ?? null;
 
   const data = hoy.data;
   // `null` solo con un ámbito sin importes: ver el punto 2 de la cabecera.
   const p75 = data?.importe_p75 ?? null;
+  const totalAmbito = overview.data?.total_licitaciones ?? 0;
 
   // El recuento es el dato central de la pantalla y saltaba en silencio para
   // quien usa lector (hallazgo 5 de la auditoría UX).
@@ -198,88 +142,77 @@ export function AtencionCards({ className }: { className?: string }) {
       : null,
   );
 
-  const cards: Tarjeta[] = [
-    {
-      // Se llamaba «Calientes»: el KPI homónimo de la extinta /pipeline-alertas
-      // contaba otra cosa (banda del score ≥ 75). El campo del DTO conserva su
-      // nombre porque es contrato; lo que se corrige es lo que lee el usuario.
-      key: "grandes",
-      title: "Grandes en plazo",
-      value: data?.calientes,
-      // El umbral se dice en cifra: «el 25 % de mayor importe» no dice si eso
-      // empieza en 50 k€ o en 2 M€, y depende del ámbito.
-      subtitle:
-        p75 !== null
-          ? `Desde ${formatCompactCurrency(p75)}: el 25 % de mayor importe, abiertas y en plazo`
-          : "Del 25 % de mayor importe, abiertas y en plazo",
-      href:
-        p75 !== null
-          ? `/detalle?solo_abiertas=true&cierre_desde=${hoyIso}&importe_min=${p75}`
-          : `/detalle?solo_abiertas=true&cierre_desde=${hoyIso}`,
-      target:
-        p75 !== null
-          ? "Abre Detalle: abiertas en plazo del 25 % de mayor importe"
-          : "Abre Detalle: abiertas en plazo, sin umbral (el ámbito no trae importes)",
-      exacto: p75 !== null,
-      cargando: hoy.isLoading,
-      proporcion: data ? { parte: data.calientes, total: data.total_activas, de: "de las activas" } : undefined,
-    },
-    {
-      key: "nuevas",
-      title: "Nuevas",
-      value: novedades.data?.count,
-      subtitle: novedades.error
-        ? "No se pudo comprobar desde tu última visita"
-        : desde
-          ? `Desde tu última visita, el ${formatDateTime(desde)}`
-          : "Desde tu última visita",
-      // El listado corta por día: abre también lo publicado ese día antes de
-      // la marca. Es el mismo redondeo que la cola de cierre.
-      href: desde ? `/detalle?fecha_desde=${desde.slice(0, 10)}` : "/detalle",
-      target: desde
-        ? `Abre Detalle: publicadas desde el ${formatDate(desde)}`
-        : "Abre Detalle: todas las publicaciones",
-      exacto: desde !== null || novedades.isLoading,
-      cargando: novedades.isLoading,
-      muestra: (novedades.data?.sample ?? []).slice(0, MUESTRA_NUEVAS).map((fila) => ({
-        id: fila.id_externo,
-        titulo: fila.titulo ?? fila.id_externo,
-        importe: fila.importe ?? null,
-      })),
-    },
-  ];
+  if (hoy.error) {
+    return (
+      <PanelError
+        title="No se pudo cargar el estado de hoy"
+        error={hoy.error}
+        onRetry={() => void hoy.refetch()}
+      />
+    );
+  }
+
+  const cargando = hoy.isLoading;
 
   return (
-    <section aria-labelledby="resumen-atencion" className={cn("flex flex-col", className)}>
-      <h3 id="resumen-atencion" className="sr-only">
-        Mercado abierto hoy
-      </h3>
-
-      {hoy.error ? (
-        <PanelError
-          title="No se pudo cargar el estado de hoy"
-          error={hoy.error}
-          onRetry={() => void hoy.refetch()}
-        />
-      ) : (
-        // `grid-cols-1` y no la columna implícita: esa es `auto` y crece hasta el
-        // ancho mínimo del contenido, así que a 390 px la banda medía 410 y la
-        // cola se salía por la derecha. `minmax(0, 1fr)` la deja en lo que hay.
-        // La segunda fila es la cola: se queda con el alto que sobra.
-        <div className="grid flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-3">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {cards.map((card) => (
-              <UrgentCard key={card.key} card={card} />
-            ))}
-          </div>
-          <ColaCierre
-            total={data?.vencen_48h}
-            loading={hoy.isLoading}
-            href={scopedHref(vencenHref)}
-            target="Abre Detalle: cierran en 48 h"
-          />
-        </div>
-      )}
-    </section>
+    <StatStrip columns={4}>
+      <StatCell
+        label="Cierran en 48 h"
+        loading={cargando}
+        value={data ? formatNumber(data.vencen_48h) : EMPTY}
+        tono={data && data.vencen_48h > 0 ? "destructive" : undefined}
+        href={scopedHref(vencenHref)}
+        hint={data ? `de ${formatNumber(data.total_activas)} activas` : undefined}
+      />
+      {/* Se llamaba «Calientes»: el KPI homónimo de la extinta
+          /pipeline-alertas contaba otra cosa (banda del score ≥ 75). El campo
+          del DTO conserva su nombre porque es contrato. */}
+      <StatCell
+        label="Grandes en plazo"
+        loading={cargando}
+        value={data ? formatNumber(data.calientes) : EMPTY}
+        href={scopedHref(
+          p75 !== null
+            ? `/detalle?solo_abiertas=true&cierre_desde=${hoyIso}&importe_min=${p75}`
+            : `/detalle?solo_abiertas=true&cierre_desde=${hoyIso}`,
+        )}
+        grafico={
+          data && data.total_activas > 0 ? (
+            <Proporcion parte={data.calientes} total={data.total_activas} de="de las activas" />
+          ) : undefined
+        }
+        // El umbral se dice en cifra: «el 25 % de mayor importe» no dice si
+        // eso empieza en 50 k€ o en 2 M€, y depende del ámbito. Pie corto: la
+        // celda es un cuarto de media pantalla.
+        hint={p75 !== null ? `importe desde ${formatCompactCurrency(p75)}` : "Aprox.: sin importes"}
+      />
+      <StatCell
+        label="Nuevas"
+        loading={novedades.isLoading}
+        value={novedades.data ? formatNumber(novedades.data.count) : EMPTY}
+        // El listado corta por día: abre también lo publicado ese día antes de
+        // la marca. Es el mismo redondeo que la cola de cierre.
+        href={scopedHref(desde ? `/detalle?fecha_desde=${desde.slice(0, 10)}` : "/detalle")}
+        hint={
+          novedades.error
+            ? "No se pudo comprobar tu última visita"
+            : desde
+              ? `desde el ${formatDate(desde)}`
+              : "desde tu última visita"
+        }
+      />
+      <StatCell
+        label="Activas"
+        loading={cargando}
+        value={data ? formatNumber(data.total_activas) : EMPTY}
+        href={scopedHref("/detalle?solo_abiertas=true")}
+        grafico={
+          data && totalAmbito > 0 ? (
+            <Proporcion parte={data.total_activas} total={totalAmbito} de="del ámbito" />
+          ) : undefined
+        }
+        hint="abiertas"
+      />
+    </StatStrip>
   );
 }

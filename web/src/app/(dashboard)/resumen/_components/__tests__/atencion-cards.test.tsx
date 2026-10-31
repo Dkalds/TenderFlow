@@ -38,7 +38,7 @@ vi.mock("@/lib/filters", async () => {
   };
 });
 
-import { AtencionCards } from "@/app/(dashboard)/resumen/_components/atencion-cards";
+import { AtencionCards, ColaCierreHoy } from "@/app/(dashboard)/resumen/_components/atencion-cards";
 
 const HOY = {
   calientes: 12,
@@ -56,12 +56,17 @@ function key(base: string[], url: string) {
 const DESDE = "2026-09-29T08:15:00+00:00";
 const NOVEDADES = { count: 8, sample: [], desde: DESDE };
 
+/** La tira y la cola leen la misma consulta: se montan juntas, como en la vista. */
 function renderCards(
   hoy: Record<string, unknown> = HOY,
   novedades: Record<string, unknown> | null = NOVEDADES,
+  overview: Record<string, unknown> | null = null,
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   qc.setQueryData(key(["analytics", "resumen", "hoy"], "/api/v1/analytics/resumen/hoy"), hoy);
+  if (overview) {
+    qc.setQueryData(key(["analytics", "overview"], "/api/v1/analytics/overview"), overview);
+  }
   if (novedades) {
     qc.setQueryData(
       key(["analytics", "resumen", "novedades"], "/api/v1/analytics/resumen/novedades"),
@@ -71,6 +76,7 @@ function renderCards(
   return render(
     <QueryClientProvider client={qc}>
       <AtencionCards />
+      <ColaCierreHoy />
     </QueryClientProvider>,
   );
 }
@@ -95,19 +101,22 @@ describe("AtencionCards", () => {
     scope.soloAbiertas = false;
   });
 
-  it("pinta los tres contadores que exigen acción hoy", () => {
+  it("pinta las cuatro cifras del mercado de hoy en una tira", () => {
     renderCards();
-    expect(screen.getByText("37")).toBeInTheDocument();
+    // 37 sale dos veces: en la tira y en la cabecera de la cola, que lo desglosa.
+    expect(hrefDe("Cierran en 48 h")).toContain("solo_abiertas=true");
+    expect(screen.getAllByText("37")).toHaveLength(2);
     expect(screen.getByText("12")).toBeInTheDocument();
     expect(screen.getByText("8")).toBeInTheDocument();
+    expect(screen.getByText("42.100")).toBeInTheDocument();
   });
 
-  it("«Total activas» ya no vive aquí: bajó a la tira de contexto", () => {
-    // No exige nada para hoy y ocupaba un cuarto de la banda urgente. Se
-    // comprueba por el número para que el test falle si vuelve a colarse.
-    renderCards();
-    expect(screen.queryByText("42.100")).not.toBeInTheDocument();
-    expect(screen.queryByText("Total activas")).not.toBeInTheDocument();
+  it("«Activas» abre las abiertas del ámbito y se dibuja como parte de él", () => {
+    // Volvió a la tira desde la de contexto: es el total del que salen las
+    // otras tres. La barra es activas sobre el ámbito, los dos del mismo filtro.
+    renderCards(HOY, NOVEDADES, { total_licitaciones: 84200 });
+    expect(hrefDe("Activas")).toContain("solo_abiertas=true");
+    expect(screen.getByText("Activas").closest("a")).toHaveTextContent("50,0% del ámbito");
   });
 
   it("arrastra el ámbito activo a los tres destinos", () => {
@@ -115,7 +124,7 @@ describe("AtencionCards", () => {
     // y su enlace abría /detalle sin la CCAA — otro universo, mismo número.
     scope.qs = "?ccaa=Madrid&tecnologia=SAP";
     renderCards();
-    for (const titulo of ["Ver la cola de cierre", "Grandes en plazo", "Nuevas"]) {
+    for (const titulo of ["Ver la cola de cierre", "Cierran en 48 h", "Grandes en plazo", "Nuevas", "Activas"]) {
       expect(hrefDe(titulo)).toContain("ccaa=Madrid");
       expect(hrefDe(titulo)).toContain("tecnologia=SAP");
     }
@@ -135,8 +144,7 @@ describe("AtencionCards", () => {
     renderCards({ ...HOY, nuevas_24h: 99 });
     expect(screen.queryByText("99")).not.toBeInTheDocument();
     expect(screen.queryByText("Nuevas 24h")).not.toBeInTheDocument();
-    expect(screen.getByText(/^Desde tu última visita, el /)).toBeInTheDocument();
-    expect(screen.getByText(/^Abre Detalle: publicadas desde el /)).toBeInTheDocument();
+    expect(screen.getByText(/^desde el /)).toBeInTheDocument();
   });
 
   it("si no se puede comprobar la última visita, no inventa la cifra", () => {
@@ -166,9 +174,7 @@ describe("AtencionCards", () => {
     expect(hrefDe("Grandes en plazo")).toContain("importe_min=250000");
     expect(hrefDe("Grandes en plazo")).toContain("solo_abiertas=true");
     expect(hrefDe("Grandes en plazo")).toMatch(/cierre_desde=\d{4}-\d{2}-\d{2}/);
-    expect(
-      screen.getByText("Abre Detalle: abiertas en plazo del 25 % de mayor importe"),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/Aprox\./)).not.toBeInTheDocument();
   });
 
   it("con ámbito activo sigue siendo exacta: el P75 que llega es el del ámbito", () => {
@@ -184,9 +190,7 @@ describe("AtencionCards", () => {
   it("sin P75 —un ámbito sin importes— «Grandes en plazo» se declara aproximada", () => {
     renderCards({ ...HOY, importe_p75: null });
     expect(hrefDe("Grandes en plazo")).not.toContain("importe_min");
-    expect(
-      screen.getByText(/Aprox\. · Abre Detalle: abiertas en plazo, sin umbral/),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Aprox.: sin importes")).toBeInTheDocument();
   });
 
   it("sin nada que vencer, la cola se resuelve en verde y no pide el desglose", () => {
@@ -321,7 +325,7 @@ describe("AtencionCards", () => {
 
   it("«Grandes en plazo» dice en cifra dónde empieza el 25 % de mayor importe", () => {
     renderCards();
-    expect(screen.getByText(/^Desde .+: el 25 % de mayor importe, abiertas y en plazo$/)).toBeInTheDocument();
+    expect(screen.getByText(/^importe desde \S/)).toBeInTheDocument();
   });
 
   it("«Grandes en plazo» se dibuja como parte de las activas, que es su mismo conjunto", () => {
@@ -338,22 +342,5 @@ describe("AtencionCards", () => {
   it("sin activas no hay proporción que dibujar", () => {
     renderCards({ ...HOY, calientes: 0, total_activas: 0 });
     expect(screen.queryByText(/de las activas/)).not.toBeInTheDocument();
-  });
-
-  it("«Nuevas» enseña bajo la cifra la muestra que trae el endpoint", () => {
-    renderCards(HOY, {
-      ...NOVEDADES,
-      sample: [
-        { id_externo: "N1", titulo: "Servicio de ciberseguridad gestionada", importe: 960000, organo_contratacion: null },
-        { id_externo: "N2", titulo: null, importe: null, organo_contratacion: null },
-      ],
-    });
-    const tarjeta = screen.getByText("Nuevas").closest("a");
-    expect(tarjeta).toHaveTextContent("Servicio de ciberseguridad gestionada");
-    // Sin título, el expediente se nombra por su id y no por «undefined».
-    expect(tarjeta).toHaveTextContent("N2");
-    // Cada fila lleva la barra de importe de la tabla; sin importe, solo el carril.
-    const barras = [...(tarjeta?.querySelectorAll('svg[viewBox="0 0 100 4"]') ?? [])];
-    expect(barras.map((barra) => barra.querySelectorAll("rect").length)).toEqual([2, 1]);
   });
 });
