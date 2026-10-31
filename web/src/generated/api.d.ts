@@ -10411,6 +10411,8 @@ export interface components {
         ItemKit: {
             /** Clave */
             clave: string;
+            /** Descripcion */
+            descripcion?: string | null;
             /**
              * Listo
              * @default false

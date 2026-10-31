@@ -88,6 +88,10 @@ class ItemKit(BaseModel):
     #: sintética se perdería en cada reproceso, dejando el checklist en blanco.
     clave: str
     nombre: str
+    #: Lo que el pliego dice del documento, incluida la condición si solo se
+    #: pide en un caso («si el órgano la exige», «en caso de UTE»). Sin ella,
+    #: un documento condicional se leía en el kit como obligatorio.
+    descripcion: str | None = None
     sobre: EtiquetaSobre
     subsanable: bool | None = None
     listo: bool = False
@@ -218,6 +222,7 @@ def construir_kit(
             ItemKit(
                 clave=clave,
                 nombre=documento.name,
+                descripcion=documento.description,
                 sobre=documento.scope,
                 subsanable=documento.subsanable,
                 listo=bool(marca.get("listo")),

@@ -158,6 +158,14 @@ class TestEstadoDelKit:
         kit = construir_kit("EXP-1", [_doc("DEUC", "sobre_a")])
         assert kit.items[0].subsanable is None
 
+    def test_la_descripcion_viaja_con_su_condicion(self) -> None:
+        """Un documento condicional no puede leerse en el kit como obligatorio."""
+        documento = _doc("Garantía provisional").model_copy(
+            update={"description": "Garantía provisional, si el órgano la exige."}
+        )
+        kit = construir_kit("EXP-1", [documento])
+        assert kit.items[0].descripcion == "Garantía provisional, si el órgano la exige."
+
 
 # ── F2.4 ────────────────────────────────────────────────────────────────────
 

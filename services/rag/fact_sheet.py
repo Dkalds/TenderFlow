@@ -326,6 +326,18 @@ Lista vacía si el pliego no enumera documentos a presentar.
 """.strip()
 
 
+#: Letras que algunos PDFs devuelven cambiadas al extraer el texto, por una
+#: fuente con su propia tabla de caracteres. Medido el 2026-10-31 en el PCAP de
+#: `placsp:10000400045061:IPA 1/27`: «ContendrÆ», «tØcnicas», «Pœblico», «aæos»,
+#: «ECONOM˝A» (más de 1.100 veces), mientras «ó» y «í» salen bien. El modelo
+#: lee la palabra y al citarla la escribe bien («Contendrá el DEUC»), y la cita
+#: no casaba con la página: así se perdía el DEUC del kit. Al comparar, cada
+#: grupo cuenta como la misma letra. «æ» es á o ñ según el PDF, por eso los
+#: tres van juntos. Arreglar el texto guardado es otro ítem del backlog («Hay
+#: PDFs cuyo texto sale con las tildes cambiadas»).
+_LETRAS_CAMBIADAS = str.maketrans({"æ": "á", "ñ": "á", "ø": "é", "œ": "ú", "˝": "í"})
+
+
 def _normalize_quote(value: str) -> str:
     """Clave de comparación de citas: sin mayúsculas y **sin espacios**.
 
@@ -335,8 +347,10 @@ def _normalize_quote(value: str) -> str:
     quita al citar. Con espacios colapsados la fórmula de precio de un pliego
     real se descartaba por ese «( ». Quitar los blancos no deja pasar texto
     inventado: los caracteres tienen que estar todos, en orden.
+
+    Tampoco distingue las letras de :data:`_LETRAS_CAMBIADAS`.
     """
-    return "".join(value.casefold().split())
+    return "".join(value.casefold().translate(_LETRAS_CAMBIADAS).split())
 
 
 #: Elipsis con la que el modelo abrevia una cita larga («el órgano podrá

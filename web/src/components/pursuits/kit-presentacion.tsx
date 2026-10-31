@@ -138,6 +138,11 @@ export function KitPresentacionPanel({
                             >
                               {item.nombre}
                             </label>
+                            {item.descripcion ? (
+                              <p className="text-tf-meta leading-snug text-muted-foreground">
+                                {item.descripcion}
+                              </p>
+                            ) : null}
                             <p className="text-tf-micro text-muted-foreground">
                               {item.subsanable === true ? "Subsanable · " : null}
                               {item.listo && item.marcado_en
