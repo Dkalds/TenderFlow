@@ -39,11 +39,15 @@ import { BarraImporte } from "./ultimas-publicaciones-tabla";
  *
  * Lo que cambia es el reparto. Las cuatro tarjetas eran del mismo tamaño y
  * decían lo mismo —un número y una flecha—, así que la banda no tenía tesis: la
- * más urgente y la más inerte pesaban igual. Ahora la que tiene plazo ocupa dos
- * tercios y **enseña la cola** (`cola-cierre.tsx`); las dos que se consultan de
- * pasada se apilan en el tercio restante con su deep-link intacto; y «Total
- * activas», que no exige ninguna acción hoy, baja a la tira de contexto, que es
- * donde vive el resto de la foto del ámbito.
+ * más urgente y la más inerte pesaban igual. Ahora la que tiene plazo **enseña
+ * la cola** (`cola-cierre.tsx`) y ocupa el alto que sobra; las dos que se
+ * consultan de pasada van encima, lado a lado, con su deep-link intacto; y
+ * «Total activas», que no exige ninguna acción hoy, baja a la tira de
+ * contexto, que es donde vive el resto de la foto del ámbito.
+ *
+ * La banda es la columna derecha de la primera fila del Resumen (2026-10-31):
+ * las tarjetas arriba y la cola debajo, estirada hasta el alto de «Tu día» y
+ * «Desde tu última visita», que van a la izquierda.
  *
  * Las tarjetas no llevan baldosa de icono ni color propio en la cifra: la
  * cifra es el dato (20 px, como un `StatCell`) y el color queda para lo que
@@ -133,7 +137,7 @@ function UrgentCard({ card }: { card: Tarjeta }) {
   );
 }
 
-export function AtencionCards() {
+export function AtencionCards({ className }: { className?: string }) {
   const scopedHref = useScopedHref();
 
   // El fallo se pinta aquí mismo (`PanelError`): sin toast encima. Misma
@@ -246,7 +250,7 @@ export function AtencionCards() {
   ];
 
   return (
-    <section aria-labelledby="resumen-atencion">
+    <section aria-labelledby="resumen-atencion" className={cn("flex flex-col", className)}>
       <h3 id="resumen-atencion" className="sr-only">
         Mercado abierto hoy
       </h3>
@@ -261,19 +265,19 @@ export function AtencionCards() {
         // `grid-cols-1` y no la columna implícita: esa es `auto` y crece hasta el
         // ancho mínimo del contenido, así que a 390 px la banda medía 410 y la
         // cola se salía por la derecha. `minmax(0, 1fr)` la deja en lo que hay.
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        // La segunda fila es la cola: se queda con el alto que sobra.
+        <div className="grid flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {cards.map((card) => (
+              <UrgentCard key={card.key} card={card} />
+            ))}
+          </div>
           <ColaCierre
-            className="lg:col-span-2"
             total={data?.vencen_48h}
             loading={hoy.isLoading}
             href={scopedHref(vencenHref)}
             target="Abre Detalle: cierran en 48 h"
           />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
-            {cards.map((card) => (
-              <UrgentCard key={card.key} card={card} />
-            ))}
-          </div>
         </div>
       )}
     </section>

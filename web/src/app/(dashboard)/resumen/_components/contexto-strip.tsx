@@ -33,13 +33,12 @@ import { Proporcion } from "./cifras-graficos";
  * cada una de una sola petición, y el prefetch en servidor
  * (`_lib/prefetch.ts`) las hidrata.
  *
- * **Sin rótulo ni dibujo propio.** La tira abre el grupo del periodo en
- * `resumen-view.tsx`, justo encima del ritmo de publicaciones y de los
- * movimientos: es su resumen en cifras. Bajo «Publicadas 30 d» e «Importe
- * 30 d» llevaba un área con la misma serie diaria que el gráfico de barras
- * pintaba un palmo más abajo, así que salió. La composición por estado y el
- * reparto por comunidad, que vivían en esta sección, son ahora un bloque
- * propio al final de la zona: son la foto del ámbito, no el pulso del mes.
+ * **Sin rótulo ni dibujo propio.** La tira abre la fila del periodo en
+ * `resumen-view.tsx`, justo encima del gráfico de publicaciones: es su resumen
+ * en cifras. Bajo «Publicadas 30 d» e «Importe 30 d» llevaba un área con la
+ * misma serie diaria que el gráfico de barras pintaba un palmo más abajo, así
+ * que salió. La composición por estado y el reparto por comunidad van en la
+ * misma fila, a la derecha: son la foto del ámbito, no el pulso del mes.
  */
 export function ContextoStrip() {
   const scopedHref = useScopedHref();
