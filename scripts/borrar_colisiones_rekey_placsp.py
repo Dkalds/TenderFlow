@@ -8,7 +8,9 @@ vieja. `v164_identidad_placsp_rekey` aborta mientras exista el destino de
 alguna fila de su mapa. La fila vieja se queda (historial, datos de usuario) y
 la nueva se borra: la reingesta vuelve a traer lo que tenía de más reciente.
 Las que tengan pursuits, follows o watchlist **no se borran**: se listan para
-decidirlas a mano.
+decidirlas a mano. Con `--aplicar` borra además las filas de `mat_clusters`
+cuya licitación ya no existe: su clave es el id y `v164` abortaba al repuntar
+(run 41164414325 del 2026-10-31).
 
 El mapa solo incluye filas viejas con `organo_ref_fuente`, así que esto se
 corre **después** del relleno (`scripts/rellenar_organo_ref_placsp.py`).
@@ -38,7 +40,9 @@ from collections import Counter
 
 from db.repositories.identidad import (
     borrar_licitaciones_en_colision,
+    borrar_mat_clusters_huerfanos,
     colisiones_del_rekey_placsp,
+    contar_mat_clusters_huerfanos,
     filas_placsp_sin_organo_ref,
 )
 from observability import configure_logging
@@ -78,12 +82,14 @@ def main(argv: list[str] | None = None) -> int:
             )
         borrables += [f["id_externo"] for f in sin_organo]
 
+    print(f"mat_clusters huérfanos (se borran)        : {contar_mat_clusters_huerfanos()}")
     if not args.aplicar:
         print(f"A borrar (sin datos de usuario)           : hasta {len(borrables)}")
         print("\n(plan: no se ha borrado nada; repetir con --aplicar)")
         return 0
     borradas = borrar_licitaciones_en_colision(borrables)
     print(f"Borradas                                  : {borradas}")
+    print(f"mat_clusters huérfanos borrados           : {borrar_mat_clusters_huerfanos()}")
     return 0
 
 

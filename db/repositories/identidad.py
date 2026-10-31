@@ -48,8 +48,10 @@ __all__ = [
     "IdResuelto",
     "ResumenPisadas",
     "borrar_licitaciones_en_colision",
+    "borrar_mat_clusters_huerfanos",
     "colisiones_del_rekey_placsp",
     "contar_expedientes_que_conviven",
+    "contar_mat_clusters_huerfanos",
     "contar_placsp_sin_organo_ref",
     "filas_placsp_sin_organo_ref",
     "ids_anteriores_de",
@@ -417,9 +419,13 @@ def borrar_licitaciones_en_colision(ids: Sequence[str]) -> int:
     la fila vieja se queda (tiene el historial y los datos de usuario) y la
     reingesta vuelve a traer lo que la nueva tenía de más reciente. Las hijas
     con ``ON DELETE CASCADE`` se van con ella; ``licitaciones_history`` y
-    ``resoluciones_recurso`` no la tienen y se limpian antes. Las columnas sin
-    FK (eventos, notificaciones) quedan con el id, que ``v164`` da enseguida a
-    la fila vieja del mismo expediente. Una transacción: si algo falla, nada.
+    ``resoluciones_recurso`` no la tienen y se limpian antes. ``mat_clusters``
+    tampoco tiene FK pero su clave es el id: una fila huérfana choca con la de
+    la vieja cuando ``v164`` la repunta (run 41164414325 del 2026-10-31), así
+    que se borra; la recalcula entera ``scheduler/aggregates_precompute.py``.
+    Las demás columnas sin FK (eventos, notificaciones) no son únicas y quedan
+    con el id, que ``v164`` da enseguida a la fila vieja del mismo expediente.
+    Una transacción: si algo falla, nada.
     """
     if not ids:
         return 0
@@ -442,5 +448,32 @@ def borrar_licitaciones_en_colision(ids: Sequence[str]) -> int:
             "UPDATE resoluciones_recurso SET licitacion_id = NULL WHERE licitacion_id = ANY(%s)",
             (borrables,),
         )
+        c.execute("DELETE FROM mat_clusters WHERE id_externo = ANY(%s)", (borrables,))
         cur = c.execute("DELETE FROM licitaciones WHERE id_externo = ANY(%s)", (borrables,))
+        return cur.rowcount or 0
+
+
+_MAT_CLUSTERS_HUERFANOS_SQL = (
+    "FROM mat_clusters m "
+    "WHERE NOT EXISTS (SELECT 1 FROM licitaciones l WHERE l.id_externo = m.id_externo)"
+)
+
+
+def contar_mat_clusters_huerfanos() -> int:
+    """Filas de ``mat_clusters`` cuya licitación ya no existe (ver :func:`borrar_mat_clusters_huerfanos`)."""
+    with connect_read() as c:
+        fila = c.execute(f"SELECT count(*) {_MAT_CLUSTERS_HUERFANOS_SQL}").fetchone()
+    return int(fila[0]) if fila else 0
+
+
+def borrar_mat_clusters_huerfanos() -> int:
+    """Borra las filas de ``mat_clusters`` cuya licitación ya no existe. Devuelve cuántas.
+
+    Las dejó el primer borrado de colisiones (2026-10-31), anterior a que
+    :func:`borrar_licitaciones_en_colision` limpiara esta tabla: 5.714 filas
+    con la clave nueva por las que ``v164`` abortaba con ``mat_clusters_pkey``.
+    Es una caché que el precálculo de agregados reescribe entera.
+    """
+    with connect() as c:
+        cur = c.execute(f"DELETE {_MAT_CLUSTERS_HUERFANOS_SQL}")
         return cur.rowcount or 0
