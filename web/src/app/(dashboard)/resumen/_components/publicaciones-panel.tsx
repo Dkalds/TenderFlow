@@ -11,6 +11,7 @@ import {
   panelDePestana,
 } from "@/components/console/panel";
 import { usePublicaciones } from "../_hooks/use-publicaciones";
+import { CifrasPeriodo } from "./cifras-periodo";
 import { ImportesHistograma } from "./publicaciones/importes-histograma";
 import { ALTO, HINTS, TABS, type Corte } from "./publicaciones/publicaciones-data";
 
@@ -82,6 +83,8 @@ export function PublicacionesPanel() {
       {/* `h3`: un apartado de la zona de mercado (`h2`), al nivel de los
           movimientos y de la tabla; así lo lee el lector de encabezados. */}
       <PanelTitle as="h3" title="Publicaciones en el periodo" hint={HINTS[corte]} />
+      {/* El resumen en cifras del mes, encima de lo que dibuja. */}
+      <CifrasPeriodo className="mb-3" />
       <div className="mb-2.5">
         <PanelTabs
           tabs={TABS}

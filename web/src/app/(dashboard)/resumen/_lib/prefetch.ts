@@ -12,7 +12,7 @@ import type { ConsultaServidor } from "@/lib/server-prefetch";
  * `lib/server-prefetch.ts`, regla 2).
  *
  * La clave se construye con las mismas funciones que `useFilteredQuery`, y la
- * `baseKey` y la URL son las de `contexto-strip.tsx`, `atencion-cards.tsx` y
+ * `baseKey` y la URL son las de `cifras-periodo.tsx`, `atencion-cards.tsx` y
  * `composicion-panel.tsx`: si una de esas llamadas cambia, el test de
  * `resumen/_lib/__tests__/prefetch.test.tsx` deja de encontrar la clave.
  */

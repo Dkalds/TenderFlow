@@ -47,10 +47,11 @@ import { semanaEnCarriles } from "./tu-dia-semana-data";
  * backend. Cuatro filas en lista no decían si el viernes venía cargado; un
  * carril por día sí, y de un vistazo.
  *
- * **Plegada por defecto** (2026-10-31). La banda vive ahora en la columna
- * izquierda de la primera fila, junto al mercado de hoy, y los carriles medían
- * 260 px: empujaban «Desde tu última visita» y todo el mercado fuera de la
- * primera pantalla. Los contadores ya dicen cuánto hay; «Ver la semana» abre
+ * **Plegada por defecto** (2026-10-31). La banda es la mitad izquierda de la
+ * primera fila, junto a la tira del mercado de hoy, y los carriles medían
+ * 260 px: empujaban la cola de cierre y todo lo demás fuera de la primera
+ * pantalla. Por la misma mitad, el pie de cada contador es corto: en un cuarto
+ * de media pantalla, una frase se cortaba en puntos suspensivos. Los contadores ya dicen cuánto hay; «Ver la semana» abre
  * qué, y la Agenda sigue siendo la pantalla completa.
  *
  * **Cada contador lleva sus puntos** (`cifras-graficos.tsx`): un cuadrado por
@@ -154,7 +155,7 @@ export function TuDia() {
               hint={
                 cifras && cifras.plazos > 0
                   ? `${formatCompactCurrency(cifras.plazosImporte)} en juego`
-                  : "Oportunidades que aún se pueden presentar"
+                  : "aún a tiempo de presentar"
               }
             />
             <StatCell
@@ -162,14 +163,14 @@ export function TuDia() {
               loading={isPending}
               value={cifras ? formatNumber(cifras.acciones) : EMPTY}
               grafico={cifras && <PuntosUnidad n={cifras.acciones} />}
-              hint="Tareas propias con fecha pasada o de hoy"
+              hint="tareas propias"
             />
             <StatCell
               label="Go/No-Go pendientes"
               loading={isPending}
               value={cifras ? formatNumber(cifras.goNoGo) : EMPTY}
               grafico={cifras && <PuntosUnidad n={cifras.goNoGo} />}
-              hint="Sin decisión tomada"
+              hint="sin decisión tomada"
             />
             <StatCell
               label="Sin próxima acción"
@@ -177,7 +178,7 @@ export function TuDia() {
               value={cifras ? formatNumber(cifras.sinAccion) : EMPTY}
               tono={cifras && cifras.sinAccion > 0 ? "warning" : undefined}
               grafico={cifras && <PuntosUnidad n={cifras.sinAccion} tono="warning" />}
-              hint="Oportunidades sin tarea abierta"
+              hint="sin tarea abierta"
             />
             </StatStrip>
 
