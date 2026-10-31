@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import {
   Aviso,
   EnlaceIr,
@@ -10,7 +11,7 @@ import {
   StatStrip,
   SUPERFICIE_PANEL,
 } from "@/components/console/panel";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { useFilters } from "@/lib/filters";
 import { cn, EMPTY, formatCompactCurrency, formatNumber } from "@/lib/utils";
 import { type AgendaBanda, bandaDe } from "@/app/(dashboard)/mi-pipeline/_components/agenda/agenda-meta";
@@ -46,6 +47,12 @@ import { semanaEnCarriles } from "./tu-dia-semana-data";
  * backend. Cuatro filas en lista no decían si el viernes venía cargado; un
  * carril por día sí, y de un vistazo.
  *
+ * **Plegada por defecto** (2026-10-31). La banda vive ahora en la columna
+ * izquierda de la primera fila, junto al mercado de hoy, y los carriles medían
+ * 260 px: empujaban «Desde tu última visita» y todo el mercado fuera de la
+ * primera pantalla. Los contadores ya dicen cuánto hay; «Ver la semana» abre
+ * qué, y la Agenda sigue siendo la pantalla completa.
+ *
  * **Cada contador lleva sus puntos** (`cifras-graficos.tsx`): un cuadrado por
  * compromiso contado, en el tono de la cifra. Son recuentos pequeños, y «tres»
  * frente a «diecisiete» se ve antes de leer el número.
@@ -75,6 +82,7 @@ export function TuDia() {
   // eslint-disable-next-line react-hooks/purity
   const hoy = useMemo(() => new Date(Date.now()), []);
   const tramos = useMemo(() => semanaEnCarriles(urgentes, hoy), [urgentes, hoy]);
+  const [verSemana, setVerSemana] = useState(false);
 
   // Los contadores de la franja de la Agenda, que miran solo las oportunidades
   // vivas. Una API anterior a ellos no los manda: ahí se enseñan los de
@@ -99,7 +107,27 @@ export function TuDia() {
         id="resumen-tu-dia"
         title="Tu día"
         hint="de tu organización"
-        actions={<EnlaceIr href="/mi-pipeline?vista=agenda">Abrir agenda</EnlaceIr>}
+        actions={
+          <span className="flex items-center gap-2">
+            {urgentes.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-expanded={verSemana}
+                aria-controls="resumen-tu-dia-semana"
+                onClick={() => setVerSemana((abierta) => !abierta)}
+              >
+                {verSemana ? "Ocultar la semana" : `Ver la semana · ${formatNumber(urgentes.length)}`}
+                <ChevronDown
+                  className={cn("transition-transform duration-150", verSemana && "rotate-180")}
+                  aria-hidden="true"
+                />
+              </Button>
+            )}
+            <EnlaceIr href="/mi-pipeline?vista=agenda">Abrir agenda</EnlaceIr>
+          </span>
+        }
         className="mb-2.5"
       />
 
@@ -176,7 +204,7 @@ export function TuDia() {
             {/* Una semana sin nada es una línea, no un panel de 150 px: con los
                 cuatro contadores a cero encima, el vacío ya está dicho, y el
                 panel grande empujaba el mercado media pantalla abajo. */}
-            {!isPending && urgentes.length === 0 ? (
+            {!isPending && urgentes.length === 0 && (
               <div
                 className={cn(
                   SUPERFICIE_PANEL,
@@ -195,17 +223,11 @@ export function TuDia() {
                   Buscar oportunidades en el Radar
                 </EnlaceIr>
               </div>
-            ) : (
-              <div className={cn(SUPERFICIE_PANEL, "min-w-0 p-2.5")}>
-                {isPending ? (
-                  <div className="flex flex-col gap-2 md:flex-row">
-                    {Array.from({ length: 4 }, (_, index) => (
-                      <Skeleton key={index} className="h-28 w-full rounded-lg" />
-                    ))}
-                  </div>
-                ) : (
-                  <SemanaEnCarriles tramos={tramos} />
-                )}
+            )}
+
+            {verSemana && urgentes.length > 0 && (
+              <div id="resumen-tu-dia-semana" className={cn(SUPERFICIE_PANEL, "min-w-0 p-2.5")}>
+                <SemanaEnCarriles tramos={tramos} />
               </div>
             )}
           </div>

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { PipelineAgenda, PipelineAgendaItem } from "@/hooks/use-pursuits";
 
 /**
@@ -102,9 +102,23 @@ describe("TuDia", () => {
     expect(within(celda("Sin próxima acción")).getByText("2")).toBeInTheDocument();
   });
 
+  it("la semana abre plegada y se despliega bajo demanda", () => {
+    agendaState.data = payload({ items: [item({})] });
+    render(<TuDia />);
+
+    const boton = screen.getByRole("button", { name: /Ver la semana · 1/ });
+    expect(boton).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("link", { name: /Mantenimiento S\/4/ })).toBeNull();
+
+    fireEvent.click(boton);
+    expect(screen.getByRole("button", { name: "Ocultar la semana" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("link", { name: /Mantenimiento S\/4/ })).toBeInTheDocument();
+  });
+
   it("un plazo pasado no entra en la semana como vencido", () => {
     agendaState.data = payload({ items: [item({}), PASADO] });
     render(<TuDia />);
+    fireEvent.click(screen.getByRole("button", { name: /Ver la semana/ }));
 
     expect(screen.getByRole("link", { name: /Mantenimiento S\/4/ })).toBeInTheDocument();
     expect(screen.queryByText("Soporte Basis del SMS")).toBeNull();

@@ -76,9 +76,9 @@ export function PublicacionesPanel() {
   }, []);
 
   return (
-    // En columna: el corte ocupa el alto que sobra cuando «Movimientos», al
-    // lado, es más alto, y el panel no deja un hueco debajo.
-    <Panel className="flex flex-col">
+    // En columna: el corte ocupa el alto que sobra cuando la composición o el
+    // mapa, al lado, son más altos, y el panel no deja un hueco debajo.
+    <Panel className="flex flex-1 flex-col">
       {/* `h3`: un apartado de la zona de mercado (`h2`), al nivel de los
           movimientos y de la tabla; así lo lee el lector de encabezados. */}
       <PanelTitle as="h3" title="Publicaciones en el periodo" hint={HINTS[corte]} />

@@ -20,15 +20,19 @@ export const TABS: { key: Corte; label: string }[] = [
   { key: "dispersion", label: "Dispersión" },
 ];
 
-/** Alto común de los tres cortes: cambiar de pestaña no debe mover la página. */
-export const ALTO = 288;
+/**
+ * Alto común de los tres cortes: cambiar de pestaña no debe mover la página.
+ * Bajó de 288 a 224 con el Resumen compacto (2026-10-31): el panel comparte
+ * fila con la composición y el mapa, y su alto marca el de la fila.
+ */
+export const ALTO = 224;
 
 /**
  * El mismo alto como mínimo, en clase: el gráfico crece hasta el alto de la
- * columna de «Movimientos» cuando esta es más alta, en vez de dejar un hueco
- * bajo el panel, y nunca baja de `ALTO`.
+ * fila cuando la composición o el mapa de al lado son más altos, en vez de
+ * dejar un hueco bajo el panel, y nunca baja de `ALTO`.
  */
-export const ALTO_MINIMO = "min-h-[288px]";
+export const ALTO_MINIMO = "min-h-[224px]";
 
 export const HINTS: Record<Corte, string> = {
   ritmo: "por día · pulsa una barra para acotar el ámbito a ese día",
@@ -38,9 +42,7 @@ export const HINTS: Record<Corte, string> = {
 
 /** «desde el 27 jul 2026» / «entre el 1 jul y el 31 jul de 2026». */
 export function ventanaLabel(desde: string, hasta: string | null): string {
-  return hasta
-    ? `entre el ${formatDate(desde)} y el ${formatDate(hasta)}`
-    : `desde el ${formatDate(desde)}`;
+  return hasta ? `entre el ${formatDate(desde)} y el ${formatDate(hasta)}` : `desde el ${formatDate(desde)}`;
 }
 
 export interface PuntoScatter {
