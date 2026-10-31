@@ -580,10 +580,10 @@ _Sin ítems abiertos._
 
 ### [P1] Poner en producción la rama `claude/funcionalidades-2026-10` (acción del propietario)
 - **Área:** db/alembic/versions (v147–v149), `.github/workflows/scrape-daily.yml`, variables de repo
-- **Problema:** la rama trae funciones que no se ven hasta que alguien las enciende fuera del código: tres migraciones, un cambio de workflow aprobado el 2026-10-12, y la ficha nocturna del pliego, que sigue apagada por coste.
+- **Problema:** la rama trae funciones que no se ven hasta que alguien las enciende fuera del código: tres migraciones, un cambio de workflow aprobado el 2026-10-12, y la ficha nocturna del pliego (encendida desde el 2026-08-14; ver D52).
 - **Acceptance criteria:**
   - v147 (tipo de documento acreditativo), v148 (condiciones oficiales de CODICE) y v149 (el ledger de oportunidades deja borrar la organización) aplicadas con `plan` antes de `apply` ([runbooks/disaster-recovery.md §5](runbooks/disaster-recovery.md)); `/health/ready → schema: ok`. v149 toca el trigger de un registro inmutable: revisar su test antes.
-  - Decidida la variable de repo `PLIEGO_FACTS_ENABLED`: con ella a `true`, `pliegos.yml` extrae la ficha de los expedientes abiertos cada noche (gasto acotado por el presupuesto LLM y `PLIEGO_FACTS_BATCH`); sin ella, lotes, criterios y solvencia del pliego solo aparecen al abrir una oportunidad. La publicación oficial de CODICE (v148) no depende de esto.
+  - Decidida la variable de repo `PLIEGO_FACTS_ENABLED`: con ella a `true`, `pliegos.yml` extrae la ficha de los expedientes abiertos cada noche (gasto acotado por el presupuesto LLM y `PLIEGO_FACTS_BATCH`); sin ella, lotes, criterios y solvencia del pliego solo aparecen al abrir una oportunidad. La publicación oficial de CODICE (v148) no depende de esto. *Hecho:* estaba a `true` desde el 2026-08-14 (corrección del plan 2026-10, D52); el coste y el tope siguen en [COSTES.md §5.1](COSTES.md).
   - Comprobado que `domain_events_pending` baja tras el primer cierre con el despachador (ver el cerrado del 2026-10-12).
   - Tras el primer deploy: el P0 del ATOM y el P1 de los pliegos de PSCP verificados con datos.
 - **Estado (2026-10-15):** fusionada como `e8889a0` (#471) y en producción. El

@@ -269,7 +269,7 @@ tests de integración, los E2E y el fuzz quedan para CI.
 | V3 | **hecho** | `services/ml/senal_clasificador.py`. El Radar ya no leía `ml_proba` (el orden cambia 0); la cola de etiquetado y `/explain` declaran `senal_clasificador.validada=false` |
 | V4 | propietario | Golden set: 27 etiquetados de ≥ 60 |
 | B1 | **hecho en código** | `asegurar_alerta_por_defecto` al guardar los ajustes; una regla diaria por tecnología (≤ 5), idempotente y con baja definitiva; `scripts/crear_alertas_por_defecto.py` (dry-run, `--aplicar`). CU-04 |
-| B2 | **hecho en código** | Nivel «abierta con plazo que casa con una regla» en `list_pending_licitaciones`; COSTES.md §5.1 con la fórmula y la cota (≤ 0,05 USD por ficha). Vacío hasta que existan reglas (B1) |
+| B2 | **hecho en código** | Nivel «abierta con plazo que casa con una regla» en `list_pending_licitaciones`; COSTES.md §5.1 con la fórmula y la cota (≤ 0,075 USD por ficha desde `tender-facts-v7`); cada corrida deja `facts.coste_usd` y `facts.coste_usd_por_ficha` en su log. Vacío hasta que existan reglas (B1) |
 | B3 | **hecho en código** | `services/email_digest.py` + `services/digest_pliego.py`: plazo, base (ADR-032), hasta tres requisitos de solvencia y veredicto del checklist; golden `tests/fixtures/golden_resumen_diario.txt`. El envío real depende de O0.1 |
 | B4 | **hecho** | La oportunidad abre en el checklist; la matriz pasa a `matriz-plegada.tsx` y solo se descarga al abrirla. CU-06 |
 | B5 | **hecho** | Pasos `capacidad` / `alerta` / `pursuit` en `components/onboarding/pasos.ts`. CU-34 |

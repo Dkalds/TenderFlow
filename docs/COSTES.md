@@ -116,7 +116,7 @@ y cada factor sale de algo que el código ya mide o declara:
 | Factor | De dónde sale | Cómo leerlo |
 |---|---|---|
 | Fichas por noche | Tope: `PLIEGO_FACTS_BATCH` (25) y `PLIEGO_FACTS_MAX_SECONDS` (1800 s), una corrida al día (`cron: "0 9 * * *"`). Real: `counts["procesadas"]` del log del job, o la tabla | `SELECT left(updated_at::text, 10) AS dia, count(*) FROM tender_fact_sheets WHERE updated_at::text >= to_char(now() - interval '30 days', 'YYYY-MM-DD') GROUP BY 1 ORDER BY 1` |
-| Coste por ficha | `llm/client.py::_record_usage`: tokens de entrada y salida × `_PRICE_PER_MTOK[modelo]`. Lo mismo alimenta `llm_cost_usd_total` y el acumulador del `BudgetGuard` | Con `REDIS_URL` en `pliegos.yml`: diferencia de la clave `llm:budget:daily:<AAAA-MM-DD>` antes y después de la corrida, dividida entre `procesadas`. Sin Redis el acumulador arranca de cero en cada corrida y no sirve para medir |
+| Coste por ficha | `llm/client.py::_record_usage`: tokens de entrada y salida × `_PRICE_PER_MTOK[modelo]`. Lo mismo alimenta `llm_cost_usd_total` y el acumulador del `BudgetGuard` | En el log de cada corrida de `pliegos.yml`, línea `documentos_embeddings_job_done`: `facts.coste_usd` (el lote) y `facts.coste_usd_por_ficha` (entre `procesadas`; una ficha fallida cobra y no divide). Salen de restar el gasto mensual del `BudgetGuard` antes y después del lote, así que valen con o sin Redis; con Redis compartido incluyen lo que gaste `/ask` en esos minutos. Si el acumulador no se puede leer, los dos campos no aparecen |
 | Cota superior por ficha | `services/rag/fact_sheet.py`: `_MAX_CONTEXT_CHARS` (56 000) + la plantilla de extracción (≤ `MAX_INTERNAL_QUESTION_LEN`, 12 000) de entrada, ≤ `_MAX_OUTPUT_TOKENS` (8 000) de salida; más la pasada de documentos, `_DOC_MAX_CONTEXT_CHARS` (32 000) de entrada y ≤ `_DOC_MAX_OUTPUT_TOKENS` (4 000) de salida | Con `nvidia/nemotron-3-ultra-550b-a55b` a su precio **nocional** (0,90 / 3,60 USD por millón): ~20 000 tokens de entrada y 8 000 de salida dan ≤ 0,05 USD; la pasada de documentos (~9 000 y 4 000) suma ≤ 0,025: **≤ 0,075 USD por ficha** |
 
 Medido el 2026-10-26 (MCP de solo lectura): del 2026-09-26 al 2026-10-19 salieron
@@ -145,8 +145,8 @@ pagan, no cuántas: el número lo sigue fijando `PLIEGO_FACTS_BATCH`.
 
 | Concepto | Valor |
 |---|---|
-| Coste por ficha medido (USD, con fecha) | **por medir** tras la primera semana con Redis compartido |
-| Gasto mensual medido (USD, con fecha) | **por medir** |
+| Coste por ficha medido (USD, con fecha) | **por medir**: media de `facts.coste_usd_por_ficha` de las siete primeras corridas con el lote lleno |
+| Gasto mensual medido (USD, con fecha) | **por medir**: suma de `facts.coste_usd` de las corridas del mes |
 | **Tope mensual acordado para la ficha nocturna** | **por fijar — lo decide el propietario (D52)** |
 | Qué se hace al alcanzarlo | **por fijar** (bajar `PLIEGO_FACTS_BATCH`, o `PLIEGO_FACTS_ENABLED=false`) |
 

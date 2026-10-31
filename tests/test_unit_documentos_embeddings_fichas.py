@@ -253,6 +253,69 @@ class TestTopeDeRelojDeLasFichas:
 
 
 @pytest.mark.usefixtures("fase_activada")
+class TestElLoteDejaSuCosteEnElLog:
+    """COSTES.md §5.1: el coste por ficha sale del log de cada corrida, sin leer Redis a mano."""
+
+    def _correr(self, guard: Any, coste_por_ficha: float, ids: list[str]) -> dict[str, Any]:
+        fichas = MagicMock()
+        fichas.list_pending_licitaciones.return_value = ids
+
+        def extraer(licitacion_id: str, **_: Any) -> MagicMock:
+            guard.record(coste_por_ficha)
+            if licitacion_id.endswith("ROTA"):
+                raise ValueError("El extractor no devolvió un objeto JSON")
+            return MagicMock(status="extracted")
+
+        with (
+            patch(
+                "db.repositories.tender_fact_sheets.TenderFactSheetsRepository",
+                return_value=fichas,
+            ),
+            patch("services.rag.fact_sheet.extract_fact_sheet", side_effect=extraer),
+            patch("services.tech_signal.ingest_llm_technologies"),
+            patch("llm.budget.get_budget_guard", return_value=guard),
+        ):
+            return _run_facts_phase(limit=len(ids))
+
+    @pytest.fixture()
+    def guard(self, monkeypatch: pytest.MonkeyPatch) -> Any:
+        from llm.budget import BudgetGuard
+
+        monkeypatch.setattr(settings, "REDIS_URL", "", raising=False)
+        acumulador = BudgetGuard(daily_limit_usd=0, monthly_limit_usd=0)
+        acumulador.record(1.25)  # lo que ya llevaba el mes (`/ask` y corridas previas)
+        return acumulador
+
+    def test_el_coste_es_solo_el_del_lote(self, guard: Any) -> None:
+        counts = self._correr(guard, 0.05, ["EXP-C1", "EXP-C2", "EXP-C3", "EXP-C4"])
+
+        assert counts["coste_usd"] == pytest.approx(0.2)
+        assert counts["coste_usd_por_ficha"] == pytest.approx(0.05)
+
+    def test_una_ficha_fallida_cuenta_en_el_coste_pero_no_divide(self, guard: Any) -> None:
+        """El modelo cobró la llamada aunque la ficha no saliera: el coste por ficha sube."""
+        counts = self._correr(guard, 0.06, ["EXP-C1", "EXP-ROTA"])
+
+        assert counts["error"] == 1
+        assert counts["coste_usd"] == pytest.approx(0.12)
+        assert counts["coste_usd_por_ficha"] == pytest.approx(0.12)
+
+    def test_sin_fichas_hechas_no_hay_coste_por_ficha(self, guard: Any) -> None:
+        counts = self._correr(guard, 0.0, [])
+
+        assert counts["coste_usd"] == 0
+        assert "coste_usd_por_ficha" not in counts
+
+    def test_si_el_acumulador_no_se_lee_el_lote_sigue_sin_coste(self) -> None:
+        roto = MagicMock()
+        roto.spent.side_effect = RuntimeError("Redis caído")
+        counts = self._correr(roto, 0.05, ["EXP-C1"])
+
+        assert counts["procesadas"] == 1
+        assert "coste_usd" not in counts
+
+
+@pytest.mark.usefixtures("fase_activada")
 class TestLoQueCasaConReglasVaDetrasDeLaDemanda:
     """D52: la fase pasa al selector lo abierto que casa con alguna regla."""
 

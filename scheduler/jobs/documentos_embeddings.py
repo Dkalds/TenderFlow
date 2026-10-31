@@ -78,6 +78,26 @@ def _presupuesto_agotado(inicio: float, max_seconds: float | None) -> bool:
     return time.monotonic() - inicio >= max_seconds
 
 
+def _gasto_llm_mes() -> float | None:
+    """Gasto LLM nocional del mes según el ``BudgetGuard``; ``None`` si no se puede leer.
+
+    La fase de fichas resta este valor antes y después del lote para dejar su
+    coste en el log de cada corrida (COSTES.md §5.1). Sin esto, medir el coste
+    por ficha exigía leer a mano la clave de Redis antes y después del cron.
+
+    shortcut: con Redis compartido la resta incluye lo que gaste ``/ask`` en los
+    mismos minutos (hoy, casi nada); si el asistente crece, medir por un
+    acumulador propio de la fase.
+    """
+    try:
+        from llm.budget import get_budget_guard
+
+        return float(get_budget_guard().spent("monthly"))
+    except Exception:
+        log.warning("documentos_facts_gasto_no_legible", exc_info=True)
+        return None
+
+
 def _marcar_error_inesperado(repo: Any, doc: Mapping[str, Any], exc: Exception) -> None:
     """Saca de ``pending`` un documento que falló fuera de los casos previstos.
 
@@ -328,9 +348,14 @@ def _abiertas_que_casan_reglas() -> list[str]:
         return []
 
 
+# Contadores enteros de la fase de fichas más la causa textual del corte, si lo
+# hubo, y su coste en USD (float): por eso no es ``dict[str, int]``.
+_ConteoFichas = dict[str, Any]
+
+
 def _run_facts_phase(
     limit: int = _FACTS_BATCH_SIZE, max_seconds: float | None = None
-) -> dict[str, Any]:
+) -> _ConteoFichas:
     """Extrae fichas tipadas; fail-open por licitación y con gate de gasto.
 
     Las excepciones son los dos fallos que se repetirían idénticos en todo lo
@@ -345,8 +370,7 @@ def _run_facts_phase(
     """
     from config import settings
 
-    # Any: contadores enteros más la causa textual del corte, si lo hubo.
-    counts: dict[str, Any] = {
+    counts: _ConteoFichas = {
         "procesadas": 0,
         "needs_review": 0,
         "error": 0,
@@ -358,9 +382,7 @@ def _run_facts_phase(
         return counts
 
     from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
-    from llm.providers import LLMAuthError, LLMModelUnavailableError
-    from services.rag.fact_sheet import EXTRACTION_VERSION, extract_fact_sheet
-    from services.tech_signal import ingest_llm_technologies
+    from services.rag.fact_sheet import EXTRACTION_VERSION
 
     repo = TenderFactSheetsRepository()
     casan_regla = _abiertas_que_casan_reglas()
@@ -368,6 +390,33 @@ def _run_facts_phase(
     pendientes = repo.list_pending_licitaciones(
         extraction_version=EXTRACTION_VERSION, limit=limit, casan_regla=casan_regla
     )
+    gasto_inicial = _gasto_llm_mes()
+    try:
+        _extraer_lote(counts, pendientes, max_seconds)
+    finally:
+        _anotar_coste(counts, gasto_inicial)
+    return counts
+
+
+def _anotar_coste(counts: _ConteoFichas, gasto_inicial: float | None) -> None:
+    """Deja en ``counts`` el coste nocional del lote y el de cada ficha (COSTES.md §5.1)."""
+    gasto_final = _gasto_llm_mes()
+    if gasto_inicial is None or gasto_final is None or gasto_final < gasto_inicial:
+        # Sin lectura, o el mes rotó a mitad de lote: mejor sin dato que uno falso.
+        return
+    coste = gasto_final - gasto_inicial
+    counts["coste_usd"] = round(coste, 4)
+    if counts["procesadas"]:
+        counts["coste_usd_por_ficha"] = round(coste / counts["procesadas"], 4)
+
+
+def _extraer_lote(counts: _ConteoFichas, pendientes: list[str], max_seconds: float | None) -> None:
+    """Recorre el lote de ``_run_facts_phase`` y acumula el resultado en ``counts``."""
+    from config import settings
+    from llm.providers import LLMAuthError, LLMModelUnavailableError
+    from services.rag.fact_sheet import extract_fact_sheet
+    from services.tech_signal import ingest_llm_technologies
+
     inicio = time.monotonic()
     for posicion, licitacion_id in enumerate(pendientes):
         if _presupuesto_agotado(inicio, max_seconds):
@@ -434,7 +483,6 @@ def _run_facts_phase(
                 error=str(exc),
                 exc_info=True,
             )
-    return counts
 
 
 def facts_failed_systemically(counts: Mapping[str, object]) -> bool:
