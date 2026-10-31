@@ -33,6 +33,9 @@ vi.mock("../../_hooks/use-publicaciones", () => ({
     acotarADia: () => undefined,
   }),
 }));
+// Las cifras del mes leen su propia consulta (`/analytics/overview`): fuera
+// del alcance de lo que aquí se mide.
+vi.mock("../cifras-periodo", () => ({ CifrasPeriodo: () => null }));
 vi.mock("../publicaciones/ritmo-chart", () => {
   h.descargados.add("ritmo");
   return { RitmoChart: () => <p>gráfico de ritmo</p> };

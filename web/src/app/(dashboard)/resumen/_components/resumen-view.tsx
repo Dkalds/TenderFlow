@@ -7,12 +7,12 @@ import {
   ScrollEdgeSentinel,
 } from "@/components/layout/scroll-edge";
 import { BarraAsistente } from "@/components/asistente/barra-asistente";
+import { PanelTitle } from "@/components/console/panel";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { TuDia } from "./tu-dia";
 import { DesdeUltimaVisita } from "./desde-ultima-visita";
 import { PrimerosPasos } from "./primeros-pasos";
-import { AtencionCards } from "./atencion-cards";
-import { ContextoStrip } from "./contexto-strip";
+import { AtencionCards, ColaCierreHoy } from "./atencion-cards";
 import { PublicacionesPanel } from "./publicaciones-panel";
 import { UltimasPublicaciones } from "./ultimas-publicaciones";
 import { EventosFeed } from "./eventos-feed";
@@ -25,23 +25,26 @@ import { ComunidadesPanel } from "./comunidades-panel";
  * `page.tsx` de servidor la envuelve con el prefetch de sus primeros datos.
  *
  * La página va **de dentro hacia fuera**, y desde 2026-10-31 en una rejilla
- * compacta en vez de diez bandas apiladas (unos 3.400 px a 1920 de ancho, que
- * pedían tres pantallas de scroll para ver la foto entera):
+ * compacta de cuatro filas en vez de diez bandas apiladas (unos 3.400 px a
+ * 1920 de ancho, que pedían tres pantallas de scroll para ver la foto entera).
+ * Es el diseño aprobado del Resumen compacto:
  *
- * 1. **Arriba, lo tuyo junto al mercado de hoy.** A la izquierda «Tu día»
- *    (`GET /pursuits/agenda`, los cuatro contadores; la semana en carriles se
- *    despliega bajo demanda) y «Desde tu última visita» (F5.4). A la derecha,
- *    con su rótulo «Mercado» y los atajos al análisis completo —desde ahí todo
- *    aplica el ámbito de la barra—, «Grandes en plazo», «Nuevas» y la cola de
- *    cierre de 48 h, que se estira hasta el alto de la columna de al lado.
- *    «Primeros pasos» va al pie de la columna izquierda, salvo en una cuenta
- *    sin ningún paso hecho, donde sube arriba del todo (`posicionDe`).
- * 2. **El periodo y la foto del ámbito, en una fila.** La tira de cifras
- *    (activas, publicadas e importe de 30 días) sobre el gráfico de
- *    publicaciones, y al lado la composición por estado y el mapa por
- *    comunidad, que filtran al pulsarlos.
- * 3. **Las listas, en otra.** Últimas publicaciones a dos tercios y los
- *    movimientos del mercado en el tercio restante.
+ * 1. **Dos tiras de cifras, lado a lado.** «Tu día» (`GET /pursuits/agenda`,
+ *    los cuatro contadores; la semana en carriles se despliega bajo demanda) y
+ *    «Mercado hoy», con el ámbito de la barra: cierran en 48 h, grandes en
+ *    plazo, nuevas desde tu última visita y activas. Con el mismo peso: lo
+ *    tuyo y el mercado se leen de un vistazo, sin scroll.
+ * 2. **Qué cierra y qué cambió.** La cola de cierre de 48 h a siete doceavos
+ *    y «Desde tu última visita» (F5.4) al lado; la cola se estira hasta el
+ *    alto de la banda con más filas en vez de dejar un hueco.
+ * 3. **El periodo y la foto del ámbito.** Las publicaciones del mes con sus
+ *    cifras, la composición por estado y el mapa por comunidad, que filtran al
+ *    pulsarlos.
+ * 4. **Las listas.** Últimas publicaciones a dos tercios y los movimientos
+ *    del mercado en el tercio restante.
+ *
+ * «Primeros pasos» va al pie, salvo en una cuenta sin ningún paso hecho, donde
+ * sube arriba del todo (`posicionDe`).
  *
  * Desde `xl` cada fila es una rejilla; por debajo las columnas se apilan en
  * ese mismo orden, así que en un teléfono la lectura sigue siendo lo tuyo,
@@ -102,30 +105,33 @@ export function ResumenView() {
           <div className="flex flex-col gap-3">
             <PrimerosPasos posicion="arriba" onDescartar={recogerFoco} />
 
-            {/* Fila 1: lo tuyo a la izquierda y el mercado de hoy a la derecha.
-                Las dos columnas se estiran al mismo alto: la cola de cierre
-                crece con filas en vez de dejar un hueco. */}
-            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-              <div className="flex min-w-0 flex-col gap-3">
-                <TuDia />
-                <DesdeUltimaVisita />
-                <PrimerosPasos posicion="abajo" onDescartar={recogerFoco} />
-              </div>
-
-              <section aria-labelledby="resumen-mercado" className="flex min-w-0 flex-col">
-                <div className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                  <h2 id="resumen-mercado" className="flex-none font-display text-tf-lede font-semibold">
-                    Mercado
-                  </h2>
-                  <span className="min-w-0 text-tf-meta text-muted-foreground">con el ámbito de la barra</span>
-                  <AtajosAnalisis className="sm:ml-auto" />
-                </div>
-                <AtencionCards className="flex-1" />
+            {/* Fila 1: las dos tiras de cifras. Arriba y no estiradas: el aviso
+                de «Tu día» alarga su columna y la tira del mercado no tiene con
+                qué llenar ese alto. */}
+            <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
+              <TuDia />
+              <section aria-labelledby="resumen-mercado" className="min-w-0">
+                <PanelTitle
+                  as="h2"
+                  id="resumen-mercado"
+                  title="Mercado hoy"
+                  hint="con el ámbito de la barra"
+                  actions={<AtajosAnalisis />}
+                  className="mb-2.5"
+                />
+                <AtencionCards />
               </section>
             </div>
 
-            {/* Fila 2: el periodo y la foto del ámbito. La tira en cifras va
-                encima de lo que dibuja; la composición y el mapa, al lado. */}
+            {/* Fila 2: qué cierra y qué cambió. Las dos se estiran al mismo
+                alto: la cola de cierre crece con filas en vez de dejar un
+                hueco. */}
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+              <ColaCierreHoy />
+              <DesdeUltimaVisita />
+            </div>
+
+            {/* Fila 3: el periodo y la foto del ámbito. */}
             <section
               aria-labelledby="resumen-periodo"
               className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,3fr)_minmax(0,4fr)]"
@@ -133,19 +139,20 @@ export function ResumenView() {
               <h2 id="resumen-periodo" className="sr-only">
                 El periodo y el ámbito
               </h2>
-              <div className="flex min-w-0 flex-col gap-3 lg:col-span-2 xl:col-span-1">
-                <ContextoStrip />
+              <div className="flex min-w-0 flex-col lg:col-span-2 xl:col-span-1">
                 <PublicacionesPanel />
               </div>
               <ComposicionPanel />
               <ComunidadesPanel />
             </section>
 
-            {/* Fila 3: las listas. */}
+            {/* Fila 4: las listas. */}
             <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,8fr)_minmax(0,4fr)]">
               <UltimasPublicaciones />
               <EventosFeed />
             </div>
+
+            <PrimerosPasos posicion="abajo" onDescartar={recogerFoco} />
           </div>
         </div>
       </div>

@@ -199,9 +199,16 @@ export function DesdeUltimaVisita() {
 
   return (
     <section aria-labelledby="desde-ultima-visita-titulo" className={cn(SUPERFICIE_PANEL, "px-4 py-3.5")}>
-      {/* Dos columnas en escritorio: a la izquierda cuánto y de qué clase, a la
-          derecha qué en concreto. Sin cambios, una sola línea que lo dice. */}
-      <div className={cn("grid gap-x-8 gap-y-3", hayCambios && "lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]")}>
+      {/* Dos columnas cuando la banda va a todo el ancho: a la izquierda
+          cuánto y de qué clase, a la derecha qué en concreto. Desde `xl` va
+          en la columna estrecha junto a la cola de cierre, y ahí una sola
+          columna. Sin cambios, una sola línea que lo dice. */}
+      <div
+        className={cn(
+          "grid gap-x-8 gap-y-3",
+          hayCambios && "lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] xl:grid-cols-1",
+        )}
+      >
         <div className="flex min-w-0 flex-col gap-2.5">
           {/* Con cambios, la cifra encabeza la banda a tamaño de cifra única
               (`tf-hero`), como el resto de la consola encabeza con su número;
