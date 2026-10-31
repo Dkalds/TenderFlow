@@ -146,10 +146,36 @@ def resumir(filas: list[dict[str, Any]], *, min_pliego: float) -> dict[str, Any]
     }
 
 
+def _evidencia(fila: dict[str, Any], tec: str, *, min_pliego: float) -> dict[str, Any]:
+    """Lo que sostiene ``tec`` en esta fila, para que quien revisa no adivine.
+
+    La probabilidad del modelo y, por cada señal de pliego que pasa el corte,
+    su método, su score y los términos casados.
+    """
+    out: dict[str, Any] = {}
+    for s in fila.get("ml_scores") or []:
+        if str(s["tecnologia"]) == tec:
+            out["ml"] = round(float(s.get("probabilidad") or 0.0), 3)
+    pliego = [
+        {
+            "method": p.get("method"),
+            "score": round(float(p.get("score") or 0.0), 3),
+            "terminos": _terminos(p.get("matched_terms")),
+        }
+        for p in fila.get("pliego") or []
+        if str(p["tecnologia"]) == tec
+        and p.get("method") in _METODOS_PLIEGO
+        and float(p.get("score") or 0.0) >= min_pliego
+    ]
+    if pliego:
+        out["pliego"] = pliego
+    return out
+
+
 def muestra(
     filas: list[dict[str, Any]], *, n: int, min_pliego: float, semilla: int = 20261030
 ) -> list[dict[str, Any]]:
-    """``n`` licitaciones al azar, con sus etiquetas listas para revisar."""
+    """``n`` licitaciones al azar, con sus etiquetas y su evidencia listas para revisar."""
     elegidas = random.Random(semilla).sample(filas, min(n, len(filas)))  # noqa: S311 - muestreo, no cripto
     lineas: list[dict[str, Any]] = []
     for fila in elegidas:
@@ -161,7 +187,14 @@ def muestra(
                 "id": fila["id_externo"],
                 "titulo": fila.get("titulo"),
                 "cpv": fila.get("cpv"),
-                "etiquetas": {tec: {"fuentes": f, "correcta": None} for tec, f in fuentes.items()},
+                "etiquetas": {
+                    tec: {
+                        "fuentes": f,
+                        "evidencia": _evidencia(fila, tec, min_pliego=min_pliego),
+                        "correcta": None,
+                    }
+                    for tec, f in fuentes.items()
+                },
                 "faltan": [],
             }
         )

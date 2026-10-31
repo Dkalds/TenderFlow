@@ -119,9 +119,16 @@ def test_resumir_cuenta_medias_y_terminos_del_pliego() -> None:
     assert ("CLOUD_INFRA: backup", 2) in r["terminos_solo_pliego"]
 
 
-def test_muestra_deja_cada_etiqueta_por_revisar() -> None:
+def test_muestra_deja_cada_etiqueta_por_revisar_con_su_evidencia() -> None:
     [linea] = muestra([_fila()], n=5, min_pliego=0.5)
-    assert linea["etiquetas"]["SAP"] == {"fuentes": ["ml", "titulo"], "correcta": None}
+    assert linea["etiquetas"]["SAP"] == {
+        "fuentes": ["ml", "titulo"],
+        "evidencia": {"ml": 0.9},
+        "correcta": None,
+    }
+    assert linea["etiquetas"]["CLOUD_INFRA"]["evidencia"] == {
+        "pliego": [{"method": "keywords", "score": 0.67, "terminos": ["backup", "cpd"]}]
+    }
     assert linea["faltan"] == []
 
 
