@@ -364,7 +364,7 @@ def test_fijar_minimos_escribe_la_base_con_tres_ejecuciones(
         "selector_cobertura": 1.0,
     }
     assert (escrito["ejecuciones"], escrito["model"]) == (3, "modelo-y")
-    assert escrito["extraction_version"] == "tender-facts-v8"
+    assert escrito["extraction_version"] == "tender-facts-v9"
     assert escrito["medido_el"] == date.today().isoformat()
 
 

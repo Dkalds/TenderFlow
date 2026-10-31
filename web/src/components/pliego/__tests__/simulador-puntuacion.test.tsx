@@ -101,8 +101,18 @@ describe("SimuladorPuntuacion", () => {
 
     expect(await screen.findByRole("table")).toBeInTheDocument();
     expect(screen.getByText(/reparte 45 puntos/)).toHaveTextContent("leídos del pliego");
-    expect(screen.getByText("Proporcional inversa")).toBeInTheDocument();
+    expect(screen.getByText("Proporcional a la baja")).toBeInTheDocument();
     expect(screen.getByText("Temeraria")).toBeInTheDocument();
+  });
+
+  it("nombra la inversa al precio aparte de la proporcional a la baja", async () => {
+    fetchPorRuta(
+      [/simulador/, { ...REFERENCIA, formula_tipo: "inversa_precio" }],
+      [/prediccion-baja/, {}, 404],
+    );
+    renderConQuery(<SimuladorPuntuacion licitacionId="LIC-1" />);
+
+    expect(await screen.findByText("Proporcionalidad inversa al precio")).toBeInTheDocument();
   });
 
   it("simula la baja propia contra la del rival y cuenta el uso una sola vez", async () => {

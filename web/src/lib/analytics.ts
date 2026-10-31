@@ -358,6 +358,7 @@ export interface EventosProducto {
   simulador_usado: {
     formula_tipo:
       | "proporcional_inversa"
+      | "inversa_precio"
       | "lineal_por_tramos"
       | "con_umbral_temeridad"
       | "otra"

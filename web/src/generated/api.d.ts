@@ -12922,7 +12922,7 @@ export interface components {
              * @default otra
              * @enum {string}
              */
-            formula_type: "proporcional_inversa" | "lineal_por_tramos" | "con_umbral_temeridad" | "otra";
+            formula_type: "proporcional_inversa" | "inversa_precio" | "lineal_por_tramos" | "con_umbral_temeridad" | "otra";
             /** Max Points */
             max_points?: number | null;
             /** Params */

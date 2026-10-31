@@ -74,7 +74,13 @@ log = get_logger(__name__)
 # del precio —proporcionalidad inversa, 40 puntos— solo quedó en prosa en
 # `award_criteria`: el simulador respondía «fórmula no calculable». El bump
 # reencola las fichas ya extraídas con esa mezcla.
-EXTRACTION_VERSION = "tender-facts-v8"
+#
+# v9 (2026-10-31): `inversa_precio` en el catálogo de fórmulas. Reextraída con
+# v8, la ficha de la oportunidad 18 salió con `price_formula` vacía: el pliego
+# dice «proporcionalidad inversa simple» (precio más bajo / precio ofertado) y
+# la pregunta solo ofrecía `proporcional_inversa` definida como
+# `max * baja / baja_mayor`, otra fórmula. La pregunta separa ahora las dos.
+EXTRACTION_VERSION = "tender-facts-v9"
 # Por debajo de ``MAX_CONTEXT_CHARS_EXTRACTION`` (llm/prompts.py): cada página
 # añade su cabecera ``--- Fragmento de pliego (…) ---``, y el bloque de CONTEXTO
 # que se pasa del presupuesto se corta por el final — justo las últimas páginas.
@@ -184,11 +190,14 @@ del servicio" / "99,9% mensual"); sus penalizaciones van en penalties.
 technologies: solo plataformas que el contrato implanta, mantiene, migra o
 licencia ("migración a SAP S/4HANA"), nunca menciones incidentales.
 date_value: fecha ISO AAAA-MM-DD, o null si el pliego no fija una exacta.
-price_formula: solo la fórmula que puntúa la oferta económica (precio o baja);
-las de otros criterios (experiencia, mejoras, plazos) nunca van aquí. Si el
-pliego no da la del precio, lista vacía. max_points: los del criterio precio.
-formula_type: solo "proporcional_inversa" (puntos = max * baja_propia /
-baja_mayor), "lineal_por_tramos", "con_umbral_temeridad" u "otra"; usa "otra"
+price_formula: solo la fórmula que puntúa la oferta económica (precio o baja),
+aunque el pliego la describa en palabras; las de otros criterios (experiencia,
+mejoras, plazos) nunca van aquí. Si el pliego no da la del precio, lista vacía.
+max_points: los del criterio precio.
+formula_type: solo "inversa_precio" (proporcionalidad inversa: puntos = max *
+precio_más_bajo / precio_ofertado), "proporcional_inversa" (proporcional a la
+baja: puntos = max * baja_propia / baja_mayor; pese al nombre, no es la
+inversa), "lineal_por_tramos", "con_umbral_temeridad" u "otra"; usa "otra"
 cuando la fórmula no encaje, nunca la más parecida. params es un objeto
 {nombre: número} (los tramos, el umbral), {} si no hay, jamás prosa ni lista;
 umbral_temeridad en tanto por uno
