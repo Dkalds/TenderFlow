@@ -773,6 +773,29 @@ class TestListSignalsForMerge:
         assert {r["licitacion_id"] for r in rows} == {"INC-FORCED"}
 
 
+class TestGuardarScoresTecnologia:
+    def test_salta_la_licitacion_que_ya_no_existe(self, repo):
+        """El precompute lee el lote y escribe minutos después; si la ingesta
+        borra o re-keya una licitación entre medias, esa se salta en vez de
+        tumbar el resto con la clave foránea (2026-10-31)."""
+        from db.repositories.ml_dataset import guardar_scores_tecnologia
+
+        _insert_licitacion("GST-1")
+        guardar_scores_tecnologia(
+            scores=[("GST-1", "SAP", 0.9, 0.5), ("GST-BORRADA", "SAP", 0.9, 0.5)],
+            sin_score=[],
+            reemplazar=["GST-1", "GST-BORRADA"],
+        )
+
+        with connect() as c:
+            filas = c.execute(
+                "SELECT licitacion_id, tecnologia FROM licitacion_tecnologia_score "
+                "WHERE licitacion_id = ANY(%s)",
+                (["GST-1", "GST-BORRADA"],),
+            ).fetchall()
+        assert [tuple(f) for f in filas] == [("GST-1", "SAP")]
+
+
 class TestStampMerged:
     def test_only_updates_rows_that_were_still_null(self, repo):
         _insert_licitacion("STAMP-1")

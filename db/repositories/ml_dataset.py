@@ -1132,6 +1132,11 @@ def guardar_scores_tecnologia(
       ``force=True`` del precompute). Borra también lo que fundió el pliego;
       ``tech_signal_merge`` lo repone en la pasada siguiente, y ese es
       precisamente el contador («reparaciones») que decide cuándo se retira.
+
+    Una licitación que desapareció entre la lectura del lote y esta escritura
+    (purga, dedupe o re-key de la ingesta, que corren a la vez) se salta en vez
+    de tumbar con la clave foránea todo lo que queda del precompute: el
+    2026-10-31 un ``force=True`` sobre ~12.000 filas cayó en mitad por una sola.
     """
     with connect() as c:
         if reemplazar:
@@ -1146,12 +1151,13 @@ def guardar_scores_tecnologia(
             c.executemany(
                 "INSERT INTO licitacion_tecnologia_score "
                 "(licitacion_id, tecnologia, probabilidad, threshold_aplicado, computed_at) "
-                "VALUES (%s, %s, %s, %s, %s) "
+                "SELECT %s, %s, %s, %s, %s "
+                "WHERE EXISTS (SELECT 1 FROM licitaciones WHERE id_externo = %s) "
                 "ON CONFLICT(licitacion_id, tecnologia) DO UPDATE SET "
                 "probabilidad=excluded.probabilidad, "
                 "threshold_aplicado=excluded.threshold_aplicado, "
                 "computed_at=excluded.computed_at",
-                [(*fila, ahora) for fila in scores],
+                [(*fila, ahora, fila[0]) for fila in scores],
             )
         if sin_score:
             c.executemany(
