@@ -87,7 +87,14 @@ cuando la base tiene la clave nueva y la ingesta vuelve a correr.
    inventario de pisadas (`--csv antes.csv`) y `make audit-truth-check`: son el
    «antes» del RFC.
 5. **Puertas 2 y 3 del RFC** (SQL de §Verificación, consultas 2 y 3): ninguna
-   clave nueva existe ya; línea base del dedupe con TED.
+   clave nueva existe ya; línea base del dedupe con TED. Si existen —el
+   incidente #577 dejó 7.380 filas escritas con la clave nueva el 2026-10-27/28,
+   6.912 con gemela vieja—, `python scripts/borrar_colisiones_rekey_placsp.py`
+   lista las que la guarda de `v164` encontraría (solo cuenta las que una fila
+   vieja **con órgano** va a ocupar: correrlo tras el relleno) y con
+   `--aplicar` las borra, salvo las que tengan pursuits, follows o watchlist.
+   Sin `DATABASE_URL` local, los modos `colisiones` y `borrar-colisiones` de
+   `rekey-placsp.yml` hacen lo mismo; el relleno, sus modos `plan`/`aplicar`.
 
 ## La ventana
 
@@ -121,7 +128,8 @@ cuando la base tiene la clave nueva y la ingesta vuelve a correr.
    - `ya existen con la clave nueva`: algo escribió con el código nuevo antes de
      migrar. Esas filas son copias recientes de la fuente que la reingesta
      vuelve a traer: borrarlas, **salvo** que ya tengan datos de usuario
-     (`pursuits`, `follows`, `watchlist_items`), y relanzar.
+     (`pursuits`, `follows`, `watchlist_items`), y relanzar
+     (`scripts/borrar_colisiones_rekey_placsp.py --aplicar`, «Antes», paso 5).
    - `trabajos pendientes en jobs`: paso 3.
    - `FK a licitaciones sin repuntar`: una tabla nueva con FK que `v164` no
      conoce. **No** se edita `v164` si ya está en `master`: revisión nueva.
@@ -136,6 +144,8 @@ cuando la base tiene la clave nueva y la ingesta vuelve a correr.
    python -c "from db.repositories.publico import refrescar_vista_canonicas as r; print(r())"
    python -c "from db.cache_signal import signal_cache_invalidation as s; s()"
    ```
+
+   (o `rekey-placsp.yml` con `modo=refrescar`).
 
    Las fichas públicas que Vercel tenga en ISR con la `ref` vieja sirven hasta
    su revalidación; al regenerarse redirigen.

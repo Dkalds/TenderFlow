@@ -156,6 +156,22 @@ def test_el_payload_solo_se_reescribe_en_los_eventos_no_despachados() -> None:
     assert all("dispatched_at IS NULL" in s for s in payload)
 
 
+def test_las_colisiones_del_repositorio_usan_el_mapa_de_la_migracion() -> None:
+    """``db.repositories.identidad`` copia las expresiones del mapa (una migración
+    no se importa): si la revisión cambia una, la consulta de colisiones también."""
+    from db.repositories import identidad
+
+    modulo = _cargar()
+
+    def sin_parentesis(sql: str) -> str:
+        return sql.replace("(", "").replace(")", "")
+
+    assert sin_parentesis(identidad._FAMILIA_REKEY_SQL) == sin_parentesis(modulo._FAMILIA)
+    assert identidad._CABEZA_NUEVA_SQL == modulo._CABEZA_NUEVA
+    assert identidad._EXPEDIENTE_VIEJO_SQL == modulo._EXPEDIENTE
+    assert identidad._FORMA_VIEJA_SQL == modulo._FORMA_VIEJA
+
+
 def test_la_codificacion_del_organo_es_la_de_shared() -> None:
     """``%`` primero y luego ``:``, como ``codificar_organo``."""
     assert _cargar()._ORGANO == ("replace(replace(l.organo_ref_fuente, '%', '%25'), ':', '%3A')")
@@ -465,6 +481,94 @@ def test_dos_filas_que_irian_a_la_misma_clave_abortan(tmp_db: Any) -> None:
     with connect() as c:
         with pytest.raises(psycopg.errors.RaiseException, match="claves nuevas repetidas"):
             _aplicar(c)
+
+
+def _colision(c: Any, clave: str, organo: str, fuente: str = "placsp") -> None:
+    """Lo que dejó el incidente #577: la misma licitación, escrita ya con la clave nueva."""
+    _licitacion(c, clave, fuente=fuente, organo=organo)
+    c.execute(
+        "INSERT INTO licitaciones_history (id_externo, captured_at, snapshot_json, changed_fields) "
+        "VALUES (%s, '2026-10-28', '{}', 'titulo')",
+        (clave,),
+    )
+
+
+def test_las_colisiones_son_las_que_la_guarda_encontraria(tmp_db: Any) -> None:
+    """``colisiones_del_rekey_placsp`` reproduce el mapa de v164: solo el destino de
+    una fila vieja con órgano cuenta, y marca las que tienen datos de usuario."""
+    from db.database import connect
+    from db.repositories.identidad import colisiones_del_rekey_placsp
+
+    watched = _nuevo(_ORG_A, "W-1", "placsp_watched_company_awards")
+    with connect() as c:
+        org = _sembrar(c)
+        _colision(c, _nuevo(_ORG_A, _EXP), _ORG_A)
+        _colision(c, watched, _ORG_A, fuente="placsp_watched_company_awards")
+        # Sin gemela vieja: una licitación nueva de verdad, no choca.
+        _colision(c, _nuevo(_ORG_A, "SOLO-NUEVA/1"), _ORG_A)
+        # La gemela vieja apunta a otro órgano: su destino es otra clave.
+        _colision(c, _nuevo(_ORG_A, "OTRO/2026"), _ORG_A, fuente="bulk_202610")
+        c.execute(
+            "INSERT INTO follows (organization_id, user_key, target_type, target_id) "
+            "VALUES (%s, 'u1', 'licitacion', %s)",
+            (org, watched),
+        )
+
+    colisiones = {c["id_externo"]: c for c in colisiones_del_rekey_placsp()}
+    assert set(colisiones) == {_nuevo(_ORG_A, _EXP), watched}
+    assert colisiones[_nuevo(_ORG_A, _EXP)]["id_viejo"] == _EXP
+    assert not colisiones[_nuevo(_ORG_A, _EXP)]["datos_de_usuario"]
+    assert colisiones[watched]["datos_de_usuario"]
+
+
+def test_borrar_las_colisiones_despeja_la_guarda_y_respeta_los_datos_de_usuario(
+    tmp_db: Any,
+) -> None:
+    from db.database import connect
+    from db.repositories.identidad import (
+        borrar_licitaciones_en_colision,
+        colisiones_del_rekey_placsp,
+    )
+
+    exp_a = _nuevo(_ORG_A, _EXP)
+    con_usuario = _nuevo(_ORG_A, "CON-USUARIO/1")
+    with connect() as c:
+        org = _sembrar(c)
+        _colision(c, exp_a, _ORG_A)
+        c.execute(
+            "INSERT INTO licitacion_tecnologia_score "
+            " (licitacion_id, tecnologia, probabilidad, threshold_aplicado) "
+            "VALUES (%s, 'SAP', 0.9, 0.5)",
+            (exp_a,),
+        )
+        # Una con pursuit: la lista la incluye, el borrado no la toca.
+        _licitacion(c, con_usuario, organo=_ORG_A)
+        c.execute(
+            "INSERT INTO pursuits (organization_id, licitacion_id) VALUES (%s, %s)",
+            (org, con_usuario),
+        )
+
+    borradas = borrar_licitaciones_en_colision([exp_a, con_usuario])
+
+    assert borradas == 1
+    assert colisiones_del_rekey_placsp() == []
+    with connect() as c:
+        assert _uno(c, "SELECT count(*) FROM licitaciones WHERE id_externo = %s", (exp_a,)) == 0
+        assert (
+            _uno(c, "SELECT count(*) FROM licitaciones_history WHERE id_externo = %s", (exp_a,))
+            == 0
+        )
+        assert (
+            _uno(c, "SELECT count(*) FROM licitaciones WHERE id_externo = %s", (con_usuario,)) == 1
+        )
+        assert _uno(c, "SELECT count(*) FROM licitaciones WHERE id_externo = %s", (_EXP,)) == 1
+    # Y la guarda de v164 ya no encuentra la clave ocupada.
+    with connect() as c:
+        _aplicar(c)
+        assert (
+            _uno(c, "SELECT licitacion_id FROM pursuits WHERE licitacion_id = %s", (exp_a,))
+            == exp_a
+        )
 
 
 def test_cubre_todas_las_fk_a_licitaciones(tmp_db: Any) -> None:

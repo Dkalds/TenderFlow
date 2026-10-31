@@ -17,6 +17,8 @@ preguntas, todas sobre ``licitaciones`` y ``licitaciones_id_anterior`` (v163):
    mensuales que da a cada fila el órgano que la escribió, sin el que la
    re-key (``v164_identidad_placsp_rekey``) no puede construir su clave.
    :func:`organo_ref_por_nombre` es su último respaldo, opt-in.
+   :func:`colisiones_del_rekey_placsp` y :func:`borrar_licitaciones_en_colision`
+   despejan la guarda «ya existen con la clave nueva» de esa revisión.
 4. **¿Cuántas filas PLACSP pisó otro órgano?** :func:`inventario_pisadas_placsp`
    es la consulta de detección del RFC (§«Las filas ya pisadas») sobre
    ``licitaciones_history``: para cada ``id_externo`` de PLACSP, los órganos que
@@ -26,8 +28,8 @@ preguntas, todas sobre ``licitaciones`` y ``licitaciones_id_anterior`` (v163):
    historial empieza el 2026-05-22 y solo escribe snapshot cuando cambia un
    campo de ``HISTORY_TRACKED_FIELDS``.
 
-Solo lectura salvo :func:`registrar_id_anterior` y
-:func:`rellenar_organo_ref_fuente`. Todo el SQL vive aquí (ADR-022).
+Solo lectura salvo :func:`registrar_id_anterior`,
+:func:`rellenar_organo_ref_fuente` y :func:`borrar_licitaciones_en_colision`. Todo el SQL vive aquí (ADR-022).
 """
 
 from __future__ import annotations
@@ -41,9 +43,12 @@ from db.repositories.base import rows_to_dicts, typed_rows
 from shared.identidad_placsp import PREFIJOS_ACOTADOS_POR_ORGANO
 
 __all__ = [
+    "ColisionRekey",
     "FilaSinOrgano",
     "IdResuelto",
     "ResumenPisadas",
+    "borrar_licitaciones_en_colision",
+    "colisiones_del_rekey_placsp",
     "contar_expedientes_que_conviven",
     "contar_placsp_sin_organo_ref",
     "filas_placsp_sin_organo_ref",
@@ -332,3 +337,110 @@ def organo_ref_por_nombre() -> dict[str, str]:
             f"WHERE {_FAMILIA_REKEY_SQL} AND coalesce(l.organo_ref_fuente, '') = ''"
         ).fetchall()
     return {str(f[0]): str(f[1]) for f in filas}
+
+
+# ── Colisiones de la re-key (guarda «ya existen con la clave nueva» de v164) ──
+
+#: Expresiones del mapa ``viejo → nuevo`` de ``v164_identidad_placsp_rekey``,
+#: copiadas de allí (una migración no se importa). Si cambian en la revisión,
+#: cambian aquí: el test de integración aplica v164 después de borrar y
+#: comprobaría que la guarda sigue encontrando la clave ocupada.
+_ES_WATCHED_SQL = (
+    "(l.fuente = 'placsp_watched_company_awards' "
+    "OR l.fuente LIKE 'placsp\\_watched\\_company\\_awards\\_bulk\\_%')"
+)
+_PREFIJO_REKEY_SQL = (
+    f"CASE WHEN {_ES_PLACSP_SQL} THEN 'placsp' "
+    f"WHEN {_ES_WATCHED_SQL} THEN 'placsp_watched_company_awards' "
+    "ELSE 'placsp_agregadas' END"
+)
+_CABEZA_NUEVA_SQL = (
+    f"(({_PREFIJO_REKEY_SQL}) || ':' || "
+    "replace(replace(l.organo_ref_fuente, '%', '%25'), ':', '%3A') || ':')"
+)
+_EXPEDIENTE_VIEJO_SQL = (
+    f"CASE WHEN {_ES_PLACSP_SQL} THEN l.id_externo "
+    "ELSE substr(l.id_externo, length(l.fuente) + 2) END"
+)
+_FORMA_VIEJA_SQL = (
+    f"({_ES_PLACSP_SQL} OR left(l.id_externo, length(l.fuente) + 1) = l.fuente || ':')"
+)
+
+_COLISIONES_SQL = f"""
+WITH mapa AS (
+    SELECT l.id_externo AS viejo, {_CABEZA_NUEVA_SQL} || {_EXPEDIENTE_VIEJO_SQL} AS nuevo
+    FROM licitaciones l
+    WHERE {_FAMILIA_REKEY_SQL}
+      AND coalesce(l.organo_ref_fuente, '') <> ''
+      AND {_FORMA_VIEJA_SQL}
+      AND left(l.id_externo, length({_CABEZA_NUEVA_SQL})) <> {_CABEZA_NUEVA_SQL}
+)
+SELECT m.nuevo AS id_externo, m.viejo AS id_viejo, n.fuente,
+       (EXISTS (SELECT 1 FROM pursuits p WHERE p.licitacion_id = m.nuevo)
+        OR EXISTS (SELECT 1 FROM follows f
+                   WHERE f.target_type = 'licitacion' AND f.target_id = m.nuevo)
+        OR EXISTS (SELECT 1 FROM watchlist_items w WHERE w.id_externo = m.nuevo)
+       ) AS datos_de_usuario
+FROM mapa m
+JOIN licitaciones n ON n.id_externo = m.nuevo
+ORDER BY m.nuevo
+"""
+
+
+class ColisionRekey(TypedDict):
+    """Una fila escrita ya con la clave nueva que es el destino de una fila vieja."""
+
+    id_externo: str
+    id_viejo: str
+    fuente: str
+    datos_de_usuario: bool
+
+
+def colisiones_del_rekey_placsp() -> list[ColisionRekey]:
+    """Las filas por las que ``v164`` abortaría con «ya existen con la clave nueva».
+
+    Son las que un escritor de la fase B guardó antes de migrar (incidente
+    #577, 2026-10-27/28): copias recientes de un expediente que también existe
+    con la clave vieja. Solo cuentan las que una fila vieja **con órgano** va a
+    ocupar; por eso la lista crece a medida que avanza el relleno de
+    ``organo_ref_fuente``, y se mide después de él. ``datos_de_usuario`` marca
+    las que tienen pursuits, follows o watchlist: el runbook no las borra.
+    """
+    with connect_read() as c:
+        return typed_rows(ColisionRekey, rows_to_dicts(c.execute(_COLISIONES_SQL)))
+
+
+def borrar_licitaciones_en_colision(ids: Sequence[str]) -> int:
+    """Borra estas filas de la clave nueva, salvo las que tengan datos de usuario.
+
+    Paso «ya existen con la clave nueva» de ``docs/runbooks/rekey-placsp-organo.md``:
+    la fila vieja se queda (tiene el historial y los datos de usuario) y la
+    reingesta vuelve a traer lo que la nueva tenía de más reciente. Las hijas
+    con ``ON DELETE CASCADE`` se van con ella; ``licitaciones_history`` y
+    ``resoluciones_recurso`` no la tienen y se limpian antes. Las columnas sin
+    FK (eventos, notificaciones) quedan con el id, que ``v164`` da enseguida a
+    la fila vieja del mismo expediente. Una transacción: si algo falla, nada.
+    """
+    if not ids:
+        return 0
+    with connect() as c:
+        borrables = [
+            str(f[0])
+            for f in c.execute(
+                "SELECT x.id FROM unnest(%s::text[]) AS x(id) "
+                "WHERE NOT EXISTS (SELECT 1 FROM pursuits p WHERE p.licitacion_id = x.id) "
+                "AND NOT EXISTS (SELECT 1 FROM follows f "
+                "  WHERE f.target_type = 'licitacion' AND f.target_id = x.id) "
+                "AND NOT EXISTS (SELECT 1 FROM watchlist_items w WHERE w.id_externo = x.id)",
+                (list(ids),),
+            ).fetchall()
+        ]
+        if not borrables:
+            return 0
+        c.execute("DELETE FROM licitaciones_history WHERE id_externo = ANY(%s)", (borrables,))
+        c.execute(
+            "UPDATE resoluciones_recurso SET licitacion_id = NULL WHERE licitacion_id = ANY(%s)",
+            (borrables,),
+        )
+        cur = c.execute("DELETE FROM licitaciones WHERE id_externo = ANY(%s)", (borrables,))
+        return cur.rowcount or 0
