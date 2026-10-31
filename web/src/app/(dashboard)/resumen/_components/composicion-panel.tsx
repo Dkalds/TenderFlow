@@ -122,11 +122,7 @@ export function ComposicionPanel({ className }: { className?: string }) {
     <Panel className={className}>
       <PanelTitle
         title="Composición por estado"
-        hint={
-          totalEstado > 0
-            ? `${formatNumber(totalEstado)} expedientes · pulsa un estado para filtrar el ámbito`
-            : "pulsa un estado para filtrar el ámbito"
-        }
+        hint="pulsa un estado para filtrar"
         actions={
           estados.length > 0 ? (
             <Button type="button" variant="ghost" size="sm" onClick={() => setEstados([])}>
@@ -156,6 +152,12 @@ export function ComposicionPanel({ className }: { className?: string }) {
         />
       ) : (
         <div className="flex min-h-[56px] flex-col gap-3">
+          {/* El total como cifra y no en el rótulo: en un panel de tres
+              doceavos, «115.834 expedientes · pulsa…» se cortaba a la mitad. */}
+          <p className="flex items-baseline gap-2">
+            <span className="tf-tnum text-tf-title font-semibold">{formatNumber(totalEstado)}</span>
+            <span className="text-tf-meta text-muted-foreground">expedientes en el ámbito</span>
+          </p>
           {/* Sin transición: al cambiar el ámbito la barra está ya en su valor.
               Un deslizamiento entre dos ámbitos se lee como que el dato cambió. */}
           <BarraApilada tramos={tramos} total={totalEstado} activos={estados} />
