@@ -183,9 +183,10 @@ hace que la señal de pliegos se vuelva a puntuar entera (a ~500 por noche en
 `pliegos.yml`), pero el merge nunca borra, así que las filas de
 `licitacion_tecnologia_score` fundidas desde señales que ya no pasan siguen ahí
 hasta rehacer la tabla. `.github/workflows/etiquetas-tecnologia.yml` lo hace a
-demanda: `medir` (solo lectura) y `recalcular` (re-puntúa en paralelo las
-licitaciones con señal de pliego fundible de otra versión y, solo cuando no
-queda ninguna, `precompute_ml_tecnologias(force=True)` + `merge_doc_signals`).
+demanda: `medir` (solo lectura) y `recalcular` (re-puntúa, por tramos y de uno
+en uno, las licitaciones con señal de pliego fundible de otra versión y, solo
+cuando no queda ninguna, `precompute_ml_tecnologias(force=True)` +
+`merge_doc_signals`).
 `tecnologia` solo se reescribe al reingerir.
 
 ## Familias (2026-10)

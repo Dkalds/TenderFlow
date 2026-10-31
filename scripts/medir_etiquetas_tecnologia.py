@@ -29,7 +29,8 @@ cifra no se sabe si un cambio de reglas ayuda. Tres subcomandos:
     vuelve a puntuar las licitaciones con alguna señal de pliego fundible
     (``score >= PLIEGO_TECH_MIN_SCORE``) de otra versión —las únicas que pueden
     haber dejado etiquetas viejas; el resto lo re-puntúa sin prisa el cron de
-    ``pliegos.yml``—, repartible en ``--shards`` jobs paralelos. ``rehacer``,
+    ``pliegos.yml``—, repartible en ``--shards`` tramos (el workflow los corre
+    de uno en uno: en paralelo agotaron el pooler de Supabase). ``rehacer``,
     solo si ya no queda ninguna, rehace ``licitacion_tecnologia_score``
     (``precompute_ml_tecnologias(force=True)``) y vuelve a fundir los pliegos
     (``merge_doc_signals``): rehacer antes volvería a fundir las señales viejas.
