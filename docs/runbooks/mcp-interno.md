@@ -460,6 +460,16 @@ ORDER BY n DESC
 Un SQLSTATE que se repite señala la sección del glosario que falta o no se
 entiende; una tool sin llamadas, una descripción que el modelo no reconoce.
 
+**Medido el 2026-10-31** (del 17-10 al 31-10, un usuario): 652 llamadas;
+`consultar_sql` 527 (40 errores, 7,6 %; P95 6,0 s), `describir_tabla` 44,
+`ficha_licitacion` 39, `buscar_en_pliegos` 21, `describir_esquema` 12,
+`buscar_licitaciones` 9 (P95 3,3 s). Errores de `consultar_sql`: 22 `42703`
+(columnas inventadas, dispersas; la que más, `lote_numero` en `lotes` o
+`adjudicaciones`, 5), 8 `42501` (`licitaciones_canonicas`, `api_keys` y
+`licitaciones_id_anterior` antes de reaplicar los grants), 6 `42883`
+(`round(double precision, int)`, `date_trunc` sobre texto, `cardinality(text)`)
+y 3 `57014`. El glosario se ajustó a los tres primeros ese mismo día.
+
 ---
 
 ## 7. Seguimientos conocidos

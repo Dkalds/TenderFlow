@@ -33,7 +33,7 @@ ORDER BY d.detectado_en DESC
 LIMIT 20
 ```
 
-La web pública además colapsa por clave (órgano plegado + CPV4 + año-mes + título) con una vista que aquí no es visible: sin marca en `licitaciones_duplicados`, su conteo puede ser algo menor que el tuyo.
+La web pública además colapsa por clave (órgano plegado + CPV4 + año-mes + título) con la vista materializada `licitaciones_canonicas`, que este rol no puede leer (falla con `42501`): sin marca en `licitaciones_duplicados`, su conteo puede ser algo menor que el tuyo.
 
 ## 2. Importe: qué base lleva cada columna (ADR-032)
 
@@ -43,7 +43,7 @@ La web pública además colapsa por clave (órgano plegado + CPV4 + año-mes + t
 - `importe_num` (numeric) e `importe` (`double precision`) son el mismo dato; `importe_num` es exacto pero puede faltar en filas antiguas: `COALESCE(importe_num, importe)`.
 - Precisión: `licitaciones.importe` y los importes de `adjudicaciones` (`importe_adjudicado`, `importe_pagable`, `oferta_minima`, `oferta_maxima`) son `double precision` desde la revisión `v156`; antes eran `real` (unas 7 cifras significativas) y lo que se escribió entonces conserva ese redondeo hasta que el expediente se reingiere: 11 782 154,55 € puede leerse como 11 782 155. Para cifras exactas usa `importe_base_sin_iva`/`importe_con_iva`/`importe_num`.
 - Nunca mezcles bases al promediar o sumar. Mínimo: `COALESCE(importe_tipo, 'desconocido') <> 'con_iva'`. Para declarar «sin IVA»: `importe_tipo = 'sin_iva' AND importe_base_sin_iva IS NOT NULL`. Di en la respuesta qué base usaste.
-- `lotes.importe`: base sin IVA del lote.
+- `lotes.importe`: base sin IVA del lote. El lote se identifica por `lotes.numero` (y `lotes.titulo`); `adjudicaciones.lote_id` apunta a `lotes.id` y es `NULL` si el contrato no va por lotes. `lote_numero` solo existe en `pursuits`.
 
 `adjudicaciones` es lo que se adjudicó realmente, una fila por empresa ganadora (y por lote):
 - `importe_adjudicado`: importe de adjudicación SIN IVA. `importe_pagable`: importe a pagar según el aviso (PayableAmount). `oferta_minima`/`oferta_maxima`/`n_ofertas_recibidas`: las ofertas del concurso.
@@ -196,6 +196,7 @@ ORDER BY mes
 - Texto libre: `search_vector @@ websearch_to_tsquery('spanish', 'mantenimiento sap')` usa índice; `titulo ILIKE '%…%'` recorre la tabla entera. La búsqueda por `search_vector` casa palabras enteras (con raíz): «automatización» no encuentra «hiperautomatización». Si no da nada, prueba `titulo ILIKE '%raíz%'` acotado por fecha u órgano.
 - `buscar_licitaciones` solo ve licitaciones con `tecnologia` asignada. Un contrato de tecnología con `tecnologia` vacía (p. ej. clasificado solo por CPV) no sale ahí: búscalo en `licitaciones` con `consultar_sql`.
 - Criterios de adjudicación (`licitacion_criterios_adjudicacion`): `es_precio` y `licitaciones.peso_precio_pct` se deducen del texto del criterio y fallan con las etiquetas genéricas de PLACSP. «…mera aplicación de fórmulas, diferentes al precio» sale como `es_precio = true` y el criterio de precio real, no. El criterio de precio es el de `subtipo_codigo = '1'`; el nombre concreto del criterio suele estar en `nota`, no en `descripcion`. Ante la duda, lee los tres campos antes de dar el peso del precio.
+- `round(x, n)` solo existe para `numeric`: los importes son `double precision`, así que `round(x::numeric, 2)` (como en los ejemplos).
 - Antes de unir tablas desconocidas, llama a `describir_tabla`: muestra columnas, claves foráneas y 3 filas de ejemplo.
 - Las tablas de credenciales, sesiones y tokens no son visibles; `users` y `webhooks` solo muestran sus columnas no sensibles, y `SELECT *` sobre ellas falla: pide columnas concretas.
 
