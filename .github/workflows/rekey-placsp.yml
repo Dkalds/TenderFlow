@@ -27,7 +27,13 @@ name: Re-key PLACSP — relleno de organo_ref_fuente (manual)
 # está en v163 y el código de master exige v166, justo porque v164 espera a este
 # relleno. El script solo escribe `organo_ref_fuente`, que existe desde v163.
 #
-# Comparte `concurrency.group: scrape` con los carriles de ingesta (ADR-012).
+# Comparte `concurrency.group: scrape` con los carriles de ingesta (ADR-012),
+# salvo `plan`/`aplicar` con rango: cada rango lleva su grupo y corren en
+# paralelo (el cuello es la descarga de PLACSP, 4-15 min por ZIP; un run sin
+# rango no cabe en las 6 h del runner, medido en el run 41082387658). Es seguro
+# porque el relleno solo escribe filas con la columna vacía: dos rangos que
+# resuelvan la misma fila no se pisan. Con la ingesta en marcha no se lanzan
+# rangos: la ventana del runbook la para antes.
 
 on:
   workflow_dispatch:
@@ -63,7 +69,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: scrape
+  group: >-
+    ${{ (inputs.modo == 'plan' || inputs.modo == 'aplicar') && inputs.desde != ''
+        && format('rekey-placsp-{0}-{1}', inputs.desde, inputs.hasta) || 'scrape' }}
   cancel-in-progress: false
 
 jobs:
