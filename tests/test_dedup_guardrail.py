@@ -124,6 +124,13 @@ _ALLOWLIST: dict[str, str] = {
         "services/ml/classifier_training.py (fuera del escaner) hasta que T3 la movio a db/ "
         "el 2026-09-18; la dedupe se aplica al agregar, no al etiquetar."
     ),
+    "ml_dataset.guardar_scores_tecnologia": (
+        "Escritura, no analitica: el `EXISTS (... FROM licitaciones ...)` solo "
+        "comprueba que la licitacion siga existiendo antes de insertar su score "
+        "(2026-10-31, una borrada a mitad de lote tumbaba el precompute por la "
+        "clave foranea). Escribe las mismas filas que filas_pendientes_ml_tecnologias "
+        "selecciono, duplicadas incluidas, por el mismo motivo."
+    ),
     "predicciones.purgar_cerradas": (
         "Purga de predicciones, no analitica: borra filas de "
         "`predicciones_baja` de expedientes cerrados hace mas de N dias. Un "
