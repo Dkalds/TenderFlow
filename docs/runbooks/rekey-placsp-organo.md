@@ -80,8 +80,12 @@ cuando la base tiene la clave nueva y la ingesta vuelve a correr.
    - `--respaldo-por-nombre --aplicar` deduce el órgano del nombre, solo cuando
      todas las demás filas con ese nombre tienen el mismo.
    - **Conflictos** (un `idEvl` con dos órganos) y filas sin resolver: una a
-     una. Sin datos de usuario se borran (la reingesta las trae con su clave);
-     con datos de usuario, se rellenan a mano tras mirar la entrada.
+     una. Sin datos de usuario se borran (la reingesta las trae con su clave):
+     `scripts/borrar_colisiones_rekey_placsp.py --sin-organo` las lista y con
+     `--aplicar` las borra (`incluir_sin_organo` en `rekey-placsp.yml`). El
+     2026-10-31 quedaron 21, todas filas de prueba de los E2E y smoke tests
+     del 2026-05-11 (`E2E-*`, `LIC-SMOKE-*`, URLs de example.com). Con datos
+     de usuario, se rellenan a mano tras mirar la entrada.
 4. **Puerta 1**: `python scripts/inventario_pisadas_placsp.py` tiene que decir
    «ninguna» en «filas PLACSP sin organo_ref_fuente». Anotar también el
    inventario de pisadas (`--csv antes.csv`) y `make audit-truth-check`: son el

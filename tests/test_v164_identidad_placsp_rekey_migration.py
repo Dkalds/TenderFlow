@@ -527,7 +527,9 @@ def test_borrar_las_colisiones_despeja_la_guarda_y_respeta_los_datos_de_usuario(
     from db.database import connect
     from db.repositories.identidad import (
         borrar_licitaciones_en_colision,
+        borrar_mat_clusters_huerfanos,
         colisiones_del_rekey_placsp,
+        contar_mat_clusters_huerfanos,
     )
 
     exp_a = _nuevo(_ORG_A, _EXP)
@@ -540,6 +542,12 @@ def test_borrar_las_colisiones_despeja_la_guarda_y_respeta_los_datos_de_usuario(
             " (licitacion_id, tecnologia, probabilidad, threshold_aplicado) "
             "VALUES (%s, 'SAP', 0.9, 0.5)",
             (exp_a,),
+        )
+        # Sin FK pero con el id como clave: si quedara, chocaría al repuntar.
+        c.execute(
+            "INSERT INTO mat_clusters (id_externo, cluster_id, cluster_label, updated_at) "
+            "VALUES (%s, 1, 'x', '2026-10-28'), (%s, 1, 'x', '2026-10-28')",
+            (exp_a, _EXP),
         )
         # Una con pursuit: la lista la incluye, el borrado no la toca.
         _licitacion(c, con_usuario, organo=_ORG_A)
@@ -562,6 +570,16 @@ def test_borrar_las_colisiones_despeja_la_guarda_y_respeta_los_datos_de_usuario(
             _uno(c, "SELECT count(*) FROM licitaciones WHERE id_externo = %s", (con_usuario,)) == 1
         )
         assert _uno(c, "SELECT count(*) FROM licitaciones WHERE id_externo = %s", (_EXP,)) == 1
+        assert _uno(c, "SELECT count(*) FROM mat_clusters WHERE id_externo = %s", (exp_a,)) == 0
+        # Una huérfana que dejó un borrado anterior a esta limpieza.
+        c.execute(
+            "INSERT INTO mat_clusters (id_externo, cluster_id, cluster_label, updated_at) "
+            "VALUES (%s, 1, 'x', '2026-10-28')",
+            (_nuevo(_ORG_B, "HUERFANA/1"),),
+        )
+    assert contar_mat_clusters_huerfanos() == 1
+    assert borrar_mat_clusters_huerfanos() == 1
+    assert contar_mat_clusters_huerfanos() == 0
     # Y la guarda de v164 ya no encuentra la clave ocupada.
     with connect() as c:
         _aplicar(c)
