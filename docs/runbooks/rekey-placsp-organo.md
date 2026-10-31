@@ -55,7 +55,7 @@ cuando la base tiene la clave nueva y la ingesta vuelve a correr.
    ([disaster-recovery.md](disaster-recovery.md) §5). Es aditiva: columna
    nullable y tabla vacía. Después, regenerar los grants del rol del MCP
    ([mcp-interno.md](mcp-interno.md)): `licitaciones_id_anterior` ya está en
-   `mcp_server/catalogo.py`.
+   `mcp_server/catalogo.py` (`gh workflow run migrate.yml -f mode=grants-mcp`).
 2. **Dejar que la ingesta rellene lo que toca**: desde la fase A, cada entrada
    que pasa por el conector guarda su `organo_ref_fuente`. Un par de pasadas de
    `scrape-daily` bastan para lo reciente.
