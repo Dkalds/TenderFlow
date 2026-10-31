@@ -84,6 +84,62 @@ class TestProporcionalInversa:
         assert [e.baja for e in sim.escenarios] == [0.05, 0.10, 0.20]
 
 
+class TestInversaPrecio:
+    def test_puntos_calculados_a_mano(self) -> None:
+        """40 puntos, la mejor baja esperada es el 20 %.
+
+        Precio con baja del 10 %: 0,90; el más bajo: 0,80.
+        40 × 0,80 / 0,90 = 35,555… → 35,56. Con la del 20 %: 40.
+        """
+        sim = simular(
+            "EXP-1",
+            [_formula(formula_type="inversa_precio", max_points=40)],
+            bajas=[0.10, 0.20],
+            baja_mayor_esperada=0.20,
+        )
+        assert [e.puntos for e in sim.escenarios] == [35.56, 40.0]
+
+    def test_no_es_la_proporcional_a_la_baja(self) -> None:
+        """La misma baja da 20 puntos con `proporcional_inversa`: no son intercambiables."""
+        sim = simular(
+            "EXP-1",
+            [_formula(formula_type="proporcional_inversa", max_points=40)],
+            bajas=[0.10],
+            baja_mayor_esperada=0.20,
+        )
+        assert sim.escenarios[0].puntos == 20.0
+
+    def test_mejorar_la_mejor_baja_da_el_maximo(self) -> None:
+        sim = simular(
+            "EXP-1",
+            [_formula(formula_type="inversa_precio", max_points=40)],
+            bajas=[0.30, 1.0],
+            baja_mayor_esperada=0.20,
+        )
+        assert [e.puntos for e in sim.escenarios] == [40.0, 40.0]
+
+    def test_sin_baja_frente_a_un_rival(self) -> None:
+        """Baja 0 contra un rival al 25 %: 40 × 0,75 / 1 = 30."""
+        sim = simular(
+            "EXP-1",
+            [_formula(formula_type="inversa_precio", max_points=40)],
+            bajas=[0.0],
+            baja_mayor_esperada=0.25,
+        )
+        assert sim.escenarios[0].puntos == 30.0
+
+    def test_hueco_contra_el_rival(self) -> None:
+        """Bajo el 10 % contra un rival al 20 %: 35,56 − 40 = −4,44."""
+        sim = simular(
+            "EXP-1",
+            [_formula(formula_type="inversa_precio", max_points=40)],
+            bajas=[0.10],
+            baja_referencia=0.20,
+            baja_mayor_esperada=0.20,
+        )
+        assert sim.hueco_vs_referencia == -4.44
+
+
 class TestPorTramos:
     def test_escalones(self) -> None:
         """Tramos: ≥5 % → 10 pts, ≥10 % → 20, ≥15 % → 30. Máximo 30."""

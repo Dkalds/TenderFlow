@@ -35,7 +35,10 @@ import { cn, formatNumber, formatPercent } from "@/lib/utils";
  */
 
 const FORMULAS: Record<string, string> = {
-  proporcional_inversa: "Proporcional inversa",
+  // El tipo se llama `proporcional_inversa` por historia; lo que calcula es
+  // proporcional a la baja. La inversa al precio es `inversa_precio`.
+  proporcional_inversa: "Proporcional a la baja",
+  inversa_precio: "Proporcionalidad inversa al precio",
   lineal_por_tramos: "Lineal por tramos",
   con_umbral_temeridad: "Con umbral de temeridad",
   otra: "Otra fórmula",
@@ -53,6 +56,7 @@ export const MOTIVOS_SIN_CALCULO: Record<NonNullable<SimulacionPrecio["sin_calcu
 
 type FormulaTelemetria =
   | "proporcional_inversa"
+  | "inversa_precio"
   | "lineal_por_tramos"
   | "con_umbral_temeridad"
   | "otra"

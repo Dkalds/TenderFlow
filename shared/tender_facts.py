@@ -118,12 +118,18 @@ class ServiceLevelFact(FactItem):
 #:
 #: Se cataloga la **forma**, no la fórmula literal: los parámetros van aparte
 #: para que el simulador pueda calcular sin interpretar texto. `otra` es la
-#: salida honesta cuando el pliego usa algo que no encaja en las tres primeras
+#: salida honesta cuando el pliego usa algo que no encaja en las demás
 #: —y entonces el simulador **no calcula**, lo dice—, que es preferible a
 #: aproximarla con la más parecida.
 PriceFormulaType = Literal[
-    # Puntos = max * (baja_propia / baja_mayor). La mas comun.
+    # Puntos = max * (baja_propia / baja_mayor): proporcional a la baja. El
+    # nombre es anterior a `inversa_precio` y se conserva porque hay fichas
+    # guardadas con él; no es la «proporcionalidad inversa» de los pliegos.
     "proporcional_inversa",
+    # Puntos = max * (precio_mas_bajo / precio_ofertado): la «proporcionalidad
+    # inversa» sobre el precio. Con la misma baja da muchos más puntos que la
+    # de arriba (40 pts, rival al 20 %, baja propia del 10 %: 35,6 frente a 20).
+    "inversa_precio",
     # Tramos fijos de puntuación por franjas de baja.
     "lineal_por_tramos",
     # Proporcional pero con corte en el umbral de temeridad.

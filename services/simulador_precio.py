@@ -13,9 +13,10 @@ aproxima con la fórmula más común acierta muchas veces y falla justo donde
 importa —el pliego raro, el que nadie ha leído entero—, y quien lo use no
 tiene forma de saber en cuál de los dos casos está.
 
-Las tres formas que se calculan salen del catálogo de ``PriceFormulaType``:
-proporcional inversa, lineal por tramos y proporcional con umbral de
-temeridad. ``otra`` no se calcula, por lo mismo.
+Las formas que se calculan salen del catálogo de ``PriceFormulaType``:
+proporcional a la baja (``proporcional_inversa``, nombre histórico), inversa
+al precio, lineal por tramos y proporcional con umbral de temeridad. ``otra``
+no se calcula, por lo mismo.
 """
 
 from __future__ import annotations
@@ -84,7 +85,7 @@ class SimulacionPrecio(BaseModel):
 
 
 def _puntos_proporcional_inversa(baja: float, baja_mayor: float, maximo: float) -> float:
-    """``max * (baja / baja_mayor)``, la forma más común en España.
+    """``max * (baja / baja_mayor)``: proporcional a la baja (``proporcional_inversa``).
 
     ``baja_mayor`` es la mejor oferta esperada, no la propia: es lo que hace
     que el simulador responda «cuántos puntos me da» y no «cuántos me daría si
@@ -94,6 +95,19 @@ def _puntos_proporcional_inversa(baja: float, baja_mayor: float, maximo: float) 
     if baja_mayor <= 0:
         return maximo
     return maximo * min(baja / baja_mayor, 1.0)
+
+
+def _puntos_inversa_precio(baja: float, baja_mayor: float, maximo: float) -> float:
+    """``max * (precio_mas_bajo / precio_ofertado)`` escrito en bajas.
+
+    Con el presupuesto como unidad, el precio de una baja ``b`` es ``1 - b``:
+    ``max * (1 - baja_mayor) / (1 - baja)``. Quien iguala o supera la mejor
+    baja se lleva el máximo; también una baja del 100 %, que no tiene precio
+    por el que dividir.
+    """
+    if baja >= 1 or baja >= baja_mayor:
+        return maximo
+    return maximo * (1 - baja_mayor) / (1 - baja)
 
 
 def _puntos_por_tramos(baja: float, tramos: dict[str, float], maximo: float) -> float:
@@ -161,7 +175,9 @@ def simular(
     def _puntos(baja: float) -> float:
         if formula.formula_type == "lineal_por_tramos":
             return _puntos_por_tramos(baja, tramos, maximo)
-        # `con_umbral_temeridad` reparte igual que la proporcional inversa; lo
+        if formula.formula_type == "inversa_precio":
+            return _puntos_inversa_precio(baja, mayor, maximo)
+        # `con_umbral_temeridad` reparte igual que la proporcional a la baja; lo
         # que cambia es que marca las ofertas por debajo del umbral, porque el
         # órgano puede excluirlas. El simulador no las excluye por su cuenta:
         # una temeraria justificada se acepta, y decidir eso no le toca a él.
