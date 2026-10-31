@@ -312,3 +312,40 @@ Implementación: `services.dedupe.detect_duplicados_por_referencia`, alimentado 
   (`_publicable_sql`) excluye los duplicados `confirmed`. Es la regla que ya
   regía para cualquier duplicado confirmado; una redirección 301 a la canónica
   conservaría mejor lo ya indexado.
+
+## Addendum 2026-10-31 — El universo del producto suma lo que entra por su CPV
+
+### El hecho, medido
+
+Desde 2026-09 la ingesta guarda un aviso aunque el título no case con el
+diccionario si su CPV es de una división del universo (48 y 72; la 32 desde el
+2026-10-30), y lo marca `inclusion_reason = 'cpv_ti_universe'`. Ninguna de las
+cuatro señales de B lo admitía: sin `tecnologia` ni `ml_tecnologias`, una fila
+de PSCP (`pscp_observed`) quedaba fuera de todo. Y el listado ni siquiera usaba
+`universo_tecnologico_sql`: exigía `tecnologia` informada. Medido en producción
+el 2026-10-31 sobre las filas publicadas desde 2025: el listado enseñaba 15.359
+de 67.572, la superficie pública admitía 39.668, y de las 13.079 de la CPV 32
+eran 528 y 7.311.
+
+### La regla
+
+Un quinto camino de entrada, en su propio predicado y con un solo dueño (C):
+`universo_producto_sql` = `universo_tecnologico_sql` **o** `inclusion_reason =
+'cpv_ti_universe'`. Lo usan el listado, la búsqueda de texto y el calendario de
+vencimientos (PR #614) y, desde `v168`, la vista `licitaciones_canonicas`
+(superficie pública, sitemap y hubs), los KPIs del radar (`db/kpi_precompute.py`)
+y la cobertura. Las filas publicables (sustancia y sin duplicado confirmado)
+pasan de 51.324 a 107.047, 16.567 de ellas por la CPV 32.
+
+`universo_tecnologico_sql` sigue existiendo con su significado: «alguna señal
+dice que esto es tecnología». La población del clasificador y las métricas que
+usan `technology_observed_sql` no cambian.
+
+### Lo que queda fuera
+
+- **La etiqueta.** Una fila que entra solo por su CPV no tiene tecnología que
+  enseñar; el listado pinta la del clasificador como estimada si la hay, y si
+  no, una raya junto al CPV de la propia fila.
+- **El ruido de la división 32.** Trae cámaras y megafonía, que es justo lo que
+  `CPV_PREFIXES_TI` deja fuera de la corroboración de keywords. El filtro de
+  tecnología del listado sigue sirviendo a quien solo quiera lo etiquetado.

@@ -47,6 +47,10 @@ que asumir a sabiendas:
   mismo. Las consultas que sí necesitan el índice usan
   ``technology_observed_sql`` y siguen donde estaban.
 
+Desde el 2026-10-31 (``v168``) la ancha es
+:func:`db.sql_fragments.universo_producto_sql`, la del listado: suma lo que
+la ingesta guarda solo por su CPV (``inclusion_reason = 'cpv_ti_universe'``).
+
 Las métricas ``ov_*`` que añade ``db/repositories/kpi_snapshots.py`` no pasan
 por aquí y **no** filtran universo: ver su propio módulo.
 
@@ -69,7 +73,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from db.sql_fragments import exclude_duplicados_presentacion_sql, universo_tecnologico_sql
+from db.sql_fragments import exclude_duplicados_presentacion_sql, universo_producto_sql
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -82,7 +86,7 @@ if TYPE_CHECKING:
 #: que contar lo mismo que el listado y que el cálculo en vivo
 #: (``build_licitaciones_where``), que ya la aplican.
 _UNIVERSO = (
-    f"{universo_tecnologico_sql('l')} AND {exclude_duplicados_presentacion_sql('l.id_externo')}"
+    f"{universo_producto_sql('l')} AND {exclude_duplicados_presentacion_sql('l.id_externo')}"
 )
 
 #: Una fila de ``kpi_snapshots`` antes de persistirse: ``metrica``,

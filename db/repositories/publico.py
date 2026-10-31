@@ -51,7 +51,7 @@ from db.sql_fragments import (
     fila_canonica_sql,
     fold_expr,
     importe_select_sql,
-    universo_tecnologico_sql,
+    universo_producto_sql,
 )
 
 __all__ = [
@@ -315,11 +315,13 @@ def _publicable_sql(alias: str) -> str:
     de «un radar tecnológico, no un censo» servía 415.868 expedientes, 396.583
     de Cataluña, encabezados por reactivos de laboratorio. El predicado es el
     mismo que ya usaban la analítica y el ML: ``universo_tecnologico_sql``.
+    Desde ``v168`` es el del listado, ``universo_producto_sql``: suma lo que
+    la ingesta guarda solo por su CPV.
     """
     # Publicar un duplicado es contenido duplicado —que Google penaliza— y
     # además presenta dos veces el mismo contrato al visitante.
     no_duplicados = exclude_duplicados_sql(alias + ".id_externo")
-    return f"{_sustancia_sql(alias)} AND {no_duplicados} AND {universo_tecnologico_sql(alias)}"
+    return f"{_sustancia_sql(alias)} AND {no_duplicados} AND {universo_producto_sql(alias)}"
 
 
 #: Publicabilidad de la fila, sin más. Es lo que aplica `ficha`.

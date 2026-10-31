@@ -12,8 +12,8 @@ seguir sin ellos creyendo que la agregación cubre lo que no cubre.
 Todo el SQL vive aquí (ADR-022); ``scripts/medir_solape_agregados.py`` solo
 formatea. Las cuatro consultas usan el mismo corte de fecha sobre
 ``fecha_pub_d`` (columna ``date`` generada, v68) y el mismo predicado de
-universo tecnológico que la superficie pública y la analítica
-(``db.sql_fragments.universo_tecnologico_sql``): comparar cifras con
+universo que el listado y la superficie pública
+(``db.sql_fragments.universo_producto_sql``): comparar cifras con
 denominadores distintos es exactamente lo que este módulo evita.
 """
 
@@ -25,7 +25,7 @@ from typing import Any
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
-from db.sql_fragments import universo_tecnologico_sql
+from db.sql_fragments import universo_producto_sql
 
 #: Estado con el que PLACSP marca los avisos que agrega de otras plataformas.
 ESTADO_AGREGADO = "AGR"
@@ -57,7 +57,7 @@ class OrganoPorFuente:
 
 
 def _sql_ccaa(desde: date) -> tuple[str, tuple[Any, ...]]:
-    universo = universo_tecnologico_sql("l")
+    universo = universo_producto_sql("l")
     sql = (
         "SELECT COALESCE(l.ccaa, '(sin CCAA)') AS ccaa, "
         "       COUNT(*) AS total, "
@@ -71,7 +71,7 @@ def _sql_ccaa(desde: date) -> tuple[str, tuple[Any, ...]]:
 
 
 def _sql_ccaa_fuente(desde: date) -> tuple[str, tuple[Any, ...]]:
-    universo = universo_tecnologico_sql("l")
+    universo = universo_producto_sql("l")
     sql = (
         "SELECT COALESCE(l.ccaa, '(sin CCAA)') AS ccaa, l.fuente, COUNT(*) AS n "
         "FROM licitaciones l "
@@ -117,7 +117,7 @@ def organos_por_fuente(*, ccaa: str, desde: date, limit: int = 15) -> list[Organ
     el texto en caso contrario, con la misma lectura dual que la analítica;
     el nombre que se muestra es el canónico si existe.
     """
-    universo = universo_tecnologico_sql("l")
+    universo = universo_producto_sql("l")
     sql = (
         "WITH base AS ("
         "  SELECT COALESCE(o.nombre_canonico, l.organo_contratacion, '(sin órgano)') AS organo, "
