@@ -357,6 +357,42 @@ class TecnologiaPliegoRepository:
             ).fetchall()
             return [str(row[0]) for row in rows]
 
+    def licitaciones_con_senal_obsoleta(
+        self,
+        *,
+        signal_version: str,
+        min_score: float,
+        shard: int = 0,
+        shards: int = 1,
+        limit: int = 500,
+    ) -> list[str]:
+        """Licitaciones con alguna señal ``keywords`` fundible de otra versión.
+
+        Fundible = ``score >= min_score``: las únicas señales viejas que pueden
+        haber dejado etiquetas en ``licitacion_tecnologia_score``. Es el lote
+        que ``scripts/medir_etiquetas_tecnologia.py recalcular`` re-puntúa
+        antes de rehacer esa tabla; el resto de pendientes las re-puntúa el
+        cron de ``pliegos.yml`` sin prisa. ``shard``/``shards`` reparten el
+        trabajo entre jobs en paralelo por hash del id.
+        """
+        with connect_read() as c:
+            rows = c.execute(
+                "SELECT DISTINCT p.licitacion_id FROM licitacion_tecnologia_pliego p "
+                "WHERE p.method = 'keywords' AND p.signal_version <> %s "
+                "AND p.score >= %s AND p.tecnologia <> ALL(%s) "
+                "AND mod(hashtext(p.licitacion_id)::bigint + 2147483648, %s) = %s "
+                "ORDER BY p.licitacion_id LIMIT %s",
+                (
+                    signal_version,
+                    min_score,
+                    list(SENTINELS),
+                    max(1, int(shards)),
+                    int(shard),
+                    max(1, min(int(limit), 2000)),
+                ),
+            ).fetchall()
+            return [str(row[0]) for row in rows]
+
     def list_metadata_pending_llm_signal(
         self, *, signal_version: str, method: str = "llm_metadata", limit: int = 200
     ) -> list[dict[str, Any]]:

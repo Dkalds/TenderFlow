@@ -24,15 +24,15 @@ cifra no se sabe si un cambio de reglas ayuda. Tres subcomandos:
 ``precision``
     Lee ese JSONL revisado y da la precisión por etiqueta y por fuente.
 
-``recalcular``
-    **Escribe en la BD.** Aplica las reglas del 2026-10-30 a lo ya guardado:
-    vuelve a puntuar la señal de pliegos de la versión vigente (lo que el
-    cron nocturno de ``pliegos.yml`` haría en semanas, a 500 por noche), y
-    solo cuando no queda ninguna pendiente rehace ``licitacion_tecnologia_score``
+``repuntuar`` y ``rehacer``
+    **Escriben en la BD.** Aplican las reglas a lo ya guardado. ``repuntuar``
+    vuelve a puntuar las licitaciones con alguna señal de pliego fundible
+    (``score >= PLIEGO_TECH_MIN_SCORE``) de otra versión —las únicas que pueden
+    haber dejado etiquetas viejas; el resto lo re-puntúa sin prisa el cron de
+    ``pliegos.yml``—, repartible en ``--shards`` jobs paralelos. ``rehacer``,
+    solo si ya no queda ninguna, rehace ``licitacion_tecnologia_score``
     (``precompute_ml_tecnologias(force=True)``) y vuelve a fundir los pliegos
-    (``merge_doc_signals``). El orden importa: rehacer antes de re-puntuar
-    volvería a fundir las señales viejas. Si se agota ``--presupuesto-s`` con
-    pliegos pendientes, para sin rehacer nada y hay que relanzarlo.
+    (``merge_doc_signals``): rehacer antes volvería a fundir las señales viejas.
 
 Uso::
 
@@ -40,7 +40,8 @@ Uso::
     ENV=prod PYTHONPATH="$PWD" python -m scripts.medir_etiquetas_tecnologia muestra \\
         --n 100 --out data/etiquetado/muestra_etiquetas.jsonl
     python -m scripts.medir_etiquetas_tecnologia precision data/etiquetado/muestra_etiquetas.jsonl
-    ENV=prod PYTHONPATH="$PWD" python -m scripts.medir_etiquetas_tecnologia recalcular
+    ENV=prod PYTHONPATH="$PWD" python -m scripts.medir_etiquetas_tecnologia repuntuar
+    ENV=prod PYTHONPATH="$PWD" python -m scripts.medir_etiquetas_tecnologia rehacer
 
 ``resumen`` y ``muestra`` leen la base de datos (solo lectura); ``precision``
 solo el fichero. En producción se lanzan desde
@@ -227,36 +228,66 @@ def _imprimir_precision(r: dict[str, Any]) -> None:
         print(f"\nEtiquetas que faltaban: {r['faltan']}")
 
 
-def recalcular(*, presupuesto_s: float, lote: int = 500) -> dict[str, Any]:
-    """Re-puntúa los pliegos pendientes y, si no queda ninguno, rehace ML y fusiona.
+def _obsoletas(*, shard: int = 0, shards: int = 1, limite: int) -> list[str]:
+    from config import settings
+    from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
+    from scraper.lineage import current_filter_version
 
-    Ver el docstring del módulo. Devuelve lo hecho en cada fase; ``completo``
-    dice si llegó a rehacer ``licitacion_tecnologia_score``.
+    return TecnologiaPliegoRepository().licitaciones_con_senal_obsoleta(
+        signal_version=current_filter_version(),
+        min_score=float(settings.PLIEGO_TECH_MIN_SCORE),
+        shard=shard,
+        shards=shards,
+        limit=limite,
+    )
+
+
+def repuntuar(
+    *, presupuesto_s: float, shard: int = 0, shards: int = 1, lote: int = 100
+) -> dict[str, Any]:
+    """Re-puntúa las licitaciones con señal de pliego fundible de otra versión.
+
+    Solo esas: son las únicas cuyas señales viejas pueden haber dejado
+    etiquetas en ``licitacion_tecnologia_score``. ``quedan`` dice si se paró
+    con trabajo pendiente (presupuesto agotado o un lote que solo falla).
     """
     import time
 
     from scheduler.jobs.documentos_embeddings import _run_tech_signal_phase
-    from services.ml.classifier_training import precompute_ml_tecnologias
-    from services.tech_signal import merge_doc_signals
 
     inicio = time.monotonic()
     pliegos: Counter[str] = Counter()
-    pendientes = True
+    quedan = True
     while time.monotonic() - inicio < presupuesto_s:
-        lote_hecho = _run_tech_signal_phase(limit=lote)
-        pliegos.update(lote_hecho)
-        # Las que fallan siguen pendientes: si un lote solo trae fallos, otra
-        # vuelta no avanza, y se para para no girar hasta agotar el presupuesto.
-        if not (lote_hecho.get("scored", 0) or lote_hecho.get("no_signal", 0)):
-            pendientes = bool(lote_hecho.get("error", 0))
+        ids = _obsoletas(shard=shard, shards=shards, limite=lote)
+        if not ids:
+            quedan = False
             break
-    resultado: dict[str, Any] = {"pliegos": dict(pliegos), "completo": False}
-    if pendientes:
-        return resultado
-    resultado["ml"] = precompute_ml_tecnologias(force=True)
-    resultado["fusion"] = merge_doc_signals()
-    resultado["completo"] = True
-    return resultado
+        hecho = _run_tech_signal_phase(licitacion_ids=ids)
+        pliegos.update(hecho)
+        # Las que fallan siguen obsoletas: un lote que solo falla no avanza, y
+        # otra vuelta lo repetiría hasta agotar el presupuesto.
+        if not (hecho.get("scored", 0) or hecho.get("no_signal", 0)):
+            break
+    return {"pliegos": dict(pliegos), "quedan": quedan}
+
+
+def rehacer() -> dict[str, Any]:
+    """Rehace ``licitacion_tecnologia_score`` y funde los pliegos, si se puede.
+
+    Antes comprueba que no quede ninguna señal fundible de otra versión:
+    rehacer con alguna volvería a fundir la etiqueta que se quiere quitar.
+    """
+    from services.ml.classifier_training import precompute_ml_tecnologias
+    from services.tech_signal import merge_doc_signals
+
+    if _obsoletas(limite=1):
+        return {"completo": False}
+    return {
+        "completo": True,
+        "ml": precompute_ml_tecnologias(force=True),
+        "fusion": merge_doc_signals(),
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -268,8 +299,11 @@ def main(argv: list[str] | None = None) -> int:
     p_muestra.add_argument("--out", type=Path, required=True)
     p_precision = sub.add_parser("precision", help="precisión de un JSONL revisado")
     p_precision.add_argument("fichero", type=Path)
-    p_recalcular = sub.add_parser("recalcular", help="ESCRIBE: aplica las reglas a lo guardado")
-    p_recalcular.add_argument("--presupuesto-s", type=float, default=2400.0)
+    p_repuntuar = sub.add_parser("repuntuar", help="ESCRIBE: re-puntúa los pliegos obsoletos")
+    p_repuntuar.add_argument("--presupuesto-s", type=float, default=2700.0)
+    p_repuntuar.add_argument("--shard", type=int, default=0)
+    p_repuntuar.add_argument("--shards", type=int, default=1)
+    sub.add_parser("rehacer", help="ESCRIBE: rehace las puntuaciones ML y funde los pliegos")
     args = parser.parse_args(argv)
 
     if args.comando == "precision":
@@ -281,15 +315,15 @@ def main(argv: list[str] | None = None) -> int:
         _imprimir_precision(precision(lineas))
         return 0
 
-    if args.comando == "recalcular":
-        hecho = recalcular(presupuesto_s=args.presupuesto_s)
+    if args.comando in ("repuntuar", "rehacer"):
+        hecho = (
+            repuntuar(presupuesto_s=args.presupuesto_s, shard=args.shard, shards=args.shards)
+            if args.comando == "repuntuar"
+            else rehacer()
+        )
         print(json.dumps(hecho, ensure_ascii=False, indent=2, default=str))
-        if not hecho["completo"]:
-            print(
-                "Quedan pliegos por re-puntuar: no se rehízo licitacion_tecnologia_score. "
-                "Vuelve a lanzarlo.",
-                file=sys.stderr,
-            )
+        if hecho.get("quedan") or hecho.get("completo") is False:
+            print("Quedan pliegos obsoletos: vuelve a lanzar el modo recalcular.", file=sys.stderr)
         return 0
 
     from config import settings
