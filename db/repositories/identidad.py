@@ -423,28 +423,24 @@ def borrar_licitaciones_en_colision(ids: Sequence[str]) -> int:
     """
     if not ids:
         return 0
-    lista = list(ids)
-    usuario = (
-        "NOT EXISTS (SELECT 1 FROM pursuits p WHERE p.licitacion_id = x.id) "
-        "AND NOT EXISTS (SELECT 1 FROM follows f "
-        "  WHERE f.target_type = 'licitacion' AND f.target_id = x.id) "
-        "AND NOT EXISTS (SELECT 1 FROM watchlist_items w WHERE w.id_externo = x.id)"
-    )
     with connect() as c:
+        borrables = [
+            str(f[0])
+            for f in c.execute(
+                "SELECT x.id FROM unnest(%s::text[]) AS x(id) "
+                "WHERE NOT EXISTS (SELECT 1 FROM pursuits p WHERE p.licitacion_id = x.id) "
+                "AND NOT EXISTS (SELECT 1 FROM follows f "
+                "  WHERE f.target_type = 'licitacion' AND f.target_id = x.id) "
+                "AND NOT EXISTS (SELECT 1 FROM watchlist_items w WHERE w.id_externo = x.id)",
+                (list(ids),),
+            ).fetchall()
+        ]
+        if not borrables:
+            return 0
+        c.execute("DELETE FROM licitaciones_history WHERE id_externo = ANY(%s)", (borrables,))
         c.execute(
-            "CREATE TEMP TABLE _borrar_colision ON COMMIT DROP AS "
-            "SELECT x.id FROM unnest(%s::text[]) AS x(id) "
-            f"WHERE {usuario}",
-            (lista,),
+            "UPDATE resoluciones_recurso SET licitacion_id = NULL WHERE licitacion_id = ANY(%s)",
+            (borrables,),
         )
-        c.execute(
-            "DELETE FROM licitaciones_history h USING _borrar_colision b WHERE h.id_externo = b.id"
-        )
-        c.execute(
-            "UPDATE resoluciones_recurso r SET licitacion_id = NULL "
-            "FROM _borrar_colision b WHERE r.licitacion_id = b.id"
-        )
-        cur = c.execute(
-            "DELETE FROM licitaciones l USING _borrar_colision b WHERE l.id_externo = b.id"
-        )
+        cur = c.execute("DELETE FROM licitaciones WHERE id_externo = ANY(%s)", (borrables,))
         return cur.rowcount or 0

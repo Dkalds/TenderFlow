@@ -359,6 +359,13 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # por demanda, y el resumen que se calienta es el del expediente, no el
         # de un usuario.
         "db/resumen_pregen.py::licitaciones_seguidas_abiertas",
+        # Borrado de operación de la re-key PLACSP (runbook
+        # rekey-placsp-organo.md): mira `pursuits`, `follows` y `watchlist_items`
+        # de TODOS los usuarios para NO borrar una licitación que alguien sigue.
+        # No devuelve nada de esas tablas ni las escribe; su único llamador es
+        # `scripts/borrar_colisiones_rekey_placsp.py` (`grep -rn
+        # borrar_licitaciones_en_colision api/` vacío).
+        "db/repositories/identidad.py::borrar_licitaciones_en_colision",
         # Fan-out del outbox (S4.5 del plan 2026-09 v2). A diferencia de las dos
         # de arriba, ésta SÍ contesta «¿a quién?»: es la consulta que, cuando un
         # expediente seguido cambia, dice a qué seguidores hay que avisar. Un
