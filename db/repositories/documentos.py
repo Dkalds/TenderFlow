@@ -26,7 +26,7 @@ from typing import Any, TypedDict
 
 from db.database import DocumentoReferencia, connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts, typed_rows
-from db.sql_fragments import columna_nucleo, columna_nucleo_sql, universo_tecnologico_sql
+from db.sql_fragments import columna_nucleo, columna_nucleo_sql, universo_producto_sql
 from observability.logging import get_logger
 from shared.estados import ESTADOS_CERRADOS, abierta_sql
 
@@ -823,12 +823,11 @@ class DocumentosRepository:
         empareja el aviso TED (``services.dedupe.marcar_republicaciones_ted``).
         Sin documentos primero; dentro, lo más reciente.
 
-        El corte es el universo tecnológico de la superficie pública
-        (:func:`db.sql_fragments.universo_tecnologico_sql`) **más** lo que la
-        puerta de PSCP guarda solo por su CPV 48/72 (``inclusion_reason =
-        'cpv_ti_universe'``, ``scraper.connectors.pscp.INCLUSION_CPV_TI``). Esas
-        filas no se publican —no tienen etiqueta de tecnología—, pero su anuncio
-        TED sí, porque TED entra por CPV: el 2026-10-02 eran 48 de las 122
+        El corte es el universo del listado
+        (:func:`db.sql_fragments.universo_producto_sql`): el tecnológico **más**
+        lo que la puerta de PSCP guarda solo por su CPV (``inclusion_reason =
+        'cpv_ti_universe'``, ``scraper.connectors.pscp.INCLUSION_CPV_TI``). Su
+        anuncio TED entra también por CPV: el 2026-10-02 eran 48 de las 122
         convocatorias vigentes, y sin leer su ficha el aviso TED se quedaba sin
         pliegos. Leer la de un contrato de limpieza no serviría a nadie.
         """
@@ -841,7 +840,7 @@ class DocumentosRepository:
                 "  FROM licitaciones l "
                 "  WHERE l.fuente = 'pscp' AND l.estado = 'PUB' "
                 f"  AND {_vigente_sql()} "
-                f"  AND ({universo_tecnologico_sql('l')} OR l.inclusion_reason = 'cpv_ti_universe')"
+                f"  AND {universo_producto_sql('l')}"
                 ") l "
                 "WHERE l.sin_documentos OR l.fecha_pub_d >= current_date - %s::int "
                 "ORDER BY l.sin_documentos DESC, l.fecha_pub_d DESC NULLS LAST, l.id_externo "

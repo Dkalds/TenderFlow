@@ -53,6 +53,7 @@ from db.sql_fragments import (
     normaliza_codigo,
     tecnologia_en_csv_sql,
     tecnologia_tokens_sql,
+    universo_producto_sql,
 )
 from observability.logging import get_logger
 from shared.dto import FiltrosLicitacion
@@ -360,6 +361,11 @@ def _plegado(column: Any) -> Any:
 #: en los agregados (``build_licitaciones_where``) y en la rama FTS.
 _SIN_REPUBLICACIONES = text(exclude_duplicados_presentacion_sql("licitaciones.id_externo"))
 
+#: Universo del listado (:func:`db.sql_fragments.universo_producto_sql`). Antes
+#: era ``tecnologia`` informada, y dejaba fuera lo que entra por su CPV o solo
+#: con la etiqueta del clasificador.
+_UNIVERSO_PRODUCTO = text(universo_producto_sql("licitaciones"))
+
 _COLUMNAS_BUSQUEDA = (
     licitaciones.c.titulo,
     licitaciones.c.descripcion,
@@ -601,7 +607,7 @@ class LicitacionRepository:
     def _base_filters(
         filtros: FiltrosLicitacion | None = None,
         *,
-        only_classified: bool = True,
+        solo_universo: bool = True,
     ) -> list[Any]:
         """Devuelve lista de cláusulas SA Core para WHERE.
 
@@ -625,13 +631,8 @@ class LicitacionRepository:
         filtros = filtros or FiltrosLicitacion()
         clauses: list[Any] = [_SIN_REPUBLICACIONES]
 
-        if only_classified:
-            clauses.append(
-                and_(
-                    licitaciones.c.tecnologia.isnot(None),
-                    licitaciones.c.tecnologia != "",
-                )
-            )
+        if solo_universo:
+            clauses.append(_UNIVERSO_PRODUCTO)
 
         if filtros.q and filtros.q.strip():
             like = f"%{escape_like(filtros.q.strip().translate(FOLD_TABLE).lower())}%"
@@ -982,7 +983,7 @@ class LicitacionRepository:
         flim = columna_nucleo_sql("fecha_limite", "l")
         imp = columna_nucleo_sql("importe", "l")
         extra_conditions: list[str] = [
-            "tecnologia IS NOT NULL AND tecnologia != ''",
+            universo_producto_sql("l"),
             # Misma regla de presentación que `_base_filters` (ADR-026 D23): la
             # búsqueda de texto es otro camino al mismo listado.
             exclude_duplicados_presentacion_sql("l.id_externo"),

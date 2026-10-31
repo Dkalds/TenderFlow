@@ -138,7 +138,7 @@ responder «¿qué me vence y cuándo?».
   CCAA, tecnología, estado, q, importe mínimo, solo abiertas). La ventana está
   acotada a 366 días (422 si se excede): la serie crece con el rango, no con
   las filas. El universo es el MISMO que el del listado al que enlaza cada día
-  (incluido el `only_classified` de `_base_filters`), y la cota superior es
+  (incluido el `solo_universo` de `_base_filters`, antes `only_classified`), y la cota superior es
   exclusiva para que una `fecha_limite` con hora caiga en su día.
 - **Frontend.** `use-calendario-view.ts` consume `fecha_limite` vía ese
   endpoint; la vista principal es «Vencimientos» y «Publicaciones» queda como

@@ -144,6 +144,25 @@ def universo_tecnologico_sql(alias: str = "l") -> str:
     )
 
 
+def universo_producto_sql(alias: str = "l") -> str:
+    """Lo que el listado enseña: :func:`universo_tecnologico_sql` más lo que entró por su CPV.
+
+    El quinto camino es ``inclusion_reason = 'cpv_ti_universe'``: un aviso que la
+    ingesta guarda solo porque su CPV es de una división del universo
+    (``config.constants.CPV_PREFIXES_UNIVERSO``: 48, 72 y, desde el 2026-10-30,
+    32) aunque el título no case con el diccionario. El literal es el de
+    ``scraper.pipeline.INCLUSION_CPV_TI``, que ``db/`` no puede importar.
+
+    Hasta el 2026-10-31 el listado exigía ``tecnologia`` informada: enseñaba
+    15.359 de las 67.572 filas publicadas desde 2025 y 528 de las 13.079 de la
+    CPV 32, mientras la analítica contaba 39.668. Con este predicado son 67.473.
+
+    La vista ``licitaciones_canonicas`` sigue con :func:`universo_tecnologico_sql`
+    hasta que una migración la reconstruya con éste.
+    """
+    return f"({universo_tecnologico_sql(alias)} OR {alias}.inclusion_reason = 'cpv_ti_universe')"
+
+
 # Fecha de fin efectiva del contrato, con prioridad:
 # 1. ``licitaciones.fecha_fin`` explícita (solo ~6% de las filas).
 # 2. ``fecha_inicio + duracion`` (unidades CODICE: ANN/MON/DAY).

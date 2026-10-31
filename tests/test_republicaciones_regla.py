@@ -154,7 +154,7 @@ class TestSuperficies:
         from db.models import compile_query, licitaciones
         from db.repositories.licitaciones import LicitacionRepository
 
-        clausulas = LicitacionRepository._base_filters(only_classified=False)
+        clausulas = LicitacionRepository._base_filters(solo_universo=False)
         sql, _ = compile_query(select(licitaciones.c.id_externo).where(and_(*clausulas)))
         assert exclude_duplicados_presentacion_sql("licitaciones.id_externo") in sql
 

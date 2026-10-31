@@ -252,6 +252,16 @@ export function DetalleFila({
               tecOn ? "border-info/50 bg-info/15" : "border-info/30 bg-info/10",
             )}
           />
+        ) : row.ml_tech_principal ? (
+          // Sin término del diccionario, la etiqueta del clasificador. No es
+          // filtro cruzado: el filtro de tecnología busca en el diccionario y
+          // con ella devolvería cero filas. El borde discontinuo la distingue.
+          <Pista contenido="Tecnología estimada">
+            <span className="block max-w-full truncate rounded-md border border-dashed border-info/30 px-1.5 py-0.5 text-tf-micro font-medium text-info">
+              {row.ml_tech_principal}
+              <span className="sr-only"> (estimada)</span>
+            </span>
+          </Pista>
         ) : (
           <span className="text-muted-foreground">—</span>
         )}

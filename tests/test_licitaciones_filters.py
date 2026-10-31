@@ -41,7 +41,7 @@ def _compiled_where(**kwargs) -> str:
     from db.models import compile_query, licitaciones
     from db.repositories.licitaciones import LicitacionRepository
 
-    clauses = LicitacionRepository._base_filters(FiltrosLicitacion(**kwargs), only_classified=False)
+    clauses = LicitacionRepository._base_filters(FiltrosLicitacion(**kwargs), solo_universo=False)
     sql, _ = compile_query(select(licitaciones.c.id_externo).where(and_(*clauses)))
     return sql
 
@@ -133,7 +133,7 @@ def _compiled_where_params(**kwargs) -> tuple[str, list]:
     from db.models import compile_query, licitaciones
     from db.repositories.licitaciones import LicitacionRepository
 
-    clauses = LicitacionRepository._base_filters(FiltrosLicitacion(**kwargs), only_classified=False)
+    clauses = LicitacionRepository._base_filters(FiltrosLicitacion(**kwargs), solo_universo=False)
     return compile_query(select(licitaciones.c.id_externo).where(and_(*clauses)))
 
 
