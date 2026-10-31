@@ -171,7 +171,8 @@ predicho. Causas y reglas que las acotan, todas con test:
   una categoría necesita dos términos firmes distintos (un fabricante, uno).
   En un pliego, además de las ambiguas, es ambiguo el vocabulario de
   tramitación (`KEYWORDS_DE_TRAMITACION`: «firma/factura/licitación
-  electrónica», «sede electrónica», «esquema nacional de seguridad»…), que
+  electrónica», «sede electrónica», «esquema nacional de seguridad», el
+  portal de transparencia o de datos abiertos, y sus formas cooficiales), que
   cualquier pliego repite; en el título sigue contando, porque ahí nombra lo
   que se compra.
 - **Modelo sin respaldo** (`TechnologyClassifier._corroborar`, 2026-10-31):

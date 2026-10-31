@@ -1589,6 +1589,42 @@ KEYWORDS_DE_TRAMITACION: frozenset[str] = frozenset(
         "esquema nacional de seguridad",
         "seguridad de la información",
         "cifrado de datos",
+        # Segunda medición (2026-10-31, tras el recálculo): lo que seguía
+        # sosteniendo ADMIN_ELECTRONICA, CIBERSEGURIDAD o DATOS_IA en pliegos de
+        # licencias de VMware, Bentley o un gestor de proyectos eran las formas
+        # catalanas de lo mismo y la otra mitad del vocabulario de tramitación:
+        # contratación y notificación electrónica, el expediente electrónico,
+        # el ENI y la publicación en el portal de transparencia o de datos
+        # abiertos.
+        "notificación electrónica",
+        "contratación electrónica",
+        "expediente electrónico",
+        "esquema nacional de interoperabilidad",
+        "portal de transparencia",
+        "datos abiertos",
+        "portal de datos abiertos",
+        "signatura electrònica",
+        "signatura digital",
+        "certificat digital",
+        "factura electrònica",
+        "facturació electrònica",
+        "licitació electrònica",
+        "contractació electrònica",
+        "arxiu electrònic",
+        "registre electrònic",
+        "seu electrònica",
+        "notificació electrònica",
+        "notificacions electròniques",
+        "expedient electrònic",
+        "esquema nacional d'interoperabilitat",
+        "esquema nacional de seguretat",
+        "seguretat de la informació",
+        "dades obertes",
+        "portal de dades obertes",
+        "notificacións electrónicas",
+        "esquema nacional de interoperabilidade",
+        "sinadura digitala",
+        "ziurtagiri digitala",
     }
 )
 
@@ -1666,10 +1702,11 @@ def etiquetas_con_senal_firme(coincidencias: dict[str, list[str]]) -> dict[str, 
 #: linaje tiene que poder decirlo. Se cambia a mano cuando cambia `con_limites`
 #: o la forma de decidir qué etiquetas sostiene lo casado (2026-10-30: las
 #: etiquetas solo ambiguas y las reglas de precisión de la señal de pliegos;
-#: 2026-10-31: el vocabulario de tramitación deja de contar en los pliegos). Un
+#: 2026-10-31: el vocabulario de tramitación deja de contar en los pliegos, y
+#: sus formas cooficiales). Un
 #: cambio aquí cambia `filter_version`, y con él la señal de pliegos se vuelve a
 #: puntuar entera (`list_licitaciones_pending_signal`).
-VERSION_MATCHER = "2026-10-31-tramitacion-ambigua"
+VERSION_MATCHER = "2026-10-31-tramitacion-cooficial"
 
 #: Letras que un título escribe con o sin diacrítico. La keyword se pliega
 #: antes, y cada una de estas letras se convierte en la clase con sus variantes.

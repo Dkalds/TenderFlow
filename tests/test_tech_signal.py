@@ -139,7 +139,7 @@ class TestScoreDocuments:
                 "firma electrónica",
                 "factura electrónica",
                 "administración electrónica",
-                "expediente electrónico",
+                "gestor de expedientes",
             ],
         }
         plantilla = [
@@ -152,7 +152,7 @@ class TestScoreDocuments:
         de_verdad = [
             {
                 "tipo": "technical",
-                "texto": "Administración electrónica y gestor de expediente electrónico. " * 2,
+                "texto": "Administración electrónica y gestor de expedientes. " * 2,
             }
         ]
         with _patched_patterns(diccionario):

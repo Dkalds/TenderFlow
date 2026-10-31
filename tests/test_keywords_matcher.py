@@ -178,7 +178,7 @@ class TestSenalDePliegos:
         from services.tech_signal import score_documents
 
         texto = unicodedata.normalize(
-            "NFD", "Implantación de la administración electrónica y del expediente electrónico."
+            "NFD", "Implantación de la administración electrónica y del gestor de expedientes."
         )
         paginas = [{"texto": texto, "tipo": "technical"}, {"texto": texto, "tipo": "technical"}]
         assert "ADMIN_ELECTRONICA" in score_documents(paginas)
