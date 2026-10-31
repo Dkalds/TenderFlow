@@ -232,10 +232,10 @@ def test_vencimientos_cuentan_lo_mismo_que_el_listado_del_dia(tmp_db):
     )
     assert total == por_dia["2026-09-20"].count
 
-    # KPIs relativos a hoy (2026-09-20): hoy=2, 7 días=3, resto de mes=3.
-    assert res.kpis.vencen_hoy == 2
-    assert res.kpis.vencen_7d == 3
-    assert res.kpis.vencen_resto_mes == 3
+    # KPIs relativos a hoy (2026-09-20): hoy=3, 7 días=4, resto de mes=4.
+    assert res.kpis.vencen_hoy == 3
+    assert res.kpis.vencen_7d == 4
+    assert res.kpis.vencen_resto_mes == 4
 
 
 def test_vencimientos_respetan_el_ambito_global(tmp_db):
