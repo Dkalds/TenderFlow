@@ -100,6 +100,33 @@ class TestVerificacionDeCitas:
             fs._validated_evidence(cita, _indice((1, 1, "otra cosa"), (2, 21, PAGINA_21))) is None
         )
 
+    #: Texto tal como sale del PCAP de la oportunidad 17 (p. 6), con las letras
+    #: cambiadas por la fuente del PDF.
+    PAGINA_CAMBIADA = (
+        "Sobre nº1: “Documentación General”. ContendrÆ el DEUC. En caso de que el "
+        "empresario recurra a la solvencia y medios de otras empresas, tambiØn deberÆ "
+        "presentar un DEUC. Servicio Pœblico de Empleo, tres aæos, ECONOM˝A SOCIAL."
+    )
+
+    def test_la_cita_bien_escrita_casa_con_el_texto_de_letras_cambiadas(self):
+        """El modelo escribe «Contendrá»; el PDF dice «ContendrÆ». Así se perdía el DEUC."""
+        for quote in (
+            "Sobre nº1: “Documentación General”. Contendrá el DEUC.",
+            "también deberá presentar un DEUC",
+            "Servicio Público de Empleo, tres años, ECONOMÍA SOCIAL",
+        ):
+            cita = EvidenceRef(documento_id=1, page_number=6, quote=quote)
+            assert fs._validated_evidence(cita, _indice((1, 6, self.PAGINA_CAMBIADA))) is not None
+
+    def test_la_cita_copiada_con_las_letras_cambiadas_sigue_casando(self):
+        cita = EvidenceRef(documento_id=1, page_number=6, quote="ContendrÆ el DEUC. En caso de")
+        assert fs._validated_evidence(cita, _indice((1, 6, self.PAGINA_CAMBIADA))) is not None
+
+    def test_las_letras_cambiadas_no_dejan_pasar_otra_palabra(self):
+        """Solo se igualan los pares medidos: «ContendrÆ» no casa con «Contendrí»."""
+        cita = EvidenceRef(documento_id=1, page_number=6, quote="Contendrí el DEUC. En caso de que")
+        assert fs._validated_evidence(cita, _indice((1, 6, self.PAGINA_CAMBIADA))) is None
+
 
 class TestNormalizacionDeHechos:
     def _hecho(self, **extra: Any) -> dict[str, Any]:

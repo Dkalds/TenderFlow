@@ -72,3 +72,25 @@ describe("KitPresentacionPanel vacío", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
+
+describe("KitPresentacionPanel con documentos", () => {
+  it("enseña lo que dice el pliego de cada documento, con su condición", () => {
+    h.kit = {
+      licitacion_id: "LIC-1",
+      sin_extraccion: false,
+      estado_ficha: "extraida",
+      items: [
+        {
+          clave: "0:garantia-provisional",
+          nombre: "Garantía provisional",
+          descripcion: "Garantía provisional, si el órgano de contratación la exige.",
+          sobre: "otro",
+          listo: false,
+        },
+      ],
+    };
+    render(<KitPresentacionPanel pursuitId={17} organizationId={21} />);
+
+    expect(screen.getByText("Garantía provisional, si el órgano de contratación la exige.")).toBeInTheDocument();
+  });
+});

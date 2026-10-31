@@ -796,6 +796,7 @@ _Sin ítems abiertos._
   - Si son residuales: el porqué, escrito aquí, y el ítem se cierra.
 - **Files de partida:** [scraper/document_fetcher.py](../scraper/document_fetcher.py), [services/rag/fact_sheet.py](../services/rag/fact_sheet.py)
 - **Riesgo:** medio — cambiar el texto persistido invalida las citas verificadas de las fichas que lo usan; por eso el reproceso va en el mismo cambio.
+- **Progreso 2026-10-31:** efecto medido en la oportunidad 17 tras desplegar `tender-facts-v8`. El kit salía **sin el DEUC**, aunque el PCAP lo nombra en las p. 6 y 13 y las dos llegaban al modelo. Causa más probable (sin los logs de Render no se confirma): la cita bien escrita («Contendrá el DEUC») no casaba con la página («ContendrÆ»), y el hecho se descartaba. Medido sobre las 39 páginas de ese PCAP: además `ñ→æ` y una `Í→˝` mayúscula, más de 1.100 veces. **Paliado, no resuelto:** la comparación de citas (`_normalize_quote`, `_LETRAS_CAMBIADAS`) cuenta cada par como la misma letra. El texto guardado sigue roto, con lo que el selector de páginas, la búsqueda y los embeddings siguen viendo otra palabra; los criterios de arriba siguen en pie. Las fichas ya extraídas no recuperan lo que perdieron hasta que se reprocesan.
 
 ### [P2] El corpus de PSCP ahoga el dataset del clasificador SAP: no se puede reentrenar, y el modelo servido no discrimina
 - **Área:** services/ml/classifier_training.py (`train_from_db`), scraper/connectors/pscp.py, services/ml/classifier_pipeline.py (`validate_training_data`)
