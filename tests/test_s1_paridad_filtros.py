@@ -58,7 +58,7 @@ _PLEGADO_RE = re.compile(r"lower\(translate\(([\w.]+), ([^,)]+), ([^,)]+)\)\)")
 def _listado(**filtros: Any) -> tuple[str, list[Any]]:
     """SQL y parámetros del ``WHERE`` del listado, sin el filtro de clasificadas."""
     clausulas = LicitacionRepository._base_filters(
-        FiltrosLicitacion(**filtros), only_classified=False
+        FiltrosLicitacion(**filtros), solo_universo=False
     )
     return compile_query(select(licitaciones.c.id_externo).where(and_(*clausulas)))
 

@@ -54,13 +54,14 @@ function pintar(
     onToggleCcaa?: (ccaa: string) => void;
     onToggleTecnologia?: (tecnologia: string) => void;
   } = {},
+  row: MergedRow = FILA,
 ) {
   render(
     <TooltipProvider>
       <table>
         <tbody>
           <DetalleFila
-            row={FILA}
+            row={row}
             index={0}
             open={false}
             picked={false}
@@ -120,5 +121,18 @@ describe("DetalleFila", () => {
 
     fireEvent.click(fila);
     expect(onOpen).toHaveBeenCalledWith(0, FILA.id_externo);
+  });
+
+  // Desde 2026-10-31 el listado enseña también lo que entra por su CPV o solo
+  // con la etiqueta del clasificador.
+  it("sin término del diccionario enseña la tecnología estimada, sin filtro cruzado", () => {
+    const fila = pintar({}, { ...FILA, tecnologia: null, ml_tech_principal: "REDES" } as MergedRow);
+    expect(within(fila).getByText("REDES")).toHaveTextContent("REDES (estimada)");
+    expect(within(fila).queryByRole("button", { name: "Filtrar por REDES" })).toBeNull();
+  });
+
+  it("sin ninguna etiqueta deja la celda en raya", () => {
+    const fila = pintar({}, { ...FILA, tecnologia: null, ml_tech_principal: null } as MergedRow);
+    expect(within(fila).getByText("—")).toBeInTheDocument();
   });
 });

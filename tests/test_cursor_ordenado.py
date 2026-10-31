@@ -132,7 +132,7 @@ def test_el_total_cuenta_el_mismo_universo(sentencias: list[Any]) -> None:
     ((sql, params),) = sentencias
     assert total == 7
     assert sql.startswith("SELECT count(*)")
-    assert "licitaciones.tecnologia IS NOT NULL" in sql  # el mismo `only_classified`
+    assert "licitaciones.inclusion_reason = 'cpv_ti_universe'" in sql  # el mismo `solo_universo`
     assert "Madrid" in params and 10.0 in params
 
 

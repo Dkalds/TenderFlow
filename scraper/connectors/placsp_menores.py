@@ -26,9 +26,10 @@ la vista ``licitaciones_canonicas`` (ADR-026), y por tanto sin migración:
    que no está en ``UNIVERSOS_TECNOLOGICOS``: fuera de la cuota de mercado y de
    la población del clasificador (no son convocatorias, y entrenar con ellas
    enseñaría al modelo otra cosa).
-4. **Sin etiqueta ``tecnologia``**. Es la columna que decide pertenencia al
-   listado (``only_classified``), a la superficie pública y a los KPIs
-   (``universo_tecnologico_sql`` admite cualquier fila con ``tecnologia``). La
+4. **Sin etiqueta ``tecnologia``** y con ``inclusion_reason =
+   contrato_menor_*``. ``universo_tecnologico_sql`` (superficie pública y KPIs)
+   admite cualquier fila con ``tecnologia``, y ``universo_producto_sql``
+   (listado) además las de ``inclusion_reason = 'cpv_ti_universe'``. La
    evidencia del filtro no se pierde: las keywords que casaron van a
    ``raw_keywords`` y el motivo a ``inclusion_reason``.
 

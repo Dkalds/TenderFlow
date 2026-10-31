@@ -174,6 +174,8 @@ def _seed(filas: list[dict[str, Any]]) -> None:
                 ccaa=f.get("ccaa", "Madrid"),
                 tecnologia=f.get("tecnologia", "SAP"),
                 estado=f.get("estado", "PUB"),
+                inclusion_reason=f.get("inclusion_reason"),
+                analysis_universe=f.get("analysis_universe"),
             )
             for f in filas
         ]
@@ -189,8 +191,24 @@ def test_vencimientos_cuentan_lo_mismo_que_el_listado_del_dia(tmp_db):
             # Con hora: tiene que caer en su día, no fuera de la ventana.
             {"id": "V2", "fecha_limite": "2026-09-20T14:00:00+02:00", "importe": 50.0},
             {"id": "V3", "fecha_limite": "2026-09-21", "importe": 10.0},
-            # Sin tecnología: el listado no la enseña, el calendario no la cuenta.
-            {"id": "V4", "fecha_limite": "2026-09-20", "tecnologia": ""},
+            # Fuera del universo del listado: ni etiqueta ni universo filtrado
+            # en ingesta ni CPV del universo. El listado no la enseña, el
+            # calendario no la cuenta.
+            {
+                "id": "V4",
+                "fecha_limite": "2026-09-20",
+                "tecnologia": "",
+                "analysis_universe": "pscp_observed",
+            },
+            # Sin etiqueta pero guardada por su CPV: el listado sí la enseña.
+            {
+                "id": "V7",
+                "fecha_limite": "2026-09-20",
+                "importe": 25.0,
+                "tecnologia": "",
+                "analysis_universe": "pscp_observed",
+                "inclusion_reason": "cpv_ti_universe",
+            },
             {"id": "V5", "fecha_limite": "2026-10-15", "ccaa": "Galicia"},
             {"id": "V6", "fecha_limite": None},
         ]
@@ -201,11 +219,11 @@ def test_vencimientos_cuentan_lo_mismo_que_el_listado_del_dia(tmp_db):
         hoy=date(2026, 9, 20),
     )
     por_dia = {d.fecha: d for d in res.dias}
-    assert por_dia["2026-09-20"].count == 2
-    assert por_dia["2026-09-20"].importe == 150.0
+    assert por_dia["2026-09-20"].count == 3
+    assert por_dia["2026-09-20"].importe == 175.0
     assert por_dia["2026-09-21"].count == 1
     assert por_dia["2026-10-15"].count == 1
-    assert res.total == 4
+    assert res.total == 5
     assert res.dia_pico is not None and res.dia_pico.fecha == "2026-09-20"
 
     # Paridad con el listado que abre el enlace del día.

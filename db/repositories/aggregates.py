@@ -74,6 +74,7 @@ from db.sql_fragments import (
     normaliza_codigo,
     tecnologia_en_csv_sql,
     tecnologia_tokens_sql,
+    universo_producto_sql,
 )
 from observability.logging import get_logger
 from shared.estados import ESTADOS_CERRADOS, abierta_sql, abierta_sql_marcadores
@@ -1600,17 +1601,18 @@ class AggregateRepository:
     # Eje ``fecha_limite`` (fin del plazo de presentación), no publicación. El
     # universo es el MISMO que el del listado al que enlaza cada día
     # (``GET /licitaciones?cierre_desde=D&cierre_hasta=D``): el filtro global
-    # de ``_build_where`` más ``tecnologia`` informada, que es el
-    # ``only_classified`` que ``LicitacionRepository._base_filters`` aplica
-    # siempre. Sin esa cláusula el calendario contaría filas que el listado no
-    # enseña y el día prometería más de lo que abre (ADR-014).
+    # de ``_build_where`` más el universo del listado
+    # (:func:`db.sql_fragments.universo_producto_sql`), el ``solo_universo``
+    # que ``LicitacionRepository._base_filters`` aplica siempre. Sin esa
+    # cláusula el calendario contaría filas que el listado no enseña y el día
+    # prometería más de lo que abre (ADR-014).
     #
     # La cota superior es EXCLUSIVA (el día siguiente al ``hasta``) porque
     # ``fecha_limite`` puede llevar hora: ``'2026-09-20T14:00' <= '2026-09-20'``
     # es falso en orden lexicográfico. Es la misma convención que usa
     # ``_base_filters`` para ``cierre_hasta``.
 
-    _VENCIMIENTOS_UNIVERSO = "tecnologia IS NOT NULL AND tecnologia != ''"
+    _VENCIMIENTOS_UNIVERSO = universo_producto_sql("licitaciones")
 
     def vencimientos_diarios(
         self, filters: LicitacionesFilters, *, desde_iso: str, hasta_exclusivo_iso: str
