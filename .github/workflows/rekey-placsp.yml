@@ -18,7 +18,9 @@ name: Re-key PLACSP — relleno de organo_ref_fuente (manual)
 #                «ya existen con la clave nueva» de v164 encontraría (solo
 #                lectura). Tiene sentido tras el relleno.
 #   borrar-colisiones — las borra, salvo las que tengan datos de usuario
-#                (`scripts/borrar_colisiones_rekey_placsp.py`).
+#                (`scripts/borrar_colisiones_rekey_placsp.py`). Con
+#                `incluir_sin_organo`, también las filas que el relleno no
+#                resolvió (último paso del runbook; mirar antes el plan).
 #   refrescar  — tras migrar: refresca `licitaciones_canonicas` e invalida las
 #                cachés (paso 6 de la ventana).
 # Todos terminan con el inventario en el resumen del run.
@@ -61,6 +63,11 @@ on:
         required: false
       respaldo_por_nombre:
         description: "Al final, deducir el órgano del nombre cuando las demás filas son unánimes"
+        type: boolean
+        default: false
+        required: false
+      incluir_sin_organo:
+        description: "colisiones/borrar-colisiones: incluir las filas que siguen sin órgano tras el relleno"
         type: boolean
         default: false
         required: false
@@ -144,9 +151,11 @@ jobs:
         shell: bash
         env:
           MODO: ${{ inputs.modo }}
+          SIN_ORGANO: ${{ inputs.incluir_sin_organo }}
         run: |
           ARGS=()
           [ "$MODO" = "borrar-colisiones" ] && ARGS+=(--aplicar)
+          [ "$SIN_ORGANO" = "true" ] && ARGS+=(--sin-organo)
           {
             echo "### Colisiones ($MODO)"
             echo '```'
