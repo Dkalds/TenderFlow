@@ -620,6 +620,43 @@ class TestListLicitacionesPendingSignal:
         assert repo.list_licitaciones_pending_signal(signal_version="v2") == ["PEND-4"]
 
 
+class TestLicitacionesConSenalObsoleta:
+    def test_solo_lo_fundible_de_otra_version(self, repo):
+        """Las únicas señales viejas que pueden haber dejado etiquetas en
+        `licitacion_tecnologia_score`: de otra versión y sobre el corte."""
+        for lic in ("OBS-1", "OBS-2", "OBS-3", "OBS-4"):
+            _insert_licitacion(lic)
+        repo.upsert_signals(
+            "OBS-1", method="keywords", signal_version="v1", scores={"SAP": TechSignal(score=0.8)}
+        )
+        repo.upsert_signals(
+            "OBS-2", method="keywords", signal_version="v1", scores={"SAP": TechSignal(score=0.2)}
+        )
+        repo.upsert_signals(
+            "OBS-3", method="keywords", signal_version="v2", scores={"SAP": TechSignal(score=0.8)}
+        )
+        repo.upsert_signals("OBS-4", method="keywords", signal_version="v1", scores={})
+
+        assert repo.licitaciones_con_senal_obsoleta(signal_version="v2", min_score=0.5) == ["OBS-1"]
+
+    def test_los_shards_se_reparten_sin_solaparse(self, repo):
+        ids = [f"SHD-{i}" for i in range(12)]
+        for lic in ids:
+            _insert_licitacion(lic)
+            repo.upsert_signals(
+                lic, method="keywords", signal_version="v1", scores={"SAP": TechSignal(score=0.8)}
+            )
+
+        repartidas = [
+            repo.licitaciones_con_senal_obsoleta(
+                signal_version="v2", min_score=0.5, shard=s, shards=3
+            )
+            for s in range(3)
+        ]
+
+        assert sorted(lic for shard in repartidas for lic in shard) == sorted(ids)
+
+
 class TestListSignalsForMerge:
     def test_filters_by_min_score(self, repo):
         _insert_licitacion("MRG-1")

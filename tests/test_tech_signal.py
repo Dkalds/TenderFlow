@@ -131,6 +131,34 @@ class TestScoreDocuments:
             assert score_documents(una_idea) == {}
             assert "CLOUD_INFRA" in score_documents(dos_ideas)
 
+    def test_ambiguous_terms_do_not_count_as_distinct_for_a_category(self):
+        """«firma electrónica» y «factura electrónica» las dice cualquier
+        pliego técnico: dos ambiguas y una firme no son dos términos firmes."""
+        diccionario = {
+            "ADMIN_ELECTRONICA": [
+                "firma electrónica",
+                "factura electrónica",
+                "administración electrónica",
+                "expediente electrónico",
+            ],
+        }
+        plantilla = [
+            {
+                "tipo": "technical",
+                "texto": "Firma electrónica, factura electrónica y administración electrónica. "
+                * 3,
+            }
+        ]
+        de_verdad = [
+            {
+                "tipo": "technical",
+                "texto": "Administración electrónica y gestor de expediente electrónico. " * 2,
+            }
+        ]
+        with _patched_patterns(diccionario):
+            assert score_documents(plantilla) == {}
+            assert "ADMIN_ELECTRONICA" in score_documents(de_verdad)
+
     def test_a_vendor_needs_only_one_firm_term(self):
         pages = [{"tipo": "technical", "texto": "Oracle Database. Oracle RAC."}]
         with _patched_patterns():

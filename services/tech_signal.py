@@ -19,7 +19,13 @@ import unicodedata
 from collections.abc import Iterable
 from typing import Any
 
-from config.keywords import TECH_LABEL_TIPO, es_ambigua, patron_de_keyword, plegar
+from config.keywords import (
+    KEYWORDS_DE_TRAMITACION,
+    TECH_LABEL_TIPO,
+    es_ambigua,
+    patron_de_keyword,
+    plegar,
+)
 from db.database import now_utc_iso
 from db.events import append_event
 from db.repositories.tecnologia_pliego import TechSignal, TecnologiaPliegoRepository
@@ -73,14 +79,22 @@ _SCORE_SATURATION = 6.0
 # 1. Lo que solo aparece en el legal (o en un documento sin tipo) no etiqueta.
 # 2. Un término cuenta como mucho ``_TOPE_POR_TERMINO`` menciones ponderadas:
 #    la misma frase repetida no es más evidencia que dicha tres veces.
-# 3. Si todos los términos son ambiguos (``config.keywords.KEYWORDS_AMBIGUAS``),
-#    no etiqueta: aquí no hay CPV que los corrobore.
+# 3. Si todos los términos son ambiguos no etiqueta: aquí no hay CPV que los
+#    corrobore. Ambiguo en un pliego es ``config.keywords.KEYWORDS_AMBIGUAS``
+#    más ``KEYWORDS_DE_TRAMITACION`` («firma electrónica», «licitación
+#    electrónica», «esquema nacional de seguridad»…, que cualquier pliego dice;
+#    medido en producción el 2026-10-30).
 # 4. Una categoría (ERP, CLOUD_INFRA…) necesita ``_MIN_TERMINOS_CATEGORIA``
-#    términos distintos; un fabricante, uno: «SAP S/4HANA» no es vocabulario
-#    genérico, «copias de seguridad» sí.
+#    términos firmes distintos; un fabricante, uno: «SAP S/4HANA» no es
+#    vocabulario genérico, «copias de seguridad» sí. Las ambiguas suman
+#    menciones pero no cuentan como término.
 _TIPOS_QUE_ETIQUETAN = frozenset({"technical", "additional"})
 _TOPE_POR_TERMINO = 3.0
 _MIN_TERMINOS_CATEGORIA = 2
+
+
+def _ambigua_en_pliego(termino: str) -> bool:
+    return es_ambigua(termino) or termino.casefold() in KEYWORDS_DE_TRAMITACION
 
 
 def score_documents(pages: list[dict[str, Any]]) -> dict[str, TechSignal]:
@@ -130,11 +144,12 @@ def score_documents(pages: list[dict[str, Any]]) -> dict[str, TechSignal]:
     for tech, terminos in por_termino.items():
         if not terminos or tech not in fuera_del_legal:
             continue
-        if all(es_ambigua(t) for t in terminos):
+        if all(_ambigua_en_pliego(t) for t in terminos):
             continue
         if (
             TECH_LABEL_TIPO.get(tech) == "categoria"
-            and _terminos_distintos(terminos) < _MIN_TERMINOS_CATEGORIA
+            and _terminos_distintos(t for t in terminos if not _ambigua_en_pliego(t))
+            < _MIN_TERMINOS_CATEGORIA
         ):
             continue
         weighted = sum(min(v, _TOPE_POR_TERMINO) for v in terminos.values())

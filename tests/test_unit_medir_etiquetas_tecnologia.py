@@ -10,49 +10,64 @@ from scripts.medir_etiquetas_tecnologia import (
     main,
     muestra,
     precision,
-    recalcular,
+    rehacer,
+    repuntuar,
     resumir,
     vistas,
 )
 
+_OBSOLETAS = "scripts.medir_etiquetas_tecnologia._obsoletas"
 _FASE = "scheduler.jobs.documentos_embeddings._run_tech_signal_phase"
 _ML = "services.ml.classifier_training.precompute_ml_tecnologias"
 _FUSION = "services.tech_signal.merge_doc_signals"
 
 
-def test_recalcular_rehace_ml_solo_cuando_no_quedan_pliegos() -> None:
-    lotes = [{"scored": 500, "no_signal": 0, "error": 0}, {"scored": 0, "no_signal": 0, "error": 0}]
+def test_repuntuar_recorre_las_obsoletas_hasta_vaciarlas() -> None:
     with (
-        patch(_FASE, side_effect=lotes),
-        patch(_ML, return_value={"updated": 9}) as ml,
-        patch(_FUSION, return_value={"licitaciones_merged": 3}) as fusion,
+        patch(_OBSOLETAS, side_effect=[["L1", "L2"], ["L3"], []]),
+        patch(_FASE, return_value={"scored": 1, "no_signal": 0, "error": 0}) as fase,
     ):
-        hecho = recalcular(presupuesto_s=60)
-    assert hecho["completo"] is True
-    assert hecho["pliegos"]["scored"] == 500
-    ml.assert_called_once_with(force=True)
-    fusion.assert_called_once_with()
+        hecho = repuntuar(presupuesto_s=60, shard=1, shards=4)
+    assert hecho == {"pliegos": {"scored": 2, "no_signal": 0, "error": 0}, "quedan": False}
+    assert fase.call_args_list[0].kwargs == {"licitacion_ids": ["L1", "L2"]}
 
 
-def test_recalcular_no_rehace_ml_con_pliegos_atascados() -> None:
+def test_repuntuar_para_si_un_lote_solo_falla() -> None:
+    with (
+        patch(_OBSOLETAS, return_value=["L1"]),
+        patch(_FASE, return_value={"scored": 0, "no_signal": 0, "error": 1}) as fase,
+    ):
+        hecho = repuntuar(presupuesto_s=60)
+    assert hecho["quedan"] is True
+    fase.assert_called_once()
+
+
+def test_repuntuar_para_al_agotar_el_presupuesto() -> None:
+    with patch(_OBSOLETAS) as obsoletas, patch(_FASE) as fase:
+        hecho = repuntuar(presupuesto_s=0)
+    assert hecho["quedan"] is True
+    obsoletas.assert_not_called()
+    fase.assert_not_called()
+
+
+def test_rehacer_no_toca_nada_con_obsoletas() -> None:
     """Rehacer antes de re-puntuar volvería a fundir las señales viejas."""
-    with (
-        patch(_FASE, return_value={"scored": 0, "no_signal": 0, "error": 4}),
-        patch(_ML) as ml,
-        patch(_FUSION) as fusion,
-    ):
-        hecho = recalcular(presupuesto_s=60)
-    assert hecho["completo"] is False
+    with patch(_OBSOLETAS, return_value=["L1"]), patch(_ML) as ml, patch(_FUSION) as fusion:
+        assert rehacer() == {"completo": False}
     ml.assert_not_called()
     fusion.assert_not_called()
 
 
-def test_recalcular_para_al_agotar_el_presupuesto() -> None:
-    with patch(_FASE) as fase, patch(_ML) as ml, patch(_FUSION):
-        hecho = recalcular(presupuesto_s=0)
-    assert hecho["completo"] is False
-    fase.assert_not_called()
-    ml.assert_not_called()
+def test_rehacer_sin_obsoletas_rehace_ml_y_funde() -> None:
+    with (
+        patch(_OBSOLETAS, return_value=[]),
+        patch(_ML, return_value={"updated": 9}) as ml,
+        patch(_FUSION, return_value={"licitaciones_merged": 3}) as fusion,
+    ):
+        hecho = rehacer()
+    assert hecho["completo"] is True
+    ml.assert_called_once_with(force=True)
+    fusion.assert_called_once_with()
 
 
 def _fila(**extra: object) -> dict[str, object]:

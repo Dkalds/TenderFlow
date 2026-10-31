@@ -178,7 +178,7 @@ class TestSenalDePliegos:
         from services.tech_signal import score_documents
 
         texto = unicodedata.normalize(
-            "NFD", "Implantación de la administración electrónica y de la sede electrónica."
+            "NFD", "Implantación de la administración electrónica y del expediente electrónico."
         )
         paginas = [{"texto": texto, "tipo": "technical"}, {"texto": texto, "tipo": "technical"}]
         assert "ADMIN_ELECTRONICA" in score_documents(paginas)
@@ -330,6 +330,19 @@ class TestEtiquetasConSenalFirme:
         from scraper.puerta_tecnologica import KEYWORDS_AMBIGUAS as de_la_puerta
 
         assert de_la_puerta is KEYWORDS_AMBIGUAS
+
+    def test_la_tramitacion_esta_en_la_semilla_y_no_decide_la_ingesta(self) -> None:
+        """En el título, «Esquema Nacional de Seguridad» es ciberseguridad: el
+        vocabulario de tramitación solo es ambiguo en los pliegos."""
+        from config.keywords import (
+            KEYWORDS_AMBIGUAS,
+            KEYWORDS_DE_TRAMITACION,
+            TECHNOLOGY_KEYWORDS,
+        )
+
+        semilla = {kw.casefold() for kws in TECHNOLOGY_KEYWORDS.values() for kw in kws}
+        assert semilla >= KEYWORDS_DE_TRAMITACION
+        assert not KEYWORDS_DE_TRAMITACION & KEYWORDS_AMBIGUAS
 
 
 # ── 4. El tier `rules` del clasificador ─────────────────────────────────────

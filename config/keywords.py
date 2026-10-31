@@ -1559,6 +1559,39 @@ KEYWORDS_AMBIGUAS: frozenset[str] = frozenset(
     }
 )
 
+#: Vocabulario de tramitación: en el **título** nombra lo que se compra
+#: («Certificación de conformidad con el Esquema Nacional de Seguridad» es
+#: ciberseguridad), pero en el **pliego** lo repite cualquier contrato —la
+#: oferta se firma y se presenta por licitación electrónica, se factura por
+#: FACe, el tratamiento de datos cumple el ENS—. Por eso no está en
+#: :data:`KEYWORDS_AMBIGUAS`, que también decide la ingesta, y solo la señal de
+#: pliegos (`services.tech_signal.score_documents`) lo trata como ambiguo.
+#:
+#: Medido el 2026-10-30 en producción (`scripts/medir_etiquetas_tecnologia.py
+#: resumen`): eran los términos que más etiquetas de pliego sostenían sin que
+#: el título las tuviera —«firma electrónica» 2.405 licitaciones, «licitación
+#: electrónica» 2.302, «factura electrónica» 2.237, «esquema nacional de
+#: seguridad» 1.653—, y en la muestra de 100 ponían ADMIN_ELECTRONICA a
+#: licencias de Salesforce, soporte de SUN-Oracle, Veritas NetBackup o la
+#: implantación de Meta4.
+KEYWORDS_DE_TRAMITACION: frozenset[str] = frozenset(
+    {
+        "firma electrónica",
+        "firma digital",
+        "certificado digital",
+        "factura electrónica",
+        "facturación electrónica",
+        "licitación electrónica",
+        "archivo electrónico",
+        "registro electrónico",
+        "sede electrónica",
+        "notificaciones electrónicas",
+        "esquema nacional de seguridad",
+        "seguridad de la información",
+        "cifrado de datos",
+    }
+)
+
 
 def es_ambigua(keyword: str) -> bool:
     """¿Está ``keyword`` (en cualquier caja) en :data:`KEYWORDS_AMBIGUAS`?"""
@@ -1632,10 +1665,11 @@ def etiquetas_con_senal_firme(coincidencias: dict[str, list[str]]) -> dict[str, 
 #: mismo diccionario pero con matchers distintos no se filtraron igual, y el
 #: linaje tiene que poder decirlo. Se cambia a mano cuando cambia `con_limites`
 #: o la forma de decidir qué etiquetas sostiene lo casado (2026-10-30: las
-#: etiquetas solo ambiguas y las reglas de precisión de la señal de pliegos). Un
+#: etiquetas solo ambiguas y las reglas de precisión de la señal de pliegos;
+#: 2026-10-31: el vocabulario de tramitación deja de contar en los pliegos). Un
 #: cambio aquí cambia `filter_version`, y con él la señal de pliegos se vuelve a
 #: puntuar entera (`list_licitaciones_pending_signal`).
-VERSION_MATCHER = "2026-10-30-etiquetas-con-senal-firme"
+VERSION_MATCHER = "2026-10-31-tramitacion-ambigua"
 
 #: Letras que un título escribe con o sin diacrítico. La keyword se pliega
 #: antes, y cada una de estas letras se convierte en la clase con sus variantes.

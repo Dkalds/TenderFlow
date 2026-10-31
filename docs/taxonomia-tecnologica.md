@@ -168,7 +168,12 @@ predicho. Causas y reglas que las acotan, todas con test:
 - **Señal de pliegos** (`services/tech_signal.score_documents`): lo que solo
   aparece en el pliego administrativo no etiqueta; un término cuenta como
   mucho tres menciones; si todos los términos son ambiguos no hay etiqueta; y
-  una categoría necesita dos términos distintos (un fabricante, uno).
+  una categoría necesita dos términos firmes distintos (un fabricante, uno).
+  En un pliego, además de las ambiguas, es ambiguo el vocabulario de
+  tramitación (`KEYWORDS_DE_TRAMITACION`: «firma/factura/licitación
+  electrónica», «sede electrónica», «esquema nacional de seguridad»…), que
+  cualquier pliego repite; en el título sigue contando, porque ahí nombra lo
+  que se compra.
 - **Medir**: `scripts/medir_etiquetas_tecnologia.py` da el reparto de
   etiquetas por licitación en cada vista, una muestra para revisar a mano y la
   precisión de esa muestra por etiqueta y por fuente.
@@ -178,8 +183,9 @@ hace que la señal de pliegos se vuelva a puntuar entera (a ~500 por noche en
 `pliegos.yml`), pero el merge nunca borra, así que las filas de
 `licitacion_tecnologia_score` fundidas desde señales que ya no pasan siguen ahí
 hasta rehacer la tabla. `.github/workflows/etiquetas-tecnologia.yml` lo hace a
-demanda: `medir` (solo lectura) y `recalcular` (re-puntúa lo pendiente y, solo
-entonces, `precompute_ml_tecnologias(force=True)` + `merge_doc_signals`).
+demanda: `medir` (solo lectura) y `recalcular` (re-puntúa en paralelo las
+licitaciones con señal de pliego fundible de otra versión y, solo cuando no
+queda ninguna, `precompute_ml_tecnologias(force=True)` + `merge_doc_signals`).
 `tecnologia` solo se reescribe al reingerir.
 
 ## Familias (2026-10)

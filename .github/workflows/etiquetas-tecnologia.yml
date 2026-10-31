@@ -3,15 +3,18 @@ name: Etiquetas de tecnología (medir / recalcular)
 # Por qué existe: las reglas de precisión del 2026-10-30 (#599) cambian qué
 # etiquetas de tecnología se ponen, pero lo ya guardado no se corrige solo: el
 # merge de la señal de pliegos nunca borra, y el cron de `pliegos.yml`
-# re-puntúa ~500 licitaciones por noche. Este workflow mide (solo lectura) y,
-# a demanda, aplica las reglas a lo guardado. Detalle de cada modo en
+# re-puntúa ~500 licitaciones por noche (~2,7 s cada una: el coste es casar el
+# diccionario contra el texto de los PDF). Este workflow mide (solo lectura) y,
+# a demanda, aplica las reglas a lo guardado. Detalle de cada subcomando en
 # `scripts/medir_etiquetas_tecnologia.py`.
 #
 #   medir      → `resumen` en el resumen del job y `muestra` (100) como
 #                artefacto, para revisar a mano y pasarle `precision`.
-#   recalcular → ESCRIBE: re-puntúa los pliegos pendientes y, solo si no queda
-#                ninguno, rehace `licitacion_tecnologia_score` y vuelve a
-#                fundir los pliegos. Si se agota el presupuesto, relanzar.
+#   recalcular → ESCRIBE: cuatro jobs re-puntúan en paralelo las licitaciones
+#                con señal de pliego fundible de otra versión, y después
+#                `rehacer` rehace `licitacion_tecnologia_score` y vuelve a fundir
+#                los pliegos, solo si ya no queda ninguna. Si se agota el
+#                presupuesto, relanzar: lo hecho no se repite.
 on:
   workflow_dispatch:
     inputs:
@@ -31,23 +34,25 @@ concurrency:
   group: pliegos
   cancel-in-progress: false
 
+env:
+  # ENV=prod porque lee (y en `recalcular` escribe) la BD de producción.
+  # APP_PROFILE=scraper omite los secretos que solo exige el proceso HTTP.
+  ENV: prod
+  APP_PROFILE: scraper
+  SCHEDULER_PLANE: actions
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+  # `rehacer` descarga el artefacto del clasificador de las Releases; sin token
+  # la llamada va anónima y se queda sin cuota.
+  GITHUB_TOKEN: ${{ github.token }}
+  PYTHONPATH: ${{ github.workspace }}
+
 jobs:
-  etiquetas:
-    name: Etiquetas de tecnología (${{ inputs.modo }})
+  medir:
+    name: Medir
+    if: inputs.modo == 'medir'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      # ENV=prod porque lee (y en `recalcular` escribe) la BD de producción.
-      # APP_PROFILE=scraper omite los secretos que solo exige el proceso HTTP.
-      ENV: prod
-      APP_PROFILE: scraper
-      SCHEDULER_PLANE: actions
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-      # `recalcular` descarga el artefacto del clasificador de las Releases;
-      # sin token la llamada va anónima y se queda sin cuota.
-      GITHUB_TOKEN: ${{ github.token }}
-      PYTHONPATH: ${{ github.workspace }}
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -64,7 +69,6 @@ jobs:
           pip install -r requirements.txt
 
       - name: Medir
-        if: inputs.modo == 'medir'
         run: |
           set -euo pipefail
           python -m scripts.medir_etiquetas_tecnologia resumen | tee resumen.txt
@@ -77,7 +81,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Subir la medición
-        if: inputs.modo == 'medir'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: etiquetas-tecnologia
@@ -86,14 +89,72 @@ jobs:
             muestra_etiquetas.jsonl
           retention-days: 30
 
-      - name: Recalcular
-        if: inputs.modo == 'recalcular'
+  repuntuar:
+    name: Re-puntuar pliegos (${{ matrix.shard }}/4)
+    if: inputs.modo == 'recalcular'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Re-puntuar
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
-          python -m scripts.medir_etiquetas_tecnologia recalcular --presupuesto-s 2700 | tee recalculo.json
+          python -m scripts.medir_etiquetas_tecnologia repuntuar \
+            --shard "$SHARD" --shards 4 --presupuesto-s 2700 | tee repuntuado.json
           {
-            echo '## Recálculo de etiquetas de tecnología'
+            echo "## Re-puntuación de pliegos, shard $SHARD/4"
             echo '```json'
-            cat recalculo.json
+            cat repuntuado.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  rehacer:
+    name: Rehacer ML y fundir pliegos
+    needs: repuntuar
+    if: inputs.modo == 'recalcular'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Rehacer
+        run: |
+          set -euo pipefail
+          python -m scripts.medir_etiquetas_tecnologia rehacer | tee rehecho.json
+          {
+            echo '## Rehacer licitacion_tecnologia_score y fundir pliegos'
+            echo '```json'
+            cat rehecho.json
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"

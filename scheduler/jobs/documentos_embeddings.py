@@ -452,11 +452,16 @@ def facts_failed_systemically(counts: Mapping[str, object]) -> bool:
     return bool(counts.get("error")) and not counts.get("procesadas")
 
 
-def _run_tech_signal_phase(limit: int = _TECH_SIGNAL_BATCH_SIZE) -> dict[str, int]:
+def _run_tech_signal_phase(
+    limit: int = _TECH_SIGNAL_BATCH_SIZE, *, licitacion_ids: list[str] | None = None
+) -> dict[str, int]:
     """Puntúa (keywords) licitaciones con páginas extraídas y sin señal
     vigente, y funde de inmediato la señal de ese lote hacia
     ``ml_tecnologias``. Fail-open por licitación -- una puntuación rota no
     aborta el resto del lote (mismo patrón que ``_run_facts_phase``).
+
+    Con ``licitacion_ids`` puntúa exactamente esas en vez de pedir las
+    pendientes (``scripts/medir_etiquetas_tecnologia.py recalcular``).
     """
     from db.repositories.documentos import DocumentosRepository
     from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
@@ -469,8 +474,12 @@ def _run_tech_signal_phase(limit: int = _TECH_SIGNAL_BATCH_SIZE) -> dict[str, in
     signal_version = current_filter_version()
     counts = {"scored": 0, "no_signal": 0, "error": 0}
 
-    pendientes = signal_repo.list_licitaciones_pending_signal(
-        signal_version=signal_version, limit=limit
+    pendientes = (
+        licitacion_ids
+        if licitacion_ids is not None
+        else signal_repo.list_licitaciones_pending_signal(
+            signal_version=signal_version, limit=limit
+        )
     )
     for licitacion_id in pendientes:
         try:
