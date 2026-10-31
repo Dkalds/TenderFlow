@@ -5,7 +5,7 @@ import { PanelEmpty, PanelError, SectionTitle } from "@/components/console/panel
 import { CondicionesOficialesBloque } from "@/components/pliego/condiciones-oficiales";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCondicionesOficiales, type CondicionesOficiales } from "@/hooks/use-condiciones-oficiales";
-import { getSeriesColor } from "@/lib/chart-colors";
+import { getSeriesTextClass } from "@/lib/chart-colors";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
 import { cn, formatCurrency, formatDate, formatPercent } from "@/lib/utils";
 
@@ -109,26 +109,42 @@ export function FichaComoSeAdjudica({ licitacionId, className }: { licitacionId:
   const { data } = useCondicionesOficiales(licitacionId);
   const criterios = criteriosConPeso(data);
   if (criterios.length === 0) return null;
+  // La barra es un SVG con anchos en atributos y no `div`s con estilo en
+  // línea: los pesos son valores calculados y cada estilo en línea aleja
+  // quitar `'unsafe-inline'` de la CSP (`scripts/check_inline_styles.py`).
+  const total = criterios.reduce((suma, c) => suma + c.peso_pct, 0);
+  const tramos = criterios.map((criterio, i) => ({
+    orden: criterio.orden,
+    x: (criterios.slice(0, i).reduce((suma, c) => suma + c.peso_pct, 0) / total) * 100,
+    ancho: (criterio.peso_pct / total) * 100,
+  }));
   return (
     <section aria-labelledby={id} className={cn("rounded-xl border border-divider px-3.5 py-3", className)}>
       <SectionTitle as="h3" id={id}>
         Cómo se adjudica
       </SectionTitle>
-      <div aria-hidden="true" className="mb-2.5 flex h-2 gap-0.5 overflow-hidden rounded-full">
-        {criterios.map((criterio, i) => (
-          <span
-            key={criterio.orden}
-            style={{ flexGrow: criterio.peso_pct, flexBasis: 0, background: getSeriesColor(i) }}
-          />
-        ))}
+      <div aria-hidden="true" className="mb-2.5 h-2 overflow-hidden rounded-full">
+        <svg viewBox="0 0 100 2" preserveAspectRatio="none" className="block h-full w-full">
+          {tramos.map((tramo, i) => (
+            <rect
+              key={tramo.orden}
+              x={tramo.x}
+              y={0}
+              // Medio punto de hueco entre tramos, salvo tras el último.
+              width={Math.max(tramo.ancho - (i < tramos.length - 1 ? 0.5 : 0), 0)}
+              height={2}
+              fill="currentColor"
+              className={getSeriesTextClass(i)}
+            />
+          ))}
+        </svg>
       </div>
       <ul className="flex flex-col gap-1">
         {criterios.map((criterio, i) => (
           <li key={criterio.orden} className="flex items-baseline gap-2 text-tf-body">
             <span
               aria-hidden="true"
-              className="h-2 w-2 flex-none translate-y-[-1px] rounded-sm"
-              style={{ background: getSeriesColor(i) }}
+              className={cn("h-2 w-2 flex-none translate-y-[-1px] rounded-sm bg-current", getSeriesTextClass(i))}
             />
             <span className="min-w-0 flex-1">
               {criterio.descripcion ?? "Criterio sin descripción"}

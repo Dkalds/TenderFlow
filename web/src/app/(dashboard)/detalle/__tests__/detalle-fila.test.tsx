@@ -48,7 +48,13 @@ const FILA = {
   band: "Atractiva",
 } as unknown as MergedRow;
 
-function pintar(handlers: Partial<Record<"onOpen" | "onToggleCcaa" | "onToggleTecnologia", ReturnType<typeof vi.fn>>> = {}) {
+function pintar(
+  handlers: {
+    onOpen?: (index: number, id: string) => void;
+    onToggleCcaa?: (ccaa: string) => void;
+    onToggleTecnologia?: (tecnologia: string) => void;
+  } = {},
+) {
   render(
     <TooltipProvider>
       <table>
@@ -102,9 +108,9 @@ describe("DetalleFila", () => {
   });
 
   it("los filtros cruzados filtran sin abrir la ficha", () => {
-    const onOpen = vi.fn();
-    const onToggleCcaa = vi.fn();
-    const onToggleTecnologia = vi.fn();
+    const onOpen = vi.fn<(index: number, id: string) => void>();
+    const onToggleCcaa = vi.fn<(ccaa: string) => void>();
+    const onToggleTecnologia = vi.fn<(tecnologia: string) => void>();
     const fila = pintar({ onOpen, onToggleCcaa, onToggleTecnologia });
     fireEvent.click(within(fila).getByRole("button", { name: "Filtrar por Murcia" }));
     fireEvent.click(within(fila).getByRole("button", { name: "Filtrar por CLOUD_INFRA" }));
