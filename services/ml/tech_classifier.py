@@ -92,6 +92,7 @@ from config import settings
 from config.keywords import TECH_LABELS, TECHNOLOGY_KEYWORDS
 from observability.logging import get_logger
 from services.ml.classifier_pipeline import (
+    _MARCA_CPV_TI,
     _augment_text,
     _build_multilabel_dataset,
     _keyword_fallback_score,
@@ -919,6 +920,37 @@ class TechnologyClassifier:
                     scores[label] = 0.0
         return scores
 
+    def _corroborar(
+        self, scores: dict[str, float], thresholds: dict[str, float], augmented_text: str
+    ) -> dict[str, float]:
+        """Anula la predicción del modelo que no sostiene nada del texto ni el CPV.
+
+        Los modelos de los tiers ML aprendieron de etiquetas de keywords
+        (``labels_circulares``) sobre la población 48/72; fuera de ella
+        extrapolan. Medido el 2026-10-31 tras rehacer la tabla entera
+        (``etiquetas-tecnologia.yml``): con la CPV 32 recién entrada en el
+        universo, el modelo ponía CLOUD_INFRA o CIBERSEGURIDAD a «Telèfon digital
+        de sobretaula», «LLOGUER GRUA O SUPORT CÀMERA» o «Instal·lació 3 antenes»,
+        y en la muestra de 100 eran la mayoría de las etiquetas sin respaldo en
+        el título.
+
+        Una etiqueta de un tier ML que pasaría su umbral se queda si el texto
+        trae alguna keyword suya (las ambiguas, con la regla de
+        ``_keyword_fallback_score``) o el CPV es 48/72; si no, su score pasa a 0 y
+        no se persiste. El tier ``rules`` ya es keywords y no se toca. Solo se
+        mira lo que pasaría el umbral: es lo único que llega a etiqueta, y
+        comprobar keywords en todo lo demás costaría el grueso del precompute.
+        """
+        if _MARCA_CPV_TI in augmented_text.split():
+            return scores
+        out = dict(scores)
+        for label, score in scores.items():
+            if self._tier.get(label, _TIER_RULES) == _TIER_RULES or score < thresholds[label]:
+                continue
+            if _keyword_fallback_score(augmented_text, self._fallback_keywords.get(label, [])) <= 0:
+                out[label] = 0.0
+        return out
+
     def _rules_threshold(self, label: str) -> float:
         """Umbral del tier ``rules``, con la semántica que el score sí tiene.
 
@@ -988,8 +1020,8 @@ class TechnologyClassifier:
         if not self._trained:
             raise RuntimeError("TechnologyClassifier no entrenado.")
         augmented = _augment_text(text, cpv=cpv, importe=importe)
-        scores = self._score_one(augmented)
         thresholds = {lbl: self._threshold_for(lbl) for lbl in self.labels}
+        scores = self._corroborar(self._score_one(augmented), thresholds, augmented)
         predicted = [lbl for lbl in self.labels if scores.get(lbl, 0.0) >= thresholds[lbl]]
         predicted.sort(key=lambda lbl: scores.get(lbl, 0.0), reverse=True)
         if predicted:
@@ -1058,7 +1090,9 @@ class TechnologyClassifier:
         thresholds = {lbl: self._threshold_for(lbl) for lbl in self.labels}
         results: list[dict[str, Any]] = []
         for i in range(n):
-            scores = {lbl: per_label_scores[lbl][i] for lbl in self.labels}
+            scores = self._corroborar(
+                {lbl: per_label_scores[lbl][i] for lbl in self.labels}, thresholds, augmented[i]
+            )
             predicted = sorted(
                 (lbl for lbl in self.labels if scores[lbl] >= thresholds[lbl]),
                 key=lambda lbl: scores[lbl],

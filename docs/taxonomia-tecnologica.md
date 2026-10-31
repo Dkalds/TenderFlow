@@ -174,6 +174,12 @@ predicho. Causas y reglas que las acotan, todas con test:
   electrónica», «sede electrónica», «esquema nacional de seguridad»…), que
   cualquier pliego repite; en el título sigue contando, porque ahí nombra lo
   que se compra.
+- **Modelo sin respaldo** (`TechnologyClassifier._corroborar`, 2026-10-31):
+  una etiqueta de un tier ML que pasa su umbral solo se sirve si el texto trae
+  alguna keyword suya o el CPV es 48/72. El modelo aprendió de keywords sobre
+  esa población y fuera de ella extrapola: con la CPV 32 en el universo ponía
+  CLOUD_INFRA a teléfonos de sobremesa y CIBERSEGURIDAD al alquiler de una grúa
+  de cámara.
 - **Medir**: `scripts/medir_etiquetas_tecnologia.py` da el reparto de
   etiquetas por licitación en cada vista, una muestra para revisar a mano y la
   precisión de esa muestra por etiqueta y por fuente.
