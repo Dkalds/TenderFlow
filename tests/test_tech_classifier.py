@@ -280,7 +280,7 @@ class TestTechnologyClassifierScoreOne:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.5
 
-        with patch("services.ml.tech_classifier._augment_text", return_value="text"):
+        with patch("services.ml.tech_classifier._augment_text", return_value="text CPV_TI"):
             with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.0):
                 result = clf.predict_one("text")
         assert result["scores"][label] == 0.9
@@ -353,10 +353,55 @@ class TestTechnologyClassifierScoreOne:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.99
 
-        with patch("services.ml.tech_classifier._augment_text", return_value="text"):
+        with patch("services.ml.tech_classifier._augment_text", return_value="text CPV_TI"):
             with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.0):
                 result = clf.predict_one("text")
         assert label in result["low_confidence_techs"]
+
+
+class TestCorroboracionDelModelo:
+    """Una predicción de un tier ML sin keyword del label ni CPV 48/72 no se sirve
+    (2026-10-31: «Telèfon digital de sobretaula» salía CLOUD_INFRA)."""
+
+    @staticmethod
+    def _clf(label: str) -> TechnologyClassifier:
+        from unittest.mock import MagicMock
+
+        clf = TechnologyClassifier()
+        clf._trained = True
+        for lbl in clf.labels:
+            clf._tier[lbl] = "rules"
+            clf._thresholds[lbl] = 0.99
+        clf._tier[label] = "ml_ready"
+        clf._thresholds[label] = 0.5
+        pipe = MagicMock()
+        pipe.predict_proba.side_effect = lambda textos: [[0.1, 0.9] for _ in textos]
+        clf._models[label] = pipe
+        return clf
+
+    def test_sin_keyword_ni_cpv_ti_no_se_sirve(self) -> None:
+        clf = self._clf("CLOUD_INFRA")
+        uno = clf.predict_one("Telèfon digital de sobretaula", cpv="32552000")
+        [lote] = clf.predict_batch([{"text": "Telèfon digital de sobretaula", "cpv": "32552000"}])
+        for resultado in (uno, lote):
+            assert resultado["scores"]["CLOUD_INFRA"] == 0.0
+            assert "CLOUD_INFRA" not in resultado["predicted"]
+
+    def test_con_cpv_ti_se_sirve(self) -> None:
+        clf = self._clf("CLOUD_INFRA")
+        resultado = clf.predict_one("Servicio de soporte", cpv="72000000")
+        assert resultado["predicted"] == ["CLOUD_INFRA"]
+
+    def test_con_una_keyword_del_label_se_sirve(self) -> None:
+        clf = self._clf("CLOUD_INFRA")
+        resultado = clf.predict_one("Suscripción a VMware vSphere", cpv="30230000")
+        assert resultado["predicted"] == ["CLOUD_INFRA"]
+
+    def test_lo_que_no_pasa_el_umbral_conserva_su_score(self) -> None:
+        clf = self._clf("CLOUD_INFRA")
+        clf._thresholds["CLOUD_INFRA"] = 0.95
+        resultado = clf.predict_one("Telèfon digital de sobretaula", cpv="32552000")
+        assert resultado["scores"]["CLOUD_INFRA"] == 0.9
 
 
 class TestTechnologyClassifierThreshold:
@@ -473,7 +518,7 @@ class TestTechnologyClassifierPredictBatch:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.99
 
-        with patch("services.ml.tech_classifier._augment_text", return_value="text"):
+        with patch("services.ml.tech_classifier._augment_text", return_value="text CPV_TI"):
             with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.0):
                 results = clf.predict_batch([{"text": "hello"}])
         assert results[0]["principal"] == label
@@ -494,7 +539,7 @@ class TestTechnologyClassifierPredictBatch:
             clf._tier[lbl] = "rules"
             clf._thresholds[lbl] = 0.99
 
-        with patch("services.ml.tech_classifier._augment_text", return_value="text"):
+        with patch("services.ml.tech_classifier._augment_text", return_value="text CPV_TI"):
             with patch("services.ml.tech_classifier._keyword_fallback_score", return_value=0.0):
                 results = clf.predict_batch([{"text": "hello"}])
         assert label in results[0]["low_confidence_techs"]
