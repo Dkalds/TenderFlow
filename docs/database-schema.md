@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-10-26
 
-Revisión Alembic aplicada: `v166_source_health_status_disabled`.
+Revisión Alembic aplicada: `v167_rekey_placsp_organo_reciente`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
