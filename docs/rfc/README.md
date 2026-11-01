@@ -17,7 +17,7 @@ Todos los RFCs siguen esta estructura.
 
 <!-- BEGIN indice-rfc (generado por scripts/gen_rfc_index.py — no editar a mano) -->
 
-**82 RFC**, de los cuales **22** siguen abiertos. `approved` 3 · `draft` 2 · `implemented` 54 · `obsolete` 4 · `partially-implemented` 14 · `review` 3 · `superseded` 2.
+**82 RFC**, de los cuales **22** siguen abiertos. `draft` 2 · `implemented` 54 · `obsolete` 4 · `partially-implemented` 19 · `review` 1 · `superseded` 2.
 
 **Criterio de `implemented`: que el código exista en el árbol, no que el PR se haya mergeado.** Un RFC cuyo código está pero cuyo PR quedó abierto está implementado; uno cuyo PR se mergeó sin dejar código, no.
 
@@ -38,9 +38,6 @@ Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con `
 
 | RFC | Estado | Fecha | Evidencia |
 |---|---|---|---|
-| [Retirada de tres endpoints de analítica sin consumidor y del listado por offset](2026-09-06-rfc-retirada-endpoints-analitica.md) | `approved` | 2026-09-06 | — |
-| [Identidad de las licitaciones de PLACSP: el expediente acotado por el órgano (`placsp:<ID_PLATAFORMA>:<ContractFolderID>`)](2026-10-24-rfc-identidad-placsp-organo-expediente.md) | `approved` | 2026-10-24 | — |
-| [De dónde sale la IP del cliente cuando la API está detrás de Vercel y del proxy de Render](2026-10-24-rfc-ip-del-cliente-tras-vercel-y-render.md) | `approved` | 2026-10-24 | — |
 | [Retirar `user_key` del payload del webhook `watchlist_rule.matched`](2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md) | `draft` | 2026-09-18 | — |
 | [Retirada de los endpoints antiguos de seguimiento (favoritos, empresas vigiladas y descartes) en favor de `/follows`](2026-09-19-rfc-retirada-endpoints-watchlist.md) | `draft` | 2026-09-19 | — |
 | [Documentar la fachada db.database](001-documentar-facade-db-database.md) | `implemented` | 2026-05-24 | — |
@@ -115,9 +112,12 @@ Esta tabla se genera con `python scripts/gen_rfc_index.py`; CI la verifica con `
 | [UX/KPIs · Resumen — deltas consistentes, KPIs accionables y arreglo de CCAA cubiertas](2026-06-16-rfc-ux-resumen.md) | `partially-implemented` | 2026-06-16 | — |
 | [UX/KPIs · Tendencias CPV — forecast por CPV (no global) y drill-down](2026-06-16-rfc-ux-tendencias-cpv.md) | `partially-implemented` | 2026-06-16 | — |
 | [UX/KPIs · Tendencias — heatmap real Mes×Estado, banda de forecast theme-safe, drill-down](2026-06-16-rfc-ux-tendencias.md) | `partially-implemented` | 2026-06-16 | — |
+| [Retirada de tres endpoints de analítica sin consumidor y del listado por offset](2026-09-06-rfc-retirada-endpoints-analitica.md) | `partially-implemented` | 2026-09-06 | Fase 1 (deprecación) en el árbol (comprobado el 2026-11-01): [DEPRECADO 2027-01-15] con deprecated=True en api/routes/analytics.py y api/routes/licitaciones/listado.py, y tests/test_deprecacion_cabeceras.py. Falta la fase 2, borrar los cuatro handlers, a partir del 2027-01-15. |
+| [Purga de las licitaciones de PSCP sin señal tecnológica y puerta de ingesta endurecida](2026-09-26-rfc-purga-pscp-sin-tecnologia.md) | `partially-implemented` | 2026-09-26 | Purga y reingesta ya ejecutadas: scripts/purgar_pscp_sin_tecnologia.py, .github/workflows/purga-pscp.yml y db/repositories/purga_licitaciones.py; según docs/IMPROVEMENT_BACKLOG.md, medido el 2026-10-25 por MCP de solo lectura, licitaciones pasó de ~870 MB a 89 MB. Falta el balance del paso 6 y pasar el RFC a implemented. |
+| [Retirada de lo que la campana dejó de usar (campos de mercado de `GET /notifications`, `POST /notifications/read`), del stream SSE y de `forecast/retendering`](2026-10-23-rfc-retirada-campana-antigua-y-stream.md) | `partially-implemented` | 2026-10-23 | Fase 1 (anuncio) en el árbol (comprobado el 2026-11-01): [DEPRECADO 2027-02-01] en api/routes/notifications.py, api/routes/stream.py y api/routes/analytics.py (forecast/retendering). La fase 2, el borrado, es a partir del 2027-02-01. |
+| [Identidad de las licitaciones de PLACSP: el expediente acotado por el órgano (`placsp:<ID_PLATAFORMA>:<ContractFolderID>`)](2026-10-24-rfc-identidad-placsp-organo-expediente.md) | `partially-implemented` | 2026-10-24 | Fases A y B en el árbol (comprobado el 2026-11-01): v163_identidad_placsp_fase_a, v164_identidad_placsp_rekey, shared/identidad_placsp.py (clave_placsp), su uso en scraper/codice_parser.py, docs/runbooks/rekey-placsp-organo.md y ADR-038. Falta lo que el RFC deja para después de la fase B (reconstrucción y cierre) y confirmar en producción que v164 corrió. |
+| [De dónde sale la IP del cliente cuando la API está detrás de Vercel y del proxy de Render](2026-10-24-rfc-ip-del-cliente-tras-vercel-y-render.md) | `partially-implemented` | 2026-10-24 | Código en el árbol (comprobado el 2026-11-01): cabecera x-tf-origin-secret en api/middleware.py, API_ORIGIN_SECRET en config/settings.py, web/src/lib/server-prefetch.ts, api/diagnostico_proxy.py, tests/test_unit_ip_cliente_origen.py y docs/runbooks/ip-del-cliente.md. Falta lo que solo puede hacer el propietario (el secreto en Vercel y en Render) y la verificación en producción de §7. |
 | [Sacar la inferencia de scikit-learn del proceso HTTP — destino de /explain y de /analytics/clusters](2026-09-18-rfc-explain-fuera-del-proceso-api.md) | `review` | 2026-09-18 | — |
-| [Purga de las licitaciones de PSCP sin señal tecnológica y puerta de ingesta endurecida](2026-09-26-rfc-purga-pscp-sin-tecnologia.md) | `review` | 2026-09-26 | — |
-| [Retirada de lo que la campana dejó de usar (campos de mercado de `GET /notifications`, `POST /notifications/read`), del stream SSE y de `forecast/retendering`](2026-10-23-rfc-retirada-campana-antigua-y-stream.md) | `review` | 2026-10-23 | — |
 | [Meta-RFC · Integridad analítica del frontend — el frontend no fabrica datos; backend = única fuente de verdad analítica](2026-06-16-rfc-meta-integridad-analitica-frontend.md) | `superseded` | 2026-06-16 | El meta-RFC graduó: la decisión vive en `docs/adr/ADR-014-integridad-analitica-frontend.md` y su guardarraíl es `scripts/check_frontend_invariants.py --strict`, bloqueante en el job `static-analysis` de `.github/workflows/ci.yml` desde 2026-07-28. Un RFC en `draft` cuya decisión ya es un ADR ejecutable en CI solo confunde a quien lo lea. Verificado contra el árbol el 2026-09-06 (O0.7b del plan de arquitectura v2). |
 | [Plan de migración de persistencia pre-cocido con disparador binario (SQLite/Turso → Postgres)](2026-06-30-rfc-plan-migracion-persistencia-pre-cocido.md) | `superseded` | 2026-06-30 | Decisión de migración tomada sin esperar tripwires (2026-07-05). El destino es Supabase + psycopg3. La ejecución está documentada en ADR-016 y el plan de fases en AGENTS.md §0. Este RFC escala a ejecución directa. |
 
@@ -236,7 +236,8 @@ En la práctica:
 `obsolete` sigue el mismo criterio por el otro lado: se marca cuando se comprueba
 que los ficheros o superficies que el RFC ataca **ya no existen**, con el comando
 que lo demuestra en `obsolete_reason`. Y `superseded` cuando la decisión se mudó a
-otro documento vivo (típicamente un ADR), citándolo en `superseded_by`.
+otro documento vivo (típicamente un ADR), citándolo en `superseded_by` como wikilink
+entre comillas: `superseded_by: "[[ADR-016-destino-persistencia-supabase]]"`.
 
 No hay índice de estados mantenido a mano en este README: el front matter de cada
 fichero es la fuente. Para listar los que siguen abiertos:

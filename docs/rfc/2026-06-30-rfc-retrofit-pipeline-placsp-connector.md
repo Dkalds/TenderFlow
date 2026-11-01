@@ -1,5 +1,5 @@
 ---
-rfc: 2026-06-30
+rfc: "2026-06-30"
 title: Retrofit del pipeline PLACSP sobre el contrato Connector (cerrar la bifurcación de ingesta)
 issue: pendiente — generado en sesión de arquitectura (revisión integral 2026-06-30); sin issue asociado aún
 author: agent:architect
@@ -115,13 +115,13 @@ Estrategia de corte segura (los tests de PLACSP son la red, como pide [ADR-009](
 3. Enrutado: `scheduler/pipeline_runs.py` / `run_update` apuntan PLACSP a
    `run_connector` tras paridad verde.
 4. `scraper/pipeline.py` — marcar DEPRECATED (docstring + no borrar todavía).
-5. `docs/adr/[[ADR-009-framework-conectores-multifuente|ADR-009]]-framework-conectores-multifuente.md` — actualizar
+5. `docs/adr/ADR-009-framework-conectores-multifuente.md` — actualizar
    "Pendiente: retrofit PLACSP" → resuelto, con referencia a este RFC.
 
 **Archivos de partida**: `scraper/connectors/base.py`,
 `scraper/connectors/ted.py` (referencia de patrón fetch/parse),
 `scraper/pipeline.py`, `scraper/bulk_downloader.py`,
-`scheduler/pipeline_runs.py`, `docs/adr/[[ADR-009-framework-conectores-multifuente|ADR-009]]-framework-conectores-multifuente.md`.
+`scheduler/pipeline_runs.py`, `docs/adr/ADR-009-framework-conectores-multifuente.md`.
 **Riesgo estimado**: medio — toca el camino de datos de producción, mitigado por
 la ventana de paridad y la reutilización (no reescritura) del parser/downloader.
 **Tiempo estimado**: 2–4 días (mayoría en el harness de paridad).

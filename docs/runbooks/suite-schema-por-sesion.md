@@ -21,13 +21,10 @@ Detalle en el comentario de `ESTRATEGIA_SCHEMA` en `tests/conftest.py`:
   índices, triggers, funciones, vistas); el schema se reconstruye y el test
   culpable falla con nombre.
 - `@pytest.mark.schema_propio` para los tests que alteran el DDL a propósito;
-  ya marcados: `test_analytics_quality.py` (módulo), `test_nucleo_tipado_pg.py`
-  (módulo), los tres `*_float4` de `test_db_upsert.py`,
-  `test_healthcheck_ops_events_tabla_ausente` y
-  `test_list_deliveries_degrada_a_vacio_si_la_consulta_falla`. La lista sale
-  de un `grep` de DDL en tests con BD; puede faltar alguno que altere el DDL
-  por una vía indirecta (un repositorio que cree tablas): la huella lo
-  detectará en la primera tirada.
+  los que ya lo llevan salen de `grep -rn schema_propio tests/` (una lista a
+  mano aquí se quedaba atrás). Puede faltar alguno que altere el DDL por una
+  vía indirecta (un repositorio que cree tablas): la huella lo detectará en
+  la primera tirada.
 - Un valor desconocido de `TF_TEST_SCHEMA_STRATEGY` es un error de uso, no un
   retorno silencioso a `schema`.
 

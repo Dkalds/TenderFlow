@@ -1,5 +1,5 @@
 ---
-rfc: 243
+rfc: "243"
 title: Recuperación segura de contraseña para cuentas locales
 issue: https://github.com/Dkalds/TenderFlow/issues/243
 author: agent:github-copilot

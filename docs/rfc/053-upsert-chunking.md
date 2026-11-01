@@ -1,5 +1,5 @@
 ---
-rfc: 053
+rfc: "053"
 title: Chunked upsert_licitaciones_with_history para liberar write lock
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/53
 author: agent:architect

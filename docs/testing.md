@@ -196,14 +196,14 @@ Si añadís un skip nuevo, incluí siempre el motivo en el mensaje.
 Definida en `pyproject.toml` bajo `[tool.coverage.*]`:
 
 - **Branch coverage**: activado (`branch = true`).
-- **Fuentes medidas**: `api`, `db`, `scraper`, `scheduler`, `services`, `shared`, `observability`, `config`, `llm`.
-- **`fail_under`**: 70% — el build falla si la cobertura baja de este umbral.
+- **Fuentes medidas**: `api`, `db`, `scraper`, `scheduler`, `services`, `shared`, `observability`, `config`, `llm`, `mcp_server`.
+- **`fail_under`**: 78% — el build falla si la cobertura baja de este umbral.
 - **Líneas excluidas**:
   - `pragma: no cover`
   - `if __name__ == "__main__":`
   - `if TYPE_CHECKING:`
   - `raise NotImplementedError`
-- **Archivos omitidos**: `tests/*`, `__pycache__`, `observability/prometheus.py`, `observability/tracing.py`, `scripts/*`.
+- **Archivos omitidos**: `tests/*`, `*/__pycache__/*`, `scripts/*`, `scheduler/register_daily_task_windows.ps1`.
 
 El reporte se genera automáticamente con `--cov-report=term-missing` (configurado en `addopts`).
 

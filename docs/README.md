@@ -28,8 +28,8 @@ añade aquí en el mismo cambio.
 
 - [adr/README.md](adr/README.md) — índice de ADR: decisiones estructurales vigentes (generado).
 - [rfc/README.md](rfc/README.md) — índice de RFC: propuestas y su estado (generado).
-- `plans/` — planes de trabajo en curso; `superpowers/` — diseños y planes de
-  implementación escritos con los skills de superpowers.
+- [plans/README.md](plans/README.md) — planes de trabajo y los diseños escritos
+  con los skills de superpowers (`superpowers/`).
 
 ## Arquitectura y contratos
 
@@ -73,6 +73,18 @@ añade aquí en el mismo cambio.
 - [windows-happy-path.md](windows-happy-path.md) y
   [runbooks/entorno-wsl.md](runbooks/entorno-wsl.md) — entorno en Windows.
 - [runbooks/obsidian.md](runbooks/obsidian.md) — leer y editar `docs/` con Obsidian.
+
+## Fuera de `docs/`
+
+Viven junto al código al que acompañan; con `docs/` como vault de Obsidian estos
+enlaces salen como no resueltos, igual que los del código.
+
+- [PRODUCT.md](../PRODUCT.md) y [DESIGN.md](../DESIGN.md) — verdad de producto y
+  sistema de diseño; los lee el skill `impeccable` al trabajar en `web/`.
+- [web/AGENTS.md](../web/AGENTS.md) — avisos para agentes sobre la versión de
+  Next.js de `web/`.
+- [mcp_server/glosario.md](../mcp_server/glosario.md) — glosario de negocio y
+  guía para escribir SQL que el MCP sirve a los LLM; se mantiene a mano.
 
 ## Archivo
 

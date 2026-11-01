@@ -1,11 +1,11 @@
 ---
-rfc: 2026-06-30
+rfc: "2026-06-30"
 title: Plan de migración de persistencia pre-cocido con disparador binario (SQLite/Turso → Postgres)
 issue: pendiente — generado en sesión de arquitectura (revisión integral 2026-06-30); sin issue asociado aún
 author: agent:architect
 date: 2026-06-30
 status: superseded
-superseded_by: docs/adr/ADR-016-destino-persistencia-supabase.md
+superseded_by: "[[ADR-016-destino-persistencia-supabase]]"
 superseded_on: 2026-07-05
 superseded_reason: >
   Decisión de migración tomada sin esperar tripwires (2026-07-05). El destino
@@ -118,13 +118,13 @@ La detección ya existe; lo que falta es que el disparo encuentre el plan hecho.
    fijo. **Sin merge.**
 3. `docs/runbooks/migracion-persistencia.md` — runbook de corte + rollback +
    gates de paridad (conteos, agregados clave, idempotencia de upsert).
-4. `docs/adr/[[ADR-004-sqlite-turso-vs-postgres|ADR-004]]-sqlite-turso-vs-postgres.md` — añadir nota "Plan de salida:
+4. `docs/adr/ADR-004-sqlite-turso-vs-postgres.md` — añadir nota "Plan de salida:
    ver ADR-015 + runbook" (sin cambiar el status Accepted).
 5. `observability/alert_rules.yml` — al disparar el tripwire, la alerta enlaza
    directamente al runbook (annotation `runbook_url`).
 
-**Archivos de partida**: `docs/adr/[[ADR-004-sqlite-turso-vs-postgres|ADR-004]]-sqlite-turso-vs-postgres.md`,
-`docs/adr/[[ADR-013-jerarquia-materializaciones-analiticas|ADR-013]]-jerarquia-materializaciones-analiticas.md`,
+**Archivos de partida**: `docs/adr/ADR-004-sqlite-turso-vs-postgres.md`,
+`docs/adr/ADR-013-jerarquia-materializaciones-analiticas.md`,
 `docs/runbooks/persistence-tripwires.md`, `observability/runtime_metrics.py`,
 `observability/alert_rules.yml`, `db/connection.py`, `db/database.py`.
 **Riesgo estimado**: bajo en preparación (docs + spike aislado); el riesgo real

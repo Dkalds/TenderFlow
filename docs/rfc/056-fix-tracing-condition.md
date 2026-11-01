@@ -1,5 +1,5 @@
 ---
-rfc: 056
+rfc: "056"
 title: Fix incorrect condition in tracing.py that allows spans without OpenTelemetry configured
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/56
 author: agent:architect

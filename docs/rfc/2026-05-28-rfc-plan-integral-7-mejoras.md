@@ -1,5 +1,5 @@
 ---
-rfc: 20260528
+rfc: "20260528"
 title: Plan integral ejecutable para 7 mejoras transversales (typing, CI tests, markers, migraciones, observabilidad, DX Windows, graphify)
 issue: N/A (consolidacion roadmap interno)
 author: agent:architect

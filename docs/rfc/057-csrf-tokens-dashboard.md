@@ -1,5 +1,5 @@
 ---
-rfc: 057
+rfc: "057"
 title: Implementar CSRF tokens para sesiones del dashboard
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/57
 author: agent:architect

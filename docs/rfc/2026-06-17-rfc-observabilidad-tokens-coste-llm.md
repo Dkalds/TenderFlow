@@ -1,5 +1,5 @@
 ---
-rfc: 2026-06-17
+rfc: "2026-06-17"
 title: Observabilidad de tokens y coste en el cliente LLM
 issue: pendiente — generado por /loop (identificación autónoma de mejoras); sin issue asociado aún
 author: agent:architect

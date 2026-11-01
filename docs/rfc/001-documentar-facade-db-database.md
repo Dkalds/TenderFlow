@@ -1,5 +1,5 @@
 ---
-rfc: 001
+rfc: "001"
 title: Documentar la fachada db.database
 issue: "(test local — sin issue de GitHub)"
 author: agent:architect

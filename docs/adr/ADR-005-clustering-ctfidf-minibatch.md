@@ -2,6 +2,7 @@
 id: ADR-005
 title: "Clustering: MiniBatchKMeans + c-TF-IDF + stopwords externas"
 status: accepted
+date: 2026-05-19
 tags: [adr]
 ---
 

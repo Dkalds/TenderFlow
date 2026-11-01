@@ -131,8 +131,7 @@ mcp_server/ ──► services/ + db/ + shared/  (ni api/ ni scraper/)
 * `services/` contiene lógica de dominio pura (normalización,
   clasificación, threshold tuning, rate-limit). Sin dependencias UI.
   Ver [ADR-007](adr/ADR-007-services-domain-layer.md).
-* `shared/` aloja helpers transversales (auth core, signing, i18n,
-  geo, schemas Pandera).
+* `shared/` aloja helpers transversales (auth core, signing, geo, DTOs).
 * `web/` consume la API REST y no accede a `services/` o `db/` directamente.
 * `mcp_server/` es la capa más alta y no importa de `api/` ni de `scraper/`.
   Su SQL vive en `db/` (`db/consulta_libre.py`, `db/mcp_oauth.py`), y qué

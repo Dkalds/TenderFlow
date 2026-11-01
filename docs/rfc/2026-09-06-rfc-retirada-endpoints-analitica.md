@@ -4,7 +4,8 @@ title: Retirada de tres endpoints de analítica sin consumidor y del listado por
 issue: "(sin issue: decisión D19 del plan de arquitectura 2026-09 v2)"
 author: agent:claude-code
 date: 2026-09-06
-status: approved
+status: partially-implemented
+evidence: "Fase 1 (deprecación) en el árbol (comprobado el 2026-11-01): [DEPRECADO 2027-01-15] con deprecated=True en api/routes/analytics.py y api/routes/licitaciones/listado.py, y tests/test_deprecacion_cabeceras.py. Falta la fase 2, borrar los cuatro handlers, a partir del 2027-01-15."
 retirada_efectiva: 2027-01-15
 ---
 

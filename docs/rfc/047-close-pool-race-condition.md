@@ -1,5 +1,5 @@
 ---
-rfc: 047
+rfc: "047"
 title: "Fix race condition en close_pool() — lock durante drain del pool"
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/47
 author: agent:architect

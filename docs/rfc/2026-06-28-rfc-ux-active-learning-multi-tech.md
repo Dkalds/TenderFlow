@@ -6,8 +6,14 @@ author: agent:architect
 date: 2026-06-28
 status: implemented
 area: web/active-learning · api/feedback · scraper/tech_classifier
-supersedes: docs/rfc/2026-06-16-rfc-ux-active-learning.md (partially-implemented; este lo concreta sobre los puntos 2 — multi-clase — y añade el desglose de probabilidades por tecnología)
+related:
+  - "[[2026-06-16-rfc-ux-active-learning]]"
 ---
+
+> **Relación con otros RFC.** Concreta el punto 2 (multi-clase) de
+> [2026-06-16-rfc-ux-active-learning](2026-06-16-rfc-ux-active-learning.md) y añade
+> el desglose de probabilidades por tecnología. Ese RFC figuraba
+> `partially-implemented` el 2026-06-28; hoy es `implemented`.
 
 ## Contexto
 

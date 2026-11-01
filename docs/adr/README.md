@@ -43,7 +43,7 @@ el cuerpo.
 
 <!-- BEGIN indice-adr (generado por scripts/gen_adr_index.py — no editar a mano) -->
 
-**37 ADR**, de los cuales **32** están vigentes. `accepted` 32 · `rejected` 1 · `superseded` 4.
+**37 ADR**, de los cuales **34** están vigentes. `accepted` 34 · `rejected` 1 · `superseded` 2.
 
 Esta tabla se genera con `python scripts/gen_adr_index.py` a partir del frontmatter de cada ADR; CI la verifica con `--check`, igual que `make check-agent-docs` y la suite (`tests/test_unit_ratchet_indice_adr.py`). Un ADR sin `id` o `status` —o con un estado fuera del vocabulario— la hace fallar.
 
@@ -58,10 +58,10 @@ Esta tabla se genera con `python scripts/gen_adr_index.py` a partir del frontmat
 |---|---|---|---|---|
 | [ADR-001](ADR-001-sql-crudo-vs-orm.md) | SQL crudo vs ORM | `accepted` | 2024-01-01 | — |
 | [ADR-002](ADR-002-streamlit-vs-fastapi-react.md) | Streamlit vs FastAPI + React | `accepted` | 2024-01-01 | — |
-| [ADR-003](ADR-003-migraciones-caseras-plus-alembic.md) | Sistema de migraciones casero + plan Alembic | `accepted` | 2024-01-01 | — |
+| [ADR-003](ADR-003-migraciones-caseras-plus-alembic.md) | Sistema de migraciones casero + plan Alembic | `accepted` | 2024-01-01 | [ADR-008](ADR-008-consolidacion-migraciones-alembic.md) (en parte) |
 | [ADR-004](ADR-004-sqlite-turso-vs-postgres.md) | SQLite + Turso vs PostgreSQL | `superseded` | 2024-01-01 | [ADR-016](ADR-016-destino-persistencia-supabase.md) |
-| [ADR-005](ADR-005-clustering-ctfidf-minibatch.md) | Clustering: MiniBatchKMeans + c-TF-IDF + stopwords externas | `accepted` | — | — |
-| [ADR-006](ADR-006-etag-pdf-export-ratelimit-redis.md) | ETag middleware + async PDF export endpoint | `accepted` | 2026-05-19 | — |
+| [ADR-005](ADR-005-clustering-ctfidf-minibatch.md) | Clustering: MiniBatchKMeans + c-TF-IDF + stopwords externas | `accepted` | 2026-05-19 | — |
+| [ADR-006](ADR-006-etag-pdf-export-ratelimit-redis.md) | ETag middleware + async PDF export endpoint | `accepted` | 2026-05-19 | [ADR-035](ADR-035-camino-de-peticion-sin-bloquear-el-event-loop.md) (en parte) |
 | [ADR-007](ADR-007-services-domain-layer.md) | Capa `services/` como dominio compartido | `accepted` | 2026-05-19 | — |
 | [ADR-008](ADR-008-consolidacion-migraciones-alembic.md) | Consolidación hacia Alembic como sistema canónico de migraciones | `accepted` | 2026-05-23 | — |
 | [ADR-009](ADR-009-framework-conectores-multifuente.md) | Framework de conectores multi-fuente y namespacing de id_externo | `accepted` | 2026-06-11 | [ADR-038](ADR-038-clave-de-placsp-acotada-por-organo.md) (en parte) |
@@ -71,8 +71,8 @@ Esta tabla se genera con `python scripts/gen_adr_index.py` a partir del frontmat
 | [ADR-014](ADR-014-integridad-analitica-frontend.md) | Integridad analítica del frontend | `accepted` | 2026-06-22 | — |
 | [ADR-015](ADR-015-identidad-tenderflow.md) | Identidad del producto — Tenderflow (plataforma genérica de licitaciones) | `accepted` | 2026-07-04 | — |
 | [ADR-016](ADR-016-destino-persistencia-supabase.md) | Destino de persistencia: Supabase + psycopg3 | `accepted` | 2026-07-05 | — |
-| [ADR-017](ADR-017-camino-lectura-analitico.md) | Camino de lectura analítico tras el cutover a Postgres | `superseded` | 2026-07-26 | [ADR-023](ADR-023-computo-en-vivo-agregacion-sql.md) |
-| [ADR-018](ADR-018-paridad-motor-tests-produccion.md) | Paridad de motor entre la suite de tests y producción | `superseded` | 2026-07-26 | [ADR-021](ADR-021-retirada-sqlite.md) |
+| [ADR-017](ADR-017-camino-lectura-analitico.md) | Camino de lectura analítico tras el cutover a Postgres | `accepted` | 2026-07-26 | [ADR-023](ADR-023-computo-en-vivo-agregacion-sql.md) (en parte) |
+| [ADR-018](ADR-018-paridad-motor-tests-produccion.md) | Paridad de motor entre la suite de tests y producción | `accepted` | 2026-07-26 | [ADR-021](ADR-021-retirada-sqlite.md) (en parte) |
 | [ADR-019](ADR-019-observabilidad-desplegada.md) | Observabilidad desplegada: Prometheus y Grafana en Render | `accepted` | 2026-07-26 | — |
 | [ADR-020](ADR-020-retirada-turso.md) | Retirada de Turso/libSQL como backend cloud | `accepted` | 2026-07-26 | — |
 | [ADR-021](ADR-021-retirada-sqlite.md) | Retirada de SQLite como backend soportado — mono-dialecto Postgres | `accepted` | 2026-07-27 | — |
@@ -92,6 +92,6 @@ Esta tabla se genera con `python scripts/gen_adr_index.py` a partir del frontmat
 | [ADR-035](ADR-035-camino-de-peticion-sin-bloquear-el-event-loop.md) | El camino de cada petición no bloquea el event loop: cuota en Redis por defecto, ETag al cachear y consulta cancelada como 503 | `accepted` | 2026-09-25 | — |
 | [ADR-036](ADR-036-acceso-interno-por-mcp.md) | Acceso interno por MCP con rol de solo lectura: un servicio aparte, OAuth propio y el SQL lo limita Postgres | `accepted` | 2026-10-15 | — |
 | [ADR-037](ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md) | Un correo solo cuenta si el proveedor lo acredita, y no une cuentas de proveedores distintos | `accepted` | 2026-10-23 | — |
-| [ADR-038](ADR-038-clave-de-placsp-acotada-por-organo.md) | El id_externo de una fuente cuyo expediente no es único entre órganos se acota por el órgano: PLACSP pasa a placsp:<órgano>:<expediente> | `accepted` | 2026-10-26 | — |
+| [ADR-038](ADR-038-clave-de-placsp-acotada-por-organo.md) | El id_externo de una fuente cuyo expediente no es único entre órganos se acota por el órgano: PLACSP pasa a `placsp:<órgano>:<expediente>` | `accepted` | 2026-10-26 | — |
 
 <!-- END indice-adr -->

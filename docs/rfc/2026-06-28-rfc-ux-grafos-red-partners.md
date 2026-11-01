@@ -6,12 +6,17 @@ author: agent:architect
 date: 2026-06-28
 status: implemented
 area: web/red-organo-empresa · web/ecosistema-partners · web/components/charts/force-graph
-supersedes: >
-  Completa el trabajo diferido en docs/rfc/2026-06-16-rfc-ux-red-organo-empresa.md
-  y docs/rfc/2026-06-16-rfc-ux-ecosistema-partners.md (ambos `implemented`: arreglaron
-  los DATOS — aristas reales — pero dejaron explícitamente fuera el componente
-  `ForceGraph` y difirieron el drill-down nodo/arista).
+related:
+  - "[[2026-06-16-rfc-ux-red-organo-empresa]]"
+  - "[[2026-06-16-rfc-ux-ecosistema-partners]]"
 ---
+
+> **Relación con otros RFC.** Completa el trabajo diferido en
+> [red-organo-empresa](2026-06-16-rfc-ux-red-organo-empresa.md) y
+> [ecosistema-partners](2026-06-16-rfc-ux-ecosistema-partners.md) (ambos
+> `implemented`: arreglaron los DATOS — aristas reales — pero dejaron
+> explícitamente fuera el componente `ForceGraph` y difirieron el drill-down
+> nodo/arista).
 
 ## Contexto
 

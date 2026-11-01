@@ -44,7 +44,7 @@ el riesgo de "el dashboard dice X y el export dice Y".
 ```
 SQLite (OLTP) ──[pipeline canónica]──> KPI snapshots (SQLite, caché con refresh)
                                     ──> mat_clusters / mat_top_empresas_ccaa (SQLite)
-                                    ──> Parquet + manifest ([[086-linaje-analitico-parquet-manifest|RFC-086]], snapshot offline)
+                                    ──> Parquet + manifest (RFC-086, snapshot offline)
 ```
 
 1. **SQLite = fuente OLTP + cache analítica ligera.** `kpi_snapshots` y

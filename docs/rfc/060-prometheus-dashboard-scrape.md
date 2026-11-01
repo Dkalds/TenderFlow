@@ -1,5 +1,5 @@
 ---
-rfc: 060
+rfc: "060"
 title: Añadir dashboard como scrape target de Prometheus
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/60
 author: agent:architect

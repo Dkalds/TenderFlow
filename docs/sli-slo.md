@@ -220,7 +220,7 @@ búsqueda.
 
 | Señal | Fuente |
 |-------|--------|
-| Métricas scraper | `observability/prometheus.py` → `data/metrics/scraper.prom` |
+| Métricas de proceso | `observability/runtime_metrics.py` → `/metrics` de la API (el exportador por textfile del scheduler se retiró el 2026-09-28) |
 | Métricas sistema | `observability/metrics.py` → `kpi_snapshots` |
 | Trazas distribuidas | `observability/tracing.py` → OTLP endpoint |
 | Logs estructurados | `observability/logging.py` → structlog JSON |

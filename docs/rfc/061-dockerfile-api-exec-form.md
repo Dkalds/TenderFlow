@@ -1,5 +1,5 @@
 ---
-rfc: 061
+rfc: "061"
 title: "Dockerfile.api CMD: exec form para propagación correcta de señales"
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/61
 author: agent:architect

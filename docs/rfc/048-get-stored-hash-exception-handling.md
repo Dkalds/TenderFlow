@@ -1,5 +1,5 @@
 ---
-rfc: 048
+rfc: "048"
 title: "Fix get_stored_hash silent exception swallowing enabling timing attacks"
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/48
 author: agent:architect

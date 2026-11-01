@@ -1,5 +1,5 @@
 ---
-rfc: 058
+rfc: "058"
 title: Añadir rate limiting al endpoint /api/v1/ask (LLM)
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/58
 author: agent:architect

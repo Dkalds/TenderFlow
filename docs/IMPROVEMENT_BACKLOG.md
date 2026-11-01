@@ -9,13 +9,13 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - Si añadís un ítem nuevo, copiá la plantilla del final.
 - Al cerrarlo, no lo dejes tachado aquí: **movélo entero a la sección _Cerrados_** del final con la fecha y el commit/PR que lo resolvió. Las secciones P1/P2/P3 contienen **solo ítems abiertos**.
 
-## Plan 2026-10 — foco de piloto (PROPUESTO el 2026-10-26)
+## Plan 2026-10 — foco de piloto (EN EJECUCIÓN desde el 2026-10-26)
 
 [plans/2026-10-plan-foco-piloto.md](plans/2026-10-plan-foco-piloto.md) fija
 **el orden** de lo que queda abierto aquí y **qué se aplaza**. No redefine
 criterios: cada ítem conserva los suyos, y el estado se anota en el §8 del plan.
-Hasta que el propietario tome sus decisiones D50–D58, el orden de abajo es una
-propuesta.
+El propietario aceptó las decisiones D50–D58 el 2026-10-26: el orden de abajo
+rige.
 
 | Ola | Ítems de este backlog |
 |---|---|
@@ -1301,7 +1301,7 @@ _Sin ítems abiertos._
   - `services/sql_fragments.py` desaparece (sus dos constantes van a `db/sql_fragments.py`) y la excepción se borra de AGENTS.md §3.10.
   - `drift_monitor.py` se retira o se registra en el plano del worker (ADR-033) con su job en `docs/STATUS.md`; no hay módulo del scheduler que solo exista para APScheduler.
   - **Progreso 2026-10-25:** hecho el reparto de las dos caras (ADR-022, «Entidades con las dos caras», con cabecera en `db/repositories/{audit,webhooks,watchlist}.py` y nota en el playbook) y retirado `services/sql_fragments.py` (los importadores van a `db/sql_fragments.py`; la excepción sale de AGENTS.md §3.10). Queda `scheduler/drift_monitor.py`.
-- **Files de partida:** [db/webhooks.py](../db/webhooks.py), [db/repositories/webhooks.py](../db/repositories/webhooks.py), [services/sql_fragments.py](../services/sql_fragments.py), [scheduler/drift_monitor.py](../scheduler/drift_monitor.py), [docs/adr/ADR-022-frontera-de-persistencia.md](adr/ADR-022-frontera-de-persistencia.md)
+- **Files de partida:** [db/webhooks.py](../db/webhooks.py), [db/repositories/webhooks.py](../db/repositories/webhooks.py), [db/sql_fragments.py](../db/sql_fragments.py), [scheduler/drift_monitor.py](../scheduler/drift_monitor.py), [docs/adr/ADR-022-frontera-de-persistencia.md](adr/ADR-022-frontera-de-persistencia.md)
 - **Riesgo:** bajo — reorganización sin cambio de SQL; TID251 y los tests de repositorio lo fijan.
 
 ### [P3] El coste de leer el repo: deriva documental y un backlog que su propia regla llama ilegible

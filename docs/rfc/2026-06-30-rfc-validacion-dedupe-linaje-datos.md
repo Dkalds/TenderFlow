@@ -1,5 +1,5 @@
 ---
-rfc: 2026-06-30
+rfc: "2026-06-30"
 title: Validación de la precisión del dedupe cross-fuente y linaje de datos como contrato testeable
 issue: pendiente — generado en sesión de arquitectura (revisión integral 2026-06-30); sin issue asociado aún
 author: agent:architect
@@ -119,11 +119,11 @@ contrato testeable, con tres componentes:
    bruscamente de su baseline.
 5. (Si aplica) migración Alembic para la columna de criterio en
    `licitaciones_duplicados` — **requiere OK humano**.
-6. `docs/adr/[[ADR-009-framework-conectores-multifuente|ADR-009]]-framework-conectores-multifuente.md` — nota: la calidad del
+6. `docs/adr/ADR-009-framework-conectores-multifuente.md` — nota: la calidad del
    dedupe ahora tiene contrato de test (referencia a este RFC).
 
 **Archivos de partida**: `services/dedupe.py`, `tests/test_dedup_guardrail.py`,
-`docs/adr/[[ADR-009-framework-conectores-multifuente|ADR-009]]-framework-conectores-multifuente.md`,
+`docs/adr/ADR-009-framework-conectores-multifuente.md`,
 `observability/alert_rules.yml`, `observability/runtime_metrics.py`.
 **Riesgo estimado**: bajo — aditivo (tests + métricas + linaje); no cambia el
 algoritmo de matching ni el camino de datos. El único punto sensible es la

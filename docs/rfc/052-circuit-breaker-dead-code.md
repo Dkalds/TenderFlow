@@ -1,5 +1,5 @@
 ---
-rfc: 052
+rfc: "052"
 title: Alinear reset_timeout inicial del CircuitBreaker con BREAKER_BASE_TIMEOUT
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/52
 author: agent:architect

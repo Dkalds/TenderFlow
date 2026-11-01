@@ -1,5 +1,5 @@
 ---
-rfc: 086
+rfc: "086"
 title: Linaje analítico canónico — manifest Parquet y orden de materialización
 issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect

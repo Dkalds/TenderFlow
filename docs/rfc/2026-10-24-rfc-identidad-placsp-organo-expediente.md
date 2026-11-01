@@ -4,7 +4,8 @@ title: "Identidad de las licitaciones de PLACSP: el expediente acotado por el ó
 issue: "(sin issue: P1 de docs/IMPROVEMENT_BACKLOG.md, «La identidad de PLACSP no incluye el órgano», 2026-10-24)"
 author: agent:claude-code
 date: 2026-10-24
-status: approved
+status: partially-implemented
+evidence: "Fases A y B en el árbol (comprobado el 2026-11-01): v163_identidad_placsp_fase_a, v164_identidad_placsp_rekey, shared/identidad_placsp.py (clave_placsp), su uso en scraper/codice_parser.py, docs/runbooks/rekey-placsp-organo.md y ADR-038. Falta lo que el RFC deja para después de la fase B (reconstrucción y cierre) y confirmar en producción que v164 corrió."
 related:
   - "[[ADR-009-framework-conectores-multifuente]]"
   - "[[ADR-026-caminos-de-lectura-y-precedencia-tecnologica]]"

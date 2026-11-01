@@ -1,6 +1,6 @@
 # Resumen de seguridad para cuestionarios de clientes
 
-**Fecha: 2026-09-14.** Este documento responde, con lo que el repositorio puede
+**Fecha: 2026-09-14** (§1 revisada el 2026-11-01). Este documento responde, con lo que el repositorio puede
 afirmar, a las preguntas habituales de un cuestionario de seguridad B2B. Cada
 respuesta enlaza al control real. Lo que **no** existe se dice en §12, porque
 un cuestionario respondido con optimismo se descubre en la auditoría de
@@ -16,11 +16,11 @@ tiene acceso a los paneles.
 
 | Componente | Proveedor | Región | Detalle |
 |---|---|---|---|
-| API, worker, observabilidad | Render | Frankfurt (UE) | `render.yaml`, cinco servicios |
+| API, MCP, observabilidad | Render | Frankfurt (UE) | `render.yaml`, cinco servicios: API, MCP, Prometheus, Alertmanager y Grafana |
 | Base de datos | Supabase (Postgres) | **propietario** | `DATABASE_URL` con `sslmode=verify-full` obligatorio en producción |
 | Frontend | Vercel | edge global; funciones **propietario** | Next.js, sin acceso a la base |
 | Backups | Supabase (gestionados por el proveedor) | la del proyecto de Supabase | ver §7 |
-| Cron de producción | GitHub Actions | EE. UU. | en migración al worker de Render ([ADR-033](adr/ADR-033-plano-de-cron-en-el-worker.md)) |
+| Cron de producción | GitHub Actions | EE. UU. | el worker de Render que iba a asumirlo ([ADR-033](adr/ADR-033-plano-de-cron-en-el-worker.md)) se retiró el 2026-10-19; el cron sigue en Actions ([runbook](runbooks/cutover-cron-al-worker.md)) |
 
 Lista completa de subencargados y mecanismos de transferencia:
 [legal/subencargados.md](legal/subencargados.md).

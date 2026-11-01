@@ -1,5 +1,5 @@
 ---
-rfc: 046
+rfc: "046"
 title: "Fix silent DB initialization error in dev/staging"
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/46
 author: agent:architect

@@ -699,8 +699,8 @@ src/__tests__/voz-de-la-interfaz.test.ts` (6 casos).
 
 - **F27, la portada del día.** No se hizo, por decisión: `text-tf-hero` tiene 0
   usos en la consola y el Resumen sigue sin un titular del día.
-- **F19, el naranja de marca.** Sin elegir entre #E8823E (el del favicon),
-  #F39349 (el del tema oscuro y la OG) y #9A4513 (el óxido del tema claro). Está
+- **F19, el naranja de marca.** Sin elegir entre `#E8823E` (el del favicon),
+  `#F39349` (el del tema oscuro y la OG) y `#9A4513` (el óxido del tema claro). Está
   hecha la parte que no depende de él: `lib/marca.ts`, el logo sin halo y la OG
   con los textos de su fuente. Faltan los tokens `--brand`/`--brand-ink`, iguales
   en los dos temas y medidos por contraste, el favicon y un lockup con Fraunces

@@ -1,8 +1,8 @@
 ---
 id: ADR-018
 title: "Paridad de motor entre la suite de tests y producción"
-status: superseded
-superseded_by: "[[ADR-021-retirada-sqlite]]"
+status: accepted
+superseded_parcialmente_por: "[[ADR-021-retirada-sqlite]]"
 date: 2026-07-26
 deciders: "Daniel Kalitovics"
 related:

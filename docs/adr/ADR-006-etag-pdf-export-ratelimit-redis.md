@@ -2,6 +2,7 @@
 id: ADR-006
 title: "ETag middleware + async PDF export endpoint"
 status: accepted
+superseded_parcialmente_por: "[[ADR-035-camino-de-peticion-sin-bloquear-el-event-loop]]"
 date: 2026-05-19
 tags: [adr]
 ---
@@ -41,6 +42,11 @@ Consecuencias:
   colisión intencional es nulo en este contexto.
 
 ### 2. Endpoint de exportación PDF asíncrona (F5)
+
+> **Retirado** el 2026-09-18 por el
+> [RFC de retirada de exports asíncronos](../rfc/2026-09-03-rfc-retirada-exports-asincronos.md):
+> `POST /api/v1/exports` y el job en memoria ya no existen; `api/routes/exports.py`
+> solo expone `GET`. Lo que sigue es el diseño original.
 
 `POST /api/v1/exports` acepta filtros opcionales (`ccaa`, `estado`, `q`),
 crea un job en memoria y devuelve `202 Accepted` con `{id, status}`.
