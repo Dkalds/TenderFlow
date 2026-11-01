@@ -346,6 +346,13 @@ Lista vacía si el pliego no enumera documentos a presentar.
 #: PDFs cuyo texto sale con las tildes cambiadas»).
 _LETRAS_CAMBIADAS = str.maketrans({"æ": "á", "ñ": "á", "ø": "é", "œ": "ú", "˝": "í"})
 
+#: La raya de una fracción no llega al texto del PDF: el numerador y el
+#: denominador salen en líneas distintas y sin nada entre ellos. En el PPT de
+#: `placsp:10000400045061:IPA 1/27` (p. 37) la fórmula del precio es
+#: «= OV * X ⏎ O», y el modelo, que la lee como fracción, la cita «OV * X / O».
+#: La barra se ignora al comparar, igual que los blancos.
+_BARRAS_DE_FRACCION = str.maketrans("", "", "/÷")
+
 
 def _normalize_quote(value: str) -> str:
     """Clave de comparación de citas: sin mayúsculas y **sin espacios**.
@@ -357,9 +364,11 @@ def _normalize_quote(value: str) -> str:
     real se descartaba por ese «( ». Quitar los blancos no deja pasar texto
     inventado: los caracteres tienen que estar todos, en orden.
 
-    Tampoco distingue las letras de :data:`_LETRAS_CAMBIADAS`.
+    Tampoco distingue las letras de :data:`_LETRAS_CAMBIADAS` ni mira las
+    barras de :data:`_BARRAS_DE_FRACCION`.
     """
-    return "".join(value.casefold().translate(_LETRAS_CAMBIADAS).split())
+    normalizado = value.casefold().translate(_LETRAS_CAMBIADAS).translate(_BARRAS_DE_FRACCION)
+    return "".join(normalizado.split())
 
 
 #: Elipsis con la que el modelo abrevia una cita larga («el órgano podrá
@@ -575,7 +584,7 @@ def _validate_fact_evidence(
 ) -> tuple[TenderFactSheet, int]:
     """Descarta hechos sin una cita que exista literalmente en la página."""
     page_index = {(int(page["documento_id"]), int(page["page_number"])): page for page in pages}
-    rejected = 0
+    rechazados: Counter[str] = Counter()
     for field_name in TenderFactSheet.model_fields:
         kept: list[object] = []
         for fact in getattr(facts, field_name):
@@ -585,12 +594,16 @@ def _validate_fact_evidence(
                 if (checked := _validated_evidence(item, page_index)) is not None
             ]
             if not valid:
-                rejected += 1
+                rechazados[field_name] += 1
                 continue
             fact.evidence = valid
             kept.append(fact)
         setattr(facts, field_name, kept)
-    return facts, rejected
+    # Por familia: el recuento suelto de `fact_sheet_items_rejected` no decía
+    # que lo perdido en la oportunidad 18 era justo la fórmula del precio.
+    if rechazados:
+        log.info("fact_sheet_items_unverifiable", familias=dict(rechazados))
+    return facts, sum(rechazados.values())
 
 
 def _counts(facts: TenderFactSheet) -> tuple[int, int]:

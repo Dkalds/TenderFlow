@@ -127,6 +127,31 @@ class TestVerificacionDeCitas:
         cita = EvidenceRef(documento_id=1, page_number=6, quote="Contendrí el DEUC. En caso de que")
         assert fs._validated_evidence(cita, _indice((1, 6, self.PAGINA_CAMBIADA))) is None
 
+    #: La fórmula del precio tal como sale del PPT de la oportunidad 18 (p. 37):
+    #: la fracción OV·X/O pierde la raya y el denominador baja de línea.
+    PAGINA_FRACCION = (
+        "simple. \nPuntuación a asignar al resto empresas licitadoras = OV * X \n"
+        "                                                O              \n Donde: \n"
+        " OV:   Oferta licitadora presentada más ventajosa (de menor importe) \n"
+    )
+
+    def test_la_fraccion_citada_con_barra_casa_con_la_del_pdf(self):
+        """El modelo cita «OV * X / O»; en el texto no hay barra. Así se perdía la fórmula."""
+        cita = EvidenceRef(
+            documento_id=1,
+            page_number=37,
+            quote="Puntuación a asignar al resto empresas licitadoras = OV * X / O",
+        )
+        assert fs._validated_evidence(cita, _indice((1, 37, self.PAGINA_FRACCION))) is not None
+
+    def test_la_barra_no_deja_pasar_otro_denominador(self):
+        cita = EvidenceRef(
+            documento_id=1,
+            page_number=37,
+            quote="Puntuación a asignar al resto empresas licitadoras = OV * X / P",
+        )
+        assert fs._validated_evidence(cita, _indice((1, 37, self.PAGINA_FRACCION))) is None
+
 
 class TestNormalizacionDeHechos:
     def _hecho(self, **extra: Any) -> dict[str, Any]:
