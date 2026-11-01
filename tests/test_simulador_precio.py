@@ -217,6 +217,32 @@ class TestHuecoContraElRival:
         )
         assert sim.hueco_vs_referencia == -22.5
 
+    def test_el_rival_que_baja_mas_es_la_mejor_oferta(self) -> None:
+        """Como llama la ruta: sin `baja_mayor_esperada`, solo tu baja y la del rival.
+
+        Bajo el 10 % y el rival el 20 %: la mejor oferta es la suya.
+        Inversa al precio: 40 × 0,80 / 0,90 = 35,56; el rival, 40; hueco −4,44.
+        Antes la mejor baja era la mía y salía 40 contra 40, hueco 0.
+        """
+        sim = simular(
+            "EXP-1",
+            [_formula(formula_type="inversa_precio", max_points=40)],
+            bajas=[0.10],
+            baja_referencia=0.20,
+        )
+        assert sim.escenarios[0].puntos == 35.56
+        assert sim.hueco_vs_referencia == -4.44
+
+    def test_el_rival_cuenta_tambien_en_la_proporcional_a_la_baja(self) -> None:
+        """45 × 0,10 / 0,20 = 22,5 contra 45 del rival: hueco −22,5."""
+        sim = simular(
+            "EXP-1",
+            [_formula(formula_type="proporcional_inversa", max_points=45)],
+            bajas=[0.10],
+            baja_referencia=0.20,
+        )
+        assert sim.hueco_vs_referencia == -22.5
+
     def test_sin_referencia_no_hay_hueco(self) -> None:
         sim = simular(
             "EXP-1",
