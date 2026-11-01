@@ -14,6 +14,7 @@ fila: sin ella constarían como «sin registro».
 | `tacrc` | `TACRC_INDEX_URL` | índice del Pleno, o el índice completo por años (abajo) | lo decide la variable de repo (ver la nota) |
 | `placsp_agregadas` | `PLACSP_AGREGADAS_ATOM_URL` | `URL_SINDICACION_1044` de `scraper/connectors/placsp_agregadas.py` | **apagada** (vacía en `config/settings.py`) |
 | `placsp_menores` | `PLACSP_MENORES_ATOM_URL` | `URL_SINDICACION_1143` de `scraper/connectors/placsp_menores.py` | **apagada** (vacía en `config/settings.py`) |
+| `placsp_consultas` | `PLACSP_CONSULTAS_ATOM_URL` | `URL_SINDICACION_1403` de `scraper/connectors/placsp_consultas.py` | **apagada** y **sin programar** (ver abajo) |
 
 Dónde se fija cada variable: en GitHub, *Settings → Secrets and variables →
 Actions → Variables* (el workflow las lee con `vars.`). Si el cron ya vive en el
@@ -100,6 +101,38 @@ persona física: de 241 admitidas, 14 con NIF enmascarado (`***3418**`; esas
 adjudicaciones no se guardan) y 12 con NIF y nombre completos. Antes de encender,
 el propietario decide si se guardan; ver el backlog y
 [registro-tratamientos.md](../legal/registro-tratamientos.md).
+
+## Consultas preliminares de mercado (1403)
+
+Escrita el 2026-10-31. Alimenta la bandeja «Próximas» con las consultas
+preliminares de mercado de tecnología, que el feed principal no trae (el spike
+de T5 contó `DOC_CON` cero veces). No toca ninguna exclusión de
+`FUERA_DE_ALCANCE`. Qué hace y por qué está en el docstring del módulo.
+
+**Todavía no corre en ninguna pasada.** A diferencia de las otras opcionales, no
+tiene step en `scrape-daily.yml` ni entrada en `scheduler/jobs/daily_atom.py`
+(los dos van juntos: `tests/test_daily_atom.py` exige la misma lista). Sin
+pasada no escribe `disabled`, y el healthcheck no la avisa como «sin registro»
+porque es opcional. Para encenderla:
+
+1. Añadir el step al workflow y el `Conector` al carril diario, con el mismo
+   presupuesto (cambio de workflow: OK del dueño, AGENTS.md §6).
+2. Validar desde la máquina que la correrá:
+
+   ```bash
+   python -m scraper.connectors.placsp_consultas --check --dump consultas.atom
+   ```
+
+   Resultado del 2026-10-31: 459 entradas en la primera página (400 consultas
+   distintas, del 13 de enero al 30 de octubre) y 59 admitidas por el filtro.
+3. Fijar `PLACSP_CONSULTAS_ATOM_URL` y comprobar tras la primera pasada lo mismo
+   que en las sindicaciones de arriba, con los contadores `placsp_consultas_*`.
+
+**Qué cambia en el producto al encenderla.** Las consultas aparecen en
+«Próximas» (`estado = 'CPM'`) y en los listados del universo tecnológico. No
+entran en el universo puntuable del Radar: su plazo es para responder a la
+consulta, no para ofertar, y va en `descripcion`, no en `fecha_limite`. Los
+documentos de la consulta (`GeneralDocument`) no se guardan todavía.
 
 ## TACRC: el índice completo
 
