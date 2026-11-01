@@ -1,11 +1,13 @@
-# Fixtures de las sindicaciones 1143 y 1044 de PLACSP
+# Fixtures de las sindicaciones 1143, 1044 y 1403 de PLACSP
 
-Las consumen `tests/test_connectors_placsp_sindicaciones.py`.
+Las consumen `tests/test_connectors_placsp_sindicaciones.py` (1143 y 1044) y
+`tests/test_connectors_placsp_consultas.py` (1403).
 
 | Fichero | Feed | Entradas |
 |---|---|---|
 | `contratos_menores_1143.atom` | `sindicacion_1143/contratosMenoresPerfilesContratantes.atom` — contratos menores de los perfiles alojados en PLACSP | 6 |
 | `agregadas_1044.atom` | `sindicacion_1044/PlataformasAgregadasSinMenores.atom` — licitaciones que las plataformas autonómicas vierten en PLACSP por agregación, sin menores | 5 |
+| `consultas_1403.atom` | `sindicacion_1403/CPM_SectorPublico.atom` — consultas preliminares de mercado (bajada el 2026-10-31, mismo recorte) | 5 |
 
 ## Son recortes reales
 
@@ -44,6 +46,19 @@ Qué hay en cada entrada (la posición importa a los tests):
 | 2 | Consultoría ENS (Ayuntamiento de Bilbao) | Pliegos en `contratacion.euskadi.eus` (fuera de la allowlist) |
 | 3 | Mantenimiento de aplicaciones (Dirección General de Infraestructuras) | Abierta, 3 lotes |
 | 4 | Parques infantiles (Tudela) | Sin señal tecnológica |
+
+**`consultas_1403.atom`**
+
+| # | Entrada | Para qué |
+|---|---|---|
+| 0 | Servicios de ciberseguridad (GESPLAN, Canarias) | Admitida por keyword, sin CPV; plazo de respuesta 2026-11-10 |
+| 1 | Sistema de gestión tributaria (ATRM, Murcia) | CPV 72; su identificador, `1/2026`, lo usan otros tres órganos en el feed |
+| 2 | Aplicación de gestión documental (Boadilla) | Estado `REA` (realizada) |
+| 3 | Microscopio electrónico (CSIC) | Sin señal en el objeto (el párrafo de la consulta la daba) |
+| 4 | Plantas de agua | Sin señal tecnológica |
+
+Las direcciones de correo que quedan en la de la ATRM y en la cabecera son
+buzones institucionales, no de personas.
 
 Todas las entradas admitidas lo son por keyword o por CPV (deterministas); ninguna
 depende del rescate por clasificador ML.
