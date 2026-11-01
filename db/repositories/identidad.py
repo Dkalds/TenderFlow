@@ -1,7 +1,7 @@
 """Identidad de una licitación: resolución de ids anteriores e inventario de pisadas.
 
-Fase A del RFC ``2026-10-24-rfc-identidad-placsp-organo-expediente``. Tres
-preguntas, todas sobre ``licitaciones`` y ``licitaciones_id_anterior`` (v163):
+Fase A del RFC ``2026-10-24-rfc-identidad-placsp-organo-expediente``. Cinco
+preguntas sobre ``licitaciones``, sus hijas y ``licitaciones_id_anterior`` (v163):
 
 1. **¿A qué fila apunta este id?** :func:`resolver_id_licitacion` devuelve el
    id exacto si existe y, si no, la fila a la que su alias redirige. Es la única
@@ -27,9 +27,14 @@ preguntas, todas sobre ``licitaciones`` y ``licitaciones_id_anterior`` (v163):
    pisada segura; el resto, renombre probable. Es una **cota inferior**: el
    historial empieza el 2026-05-22 y solo escribe snapshot cuando cambia un
    campo de ``HISTORY_TRACKED_FIELDS``.
+5. **¿Qué dejó la pisada colgado tras la reingesta?** :func:`limpiar_hijas_pisadas`
+   cuenta y borra las hijas que la otra licitación dejó en la superviviente, y
+   :func:`datos_de_usuario_en` lista lo que una persona tiene que mover a mano
+   (pasos 1 y 2 de la fase 4 del RFC).
 
 Solo lectura salvo :func:`registrar_id_anterior`,
-:func:`rellenar_organo_ref_fuente` y :func:`borrar_licitaciones_en_colision`. Todo el SQL vive aquí (ADR-022).
+:func:`rellenar_organo_ref_fuente`, :func:`borrar_licitaciones_en_colision` y
+:func:`limpiar_hijas_pisadas` con ``aplicar``. Todo el SQL vive aquí (ADR-022).
 """
 
 from __future__ import annotations
@@ -44,6 +49,7 @@ from shared.identidad_placsp import PREFIJOS_ACOTADOS_POR_ORGANO
 
 __all__ = [
     "ColisionRekey",
+    "DatoDeUsuario",
     "FilaSinOrgano",
     "IdResuelto",
     "ResumenPisadas",
@@ -53,9 +59,11 @@ __all__ = [
     "contar_expedientes_que_conviven",
     "contar_mat_clusters_huerfanos",
     "contar_placsp_sin_organo_ref",
+    "datos_de_usuario_en",
     "filas_placsp_sin_organo_ref",
     "ids_anteriores_de",
     "inventario_pisadas_placsp",
+    "limpiar_hijas_pisadas",
     "organo_ref_por_nombre",
     "registrar_id_anterior",
     "rellenar_organo_ref_fuente",
@@ -477,3 +485,121 @@ def borrar_mat_clusters_huerfanos() -> int:
     with connect() as c:
         cur = c.execute(f"DELETE {_MAT_CLUSTERS_HUERFANOS_SQL}")
         return cur.rowcount or 0
+
+
+# ── Hijas de las filas pisadas (fase 4 del RFC, paso 1) ─────────────────────
+
+#: Las condiciones de CODICE (v148): se reemplazan por familia solo cuando la
+#: versión nueva trae filas de ella (``db.upsert._replace_condiciones``).
+_TABLAS_CONDICIONES = (
+    "licitacion_criterios_adjudicacion",
+    "licitacion_garantias",
+    "licitacion_solvencia",
+)
+
+#: Hija escrita antes de la reingesta en una fila que la reingesta sí reescribió:
+#: ninguna versión de esa (órgano, expediente) en los ZIP la volvió a traer.
+_HIJA_SIN_REESCRIBIR_SQL = (
+    "x.licitacion_id = ANY(%(ids)s) AND x.fecha_extraccion < %(desde)s "
+    "AND EXISTS (SELECT 1 FROM licitaciones l "
+    "  WHERE l.id_externo = x.licitacion_id AND l.fecha_extraccion >= %(desde)s)"
+)
+
+#: Documento que también cuelga de otra fila del mismo expediente con otro
+#: órgano: ``UNIQUE (licitacion_id, uri)`` deja que la reingesta lo escriba en
+#: su fila propia, y la copia de la superviviente es la que trajo la pisada.
+_DOCUMENTO_DE_LA_HERMANA_SQL = (
+    "x.licitacion_id = ANY(%(ids)s) AND EXISTS ("
+    "  SELECT 1 FROM documentos o "
+    "  WHERE o.uri = x.uri AND o.licitacion_id <> x.licitacion_id "
+    f"    AND o.licitacion_id ~ '{_CLAVE_ACOTADA_RE}' "
+    f"    AND regexp_replace(o.licitacion_id, '{_CLAVE_ACOTADA_RE}', '') "
+    f"      = regexp_replace(x.licitacion_id, '{_CLAVE_ACOTADA_RE}', ''))"
+)
+
+#: Tabla → predicado sobre su alias ``x``, en el orden en que se borra. Las
+#: adjudicaciones van antes que los lotes porque ``lote_id`` es FK a ellos.
+_HIJAS_PISADAS: tuple[tuple[str, str], ...] = (
+    (
+        "adjudicaciones",
+        f"({_HIJA_SIN_REESCRIBIR_SQL}) OR x.lote_id IN ("
+        f"  SELECT x.id FROM lotes x WHERE {_HIJA_SIN_REESCRIBIR_SQL})",
+    ),
+    ("lotes", _HIJA_SIN_REESCRIBIR_SQL),
+    *((tabla, _HIJA_SIN_REESCRIBIR_SQL) for tabla in _TABLAS_CONDICIONES),
+    ("documentos", _DOCUMENTO_DE_LA_HERMANA_SQL),
+)
+
+
+def limpiar_hijas_pisadas(
+    ids: Sequence[str], *, reingesta_desde: str, aplicar: bool = False
+) -> dict[str, int]:
+    """Las hijas contaminadas de estas filas pisadas: cuántas hay y, con ``aplicar``, las borra.
+
+    Paso 1 de §«Las filas ya pisadas» del RFC, tras la reingesta que empezó en
+    ``reingesta_desde`` (ISO, se compara con ``fecha_extraccion``). La reingesta
+    ya reescribió cada fila desde su última entrada CODICE, pero el upsert solo
+    reemplaza adjudicaciones, lotes y condiciones cuando la versión las trae:
+    lo que la otra licitación dejó colgado se queda. Aquí se borra:
+
+    - adjudicaciones, lotes y condiciones con ``fecha_extraccion`` anterior a la
+      reingesta en una fila que la reingesta reescribió (el RFC: «aquí sí se
+      reemplaza también con lista vacía»), y las adjudicaciones de esos lotes;
+    - documentos cuya URI también cuelga de otra fila del mismo expediente con
+      otro órgano. Su texto extraído se va en cascada. Un documento sin copia en
+      la hermana no se toca: sin la entrada no se puede probar de quién es.
+
+    Devuelve filas por tabla. Una transacción: si algo falla, nada.
+    """
+    if not ids:
+        return {tabla: 0 for tabla, _ in _HIJAS_PISADAS}
+    params = {"ids": list(ids), "desde": reingesta_desde}
+    resultado: dict[str, int] = {}
+    with connect() if aplicar else connect_read() as c:
+        for tabla, predicado in _HIJAS_PISADAS:
+            # Tabla y predicado salen de constantes de este módulo.
+            if aplicar:
+                cur = c.execute(f"DELETE FROM {tabla} x WHERE {predicado}", params)
+                resultado[tabla] = cur.rowcount or 0
+            else:
+                fila = c.execute(f"SELECT count(*) FROM {tabla} x WHERE {predicado}", params)
+                resultado[tabla] = int(fila.fetchone()[0])
+    return resultado
+
+
+class DatoDeUsuario(TypedDict):
+    """Un pursuit o follow sobre una fila pisada, con las candidatas a recibirlo."""
+
+    tabla: str
+    id_externo: str
+    creado: str
+    hermanas: list[str]
+
+
+def datos_de_usuario_en(ids: Sequence[str]) -> list[DatoDeUsuario]:
+    """Pursuits y follows sobre estas filas, con las otras filas de su expediente.
+
+    Paso 2 del RFC: se mueven a mano, nunca solos. ``hermanas`` son las filas
+    del mismo expediente con otro órgano que la reingesta dejó.
+    """
+    if not ids:
+        return []
+    with connect_read() as c:
+        cur = c.execute(
+            "WITH datos AS ("
+            "  SELECT 'pursuits' AS tabla, p.licitacion_id AS id_externo, p.created_at::text AS creado "
+            "  FROM pursuits p WHERE p.licitacion_id = ANY(%(ids)s) "
+            "  UNION ALL "
+            "  SELECT 'follows', f.target_id, f.created_at::text FROM follows f "
+            "  WHERE f.target_type = 'licitacion' AND f.target_id = ANY(%(ids)s)"
+            ") "
+            "SELECT d.tabla, d.id_externo, d.creado, "
+            "  ARRAY(SELECT l.id_externo FROM licitaciones l "
+            f"    WHERE l.id_externo ~ '{_CLAVE_ACOTADA_RE}' AND l.id_externo <> d.id_externo "
+            f"      AND regexp_replace(l.id_externo, '{_CLAVE_ACOTADA_RE}', '') "
+            f"        = regexp_replace(d.id_externo, '{_CLAVE_ACOTADA_RE}', '') "
+            "    ORDER BY 1) AS hermanas "
+            "FROM datos d ORDER BY d.tabla, d.id_externo",
+            {"ids": list(ids)},
+        )
+        return typed_rows(DatoDeUsuario, rows_to_dicts(cur))

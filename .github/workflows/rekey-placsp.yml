@@ -23,6 +23,11 @@ name: Re-key PLACSP — relleno de organo_ref_fuente (manual)
 #                resolvió (último paso del runbook; mirar antes el plan).
 #   refrescar  — tras migrar: refresca `licitaciones_canonicas` e invalida las
 #                cachés (paso 6 de la ventana).
+#   hijas      — tras la reingesta única: cuenta las hijas que una pisada dejó
+#                en la fila superviviente y lista los datos de usuario a mover
+#                (`scripts/limpiar_hijas_pisadas_placsp.py`, solo lectura).
+#                Exige `reingesta_desde`.
+#   limpiar-hijas — las borra (paso 5 de docs/runbooks/reingesta-unica-placsp.md).
 # Todos terminan con el inventario en el resumen del run.
 #
 # **Sin el preflight de schema de los carriles de ingesta, a propósito**: la BD
@@ -41,7 +46,7 @@ on:
   workflow_dispatch:
     inputs:
       modo:
-        description: "inventario · meses · plan (cuenta, no escribe) · aplicar · colisiones · borrar-colisiones · refrescar"
+        description: "inventario · meses · plan (cuenta, no escribe) · aplicar · colisiones · borrar-colisiones · refrescar · hijas · limpiar-hijas"
         type: choice
         options:
           - inventario
@@ -51,6 +56,8 @@ on:
           - colisiones
           - borrar-colisiones
           - refrescar
+          - hijas
+          - limpiar-hijas
         default: plan
         required: true
       desde:
@@ -70,6 +77,10 @@ on:
         description: "colisiones/borrar-colisiones: incluir las filas que siguen sin órgano tras el relleno"
         type: boolean
         default: false
+        required: false
+      reingesta_desde:
+        description: "hijas/limpiar-hijas: inicio de la reingesta única, ISO UTC (p. ej. 2026-10-31T15:37:00)"
+        default: ""
         required: false
 
 permissions:
@@ -160,6 +171,23 @@ jobs:
             echo "### Colisiones ($MODO)"
             echo '```'
             python -m scripts.borrar_colisiones_rekey_placsp "${ARGS[@]}"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Hijas de las filas pisadas
+        if: inputs.modo == 'hijas' || inputs.modo == 'limpiar-hijas'
+        shell: bash
+        env:
+          MODO: ${{ inputs.modo }}
+          REINGESTA_DESDE: ${{ inputs.reingesta_desde }}
+        run: |
+          [ -n "$REINGESTA_DESDE" ] || { echo "::error::falta reingesta_desde"; exit 1; }
+          ARGS=(--desde "$REINGESTA_DESDE")
+          [ "$MODO" = "limpiar-hijas" ] && ARGS+=(--aplicar)
+          {
+            echo "### Hijas de las pisadas ($MODO)"
+            echo '```'
+            python -m scripts.limpiar_hijas_pisadas_placsp "${ARGS[@]}"
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
