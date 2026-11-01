@@ -188,6 +188,17 @@ de las filas del inventario, mover a mano los datos de usuario afectados,
 volver a pasar el dedupe y refrescar `licitaciones_canonicas`, medir con la
 consulta 8.
 
+Los dos primeros los hace `rekey-placsp.yml` con `reingesta_desde` = el inicio
+de la reingesta (ISO UTC): `modo=hijas` cuenta y lista, `modo=limpiar-hijas`
+borra (`scripts/limpiar_hijas_pisadas_placsp.py`). Sobre las pisadas seguras
+del inventario borra las adjudicaciones, lotes y condiciones con
+`fecha_extraccion` anterior a la reingesta en filas que la reingesta reescribió
+(ninguna versión de los ZIP las volvió a traer) y los documentos cuya URI
+también cuelga de la fila hermana del otro órgano. Los pursuits y follows
+sobre esas filas salen listados con sus hermanas para moverlos a mano. El
+dedupe ya corre en el cierre de cada job de la reingesta; `modo=refrescar`
+refresca las canónicas.
+
 ### 6. Reanudar el diario
 
 Rehabilitar `scrape-daily.yml` y esperar un tick en verde.
