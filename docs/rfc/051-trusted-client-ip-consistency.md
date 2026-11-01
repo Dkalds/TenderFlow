@@ -1,5 +1,5 @@
 ---
-rfc: 051
+rfc: "051"
 title: Uso consistente de _trusted_client_ip para prevenir IP spoofing
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/51
 author: agent:architect

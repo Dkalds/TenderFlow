@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from urllib.parse import unquote
 
 import pytest
 
@@ -121,6 +122,33 @@ def test_enlaces_markdown_resuelven(rel: str) -> None:
             rotos.append(target)
 
     assert not rotos, f"{rel} tiene enlaces rotos: {rotos}"
+
+
+_FENCE = re.compile(r"^(`{3,}|~{3,})[^\n]*\n.*?^\1[^\n]*$", re.S | re.M)
+_CODE_SPAN = re.compile(r"`[^`\n]*`")
+# Destino de un enlace Markdown. Admite paréntesis balanceados (las rutas de
+# Next.js son `web/src/app/(dashboard)/...`) y `<destino>`.
+_ENLACE = re.compile(r"\]\(<?((?:[^()\s<>]|\([^()\s]*\))+)>?\)")
+
+
+def test_enlaces_de_todo_docs_resuelven() -> None:
+    """`test_enlaces_markdown_resuelven` solo recorre los siete documentos de
+    `DOCS_VERIFICADOS`. Los demás se rompían sin que nada lo notase: al cerrar
+    un ítem del backlog su texto se pega en `archive/IMPROVEMENT_BACKLOG_CERRADOS.md`,
+    una carpeta más abajo, y los `../` dejaban de apuntar a donde apuntaban
+    (54 enlaces rotos a la vez). Cubre todo lo que `docs_markdown()` considera
+    documentación; los ejemplos dentro de bloques de código no cuentan."""
+    rotos: list[str] = []
+    for doc in docs_markdown():
+        texto = _CODE_SPAN.sub("", _FENCE.sub("", doc.read_text(encoding="utf-8")))
+        for target in sorted(set(_ENLACE.findall(texto))):
+            target = unquote(target.split("#")[0])
+            if not target or target.startswith(("http", "mailto:")) or "*" in target:
+                continue
+            if not (doc.parent / target).exists():
+                rotos.append(f"{doc.relative_to(ROOT).as_posix()} → {target}")
+
+    assert not rotos, "enlaces Markdown rotos en docs/:\n" + "\n".join(rotos)
 
 
 def test_la_nota_de_inicio_enlaza_cada_documento_de_primer_nivel() -> None:

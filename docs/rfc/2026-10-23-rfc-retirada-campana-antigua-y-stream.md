@@ -4,7 +4,8 @@ title: Retirada de lo que la campana dejó de usar (campos de mercado de `GET /n
 issue: "(sin issue: flecos de la rama claude/funcionalidades-2026-10, docs/IMPROVEMENT_BACKLOG.md)"
 author: agent:claude-code
 date: 2026-10-23
-status: review
+status: partially-implemented
+evidence: "Fase 1 (anuncio) en el árbol (comprobado el 2026-11-01): [DEPRECADO 2027-02-01] en api/routes/notifications.py, api/routes/stream.py y api/routes/analytics.py (forecast/retendering). La fase 2, el borrado, es a partir del 2027-02-01."
 retirada_propuesta: 2027-02-01
 ---
 

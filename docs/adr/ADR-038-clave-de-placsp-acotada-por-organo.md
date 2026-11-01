@@ -1,6 +1,6 @@
 ---
 id: ADR-038
-title: "El id_externo de una fuente cuyo expediente no es único entre órganos se acota por el órgano: PLACSP pasa a placsp:<órgano>:<expediente>"
+title: "El id_externo de una fuente cuyo expediente no es único entre órganos se acota por el órgano: PLACSP pasa a `placsp:<órgano>:<expediente>`"
 status: accepted
 date: 2026-10-26
 deciders: "Daniel Kalitovics"

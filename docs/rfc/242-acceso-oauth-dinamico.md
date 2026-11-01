@@ -1,5 +1,5 @@
 ---
-rfc: 242
+rfc: "242"
 title: Conceder acceso OAuth desde el producto con auditoría
 issue: https://github.com/Dkalds/TenderFlow/issues/242
 author: agent:github-copilot

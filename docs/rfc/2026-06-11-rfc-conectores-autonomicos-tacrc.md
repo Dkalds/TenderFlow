@@ -1,5 +1,5 @@
 ---
-rfc: 20260611-1
+rfc: "20260611-1"
 title: Fase 5 — Conectores autonómicos (PSCP Catalunya primero) y resoluciones TACRC
 issue: N/A (roadmap interno, Crítica 4 cobertura de datos)
 author: agent:architect

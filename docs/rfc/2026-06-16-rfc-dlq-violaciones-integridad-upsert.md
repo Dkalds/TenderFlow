@@ -5,7 +5,7 @@ issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
 status: implemented
-depends-on: RFC observabilidad de pérdida de filas en upsert (2026-06-16)
+depends-on: "[[2026-06-16-rfc-observabilidad-perdida-filas-upsert]]"
 ---
 
 ## Contexto

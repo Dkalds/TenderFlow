@@ -1,5 +1,5 @@
 ---
-rfc: 085
+rfc: "085"
 title: "Fix broken Make targets — heredoc indentation and stale type-ignore"
 issue: https://github.com/Dkalds/TenderFlow/issues/85
 author: agent:architect

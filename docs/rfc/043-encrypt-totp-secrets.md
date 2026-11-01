@@ -1,5 +1,5 @@
 ---
-rfc: 043
+rfc: "043"
 title: Cifrar secretos TOTP almacenados en texto plano
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/43
 author: agent:architect

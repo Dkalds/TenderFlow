@@ -4,17 +4,18 @@ tags: [plan, rendimiento, migraciones, propuesta]
 
 # Índices para la búsqueda `q` y el filtro de tecnología
 
-**Estado: ESCRITAS el 2026-09-25, pendientes de aplicar.** Con el OK del
+**Estado: ESCRITAS el 2026-09-25 y APLICADAS en producción.** Con el OK del
 usuario (AGENTS.md §6) existen `v142_lic_tecnologia_tokens_gin` y
 `v143_lic_busqueda_plegada_trgm` tal como se describen abajo, con su test en
-`tests/test_indices_busqueda.py`. Se aplican a mano con `migrate.yml`, y hasta
-entonces `/health/ready` informa `schema_revision: behind`, el smoke falla y el
-preflight de `ml-scoring` no deja correr el job: **aplicarlas justo después de
-mergear**. Antes de `v143`, medir `descripcion` (sección «Riesgo principal»); si
-no cabe, sacar `v143` y elegir una de las alternativas.
+`tests/test_indices_busqueda.py`. El 2026-10-25 se comprobó contra producción
+que la BD estaba en `v158` y que los índices existían, válidos y con tráfico
+(el detalle está en el
+[ítem cerrado](../archive/IMPROVEMENT_BACKLOG_CERRADOS.md)). Lo que sigue es el
+análisis con el que se escribieron, incluida la medición de `descripcion` previa
+a `v143` (sección «Riesgo principal»).
 
-La cabeza del repo, comprobada recorriendo `down_revision` el 2026-09-24, es
-**`v141_tasas_anulacion_organo`**:
+Al escribirlas, la cabeza del repo, comprobada recorriendo `down_revision` el
+2026-09-24, era **`v141_tasas_anulacion_organo`**:
 
 ```
 v141_tasas_anulacion_organo ← v138_notice_type_code ← v140_predicciones_baja_por_lote

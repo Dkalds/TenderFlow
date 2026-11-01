@@ -2,6 +2,7 @@
 id: ADR-003
 title: "Sistema de migraciones casero + plan Alembic"
 status: accepted
+superseded_parcialmente_por: "[[ADR-008-consolidacion-migraciones-alembic]]"
 date: 2024-01-01
 deciders: "Daniel Kalitovics"
 tags: [adr]

@@ -47,10 +47,10 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
 - **Área:** db/alembic/versions (`v142_lic_tecnologia_tokens_gin`, `v143_lic_busqueda_plegada_trgm`); aplicar con `migrate.yml` es acción del usuario
 - **Problema:** la búsqueda `q` del listado y de los agregados es un `LIKE '%q%'` sobre cuatro columnas plegadas, y el filtro de tecnología un solapamiento de arrays; sin índice, cada búsqueda y cada filtro recorren ~1,64 M filas. El código ya emite las expresiones indexables y las dos migraciones están escritas (rama de rendimiento), pero `migrate.yml` es manual y el índice de `descripcion` de `v143` puede ocupar mucho disco.
 - **Acceptance criteria:**
-  - Antes de `v143`, medido el volumen de `descripcion` frente al trigram de `titulo` de `v50` (consultas en [la propuesta](plans/2026-09-indices-busqueda-propuestos.md)); si no cabe, una de las alternativas que describe.
+  - Antes de `v143`, medido el volumen de `descripcion` frente al trigram de `titulo` de `v50` (consultas en [la propuesta](../plans/2026-09-indices-busqueda-propuestos.md)); si no cabe, una de las alternativas que describe.
   - `v142` y `v143` aplicadas con `migrate.yml`, en una ventana sin ingesta, y los cinco índices con `pg_index.indisvalid = true`.
   - `EXPLAIN` con plan genérico usando los índices, y su `idx_scan` en `pg_stat_user_indexes` tras un día de tráfico.
-- **Files de partida:** [docs/plans/2026-09-indices-busqueda-propuestos.md](plans/2026-09-indices-busqueda-propuestos.md), [tests/test_indices_busqueda.py](../tests/test_indices_busqueda.py)
+- **Files de partida:** [docs/plans/2026-09-indices-busqueda-propuestos.md](../plans/2026-09-indices-busqueda-propuestos.md), [tests/test_indices_busqueda.py](../../tests/test_indices_busqueda.py)
 - **Riesgo:** medio — índices grandes creados en caliente (`CONCURRENTLY`, dos pasadas por la tabla por índice).
 
 ### [P1] Mercado sin filtros: aplicar `v144` en producción y medir
@@ -94,7 +94,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
   producción la purga de PSCP»: el 97 % del heap es el censo de PSCP que se borra.
   Medir de nuevo estas vistas después de la purga, antes de invertir en snapshots o
   en más cómputo.
-- **Files de partida:** [db/alembic/versions/v144_lic_indices_analitica.py](../db/alembic/versions/v144_lic_indices_analitica.py), [db/repositories/aggregates.py](../db/repositories/aggregates.py), [tests/test_v144_indices_analitica.py](../tests/test_v144_indices_analitica.py)
+- **Files de partida:** [db/alembic/versions/v144_lic_indices_analitica.py](../../db/alembic/versions/v144_lic_indices_analitica.py), [db/repositories/aggregates.py](../../db/repositories/aggregates.py), [tests/test_v144_indices_analitica.py](../../tests/test_v144_indices_analitica.py)
 - **Riesgo:** medio — los índices son aditivos, pero migran schema: +100-200 MB de disco
   y más escritura por fila; el autovacuum al 2 % añade E/S de fondo.
 
@@ -109,7 +109,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
   - Un modelo `FiltrosLicitacion` (Pydantic) inyectado con `Depends()` en las dos rutas del listado y pasado entero hasta el repositorio; las cinco firmas de arriba reciben el objeto, no la lista de parámetros. El OpenAPI de las dos operaciones no cambia (los `Query` individuales siguen saliendo con el mismo nombre y descripción: `check_api_breaking.py` en verde).
   - `shared/dto.py` partido en un paquete `shared/dto/` por dominio (público, paginación, watchlist, pursuits, analítica…) con re-export completo desde `shared/dto/__init__.py`: ningún `from shared.dto import X` cambia, y `components.schemas` de `api/openapi.json` queda idéntico (el nombre del componente sale de la clase, no del módulo).
   - Ninguna función nueva de 120 líneas o más en los módulos tocados; el conteo total (57) solo baja.
-- **Files de partida:** [shared/dto/](../shared/dto/__init__.py), [api/routes/licitaciones/listado.py](../api/routes/licitaciones/listado.py), [db/repositories/licitaciones.py](../db/repositories/licitaciones.py), [scripts/check_api_breaking.py](../scripts/check_api_breaking.py)
+- **Files de partida:** [shared/dto/](../../shared/dto/__init__.py), [api/routes/licitaciones/listado.py](../../api/routes/licitaciones/listado.py), [db/repositories/licitaciones.py](../../db/repositories/licitaciones.py), [scripts/check_api_breaking.py](../../scripts/check_api_breaking.py)
 - **Riesgo:** medio — toca el camino más usado de la API; mitigado porque el contrato OpenAPI es el oráculo (codegen-drift y check_api_breaking lo fijan).
 
 ### [P2] Los `except Exception` que tragan errores en los módulos calientes, y el CLI que vive dentro de `sap_classifier`
@@ -122,7 +122,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
   - En los cinco módulos de arriba, cada `except Exception` o se estrecha a la excepción que de verdad se espera, o conserva el `exc_info` y el contexto en el log **y** cuenta en una métrica (`*_errores_total` con la etiqueta del paso), de modo que un fallo repetido salte en `observability/alert_rules.yml`. Lista antes/después anotada aquí.
   - El CLI de `sap_classifier.py` se mueve a `scripts/` (o a `python -m services.ml.sap_classifier` con `logging`, no `print`) sin cambiar el nombre cualificado de `SAPClassifier`, que los pickles ya publicados resuelven; `tests/test_ml_*` siguen cargando los artefactos de la Release.
   - Cero `print()` en `scraper/`, `services/` y `scheduler/` fuera de un `__main__`; un ratchet stdlib lo fija.
-- **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py), [db/connection.py](../db/connection.py), [llm/client.py](../llm/client.py), [services/ml/sap_classifier.py](../services/ml/sap_classifier.py)
+- **Files de partida:** [scraper/connectors/base.py](../../scraper/connectors/base.py), [scheduler/pipeline_runs.py](../../scheduler/pipeline_runs.py), [db/connection.py](../../db/connection.py), [llm/client.py](../../llm/client.py), [services/ml/sap_classifier.py](../../services/ml/sap_classifier.py)
 - **Riesgo:** medio — estrechar una excepción en el pipeline puede convertir un aviso en una pasada en rojo; es el objetivo, pero conviene hacerlo módulo a módulo y mirar `scrape-daily` después de cada uno.
 
 ### [P2] Un objetivo de bajada para el First Load JS del dashboard, no solo un techo
@@ -136,7 +136,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
   - Carga diferida (`next/dynamic`) de las librerías que solo necesita una parte de la pantalla (mapa, gráficos, markdown del asistente), con esqueleto propio; un test por ruta que fija que el chunk no está en el HTML inicial.
   - `bundle-budget.json` baja al menos un 25 % en las cuatro rutas de más de 1,2 MB y se añade al fichero un campo `objetivo` por ruta, para que el ratchet tenga destino y no solo freno.
   - Prefetch en servidor extendido a `detalle` y `oportunidades/[id]` siguiendo el patrón de `web/AGENTS.md` (módulo `_lib/prefetch`, página envuelta en `PrefetchServidor`, test de paridad de claves).
-- **Files de partida:** [web/bundle-budget.json](../web/bundle-budget.json), [web/src/lib/server-prefetch.ts](../web/src/lib/server-prefetch.ts), [web/src/app/(dashboard)/resumen/_lib/prefetch.ts](../web/src/app/(dashboard)/resumen/_lib/prefetch.ts), [scripts/check_bundle_budget.py](../scripts/check_bundle_budget.py)
+- **Files de partida:** [web/bundle-budget.json](../../web/bundle-budget.json), [web/src/lib/server-prefetch.ts](../../web/src/lib/server-prefetch.ts), [web/src/app/(dashboard)/resumen/_lib/prefetch.ts](../../web/src/app/(dashboard)/resumen/_lib/prefetch.ts), [scripts/check_bundle_budget.py](../../scripts/check_bundle_budget.py)
 - **Riesgo:** bajo — cambios de carga, no de comportamiento; el E2E y el presupuesto de bundle los fijan.
 
 ---
@@ -152,7 +152,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
 - **Acceptance criteria:**
   - Capturar al menos un expediente real con mezcla —p. ej. `26/AMLICENCIASCITI` (33 adjudicaciones, 15 con lote)— con `scripts/capture_placsp_fixtures.py` y añadirlo al corpus golden.
   - Si el lote viene en otra forma, añadirla a `_XPATHS_LOTE_RESULTADO` y relanzar `reproceso-lotes.yml` con `aplicar` sobre el rango afectado; si de verdad no viene, documentarlo en el docstring de `_lote_del_resultado` y cerrar.
-- **Files de partida:** [scraper/codice_parser.py](../scraper/codice_parser.py), [scraper/reproceso_lotes.py](../scraper/reproceso_lotes.py), [tests/fixtures/placsp/README.md](../tests/fixtures/placsp/README.md)
+- **Files de partida:** [scraper/codice_parser.py](../../scraper/codice_parser.py), [scraper/reproceso_lotes.py](../../scraper/reproceso_lotes.py), [tests/fixtures/placsp/README.md](../../tests/fixtures/placsp/README.md)
 - **Estado (2026-10-24): PLACSP sí publica el lote; falta relanzar el reproceso.** Hoy quedan 121 filas sin `lote_id` en 58 expedientes. De los ZIP reales de 2026-05 a 2026-10 salen 966 entries de esos expedientes; las 295 multilote traen 776 `TenderResult` y los 776 llevan el lote en `AwardedTenderedProject/cbc:ProcurementProjectLotID`, la forma que ya lee `_lote_del_resultado`. Caso golden 25 (renumerado al integrar; real) (`B070005/2022-0071`), y test en `tests/test_reproceso_lotes.py`. Reparto, simulado contra producción:
   - **109 filas (47 exp.):** el reproceso del 17/18-10 no casó un importe que venía de `real`; a71db23e ya lo corrige. **Acción del propietario:** `gh workflow run reproceso-lotes.yml -f desde=2026-06 -f hasta=2026-10 -f aplicar=false` para el recuento (≈109) y después con `aplicar=true`.
   - **8 filas (8 exp.):** `ContractFolderID` compartido entre órganos (`04/2026`, `101/2026`, `36/2026`, `47/2026`, `48/2026`, `49/2026`, `51/2026`, `SUM005/2026`): la adjudicación es de otro expediente. No se les asigna lote; es el P1 de identidad de PLACSP.
@@ -175,7 +175,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
   - El canary hace además una petición mínima de chat (`max_tokens` pequeño, sin traza de razonamiento) a cada modelo NIM ofertado cuando hay `NVIDIA_API_KEY`, y un 404/410 cuenta como modelo ausente.
   - Sin key, se queda en la comprobación del catálogo y lo dice en el log.
   - Test que simula catálogo con el modelo y chat con 404, y espera `llm_models_canary_models_missing`.
-- **Files de partida:** [scheduler/jobs/llm_models_canary.py](../scheduler/jobs/llm_models_canary.py), [tests/test_llm_models_canary.py](../tests/test_llm_models_canary.py)
+- **Files de partida:** [scheduler/jobs/llm_models_canary.py](../../scheduler/jobs/llm_models_canary.py), [tests/test_llm_models_canary.py](../../tests/test_llm_models_canary.py)
 - **Riesgo:** bajo — una llamada de pocos tokens por modelo y día, que entra en el BudgetGuard.
 
 ### [P2] `ops_events` no recibe ningún evento en producción
@@ -188,7 +188,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
   - Una pasada de `scrape-daily` deja filas en `ops_events`, y se sabe por qué no las dejaba.
   - El healthcheck avisa si pasan 24 h sin ningún evento.
 - *Estado (2026-10-17):* **causa encontrada y corregida en código**, falta verlo en producción. `observability/ops_events.py::_flush_postgres` abre su propia conexión con `psycopg.connect(url, connect_timeout=5)` y no pasaba los parámetros de `db.connection._pg_connect_kwargs`. La URL de producción lleva `sslmode=verify-full` y la CA llega por `DATABASE_SSL_ROOT_CERT`, que es una ruta y solo ese helper pasa como `sslrootcert`. Sin ella libpq busca `~/.postgresql/root.crt`, la conexión falla y el `except Exception: pass` de `flush_events` se lo tragaba: ningún evento llegó nunca a la tabla (0 filas medidas el 2026-10-17). Consecuencia visible: el healthcheck lleva todas las pasadas en `degraded` con `canonicas_sin_registro_de_refresco` (no ve el `mv_canonicas_refresh`) y `ops_events_6h: {}`. Ahora el flush usa los mismos parámetros libpq que el pool y avisa una vez por proceso (`ops_events_flush_failed`) si vuelve a fallar. Queda el primer criterio: ver filas tras la siguiente pasada de `scrape-daily`. El segundo (avisar con 24 h sin eventos) lo cubre ya `canonicas_sin_registro_de_refresco` mientras el refresco de las vistas emita su evento en cada pasada.
-- **Files de partida:** [scheduler/pipeline_runs.py](../scheduler/pipeline_runs.py), [scheduler/healthcheck.py](../scheduler/healthcheck.py), [db/connection.py](../db/connection.py)
+- **Files de partida:** [scheduler/pipeline_runs.py](../../scheduler/pipeline_runs.py), [scheduler/healthcheck.py](../../scheduler/healthcheck.py), [db/connection.py](../../db/connection.py)
 - **Riesgo:** bajo — es observabilidad; nada lee todavía esos eventos para decidir.
 
 ### [P2] La matriz go/no-go por criterio no tiene pantalla
@@ -201,7 +201,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
   - La ficha de la oportunidad puntúa cada criterio con su motivo, enseña el total, el umbral y la recomendación sobre cuántos criterios se calculó (`criterios_puntuados`, `completa`), y avisa cuando la decisión tomada discrepa.
   - Cambiar los pesos en Equipo invalida la puntuación en caché de la ficha.
   - Vitest de la sección y el E2E `recorrido-oportunidad.spec.ts` (CU-06) pasa por ella.
-- **Files de partida:** [api/routes/pursuits.py](../api/routes/pursuits.py) (`get_pursuit_go_no_go`, `put_pursuit_go_no_go`), [services/go_no_go_template.py](../services/go_no_go_template.py), [web/src/components/pursuits/decidir-go-no-go.tsx](../web/src/components/pursuits/decidir-go-no-go.tsx), [web/src/app/(dashboard)/equipo/_hooks/use-pesos-go-no-go.ts](../web/src/app/(dashboard)/equipo/_hooks/use-pesos-go-no-go.ts)
+- **Files de partida:** [api/routes/pursuits.py](../../api/routes/pursuits.py) (`get_pursuit_go_no_go`, `put_pursuit_go_no_go`), [services/go_no_go_template.py](../../shared/go_no_go_template.py), [web/src/components/pursuits/decidir-go-no-go.tsx](../../web/src/components/pursuits/decidir-go-no-go.tsx), [web/src/app/(dashboard)/equipo/_hooks/use-pesos-go-no-go.ts](../../web/src/app/(dashboard)/equipo/_hooks/use-pesos-go-no-go.ts)
 - **Riesgo:** bajo — el backend y su escenario (`tests/test_escenario_gobierno_organizacion.py`) ya existen; es una sección nueva en la ficha.
 
 ### [P3] El panel de accesos no deja volver a conceder tras revocar ni dice quién concedió y cuándo
@@ -215,7 +215,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
   - Las revocadas se pueden ver y volver a conceder desde el panel, sin pasar por una solicitud nueva.
   - «Conceder dominio» y «Revocar» piden confirmación diciendo a quién afectan.
   - El 422 de un dominio no concedible se enseña una sola vez, con su motivo (hoy salen dos avisos: el genérico del hook y el global con el `detail`).
-- **Files de partida:** [web/src/app/(dashboard)/ops/_components/solicitudes-acceso/accesos-dinamicos.tsx](../web/src/app/(dashboard)/ops/_components/solicitudes-acceso/accesos-dinamicos.tsx), [web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts](../web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts), [api/routes/admin_solicitudes.py](../api/routes/admin_solicitudes.py)
+- **Files de partida:** [web/src/app/(dashboard)/ops/_components/solicitudes-acceso/accesos-dinamicos.tsx](../../web/src/app/(dashboard)/ops/_components/solicitudes-acceso/accesos-dinamicos.tsx), [web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts](../../web/src/app/(dashboard)/ops/_hooks/use-solicitudes-acceso.ts), [api/routes/admin_solicitudes.py](../../api/routes/admin_solicitudes.py)
 - **Riesgo:** bajo — es interfaz sobre rutas que ya existen; lo único nuevo en la API es el nombre de quien concedió.
 
 ### [P3] Purgar los tokens OAuth del MCP caducados o revocados
@@ -228,7 +228,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
   - Un job (el plano de cron del worker, ADR-033, o `retention_cleanup`) borra las filas con `expires_at` anterior a hace N días (N ≥ 30, para que la detección de reutilización de un refresh reciente siga viendo la familia) y las revocadas igual de antiguas.
   - El SQL vive en `db/mcp_oauth.py`; test de integración que fija qué borra y qué conserva (una familia con un refresh vivo no pierde sus filas antiguas).
   - Se anota en `docs/runbooks/mcp-interno.md` §7 que ya no es un seguimiento.
-- **Files de partida:** [db/mcp_oauth.py](../db/mcp_oauth.py), [docs/runbooks/mcp-interno.md](runbooks/mcp-interno.md)
+- **Files de partida:** [db/mcp_oauth.py](../../db/mcp_oauth.py), [docs/runbooks/mcp-interno.md](../runbooks/mcp-interno.md)
 - **Riesgo:** bajo — borrado acotado a filas que ya no valen; lo delicado es no romper la detección de reutilización.
 - **Hecho el 2026-10-15** (rama `claude/laughing-newton-dbht10`, revisión final del MCP): `db.mcp_oauth.purgar`, que el propio servidor MCP corre al arrancar y cada hora (no el worker). Con los plazos que fijó la revisión, **más cortos que N ≥ 30**: pendientes/códigos caducados hace > 1 día, access/refresh revocados o caducados hace > 7 días (aunque la familia siga viva: un refresh rotado hace más de una semana deja de detectarse como reutilizado) y clientes de > 7 días sin tokens. Runbook §7 actualizado.
 - **Plazo confirmado (2026-10-19):** el dueño elige **30 días** para access/refresh y clientes huérfanos (pendientes y códigos siguen en 1 día). Con 30, lo que vive un refresh, un refresh rotado delata su reutilización durante toda su vida. En la misma conversación dio el OK, a posteriori, al cambio de `.env.example` (comentarios de las `MCP_*`) que entró con #473 fuera del plan.
@@ -241,7 +241,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
 - **Problema:** la suite unitaria del 2026-10-17 (8.323 tests en verde) emite tres avisos de deprecación que, con la siguiente major de cada librería, pasan a ser errores: `wait_exponential_jitter(initial=…)` de tenacity en `scraper/resilience.py:93` (el parámetro es `multiplier`), `HTTP_413_REQUEST_ENTITY_TOO_LARGE` de Starlette (ahora `HTTP_413_CONTENT_TOO_LARGE`) en `api/routes/pursuits.py:1984` y `:2014` y en `api/routes/security.py:277`, y `Settings.__fields__` de Pydantic v1 en `tests/test_ola1_fixes.py:176` (`model_fields`). Son cambios de una línea y conviene hacerlos antes de que Renovate traiga la major.
 - **Acceptance criteria:**
   - Los tres sustituidos y `pytest -W error::DeprecationWarning -m unit` en verde sobre esos módulos (o `filterwarnings = ["error::DeprecationWarning:tenacity", …]` en `pyproject.toml` para que no vuelvan).
-- **Files de partida:** [scraper/resilience.py](../scraper/resilience.py), [api/routes/pursuits.py](../api/routes/pursuits.py), [api/routes/security.py](../api/routes/security.py), [tests/test_ola1_fixes.py](../tests/test_ola1_fixes.py), [pyproject.toml](../pyproject.toml)
+- **Files de partida:** [scraper/resilience.py](../../scraper/resilience.py), [api/routes/pursuits.py](../../api/routes/pursuits.py), [api/routes/security.py](../../api/routes/security.py), [tests/test_ola1_fixes.py](../../tests/test_ola1_fixes.py), [pyproject.toml](../../pyproject.toml)
 - **Riesgo:** bajo — sustituciones de nombre.
 
 ---
@@ -315,7 +315,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
   (`PRESUPUESTO_DOCUMENTOS_S`) y tope por petición (rama
   `claude/funcionalidades-2026-10`). Queda verlo en un run de producción: log
   `pscp_documentos_completados` y filas PSCP con documentos.
-- **Files de partida:** [scraper/connectors/base.py](../scraper/connectors/base.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py), [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [services/entity_resolution.py](../services/entity_resolution.py), [db/empresas.py](../db/empresas.py)
+- **Files de partida:** [scraper/connectors/base.py](../../scraper/connectors/base.py), [scraper/connectors/pscp.py](../../scraper/connectors/pscp.py), [scraper/documentos_plataforma.py](../../scraper/documentos_plataforma.py), [services/entity_resolution.py](../../services/entity_resolution.py), [db/empresas.py](../../db/empresas.py)
 - **Riesgo:** bajo — el paso ya es fail-open y tiene presupuesto de tiempo.
 
 ---
@@ -332,7 +332,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
   - `get_or_create_oauth_user` no vincula la identidad de otro proveedor a un usuario existente solo porque el correo coincide.
   - Tests: un token de Entra firmado y válido cuyo correo no está verificado no entra, y no altera el `oauth_sub` de un usuario existente con esa dirección.
   - Comprobado en Render que `OAUTH_MICROSOFT_CLIENT_ID` está vacío mientras esto siga abierto. Si no lo está, este ítem es P0.
-- **Files de partida:** [shared/identity.py](../shared/identity.py), [api/routes/auth.py](../api/routes/auth.py), [db/users.py](../db/users.py), [docs/adr/ADR-030-identidad-user-id-y-oidc.md](adr/ADR-030-identidad-user-id-y-oidc.md)
+- **Files de partida:** [shared/identity.py](../../shared/identity.py), [api/routes/auth.py](../../api/routes/auth.py), [db/users.py](../../db/users.py), [docs/adr/ADR-030-identidad-user-id-y-oidc.md](../adr/ADR-030-identidad-user-id-y-oidc.md)
 - **Riesgo:** alto — toca el login y la vinculación de cuentas; el camino de Google no debe cambiar.
 
 **Recuperación de contraseña, puntos 3, 4, 5, 6 y 8 — cerrados el 2026-10-23** (aprobados por el propietario; el ítem sigue abierto en el backlog con 1, 2 y 7):
@@ -369,7 +369,7 @@ Medido en producción el 2026-10-18: `count(lote_id)` pasó de **0 a 1.271**; en
 - **Acceptance criteria:**
   - La ingesta escribe `adjudicaciones.lote_id` cuando la fuente lo publica, o se documenta por qué no puede.
   - `_AGENDA_SELECT` afirma adjudicatario para una oportunidad con lote solo con las adjudicaciones de ese lote, con su test en `tests/test_agenda_ambito_sql.py` (hoy `test_la_adjudicacion_del_expediente_no_cierra_la_oportunidad_de_un_lote` fija lo contrario a propósito).
-- **Files de partida:** [db/repositories/pursuits.py](../db/repositories/pursuits.py), [services/pursuits.py](../services/pursuits.py) (`_expediente_cerrado`), [tests/test_agenda_ambito_sql.py](../tests/test_agenda_ambito_sql.py)
+- **Files de partida:** [db/repositories/pursuits.py](../../db/repositories/pursuits.py), [services/pursuits.py](../../services/pursuits.py) (`_expediente_cerrado`), [tests/test_agenda_ambito_sql.py](../../tests/test_agenda_ambito_sql.py)
 - **Estado (2026-10-17, rama `claude/happy-maxwell-xjan4q`):** resuelto en código; falta verlo en producción. La causa no era que la fuente no publicase el lote: `parse_adjudicaciones` lo buscaba en `cac:ProcurementProjectLotReference/cbc:ID`, una forma sacada del fixture sintético `01_multilote`, y CODICE lo publica en `cac:AwardedTenderedProject/cbc:ProcurementProjectLotID`. Medido ese día en producción: 761 expedientes multilote con adjudicación, 1.619 filas, **ninguna** con `lote_id`. El parser lee ahora las tres formas (`_lote_del_resultado`, caso golden `18_lote_en_proyecto_adjudicado`), `run_connector` avisa con `adj_lote_sin_resolver` cuando un multilote se queda sin lote, y `_AGENDA_SELECT` afirma adjudicatario para la oportunidad de un lote solo con las adjudicaciones de ese lote (`tests/test_agenda_ambito_sql.py`). Bajas, dataset ML, ficha y competencia esperada ya leían `lote_id` y se benefician sin cambios. **Queda (acción del propietario):** relanzar `scrape-bulk.yml` (lanzado el 2026-10-17 con `months=3`, run 39059575492) y, para el histórico, `reproceso-lotes.yml` (`scraper/reproceso_lotes.py`): lee los ZIP del rango y asigna `lote_id` **en sitio** a las adjudicaciones de los multilote, sin tocar documentos ni empresas, porque el bulk tarda más de 2 h por mes y no puede reprocesar años. Primero sin `aplicar` (cuenta), luego con él, por tramos si el rango no cabe en 2 h. Después, comprobar `SELECT count(lote_id) FROM adjudicaciones` > 0 y que `adj_lote_sin_resolver` no aparece en cada pasada. Si sigue a cero, el formato es otro: capturar un expediente real con `scripts/capture_placsp_fixtures.py --caso multilote`.
 - **Riesgo:** bajo — la regla actual es la conservadora; relajarla solo añade casos.
 
@@ -1468,7 +1468,7 @@ Resueltos por los streams de [docs/plans/2026-08-plan-saneamiento.md](plans/2026
   - Ambas entradas devuelven 4xx (400/422), no 500.
   - Las tres entradas salen de `KNOWN_5XX` en `scripts/fuzz_api_contract.py`. El propio gate lo exige: falla también si una entrada de la allowlist deja de fallar, así que no se puede arreglar y olvidar la limpieza.
 - **Nota sobre el gate:** el fuzzer bloquea por operaciones con 5xx **que no estén en `KNOWN_5XX`**, y solo avisa cuando una entrada de la lista no falla. La asimetría es deliberada: `derandomize=True` fija las entradas generadas, pero no el estado de la BD, que el propio fuzzer muta mientras corre — dos ejecuciones seguidas del mismo comando dieron 3 y 1 operaciones con 5xx. Exigir coincidencia exacta convertiría el gate en un generador de rojos espurios (bastaría añadir una licitación al seed). Para limpiar la lista tras arreglar algo, correr `--list` sobre una base recién migrada y sembrada.
-- **Files de partida:** [scripts/fuzz_api_contract.py](../../scripts/fuzz_api_contract.py), [shared/dto.py](../../shared/dto.py), [api/middleware.py](../../api/middleware.py)
+- **Files de partida:** [scripts/fuzz_api_contract.py](../../scripts/fuzz_api_contract.py), [shared/dto.py](../../shared/dto/__init__.py), [api/middleware.py](../../api/middleware.py)
 - **Riesgo:** bajo-medio — toca validación de entrada compartida.
 - **Cerrado:** 2026-08-07, commit `ad2574e`.
 

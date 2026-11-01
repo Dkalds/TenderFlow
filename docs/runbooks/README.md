@@ -19,6 +19,7 @@ servicio desplegado — son workflows de GitHub Actions
 | DB | Supabase Postgres | `python scripts/doctor.py` | Supabase → *Logs* |
 | MCP interno (solo lectura) | Render, blueprint `tenderflow-mcp` | `GET /healthz` | Render → *Logs* |
 | Prometheus | Render, blueprint `tenderflow-prometheus` (pserv) | — | Render → *Logs* |
+| Alertmanager | Render, blueprint `tenderflow-alertmanager` (pserv) | — | Render → *Logs*; ver [observability-alerts.md](observability-alerts.md) |
 | Grafana | Render, blueprint `tenderflow-grafana` | `GET /api/health` | Render → *Logs* |
 
 > **El host real de la API es `https://tenderflow-jrtr.onrender.com`.**
@@ -34,9 +35,10 @@ servicio desplegado — son workflows de GitHub Actions
 > "Estado actual del schema".
 
 **Desarrollo local.** `docker-compose.yml` levanta `tenderflow-api`,
-`tenderflow-web`, `tenderflow-postgres`, `tenderflow-redis`,
-`tenderflow-prometheus` y `tenderflow-grafana`; el scheduler solo con
-`docker compose --profile scheduler up` (declara `SCHEDULER_PLANE=docker`). Ahí
+`tenderflow-web` y `tenderflow-postgres`; el resto va por perfiles: `redis`
+(`tenderflow-redis`), `monitoring` (`tenderflow-prometheus` y
+`tenderflow-grafana`) y `scheduler` (`docker compose --profile scheduler up`,
+declara `SCHEDULER_PLANE=docker`). Ahí
 sí valen `docker logs tenderflow-api` y los `docker compose` de más abajo.
 
 ## Playbooks (orden recomendado de consulta)
@@ -81,8 +83,11 @@ Los runbooks ya ejecutados (p. ej. el cutover a Supabase) viven en
 
 ## SLOs vigentes
 
-* API `p95 < 300 ms`, `p99 < 800 ms`, error-rate `< 0.5 %` (ver `docs/sli-slo.md`).
-* Scheduler ejecuciones diarias `> 99 %` éxito mensual.
+La fuente es [sli-slo.md](../sli-slo.md); estas son las cifras que hoy disparan alerta
+(`observability/alert_rules.yml`):
+
+* API `p99 < 500 ms` (`ApiLatencyP99High`) y 5xx `< 5 %` (`ApiErrorRateHigh`).
+* Pipeline: `≥ 95 %` de runs exitosos en 30 días.
 * Drift PSI `< 0.10` para `sap_classifier`; aviso a partir de 0.10, crítico ≥ 0.25.
 
 ## Rotaciones planificadas
@@ -105,9 +110,9 @@ dashboard, *Manual Deploy* → *Restart service*. Verificar:
 curl -fsS https://tenderflow-jrtr.onrender.com/api/v1/health
 ```
 
-### Forzar re-cómputo de KPIs (local)
+### Recomputar los KPIs (local)
 ```bash
-docker compose exec scheduler python -m scheduler.kpi_precompute --force
+docker compose --profile scheduler exec scheduler python -m scheduler.kpi_precompute run
 ```
 
 ### Activar/Desactivar una versión de modelo
@@ -126,7 +131,7 @@ docker compose exec scheduler python -c \
 ## Escalado
 
 * P1 (caída total / data loss): on-call → líder técnico.
-* P2 (degradación SLO): canal #ops, investigar dentro de 30 min.
+* P2 (degradación SLO): canal `#ops`, investigar dentro de 30 min.
 * P3 (alerta sostenida >24h sin impacto): backlog del siguiente sprint.
 
 ## Cambios recientes (mantenimiento)
@@ -152,7 +157,8 @@ docker compose exec scheduler python -c \
 * F7: `scripts/verify_audit_chain.py` valida íntegramente la cadena de
   `audit_log`: continuidad, HMAC por registro y cabecera final firmada.
 * F7: `scripts/check_coverage_per_module.py` aplica umbrales de coverage
-  diferenciados por capa (scraper 75 %, services 70 %, web 40 %).
+  diferenciados por capa (scraper 75 %, services 70 %, shared 80 %…; la tabla es
+  `MODULE_THRESHOLDS` en el propio script, y no incluye `web/`).
 * F7: PKCE (RFC 7636) + validación de Google ID token en
   `shared/auth_core.py` (`generate_pkce_pair`, `verify_pkce`,
   `validate_google_id_token`).

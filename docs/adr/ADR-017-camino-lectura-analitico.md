@@ -1,8 +1,8 @@
 ---
 id: ADR-017
 title: "Camino de lectura analítico tras el cutover a Postgres"
-status: superseded
-superseded_by: "[[ADR-023-computo-en-vivo-agregacion-sql]]"
+status: accepted
+superseded_parcialmente_por: "[[ADR-023-computo-en-vivo-agregacion-sql]]"
 date: 2026-07-26
 deciders: "Daniel Kalitovics"
 supersedes: "[[ADR-013-jerarquia-materializaciones-analiticas]]"

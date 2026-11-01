@@ -1,5 +1,5 @@
 ---
-rfc: 050
+rfc: "050"
 title: "Fix IDOR en export jobs — validar ownership por key_hash"
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/50
 author: agent:architect

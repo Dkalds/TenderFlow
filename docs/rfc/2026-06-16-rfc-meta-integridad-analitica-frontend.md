@@ -5,7 +5,7 @@ issue: pendiente (crear issue y renumerar si no coincide)
 author: agent:architect
 date: 2026-06-16
 status: superseded
-superseded_by: [[ADR-014-integridad-analitica-frontend|ADR-014]]
+superseded_by: "[[ADR-014-integridad-analitica-frontend]]"
 superseded_on: 2026-09-06
 superseded_reason: >
   El meta-RFC graduó: la decisión vive en `docs/adr/ADR-014-integridad-analitica-frontend.md`

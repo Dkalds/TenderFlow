@@ -4,7 +4,8 @@ title: De dónde sale la IP del cliente cuando la API está detrás de Vercel y 
 issue: "(sin issue: punto 2 del P1 «Recuperación de contraseña: comprobar la entrega en producción…» de docs/IMPROVEMENT_BACKLOG.md, 2026-10-24)"
 author: agent:claude-code
 date: 2026-10-24
-status: approved
+status: partially-implemented
+evidence: "Código en el árbol (comprobado el 2026-11-01): cabecera x-tf-origin-secret en api/middleware.py, API_ORIGIN_SECRET en config/settings.py, web/src/lib/server-prefetch.ts, api/diagnostico_proxy.py, tests/test_unit_ip_cliente_origen.py y docs/runbooks/ip-del-cliente.md. Falta lo que solo puede hacer el propietario (el secreto en Vercel y en Render) y la verificación en producción de §7."
 related:
   - "[[ADR-006-etag-pdf-export-ratelimit-redis]]"
 ---

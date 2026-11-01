@@ -1,5 +1,5 @@
 ---
-rfc: 2026-06-30
+rfc: "2026-06-30"
 title: LLM como dependencia gestionada — presupuesto, circuit-breaker, fallback degradado y eval de RAG
 issue: pendiente — generado en sesión de arquitectura (revisión integral 2026-06-30); sin issue asociado aún
 author: agent:architect
@@ -130,7 +130,7 @@ sin cambiar el contrato público de `stream_llm_response` ni el DTO de `/ask`:
 
 **Archivos de partida**: `api/routes/ask.py`, `llm/client.py`,
 `llm/providers/openai_provider.py`, `llm/providers/anthropic_provider.py`,
-`config/settings.py`, `docs/adr/[[ADR-006-etag-pdf-export-ratelimit-redis|ADR-006]]-etag-pdf-export-ratelimit-redis.md`.
+`config/settings.py`, `docs/adr/ADR-006-etag-pdf-export-ratelimit-redis.md`.
 **Riesgo estimado**: medio — toca un endpoint de producción, mitigado por
 `LLM_BUDGET_MODE=monitor` como default (medir antes de cortar) y por mantener el
 contrato API intacto.

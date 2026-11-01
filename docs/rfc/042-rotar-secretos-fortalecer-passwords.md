@@ -1,5 +1,5 @@
 ---
-rfc: 042
+rfc: "042"
 title: Fortalecer validación de secretos y contraseñas en arranque
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/42
 author: agent:architect

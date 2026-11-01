@@ -219,7 +219,7 @@ transición, tal como pide la skill).
 Cualquier componente que use `<Tooltip>` necesita un ancestro
 `TooltipProvider` — fuera del dashboard no lo hay, y si un test renderiza el
 componente de forma aislada hay que envolverlo explícitamente (ver
-`empresas/__tests__/maestro-list.test.tsx` o
+`competencia/__tests__/maestro-list.test.tsx` o
 `mercado/_components/__tests__/renovaciones-view.test.tsx`).
 
 **Migración de `title=` nativos**: cerrada el 2026-09-18 (techo 0 en

@@ -15,12 +15,15 @@ obsolete_reason: >
   Reabrirlo exigiría reescribirlo contra la arquitectura de información de hoy
   (`mercado/`, `competencia/`, `empresas/`), no revivir estas rutas.
 area: web/red-organo-empresa · web/ecosistema-partners · web/components/charts/force-graph · services/analytics
-supersedes: >
-  Continúa docs/rfc/2026-06-28-rfc-ux-grafos-red-partners.md (implemented), que
-  arregló la *capa de render* del ForceGraph pero mantuvo el grafo global como
-  protagonista y dejó diferido el drill-down de arista. Este RFC cambia la
-  *propuesta de valor* de ambas páginas, no solo su estética.
+related:
+  - "[[2026-06-28-rfc-ux-grafos-red-partners]]"
 ---
+
+> **Relación con otros RFC.** Continúa
+> [2026-06-28-rfc-ux-grafos-red-partners](2026-06-28-rfc-ux-grafos-red-partners.md)
+> (`implemented`), que arregló la *capa de render* del ForceGraph pero mantuvo el
+> grafo global como protagonista y dejó diferido el drill-down de arista. Este
+> RFC cambia la *propuesta de valor* de ambas páginas, no solo su estética.
 
 ## Contexto
 

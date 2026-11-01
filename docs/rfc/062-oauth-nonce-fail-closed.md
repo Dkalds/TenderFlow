@@ -1,5 +1,5 @@
 ---
-rfc: 062
+rfc: "062"
 title: "OAuth nonce store: fail-closed con fallback in-memory"
 issue: https://github.com/Dkalds/Licitaciones_sap_SP/issues/62
 author: agent:architect

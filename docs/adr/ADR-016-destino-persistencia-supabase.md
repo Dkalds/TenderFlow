@@ -5,6 +5,8 @@ status: accepted
 date: 2026-07-05
 deciders: "Daniel Kalitovics"
 supersedes: "[[ADR-004-sqlite-turso-vs-postgres]]"
+related:
+  - "[[2026-06-30-rfc-plan-migracion-persistencia-pre-cocido]]"
 tags: [adr, persistence, postgres, supabase]
 ---
 
@@ -25,7 +27,8 @@ lo reconoce en su bloque de "Migration Tripwires" (añadido 2026-06-10):
 > tripwires provide a proactive migration signal instead of reacting to incidents."*
 
 La decisión de migrar se tomó el 2026-07-05 sin esperar a que saltaran los tripwires,
-como prescribe el RFC pre-cocido (2026-06-30, ahora superseded por este ADR).
+como prescribe el [RFC pre-cocido](../rfc/2026-06-30-rfc-plan-migracion-persistencia-pre-cocido.md)
+(2026-06-30, ahora superseded por este ADR).
 
 ## Decisión
 

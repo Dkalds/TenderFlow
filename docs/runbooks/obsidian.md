@@ -15,7 +15,9 @@ hecho en Obsidian se siga viendo bien en los otros dos.
 [docs/README.md](../README.md). El repo también admite abrir la raíz: el
 `.gitignore` cubre `.obsidian/`, `.trash/` y las notas sin nombre en los dos
 casos. Con la raíz, el vault suma `AGENTS.md` y el `README.md` del repo, pero
-también todos los `.md` de `web/`, `tests/` y demás.
+también todos los `.md` de `tests/` y demás, y sobre todo los de
+`web/node_modules/`: unos 1.800 de las ~2.060 notas que verá (medido el
+2026-10-31). Hay que excluirlos (ver «Excluded files» abajo).
 
 Los links de `docs/` al código (`../services/*.py`, `../web/src/…`) salen en
 Obsidian como no resueltos, porque Obsidian no abre `.py` ni `.tsx`. Están bien
@@ -31,7 +33,7 @@ hay que ponerlos a mano una vez:
 | Files and links | `Use [[Wikilinks]]` | **desactivado** | GitHub no renderiza wikilinks: en el cuerpo de una nota salen como texto literal, y en una tabla el `\|` del alias parte la celda. `make check-agent-docs` los rechaza. |
 | Files and links | New link format | **Relative path to file** | Es como están escritos todos los links de `docs/`, y lo único que resuelve igual en GitHub. |
 | Files and links | Automatically update internal links | **activado** | Al renombrar o mover una nota desde Obsidian se reescriben los links que apuntan a ella. Mover ficheros fuera de Obsidian (explorador, `git mv`) los rompe. |
-| Files and links | Excluded files | `codegraph/` (con el vault en la raíz, la misma carpeta con `docs/` delante) | Es el vault que se genera desde el grafo de graphify: miles de notas que entierran la documentación en la búsqueda, el grafo y el selector rápido. Está en `.gitignore`. |
+| Files and links | Excluded files | con el vault en la raíz: `web/node_modules/` y `graphify-out/` (con `docs/` como vault no hace falta ninguna; si generas el vault de graphify, también `codegraph/`) | `web/node_modules/` trae la documentación de Next.js y de cada dependencia: sin excluirla, el 88 % de lo que Obsidian indexa no es del proyecto y entierra la documentación en la búsqueda, el grafo y el selector rápido. Además, al seguir sus enlaces `/docs/app/…` Obsidian crea notas vacías dentro de `docs/`. `graphify-out/` y el vault de graphify son cachés locales que no se versionan. |
 | Files and links | Default location for new attachments | una carpeta fija, p. ej. `assets` | Si no, cada imagen pegada cae en la raíz del vault como `Pasted image 2026….png`. Renombrala antes de commitearla. |
 | Files and links | Deleted files | System trash (o Obsidian trash) | Las dos valen: `.trash/` está ignorada. |
 | Editor | Strict line breaks | **activado** | Los docs están cortados a ~80 columnas. Con el ajuste desactivado (el valor por defecto) Obsidian pinta cada salto de línea y los párrafos se ven rotos; activado se leen como en GitHub. |

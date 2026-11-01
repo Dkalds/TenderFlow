@@ -4,7 +4,8 @@ title: Purga de las licitaciones de PSCP sin señal tecnológica y puerta de ing
 issue: "(sin issue: petición directa del propietario, 2026-09-26)"
 author: agent:claude-code
 date: 2026-09-26
-status: review
+status: partially-implemented
+evidence: "Purga y reingesta ya ejecutadas: scripts/purgar_pscp_sin_tecnologia.py, .github/workflows/purga-pscp.yml y db/repositories/purga_licitaciones.py; según docs/IMPROVEMENT_BACKLOG.md, medido el 2026-10-25 por MCP de solo lectura, licitaciones pasó de ~870 MB a 89 MB. Falta el balance del paso 6 y pasar el RFC a implemented."
 ---
 
 ## Por qué hace falta un RFC

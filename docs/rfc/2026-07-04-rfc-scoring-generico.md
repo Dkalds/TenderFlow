@@ -1,5 +1,5 @@
 ---
-rfc: 2026-07-04
+rfc: "2026-07-04"
 title: Scoring de oportunidades genérico (sin tecnología hardcodeada)
 issue: N/A
 author: agent:coder
