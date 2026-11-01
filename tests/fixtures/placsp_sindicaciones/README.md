@@ -54,7 +54,7 @@ Qué hay en cada entrada (la posición importa a los tests):
 | 0 | Servicios de ciberseguridad (GESPLAN, Canarias) | Admitida por keyword, sin CPV; plazo de respuesta 2026-11-10 |
 | 1 | Sistema de gestión tributaria (ATRM, Murcia) | CPV 72; su identificador, `1/2026`, lo usan otros tres órganos en el feed |
 | 2 | Aplicación de gestión documental (Boadilla) | Estado `REA` (realizada) |
-| 3 | Microscopio electrónico (CSIC) | Sin señal en el objeto (el párrafo de la consulta la daba) |
+| 3 | Microscopio electrónico (CSIC) | Sin señal en el objeto; solo el párrafo de la consulta casaba con una keyword |
 | 4 | Plantas de agua | Sin señal tecnológica |
 
 Las direcciones de correo que quedan en la de la ATRM y en la cabecera son

@@ -343,8 +343,10 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
         modulo="scraper.connectors.placsp_consultas",
         max_lag_hours=_LAG_SEMANAL,
         motivo=(
-            "Apagada por defecto (PLACSP_CONSULTAS_ATOM_URL vacía): sin variable "
-            "escribe 'disabled' y no alerta. Son unas cuatrocientas consultas al año "
+            "Apagada por defecto (PLACSP_CONSULTAS_ATOM_URL vacía) y todavía sin "
+            "programar: no corre en ninguna pasada, así que no deja fila de salud, "
+            "y por ser opcional el healthcheck no lo avisa. Programada y sin "
+            "variable escribirá 'disabled'. Son unas cuatrocientas consultas al año "
             "en todo el sector público y su plazo de respuesta se cuenta en semanas: "
             "una semana sin completar no hace perder ninguna. El dato, con el mismo "
             "umbral: hay días enteros sin una consulta nueva en todo el país."
