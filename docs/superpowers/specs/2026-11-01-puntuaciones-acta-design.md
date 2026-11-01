@@ -1,10 +1,10 @@
 # Puntuaciones del acta de adjudicación — diseño
 
 - **Fecha:** 2026-11-01
-- **Estado:** propuesto (diseño aprobado por secciones en el brainstorming del
-  2026-11-01; falta la revisión del spec escrito)
+- **Estado:** aprobado (por secciones en el brainstorming del 2026-11-01 y el
+  spec escrito el mismo día); pendiente de implementar
 - **Rama:** `claude/licitadores-puntuaciones-adjudicacion-cd972a`
-- **Plan de implementación:** pendiente (se escribe tras aprobar este spec)
+- **Plan de implementación:** [2026-11-01-puntuaciones-acta.md](../plans/2026-11-01-puntuaciones-acta.md)
 - **Justificación en el plan de foco:**
   [plan 2026-10](../../plans/2026-10-plan-foco-piloto.md), B6 («cerrar el
   resultado sin trabajo manual»): el motivo de pérdida sale propuesto a partir
