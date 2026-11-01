@@ -7,7 +7,6 @@ import {
   ScrollEdgeSentinel,
 } from "@/components/layout/scroll-edge";
 import { BarraAsistente } from "@/components/asistente/barra-asistente";
-import { PanelTitle } from "@/components/console/panel";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { TuDia } from "./tu-dia";
 import { DesdeUltimaVisita } from "./desde-ultima-visita";
@@ -111,14 +110,17 @@ export function ResumenView() {
             <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
               <TuDia />
               <section aria-labelledby="resumen-mercado" className="min-w-0">
-                <PanelTitle
-                  as="h2"
-                  id="resumen-mercado"
-                  title="Mercado hoy"
-                  hint="con el ámbito de la barra"
-                  actions={<AtajosAnalisis />}
-                  className="mb-2.5"
-                />
+                {/* Como el `PanelTitle` de «Tu día», pero los atajos bajan de
+                    línea: en el hueco de acciones no se parten, y a 375 px
+                    sacaban «Órganos» por la derecha y la página hacía scroll
+                    horizontal. */}
+                <div className="mb-2.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                  <h2 id="resumen-mercado" className="flex-none text-tf-body font-semibold">
+                    Mercado hoy
+                  </h2>
+                  <span className="min-w-0 text-tf-meta text-muted-foreground">con el ámbito de la barra</span>
+                  <AtajosAnalisis className="sm:ml-auto" />
+                </div>
                 <AtencionCards />
               </section>
             </div>

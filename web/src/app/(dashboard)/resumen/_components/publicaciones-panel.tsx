@@ -83,9 +83,11 @@ export function PublicacionesPanel() {
       {/* `h3`: un apartado de la zona de mercado (`h2`), al nivel de los
           movimientos y de la tabla; así lo lee el lector de encabezados. */}
       <PanelTitle as="h3" title="Publicaciones en el periodo" hint={HINTS[corte]} />
-      {/* El resumen en cifras del mes, encima de lo que dibuja. */}
-      <CifrasPeriodo className="mb-3" />
-      <div className="mb-2.5">
+      {/* El resumen en cifras del mes y los cortes en una línea: en dos, el
+          panel marcaba un alto que dejaba un hueco bajo la composición y el
+          mapa de al lado. */}
+      <div className="mb-2.5 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+        <CifrasPeriodo />
         <PanelTabs
           tabs={TABS}
           value={corte}

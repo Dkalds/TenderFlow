@@ -184,7 +184,7 @@ export function AtencionCards() {
         // El umbral se dice en cifra: «el 25 % de mayor importe» no dice si
         // eso empieza en 50 k€ o en 2 M€, y depende del ámbito. Pie corto: la
         // celda es un cuarto de media pantalla.
-        hint={p75 !== null ? `importe desde ${formatCompactCurrency(p75)}` : "Aprox.: sin importes"}
+        hint={p75 !== null ? `desde ${formatCompactCurrency(p75)}` : "Aprox.: sin importes"}
       />
       <StatCell
         label="Nuevas"

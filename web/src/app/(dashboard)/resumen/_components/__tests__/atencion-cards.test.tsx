@@ -325,7 +325,7 @@ describe("AtencionCards", () => {
 
   it("«Grandes en plazo» dice en cifra dónde empieza el 25 % de mayor importe", () => {
     renderCards();
-    expect(screen.getByText(/^importe desde \S/)).toBeInTheDocument();
+    expect(screen.getByText(/^desde \d/)).toBeInTheDocument();
   });
 
   it("«Grandes en plazo» se dibuja como parte de las activas, que es su mismo conjunto", () => {
