@@ -81,6 +81,13 @@ mismo expediente en meses distintos **gana el último mes procesado**
 **La reingesta se lanza con `--backfill`.** El workflow no expone ese modo; las
 dos opciones están en «Pasos», paso 3.
 
+**Meses anteriores a lo ya ingerido** (2024 después de la reingesta de
+2025-2026): `--sin-pisar-posteriores` (input `sin_pisar_posteriores` de
+`scrape-bulk.yml`) salta los expedientes que ya escribió un mes posterior o el
+feed vivo, que el ZIP viejo devolvería a su versión vieja; lo demás entra con
+la regla de siempre. Con `ted_desde` y sin `solo_cpv`, el mismo run trae antes
+TED de todas las familias del universo desde ese día.
+
 ---
 
 ## Dependencias

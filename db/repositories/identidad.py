@@ -1,6 +1,6 @@
 """Identidad de una licitación: resolución de ids anteriores e inventario de pisadas.
 
-Fase A del RFC ``2026-10-24-rfc-identidad-placsp-organo-expediente``. Cinco
+Fase A del RFC ``2026-10-24-rfc-identidad-placsp-organo-expediente``. Seis
 preguntas sobre ``licitaciones``, sus hijas y ``licitaciones_id_anterior`` (v163):
 
 1. **¿A qué fila apunta este id?** :func:`resolver_id_licitacion` devuelve el
@@ -31,6 +31,7 @@ preguntas sobre ``licitaciones``, sus hijas y ``licitaciones_id_anterior`` (v163
    cuenta y borra las hijas que la otra licitación dejó en la superviviente, y
    :func:`datos_de_usuario_en` lista lo que una persona tiene que mover a mano
    (pasos 1 y 2 de la fase 4 del RFC).
+6. **¿Qué no debe pisar un backfill de un mes pasado?** :func:`ids_placsp_posteriores_a`.
 
 Solo lectura salvo :func:`registrar_id_anterior`,
 :func:`rellenar_organo_ref_fuente`, :func:`borrar_licitaciones_en_colision` y
@@ -62,6 +63,7 @@ __all__ = [
     "datos_de_usuario_en",
     "filas_placsp_sin_organo_ref",
     "ids_anteriores_de",
+    "ids_placsp_posteriores_a",
     "inventario_pisadas_placsp",
     "limpiar_hijas_pisadas",
     "organo_ref_por_nombre",
@@ -603,3 +605,25 @@ def datos_de_usuario_en(ids: Sequence[str]) -> list[DatoDeUsuario]:
             {"ids": list(ids)},
         )
         return typed_rows(DatoDeUsuario, rows_to_dicts(cur))
+
+
+# ── Backfill de meses anteriores sin regresar versiones ─────────────────────
+
+
+def ids_placsp_posteriores_a(fuente_mes: str) -> frozenset[str]:
+    """Filas PLACSP que ya escribió un mes posterior a ``fuente_mes`` o el feed vivo.
+
+    ``fuente_mes`` es la fuente del ZIP que se va a procesar (``bulk_YYYYMM``).
+    El ZIP mensual no trae ``<updated>`` por aviso y gana el último escrito, así
+    que un backfill de un mes anterior a lo ya ingerido devolvería a su versión
+    vieja todo expediente que reaparece después. ``PlacspBulkConnector`` con
+    ``sin_pisar_posteriores`` salta estas claves. ``bulk_YYYYMM`` ordena como
+    texto; ``placsp`` es el feed vivo, siempre más reciente que un ZIP pasado.
+    """
+    with connect_read() as c:
+        filas = c.execute(
+            "SELECT l.id_externo FROM licitaciones l "
+            "WHERE l.fuente = 'placsp' OR (l.fuente LIKE 'bulk\\_%%' AND l.fuente > %s)",
+            (fuente_mes,),
+        ).fetchall()
+    return frozenset(str(f[0]) for f in filas)

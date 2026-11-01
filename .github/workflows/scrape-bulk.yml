@@ -52,9 +52,19 @@ on:
         description: "Backfill de una familia CPV, p. ej. 32 (vacío = todo). Exige backfill_desde"
         default: ""
         required: false
+      # Sin solo_cpv, ted_desde trae TED de todas las familias del universo
+      # desde ese día (TED empezó a ingerirse el 2026-06-01).
       ted_desde:
-        description: "Con solo_cpv: primer día de TED, YYYYMMDD (su corpus empieza el 2026-06-01)"
-        default: "20260601"
+        description: "Primer día de TED, YYYYMMDD. Con solo_cpv, vacío = 20260601; sin él, trae todo el universo desde ahí"
+        default: ""
+        required: false
+      # Para traer meses anteriores a lo ya ingerido (2024 tras la reingesta de
+      # 2025-2026): salta los expedientes que ya escribió un mes posterior o el
+      # feed vivo, que el ZIP viejo devolvería a su versión vieja.
+      sin_pisar_posteriores:
+        description: "Con backfill_desde: no reescribir expedientes que ya escribió un mes posterior"
+        type: boolean
+        default: false
         required: false
 
 permissions:
@@ -158,8 +168,10 @@ jobs:
       # Antes de PLACSP para que los pasos post-ingesta del bulk (vista pública,
       # dedupe, empresas) vean también lo que entra por aquí.
       - name: Backfill TED y PSCP de la familia CPV
-        if: inputs.solo_cpv != ''
-        timeout-minutes: 30
+        if: inputs.solo_cpv != '' || inputs.ted_desde != ''
+        # TED desde 2024 son meses de avisos; 30 min bastaban para una familia
+        # desde 2026-06.
+        timeout-minutes: 120
         env:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
@@ -170,6 +182,15 @@ jobs:
           TED_DESDE: ${{ inputs.ted_desde }}
           BACKFILL_DESDE: ${{ inputs.backfill_desde }}
         run: |
+          if [ -z "$SOLO_CPV" ]; then
+            if ! [[ "$TED_DESDE" =~ ^[0-9]{8}$ ]]; then
+              echo "::error::ted_desde inválido '$TED_DESDE': se espera YYYYMMDD"
+              exit 1
+            fi
+            python -m scraper.connectors.ted --desde "$TED_DESDE"
+            exit 0
+          fi
+          TED_DESDE="${TED_DESDE:-20260601}"
           if [ -z "$BACKFILL_DESDE" ]; then
             echo "::error::solo_cpv exige backfill_desde"
             exit 1
@@ -195,6 +216,7 @@ jobs:
           BACKFILL_DESDE: ${{ inputs.backfill_desde }}
           BACKFILL_HASTA: ${{ inputs.backfill_hasta }}
           SOLO_CPV: ${{ inputs.solo_cpv }}
+          SIN_PISAR_POSTERIORES: ${{ inputs.sin_pisar_posteriores }}
           # El bulk también corre los pasos post-ingesta, así que ejecuta
           # `llm_tech_labeling` igual que el carril diario. Sin estas variables,
           # un bulk manual consumiría la ventana diaria del paso sin clasificar
@@ -220,6 +242,7 @@ jobs:
               fi
               ARGS+=(--solo-cpv "$SOLO_CPV")
             fi
+            [ "$SIN_PISAR_POSTERIORES" = "true" ] && ARGS+=(--sin-pisar-posteriores)
           elif [ -n "${SOLO_CPV}" ]; then
             echo "::error::solo_cpv exige backfill_desde"
             exit 1

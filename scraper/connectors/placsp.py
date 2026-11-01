@@ -292,10 +292,23 @@ class PlacspBulkConnector:
             2026-10-30): reingerir el mes entero pasa de dos horas y vuelve a
             escribir lo que ya estaba. Lo que pasa el filtro sigue la regla de
             siempre, así que no entra nada que la ingesta viva no admitiría.
+        sin_pisar_posteriores: Salta los expedientes que ya escribió un mes
+            posterior o el feed vivo. Es para traer meses anteriores a lo ya
+            ingerido (2024 después de la reingesta de 2025-2026): sin esto el
+            ZIP viejo, que no trae ``<updated>`` por aviso, devolvería cada
+            expediente que reaparece después a su versión vieja. No sirve para
+            una reingesta que quiere reescribirlo todo, que va en orden
+            ascendente y sin esta opción.
     """
 
     def __init__(
-        self, year: int, month: int, *, force: bool = False, solo_cpv: tuple[str, ...] = ()
+        self,
+        year: int,
+        month: int,
+        *,
+        force: bool = False,
+        solo_cpv: tuple[str, ...] = (),
+        sin_pisar_posteriores: bool = False,
     ) -> None:
         if not (1 <= month <= 12):
             raise ValueError(f"month must be 1-12, got {month}")
@@ -305,6 +318,9 @@ class PlacspBulkConnector:
         self.month = month
         self.force = force
         self.solo_cpv = solo_cpv
+        self.sin_pisar_posteriores = sin_pisar_posteriores
+        self._posteriores: frozenset[str] | None = None
+        self.saltadas_por_posteriores = 0
         self._core = _PlacspParseCore()
 
     @property
@@ -351,6 +367,8 @@ class PlacspBulkConnector:
 
             if not any(c.startswith(self.solo_cpv) for c in cpvs_del_proyecto(entry_elem)):
                 return None
+        if self.sin_pisar_posteriores and self._escrita_despues(entry_elem):
+            return None
         fuente = self.source_id
         return self._core.parse_entry_elem(
             entry_elem,
@@ -358,13 +376,28 @@ class PlacspBulkConnector:
             updated_str=updated_str,
         )
 
+    def _escrita_despues(self, entry_elem: Any) -> bool:
+        """¿Un mes posterior o el feed vivo ya escribió este expediente?"""
+        from db.repositories.identidad import ids_placsp_posteriores_a
+        from scraper.codice_parser import clave_de_entry
+
+        if self._posteriores is None:
+            self._posteriores = ids_placsp_posteriores_a(self.source_id)
+        if clave_de_entry(entry_elem) not in self._posteriores:
+            return False
+        self.saltadas_por_posteriores += 1
+        return True
+
     def completar_documentos(self) -> None:
         """Persiste los pliegos rescatados de entries descartadas (ver ``_PlacspParseCore``)."""
         self._core.rescate.persistir()
 
     def contadores_de_descarte(self) -> dict[str, int]:
-        """Entradas sin órgano y claves por esquema de respaldo (ver ``_PlacspParseCore``)."""
-        return self._core.contadores_de_descarte()
+        """Entradas sin órgano, claves por esquema de respaldo y las saltadas por posteriores."""
+        contadores = self._core.contadores_de_descarte()
+        if self.sin_pisar_posteriores:
+            contadores["placsp_bulk_saltada_por_posterior"] = self.saltadas_por_posteriores
+        return contadores
 
     def new_cursor(self) -> dict[str, Any] | None:
         """Bulk no avanza cursor — la parametrización es por mes."""

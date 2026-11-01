@@ -146,7 +146,9 @@ def test_main_backfill_con_hasta_pasa_el_tramo():
         code = run_update.main()
 
     assert code == 0
-    mock_backfill.assert_called_once_with(2025, 1, hasta=(2025, 2), solo_cpv=())
+    mock_backfill.assert_called_once_with(
+        2025, 1, hasta=(2025, 2), solo_cpv=(), sin_pisar_posteriores=False
+    )
 
 
 def test_main_backfill_solo_cpv_pasa_los_prefijos():
@@ -164,7 +166,9 @@ def test_main_backfill_solo_cpv_pasa_los_prefijos():
 
         assert run_update.main() == 0
 
-    mock_backfill.assert_called_once_with(2025, 1, hasta=None, solo_cpv=("32",))
+    mock_backfill.assert_called_once_with(
+        2025, 1, hasta=None, solo_cpv=("32",), sin_pisar_posteriores=False
+    )
 
 
 def test_main_solo_cpv_sin_backfill_es_error_de_uso():

@@ -66,6 +66,15 @@ def main() -> int:
         ),
     )
     p.add_argument(
+        "--sin-pisar-posteriores",
+        action="store_true",
+        help=(
+            "Saltar los expedientes que ya escribió un mes posterior o el feed vivo: "
+            "para traer meses anteriores a lo ya ingerido sin devolverlos a su versión "
+            "vieja (solo con --backfill)"
+        ),
+    )
+    p.add_argument(
         "--daily",
         action="store_true",
         help="Ejecutar carril diario (feed ATOM en vivo)",
@@ -95,6 +104,8 @@ def main() -> int:
     solo_cpv = tuple(c.strip() for c in args.solo_cpv.split(",") if c.strip())
     if solo_cpv and not args.backfill:
         p.error("--solo-cpv solo se usa con --backfill")
+    if args.sin_pisar_posteriores and not args.backfill:
+        p.error("--sin-pisar-posteriores solo se usa con --backfill")
 
     configure_logging(
         level="DEBUG" if args.verbose else "INFO",
@@ -129,6 +140,7 @@ def main() -> int:
                 args.backfill[1],
                 hasta=(args.hasta[0], args.hasta[1]) if args.hasta else None,
                 solo_cpv=solo_cpv,
+                sin_pisar_posteriores=args.sin_pisar_posteriores,
             )
         else:
             pipeline_result = run_bulk_pipeline(args.months)
