@@ -308,12 +308,37 @@ def test_un_aviso_secundario_roto_cuenta_y_los_demas_corren(
         "services.pursuit_awards.notify_detected_awards",
         lambda: corridos.append("adjudicaciones"),
     )
+    monkeypatch.setattr(
+        "services.puntuaciones_acta.encolar_pendientes",
+        lambda: corridos.append("actas") or 0,
+    )
     antes = _valor("pipeline_runs_errores_total", "avisos_competidores")
 
     pipeline_runs._run_watchlist_notify()
 
     assert _valor("pipeline_runs_errores_total", "avisos_competidores") == antes + 1
-    assert corridos == ["reglas", "plazos", "adjudicaciones"]
+    assert corridos == ["reglas", "plazos", "adjudicaciones", "actas"]
+
+
+def test_encolar_las_actas_roto_cuenta_y_no_tumba_la_pasada(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scheduler import pipeline_runs
+
+    def _roto() -> int:
+        raise RuntimeError("BD caída")
+
+    monkeypatch.setattr("scheduler.watchlist_alerts.check_and_notify", lambda: None)
+    monkeypatch.setattr("scheduler.competitor_alerts.check_and_notify", lambda: None)
+    monkeypatch.setattr("scheduler.watchlist_rules_alerts.check_rules_and_notify", lambda: None)
+    monkeypatch.setattr("services.deadline_reminders.check_all_users_deadlines", lambda: None)
+    monkeypatch.setattr("services.pursuit_awards.notify_detected_awards", lambda: 0)
+    monkeypatch.setattr("services.puntuaciones_acta.encolar_pendientes", _roto)
+    antes = _valor("pipeline_runs_errores_total", "puntuaciones_acta")
+
+    pipeline_runs._run_watchlist_notify()
+
+    assert _valor("pipeline_runs_errores_total", "puntuaciones_acta") == antes + 1
 
 
 def test_el_aviso_de_un_paso_roto_que_no_sale_cuenta(monkeypatch: pytest.MonkeyPatch) -> None:

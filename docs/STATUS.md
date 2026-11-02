@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-10-25
+Generado: 2026-11-02
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -31,9 +31,10 @@ Generado: 2026-10-25
 | `embeddings_expediente` | cola | tenderflow-api (ADR-028 §G) |
 | `export_pdf` | cola | tenderflow-api (ADR-028 §G) |
 | `despacho_eventos` | cola | tenderflow-api (ADR-028 §G) |
+| `puntuaciones_acta` | cola | tenderflow-api (ADR-028 §G) |
 | `paso_pipeline` | pipeline | cierre de la pasada (Actions) |
 
-**20 jobs, todos con plano verificado.**
+**21 jobs, todos con plano verificado.**
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 

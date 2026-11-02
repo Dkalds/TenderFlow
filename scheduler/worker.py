@@ -21,9 +21,10 @@ Vida del lock
 -------------
 ``locked_at`` no se refresca mientras el handler corre: un job que tarde más
 que ``JOBS_LOCK_TTL_SEGUNDOS`` (900 s por defecto) puede ser reclamado por otro
-worker y ejecutarse dos veces. Los tres handlers son idempotentes —el upsert de
-la ficha, el ``replace_chunks`` de los embeddings y el maquetado del PDF lo
-son—, así que el peor caso es trabajo repetido, no dato corrupto. El TTL está
+worker y ejecutarse dos veces. Los handlers son idempotentes —el upsert de la
+ficha, el ``replace_chunks`` de los embeddings, el maquetado del PDF y el
+``guardar`` de las puntuaciones del acta, que reemplaza el expediente entero,
+lo son—, así que el peor caso es trabajo repetido, no dato corrupto. El TTL está
 por encima del percentil alto de la extracción más larga; si algún tipo futuro
 lo supera de forma sistemática, lo que toca es un heartbeat, no subir el TTL
 hasta que un despliegue deje de recuperarse.
@@ -152,6 +153,21 @@ def ejecutar_despacho_eventos(job: Job) -> dict[str, object]:
         "in_app": resultado.in_app,
         "webhooks": resultado.webhooks,
     }
+
+
+def ejecutar_puntuaciones_acta(job: Job) -> dict[str, str]:
+    """Lee las puntuaciones por licitador del acta de la mesa de un expediente.
+
+    A diferencia de la ficha, ``extraer_puntuaciones`` no esconde el fallo: deja
+    la fila de la extracción en ``error`` y **relanza**, que es lo que le dice a
+    la cola «esto merece un reintento». Sin ese relanzado el job se cerraría
+    como ``done`` con el acta sin leer.
+    """
+    from services.puntuaciones_acta import extraer_puntuaciones
+
+    licitacion_id = str(job.payload["licitacion_id"])
+    status = extraer_puntuaciones(licitacion_id, model=str(job.payload["model"]))
+    return {"licitacion_id": licitacion_id, "status": status}
 
 
 def ejecutar_export_pdf(job: Job) -> dict[str, Any]:

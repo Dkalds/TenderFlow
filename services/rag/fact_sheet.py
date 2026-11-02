@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -839,8 +840,15 @@ def _llamar_modelo(
     model: str,
     keywords: tuple[str, ...],
     max_tokens: int,
+    stop: threading.Event | None = None,
 ) -> str:
-    """Una llamada de extracción sobre unas páginas; el texto crudo devuelto."""
+    """Una llamada de extracción sobre unas páginas; el texto crudo devuelto.
+
+    ``stop`` es la señal de parada de quien pone un tope de tiempo a la llamada
+    (la lectura del acta): se pasa tal cual a ``stream_llm_response``, que con
+    ella activa no arranca intentos nuevos y termina sin tokens, lo que aquí
+    sale como «respuesta vacía». Quien la activó sabe que fue por el tope.
+    """
     chunks = [
         {
             "documento_id": int(page["documento_id"]),
@@ -872,6 +880,7 @@ def _llamar_modelo(
             # extrajo. Si el proveedor está caído, la extracción falla
             # visible y el cron/botón reintentan.
             fallback=False,
+            stop=stop,
         )
     )
     if not raw.strip():

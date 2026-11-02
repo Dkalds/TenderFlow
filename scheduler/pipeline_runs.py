@@ -592,6 +592,16 @@ def _run_watchlist_notify() -> None:
     except Exception as e:
         _contar_error("adjudicaciones_oportunidades")
         log.warning("pursuit_awards_failed", error=str(e), exc_info=True)
+    # Puntuaciones del acta de la mesa: encola la lectura de las que faltan en
+    # los expedientes que alguien sigue y ya se adjudicaron (post-mortem de una
+    # oportunidad perdida). Va tras el aviso porque es su misma población.
+    try:
+        from services.puntuaciones_acta import encolar_pendientes
+
+        encolar_pendientes()
+    except Exception as e:
+        _contar_error("puntuaciones_acta")
+        log.warning("puntuaciones_acta_failed", error=str(e), exc_info=True)
 
 
 #: Horas locales (Madrid) en las que se entregan los digests diario y semanal:
