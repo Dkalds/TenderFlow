@@ -192,15 +192,29 @@ function formatoDeNombre(nombre: string): EventosProducto["export_lanzado"]["for
 }
 
 /**
+ * Lo que un cliente de hojas de cálculo evalúa como fórmula: `=`, `+`, `-` o
+ * `@` al empezar la celda, también tras los blancos que algunos motores recortan
+ * antes de decidirlo (misma lista que `_LEADING_IGNORABLES` de
+ * `shared/export_safety.py`, la del CSV de servidor), o una celda que arranca
+ * por tabulador o retorno de carro.
+ */
+const PREFIJO_DE_FORMULA = /^(?:[ \t\r\n ​]*[=+\-@]|[\t\r])/;
+
+/**
+ * Deja un texto como literal en una hoja de cálculo: si Excel lo ejecutaría al
+ * abrir el fichero (inyección CSV), un apóstrofo delante lo vuelve texto. Los
+ * títulos y órganos son texto de terceros, así que esto no es teórico.
+ */
+export function neutralizarFormula(text: string): string {
+  return PREFIJO_DE_FORMULA.test(text) ? `'${text}` : text;
+}
+
+/**
  * Una celda de CSV compuesto en el cliente: entre comillas, con las comillas
- * internas dobladas y **neutralizada como fórmula**. Una celda que empieza por
- * `=`, `+`, `-` o `@` Excel la ejecuta al abrir el fichero (inyección CSV); el
- * apóstrofo delante la deja como texto. Los títulos y órganos son texto de
- * terceros, así que esto no es teórico.
+ * internas dobladas y **neutralizada como fórmula** ({@link neutralizarFormula}).
  */
 export function csvCell(value: string | number | null | undefined): string {
-  let text = value == null ? "" : String(value);
-  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  const text = neutralizarFormula(value == null ? "" : String(value));
   return `"${text.replaceAll('"', '""')}"`;
 }
 

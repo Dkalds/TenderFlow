@@ -344,6 +344,9 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Ve en el historial qué entregas fallaron y reenvía una; queda en cola para
   el siguiente ciclo de reintentos.
 - Otra organización no ve el webhook ni puede rotarlo ni reenviar sus entregas.
+- Un miembro o un lector de la misma organización tampoco lo ve (la URL es un
+  secreto portador). Si quien lo creó sale o se le retira, el webhook queda
+  inactivo hasta que un propietario o administrador lo reactive.
 
 ### CU-34 — Arrancar por lo que da valor
 
@@ -397,7 +400,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-30** Tener al día la documentación acreditativa | [test_escenario_documentacion.py](../tests/test_escenario_documentacion.py) | — | [page.test.tsx](../web/src/app/(dashboard)/equipo/__tests__/page.test.tsx)<br>[organizacion-documentacion.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/organizacion-documentacion.test.tsx) |
 | **CU-31** Pedir acceso, recibirlo y crearme la cuenta | [test_escenario_alta_tras_concesion.py](../tests/test_escenario_alta_tras_concesion.py) | — | — |
 | **CU-32** Revisar y exportar lo que cambió en la organización | [test_escenario_gobierno_organizacion.py](../tests/test_escenario_gobierno_organizacion.py) | — | [auditoria-organizacion-card.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/auditoria-organizacion-card.test.tsx) |
-| **CU-33** Mantener la integración del equipo por webhook | [test_escenario_webhooks.py](../tests/test_escenario_webhooks.py) | — | [webhook-row.test.tsx](../web/src/app/(dashboard)/ops/_components/webhooks/__tests__/webhook-row.test.tsx) |
+| **CU-33** Mantener la integración del equipo por webhook | [test_escenario_webhooks.py](../tests/test_escenario_webhooks.py) (x2) | — | [webhook-row.test.tsx](../web/src/app/(dashboard)/ops/_components/webhooks/__tests__/webhook-row.test.tsx) |
 | **CU-34** Arrancar por lo que da valor | — | [recorrido-primeros-pasos.spec.ts](../web/e2e/recorrido-primeros-pasos.spec.ts) | [primeros-pasos.test.tsx](../web/src/app/(dashboard)/resumen/_components/__tests__/primeros-pasos.test.tsx) |
 
 **34 casos**, 34 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).

@@ -4386,6 +4386,10 @@ export interface paths {
          *
          *     El owner saliente queda como `admin`: quien monta un equipo no debería
          *     perder el acceso al traspasarlo.
+         *
+         *     Exige sesión reciente (y MFA reciente si la cuenta lo tiene), como borrar la
+         *     organización: entregarla es igual de irreversible, y una API key o una
+         *     cookie vieja no deberían bastar.
          */
         post: operations["post_transfer_ownership_api_v1_organizations__organization_id__transfer_ownership_post"];
         delete?: never;
@@ -4505,6 +4509,13 @@ export interface paths {
          *     huérfanas todas las fichas a partir de la primera cincuentena — solo
          *     alcanzables por sitemap, que las hace rastreables pero no les transmite
          *     ninguna autoridad.
+         *
+         *     Un slug de ``ccaa`` u ``organo`` que no está en la lista cerrada de
+         *     :func:`_hubs_vigentes` devuelve la página vacía **sin consultar**: el slug
+         *     se calcula en SQL sin índice, y pedirlo inventado costaba dos escaneos de
+         *     la vista (``listar`` y ``contar``) para devolver lo mismo. La lista de
+         *     órganos es la de los hubs —con su umbral de volumen—, que es lo que ya exige
+         *     el frontend antes de pedir el listado de un órgano.
          */
         get: operations["listar_publicas_api_v1_publico_licitaciones_get"];
         put?: never;
@@ -4554,6 +4565,10 @@ export interface paths {
          *     El orden lo fija el repositorio por ``id_externo`` y no por fecha: con orden
          *     temporal, un expediente republicado saltaría de fichero y el mismo tramo
          *     devolvería URLs distintas en cada regeneración.
+         *
+         *     Es ``def`` y no ``async def``: la consulta y el armado de hasta
+         *     ``_MAX_ENTRADAS_SITEMAP`` modelos son trabajo de hilo, y en el event loop
+         *     competían con el resto de la API por cada petición anónima.
          */
         get: operations["entradas_sitemap_api_v1_publico_sitemap_entradas_get"];
         put?: never;

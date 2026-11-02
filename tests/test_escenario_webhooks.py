@@ -81,3 +81,48 @@ def test_cu31_webhook_probar_rotar_el_secreto_y_reenviar_lo_fallido(client, api_
     assert ajena.get("/webhooks").json() == []
     assert ajena.post(f"/webhooks/{webhook_id}/rotate-secret").status_code == 404
     assert ajena.post(f"/webhooks/{webhook_id}/deliveries/{fallida}/redeliver").status_code == 404
+
+
+def test_cu31_webhook_solo_lo_gestionan_owner_y_admin_y_la_baja_lo_deja_inactivo(client, api_db):
+    """CU-33 — un miembro no ve ni toca las integraciones; quien sale deja las suyas inactivas.
+
+    La URL de un webhook entrante de Slack o Teams es un secreto portador: un
+    `member` o un `viewer` que la leyera podría publicar en el canal del equipo.
+    """
+    duena = abrir_sesion("gestion-webhook-duena@example.com", client)
+    admin = abrir_sesion("gestion-webhook-admin@example.com")
+    miembro = abrir_sesion("gestion-webhook-miembro@example.com")
+    oid = duena.post("/organizations", json={"name": "Equipo de integraciones"}).json()["id"]
+    for sesion, rol in ((admin, "admin"), (miembro, "member")):
+        alta = duena.post(
+            f"/organizations/{oid}/members", json={"email": sesion.email, "role": rol}
+        )
+        assert alta.status_code == 201, alta.text
+
+    cuerpo = {
+        "name": "Slack del admin",
+        "url": "https://hooks.example.com/admin",
+        "event_types": ["pursuit.*"],
+        "organization_id": oid,
+    }
+    # El member no crea, no lee la lista ni el detalle.
+    assert miembro.post("/webhooks", json=cuerpo).status_code == 403
+    creado = admin.post("/webhooks", json=cuerpo)
+    assert creado.status_code == 201, creado.text
+    webhook_id = creado.json()["id"]
+    assert miembro.get("/webhooks", params={"organization_id": oid}).status_code == 403
+    assert (
+        miembro.get(f"/webhooks/{webhook_id}", params={"organization_id": oid}).status_code == 403
+    )
+    assert admin.get("/webhooks", params={"organization_id": oid}).status_code == 200
+
+    # Retirado el admin, su webhook sigue ahí pero deja de recibir eventos.
+    retirada = duena.put(
+        f"/organizations/{oid}/members/{admin.user_id}",
+        json={"user_id": admin.user_id, "role": "admin", "status": "revoked"},
+    )
+    assert retirada.status_code == 200, retirada.text
+    en_la_lista = {
+        w["id"]: w for w in duena.get("/webhooks", params={"organization_id": oid}).json()
+    }
+    assert en_la_lista[webhook_id]["active"] is False

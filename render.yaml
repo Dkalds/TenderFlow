@@ -474,7 +474,6 @@ services:
       --config.file=/etc/prometheus/prometheus.yml
       --storage.tsdb.path=/prometheus
       --storage.tsdb.retention.time=30d
-      --web.enable-lifecycle
     disk:
       name: prometheus-data
       mountPath: /prometheus
@@ -554,7 +553,9 @@ services:
     name: tenderflow-grafana
     runtime: image
     image:
-      url: docker.io/grafana/grafana-oss:11.1.0
+      # Misma versión que `docker-compose.yml` (11.6.x). Esta línea no la ve
+      # Renovate (no hay manager para `render.yaml`): subirla a la vez que el compose.
+      url: docker.io/grafana/grafana-oss:11.6.5
     plan: starter
     region: frankfurt
     healthCheckPath: /api/health
@@ -563,8 +564,10 @@ services:
       mountPath: /var/lib/grafana
       sizeGB: 1
     envVars:
-      # Contraseña fuerte obligatoria: config/settings.py la valida con
-      # check_password_strength (mínimo 16 caracteres) en ENV=prod.
+      # Contraseña fuerte (mínimo 16 caracteres) al darla de alta en el
+      # dashboard. Ningún código la valida aquí: `config/settings.py` solo la
+      # comprueba en los procesos de la app (que no son este contenedor), y
+      # Grafana usa el usuario `admin` de fábrica.
       - key: GF_SECURITY_ADMIN_PASSWORD
         sync: false
       - key: GF_USERS_ALLOW_SIGN_UP

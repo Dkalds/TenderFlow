@@ -146,6 +146,44 @@ class TestTraspaso:
         mod.transferir_propiedad(organization_id=1, actor_user_id=5, nuevo_owner_user_id=9)
         assert doble.traspasos == [{"de": 5, "a": 9}]
 
+    def test_quien_deja_de_ser_owner_durante_el_traspaso_recibe_403_y_no_404(
+        self, mod: Any, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Dos traspasos simultáneos del mismo owner: el segundo ve, ya dentro de
+        la transacción, que el rol cambió y el repositorio devuelve `False`. Eso
+        no es un destinatario que falta (404): es que ya no es el propietario."""
+
+        class _RepoConCarrera(_RepoDoble):
+            def __init__(self) -> None:
+                super().__init__(membresia={"role": "owner"}, traspaso_ok=False)
+                self._lecturas = 0
+
+            def get_active_membership(
+                self, organization_id: int, user_id: int
+            ) -> dict[str, Any] | None:
+                self._lecturas += 1
+                # La primera lectura (previa a la transacción) lo ve owner; la
+                # segunda, tras perder la carrera, ya admin.
+                return {"role": "owner" if self._lecturas == 1 else "admin"}
+
+        _repo(monkeypatch, mod, _RepoConCarrera())
+
+        with pytest.raises(mod.OrganizationPermissionError, match="propietario"):
+            mod.transferir_propiedad(organization_id=1, actor_user_id=5, nuevo_owner_user_id=9)
+
+    def test_la_transaccion_del_traspaso_bloquea_y_revalida_al_owner(self) -> None:
+        """El `SELECT ... FOR UPDATE` va antes de los dos `UPDATE`, en el mismo
+        `with connect()`: sin él, la comprobación de rol del servicio y las
+        escrituras no eran atómicas y dos traspasos dejaban dos owners."""
+        import inspect
+
+        import db.repositories.organizations as repo_mod
+
+        fuente = inspect.getsource(repo_mod.OrganizationRepository.traspasar_propiedad)
+        assert "FOR UPDATE" in fuente
+        assert fuente.index("FOR UPDATE") < fuente.index("UPDATE organization_memberships")
+        assert fuente.count("with connect()") == 1
+
 
 class TestSalida:
     def test_quien_no_es_miembro_no_puede_salir(

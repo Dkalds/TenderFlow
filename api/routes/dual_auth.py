@@ -112,6 +112,10 @@ async def require_any_auth(
             "display_name": owner.get("display_name") if owner is not None else None,
             "is_admin": bool(owner and owner.get("is_admin"))
             and ("*" in scopes or "admin" in scopes),
+            # El rol del dueño *hoy*, sin mirar los scopes de la clave: para las
+            # rutas que exigen un administrador pero que un script legítimo
+            # alcanza con una clave de scope estrecho (`feedback:write`).
+            "owner_is_admin": bool(owner and owner.get("is_admin")),
             "auth_method": "api_key",
             "key_hash": ctx.key_hash,
             "scopes": scopes,

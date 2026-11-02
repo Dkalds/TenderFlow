@@ -404,6 +404,11 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # usuario final); recorre TODO audit_log en orden para detectar
         # manipulación, no puede acotarse a un usuario.
         "db/audit.py::verify_hash_chain",
+        # Purga de retención de la cadena global: borra el extremo antiguo por
+        # `id` (nunca por usuario: una cadena con huecos por usuario no
+        # verificaría) y firma el ancla. Solo la llama `db/retention.py`, el
+        # job `retention_cleanup`; no tiene ruta HTTP.
+        "db/audit.py::purgar_extremo_antiguo",
         # log_action() repite inline la misma lectura de la cola de la cadena
         # que _assert_or_bootstrap_chain_state() (rama de fallback cuando
         # `audit_chain_state` todavía no existe, p. ej. BD pre-migración de
@@ -440,6 +445,14 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # para_alerta_por_defecto api/` vacío). La frontera es la organización.
         "db/repositories/watchlist_rules.py::crear_reglas_por_defecto",
         "db/repositories/organizations.py::OrganizationRepository.para_alerta_por_defecto",
+        # Baja de un miembro (auditoría 2026-11): pasa a `private` el perfil de
+        # scoring que esa persona compartía con la organización. No es un
+        # barrido: toca una sola fila, la de ese `user_id` (la PK desde v135;
+        # `user_key` ya no se escribe) en ESA organización, dentro de la
+        # transacción de la baja. Lo llaman `salir` (la persona misma) y
+        # `add_membership` con estado distinto de `active` (owner/admin), y
+        # ninguna ruta lo alcanza con un `user_id` que no sea el de la baja.
+        "db/repositories/organizations.py::OrganizationRepository._retirar_huellas",
     }
 )
 

@@ -217,3 +217,17 @@ estas tres personas, esta decisión se revisa antes.
   las celdas `text`/`varchar`/`xml` se recortan en Postgres; quedan los
   `json`/`jsonb` y los arrays enormes (runbook `mcp-interno.md` §7). Después,
   ese mismo día, también los `json`/`jsonb` y los arrays de tipos nativos.
+  *Actualización 2026-11-02 (auditoría de seguridad):* los tipos sin tope que
+  no son texto (`bit`, `varbit`, `tsvector`, `tsquery`, `jsonpath`, `record`)
+  también se recortan en Postgres y los `bytea` ni se transfieren; el DCR y
+  `/authorize` tienen además cuota **por IP** (10 registros/h y 30
+  autorizaciones/h; el middleware del propio MCP lee la IP del último salto
+  global de `X-Forwarded-For`, así que ya no depende de `api.middleware`); el
+  login rechaza las cuentas con TOTP confirmado y las ligadas a otro proveedor
+  o a otro `sub` de Google, y el callback de Google exige la cookie `mcp_login`
+  (HMAC del nonce, `Path` del callback, `SameSite=Lax`) que `/authorize` fijó en
+  el navegador que inició el flujo — sin pantalla de consentimiento por cliente,
+  que sigue pendiente; las tools que pueden devolver texto de terceros
+  declaran `open_world_hint` y marcan su salida con `contenido_no_confiable:
+  true`; y `consultar_sql` impone el techo de 15 s si el rol llega sin
+  `statement_timeout`.

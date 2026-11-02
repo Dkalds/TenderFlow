@@ -127,9 +127,17 @@ class PursuitCommentRepository:
                 # borrado lógicamente **sigue estando** en la base, así que el
                 # derecho de acceso lo alcanza. Omitirlo sería decirle al
                 # usuario que no tenemos algo que sí tenemos.
-                "SELECT id, pursuit_id, organization_id, author_user_id, body, "
-                "created_at, deleted_at "
-                "FROM pursuit_comments WHERE author_user_id = %s ORDER BY id LIMIT 5000",
+                # El texto solo sale de las organizaciones donde sigue siendo
+                # miembro activo; de las que dejó queda la constancia de que
+                # escribió, no lo que el equipo conversó (ver
+                # `PursuitRepository.export_personal_data`).
+                "SELECT c.id, c.pursuit_id, c.organization_id, c.author_user_id, "
+                "CASE WHEN EXISTS (SELECT 1 FROM organization_memberships m "
+                "                  WHERE m.organization_id = c.organization_id "
+                "                  AND m.user_id = c.author_user_id AND m.status = 'active') "
+                "     THEN c.body END AS body, "
+                "c.created_at, c.deleted_at "
+                "FROM pursuit_comments c WHERE c.author_user_id = %s ORDER BY c.id LIMIT 5000",
                 (user_id,),
             )
             return rows_to_dicts(cur)

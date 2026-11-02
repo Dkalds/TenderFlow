@@ -391,8 +391,8 @@ class ApiKeyRepository:
             return scopes, int(cur.rowcount)
 
 
-def tier_limit_por_hash(key_hash: str) -> int | None:
-    """Requests/minuto que el tier de esta API key permite (C2.3, D25).
+def tier_de_clave_por_hash(key_hash: str) -> tuple[bool, int | None]:
+    """``(viva, límite por minuto)`` de esta API key (C2.3, D25).
 
     ``api_key_tiers`` existe desde ``v28`` con tres tiers sembrados y una
     columna ``tier`` en ``api_keys``, y **ninguna ruta ni middleware la leía**:
@@ -400,22 +400,25 @@ def tier_limit_por_hash(key_hash: str) -> int | None:
     limit. Esta función es lo que faltaba para que el tier signifique algo.
 
     Devuelve:
-        - El límite por minuto del tier.
-        - ``None`` si la clave no existe, está inactiva, o su tier declara
-          ``per_minute_limit = 0`` — que es como ``enterprise`` dice «sin
-          límite». ``None`` significa «usa el default del middleware», no «cero
-          requests»: confundir esas dos cosas dejaría fuera al tier que más
-          paga.
+        - ``(False, None)`` si la clave no existe, está revocada o caducó. El
+          middleware solo abre un cubo propio para una clave viva: con una
+          cabecera cualquiera, rotar valores estrenaba cuota en cada petición.
+        - ``(True, límite)`` con el límite por minuto del tier.
+        - ``(True, None)`` si el tier declara ``per_minute_limit = 0`` —que es
+          como ``enterprise`` dice «sin límite»—. ``None`` significa «usa el
+          default del middleware», no «cero requests»: confundir esas dos cosas
+          dejaría fuera al tier que más paga.
     """
     with connect_read() as c:
         fila = c.execute(
             "SELECT t.per_minute_limit FROM api_keys k "
-            "JOIN api_key_tiers t ON t.tier = k.tier "
+            "LEFT JOIN api_key_tiers t ON t.tier = k.tier "
             "WHERE k.key_hash = %s AND k.is_active = 1 "
+            "AND (k.expires_at IS NULL OR k.expires_at > %s) "
             "LIMIT 1",
-            (key_hash,),
+            (key_hash, now_utc_iso()),
         ).fetchone()
-    if not fila or not fila[0]:
-        return None
-    limite = int(fila[0])
-    return limite if limite > 0 else None
+    if not fila:
+        return False, None
+    limite = int(fila[0] or 0)
+    return True, limite if limite > 0 else None

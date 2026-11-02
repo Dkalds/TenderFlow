@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { MarkdownAnswer, linkifyExpedientes } from "@/components/markdown-answer";
+import { MarkdownAnswer, clasificarEnlace, linkifyExpedientes } from "@/components/markdown-answer";
 
 describe("linkifyExpedientes", () => {
   it("rewrites expediente-like tokens as markdown links", () => {
@@ -49,5 +49,62 @@ describe("MarkdownAnswer", () => {
   it("renders plain paragraphs", () => {
     render(<MarkdownAnswer text="Respuesta simple." />);
     expect(screen.getByText("Respuesta simple.")).toBeInTheDocument();
+  });
+});
+
+describe("clasificarEnlace", () => {
+  it.each([
+    ["/detalle?lic=ABC-1-X", "interno"],
+    ["#seccion", "interno"],
+    ["https://www.contrataciondelestado.es/x", "externo"],
+    ["http://example.org", "externo"],
+    ["mailto:hola@example.org", "correo"],
+  ])("deja pasar %s como %s", (href, tipo) => {
+    expect(clasificarEnlace(href)).toBe(tipo);
+  });
+
+  it.each([
+    "javascript:alert(1)",
+    "JaVaScRiPt:alert(1)",
+    "java" + String.fromCharCode(10) + "script:alert(1)",
+    "data:text/html;base64,PHNjcmlwdD4=",
+    "vbscript:x",
+    "file:///etc/passwd",
+    "//evil.example/login",
+    // `\` y tabulador: el navegador los reinterpreta y "/…/evil" acaba siendo "//evil".
+    "/" + String.fromCharCode(92) + "evil.example",
+    "/" + String.fromCharCode(9) + "/evil.example",
+    "evil.example/login",
+    "ftp://evil.example",
+    "",
+    undefined,
+  ])("descarta %j", (href) => {
+    expect(clasificarEnlace(href)).toBeNull();
+  });
+});
+
+describe("MarkdownAnswer: enlaces del modelo", () => {
+  it("marca los externos como no fiables y los abre fuera", () => {
+    render(<MarkdownAnswer text="[ver oferta](https://dominio-atacante.example/p)" />);
+    const link = screen.getByRole("link", { name: "ver oferta" });
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer nofollow");
+  });
+
+  it("no pinta como enlace un esquema peligroso: queda solo el texto", () => {
+    render(<MarkdownAnswer text="[pulsa aquí](javascript:alert(1)) y [otro](//evil.example)" />);
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("pulsa aquí")).toBeInTheDocument();
+  });
+
+  it("no pinta imágenes remotas", () => {
+    const { container } = render(<MarkdownAnswer text="![baliza](https://t.example/p.gif)" />);
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("los enlaces internos a un expediente siguen en la misma pestaña", () => {
+    render(<MarkdownAnswer text="Ver ABC-123-XYZ-001" />);
+    const link = screen.getByRole("link", { name: "ABC-123-XYZ-001" });
+    expect(link).not.toHaveAttribute("target");
   });
 });

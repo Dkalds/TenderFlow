@@ -22,11 +22,12 @@ y al final de este fichero pasa por los handlers reales del SDK.
 from __future__ import annotations
 
 import base64
+import contextlib
 import hashlib
 import json
 import time
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -241,6 +242,8 @@ class Mundo:
     #: Rate limit: llamadas vistas ``(clave, máximo, ventana)`` y claves que se niegan.
     limites: list[tuple[str, int, int]] = field(default_factory=list)
     negadas: set[str] = field(default_factory=set)
+    #: Usuarios con un TOTP confirmado en TenderFlow.
+    con_totp: set[int] = field(default_factory=set)
 
     def alta(self, user_id: int, email: str, *, admin: bool = True, activo: bool = True) -> None:
         self.usuarios[user_id] = {
@@ -263,6 +266,9 @@ class Mundo:
 
     def permitido(self, email: str) -> bool:
         return email.strip().lower() in self.permitidos
+
+    def totp(self, user_id: int) -> bool:
+        return user_id in self.con_totp
 
     def auditar(self, accion: str, user_id: int | None, detalle: Mapping[str, object]) -> None:
         self.auditoria.append((accion, user_id, dict(detalle)))
@@ -324,6 +330,7 @@ def proveedor(
         usuarios=mundo.por_email,
         usuario_por_id=mundo.por_id,
         acceso_permitido=mundo.permitido,
+        totp_requerido=mundo.totp,
         reloj=reloj,
         auditar=mundo.auditar,
         limitar=mundo.limitar,
@@ -557,6 +564,61 @@ async def test_registro_con_rate_limit_global(
     assert set(almacen.clientes) == {"cliente-1"}
 
 
+@contextlib.contextmanager
+def _desde_la_ip(ip: str) -> Iterator[None]:
+    """La IP del cliente de la «petición» (lo hace el middleware del servidor)."""
+    from mcp_server.auth.proveedor import ip_cliente
+
+    marca = ip_cliente.set(ip)
+    try:
+        yield
+    finally:
+        ip_cliente.reset(marca)
+
+
+async def test_registro_con_rate_limit_por_ip_antes_que_el_global(
+    proveedor: ProveedorTenderFlow, almacen: AlmacenEnMemoria, mundo: Mundo
+) -> None:
+    """Una sola IP no puede agotar el cupo de todos: su cubo se mira primero."""
+    with _desde_la_ip("203.0.113.9"):
+        await proveedor.register_client(_info(REDIRECT))
+    assert mundo.limites == [
+        ("mcp:oauth:registro:ip:203.0.113.9", 10, 3600),
+        ("mcp:oauth:registro", 30, 3600),
+    ]
+    mundo.limites.clear()
+    mundo.negadas.add("mcp:oauth:registro:ip:203.0.113.9")
+    with _desde_la_ip("203.0.113.9"), pytest.raises(RegistrationError) as e:
+        await proveedor.register_client(_info(REDIRECT, client_id="cliente-2"))
+    assert "inténtalo más tarde" in (e.value.error_description or "")
+    # Denegado por IP: el cubo global no se toca.
+    assert mundo.limites == [("mcp:oauth:registro:ip:203.0.113.9", 10, 3600)]
+    assert set(almacen.clientes) == {"cliente-1"}
+
+
+async def test_authorize_con_rate_limit_por_ip_antes_que_global_y_cliente(
+    proveedor: ProveedorTenderFlow,
+    cliente: OAuthClientInformationFull,
+    almacen: AlmacenEnMemoria,
+    mundo: Mundo,
+) -> None:
+    mundo.limites.clear()
+    with _desde_la_ip("2001:db8:1:2::/64"):
+        await proveedor.authorize(cliente, _params())
+    assert mundo.limites == [
+        ("mcp:oauth:autorizar:ip:2001:db8:1:2::/64", 30, 3600),
+        ("mcp:oauth:autorizar", 600, 3600),
+        ("mcp:oauth:autorizar:cliente-1", 60, 3600),
+    ]
+    mundo.limites.clear()
+    mundo.negadas = {"mcp:oauth:autorizar:ip:2001:db8:1:2::/64"}
+    with _desde_la_ip("2001:db8:1:2::/64"), pytest.raises(AuthorizeError) as e:
+        await proveedor.authorize(cliente, _params())
+    assert e.value.error == "temporarily_unavailable"
+    assert len(mundo.limites) == 1  # ni el global ni el del cliente
+    assert len(almacen.tokens) == 1
+
+
 async def test_cliente_con_redirect_ya_no_admitido_no_existe(
     proveedor: ProveedorTenderFlow, almacen: AlmacenEnMemoria, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -699,6 +761,55 @@ async def test_login_fuera_de_allowlist_vuelve_con_access_denied(
     mundo: Mundo,
 ) -> None:
     await _afirma_denegado(proveedor, cliente, almacen, mundo, "g-ajena", "fuera_de_allowlist")
+
+
+async def test_login_con_totp_confirmado_se_deniega(
+    proveedor: ProveedorTenderFlow,
+    cliente: OAuthClientInformationFull,
+    almacen: AlmacenEnMemoria,
+    mundo: Mundo,
+) -> None:
+    """El MCP no tiene pantalla de segundo factor: Google solo no salta el TOTP de la cuenta."""
+    mundo.con_totp.add(1)
+    await _afirma_denegado(proveedor, cliente, almacen, mundo, "g-ana", "totp_requerido")
+
+
+@pytest.mark.parametrize(
+    ("proveedor_oauth", "sub"),
+    [("microsoft", "1"), ("google", "999")],
+    ids=["cuenta_de_microsoft", "otro_sub_de_google"],
+)
+async def test_login_con_cuenta_de_otro_proveedor_o_sub_se_deniega(
+    proveedor: ProveedorTenderFlow,
+    cliente: OAuthClientInformationFull,
+    almacen: AlmacenEnMemoria,
+    mundo: Mundo,
+    proveedor_oauth: str,
+    sub: str,
+) -> None:
+    """ADR-037: el mismo correo en otro proveedor, o con otro ``sub``, no es la misma persona."""
+    mundo.usuarios[1]["oauth_provider"] = proveedor_oauth
+    mundo.usuarios[1]["oauth_sub"] = sub
+    await _afirma_denegado(proveedor, cliente, almacen, mundo, "g-ana", "cuenta_de_otro_proveedor")
+
+
+async def test_login_de_cuenta_sin_proveedor_ligado_entra(
+    proveedor: ProveedorTenderFlow,
+    cliente: OAuthClientInformationFull,
+    almacen: AlmacenEnMemoria,
+) -> None:
+    # Sin `oauth_provider` (cuenta de contraseña que aún no entró por OAuth): como hasta ahora.
+    assert "code" in await _login(proveedor, cliente, "g-ana")
+
+
+async def test_login_con_la_cuenta_ligada_a_este_mismo_google_entra(
+    proveedor: ProveedorTenderFlow,
+    cliente: OAuthClientInformationFull,
+    mundo: Mundo,
+) -> None:
+    mundo.usuarios[1]["oauth_provider"] = "google"
+    mundo.usuarios[1]["oauth_sub"] = "1"  # el `sub` de «Ana» en `GoogleFalso`
+    assert "code" in await _login(proveedor, cliente, "g-ana")
 
 
 async def test_login_sin_identidad_o_con_error_de_google_vuelve_con_access_denied(
@@ -1320,6 +1431,52 @@ async def test_flujo_completo_por_los_handlers_del_sdk(
         assert r.status_code == 400 and r.json()["error"] == "invalid_grant"
         assert await proveedor.load_access_token(t2["access_token"]) is None
     assert mundo.acciones().count("mcp.refresh_reutilizado") == 1
+
+
+async def test_authorize_por_el_sdk_manda_la_cookie_que_liga_el_login_al_navegador(
+    proveedor: ProveedorTenderFlow,
+) -> None:
+    """``/authorize`` del SDK + middleware: la cookie sale con la redirección a Google (mcp-sql-7)."""
+    from mcp.server.auth.routes import create_auth_routes
+    from mcp.server.auth.settings import ClientRegistrationOptions
+    from pydantic import AnyHttpUrl
+    from starlette.applications import Starlette
+
+    from mcp_server.auth.proveedor import COOKIE_LOGIN, ligadura_de_login
+    from mcp_server.servidor import _CookieDeLogin
+
+    rutas = create_auth_routes(
+        proveedor,
+        AnyHttpUrl("https://mcp.tenderflow.example"),
+        client_registration_options=ClientRegistrationOptions(
+            enabled=True, valid_scopes=["mcp"], default_scopes=["mcp"]
+        ),
+    )
+    app = Starlette(routes=rutas)
+    app.add_middleware(_CookieDeLogin, segura=True)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="https://mcp.tenderflow.example"
+    ) as http:
+        r = await http.post(
+            "/register", json={"redirect_uris": [REDIRECT], "token_endpoint_auth_method": "none"}
+        )
+        client_id = r.json()["client_id"]
+        params = {
+            "client_id": client_id,
+            "redirect_uri": REDIRECT,
+            "response_type": "code",
+            "code_challenge": _pkce()[1],
+            "code_challenge_method": "S256",
+            "state": "estado-del-cliente",
+            "resource": RESOURCE,
+        }
+        r = await http.get("/authorize", params=params)
+        assert r.status_code == 302 and r.headers["location"].startswith("https://google.test/")
+        nonce = _query(r.headers["location"])["state"].split(":")[0]
+        assert r.headers["set-cookie"].startswith(f"{COOKIE_LOGIN}={ligadura_de_login(nonce)};")
+        # Una petición rechazada (cliente que no existe) no fija cookie alguna.
+        r = await http.get("/authorize", params={**params, "client_id": "no-existe"})
+        assert "set-cookie" not in r.headers
 
 
 async def test_cliente_confidencial_sin_secreto_en_el_almacen(

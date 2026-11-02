@@ -231,7 +231,14 @@ class TenderFactSheetsRepository:
         evidence_count: int,
         error_detail: str | None = None,
     ) -> None:
-        """Inserta o reemplaza de forma idempotente la ficha vigente."""
+        """Inserta o reemplaza de forma idempotente la ficha vigente.
+
+        Un ``failed`` **nunca** pisa una ficha ``extracted``/``needs_review``: la
+        ficha es dato compartido entre organizaciones y una regeneración fallida
+        (presupuesto LLM agotado, proveedor caído) no es motivo para borrar la
+        buena. El fallo queda en el log de quien lo provocó; la ficha vieja
+        sigue siendo candidata a reextraerse por versión.
+        """
         now = now_utc_iso()
         data_json = (
             json.dumps(facts, ensure_ascii=False, separators=(",", ":"))
@@ -250,7 +257,9 @@ class TenderFactSheetsRepository:
                 "model=excluded.model, data_json=excluded.data_json, "
                 "field_count=excluded.field_count, evidence_count=excluded.evidence_count, "
                 "error_detail=excluded.error_detail, extracted_at=excluded.extracted_at, "
-                "updated_at=excluded.updated_at",
+                "updated_at=excluded.updated_at "
+                "WHERE NOT (excluded.status = 'failed' "
+                "AND tender_fact_sheets.status IN ('extracted', 'needs_review'))",
                 (
                     licitacion_id,
                     status,

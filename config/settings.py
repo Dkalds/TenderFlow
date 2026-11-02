@@ -36,6 +36,43 @@ def _extract_sslmode(url: str) -> str | None:
 # Hosts sin red externa que interceptar — sslmode no aporta nada real ahí.
 _LOCAL_DB_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
+
+def _redis_publico_sin_tls(url: str) -> bool:
+    """``redis://`` (sin TLS) hacia un nombre con puntos o una IP que no es privada."""
+    from urllib.parse import urlsplit
+
+    try:
+        partes = urlsplit(url)
+        host = partes.hostname or ""
+    except ValueError:
+        return False
+    if partes.scheme != "redis" or not host:
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        # shortcut: un nombre sin puntos (`red-abc123`) se toma por red privada de la
+        # plataforma; subirlo si prod usa un host interno con puntos y el aviso sobra.
+        return "." in host and host != "localhost"
+    return not (ip.is_private or ip.is_loopback)
+
+
+def _origen_cors_seguro(origen: str) -> bool:
+    """``https://host`` o, solo para el loopback, ``http://host``; nunca ``*``."""
+    from urllib.parse import urlsplit
+
+    try:
+        partes = urlsplit(origen)
+        partes.port  # noqa: B018 — un puerto inválido lanza ValueError
+    except ValueError:
+        return False
+    if not partes.hostname:
+        return False
+    if partes.scheme == "https":
+        return True
+    return partes.scheme == "http" and partes.hostname in _LOCAL_DB_HOSTS
+
+
 # Techo por consulta para los perfiles que no sirven HTTP (ver
 # ``Settings._relax_batch_statement_timeout``). Cinco minutos cubre con margen
 # la consulta batch más lenta medida (76 s) sin dejar a un job colgado media
@@ -277,8 +314,9 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, ObjectStoreSetting
     # Si no se configura, se deriva de GOOGLE_CLIENT_SECRET como fallback.
     # En producción configura un valor aleatorio de 32+ caracteres:
     #   python -c "import secrets; print(secrets.token_hex(32))"
-    # Orígenes CORS permitidos en prod (lista separada por comas, vacío = bloquear todo)
-    # En dev se usa "*" automáticamente.
+    # Orígenes CORS permitidos (lista separada por comas, vacío = bloquear todo en
+    # prod; en dev `api/app.py` abre solo localhost:3000). En prod/staging el
+    # validador rechaza "*" y todo origen que no sea https (la API manda cookies).
     # Ej: "https://app.example.com,https://api.example.com"
     CORS_ALLOWED_ORIGINS: str = ""
 
@@ -461,7 +499,8 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, ObjectStoreSetting
     # Alta ABIERTA a cualquier correo, sin verificar el buzón (el modo de dev y
     # de tests). Apagada, que es lo de producción, `POST /auth/register` solo
     # admite correos con el acceso concedido y la cuenta se activa con un enlace
-    # al correo (RFC 2026-10-21-alta-con-contrasena-tras-concesion).
+    # al correo (RFC 2026-10-21-alta-con-contrasena-tras-concesion). En
+    # prod/staging activarlo impide arrancar (`_validate_prod_closed_registration`).
     ALLOW_SELF_REGISTRATION: bool = False
 
     # ── Conectores autonómicos / TACRC (RFC 20260611-1, Fase 5) ─────────
@@ -854,6 +893,12 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, ObjectStoreSetting
     RETENTION_CLIENT_ERRORS_DAYS: int = 30
     # Feedback del asistente (C5.4): sin texto libre salvo opt-in explícito.
     RETENTION_ASISTENTE_FEEDBACK_DAYS: int = 365
+    # Invitaciones a una organización: guardan el correo de quien aún puede no
+    # tener cuenta. Se purgan pasados estos días desde que caducaron, aceptadas o no.
+    RETENTION_ORG_INVITATIONS_DAYS: int = 90
+    # Outbox de eventos (ADR-027): solo los ya despachados. El payload de un
+    # evento puede nombrar a la persona que lo originó (`pursuit.assigned`).
+    RETENTION_DOMAIN_EVENTS_DAYS: int = 365
 
     # ── Validators ───────────────────────────────────────────────────────
 
@@ -1286,13 +1331,33 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, ObjectStoreSetting
 
     @model_validator(mode="after")
     def _validate_prod_cors_origins(self) -> Settings:
-        """En producción, alertar si CORS_ALLOWED_ORIGINS está vacío."""
-        if self._is_prod_data and self._serves_http and not self.CORS_ALLOWED_ORIGINS:
+        """En producción, alertar si CORS_ALLOWED_ORIGINS está vacío y rechazar orígenes inseguros.
+
+        La API responde con ``allow_credentials=True``: un ``*`` (Starlette
+        refleja entonces el ``Origin`` de quien lleva cookie) o un origen que no
+        sea ``https://`` entregaría la sesión a cualquier página. Solo el
+        loopback puede ir por ``http://`` (depurar contra la API real).
+        """
+        if not (self._is_prod_data and self._serves_http):
+            return self
+        if not self.CORS_ALLOWED_ORIGINS:
             warnings.warn(
                 "CORS_ALLOWED_ORIGINS está vacío en ENV=prod. Todas las solicitudes "
                 "cross-origin serán bloqueadas. Configura los orígenes permitidos: "
                 'CORS_ALLOWED_ORIGINS="https://app.example.com"',
                 stacklevel=2,
+            )
+            return self
+        inseguros = [
+            origen
+            for origen in (o.strip() for o in self.CORS_ALLOWED_ORIGINS.split(","))
+            if origen and not _origen_cors_seguro(origen)
+        ]
+        if inseguros:
+            raise ValueError(
+                f"CORS_ALLOWED_ORIGINS tiene orígenes no admitidos en ENV={self.ENV}: "
+                f"{', '.join(inseguros)}. Solo https://… (el comodín '*' y http:// no valen "
+                "con cookies de sesión; el loopback sí puede ir por http)."
             )
         return self
 
@@ -1317,6 +1382,14 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, ObjectStoreSetting
             raise ValueError(
                 "REDIS_PASSWORD es obligatorio en ENV=prod con APP_PROFILE=api. "
                 'Genera uno con: python -c "import secrets; print(secrets.token_hex(32))"'
+            )
+        if self._is_prod_data and self._serves_http and _redis_publico_sin_tls(self.REDIS_URL):
+            # Aviso y no error: el Redis interno de la plataforma va por `redis://`
+            # dentro de su red privada y desde el repo no se ve cuál es el de prod.
+            warnings.warn(
+                "REDIS_URL usa redis:// contra un host público: contraseña y datos de "
+                "caché y rate limit viajan sin cifrar. Usa rediss:// (TLS).",
+                stacklevel=2,
             )
         return self
 
@@ -1351,6 +1424,22 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, ObjectStoreSetting
                 f"Se esperaba uno de {allowed}, se recibió un valor que no matchea."
             )
         return v
+
+    @model_validator(mode="after")
+    def _validate_prod_closed_registration(self) -> Settings:
+        """El alta abierta no existe fuera de dev: ``ALLOW_SELF_REGISTRATION`` falla el arranque.
+
+        El modo abierto crea la cuenta verificada sin probar el buzón: quien
+        registra primero la dirección de otro conserva contraseña y sesión
+        cuando el titular entra después por Google, y recibe sus invitaciones.
+        """
+        if self.ALLOW_SELF_REGISTRATION and self.ENV in ("prod", "staging"):
+            raise ValueError(
+                "ALLOW_SELF_REGISTRATION no puede estar activo en ENV=prod/staging: "
+                "el alta abierta no verifica el correo. Quítalo del entorno (el alta "
+                "de producción es la cerrada, con concesión y enlace al buzón)."
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_prod_database_ssl(self) -> Settings:
@@ -1562,6 +1651,27 @@ def oauth_microsoft_tenant() -> str:
 def mcp_database_url() -> str:
     """``MCP_DATABASE_URL`` — DSN del rol ``tenderflow_mcp`` (solo lectura)."""
     return os.environ.get("MCP_DATABASE_URL", "").strip()
+
+
+def mcp_database_ssl_problema() -> str | None:
+    """Por qué ``MCP_DATABASE_URL`` no cumple la política de TLS de ``DATABASE_URL``, o ``None``.
+
+    Es la de ``Settings._validate_prod_database_ssl`` (que solo mira
+    ``DATABASE_URL``): en prod/staging, o con un host remoto, hace falta un
+    ``sslmode`` que garantice TLS (``require`` o más; ``verify-full`` es lo que
+    pide el runbook). Sin él libpq usa ``prefer`` y un atacante en la red
+    (MITM) entre el servicio y el pooler lee el SQL y los datos. Vacío no es
+    problema de TLS: de eso se queja ``validar_configuracion``.
+    """
+    url = mcp_database_url()
+    if not url:
+        return None
+    if settings.ENV not in ("prod", "staging") and _extract_host(url) in _LOCAL_DB_HOSTS:
+        return None
+    sslmode = _extract_sslmode(url)
+    if sslmode is None or sslmode in ("disable", "allow", "prefer"):
+        return "MCP_DATABASE_URL (sslmode=verify-full o, como mínimo, require)"
+    return None
 
 
 def mcp_public_url() -> str:

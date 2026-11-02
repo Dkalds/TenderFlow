@@ -45,6 +45,24 @@ def descomponer_detalle(detail: str) -> dict[str, str]:
     return campos
 
 
+def patron_recurso_organizacion(organization_id: int) -> str:
+    """Regex (POSIX, sirve también en ``re``) de los eventos de una organización.
+
+    Anclada a la **cabecera** que escribe ``db.audit.componer_detalle``
+    (``event | outcome | [ip |] resource=...``): el recurso solo cuenta si ocupa
+    su sitio en la cabecera. Antes bastaba un `` | resource=org:7 | `` en
+    cualquier parte de ``detail`` —el nombre de una API key o de un webhook
+    llega ahí— para plantar un evento en el rastro de otra organización. Los
+    campos de cabecera no pueden contener ``|`` (el escritor lo quita), así que
+    ``[^|]*`` no se desborda hacia el payload. Filas anteriores a la defensa del
+    escritor también quedan cubiertas: el filtro no mira su payload.
+    """
+    return (
+        r"^event=[^|]* \| outcome=[^|]* \| (ip=[^|]* \| )?"
+        rf"resource=(org|organization):{int(organization_id)}( \||$)"
+    )
+
+
 def _actor_user_id(fila: dict[str, Any]) -> int | None:
     """Actor como ``users.id``: la columna de v129 y, si falta, la clave en texto."""
     if fila.get("user_id") is not None:
@@ -104,8 +122,9 @@ class AuditRepository:
         ``audit_log`` no tiene columna de organización (no hay slot de
         migración): los eventos de organización se escriben con
         ``resource="org:<id>"`` dentro de ``detail`` (``shared/audit_events``)
-        y aquí se recuperan con una regex anclada a los separadores, para que
-        ``org:12`` no case con ``org:123``. Es un barrido por organización, no
+        y aquí se recuperan con una regex anclada a la cabecera y a los
+        separadores (:func:`patron_recurso_organizacion`), para que ``org:12`` no
+        case con ``org:123`` ni un ``resource=org:12`` del payload cuente. Es un barrido por organización, no
         por usuario: quién puede pedirlo lo decide la ruta (owner/admin), y
         ``tests/test_user_key_sql_isolation.py`` lo documenta como tal.
 
@@ -119,9 +138,8 @@ class AuditRepository:
         organización y quedaban fuera de su rastro; leer las dos formas recupera
         también lo ya persistido, que cambiar solo el escritor no arreglaría.
         """
-        patron = rf"(^|\| )resource=(org|organization):{int(organization_id)}( \||$)"
         clausulas = ["detail ~ %s"]
-        params: list[object] = [patron]
+        params: list[object] = [patron_recurso_organizacion(organization_id)]
         if desde:
             clausulas.append("created_at >= %s")
             params.append(desde)

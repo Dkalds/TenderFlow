@@ -741,6 +741,55 @@ class TestListPendingLicitacionesSelector:
         )
         assert repo.list_pending_licitaciones(extraction_version="tender-facts-v2") == []
 
+    @pytest.mark.parametrize("estado_bueno", ["extracted", "needs_review"])
+    def test_failed_never_overwrites_a_good_sheet(self, tmp_db, estado_bueno):
+        """Auditoría 2026-11 (llm-asistente-1): la ficha es dato compartido entre
+        organizaciones y una regeneración fallida no puede dejarla en ``failed``
+        con ``data_json`` NULL. Una ``failed`` previa sí se actualiza."""
+        _db_mod, _ = tmp_db
+        from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
+
+        _seed_pages("SEL-GOOD")
+        repo = TenderFactSheetsRepository()
+        repo.upsert(
+            licitacion_id="SEL-GOOD",
+            status=estado_bueno,
+            extraction_version="tender-facts-v2",
+            model="gpt-4o-mini",
+            facts={"lots": []},
+            field_count=3,
+            evidence_count=2,
+        )
+
+        repo.upsert(
+            licitacion_id="SEL-GOOD",
+            status="failed",
+            extraction_version="tender-facts-v2",
+            model="gpt-4o-mini",
+            facts=None,
+            field_count=0,
+            evidence_count=0,
+            error_detail="presupuesto agotado",
+        )
+
+        ficha = repo.get("SEL-GOOD")
+        assert ficha is not None
+        assert ficha["status"] == estado_bueno
+        assert ficha["facts"] == {"lots": []}
+        assert ficha["error_detail"] is None
+
+        # Una ficha que ya estaba rota sí se actualiza, y una buena nueva pisa a la rota.
+        repo.upsert(
+            licitacion_id="SEL-GOOD",
+            status="extracted",
+            extraction_version="tender-facts-v2",
+            model="gpt-4o-mini",
+            facts={"lots": [1]},
+            field_count=4,
+            evidence_count=2,
+        )
+        assert repo.get("SEL-GOOD")["facts"] == {"lots": [1]}
+
     def test_failed_is_pending_regardless_of_its_version(self, tmp_db):
         _db_mod, _ = tmp_db
         from db.repositories.tender_fact_sheets import TenderFactSheetsRepository

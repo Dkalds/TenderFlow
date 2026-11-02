@@ -158,7 +158,9 @@ def overview(
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
     estado: str | None = Query(default=None, description="Filter by estado"),
-    q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
+    q: str | None = Query(
+        default=None, max_length=200, description="Free-text search (titulo, organo, id)"
+    ),
     importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
     importe_max: float | None = Query(
         default=None, ge=0, description="Importe de licitación máximo, en euros (inclusive)"
@@ -204,7 +206,9 @@ def trends(
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
     estado: str | None = Query(default=None, description="Filter by estado"),
-    q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
+    q: str | None = Query(
+        default=None, max_length=200, description="Free-text search (titulo, organo, id)"
+    ),
     importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
     importe_max: float | None = Query(
         default=None, ge=0, description="Importe de licitación máximo, en euros (inclusive)"
@@ -600,7 +604,9 @@ def pipeline(
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
     estado: str | None = Query(default=None, description="Filter by estado"),
-    q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
+    q: str | None = Query(
+        default=None, max_length=200, description="Free-text search (titulo, organo, id)"
+    ),
     importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
     _user: dict[str, Any] = Depends(require_analytics_auth),
 ) -> PipelineResult:
@@ -626,7 +632,9 @@ async def resumen_novedades(
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
     estado: str | None = Query(default=None, description="Filter by estado"),
-    q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
+    q: str | None = Query(
+        default=None, max_length=200, description="Free-text search (titulo, organo, id)"
+    ),
     importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
     importe_max: float | None = Query(
         default=None, ge=0, description="Importe de licitación máximo, en euros (inclusive)"
@@ -762,7 +770,9 @@ def resumen_hoy(
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
     estado: str | None = Query(default=None, description="Filter by estado"),
-    q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
+    q: str | None = Query(
+        default=None, max_length=200, description="Free-text search (titulo, organo, id)"
+    ),
     importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
     importe_max: float | None = Query(
         default=None, ge=0, description="Importe de licitación máximo, en euros (inclusive)"
@@ -809,7 +819,9 @@ def resumen_timeline(
     ccaa: str | None = Query(default=None, description="Filter by CCAA"),
     tecnologia: str | None = Query(default=None, description="Filter by tecnologia"),
     estado: str | None = Query(default=None, description="Filter by estado"),
-    q: str | None = Query(default=None, description="Free-text search (titulo, organo, id)"),
+    q: str | None = Query(
+        default=None, max_length=200, description="Free-text search (titulo, organo, id)"
+    ),
     importe_min: float | None = Query(default=None, ge=0, description="Min tender budget (EUR)"),
     importe_max: float | None = Query(
         default=None, ge=0, description="Importe de licitación máximo, en euros (inclusive)"

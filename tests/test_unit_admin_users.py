@@ -103,7 +103,7 @@ class TestAdminDeactivateUser:
         try:
             with (
                 patch("api.routes.admin_users.get_user_by_id", return_value=target),
-                patch("api.routes.admin_users.anonymize_user") as mock_anon,
+                patch("api.routes.admin_users.anonymize_account") as mock_anon,
                 patch(
                     "api.routes.admin_users.revoke_all_sessions", return_value=0
                 ) as mock_sessions,
@@ -116,7 +116,8 @@ class TestAdminDeactivateUser:
         finally:
             app.dependency_overrides.clear()
         assert resp.status_code == 200
-        mock_anon.assert_called_once_with(7)
+        # La cadena completa del derecho al olvido, con el correo aún presente.
+        mock_anon.assert_called_once_with(7, "anon@x.com")
         mock_sessions.assert_called_once_with(7)
         mock_keys.assert_called_once_with(7)
 

@@ -27,6 +27,7 @@ Dos reglas que conviene no perder de vista:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -485,15 +486,42 @@ def _cuerpo_json(tipo: str, payload: dict[str, Any], timestamp: str) -> dict[str
     return {"event": tipo, "data": payload, "timestamp": timestamp}
 
 
+def _mrkdwn_slack(texto: str) -> str:
+    """Escapa lo que Slack interpreta en un campo ``mrkdwn``.
+
+    Los valores del payload no son de fiar: ``empresa`` y ``origen`` los escribe
+    un visitante anónimo en el formulario público, y ``titulo`` viene de una
+    fuente externa. Sin escapar, ``<https://phish.example|Inicia sesión>`` sale
+    como un enlace con texto a elección y ``<!channel>`` como una mención, en un
+    mensaje firmado con el secreto legítimo. Slack pide escapar exactamente
+    ``&``, ``<`` y ``>``.
+    """
+    return texto.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+_MARKDOWN_TEAMS = re.compile(r"([\\`*~\[\]])")
+
+
+def _markdown_teams(texto: str) -> str:
+    r"""Escapa con ``\`` lo que el Markdown de una Adaptive Card convertiría en formato o enlace.
+
+    Mismo motivo que :func:`_mrkdwn_slack`: ``[texto](https://destino)`` en un
+    ``TextBlock`` o un ``Fact`` se pinta como un enlace con texto a elección.
+    """
+    return _MARKDOWN_TEAMS.sub(r"\\\1", texto)
+
+
 def _cuerpo_slack(tipo: str, payload: dict[str, Any], timestamp: str) -> dict[str, Any]:
     """Block Kit: ``text`` de respaldo + bloques de sección.
 
     ``text`` no es decorativo — es lo que Slack usa en la notificación push y
     en los clientes que no renderizan bloques; un mensaje sin él llega vacío al
-    móvil.
+    móvil. Es mrkdwn igual que los campos, así que va escapado igual; el
+    ``header`` es ``plain_text`` y no se interpreta.
     """
     campos = [
-        {"type": "mrkdwn", "text": f"*{clave}*\n{valor}"} for clave, valor in _hechos(payload)
+        {"type": "mrkdwn", "text": f"*{_mrkdwn_slack(clave)}*\n{_mrkdwn_slack(valor)}"}
+        for clave, valor in _hechos(payload)
     ]
     bloques: list[dict[str, Any]] = [
         {
@@ -510,7 +538,7 @@ def _cuerpo_slack(tipo: str, payload: dict[str, Any], timestamp: str) -> dict[st
             "elements": [{"type": "mrkdwn", "text": f"TenderFlow · {tipo} · {timestamp}"}],
         }
     )
-    return {"text": _resumen(tipo, payload), "blocks": bloques}
+    return {"text": _mrkdwn_slack(_resumen(tipo, payload)), "blocks": bloques}
 
 
 def _cuerpo_teams(tipo: str, payload: dict[str, Any], timestamp: str) -> dict[str, Any]:
@@ -522,14 +550,17 @@ def _cuerpo_teams(tipo: str, payload: dict[str, Any], timestamp: str) -> dict[st
         "body": [
             {
                 "type": "TextBlock",
-                "text": _resumen(tipo, payload),
+                "text": _markdown_teams(_resumen(tipo, payload)),
                 "weight": "Bolder",
                 "size": "Medium",
                 "wrap": True,
             },
             {
                 "type": "FactSet",
-                "facts": [{"title": clave, "value": valor} for clave, valor in _hechos(payload)],
+                "facts": [
+                    {"title": clave, "value": _markdown_teams(valor)}
+                    for clave, valor in _hechos(payload)
+                ],
             },
             {
                 "type": "TextBlock",

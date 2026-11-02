@@ -275,15 +275,15 @@ class TestRateLimit:
         """En un fallo de caché, el tier va a la BD: también tiene que ir a un hilo."""
         con_loop: list[bool] = []
 
-        def _tier(key_hash: str) -> int | None:
+        def _tier(key_hash: str) -> tuple[bool, int | None]:
             try:
                 asyncio.get_running_loop()
                 con_loop.append(True)
             except RuntimeError:
                 con_loop.append(False)
-            return 50
+            return True, 50
 
-        monkeypatch.setattr(mw, "_tier_limit", _tier)
+        monkeypatch.setattr(mw, "_tier_de_clave", _tier)
 
         TestClient(_app_con_rate_limit()).get("/api/v1/algo", headers={"X-API-Key": "k"})
 

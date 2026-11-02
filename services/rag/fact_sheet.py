@@ -1020,6 +1020,14 @@ def extract_fact_sheet(
     if not selected:
         raise ValueError(_SIN_TEXTO)
 
+    # También fuera del `try`, por la misma razón: un presupuesto LLM agotado
+    # (el global lo puede agotar un tercero) no es una extracción fallida ni
+    # motivo para tocar la ficha, que es dato compartido entre organizaciones.
+    # `LLMBudgetExceeded` sube tal cual y la ruta lo traduce a 429.
+    from llm.budget import LLMBudgetExceeded, get_budget_guard
+
+    get_budget_guard().check()
+
     try:
         extraccion = _extraer_de_seleccion(
             pages, selected, licitacion_id=licitacion_id, model=model
@@ -1044,6 +1052,10 @@ def extract_fact_sheet(
             field_count=field_count,
             evidence_count=evidence_count,
         )
+    except LLMBudgetExceeded:
+        # Se agotó a mitad de la extracción (la segunda pasada, de documentos):
+        # tampoco es un fallo de la ficha.
+        raise
     except Exception as exc:
         sheets.upsert(
             licitacion_id=licitacion_id,
@@ -1188,6 +1200,7 @@ def run_background_extraction(
     *,
     model: str,
     budget_subject: str | None = None,
+    budget_org: str | None = None,
 ) -> None:
     """Cuerpo del BackgroundTask de ``POST …/ficha-pliego/extract-async``.
 
@@ -1202,10 +1215,13 @@ def run_background_extraction(
     se miró). Guardarlo en la del anuncio TED lo dejaría en una fila que
     ``get_fact_sheet`` nunca consulta.
     """
-    from llm.budget import bind_budget_subject
+    from llm.budget import bind_budget_org, bind_budget_subject
 
     try:
         bind_budget_subject(budget_subject)
+        # Sin organización el gasto del job solo alimenta el cubo global y el
+        # del usuario: el tope diario por organización (C2.9) nunca lo vería.
+        bind_budget_org(budget_org)
         try:
             record = extract_fact_sheet_on_demand(licitacion_id, model=model)
         except ValidationError:

@@ -3,6 +3,8 @@
 La comprobación delega en db.audit.verify_hash_chain: valida continuidad,
 HMAC de cada registro moderno y la cabecera firmada (hash final y número de
 filas). Esta última es la que hace detectables borrados al final de la cadena.
+Tras una purga de retención la cadena arranca en el ancla firmada que la propia
+purga deja en ``audit_chain_state``, no en ``genesis``.
 
 Verifica la BD a la que apunta ``DATABASE_URL``. Desde ADR-021 Postgres es el
 único motor, así que ya no hay ``--db-path``: apuntá ``DATABASE_URL`` a la
