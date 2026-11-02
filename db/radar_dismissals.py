@@ -23,6 +23,7 @@ y sigue sirviendo a quien llame sin id las filas escritas antes.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Final, Literal
 
 from db.database import connect, connect_read
@@ -50,6 +51,7 @@ def add(
     hasta: str | None = None,
     accion: str | None = None,
     organization_id: int | None = None,
+    desglose: dict[str, float] | None = None,
     user_id: int,
 ) -> None:
     """Marca una licitación como descartada por el usuario.
@@ -62,6 +64,11 @@ def add(
     triaje no puede depender de la telemetría.
 
     ``hasta`` (ISO-8601) y ``accion`` implementan silenciar y posponer (F5.6).
+
+    ``desglose`` (``v169``) es el desglose por dimensión de ese mismo score, con
+    la forma de ``pursuits.desglose_al_abrir``: es lo que deja a la propuesta
+    de pesos comparar lo que se descarta con lo que se abre. Igual que el score,
+    solo se escribe la primera vez.
 
     **Aquí sí se reescribe** una fila existente, al revés que el ``DO NOTHING``
     original. El motivo del ``DO NOTHING`` era conservar el score del primer
@@ -81,19 +88,35 @@ def add(
     ``user_notifications`` el recordatorio de :func:`pospuestos_vencidos` ya
     llega por ``user_id`` (v162).
     """
+    # Mismo serializador que `pursuits.desglose_al_abrir`
+    # (`services/pursuits.py::_serializar_desglose`): las dos columnas se leen
+    # con el mismo código.
+    desglose_json = json.dumps(desglose, ensure_ascii=False, sort_keys=True) if desglose else None
     with connect() as c:
         c.execute(
             "INSERT INTO radar_dismissals "
-            "  (user_key, user_id, id_externo, score, banda, hasta, accion, organization_id) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
+            "  (user_key, user_id, id_externo, score, banda, hasta, accion, organization_id, "
+            "   desglose) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) "
             "ON CONFLICT (user_id, id_externo) DO UPDATE SET "
             "  score = COALESCE(radar_dismissals.score, EXCLUDED.score), "
             "  banda = COALESCE(radar_dismissals.banda, EXCLUDED.banda), "
+            "  desglose = COALESCE(radar_dismissals.desglose, EXCLUDED.desglose), "
             "  hasta = EXCLUDED.hasta, "
             "  accion = EXCLUDED.accion, "
             "  organization_id = COALESCE("
             "    EXCLUDED.organization_id, radar_dismissals.organization_id)",
-            (user_key, user_id, id_externo, score, banda, hasta, accion, organization_id),
+            (
+                user_key,
+                user_id,
+                id_externo,
+                score,
+                banda,
+                hasta,
+                accion,
+                organization_id,
+                desglose_json,
+            ),
         )
 
     # Escritura doble hacia `follows` (ADR-031 §B, fase aditiva): un descarte es
@@ -253,3 +276,26 @@ def pospuestos_vencidos(*, desde_iso: str) -> list[dict[str, Any]]:
             }
             for row in cur.fetchall()
         ]
+
+
+def descartes_con_desglose(organization_id: int, *, limit: int = 2000) -> list[str]:
+    """Desgloses (JSON) de los descartes permanentes hechos desde la organización.
+
+    Es la mitad «no encaja» de la propuesta de pesos por triaje
+    (``services/pursuits.py::get_weights_proposal``); la otra mitad son las
+    oportunidades abiertas con desglose.
+
+    Solo ``accion IS NULL`` —el descarte de siempre—: silenciar es «ahora no» y
+    posponer es trabajo aplazado, y ninguno de los dos dice que la licitación no
+    encaje. Solo las filas con ``organization_id`` y desglose: las anteriores a
+    ``v169`` no lo tienen y no se pueden reconstruir. Los más recientes primero,
+    para que el tope se quede con el triaje de ahora.
+    """
+    with connect_read() as c:
+        cur = c.execute(
+            "SELECT desglose FROM radar_dismissals "
+            "WHERE organization_id = %s AND accion IS NULL AND desglose IS NOT NULL "
+            "ORDER BY created_at DESC LIMIT %s",
+            (organization_id, max(1, min(int(limit), 20000))),
+        )
+        return [str(row[0]) for row in cur.fetchall()]

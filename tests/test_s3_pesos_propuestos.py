@@ -6,7 +6,9 @@ Dos mitades, las dos sin Postgres:
   es la única propiedad que un usuario puede comprobar a ojo: la dimensión que
   valía más en las ganadas que en las perdidas sube.
 - ``get_weights_proposal`` se prueba con el repositorio suplantado, para fijar
-  el umbral de veinte cierres y que por debajo no se enseñe ninguna propuesta.
+  el umbral de veinte cierres y que por debajo no se enseñe ninguna propuesta,
+  salvo que el triaje (abiertas frente a descartadas, ``v169``) llegue a su
+  propio mínimo por lado.
 
 Que aplicar la propuesta quede en ``audit_log`` necesita base y vive en
 ``tests/test_s3_lotes_api.py``.
@@ -23,6 +25,7 @@ import services.pursuits as pursuits_svc
 from config.scoring_weights import WEIGHTS_TOTAL, validate_scoring_weights
 from services.pursuits import (
     PESOS_MINIMO_CIERRES,
+    PESOS_MINIMO_TRIAJE_POR_LADO,
     PursuitValidationError,
     proponer_pesos,
 )
@@ -119,11 +122,15 @@ def test_el_paso_maximo_acota_cuanto_se_mueve_una_dimension() -> None:
 class _RepoFalso:
     """Sustituye a ``PursuitRepository`` para no necesitar Postgres."""
 
-    def __init__(self, filas: list[dict[str, Any]]) -> None:
+    def __init__(self, filas: list[dict[str, Any]], abiertas: list[str] | None = None) -> None:
         self.filas = filas
+        self.abiertas = abiertas or []
 
     def closed_scored_rows(self, organization_id: int, **_kwargs: Any) -> list[dict[str, Any]]:
         return self.filas
+
+    def opened_scored_breakdowns(self, organization_id: int, **_kwargs: Any) -> list[str]:
+        return self.abiertas
 
 
 def _filas_cerradas(ganadas: int, perdidas: int) -> list[dict[str, Any]]:
@@ -153,6 +160,8 @@ def _organizacion_suplantada(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         pursuits_svc, "_pesos_vigentes", lambda *_a, **_k: (dict(_PESOS_BASE), "global")
     )
+    # Sin descartes salvo que el test los ponga: la mitad «no encaja» lee BD.
+    monkeypatch.setattr("db.radar_dismissals.descartes_con_desglose", lambda *_a, **_k: [])
 
 
 def test_con_menos_de_veinte_cierres_devuelve_insuficiente(
@@ -210,3 +219,100 @@ def test_aplicar_sin_propuesta_no_escribe_nada(
         pursuits_svc.apply_weights_proposal(1, user_key="uk", organization_id=7)
 
     assert str(PESOS_MINIMO_CIERRES) in str(excinfo.value)
+
+
+# ── El triaje como base mientras no haya cierres (v169) ─────────────────────
+
+
+def _triaje(
+    monkeypatch: pytest.MonkeyPatch, *, cierres: tuple[int, int], abiertas: int, descartadas: int
+) -> None:
+    """Cierres, oportunidades abiertas y descartes, cada uno con su desglose.
+
+    Lo abierto puntuaba alto en ``afinidad`` y lo descartado bajo: la
+    propuesta tiene que subir ``afinidad``.
+    """
+    monkeypatch.setattr(
+        pursuits_svc,
+        "_repo",
+        _RepoFalso(
+            _filas_cerradas(*cierres),
+            abiertas=[json.dumps(_desglose(afinidad=25.0))] * abiertas,
+        ),
+    )
+    monkeypatch.setattr(
+        "db.radar_dismissals.descartes_con_desglose",
+        lambda *_a, **_k: [json.dumps(_desglose(afinidad=2.0))] * descartadas,
+    )
+
+
+def test_con_pocos_cierres_el_triaje_sostiene_la_propuesta(
+    monkeypatch: pytest.MonkeyPatch, _organizacion_suplantada: None
+) -> None:
+    """Diez abiertas y diez descartadas bastan, y la respuesta dice que es triaje."""
+    minimo = PESOS_MINIMO_TRIAJE_POR_LADO
+    _triaje(monkeypatch, cierres=(2, 1), abiertas=minimo, descartadas=minimo)
+
+    propuesta = pursuits_svc.get_weights_proposal(1, user_key="uk", organization_id=7)
+
+    assert propuesta.estado == "propuesta"
+    assert propuesta.fuente == "triaje"
+    assert (propuesta.n_abiertas, propuesta.n_descartadas) == (minimo, minimo)
+    # Los cierres siguen declarados aunque no sostengan la propuesta.
+    assert propuesta.n_cierres == 3
+    assert propuesta.pesos_propuestos is not None
+    assert propuesta.pesos_propuestos["afinidad"] > _PESOS_BASE["afinidad"]
+    validate_scoring_weights(propuesta.pesos_propuestos)
+
+
+def test_un_lado_del_triaje_por_debajo_del_minimo_no_propone(
+    monkeypatch: pytest.MonkeyPatch, _organizacion_suplantada: None
+) -> None:
+    """Treinta abiertas y nueve descartes: la media de nueve es una anécdota."""
+    minimo = PESOS_MINIMO_TRIAJE_POR_LADO
+    _triaje(monkeypatch, cierres=(0, 0), abiertas=30, descartadas=minimo - 1)
+
+    propuesta = pursuits_svc.get_weights_proposal(1, user_key="uk", organization_id=7)
+
+    assert propuesta.estado == "insuficiente"
+    assert propuesta.fuente == "cierres"
+    assert propuesta.pesos_propuestos is None
+    assert (propuesta.n_abiertas, propuesta.n_descartadas) == (30, minimo - 1)
+    assert propuesta.minimo_triaje_por_lado == minimo
+
+
+def test_con_cierres_suficientes_mandan_los_cierres(
+    monkeypatch: pytest.MonkeyPatch, _organizacion_suplantada: None
+) -> None:
+    """Lo que se gana es la pregunta más dura: con veinte cierres, manda."""
+    _triaje(monkeypatch, cierres=(10, 10), abiertas=50, descartadas=50)
+
+    propuesta = pursuits_svc.get_weights_proposal(1, user_key="uk", organization_id=7)
+
+    assert propuesta.fuente == "cierres"
+    assert propuesta.pesos_propuestos is not None
+    assert propuesta.pesos_propuestos["margen"] > _PESOS_BASE["margen"]
+
+
+def test_un_desglose_de_triaje_ilegible_no_cuenta(
+    monkeypatch: pytest.MonkeyPatch, _organizacion_suplantada: None
+) -> None:
+    minimo = PESOS_MINIMO_TRIAJE_POR_LADO
+    _triaje(monkeypatch, cierres=(0, 0), abiertas=minimo, descartadas=minimo)
+    pursuits_svc._repo.abiertas.append("{no es json")
+
+    propuesta = pursuits_svc.get_weights_proposal(1, user_key="uk", organization_id=7)
+
+    assert propuesta.n_abiertas == minimo
+
+
+def test_aplicar_sin_base_dice_las_dos_formas_de_tenerla(
+    monkeypatch: pytest.MonkeyPatch, _organizacion_suplantada: None
+) -> None:
+    _triaje(monkeypatch, cierres=(1, 1), abiertas=4, descartadas=3)
+
+    with pytest.raises(PursuitValidationError) as excinfo:
+        pursuits_svc.apply_weights_proposal(1, user_key="uk", organization_id=7)
+
+    mensaje = str(excinfo.value)
+    assert "hay 2" in mensaje and "hay 4 y 3" in mensaje

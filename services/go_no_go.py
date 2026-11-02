@@ -314,10 +314,25 @@ def _certificacion_que_encaja(
     return None
 
 
+def fecha_de_plazo(valor: object) -> date | None:
+    """La fecha de un plazo guardado como texto ISO (``fecha_limite``), o ``None``.
+
+    La columna es ``text`` y puede traer hora («2026-11-15T14:00:00»): solo
+    cuenta el día. Un valor ilegible es ``None``, que es «no se sabe el plazo»,
+    nunca un plazo inventado.
+    """
+    texto = str(valor or "")[:10]
+    try:
+        return date.fromisoformat(texto)
+    except ValueError:
+        return None
+
+
 def _evaluar_certificaciones(
     facts: TenderFactSheet,
     capacidad: OrganizationCapabilities,
     hoy: date,
+    fecha_presentacion: date | None = None,
 ) -> list[ChecklistItem]:
     items: list[ChecklistItem] = []
     # Desde v147 el perfil guarda también documentación administrativa (AEAT,
@@ -363,6 +378,33 @@ def _evaluar_certificaciones(
                     motivo=(
                         f"«{encaje.nombre}» está declarada pero caducó el "
                         f"{encaje.vigente_hasta.isoformat()}."
+                    ),
+                    evidencia=list(requisito.evidence),
+                    dato_organizacion=encaje.nombre,
+                )
+            )
+            continue
+        # La solvencia se acredita a la fecha final de presentación de ofertas,
+        # no al día en que se mira (art. 140.4 LCSP). Un certificado vigente hoy
+        # que caduca antes de esa fecha no cubre la oferta tal y como está
+        # declarado; se dice ahora, mientras aún da tiempo a renovarlo, y no el
+        # día después, que es cuando el aviso de caducidad llega por su cuenta.
+        if (
+            fecha_presentacion is not None
+            and encaje.vigente_hasta is not None
+            and encaje.vigente_hasta < fecha_presentacion
+        ):
+            items.append(
+                ChecklistItem(
+                    familia="certifications",
+                    requisito=requisito.name,
+                    veredicto="no_cumple",
+                    motivo=(
+                        f"«{encaje.nombre}» está vigente hoy pero caduca el "
+                        f"{encaje.vigente_hasta.isoformat()}, antes de la fecha límite de "
+                        f"presentación ({fecha_presentacion.isoformat()}), que es cuando se "
+                        "acredita la solvencia. Si la renuevas, actualiza su vigencia en la "
+                        "capacidad de la organización."
                     ),
                     evidencia=list(requisito.evidence),
                     dato_organizacion=encaje.nombre,
@@ -784,6 +826,7 @@ def evaluate(
     hoy: date,
     oficiales: CondicionesOficiales | None = None,
     lote_numero: str | None = None,
+    fecha_presentacion: date | None = None,
 ) -> GoNoGoChecklist:
     """Contrasta una ficha contra un perfil. Función pura: ni lee ni escribe BD.
 
@@ -793,7 +836,8 @@ def evaluate(
     ``oficiales`` son las condiciones de la publicación oficial (v148): cuando
     traen solvencia económica o técnica, esa familia se contrasta con ellas y
     no con la ficha. ``lote_numero`` acota sus requisitos al lote de la
-    oportunidad.
+    oportunidad. ``fecha_presentacion`` es la fecha límite de la licitación:
+    con ella, una certificación que caduca antes no cuenta como vigente.
     """
     facts = record.facts if record is not None else None
     if facts is None:
@@ -815,7 +859,7 @@ def evaluate(
     )
 
     por_familia: dict[ChecklistFamilia, list[ChecklistItem]] = {
-        "certifications": _evaluar_certificaciones(facts, capabilities, hoy),
+        "certifications": _evaluar_certificaciones(facts, capabilities, hoy, fecha_presentacion),
         "economic_solvency": _evaluar_solvencia_economica(economica, capabilities),
         "technical_solvency": _evaluar_solvencia_tecnica(tecnica, capabilities),
         "team_requirements": _evaluar_equipo(facts, capabilities),
@@ -923,6 +967,7 @@ def build_checklist(
             hoy=hoy or date.today(),
             oficiales=_condiciones_oficiales_de(licitacion_id),
             lote_numero=str(lote) if lote is not None else None,
+            fecha_presentacion=fecha_de_plazo(row.get("tender_deadline")),
         )
 
         # Sin ficha ni condiciones oficiales no hay nada que sellar: el ledger

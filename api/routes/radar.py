@@ -57,17 +57,20 @@ def _user_id(ctx: dict[str, Any]) -> int | None:
 
 
 async def _organizacion_activa(ctx: dict[str, Any]) -> int | None:
-    """La organización desde la que el usuario pospone, o ``None``.
+    """La organización desde la que el usuario descarta o pospone, o ``None``.
 
-    Sólo hace falta para `posponer`: es lo que permite entregar el
+    Hace falta para dos cosas: `posponer` la necesita para entregar el
     recordatorio, porque la campana lee `user_notifications` siempre con
-    ámbito de organización y una alerta sin él no la ve nadie.
+    ámbito de organización y una alerta sin él no la ve nadie; y un descarte
+    con desglose (`v169`) la necesita para contar en la propuesta de pesos de
+    esa organización, que compara lo que su equipo abre con lo que descarta.
 
     Devuelve ``None`` —y el job no avisa, pero el aplazamiento sí oculta la
     señal— cuando la sesión no tiene usuario detrás (llamadas con API key) o
     cuando la resolución falla. Es la degradación correcta: posponer sin
     recordatorio sigue siendo útil; reventar el descarte porque no se pudo
-    resolver una organización, no.
+    resolver una organización, no. Lo mismo para el descarte: sin organización
+    no cuenta en la propuesta de pesos, pero se descarta igual.
     """
     user_id = ctx.get("user_id")
     if user_id is None:
@@ -135,6 +138,11 @@ class RadarDismissalBody(BaseModel):
     #: veces es lo que hacía indeterminista el enumerado del contrato; el
     #: porqué está en el comentario de ``RadarBanda``.
     banda: RadarBanda | None = None
+    #: Desglose por dimensión de ese mismo score (`v169`), como el
+    #: `desglose_al_abrir` de una oportunidad. Opcional por lo mismo que
+    #: `score`: sin él se descarta igual y la fila no cuenta en la propuesta de
+    #: pesos por triaje. El tope es el de `PursuitCreate.desglose_al_abrir`.
+    desglose: dict[str, float] | None = Field(default=None, max_length=20)
     # F5.6 — qué clase de «quitar de la bandeja» pidió el usuario.
     #
     # `descartar` es el de siempre y no caduca. `silenciar` y `posponer`
@@ -225,9 +233,13 @@ async def post_dismissal(
         if body.dias is not None
         else None
     )
-    # Fuera del threadpool porque resolverla es `async`, y sólo para `posponer`:
-    # es lo único que necesita ámbito de organización para poder recordar.
-    organization_id = await _organizacion_activa(ctx) if body.accion == "posponer" else None
+    # Fuera del threadpool porque resolverla es `async`. Solo cuando sirve:
+    # `posponer` para recordar, y un descarte con desglose para la propuesta
+    # de pesos de la organización (`v169`).
+    necesita_org = body.accion == "posponer" or (
+        body.accion == "descartar" and body.desglose is not None
+    )
+    organization_id = await _organizacion_activa(ctx) if necesita_org else None
     # Un id anterior a una re-key se descarta con el id vigente.
     body = body.model_copy(update={"id_externo": await id_vigente(body.id_externo, response)})
 
@@ -248,6 +260,7 @@ async def post_dismissal(
             banda=body.banda,
             hasta=hasta,
             organization_id=organization_id,
+            desglose=body.desglose,
             # `descartar` no escribe acción: la fila queda como las de v76, y así
             # `accion IS NULL` sigue significando exactamente «permanente».
             accion=None if body.accion == "descartar" else body.accion,

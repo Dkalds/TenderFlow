@@ -197,6 +197,8 @@ export type DescarteRadar = {
   idExterno: string;
   score?: number | null;
   banda?: BandaScore | null;
+  /** Desglose por dimensión del mismo score: la propuesta de pesos por triaje lo compara. */
+  desglose?: Record<string, number> | null;
   accion?: AccionDescarte;
   /** Obligatorio para `silenciar` y `posponer`; el servidor lo valida. */
   dias?: number;
@@ -216,11 +218,12 @@ export type DescarteRadar = {
 export function useDismissRadarTender() {
   const qc = useQueryClient();
   return useMutation<string[], unknown, DescarteRadar, { previous: string[] | undefined }>({
-    mutationFn: ({ idExterno, score, banda, accion = "descartar", dias }: DescarteRadar) =>
+    mutationFn: ({ idExterno, score, banda, desglose, accion = "descartar", dias }: DescarteRadar) =>
       apiMutate<RadarDismissalsResult>("POST", "/api/v1/radar/dismissals", {
         id_externo: idExterno,
         score: score ?? null,
         banda: banda ?? null,
+        desglose: desglose ?? null,
         accion,
         // `dias` no viaja en `descartar`: el servidor lo rechaza con 422 si
         // llega, precisamente para que «silenciar sin días» no acabe siendo un

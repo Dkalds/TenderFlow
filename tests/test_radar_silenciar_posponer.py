@@ -57,6 +57,15 @@ class TestContratoDelDescarte:
         with pytest.raises(ValidationError):
             RadarDismissalBody(id_externo="EXP-1", accion="archivar")  # type: ignore[arg-type]
 
+    def test_el_desglose_es_opcional_y_acotado(self) -> None:
+        """v169: viaja con el score si el cliente lo tiene; si no, se descarta igual.
+        El tope es el de `desglose_al_abrir` de la oportunidad."""
+        assert RadarDismissalBody(id_externo="EXP-1").desglose is None
+        body = RadarDismissalBody(id_externo="EXP-1", desglose={"afinidad": 12.5})
+        assert body.desglose == {"afinidad": 12.5}
+        with pytest.raises(ValidationError):
+            RadarDismissalBody(id_externo="EXP-1", desglose={f"d{i}": 1.0 for i in range(21)})
+
 
 def _iso(dias: int) -> str:
     return (datetime.now(UTC) + timedelta(days=dias)).isoformat()

@@ -9,6 +9,7 @@ from services.email_digest import (
     BloqueDigest,
     asunto_digest,
     enlace_ficha,
+    enlaces_de_triaje,
     etiqueta_de_regla,
     render_digest,
     token_de_baja,
@@ -113,3 +114,30 @@ def test_url_de_baja_lleva_user_key_y_firma() -> None:
     assert "k=clave-de-prueba-a" in url
     assert "t=" in url
     assert url_de_baja_alertas("clave-de-prueba-a", None) is None
+
+
+def test_triaje_abre_la_ficha_con_la_intencion_y_no_actua_solo() -> None:
+    """Los dos enlaces van a la ficha de la consola, que pide confirmar: un
+    escáner de correo que visite la URL no crea ni descarta nada."""
+    enlaces = enlaces_de_triaje(_LIC, "https://app.example")
+    assert enlaces == (
+        "https://app.example/detalle?lic=PA-S%202026%2F000058&desde=resumen&intencion=interesa",
+        "https://app.example/detalle?lic=PA-S%202026%2F000058&desde=resumen&intencion=descartar",
+    )
+    assert enlaces_de_triaje(_LIC, None) is None
+    assert enlaces_de_triaje({"titulo": "sin id"}, "https://app.example") is None
+
+
+def test_los_avisos_no_llevan_triaje() -> None:
+    """Un aviso es sobre algo que la persona ya sigue: no hay nada que triar."""
+    texto, html = render_digest(
+        bloques=[
+            BloqueDigest(etiqueta="Plazo ampliado", es_aviso=True, licitaciones=[_LIC]),
+        ],
+        frecuencia="daily",
+        base_url="https://app.example",
+        baja_url=None,
+    )
+    assert "Me interesa" not in texto and "No encaja" not in texto
+    assert "Me interesa" not in html
+    assert "Abrir la ficha" in html

@@ -324,6 +324,7 @@ describe("RadarPage", () => {
       licitacion_id: "LIC-1",
       score_al_abrir: 87,
       banda_al_abrir: "Caliente",
+      desglose_al_abrir: null,
     });
   });
 
@@ -379,6 +380,7 @@ describe("RadarPage", () => {
       idExterno: "LIC-1",
       score: 87,
       banda: "Caliente",
+      desglose: null,
     });
     expect(toastCall).toHaveBeenCalledWith(
       "Señal descartada",

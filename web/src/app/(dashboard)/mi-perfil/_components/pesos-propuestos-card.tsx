@@ -1,10 +1,12 @@
 "use client";
 
 /**
- * Los pesos que sugieren los cierres de la organización (S3.3).
+ * Los pesos que sugieren las decisiones de la organización (S3.3).
  *
- * El backend compara el desglose sellado de lo ganado con el de lo perdido y
- * propone un reparto que sigue sumando 100. Tres reglas de producto, y las tres
+ * El backend compara el desglose sellado de lo ganado con el de lo perdido o,
+ * mientras no haya bastantes cierres, el de lo que el equipo abre con el de lo
+ * que descarta (`fuente`), y propone un reparto que sigue sumando 100. La
+ * tarjeta rotula cada lado según la fuente. Tres reglas de producto, y las tres
  * son del plan:
  *
  * 1. **La propuesta viaja con su base.** Cuántos cierres, cuántas ganadas y
@@ -41,24 +43,41 @@ const ORIGEN_LABEL: Record<PesosPropuestos["origen_pesos_actuales"], string> = {
   global: "los pesos globales (todavía no has guardado un perfil)",
 };
 
+/** Cómo se llaman los dos lados de la comparación en cada fuente. */
+const LADOS: Record<PesosPropuestos["fuente"], { a: string; b: string }> = {
+  cierres: { a: "ganadas", b: "perdidas" },
+  triaje: { a: "abiertas", b: "descartadas" },
+};
+
+function plural(n: number, singular: string, varios: string) {
+  return `${n} ${n === 1 ? singular : varios}`;
+}
+
 function Base({ propuesta }: { propuesta: PesosPropuestos }) {
+  const base =
+    propuesta.fuente === "triaje"
+      ? `tu triaje: ${plural(propuesta.n_abiertas, "oportunidad abierta", "oportunidades abiertas")} y ${plural(propuesta.n_descartadas, "señal descartada", "señales descartadas")}, con desglose sellado (todavía hay pocos cierres)`
+      : `${plural(propuesta.n_cierres, "cierre", "cierres")} con desglose sellado: ${plural(propuesta.n_ganadas, "ganada", "ganadas")} y ${plural(propuesta.n_perdidas, "perdida", "perdidas")}`;
   return (
     <p className="text-tf-meta text-muted-foreground">
-      Base: {propuesta.n_cierres} cierre{propuesta.n_cierres === 1 ? "" : "s"} con desglose sellado:{" "}
-      {propuesta.n_ganadas} ganada{propuesta.n_ganadas === 1 ? "" : "s"} y{" "}
-      {propuesta.n_perdidas} perdida{propuesta.n_perdidas === 1 ? "" : "s"}. Se compara contra{" "}
-      {ORIGEN_LABEL[propuesta.origen_pesos_actuales]}.
+      Base: {base}. Se compara contra {ORIGEN_LABEL[propuesta.origen_pesos_actuales]}.
     </p>
   );
 }
 
-function DimensionRow({ dimension }: { dimension: PesoPropuestoDimension }) {
+function DimensionRow({
+  dimension,
+  fuente,
+}: {
+  dimension: PesoPropuestoDimension;
+  fuente: PesosPropuestos["fuente"];
+}) {
   return (
     <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-divider py-2 last:border-0">
       <div className="min-w-0">
         <p className="text-tf-body font-medium">{WEIGHT_LABELS[dimension.dimension] ?? dimension.dimension}</p>
         <p className="text-tf-meta text-muted-foreground">
-          Media en ganadas {formatNumber(dimension.media_ganadas)} · en perdidas{" "}
+          Media en {LADOS[fuente].a} {formatNumber(dimension.media_ganadas)} · en {LADOS[fuente].b}{" "}
           {formatNumber(dimension.media_perdidas)} (diferencia {formatNumber(dimension.delta)})
         </p>
       </div>
@@ -75,14 +94,15 @@ function DimensionRow({ dimension }: { dimension: PesoPropuestoDimension }) {
 }
 
 function Insuficiente({ propuesta }: { propuesta: PesosPropuestos }) {
-  const faltan = propuesta.minimo_cierres - propuesta.n_cierres;
+  const minimo = propuesta.minimo_triaje_por_lado;
   return (
     <p className="text-tf-body text-muted-foreground">
-      Todavía no hay base para proponer nada: llevas{" "}
-      <span className="font-medium text-foreground">{propuesta.n_cierres}</span> de{" "}
-      {propuesta.minimo_cierres} cierres con desglose sellado, así que faltan{" "}
-      <span className="font-medium text-foreground">{faltan}</span>. Un ajuste sobre menos
-      cierres diría más del azar que de lo que gana tu equipo.
+      Todavía no hay base para proponer nada. Hacen falta{" "}
+      <span className="font-medium text-foreground">{propuesta.minimo_cierres}</span> cierres con desglose
+      sellado (llevas {propuesta.n_cierres}) o, mientras tanto,{" "}
+      <span className="font-medium text-foreground">{minimo}</span> oportunidades abiertas y {minimo} señales
+      descartadas desde el Radar o el resumen diario (llevas {propuesta.n_abiertas} y{" "}
+      {propuesta.n_descartadas}). Un ajuste sobre menos decisiones diría más del azar que de tu equipo.
     </p>
   );
 }
@@ -112,10 +132,10 @@ export function PesosPropuestosCard({ bloqueada = false }: { bloqueada?: boolean
 
   return (
     <Panel>
-      <PanelTitle title="Pesos que sugieren tus cierres" />
+      <PanelTitle title="Pesos que sugieren tus decisiones" />
       <p className="mb-3 text-tf-meta text-muted-foreground">
-        Comparación entre el desglose del score de lo que tu organización ganó y el de lo que perdió. Es una
-        propuesta: no se aplica sola.
+        Comparación entre el desglose del score de lo que tu organización ganó y el de lo que perdió o, mientras
+        haya pocos cierres, de lo que abrió y lo que descartó. Es una propuesta: no se aplica sola.
       </p>
       <div className="space-y-3">
         {isPending && <p className="text-tf-meta text-muted-foreground">Calculando la propuesta…</p>}
@@ -137,13 +157,13 @@ export function PesosPropuestosCard({ bloqueada = false }: { bloqueada?: boolean
             {hayPropuesta ? (
               <ul className="mt-1">
                 {dimensiones.map((dimension) => (
-                  <DimensionRow key={dimension.dimension} dimension={dimension} />
+                  <DimensionRow key={dimension.dimension} dimension={dimension} fuente={data.fuente} />
                 ))}
               </ul>
             ) : (
               <p className="text-tf-body text-muted-foreground">
-                Con esos cierres no sale ningún ajuste: las dimensiones puntuaron igual en lo ganado y en lo
-                perdido.
+                No sale ningún ajuste: las dimensiones puntuaron igual en lo{" "}
+                {data.fuente === "triaje" ? "abierto y en lo descartado" : "ganado y en lo perdido"}.
               </p>
             )}
           </>

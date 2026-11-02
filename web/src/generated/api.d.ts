@@ -12347,6 +12347,11 @@ export interface components {
          *     desglose sellado de las oportunidades ganadas y de las perdidas. ``delta``
          *     es su diferencia: positivo significa que la dimensión valía más en lo que se
          *     ganó, y por eso su peso sube.
+         *
+         *     Con ``PesosPropuestos.fuente == "triaje"`` los dos lados son otros:
+         *     ``media_ganadas`` es la de las oportunidades **abiertas** y
+         *     ``media_perdidas`` la de las señales **descartadas**. Los nombres se
+         *     conservan para no romper el contrato; la pantalla rotula por ``fuente``.
          */
         PesoPropuestoDimension: {
             /** Delta */
@@ -12380,10 +12385,31 @@ export interface components {
              * @enum {string}
              */
             estado: "propuesta" | "insuficiente";
+            /**
+             * Fuente
+             * @default cierres
+             * @enum {string}
+             */
+            fuente: "cierres" | "triaje";
             /** Minimo Cierres */
             minimo_cierres: number;
+            /**
+             * Minimo Triaje Por Lado
+             * @default 10
+             */
+            minimo_triaje_por_lado: number;
+            /**
+             * N Abiertas
+             * @default 0
+             */
+            n_abiertas: number;
             /** N Cierres */
             n_cierres: number;
+            /**
+             * N Descartadas
+             * @default 0
+             */
+            n_descartadas: number;
             /** N Ganadas */
             n_ganadas: number;
             /** N Perdidas */
@@ -12409,6 +12435,12 @@ export interface components {
          * @description Resultado de aplicar la propuesta: qué quedó escrito y sobre qué base.
          */
         PesosPropuestosAplicados: {
+            /**
+             * Fuente
+             * @default cierres
+             * @enum {string}
+             */
+            fuente: "cierres" | "triaje";
             /** N Cierres */
             n_cierres: number;
             /** Organization Id */
@@ -14026,6 +14058,10 @@ export interface components {
             accion: "descartar" | "silenciar" | "posponer";
             /** Banda */
             banda?: ("Caliente" | "Atractiva" | "Tibia" | "Descarte") | null;
+            /** Desglose */
+            desglose?: {
+                [key: string]: number;
+            } | null;
             /** Dias */
             dias?: number | null;
             /** Id Externo */

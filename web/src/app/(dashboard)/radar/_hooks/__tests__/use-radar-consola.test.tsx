@@ -232,10 +232,16 @@ describe("useRadarConsola", () => {
   it("descartar sella score y banda conocida; una banda desconocida viaja como null", () => {
     const { result } = montar();
     act(() => result.current.dismiss(tender("X", { score: 42, band: "Inventada" as RadarTender["band"] })));
-    expect(dismissMutate).toHaveBeenCalledWith({ idExterno: "X", score: 42, banda: null });
+    expect(dismissMutate).toHaveBeenCalledWith({ idExterno: "X", score: 42, banda: null, desglose: null });
 
-    act(() => result.current.dismiss(tender("Y", { score: 88, band: "Caliente" })));
-    expect(dismissMutate).toHaveBeenLastCalledWith({ idExterno: "Y", score: 88, banda: "Caliente" });
+    // Con su desglose: es la mitad «no encaja» de la propuesta de pesos por triaje.
+    act(() => result.current.dismiss(tender("Y", { score: 88, band: "Caliente", desglose: { afinidad: 30 } })));
+    expect(dismissMutate).toHaveBeenLastCalledWith({
+      idExterno: "Y",
+      score: 88,
+      banda: "Caliente",
+      desglose: { afinidad: 30 },
+    });
   });
 
   it("el triaje lleva si se abrió la explicación del score de esa señal (F1.3)", () => {
@@ -246,13 +252,14 @@ describe("useRadarConsola", () => {
       idExterno: "LEIDA",
       score: 60,
       banda: "Tibia",
+      desglose: null,
       explicacionAbierta: true,
       accion: "silenciar",
       dias: 30,
     });
     // Otra señal sin explicación abierta no la hereda.
     act(() => result.current.dismiss(tender("OTRA", { score: 50, band: "Tibia" })));
-    expect(dismissMutate).toHaveBeenLastCalledWith({ idExterno: "OTRA", score: 50, banda: "Tibia" });
+    expect(dismissMutate).toHaveBeenLastCalledWith({ idExterno: "OTRA", score: 50, banda: "Tibia", desglose: null });
   });
 
   it("el filtro por etiqueta deja sólo las señales cuyo favorito la lleva (F1.6)", () => {
@@ -287,11 +294,15 @@ describe("useRadarConsola", () => {
   it("abrir oportunidad cambia a su organización y navega; si falla, lo dice", async () => {
     createPursuit.mockResolvedValueOnce({ id: 12, organization_id: 4 });
     const { result } = montar();
-    await act(() => result.current.openPursuit(tender("B", { score: 90, band: "Caliente" })));
+    await act(() =>
+      result.current.openPursuit(tender("B", { score: 90, band: "Caliente", desglose: { afinidad: 30, importe: 12 } })),
+    );
+    // El desglose también se sella: es lo que la propuesta de pesos compara.
     expect(createPursuit).toHaveBeenCalledWith({
       licitacion_id: "B",
       score_al_abrir: 90,
       banda_al_abrir: "Caliente",
+      desglose_al_abrir: { afinidad: 30, importe: 12 },
     });
     expect(setActiveOrganizationId).toHaveBeenCalledWith(4);
     expect(push).toHaveBeenCalledWith("/oportunidades/12");

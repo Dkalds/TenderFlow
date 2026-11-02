@@ -115,6 +115,13 @@ _ORDEN_BANDAS: tuple[RadarBanda, ...] = ("Caliente", "Atractiva", "Tibia", "Desc
 #: cierres, la diferencia de medias entre ganadas y perdidas es ruido.
 PESOS_MINIMO_CIERRES = 20
 
+#: Con menos cierres, la propuesta se apoya en el triaje: oportunidades
+#: abiertas frente a señales descartadas, cada una con su desglose sellado
+#: (``v110`` y ``v169``). Hacen falta tantas de cada lado: una media de cinco
+#: descartes es una anécdota. Diez por lado son veinte decisiones, el mismo
+#: total que los cierres, y el triaje las acumula en semanas, no en trimestres.
+PESOS_MINIMO_TRIAJE_POR_LADO = 10
+
 #: Cuánto puede moverse una dimensión de una sola vez, en puntos de peso. El
 #: ajuste es una sugerencia sobre evidencia parcial, no un reentrenamiento:
 #: cinco puntos reordenan la bandeja sin volverla irreconocible.
@@ -1122,7 +1129,8 @@ def _agenda_senales(
 # separa de verdad lo que la organización gana de lo que pierde.
 #
 # Lo que sigue construye esa evidencia a partir de los cierres con desglose
-# sellado (``v110``) y la deja como **propuesta**. No hay camino automático que
+# sellado (``v110``) —o, mientras no haya bastantes, del triaje: lo que el
+# equipo abre frente a lo que descarta (``v169``)— y la deja como **propuesta**. No hay camino automático que
 # la aplique: cambiar los pesos reordena la bandeja diaria del equipo, y esa es
 # una decisión de quien la firma, no un efecto secundario de haber perdido tres
 # licitaciones. Aplicarla es una llamada aparte que además queda en ``audit_log``.
@@ -1135,6 +1143,11 @@ class PesoPropuestoDimension(BaseModel):
     desglose sellado de las oportunidades ganadas y de las perdidas. ``delta``
     es su diferencia: positivo significa que la dimensión valía más en lo que se
     ganó, y por eso su peso sube.
+
+    Con ``PesosPropuestos.fuente == "triaje"`` los dos lados son otros:
+    ``media_ganadas`` es la de las oportunidades **abiertas** y
+    ``media_perdidas`` la de las señales **descartadas**. Los nombres se
+    conservan para no romper el contrato; la pantalla rotula por ``fuente``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -1174,6 +1187,15 @@ class PesosPropuestos(BaseModel):
     pesos_actuales: dict[str, int] = Field(default_factory=dict)
     pesos_propuestos: dict[str, int] | None = None
     dimensiones: list[PesoPropuestoDimension] = Field(default_factory=list)
+    #: Sobre qué se calcula la propuesta: los cierres (ganadas frente a
+    #: perdidas) cuando llegan a ``minimo_cierres``; si no, el triaje (abiertas
+    #: frente a descartadas) cuando cada lado llega a
+    #: ``minimo_triaje_por_lado``. En ``insuficiente`` vale ``cierres``.
+    fuente: Literal["cierres", "triaje"] = "cierres"
+    minimo_triaje_por_lado: int = Field(default=PESOS_MINIMO_TRIAJE_POR_LADO, ge=1)
+    #: Oportunidades abiertas y descartes permanentes con desglose sellado.
+    n_abiertas: int = Field(default=0, ge=0)
+    n_descartadas: int = Field(default=0, ge=0)
 
 
 class PesosPropuestosAplicados(BaseModel):
@@ -1188,6 +1210,8 @@ class PesosPropuestosAplicados(BaseModel):
     #: propuesta se calcula con los cierres de todo el equipo.
     visibility: Literal["private", "organization"]
     n_cierres: int = Field(ge=0)
+    #: La base de la propuesta aplicada (``PesosPropuestos.fuente``).
+    fuente: Literal["cierres", "triaje"] = "cierres"
 
 
 def _media(desgloses: Sequence[Mapping[str, float]], dimension: str) -> float:
@@ -1304,6 +1328,22 @@ def _pesos_vigentes(
     return dimension_weights(settings.SCORING_WEIGHTS), "global"
 
 
+def _leer_desglose(texto: object) -> dict[str, float] | None:
+    """Un desglose sellado (JSON), o ``None`` si no se puede leer.
+
+    Un desglose ilegible no puede sostener nada: quien llama lo descarta del
+    numerador Y del denominador, que es lo que evita que la base declarada
+    mienta.
+    """
+    try:
+        crudo = json.loads(str(texto))
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(crudo, dict):
+        return None
+    return {str(k): float(v) for k, v in crudo.items() if isinstance(v, int | float)}
+
+
 def _desgloses_cerrados(
     organization_id: int,
 ) -> tuple[list[dict[str, float]], list[dict[str, float]]]:
@@ -1311,19 +1351,31 @@ def _desgloses_cerrados(
     ganadas: list[dict[str, float]] = []
     perdidas: list[dict[str, float]] = []
     for row in _repo.closed_scored_rows(organization_id):
-        try:
-            crudo = json.loads(str(row["desglose_al_abrir"]))
-        except (TypeError, ValueError):
-            # Un desglose ilegible no puede sostener nada: se descarta del
-            # numerador Y del denominador, que es lo que evita que la base
-            # declarada mienta.
+        desglose = _leer_desglose(row["desglose_al_abrir"])
+        if desglose is None:
             log.warning("pursuit_desglose_ilegible", pursuit_id=row.get("id"))
             continue
-        if not isinstance(crudo, dict):
-            continue
-        desglose = {str(k): float(v) for k, v in crudo.items() if isinstance(v, int | float)}
         (ganadas if row.get("outcome") == "won" else perdidas).append(desglose)
     return ganadas, perdidas
+
+
+def _desgloses_triaje(
+    organization_id: int,
+) -> tuple[list[dict[str, float]], list[dict[str, float]]]:
+    """Desgloses de lo que el equipo abrió y de lo que descartó (``v169``)."""
+    from db import radar_dismissals
+
+    abiertas = [
+        d
+        for crudo in _repo.opened_scored_breakdowns(organization_id)
+        if (d := _leer_desglose(crudo)) is not None
+    ]
+    descartadas = [
+        d
+        for crudo in radar_dismissals.descartes_con_desglose(organization_id)
+        if (d := _leer_desglose(crudo)) is not None
+    ]
+    return abiertas, descartadas
 
 
 def get_weights_proposal(
@@ -1332,37 +1384,52 @@ def get_weights_proposal(
     user_key: str,
     organization_id: int | None = None,
 ) -> PesosPropuestos:
-    """Propuesta de ajuste de pesos a partir de los cierres de la organización."""
+    """Propuesta de ajuste de pesos: por los cierres o, si no bastan, por el triaje.
+
+    Los cierres mandan cuando llegan a :data:`PESOS_MINIMO_CIERRES`: dicen qué
+    se gana, que es la pregunta más dura. Mientras no llegan —en el piloto, la
+    mayor parte del tiempo—, el triaje dice qué decide trabajar el equipo, que
+    es lo que el orden del Radar intenta adelantar. La respuesta declara cuál
+    de las dos usó (``fuente``) y los recuentos de ambas.
+    """
     with alcance_resuelto(user_id, organization_id) as (resolved_id, _):
         pesos_actuales, origen = _pesos_vigentes(user_key, resolved_id, user_id=user_id)
         ganadas, perdidas = _desgloses_cerrados(resolved_id)
+        abiertas, descartadas = _desgloses_triaje(resolved_id)
         n_cierres = len(ganadas) + len(perdidas)
-        if n_cierres < PESOS_MINIMO_CIERRES:
+
+        def _respuesta(
+            estado: Literal["propuesta", "insuficiente"],
+            fuente: Literal["cierres", "triaje"] = "cierres",
+            propuestos: dict[str, int] | None = None,
+            evidencia: list[PesoPropuestoDimension] | None = None,
+        ) -> PesosPropuestos:
             return PesosPropuestos(
                 organization_id=resolved_id,
-                estado="insuficiente",
+                estado=estado,
+                fuente=fuente,
                 minimo_cierres=PESOS_MINIMO_CIERRES,
                 n_ganadas=len(ganadas),
                 n_perdidas=len(perdidas),
                 n_cierres=n_cierres,
+                minimo_triaje_por_lado=PESOS_MINIMO_TRIAJE_POR_LADO,
+                n_abiertas=len(abiertas),
+                n_descartadas=len(descartadas),
                 origen_pesos_actuales=origen,
                 pesos_actuales=pesos_actuales,
-                pesos_propuestos=None,
-                dimensiones=[],
+                pesos_propuestos=propuestos,
+                dimensiones=evidencia or [],
             )
-        propuestos, evidencia = proponer_pesos(pesos_actuales, ganadas, perdidas)
-        return PesosPropuestos(
-            organization_id=resolved_id,
-            estado="propuesta",
-            minimo_cierres=PESOS_MINIMO_CIERRES,
-            n_ganadas=len(ganadas),
-            n_perdidas=len(perdidas),
-            n_cierres=n_cierres,
-            origen_pesos_actuales=origen,
-            pesos_actuales=pesos_actuales,
-            pesos_propuestos=propuestos,
-            dimensiones=evidencia,
-        )
+
+        if n_cierres >= PESOS_MINIMO_CIERRES:
+            return _respuesta(
+                "propuesta", "cierres", *proponer_pesos(pesos_actuales, ganadas, perdidas)
+            )
+        if min(len(abiertas), len(descartadas)) >= PESOS_MINIMO_TRIAJE_POR_LADO:
+            return _respuesta(
+                "propuesta", "triaje", *proponer_pesos(pesos_actuales, abiertas, descartadas)
+            )
+        return _respuesta("insuficiente")
 
 
 def apply_weights_proposal(
@@ -1387,8 +1454,10 @@ def apply_weights_proposal(
         if propuesta.estado != "propuesta" or propuesta.pesos_propuestos is None:
             raise PursuitValidationError(
                 "Todavía no hay propuesta que aplicar: hacen falta "
-                f"{PESOS_MINIMO_CIERRES} oportunidades cerradas con desglose y hay "
-                f"{propuesta.n_cierres}."
+                f"{PESOS_MINIMO_CIERRES} oportunidades cerradas con desglose (hay "
+                f"{propuesta.n_cierres}) o {PESOS_MINIMO_TRIAJE_POR_LADO} abiertas y "
+                f"{PESOS_MINIMO_TRIAJE_POR_LADO} descartadas (hay {propuesta.n_abiertas} y "
+                f"{propuesta.n_descartadas})."
             )
         pesos = propuesta.pesos_propuestos
         # La propuesta se construye para cumplir la invariante, pero quien escribe
@@ -1447,6 +1516,9 @@ def apply_weights_proposal(
             "pesos_aplicados": pesos,
             "n_ganadas": propuesta.n_ganadas,
             "n_perdidas": propuesta.n_perdidas,
+            "fuente": propuesta.fuente,
+            "n_abiertas": propuesta.n_abiertas,
+            "n_descartadas": propuesta.n_descartadas,
         },
     )
     return PesosPropuestosAplicados(
@@ -1454,6 +1526,7 @@ def apply_weights_proposal(
         pesos=pesos,
         visibility=visibility,
         n_cierres=propuesta.n_cierres,
+        fuente=propuesta.fuente,
     )
 
 
