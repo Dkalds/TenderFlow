@@ -18,7 +18,7 @@ import Link from "next/link";
 import { Fact, PanelEmpty, PanelError, PanelLoading, PanelTitle } from "@/components/console/panel";
 import { useHistorialPropio } from "@/hooks/use-licitacion";
 import type { HistorialPropio } from "@/lib/api-types";
-import { cn, formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
+import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
 
 type Resumen = NonNullable<HistorialPropio["con_organo"]>;
 
@@ -49,14 +49,7 @@ function ambitoDe(adj: NonNullable<HistorialPropio["recientes"]>[number]): strin
 export function FichaHistorialPropio({ licitacionId }: { licitacionId: string }) {
   const id = React.useId();
   const { data, isPending, error, refetch } = useHistorialPropio(licitacionId);
-  const titulo = (
-    <PanelTitle
-      as="h3"
-      id={id}
-      title="Tu historial aquí"
-      hint="Todo lo que has ganado, sin ventana de tiempo, reconocido por tu NIF"
-    />
-  );
+  const titulo = <PanelTitle as="h3" id={id} title="Tu historial aquí" hint="Sin ventana de tiempo, por tu NIF" />;
 
   if (isPending || error || !data) {
     return (
@@ -141,15 +134,11 @@ export function FichaHistorialPropio({ licitacionId }: { licitacionId: string })
     <section aria-labelledby={id}>
       {titulo}
       {celdas.length > 0 ? (
-        <div className="border-divider bg-divider grid gap-px overflow-hidden rounded-md border sm:grid-cols-2">
-          {celdas.map((celda, i) => (
-            <Fact
-              key={celda.clave}
-              label={celda.label}
-              value={celda.value}
-              // Una celda sola en su fila deja ver el gris de la rejilla: ocupa las dos.
-              className={cn(celdas.length % 2 === 1 && i === celdas.length - 1 && "sm:col-span-2")}
-            />
+        // Una columna: el panel vive en la columna estrecha de la ficha, y a dos
+        // el detalle de cada cifra se partía en cuatro líneas.
+        <div className="border-divider bg-divider grid gap-px overflow-hidden rounded-md border">
+          {celdas.map((celda) => (
+            <Fact key={celda.clave} label={celda.label} value={celda.value} />
           ))}
         </div>
       ) : null}
