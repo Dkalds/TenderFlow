@@ -695,7 +695,12 @@ def ensure_documents_ready(
 
 def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
     """Mensaje 422 accionable según por qué no hay texto que extraer."""
-    rows = DocumentosRepository().list_by_licitacion(licitacion_id)
+    # Solo pliegos: un acta no es «un pliego que existe» (spec §3.3).
+    rows = [
+        row
+        for row in DocumentosRepository().list_by_licitacion(licitacion_id)
+        if row.get("tipo") in TIPOS_PLIEGO
+    ]
     if not rows:
         return (
             "La licitación no referencia ningún pliego descargable; "

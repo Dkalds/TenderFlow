@@ -46,7 +46,9 @@ class TenderFactSheetsRepository:
             rows = c.execute(
                 "WITH candidatos AS ("
                 "  SELECT DISTINCT d.licitacion_id FROM documento_pages dp "
-                "  JOIN documentos d ON d.id = dp.documento_id"
+                # Un expediente con solo páginas de acta no tiene pliego que
+                # extraer (spec de las puntuaciones del acta, §3.3).
+                "  JOIN documentos d ON d.id = dp.documento_id AND d.tipo <> 'acta'"
                 "), clasificados AS ("
                 "  SELECT c.licitacion_id, "
                 "  CASE "
@@ -136,7 +138,8 @@ class TenderFactSheetsRepository:
                 "  JOIN documentos d ON d.id = dp.documento_id "
                 # `octet_length` lee el tamaño sin descomprimir el texto de
                 # cada página, que es lo que haría compararlo con ''.
-                "  WHERE octet_length(dp.texto) > 0 "
+                # Las páginas del acta no son pliego (spec §3.3).
+                "  WHERE octet_length(dp.texto) > 0 AND d.tipo <> 'acta' "
                 "  GROUP BY d.licitacion_id"
                 "), candidatas AS ("
                 "  SELECT p.licitacion_id, l.fuente, p.documentos, p.paginas, p.paginas_ocr, "

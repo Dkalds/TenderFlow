@@ -95,7 +95,7 @@ def ejecutar_embeddings_expediente(job: Job) -> dict[str, Any]:
     Reutiliza los métodos que ya existen en ``DocumentosRepository`` (ADR-022:
     no se escribe SQL nuevo fuera de ``db/``).
     """
-    from db.repositories.documentos import DocumentosRepository
+    from db.repositories.documentos import TIPO_ACTA, DocumentosRepository
     from services.embeddings import embeddings_masivos_disponibles, encode_texts
     from services.rag.chunking import chunk_text
 
@@ -114,6 +114,9 @@ def ejecutar_embeddings_expediente(job: Job) -> dict[str, Any]:
     chunks_creados = 0
     for meta in repo.list_by_licitacion(licitacion_id):
         documento_id = int(meta["id"])
+        # El acta de la mesa no es pliego: ni chunks ni embeddings (spec §3.3).
+        if meta.get("tipo") == TIPO_ACTA:
+            continue
         if meta.get("status") != "extracted" or repo.count_chunks(documento_id) > 0:
             continue
         fila = repo.get(documento_id)

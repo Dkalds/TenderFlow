@@ -173,3 +173,34 @@ def test_pending_signal_ignora_licitaciones_con_solo_actas(repo):
     )
 
     assert pendientes == ["EXP-CON-PLIEGO"]
+
+
+def test_list_pending_licitaciones_ignora_expedientes_con_solo_paginas_de_acta(repo):
+    """Candidata a ficha = tiene páginas de pliego; las del acta no cuentan."""
+    from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
+
+    solo_acta = _sembrar(repo, "EXP-SOLO-ACTA")
+    con_pliego = _sembrar(repo, "EXP-CON-PLIEGO")
+    _extraer(repo, solo_acta, TIPO_ACTA)
+    _extraer(repo, con_pliego, TIPO_ACTA)
+    _extraer(repo, con_pliego, "legal")
+
+    pendientes = TenderFactSheetsRepository().list_pending_licitaciones(extraction_version="v-test")
+
+    assert pendientes == ["EXP-CON-PLIEGO"]
+
+
+def test_list_candidatas_golden_ignora_el_acta_y_no_cuenta_sus_paginas(repo):
+    from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
+
+    solo_acta = _sembrar(repo, "EXP-SOLO-ACTA")
+    con_pliego = _sembrar(repo, "EXP-CON-PLIEGO")
+    _extraer(repo, solo_acta, TIPO_ACTA)
+    _extraer(repo, con_pliego, TIPO_ACTA)
+    _extraer(repo, con_pliego, "legal")
+
+    filas = TenderFactSheetsRepository().list_candidatas_golden()
+
+    assert [fila["licitacion_id"] for fila in filas] == ["EXP-CON-PLIEGO"]
+    # Dos páginas del pliego; las dos del acta del mismo expediente no suman.
+    assert (filas[0]["documentos"], filas[0]["paginas"]) == (1, 2)

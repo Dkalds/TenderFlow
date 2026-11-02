@@ -1,4 +1,4 @@
-"""``ensure_documents_ready`` acotado por tipo de documento.
+"""``ensure_documents_ready`` y el mensaje 422 de la ficha, acotados por tipo de documento.
 
 Por defecto solo toca pliegos: las actas de la mesa (``tipo='acta'``) son
 referencias que ni la ficha ni el pipeline nocturno descargan (spec de las
@@ -91,3 +91,33 @@ def test_ensure_documents_ready_sin_tope_explicito_sigue_en_ocho():
     counts, _intentados = _ejecutar(pliegos)
 
     assert counts["attempted"] == 8
+
+
+def _detalle(filas: list[dict[str, Any]], fetched: dict[str, int] | None = None) -> str:
+    """El mensaje 422 de la ficha para un expediente con estas filas."""
+    from services.rag.fact_sheet import _missing_pages_detail
+
+    repo = MagicMock()
+    repo.list_by_licitacion.return_value = filas
+    with patch("services.rag.fact_sheet.DocumentosRepository", return_value=repo):
+        return _missing_pages_detail("EXP-1", fetched or {"attempted": 0})
+
+
+def test_missing_pages_detail_un_acta_no_cuenta_como_pliego_que_existe():
+    """Con solo el acta, la ficha dice que no hay pliego, no que sus descargas fallaron."""
+    detalle = _detalle([_doc(1, TIPO_ACTA, "error"), _doc(2, TIPO_ACTA, "pending")])
+
+    assert "no referencia ningún pliego descargable" in detalle
+    assert "descargas fallaron" not in detalle
+
+
+def test_missing_pages_detail_cuenta_los_errores_solo_sobre_pliegos():
+    detalle = _detalle([_doc(1, "legal", "error"), _doc(2, TIPO_ACTA, "pending")])
+
+    assert "(1 de 1 descargas fallaron)" in detalle
+
+
+def test_missing_pages_detail_un_acta_sin_publicar_no_es_un_pliego_sin_publicar():
+    detalle = _detalle([_doc(1, "legal", "error"), _doc(2, TIPO_ACTA, sin_publicar=True)])
+
+    assert "todavía no ha publicado el pliego" not in detalle
