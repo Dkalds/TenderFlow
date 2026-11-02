@@ -37,6 +37,7 @@ vi.mock("@/components/seguir-boton", () => ({
 vi.mock("@/components/ficha/ficha-oportunidad", () => ({
   OportunidadBoton: () => <button type="button">Abrir oportunidad</button>,
   DossierBoton: () => <button type="button">Dossier PDF</button>,
+  ExtraerPliegoBoton: () => <button type="button">Extraer pliego</button>,
 }));
 
 import { DetailInspector } from "@/components/detail-inspector";

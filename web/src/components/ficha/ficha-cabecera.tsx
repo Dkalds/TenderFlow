@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { ExternalLink, Link2, MessageSquareText } from "lucide-react";
 import { toast } from "sonner";
-import { DossierBoton, OportunidadBoton } from "@/components/ficha/ficha-oportunidad";
+import { DossierBoton, ExtraerPliegoBoton, OportunidadBoton } from "@/components/ficha/ficha-oportunidad";
 import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
 import { ReportarDatoBoton } from "@/components/pliego/reportar-dato";
 import { RecurridoBadge } from "@/components/resoluciones-block";
@@ -92,8 +92,8 @@ const CLASES_SEGUIR = {
 };
 
 /**
- * Lo que se hace con la licitación: seguirla, compararla, compartirla,
- * preguntar a la IA y reportar un dato erróneo. Con `conFuente`, además, el
+ * Lo que se hace con la licitación: seguirla, compararla, extraer su pliego,
+ * compartirla, preguntar a la IA y reportar un dato erróneo. Con `conFuente`, además, el
  * enlace al portal de origen como acción principal.
  *
  * «Preguntar a la IA» abre el asistente único con este expediente como
@@ -142,6 +142,7 @@ export function FichaAcciones({
         clases={CLASES_SEGUIR}
       />
       <CompararBoton id={l.id_externo} titulo={l.titulo} />
+      <ExtraerPliegoBoton licitacionId={l.id_externo} />
       <Tooltip>
         <TooltipTrigger asChild>
           <Button type="button" variant="outline" size="sm" onClick={() => void copiarEnlace()}>
