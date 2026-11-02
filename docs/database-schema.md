@@ -29,11 +29,11 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Empresas y mercado | 6 | 34 | 8 |
 | Organizaciones y oportunidades | 15 | 143 | 31 |
 | Identidad, acceso y auditoría | 16 | 112 | 25 |
-| Seguimiento y notificaciones | 12 | 134 | 38 |
+| Seguimiento y notificaciones | 12 | 135 | 38 |
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 23 | 182 | 35 |
-| **Total** | **104** | **953** | **239** |
+| **Total** | **104** | **954** | **239** |
 
 ## Licitaciones y fuente
 
