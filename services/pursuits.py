@@ -416,6 +416,7 @@ def list_pursuits(
     q: str | None = None,
     etiqueta_id: int | None = None,
     plazo: PursuitPlazo | None = None,
+    licitacion_id: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> PursuitListResponse:
@@ -425,6 +426,7 @@ def list_pursuits(
             resolved_id,
             status=status,
             responsible_user_id=responsible_user_id,
+            licitacion_id=licitacion_id,
             q=q,
             etiqueta_id=etiqueta_id,
             plazo_desde=desde,

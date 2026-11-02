@@ -29,6 +29,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from db.notifications import marcar_visita_ficha, ultima_visita_ficha
 from db.repositories.novedades import NovedadesRepository
 from observability.logging import get_logger
 from services.avisos import Aviso, aviso_documento_nuevo, aviso_recurso, clasificar_cambio
@@ -231,7 +232,7 @@ def desde_ultima_visita(
                 },
                 _campos(fila.get("changed_fields")),
             )
-            items.append(_a_novedad(aviso, fila.get("id_externo"), fila.get("captured_at")))
+            items.append(_a_novedad(aviso, _texto(fila.get("id_externo")), fila.get("captured_at")))
     except Exception:
         log.warning("novedades_cambios_error", exc_info=True)
 
@@ -241,8 +242,8 @@ def desde_ultima_visita(
         ):
             items.append(
                 _a_novedad(
-                    aviso_documento_nuevo(fila.get("tipo")),
-                    fila.get("licitacion_id"),
+                    aviso_documento_nuevo(_texto(fila.get("tipo"))),
+                    _texto(fila.get("licitacion_id")),
                     fila.get("publicado_en"),
                 )
             )
@@ -253,8 +254,8 @@ def desde_ultima_visita(
         for fila in _repo.recursos_en_seguidos(user_key, desde_iso=desde_iso, user_id=user_id):
             items.append(
                 _a_novedad(
-                    aviso_recurso(fila.get("sentido")),
-                    fila.get("licitacion_id"),
+                    aviso_recurso(_texto(fila.get("sentido"))),
+                    _texto(fila.get("licitacion_id")),
                     fila.get("fecha"),
                 )
             )
@@ -300,3 +301,87 @@ def desde_ultima_visita(
         por_subtipo=por_subtipo,
         ventana_recortada=recortada,
     )
+
+
+class NovedadesDeFicha(BaseModel):
+    """Lo que cambió en un expediente desde la visita anterior a su ficha."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    licitacion_id: str
+    #: Visita anterior, ISO. ``None`` la primera vez: no hay con qué comparar y
+    #: la ficha no enseña la franja.
+    desde: str | None = None
+    items: list[Novedad] = Field(default_factory=list)
+    #: La visita que se acaba de registrar; la siguiente compara desde aquí.
+    visto_en: str
+
+
+def visita_a_ficha(user_id: int, licitacion_id: str, *, limit: int = 20) -> NovedadesDeFicha:
+    """Registra la visita a la ficha y devuelve lo que cambió desde la anterior.
+
+    Leer y marcar van juntos: con un GET y un POST separados, una segunda
+    pestaña o un reintento leería contra una marca que ya movió la primera.
+    Las tres fuentes son las de :func:`desde_ultima_visita` acotadas al
+    expediente, cada una en su ``try`` por el mismo motivo.
+    """
+    anterior = ultima_visita_ficha(user_id, licitacion_id)
+    items: list[Novedad] = []
+    if anterior:
+        items = _novedades_de_ficha(licitacion_id, desde_iso=anterior, limit=limit)
+    visto_en = marcar_visita_ficha(user_id, licitacion_id)
+    return NovedadesDeFicha(
+        licitacion_id=licitacion_id,
+        desde=_cuando_iso(anterior) if anterior else None,
+        items=items,
+        visto_en=visto_en,
+    )
+
+
+def _texto(valor: object) -> str | None:
+    return str(valor) if valor is not None else None
+
+
+def _novedades_de_ficha(licitacion_id: str, *, desde_iso: str, limit: int) -> list[Novedad]:
+    items: list[Novedad] = []
+    try:
+        for fila in _repo.cambios_de(licitacion_id, desde_iso=desde_iso, limit=limit):
+            aviso = clasificar_cambio(
+                _snapshot(fila.get("snapshot_json")),
+                {
+                    "estado": fila.get("estado"),
+                    "fecha_limite": fila.get("fecha_limite"),
+                    "importe": fila.get("importe"),
+                },
+                _campos(fila.get("changed_fields")),
+            )
+            items.append(_a_novedad(aviso, licitacion_id, fila.get("captured_at")))
+    except Exception:
+        log.warning("novedades_ficha_cambios_error", exc_info=True)
+    try:
+        for fila in _repo.documentos_nuevos_de(licitacion_id, desde_iso=desde_iso, limit=limit):
+            items.append(
+                _a_novedad(
+                    aviso_documento_nuevo(_texto(fila.get("tipo"))),
+                    licitacion_id,
+                    fila.get("publicado_en"),
+                )
+            )
+    except Exception:
+        log.warning("novedades_ficha_documentos_error", exc_info=True)
+    try:
+        for fila in _repo.recursos_de(licitacion_id, desde_iso=desde_iso):
+            items.append(
+                _a_novedad(
+                    aviso_recurso(_texto(fila.get("sentido"))), licitacion_id, fila.get("fecha")
+                )
+            )
+    except Exception:
+        log.warning("novedades_ficha_recursos_error", exc_info=True)
+
+    def _clave(n: Novedad) -> tuple[bool, datetime]:
+        instante = _instante(n.cuando)
+        return (instante is not None, instante or _SIN_INSTANTE)
+
+    items.sort(key=_clave, reverse=True)
+    return items[:limit]

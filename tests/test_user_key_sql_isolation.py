@@ -453,6 +453,14 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # `add_membership` con estado distinto de `active` (owner/admin), y
         # ninguna ruta lo alcanza con un `user_id` que no sea el de la baja.
         "db/repositories/organizations.py::OrganizationRepository._retirar_huellas",
+        # Visita a la ficha de un expediente (CU-35): lee una sola fila, la de
+        # ese `user_id` y esa ficha (`notification_id = '__ficha__:<id>'`). Es
+        # una marca nueva que nace sin `user_key` (ADR-030 fase 3, como las
+        # escrituras de v165), así que no hay filas heredadas que leer por
+        # clave; el predicado de aislamiento es `user_id = %s`. Su único
+        # llamador es `services/novedades.py::visita_a_ficha`, con el
+        # `user_id` del principal de la sesión.
+        "db/notifications.py::ultima_visita_ficha",
     }
 )
 

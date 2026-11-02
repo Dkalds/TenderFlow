@@ -1,0 +1,14 @@
+{
+  "licitacion_id": "PA-S 2026/000058",
+  "desde": "2026-10-30T09:00:00+00:00",
+  "items": [
+    {
+      "subtipo": "plazo_ampliado",
+      "titulo": "Plazo ampliado",
+      "detalle": "Del 15 al 30 de enero.",
+      "licitacion_id": "PA-S 2026/000058",
+      "cuando": "2026-11-01T08:00:00+00:00"
+    }
+  ],
+  "visto_en": "2026-11-02T10:00:00+00:00"
+}

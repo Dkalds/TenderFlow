@@ -116,6 +116,33 @@ NUEVAS: dict[str, str] = {
         "que es de la ingesta. scripts/audit_domain_truth.py solo sale por correo y como "
         "artefacto de Actions: sin esta ruta la consola no puede enseñar sus violaciones."
     ),
+    "GET /api/v1/licitaciones/{id_externo:path}/checklist": (
+        "Se miró GET /pursuits/{id}/checklist, que da el mismo contraste pero exige "
+        "haber abierto ya la oportunidad: la ficha lo necesita antes, para decidir si "
+        "abrirla, y crear una oportunidad solo para leerlo ensuciaría el embudo. "
+        "GET /licitaciones/{id}/condiciones-oficiales trae los requisitos sin "
+        "compararlos con la capacidad de la organización."
+    ),
+    "GET /api/v1/licitaciones/{id_externo:path}/dossier.pdf": (
+        "Se miró GET /pursuits/{id}/ficha.pdf, el one-pager de una oportunidad: exige "
+        "haberla abierto y lleva la decisión ya tomada (etapa, oferta, responsable). El "
+        "dossier es el papel de antes, para decidir si se abre, y lleva el checklist y "
+        "el historial propio que ese PDF no tiene. Reutiliza su renderizador."
+    ),
+    "GET /api/v1/licitaciones/{id_externo:path}/historial-propio": (
+        "Se miró GET /licitaciones/{id}/competencia-esperada, cuyo bloque `propia` da "
+        "solo la cuota agregada de un nivel de segmento, y GET /competitive/empresas/"
+        "{id}/adjudicaciones, que va por empresa_id (pierde los NIF fuera del maestro) y "
+        "no cruza con las oportunidades. Ninguna dice qué ganó la organización con este "
+        "órgano y en este CPV ni cómo acabaron sus oportunidades con él."
+    ),
+    "POST /api/v1/licitaciones/{id_externo:path}/visita": (
+        "Se miró GET /analytics/resumen/desde-mi-ultima-visita, que tiene una sola marca "
+        "por usuario y solo mira lo seguido: no puede decir qué cambió en una ficha "
+        "concreta desde que se abrió por última vez. GET /licitaciones/{id}/eventos da "
+        "la historia entera sin marca. Leer y marcar van juntos para que dos pestañas no "
+        "compitan por la misma marca."
+    ),
     "GET /api/v1/licitaciones/{id_externo:path}/condiciones-oficiales": (
         "Se miró GET /licitaciones/{id}/ficha-pliego, que sirve la extracción LLM del "
         "pliego y responde 404 mientras no se ha extraído: meter ahí el dato de PLACSP "

@@ -26,6 +26,8 @@ export type Adjudicatario = Schemas["AdjudicatarioOut"];
 export type Lote = Schemas["LoteOut"];
 /** `GET /licitaciones/{id}/similares`: predecesor y parecidos, con método y `n`. */
 export type SimilaresResult = Schemas["SimilaresResult"];
+export type HistorialPropio = Schemas["HistorialPropio"];
+export type NovedadesDeFicha = Schemas["NovedadesDeFicha"];
 export type TrendPoint = Schemas["TrendPoint"];
 export type TrendsResult = Schemas["TrendsResult"];
 export type HistogramBin = Schemas["HistogramBin"];

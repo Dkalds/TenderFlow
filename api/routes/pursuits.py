@@ -369,6 +369,11 @@ async def get_pursuits(
             "a dentro de N días, inclusive)."
         ),
     ),
+    licitacion_id: str | None = Query(
+        default=None,
+        max_length=300,
+        description="Sólo las oportunidades de este expediente (igualdad exacta del `id_externo`).",
+    ),
     page: PageParams = Depends(pagina(50)),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PursuitListResponse:
@@ -388,6 +393,7 @@ async def get_pursuits(
             q=q,
             etiqueta_id=etiqueta,
             plazo=plazo,
+            licitacion_id=licitacion_id,
             limit=page.limit,
             offset=page.offset,
         )

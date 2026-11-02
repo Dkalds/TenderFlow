@@ -74,6 +74,8 @@ export interface PursuitFilters {
   /** Id de una etiqueta de la organización. */
   etiqueta?: number;
   plazo?: PursuitPlazo;
+  /** Sólo las de este expediente (igualdad exacta del `id_externo`). */
+  licitacion_id?: string;
   /** Tamaño de página; sin él, el de la API (50). */
   limit?: number;
 }
@@ -89,6 +91,7 @@ function pursuitQuery(filters: PursuitFilters, organizationId: OrganizacionActiv
     q: filters.q || undefined,
     etiqueta: filters.etiqueta || undefined,
     plazo: filters.plazo,
+    licitacion_id: filters.licitacion_id || undefined,
     limit: filters.limit,
     organization_id: organizationId ?? undefined,
   };

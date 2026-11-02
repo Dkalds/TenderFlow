@@ -455,6 +455,27 @@
       "path": "/api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}/redeliver",
       "kind": "response",
       "status": "202"
+    },
+    {
+      "fixture": "licitacion-checklist.json",
+      "method": "GET",
+      "path": "/api/v1/licitaciones/{id_externo}/checklist",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "licitacion-historial-propio.json",
+      "method": "GET",
+      "path": "/api/v1/licitaciones/{id_externo}/historial-propio",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "licitacion-visita.json",
+      "method": "POST",
+      "path": "/api/v1/licitaciones/{id_externo}/visita",
+      "kind": "response",
+      "status": "200"
     }
   ]
 }

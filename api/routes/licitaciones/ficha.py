@@ -16,6 +16,7 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Response,
     status,
 )
 from pydantic import BaseModel, Field, field_validator
@@ -49,6 +50,11 @@ from services.competitive.competencia_esperada import (
     CompetenciaEsperada,
     competencia_esperada,
 )
+from services.competitive.historial_propio import HistorialPropio, historial_propio
+from services.dossier_licitacion import dossier_pdf
+from services.go_no_go import GoNoGoChecklist, checklist_de_licitacion
+from services.novedades import NovedadesDeFicha, visita_a_ficha
+from services.organizations import OrganizationAccessError
 from shared.cache import cache_response
 from shared.dto import (
     SafeStr,
@@ -270,6 +276,134 @@ async def get_competencia_esperada(
     if resultado is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
     return resultado
+
+
+# ── /licitaciones/{id_externo}/checklist ─────────────────────────────────
+
+
+@router.get(
+    "/licitaciones/{id_externo:path}/checklist",
+    response_model=GoNoGoChecklist,
+    summary="¿Cumplo? Los requisitos del expediente contra la capacidad de la organización",
+    responses={
+        403: {"description": "No perteneces a esa organización"},
+        404: {"description": "No encontrado"},
+    },
+)
+async def get_checklist_licitacion(
+    _ctx: dict[str, Any] = Depends(require_organization()),
+    id_externo: str = Depends(resolver_id_externo),
+) -> GoNoGoChecklist:
+    """El checklist de `/pursuits/{id}/checklist` sin tener que abrir la oportunidad.
+
+    Sin caché: quien declara una certificación en su capacidad vuelve a la
+    ficha esperando ver el cambio.
+    """
+    if not await run_db(_lic_repo.exists, id_externo):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
+    try:
+        return await run_db(
+            checklist_de_licitacion,
+            int(_ctx["user_id"]),
+            id_externo,
+            organization_id=int(_ctx["organization_id"]),
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+# ── /licitaciones/{id_externo}/historial-propio ──────────────────────────
+
+
+@router.get(
+    "/licitaciones/{id_externo:path}/historial-propio",
+    response_model=HistorialPropio,
+    summary="Lo que tu organización ha ganado con este órgano y en este CPV",
+    responses={
+        403: {"description": "No perteneces a esa organización"},
+        404: {"description": "No encontrado"},
+    },
+)
+# Sin caché: quien acaba de declarar su NIF vuelve a la ficha esperando verlo.
+async def get_historial_propio(
+    _ctx: dict[str, Any] = Depends(require_organization()),
+    id_externo: str = Depends(resolver_id_externo),
+) -> HistorialPropio:
+    """Adjudicaciones propias con el órgano y el CPV-4, y cómo acabaron las oportunidades.
+
+    Ver `services/competitive/historial_propio.py`.
+    """
+    resultado = await run_db(
+        historial_propio, id_externo, organization_id=int(_ctx["organization_id"])
+    )
+    if resultado is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
+    return resultado
+
+
+# ── /licitaciones/{id_externo}/dossier.pdf ───────────────────────────────
+
+
+@router.get(
+    "/licitaciones/{id_externo:path}/dossier.pdf",
+    # `response_class`: la respuesta es el fichero, como en
+    # `/pursuits/{id}/ficha.pdf`.
+    response_class=Response,
+    summary="Dossier de decisión en PDF: expediente, ¿cumplo?, competencia e historial",
+    responses={
+        200: {"content": {"application/pdf": {}}, "description": "El PDF"},
+        403: {"description": "No perteneces a esa organización"},
+        404: {"description": "No encontrado"},
+    },
+)
+async def get_dossier_pdf(
+    _ctx: dict[str, Any] = Depends(require_organization()),
+    id_externo: str = Depends(resolver_id_externo),
+) -> Response:
+    """El papel para el comité que decide si la organización se presenta.
+
+    Ver `services/dossier_licitacion.py`.
+    """
+    try:
+        pdf = await run_db(
+            dossier_pdf,
+            int(_ctx["user_id"]),
+            id_externo,
+            organization_id=int(_ctx["organization_id"]),
+        )
+    except OrganizationAccessError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    if pdf is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'inline; filename="dossier-licitacion.pdf"'},
+    )
+
+
+# ── /licitaciones/{id_externo}/visita ────────────────────────────────────
+
+
+@router.post(
+    "/licitaciones/{id_externo:path}/visita",
+    response_model=NovedadesDeFicha,
+    summary="Registra la visita a la ficha y dice qué cambió desde la anterior",
+    responses={404: {"description": "No encontrado"}},
+)
+async def post_visita_ficha(
+    ctx: dict[str, Any] = Depends(require_any_auth),
+    id_externo: str = Depends(resolver_id_externo),
+) -> NovedadesDeFicha:
+    """La franja «cambió desde tu última visita» de la ficha.
+
+    Es un POST porque mueve la marca: leer y marcar en una sola llamada evita
+    que una segunda pestaña compare contra una marca que ya movió la primera.
+    La marca es personal, del principal, y no depende de la organización.
+    """
+    if not await run_db(_lic_repo.exists, id_externo):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
+    return await run_db(visita_a_ficha, int(ctx["user_id"]), id_externo)
 
 
 class CompararBody(BaseModel):

@@ -1,0 +1,36 @@
+{
+  "licitacion_id": "PA-S 2026/000058",
+  "identidad_conocida": true,
+  "organo": "Ayuntamiento de Getafe",
+  "cpv4": "7226",
+  "con_organo": {
+    "expedientes": 1,
+    "importe": 200000.0,
+    "baja_mediana_pct": 10.0,
+    "bajas_n": 1
+  },
+  "en_cpv4": {
+    "expedientes": 1,
+    "importe": 200000.0,
+    "baja_mediana_pct": 10.0,
+    "bajas_n": 1
+  },
+  "oportunidades": {
+    "total": 3,
+    "presentadas": 2,
+    "ganadas": 1,
+    "perdidas": 1
+  },
+  "recientes": [
+    {
+      "licitacion_id": "EXP-2024",
+      "titulo": "Soporte SAP 2024",
+      "organo_contratacion": "Ayuntamiento de Getafe",
+      "fecha_adjudicacion": "2024-06-15",
+      "importe_adjudicado": 200000.0,
+      "baja_pct": 10.0,
+      "mismo_organo": true,
+      "mismo_cpv4": true
+    }
+  ]
+}

@@ -2832,6 +2832,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/checklist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ¿Cumplo? Los requisitos del expediente contra la capacidad de la organización
+         * @description El checklist de `/pursuits/{id}/checklist` sin tener que abrir la oportunidad.
+         *
+         *     Sin caché: quien declara una certificación en su capacidad vuelve a la
+         *     ficha esperando ver el cambio.
+         */
+        get: operations["get_checklist_licitacion_api_v1_licitaciones__id_externo__checklist_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/competencia-esperada": {
         parameters: {
             query?: never;
@@ -2930,6 +2953,28 @@ export interface paths {
          *     siguientes. Los ids con barra se piden con la barra codificada.
          */
         get: operations["get_pagina_documento_api_v1_licitaciones__id_externo__documentos__documento_id__paginas__page_number__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/licitaciones/{id_externo}/dossier.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dossier de decisión en PDF: expediente, ¿cumplo?, competencia e historial
+         * @description El papel para el comité que decide si la organización se presenta.
+         *
+         *     Ver `services/dossier_licitacion.py`.
+         */
+        get: operations["get_dossier_pdf_api_v1_licitaciones__id_externo__dossier_pdf_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3137,6 +3182,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/historial-propio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Lo que tu organización ha ganado con este órgano y en este CPV
+         * @description Adjudicaciones propias con el órgano y el CPV-4, y cómo acabaron las oportunidades.
+         *
+         *     Ver `services/competitive/historial_propio.py`.
+         */
+        get: operations["get_historial_propio_api_v1_licitaciones__id_externo__historial_propio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/reportes": {
         parameters: {
             query?: never;
@@ -3292,6 +3359,30 @@ export interface paths {
         get: operations["get_tecnologias_api_v1_licitaciones__id_externo__tecnologias_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/licitaciones/{id_externo}/visita": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Registra la visita a la ficha y dice qué cambió desde la anterior
+         * @description La franja «cambió desde tu última visita» de la ficha.
+         *
+         *     Es un POST porque mueve la marca: leer y marcar en una sola llamada evita
+         *     que una segunda pestaña compare contra una marca que ya movió la primera.
+         *     La marca es personal, del principal, y no depende de la organización.
+         */
+        post: operations["post_visita_ficha_api_v1_licitaciones__id_externo__visita_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6154,6 +6245,28 @@ export interface components {
             updated_at: string;
             /** Value */
             value: string;
+        };
+        /**
+         * AdjudicacionPropia
+         * @description Una adjudicación ganada por la organización en el órgano o el CPV-4.
+         */
+        AdjudicacionPropia: {
+            /** Baja Pct */
+            baja_pct?: number | null;
+            /** Fecha Adjudicacion */
+            fecha_adjudicacion?: string | null;
+            /** Importe Adjudicado */
+            importe_adjudicado?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Mismo Cpv4 */
+            mismo_cpv4: boolean;
+            /** Mismo Organo */
+            mismo_organo: boolean;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Titulo */
+            titulo?: string | null;
         };
         /** AdjudicacionSummary */
         AdjudicacionSummary: {
@@ -10185,6 +10298,25 @@ export interface components {
             /** Count */
             count: number;
         };
+        /**
+         * HistorialPropio
+         * @description Tu historial con el órgano y el CPV-4 del expediente.
+         */
+        HistorialPropio: {
+            con_organo?: components["schemas"]["ResumenPropio"] | null;
+            /** Cpv4 */
+            cpv4?: string | null;
+            en_cpv4?: components["schemas"]["ResumenPropio"] | null;
+            /** Identidad Conocida */
+            identidad_conocida: boolean;
+            /** Licitacion Id */
+            licitacion_id: string;
+            oportunidades?: components["schemas"]["OportunidadesConOrgano"] | null;
+            /** Organo */
+            organo?: string | null;
+            /** Recientes */
+            recientes?: components["schemas"]["AdjudicacionPropia"][];
+        };
         /** HistoricalDistribution */
         HistoricalDistribution: {
             /** N */
@@ -11286,6 +11418,20 @@ export interface components {
             titulo: string;
         };
         /**
+         * NovedadesDeFicha
+         * @description Lo que cambió en un expediente desde la visita anterior a su ficha.
+         */
+        NovedadesDeFicha: {
+            /** Desde */
+            desde?: string | null;
+            /** Items */
+            items?: components["schemas"]["Novedad"][];
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Visto En */
+            visto_en: string;
+        };
+        /**
          * NovedadesDesdeUltimaVisita
          * @description El diff personal del Resumen.
          */
@@ -11406,6 +11552,20 @@ export interface components {
             pursuit_id: number;
             /** Titulo */
             titulo?: string | null;
+        };
+        /**
+         * OportunidadesConOrgano
+         * @description Cómo acabaron las oportunidades de la organización con este órgano.
+         */
+        OportunidadesConOrgano: {
+            /** Ganadas */
+            ganadas: number;
+            /** Perdidas */
+            perdidas: number;
+            /** Presentadas */
+            presentadas: number;
+            /** Total */
+            total: number;
         };
         /**
          * OrganizationCapabilities
@@ -14573,6 +14733,20 @@ export interface components {
             organo_contratacion?: string | null;
             /** Titulo */
             titulo?: string | null;
+        };
+        /**
+         * ResumenPropio
+         * @description Lo ganado en un ámbito: con el órgano o en el CPV-4.
+         */
+        ResumenPropio: {
+            /** Baja Mediana Pct */
+            baja_mediana_pct?: number | null;
+            /** Bajas N */
+            bajas_n: number;
+            /** Expedientes */
+            expedientes: number;
+            /** Importe */
+            importe: number;
         };
         /**
          * ResumenRequest
@@ -24210,6 +24384,71 @@ export interface operations {
             };
         };
     };
+    get_checklist_licitacion_api_v1_licitaciones__id_externo__checklist_get: {
+        parameters: {
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoNoGoChecklist"];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description La petición no pasó la validación (``errors`` por campo). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Error: cualquier código no listado (RFC 9457). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     get_competencia_esperada_api_v1_licitaciones__id_externo__competencia_esperada_get: {
         parameters: {
             query?: {
@@ -24431,6 +24670,71 @@ export interface operations {
                 };
             };
             /** @description La página no existe para ese documento y licitación */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description La petición no pasó la validación (``errors`` por campo). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Error: cualquier código no listado (RFC 9457). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    get_dossier_pdf_api_v1_licitaciones__id_externo__dossier_pdf_get: {
+        parameters: {
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description El PDF */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": unknown;
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description No encontrado */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -24966,6 +25270,71 @@ export interface operations {
             };
         };
     };
+    get_historial_propio_api_v1_licitaciones__id_externo__historial_propio_get: {
+        parameters: {
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistorialPropio"];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description La petición no pasó la validación (``errors`` por campo). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Error: cualquier código no listado (RFC 9457). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
     post_reporte_dato_api_v1_licitaciones__id_externo__reportes_post: {
         parameters: {
             query?: never;
@@ -25303,6 +25672,59 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description La petición no pasó la validación (``errors`` por campo). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Error: cualquier código no listado (RFC 9457). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    post_visita_ficha_api_v1_licitaciones__id_externo__visita_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NovedadesDeFicha"];
                 };
             };
             /** @description No encontrado */
@@ -28578,6 +29000,8 @@ export interface operations {
                 etiqueta?: number | null;
                 /** @description Plazo de presentación del expediente, sobre oportunidades abiertas y sin presentar: `vencido` (el día ya pasó), `7d` o `30d` (vence de hoy a dentro de N días, inclusive). */
                 plazo?: ("vencido" | "7d" | "30d") | null;
+                /** @description Sólo las oportunidades de este expediente (igualdad exacta del `id_externo`). */
+                licitacion_id?: string | null;
                 /** @description Tamaño de página (máx. 500). */
                 limit?: number;
                 /** @description Filas a saltar desde el inicio. */
