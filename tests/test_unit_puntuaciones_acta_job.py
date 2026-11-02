@@ -109,6 +109,7 @@ def entorno() -> Iterator[_Entorno]:
         patch("services.rag.fact_sheet._llamar_modelo", return_value=_respuesta()) as llamar,
     ):
         docs_cls.return_value.list_pages_by_licitacion.return_value = _paginas()
+        docs_cls.return_value.list_by_licitacion.return_value = []
         condiciones_cls.return_value.get.return_value = {"criterios": _CRITERIOS_PLIEGO}
         yield _Entorno(
             repo=repo_cls.return_value,
@@ -308,9 +309,30 @@ def test_extraer_sin_paginas_con_senales_no_llama_al_llm(entorno: _Entorno) -> N
     assert "señales" in guardado["error_detail"]
 
 
-def test_extraer_acta_escaneada_es_sin_tabla(entorno: _Entorno) -> None:
-    entorno.ensure.return_value = {**_ENSURE_OK, "extracted": 0, "sin_texto": 1}
+def _acta(status: str, *, sin_publicar: bool = False, tipo: str = "acta") -> dict[str, Any]:
+    """Un documento tal como lo devuelve ``DocumentosRepository.list_by_licitacion``."""
+    return {"id": 1, "tipo": tipo, "status": status, "sin_publicar": sin_publicar}
+
+
+def _sin_paginas(entorno: _Entorno, *documentos: dict[str, Any]) -> None:
+    """La descarga no intenta nada (todo a cero) y los documentos están como se dice."""
+    entorno.ensure.return_value = {**_ENSURE_OK, "attempted": 0, "extracted": 0}
     entorno.paginas_repo.list_pages_by_licitacion.return_value = []
+    entorno.paginas_repo.list_by_licitacion.return_value = list(documentos)
+
+
+@pytest.mark.parametrize(
+    "recuento",
+    [
+        # La pasada que descarga el PDF escaneado...
+        {"attempted": 1, "extracted": 0, "sin_texto": 1},
+        # ...y las siguientes, con la fila ya en sin_texto: el recuento sale a cero.
+        {"attempted": 0, "extracted": 0, "sin_texto": 0},
+    ],
+)
+def test_extraer_acta_escaneada_es_sin_tabla(entorno: _Entorno, recuento: dict[str, int]) -> None:
+    _sin_paginas(entorno, _acta("sin_texto"))
+    entorno.ensure.return_value = {**_ENSURE_OK, **recuento}
 
     assert extraer_puntuaciones(_LIC, model=_MODELO) == "sin_tabla"
 
@@ -320,6 +342,56 @@ def test_extraer_acta_escaneada_es_sin_tabla(entorno: _Entorno) -> None:
     assert guardado["error_detail"] == "El acta no tiene texto extraíble (escaneada); falta OCR"
     assert guardado["documentos_leidos"] == 0
     assert guardado["model"] is None
+
+
+def test_extraer_acta_en_formato_no_soportado_es_sin_tabla(entorno: _Entorno) -> None:
+    # ``unsupported`` ni siquiera cuenta como ``sin_texto`` en el recuento de la descarga.
+    _sin_paginas(entorno, _acta("unsupported"))
+    entorno.ensure.return_value = {**_ENSURE_OK, "extracted": 0, "unsupported": 1}
+
+    assert extraer_puntuaciones(_LIC, model=_MODELO) == "sin_tabla"
+
+    entorno.llamar.assert_not_called()
+    guardado = _guardado(entorno)
+    assert guardado["status"] == "sin_tabla"
+    assert "formato no soportado" in guardado["error_detail"]
+    assert guardado["model"] is None
+
+
+def test_extraer_escaneada_y_no_soportada_dice_escaneada(entorno: _Entorno) -> None:
+    _sin_paginas(entorno, _acta("unsupported"), _acta("sin_texto"))
+
+    assert extraer_puntuaciones(_LIC, model=_MODELO) == "sin_tabla"
+
+    assert "escaneada" in _guardado(entorno)["error_detail"]
+
+
+@pytest.mark.parametrize("pendiente", ["pending", "downloaded", "error"])
+def test_extraer_escaneada_con_otra_acta_por_resolver_sigue_siendo_error(
+    entorno: _Entorno, pendiente: str
+) -> None:
+    """Una acta escaneada y otra que aún puede leerse: no se da el expediente por vacío."""
+    _sin_paginas(entorno, _acta("sin_texto"), _acta(pendiente))
+
+    with pytest.raises(RuntimeError, match="descargar"):
+        extraer_puntuaciones(_LIC, model=_MODELO)
+
+    assert _guardado(entorno)["status"] == "error"
+
+
+def test_extraer_ignora_lo_que_no_es_acta_ni_esta_publicado(entorno: _Entorno) -> None:
+    # Un pliego escaneado o un acta anunciada y sin publicar no deciden por la lectura del acta.
+    _sin_paginas(entorno, _acta("sin_texto", tipo="legal"), _acta("pending", sin_publicar=True))
+
+    with pytest.raises(RuntimeError, match="descargar"):
+        extraer_puntuaciones(_LIC, model=_MODELO)
+
+    assert _guardado(entorno)["status"] == "error"
+
+    entorno.repo.guardar.reset_mock()
+    _sin_paginas(entorno, _acta("sin_texto"), _acta("pending", sin_publicar=True))
+
+    assert extraer_puntuaciones(_LIC, model=_MODELO) == "sin_tabla"
 
 
 def test_extraer_descarga_fallida_lanza_y_deja_error(entorno: _Entorno) -> None:

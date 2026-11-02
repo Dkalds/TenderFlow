@@ -65,6 +65,10 @@ _TOPE_LLM_SEGUNDOS: Final = 300
 _MAX_TOKENS: Final = 4000
 
 _SIN_TEXTO: Final = "El acta no tiene texto extraíble (escaneada); falta OCR"
+_NO_SOPORTADO: Final = "El acta está en un formato no soportado; no se puede leer"
+#: ``documentos.status`` que no cambia solo: volver a descargar no lo arregla. Los
+#: demás (``pending``, ``downloaded``, ``error``) sí se reintentan.
+_ESTADOS_SIN_TEXTO: Final = frozenset({"sin_texto", "unsupported"})
 _SIN_SENALES: Final = (
     "Ninguna página del acta tiene las señales de una tabla de puntuaciones "
     "(«puntuación», «total», «sobre N puntos»)"
@@ -202,11 +206,9 @@ def _leer_acta(licitacion_id: str, model: str) -> _Lectura:
     descarga = ensure_documents_ready(licitacion_id, tipos=solo_actas, max_documentos=_MAX_ACTAS)
     paginas = DocumentosRepository().list_pages_by_licitacion(licitacion_id, tipos=solo_actas)
     if not paginas:
-        # shortcut: «escaneada» solo se reconoce en la pasada que la descarga; si otra versión
-        # de la extracción la relee, la fila ya está en sin_texto y sale como error. Mirar
-        # documentos.status en vez del recuento cuando suba EXTRACTION_VERSION.
-        if descarga.get("sin_texto"):
-            return _Lectura("sin_tabla", 0, error_detail=_SIN_TEXTO)
+        motivo = _motivo_sin_texto(licitacion_id)
+        if motivo:
+            return _Lectura("sin_tabla", 0, error_detail=motivo)
         raise RuntimeError(f"No se pudo descargar ni leer el acta del expediente ({descarga})")
 
     documentos = len({pagina["documento_id"] for pagina in paginas})
@@ -233,6 +235,26 @@ def _leer_acta(licitacion_id: str, model: str) -> _Lectura:
     else:
         detalle = "El modelo no encontró una tabla de puntuaciones por licitador en el acta"
     return _Lectura("sin_tabla", documentos, model, detalle)
+
+
+def _motivo_sin_texto(licitacion_id: str) -> str | None:
+    """Por qué el acta no tiene nada que leer, si ningún reintento lo va a cambiar.
+
+    Se lee el estado guardado de los documentos y no el recuento de la descarga:
+    un acta ya marcada ``sin_texto`` no se vuelve a intentar y su recuento sale a
+    cero (también tras subir ``EXTRACTION_VERSION`` o si el worker murió entre
+    marcarla y guardar), y ``unsupported`` ni siquiera cuenta como ``sin_texto``.
+    Solo si hay actas publicadas y todas están en un estado terminal; con una
+    pendiente, en error o sin publicar, ``None``: eso sí es un fallo que reintentar.
+    """
+    estados = [
+        fila.get("status")
+        for fila in DocumentosRepository().list_by_licitacion(licitacion_id)
+        if fila.get("tipo") == TIPO_ACTA and not fila.get("sin_publicar")
+    ]
+    if not estados or any(estado not in _ESTADOS_SIN_TEXTO for estado in estados):
+        return None
+    return _SIN_TEXTO if "sin_texto" in estados else _NO_SOPORTADO
 
 
 def _preguntar_al_modelo(licitacion_id: str, paginas: list[dict[str, object]], model: str) -> str:

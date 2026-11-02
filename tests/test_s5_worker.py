@@ -145,7 +145,7 @@ def test_los_tipos_a_demanda_y_los_programados_no_se_solapan() -> None:
     assert set(TIPOS_A_DEMANDA) & set(TIPOS_PROGRAMADOS) == set()
 
 
-def test_los_tipos_a_demanda_son_los_tres_del_plan() -> None:
+def test_los_tipos_a_demanda_son_los_declarados() -> None:
     # Más el despacho del outbox a demanda (ADR-027 §C): una mutación que
     # escribe un evento que alguien espera ya pide una pasada sin esperar al
     # cierre de la siguiente ingesta. Y la lectura del acta de la mesa, que el
