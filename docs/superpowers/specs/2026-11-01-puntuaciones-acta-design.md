@@ -80,7 +80,9 @@ igual que en los pliegos (hash normalizado sin espacios; sin URI, se descarta).
 
 ### 3.2 Migración
 
-Una revisión nueva (requiere OK explícito, AGENTS.md §6) que:
+Una revisión nueva (requiere OK explícito, AGENTS.md §6), `v170_actas_puntuaciones`,
+que cuelga de la `v169` de `master` (`v169_radar_dismissals_desglose`, mergeada
+mientras se desarrollaba esta) y:
 
 1. Amplía el CHECK de `documentos.tipo` a `('legal', 'technical',
    'additional', 'acta')`.
@@ -101,12 +103,28 @@ atasco, se excluyen también ahí.
 
 ### 4.1 Disparo
 
-`services/pursuit_awards.py::notify_detected_awards` (llamado desde
-`scheduler/pipeline_runs.py` tras cada pasada) encola, además de avisar, un
-job `puntuaciones_acta` (nuevo tipo en `services/jobs.py`) por cada expediente
-con oportunidad, adjudicación conocida y alguna referencia `tipo='acta'`, que
-no tenga fila en `acta_extracciones` con la versión vigente. Idempotente con
-`job_activo(tipo, campo="licitacion_id", valor=…)`.
+`services.puntuaciones_acta.encolar_pendientes`, que `scheduler/pipeline_runs.py`
+llama tras cada pasada, justo después de `notify_detected_awards`. No cuelga de
+ese aviso porque solo recorre oportunidades abiertas y el post-mortem sirve
+sobre todo a las ya cerradas como perdidas: `encolar_pendientes` cubre también
+las oportunidades cerradas. Encola un job `puntuaciones_acta` (nuevo tipo en
+`services/jobs.py`, deduplicado por `licitacion_id`) por cada expediente con
+oportunidad y adjudicación conocida cuya lectura toca; sin referencias
+`tipo='acta'` escribe `sin_acta`, sin job.
+
+Solo considera los expedientes ingeridos de PLACSP (`fuente` `placsp`,
+`bulk_*` o `placsp_agregadas`): las demás fuentes no ingieren actas, y decir
+«PLACSP no publicó acta» de un expediente que PLACSP no lleva sería falso.
+
+Toca leer cuando el expediente no tiene fila en `acta_extracciones`, la tiene
+de otra versión, quedó en `error`, quedó en `sin_acta` y desde entonces llegó
+un acta, o quedó en `sin_tabla` y todavía tiene un acta publicable en
+`pending`: la lectura baja como mucho 3 por pasada, así que las demás esperan
+a la siguiente. La descarga prioriza las que puntúan (acta, valoración,
+criterios automáticos) sobre las resoluciones de adjudicación, que dicen a
+quién y no cuántos puntos. Una relectura de un `sin_tabla` que no ha leído
+ningún documento de acta nuevo desde la última no llama al modelo: conserva el
+resultado anterior.
 
 Lo consume el mismo plano que hoy consume la cola en la API (ADR-028 §G).
 
@@ -137,11 +155,13 @@ Lo consume el mismo plano que hoy consume la cola en la API (ADR-028 §G).
 |---|---|
 | Al menos una fila con cita válida | `ok` |
 | Hay acta pero ninguna fila sobrevive | `sin_tabla` |
+| Todas las actas publicadas son escaneadas (`sin_texto`) o de un formato no soportado (`unsupported`) | `sin_tabla`, derivado del `status` guardado de cada documento, no del recuento de la descarga |
 | El expediente no tiene referencias `acta` | `sin_acta` (lo escribe el disparo, sin job) |
-| Proveedor caído, respuesta vacía, descarga fallida | `error`; reintento con el backoff de la cola hasta `jobs_max_intentos` |
+| Proveedor caído, respuesta vacía, descarga fallida | `error`; reintento con el backoff de la cola hasta `jobs_max_intentos`, y el disparo lo reencola en cada pasada (atajo sin tope, registrado en el backlog) |
 
-Un acta escaneada sin texto termina en `sin_tabla` con `error_detail` que lo
-dice.
+Un acta escaneada o de un formato no soportado termina en `sin_tabla` con
+`error_detail` que lo dice. Un `sin_tabla` no es definitivo mientras quede un
+acta publicable en `pending`: el disparo lo reencola (§4.1).
 
 ## 5. Almacenamiento
 
