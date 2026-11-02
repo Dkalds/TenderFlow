@@ -25,12 +25,18 @@ from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from db.repositories.documentos import DocumentosRepository
+from db.repositories.documentos import TIPO_ACTA, TIPOS_PLIEGO, DocumentosRepository
 from observability.logging import get_logger
 
 log = get_logger(__name__)
 
 _repo = DocumentosRepository()
+
+#: Qué documentos se pueden abrir en el visor: los pliegos, que son de donde cita
+#: la ficha, y el acta de la mesa, a cuya página enlaza cada cifra de las
+#: puntuaciones por licitador. El repositorio solo trae los pliegos por defecto
+#: (spec §3.3): las actas hay que pedirlas.
+_TIPOS_VISIBLES: Final[frozenset[str]] = TIPOS_PLIEGO | {TIPO_ACTA}
 
 #: Por qué un resaltado no se pudo aplicar. La página se sirve igual —completa
 #: y sin resaltar—, pero el consumidor tiene que poder decir por qué, en vez de
@@ -114,7 +120,7 @@ def get_pagina(
     from services.dedupe import expediente_del_pliego
 
     paginas: list[dict[str, Any]] = _repo.list_pages_by_licitacion(
-        expediente_del_pliego(licitacion_id)
+        expediente_del_pliego(licitacion_id), tipos=_TIPOS_VISIBLES
     )
     del_documento = [p for p in paginas if int(p["documento_id"]) == documento_id]
     if not del_documento:

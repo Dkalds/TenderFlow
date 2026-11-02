@@ -1,6 +1,6 @@
 """Lee las puntuaciones por licitador del acta de la mesa y las guarda (v169).
 
-Dos entradas, las dos sin contexto de tenant (el acta es dato de mercado):
+Tres entradas. Las dos primeras, sin contexto de tenant (el acta es dato de mercado):
 
 * :func:`encolar_pendientes` la llama el cierre de la pasada
   (``scheduler/pipeline_runs.py``) tras el aviso de adjudicaciones. Recorre los
@@ -13,6 +13,10 @@ Dos entradas, las dos sin contexto de tenant (el acta es dato de mercado):
   elige las páginas que parecen traer la tabla, hace **una** llamada al modelo y
   guarda solo las filas cuya cita está literalmente en el acta (ADR-014; las
   reglas viven en ``services/puntuaciones_acta_reglas``).
+* :func:`puntuaciones_de_pursuit` y :func:`validar_fila_acta` son la lectura de la
+  ficha de la oportunidad (``services/pursuits.py``): arman la tabla por lote con
+  su fila ganadora, la propia y la diferencia, y comprueban la fila que una
+  persona confirma como suya.
 
 Qué queda escrito
 -----------------
@@ -37,9 +41,11 @@ importa este módulo y no debe arrastrar el cliente del modelo al arrancar la AP
 
 from __future__ import annotations
 
+import json
 import threading
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from config.settings import settings
 from db.repositories.condiciones_oficiales import CondicionesOficialesRepository
@@ -48,9 +54,23 @@ from db.repositories.puntuaciones_acta import (
     ActaStatus,
     PuntuacionesActaRepository,
     PuntuacionNueva,
+    PuntuacionRow,
 )
+from db.repositories.pursuits import FilaActaEventRow, PursuitRepository
 from observability.logging import get_logger
 from services.jobs import TIPO_PUNTUACIONES_ACTA, enqueue
+from services.normalization import fold_text, normalize_company
+from shared.dto import (
+    CriterioPuntuado,
+    DiferenciaCriterio,
+    FilaActaRef,
+    FilaPuntuacion,
+    PuntuacionesActa,
+    PuntuacionesLote,
+)
+
+if TYPE_CHECKING:
+    from services.puntuaciones_acta_reglas import CriterioCalculo, DiferenciaCalculo
 
 log = get_logger(__name__)
 
@@ -287,3 +307,273 @@ def _preguntar_al_modelo(licitacion_id: str, paginas: list[dict[str, object]], m
     if stop.is_set():
         raise TimeoutError(tope)
     return raw
+
+
+# --- Lectura para la ficha -----------------------------------------------------
+
+
+@dataclass
+class _Licitador:
+    """Un licitador de un lote tal como sale de las filas de ``acta_puntuaciones``."""
+
+    nombre: str
+    normalizado: str
+    excluida: bool = False
+    total: float | None = None
+    #: ``(documento_id, pagina)`` de la fila del total.
+    cita_total: tuple[int, int] | None = None
+    criterios: list[CriterioCalculo] = field(default_factory=list)
+
+
+def puntuaciones_de_pursuit(
+    *,
+    licitacion_id: str,
+    organization_id: int,
+    pursuit_id: int,
+    lote_pursuit: str | None,
+) -> PuntuacionesActa | None:
+    """Las puntuaciones del acta de la oportunidad tal como las enseña la ficha.
+
+    ``None`` si el expediente no tiene ningún documento ``acta`` ni lectura: no
+    hay nada que decir. Con acta pero sin lectura, ``pendiente``. Con lectura, su
+    estado; solo ``ok`` trae lotes (spec §6.1).
+
+    Si ``lote_pursuit`` es un lote que el acta trae, solo ese lote; si no (la
+    oportunidad es del expediente entero, o el acta no lo nombra), todos: ocultar
+    la tabla porque los números de lote no casan sería peor que enseñar de más.
+
+    La fila propia es la que una persona confirmó (el último evento
+    ``fila_acta_confirmada`` del lote, si la fila sigue en el acta) y, si no, la
+    que propone el nombre de la organización. Una confirmación cuya fila ya no
+    está (el acta se volvió a leer) no deja el lote sin fila propia: vuelve a la
+    propuesta.
+
+    Lee la organización y la oportunidad: se llama con el ámbito ya resuelto.
+    """
+    repo = PuntuacionesActaRepository()
+    extraccion = repo.get_extraccion(licitacion_id)
+    if extraccion is None:
+        if repo.tiene_actas(licitacion_id):
+            return PuntuacionesActa(estado="pendiente", lotes=[])
+        return None
+    if extraccion["status"] != "ok":
+        return PuntuacionesActa(estado=extraccion["status"], lotes=[])
+
+    # Diferido: las reglas importan ``fact_sheet`` (ver la nota del módulo).
+    from services.puntuaciones_acta_reglas import normalizar_lote
+
+    grupos = _agrupar(repo.list_puntuaciones(licitacion_id))
+    lote_oportunidad = normalizar_lote(lote_pursuit)
+    if lote_oportunidad is not None and lote_oportunidad in grupos:
+        grupos = {lote_oportunidad: grupos[lote_oportunidad]}
+
+    adjudicatarios = [
+        (normalizar_lote(a["lote_numero"]), nombre)
+        for a in repo.adjudicatarios_por_lote(licitacion_id)
+        if (nombre := normalize_company(a["nombre"]))
+    ]
+    nombres_organizacion = {
+        nombre
+        for crudo in repo.nombres_de_organizacion(organization_id)
+        if (nombre := normalize_company(crudo))
+    }
+    confirmadas = _confirmaciones(PursuitRepository().fila_acta_events(organization_id, pursuit_id))
+    return PuntuacionesActa(
+        estado="ok",
+        lotes=[
+            _lote(
+                lote, list(licitadores.values()), adjudicatarios, nombres_organizacion, confirmadas
+            )
+            for lote, licitadores in grupos.items()
+        ],
+    )
+
+
+def validar_fila_acta(licitacion_id: str, ref: FilaActaRef) -> bool:
+    """Si ``ref`` es una fila de las puntuaciones leídas del acta del expediente.
+
+    El lote se compara tal como lo guarda la extracción (``normalizar_lote``
+    aplicado al escribir): la interfaz devuelve el que recibió.
+    """
+    return any(
+        fila["lote_numero"] == ref.lote_numero
+        and fila["licitador_normalizado"] == ref.licitador_normalizado
+        for fila in PuntuacionesActaRepository().list_puntuaciones(licitacion_id)
+    )
+
+
+def _agrupar(filas: Sequence[PuntuacionRow]) -> dict[str | None, dict[str, _Licitador]]:
+    """Las filas de BD por lote y licitador, en el orden del acta.
+
+    Por licitador hay una fila por criterio y una con ``criterio`` ``None`` que es
+    el total.
+    """
+    from services.puntuaciones_acta_reglas import CriterioCalculo
+
+    grupos: dict[str | None, dict[str, _Licitador]] = {}
+    for fila in filas:
+        licitadores = grupos.setdefault(fila["lote_numero"], {})
+        clave = fila["licitador_normalizado"]
+        if clave not in licitadores:
+            licitadores[clave] = _Licitador(nombre=fila["licitador_nombre"], normalizado=clave)
+        licitador = licitadores[clave]
+        licitador.excluida = licitador.excluida or fila["excluida"]
+        if fila["criterio"] is None:
+            licitador.total = fila["puntos"]
+            licitador.cita_total = (fila["documento_id"], fila["pagina"])
+        else:
+            licitador.criterios.append(
+                CriterioCalculo(
+                    nombre=fila["criterio"],
+                    puntos=fila["puntos"],
+                    maximo=fila["puntos_max"],
+                    es_precio=fila["es_precio"],
+                    documento_id=fila["documento_id"],
+                    pagina=fila["pagina"],
+                    cita=fila["cita"],
+                )
+            )
+    return grupos
+
+
+def _confirmaciones(eventos: Sequence[FilaActaEventRow]) -> dict[str | None, str]:
+    """Por lote, el ``licitador_normalizado`` del último evento ``fila_acta_confirmada``.
+
+    Los eventos llegan en orden de escritura, así que el último de cada lote pisa
+    a los anteriores. Un payload ilegible se ignora: lo escribe este servicio, pero
+    el ledger es append-only y una fila rota no puede tumbar la ficha.
+    """
+    confirmadas: dict[str | None, str] = {}
+    for evento in eventos:
+        try:
+            payload: object = json.loads(evento["payload_json"])
+        except ValueError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        lote, licitador = payload.get("lote_numero"), payload.get("licitador_normalizado")
+        if isinstance(licitador, str) and licitador and (lote is None or isinstance(lote, str)):
+            confirmadas[lote] = licitador
+    return confirmadas
+
+
+def _ordenadas(licitadores: list[_Licitador]) -> list[_Licitador]:
+    """Las no excluidas por total descendente (sin total detrás) y las excluidas al final.
+
+    ``sorted`` es estable: a igualdad de total manda el orden del acta.
+    """
+    activas = sorted(
+        (lic for lic in licitadores if not lic.excluida),
+        key=lambda lic: (lic.total is None, -(lic.total or 0.0)),
+    )
+    return [*activas, *(lic for lic in licitadores if lic.excluida)]
+
+
+def _lote(
+    lote: str | None,
+    licitadores: list[_Licitador],
+    adjudicatarios: Sequence[tuple[str | None, str]],
+    nombres_organizacion: set[str],
+    confirmadas: dict[str | None, str],
+) -> PuntuacionesLote:
+    """La tabla de un lote con su ganadora, su fila propia, la diferencia y el motivo."""
+    from services.puntuaciones_acta_reglas import (
+        FilaCalculo,
+        diferencia,
+        fila_ganadora,
+        fila_propia,
+        motivo_sugerido,
+    )
+
+    filas = _ordenadas(licitadores)
+    calculos = [
+        FilaCalculo(
+            licitador=lic.nombre,
+            licitador_normalizado=lic.normalizado,
+            total=lic.total,
+            excluida=lic.excluida,
+            criterios=tuple(lic.criterios),
+        )
+        for lic in filas
+    ]
+    # Un adjudicatario sin lote vale para todos; un acta sin lotes, también para cualquiera.
+    de_este_lote = {
+        nombre
+        for lote_adjudicado, nombre in adjudicatarios
+        if lote_adjudicado is None or lote is None or lote_adjudicado == lote
+    }
+    ganadora, es_mayor_puntuacion = fila_ganadora(calculos, de_este_lote)
+
+    propia = fila_propia(calculos, nombres_organizacion)
+    confirmada = confirmadas.get(lote)
+    indice_confirmada = next(
+        (i for i, lic in enumerate(filas) if confirmada and lic.normalizado == confirmada), None
+    )
+    if indice_confirmada is not None:
+        propia = indice_confirmada
+
+    diferencias: list[DiferenciaCriterio] = []
+    motivo = None
+    if propia is not None and ganadora is not None and propia != ganadora:
+        motivo = motivo_sugerido(calculos[propia], calculos[ganadora], propia_es_ganadora=False)
+        diferencias = [
+            _diferencia_dto(d, filas[ganadora])
+            for d in diferencia(calculos[propia], calculos[ganadora])
+        ]
+
+    return PuntuacionesLote(
+        lote_numero=lote,
+        filas=[_fila_dto(lic) for lic in filas],
+        fila_ganadora=ganadora,
+        ganadora_es_mayor_puntuacion=es_mayor_puntuacion,
+        fila_propia=propia,
+        fila_propia_confirmada=indice_confirmada is not None,
+        diferencia=diferencias,
+        motivo_sugerido=motivo,
+    )
+
+
+def _fila_dto(licitador: _Licitador) -> FilaPuntuacion:
+    return FilaPuntuacion(
+        licitador=licitador.nombre,
+        licitador_normalizado=licitador.normalizado,
+        total=licitador.total,
+        excluida=licitador.excluida,
+        criterios=[
+            CriterioPuntuado(
+                nombre=c.nombre,
+                puntos=c.puntos,
+                maximo=c.maximo,
+                es_precio=c.es_precio,
+                documento_id=c.documento_id,
+                pagina=c.pagina,
+                cita=c.cita,
+            )
+            for c in licitador.criterios
+        ],
+    )
+
+
+def _diferencia_dto(calculo: DiferenciaCalculo, ganadora: _Licitador) -> DiferenciaCriterio:
+    """La diferencia con la página del acta donde la ganadora tiene esa cifra."""
+    cita: tuple[int, int] | None
+    if calculo.criterio is None:
+        cita = ganadora.cita_total
+    else:
+        buscado = fold_text(calculo.criterio)
+        cita = next(
+            (
+                (c.documento_id, c.pagina)
+                for c in ganadora.criterios
+                if fold_text(c.nombre) == buscado
+            ),
+            None,
+        )
+    return DiferenciaCriterio(
+        criterio=calculo.criterio,
+        diferencia=calculo.diferencia,
+        maximo=calculo.maximo,
+        es_precio=calculo.es_precio,
+        documento_id=cita[0] if cita else None,
+        pagina=cita[1] if cita else None,
+    )

@@ -45,6 +45,7 @@ from services.ficha_pdf import BloqueFicha, FichaOportunidad, construir_pdf
 from services.jobs import solicitar_despacho_de_eventos
 from services.kit_presentacion import EstadoFicha, KitPresentacion, construir_kit, marcar_item
 from services.organizations import alcance_resuelto, require_active_member
+from services.puntuaciones_acta import puntuaciones_de_pursuit, validar_fila_acta
 from services.pursuit_awards import resultado_sugerido
 from services.pursuits_agenda import (
     AGENDA_PURSUITS_MAX,
@@ -69,10 +70,12 @@ from services.watchlist_rules import WatchlistRule, list_rules
 from shared.audit_events import PURSUIT_WEIGHTS_PROPOSAL_APPLIED
 from shared.dates import a_fecha, hora_local_de_plazo, hoy_peninsular
 from shared.dto import (
+    FilaActaRef,
     OrganizationSettings,
     PerdidaPorMotivo,
     PipelineAgendaItem,
     PipelineAgendaResponse,
+    PuntuacionesActa,
     PursuitAdjudicacionDetectada,
     PursuitAdjudicatario,
     PursuitCreate,
@@ -263,6 +266,28 @@ def _resultado_sugerido(
         return None
 
 
+def _puntuaciones(row: PursuitRow, organization_id: int | None) -> PuntuacionesActa | None:
+    """Las puntuaciones del acta de la mesa para la ficha, o ``None`` si no se pueden dar.
+
+    Nunca lanza, por lo mismo que :func:`_resultado_sugerido`: es información
+    añadida sobre una adjudicación que la ficha ya muestra, y quedarse sin ficha
+    porque falló la lectura del acta sería un mal negocio. Sin organización
+    resuelta no hay fila propia que proponer ni confirmación que leer.
+    """
+    if organization_id is None:
+        return None
+    try:
+        return puntuaciones_de_pursuit(
+            licitacion_id=str(row["licitacion_id"]),
+            organization_id=organization_id,
+            pursuit_id=int(row["id"]),
+            lote_pursuit=row.get("lote_numero"),
+        )
+    except Exception as exc:
+        log.warning("pursuit_puntuaciones_acta_error", error=str(exc)[:200])
+        return None
+
+
 def _adjudicacion_detectada(
     row: PursuitRow, *, organization_id: int | None = None
 ) -> PursuitAdjudicacionDetectada | None:
@@ -305,6 +330,7 @@ def _adjudicacion_detectada(
         n_ofertas=max(ofertas) if ofertas else None,
         resultado_sugerido=_resultado_sugerido(organization_id, adjudicatarios),
         cierre_pendiente=str(row.get("status")) not in _ESTADOS_TERMINALES,
+        puntuaciones=_puntuaciones(row, organization_id),
     )
 
 
@@ -463,7 +489,19 @@ def update_pursuit(
 
         requested = body.model_dump(exclude_unset=True)
         expected_version = int(requested.pop("expected_version", current["version"]))
+        # La fila del acta no es una columna de la oportunidad: va al ledger.
+        requested.pop("fila_acta", None)
+        fila_acta = body.fila_acta
+        if fila_acta is not None and not validar_fila_acta(
+            str(current["licitacion_id"]), fila_acta
+        ):
+            raise PursuitValidationError("Esa fila no está en el acta leída de este expediente.")
         changes = _normalize_and_validate_update(current, requested, resolved_id)
+        if fila_acta is not None and not changes:
+            # Solo se confirmó la fila: nada que actualizar, así que la versión no sube.
+            # shortcut: este camino no honra ``idempotency_key`` (no pasa por ``_repo.update``); repetir la confirmación anota otro evento igual y el último manda, subir si el ledger debe contar una sola
+            _anotar_fila_acta(resolved_id, pursuit_id, user_id, fila_acta)
+            return _detalle(current, resolved_id, pursuit_id)
         event_payload = {
             "changes": {
                 field: {"from": current.get(field), "to": value}
@@ -487,6 +525,8 @@ def update_pursuit(
             raise PursuitConflictError(str(exc)) from exc
         if updated is None:
             raise PursuitNotFoundError("Oportunidad no encontrada.")
+        if fila_acta is not None:
+            _anotar_fila_acta(resolved_id, pursuit_id, user_id, fila_acta)
         if changes.get("responsible_user_id") is not None:
             _adelantar_aviso_de_asignacion(updated, actor_user_id=user_id)
         if changes.get("status") == "preparing":
@@ -496,6 +536,22 @@ def update_pursuit(
         ):
             _registrar_en_cartera(resolved_id, pursuit_id)
         return _detalle(updated, resolved_id, pursuit_id)
+
+
+def _anotar_fila_acta(
+    organization_id: int, pursuit_id: int, user_id: int, fila_acta: FilaActaRef
+) -> None:
+    """Deja en el ledger la fila del acta que la persona confirma como suya.
+
+    Una confirmación posterior del mismo lote la sustituye al leer
+    (:func:`services.puntuaciones_acta.puntuaciones_de_pursuit`).
+    """
+    _repo.append_fila_acta_event(
+        organization_id=organization_id,
+        pursuit_id=pursuit_id,
+        actor_user_id=user_id,
+        payload=fila_acta.model_dump(),
+    )
 
 
 def _registrar_en_cartera(organization_id: int, pursuit_id: int) -> None:
