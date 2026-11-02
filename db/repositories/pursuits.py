@@ -815,6 +815,23 @@ class PursuitRepository:
             )
             return typed_rows(ClosedScoredRow, rows_to_dicts(cur))
 
+    def opened_scored_breakdowns(self, organization_id: int, *, limit: int = 2000) -> list[str]:
+        """Desgloses (JSON) de las oportunidades abiertas con desglose sellado.
+
+        Todas, cerradas o no: es la mitad «me interesa» de la propuesta de
+        pesos por triaje, y lo que mide es qué decidió abrir el equipo, no cómo
+        acabó. Las más recientes primero, para que el tope se quede con el
+        triaje de ahora.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT desglose_al_abrir FROM pursuits "
+                "WHERE organization_id = %s AND desglose_al_abrir IS NOT NULL "
+                "ORDER BY created_at DESC, id DESC LIMIT %s",
+                (organization_id, max(1, min(int(limit), 20000))),
+            )
+            return [str(row[0]) for row in cur.fetchall()]
+
     def export_personal_data(self, user_id: int) -> dict[str, list[dict[str, Any]]]:
         """Exporta solo filas vinculadas personalmente al usuario.
 

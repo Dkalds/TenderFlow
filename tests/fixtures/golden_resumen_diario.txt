@@ -9,12 +9,18 @@
   - Solvencia técnica: Certificado de buena ejecución de al menos dos servicios SAP. (sin dato suficiente)
   Checklist frente a la capacidad de tu organización: sin dato suficiente (1 cumple · 0 no cumple · 3 sin dato)
   Ficha: https://app.example/detalle?lic=EXP-1
+  Me interesa: https://app.example/detalle?lic=EXP-1&desde=resumen&intencion=interesa
+  No encaja: https://app.example/detalle?lic=EXP-1&desde=resumen&intencion=descartar
 * Mantenimiento SAP BW
   Ayuntamiento de Prueba | base desconocida | fecha límite 2026-11-05 | SAP
   Ficha: https://app.example/detalle?lic=EXP-2
+  Me interesa: https://app.example/detalle?lic=EXP-2&desde=resumen&intencion=interesa
+  No encaja: https://app.example/detalle?lic=EXP-2&desde=resumen&intencion=descartar
 * Licencias SAP
   Diputación de Prueba | base desconocida (60.500 € con IVA) | fecha límite —
   Ficha: https://app.example/detalle?lic=EXP-3
+  Me interesa: https://app.example/detalle?lic=EXP-3&desde=resumen&intencion=interesa
+  No encaja: https://app.example/detalle?lic=EXP-3&desde=resumen&intencion=descartar
 
 Mi Watchlist: https://app.example/mi-watchlist
 Dejar de recibir estos correos: https://app.example/api/v1/watchlist/rules/baja?k=abc&t=kid.sig
