@@ -7,6 +7,9 @@ import { DocumentosBlock } from "@/components/documentos-block";
 import { FichaAcciones, FichaAvisos, FichaEstado, FichaOrgano } from "@/components/ficha/ficha-cabecera";
 import { FichaCifras } from "@/components/ficha/ficha-cifras";
 import { FichaAdjudicatarios } from "@/components/ficha/ficha-adjudicatarios";
+import { FichaCumplo } from "@/components/ficha/ficha-cumplo";
+import { FichaHistorialPropio } from "@/components/ficha/ficha-historial-propio";
+import { FichaNovedades } from "@/components/ficha/ficha-novedades";
 import { FichaRequisitos } from "@/components/ficha/ficha-requisitos";
 import { FichaSimilares } from "@/components/ficha/ficha-similares";
 import { FichaCalendario, FichaCampos } from "@/components/ficha/ficha-campos";
@@ -69,8 +72,11 @@ function IndiceDeSecciones() {
 /**
  * El contenido de la ficha completa: todo a la vez, sin pestañas.
  *
- * Arriba lo que decide (estado, título, órgano, acciones, cifras y avisos) y
- * el índice de secciones. Debajo dos columnas: a la izquierda lo que publica
+ * Arriba lo que decide (estado, título, órgano, acciones —abrir la
+ * oportunidad, el dossier—, cifras, avisos y lo que cambió desde tu última
+ * visita) y el índice de secciones. Requisitos abre con «¿Cumples lo que
+ * piden?» y Competencia lleva, tras la competencia esperada, tu historial con
+ * el órgano y el CPV (CU-35). Debajo dos columnas: a la izquierda lo que publica
  * el expediente —el expediente en sí, sus requisitos (lotes, criterios,
  * garantías y solvencia del anuncio) y los pliegos con su ficha y el guion—;
  * a la derecha lo que TenderFlow calcula sobre él —puntuación, competencia,
@@ -111,6 +117,7 @@ export function DetalleFichaCuerpo({ licitacion: l }: { licitacion: LicitacionDe
 
       <FichaCifras licitacion={l} columnas={5} />
       <FichaAvisos flags={l.risk_flags} />
+      <FichaNovedades licitacionId={l.id_externo} />
       <IndiceDeSecciones />
 
       <div className="flex flex-wrap items-start gap-5">
@@ -136,6 +143,11 @@ export function DetalleFichaCuerpo({ licitacion: l }: { licitacion: LicitacionDe
           </section>
 
           <section id="ficha-requisitos" aria-label="Requisitos" className={SECCION}>
+            {/* Primero si cumples, luego qué piden: es la pregunta con la que
+                se llega a esta sección. */}
+            <Panel>
+              <FichaCumplo licitacion={l} />
+            </Panel>
             <Panel>
               <PanelTitle as="h3" title="Requisitos" hint="Lotes, criterios, garantías y solvencia del anuncio" />
               <FichaRequisitos licitacion={l} as="h4" />
@@ -167,6 +179,9 @@ export function DetalleFichaCuerpo({ licitacion: l }: { licitacion: LicitacionDe
             )}
             <Panel>
               <CompetenciaEsperadaBlock licitacionId={l.id_externo} className="pb-0" />
+            </Panel>
+            <Panel>
+              <FichaHistorialPropio licitacionId={l.id_externo} />
             </Panel>
             <Panel className={PANEL_DE_BLOQUES}>
               <PrediccionBajaBlock licitacionId={l.id_externo} />

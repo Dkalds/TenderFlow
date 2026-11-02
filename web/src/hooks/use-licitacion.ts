@@ -11,9 +11,12 @@
  * El tipo sale del esquema generado, no se copia a mano: un campo que la API
  * deje de enviar rompe el typecheck aquí y no la pantalla.
  */
+import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth } from "@/lib/api-client";
-import type { LicitacionDetail, SimilaresResult } from "@/lib/api-types";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
+import type { GoNoGoChecklist } from "@/hooks/use-pursuit-checklist";
+import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import type { HistorialPropio, LicitacionDetail, NovedadesDeFicha, SimilaresResult } from "@/lib/api-types";
 import { licitacionKeys } from "@/lib/query-keys";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
@@ -51,4 +54,72 @@ export function useSimilares(id: string | null, limite = 5) {
     staleTime: 5 * 60 * 1000,
     meta: META_ERROR_EN_LINEA,
   });
+}
+
+/** `?organization_id=` de la organización activa, o nada si es la personal. */
+function conOrganizacion(url: string, organizationId: number | null | undefined): string {
+  return organizationId != null ? `${url}?organization_id=${organizationId}` : url;
+}
+
+/**
+ * «¿Cumplo?» del expediente (`GET /licitaciones/{id}/checklist`).
+ *
+ * El mismo contraste que el checklist de una oportunidad, antes de abrirla.
+ * Como allí, se contrasta con la capacidad de la organización activa: la
+ * clave la lleva y la consulta espera a saber cuál es.
+ */
+export function useChecklistLicitacion(id: string | null) {
+  const organizationId = useActiveOrganizationId();
+  return useQuery({
+    queryKey: [...licitacionKeys.checklist(id ?? ""), organizationId],
+    queryFn: ({ signal }) =>
+      fetchWithAuth<GoNoGoChecklist>(
+        conOrganizacion(`/api/v1/licitaciones/${encodeURIComponent(id!)}/checklist`, organizationId),
+        { signal },
+      ),
+    enabled: Boolean(id) && organizacionResuelta(organizationId),
+    staleTime: 5 * 60 * 1000,
+    meta: META_ERROR_EN_LINEA,
+  });
+}
+
+/** Lo que tu organización ha ganado con el órgano y en el CPV del expediente. */
+export function useHistorialPropio(id: string | null) {
+  const organizationId = useActiveOrganizationId();
+  return useQuery({
+    queryKey: [...licitacionKeys.historialPropio(id ?? ""), organizationId],
+    queryFn: ({ signal }) =>
+      fetchWithAuth<HistorialPropio>(
+        conOrganizacion(`/api/v1/licitaciones/${encodeURIComponent(id!)}/historial-propio`, organizationId),
+        { signal },
+      ),
+    enabled: Boolean(id) && organizacionResuelta(organizationId),
+    staleTime: 5 * 60 * 1000,
+    meta: META_ERROR_EN_LINEA,
+  });
+}
+
+/**
+ * Registra la visita a la ficha y devuelve qué cambió desde la anterior
+ * (`POST /licitaciones/{id}/visita`).
+ *
+ * Una sola vez por expediente y montaje: la llamada mueve la marca, así que
+ * repetirla —el doble efecto de StrictMode, un re-render— dejaría la franja
+ * vacía. Un fallo no avisa: la franja es un añadido y sin ella la ficha
+ * sigue entera.
+ */
+export function useVisitaFicha(id: string): NovedadesDeFicha | null {
+  const [visita, setVisita] = React.useState<NovedadesDeFicha | null>(null);
+  const registrada = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (registrada.current === id) return;
+    registrada.current = id;
+    setVisita(null);
+    apiMutate<NovedadesDeFicha>("POST", `/api/v1/licitaciones/${encodeURIComponent(id)}/visita`)
+      .then((respuesta) => {
+        if (registrada.current === id) setVisita(respuesta);
+      })
+      .catch(() => undefined);
+  }, [id]);
+  return visita;
 }

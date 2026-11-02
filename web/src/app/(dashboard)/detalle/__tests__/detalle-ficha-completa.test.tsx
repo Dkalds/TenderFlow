@@ -8,11 +8,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
 
-const { fetchWithAuth } = vi.hoisted(() => ({ fetchWithAuth: vi.fn() }));
+const { fetchWithAuth, apiMutate } = vi.hoisted(() => ({ fetchWithAuth: vi.fn(), apiMutate: vi.fn() }));
 
 vi.mock("@/lib/api-client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api-client")>()),
   fetchWithAuth,
+  // La visita a la ficha (`POST /visita`) se queda pendiente: sin novedades no hay franja.
+  apiMutate,
+}));
+vi.mock("@/components/ficha/ficha-oportunidad", () => ({
+  OportunidadBoton: () => <button type="button">Abrir oportunidad</button>,
+  DossierBoton: () => <button type="button">Dossier PDF</button>,
 }));
 vi.mock("@/hooks/use-organization", () => ({
   useActiveOrganizationId: () => 7,
@@ -76,6 +82,7 @@ function pintar(props: Partial<React.ComponentProps<typeof DetalleFichaCompleta>
 beforeEach(() => {
   // Los bloques de la ficha se quedan cargando: aquí se mira el marco.
   fetchWithAuth.mockImplementation(() => new Promise(() => {}));
+  apiMutate.mockImplementation(() => new Promise(() => {}));
 });
 
 afterEach(() => {

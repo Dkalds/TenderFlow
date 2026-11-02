@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict, cast
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
@@ -47,6 +47,7 @@ __all__ = [
     "NivelSegmento",
     "Segmento",
     "expedientes_por_nivel",
+    "historial_propio",
     "objetivo",
     "ofertas_del_segmento",
     "rivales_del_segmento",
@@ -382,3 +383,118 @@ def rivales_del_segmento(
         if fila.get("clave") is not None
     ]
     return {"total": total, "rivales": rivales}
+
+
+class FilaResumenPropio(TypedDict):
+    """Lo ganado en un ámbito (``organo`` o ``cpv4``)."""
+
+    ambito: str
+    expedientes: int
+    importe: float
+    baja_mediana_pct: float | None
+    bajas_n: int
+
+
+class FilaAdjudicacionPropia(TypedDict):
+    """Una adjudicación propia del órgano o del CPV-4."""
+
+    licitacion_id: str
+    titulo: str | None
+    organo_contratacion: str | None
+    fecha_adjudicacion: str | None
+    importe_adjudicado: float | None
+    baja_pct: float | None
+    mismo_organo: bool
+    mismo_cpv4: bool
+
+
+class FilaOportunidadPorEstado(TypedDict):
+    status: str
+    n: int
+
+
+class HistorialPropioFilas(TypedDict):
+    resumen: list[FilaResumenPropio]
+    recientes: list[FilaAdjudicacionPropia]
+    oportunidades: list[FilaOportunidadPorEstado]
+
+
+def historial_propio(
+    segmento: Segmento,
+    *,
+    organization_id: int,
+    empresa_ids: Sequence[int],
+    nifs: Sequence[str],
+    excluir: str,
+    limite: int = 8,
+) -> HistorialPropioFilas:
+    """Lo que la propia organización ha ganado con este órgano o en este CPV-4.
+
+    Devuelve ``resumen`` (expedientes, importe y baja mediana por ámbito:
+    ``organo`` y ``cpv4``), ``recientes`` (las últimas ``limite`` adjudicaciones
+    propias de cualquiera de los dos, con a cuál pertenecen) y ``oportunidades``
+    (las de la organización con el mismo órgano, por estado). Se reconoce a la
+    organización como en :func:`rivales_del_segmento`: por ``empresa_id`` o por
+    NIF normalizado. Sin universo analítico ni ventana: es el historial
+    completo de la organización, no una muestra de mercado.
+    """
+    organo, params_organo = _predicado_organo(segmento)
+    cpv = "substr(l.cpv, 1, 4) = %s" if segmento.cpv4 else "FALSE"
+    params_cpv: list[str] = [segmento.cpv4] if segmento.cpv4 else []
+    propia = f"(a.empresa_id = ANY(%s) OR {_NIF_NORMALIZADO} = ANY(%s))"
+    filas = (
+        "SELECT a.licitacion_id, l.titulo, l.organo_contratacion, a.fecha_adjudicacion, "
+        "       a.importe_adjudicado, "
+        f"      CASE WHEN {VALID_PAIR_LOTE} AND {SIN_IVA_CONOCIDO_SQL} "
+        f"           THEN {BAJA_PCT_SQL} END AS baja_pct, "
+        f"      {organo} AS mismo_organo, {cpv} AS mismo_cpv4 "
+        "FROM adjudicaciones a "
+        "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
+        "LEFT JOIN lotes lo ON lo.id = a.lote_id "
+        f"WHERE {propia} AND a.licitacion_id <> %s "
+        f"  AND {exclude_duplicados_sql('a.licitacion_id')} AND ({organo} OR {cpv})"
+    )
+    params_filas: list[object] = [
+        *params_organo,
+        *params_cpv,
+        list(empresa_ids),
+        list(nifs),
+        excluir,
+        *params_organo,
+        *params_cpv,
+    ]
+    # Fragmentos constantes de `db.sql_fragments` y predicados de este módulo;
+    # todo valor viaja como parámetro.
+    resumen_sql = (
+        f"WITH f AS ({filas}) "
+        "SELECT ambito, COUNT(DISTINCT licitacion_id) AS expedientes, "
+        "       COALESCE(SUM(importe_adjudicado), 0) AS importe, "
+        "       percentile_cont(0.5) WITHIN GROUP (ORDER BY baja_pct) AS baja_mediana_pct, "
+        "       COUNT(baja_pct) AS bajas_n "
+        "FROM (SELECT 'organo' AS ambito, * FROM f WHERE mismo_organo "
+        "      UNION ALL SELECT 'cpv4', * FROM f WHERE mismo_cpv4) x "
+        "GROUP BY ambito"
+    )
+    recientes_sql = (
+        f"WITH f AS ({filas}) SELECT * FROM f "
+        "ORDER BY f.fecha_adjudicacion DESC NULLS LAST, f.licitacion_id LIMIT %s"
+    )
+    oportunidades_sql = (
+        "SELECT p.status, COUNT(*) AS n FROM pursuits p "
+        "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+        f"WHERE p.organization_id = %s AND p.licitacion_id <> %s AND {organo} "
+        "GROUP BY p.status"
+    )
+    with connect_read() as c:
+        resumen = rows_to_dicts(c.execute(resumen_sql, params_filas))
+        recientes = rows_to_dicts(c.execute(recientes_sql, [*params_filas, limite]))
+        oportunidades = (
+            rows_to_dicts(c.execute(oportunidades_sql, [organization_id, excluir, *params_organo]))
+            if segmento.tiene_organo
+            else []
+        )
+    return HistorialPropioFilas(
+        resumen=cast(list[FilaResumenPropio], resumen),
+        recientes=cast(list[FilaAdjudicacionPropia], recientes),
+        oportunidades=cast(list[FilaOportunidadPorEstado], oportunidades),
+    )

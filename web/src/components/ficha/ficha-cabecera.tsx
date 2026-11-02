@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { ExternalLink, Link2, MessageSquareText } from "lucide-react";
 import { toast } from "sonner";
+import { DossierBoton, OportunidadBoton } from "@/components/ficha/ficha-oportunidad";
 import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
 import { ReportarDatoBoton } from "@/components/pliego/reportar-dato";
 import { RecurridoBadge } from "@/components/resoluciones-block";
@@ -47,7 +49,16 @@ export function FichaOrgano({ licitacion: l, className }: { licitacion: Licitaci
   if (!l.organo_contratacion && !lugar) return null;
   return (
     <p className={cn("flex flex-wrap items-baseline gap-x-1.5 text-tf-body text-muted-foreground", className)}>
-      {l.organo_contratacion && <span className="font-medium text-foreground">{l.organo_contratacion}</span>}
+      {/* Al perfil del órgano en Mercado: quién le gana, cuánto adjudica y
+          cuándo. Es el enlace de siempre a ese perfil (`organo_q`). */}
+      {l.organo_contratacion && (
+        <Link
+          href={`/mercado?vista=organos&organo_q=${encodeURIComponent(l.organo_contratacion)}`}
+          className="font-medium text-foreground underline decoration-divider underline-offset-2 hover:text-primary hover:decoration-primary"
+        >
+          {l.organo_contratacion}
+        </Link>
+      )}
       {l.organo_contratacion && lugar && <span aria-hidden="true">·</span>}
       {lugar && <span>{lugar}</span>}
     </p>
@@ -120,6 +131,7 @@ export function FichaAcciones({
 
   return (
     <div className={cn("flex flex-wrap items-center gap-2", className)}>
+      <OportunidadBoton licitacionId={l.id_externo} />
       {/* El control único de seguimiento (ADR-031 §C): el mismo de la estrella
           de la tabla, así que marcar aquí la enciende allí. */}
       <SeguirBoton
@@ -143,6 +155,7 @@ export function FichaAcciones({
         <MessageSquareText aria-hidden="true" />
         Preguntar a la IA
       </Button>
+      <DossierBoton licitacionId={l.id_externo} />
       <ReportarDatoBoton licitacionId={l.id_externo} />
       {conFuente && l.url && (
         <Button asChild size="sm" className={claseFuente}>

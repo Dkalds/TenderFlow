@@ -33,6 +33,11 @@ vi.mock("@/components/seguir-boton", () => ({
     </button>
   ),
 }));
+// Abrir la oportunidad y el dossier tienen su propio test (`ficha-oportunidad`).
+vi.mock("@/components/ficha/ficha-oportunidad", () => ({
+  OportunidadBoton: () => <button type="button">Abrir oportunidad</button>,
+  DossierBoton: () => <button type="button">Dossier PDF</button>,
+}));
 
 import { DetailInspector } from "@/components/detail-inspector";
 import { useAsistente } from "@/lib/asistente-store";

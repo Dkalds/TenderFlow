@@ -494,11 +494,14 @@ class PursuitRepository:
         plazo_desde: str | None = None,
         plazo_hasta: str | None = None,
         excluir_estados: Sequence[str] = (),
+        licitacion_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[PursuitRow], int]:
         """Página de oportunidades de la organización y el total del conjunto filtrado.
 
+        - ``licitacion_id``: igualdad exacta, para saber desde la ficha si el
+          expediente ya tiene oportunidad (``q`` casaría también con prefijos).
         - ``q``: subcadena plegada (sin tildes ni mayúsculas) del título del
           expediente, su referencia o el nombre del responsable. Se escapa: `%`
           y `_` son texto.
@@ -523,6 +526,9 @@ class PursuitRepository:
         if responsible_user_id is not None:
             clauses.append("p.responsible_user_id = %s")
             params.append(responsible_user_id)
+        if licitacion_id is not None:
+            clauses.append("p.licitacion_id = %s")
+            params.append(licitacion_id)
         if q and q.strip():
             patron = f"%{escape_like(q.strip().translate(FOLD_TABLE).lower())}%"
             clauses.append(

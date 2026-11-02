@@ -28,7 +28,7 @@ class NovedadesRepository:
 
     def cambios_en_seguidos(
         self, user_key: str, *, desde_iso: str, limit: int = 50, user_id: int | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """Cambios registrados en `licitaciones_history` de expedientes seguidos.
 
         Devuelve el **snapshot anterior y el actual** para que el servicio
@@ -58,7 +58,7 @@ class NovedadesRepository:
 
     def documentos_nuevos_en_seguidos(
         self, user_key: str, *, desde_iso: str, limit: int = 50, user_id: int | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """Adjuntos publicados después de ``desde_iso`` en expedientes seguidos.
 
         La identidad va por ``source_hash`` (v88): sin él, la rotación del
@@ -100,7 +100,7 @@ class NovedadesRepository:
 
     def recursos_en_seguidos(
         self, user_key: str, *, desde_iso: str, limit: int = 20, user_id: int | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """Resoluciones de recurso sobre expedientes seguidos (F5.2)."""
         with connect_read() as c:
             cur = c.execute(
@@ -115,9 +115,72 @@ class NovedadesRepository:
             )
             return rows_to_dicts(cur)
 
+    # ── Un solo expediente: la franja «cambió desde tu última visita» de la ficha.
+    # Las mismas tres fuentes que arriba, sin la unión con lo seguido: quien
+    # abre la ficha la está mirando, la siga o no.
+
+    def cambios_de(
+        self, id_externo: str, *, desde_iso: str, limit: int = 20
+    ) -> list[dict[str, object]]:
+        """Cambios de `licitaciones_history` de un expediente desde ``desde_iso``."""
+        capturado = instante_sql("licitaciones_history", "captured_at", "h")
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT h.id_externo, h.captured_at, h.changed_fields, h.snapshot_json, "
+                "       l.titulo, l.estado, l.fecha_limite, l.importe, l.organo_contratacion "
+                "FROM licitaciones_history h "
+                "JOIN licitaciones l ON l.id_externo = h.id_externo "
+                f"WHERE h.id_externo = %s AND {capturado} >= {param_instante_sql()} "
+                f"ORDER BY {capturado} DESC "
+                "LIMIT %s",
+                (id_externo, desde_iso, limit),
+            )
+            return rows_to_dicts(cur)
+
+    def documentos_nuevos_de(
+        self, id_externo: str, *, desde_iso: str, limit: int = 20
+    ) -> list[dict[str, object]]:
+        """Adjuntos de un expediente publicados después de ``desde_iso``.
+
+        Misma identidad por ``source_hash`` que :meth:`documentos_nuevos_en_seguidos`.
+        """
+        creado = (
+            instante_sql("documentos", "created_at", "d")
+            if fechas_ts_lectura_activa()
+            else "d.created_at::timestamptz"
+        )
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT d.licitacion_id, d.tipo, d.filename, "
+                f"       MIN({creado}) AS publicado_en "
+                "FROM documentos d "
+                "WHERE d.licitacion_id = %s "
+                "GROUP BY COALESCE(d.source_hash, d.uri), d.licitacion_id, d.tipo, d.filename "
+                f"HAVING MIN({creado}) >= %s::timestamptz "
+                "ORDER BY publicado_en DESC "
+                "LIMIT %s",
+                (id_externo, desde_iso, limit),
+            )
+            return rows_to_dicts(cur)
+
+    def recursos_de(
+        self, id_externo: str, *, desde_iso: str, limit: int = 10
+    ) -> list[dict[str, object]]:
+        """Resoluciones de recurso de un expediente desde ``desde_iso``."""
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT r.licitacion_id, r.sentido, r.fecha "
+                "FROM resoluciones_recurso r "
+                "WHERE r.licitacion_id = %s AND r.fecha >= %s "
+                "ORDER BY r.fecha DESC "
+                "LIMIT %s",
+                (id_externo, desde_iso, limit),
+            )
+            return rows_to_dicts(cur)
+
     def pursuits_movidos(
         self, organization_id: int, *, desde_iso: str, limit: int = 30
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """Oportunidades del equipo que cambiaron de estado desde ``desde_iso``.
 
         Se lee del ledger (`pursuit_events`) y no de `pursuits.updated_at`:

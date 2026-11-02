@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-10-25
+Generado: 2026-11-02
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -83,9 +83,9 @@ Generado: 2026-10-25
 
 ## Superficie de la API
 
-**306 endpoints** expuestos.
+**310 endpoints** expuestos.
 
-Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **14** (`scripts/check_api_surface.py`).
+Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **18** (`scripts/check_api_surface.py`).
 
 <details><summary>Ver listado</summary>
 
@@ -228,10 +228,12 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | POST | `/api/v1/licitaciones/search` |
 | GET | `/api/v1/licitaciones/stream` |
 | GET | `/api/v1/licitaciones/{id_externo:path}` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/checklist` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/competencia-esperada` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/condiciones-oficiales` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/documentos` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/documentos/{documento_id}/paginas/{page_number}` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/dossier.pdf` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/embeddings-async` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/explain` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego` |
@@ -240,12 +242,14 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | POST | `/api/v1/licitaciones/{id_externo:path}/ficha-pliego/extract-async` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/guion` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/guion.pdf` |
+| GET | `/api/v1/licitaciones/{id_externo:path}/historial-propio` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/reportes` |
 | POST | `/api/v1/licitaciones/{id_externo:path}/resumen` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/similares` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/simulador` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tech-scores` |
 | GET | `/api/v1/licitaciones/{id_externo:path}/tecnologias` |
+| POST | `/api/v1/licitaciones/{id_externo:path}/visita` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/escenarios-precio` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/eventos` |
 | GET | `/api/v1/licitaciones/{licitacion_id:path}/prediccion-baja` |

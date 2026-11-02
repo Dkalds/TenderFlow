@@ -954,3 +954,31 @@ def build_checklist(
             except Exception as exc:  # el ledger no puede tumbar la lectura
                 log.warning("checklist_seal_failed", pursuit_id=pursuit_id, error=str(exc)[:200])
         return checklist
+
+
+def checklist_de_licitacion(
+    user_id: int,
+    licitacion_id: str,
+    *,
+    organization_id: int | None = None,
+    hoy: date | None = None,
+) -> GoNoGoChecklist:
+    """El mismo contraste que el de una oportunidad, antes de abrirla.
+
+    La ficha de la licitación lo enseña para decidir si merece la pena
+    perseguirla. No se sella: el ledger registra lo que se evaluó sobre una
+    oportunidad, y aquí todavía no la hay. Sin lote, así que los requisitos
+    propios de un lote llegan con el prefijo «Lote n · » (``_requisitos_oficiales``).
+    """
+    with alcance_resuelto(user_id, organization_id) as (resolved_id, _):
+        raw = _fact_sheets_repo.get(licitacion_id)
+        record = TenderFactSheetRecord.model_validate(raw) if raw else None
+        capabilities = OrganizationCapabilities.model_validate(_capabilities_repo.get(resolved_id))
+        return evaluate(
+            licitacion_id=licitacion_id,
+            organization_id=resolved_id,
+            record=record,
+            capabilities=capabilities,
+            hoy=hoy or date.today(),
+            oficiales=_condiciones_oficiales_de(licitacion_id),
+        )

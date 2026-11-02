@@ -1,0 +1,35 @@
+{
+  "licitacion_id": "PA-S 2026/000058",
+  "organization_id": 7,
+  "ficha_estado": "completed",
+  "extraction_version": "tender-facts-v8",
+  "ficha_actualizada": "2026-10-30",
+  "familias": [
+    {
+      "familia": "certifications",
+      "etiqueta": "Certificaciones",
+      "veredicto": "no_cumple",
+      "items": [
+        {
+          "familia": "certifications",
+          "requisito": "ISO 27001",
+          "veredicto": "no_cumple",
+          "motivo": "La organización no declara esta certificación.",
+          "evidencia": [],
+          "dato_organizacion": null,
+          "fuente": "pliego"
+        }
+      ],
+      "sin_hechos": false,
+      "fuente": "pliego"
+    }
+  ],
+  "total_requisitos": 1,
+  "cumple": 0,
+  "no_cumple": 1,
+  "desconocido": 0,
+  "requisitos_extraidos": 1,
+  "desconocido_extraidos": 0,
+  "usa_condiciones_oficiales": false,
+  "condiciones_actualizadas": null
+}

@@ -350,6 +350,23 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   capacidad sale pendiente o sin comprobar, nunca hecho.
 - Con los tres hechos la banda desaparece; también se puede ocultar.
 
+### CU-35 — Decidir desde la ficha si se presenta
+
+- **Quién:** quien evalúa un expediente para su organización. **Dónde:**
+  `/detalle`, ficha completa.
+- Arriba, si la abrió antes, lee qué cambió desde entonces (plazo, importe,
+  estado, documentos nuevos, recursos); la primera vez no hay franja.
+- En Requisitos ve si su organización cumple lo que pide el expediente, por
+  familia y con la cita del pliego, sin abrir la oportunidad; «desconocido»
+  nunca cuenta como «cumple». Si algo no se cumple, ve con qué empresas del
+  segmento podría ir en UTE.
+- En Competencia ve lo que su organización ya ganó con ese órgano y en ese
+  CPV, y cómo acabaron sus oportunidades con el órgano; sin NIF declarado se
+  le pide declararlo en vez de enseñar ceros. El órgano enlaza a su perfil en
+  Mercado.
+- Desde la cabecera abre la oportunidad (o va a la que ya existe, sin
+  duplicarla) y descarga el dossier de decisión en PDF.
+
 ## Trazabilidad
 
 <!-- trazabilidad: generado por scripts/check_casos_uso.py — no editar a mano -->
@@ -390,7 +407,8 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-32** Revisar y exportar lo que cambió en la organización | [test_escenario_gobierno_organizacion.py](../tests/test_escenario_gobierno_organizacion.py) | — | [auditoria-organizacion-card.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/auditoria-organizacion-card.test.tsx) |
 | **CU-33** Mantener la integración del equipo por webhook | [test_escenario_webhooks.py](../tests/test_escenario_webhooks.py) (x2) | — | [webhook-row.test.tsx](../web/src/app/(dashboard)/ops/_components/webhooks/__tests__/webhook-row.test.tsx) |
 | **CU-34** Arrancar por lo que da valor | — | [recorrido-primeros-pasos.spec.ts](../web/e2e/recorrido-primeros-pasos.spec.ts) | [primeros-pasos.test.tsx](../web/src/app/(dashboard)/resumen/_components/__tests__/primeros-pasos.test.tsx) |
+| **CU-35** Decidir desde la ficha si se presenta | [test_escenario_ficha_decidir.py](../tests/test_escenario_ficha_decidir.py) | — | [test_unit_dossier_licitacion.py](../tests/test_unit_dossier_licitacion.py)<br>[test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py) |
 
-**34 casos**, 34 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
+**35 casos**, 35 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
 
 <!-- fin trazabilidad -->

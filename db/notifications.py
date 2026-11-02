@@ -95,11 +95,17 @@ def get_unread_ids(
 
 
 def get_last_seen_ts(user_key: str, *, user_id: int | None = None) -> str | None:
-    """Devuelve la fecha de la notificación más reciente leída, o None."""
+    """Devuelve la fecha de la notificación más reciente leída, o None.
+
+    Las visitas a una ficha (:data:`PREFIJO_VISTA_FICHA`) no cuentan: abrir un
+    expediente no es haber visto todo lo demás, y si contaran, cada ficha
+    abierta vaciaría la banda del Resumen.
+    """
     with connect_read() as c:
         row = c.execute(
-            f"SELECT MAX(read_at) FROM notification_reads WHERE {_IDENT}",
-            (user_id, user_key, user_id),
+            "SELECT MAX(read_at) FROM notification_reads "
+            f"WHERE {_IDENT} AND NOT starts_with(notification_id, %s)",
+            (user_id, user_key, user_id, PREFIJO_VISTA_FICHA),
         ).fetchone()
     return row[0] if row else None
 
@@ -108,6 +114,39 @@ def get_last_seen_ts(user_key: str, *, user_id: int | None = None) -> str | None
 #: ``id_externo`` —ninguno empieza por doble guion bajo—, así que no puede
 #: chocar con una lectura real ni aparecer como «leída» en la campana.
 MARCA_VISITA = "__ultima_visita__"
+
+#: Prefijo de la marca de visita a la ficha de un expediente: una fila por
+#: usuario y expediente, ``__ficha__:<id_externo>``, que se actualiza en cada
+#: visita. Como :data:`MARCA_VISITA`, ningún ``id_externo`` empieza así.
+PREFIJO_VISTA_FICHA = "__ficha__:"
+
+
+def ultima_visita_ficha(user_id: int, licitacion_id: str) -> str | None:
+    """Cuándo abrió el usuario por última vez la ficha de ``licitacion_id``.
+
+    Solo por ``user_id``: es una marca nueva (ADR-030 fase 3), sin filas
+    heredadas con clave que leer.
+    """
+    with connect_read() as c:
+        row = c.execute(
+            "SELECT MAX(read_at) FROM notification_reads "
+            "WHERE user_id = %s AND notification_id = %s",
+            (user_id, PREFIJO_VISTA_FICHA + licitacion_id),
+        ).fetchone()
+    return row[0] if row else None
+
+
+def marcar_visita_ficha(user_id: int, licitacion_id: str) -> str:
+    """La visita a la ficha de ``licitacion_id`` pasa a ser ahora. Devuelve la marca."""
+    ahora = now_utc_iso()
+    _, conflicto = _identidad_de_escritura(None, user_id, "notification_id")
+    with connect() as c:
+        c.execute(
+            "INSERT INTO notification_reads (user_id, notification_id, read_at) "
+            f"VALUES (%s, %s, %s) {conflicto} DO UPDATE SET read_at = excluded.read_at",
+            (user_id, PREFIJO_VISTA_FICHA + licitacion_id, ahora),
+        )
+    return ahora
 
 
 def marcar_visita(user_key: str, *, user_id: int | None = None) -> str:
