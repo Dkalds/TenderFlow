@@ -8,8 +8,8 @@ pasa al [archivo del backlog](../archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 ## Planes
 
 - [2026-10-plan-foco-piloto.md](2026-10-plan-foco-piloto.md) — del piloto al uso:
-  que llegue, que sea verdad y menos superficie. Es el plan al que remite
-  [AGENTS.md](../../AGENTS.md) §0 (D50).
+  que llegue, que sea verdad y menos superficie. Su D50 (no añadir superficie
+  fuera del ciclo central) está revocada desde el 2026-11-02.
 - [2026-09-plan-arquitectura-v2.md](2026-09-plan-arquitectura-v2.md) — cerrar los
   bucles abiertos de arquitectura y producto.
 - [2026-09-plan-arquitectura-v2-complementario.md](2026-09-plan-arquitectura-v2-complementario.md) —

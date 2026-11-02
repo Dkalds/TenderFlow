@@ -9,9 +9,7 @@ análisis de competencia y de mercado, un pipeline de oportunidades con matriz
 GO/NO-GO y un asistente que responde en lenguaje natural citando los pliegos.
 
 **Estado.** El producto está en el piloto: el foco es el ciclo «me entero →
-decido → preparo», y no se añade superficie nueva (endpoint, espacio, pantalla)
-que no sirva a él ([plan 2026-10](docs/plans/2026-10-plan-foco-piloto.md),
-[AGENTS.md](AGENTS.md) §0). Los conteos (endpoints, tests, jobs, ratchets) no
+decido → preparo» ([plan 2026-10](docs/plans/2026-10-plan-foco-piloto.md)). Los conteos (endpoints, tests, jobs, ratchets) no
 se escriben aquí: están en [docs/STATUS.md](docs/STATUS.md), que genera
 `make status`. Qué fuentes de datos están encendidas hoy lo dice, en vivo, la
 página pública `/cobertura`.
