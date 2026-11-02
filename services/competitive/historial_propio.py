@@ -129,7 +129,7 @@ def _adjudicacion(f: FilaAdjudicacionPropia) -> AdjudicacionPropia:
 
 
 def historial_propio(
-    id_externo: str, *, organization_id: int, limite: int = 8
+    id_externo: str, *, organization_id: int, limite: int = 5
 ) -> HistorialPropio | None:
     """El historial de ``organization_id`` con el segmento del expediente; ``None`` si no existe.
 

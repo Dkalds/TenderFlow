@@ -60,6 +60,14 @@ function veredictoDeItem(item: ChecklistItem): ChecklistVeredicto {
 }
 
 /**
+ * Sin dato de la organización no se puede contrastar: lo que falta está de
+ * nuestro lado de la mesa, y el sitio de rellenarlo es el perfil de capacidad.
+ */
+export function faltaDatoPropio(item: ChecklistItem): boolean {
+  return veredictoDeItem(item) === "desconocido" && !item.dato_organizacion;
+}
+
+/**
  * El peor veredicto de la familia, con la misma degradación aplicada.
  *
  * No es una agregación nueva: el backend ya manda `familia.veredicto` y es el
@@ -108,9 +116,6 @@ function ChecklistItemRow({
   const veredicto = veredictoDeItem(item);
   const evidencia = item.evidencia ?? [];
   const degradado = veredicto !== item.veredicto;
-  // Sin dato de la organización no se puede contrastar: lo que falta está de
-  // nuestro lado de la mesa, y el sitio de rellenarlo es el perfil de capacidad.
-  const faltaDatoPropio = veredicto === "desconocido" && !item.dato_organizacion;
 
   return (
     <li className="rounded-md border border-divider bg-background p-3">
@@ -131,12 +136,6 @@ function ChecklistItemRow({
           <span className="text-muted-foreground">sin declarar</span>
         )}
       </p>
-
-      {faltaDatoPropio && (
-        <EnlaceIr href={COMPLETAR_CAPACIDAD} className="mt-1.5">
-          Completar la capacidad de tu organización (Equipo › Organización)
-        </EnlaceIr>
-      )}
 
       {evidencia.length > 0 ? (
         <details className="mt-2 text-tf-meta">
@@ -171,12 +170,12 @@ function ChecklistItemRow({
           </ul>
         </details>
       ) : item.fuente === "placsp" ? (
-        <p className="mt-2 text-tf-micro leading-relaxed text-muted-foreground">
+        <p className="mt-2 text-tf-meta leading-relaxed text-muted-foreground">
           Requisito de la publicación oficial en PLACSP: no sale del pliego, así que no lleva
           cita de página.
         </p>
       ) : (
-        <p className="mt-2 text-tf-micro leading-relaxed text-muted-foreground">
+        <p className="mt-2 text-tf-meta leading-relaxed text-muted-foreground">
           Sin cita del pliego para este requisito.
         </p>
       )}
@@ -187,20 +186,23 @@ function ChecklistItemRow({
 export function ChecklistFamilia({
   familia,
   docsById,
+  abierta = true,
 }: {
   familia: ChecklistFamiliaResultado;
   docsById: Map<number, DocumentoSummary>;
+  /** Plegada de entrada cuando el panel ya resume el porqué (la ficha). */
+  abierta?: boolean;
 }) {
   const items = familia.items ?? [];
   const veredicto = veredictoDeFamilia(familia);
 
   return (
-    // Abierta de entrada: lo que hay que ver es *por qué* una familia dice lo
+    // Abierta por defecto: lo que hay que ver es *por qué* una familia dice lo
     // que dice, y esconderlo tras un clic convierte el panel en cuatro
-    // etiquetas de colores. `open` es constante, así que React no vuelve a
-    // tocar el atributo y plegarla a mano se respeta. Las citas del pliego sí
-    // van plegadas, como en la pestaña Pliego.
-    <details open className="rounded-xl border border-divider bg-card px-3 py-2.5">
+    // etiquetas de colores. `abierta` no cambia entre renders, así que React
+    // no vuelve a tocar el atributo y plegarla a mano se respeta. Las citas
+    // del pliego sí van plegadas, como en la pestaña Pliego.
+    <details open={abierta} className="rounded-xl border border-divider bg-card px-3 py-2.5">
       <summary className="flex cursor-pointer flex-wrap items-center gap-2.5">
         <span className="min-w-0 flex-1 text-tf-body font-semibold">{familia.etiqueta}</span>
         {familia.fuente === "placsp" && (
@@ -218,6 +220,12 @@ export function ChecklistFamilia({
           <ChecklistItemRow key={`${item.requisito}-${index}`} item={item} docsById={docsById} />
         ))}
       </ul>
+      {/* Uno por familia: repetido en cada requisito eran ocho enlaces iguales seguidos. */}
+      {items.some(faltaDatoPropio) && (
+        <EnlaceIr href={COMPLETAR_CAPACIDAD} className="mt-2.5">
+          Completar la capacidad de tu organización (Equipo › Organización)
+        </EnlaceIr>
+      )}
     </details>
   );
 }

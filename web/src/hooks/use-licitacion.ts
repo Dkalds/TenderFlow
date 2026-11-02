@@ -25,8 +25,7 @@ export { licitacionKeys } from "@/lib/query-keys";
 export function useLicitacion(id: string | null) {
   return useQuery({
     queryKey: licitacionKeys.detail(id ?? ""),
-    queryFn: () =>
-      fetchWithAuth<LicitacionDetail>(`/api/v1/licitaciones/${encodeURIComponent(id!)}`),
+    queryFn: () => fetchWithAuth<LicitacionDetail>(`/api/v1/licitaciones/${encodeURIComponent(id!)}`),
     enabled: Boolean(id),
     // El expediente cambia con la pasada de ingesta (cada 4 h), no entre
     // pestañas: revalidar en cada foco sería tráfico sin información nueva.
@@ -46,10 +45,9 @@ export function useSimilares(id: string | null, limite = 5) {
   return useQuery({
     queryKey: licitacionKeys.similares(id ?? "", limite),
     queryFn: ({ signal }) =>
-      fetchWithAuth<SimilaresResult>(
-        `/api/v1/licitaciones/${encodeURIComponent(id!)}/similares?limit=${limite}`,
-        { signal },
-      ),
+      fetchWithAuth<SimilaresResult>(`/api/v1/licitaciones/${encodeURIComponent(id!)}/similares?limit=${limite}`, {
+        signal,
+      }),
     enabled: Boolean(id),
     staleTime: 5 * 60 * 1000,
     meta: META_ERROR_EN_LINEA,
@@ -107,6 +105,12 @@ export function useHistorialPropio(id: string | null) {
  * repetirla —el doble efecto de StrictMode, un re-render— dejaría la franja
  * vacía. Un fallo no avisa: la franja es un añadido y sin ella la ficha
  * sigue entera.
+ *
+ * Por la misma razón, recargar la ficha borraba lo que había cambiado antes
+ * de leerlo. Lo último con cambios se guarda en `sessionStorage` mientras
+ * dure la pestaña: es caché de una respuesta, no estado de usuario (la marca
+ * vive en servidor), y si el almacenamiento no está, la franja se comporta
+ * como antes.
  */
 export function useVisitaFicha(id: string): NovedadesDeFicha | null {
   const [visita, setVisita] = React.useState<NovedadesDeFicha | null>(null);
@@ -114,12 +118,29 @@ export function useVisitaFicha(id: string): NovedadesDeFicha | null {
   React.useEffect(() => {
     if (registrada.current === id) return;
     registrada.current = id;
-    setVisita(null);
+    const clave = `tf:novedades-ficha:${id}`;
+    const guardada = leerNovedadesGuardadas(clave);
+    setVisita(guardada);
     apiMutate<NovedadesDeFicha>("POST", `/api/v1/licitaciones/${encodeURIComponent(id)}/visita`)
       .then((respuesta) => {
-        if (registrada.current === id) setVisita(respuesta);
+        if (registrada.current !== id || !respuesta.desde || (respuesta.items ?? []).length === 0) return;
+        setVisita(respuesta);
+        try {
+          sessionStorage.setItem(clave, JSON.stringify(respuesta));
+        } catch {
+          // Sin almacenamiento (modo privado, cuota): solo se pierde al recargar.
+        }
       })
       .catch(() => undefined);
   }, [id]);
   return visita;
+}
+
+function leerNovedadesGuardadas(clave: string): NovedadesDeFicha | null {
+  try {
+    const texto = sessionStorage.getItem(clave);
+    return texto ? (JSON.parse(texto) as NovedadesDeFicha) : null;
+  } catch {
+    return null;
+  }
 }
