@@ -200,6 +200,7 @@ export function useRadarConsola(): RadarConsola {
         idExterno: tender.id_externo,
         score: tender.score,
         banda: esBandaConocida(tender.band) ? tender.band : null,
+        desglose: tender.desglose ?? null,
         ...(explicacionAbierta(tender.id_externo) ? { explicacionAbierta: true } : {}),
         ...(accion ? { accion, dias } : {}),
       });
@@ -251,10 +252,11 @@ export function useRadarConsola(): RadarConsola {
       try {
         const pursuit = await createPursuit.mutateAsync({
           licitacion_id: tender.id_externo,
-          // Mismo motivo que en el descarte: sella la puntuación que motivó
-          // abrir la oportunidad, para poder medir el win rate por banda.
+          // Sella la puntuación que motivó abrirla (win rate por banda) y su
+          // desglose, sin el que `/pursuits/weights-proposal` nunca propone nada.
           score_al_abrir: tender.score,
           banda_al_abrir: esBandaConocida(tender.band) ? tender.band : null,
+          desglose_al_abrir: tender.desglose ?? null,
         });
         setActiveOrganizationId(pursuit.organization_id);
         toast.success("Oportunidad abierta para el equipo");

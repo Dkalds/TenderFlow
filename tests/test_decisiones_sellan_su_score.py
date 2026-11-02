@@ -124,3 +124,54 @@ def test_listar_descartes_no_cambia_de_forma_al_anadir_las_columnas(db: Any) -> 
     _descartar("u-1", "EXP-4", score=55, banda="Atractiva")
 
     assert radar_dismissals.list_ids("u-1") == ["EXP-4"]
+
+
+# ── El desglose del descarte (v169) ─────────────────────────────────────────
+
+
+def _desglose(db: Any, user_key: str, id_externo: str) -> Any:
+    with db.connect_read() as c:
+        fila = c.execute(
+            "SELECT desglose FROM radar_dismissals WHERE user_key = %s AND id_externo = %s",
+            (user_key, id_externo),
+        ).fetchone()
+    assert fila is not None, "el descarte no se guardó"
+    return fila[0]
+
+
+def test_el_desglose_se_guarda_y_solo_el_de_la_primera_decision(db: Any) -> None:
+    """Igual que el score: es la puntuación que motivó descartar, no la de ahora."""
+    import json
+
+    _descartar("u-1", "EXP-5", score=40, banda="Tibia", desglose={"afinidad": 2.0})
+    _descartar("u-1", "EXP-5", score=90, banda="Caliente", desglose={"afinidad": 30.0})
+
+    assert json.loads(_desglose(db, "u-1", "EXP-5")) == {"afinidad": 2.0}
+
+
+def test_sin_desglose_la_fila_queda_en_null(db: Any) -> None:
+    _descartar("u-1", "EXP-6", score=40, banda="Tibia")
+
+    assert _desglose(db, "u-1", "EXP-6") is None
+
+
+def test_la_propuesta_por_triaje_solo_lee_descartes_permanentes_de_su_organizacion(
+    db: Any,
+) -> None:
+    """Silenciar es «ahora no» y posponer, trabajo aplazado: ninguno dice que no
+    encaje. Sin desglose o sin organización, la fila no cuenta."""
+    _descartar("u-1", "EXP-7", organization_id=7, desglose={"afinidad": 1.0})
+    _descartar(
+        "u-1",
+        "EXP-8",
+        organization_id=7,
+        desglose={"afinidad": 2.0},
+        accion="silenciar",
+        hasta="2099-01-01T00:00:00+00:00",
+    )
+    _descartar("u-1", "EXP-9", organization_id=7)
+    _descartar("u-1", "EXP-10", desglose={"afinidad": 3.0})
+    _descartar("u-2", "EXP-11", organization_id=8, desglose={"afinidad": 4.0})
+
+    assert radar_dismissals.descartes_con_desglose(7) == ['{"afinidad": 1.0}']
+    assert radar_dismissals.descartes_con_desglose(8) == ['{"afinidad": 4.0}']

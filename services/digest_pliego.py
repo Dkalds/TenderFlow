@@ -45,7 +45,7 @@ from services.email_digest import (
     RequisitoDigest,
     visibles_por_bloque,
 )
-from services.go_no_go import ChecklistVeredicto, GoNoGoChecklist, evaluate
+from services.go_no_go import ChecklistVeredicto, GoNoGoChecklist, evaluate, fecha_de_plazo
 from shared.dto import CondicionesOficiales, OrganizationCapabilities
 from shared.tender_facts import TenderFactSheetRecord
 
@@ -195,6 +195,7 @@ def con_pliegos(bloques: list[BloqueDigest], *, hoy: date | None = None) -> list
                 capabilities=capacidad,
                 hoy=dia,
                 oficiales=oficiales,
+                fecha_presentacion=fecha_de_plazo(lic.get("fecha_limite")),
             )
             pliego = resumen_de_checklist(checklist, con_capacidad=con_capacidad)
             if pliego:
