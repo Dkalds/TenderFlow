@@ -14,8 +14,8 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 [plans/2026-10-plan-foco-piloto.md](plans/2026-10-plan-foco-piloto.md) fija
 **el orden** de lo que queda abierto aquí y **qué se aplaza**. No redefine
 criterios: cada ítem conserva los suyos, y el estado se anota en el §8 del plan.
-El propietario aceptó las decisiones D50–D58 el 2026-10-26: el orden de abajo
-rige.
+El propietario aceptó las decisiones D50–D58 el 2026-10-26 y revocó D50 el
+2026-11-02: el orden de abajo rige.
 
 | Ola | Ítems de este backlog |
 |---|---|

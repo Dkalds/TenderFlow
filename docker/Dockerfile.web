@@ -1,11 +1,11 @@
 # ── Stage 1: Dependencies ─────────────────────────────────────────────
-FROM node:22-alpine AS deps
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS deps
 WORKDIR /app
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --production=false --ignore-scripts
 
 # ── Stage 2: Build ───────────────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY web/ .
@@ -18,7 +18,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ── Stage 3: Production ─────────────────────────────────────────────
-FROM node:22-alpine AS runner
+FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

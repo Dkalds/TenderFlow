@@ -282,6 +282,9 @@ def test_plantilla_html_con_y_sin_ficha() -> None:
     assert html.count("Checklist frente a la capacidad de tu organización") == 1
     assert html.count("Abrir la ficha") == 3
     assert 'href="https://app.example/detalle?lic=EXP-1"' in html
+    assert html.count(">Me interesa</a>") == 3
+    assert html.count(">No encaja</a>") == 3
+    assert "lic=EXP-1&amp;desde=resumen&amp;intencion=interesa" in html
     # El importe sin base nunca sale como cifra pelada.
     assert "90.000 €" not in html
 

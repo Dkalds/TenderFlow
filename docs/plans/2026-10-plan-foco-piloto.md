@@ -82,7 +82,7 @@ trabajo en ese sentido.
 
 | Id | Decisión | Recomendación | Estado |
 |---|---|---|---|
-| D50 | **Foco de piloto.** Hasta cumplir el criterio de salida de §5, no se añade superficie nueva (endpoint, espacio, pantalla) que no sirva al bucle de §3, Ola 2. | Sí. La lista `NUEVAS` de `scripts/check_api_surface.py` cita este plan en cada alta. | pendiente |
+| D50 | **Foco de piloto.** Hasta cumplir el criterio de salida de §5, no se añade superficie nueva (endpoint, espacio, pantalla) que no sirva al bucle de §3, Ola 2. | Sí. La lista `NUEVAS` de `scripts/check_api_surface.py` cita este plan en cada alta. | **revocada** (2026-11-02, por el propietario): ni AGENTS.md §0 ni `scripts/check_api_surface.py` la exigen ya |
 | D51 | **Destino de la telemetría.** Los 23 eventos de `web/src/lib/analytics.ts` se pierden (Vercel Hobby responde `402`). | Treinta días con pageviews por ruta + `http_requests_total` por handler, sin coste ni superficie nueva; revisar después si hace falta medir acciones. | pendiente |
 | D52 | **Ficha nocturna.** Priorizar lo abierto que casa con alguna regla (B2) y fijar un tope de gasto mensual en [COSTES.md](../COSTES.md) §5.1. *Corrección del 2026-10-26:* `PLIEGO_FACTS_ENABLED` ya era `true` desde el 2026-08-14 (25 fichas por noche); el 11 % venía de un selector que no filtraba por «abierta», no de la variable. | Sí, con tope. | aceptada; falta el tope |
 | D53 | **Alerta por defecto.** Al completar el perfil de una organización se crea una regla de vigilancia a partir de sus tecnologías, CPV y CCAA, editable y con baja en un clic. | Sí. | pendiente |
@@ -181,7 +181,7 @@ No abre frentes nuevos: **termina lo empezado** y reduce el coste de mantener.
 | Modelo de baja por lote, activar `baja_model` v2 y `retencion_model` v1 | Sin uso que lo pida y con el dato de importe a medio arreglar | Tras V2 |
 | Búsqueda por significado más allá de su flag | `/investigador` tiene uso bajo | Con el dato de R1 |
 | Entorno de staging | Coste frente a un piloto de tres usuarios | Al salir del piloto |
-| Espacios o pantallas nuevos | D50 | Al salir del piloto |
+| ~~Espacios o pantallas nuevos~~ | D50, revocada el 2026-11-02 | — |
 
 ---
 
@@ -202,8 +202,8 @@ Hasta D51 se aproxima con pageviews de `/oportunidades/[id]` y `/detalle` y con
 | Operaciones de la API | 306 | Encoge tras R2 |
 
 **Se sale del piloto** cuando al menos cinco organizaciones cumplen la métrica
-norte durante cuatro semanas seguidas. Entonces se revisan D50 y la tabla de
-§4.
+norte durante cuatro semanas seguidas. Entonces se revisa la tabla de §4
+(D50 ya se revocó el 2026-11-02).
 
 ---
 
@@ -245,6 +245,7 @@ Añadidas al ejecutar (2026-10-26):
 - [ ] Antes del despliegue de esta rama: aplicar `v164` (con la ingesta parada, según su runbook) y `v165` con `plan` → `apply`. El código nuevo necesita los índices de `v165`.
 - [ ] B1 `python scripts/crear_alertas_por_defecto.py` contra producción; si el recuento cuadra, `--aplicar`.
 - [x] V2 la reingesta ascendente, un mes por job: `gh workflow run scrape-bulk.yml -f backfill_desde=2025-01`, y así sucesivamente ([runbook](../runbooks/reingesta-unica-placsp.md)).
+- [ ] Antes de desplegar el triaje desde el resumen: aplicar `v169_radar_dismissals_desglose` (`migrate.yml`, `plan` → `apply`). Solo añade una columna nullable; sin ella el `INSERT` del descarte falla.
 - [ ] Tras el despliegue: confirmar en Prometheus que `http_requests_total` y `api_cost_estimate_total` siguen con el prefijo `/api/v1` (FastAPI 0.146 cambió `scope["route"].path`).
 
 ---
@@ -261,7 +262,7 @@ tests de integración, los E2E y el fuzz quedan para CI.
 
 | Id | Estado | Evidencia |
 |---|---|---|
-| D50 | **hecho** | Párrafo en AGENTS.md §0; `scripts/check_api_surface.py` exige `plan 2026-10, <ítem>` en cada entrada nueva de `NUEVAS` (`ANTERIORES_A_D50` solo encoge) |
+| D50 | **revocada** (2026-11-02) | Se retiraron el párrafo de AGENTS.md §0, la cita obligatoria y `ANTERIORES_A_D50` del gate. Antes: párrafo en AGENTS.md §0; `scripts/check_api_surface.py` exige `plan 2026-10, <ítem>` en cada entrada nueva de `NUEVAS` (`ANTERIORES_A_D50` solo encoge) |
 | O0.1, O0.3–O0.6 | propietario | Sin cambios de código: ver §7 |
 | O0.2 | **hecho en código**, falta producción | `API_ORIGIN_SECRET` (+ `_PREVIOUS`), `hmac.compare_digest` en `api/middleware.py`, cabecera desde `web/vercel.json` y del SSR; RFC `approved`; [runbook](../runbooks/ip-del-cliente.md). `api/diagnostico_proxy.py` sigue hasta verificar con dos redes |
 | V1 | **hecho en código**, falta producción | `v164_identidad_placsp_rekey` (guardas antes de escribir, 31 columnas repuntadas, alias por fila; validada en sintaxis contra producción: 24.763 claves nuevas, todas distintas); `clave_placsp` en todos los escritores vía `scraper.codice_parser.acotar_por_organo`; `scripts/rellenar_organo_ref_placsp.py`; `resolver_id_externo` en todas las rutas y cuerpos; [ADR-038](../adr/ADR-038-clave-de-placsp-acotada-por-organo.md) y [runbook](../runbooks/rekey-placsp-organo.md). En producción está `v163` y no `v164` (`migrate.yml`, chequeo de solo lectura, 2026-10-30) |
@@ -270,8 +271,8 @@ tests de integración, los E2E y el fuzz quedan para CI.
 | V4 | propietario | Golden set: 27 etiquetados de ≥ 60 |
 | B1 | **hecho en código** | `asegurar_alerta_por_defecto` al guardar los ajustes; una regla diaria por tecnología (≤ 5), idempotente y con baja definitiva; `scripts/crear_alertas_por_defecto.py` (dry-run, `--aplicar`). CU-04 |
 | B2 | **hecho en código** | Nivel «abierta con plazo que casa con una regla» en `list_pending_licitaciones`; COSTES.md §5.1 con la fórmula y la cota (≤ 0,05 USD por ficha). Vacío hasta que existan reglas (B1) |
-| B3 | **hecho en código** | `services/email_digest.py` + `services/digest_pliego.py`: plazo, base (ADR-032), hasta tres requisitos de solvencia y veredicto del checklist; golden `tests/fixtures/golden_resumen_diario.txt`. El envío real depende de O0.1 |
-| B4 | **hecho** | La oportunidad abre en el checklist; la matriz pasa a `matriz-plegada.tsx` y solo se descarga al abrirla. CU-06 |
+| B3 | **hecho en código** | `services/email_digest.py` + `services/digest_pliego.py`: plazo, base (ADR-032), hasta tres requisitos de solvencia y veredicto del checklist; golden `tests/fixtures/golden_resumen_diario.txt`. El envío real depende de O0.1. 2026-11-02: cada licitación nueva lleva «Me interesa» y «No encaja», que abren la ficha con la decisión propuesta y la confirman con un botón (`POST /pursuits` o `POST /radar/dismissals`, sin operación nueva; un escáner de correo que visite el enlace no escribe nada). La oportunidad abierta así sella score, banda y desglose, y el Radar sella ahora también el desglose: ningún cliente lo enviaba, así que `GET /pursuits/weights-proposal` no podía salir nunca de «insuficiente». Con `v169` (`radar_dismissals.desglose`) el descarte sella también su desglose y la propuesta, mientras no haya 20 cierres, se calcula con el triaje: oportunidades abiertas frente a descartes permanentes de la organización, mínimo 10 por lado, y declara `fuente`. **Falta aplicar `v169` en producción antes de desplegar** |
+| B4 | **hecho** | La oportunidad abre en el checklist; la matriz pasa a `matriz-plegada.tsx` y solo se descarga al abrirla. CU-06. 2026-11-02: una certificación vigente hoy que caduca antes de la fecha límite sale «no cumple» con las dos fechas (art. 140.4 LCSP), en la ficha y en el resumen |
 | B5 | **hecho** | Pasos `capacidad` / `alerta` / `pursuit` en `components/onboarding/pasos.ts`. CU-34 |
 | B6 | **medido** | Datos de producción del 2026-10-26: 15 de las 16 oportunidades son de una sola organización (la 21). El cierre asistido avisó una vez (oportunidad 4, 2026-09-02) y nadie la cerró en 54 días; la «ganada» (7) y la «perdida» (10) se cerraron a mano sobre expedientes sin adjudicación (EV y PUB): la tasa de acierto no es un dato fiable todavía. Hubo 34 avisos `rule_match` hasta el 2026-09-23 y hoy 0 reglas: `watchlist_rules` no se audita, así que no consta quién las borró. Lo más usado es el MCP interno: 458 `mcp.consultar_sql` frente a 15 inicios de sesión en `audit_log` |
 | R1 | parcial | Pageviews por ruta en UX_AUDIT.md; `http_requests_total` sigue sin lectura |

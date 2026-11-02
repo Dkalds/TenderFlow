@@ -17,6 +17,7 @@ import { useDetalleQueries, useDetailWithScore } from "../_hooks/use-detalle-que
 import { useDetalleRows, useDetalleTableState } from "../_hooks/use-detalle-table";
 import { useDetalleTeclado } from "../_hooks/use-detalle-teclado";
 import { useFiltrosDelListado } from "../_hooks/use-filtros-listado";
+import { useTriajeResumen } from "../_hooks/use-triaje-resumen";
 import { pasosDeFicha, useFichaCompleta } from "../_hooks/use-ficha-completa";
 import { PARAMETRO_FICHA } from "../_lib/prefetch";
 
@@ -65,6 +66,11 @@ const DetalleSeleccion = dynamic(
   () => import("./detalle-seleccion").then((modulo) => modulo.DetalleSeleccion),
   { ssr: false },
 );
+// La franja de triaje solo existe al llegar desde un enlace del resumen diario.
+const TriajeResumen = dynamic(
+  () => import("./triaje-resumen").then((modulo) => modulo.TriajeResumen),
+  { ssr: false },
+);
 
 export function DetalleView() {
   const { q, ccaas, setCcaas, tecnologias, setTecnologias, resetFilters } = useFilters();
@@ -90,6 +96,7 @@ export function DetalleView() {
     PARAMETRO_FICHA,
     parseAsString.withOptions({ history: "push", shallow: true }),
   );
+  const { intencion, cerrarTriaje } = useTriajeResumen();
   const [showComparator, setShowComparator] = useState(false);
   const closeComparator = useCallback(() => setShowComparator(false), []);
   const { compact, toggleCompact } = useDensity();
@@ -128,7 +135,14 @@ export function DetalleView() {
   const { mergedRows, totalPages, selectedIds, selectedItems } = filas;
   const total = queries.data?.total ?? 0;
 
-  const openDetail = useCallback((id: string) => void setDetailId(id), [setDetailId]);
+  // La intención del correo es de la ficha con la que se llegó: otra no la hereda.
+  const openDetail = useCallback(
+    (id: string) => {
+      if (id !== detailId) cerrarTriaje();
+      void setDetailId(id);
+    },
+    [detailId, setDetailId, cerrarTriaje],
+  );
 
   const { cerrar: cerrarFichaCompleta } = ficha;
   const closeDetail = useCallback(() => {
@@ -136,9 +150,10 @@ export function DetalleView() {
     // eventos); diferirlo evita bloquear el hilo principal en el propio clic.
     startTransition(() => {
       void setDetailId(null, { history: "replace" });
+      cerrarTriaje();
       cerrarFichaCompleta();
     });
-  }, [setDetailId, cerrarFichaCompleta]);
+  }, [setDetailId, cerrarTriaje, cerrarFichaCompleta]);
   // Volver de la ficha completa: al inspector donde lo hay; en móvil, a la tabla.
   const volverATabla = ficha.enMovil ? closeDetail : cerrarFichaCompleta;
 
@@ -160,115 +175,124 @@ export function DetalleView() {
   const showingLine = lineaMostrando({ hayDatos: Boolean(queries.data), ...pagination, total });
 
   return (
-    <div className="flex h-full min-h-0">
-      {ficha.activa && detailId ? (
-        <DetalleFichaCompleta
+    <div className="flex h-full min-h-0 flex-col">
+      {intencion && detailId && (
+        <TriajeResumen
           idExterno={detailId}
-          licitacion={detailWithScore}
-          error={queries.detailError}
-          onReintentar={queries.refetchDetail}
-          pasos={pasosDeFicha(mergedRows, detailId)}
-          onIr={(paso) => {
-            setCursor(paso.indice);
-            openDetail(paso.id);
-          }}
-          onVolver={volverATabla}
+          intencion={intencion}
+          onCerrar={cerrarTriaje}
         />
-      ) : (
-        <>
-          <section className="flex min-w-0 flex-1 flex-col border-r border-divider">
-            <DetalleBarra
-              cierreLabel={cierre.label}
-              onClearCierre={() => {
-                cierre.clear();
-                // Volver a la primera página: «página 7» de un recorte que ya no
-                // existe apunta a un tramo distinto del listado ensanchado.
-                setPagination((current) => ({ ...current, pageIndex: 0 }));
-              }}
-              sortLabel={sortLabel}
-              onClearSort={() => setSorting([])}
-              orden={sorting[0] ?? null}
-              onOrdenar={(orden) => setSorting(orden ? [orden] : [])}
-              etiqueta={etiqueta}
-              compact={compact}
-              onCompactChange={(next) => {
-                if (compact !== next) toggleCompact();
-              }}
-            />
-
-            <DetalleTabla
-              rows={mergedRows}
-              sorting={sorting}
-              allPageSelected={filas.allPageSelected}
-              onToggleAllPage={filas.toggleAllPage}
-              onToggleSort={tabla.toggleSort}
-              isLoading={queries.isLoading}
-              isFetching={queries.isFetching}
-              error={queries.error}
-              onRetry={() => void queries.refetch()}
-              vacia={isEmpty}
-              conRecorte={Boolean(cierre.label)}
-              onLimpiar={() => {
-                resetFilters();
-                // El recorte por cierre también: si sólo se limpiara el ámbito, el
-                // botón dejaría la pantalla igual de vacía y sin nada más que pulsar.
-                cierre.clear();
-              }}
-              detailId={detailId}
-              cursor={cursor}
-              rowSelection={rowSelection}
-              ccaas={ccaas}
-              tecnologias={tecnologias}
-              compact={compact}
-              rowHeight={compact ? 44 : 64}
-              onOpen={(index, id) => {
-                setCursor(index);
-                openDetail(id);
-              }}
-              onToggleSelect={tabla.toggleRow}
-              onToggleCcaa={toggleCcaa}
-              onToggleTecnologia={toggleTecnologia}
-            />
-
-            <DetallePie
-              showingLine={showingLine}
-              clientSorted={tabla.clientSorted}
-              pageIndex={pagination.pageIndex}
-              totalPages={totalPages}
-              pageWindow={filas.pageWindow}
-              canPrevious={pagination.pageIndex > 0}
-              canNext={pagination.pageIndex + 1 < tabla.alcanzables}
-              canLast={totalPages - 1 < tabla.alcanzables && pagination.pageIndex < totalPages - 1}
-              onPageChange={tabla.irAPagina}
-            />
-          </section>
-
-          <DetalleInspectorPanel
-            modo={modo}
+      )}
+      <div className="flex min-h-0 flex-1">
+        {ficha.activa && detailId ? (
+          <DetalleFichaCompleta
+            idExterno={detailId}
             licitacion={detailWithScore}
-            onClose={closeDetail}
-            onExpandir={ficha.abrir}
+            error={queries.detailError}
+            onReintentar={queries.refetchDetail}
+            pasos={pasosDeFicha(mergedRows, detailId)}
+            onIr={(paso) => {
+              setCursor(paso.indice);
+              openDetail(paso.id);
+            }}
+            onVolver={volverATabla}
           />
-        </>
-      )}
+        ) : (
+          <>
+            <section className="flex min-w-0 flex-1 flex-col border-r border-divider">
+              <DetalleBarra
+                cierreLabel={cierre.label}
+                onClearCierre={() => {
+                  cierre.clear();
+                  // Volver a la primera página: «página 7» de un recorte que ya no
+                  // existe apunta a un tramo distinto del listado ensanchado.
+                  setPagination((current) => ({ ...current, pageIndex: 0 }));
+                }}
+                sortLabel={sortLabel}
+                onClearSort={() => setSorting([])}
+                orden={sorting[0] ?? null}
+                onOrdenar={(orden) => setSorting(orden ? [orden] : [])}
+                etiqueta={etiqueta}
+                compact={compact}
+                onCompactChange={(next) => {
+                  if (compact !== next) toggleCompact();
+                }}
+              />
 
-      <DetalleSeleccion
-        seleccionadas={selectedIds.length}
-        onComparar={() => setShowComparator(true)}
-        onExportar={() => void import("./detalle-seleccion").then((modulo) => modulo.descargarSeleccion(selectedItems))}
-        onSeguir={() => {
-          selectedIds.forEach((id) => favoritos.seguir(id));
-          setRowSelection({});
-        }}
-        onLimpiar={() => setRowSelection({})}
-      />
+              <DetalleTabla
+                rows={mergedRows}
+                sorting={sorting}
+                allPageSelected={filas.allPageSelected}
+                onToggleAllPage={filas.toggleAllPage}
+                onToggleSort={tabla.toggleSort}
+                isLoading={queries.isLoading}
+                isFetching={queries.isFetching}
+                error={queries.error}
+                onRetry={() => void queries.refetch()}
+                vacia={isEmpty}
+                conRecorte={Boolean(cierre.label)}
+                onLimpiar={() => {
+                  resetFilters();
+                  // El recorte por cierre también: si sólo se limpiara el ámbito, el
+                  // botón dejaría la pantalla igual de vacía y sin nada más que pulsar.
+                  cierre.clear();
+                }}
+                detailId={detailId}
+                cursor={cursor}
+                rowSelection={rowSelection}
+                ccaas={ccaas}
+                tecnologias={tecnologias}
+                compact={compact}
+                rowHeight={compact ? 44 : 64}
+                onOpen={(index, id) => {
+                  setCursor(index);
+                  openDetail(id);
+                }}
+                onToggleSelect={tabla.toggleRow}
+                onToggleCcaa={toggleCcaa}
+                onToggleTecnologia={toggleTecnologia}
+              />
 
-      {showComparator && selectedItems.length >= 2 && (
-        <DetalleComparador
-          filas={selectedItems}
-          onClose={() => startTransition(() => setShowComparator(false))}
+              <DetallePie
+                showingLine={showingLine}
+                clientSorted={tabla.clientSorted}
+                pageIndex={pagination.pageIndex}
+                totalPages={totalPages}
+                pageWindow={filas.pageWindow}
+                canPrevious={pagination.pageIndex > 0}
+                canNext={pagination.pageIndex + 1 < tabla.alcanzables}
+                canLast={totalPages - 1 < tabla.alcanzables && pagination.pageIndex < totalPages - 1}
+                onPageChange={tabla.irAPagina}
+              />
+            </section>
+
+            <DetalleInspectorPanel
+              modo={modo}
+              licitacion={detailWithScore}
+              onClose={closeDetail}
+              onExpandir={ficha.abrir}
+            />
+          </>
+        )}
+
+        <DetalleSeleccion
+          seleccionadas={selectedIds.length}
+          onComparar={() => setShowComparator(true)}
+          onExportar={() => void import("./detalle-seleccion").then((modulo) => modulo.descargarSeleccion(selectedItems))}
+          onSeguir={() => {
+            selectedIds.forEach((id) => favoritos.seguir(id));
+            setRowSelection({});
+          }}
+          onLimpiar={() => setRowSelection({})}
         />
-      )}
+
+        {showComparator && selectedItems.length >= 2 && (
+          <DetalleComparador
+            filas={selectedItems}
+            onClose={() => startTransition(() => setShowComparator(false))}
+          />
+        )}
+      </div>
     </div>
   );
 }
