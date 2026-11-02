@@ -262,7 +262,7 @@ _CODIGO_OTROS = "ZZZ"
 _NOMBRE_ACTA_RE = re.compile(r"valoraci|criterios autom|adjudicaci|propuesta")
 
 
-def _referencia(node: Any, tipo: str) -> DocumentoReferencia | None:
+def _referencia(node: object, tipo: str) -> DocumentoReferencia | None:
     """``DocumentoReferencia`` de un ``*DocumentReference`` UBL, o ``None`` sin URI."""
     uri = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:URI")
     if not uri:
