@@ -1,8 +1,8 @@
 # Puntuaciones del acta de adjudicación — diseño
 
 - **Fecha:** 2026-11-01
-- **Estado:** aprobado (por secciones en el brainstorming del 2026-11-01 y el
-  spec escrito el mismo día); pendiente de implementar
+- **Estado:** implementado (pendiente de CI y merge). Aprobado por secciones en
+  el brainstorming del 2026-11-01 y el spec escrito el mismo día
 - **Rama:** `claude/licitadores-puntuaciones-adjudicacion-cd972a`
 - **Plan de implementación:** [2026-11-01-puntuaciones-acta.md](../plans/2026-11-01-puntuaciones-acta.md)
 - **Justificación en el plan de foco:**

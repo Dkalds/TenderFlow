@@ -1060,6 +1060,21 @@ _Sin ítems abiertos._
 - **Hallazgo (2026-10-25):** los eventos personalizados de Vercel Web Analytics exigen plan Pro y el proyecto `tenderflow` está en Hobby: la API de eventos responde `402 payment_required`. **Los 23 eventos del catálogo se emiten pero no se guardan en ningún sitio.** Lo que sí hay son pageviews por ruta, y con eso está hecha la primera tabla real (30 días) en [UX_AUDIT.md](UX_AUDIT.md#uso-real-por-ruta-pageviews-de-vercel-2026-09-25-a-2026-10-25). Decisión pendiente del dueño: pagar Pro, mandar los eventos a otro destino (la propia API ya tiene `http_requests_total` por handler) o conformarse con pageviews.
 - **Riesgo:** bajo — telemetría categórica sin identificadores; el filtro del módulo ya la acota.
 
+### [P2] Puntuaciones del acta de adjudicación: lo que la primera entrega dejó fuera
+- **Área:** services/puntuaciones_acta.py, db/repositories/puntuaciones_acta.py, scraper/codice_parser.py, web/src/components/pursuits/
+- **Hecho (plan 2026-10, B6; [spec](superpowers/specs/2026-11-01-puntuaciones-acta-design.md), rama `claude/licitadores-puntuaciones-adjudicacion-cd972a`):** el parser guarda las referencias a las actas de la mesa (`GeneralDocument`) como `documentos.tipo='acta'` para todo PLACSP, y la descarga nocturna de pliegos no las toca. Tras cada pasada se encola un job `puntuaciones_acta` por expediente adjudicado que alguien sigue; lee las páginas con una llamada al modelo y guarda solo las filas cuya cita está literalmente en el acta (ADR-014) en `acta_extracciones` y `acta_puntuaciones`. `GET /pursuits/{id}` trae `adjudicacion.puntuaciones` (tabla por lote, ganadora, fila propia, diferencia por criterio y motivo propuesto) y la fila propia se confirma con el `PATCH /pursuits/{id}` de siempre (`fila_acta`, evento `fila_acta_confirmada`). Sin endpoint, espacio ni pantalla nuevos (D50). Recorrido: `test_cu05_perdida_con_puntuaciones_del_acta` ([CU-05](casos-de-uso.md)).
+- **Problema:** la primera entrega sirve al post-mortem de las oportunidades que ya existen y se queda ahí a propósito; lo siguiente no se hizo por alcance o por coste, no por olvido.
+- **Acceptance criteria:**
+  - Antes de dar la función por viva: aplicar en producción la migración de `acta_extracciones` y `acta_puntuaciones` (acción del propietario) y comprobar con una oportunidad real adjudicada que el job lee el acta y la ficha enseña la tabla; anotar aquí cuántas actas salen `ok`, `sin_tabla` y `error`.
+  - **Más allá de las oportunidades:** hoy solo se leen expedientes con `pursuits`. Las referencias ya se guardan para todo PLACSP, así que ampliar es quitar ese filtro de `expedientes_pendientes`; decidirlo con el coste por acta medido en el punto anterior.
+  - **Backfill de las oportunidades ya cerradas:** las referencias llegan en las próximas pasadas o en una reingesta; las cerradas antes no se reprocesan solas.
+  - **PSCP y TED:** su ingesta no trae `GeneralDocument`; serían otro conector.
+  - **OCR de actas escaneadas:** terminan en `sin_tabla` con el motivo «El acta no tiene texto extraíble (escaneada); falta OCR». Es el mismo límite que los pliegos (ver «[Ola 1 · S8]»), así que se resuelve con él.
+  - **Perfil de competidor:** `acta_puntuaciones` guarda una fila por licitador y criterio, con su cita; falta usarla para decir dónde puntúa cada competidor y preparar la próxima oferta.
+  - **Tope de reencolado de `error`:** `expedientes_pendientes` vuelve a encolar los `error` en cada pasada, sin tope (marcado `shortcut:` en el repositorio). Ponerlo (por `updated_at` o por número de intentos) cuando las oportunidades pasen del centenar.
+- **Files de partida:** [services/puntuaciones_acta.py](../services/puntuaciones_acta.py), [db/repositories/puntuaciones_acta.py](../db/repositories/puntuaciones_acta.py), [services/puntuaciones_acta_reglas.py](../services/puntuaciones_acta_reglas.py), [web/src/components/pursuits/puntuaciones-acta.tsx](../web/src/components/pursuits/puntuaciones-acta.tsx)
+- **Riesgo:** bajo — cada punto es independiente y la tabla en filas evita migrar otra vez.
+
 ## P3 — Nice to have
 
 ### [P3] Referencias a documentos desde Galicia, Euskadi y TACRC
