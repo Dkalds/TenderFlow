@@ -6,6 +6,13 @@ Cada test es un recorrido completo por la API con sesión real. Ver
 
 from __future__ import annotations
 
+import json
+from unittest.mock import patch
+
+from db.database import connect
+from db.repositories.documentos import TIPO_ACTA, DocumentosRepository
+from services.normalization import normalize_company
+from services.puntuaciones_acta import extraer_puntuaciones
 from tests.escenarios import abrir_sesion, sembrar_licitacion
 
 
@@ -259,3 +266,143 @@ def test_cu05_un_null_en_un_campo_de_estado_no_toca_nada(client, api_db):
         "pending",
     )
     assert detalle["decision_reason"] == "Lo estamos mirando"
+
+
+# El acta de la mesa del expediente de ``test_cu05_perdida_con_puntuaciones_del_acta``:
+# la ganadora saca más en los dos criterios y pierde la nuestra, sobre todo en precio.
+_GANADORA = "Ganadora SL"
+_NUESTRA = "Nuestra Empresa SL"
+_FILA_GANADORA = f"{_GANADORA} 33 65 98"
+_FILA_NUESTRA = f"{_NUESTRA} 31 44,54 75,54"
+_PAGINAS_ACTA = [
+    "ACTA DE LA MESA DE CONTRATACIÓN\nLOTE 1. Servicio de soporte y mantenimiento\n"
+    "Se reúne la mesa para valorar las ofertas admitidas.",
+    "VALORACIÓN DE LOS CRITERIOS DE ADJUDICACIÓN\nLOTE 1\n"
+    "Licitador Informe técnico (sobre 35 puntos) Oferta económica (sobre 65 puntos) Total\n"
+    f"{_FILA_GANADORA}\n{_FILA_NUESTRA}\n"
+    "La puntuación total máxima es de 100 puntos.",
+]
+
+
+def _sembrar_acta_de_la_mesa(licitacion_id: str) -> int:
+    """La adjudicación a la ganadora y el acta ``extracted`` con dos páginas; devuelve su id."""
+    with connect() as c:
+        c.execute(
+            "INSERT INTO adjudicaciones "
+            "(licitacion_id, nombre, nif, importe_adjudicado, fecha_extraccion) "
+            "VALUES (%s, %s, %s, %s, %s)",
+            (licitacion_id, _GANADORA, None, 240_000.0, "2026-11-01T10:00:00+00:00"),
+        )
+        documento_id = int(
+            c.execute(
+                "INSERT INTO documentos (licitacion_id, tipo, uri) VALUES (%s, %s, %s) "
+                "RETURNING id",
+                (licitacion_id, TIPO_ACTA, "https://placsp.example/acta-mesa.pdf"),
+            ).fetchone()[0]
+        )
+    DocumentosRepository().mark_extracted(
+        documento_id, texto="\n".join(_PAGINAS_ACTA), sha256="acta-escenario", pages=_PAGINAS_ACTA
+    )
+    return documento_id
+
+
+def _lo_que_lee_el_modelo(documento_id: int) -> str:
+    """El JSON que un modelo leería de la tabla de la página 2; las citas son filas del acta."""
+
+    def fila(licitador: str, cita: str, tecnico: float, economica: float, total: float):
+        return {
+            "licitador": licitador,
+            "criterios": [
+                {"nombre": "Informe técnico", "puntos": tecnico, "maximo": 35},
+                {"nombre": "Oferta económica", "puntos": economica, "maximo": 65},
+            ],
+            "total": total,
+            "excluida": False,
+            "cita": cita,
+            "pagina": 2,
+            "documento_id": documento_id,
+        }
+
+    return json.dumps(
+        {
+            "lotes": [
+                {
+                    "lote": "LOTE 1",
+                    "filas": [
+                        fila(_GANADORA, _FILA_GANADORA, 33, 65, 98),
+                        fila(_NUESTRA, _FILA_NUESTRA, 31, 44.54, 75.54),
+                    ],
+                }
+            ]
+        }
+    )
+
+
+def test_cu05_perdida_con_puntuaciones_del_acta(client, api_db):
+    """CU-05 — perder con el acta delante: la nota frente a la ganadora y el motivo propuesto.
+
+    El recorrido del post-mortem: la mesa publicó acta con puntuaciones, el job las
+    lee (con el modelo sustituido por un doble cuyas citas son texto del acta), la
+    ficha de la oportunidad enseña la tabla sin adivinar cuál es nuestra empresa, la
+    persona la marca, la diferencia por criterio propone «precio» y el cierre como
+    perdida lleva ese motivo.
+    """
+    sembrar_licitacion("EXP-ESC-ACTA-PERDIDA", "Soporte y mantenimiento de aplicaciones")
+    sesion = abrir_sesion("perdida-acta@example.com", client)
+    pid = _abrir_oportunidad(sesion, "EXP-ESC-ACTA-PERDIDA")["id"]
+    documento_id = _sembrar_acta_de_la_mesa("EXP-ESC-ACTA-PERDIDA")
+    assert (
+        _mover(sesion, pid, decision="go", decision_reason="Vale", status="preparing").status_code
+        == 200
+    )
+    assert _mover(sesion, pid, status="submitted", offer_price_eur=250_000).status_code == 200
+
+    # Con el acta publicada y sin leer, la ficha lo dice en vez de callar.
+    antes = sesion.get(f"/pursuits/{pid}").json()["adjudicacion"]["puntuaciones"]
+    assert antes == {"estado": "pendiente", "lotes": []}
+
+    # El job: no descarga nada (ya está extraída) y el modelo devuelve la tabla.
+    with (
+        patch(
+            "services.rag.fact_sheet.ensure_documents_ready",
+            return_value={"attempted": 0, "extracted": 0, "error": 0, "sin_texto": 0},
+        ),
+        patch(
+            "services.rag.fact_sheet._llamar_modelo",
+            return_value=_lo_que_lee_el_modelo(documento_id),
+        ),
+    ):
+        assert extraer_puntuaciones("EXP-ESC-ACTA-PERDIDA", model="modelo-de-prueba") == "ok"
+
+    puntuaciones = sesion.get(f"/pursuits/{pid}").json()["adjudicacion"]["puntuaciones"]
+    assert puntuaciones["estado"] == "ok"
+    (lote,) = puntuaciones["lotes"]
+    assert lote["lote_numero"] == "1"
+    # Por total descendente: la ganadora publicada primero, y sin fila propia que adivinar.
+    assert [f["licitador"] for f in lote["filas"]] == [_GANADORA, _NUESTRA]
+    assert lote["fila_ganadora"] == 0
+    assert lote["ganadora_es_mayor_puntuacion"] is False
+    assert lote["fila_propia"] is None
+    assert lote["fila_propia_confirmada"] is False
+    assert lote["diferencia"] == []
+    assert lote["motivo_sugerido"] is None
+
+    # La persona marca su fila: llega la diferencia por criterio y el motivo propuesto.
+    ref = {"lote_numero": "1", "licitador_normalizado": normalize_company(_NUESTRA)}
+    confirmada = sesion.patch(f"/pursuits/{pid}", json={"fila_acta": ref})
+    assert confirmada.status_code == 200, confirmada.text
+    for detalle in (confirmada.json(), sesion.get(f"/pursuits/{pid}").json()):
+        (lote,) = detalle["adjudicacion"]["puntuaciones"]["lotes"]
+        assert lote["fila_propia_confirmada"] is True
+        assert lote["filas"][lote["fila_propia"]]["licitador"] == _NUESTRA
+        assert lote["motivo_sugerido"] == "precio"
+        por_criterio = {d["criterio"]: d["diferencia"] for d in lote["diferencia"]}
+        assert por_criterio == {"Informe técnico": -2, "Oferta económica": -20.46, None: -22.46}
+
+    # El cierre como perdida con el motivo propuesto, y la tabla sigue en la ficha cerrada.
+    perdida = _mover(sesion, pid, status="lost", outcome_reason_code=lote["motivo_sugerido"])
+    assert perdida.status_code == 200, perdida.text
+    assert (perdida.json()["status"], perdida.json()["outcome"]) == ("lost", "lost")
+    cerrada = sesion.get(f"/pursuits/{pid}").json()
+    assert cerrada["outcome_reason_code"] == "precio"
+    assert cerrada["adjudicacion"]["puntuaciones"]["lotes"][0]["fila_propia_confirmada"] is True

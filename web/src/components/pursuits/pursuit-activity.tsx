@@ -56,6 +56,9 @@ const TIPO_LEGIBLE: Record<string, string> = {
   "pursuit.updated": "Actualización",
   // Lo sella `services/go_no_go.py` una vez por versión de ficha del pliego.
   checklist_evaluated: "Pliego contrastado con la capacidad",
+  // Lo escribe `db/repositories/pursuits.py::FILA_ACTA_EVENT_TYPE` al confirmar en la
+  // tarjeta de adjudicación cuál de las filas del acta es la de la empresa.
+  fila_acta_confirmada: "Empresa confirmada en el acta de la mesa",
 };
 
 /** Lo escribe `db/repositories/pursuits.py::KIT_EVENT_TYPE` al marcar o asignar. */

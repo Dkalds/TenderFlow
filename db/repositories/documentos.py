@@ -22,7 +22,7 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, TypedDict
+from typing import Any, Final, TypedDict
 
 from db.database import DocumentoReferencia, connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts, typed_rows
@@ -33,6 +33,19 @@ from shared.estados import ESTADOS_CERRADOS, abierta_sql
 log = get_logger(__name__)
 
 _MAX_ERROR_DETAIL_LEN = 2000
+
+#: Acta de la mesa de contratación. Entra en ``documentos`` como referencia
+#: (``pending``) pero **no** es un pliego: ni la descarga nocturna, ni los
+#: chunks, ni el RAG, ni la ficha ni la señal tecnológica la leen. La descarga y
+#: la lectura de las actas las pide quien las necesita por tipo
+#: (puntuaciones del acta, spec §3.3).
+TIPO_ACTA: Final = "acta"
+
+#: Tipos que forman el pliego de una licitación. Es el valor por defecto de
+#: quien lee páginas (:meth:`DocumentosRepository.list_pages_by_licitacion`) o
+#: descarga bajo demanda (``services.rag.fact_sheet.ensure_documents_ready``):
+#: las actas hay que pedirlas por su tipo.
+TIPOS_PLIEGO: Final[frozenset[str]] = frozenset({"legal", "technical", "additional"})
 
 #: Servlet con el que PLACSP sirve los adjuntos de sus expedientes. Un adjunto
 #: alojado en otra plataforma no depende de lo que PLACSP haya publicado.
@@ -716,6 +729,10 @@ class DocumentosRepository:
         (255 documentos el 2026-10-01, 139 el 2026-09-28). No se pierden: siguen
         ``pending`` y entran solos cuando la re-emisión del expediente trae el
         ``DOC_CD`` o cuando el expediente se cierra.
+
+        Quedan fuera las actas de la mesa (``tipo='acta'``): no son pliego y
+        solo se descargan cuando alguien las pide por su tipo, no en la pasada
+        nocturna (spec de las puntuaciones del acta, §3.3).
         """
         with connect_read() as c:
             cur = c.execute(
@@ -729,6 +746,8 @@ class DocumentosRepository:
                 "FROM documentos d "
                 "JOIN licitaciones l ON l.id_externo = d.licitacion_id "
                 "WHERE d.status = 'pending' "
+                # Las actas no se descargan en la pasada nocturna (spec §3.3).
+                "AND d.tipo <> 'acta' "
                 f"AND NOT {_sin_publicar_sql()} "
                 "ORDER BY "
                 # Demanda real por delante de la relevancia estimada: los pliegos
@@ -972,17 +991,24 @@ class DocumentosRepository:
             )
             return rows_to_dicts(cur)
 
-    def list_pages_by_licitacion(self, licitacion_id: str) -> list[dict[str, Any]]:
-        """Páginas de todos los pliegos de una licitación, con metadatos de cita."""
+    def list_pages_by_licitacion(
+        self, licitacion_id: str, *, tipos: frozenset[str] = TIPOS_PLIEGO
+    ) -> list[dict[str, Any]]:
+        """Páginas de los documentos de una licitación, con metadatos de cita.
+
+        Por defecto solo las de los pliegos (:data:`TIPOS_PLIEGO`): la ficha, la
+        señal tecnológica y el guion de oferta leen pliegos y no deben ver el
+        acta de la mesa (spec §3.3). Quien lee actas pide ``tipos={TIPO_ACTA}``.
+        """
         with connect_read() as c:
             cur = c.execute(
                 "SELECT dp.documento_id, dp.page_number, dp.texto, "
                 "dp.start_offset, dp.end_offset, dp.ocr, d.tipo, d.filename, d.uri "
                 "FROM documento_pages dp "
                 "JOIN documentos d ON d.id = dp.documento_id "
-                "WHERE d.licitacion_id = %s "
+                "WHERE d.licitacion_id = %s AND d.tipo = ANY(%s) "
                 "ORDER BY d.id, dp.page_number",
-                (licitacion_id,),
+                (licitacion_id, list(tipos)),
             )
             return rows_to_dicts(cur)
 
@@ -1206,11 +1232,15 @@ class DocumentosRepository:
         Por eso la idempotencia entre corridas la da esta misma condición
         (`NOT EXISTS`): un documento ya chunkeado nunca vuelve a aparecer
         aquí, así que el job nunca reprocesa trabajo ya hecho.
+
+        Quedan fuera las actas de la mesa (``tipo='acta'``): no son pliego y no
+        se trocean ni se embeben (spec de las puntuaciones del acta, §3.3).
         """
         with connect_read() as c:
             cur = c.execute(
                 "SELECT id, licitacion_id, texto FROM documentos "
-                "WHERE status = 'extracted' "
+                # Las actas no se trocean ni se embeben (spec §3.3).
+                "WHERE status = 'extracted' AND tipo <> 'acta' "
                 "AND NOT EXISTS (SELECT 1 FROM documento_chunks dc "
                 "                WHERE dc.documento_id = documentos.id) "
                 "ORDER BY updated_at LIMIT %s",
@@ -1343,7 +1373,9 @@ class DocumentosRepository:
                 "SELECT dc.documento_id, d.tipo, d.filename, dc.chunk_index, dc.texto, "
                 "dc.page_number "
                 "FROM documento_chunks dc JOIN documentos d ON d.id = dc.documento_id "
-                "WHERE d.licitacion_id = %s "
+                # El acta no es pliego: no alimenta el contexto del asistente
+                # (spec §3.3).
+                "WHERE d.licitacion_id = %s AND d.tipo <> 'acta' "
                 "ORDER BY CASE d.tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1 ELSE 2 END, "
                 "dc.documento_id, dc.chunk_index LIMIT %s",
                 (licitacion_id, max(1, min(int(limit), 1000))),
@@ -1384,7 +1416,9 @@ class DocumentosRepository:
             "dc.page_number, dc.embedding_version, "
             "1 - (dc.embedding <=> %s::vector) AS score "
             "FROM documento_chunks dc JOIN documentos d ON d.id = dc.documento_id "
-            "WHERE d.licitacion_id = %s AND dc.embedding IS NOT NULL "
+            # El acta no es pliego: no entra en el RAG (spec §3.3). Va en ``base``
+            # y por eso vale para la consulta con versión y para su caída.
+            "WHERE d.licitacion_id = %s AND dc.embedding IS NOT NULL AND d.tipo <> 'acta' "
         )
         cola = "ORDER BY dc.embedding <=> %s::vector LIMIT %s"
         with connect_read() as c:
@@ -1410,7 +1444,9 @@ class DocumentosRepository:
         with connect_read() as c:
             cur = c.execute(
                 "SELECT id, tipo, filename, texto FROM documentos "
+                # Fuera el acta: este texto es contexto de pliego (spec §3.3).
                 "WHERE licitacion_id = %s AND status = 'extracted' AND texto IS NOT NULL "
+                "AND tipo <> 'acta' "
                 "ORDER BY CASE tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1 ELSE 2 END, id "
                 "LIMIT %s",
                 (licitacion_id, max(1, min(int(limit), 100))),
@@ -1439,6 +1475,12 @@ class DocumentosRepository:
         inline en un heredoc de ``pliegos.yml``). Devuelve siempre las claves
         conocidas del ciclo de vida, con 0 cuando no hay filas, para que el
         formato del informe no dependa de los datos.
+
+        Los estados cuentan **solo pliegos**: las actas de la mesa
+        (``tipo='acta'``) quedan ``pending`` por diseño hasta que alguien las
+        pide, y contadas ahí el ``pending`` del informe del cron crecería sin
+        parar con documentos que la pasada nocturna nunca descarga (spec §3.3).
+        Van aparte, en ``actas``.
         """
         counts = {
             "total": 0,
@@ -1451,12 +1493,17 @@ class DocumentosRepository:
             "unsupported": 0,
             # v161: PDF escaneado sin texto y sin OCR que lo leyera.
             "sin_texto": 0,
+            "actas": 0,
         }
         with connect_read() as c:
-            cur = c.execute("SELECT status, COUNT(*) FROM documentos GROUP BY status")
+            cur = c.execute(
+                "SELECT status, COUNT(*) FROM documentos WHERE tipo <> 'acta' GROUP BY status"
+            )
             for status, n in cur.fetchall():
                 counts[str(status)] = int(n)
                 counts["total"] += int(n)
+            row = c.execute("SELECT COUNT(*) FROM documentos WHERE tipo = 'acta'").fetchone()
+            counts["actas"] = int(row[0] if row else 0)
             row = c.execute("SELECT COUNT(*) FROM documento_chunks").fetchone()
             counts["chunks"] = int(row[0] if row else 0)
             row = c.execute("SELECT COUNT(*) FROM documentos WHERE blob_key IS NOT NULL").fetchone()
@@ -1482,7 +1529,10 @@ class DocumentosRepository:
                 "COUNT(*) FILTER (WHERE status = 'unsupported') AS unsupported, "
                 "COUNT(*) FILTER (WHERE status = 'sin_texto') AS sin_texto, "
                 "COUNT(*) FILTER (WHERE status = 'error') AS error, "
-                "COUNT(*) FILTER (WHERE status IN ('pending', 'downloaded')) AS pendientes "
+                # Las actas pending no son cobertura que falte: no se descargan
+                # en la pasada nocturna (spec §3.3).
+                "COUNT(*) FILTER (WHERE status IN ('pending', 'downloaded') "
+                "                 AND tipo <> 'acta') AS pendientes "
                 "FROM documentos GROUP BY content_type ORDER BY total DESC, content_type"
             )
             return rows_to_dicts(cur)

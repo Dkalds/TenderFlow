@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 
+from db.repositories.documentos import TIPO_ACTA, TIPOS_PLIEGO
 from services.rag import paginas as mod
 
 
@@ -63,7 +64,9 @@ def repo_falso(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
             "uri": None,
         },
     ]
-    monkeypatch.setattr(mod._repo, "list_pages_by_licitacion", lambda _licitacion_id: list(filas))
+    monkeypatch.setattr(
+        mod._repo, "list_pages_by_licitacion", lambda _licitacion_id, **_kw: list(filas)
+    )
     return filas
 
 
@@ -156,7 +159,7 @@ class TestOffsets:
         monkeypatch.setattr(
             mod._repo,
             "list_pages_by_licitacion",
-            lambda _l: [
+            lambda _l, **_kw: [
                 {
                     "documento_id": 1,
                     "page_number": 1,
@@ -182,5 +185,38 @@ class TestAislamiento:
         tiene, no sobre el id suelto: si el repositorio no devuelve el
         documento para esa licitación, la respuesta es 404.
         """
-        monkeypatch.setattr(mod._repo, "list_pages_by_licitacion", lambda _l: [])
+        monkeypatch.setattr(mod._repo, "list_pages_by_licitacion", lambda _l, **_kw: [])
         assert mod.get_pagina("EXP-DE-OTRO", 7, 1) is None
+
+
+class TestActas:
+    """El visor sirve también el acta de la mesa: cada cifra de las puntuaciones enlaza a ella."""
+
+    @pytest.fixture(autouse=True)
+    def _repo_que_filtra_por_tipo(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Como el repositorio real: sin ``tipos`` solo trae los pliegos."""
+        filas: list[dict[str, Any]] = [
+            {"documento_id": 7, "page_number": 1, "texto": "pliego", "tipo": "legal"},
+            {"documento_id": 8, "page_number": 1, "texto": "acta p1", "tipo": TIPO_ACTA},
+            {"documento_id": 8, "page_number": 2, "texto": "acta p2", "tipo": TIPO_ACTA},
+            {"documento_id": 9, "page_number": 1, "texto": "otra cosa", "tipo": "contrato"},
+        ]
+
+        def _lista(_licitacion_id: str, *, tipos: frozenset[str] = TIPOS_PLIEGO) -> list[Any]:
+            return [f for f in filas if f["tipo"] in tipos]
+
+        monkeypatch.setattr(mod._repo, "list_pages_by_licitacion", _lista)
+
+    def test_sirve_una_pagina_del_acta(self) -> None:
+        pagina = mod.get_pagina("EXP-1", 8, 2)
+        assert pagina is not None
+        assert (pagina.texto, pagina.tipo) == ("acta p2", TIPO_ACTA)
+        assert pagina.total_paginas == 2
+
+    def test_sigue_sirviendo_el_pliego(self) -> None:
+        pagina = mod.get_pagina("EXP-1", 7, 1)
+        assert pagina is not None
+        assert pagina.texto == "pliego"
+
+    def test_no_abre_a_otros_tipos_de_documento(self) -> None:
+        assert mod.get_pagina("EXP-1", 9, 1) is None

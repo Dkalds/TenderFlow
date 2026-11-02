@@ -65,6 +65,11 @@ TIPO_PASO_PIPELINE = "paso_pipeline"
 #: persona espera ver ya —una asignación, una solicitud de acceso— para no
 #: esperar al cierre de la siguiente ingesta, que corre cada cuatro horas.
 TIPO_DESPACHO_EVENTOS = "despacho_eventos"
+#: Lectura de las puntuaciones por licitador del acta de la mesa de UN
+#: expediente adjudicado (descarga el acta + una llamada al modelo). La encola
+#: ``services.puntuaciones_acta.encolar_pendientes`` tras cada pasada, no una
+#: persona, pero es trabajo pesado que el worker de la cola a demanda consume.
+TIPO_PUNTUACIONES_ACTA = "puntuaciones_acta"
 
 
 @dataclass(frozen=True)
@@ -117,6 +122,12 @@ TIPOS_A_DEMANDA: dict[str, TipoJob] = {
         handler="scheduler.worker:ejecutar_despacho_eventos",
         clave_dedupe=None,
         descripcion="Reparte los eventos pendientes del outbox (domain_events).",
+    ),
+    TIPO_PUNTUACIONES_ACTA: TipoJob(
+        nombre=TIPO_PUNTUACIONES_ACTA,
+        handler="scheduler.worker:ejecutar_puntuaciones_acta",
+        clave_dedupe="licitacion_id",
+        descripcion="Lee las puntuaciones por licitador del acta de la mesa.",
     ),
 }
 
@@ -486,6 +497,7 @@ __all__ = [
     "TIPO_EXPORT_PDF",
     "TIPO_FICHA_PLIEGO",
     "TIPO_PASO_PIPELINE",
+    "TIPO_PUNTUACIONES_ACTA",
     "CuotaDeJobsExcedida",
     "Job",
     "JobDesconocido",

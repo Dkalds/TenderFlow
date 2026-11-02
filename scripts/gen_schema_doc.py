@@ -129,7 +129,8 @@ _FAMILIAS: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
     (
         "Documentos y pliegos",
         ("tender_fact_sheets",),
-        ("documento", "pliego"),
+        # `acta_`: lo que se lee del acta de la mesa (v170), documento de la licitación.
+        ("documento", "pliego", "acta_"),
     ),
     (
         "Empresas y mercado",

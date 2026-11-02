@@ -1222,7 +1222,12 @@ async def patch_pursuit(
     ),
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PursuitDetail:
-    """Aplica una transición validada y añade un único evento."""
+    """Aplica una transición validada y añade un único evento.
+
+    `fila_acta` es la excepción que no toca columnas: anota en el ledger el
+    evento `fila_acta_confirmada` con la fila del acta de la mesa que la
+    persona confirma como la de su empresa.
+    """
     try:
         return await run_db(
             update_pursuit,

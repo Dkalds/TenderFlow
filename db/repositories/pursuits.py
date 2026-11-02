@@ -327,6 +327,14 @@ class KitEventRow(TypedDict):
     created_at: str
 
 
+class FilaActaEventRow(TypedDict):
+    """Una fila de :meth:`PursuitRepository.fila_acta_events`."""
+
+    actor_user_id: int | None
+    payload_json: str
+    created_at: str
+
+
 class CruceCompetidorRow(TypedDict):
     """Una fila de :meth:`PursuitRepository.cruces_con_competidor`.
 
@@ -1260,6 +1268,46 @@ class PursuitRepository:
                 pursuit_id=pursuit_id,
                 organization_id=organization_id,
                 event_type=self.KIT_EVENT_TYPE,
+                actor_user_id=actor_user_id,
+                payload=payload,
+                idempotency_key=None,
+                created_at=now_utc_iso(),
+            )
+
+    # ── Filas del acta que la organización confirma como suyas ───────────
+    #
+    # Mismo patrón que el kit: la confirmación («esta es mi empresa») es un
+    # evento del ledger y el estado vigente lo reduce el servicio. Así se sabe
+    # quién la dio y cuándo, y deshacerla es otro evento, no un borrado.
+
+    FILA_ACTA_EVENT_TYPE = "fila_acta_confirmada"
+
+    def fila_acta_events(self, organization_id: int, pursuit_id: int) -> list[FilaActaEventRow]:
+        """Eventos de fila confirmada de una oportunidad, en orden de escritura."""
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT actor_user_id, payload_json, created_at FROM pursuit_events "
+                "WHERE organization_id = %s AND pursuit_id = %s AND event_type = %s "
+                "ORDER BY id",
+                (organization_id, pursuit_id, self.FILA_ACTA_EVENT_TYPE),
+            )
+            return typed_rows(FilaActaEventRow, rows_to_dicts(cur))
+
+    def append_fila_acta_event(
+        self,
+        *,
+        organization_id: int,
+        pursuit_id: int,
+        actor_user_id: int,
+        payload: Mapping[str, object],
+    ) -> None:
+        """Anota una confirmación de fila. Sin ``UPDATE``: el ledger es append-only."""
+        with connect() as conn:
+            self._append_event(
+                conn,
+                pursuit_id=pursuit_id,
+                organization_id=organization_id,
+                event_type=self.FILA_ACTA_EVENT_TYPE,
                 actor_user_id=actor_user_id,
                 payload=payload,
                 idempotency_key=None,

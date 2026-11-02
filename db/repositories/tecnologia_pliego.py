@@ -346,7 +346,9 @@ class TecnologiaPliegoRepository:
         with connect_read() as c:
             rows = c.execute(
                 "SELECT DISTINCT d.licitacion_id FROM documentos d "
-                "WHERE d.status = 'extracted' "
+                # Un acta extraída no es pliego: no da señal tecnológica (spec
+                # de las puntuaciones del acta, §3.3).
+                "WHERE d.status = 'extracted' AND d.tipo <> 'acta' "
                 "AND NOT EXISTS ("
                 "  SELECT 1 FROM licitacion_tecnologia_pliego p "
                 "  WHERE p.licitacion_id = d.licitacion_id AND p.method = %s "

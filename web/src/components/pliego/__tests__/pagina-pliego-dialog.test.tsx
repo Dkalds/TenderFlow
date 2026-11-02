@@ -119,6 +119,27 @@ describe("PaginaPliegoDialog", () => {
     expect(screen.getByText(/El precio tendrá un peso/)).toBeInTheDocument();
   });
 
+  it("sin cita que resaltar (un enlace a página) enseña la página sin aviso", async () => {
+    // Lo que abren las cifras de las puntuaciones del acta: una página, no un
+    // fragmento. Avisar de que no se resaltó sería avisar de algo que nadie pidió.
+    const fetch = fetchPorRuta([
+      /paginas\/3/,
+      pagina({ resaltado_inicio: null, resaltado_fin: null, resaltado_omitido: "sin_offsets" }),
+    ]);
+    renderConQuery(
+      <PaginaPliegoDialog
+        licitacionId="LIC-1"
+        cita={{ documento_id: 7, page_number: 3, quote: "", ocr: false }}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(await screen.findByText(/El precio tendrá un peso/)).toBeInTheDocument();
+    expect(screen.queryByText(/sin resaltar/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/no guarda su posición/)).not.toBeInTheDocument();
+    expect(callUrl(fetch.mock.calls[0])).toBe("/api/v1/licitaciones/LIC-1/documentos/7/paginas/3");
+  });
+
   it("al pasar de página ya no pide resaltado y ofrece volver a la cita", async () => {
     const fetch = fetchPorRuta(
       [/paginas\/4/, pagina({ page_number: 4, texto: "Página siguiente.", resaltado_inicio: null, resaltado_fin: null })],

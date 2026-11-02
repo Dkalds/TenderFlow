@@ -25,6 +25,7 @@ const VERBO: Record<string, string> = {
   "pursuit.updated": "actualizó la oportunidad",
   checklist_evaluated: "evaluó el go/no-go de",
   kit_item_marcado: "marcó un documento del kit de",
+  fila_acta_confirmada: "confirmó su empresa en el acta de",
 };
 
 const VERBO_RESULTADO: Record<string, string> = {

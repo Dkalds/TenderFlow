@@ -108,8 +108,11 @@ export function PaginaPliegoDialog({
     marca.current?.scrollIntoView({ block: "center" });
   }, [trozos?.cita, data?.page_number]);
 
+  // El aviso solo cuando se pidió resaltar algo: una cita sin `quote` es un
+  // enlace a la página (las cifras del acta), y ahí no falta ningún resaltado.
+  const pideResaltado = Boolean(cita?.quote);
   const sinResaltado =
-    enPaginaDeLaCita && data && !trozos
+    pideResaltado && enPaginaDeLaCita && data && !trozos
       ? (MOTIVOS_SIN_RESALTADO[data.resaltado_omitido ?? "sin_offsets"] ??
         "No se pudo situar la cita en esta página.")
       : null;
@@ -126,7 +129,7 @@ export function PaginaPliegoDialog({
             {total != null && ` de ${total}`}
           </DialogTitle>
           <DialogDescription className="mt-1 text-tf-meta">
-            Texto extraído de la página del pliego
+            Texto extraído de la página del documento
             {trozos ? ", con la cita resaltada." : "."}
           </DialogDescription>
         </div>

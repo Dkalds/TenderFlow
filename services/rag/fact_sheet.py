@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
+import threading
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, get_args
 
@@ -12,7 +13,7 @@ from annotated_types import MaxLen
 from pydantic import ValidationError
 from pydantic.fields import FieldInfo
 
-from db.repositories.documentos import DocumentosRepository
+from db.repositories.documentos import TIPOS_PLIEGO, DocumentosRepository
 from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
 from llm.client import DEFAULT_MODEL, stream_llm_response
 from llm.json_utils import extract_json_object
@@ -626,7 +627,13 @@ _ONDEMAND_MAX_DOCUMENTS = 8
 _DOC_TIPO_PRIORITY = {"legal": 0, "technical": 1}
 
 
-def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
+def ensure_documents_ready(
+    licitacion_id: str,
+    *,
+    tipos: frozenset[str] = TIPOS_PLIEGO,
+    max_documentos: int = _ONDEMAND_MAX_DOCUMENTS,
+    orden: Callable[[Mapping[str, object]], int] | None = None,
+) -> dict[str, int]:
     """Descarga+extrae bajo demanda los adjuntos pendientes de una licitación.
 
     El cron nocturno drena el backlog global por lotes y una licitación
@@ -644,6 +651,15 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
     sale el pliego, y cada intento son cuatro reintentos con espera —76 s para
     un expediente de cuatro documentos, medido el 2026-10-04— para acabar
     dejando la fila en ``error``.
+
+    ``tipos`` acota qué documentos entran, y no solo cuáles se descargan:
+    ``any_extracted`` también se calcula sobre ellos, de modo que un acta ya
+    leída no cuenta como pliego extraído (ni al revés). Por defecto son los
+    pliegos; la lectura de las actas pide ``tipos={"acta"}`` (puntuaciones del
+    acta, spec §3.3). ``max_documentos`` es el tope de intentos por llamada, y
+    ``orden`` decide quién entra dentro de él: clave de ordenación (menor, antes)
+    que desempata dentro de cada tipo, tras la prioridad del tipo; sin ella manda
+    el orden de ``list_by_licitacion``.
     """
     if not _pdf_extraction_available():
         log.warning("fact_sheet_ondemand_fetch_skipped_no_pliegos_extra")
@@ -652,7 +668,8 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
     from scraper.document_fetcher import fetch_and_extract
 
     repo = DocumentosRepository()
-    rows = repo.list_by_licitacion(licitacion_id)
+    # Solo los tipos pedidos: por defecto las actas quedan fuera (spec §3.3).
+    rows = [row for row in repo.list_by_licitacion(licitacion_id) if row.get("tipo") in tipos]
     descargables = [row for row in rows if not row.get("sin_publicar")]
     pending = [row for row in descargables if row.get("status") == "pending"]
     any_extracted = any(row.get("status") == "extracted" for row in rows)
@@ -661,7 +678,12 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
         if (pending or any_extracted)
         else [row for row in descargables if row.get("status") == "error"]
     )
-    candidates.sort(key=lambda row: _DOC_TIPO_PRIORITY.get(str(row.get("tipo")), 2))
+    candidates.sort(
+        key=lambda row: (
+            _DOC_TIPO_PRIORITY.get(str(row.get("tipo")), 2),
+            orden(row) if orden else 0,
+        )
+    )
 
     # ``skipped`` lo devuelve el fetcher cuando el breaker está abierto: no se
     # llegó a intentar la descarga y la fila sigue ``pending``.
@@ -679,7 +701,7 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
         # ``sin_texto``: PDF escaneado sin capa de texto que el OCR no leyó.
         "sin_texto": 0,
     }
-    for row in candidates[:_ONDEMAND_MAX_DOCUMENTS]:
+    for row in candidates[:max_documentos]:
         counts["attempted"] += 1
         try:
             outcome = fetch_and_extract(row)
@@ -696,7 +718,12 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
 
 def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
     """Mensaje 422 accionable según por qué no hay texto que extraer."""
-    rows = DocumentosRepository().list_by_licitacion(licitacion_id)
+    # Solo pliegos: un acta no es «un pliego que existe» (spec §3.3).
+    rows = [
+        row
+        for row in DocumentosRepository().list_by_licitacion(licitacion_id)
+        if row.get("tipo") in TIPOS_PLIEGO
+    ]
     if not rows:
         return (
             "La licitación no referencia ningún pliego descargable; "
@@ -835,8 +862,15 @@ def _llamar_modelo(
     model: str,
     keywords: tuple[str, ...],
     max_tokens: int,
+    stop: threading.Event | None = None,
 ) -> str:
-    """Una llamada de extracción sobre unas páginas; el texto crudo devuelto."""
+    """Una llamada de extracción sobre unas páginas; el texto crudo devuelto.
+
+    ``stop`` es la señal de parada de quien pone un tope de tiempo a la llamada
+    (la lectura del acta): se pasa tal cual a ``stream_llm_response``, que con
+    ella activa no arranca intentos nuevos y termina sin tokens, lo que aquí
+    sale como «respuesta vacía». Quien la activó sabe que fue por el tope.
+    """
     chunks = [
         {
             "documento_id": int(page["documento_id"]),
@@ -868,6 +902,7 @@ def _llamar_modelo(
             # extrajo. Si el proveedor está caído, la extracción falla
             # visible y el cron/botón reintentan.
             fallback=False,
+            stop=stop,
         )
     )
     if not raw.strip():

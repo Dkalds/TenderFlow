@@ -1,0 +1,2 @@
+`astillero_1611_2026.json`: páginas 2-4 del «Acta del órgano de asistencia» del exp. 1611/2026 (Ayuntamiento de Astillero, dos lotes), documento de código 12 de `tests/fixtures/placsp/19_multilote_adjudicado_real.xml`, `DocumentIdParam=2026-497d722a-ea6c-485a-8d68-a4dce3c68f3a` en contrataciondelestado.es.
+Descargada el 2026-11-02 y extraída con `scraper.document_fetcher._extract_pdf_pages`; `documento_id` 1 es ficticio. La 2 y la 3 traen la tabla de puntuaciones de cada lote; la 4, ninguna.

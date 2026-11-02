@@ -86,6 +86,107 @@ PursuitOutcomeReasonCode = Literal[
 ]
 
 
+# ── Puntuaciones del acta de la mesa ────────────────────────────────────────
+#
+# Lo que el acta de adjudicación puntúa a cada licitador, para que quien perdió
+# vea en qué (precio o técnica) y no solo a quién. Cada cifra lleva la página
+# del acta de la que sale (ADR-014: sin cita verificable no hay dato).
+
+#: ``pendiente`` es «hay acta y aún no se ha leído»; los otros cuatro son lo que
+#: dejó la lectura (``acta_extracciones.status``). Solo ``ok`` trae lotes.
+PuntuacionesEstado = Literal["pendiente", "ok", "sin_tabla", "sin_acta", "error"]
+
+
+class CriterioPuntuado(BaseModel):
+    """Lo que el acta puntúa a un licitador en un criterio, con su cita."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nombre: str
+    puntos: float | None
+    maximo: float | None
+    #: ``None`` es «no se sabe»: no se adivina que lo que no es precio sea técnico.
+    es_precio: bool | None
+    documento_id: int
+    pagina: int
+    cita: str
+
+
+class FilaPuntuacion(BaseModel):
+    """Un licitador de un lote, con sus criterios y su total."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    licitador: str
+    #: Con lo que se identifica la fila al confirmarla (``FilaActaRef``).
+    licitador_normalizado: str
+    total: float | None
+    excluida: bool
+    criterios: list[CriterioPuntuado]
+
+
+class DiferenciaCriterio(BaseModel):
+    """Puntos de la propia menos puntos de la ganadora en un criterio (o en el total)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: ``None`` es el total.
+    criterio: str | None
+    diferencia: float
+    maximo: float | None
+    es_precio: bool | None
+    #: Página del acta de la fila ganadora en la que está esta cifra: el enlace
+    #: de la interfaz va ahí.
+    documento_id: int | None
+    pagina: int | None
+
+
+class PuntuacionesLote(BaseModel):
+    """La tabla de puntuaciones de un lote y lo que de ella se concluye.
+
+    ``fila_ganadora`` y ``fila_propia`` son índices de ``filas``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: ``None``: el acta no distingue lotes.
+    lote_numero: str | None
+    #: No excluidas por total descendente (sin total al final), y las excluidas
+    #: detrás.
+    filas: list[FilaPuntuacion]
+    fila_ganadora: int | None
+    #: ``True`` cuando ninguna fila casa con el adjudicatario publicado y
+    #: ``fila_ganadora`` es la de mayor total: la interfaz la rotula «mayor
+    #: puntuación» y no «ganadora».
+    ganadora_es_mayor_puntuacion: bool
+    fila_propia: int | None
+    #: ``False`` es una propuesta por el nombre; ``True``, una persona la
+    #: confirmó (``PursuitUpdate.fila_acta``).
+    fila_propia_confirmada: bool
+    #: Vacía sin las dos filas, o si la propia es la ganadora.
+    diferencia: list[DiferenciaCriterio]
+    #: Lo que proponen los puntos perdidos; quien cierra decide.
+    motivo_sugerido: PursuitOutcomeReasonCode | None
+
+
+class PuntuacionesActa(BaseModel):
+    """Las puntuaciones que el acta da a los licitadores del expediente."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    estado: PuntuacionesEstado
+    lotes: list[PuntuacionesLote]
+
+
+class FilaActaRef(BaseModel):
+    """La fila del acta que una persona confirma como la de su empresa."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lote_numero: str | None = None
+    licitador_normalizado: str = Field(min_length=1, max_length=300)
+
+
 class PursuitCreate(BaseModel):
     """Convierte una licitación existente en oportunidad colaborativa.
 
@@ -144,6 +245,10 @@ class PursuitUpdate(BaseModel):
     outcome_reason_code: PursuitOutcomeReasonCode | None = None
     next_action: str | None = Field(default=None, max_length=300)
     next_action_due: date | None = None
+    #: La fila del acta que la persona confirma como la de su empresa. No toca
+    #: ninguna columna de la oportunidad: se anota en el ledger
+    #: (``fila_acta_confirmada``) y un PATCH que solo la lleva no sube la versión.
+    fila_acta: FilaActaRef | None = None
     expected_version: int | None = Field(default=None, ge=1)
 
 
@@ -280,6 +385,10 @@ class PursuitAdjudicacionDetectada(BaseModel):
     #: debe proponer el cierre. En un pursuit ya cerrado la adjudicación es
     #: contexto, no una acción pendiente.
     cierre_pendiente: bool
+    #: Lo que el acta de la mesa puntúa a cada licitador. ``None`` es «el
+    #: expediente no tiene acta» (o no se pudo consultar); con acta, ``estado``
+    #: dice si ya se leyó y por qué no hay tabla cuando no la hay.
+    puntuaciones: PuntuacionesActa | None = None
 
 
 class PursuitDetail(PursuitSummary):

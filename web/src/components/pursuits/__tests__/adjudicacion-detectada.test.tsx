@@ -1,9 +1,20 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { AdjudicacionDetectada } from "@/components/pursuits/adjudicacion-detectada";
 import type { Pursuit } from "@/hooks/use-pursuits";
+import type { EvidenceRef } from "@/lib/api-types";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+// El visor real pide la página a la API; aquí basta con saber qué página abre.
+vi.mock("@/components/pliego/pagina-pliego-dialog", () => ({
+  PaginaPliegoDialog: ({ cita }: { cita: EvidenceRef | null }) =>
+    cita ? (
+      <div role="dialog">
+        Documento {cita.documento_id} · página {cita.page_number}
+      </div>
+    ) : null,
+}));
 
 const mutateAsync = vi.fn().mockResolvedValue({});
 vi.mock("@/hooks/use-pursuits", async (importOriginal) => {
@@ -55,6 +66,70 @@ const base: Pursuit = {
 
 afterEach(() => mutateAsync.mockClear());
 
+function elegirMotivo(codigo: string) {
+  fireEvent.change(screen.getByRole("combobox", { name: "Motivo de la pérdida" }), {
+    target: { value: codigo },
+  });
+}
+
+type Puntuaciones = NonNullable<NonNullable<Pursuit["adjudicacion"]>["puntuaciones"]>;
+type Lote = Puntuaciones["lotes"][number];
+
+const criterio = (nombre: string, puntos: number, maximo: number, es_precio: boolean, pagina: number) => ({
+  nombre,
+  puntos,
+  maximo,
+  es_precio,
+  documento_id: 50,
+  pagina,
+  cita: `${nombre} ${puntos}`,
+});
+
+const lote = (overrides: Partial<Lote> = {}): Lote => ({
+  lote_numero: "1",
+  filas: [
+    {
+      licitador: "Consultora Uno",
+      licitador_normalizado: "consultora uno",
+      total: 95,
+      excluida: false,
+      criterios: [criterio("Precio", 65, 65, true, 3), criterio("Técnica", 30, 30, false, 4)],
+    },
+    {
+      licitador: "Mi Empresa SL",
+      licitador_normalizado: "mi empresa sl",
+      total: 74.5,
+      excluida: false,
+      criterios: [criterio("Precio", 46.5, 65, true, 3), criterio("Técnica", 28, 30, false, 4)],
+    },
+    {
+      licitador: "Otra SA",
+      licitador_normalizado: "otra sa",
+      total: null,
+      excluida: true,
+      criterios: [],
+    },
+  ],
+  fila_ganadora: 0,
+  ganadora_es_mayor_puntuacion: false,
+  fila_propia: 1,
+  fila_propia_confirmada: true,
+  diferencia: [
+    { criterio: "Precio", diferencia: -18.5, maximo: 65, es_precio: true, documento_id: 50, pagina: 3 },
+    { criterio: "Técnica", diferencia: -2, maximo: 30, es_precio: false, documento_id: 50, pagina: 4 },
+    { criterio: null, diferencia: -20.5, maximo: null, es_precio: null, documento_id: 50, pagina: 5 },
+  ],
+  motivo_sugerido: "precio",
+  ...overrides,
+});
+
+const conPuntuaciones = (puntuaciones: Puntuaciones | null, extra: Partial<Pursuit> = {}) =>
+  ({
+    ...base,
+    ...extra,
+    adjudicacion: { ...base.adjudicacion!, puntuaciones },
+  }) as Pursuit;
+
 describe("AdjudicacionDetectada", () => {
   it("no renderiza nada sin adjudicación publicada", () => {
     const { container } = render(
@@ -84,6 +159,8 @@ describe("AdjudicacionDetectada", () => {
   it("no manda el importe del contrato al cerrar como perdida", () => {
     render(<AdjudicacionDetectada pursuit={base} />);
     fireEvent.click(screen.getByRole("button", { name: /Cerrar como perdida/ }));
+    elegirMotivo("precio");
+    fireEvent.click(screen.getByRole("button", { name: /Confirmar como perdida/ }));
 
     const payload = mutateAsync.mock.calls[0][0];
     expect(payload.outcome).toBe("lost");
@@ -147,6 +224,7 @@ describe("AdjudicacionDetectada", () => {
       fireEvent.click(screen.getByRole("radio", { name: "La perdimos" }));
 
       expect(screen.getByRole("radio", { name: "La perdimos" })).toBeChecked();
+      elegirMotivo("tecnica");
       fireEvent.click(screen.getByRole("button", { name: /Confirmar como perdida/ }));
 
       const payload = mutateAsync.mock.calls[0][0];
@@ -191,5 +269,229 @@ describe("AdjudicacionDetectada", () => {
     );
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByText(/ya está cerrada/)).toBeInTheDocument();
+  });
+
+  describe("puntuaciones del acta", () => {
+    it("pinta una tabla por lote con caption, cabeceras «sobre N» y el total", () => {
+      render(
+        <AdjudicacionDetectada
+          pursuit={conPuntuaciones({ estado: "ok", lotes: [lote(), lote({ lote_numero: "2" })] })}
+        />,
+      );
+
+      const tabla = screen.getByRole("table", { name: "Puntuaciones del acta de la mesa · Lote 1" });
+      expect(
+        screen.getByRole("table", { name: "Puntuaciones del acta de la mesa · Lote 2" }),
+      ).toBeInTheDocument();
+      expect(within(tabla).getByRole("columnheader", { name: "Precio sobre 65" })).toBeInTheDocument();
+      expect(within(tabla).getByRole("columnheader", { name: "Técnica sobre 30" })).toBeInTheDocument();
+      expect(within(tabla).getByRole("columnheader", { name: "Total" })).toBeInTheDocument();
+      const propia = within(tabla).getByRole("row", { name: /Mi Empresa SL/ });
+      expect(within(propia).getByText("46,5")).toBeInTheDocument();
+      expect(within(propia).getByText("74,5")).toBeInTheDocument();
+    });
+
+    it("marca con texto la fila ganadora y la propia", () => {
+      render(<AdjudicacionDetectada pursuit={conPuntuaciones({ estado: "ok", lotes: [lote()] })} />);
+
+      const ganadora = screen.getByRole("row", { name: /Consultora Uno/ });
+      expect(within(ganadora).getByText("Ganadora")).toBeInTheDocument();
+      const propia = screen.getByRole("row", { name: /Mi Empresa SL/ });
+      expect(within(propia).getByText("Tu empresa")).toBeInTheDocument();
+      expect(within(screen.getByRole("row", { name: /Otra SA/ })).getByText("Excluida")).toBeInTheDocument();
+    });
+
+    it("sin adjudicatario que case, rotula «Mayor puntuación» y no «Ganadora»", () => {
+      render(
+        <AdjudicacionDetectada
+          pursuit={conPuntuaciones({ estado: "ok", lotes: [lote({ ganadora_es_mayor_puntuacion: true })] })}
+        />,
+      );
+
+      const fila = screen.getByRole("row", { name: /Consultora Uno/ });
+      expect(within(fila).getByText("Mayor puntuación")).toBeInTheDocument();
+      expect(within(fila).queryByText("Ganadora")).toBeNull();
+      expect(screen.getByText(/Frente a la de mayor puntuación/)).toBeInTheDocument();
+    });
+
+    it("pinta la diferencia «Precio −18,5 de 65 · Técnica −2 de 30 · Total −20,5»", () => {
+      render(<AdjudicacionDetectada pursuit={conPuntuaciones({ estado: "ok", lotes: [lote()] })} />);
+
+      const precio = screen.getByRole("button", { name: /^Precio −18,5 de 65/ });
+      expect(precio.closest("p")?.textContent).toContain(
+        "Precio −18,5 de 65 · Técnica −2 de 30 · Total −20,5",
+      );
+    });
+
+    it("cada cifra de la diferencia enlaza a su página del acta", () => {
+      render(<AdjudicacionDetectada pursuit={conPuntuaciones({ estado: "ok", lotes: [lote()] })} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /^Técnica −2 de 30/ }));
+      expect(screen.getByRole("dialog")).toHaveTextContent("Documento 50 · página 4");
+
+      fireEvent.click(screen.getByRole("button", { name: /^Total −20,5/ }));
+      expect(screen.getByRole("dialog")).toHaveTextContent("Documento 50 · página 5");
+    });
+
+    it("los enlaces de la diferencia parten línea: en móvil no empujan la página", () => {
+      // Van fuera del contenedor con scroll de la tabla, y el `Button` base es
+      // `whitespace-nowrap`: un criterio largo desbordaría a 375 px.
+      render(<AdjudicacionDetectada pursuit={conPuntuaciones({ estado: "ok", lotes: [lote()] })} />);
+
+      const enlace = screen.getByRole("button", { name: /^Precio −18,5 de 65/ });
+      expect(enlace).toHaveClass("whitespace-normal", "text-left", "h-auto");
+      expect(enlace).not.toHaveClass("whitespace-nowrap");
+    });
+
+    it("dos criterios con el mismo nombre se pintan los dos, sin claves repetidas", () => {
+      const consola = vi.spyOn(console, "error").mockImplementation(() => {});
+      const repetidos = lote({
+        diferencia: [
+          { criterio: "Mejoras", diferencia: -1, maximo: 5, es_precio: false, documento_id: 50, pagina: 6 },
+          { criterio: "Mejoras", diferencia: -2, maximo: 5, es_precio: false, documento_id: 50, pagina: 7 },
+        ],
+      });
+      render(<AdjudicacionDetectada pursuit={conPuntuaciones({ estado: "ok", lotes: [repetidos] })} />);
+
+      expect(screen.getAllByRole("button", { name: /^Mejoras −/ })).toHaveLength(2);
+      expect(consola.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+      consola.mockRestore();
+    });
+
+    it("«Esta es mi empresa» manda el PATCH con fila_acta", () => {
+      render(
+        <AdjudicacionDetectada
+          pursuit={conPuntuaciones({
+            estado: "ok",
+            lotes: [
+              lote({ fila_propia: null, fila_propia_confirmada: false, diferencia: [], motivo_sugerido: null }),
+            ],
+          })}
+        />,
+      );
+
+      // Una por fila, y cada una dice de qué licitador es.
+      expect(screen.getAllByRole("button", { name: /^Esta es mi empresa/ })).toHaveLength(3);
+      fireEvent.click(screen.getByRole("button", { name: "Esta es mi empresa: Mi Empresa SL" }));
+
+      expect(mutateAsync).toHaveBeenCalledTimes(1);
+      expect(mutateAsync.mock.calls[0][0]).toMatchObject({
+        fila_acta: { lote_numero: "1", licitador_normalizado: "mi empresa sl" },
+      });
+    });
+
+    it("con propuesta sin confirmar pregunta «¿Es esta tu empresa?»", () => {
+      render(
+        <AdjudicacionDetectada
+          pursuit={conPuntuaciones({ estado: "ok", lotes: [lote({ fila_propia_confirmada: false })] })}
+        />,
+      );
+
+      const propia = screen.getByRole("row", { name: /Mi Empresa SL/ });
+      expect(within(propia).getByText("¿Es esta tu empresa?")).toBeInTheDocument();
+      expect(within(propia).queryByText("Tu empresa")).toBeNull();
+      fireEvent.click(within(propia).getByRole("button", { name: /^Confirmar/ }));
+
+      expect(mutateAsync.mock.calls[0][0]).toMatchObject({
+        fila_acta: { lote_numero: "1", licitador_normalizado: "mi empresa sl" },
+      });
+    });
+
+    it("con la fila propia confirmada no ofrece cambiarla", () => {
+      render(<AdjudicacionDetectada pursuit={conPuntuaciones({ estado: "ok", lotes: [lote()] })} />);
+      expect(screen.queryByRole("button", { name: /^Esta es mi empresa/ })).toBeNull();
+    });
+
+    it.each([
+      ["pendiente", "Leyendo el acta de la mesa"],
+      ["sin_acta", "PLACSP no publicó acta de mesa para este expediente"],
+      ["sin_tabla", "El acta no trae puntuaciones por licitador"],
+      ["error", "No se pudo leer el acta; se reintenta en la próxima pasada"],
+    ] as const)("estado %s", (estado, texto) => {
+      render(<AdjudicacionDetectada pursuit={conPuntuaciones({ estado, lotes: [] })} />);
+      expect(screen.getByText(texto)).toBeInTheDocument();
+      expect(screen.queryByRole("table")).toBeNull();
+    });
+
+    it("cerrar como perdida manda outcome_reason_code", () => {
+      render(<AdjudicacionDetectada pursuit={base} />);
+      fireEvent.click(screen.getByRole("button", { name: /Cerrar como perdida/ }));
+
+      // Sin propuesta el selector arranca vacío y obliga a elegir.
+      expect(screen.getByRole("combobox", { name: "Motivo de la pérdida" })).toHaveValue("");
+      const confirmar = screen.getByRole("button", { name: /Confirmar como perdida/ });
+      expect(confirmar).toBeDisabled();
+
+      elegirMotivo("solvencia");
+      fireEvent.click(confirmar);
+      expect(mutateAsync.mock.calls[0][0]).toMatchObject({
+        outcome: "lost",
+        outcome_reason_code: "solvencia",
+        expected_version: 4,
+      });
+    });
+
+    it("cerrar como perdida preselecciona el motivo sugerido", () => {
+      render(<AdjudicacionDetectada pursuit={conPuntuaciones({ estado: "ok", lotes: [lote()] })} />);
+      fireEvent.click(screen.getByRole("button", { name: /Cerrar como perdida/ }));
+
+      expect(screen.getByRole("combobox", { name: "Motivo de la pérdida" })).toHaveValue("precio");
+      expect(screen.getByText(/Propuesto por las puntuaciones del acta/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /Confirmar como perdida/ }));
+      expect(mutateAsync.mock.calls[0][0]).toMatchObject({ outcome: "lost", outcome_reason_code: "precio" });
+    });
+
+    it("el motivo sugerido sale del lote de la oportunidad, aunque se escriba distinto", () => {
+      // La API ya acota `lotes` al de la oportunidad y normaliza su número («Lote 2» -> «2»):
+      // comparar aquí el crudo de la oportunidad con el normalizado del acta no casaría.
+      render(
+        <AdjudicacionDetectada
+          pursuit={conPuntuaciones(
+            { estado: "ok", lotes: [lote({ lote_numero: "2", motivo_sugerido: "tecnica" })] },
+            { lote_numero: "Lote 2" },
+          )}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: /Cerrar como perdida/ }));
+      expect(screen.getByRole("combobox", { name: "Motivo de la pérdida" })).toHaveValue("tecnica");
+    });
+
+    it("el motivo sugerido sale del lote donde está la fila propia", () => {
+      render(
+        <AdjudicacionDetectada
+          pursuit={conPuntuaciones({
+            estado: "ok",
+            lotes: [
+              lote({ lote_numero: "1", fila_propia: null, fila_propia_confirmada: false, motivo_sugerido: null }),
+              lote({ lote_numero: "2", motivo_sugerido: "tecnica" }),
+            ],
+          })}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: /Cerrar como perdida/ }));
+      expect(screen.getByRole("combobox", { name: "Motivo de la pérdida" })).toHaveValue("tecnica");
+    });
+
+    it("con la fila propia en varios lotes que no coinciden no propone ninguno", () => {
+      // Proponer el motivo de un lote sería proponer el de otro contrato.
+      render(
+        <AdjudicacionDetectada
+          pursuit={conPuntuaciones({
+            estado: "ok",
+            lotes: [lote(), lote({ lote_numero: "2", motivo_sugerido: "tecnica" })],
+          })}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: /Cerrar como perdida/ }));
+      expect(screen.getByRole("combobox", { name: "Motivo de la pérdida" })).toHaveValue("");
+    });
+
+    it("sin puntuaciones la tarjeta sigue como antes", () => {
+      render(<AdjudicacionDetectada pursuit={conPuntuaciones(null)} />);
+
+      expect(screen.queryByRole("table")).toBeNull();
+      expect(screen.queryByText(/acta/)).toBeNull();
+      expect(screen.getByRole("button", { name: /Cerrar como ganada/ })).toBeInTheDocument();
+    });
   });
 });

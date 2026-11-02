@@ -214,7 +214,8 @@ class TestFichaBajoDemanda:
 
         class _Repo:
             def list_by_licitacion(self, _licitacion_id: str) -> list[dict[str, Any]]:
-                return filas
+                # Las filas reales siempre llevan ``tipo``; la ficha solo cuenta pliegos.
+                return [{"tipo": "legal", **fila} for fila in filas]
 
         monkeypatch.setattr(fact_sheet, "DocumentosRepository", _Repo)
         return fact_sheet._missing_pages_detail("EXP-1", {"attempted": 0})

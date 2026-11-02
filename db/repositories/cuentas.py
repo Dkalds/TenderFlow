@@ -1172,9 +1172,10 @@ class ActividadRepository:
     #: administración, y el feed de actividad no es el sitio donde enterarse de
     #: quién ha entrado o a quién han cambiado de rol.
     #:
-    #: Hoy no excluye nada: `pursuit_events` sólo contiene `pursuit.created`,
-    #: `pursuit.updated` y `KIT_EVENT_TYPE` —las membresías se registran en el
-    #: log de auditoría (`db/events.py`), no en este ledger—. El filtro se deja
+    #: Hoy no excluye nada: `pursuit_events` sólo contiene eventos de la propia
+    #: oportunidad (su alta y sus cambios, el kit, la decisión, la fila del acta
+    #: que se confirma…) —las membresías se registran en el log de auditoría
+    #: (`db/events.py`), no en este ledger—. El filtro se deja
     #: puesto porque es el sitio correcto para cuando lleguen, pero la respuesta
     #: **no** puede decirle a un `member` que se le ocultó algo: ver
     #: `services/direccion.py::actividad_de_organizacion`.

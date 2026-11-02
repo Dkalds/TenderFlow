@@ -2940,8 +2940,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Página de un pliego, con el fragmento de la cita localizado
-         * @description F2.5 — el texto de una página del pliego y dónde cae la cita.
+         * Página de un pliego o de un acta de la mesa, con el fragmento de la cita localizado
+         * @description F2.5 — el texto de una página del pliego o del acta de la mesa, y dónde cae la cita.
          *
          *     Con `inicio` y `fin` (los `EvidenceRef.start_offset`/`end_offset` de la
          *     ficha) la respuesta trae los índices **ya relativos a esta página**. Unos
@@ -5237,6 +5237,10 @@ export interface paths {
         /**
          * Patch Pursuit
          * @description Aplica una transición validada y añade un único evento.
+         *
+         *     `fila_acta` es la excepción que no toca columnas: anota en el ledger el
+         *     evento `fila_acta_confirmada` con la fila del acta de la mesa que la
+         *     persona confirma como la de su empresa.
          */
         patch: operations["patch_pursuit_api_v1_pursuits__pursuit_id__patch"];
         trace?: never;
@@ -8377,6 +8381,26 @@ export interface components {
             tipo_codigo?: string | null;
         };
         /**
+         * CriterioPuntuado
+         * @description Lo que el acta puntúa a un licitador en un criterio, con su cita.
+         */
+        CriterioPuntuado: {
+            /** Cita */
+            cita: string;
+            /** Documento Id */
+            documento_id: number;
+            /** Es Precio */
+            es_precio: boolean | null;
+            /** Maximo */
+            maximo: number | null;
+            /** Nombre */
+            nombre: string;
+            /** Pagina */
+            pagina: number;
+            /** Puntos */
+            puntos: number | null;
+        };
+        /**
          * CrossGeoEntry
          * @description tecnologia x ccaa cell.
          */
@@ -8739,6 +8763,24 @@ export interface components {
              * @description Hash del contenido; es el `filter_version` del linaje
              */
             version: string;
+        };
+        /**
+         * DiferenciaCriterio
+         * @description Puntos de la propia menos puntos de la ganadora en un criterio (o en el total).
+         */
+        DiferenciaCriterio: {
+            /** Criterio */
+            criterio: string | null;
+            /** Diferencia */
+            diferencia: number;
+            /** Documento Id */
+            documento_id: number | null;
+            /** Es Precio */
+            es_precio: boolean | null;
+            /** Maximo */
+            maximo: number | null;
+            /** Pagina */
+            pagina: number | null;
         };
         /**
          * DlqDescarte
@@ -9807,6 +9849,16 @@ export interface components {
             vencimientos: components["schemas"]["BloqueVencimientosCuenta"];
         };
         /**
+         * FilaActaRef
+         * @description La fila del acta que una persona confirma como la de su empresa.
+         */
+        FilaActaRef: {
+            /** Licitador Normalizado */
+            licitador_normalizado: string;
+            /** Lote Numero */
+            lote_numero?: string | null;
+        };
+        /**
          * FilaComparacion
          * @description Una familia, con lo que dice cada pliego.
          */
@@ -9822,6 +9874,22 @@ export interface components {
              * @default false
              */
             vacia_en_todos: boolean;
+        };
+        /**
+         * FilaPuntuacion
+         * @description Un licitador de un lote, con sus criterios y su total.
+         */
+        FilaPuntuacion: {
+            /** Criterios */
+            criterios: components["schemas"]["CriterioPuntuado"][];
+            /** Excluida */
+            excluida: boolean;
+            /** Licitador */
+            licitador: string;
+            /** Licitador Normalizado */
+            licitador_normalizado: string;
+            /** Total */
+            total: number | null;
         };
         /** FlagIn */
         FlagIn: {
@@ -12301,7 +12369,7 @@ export interface components {
         };
         /**
          * PaginaDocumento
-         * @description Una página del pliego, con el fragmento a resaltar si es válido.
+         * @description Una página de un pliego o de un acta de la mesa, con el fragmento a resaltar si es válido.
          */
         PaginaDocumento: {
             /** Documento Id */
@@ -13436,6 +13504,43 @@ export interface components {
             texto: string;
         };
         /**
+         * PuntuacionesActa
+         * @description Las puntuaciones que el acta da a los licitadores del expediente.
+         */
+        PuntuacionesActa: {
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "pendiente" | "ok" | "sin_tabla" | "sin_acta" | "error";
+            /** Lotes */
+            lotes: components["schemas"]["PuntuacionesLote"][];
+        };
+        /**
+         * PuntuacionesLote
+         * @description La tabla de puntuaciones de un lote y lo que de ella se concluye.
+         *
+         *     ``fila_ganadora`` y ``fila_propia`` son índices de ``filas``.
+         */
+        PuntuacionesLote: {
+            /** Diferencia */
+            diferencia: components["schemas"]["DiferenciaCriterio"][];
+            /** Fila Ganadora */
+            fila_ganadora: number | null;
+            /** Fila Propia */
+            fila_propia: number | null;
+            /** Fila Propia Confirmada */
+            fila_propia_confirmada: boolean;
+            /** Filas */
+            filas: components["schemas"]["FilaPuntuacion"][];
+            /** Ganadora Es Mayor Puntuacion */
+            ganadora_es_mayor_puntuacion: boolean;
+            /** Lote Numero */
+            lote_numero: string | null;
+            /** Motivo Sugerido */
+            motivo_sugerido: ("precio" | "tecnica" | "solvencia" | "plazo" | "desierto_o_anulado" | "no_presentada" | "otro") | null;
+        };
+        /**
          * PursuitAdjudicacionDetectada
          * @description La adjudicación que el sistema ya conoce de una oportunidad abierta.
          *
@@ -13458,6 +13563,7 @@ export interface components {
             importe_total?: number | null;
             /** N Ofertas */
             n_ofertas?: number | null;
+            puntuaciones?: components["schemas"]["PuntuacionesActa"] | null;
             /** Resultado Sugerido */
             resultado_sugerido?: ("won" | "lost") | null;
         };
@@ -14002,6 +14108,7 @@ export interface components {
             decision_reason?: string | null;
             /** Expected Version */
             expected_version?: number | null;
+            fila_acta?: components["schemas"]["FilaActaRef"] | null;
             /** Next Action */
             next_action?: string | null;
             /** Next Action Due */
