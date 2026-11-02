@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import threading
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, get_args
 
@@ -632,6 +632,7 @@ def ensure_documents_ready(
     *,
     tipos: frozenset[str] = TIPOS_PLIEGO,
     max_documentos: int = _ONDEMAND_MAX_DOCUMENTS,
+    orden: Callable[[Mapping[str, object]], int] | None = None,
 ) -> dict[str, int]:
     """Descarga+extrae bajo demanda los adjuntos pendientes de una licitación.
 
@@ -655,7 +656,10 @@ def ensure_documents_ready(
     ``any_extracted`` también se calcula sobre ellos, de modo que un acta ya
     leída no cuenta como pliego extraído (ni al revés). Por defecto son los
     pliegos; la lectura de las actas pide ``tipos={"acta"}`` (puntuaciones del
-    acta, spec §3.3). ``max_documentos`` es el tope de intentos por llamada.
+    acta, spec §3.3). ``max_documentos`` es el tope de intentos por llamada, y
+    ``orden`` decide quién entra dentro de él: clave de ordenación (menor, antes)
+    que desempata dentro de cada tipo, tras la prioridad del tipo; sin ella manda
+    el orden de ``list_by_licitacion``.
     """
     if not _pdf_extraction_available():
         log.warning("fact_sheet_ondemand_fetch_skipped_no_pliegos_extra")
@@ -674,7 +678,12 @@ def ensure_documents_ready(
         if (pending or any_extracted)
         else [row for row in descargables if row.get("status") == "error"]
     )
-    candidates.sort(key=lambda row: _DOC_TIPO_PRIORITY.get(str(row.get("tipo")), 2))
+    candidates.sort(
+        key=lambda row: (
+            _DOC_TIPO_PRIORITY.get(str(row.get("tipo")), 2),
+            orden(row) if orden else 0,
+        )
+    )
 
     # ``skipped`` lo devuelve el fetcher cuando el breaker está abierto: no se
     # llegó a intentar la descarga y la fila sigue ``pending``.

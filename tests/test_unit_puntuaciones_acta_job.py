@@ -30,6 +30,7 @@ from services.puntuaciones_acta import (
     encolar_pendientes,
     extraer_puntuaciones,
 )
+from services.puntuaciones_acta_reglas import prioridad_de_acta
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "actas" / "astillero_1611_2026.json"
 _LIC = "EXP-1611"
@@ -239,7 +240,7 @@ def test_extraer_descarga_solo_las_actas_y_pide_al_modelo_las_paginas_con_tabla(
     extraer_puntuaciones(_LIC, model=_MODELO)
 
     entorno.ensure.assert_called_once_with(
-        _LIC, tipos=frozenset({"acta"}), max_documentos=_MAX_ACTAS
+        _LIC, tipos=frozenset({"acta"}), max_documentos=_MAX_ACTAS, orden=prioridad_de_acta
     )
     entorno.paginas_repo.list_pages_by_licitacion.assert_called_once_with(
         _LIC, tipos=frozenset({"acta"})

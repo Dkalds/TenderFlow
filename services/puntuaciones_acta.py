@@ -4,10 +4,11 @@ Tres entradas. Las dos primeras, sin contexto de tenant (el acta es dato de merc
 
 * :func:`encolar_pendientes` la llama el cierre de la pasada
   (``scheduler/pipeline_runs.py``) tras el aviso de adjudicaciones. Recorre los
-  expedientes que alguien sigue, ya adjudicados, cuya lectura del acta falta,
-  es de otra versión o falló: si PLACSP no publicó ningún documento ``acta`` deja
-  escrito ``sin_acta`` (así no se vuelve a mirar hasta que llegue uno) y, si lo
-  hay, encola un job ``puntuaciones_acta`` por expediente.
+  expedientes de PLACSP que alguien sigue, ya adjudicados, cuya lectura del acta
+  falta, es de otra versión o falló: si PLACSP no publicó ningún documento
+  ``acta`` deja escrito ``sin_acta`` (así no se vuelve a mirar hasta que llegue
+  uno) y, si lo hay, encola un job ``puntuaciones_acta`` por expediente. Los de
+  otras fuentes (PSCP, TED…) no entran: no ingieren actas y no tienen fila.
 * :func:`extraer_puntuaciones` es el cuerpo de ese job
   (``scheduler/worker.py::ejecutar_puntuaciones_acta``): descarga las actas,
   elige las páginas que parecen traer la tabla, hace **una** llamada al modelo y
@@ -26,7 +27,9 @@ dice a la ficha si un expediente está sin leer, leído y vacío, o roto:
 * ``ok``: hay filas con cita verificable.
 * ``sin_tabla``: el acta se leyó y no trae puntuaciones por licitador (o está
   escaneada, o ninguna fila del modelo sobrevivió a la validación). No se
-  reintenta: repetir la lectura daría lo mismo.
+  reintenta, salvo que al expediente le queden actas publicables sin descargar
+  (se leen ``_MAX_ACTAS`` por pasada): con ellas la tabla puede estar en otra.
+  Si no, repetir la lectura daría lo mismo.
 * ``error``: la descarga o el modelo fallaron. El job **relanza** la excepción
   después de dejar la fila: la cola solo reintenta (con su backoff) lo que lanza,
   y la próxima pasada vuelve a encolar los ``error``.
@@ -77,7 +80,11 @@ log = get_logger(__name__)
 #: Se sube al cambiar la pregunta o las reglas de validación: los expedientes
 #: leídos con otra versión vuelven a la cola (``expedientes_pendientes``).
 EXTRACTION_VERSION: Final = "acta-puntuaciones-v1"
-#: Actas que se descargan por expediente (la mesa suele levantar una o dos).
+#: Actas que se descargan por lectura (la mesa suele levantar una o dos). Las
+#: demás de un expediente con más siguen ``pending``: si esta lectura no
+#: encontró la tabla (``sin_tabla``) el expediente vuelve a la cola mientras
+#: quede alguna (``PuntuacionesActaRepository.expedientes_pendientes``). Entran
+#: por ``prioridad_de_acta``: las que puntúan antes que las resoluciones.
 _MAX_ACTAS: Final = 3
 #: Tope propio de la llamada al modelo. Un job que lo supera falla por tiempo en
 #: vez de dejar el lock del worker caducar con la llamada colgada.
@@ -127,7 +134,8 @@ def encolar_pendientes(*, limit: int = 200) -> int:
     sin documento ``acta`` escribe ``sin_acta`` (sin job ni modelo), con él encola
     el job. Cuenta los dos casos, también el job que la cola deduplicó por estar
     ya en curso. Idempotente: un expediente tratado no vuelve a salir hasta que
-    algo cambie (otra versión, un ``error``, un acta que llega tras un ``sin_acta``).
+    algo cambie (otra versión, un ``error``, un acta que llega tras un ``sin_acta``,
+    un ``sin_tabla`` con actas todavía por descargar).
 
     Sin contexto de tenant: lee los ``pursuits`` de todas las organizaciones, así
     que el job se encola con ``organization_id=None``.
@@ -218,12 +226,15 @@ def _leer_acta(licitacion_id: str, model: str) -> _Lectura:
     from services.puntuaciones_acta_reglas import (
         RespuestaActa,
         filas_validadas,
+        prioridad_de_acta,
         seleccionar_paginas,
     )
     from services.rag.fact_sheet import ensure_documents_ready
 
     solo_actas = frozenset({TIPO_ACTA})
-    descarga = ensure_documents_ready(licitacion_id, tipos=solo_actas, max_documentos=_MAX_ACTAS)
+    descarga = ensure_documents_ready(
+        licitacion_id, tipos=solo_actas, max_documentos=_MAX_ACTAS, orden=prioridad_de_acta
+    )
     paginas = DocumentosRepository().list_pages_by_licitacion(licitacion_id, tipos=solo_actas)
     if not paginas:
         motivo = _motivo_sin_texto(licitacion_id)

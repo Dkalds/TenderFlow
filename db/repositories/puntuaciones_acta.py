@@ -28,7 +28,7 @@ from typing import Literal, TypedDict
 
 from db.database import connect, connect_read
 from db.repositories.base import rows_to_dicts, typed_rows
-from db.repositories.documentos import TIPO_ACTA
+from db.repositories.documentos import TIPO_ACTA, _sin_publicar_sql
 
 ActaStatus = Literal["ok", "sin_tabla", "sin_acta", "error"]
 
@@ -119,17 +119,35 @@ _INSERT_PUNTUACION_SQL = (
     "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
 )
 
-# Un expediente es de la pasada si alguien lo sigue (``pursuits``), ya tiene
-# adjudicatario publicado y su lectura del acta falta, es de otra versión, falló
-# o dijo «sin acta» y desde entonces llegó una. ``DISTINCT`` en la subconsulta y
-# no en la consulta: así el ``ORDER BY`` puede usar ``x.updated_at`` (lo no
-# leído nunca primero, después lo que lleva más tiempo sin intentarse) y el
-# ``LIMIT`` no deja a los nuevos detrás de los ``error`` que se reencolan.
+# Las fuentes de ``licitaciones.fuente`` cuya ingesta pasa por
+# ``scraper.codice_parser.parse_document_references``, que es lo único que
+# referencia las actas (``documentos.tipo = 'acta'``): el feed ``placsp``, su
+# carril de ZIP mensuales ``bulk_YYYYMM`` y ``placsp_agregadas`` (misma
+# comprobación del prefijo que ``db.sql_fragments.rango_de_fuente_sql``: ``left``
+# y no ``LIKE``, que aquí exigiría duplicar el ``%``). Con cualquier otra
+# (``pscp``, ``ted``, los RSS autonómicos, ``placsp_menores``…) no se ingiere
+# ningún acta: marcar ``sin_acta`` allí diría «PLACSP no publicó acta» de un
+# expediente que PLACSP ni siquiera lleva. Alias ``li``, el de ``_PENDIENTES_SQL``.
+_FUENTES_CON_ACTAS_SQL = (
+    "(li.fuente IN ('placsp', 'placsp_agregadas') OR left(li.fuente, 5) = 'bulk_')"
+)
+
+# Un expediente es de la pasada si alguien lo sigue (``pursuits``), viene de una
+# fuente que ingiere actas, ya tiene adjudicatario publicado y su lectura del
+# acta falta, es de otra versión, falló, dijo «sin acta» y desde entonces llegó
+# una, o dijo «sin tabla» y todavía le queda un acta publicable por descargar
+# (``_MAX_ACTAS`` por lectura: las de más esperan en ``pending``; mismo
+# «publicable» que ``DocumentosRepository.list_pendientes``). ``DISTINCT`` en la
+# subconsulta y no en la consulta: así el ``ORDER BY`` puede usar ``x.updated_at``
+# (lo no leído nunca primero, después lo que lleva más tiempo sin intentarse) y
+# el ``LIMIT`` no deja a los nuevos detrás de los ``error`` que se reencolan.
 _PENDIENTES_SQL = (
     "SELECT l.licitacion_id, "
     "       EXISTS (SELECT 1 FROM documentos d "
     "                WHERE d.licitacion_id = l.licitacion_id AND d.tipo = %(tipo)s) AS tiene_acta "
-    "  FROM (SELECT DISTINCT licitacion_id FROM pursuits) l "
+    "  FROM (SELECT DISTINCT p.licitacion_id FROM pursuits p "
+    "          JOIN licitaciones li ON li.id_externo = p.licitacion_id "
+    f"        WHERE {_FUENTES_CON_ACTAS_SQL}) l "
     "  LEFT JOIN acta_extracciones x ON x.licitacion_id = l.licitacion_id "
     " WHERE EXISTS (SELECT 1 FROM adjudicaciones a WHERE a.licitacion_id = l.licitacion_id) "
     "   AND (x.licitacion_id IS NULL "
@@ -137,16 +155,24 @@ _PENDIENTES_SQL = (
     "        OR x.status = 'error' "
     "        OR (x.status = 'sin_acta' "
     "            AND EXISTS (SELECT 1 FROM documentos d "
-    "                         WHERE d.licitacion_id = l.licitacion_id AND d.tipo = %(tipo)s))) "
+    "                         WHERE d.licitacion_id = l.licitacion_id AND d.tipo = %(tipo)s)) "
+    "        OR (x.status = 'sin_tabla' "
+    "            AND EXISTS (SELECT 1 FROM documentos d "
+    "                          JOIN licitaciones lic ON lic.id_externo = d.licitacion_id "
+    "                         WHERE d.licitacion_id = l.licitacion_id AND d.tipo = %(tipo)s "
+    "                           AND d.status = 'pending' "
+    f"                          AND NOT {_sin_publicar_sql('d', 'lic')}))) "
     " ORDER BY x.updated_at NULLS FIRST, l.licitacion_id "
     " LIMIT %(limite)s"
 )
 
-# Las cinco formas con que la organización puede aparecer escrita en un acta.
+# Las seis formas con que la organización puede aparecer escrita en un acta.
 # ``empresa_id`` no es columna de ``organization_nifs``: se llega por el NIF
 # canónico del maestro, como en ``OrganizationNifRepository.empresa_ids``. La
 # segunda fuente cubre las adjudicaciones que el maestro ya resolvió a esa
-# empresa aunque su NIF se publicara con otra forma (``idx_adj_empresa``).
+# empresa aunque su NIF se publicara con otra forma (``idx_adj_empresa``). La
+# última antes del nombre de la organización es la razón social que la propia
+# organización declaró para ese NIF.
 _NOMBRES_ORGANIZACION_SQL = (
     "SELECT a.nombre FROM organization_nifs n "
     "  JOIN adjudicaciones a ON a.nif = n.nif "
@@ -165,6 +191,9 @@ _NOMBRES_ORGANIZACION_SQL = (
     "  JOIN empresas e ON e.nif_canonico = n.nif "
     "  JOIN empresa_aliases al ON al.empresa_id = e.empresa_id "
     " WHERE n.organization_id = %(org)s "
+    "UNION "
+    "SELECT n.razon_social FROM organization_nifs n "
+    " WHERE n.organization_id = %(org)s AND n.razon_social IS NOT NULL "
     "UNION "
     "SELECT o.name FROM organizations o WHERE o.id = %(org)s "
     "ORDER BY 1"
@@ -276,10 +305,17 @@ class PuntuacionesActaRepository:
         Un expediente con pursuits de dos organizaciones sale una vez: lo que se
         lee es el acta, que es de mercado.
 
+        Solo de las fuentes que ingieren actas (:data:`_FUENTES_CON_ACTAS_SQL`):
+        un expediente de ``pscp`` o de ``ted`` no sale, no tiene fila en
+        ``acta_extracciones`` y la ficha no dice nada de actas.
+
         Salen los que no tienen fila en ``acta_extracciones``, los de otra
-        versión de la extracción, los que quedaron en ``error`` y los que
+        versión de la extracción, los que quedaron en ``error``, los que
         quedaron en ``sin_acta`` cuando desde entonces llegó un documento
-        ``acta``. ``ok`` y ``sin_tabla`` de la versión vigente no vuelven.
+        ``acta`` y los que quedaron en ``sin_tabla`` mientras les queda un acta
+        publicable por descargar (la lectura baja ``_MAX_ACTAS`` por pasada y
+        las de más esperan en ``pending``). ``ok`` y ``sin_tabla`` sin actas
+        pendientes de la versión vigente no vuelven.
 
         Lee los ``pursuits`` de todas las organizaciones, así que se llama sin
         contexto de tenant (el job del scheduler), no desde el ámbito de una
@@ -312,7 +348,8 @@ class PuntuacionesActaRepository:
         (``adjudicaciones.nombre``), el de las adjudicaciones que el maestro ya
         resolvió a la empresa de esos NIF (``adjudicaciones.empresa_id``), el
         nombre canónico y los alias del maestro de empresas para esos mismos
-        NIF, y el nombre de la propia organización. Normalizarlos y compararlos
+        NIF, la razón social que la organización declaró junto a cada NIF, y el
+        nombre de la propia organización. Normalizarlos y compararlos
         con ``licitador_normalizado`` es del servicio.
 
         El cruce por NIF es por igualdad (usa ``idx_adj_nif``): una adjudicación

@@ -126,6 +126,9 @@ def normalizar_lote(raw: str | None) -> str | None:
     return (casado.group(1).lstrip("0") or "0") if casado else None
 
 
+#: Un nombre de criterio más corto casa en cualquier página (``seleccionar_paginas``)
+#: y está contenido en casi cualquier descripción (``es_precio_de``).
+_MIN_NOMBRE_CRITERIO = 6
 #: Nombre de criterio que delata el precio cuando el pliego no lo dice (spec §5).
 _PRECIO_EN_NOMBRE_RE = re.compile(r"oferta econ|precio|baja")
 
@@ -140,8 +143,10 @@ def es_precio_de(
     Primero se casa con los criterios del pliego del mismo lote y, después, con
     los del expediente (``lote_numero`` ``None``): la descripción de uno
     contiene a la del otro, sin tildes ni mayúsculas, y manda su ``es_precio``.
-    Si no casa, por el nombre (``oferta económica``, ``precio``, ``baja``). Si
-    tampoco, ``None``: no se adivina que lo demás sea técnico.
+    Para contener, los dos textos tienen que llegar a ``_MIN_NOMBRE_CRITERIO``
+    caracteres: «de» está en casi toda descripción y no identifica ningún
+    criterio. Si no casa, por el nombre (``oferta económica``, ``precio``,
+    ``baja``). Si tampoco, ``None``: no se adivina que lo demás sea técnico.
     """
     buscado = fold_text(nombre).strip()
     candidatos = [c for c in criterios_pliego if c.get("lote_numero") == lote_numero]
@@ -153,18 +158,44 @@ def es_precio_de(
         if not isinstance(descripcion, str) or not isinstance(es_precio, bool):
             continue
         propuesto = fold_text(descripcion).strip()
-        # Con alguno vacío «'' in x» sería cierto para todo.
-        if buscado and propuesto and (buscado in propuesto or propuesto in buscado):
+        # Con alguno vacío «'' in x» sería cierto para todo, y con uno de dos letras casi.
+        if (
+            len(buscado) >= _MIN_NOMBRE_CRITERIO
+            and len(propuesto) >= _MIN_NOMBRE_CRITERIO
+            and (buscado in propuesto or propuesto in buscado)
+        ):
             return es_precio
     return True if _PRECIO_EN_NOMBRE_RE.search(buscado) else None
+
+
+# --- Qué actas se descargan primero --------------------------------------------
+
+#: El nombre de un documento que puntúa a los licitadores: «Acta del órgano de
+#: asistencia» (código 12 del CODICE), «Informe de valoración», «Informe de criterios
+#: automáticos». «acta» no puede ir tras una letra («exactas»); sí pegada a lo
+#: que sigue («ActaMesa»).
+_NOMBRE_CON_PUNTUACIONES_RE = re.compile(r"(?<![a-z])acta|valoraci|criterios autom")
+
+
+def prioridad_de_acta(documento: Mapping[str, object]) -> int:
+    """``0`` si el documento parece traer las puntuaciones, ``1`` si es otra resolución.
+
+    Orden para :func:`services.rag.fact_sheet.ensure_documents_ready`, que descarga
+    como mucho ``_MAX_ACTAS`` por lectura: un expediente puede referenciar seis
+    (tres actas, el informe de valoración y las adjudicaciones provisional y
+    definitiva) y las adjudicaciones, que dicen a quién y no cuántos puntos, no
+    pueden quitarle el turno al acta. El CODICE distingue el acta (código 12) de
+    los «otros» (ZZZ), pero el parser no guarda el código: solo queda el nombre del
+    fichero, así que un acta con un nombre opaco ni sube ni baja.
+    """
+    nombre = fold_text(str(documento.get("filename") or ""))
+    return 0 if _NOMBRE_CON_PUNTUACIONES_RE.search(nombre) else 1
 
 
 # --- Qué páginas se le dan al modelo -------------------------------------------
 
 _MAX_PAGINAS = 12
 _MAX_CHARS = 40_000
-#: Un nombre de criterio más corto casa en cualquier página.
-_MIN_NOMBRE_CRITERIO = 6
 #: «(sobre 30 puntos)», la cabecera de las columnas de una tabla de puntuaciones.
 _SOBRE_PUNTOS_RE = re.compile(r"sobre \d+(?:[.,]\d+)? puntos")
 

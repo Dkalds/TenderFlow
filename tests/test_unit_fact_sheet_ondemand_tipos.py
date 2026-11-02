@@ -85,6 +85,30 @@ def test_ensure_documents_ready_con_tipos_acta_respeta_el_tope():
     assert counts["attempted"] == 3
 
 
+def test_ensure_documents_ready_con_orden_el_tope_corta_por_prioridad():
+    """``orden`` pone delante a los que importan: sin él, el tope corta por el orden de la lista."""
+    actas = [_doc(i, TIPO_ACTA) for i in range(1, 6)]
+
+    counts, intentados = _ejecutar(
+        actas,
+        tipos=frozenset({TIPO_ACTA}),
+        max_documentos=3,
+        orden=lambda fila: int(fila["id"]) % 2,  # primero los pares
+    )
+
+    assert intentados == [2, 4, 1]
+    assert counts["attempted"] == 3
+
+
+def test_ensure_documents_ready_orden_no_cambia_la_prioridad_entre_tipos():
+    """El tipo manda (legal antes que technical); ``orden`` solo desempata dentro de él."""
+    filas = [_doc(1, "technical"), _doc(2, "legal"), _doc(3, "legal")]
+
+    _counts, intentados = _ejecutar(filas, orden=lambda fila: -int(fila["id"]))
+
+    assert intentados == [3, 2, 1]
+
+
 def test_ensure_documents_ready_sin_tope_explicito_sigue_en_ocho():
     pliegos = [_doc(i, "additional") for i in range(1, 12)]
 

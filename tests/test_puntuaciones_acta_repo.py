@@ -23,6 +23,8 @@ _VERSION = "acta-puntuaciones-v1"
 _LIC = "placsp:10000141020261:ACTA/2026"
 _AHORA = "2026-11-01T10:00:00+00:00"
 
+_SERVLET_PLACSP = "https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet"
+
 NIF_PROPIO = "B12345678"  # pragma: allowlist secret
 NIF_AJENO = "A87654321"  # pragma: allowlist secret
 
@@ -30,11 +32,11 @@ NIF_AJENO = "A87654321"  # pragma: allowlist secret
 # ── Siembra ─────────────────────────────────────────────────────────────────
 
 
-def _licitacion(c: Any, id_externo: str) -> None:
+def _licitacion(c: Any, id_externo: str, *, fuente: str = "placsp") -> None:
     c.execute(
-        "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) VALUES (%s, %s, %s) "
-        "ON CONFLICT (id_externo) DO NOTHING",
-        (id_externo, "Servicio de soporte y mantenimiento", _AHORA),
+        "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion, fuente) "
+        "VALUES (%s, %s, %s, %s) ON CONFLICT (id_externo) DO NOTHING",
+        (id_externo, "Servicio de soporte y mantenimiento", _AHORA, fuente),
     )
 
 
@@ -96,6 +98,13 @@ def _acta(c: Any, licitacion_id: str, uri: str = "https://placsp.example/acta-me
     return int(fila[0])
 
 
+def _acta_con_estado(c: Any, licitacion_id: str, uri: str, status: str) -> int:
+    """Un acta más del expediente (el ``uri`` es único por expediente) en el estado dado."""
+    documento = _acta(c, licitacion_id, uri)
+    c.execute("UPDATE documentos SET status = %s WHERE id = %s", (status, documento))
+    return documento
+
+
 def _fila(documento_id: int, **cambios: Any) -> PuntuacionNueva:
     base: PuntuacionNueva = {
         "lote_numero": None,
@@ -132,13 +141,13 @@ def _guardar(
     )
 
 
-def _expediente_seguido(licitacion_id: str, correo: str) -> None:
+def _expediente_seguido(licitacion_id: str, correo: str, *, fuente: str = "placsp") -> None:
     """Un expediente con una oportunidad de la organización de ``correo`` y su adjudicación."""
     from db.database import connect
 
     user_id, org_id = _usuario_y_organizacion(correo)
     with connect() as c:
-        _licitacion(c, licitacion_id)
+        _licitacion(c, licitacion_id, fuente=fuente)
         _pursuit(c, org_id, user_id, licitacion_id)
         _adjudicacion(c, licitacion_id, "ACME SERVICIOS S.L.", NIF_PROPIO)
 
@@ -397,6 +406,74 @@ def test_expedientes_pendientes_no_repite_sin_tabla_de_la_version_vigente(tmp_db
     assert _pendientes() == {}
 
 
+def test_expedientes_pendientes_solo_de_fuentes_que_ingieren_actas(tmp_db: Any) -> None:
+    """Un pursuit de PSCP o TED con adjudicación no es de la cola: PLACSP no lo lleva.
+
+    Si lo fuera, ``encolar_pendientes`` le escribiría ``sin_acta`` y la ficha
+    diría «PLACSP no publicó acta de mesa» de un expediente que no es de PLACSP.
+    """
+    from db.database import connect
+
+    propias = {
+        "placsp": "LIC-PLACSP",
+        "placsp_agregadas": "LIC-AGREGADAS",
+        "bulk_202610": "LIC-BULK",
+    }
+    # ``bulkX…`` ni es el carril ``bulk_YYYYMM``: el ``_`` no es comodín.
+    ajenas = {
+        "pscp": "LIC-PSCP",
+        "ted": "LIC-TED",
+        "galicia_rss": "LIC-RSS",
+        "placsp_menores": "LIC-MENORES",
+        "placsp_watched_company_awards": "LIC-VIGILADA",
+        "bulkX202610": "LIC-BULKX",
+    }
+    for i, (fuente, lic) in enumerate({**propias, **ajenas}.items()):
+        _expediente_seguido(lic, f"fuente{i}@example.test", fuente=fuente)
+    with connect() as c:
+        for lic in ajenas.values():
+            _acta(c, lic)  # ni con un documento acta de por medio
+        _acta(c, "LIC-BULK")
+
+    assert _pendientes() == {
+        "LIC-PLACSP": False,
+        "LIC-AGREGADAS": False,
+        "LIC-BULK": True,
+    }
+
+
+def test_expedientes_pendientes_reencola_sin_tabla_con_un_acta_publicable_pendiente(
+    tmp_db: Any,
+) -> None:
+    """La lectura baja 3 actas por pasada: si no hubo tabla y quedan más, vuelve a la cola."""
+    from db.database import connect
+
+    for i, lic in enumerate(("SIN-PENDIENTE", "SIN-LEIDAS", "SIN-ESCANEADA", "SIN-SIN-PUBLICAR")):
+        _expediente_seguido(lic, f"t{i}@example.test")
+    _expediente_seguido("SIN-OK", "t-ok@example.test")
+    with connect() as c:
+        # Ya hay un acta leída y otra por descargar: la tabla puede estar en la segunda.
+        _acta_con_estado(c, "SIN-PENDIENTE", "https://placsp.example/a1.pdf", "extracted")
+        _acta_con_estado(c, "SIN-PENDIENTE", "https://placsp.example/a2.pdf", "pending")
+        # Todas leídas, o escaneadas (terminal): repetir la lectura daría lo mismo.
+        _acta_con_estado(c, "SIN-LEIDAS", "https://placsp.example/a1.pdf", "extracted")
+        _acta_con_estado(c, "SIN-ESCANEADA", "https://placsp.example/a1.pdf", "sin_texto")
+        # Anunciada y no servida todavía (expediente abierto con DOC_CN y sin DOC_CD).
+        c.execute(
+            "UPDATE licitaciones SET estado = 'PUB', tipos_anuncio = 'DOC_CN' "
+            "WHERE id_externo = 'SIN-SIN-PUBLICAR'"
+        )
+        _acta_con_estado(c, "SIN-SIN-PUBLICAR", f"{_SERVLET_PLACSP}?DocumentIdParam=T", "pending")
+        # ``ok`` con un acta pendiente: ya hay tabla, no se vuelve a leer.
+        _acta_con_estado(c, "SIN-OK", "https://placsp.example/a1.pdf", "extracted")
+        _acta_con_estado(c, "SIN-OK", "https://placsp.example/a2.pdf", "pending")
+    for lic in ("SIN-PENDIENTE", "SIN-LEIDAS", "SIN-ESCANEADA", "SIN-SIN-PUBLICAR"):
+        _guardar(lic, [], status="sin_tabla")
+    _guardar("SIN-OK", [], status="ok")
+
+    assert _pendientes() == {"SIN-PENDIENTE": True}
+
+
 def test_expedientes_pendientes_un_expediente_con_dos_pursuits_sale_una_vez(tmp_db: Any) -> None:
     from db.database import connect
 
@@ -457,8 +534,18 @@ def test_nombres_de_organizacion(tmp_db: Any) -> None:
 
     _, org_id = _usuario_y_organizacion("propia@example.test", nombre="Acme Holding")
     _, otra_org = _usuario_y_organizacion("ajena@example.test", nombre="Ajena Holding")
-    OrganizationNifRepository().replace_all(org_id, nifs=[{"nif": NIF_PROPIO, "principal": True}])
-    OrganizationNifRepository().replace_all(otra_org, nifs=[{"nif": NIF_AJENO, "principal": True}])
+    OrganizationNifRepository().replace_all(
+        org_id,
+        nifs=[
+            {"nif": NIF_PROPIO, "principal": True, "razon_social": "ACME SERVICIOS DIGITALES SL"},
+            # Sin razón social declarada: no aporta nombre (ni uno vacío).
+            {"nif": "C11111111", "principal": False},  # pragma: allowlist secret
+        ],
+    )
+    OrganizationNifRepository().replace_all(
+        otra_org,
+        nifs=[{"nif": NIF_AJENO, "principal": True, "razon_social": "BETA SOLUCIONES SL"}],
+    )
     with connect() as c:
         # El maestro de empresas: nombre canónico y alias del mismo NIF.
         empresa_id = int(
@@ -512,6 +599,7 @@ def test_nombres_de_organizacion(tmp_db: Any) -> None:
             "ACME SERVICIOS Y COMPAÑIA SL",  # adjudicaciones.nombre por empresa_id
             "ACME SERVICIOS SOCIEDAD LIMITADA",  # empresas.nombre_canonico
             "acme servicios",  # empresa_aliases.alias_normalizado
+            "ACME SERVICIOS DIGITALES SL",  # organization_nifs.razon_social (la de otra org no)
             "Acme Holding",  # organizations.name
         ]
     )

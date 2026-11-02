@@ -27,6 +27,7 @@ from services.puntuaciones_acta_reglas import (
     filas_validadas,
     motivo_sugerido,
     normalizar_lote,
+    prioridad_de_acta,
     seleccionar_paginas,
 )
 
@@ -151,6 +152,18 @@ def test_es_precio_el_lote_manda_sobre_el_expediente_y_los_otros_lotes_no_cuenta
     assert es_precio_de("Plazo de entrega", pliego, "1") is None  # es del lote 2
 
 
+def test_es_precio_un_texto_muy_corto_no_casa_por_contencion() -> None:
+    """«de» o «ec» están dentro de casi cualquier criterio: no son un criterio."""
+    # Descripción del pliego de 2 letras: contenida en «plazo de entrega», no lo identifica.
+    pliego_corto = [{"lote_numero": None, "descripcion": "de", "es_precio": False}]
+    assert es_precio_de("Plazo de entrega", pliego_corto, None) is None
+    # Nombre del acta de 2 letras: contenido en «oferta económica», tampoco.
+    assert es_precio_de("ec", _PLIEGO, "1") is None
+    # Justo en el mínimo (6, como ``_MIN_NOMBRE_CRITERIO``) sí casa.
+    pliego_justo = [{"lote_numero": None, "descripcion": "Mejoras", "es_precio": False}]
+    assert es_precio_de("Mejoras técnicas", pliego_justo, None) is False
+
+
 def test_es_precio_por_nombre() -> None:
     assert es_precio_de("Oferta económica (sobre 65 puntos)", [], "1") is True
     assert es_precio_de("Precio", [], None) is True
@@ -192,6 +205,63 @@ def test_seleccionar_paginas_respeta_el_tope_y_el_orden() -> None:
     assert len(claves) == 12
     assert claves == sorted(claves, key=lambda k: (int(str(k[0])), int(str(k[1]))))
     assert (1, 9) in claves
+
+
+# --- prioridad_de_acta -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("filename", "esperada"),
+    [
+        ("Acta del órgano de asistencia", 0),
+        ("ACTA_MESA_2026.pdf", 0),
+        ("Actas de apertura.pdf", 0),
+        ("Informe de valoración", 0),
+        ("Informe de criterios AUTOMÁTICOS.pdf", 0),
+        # Resoluciones: dicen a quién y no cuántos puntos sacó cada uno.
+        ("Adjudicación definitiva 0027", 1),
+        ("Adjudicación provisional 0027", 1),
+        ("Propuesta de adjudicación.pdf", 1),
+        # «acta» pegada a una letra por delante no es la palabra.
+        ("Informe exactas.pdf", 1),
+        ("", 1),
+        (None, 1),
+    ],
+)
+def test_prioridad_de_acta_por_nombre_de_fichero(filename: str | None, esperada: int) -> None:
+    assert prioridad_de_acta({"id": 1, "filename": filename}) == esperada
+
+
+def test_prioridad_de_acta_sin_nombre_de_fichero() -> None:
+    assert prioridad_de_acta({"id": 1}) == 1
+
+
+def test_prioridad_de_acta_deja_fuera_las_resoluciones_del_expediente_real() -> None:
+    """Los 6 documentos de acta del exp. 13: con el tope de 3 no entra ninguna adjudicación."""
+    from lxml import etree
+
+    from scraper.codice_parser import parse_document_references
+
+    fixture = (
+        Path(__file__).parent / "fixtures" / "placsp" / "13_criterios_sin_escala_deducible.xml"
+    )
+    entry = etree.parse(str(fixture)).getroot()
+    documentos = [
+        {"id": i, "filename": ref.filename}
+        for i, ref in enumerate(parse_document_references(entry), start=1)
+        if ref.tipo == "acta"
+    ]
+    assert len(documentos) == 6
+
+    # El orden de ``ensure_documents_ready``: estable, así que dentro de cada
+    # prioridad manda el orden de la lista (el de ``list_by_licitacion``).
+    elegidos = sorted(documentos, key=prioridad_de_acta)[:3]
+
+    assert [d["filename"] for d in elegidos] == [
+        "Acta del órgano de asistencia",
+        "Informe de valoración",
+        "Acta del órgano de asistencia",
+    ]
 
 
 # --- filas_validadas ---------------------------------------------------------
