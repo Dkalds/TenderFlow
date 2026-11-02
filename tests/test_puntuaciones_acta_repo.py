@@ -400,7 +400,9 @@ def test_expedientes_pendientes_no_repite_sin_tabla_de_la_version_vigente(tmp_db
 
     _expediente_seguido("LIC-A", "a@example.test")
     with connect() as c:
-        _acta(c, "LIC-A")
+        # Ya leída: con un acta aún ``pending`` el ``sin_tabla`` sí se repite
+        # (``test_expedientes_pendientes_reencola_sin_tabla_con_un_acta_publicable_pendiente``).
+        _acta_con_estado(c, "LIC-A", "https://placsp.example/acta-mesa.pdf", "extracted")
     _guardar("LIC-A", [], status="sin_tabla")
 
     assert _pendientes() == {}
