@@ -15,6 +15,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { NotebookPen, Trash2 } from "lucide-react";
 import { PanelEmpty } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
@@ -76,12 +77,12 @@ export function FavoritosPanel() {
       {items.map((item) => (
         <li key={item.id_externo} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:gap-3">
           <div className="min-w-0 flex-1">
-            <Link
-              href={`/detalle?lic=${encodeURIComponent(item.id_externo)}`}
+            <EnlaceFicha
+              idExterno={item.id_externo}
               className="text-tf-body line-clamp-1 font-medium hover:underline"
             >
               {truncate(item.titulo ?? item.id_externo, 100)}
-            </Link>
+            </EnlaceFicha>
             <EtiquetaChips etiquetas={etiquetas[item.id_externo]} className="mt-1" />
             <NotaFavorito
               idExterno={item.id_externo}

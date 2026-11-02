@@ -2,7 +2,7 @@
  * Overlays del dashboard bajo demanda (`overlays-dashboard.tsx`).
  *
  * Se fija lo que justifica el módulo y lo que no podía romperse por el camino:
- * al entrar no se descarga ninguno de los cuatro; ⌘K, «?» y los stores los
+ * al entrar no se descarga ninguno de los cinco; ⌘K, «?», `?ver=` y los stores los
  * siguen abriendo a la primera, y la bandeja aparece y desaparece con su store.
  *
  * Cada overlay se dobla por un componente mínimo cuya factoría anota que se
@@ -15,6 +15,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 
 const { descargados, ociosas } = vi.hoisted(() => ({
   descargados: new Set<string>(),
@@ -46,10 +47,14 @@ function doblarOverlays() {
     descargados.add("bandeja");
     return { BandejaComparacion: () => <p>bandeja de comparación</p> };
   });
+  vi.doMock("@/components/ficha/ficha-flotante", () => {
+    descargados.add("ficha");
+    return { FichaFlotante: () => <p>ficha flotante</p> };
+  });
 }
 
 /** Monta el dashboard con los atajos de verdad y módulos recién importados. */
-async function montar() {
+async function montar(searchParams = "") {
   vi.resetModules();
   doblarOverlays();
   descargados.clear();
@@ -63,7 +68,7 @@ async function montar() {
     useKeyboardShortcuts();
     return <OverlaysDashboard />;
   }
-  render(<Dashboard />);
+  render(<Dashboard />, { wrapper: withNuqsTestingAdapter({ searchParams }) });
   return { useUiStore, useBandejaComparacion, useAsistente };
 }
 
@@ -87,11 +92,11 @@ afterEach(() => {
 // Cada test importa módulos nuevos, y en una máquina cargada el primer import
 // (transformar el árbol) pasa de los 5 s por defecto.
 describe("OverlaysDashboard", { timeout: 30_000 }, () => {
-  it("al entrar no descarga ni pinta ninguno de los cuatro", async () => {
+  it("al entrar no descarga ni pinta ninguno de los cinco", async () => {
     await montar();
 
     expect([...descargados]).toEqual([]);
-    expect(screen.queryByText(/paleta|ayuda|asistente|bandeja/)).toBeNull();
+    expect(screen.queryByText(/paleta|ayuda|asistente|bandeja|ficha/)).toBeNull();
   });
 
   it("⌘K abre la paleta a la primera: marco mínimo mientras llega, y la paleta después", async () => {
@@ -168,5 +173,12 @@ describe("OverlaysDashboard", { timeout: 30_000 }, () => {
 
     act(() => useBandejaComparacion.getState().vaciar());
     expect(screen.queryByText("bandeja de comparación")).toBeNull();
+  });
+
+  it("la ficha flotante se descarga cuando la URL trae `?ver=`", async () => {
+    await montar("?ver=EXP-1");
+
+    expect(await screen.findByText("ficha flotante", {}, DESCARGA)).toBeInTheDocument();
+    expect(descargados.has("ficha")).toBe(true);
   });
 });

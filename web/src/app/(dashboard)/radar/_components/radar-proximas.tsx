@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { PanelEmpty, PanelError, ROTULO_DATO } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { GlosarioHint } from "@/components/ui/glosario-hint";
@@ -52,8 +52,8 @@ function ProximaFila({ item }: { item: RadarProxima }) {
   const codigos = [item.id_externo, item.cpv ? `CPV ${item.cpv}` : null].filter(Boolean).join(" · ");
 
   return (
-    <Link
-      href={`/detalle?lic=${encodeURIComponent(item.id_externo)}`}
+    <EnlaceFicha
+      idExterno={item.id_externo}
       className={cn(
         "flex flex-col gap-2 border-b border-divider-subtle px-3 py-3 transition-colors md:px-3.5",
         "hover:bg-primary-hover focus-visible:bg-primary-hover focus-visible:outline-none active:bg-primary-selected active:duration-0",
@@ -90,7 +90,7 @@ function ProximaFila({ item }: { item: RadarProxima }) {
         <span className={ROTULO_DATO}>Prevista</span>
         <FechaPrevista iso={item.fecha_prevista} />
       </span>
-    </Link>
+    </EnlaceFicha>
   );
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { Badge } from "@/components/ui/badge";
 import { IndicadorOrden } from "@/components/ui/indicador-orden";
 import { Pista } from "@/components/ui/pista";
@@ -128,13 +128,13 @@ export function TablaPublicaciones({
             : filas.map((item) => (
                 <tr key={item.id_externo} className="border-b border-divider-subtle transition-colors hover:bg-primary-hover">
                   <td className="px-1 py-1.5">
-                    <Link
-                      href={`/detalle?lic=${encodeURIComponent(item.id_externo)}`}
+                    <EnlaceFicha
+                      idExterno={item.id_externo}
                       className="flex min-w-0 items-center gap-2 text-tf-meta font-medium hover:underline"
                     >
                       <PuntoNueva nueva={esNueva(item.fecha_publicacion, corteNovedades)} />
                       <span className="min-w-0 truncate">{item.titulo}</span>
-                    </Link>
+                    </EnlaceFicha>
                   </td>
                   <td className="truncate px-1 text-tf-micro text-muted-foreground">
                     {item.organo_contratacion ?? EMPTY}
@@ -187,8 +187,8 @@ export function ListaPublicacionesMovil({
         const origen = fuenteOrigen(item.fuente);
         return (
           <li key={item.id_externo} className="border-b border-divider-subtle last:border-b-0">
-            <Link
-              href={`/detalle?lic=${encodeURIComponent(item.id_externo)}`}
+            <EnlaceFicha
+              idExterno={item.id_externo}
               className="flex min-h-11 flex-col justify-center gap-1 py-2 transition-colors active:bg-primary-selected active:duration-0"
             >
               <span className="flex items-center gap-2">
@@ -210,7 +210,7 @@ export function ListaPublicacionesMovil({
                 </span>
                 <StatusBadge value={item.estado} kind="estado" className="h-5 flex-none px-1.5 text-tf-micro" />
               </span>
-            </Link>
+            </EnlaceFicha>
           </li>
         );
       })}

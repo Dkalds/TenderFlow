@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
+import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { PanelEmpty, PanelError, PanelLoading, SectionTitle } from "@/components/console/panel";
 import { useSimilares } from "@/hooks/use-licitacion";
 import { estadoLabel } from "@/lib/estados";
@@ -57,12 +57,12 @@ export function FichaSimilares({ licitacionId, as = "h3" }: { licitacionId: stri
           <ul className="divide-divider divide-y">
             {similares.map((similar) => (
               <li key={similar.id_externo} className="py-2 first:pt-0">
-                <Link
-                  href={`/detalle?lic=${encodeURIComponent(similar.id_externo)}`}
+                <EnlaceFicha
+                  idExterno={similar.id_externo}
                   className="text-tf-body font-medium text-pretty hover:text-primary"
                 >
                   {similar.titulo || similar.id_externo}
-                </Link>
+                </EnlaceFicha>
                 <p className="text-muted-foreground text-tf-meta">
                   {[
                     similar.organo_contratacion,

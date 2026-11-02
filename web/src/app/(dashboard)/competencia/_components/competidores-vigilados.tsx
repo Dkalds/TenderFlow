@@ -19,6 +19,7 @@
 import Link from "next/link";
 
 import { EnlaceIr, Panel, PanelEmpty, PanelTitle, SectionTitle } from "@/components/console/panel";
+import { alPulsarFicha, rutaFicha } from "@/components/ficha/enlace-ficha";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/utils";
@@ -168,7 +169,8 @@ export function CompetidoresVigilados() {
                     </div>
                     {s.licitacion_id && (
                       <EnlaceIr
-                        href={`/detalle?lic=${encodeURIComponent(s.licitacion_id)}`}
+                        href={rutaFicha(s.licitacion_id)}
+                        onClick={(evento) => s.licitacion_id && alPulsarFicha(evento, s.licitacion_id)}
                         aria-label={`Ver la licitación ${s.licitacion_id}`}
                         className="shrink-0"
                       >
