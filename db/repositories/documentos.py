@@ -729,6 +729,10 @@ class DocumentosRepository:
         (255 documentos el 2026-10-01, 139 el 2026-09-28). No se pierden: siguen
         ``pending`` y entran solos cuando la re-emisión del expediente trae el
         ``DOC_CD`` o cuando el expediente se cierra.
+
+        Quedan fuera las actas de la mesa (``tipo='acta'``): no son pliego y
+        solo se descargan cuando alguien las pide por su tipo, no en la pasada
+        nocturna (spec de las puntuaciones del acta, §3.3).
         """
         with connect_read() as c:
             cur = c.execute(
@@ -1228,6 +1232,9 @@ class DocumentosRepository:
         Por eso la idempotencia entre corridas la da esta misma condición
         (`NOT EXISTS`): un documento ya chunkeado nunca vuelve a aparecer
         aquí, así que el job nunca reprocesa trabajo ya hecho.
+
+        Quedan fuera las actas de la mesa (``tipo='acta'``): no son pliego y no
+        se trocean ni se embeben (spec de las puntuaciones del acta, §3.3).
         """
         with connect_read() as c:
             cur = c.execute(
@@ -1409,7 +1416,9 @@ class DocumentosRepository:
             "dc.page_number, dc.embedding_version, "
             "1 - (dc.embedding <=> %s::vector) AS score "
             "FROM documento_chunks dc JOIN documentos d ON d.id = dc.documento_id "
-            "WHERE d.licitacion_id = %s AND dc.embedding IS NOT NULL "
+            # El acta no es pliego: no entra en el RAG (spec §3.3). Va en ``base``
+            # y por eso vale para la consulta con versión y para su caída.
+            "WHERE d.licitacion_id = %s AND dc.embedding IS NOT NULL AND d.tipo <> 'acta' "
         )
         cola = "ORDER BY dc.embedding <=> %s::vector LIMIT %s"
         with connect_read() as c:

@@ -118,16 +118,31 @@ def test_list_textos_by_licitacion_ignora_actas(repo):
 
 
 def test_list_chunks_by_licitacion_ignora_actas(repo):
-    """Un acta con chunks (de antes del filtro) tampoco llega al contexto del asistente."""
+    """Un acta con chunks (de antes del filtro) tampoco llega al RAG.
+
+    ``search_chunks_by_embedding`` es la consulta que el RAG usa primero y
+    ``list_chunks_by_licitacion`` su caída: las dos, y la búsqueda con y sin
+    versión de embedding, dejan fuera el acta.
+    """
     ids = _sembrar(repo)
     _extraer(repo, ids, "legal")
     _extraer(repo, ids, TIPO_ACTA)
-    repo.replace_chunks(ids["legal"], ["chunk del pliego"], [[0.1] * 384])
-    repo.replace_chunks(ids[TIPO_ACTA], ["chunk del acta"], [[0.2] * 384])
+    repo.replace_chunks(
+        ids["legal"], ["chunk del pliego"], [[0.1] * 384], embedding_version="v-test"
+    )
+    repo.replace_chunks(
+        ids[TIPO_ACTA], ["chunk del acta"], [[0.1] * 384], embedding_version="v-test"
+    )
 
     chunks = repo.list_chunks_by_licitacion("EXP-ACTA")
+    buscados = repo.search_chunks_by_embedding("EXP-ACTA", [0.1] * 384)
+    buscados_con_version = repo.search_chunks_by_embedding(
+        "EXP-ACTA", [0.1] * 384, embedding_version="v-test"
+    )
 
     assert [fila["documento_id"] for fila in chunks] == [ids["legal"]]
+    assert [fila["documento_id"] for fila in buscados] == [ids["legal"]]
+    assert [fila["documento_id"] for fila in buscados_con_version] == [ids["legal"]]
 
 
 def test_list_by_licitacion_sigue_mostrando_el_acta(repo):
