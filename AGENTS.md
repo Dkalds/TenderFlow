@@ -21,6 +21,11 @@ muestra datos reales desde el primer commit: el producto llegó a acumular 154
 endpoints y 13 espacios de consola en doce días, y varias de esas superficies
 mostraban datos fabricados o placeholder.
 
+**Un skill instalado que encaja con la tarea es obligatorio, no una
+sugerencia**: se carga antes de escribir el cambio, y aplicar sus reglas de
+memoria no lo sustituye. Qué skill encaja con qué trabajo lo dice la
+adaptación de cada plataforma (`CLAUDE.md` para Claude Code).
+
 La misma pregunta vale para cualquier cambio, no solo para superficies. El
 skill `ponytail` (instalado desde `skills-lock.json`, se usa en nivel lite)
 fija la escalera que se recorre antes de escribir: ¿hace falta?, ¿ya existe
