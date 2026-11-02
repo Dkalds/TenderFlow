@@ -46,6 +46,10 @@ const INSUFICIENTE = {
   n_ganadas: 4,
   n_perdidas: 3,
   minimo_cierres: 20,
+  fuente: "cierres",
+  minimo_triaje_por_lado: 10,
+  n_abiertas: 3,
+  n_descartadas: 2,
   organization_id: 7,
   origen_pesos_actuales: "global",
   pesos_actuales: {},
@@ -59,6 +63,10 @@ const PROPUESTA = {
   n_ganadas: 14,
   n_perdidas: 10,
   minimo_cierres: 20,
+  fuente: "cierres",
+  minimo_triaje_por_lado: 10,
+  n_abiertas: 3,
+  n_descartadas: 2,
   organization_id: 7,
   origen_pesos_actuales: "perfil",
   pesos_actuales: { importe: 20, afinidad: 15 },
@@ -107,12 +115,13 @@ afterEach(() => {
 });
 
 describe("pesos propuestos en /mi-perfil", () => {
-  it("con pocos cierres dice cuántos faltan en vez de esconderse", async () => {
+  it("con pocas decisiones dice cuántas faltan, de cierres y de triaje, en vez de esconderse", async () => {
     renderCard(INSUFICIENTE);
 
-    expect(await screen.findByText(/llevas/)).toHaveTextContent(
-      /llevas\s*7\s*de 20 cierres con desglose sellado, así que faltan\s*13/,
-    );
+    const texto = await screen.findByText(/Todavía no hay base/);
+    expect(texto).toHaveTextContent(/20\s*cierres con desglose sellado \(llevas 7\)/);
+    expect(texto).toHaveTextContent(/10\s*oportunidades abiertas y 10 señales descartadas/);
+    expect(texto).toHaveTextContent(/\(llevas 3 y\s*2\)/);
     // Y no se ofrece aplicar nada: no hay propuesta que aplicar.
     expect(screen.queryByRole("button", { name: /Aplicar la propuesta/ })).not.toBeInTheDocument();
   });
@@ -127,6 +136,20 @@ describe("pesos propuestos en /mi-perfil", () => {
     expect(
       screen.getByText(/Media en ganadas 71 · en perdidas 52 \(diferencia 19\)/),
     ).toBeInTheDocument();
+  });
+
+  it("con pocos cierres la propuesta del triaje rotula abiertas y descartadas", async () => {
+    // CU-17
+    renderCard({ ...PROPUESTA, fuente: "triaje", n_cierres: 5, n_ganadas: 3, n_perdidas: 2, n_abiertas: 14, n_descartadas: 11 });
+
+    expect(
+      await screen.findByText(/tu triaje: 14 oportunidades abiertas y 11 señales descartadas/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Media en abiertas 71 · en descartadas 52 \(diferencia 19\)/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/ganadas/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Aplicar la propuesta" })).toBeInTheDocument();
   });
 
   it("aplicar exige confirmación y no manda pesos en el cuerpo", async () => {

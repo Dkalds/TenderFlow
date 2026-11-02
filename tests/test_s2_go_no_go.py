@@ -271,3 +271,79 @@ def test_un_documento_administrativo_que_el_pliego_pide_si_cuenta() -> None:
     (item,) = next(f for f in checklist.familias if f.familia == "certifications").items
     assert item.veredicto == "cumple"
     assert item.evidencia
+
+
+# ── Caducidad frente al plazo de presentación ───────────────────────────────
+
+
+def _iso_que_caduca(vigente_hasta: str) -> OrganizationCapabilities:
+    return _certificaciones(
+        {
+            "nombre": "ISO/IEC 27001",
+            "tipo": "certificacion_tecnica",
+            "vigente_hasta": vigente_hasta,
+        }
+    )
+
+
+def test_una_certificacion_que_caduca_antes_del_plazo_no_cumple() -> None:
+    """CU-06 — Vigente hoy, caducada el día que se presenta la oferta: la solvencia se
+    acredita a la fecha límite (art. 140.4 LCSP), así que no cubre la oferta, y
+    el motivo dice las dos fechas para que se pueda renovar a tiempo."""
+    checklist = evaluate(
+        licitacion_id="EXP-CAD",
+        organization_id=3,
+        record=_record(_requisito_cert("ISO/IEC 27001")),
+        capabilities=_iso_que_caduca("2026-11-10"),
+        hoy=date(2026, 11, 2),
+        fecha_presentacion=date(2026, 11, 20),
+    )
+    certificaciones = next(f for f in checklist.familias if f.familia == "certifications")
+    (item,) = certificaciones.items
+    assert item.veredicto == "no_cumple"
+    assert certificaciones.veredicto == "no_cumple"
+    assert "2026-11-10" in item.motivo and "2026-11-20" in item.motivo
+    assert item.evidencia
+
+
+def test_una_certificacion_que_cubre_el_plazo_sigue_cumpliendo() -> None:
+    """Vale hasta el día del plazo incluido: ese día todavía está vigente."""
+    checklist = evaluate(
+        licitacion_id="EXP-CAD",
+        organization_id=3,
+        record=_record(_requisito_cert("ISO/IEC 27001")),
+        capabilities=_iso_que_caduca("2026-11-20"),
+        hoy=date(2026, 11, 2),
+        fecha_presentacion=date(2026, 11, 20),
+    )
+    (item,) = next(f for f in checklist.familias if f.familia == "certifications").items
+    assert item.veredicto == "cumple"
+
+
+def test_sin_plazo_conocido_solo_cuenta_la_caducidad_de_hoy() -> None:
+    """Sin fecha límite no se inventa una: se juzga como hasta ahora, contra hoy."""
+    checklist = evaluate(
+        licitacion_id="EXP-CAD",
+        organization_id=3,
+        record=_record(_requisito_cert("ISO/IEC 27001")),
+        capabilities=_iso_que_caduca("2026-11-10"),
+        hoy=date(2026, 11, 2),
+    )
+    (item,) = next(f for f in checklist.familias if f.familia == "certifications").items
+    assert item.veredicto == "cumple"
+
+
+@pytest.mark.parametrize(
+    ("valor", "esperada"),
+    [
+        ("2026-11-15", date(2026, 11, 15)),
+        ("2026-11-15T14:00:00", date(2026, 11, 15)),
+        (None, None),
+        ("", None),
+        ("sin fecha", None),
+    ],
+)
+def test_fecha_de_plazo_lee_el_dia_o_nada(valor: object, esperada: date | None) -> None:
+    from services.go_no_go import fecha_de_plazo
+
+    assert fecha_de_plazo(valor) == esperada

@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-10-26
+Generado: 2026-11-02
 
-Revisión Alembic aplicada: `v168_mv_canonicas_universo_producto`.
+Revisión Alembic aplicada: `v169_radar_dismissals_desglose`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -1118,6 +1118,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (entry_id, licitacion_id)`
 | `accion` | `text` | sí |
 | `organization_id` | `integer` | sí |
 | `user_id` | `integer` | no |
+| `desglose` | `text` | sí |
 
 Claves: `PRIMARY KEY (user_id, id_externo)`
 

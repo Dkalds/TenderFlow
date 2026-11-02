@@ -76,6 +76,10 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   sin IVA (o «base desconocida»), hasta tres requisitos de solvencia del pliego
   y, si su organización declaró su capacidad, el veredicto del checklist, con
   el enlace a la ficha.
+- Decide desde el propio resumen: «Me interesa» y «No encaja» abren la ficha
+  con esa decisión propuesta, y un botón la confirma —abre la oportunidad o
+  descarta la señal del Radar y de la agenda, con «Deshacer»—. Pulsar el enlace
+  no escribe nada por sí solo.
 
 ### CU-05 — Llevar una oportunidad del expediente al cierre
 
@@ -95,6 +99,9 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   pliego. Nunca «cumple» sin cita; cuando lo que falta es el dato de su
   organización, el requisito lo dice y lleva a completarlo en Equipo ›
   Organización.
+- Una certificación vigente hoy que caduca antes de la fecha límite de
+  presentación sale «no cumple», con las dos fechas: la solvencia se acredita a
+  esa fecha, y así hay tiempo de renovarla.
 - La decisión la toma a mano, debajo, y exige motivo. Sin GO no hay oferta, y
   un NO-GO solo puede retirarse.
 - Si quiere, abre la matriz ponderada, que va plegada, puntúa los criterios y
@@ -176,6 +183,11 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Cambia pesos y palabras clave, y el cambio persiste y vuelve a los valores
   por defecto si lo borra.
 - Unos pesos que no suman cien no se guardan.
+- Ve los pesos que sugieren las decisiones de su organización: lo ganado frente
+  a lo perdido cuando hay veinte cierres o, mientras tanto, lo que su equipo
+  abrió frente a lo que descartó (diez de cada) en el Radar o desde el resumen
+  diario. Dice sobre qué base habla y cuánto falta; aplicarla es un clic
+  confirmado y nunca ocurre sola.
 
 ### CU-18 — Estudiar a la competencia
 
@@ -356,9 +368,9 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-01** Entrar y salir de la consola | — | [login.spec.ts](../web/e2e/login.spec.ts) | — |
 | **CU-02** Buscar un expediente y abrir su ficha | [test_escenario_ficha_y_filtros.py](../tests/test_escenario_ficha_y_filtros.py)<br>[test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [detail-permalink.spec.ts](../web/e2e/detail-permalink.spec.ts) | — |
 | **CU-03** Seguir un expediente y anotarlo | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | [favoritos-nota.test.tsx](../web/src/app/(dashboard)/mi-watchlist/__tests__/favoritos-nota.test.tsx)<br>[use-watchlist-items.test.ts](../web/src/hooks/__tests__/use-watchlist-items.test.ts) |
-| **CU-04** Vigilar el mercado con una alerta | [test_escenario_feed_alertas.py](../tests/test_escenario_feed_alertas.py)<br>[test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) (x2) | [recorrido-alerta.spec.ts](../web/e2e/recorrido-alerta.spec.ts) | [test_resumen_diario_integracion.py](../tests/test_resumen_diario_integracion.py)<br>[test_watchlist_rules_maquina_property.py](../tests/test_watchlist_rules_maquina_property.py) |
+| **CU-04** Vigilar el mercado con una alerta | [test_escenario_feed_alertas.py](../tests/test_escenario_feed_alertas.py)<br>[test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) (x2) | [recorrido-alerta.spec.ts](../web/e2e/recorrido-alerta.spec.ts) | [test_resumen_diario_integracion.py](../tests/test_resumen_diario_integracion.py)<br>[test_watchlist_rules_maquina_property.py](../tests/test_watchlist_rules_maquina_property.py)<br>[triaje-resumen.test.tsx](../web/src/app/(dashboard)/detalle/__tests__/triaje-resumen.test.tsx) |
 | **CU-05** Llevar una oportunidad del expediente al cierre | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x3) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py)<br>[test_pursuits_filtros_tablero.py](../tests/test_pursuits_filtros_tablero.py) |
-| **CU-06** Decidir GO o NO-GO frente a lo que pide el pliego | [test_escenario_gobierno_organizacion.py](../tests/test_escenario_gobierno_organizacion.py)<br>[test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x2) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py)<br>[pesos-go-no-go-card.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/pesos-go-no-go-card.test.tsx)<br>[matriz-go-no-go.test.tsx](../web/src/app/(dashboard)/oportunidades/[id]/__tests__/matriz-go-no-go.test.tsx)<br>[checklist-go-no-go.test.tsx](../web/src/app/(dashboard)/oportunidades/__tests__/checklist-go-no-go.test.tsx) |
+| **CU-06** Decidir GO o NO-GO frente a lo que pide el pliego | [test_escenario_gobierno_organizacion.py](../tests/test_escenario_gobierno_organizacion.py)<br>[test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x2) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py)<br>[test_s2_go_no_go.py](../tests/test_s2_go_no_go.py)<br>[pesos-go-no-go-card.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/pesos-go-no-go-card.test.tsx)<br>[matriz-go-no-go.test.tsx](../web/src/app/(dashboard)/oportunidades/[id]/__tests__/matriz-go-no-go.test.tsx)<br>[checklist-go-no-go.test.tsx](../web/src/app/(dashboard)/oportunidades/__tests__/checklist-go-no-go.test.tsx) |
 | **CU-07** Preparar la oferta con tareas | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | — |
 | **CU-08** Vigilar la cartera y preparar la renovación | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) | — | — |
 | **CU-09** Guardar una vista del ámbito | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
@@ -369,7 +381,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-14** Integrar por API con una clave propia | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | [claves-view.test.tsx](../web/src/app/(dashboard)/ajustes/_components/__tests__/claves-view.test.tsx) |
 | **CU-15** Exportar mis datos y borrar mi cuenta | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
 | **CU-16** Exportar el ámbito a CSV | — | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
-| **CU-17** Ajustar mi perfil de puntuación | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-perfil.spec.ts](../web/e2e/recorrido-perfil.spec.ts) | [test_me_profile_routes.py](../tests/test_me_profile_routes.py) |
+| **CU-17** Ajustar mi perfil de puntuación | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [recorrido-perfil.spec.ts](../web/e2e/recorrido-perfil.spec.ts) | [test_me_profile_routes.py](../tests/test_me_profile_routes.py)<br>[pesos-propuestos-card.test.tsx](../web/src/app/(dashboard)/mi-perfil/__tests__/pesos-propuestos-card.test.tsx) |
 | **CU-18** Estudiar a la competencia | [test_escenario_competencia.py](../tests/test_escenario_competencia.py) (x2) | [recorrido-competencia.spec.ts](../web/e2e/recorrido-competencia.spec.ts) | — |
 | **CU-19** Gobernar mi cuenta: preferencias, sesiones y contraseña | [test_escenario_cuenta_y_acceso.py](../tests/test_escenario_cuenta_y_acceso.py) | [ajustes.spec.ts](../web/e2e/ajustes.spec.ts) | [cambio-contrasena.test.tsx](../web/src/app/(dashboard)/ajustes/_components/__tests__/cambio-contrasena.test.tsx) |
 | **CU-20** Gestionar la plataforma como administrador | [test_escenario_revision_datos.py](../tests/test_escenario_revision_datos.py) | [admin-guard.spec.ts](../web/e2e/admin-guard.spec.ts) | [test_admin_api_keys_route.py](../tests/test_admin_api_keys_route.py)<br>[claves-instancia-card.test.tsx](../web/src/app/(dashboard)/ops/_components/__tests__/claves-instancia-card.test.tsx) |

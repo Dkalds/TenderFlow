@@ -320,6 +320,42 @@ def enlace_ficha(licitacion: Mapping[str, object], base_url: str | None) -> str 
     return str(url) if url else None
 
 
+#: Valor de ``desde`` con el que la ficha sabe que llega del resumen y ofrece el
+#: triaje; lo lee ``web/src/app/(dashboard)/detalle/_lib/triaje-resumen.ts``.
+ORIGEN_RESUMEN = "resumen"
+
+
+def enlaces_de_triaje(
+    licitacion: Mapping[str, object], base_url: str | None
+) -> tuple[str, str] | None:
+    """``(me_interesa, no_encaja)``: la ficha de la consola con la intención puesta.
+
+    Los enlaces **no actúan solos**: abren la ficha, que pide confirmar con un
+    botón. Un enlace de correo que creara la oportunidad al pulsarse la crearía
+    también cuando el antivirus del buzón (Safe Links, Mimecast) visita cada URL
+    del mensaje para analizarla, y el Radar contaría como interés lo que fue un
+    escáner. Pasar por la ficha además deja la acción a la sesión de quien la
+    pulsa, con su organización y sus permisos, sin un token en el correo que
+    autorice escribir.
+
+    ``None`` sin sitio o sin expediente: sin consola a la que ir no hay triaje.
+    """
+    id_externo = str(licitacion.get("id_externo") or "")
+    if not base_url or not id_externo:
+        return None
+    from urllib.parse import quote, urlencode
+
+    def _url(intencion: str) -> str:
+        # `quote` y no `quote_plus`: el mismo `lic` que el de :func:`enlace_ficha`.
+        consulta = urlencode(
+            {"lic": id_externo, "desde": ORIGEN_RESUMEN, "intencion": intencion},
+            quote_via=quote,
+        )
+        return f"{base_url}/detalle?{consulta}"
+
+    return _url("interesa"), _url("descartar")
+
+
 def _plural_avisos(n: int) -> str:
     return "novedad" if n == 1 else "novedades"
 
@@ -380,7 +416,9 @@ def render_digest(
             f' <span style="font-weight:normal">· {len(bloque.licitaciones)}</span></h3>'
         )
         for lic in bloque.licitaciones[:visibles]:
-            tarjeta = _datos_tarjeta(lic, base_url)
+            # Los avisos hablan de lo que la persona ya sigue: no hay nada que
+            # triar, ya decidió seguirlo.
+            tarjeta = _datos_tarjeta(lic, base_url, triaje=not bloque.es_aviso)
             texto.extend(_tarjeta_texto(tarjeta))
             partes_html.append(_tarjeta_html(tarjeta))
         resto = len(bloque.licitaciones) - visibles
@@ -422,11 +460,16 @@ class _Tarjeta:
     enlace: str | None
     aviso: str
     pliego: list[str]
+    #: ``(me_interesa, no_encaja)`` o ``None`` (ver :func:`enlaces_de_triaje`).
+    triaje: tuple[str, str] | None = None
 
 
-def _datos_tarjeta(lic: Mapping[str, object], base_url: str | None) -> _Tarjeta:
+def _datos_tarjeta(
+    lic: Mapping[str, object], base_url: str | None, *, triaje: bool = False
+) -> _Tarjeta:
     pliego = lic.get("pliego")
     return _Tarjeta(
+        triaje=enlaces_de_triaje(lic, base_url) if triaje else None,
         titulo=str(lic.get("titulo") or lic.get("id_externo") or "Sin título"),
         organo=str(lic.get("organo_contratacion") or "Órgano no publicado"),
         importe=importe_base(lic),
@@ -449,6 +492,9 @@ def _tarjeta_texto(t: _Tarjeta) -> list[str]:
     lineas.extend(f"  {linea}" for linea in t.pliego)
     if t.enlace:
         lineas.append(f"  Ficha: {t.enlace}")
+    if t.triaje:
+        lineas.append(f"  Me interesa: {t.triaje[0]}")
+        lineas.append(f"  No encaja: {t.triaje[1]}")
     return lineas
 
 
@@ -462,8 +508,15 @@ def _tarjeta_html(t: _Tarjeta) -> str:
         )
         enlace_html = (
             f'<div style="margin-top:6px"><a href="{href}" style="{ESTILO_ENLACE}">'
-            "Abrir la ficha</a></div>"
+            "Abrir la ficha</a>"
         )
+        if t.triaje:
+            interesa, descartar = (html.escape(url, quote=True) for url in t.triaje)
+            enlace_html += (
+                f' · <a href="{interesa}" style="{ESTILO_ENLACE}">Me interesa</a>'
+                f' · <a href="{descartar}" style="color:{SECUNDARIO}">No encaja</a>'
+            )
+        enlace_html += "</div>"
     pliego_html = ""
     if t.pliego:
         pliego_html = (
