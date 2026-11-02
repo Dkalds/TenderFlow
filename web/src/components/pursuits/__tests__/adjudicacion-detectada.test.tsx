@@ -333,6 +333,31 @@ describe("AdjudicacionDetectada", () => {
       expect(screen.getByRole("dialog")).toHaveTextContent("Documento 50 · página 5");
     });
 
+    it("los enlaces de la diferencia parten línea: en móvil no empujan la página", () => {
+      // Van fuera del contenedor con scroll de la tabla, y el `Button` base es
+      // `whitespace-nowrap`: un criterio largo desbordaría a 375 px.
+      render(<AdjudicacionDetectada pursuit={conPuntuaciones({ estado: "ok", lotes: [lote()] })} />);
+
+      const enlace = screen.getByRole("button", { name: /^Precio −18,5 de 65/ });
+      expect(enlace).toHaveClass("whitespace-normal", "text-left", "h-auto");
+      expect(enlace).not.toHaveClass("whitespace-nowrap");
+    });
+
+    it("dos criterios con el mismo nombre se pintan los dos, sin claves repetidas", () => {
+      const consola = vi.spyOn(console, "error").mockImplementation(() => {});
+      const repetidos = lote({
+        diferencia: [
+          { criterio: "Mejoras", diferencia: -1, maximo: 5, es_precio: false, documento_id: 50, pagina: 6 },
+          { criterio: "Mejoras", diferencia: -2, maximo: 5, es_precio: false, documento_id: 50, pagina: 7 },
+        ],
+      });
+      render(<AdjudicacionDetectada pursuit={conPuntuaciones({ estado: "ok", lotes: [repetidos] })} />);
+
+      expect(screen.getAllByRole("button", { name: /^Mejoras −/ })).toHaveLength(2);
+      expect(consola.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+      consola.mockRestore();
+    });
+
     it("«Esta es mi empresa» manda el PATCH con fila_acta", () => {
       render(
         <AdjudicacionDetectada

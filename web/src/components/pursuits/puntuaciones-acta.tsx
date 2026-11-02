@@ -125,8 +125,8 @@ function TablaLote({
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead scope="col">Licitador</TableHead>
-            {columnas.map((columna) => (
-              <TableHead key={columna.nombre} scope="col" className="h-auto py-1 text-right">
+            {columnas.map((columna, indice) => (
+              <TableHead key={`${indice}-${columna.nombre}`} scope="col" className="h-auto py-1 text-right">
                 {columna.nombre}
                 {columna.maximo != null && (
                   <>
@@ -184,8 +184,8 @@ function TablaLote({
                     </span>
                   )}
                 </TableCell>
-                {columnas.map((columna) => (
-                  <TableCell key={columna.nombre} numeric className="whitespace-nowrap">
+                {columnas.map((columna, indiceColumna) => (
+                  <TableCell key={`${indiceColumna}-${columna.nombre}`} numeric className="whitespace-nowrap">
                     {formatNumber(puntos.get(columna.nombre))}
                   </TableCell>
                 ))}
@@ -235,13 +235,16 @@ function TablaLote({
             const texto = textoDiferencia(diferencia);
             const { documento_id, pagina } = diferencia;
             return (
-              <Fragment key={diferencia.criterio ?? "total"}>
+              <Fragment key={`${indice}-${diferencia.criterio ?? "total"}`}>
                 {indice > 0 && " · "}
                 {documento_id != null && pagina != null ? (
                   <Button
                     variant="link"
                     size="sm"
-                    className="h-auto px-0 align-baseline font-semibold md:h-auto"
+                    // `inline` y `whitespace-normal`: el párrafo va fuera del
+                    // contenedor con scroll de la tabla, y un criterio largo en
+                    // una caja `inline-flex nowrap` empujaría la página en móvil.
+                    className="inline h-auto whitespace-normal px-0 text-left align-baseline font-semibold md:h-auto"
                     aria-label={`${texto}, página ${pagina} del acta`}
                     onClick={() =>
                       onVerPagina({ documento_id, page_number: pagina, quote: "", ocr: false })
