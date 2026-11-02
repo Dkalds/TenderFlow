@@ -49,21 +49,18 @@ const TEXTO_ESTADO: Record<Exclude<Puntuaciones["estado"], "ok">, string> = {
 /**
  * El motivo de pérdida que proponen los puntos del acta, o `null`.
  *
- * Sale del lote que contiene la fila propia (confirmada o propuesta). Con una
- * oportunidad de un lote concreto solo vale ese lote, o el del acta que no
- * distingue lotes: proponer el motivo de otro lote sería proponer el de otro
- * contrato.
+ * Sale del lote que contiene la fila propia (confirmada o propuesta). El lote de
+ * la oportunidad no se compara aquí: la API ya acota `lotes` al suyo cuando el
+ * acta lo nombra, y el número de la oportunidad llega crudo mientras el del acta
+ * llega normalizado. Si la fila propia está en varios lotes y sus motivos no
+ * coinciden, ninguno: proponer el de un lote sería proponer el de otro contrato.
  */
 export function motivoSugeridoDe(pursuit: Pursuit): MotivoPerdida | null {
   const lotes = pursuit.adjudicacion?.puntuaciones?.lotes ?? [];
-  const lote = lotes.find(
-    (candidato) =>
-      candidato.fila_propia != null &&
-      (!pursuit.lote_numero ||
-        candidato.lote_numero == null ||
-        candidato.lote_numero === pursuit.lote_numero),
+  const motivos = new Set(
+    lotes.flatMap((lote) => (lote.fila_propia != null && lote.motivo_sugerido ? [lote.motivo_sugerido] : [])),
   );
-  return lote?.motivo_sugerido ?? null;
+  return motivos.size === 1 ? [...motivos][0] : null;
 }
 
 /** «−18,5», «+2», «0»: el menos tipográfico, no el guion. */

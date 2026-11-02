@@ -441,17 +441,49 @@ describe("AdjudicacionDetectada", () => {
       expect(mutateAsync.mock.calls[0][0]).toMatchObject({ outcome: "lost", outcome_reason_code: "precio" });
     });
 
-    it("el motivo sugerido sale del lote de la oportunidad", () => {
+    it("el motivo sugerido sale del lote de la oportunidad, aunque se escriba distinto", () => {
+      // La API ya acota `lotes` al de la oportunidad y normaliza su número («Lote 2» -> «2»):
+      // comparar aquí el crudo de la oportunidad con el normalizado del acta no casaría.
       render(
         <AdjudicacionDetectada
           pursuit={conPuntuaciones(
-            { estado: "ok", lotes: [lote(), lote({ lote_numero: "2", motivo_sugerido: "tecnica" })] },
-            { lote_numero: "2" },
+            { estado: "ok", lotes: [lote({ lote_numero: "2", motivo_sugerido: "tecnica" })] },
+            { lote_numero: "Lote 2" },
           )}
         />,
       );
       fireEvent.click(screen.getByRole("button", { name: /Cerrar como perdida/ }));
       expect(screen.getByRole("combobox", { name: "Motivo de la pérdida" })).toHaveValue("tecnica");
+    });
+
+    it("el motivo sugerido sale del lote donde está la fila propia", () => {
+      render(
+        <AdjudicacionDetectada
+          pursuit={conPuntuaciones({
+            estado: "ok",
+            lotes: [
+              lote({ lote_numero: "1", fila_propia: null, fila_propia_confirmada: false, motivo_sugerido: null }),
+              lote({ lote_numero: "2", motivo_sugerido: "tecnica" }),
+            ],
+          })}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: /Cerrar como perdida/ }));
+      expect(screen.getByRole("combobox", { name: "Motivo de la pérdida" })).toHaveValue("tecnica");
+    });
+
+    it("con la fila propia en varios lotes que no coinciden no propone ninguno", () => {
+      // Proponer el motivo de un lote sería proponer el de otro contrato.
+      render(
+        <AdjudicacionDetectada
+          pursuit={conPuntuaciones({
+            estado: "ok",
+            lotes: [lote(), lote({ lote_numero: "2", motivo_sugerido: "tecnica" })],
+          })}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: /Cerrar como perdida/ }));
+      expect(screen.getByRole("combobox", { name: "Motivo de la pérdida" })).toHaveValue("");
     });
 
     it("sin puntuaciones la tarjeta sigue como antes", () => {
