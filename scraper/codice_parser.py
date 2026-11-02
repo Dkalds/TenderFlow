@@ -34,6 +34,7 @@ from db.database import (
 )
 from observability.logging import get_logger
 from scraper.puerta_tecnologica import MOTIVO_ADMITIDA, senal_tecnologica
+from services.normalization import fold_text
 from shared.dates import to_iso_date, to_iso_datetime
 from shared.geo import es_nuts_de_pais, nuts_to_ccaa
 from shared.identidad_placsp import clave_placsp
@@ -249,6 +250,49 @@ _DOC_REF_TAGS = (
     ("cac:AdditionalDocumentReference", "additional"),
 )
 
+# `cacext:GeneralDocument` lista los documentos que el órgano cuelga del
+# expediente tras la licitación. `cbc:DocumentTypeCode` sale de la lista
+# GeneralContractDocuments-2.08: 12 es el acta del órgano de asistencia (la mesa)
+# y ZZZ es «otros», donde los órganos que no usan el 12 publican igualmente el
+# informe de valoración o la propuesta de adjudicación; ahí solo el nombre
+# distingue. Un 9, 11 o 14 (memoria, aprobación, ofertas anormales) no trae las
+# puntuaciones por licitador, y el nombre de un ZZZ que no casa tampoco.
+_CODIGO_ACTA = "12"
+_CODIGO_OTROS = "ZZZ"
+_NOMBRE_ACTA_RE = re.compile(r"valoraci|criterios autom|adjudicaci|propuesta")
+
+
+def _referencia(node: Any, tipo: str) -> DocumentoReferencia | None:
+    """``DocumentoReferencia`` de un ``*DocumentReference`` UBL, o ``None`` sin URI."""
+    uri = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:URI")
+    if not uri:
+        return None
+    filename = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:FileName") or _text(
+        node, "./cbc:ID"
+    )
+    source_hash = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:DocumentHash")
+    if source_hash:
+        # El base64 puede venir partido en varias líneas dentro del XML;
+        # normalizamos para que el mismo hash no genere dos identidades.
+        source_hash = "".join(source_hash.split())
+    return DocumentoReferencia(
+        tipo=tipo,
+        uri=uri,
+        filename=filename,
+        source_hash=source_hash or None,
+    )
+
+
+def _es_acta(codigo: str | None, nombre: str | None) -> bool:
+    """¿Un ``GeneralDocument`` es el acta (o informe) donde la mesa puntúa las ofertas?"""
+    if codigo == _CODIGO_ACTA:
+        return True
+    return (
+        codigo == _CODIGO_OTROS
+        and nombre is not None
+        and _NOMBRE_ACTA_RE.search(fold_text(nombre)) is not None
+    )
+
 
 def parse_document_references(entry: Any) -> list[DocumentoReferencia]:
     """Extrae los adjuntos (pliegos) referenciados en el CODICE de una entry.
@@ -274,30 +318,26 @@ def parse_document_references(entry: Any) -> list[DocumentoReferencia]:
 
     Una referencia sin URI (adjunto reservado/no publicado, frecuente en
     CODICE) se descarta silenciosamente — no es un error de parseo.
+
+    ``cacext:GeneralDocument/GeneralDocumentDocumentReference`` es otro cajón:
+    los documentos del expediente tras la licitación. De ahí solo entran, con
+    ``tipo="acta"``, el acta de la mesa (código 12) y los «otros» (ZZZ) cuyo
+    nombre habla de valoración, criterios automáticos, adjudicación o propuesta
+    (:func:`_es_acta`). El resto de ``GeneralDocument`` no se guarda: no trae las
+    puntuaciones por licitador y cada documento de más cuesta una descarga.
     """
     cfs = "./cacext:ContractFolderStatus"
     refs: list[DocumentoReferencia] = []
     for tag, tipo in _DOC_REF_TAGS:
         for node in entry.xpath(f"{cfs}/{tag}", namespaces=NS):
-            uri = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:URI")
-            if not uri:
-                continue
-            filename = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:FileName") or _text(
-                node, "./cbc:ID"
-            )
-            source_hash = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:DocumentHash")
-            if source_hash:
-                # El base64 puede venir partido en varias líneas dentro del XML;
-                # normalizamos para que el mismo hash no genere dos identidades.
-                source_hash = "".join(source_hash.split())
-            refs.append(
-                DocumentoReferencia(
-                    tipo=tipo,
-                    uri=uri,
-                    filename=filename,
-                    source_hash=source_hash or None,
-                )
-            )
+            ref = _referencia(node, tipo)
+            if ref is not None:
+                refs.append(ref)
+    general_documents = f"{cfs}/cacext:GeneralDocument/cacext:GeneralDocumentDocumentReference"
+    for node in entry.xpath(general_documents, namespaces=NS):
+        ref = _referencia(node, "acta")
+        if ref is not None and _es_acta(_text(node, "./cbc:DocumentTypeCode"), ref.filename):
+            refs.append(ref)
     return refs
 
 

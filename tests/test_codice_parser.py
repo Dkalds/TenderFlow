@@ -1067,3 +1067,130 @@ class TestParseDocumentReferences:
         # No es una entry SAP -> parse_entry (con filtro de tecnología) descarta.
         # Lo relevante es que no lance ni devuelva algo con un campo 'documentos'.
         assert lic is None or not hasattr(lic, "documentos")
+
+
+# ─── actas de la mesa en cacext:GeneralDocument ─────────────────────────────
+
+
+def _make_entry_con_general_documents(
+    docs: list[tuple[str, str, str | None]],
+    lic_id: str = "GD-001",
+) -> str:
+    """Entry con ``cacext:GeneralDocument`` (los documentos que PLACSP cuelga del expediente).
+
+    Cada tupla es ``(type_code, filename, uri)`` y reproduce la forma del fixture
+    golden 19 (real): ``cbc:ID``, ``cbc:DocumentTypeCode`` y
+    ``cac:Attachment/cac:ExternalReference/{cbc:URI,cbc:FileName}``. Con
+    ``uri=None`` no hay ``cac:Attachment`` (documento reservado o no publicado).
+    """
+    cbc = _NS["cbc"]
+    cac = _NS["cac"]
+    cacext = _NS["cacext"]
+    cbcext = _NS["cbcext"]
+
+    def _general_document(i: int, type_code: str, filename: str, uri: str | None) -> str:
+        adjunto = (
+            "<cac:Attachment><cac:ExternalReference>"
+            f"<cbc:URI>{uri}</cbc:URI><cbc:FileName>{filename}</cbc:FileName>"
+            "</cac:ExternalReference></cac:Attachment>"
+            if uri is not None
+            else ""
+        )
+        return (
+            "<cacext:GeneralDocument><cacext:GeneralDocumentDocumentReference>"
+            f"<cbc:ID>2026-doc-{i}</cbc:ID>"
+            f"<cbc:DocumentTypeCode>{type_code}</cbc:DocumentTypeCode>"
+            f"{adjunto}"
+            "</cacext:GeneralDocumentDocumentReference></cacext:GeneralDocument>"
+        )
+
+    general_documents = "".join(
+        _general_document(i, type_code, filename, uri)
+        for i, (type_code, filename, uri) in enumerate(docs)
+    )
+
+    return textwrap.dedent(f"""\
+        <entry xmlns="http://www.w3.org/2005/Atom"
+               xmlns:cbc="{cbc}"
+               xmlns:cac="{cac}"
+               xmlns:cacext="{cacext}"
+               xmlns:cbcext="{cbcext}">
+          <id>https://example.com/{lic_id}</id>
+          <title>Contrato con documentos generales</title>
+          <updated>2024-03-15T00:00:00Z</updated>
+          <cacext:ContractFolderStatus>
+            <cbc:ContractFolderID>{lic_id}</cbc:ContractFolderID>
+            <cbcext:ContractFolderStatusCode>ADJ</cbcext:ContractFolderStatusCode>
+            {general_documents}
+          </cacext:ContractFolderStatus>
+        </entry>
+    """)
+
+
+class TestActasGeneralDocument:
+    """``GeneralDocument`` mezcla actas con memorias, anuncios e informes: solo
+    entran las que sirven para leer las puntuaciones por licitador."""
+
+    def _get_entry(self, entry_xml: str):
+        feed = _make_atom_feed(entry_xml)
+        root = etree.fromstring(feed)
+        return root.find("{http://www.w3.org/2005/Atom}entry")
+
+    def _refs(self, docs: list[tuple[str, str, str | None]]):
+        return parse_document_references(self._get_entry(_make_entry_con_general_documents(docs)))
+
+    def test_codigo_12_entra_como_acta(self):
+        refs = self._refs(
+            [("12", "Acta del órgano de asistencia", "https://contrataciondelestado.es/a12")]
+        )
+        assert [(r.tipo, r.uri, r.filename) for r in refs] == [
+            ("acta", "https://contrataciondelestado.es/a12", "Acta del órgano de asistencia")
+        ]
+
+    @pytest.mark.parametrize(
+        "nombre",
+        [
+            "Informe de valoración",
+            "Informe criterios automaticos",
+            "Adjudicación definitiva 0027",
+            "Propuesta de adjudicación",
+        ],
+    )
+    def test_zzz_con_nombre_de_valoracion_entra(self, nombre):
+        refs = self._refs([("ZZZ", nombre, "https://contrataciondelestado.es/zzz")])
+        assert [(r.tipo, r.filename) for r in refs] == [("acta", nombre)]
+
+    @pytest.mark.parametrize(
+        "codigo,nombre",
+        [
+            ("9", "Memoria justificativa"),
+            ("11", "Aprobación del expediente"),
+            ("14", "Informe ofertas anormales"),
+            ("ZZZ", "Anuncio de licitación"),
+        ],
+    )
+    def test_otros_general_documents_se_ignoran(self, codigo, nombre):
+        assert self._refs([(codigo, nombre, "https://contrataciondelestado.es/otro")]) == []
+
+    def test_general_document_sin_uri_se_descarta(self):
+        assert self._refs([("12", "Acta", None)]) == []
+
+    def test_una_acta_no_desplaza_a_los_pliegos(self):
+        """Las actas se suman a los adjuntos legal/technical/additional, no los sustituyen."""
+        refs = self._refs([("12", "Acta", "https://contrataciondelestado.es/a12")])
+        assert [r.tipo for r in refs] == ["acta"]
+
+        entry = self._get_entry(_make_entry_with_documentos())
+        assert {r.tipo for r in parse_document_references(entry)} == {"legal", "technical"}
+
+    def test_fixture_19_trae_sus_dos_actas(self):
+        from pathlib import Path
+
+        from tests.test_codice_parser_golden import _parse_fixture
+
+        ruta = Path(__file__).parent / "fixtures" / "placsp" / "19_multilote_adjudicado_real.xml"
+        parsed = _parse_fixture(ruta)
+        assert parsed is not None
+        actas = [d for d in parsed["documentos"] if d["tipo"] == "acta"]
+        assert len(actas) == 2
+        assert all(d["filename"] == "Acta del órgano de asistencia" for d in actas)

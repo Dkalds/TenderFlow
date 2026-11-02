@@ -366,7 +366,7 @@ class DocumentoReferencia:
     parser nunca conoce (``sha256``, ``storage_key``…).
     """
 
-    tipo: str  # legal | technical | additional
+    tipo: str  # legal | technical | additional | acta
     uri: str
     filename: str | None = None
     # ``cbc:DocumentHash`` del CODICE: hash del contenido publicado, y la única
