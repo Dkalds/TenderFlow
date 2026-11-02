@@ -1,4 +1,4 @@
-"""Repositorio de puntuaciones del acta (v169) y eventos de fila confirmada.
+"""Repositorio de puntuaciones del acta (v170) y eventos de fila confirmada.
 
 Todo contra Postgres (``tmp_db``): lo que se prueba es SQL —el reemplazo
 transaccional del expediente, la cola de expedientes pendientes, el cruce de

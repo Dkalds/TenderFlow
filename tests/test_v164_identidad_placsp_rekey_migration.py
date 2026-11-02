@@ -280,7 +280,7 @@ def _sembrar(c: Any) -> int:
     return int(org)
 
 
-#: FK a ``licitaciones`` nacidas después de v164 (v169: las tablas del acta). v164
+#: FK a ``licitaciones`` nacidas después de v164 (v170: las tablas del acta). v164
 #: es append-only y no las conoce; sus guardas las ven en el esquema completo, así
 #: que estos tests las suman a la lista como la sumaría una re-key futura.
 _POSTERIORES_A_V164: list[tuple[str, str, str]] = [

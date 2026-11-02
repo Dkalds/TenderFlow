@@ -1,4 +1,4 @@
-"""v169: ``documentos.tipo`` admite ``'acta'`` y nacen las tablas de puntuaciones del acta.
+"""v170: ``documentos.tipo`` admite ``'acta'`` y nacen las tablas de puntuaciones del acta.
 
 Dos niveles, como ``tests/test_v167_rekey_placsp_organo_reciente_migration.py``.
 Sin base: la forma de lo que emite la revisión (encadenado, orden del CHECK,
@@ -19,7 +19,7 @@ import psycopg
 import pytest
 
 _VERSIONES = Path(__file__).resolve().parents[1] / "db" / "alembic" / "versions"
-_NOMBRE = "v169_actas_puntuaciones"
+_NOMBRE = "v170_actas_puntuaciones"
 
 _LIC = "placsp:10000140020261:ACTA/2026"
 
@@ -48,10 +48,10 @@ def _emitido(funcion: str, *, dialecto: str = "postgresql") -> tuple[list[str], 
 # ---------------------------------------------------------------------------
 
 
-def test_encadena_con_v168() -> None:
+def test_encadena_con_v169() -> None:
     modulo = _cargar()
     assert modulo.revision == _NOMBRE
-    assert modulo.down_revision == "v168_mv_canonicas_universo_producto"
+    assert modulo.down_revision == "v169_radar_dismissals_desglose"
 
 
 def test_fuera_de_postgres_no_emite_nada() -> None:

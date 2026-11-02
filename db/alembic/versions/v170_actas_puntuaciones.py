@@ -1,7 +1,7 @@
-"""v169: ``documentos.tipo`` admite ``'acta'`` y nacen las tablas de puntuaciones del acta.
+"""v170: ``documentos.tipo`` admite ``'acta'`` y nacen las tablas de puntuaciones del acta.
 
-Revision ID: v169_actas_puntuaciones
-Revises: v168_mv_canonicas_universo_producto
+Revision ID: v170_actas_puntuaciones
+Revises: v169_radar_dismissals_desglose
 Create Date: 2026-11-02
 
 Qué falla hoy
@@ -74,8 +74,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "v169_actas_puntuaciones"
-down_revision: str | Sequence[str] | None = "v168_mv_canonicas_universo_producto"
+revision: str = "v170_actas_puntuaciones"
+down_revision: str | Sequence[str] | None = "v169_radar_dismissals_desglose"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

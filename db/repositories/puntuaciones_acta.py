@@ -1,4 +1,4 @@
-"""Persistencia de las puntuaciones que el acta de la mesa da a cada licitador (v169).
+"""Persistencia de las puntuaciones que el acta de la mesa da a cada licitador (v170).
 
 Dos tablas, las dos de mercado (sin ``organization_id``):
 

@@ -136,13 +136,13 @@ lxml, pytest; Next.js + React + vitest en `web/`.
 
 ---
 
-### Task 2: Migración v169 y catálogo del MCP
+### Task 2: Migración v170 y catálogo del MCP
 
 **Files:**
-- Create: `db/alembic/versions/v169_actas_puntuaciones.py`, o el número siguiente al head de `master`, que hay que comprobar antes de crearla porque hay PR abiertos.
+- Create: `db/alembic/versions/v170_actas_puntuaciones.py` (el plan decía v169; `master` la tomó con `v169_radar_dismissals_desglose` antes de integrar, así que cuelga de ella).
 - Modify: `mcp_server/catalogo.py` (dos entradas en el bloque `_DOC`)
 - Modify: `scripts/setup_pg_role_mcp.sql` (regenerado)
-- Test: `tests/test_migracion_v169_actas.py` (integration, `tmp_db`)
+- Test: `tests/test_migracion_v170_actas.py` (integration, `tmp_db`)
 
 **Interfaces:**
 - Produces: CHECK `documentos.tipo IN ('legal','technical','additional','acta')`, más las tablas `acta_extracciones` y `acta_puntuaciones` exactamente como el spec §5.
@@ -162,7 +162,7 @@ lxml, pytest; Next.js + React + vitest en `web/`.
 
 - [ ] **Step 2: Escribir la revisión**
 
-  `revision = "v169_actas_puntuaciones"`, `down_revision` el head real. Solo Postgres, con el mismo guard que las revisiones vecinas.
+  `revision = "v170_actas_puntuaciones"`, `down_revision` el head real. Solo Postgres, con el mismo guard que las revisiones vecinas.
 
   `upgrade()`:
   1. Busca el nombre del CHECK de `tipo` en `pg_constraint` (`conrelid = 'documentos'::regclass AND contype = 'c' AND pg_get_constraintdef(oid) LIKE '%tipo%'`), lo borra y crea `ck_documentos_tipo`. El nombre se busca porque v56 lo declaró inline.
@@ -192,14 +192,14 @@ lxml, pytest; Next.js + React + vitest en `web/`.
   Run: `ENV=dev PYTHONPATH="$PWD" python -m pytest tests/test_mcp_catalogo.py -q`
   Expected: PASS.
 
-  Run: `bash scripts/dev/wsl_run.sh python -m pytest tests/test_migracion_v169_actas.py tests/test_mcp_catalogo_integration.py -q`
+  Run: `bash scripts/dev/wsl_run.sh python -m pytest tests/test_migracion_v170_actas.py tests/test_mcp_catalogo_integration.py -q`
   Expected: PASS. Si WSL no está disponible, anotarlo como no ejecutado.
 
 - [ ] **Step 5: Commit**
 
   ```bash
-  git add db/alembic/versions/v169_actas_puntuaciones.py mcp_server/catalogo.py scripts/setup_pg_role_mcp.sql tests/test_migracion_v169_actas.py
-  git commit -m "feat(db): v169 — documentos tipo acta y tablas de puntuaciones del acta"
+  git add db/alembic/versions/v170_actas_puntuaciones.py mcp_server/catalogo.py scripts/setup_pg_role_mcp.sql tests/test_migracion_v170_actas.py
+  git commit -m "feat(db): v170 — documentos tipo acta y tablas de puntuaciones del acta"
   ```
 
 ---

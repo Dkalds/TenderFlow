@@ -1,4 +1,4 @@
-"""Lee las puntuaciones por licitador del acta de la mesa y las guarda (v169).
+"""Lee las puntuaciones por licitador del acta de la mesa y las guarda (v170).
 
 Tres entradas. Las dos primeras, sin contexto de tenant (el acta es dato de mercado):
 
