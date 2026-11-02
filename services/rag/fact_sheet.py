@@ -12,7 +12,7 @@ from annotated_types import MaxLen
 from pydantic import ValidationError
 from pydantic.fields import FieldInfo
 
-from db.repositories.documentos import DocumentosRepository
+from db.repositories.documentos import TIPOS_PLIEGO, DocumentosRepository
 from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
 from llm.client import DEFAULT_MODEL, stream_llm_response
 from llm.json_utils import extract_json_object
@@ -613,7 +613,12 @@ _ONDEMAND_MAX_DOCUMENTS = 8
 _DOC_TIPO_PRIORITY = {"legal": 0, "technical": 1}
 
 
-def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
+def ensure_documents_ready(
+    licitacion_id: str,
+    *,
+    tipos: frozenset[str] = TIPOS_PLIEGO,
+    max_documentos: int = _ONDEMAND_MAX_DOCUMENTS,
+) -> dict[str, int]:
     """Descarga+extrae bajo demanda los adjuntos pendientes de una licitación.
 
     El cron nocturno drena el backlog global por lotes y una licitación
@@ -631,6 +636,12 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
     sale el pliego, y cada intento son cuatro reintentos con espera —76 s para
     un expediente de cuatro documentos, medido el 2026-10-04— para acabar
     dejando la fila en ``error``.
+
+    ``tipos`` acota qué documentos entran, y no solo cuáles se descargan:
+    ``any_extracted`` también se calcula sobre ellos, de modo que un acta ya
+    leída no cuenta como pliego extraído (ni al revés). Por defecto son los
+    pliegos; la lectura de las actas pide ``tipos={"acta"}`` (puntuaciones del
+    acta, spec §3.3). ``max_documentos`` es el tope de intentos por llamada.
     """
     if not _pdf_extraction_available():
         log.warning("fact_sheet_ondemand_fetch_skipped_no_pliegos_extra")
@@ -639,7 +650,8 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
     from scraper.document_fetcher import fetch_and_extract
 
     repo = DocumentosRepository()
-    rows = repo.list_by_licitacion(licitacion_id)
+    # Solo los tipos pedidos: por defecto las actas quedan fuera (spec §3.3).
+    rows = [row for row in repo.list_by_licitacion(licitacion_id) if row.get("tipo") in tipos]
     descargables = [row for row in rows if not row.get("sin_publicar")]
     pending = [row for row in descargables if row.get("status") == "pending"]
     any_extracted = any(row.get("status") == "extracted" for row in rows)
@@ -666,7 +678,7 @@ def ensure_documents_ready(licitacion_id: str) -> dict[str, int]:
         # ``sin_texto``: PDF escaneado sin capa de texto que el OCR no leyó.
         "sin_texto": 0,
     }
-    for row in candidates[:_ONDEMAND_MAX_DOCUMENTS]:
+    for row in candidates[:max_documentos]:
         counts["attempted"] += 1
         try:
             outcome = fetch_and_extract(row)
