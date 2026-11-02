@@ -25,7 +25,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
 | Licitaciones y fuente | 15 | 201 | 66 |
-| Documentos y pliegos | 6 | 67 | 12 |
+| Documentos y pliegos | 6 | 67 | 13 |
 | Empresas y mercado | 6 | 34 | 8 |
 | Organizaciones y oportunidades | 15 | 143 | 31 |
 | Identidad, acceso y auditoría | 16 | 112 | 25 |
@@ -33,7 +33,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 23 | 182 | 35 |
-| **Total** | **106** | **974** | **240** |
+| **Total** | **106** | **974** | **241** |
 
 ## Licitaciones y fuente
 
@@ -406,7 +406,7 @@ Claves: `PRIMARY KEY (licitacion_id)`
 
 Claves: `PRIMARY KEY (id)`
 
-Índices: `uq_acta_puntuaciones_fila` (único)
+Índices: `idx_acta_puntuaciones_documento`, `uq_acta_puntuaciones_fila` (único)
 
 ### `documento_chunks`
 

@@ -40,7 +40,10 @@ no un FK a ``lotes.id``, que ``replace_lotes`` reasigna en cada re-ingesta.
 ``documento_id`` lleva ``ON DELETE CASCADE``: sin el documento no hay cita que
 la respalde, y una cifra sin cita no se guarda (ADR-014). La escritura la hace
 ``db.repositories.puntuaciones_acta`` borrando y volviendo a insertar el
-expediente en una transacción; repetirla no duplica.
+expediente en una transacción; repetirla no duplica. El cascade necesita
+``idx_acta_puntuaciones_documento``: el único índice de la tabla empieza por
+``licitacion_id`` y, sin uno por ``documento_id``, cada borrado de un documento
+recorre ``acta_puntuaciones`` entera.
 
 Sin ``CHECK`` sobre ``puntos``/``puntos_max``: son lo que el modelo leyó del
 acta, ya validado contra su cita antes de escribirlo, y un valor raro no debe
@@ -206,6 +209,9 @@ def upgrade() -> None:
         "CREATE UNIQUE INDEX uq_acta_puntuaciones_fila ON acta_puntuaciones "
         "(licitacion_id, COALESCE(lote_numero, ''), licitador_normalizado, COALESCE(criterio, ''))"
     )
+    # Para el `ON DELETE CASCADE` de `documento_id` (ver «Forma, y por qué»). El
+    # downgrade lo arrastra al quitar la tabla.
+    op.create_index("idx_acta_puntuaciones_documento", "acta_puntuaciones", ["documento_id"])
     _proteger("acta_extracciones")
     _proteger("acta_puntuaciones", secuencia="acta_puntuaciones_id_seq")
 

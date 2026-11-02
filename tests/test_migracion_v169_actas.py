@@ -81,6 +81,14 @@ def test_upgrade_crea_las_dos_tablas_y_la_unicidad_que_no_ignora_los_nulos() -> 
     assert "COALESCE(criterio, '')" in sql
 
 
+def test_upgrade_indexa_documento_id_para_el_cascade() -> None:
+    """Sin índice por ``documento_id``, borrar un documento recorre la tabla entera."""
+    _, op_falso = _emitido("upgrade")
+    op_falso.create_index.assert_called_once_with(
+        "idx_acta_puntuaciones_documento", "acta_puntuaciones", ["documento_id"]
+    )
+
+
 def test_downgrade_borra_las_actas_antes_de_estrechar_el_check() -> None:
     """Con filas ``acta`` el ``ADD CONSTRAINT`` del vocabulario viejo fallaría."""
     emitido, op_falso = _emitido("downgrade")
@@ -189,6 +197,11 @@ def test_borrar_documento_borra_sus_puntuaciones(tmp_db: Any) -> None:
 
     with connect() as c:
         documento = _sembrar_acta(c)
+        c.execute(
+            "INSERT INTO acta_extracciones (licitacion_id, status, extraction_version, "
+            " documentos_leidos) VALUES (%s, 'ok', 'acta-puntuaciones-v1', 1)",
+            (_LIC,),
+        )
         _puntuacion(c, documento)
         _puntuacion(c, documento, criterio="Oferta económica")
     with connect() as c:
@@ -196,3 +209,17 @@ def test_borrar_documento_borra_sus_puntuaciones(tmp_db: Any) -> None:
         assert _cuenta(c, "acta_puntuaciones") == 0
         # La licitación y su estado de extracción no dependen del documento.
         assert _cuenta(c, "licitaciones") == 1
+        assert _cuenta(c, "acta_extracciones") == 1
+
+
+def test_acta_puntuaciones_tiene_indice_por_documento(tmp_db: Any) -> None:
+    from db.database import connect
+
+    with connect() as c:
+        indices = {
+            fila[0]
+            for fila in c.execute(
+                "SELECT indexname FROM pg_indexes WHERE tablename = 'acta_puntuaciones'"
+            ).fetchall()
+        }
+    assert "idx_acta_puntuaciones_documento" in indices
