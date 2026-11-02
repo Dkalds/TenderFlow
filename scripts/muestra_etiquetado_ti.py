@@ -28,8 +28,8 @@ Qué NO hace
 - No etiqueta nada, ni con reglas ni con el LLM: una fila sin ``es_ti`` no se
   importa (una fila sin etiqueta **no** es un negativo, spec §3.5).
 - No escribe en la BD directamente: ``importar`` pasa por ``POST
-  /api/v1/feedback`` con una API key con scope ``feedback:write``, que es el
-  camino auditado (``FEEDBACK_SUBMITTED``) por el que entra toda etiqueta humana.
+  /api/v1/feedback`` con una API key con scope ``feedback:write`` de una cuenta
+  administradora, que es el camino auditado (``FEEDBACK_SUBMITTED``) por el que entra toda etiqueta humana.
 - No promociona ningún modelo.
 
 Instrucciones de etiquetado: ``docs/runbooks/etiquetado-ti.md``.

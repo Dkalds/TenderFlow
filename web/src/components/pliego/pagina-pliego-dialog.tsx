@@ -17,6 +17,7 @@ import type { EvidenceRef } from "@/lib/api-types";
 import { ApiError } from "@/lib/api-client";
 import { registrarEvento } from "@/lib/analytics";
 import { espacioActual } from "@/lib/espacio-actual";
+import { urlHttp } from "@/lib/url-http";
 
 /**
  * F2.5 — visor de página del pliego con la cita resaltada.
@@ -196,7 +197,7 @@ export function PaginaPliegoDialog({
             </Button>
           )}
           <div className="flex-1" />
-          {data?.uri && (
+          {data?.uri && urlHttp(data.uri) && (
             <a
               href={`${data.uri}#page=${pagina}`}
               target="_blank"

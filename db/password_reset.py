@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from db.database import connect, now_utc_iso
+from db.database import connect, connect_read, now_utc_iso
 from db.sessions import _hash_token
 
 
@@ -54,6 +54,12 @@ def create_reset_token_for_user(user_id: int, token_hash: str, expires_at: str) 
     buzón que la persona acaba de escribir, y para quien entró solo por Google
     es la forma de ponerse su primera contraseña sin que el endpoint público
     revele qué cuentas no tienen una.
+
+    **No gasta los enlaces pendientes.** Lo dispara un anónimo con solo repetir
+    el alta con ese correo, así que gastarlos le permitía matar el enlace que el
+    titular acababa de pedir. Los dos viven hasta caducar o hasta que uno se
+    canjee, que gasta todos (:func:`consume_reset_token`); el tope por correo
+    del alta acota cuántos puede haber.
     """
     with connect() as connection:
         row = connection.execute(
@@ -63,16 +69,29 @@ def create_reset_token_for_user(user_id: int, token_hash: str, expires_at: str) 
         if row is None:
             return False
         connection.execute(
-            "UPDATE password_reset_tokens SET used_at = NOW() "
-            "WHERE user_id = %s AND used_at IS NULL",
-            (user_id,),
-        )
-        connection.execute(
             "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) "
             "VALUES (%s, %s, %s)",
             (user_id, token_hash, expires_at),
         )
     return True
+
+
+def reset_token_vigente(token_hash: str) -> bool:
+    """¿Hay un enlace de recuperación sin gastar ni caducar con este hash?
+
+    Lectura sin bloqueos, para que ``POST /auth/password-reset/confirm`` no
+    calcule un argon2 de 64 MiB por un token que no existe. No sustituye a
+    :func:`consume_reset_token`, que vuelve a comprobarlo dentro de su
+    transacción: entre las dos puede gastarlo otra petición.
+    """
+    with connect_read() as connection:
+        fila = connection.execute(
+            "SELECT 1 FROM password_reset_tokens prt JOIN users u ON u.id = prt.user_id "
+            "WHERE prt.token_hash = %s AND prt.used_at IS NULL AND prt.expires_at > NOW() "
+            "AND u.deactivated_at IS NULL",
+            (token_hash,),
+        ).fetchone()
+    return fila is not None
 
 
 def consume_reset_token(token_hash: str, password_hash: str) -> int | None:

@@ -27,6 +27,7 @@ import type {
   ChecklistVeredicto,
 } from "@/hooks/use-pursuit-checklist";
 import type { DocumentoSummary } from "@/lib/api-types";
+import { urlHttp } from "@/lib/url-http";
 
 const VEREDICTO_BADGE: Record<
   ChecklistVeredicto,
@@ -93,7 +94,7 @@ function citaPresentation(
   if (!doc) return { label: `Documento ${documentoId} · página ${pageNumber}`, href: null };
   return {
     label: `${doc.filename ?? doc.tipo} · página ${pageNumber}`,
-    href: doc.uri ? `${doc.uri}#page=${pageNumber}` : null,
+    href: urlHttp(doc.uri) ? `${doc.uri}#page=${pageNumber}` : null,
   };
 }
 

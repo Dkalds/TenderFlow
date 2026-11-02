@@ -72,6 +72,7 @@ def ejecutar_ficha_pliego(job: Job) -> dict[str, Any]:
         licitacion_id,
         model=str(job.payload["model"]),
         budget_subject=job.payload.get("budget_subject"),
+        budget_org=None if job.organization_id is None else str(job.organization_id),
     )
     ficha = get_fact_sheet(licitacion_id)
     if ficha is None:

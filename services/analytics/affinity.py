@@ -21,6 +21,7 @@ import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from itertools import islice
 from typing import Any, Literal
 
 import numpy as np
@@ -60,10 +61,32 @@ class AffinityBatch:
     method: str = "unavailable"
 
 
+#: Tope de keywords de afinidad que se puntúan, y de caracteres por keyword.
+#:
+#: ``_keyword_pattern`` compila **una** alternancia con todas y la evalúa sobre
+#: las ~1.600 candidatas del Radar en cada carga: con decenas de miles de
+#: keywords de tres letras, la regex bloqueaba el GIL de todo el proceso. El
+#: perfil las rechaza con 422 (``UserProfileBody``); aquí se acota también lo
+#: que ya estaba guardado, que no pasó por esa validación.
+MAX_KEYWORDS_AFINIDAD = 50
+MAX_LONGITUD_KEYWORD = 60
+
+
 def _clean(values: Sequence[object] | None) -> tuple[str, ...]:
     if not values:
         return ()
     return tuple(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
+
+
+def _clean_keywords(values: Sequence[object] | None) -> tuple[str, ...]:
+    """:func:`_clean` más el tope de :data:`MAX_KEYWORDS_AFINIDAD`.
+
+    Una keyword demasiado larga se descarta en vez de recortarla: cortada a mitad
+    de palabra casaría con otra cosa. Se descartan antes de contar, así que una
+    larga no gasta un hueco de las 50.
+    """
+    limpias = (kw for kw in _clean(values) if len(kw) <= MAX_LONGITUD_KEYWORD)
+    return tuple(islice(limpias, MAX_KEYWORDS_AFINIDAD))
 
 
 def build_portfolio(
@@ -86,7 +109,7 @@ def build_portfolio(
             if text:
                 contract_texts.append(text)
     return AffinityPortfolio(
-        keywords=_clean(keywords),
+        keywords=_clean_keywords(keywords),
         cpvs=_clean(cpvs),
         contracts=_clean(contract_texts),
     )
@@ -129,7 +152,7 @@ def build_portfolio_from_capabilities(
         if texto:
             contracts.append(texto)
     return AffinityPortfolio(
-        keywords=_clean(keywords),
+        keywords=_clean_keywords(keywords),
         cpvs=(),
         contracts=_clean(contracts),
     )

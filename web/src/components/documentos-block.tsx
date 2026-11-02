@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { useFactSheetDocumentos } from "@/hooks/use-tender-fact-sheet";
 import type { DocumentoSummary } from "@/lib/api-types";
 import { documentosNuevos } from "@/lib/documento-nuevo";
+import { urlHttp } from "@/lib/url-http";
 import { ExternalLink, FileText } from "lucide-react";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { cn } from "@/lib/utils";
@@ -160,7 +161,7 @@ export function DocumentosBlock({
                 className={cn("mt-0.5 h-4 w-4 shrink-0", apagado ? "text-muted-foreground/60" : "text-muted-foreground")}
               />
               <div className="min-w-0 flex-1">
-                {sinPublicar ? (
+                {sinPublicar || !urlHttp(doc.uri) ? (
                   <span className="break-all text-tf-body text-muted-foreground">
                     {doc.filename ?? etiquetaTipo(doc)}
                   </span>

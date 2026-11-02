@@ -129,6 +129,26 @@ def test_is_totp_required_true_when_confirmed(tmp_db):
     assert is_totp_required(1) is True
 
 
+def test_has_confirmed_totp_sin_descifrar_el_secreto(tmp_db, monkeypatch):
+    """El MCP no tiene ``TOTP_ENCRYPTION_KEY``: saber que hay TOTP no puede depender de descifrar."""
+    _, _ = tmp_db
+    from db import totp
+    from db.totp import confirm_totp, has_confirmed_totp, save_totp_secret
+
+    assert has_confirmed_totp(1) is False  # sin fila
+    save_totp_secret(1, "UNCONF")
+    assert has_confirmed_totp(1) is False  # sin confirmar
+    confirm_totp(1)
+    assert has_confirmed_totp(1) is True
+
+    def no_descifra(_: str) -> str:
+        raise totp.TOTPDecryptionError("sin clave")
+
+    monkeypatch.setattr(totp, "decrypt_totp_secret", no_descifra)
+    assert totp.is_totp_required(1) is False  # el descifrado fallido lo oculta...
+    assert has_confirmed_totp(1) is True  # ...y esta función no se entera
+
+
 # ---------------------------------------------------------------------------
 # recovery codes
 # ---------------------------------------------------------------------------

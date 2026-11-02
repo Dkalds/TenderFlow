@@ -63,6 +63,11 @@ COLUMNA_FECHA: dict[str, str] = {
     # Un error que sigue pasando cada día no puede caducar por haber
     # empezado hace un mes.
     "client_errors": "ultima_vez",
+    "asistente_feedback": "created_at",
+    # Por fecha de caducidad y no de creación: una invitación vive hasta que
+    # caduca y solo entonces empieza a contar el plazo.
+    "organization_invitations": "expires_at",
+    "domain_events": "created_at",
 }
 
 
@@ -104,7 +109,8 @@ POLITICA_RETENCION: tuple[ReglaRetencion, ...] = (
         "audit_log",
         "RETENTION_AUDIT_LOG_DAYS",
         "Trazabilidad de acciones de usuario para investigar un incidente. "
-        "Encadenado por SHA-256: se purga por el extremo antiguo, nunca por el medio.",
+        "Encadenado por HMAC-SHA-256: se purga por el extremo antiguo, nunca por el "
+        "medio, y la purga firma un ancla para que la cadena siga verificando.",
     ),
     ReglaRetencion(
         "failed_extractions",
@@ -164,6 +170,24 @@ POLITICA_RETENCION: tuple[ReglaRetencion, ...] = (
         "RETENTION_CLIENT_ERRORS_DAYS",
         "Huella sin PII de un fallo de JavaScript. No hace falta guardarla más de "
         "lo que dura investigar una regresión.",
+    ),
+    ReglaRetencion(
+        "asistente_feedback",
+        "RETENTION_ASISTENTE_FEEDBACK_DAYS",
+        "Votos sobre las respuestas del asistente. La pregunta en texto solo existe "
+        "con el opt-in de quien votó; el voto agregado deja de aportar pasado un año.",
+    ),
+    ReglaRetencion(
+        "organization_invitations",
+        "RETENTION_ORG_INVITATIONS_DAYS",
+        "Invitaciones a una organización, desde que **caducan**. Guardan el correo de "
+        "quien aún puede no tener cuenta; el hecho de la invitación queda en el audit log.",
+    ),
+    ReglaRetencion(
+        "domain_events",
+        "RETENTION_DOMAIN_EVENTS_DAYS",
+        "Outbox de eventos. Solo los **ya despachados**: uno pendiente es trabajo por "
+        "hacer. El payload puede nombrar a quien originó el evento.",
     ),
     ReglaRetencion(
         "rate_limits",
@@ -260,6 +284,9 @@ def run_retention(
                 _plazo("password_reset_tokens"),
             ),  # pragma: allowlist secret
             ("client_errors", _plazo("client_errors")),
+            ("asistente_feedback", _plazo("asistente_feedback")),
+            ("organization_invitations", _plazo("organization_invitations")),
+            ("domain_events", _plazo("domain_events")),
         )
     ]
 

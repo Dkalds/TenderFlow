@@ -33,6 +33,7 @@ import textwrap
 from collections.abc import Iterable, Sequence
 from datetime import UTC
 from enum import IntEnum
+from html import escape as _escape_html
 from typing import Any, Final, Literal
 
 from observability.logging import get_logger
@@ -136,9 +137,17 @@ def _contar_fallo_entrega(motivo: str) -> None:
 def _build_html(level: AlertLevel, title: str, body: str, context: dict[str, Any]) -> str:
     color = _LEVEL_COLORS[level]
     emoji = _LEVEL_EMOJI[level]
+    # Todo lo que llega de fuera se escapa: el título, el cuerpo y el contexto
+    # llevan texto de terceros (el formulario público de acceso, títulos y
+    # empresas del feed de licitaciones, mensajes de `client-error`) y el correo
+    # sale con el remitente legítimo, así que un `<a href>` inyectado sería un
+    # enlace de phishing con la firma de TenderFlow.
+    title = _escape_html(title)
+    body = _escape_html(body)
     ctx_rows = "".join(
-        f"<tr><td style='padding:4px 12px 4px 0;color:#555;font-weight:bold'>{k}</td>"
-        f"<td style='padding:4px 0'>{v}</td></tr>"
+        f"<tr><td style='padding:4px 12px 4px 0;color:#555;font-weight:bold'>"
+        f"{_escape_html(str(k))}</td>"
+        f"<td style='padding:4px 0'>{_escape_html(str(v))}</td></tr>"
         for k, v in context.items()
     )
     ctx_table = (

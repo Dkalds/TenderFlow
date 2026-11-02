@@ -38,6 +38,13 @@ El `organization_id` es opcional: sin él, el webhook es de tu organización
 personal. `event_types` acepta tipos del catálogo y comodines (`*`,
 `pursuit.*`, `licitacion.*`…).
 
+**Quién puede gestionarlos.** Solo `owner` y `admin` de la organización, para
+leer, crear, editar, probar, rotar el secret y reenviar entregas. La URL de un
+webhook entrante de Slack o Teams es un secreto portador (quien la tiene publica
+en el canal), así que ni `member` ni `viewer` la leen. Cuando alguien sale de la
+organización o se le retira, sus webhooks (`created_by`) quedan **inactivos**:
+un `owner` o `admin` los revisa y los reactiva con `PATCH {"active": true}`.
+
 ```bash
 # Tu endpoint: JSON crudo (el formato por defecto; el campo puede omitirse)
 curl -X POST https://<api>/api/v1/webhooks \
@@ -182,6 +189,11 @@ por comas, objetos como `clave=valor`), se omiten los vacíos, se recortan a
 evento en el catálogo seguido de `titulo`, `licitacion_id`, `id_externo` o
 `rule_id` del payload, el primero que exista.
 
+Los valores salen **escapados**: en Slack `&`, `<` y `>` (un `<https://…|texto>`
+o un `<!channel>` en `empresa` o `titulo` se ve como texto, no como enlace ni
+mención) y en Teams los caracteres de Markdown (`\`, `` ` ``, `*`, `~`, `[`, `]`).
+El formato `json` no cambia.
+
 ## Eventos de avisos sobre lo que sigues
 
 Los reparte el despachador del outbox (`scheduler/jobs/event_dispatch.py`),
@@ -191,7 +203,9 @@ y, a demanda, en cuanto una persona provoca un evento que alguien espera ya
 (`solicitud_acceso.creada`)—: esos salen en segundos, no en la siguiente
 pasada.
 Todos llevan `organization_id` y sólo llegan a los webhooks de esa
-organización (más los globales sin dueño). La lista completa y vigente es la de
+organización (más los globales sin dueño). Los eventos de instancia, sin
+organización (`solicitud_acceso.creada`, y el legado `watchlist_match`), llegan
+**solo** a los webhooks globales. La lista completa y vigente es la de
 `GET /api/v1/webhooks/event-types`; esta tabla describe los que avisan de algo
 que pasó en un expediente, una cuenta o un competidor que la organización
 vigila.
@@ -225,9 +239,12 @@ genérico, cuando el cambio no encaja en ninguno), y `aviso_titulo` es el
 titular legible («Plazo ampliado al 12/10/2026»). Son campos **añadidos**: el
 resto del payload de `licitacion.cambiada` no cambia de forma.
 
-**`seguidores`.** El payload incluye a quién avisa la campana (`user_id` y
-`organization_id`; los favoritos antiguos también su clave opaca). Es dato
-interno de la organización: no lo reenvíes fuera de ella.
+**`seguidores`.** El despachador usa a quién avisa la campana (`user_id`,
+`organization_id` y, en los favoritos antiguos, una clave opaca derivada del
+correo) para decidir los avisos personales, pero **no sale en el cuerpo del
+webhook**. `licitacion.cambiada` se escribe una vez por organización, con
+solo sus seguidores. Hasta 2026-11 el cuerpo llevaba `seguidores`, y con ellos
+los de las demás organizaciones: si tu receptor lo leía, ya no está.
 
 **Preferencias personales y webhooks de organización.** Un webhook es una
 suscripción de la organización (la tabla `webhooks` no tiene `user_id`), y la
@@ -269,7 +286,7 @@ no recibirá nunca un aviso de hace una semana.
 |---|---|---|
 | `organizacion.documento_caduca` | Un documento del perfil de capacidad de la organización cruza un umbral: 60, 30 o 7 días antes de su `vigente_hasta`, o al caducar (`umbral` = `0`). Una vez por umbral y por documento con esa vigencia; renovarlo con otra fecha vuelve a avisar. Lo escribe el paso diario `documentacion_avisos` del cierre. | `organization_id`, `documento_id` (estable para el documento y su vigencia), `documento`, `tipo` (`certificacion_tecnica`, `corriente_aeat`, `corriente_seguridad_social`, `rolece` o `clasificacion_empresarial`), `categoria` (`tecnica` o `administrativa`), `vigente_hasta`, `umbral`, `dias_restantes` (negativo si ya caducó) y `aviso_titulo` |
 
-Los `seguidores` son el propietario y los administradores activos: quienes
+Los destinatarios (`seguidores`, que no viajan en el cuerpo) son el propietario y los administradores activos: quienes
 pueden renovar el documento y cambiar el perfil. Es un evento con
 `clave_ajustes`, así que le aplica el opt-out unánime de arriba.
 

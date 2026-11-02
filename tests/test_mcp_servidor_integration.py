@@ -206,7 +206,9 @@ def test_lista_las_seis_tools_de_solo_lectura(app_cliente: TestClient, token_adm
         assert t["annotations"]["readOnlyHint"] is True
         assert t["annotations"]["destructiveHint"] is False
         assert t["annotations"]["idempotentHint"] is True
-        assert t["annotations"]["openWorldHint"] is False
+        # Solo `describir_esquema` devuelve únicamente texto propio; el resto puede
+        # traer texto de terceros (pliegos, anuncios, celdas) y lo avisa.
+        assert t["annotations"]["openWorldHint"] is (t["name"] != "describir_esquema")
         assert t["description"]
         for nombre, propiedad in t["inputSchema"].get("properties", {}).items():
             assert propiedad.get("description"), (t["name"], nombre)

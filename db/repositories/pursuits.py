@@ -66,6 +66,19 @@ _UPDATABLE_COLUMNS = frozenset(
 # Estados que sacan un pursuit de la agenda: ya no hay trabajo pendiente.
 _ESTADOS_TERMINALES_SQL = "('won', 'lost', 'withdrawn')"
 
+# Lo único de un pursuit que se exporta a quien ya no es miembro de su
+# organización: dónde y cuándo consta su vínculo personal, no el estado corporativo.
+_CAMPOS_DE_VINCULO_PURSUIT = (
+    "id",
+    "organization_id",
+    "licitacion_id",
+    "responsible_user_id",
+    "created_by_user_id",
+    "updated_by_user_id",
+    "created_at",
+    "updated_at",
+)
+
 _AGENDA_SELECT = (
     "SELECT p.id AS pursuit_id, p.licitacion_id, "
     # Mismo criterio que ``calendar_rows``: dos lotes del mismo expediente son
@@ -805,11 +818,27 @@ class PursuitRepository:
     def export_personal_data(self, user_id: int) -> dict[str, list[dict[str, Any]]]:
         """Exporta solo filas vinculadas personalmente al usuario.
 
+        De las organizaciones en las que **ya no es miembro activo** (salió, o
+        lo echaron) salen solo los campos que lo identifican en la fila —ids,
+        autoría y fechas—, no el estado corporativo actual: precios ofertados,
+        motivos de decisión, importes adjudicados o el payload de los eventos.
+        El derecho de acceso alcanza lo que el sistema guarda *sobre la
+        persona*; esa información es de la organización y un ex-miembro no
+        tiene por qué seguir descargándola.
+
         Cada resultado se materializa antes de lanzar la siguiente query: la
         conexión expone un único cursor y ``execute`` lo reemplaza, así que dos
         cursores "vivos" a la vez apuntan al mismo resultado (el último).
         """
         with connect_read() as conn:
+            activas = {
+                int(fila[0])
+                for fila in conn.execute(
+                    "SELECT organization_id FROM organization_memberships "
+                    "WHERE user_id = %s AND status = 'active'",
+                    (user_id,),
+                ).fetchall()
+            }
             pursuits = rows_to_dicts(
                 conn.execute(
                     "SELECT * FROM pursuits WHERE responsible_user_id = %s "  # SELECT *: export RGPD: la fila entera es el contrato
@@ -826,7 +855,20 @@ class PursuitRepository:
                     (user_id,),
                 )
             )
-            return {"pursuits": pursuits, "pursuit_events": events}
+        return {
+            "pursuits": [
+                fila
+                if fila["organization_id"] in activas
+                else {c: fila.get(c) for c in _CAMPOS_DE_VINCULO_PURSUIT}
+                for fila in pursuits
+            ],
+            "pursuit_events": [
+                fila
+                if fila["organization_id"] in activas
+                else {**fila, "payload_json": None, "idempotency_key": None}
+                for fila in events
+            ],
+        }
 
     def anonymize_user_references(self, user_id: int) -> None:
         """Desvincula asignaciones mutables; el ledger permanece inalterado."""

@@ -60,6 +60,7 @@ def _login_con(usuario: dict[str, Any] | None) -> HTTPException:
         patch.object(auth, "get_user_by_email", return_value=usuario),
         patch.object(auth, "log_event"),
         patch("db.rate_limits.is_login_locked_out", return_value=(False, 0)),
+        patch("db.rate_limits.fallos_recientes", return_value=(0, 3600.0)),
         patch("db.rate_limits.record_failed_login"),
         pytest.raises(HTTPException) as rechazo,
     ):

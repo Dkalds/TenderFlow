@@ -33,6 +33,7 @@ from services.organizations import (
     OrganizationLifecycleError,
     OrganizationMemberNotFoundError,
     OrganizationPermissionError,
+    OrganizationQuotaError,
     accept_invitation_token,
     borrar_organizacion,
     create_organization,
@@ -111,7 +112,10 @@ async def post_organization(
     body: OrganizationCreate,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> OrganizationSummary:
-    creada = await run_db(create_organization, int(ctx["user_id"]), body.name)
+    try:
+        creada = await run_db(create_organization, int(ctx["user_id"]), body.name)
+    except OrganizationQuotaError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     await _auditar_organizacion(ctx, ORG_CREATED, creada.id)
     return creada
 
@@ -179,7 +183,7 @@ class OrganizationDeletionSummary(BaseModel):
 async def post_transfer_ownership(
     organization_id: int,
     body: TransferOwnershipBody,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: dict[str, Any] = Depends(require_recent_session()),
 ) -> StatusOk:
     """Mueve el rol `owner` a otro miembro (C2.2).
 
@@ -189,6 +193,10 @@ async def post_transfer_ownership(
 
     El owner saliente queda como `admin`: quien monta un equipo no debería
     perder el acceso al traspasarlo.
+
+    Exige sesión reciente (y MFA reciente si la cuenta lo tiene), como borrar la
+    organización: entregarla es igual de irreversible, y una API key o una
+    cookie vieja no deberían bastar.
     """
     try:
         await run_db(
@@ -383,6 +391,8 @@ async def post_organization_member(
         )
     except (OrganizationAccessError, OrganizationPermissionError) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OrganizationQuotaError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     # Dos eventos distintos porque son dos hechos distintos: una persona que
     # ya está dentro, o un enlace que todavía tiene que canjearse. En ninguno
     # va el correo: el id de la invitación es lo que enlaza con ella.
@@ -438,6 +448,8 @@ async def post_resend_organization_invitation(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except OrganizationInvitationNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except OrganizationQuotaError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     await _auditar_organizacion(
         ctx,
         ORG_INVITATION_RESENT,
@@ -470,6 +482,9 @@ async def delete_organization_invitation(
     return StatusOk(status="ok")
 
 
+_sesion_reciente = require_recent_session()
+
+
 @router.put(
     "/organizations/{organization_id}/members/{member_user_id}",
     response_model=OrganizationMembershipOut,
@@ -482,6 +497,11 @@ async def put_organization_member(
 ) -> OrganizationMembershipOut:
     if body.user_id != member_user_id:
         raise HTTPException(status_code=422, detail="user_id no coincide con la ruta.")
+    if body.role == "owner":
+        # Un owner añadido aquí no se puede degradar (`_guard_owner_row`), así
+        # que asignarlo pide lo mismo que traspasar la propiedad: sesión
+        # reciente, nunca una API key.
+        await _sesion_reciente(ctx)
     try:
         membresia = await run_db(
             upsert_membership,

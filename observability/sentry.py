@@ -21,6 +21,10 @@ y seguía sin capturar nada.
   las consultas, los DTO de la petición y las filas leídas.
 - Las migas que no sean de salida HTTP, y de esas la query. Las de Redis
   llevan la clave, que en el rate limiting es la IP del cliente.
+- Correos, tokens y secretos de los **textos**: el mensaje de cada excepción, el
+  mensaje de log y los ``extra`` pasan por el redactor del log
+  (``observability.logging.redact_text``). Un ``UniqueViolation`` de psycopg o un
+  error de httpx llevan el valor de la fila o la URL con su token.
 
 Solo errores: sin trazas de rendimiento por defecto (sus spans llevan la URL
 completa de cada llamada saliente), igual que el frontend.
@@ -37,7 +41,7 @@ import os
 import re
 from typing import TYPE_CHECKING
 
-from observability.logging import get_logger
+from observability.logging import get_logger, redact_text
 
 if TYPE_CHECKING:  # solo para anotar; el SDK se importa al configurar
     from sentry_sdk.types import Breadcrumb, BreadcrumbHint, Event, Hint
@@ -153,7 +157,33 @@ def _strip_pii(event: Event, _hint: Hint) -> Event:
     user = event.get("user")
     if user is not None:
         event["user"] = {"id": user["id"]} if user.get("id") is not None else {}
+    _redactar_textos(event)
     return event
+
+
+def _redactar_textos(event: Event) -> None:
+    """Pasa por el redactor del log los textos libres del evento."""
+    for excepcion in event.get("exception", {}).get("values", []):
+        if isinstance(excepcion.get("value"), str):
+            excepcion["value"] = redact_text(excepcion["value"])
+    mensaje = event.get("message")
+    if isinstance(mensaje, str):
+        event["message"] = redact_text(mensaje)
+    logentry = event.get("logentry")
+    if logentry:
+        # `params` son los argumentos sin formatear: el redactor no los ve dentro
+        # de la plantilla, y el texto ya formateado va en `formatted`.
+        event["logentry"] = {
+            campo: redact_text(valor) if isinstance(valor, str) else valor
+            for campo, valor in logentry.items()
+            if campo != "params"
+        }
+    extra = event.get("extra")
+    if extra:
+        event["extra"] = {
+            campo: redact_text(valor) if isinstance(valor, str) else valor
+            for campo, valor in extra.items()
+        }
 
 
 def _limpiar_miga(miga: Breadcrumb, _hint: BreadcrumbHint) -> Breadcrumb | None:

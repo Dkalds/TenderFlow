@@ -269,6 +269,7 @@ def test_una_cuenta_sin_contrasena_recibe_409(client):
 def test_el_reset_encola_el_aviso_al_titular():
     with (
         patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch("db.password_reset.reset_token_vigente", return_value=True),
         patch("db.password_reset.consume_reset_token", MagicMock(return_value=7)),
         patch("api.routes.auth.log_event"),
         patch("services.password_reset.notify_password_changed") as avisar,
@@ -282,6 +283,7 @@ def test_el_reset_encola_el_aviso_al_titular():
 def test_un_reset_fallido_no_avisa():
     with (
         patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch("db.password_reset.reset_token_vigente", return_value=True),
         patch("db.password_reset.consume_reset_token", MagicMock(return_value=None)),
         patch("services.password_reset.notify_password_changed") as avisar,
     ):

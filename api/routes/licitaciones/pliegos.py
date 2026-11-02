@@ -202,7 +202,7 @@ async def extract_tender_fact_sheet(
     esta licitación puede no haber tocado turno) y valida toda cita antes de
     persistirla."""
     from config import settings
-    from llm.budget import LLMBudgetExceeded, bind_budget_subject
+    from llm.budget import LLMBudgetExceeded, bind_budget_org, bind_budget_subject
     from services.rag.fact_sheet import extract_fact_sheet_on_demand
     from services.tech_signal import ingest_llm_technologies
 
@@ -214,11 +214,16 @@ async def extract_tender_fact_sheet(
     # contexto en cada salto al threadpool, así que la mutación muere con el
     # hilo y no se filtra a otra request—, igual que en ask.py::_stream_ask.
     scope_key = _budget_subject(ctx)
+    # Misma regla que ``/ask`` (C2.9): sin la organización, el tope diario por
+    # organización nunca se alimenta con el gasto de la ficha.
+    raw_org = ctx.get("organization_id")
+    org_key = str(raw_org) if raw_org not in (None, "") else None
 
     # El nombre del closure viaja al span OTEL (``db.function``), así que se
     # elige parecido al de la función que envuelve para no romper búsquedas.
     def _extract_fact_sheet_on_demand() -> TenderFactSheetRecord:
         bind_budget_subject(scope_key)
+        bind_budget_org(org_key)
         return extract_fact_sheet_on_demand(id_externo, model=settings.PLIEGO_FACTS_MODEL)
 
     try:
@@ -302,7 +307,7 @@ async def extract_tender_fact_sheet_async(
     responde 202 con el mismo ``job_id``.
     """
     from config import settings
-    from services.jobs import TIPO_FICHA_PLIEGO, enqueue
+    from services.jobs import TIPO_FICHA_PLIEGO, CuotaDeJobsExcedida, enqueue
 
     # 404 ANTES de encolar: con un id inexistente el trabajo acabaría
     # intentando persistir el estado `failed` y violando la FK de
@@ -317,16 +322,19 @@ async def extract_tender_fact_sheet_async(
     # 30 s de drenado al apagar: un despliegue en mitad de la extracción la
     # mataba y el polling se quedaba esperando para siempre. Ahora la petición
     # es una fila que sobrevive al proceso.
-    job_id = await run_db(
-        enqueue,
-        TIPO_FICHA_PLIEGO,
-        {
-            "licitacion_id": id_externo,
-            "model": settings.PLIEGO_FACTS_MODEL,
-            "budget_subject": _budget_subject(ctx),
-        },
-        organization_id=int(ctx["organization_id"]),
-    )
+    try:
+        job_id = await run_db(
+            enqueue,
+            TIPO_FICHA_PLIEGO,
+            {
+                "licitacion_id": id_externo,
+                "model": settings.PLIEGO_FACTS_MODEL,
+                "budget_subject": _budget_subject(ctx),
+            },
+            organization_id=int(ctx["organization_id"]),
+        )
+    except CuotaDeJobsExcedida as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     log.info("tender_fact_sheet_extract_async_encolada", id_externo=id_externo, job_id=job_id)
     return FactSheetExtractionState(licitacion_id=id_externo, running=True, job_id=job_id)
 
@@ -354,7 +362,7 @@ async def enqueue_expediente_embeddings(
     tienen de dónde leer. Esta ruta adelanta el del expediente que alguien está
     mirando. Idempotente: si ya hay uno en cola devuelve el mismo ``job_id``.
     """
-    from services.jobs import TIPO_EMBEDDINGS_EXPEDIENTE, enqueue
+    from services.jobs import TIPO_EMBEDDINGS_EXPEDIENTE, CuotaDeJobsExcedida, enqueue
 
     if not await run_db(_lic_repo.exists, id_externo):
         raise HTTPException(
@@ -362,12 +370,15 @@ async def enqueue_expediente_embeddings(
             detail=f"Licitación '{id_externo}' no encontrada.",
         )
 
-    job_id = await run_db(
-        enqueue,
-        TIPO_EMBEDDINGS_EXPEDIENTE,
-        {"licitacion_id": id_externo},
-        organization_id=int(ctx["organization_id"]),
-    )
+    try:
+        job_id = await run_db(
+            enqueue,
+            TIPO_EMBEDDINGS_EXPEDIENTE,
+            {"licitacion_id": id_externo},
+            organization_id=int(ctx["organization_id"]),
+        )
+    except CuotaDeJobsExcedida as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     return ExpedienteJobEncolado(licitacion_id=id_externo, job_id=job_id)
 
 

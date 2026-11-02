@@ -46,9 +46,11 @@ from db.sessions import (
     session_public_id,
 )
 from observability.logging import get_logger
+from services.analytics.affinity import MAX_KEYWORDS_AFINIDAD, MAX_LONGITUD_KEYWORD
 from services.analytics.scoring import ScoringPreview, ScoringProfile, previsualizar_scoring
 from services.gdpr import (
     anonymize_user_data,
+    export_account_data,
     export_audit_log,
     export_collaboration_data,
     export_feedback,
@@ -59,7 +61,9 @@ from services.gdpr import (
     export_watchlist,
     export_watchlist_items,
     export_watchlist_rules,
+    organizaciones_con_unico_owner,
     revoke_all_api_keys_for_user,
+    secciones_truncadas,
     set_key_expiry,
 )
 from shared.audit_events import (
@@ -190,10 +194,29 @@ def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> Response:
                 json.dumps(rows, ensure_ascii=False, indent=2),
             )
 
+        # Lo que el borrado ya alcanza y antes el export omitía (cuenta, accesos,
+        # sesiones, preferencias, descartes, votos del asistente, tareas).
+        cuenta = export_account_data(uid, user_key)
+        for filename, rows in cuenta.items():
+            zf.writestr(
+                f"{filename}.json",
+                json.dumps(rows, ensure_ascii=False, indent=2, default=str),
+            )
+
         meta = {
             "exported_at": now_utc_iso(),
             "key_name": key_name,
             "auth_method": ctx.get("auth_method"),
+            # Secciones que llegaron a su tope de filas: pueden estar truncadas.
+            "truncated_sections": secciones_truncadas(
+                {
+                    "audit": audit,
+                    "follows": seguimientos,
+                    "notificaciones": notifications,
+                    **collaboration,
+                    **cuenta,
+                }
+            ),
         }
         zf.writestr("metadata.json", json.dumps(meta, ensure_ascii=False, indent=2))
 
@@ -232,6 +255,18 @@ def delete_my_data(
     user_key = _user_key(ctx)
     key_id = ctx.get("api_key_id")
     user_id = int(ctx["user_id"])
+    # Sin esto, borrar la cuenta del único owner deja el espacio compartido sin
+    # quien lo administre; antes de irse traspasa la propiedad o lo elimina.
+    huerfanas = organizaciones_con_unico_owner(user_id)
+    if huerfanas:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Eres el único owner de las organizaciones "
+                f"{', '.join(str(i) for i in huerfanas)}: traspasa la propiedad o "
+                "elimínalas antes de borrar tu cuenta."
+            ),
+        )
     anonymize_user_data(user_key, key_id, user_id=user_id)
 
     from db.users import anonymize_user
@@ -855,6 +890,25 @@ class UserProfileBody(BaseModel):
     importe_max: float | None = None
     organization_id: int | None = None
     visibility: Literal["private", "organization"] = "private"
+
+    @field_validator("afinidad_keywords")
+    @classmethod
+    def _acotar_keywords(cls, value: list[str] | None) -> list[str] | None:
+        """Tope de la lista y de cada keyword (``services.analytics.affinity``).
+
+        Las keywords se compilan en una sola alternancia de regex que se evalúa
+        sobre todo el Radar: sin tope, un cuerpo de 1 MB con ~170.000 keywords
+        de tres letras bloqueaba el GIL del proceso.
+        """
+        if value is None:
+            return None
+        if len(value) > MAX_KEYWORDS_AFINIDAD:
+            raise ValueError(
+                f"Máximo {MAX_KEYWORDS_AFINIDAD} keywords de afinidad, llegaron {len(value)}."
+            )
+        if any(len(kw.strip()) > MAX_LONGITUD_KEYWORD for kw in value):
+            raise ValueError(f"Cada keyword admite como máximo {MAX_LONGITUD_KEYWORD} caracteres.")
+        return value
 
     @field_validator("cpvs")
     @classmethod

@@ -27,7 +27,7 @@ Las tres cosas a la vez, leídas de la fila activa de ``model_versions``:
    convierte en validada.
 3. **Sus métricas guardadas pasan el gate hoy**: ``evaluar_gate`` sobre
    ``metrics`` y el golden ``holdout`` que se registró con ellas
-   (``golden_holdout_*``), más un holdout de al menos
+   (``golden_holdout_*``), que incluye un holdout de al menos
    ``services.ml_eval.MIN_HOLDOUT_EXAMPLES`` ejemplos — el gate del golden que
    D55 cita (27 etiquetados frente a ≥ 60 el 2026-10-25). Reevaluar con las
    constantes vigentes hace que endurecer el gate retire la señal de una
@@ -124,7 +124,6 @@ def evaluar_version_activa(activa: Mapping[str, object] | None) -> EstadoSenal:
 
     from services.ml.model_artifacts import content_addressed_path
     from services.ml.promotion import evaluar_gate
-    from services.ml_eval import MIN_HOLDOUT_EXAMPLES
 
     version_raw = activa.get("version")
     version = int(version_raw) if isinstance(version_raw, int | str) else None
@@ -136,9 +135,9 @@ def evaluar_version_activa(activa: Mapping[str, object] | None) -> EstadoSenal:
     metrics_raw = activa.get("metrics")
     metrics: dict[str, object] = dict(metrics_raw) if isinstance(metrics_raw, Mapping) else {}
     golden = _golden_holdout(metrics)
+    # El mínimo de holdout (`services.ml_eval.MIN_HOLDOUT_EXAMPLES`) vive en el
+    # propio gate: promover y servir miden con la misma regla.
     motivos = evaluar_gate(metrics, metricas_activas=None, golden=golden)
-    if golden is not None and golden.n < MIN_HOLDOUT_EXAMPLES:
-        motivos.append(f"golden holdout de {golden.n} ejemplos < {MIN_HOLDOUT_EXAMPLES}")
     if motivos:
         return EstadoSenal(
             validada=False,

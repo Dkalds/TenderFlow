@@ -27,16 +27,18 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
-from typing import Any, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
-from anyio import CapacityLimiter, to_thread
+from anyio import CapacityLimiter, fail_after, to_thread
+from fastapi import HTTPException, status
 
 # Los presupuestos viven en ``shared`` para que ``shared.cache`` pueda usarlos
 # sin importar ``api`` (inversión de capas) y para que ambos caminos compartan
 # el mismo limiter.
-from shared.concurrency import cpu_limiter, ml_limiter, reset_limiters
+from shared.concurrency import cpu_limiter, kdf_limiter, ml_limiter, reset_limiters
 
 T = TypeVar("T")
+P = ParamSpec("P")
 
 __all__ = [
     "cpu_limiter",
@@ -45,6 +47,7 @@ __all__ = [
     "run_cpu",
     "run_db",
     "run_io",
+    "run_kdf",
     "run_ml",
     "run_probe",
 ]
@@ -155,6 +158,40 @@ async def run_ml(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     """
     with _span("ml.inference", {"ml.function": _fn_name(fn)}):
         return await to_thread.run_sync(lambda: fn(*args, **kwargs), limiter=ml_limiter())
+
+
+#: Cuánto espera un login (o una recuperación) a que quede un hueco de KDF antes
+#: de recibir un 503. Un login legítimo dura ~100 ms: si en cinco segundos no ha
+#: salido ninguno de los que van delante, la cola es de abuso y esperar más solo
+#: retiene la conexión.
+_KDF_ESPERA_S = 5.0
+
+
+async def run_kdf(fn: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
+    """Ejecuta ``fn`` (que hashea o verifica una contraseña) tras un bulkhead de 3.
+
+    Sin él, el login corría en el pool general (24 hilos) y cada hilo reservaba
+    los 64 MiB de argon2: una ráfaga de logins con correos inexistentes bastaba
+    para saturar CPU y memoria de un proceso de 2 GB y dejar a toda la API sin
+    hilos. Las peticiones de más esperan **como corrutinas** (no retienen hilo)
+    hasta :data:`_KDF_ESPERA_S`; pasado ese plazo, 503 con ``Retry-After``.
+    ``fn`` se ejecuta exactamente una vez.
+    """
+    limiter = kdf_limiter()
+    try:
+        with fail_after(_KDF_ESPERA_S):
+            await limiter.acquire()
+    except TimeoutError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Servicio ocupado. Inténtalo de nuevo en unos segundos.",
+            headers={"Retry-After": "5"},
+        ) from None
+    try:
+        with _span("kdf.task", {"kdf.function": _fn_name(fn)}):
+            return await to_thread.run_sync(lambda: fn(*args, **kwargs))
+    finally:
+        limiter.release()
 
 
 async def run_cpu(fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:

@@ -22,6 +22,7 @@ sobrevive al borrado. Sin ``user_id`` se comportan como antes.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from db import radar_dismissals
@@ -30,9 +31,11 @@ from db.repositories.audit import AuditRepository
 from db.repositories.feedback import FeedbackRepository
 from db.repositories.organizations import OrganizationRepository
 from db.repositories.pursuit_comments import PursuitCommentRepository
+from db.repositories.pursuit_tasks import PursuitTasksRepository
 from db.repositories.pursuits import PursuitRepository
 from db.repositories.user_profiles import delete_user_profile, get_own_user_profile
 from db.repositories.watchlist import WatchlistRepository
+from db.totp import delete_totp
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -44,6 +47,22 @@ _audit_repo = AuditRepository()
 _organization_repo = OrganizationRepository()
 _pursuit_repo = PursuitRepository()
 _pursuit_comment_repo = PursuitCommentRepository()
+_pursuit_task_repo = PursuitTasksRepository()
+
+#: Filas máximas por sección del export (el ``LIMIT`` de cada consulta). Una
+#: sección que llega al tope puede estar truncada: ``GET /me/data`` lo declara en
+#: ``metadata.json`` en vez de entregar un export que parece completo y no lo es.
+EXPORT_TOPES: dict[str, int] = {
+    "audit": 1000,
+    "follows": 5000,
+    "notificaciones": 5000,
+    "pursuits": 5000,
+    "pursuit_events": 5000,
+    "pursuit_comments": 5000,
+    "pursuit_tasks": 5000,
+    "accesos": 5000,
+    "asistente_feedback": 5000,
+}
 
 
 def get_user_id_from_key_id(key_id: int) -> int | None:
@@ -117,7 +136,7 @@ def export_audit_log(key_hash: str, *, user_id: int | None = None) -> list[dict[
     return _audit_repo.export_by_user_key(key_hash, user_id)
 
 
-def export_collaboration_data(user_id: int) -> dict[str, list[dict[str, Any]]]:
+def export_collaboration_data(user_id: int) -> dict[str, list[dict[str, object]]]:
     """Exporta membresías y filas corporativas vinculadas personalmente.
 
     No vuelca oportunidades de compañeros sin relación personal con el
@@ -134,6 +153,68 @@ def export_collaboration_data(user_id: int) -> dict[str, list[dict[str, Any]]]:
     }
 
 
+def secciones_truncadas(secciones: Mapping[str, Sequence[object]]) -> dict[str, int]:
+    """Secciones del export que alcanzaron su tope (:data:`EXPORT_TOPES`), con el tope."""
+    return {
+        nombre: EXPORT_TOPES[nombre]
+        for nombre, filas in secciones.items()
+        if nombre in EXPORT_TOPES and len(filas) >= EXPORT_TOPES[nombre]
+    }
+
+
+def export_account_data(user_id: int, user_key: str) -> dict[str, list[dict[str, object]]]:
+    """Lo que se guarda de la cuenta y no cubre ningún otro export (RGPD Art. 15/20).
+
+    La fila de ``users`` (sin credenciales), los accesos, las sesiones activas
+    (con el id público, nunca el hash), las preferencias de notificación, los
+    descartes vigentes del Radar, los votos del asistente y las tareas asignadas:
+    todo lo que el borrado ya alcanza y el export omitía. Las claves son nombres
+    de fichero del ZIP.
+    """
+    from db import sessions, users
+    from db.repositories import asistente_feedback, notification_preferences
+
+    return {
+        "cuenta": users.export_account(user_id),
+        "accesos": users.export_access_log(user_id),
+        "sesiones": [
+            {
+                "id": sessions.session_public_id(str(fila["token_hash"])),
+                **{k: v for k, v in fila.items() if k != "token_hash"},
+            }
+            for fila in sessions.list_active_sessions(user_id)
+        ],
+        "preferencias_notificacion": notification_preferences.listar(user_id),
+        "descartes_radar": radar_dismissals.list_detalle(user_key, user_id=user_id),
+        "asistente_feedback": asistente_feedback.exportar_de_usuario(user_id),
+        "pursuit_tasks": _pursuit_task_repo.export_for_user(user_id),
+    }
+
+
+def organizaciones_con_unico_owner(user_id: int) -> list[int]:
+    """Organizaciones compartidas que quedarían sin owner si esta cuenta se borra."""
+    return _organization_repo.organizaciones_con_unico_owner(user_id)
+
+
+def anonymize_account(user_id: int, email: str | None) -> None:
+    """Derecho al olvido de una cuenta ejecutado por un administrador (RGPD Art. 17).
+
+    La misma cadena que ``DELETE /me`` (``api.routes.me.delete_my_data``): primero
+    los datos personales, las membresías y las invitaciones —que se localizan por
+    el correo— y solo después ``users``, cuya anonimización borra ese correo y la
+    clave que se deriva de él. Antes la acción del panel solo llamaba a
+    ``anonymize_user`` y dejaba watchlist, reglas, perfil, vistas, alertas,
+    seguimientos, membresías, invitaciones y credenciales.
+
+    No revoca sesiones ni API keys: eso lo hace quien llama.
+    """
+    from db.users import anonymize_user
+    from shared.identity import user_key_from_email
+
+    anonymize_user_data(user_key_from_email(email, user_id), user_id=user_id)
+    anonymize_user(user_id)
+
+
 def anonymize_user_data(
     user_key: str, key_id: int | None = None, *, user_id: int | None = None
 ) -> None:
@@ -141,8 +222,9 @@ def anonymize_user_data(
 
     Cubre watchlist (empresa/CPV), favoritos, reglas de watchlist por criterio,
     perfil de scoring, alertas in-app y sus marcas de lectura, descartes del Radar, seguimientos
-    (``follows``), votos del asistente y preferencias de notificación y de
-    correo — todo lo persistido bajo ``user_key`` **o** ``user_id`` (v129: un
+    (``follows``), votos del asistente, preferencias de notificación y de
+    correo, el segundo factor (TOTP), las tareas asignadas y el nombre de la
+    organización personal — todo lo persistido bajo ``user_key`` **o** ``user_id`` (v129: un
     borrado que sólo mirase la clave del correo actual dejaría vivo lo
     guardado con el anterior). Si se pasa ``key_id`` (autenticación por API
     key), además revoca esa key.
@@ -167,6 +249,8 @@ def anonymize_user_data(
         notification_preferences.borrar_de_usuario(user_id)
         _pursuit_repo.anonymize_user_references(user_id)
         _pursuit_comment_repo.anonymize_author(user_id)
+        _pursuit_task_repo.anonymize_user_references(user_id)
+        delete_totp(user_id)
         _organization_repo.remove_memberships_for_user(user_id)
     if key_id is not None:
         _api_key_repo.deactivate_by_id(key_id)

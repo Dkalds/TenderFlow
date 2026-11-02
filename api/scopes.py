@@ -100,8 +100,22 @@ def required_scope_for_request(method: str, path: str) -> str:
     if _ORGANIZATION_AUDIT_PATTERN.match(normalized_path):
         return "audit:read"
     if normalized_path.startswith("/api/v1/organizations"):
-        return "pursuits:read" if normalized_method in _READ_METHODS else "pursuits:write"
-    if normalized_path.startswith("/api/v1/pursuits"):
+        if normalized_method in _READ_METHODS:
+            return "pursuits:read"
+        # Escribir bajo /organizations es administrar el equipo (miembros,
+        # invitaciones, traspaso de propiedad, NIF, plantillas, salir): con
+        # `pursuits:write`, la clave que un integrador de CRM necesita para
+        # mover oportunidades, un robo de esa clave bastaba para añadir
+        # miembros. Los pesos del go/no-go son configuración del tablero y se
+        # quedan donde estaban.
+        if normalized_path.startswith("/api/v1/organizations/go-no-go"):
+            return "pursuits:write"
+        return "organizations:manage"
+    # `/cuentas` y `/etiquetas` no son datos públicos: `GET /cuentas/{id}`
+    # devuelve el bloque `oportunidades` (estado, `next_action`, responsable)
+    # que `/pursuits` protege con `pursuits:read`. Caer en el `data:*` de abajo
+    # —el scope por defecto de toda clave nueva— saltaba esa protección.
+    if normalized_path.startswith(("/api/v1/pursuits", "/api/v1/cuentas", "/api/v1/etiquetas")):
         return "pursuits:read" if normalized_method in _READ_METHODS else "pursuits:write"
 
     # Listing flags is useful to authenticated UI/API clients, but changing

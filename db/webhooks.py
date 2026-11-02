@@ -264,7 +264,13 @@ def entregar_firmado(
 
 
 def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
-    """Dispara ``event_type`` a todos los webhooks activos suscritos.
+    """Dispara ``event_type`` a los webhooks **globales** activos suscritos.
+
+    Solo los globales (``organization_id IS NULL``, la integración de la
+    instancia): el llamante legado emite datos del operador —el correo de la
+    watchlist de instancia y sus criterios— y no son de ninguna organización.
+    Hasta 2026-11 este reparto leía todos los webhooks activos y los entregaba
+    también a los de cada organización.
 
     Devuelve el número de entregas exitosas **en el primer intento** (HTTP 2xx).
     Las que fallan quedan en ``webhook_deliveries`` con estado ``pending`` y
@@ -288,7 +294,8 @@ def trigger_event(event_type: str, payload: dict[str, Any]) -> int:
     successful = 0
     with connect() as c:
         rows = c.execute(
-            "SELECT id, url, secret, event_types FROM webhooks WHERE active = 1"
+            "SELECT id, url, secret, event_types FROM webhooks "
+            "WHERE active = 1 AND organization_id IS NULL"
         ).fetchall()
 
     allowed_hosts = _allowed_webhook_hosts()

@@ -201,6 +201,27 @@ class JobDesconocido(ValueError):
     """El tipo pedido no está declarado en :data:`TIPOS`."""
 
 
+class CuotaDeJobsExcedida(RuntimeError):
+    """La organización ya tiene demasiados jobs de ese tipo en la cola.
+
+    Las rutas la traducen a 429. No hereda de ``ValueError`` para que no la
+    recoja el 422 de quien captura los errores de validación.
+    """
+
+
+#: Tipos que un miembro encola a demanda y cuestan trabajo del worker serie. La
+#: cola es un FIFO global: sin tope por organización, una sola puede dejar sin
+#: turno a las demás (auditoría de seguridad 2026-11, G1-2-4 / G1-3-3).
+TIPOS_CON_CUOTA: frozenset[str] = frozenset(
+    {TIPO_FICHA_PLIEGO, TIPO_EMBEDDINGS_EXPEDIENTE, TIPO_EXPORT_PDF}
+)
+
+#: Jobs ``pending``/``running`` por organización y tipo. shortcut: constante fija
+#: y no ajuste, 20 cubre el uso humano de una consola; subirla a ajuste si una
+#: organización legítima la toca.
+MAX_JOBS_ACTIVOS_POR_ORG = 20
+
+
 def _cargar_json(crudo: str | None) -> dict[str, Any]:
     """Deserializa un campo JSON de la tabla, tolerando basura.
 
@@ -274,6 +295,10 @@ def enqueue(
     Raises:
         JobDesconocido: si el tipo no está declarado. Encolar un tipo que nadie
             sabe ejecutar dejaría una fila girando hasta agotar intentos.
+        CuotaDeJobsExcedida: si la organización ya tiene
+            :data:`MAX_JOBS_ACTIVOS_POR_ORG` jobs activos de un tipo de
+            :data:`TIPOS_CON_CUOTA`. Se comprueba **después** de la
+            deduplicación: repetir una petición ya en cola no gasta cupo.
     """
     declarado = TIPOS.get(tipo)
     if declarado is None:
@@ -292,6 +317,15 @@ def enqueue(
             if existente is not None:
                 log.info("job_deduplicado", tipo=tipo, job_id=int(existente["id"]))
                 return int(existente["id"])
+
+    if organization_id is not None and tipo in TIPOS_CON_CUOTA:
+        activos = _repo.contar_activos(tipo=tipo, organization_id=organization_id)
+        if activos >= MAX_JOBS_ACTIVOS_POR_ORG:
+            log.warning("job_cuota_excedida", tipo=tipo, organization_id=organization_id)
+            raise CuotaDeJobsExcedida(
+                f"Tu organización ya tiene {activos} trabajos de este tipo en cola. "
+                "Espera a que terminen antes de encolar más."
+            )
 
     job_id = _repo.insertar(
         tipo=tipo,
@@ -442,14 +476,17 @@ def procesar_uno(worker_id: str, *, tipos: tuple[str, ...] | None = None) -> Job
 __all__ = [
     "CACHE_EXPORTS",
     "EXPORT_TTL_SEGUNDOS",
+    "MAX_JOBS_ACTIVOS_POR_ORG",
     "RUTA_DESCARGA_EXPORT",
     "TIPOS",
     "TIPOS_A_DEMANDA",
+    "TIPOS_CON_CUOTA",
     "TIPOS_PROGRAMADOS",
     "TIPO_EMBEDDINGS_EXPEDIENTE",
     "TIPO_EXPORT_PDF",
     "TIPO_FICHA_PLIEGO",
     "TIPO_PASO_PIPELINE",
+    "CuotaDeJobsExcedida",
     "Job",
     "JobDesconocido",
     "JobEstado",

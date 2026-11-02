@@ -31,11 +31,15 @@ async def resolve_organization_ctx(
     organization_id: int | None,
     *,
     write: bool = False,
+    roles: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     """Resuelve la organización (o la personal por defecto) y valida el rol.
 
     Traduce el rechazo de dominio (sin membresía, o viewer intentando
-    escribir) a HTTP 403. Devuelve ``ctx`` enriquecido con
+    escribir) a HTTP 403. Con ``roles``, además, el rol del principal en la
+    organización tiene que estar en el conjunto: es el escalón para las rutas
+    que exigen owner o admin y no solo membresía (los webhooks, cuya URL es un
+    secreto portador). Devuelve ``ctx`` enriquecido con
     ``organization_id``/``organization_role`` ya resueltos -- nunca ``None``.
 
     Además deja la organización resuelta en ``shared.tenant_context`` para el
@@ -60,11 +64,18 @@ async def resolve_organization_ctx(
         )
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    if roles is not None and role not in roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Requiere el rol {' o '.join(sorted(roles))} en la organización.",
+        )
     set_organization(resolved_id)
     return {**ctx, "organization_id": resolved_id, "organization_role": role}
 
 
-def require_organization(*, write: bool = False) -> Callable[..., Awaitable[dict[str, Any]]]:
+def require_organization(
+    *, write: bool = False, roles: frozenset[str] | None = None
+) -> Callable[..., Awaitable[dict[str, Any]]]:
     """Dependency para rutas GET/DELETE: ``organization_id`` viaja en la query.
 
     Para POST/PUT donde ``organization_id`` viaja en el body del request,
@@ -81,7 +92,7 @@ def require_organization(*, write: bool = False) -> Callable[..., Awaitable[dict
         ),
         ctx: dict[str, Any] = Depends(require_any_auth),
     ) -> dict[str, Any]:
-        return await resolve_organization_ctx(ctx, organization_id, write=write)
+        return await resolve_organization_ctx(ctx, organization_id, write=write, roles=roles)
 
     _dependency.__name__ = f"require_organization_write_{write}"
     return _dependency
