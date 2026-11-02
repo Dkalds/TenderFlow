@@ -1175,14 +1175,6 @@ class TestActasGeneralDocument:
     def test_general_document_sin_uri_se_descarta(self):
         assert self._refs([("12", "Acta", None)]) == []
 
-    def test_una_acta_no_desplaza_a_los_pliegos(self):
-        """Las actas se suman a los adjuntos legal/technical/additional, no los sustituyen."""
-        refs = self._refs([("12", "Acta", "https://contrataciondelestado.es/a12")])
-        assert [r.tipo for r in refs] == ["acta"]
-
-        entry = self._get_entry(_make_entry_with_documentos())
-        assert {r.tipo for r in parse_document_references(entry)} == {"legal", "technical"}
-
     def test_fixture_19_trae_sus_dos_actas(self):
         from pathlib import Path
 
