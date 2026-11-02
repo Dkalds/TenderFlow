@@ -263,6 +263,17 @@ _CODIGO_OTROS = "ZZZ"
 _NOMBRE_ACTA_RE = re.compile(r"valoraci|criterios autom|adjudicaci|propuesta")
 
 
+def _nombre_fichero(node: object) -> str | None:
+    """Nombre del adjunto de un ``*DocumentReference``: ``cbc:FileName`` y, sin él, ``cbc:ID``.
+
+    Un solo sitio para la precedencia: la guardan ``_referencia`` (como ``filename``) y
+    la lee ``_es_acta`` para decidir si un ``GeneralDocument`` entra.
+    """
+    return _text(node, "./cac:Attachment/cac:ExternalReference/cbc:FileName") or _text(
+        node, "./cbc:ID"
+    )
+
+
 def _referencia(node: object, tipo: str) -> DocumentoReferencia | None:
     """``DocumentoReferencia`` de un ``*DocumentReference`` UBL, o ``None`` sin URI."""
     uri = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:URI")
@@ -275,9 +286,7 @@ def _referencia(node: object, tipo: str) -> DocumentoReferencia | None:
         # guardan.
         log.warning("codice_documento_uri_descartada", esquema=uri.split(":", 1)[0][:20])
         return None
-    filename = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:FileName") or _text(
-        node, "./cbc:ID"
-    )
+    filename = _nombre_fichero(node)
     source_hash = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:DocumentHash")
     if source_hash:
         # El base64 puede venir partido en varias líneas dentro del XML;
@@ -354,8 +363,12 @@ def parse_document_references(entry: Any) -> list[DocumentoReferencia]:
                 refs.append(ref)
     general_documents = f"{cfs}/cacext:GeneralDocument/cacext:GeneralDocumentDocumentReference"
     for node in entry.xpath(general_documents, namespaces=NS):
+        # Antes de armar la referencia: la URI de un documento que no es acta no es asunto
+        # de esta función y no debe salir en el log como descartada.
+        if not _es_acta(_text(node, "./cbc:DocumentTypeCode"), _nombre_fichero(node)):
+            continue
         ref = _referencia(node, "acta")
-        if ref is not None and _es_acta(_text(node, "./cbc:DocumentTypeCode"), ref.filename):
+        if ref is not None:
             refs.append(ref)
     return refs
 

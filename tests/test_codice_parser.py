@@ -1207,3 +1207,46 @@ class TestActasGeneralDocument:
         actas = [d for d in parsed["documentos"] if d["tipo"] == "acta"]
         assert len(actas) == 2
         assert all(d["filename"] == "Acta del órgano de asistencia" for d in actas)
+
+    def test_general_document_ajeno_con_uri_no_http_no_avisa(self, monkeypatch):
+        """Lo que no es acta no se mira: su URI rara no se loguea como descartada."""
+        from unittest.mock import MagicMock
+
+        registro = MagicMock()
+        monkeypatch.setattr("scraper.codice_parser.log", registro)
+
+        refs = self._refs(
+            [
+                ("9", "Memoria justificativa", "javascript:alert(1)"),
+                ("ZZZ", "Anuncio de licitación", "ftp://contrataciondelestado.es/anuncio"),
+            ]
+        )
+
+        assert refs == []
+        registro.warning.assert_not_called()
+
+    def test_acta_con_uri_no_http_se_descarta_y_avisa(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        registro = MagicMock()
+        monkeypatch.setattr("scraper.codice_parser.log", registro)
+
+        refs = self._refs([("12", "Acta del órgano de asistencia", "javascript:alert(1)")])
+
+        assert refs == []
+        registro.warning.assert_called_once_with(
+            "codice_documento_uri_descartada", esquema="javascript"
+        )
+
+    def test_zzz_sin_filename_se_reconoce_por_el_cbc_id(self):
+        """Mismo nombre que ``_referencia`` guarda: ``cbc:FileName`` y, sin él, ``cbc:ID``."""
+        xml = _make_entry_con_general_documents(
+            [("ZZZ", "descartado", "https://contrataciondelestado.es/zzz")]
+        )
+        xml = xml.replace("<cbc:FileName>descartado</cbc:FileName>", "").replace(
+            "<cbc:ID>2026-doc-0</cbc:ID>", "<cbc:ID>Informe de valoración.pdf</cbc:ID>"
+        )
+
+        refs = parse_document_references(self._get_entry(xml))
+
+        assert [(r.tipo, r.filename) for r in refs] == [("acta", "Informe de valoración.pdf")]
