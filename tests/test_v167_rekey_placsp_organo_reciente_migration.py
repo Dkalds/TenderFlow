@@ -149,9 +149,19 @@ def _adjudicacion(c: Any, licitacion: str, nombre: str) -> None:
     )
 
 
+#: FK a ``licitaciones`` nacidas después de v167 (v169: las tablas del acta). v167
+#: es append-only y no las conoce; su guarda las ve en el esquema completo, así
+#: que estos tests las suman a la lista como la sumaría una re-key futura.
+_POSTERIORES_A_V167: list[tuple[str, str, str]] = [
+    ("acta_extracciones", "licitacion_id", ""),
+    ("acta_puntuaciones", "licitacion_id", ""),
+]
+
+
 def _aplicar(c: Any, mapa: tuple[tuple[str, str, str], ...]) -> None:
     modulo = _cargar()
     modulo._MAPA_DATOS = mapa
+    modulo._REFERENCIAS = [*modulo._REFERENCIAS, *_POSTERIORES_A_V167]
     for sentencia in modulo.sentencias_upgrade():
         c.execute(sentencia)
 

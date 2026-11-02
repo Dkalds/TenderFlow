@@ -280,8 +280,19 @@ def _sembrar(c: Any) -> int:
     return int(org)
 
 
+#: FK a ``licitaciones`` nacidas después de v164 (v169: las tablas del acta). v164
+#: es append-only y no las conoce; sus guardas las ven en el esquema completo, así
+#: que estos tests las suman a la lista como la sumaría una re-key futura.
+_POSTERIORES_A_V164: list[tuple[str, str, str]] = [
+    ("acta_extracciones", "licitacion_id", ""),
+    ("acta_puntuaciones", "licitacion_id", ""),
+]
+
+
 def _aplicar(c: Any) -> None:
-    for sentencia in _cargar().sentencias_upgrade():
+    modulo = _cargar()
+    modulo._REFERENCIAS = [*modulo._REFERENCIAS, *_POSTERIORES_A_V164]
+    for sentencia in modulo.sentencias_upgrade():
         c.execute(sentencia)
 
 
@@ -595,7 +606,7 @@ def test_cubre_todas_las_fk_a_licitaciones(tmp_db: Any) -> None:
     lista de la próxima re-key (y este test lo dirá)."""
     from db.database import connect
 
-    cubiertas = {f"{t}.{c}" for t, c, _ in _cargar()._REFERENCIAS}
+    cubiertas = {f"{t}.{c}" for t, c, _ in [*_cargar()._REFERENCIAS, *_POSTERIORES_A_V164]}
     with connect() as c:
         fks = {
             f"{tabla}.{columna}"

@@ -131,6 +131,8 @@ def test_la_clave_es_la_misma_que_escribe_el_conector(tmp_db) -> None:
 #: dice qué no podía conocer v153.
 _FK_POSTERIORES_A_V153: dict[str, str] = {
     "licitaciones_id_anterior.id_externo": "v163_identidad_placsp_fase_a",
+    "acta_extracciones.licitacion_id": "v169_actas_puntuaciones",
+    "acta_puntuaciones.licitacion_id": "v169_actas_puntuaciones",
 }
 
 

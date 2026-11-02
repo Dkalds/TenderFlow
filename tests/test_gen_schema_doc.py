@@ -68,6 +68,7 @@ def _esquema_demo() -> Esquema:
         ("licitaciones_history", "Licitaciones y fuente"),
         ("documento_chunks", "Documentos y pliegos"),
         ("tender_fact_sheets", "Documentos y pliegos"),
+        ("acta_puntuaciones", "Documentos y pliegos"),
         ("empresa_aliases", "Empresas y mercado"),
         ("pursuit_events", "Organizaciones y oportunidades"),
         ("organization_memberships", "Organizaciones y oportunidades"),

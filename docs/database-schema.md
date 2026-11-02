@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-10-26
 
-Revisión Alembic aplicada: `v168_mv_canonicas_universo_producto`.
+Revisión Alembic aplicada: `v169_actas_puntuaciones`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -25,7 +25,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
 | Licitaciones y fuente | 15 | 201 | 66 |
-| Documentos y pliegos | 4 | 46 | 11 |
+| Documentos y pliegos | 6 | 67 | 12 |
 | Empresas y mercado | 6 | 34 | 8 |
 | Organizaciones y oportunidades | 15 | 143 | 31 |
 | Identidad, acceso y auditoría | 16 | 112 | 25 |
@@ -33,7 +33,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 23 | 182 | 35 |
-| **Total** | **104** | **953** | **239** |
+| **Total** | **106** | **974** | **240** |
 
 ## Licitaciones y fuente
 
@@ -370,6 +370,43 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (tribunal, numero_resolucion)`
 Claves: `PRIMARY KEY (source)`
 
 ## Documentos y pliegos
+
+### `acta_extracciones`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `licitacion_id` | `text` | no |
+| `status` | `text` | no |
+| `extraction_version` | `text` | no |
+| `model` | `text` | sí |
+| `documentos_leidos` | `integer` | no |
+| `error_detail` | `text` | sí |
+| `extracted_at` | `timestamp with time zone` | sí |
+| `updated_at` | `timestamp with time zone` | no |
+
+Claves: `PRIMARY KEY (licitacion_id)`
+
+### `acta_puntuaciones`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `bigint` | no |
+| `licitacion_id` | `text` | no |
+| `lote_numero` | `text` | sí |
+| `licitador_nombre` | `text` | no |
+| `licitador_normalizado` | `text` | no |
+| `criterio` | `text` | sí |
+| `puntos` | `double precision` | sí |
+| `puntos_max` | `double precision` | sí |
+| `es_precio` | `boolean` | sí |
+| `excluida` | `boolean` | no |
+| `documento_id` | `integer` | no |
+| `pagina` | `integer` | no |
+| `cita` | `text` | no |
+
+Claves: `PRIMARY KEY (id)`
+
+Índices: `uq_acta_puntuaciones_fila` (único)
 
 ### `documento_chunks`
 

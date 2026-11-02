@@ -192,6 +192,18 @@ _TABLAS: tuple[tuple[str, Visibilidad, str, str], ...] = (
     ),
     ("documento_pages", _V, _DOC, "Texto de cada página de un documento, con marca de OCR."),
     ("tender_fact_sheets", _V, _DOC, "Ficha estructurada extraída del pliego de cada licitación."),
+    (
+        "acta_extracciones",
+        _V,
+        _DOC,
+        "Estado de la lectura del acta de la mesa de cada expediente con oportunidad.",
+    ),
+    (
+        "acta_puntuaciones",
+        _V,
+        _DOC,
+        "Puntos por licitador, criterio y lote leídos del acta de la mesa, con su cita.",
+    ),
     # ── Empresas y mercado ─────────────────────────────────────────────────
     ("empresas", _V, _EMP, "Empresas canónicas (NIF y nombre normalizado), con marca UTE y pyme."),
     ("empresa_aliases", _V, _EMP, "Alias y variantes de NIF que resuelven a una empresa canónica."),
