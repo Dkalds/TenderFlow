@@ -68,11 +68,11 @@ _CACHE_PUBLICA = "public, max-age=300, s-maxage=3600, stale-while-revalidate=864
 # consumidor son rastreadores y el coste de una página grande lo paga Postgres.
 _MAX_LIMITE_PUBLICO = 100
 
-# Tope de un tramo de sitemap. Es el tamaño de fichero que pide el único
-# consumidor (`SITEMAP_POR_FICHERO` en `web/src/lib/publico-api.ts`); el que
-# había, 50.000 (el máximo del protocolo), nadie lo usa y una petición anónima lo
-# podía repetir con una `X-API-Key` distinta cada vez.
-_MAX_ENTRADAS_SITEMAP = 10_000
+# Tope de un tramo de sitemap: 50.000, el máximo del protocolo. El único consumidor
+# (`SITEMAP_POR_FICHERO` en `web/src/lib/publico-api.ts`) pide menos, pero bajar
+# el `maximum` de `limit` estrecha el contrato público y
+# `scripts/check_api_breaking.py` lo trata como cambio incompatible.
+_MAX_ENTRADAS_SITEMAP = 50_000
 
 # Respuesta para un slug que el corpus no tiene. Más corta que la normal: un hub
 # que acaba de alcanzar el umbral no debe quedar como «vacío» una hora en el CDN.

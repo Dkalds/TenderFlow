@@ -652,7 +652,14 @@ def test_una_cuenta_de_baja_no_recibe_enlace_ni_consume_el_que_tenia(tmp_db, baj
 
     assert issue_password_reset(email) == (False, None)
     assert consume_reset_token(previo, _HASH_QUE_NO_SE_ESCRIBE) is None
-    assert _conserva_la_contrasena(user_id)
+    if baja == "anonymize_user":
+        # Anonimizar borra el hash a propósito (la cuenta no puede volver a entrar):
+        # lo que se comprueba es que el reset no le puso una contraseña.
+        persona = users.get_user_by_id(user_id, include_deactivated=True)
+        assert persona is not None
+        assert persona["password_hash"] is None
+    else:
+        assert _conserva_la_contrasena(user_id)
 
 
 def test_la_revocacion_escribe_revoked_at_como_el_resto_del_codigo(tmp_db):

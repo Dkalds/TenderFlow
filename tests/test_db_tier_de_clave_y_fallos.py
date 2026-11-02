@@ -143,7 +143,7 @@ def test_un_enlace_caducado_no_es_vigente(tmp_db):
 # ---------------------------------------------------------------------------
 
 _LOGIN = "/api/v1/auth/login"
-_CORREO = "lock@example.test"
+_CORREO = "lock@example.com"  # EmailStr rechaza los dominios reservados como .test
 _BUENA = "CorrectaClave2026"  # pragma: allowlist secret # gitleaks:allow
 
 

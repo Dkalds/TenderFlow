@@ -8,7 +8,7 @@ que devuelve (eso lo cubren ``test_routes_publico.py`` y
 - Los hubs se leen una vez por ventana, no en cada visita.
 - Un slug de comunidad u órgano que el corpus no tiene devuelve la página vacía
   sin tocar ``listar`` ni ``contar`` (el slug se calcula en SQL sin índice).
-- Un tramo de sitemap no pasa de 10.000 entradas.
+- Un tramo de sitemap conserva su tope de 50.000 entradas (el contrato público).
 """
 
 from __future__ import annotations
@@ -181,16 +181,16 @@ def test_si_la_lectura_de_los_hubs_falla_el_indice_es_un_503_y_no_se_reintenta_a
     assert repo.nombres().count("hubs_ccaa") == 1, "el fallo se retiene unos segundos"
 
 
-def test_un_tramo_de_sitemap_no_pasa_de_diez_mil_entradas(
+def test_un_tramo_de_sitemap_conserva_su_tope_de_cincuenta_mil_entradas(
     cliente: TestClient, repo: _RepoFalso
 ) -> None:
-    assert cliente.get("/api/v1/publico/sitemap/entradas?limit=10001").status_code == 422
-    assert cliente.get("/api/v1/publico/sitemap/entradas?limit=50000").status_code == 422
+    """Bajar el ``maximum`` de ``limit`` rompería el contrato público."""
+    assert cliente.get("/api/v1/publico/sitemap/entradas?limit=50001").status_code == 422
 
-    assert cliente.get("/api/v1/publico/sitemap/entradas?limit=10000").status_code == 200
-    assert dict(repo.llamadas)["pagina_de_sitemap"]["tamano"] == 10_000
+    assert cliente.get("/api/v1/publico/sitemap/entradas?limit=50000").status_code == 200
+    assert dict(repo.llamadas)["pagina_de_sitemap"]["tamano"] == 50_000
 
 
 def test_el_sitemap_arma_su_respuesta_en_un_hilo() -> None:
-    """``async def`` armaría y validaría hasta 10.000 modelos sobre el event loop."""
+    """``async def`` armaría y validaría hasta 50.000 modelos sobre el event loop."""
     assert not inspect.iscoroutinefunction(publico.entradas_sitemap)
