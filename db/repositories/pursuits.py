@@ -317,7 +317,7 @@ class KitEventRow(TypedDict):
 class FilaActaEventRow(TypedDict):
     """Una fila de :meth:`PursuitRepository.fila_acta_events`."""
 
-    actor_user_id: int
+    actor_user_id: int | None
     payload_json: str
     created_at: str
 

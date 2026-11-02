@@ -91,10 +91,11 @@ _COLUMNAS_PUNTUACION = (
     "es_precio, excluida, documento_id, pagina, cita"
 )
 
-# ``extracted_at`` marca la última lectura que llegó a una conclusión (``ok`` o
-# ``sin_tabla``). Un ``error`` o un ``sin_acta`` posterior no la borra: el dato
-# que sigue guardado, si lo hay, se leyó entonces. Por eso el ``UPDATE`` hace
-# ``COALESCE`` con el valor anterior en vez de pisarlo con ``NULL``.
+# ``extracted_at`` es el instante de una lectura que llegó a una conclusión
+# (``ok`` o ``sin_tabla``); con ``error`` o ``sin_acta`` queda en ``NULL``. Va
+# pareado con las puntuaciones: ``guardar`` siempre las reemplaza, así que tras
+# un ``error`` o un ``sin_acta`` no queda ningún dato leído que esa fecha pueda
+# respaldar, y conservar la de una lectura anterior mentiría sobre lo guardado.
 _UPSERT_EXTRACCION_SQL = (
     "INSERT INTO acta_extracciones "
     "(licitacion_id, status, extraction_version, model, documentos_leidos, error_detail, "
@@ -107,7 +108,7 @@ _UPSERT_EXTRACCION_SQL = (
     "  model = EXCLUDED.model, "
     "  documentos_leidos = EXCLUDED.documentos_leidos, "
     "  error_detail = EXCLUDED.error_detail, "
-    "  extracted_at = COALESCE(EXCLUDED.extracted_at, acta_extracciones.extracted_at), "
+    "  extracted_at = EXCLUDED.extracted_at, "
     "  updated_at = now()"
 )
 
@@ -141,12 +142,19 @@ _PENDIENTES_SQL = (
     " LIMIT %(limite)s"
 )
 
-# Las cuatro formas con que la organización puede aparecer escrita en un acta.
+# Las cinco formas con que la organización puede aparecer escrita en un acta.
 # ``empresa_id`` no es columna de ``organization_nifs``: se llega por el NIF
-# canónico del maestro, como en ``OrganizationNifRepository.empresa_ids``.
+# canónico del maestro, como en ``OrganizationNifRepository.empresa_ids``. La
+# segunda fuente cubre las adjudicaciones que el maestro ya resolvió a esa
+# empresa aunque su NIF se publicara con otra forma (``idx_adj_empresa``).
 _NOMBRES_ORGANIZACION_SQL = (
     "SELECT a.nombre FROM organization_nifs n "
     "  JOIN adjudicaciones a ON a.nif = n.nif "
+    " WHERE n.organization_id = %(org)s "
+    "UNION "
+    "SELECT a.nombre FROM organization_nifs n "
+    "  JOIN empresas e ON e.nif_canonico = n.nif "
+    "  JOIN adjudicaciones a ON a.empresa_id = e.empresa_id "
     " WHERE n.organization_id = %(org)s "
     "UNION "
     "SELECT e.nombre_canonico FROM organization_nifs n "
@@ -216,7 +224,9 @@ class PuntuacionesActaRepository:
         actualiza, y las puntuaciones del expediente se borran y se vuelven a
         insertar. Repetirla con lo mismo deja lo mismo; con ``filas`` vacías
         (``sin_tabla``, ``sin_acta``, ``error``) deja la extracción y ninguna
-        puntuación.
+        puntuación. Siempre reemplaza, también con ``error``: lo leído antes se
+        pierde, y por eso ``extracted_at`` solo se marca con ``ok`` y
+        ``sin_tabla``.
 
         Dos filas con el mismo lote, licitador y criterio chocan con
         ``uq_acta_puntuaciones_fila`` y la transacción entera se deshace: quien
@@ -270,6 +280,11 @@ class PuntuacionesActaRepository:
         versión de la extracción, los que quedaron en ``error`` y los que
         quedaron en ``sin_acta`` cuando desde entonces llegó un documento
         ``acta``. ``ok`` y ``sin_tabla`` de la versión vigente no vuelven.
+
+        Lee los ``pursuits`` de todas las organizaciones, así que se llama sin
+        contexto de tenant (el job del scheduler), no desde el ámbito de una
+        petición: con la organización fijada, las políticas RLS de v128 lo
+        acotarían a la suya.
         """
         # shortcut: reencola 'error' en cada pasada, sin tope; poner un tope por updated_at si las oportunidades pasan del centenar
         with connect_read() as conn:
@@ -294,13 +309,15 @@ class PuntuacionesActaRepository:
         """Los nombres con que la organización puede figurar en un acta, sin normalizar.
 
         Unión de: el nombre con que se adjudicó a los NIF que declaró
-        (``adjudicaciones.nombre``), el nombre canónico y los alias del maestro
-        de empresas para esos mismos NIF, y el nombre de la propia organización.
-        Normalizarlos y compararlos con ``licitador_normalizado`` es del servicio.
+        (``adjudicaciones.nombre``), el de las adjudicaciones que el maestro ya
+        resolvió a la empresa de esos NIF (``adjudicaciones.empresa_id``), el
+        nombre canónico y los alias del maestro de empresas para esos mismos
+        NIF, y el nombre de la propia organización. Normalizarlos y compararlos
+        con ``licitador_normalizado`` es del servicio.
 
-        El cruce con ``adjudicaciones`` es por igualdad de NIF (usa
-        ``idx_adj_nif``): una adjudicación cuyo NIF se publicó con separadores no
-        aporta su nombre por esa vía, y queda cubierta por el maestro de empresas.
+        El cruce por NIF es por igualdad (usa ``idx_adj_nif``): una adjudicación
+        cuyo NIF se publicó con separadores no aporta su nombre por esa vía, y
+        queda cubierta por la resolución a ``empresa_id`` (``idx_adj_empresa``).
         """
         with connect_read() as conn:
             filas = conn.execute(_NOMBRES_ORGANIZACION_SQL, {"org": organization_id}).fetchall()

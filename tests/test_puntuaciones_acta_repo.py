@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import psycopg
+import pytest
+
 from db.repositories.puntuaciones_acta import (
     ActaStatus,
     PuntuacionesActaRepository,
@@ -66,12 +69,13 @@ def _adjudicacion(
     *,
     importe: float = 1000.0,
     lote_id: int | None = None,
+    empresa_id: int | None = None,
 ) -> None:
     c.execute(
         "INSERT INTO adjudicaciones "
-        "(licitacion_id, nombre, nif, importe_adjudicado, lote_id, fecha_extraccion) "
-        "VALUES (%s, %s, %s, %s, %s, %s)",
-        (licitacion_id, nombre, nif, importe, lote_id, _AHORA),
+        "(licitacion_id, nombre, nif, importe_adjudicado, lote_id, empresa_id, fecha_extraccion) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+        (licitacion_id, nombre, nif, importe, lote_id, empresa_id, _AHORA),
     )
 
 
@@ -254,11 +258,16 @@ def test_get_extraccion_sin_fila_es_none(tmp_db: Any) -> None:
 
 
 def test_extracted_at_solo_marca_las_lecturas_que_llegaron_a_una_conclusion(tmp_db: Any) -> None:
-    """Un ``error`` posterior no borra cuándo se leyó con éxito por última vez."""
+    """Un ``error`` posterior deja ``extracted_at`` en ``NULL`` y sin puntuaciones.
+
+    ``guardar`` siempre reemplaza el expediente: tras el ``error`` no queda dato
+    leído que una fecha de lectura pueda respaldar.
+    """
     from db.database import connect
 
     with connect() as c:
         _licitacion(c, _LIC)
+        documento = _acta(c, _LIC)
     repo = PuntuacionesActaRepository()
 
     _guardar(_LIC, [], status="error", error_detail="tiempo agotado")
@@ -268,17 +277,53 @@ def test_extracted_at_solo_marca_las_lecturas_que_llegaron_a_una_conclusion(tmp_
     assert primera["error_detail"] == "tiempo agotado"
     assert primera["extracted_at"] is None
 
-    _guardar(_LIC, [], status="ok")
+    _guardar(_LIC, [_fila(documento)], status="ok")
     leida = repo.get_extraccion(_LIC)
     assert leida is not None
     assert leida["extracted_at"] is not None
     assert leida["error_detail"] is None
+    assert len(repo.list_puntuaciones(_LIC)) == 1
 
     _guardar(_LIC, [], status="error", error_detail="otra vez")
     despues = repo.get_extraccion(_LIC)
     assert despues is not None
     assert despues["status"] == "error"
-    assert despues["extracted_at"] == leida["extracted_at"]
+    assert despues["extracted_at"] is None
+    assert repo.list_puntuaciones(_LIC) == []
+
+    _guardar(_LIC, [], status="sin_acta")
+    sin_acta = repo.get_extraccion(_LIC)
+    assert sin_acta is not None
+    assert sin_acta["extracted_at"] is None
+
+
+def test_guardar_con_filas_repetidas_se_deshace_y_deja_el_estado_anterior(tmp_db: Any) -> None:
+    """Dos filas con la misma clave chocan con el índice único: nada se escribe."""
+    from db.database import connect
+
+    with connect() as c:
+        _licitacion(c, _LIC)
+        documento = _acta(c, _LIC)
+    repo = PuntuacionesActaRepository()
+    _guardar(_LIC, [_fila(documento, licitador_normalizado="primera", criterio="Mejoras")])
+    antes = repo.list_puntuaciones(_LIC)
+    extraccion_antes = repo.get_extraccion(_LIC)
+    assert len(antes) == 1
+    assert extraccion_antes is not None
+
+    repetida = _fila(documento, licitador_normalizado="otra", criterio="Mejoras")
+    with pytest.raises(psycopg.errors.UniqueViolation):
+        _guardar(
+            _LIC,
+            [repetida, repetida],
+            status="sin_tabla",
+            version="acta-puntuaciones-v2",
+        )
+
+    # Ni las puntuaciones ni el estado de la extracción cambiaron: el DELETE y
+    # el UPSERT previos al INSERT que falló se deshicieron con él.
+    assert repo.list_puntuaciones(_LIC) == antes
+    assert repo.get_extraccion(_LIC) == extraccion_antes
 
 
 def test_tiene_actas_solo_cuenta_documentos_tipo_acta(tmp_db: Any) -> None:
@@ -415,10 +460,6 @@ def test_nombres_de_organizacion(tmp_db: Any) -> None:
     OrganizationNifRepository().replace_all(org_id, nifs=[{"nif": NIF_PROPIO, "principal": True}])
     OrganizationNifRepository().replace_all(otra_org, nifs=[{"nif": NIF_AJENO, "principal": True}])
     with connect() as c:
-        # Cómo la adjudicó la Plataforma a ese NIF.
-        _licitacion(c, _LIC)
-        _adjudicacion(c, _LIC, "ACME SERVICIOS S.L.", NIF_PROPIO)
-        _adjudicacion(c, _LIC, "BETA SOLUCIONES SA", NIF_AJENO, importe=2000.0)
         # El maestro de empresas: nombre canónico y alias del mismo NIF.
         empresa_id = int(
             c.execute(
@@ -432,12 +473,43 @@ def test_nombres_de_organizacion(tmp_db: Any) -> None:
             " created_at) VALUES (%s, %s, 'test', 1.0, %s)",
             (empresa_id, "acme servicios", _AHORA),
         )
+        empresa_ajena = int(
+            c.execute(
+                "INSERT INTO empresas (nombre_canonico, nif_canonico) VALUES (%s, %s) "
+                "RETURNING empresa_id",
+                ("BETA SOLUCIONES SOCIEDAD ANONIMA", NIF_AJENO),
+            ).fetchone()[0]
+        )
+        _licitacion(c, _LIC)
+        # Cómo la adjudicó la Plataforma al NIF declarado.
+        _adjudicacion(c, _LIC, "ACME SERVICIOS S.L.", NIF_PROPIO)
+        # Una adjudicación con el NIF publicado de otra forma, que el maestro
+        # ya resolvió a la empresa de la organización.
+        _adjudicacion(
+            c,
+            _LIC,
+            "ACME SERVICIOS Y COMPAÑIA SL",
+            "B-12345678",
+            importe=1500.0,
+            empresa_id=empresa_id,
+        )
+        # Las de otra organización no cuentan, resuelvan por NIF o por empresa.
+        _adjudicacion(c, _LIC, "BETA SOLUCIONES SA", NIF_AJENO, importe=2000.0)
+        _adjudicacion(
+            c,
+            _LIC,
+            "BETA SOLUCIONES Y CIA",
+            "A-87654321",
+            importe=2500.0,
+            empresa_id=empresa_ajena,
+        )
 
     nombres = PuntuacionesActaRepository().nombres_de_organizacion(org_id)
 
     assert sorted(nombres) == sorted(
         [
             "ACME SERVICIOS S.L.",  # adjudicaciones.nombre del NIF declarado
+            "ACME SERVICIOS Y COMPAÑIA SL",  # adjudicaciones.nombre por empresa_id
             "ACME SERVICIOS SOCIEDAD LIMITADA",  # empresas.nombre_canonico
             "acme servicios",  # empresa_aliases.alias_normalizado
             "Acme Holding",  # organizations.name
