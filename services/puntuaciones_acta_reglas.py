@@ -54,6 +54,11 @@ def _a_texto(valor: object) -> object:
     return valor
 
 
+def _a_bool(valor: object) -> object:
+    """Un ``null`` del modelo es «no»: no puede invalidar la respuesta entera."""
+    return False if valor is None else valor
+
+
 Puntos = Annotated[float | None, BeforeValidator(_a_numero)]
 
 
@@ -75,7 +80,7 @@ class FilaActa(BaseModel):
     licitador: str
     criterios: list[CriterioActa] = Field(default_factory=list)
     total: Puntos = None
-    excluida: bool = False
+    excluida: Annotated[bool, BeforeValidator(_a_bool)] = False
     cita: str
     pagina: int
     documento_id: int
@@ -101,17 +106,24 @@ class RespuestaActa(BaseModel):
 # --- Lote y precio -------------------------------------------------------------
 
 #: «lote 1», «lote nº 1», «lote n.º 2», «1», sobre texto ya plegado (``fold_text``:
-#: «º» llega como «o»). Solo un número entero, solo o tras «lote»: «lote 1 y 2» no
-#: es el lote 1.
-_LOTE_RE = re.compile(r"(?:lote\s*)?(?:(?:num(?:ero)?|n)\.?[º°o]?\.?\s*)?(\d+)")
+#: «º» llega como «o»). Un solo número entero, solo o tras «lote», y detrás nada o un
+#: descriptor que lo separa con «:», «-», el guión medio o largo, «(» o un punto final («LOTE 1: Servicio
+#: de limpieza»). «lote 1 y 2», «1-2» y «lote 1.5» no son el lote 1.
+_LOTE_RE = re.compile(
+    r"(?:lote\s*)?(?:(?:num(?:ero)?|n)\.?[º°o]?\.?\s*)?(\d+)"
+    r"(?=\s*(?:[:(]|[-\u2013\u2014.]\s*(?!\d)|$))"
+)
 
 
 def normalizar_lote(raw: str | None) -> str | None:
-    """«Lote Nº 1» -> ``"1"``. Sin número que reconocer (o sin lote) -> ``None``."""
+    """«Lote Nº 1: Servicio» -> ``"1"``; «Lote 01» -> ``"1"`` como lo guarda el pliego.
+
+    Sin un único número que reconocer (o sin lote) -> ``None``.
+    """
     if not raw:
         return None
-    casado = _LOTE_RE.fullmatch(fold_text(raw).strip())
-    return casado.group(1) if casado else None
+    casado = _LOTE_RE.match(fold_text(raw).strip())
+    return (casado.group(1).lstrip("0") or "0") if casado else None
 
 
 #: Nombre de criterio que delata el precio cuando el pliego no lo dice (spec §5).
@@ -281,12 +293,21 @@ def filas_validadas(
     Sin duplicados por ``(lote, licitador normalizado, criterio)``: la
     escritura es una transacción contra un índice único y un solo duplicado la
     deshace entera. Se queda la primera aparición.
+
+    Si la respuesta trae varios lotes, solo sobreviven los cuya etiqueta da un
+    número de lote: sin lote que se pueda verificar no hay dato (ADR-014), y dos
+    lotes distintos bajo el mismo ``None`` se fundirían y la deduplicación
+    tiraría las filas del segundo. Con un solo lote, ``None`` es legítimo
+    («Único», o sin etiqueta).
     """
     indice = {_clave_de_pagina(p): dict(p) for p in paginas}
     filas: list[PuntuacionNueva] = []
     vistas: set[tuple[str, str, str]] = set()
+    varios_lotes = sum(1 for lote in respuesta.lotes if lote.filas) > 1
     for lote in respuesta.lotes:
         lote_numero = normalizar_lote(lote.lote)
+        if varios_lotes and lote_numero is None:
+            continue
         for fila in lote.filas:
             for nueva in _filas_de(fila, lote_numero, indice, criterios_pliego):
                 clave = (lote_numero or "", nueva["licitador_normalizado"], nueva["criterio"] or "")
@@ -333,6 +354,10 @@ class DiferenciaCalculo:
     es_precio: bool | None
 
 
+def _total_o_menos_inf(fila: FilaCalculo) -> float:
+    return -math.inf if fila.total is None else fila.total
+
+
 def fila_ganadora(
     filas: Sequence[FilaCalculo], adjudicatarios_normalizados: set[str]
 ) -> tuple[int | None, bool]:
@@ -342,9 +367,12 @@ def fila_ganadora(
     total entre las no excluidas, y la interfaz la rotula «mayor puntuación» y
     no «ganadora» (``True``). Sin totales que comparar, ``(None, False)``.
     """
-    for i, fila in enumerate(filas):
-        if fila.licitador_normalizado in adjudicatarios_normalizados:
-            return i, False
+    casan = [
+        i for i, f in enumerate(filas) if f.licitador_normalizado in adjudicatarios_normalizados
+    ]
+    if casan:
+        # Varias filas pueden casar (una UTE y una de sus socias): manda la de más puntos.
+        return max(casan, key=lambda i: _total_o_menos_inf(filas[i])), False
     mejor: tuple[int, float] | None = None
     for i, fila in enumerate(filas):
         if fila.excluida or fila.total is None:

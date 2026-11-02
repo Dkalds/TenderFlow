@@ -14,8 +14,11 @@ import pytest
 
 from services.normalization import normalize_company
 from services.puntuaciones_acta_reglas import (
+    CriterioActa,
     CriterioCalculo,
+    FilaActa,
     FilaCalculo,
+    LoteActa,
     RespuestaActa,
     diferencia,
     es_precio_de,
@@ -65,6 +68,21 @@ def _texto(paginas: list[dict[str, object]], numero: int) -> str:
         ("Único", None),
         # Una cifra con texto detrás podría ser otro lote: mejor sin lote que con el equivocado.
         ("Lote 1 y 2", None),
+        # El descriptor que el acta pone tras el número no cambia de lote...
+        ("LOTE 1: Servicio de limpieza", "1"),
+        ("Lote 1 - Suministro", "1"),
+        ("Lote 1\u2013Suministro", "1"),
+        ("Lote 1 (Servicio)", "1"),
+        ("Lote 1.", "1"),
+        ("Lote nº 2: Correo electrónico", "2"),
+        # ...y los ceros a la izquierda tampoco: el pliego guarda «1».
+        ("Lote 01", "1"),
+        ("01", "1"),
+        # Lo que no es un solo número de lote sigue sin lote.
+        ("Lote 1.5", None),
+        ("Lotes 1-2", None),
+        ("1-2", None),
+        ("Lote A", None),
     ],
 )
 def test_normalizar_lote(raw: str | None, esperado: str | None) -> None:
@@ -96,6 +114,13 @@ def test_respuesta_acepta_coma_decimal() -> None:
     )
     c = r.lotes[0].filas[0].criterios[0]
     assert (c.puntos, c.maximo, r.lotes[0].filas[0].total) == (18.5, 65.0, None)
+
+
+def test_respuesta_acepta_excluida_null() -> None:
+    # Un null del modelo no puede invalidar la respuesta entera: no excluida.
+    fila = {"licitador": "A", "excluida": None, "cita": "x", "pagina": 1, "documento_id": 1}
+    r = RespuestaActa.model_validate({"lotes": [{"lote": "1", "filas": [fila]}]})
+    assert r.lotes[0].filas[0].excluida is False
 
 
 def test_respuesta_acepta_lote_numerico_y_campos_de_mas() -> None:
@@ -385,6 +410,83 @@ def test_filas_validadas_deduplica() -> None:
     assert len(filas) == 4 * 3 + 1 + 5 * 2
 
 
+def _th_work_del_lote_1() -> FilaActa:
+    """TH WORK 3000 también concursó al lote 1 (página 2 del acta)."""
+    return FilaActa(
+        licitador="TH WORK 3000 SL",
+        criterios=[
+            CriterioActa(nombre="Informe técnico", puntos=30, maximo=30),
+            CriterioActa(nombre="Tiempo de respuesta", puntos=5, maximo=5),
+            CriterioActa(nombre="Oferta económica", puntos=61.5, maximo=65),
+        ],
+        total=96.5,
+        cita="TH WORK 3000 SL 30 5 61,5 96,5",
+        pagina=2,
+        documento_id=1,
+    )
+
+
+def test_filas_validadas_lotes_con_descriptor_no_se_funden() -> None:
+    paginas = _paginas()
+    respuesta = _respuesta_del_acta_real()
+    # Etiquetas como las escribe un acta: «LOTE N: descripción». Con el mismo licitador en los dos.
+    respuesta.lotes[0].lote = "LOTE 1: Servicio de desarrollo web"
+    respuesta.lotes[1].lote = "LOTE 2: Gestión del correo electrónico"
+    respuesta.lotes[0].filas.append(_th_work_del_lote_1())
+    assert _th_work_del_lote_1().cita in _texto(paginas, 2)
+
+    filas = filas_validadas(respuesta, paginas, _PLIEGO)
+
+    assert {f["lote_numero"] for f in filas} == {"1", "2"}
+    th_work = {
+        (f["lote_numero"], f["criterio"]): f["puntos"]
+        for f in filas
+        if f["licitador_normalizado"] == "TH WORK 3000"
+    }
+    assert th_work[("1", None)] == 96.5
+    assert th_work[("2", None)] == 97.0  # la ganadora del lote 2 no se pierde
+    assert th_work[("2", "Oferta económica")] == 80.0
+    assert th_work[("1", "Oferta económica")] == 61.5
+    assert len(filas) == 4 * 3 + 1 + 5 * 2 + 4
+
+
+def test_filas_validadas_lote_sin_numero_en_respuesta_multilote_se_descarta() -> None:
+    respuesta = _respuesta_del_acta_real()
+    respuesta.lotes[0].lote = "Lote primero"  # no hay número que verificar
+    filas = filas_validadas(respuesta, _paginas(), _PLIEGO)
+    assert {f["lote_numero"] for f in filas} == {"2"}
+    assert {f["licitador_normalizado"] for f in filas} == {
+        "SOLUCIONES INFORMATICAS DIG",
+        "TH WORK 3000",
+    }
+
+
+def test_filas_validadas_lote_sin_etiqueta_junto_a_otro_con_numero_se_descarta() -> None:
+    respuesta = _respuesta_del_acta_real()
+    respuesta.lotes[0].lote = None  # sin etiqueta: en una respuesta multilote no se sabe de cuál es
+    respuesta.lotes[1].lote = "Lote 2"
+    filas = filas_validadas(respuesta, _paginas(), _PLIEGO)
+    assert {f["lote_numero"] for f in filas} == {"2"}
+    assert len(filas) == 5 * 2
+
+
+def test_filas_validadas_dos_lotes_sin_etiqueta_no_dejan_nada() -> None:
+    respuesta = _respuesta_del_acta_real()
+    respuesta.lotes[0].lote = None
+    respuesta.lotes[1].lote = ""
+    assert filas_validadas(respuesta, _paginas(), _PLIEGO) == []
+
+
+@pytest.mark.parametrize("etiqueta", ["Único", None, ""])
+def test_filas_validadas_lote_unico_sin_numero_queda_sin_lote(etiqueta: str | None) -> None:
+    # Con un solo lote no hay otro con quien fundirse: «Único» o sin etiqueta se guarda sin lote.
+    respuesta = _respuesta_del_acta_real()
+    respuesta.lotes = [LoteActa(lote=etiqueta, filas=respuesta.lotes[0].filas)]
+    filas = filas_validadas(respuesta, _paginas(), _PLIEGO)
+    assert filas
+    assert {f["lote_numero"] for f in filas} == {None}
+
+
 # --- fila ganadora y fila propia ---------------------------------------------
 
 
@@ -421,6 +523,24 @@ def _fila(
 def test_fila_ganadora_por_nombre_adjudicatario() -> None:
     filas = [_fila("MEJOR S.L.", 95), _fila("ADJUDICATARIA S.L.", 80), _fila("OTRA S.L.", 70)]
     assert fila_ganadora(filas, {"ADJUDICATARIA"}) == (1, False)
+
+
+def test_fila_ganadora_varias_coincidencias_manda_el_mayor_total() -> None:
+    # Dos nombres publicados para el lote que casan con dos filas (una UTE y una de sus socias).
+    filas = [
+        _fila("ADJ S.L.", 50),
+        _fila("OTRA S.L.", 90),
+        _fila("ADJ NORTE S.L.", 80),
+        _fila("ADJ SUR S.L.", None),
+    ]
+    assert fila_ganadora(filas, {"ADJ", "ADJ NORTE", "ADJ SUR"}) == (2, False)
+    assert fila_ganadora(
+        [_fila("ADJ S.L.", None), _fila("ADJ NORTE S.L.", 10)], {"ADJ", "ADJ NORTE"}
+    ) == (1, False)
+    # Sin totales, la primera.
+    assert fila_ganadora(
+        [_fila("ADJ S.L.", None), _fila("ADJ NORTE S.L.", None)], {"ADJ", "ADJ NORTE"}
+    ) == (0, False)
 
 
 def test_fila_ganadora_por_mayor_total_sin_excluidas() -> None:
