@@ -83,7 +83,8 @@ Cada línea del JSONL es una licitación. Se rellenan cinco campos:
 
 ## 3. Volcar las etiquetas
 
-Con una API key con scope `feedback:write` (`api/scopes.py`):
+Con una API key con scope `feedback:write` (`api/scopes.py`) **de una cuenta
+administradora** (con otra, `POST /api/v1/feedback` responde 403):
 
 ```bash
 TENDERFLOW_API_KEY=... python scripts/muestra_etiquetado_ti.py importar \

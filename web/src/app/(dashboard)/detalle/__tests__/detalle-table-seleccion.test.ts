@@ -133,6 +133,31 @@ describe("buildCsv", () => {
     expect(line).toBe("A,,,,,,,,");
   });
 
+  it("neutraliza como fórmula el texto de terceros que Excel ejecutaría al abrirlo", () => {
+    const csv = buildCsv([
+      row({ id_externo: "A", titulo: '=HYPERLINK("https://evil.example","ver")' }),
+      row({ id_externo: "B", titulo: "@SUM(1+1)" }),
+      row({ id_externo: "C", titulo: "-2+3" }),
+      row({ id_externo: "D", titulo: "  =cmd|' /C calc'!A0" }),
+    ]);
+    const [, a, b, c, d] = csv.split("\n");
+    expect(a).toBe(`A,"'=HYPERLINK(""https://evil.example"",""ver"")",,,,,,,`);
+    expect(b).toBe("B,'@SUM(1+1),,,,,,,");
+    expect(c).toBe("C,'-2+3,,,,,,,");
+    // Los blancos de delante no la salvan: algunos motores los recortan antes
+    // de decidir si es una fórmula.
+    expect(d).toBe("D,'  =cmd|' /C calc'!A0,,,,,,,");
+  });
+
+  it("no toca un importe negativo: es un número, no una fórmula", () => {
+    const [, line] = buildCsv([row({ id_externo: "A", importe: -50 })]).split("\n");
+    expect(line).toBe("A,,,-50,,,,,");
+  });
+
+  it("entrecomilla los saltos de línea para que no partan la fila", () => {
+    expect(buildCsv([row({ id_externo: "A", titulo: "uno\ndos" })])).toContain('A,"uno\ndos"');
+  });
+
   it("exporta solo las nueve columnas del contrato, en orden", () => {
     const csv = buildCsv([
       row({ id_externo: "A", ccaa: "MD", cpv: "72000000" } as never),

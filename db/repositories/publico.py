@@ -802,6 +802,28 @@ class PublicoRepository:
         with connect_read() as c:
             return _consultar(c)
 
+    def slugs_ccaa(self) -> list[str]:
+        """Slug de cada comunidad que aparece en el corpus, **sin umbral de volumen**.
+
+        Es la lista cerrada con la que la ruta decide si un ``?ccaa=`` puede dar
+        algo antes de pagar ``listar`` y ``contar``: el slug se calcula en SQL
+        sin índice, así que un slug inventado cuesta dos escaneos de la vista
+        entera para devolver una página vacía. Los hubs (``hubs_ccaa``) no
+        sirven de lista cerrada porque llevan umbral y la página de una
+        comunidad con dos anuncios existe (la enlaza la ficha), solo que no
+        está en el índice.
+
+        El slug se calcula sobre los valores **distintos** de ``ccaa`` (unas
+        pocas decenas), no sobre cada fila de la vista.
+        """
+        sql = (
+            f"SELECT DISTINCT {_ccaa_slug_sql('c')} AS slug "
+            f"FROM (SELECT DISTINCT ccaa FROM {VISTA_CANONICAS} WHERE ccaa IS NOT NULL) c"
+        )
+
+        with connect_read() as c:
+            return [str(fila[0]) for fila in c.execute(sql).fetchall() if fila[0]]
+
     def hubs_cpv(self, *, conn: Any | None = None) -> list[HubCpvRow]:
         """Códigos CPV con volumen suficiente para tener página."""
         sql = (

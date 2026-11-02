@@ -15,6 +15,8 @@ _COLABORADORES = (
     "services.gdpr._feedback_repo",
     "services.gdpr._pursuit_repo",
     "services.gdpr._pursuit_comment_repo",
+    "services.gdpr._pursuit_task_repo",
+    "services.gdpr.delete_totp",
     "services.gdpr._organization_repo",
     "services.gdpr._api_key_repo",
     "services.watchlist_rules.delete_all_for_user",

@@ -33,6 +33,7 @@ import json
 import secrets
 import time
 from collections.abc import Callable, Mapping, Sequence
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any, Literal, ParamSpec, Protocol, TypeVar
 from urllib.parse import urlsplit
@@ -57,6 +58,7 @@ from config.settings import mcp_redirect_uris_extra
 from db import mcp_oauth
 from db.audit import log_action
 from db.mcp_oauth import TipoToken, TokenNuevo
+from db.totp import has_confirmed_totp
 from db.users import get_active_user_by_email_ci, get_user_by_id
 from mcp_server.auth.google import ClienteGoogle
 from observability.logging import get_logger
@@ -65,11 +67,15 @@ from services.rate_limiting import get_rate_limiter
 from shared.auth_core import generate_oauth_state, oauth_state_nonce, verify_oauth_state
 
 __all__ = [
+    "COOKIE_LOGIN",
     "REDIRECTS_CLAUDE",
     "AlmacenOAuth",
     "AlmacenOAuthPostgres",
     "ProveedorTenderFlow",
     "auditar_oauth",
+    "ip_cliente",
+    "ligadura_de_login",
+    "ligadura_navegador",
     "redirect_uri_admitido",
     "secreto_de_cliente",
 ]
@@ -96,13 +102,32 @@ MAX_CHARS_CLIENTE = 8 * 1024
 MAX_CHARS_STATE = 500
 MAX_SCOPES = 10
 MAX_CHARS_PETICION = 4 * 1024
-#: Rate limits ``(clave, máximo, ventana en s)``. Son globales: la IP real del
-#: cliente solo la sabe ``api.middleware._trusted_client_ip``, que el MCP no
-#: puede importar (capas), así que no hay límite por IP.
+#: Rate limits ``(clave, máximo, ventana en s)`` globales.
 LIMITE_REGISTRO = ("mcp:oauth:registro", 30, 3600)
 LIMITE_AUTORIZAR = ("mcp:oauth:autorizar", 600, 3600)
 #: Por ``client_id``: la clave es ``f"{LIMITE_AUTORIZAR[0]}:{client_id}"``.
 LIMITE_AUTORIZAR_CLIENTE = 60
+#: Por IP del cliente, en la misma ventana: ``f"{LIMITE_REGISTRO[0]}:ip:{ip}"``. Se
+#: cuentan **antes** que los globales, para que una sola IP no agote el cupo de
+#: todos. Solo rigen si se conoce la IP (:data:`ip_cliente`).
+LIMITE_REGISTRO_IP = 10
+LIMITE_AUTORIZAR_IP = 30
+
+#: IP del cliente de la petición HTTP en curso, o ``None`` si no se conoce. La
+#: fija el middleware del servidor (``mcp_server.servidor``): el SDK llama a
+#: ``register_client`` y ``authorize`` sin la petición, y la IP real solo la sabe
+#: quien lee las cabeceras (``api.middleware`` no se puede importar: capas).
+ip_cliente: ContextVar[str | None] = ContextVar("mcp_ip_cliente", default=None)
+
+#: Cookie que liga el login de Google al navegador que pidió ``/authorize``.
+COOKIE_LOGIN = "mcp_login"
+#: Cajón que abre el middleware del servidor en ``/authorize``: ``authorize`` deja
+#: en él el valor de la cookie (``"valor"``) y el middleware lo manda con la
+#: redirección. Un contenedor mutable y no un ``set`` del ``ContextVar``: lo que
+#: se asigna dentro de una tarea hija del SDK no vuelve a quien lo abrió.
+ligadura_navegador: ContextVar[dict[str, str] | None] = ContextVar(
+    "mcp_ligadura_navegador", default=None
+)
 
 _LOOPBACK = frozenset({"localhost", "127.0.0.1"})
 #: Métodos de ``/token`` en los que el cliente presenta un secreto.
@@ -227,6 +252,18 @@ def secreto_de_cliente(client_id: str) -> str:
     return hmac.new(clave, f"mcp-client-secret:{client_id}".encode(), hashlib.sha256).hexdigest()
 
 
+def ligadura_de_login(nonce: str) -> str:
+    """Valor de la cookie :data:`COOKIE_LOGIN`: ``HMAC-SHA256(SIGNING_KEY, nonce)``.
+
+    Sin estado: el callback de Google la recalcula desde el ``state``. Quien
+    reciba la URL de Google de otro (un enlace pasado por un tercero) y complete
+    el login no trae la cookie, porque el navegador que la recibió no es el suyo:
+    el callback lo rechaza y el código nunca llega a emitirse.
+    """
+    clave = settings.SIGNING_KEY.get_secret_value().encode()
+    return hmac.new(clave, f"mcp-login:{nonce}".encode(), hashlib.sha256).hexdigest()
+
+
 def _es_loopback(uri: str) -> bool:
     """``http://localhost`` o ``http://127.0.0.1``, con cualquier puerto y ruta, sin fragmento.
 
@@ -321,6 +358,7 @@ class ProveedorTenderFlow(
         usuarios: Callable[[str], dict[str, Any] | None] = get_active_user_by_email_ci,
         usuario_por_id: Callable[[int], dict[str, Any] | None] = get_user_by_id,
         acceso_permitido: Callable[[str], bool] = acceso_oauth_permitido,
+        totp_requerido: Callable[[int], bool] = has_confirmed_totp,
         reloj: Callable[[], float] = time.time,
         auditar: Callable[[str, int | None, Mapping[str, object]], None] = auditar_oauth,
         limitar: Callable[[str, int, int], bool] = _limitar_real,
@@ -330,6 +368,7 @@ class ProveedorTenderFlow(
         self._usuarios = usuarios
         self._usuario_por_id = usuario_por_id
         self._acceso_permitido = acceso_permitido
+        self._totp_requerido = totp_requerido
         self._reloj = reloj
         self._auditar_sync = auditar
         self._limitar = limitar
@@ -356,15 +395,33 @@ class ProveedorTenderFlow(
             return None, "fuera_de_allowlist"
         return int(fila["id"]), ""
 
-    def _resolver_admin(self, email: str) -> tuple[int | None, str]:
+    def _resolver_admin(self, email: str, sub: str) -> tuple[int | None, str]:
         """El ``usuario_activo_admin`` del login: ``(users.id, "")`` o ``(None, motivo)``.
 
         Síncrona: allowlist, cuenta activa (correo sin distinguir mayúsculas) e
-        ``is_admin``. Devuelve el motivo para auditar la denegación.
+        ``is_admin``; además, lo que el login web exige y el MCP no podía
+        ignorar. Una cuenta ligada a otro proveedor, o a otro ``sub`` de Google,
+        no se da a esta identidad (ADR-037: que dos proveedores digan el mismo
+        correo no basta). Y con TOTP confirmado se deniega: el MCP no tiene
+        pantalla donde pedir el segundo factor, y dejar entrar con solo Google
+        saltaría el que la cuenta tiene activado en la web. Devuelve el motivo
+        para auditar la denegación.
         """
         if not self._acceso_permitido(email):
             return None, "fuera_de_allowlist"
-        return self._admite(self._usuarios(email))
+        fila = self._usuarios(email)
+        user_id, motivo = self._admite(fila)
+        if user_id is None or fila is None:
+            return None, motivo
+        if fila.get("oauth_provider") not in (None, "", "google") or fila.get("oauth_sub") not in (
+            None,
+            "",
+            sub,
+        ):
+            return None, "cuenta_de_otro_proveedor"
+        if self._totp_requerido(user_id):
+            return None, "totp_requerido"
+        return user_id, ""
 
     async def _usuario_sigue_admin(self, user_id: int) -> bool:
         """Re-comprobación por petición (``is_admin``, ``deactivated_at``, allowlist), cacheada 60 s."""
@@ -449,6 +506,11 @@ class ProveedorTenderFlow(
     async def _cabe(self, clave: str, maximo: int, ventana: int) -> bool:
         return await _en_hilo(self._limitar, clave, maximo, ventana)
 
+    async def _cabe_por_ip(self, prefijo: str, maximo: int, ventana: int) -> bool:
+        """Cuota por IP del cliente; sin IP conocida no limita (rigen solo los globales)."""
+        ip = ip_cliente.get()
+        return ip is None or await self._cabe(f"{prefijo}:ip:{ip}", maximo, ventana)
+
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
         """El cliente registrado, si **todos** sus ``redirect_uris`` siguen en la allowlist.
 
@@ -470,7 +532,11 @@ class ProveedorTenderFlow(
         return OAuthClientInformationFull.model_validate(datos)
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
-        if not await self._cabe(*LIMITE_REGISTRO):
+        clave, _, ventana = LIMITE_REGISTRO
+        if not (
+            await self._cabe_por_ip(clave, LIMITE_REGISTRO_IP, ventana)
+            and await self._cabe(*LIMITE_REGISTRO)
+        ):
             raise RegistrationError(
                 "invalid_client_metadata",
                 "Demasiados registros de clientes en la última hora; inténtalo más tarde.",
@@ -504,7 +570,8 @@ class ProveedorTenderFlow(
     ) -> str:
         clave, maximo, ventana = LIMITE_AUTORIZAR
         if not (
-            await self._cabe(clave, maximo, ventana)
+            await self._cabe_por_ip(clave, LIMITE_AUTORIZAR_IP, ventana)
+            and await self._cabe(clave, maximo, ventana)
             and await self._cabe(f"{clave}:{client.client_id}", LIMITE_AUTORIZAR_CLIENTE, ventana)
         ):
             raise AuthorizeError(
@@ -527,6 +594,9 @@ class ProveedorTenderFlow(
         nonce = oauth_state_nonce(state)
         if nonce is None:  # pragma: no cover — generate_oauth_state siempre lo trae
             raise AuthorizeError("server_error", "state sin nonce")
+        cajon = ligadura_navegador.get()
+        if cajon is not None:
+            cajon["valor"] = ligadura_de_login(nonce)
         await _en_hilo(
             self._almacen.guardar_token,
             nonce,
@@ -573,7 +643,7 @@ class ProveedorTenderFlow(
         identidad = await self._google.identidad(code, nonce)
         if identidad is None:
             return await _denegar("google")
-        user_id, motivo = await _en_hilo(self._resolver_admin, identidad.email)
+        user_id, motivo = await _en_hilo(self._resolver_admin, identidad.email, identidad.sub)
         if user_id is None:
             return await _denegar(motivo, identidad.email.strip().lower())
 

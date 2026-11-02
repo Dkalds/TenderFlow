@@ -32,7 +32,7 @@ mantiene ``KNOWN_5XX`` a cero: una referencia inventada tiene que acabar en un
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, NamedTuple
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
@@ -41,6 +41,7 @@ from api.concurrency import run_db
 from db.repositories.identidad import resolver_id_licitacion
 from db.repositories.publico import FilaLicitacionPublica, FilaLotePublico, PublicoRepository
 from observability.logging import get_logger
+from services._data_cache import SignalAwareCache
 from shared.dto import LicitacionPublica, LotePublico, Pagina, PgDateTime
 from shared.identidad_placsp import expediente_natural
 from shared.public_ref import codificar_ref, decodificar_ref
@@ -66,6 +67,16 @@ _CACHE_PUBLICA = "public, max-age=300, s-maxage=3600, stale-while-revalidate=864
 # Tope de página. Más bajo que el de la API privada a propósito: aquí el
 # consumidor son rastreadores y el coste de una página grande lo paga Postgres.
 _MAX_LIMITE_PUBLICO = 100
+
+# Tope de un tramo de sitemap. Es el tamaño de fichero que pide el único
+# consumidor (`SITEMAP_POR_FICHERO` en `web/src/lib/publico-api.ts`); el que
+# había, 50.000 (el máximo del protocolo), nadie lo usa y una petición anónima lo
+# podía repetir con una `X-API-Key` distinta cada vez.
+_MAX_ENTRADAS_SITEMAP = 10_000
+
+# Respuesta para un slug que el corpus no tiene. Más corta que la normal: un hub
+# que acaba de alcanzar el umbral no debe quedar como «vacío» una hora en el CDN.
+_CACHE_SIN_RESULTADOS = "public, max-age=60, s-maxage=300"
 
 
 class EntradaSitemap(BaseModel):
@@ -231,7 +242,17 @@ async def listar_publicas(
     huérfanas todas las fichas a partir de la primera cincuentena — solo
     alcanzables por sitemap, que las hace rastreables pero no les transmite
     ninguna autoridad.
+
+    Un slug de ``ccaa`` u ``organo`` que no está en la lista cerrada de
+    :func:`_hubs_vigentes` devuelve la página vacía **sin consultar**: el slug
+    se calcula en SQL sin índice, y pedirlo inventado costaba dos escaneos de
+    la vista (``listar`` y ``contar``) para devolver lo mismo. La lista de
+    órganos es la de los hubs —con su umbral de volumen—, que es lo que ya exige
+    el frontend antes de pedir el listado de un órgano.
     """
+    if await run_db(_slug_desconocido, ccaa, organo):
+        response.headers["Cache-Control"] = _CACHE_SIN_RESULTADOS
+        return Pagina[LicitacionPublica](total=0, limit=limit, offset=offset, items=[])
     filas = await run_db(
         _repo.listar,
         ccaa_slug=ccaa,
@@ -319,6 +340,88 @@ class Hubs(BaseModel):
     organo: list[HubOrgano] = Field(default_factory=list)
 
 
+class _InstantaneaHubs(NamedTuple):
+    """Los hubs y las listas cerradas de slugs que salen de la misma lectura."""
+
+    hubs: Hubs
+    #: Todas las comunidades del corpus, también las que no llegan al umbral:
+    #: su página existe aunque no esté en el índice.
+    ccaa: frozenset[str]
+    #: Los órganos con hub (``>= _MIN_POR_HUB``), que es lo que exige el frontend.
+    # shortcut: un órgano por debajo del umbral lista vacío aunque tenga
+    # anuncios; completar la lista (sin umbral) cuando el slug de órgano tenga
+    # columna o índice propio y ya no cueste un escaneo con regexp por fila.
+    organo: frozenset[str]
+    #: La lectura falló: las listas vacías **no** son un dato. Se retiene poco
+    #: rato (``degraded`` de ``SignalAwareCache.get``) para que, con la base en
+    #: apuros, ni cada petición repita la consulta lenta ni se encolen todas
+    #: detrás del mismo candado.
+    degradada: bool = False
+
+
+# Los tres hubs son agregados sobre la vista entera (el de órganos, además, con
+# un slug por fila sin índice) y su resultado no depende de la petición. Se leen
+# una vez por proceso y ventana —o hasta la siguiente señal de ingesta— en vez de
+# en cada visita que se salta el CDN. La misma lectura da la lista cerrada de
+# slugs de `listar_publicas`.
+_TTL_HUBS_S = 900.0
+_TTL_HUBS_FALLO_S = 30.0
+_HUBS: SignalAwareCache[_InstantaneaHubs] = SignalAwareCache(ttl=_TTL_HUBS_S)
+
+
+def _cargar_hubs() -> _InstantaneaHubs:
+    try:
+        ccaa = _repo.hubs_ccaa()
+        cpv = _repo.hubs_cpv()
+        organo = _repo.hubs_organo()
+        return _InstantaneaHubs(
+            hubs=Hubs(
+                ccaa=[
+                    HubCcaa(slug=str(h["slug"]), nombre=str(h["nombre"]), total=int(h["total"]))
+                    for h in ccaa
+                ],
+                cpv=[HubCpv(codigo=str(h["codigo"]), total=int(h["total"])) for h in cpv],
+                organo=[
+                    HubOrgano(slug=str(h["slug"]), nombre=str(h["nombre"]), total=int(h["total"]))
+                    for h in organo
+                ],
+            ),
+            ccaa=frozenset(_repo.slugs_ccaa()),
+            organo=frozenset(str(h["slug"]) for h in organo),
+        )
+    except Exception:
+        log.warning("publico_hubs_no_disponibles", exc_info=True)
+        return _InstantaneaHubs(
+            hubs=Hubs(ccaa=[], cpv=[]), ccaa=frozenset(), organo=frozenset(), degradada=True
+        )
+
+
+def _hubs_vigentes() -> _InstantaneaHubs:
+    return _HUBS.get(_cargar_hubs, degraded=lambda i: i.degradada, degraded_ttl=_TTL_HUBS_FALLO_S)
+
+
+def limpiar_cache_hubs() -> None:
+    """Descarta la lectura de los hubs (tests, que cambian el corpus entre casos)."""
+    _HUBS.clear()
+
+
+def _slug_desconocido(ccaa: str | None, organo: str | None) -> bool:
+    """``True`` si alguno de los slugs pedidos no existe en el corpus.
+
+    Si la lista cerrada no se puede leer devuelve ``False``: el listado se
+    consulta como antes. Con la base en apuros, rechazar páginas válidas sería
+    peor que dejar pasar un slug inventado.
+    """
+    if ccaa is None and organo is None:
+        return False
+    conocidos = _hubs_vigentes()
+    if conocidos.degradada:
+        return False
+    return (ccaa is not None and ccaa not in conocidos.ccaa) or (
+        organo is not None and organo not in conocidos.organo
+    )
+
+
 @router.get(
     "/publico/hubs",
     response_model=Hubs,
@@ -336,21 +439,16 @@ async def hubs(response: Response) -> Hubs:
     los enlaces de la portada— quieren todas a la vez, y así una página de
     índice hace una llamada en vez de tres.
     """
-    ccaa = await run_db(_repo.hubs_ccaa)
-    cpv = await run_db(_repo.hubs_cpv)
-    organo = await run_db(_repo.hubs_organo)
+    instantanea = await run_db(_hubs_vigentes)
+    if instantanea.degradada:
+        # Unas listas vacías no son «no hay hubs»: el sitemap y los índices las
+        # publicarían como un corpus que se encogió. Un 5xx deja el HTML anterior.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Los índices no están disponibles en este momento.",
+        )
     response.headers["Cache-Control"] = _CACHE_PUBLICA
-    return Hubs(
-        ccaa=[
-            HubCcaa(slug=str(h["slug"]), nombre=str(h["nombre"]), total=int(h["total"]))
-            for h in ccaa
-        ],
-        cpv=[HubCpv(codigo=str(h["codigo"]), total=int(h["total"])) for h in cpv],
-        organo=[
-            HubOrgano(slug=str(h["slug"]), nombre=str(h["nombre"]), total=int(h["total"]))
-            for h in organo
-        ],
-    )
+    return instantanea.hubs
 
 
 class ResumenSitemap(BaseModel):
@@ -394,18 +492,22 @@ async def resumen_sitemap(response: Response) -> ResumenSitemap:
     response_model=list[EntradaSitemap],
     summary="Tramo de URLs para un fichero de sitemap",
 )
-async def entradas_sitemap(
+def entradas_sitemap(
     response: Response,
     offset: int = Query(0, ge=0, le=10_000_000),
-    limit: int = Query(1000, ge=1, le=50_000),
+    limit: int = Query(1000, ge=1, le=_MAX_ENTRADAS_SITEMAP),
 ) -> list[EntradaSitemap]:
     """Un tramo estable de expedientes publicables.
 
     El orden lo fija el repositorio por ``id_externo`` y no por fecha: con orden
     temporal, un expediente republicado saltaría de fichero y el mismo tramo
     devolvería URLs distintas en cada regeneración.
+
+    Es ``def`` y no ``async def``: la consulta y el armado de hasta
+    ``_MAX_ENTRADAS_SITEMAP`` modelos son trabajo de hilo, y en el event loop
+    competían con el resto de la API por cada petición anónima.
     """
-    filas = await run_db(_repo.pagina_de_sitemap, desplazamiento=offset, tamano=limit)
+    filas = _repo.pagina_de_sitemap(desplazamiento=offset, tamano=limit)
     response.headers["Cache-Control"] = _CACHE_PUBLICA
     return [
         EntradaSitemap(

@@ -176,3 +176,16 @@ def borrar_de_usuario(user_id: int) -> int:
     with connect() as c:
         cur = c.execute("DELETE FROM asistente_feedback WHERE user_id = %s", (user_id,))
         return int(getattr(cur, "rowcount", 0) or 0)
+
+
+def exportar_de_usuario(user_id: int) -> list[dict[str, object]]:
+    """Los votos de un usuario para el export RGPD (``pregunta_texto`` solo con opt-in)."""
+    with connect_read() as c:
+        return rows_to_dicts(
+            c.execute(
+                "SELECT id, pregunta_hash, modo, modelo, licitacion_id, voto, motivo, "
+                "pregunta_texto, created_at FROM asistente_feedback "
+                "WHERE user_id = %s ORDER BY id LIMIT 5000",
+                (user_id,),
+            )
+        )

@@ -295,6 +295,7 @@ from uvicorn.logging import AccessFormatter
 from observability.logging import (
     install_access_log_redactor,
     redact_query_credentials,
+    redact_text,
 )
 
 
@@ -336,13 +337,40 @@ def test_el_callback_de_google_no_deja_code_ni_state_en_el_access_log():
     assert "scope=email%20openid" in linea
 
 
-@pytest.mark.parametrize("param", ["token", "code", "state", "id_token", "access_token"])
+@pytest.mark.parametrize("param", ["token", "code", "state", "id_token", "access_token", "t", "k"])
 def test_cada_parametro_credencial_se_redacta_en_cualquier_ruta(param):
     linea = _linea_de_acceso(f"/api/v1/cualquier/ruta?limit=5&{param}=VALOR-SECRETO")
 
     assert "VALOR-SECRETO" not in linea
     assert f"&{param}=[REDACTED]" in linea
     assert "limit=5" in linea
+
+
+def test_el_enlace_del_calendario_no_deja_la_firma_en_el_access_log():
+    """`?u=<user_id>&t=<firma>`: la firma no caduca, así que en el log es una llave."""
+    linea = _linea_de_acceso("/api/v1/exports/calendario.ics?u=42&t=kid1.FIRMA-SECRETA")
+
+    assert "FIRMA-SECRETA" not in linea
+    assert "u=[REDACTED]" in linea
+    assert "t=[REDACTED]" in linea
+    assert "/api/v1/exports/calendario.ics?" in linea
+
+
+def test_los_enlaces_de_baja_no_dejan_clave_ni_firma_en_el_access_log():
+    linea = _linea_de_acceso("/api/v1/notifications/baja?k=CLAVE-SECRETA&t=FIRMA-SECRETA")
+
+    assert "CLAVE-SECRETA" not in linea
+    assert "FIRMA-SECRETA" not in linea
+
+
+def test_el_redactor_de_texto_libre_tambien_cubre_t_k_u():
+    texto = "https://x.example/baja?k=CLAVE-SECRETA&t=FIRMA-SECRETA&u=7"
+
+    redactado = redact_text(texto)
+
+    assert "CLAVE-SECRETA" not in redactado
+    assert "FIRMA-SECRETA" not in redactado
+    assert redactado.startswith("https://x.example/baja?")
 
 
 def test_los_parametros_que_no_son_credenciales_quedan_como_estaban():

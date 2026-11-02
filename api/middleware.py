@@ -52,6 +52,7 @@ import re
 import threading
 import time
 import uuid
+from collections import OrderedDict
 
 from anyio import CapacityLimiter, to_thread
 from pydantic import SecretStr
@@ -65,7 +66,7 @@ from structlog.contextvars import bind_contextvars, clear_contextvars
 from api.diagnostico_proxy import registrar_cabeceras_proxy
 from api.rutas import plantilla_de_ruta
 from observability.logging import get_logger
-from services.rate_limiting import get_rate_limiter
+from services.rate_limiting import get_rate_limiter, ip_de_cuota
 from shared.etag import coincide_if_none_match, etag_debil
 
 log = get_logger(__name__)
@@ -295,14 +296,18 @@ def _trusted_client_ip(request: HTTPConnection) -> str:
 
 
 def _client_key(request: HTTPConnection) -> str:
-    """Identifica al cliente **solo** por IP verificada, nunca por API-Key.
+    """Identifica al cliente por IP verificada; la API-Key solo cuenta si está viva.
 
-    Un bucket por API-Key permitiría eludir el límite rotando claves (crearlas
-    es barato), así que la cuota se ancla a la IP: el recurso caro de falsificar.
+    Un bucket por API-Key permitiría eludir el límite rotando claves, así que la
+    cuota se ancla a la IP: el recurso caro de falsificar. Solo una clave que
+    existe y está activa abre cubo propio (ver :func:`_tier_bucket`); una
+    inventada se cuenta aquí, como si no trajera cabecera.
     La IP se obtiene a través de ``_trusted_client_ip``, que solo honra
-    ``X-Forwarded-For`` si la petición viene de un proxy de confianza.
+    ``X-Forwarded-For`` si la petición viene de un proxy de confianza. Una IPv6
+    se agrupa por su /64 (:func:`services.rate_limiting.ip_de_cuota`): quien
+    tiene un prefijo elige 2^64 direcciones y cada una estrenaría cuota.
     """
-    ip = _trusted_client_ip(request)
+    ip = ip_de_cuota(_trusted_client_ip(request))
     return f"ip:{ip}"
 
 
@@ -320,6 +325,9 @@ _HEAVY_ENDPOINT_LIMITS: dict[str, int] = {
     "/api/v1/search/semantic": 30,
     "/api/v1/ask": 10,
     "/api/v1/ask/models": 30,
+    # Preview de una regla de watchlist: cuenta y puntúa sobre el corpus con
+    # los filtros que manda el cliente (y, con banda_min, pasa por pandas).
+    "/api/v1/watchlist/rules/preview": 30,
 }
 
 # Rutas pesadas **con** path params. El middleware corre antes del
@@ -339,6 +347,13 @@ _HEAVY_ENDPOINT_PATTERNS: tuple[tuple[re.Pattern[str], int], ...] = (
     # 120/min por no estar en esta tabla. El comodín admite barras: el id
     # externo puede llevarlas (ver la nota de /explain).
     (re.compile(r"^/api/v1/licitaciones/.+/ficha-pliego/extract$"), 10),
+    # Las rutas asíncronas de la misma ficha y el guion de la oferta: encolan un
+    # job (extract-async, embeddings-async) o llaman al LLM reteniendo un hilo
+    # (guion), igual de caros que el extract síncrono y hasta ahora al default
+    # de 120/min, pese a lo que decía el docstring de `pliegos.py`.
+    (re.compile(r"^/api/v1/licitaciones/.+/ficha-pliego/extract-async$"), 10),
+    (re.compile(r"^/api/v1/licitaciones/.+/embeddings-async$"), 10),
+    (re.compile(r"^/api/v1/licitaciones/.+/guion$"), 10),
     # /licitaciones/{id}/resumen — abre un SSE, arma contexto RAG con lecturas
     # de BD y streamea tokens del LLM. Es /ask con otro nombre y otra pregunta,
     # así que comparte su tope en vez del default: dejarlo en 120/min convertía
@@ -393,39 +408,53 @@ SOLICITUDES_MAX_CALLS = 5
 #: latencia es aceptable para una operación que hace un administrador a mano.
 _TIER_CACHE_TTL_S = 60.0
 
-#: `{key_hash: (limite_o_None, expira_epoch)}`. Cabe en memoria: son tantas
-#: entradas como claves activas haya llamando, no como requests.
-_tier_cache: dict[str, tuple[int | None, float]] = {}
+#: Cuánto se recuerda un fallo del lookup (BD caída, pool de lectura agotado).
+#: Sin recordarlo, cada petición con una clave distinta esperaba su turno al pool
+#: (hasta 10 s) dentro de los cuatro hilos de la cuota, y cuatro bastaban para
+#: dejar parada la comprobación de toda la API. Es corto: la clave no se queda
+#: sin su tier más que unos segundos tras recuperarse la BD.
+_TIER_FALLO_TTL_S = 5.0
+
+#: Tope de entradas de la caché. Las claves inventadas también se recuerdan
+#: (`activa=False`), así que sin tope un atacante la llenaría a su ritmo; al
+#: pasarse sale la más antigua, y la clave legítima expulsada solo paga otra
+#: lectura.
+_TIER_CACHE_MAX = 5_000
+
+#: `{key_hash: (viva, limite_o_None, expira_epoch)}`.
+_tier_cache: OrderedDict[str, tuple[bool, int | None, float]] = OrderedDict()
 _tier_cache_lock = threading.Lock()
 
 
-def _tier_limit(key_hash: str) -> int | None:
-    """Límite por minuto del tier de la clave, cacheado. `None` = sin tope propio."""
+def _tier_de_clave(key_hash: str) -> tuple[bool, int | None]:
+    """``(viva, límite por minuto)`` de la clave, cacheado. Límite `None` = sin tope propio.
+
+    ``viva=False`` cubre la clave que no existe, la revocada, la caducada y el
+    fallo del lookup: en todos los casos el cubo es el de la IP.
+    """
     ahora = time.time()
     with _tier_cache_lock:
         entrada = _tier_cache.get(key_hash)
-        if entrada and entrada[1] > ahora:
-            return entrada[0]
+        if entrada and entrada[2] > ahora:
+            return entrada[0], entrada[1]
 
     try:
-        from db.repositories.api_keys import tier_limit_por_hash
+        from db.repositories.api_keys import tier_de_clave_por_hash
 
-        limite = tier_limit_por_hash(key_hash)
+        viva, limite = tier_de_clave_por_hash(key_hash)
+        ttl = _TIER_CACHE_TTL_S
     except Exception:
-        # Un fallo de BD aquí no puede tumbar el rate limiter: se cae al default
-        # del middleware, que es más restrictivo que `enterprise` y más
-        # permisivo que `free`. Errar hacia el default deja la API respondiendo.
+        # Un fallo de BD aquí no puede tumbar el rate limiter. Tampoco puede
+        # dar un cubo propio a una clave sin comprobar: se cuenta por IP.
         log.debug("rate_limit_tier_lookup_fallo", exc_info=True)
-        return None
+        viva, limite, ttl = False, None, _TIER_FALLO_TTL_S
 
     with _tier_cache_lock:
-        _tier_cache[key_hash] = (limite, ahora + _TIER_CACHE_TTL_S)
-        # Poda perezosa: sin ella el dict crece con cada clave que alguna vez
-        # llamó, incluidas las rotadas.
-        if len(_tier_cache) > 2_000:
-            for k in [k for k, (_, exp) in _tier_cache.items() if exp <= ahora]:
-                del _tier_cache[k]
-    return limite
+        _tier_cache.pop(key_hash, None)
+        _tier_cache[key_hash] = (viva, limite, ahora + ttl)
+        while len(_tier_cache) > _TIER_CACHE_MAX:
+            _tier_cache.popitem(last=False)
+    return viva, limite
 
 
 def reset_tier_cache() -> None:
@@ -435,12 +464,19 @@ def reset_tier_cache() -> None:
 
 
 def _tier_bucket(request: HTTPConnection, client: str) -> tuple[str, int | None] | None:
-    """Bucket y tope de una request con API key, o `None` si no la lleva.
+    """Bucket y tope de una request con una API key **viva**, o `None`.
 
     El bucket va por **clave**, no por IP: dos claves detrás del mismo NAT no
     tienen por qué compartir cuota, y una clave que rota de IP no debería
     estrenar cuota por eso. Es además lo que hace que el tier signifique algo —
     un límite por IP no se puede atribuir a un cliente.
+
+    Solo si la clave existe y está activa. Con cualquier valor de la cabecera
+    el cubo propio anulaba el de la IP (el docstring de :func:`_client_key`
+    decía lo contrario): rotar cadenas inventadas estrenaba cuota en cada
+    petición y esquivaba el tope global, los de los endpoints pesados y el del
+    formulario público. Una clave desconocida cuenta como una petición sin
+    clave.
     """
     raw = request.headers.get("x-api-key") or ""
     if not raw:
@@ -448,9 +484,12 @@ def _tier_bucket(request: HTTPConnection, client: str) -> tuple[str, int | None]
     from api.auth import hash_api_key
 
     key_hash = hash_api_key(raw)
+    viva, limite = _tier_de_clave(key_hash)
+    if not viva:
+        return None
     # Los primeros 16 caracteres del hash como identificador del bucket: ni el
     # token ni el hash entero salen a una clave de Redis que alguien pueda leer.
-    return f"apikey:{key_hash[:16]}", _tier_limit(key_hash)
+    return f"apikey:{key_hash[:16]}", limite
 
 
 def _rate_bucket(path: str, client: str) -> tuple[str, int | None]:
@@ -616,8 +655,9 @@ class RateLimitMiddleware:
         # El middleware se ejecuta antes del routing: un bucket por
         # cliente evita el bypass por path params variables. La superficie
         # pública lleva el suyo aparte (ver `_rate_bucket`).
-        # C2.3 — una request con API key se limita por SU clave y por el
-        # tier que declara `api_key_tiers`, no por la IP compartida.
+        # C2.3 — una request con una API key viva se limita por SU clave y por
+        # el tier que declara `api_key_tiers`, no por la IP compartida. Una
+        # clave que no existe no cuenta (ver `_tier_bucket`): va por la IP.
         por_clave = _tier_bucket(conexion, client)
         rate_key, tope_propio = por_clave or _rate_bucket(path, client)
         # Endpoints pesados (ML inference, exports): límite inferior **y cubo

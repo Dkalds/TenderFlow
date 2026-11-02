@@ -132,6 +132,31 @@ describe("DocumentosBlock", () => {
     expect(screen.getByRole("link", { name: /^Ver en la ficha de PLACSP/ })).toBeInTheDocument();
   });
 
+  it("never turns a non-http(s) document URI into a link", () => {
+    // `cbc:URI` lo escribe quien publica el anuncio: el nombre se ve, pero un
+    // `javascript:` o un `data:` no llega a ser un enlace.
+    withData(
+      "L-uri-rara",
+      {
+        items: [
+          { ...ITEMS.items[0], id: 20, filename: "Malo.pdf", uri: "javascript:alert(1)" },
+          { ...ITEMS.items[1], id: 21, filename: "Datos.pdf", uri: "data:text/html;base64,AAAA" },
+          { ...ITEMS.items[0], id: 22, filename: "Bueno.pdf" },
+        ],
+      },
+      <DocumentosBlock licitacionId="L-uri-rara" />,
+    );
+
+    expect(screen.getByText("Malo.pdf")).toBeInTheDocument();
+    expect(screen.getByText("Datos.pdf")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Malo\.pdf/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Datos\.pdf/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Bueno\.pdf/ })).toHaveAttribute(
+      "href",
+      "https://example.org/pcap.pdf",
+    );
+  });
+
   it("does not mention the unpublished pliego when every document is available", () => {
     withData("L-ok", ITEMS, <DocumentosBlock licitacionId="L-ok" />);
     expect(screen.queryByText(/todavía no ha publicado/)).not.toBeInTheDocument();

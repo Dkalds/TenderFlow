@@ -116,11 +116,12 @@ async def test_audita_exito_con_sql_y_filas(
 
     resultado = await servidor.call_tool("consultar_sql", {"sql": "SELECT 1 AS uno -- ñ"})
 
-    assert resultado.structured_content == resultado_db.como_dict()
+    # Las filas pueden traer texto de terceros: la salida lo marca, y va la primera.
+    esperado = {envoltura.MARCA_NO_CONFIABLE: True, **resultado_db.como_dict()}
+    assert resultado.structured_content == esperado
     # JSON compacto (sin sangría) y legible (sin escapar acentos).
-    assert _texto(resultado) == json.dumps(
-        resultado_db.como_dict(), ensure_ascii=False, separators=(",", ":")
-    )
+    assert _texto(resultado) == json.dumps(esperado, ensure_ascii=False, separators=(",", ":"))
+    assert next(iter(resultado.structured_content or {})) == envoltura.MARCA_NO_CONFIABLE
     (args, _), *resto = auditoria
     assert not resto and args[2] == "mcp.consultar_sql"
     detalle = _detalle(auditoria)
@@ -266,6 +267,39 @@ async def test_salida_fuera_de_esquema_se_audita_como_error(auditoria: list[Any]
         await tool(sql="SELECT 1")
     assert str(exc.value) == envoltura.ERROR_INTERNO
     assert _detalle(auditoria)["error"] == "interno: SalidaFueraDeEsquema"
+
+
+@pytest.mark.usefixtures("token", "limiter", "auditoria")
+async def test_texto_de_terceros_marca_la_salida_y_solo_si_se_pide() -> None:
+    propia = envoltura.herramienta("describir_esquema", lambda: {"dominios": []})
+    ajena = envoltura.herramienta(
+        "buscar_en_pliegos", lambda: {"fragmentos": []}, texto_de_terceros=True
+    )
+    assert (await propia()).structured_content == {"dominios": []}
+    resultado = await ajena()
+    assert resultado.structured_content == {envoltura.MARCA_NO_CONFIABLE: True, "fragmentos": []}
+    assert json.loads(_texto(resultado)) == resultado.structured_content
+
+
+async def test_solo_describir_esquema_es_de_mundo_cerrado(servidor: Any) -> None:
+    """``open_world_hint`` = la respuesta puede traer texto de terceros (ADR-036)."""
+    tools = {t.name: t for t in await servidor.list_tools()}
+    assert set(tools) == {
+        "describir_esquema",
+        "describir_tabla",
+        "consultar_sql",
+        "buscar_licitaciones",
+        "buscar_en_pliegos",
+        "ficha_licitacion",
+    }
+    for nombre, tool in tools.items():
+        assert tool.annotations is not None
+        assert tool.annotations.read_only_hint is True, nombre
+        assert tool.annotations.open_world_hint is (nombre != "describir_esquema"), nombre
+        propiedades = (tool.output_schema or {}).get("properties", {})
+        assert (envoltura.MARCA_NO_CONFIABLE in propiedades) is (nombre != "describir_esquema")
+        # Nunca obligatoria: el contrato de los clientes que ya existen no cambia.
+        assert envoltura.MARCA_NO_CONFIABLE not in (tool.output_schema or {}).get("required", [])
 
 
 @pytest.mark.usefixtures("token", "limiter", "auditoria")
@@ -421,7 +455,7 @@ def test_config_redirect_de_google_y_https_en_prod(monkeypatch: pytest.MonkeyPat
     from mcp_server.servidor import validar_configuracion
 
     _vaciar_configuracion(monkeypatch)
-    monkeypatch.setenv("MCP_DATABASE_URL", "postgresql://mcp@h/db")
+    monkeypatch.setenv("MCP_DATABASE_URL", "postgresql://mcp@h/db?sslmode=verify-full")
     monkeypatch.setattr(settings, "DATABASE_URL", SecretStr("postgresql://app@h/db"))
     monkeypatch.setattr(settings, "GOOGLE_CLIENT_ID", "id")
     monkeypatch.setattr(settings, "GOOGLE_CLIENT_SECRET", SecretStr("s"))
@@ -454,6 +488,43 @@ def test_config_redirect_de_google_y_https_en_prod(monkeypatch: pytest.MonkeyPat
     # En desarrollo el http (localhost) es lo normal.
     monkeypatch.setattr(settings, "ENV", "dev")
     assert validar_configuracion() == []
+
+
+@pytest.mark.parametrize(
+    ("entorno", "dsn", "problema"),
+    [
+        # Sin sslmode, libpq usa `prefer`: puede conectar sin TLS (bd-rls-roles-migraciones-10).
+        ("prod", "postgresql://mcp@h.example/db", True),
+        ("staging", "postgresql://mcp@h.example/db?sslmode=prefer", True),
+        ("prod", "postgresql://mcp@h.example/db?sslmode=disable", True),
+        # `require` cifra (como para DATABASE_URL); `verify-full` es lo que pide el runbook.
+        ("prod", "postgresql://mcp@h.example/db?sslmode=require", False),
+        ("prod", "postgresql://mcp@h.example/db?sslmode=verify-full", False),
+        # Un host remoto lo exige sea cual sea ENV; el local en dev, no.
+        ("dev", "postgresql://mcp@h.example/db", True),
+        ("dev", "postgresql://mcp@localhost/db", False),
+        ("prod", "", False),  # el vacío lo señala `validar_configuracion`, no esta función
+    ],
+)
+def test_mcp_database_url_exige_tls(
+    monkeypatch: pytest.MonkeyPatch, entorno: str, dsn: str, problema: bool
+) -> None:
+    from config import settings
+    from config.settings import mcp_database_ssl_problema
+
+    monkeypatch.setattr(settings, "ENV", entorno)
+    monkeypatch.setenv("MCP_DATABASE_URL", dsn)
+    assert (mcp_database_ssl_problema() is not None) is problema
+
+
+def test_validar_configuracion_nombra_el_dsn_del_mcp_sin_tls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from mcp_server.servidor import validar_configuracion
+
+    _vaciar_configuracion(monkeypatch)
+    monkeypatch.setenv("MCP_DATABASE_URL", "postgresql://mcp@h.example/db")
+    assert any(p.startswith("MCP_DATABASE_URL (sslmode") for p in validar_configuracion())
 
 
 def test_main_aborta_en_prod_si_falta_config(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -500,16 +571,50 @@ def test_callback_de_google_redirige_al_cliente_sin_cache(monkeypatch: pytest.Mo
             recibido.append((state, code, error))
             return "http://localhost:3000/cb?code=c0d1g0&state=s"
 
+    from mcp_server.auth.proveedor import COOKIE_LOGIN, ligadura_de_login
+
     monkeypatch.setenv("MCP_PUBLIC_URL", "http://localhost:8080")
     falso = ProveedorFalso(almacen=None, google=None)  # type: ignore[arg-type]  # no se usan
     app = crear_servidor(falso).streamable_http_app(json_response=True, stateless_http=True)
-    r = TestClient(app).get(
+    cliente = TestClient(app, cookies={COOKIE_LOGIN: ligadura_de_login("st")})
+    r = cliente.get(
         "/oauth/google/callback", params={"state": "st", "code": "g"}, follow_redirects=False
     )
     assert r.status_code == 302
     assert r.headers["location"] == "http://localhost:3000/cb?code=c0d1g0&state=s"
     assert r.headers["cache-control"] == "no-store"
     assert recibido == [("st", "g", None)]
+    # La cookie de ligadura sirvió para una sola vuelta.
+    assert f"{COOKIE_LOGIN}=" in r.headers["set-cookie"] and "Max-Age=0" in r.headers["set-cookie"]
+
+
+@pytest.mark.parametrize("cookie", [None, "", "valor-ajeno"])
+def test_callback_de_google_exige_la_cookie_del_navegador_que_pidio_authorize(
+    monkeypatch: pytest.MonkeyPatch, cookie: str | None
+) -> None:
+    """mcp-sql-7: la URL de Google pasada por un tercero no completa el login de otro."""
+    from starlette.testclient import TestClient
+
+    from mcp_server.auth.proveedor import COOKIE_LOGIN, ProveedorTenderFlow
+    from mcp_server.servidor import crear_servidor
+
+    recibido: list[str] = []
+
+    class ProveedorFalso(ProveedorTenderFlow):
+        async def completar_login(self, state: str, code: str | None, error: str | None) -> str:
+            recibido.append(state)
+            return "http://localhost:3000/cb?code=c0d1g0"
+
+    monkeypatch.setenv("MCP_PUBLIC_URL", "http://localhost:8080")
+    falso = ProveedorFalso(almacen=None, google=None)  # type: ignore[arg-type]  # no se usan
+    app = crear_servidor(falso).streamable_http_app(json_response=True, stateless_http=True)
+    cliente = TestClient(app, cookies={} if cookie is None else {COOKIE_LOGIN: cookie})
+    r = cliente.get(
+        "/oauth/google/callback", params={"state": "st", "code": "g"}, follow_redirects=False
+    )
+    assert r.status_code == 400
+    assert "no empezó en este navegador" in r.text
+    assert recibido == []  # ni se consumió la petición pendiente ni se emitió un código
 
 
 async def test_el_ciclo_de_vida_purga_al_arrancar_y_cada_intervalo(

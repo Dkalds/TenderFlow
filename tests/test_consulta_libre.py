@@ -13,7 +13,10 @@ import pytest
 from db.consulta_libre import (
     MAX_CHARS_ESTRUCTURA,
     MAX_CHARS_SQL,
+    OID_BYTEA,
+    OIDS_SIN_TOPE_A_TEXTO,
     PISTAS,
+    TOPE_SENTENCIA_POR_DEFECTO_MS,
     ErrorConsulta,
     ejemplo_de,
     envolver,
@@ -22,6 +25,7 @@ from db.consulta_libre import (
     normalizar_sql,
     serializar_valor,
 )
+from db.consulta_libre import _leer_por_lotes as leer_por_lotes
 
 
 @pytest.mark.parametrize(
@@ -410,3 +414,91 @@ def test_peticiones_http_salientes_rechazadas(sql: str) -> None:
     with pytest.raises(ErrorConsulta) as e:
         normalizar_sql(sql)
     assert "no está permitida" in e.value.mensaje
+
+
+# ── Tipos sin tope (mcp-sql-4) ─────────────────────────────────────────────
+
+
+def test_envolver_con_recorte_no_transfiere_los_bytea() -> None:
+    """``serializar_valor`` descarta los binarios: que ni viajen (OOM con ``convert_to(repeat(...))``)."""
+    sql, recortadas = envolver_con_recorte("SELECT b, n FROM t", [OID_BYTEA, 23])
+    assert recortadas == frozenset()
+    assert sql.startswith("SELECT NULL, q.c1 FROM (")
+    assert sql.endswith(") AS q(c0, c1) LIMIT %s")
+
+
+@pytest.mark.parametrize("oid", sorted(OIDS_SIN_TOPE_A_TEXTO))
+def test_envolver_con_recorte_acota_en_el_servidor_los_tipos_sin_tope(oid: int) -> None:
+    """``tsvector``, ``bit varying``, ``record``...: texto recortado en Postgres, no en Python."""
+    sql, recortadas = envolver_con_recorte("SELECT x FROM t", [oid])
+    assert recortadas == {0}
+    assert sql.startswith("SELECT CASE WHEN length(q.c0::text) > 1000 ")
+
+
+# ── statement_timeout fail-closed (mcp-sql-3) ──────────────────────────────
+
+
+class _Resultado:
+    def __init__(
+        self, fila: tuple[object, ...] | None = None, descripcion: list[object] | None = None
+    ):
+        self._fila = fila
+        self.description = descripcion
+
+    def fetchone(self) -> tuple[object, ...] | None:
+        return self._fila
+
+
+class _Columna:
+    name = "uno"
+    type_code = 23
+
+
+class _Cursor:
+    def __enter__(self) -> _Cursor:
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        return None
+
+    def execute(self, sql: str, params: tuple[object, ...] = ()) -> None:
+        return None
+
+    def fetchmany(self, n: int) -> list[tuple[object, ...]]:
+        return []
+
+
+class _ConexionFalsa:
+    """Lo mínimo de ``psycopg.Connection`` que usa ``_leer_por_lotes``; apunta lo que ejecuta."""
+
+    def __init__(self, timeout_ms: int) -> None:
+        self.timeout_ms = timeout_ms
+        self.ejecutado: list[tuple[str, tuple[object, ...]]] = []
+
+    def execute(self, sql: str, params: tuple[object, ...] = ()) -> _Resultado:
+        self.ejecutado.append((sql, params))
+        if "pg_settings" in sql:
+            return _Resultado((self.timeout_ms,))
+        return _Resultado(descripcion=[_Columna()])
+
+    def cursor(self, name: str | None = None) -> _Cursor:
+        return _Cursor()
+
+    def timeouts_impuestos(self) -> list[object]:
+        return [p[0] for sql, p in self.ejecutado if "set_config('statement_timeout'" in sql]
+
+
+def test_sin_statement_timeout_en_el_rol_se_impone_el_techo() -> None:
+    """Si el ``ALTER ROLE`` se perdió, ``pg_sleep(1e6)`` no puede quedarse sin corte."""
+    conn = _ConexionFalsa(timeout_ms=0)
+    leer_por_lotes(conn, "SELECT 1 AS uno", 500)  # type: ignore[arg-type]  # doble mínimo de la conexión
+    assert conn.timeouts_impuestos()[0] == f"{TOPE_SENTENCIA_POR_DEFECTO_MS}ms"
+    # Y antes de la sonda y del cursor: la primera sentencia tras leer el valor es el set_config.
+    sqls = [sql for sql, _ in conn.ejecutado]
+    assert "set_config('statement_timeout'" in sqls[1]
+
+
+def test_con_statement_timeout_del_rol_no_se_pisa_antes_de_la_sonda() -> None:
+    conn = _ConexionFalsa(timeout_ms=15_000)
+    leer_por_lotes(conn, "SELECT 1 AS uno", 500)  # type: ignore[arg-type]
+    assert "set_config('statement_timeout'" not in conn.ejecutado[1][0]

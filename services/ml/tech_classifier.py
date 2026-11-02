@@ -1227,13 +1227,23 @@ class TechnologyClassifier:
                 target.unlink(missing_ok=True)
                 return False
 
-        if not download_checksum_sidecar(repo, release, target, token=github_token) and not pinned:
+        con_sidecar = download_checksum_sidecar(repo, release, target, token=github_token)
+        if not pinned and not con_sidecar:
             log.warning(
                 "tech_classifier.sin_verificacion_de_integridad",
                 path=str(target),
                 hint=(
                     "la Release no trae el .sha256 del artefacto y ML_TECH_MODEL_SHA256 "
                     "está vacío; con ENV=prod load() rechazará este fichero"
+                ),
+            )
+        elif not pinned:
+            log.warning(
+                "tech_classifier.verificacion_circular",
+                path=str(target),
+                hint=(
+                    "ML_TECH_MODEL_SHA256 está vacío: el .pkl y su .sha256 salen de la misma "
+                    "Release, así que quien la controle sustituye los dos. Fija el pin fuera de ella"
                 ),
             )
         log.info("tech_classifier.model_downloaded", path=str(target))

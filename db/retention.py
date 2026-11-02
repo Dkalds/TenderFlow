@@ -13,6 +13,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any, Protocol
 
+from db.audit import purgar_extremo_antiguo
 from db.database import connect
 from observability.logging import get_logger
 
@@ -81,18 +82,24 @@ class _ConexionConteo(Protocol):
     def fetchone(self) -> tuple[int]: ...
 
 
+#: Condición adicional de la purga de una tabla (constantes internas). El outbox
+#: solo se purga una vez despachado: un evento pendiente es trabajo por hacer, y
+#: caduque cuando caduque su fecha, no se puede perder antes de entregarse.
+_SOLO_SI: dict[str, str] = {"domain_events": "dispatched_at IS NOT NULL"}
+
+
 def _count_and_delete(
     conn: _ConexionConteo, table: str, date_col: str, cutoff: str, *, apply: bool
 ) -> int:
-
+    extra = " AND " + _SOLO_SI[table] if table in _SOLO_SI else ""
     c = conn.execute(
-        "SELECT COUNT(*) FROM " + table + " WHERE " + date_col + " < %s",
+        "SELECT COUNT(*) FROM " + table + " WHERE " + date_col + " < %s" + extra,
         (cutoff,),
     )
     count = c.fetchone()[0]
     if apply and count > 0:
         conn.execute(
-            "DELETE FROM " + table + " WHERE " + date_col + " < %s",
+            "DELETE FROM " + table + " WHERE " + date_col + " < %s" + extra,
             (cutoff,),
         )
     return int(count)
@@ -114,7 +121,13 @@ def purgar_por_fecha(
         for table, col, days in rules:
             cutoff = _cutoff_iso(days)
             with _aislado(conn, table):
-                n = _count_and_delete(conn, table, col, cutoff, apply=apply)
+                if table == "audit_log":
+                    # La cadena de hashes no admite un DELETE por fecha a ciegas:
+                    # `purgar_extremo_antiguo` reancla la cabecera firmada (en su
+                    # propia transacción, como `rate_limits` más abajo).
+                    n = purgar_extremo_antiguo(cutoff, apply=apply)
+                else:
+                    n = _count_and_delete(conn, table, col, cutoff, apply=apply)
                 results[table] = n
                 log.info(
                     "retention.table",

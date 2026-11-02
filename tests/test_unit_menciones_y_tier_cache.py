@@ -1,6 +1,6 @@
 """Dos piezas que fallan hacia el lado seguro, y por eso nadie las ve fallar.
 
-`_resolver_menciones` (C6.2) y `_tier_limit` (C2.3) comparten forma: las dos
+`_resolver_menciones` (C6.2) y `_tier_de_clave` (C2.3) comparten forma: las dos
 capturan una excepción amplia y devuelven un valor neutro. Eso es correcto —un
 fallo al resolver una mención no puede perder el comentario, y un fallo de BD no
 puede tumbar el rate limiter— pero también significa que si la rama buena se
@@ -120,51 +120,61 @@ class TestCacheDeTier:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         import db.repositories.api_keys as repo
-        from api.middleware import _tier_limit
+        from api.middleware import _tier_de_clave
 
         llamadas: list[str] = []
 
-        def _lookup(key_hash: str) -> int:
+        def _lookup(key_hash: str) -> tuple[bool, int | None]:
             llamadas.append(key_hash)
-            return 120
+            return True, 120
 
-        monkeypatch.setattr(repo, "tier_limit_por_hash", _lookup)
+        monkeypatch.setattr(repo, "tier_de_clave_por_hash", _lookup)
 
-        assert _tier_limit("h1") == 120
-        assert _tier_limit("h1") == 120
+        assert _tier_de_clave("h1") == (True, 120)
+        assert _tier_de_clave("h1") == (True, 120)
         assert llamadas == ["h1"], "la segunda llamada tenía que salir de la caché"
 
     def test_un_fallo_de_bd_no_tumba_el_rate_limiter(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Errar hacia el default deja la API respondiendo; propagar la
-        excepción la dejaría devolviendo 500 a todo el mundo."""
+        """No se propaga (la API seguiría respondiendo) y la clave no estrena
+        cubo propio: sin poder comprobarla, se cuenta por IP."""
         import db.repositories.api_keys as repo
-        from api.middleware import _tier_limit
+        from api.middleware import _tier_de_clave
 
-        def _explota(key_hash: str) -> int:
+        def _explota(key_hash: str) -> tuple[bool, int | None]:
             raise RuntimeError("BD caída")
 
-        monkeypatch.setattr(repo, "tier_limit_por_hash", _explota)
+        monkeypatch.setattr(repo, "tier_de_clave_por_hash", _explota)
 
-        assert _tier_limit("h2") is None
+        assert _tier_de_clave("h2") == (False, None)
 
-    def test_un_fallo_no_se_cachea(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Si se cacheara, una caída momentánea dejaría la clave sin su tier
-        durante todo el TTL."""
+    def test_un_fallo_se_recuerda_poco_y_luego_se_vuelve_a_preguntar(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Con la BD saturada cada clave nueva esperaba su turno al pool dentro de
+        los hilos de la cuota; recordar el fallo unos segundos lo evita, y el TTL
+        corto deja a la clave legítima recuperar su tier en cuanto la BD vuelve."""
+        import api.middleware as mw
         import db.repositories.api_keys as repo
-        from api.middleware import _tier_limit
 
-        estado = {"falla": True}
+        estado = {"falla": True, "ahora": 1_000.0}
+        llamadas: list[str] = []
 
-        def _intermitente(key_hash: str) -> int:
+        def _intermitente(key_hash: str) -> tuple[bool, int | None]:
+            llamadas.append(key_hash)
             if estado["falla"]:
                 raise RuntimeError("BD caída")
-            return 300
+            return True, 300
 
-        monkeypatch.setattr(repo, "tier_limit_por_hash", _intermitente)
+        monkeypatch.setattr(repo, "tier_de_clave_por_hash", _intermitente)
+        monkeypatch.setattr(mw.time, "time", lambda: estado["ahora"])
 
-        assert _tier_limit("h3") is None
+        assert mw._tier_de_clave("h3") == (False, None)
+        assert mw._tier_de_clave("h3") == (False, None)
+        assert llamadas == ["h3"], "el segundo fallo tenía que salir de la caché"
+
         estado["falla"] = False
-        assert _tier_limit("h3") == 300
+        estado["ahora"] += mw._TIER_FALLO_TTL_S + 0.1
+        assert mw._tier_de_clave("h3") == (True, 300)
 
     def test_una_clave_sin_tope_propio_tambien_se_cachea(
         self, monkeypatch: pytest.MonkeyPatch
@@ -172,11 +182,42 @@ class TestCacheDeTier:
         """`None` es una respuesta, no una ausencia: sin cachearla, cada
         petición de una clave sin tier consultaría la BD."""
         import db.repositories.api_keys as repo
-        from api.middleware import _tier_limit
+        from api.middleware import _tier_de_clave
 
         llamadas: list[str] = []
-        monkeypatch.setattr(repo, "tier_limit_por_hash", lambda h: llamadas.append(h) or None)
+        monkeypatch.setattr(
+            repo, "tier_de_clave_por_hash", lambda h: llamadas.append(h) or (True, None)
+        )
 
-        assert _tier_limit("h4") is None
-        assert _tier_limit("h4") is None
+        assert _tier_de_clave("h4") == (True, None)
+        assert _tier_de_clave("h4") == (True, None)
         assert llamadas == ["h4"]
+
+    def test_una_clave_inventada_tambien_se_cachea(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Quien repite una clave inexistente no vuelve a costar una lectura."""
+        import db.repositories.api_keys as repo
+        from api.middleware import _tier_de_clave
+
+        llamadas: list[str] = []
+        monkeypatch.setattr(
+            repo, "tier_de_clave_por_hash", lambda h: llamadas.append(h) or (False, None)
+        )
+
+        assert _tier_de_clave("falsa") == (False, None)
+        assert _tier_de_clave("falsa") == (False, None)
+        assert llamadas == ["falsa"]
+
+    def test_la_cache_tiene_tope_y_expulsa_la_mas_antigua(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Rotando claves el diccionario crecía sin tope durante el TTL."""
+        import api.middleware as mw
+        import db.repositories.api_keys as repo
+
+        monkeypatch.setattr(repo, "tier_de_clave_por_hash", lambda h: (False, None))
+        monkeypatch.setattr(mw, "_TIER_CACHE_MAX", 3)
+
+        for i in range(10):
+            mw._tier_de_clave(f"k{i}")
+
+        assert list(mw._tier_cache) == ["k7", "k8", "k9"]

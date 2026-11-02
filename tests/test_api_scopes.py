@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from api.scopes import has_scope, required_scope_for_request
 
 
@@ -118,3 +120,70 @@ def test_la_extraccion_de_ficha_sigue_exigiendo_escritura() -> None:
         == "licitaciones:write"
     )
     assert not has_scope(frozenset({"data:read"}), "licitaciones:write")
+
+
+def test_administrar_la_organizacion_no_cuelga_de_pursuits_write() -> None:
+    """Miembros, invitaciones, traspaso, NIF, plantillas y salir exigen
+    `organizations:manage`: `pursuits:write` es la clave de un integrador de CRM
+    (mueve oportunidades), y su robo no debe poder añadir miembros ni traspasar
+    la propiedad."""
+    for method, path in (
+        ("POST", "/api/v1/organizations"),
+        ("POST", "/api/v1/organizations/5/members"),
+        ("PUT", "/api/v1/organizations/5/members/9"),
+        ("POST", "/api/v1/organizations/5/transfer-ownership"),
+        ("POST", "/api/v1/organizations/5/leave"),
+        ("POST", "/api/v1/organizations/5/invitations/3/resend"),
+        ("DELETE", "/api/v1/organizations/5/invitations/3"),
+        ("POST", "/api/v1/organizations/invitations/accept"),
+        ("PUT", "/api/v1/organizations/5/settings"),
+        ("PUT", "/api/v1/organizations/5/nifs"),
+    ):
+        assert required_scope_for_request(method, path) == "organizations:manage", (method, path)
+    assert not has_scope(frozenset({"pursuits:write"}), "organizations:manage")
+    assert not has_scope(frozenset({"pursuits:read", "data:write"}), "organizations:manage")
+    assert has_scope(frozenset({"organizations:manage"}), "organizations:manage")
+
+
+def test_leer_la_organizacion_y_ajustar_el_go_no_go_siguen_en_pursuits() -> None:
+    assert required_scope_for_request("GET", "/api/v1/organizations/5/members") == "pursuits:read"
+    assert required_scope_for_request("GET", "/api/v1/organizations/5/nifs") == "pursuits:read"
+    assert (
+        required_scope_for_request("PUT", "/api/v1/organizations/go-no-go/weights")
+        == "pursuits:write"
+    )
+
+
+@pytest.mark.parametrize("raiz", ["/api/v1/cuentas", "/api/v1/etiquetas"])
+def test_cuentas_y_etiquetas_son_del_tablero_no_de_data(raiz: str) -> None:
+    """`GET /cuentas/{id}` devuelve las oportunidades de la cuenta: con
+    `data:read` —el scope por defecto de toda clave nueva— saltaba `pursuits:read`."""
+    assert required_scope_for_request("GET", raiz) == "pursuits:read"
+    assert required_scope_for_request("GET", f"{raiz}/12") == "pursuits:read"
+    assert required_scope_for_request("POST", raiz) == "pursuits:write"
+    assert required_scope_for_request("DELETE", f"{raiz}/12") == "pursuits:write"
+    assert not has_scope(frozenset({"data:read"}), "pursuits:read")
+
+
+def test_ninguna_ruta_corporativa_cae_en_los_scopes_por_defecto() -> None:
+    """El guardarraíl que pedía la auditoría: las rutas que devuelven datos de la
+    organización (tablero, equipo, cuentas, etiquetas) no pueden resolverse a
+    `data:*`, que es lo que concede una clave por defecto."""
+    from api.app import app
+    from api.rutas import rutas_planas
+
+    corporativas = (
+        "/api/v1/pursuits",
+        "/api/v1/organizations",
+        "/api/v1/cuentas",
+        "/api/v1/etiquetas",
+    )
+    vistas = 0
+    for ruta in rutas_planas(app.routes):
+        if not ruta.plantilla.startswith(corporativas):
+            continue
+        for method in ruta.metodos:
+            scope = required_scope_for_request(method, ruta.plantilla)
+            assert not scope.startswith("data:"), (method, ruta.plantilla, scope)
+            vistas += 1
+    assert vistas > 20, "el barrido no vio las rutas esperadas"

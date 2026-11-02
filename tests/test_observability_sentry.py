@@ -118,6 +118,35 @@ class TestSentry:
         }
         assert result["user"] == {"id": "abc"}
 
+    def test_strip_pii_redacta_los_textos_libres(self):
+        """Mensajes de excepción, de log y `extra` pasan por el redactor del log."""
+        event = {
+            "exception": {
+                "values": [
+                    {
+                        "type": "UniqueViolation",
+                        "value": "duplicate key (email)=(ana@example.test) con ?token=abc123secreto",
+                    },
+                    {"type": "Sin valor"},
+                ]
+            },
+            "message": "fallo para ana@example.test",
+            "logentry": {
+                "message": "usuario %s",
+                "formatted": "usuario ana@example.test",
+                "params": ["ana@example.test"],
+            },
+            "extra": {"contacto": "ana@example.test", "intentos": 3},
+        }
+        result = self._mod._strip_pii(event, {})
+
+        volcado = json.dumps(result)
+        assert "ana@example.test" not in volcado
+        assert "abc123secreto" not in volcado
+        assert result["exception"]["values"][1] == {"type": "Sin valor"}
+        assert "params" not in result["logentry"]
+        assert result["extra"]["intentos"] == 3
+
     def test_strip_pii_no_user(self):
         event = {"request": {"headers": {}}}
         result = self._mod._strip_pii(event, {})

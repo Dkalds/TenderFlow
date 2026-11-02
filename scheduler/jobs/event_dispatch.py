@@ -524,6 +524,30 @@ def _email_de(destinatario: Destinatario) -> str | None:
     return str(email) if email else None
 
 
+def _ambitos_del_webhook(organization_id: object, seguidores: object) -> list[int | None]:
+    """Organizaciones cuyos webhooks reciben el evento; ``None`` = solo los globales.
+
+    Un evento con organización sale por los webhooks de esa organización (y los
+    globales). Un evento sin ella es de instancia y sale solo por los globales,
+    con una excepción de transición: los ``licitacion.cambiada`` que
+    ``services/contract_events`` escribía antes de 2026-11 no llevaban
+    organización pero sí los seguidores de todas. Si siguen en cola se reparten
+    por las organizaciones que aparecen en esos seguidores, no por todas.
+    Retirable cuando haya pasado ``EVENT_DISPATCH_MAX_AGE_HOURS`` del despliegue.
+    """
+    if organization_id is not None:
+        return [int(str(organization_id))]
+    if not isinstance(seguidores, list):
+        return [None]
+    de_los_seguidores = {
+        int(fila["organization_id"])
+        for fila in seguidores
+        if isinstance(fila, dict) and fila.get("organization_id")
+    }
+    ambitos: list[int | None] = [*sorted(de_los_seguidores)]
+    return ambitos or [None]
+
+
 def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
     """Entrega el evento a los webhooks suscritos. Devuelve entregas con 2xx.
 
@@ -533,8 +557,10 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
     backoff por ``webhook_reintentos`` (C2.4). Hasta 2026-10 el despachador
     tenía su propia copia sin reintento, así que un receptor caído perdía el
     evento del outbox. Lo propio de este canal es de dónde sale el cuerpo (la
-    plantilla del formato del webhook) y qué filas se consultan (las de la
-    organización del evento, más las globales sin dueño).
+    plantilla del formato del webhook, sin ``seguidores``) y qué filas se
+    consultan (las de la organización del evento, más las globales sin dueño;
+    un evento sin organización solo sale por las globales, ver
+    :func:`_ambitos_del_webhook`).
 
     **Preferencia personal sobre una suscripción de organización (R7.2).** El
     webhook es de la organización (``webhooks`` no tiene ``user_id``) y la
@@ -563,12 +589,20 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
 
     repo = WebhookRepository()
     organization_id = evento.get("organization_id")
-    suscriptores = repo.list_active_subscribers(
-        organization_id=int(organization_id) if organization_id is not None else None
-    )
+    payload = dict(evento.get("payload") or {})
+    # Los seguidores son dato interno del despachador (quién recibe la campana):
+    # llevan `user_key` —sha256 del correo sin sal— e ids de usuario, y un
+    # webhook sale del sistema. Nunca viajan en el cuerpo.
+    seguidores = payload.pop("seguidores", None)
+    # Por id: un webhook global sale en la consulta de cada organización.
+    suscriptores = {
+        int(fila["id"]): fila
+        for ambito in _ambitos_del_webhook(organization_id, seguidores)
+        for fila in repo.list_active_subscribers(organization_id=ambito)
+    }
     candidatos = [
         fila
-        for fila in suscriptores
+        for fila in suscriptores.values()
         if suscripcion_cubre(frozenset(fila.get("event_types") or []), spec.tipo)
     ]
     if not candidatos:
@@ -590,7 +624,7 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
         cuerpo = json.dumps(
             renderizar(
                 spec.tipo,
-                dict(evento.get("payload") or {}),
+                payload,
                 formato=str(fila.get("formato") or ""),
                 timestamp=marca,
             ),

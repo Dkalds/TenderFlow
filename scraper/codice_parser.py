@@ -17,6 +17,7 @@ import threading
 import unicodedata
 from collections.abc import Iterable, Iterator
 from typing import Any, NamedTuple
+from urllib.parse import urlsplit
 
 from lxml import etree
 
@@ -250,6 +251,17 @@ _DOC_REF_TAGS = (
 )
 
 
+def _es_uri_http(uri: str) -> bool:
+    """¿Es una URL absoluta ``http(s)`` con host y sin blancos ni control?"""
+    if any(c.isspace() or ord(c) < 0x20 for c in uri):
+        return False
+    try:
+        partes = urlsplit(uri)
+    except ValueError:  # p. ej. un `[` de IPv6 sin cerrar
+        return False
+    return partes.scheme.lower() in ("http", "https") and bool(partes.hostname)
+
+
 def parse_document_references(entry: Any) -> list[DocumentoReferencia]:
     """Extrae los adjuntos (pliegos) referenciados en el CODICE de una entry.
 
@@ -281,6 +293,13 @@ def parse_document_references(entry: Any) -> list[DocumentoReferencia]:
         for node in entry.xpath(f"{cfs}/{tag}", namespaces=NS):
             uri = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:URI")
             if not uri:
+                continue
+            if not _es_uri_http(uri):
+                # `cbc:URI` lo escribe quien publica y la consola la pinta como
+                # enlace: `javascript:`, `data:` o una ruta relativa no son un
+                # adjunto descargable (el fetcher solo habla https) y no se
+                # guardan.
+                log.warning("codice_documento_uri_descartada", esquema=uri.split(":", 1)[0][:20])
                 continue
             filename = _text(node, "./cac:Attachment/cac:ExternalReference/cbc:FileName") or _text(
                 node, "./cbc:ID"

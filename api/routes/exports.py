@@ -18,7 +18,7 @@ El PDF se genera con ``reportlab`` (ya en dependencies del proyecto).
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -39,6 +39,7 @@ from fastapi.security import APIKeyHeader
 from api.auth import validate_api_key_credential
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
+from api.scopes import has_scope
 from api.tenancy import require_organization, resolve_organization_ctx
 from config.settings import jobs_export_umbral_filas
 from db.audit import log_event
@@ -55,6 +56,24 @@ from shared.dto import CalendarioEnlace, JobEstadoDTO
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/exports", tags=["exports"])
+
+
+def _exigir_lectura_del_tablero(user: Mapping[str, object]) -> None:
+    """Una API key que exporta el tablero necesita además `pursuits:read`.
+
+    `/exports` solo pide `exports:read` (`api/scopes.py`), pero
+    `?recurso=pursuits` y `/exports/crm` devuelven el pipeline entero que
+    `/pursuits` protege con `pursuits:read`: sin esto, `exports:read` saltaba
+    esa protección. Las sesiones no pasan por aquí: no llevan scopes.
+    """
+    scopes = user.get("scopes")
+    if user.get("auth_method") == "api_key" and not (
+        isinstance(scopes, Iterable) and has_scope(scopes, "pursuits:read")
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Acceso denegado. Exportar el tablero requiere también el scope pursuits:read.",
+        )
 
 
 def _adjunto(contenido: bytes, media_type: str, filename: str) -> Response:
@@ -119,7 +138,7 @@ async def download_export(
     responsible_user_id: int | None = Query(
         None, ge=1, description="Filtro de responsable. Solo con `recurso=pursuits`."
     ),
-    q: str | None = Query(None),
+    q: str | None = Query(None, max_length=200),
     estado: str | None = Query(None),
     ccaa: str | None = Query(None),
     tecnologia: str | None = Query(None),
@@ -262,19 +281,22 @@ async def download_export(
 async def _encolar_export_pdf(payload: dict[str, Any], ctx: dict[str, Any]) -> JSONResponse:
     """Encola el maquetado y responde 202 con el estado del trabajo."""
     from api.routes.jobs import a_dto
-    from services.jobs import TIPO_EXPORT_PDF, enqueue, obtener
+    from services.jobs import TIPO_EXPORT_PDF, CuotaDeJobsExcedida, enqueue, obtener
 
-    job_id = await run_db(
-        enqueue,
-        TIPO_EXPORT_PDF,
-        payload,
-        organization_id=int(ctx["organization_id"]),
-        # Sin deduplicar: dos peticiones con los mismos filtros son dos
-        # descargas que alguien espera por separado, y el binario se guarda
-        # bajo la clave del job. Compartir uno haría que la segunda descarga
-        # dependiera de que la primera no hubiera caducado todavía.
-        deduplicar=False,
-    )
+    try:
+        job_id = await run_db(
+            enqueue,
+            TIPO_EXPORT_PDF,
+            payload,
+            organization_id=int(ctx["organization_id"]),
+            # Sin deduplicar: dos peticiones con los mismos filtros son dos
+            # descargas que alguien espera por separado, y el binario se guarda
+            # bajo la clave del job. Compartir uno haría que la segunda descarga
+            # dependiera de que la primera no hubiera caducado todavía.
+            deduplicar=False,
+        )
+    except CuotaDeJobsExcedida as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     job = await run_db(obtener, job_id)
     if job is None:  # defensa: acabamos de insertarlo
         raise HTTPException(
@@ -387,6 +409,7 @@ async def _download_pursuits(
     from services.exports import get_export_filename, render_pursuits_export
     from services.organizations import OrganizationAccessError
 
+    _exigir_lectura_del_tablero(user)
     if format == "pdf":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -459,6 +482,7 @@ async def download_crm(
     from services.exports_crm import render_crm_export
     from services.organizations import OrganizationAccessError
 
+    _exigir_lectura_del_tablero(user)
     try:
         content, n_rows = await run_db(
             render_crm_export,
@@ -692,12 +716,16 @@ async def _organizacion_del_calendario(ctx: dict[str, Any]) -> int:
     summary="Enlace de suscripción al calendario de compromisos",
 )
 async def calendario_enlace(
+    response: Response,
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> CalendarioEnlace:
     """Ruta firmada para suscribirse desde Google/Apple/Outlook, y cuántos
     eventos devolvería hoy. El cliente antepone su propio origen: el mismo
     host que sirve la consola proxya ``/api`` a esta API."""
     from urllib.parse import urlencode
+
+    # El cuerpo es una credencial bearer: ningún caché, ni el del navegador.
+    response.headers["Cache-Control"] = "private, no-store"
 
     user_id = int(ctx["user_id"])
     user_key = str(ctx.get("user_key") or "")
@@ -788,7 +816,13 @@ async def calendario_ics(
     return Response(
         content=ics_content.encode("utf-8"),
         media_type="text/calendar; charset=utf-8",
-        headers={"Content-Disposition": 'attachment; filename="tenderflow.ics"'},
+        headers={
+            "Content-Disposition": 'attachment; filename="tenderflow.ics"',
+            # Con el enlace firmado no hay cookie ni cabecera: el middleware de
+            # ETag no la ve como autenticada y no pondría ninguna directiva, así
+            # que un proxy intermedio podría guardar el calendario de alguien.
+            "Cache-Control": "private, no-store",
+        },
     )
 
 

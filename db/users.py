@@ -169,18 +169,26 @@ def get_users_by_email_ci(email: str, *, include_deactivated: bool = False) -> l
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
 
-def get_active_user_by_email_ci(email: str) -> dict[str, Any] | None:
+def get_active_user_by_email_ci(
+    email: str, *, solo_verificadas: bool = False
+) -> dict[str, Any] | None:
     """Busca una cuenta activa por correo, sin distinguir mayúsculas.
 
     Pensado para el alta de miembros de organizaciones por correo: el alta
     self-service (``POST /auth/register``) no canonicaliza el valor antes de
     guardarlo, así que una comparación exacta puede fallar por diferencias de
     capitalización. No se usa en login para no tocar ese comportamiento.
+
+    ``solo_verificadas`` deja fuera la cuenta cuyo buzón nadie ha demostrado
+    (``email_verified_at IS NULL``, la del alta cerrada pendiente del enlace):
+    su contraseña pudo fijarla un tercero, y meterla en una organización antes
+    de verificar la daría por buena.
     """
     with connect() as c:
         cur = c.execute(
-            "SELECT * FROM users WHERE lower(email) = lower(%s) AND deactivated_at IS NULL",  # SELECT *: fila de cuenta entera
-            (email,),
+            "SELECT * FROM users WHERE lower(email) = lower(%s) AND deactivated_at IS NULL "  # SELECT *: fila de cuenta entera
+            "AND (NOT %s OR email_verified_at IS NOT NULL)",
+            (email, solo_verificadas),
         )
         row = cur.fetchone()
         if not row:
@@ -275,13 +283,14 @@ def anonymize_user(user_id: int) -> None:
     """Anonimiza PII del usuario (GDPR Art.17 erasure).
 
     - Desactiva la cuenta si no lo estaba.
-    - Nullifica email, display_name, oauth_sub en users.
+    - Nullifica email, display_name, oauth_sub y password_hash en users.
     - Nullifica email en access_log.
     - Conserva el esqueleto de auditoría (user_id, auth_method, logged_in_at).
     """
     with connect() as c:
         c.execute(
             "UPDATE users SET email = NULL, display_name = NULL, oauth_sub = NULL, "
+            "password_hash = NULL, "
             "deactivated_at = COALESCE(deactivated_at, %s) WHERE id = %s",
             (now_utc_iso(), user_id),
         )
@@ -307,3 +316,30 @@ def log_access(
             # reconstruct an authorized user's access history.
             (user_id, None, auth_method, now_utc_iso()),
         )
+
+
+def export_account(user_id: int) -> list[dict[str, object]]:
+    """La fila de ``users`` de la persona para el export RGPD, sin credenciales.
+
+    Columnas enumeradas a propósito: ``password_hash`` no sale de aquí.
+    """
+    with connect_read() as c:
+        cur = c.execute(
+            "SELECT id, email, display_name, oauth_provider, oauth_sub, created_at::text, "
+            "email_verified_at::text, deactivated_at::text FROM users WHERE id = %s",
+            (user_id,),
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+
+
+def export_access_log(user_id: int) -> list[dict[str, object]]:
+    """Inicios de sesión de la persona (``access_log``) para el export RGPD."""
+    with connect_read() as c:
+        cur = c.execute(
+            "SELECT id, user_id, email, auth_method, logged_in_at::text AS logged_in_at "
+            "FROM access_log WHERE user_id = %s ORDER BY id DESC LIMIT 5000",
+            (user_id,),
+        )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
