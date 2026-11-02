@@ -175,6 +175,7 @@ describe("verboDeEvento", () => {
   it("un tipo desconocido se enseña con su nombre técnico, no se pierde", () => {
     expect(verboDeEvento("pursuit.archived")).toBe("pursuit.archived");
     expect(verboDeEvento("checklist_evaluated")).toBe("evaluó el go/no-go de");
+    expect(verboDeEvento("fila_acta_confirmada")).toBe("confirmó su empresa en el acta de");
   });
 
   it("el resultado manda sobre la etapa, y la etapa sobre el tipo", () => {

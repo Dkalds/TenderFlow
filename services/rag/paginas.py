@@ -47,7 +47,7 @@ MOTIVO_INVERTIDOS: Final = "offsets_invertidos"
 
 
 class PaginaDocumento(BaseModel):
-    """Una página del pliego, con el fragmento a resaltar si es válido."""
+    """Una página de un pliego o de un acta de la mesa, con el fragmento a resaltar si es válido."""
 
     model_config = ConfigDict(extra="forbid")
 

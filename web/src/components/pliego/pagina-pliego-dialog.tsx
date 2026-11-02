@@ -125,7 +125,7 @@ export function PaginaPliegoDialog({
             {total != null && ` de ${total}`}
           </DialogTitle>
           <DialogDescription className="mt-1 text-tf-meta">
-            Texto extraído de la página del pliego
+            Texto extraído de la página del documento
             {trozos ? ", con la cita resaltada." : "."}
           </DialogDescription>
         </div>

@@ -134,6 +134,22 @@ describe("PursuitActivity", () => {
     expect(screen.getAllByText("«Sección C del DEUC»")).toHaveLength(3);
   });
 
+  it("traduce la confirmación de la fila del acta en vez de enseñar el tipo técnico", () => {
+    render(
+      <PursuitActivity
+        events={[
+          evento({
+            id: 12,
+            event_type: "fila_acta_confirmada",
+            payload: { lote_numero: "1", licitador_normalizado: "mi empresa sl" },
+          }),
+        ]}
+      />,
+    );
+    expect(screen.getByText("Empresa confirmada en el acta de la mesa")).toBeInTheDocument();
+    expect(screen.queryByText("fila_acta_confirmada")).not.toBeInTheDocument();
+  });
+
   it("nombra al actor cuando conoce al miembro", () => {
     render(
       <PursuitActivity

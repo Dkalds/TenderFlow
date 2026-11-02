@@ -21,14 +21,27 @@
  * Con `resultado_sugerido: null` —la organización no ha declarado NIFs, o la
  * fuente no publicó el del adjudicatario— la tarjeta se comporta como antes de
  * S2.1: dos botones y ninguna preselección. `null` es «no lo sé», no «no ganó».
+ *
+ * Cerrar como perdida pide el motivo de la lista cerrada de D37: la API
+ * responde 422 a una pérdida sin `outcome_reason_code`. Si el acta de la mesa
+ * trae puntuaciones y la fila propia, el motivo llega preseleccionado con lo
+ * que proponen los puntos perdidos (spec §6.4) y se puede cambiar; sin
+ * propuesta, el selector arranca vacío y el cierre espera a que alguien elija.
  */
-import { useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 import { SUPERFICIE_PANEL, TONO_PANEL } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
+import { AYUDA_CAMPO, ETIQUETA_CAMPO } from "@/components/ui/field";
 import { useUpdatePursuit, type Pursuit } from "@/hooks/use-pursuits";
+import { MOTIVOS_PERDIDA, type MotivoPerdida } from "@/lib/motivos-perdida";
 import { cn, EMPTY, formatCurrency } from "@/lib/utils";
 import { formatDate } from "@/components/pursuits/pursuit-presenters";
+import {
+  motivoSugeridoDe,
+  PuntuacionesActa,
+  type FilaActaRef,
+} from "@/components/pursuits/puntuaciones-acta";
 
 type Resultado = "won" | "lost";
 
@@ -38,15 +51,31 @@ function nombresDe(adjudicatarios: { nombre: string }[]): string {
 
 const ETIQUETA: Record<Resultado, string> = { won: "La ganamos", lost: "La perdimos" };
 
+/**
+ * Sin «Otro»: D37 lo exige con una nota que explique el motivo, y esta tarjeta
+ * no tiene dónde escribirla (la nota de cierre es la adjudicación publicada).
+ * Para «Otro» está el editor de la oportunidad, que sí la pide.
+ */
+const MOTIVOS = MOTIVOS_PERDIDA.filter((motivo) => motivo.codigo !== "otro");
+
 export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
   const adjudicacion = pursuit.adjudicacion;
   const update = useUpdatePursuit(pursuit.id, { errorTitle: "No se pudo cerrar la oportunidad" });
+  const confirmacion = useUpdatePursuit(pursuit.id, {
+    errorTitle: "No se pudo confirmar tu empresa en el acta",
+  });
+  const motivoId = useId();
   const sugerido = adjudicacion?.resultado_sugerido ?? null;
   // Sólo se guarda lo que la persona ha cambiado; la preselección sale de la
   // propuesta en cada render. Va atada al `id` porque la ruta reutiliza el
   // componente al saltar de una oportunidad a otra, y arrastrar la elección
-  // anterior preseleccionaría un resultado que nadie ha propuesto aquí.
+  // anterior preseleccionaría un resultado que nadie ha propuesto aquí. Lo
+  // mismo vale para el motivo y para el selector abierto.
   const [eleccion, setEleccion] = useState<{ id: number; valor: Resultado } | null>(null);
+  const [motivoElegido, setMotivoElegido] = useState<{ id: number; valor: MotivoPerdida | "" } | null>(
+    null,
+  );
+  const [perdidaAbierta, setPerdidaAbierta] = useState<number | null>(null);
 
   // Sin adjudicación publicada no hay nada que proponer. Es el caso normal de
   // una oportunidad viva, no un estado de error.
@@ -57,14 +86,21 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
   const motivo = `Adjudicación publicada por la fuente: ${nombresDe(adjudicatarios) || "sin adjudicatario publicado"}`;
   const seleccion: Resultado =
     (eleccion?.id === pursuit.id ? eleccion.valor : null) ?? sugerido ?? "lost";
+  const motivoSugerido = motivoSugeridoDe(pursuit);
+  const codigo: MotivoPerdida | "" =
+    (motivoElegido?.id === pursuit.id ? motivoElegido.valor : null) ?? motivoSugerido ?? "";
+  const pidiendoMotivo = puedeCerrar && perdidaAbierta === pursuit.id;
 
   const cerrar = async (outcome: Resultado) => {
+    if (outcome === "lost" && !codigo) return;
     try {
       await update.mutateAsync({
         outcome,
         // El importe adjudicado es el del contrato, así que sólo acompaña a
         // «ganada»: en una perdida ese número es del competidor.
-        ...(outcome === "won" ? { awarded_amount_eur: adjudicacion.importe_total ?? null } : {}),
+        ...(outcome === "won"
+          ? { awarded_amount_eur: adjudicacion.importe_total ?? null }
+          : { outcome_reason_code: codigo || null }),
         outcome_reason: motivo,
         expected_version: pursuit.version,
       });
@@ -82,6 +118,47 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
       // El aviso lo da el global de mutaciones, con el título del hook (D6).
     }
   };
+
+  // Sin `expected_version`: confirmar la fila no toca columnas de la
+  // oportunidad (solo anota un evento), así que no compite con otra edición.
+  const confirmarFila = async (fila_acta: FilaActaRef) => {
+    try {
+      await confirmacion.mutateAsync({ fila_acta });
+      toast.success("Tu empresa queda marcada en el acta");
+    } catch {
+      // El aviso lo da el global de mutaciones, con el título del hook (D6).
+    }
+  };
+
+  const selectorMotivo = (
+    <div className="space-y-1">
+      <label htmlFor={motivoId} className={ETIQUETA_CAMPO}>
+        Motivo de la pérdida
+      </label>
+      <select
+        id={motivoId}
+        value={codigo}
+        onChange={(event) =>
+          setMotivoElegido({ id: pursuit.id, valor: event.target.value as MotivoPerdida | "" })
+        }
+        disabled={update.isPending}
+        aria-describedby={codigo && codigo === motivoSugerido ? `${motivoId}-ayuda` : undefined}
+        className="h-9 w-full max-w-xs rounded-md border border-input bg-card px-2 text-campo transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <option value="">Elige un motivo</option>
+        {MOTIVOS.map((opcion) => (
+          <option key={opcion.codigo} value={opcion.codigo}>
+            {opcion.etiqueta}
+          </option>
+        ))}
+      </select>
+      {codigo && codigo === motivoSugerido && (
+        <p id={`${motivoId}-ayuda`} className={AYUDA_CAMPO}>
+          Propuesto por las puntuaciones del acta: cámbialo si no es así.
+        </p>
+      )}
+    </div>
+  );
 
   return (
     // El énfasis es el borde primario sobre la superficie de siempre, no un
@@ -113,6 +190,18 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
           Importe total adjudicado:{" "}
           <span className="font-semibold">{formatCurrency(adjudicacion.importe_total)}</span>
         </p>
+      )}
+
+      {adjudicacion.puntuaciones && (
+        <div className="mb-3">
+          <PuntuacionesActa
+            key={pursuit.id}
+            pursuit={pursuit}
+            puntuaciones={adjudicacion.puntuaciones}
+            onConfirmarFila={(fila) => void confirmarFila(fila)}
+            confirmando={confirmacion.isPending}
+          />
+        </div>
       )}
 
       {puedeCerrar && sugerido ? (
@@ -148,26 +237,45 @@ export function AdjudicacionDetectada({ pursuit }: { pursuit: Pursuit }) {
               ))}
             </div>
           </fieldset>
-          <Button size="sm" disabled={update.isPending} onClick={() => void cerrar(seleccion)}>
+          {seleccion === "lost" && selectorMotivo}
+          <Button
+            size="sm"
+            disabled={update.isPending || (seleccion === "lost" && !codigo)}
+            onClick={() => void cerrar(seleccion)}
+          >
             {seleccion === "won" ? "Confirmar como ganada" : "Confirmar como perdida"}
           </Button>
         </div>
       ) : puedeCerrar ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" disabled={update.isPending} onClick={() => void cerrar("won")}>
-            Cerrar como ganada
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={update.isPending}
-            onClick={() => void cerrar("lost")}
-          >
-            Cerrar como perdida
-          </Button>
-          <span className="text-tf-micro text-muted-foreground">
-            El resultado lo decides tú: TenderFlow no sabe cuál de estas empresas es la tuya.
-          </span>
+        <div className="space-y-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" disabled={update.isPending} onClick={() => void cerrar("won")}>
+              Cerrar como ganada
+            </Button>
+            {/* Abre el motivo debajo en vez de cerrar: una pérdida sin motivo
+                es un 422, y el foco se queda en este botón. */}
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={update.isPending}
+              aria-expanded={pidiendoMotivo}
+              aria-controls={`${motivoId}-perdida`}
+              onClick={() => setPerdidaAbierta(pidiendoMotivo ? null : pursuit.id)}
+            >
+              Cerrar como perdida
+            </Button>
+            <span className="text-tf-micro text-muted-foreground">
+              El resultado lo decides tú: TenderFlow no sabe cuál de estas empresas es la tuya.
+            </span>
+          </div>
+          {pidiendoMotivo && (
+            <div id={`${motivoId}-perdida`} className="space-y-2.5">
+              {selectorMotivo}
+              <Button size="sm" disabled={update.isPending || !codigo} onClick={() => void cerrar("lost")}>
+                Confirmar como perdida
+              </Button>
+            </div>
+          )}
         </div>
       ) : adjudicacion.cierre_pendiente ? (
         <div className="flex flex-wrap items-center gap-2">

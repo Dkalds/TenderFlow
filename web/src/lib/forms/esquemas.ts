@@ -205,8 +205,9 @@ export const oportunidad = esquemaDeDto("PursuitUpdate")(
     outcome_reason_code: z.union([z.enum(CODIGOS_MOTIVO_PERDIDA), z.literal("")]),
   },
   // `expected_version` sale de la versión cargada, no de un campo; la próxima
-  // acción no se edita en este formulario.
-  ["expected_version", "next_action", "next_action_due"],
+  // acción no se edita en este formulario, y la fila del acta se confirma en la
+  // tarjeta de adjudicación.
+  ["expected_version", "fila_acta", "next_action", "next_action_due"],
 );
 
 /* ---------------------------------------------------------------- Webhooks */

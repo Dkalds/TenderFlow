@@ -149,7 +149,7 @@ async def post_reporte_dato(
 
 @router.get(
     "/licitaciones/{id_externo:path}/documentos/{documento_id}/paginas/{page_number}",
-    summary="Página de un pliego, con el fragmento de la cita localizado",
+    summary="Página de un pliego o de un acta de la mesa, con el fragmento de la cita localizado",
     responses={
         401: {"description": "Autenticación inválida"},
         404: {"description": "La página no existe para ese documento y licitación"},
@@ -166,7 +166,7 @@ async def get_pagina_documento(
     fin: int | None = Query(default=None, ge=0, description="Offset absoluto de fin de la cita"),
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> PaginaDocumento:
-    """F2.5 — el texto de una página del pliego y dónde cae la cita.
+    """F2.5 — el texto de una página del pliego o del acta de la mesa, y dónde cae la cita.
 
     Con `inicio` y `fin` (los `EvidenceRef.start_offset`/`end_offset` de la
     ficha) la respuesta trae los índices **ya relativos a esta página**. Unos
