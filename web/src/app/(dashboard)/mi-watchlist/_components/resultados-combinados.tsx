@@ -12,7 +12,7 @@
  * ficha en Detalle.
  */
 
-import Link from "next/link";
+import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { PanelEmpty, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -50,12 +50,12 @@ export function ResultadosCombinados({
               return (
                 <li key={id} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:gap-4">
                   <div className="min-w-0 flex-1">
-                    <Link
-                      href={`/detalle?lic=${encodeURIComponent(item.id_externo ?? "")}`}
+                    <EnlaceFicha
+                      idExterno={item.id_externo ?? ""}
                       className="line-clamp-1 text-tf-body font-medium hover:underline"
                     >
                       {truncate(item.titulo ?? "Sin título", 100)}
-                    </Link>
+                    </EnlaceFicha>
                     {item.organo_contratacion && (
                       <p className="truncate text-tf-meta text-muted-foreground">{item.organo_contratacion}</p>
                     )}

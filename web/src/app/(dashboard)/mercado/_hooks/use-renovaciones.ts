@@ -24,6 +24,7 @@
 import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { abrirFicha } from "@/components/ficha/enlace-ficha";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
@@ -149,11 +150,6 @@ export function useRenovaciones() {
       }
     },
     [createPursuit, router, setActiveOrganizationId],
-  );
-
-  const abrirDetalle = React.useCallback(
-    (licitacionId: string) => router.push(`/detalle?lic=${encodeURIComponent(licitacionId)}`),
-    [router],
   );
 
   // Filtro global de la barra superior. Solo aplicamos "tecnología" aquí:
@@ -285,7 +281,7 @@ export function useRenovaciones() {
     totales: resumen?.totales,
     topCartera,
     anticipar,
-    abrirDetalle,
+    abrirDetalle: abrirFicha,
   };
 }
 

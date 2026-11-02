@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
+import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Download, Search } from "lucide-react";
 
@@ -220,12 +220,12 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
                 data.items.map((award) => (
                   <TableRow key={award.licitacion_id}>
                     <TableCell className="min-w-72">
-                      <Link
-                        href={`/detalle?lic=${encodeURIComponent(award.licitacion_id)}`}
+                      <EnlaceFicha
+                        idExterno={award.licitacion_id}
                         className="font-medium transition-colors hover:text-primary"
                       >
                         {truncate(award.titulo ?? award.licitacion_id, 82)}
-                      </Link>
+                      </EnlaceFicha>
                       <p className="mt-1 text-tf-meta text-muted-foreground">{formatDate(award.fecha_adjudicacion)}</p>
                     </TableCell>
                     <TableCell className="max-w-64">

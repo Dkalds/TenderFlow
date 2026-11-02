@@ -13,6 +13,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 
 import { Badge } from "@/components/ui/badge";
 import { Panel, PanelEmpty, PanelTitle } from "@/components/console/panel";
@@ -63,12 +64,12 @@ export function BloquePublicaciones({ bloque }: { bloque: FichaCuenta["publicaci
           {items.map((publicacion) => (
             <li key={publicacion.id_externo} className="py-2 first:pt-0 last:pb-0">
               <div className="flex items-start justify-between gap-2">
-                <Link
-                  href={`/detalle?lic=${encodeURIComponent(publicacion.id_externo)}`}
+                <EnlaceFicha
+                  idExterno={publicacion.id_externo}
                   className="text-tf-body leading-tight font-medium hover:underline"
                 >
                   {publicacion.titulo ?? publicacion.id_externo}
-                </Link>
+                </EnlaceFicha>
                 {publicacion.abierta && (
                   <Badge variant="secondary" className="flex-none">
                     Abierta
@@ -111,12 +112,12 @@ export function BloqueVencimientos({ bloque }: { bloque: FichaCuenta["vencimient
               key={`${contrato.licitacion_id}-${contrato.empresa_id ?? contrato.empresa ?? indice}`}
               className="py-2 first:pt-0 last:pb-0"
             >
-              <Link
-                href={`/detalle?lic=${encodeURIComponent(contrato.licitacion_id)}`}
+              <EnlaceFicha
+                idExterno={contrato.licitacion_id}
                 className="text-tf-body leading-tight font-medium hover:underline"
               >
                 {contrato.titulo ?? contrato.licitacion_id}
-              </Link>
+              </EnlaceFicha>
               <p className="mt-0.5 flex flex-wrap gap-x-3 text-tf-meta text-muted-foreground">
                 <span className="text-foreground">
                   Fin {formatDate(contrato.fecha_fin)}

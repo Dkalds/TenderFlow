@@ -3,9 +3,9 @@
 /**
  * Overlays del dashboard, bajo demanda.
  *
- * La paleta (⌘K), el asistente, la bandeja de comparación y la ayuda de atajos
- * están cerrados al entrar en cualquier pantalla, y aun así viajaban en el
- * First Load de todas: el asistente con react-markdown y remark-gfm, la paleta
+ * La paleta (⌘K), el asistente, la bandeja de comparación, la ayuda de atajos y
+ * la ficha flotante están cerrados al entrar en cualquier pantalla, y aun así
+ * viajaban en el First Load de todas: el asistente con react-markdown y remark-gfm, la paleta
  * con cmdk. Aquí queda montado solo lo mínimo —la suscripción a su store— y
  * cada cuerpo se descarga la primera vez que hace falta.
  *
@@ -20,6 +20,7 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
+import { useFichaFlotante } from "@/components/ficha/enlace-ficha";
 import { useBandejaComparacion } from "@/hooks/use-comparacion";
 import { alQuedarOcioso } from "@/lib/al-quedar-ocioso";
 import { useAsistente } from "@/lib/asistente-store";
@@ -66,6 +67,10 @@ const BandejaComparacion = dynamic(
   () => import("@/components/pliego/comparacion-bandeja").then((modulo) => modulo.BandejaComparacion),
   { ssr: false },
 );
+// Arrastra los bloques de la ficha (IA, documentos, eventos): llega con el primer clic.
+const FichaFlotante = dynamic(() => import("@/components/ficha/ficha-flotante").then((modulo) => modulo.FichaFlotante), {
+  ssr: false,
+});
 const KeyboardHelp = dynamic(() => import("@/components/keyboard-help").then((modulo) => modulo.KeyboardHelp), {
   ssr: false,
 });
@@ -114,6 +119,13 @@ function AyudaAtajosDiferida() {
   return vista ? <KeyboardHelp /> : null;
 }
 
+/** La ficha de una licitación sobre la pantalla actual (`?ver=`, ver `enlace-ficha.tsx`). */
+function FichaFlotanteDiferida() {
+  const [idExterno] = useFichaFlotante();
+  const vista = useAbiertoAlgunaVez(Boolean(idExterno));
+  return vista ? <FichaFlotante /> : null;
+}
+
 export function OverlaysDashboard() {
   return (
     <>
@@ -121,6 +133,7 @@ export function OverlaysDashboard() {
       <AsistenteDiferido />
       <BandejaDiferida />
       <AyudaAtajosDiferida />
+      <FichaFlotanteDiferida />
     </>
   );
 }

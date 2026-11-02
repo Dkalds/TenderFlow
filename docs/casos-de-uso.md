@@ -43,11 +43,15 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 
 ### CU-02 — Buscar un expediente y abrir su ficha
 
-- **Quién:** comercial o preventa. **Dónde:** barra de ámbito, `/detalle`.
+- **Quién:** comercial o preventa. **Dónde:** barra de ámbito, `/detalle`, las
+  listas de la consola.
 - Filtra por texto, comunidad e importe, y obtiene solo expedientes
   clasificados con tecnología.
 - Abre la ficha de uno por su enlace permanente; uno que no existe no rompe la
   página.
+- Desde cualquier lista de la consola (Resumen, Watchlist, Competencia,
+  Cuentas, Mercado…) abre la ficha en un panel lateral sin salir de la
+  pantalla, y sigue pulsando otras; Ctrl/⌘-clic la abre en `/detalle`.
 - En la ficha ve quién lo ganó —por lote, con NIF, importe adjudicado y número
   de ofertas—, el contrato anterior del mismo órgano con su incumbente y los
   expedientes parecidos.
@@ -388,7 +392,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | Caso | Recorrido por la API | E2E en el navegador | Otros tests que lo citan |
 |---|---|---|---|
 | **CU-01** Entrar y salir de la consola | — | [login.spec.ts](../web/e2e/login.spec.ts) | — |
-| **CU-02** Buscar un expediente y abrir su ficha | [test_escenario_ficha_y_filtros.py](../tests/test_escenario_ficha_y_filtros.py)<br>[test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [detail-permalink.spec.ts](../web/e2e/detail-permalink.spec.ts) | — |
+| **CU-02** Buscar un expediente y abrir su ficha | [test_escenario_ficha_y_filtros.py](../tests/test_escenario_ficha_y_filtros.py)<br>[test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [detail-permalink.spec.ts](../web/e2e/detail-permalink.spec.ts) | [enlace-ficha.test.tsx](../web/src/components/ficha/__tests__/enlace-ficha.test.tsx)<br>[ficha-flotante.test.tsx](../web/src/components/ficha/__tests__/ficha-flotante.test.tsx) |
 | **CU-03** Seguir un expediente y anotarlo | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | [favoritos-nota.test.tsx](../web/src/app/(dashboard)/mi-watchlist/__tests__/favoritos-nota.test.tsx)<br>[use-watchlist-items.test.ts](../web/src/hooks/__tests__/use-watchlist-items.test.ts) |
 | **CU-04** Vigilar el mercado con una alerta | [test_escenario_feed_alertas.py](../tests/test_escenario_feed_alertas.py)<br>[test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) (x2) | [recorrido-alerta.spec.ts](../web/e2e/recorrido-alerta.spec.ts) | [test_resumen_diario_integracion.py](../tests/test_resumen_diario_integracion.py)<br>[test_watchlist_rules_maquina_property.py](../tests/test_watchlist_rules_maquina_property.py)<br>[triaje-resumen.test.tsx](../web/src/app/(dashboard)/detalle/__tests__/triaje-resumen.test.tsx) |
 | **CU-05** Llevar una oportunidad del expediente al cierre | [test_escenario_oportunidad.py](../tests/test_escenario_oportunidad.py) (x4) | [recorrido-oportunidad.spec.ts](../web/e2e/recorrido-oportunidad.spec.ts) | [test_pursuit_maquina_property.py](../tests/test_pursuit_maquina_property.py)<br>[test_pursuits_filtros_tablero.py](../tests/test_pursuits_filtros_tablero.py) |

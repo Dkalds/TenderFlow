@@ -10,7 +10,7 @@
  * declarar importe, que un eje log no puede dibujar.
  */
 
-import { useRouter } from "next/navigation";
+import { abrirFicha } from "@/components/ficha/enlace-ficha";
 import {
   CartesianGrid,
   Cell,
@@ -47,7 +47,6 @@ export function DispersionScatter({
   sinImporte,
   ventana,
 }: DispersionScatterProps) {
-  const router = useRouter();
 
   if (puntos.length === 0) {
     return (
@@ -115,7 +114,7 @@ export function DispersionScatter({
                   onClick={(punto: unknown) => {
                     const nodo = punto as { id?: string; payload?: { id?: string } } | undefined;
                     const id = nodo?.id ?? nodo?.payload?.id;
-                    if (id) router.push(`/detalle?lic=${encodeURIComponent(id)}`);
+                    if (id) abrirFicha(id);
                   }}
                 >
                   {puntos.map((entrada) => (

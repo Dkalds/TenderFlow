@@ -28,6 +28,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { EnlaceIr, PanelError, ROTULO_DATO, SectionTitle } from "@/components/console/panel";
+import { alPulsarFicha, rutaFicha } from "@/components/ficha/enlace-ficha";
 import { Badge } from "@/components/ui/badge";
 import { GlosarioHint } from "@/components/ui/glosario-hint";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -151,7 +152,8 @@ function Incumbente({ data, Sub }: { data: CompetenciaEsperada; Sub: Subtitulo }
             {incumbente.baja_pct != null ? ` (baja del ${formatPercent(incumbente.baja_pct)})` : ""}.
           </p>
           <EnlaceIr
-            href={`/detalle?lic=${encodeURIComponent(incumbente.licitacion_id)}`}
+            href={rutaFicha(incumbente.licitacion_id)}
+            onClick={(evento) => alPulsarFicha(evento, incumbente.licitacion_id)}
             className="mt-1.5 text-tf-micro"
           >
             Ver el contrato anterior

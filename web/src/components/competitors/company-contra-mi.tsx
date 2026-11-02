@@ -34,7 +34,7 @@
  */
 
 import * as React from "react";
-import Link from "next/link";
+import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { useQuery } from "@tanstack/react-query";
 import { Aviso, EnlaceIr, PanelEmpty, PanelError, PanelLoading, ROTULO_DATO, Segmented } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
@@ -208,12 +208,12 @@ export function CompanyContraMi({
                   {data.batallas?.map((batalla) => (
                     <TableRow key={batalla.licitacion_id} className="align-top">
                       <TableCell>
-                        <Link
-                          href={`/detalle?lic=${encodeURIComponent(batalla.licitacion_id)}`}
+                        <EnlaceFicha
+                          idExterno={batalla.licitacion_id}
                           className="font-medium transition-colors hover:text-primary"
                         >
                           {truncate(batalla.titulo ?? batalla.licitacion_id, 80)}
-                        </Link>
+                        </EnlaceFicha>
                         <span className="block text-tf-meta text-muted-foreground">
                           {batalla.organo_contratacion ?? EMPTY}
                           {batalla.importe != null && ` · ${formatCurrency(batalla.importe)}`}

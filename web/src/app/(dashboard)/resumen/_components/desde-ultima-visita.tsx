@@ -32,7 +32,7 @@
  */
 
 import * as React from "react";
-import Link from "next/link";
+import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { SUPERFICIE_PANEL } from "@/components/console/panel";
@@ -156,12 +156,12 @@ function LineaNovedad({ novedad }: { novedad: Novedad }) {
   return (
     <li>
       {novedad.licitacion_id ? (
-        <Link
-          href={`/detalle?lic=${encodeURIComponent(novedad.licitacion_id)}`}
+        <EnlaceFicha
+          idExterno={novedad.licitacion_id}
           className="flex items-center gap-2.5 rounded-md px-1.5 py-1 transition-colors hover:bg-primary-hover active:bg-primary-selected active:duration-0"
         >
           {contenido}
-        </Link>
+        </EnlaceFicha>
       ) : (
         <div className="flex items-center gap-2.5 px-1.5 py-1">{contenido}</div>
       )}

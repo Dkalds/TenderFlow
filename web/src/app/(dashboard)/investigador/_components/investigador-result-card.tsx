@@ -15,7 +15,7 @@
  */
 
 import { useId } from "react";
-import Link from "next/link";
+import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { ExternalLink, MessageSquareText } from "lucide-react";
 import { Panel, ROTULO_DATO } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
@@ -74,9 +74,9 @@ export function InvestigadorResultCard({ result, marcado, sinHueco, onAlternar }
         {/* Tres líneas como mucho: hay anuncios cuyo «título» es el objeto del
             contrato entero, con sus seis lotes, y uno solo ocupaba la pantalla. */}
         <h3 className="line-clamp-3 min-w-0 text-tf-body font-semibold">
-          <Link href={`/detalle?lic=${encodeURIComponent(result.id_externo)}`} className="hover:underline">
+          <EnlaceFicha idExterno={result.id_externo} className="hover:underline">
             <TextoResaltado tramos={result.titulo_tramos} alternativa={result.titulo ?? "Sin título"} />
-          </Link>
+          </EnlaceFicha>
         </h3>
         {result.estado && <StatusBadge value={result.estado} className="flex-none" />}
       </div>

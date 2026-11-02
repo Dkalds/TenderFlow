@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { Activity } from "lucide-react";
 import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -152,8 +152,8 @@ export function EventosFeed() {
                   const Icon = TIPO_ICON[evento.tipo] ?? Activity;
                   return (
                     <li key={`${evento.licitacion_id}-${evento.tipo}-${indice}`}>
-                      <Link
-                        href={`/detalle?lic=${encodeURIComponent(evento.licitacion_id)}`}
+                      <EnlaceFicha
+                        idExterno={evento.licitacion_id}
                         className="relative flex items-start gap-2.5 rounded-md py-1.5 pr-1 transition-colors hover:bg-primary-hover active:bg-primary-selected active:duration-0"
                       >
                         <span className="grid h-7 w-7 flex-none place-items-center rounded-full border border-divider bg-card">
@@ -175,7 +175,7 @@ export function EventosFeed() {
                             </span>
                           )}
                         </span>
-                      </Link>
+                      </EnlaceFicha>
                     </li>
                   );
                 })}

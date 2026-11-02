@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Check } from "lucide-react";
@@ -236,8 +236,8 @@ export function ColaCierre({
           <ul className="absolute inset-x-0 top-0 flex flex-col">
             {filas.map((fila) => (
               <li key={fila.id}>
-                <Link
-                  href={`/detalle?lic=${encodeURIComponent(fila.id)}`}
+                <EnlaceFicha
+                  idExterno={fila.id}
                   className="-mx-1.5 grid h-10 grid-cols-[minmax(0,1fr)_88px_60px] items-center gap-3 rounded-md border-t border-divider-subtle px-1.5 transition-colors hover:bg-primary-hover active:bg-primary-selected active:duration-0 sm:grid-cols-[minmax(0,1fr)_88px_minmax(80px,160px)_60px]"
                 >
                   <span className="min-w-0">
@@ -256,7 +256,7 @@ export function ColaCierre({
                   >
                     {fila.horas} h
                   </span>
-                </Link>
+                </EnlaceFicha>
               </li>
             ))}
           </ul>

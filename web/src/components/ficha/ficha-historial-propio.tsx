@@ -15,6 +15,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { Fact, PanelEmpty, PanelError, PanelLoading, PanelTitle } from "@/components/console/panel";
 import { useHistorialPropio } from "@/hooks/use-licitacion";
 import type { HistorialPropio } from "@/lib/api-types";
@@ -148,12 +149,12 @@ export function FichaHistorialPropio({ licitacionId }: { licitacionId: string })
           <ul className="divide-divider divide-y">
             {recientes.map((adj) => (
               <li key={adj.licitacion_id} className="py-2">
-                <Link
-                  href={`/detalle?lic=${encodeURIComponent(adj.licitacion_id)}`}
+                <EnlaceFicha
+                  idExterno={adj.licitacion_id}
                   className="text-tf-body hover:text-primary font-medium text-pretty"
                 >
                   {adj.titulo || adj.licitacion_id}
-                </Link>
+                </EnlaceFicha>
                 <p className="text-muted-foreground text-tf-meta text-pretty">
                   {[
                     ambitoDe(adj),
