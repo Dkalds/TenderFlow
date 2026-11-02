@@ -10,6 +10,7 @@
  * crearla (`GET /pursuits?licitacion_id=`).
  */
 
+import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -69,13 +70,30 @@ export function OportunidadBoton({ licitacionId }: { licitacionId: string }) {
 
 export function DossierBoton({ licitacionId }: { licitacionId: string }) {
   const organizationId = useActiveOrganizationId();
+  // El PDF se compone al pedirlo y tarda: sin estado, un segundo clic lo bajaba dos veces.
+  const [generando, setGenerando] = React.useState(false);
   const url = `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/dossier.pdf${
     organizationId != null ? `?organization_id=${organizationId}` : ""
   }`;
+  const descargar = async () => {
+    setGenerando(true);
+    try {
+      await triggerDownload(url);
+    } finally {
+      setGenerando(false);
+    }
+  };
   return (
-    <Button type="button" variant="outline" size="sm" onClick={() => void triggerDownload(url)}>
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={() => void descargar()}
+      disabled={generando}
+      aria-busy={generando}
+    >
       <IconoExportar aria-hidden="true" />
-      Dossier PDF
+      {generando ? "Generando dossier…" : "Dossier PDF"}
     </Button>
   );
 }

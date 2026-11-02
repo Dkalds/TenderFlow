@@ -84,7 +84,7 @@ describe("FichaCumplo", () => {
     const fetchMock = servir(checklist(1, 0));
     montar();
 
-    expect(await screen.findByRole("status")).toHaveTextContent("De 1 requisito: 1 «cumple» · 0 «no cumple»");
+    expect(await screen.findByRole("status")).toHaveTextContent("De 1 requisito, cumples 1 y no cumples 0.");
     const urls = fetchMock.mock.calls.map((call) => callUrl(call));
     expect(urls).toContain("/api/v1/licitaciones/PA-S%202026%2F1/checklist?organization_id=7");
     expect(screen.queryByText(/Socios del CPV/)).toBeNull();
@@ -96,6 +96,51 @@ describe("FichaCumplo", () => {
 
     expect(await screen.findByText("Socios del CPV 72267000")).toBeInTheDocument();
     expect(screen.getByText(/No cumples un requisito/)).toBeInTheDocument();
+  });
+
+  it("sin capacidad declarada lo resume arriba, con un solo enlace, y pliega las familias", async () => {
+    const base = checklist(0, 0);
+    const sinDato = (requisito: string) => ({
+      familia: "team",
+      requisito,
+      veredicto: "desconocido",
+      motivo: "La organización no ha declarado perfiles de equipo.",
+      evidencia: [],
+      dato_organizacion: null,
+      fuente: "pliego",
+    });
+    servir({
+      ...base,
+      familias: [
+        {
+          familia: "team",
+          etiqueta: "Equipo requerido",
+          veredicto: "desconocido",
+          sin_hechos: false,
+          fuente: "pliego",
+          items: [sinDato("Jefe de proyecto"), sinDato("Consultor SAP")],
+        },
+      ],
+      requisitos_extraidos: 2,
+      desconocido_extraidos: 2,
+    });
+    const { container } = montar();
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Todavía no se puede contrastar ninguno de los 2 requisitos.",
+    );
+    expect(screen.getByText(/Falta tu dato en equipo requerido\./)).toBeInTheDocument();
+    // Uno arriba y otro al pie de la familia; antes era uno por requisito.
+    expect(screen.getAllByRole("link", { name: /Completar la capacidad/ })).toHaveLength(2);
+    expect(container.querySelector("details")).not.toHaveAttribute("open");
+  });
+
+  it("deja abierta la familia que no cumples: es la que hay que leer", async () => {
+    servir(checklist(0, 1));
+    const { container } = montar();
+
+    await screen.findByText("Socios del CPV 72267000");
+    expect(container.querySelector("details")).toHaveAttribute("open");
   });
 
   it("sin requisitos con los que comparar lo dice en vez de enseñar ceros", async () => {

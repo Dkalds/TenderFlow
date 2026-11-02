@@ -64,9 +64,48 @@ describe("FichaHistorialPropio", () => {
     });
     montar();
 
-    expect(await screen.findByText(/^2 ganadas/)).toBeInTheDocument();
+    expect(await screen.findByText("2 ganadas")).toBeInTheDocument();
+    // Cada ámbito dice qué cuenta: con el órgano, cualquier CPV; en el CPV, cualquier órgano.
+    expect(screen.getByText("Con este órgano · cualquier CPV")).toBeInTheDocument();
+    expect(screen.getByText("En el CPV 7226 · cualquier órgano")).toBeInTheDocument();
+    expect(screen.getByText(/baja mediana 12,5\s?% en 2 adjudicaciones/)).toBeInTheDocument();
     expect(screen.getByText("Ninguna adjudicación")).toBeInTheDocument();
-    expect(screen.getByText(/5 en total · 4 presentadas · 2 ganadas · 2 perdidas/)).toBeInTheDocument();
+    expect(screen.getByText("5 oportunidades")).toBeInTheDocument();
+    expect(screen.getByText("4 presentadas · 2 ganadas · 2 perdidas")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Soporte SAP 2024" })).toHaveAttribute("href", "/detalle?lic=EXP-VIEJO");
+    expect(screen.getByText(/^mismo órgano y CPV/)).toBeInTheDocument();
+  });
+
+  it("concuerda en singular: una presentada, una perdida", async () => {
+    servir({
+      licitacion_id: "EXP-1",
+      identidad_conocida: true,
+      organo: "Ayuntamiento de Sevilla",
+      cpv4: null,
+      con_organo: null,
+      en_cpv4: null,
+      oportunidades: { total: 1, presentadas: 1, ganadas: 0, perdidas: 1 },
+      recientes: [],
+    });
+    montar();
+
+    expect(await screen.findByText("1 oportunidad")).toBeInTheDocument();
+    expect(screen.getByText("1 presentada · 0 ganadas · 1 perdida")).toBeInTheDocument();
+  });
+
+  it("con identidad pero sin nada que contar lo dice, sin una rejilla vacía", async () => {
+    servir({
+      licitacion_id: "EXP-1",
+      identidad_conocida: true,
+      organo: null,
+      cpv4: null,
+      con_organo: null,
+      en_cpv4: null,
+      oportunidades: null,
+      recientes: [],
+    });
+    montar();
+
+    expect(await screen.findByText("Todavía no has ganado nada con este órgano ni en este CPV")).toBeInTheDocument();
   });
 });
