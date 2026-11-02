@@ -82,7 +82,7 @@ trabajo en ese sentido.
 
 | Id | Decisión | Recomendación | Estado |
 |---|---|---|---|
-| D50 | **Foco de piloto.** Hasta cumplir el criterio de salida de §5, no se añade superficie nueva (endpoint, espacio, pantalla) que no sirva al bucle de §3, Ola 2. | Sí. La lista `NUEVAS` de `scripts/check_api_surface.py` cita este plan en cada alta. | pendiente |
+| D50 | **Foco de piloto.** Hasta cumplir el criterio de salida de §5, no se añade superficie nueva (endpoint, espacio, pantalla) que no sirva al bucle de §3, Ola 2. | Sí. La lista `NUEVAS` de `scripts/check_api_surface.py` cita este plan en cada alta. | **revocada** (2026-11-02, por el propietario): ni AGENTS.md §0 ni `scripts/check_api_surface.py` la exigen ya |
 | D51 | **Destino de la telemetría.** Los 23 eventos de `web/src/lib/analytics.ts` se pierden (Vercel Hobby responde `402`). | Treinta días con pageviews por ruta + `http_requests_total` por handler, sin coste ni superficie nueva; revisar después si hace falta medir acciones. | pendiente |
 | D52 | **Ficha nocturna.** Priorizar lo abierto que casa con alguna regla (B2) y fijar un tope de gasto mensual en [COSTES.md](../COSTES.md) §5.1. *Corrección del 2026-10-26:* `PLIEGO_FACTS_ENABLED` ya era `true` desde el 2026-08-14 (25 fichas por noche); el 11 % venía de un selector que no filtraba por «abierta», no de la variable. | Sí, con tope. | aceptada; falta el tope |
 | D53 | **Alerta por defecto.** Al completar el perfil de una organización se crea una regla de vigilancia a partir de sus tecnologías, CPV y CCAA, editable y con baja en un clic. | Sí. | pendiente |
@@ -181,7 +181,7 @@ No abre frentes nuevos: **termina lo empezado** y reduce el coste de mantener.
 | Modelo de baja por lote, activar `baja_model` v2 y `retencion_model` v1 | Sin uso que lo pida y con el dato de importe a medio arreglar | Tras V2 |
 | Búsqueda por significado más allá de su flag | `/investigador` tiene uso bajo | Con el dato de R1 |
 | Entorno de staging | Coste frente a un piloto de tres usuarios | Al salir del piloto |
-| Espacios o pantallas nuevos | D50 | Al salir del piloto |
+| ~~Espacios o pantallas nuevos~~ | D50, revocada el 2026-11-02 | — |
 
 ---
 
@@ -202,8 +202,8 @@ Hasta D51 se aproxima con pageviews de `/oportunidades/[id]` y `/detalle` y con
 | Operaciones de la API | 306 | Encoge tras R2 |
 
 **Se sale del piloto** cuando al menos cinco organizaciones cumplen la métrica
-norte durante cuatro semanas seguidas. Entonces se revisan D50 y la tabla de
-§4.
+norte durante cuatro semanas seguidas. Entonces se revisa la tabla de §4
+(D50 ya se revocó el 2026-11-02).
 
 ---
 
@@ -262,7 +262,7 @@ tests de integración, los E2E y el fuzz quedan para CI.
 
 | Id | Estado | Evidencia |
 |---|---|---|
-| D50 | **hecho** | Párrafo en AGENTS.md §0; `scripts/check_api_surface.py` exige `plan 2026-10, <ítem>` en cada entrada nueva de `NUEVAS` (`ANTERIORES_A_D50` solo encoge) |
+| D50 | **revocada** (2026-11-02) | Se retiraron el párrafo de AGENTS.md §0, la cita obligatoria y `ANTERIORES_A_D50` del gate. Antes: párrafo en AGENTS.md §0; `scripts/check_api_surface.py` exige `plan 2026-10, <ítem>` en cada entrada nueva de `NUEVAS` (`ANTERIORES_A_D50` solo encoge) |
 | O0.1, O0.3–O0.6 | propietario | Sin cambios de código: ver §7 |
 | O0.2 | **hecho en código**, falta producción | `API_ORIGIN_SECRET` (+ `_PREVIOUS`), `hmac.compare_digest` en `api/middleware.py`, cabecera desde `web/vercel.json` y del SSR; RFC `approved`; [runbook](../runbooks/ip-del-cliente.md). `api/diagnostico_proxy.py` sigue hasta verificar con dos redes |
 | V1 | **hecho en código**, falta producción | `v164_identidad_placsp_rekey` (guardas antes de escribir, 31 columnas repuntadas, alias por fila; validada en sintaxis contra producción: 24.763 claves nuevas, todas distintas); `clave_placsp` en todos los escritores vía `scraper.codice_parser.acotar_por_organo`; `scripts/rellenar_organo_ref_placsp.py`; `resolver_id_externo` en todas las rutas y cuerpos; [ADR-038](../adr/ADR-038-clave-de-placsp-acotada-por-organo.md) y [runbook](../runbooks/rekey-placsp-organo.md). En producción está `v163` y no `v164` (`migrate.yml`, chequeo de solo lectura, 2026-10-30) |
