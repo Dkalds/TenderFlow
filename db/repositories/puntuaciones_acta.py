@@ -322,7 +322,9 @@ class PuntuacionesActaRepository:
         petición: con la organización fijada, las políticas RLS de v128 lo
         acotarían a la suya.
         """
-        # shortcut: reencola 'error' en cada pasada, sin tope; poner un tope por updated_at si las oportunidades pasan del centenar
+        # shortcut: reencola 'error' y los 'sin_tabla' con actas por descargar en cada pasada, sin tope;
+        # cada pasada cuesta un intento de descarga y una escritura, y sin acta nueva no llama al modelo
+        # (guard de _leer_acta); poner un tope por updated_at si las oportunidades pasan del centenar
         with connect_read() as conn:
             cur = conn.execute(
                 _PENDIENTES_SQL,

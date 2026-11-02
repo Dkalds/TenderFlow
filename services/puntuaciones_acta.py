@@ -250,6 +250,21 @@ def _leer_acta(licitacion_id: str, model: str) -> _Lectura:
     if not seleccionadas:
         return _Lectura("sin_tabla", documentos, error_detail=_SIN_SENALES)
 
+    # Un sin_tabla se reencola mientras queden actas por descargar
+    # (``expedientes_pendientes``), pero si esta pasada no leyó ningún acta que la
+    # anterior no tuviera, la pregunta al modelo sería la misma sobre las mismas
+    # páginas. Se compara ``documentos_leidos`` (lo guardado) y no lo descargado en
+    # esta pasada: un worker que murió tras extraer y antes de guardar no pierde la lectura.
+    previa = PuntuacionesActaRepository().get_extraccion(licitacion_id)
+    if (
+        previa is not None
+        and previa["status"] == "sin_tabla"
+        and previa["model"] is not None  # esa lectura sí llegó al modelo
+        and previa["extraction_version"] == EXTRACTION_VERSION
+        and documentos <= previa["documentos_leidos"]
+    ):
+        return _Lectura("sin_tabla", documentos, previa["model"], previa["error_detail"])
+
     raw = _preguntar_al_modelo(licitacion_id, seleccionadas, model)
     respuesta = RespuestaActa.model_validate(extract_json_object(raw))
     # Contra todas las páginas del acta y no solo las enviadas: una cita que el modelo

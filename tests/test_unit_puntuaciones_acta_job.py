@@ -112,6 +112,7 @@ def entorno() -> Iterator[_Entorno]:
         docs_cls.return_value.list_pages_by_licitacion.return_value = _paginas()
         docs_cls.return_value.list_by_licitacion.return_value = []
         condiciones_cls.return_value.get.return_value = {"criterios": _CRITERIOS_PLIEGO}
+        repo_cls.return_value.get_extraccion.return_value = None  # sin lectura previa
         yield _Entorno(
             repo=repo_cls.return_value,
             paginas_repo=docs_cls.return_value,
@@ -308,6 +309,74 @@ def test_extraer_sin_paginas_con_senales_no_llama_al_llm(entorno: _Entorno) -> N
     assert guardado["model"] is None  # no se llamó a ningún modelo
     assert guardado["documentos_leidos"] == 1
     assert "señales" in guardado["error_detail"]
+
+
+def _previa(**cambios: Any) -> dict[str, Any]:
+    """La fila de ``acta_extracciones`` de una lectura anterior que acabó en ``sin_tabla``."""
+    previa: dict[str, Any] = {
+        "licitacion_id": _LIC,
+        "status": "sin_tabla",
+        "extraction_version": EXTRACTION_VERSION,
+        "model": "modelo-de-la-pasada-anterior",
+        "documentos_leidos": 1,  # el fixture trae las páginas de un solo documento
+        "error_detail": "El modelo no encontró una tabla de puntuaciones por licitador en el acta",
+        "extracted_at": datetime.now(UTC),
+    }
+    return {**previa, **cambios}
+
+
+def test_extraer_relectura_sin_actas_nuevas_no_llama_al_llm(entorno: _Entorno) -> None:
+    """Un sin_tabla reencolado por actas aún ``pending`` no repite la misma pregunta al modelo."""
+    previa = _previa()
+    entorno.repo.get_extraccion.return_value = previa
+
+    assert extraer_puntuaciones(_LIC, model=_MODELO) == "sin_tabla"
+
+    entorno.llamar.assert_not_called()
+    guardado = _guardado(entorno)
+    assert guardado["status"] == "sin_tabla"
+    assert guardado["filas"] == []
+    # Conserva lo de la lectura que sí llegó al modelo, no el modelo de esta pasada.
+    assert guardado["model"] == previa["model"]
+    assert guardado["error_detail"] == previa["error_detail"]
+    assert guardado["documentos_leidos"] == 1
+    assert guardado["extraction_version"] == EXTRACTION_VERSION
+
+
+@pytest.mark.parametrize(
+    "cambios",
+    [
+        # Se leyó un acta que la lectura anterior no tenía.
+        {"documentos_leidos": 0},
+        # La pregunta o las reglas cambiaron: lo leído antes ya no vale.
+        {"extraction_version": "acta-puntuaciones-v0"},
+        # Solo un sin_tabla es definitivo hasta que haya algo nuevo.
+        {"status": "error"},
+        {"status": "ok"},
+    ],
+)
+def test_extraer_relectura_con_algo_nuevo_vuelve_a_llamar_al_llm(
+    entorno: _Entorno, cambios: dict[str, Any]
+) -> None:
+    entorno.repo.get_extraccion.return_value = _previa(**cambios)
+
+    assert extraer_puntuaciones(_LIC, model=_MODELO) == "ok"
+
+    entorno.llamar.assert_called_once()
+    assert _guardado(entorno)["model"] == _MODELO
+
+
+def test_extraer_relectura_tras_un_sin_tabla_que_no_llego_al_modelo_llama_si_ahora_hay_senales(
+    entorno: _Entorno,
+) -> None:
+    """Un sin_tabla «sin señales» (model None) no frena la lectura cuando ya hay señales."""
+    entorno.repo.get_extraccion.return_value = _previa(
+        model=None, error_detail="Ninguna página del acta tiene las señales de una tabla"
+    )
+
+    assert extraer_puntuaciones(_LIC, model=_MODELO) == "ok"
+
+    entorno.llamar.assert_called_once()
 
 
 def _acta(status: str, *, sin_publicar: bool = False, tipo: str = "acta") -> dict[str, Any]:
