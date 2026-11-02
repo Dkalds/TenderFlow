@@ -134,6 +134,7 @@ def test_por_http_cada_paso_consulta_su_cubo():
         patch("api.middleware._trusted_client_ip", return_value=_IP),
         patch("services.rate_limiting.get_rate_limiter", return_value=espia),
         patch("services.password_reset.process_password_reset_request"),
+        patch("db.password_reset.reset_token_vigente", return_value=True),
         patch("db.password_reset.consume_reset_token", return_value=None),
     ):
         pedido = client.post(_REQUEST, json={"email": _EMAIL})
@@ -155,6 +156,7 @@ def test_por_http_un_cubo_de_solicitudes_agotado_no_da_429_al_confirmar():
             return_value=_LimitadorEspia(_CUBO_IP_REQUEST),
         ),
         patch("services.password_reset.process_password_reset_request") as aplazado,
+        patch("db.password_reset.reset_token_vigente", return_value=True),
         patch("db.password_reset.consume_reset_token", return_value=7),
         patch("api.routes.auth.log_event"),
     ):

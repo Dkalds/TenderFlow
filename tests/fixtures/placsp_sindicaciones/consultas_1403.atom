@@ -1,0 +1,593 @@
+<?xml version='1.0' encoding='UTF-8' standalone='yes'?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2" xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2" xmlns:cac-place-ext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2" xmlns:cbc-place-ext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2" xmlns:at="http://purl.org/atompub/tombstones/1.0" xmlns:ns7="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2">
+    <author>
+        <name>Plataforma de Contratación del Sector Público</name>
+        <uri>https://contrataciondelsectorpublico.gob.es/</uri>
+        <email>contrataciondelestado@hacienda.gob.es</email>
+    </author>
+    <id>https://contrataciondelestado.es/sindicacion/sindicacion_1403/CPM_SectorPublico.atom</id>
+    <link href="https://contrataciondelestado.es/sindicacion/sindicacion_1403/CPM_SectorPublico.atom" rel="self"/>
+    <link href="https://contrataciondelestado.es/sindicacion/sindicacion_1403/CPM_SectorPublico.atom" rel="first"/>
+    <link href="https://contrataciondelestado.es/sindicacion/sindicacion_1403/CPM_SectorPublico_20260123_020827.atom" rel="next"/>
+    <title>Licitaciones publicadas en la Plataforma de Contratación del Sector Público: Consultas preliminares de mercado Sector Público</title>
+    <updated>2026-10-31T02:18:53.603+01:00</updated>
+    <entry>
+        <id>https://contrataciondelsectorpublico.gob.es/sindicacion/CPM_SectorPublico/20819819</id>
+        <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=WTDdCshNyxIXhk1FZxEyvw%3D%3D&amp;isConsPre=1"/>
+        <summary type="text">Id consulta: 24744/2026; Órgano de Contratación: Consejería Delegada de Gestión y Planeamiento Territorial y Medioambiental, S.A.; Estado: PUB</summary>
+        <title>Conocer la capacidad y la estructura del mercado de servicios de ciberseguridad con el fin de preparar correctamente la licitación del acuerdo marco descrito en el Anexo I de las Bases</title>
+        <updated>2026-10-30T13:21:19.381+01:00</updated>
+        <cac-place-ext:PreliminaryMarketConsultationStatus>
+            <cbc:PreliminaryMarketConsultationID>24744/2026</cbc:PreliminaryMarketConsultationID>
+            <cbc-place-ext:PreliminaryMarketConsultationStatusCode languageID="es" listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationStatusCode-2.09.gc">PUB</cbc-place-ext:PreliminaryMarketConsultationStatusCode>
+            <cbc:ConditionTypeCode languageID="es" listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationTypeCode-2.09.gc">A</cbc:ConditionTypeCode>
+            <cbc:PlannedDate>2026-10-30</cbc:PlannedDate>
+            <cbc:LimitDate>2026-11-10</cbc:LimitDate>
+            <cbc:ConsultationName>Conocer la capacidad y la estructura del mercado de servicios de ciberseguridad con el fin de preparar correctamente la licitación del acuerdo marco descrito en el Anexo I de las Bases</cbc:ConsultationName>
+            <cac-place-ext:LocatedContractingParty>
+                <cbc:ContractingPartyTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityCode-2.10.gc">10</cbc:ContractingPartyTypeCode>
+                <cbc:ActivityCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityActivityCode-2.10.gc">5</cbc:ActivityCode>
+                <cbc:ActivityCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityActivityCode-2.10.gc">1</cbc:ActivityCode>
+                <cbc:ActivityCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityActivityCode-2.10.gc">4</cbc:ActivityCode>
+                <cbc:BuyerProfileURIID>https://contrataciondelestado.es/wps/poc?uri=deeplink:perfilContratante&amp;idBp=w78rKG9yihJ7h85%2Fpmmsfw%3D%3D</cbc:BuyerProfileURIID>
+                <cac:Party>
+                    <cbc:WebsiteURI>http://www.gesplan.es</cbc:WebsiteURI>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="NIF">A38279972</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="ID_PLATAFORMA">51272410171001</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyName>
+                        <cbc:Name>Consejería Delegada de Gestión y Planeamiento Territorial y Medioambiental, S.A.</cbc:Name>
+                    </cac:PartyName>
+                    <cac:PostalAddress>
+                        <cbc:CityName>Las Palmas de Gran Canaria</cbc:CityName>
+                        <cbc:PostalZone>35003</cbc:PostalZone>
+                        <cac:AddressLine>
+                            <cbc:Line>León y Castillo, 54</cbc:Line>
+                        </cac:AddressLine>
+                        <cac:Country>
+                            <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+                            <cbc:Name>España</cbc:Name>
+                        </cac:Country>
+                    </cac:PostalAddress>
+                    </cac:Party>
+                <cac-place-ext:ParentLocatedParty>
+                    <cac:PartyName>
+                        <cbc:Name>Gestión y Planeamiento Territorial y Medioambiental, S.A.</cbc:Name>
+                    </cac:PartyName>
+                    <cac-place-ext:ParentLocatedParty>
+                        <cac:PartyName>
+                            <cbc:Name>Canarias</cbc:Name>
+                        </cac:PartyName>
+                        <cac-place-ext:ParentLocatedParty>
+                            <cac:PartyName>
+<cbc:Name>SOCIEDADES, FUNDACIONES Y CONSORCIOS COMUNIDADES AUTÓNOMAS</cbc:Name>
+                            </cac:PartyName>
+                            <cac-place-ext:ParentLocatedParty>
+<cac:PartyName>
+    <cbc:Name>OTRAS ENTIDADES DEL SECTOR PÚBLICO</cbc:Name>
+</cac:PartyName>
+<cac-place-ext:ParentLocatedParty>
+    <cac:PartyName>
+        <cbc:Name>Sector Público</cbc:Name>
+    </cac:PartyName>
+</cac-place-ext:ParentLocatedParty>
+                            </cac-place-ext:ParentLocatedParty>
+                        </cac-place-ext:ParentLocatedParty>
+                    </cac-place-ext:ParentLocatedParty>
+                </cac-place-ext:ParentLocatedParty>
+            </cac-place-ext:LocatedContractingParty>
+            <cac:ProcurementProject>
+                <cbc:Name>Servicios de ciberseguridad</cbc:Name>
+                <cbc:TypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/ContractCode-2.08.gc">2</cbc:TypeCode>
+            </cac:ProcurementProject>
+            <cac:TenderingProcess>
+                <cbc:ProcedureCode listURI="https://contrataciondelestado.es/codice/cl/2.07/SyndicationTenderingProcessCode-2.07.gc">7</cbc:ProcedureCode>
+            </cac:TenderingProcess>
+            <cac-place-ext:ValidNoticeInfo>
+                <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CON</cbc-place-ext:NoticeTypeCode>
+                <cac-place-ext:AdditionalPublicationStatus>
+                    <cbc-place-ext:PublicationMediaName>Perfil del Contratante</cbc-place-ext:PublicationMediaName>
+                    <cac-place-ext:AdditionalPublicationDocumentReference>
+                        <cbc:IssueDate>2026-10-30</cbc:IssueDate>
+                    </cac-place-ext:AdditionalPublicationDocumentReference>
+                </cac-place-ext:AdditionalPublicationStatus>
+            </cac-place-ext:ValidNoticeInfo>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-15dc6e10-ec49-42a5-a8bb-532565bd551a</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationDocument-2.09.gc">2</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-15dc6e10-ec49-42a5-a8bb-532565bd551a</cbc:URI>
+                            <cbc:FileName>Documento de información detallada de la consulta</cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-e86109bf-8ee7-4583-acbc-cb24369c0549</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationDocument-2.09.gc">3</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-e86109bf-8ee7-4583-acbc-cb24369c0549</cbc:URI>
+                            <cbc:FileName>Anexos de información extra asociada a la consulta</cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+            <cac:Language>
+                <cbc:ID>es</cbc:ID>
+            </cac:Language>
+        </cac-place-ext:PreliminaryMarketConsultationStatus>
+    </entry>
+    <entry>
+        <id>https://contrataciondelsectorpublico.gob.es/sindicacion/CPM_SectorPublico/20801844</id>
+        <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=ABgotE6CbAGKeVWTb9Scog%3D%3D&amp;isConsPre=1"/>
+        <summary type="text">Id consulta: 1/2026; Órgano de Contratación: Agencia Tributaria de la Región de Murcia (ATRM); Estado: PUB</summary>
+        <title>Consulta preliminar al mercado para la preparación del expediente de contratación del Servicio de implantación y evolución tecnológica del sistema de gestión&#13;
+tributaria unificada de la Agencia Tributaria de la Región de Murcia, Aplicación de Gestión Unificada de Impuestos Locales y Autonómicos, AGUILA</title>
+        <updated>2026-10-28T12:28:04.150+01:00</updated>
+        <cac-place-ext:PreliminaryMarketConsultationStatus>
+            <cbc:PreliminaryMarketConsultationID>1/2026</cbc:PreliminaryMarketConsultationID>
+            <cbc-place-ext:PreliminaryMarketConsultationStatusCode languageID="es" listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationStatusCode-2.09.gc">PUB</cbc-place-ext:PreliminaryMarketConsultationStatusCode>
+            <cbc:ConditionTypeCode languageID="es" listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationTypeCode-2.09.gc">A</cbc:ConditionTypeCode>
+            <cbc:ConditionsText>El plazo de presentación es de 30 días naturales a contar desde el siguiente a la publicación de la consulta. &#13;
+Los operadores económicos interesados podrán presentar sus propuestas en la siguiente dirección de correo electrónico: contratacion-ATRM@listas.carm.es</cbc:ConditionsText>
+            <cbc:PlannedDate>2026-10-29</cbc:PlannedDate>
+            <cbc:LimitDate>2026-11-27</cbc:LimitDate>
+            <cbc:ConsultationName>Consulta preliminar al mercado para la preparación del expediente de contratación del Servicio de implantación y evolución tecnológica del sistema de gestión&#13;
+tributaria unificada de la Agencia Tributaria de la Región de Murcia, Aplicación de Gestión Unificada de Impuestos Locales y Autonómicos, AGUILA</cbc:ConsultationName>
+            <cac-place-ext:LocatedContractingParty>
+                <cbc:ContractingPartyTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityCode-2.10.gc">2</cbc:ContractingPartyTypeCode>
+                <cbc:ActivityCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityActivityCode-2.10.gc">1</cbc:ActivityCode>
+                <cbc:BuyerProfileURIID>https://contrataciondelestado.es/wps/poc?uri=deeplink:perfilContratante&amp;idBp=JU78n5pPpN%2Brz3GQd5r6SQ%3D%3D</cbc:BuyerProfileURIID>
+                <cac:Party>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="NIF">Q3000762I</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="ID_PLATAFORMA">21261630169923</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyName>
+                        <cbc:Name>Agencia Tributaria de la Región de Murcia (ATRM)</cbc:Name>
+                    </cac:PartyName>
+                    <cac:PostalAddress>
+                        <cbc:CityName>Murcia</cbc:CityName>
+                        <cbc:PostalZone>30001</cbc:PostalZone>
+                        <cac:AddressLine>
+                            <cbc:Line>Palacio Regional, Paseo Teniente Flomesta, 3</cbc:Line>
+                        </cac:AddressLine>
+                        <cac:Country>
+                            <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+                            <cbc:Name>España</cbc:Name>
+                        </cac:Country>
+                    </cac:PostalAddress>
+                    </cac:Party>
+                <cac-place-ext:ParentLocatedParty>
+                    <cac:PartyName>
+                        <cbc:Name>Consejería de Economía, Hacienda, Fondos Europeos y Transformación Digital</cbc:Name>
+                    </cac:PartyName>
+                    <cac-place-ext:ParentLocatedParty>
+                        <cac:PartyIdentification>
+                            <cbc:ID schemeName="DIR3">A14002961</cbc:ID>
+                        </cac:PartyIdentification>
+                        <cac:PartyName>
+                            <cbc:Name>Región de Murcia</cbc:Name>
+                        </cac:PartyName>
+                        <cac-place-ext:ParentLocatedParty>
+                            <cac:PartyName>
+<cbc:Name>COMUNIDADES Y CIUDADES AUTÓNOMAS</cbc:Name>
+                            </cac:PartyName>
+                            <cac-place-ext:ParentLocatedParty>
+<cac:PartyName>
+    <cbc:Name>Sector Público</cbc:Name>
+</cac:PartyName>
+                            </cac-place-ext:ParentLocatedParty>
+                        </cac-place-ext:ParentLocatedParty>
+                    </cac-place-ext:ParentLocatedParty>
+                </cac-place-ext:ParentLocatedParty>
+            </cac-place-ext:LocatedContractingParty>
+            <cac:ProcurementProject>
+                <cbc:Name>Servicio de implantación y evolución tecnológica del sistema de gestión tributaria unificada de la Agencia Tributaria de la Región de Murcia, Aplicación de Gestión Unificada de Impuestos Locales y Autonómicos, AGUILA</cbc:Name>
+                <cbc:TypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/ContractCode-2.08.gc">2</cbc:TypeCode>
+                <cac:RequiredCommodityClassification>
+                    <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">72263000</cbc:ItemClassificationCode>
+                </cac:RequiredCommodityClassification>
+            </cac:ProcurementProject>
+            <cac:TenderingProcess>
+                <cbc:ProcedureCode listURI="https://contrataciondelestado.es/codice/cl/2.07/SyndicationTenderingProcessCode-2.07.gc">1</cbc:ProcedureCode>
+            </cac:TenderingProcess>
+            <cac-place-ext:ValidNoticeInfo>
+                <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CON</cbc-place-ext:NoticeTypeCode>
+                <cac-place-ext:AdditionalPublicationStatus>
+                    <cbc-place-ext:PublicationMediaName>Perfil del Contratante</cbc-place-ext:PublicationMediaName>
+                    <cac-place-ext:AdditionalPublicationDocumentReference>
+                        <cbc:IssueDate>2026-10-28</cbc:IssueDate>
+                    </cac-place-ext:AdditionalPublicationDocumentReference>
+                </cac-place-ext:AdditionalPublicationStatus>
+            </cac-place-ext:ValidNoticeInfo>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-6a71672e-3840-4ca8-a991-1e74a65813a9</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationDocument-2.09.gc">2</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-6a71672e-3840-4ca8-a991-1e74a65813a9</cbc:URI>
+                            <cbc:FileName>Documento de información detallada de la consulta</cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+            <cac:Language>
+                <cbc:ID>es</cbc:ID>
+            </cac:Language>
+        </cac-place-ext:PreliminaryMarketConsultationStatus>
+    </entry>
+    <entry>
+        <id>https://contrataciondelsectorpublico.gob.es/sindicacion/CPM_SectorPublico/18929939</id>
+        <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=XiOuG3H6Tt3%2Fa9DgO%2BoYKQ%3D%3D&amp;isConsPre=1"/>
+        <summary type="text">Id consulta: 01/26 CM Boadilla; Órgano de Contratación: Junta de Gobierno del Ayuntamiento de Boadilla del Monte; Estado: REA</summary>
+        <title>Aplicaciones informáticas para la gestión documental, administración electrónica, registro y sede electrónica del Ayuntamiento de Boadilla del Monte y su mantenimiento</title>
+        <updated>2026-01-28T11:46:38.033+01:00</updated>
+        <cac-place-ext:PreliminaryMarketConsultationStatus>
+            <cbc:PreliminaryMarketConsultationID>01/26 CM Boadilla</cbc:PreliminaryMarketConsultationID>
+            <cbc-place-ext:PreliminaryMarketConsultationStatusCode languageID="es" listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationStatusCode-2.09.gc">REA</cbc-place-ext:PreliminaryMarketConsultationStatusCode>
+            <cbc:ConditionTypeCode languageID="es" listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationTypeCode-2.09.gc">S</cbc:ConditionTypeCode>
+            <cbc-place-ext:ConditionTypeReasonText>Se invita a participar en la consulta a las entidades relacionadas, sin perjuicio de aportaciones y propuestas de otros posibles interesados.</cbc-place-ext:ConditionTypeReasonText>
+            <cbc:ConditionsText>Teniendo en cuenta los ámbitos administrativos relacionados por la consulta y la prioridad de la aplicación de administración electrónica, se establece el plazo de presentación de solicitudes de 30 (treinta) días naturales, a contar desde el día siguiente al de su publicación en el Perfil del Contratante del Ayuntamiento de Boadilla del Monte, alojado en la Plataforma de Contratación del Sector Público.</cbc:ConditionsText>
+            <cbc:PartySelectionReasonText>•	BERGER-LEVRAULT SA &#13;
+•	ESPUBLICO SERVICIOS PARA LA ADMINISTRACIÓN SA &#13;
+•	ATM GRUPO MAGGIOLLI, SL &#13;
+•	ADD4U SOLUCIONES PARA GESTIÓN Y DESARROLLO SL &#13;
+•	T-SYSTEMS ITC IBERIA, S.A.U &#13;
+•	SPAI INNOVA ASTIGITAS S.L. &#13;
+•	SEDIPUALBA&#13;
+</cbc:PartySelectionReasonText>
+            <cbc:PlannedDate>2026-01-29</cbc:PlannedDate>
+            <cbc:LimitDate>2026-02-27</cbc:LimitDate>
+            <cbc:ConsultationName>Aplicaciones informáticas para la gestión documental, administración electrónica, registro y sede electrónica del Ayuntamiento de Boadilla del Monte y su mantenimiento</cbc:ConsultationName>
+            <cac-place-ext:LocatedContractingParty>
+                <cbc:ContractingPartyTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityCode-2.10.gc">3</cbc:ContractingPartyTypeCode>
+                <cbc:ActivityCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityActivityCode-2.10.gc">1</cbc:ActivityCode>
+                <cbc:BuyerProfileURIID>https://contrataciondelestado.es/wps/poc?uri=deeplink:perfilContratante&amp;idBp=8iAqU60aQZkQK2TEfXGy%2BA%3D%3D</cbc:BuyerProfileURIID>
+                <cac:Party>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="DIR3">L01280225</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="NIF">P2802200B</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="ID_PLATAFORMA">31018610145621</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyName>
+                        <cbc:Name>Junta de Gobierno del Ayuntamiento de Boadilla del Monte</cbc:Name>
+                    </cac:PartyName>
+                    <cac:PostalAddress>
+                        <cbc:CityName>Boadilla del Monte </cbc:CityName>
+                        <cbc:PostalZone>28660</cbc:PostalZone>
+                        <cac:AddressLine>
+                            <cbc:Line>Juan Carlos I, 42,</cbc:Line>
+                        </cac:AddressLine>
+                        <cac:Country>
+                            <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+                            <cbc:Name>España</cbc:Name>
+                        </cac:Country>
+                    </cac:PostalAddress>
+                    </cac:Party>
+                <cac-place-ext:ParentLocatedParty>
+                    <cac:PartyName>
+                        <cbc:Name>Boadilla del Monte</cbc:Name>
+                    </cac:PartyName>
+                    <cac-place-ext:ParentLocatedParty>
+                        <cac:PartyName>
+                            <cbc:Name>Ayuntamientos</cbc:Name>
+                        </cac:PartyName>
+                        <cac-place-ext:ParentLocatedParty>
+                            <cac:PartyName>
+<cbc:Name>Comunidad de Madrid</cbc:Name>
+                            </cac:PartyName>
+                            <cac-place-ext:ParentLocatedParty>
+<cac:PartyName>
+    <cbc:Name>ENTIDADES LOCALES</cbc:Name>
+</cac:PartyName>
+<cac-place-ext:ParentLocatedParty>
+    <cac:PartyName>
+        <cbc:Name>Sector Público</cbc:Name>
+    </cac:PartyName>
+</cac-place-ext:ParentLocatedParty>
+                            </cac-place-ext:ParentLocatedParty>
+                        </cac-place-ext:ParentLocatedParty>
+                    </cac-place-ext:ParentLocatedParty>
+                </cac-place-ext:ParentLocatedParty>
+            </cac-place-ext:LocatedContractingParty>
+            <cac:ProcurementProject>
+                <cbc:Name>Aplicación informática para la gestión documental, administración electrónica, registro y sede electrónica del Ayuntamiento de Boadilla del Monte y su mantenimiento</cbc:Name>
+                <cbc:TypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/ContractCode-2.08.gc">2</cbc:TypeCode>
+            </cac:ProcurementProject>
+            <cac:TenderingProcess>
+                <cbc:ProcedureCode listURI="https://contrataciondelestado.es/codice/cl/2.07/SyndicationTenderingProcessCode-2.07.gc">1</cbc:ProcedureCode>
+            </cac:TenderingProcess>
+            <cac-place-ext:ValidNoticeInfo>
+                <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CON</cbc-place-ext:NoticeTypeCode>
+                <cac-place-ext:AdditionalPublicationStatus>
+                    <cbc-place-ext:PublicationMediaName>Perfil del Contratante</cbc-place-ext:PublicationMediaName>
+                    <cac-place-ext:AdditionalPublicationDocumentReference>
+                        <cbc:IssueDate>2026-01-28</cbc:IssueDate>
+                    </cac-place-ext:AdditionalPublicationDocumentReference>
+                </cac-place-ext:AdditionalPublicationStatus>
+            </cac-place-ext:ValidNoticeInfo>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-f99d79d6-bb87-4810-b9fb-c3983add20c3</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationDocument-2.09.gc">1</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-f99d79d6-bb87-4810-b9fb-c3983add20c3</cbc:URI>
+                            <cbc:FileName>Informe de actuaciones realizadas</cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-cbd7921a-f7d7-4601-9bdf-631d22f7c085</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationDocument-2.09.gc">2</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-cbd7921a-f7d7-4601-9bdf-631d22f7c085</cbc:URI>
+                            <cbc:FileName>Documento de información detallada de la consulta</cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-f1a72d2b-fc42-476c-8b61-d11802eaffea</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationDocument-2.09.gc">1</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-f1a72d2b-fc42-476c-8b61-d11802eaffea</cbc:URI>
+                            <cbc:FileName>Informe de actuaciones realizadas</cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+            <cac:Attachment>
+                <cac:ExternalReference>
+                    <cbc:URI>https://carpetaciudadano.aytoboadilla.org/eAdmin/Registrar.do?action=infoTramite&amp;tipoReg=544</cbc:URI>
+                </cac:ExternalReference>
+            </cac:Attachment>
+            <cac:Language>
+                <cbc:ID>es</cbc:ID>
+            </cac:Language>
+        </cac-place-ext:PreliminaryMarketConsultationStatus>
+    </entry>
+    <entry>
+        <id>https://contrataciondelsectorpublico.gob.es/sindicacion/CPM_SectorPublico/19934911</id>
+        <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=pzl9Cjgubx6Izo3LHNPGcQ%3D%3D&amp;isConsPre=1"/>
+        <summary type="text">Id consulta: CSIC CONSULTA 298; Órgano de Contratación: Secretaría General de la Agencia Estatal Consejo Superior de Investigaciones Científicas; Estado: PUB</summary>
+        <title>Consulta preliminar de mercado relativa al suministro e instalación de un microscopio electrónico de barrido para determinación de dimensiones críticas (CD-SEM), destinado al Instituto de Microelectrónica de Barcelona de la Agencia Estatal Consejo Superior de Investigaciones Científicas.&#13;
+Financiado por la Chips Joint Undertaking a través de la Call for Expression of Interest for the selection of a Hosting Consortium de la convocatoria Pilot Line on Advanced Photonic Integrated Circuits (DIGITAL-Chips-2024-CfEoI-CPL-5).&#13;
+Financiado por la Secretaría de Estado de Telecomunicaciones e Infraestructuras Digitales en la Empresa Común de Chips de la Unión Europea (Chips JU). Programa «Chips JU – Pilot Lines» en el marco del Plan de Recuperación, Transformación y Resiliencia - financiado por la Unión Europea - NextGenerationEU. SOL_AYU 4105.&#13;
+</title>
+        <updated>2026-06-25T08:19:36.626+02:00</updated>
+        <cac-place-ext:PreliminaryMarketConsultationStatus>
+            <cbc:PreliminaryMarketConsultationID>CSIC CONSULTA 298</cbc:PreliminaryMarketConsultationID>
+            <cbc-place-ext:PreliminaryMarketConsultationStatusCode languageID="es" listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationStatusCode-2.09.gc">PUB</cbc-place-ext:PreliminaryMarketConsultationStatusCode>
+            <cbc:ConditionTypeCode languageID="es" listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationTypeCode-2.09.gc">A</cbc:ConditionTypeCode>
+            <cbc:PlannedDate>2026-06-25</cbc:PlannedDate>
+            <cbc:LimitDate>2026-07-09</cbc:LimitDate>
+            <cbc:ConsultationName>Consulta preliminar de mercado relativa al suministro e instalación de un microscopio electrónico de barrido para determinación de dimensiones críticas (CD-SEM), destinado al Instituto de Microelectrónica de Barcelona de la Agencia Estatal Consejo Superior de Investigaciones Científicas.&#13;
+Financiado por la Chips Joint Undertaking a través de la Call for Expression of Interest for the selection of a Hosting Consortium de la convocatoria Pilot Line on Advanced Photonic Integrated Circuits (DIGITAL-Chips-2024-CfEoI-CPL-5).&#13;
+Financiado por la Secretaría de Estado de Telecomunicaciones e Infraestructuras Digitales en la Empresa Común de Chips de la Unión Europea (Chips JU). Programa «Chips JU – Pilot Lines» en el marco del Plan de Recuperación, Transformación y Resiliencia - financiado por la Unión Europea - NextGenerationEU. SOL_AYU 4105.&#13;
+</cbc:ConsultationName>
+            <cac-place-ext:LocatedContractingParty>
+                <cbc:ContractingPartyTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityCode-2.10.gc">6</cbc:ContractingPartyTypeCode>
+                <cbc:ActivityCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityActivityCode-2.10.gc">1</cbc:ActivityCode>
+                <cbc:ActivityCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityActivityCode-2.10.gc">9</cbc:ActivityCode>
+                <cbc:BuyerProfileURIID>https://contrataciondelestado.es/wps/poc?uri=deeplink:perfilContratante&amp;idBp=HoPToTiP5JF%2FR5QFTlaM4A%3D%3D</cbc:BuyerProfileURIID>
+                <cac:Party>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="DIR3">EA0020951</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="NIF">Q2818002D</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="ID_PLATAFORMA">61707810214541</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyName>
+                        <cbc:Name>Secretaría General de la Agencia Estatal Consejo Superior de Investigaciones Científicas</cbc:Name>
+                    </cac:PartyName>
+                    <cac:PostalAddress>
+                        <cbc:CityName>Madrid</cbc:CityName>
+                        <cbc:PostalZone>28006</cbc:PostalZone>
+                        <cac:AddressLine>
+                            <cbc:Line>Calle Serrano, 117</cbc:Line>
+                        </cac:AddressLine>
+                        <cac:Country>
+                            <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+                            <cbc:Name>España</cbc:Name>
+                        </cac:Country>
+                    </cac:PostalAddress>
+                    </cac:Party>
+                <cac-place-ext:ParentLocatedParty>
+                    <cac:PartyName>
+                        <cbc:Name>Agencia Estatal Consejo Superior de Investigaciones Científicas</cbc:Name>
+                    </cac:PartyName>
+                    <cac-place-ext:ParentLocatedParty>
+                        <cac:PartyName>
+                            <cbc:Name>Secretaría General de Investigación</cbc:Name>
+                        </cac:PartyName>
+                        <cac-place-ext:ParentLocatedParty>
+                            <cac:PartyName>
+<cbc:Name>Ministerio de Ciencia, Innovación y Universidades</cbc:Name>
+                            </cac:PartyName>
+                            <cac-place-ext:ParentLocatedParty>
+<cac:PartyIdentification>
+    <cbc:ID schemeName="DIR3">EA9999999</cbc:ID>
+</cac:PartyIdentification>
+<cac:PartyName>
+    <cbc:Name>ADMINISTRACIÓN GENERAL DEL ESTADO</cbc:Name>
+</cac:PartyName>
+<cac-place-ext:ParentLocatedParty>
+    <cac:PartyName>
+        <cbc:Name>Sector Público</cbc:Name>
+    </cac:PartyName>
+</cac-place-ext:ParentLocatedParty>
+                            </cac-place-ext:ParentLocatedParty>
+                        </cac-place-ext:ParentLocatedParty>
+                    </cac-place-ext:ParentLocatedParty>
+                </cac-place-ext:ParentLocatedParty>
+            </cac-place-ext:LocatedContractingParty>
+            <cac:ProcurementProject>
+                <cbc:Name>Suministro e instalación de un microscopio electrónico de barrido para determinación de dimensiones críticas (CD-SEM), destinado al Instituto de Microelectrónica de Barcelona</cbc:Name>
+            </cac:ProcurementProject>
+            <cac-place-ext:ValidNoticeInfo>
+                <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CON</cbc-place-ext:NoticeTypeCode>
+                <cac-place-ext:AdditionalPublicationStatus>
+                    <cbc-place-ext:PublicationMediaName>Perfil del Contratante</cbc-place-ext:PublicationMediaName>
+                    <cac-place-ext:AdditionalPublicationDocumentReference>
+                        <cbc:IssueDate>2026-06-25</cbc:IssueDate>
+                    </cac-place-ext:AdditionalPublicationDocumentReference>
+                </cac-place-ext:AdditionalPublicationStatus>
+            </cac-place-ext:ValidNoticeInfo>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-29174952-cd93-4e14-8df0-90473692e20d</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationDocument-2.09.gc">2</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-29174952-cd93-4e14-8df0-90473692e20d</cbc:URI>
+                            <cbc:FileName>Documento de información detallada de la consulta</cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+            <cac:Language>
+                <cbc:ID>es</cbc:ID>
+            </cac:Language>
+        </cac-place-ext:PreliminaryMarketConsultationStatus>
+    </entry>
+    <entry>
+        <id>https://contrataciondelsectorpublico.gob.es/sindicacion/CPM_SectorPublico/20810258</id>
+        <link href="https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&amp;idEvl=qv9ie7AJ7tI7%2B9FIQYNjeQ%3D%3D&amp;isConsPre=1"/>
+        <summary type="text">Id consulta: CPM – SUMINISTRO PLANTAS DE AGUA; Órgano de Contratación: Gerencia de Servicios Sanitarios del Área de Salud de EL Hierro; Estado: PUB</summary>
+        <title>El objeto de la presente consulta preliminar de mercado es obtener información de precios de mercado, de plazos de instalación y funcionamiento y soluciones técnicas y evolutivas.</title>
+        <updated>2026-10-29T11:18:59.204+01:00</updated>
+        <cac-place-ext:PreliminaryMarketConsultationStatus>
+            <cbc:PreliminaryMarketConsultationID>CPM – SUMINISTRO PLANTAS DE AGUA</cbc:PreliminaryMarketConsultationID>
+            <cbc-place-ext:PreliminaryMarketConsultationStatusCode languageID="es" listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationStatusCode-2.09.gc">PUB</cbc-place-ext:PreliminaryMarketConsultationStatusCode>
+            <cbc:ConditionTypeCode languageID="es" listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationTypeCode-2.09.gc">A</cbc:ConditionTypeCode>
+            <cbc:ConditionsText>Las propuestas que realicen los participantes se presentarán por escrito (en formato pdf firmado y en lengua castellana), remitiéndolas a ambas direcciones de correo electrónico que se indican a continuación:&#13;
+contratacion-hinsr.scs@gobiernodecanarias.org</cbc:ConditionsText>
+            <cbc:PlannedDate>2026-10-29</cbc:PlannedDate>
+            <cbc:LimitDate>2026-11-13</cbc:LimitDate>
+            <cbc:ConsultationName>El objeto de la presente consulta preliminar de mercado es obtener información de precios de mercado, de plazos de instalación y funcionamiento y soluciones técnicas y evolutivas.</cbc:ConsultationName>
+            <cac-place-ext:LocatedContractingParty>
+                <cbc:ContractingPartyTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityCode-2.10.gc">2</cbc:ContractingPartyTypeCode>
+                <cbc:ActivityCode listURI="http://contrataciondelestado.es/codice/cl/2.10/ContractingAuthorityActivityCode-2.10.gc">7</cbc:ActivityCode>
+                <cbc:BuyerProfileURIID>https://contrataciondelestado.es/wps/poc?uri=deeplink:perfilContratante&amp;idBp=91xN6ij4fQpvYnTkQN0%2FZA%3D%3D</cbc:BuyerProfileURIID>
+                <cac:Party>
+                    <cbc:WebsiteURI>https://www3.gobiernodecanarias.org/sanidad/scs/</cbc:WebsiteURI>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="DIR3">A05003608</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="NIF">Q8555011I</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyIdentification>
+                        <cbc:ID schemeName="ID_PLATAFORMA">21073130151073</cbc:ID>
+                    </cac:PartyIdentification>
+                    <cac:PartyName>
+                        <cbc:Name>Gerencia de Servicios Sanitarios del Área de Salud de EL Hierro</cbc:Name>
+                    </cac:PartyName>
+                    <cac:PostalAddress>
+                        <cbc:CityName>Valverde</cbc:CityName>
+                        <cbc:PostalZone>38900</cbc:PostalZone>
+                        <cac:AddressLine>
+                            <cbc:Line>Los Barriales, 1</cbc:Line>
+                        </cac:AddressLine>
+                        <cac:Country>
+                            <cbc:IdentificationCode listURI="http://contrataciondelestado.es/codice/cl/2.08/CountryIdentificationCode-2.08.gc">ES</cbc:IdentificationCode>
+                            <cbc:Name>España</cbc:Name>
+                        </cac:Country>
+                    </cac:PostalAddress>
+                    </cac:Party>
+                <cac-place-ext:ParentLocatedParty>
+                    <cac:PartyName>
+                        <cbc:Name>Servicio Canario de la Salud</cbc:Name>
+                    </cac:PartyName>
+                    <cac-place-ext:ParentLocatedParty>
+                        <cac:PartyIdentification>
+                            <cbc:ID schemeName="DIR3">A05002852</cbc:ID>
+                        </cac:PartyIdentification>
+                        <cac:PartyName>
+                            <cbc:Name>Consejería de Sanidad</cbc:Name>
+                        </cac:PartyName>
+                        <cac-place-ext:ParentLocatedParty>
+                            <cac:PartyName>
+<cbc:Name>Comunidad Autónoma de Canarias</cbc:Name>
+                            </cac:PartyName>
+                            <cac-place-ext:ParentLocatedParty>
+<cac:PartyName>
+    <cbc:Name>COMUNIDADES Y CIUDADES AUTÓNOMAS</cbc:Name>
+</cac:PartyName>
+<cac-place-ext:ParentLocatedParty>
+    <cac:PartyName>
+        <cbc:Name>Sector Público</cbc:Name>
+    </cac:PartyName>
+</cac-place-ext:ParentLocatedParty>
+                            </cac-place-ext:ParentLocatedParty>
+                        </cac-place-ext:ParentLocatedParty>
+                    </cac-place-ext:ParentLocatedParty>
+                </cac-place-ext:ParentLocatedParty>
+            </cac-place-ext:LocatedContractingParty>
+            <cac:ProcurementProject>
+                <cbc:Name>Suministro mediante el arrendamiento sin opción a compra de un sistema de plantas de agua, con sus respectivos mantenimientos (preventivo, correctivo y técnico-legal), la asistencia técnica y su formación-instrucción necesaria, para la realización de la hemodiálisis en pacientes, a ejecutar en el Hospital Insular Nuestra Señora de Los Reyes, dependiente de la Gerencia de Servicios Sanitarios del Área de Salud de El Hierro.</cbc:Name>
+                <cbc:TypeCode listURI="http://contrataciondelestado.es/codice/cl/2.08/ContractCode-2.08.gc">1</cbc:TypeCode>
+                <cac:RequiredCommodityClassification>
+                    <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">33190000</cbc:ItemClassificationCode>
+                </cac:RequiredCommodityClassification>
+                <cac:RequiredCommodityClassification>
+                    <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">42912300</cbc:ItemClassificationCode>
+                </cac:RequiredCommodityClassification>
+                <cac:RequiredCommodityClassification>
+                    <cbc:ItemClassificationCode listURI="http://contrataciondelestado.es/codice/cl/2.04/CPV2008-2.04.gc">39370000</cbc:ItemClassificationCode>
+                </cac:RequiredCommodityClassification>
+            </cac:ProcurementProject>
+            <cac:TenderingProcess>
+                <cbc:ProcedureCode listURI="https://contrataciondelestado.es/codice/cl/2.07/SyndicationTenderingProcessCode-2.07.gc">1</cbc:ProcedureCode>
+            </cac:TenderingProcess>
+            <cac-place-ext:ValidNoticeInfo>
+                <cbc-place-ext:NoticeTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.11/TenderingNoticeTypeCode-2.11.gc">DOC_CON</cbc-place-ext:NoticeTypeCode>
+                <cac-place-ext:AdditionalPublicationStatus>
+                    <cbc-place-ext:PublicationMediaName>Perfil del Contratante</cbc-place-ext:PublicationMediaName>
+                    <cac-place-ext:AdditionalPublicationDocumentReference>
+                        <cbc:IssueDate>2026-10-29</cbc:IssueDate>
+                    </cac-place-ext:AdditionalPublicationDocumentReference>
+                </cac-place-ext:AdditionalPublicationStatus>
+            </cac-place-ext:ValidNoticeInfo>
+            <cac-place-ext:GeneralDocument>
+                <cac-place-ext:GeneralDocumentDocumentReference>
+                    <cbc:ID>2026-1b7f9ad4-ec33-4d60-8671-42f05ab1edf1</cbc:ID>
+                    <cbc:DocumentTypeCode listURI="http://contrataciondelestado.es/codice/cl/2.09/PreliminaryMarketConsultationDocument-2.09.gc">2</cbc:DocumentTypeCode>
+                    <cac:Attachment>
+                        <cac:ExternalReference>
+                            <cbc:URI>https://contrataciondelestado.es/wps/wcm/connect/PLACE_es/Site/area/docAccCmpnt?srv=cmpnt&amp;cmpntname=GetDocumentsById&amp;source=library&amp;DocumentIdParam=2026-1b7f9ad4-ec33-4d60-8671-42f05ab1edf1</cbc:URI>
+                            <cbc:FileName>Documento de información detallada de la consulta</cbc:FileName>
+                        </cac:ExternalReference>
+                    </cac:Attachment>
+                </cac-place-ext:GeneralDocumentDocumentReference>
+            </cac-place-ext:GeneralDocument>
+            <cac:Language>
+                <cbc:ID>es</cbc:ID>
+            </cac:Language>
+        </cac-place-ext:PreliminaryMarketConsultationStatus>
+    </entry>
+    </feed>

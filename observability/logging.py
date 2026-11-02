@@ -83,7 +83,7 @@ _EMAIL_RE = re.compile(r"(?<![\w.+-])[\w.+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![\w
 # navegador no se lo mande al servidor, y con `EMAIL_BACKEND=console` el cuerpo
 # del correo —enlace incluido— se escribe entero en el evento `mailer_console`.
 _URL_QUERY_SECRET_RE = re.compile(
-    r"([?&#](?:access_)?(?:token|api[_-]?key|secret|signature|sig|password|auth)=)[^&#\s]+",
+    r"([?&#](?:access_)?(?:token|api[_-]?key|secret|signature|sig|password|auth|[tku])=)[^&#\s]+",
     re.IGNORECASE,
 )
 
@@ -94,7 +94,10 @@ _REDACTED = "***REDACTED***"
 # del feed Atom (`?token=`) y el `code`/`state` de un solo uso del callback
 # OAuth (2026-10-17 → 10-21 quedaron en los logs de Render). Se redactan en
 # cualquier ruta; el nombre se conserva para que la línea siga sirviendo.
-_ACCESS_LOG_SECRET_PARAMS = ("token", "code", "state", "id_token", "access_token")
+# `u`/`t` son el usuario y la firma del calendario ICS (`/exports/calendario.ics`)
+# y `t`/`k` la firma y la clave de los enlaces de baja (`/notifications/baja`,
+# `/watchlist/rules/baja`): bearer sin caducidad, así que tampoco en los logs.
+_ACCESS_LOG_SECRET_PARAMS = ("token", "code", "state", "id_token", "access_token", "u", "t", "k")
 # Anclado a `?`/`&`: `postal_code=` o `estado=` no casan.
 _ACCESS_LOG_QUERY_SECRET_RE = re.compile(
     r"([?&](?:" + "|".join(_ACCESS_LOG_SECRET_PARAMS) + r")=)[^&\s\"]*",

@@ -27,6 +27,13 @@ log = get_logger(__name__)
 #: con parámetros, y no hay caso de uso que necesite más para agrupar.
 MAX_MENSAJE = 500
 
+#: Tope de filas de la tabla. El endpoint que la alimenta es anónimo y cada
+#: mensaje distinto crea una huella nueva: sin tope, unos pocos clientes inflan
+#: la tabla (y los avisos del healthcheck) a su antojo. Llegado el tope las
+#: huellas ya conocidas siguen contando; las nuevas se descartan hasta que la
+#: retención libere sitio.
+MAX_FILAS = 5000
+
 #: Números, hexadecimales y UUID que cambian entre ocurrencias del MISMO error.
 #: Sin normalizarlos, «Cannot read x of undefined at line 4211» y la misma línea
 #: con otro número serían dos errores, y la agregación no agregaría nada.
@@ -56,6 +63,17 @@ def registrar(
     huella = fingerprint(mensaje=mensaje, ruta=ruta, origen=origen)
     ahora = now_utc_iso()
     with connect() as c:
+        conocida = c.execute(
+            "UPDATE client_errors SET ocurrencias = ocurrencias + 1, ultima_vez = %s, "
+            "build = COALESCE(%s, build) WHERE fingerprint = %s",
+            (ahora, build, huella),
+        )
+        if conocida.rowcount > 0:
+            return
+        total = c.execute("SELECT COUNT(*) FROM client_errors").fetchone()
+        if total and int(total[0]) >= MAX_FILAS:
+            log.warning("client_errors_tope_de_filas", tope=MAX_FILAS)
+            return
         c.execute(
             "INSERT INTO client_errors "
             "(fingerprint, origen, ruta, mensaje, build, ocurrencias, primera_vez, ultima_vez) "

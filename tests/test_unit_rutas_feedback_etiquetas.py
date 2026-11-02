@@ -3,14 +3,18 @@
 Una fila de `ml_feedback` con `source='revision_ti'` (`'human'` para las
 filas anteriores al plan de clasificación en tres niveles) no es una opinión
 más: manda sobre las keywords al entrenar los dos clasificadores (prioridad
-humano > LLM > keywords). Hasta hoy `POST /api/v1/feedback` aceptaba a
-cualquier usuario con sesión, aunque la única pantalla que lo usa —el
-etiquetado de `/ops`— ya es solo para admins. Las API keys no tenían ese
-hueco: el núcleo de validación les exige el scope `feedback:write`
-(`api/scopes.py`), que es una concesión explícita.
+humano > LLM > keywords), y esos modelos los comparten todas las organizaciones.
+Hasta 2026-09 `POST /api/v1/feedback` aceptaba a cualquier usuario con sesión; se
+cerró para las sesiones, pero se dejó abierto para las API keys bajo el supuesto
+de que `feedback:write` era «una concesión explícita». No lo es: cualquier
+usuario acuña ese scope con `POST /me/keys` (solo `admin` y `*` están
+reservados), así que bastaba una clave para escribir miles de etiquetas falsas
+(auditoría 2026-11, authz-usuario-rutas-1).
 
-Lo que fija este módulo: con sesión, solo un admin escribe etiquetas; una API
-key con su scope sigue pudiendo.
+Lo que fija este módulo: escribe etiquetas un admin con sesión, o una API key
+con scope `feedback:write` **cuyo dueño es admin hoy**. No hace falta que la
+clave lleve el scope `admin`: `scripts/muestra_etiquetado_ti.py` usa una clave
+de scope estrecho.
 """
 
 from __future__ import annotations
@@ -67,9 +71,44 @@ def sesion_admin() -> Iterator[TestClient]:
 
 
 @pytest.fixture
-def api_key_con_scope() -> Iterator[TestClient]:
+def api_key_de_usuario_sin_admin() -> Iterator[TestClient]:
+    """Lo que acuña cualquier usuario: `feedback:write` sobre una cuenta normal."""
     yield from _cliente(
-        {"user_id": 9, "is_admin": False, "auth_method": "api_key", "scopes": ["feedback:write"]}
+        {
+            "user_id": 9,
+            "is_admin": False,
+            "owner_is_admin": False,
+            "auth_method": "api_key",
+            "scopes": frozenset({"feedback:write"}),
+        }
+    )
+
+
+@pytest.fixture
+def api_key_de_admin_con_scope_estrecho() -> Iterator[TestClient]:
+    """La de `muestra_etiquetado_ti.py`: dueño admin, sin el scope `admin`."""
+    yield from _cliente(
+        {
+            "user_id": 1,
+            "is_admin": False,
+            "owner_is_admin": True,
+            "auth_method": "api_key",
+            "scopes": frozenset({"feedback:write"}),
+        }
+    )
+
+
+@pytest.fixture
+def api_key_comodin_de_usuario_sin_admin() -> Iterator[TestClient]:
+    """Un `*` no convierte en admin a una cuenta que no lo es."""
+    yield from _cliente(
+        {
+            "user_id": 9,
+            "is_admin": False,
+            "owner_is_admin": False,
+            "auth_method": "api_key",
+            "scopes": frozenset({"*"}),
+        }
     )
 
 
@@ -89,12 +128,31 @@ def test_con_sesion_un_admin_escribe_etiquetas(
     assert [fila["expediente"] for fila in escrituras] == ["EXP-1"]
 
 
-def test_una_api_key_con_su_scope_sigue_escribiendo(
-    api_key_con_scope: TestClient, escrituras: list[dict[str, Any]]
+def test_una_api_key_de_un_usuario_sin_admin_no_escribe_etiquetas(
+    api_key_de_usuario_sin_admin: TestClient, escrituras: list[dict[str, Any]]
 ) -> None:
-    respuesta = api_key_con_scope.post(RUTA, json=_CUERPO)
+    """El caso de la auditoría: `POST /me/keys` con `feedback:write` y luego
+    miles de etiquetas `revision_ti` falsas que entrenan el modelo de todos."""
+    respuesta = api_key_de_usuario_sin_admin.post(RUTA, json=_CUERPO)
+    assert respuesta.status_code == 403
+    assert escrituras == []
+
+
+def test_una_api_key_comodin_de_un_usuario_sin_admin_tampoco(
+    api_key_comodin_de_usuario_sin_admin: TestClient, escrituras: list[dict[str, Any]]
+) -> None:
+    respuesta = api_key_comodin_de_usuario_sin_admin.post(RUTA, json=_CUERPO)
+    assert respuesta.status_code == 403
+    assert escrituras == []
+
+
+def test_una_api_key_de_admin_con_su_scope_sigue_escribiendo(
+    api_key_de_admin_con_scope_estrecho: TestClient, escrituras: list[dict[str, Any]]
+) -> None:
+    respuesta = api_key_de_admin_con_scope_estrecho.post(RUTA, json=_CUERPO)
     assert respuesta.status_code == 201
-    assert len(escrituras) == 1
+    assert [fila["user_id"] for fila in escrituras] == [1]
+    assert escrituras[0]["source"] == "revision_ti"
 
 
 def test_la_revision_se_guarda_como_revision_ti(

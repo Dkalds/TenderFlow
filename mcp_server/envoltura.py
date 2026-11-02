@@ -65,6 +65,7 @@ __all__ = [
     "ERROR_INTERNO",
     "ERROR_TIEMPO",
     "LIMITES",
+    "MARCA_NO_CONFIABLE",
     "TECHO_SENTENCIA_MS",
     "SalidaFueraDeEsquema",
     "auditar_rechazo",
@@ -93,6 +94,8 @@ ERROR_TIEMPO = (
 MAX_CHARS_AUDITADO = MAX_CHARS_SQL
 #: Tope del ``detail`` entero: un SQL máximo más los metadatos, con holgura.
 MAX_CHARS_DETALLE = 25_000
+#: Clave que encabeza la salida de las tools que pueden traer texto de terceros.
+MARCA_NO_CONFIABLE = "contenido_no_confiable"
 #: Segundos durante los que no se vuelve a auditar la denegación por límite de
 #: un mismo usuario en una misma ventana (cada una sigue en el log, a ``debug``).
 SILENCIO_DENEGACIONES_S = 60
@@ -291,7 +294,11 @@ async def auditar_rechazo(nombre: str, argumentos: Mapping[str, Any], error: str
 
 
 def herramienta(
-    nombre: str, fn: Callable[P, Mapping[str, JSONValue]], salida: object = None
+    nombre: str,
+    fn: Callable[P, Mapping[str, JSONValue]],
+    salida: object = None,
+    *,
+    texto_de_terceros: bool = False,
 ) -> Callable[P, Awaitable[CallToolResult]]:
     """Envuelve la tool ``fn`` (síncrona) para registrarla en el servidor como ``nombre``.
 
@@ -299,7 +306,10 @@ def herramienta(
     ``fn`` con sus anotaciones evaluadas: el SDK construye con ella el esquema
     JSON de la entrada y valida los argumentos antes de llamar. ``salida`` (un
     ``TypedDict``) es la forma de lo que devuelve: el SDK la publica como
-    ``outputSchema``.
+    ``outputSchema``. ``texto_de_terceros`` marca la respuesta con
+    ``contenido_no_confiable: true`` (:data:`MARCA_NO_CONFIABLE`, la primera
+    clave): lo que traen pliegos, anuncios o cualquier celda de la base lo
+    escribe quien publica, y el LLM que lo lee no puede tomarlo por instrucciones.
     """
     firma = inspect.signature(fn, eval_str=True)
     validador: TypeAdapter[object] | None = None if salida is None else TypeAdapter(salida)
@@ -319,6 +329,8 @@ def herramienta(
             if validador is not None:
                 _validar_salida(validador, resultado)
             n_filas = _contar_filas(resultado)
+            if texto_de_terceros:
+                resultado = {MARCA_NO_CONFIABLE: True, **resultado}
             return _respuesta(resultado)
         except ErrorHerramienta as exc:
             error = _texto_herramienta(exc)

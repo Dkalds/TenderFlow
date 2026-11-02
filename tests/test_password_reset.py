@@ -67,6 +67,7 @@ def test_confirm_rejects_invalid_or_expired_token():
     client = TestClient(app)
     with (
         patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch("db.password_reset.reset_token_vigente", return_value=True),
         patch("db.password_reset.consume_reset_token", return_value=None),
     ):
         response = client.post(
@@ -76,6 +77,24 @@ def test_confirm_rejects_invalid_or_expired_token():
 
     assert response.status_code == 400
     assert "caducado" in response.json()["detail"]
+
+
+def test_confirm_con_un_token_inexistente_no_calcula_argon2():
+    """Un token inventado no debe costar el hash de 64 MiB de la contraseña nueva."""
+    client = TestClient(app)
+    with (
+        patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch("db.password_reset.reset_token_vigente", return_value=False) as vigente,
+        patch("db.password_reset.consume_reset_token") as consume,
+        patch("api.routes.auth.hash_password") as hashear,
+    ):
+        response = client.post(_CONFIRM, json={"token": "x" * 43, "password": _NEW_PASSWORD})
+
+    assert response.status_code == 400
+    assert "caducado" in response.json()["detail"]
+    vigente.assert_called_once()
+    hashear.assert_not_called()
+    consume.assert_not_called()
 
 
 def test_token_is_single_use_and_revokes_sessions(tmp_db):
@@ -134,6 +153,7 @@ def _confirmar(client: TestClient, password: str, *, consume: MagicMock | None =
     """``POST /auth/password-reset/confirm`` con un token que el repositorio da por bueno."""
     with (
         patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch("db.password_reset.reset_token_vigente", return_value=True),
         patch("db.password_reset.consume_reset_token", consume or MagicMock(return_value=7)),
         patch("api.routes.auth.log_event"),
     ):
@@ -632,7 +652,14 @@ def test_una_cuenta_de_baja_no_recibe_enlace_ni_consume_el_que_tenia(tmp_db, baj
 
     assert issue_password_reset(email) == (False, None)
     assert consume_reset_token(previo, _HASH_QUE_NO_SE_ESCRIBE) is None
-    assert _conserva_la_contrasena(user_id)
+    if baja == "anonymize_user":
+        # Anonimizar borra el hash a propósito (la cuenta no puede volver a entrar):
+        # lo que se comprueba es que el reset no le puso una contraseña.
+        persona = users.get_user_by_id(user_id, include_deactivated=True)
+        assert persona is not None
+        assert persona["password_hash"] is None
+    else:
+        assert _conserva_la_contrasena(user_id)
 
 
 def test_la_revocacion_escribe_revoked_at_como_el_resto_del_codigo(tmp_db):

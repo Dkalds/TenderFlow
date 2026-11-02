@@ -37,6 +37,16 @@ propios (`backup.yml`, `BACKUP_ENCRYPTION_KEY`, bucket S3/R2) se retiraron el
 - Conservar `DOCUMENT_EXTRACTION_TIMEOUT_SECONDS` positivo en producción: cada extracción de PDF corre en un proceso aislado y se termina al exceder ese presupuesto.
 - Ejecutar `python scripts/verify_audit_chain.py` en el runbook de incidentes (verifica la BD de `DATABASE_URL`; `--db-path` se retiró con SQLite, ADR-021). La verificación requiere recorrer la cadena completa; `--limit` ya no es válido porque ocultaría roturas o borrados.
 
+### Configuración, MCP y modelos ML (auditoría 2026-11)
+
+- **CORS**: con `APP_PROFILE=api` en prod/staging, `CORS_ALLOWED_ORIGINS` solo admite `https://…` (y el loopback por `http`); un `*` o un origen `http://` aborta el arranque, porque la API responde con cookies de sesión (`allow_credentials=True`).
+- **Firma (`shared/signing.py`)**: sin `SIGNING_KEYS_JSON` ni `SIGNING_KEY` (del entorno o de `settings`), solo `ENV=dev` firma con una clave efímera; en prod/staging `sign`/`verify` lanzan `RuntimeError`. Antes caía a una clave derivada del PID, que cualquiera calcula.
+- **TLS del MCP**: `MCP_DATABASE_URL` cumple la misma política de `sslmode` que `DATABASE_URL` (sin `sslmode`, `disable`, `allow` o `prefer` es un error de arranque en prod/staging o con host remoto; `verify-full` es lo que pide el runbook). `require`/`verify-ca` cifran pero no verifican el nombre del servidor: igual que en `DATABASE_URL`, no se rechazan.
+- **Redis**: `redis://` hacia un host público avisa al arrancar (usa `rediss://`); `REDIS_PASSWORD` también llega al almacén de nonces OAuth (antes quedaba en `NOAUTH` y caía a memoria) y el registro del nonce es un único `SET NX`.
+- **MCP**: las tools que pueden devolver texto de terceros (todas menos `describir_esquema`) declaran `open_world_hint` y su salida lleva `contenido_no_confiable: true`; el login rechaza cuentas con TOTP confirmado y cuentas ligadas a otro proveedor o `sub` ([ADR-037](adr/ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md)) y el callback de Google exige la cookie que `/authorize` fijó en el mismo navegador; el DCR y `/authorize` tienen cuota por IP; `consultar_sql` impone 15 s si el rol llega sin `statement_timeout` y no transfiere `bytea` ni celdas sin tope. Detalle en [runbooks/mcp-interno.md](runbooks/mcp-interno.md) y [ADR-036](adr/ADR-036-acceso-interno-por-mcp.md).
+- **Modelos `.pkl`** (`joblib.load` ejecuta código): el `.pkl` y su `.sha256` salen de la misma Release, así que solo un pin **fuera de ella** impide que quien la controle sustituya los dos. Fijar `ML_MODEL_SHA256` y `ML_TECH_MODEL_SHA256` (sha256 del artefacto publicado) en el entorno de los jobs y de los servicios que cargan modelos; si el pin está, debe coincidir. Sin pin, el log trae `model_integrity.sin_pin_fuera_de_banda` (prod/staging) o `*.verificacion_circular` (al descargar).
+- **Imágenes**: Renovate propone los digests (`docker:pinDigests`) de los Dockerfile y del compose; la imagen de Grafana de `render.yaml` no la ve y se sube a mano junto con la del compose. Prometheus ya no arranca con `--web.enable-lifecycle`.
+
 ### Postgres / Supabase (`DATABASE_URL`)
 
 La `DATABASE_URL` lleva la password del rol embebida y ha viajado por `.env`,
@@ -73,9 +83,12 @@ Defensas activas (revisión de seguridad 2026-07, ADR-016):
 - **Query en el access log de uvicorn**: la línea de acceso lleva la ruta con su
   query, así que `configure_logging` instala sobre `uvicorn.access`
   `observability.logging.AccessLogQueryRedactor`, que deja `token`, `code`,
-  `state`, `id_token` y `access_token` como `nombre=[REDACTED]` en cualquier
-  ruta (la clave del feed Atom y el `code`/`state` del callback OAuth, que
-  entre el 2026-10-17 y el 10-21 quedaron en claro en los logs de Render).
+  `state`, `id_token`, `access_token`, `u`, `t` y `k` como `nombre=[REDACTED]`
+  en cualquier ruta (la clave del feed Atom y el `code`/`state` del callback
+  OAuth, que entre el 2026-10-17 y el 10-21 quedaron en claro en los logs de
+  Render; `u`/`t` del enlace del calendario ICS y `t`/`k` de los enlaces de
+  baja, firmas sin caducidad). Las respuestas del calendario salen con
+  `Cache-Control: private, no-store`.
 
 **Cutover de roles: pendiente a 2026-09-06.** El script
 `scripts/setup_pg_roles.sql` ya prepara `tenderflow_app` con solo DML,
@@ -171,9 +184,17 @@ los secretos cuando lleven más de 90 días.
 ## Protección de endpoints
 
 - Frontend web: bloqueo del login tras 5 intentos fallidos en 5 minutos por
-  par IP + cuenta (`db/rate_limits.py::is_login_locked_out`; responde 429 con
-  `Retry-After` y, si la tabla de límites no responde, bloquea; no hay
-  backoff exponencial) y sesiones server-side revocables con caducidad **deslizante**
+  par IP + cuenta (`db/rate_limits.py::is_login_locked_out`; el intento se
+  apunta antes de verificar la contraseña, para que N peticiones en paralelo no
+  pasen todas el control; responde 429 con `Retry-After` y, si no se pudo
+  comprobar la tabla de límites, deniega con un plazo corto de 5 s). Una IPv6
+  cuenta por su /64. Sobre ese bloqueo, un contador de fallos **por cuenta**, de
+  todas las IP (`api/routes/auth.py::_pausa_por_cuenta`): a partir de 20 fallos
+  por hora exige una pausa entre intentos que se duplica (15 s, 30 s, 60 s…) hasta
+  dos minutos. No bloquea del todo, para que nadie pueda dejar fuera a un
+  titular; el coste es que quien ataca una cuenta puede retrasar el acceso de su
+  dueño, que siempre tiene la recuperación de contraseña. Sesiones server-side
+  revocables con caducidad **deslizante**
   (`db/sessions.py`): cada petición validada vuelve a poner el plazo de
   inactividad en `now + SESSION_IDLE_HOURS` (24 h), sin superar nunca el techo
   absoluto `created_at + SESSION_ABSOLUTE_DAYS` (30 días), pasado el cual la
@@ -187,7 +208,24 @@ los secretos cuando lleven más de 90 días.
   contra uno ficticio del mismo KDF y coste que `hash_password`
   (`shared/auth_core.py::verify_password_against_dummy`). Queda una diferencia
   menor: cuando el correo tal cual no encuentra cuenta se hace una segunda
-  búsqueda en minúsculas, una consulta más frente al coste del KDF.
+  búsqueda en minúsculas, una consulta más frente al coste del KDF. Un intento
+  contra un correo sin cuenta no escribe en la auditoría (la cadena serializa
+  cada escritura tras un lock global): queda el log estructurado.
+- Rate limit global (`api/middleware.py::RateLimitMiddleware`): se cuenta por IP
+  verificada, con la IPv6 agrupada por su /64. Una `X-API-Key` solo abre cubo
+  propio y tier si la clave existe y está activa; una inventada cuenta como una
+  petición sin cabecera, y el resultado se recuerda con TTL y tope de entradas
+  (`_tier_de_clave`). Las rutas asíncronas de la ficha de pliego
+  (`extract-async`, `embeddings-async`) y `guion` comparten el tope de los
+  endpoints pesados. El login y la confirmación del reset hashean tras un
+  bulkhead de tres hilos (`api/concurrency.py::run_kdf`; 503 con `Retry-After`
+  si no hay hueco en 5 s), y las contraseñas de login y alta tienen tope de 512
+  caracteres. `GET /licitaciones/stream` admite 2 conexiones por cuenta y 50 en
+  total (429 al pasarse): `--limit-concurrency` de uvicorn corta con 503, la
+  sonda de salud incluida, al llegar a 200 conexiones.
+- `ALLOW_SELF_REGISTRATION` (alta abierta, sin probar el buzón) impide arrancar
+  en prod y staging (`config/settings.py::_validate_prod_closed_registration`);
+  en dev, el alta abierta no acepta las invitaciones pendientes de la dirección.
 - SQL: todas las queries usan parámetros posicionales. Los nombres de columna se
   validan contra regex `^[a-zA-Z_]\w*$` antes de usarse en `ALTER TABLE`.
 - XML: lxml con `resolve_entities=False`, `no_network=True` para prevenir XXE.
@@ -255,7 +293,9 @@ claves de API personales (`db/password_reset.py::_revocar_credenciales`). Las
 cuentas solo-OAuth y las desactivadas no reciben token ni pueden consumirlo. La
 contraseña nueva pasa por la misma política que el alta
 (`config/password_policy.py::check_account_password`), antes de tocar el token:
-un rechazo no gasta el enlace. El segundo factor no se toca: una cuenta con
+un rechazo no gasta el enlace. El enlace se comprueba antes de hashear la
+contraseña nueva (`db/password_reset.py::reset_token_vigente`): un token
+inventado no cuesta un argon2. El segundo factor no se toca: una cuenta con
 TOTP lo sigue pidiendo en el siguiente login.
 
 El token viaja en el fragmento `#token=` del enlace. El navegador no envía el
@@ -300,7 +340,19 @@ a la pantalla donde se pide uno.
 fila enlaza con la anterior y una cabecera firmada ancla el último hash y el
 número de filas, así que se detectan tanto la alteración de una fila como el
 borrado por la cola. Se verifica con `scripts/verify_audit_chain.py` o con
-`GET /api/v1/security/audit/verify` (administración).
+`GET /api/v1/security/audit/verify` (administración), en una sola transacción
+`REPEATABLE READ` y por lotes: una escritura intercalada no da un falso positivo.
+
+La retención de `audit_log` (180 días) purga el extremo antiguo por `id` y firma
+en la misma transacción un **ancla de purga** (`audit_chain_state`, fila
+`chain_name = 'audit_log.purge'`: el `this_hash` de la última fila borrada y el
+total de filas purgadas), de la que arranca la verificación. Siempre se conserva
+la última fila, de la que cuelga la cabecera firmada, y la purga se niega si la
+cadena no es continua en la frontera (no blanquea una rotura). Una BD cuyas
+filas viejas se borraron con el `DELETE` anterior se reancla en la primera purga.
+Añadir un evento espera como mucho 2 s al candado que serializa la cadena
+(`lock_timeout`); pasado eso el evento se pierde y queda `audit_log_persist_failed`
+en el log, en vez de agotar el pool de escritura.
 
 Desde 2026-09 los tipos de evento son un **catálogo cerrado** en
 `shared/audit_events.py`. `db.audit.log_event` lo consulta de forma blanda: un
@@ -321,11 +373,18 @@ en el log — es un bug del llamante, no un motivo para perder el rastro.
 | operación | `dlq.requeued`, `dlq.discarded` | `api/routes/admin_dlq.py` |
 | producto | `feedback.submitted`, `pursuit.weights_proposal_applied`, `go_no_go.weights_updated` | `api/routes/feedback.py`, `services/pursuits.py`, `services/go_no_go_puntuacion.py` |
 
+`detail` se persiste como `event=… | outcome=… | [ip=… |] [resource=… |] payload`.
+Los valores de cabecera no pueden contener `|` (el escritor lo sustituye por `¦`,
+y un payload que empiece como una cabecera se marca con `detail=`) y el filtro por
+organización solo mira la cabecera: el nombre de una API key o de un webhook, que
+llega al payload, no puede plantar un evento en el rastro de otra organización.
+
 Reglas del rastro (ADR-030 §D): el actor se guarda como `users.id` —columna
 `user_id` desde v129 y `user_key = str(id)`—, nunca el correo. Los eventos de
 organización llevan `resource="org:<id>"` y en `detail` solo ids (`user_id`,
-`invitation_id`, recuentos); `auth.login_failed` contra una cuenta inexistente
-no guarda la dirección tecleada. Los nombres persistidos antes del catálogo
+`invitation_id`, recuentos); `auth.login_failed` solo se registra contra una
+cuenta que existe (un intento contra una inexistente deja el log, no el audit) y
+se escribe con la respuesta ya enviada. Los nombres persistidos antes del catálogo
 (`auth.session_revoked`, `api_key.*`, `gdpr.export`, `gdpr.delete`) se
 conservan: renombrarlos partiría el histórico y la etiqueta `event_type` de
 `audit_events_total`.
@@ -342,8 +401,32 @@ anterior) y `formato=json|csv`. JSON responde
 `actor_user_id`, `outcome`, `resource`, `detail`); CSV responde la misma
 página con las celdas neutralizadas (`shared/export_safety.py`) y el cursor
 siguiente en la cabecera `X-Next-Cursor`. Solo salen las filas con
-`resource="org:<id>"`: los eventos de usuario (`auth.*`, `api_key.*`,
+`resource="org:<id>"` **en la cabecera del `detail`**: los eventos de usuario (`auth.*`, `api_key.*`,
 `gdpr.*`) son de la persona y viajan en su export GDPR (`GET /me/data`).
+
+### API keys: lo que un scope no basta para hacer
+
+Cualquier usuario acuña una clave con los scopes que quiera (`POST /me/keys`
+solo reserva `admin` y `*`), así que un scope no es una prueba de rol. Lo
+sensible se comprueba además en la ruta (auditoría de 2026-11):
+
+- **Administrar el equipo** (miembros, invitaciones, NIF, plantillas, salir)
+  pide `organizations:manage`, no `pursuits:write`: la clave que mueve
+  oportunidades desde un CRM no añade miembros.
+- **Traspasar la propiedad** y **asignar un `owner`** exigen sesión reciente
+  (`require_recent_session`, con MFA reciente si la cuenta lo tiene): ninguna
+  API key sirve, ni con `*`. El traspaso bloquea la fila del owner dentro de su
+  transacción, así que dos traspasos simultáneos no dejan dos owners.
+- **`/cuentas` y `/etiquetas`** son del tablero: usan `pursuits:read/write`, no
+  los `data:*` que lleva una clave por defecto.
+- **Exportar el tablero** (`/exports/crm`, `/exports/download?recurso=pursuits`)
+  pide `pursuits:read` además de `exports:read`.
+- **Etiquetar** (`POST /feedback`, que entrena los modelos compartidos) exige
+  que el dueño de la clave sea administrador *hoy*; el scope `feedback:write`
+  por sí solo no basta. El gate de promoción del clasificador SAP compara con
+  el artefacto activo resuelto por el registro (no por su `path` de runner),
+  rechaza al candidato si no puede medir el activo y exige un holdout de al
+  menos 60 ejemplos.
 
 ## Reporte de vulnerabilidades
 
@@ -368,7 +451,7 @@ producto existe para conservar.
 | Tabla | Plazo | Motivo | Comando |
 |---|---|---|---|
 | `extraction_runs` | 90 días (3 meses) | Diagnóstico de la ingesta. Pasado un trimestre, un run concreto ya no explica nada que la serie agregada no cuente mejor. | `python scripts/retention_cleanup.py --apply` |
-| `audit_log` | 180 días (6 meses) | Trazabilidad de acciones de usuario para investigar un incidente. Encadenado por SHA-256: se purga por el extremo antiguo, nunca por el medio. | `python scripts/retention_cleanup.py --apply` |
+| `audit_log` | 180 días (6 meses) | Trazabilidad de acciones de usuario para investigar un incidente. Encadenado por HMAC-SHA-256: se purga por el extremo antiguo, nunca por el medio, y la purga firma un ancla para que la cadena siga verificando. | `python scripts/retention_cleanup.py --apply` |
 | `failed_extractions` | 30 días (1 mes) | Cola de fallos. Solo se purgan los **resueltos**: un fallo abierto no caduca por tiempo. | `python scripts/retention_cleanup.py --apply` |
 | `licitaciones_history` | 365 días (1 año) | Histórico de cambios de un expediente. Un año cubre el ciclo completo de licitación y adjudicación. | `python scripts/retention_cleanup.py --apply` |
 | `access_log` | 180 días (6 meses) | Accesos a la plataforma. Dato personal: se conserva lo mínimo para investigar abuso y no más. | `python scripts/retention_cleanup.py --apply` |
@@ -379,6 +462,9 @@ producto existe para conservar.
 | `email_verification_tokens` | 7 días | Enlace de activación del alta con contraseña: caducado no sirve para nada y sí identifica a quien se dio de alta. | `python scripts/retention_cleanup.py --apply` |
 | `users` | 7 días | **Solo las altas con contraseña que nadie verificó**, sin OAuth ni sesiones: cuentas que nunca se usaron con el correo de una persona. Ninguna otra cuenta caduca por tiempo. | `python scripts/retention_cleanup.py --apply` |
 | `client_errors` | 30 días (1 mes) | Huella sin PII de un fallo de JavaScript. No hace falta guardarla más de lo que dura investigar una regresión. | `python scripts/retention_cleanup.py --apply` |
+| `asistente_feedback` | 365 días (1 año) | Votos sobre las respuestas del asistente. La pregunta en texto solo existe con el opt-in de quien votó; el voto agregado deja de aportar pasado un año. | `python scripts/retention_cleanup.py --apply` |
+| `organization_invitations` | 90 días (3 meses) | Invitaciones a una organización, desde que **caducan**. Guardan el correo de quien aún puede no tener cuenta; el hecho de la invitación queda en el audit log. | `python scripts/retention_cleanup.py --apply` |
+| `domain_events` | 365 días (1 año) | Outbox de eventos. Solo los **ya despachados**: uno pendiente es trabajo por hacer. El payload puede nombrar a quien originó el evento. | `python scripts/retention_cleanup.py --apply` |
 | `rate_limits` | 1 día | Ventanas de rate limit. Se purgan las **expiradas** en cada pasada, sin esperar al plazo: la columna que manda es `reset_at`. | `python scripts/retention_cleanup.py --apply` (por `reset_at`, no por plazo) |
 
 <!-- END retencion -->

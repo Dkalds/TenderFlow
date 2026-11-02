@@ -136,6 +136,31 @@ def test_el_despachador_escribe_la_alerta_in_app_con_campo_y_valores(org_seguido
     assert "2026-12-01" in alertas[0]["body"]
 
 
+def test_dos_organizaciones_que_siguen_el_expediente_reciben_cada_una_su_evento(org_seguidora):
+    """Un evento sin dueño con los seguidores de todas hacía que el webhook de
+    una organización recibiera quién seguía el expediente en las demás."""
+    from db.repositories.organizations import OrganizationRepository
+    from db.users import create_user
+
+    otro = create_user(
+        email="s4-seguidor-b@example.test",
+        password_hash="test-hash",  # pragma: allowlist secret
+        display_name="Otra",
+    )
+    org_b = int(OrganizationRepository().ensure_personal_organization(otro)["id"])
+    _seguir(_ID, org_seguidora)
+    _seguir(_ID, org_b, user_key="uk-otra")
+    _historial(_ID, snapshot={"fecha_limite": "2026-11-01"}, changed="fecha_limite")
+
+    derive_new_events()
+
+    eventos = _eventos_de_cambio()
+    assert sorted(e["organization_id"] for e in eventos) == sorted([org_seguidora, org_b])
+    for evento in eventos:
+        organizaciones = {s["organization_id"] for s in evento["payload"]["seguidores"]}
+        assert organizaciones == {evento["organization_id"]}
+
+
 def test_un_cambio_en_expediente_no_seguido_no_genera_evento(base):
     _historial(_ID_NO_SEGUIDO, snapshot={"fecha_limite": "2026-11-01"}, changed="fecha_limite")
 

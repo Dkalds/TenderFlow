@@ -133,8 +133,12 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-tenderflow}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tenderflow}
       POSTGRES_DB: ${POSTGRES_DB:-tenderflow}
+    # Solo loopback: las credenciales por defecto son `tenderflow/tenderflow` y
+    # Compose FUSIONA las listas `ports` de este fichero y del override, así que
+    # un `"5432:5432"` aquí seguiría publicado en 0.0.0.0 aunque el override lo
+    # restrinja.
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

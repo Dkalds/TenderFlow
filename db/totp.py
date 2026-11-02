@@ -166,6 +166,21 @@ def is_totp_required(user_id: int) -> bool:
     return rec is not None and rec["confirmed"]
 
 
+def has_confirmed_totp(user_id: int) -> bool:
+    """True si el usuario tiene un TOTP confirmado, **sin descifrar** el secreto.
+
+    Para quien solo necesita saber si hay segundo factor y no tiene
+    ``TOTP_ENCRYPTION_KEY`` (el servidor MCP). ``is_totp_required`` descifra, y
+    con un secreto que no puede descifrar devuelve ``False``: aquí eso sería
+    dejar pasar a quien sí lo tiene activado.
+    """
+    with connect() as c:
+        row = c.execute(
+            "SELECT confirmed FROM totp_secrets WHERE user_id = %s", (user_id,)
+        ).fetchone()
+    return bool(row and row[0])
+
+
 # ---------------------------------------------------------------------------
 # Recovery codes
 # ---------------------------------------------------------------------------

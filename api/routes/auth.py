@@ -6,7 +6,9 @@ with CSRF protection. Complements the existing X-API-Key auth for machine client
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import math
 import os
 import re
 import urllib.parse
@@ -30,7 +32,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from api.concurrency import run_db
+from api.concurrency import run_db, run_kdf
 from config import settings
 from config.password_policy import check_account_password
 from db.audit import log_event
@@ -168,15 +170,17 @@ async def _password_reset_rate_allowed(
     dirección: las claves acaban en ``rate_limits`` o en Redis.
     """
     from api.middleware import _trusted_client_ip
-    from services.rate_limiting import get_rate_limiter
+    from services.rate_limiting import get_rate_limiter, ip_de_cuota
 
     client_ip = _trusted_client_ip(request)
     email_key = hashlib.sha256((email or "").strip().lower().encode()).hexdigest()[:16]
 
     def _check() -> bool:
         limiter = get_rate_limiter()
+        # Una IPv6 cuenta por su /64: con la dirección entera, quien tiene un
+        # prefijo estrena cubo en cada petición.
         ip_allowed = limiter.check(
-            f"{bucket}:ip:{client_ip}",
+            f"{bucket}:ip:{ip_de_cuota(client_ip)}",
             max_calls=_RESET_IP_MAX_CALLS,
             window_seconds=_RESET_IP_WINDOW_SECONDS,
         )
@@ -268,11 +272,83 @@ def _clear_session_cookies(response: Response) -> None:
 
 
 def _login_client_key(request: Request, email: str) -> str:
-    """Clave opaca por IP y cuenta para el lockout, sin persistir PII directa."""
-    from api.middleware import _trusted_client_ip
+    """Clave opaca por IP y cuenta para el lockout, sin persistir PII directa.
 
-    material = f"{_trusted_client_ip(request)}:{email.strip().lower()}"
+    La IP es la de cuota (:func:`services.rate_limiting.ip_de_cuota`): una IPv6
+    por su /64, o el lockout se evita cambiando de dirección dentro del prefijo.
+    """
+    from api.middleware import _trusted_client_ip
+    from services.rate_limiting import ip_de_cuota
+
+    material = f"{ip_de_cuota(_trusted_client_ip(request))}:{email.strip().lower()}"
     return hashlib.sha256(material.encode()).hexdigest()[:32]
+
+
+#: Intentos fallidos por (IP, correo) en cinco minutos antes del bloqueo.
+_LOGIN_MAX_FALLOS = 5
+
+#: Tareas de auditoría de fallos de login en vuelo. El loop solo guarda
+#: referencias débiles a las tareas: sin esto el GC podría recogerlas a medias.
+_auditorias_en_vuelo: set[asyncio.Task[None]] = set()
+
+
+def _auditar_fallo_despues(user_id: int) -> None:
+    """Escribe ``auth.login_failed`` (contraseña mala) sin hacer esperar la respuesta.
+
+    La auditoría serializa cada escritura tras un lock global. Hecha en línea,
+    el fallo de una cuenta que existe tardaba más que el de una que no (que ya
+    no audita), y esa diferencia de tiempo decía qué correos tienen cuenta. Un
+    fallo al escribir queda en el log; la respuesta ya salió.
+    """
+
+    async def _escribir() -> None:
+        try:
+            await run_db(
+                log_event,
+                event_type=AUTH_LOGIN_FAILED,
+                user_id=user_id,
+                outcome="failure",
+                resource=f"user:{user_id}",
+                detail={"reason": "bad_password"},
+            )
+        except Exception:
+            log.warning("login_failed_audit_error", user_id=user_id, exc_info=True)
+
+    tarea = asyncio.get_running_loop().create_task(_escribir())
+    _auditorias_en_vuelo.add(tarea)
+    tarea.add_done_callback(_auditorias_en_vuelo.discard)
+
+
+#: Contador de fallos **por cuenta**, sin IP. El lockout por (IP, correo) no
+#: frena a quien rota de IP: cada una estrena sus cinco intentos. Este cuenta
+#: los de todas y, pasado el umbral, no bloquea —bloquear le regalaría a
+#: cualquiera la posibilidad de dejar fuera a un titular— sino que exige una
+#: pausa entre intentos que se duplica con cada fallo más (15, 30, 60 s…) hasta
+#: un máximo de dos minutos: 30 intentos por hora y cuenta como mucho, frente
+#: a los que dé el KDF.
+_LOGIN_CUENTA_BUCKET = "login_fail_cuenta"
+_LOGIN_CUENTA_VENTANA_S = 3600.0
+_LOGIN_CUENTA_UMBRAL = 20
+_LOGIN_CUENTA_PAUSA_BASE_S = 15.0
+_LOGIN_CUENTA_PAUSA_MAX_S = 120.0
+
+
+def _login_account_key(email: str) -> str:
+    """Clave opaca de la cuenta (solo el correo) para el contador de fallos."""
+    return hashlib.sha256(email.strip().lower().encode()).hexdigest()[:32]
+
+
+def _pausa_por_cuenta(fallos: int, desde_el_ultimo: float) -> float:
+    """Segundos que faltan para que la cuenta admita otro intento; 0 si puede ya.
+
+    ``fallos`` son los de la última hora y ``desde_el_ultimo`` los segundos que
+    han pasado desde el más reciente. Bajo el umbral no hay pausa.
+    """
+    if fallos < _LOGIN_CUENTA_UMBRAL:
+        return 0.0
+    exceso = min(fallos - _LOGIN_CUENTA_UMBRAL, 10)
+    pausa = min(_LOGIN_CUENTA_PAUSA_MAX_S, _LOGIN_CUENTA_PAUSA_BASE_S * (1 << exceso))
+    return max(0.0, pausa - desde_el_ultimo)
 
 
 # ---------------------------------------------------------------------------
@@ -416,7 +492,9 @@ class LoginRequest(BaseModel):
     """Credentials for email/password login."""
 
     email: EmailStr
-    password: str
+    #: Tope generoso (el cambio y el reset aceptan 512): sin él, un cuerpo de
+    #: 1 MiB entero iba a argon2.
+    password: str = Field(max_length=512)
     #: «Recordar este equipo»: la sesión no caduca por inactividad hasta
     #: ``SESSION_REMEMBER_DAYS`` (con el mismo techo absoluto). Opcional y
     #: falso por defecto: los clientes que no lo envían conservan el
@@ -428,7 +506,7 @@ class RegisterRequest(BaseModel):
     """Datos para el alta self-service con email + password."""
 
     email: EmailStr
-    password: str
+    password: str = Field(max_length=512)
     display_name: str | None = None
 
 
@@ -529,19 +607,50 @@ async def login(body: LoginRequest, response: Response, request: Request) -> Use
     # argon2, caro por diseño) va en un solo salto al threadpool: ejecutado
     # sobre el event loop, cada login serializaba la API entera mientras
     # duraba el KDF.
-    from db.rate_limits import clear_login_attempts, is_login_locked_out, record_failed_login
+    from db.rate_limits import (
+        clear_login_attempts,
+        fallos_recientes,
+        is_login_locked_out,
+        record_failed_login,
+    )
     from db.totp import is_totp_required
 
     client_key = _login_client_key(request, str(body.email))
+    cuenta_key = _login_account_key(str(body.email))
+    #: Cuentas con una contraseña mala cuyo fallo se audita tras responder.
+    auditar_despues: list[int] = []
+
+    def _demasiados_intentos(espera: float) -> HTTPException:
+        return HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Try again later.",
+            headers={"Retry-After": str(max(1, math.ceil(espera)))},
+        )
 
     def _authenticate() -> UserInfo:
         locked, retry_after = is_login_locked_out(client_key)
         if locked:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Too many failed login attempts. Try again later.",
-                headers={"Retry-After": str(max(1, int(retry_after)))},
-            )
+            raise _demasiados_intentos(retry_after)
+        # Contador por cuenta, de todas las IP: pasado el umbral exige una pausa
+        # creciente entre intentos. Cuenta también los correos sin cuenta, para
+        # que la pausa no diga cuáles existen.
+        fallos, desde_el_ultimo = fallos_recientes(
+            cuenta_key, bucket=_LOGIN_CUENTA_BUCKET, window_seconds=_LOGIN_CUENTA_VENTANA_S
+        )
+        pausa = _pausa_por_cuenta(fallos, desde_el_ultimo)
+        if pausa > 0:
+            log.warning("login_cuenta_en_pausa", fallos=fallos)
+            raise _demasiados_intentos(pausa)
+        # El intento se apunta ANTES de verificar la contraseña, como en el
+        # cambio de contraseña: con «mirar, argon2, apuntar el fallo», N
+        # peticiones en paralelo pasaban todas el control antes de que se
+        # apuntara ninguna (argon2 dura ~100 ms) y el tope no limitaba nada.
+        # Apuntado primero, la k-ésima ve al menos k filas, y el +1 deja pasar
+        # los mismos `_LOGIN_MAX_FALLOS` intentos. Un acceso correcto lo borra.
+        record_failed_login(client_key)
+        locked, retry_after = is_login_locked_out(client_key, max_attempts=_LOGIN_MAX_FALLOS + 1)
+        if locked:
+            raise _demasiados_intentos(retry_after)
         # Primero tal cual —las cuentas de siempre se guardaron con la
         # capitalización que se tecleó— y después en minúsculas, que es como
         # guarda el correo el alta cerrada: quien se dio de alta como
@@ -556,28 +665,28 @@ async def login(body: LoginRequest, response: Response, request: Request) -> Use
         if not pw_hash:
             verify_password_against_dummy(body.password)
         if not user:
-            record_failed_login(client_key)
-            # Sin actor ni correo: un intento contra una cuenta que no existe
-            # no puede dejar la dirección tecleada en el rastro (ADR-030 §D).
-            log_event(
-                event_type=AUTH_LOGIN_FAILED,
-                outcome="failure",
-                detail={"reason": "user_not_found"},
+            record_failed_login(
+                cuenta_key, bucket=_LOGIN_CUENTA_BUCKET, window_seconds=_LOGIN_CUENTA_VENTANA_S
             )
+            # Sin `log_event`: un intento contra una cuenta que no existe no
+            # tiene actor ni correo que registrar (ADR-030 §D), y la auditoría
+            # serializa cada escritura tras un lock global: dejar que cualquiera
+            # la alimente sin autenticarse saturaba el pool de escritura. Queda
+            # el log estructurado.
             log.warning("login_failed", reason="user_not_found")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
             )
 
         if not pw_hash or not verify_password(body.password, pw_hash):
-            record_failed_login(client_key)
-            log_event(
-                event_type=AUTH_LOGIN_FAILED,
-                user_id=int(user["id"]),
-                outcome="failure",
-                resource=f"user:{user['id']}",
-                detail={"reason": "bad_password"},
+            record_failed_login(
+                cuenta_key, bucket=_LOGIN_CUENTA_BUCKET, window_seconds=_LOGIN_CUENTA_VENTANA_S
             )
+            # La auditoría se escribe con la respuesta ya en camino (ver
+            # `_auditar_fallo_despues`): en línea, este camino tardaba lo que una
+            # escritura de auditoría más que el de «no existe la cuenta», y esa
+            # diferencia de tiempo delataba qué correos tienen cuenta.
+            auditar_despues.append(int(user["id"]))
             log.warning("login_failed", user_id=user["id"], reason="bad_password")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
@@ -588,6 +697,9 @@ async def login(body: LoginRequest, response: Response, request: Request) -> Use
         # 2026-10-21-alta-con-contrasena-tras-concesion §3).
         motivo_denegado = _motivo_login_denegado(user)
         if motivo_denegado is not None:
+            # La contraseña era la buena: no es un fallo de fuerza bruta.
+            clear_login_attempts(client_key)
+            clear_login_attempts(cuenta_key, bucket=_LOGIN_CUENTA_BUCKET)
             log_event(
                 event_type=AUTH_LOGIN_FAILED,
                 user_id=int(user["id"]),
@@ -599,6 +711,7 @@ async def login(body: LoginRequest, response: Response, request: Request) -> Use
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=motivo_denegado)
 
         clear_login_attempts(client_key)
+        clear_login_attempts(cuenta_key, bucket=_LOGIN_CUENTA_BUCKET)
         _set_session_cookie(response, user["id"], request, remember=body.remember)
 
         log_access(auth_method="password", user_id=user["id"])
@@ -618,7 +731,12 @@ async def login(body: LoginRequest, response: Response, request: Request) -> Use
             mfa_required=is_totp_required(user["id"]),
         )
 
-    return await run_db(_authenticate)
+    # `run_kdf` y no `run_db`: bulkhead propio de tres hilos para el argon2.
+    try:
+        return await run_kdf(_authenticate)
+    finally:
+        for user_id in auditar_despues:
+            _auditar_fallo_despues(user_id)
 
 
 def _registro_abierto() -> bool:
@@ -686,10 +804,10 @@ async def register(
             password_hash=hash_password(body.password),
             display_name=display_name,
         )
-        # En modo abierto el alta activa ya las invitaciones: es el
-        # comportamiento de siempre, y el modo que no verifica nada. En el
-        # cerrado esto pasa al verificar el correo.
-        _activar_invitaciones(new_id, str(body.email))
+        # Sin `_activar_invitaciones`: este modo no verifica el buzón, y aceptar
+        # aquí las invitaciones pendientes de esa dirección (administrador
+        # incluido) se las daba a quien se registrara primero con ella. El modo
+        # cerrado las activa al verificar el correo; en este quedan por su token.
         _set_session_cookie(response, new_id, request)  # auto-login
         log_access(auth_method="password_signup", user_id=new_id)
         return new_id
@@ -856,14 +974,18 @@ async def confirm_password_reset(
     if not password_check.is_strong:
         raise HTTPException(status_code=400, detail=password_check.summary)
 
-    from db.password_reset import consume_reset_token
+    from db.password_reset import consume_reset_token, reset_token_vigente
     from services.password_reset import token_hash
 
     def _consume() -> int | None:
-        password_digest = hash_password(body.password)
-        return consume_reset_token(token_hash(body.token), password_digest)
+        digest = token_hash(body.token)
+        # Se mira el enlace antes de hashear: un token inventado no debe costar
+        # un argon2 de 64 MiB. `consume_reset_token` lo vuelve a comprobar.
+        if not reset_token_vigente(digest):
+            return None
+        return consume_reset_token(digest, hash_password(body.password))
 
-    user_id = await run_db(_consume)
+    user_id = await run_kdf(_consume)
     if user_id is None:
         raise HTTPException(status_code=400, detail="El enlace no es válido o ha caducado.")
     await run_db(

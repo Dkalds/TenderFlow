@@ -13,7 +13,11 @@ Configuración vía variables de entorno:
 
 * ``SIGNING_KEY_ACTIVE``: ``kid`` que se usa para emitir nuevas firmas.
 * ``SIGNING_KEY`` (legacy): si no hay ``SIGNING_KEYS_JSON``, se usa esta
-  clave única con ``kid = "legacy"`` para compatibilidad.
+  clave única con ``kid = "legacy"`` para compatibilidad (del entorno o, si no
+  está, de ``settings``).
+
+Sin ninguna clave, solo ``ENV=dev`` firma con una efímera; en prod/staging
+:func:`sign` y :func:`verify` lanzan ``RuntimeError``.
 
 API::
 
@@ -52,6 +56,8 @@ def _load_keys() -> tuple[dict[str, bytes], str]:
     Cacheada para evitar reparseo en cada firma. Llamar a
     :func:`reload_keys` tras rotar para invalidar.
     """
+    from config import settings
+
     raw = os.getenv("SIGNING_KEYS_JSON", "").strip()
     keys: dict[str, bytes] = {}
     if raw:
@@ -63,14 +69,24 @@ def _load_keys() -> tuple[dict[str, bytes], str]:
 
     active = os.getenv("SIGNING_KEY_ACTIVE", "").strip()
 
-    # Fallback legacy: SIGNING_KEY única
+    # Fallback legacy: SIGNING_KEY única. Si no está en `os.environ` se mira
+    # `settings`: `Settings` también la lee de `.env`, y los demás firmantes
+    # (CSRF, state de OAuth) ya usan esa fuente.
     if not keys:
-        legacy = os.getenv("SIGNING_KEY", "").strip()
+        legacy = (
+            os.getenv("SIGNING_KEY", "").strip() or settings.SIGNING_KEY.get_secret_value().strip()
+        )
         if legacy:
             keys["legacy"] = legacy.encode("utf-8")
             active = active or "legacy"
 
     if not keys:
+        if settings.ENV != "dev":
+            # Falla cerrado: una clave derivada del PID es predecible, y quien
+            # la calcule firma enlaces de baja, descargas y el calendario.
+            raise RuntimeError(
+                f"Sin claves de firma (SIGNING_KEYS_JSON / SIGNING_KEY) en ENV={settings.ENV}"
+            )
         # Modo demo/dev: clave efímera derivada de PID — NO PRODUCCIÓN.
         ephemeral = hashlib.sha256(f"dev-{os.getpid()}".encode()).digest()
         keys = {"dev": ephemeral}

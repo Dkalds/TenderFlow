@@ -42,7 +42,7 @@ Ejemplo::
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
@@ -69,6 +69,11 @@ log = get_logger(__name__)
 router = APIRouter(tags=["search"])
 
 _MAX_Q_LEN = 500
+# Tope de los filtros multi-valor del cuerpo: las comunidades son 19 y las
+# tecnologías del diccionario, unas decenas; el resto es relleno que viaja a la
+# consulta como parámetros.
+_MAX_FILTROS = 50
+_MAX_FILTRO_LEN = 100
 _DEFAULT_TOP_K = 10
 _MAX_TOP_K = 100
 
@@ -111,11 +116,15 @@ class SemanticSearchRequest(BaseModel):
         max_length=200,
         description="LEGACY — sin efecto desde la retirada de FAISS (2026-07); se acepta por compatibilidad",
     )
-    ccaa: list[str] = Field(
-        default_factory=list, description="Filtra resultados por CCAA (multi-valor)"
+    ccaa: list[Annotated[str, Field(max_length=_MAX_FILTRO_LEN)]] = Field(
+        default_factory=list,
+        max_length=_MAX_FILTROS,
+        description="Filtra resultados por CCAA (multi-valor)",
     )
-    tecnologia: list[str] = Field(
-        default_factory=list, description="Filtra resultados por tecnología (multi-valor)"
+    tecnologia: list[Annotated[str, Field(max_length=_MAX_FILTRO_LEN)]] = Field(
+        default_factory=list,
+        max_length=_MAX_FILTROS,
+        description="Filtra resultados por tecnología (multi-valor)",
     )
     fecha_desde: str | None = Field(
         default=None, description="Fecha de publicación desde (YYYY-MM-DD)"

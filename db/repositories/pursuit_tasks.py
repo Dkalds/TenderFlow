@@ -283,7 +283,14 @@ class PursuitTasksRepository:
         with connect_read() as c:
             cur = c.execute(
                 "SELECT t.id, t.pursuit_id, t.organization_id, t.titulo, "
-                "t.responsable_user_id, u.display_name AS responsable_name, "
+                # Solo si sigue en el equipo: quien salió o fue retirado no
+                # recibe el título de la tarea ni el expediente. Sin
+                # responsable activo la tarea sale igual, sin destinatario.
+                "CASE WHEN EXISTS (SELECT 1 FROM organization_memberships m "
+                "  WHERE m.organization_id = t.organization_id "
+                "  AND m.user_id = t.responsable_user_id AND m.status = 'active') "
+                "  THEN t.responsable_user_id END AS responsable_user_id, "
+                "u.display_name AS responsable_name, "
                 "t.vence, t.estado, t.created_at, t.updated_at, p.licitacion_id "
                 "FROM pursuit_tasks t "
                 "JOIN pursuits p ON p.id = t.pursuit_id "
@@ -296,6 +303,23 @@ class PursuitTasksRepository:
                 (fecha,),
             )
             return rows_to_dicts(cur)
+
+    def export_for_user(self, user_id: int) -> list[dict[str, object]]:
+        """Tareas asignadas al usuario para el export RGPD.
+
+        Incluye las borradas lógicamente (siguen en la base, igual que los
+        comentarios) y no devuelve el nombre de otros: solo la tarea.
+        """
+        with connect_read() as c:
+            return rows_to_dicts(
+                c.execute(
+                    "SELECT id, pursuit_id, organization_id, titulo, responsable_user_id, "
+                    "vence, estado, created_at, updated_at, deleted_at "
+                    "FROM pursuit_tasks WHERE responsable_user_id = %s "
+                    "ORDER BY id LIMIT 5000",
+                    (user_id,),
+                )
+            )
 
     def anonymize_user_references(self, user_id: int) -> None:
         """Suelta al responsable sin borrar la tarea (ADR-030 §D).

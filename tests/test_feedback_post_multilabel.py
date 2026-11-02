@@ -12,10 +12,13 @@ from fastapi.testclient import TestClient
 def fb_client(api_db):
     from api.app import app
     from api.auth import create_api_key
-    from db.users import create_user
+    from db.users import create_user, set_admin
 
     client = TestClient(app, raise_server_exceptions=True)
     user_id = create_user(email="feedback-writer@example.test", password_hash="not-used")
+    # Escribir etiquetas pide que el dueño de la clave sea admin (el scope solo
+    # no basta: cualquier usuario puede acuñarlo).
+    set_admin(user_id, True)
     client._api_key = create_api_key(
         "feedback-writer",
         scopes="feedback:write",

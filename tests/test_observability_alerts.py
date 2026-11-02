@@ -127,6 +127,22 @@ def test_build_html_contains_title_and_body():
     assert "r1" in html
 
 
+def test_build_html_escapa_el_texto_de_terceros():
+    """Título, cuerpo y contexto llevan texto del formulario público o del feed:
+    un `<a href>` inyectado saldría con el remitente legítimo (auditoría 2026-11)."""
+    enlace = '<a href="https://evil.example/login">Revisar solicitud</a>'
+    html = _build_html(
+        AlertLevel.INFO,
+        f"Empresa {enlace}",
+        f"Hola {enlace}",
+        {f"clave {enlace}": f'<img src="https://evil.example/p.gif"> {enlace}'},
+    )
+    assert "<a href" not in html
+    assert "<img" not in html
+    assert "evil.example" in html  # el texto sigue ahí, inerte
+    assert "&lt;a href=&quot;https://evil.example/login&quot;&gt;" in html
+
+
 def test_build_html_uses_level_color():
     html_warn = _build_html(AlertLevel.WARN, "t", "b", {})
     html_crit = _build_html(AlertLevel.CRITICAL, "t", "b", {})

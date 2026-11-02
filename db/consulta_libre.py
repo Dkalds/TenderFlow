@@ -52,6 +52,9 @@ from psycopg_pool import ConnectionPool
 
 from config.settings import mcp_database_url
 from db.connection import EXTRA_FLOAT_DIGITS, _pg_connect_kwargs
+from observability.logging import get_logger
+
+log = get_logger(__name__)
 
 __all__ = [
     "MAX_CHARS_CELDA",
@@ -60,8 +63,11 @@ __all__ = [
     "MAX_CHARS_SQL",
     "MAX_FILAS",
     "OIDS_JSON",
+    "OIDS_SIN_TOPE_A_TEXTO",
     "OIDS_TEXTO",
+    "OID_BYTEA",
     "PISTAS",
+    "TOPE_SENTENCIA_POR_DEFECTO_MS",
     "ErrorConsulta",
     "JSONValue",
     "ResultadoConsulta",
@@ -493,6 +499,12 @@ def envolver(sql: str, max_filas: int) -> str:
 #: :func:`envolver_con_recorte` acota en el servidor (``char(n)`` no: es de
 #: ancho fijo y el ``::text`` le quitaría los espacios finales).
 OIDS_TEXTO = frozenset({25, 1043, 142})
+#: OIDs de tipos sin tope de tamaño que ``serializar_valor`` acaba mostrando como
+#: texto recortado: ``bit``, ``varbit``, ``tsvector``, ``tsquery``, ``jsonpath`` y
+#: ``record``. Se piden ya como texto recortado, igual que :data:`OIDS_TEXTO`.
+OIDS_SIN_TOPE_A_TEXTO = frozenset({1560, 1562, 3614, 3615, 4072, 2249})
+#: OID de ``bytea``: ``serializar_valor`` lo descarta (``None``), así que ni se transfiere.
+OID_BYTEA = 17
 #: OIDs de ``json`` y ``jsonb``: junto con los arrays nativos, las celdas con estructura.
 OIDS_JSON = frozenset({114, 3802})
 #: Una celda con estructura más larga que esto no cabría ni sola en la respuesta:
@@ -541,18 +553,26 @@ def envolver_con_recorte(sql: str, tipos: Sequence[int]) -> tuple[str, frozenset
     ``database_to_xml``) llegaba entero a la memoria del proceso antes de
     recortarse a :data:`MAX_CHARS_CELDA`. Las celdas con estructura
     (:func:`es_estructurada`) llegan como ``jsonb``; si pasan de
-    :data:`MAX_CHARS_ESTRUCTURA`, como texto recortado. ``tipos`` son los OID de
+    :data:`MAX_CHARS_ESTRUCTURA`, como texto recortado. Los tipos sin tope que no
+    son texto (``bit``, ``tsvector``, ``record``... :data:`OIDS_SIN_TOPE_A_TEXTO`)
+    llegan como texto recortado y los ``bytea``, que ``serializar_valor`` descarta,
+    como ``NULL`` sin transferirse. ``tipos`` son los OID de
     las columnas del resultado (``cursor.description``); las columnas se
     renombran por posición (``q(c0, c1, …)``) para que nombres repetidos o raros
     no estorben. Devuelve la sentencia y las posiciones de las columnas de texto
     ya recortadas.
     """
-    recortadas = frozenset(i for i, oid in enumerate(tipos) if oid in OIDS_TEXTO)
+    recortadas = frozenset(
+        i for i, oid in enumerate(tipos) if oid in OIDS_TEXTO or oid in OIDS_SIN_TOPE_A_TEXTO
+    )
     estructuradas = frozenset(i for i, oid in enumerate(tipos) if es_estructurada(oid))
-    if not recortadas and not estructuradas:
+    binarias = frozenset(i for i, oid in enumerate(tipos) if oid == OID_BYTEA)
+    if not recortadas and not estructuradas and not binarias:
         return envolver(sql, 0), recortadas
 
     def columna(i: int) -> str:
+        if i in binarias:
+            return "NULL"
         if i in recortadas:
             return _recorte_sql(f"q.c{i}")
         if i in estructuradas:
@@ -778,6 +798,9 @@ _FILAS_POR_LOTE = 50
 _SQL_STATEMENT_TIMEOUT = (
     "SELECT setting::bigint FROM pg_catalog.pg_settings WHERE name = 'statement_timeout'"
 )
+#: Techo (ms) que se impone si el rol llega sin ``statement_timeout`` (0 = sin límite):
+#: el mismo que el ``ALTER ROLE`` de ``scripts/setup_pg_role_mcp.sql``.
+TOPE_SENTENCIA_POR_DEFECTO_MS = 15_000
 
 
 def _error_de_tiempo() -> ErrorConsulta:
@@ -813,6 +836,16 @@ def _leer_por_lotes(
     inicio = time.monotonic()
     fila_tope = conn.execute(_SQL_STATEMENT_TIMEOUT).fetchone()
     tope_ms = int(str(fila_tope[0])) if fila_tope is not None else 0
+    if tope_ms <= 0:
+        # El `ALTER ROLE … SET statement_timeout` se perdió (o el pooler ignora
+        # las opciones de la sesión): sin esto `pg_sleep(1e6)` o un producto
+        # cartesiano no tendrían corte. Falla cerrado, con el techo documentado,
+        # para la sonda, el cursor y cada FETCH.
+        log.warning(
+            "consulta_libre_sin_statement_timeout", impuesto_ms=TOPE_SENTENCIA_POR_DEFECTO_MS
+        )
+        tope_ms = TOPE_SENTENCIA_POR_DEFECTO_MS
+        conn.execute("SELECT set_config('statement_timeout', %s, true)", (f"{tope_ms}ms",))
     # Con parámetro enlazado, como la consulta real: protocolo extendido, una sola sentencia.
     descripcion = conn.execute(envolver(sql, 0), (0,)).description or []
     columnas = [str(d.name) for d in descripcion]

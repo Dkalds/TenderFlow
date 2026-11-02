@@ -28,6 +28,21 @@ log = get_logger(__name__)
 
 _CHAIN_NAME = "audit_log"
 
+#: Fila de ``audit_chain_state`` (misma tabla, otro ``chain_name``: sin migración)
+#: que ancla el extremo antiguo de la cadena tras una purga de retención: el
+#: ``this_hash`` de la última fila borrada y cuántas filas se han purgado en total.
+_PURGE_CHAIN_NAME = "audit_log.purge"
+
+#: Cuánto espera un escritor al candado que serializa la cadena antes de rendirse.
+#: Sin techo, cada espera retiene un hilo y una conexión de escritura hasta el
+#: ``statement_timeout`` (30 s), y unos pocos eventos concurrentes agotaban el
+#: pool para todo lo demás. Al rendirse se pierde un evento de auditoría (que
+#: ``log_action`` ya trata como best-effort y deja en el log), no la API.
+_AUDIT_LOCK_TIMEOUT_MS = 2000
+
+#: Filas por lote al verificar la cadena (paginación por clave dentro de un snapshot).
+_VERIFY_BATCH = 2000
+
 
 def _audit_hmac(value: str) -> str:
     """Firma la cadena con una clave fuera de la base de datos."""
@@ -50,8 +65,39 @@ def _state_hmac(head_hash: str, entry_count: int) -> str:
 
 
 def _serialize_audit_chain_write(connection: Any) -> None:
-    """Serialize appends so concurrent writers cannot fork a chain."""
-    connection.execute("SELECT pg_advisory_xact_lock(hashtext('tenderflow.audit_log.chain.v1'))")
+    """Serialize appends so concurrent writers cannot fork a chain.
+
+    ``lock_timeout`` y el candado viajan en un solo viaje (protocolo simple, sin
+    parámetros) y el ``SET LOCAL`` muere con la transacción.
+    """
+    connection.execute(
+        f"SET LOCAL lock_timeout = {int(_AUDIT_LOCK_TIMEOUT_MS)}; "
+        "SELECT pg_advisory_xact_lock(hashtext('tenderflow.audit_log.chain.v1'))"
+    )
+
+
+def _purge_hmac(anchor_hash: str, purged_count: int) -> str:
+    """Firma el ancla de purga (dominio propio, distinto del de la cabecera)."""
+    return _audit_hmac(f"audit-chain-purge-v1:{anchor_hash}:{purged_count}")
+
+
+def _read_purge_anchor(connection: Any, *, for_update: bool = False) -> tuple[str, int]:
+    """``(hash, filas purgadas)`` del ancla de purga; ``("genesis", 0)`` si nunca se purgó.
+
+    Raises:
+        RuntimeError: si la firma no coincide (ancla alterada).
+    """
+    row = connection.execute(
+        "SELECT head_hash, entry_count, state_hmac FROM audit_chain_state WHERE chain_name = %s"
+        + (" FOR UPDATE" if for_update else ""),
+        (_PURGE_CHAIN_NAME,),
+    ).fetchone()
+    if row is None:
+        return "genesis", 0
+    anchor_hash, purged, signature = str(row[0]), int(row[1]), str(row[2])
+    if not hmac.compare_digest(signature, _purge_hmac(anchor_hash, purged)):
+        raise RuntimeError("audit purge anchor signature mismatch")
+    return anchor_hash, purged
 
 
 def _assert_or_bootstrap_chain_state(connection: Any) -> tuple[str, int, bool]:
@@ -82,7 +128,8 @@ def _assert_or_bootstrap_chain_state(connection: Any) -> tuple[str, int, bool]:
         # Bootstrap único (aún no hay fila de estado): aquí sí recontamos, una
         # sola vez, para sembrar el ``entry_count`` firmado inicial.
         count_row = connection.execute("SELECT COUNT(*) FROM audit_log").fetchone()
-        current_count = int(count_row[0]) if count_row else 0
+        # Las filas ya purgadas siguen contando en la cardinalidad de la cadena.
+        current_count = (int(count_row[0]) if count_row else 0) + _read_purge_anchor(connection)[1]
         return current_head, current_count, False
 
     stored_head, stored_count, stored_signature = (
@@ -223,6 +270,43 @@ def log_action(
 
 # ───────────────── E8: Audit trail expansion ─────────────────────────────
 
+#: Claves de cabecera de ``detail`` (el lector, ``db.repositories.audit``, las
+#: reconoce por el mismo nombre). Un payload que empezara por una de ellas se
+#: leería como cabecera.
+_CLAVES_CABECERA = ("event=", "outcome=", "ip=", "resource=")
+
+
+def _sin_separador(valor: str) -> str:
+    """Quita el separador de campos (``|``) de un valor de cabecera.
+
+    El nombre de una API key o de un webhook, o el expediente de un feedback,
+    acaban en ``resource``/``detail``; con un `` | resource=org:7 | `` dentro
+    plantaban un evento en el rastro de otra organización. ``¦`` (U+00A6) se
+    lee igual y no separa nada.
+    """
+    return valor.replace("|", "¦")
+
+
+def componer_detalle(
+    event_type: str, outcome: str, ip: str | None, resource: str | None, detail_str: str
+) -> str:
+    """``detail`` persistido: cabecera ``event | outcome | [ip |] [resource |]`` y payload.
+
+    Los valores de cabecera salen sin ``|`` y un payload que empiece como una
+    cabecera se marca con ``detail=``, de modo que la cabecera es inequívoca:
+    el filtro por organización (``db.repositories.audit``) solo mira ahí.
+    """
+    parts: list[str] = [f"event={_sin_separador(event_type)}", f"outcome={_sin_separador(outcome)}"]
+    if ip:
+        parts.append(f"ip={_sin_separador(ip)}")
+    if resource:
+        parts.append(f"resource={_sin_separador(resource)}")
+    if detail_str:
+        parts.append(
+            f"detail={detail_str}" if detail_str.startswith(_CLAVES_CABECERA) else detail_str
+        )
+    return " | ".join(parts)
+
 
 def log_event(
     *,
@@ -286,20 +370,11 @@ def log_event(
     else:
         detail_str = str(detail)[:2000]
 
-    parts: list[str] = [f"event={event_type}", f"outcome={outcome}"]
-    if ip:
-        parts.append(f"ip={ip}")
-    if resource:
-        parts.append(f"resource={resource}")
-    if detail_str:
-        parts.append(detail_str)
-    structured_detail = " | ".join(parts)
-
     log_action(
         user_key=user_key or "system",
         session_hash=session_hash or "-",
         action=event_type,
-        detail=structured_detail,
+        detail=componer_detalle(event_type, outcome, ip, resource, detail_str),
         user_id=user_id,
     )
 
@@ -359,6 +434,16 @@ def list_recent(
 def verify_hash_chain() -> dict[str, object]:
     """Verifica la integridad del audit log recalculando el hash chain.
 
+    Todo se lee dentro de **una** transacción ``REPEATABLE READ``: las filas, el
+    recuento, la cabecera firmada y el ancla de purga salen de un mismo
+    snapshot, así que una escritura intercalada ya no da un falso
+    «manipulación». Las filas se paginan por ``id`` (``_VERIFY_BATCH``) en vez
+    de traer la tabla entera a memoria.
+
+    Tras una purga de retención la cadena no arranca en ``genesis`` sino en el
+    ancla firmada (``_PURGE_CHAIN_NAME``), y la cardinalidad firmada es
+    ``filas vivas + filas purgadas``.
+
     Returns:
         dict con ``valid`` (bool), ``checked`` (int filas), ``first_tampered_id``
         (int o None) y ``error`` (str o None).
@@ -369,97 +454,104 @@ def verify_hash_chain() -> dict[str, object]:
 
     try:
         with connect_read() as c:
-            cols_info = _get_cols(c, "audit_log")
-            if "prev_hash" not in cols_info or "this_hash" not in cols_info:
-                return {
-                    "valid": None,
-                    "checked": 0,
-                    "first_tampered_id": None,
-                    "error": "Hash chain no disponible (migración 26 pendiente)",
-                }
-
-            has_hash_version = "hash_version" in cols_info
-            has_chain_state = bool(_get_cols(c, "audit_chain_state"))
-            version_column = ", hash_version" if has_hash_version else ""
-            rows = c.execute(
-                "SELECT id, user_key, session_hash, action, detail, created_at, prev_hash, this_hash"
-                + version_column
-                + " FROM audit_log ORDER BY id ASC"
-            ).fetchall()
-            total_row = c.execute("SELECT COUNT(*) FROM audit_log").fetchone()
-            state_row = None
-            if has_chain_state:
-                state_row = c.execute(
-                    "SELECT head_hash, entry_count, state_hmac FROM audit_chain_state "
-                    "WHERE chain_name = %s",
-                    (_CHAIN_NAME,),
-                ).fetchone()
-
-        if not rows:
-            if state_row is not None:
-                state_head, state_count, state_signature = (
-                    str(state_row[0]),
-                    int(state_row[1]),
-                    str(state_row[2]),
-                )
-                if (
-                    not hmac.compare_digest(state_signature, _state_hmac(state_head, state_count))
-                    or state_head != "genesis"
-                    or state_count != 0
-                ):
+            c.execute("BEGIN ISOLATION LEVEL REPEATABLE READ")
+            try:
+                cols_info = _get_cols(c, "audit_log")
+                if "prev_hash" not in cols_info or "this_hash" not in cols_info:
                     return {
-                        "valid": False,
+                        "valid": None,
                         "checked": 0,
                         "first_tampered_id": None,
-                        "error": "La cabecera anclada no coincide con audit_log",
+                        "error": "Hash chain no disponible (migración 26 pendiente)",
                     }
-            return {"valid": True, "checked": 0, "first_tampered_id": None, "error": None}
 
-        expected_prev = "genesis"
-        checked = 0
-        for row in rows:
-            row_id, u_key, s_hash, action, detail, created_at, prev_hash, stored_hash = row[:8]
-            hash_version = row[8] if has_hash_version else None
-            if stored_hash is None:
-                continue  # Filas anteriores a migración 26 — skip
+                has_hash_version = "hash_version" in cols_info
+                has_chain_state = bool(_get_cols(c, "audit_chain_state"))
+                version_column = ", hash_version" if has_hash_version else ""
+                state_row = None
+                expected_prev, purged_count = "genesis", 0
+                if has_chain_state:
+                    state_row = c.execute(
+                        "SELECT head_hash, entry_count, state_hmac FROM audit_chain_state "
+                        "WHERE chain_name = %s",
+                        (_CHAIN_NAME,),
+                    ).fetchone()
+                    try:
+                        expected_prev, purged_count = _read_purge_anchor(c)
+                    except RuntimeError:
+                        return {
+                            "valid": False,
+                            "checked": 0,
+                            "first_tampered_id": None,
+                            "error": "Firma del ancla de purga de la cadena no coincide",
+                        }
+                total_row = c.execute("SELECT COUNT(*) FROM audit_log").fetchone()
+                total_count = int(total_row[0]) if total_row else 0
 
-            actual_prev = str(prev_hash or "genesis")
-            if actual_prev != expected_prev:
-                return {
-                    "valid": False,
-                    "checked": checked,
-                    "first_tampered_id": row_id,
-                    "error": f"Cadena interrumpida en fila id={row_id}",
-                }
+                checked = 0
+                last_id = 0
+                while True:
+                    rows = c.execute(
+                        "SELECT id, user_key, session_hash, action, detail, created_at, "
+                        "prev_hash, this_hash" + version_column + " FROM audit_log "
+                        "WHERE id > %s ORDER BY id ASC LIMIT %s",
+                        (last_id, _VERIFY_BATCH),
+                    ).fetchall()
+                    if not rows:
+                        break
+                    last_id = int(rows[-1][0])
+                    for row in rows:
+                        row_id, u_key, s_hash, action, detail, created_at, prev_hash, stored = row[
+                            :8
+                        ]
+                        hash_version = row[8] if has_hash_version else None
+                        if stored is None:
+                            continue  # Filas anteriores a migración 26 — skip
 
-            row_json = json.dumps(
-                {
-                    "user_key": u_key or "",
-                    "session_hash": s_hash or "",
-                    "action": action or "",
-                    "detail": detail or "",
-                    "created_at": created_at or "",
-                },
-                ensure_ascii=False,
-                sort_keys=True,
-            )
-            chain_data = f"{actual_prev}{row_json}"
-            if hash_version == "hmac-sha256-v1":
-                expected = _audit_hmac(chain_data)
-            else:
-                import hashlib
+                        actual_prev = str(prev_hash or "genesis")
+                        if actual_prev != expected_prev:
+                            return {
+                                "valid": False,
+                                "checked": checked,
+                                "first_tampered_id": row_id,
+                                "error": f"Cadena interrumpida en fila id={row_id}",
+                            }
 
-                expected = hashlib.sha256(chain_data.encode()).hexdigest()
+                        row_json = json.dumps(
+                            {
+                                "user_key": u_key or "",
+                                "session_hash": s_hash or "",
+                                "action": action or "",
+                                "detail": detail or "",
+                                "created_at": created_at or "",
+                            },
+                            ensure_ascii=False,
+                            sort_keys=True,
+                        )
+                        chain_data = f"{actual_prev}{row_json}"
+                        if hash_version == "hmac-sha256-v1":
+                            expected = _audit_hmac(chain_data)
+                        else:
+                            import hashlib
 
-            if expected != stored_hash:
-                return {
-                    "valid": False,
-                    "checked": row_id,
-                    "first_tampered_id": row_id,
-                    "error": f"Hash no coincide en fila id={row_id}",
-                }
-            expected_prev = str(stored_hash)
-            checked += 1
+                            expected = hashlib.sha256(chain_data.encode()).hexdigest()
+
+                        if expected != stored:
+                            return {
+                                "valid": False,
+                                "checked": row_id,
+                                "first_tampered_id": row_id,
+                                "error": f"Hash no coincide en fila id={row_id}",
+                            }
+                        expected_prev = str(stored)
+                        checked += 1
+            finally:
+                try:
+                    c.rollback()
+                except Exception:
+                    # Sin ROLLBACK la conexión vuelve al pool con la transacción
+                    # abierta; el pool la revierte (y avisa) o la descarta.
+                    log.debug("audit_verify_rollback_failed", exc_info=True)
 
         if state_row is not None:
             state_head, state_count, state_signature = (
@@ -474,8 +566,9 @@ def verify_hash_chain() -> dict[str, object]:
                     "first_tampered_id": None,
                     "error": "Firma del estado de la cadena de auditoría no coincide",
                 }
-            total_count = int(total_row[0]) if total_row else 0
-            if state_head != expected_prev or state_count != total_count:
+            # Sin filas ``expected_prev`` es la raíz («genesis» o el ancla de purga),
+            # que la cabecera solo iguala si la tabla estaba vacía de verdad.
+            if state_head != expected_prev or state_count != total_count + purged_count:
                 return {
                     "valid": False,
                     "checked": checked,
@@ -491,3 +584,93 @@ def verify_hash_chain() -> dict[str, object]:
         # leerla, que es justo la diferencia que importa en una auditoría.
         log.warning("audit_hash_chain_verify_failed", exc_info=True)
         return {"valid": None, "checked": 0, "first_tampered_id": None, "error": str(exc)}
+
+
+def purgar_extremo_antiguo(cutoff: str, *, apply: bool) -> int:
+    """Purga las filas de ``audit_log`` anteriores a ``cutoff`` sin romper la cadena.
+
+    Un ``DELETE ... WHERE created_at < cutoff`` a secas dejaba la verificación en
+    ``valid=false`` para siempre: la cadena ya no arrancaba en ``genesis`` y la
+    cardinalidad firmada ya no cuadraba con ``COUNT(*)``. Aquí se borra solo el
+    **prefijo** por ``id`` (nunca el medio, y siempre se conserva la última fila,
+    de la que cuelga la cabecera firmada) y, en la misma transacción, se firma un
+    ancla (``_PURGE_CHAIN_NAME``): el ``this_hash`` de la última fila borrada y
+    cuántas filas se han purgado. ``verify_hash_chain`` arranca desde ella.
+
+    Se niega (``RuntimeError``) a purgar si la cadena no es continua en la
+    frontera o si la cabecera firmada no cuadra con la cola: reanclar encima de
+    una rotura la blanquearía. El total purgado se calcula contra la cabecera
+    firmada (``total histórico - filas vivas``), así que también cura una BD
+    cuyas filas viejas ya se borraron con el ``DELETE`` anterior.
+
+    Con la cadena sin migrar (sin ``prev_hash``/``this_hash`` o sin
+    ``audit_chain_state``) es el borrado por fecha de siempre.
+
+    Returns:
+        Filas que se borran (``apply=True``) o se borrarían (dry-run).
+    """
+    with connect() as c:
+        cols_info = _get_cols(c, "audit_log")
+        if not ({"prev_hash", "this_hash"} <= cols_info and _get_cols(c, "audit_chain_state")):
+            plain = c.execute(
+                "SELECT COUNT(*) FROM audit_log WHERE created_at < %s", (cutoff,)
+            ).fetchone()
+            if apply and plain and plain[0]:
+                c.execute("DELETE FROM audit_log WHERE created_at < %s", (cutoff,))
+            return int(plain[0]) if plain else 0
+
+        anchor_hash, already_purged = _read_purge_anchor(c, for_update=apply)
+        newer = c.execute(
+            "SELECT MIN(id) FROM audit_log WHERE created_at >= %s", (cutoff,)
+        ).fetchone()
+        if newer and newer[0] is not None:
+            cut_id = int(newer[0])
+        else:  # todo es anterior al plazo: se conserva la cola
+            tail = c.execute("SELECT MAX(id) FROM audit_log").fetchone()
+            cut_id = int(tail[0]) if tail and tail[0] is not None else 0
+        count_row = c.execute("SELECT COUNT(*) FROM audit_log WHERE id < %s", (cut_id,)).fetchone()
+        count = int(count_row[0]) if count_row else 0
+        if not apply or count == 0:
+            return count
+
+        last_deleted = c.execute(
+            "SELECT this_hash FROM audit_log WHERE id < %s AND this_hash IS NOT NULL "
+            "ORDER BY id DESC LIMIT 1",
+            (cut_id,),
+        ).fetchone()
+        new_anchor = str(last_deleted[0]) if last_deleted else anchor_hash
+        survivor = c.execute(
+            "SELECT prev_hash FROM audit_log WHERE id >= %s AND this_hash IS NOT NULL "
+            "ORDER BY id ASC LIMIT 1",
+            (cut_id,),
+        ).fetchone()
+        if survivor is None or str(survivor[0] or "genesis") != new_anchor:
+            raise RuntimeError("audit chain is not continuous at the purge boundary")
+
+        c.execute("DELETE FROM audit_log WHERE id < %s", (cut_id,))
+        # Bajo el mismo candado que los escritores: la cabecera y el recuento
+        # tienen que ser del mismo instante. El candado cae con el commit, justo
+        # después (esta conexión es solo de la purga del audit_log).
+        _serialize_audit_chain_write(c)
+        _head, total_ever, state_exists = _assert_or_bootstrap_chain_state(c)
+        live_row = c.execute("SELECT COUNT(*) FROM audit_log").fetchone()
+        # Sin cabecera firmada no hay total histórico contra el que calcular.
+        purged_total = (
+            total_ever - (int(live_row[0]) if live_row else 0)
+            if state_exists
+            else already_purged + count
+        )
+        c.execute(
+            "INSERT INTO audit_chain_state (chain_name, head_hash, entry_count, state_hmac, "
+            "updated_at) VALUES (%s, %s, %s, %s, %s) ON CONFLICT (chain_name) DO UPDATE SET "
+            "head_hash = EXCLUDED.head_hash, entry_count = EXCLUDED.entry_count, "
+            "state_hmac = EXCLUDED.state_hmac, updated_at = EXCLUDED.updated_at",
+            (
+                _PURGE_CHAIN_NAME,
+                new_anchor,
+                purged_total,
+                _purge_hmac(new_anchor, purged_total),
+                now_utc_iso(),
+            ),
+        )
+        return count

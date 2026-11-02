@@ -44,7 +44,15 @@ del modelo activo. Dos problemas:
    más barato que servir un pickle que hace lo mismo.
 
 Además se exige ``metrics_reliable``: con un test de diez filas, un f1 a cuatro
-decimales no es una medición y no puede decidir una promoción.
+decimales no es una medición y no puede decidir una promoción. Lo mismo vale
+para el golden: por debajo de ``services.ml_eval.MIN_HOLDOUT_EXAMPLES`` ejemplos
+en el holdout el gate rechaza.
+
+La comparación con el modelo activo **no se salta en silencio**: el artefacto
+activo se resuelve por el registro (``_golden_del_activo``: almacén de objetos o
+Release, con su sha256) y, si hay versión activa y no se puede medir, el
+candidato se rechaza (``activo_no_evaluable``). Mirar el ``path`` registrado
+—el de un runner efímero— hacía que en CI la comparación no corriera nunca.
 
 Los modelos predictivos (S6.4)
 ------------------------------
@@ -154,6 +162,33 @@ def evaluar_en_golden(clf: _ClasificadorEvaluable) -> GoldenEvalResult | None:
     return resultado
 
 
+def _golden_del_activo(name: str) -> tuple[GoldenEvalResult | None, str | None]:
+    """Golden del modelo activo de ``name``, o el motivo por el que no se pudo medir.
+
+    El ``path`` de ``model_versions`` es el del runner efímero que entrenó la
+    versión: mirar ``Path(path).exists()`` —como hacía el gate— da siempre
+    «no existe» en CI, y la comparación con lo que se sirve nunca corría, sin
+    una línea de log. ``resolve_active_artifact`` lo materializa desde el
+    almacén de objetos o la Release y verifica su sha256 contra el registro.
+
+    ``(None, None)`` es «no hay golden utilizable» (``evaluar_gate`` ya lo
+    rechaza por ``sin_golden_set``); ``(None, motivo)`` es un activo que no se
+    pudo resolver o cargar, y rechaza al candidato.
+    """
+    try:
+        from services.ml.model_artifacts import resolve_active_artifact
+        from services.ml.sap_classifier import SAPClassifier
+
+        ruta = resolve_active_artifact(name)
+        if ruta is None:
+            log.warning("promotion.activo_irresoluble", name=name)
+            return None, "el artefacto de la versión activa no se pudo resolver"
+        return evaluar_en_golden(SAPClassifier.load(ruta)), None
+    except Exception as exc:
+        log.warning("promotion.golden_activo_no_evaluable", name=name, error=str(exc))
+        return None, f"no se pudo evaluar la versión activa ({type(exc).__name__})"
+
+
 def _motivos_regresion(
     nuevas: dict[str, Any],
     previas: dict[str, Any],
@@ -187,13 +222,24 @@ def evaluar_gate(
     metricas_activas: dict[str, Any] | None,
     golden: GoldenEvalResult | None,
     golden_activo: GoldenEvalResult | None = None,
+    activo_no_evaluable: str | None = None,
 ) -> list[str]:
     """Devuelve la lista de motivos por los que NO se debe promocionar.
 
     Lista vacía = el candidato pasa. Es una función pura: se puede testear sin
     BD ni artefactos.
+
+    ``activo_no_evaluable`` es el motivo por el que hay una versión activa pero
+    no se pudo medir su golden (artefacto irresoluble, fallo al cargarlo). Rechaza:
+    un candidato que no se puede comparar con lo que se sirve no pasa por
+    defecto, que es lo que hacía el gate cuando la comparación se saltaba en
+    silencio.
     """
+    from services.ml_eval import MIN_HOLDOUT_EXAMPLES
+
     motivos: list[str] = []
+    if activo_no_evaluable:
+        motivos.append(f"activo_no_evaluable: {activo_no_evaluable}")
 
     if not metrics.get("metrics_reliable", False):
         motivos.append(
@@ -207,6 +253,13 @@ def evaluar_gate(
     if golden is None:
         motivos.append("sin_golden_set: no se puede medir el valor sobre las keywords")
     else:
+        # Con un holdout de pocas decenas, una diferencia de un ejemplo mueve el
+        # recall varios puntos: el gate decidiría con ruido. Es el mismo mínimo
+        # que ya exige la señal del clasificador (`senal_clasificador`).
+        if golden.n < MIN_HOLDOUT_EXAMPLES:
+            motivos.append(
+                f"golden_holdout_insuficiente: {golden.n} ejemplos < {MIN_HOLDOUT_EXAMPLES}"
+            )
         if golden.n_no_keyword_positive == 0:
             motivos.append(
                 "golden_sin_zona_de_desacuerdo: no hay positivos humanos sin keyword "
@@ -426,21 +479,16 @@ def promote_if_better(
     golden_dict = golden.as_dict() if golden is not None else {}
 
     golden_activo: GoldenEvalResult | None = None
+    activo_no_evaluable: str | None = None
     if activa:
-        try:
-            from services.ml.sap_classifier import SAPClassifier
-
-            ruta_activa = Path(str(activa.get("path") or ""))
-            if ruta_activa.exists():
-                golden_activo = evaluar_en_golden(SAPClassifier.load(ruta_activa))
-        except Exception as exc:  # pragma: no cover — comparativa best-effort
-            log.warning("promotion.golden_activo_no_evaluable", error=str(exc))
+        golden_activo, activo_no_evaluable = _golden_del_activo(name)
 
     motivos = evaluar_gate(
         metrics,
         metricas_activas=(activa or {}).get("metrics") if activa else None,
         golden=golden,
         golden_activo=golden_activo,
+        activo_no_evaluable=activo_no_evaluable,
     )
     pasa_el_gate = not motivos
 

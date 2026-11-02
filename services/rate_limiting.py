@@ -50,12 +50,32 @@ consumidores async (``api/routes/security.py``, ``api/routes/auth.py``) con
 
 from __future__ import annotations
 
+import ipaddress
 import os
 from typing import Protocol
 
 from observability.logging import get_logger
 
 log = get_logger(__name__)
+
+
+def ip_de_cuota(ip: str) -> str:
+    """La IP con la que se cuenta una cuota: una IPv6 se agrupa por su /64.
+
+    Un cliente con un prefijo IPv6 elige entre 2^64 direcciones, y cada una
+    estrenaría cuota y lockout. Una IPv4 (también la ``::ffff:a.b.c.d`` que la
+    representa) y lo que no sea una IP (``unknown``) salen tal cual.
+    """
+    try:
+        direccion = ipaddress.ip_address(ip)
+    except ValueError:
+        return ip
+    if isinstance(direccion, ipaddress.IPv4Address):
+        return str(direccion)
+    if direccion.ipv4_mapped is not None:
+        return str(direccion.ipv4_mapped)
+    prefijo = ipaddress.IPv6Address((int(direccion) >> 64) << 64)
+    return f"{prefijo}/64"
 
 
 # ── Protocolo ────────────────────────────────────────────────────────────────
@@ -174,5 +194,6 @@ __all__ = [
     "RedisRateLimiter",
     "SqliteRateLimiter",
     "get_rate_limiter",
+    "ip_de_cuota",
     "reset_rate_limiter",
 ]

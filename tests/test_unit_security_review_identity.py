@@ -279,7 +279,9 @@ def _stub_admin_deactivate(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[An
     monkeypatch.setattr(admin_users, "get_user_by_id", lambda uid, **kwargs: {"id": uid})
     monkeypatch.setattr(admin_users, "deactivate_user", calls["deactivate"].append)
     monkeypatch.setattr(admin_users, "reactivate_user", calls["reactivate"].append)
-    monkeypatch.setattr(admin_users, "anonymize_user", calls["anonymize"].append)
+    monkeypatch.setattr(
+        admin_users, "anonymize_account", lambda uid, email: calls["anonymize"].append(uid)
+    )
     monkeypatch.setattr(
         admin_users,
         "revoke_all_sessions",

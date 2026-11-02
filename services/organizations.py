@@ -14,7 +14,7 @@ from urllib.parse import quote
 from pydantic import ValidationError
 
 from db.repositories.organizations import OrganizationRepository
-from db.users import get_active_user_by_email_ci, get_user_by_id
+from db.users import get_active_user_by_email_ci
 from observability.logging import get_logger
 from services.email_html import CERRAR_DOCUMENTO, ESTILO_ENLACE, abrir_documento
 from shared.dto import (
@@ -36,6 +36,14 @@ _repo = OrganizationRepository()
 #: aguanta un fin de semana largo sin obligar a reenviar.
 INVITATION_TTL_DAYS = 7
 
+#: Topes por persona. Sin ellos, cualquier cuenta autenticada podía crear
+#: organizaciones sin fin y mandar correo masivo desde el único remitente del
+#: producto (invitaciones con texto propio, a direcciones ajenas).
+#: shortcut: topes fijos en código; pasarlos a settings si un cliente legítimo
+#: los alcanza.
+MAX_ORGANIZACIONES_CREADAS = 10
+MAX_INVITACIONES_POR_DIA = 100
+
 
 log = get_logger(__name__)
 
@@ -54,6 +62,10 @@ class OrganizationMemberNotFoundError(LookupError):
 
 class OrganizationInvitationNotFoundError(LookupError):
     """El token no corresponde a ninguna invitación viva: usado, caducado o falso."""
+
+
+class OrganizationQuotaError(ValueError):
+    """La persona ha alcanzado el tope de organizaciones o de invitaciones."""
 
 
 def resolve_organization(
@@ -144,6 +156,10 @@ def list_organizations(user_id: int) -> list[OrganizationSummary]:
 
 
 def create_organization(user_id: int, name: str) -> OrganizationSummary:
+    if _repo.contar_organizaciones_creadas(user_id) >= MAX_ORGANIZACIONES_CREADAS:
+        raise OrganizationQuotaError(
+            f"Has alcanzado el máximo de {MAX_ORGANIZACIONES_CREADAS} organizaciones creadas."
+        )
     return OrganizationSummary.model_validate(_repo.create_organization(name.strip(), user_id))
 
 
@@ -185,12 +201,25 @@ def upsert_membership(
         raise OrganizationPermissionError("Solo owner o admin puede gestionar miembros.")
     if body.role == "owner" and role != "owner":
         raise OrganizationPermissionError("Solo un owner puede asignar otro owner.")
-    # Sin esta comprobación, un ``user_id`` que no existe llegaba al INSERT y
-    # salía como ``ForeignKeyViolation`` (500); el fuzzing de contrato lo
-    # encontró. Se mira con ``include_deactivated`` para no cambiar qué cuentas
-    # se pueden gestionar: solo se rechaza la que no existe.
-    if get_user_by_id(body.user_id, include_deactivated=True) is None:
-        raise OrganizationMemberNotFoundError("No existe ninguna cuenta con ese user_id.")
+    # Solo cambia a quien ya tiene una fila de membresía en ESTA organización
+    # (activa, invitada, suspendida o retirada). Antes añadía a cualquier
+    # ``user_id``, y la respuesta traía su correo y su nombre: con ids
+    # secuenciales, una enumeración de todas las cuentas. Alta de una persona
+    # nueva: por correo (``POST /members``). Cubre además el ``user_id`` que no
+    # existe (el fuzzing de contrato lo encontró: llegaba al INSERT como
+    # ``ForeignKeyViolation``, 500), con la misma respuesta que una cuenta ajena.
+    rol_actual = _repo.get_membership_role(organization_id, body.user_id)
+    if rol_actual is None:
+        raise OrganizationMemberNotFoundError(
+            "Esa persona no tiene membresía en esta organización. Añádela por correo."
+        )
+    # La matriz de /equipo reserva el cambio de rol a quien posee la
+    # organización: un admin no asciende a nadie a admin ni degrada, retira o
+    # reactiva a otro admin (repetir el rol que ya tiene no cambia nada).
+    if rol_actual != "admin":
+        _solo_owner_asigna_admin(role, body.role)
+    if role != "owner" and rol_actual == "admin" and body.user_id != user_id:
+        raise OrganizationPermissionError("Solo un owner puede cambiar a otro admin.")
     _guard_owner_row(organization_id, body.user_id)
     row = _repo.add_membership(
         organization_id,
@@ -200,6 +229,12 @@ def upsert_membership(
         status=body.status,
     )
     return OrganizationMembershipOut.model_validate(row)
+
+
+def _solo_owner_asigna_admin(acting_role: str, role: str) -> None:
+    """Dar el rol ``admin`` es cambiar el rol de otro: solo lo hace un owner."""
+    if role == "admin" and acting_role != "owner":
+        raise OrganizationPermissionError("Solo un owner puede asignar el rol admin.")
 
 
 def add_member_by_email(
@@ -213,11 +248,17 @@ def add_member_by_email(
     Solo admite ``admin``, ``member`` o ``viewer`` (ver
     :class:`shared.dto.OrganizationMemberInvite`): asignar ``owner`` por este
     camino queda fuera de alcance a propósito.
+
+    Una cuenta **sin verificar** cuenta como inexistente: su contraseña pudo
+    fijarla un tercero en el alta cerrada, y la membresía activa se la
+    quedaría quien la fijó. Esa persona pasa por la invitación, que se canjea
+    al demostrar el buzón.
     """
     _, acting_role = resolve_organization(user_id, organization_id)
     if acting_role not in {"owner", "admin"}:
         raise OrganizationPermissionError("Solo owner o admin puede gestionar miembros.")
-    target = get_active_user_by_email_ci(email)
+    _solo_owner_asigna_admin(acting_role, role)
+    target = get_active_user_by_email_ci(email, solo_verificadas=True)
     if target is None:
         raise OrganizationMemberNotFoundError(
             "No existe una cuenta activa con ese correo. La persona debe registrarse primero."
@@ -320,11 +361,12 @@ def _to_invitation_dto(row: dict[str, Any]) -> OrganizationInvitationOut:
     )
 
 
-def _require_manager(user_id: int, organization_id: int) -> None:
-    """Solo owner o admin gestionan invitaciones; un ``member`` recibe 403."""
+def _require_manager(user_id: int, organization_id: int) -> str:
+    """Solo owner o admin gestionan invitaciones; un ``member`` recibe 403. Devuelve el rol."""
     _, role = resolve_organization(user_id, organization_id)
     if role not in {"owner", "admin"}:
         raise OrganizationPermissionError("Solo owner o admin puede gestionar miembros.")
+    return role
 
 
 def _send_invitation_email(email: str, organization_name: str, token: str) -> bool:
@@ -404,12 +446,18 @@ def create_invitation(
     role: str,
 ) -> OrganizationInvitationOut:
     """Crea (o renueva) la invitación pendiente de un correo sin cuenta."""
-    _require_manager(user_id, organization_id)
+    acting_role = _require_manager(user_id, organization_id)
     if role not in {"admin", "member", "viewer"}:
         raise ValueError("Rol de invitación no admitido.")
+    _solo_owner_asigna_admin(acting_role, role)
     organization = _repo.get_for_user(organization_id, user_id)
     if organization is None:
         raise OrganizationAccessError("No perteneces a esta organización.")
+    ayer = datetime.now(UTC) - timedelta(days=1)
+    if _repo.contar_invitaciones_desde(user_id, ayer) >= MAX_INVITACIONES_POR_DIA:
+        raise OrganizationQuotaError(
+            f"Has alcanzado el máximo de {MAX_INVITACIONES_POR_DIA} invitaciones al día."
+        )
 
     token, token_hash = _issue_invitation_token()
     row = _repo.create_invitation(
@@ -688,6 +736,12 @@ def transferir_propiedad(
     if not _repo.traspasar_propiedad(
         organization_id, de_user_id=actor_user_id, a_user_id=nuevo_owner_user_id
     ):
+        # `False` también es «dejaste de ser owner entre la comprobación de
+        # arriba y la transacción» (otro traspaso en paralelo): ese caso es un
+        # 403, no un destinatario que falta.
+        ahora = _repo.get_active_membership(organization_id, actor_user_id)
+        if ahora is None or str(ahora["role"]) != "owner":
+            raise OrganizationPermissionError("Solo el propietario puede traspasar la propiedad.")
         raise OrganizationMemberNotFoundError(
             "Esa persona no es miembro activo de esta organización. Invítalo primero."
         )

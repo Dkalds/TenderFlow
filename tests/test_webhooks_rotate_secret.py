@@ -204,12 +204,19 @@ def test_la_rotacion_queda_en_auditoria(client, api_db):
 @patch("db.webhooks.pinned_https_request")
 def test_tras_rotar_las_entregas_salen_firmadas_con_el_nuevo(mock_post, client, api_db):
     import db.webhooks as wh
+    from db.database import connect
 
     user_id, org_id = _usuario("rotar-firma@example.test")
     _como(user_id)
     creado = _crear(client, organization_id=org_id, event_types=["*"])
     anterior = creado["secret"]
     nuevo = client.post(f"/api/v1/webhooks/{creado['id']}/rotate-secret").json()["secret"]
+
+    # ``trigger_event`` es el reparto legado de la watchlist de instancia y solo
+    # sirve a los webhooks globales (``organization_id IS NULL``): el de una
+    # organización recibe sus eventos por el outbox.
+    with connect() as c:
+        c.execute("UPDATE webhooks SET organization_id = NULL WHERE id = %s", (creado["id"],))
 
     mock_post.return_value = MagicMock(status_code=200)
     assert wh.trigger_event("watchlist_match", {"id": 1}) == 1

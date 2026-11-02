@@ -62,7 +62,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from api.concurrency import run_db
@@ -97,6 +97,47 @@ _LOTE_TTL_SECONDS = _POLL_INTERVAL
 # Consultas distintas que el watcher recuerda a la vez. Cada una es un
 # `desde` + `batch` distinto; con clientes normales hay una o dos por señal.
 _MAX_LOTES = 64
+# Cupo de conexiones abiertas. Cada stream dura hasta 5 min y uvicorn corta con
+# 503 a todo el mundo, la sonda de salud incluida, al llegar a su
+# `--limit-concurrency` (200): sin tope por cuenta ni global, una sola cuenta
+# bastaba para agotarlo reabriendo streams. Con 50 en total quedan 150 para el
+# resto; con 2 por cuenta, una pestaña y su reconexión.
+_MAX_STREAMS_POR_USUARIO = 2
+_MAX_STREAMS_GLOBAL = 50
+# Cada cupo caduca solo, por si un stream no llega a arrancar y su `finally` no
+# corre: sin esto ese hueco se perdería hasta el siguiente reinicio.
+_CUPO_VIDA_SECONDS = _MAX_DURATION_SECONDS + 60
+
+#: Cupos vivos: `(cuenta, vence_en_time.monotonic)`. Solo se toca desde el event
+#: loop, sin cerrojo; son como mucho `_MAX_STREAMS_GLOBAL` elementos.
+_cupos: list[tuple[str, float]] = []
+
+
+def _tomar_cupo(cuenta: str) -> tuple[str, float] | None:
+    """Reserva un hueco de stream para ``cuenta``; ``None`` si se pasa del tope."""
+    ahora = time.monotonic()
+    _cupos[:] = [c for c in _cupos if c[1] > ahora]
+    if len(_cupos) >= _MAX_STREAMS_GLOBAL:
+        return None
+    if sum(1 for c in _cupos if c[0] == cuenta) >= _MAX_STREAMS_POR_USUARIO:
+        return None
+    cupo = (cuenta, ahora + _CUPO_VIDA_SECONDS)
+    _cupos.append(cupo)
+    return cupo
+
+
+def _soltar_cupo(cupo: tuple[str, float]) -> None:
+    if cupo in _cupos:
+        _cupos.remove(cupo)
+
+
+async def _con_cupo(cupo: tuple[str, float], eventos: AsyncGenerator[str]) -> AsyncGenerator[str]:
+    """Reenvía ``eventos`` y devuelve el cupo al terminar, también si el cliente se va."""
+    try:
+        async for evento in eventos:
+            yield evento
+    finally:
+        _soltar_cupo(cupo)
 
 
 def _sse_event(event: str, data: Any) -> str:
@@ -397,6 +438,14 @@ async def licitaciones_stream(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> StreamingResponse:
     """Endpoint SSE para notificaciones push de nuevas licitaciones."""
+    cupo = _tomar_cupo(str(ctx.get("user_id")))
+    if cupo is None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Demasiados streams abiertos. Cierra alguno e inténtalo de nuevo.",
+            headers={"Retry-After": str(int(_HEARTBEAT_INTERVAL))},
+        )
+
     # Soporte para reconexión: Last-Event-ID contiene el timestamp del último evento
     last_event_id_header = request.headers.get("Last-Event-ID", "")
     last_event_ts = _parse_last_event_id(last_event_id_header)
@@ -417,7 +466,7 @@ async def licitaciones_stream(
     )
 
     respuesta = StreamingResponse(
-        _event_generator(request, last_event_ts, batch_size),
+        _con_cupo(cupo, _event_generator(request, last_event_ts, batch_size)),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

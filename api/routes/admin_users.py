@@ -14,7 +14,6 @@ from api.routes.dual_auth import require_admin
 from db.audit import log_event
 from db.sessions import revoke_all_sessions
 from db.users import (
-    anonymize_user,
     deactivate_user,
     get_user_by_id,
     list_users,
@@ -22,7 +21,7 @@ from db.users import (
     set_admin,
 )
 from observability.logging import get_logger
-from services.gdpr import revoke_all_api_keys_for_user
+from services.gdpr import anonymize_account, revoke_all_api_keys_for_user
 from shared.audit_events import (
     USER_ADMIN_CHANGED,
     USER_ANONYMIZE,
@@ -169,7 +168,10 @@ def admin_deactivate_user(
     elif body.action == "reactivate":
         reactivate_user(user_id)
     elif body.action == "anonymize":
-        anonymize_user(user_id)
+        # La cadena completa del derecho al olvido (la de `DELETE /me`), no solo
+        # `users` y `access_log`: watchlist, reglas, perfil, vistas, alertas,
+        # seguimientos, membresías, invitaciones, TOTP y contraseña.
+        anonymize_account(user_id, target.get("email"))
     else:
         raise HTTPException(
             status_code=400, detail="Invalid action. Use: deactivate|reactivate|anonymize."

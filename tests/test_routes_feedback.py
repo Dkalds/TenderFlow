@@ -4,32 +4,43 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+
+@pytest.fixture()
+def auth_admin(api_db):
+    """Clave de scope estrecho cuyo dueño es admin: lo que exige `POST /feedback`."""
+    from tests.claves import clave_de_prueba, dueno_de_prueba
+
+    dueno = dueno_de_prueba("feedback-admin", admin=True)
+    return {"X-API-Key": clave_de_prueba("feedback-admin", scopes="feedback:write", user_id=dueno)}
+
 
 class TestFeedbackEndpoints:
     """Cover feedback.py uncovered lines."""
 
     @patch("api.routes.feedback.log_event")
     @patch("api.routes.feedback._repo")
-    def test_submit_feedback_db_error(self, mock_repo, mock_log, client, auth):
+    def test_submit_feedback_db_error(self, mock_repo, mock_log, client, auth_admin):
         mock_repo.exists_idempotency = MagicMock(return_value=None)
         mock_repo.insert = MagicMock(side_effect=RuntimeError("db error"))
         resp = client.post(
             "/api/v1/feedback",
             json={"expediente": "EXP/001", "relevante": True, "nota": "test"},
-            headers=auth,
+            headers=auth_admin,
         )
         assert resp.status_code == 500
 
     @patch("api.routes.feedback.log_event")
     @patch("api.routes.feedback._repo")
-    def test_submit_feedback_success(self, mock_repo, mock_log, client, auth):
+    def test_submit_feedback_success(self, mock_repo, mock_log, client, auth_admin):
         mock_repo.exists_idempotency = MagicMock(return_value=None)
         mock_repo.insert = MagicMock(return_value="2024-01-01T00:00:00Z")
         mock_repo.store_idempotency = MagicMock()
         resp = client.post(
             "/api/v1/feedback",
             json={"expediente": "EXP/001", "relevante": True, "nota": ""},
-            headers=auth,
+            headers=auth_admin,
         )
         assert resp.status_code == 201
         assert resp.json()["status"] == "ok"

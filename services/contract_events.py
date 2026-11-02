@@ -157,6 +157,10 @@ def _emitir_cambio_seguido(
        que no sigue nadie y descartarlas por los campos es más barato.
     3. El evento va en la transacción del cursor (``conn``): si la pasada se
        revierte, el aviso se va con ella. Es el outbox, no un efecto lateral.
+
+    Se escribe **un evento por organización**, con ``organization_id`` y solo
+    los seguidores de esa organización: el webhook de una organización no
+    puede enterarse de quién sigue qué en las demás.
     """
     valores: dict[str, dict[str, Any]] = {}
     for campo in changed:
@@ -215,24 +219,30 @@ def _emitir_cambio_seguido(
     from services.avisos import clasificar_cambio
 
     aviso = clasificar_cambio(antes, despues, sorted(valores))
-    append_domain_event(
-        "licitacion.cambiada",
-        id_externo,
-        "licitacion",
-        {
-            "id_externo": id_externo,
-            "licitacion_id": id_externo,
-            "titulo": despues.get("titulo") or antes.get("titulo"),
-            "changed_fields": sorted(valores),
-            "valores": valores,
-            "history_id": history_id,
-            "subtipo": aviso.subtipo,
-            "aviso_titulo": aviso.titulo,
-            "aviso_detalle": aviso.detalle,
-            "seguidores": resueltos,
-        },
-        conn=conn,
-    )
+    # Un evento por organización, con solo sus seguidores (como
+    # `services/avisos_outbox`). Con uno solo y sin dueño, el webhook de cada
+    # organización recibía los seguidores de todas las demás.
+    for organization_id in sorted({s["organization_id"] for s in resueltos}):
+        append_domain_event(
+            "licitacion.cambiada",
+            id_externo,
+            "licitacion",
+            {
+                "id_externo": id_externo,
+                "licitacion_id": id_externo,
+                "titulo": despues.get("titulo") or antes.get("titulo"),
+                "changed_fields": sorted(valores),
+                "valores": valores,
+                "history_id": history_id,
+                "subtipo": aviso.subtipo,
+                "aviso_titulo": aviso.titulo,
+                "aviso_detalle": aviso.detalle,
+                "organization_id": organization_id,
+                "seguidores": [s for s in resueltos if s["organization_id"] == organization_id],
+            },
+            organization_id=organization_id,
+            conn=conn,
+        )
     return True
 
 

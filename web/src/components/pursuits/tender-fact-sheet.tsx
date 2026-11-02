@@ -25,6 +25,7 @@ import {
 } from "@/hooks/use-tender-fact-sheet";
 import type { DocumentoSummary } from "@/lib/api-types";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { urlHttp } from "@/lib/url-http";
 
 const categories: Array<{ key: keyof TenderFactSheet; label: string }> = [
   { key: "lots", label: "Lotes" },
@@ -89,7 +90,7 @@ function citaPresentation(
   const nombre = doc.filename ?? doc.tipo;
   return {
     label: `${nombre} · página ${pageNumber}`,
-    href: doc.uri ? `${doc.uri}#page=${pageNumber}` : null,
+    href: urlHttp(doc.uri) ? `${doc.uri}#page=${pageNumber}` : null,
   };
 }
 

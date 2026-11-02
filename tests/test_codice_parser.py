@@ -951,6 +951,27 @@ class TestParseDocumentReferences:
         assert legal.uri == "https://contrataciondelestado.es/pliego-legal.pdf"
         assert legal.filename == "PCAP.pdf"
 
+    @pytest.mark.parametrize(
+        "uri",
+        [
+            "javascript:alert(1)",
+            "JaVaScRiPt:alert(1)",
+            "data:text/html;base64,PHNjcmlwdD4=",
+            "//evil.example/pliego.pdf",
+            "/relativa/pliego.pdf",
+            "ftp://evil.example/pliego.pdf",
+            "https:///sin-host.pdf",
+            "https://evil.example/con espacio.pdf",
+        ],
+    )
+    def test_una_uri_que_no_es_http_no_se_guarda(self, uri):
+        """``cbc:URI`` la escribe quien publica y la consola la pinta como enlace
+        (auditoría 2026-11, G2-3-2): solo se guardan URL absolutas http(s)."""
+        entry = self._get_entry(_make_entry_with_documentos(legal_uri=uri))
+        refs = parse_document_references(entry)
+
+        assert [r.tipo for r in refs] == ["technical"]
+
     def test_filename_cae_al_cbc_id_cuando_no_hay_filename(self):
         """Sin ``cbc:FileName`` el nombre sale del ``cbc:ID``.
 

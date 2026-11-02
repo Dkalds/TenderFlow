@@ -4,13 +4,21 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any, TypedDict
+from typing import Any, TypeAlias, TypedDict
+
+from psycopg import Connection
 
 from db.database import connect, connect_read, now_utc, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
 
 log = get_logger(__name__)
+
+#: Las filas de ``connect()``: tuplas, como en el resto de ``db/``.
+_Conexion: TypeAlias = Connection[tuple[object, ...]]
+
+#: Nombre con el que queda la organización personal de una cuenta anonimizada.
+NOMBRE_ORGANIZACION_ELIMINADA = "Cuenta eliminada"
 
 #: Columnas de una invitación que salen del repositorio. Se enumeran (en vez de
 #: ``SELECT *``) porque ``token_hash`` **no** puede salir de ``db/``: es el
@@ -154,6 +162,8 @@ class OrganizationRepository:
                     now,
                 ),
             )
+            if status != "active":
+                self._retirar_huellas(conn, organization_id, user_id)
             row = conn.execute(
                 "SELECT m.organization_id, m.user_id, m.role, m.status, "
                 "m.created_at, m.updated_at, u.display_name, u.email "
@@ -175,6 +185,16 @@ class OrganizationRepository:
             )
             rows = rows_to_dicts(cur)
         return rows[0] if rows else None
+
+    def get_membership_role(self, organization_id: int, user_id: int) -> str | None:
+        """Rol en la membresía en cualquier estado (también ``revoked``); ``None`` si no hay fila."""
+        with connect_read() as conn:
+            fila = conn.execute(
+                "SELECT role FROM organization_memberships "
+                "WHERE organization_id = %s AND user_id = %s",
+                (organization_id, user_id),
+            ).fetchone()
+        return str(fila[0]) if fila else None
 
     def personal_organization_if_ready(self, user_id: int) -> dict[str, Any] | None:
         """La organización personal con el rol del usuario, si ya está lista.
@@ -620,10 +640,40 @@ class OrganizationRepository:
         """
         self.anonymize_invitations_for_user(user_id)
         with connect() as conn:
+            # La personal se crea con `name = display_name or email`: sin esto el
+            # correo o el nombre de quien ejerce el olvido seguían en claro en
+            # `organizations.name` (y en backups, métricas y consultas MCP).
+            conn.execute(
+                "UPDATE organizations SET name = %s, updated_at = %s "
+                "WHERE personal_owner_user_id = %s AND is_personal",
+                (NOMBRE_ORGANIZACION_ELIMINADA, now_utc_iso(), user_id),
+            )
             conn.execute(
                 "DELETE FROM organization_memberships WHERE user_id = %s",
                 (user_id,),
             )
+
+    def organizaciones_con_unico_owner(self, user_id: int) -> list[int]:
+        """Organizaciones compartidas que se quedarían sin owner si ``user_id`` se va.
+
+        Las personales no cuentan: son suyas y desaparecen con él. Borrar la
+        cuenta de quien es el único owner de un espacio compartido deja ese
+        espacio sin quien lo administre.
+        """
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT m.organization_id FROM organization_memberships m "
+                "JOIN organizations o ON o.id = m.organization_id "
+                "WHERE m.user_id = %s AND m.role = 'owner' AND m.status = 'active' "
+                "AND NOT o.is_personal "
+                "AND NOT EXISTS (SELECT 1 FROM organization_memberships x "
+                "                WHERE x.organization_id = m.organization_id "
+                "                AND x.user_id <> m.user_id "
+                "                AND x.role = 'owner' AND x.status = 'active') "
+                "ORDER BY m.organization_id",
+                (user_id,),
+            )
+            return [int(row[0]) for row in cur.fetchall()]
 
     @staticmethod
     def _personal_for_user(conn: Any, user_id: int) -> dict[str, Any] | None:
@@ -674,9 +724,22 @@ class OrganizationRepository:
 
         Devuelve `False` si el destino no es miembro activo — invitar y
         traspasar son cosas distintas, y hacerlas de una convertiría un error de
-        tipeo en el email en una organización cuyo owner no existe.
+        tipeo en el email en una organización cuyo owner no existe — o si quien
+        traspasa ya no es el owner.
+
+        Lo segundo se comprueba **dentro** de la transacción, con la fila del
+        origen bloqueada: el servicio ya lo miró antes, pero entre esa lectura y
+        estos `UPDATE` otro traspaso del mismo owner (dos pestañas, un doble
+        envío) podía pasar, y los dos acababan escribiendo: dos owners.
         """
         with connect() as c:
+            origen = c.execute(
+                "SELECT role FROM organization_memberships "
+                "WHERE organization_id = %s AND user_id = %s AND status = 'active' FOR UPDATE",
+                (organization_id, de_user_id),
+            ).fetchone()
+            if not origen or str(origen[0]) != "owner":
+                return False
             destino = c.execute(
                 "SELECT 1 FROM organization_memberships "
                 "WHERE organization_id = %s AND user_id = %s AND status = 'active'",
@@ -710,7 +773,63 @@ class OrganizationRepository:
                 "WHERE organization_id = %s AND user_id = %s AND status = 'active'",
                 (now_utc_iso(), organization_id, user_id),
             )
-            return bool(getattr(cur, "rowcount", 0))
+            salio = bool(getattr(cur, "rowcount", 0))
+            if salio:
+                self._retirar_huellas(c, organization_id, user_id)
+            return salio
+
+    @staticmethod
+    def _retirar_huellas(conn: _Conexion, organization_id: int, user_id: int) -> None:
+        """Lo que quien deja de ser miembro seguiría ejerciendo en la organización.
+
+        La baja solo cambiaba el estado de la membresía, y tres cosas que esa
+        persona dejó creadas seguían vivas, en la misma transacción que la baja:
+
+        - **Sus webhooks** (``created_by``): seguían recibiendo los eventos de
+          la organización. Quedan inactivos, no borrados: un owner o admin los
+          revisa y los reactiva si eran de la integración del equipo.
+        - **Sus invitaciones pendientes**: un enlace emitido antes de la baja
+          seguía dando entrada, con el rol invitado, hasta siete días después.
+        - **Su perfil de scoring compartido** (``visibility = 'organization'``):
+          seguía aplicándose al Radar del equipo y nadie podía quitarlo. Pasa a
+          ``private``: el perfil no se borra, deja de heredarlo el equipo.
+        """
+        conn.execute(
+            "UPDATE webhooks SET active = 0 "
+            "WHERE organization_id = %s AND created_by = %s AND active = 1",
+            (organization_id, user_id),
+        )
+        conn.execute(
+            "UPDATE organization_invitations SET revoked_at = %s "
+            "WHERE organization_id = %s AND invited_by_user_id = %s "
+            "AND accepted_at IS NULL AND revoked_at IS NULL",
+            (now_utc(), organization_id, user_id),
+        )
+        conn.execute(
+            "UPDATE user_profiles SET visibility = 'private' "
+            "WHERE organization_id = %s AND user_id = %s AND visibility = 'organization'",
+            (organization_id, user_id),
+        )
+
+    def contar_organizaciones_creadas(self, user_id: int) -> int:
+        """Organizaciones compartidas (no personales) que esta persona ha creado."""
+        with connect_read() as conn:
+            fila = conn.execute(
+                "SELECT COUNT(*) FROM organizations "
+                "WHERE created_by_user_id = %s AND NOT is_personal",
+                (user_id,),
+            ).fetchone()
+        return int(fila[0]) if fila else 0
+
+    def contar_invitaciones_desde(self, user_id: int, desde: datetime) -> int:
+        """Invitaciones que esta persona ha emitido desde ``desde``, en cualquier organización."""
+        with connect_read() as conn:
+            fila = conn.execute(
+                "SELECT COUNT(*) FROM organization_invitations "
+                "WHERE invited_by_user_id = %s AND created_at >= %s",
+                (user_id, desde),
+            ).fetchone()
+        return int(fila[0]) if fila else 0
 
     def contar_dato_corporativo(self, organization_id: int) -> dict[str, int]:
         """Cuánto trabajo se llevaría por delante el borrado.

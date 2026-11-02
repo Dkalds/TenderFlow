@@ -138,9 +138,10 @@ def simular(
 
     ``baja_mayor_esperada`` es la baja de la mejor oferta rival que se prevé
     (p90 de ``prediccion-baja``, o la de referencia del CPV). Sin ella se usa
-    la mayor de las bajas simuladas, que es el supuesto conservador: presupone
-    que alguien va a bajar tanto como el escenario más agresivo que se está
-    considerando.
+    la mayor de las bajas simuladas y la del rival (``baja_referencia``), que
+    es el supuesto conservador: presupone que alguien va a bajar tanto como el
+    escenario más agresivo que se está considerando. El rival entra porque es
+    una oferta más: si baja más que tú, la mejor es la suya.
 
     ``peso_precio_pct`` (v85) es el respaldo cuando el pliego no publica los
     puntos del criterio de precio. Se usa **declarándolo** en
@@ -169,7 +170,11 @@ def simular(
         )
 
     candidatas = [b for b in bajas if 0 <= b <= 1]
-    mayor = baja_mayor_esperada if baja_mayor_esperada is not None else max(candidatas, default=0.0)
+    if baja_mayor_esperada is not None:
+        mayor = baja_mayor_esperada
+    else:
+        rival = [baja_referencia] if baja_referencia is not None else []
+        mayor = max([*candidatas, *rival], default=0.0)
     tramos = formula.params
 
     def _puntos(baja: float) -> float:

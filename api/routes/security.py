@@ -20,7 +20,7 @@ from api.concurrency import run_db
 from api.middleware import _trusted_client_ip
 from api.routes.dual_auth import require_admin
 from db.repositories.client_errors import registrar as registrar_client_error
-from observability.logging import get_logger
+from observability.logging import get_logger, redact_text
 from services.rate_limiting import get_rate_limiter
 from shared.audit_events import API_KEY_REVOKED
 
@@ -283,7 +283,9 @@ async def client_error(request: Request) -> None:
     except Exception:
         return  # Body inválido: se ignora en silencio, como en csp-report
 
-    message = reporte.message.strip()[:_MAX_MESSAGE]
+    # Redactar antes de truncar: un correo cortado por el tope ya no casa con el
+    # patrón. El texto lo escribe el navegador de un anónimo y llega a una tabla.
+    message = redact_text(reporte.message.strip())[:_MAX_MESSAGE]
     if not message:
         return  # Un reporte sin mensaje no es diagnosticable; no ensucia el log
 

@@ -337,6 +337,30 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
         estado="opcional",
         max_antiguedad_dato_hours=_LAG_SEMANAL,
     ),
+    RegisteredSource(
+        source_id="placsp_consultas",
+        nombre="PLACSP — consultas preliminares de mercado",
+        modulo="scraper.connectors.placsp_consultas",
+        max_lag_hours=_LAG_SEMANAL,
+        motivo=(
+            "Apagada por defecto (PLACSP_CONSULTAS_ATOM_URL vacía) y todavía sin "
+            "programar: no corre en ninguna pasada, así que no deja fila de salud, "
+            "y por ser opcional el healthcheck no lo avisa. Programada y sin "
+            "variable escribirá 'disabled'. Son unas cuatrocientas consultas al año "
+            "en todo el sector público y su plazo de respuesta se cuenta en semanas: "
+            "una semana sin completar no hace perder ninguna. El dato, con el mismo "
+            "umbral: hay días enteros sin una consulta nueva en todo el país."
+        ),
+        alcance=(
+            "Conector escrito y apagado: no ingiere nada hasta que se active. Cuando "
+            "lo esté, aportará las consultas preliminares de mercado de tecnología "
+            "publicadas en PLACSP —lo que un órgano pregunta al mercado antes de "
+            "redactar los pliegos— a la bandeja «Próximas». No son licitaciones en "
+            "plazo: no tienen pliego ni plazo de ofertas."
+        ),
+        estado="opcional",
+        max_antiguedad_dato_hours=_LAG_SEMANAL,
+    ),
 )
 
 

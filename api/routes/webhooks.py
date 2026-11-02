@@ -17,12 +17,18 @@ de ``"{timestamp}.{cuerpo}"``, para rechazar replays). La receta de
 verificación está en ``docs/integraciones/webhooks.md``.
 
 Desde S4.2 del plan 2026-09 v2 **un webhook pertenece a una organización**:
-lo crea y lo gestiona cualquier miembro con permiso de escritura
-(``require_organization(write=True)``), no el administrador de la instancia. El
-motivo es que la restricción anterior no protegía nada —el recurso no tenía
-dueño, así que la única forma de que un equipo tuviera su canal era que otro se
-lo creara— y a cambio dejaba la integración de Slack o Teams de cada equipo en
-la cola de un administrador.
+lo crea y lo gestiona el owner o el admin de la organización
+(``require_organization(roles=_GESTORES)``), no el administrador de la
+instancia. El motivo es que la restricción anterior no protegía nada —el
+recurso no tenía dueño, así que la única forma de que un equipo tuviera su
+canal era que otro se lo creara— y a cambio dejaba la integración de Slack o
+Teams de cada equipo en la cola de un administrador.
+
+Hasta 2026-11 bastaba cualquier rol con escritura (member) para crear, editar
+y borrar, y hasta el viewer leía la URL: la de un webhook entrante de Slack o
+Teams es un secreto portador, quien la tiene publica en el canal. Ahora todas
+las rutas exigen owner o admin, como ya hace la consola (la pestaña
+«Integraciones» solo existe para ellos).
 
 Las filas anteriores a la revisión ``v108`` no tienen organización. Se tratan
 como **globales**: siguen entregando y siguen viéndose desde la vista de
@@ -92,6 +98,10 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 _EVENTOS_LEGACY = ("watchlist_match", "daily_summary")
 
 _VALID_EVENTS = frozenset({*suscripciones_validas(), *_EVENTOS_LEGACY})
+
+#: Roles que gestionan los webhooks de una organización. La URL de un webhook
+#: entrante es un secreto portador y el cuerpo saca datos del equipo.
+_GESTORES = frozenset({"owner", "admin"})
 _IDEMPOTENCY_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
@@ -306,7 +316,7 @@ async def create(
     Si se incluye ``Idempotency-Key``, una segunda request con la misma
     clave devuelve la respuesta original sin crear un duplicado.
     """
-    ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
+    ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True, roles=_GESTORES)
     organization_id = int(ctx["organization_id"])
     formato = normalizar_formato(body.formato)
     response.headers["Cache-Control"] = "no-store"
@@ -468,7 +478,7 @@ class WebhookPingResult(BaseModel):
     responses={401: {"description": "API key inválida"}},
 )
 async def list_all(
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: dict[str, Any] = Depends(require_organization(roles=_GESTORES)),
 ) -> list[WebhookOut]:
     """Listado de webhooks de la organización activa, sin el secret."""
     # Devolvía `list[dict[str, Any]]` -> `unknown[]` en el cliente, mientras el
@@ -521,7 +531,7 @@ async def event_types(
 )
 async def get_one(
     webhook_id: int,
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: dict[str, Any] = Depends(require_organization(roles=_GESTORES)),
 ) -> WebhookOut:
     wh = await run_db(_repo.get_by_id, webhook_id, organization_id=int(ctx["organization_id"]))
     if wh is None:
@@ -541,7 +551,7 @@ async def get_one(
 async def update(
     webhook_id: int,
     body: WebhookUpdate,
-    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    ctx: dict[str, Any] = Depends(require_organization(write=True, roles=_GESTORES)),
 ) -> WebhookOut:
     """Actualiza nombre, URL, event_types, formato o active de un webhook."""
     organization_id = int(ctx["organization_id"])
@@ -580,7 +590,7 @@ async def update(
 )
 async def delete(
     webhook_id: int,
-    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    ctx: dict[str, Any] = Depends(require_organization(write=True, roles=_GESTORES)),
 ) -> None:
     if not await run_db(_repo.delete, webhook_id, organization_id=int(ctx["organization_id"])):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe")
@@ -604,7 +614,7 @@ async def delete(
 )
 async def ping(
     webhook_id: int,
-    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    ctx: dict[str, Any] = Depends(require_organization(write=True, roles=_GESTORES)),
 ) -> WebhookPingResult:
     """Envía un payload de prueba al URL del webhook para verificar conectividad.
 
@@ -704,7 +714,7 @@ async def ping(
 async def rotate_secret(
     webhook_id: int,
     response: Response,
-    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    ctx: dict[str, Any] = Depends(require_organization(write=True, roles=_GESTORES)),
 ) -> WebhookSecretRotated:
     """Genera un secret nuevo y lo devuelve **una sola vez**, como en la creación.
 
@@ -752,7 +762,7 @@ async def rotate_secret(
 async def redeliver(
     webhook_id: int,
     delivery_id: int,
-    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    ctx: dict[str, Any] = Depends(require_organization(write=True, roles=_GESTORES)),
 ) -> StatusOk:
     """Vuelve a intentar una entrega concreta (C2.4).
 
@@ -813,7 +823,7 @@ async def redeliver(
 async def deliveries(
     webhook_id: int,
     limit: int = Query(50, ge=1, le=200),
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: dict[str, Any] = Depends(require_organization(roles=_GESTORES)),
 ) -> list[WebhookDelivery]:
     """Devuelve las últimas entregas realizadas para este webhook."""
     scope = int(ctx["organization_id"])

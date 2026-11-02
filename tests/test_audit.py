@@ -292,3 +292,47 @@ def test_verify_hash_chain_detects_deleted_tail_via_signed_head(tmp_db):
     result = verify_hash_chain()
     assert result["valid"] is False
     assert "cabecera anclada" in str(result["error"])
+
+
+def test_purga_de_retencion_reancla_la_cadena(tmp_db):
+    """Borrar el extremo antiguo ya no deja `valid=false` para siempre."""
+    from db.audit import log_action, purgar_extremo_antiguo, verify_hash_chain
+    from db.database import connect_read
+
+    for i in range(5):
+        log_action("u", "s", f"accion_{i}")
+    with connect_read() as c:
+        corte = c.execute(
+            "SELECT created_at FROM audit_log ORDER BY id OFFSET 3 LIMIT 1"
+        ).fetchone()[0]
+
+    assert purgar_extremo_antiguo(corte, apply=False) == 3
+    assert purgar_extremo_antiguo(corte, apply=True) == 3
+
+    result = verify_hash_chain()
+    assert result["valid"] is True, result
+    assert result["checked"] == 2
+
+
+def test_log_event_no_deja_que_un_nombre_plante_eventos_en_otra_organizacion(tmp_db):
+    """`name` de una API key con `| resource=org:N |` no entra en el rastro de la org N."""
+    from db.audit import log_event
+    from db.repositories.audit import AuditRepository
+
+    log_event(event_type="org.created", actor="1", resource="org:7", detail={"user_id": 1})
+    log_event(
+        event_type="api_key.created",
+        actor="2",
+        resource="user:2",
+        detail={"name": "x | resource=org:7 | y"},
+    )
+    log_event(
+        event_type="feedback.submitted",
+        actor="2",
+        resource="licitacion:a | resource=org:7",
+        detail={},
+    )
+
+    filas = AuditRepository().list_for_organization(7)
+
+    assert [f["event_type"] for f in filas] == ["org.created"]

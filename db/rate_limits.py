@@ -28,6 +28,13 @@ def _connect() -> AbstractContextManager[Any]:
     return connect()
 
 
+#: Segundos que se anuncian cuando no se pudo comprobar un lockout (fallo de la
+#: BD o pool agotado). Se deniega igual, pero con un plazo corto: antes se
+#: anunciaba la ventana entera (300 s), de modo que un pool agotado un momento
+#: mandaba a todos los usuarios a esperar cinco minutos.
+REINTENTO_SIN_COMPROBAR_S = 5.0
+
+
 def check_rate_limit_db(
     key: str,
     *,
@@ -122,7 +129,11 @@ def is_login_locked_out(
     cutoff = now - window
 
     try:
-        with _connect() as conn:
+        # Solo lee: por el pool de lectura, que no compite con las escrituras
+        # (la auditoría, las sesiones) que un pico de logins fallidos satura.
+        from db.database import connect_read
+
+        with connect_read() as conn:
             rows = conn.execute(
                 "SELECT ts FROM rate_limits WHERE key = %s AND ts >= %s ORDER BY ts DESC",
                 [key, cutoff],
@@ -141,7 +152,39 @@ def is_login_locked_out(
     except Exception:
         # No permitir una caída de la tabla de límites como bypass de fuerza bruta.
         log.warning("is_login_lockout_db_error", client_key=client_key, exc_info=True)
-        return True, window
+        return True, REINTENTO_SIN_COMPROBAR_S
+
+
+def fallos_recientes(
+    client_key: str,
+    *,
+    bucket: str,
+    window_seconds: float,
+) -> tuple[int, float]:
+    """``(fallos en la ventana, segundos desde el último)`` de un cubo de fallos.
+
+    Para el contador de fallos **por cuenta** del login, que no bloquea: cuenta
+    cuántos van y cuánto hace del último, y la ruta decide la pausa. Falla
+    abierto (``(0, window_seconds)``): es una segunda defensa sobre el lockout
+    por (IP, correo), que sí falla cerrado, y sin BD el login no funciona de
+    todos modos.
+    """
+    key = f"{bucket}:{client_key}"
+    now = time.time()
+    try:
+        from db.database import connect_read
+
+        with connect_read() as conn:
+            fila = conn.execute(
+                "SELECT COUNT(*), MAX(ts) FROM rate_limits WHERE key = %s AND ts >= %s",
+                [key, now - window_seconds],
+            ).fetchone()
+        if not fila or not fila[0]:
+            return 0, window_seconds
+        return int(fila[0]), max(0.0, now - float(fila[1]))
+    except Exception:
+        log.warning("fallos_recientes_db_error", bucket=bucket, exc_info=True)
+        return 0, window_seconds
 
 
 def clear_login_attempts(client_key: str, *, bucket: str = "login_fail") -> None:

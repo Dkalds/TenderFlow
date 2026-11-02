@@ -9,6 +9,7 @@ frontend decide con él si reintenta, si refresca o si muestra un mensaje.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import pytest
 
@@ -50,6 +51,10 @@ def as_user(api_db) -> Iterator[object]:
                 "user_id": self.user_id,
                 "auth_method": "session",
                 "user_key": f"contract-{self.user_id}",
+                # Sesión recién iniciada y sin MFA pendiente: asignar un owner
+                # pide sesión reciente (`require_recent_session`).
+                "authenticated_at": datetime.now(UTC).isoformat(),
+                "mfa_required": False,
             }
 
     principal = _Principal()
@@ -136,6 +141,16 @@ def test_only_owner_or_admin_can_manage_members(client, as_user):
     assert denied.status_code == 403
 
     as_user.user_id = owner
+    # Quien no tiene fila en la organización no se da de alta por id (se
+    # enumeraban cuentas con ids secuenciales): se añade por correo.
+    stranger = client.put(
+        f"/api/v1/organizations/{organization_id}/members/{newcomer}",
+        json={"user_id": newcomer, "role": "member", "status": "active"},
+    )
+    assert stranger.status_code == 404
+
+    # A quien ya tiene fila (aquí, retirado) sí se le cambia el estado y el rol.
+    repo.add_membership(organization_id, newcomer, "viewer", status="revoked")
     granted = client.put(
         f"/api/v1/organizations/{organization_id}/members/{newcomer}",
         json={"user_id": newcomer, "role": "member", "status": "active"},

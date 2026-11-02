@@ -860,3 +860,87 @@ class TestValidateGoogleIdToken:
             "email_verified": True,
         }
         assert validate_google_id_token(claims, audience="myapp") is True
+
+
+# ---------------------------------------------------------------------------
+# Almacén de nonces: contraseña de Redis y registro atómico (G1-4-2)
+# ---------------------------------------------------------------------------
+
+
+def test_ttlcache_add_dice_si_el_nonce_era_nuevo():
+    from shared.auth_core import _TTLCacheNonceStore
+
+    store = _TTLCacheNonceStore(ttl=60)
+    assert store.add("n1", 60) is True
+    assert store.add("n1", 60) is False
+
+
+def test_redis_add_devuelve_el_veredicto_del_set_nx():
+    """``SET NX`` devuelve ``None`` si otro proceso ya registró el nonce: no es nuevo."""
+    store = _make_redis_store_with_mock()
+    store._client.set.return_value = True
+    assert store.add("nonce_a", 600) is True
+    store._client.set.return_value = None
+    assert store.add("nonce_b", 600) is False
+
+
+def test_redis_add_con_redis_caido_usa_el_veredicto_local():
+    store = _make_redis_store_with_mock()
+    store._client.set.side_effect = ConnectionError("Redis down")
+    assert store.add("nonce_c", 600) is True
+    assert store.add("nonce_c", 600) is False
+
+
+def test_get_nonce_store_pasa_la_contrasena_de_redis(monkeypatch):
+    """Con ``REDIS_PASSWORD`` fuera de la URL el almacén no se queda en NOAUTH."""
+    from pydantic import SecretStr
+
+    import config
+    from shared.auth_core import _get_nonce_store, _reset_nonce_store
+
+    _reset_nonce_store()
+    monkeypatch.setattr(config.settings, "REDIS_URL", "redis://redis.interno:6379/0")
+    contrasena = "s3cr3to"  # pragma: allowlist secret
+    monkeypatch.setattr(config.settings, "REDIS_PASSWORD", SecretStr(contrasena))
+    with patch("shared.auth_core._RedisNonceStore") as MockRedisStore:
+        _get_nonce_store()
+    MockRedisStore.assert_called_once_with("redis://redis.interno:6379/0", password=contrasena)
+    _reset_nonce_store()
+
+
+def test_get_nonce_store_sin_contrasena_pasa_none(monkeypatch):
+    from pydantic import SecretStr
+
+    import config
+    from shared.auth_core import _get_nonce_store, _reset_nonce_store
+
+    _reset_nonce_store()
+    monkeypatch.setattr(config.settings, "REDIS_URL", "redis://redis.interno:6379/0")
+    monkeypatch.setattr(config.settings, "REDIS_PASSWORD", SecretStr(""))
+    with patch("shared.auth_core._RedisNonceStore") as MockRedisStore:
+        _get_nonce_store()
+    MockRedisStore.assert_called_once_with("redis://redis.interno:6379/0", password=None)
+    _reset_nonce_store()
+
+
+def test_verify_oauth_state_rechaza_si_otro_proceso_registro_el_nonce_antes(monkeypatch):
+    """``contains`` aún dice «no» pero ``add`` pierde la carrera: es un replay."""
+    from pydantic import SecretStr
+
+    import config
+    from shared.auth_core import (
+        _reset_nonce_store,
+        generate_oauth_state,
+        verify_oauth_state,
+    )
+
+    _reset_nonce_store()
+    monkeypatch.setattr(config.settings, "REDIS_URL", "")
+    monkeypatch.setattr(config.settings, "SIGNING_KEY", SecretStr("test-key-32-chars-exactly-ok!!"))
+    state = generate_oauth_state()
+    perdedor = MagicMock()
+    perdedor.contains.return_value = False
+    perdedor.add.return_value = False
+    with patch("shared.auth_core._get_nonce_store", return_value=perdedor):
+        assert verify_oauth_state(state) is False
+    _reset_nonce_store()

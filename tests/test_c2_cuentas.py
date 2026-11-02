@@ -201,9 +201,9 @@ class TestTiersDeApiKey:
         """
         import db.repositories.api_keys as mod
 
-        fuente = inspect.getsource(mod.tier_limit_por_hash)
-        assert "return None" in fuente
-        assert "limite > 0" in fuente
+        fuente = inspect.getsource(mod.tier_de_clave_por_hash)
+        assert "return True, limite if limite > 0 else None" in fuente
+        assert "return False, None" in fuente, "la clave que no existe no es «sin tope»"
 
     def test_el_bucket_va_por_clave_no_por_ip(self) -> None:
         """Dos claves tras el mismo NAT no comparten cuota."""
@@ -222,7 +222,7 @@ class TestTiersDeApiKey:
     def test_un_fallo_de_bd_no_tumba_el_rate_limiter(self) -> None:
         import api.middleware as mod
 
-        assert "except Exception" in inspect.getsource(mod._tier_limit)
+        assert "except Exception" in inspect.getsource(mod._tier_de_clave)
 
     def test_los_scopes_reservados_no_se_autoconceden(self) -> None:
         """Crear la clave la pide el usuario: sin esto, es escalada servida."""

@@ -10,7 +10,8 @@
     "config:recommended",
     ":dependencyDashboard",
     ":semanticCommits",
-    "helpers:pinGitHubActionDigests"
+    "helpers:pinGitHubActionDigests",
+    "docker:pinDigests"
   ],
   "timezone": "Europe/Madrid",
   "schedule": ["before 6am on monday"],

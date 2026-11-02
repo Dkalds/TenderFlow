@@ -85,6 +85,7 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
+import zlib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, NoReturn
@@ -748,6 +749,7 @@ def _extract_docx_paginas(content: bytes) -> list[str]:
     peor que ponerlas al final.
     """
     docx = _importar_opcional("docx", content_type=CONTENT_TYPE_DOCX, paquete="python-docx")
+    _acotar_docx(content)
     try:
         documento = docx.Document(io.BytesIO(content))
         parrafos = [str(p.text) for p in documento.paragraphs]
@@ -959,20 +961,68 @@ def _leer_entrada_acotada(
     comprimido = max(int(info.compress_size), 1)
     bloques: list[bytes] = []
     leidos = 0
-    with archivo.open(info) as fh:
-        while True:
-            bloque = fh.read(min(_ZIP_BLOQUE_LECTURA, tope + 1 - leidos))
-            if not bloque:
-                break
-            bloques.append(bloque)
-            leidos += len(bloque)
-            if leidos > tope:
-                raise DocumentFetchError(f"{que}: el contenido descomprimido supera {tope:,} bytes")
-            if leidos > _ZIP_RATIO_UMBRAL_BYTES and leidos / comprimido > _ZIP_RATIO_MAX:
-                raise DocumentFetchError(
-                    f"{que}: ratio de compresión superior a {_ZIP_RATIO_MAX}:1 (posible zip bomb)"
-                )
+    try:
+        with archivo.open(info) as fh:
+            while True:
+                bloque = fh.read(min(_ZIP_BLOQUE_LECTURA, tope + 1 - leidos))
+                if not bloque:
+                    break
+                bloques.append(bloque)
+                leidos += len(bloque)
+                if leidos > tope:
+                    raise DocumentFetchError(
+                        f"{que}: el contenido descomprimido supera {tope:,} bytes"
+                    )
+                if leidos > _ZIP_RATIO_UMBRAL_BYTES and leidos / comprimido > _ZIP_RATIO_MAX:
+                    raise DocumentFetchError(
+                        f"{que}: ratio de compresión superior a {_ZIP_RATIO_MAX}:1 "
+                        "(posible zip bomb)"
+                    )
+    except DocumentFetchError:
+        raise
+    except (zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError, RuntimeError) as exc:
+        # CRC malo, deflate truncado, compresión no soportada o entrada cifrada:
+        # es un fallo duro de ESTE documento. Como `DocumentFetchError` la fila
+        # acaba en `error` y no se reintenta; escapando crudo, derribaba el lote.
+        raise DocumentFetchError(f"{que}: entrada ilegible: {exc}") from exc
     return b"".join(bloques)
+
+
+def _acotar_docx(content: bytes) -> None:
+    """Rechaza una bomba de descompresión **antes** de que ``python-docx`` abra el ZIP.
+
+    ``python-docx`` lee cada parte entera con ``ZipFile.read``, que descomprime
+    sin tope (``file_size`` lo escribe quien construyó el fichero, y ``read()``
+    no lo usa para acotar): un ``word/document.xml`` de ~50 MiB deflatados puede
+    ser decenas de GB y el kernel mata el runner de pliegos, que deja la fila
+    ``pending`` y la repite cada noche. Aquí cada parte se lee por bloques con el
+    mismo tope por entrada, tope total y ratio que el ZIP de pliegos
+    (:func:`_leer_entrada_acotada`). Lo que supera algún tope es
+    :class:`DocumentFetchError` (la fila queda en ``error``, no se reintenta); lo
+    que pasa se descomprime después con ``python-docx`` y da exactamente los
+    mismos bytes, así que está acotado.
+    """
+    try:
+        archivo = zipfile.ZipFile(io.BytesIO(content))
+    except (zipfile.BadZipFile, OSError) as exc:
+        raise DocumentFetchError(f"DOCX corrupto o ilegible: {exc}") from exc
+    presupuesto = int(settings.MAX_DOCUMENT_SIZE_BYTES)
+    with archivo:
+        for info in archivo.infolist():
+            if info.is_dir():
+                continue
+            if presupuesto <= 0:
+                raise DocumentFetchError(
+                    "El contenido descomprimido del DOCX supera "
+                    f"{settings.MAX_DOCUMENT_SIZE_BYTES:,} bytes"
+                )
+            leido = _leer_entrada_acotada(
+                archivo,
+                info,
+                tope=min(_ZIP_MAX_BYTES_POR_ENTRADA, presupuesto),
+                que=f"Parte {info.filename!r} del DOCX",
+            )
+            presupuesto -= len(leido)
 
 
 def _nombre_de_entrada(info: zipfile.ZipInfo) -> str:

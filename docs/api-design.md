@@ -70,7 +70,7 @@ Scopes usados en el proyecto:
 
 <!-- BEGIN scopes (generado por scripts/gen_scopes_doc.py — no editar a mano) -->
 
-Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del método y la ruta; hoy son **31** familias. Esta tabla se genera con `python scripts/gen_scopes_doc.py` y CI la verifica con `--check`.
+Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del método y la ruta; hoy son **32** familias. Esta tabla se genera con `python scripts/gen_scopes_doc.py` y CI la verifica con `--check`.
 
 | Scope | Métodos | Familias de ruta |
 |---|---|---|
@@ -84,8 +84,8 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `audit:read` | GET | `/organizations` |
 | `competitive:read` | GET | `/competitive/bajas`, `/competitive/cuota`, `/competitive/empresas`, `/competitive/hhi`, `/competitive/partners`, `/competitive/renovaciones`, `/competitive/watchlist` |
 | `competitive:write` | POST/DELETE | `/competitive/watchlist` |
-| `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/cuentas`, `/cuentas/buscar-organos`, `/cuentas/resumen`, `/etiquetas`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/jobs`, `/me/notification-preferences`, `/me/sessions`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/cobertura`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/radar/proximas`, `/resoluciones`, `/search/global`, `/tecnologias/keywords` |
-| `data:write` | POST/PATCH/PUT/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/logout-all`, `/auth/password`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/auth/verify-email`, `/cuentas`, `/cuentas/por-organo`, `/etiquetas`, `/etiquetas/aplicar`, `/etiquetas/por-objeto`, `/etiquetas/quitar`, `/me/notification-preferences`, `/me/sessions`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic`, `/tecnologias/keywords` |
+| `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/jobs`, `/me/notification-preferences`, `/me/sessions`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/cobertura`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/radar/proximas`, `/resoluciones`, `/search/global`, `/tecnologias/keywords` |
+| `data:write` | POST/PUT/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/logout-all`, `/auth/password`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/auth/verify-email`, `/me/notification-preferences`, `/me/sessions`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic`, `/tecnologias/keywords` |
 | `empresas:read` | GET | `/empresas`, `/empresas/stats` |
 | `exports:read` | GET | `/exports/calendario`, `/exports/calendario.ics`, `/exports/crm`, `/exports/descargas`, `/exports/download` |
 | `feature_flags:read` | GET | `/feature-flags` |
@@ -96,10 +96,11 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `models:read` | GET/POST | `/models` |
 | `notifications:read` | GET | `/notifications`, `/notifications/alerts`, `/notifications/baja` |
 | `notifications:write` | POST | `/notifications/alerts`, `/notifications/baja`, `/notifications/read` |
+| `organizations:manage` | POST/PUT/DELETE | `/organizations`, `/organizations/invitations` |
 | `profile:read` | GET | `/me/profile` |
 | `profile:write` | POST/PUT/DELETE | `/me/profile` |
-| `pursuits:read` | GET | `/organizations`, `/organizations/active`, `/organizations/go-no-go`, `/pursuits`, `/pursuits/actividad`, `/pursuits/adjuntos`, `/pursuits/agenda`, `/pursuits/cartera`, `/pursuits/direccion`, `/pursuits/metrics`, `/pursuits/mi-baja`, `/pursuits/tasks`, `/pursuits/weights-proposal` |
-| `pursuits:write` | POST/PATCH/PUT/DELETE | `/organizations`, `/organizations/go-no-go`, `/organizations/invitations`, `/pursuits`, `/pursuits/adjuntos`, `/pursuits/cartera`, `/pursuits/weights-proposal` |
+| `pursuits:read` | GET | `/cuentas`, `/cuentas/buscar-organos`, `/cuentas/resumen`, `/etiquetas`, `/organizations`, `/organizations/active`, `/organizations/go-no-go`, `/pursuits`, `/pursuits/actividad`, `/pursuits/adjuntos`, `/pursuits/agenda`, `/pursuits/cartera`, `/pursuits/direccion`, `/pursuits/metrics`, `/pursuits/mi-baja`, `/pursuits/tasks`, `/pursuits/weights-proposal` |
+| `pursuits:write` | POST/PATCH/PUT/DELETE | `/cuentas`, `/cuentas/por-organo`, `/etiquetas`, `/etiquetas/aplicar`, `/etiquetas/por-objeto`, `/etiquetas/quitar`, `/organizations/go-no-go`, `/pursuits`, `/pursuits/adjuntos`, `/pursuits/cartera`, `/pursuits/weights-proposal` |
 | `saved_filters:read` | GET | `/saved-filters` |
 | `saved_filters:write` | POST/DELETE | `/saved-filters` |
 | `watchlist:read` | GET | `/follows`, `/watchlist/feed.xml`, `/watchlist/items`, `/watchlist/rules` |

@@ -17,8 +17,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
-from api.concurrency import run_db
+from api.concurrency import run_cpu, run_db
 from api.routes.dual_auth import require_any_auth
+from api.techo_analitica import techo_sentencia_analitica
 from api.tenancy import require_organization, resolve_organization_ctx
 from db.idempotency import cached_response, store_response
 from db.idempotency import scope as idem_scope
@@ -311,7 +312,11 @@ class PreviewResult(TotalCount):
     ruido_alto: bool = False
 
 
-@router.post("/preview", summary="Conteo de matches de unos criterios sin guardar")
+@router.post(
+    "/preview",
+    summary="Conteo de matches de unos criterios sin guardar",
+    dependencies=[Depends(techo_sentencia_analitica)],
+)
 async def preview_matches(
     body: WatchlistRuleBody,
     _ctx: dict[str, Any] = Depends(require_any_auth),
@@ -325,7 +330,11 @@ async def preview_matches(
     veces por semana de una que disparó cuarenta veces en dos años.
     """
     regla = body.to_rule()
-    total = await run_db(count_matches, regla)
+    # Con `banda_min` el conteo puntúa el universo con el scorer del Radar
+    # (pandas): va al carril de CPU, como el ranking y el preview del perfil, y
+    # no al pool general que comparten las lecturas baratas.
+    contar = run_cpu if regla.banda_min else run_db
+    total = await contar(count_matches, regla)
     serie = await run_db(serie_semanal, regla)
     media = (sum(int(s["n"]) for s in serie) / len(serie)) if serie else 0.0
     return PreviewResult(

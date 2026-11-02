@@ -46,6 +46,12 @@ print(f"Rate limit reseteado para: {key}")
 EOF
 ```
 
+El login tiene además un contador **por cuenta**, sin IP:
+`login_fail_cuenta:<32 primeros caracteres del sha256 del correo en minúsculas>`,
+con ventana de 1 h (`api/routes/auth.py::_pausa_por_cuenta`: pasados 20 fallos exige
+una pausa de hasta 2 min entre intentos). No sale en el listado de arriba (ventana de
+5 min); para levantar la pausa de una cuenta se borra con esa clave.
+
 ## Resetear todos los rate limits
 
 > ⚠️ Usar con precaución — puede permitir ataques en curso.

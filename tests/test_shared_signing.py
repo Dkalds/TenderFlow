@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -181,3 +183,65 @@ def test_legacy_signing_key():
         assert token.startswith("legacy.")
         assert signing.verify(b"test", token) is True
         signing.reload_keys()
+
+
+# ---------------------------------------------------------------------------
+# Falla cerrado fuera de dev (cripto-config-2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def sin_claves_en_el_entorno(monkeypatch: pytest.MonkeyPatch):
+    """Sin ``SIGNING_KEY*`` en el entorno ni en ``settings``; la caché se limpia al salir."""
+    from pydantic import SecretStr
+
+    from config import settings
+    from shared import signing
+
+    for var in ("SIGNING_KEY", "SIGNING_KEYS_JSON", "SIGNING_KEY_ACTIVE"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(settings, "SIGNING_KEY", SecretStr(""))
+    signing.reload_keys()
+    yield settings
+    monkeypatch.undo()
+    signing.reload_keys()
+
+
+@pytest.mark.parametrize("entorno", ["prod", "staging"])
+def test_fuera_de_dev_sin_clave_no_firma_con_la_efimera(
+    sin_claves_en_el_entorno, monkeypatch: pytest.MonkeyPatch, entorno: str
+) -> None:
+    from shared import signing
+
+    monkeypatch.setattr(sin_claves_en_el_entorno, "ENV", entorno)
+    signing.reload_keys()
+    with pytest.raises(RuntimeError, match="Sin claves de firma"):
+        signing.sign(b"data")
+    with pytest.raises(RuntimeError, match="Sin claves de firma"):
+        signing.verify(b"data", "dev.AAAA")
+
+
+def test_en_dev_sin_clave_sigue_firmando_con_la_efimera(
+    sin_claves_en_el_entorno, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from shared import signing
+
+    monkeypatch.setattr(sin_claves_en_el_entorno, "ENV", "dev")
+    signing.reload_keys()
+    assert signing.sign(b"data").startswith("dev.")
+
+
+def test_la_clave_de_settings_vale_si_no_esta_en_el_entorno(
+    sin_claves_en_el_entorno, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``SIGNING_KEY`` en ``.env`` llega a ``settings`` pero no a ``os.environ``."""
+    from pydantic import SecretStr
+
+    from shared import signing
+
+    monkeypatch.setattr(sin_claves_en_el_entorno, "ENV", "prod")
+    monkeypatch.setattr(sin_claves_en_el_entorno, "SIGNING_KEY", SecretStr("k" * 40))
+    signing.reload_keys()
+    token = signing.sign(b"data")
+    assert token.startswith("legacy.")
+    assert signing.verify(b"data", token) is True

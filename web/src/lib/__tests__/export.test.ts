@@ -21,7 +21,13 @@ vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 import { track } from "@vercel/analytics";
 import { toast } from "sonner";
-import { buildExportUrl, descargarBlob, triggerDownload } from "@/lib/export";
+import {
+  buildExportUrl,
+  csvCell,
+  descargarBlob,
+  neutralizarFormula,
+  triggerDownload,
+} from "@/lib/export";
 
 const trackMock = vi.mocked(track);
 const toastErrorMock = vi.mocked(toast.error);
@@ -282,5 +288,41 @@ describe("descargarBlob", () => {
       formato: "otro",
       recurso: "detalle",
     });
+  });
+});
+
+describe("csvCell / neutralizarFormula", () => {
+  const car = (...codigos: number[]) => String.fromCharCode(...codigos);
+
+  it.each([
+    "=1+1",
+    "+1",
+    "-1",
+    "@SUM(A1)",
+    car(9) + "=1", // tabulador
+    car(13) + "=1", // retorno de carro
+    car(32) + "=1", // espacio
+    car(0xa0) + "@x", // espacio duro
+    car(10) + "=1", // salto de línea
+  ])(
+    "deja como texto lo que Excel ejecutaría: %j",
+    (texto) => {
+      expect(neutralizarFormula(texto)).toBe(`'${texto}`);
+      expect(csvCell(texto).startsWith(`"'`)).toBe(true);
+    },
+  );
+
+  it.each(["", "Obras", "a=b", "1,5", "x -y", "https://x.example/?a=1"])(
+    "no toca el texto normal: %j",
+    (texto) => {
+      expect(neutralizarFormula(texto)).toBe(texto);
+    },
+  );
+
+  it("entrecomilla, dobla las comillas y escribe vacío un nulo", () => {
+    expect(csvCell('di "hola"')).toBe('"di ""hola"""');
+    expect(csvCell(null)).toBe('""');
+    expect(csvCell(undefined)).toBe('""');
+    expect(csvCell(12.5)).toBe('"12.5"');
   });
 });

@@ -50,8 +50,14 @@ class _NonceStore(Protocol):
         """Devuelve True si el nonce ya fue visto (y no expiró)."""
         ...
 
-    def add(self, nonce: str, ttl_seconds: int) -> None:
-        """Registra el nonce con tiempo de vida *ttl_seconds*."""
+    def add(self, nonce: str, ttl_seconds: int) -> bool:
+        """Registra el nonce con tiempo de vida *ttl_seconds*.
+
+        Devuelve ``True`` si era nuevo y ``False`` si ya estaba registrado: es
+        el resultado de un único ``SET NX`` en Redis, no una comprobación previa
+        aparte, así que de dos procesos que registran el mismo nonce a la vez
+        solo uno recibe ``True``.
+        """
         ...
 
 
@@ -82,11 +88,13 @@ class _TTLCacheNonceStore:
         self._cache = {k: v for k, v in self._cache.items() if v > now}
         return nonce in self._cache
 
-    def add(self, nonce: str, ttl_seconds: int) -> None:
+    def add(self, nonce: str, ttl_seconds: int) -> bool:
+        nuevo = not self.contains(nonce)
         if self._use_ttlcache:
             self._cache[nonce] = True
         else:
             self._cache[nonce] = time.time() + ttl_seconds
+        return nuevo
 
 
 class _RedisNonceStore:
@@ -100,11 +108,16 @@ class _RedisNonceStore:
     dentro del mismo proceso (fail-closed, no fail-open).
     """
 
-    def __init__(self, redis_url: str) -> None:
+    def __init__(self, redis_url: str, password: str | None = None) -> None:
         import redis as _redis
 
+        # `password`: `REDIS_PASSWORD` (obligatoria en prod) viene aparte de la
+        # URL; sin ella, contra un Redis con `requirepass` cada operación daba
+        # NOAUTH y el almacén caía en silencio a la memoria del proceso. Si la
+        # URL ya trae contraseña, redis-py da prioridad a la de la URL.
         self._client = _redis.Redis.from_url(
             redis_url,
+            password=password,
             socket_connect_timeout=1,
             socket_timeout=1,
             decode_responses=True,
@@ -122,15 +135,17 @@ class _RedisNonceStore:
             log.warning("redis_nonce_store_read_error", exc_info=True)
             return self._fallback.contains(nonce)
 
-    def add(self, nonce: str, ttl_seconds: int) -> None:
+    def add(self, nonce: str, ttl_seconds: int) -> bool:
         # Always write to in-memory fallback so it's available if Redis fails later
-        self._fallback.add(nonce, ttl_seconds)
+        nuevo_local = self._fallback.add(nonce, ttl_seconds)
         try:
             key = f"{self._prefix}{nonce}"
-            # SETNX + EXPIRE atómico: si la key ya existe, set_nx devuelve False
-            self._client.set(key, "1", nx=True, ex=ttl_seconds)
+            # SET NX EX en un solo comando: devuelve None si la key ya existía,
+            # y ese es el veredicto (otro proceso lo registró antes).
+            return bool(self._client.set(key, "1", nx=True, ex=ttl_seconds))
         except Exception:
             log.warning("redis_nonce_store_write_error", exc_info=True)
+            return nuevo_local
 
 
 # Singleton del store — se inicializa una vez por proceso en la primera llamada.
@@ -149,7 +164,13 @@ def _get_nonce_store() -> _NonceStore:
         redis_url = getattr(_settings, "REDIS_URL", "")
         if redis_url:
             try:
-                store: _NonceStore = _RedisNonceStore(redis_url)
+                from pydantic import SecretStr
+
+                secreto = getattr(_settings, "REDIS_PASSWORD", None)
+                clave = secreto.get_secret_value() if isinstance(secreto, SecretStr) else secreto
+                store: _NonceStore = _RedisNonceStore(
+                    redis_url, password=clave if isinstance(clave, str) and clave else None
+                )
                 log.info("oauth_nonce_store", backend="redis")
                 _nonce_store = store
                 return _nonce_store
@@ -359,8 +380,11 @@ def verify_oauth_state(
         # Truncated to 128 bits — see generate_oauth_state() for rationale.
     ).hexdigest()[:32]
     valid = hmac.compare_digest(signature, expected)
-    if valid:
-        store.add(nonce, max_age)
+    if valid and not store.add(nonce, max_age):
+        # Otro proceso (o esta misma petición en paralelo) registró el nonce
+        # entre el `contains` de arriba y este `add`.
+        log.warning("oauth_nonce_replay_detected", nonce=nonce[:8] + "...")
+        return False
     return valid
 
 

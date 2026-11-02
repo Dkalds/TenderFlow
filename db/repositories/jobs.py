@@ -245,6 +245,21 @@ class JobsRepository:
             ).fetchone()
         return _fila(fila) if fila else None
 
+    def contar_activos(self, *, tipo: str, organization_id: int) -> int:
+        """Jobs ``pending``/``running`` de ese tipo que encoló esa organización.
+
+        Es lo que acota el encolado por organización (``services.jobs.enqueue``):
+        la cola es un FIFO global con un consumidor serie, así que una
+        organización que encola sin tope retrasa a todas las demás.
+        """
+        with connect_read() as c:
+            fila = c.execute(
+                "SELECT COUNT(*) FROM jobs "
+                "WHERE tipo = %s AND organization_id = %s AND estado IN ('pending', 'running')",
+                (tipo, organization_id),
+            ).fetchone()
+        return int(fila[0]) if fila else 0
+
     def contar_por_estado(self) -> dict[str, int]:
         """Recuento por estado, para el diagnóstico del worker y de ops."""
         with connect_read() as c:

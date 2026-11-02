@@ -1022,7 +1022,11 @@ def _la_app_es_siempre_la_misma():
 def client(api_db):
     """TestClient de FastAPI con DB temporal (raise_server_exceptions=True)."""
     from api.app import app
+    from api.routes.publico import limpiar_cache_hubs
 
+    # Los hubs de `/publico` se leen una vez por proceso y ventana: cada test
+    # siembra su propio corpus, así que arranca sin la lectura del anterior.
+    limpiar_cache_hubs()
     return TestClient(app, raise_server_exceptions=True)
 
 

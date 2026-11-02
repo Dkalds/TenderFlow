@@ -21,6 +21,11 @@ demás cargadores de modelo del proyecto (``TechnologyClassifier``,
      checksum co-ubicado, no hay ninguna verificación posible — se rechaza la
      carga en vez de deserializar a ciegas. Fuera de producción se permite
      (con warning) para no bloquear desarrollo local.
+  4. **Aviso sin pin** (``prod``/``staging``): con solo el checksum
+     co-ubicado la verificación es circular (quien sustituye el ``.pkl`` de la
+     Release sustituye también su ``.sha256``) y ``joblib.load`` ejecuta código.
+     Carga igual —exigir el pin dejaría sin modelo a los despliegues que aún no
+     lo tienen—, pero deja ``model_integrity.sin_pin_fuera_de_banda`` en el log.
 
 Uso típico en un ``classmethod load``::
 
@@ -109,6 +114,14 @@ def verify_model_integrity(
                 f"Fichero: {target}"
             )
         log.info("model_integrity.checksum_verified", model=model_label, path=str(target))
+        if not pinned and env in ("prod", "staging"):
+            log.warning(
+                "model_integrity.sin_pin_fuera_de_banda",
+                model=model_label,
+                pin=pin_setting_name,
+                hint=f"checksum verificado solo contra el .sha256 co-ubicado; fija {pin_setting_name} "
+                "(sha256 del artefacto publicado) fuera de la Release",
+            )
     elif env == "prod" and not pinned:
         # En producción se exige al menos una verificación de integridad (pin
         # o checksum co-ubicado): joblib.load ejecuta código arbitrario.

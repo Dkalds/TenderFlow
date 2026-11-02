@@ -23,12 +23,60 @@ export function linkifyExpedientes(text: string): string {
 // recrearlas en cada token era una asignación más por turno y por frame.
 const REMARK_PLUGINS = [remarkGfm];
 
+export type TipoDeEnlace = "interno" | "externo" | "correo";
+
+/** Espacio, control (incluidos tab y saltos de línea, que el navegador descarta) o `\`. */
+function tieneControlOBarraInvertida(texto: string): boolean {
+  for (let i = 0; i < texto.length; i += 1) {
+    const codigo = texto.charCodeAt(i);
+    if (codigo <= 0x20 || codigo === 0x7f || codigo === 0x5c) return true;
+  }
+  return false;
+}
+
+/**
+ * Qué enlaces de una respuesta del modelo se pintan como enlace.
+ *
+ * El texto de un pliego es de terceros y puede traer instrucciones ocultas que
+ * hagan al modelo emitir `[ver oferta](https://dominio-atacante)`: un enlace
+ * que parece nuestro y no lo es. Solo se pinta como enlace una ruta interna
+ * (`/detalle?lic=…`, la que fabrica {@link linkifyExpedientes}), un ancla,
+ * `mailto:` o una URL `http(s)`, estas últimas marcadas como externas. Todo lo
+ * demás —`javascript:`, `data:`, `//host`, esquemas raros, rutas con control o
+ * barra invertida, que el navegador reinterpreta como `//host`— devuelve
+ * `null` y la respuesta muestra solo el texto.
+ */
+export function clasificarEnlace(href: string | undefined): TipoDeEnlace | null {
+  if (!href || tieneControlOBarraInvertida(href)) return null;
+  if (href.startsWith("#")) return "interno";
+  if (href.startsWith("/")) return href.startsWith("//") ? null : "interno";
+  try {
+    const { protocol } = new URL(href);
+    if (protocol === "https:" || protocol === "http:") return "externo";
+    if (protocol === "mailto:") return "correo";
+  } catch {
+    // Relativa sin barra o URL rota: no hay a dónde llevar.
+  }
+  return null;
+}
+
 const COMPONENTES: Components = {
-  a: ({ children, href }) => (
-    <a href={href} className="text-primary underline hover:no-underline">
-      {children}
-    </a>
-  ),
+  a: ({ children, href }) => {
+    const tipo = clasificarEnlace(href);
+    if (tipo === null) return <span>{children}</span>;
+    return (
+      <a
+        href={href}
+        className="text-primary underline hover:no-underline"
+        {...(tipo === "externo" ? { target: "_blank", rel: "noopener noreferrer nofollow" } : {})}
+      >
+        {children}
+      </a>
+    );
+  },
+  // Una imagen remota es una baliza de seguimiento (la CSP ya la bloquea; esto
+  // evita además el hueco roto y el `alt` con la URL).
+  img: () => null,
   p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
   h1: ({ children }) => <h3 className="mt-3 mb-2 text-tf-body font-semibold">{children}</h3>,
   h2: ({ children }) => <h3 className="mt-3 mb-2 text-tf-body font-semibold">{children}</h3>,

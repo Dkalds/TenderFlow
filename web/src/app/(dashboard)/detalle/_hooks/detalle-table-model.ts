@@ -15,6 +15,7 @@
 
 import type { PaginationState, RowSelectionState, SortingState } from "@tanstack/react-table";
 import type { LicitacionSummary } from "@/lib/api-types";
+import { neutralizarFormula } from "@/lib/export";
 
 export const PAGE_SIZE = 25;
 
@@ -248,15 +249,21 @@ const CSV_HEADERS = [
   "tecnologia",
 ] as const;
 
-/** CSV de las filas exportadas, con comillas escapadas al estilo RFC 4180. */
+/**
+ * CSV de las filas exportadas, con comillas escapadas al estilo RFC 4180 y los
+ * textos neutralizados como fórmula: el título, el órgano y el resto son texto
+ * de terceros (PLACSP/TED) y Excel ejecutaría un `=HYPERLINK(…)` al abrirlo.
+ * Solo los `string`: un número negativo es un número, no una fórmula.
+ */
 export function buildCsv(rows: LicitacionSummary[]): string {
   return [
     CSV_HEADERS.join(","),
     ...rows.map((row) =>
       CSV_HEADERS.map((header) => {
         const value = (row as unknown as Record<string, unknown>)[header];
-        const text = value == null ? "" : String(value);
-        return text.includes(",") || text.includes('"') ? `"${text.replace(/"/g, '""')}"` : text;
+        const text =
+          typeof value === "string" ? neutralizarFormula(value) : value == null ? "" : String(value);
+        return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
       }).join(","),
     ),
   ].join("\n");

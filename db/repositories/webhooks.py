@@ -184,12 +184,23 @@ class WebhookRepository:
         ``organization_id`` acota a los de esa organización **más** los
         globales sin dueño: un evento de la organización 7 sale por sus
         webhooks y por la integración de instancia, nunca por los de la 8.
+
+        **Sin ``organization_id`` solo salen los globales.** Un evento sin
+        dueño (la cola de solicitudes de acceso del operador) no es de ninguna
+        organización, así que no puede salir por el webhook de ninguna: hasta
+        2026-11 este caso omitía el filtro y devolvía los webhooks de todos los
+        tenants.
         """
-        sql = "SELECT id, url, secret, event_types, formato, organization_id FROM webhooks WHERE active = 1"
+        sql = (
+            "SELECT id, url, secret, event_types, formato, organization_id "
+            "FROM webhooks WHERE active = 1"
+        )
         params: list[object] = []
         if organization_id is not None:
             sql += " AND (organization_id = %s OR organization_id IS NULL)"
             params.append(organization_id)
+        else:
+            sql += " AND organization_id IS NULL"
         with connect_read() as c:
             rows = rows_to_dicts(c.execute(sql, params))
         for row in rows:

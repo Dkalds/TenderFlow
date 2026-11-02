@@ -40,8 +40,12 @@ _METRICAS_OK: dict[str, object] = {
 }
 
 
-def _golden(recall_no_kw: float, n_no_kw_pos: int = 20) -> object:
-    """Construye un GoldenEvalResult con el recall incremental pedido."""
+def _golden(recall_no_kw: float, n_no_kw_pos: int = 30) -> object:
+    """Construye un GoldenEvalResult con el recall incremental pedido.
+
+    Con 30 positivos sin keyword y 30 negativos son 60 ejemplos: justo el mínimo
+    de holdout (`MIN_HOLDOUT_EXAMPLES`) que el gate exige.
+    """
     y_true = [1] * n_no_kw_pos + [0] * n_no_kw_pos
     aciertos = round(recall_no_kw * n_no_kw_pos)
     y_proba = [0.9] * aciertos + [0.1] * (n_no_kw_pos - aciertos) + [0.1] * n_no_kw_pos
@@ -89,6 +93,30 @@ class TestGateDeCalidad:
             golden_activo=_golden(0.70),
         )
         assert any("cae" in m for m in motivos), motivos
+
+    def test_bloquea_si_el_holdout_es_demasiado_pequeno(self) -> None:
+        """Con 40 ejemplos un acierto de más mueve el recall varios puntos."""
+        pequeno = _golden(0.60, n_no_kw_pos=20)
+        assert pequeno.n == 40
+        motivos = evaluar_gate(_METRICAS_OK, metricas_activas=None, golden=pequeno)
+        assert any("golden_holdout_insuficiente" in m and "40" in m for m in motivos), motivos
+
+    def test_el_minimo_de_holdout_es_el_de_ml_eval(self) -> None:
+        from services.ml_eval import MIN_HOLDOUT_EXAMPLES
+
+        justo = _golden(0.60, n_no_kw_pos=MIN_HOLDOUT_EXAMPLES // 2)
+        assert justo.n == MIN_HOLDOUT_EXAMPLES
+        assert evaluar_gate(_METRICAS_OK, metricas_activas=None, golden=justo) == []
+
+    def test_bloquea_si_el_activo_no_se_pudo_evaluar(self) -> None:
+        """Hay versión activa y no se pudo medir: no se compara en silencio."""
+        motivos = evaluar_gate(
+            _METRICAS_OK,
+            metricas_activas=None,
+            golden=_golden(0.60),
+            activo_no_evaluable="el artefacto de la versión activa no se pudo resolver",
+        )
+        assert any(m.startswith("activo_no_evaluable") for m in motivos), motivos
 
     def test_detecta_regresion_en_el_test_split(self) -> None:
         motivos = evaluar_gate(
@@ -219,6 +247,9 @@ def _promocionar(tmp_path, *, motivos, activa=None, siguiente=1, registrada=None
         ) as register,
         patch("services.ml.promotion.evaluar_gate", return_value=motivos),
         patch("services.ml.promotion.evaluar_en_golden", return_value=None),
+        # Sin esto, una `activa` con path ajeno saldría a la red (bucket y
+        # Release) a por su artefacto; la resolución se prueba aparte.
+        patch("services.ml.promotion._golden_del_activo", return_value=(None, None)),
     ):
         resultado = promote_if_better(
             _ClfFalso(),
@@ -423,3 +454,125 @@ def test_con_una_version_inactiva_registrada_el_candidato_es_la_v2(tmp_db, tmp_p
     assert get_active("sap_classifier") is None
     v2 = next(f for f in list_versions("sap_classifier") if int(f["version"]) == 2)
     assert not v2["is_active"]
+
+
+# ---------------------------------------------------------------------------
+# Comparar contra el activo de verdad (2026-11, auditoría G2-2-1)
+# ---------------------------------------------------------------------------
+#
+# El gate comparaba con la versión activa solo si `Path(activa["path"]).exists()`.
+# Ese `path` es el del runner efímero que entrenó la versión, así que en CI la
+# comparación no corría nunca y no dejaba ni una línea de log. Ahora se resuelve
+# el artefacto activo (bucket/Release + sha256) y, si hay activa y no se puede
+# medir, el candidato se rechaza.
+
+
+def test_el_artefacto_activo_se_resuelve_por_el_registro_y_no_por_su_path():
+    from unittest.mock import MagicMock, patch
+
+    from services.ml.promotion import _golden_del_activo
+
+    golden = _golden(0.70)
+    with (
+        patch(
+            "services.ml.model_artifacts.resolve_active_artifact",
+            return_value="data/models/activo.pkl",
+        ) as resolver,
+        patch("services.ml.sap_classifier.SAPClassifier.load", return_value=MagicMock()) as cargar,
+        patch("services.ml.promotion.evaluar_en_golden", return_value=golden),
+    ):
+        medido, motivo = _golden_del_activo("sap_classifier")
+
+    resolver.assert_called_once_with("sap_classifier")
+    cargar.assert_called_once_with("data/models/activo.pkl")
+    assert medido is golden
+    assert motivo is None
+
+
+def test_un_activo_irresoluble_se_declara_en_vez_de_saltarse():
+    from unittest.mock import patch
+
+    from services.ml.promotion import _golden_del_activo
+
+    with patch("services.ml.model_artifacts.resolve_active_artifact", return_value=None):
+        medido, motivo = _golden_del_activo("sap_classifier")
+
+    assert medido is None
+    assert motivo is not None
+
+
+def test_un_activo_con_sha256_que_no_cuadra_tampoco_se_compara():
+    from unittest.mock import patch
+
+    from services.ml.model_artifacts import ModelArtifactMismatch
+    from services.ml.promotion import _golden_del_activo
+
+    with patch(
+        "services.ml.model_artifacts.resolve_active_artifact",
+        side_effect=ModelArtifactMismatch("sha256"),
+    ):
+        medido, motivo = _golden_del_activo("sap_classifier")
+
+    assert medido is None
+    assert motivo is not None
+    assert "ModelArtifactMismatch" in motivo
+
+
+def test_con_activa_no_evaluable_el_candidato_no_pasa_aunque_su_golden_sea_bueno(tmp_path):
+    """Extremo a extremo del gate (sin mockear `evaluar_gate`): hay versión
+    activa, no se puede medir, el candidato queda registrado pero rechazado."""
+    from unittest.mock import patch
+
+    from services.ml.promotion import promote_if_better
+
+    activa = {
+        "id": 7,
+        "name": "sap_classifier",
+        "version": 1,
+        "path": "/runner/efimero/sap_classifier-aaaaaaaaaaaa.pkl",
+        "sha256": "a" * 64,
+        "metrics": {},
+    }
+    with (
+        patch("db.model_registry.get_active", return_value=activa),
+        patch("db.model_registry.next_version", return_value=2),
+        patch("db.model_registry.register_version", return_value=2),
+        patch("services.ml.promotion.evaluar_en_golden", return_value=_golden(0.60)),
+        patch(
+            "services.ml.promotion._golden_del_activo",
+            return_value=(None, "el artefacto de la versión activa no se pudo resolver"),
+        ),
+    ):
+        resultado = promote_if_better(
+            _ClfFalso(),
+            _METRICAS_OK,
+            models_dir=tmp_path / "versiones",
+            publicar_como=tmp_path / "publicado" / "sap_classifier.pkl",
+        )
+
+    assert resultado.pendiente_de_activar is False
+    assert any(m.startswith("activo_no_evaluable") for m in resultado.motivos_rechazo)
+    assert not (tmp_path / "publicado").exists()
+
+
+def test_sin_version_activa_no_se_intenta_resolver_ningun_activo(tmp_path):
+    from unittest.mock import patch
+
+    from services.ml.promotion import promote_if_better
+
+    with (
+        patch("db.model_registry.get_active", return_value=None),
+        patch("db.model_registry.next_version", return_value=1),
+        patch("db.model_registry.register_version", return_value=1),
+        patch("services.ml.promotion.evaluar_en_golden", return_value=_golden(0.60)),
+        patch("services.ml.promotion._golden_del_activo") as medir_activo,
+    ):
+        resultado = promote_if_better(
+            _ClfFalso(),
+            _METRICAS_OK,
+            models_dir=tmp_path / "versiones",
+            publicar_como=tmp_path / "publicado" / "sap_classifier.pkl",
+        )
+
+    medir_activo.assert_not_called()
+    assert resultado.pendiente_de_activar is True
