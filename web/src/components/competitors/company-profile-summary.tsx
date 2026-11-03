@@ -11,6 +11,7 @@ import {
 import { Pista } from "@/components/ui/pista";
 import { cn, EMPTY, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
+import { CompanyActas } from "./company-actas";
 import { CompanyCortes } from "./company-cortes";
 import { CompanyUteParticipations } from "./company-ute-participations";
 import { CompanyYearTrend } from "./company-year-trend";
@@ -209,6 +210,8 @@ export function CompanyProfileSummary({ profile }: { profile: CompanyProfileData
           />
         </Panel>
       ) : null}
+
+      {profile.puntuaciones_acta ? <CompanyActas acta={profile.puntuaciones_acta} /> : null}
 
       {profile.movimientos.length ? (
         <section aria-labelledby="movements-title">

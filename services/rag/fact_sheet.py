@@ -88,6 +88,12 @@ EXTRACTION_VERSION = "tender-facts-v9"
 _MAX_CONTEXT_CHARS = 56_000
 _MAX_PAGES = 40
 _MAX_OUTPUT_TOKENS = 8000
+# Tope total de cada llamada al modelo, no por lectura. La ficha hace dos (la
+# general y la de documentos) y las dos tienen que acabar antes de que la barrida
+# de locks reclame el job (``JOBS_LOCK_TTL_SEGUNDOS``, 900 s): si no, otro worker
+# la repite mientras la primera sigue viva. El 2026-10-31 un stream lento ocupó
+# el hilo de la cola 15 minutos; el reintento sano tardó ~4,5 min en total.
+_TOPE_LLAMADA_SEGUNDOS = 360.0
 #: Tope del esquema para ``EvidenceRef.quote``; el recorte se hace aquí para
 #: no perder el hecho por una cita larga.
 _MAX_QUOTE_CHARS = 600
@@ -866,10 +872,14 @@ def _llamar_modelo(
 ) -> str:
     """Una llamada de extracción sobre unas páginas; el texto crudo devuelto.
 
-    ``stop`` es la señal de parada de quien pone un tope de tiempo a la llamada
-    (la lectura del acta): se pasa tal cual a ``stream_llm_response``, que con
-    ella activa no arranca intentos nuevos y termina sin tokens, lo que aquí
-    sale como «respuesta vacía». Quien la activó sabe que fue por el tope.
+    La llamada entera tiene un tope, ``_TOPE_LLAMADA_SEGUNDOS``: al vencer se
+    activa ``stop``, que impide intentos nuevos en el cliente, y aquí se deja
+    de leer y se cierra el stream aunque siga mandando tokens (el timeout del
+    proveedor acota cada lectura, no la llamada). Sale ``TimeoutError``.
+
+    ``stop`` es la señal de quien pone un tope más corto (la lectura del acta);
+    sin ella se usa una propia. Si la activa quien llama, también sale
+    ``TimeoutError``: quien la activó sabe que fue por su tope.
     """
     chunks = [
         {
@@ -889,22 +899,47 @@ def _llamar_modelo(
             "chunks": chunks,
         }
     ]
-    raw = "".join(
-        stream_llm_response(
-            question=question,
-            docs=docs,
-            model=model,
-            keywords=list(keywords),
-            mode="extraction",
-            max_tokens=max_tokens,
-            # Sin fallback de proveedor: la fila persiste `model`, y un
-            # cambio silencioso de modelo la haría mentir sobre quién
-            # extrajo. Si el proveedor está caído, la extracción falla
-            # visible y el cron/botón reintentan.
-            fallback=False,
-            stop=stop,
-        )
+    parada = stop or threading.Event()
+    temporizador = threading.Timer(_TOPE_LLAMADA_SEGUNDOS, parada.set)
+    temporizador.daemon = True  # un job colgado no retiene el apagado del proceso
+    temporizador.start()
+    respuesta = stream_llm_response(
+        question=question,
+        docs=docs,
+        model=model,
+        keywords=list(keywords),
+        mode="extraction",
+        max_tokens=max_tokens,
+        # Sin fallback de proveedor: la fila persiste `model`, y un
+        # cambio silencioso de modelo la haría mentir sobre quién
+        # extrajo. Si el proveedor está caído, la extracción falla
+        # visible y el cron/botón reintentan.
+        fallback=False,
+        stop=parada,
     )
+    partes: list[str] = []
+    cortada = False
+    try:
+        for parte in respuesta:
+            if parada.is_set():
+                cortada = True
+                break
+            partes.append(parte)
+    finally:
+        temporizador.cancel()
+        # Cerrar el generador llega al proveedor, que cierra la respuesta HTTP y
+        # deja de generar (y de facturar) tokens que nadie va a leer.
+        cerrar = getattr(respuesta, "close", None)
+        if callable(cerrar):
+            cerrar()
+    raw = "".join(partes)
+    # Sin tokens y con la parada activa, el cliente no arrancó más intentos: es
+    # tiempo, no proveedor. Un stream completo cuya parada llegó después vale.
+    if cortada or (parada.is_set() and not raw.strip()):
+        raise TimeoutError(
+            f"La llamada al modelo {model} superó el tope de "
+            f"{_TOPE_LLAMADA_SEGUNDOS:.0f} s y se cortó; se reintentará."
+        )
     if not raw.strip():
         # El cliente devuelve stream vacío cuando el proveedor falló en
         # todos sus reintentos (saturación, 5xx). Dicho así, y no como «no

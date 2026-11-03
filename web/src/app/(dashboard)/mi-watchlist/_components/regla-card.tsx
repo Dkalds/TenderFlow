@@ -8,11 +8,17 @@
  * y no hay forma de saber cuál elimina. La regla `jsx-a11y/
  * control-has-associated-label` de `eslint.config.mjs` lo bloquea en CI
  * precisamente por esto.
+ *
+ * Eliminar pide confirmación en la propia tarjeta: borrar no se deshace, y la
+ * alerta por defecto no vuelve a crearse. Si es la única regla activa, la
+ * confirmación dice que con ella se va el resumen diario y ofrece desactivarla,
+ * que corta el correo sin perder la regla.
  */
 
+import { useState } from "react";
 import type * as React from "react";
 import { Eye, Mail, Pencil, Trash2 } from "lucide-react";
-import { Panel } from "@/components/console/panel";
+import { Aviso, Panel } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -34,15 +40,20 @@ function Criterio({ label, children }: { label: string; children: React.ReactNod
 
 export function ReglaCard({
   rule,
+  ultimaActiva = false,
   onUpdate,
   onEdit,
   onDelete,
 }: {
   rule: ApiRule;
+  /** Es la única regla activa de la persona: sin ella no le llega el resumen. */
+  ultimaActiva?: boolean;
   onUpdate: (id: number, body: RuleBody) => void;
   onEdit: (rule: ApiRule) => void;
   onDelete: (id: number) => void;
 }) {
+  const [confirmando, setConfirmando] = useState(false);
+  const desactivar = () => onUpdate(rule.id, ruleToBody(rule, { active: !rule.active }));
   return (
     <Panel className={cn(!rule.active && "opacity-50")}>
       <div className="mb-2.5 flex items-start justify-between gap-2">
@@ -63,7 +74,7 @@ export function ReglaCard({
                 size="icon-sm"
                 aria-label={rule.active ? "Desactivar regla" : "Activar regla"}
                 aria-pressed={rule.active}
-                onClick={() => onUpdate(rule.id, ruleToBody(rule, { active: !rule.active }))}
+                onClick={desactivar}
               >
                 <Eye aria-hidden="true" className={rule.active ? "text-primary" : "text-muted-foreground"} />
               </Button>
@@ -85,7 +96,8 @@ export function ReglaCard({
                 size="icon-sm"
                 className="text-destructive"
                 aria-label="Eliminar regla"
-                onClick={() => onDelete(rule.id)}
+                aria-expanded={confirmando}
+                onClick={() => setConfirmando(true)}
               >
                 <Trash2 aria-hidden="true" />
               </Button>
@@ -94,6 +106,47 @@ export function ReglaCard({
           </Tooltip>
         </div>
       </div>
+      {confirmando && (
+        <Aviso
+          tone={ultimaActiva ? "warning" : "danger"}
+          role="alert"
+          className="mb-2.5"
+          title={ultimaActiva ? "Es tu única regla activa" : "¿Eliminar esta regla?"}
+        >
+          <p>
+            {ultimaActiva
+              ? "Sin ella dejas de recibir avisos y el resumen diario. Eliminarla no se puede deshacer; si solo quieres parar el correo, desactívala."
+              : "Eliminarla no se puede deshacer."}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                setConfirmando(false);
+                onDelete(rule.id);
+              }}
+            >
+              Sí, eliminar
+            </Button>
+            {ultimaActiva && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setConfirmando(false);
+                  desactivar();
+                }}
+              >
+                Desactivar
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => setConfirmando(false)}>
+              Cancelar
+            </Button>
+          </div>
+        </Aviso>
+      )}
       <dl className="space-y-1.5 text-tf-meta">
         {rule.keyword && (
           <Criterio label="Palabra clave">

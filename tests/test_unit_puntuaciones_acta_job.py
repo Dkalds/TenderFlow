@@ -594,7 +594,7 @@ def test_la_pregunta_cabe_en_el_cliente_y_pide_lo_acordado() -> None:
         assert exigido in _PREGUNTA_ACTA
 
 
-def test_llamar_modelo_pasa_stop_al_cliente_y_sin_el_no_cambia_nada() -> None:
+def test_llamar_modelo_pasa_stop_al_cliente_y_sin_el_usa_la_del_tope() -> None:
     from services.rag.fact_sheet import _llamar_modelo
 
     pagina = [{"documento_id": 1, "page_number": 2, "texto": "t"}]
@@ -614,7 +614,9 @@ def test_llamar_modelo_pasa_stop_al_cliente_y_sin_el_no_cambia_nada() -> None:
         _llamar_modelo(
             "p", pagina, licitacion_id=_LIC, model=_MODELO, keywords=("a",), max_tokens=1
         )
-        assert stream.call_args.kwargs["stop"] is None
+        # Sin la de quien llama, la llamada lleva la suya: la del tope total.
+        propia = stream.call_args.kwargs["stop"]
+        assert isinstance(propia, threading.Event) and not propia.is_set()
 
 
 # --- cola y worker -----------------------------------------------------------

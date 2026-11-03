@@ -659,3 +659,49 @@ def test_fila_acta_events_en_orden(tmp_db: Any) -> None:
     assert {e["actor_user_id"] for e in eventos} == {user_id}
     assert all(e["created_at"] for e in eventos)
     assert PursuitRepository.FILA_ACTA_EVENT_TYPE == "fila_acta_confirmada"
+
+
+def test_perfil_por_criterio_casa_la_empresa_por_sus_nombres(tmp_db: Any) -> None:
+    """Competencia: el maestro de empresas se cruza con los licitadores de las actas."""
+    from db.database import connect
+    from services.puntuaciones_acta import perfil_por_criterio
+
+    with connect() as c:
+        empresa_id = int(
+            c.execute(
+                "INSERT INTO empresas (nombre_canonico, nif_canonico) VALUES (%s, %s) "
+                "RETURNING empresa_id",
+                ("ACME SERVICIOS SOCIEDAD LIMITADA", NIF_AJENO),
+            ).fetchone()[0]
+        )
+        documentos = {}
+        for i in range(3):
+            licitacion = f"placsp:1:PERFIL-{i}"
+            _licitacion(c, licitacion)
+            documentos[licitacion] = _acta(c, licitacion)
+    for licitacion, documento in documentos.items():
+        _guardar(
+            licitacion,
+            [
+                # El acta escribe «S.L.»; el maestro, «SOCIEDAD LIMITADA»: casan normalizados.
+                _fila(documento, licitador_normalizado="ACME SERVICIOS", puntos=30.0),
+                _fila(
+                    documento,
+                    licitador_normalizado="ACME SERVICIOS",
+                    criterio="Memoria técnica",
+                    es_precio=False,
+                    puntos=20.0,
+                    puntos_max=40.0,
+                ),
+                # Otro licitador del mismo acta: no es de la empresa.
+                _fila(documento, licitador_normalizado="BETA SOLUCIONES", puntos=60.0),
+            ],
+        )
+
+    perfil = perfil_por_criterio([empresa_id])
+
+    assert perfil is not None
+    assert (perfil.actas, perfil.excluida) == (3, 0)
+    assert perfil.precio.pct_medio == 50.0
+    assert perfil.tecnica.pct_medio == 50.0
+    assert perfil_por_criterio([empresa_id + 999]) is None

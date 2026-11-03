@@ -66,6 +66,9 @@ AUTH_SIGNUP_REQUESTED: Final = "auth.signup_requested"
 AUTH_EMAIL_VERIFIED: Final = "auth.email_verified"
 AUTH_TOTP_ENABLED: Final = "auth.totp_enabled"
 AUTH_TOTP_DISABLED: Final = "auth.totp_disabled"
+#: Códigos de recuperación nuevos con el segundo factor activo: los anteriores
+#: dejan de valer. Sin los códigos en el ``detail``, claro.
+AUTH_TOTP_RECOVERY_REGENERATED: Final = "auth.totp_recovery_codes_regenerated"
 #: Revocación de UNA sesión propia (``DELETE /me/sessions/{id}``). Ya se
 #: persistía con este nombre antes del catálogo (ver docstring del módulo).
 AUTH_SESSION_REVOKED: Final = "auth.session_revoked"
@@ -121,6 +124,16 @@ FEEDBACK_SUBMITTED: Final = "feedback.submitted"
 PURSUIT_WEIGHTS_PROPOSAL_APPLIED: Final = "pursuit.weights_proposal_applied"
 GO_NO_GO_WEIGHTS_UPDATED: Final = "go_no_go.weights_updated"
 
+# ── watchlist_rule.* — las alertas, de las que sale el resumen diario ──────
+#: El 2026-10-26 había cero reglas tras 34 avisos y no constaba quién las
+#: borró. ``resource="org:<id>"`` cuando la regla es de una organización, para
+#: que salgan en su rastro; ``paused_all`` es la baja del enlace del correo,
+#: que pausa las de todas las organizaciones de la persona y no lleva recurso.
+WATCHLIST_RULE_CREATED: Final = "watchlist_rule.created"
+WATCHLIST_RULE_UPDATED: Final = "watchlist_rule.updated"
+WATCHLIST_RULE_DELETED: Final = "watchlist_rule.deleted"
+WATCHLIST_RULE_PAUSED_ALL: Final = "watchlist_rule.paused_all"
+
 
 #: Catálogo por familia. Es lo que documenta ``docs/SECURITY.md`` y lo que
 #: recorre el test de unicidad: cada valor aparece en una sola familia.
@@ -156,6 +169,7 @@ FAMILIAS: Final[Mapping[str, frozenset[str]]] = {
             AUTH_EMAIL_VERIFIED,
             AUTH_TOTP_ENABLED,
             AUTH_TOTP_DISABLED,
+            AUTH_TOTP_RECOVERY_REGENERATED,
             AUTH_SESSION_REVOKED,
         }
     ),
@@ -187,6 +201,14 @@ FAMILIAS: Final[Mapping[str, frozenset[str]]] = {
     "operacion": frozenset({DLQ_REQUEUED, DLQ_DISCARDED}),
     "producto": frozenset(
         {FEEDBACK_SUBMITTED, PURSUIT_WEIGHTS_PROPOSAL_APPLIED, GO_NO_GO_WEIGHTS_UPDATED}
+    ),
+    "watchlist_rule": frozenset(
+        {
+            WATCHLIST_RULE_CREATED,
+            WATCHLIST_RULE_UPDATED,
+            WATCHLIST_RULE_DELETED,
+            WATCHLIST_RULE_PAUSED_ALL,
+        }
     ),
 }
 

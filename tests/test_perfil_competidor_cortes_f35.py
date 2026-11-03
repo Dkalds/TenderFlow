@@ -56,6 +56,8 @@ def perfil(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         miembros_utes=[],
     )
     monkeypatch.setattr(svc.mercado_repo, "filas_perfil_empresa", lambda *a, **k: filas)
+    # Las actas son otra consulta (``tests/test_puntuaciones_acta_repo.py``).
+    monkeypatch.setattr(svc, "perfil_por_criterio", lambda *a, **k: None)
     return svc.perfil_empresa(1)
 
 

@@ -34,6 +34,7 @@ export function ReglasLista({
   onDelete: (id: number) => void;
 }) {
   const ruleCount = rules?.length ?? 0;
+  const activas = rules?.filter((rule) => rule.active).length ?? 0;
   const hayError = error != null && !rules;
 
   return (
@@ -56,7 +57,14 @@ export function ReglasLista({
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {(rules ?? []).map((rule) => (
-            <ReglaCard key={rule.id} rule={rule} onUpdate={onUpdate} onEdit={onEdit} onDelete={onDelete} />
+            <ReglaCard
+              key={rule.id}
+              rule={rule}
+              ultimaActiva={rule.active && activas === 1}
+              onUpdate={onUpdate}
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
           ))}
         </div>
       )}

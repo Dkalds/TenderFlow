@@ -226,6 +226,35 @@ class CompetitiveCompanyCorteDTO(BaseModel):
     importe_total: float | None = Field(default=None, ge=0)
 
 
+class CompetitiveCompanyActaCriterioDTO(BaseModel):
+    """Qué parte de los puntos de una familia de criterios saca la empresa en las actas."""
+
+    actas: int = Field(ge=0, description="Actas (expediente y lote) con puntos de esta familia.")
+    pct_medio: float | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description=(
+            "Media por acta de puntos obtenidos sobre el máximo, en %. Nulo con menos "
+            "de `min_actas` actas: no hay bastante para decirlo (ADR-014)."
+        ),
+    )
+
+
+class CompetitiveCompanyActaScoresDTO(BaseModel):
+    """Dónde puntúa la empresa según las actas de la mesa leídas (v170).
+
+    Sobre todas las actas leídas en que figura, sin los filtros del dossier: hoy
+    solo se leen las de expedientes adjudicados que alguna organización sigue.
+    """
+
+    actas: int = Field(ge=0, description="Actas (expediente y lote) en que figura.")
+    excluida: int = Field(ge=0, description="De ellas, en cuántas quedó excluida.")
+    precio: CompetitiveCompanyActaCriterioDTO
+    tecnica: CompetitiveCompanyActaCriterioDTO
+    min_actas: int = Field(ge=1, description="Actas mínimas para publicar una media.")
+
+
 class CompetitiveCompanyProfileDTO(BaseModel):
     """Full competitor dossier used by quick and deep company views."""
 
@@ -250,6 +279,8 @@ class CompetitiveCompanyProfileDTO(BaseModel):
     por_tramo_importe: list[CompetitiveCompanyCorteDTO] = Field(default_factory=list)
     #: Adjudicaciones mínimas por celda para publicar su media.
     corte_min_n: int = Field(default=5, ge=1)
+    #: Dónde puntúa según las actas de la mesa; nulo si no figura en ninguna leída.
+    puntuaciones_acta: CompetitiveCompanyActaScoresDTO | None = None
 
 
 class CompetitiveCompanyAwardsDTO(BaseModel):

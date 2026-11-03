@@ -9,6 +9,9 @@ validación de citas— y no puede abrir una conexión, porque el eval arranca s
 from __future__ import annotations
 
 import json
+import threading
+import time
+from collections.abc import Iterator
 from typing import Any
 from unittest.mock import patch
 
@@ -100,6 +103,52 @@ def test_respuesta_vacia_del_modelo_lanza_value_error() -> None:
         pytest.raises(ValueError, match="respuesta vacía"),
     ):
         extraer_hechos(_paginas(), licitacion_id="EXP-1", model="modelo-x")
+
+
+# ── Tope total de cada llamada (job colgado del 2026-10-31) ─────────────────
+
+
+def test_un_stream_que_no_acaba_se_corta_al_tope_y_se_cierra() -> None:
+    """Un proveedor que manda tokens sin parar no ocupa el hilo más que el tope."""
+    cerrado = threading.Event()
+
+    def _stream_eterno(**_: object) -> Iterator[str]:
+        try:
+            while True:
+                time.sleep(0.01)
+                yield "{"
+        finally:
+            cerrado.set()
+
+    inicio = time.monotonic()
+    with (
+        patch.object(fs, "_TOPE_LLAMADA_SEGUNDOS", 0.05),
+        patch("services.rag.fact_sheet.stream_llm_response", side_effect=_stream_eterno),
+        pytest.raises(TimeoutError, match="superó el tope"),
+    ):
+        extraer_hechos(_paginas(), licitacion_id="EXP-1", model="modelo-x")
+
+    assert time.monotonic() - inicio < 2
+    assert cerrado.is_set(), "el stream cortado tiene que cerrarse para que el proveedor pare"
+
+
+def test_sin_tokens_y_con_la_parada_activa_es_tiempo_no_proveedor() -> None:
+    def _cliente_parado(*, stop: threading.Event, **_: object) -> Iterator[str]:
+        assert stop.wait(2), "el tope no activó la parada del cliente"
+        return iter([])
+
+    with (
+        patch.object(fs, "_TOPE_LLAMADA_SEGUNDOS", 0.05),
+        patch("services.rag.fact_sheet.stream_llm_response", side_effect=_cliente_parado),
+        pytest.raises(TimeoutError),
+    ):
+        extraer_hechos(_paginas(), licitacion_id="EXP-1", model="modelo-x")
+
+
+def test_las_dos_llamadas_de_la_ficha_caben_en_el_lock_del_job() -> None:
+    from config.settings import JOBS_LOCK_TTL_SEGUNDOS_DEFAULT
+
+    assert 2 * fs._TOPE_LLAMADA_SEGUNDOS < JOBS_LOCK_TTL_SEGUNDOS_DEFAULT
 
 
 # ── Pasada de documentos a presentar (v7) ───────────────────────────────────

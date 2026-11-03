@@ -57,12 +57,15 @@ test("una regla por palabra clave enseña lo que casa, sobrevive a la recarga y 
   await expect(page.getByRole("link", { name: SEED_LICITACION.tituloRadar })).toBeVisible();
 
   // ── Borrarla ─────────────────────────────────────────────────────────────
+  // Pide confirmación, y como es la única activa avisa de que se va el resumen.
+  await page.getByRole("button", { name: "Eliminar regla" }).click();
+  await expect(page.getByText("Es tu única regla activa")).toBeVisible();
   const [baja] = await Promise.all([
     page.waitForResponse(
       (candidata) =>
         /\/api\/v1\/watchlist\/rules\/\d+/.test(candidata.url()) && candidata.request().method() === "DELETE",
     ),
-    page.getByRole("button", { name: "Eliminar regla" }).click(),
+    page.getByRole("button", { name: "Sí, eliminar" }).click(),
   ]);
   expect(baja.ok(), `DELETE de la regla devolvió ${baja.status()}`).toBe(true);
 

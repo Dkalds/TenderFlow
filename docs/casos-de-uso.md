@@ -76,6 +76,12 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   en ella tiene aún una regla, recibe una alerta diaria por cada tecnología
   (hasta cinco), a su nombre y con su correo. La ve, la edita y la borra como
   cualquier otra; volver a guardar el ámbito no la duplica ni la resucita.
+- Borrar una regla pide confirmación en la propia tarjeta, porque no se
+  deshace. Si es su única regla activa, le avisa de que sin ella deja de
+  recibir el resumen diario y le ofrece desactivarla en su lugar.
+- Quién crea, edita, pausa o borra una regla, y la baja desde el enlace del
+  correo, queda en el rastro de auditoría; las de la organización salen en su
+  rastro (CU-32).
 - El resumen diario le dice, por licitación, la fecha límite, el importe base
   sin IVA (o «base desconocida»), hasta tres requisitos de solvencia del pliego
   y, si su organización declaró su capacidad, el veredicto del checklist, con
@@ -204,6 +210,10 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   concentrados; en uno elegido, quién se lo reparte y a qué baja se gana, y
   las bajas medias por órgano, CPV o comunidad. Cada cifra dice sobre qué base
   de importe se calculó.
+- En el perfil de una empresa ve cómo puntúa en las actas de la mesa ya
+  leídas: qué parte de los puntos de precio y de los técnicos saca de media,
+  en cuántas actas figura y en cuántas quedó excluida. Con menos de tres actas
+  no hay media, y lo dice.
 
 ### CU-19 — Gobernar mi cuenta: preferencias, sesiones y contraseña
 
@@ -257,6 +267,8 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   sus códigos de recuperación una sola vez. Un alta a medias se reempieza.
 - Desde entonces, entrar pide el código además de la contraseña; un código de
   recuperación sirve una vez.
+- Si perdió o gastó sus códigos de recuperación, genera diez nuevos con un
+  código vigente de la app, sin desactivarla; los anteriores dejan de valer.
 - La desactiva con un código vigente, y sin él no.
 
 ### CU-26 — Salir, traspasar o borrar una organización

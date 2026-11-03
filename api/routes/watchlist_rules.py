@@ -21,6 +21,7 @@ from api.concurrency import run_cpu, run_db
 from api.routes.dual_auth import require_any_auth
 from api.techo_analitica import techo_sentencia_analitica
 from api.tenancy import require_organization, resolve_organization_ctx
+from db.audit import log_event
 from db.idempotency import cached_response, store_response
 from db.idempotency import scope as idem_scope
 from db.repositories.watchlist_rules import list_rules_rows, set_rule_email
@@ -38,6 +39,12 @@ from services.watchlist_rules import (
     list_rules,
     serie_semanal,
     update_rule,
+)
+from shared.audit_events import (
+    WATCHLIST_RULE_CREATED,
+    WATCHLIST_RULE_DELETED,
+    WATCHLIST_RULE_PAUSED_ALL,
+    WATCHLIST_RULE_UPDATED,
 )
 from shared.dto import (
     CreatedId,
@@ -64,6 +71,25 @@ def _user_key(ctx: dict[str, Any]) -> str:
     práctica pero podía divergir silenciosamente si algún día lo hiciera.
     """
     return str(ctx["user_key"])
+
+
+def _auditar(
+    event_type: str,
+    user_key: str,
+    user_id: int | None,
+    rule_id: int,
+    organization_id: int | None,
+    **detalle: object,
+) -> None:
+    """Rastro de una regla. Con organización, en el suyo (CU-32): ids, nunca correos."""
+    log_event(
+        event_type=event_type,
+        # Sin ``user_id`` (clave de API heredada) queda la clave como actor.
+        actor="" if user_id is not None else user_key,
+        user_id=user_id,
+        resource=f"org:{organization_id}" if organization_id else None,
+        detail={"rule_id": rule_id, **detalle},
+    )
 
 
 def _ctx_email(ctx: dict[str, Any]) -> str | None:
@@ -222,6 +248,14 @@ async def post_rule(
         )
         if email is not None:
             set_rule_email(user_key, rule_id, email, user_id=user_id)
+        _auditar(
+            WATCHLIST_RULE_CREATED,
+            user_key,
+            user_id,
+            rule_id,
+            organization_id,
+            frequency=rule.frequency,
+        )
         payload = CreatedId(id=rule_id).model_dump(mode="json")
         store_response(idempotency_key, ambito, payload)
         return payload
@@ -244,10 +278,23 @@ async def put_rule(
     organization_id = ctx["organization_id"]
 
     def _update() -> bool:
-        ok = update_rule(user_key, rule_id, body.to_rule(), organization_id, user_id=user_id)
-        if ok and email is not None:
+        rule = body.to_rule()
+        ok = update_rule(user_key, rule_id, rule, organization_id, user_id=user_id)
+        if not ok:
+            return False
+        if email is not None:
             set_rule_email(user_key, rule_id, email, user_id=user_id)
-        return ok
+        # ``active`` dice si el cambio fue pausarla, que corta el correo igual que borrarla.
+        _auditar(
+            WATCHLIST_RULE_UPDATED,
+            user_key,
+            user_id,
+            rule_id,
+            organization_id,
+            active=rule.active,
+            frequency=rule.frequency,
+        )
+        return True
 
     ok = await run_db(_update)
     if not ok:
@@ -260,9 +307,16 @@ async def delete_rule_route(
     rule_id: int,
     ctx: dict[str, Any] = Depends(require_organization(write=True)),
 ) -> StatusOk:
-    ok = await run_db(
-        delete_rule, _user_key(ctx), rule_id, ctx["organization_id"], user_id=_user_id(ctx)
-    )
+    organization_id = ctx["organization_id"]
+    user_key, user_id = _user_key(ctx), _user_id(ctx)
+
+    def _delete() -> bool:
+        ok = delete_rule(user_key, rule_id, organization_id, user_id=user_id)
+        if ok:
+            _auditar(WATCHLIST_RULE_DELETED, user_key, user_id, rule_id, organization_id)
+        return ok
+
+    ok = await run_db(_delete)
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Regla no encontrada.")
     return StatusOk(status="ok")
@@ -360,7 +414,7 @@ async def preview_matches(
 async def baja_alertas(
     k: str = Query(..., min_length=8, max_length=64, description="user_key firmado"),
     t: str = Query(..., min_length=8, max_length=200, description="Firma HMAC (kid.sig)"),
-) -> Any:
+) -> RedirectResponse | StatusOk:
     """Pausa las reglas de quien pulsa el enlace de baja del digest.
 
     Sin sesión a propósito: quien quiere dejar de recibir correo no quiere
@@ -395,6 +449,12 @@ def _pausar_por_enlace(k: str, t: str) -> tuple[bool, int, str | None]:
     if not verificar_token_de_baja(k, t):
         return False, 0, None
     pausadas = deactivate_all_for_user(k)
+    # Sin sesión ni organización: la firma autoriza a la clave, que es el actor.
+    log_event(
+        event_type=WATCHLIST_RULE_PAUSED_ALL,
+        actor=k,
+        detail={"pausadas": pausadas, "via": "enlace_de_baja"},
+    )
     return True, pausadas, url_absoluta(f"/mi-watchlist?baja={pausadas}")
 
 

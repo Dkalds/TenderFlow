@@ -186,3 +186,39 @@ describe("Seguridad: baja", () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 });
+
+describe("Seguridad: códigos de recuperación nuevos", () => {
+  beforeEach(() => {
+    sesion.mfa = true;
+    responder("POST /api/v1/auth/totp/recovery-codes", 200, { status: "ok", recovery_codes: RECUPERACION });
+  });
+
+  it("con un código de la app enseña los nuevos y dice que los anteriores ya no valen", async () => {
+    renderVista();
+    const generar = screen.getByRole("button", { name: "Generar códigos nuevos" });
+    expect(generar).toBeDisabled();
+    // Uno de recuperación no vale aquí: la API lo rechazaría.
+    fireEvent.change(screen.getByLabelText("Código de la app"), { target: { value: "0123456789abcdef" } });
+    expect(generar).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Código de la app"), { target: { value: "123 456" } });
+    fireEvent.click(generar);
+
+    const lista = await screen.findByRole("list", { name: "Códigos de recuperación" });
+    expect(within(lista).getAllByRole("listitem")).toHaveLength(10);
+    expect(screen.getByText(/Los códigos que tenías ya no valen/)).toBeInTheDocument();
+    const [, init] = llamada("POST", "/api/v1/auth/totp/recovery-codes")!;
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ code: "123456" });
+    // El segundo factor sigue activo: no hay sesión que refrescar.
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("un código que no vale se dice en línea", async () => {
+    responder("POST /api/v1/auth/totp/recovery-codes", 400, { detail: "Invalid TOTP code" });
+    renderVista();
+    fireEvent.change(screen.getByLabelText("Código de la app"), { target: { value: "111111" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generar códigos nuevos" }));
+
+    expect(await screen.findByText(/El código no es válido/)).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Códigos de recuperación" })).not.toBeInTheDocument();
+  });
+});

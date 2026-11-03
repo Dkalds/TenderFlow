@@ -88,6 +88,35 @@ def test_crud_roundtrip(client, api_key):
     assert client.get("/api/v1/watchlist/rules", headers=h).json()["items"] == []
 
 
+def test_crear_pausar_y_borrar_dejan_rastro_en_la_organizacion(client, api_key):
+    """Sin rastro no constaba quién dejó a cero las reglas (plan 2026-10, B6)."""
+    from db.database import connect
+    from db.repositories.audit import AuditRepository
+
+    h = _auth(api_key)
+    rid = client.post(
+        "/api/v1/watchlist/rules", json={"nombre": "SAP", "keyword": "SAP"}, headers=h
+    ).json()["id"]
+    with connect() as c:
+        org = c.execute(
+            "SELECT organization_id FROM watchlist_rules WHERE id = %s", (rid,)
+        ).fetchone()[0]
+    pausa = {"nombre": "SAP", "keyword": "SAP", "active": False}
+    assert client.put(f"/api/v1/watchlist/rules/{rid}", json=pausa, headers=h).status_code == 200
+    assert client.delete(f"/api/v1/watchlist/rules/{rid}", headers=h).status_code == 200
+
+    rastro = AuditRepository().list_for_organization(org)
+    eventos = [e["event_type"] for e in rastro if e["event_type"].startswith("watchlist_rule.")]
+    assert eventos == [
+        "watchlist_rule.deleted",
+        "watchlist_rule.updated",
+        "watchlist_rule.created",
+    ]
+    pausada = next(e for e in rastro if e["event_type"] == "watchlist_rule.updated")
+    assert f'"rule_id": {rid}' in pausada["detail"]
+    assert '"active": false' in pausada["detail"]
+
+
 def test_update_inexistente_404(client, api_key):
     r = client.put("/api/v1/watchlist/rules/9999", json={"keyword": "x"}, headers=_auth(api_key))
     assert r.status_code == 404
