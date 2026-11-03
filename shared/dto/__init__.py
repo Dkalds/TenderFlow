@@ -75,6 +75,8 @@ from shared.dto.agenda import (
 from shared.dto.analitica import (
     DESCRIPCION_GRANDES_EN_PLAZO,
     CoberturaMetricaDTO,
+    CompetitiveCompanyActaCriterioDTO,
+    CompetitiveCompanyActaScoresDTO,
     CompetitiveCompanyAwardDTO,
     CompetitiveCompanyAwardsDTO,
     CompetitiveCompanyBreakdownDTO,
@@ -276,6 +278,8 @@ __all__ = [
     "CalendarioEnlace",
     "ClaseSolvenciaOficial",
     "CoberturaMetricaDTO",
+    "CompetitiveCompanyActaCriterioDTO",
+    "CompetitiveCompanyActaScoresDTO",
     "CompetitiveCompanyAwardDTO",
     "CompetitiveCompanyAwardsDTO",
     "CompetitiveCompanyBreakdownDTO",

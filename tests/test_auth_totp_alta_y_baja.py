@@ -104,6 +104,39 @@ def test_quitarlo_con_un_codigo_de_recuperacion(client, api_db):
     assert sesion.get("/auth/me").json()["mfa_required"] is False
 
 
+def test_regenerar_los_codigos_sin_quitar_el_segundo_factor(client, api_db):
+    """Los códigos nuevos sustituyen a los viejos y el segundo factor sigue activo."""
+    sesion = abrir_sesion("regenera@example.com", client)
+    uri, viejos = _activar(sesion)
+
+    regenerados = sesion.post("/auth/totp/recovery-codes", json={"code": codigo_totp(uri)})
+
+    assert regenerados.status_code == 200, regenerados.text
+    assert regenerados.headers["cache-control"] == "no-store"
+    nuevos = list(regenerados.json()["recovery_codes"])
+    assert len(nuevos) == len(viejos) and not set(nuevos) & set(viejos)
+    assert sesion.get("/auth/me").json()["mfa_required"] is True
+    # Un código viejo ya no vale; uno nuevo sí.
+    assert sesion.delete("/auth/totp", json={"code": viejos[0]}).status_code == 400
+    assert sesion.delete("/auth/totp", json={"code": nuevos[0]}).status_code == 200
+
+
+def test_regenerar_exige_un_codigo_del_autenticador(client, api_db):
+    """Un código de recuperación no sirve para fabricar diez más."""
+    sesion = abrir_sesion("regenera-sin-movil@example.com", client)
+    _, recuperacion = _activar(sesion)
+
+    assert sesion.post("/auth/totp/recovery-codes", json={"code": "000000"}).status_code == 400
+    con_recuperacion = sesion.post("/auth/totp/recovery-codes", json={"code": recuperacion[0]})
+    assert con_recuperacion.status_code == 400
+
+
+def test_sin_segundo_factor_no_hay_codigos_que_regenerar(client, api_db):
+    sesion = abrir_sesion("regenera-sin-2fa@example.com", client)
+
+    assert sesion.post("/auth/totp/recovery-codes", json={"code": "123456"}).status_code == 409
+
+
 def test_con_la_sesion_antigua_el_403_dice_que_hay_que_volver_a_entrar(client, api_db, monkeypatch):
     sesion = abrir_sesion("antigua@example.com", client)
     # Toda sesión es «antigua» con un margen de cero segundos.

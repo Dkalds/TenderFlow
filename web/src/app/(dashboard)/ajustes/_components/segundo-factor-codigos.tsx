@@ -11,12 +11,23 @@ import { Aviso } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { copiarAlPortapapeles } from "@/lib/portapapeles";
 
-export function SegundoFactorCodigos({ codigos, onGuardados }: { codigos: string[]; onGuardados: () => void }) {
+export function SegundoFactorCodigos({
+  codigos,
+  regenerados = false,
+  onGuardados,
+}: {
+  codigos: string[];
+  /** Vienen de regenerarlos, no del alta: los de antes ya no valen. */
+  regenerados?: boolean;
+  onGuardados: () => void;
+}) {
   return (
     <Aviso tone="warning" role="alert" title="Guarda ahora tus códigos de recuperación">
       <p className="text-muted-foreground">
-        La verificación en dos pasos ya está activa. Si pierdes el móvil, cada uno de estos códigos te deja entrar
-        una vez. No se pueden volver a ver.
+        {regenerados
+          ? "Los códigos que tenías ya no valen. "
+          : "La verificación en dos pasos ya está activa. "}
+        Si pierdes el móvil, cada uno de estos códigos te deja entrar una vez. No se pueden volver a ver.
       </p>
       <ul aria-label="Códigos de recuperación" className="mt-2 grid grid-cols-2 gap-1 sm:grid-cols-5">
         {codigos.map((codigo) => (

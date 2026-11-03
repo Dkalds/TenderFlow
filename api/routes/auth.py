@@ -63,6 +63,7 @@ from shared.audit_events import (
     AUTH_PASSWORD_RESET_COMPLETED,
     AUTH_TOTP_DISABLED,
     AUTH_TOTP_ENABLED,
+    AUTH_TOTP_RECOVERY_REGENERATED,
 )
 from shared.auth_core import (
     csv_set,
@@ -1359,6 +1360,61 @@ async def verify_totp_login(
 
     await run_db(_verify)
     return StatusOk(status="ok")
+
+
+@router.post(
+    "/totp/recovery-codes",
+    responses={
+        400: {"description": "El código no es válido"},
+        403: {"description": "La sesión no es reciente: hay que volver a entrar"},
+        409: {"description": "La cuenta no tiene el segundo factor activo"},
+        429: {"description": "Demasiados códigos fallidos seguidos"},
+    },
+)
+async def regenerate_recovery_codes(
+    body: TotpCodeRequest,
+    response: Response,
+    user: dict[str, Any] = Depends(require_recent_session_auth),
+) -> TotpConfirmResult:
+    """Códigos de recuperación nuevos sin desactivar el segundo factor.
+
+    Hasta ahora la única forma de tener otros era quitar el segundo factor y
+    volver a darlo de alta. Pide un código vigente del autenticador, no uno de
+    recuperación: quien regenera tiene el móvil, y un código de recuperación
+    robado no debe servir para fabricar diez más. Los anteriores dejan de
+    valer (``generate_recovery_codes`` los borra) y los nuevos se entregan
+    una sola vez, como al confirmar el alta.
+    """
+    if user.get("mfa_required") and not user.get("mfa_verified_at"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Verify MFA before regenerating codes"
+        )
+    from db.rate_limits import clear_mfa_attempts
+    from db.totp import generate_recovery_codes, get_totp_secret, verify_totp
+
+    user_id = int(user["user_id"])
+
+    def _regenerar() -> list[str]:
+        # Mismo límite de intentos que el login y que desactivar.
+        _reject_if_mfa_locked(user_id)
+        record = get_totp_secret(user_id)
+        if record is None or not record["confirmed"]:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="TOTP not configured")
+        if not (body.code.isdecimal() and verify_totp(record["secret"], body.code)):
+            _record_mfa_failure(user_id)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid TOTP code")
+        clear_mfa_attempts(user_id)
+        return generate_recovery_codes(user_id)
+
+    recovery_codes = await run_db(_regenerar)
+    await run_db(
+        log_event,
+        event_type=AUTH_TOTP_RECOVERY_REGENERATED,
+        user_id=user_id,
+        resource=f"user:{user_id}",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return TotpConfirmResult(status="ok", recovery_codes=recovery_codes)
 
 
 @router.delete(

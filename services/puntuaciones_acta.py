@@ -46,8 +46,10 @@ from __future__ import annotations
 
 import json
 import threading
+from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from statistics import fmean
 from typing import TYPE_CHECKING, Final
 
 from config.settings import settings
@@ -55,6 +57,7 @@ from db.repositories.condiciones_oficiales import CondicionesOficialesRepository
 from db.repositories.documentos import TIPO_ACTA, DocumentosRepository
 from db.repositories.puntuaciones_acta import (
     ActaStatus,
+    PuntuacionDeLicitador,
     PuntuacionesActaRepository,
     PuntuacionNueva,
     PuntuacionRow,
@@ -64,6 +67,8 @@ from observability.logging import get_logger
 from services.jobs import TIPO_PUNTUACIONES_ACTA, enqueue
 from services.normalization import fold_text, normalize_company
 from shared.dto import (
+    CompetitiveCompanyActaCriterioDTO,
+    CompetitiveCompanyActaScoresDTO,
     CriterioPuntuado,
     DiferenciaCriterio,
     FilaActaRef,
@@ -602,4 +607,65 @@ def _diferencia_dto(calculo: DiferenciaCalculo, ganadora: _Licitador) -> Diferen
         es_precio=calculo.es_precio,
         documento_id=cita[0] if cita else None,
         pagina=cita[1] if cita else None,
+    )
+
+
+# --- Perfil de un competidor por criterio (Competencia) ------------------------
+
+#: Actas mínimas para publicar la media de una familia de criterios: con una o
+#: dos, la cifra describe un concurso, no a la empresa (ADR-014).
+MIN_ACTAS_PERFIL: Final = 3
+
+
+def perfil_por_criterio(empresa_ids: Sequence[int]) -> CompetitiveCompanyActaScoresDTO | None:
+    """Dónde puntúa una empresa del maestro en las actas leídas; ``None`` si no figura."""
+    repo = PuntuacionesActaRepository()
+    normalizados = sorted(
+        {n for nombre in repo.nombres_de_empresas(empresa_ids) if (n := normalize_company(nombre))}
+    )
+    return resumir_por_criterio(repo.puntuaciones_de_licitadores(normalizados))
+
+
+def resumir_por_criterio(
+    filas: Sequence[PuntuacionDeLicitador],
+) -> CompetitiveCompanyActaScoresDTO | None:
+    """De las filas de un licitador a su media de puntos de precio y técnicos. Pura.
+
+    Cada acta (expediente y lote) pesa lo mismo: la media es de porcentajes
+    por acta, no de puntos sumados, para que un concurso con 1.000 puntos no
+    tape a diez de 100. Una acta en que quedó excluida no entra en las medias:
+    sus puntos no son una valoración. Un criterio sin máximo o sin clasificar
+    como precio o no tampoco.
+    """
+    actas: dict[tuple[str, str | None], list[PuntuacionDeLicitador]] = defaultdict(list)
+    for fila in filas:
+        actas[(fila["licitacion_id"], fila["lote_numero"])].append(fila)
+    if not actas:
+        return None
+    excluida = 0
+    porcentajes: dict[bool, list[float]] = {True: [], False: []}
+    for filas_acta in actas.values():
+        if any(f["excluida"] for f in filas_acta):
+            excluida += 1
+            continue
+        for es_precio, valores in porcentajes.items():
+            validas = [
+                (f["puntos"], f["puntos_max"])
+                for f in filas_acta
+                if f["es_precio"] is es_precio and f["puntos"] is not None and f["puntos_max"]
+            ]
+            maximo = sum(m for _, m in validas)
+            if maximo > 0:
+                valores.append(min(100.0, 100.0 * sum(p for p, _ in validas) / maximo))
+
+    def familia(valores: list[float]) -> CompetitiveCompanyActaCriterioDTO:
+        media = round(fmean(valores), 1) if len(valores) >= MIN_ACTAS_PERFIL else None
+        return CompetitiveCompanyActaCriterioDTO(actas=len(valores), pct_medio=media)
+
+    return CompetitiveCompanyActaScoresDTO(
+        actas=len(actas),
+        excluida=excluida,
+        precio=familia(porcentajes[True]),
+        tecnica=familia(porcentajes[False]),
+        min_actas=MIN_ACTAS_PERFIL,
     )

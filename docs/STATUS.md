@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-11-02
+Generado: 2026-11-03
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -84,9 +84,9 @@ Generado: 2026-11-02
 
 ## Superficie de la API
 
-**310 endpoints** expuestos.
+**311 endpoints** expuestos.
 
-Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **18** (`scripts/check_api_surface.py`).
+Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **19** (`scripts/check_api_surface.py`).
 
 <details><summary>Ver listado</summary>
 
@@ -161,6 +161,7 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | POST | `/api/v1/auth/register` |
 | DELETE | `/api/v1/auth/totp` |
 | POST | `/api/v1/auth/totp/confirm` |
+| POST | `/api/v1/auth/totp/recovery-codes` |
 | POST | `/api/v1/auth/totp/setup` |
 | POST | `/api/v1/auth/totp/verify` |
 | POST | `/api/v1/auth/verify-email` |

@@ -28,6 +28,7 @@ from services.competitive.batallas import (
     corte_por_procedimiento,
     corte_por_tramo,
 )
+from services.puntuaciones_acta import perfil_por_criterio
 from shared.metric_scope import MetricScope
 
 AnalysisUniverse = mercado_repo.UniversoAnalisis
@@ -567,8 +568,10 @@ def perfil_empresa(
                 "baja_pct": baja_pct,
             }
         )
+    acta = perfil_por_criterio(group_ids) if identity_rows else None
     return {
         "_exists": bool(identity_rows),
+        "puntuaciones_acta": acta.model_dump() if acta else None,
         "empresa": {
             "empresa_id": empresa_id,
             "nombre": identity.get("nombre_canonico") or f"Empresa {empresa_id}",

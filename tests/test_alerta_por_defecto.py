@@ -73,6 +73,25 @@ def test_guardar_las_tecnologias_crea_la_alerta_de_quien_guarda(equipo: dict[str
         assert (regla["cpv"], regla["ccaa"]) == ("72", "Madrid")
 
 
+def test_la_alerta_por_defecto_queda_en_el_rastro_de_la_organizacion(
+    equipo: dict[str, int],
+) -> None:
+    from db.repositories.audit import AuditRepository
+
+    update_settings(equipo["admin"], equipo["org"], OrganizationSettings(tecnologias=["SAP"]))
+
+    (regla,) = _reglas(equipo["org"])
+    creadas = [
+        e
+        for e in AuditRepository().list_for_organization(equipo["org"])
+        if e["event_type"] == "watchlist_rule.created"
+    ]
+    assert len(creadas) == 1
+    assert creadas[0]["actor_user_id"] == equipo["admin"]
+    assert f'"rule_id": {regla["id"]}' in creadas[0]["detail"]
+    assert "alerta_por_defecto" in creadas[0]["detail"]
+
+
 def test_la_alerta_se_ve_en_mi_watchlist_de_quien_guarda(equipo: dict[str, int]) -> None:
     """Lo que lista /mi-watchlist: ``list_rules`` con la identidad del login."""
     from services.watchlist_rules import list_rules

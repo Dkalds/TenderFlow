@@ -1435,6 +1435,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/totp/recovery-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Regenerate Recovery Codes
+         * @description Códigos de recuperación nuevos sin desactivar el segundo factor.
+         *
+         *     Hasta ahora la única forma de tener otros era quitar el segundo factor y
+         *     volver a darlo de alta. Pide un código vigente del autenticador, no uno de
+         *     recuperación: quien regenera tiene el móvil, y un código de recuperación
+         *     robado no debe servir para fabricar diez más. Los anteriores dejan de
+         *     valer (``generate_recovery_codes`` los borra) y los nuevos se entregan
+         *     una sola vez, como al confirmar el alta.
+         */
+        post: operations["regenerate_recovery_codes_api_v1_auth_totp_recovery_codes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/totp/setup": {
         parameters: {
             query?: never;
@@ -7592,6 +7619,48 @@ export interface components {
             rivales: components["schemas"]["RivalesEsperados"];
         };
         /**
+         * CompetitiveCompanyActaCriterioDTO
+         * @description Qué parte de los puntos de una familia de criterios saca la empresa en las actas.
+         */
+        CompetitiveCompanyActaCriterioDTO: {
+            /**
+             * Actas
+             * @description Actas (expediente y lote) con puntos de esta familia.
+             */
+            actas: number;
+            /**
+             * Pct Medio
+             * @description Media por acta de puntos obtenidos sobre el máximo, en %. Nulo con menos de `min_actas` actas: no hay bastante para decirlo (ADR-014).
+             */
+            pct_medio?: number | null;
+        };
+        /**
+         * CompetitiveCompanyActaScoresDTO
+         * @description Dónde puntúa la empresa según las actas de la mesa leídas (v170).
+         *
+         *     Sobre todas las actas leídas en que figura, sin los filtros del dossier: hoy
+         *     solo se leen las de expedientes adjudicados que alguna organización sigue.
+         */
+        CompetitiveCompanyActaScoresDTO: {
+            /**
+             * Actas
+             * @description Actas (expediente y lote) en que figura.
+             */
+            actas: number;
+            /**
+             * Excluida
+             * @description De ellas, en cuántas quedó excluida.
+             */
+            excluida: number;
+            /**
+             * Min Actas
+             * @description Actas mínimas para publicar una media.
+             */
+            min_actas: number;
+            precio: components["schemas"]["CompetitiveCompanyActaCriterioDTO"];
+            tecnica: components["schemas"]["CompetitiveCompanyActaCriterioDTO"];
+        };
+        /**
          * CompetitiveCompanyAwardDTO
          * @description Award row in the paginated company history.
          */
@@ -7847,6 +7916,7 @@ export interface components {
             /** Por Tramo Importe */
             por_tramo_importe?: components["schemas"]["CompetitiveCompanyCorteDTO"][];
             posicion_mercado: components["schemas"]["CompetitiveCompanyPositionDTO"];
+            puntuaciones_acta?: components["schemas"]["CompetitiveCompanyActaScoresDTO"] | null;
             scope: components["schemas"]["CompetitiveCompanyScopeDTO"];
             totales: components["schemas"]["CompetitiveCompanyTotalsDTO"];
         };
@@ -20821,6 +20891,88 @@ export interface operations {
             };
             /** @description La petición no pasó la validación (``errors`` por campo). */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Error: cualquier código no listado (RFC 9457). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    regenerate_recovery_codes_api_v1_auth_totp_recovery_codes_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpConfirmResult"];
+                };
+            };
+            /** @description El código no es válido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description La sesión no es reciente: hay que volver a entrar */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description La cuenta no tiene el segundo factor activo */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description La petición no pasó la validación (``errors`` por campo). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Demasiados códigos fallidos seguidos */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

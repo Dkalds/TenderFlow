@@ -74,6 +74,17 @@ class ExpedienteActaPendiente(TypedDict):
     tiene_acta: bool
 
 
+class PuntuacionDeLicitador(TypedDict):
+    """Una fila del acta de un licitador, lo que hace falta para su perfil por criterio."""
+
+    licitacion_id: str
+    lote_numero: str | None
+    puntos: float | None
+    puntos_max: float | None
+    es_precio: bool | None
+    excluida: bool
+
+
 class AdjudicatarioLote(TypedDict):
     """A quién se adjudicó un lote (``lote_numero`` ``None`` = sin lote resuelto)."""
 
@@ -196,6 +207,18 @@ _NOMBRES_ORGANIZACION_SQL = (
     " WHERE n.organization_id = %(org)s AND n.razon_social IS NOT NULL "
     "UNION "
     "SELECT o.name FROM organizations o WHERE o.id = %(org)s "
+    "ORDER BY 1"
+)
+
+
+# Los nombres con que una empresa del maestro puede figurar en un acta: el
+# canónico, sus alias y el nombre con que se le adjudicó (``idx_adj_empresa``).
+_NOMBRES_EMPRESAS_SQL = (
+    "SELECT e.nombre_canonico FROM empresas e WHERE e.empresa_id = ANY(%(ids)s) "
+    "UNION "
+    "SELECT al.alias_normalizado FROM empresa_aliases al WHERE al.empresa_id = ANY(%(ids)s) "
+    "UNION "
+    "SELECT a.nombre FROM adjudicaciones a WHERE a.empresa_id = ANY(%(ids)s) "
     "ORDER BY 1"
 )
 
@@ -342,6 +365,39 @@ class PuntuacionesActaRepository:
                 (licitacion_id,),
             )
             return typed_rows(AdjudicatarioLote, rows_to_dicts(cur))
+
+    def nombres_de_empresas(self, empresa_ids: Sequence[int]) -> list[str]:
+        """Los nombres con que esas empresas del maestro pueden figurar en un acta, sin normalizar.
+
+        El canónico, los alias y el nombre de sus adjudicaciones. Como en
+        :meth:`nombres_de_organizacion`, normalizar y comparar es del servicio.
+        """
+        if not empresa_ids:
+            return []
+        with connect_read() as conn:
+            filas = conn.execute(_NOMBRES_EMPRESAS_SQL, {"ids": list(empresa_ids)}).fetchall()
+        return [str(fila[0]) for fila in filas if fila[0]]
+
+    def puntuaciones_de_licitadores(
+        self, normalizados: Sequence[str]
+    ) -> list[PuntuacionDeLicitador]:
+        """Las filas de todas las actas leídas en que figura alguno de esos licitadores.
+
+        shortcut: barrido sin índice por ``licitador_normalizado`` (el único
+        índice empieza por ``licitacion_id``); con las actas de las
+        oportunidades son cientos de filas. Añadir el índice en una migración
+        cuando se lean actas fuera de las oportunidades.
+        """
+        if not normalizados:
+            return []
+        with connect_read() as conn:
+            cur = conn.execute(
+                "SELECT licitacion_id, lote_numero, puntos, puntos_max, es_precio, excluida "
+                "FROM acta_puntuaciones WHERE licitador_normalizado = ANY(%s) "
+                "ORDER BY licitacion_id, lote_numero, id",
+                (list(normalizados),),
+            )
+            return typed_rows(PuntuacionDeLicitador, rows_to_dicts(cur))
 
     def nombres_de_organizacion(self, organization_id: int) -> list[str]:
         """Los nombres con que la organización puede figurar en un acta, sin normalizar.

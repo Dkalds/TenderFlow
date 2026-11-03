@@ -183,6 +183,14 @@ NUEVAS: dict[str, str] = {
         "de ofrecer la subida si el entorno tiene almacén, el tope y la lista blanca, "
         "sin llevar su propia copia de las constantes del servidor."
     ),
+    "POST /api/v1/auth/totp/recovery-codes": (
+        "Se miró POST /auth/totp/confirm, que entrega los códigos solo al confirmar un "
+        "alta sin confirmar (con el segundo factor activo responde 400), y DELETE "
+        "/auth/totp, que quita el segundo factor. Hasta ahora, tener códigos nuevos "
+        "exigía desactivarlo y volver a darlo de alta, dejando la cuenta sin él entre "
+        "medias (backlog, flecos de funcionalidades-2026-10). Esta los regenera con un "
+        "código vigente del autenticador y sin tocar el secreto."
+    ),
 }
 
 

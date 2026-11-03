@@ -128,10 +128,35 @@ export interface CompanyProfileData {
   por_procedimiento?: CompanyCorte[];
   por_tramo_importe?: CompanyCorte[];
   corte_min_n?: number;
+  /** Dónde puntúa según las actas de la mesa leídas; nulo si no figura en ninguna. */
+  puntuaciones_acta?: CompanyActaScores | null;
 }
 
 /** Celda de un corte F3.5: `baja_media` en tanto por uno, nula bajo el mínimo. */
 export type CompanyCorte = Schemas["CompetitiveCompanyCorteDTO"];
+
+/** Media de puntos de precio y técnicos por acta; cada media, nula bajo `min_actas`. */
+export type CompanyActaScores = Schemas["CompetitiveCompanyActaScoresDTO"];
+
+/** Puntos porcentuales de diferencia a partir de los que una media pesa claramente más. */
+const DIFERENCIA_CLARA_ACTAS = 15;
+
+/**
+ * Lee las dos medias que da el backend; no calcula ninguna. Solo con las dos
+ * publicadas: con una sola no hay con qué comparar.
+ */
+export function lecturaActas(acta: CompanyActaScores): string | null {
+  const precio = acta.precio.pct_medio;
+  const tecnica = acta.tecnica.pct_medio;
+  if (precio == null || tecnica == null) return null;
+  if (precio - tecnica >= DIFERENCIA_CLARA_ACTAS) {
+    return "Puntúa más en precio que en lo técnico: compite sobre todo con la oferta económica.";
+  }
+  if (tecnica - precio >= DIFERENCIA_CLARA_ACTAS) {
+    return "Puntúa más en lo técnico que en precio: compite sobre todo con la propuesta técnica.";
+  }
+  return "Puntúa parecido en precio y en lo técnico.";
+}
 
 export interface CompanyAward {
   licitacion_id: string;

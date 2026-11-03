@@ -28,6 +28,7 @@ import { CambioContrasena } from "./cambio-contrasena";
 import { SegundoFactorAlta } from "./segundo-factor-alta";
 import { SegundoFactorCodigos } from "./segundo-factor-codigos";
 import { SegundoFactorQuitar } from "./segundo-factor-quitar";
+import { SegundoFactorRegenerar } from "./segundo-factor-regenerar";
 
 const TITULO = "Verificación en dos pasos";
 
@@ -76,18 +77,22 @@ export default function SeguridadView() {
   const { user, isLoading } = useSession();
   const [uri, setUri] = React.useState<string | null>(null);
   const [codigos, setCodigos] = React.useState<string[] | null>(null);
+  const [regenerados, setRegenerados] = React.useState(false);
   const activa = user?.mfa_required === true;
 
   if (isLoading) return <Skeleton className="h-40 w-full max-w-2xl rounded-xl" />;
 
   return (
     <div className="mx-auto w-full max-w-2xl space-y-4">
-      {codigos && <SegundoFactorCodigos codigos={codigos} onGuardados={() => setCodigos(null)} />}
+      {codigos && (
+        <SegundoFactorCodigos codigos={codigos} regenerados={regenerados} onGuardados={() => setCodigos(null)} />
+      )}
 
       {uri && !activa ? (
         <SegundoFactorAlta
           uri={uri}
           onConfirmada={(recuperacion) => {
+            setRegenerados(false);
             setCodigos(recuperacion);
             setUri(null);
           }}
@@ -109,7 +114,17 @@ export default function SeguridadView() {
               app de autenticación.
             </p>
           </Panel>
-          {!codigos && <SegundoFactorQuitar />}
+          {!codigos && (
+            <>
+              <SegundoFactorRegenerar
+                onRegenerados={(nuevos) => {
+                  setRegenerados(true);
+                  setCodigos(nuevos);
+                }}
+              />
+              <SegundoFactorQuitar />
+            </>
+          )}
         </>
       ) : (
         <SinSegundoFactor onAlta={setUri} />

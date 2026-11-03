@@ -25,6 +25,7 @@ from typing import Any, Literal
 from pydantic import BaseModel
 from sqlalchemy import ColumnElement, and_, bindparam, func, literal_column, or_, text
 
+from db.audit import log_event
 from db.models import licitaciones
 from db.repositories.watchlist_rules import (
     ValoresRegla,
@@ -46,6 +47,7 @@ from db.repositories.watchlist_rules import (
 from db.sql_fragments import FOLD_TABLE, escape_like, fold_expr, iso_guard, palabras_de_organo
 from observability.logging import get_logger
 from services.dedupe import normalize_organo
+from shared.audit_events import WATCHLIST_RULE_CREATED
 from shared.dto import OrganizationSettings, RadarBanda
 from shared.estados import abierta_core
 from shared.procedimientos import codigo_tipo_contrato, textos_de_tipo_contrato
@@ -253,6 +255,13 @@ def asegurar_alerta_por_defecto(
     )
     if ids:
         log.info("alerta_por_defecto_creada", organization_id=organization_id, reglas=len(ids))
+        for rule_id in ids:
+            log_event(
+                event_type=WATCHLIST_RULE_CREATED,
+                user_id=user_id,
+                resource=f"org:{organization_id}",
+                detail={"rule_id": rule_id, "frequency": "daily", "origen": "alerta_por_defecto"},
+            )
     return ids
 
 

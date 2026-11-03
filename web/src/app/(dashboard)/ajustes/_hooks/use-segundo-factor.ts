@@ -1,5 +1,5 @@
 /**
- * Las tres llamadas del segundo factor desde Ajustes › Seguridad (CU-25).
+ * Las cuatro llamadas del segundo factor desde Ajustes › Seguridad (CU-25).
  *
  * Todas con `META_ERROR_EN_LINEA`: el fallo se pinta junto al paso que lo
  * provocó (un código equivocado, la sesión antigua), y un toast encima diría
@@ -36,6 +36,19 @@ export function useConfirmarAlta() {
     mutationFn: (code: string) =>
       apiMutate<ConfirmacionSegundoFactor>("POST", "/api/v1/auth/totp/confirm", { code }),
     onSuccess: () => void refresh(),
+    meta: META_ERROR_EN_LINEA,
+  });
+}
+
+/**
+ * Diez códigos de recuperación nuevos con un código vigente de la app; los
+ * anteriores dejan de valer. El segundo factor sigue activo: no hay sesión que
+ * refrescar.
+ */
+export function useRegenerarCodigos() {
+  return useMutation({
+    mutationFn: (code: string) =>
+      apiMutate<ConfirmacionSegundoFactor>("POST", "/api/v1/auth/totp/recovery-codes", { code }),
     meta: META_ERROR_EN_LINEA,
   });
 }

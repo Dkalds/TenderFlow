@@ -362,7 +362,7 @@ en el log — es un bug del llamante, no un motivo para perder el rastro.
 | Familia | Eventos | Dónde se escriben |
 |---|---|---|
 | `org.*` | `created`, `deleted`, `settings_updated`, `nifs_updated`, `capabilities_updated`, `member_added`, `member_role_changed`, `member_removed`, `ownership_transferred`, `left`, `invitation_sent`, `invitation_resent`, `invitation_revoked`, `invitation_accepted` | `api/routes/pursuits.py`, `organization_settings.py`, `organizations_capacidad.py` |
-| `auth.*` | `login_success`, `login_failed`, `logout`, `logout_all`, `password_reset_requested`, `password_reset_completed`, `password_changed`, `totp_enabled`, `totp_disabled`, `session_revoked` | `api/routes/auth.py`, `api/routes/me.py` y `services/password_reset.py` (la solicitud de recuperación, que se registra después de responder) |
+| `auth.*` | `login_success`, `login_failed`, `logout`, `logout_all`, `password_reset_requested`, `password_reset_completed`, `password_changed`, `totp_enabled`, `totp_disabled`, `totp_recovery_codes_regenerated`, `session_revoked` | `api/routes/auth.py`, `api/routes/me.py` y `services/password_reset.py` (la solicitud de recuperación, que se registra después de responder) |
 | `api_key.*` | `created`, `rotated`, `revoked` | `api/routes/me.py`; `revoked` lo emite la revocación por Secret Scanning de GitHub (`api/routes/security.py`) |
 | `export.*` | `downloaded`, `calendar_link_created` | `api/routes/exports.py` |
 | `gdpr.*` | `export`, `delete` | `api/routes/me.py` |
@@ -372,6 +372,7 @@ en el log — es un bug del llamante, no un motivo para perder el rastro.
 | configuración | `feature_flag.set`, `tecnologias_keyword.{added,removed,seeded}`, `empresa.review_resolved`, `dedupe.review_resolved`, `organo.review_resolved` | rutas de administración; las dos colas del dato en `api/routes/admin_revision.py` |
 | operación | `dlq.requeued`, `dlq.discarded` | `api/routes/admin_dlq.py` |
 | producto | `feedback.submitted`, `pursuit.weights_proposal_applied`, `go_no_go.weights_updated` | `api/routes/feedback.py`, `services/pursuits.py`, `services/go_no_go_puntuacion.py` |
+| `watchlist_rule.*` | `created`, `updated`, `deleted`, `paused_all` (la baja del enlace del correo, sin recurso) | `api/routes/watchlist_rules.py`; la alerta por defecto, en `services/watchlist_rules.py` |
 
 `detail` se persiste como `event=… | outcome=… | [ip=… |] [resource=… |] payload`.
 Los valores de cabecera no pueden contener `|` (el escritor lo sustituye por `¦`,
