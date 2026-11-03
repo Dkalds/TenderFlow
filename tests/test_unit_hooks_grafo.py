@@ -197,3 +197,134 @@ def test_un_refresco_fallido_conserva_la_marca(repo: Path, monkeypatch: pytest.M
     assert hook["refrescar"](repo) == 1
     assert (repo / "graphify-out/.graph_stale").exists()
     assert not (repo / "graphify-out/.refrescando").exists()
+
+
+# ── Bordes: lo que no se sabe leer nunca bloquea ────────────────────────────
+
+
+def _correr_busqueda(monkeypatch: pytest.MonkeyPatch, stdin: str) -> int:
+    monkeypatch.setattr("sys.stdin", io.StringIO(stdin))
+    monkeypatch.setattr("sys.stdout", io.StringIO())
+    try:
+        runpy.run_path(str(HOOKS / "pretooluse_bash_grep_hint.py"), run_name="hook")
+    except SystemExit as salida:
+        return int(salida.code or 0)
+    return 0
+
+
+def test_lineas_ilegibles_y_bloques_sin_llamada_se_saltan(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    transcript = repo.parent / "sesion.jsonl"
+    transcript.write_text(
+        "\n".join(
+            [
+                "{no es json tool_use",
+                json.dumps({"message": {"content": [{"type": "text", "text": "tool_use"}]}}),
+                json.dumps(_uso("Bash", command="git status")),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    hook = runpy.run_path(str(HOOKS / "pretooluse_bash_grep_hint.py"), run_name="sin_stdin")
+    assert hook["grafo_consultado"](transcript) is False
+
+
+def test_una_entrada_que_no_es_json_no_bloquea(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _correr_busqueda(monkeypatch, "no es json") == 0
+
+
+def test_sin_transcript_avisa_sin_bloquear(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {"tool_name": "Grep", "tool_input": {"pattern": "x"}, "cwd": str(repo)}
+    monkeypatch.setattr("shutil.which", lambda nombre: "/bin/graphify")
+    assert _correr_busqueda(monkeypatch, json.dumps(payload)) == 0
+
+
+def test_un_fallo_interno_no_bloquea(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    transcript = repo.parent / "sesion.jsonl"
+    transcript.write_text(json.dumps(_uso("Bash", command="ls")), encoding="utf-8")
+    payload = {
+        "tool_name": "Grep",
+        "tool_input": {"pattern": "x"},
+        "cwd": str(repo),
+        "transcript_path": str(transcript),
+    }
+
+    def revienta(nombre: str) -> str:
+        raise OSError("PATH ilegible")
+
+    monkeypatch.setattr("shutil.which", revienta)
+    assert _correr_busqueda(monkeypatch, json.dumps(payload)) == 0
+
+
+def test_el_bloqueo_escribe_en_utf8_aunque_stderr_sea_cp1252(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    crudo = io.BytesIO()
+    monkeypatch.setattr("sys.stderr", io.TextIOWrapper(crudo, encoding="cp1252"))
+    transcript = repo.parent / "sesion.jsonl"
+    transcript.write_text(json.dumps(_uso("Bash", command="ls")), encoding="utf-8")
+    payload = {
+        "tool_name": "Grep",
+        "tool_input": {"pattern": "x"},
+        "cwd": str(repo),
+        "transcript_path": str(transcript),
+    }
+    monkeypatch.setattr("shutil.which", lambda nombre: "/bin/graphify")
+    assert _correr_busqueda(monkeypatch, json.dumps(payload)) == 2
+    import sys
+
+    sys.stderr.flush()
+    assert "Búsqueda bloqueada" in crudo.getvalue().decode("utf-8")
+
+
+@pytest.mark.parametrize("sistema", ["nt", "posix"])
+def test_el_refresco_se_lanza_desligado_del_turno(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, sistema: str
+) -> None:
+    hook = _refresco()
+    (repo / "graphify-out/.graph_stale").touch()
+    monkeypatch.setattr("shutil.which", lambda nombre: "/bin/graphify")
+    monkeypatch.setattr(os, "name", sistema)
+    opciones: dict[str, Any] = {}
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: opciones.update(k))
+
+    assert hook["lanzar"](repo) is True
+    assert ("creationflags" in opciones) is (sistema == "nt")
+    assert opciones.get("start_new_session", False) is (sistema != "nt")
+
+
+def test_sin_cli_el_refresco_no_hace_nada(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    hook = _refresco()
+    (repo / "graphify-out/.graph_stale").touch()
+    monkeypatch.setattr("shutil.which", lambda nombre: None)
+    assert hook["refrescar"](repo) == 1
+    assert (repo / "graphify-out/.graph_stale").exists()
+
+
+def test_main_lanza_desde_el_cwd_y_refresca_con_su_argumento(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    hook = _refresco()
+    (repo / "graphify-out/.graph_stale").touch()
+    monkeypatch.setattr("shutil.which", lambda nombre: "/bin/graphify")
+    lanzados: list[object] = []
+    monkeypatch.setattr(subprocess, "Popen", lambda *a, **k: lanzados.append(a))
+    monkeypatch.setattr("sys.argv", ["stop_graph_refresh.py"])
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"cwd": str(repo / "graphify-out")})))
+    hook["main"]()
+    assert len(lanzados) == 1
+
+    monkeypatch.setattr("sys.stdin", io.StringIO("no es json"))
+    hook["main"]()  # una entrada ilegible no rompe ni lanza otro
+    assert len(lanzados) == 1
+
+    _con_update(monkeypatch, 0)
+    monkeypatch.setattr("sys.argv", ["stop_graph_refresh.py", "--refrescar", str(repo)])
+    hook["main"]()
+    assert not (repo / "graphify-out/.graph_stale").exists()
+
+
+def test_sin_pistas_la_raiz_es_la_del_propio_hook() -> None:
+    hook = _refresco()
+    assert hook["raiz_del_checkout"]("", "relativa") == hook["ROOT"]
