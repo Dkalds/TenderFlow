@@ -357,12 +357,7 @@ export interface EventosProducto {
    */
   simulador_usado: {
     formula_tipo:
-      | "proporcional_inversa"
-      | "inversa_precio"
-      | "lineal_por_tramos"
-      | "con_umbral_temeridad"
-      | "otra"
-      | "sin_formula";
+      "proporcional_inversa" | "inversa_precio" | "lineal_por_tramos" | "con_umbral_temeridad" | "otra" | "sin_formula";
     /** F2.4 — el escenario pudo mostrar margen porque el pliego traía tarifas. */
     con_tarifas?: "si" | "no";
   };
@@ -412,15 +407,7 @@ export type EventoProducto = keyof EventosProducto;
  */
 export const PROPIEDADES_PERMITIDAS = {
   sesion_iniciada: ["metodo"],
-  espacio_abierto: [
-    "espacio",
-    "origen",
-    "vista",
-    "glosario_abierto",
-    "hito_visto",
-    "evidencia_abierta",
-    "banda",
-  ],
+  espacio_abierto: ["espacio", "origen", "vista", "glosario_abierto", "hito_visto", "evidencia_abierta", "banda"],
   radar_triaje: ["accion", "explicacion_abierta", "flag"],
   licitacion_seguida: ["accion"],
   pursuit_creado: ["primera_vez", "origen"],
@@ -473,15 +460,42 @@ export function tramoDeCriterios(n: number): "1-3" | "4-8" | "9+" {
 const MAX_LONGITUD_VALOR = 48;
 
 /**
+ * Ruta propia de la API, que solo cuenta el evento en Prometheus.
+ *
+ * Vercel Web Analytics en el plan Hobby no guarda eventos personalizados (su
+ * API responde 402), así que `track` solo no medía nada. Va además de `track`,
+ * no en su lugar, y con las mismas propiedades ya filtradas.
+ */
+const RUTA_EVENTOS_API = "/api/v1/telemetria/eventos";
+
+/**
+ * Manda el evento a la API sin esperar respuesta ni avisar de nada.
+ *
+ * `fetch` propio y no `apiMutate`: aquel redirige al login ante un 401, y un
+ * evento perdido no puede sacar a nadie de la pantalla (ni meter `api-client`
+ * en el bundle de quien importe este módulo). Sin la cookie de CSRF no hay
+ * sesión y la ruta respondería 401: no se manda. `keepalive` deja salir el
+ * evento aunque la página se esté cerrando.
+ */
+function enviarALaApi(nombre: string, propiedades: Record<string, string>): void {
+  const csrf = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/)?.[1];
+  if (!csrf) return;
+  void fetch(RUTA_EVENTOS_API, {
+    method: "POST",
+    credentials: "include",
+    keepalive: true,
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": decodeURIComponent(csrf) },
+    body: JSON.stringify({ evento: nombre, propiedades }),
+  }).catch(() => {});
+}
+
+/**
  * Emite un evento de producto. Único punto del frontend que llama a `track`.
  *
  * No devuelve nada ni indica si se mandó: quien lo llama no puede tomar
  * decisiones a partir de la telemetría, sólo emitirla.
  */
-export function registrarEvento<E extends EventoProducto>(
-  nombre: E,
-  propiedades: EventosProducto[E],
-): void {
+export function registrarEvento<E extends EventoProducto>(nombre: E, propiedades: EventosProducto[E]): void {
   // Sin `window` no hay nada que medir (prerender, tests de servidor): salir
   // aquí es lo que permite que este módulo se pueda importar desde cualquier
   // sitio sin romper el build de la superficie pública.
@@ -497,6 +511,7 @@ export function registrarEvento<E extends EventoProducto>(
       if (typeof valor !== "string" || valor === "" || valor.length > MAX_LONGITUD_VALOR) continue;
       limpias[clave] = valor;
     }
+    enviarALaApi(nombre, limpias);
     track(nombre, limpias);
   } catch {
     // Bloqueador de anuncios, script no cargado, cuota agotada. La telemetría

@@ -1142,6 +1142,33 @@ class DocumentosRepository:
             for (ct, st), n in sorted(conteo.items(), key=lambda kv: (-kv[1], str(kv[0])))
         ]
 
+    def reencolar_sin_texto(self, *, antes_de: str, aplicar: bool) -> int:
+        """Devuelve a ``pending`` los PDF ``sin_texto`` que se leyeron antes de ``antes_de``.
+
+        ``sin_texto`` es terminal por la misma razón que ``unsupported``: leerlo
+        otra vez con el mismo proceso daría lo mismo. Pero los que se marcaron
+        antes de que el runner tuviera OCR nunca pasaron por él, y la próxima
+        pasada de ``pliegos.yml`` sí se lo aplica. Los de después ya lo
+        intentaron y se quedan. Con ``aplicar=False`` solo cuenta.
+        """
+        filtro = "status = 'sin_texto' AND coalesce(fetched_at, updated_at) < %s"
+        if not aplicar:
+            with connect_read() as c:
+                fila = c.execute(
+                    f"SELECT count(*) FROM documentos WHERE {filtro}",
+                    (antes_de,),
+                ).fetchone()
+            return int(fila[0]) if fila else 0
+        with connect() as c:
+            cur = c.execute(
+                "UPDATE documentos SET status = 'pending', error_detail = NULL, updated_at = %s "
+                f"WHERE {filtro}",
+                (now_utc_iso(), antes_de),
+            )
+            total = int(cur.rowcount or 0)
+        log.info("documentos_sin_texto_reencolados", total=total, antes_de=antes_de)
+        return total
+
     # ── Binario conservado en el almacén de objetos (v103, S8.1) ─────────
 
     def mark_blob(self, documento_id: int, *, blob_key: str) -> None:
@@ -1220,6 +1247,50 @@ class DocumentosRepository:
             )
             rows = rows_to_dicts(cur)
             return rows[0] if rows else None
+
+    # ── Reparación del texto ya extraído (letras cambiadas) ─────────────
+
+    def max_documento_id(self) -> int:
+        """El id más alto de ``documentos`` (0 si no hay ninguno)."""
+        with connect_read() as c:
+            fila = c.execute("SELECT coalesce(max(id), 0) FROM documentos").fetchone()
+        return int(fila[0]) if fila else 0
+
+    def ids_con_huella(self, huella_sql: str, *, desde_id: int, hasta_id: int) -> list[int]:
+        """Documentos de ``[desde_id, hasta_id)`` con alguna página que casa ``huella_sql``.
+
+        Por tramos de id a propósito: la regex no tiene índice y sobre la tabla
+        entera pasa del ``statement_timeout``; el tramo acota por
+        ``documento_id``, que sí lo tiene. Es una preselección: si el documento
+        se repara lo decide quien llama, con todas sus páginas delante.
+        """
+        with connect_read() as c:
+            filas = c.execute(
+                "SELECT DISTINCT documento_id FROM documento_pages "
+                "WHERE documento_id >= %s AND documento_id < %s AND texto ~ %s "
+                "ORDER BY documento_id",
+                (desde_id, hasta_id, huella_sql),
+            ).fetchall()
+        return [int(fila[0]) for fila in filas]
+
+    def reescribir_texto(self, documento_id: int, *, texto: str, paginas: dict[int, str]) -> None:
+        """Sustituye el texto extraído de un documento y borra sus trozos, en una transacción.
+
+        Para correcciones que no cambian el largo de ninguna página (los
+        offsets se quedan como están). Los trozos se borran porque se hicieron
+        con el texto viejo: ``list_extracted_without_chunks`` vuelve a elegir
+        el documento y el job de embeddings los rehace con el nuevo.
+        """
+        with connect() as c:
+            c.execute(
+                "UPDATE documentos SET texto = %s, updated_at = %s WHERE id = %s",
+                (texto, now_utc_iso(), documento_id),
+            )
+            c.executemany(
+                "UPDATE documento_pages SET texto = %s WHERE documento_id = %s AND page_number = %s",
+                [(pagina, documento_id, numero) for numero, pagina in paginas.items()],
+            )
+            c.execute("DELETE FROM documento_chunks WHERE documento_id = %s", (documento_id,))
 
     # ── documento_chunks (F8: chunking + embeddings) ────────────────────
 

@@ -183,6 +183,14 @@ NUEVAS: dict[str, str] = {
         "de ofrecer la subida si el entorno tiene almacén, el tope y la lista blanca, "
         "sin llevar su propia copia de las constantes del servidor."
     ),
+    "POST /api/v1/telemetria/eventos": (
+        "Se miró POST /feedback, que guarda texto libre de una persona en BD (lo "
+        "contrario de esto), GET /metrics, que solo lee, y los pageviews de Vercel, que "
+        "no dicen qué acción se usa. Los 23 eventos de producto de la web iban solo a "
+        "Vercel Web Analytics y en el plan Hobby se pierden (402): sin ellos la Ola 3 "
+        "del plan 2026-10 no puede decidir qué espacio sobra (backlog, «La telemetría "
+        "de producto»). Solo incrementa contadores de Prometheus, sin BD ni identidad."
+    ),
     "POST /api/v1/auth/totp/recovery-codes": (
         "Se miró POST /auth/totp/confirm, que entrega los códigos solo al confirmar un "
         "alta sin confirmar (con el segundo factor activo responde 400), y DELETE "

@@ -64,6 +64,20 @@ try:
         ["event_type", "outcome"],
     )
 
+    # Eventos de producto de la web (``POST /telemetria/eventos``): solo
+    # dimensiones categóricas del catálogo, con techo de series
+    # (``shared/eventos_producto.py``). Vercel Hobby no los guarda.
+    producto_eventos_total: _CounterMetric = Counter(
+        "producto_eventos_total",
+        "Eventos de producto recibidos de la web, por evento",
+        ["evento"],
+    )
+    producto_eventos_dimension_total: _CounterMetric = Counter(
+        "producto_eventos_dimension_total",
+        "Eventos de producto por evento, propiedad y valor categórico",
+        ["evento", "propiedad", "valor"],
+    )
+
     scraper_circuit_transitions_total: _CounterMetric = Counter(
         "scraper_circuit_transitions_total",
         "Número de transiciones del circuit breaker entre estados",
@@ -296,6 +310,8 @@ except ImportError:  # pragma: no cover
     scraper_circuit_state = _NoopMetric()
     api_cost_estimate_total = _NoopMetric()
     audit_events_total = _NoopMetric()
+    producto_eventos_total = _NoopMetric()
+    producto_eventos_dimension_total = _NoopMetric()
     scraper_circuit_transitions_total = _NoopMetric()
     ml_inference_duration_seconds = _NoopMetric()
     scheduler_job_total = _NoopMetric()

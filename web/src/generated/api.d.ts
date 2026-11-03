@@ -5833,6 +5833,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/telemetria/eventos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Contar un evento de producto de la web (sin identificadores) */
+        post: operations["post_evento_producto_api_v1_telemetria_eventos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/watchlist/feed.xml": {
         parameters: {
             query?: never;
@@ -9566,6 +9583,21 @@ export interface components {
             tipo: string;
             /** Titulo */
             titulo?: string | null;
+        };
+        /**
+         * EventoProductoIn
+         * @description Un evento del catálogo de ``web/src/lib/analytics.ts``: nombre y dimensiones.
+         *
+         *     Sin identificadores por contrato: las propiedades son categorías cortas, y
+         *     las que no están en ``shared/eventos_producto.PROPIEDADES`` se descartan.
+         */
+        EventoProductoIn: {
+            /** Evento */
+            evento: string;
+            /** Propiedades */
+            propiedades?: {
+                [key: string]: string;
+            };
         };
         /**
          * EventosFeedResult
@@ -32093,6 +32125,50 @@ export interface operations {
                 };
             };
             /** @description La petición no pasó la validación (``errors`` por campo). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Error: cualquier código no listado (RFC 9457). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    post_evento_producto_api_v1_telemetria_eventos_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventoProductoIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El evento no está en el catálogo */
             422: {
                 headers: {
                     [name: string]: unknown;
