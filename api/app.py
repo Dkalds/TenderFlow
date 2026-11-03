@@ -93,6 +93,7 @@ from api.routes.search import router as search_router
 from api.routes.security import router as security_router
 from api.routes.stream import router as stream_router
 from api.routes.tecnologias_keywords import router as tecnologias_keywords_router
+from api.routes.telemetria import router as telemetria_router
 from api.routes.watchlist_feed import router as watchlist_feed_router
 from api.routes.watchlist_items import router as watchlist_items_router
 from api.routes.watchlist_rules import router as watchlist_rules_router
@@ -526,6 +527,7 @@ if not _ES_WORKER:
     app.include_router(organization_audit_router, prefix="/api/v1")
     app.include_router(analytics_router, prefix="/api/v1")
     app.include_router(feedback_router, prefix="/api/v1")
+    app.include_router(telemetria_router, prefix="/api/v1")
     app.include_router(webhooks_router, prefix="/api/v1")
     app.include_router(me_router, prefix="/api/v1")
     app.include_router(meta_router, prefix="/api/v1")

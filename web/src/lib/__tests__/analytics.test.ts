@@ -251,3 +251,47 @@ function almacenamientoSinCupo(): Storage {
     },
   };
 }
+
+describe("registrarEvento · a la API", () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    document.cookie = "csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  });
+
+  it("con sesión manda el evento ya filtrado, con CSRF y keepalive", () => {
+    document.cookie = "csrf_token=tok%2B1";
+    registrarEvento("espacio_abierto", {
+      espacio: "radar",
+      email: "ana@example.com",
+    } as unknown as Parameters<typeof registrarEvento<"espacio_abierto">>[1]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/v1/telemetria/eventos");
+    expect(init.keepalive).toBe(true);
+    expect((init.headers as Record<string, string>)["X-CSRF-Token"]).toBe("tok+1");
+    expect(JSON.parse(String(init.body))).toEqual({ evento: "espacio_abierto", propiedades: { espacio: "radar" } });
+    expect(trackMock).toHaveBeenCalled();
+  });
+
+  it("sin sesión no la llama: la ruta respondería 401", () => {
+    registrarEvento("espacio_abierto", { espacio: "radar", origen: "rail" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("un fallo de red no propaga ni impide `track`", async () => {
+    document.cookie = "csrf_token=tok";
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    expect(() => registrarEvento("espacio_abierto", { espacio: "radar", origen: "rail" })).not.toThrow();
+    await Promise.resolve();
+    expect(trackMock).toHaveBeenCalled();
+  });
+});

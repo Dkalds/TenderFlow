@@ -319,3 +319,17 @@ class SenalClasificadorDTO(BaseModel):
         ),
     )
     version: int | None = Field(default=None, description="Versión activa evaluada, si hay alguna.")
+
+
+# ── Telemetría de producto (``POST /telemetria/eventos``) ──────────────────
+
+
+class EventoProductoIn(BaseModel):
+    """Un evento del catálogo de ``web/src/lib/analytics.ts``: nombre y dimensiones.
+
+    Sin identificadores por contrato: las propiedades son categorías cortas, y
+    las que no están en ``shared/eventos_producto.PROPIEDADES`` se descartan.
+    """
+
+    evento: str = Field(min_length=1, max_length=48)
+    propiedades: dict[str, str] = Field(default_factory=dict, max_length=12)

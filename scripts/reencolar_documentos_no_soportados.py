@@ -22,6 +22,17 @@ HTML, XML, RTF, ``.doc`` y RAR siguen sin leerse y no se tocan.
 Requiere ``DATABASE_URL``. Es idempotente: una segunda pasada no encuentra
 nada que reencolar hasta que el lote nocturno vuelva a dejar alguna fila en
 ``unsupported``.
+
+Con ``--sin-texto`` reencola en cambio los PDF escaneados (``sin_texto``) que
+se leyeron antes de que el runner de ``pliegos.yml`` tuviera OCR
+(:data:`OCR_EN_EL_RUNNER_DESDE`): nunca pasaron por ``ocrmypdf`` y la próxima
+pasada se lo aplica. Medido el 2026-11-03: 51 de los 53 ``sin_texto``, ninguno
+con binario guardado, así que se vuelven a descargar y los enlaces caducados
+acabarán en ``error``. El log ``document_ocr_extracted`` de esa pasada trae
+``segundos_por_pagina``, que es la medida que S8.3 pedía antes de ampliar::
+
+    make reencolar-documentos SIN_TEXTO=1            # cuenta
+    make reencolar-documentos SIN_TEXTO=1 APLICAR=1  # reencola
 """
 
 from __future__ import annotations
@@ -38,6 +49,9 @@ if str(_PROJECT_ROOT) not in sys.path:
 from db.repositories.documentos import DocumentosRepository  # noqa: E402
 from scraper.document_fetcher import supported_content_types  # noqa: E402
 
+#: Día en que ``ocrmypdf`` entró en el runner de ``pliegos.yml`` (#274).
+OCR_EN_EL_RUNNER_DESDE = "2026-09-08"
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0] if __doc__ else None)
@@ -46,8 +60,24 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Reencola de verdad. Sin esta opción solo se cuenta lo que se reencolaría.",
     )
+    parser.add_argument(
+        "--sin-texto",
+        action="store_true",
+        help="Reencola los PDF escaneados leídos antes de que el runner tuviera OCR.",
+    )
     parser.add_argument("--json", action="store_true", help="Salida en JSON")
     args = parser.parse_args(argv)
+
+    if args.sin_texto:
+        total = DocumentosRepository().reencolar_sin_texto(
+            antes_de=OCR_EN_EL_RUNNER_DESDE, aplicar=args.aplicar
+        )
+        if args.json:
+            print(json.dumps({"aplicado": args.aplicar, "sin_texto": total}, indent=2))
+            return 0
+        verbo = "Reencolados" if args.aplicar else "Se reencolarían"
+        print(f"{verbo} {total} PDF sin texto leídos antes del OCR ({OCR_EN_EL_RUNNER_DESDE}).")
+        return 0
 
     tipos = sorted(supported_content_types())
     filas = DocumentosRepository().reencolar_formatos_soportados(tipos, aplicar=args.aplicar)

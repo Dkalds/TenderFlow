@@ -48,7 +48,7 @@ describe("CompanyActas", () => {
   it("bajo el mínimo no inventa la media", () => {
     render(<CompanyActas acta={acta(null, null)} />);
 
-    expect(screen.getAllByText("Sin datos suficientes: 2 actas")).toHaveLength(2);
+    expect(screen.getAllByText("Solo 2 actas")).toHaveLength(2);
     expect(screen.queryByText(/compite/)).toBeNull();
   });
 });

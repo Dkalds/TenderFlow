@@ -79,6 +79,8 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Borrar una regla pide confirmación en la propia tarjeta, porque no se
   deshace. Si es su única regla activa, le avisa de que sin ella deja de
   recibir el resumen diario y le ofrece desactivarla en su lugar.
+- Si no le queda ninguna regla activa (las pausó, o dio de baja el correo), la
+  pantalla se lo dice encima de la lista mientras dure.
 - Quién crea, edita, pausa o borra una regla, y la baja desde el enlace del
   correo, queda en el rastro de auditoría; las de la organización salen en su
   rastro (CU-32).
