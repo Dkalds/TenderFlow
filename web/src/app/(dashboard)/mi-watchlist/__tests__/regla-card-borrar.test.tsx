@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ReglaCard } from "@/app/(dashboard)/mi-watchlist/_components/regla-card";
+import { ReglasLista } from "@/app/(dashboard)/mi-watchlist/_components/reglas-lista";
 import type { ApiRule } from "@/app/(dashboard)/mi-watchlist/_hooks/watchlist-rule-types";
 
 const RULE = {
@@ -65,5 +66,27 @@ describe("ReglaCard · eliminar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Desactivar" }));
     expect(onDelete).not.toHaveBeenCalled();
     expect(onUpdate).toHaveBeenCalledWith(42, expect.objectContaining({ active: false }));
+  });
+});
+
+describe("ReglasLista · ninguna activa", () => {
+  function lista(activas: boolean[]) {
+    const rules = activas.map((active, i) => ({ ...RULE, id: i + 1, active }));
+    render(
+      <TooltipProvider>
+        <ReglasLista rules={rules} loading={false} onUpdate={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} />
+      </TooltipProvider>,
+    );
+  }
+
+  it("con reglas pero todas pausadas, dice que no llega el resumen", () => {
+    lista([false, false]);
+    expect(screen.getByRole("status")).toHaveTextContent("Ninguna regla activa");
+    expect(screen.getByRole("status")).toHaveTextContent("resumen diario");
+  });
+
+  it("con alguna activa no avisa", () => {
+    lista([true, false]);
+    expect(screen.queryByText("Ninguna regla activa")).toBeNull();
   });
 });
