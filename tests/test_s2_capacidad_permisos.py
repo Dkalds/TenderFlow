@@ -417,3 +417,58 @@ def test_solo_papeleo_sigue_echando_en_falta_las_certificaciones(tmp_db):
 
     assert "certificaciones" in guardado.campos_incompletos
     assert [v.categoria for v in guardado.vigencias] == ["administrativa"]
+
+
+# ── Referencias sugeridas desde las adjudicaciones ─────────────────────────
+
+
+def _adjudicacion(db_mod: Any, id_externo: str, nif: str, fecha: str, importe: float) -> None:
+    with db_mod.connect() as conn:
+        conn.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, tecnologia, "
+            " fecha_publicacion, fecha_extraccion) VALUES (%s, %s, %s, %s, %s, %s)",
+            (id_externo, "Soporte SAP", "Ayuntamiento de Lugo", "SAP, ERP", fecha, fecha),
+        )
+        conn.execute(
+            "INSERT INTO adjudicaciones (licitacion_id, nombre, nif, importe_adjudicado, "
+            " fecha_adjudicacion, fecha_extraccion) VALUES (%s, %s, %s, %s, %s, %s)",
+            (id_externo, "Acme SL", nif, importe, fecha, fecha),
+        )
+
+
+def test_las_adjudicaciones_propias_recientes_se_proponen_como_referencias(tmp_db):
+    """Lo ganado en tres años con un NIF propio, sin lo ajeno, lo viejo ni lo ya declarado."""
+    from datetime import UTC, datetime, timedelta
+
+    db_mod, _ = tmp_db
+
+    def hace(dias: int) -> str:
+        return (datetime.now(UTC) - timedelta(days=dias)).date().isoformat()
+
+    _adjudicacion(
+        db_mod, "REF-RECIENTE", "B-1234567-4", hace(200), 480000.0
+    )  # pragma: allowlist secret
+    _adjudicacion(db_mod, "REF-DECLARADA", _NIF_PROPIO, hace(300), 90000.0)
+    _adjudicacion(db_mod, "REF-VIEJA", _NIF_PROPIO, hace(4 * 365), 700000.0)
+    _adjudicacion(db_mod, "REF-AJENA", _NIF_AJENO, hace(100), 999000.0)
+    owner = _user("owner-ref-sugeridas@example.test")
+    organizacion = _organizacion("Equipo referencias", owner)
+
+    assert _leer_capacidad(organizacion).referencias_sugeridas == []
+
+    _escribir_nifs(
+        organizacion,
+        OrganizationNifsIn(nifs=[OrganizationNif(nif=_NIF_PROPIO, principal=True)]),
+        actor_user_id=owner,
+    )
+    declarada = {"organo": "Ayuntamiento de Lugo", "anio": 2025, "expediente_id": "REF-DECLARADA"}
+    leido = _escribir_capacidad(
+        organizacion, OrganizationCapabilities.model_validate({"referencias": [declarada]})
+    )
+
+    (sugerida,) = leido.referencias_sugeridas
+    assert sugerida.expediente_id == "REF-RECIENTE"
+    assert sugerida.organo == "Ayuntamiento de Lugo"
+    assert sugerida.importe_eur == 480000.0
+    assert sugerida.tecnologia == "SAP"
+    assert [r.expediente_id for r in leido.referencias] == ["REF-DECLARADA"]

@@ -8226,10 +8226,14 @@ export interface components {
              * @constant
              */
             fuente: "placsp";
+            /** Indicios */
+            indicios?: components["schemas"]["IndicioPliego"][];
             /** Licitacion Id */
             licitacion_id: string;
             /** Url Publicacion */
             url_publicacion?: string | null;
+            /** Valor Estimado */
+            valor_estimado?: number | null;
         };
         /**
          * ContratoCartera
@@ -10645,6 +10649,31 @@ export interface components {
             titulo: string;
         };
         /**
+         * IndicioPliego
+         * @description Una condición publicada que conviene revisar antes de presentarse.
+         *
+         *     Es un indicio, no una infracción: la ley admite excepciones justificadas en
+         *     el expediente, que la publicación no trae. Sale solo de las condiciones
+         *     oficiales de este mismo modelo, nunca de la ficha LLM.
+         */
+        IndicioPliego: {
+            /** Base Legal */
+            base_legal: string;
+            /** Cita */
+            cita?: string | null;
+            /**
+             * Codigo
+             * @enum {string}
+             */
+            codigo: "solvencia_economica_excesiva" | "juicio_de_valor_mayoritario" | "certificado_sin_equivalente";
+            /** Detalle */
+            detalle: string;
+            /** Lote Numero */
+            lote_numero?: string | null;
+            /** Titulo */
+            titulo: string;
+        };
+        /**
          * Interpretacion
          * @description Lo que se entendió de la frase y se aplicó a la búsqueda.
          */
@@ -11772,6 +11801,8 @@ export interface components {
             perfiles_equipo?: components["schemas"]["OrganizationTeamProfile"][];
             /** Referencias */
             referencias?: components["schemas"]["OrganizationReferencia"][];
+            /** Referencias Sugeridas */
+            referencias_sugeridas?: components["schemas"]["OrganizationReferencia"][];
             /** Updated At */
             updated_at?: string | null;
             /** Vigencias */

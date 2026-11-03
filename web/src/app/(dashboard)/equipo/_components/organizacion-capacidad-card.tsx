@@ -36,6 +36,7 @@ import {
   filaReferencia,
 } from "./organizacion-capacidad-filas";
 import { filaDocumento } from "./organizacion-capacidad-documento";
+import { OrganizacionReferenciasSugeridas } from "./organizacion-referencias-sugeridas";
 import { OrganizacionVigencias } from "./organizacion-vigencias";
 
 type Borrador = {
@@ -163,6 +164,12 @@ export function OrganizacionCapacidadCard({
               onChange={(filas) => setBorrador({ ...valores, referencias: filas })}
               editable={canManage}
               render={(fila, actualizar) => filaReferencia(fila, actualizar, canManage)}
+            />
+            <OrganizacionReferenciasSugeridas
+              sugeridas={capacidad.data?.referencias_sugeridas ?? []}
+              declaradas={valores.referencias}
+              editable={canManage}
+              onAnadir={(nuevas) => setBorrador({ ...valores, referencias: [...valores.referencias, ...nuevas] })}
             />
             <Separator />
 

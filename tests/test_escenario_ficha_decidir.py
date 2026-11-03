@@ -6,7 +6,7 @@ Recorrido completo por la API con sesión real. Ver ``tests/escenarios.py`` y
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from tests.escenarios import abrir_sesion, sembrar_licitacion
 
@@ -52,8 +52,21 @@ def _cambiar_plazo(licitacion_id: str, *, antes: str, despues: str, cuando: str)
         )
 
 
+def _publicar_solvencia(licitacion_id: str, *, umbral: float) -> None:
+    """Lo que la ingesta guarda del anuncio CODICE (v148): volumen de negocios exigido."""
+    from db.database import connect
+
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO licitacion_solvencia (licitacion_id, lote_numero, orden, clase, "
+            "tipo_codigo, descripcion, umbral_importe, moneda, fecha_extraccion) "
+            "VALUES (%s, NULL, 1, 'economica', '5', %s, %s, 'EUR', '2026-09-01T08:00:00+00:00')",
+            (licitacion_id, "Volumen anual de negocios del mejor ejercicio", umbral),
+        )
+
+
 def test_cu35_decidir_desde_la_ficha(client, api_db):
-    """CU-35 — novedades, ¿cumplo?, historial propio, dossier y oportunidad sin duplicar."""
+    """CU-35 — novedades, ¿cumplo?, indicios, historial propio, referencias, dossier y oportunidad."""
     sembrar_licitacion(
         "EXP-DEC-2024",
         "Soporte SAP 2024",
@@ -67,8 +80,23 @@ def test_cu35_decidir_desde_la_ficha(client, api_db):
         cpv="72267100",
         organo_contratacion="Ayuntamiento de Getafe",
         fecha_limite="2027-01-15T10:00:00+00:00",
+        valor_estimado=300_000.0,
     )
-    _adjudicar("EXP-DEC-2024", NIF_PROPIO, 200_000.0, "2024-06-15")
+    # Otro órgano y otro CPV, para que no cuente en el historial del segmento;
+    # adjudicado hace cien días, dentro de los tres años de las referencias.
+    sembrar_licitacion(
+        "EXP-DEC-OTRO",
+        "Licencias Microsoft",
+        cpv="48000000",
+        organo_contratacion="Diputación de Toledo",
+        estado="RES",
+    )
+    hoy = datetime.now().astimezone()
+    reciente = (hoy - timedelta(days=100)).date().isoformat()
+    # Relativa a hoy y no fija: una fecha fija entra en los tres años o sale de ellos según el día.
+    antigua = (hoy - timedelta(days=4 * 365)).date().isoformat()
+    _adjudicar("EXP-DEC-2024", NIF_PROPIO, 200_000.0, antigua)
+    _adjudicar("EXP-DEC-OTRO", NIF_PROPIO, 90_000.0, reciente)
     sesion = abrir_sesion("decide@example.com", client)
     org = {"organization_id": sesion.organization_id}
 
@@ -102,6 +130,14 @@ def test_cu35_decidir_desde_la_ficha(client, api_db):
     assert checklist.json()["cumple"] == 0
     assert sesion.get("/licitaciones/NO-EXISTE/checklist", params=org).status_code == 404
 
+    # El anuncio pide un volumen de negocios de 3 veces el valor estimado: indicio con su artículo.
+    _publicar_solvencia("EXP-DEC-2026", umbral=900_000.0)
+    condiciones = sesion.get("/licitaciones/EXP-DEC-2026/condiciones-oficiales")
+    assert condiciones.status_code == 200, condiciones.text
+    (indicio,) = condiciones.json()["indicios"]
+    assert indicio["codigo"] == "solvencia_economica_excesiva"
+    assert indicio["base_legal"].startswith("Art. 87.1.a) LCSP")
+
     # Sin NIF declarado, el historial lo dice en vez de enseñar ceros.
     sin_nif = sesion.get("/licitaciones/EXP-DEC-2026/historial-propio", params=org).json()
     assert sin_nif["identidad_conocida"] is False
@@ -120,6 +156,13 @@ def test_cu35_decidir_desde_la_ficha(client, api_db):
     assert historial["con_organo"]["expedientes"] == 1
     assert historial["en_cpv4"]["expedientes"] == 1
     assert [a["licitacion_id"] for a in historial["recientes"]] == ["EXP-DEC-2024"]
+
+    # Con NIF, la capacidad propone como referencia lo ganado en los últimos tres años.
+    capacidad = sesion.get(f"/organizations/{sesion.organization_id}/capabilities")
+    assert capacidad.status_code == 200, capacidad.text
+    sugeridas = capacidad.json()["referencias_sugeridas"]
+    assert [r["expediente_id"] for r in sugeridas] == ["EXP-DEC-OTRO"]
+    assert sugeridas[0]["organo"] == "Diputación de Toledo"
 
     # El dossier de decisión es un PDF.
     dossier = sesion.get("/licitaciones/EXP-DEC-2026/dossier.pdf", params=org)

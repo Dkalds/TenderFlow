@@ -10,6 +10,7 @@ import type {
   CondicionesOficiales,
   CriterioOficial,
   GarantiaOficial,
+  IndicioPliego,
   RequisitoSolvenciaOficial,
 } from "@/hooks/use-condiciones-oficiales";
 import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
@@ -184,6 +185,46 @@ function Ambito({ ambito }: { ambito: CondicionesAmbito }) {
   );
 }
 
+/**
+ * Lo que conviene revisar antes de presentarse, con su artículo. Una sola
+ * banda con la lista dentro, no una por indicio: son notas para leer, no
+ * alertas que compitan entre sí.
+ */
+function Indicios({ indicios }: { indicios: IndicioPliego[] }) {
+  if (indicios.length === 0) return null;
+  return (
+    <Aviso
+      tone="warning"
+      role="note"
+      title={indicios.length === 1 ? "Una condición a revisar" : `${indicios.length} condiciones a revisar`}
+    >
+      <ul className="mt-1.5 space-y-2.5">
+        {indicios.map((indicio) => (
+          <li key={`${indicio.codigo}-${indicio.lote_numero ?? ""}-${indicio.titulo}`} className="space-y-0.5">
+            <p className="text-tf-body leading-snug font-medium">
+              {indicio.titulo}
+              {indicio.lote_numero != null && (
+                <span className="text-muted-foreground font-normal"> · Lote {indicio.lote_numero}</span>
+              )}
+            </p>
+            <p className="text-tf-body leading-snug">{indicio.detalle}</p>
+            {indicio.cita && (
+              <p className="text-muted-foreground">
+                Publicado: <q>{indicio.cita}</q>
+              </p>
+            )}
+            <p className="text-muted-foreground">{indicio.base_legal}</p>
+          </li>
+        ))}
+      </ul>
+      <p className="text-muted-foreground mt-2.5">
+        Son indicios: la ley admite excepciones justificadas en el expediente. Si te afectan, pide aclaración al órgano
+        dentro del plazo de preguntas.
+      </p>
+    </Aviso>
+  );
+}
+
 export function CondicionesOficialesBloque({
   datos,
   licitacionId,
@@ -219,6 +260,7 @@ export function CondicionesOficialesBloque({
           es su republicación.
         </Aviso>
       )}
+      <Indicios indicios={datos.indicios ?? []} />
       {ambitos.map((ambito) => (
         <Ambito key={ambito.lote_numero ?? "expediente"} ambito={ambito} />
       ))}

@@ -45,6 +45,7 @@ from services.documentacion_caducidad import vigencias
 from services.go_no_go import ChecklistNotFoundError, GoNoGoChecklist, build_checklist
 from services.normalization import clasificar_nif, normalize_nif
 from services.organizations import OrganizationAccessError
+from services.referencias_sugeridas import referencias_sugeridas
 from shared.audit_events import ORG_CAPABILITIES_UPDATED, ORG_NIFS_UPDATED
 from shared.dto import (
     OrganizationCapabilities,
@@ -165,13 +166,15 @@ def _capabilities_out(
     respuesta se nombra una vez.
     """
     capabilities = OrganizationCapabilities.model_validate(perfil)
+    hoy = datetime.now(UTC).date()
     return OrganizationCapabilitiesOut(
         organization_id=organization_id,
         updated_at=updated_at,
         campos_incompletos=_campos_incompletos(capabilities),
         # El mismo juicio que los avisos de caducidad, con la fecha de hoy en
         # UTC como el paso del cierre: la pestaña y el aviso no discrepan.
-        vigencias=vigencias(capabilities.certificaciones, datetime.now(UTC).date()),
+        vigencias=vigencias(capabilities.certificaciones, hoy),
+        referencias_sugeridas=referencias_sugeridas(organization_id, capabilities.referencias, hoy),
         certificaciones=capabilities.certificaciones,
         facturacion=capabilities.facturacion,
         referencias=capabilities.referencias,

@@ -249,6 +249,7 @@ def test_el_repositorio_sin_filas_devuelve_listas_vacias(db: Any) -> None:
         "actualizado": None,
         "existe": False,
         "url": None,
+        "valor_estimado": None,
     }
 
 

@@ -9,7 +9,7 @@ import { render, screen, within } from "@testing-library/react";
  * que el dato se lea como fuente primaria y no se confunda con la ficha del
  * pliego: su procedencia a la vista, el enlace para comprobarla, el ámbito de
  * cada requisito y que un peso sin escala publicada no se pinte como un
- * porcentaje.
+ * porcentaje. Los indicios (CU-35) se pintan con lo publicado y su artículo.
  */
 
 import { CondicionesOficialesBloque } from "@/components/pliego/condiciones-oficiales";
@@ -174,6 +174,38 @@ describe("CondicionesOficialesBloque", () => {
     );
 
     expect(screen.getByText(/publicación oficial del expediente original PLACSP-1/)).toBeInTheDocument();
+  });
+
+  it("pinta los indicios con su ámbito, lo publicado y su artículo", () => {
+    render(
+      <CondicionesOficialesBloque
+        datos={datos({
+          indicios: [
+            {
+              codigo: "solvencia_economica_excesiva",
+              lote_numero: "2",
+              titulo: "Volumen de negocios por encima del tope legal",
+              detalle: "Pide 600.000 € de volumen anual de negocios, 3,0 veces el valor estimado.",
+              base_legal: "Art. 87.1.a) LCSP",
+              cita: "Volumen anual de negocios del mejor ejercicio",
+            },
+          ],
+        })}
+        licitacionId="LIC-1"
+      />,
+    );
+
+    const nota = screen.getByRole("note");
+    expect(within(nota).getByText("Una condición a revisar")).toBeInTheDocument();
+    expect(within(nota).getByText(/· Lote 2/)).toBeInTheDocument();
+    expect(within(nota).getByText("Volumen anual de negocios del mejor ejercicio")).toBeInTheDocument();
+    expect(within(nota).getByText("Art. 87.1.a) LCSP")).toBeInTheDocument();
+  });
+
+  it("sin indicios no pinta la nota", () => {
+    render(<CondicionesOficialesBloque datos={datos({ indicios: [] })} licitacionId="LIC-1" />);
+
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
   });
 
   it("sin ámbitos no pinta nada", () => {

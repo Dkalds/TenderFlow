@@ -49,8 +49,8 @@ class CondicionesOficialesRepository:
         filas, ``"lotes"`` como ``{numero: titulo}`` (para rotular cada ámbito
         sin otra consulta), ``"actualizado"`` —la ``fecha_extraccion`` más
         reciente de las tres familias, o ``None`` si no hay ninguna fila—,
-        ``"existe"`` (si el expediente está en ``licitaciones``) y ``"url"``, el
-        enlace a su publicación en la Plataforma.
+        ``"existe"`` (si el expediente está en ``licitaciones``), ``"url"``, el
+        enlace a su publicación en la Plataforma, y ``"valor_estimado"``.
 
         Sin las tablas (código desplegado antes que v148) responde como un
         expediente sin condiciones, que es lo cierto: no hay ninguna guardada.
@@ -58,9 +58,14 @@ class CondicionesOficialesRepository:
         """
         with connect_read() as c:
             fila = c.execute(
-                "SELECT url FROM licitaciones WHERE id_externo = %s", (licitacion_id,)
+                "SELECT url, valor_estimado FROM licitaciones WHERE id_externo = %s",
+                (licitacion_id,),
             ).fetchone()
-        base = {"existe": fila is not None, "url": fila[0] if fila else None}
+        base = {
+            "existe": fila is not None,
+            "url": fila[0] if fila else None,
+            "valor_estimado": fila[1] if fila else None,
+        }
         if fila is None:
             return {**_vacio(), **base}
         try:
