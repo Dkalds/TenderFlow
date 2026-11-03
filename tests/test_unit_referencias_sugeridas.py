@@ -18,7 +18,7 @@ def _fila(licitacion_id: str, **campos: object) -> dict[str, object]:
         "organo": "Diputación de Ourense",
         "fecha_adjudicacion": "2025-06-30",
         "importe_adjudicado": 125000.5,
-        "tecnologia": "MICROSOFT",
+        "tecnologia": "DATOS_IA",
         **campos,
     }
 
@@ -30,7 +30,7 @@ def test_convierte_la_adjudicacion_en_referencia_con_su_expediente() -> None:
         organo="Diputación de Ourense",
         importe_eur=125000.5,
         anio=2025,
-        tecnologia="MICROSOFT",
+        tecnologia="Datos e IA",
         expediente_id="EXP-1",
     )
 

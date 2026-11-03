@@ -158,6 +158,10 @@ def test_volumen_de_negocios_por_encima_de_1_5_veces_el_valor_estimado_es_indici
     ("tipo", "umbral", "valor_estimado"),
     [
         pytest.param("5", 300_000.0, 200_000.0, id="justo-en-el-tope"),
+        # Casos de producción (2026-11-03): el tope redondeado al céntimo hacia
+        # arriba, y una errata del órgano cuyo texto dice «una vez y media».
+        pytest.param("5", 21_694.22, 14_462.81, id="tope-redondeado-al-centimo"),
+        pytest.param("5", 218_280.0, 143_520.0, id="errata-del-organo-1-52"),
         pytest.param("3", 600_000.0, 200_000.0, id="seguro-no-tiene-tope"),
         pytest.param("5", 600_000.0, None, id="sin-valor-estimado"),
     ],
@@ -198,6 +202,15 @@ def test_juicio_de_valor_sin_escala_deducible_no_es_indicio() -> None:
     assert _indicios(datos) == []
 
 
+def test_un_criterio_de_relleno_sin_ninguno_automatico_no_es_indicio() -> None:
+    """Caso de producción: el anuncio publica «Según PPT y PCP», 100 % juicio de valor."""
+    datos = _datos(
+        criterios=[_criterio(1, descripcion="Según PPT y PCP", peso_pct=100.0, tipo_codigo="SUBJ")]
+    )
+
+    assert _indicios(datos) == []
+
+
 def test_certificado_sin_equivalentes_es_un_indicio_por_norma_y_ambito() -> None:
     datos = _datos(
         solvencia=[
@@ -218,6 +231,7 @@ def test_certificado_sin_equivalentes_es_un_indicio_por_norma_y_ambito() -> None
         "Certificación ISO 9001 o equivalente.",
         "Certificat ISO 9001 o equivalent.",
         "ISO 9001 ziurtagiria edo baliokidea.",
+        "Con las siguientes certificaciones o similares: UNE-ISO 9001 de Gestión de Calidad",
         "Certificación ENS de categoría media.",
     ],
 )

@@ -15,6 +15,7 @@ from datetime import date
 
 from db.repositories.competencia_esperada import adjudicaciones_propias_desde
 from db.repositories.organization_nifs import OrganizationNifRepository
+from services.classification import tecnologia_label
 from shared.dto import OrganizationReferencia
 
 _nif_repo = OrganizationNifRepository()
@@ -42,7 +43,11 @@ def proponer(
                 if isinstance(importe, int | float) and importe >= 0
                 else None,
                 anio=int(str(fila["fecha_adjudicacion"])[:4]),
-                tecnologia=str(fila["tecnologia"]) if fila.get("tecnologia") else None,
+                # El nombre y no el código (`DATOS_IA`): es lo que la persona lee y
+                # lo que la afinidad del Radar busca como palabra en los títulos.
+                tecnologia=tecnologia_label(str(fila["tecnologia"]))
+                if fila.get("tecnologia")
+                else None,
                 expediente_id=str(fila["licitacion_id"]),
             )
         )

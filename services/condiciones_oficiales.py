@@ -43,12 +43,19 @@ def _clave_lote(lote_numero: str | None) -> tuple[int, int, str]:
 #: económica; los demás (seguro, ratios, patrimonio) no tienen el tope del 87.1.a.
 _VOLUMEN_NEGOCIOS = "5"
 _TOPE_VOLUMEN = 1.5
+#: Margen sobre el tope. Medido en producción el 2026-11-03: 16 de los 24
+#: umbrales TI por encima de 1,5 eran exactamente 1,5 redondeado al céntimo
+#: hacia arriba, y otros 2 (1,52 y 1,53) erratas del órgano, cuyo texto dice
+#: «una vez y media». Por encima del 5 % quedan los que lo superan de verdad.
+_MARGEN_VOLUMEN = 1.05
 _NORMAS_CERTIFICADO = (
     (re.compile(r"\b9001\b"), "ISO 9001", "Art. 93.1 LCSP"),
     (re.compile(r"\b14001\b|\bEMAS\b"), "ISO 14001 o EMAS", "Art. 94.1 LCSP"),
 )
-#: «equivalente» en castellano y gallego, «equivalent» en catalán, «baliokide» en euskera.
-_EQUIVALENTE = re.compile(r"equivalen|baliokide", re.IGNORECASE)
+#: Lo que admite otros certificados: «equivalente» (castellano y gallego),
+#: «equivalent» (catalán), «baliokide» (euskera) y «o similares» / «análogo»,
+#: que los pliegos usan con el mismo sentido («antzeko» en euskera).
+_EQUIVALENTE = re.compile(r"equivalen|baliokide|similar|an[aá]log|antzeko", re.IGNORECASE)
 _CITA_MAX = 280
 
 
@@ -85,7 +92,7 @@ def _indicio_volumen(
     ):
         return None
     veces = umbral / valor_estimado
-    if veces <= _TOPE_VOLUMEN:
+    if veces <= _TOPE_VOLUMEN * _MARGEN_VOLUMEN:
         return None
     # Se compara con el valor estimado de todo el contrato aunque el requisito
     # sea de un lote: el del lote es menor, así que el indicio nunca sobra.
@@ -109,13 +116,16 @@ def _indicio_juicio_de_valor(ambito: CondicionesAmbito) -> IndicioPliego | None:
     """Los criterios raíz suman ~100 y el juicio de valor pasa de la mitad.
 
     Solo con la escala deducible (`peso_pct`) y sobre los criterios raíz: los
-    subcriterios ya están dentro del peso de su padre.
+    subcriterios ya están dentro del peso de su padre. Exige además algún
+    criterio automático: sin ninguno, ni siquiera el precio, lo publicado es un
+    criterio de relleno («Según PPT y PCP», 100 % juicio de valor) y no el
+    reparto real; eran 37 de los 160 ámbitos TI que saltaban (2026-11-03).
     """
     raiz = [c for c in ambito.criterios if c.padre_orden is None and c.peso_pct is not None]
     total = sum(c.peso_pct or 0.0 for c in raiz)
     subj = sum(c.peso_pct or 0.0 for c in raiz if c.tipo_codigo == "SUBJ")
     obj = sum(c.peso_pct or 0.0 for c in raiz if c.tipo_codigo == "OBJ")
-    if not (95 <= total <= 105 and subj > 50):
+    if not (95 <= total <= 105 and subj > 50 and obj > 0):
         return None
     return IndicioPliego(
         codigo="juicio_de_valor_mayoritario",
