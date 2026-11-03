@@ -19,6 +19,7 @@ vi.mock("@/lib/api-client", async (importOriginal) => ({
 vi.mock("@/components/ficha/ficha-oportunidad", () => ({
   OportunidadBoton: () => <button type="button">Abrir oportunidad</button>,
   DossierBoton: () => <button type="button">Dossier PDF</button>,
+  ExtraerPliegoBoton: () => <button type="button">Extraer pliego</button>,
 }));
 vi.mock("@/hooks/use-organization", () => ({
   useActiveOrganizationId: () => 7,
