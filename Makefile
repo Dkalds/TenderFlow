@@ -203,7 +203,9 @@ endef
 
 lock:  ## Genera lockfiles reproducibles con hashes (uv pip compile)
 	$(call compilar_lock,requirements.in,requirements.txt,)
-	$(call compilar_lock,requirements-dev.in,requirements-dev.txt,)
+	# Con la restricción, desarrollo no puede fijar otra versión de un paquete de
+	# producción: CI prueba con este lock y debe ser lo que corre en producción.
+	$(call compilar_lock,requirements-dev.in,requirements-dev.txt,--constraint=requirements.txt)
 	# C3.1: el corte API / pipeline. `requirements-api.txt` es el que instala
 	# docker/Dockerfile.api. `--constraint=requirements.txt` es lo que impide
 	# que la imagen de producción corra versiones que el CI no probó: los dos

@@ -66,7 +66,7 @@ git clone https://github.com/Dkalds/TenderFlow.git
 cd TenderFlow
 python -m venv .venv
 source .venv/bin/activate           # Windows: .venv\Scripts\activate
-pip install -r requirements.txt -r requirements-dev.txt
+pip install -r requirements-dev.txt  # trae también lo de producción, como en CI
 pip install -e ".[pliegos]"         # extracción de PDF: la piden sus tests
 pre-commit install                  # obligatorio en cada commit (AGENTS.md §3.7)
 cp .env.example .env                # y edítalo: ver «Configuración» justo debajo

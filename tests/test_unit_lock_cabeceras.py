@@ -27,7 +27,7 @@ CABECERAS = {
     ),
     "requirements-dev.txt": (
         "uv pip compile requirements-dev.in --output-file=requirements-dev.txt"
-        " --generate-hashes --python-version=3.13"
+        " --constraint=requirements.txt --generate-hashes --python-version=3.13"
     ),
     "requirements-api.txt": (
         "uv pip compile requirements-api.in --output-file=requirements-api.txt"
@@ -61,7 +61,7 @@ def test_make_lock_escribe_esa_cabecera() -> None:
     ) in makefile
     for fuente, destino in (
         ("requirements.in", "requirements.txt,"),
-        ("requirements-dev.in", "requirements-dev.txt,"),
+        ("requirements-dev.in", "requirements-dev.txt,--constraint=requirements.txt"),
         ("requirements-api.in", "requirements-api.txt,--constraint=requirements.txt"),
         ("requirements-pipeline.in", "requirements-pipeline.txt,--constraint=requirements.txt"),
         ("requirements-mcp.in", "requirements-mcp.txt,--constraint=requirements.txt"),
