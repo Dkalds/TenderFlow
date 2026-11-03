@@ -118,6 +118,7 @@ from shared.dto.condiciones import (
     CondicionesOficiales,
     CriterioOficial,
     GarantiaOficial,
+    IndicioPliego,
     RequisitoSolvenciaOficial,
 )
 from shared.dto.cuentas import (
@@ -326,6 +327,7 @@ __all__ = [
     "FollowItem",
     "FollowsResult",
     "GarantiaOficial",
+    "IndicioPliego",
     "JobEstadoDTO",
     "JobResultado",
     "LicitacionPublica",

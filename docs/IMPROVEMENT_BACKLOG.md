@@ -1080,7 +1080,41 @@ _Sin ítems abiertos._
 - **Files de partida:** [services/puntuaciones_acta.py](../services/puntuaciones_acta.py), [db/repositories/puntuaciones_acta.py](../db/repositories/puntuaciones_acta.py), [services/puntuaciones_acta_reglas.py](../services/puntuaciones_acta_reglas.py), [web/src/components/pursuits/puntuaciones-acta.tsx](../web/src/components/pursuits/puntuaciones-acta.tsx)
 - **Riesgo:** bajo — cada punto es independiente y la tabla en filas evita migrar otra vez.
 
+### [P2] `contrato_eventos` llama «prórroga» a un campo que pasa de vacío a tener valor
+- **Área:** services/contract_events.py
+- **Problema:** `_clasificar` marca `prorroga` cuando `fecha_fin` o `duracion_valor` no tenían valor antes (`not antes` / `antes is None`). Medido en producción el 2026-11-03: 900 de las 1.695 «prórrogas» son eso, un dato que llega por primera vez, no una ampliación. La línea temporal de la ficha, la cartera y el feed de eventos las enseñan como prórrogas, y `retencion_labels` las cuenta como señal.
+- **Acceptance criteria:**
+  - Un cambio de vacío a valor no es `prorroga` ni `modificacion` (o es un tipo propio, `dato_nuevo`, si la línea temporal lo quiere enseñar); test unitario de `_clasificar` con los dos casos.
+  - Decidir qué se hace con los 900 eventos ya escritos (borrado o reclasificación), con el recuento antes y después anotado aquí.
+- **Files de partida:** [services/contract_events.py](../services/contract_events.py), [services/ml/retencion_labels.py](../services/ml/retencion_labels.py)
+- **Riesgo:** bajo en código, medio en datos — la rama `agente/endurecimiento-2026-11` también toca el módulo.
+
+### [P3] Lo que un contrato acaba costando, por órgano: no se puede medir con `contrato_eventos`
+- **Área:** scraper/, services/analytics/
+- **Problema:** se propuso (2026-11-03) agregar modificaciones y prórrogas por órgano («este órgano amplía sus contratos TI un X %»). Medido ese día, los datos no lo sostienen: el historial empieza el 2026-05-22, las «prórrogas» están contaminadas (ítem anterior) y de las 1.376 «modificaciones» de importe en TI, 623 son bajadas, típicamente el presupuesto sustituido por lo adjudicado o un cambio de base. Son diferencias entre capturas, no modificaciones del art. 203-205 LCSP. No se construyó.
+- **Acceptance criteria:**
+  - Ingerir los anuncios de modificación que el art. 207.3 LCSP obliga a publicar (en TED, los avisos de modificación de eForms; en PLACSP, el documento de modificación del perfil) y medir su cobertura en TI antes de pintar nada.
+  - Solo con esa fuente, y con N por órgano declarado, un dato en la ficha o en el perfil del órgano.
+- **Files de partida:** [services/contract_events.py](../services/contract_events.py), [scraper/codice_parser.py](../scraper/codice_parser.py), [scraper/connectors/ted.py](../scraper/connectors/ted.py)
+- **Riesgo:** medio — fuente nueva.
+
 ## P3 — Nice to have
+
+### [P3] Planes anuales de contratación como señal temprana: no compensa un conector propio
+- **Área:** scraper/connectors/
+- **Problema:** se propuso (2026-11-03) ingerir los planes del art. 28.4 LCSP para avisar con 6-12 meses. El informe anual de supervisión 2026 de la OIReScon (módulo V) dice que en 2025 el 95,5 % de los órganos no publicó su programación, y que en PLACSP va como «Anuncio previo», que ya se ingiere (estado `PRE`, 221 TI en la base) y sale en «Próximas» del Radar. El resto está en formatos dispares por plataforma (Excel en PSCP y Madrid, PDF en La Rioja, un tipo propio en Euskadi). No se construyó.
+- **Acceptance criteria:**
+  - Si se retoma, empezar por Euskadi (fuente ya activa, con tipo «Plan anual de contratación») y medir cuántas líneas TI trae antes de abrir otra plataforma.
+- **Files de partida:** [scraper/connectors/euskadi.py](../scraper/connectors/euskadi.py), [scraper/connectors/placsp_consultas.py](../scraper/connectors/placsp_consultas.py)
+- **Riesgo:** bajo — es medir antes de construir.
+
+### [P3] Comparar tarifas por perfil entre pliegos: hoy no hay muestra
+- **Área:** services/rag/fact_sheet.py, services/ml/pricing_scenarios.py
+- **Problema:** se propuso (2026-11-03) una referencia de mercado del precio por hora por perfil («jefe de proyecto SAP: mediana N €/h en M pliegos»). Ese día solo 21 de las 695 fichas de pliego trajeron `rate_cards` con tarifa numérica: no hay segmento con muestra. No se construyó.
+- **Acceptance criteria:**
+  - Revisar cuando las fichas crezcan (B2 del plan 2026-10, `PLIEGO_FACTS_ENABLED`): con al menos 5 pliegos por perfil y familia tecnológica, la comparación en `tarifas-presupuesto.tsx` junto a la tarifa del pliego, con su N y «sin datos suficientes» por debajo.
+- **Files de partida:** [services/ml/pricing_scenarios.py](../services/ml/pricing_scenarios.py), [web/src/components/pliego/tarifas-presupuesto.tsx](../web/src/components/pliego/tarifas-presupuesto.tsx)
+- **Riesgo:** bajo.
 
 ### [P3] Referencias a documentos desde Galicia, Euskadi y TACRC
 - **Área:** scraper/connectors/{tacrc,regional_rss,galicia,euskadi}.py, db/resoluciones.py, config/settings.py

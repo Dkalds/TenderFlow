@@ -221,3 +221,7 @@ class OrganizationCapabilitiesOut(OrganizationCapabilities):
     #: Vigencia de cada documento declarado, ordenada por la próxima
     #: caducidad (lo caducado primero, lo que no declara fecha al final).
     vigencias: list[VigenciaDocumento] = Field(default_factory=list)
+    #: Adjudicaciones de los últimos tres años a los NIF de la organización que
+    #: aún no están entre sus referencias. Se proponen, no se guardan: lo
+    #: adjudicado no es lo ejecutado (``services/referencias_sugeridas.py``).
+    referencias_sugeridas: list[OrganizationReferencia] = Field(default_factory=list)

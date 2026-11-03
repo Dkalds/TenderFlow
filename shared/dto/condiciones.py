@@ -85,6 +85,32 @@ class CondicionesAmbito(BaseModel):
     solvencia: list[RequisitoSolvenciaOficial] = Field(default_factory=list)
 
 
+CodigoIndicio = Literal[
+    "solvencia_economica_excesiva", "juicio_de_valor_mayoritario", "certificado_sin_equivalente"
+]
+
+
+class IndicioPliego(BaseModel):
+    """Una condición publicada que conviene revisar antes de presentarse.
+
+    Es un indicio, no una infracción: la ley admite excepciones justificadas en
+    el expediente, que la publicación no trae. Sale solo de las condiciones
+    oficiales de este mismo modelo, nunca de la ficha LLM.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    codigo: CodigoIndicio
+    #: Ámbito del requisito o criterio que lo dispara; nulo es el expediente.
+    lote_numero: str | None = None
+    titulo: str
+    #: Las cifras que lo disparan, en una frase.
+    detalle: str
+    base_legal: str
+    #: El texto publicado del requisito, para comprobarlo sin abrir el pliego.
+    cita: str | None = None
+
+
 class CondicionesOficiales(BaseModel):
     """Lo que la publicación oficial dice de un expediente, por ámbito.
 
@@ -104,3 +130,7 @@ class CondicionesOficiales(BaseModel):
     #: Última vez que la ingesta escribió estas filas (ISO 8601).
     actualizado: str | None = None
     ambitos: list[CondicionesAmbito] = Field(default_factory=list)
+    #: Valor estimado del contrato (con prórrogas y modificaciones, sin IVA),
+    #: la base contra la que se mide la solvencia económica.
+    valor_estimado: float | None = None
+    indicios: list[IndicioPliego] = Field(default_factory=list)

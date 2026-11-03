@@ -46,6 +46,7 @@ from db.sql_fragments import (
 __all__ = [
     "NivelSegmento",
     "Segmento",
+    "adjudicaciones_propias_desde",
     "expedientes_por_nivel",
     "historial_propio",
     "objetivo",
@@ -498,3 +499,56 @@ def historial_propio(
         recientes=cast(list[FilaAdjudicacionPropia], recientes),
         oportunidades=cast(list[FilaOportunidadPorEstado], oportunidades),
     )
+
+
+class FilaAdjudicacionPropiaReferencia(TypedDict):
+    licitacion_id: str
+    organo: str
+    fecha_adjudicacion: str
+    importe_adjudicado: float | None
+    tecnologia: str | None
+
+
+def adjudicaciones_propias_desde(
+    *,
+    empresa_ids: Sequence[int],
+    nifs: Sequence[str],
+    desde: str,
+    limite: int = 20,
+) -> list[FilaAdjudicacionPropiaReferencia]:
+    """Los expedientes que la organización ganó desde ``desde`` (ISO), uno por fila.
+
+    Es la materia prima de las referencias de solvencia técnica: cada fila
+    suma lo adjudicado a la organización en sus lotes del expediente (una
+    UTE o dos NIF de la misma organización repiten la fila por lote, así que
+    se toma el máximo por lote antes de sumar). Se reconoce a la organización
+    como en :func:`historial_propio`; el órgano sale del maestro cuando está
+    resuelto. Ordenadas por importe: las de más peso acreditan más.
+    """
+    if not empresa_ids and not nifs:
+        return []
+    sql = (
+        "WITH por_lote AS ("
+        "  SELECT a.licitacion_id, a.lote_id, MAX(a.importe_adjudicado) AS importe, "
+        "         MIN(a.fecha_adjudicacion) AS fecha "
+        "  FROM adjudicaciones a "
+        f"  WHERE (a.empresa_id = ANY(%s) OR {_NIF_NORMALIZADO} = ANY(%s)) "
+        f"    AND a.fecha_adjudicacion >= %s AND {iso_guard('a.fecha_adjudicacion')} "
+        f"    AND {exclude_duplicados_sql('a.licitacion_id')} "
+        "  GROUP BY a.licitacion_id, a.lote_id"
+        ") "
+        "SELECT p.licitacion_id, "
+        "       COALESCE(o.nombre_canonico, l.organo_contratacion) AS organo, "
+        "       MIN(p.fecha) AS fecha_adjudicacion, SUM(p.importe) AS importe_adjudicado, "
+        "       NULLIF(split_part(replace(COALESCE(l.tecnologia, ''), ' ', ''), ',', 1), '') AS tecnologia "
+        "FROM por_lote p "
+        "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+        "LEFT JOIN organos o ON o.organo_id = l.organo_id "
+        "WHERE COALESCE(o.nombre_canonico, l.organo_contratacion) IS NOT NULL "
+        "GROUP BY p.licitacion_id, o.nombre_canonico, l.organo_contratacion, l.tecnologia "
+        "ORDER BY importe_adjudicado DESC NULLS LAST, p.licitacion_id "
+        "LIMIT %s"
+    )
+    with connect_read() as c:
+        filas = rows_to_dicts(c.execute(sql, [list(empresa_ids), list(nifs), desde, limite]))
+    return cast(list[FilaAdjudicacionPropiaReferencia], filas)

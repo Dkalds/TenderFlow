@@ -323,6 +323,11 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Declara cada documento con su tipo —certificación técnica, o documentación
   administrativa: corriente con la AEAT y con la Seguridad Social, ROLECE,
   clasificación— y hasta cuándo vale.
+- Con los NIF declarados, ve los contratos que la organización ganó en los
+  últimos tres años y aún no figuran entre sus referencias, con órgano, año,
+  importe adjudicado y enlace a la licitación; los añade uno a uno o todos y
+  los guarda con el resto del perfil. Nada se guarda solo: lo adjudicado no
+  es lo ejecutado.
 - Ve el estado de cada uno (vigente, caduca en N días, caducado, sin caducidad
   declarada), ordenado por la próxima caducidad.
 - Recibe en la campana y por correo un aviso a 60, 30 y 7 días y al caducar,
@@ -390,6 +395,11 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   familia y con la cita del pliego, sin abrir la oportunidad; «desconocido»
   nunca cuenta como «cumple». Si algo no se cumple, ve con qué empresas del
   segmento podría ir en UTE.
+- En Requisitos ve también las condiciones publicadas que conviene revisar,
+  cada una con lo publicado y su artículo: un volumen de negocios por encima
+  de 1,5 veces el valor estimado, más de la mitad de los puntos por juicio de
+  valor, o una ISO 9001 o 14001 sin mención de equivalentes. Son indicios, no
+  infracciones, y la ficha lo dice.
 - En Competencia ve lo que su organización ya ganó con ese órgano y en ese
   CPV, y cómo acabaron sus oportunidades con el órgano; sin NIF declarado se
   le pide declararlo en vez de enseñar ceros. El órgano enlaza a su perfil en
@@ -432,12 +442,12 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-27** Guardar la propuesta del equipo en la oportunidad | [test_escenario_adjuntos.py](../tests/test_escenario_adjuntos.py) (x2) | — | [adjuntos-panel.test.tsx](../web/src/components/pursuits/__tests__/adjuntos-panel.test.tsx) |
 | **CU-28** Acotar Detalle y el tablero por etiqueta, responsable y plazo | [test_escenario_ficha_y_filtros.py](../tests/test_escenario_ficha_y_filtros.py) | — | [use-etiqueta-listado.test.tsx](../web/src/app/(dashboard)/detalle/__tests__/use-etiqueta-listado.test.tsx)<br>[tablero-view.test.tsx](../web/src/app/(dashboard)/oportunidades/__tests__/tablero-view.test.tsx) |
 | **CU-29** Enterarme de lo que me concierne desde la campana | [test_escenario_campana.py](../tests/test_escenario_campana.py) | — | [notification-bell.test.tsx](../web/src/components/__tests__/notification-bell.test.tsx)<br>[ver-todas-sheet.test.tsx](../web/src/components/campana/__tests__/ver-todas-sheet.test.tsx) |
-| **CU-30** Tener al día la documentación acreditativa | [test_escenario_documentacion.py](../tests/test_escenario_documentacion.py) | — | [page.test.tsx](../web/src/app/(dashboard)/equipo/__tests__/page.test.tsx)<br>[organizacion-documentacion.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/organizacion-documentacion.test.tsx) |
+| **CU-30** Tener al día la documentación acreditativa | [test_escenario_documentacion.py](../tests/test_escenario_documentacion.py) | — | [test_unit_referencias_sugeridas.py](../tests/test_unit_referencias_sugeridas.py)<br>[page.test.tsx](../web/src/app/(dashboard)/equipo/__tests__/page.test.tsx)<br>[organizacion-documentacion.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/organizacion-documentacion.test.tsx)<br>[organizacion-referencias-sugeridas.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/organizacion-referencias-sugeridas.test.tsx) |
 | **CU-31** Pedir acceso, recibirlo y crearme la cuenta | [test_escenario_alta_tras_concesion.py](../tests/test_escenario_alta_tras_concesion.py) | — | — |
 | **CU-32** Revisar y exportar lo que cambió en la organización | [test_escenario_gobierno_organizacion.py](../tests/test_escenario_gobierno_organizacion.py) | — | [auditoria-organizacion-card.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/auditoria-organizacion-card.test.tsx) |
 | **CU-33** Mantener la integración del equipo por webhook | [test_escenario_webhooks.py](../tests/test_escenario_webhooks.py) (x2) | — | [webhook-row.test.tsx](../web/src/app/(dashboard)/ops/_components/webhooks/__tests__/webhook-row.test.tsx) |
 | **CU-34** Arrancar por lo que da valor | — | [recorrido-primeros-pasos.spec.ts](../web/e2e/recorrido-primeros-pasos.spec.ts) | [primeros-pasos.test.tsx](../web/src/app/(dashboard)/resumen/_components/__tests__/primeros-pasos.test.tsx) |
-| **CU-35** Decidir desde la ficha si se presenta | [test_escenario_ficha_decidir.py](../tests/test_escenario_ficha_decidir.py) | — | [test_unit_dossier_licitacion.py](../tests/test_unit_dossier_licitacion.py)<br>[test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py) |
+| **CU-35** Decidir desde la ficha si se presenta | [test_escenario_ficha_decidir.py](../tests/test_escenario_ficha_decidir.py) | — | [test_unit_dossier_licitacion.py](../tests/test_unit_dossier_licitacion.py)<br>[test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py)<br>[condiciones-oficiales.test.tsx](../web/src/components/pliego/__tests__/condiciones-oficiales.test.tsx) |
 
 **35 casos**, 35 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
 
