@@ -93,6 +93,10 @@
           {
             "type": "command",
             "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_grep_hint.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_grep_hint.py\""
+          },
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_revision_visual.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_revision_visual.py\""
           }
         ]
       },
@@ -102,6 +106,10 @@
           {
             "type": "command",
             "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_edit_stale.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_edit_stale.py\""
+          },
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_edit_skills.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_edit_skills.py\""
           }
         ]
       }

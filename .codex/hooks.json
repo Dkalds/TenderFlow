@@ -21,6 +21,10 @@
           {
             "type": "command",
             "command": "python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_bash_grep_hint.py\" || python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_bash_grep_hint.py\""
+          },
+          {
+            "type": "command",
+            "command": "python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_bash_revision_visual.py\" || python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_bash_revision_visual.py\""
           }
         ]
       },
