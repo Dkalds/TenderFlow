@@ -34,7 +34,9 @@ export function OrganizacionReferenciasSugeridas({
   const pendientes = sugeridas.filter((r) => !r.expediente_id || !ya.has(r.expediente_id));
   if (pendientes.length === 0) return null;
   return (
-    <div className="border-divider space-y-2 rounded-md border px-3 py-2.5">
+    // Un filete y no una caja: dentro del panel, una caja con borde sería una
+    // tarjeta anidada; el resto de la tarjeta se separa así.
+    <div className="border-divider space-y-2 border-t pt-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-tf-body font-medium">
           {pendientes.length === 1
