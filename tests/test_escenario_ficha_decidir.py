@@ -91,8 +91,11 @@ def test_cu35_decidir_desde_la_ficha(client, api_db):
         organo_contratacion="Diputación de Toledo",
         estado="RES",
     )
-    reciente = (datetime.now().astimezone() - timedelta(days=100)).date().isoformat()
-    _adjudicar("EXP-DEC-2024", NIF_PROPIO, 200_000.0, "2024-06-15")
+    hoy = datetime.now().astimezone()
+    reciente = (hoy - timedelta(days=100)).date().isoformat()
+    # Relativa a hoy y no fija: una fecha fija entra en los tres años o sale de ellos según el día.
+    antigua = (hoy - timedelta(days=4 * 365)).date().isoformat()
+    _adjudicar("EXP-DEC-2024", NIF_PROPIO, 200_000.0, antigua)
     _adjudicar("EXP-DEC-OTRO", NIF_PROPIO, 90_000.0, reciente)
     sesion = abrir_sesion("decide@example.com", client)
     org = {"organization_id": sesion.organization_id}
