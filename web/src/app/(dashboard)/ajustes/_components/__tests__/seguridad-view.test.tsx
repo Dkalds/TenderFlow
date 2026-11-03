@@ -206,6 +206,8 @@ describe("Seguridad: códigos de recuperación nuevos", () => {
     const lista = await screen.findByRole("list", { name: "Códigos de recuperación" });
     expect(within(lista).getAllByRole("listitem")).toHaveLength(10);
     expect(screen.getByText(/Los códigos que tenías ya no valen/)).toBeInTheDocument();
+    // El formulario desaparece: el foco pasa a la acción siguiente, no al `body`.
+    expect(screen.getByRole("button", { name: "Copiar los diez" })).toHaveFocus();
     const [, init] = llamada("POST", "/api/v1/auth/totp/recovery-codes")!;
     expect(JSON.parse(String((init as RequestInit).body))).toEqual({ code: "123456" });
     // El segundo factor sigue activo: no hay sesión que refrescar.

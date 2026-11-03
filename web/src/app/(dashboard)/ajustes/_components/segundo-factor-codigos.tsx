@@ -6,6 +6,7 @@
  * aviso no se va solo: desaparece cuando la persona dice que ya los guardó.
  */
 
+import * as React from "react";
 import { Copy } from "lucide-react";
 import { Aviso } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,12 @@ export function SegundoFactorCodigos({
   regenerados?: boolean;
   onGuardados: () => void;
 }) {
+  // El formulario que los pidió desaparece al llegar: sin esto el foco cae al
+  // `body` y con teclado se pierde el sitio. Va a la acción siguiente.
+  const copiar = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => {
+    copiar.current?.focus();
+  }, []);
   return (
     <Aviso tone="warning" role="alert" title="Guarda ahora tus códigos de recuperación">
       <p className="text-muted-foreground">
@@ -38,6 +45,7 @@ export function SegundoFactorCodigos({
       </ul>
       <div className="mt-2 flex flex-wrap gap-2">
         <Button
+          ref={copiar}
           size="sm"
           variant="outline"
           onClick={() => void copiarAlPortapapeles(codigos.join("\n"), "Códigos copiados")}

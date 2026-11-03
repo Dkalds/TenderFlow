@@ -54,9 +54,12 @@ export function ReglaCard({
 }) {
   const [confirmando, setConfirmando] = useState(false);
   const desactivar = () => onUpdate(rule.id, ruleToBody(rule, { active: !rule.active }));
+  // Se apaga la regla pausada, no la tarjeta: la confirmación de borrado vive
+  // dentro y al 50 % no llegaba al contraste AA.
+  const apagada = !rule.active && "opacity-50";
   return (
-    <Panel className={cn(!rule.active && "opacity-50")}>
-      <div className="mb-2.5 flex items-start justify-between gap-2">
+    <Panel>
+      <div className={cn("mb-2.5 flex items-start justify-between gap-2", apagada)}>
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-tf-body font-semibold">{rule.nombre || rule.keyword || "Regla"}</h3>
           {/* El conteo del listado viene acotado por la API (para no barrer
@@ -147,7 +150,7 @@ export function ReglaCard({
           </div>
         </Aviso>
       )}
-      <dl className="space-y-1.5 text-tf-meta">
+      <dl className={cn("space-y-1.5 text-tf-meta", apagada)}>
         {rule.keyword && (
           <Criterio label="Palabra clave">
             <Badge size="sm" variant="outline">
@@ -168,7 +171,7 @@ export function ReglaCard({
         {rule.ccaa && <Criterio label="CCAA">{rule.ccaa}</Criterio>}
         <Criterio label="Frecuencia">{FREQ_LABEL[rule.frequency]}</Criterio>
       </dl>
-      <p className="mt-2 flex items-center gap-1.5 text-tf-meta text-muted-foreground">
+      <p className={cn("mt-2 flex items-center gap-1.5 text-tf-meta text-muted-foreground", apagada)}>
         <Mail className="h-3 w-3 flex-none" aria-hidden="true" />
         <span className="truncate">{rule.email ? rule.email : "Solo notificaciones en TenderFlow"}</span>
       </p>
