@@ -49,9 +49,12 @@ En un worktree, Claude Code lanza los hooks desde el checkout principal: los hoo
 —cluster local, rol, base, `pg_trgm`/`vector`— y deja `TEST_DATABASE_URL` en
 `.env`, de donde `tests/conftest.py` la lee. Con eso **la suite sí se ejecuta**:
 `make test-unit` y `make check` son válidos en remoto. Las dependencias Python
-del proyecto no vienen preinstaladas: `pip install -r requirements.txt -r
-requirements-dev.txt` y `pip install -e ".[pliegos]"` (este último lo exigen los
-tests de extracción de PDF).
+del proyecto no vienen preinstaladas: en un `.venv` (el `pip` del sistema no
+puede reemplazar paquetes que instaló Debian), `pip install -r
+requirements-dev.txt` —trae también los paquetes de producción:
+`requirements-dev.in` empieza con `-r requirements.in`— y `pip install -e ".[pliegos]"` (este último lo exigen los
+tests de extracción de PDF). Los dos locks juntos en un mismo `pip install` no
+resuelven: se compilan por separado y pueden fijar versiones distintas.
 
 El hook es best-effort: si no consigue Postgres lo dice en su mensaje de
 arranque, y entonces vuelve a aplicar la regla de AGENTS.md §4 — se reportan
