@@ -82,6 +82,11 @@
             "command": "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook",
             "timeout": 30,
             "statusMessage": "Design deep pass"
+          },
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop_graph_refresh.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop_graph_refresh.py\"",
+            "timeout": 10
           }
         ]
       }
@@ -92,11 +97,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_grep_hint.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_grep_hint.py\""
+            "command": "if command -v python >/dev/null 2>&1; then python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_grep_hint.py\"; else python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_grep_hint.py\"; fi"
           },
           {
             "type": "command",
             "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_revision_visual.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_revision_visual.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if command -v python >/dev/null 2>&1; then python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_grep_hint.py\"; else python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_grep_hint.py\"; fi"
           }
         ]
       },
@@ -109,7 +123,7 @@
           },
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_edit_skills.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_edit_skills.py\""
+            "command": "if command -v python >/dev/null 2>&1; then python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_edit_skills.py\"; else python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_edit_skills.py\"; fi"
           }
         ]
       }
