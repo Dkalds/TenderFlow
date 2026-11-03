@@ -79,6 +79,10 @@ Usá este orden para preguntas de arquitectura y relaciones cross-file:
 Leé archivos raw cuando vayas a modificar o depurar código concreto, o cuando
 ninguna de las dos herramientas tenga el detalle necesario.
 
+En Claude Code el orden no depende de acordarse: con el CLI y el grafo
+disponibles, el hook de búsqueda bloquea el primer `grep`/`rg` de la sesión
+hasta que se haya consultado el grafo (`CLAUDE.md`, **Hooks**).
+
 **Graphify local es opcional.** La configuración MCP compartida de VS Code vive
 en `.vscode/mcp.json` y ejecuta `graphify-mcp` sobre
 `graphify-out/graph.json`. Para usarla, instala el extra MCP de Graphify
@@ -191,7 +195,7 @@ mano.
 
 **Post-flight (siempre tras editar `.py`):**
 1. Corré `/check` o los tres controles Python de §4. Si faltan prerrequisitos, reportá los controles no ejecutados.
-2. Si el CLI y `graphify-out/graph.json` están disponibles, corré `graphify update .`; usá `--force` para módulos nuevos, renames o moves. Si no están, omitilo.
+2. Si el CLI y `graphify-out/graph.json` están disponibles, corré `graphify update .`; usá `--force` para módulos nuevos, renames o moves. Si no están, omitilo. (En Claude Code y Codex lo lanza solo el hook de Stop al acabar el turno; `--force` sigue siendo a mano.)
 3. Si el cambio contradice una decisión registrada en `docs/adr/` o un invariante de la sección 3, abrí una nueva revisión ADR en `docs/adr/` antes de mergear.
 4. Si el cambio resuelve (total o parcialmente) un ítem de [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md), movélo a **Cerrados** (o anotá progreso parcial) en ese mismo momento. No dejarlo para después.
 5. Si tocaste customizaciones de agentes, corré `make check-agent-docs`.

@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_bash_grep_hint.py\" || python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_bash_grep_hint.py\""
+            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_bash_grep_hint.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_bash_grep_hint.py\"; fi"
           },
           {
             "type": "command",
@@ -61,6 +61,11 @@
             "commandWindows": "cmd /c if exist \".agents\\skills\\impeccable\\scripts\\impeccable.cmd\" \".agents\\skills\\impeccable\\scripts\\impeccable.cmd\" hook",
             "timeout": 30,
             "statusMessage": "Design deep pass"
+          },
+          {
+            "type": "command",
+            "command": "python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/stop_graph_refresh.py\" || python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/stop_graph_refresh.py\"",
+            "timeout": 10
           }
         ]
       }
