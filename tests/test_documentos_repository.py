@@ -1128,3 +1128,80 @@ class TestRevivirDescargasFallidas:
 
         assert repo.revivir_descargas_fallidas() == 0
         assert repo.get(documento_id)["status"] == "error"
+
+
+class TestRepararLetrasCambiadas:
+    """``ids_con_huella`` y ``reescribir_texto``: la reparación de lo ya guardado."""
+
+    def _extraido(self, repo, id_externo: str, paginas: list[str]) -> int:
+        _insert_licitacion(id_externo)
+        repo.upsert_meta(
+            id_externo,
+            [DocumentoReferencia(tipo="legal", uri=f"https://x/{id_externo}", source_hash="h")],
+        )
+        doc_id = int(repo.list_pendientes()[0]["id"])
+        repo.mark_extracted(doc_id, texto="\n".join(paginas), sha256="h", pages=paginas)
+        return doc_id
+
+    def test_preselecciona_por_tramo_y_reescribe_sin_tocar_offsets(self, repo):
+        from db.database import connect
+        from shared.letras_cambiadas import HUELLA_SQL
+
+        afectado = self._extraido(repo, "EXP-LC1", ["La ClÆusula", "segœn los tØrminos"])
+        sano = self._extraido(repo, "EXP-LC2", ["La Cláusula sana"])
+        with connect() as c:
+            c.execute(
+                "INSERT INTO documento_chunks (documento_id, chunk_index, texto) VALUES (%s, 0, 'x')",
+                (afectado,),
+            )
+
+        tope = repo.max_documento_id() + 1
+        assert repo.ids_con_huella(HUELLA_SQL, desde_id=0, hasta_id=tope) == [afectado]
+        assert repo.ids_con_huella(HUELLA_SQL, desde_id=afectado + 1, hasta_id=tope) == []
+        offsets_antes = [(p["start_offset"], p["end_offset"]) for p in repo.list_pages(afectado)]
+
+        repo.reescribir_texto(
+            afectado,
+            texto="La Cláusula\nsegún los términos",
+            paginas={1: "La Cláusula", 2: "según los términos"},
+        )
+
+        paginas = repo.list_pages(afectado)
+        assert [p["texto"] for p in paginas] == ["La Cláusula", "según los términos"]
+        assert [(p["start_offset"], p["end_offset"]) for p in paginas] == offsets_antes
+        assert repo.get(afectado)["texto"] == "La Cláusula\nsegún los términos"
+        # Los trozos se hicieron con el texto viejo: el job de embeddings los rehace.
+        assert repo.count_chunks(afectado) == 0
+        assert [p["texto"] for p in repo.list_pages(sano)] == ["La Cláusula sana"]
+
+
+class TestReencolarSinTexto:
+    """Los PDF ``sin_texto`` anteriores al OCR del runner vuelven a ``pending``."""
+
+    def _sin_texto(self, repo, id_externo: str, leido: str) -> int:
+        from db.database import connect
+
+        _insert_licitacion(id_externo)
+        repo.upsert_meta(
+            id_externo,
+            [DocumentoReferencia(tipo="legal", uri=f"https://x/{id_externo}", source_hash="h")],
+        )
+        doc_id = int(repo.list_pendientes()[0]["id"])
+        with connect() as c:
+            c.execute(
+                "UPDATE documentos SET status = 'sin_texto', fetched_at = %s WHERE id = %s",
+                (leido, doc_id),
+            )
+        return doc_id
+
+    def test_solo_los_leidos_antes_del_ocr(self, repo):
+        viejo = self._sin_texto(repo, "EXP-ST1", "2026-08-20T10:00:00+00:00")
+        reciente = self._sin_texto(repo, "EXP-ST2", "2026-10-31T10:00:00+00:00")
+
+        assert repo.reencolar_sin_texto(antes_de="2026-09-08", aplicar=False) == 1
+        assert repo.get(viejo)["status"] == "sin_texto"  # contar no escribe
+
+        assert repo.reencolar_sin_texto(antes_de="2026-09-08", aplicar=True) == 1
+        assert repo.get(viejo)["status"] == "pending"
+        assert repo.get(reciente)["status"] == "sin_texto"
+        assert repo.reencolar_sin_texto(antes_de="2026-09-08", aplicar=True) == 0

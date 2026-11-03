@@ -92,6 +92,7 @@ from shared.dto.analitica import (
     CompetitiveCompanyTotalsDTO,
     CompetitiveCompanyUteParticipationDTO,
     CompetitiveCompanyYearDTO,
+    EventoProductoIn,
     SenalClasificadorDTO,
 )
 from shared.dto.capacidad import (
@@ -318,6 +319,7 @@ __all__ = [
     "EtiquetaAplicacion",
     "EtiquetaAplicada",
     "EtiquetaCreate",
+    "EventoProductoIn",
     "ExpectedAward",
     "FichaCuenta",
     "FilaActaRef",

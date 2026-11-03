@@ -76,3 +76,25 @@ fallidas (esas las revive el propio lote, `revivir_descargas_fallidas`).
 El OCR de escaneados no se amplía con esto: los PDF «sin texto extraíble» no
 se reencolan, porque el coste por página del OCR sigue sin medir (S8.3, ítem
 S8 de [IMPROVEMENT_BACKLOG.md](../IMPROVEMENT_BACKLOG.md)).
+
+## Reparar el texto con las tildes cambiadas
+
+Algunos PDF salen de pypdf con «ClÆusula», «tambiØn» o «aæos»: una fuente con
+codificación propia decodificada con la tabla equivocada (`á→Æ`, `é→Ø`, `ú→œ`,
+`ñ→æ`, `Í→˝`). Desde el 2026-11-03 la extracción los repara al leerlos
+(`shared/letras_cambiadas.py`); lo extraído antes se repara con:
+
+```bash
+make reparar-letras-cambiadas            # cuenta, no escribe
+make reparar-letras-cambiadas APLICAR=1  # repara
+```
+
+Recorre `documento_pages` por tramos de 2.000 documentos (la regex no tiene
+índice), y en cada documento con la huella al menos tres veces reescribe
+`documentos.texto` y sus páginas en una transacción y borra sus
+`documento_chunks`, que el job de embeddings rehace en la siguiente pasada.
+Hasta entonces el Investigador no ve los trozos de esos documentos. Las fichas
+no se tocan: sus citas siguen casando y ningún offset se mueve.
+
+Medido el 2026-11-03 sobre una muestra del 6 %: el 1,5 % de las páginas (unas
+6.000). Anota aquí el recuento de la pasada real.

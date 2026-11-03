@@ -84,9 +84,9 @@ Generado: 2026-11-03
 
 ## Superficie de la API
 
-**311 endpoints** expuestos.
+**312 endpoints** expuestos.
 
-Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **19** (`scripts/check_api_surface.py`).
+Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **20** (`scripts/check_api_surface.py`).
 
 <details><summary>Ver listado</summary>
 
@@ -377,6 +377,7 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | PUT | `/api/v1/tecnologias/keywords` |
 | GET | `/api/v1/tecnologias/keywords/impacto` |
 | POST | `/api/v1/tecnologias/keywords/sembrar` |
+| POST | `/api/v1/telemetria/eventos` |
 | GET | `/api/v1/watchlist/feed.xml` |
 | GET | `/api/v1/watchlist/items` |
 | POST | `/api/v1/watchlist/items` |

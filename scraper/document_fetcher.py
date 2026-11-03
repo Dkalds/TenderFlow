@@ -84,6 +84,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 import zipfile
 import zlib
 from dataclasses import dataclass
@@ -99,6 +100,7 @@ import urllib3
 from config import USER_AGENT, settings
 from observability.logging import get_logger
 from scraper.resilience import RecursoNoServidoError, breaker_para_host, http_retry, status_de
+from shared.letras_cambiadas import reparar_paginas
 from shared.object_store import ObjectStoreError, document_blob_key, get_object_store
 from shared.outbound_http import PinnedHttpsResponse, pinned_https_request
 
@@ -450,7 +452,8 @@ def _extract_pdf_pages_local(content: bytes, *, max_pages: int, max_text_chars: 
 
     if not _tiene_texto(pages_text):
         raise PdfSinTextoError(_MSG_PDF_SIN_TEXTO)
-    return pages_text
+    # Fuentes con la tabla de caracteres equivocada («ClÆusula»): ver el módulo.
+    return reparar_paginas(pages_text)
 
 
 def _tiene_texto(paginas: list[str]) -> bool:
@@ -692,13 +695,21 @@ def _extract_pdf_paginas_con_ocr(content: bytes) -> list[PaginaExtraida]:
     except DocumentFetchError as exc:
         if not _es_pdf_sin_texto(exc):
             raise
+        inicio = time.monotonic()
         con_texto = _ocr_pdf(content)
         if con_texto is None:
             if isinstance(exc, PdfSinTextoError):
                 raise
             raise PdfSinTextoError(str(exc)) from exc
         paginas = _extract_pdf_pages(con_texto)
-        log.info("document_ocr_extracted", paginas=len(paginas))
+        # El coste del OCR por página es la medida que decide si se amplía (S8.3).
+        segundos = time.monotonic() - inicio
+        log.info(
+            "document_ocr_extracted",
+            paginas=len(paginas),
+            segundos=round(segundos, 1),
+            segundos_por_pagina=round(segundos / max(1, len(paginas)), 2),
+        )
         return [PaginaExtraida(texto=texto, ocr=True) for texto in paginas]
 
 

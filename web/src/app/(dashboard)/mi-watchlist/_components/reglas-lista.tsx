@@ -9,9 +9,13 @@
  *
  * El fallo va antes que el vacío: sin él, una carga fallida se leía como «No
  * tienes reglas», que es justo lo que no se sabe.
+ *
+ * Con reglas pero ninguna activa, lo dice encima: pausar la última corta el
+ * resumen igual que borrarla, y la pausa también llega sola desde el enlace de
+ * baja del correo. Es un estado, no un toast: sigue ahí mientras dure.
  */
 
-import { PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
+import { Aviso, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ApiRule, RuleBody } from "../_hooks/watchlist-rule-types";
 import { ReglaCard } from "./regla-card";
@@ -55,18 +59,25 @@ export function ReglasLista({
           hint="Crea una regla y recibirás un aviso, con la frecuencia que elijas, cuando entren licitaciones que la cumplan. Empieza con «Nueva regla de seguimiento», arriba."
         />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {(rules ?? []).map((rule) => (
-            <ReglaCard
-              key={rule.id}
-              rule={rule}
-              ultimaActiva={rule.active && activas === 1}
-              onUpdate={onUpdate}
-              onEdit={onEdit}
-              onDelete={onDelete}
-            />
-          ))}
-        </div>
+        <>
+          {activas === 0 && (
+            <Aviso tone="warning" className="mb-4" title="Ninguna regla activa">
+              No te llegan avisos ni el resumen diario. Activa alguna con el botón del ojo de su tarjeta.
+            </Aviso>
+          )}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {(rules ?? []).map((rule) => (
+              <ReglaCard
+                key={rule.id}
+                rule={rule}
+                ultimaActiva={rule.active && activas === 1}
+                onUpdate={onUpdate}
+                onEdit={onEdit}
+                onDelete={onDelete}
+              />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
