@@ -646,6 +646,42 @@ def test_listar_adjudicaciones_empresa_filtra_ordena_y_pagina(db):
     assert filtered["items"][0]["presupuesto_licitacion"] == 100000
 
 
+def test_listar_adjudicaciones_empresa_pliega_tildes(db):
+    """«camara» encuentra «Cámara», como en el resto de búsquedas (``fold_expr``)."""
+    from db.database import connect_read
+    from services.competitive.mercado import listar_adjudicaciones_empresa
+
+    insert_contract(
+        db,
+        "M-TILDE-1",
+        "Tildes Profile SL",
+        nif="B12340030",
+        organo="Cámara de Comercio de Álava",
+        fecha_adjudicacion=_date(-10),
+    )
+    insert_contract(
+        db,
+        "M-TILDE-2",
+        "Tildes Profile SL",
+        nif="B12340030",
+        organo="Ministerio X",
+        fecha_adjudicacion=_date(-10),
+    )
+    resolve(db)
+    with connect_read() as c:
+        empresa_id = int(
+            c.execute(
+                "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B12340030'"
+            ).fetchone()[0]
+        )
+
+    por_q = listar_adjudicaciones_empresa(empresa_id, q="camara de comercio de alava")
+    por_organo = listar_adjudicaciones_empresa(empresa_id, organo="CAMARA")
+
+    assert [i["licitacion_id"] for i in por_q["items"]] == ["M-TILDE-1"]
+    assert [i["licitacion_id"] for i in por_organo["items"]] == ["M-TILDE-1"]
+
+
 def test_alcance_de_mercado_encuentra_los_multi_tecnologia(db):
     """El filtro de tecnologías del dossier y del listado busca en el CSV.
 
