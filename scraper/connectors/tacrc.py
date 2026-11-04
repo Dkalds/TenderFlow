@@ -75,6 +75,7 @@ from db.database import get_cursor, set_cursor
 from db.dlq import record_failure
 from db.upsert import DocumentoReferencia
 from observability import get_logger
+from scraper.resilience import pedir_con_reintentos
 from services.resoluciones import Resolucion, link_unlinked, upsert_resoluciones
 
 log = get_logger(__name__)
@@ -391,9 +392,12 @@ def fetch_index(index_url: str | None = None, *, session: requests.Session | Non
             "`python -m scraper.connectors.tacrc --check --url <url>` y fijala "
             "por entorno (regla operativa del RFC 20260611-1)."
         )
+    cliente = session or requests
+    # Un 404 (año sin carpeta) no se reintenta: ``http_retry`` solo repite
+    # timeouts, cortes, 5xx, 408 y 429.
     if "/_api/" in url:
-        resp = (session or requests).get(
-            url, timeout=_TIMEOUT, headers={"Accept": _ACCEPT_JSON_SHAREPOINT}
+        resp = pedir_con_reintentos(
+            lambda: cliente.get(url, timeout=_TIMEOUT, headers={"Accept": _ACCEPT_JSON_SHAREPOINT})
         )
         # El sitio no responde 401/403 a la API: redirige a su página de «no
         # encontrado», que `requests` sigue y devuelve como 200 con HTML.
@@ -403,8 +407,7 @@ def fetch_index(index_url: str | None = None, *, session: requests.Session | Non
                 "no es anónima y no hay índice completo (ver scraper/connectors/tacrc.py)"
             )
     else:
-        resp = (session or requests).get(url, timeout=_TIMEOUT)
-    resp.raise_for_status()
+        resp = pedir_con_reintentos(lambda: cliente.get(url, timeout=_TIMEOUT))
     return str(resp.text)
 
 

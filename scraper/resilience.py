@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 
 import pybreaker
 import requests
@@ -95,6 +96,29 @@ http_retry = retry(
     before_sleep=before_sleep_log(_stdlib_log, logging.WARNING),
     reraise=True,
 )
+
+
+@http_retry
+def pedir_con_reintentos(enviar: Callable[[], requests.Response]) -> requests.Response:
+    """Lanza la petición de *enviar* con los reintentos de ``http_retry``.
+
+    Para los conectores que piden con su propia sesión (TED, RSS regionales,
+    TACRC): un timeout o un 5xx suelto ya no tumba la pasada. *enviar* se
+    vuelve a llamar en cada intento, así que tiene que ser repetible —una
+    página concreta, no «la siguiente»—. Sin circuito, como
+    ``scraper.connectors.pscp._pedir_pagina``: la pasada termina en la primera
+    petición que agota sus intentos, así que un circuito propio nunca llegaría
+    a abrirse; y ``ted_breaker``/``tacrc_breaker`` son los de la descarga de
+    documentos, que un índice caído no debe parar.
+    """
+    try:
+        resp = enviar()
+    except requests.exceptions.ChunkedEncodingError as exc:
+        # Cuerpo cortado a medias: ``requests`` no lo da como ``ConnectionError``,
+        # que es lo que ``http_retry`` reintenta (igual que en ``pscp``).
+        raise requests.ConnectionError(str(exc)) from exc
+    resp.raise_for_status()
+    return resp
 
 
 class _AdaptiveBackoffListener(pybreaker.CircuitBreakerListener):
