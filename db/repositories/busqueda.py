@@ -63,20 +63,31 @@ class BusquedaRepository:
             return rows_to_dicts(cur)
 
     def empresas(self, termino: str, limite: int) -> list[dict[str, Any]]:
+        # Las columnas del maestro son `empresa_id` y `nif_canonico`: con `id` y
+        # `nif` la consulta fallaba siempre y la paleta, que es fail-open por
+        # tipo, nunca devolvía empresas.
+        # shortcut: `LIKE '%q%'` sin índice trigram recorre el maestro entero,
+        # subirlo con un GIN trigram sobre `fold_expr('nombre_canonico')`
+        # (migración) cuando la paleta lo note.
         with connect_read() as c:
             cur = c.execute(
-                "SELECT id, nombre_canonico AS titulo, nif AS subtitulo FROM empresas "
-                f"WHERE {fold_expr('nombre_canonico')} LIKE %s "
+                "SELECT empresa_id AS id, nombre_canonico AS titulo, nif_canonico AS subtitulo "
+                f"FROM empresas WHERE {fold_expr('nombre_canonico')} LIKE %s "
                 "ORDER BY nombre_canonico LIMIT %s",
                 (_patron(termino), limite),
             )
             return rows_to_dicts(cur)
 
     def empresa_por_nif(self, nif: str) -> dict[str, Any] | None:
-        """Identificación exacta por NIF. Sin ``LIKE``: es una clave."""
+        """Identificación exacta por NIF. Sin ``LIKE``: es una clave.
+
+        ``nif_canonico`` ya está normalizado en mayúsculas (``normalize_nif``),
+        así que la igualdad directa usa su índice único.
+        """
         with connect_read() as c:
             cur = c.execute(
-                "SELECT id, nombre_canonico, nif FROM empresas WHERE upper(nif) = %s LIMIT 1",
+                "SELECT empresa_id AS id, nombre_canonico, nif_canonico AS nif FROM empresas "
+                "WHERE nif_canonico = %s LIMIT 1",
                 (nif.strip().upper(),),
             )
             filas = rows_to_dicts(cur)
