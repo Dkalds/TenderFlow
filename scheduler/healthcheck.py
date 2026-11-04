@@ -498,7 +498,7 @@ def run_check(
         # Cobertura de resolución de empresas. Va en su propio try/except (mismo
         # patrón que ops_events y job_locks más abajo) porque es la parte más
         # cara del healthcheck: dos recorridos completos de `adjudicaciones` —
-        # uno de ellos trae al proceso TODAS las filas sin resolver y las
+        # uno de ellos agrupa las filas sin resolver por identidad y las
         # normaliza en Python. Si cruza el statement_timeout, un check
         # secundario no puede llevarse por delante el informe entero: eso es lo
         # que pasó con el COUNT(*) de licitaciones (ver _contar_licitaciones).
@@ -510,21 +510,14 @@ def run_check(
             ).fetchone()
             empresa_total = int(empresa_total or 0)
             empresa_linked = int(empresa_linked or 0)
+            from db.empresas import identidades_sin_resolver, pending_review_keys
             from services.normalization import normalize_company, normalize_nif
 
-            review_keys = {
-                (row[0], row[1])
-                for row in c.execute(
-                    "SELECT alias_normalizado, COALESCE(nif, '') "
-                    "FROM empresa_review_queue WHERE status = 'pending'"
-                ).fetchall()
-            }
-            unresolved_identities = c.execute(
-                "SELECT nombre, nif FROM adjudicaciones WHERE empresa_id IS NULL"
-            ).fetchall()
+            review_keys = pending_review_keys(c)
             empresa_review = sum(
-                (normalize_company(nombre), normalize_nif(nif) or "") in review_keys
-                for nombre, nif in unresolved_identities
+                filas
+                for nombre, nif, filas in identidades_sin_resolver(c)
+                if (normalize_company(nombre), normalize_nif(nif) or "") in review_keys
             )
             empresa_covered = empresa_linked + empresa_review
             empresa_coverage = empresa_covered / empresa_total * 100 if empresa_total else 100.0

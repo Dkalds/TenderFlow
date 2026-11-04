@@ -438,6 +438,58 @@ def test_healthcheck_counts_pending_review_as_covered(tmp_db):
     assert not any("empresa_resolution_below_threshold" in w for w in result["warnings"])
 
 
+def test_healthcheck_normaliza_una_vez_por_identidad_y_no_por_fila(tmp_db, monkeypatch):
+    """Las filas sin resolver se agrupan en SQL: el mismo licitador repetido en
+    tres adjudicaciones se normaliza una vez, y las tres cuentan en revisión."""
+    from datetime import datetime
+
+    import services.normalization as normalization
+    from db.database import connect
+
+    now = datetime.now(UTC).isoformat()
+    with connect() as c:
+        c.execute(
+            "INSERT INTO extraction_runs "
+            "(run_id, started_at, ended_at, status) VALUES ('r1', %s, %s, 'ok')",
+            (now, now),
+        )
+        for i in range(4):
+            c.execute(
+                "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) "
+                "VALUES (%s, 'Contrato de prueba', %s)",
+                (f"LIC-{i}", now),
+            )
+        for i, nombre in enumerate(("Repetida S.L.",) * 3 + ("Otra S.A.",)):
+            c.execute(
+                "INSERT INTO adjudicaciones (licitacion_id, nombre, nif, fecha_extraccion) "
+                "VALUES (%s, %s, 'B12345678', %s)",  # pragma: allowlist secret -- NIF sintético
+                (f"LIC-{i}", nombre, now),
+            )
+        c.execute(
+            "INSERT INTO empresa_review_queue "
+            "(nombre_original, alias_normalizado, nif, score, status, created_at) "
+            "VALUES ('Repetida S.L.', 'REPETIDA', 'B12345678', 0.9, 'pending', %s)",  # pragma: allowlist secret -- NIF sintético
+            (now,),
+        )
+
+    llamadas: list[str | None] = []
+    real = normalization.normalize_company
+
+    def _contando(nombre: str | None) -> str | None:
+        llamadas.append(nombre)
+        return real(nombre)
+
+    monkeypatch.setattr(normalization, "normalize_company", _contando)
+
+    from scheduler.healthcheck import run_check
+
+    resolution = run_check()["info"]["empresa_resolution"]
+
+    assert resolution["en_revision"] == 3
+    assert resolution["pendientes"] == 1
+    assert sorted(llamadas) == ["Otra S.A.", "Repetida S.L."]
+
+
 def test_healthcheck_main_returns_0_for_healthy(tmp_db):
     from unittest.mock import patch
 
