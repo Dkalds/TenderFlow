@@ -236,6 +236,18 @@ class TestTiersDeApiKey:
         assert exc.value.status_code == 403
         assert _validar_scopes("data:read", {"is_admin": False}) == "data:read"
 
+    def test_metrics_read_tampoco_se_autoconcede(self) -> None:
+        """`metrics:read` abre las métricas de toda la plataforma: solo para admins."""
+        from fastapi import HTTPException
+
+        from api.routes.me import _validar_scopes
+        from api.routes.metrics import SCOPE_METRICAS
+
+        with pytest.raises(HTTPException) as exc:
+            _validar_scopes(f"{SCOPE_METRICAS},data:read", {"is_admin": False})
+        assert exc.value.status_code == 403
+        assert _validar_scopes(SCOPE_METRICAS, {"is_admin": True}) == SCOPE_METRICAS
+
     def test_un_admin_si_puede(self) -> None:
         from api.routes.me import _validar_scopes
 

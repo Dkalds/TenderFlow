@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field, field_validator
 from api.auth import create_api_key
 from api.concurrency import run_cpu, run_db
 from api.routes.dual_auth import require_any_auth, require_recent_session
+from api.routes.metrics import SCOPE_METRICAS
 from api.techo_analitica import techo_sentencia_analitica
 from api.tenancy import require_organization, resolve_organization_ctx
 from config.scoring_weights import validate_scoring_weights
@@ -658,7 +659,8 @@ class CreatedKey(BaseModel):
 #: Una clave se crea desde el producto (C2.3) y por tanto la pide el usuario:
 #: sin esta lista, cualquiera acuñaría una credencial `admin` desde su propia
 #: cuenta, que es una escalada de privilegios servida por el propio formulario.
-_SCOPES_RESERVADOS = frozenset({"admin", "*"})
+#: `metrics:read` abre `/metrics` de toda la plataforma: tampoco es del usuario.
+_SCOPES_RESERVADOS = frozenset({"admin", "*", SCOPE_METRICAS})
 
 
 def _validar_scopes(pedidos: str | None, ctx: dict[str, Any]) -> str | None:
