@@ -12,14 +12,16 @@ fila: sin ella constarían como «sin registro».
 |---|---|---|---|
 | `pscp` | `PSCP_DATASET_ID` | id del dataset Socrata (`scripts/probe_pscp.py`) | lo decide la variable de repo |
 | `tacrc` | `TACRC_INDEX_URL` | índice del Pleno, o el índice completo por años (abajo) | lo decide la variable de repo (ver la nota) |
-| `placsp_agregadas` | `PLACSP_AGREGADAS_ATOM_URL` | `URL_SINDICACION_1044` de `scraper/connectors/placsp_agregadas.py` | **apagada** (vacía en `config/settings.py`) |
+| `placsp_agregadas` | `PLACSP_AGREGADAS_ATOM_URL` | `URL_SINDICACION_1044` de `scraper/connectors/placsp_agregadas.py` | **encendida** desde el 2026-11-04 (la URL es el valor por defecto en `config/settings.py` y en el workflow); `off` la apaga |
 | `placsp_menores` | `PLACSP_MENORES_ATOM_URL` | `URL_SINDICACION_1143` de `scraper/connectors/placsp_menores.py` | **apagada** (vacía en `config/settings.py`) |
 | `placsp_consultas` | `PLACSP_CONSULTAS_ATOM_URL` | `URL_SINDICACION_1403` de `scraper/connectors/placsp_consultas.py` | **apagada** y **sin programar** (ver abajo) |
 
 Dónde se fija cada variable: en GitHub, *Settings → Secrets and variables →
 Actions → Variables* (el workflow las lee con `vars.`). Si el cron ya vive en el
 worker ([cutover-cron-al-worker.md](cutover-cron-al-worker.md)), además como
-variable de entorno del servicio worker en Render. Apagar es vaciarla.
+variable de entorno del servicio worker en Render. Apagar es vaciarla, salvo
+`placsp_agregadas`: su URL va por defecto, así que una variable vacía la deja
+encendida y se apaga con el valor `off` (en `vars.` y en Render).
 
 Ojo con TACRC: en Actions, la variable de repo sin definir llega vacía y apaga
 la fuente; en el worker, sin variable manda el valor por defecto de
@@ -29,8 +31,9 @@ valor por defecto no se cambió al añadir el índice completo.
 ## Sindicaciones de PLACSP: agregadas (1044) y contratos menores (1143)
 
 Escritas el 2026-10-12 y apagadas por decisión del dueño, que revisa D16 antes
-de encenderlas. Qué hace cada una está en el docstring de su módulo; lo
-operativo:
+de encenderlas. **Agregadas se encendió el 2026-11-04** (pasos 1 a 3 hechos en
+el código; queda el 4 tras la primera pasada en producción); menores sigue
+apagada. Qué hace cada una está en el docstring de su módulo; lo operativo:
 
 1. **Decidir.** Las dos tocan exclusiones publicadas en `/cobertura`
    (`FUERA_DE_ALCANCE`: «Contratos menores» y «Portales autonómicos no
@@ -93,8 +96,10 @@ marcadas como duplicadas.
 apunta a PLACSP: de 1.057, 544 son de `contractaciopublica.cat` (en la allowlist
 por PSCP, se guardan), 346 de `www.contratacion.euskadi.eus` y 167 de
 `contratos-publicos.comunidad.madrid` (fuera de ella: se descartan y se cuentan en
-`placsp_agregadas_documentos_de_otro_host`). Ampliar `DOCUMENT_ALLOWED_HOSTS` a
-esos dos hosts es una decisión de seguridad (superficie SSRF) del propietario.
+`placsp_agregadas_documentos_de_otro_host`). El propietario amplió
+`DOCUMENT_ALLOWED_HOSTS` a esos dos hosts el 2026-11-04. Si Render fija la
+variable a mano, hay que añadirlos allí también: si no, la descarga bajo demanda
+de la API los rechaza con «Host no incluido».
 
 **Datos personales en menores.** El adjudicatario de un menor es a menudo una
 persona física: de 241 admitidas, 14 con NIF enmascarado (`***3418**`; esas

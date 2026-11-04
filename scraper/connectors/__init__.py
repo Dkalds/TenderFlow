@@ -291,26 +291,30 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
         modulo="scraper.connectors.placsp_agregadas",
         max_lag_hours=_LAG_DIARIO_TOLERANTE,
         motivo=(
-            "Apagada por defecto (PLACSP_AGREGADAS_ATOM_URL vacía): sin variable "
-            "escribe 'disabled' y no alerta. Encendida corre en cada pasada como el "
-            "feed principal; 72 h sin completar son dieciocho ciclos. Su dato se "
-            "vigila con el mismo umbral que PLACSP (48 h): es el mismo tipo de feed "
-            "ATOM, con el cursor en la entrada más reciente de todas las plataformas."
+            "Encendida desde el 2026-11-04 (PLACSP_AGREGADAS_ATOM_URL con la URL de "
+            "la sindicación 1044 por defecto; 'off' la apaga y escribe 'disabled' sin "
+            "alertar). Corre en cada pasada como el feed principal; 72 h sin completar "
+            "son dieciocho ciclos. Su dato se vigila con el mismo umbral que PLACSP "
+            "(48 h): es el mismo tipo de feed ATOM, con el cursor en la entrada más "
+            "reciente de todas las plataformas."
         ),
         alcance=(
-            "Conector escrito y apagado: no ingiere nada hasta que se active. Cuando "
-            "lo esté, aportará las licitaciones que las plataformas autonómicas "
-            "vierten en PLACSP por agregación (sin contratos menores), acotadas a la "
-            "misma señal de tecnología que el feed principal. Un contrato que ya "
-            "entra por otra fuente se marca como duplicado y no se cuenta dos veces."
+            "Las licitaciones que las plataformas autonómicas (Comunidad de Madrid, "
+            "Euskadi, Catalunya y las demás que agregan) vierten en PLACSP por "
+            "agregación, sin contratos menores, acotadas a la misma señal de "
+            "tecnología que el feed principal. Un contrato que ya entra por otra "
+            "fuente se marca como duplicado y no se cuenta dos veces."
         ),
         estado="opcional",
         # Los pliegos de las agregadas apuntan a hosts autonómicos, no a PLACSP
-        # (medido 2026-10-24): solo se guardan los de la allowlist, hoy el catalán.
+        # (medido 2026-10-24): 544 de 1.057 al catalán, 346 al vasco y 167 al de
+        # Madrid. Los dos últimos entran en la allowlist el 2026-11-04.
         dominios_documentos=(
             "contrataciondelestado.es",
             "*.contrataciondelestado.es",
             "contractaciopublica.cat",
+            "www.contratacion.euskadi.eus",
+            "contratos-publicos.comunidad.madrid",
         ),
         max_antiguedad_dato_hours=_DATO_PLACSP,
     ),
@@ -439,8 +443,8 @@ FUERA_DE_ALCANCE: tuple[AmbitoExcluido, ...] = (
             "mantenimiento. Hoy hay conector para Catalunya, Galicia y "
             "Euskadi; lo que publiquen los demás por su cuenta no se descubre "
             "y tampoco se cuenta. Lo que esos portales vierten en PLACSP por "
-            "agregación tiene un conector escrito (placsp_agregadas), apagado "
-            "hasta revisar esta decisión."
+            "agregación sí entra desde el 2026-11-04 (placsp_agregadas): queda "
+            "fuera solo lo que no agregan."
         ),
         decision="D16",
         desde=_FECHA_D16,

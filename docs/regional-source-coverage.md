@@ -38,14 +38,21 @@ Un ámbito excluido **no** se registra como `RegisteredSource`: no tiene módulo
 ni SLA, ni fila de salud, y el healthcheck lo reclamaría cada seis horas como
 una fuente muerta.
 
-## Conectores escritos y apagados: sindicaciones 1044 y 1143 de PLACSP (2026-10-12)
+## Sindicaciones 1044 y 1143 de PLACSP (2026-10-12; agregadas encendida el 2026-11-04)
 
 Para revisar D16 con algo concreto delante, el dueño decidió escribir ya dos
-conectores sobre sindicaciones de PLACSP y no encenderlos hasta decidir. Están
-registrados como `opcional` y su variable de URL va vacía: corren en cada
-pasada, escriben `disabled` y no descargan nada. Las dos exclusiones de arriba
-siguen vigentes y lo dicen. Cómo se encienden:
-[runbooks/fuentes-opcionales.md](runbooks/fuentes-opcionales.md).
+conectores sobre sindicaciones de PLACSP y no encenderlos hasta decidir. Los dos
+están registrados como `opcional`. **Agregadas se encendió el 2026-11-04**, por
+decisión del dueño y sin el `make medir-solape` que D42 pedía antes: los avisos
+TED de la Comunidad de Madrid, Euskadi y otras plataformas autonómicas llegaban
+sin pliegos ni detalle, y esta sindicación es la única vía abierta a ese
+contenido. Su URL es el valor por defecto (`off` la apaga) y
+`DOCUMENT_ALLOWED_HOSTS` admite desde ese día los pliegos de
+`www.contratacion.euskadi.eus` y `contratos-publicos.comunidad.madrid`. La
+exclusión de «Portales autonómicos no integrados» sigue, acotada a lo que esos
+portales no agregan. **Menores sigue apagada**: su variable va vacía, escribe
+`disabled` y no descarga nada, y su exclusión sigue vigente. Cómo se enciende o
+se apaga cada una: [runbooks/fuentes-opcionales.md](runbooks/fuentes-opcionales.md).
 
 - **`placsp_agregadas`** — `sindicacion_1044/PlataformasAgregadasSinMenores.atom`:
   lo que las plataformas autonómicas vierten en PLACSP por agregación, sin
@@ -68,10 +75,9 @@ siguen vigentes y lo dicen. Cómo se encienden:
   población del clasificador. Lo que aportan son adjudicaciones y empresas:
   quién gana qué y a quién.
 
-Ninguna de las dos URL se pudo descargar desde la sesión que escribió los
-conectores (el proxy denegaba los hosts de PLACSP): los nombres salen de la
-página de datos abiertos del Ministerio de Hacienda y las fixtures de los tests
-son sintéticas. `--check --dump` es el primer paso al encender cualquiera.
+Las dos URL se verificaron el 2026-10-24 (GET 200, ATOM CODICE) y las fixtures
+de los tests son recortes reales; `--check --dump` sigue siendo el primer paso
+al encender cualquiera desde una máquina nueva.
 
 ## TACRC: del índice del Pleno al índice completo (2026-10-12)
 

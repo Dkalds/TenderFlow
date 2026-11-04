@@ -475,6 +475,18 @@ _Sin ítems abiertos._
   283 `extracted`); 32 marcas `publicacion_oficial:%`, todas `confirmed`. El P1
   de los pliegos de la PSCP está en _Cerrados_. Siguen abiertos el recuento de
   `placsp_rescate_ted`, `DOCUMENT_ALLOWED_HOSTS` en Render y la asimetría de CPV.
+- **Progreso (2026-11-04):** el rescate de solo-pliegos (`placsp_rescate_ted`)
+  ya no existe. El conector de PLACSP ingiere **entera** la entry que la puerta
+  descartaría si un aviso TED sin pareja enlaza su `idEvl`
+  (`scraper.connectors.placsp.EsperadasPorTed`, `inclusion_reason =
+  'referencia_ted'`), y `reemparejar_ted_por_id_evl` la hace canónica en la
+  pasada de TED: el contrato se ve con lotes, criterios e importes de PLACSP, no
+  solo con sus pliegos. Medido ese día: 22 TED abiertas con `idEvl` y sin pareja
+  (todas con los pliegos copiados) y 4 publicadas ese día sin nada; las 22 se
+  completan cuando su entry vuelva a pasar por el ATOM o al reprocesar su ZIP
+  mensual. En lugar del recuento de `placsp_rescate_ted`, medir cuántas filas
+  `inclusion_reason = 'referencia_ted'` entran y cuántas quedan como canónica de
+  una TED.
 - **Files de partida:** [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [db/repositories/documentos.py](../db/repositories/documentos.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo — solo observación y una variable de entorno.
 
@@ -1012,6 +1024,7 @@ _Sin ítems abiertos._
   - Los `test_integration_*` de `tests/test_connectors_placsp_sindicaciones.py`, con Postgres.
   - Analítica de competidores: excluir los menores por defecto (mediana 4.950 € en la muestra) en `AdjudicacionRepository.load_for_competitors` y las consultas de UTE, y ofrecerlos como vista aparte.
 - **Nota 2026-10-31 (cuarta fuente, consultas preliminares):** `scraper/connectors/placsp_consultas.py` ingiere la sindicación 1403 (`CPM_SectorPublico.atom`), que el feed principal no trae (`DOC_CON` 0 % en el spike de T5; ninguna fila `CPM` fechada en 2026 en producción). URL verificada (GET 200, 459 entradas = 400 consultas distintas en la primera página, 59 admitidas por la puerta) y fixture real. Entra como `CPM` sin `fecha_limite` (el plazo es de respuesta, no de oferta), así que llega a «Próximas» y no al Radar puntuable. Apagada y **sin programar**: falta el step de `scrape-daily.yml` y su `Conector` en `daily_atom.py` (cambio de workflow, OK del dueño). Quedan su `test_integration_*` con Postgres y guardar los documentos de la consulta (`shortcut:` en el módulo).
+- **Progreso 2026-11-04 — agregadas encendida.** Decisión del dueño, sin el `make medir-solape` previo: de las 261 convocatorias TED abiertas, 73 se veían solo con el PDF del anuncio, y la mayoría enlaza portales autonómicos (Madrid, Andalucía y otras) o portadas sin expediente. `PLACSP_AGREGADAS_ATOM_URL` lleva la URL de la sindicación 1044 por defecto (`config/settings.py` y `scrape-daily.yml`; `off` la apaga), y `DOCUMENT_ALLOWED_HOSTS` admite `www.contratacion.euskadi.eus` y `contratos-publicos.comunidad.madrid`. La exclusión de portales en `FUERA_DE_ALCANCE` queda acotada a lo que no agregan. Quedan: comprobar tras la primera pasada (paso 4 del runbook: `placsp_agregadas` en `success`, contadores de `connector_run_done`), mirar si Render fija `DOCUMENT_ALLOWED_HOSTS` a mano, medir cuántas TED abiertas se emparejan con una agregada a la semana, y comprobar si la Junta de Andalucía agrega (en el muestreo del 2026-10-24 solo aparecían los hosts catalán, vasco y madrileño). Menores y TACRC siguen como estaban.
 - **Nota 2026-10-23 (tanda paralela):** no se encienden en esta tanda: dependen de `make medir-solape` contra producción (D16, D42 del plan de salida al mercado). El comando existe y funciona: se ejecutó en local contra una base migrada a head (vacía, así que solo prueba el camino). Contra producción lo ejecuta el propietario con un `DATABASE_URL` de lectura (`make medir-solape`, o `python scripts/medir_solape_agregados.py --json`); el script solo usa el pool de lectura (`default_transaction_read_only=on`). El número se anota aquí antes de decidir.
 
 ### [P2] Medir la cobertura de las condiciones oficiales de CODICE y verificar sus nombres
