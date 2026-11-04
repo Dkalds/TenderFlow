@@ -62,6 +62,16 @@ def _fila(valores: Any) -> dict[str, Any]:
     return dict(zip(_COLUMNAS, valores, strict=True))
 
 
+_RETURNING_CIERRE = "RETURNING j.tipo, a.run_after, a.locked_at, NOW()"
+
+
+def _cierre(valores: Any) -> dict[str, Any] | None:
+    """Fila de :data:`_RETURNING_CIERRE` como dict, o ``None`` si no hubo fila."""
+    if not valores:
+        return None
+    return dict(zip(("tipo", "run_after", "locked_at", "ahora"), valores, strict=True))
+
+
 class JobsRepository:
     """Repositorio fino para ``jobs``. Sin lógica de reintento ni de handlers."""
 
@@ -130,25 +140,38 @@ class JobsRepository:
             ).fetchone()
         return _fila(fila) if fila else None
 
-    def marcar_terminado(self, job_id: int, *, resultado_json: str | None) -> None:
+    # Los tres cierres devuelven cómo era el intento ANTES de cerrarlo —tipo,
+    # ``run_after`` y ``locked_at``— y el ``NOW()`` del cierre: con eso
+    # ``services.jobs`` mide la espera en cola y la duración con el reloj del
+    # servidor, sin otro viaje. El ``FROM jobs a`` es la misma fila leída con
+    # la instantánea de la sentencia, es decir, antes de que el ``SET`` vacíe
+    # ``locked_at``. ``None`` si el job no existía.
+
+    def marcar_terminado(self, job_id: int, *, resultado_json: str | None) -> dict[str, Any] | None:
         """``done``: suelta el lock y guarda el resultado."""
         with connect() as c:
-            c.execute(
-                "UPDATE jobs SET estado = 'done', resultado_json = %s, error_detail = NULL, "
-                "locked_by = NULL, locked_at = NULL, updated_at = NOW() WHERE id = %s",
+            fila = c.execute(
+                "UPDATE jobs j SET estado = 'done', resultado_json = %s, error_detail = NULL, "
+                "locked_by = NULL, locked_at = NULL, updated_at = NOW() "
+                "FROM jobs a WHERE j.id = %s AND a.id = j.id " + _RETURNING_CIERRE,
                 (resultado_json, job_id),
-            )
+            ).fetchone()
+        return _cierre(fila)
 
-    def marcar_fallido(self, job_id: int, *, error_detail: str) -> None:
+    def marcar_fallido(self, job_id: int, *, error_detail: str) -> dict[str, Any] | None:
         """``failed`` definitivo: se agotaron los intentos."""
         with connect() as c:
-            c.execute(
-                "UPDATE jobs SET estado = 'failed', error_detail = %s, "
-                "locked_by = NULL, locked_at = NULL, updated_at = NOW() WHERE id = %s",
+            fila = c.execute(
+                "UPDATE jobs j SET estado = 'failed', error_detail = %s, "
+                "locked_by = NULL, locked_at = NULL, updated_at = NOW() "
+                "FROM jobs a WHERE j.id = %s AND a.id = j.id " + _RETURNING_CIERRE,
                 (error_detail[:4000], job_id),
-            )
+            ).fetchone()
+        return _cierre(fila)
 
-    def reprogramar(self, job_id: int, *, error_detail: str, run_after: datetime) -> None:
+    def reprogramar(
+        self, job_id: int, *, error_detail: str, run_after: datetime
+    ) -> dict[str, Any] | None:
         """Devuelve el job a ``pending`` con su próxima ventana (backoff).
 
         ``error_detail`` se conserva entre intentos a propósito: si el job acaba
@@ -156,16 +179,16 @@ class JobsRepository:
         aunque el proceso que lo intentó muriera sin poder contarlo.
         """
         with connect() as c:
-            c.execute(
-                "UPDATE jobs SET estado = 'pending', run_after = %s, error_detail = %s, "
-                "locked_by = NULL, locked_at = NULL, updated_at = NOW() WHERE id = %s",
+            fila = c.execute(
+                "UPDATE jobs j SET estado = 'pending', run_after = %s, error_detail = %s, "
+                "locked_by = NULL, locked_at = NULL, updated_at = NOW() "
+                "FROM jobs a WHERE j.id = %s AND a.id = j.id " + _RETURNING_CIERRE,
                 (run_after, error_detail[:4000], job_id),
-            )
+            ).fetchone()
+        return _cierre(fila)
 
-    def reclamar_caducados(
-        self, *, ttl_segundos: int, max_intentos: int
-    ) -> tuple[list[int], list[int]]:
-        """Libera los ``running`` cuyo lock caducó: ``(devueltos, fallidos)``.
+    def reclamar_caducados(self, *, ttl_segundos: int, max_intentos: int) -> list[dict[str, Any]]:
+        """Libera los ``running`` cuyo lock caducó; una fila ``{id, estado, tipo}`` por job.
 
         Es la red que hace verdad la promesa de S5.3: un despliegue mata al
         worker en mitad de una extracción, su ``locked_at`` deja de refrescarse
@@ -192,12 +215,10 @@ class JobsRepository:
                 "locked_by = NULL, locked_at = NULL, updated_at = NOW() "
                 "WHERE estado = 'running' AND locked_at IS NOT NULL "
                 "AND locked_at < NOW() - make_interval(secs => %(ttl)s) "
-                "RETURNING id, estado",
+                "RETURNING id, estado, tipo",
                 {"max": max_intentos, "ttl": float(ttl_segundos)},
             ).fetchall()
-        devueltos = sorted(int(f[0]) for f in filas if f[1] == "pending")
-        fallidos = sorted(int(f[0]) for f in filas if f[1] == "failed")
-        return devueltos, fallidos
+        return [{"id": int(f[0]), "estado": str(f[1]), "tipo": str(f[2])} for f in filas]
 
     # ── Lectura ──────────────────────────────────────────────────────────
 

@@ -372,3 +372,74 @@ def test_el_payload_se_serializa_como_json_valido(tmp_db) -> None:
     )
     assert fila is not None
     assert json.loads(fila["payload_json"])["licitacion_id"] == "EXP-Ñ"
+
+
+# ---------------------------------------------------------------------------
+# Métricas y logs del cierre: tipo, espera y duración
+# ---------------------------------------------------------------------------
+
+
+def _muestra(nombre: str, **etiquetas: str) -> float:
+    from prometheus_client import REGISTRY
+
+    return REGISTRY.get_sample_value(nombre, etiquetas) or 0.0
+
+
+def test_medir_cierre_calcula_espera_y_duracion_con_el_reloj_del_servidor() -> None:
+    from services.jobs import _medir_cierre
+
+    run_after = datetime(2026, 11, 4, 12, 0, 0, tzinfo=UTC)
+    cierre = {
+        "tipo": "ficha_pliego",
+        "run_after": run_after,
+        "locked_at": run_after + timedelta(seconds=40),
+        "ahora": run_after + timedelta(seconds=100),
+    }
+
+    assert _medir_cierre(cierre, "done") == {
+        "tipo": "ficha_pliego",
+        "espera_s": 40.0,
+        "duracion_s": 60.0,
+    }
+    # Un job cerrado sin haberlo reclamado nadie solo se cuenta.
+    assert _medir_cierre({**cierre, "locked_at": None}, "done") == {"tipo": "ficha_pliego"}
+    assert _medir_cierre(None, "done") == {}
+
+
+def test_ack_y_fail_cuentan_por_tipo_y_estado(tmp_db) -> None:
+    hechos = _muestra("jobs_terminados_total", tipo=TIPO_FICHA_PLIEGO, estado="done")
+    reintentos = _muestra("jobs_terminados_total", tipo=TIPO_FICHA_PLIEGO, estado="reintento")
+    duraciones = _muestra("jobs_duracion_segundos_count", tipo=TIPO_FICHA_PLIEGO, estado="done")
+    esperas = _muestra("jobs_espera_segundos_count", tipo=TIPO_FICHA_PLIEGO)
+
+    enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-MET-1", "model": "m"})
+    uno = claim("worker-1")
+    assert uno is not None
+    ack(uno.id, {"ok": True})
+
+    enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-MET-2", "model": "m"})
+    dos = claim("worker-1")
+    assert dos is not None
+    assert fail(dos.id, "boom", intentos=dos.intentos) == "pending"
+
+    assert _muestra("jobs_terminados_total", tipo=TIPO_FICHA_PLIEGO, estado="done") == hechos + 1
+    assert (
+        _muestra("jobs_terminados_total", tipo=TIPO_FICHA_PLIEGO, estado="reintento")
+        == reintentos + 1
+    )
+    assert (
+        _muestra("jobs_duracion_segundos_count", tipo=TIPO_FICHA_PLIEGO, estado="done")
+        == duraciones + 1
+    )
+    assert _muestra("jobs_espera_segundos_count", tipo=TIPO_FICHA_PLIEGO) == esperas + 2
+
+
+def test_un_job_muerto_por_lock_caducado_cuenta_como_fallido(tmp_db, monkeypatch) -> None:
+    monkeypatch.setenv("JOBS_MAX_INTENTOS", "1")
+    antes = _muestra("jobs_terminados_total", tipo=TIPO_FICHA_PLIEGO, estado="failed")
+    enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-MET-3", "model": "m"})
+    assert claim("worker-1") is not None
+
+    reclamar_caducados(ttl_segundos=0)
+
+    assert _muestra("jobs_terminados_total", tipo=TIPO_FICHA_PLIEGO, estado="failed") == antes + 1

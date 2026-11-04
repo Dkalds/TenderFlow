@@ -44,6 +44,11 @@ from config.settings import (
 )
 from db.repositories.jobs import JobsRepository
 from observability.logging import get_logger
+from observability.runtime_metrics import (
+    jobs_duracion_segundos,
+    jobs_espera_segundos,
+    jobs_terminados_total,
+)
 
 log = get_logger(__name__)
 
@@ -377,15 +382,39 @@ def claim(worker_id: str, *, tipos: tuple[str, ...] | None = None) -> Job | None
     return _a_job(fila) if fila else None
 
 
+def _medir_cierre(cierre: dict[str, Any] | None, estado: str) -> dict[str, object]:
+    """Anota el cierre de un intento en las métricas y devuelve sus campos de log.
+
+    ``cierre`` es lo que devuelve el repositorio: el tipo, el ``run_after`` y
+    el ``locked_at`` del intento y el ``NOW()`` del cierre, todo con el reloj
+    del servidor. Espera: de ``run_after`` a la reclamación; duración: de la
+    reclamación al cierre. Sin ``locked_at`` (cerrar un job que nadie reclamó) solo se
+    cuenta.
+    """
+    if cierre is None:
+        return {}
+    tipo = str(cierre["tipo"])
+    campos: dict[str, object] = {"tipo": tipo}
+    jobs_terminados_total.labels(tipo=tipo, estado=estado).inc()
+    locked_at = cierre["locked_at"]
+    if locked_at is not None:
+        espera = max(0.0, (locked_at - cierre["run_after"]).total_seconds())
+        duracion = max(0.0, (cierre["ahora"] - locked_at).total_seconds())
+        jobs_espera_segundos.labels(tipo=tipo).observe(espera)
+        jobs_duracion_segundos.labels(tipo=tipo, estado=estado).observe(duracion)
+        campos.update(espera_s=round(espera, 3), duracion_s=round(duracion, 3))
+    return campos
+
+
 def ack(job_id: int, resultado: dict[str, Any] | None = None) -> None:
     """Cierra el job como ``done`` con su resultado."""
-    _repo.marcar_terminado(
+    cierre = _repo.marcar_terminado(
         job_id,
         resultado_json=(
             None if resultado is None else json.dumps(resultado, ensure_ascii=False, default=str)
         ),
     )
-    log.info("job_terminado", job_id=job_id)
+    log.info("job_terminado", job_id=job_id, **_medir_cierre(cierre, "done"))
 
 
 def fail(job_id: int, error: str, *, intentos: int, terminal: bool = False) -> JobEstado:
@@ -406,14 +435,26 @@ def fail(job_id: int, error: str, *, intentos: int, terminal: bool = False) -> J
         El estado en el que queda el job: ``"pending"`` o ``"failed"``.
     """
     if terminal or intentos >= jobs_max_intentos():
-        _repo.marcar_fallido(job_id, error_detail=error)
-        log.warning("job_fallido_definitivo", job_id=job_id, intentos=intentos, error=error[:200])
+        cierre = _repo.marcar_fallido(job_id, error_detail=error)
+        log.warning(
+            "job_fallido_definitivo",
+            job_id=job_id,
+            intentos=intentos,
+            error=error[:200],
+            **_medir_cierre(cierre, "failed"),
+        )
         return "failed"
 
     espera = jobs_backoff_base_segundos() * (2 ** max(0, intentos - 1))
     proximo = datetime.now(UTC) + timedelta(seconds=espera)
-    _repo.reprogramar(job_id, error_detail=error, run_after=proximo)
-    log.info("job_reprogramado", job_id=job_id, intentos=intentos, espera_segundos=espera)
+    cierre = _repo.reprogramar(job_id, error_detail=error, run_after=proximo)
+    log.info(
+        "job_reprogramado",
+        job_id=job_id,
+        intentos=intentos,
+        espera_segundos=espera,
+        **_medir_cierre(cierre, "reintento"),
+    )
     return "pending"
 
 
@@ -426,10 +467,15 @@ def reclamar_caducados(
     ``JOBS_MAX_INTENTOS`` quedan ``failed``. Es el único sitio donde se aplica
     el tope a un job que mata al proceso: :func:`fail` no llega a correr.
     """
-    devueltos, fallidos = _repo.reclamar_caducados(
+    filas = _repo.reclamar_caducados(
         ttl_segundos=jobs_lock_ttl_segundos() if ttl_segundos is None else ttl_segundos,
         max_intentos=jobs_max_intentos() if max_intentos is None else max_intentos,
     )
+    devueltos = sorted(f["id"] for f in filas if f["estado"] == "pending")
+    fallidos = sorted(f["id"] for f in filas if f["estado"] == "failed")
+    for f in filas:
+        estado = "failed" if f["estado"] == "failed" else "lock_caducado"
+        jobs_terminados_total.labels(tipo=f["tipo"], estado=estado).inc()
     if devueltos:
         log.warning("jobs_lock_caducado_devueltos", ids=devueltos)
     if fallidos:
