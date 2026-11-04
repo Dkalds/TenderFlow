@@ -14,6 +14,7 @@ purga —el SQL, los savepoints por tabla— vive en :mod:`db.retention` desde e
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from config.settings import settings
@@ -40,8 +41,9 @@ SOLICITUDES_ACCESO_RETENTION_DAYS = SOLICITUDES_ACCESO_RETENTION_MESES * 30
 # Columna de fecha por la que se purga cada tabla. Vive fuera de
 # ``run_retention`` para que un test la pueda cotejar contra el schema real,
 # que es lo que faltaba: hasta 2026-09 ``licitaciones_history`` apuntaba a
-# ``changed_at`` y la columna se llama ``captured_at``. El bucle aísla cada
-# tabla en su savepoint y anota ``-1`` si falla, así que el
+# ``changed_at`` y la columna se llama ``captured_at``. La purga aísla cada
+# tabla y anota ``-1`` si falla, y hasta 2026-11 nadie convertía ese ``-1`` en
+# un fallo del paso (hoy lo hace :func:`exigir_completa`), así que el
 # ``UndefinedColumn`` se tragaba pasada tras pasada: esa retención no purgó
 # nunca y el error salía a diario sin que nadie lo leyera como un error.
 #
@@ -198,6 +200,25 @@ POLITICA_RETENCION: tuple[ReglaRetencion, ...] = (
 )
 
 
+class RetencionIncompleta(RuntimeError):
+    """Alguna tabla no se pudo purgar: el paso de retención no terminó bien."""
+
+
+def exigir_completa(resultado: Mapping[str, object]) -> None:
+    """Lanza :class:`RetencionIncompleta` si alguna tabla anotó ``-1``.
+
+    La purga aísla cada tabla para que un fallo no deje sin purgar a las
+    demás, pero eso no puede convertir el fallo en éxito: hasta 2026-11 el
+    paso devolvía el ``-1`` en su resultado, el cierre lo daba por bueno y
+    ``_run_periodic`` se quedaba el lock de 24 h, así que nadie reintentaba ni
+    avisaba. Así se vio pasada tras pasada el ``UndefinedColumn`` de
+    ``licitaciones_history`` (ver :data:`COLUMNA_FECHA`).
+    """
+    fallidas = sorted(tabla for tabla, n in resultado.items() if n == -1)
+    if fallidas:
+        raise RetencionIncompleta(f"retención incompleta, tablas con error: {', '.join(fallidas)}")
+
+
 def _plazo(tabla: str) -> int:
     """Plazo configurado para *tabla*, desde `POLITICA_RETENCION`."""
     for regla in POLITICA_RETENCION:
@@ -241,7 +262,8 @@ def run_retention(
         apply: Si False, modo dry-run (cuenta sin borrar).
 
     Returns:
-        Dict tabla → número de registros afectados (-1 si error).
+        Dict tabla → número de registros afectados (-1 si error). No lanza por
+        una tabla fallida: el job lo decide con :func:`exigir_completa`.
     """
     results: dict[str, int] = {}
 
