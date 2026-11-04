@@ -684,3 +684,123 @@ def test_integration_una_agregada_que_ya_entra_por_pscp_queda_marcada_como_dupli
     }
     assert "placsp_agregadas:207:09-7-9.02-0016/2026" in radar
     assert "placsp_agregadas:935078:2026/15089Q" not in radar
+
+
+# ── Histórico de agregadas desde los ZIP mensuales ───────────────────────────
+
+
+@pytest.fixture()
+def zip_1044(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """``download_month`` sirve un ZIP con la fixture de la 1044; devuelve las llamadas."""
+    import zipfile
+
+    destino = tmp_path / "placsp_agregadas_202610.zip"
+    with zipfile.ZipFile(destino, "w") as zf:
+        zf.writestr("agregadas.atom", (_FIXTURES / "agregadas_1044.atom").read_bytes())
+    llamadas: list[dict[str, Any]] = []
+
+    def download_month(year: int, month: int, force: bool = False, **kwargs: Any) -> Path:
+        llamadas.append({"year": year, "month": month, **kwargs})
+        return destino
+
+    monkeypatch.setattr("scraper.bulk_downloader.download_month", download_month)
+    return llamadas
+
+
+def test_el_historico_lee_el_zip_de_la_1044_y_no_toca_el_cursor(zip_1044):
+    conector = agregadas.PlacspAgregadasHistorico(2026, 10, ya_existe=lambda _id: False)
+
+    parseadas = [conector.parse(raw) for raw in conector.fetch(None)]
+
+    assert zip_1044 == [
+        {
+            "year": 2026,
+            "month": 10,
+            "url_template": agregadas.URL_ZIP_1044,
+            "prefijo": "placsp_agregadas",
+        }
+    ]
+    # Lo mismo que el feed: cuatro admitidas y los parques infantiles fuera.
+    assert [p is not None for p in parseadas] == [True, True, True, True, False]
+    assert all(p.licitacion.fuente == "placsp_agregadas" for p in parseadas if p)
+    assert conector.new_cursor() is None
+
+
+def test_el_historico_no_pisa_lo_que_ya_existe(zip_1044):
+    """El ZIP no trae ``<updated>``: su versión puede ser más vieja que la del feed."""
+    conector = agregadas.PlacspAgregadasHistorico(2026, 10, ya_existe=lambda _id: True)
+
+    assert [conector.parse(raw) for raw in conector.fetch(None)] == [None] * 5
+    assert conector.contadores_de_descarte()["placsp_agregadas_ya_existian"] == 4
+
+
+def test_el_historico_recorre_los_meses_del_mas_nuevo_al_mas_viejo(monkeypatch):
+    vistos: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        "scraper.connectors.base.run_connector",
+        lambda conector: vistos.append((conector.year, conector.month)),
+    )
+
+    agregadas.ejecutar_historico("2026-08", "2026-10")
+
+    assert vistos == [(2026, 10), (2026, 9), (2026, 8)]
+
+
+def test_la_url_del_zip_de_la_1044_sigue_el_patron_de_la_643():
+    assert agregadas.URL_ZIP_1044.format(year=2026, month=9) == (
+        "https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_1044/"
+        "PlataformasAgregadasSinMenores_202609.zip"
+    )
+
+
+def test_download_month_descarga_la_plantilla_que_se_le_da(tmp_path, monkeypatch):
+    from config import settings
+    from scraper import bulk_downloader
+
+    pedidas: list[tuple[str, str]] = []
+    monkeypatch.setattr(settings, "DOWNLOADS_DIR", tmp_path)
+    monkeypatch.setattr(bulk_downloader.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(
+        bulk_downloader, "_download", lambda url, dest: pedidas.append((url, dest.name)) or dest
+    )
+
+    bulk_downloader.download_month(
+        2026, 9, url_template=agregadas.URL_ZIP_1044, prefijo="placsp_agregadas"
+    )
+
+    assert pedidas == [
+        (agregadas.URL_ZIP_1044.format(year=2026, month=9), "placsp_agregadas_202609.zip")
+    ]
+
+
+def test_integration_el_historico_escribe_lo_que_falta_y_respeta_lo_que_hay(db, zip_1044):
+    from db.database import get_cursor
+    from db.upsert import Licitacion
+    from scraper.connectors.base import run_connector
+
+    # La de Blanes ya la trajo el feed, con un título que el ZIP no tiene.
+    db.upsert_licitaciones_with_history(
+        [
+            Licitacion(
+                id_externo="placsp_agregadas:935078:2026/15089Q",
+                titulo="Versión del feed",
+                fuente="placsp_agregadas",
+            )
+        ],
+        source="placsp_agregadas",
+    )
+
+    resultado = run_connector(agregadas.PlacspAgregadasHistorico(2026, 10))
+
+    assert resultado.parsed == 3
+    with db.connect_read() as c:
+        titulo = c.execute(
+            "SELECT titulo FROM licitaciones WHERE id_externo = %s",
+            ("placsp_agregadas:935078:2026/15089Q",),
+        ).fetchone()
+        filas = c.execute(
+            "SELECT count(*) FROM licitaciones WHERE fuente = 'placsp_agregadas'"
+        ).fetchone()
+    assert titulo[0] == "Versión del feed"
+    assert filas[0] == 4
+    assert get_cursor("placsp_agregadas") is None

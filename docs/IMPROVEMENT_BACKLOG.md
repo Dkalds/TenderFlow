@@ -504,6 +504,17 @@ _Sin ítems abiertos._
   (su entry llegará por el ATOM; el ZIP de noviembre aún no existe). Las TED
   abiertas solo con el anuncio siguen en 67: enlazan portales autonómicos o
   portadas, no un expediente de PLACSP.
+- **Las 67 que quedan solo con el anuncio (2026-11-04):** ninguna tiene ya su
+  contrato en la BD por otra fuente. Por plataforma: Euskadi 20, Comunidad de
+  Madrid 12, Andalucía 11, Navarra 5, Catalunya 5 (PSCP, con 1–2 días de
+  retraso), PLACSP con `idEvl` de noviembre 4, ADIF con enlace al perfil sin
+  `idEvl` 4, instituciones europeas 4 y Galicia y La Rioja 1 cada una. Para las
+  agregadas, histórico desde los ZIP de la sindicación 1044 y nueva pasada de
+  TED (`historico-agregadas.yml`): el feed de agregadas solo trae lo publicado
+  desde que se encendió, y el emparejamiento por BT-22 solo ve los avisos TED
+  de su ventana de 14 días. Queda anotar cuántas se emparejan. Las de ADIF
+  necesitarían guardar el BT-22 del aviso (cambio de esquema); por cuatro no se
+  hace.
 - **Files de partida:** [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [db/repositories/documentos.py](../db/repositories/documentos.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo — solo observación y una variable de entorno.
 

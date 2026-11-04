@@ -1,0 +1,97 @@
+name: Histórico de las plataformas agregadas y pasada de TED (manual)
+
+# Ingiere desde los ZIP mensuales de la sindicación 1044 de PLACSP lo que las
+# plataformas autonómicas (Euskadi, Comunidad de Madrid, Catalunya…) agregaron
+# antes de que se encendiera el feed de agregadas, el 2026-11-04
+# (`python -m scraper.connectors.placsp_agregadas --desde … --hasta …`). Nunca
+# pisa una fila que ya existe y no mueve el cursor del feed.
+#
+# Después vuelve a leer TED desde `ted_desde`: el emparejamiento por expediente
+# (BT-22) solo ve los avisos de la pasada, y los de octubre ya habían salido de
+# su ventana de 14 días cuando llegaron sus expedientes agregados.
+
+on:
+  workflow_dispatch:
+    inputs:
+      desde:
+        description: "Primer mes del histórico, YYYY-MM"
+        required: true
+        default: "2026-09"
+      hasta:
+        description: "Último mes, YYYY-MM (incluido)"
+        required: true
+        default: "2026-10"
+      ted_desde:
+        description: "Primer día de la pasada de TED, YYYYMMDD (vacío = sin pasada)"
+        required: false
+        default: "20261001"
+
+permissions:
+  contents: read
+
+# El mismo grupo que la ingesta (ADR-012): nunca corre a la vez que un bulk o
+# un tick diario contra la misma BD.
+concurrency:
+  group: scrape
+  cancel-in-progress: false
+
+jobs:
+  historico:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+
+    env:
+      ENV: prod
+      APP_PROFILE: scraper
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Mismo preflight que `scrape-daily.yml` (#577): el histórico parsea
+      # entradas PLACSP y escribe con la clave del código; contra una BD de
+      # otra generación crearía filas nuevas junto a las viejas.
+      - name: Preflight de schema
+        timeout-minutes: 3
+        run: python -m db.schema_revision
+
+      - name: Histórico de agregadas
+        timeout-minutes: 100
+        env:
+          DESDE: ${{ inputs.desde }}
+          HASTA: ${{ inputs.hasta }}
+        run: |
+          set -eu
+          if ! [[ "$DESDE" =~ ^[0-9]{4}-[0-9]{2}$ && "$HASTA" =~ ^[0-9]{4}-[0-9]{2}$ ]]; then
+            echo "::error::desde/hasta inválidos: se espera YYYY-MM"
+            exit 1
+          fi
+          python -m scraper.connectors.placsp_agregadas --desde "$DESDE" --hasta "$HASTA"
+
+      - name: Pasada de TED
+        if: inputs.ted_desde != ''
+        timeout-minutes: 30
+        env:
+          TED_DESDE: ${{ inputs.ted_desde }}
+        run: |
+          set -eu
+          if ! [[ "$TED_DESDE" =~ ^[0-9]{8}$ ]]; then
+            echo "::error::ted_desde inválido '$TED_DESDE': se espera YYYYMMDD"
+            exit 1
+          fi
+          python -m scraper.connectors.ted --desde "$TED_DESDE"
