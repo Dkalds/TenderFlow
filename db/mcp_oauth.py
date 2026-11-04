@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
-from db.connection import connect, connect_read
+from db.connection import _PgConnAdapter, connect, connect_read
 
 TipoToken = Literal["pendiente", "code", "access", "refresh"]
 
@@ -392,7 +392,7 @@ def revocar_de_usuario(user_id: int) -> int:
         return revocar_de_usuario_en(c, user_id)
 
 
-def revocar_de_usuario_en(c: Any, user_id: int) -> int:
+def revocar_de_usuario_en(c: _PgConnAdapter, user_id: int) -> int:
     """:func:`revocar_de_usuario` dentro de la transacción de quien llama.
 
     La usa el cambio de contraseña (``db/password_reset.py``): si la revocación
