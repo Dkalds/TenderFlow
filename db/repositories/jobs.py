@@ -23,9 +23,9 @@ viaja en la misma transacción que el ``SELECT``: si el proceso muere entre
 ambos, no hay ambos — o la fila sigue ``pending`` o ya está reclamada.
 
 ``intentos`` se incrementa **al reclamar**, no al fallar. Es lo que acota
-también los fallos que no dejan traza (el proceso muere a mitad): el job vuelve
-a ``pending`` por ``reclamar_caducados`` con su intento ya contado, en vez de
-girar para siempre.
+también los fallos que no dejan traza (el proceso muere a mitad):
+``reclamar_caducados`` ve el intento ya contado y, si era el último, lo deja
+``failed`` en vez de devolverlo a ``pending`` para siempre.
 """
 
 from __future__ import annotations
@@ -162,27 +162,42 @@ class JobsRepository:
                 (run_after, error_detail[:4000], job_id),
             )
 
-    def reclamar_caducados(self, *, ttl_segundos: int) -> list[int]:
-        """Devuelve a ``pending`` los ``running`` cuyo lock caducó.
+    def reclamar_caducados(
+        self, *, ttl_segundos: int, max_intentos: int
+    ) -> tuple[list[int], list[int]]:
+        """Libera los ``running`` cuyo lock caducó: ``(devueltos, fallidos)``.
 
         Es la red que hace verdad la promesa de S5.3: un despliegue mata al
         worker en mitad de una extracción, su ``locked_at`` deja de refrescarse
         y, pasado el TTL, otro worker la termina. Sin esto el job se quedaría
         ``running`` para siempre y el usuario sondeando un estado muerto.
 
+        Los que ya gastaron ``max_intentos`` pasan a ``failed`` y no a
+        ``pending``: un job que mata al proceso (OOM con un pliego enorme) no
+        llega nunca a ``services.jobs.fail``, que es donde se aplica el tope, y
+        sin este corte se reencolaba —y volvía a tumbar al worker— sin fin.
+
         El ``make_interval`` va parametrizado y no interpolado: el TTL viene de
         configuración y no tiene por qué ser un literal de confianza.
         """
         with connect() as c:
             filas = c.execute(
-                "UPDATE jobs SET estado = 'pending', locked_by = NULL, locked_at = NULL, "
-                "updated_at = NOW() "
+                "UPDATE jobs SET "
+                "estado = CASE WHEN intentos >= %(max)s THEN 'failed' ELSE 'pending' END, "
+                "error_detail = CASE WHEN intentos >= %(max)s THEN LEFT("
+                "'lock caducado tras ' || intentos || ' intentos: el proceso que lo "
+                "ejecutaba murió sin cerrarlo'"
+                " || COALESCE(' (último error registrado: ' || error_detail || ')', ''), 4000"
+                ") ELSE error_detail END, "
+                "locked_by = NULL, locked_at = NULL, updated_at = NOW() "
                 "WHERE estado = 'running' AND locked_at IS NOT NULL "
-                "AND locked_at < NOW() - make_interval(secs => %s) "
-                "RETURNING id",
-                (float(ttl_segundos),),
+                "AND locked_at < NOW() - make_interval(secs => %(ttl)s) "
+                "RETURNING id, estado",
+                {"max": max_intentos, "ttl": float(ttl_segundos)},
             ).fetchall()
-        return [int(f[0]) for f in filas]
+        devueltos = sorted(int(f[0]) for f in filas if f[1] == "pending")
+        fallidos = sorted(int(f[0]) for f in filas if f[1] == "failed")
+        return devueltos, fallidos
 
     # ── Lectura ──────────────────────────────────────────────────────────
 

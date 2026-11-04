@@ -217,7 +217,7 @@ def test_un_locked_at_caducado_vuelve_a_pending(tmp_db) -> None:
 
     # Con TTL 0, cualquier lock ya caducó: evita dormir en el test sin tocar
     # el reloj del proceso (el que compara es el del servidor, no el nuestro).
-    assert reclamar_caducados(ttl_segundos=0) == [job_id]
+    assert reclamar_caducados(ttl_segundos=0) == ([job_id], [])
 
     devuelto = obtener(job_id)
     assert devuelto is not None
@@ -235,7 +235,51 @@ def test_un_locked_at_caducado_vuelve_a_pending(tmp_db) -> None:
 def test_un_lock_vivo_no_se_reclama(tmp_db) -> None:
     enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-VIVO", "model": "m"})
     assert claim("worker-1") is not None
-    assert reclamar_caducados(ttl_segundos=900) == []
+    assert reclamar_caducados(ttl_segundos=900) == ([], [])
+
+
+def test_un_job_que_mata_al_proceso_no_se_reencola_sin_fin(tmp_db, monkeypatch) -> None:
+    """Un OOM no pasa por ``fail``: la barrida aplica el tope de intentos.
+
+    Antes cada barrida lo devolvía a ``pending`` con independencia de
+    ``intentos``, así que un pliego que tumbaba al worker lo tumbaba en cada
+    reclamación, para siempre.
+    """
+    monkeypatch.setenv("JOBS_MAX_INTENTOS", "2")
+    job_id = enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-OOM", "model": "m"})
+
+    # Primer intento: el proceso muere; aún le queda uno.
+    assert claim("worker-1") is not None
+    assert reclamar_caducados(ttl_segundos=0) == ([job_id], [])
+
+    # Segundo intento, también muerto: ya no vuelve a la cola.
+    segundo = claim("worker-2")
+    assert segundo is not None and segundo.intentos == 2
+    assert reclamar_caducados(ttl_segundos=0) == ([], [job_id])
+
+    final = obtener(job_id)
+    assert final is not None
+    assert final.estado == "failed"
+    assert final.locked_at is None
+    assert final.error_detail is not None
+    assert "lock caducado tras 2 intentos" in final.error_detail
+    assert claim("worker-3") is None
+
+
+def test_el_fallo_por_lock_caducado_conserva_el_ultimo_error(tmp_db, monkeypatch) -> None:
+    """Si un intento anterior dejó traza, el ``failed`` final no la borra."""
+    monkeypatch.setenv("JOBS_MAX_INTENTOS", "1")
+    job_id = enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-TRAZA", "model": "m"})
+    from db.database import connect
+
+    assert claim("worker-1") is not None
+    with connect() as c:
+        c.execute("UPDATE jobs SET error_detail = 'MemoryError: pliego' WHERE id = %s", (job_id,))
+
+    assert reclamar_caducados(ttl_segundos=0) == ([], [job_id])
+    final = obtener(job_id)
+    assert final is not None and final.error_detail is not None
+    assert "MemoryError: pliego" in final.error_detail
 
 
 # ---------------------------------------------------------------------------

@@ -417,14 +417,24 @@ def fail(job_id: int, error: str, *, intentos: int, terminal: bool = False) -> J
     return "pending"
 
 
-def reclamar_caducados(*, ttl_segundos: int | None = None) -> list[int]:
-    """Devuelve a ``pending`` los jobs cuyo worker dejó de dar señales."""
-    devueltos = _repo.reclamar_caducados(
-        ttl_segundos=jobs_lock_ttl_segundos() if ttl_segundos is None else ttl_segundos
+def reclamar_caducados(
+    *, ttl_segundos: int | None = None, max_intentos: int | None = None
+) -> tuple[list[int], list[int]]:
+    """Libera los jobs cuyo worker dejó de dar señales: ``(devueltos, fallidos)``.
+
+    Los que aún tienen intentos vuelven a ``pending``; los que ya gastaron
+    ``JOBS_MAX_INTENTOS`` quedan ``failed``. Es el único sitio donde se aplica
+    el tope a un job que mata al proceso: :func:`fail` no llega a correr.
+    """
+    devueltos, fallidos = _repo.reclamar_caducados(
+        ttl_segundos=jobs_lock_ttl_segundos() if ttl_segundos is None else ttl_segundos,
+        max_intentos=jobs_max_intentos() if max_intentos is None else max_intentos,
     )
     if devueltos:
         log.warning("jobs_lock_caducado_devueltos", ids=devueltos)
-    return devueltos
+    if fallidos:
+        log.error("jobs_lock_caducado_fallidos", ids=fallidos)
+    return devueltos, fallidos
 
 
 def obtener(job_id: int) -> Job | None:

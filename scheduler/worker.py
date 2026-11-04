@@ -257,6 +257,8 @@ class Worker:
                 # a la cola en el mismo ciclo en que este worker va a pedir.
                 ahora = time.monotonic()
                 if ahora - ultima_barrida >= self.poll_segundos * 10:
+                    # Lo que devuelve ya lo registra la propia barrida: los que
+                    # agotaron intentos quedan `failed` y no vuelven a esta cola.
                     reclamar_caducados()
                     ultima_barrida = ahora
                 if self.procesar_tanda(maximo=10) > 0:
