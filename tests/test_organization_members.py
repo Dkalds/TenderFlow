@@ -189,3 +189,42 @@ def test_post_organization_member_api_forbidden_for_non_admin(client, api_db):
         assert response.status_code == 403
     finally:
         app.dependency_overrides.pop(require_any_auth, None)
+
+
+def test_el_alta_directa_cuenta_en_la_cuota_y_el_canje_no_cuenta_dos_veces(tmp_db):
+    from datetime import UTC, datetime, timedelta
+
+    _db_mod, _ = tmp_db
+    owner = _user("owner-cuota@example.test")
+    _user("alta-directa@example.test")
+    canjea = _user("canjea@example.test")
+    organizations = OrganizationRepository()
+    organization_id = int(organizations.create_organization("Equipo cuota", owner)["id"])
+    ayer = datetime.now(UTC) - timedelta(days=1)
+    assert organizations.contar_invitaciones_desde(owner, ayer) == 0
+
+    add_member_by_email(owner, organization_id, "alta-directa@example.test", "member")
+    assert organizations.contar_invitaciones_desde(owner, ayer) == 1
+
+    # Una invitación canjeada es una sola emisión, no dos.
+    organizations.create_invitation(
+        organization_id,
+        "canjea@example.test",
+        "member",
+        token_hash="h-cuota",
+        invited_by_user_id=owner,
+        expires_at=datetime.now(UTC) + timedelta(days=7),
+    )
+    assert organizations.accept_invitations_for_email("canjea@example.test", canjea)
+    assert organizations.contar_invitaciones_desde(owner, ayer) == 2
+
+
+def test_add_member_by_email_rejects_a_personal_organization(tmp_db):
+    _db_mod, _ = tmp_db
+    owner = _user("owner-personal@example.test")
+    _user("intrusa@example.test")
+    organizations = OrganizationRepository()
+    personal_id = int(organizations.ensure_personal_organization(owner)["id"])
+
+    with pytest.raises(OrganizationPermissionError, match="personal"):
+        add_member_by_email(owner, personal_id, "intrusa@example.test", "member")
