@@ -179,3 +179,15 @@ def test_logout_all_session_uses_own_user_id(client, api_db):
     assert resp.status_code == 200, resp.text
     assert resp.json()["sessions_revoked"] == 3
     mock_revoke.assert_called_once_with(11)
+
+
+def test_logout_all_revoca_tambien_los_tokens_mcp(client, api_db):
+    ctx = _session_ctx(user_id=11)
+    app.dependency_overrides[require_any_auth] = lambda: ctx
+    with (
+        patch("api.routes.me.revoke_all_sessions", return_value=0),
+        patch("api.routes.me.revocar_tokens_mcp", return_value=2) as mock_mcp,
+    ):
+        resp = client.post("/api/v1/auth/logout-all")
+    assert resp.status_code == 200, resp.text
+    mock_mcp.assert_called_once_with(11)

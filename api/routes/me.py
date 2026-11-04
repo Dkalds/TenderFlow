@@ -38,6 +38,7 @@ from api.tenancy import require_organization, resolve_organization_ctx
 from config.scoring_weights import validate_scoring_weights
 from db.audit import log_event
 from db.database import now_utc_iso
+from db.mcp_oauth import revocar_de_usuario as revocar_tokens_mcp
 from db.repositories.api_keys import ApiKeyRepository
 from db.sessions import (
     list_active_sessions,
@@ -292,17 +293,18 @@ def delete_my_data(
     status_code=200,
 )
 def logout_all(ctx: dict[str, Any] = Depends(require_any_auth)) -> SessionsRevoked:
-    """Revoca todas las sesiones server-side del usuario."""
+    """Revoca todas las sesiones server-side del usuario, también las de clientes MCP."""
     user_id = int(ctx["user_id"])
     if user_id:
         n = revoke_all_sessions(user_id)
+        mcp = revocar_tokens_mcp(user_id)
         log_event(
             event_type=AUTH_LOGOUT_ALL,
             user_key=_actor_key(ctx),
             resource=f"user:{user_id}",
-            detail={"sessions_revoked": n},
+            detail={"sessions_revoked": n, "mcp_tokens_revoked": mcp},
         )
-        log.info("logout_all", user_id=user_id, revoked=n)
+        log.info("logout_all", user_id=user_id, revoked=n, mcp_revoked=mcp)
         return SessionsRevoked(status="ok", sessions_revoked=n)
     return SessionsRevoked(status="ok", sessions_revoked=0)
 
