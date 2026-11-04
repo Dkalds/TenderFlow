@@ -8,6 +8,7 @@ Reutiliza el circuit breaker y retry de ``scraper.resilience``.
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -264,7 +265,9 @@ def iter_live_entries(
 EVENTO_TOPE_SIN_CURSOR = "atom_live_tope_sin_cursor"
 
 
-def cursor_siguiente(meta: dict[str, Any], last_seen_updated: str | None) -> dict[str, Any] | None:
+def cursor_siguiente(
+    meta: Mapping[str, object], last_seen_updated: str | None
+) -> dict[str, object] | None:
     """El cursor que deja una pasada de :func:`iter_live_entries`.
 
     El feed va de más nuevo a más viejo. Si la pasada agota ``DAILY_MAX_PAGES``
