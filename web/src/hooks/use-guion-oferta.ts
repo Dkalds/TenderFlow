@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useActiveOrganizationId } from "@/hooks/use-organization";
 import { apiMutate } from "@/lib/api-client";
 import type { GuionCriterio, GuionOferta, PuntoGuion } from "@/lib/api-types";
 import { registrarEvento, tramoDeCriterios } from "@/lib/analytics";
@@ -22,6 +23,8 @@ export type { GuionCriterio, GuionOferta, PuntoGuion };
  */
 export function useGuionOferta(licitacionId: string) {
   const queryClient = useQueryClient();
+  // El guion gasta del tope diario de la organización activa (C2.9).
+  const organizationId = useActiveOrganizationId();
 
   const guion = useQuery<GuionOferta>({
     queryKey: guionKeys.detail(licitacionId),
@@ -35,7 +38,9 @@ export function useGuionOferta(licitacionId: string) {
     mutationFn: () =>
       apiMutate<GuionOferta>(
         "POST",
-        `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/guion`,
+        organizationId != null
+          ? `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/guion?organization_id=${organizationId}`
+          : `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/guion`,
       ),
     onSuccess: (resultado) => {
       queryClient.setQueryData(guionKeys.detail(licitacionId), resultado);

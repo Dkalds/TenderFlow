@@ -15,6 +15,7 @@ import {
   type SourcesInfo,
 } from "@/lib/ask-stream";
 import { askKeys } from "@/lib/query-keys";
+import { useActiveOrganizationId } from "@/hooks/use-organization";
 
 /**
  * Available LLM models for the copilot (shared cache key with /investigador).
@@ -130,6 +131,8 @@ export function useChat(opts?: { idExterno?: string; idsExternos?: string[] }): 
   // F2.8: la lista entra en las dependencias como clave estable; un array
   // nuevo en cada render de la bandeja rehacería `send` sin motivo.
   const idsClave = (opts?.idsExternos ?? []).join("\0");
+  // El gasto LLM cuenta contra el tope diario de la organización activa (C2.9).
+  const organizationId = useActiveOrganizationId();
   const [messages, setMessages] = useState<ChatTurn[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -190,6 +193,7 @@ export function useChat(opts?: { idExterno?: string; idsExternos?: string[] }): 
           model: sendOpts?.model,
           topK: sendOpts?.topK,
           extras: sendOpts?.extras,
+          organizationId,
           signal: abort.signal,
           onToken: (accumulated) => updateLastAssistant({ content: accumulated }),
           onFuentes: (fuentes) => updateLastAssistant({ fuentes }),
@@ -222,7 +226,7 @@ export function useChat(opts?: { idExterno?: string; idsExternos?: string[] }): 
         }
       }
     },
-    [idExterno, idsClave, updateLastAssistant],
+    [idExterno, idsClave, organizationId, updateLastAssistant],
   );
 
   const resumir = useCallback(
@@ -266,6 +270,7 @@ export function useChat(opts?: { idExterno?: string; idsExternos?: string[] }): 
           idExterno,
           force,
           model,
+          organizationId,
           signal: abort.signal,
           onToken: (accumulated) => actualizar({ content: accumulated }),
           onResumenMeta: (resumenMeta) => actualizar({ resumenMeta }),
@@ -293,7 +298,7 @@ export function useChat(opts?: { idExterno?: string; idsExternos?: string[] }): 
         }
       }
     },
-    [],
+    [organizationId],
   );
 
   const regenerarResumen = useCallback(

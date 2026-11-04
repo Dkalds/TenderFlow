@@ -20124,7 +20124,10 @@ export interface operations {
     };
     ask_question_api_v1_ask_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -25312,7 +25315,10 @@ export interface operations {
     };
     extract_tender_fact_sheet_api_v1_licitaciones__id_externo__ficha_pliego_extract_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -25439,7 +25445,10 @@ export interface operations {
     };
     post_guion_oferta_api_v1_licitaciones__id_externo__guion_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -25685,7 +25694,10 @@ export interface operations {
     };
     resumen_licitacion_api_v1_licitaciones__id_externo__resumen_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };

@@ -175,6 +175,17 @@ describe("streamAsk", () => {
     expect(body).not.toHaveProperty("id_externo");
   });
 
+  it("sends the active organization so the spend hits its daily cap (C2.9)", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => sseResponse(["data: [DONE]\n\n"]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await streamAsk({ question: "hola mundo", organizationId: 7, onToken: vi.fn() });
+    await streamAsk({ question: "hola mundo", organizationId: null, onToken: vi.fn() });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/ask?organization_id=7");
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/v1/ask");
+  });
+
   it("falls back to plain JSON responses", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse({ answer: "plano" })));
 
@@ -245,6 +256,15 @@ describe("streamResumen", () => {
     await streamResumen({ idExterno: "EXP/RARO 1", onToken: vi.fn() });
 
     expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/licitaciones/EXP%2FRARO%201/resumen");
+  });
+
+  it("sends the active organization in the query", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(sseResponse(["data: [DONE]\n\n"]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await streamResumen({ idExterno: "EXP-1", organizationId: 7, onToken: vi.fn() });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/licitaciones/EXP-1/resumen?organization_id=7");
   });
 
   it("includes X-CSRF-Token header when csrf_token cookie is present", async () => {
