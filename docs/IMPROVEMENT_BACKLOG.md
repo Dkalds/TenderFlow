@@ -487,6 +487,14 @@ _Sin ítems abiertos._
   mensual. En lugar del recuento de `placsp_rescate_ted`, medir cuántas filas
   `inclusion_reason = 'referencia_ted'` entran y cuántas quedan como canónica de
   una TED.
+- **Progreso (2026-11-04, tarde):** primera pasada tras el merge en `success`,
+  con `placsp_agregadas` encendida (30 filas, 23 con pliegos de Madrid, Euskadi
+  y Catalunya). Para los avisos TED anteriores al cambio, cuya entry PLACSP ya
+  no vuelve a pasar por el ATOM (19 abiertas de octubre), hay un reproceso
+  dirigido: `scraper/reproceso_ted.py` y `reproceso-ted.yml` (manual, `aplicar`
+  para escribir). Solo parsea del ZIP las entries que espera un aviso TED sin
+  pareja, nunca pisa una fila que ya existe y recorre los meses del más nuevo al
+  más viejo. Queda anotar aquí su resultado.
 - **Files de partida:** [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [db/repositories/documentos.py](../db/repositories/documentos.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo — solo observación y una variable de entorno.
 
