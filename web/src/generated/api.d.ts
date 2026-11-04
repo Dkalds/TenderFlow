@@ -17039,7 +17039,7 @@ export interface components {
         WatchlistEmpresaRequest: {
             /**
              * Email
-             * @description Destino de alertas
+             * @description Obsoleto: las alertas van siempre al correo de la cuenta. Si se manda, tiene que ser ese mismo correo (422 si no).
              */
             email?: string | null;
             /** Empresa Id */
