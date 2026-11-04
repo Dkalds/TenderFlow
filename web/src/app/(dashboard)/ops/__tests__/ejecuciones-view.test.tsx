@@ -23,6 +23,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import EjecucionesView from "../_components/ejecuciones-view";
+import { respuestaDeContrato } from "@/test/contrato";
 
 const RESUMEN = {
   ventana_dias: 7,
@@ -95,7 +96,7 @@ function montar({ admin = true, resumen = RESUMEN as unknown, status = 200 } = {
     const url = callUrl(call);
     if (url.startsWith("/api/v1/auth/me")) {
       return Promise.resolve(
-        jsonResponse({ user_id: "1", email: "a@b.es", display_name: "A", is_admin: admin }),
+        jsonResponse({ ...respuestaDeContrato("/api/v1/auth/me"), is_admin: admin }),
       );
     }
     if (url.startsWith("/api/v1/admin/ejecuciones")) {

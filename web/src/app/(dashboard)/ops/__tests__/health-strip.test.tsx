@@ -20,6 +20,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { OpsHealthStrip } from "../_components/health-strip";
+import { respuestaDeContrato } from "@/test/contrato";
 
 const FUENTES = {
   sources: [],
@@ -59,7 +60,7 @@ function montar({
     if (url.startsWith("/api/v1/auth/me")) {
       if (sesionColgada) return colgada();
       return Promise.resolve(
-        jsonResponse({ user_id: "1", email: "a@b.es", display_name: "A", is_admin: admin }),
+        jsonResponse({ ...respuestaDeContrato("/api/v1/auth/me"), is_admin: admin }),
       );
     }
     if (url.startsWith("/api/v1/analytics/source-freshness")) return Promise.resolve(jsonResponse(FUENTES));

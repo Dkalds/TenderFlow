@@ -54,7 +54,7 @@ function TraspasarPanel({ organizacion }: { organizacion: Organization }) {
   const id = React.useId();
   // Solo miembros activos y que no sean quien mira: la API rechaza el resto.
   const candidatos = (miembros.data ?? []).filter(
-    (miembro) => miembro.status === "active" && String(miembro.user_id) !== String(user?.user_id),
+    (miembro) => miembro.status === "active" && miembro.user_id !== user?.user_id,
   );
   const destino = candidatos.find((miembro) => String(miembro.user_id) === elegido);
 

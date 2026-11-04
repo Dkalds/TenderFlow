@@ -29,6 +29,7 @@ vi.mock("../_components/administracion-view", () => ({
 }));
 
 import OpsPage from "../page";
+import { respuestaDeContrato } from "@/test/contrato";
 
 function montar({ vista = null as string | null, admin = true } = {}) {
   consulta.vista = vista;
@@ -36,7 +37,7 @@ function montar({ vista = null as string | null, admin = true } = {}) {
     const url = callUrl(call);
     if (url.startsWith("/api/v1/auth/me")) {
       return Promise.resolve(
-        jsonResponse({ user_id: "1", email: "a@b.es", display_name: "A", is_admin: admin }),
+        jsonResponse({ ...respuestaDeContrato("/api/v1/auth/me"), is_admin: admin }),
       );
     }
     if (url.startsWith("/api/v1/admin/ejecuciones")) {
