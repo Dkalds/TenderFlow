@@ -360,16 +360,16 @@ class RescatePliegosPlacsp:
             return 0
         from db.repositories.documentos import DocumentosRepository
 
-        repo = DocumentosRepository()
-        escritas = 0
-        for id_externo, refs in self.rescatados.items():
-            try:
-                repo.upsert_meta(id_externo, refs)
-                escritas += 1
-            except Exception as e:
-                log.warning(
-                    "placsp_rescate_ted_persist_failed", licitacion_id=id_externo, error=str(e)
-                )
+        try:
+            fallos = DocumentosRepository().upsert_meta_batch(self.rescatados)
+        except Exception as e:
+            # Ni la lectura ni la conexión: no se escribió ninguna.
+            fallos = dict.fromkeys(self.rescatados, e)
+        for id_externo, error in fallos.items():
+            log.warning(
+                "placsp_rescate_ted_persist_failed", licitacion_id=id_externo, error=str(error)
+            )
+        escritas = len(self.rescatados) - len(fallos)
         log.info("placsp_rescate_ted", filas=escritas, total=len(self.rescatados))
         self.rescatados = {}
         self._version = {}
@@ -417,19 +417,20 @@ def completar_documentos_ted(*, limite: int = 300) -> ResumenDocumentos:
 
     repo = DocumentosRepository()
     resumen = ResumenDocumentos()
+    por_fila: dict[str, list[DocumentoReferencia]] = {}
     for id_externo in repo.ted_vigentes_sin_documentos(limit=limite):
         resumen.candidatas += 1
         referencia = referencia_anuncio_ted(id_externo)
-        if referencia is None:
-            continue
-        try:
-            repo.upsert_meta(id_externo, [referencia])
-        except Exception as e:
-            resumen.fallidas += 1
-            resumen.errores.append(f"{id_externo}: {e}")
-            continue
-        resumen.con_documentos += 1
-        resumen.referencias += 1
+        if referencia is not None:
+            por_fila[id_externo] = [referencia]
+    try:
+        fallos = repo.upsert_meta_batch(por_fila)
+    except Exception as e:
+        fallos = dict.fromkeys(por_fila, e)
+    for id_externo, error in fallos.items():
+        resumen.fallidas += 1
+        resumen.errores.append(f"{id_externo}: {error}")
+    resumen.con_documentos = resumen.referencias = len(por_fila) - len(fallos)
     return resumen
 
 

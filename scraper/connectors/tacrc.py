@@ -350,16 +350,16 @@ def registrar_documentos(*, limit: int = 500) -> int:
         por_licitacion.setdefault(fila["licitacion_id"], []).append(
             referencia_documento(fila["numero_resolucion"], fila["url_pdf"])
         )
-    repo = DocumentosRepository()
-    escritas = 0
-    for licitacion_id, refs in por_licitacion.items():
-        try:
-            escritas += repo.upsert_meta(licitacion_id, refs)
-        except Exception as e:
-            log.warning(
-                "tacrc_documentos_persist_failed", licitacion_id=licitacion_id, error=str(e)
-            )
-    return escritas
+    try:
+        fallos = DocumentosRepository().upsert_meta_batch(por_licitacion)
+    except Exception as e:
+        # Ni la lectura ni la conexión: no se escribió ninguna.
+        fallos = dict.fromkeys(por_licitacion, e)
+    for licitacion_id, error in fallos.items():
+        log.warning(
+            "tacrc_documentos_persist_failed", licitacion_id=licitacion_id, error=str(error)
+        )
+    return sum(len(refs) for lic, refs in por_licitacion.items() if lic not in fallos)
 
 
 def _hoy() -> date:
