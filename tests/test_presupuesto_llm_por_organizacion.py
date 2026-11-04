@@ -132,3 +132,14 @@ def test_las_rutas_de_pliegos_atribuyen_el_gasto_a_la_organizacion(
     with patch(objetivo, side_effect=_captura):
         _cliente(equipo["miembro"]).post(ruta, params={"organization_id": equipo["org_id"]})
     assert vista == [str(equipo["org_id"])]
+
+
+def test_un_viewer_no_lanza_la_extraccion_sincrona(equipo: dict[str, Any]) -> None:
+    """Mismo permiso que ``…/extract-async``: extraer sobrescribe la ficha."""
+    with patch("services.rag.fact_sheet.extract_fact_sheet_on_demand") as extraer:
+        resp = _cliente(equipo["lector"]).post(
+            "/api/v1/licitaciones/EXP-C29/ficha-pliego/extract",
+            params={"organization_id": equipo["org_id"]},
+        )
+    assert resp.status_code == 403
+    extraer.assert_not_called()

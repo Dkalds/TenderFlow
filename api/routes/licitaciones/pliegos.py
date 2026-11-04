@@ -195,7 +195,9 @@ def _budget_subject(ctx: dict[str, Any]) -> str | None:
     },
 )
 async def extract_tender_fact_sheet(
-    ctx: dict[str, Any] = Depends(require_organization()),
+    # ``write=True`` como ``…/extract-async``: extraer sobrescribe la ficha
+    # vigente y gasta presupuesto del equipo, y un viewer es de solo lectura.
+    ctx: dict[str, Any] = Depends(require_organization(write=True)),
     id_externo: str = Depends(resolver_id_externo),
 ) -> TenderFactSheetRecord:
     """Reextracción explícita; descarga bajo demanda los pliegos que aún
