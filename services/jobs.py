@@ -42,7 +42,7 @@ from config.settings import (
     jobs_lock_ttl_segundos,
     jobs_max_intentos,
 )
-from db.repositories.jobs import JobsRepository
+from db.repositories.jobs import CierreJob, JobsRepository
 from observability.logging import get_logger
 from observability.runtime_metrics import (
     jobs_duracion_segundos,
@@ -382,7 +382,7 @@ def claim(worker_id: str, *, tipos: tuple[str, ...] | None = None) -> Job | None
     return _a_job(fila) if fila else None
 
 
-def _medir_cierre(cierre: dict[str, Any] | None, estado: str) -> dict[str, object]:
+def _medir_cierre(cierre: CierreJob | None, estado: str) -> dict[str, object]:
     """Anota el cierre de un intento en las métricas y devuelve sus campos de log.
 
     ``cierre`` es lo que devuelve el repositorio: el tipo, el ``run_after`` y

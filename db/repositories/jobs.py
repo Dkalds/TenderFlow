@@ -31,7 +31,7 @@ también los fallos que no dejan traza (el proceso muere a mitad):
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, TypedDict
 
 from db.database import connect, connect_read
 
@@ -65,11 +65,28 @@ def _fila(valores: Any) -> dict[str, Any]:
 _RETURNING_CIERRE = "RETURNING j.tipo, a.run_after, a.locked_at, NOW()"
 
 
-def _cierre(valores: Any) -> dict[str, Any] | None:
-    """Fila de :data:`_RETURNING_CIERRE` como dict, o ``None`` si no hubo fila."""
-    if not valores:
+class CierreJob(TypedDict):
+    """Cómo era un intento justo antes de cerrarlo, y cuándo se cerró."""
+
+    tipo: str
+    run_after: datetime
+    locked_at: datetime | None
+    ahora: datetime
+
+
+class JobCaducado(TypedDict):
+    """Un job liberado por la barrida de locks y el estado en que quedó."""
+
+    id: int
+    estado: str
+    tipo: str
+
+
+def _cierre(fila: tuple[str, datetime, datetime | None, datetime] | None) -> CierreJob | None:
+    """Fila de :data:`_RETURNING_CIERRE`, o ``None`` si el job no existía."""
+    if not fila:
         return None
-    return dict(zip(("tipo", "run_after", "locked_at", "ahora"), valores, strict=True))
+    return CierreJob(tipo=str(fila[0]), run_after=fila[1], locked_at=fila[2], ahora=fila[3])
 
 
 class JobsRepository:
@@ -147,7 +164,7 @@ class JobsRepository:
     # la instantánea de la sentencia, es decir, antes de que el ``SET`` vacíe
     # ``locked_at``. ``None`` si el job no existía.
 
-    def marcar_terminado(self, job_id: int, *, resultado_json: str | None) -> dict[str, Any] | None:
+    def marcar_terminado(self, job_id: int, *, resultado_json: str | None) -> CierreJob | None:
         """``done``: suelta el lock y guarda el resultado."""
         with connect() as c:
             fila = c.execute(
@@ -158,7 +175,7 @@ class JobsRepository:
             ).fetchone()
         return _cierre(fila)
 
-    def marcar_fallido(self, job_id: int, *, error_detail: str) -> dict[str, Any] | None:
+    def marcar_fallido(self, job_id: int, *, error_detail: str) -> CierreJob | None:
         """``failed`` definitivo: se agotaron los intentos."""
         with connect() as c:
             fila = c.execute(
@@ -171,7 +188,7 @@ class JobsRepository:
 
     def reprogramar(
         self, job_id: int, *, error_detail: str, run_after: datetime
-    ) -> dict[str, Any] | None:
+    ) -> CierreJob | None:
         """Devuelve el job a ``pending`` con su próxima ventana (backoff).
 
         ``error_detail`` se conserva entre intentos a propósito: si el job acaba
@@ -187,7 +204,7 @@ class JobsRepository:
             ).fetchone()
         return _cierre(fila)
 
-    def reclamar_caducados(self, *, ttl_segundos: int, max_intentos: int) -> list[dict[str, Any]]:
+    def reclamar_caducados(self, *, ttl_segundos: int, max_intentos: int) -> list[JobCaducado]:
         """Libera los ``running`` cuyo lock caducó; una fila ``{id, estado, tipo}`` por job.
 
         Es la red que hace verdad la promesa de S5.3: un despliegue mata al
@@ -218,7 +235,7 @@ class JobsRepository:
                 "RETURNING id, estado, tipo",
                 {"max": max_intentos, "ttl": float(ttl_segundos)},
             ).fetchall()
-        return [{"id": int(f[0]), "estado": str(f[1]), "tipo": str(f[2])} for f in filas]
+        return [JobCaducado(id=int(f[0]), estado=str(f[1]), tipo=str(f[2])) for f in filas]
 
     # ── Lectura ──────────────────────────────────────────────────────────
 
@@ -439,4 +456,4 @@ class JobsRepository:
         return [dict(zip(columnas, f, strict=True)) for f in filas]
 
 
-__all__ = ["JobsRepository"]
+__all__ = ["CierreJob", "JobCaducado", "JobsRepository"]
