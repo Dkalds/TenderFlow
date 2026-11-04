@@ -112,16 +112,15 @@ class PlacspAgregadasConnector(FeedSindicacionPlacsp):
 
     def __init__(self, url: str) -> None:
         from scraper.codice_parser import ESQUEMAS_ORGANO_AGREGADAS
-        from scraper.connectors.placsp import _PlacspParseCore
-        from scraper.documentos_plataforma import RescatePliegosPlacsp
+        from scraper.connectors.placsp import EsperadasPorTed, _PlacspParseCore
 
         super().__init__(url)
         # El núcleo pone la clave `placsp_agregadas:<ID_OC_PLAT>:<expediente>`
         # antes de copiar el id a adjudicaciones y lotes.
         self._core = _PlacspParseCore(prefijo=SOURCE_ID, esquemas=ESQUEMAS_ORGANO_AGREGADAS)
-        # El rescate de pliegos para avisos TED es del feed principal: aquí se
-        # apaga con un mapa vacío, que además evita su consulta a la BD.
-        self._core.rescate = RescatePliegosPlacsp(cargar=list)
+        # Los avisos TED enlazan por `idEvl` el feed principal, no este: aquí
+        # se apaga con un mapa vacío, que además evita su consulta a la BD.
+        self._core.esperadas = EsperadasPorTed(cargar=list)
         self._fuera_de_universo = 0
         self._documentos_de_otro_host = 0
 

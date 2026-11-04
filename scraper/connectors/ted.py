@@ -533,9 +533,9 @@ class TedConnector:
            que, aun así, se quedan sin pareja ni documentos
            (``scraper.documentos_plataforma.completar_documentos_ted``).
 
-        Los pliegos de PLACSP de un expediente que el ATOM descartó no salen de
-        aquí sino del propio conector de PLACSP, que los rescata al ver pasar la
-        entry (``RescatePliegosPlacsp``).
+        Un expediente de PLACSP que la puerta del ATOM descartaría lo ingiere
+        entero el propio conector de PLACSP si un aviso TED lo espera
+        (``scraper.connectors.placsp.EsperadasPorTed``); el paso 1 lo empareja.
         """
         from scraper.documentos_plataforma import completar_documentos_ted
         from services.dedupe import reemparejar_ted_por_id_evl

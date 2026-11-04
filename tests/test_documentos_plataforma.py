@@ -1,8 +1,8 @@
 """Documentos de TED y PSCP, que su feed no trae (``scraper.documentos_plataforma``).
 
-Tres caminos: el PDF del anuncio TED, los pliegos de PLACSP rescatados de las
-entries del ATOM que el filtro de tecnología descarta, y la ficha JSON de la
-PSCP. El JSON de ``tests/fixtures/pscp/detall_publicacio_expedient.json`` es un
+Dos caminos: el PDF del anuncio TED y la ficha JSON de la PSCP (el expediente
+de PLACSP que enlaza un aviso TED lo ingiere el propio conector:
+``tests/test_placsp_esperadas_por_ted.py``). El JSON de ``tests/fixtures/pscp/detall_publicacio_expedient.json`` es un
 recorte real (expediente 2026/6150/1428 de Esplugues, 2026-10-02), con el
 anuncio TED 675385-2026 que cita.
 
@@ -13,18 +13,15 @@ corren contra Postgres.
 from __future__ import annotations
 
 import json
-import textwrap
 from pathlib import Path
 from typing import Any
 
 import pybreaker
 import pytest
-from lxml import etree
 
 import scraper.documentos_plataforma as dp
 from db.upsert import DocumentoReferencia
 from scraper.documentos_plataforma import (
-    RescatePliegosPlacsp,
     numero_publicacion_ted,
     numeros_ted_citados,
     parse_detalle_pscp,
@@ -287,172 +284,6 @@ def test_completar_ted_da_el_anuncio_a_cada_candidata(repo_falso):
     ]
     assert set(repo.escritos) == {"ted:1-2026", "ted:2-2026"}
     assert resumen.con_documentos == 2
-
-
-# ── PLACSP: rescate desde el ATOM ────────────────────────────────────────────
-
-_REF_PCAP = DocumentoReferencia(
-    tipo="legal", uri="https://contrataciondelestado.es/pcap.pdf", source_hash="h1"
-)
-
-
-def test_rescate_guarda_los_pliegos_para_el_aviso_ted_que_los_espera():
-    rescate = RescatePliegosPlacsp(
-        cargar=lambda: [("ted:9-2026", f"{_DEEPLINK}CEGLc1%2fkxg%2fE6P%2fuLemXRw%3d%3d")]
-    )
-
-    # El ATOM escribe el escape en mayúsculas y TED a veces en minúsculas.
-    n = rescate.considerar(f"{_DEEPLINK}CEGLc1%2Fkxg%2FE6P%2FuLemXRw%3D%3D", [_REF_PCAP])
-
-    assert n == 1
-    assert rescate.rescatados == {"ted:9-2026": [_REF_PCAP]}
-
-
-def test_rescate_se_queda_con_la_version_mas_reciente_de_la_entry():
-    """El ATOM va de más nuevo a más viejo; el ZIP mensual, al revés."""
-    viejo = DocumentoReferencia(tipo="legal", uri="https://contrataciondelestado.es/v1.pdf")
-    nuevo = DocumentoReferencia(tipo="legal", uri="https://contrataciondelestado.es/v2.pdf")
-    for orden in (
-        [("2026-09-20T10:00:00+02:00", nuevo), ("2026-09-01T10:00:00+02:00", viejo)],
-        [("2026-09-01T10:00:00+02:00", viejo), ("2026-09-20T10:00:00+02:00", nuevo)],
-    ):
-        rescate = RescatePliegosPlacsp(cargar=lambda: [("ted:9-2026", f"{_DEEPLINK}AAA")])
-        for actualizado, ref in orden:
-            rescate.considerar(f"{_DEEPLINK}AAA", [ref], actualizado)
-        assert rescate.rescatados == {"ted:9-2026": [nuevo]}
-
-
-def test_rescate_ignora_las_entries_que_nadie_espera_y_carga_el_mapa_una_vez():
-    cargas = 0
-
-    def cargar() -> list[tuple[str, str | None]]:
-        nonlocal cargas
-        cargas += 1
-        return [("ted:9-2026", f"{_DEEPLINK}AAA")]
-
-    rescate = RescatePliegosPlacsp(cargar=cargar)
-    rescate.considerar(f"{_DEEPLINK}BBB", [_REF_PCAP])
-    rescate.considerar(f"{_DEEPLINK}CCC", [_REF_PCAP])
-
-    assert rescate.rescatados == {}
-    assert cargas == 1
-
-
-def test_rescate_no_toca_la_bd_sin_pliegos_o_sin_idevl():
-    def cargar() -> list[tuple[str, str | None]]:
-        raise AssertionError("no debería cargar")
-
-    rescate = RescatePliegosPlacsp(cargar=cargar)
-
-    assert rescate.considerar(f"{_DEEPLINK}AAA", []) == 0
-    assert rescate.considerar("https://example.com/sin-idevl", [_REF_PCAP]) == 0
-
-
-def test_si_la_carga_falla_el_rescate_se_apaga_sin_lanzar():
-    def cargar() -> list[tuple[str, str | None]]:
-        raise RuntimeError("DATABASE_URL no está configurada")
-
-    rescate = RescatePliegosPlacsp(cargar=cargar)
-
-    assert rescate.considerar(f"{_DEEPLINK}AAA", [_REF_PCAP]) == 0
-    assert rescate.considerar(f"{_DEEPLINK}AAA", [_REF_PCAP]) == 0
-
-
-def test_persistir_escribe_lo_rescatado_y_vacia(repo_falso):
-    repo = repo_falso([])
-    rescate = RescatePliegosPlacsp(cargar=lambda: [("ted:9-2026", f"{_DEEPLINK}AAA")])
-    rescate.considerar(f"{_DEEPLINK}AAA", [_REF_PCAP])
-
-    assert rescate.persistir() == 1
-    assert repo.escritos == {"ted:9-2026": [_REF_PCAP]}
-    assert rescate.persistir() == 0
-
-
-_NS = {
-    "cbc": "urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2",
-    "cac": "urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2",
-    "cacext": "urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2",
-    "cbcext": "urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2",
-}
-
-
-#: El deeplink tal como va dentro de un XML: el ``&`` escapado.
-_DEEPLINK_XML = _DEEPLINK.replace("&", "&amp;")
-
-
-def _entry_descartada_con_pliegos() -> Any:
-    """Entry fuera del universo tecnológico (jardinería, CPV 77) con su PCAP."""
-    xml = textwrap.dedent(f"""\
-        <feed xmlns="http://www.w3.org/2005/Atom">
-        <entry xmlns:cbc="{_NS["cbc"]}" xmlns:cac="{_NS["cac"]}"
-               xmlns:cacext="{_NS["cacext"]}" xmlns:cbcext="{_NS["cbcext"]}">
-          <id>{_DEEPLINK_XML}JARDIN%3D%3D</id>
-          <title>Servicio de limpieza de jardines municipales</title>
-          <updated>2026-06-14T09:12:33+02:00</updated>
-          <link href="{_DEEPLINK_XML}JARDIN%3D%3D" rel="alternate"/>
-          <cacext:ContractFolderStatus>
-            <cbc:ContractFolderID>2026-JARDIN</cbc:ContractFolderID>
-            <cac:ProcurementProject>
-              <cbc:Name>Servicio de limpieza de jardines municipales</cbc:Name>
-              <cac:RequiredCommodityClassification>
-                <cbc:ItemClassificationCode>77310000</cbc:ItemClassificationCode>
-              </cac:RequiredCommodityClassification>
-            </cac:ProcurementProject>
-            <cac:LegalDocumentReference>
-              <cbc:ID>PCAP.pdf</cbc:ID>
-              <cac:Attachment><cac:ExternalReference>
-                <cbc:URI>https://contrataciondelestado.es/pcap-jardin.pdf</cbc:URI>
-                <cbc:DocumentHash>hash-pcap</cbc:DocumentHash>
-              </cac:ExternalReference></cac:Attachment>
-            </cac:LegalDocumentReference>
-          </cacext:ContractFolderStatus>
-        </entry>
-        </feed>
-    """)
-    return etree.fromstring(xml.encode()).find("{http://www.w3.org/2005/Atom}entry")
-
-
-def test_la_entry_descartada_por_el_atom_cede_sus_pliegos_al_aviso_ted(monkeypatch):
-    from scraper.connectors.placsp import _PlacspParseCore
-
-    monkeypatch.setattr("scraper.pipeline._ml_classify_entry", lambda entry: None)
-    core = _PlacspParseCore()
-    core.rescate = RescatePliegosPlacsp(cargar=lambda: [("ted:5-2026", f"{_DEEPLINK}JARDIN%3d%3d")])
-
-    parsed = core.parse_entry_elem(_entry_descartada_con_pliegos(), fuente="placsp")
-
-    assert parsed is None
-    assert [r.uri for r in core.rescate.rescatados["ted:5-2026"]] == [
-        "https://contrataciondelestado.es/pcap-jardin.pdf"
-    ]
-
-
-def test_un_rescate_roto_no_cambia_el_resultado_del_parseo(monkeypatch):
-    from scraper.connectors.placsp import _PlacspParseCore
-
-    monkeypatch.setattr("scraper.pipeline._ml_classify_entry", lambda entry: None)
-    core = _PlacspParseCore()
-
-    def roto(url: str | None, documentos: list[DocumentoReferencia]) -> int:
-        raise RuntimeError("roto")
-
-    monkeypatch.setattr(core.rescate, "considerar", roto)
-
-    assert core.parse_entry_elem(_entry_descartada_con_pliegos(), fuente="placsp") is None
-
-
-def test_los_conectores_de_placsp_persisten_lo_rescatado(monkeypatch):
-    from scraper.connectors.placsp import PlacspAtomConnector, PlacspBulkConnector
-
-    for conector in (PlacspAtomConnector(), PlacspBulkConnector(2026, 9)):
-        llamadas: list[str] = []
-        monkeypatch.setattr(
-            conector._core.rescate,
-            "persistir",
-            lambda llamadas=llamadas: llamadas.append("x") or 0,
-        )
-        conector.completar_documentos()
-        assert llamadas == ["x"]
 
 
 # ── Conectores y runner ──────────────────────────────────────────────────────
@@ -992,25 +823,6 @@ def test_integration_no_esconde_el_ted_tras_una_ficha_pscp_que_no_se_publica(db)
     assert resultado == RepublicacionesTed(sin_canonica_visible=["ted:675386-2026"])
     with connect_read() as c:
         assert _marca(c, "ted:675386-2026") is None
-
-
-def test_integration_el_rescate_escribe_los_pliegos_en_la_fila_ted(db) -> None:
-    from db.database import connect, connect_read
-
-    with connect() as c:
-        _insertar(c, "ted:500000-2026", url=f"{_DEEPLINK}JARDIN%3D%3D")
-
-    rescate = RescatePliegosPlacsp()
-    assert rescate.considerar(f"{_DEEPLINK}JARDIN%3d%3d", [_REF_PCAP]) == 1
-    assert rescate.persistir() == 1
-    with connect_read() as c:
-        uris = [
-            r[0]
-            for r in c.execute(
-                "SELECT uri FROM documentos WHERE licitacion_id = %s", ("ted:500000-2026",)
-            ).fetchall()
-        ]
-    assert uris == ["https://contrataciondelestado.es/pcap.pdf"]
 
 
 class _ConectorConUnaFila:

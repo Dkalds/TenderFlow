@@ -150,6 +150,9 @@ _UNIVERSO_PREFIXES = tuple(CPV_PREFIXES_UNIVERSO)
 INCLUSION_KEYWORD = "keyword"
 INCLUSION_ML_RESCUE = "ml_cpv_rescue"
 INCLUSION_CPV_TI = "cpv_ti_universe"
+#: La puerta la descartó, pero un aviso TED sin pareja enlaza el expediente
+#: (``scraper.connectors.placsp.EsperadasPorTed``): TED ya lo dio por tecnología.
+INCLUSION_REFERENCIA_TED = "referencia_ted"
 
 
 @dataclasses.dataclass(frozen=True)

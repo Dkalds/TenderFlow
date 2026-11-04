@@ -30,7 +30,7 @@ from observability import get_logger
 from scraper.connectors.base import ParsedTender, RawNotice
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterable, Iterator
 
 log = get_logger(__name__)
 
@@ -49,10 +49,10 @@ class _PlacspParseCore:
     El fallback ML (``_ml_classify_entry``) vive aquí; el contrato de
     ``parse()`` no cambia si el ML no está disponible.
 
-    También guarda, de las entries que descarta, los pliegos que espera algún
-    aviso TED sin pareja (``rescate``; ver
-    ``scraper.documentos_plataforma.RescatePliegosPlacsp``). El conector los
-    persiste tras la ingesta con ``completar_documentos``.
+    Una entry que la puerta tecnológica descarta se ingiere igual, entera, si
+    algún aviso TED enlaza su expediente (``esperadas``; ver
+    :class:`EsperadasPorTed`): TED ya la dio por tecnología por su CPV, y sin
+    la fila de PLACSP el contrato solo se veía con lo poco que publica TED.
 
     La clave acotada por órgano se pone aquí, antes de copiar el id a las
     hijas (``scraper.codice_parser.acotar_por_organo``). ``prefijo`` y
@@ -66,9 +66,8 @@ class _PlacspParseCore:
         esquemas: tuple[str, ...] | None = None,
     ) -> None:
         from scraper.codice_parser import ESQUEMAS_ORGANO_PLACSP
-        from scraper.documentos_plataforma import RescatePliegosPlacsp
 
-        self.rescate = RescatePliegosPlacsp()
+        self.esperadas = EsperadasPorTed()
         self.prefijo = prefijo
         self.esquemas = esquemas or ESQUEMAS_ORGANO_PLACSP
         #: Descartes por falta de órgano y claves hechas con un esquema de
@@ -85,25 +84,6 @@ class _PlacspParseCore:
             },
         }
 
-    def _rescatar_pliegos(self, entry_elem: Any) -> None:
-        """Ofrece al rescate los pliegos de una entry descartada. Nunca lanza.
-
-        El rescate no puede interferir con el parseo: una entry descartada sigue
-        descartada pase lo que pase aquí.
-        """
-        try:
-            from scraper.codice_parser import NS, parse_document_references
-
-            enlaces = entry_elem.xpath("./atom:link/@href", namespaces=NS)
-            url = str(enlaces[0]) if enlaces else None
-            if not self.rescate.espera(url):
-                return
-            fechas = entry_elem.xpath("./atom:updated/text()", namespaces=NS)
-            actualizado = str(fechas[0]).strip() if fechas else None
-            self.rescate.considerar(url, parse_document_references(entry_elem), actualizado)
-        except Exception as exc:
-            log.debug("placsp_rescate_entry_failed", error=str(exc))
-
     def parse_entry_elem(
         self,
         entry_elem: Any,
@@ -118,14 +98,21 @@ class _PlacspParseCore:
         directo) o por el clasificador ML (si el modelo no supera el umbral).
         """
         from scraper.codice_parser import (
+            NS,
             acotar_por_organo,
             parse_adjudicaciones,
             parse_document_references,
             parse_entry,
+            parse_entry_unfiltered,
             parse_lotes,
         )
         from scraper.lineage import current_filter_version
-        from scraper.pipeline import INCLUSION_KEYWORD, INCLUSION_ML_RESCUE, _ml_classify_entry
+        from scraper.pipeline import (
+            INCLUSION_KEYWORD,
+            INCLUSION_ML_RESCUE,
+            INCLUSION_REFERENCIA_TED,
+            _ml_classify_entry,
+        )
 
         try:
             lic: Licitacion | None = parse_entry(entry_elem)
@@ -137,8 +124,15 @@ class _PlacspParseCore:
                 if lic is not None:
                     inclusion_reason = lic.inclusion_reason or INCLUSION_ML_RESCUE
             if lic is None:
-                self._rescatar_pliegos(entry_elem)
-                return None
+                enlaces = entry_elem.xpath("./atom:link/@href", namespaces=NS)
+                if not self.esperadas.espera(str(enlaces[0]) if enlaces else None):
+                    return None
+                # Un aviso TED la espera: entera, con lotes, criterios e importes,
+                # para que el emparejamiento por `idEvl` la haga canónica.
+                lic = parse_entry_unfiltered(entry_elem)
+                if lic is None:
+                    return None
+                inclusion_reason = INCLUSION_REFERENCIA_TED
             # La clave va antes de parsear adjudicaciones y lotes, que heredan el id.
             organo = acotar_por_organo(
                 lic, entry_elem, prefijo=self.prefijo, esquemas=self.esquemas
@@ -175,6 +169,55 @@ class _PlacspParseCore:
         except Exception as exc:
             log.debug("placsp_parse_entry_failed", error=str(exc))
             raise  # el caller (run_connector) lo envía a DLQ
+
+
+class EsperadasPorTed:
+    """Expedientes de PLACSP que algún aviso TED enlaza por ``idEvl``.
+
+    TED entra por cualquier CPV 48/72 del aviso; PLACSP, por el principal y las
+    palabras clave. Así que un aviso TED puede enlazar un expediente que la
+    puerta de PLACSP descarta, y sin esa fila el contrato se quedaba con la
+    versión de TED: sin lotes, sin criterios, sin importes por lote. PLACSP
+    re-emite la entry al registrar el anuncio en el DOUE (93 de 94 pares
+    medidos se actualizaron el día del anuncio TED o después), así que basta
+    con reconocerla cuando pasa.
+
+    Cuenta también los avisos ya emparejados: la fila de PLACSP que entró así
+    tiene que seguir refrescándose (adjudicación, rectificaciones) cuando su
+    entry vuelve a pasar.
+
+    El mapa se carga una vez, perezosamente, con la primera entry descartada:
+    un run sin descartes —o un test que parsea una entry suelta— no toca la BD.
+    Si la carga falla queda vacío para el resto de la pasada; nunca tumba el
+    parseo.
+    """
+
+    def __init__(self, cargar: Callable[[], Iterable[str]] | None = None) -> None:
+        self._cargar = cargar or _urls_ted_con_id_evl
+        self._id_evls: frozenset[str] | None = None
+
+    def espera(self, url_entry: str | None) -> bool:
+        """``True`` si algún aviso TED enlaza la entry de *url_entry*."""
+        from services.dedupe import id_evl_de_url
+
+        evl = id_evl_de_url(url_entry)
+        if evl is None:
+            return False
+        if self._id_evls is None:
+            try:
+                self._id_evls = frozenset(
+                    e for url in self._cargar() if (e := id_evl_de_url(url)) is not None
+                )
+            except Exception as e:
+                log.warning("placsp_esperadas_por_ted_no_disponible", error=str(e))
+                self._id_evls = frozenset()
+        return evl in self._id_evls
+
+
+def _urls_ted_con_id_evl() -> list[str]:
+    from db.repositories import dedupe as dedupe_repo
+
+    return dedupe_repo.urls_ted_con_id_evl()
 
 
 # ── Conector ATOM live ────────────────────────────────────────────────────────
@@ -250,10 +293,6 @@ class PlacspAtomConnector:
             fuente=SOURCE_ID,
             updated_str=updated_str or None,
         )
-
-    def completar_documentos(self) -> None:
-        """Persiste los pliegos rescatados de entries descartadas (ver ``_PlacspParseCore``)."""
-        self._core.rescate.persistir()
 
     def contadores_de_descarte(self) -> dict[str, int]:
         """Entradas sin órgano y claves por esquema de respaldo (ver ``_PlacspParseCore``)."""
@@ -357,10 +396,6 @@ class PlacspBulkConnector:
             fuente=fuente,
             updated_str=updated_str,
         )
-
-    def completar_documentos(self) -> None:
-        """Persiste los pliegos rescatados de entries descartadas (ver ``_PlacspParseCore``)."""
-        self._core.rescate.persistir()
 
     def contadores_de_descarte(self) -> dict[str, int]:
         """Entradas sin órgano y claves por esquema de respaldo (ver ``_PlacspParseCore``)."""

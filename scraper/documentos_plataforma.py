@@ -5,19 +5,18 @@ PLACSP mete las referencias a los pliegos en cada entry del ATOM y
 medido el 2026-10-02, ninguna de las ~2.600 filas TED ni de las PSCP tenía un
 solo documento, así que una oportunidad abierta sobre ellas se quedaba sin
 ficha del pliego, sin páginas que citar y sin guion. Este módulo cierra ese
-hueco con tres caminos, todos sobre datos abiertos:
+hueco sobre datos abiertos:
 
 - **Anuncio TED** (:func:`referencia_anuncio_ted`). TED nunca publica pliegos,
   pero el PDF del anuncio sí describe el contrato —objeto, lotes, criterios de
   adjudicación, plazos—. Es el mínimo que toda convocatoria TED sin pareja
   recibe como documento propio.
-- **Pliegos de PLACSP rescatados del ATOM** (:class:`RescatePliegosPlacsp`).
-  Un aviso TED cuyo expediente de PLACSP no está en BD es uno que el filtro de
-  tecnología del ATOM descartó: TED entra por cualquier CPV 48/72 del aviso,
-  PLACSP por el principal y las palabras clave. La entry descartada sigue
-  trayendo sus pliegos, y PLACSP la re-emite al registrar la publicación en el
-  DOUE (93 de 94 pares medidos se actualizaron el día del anuncio TED o
-  después). Cuando pasa, sus referencias se guardan en la fila TED.
+- **El expediente de PLACSP que el aviso TED enlaza.** No es de este módulo:
+  el conector de PLACSP ingiere entera la entry que su filtro de tecnología
+  descartaría si un aviso TED sin pareja la enlaza por ``idEvl``
+  (``scraper.connectors.placsp.EsperadasPorTed``), y el emparejamiento la hace
+  canónica. Hasta el 2026-11-04 solo se copiaban sus pliegos a la fila TED, y
+  el contrato se quedaba sin lotes, criterios ni importes por lote.
 
   La ficha HTML del expediente **no** se usa: ``robots.txt`` de
   contrataciondelestado.es es ``Disallow: /`` y la ficha devuelve la página sin
@@ -46,7 +45,7 @@ from __future__ import annotations
 import json
 import re
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from typing import Any
 from urllib.parse import urlparse
@@ -54,7 +53,6 @@ from urllib.parse import urlparse
 from config import USER_AGENT, settings
 from db.upsert import DocumentoReferencia
 from observability import get_logger
-from services.dedupe import id_evl_de_url
 from shared.outbound_http import pinned_https_request
 
 log = get_logger(__name__)
@@ -281,105 +279,6 @@ def documentos_de_pscp(
         return None
     cuerpo = (obtener or (lambda url: _obtener(url, host=_HOST_PSCP)))(api)
     return parse_detalle_pscp(json.loads(cuerpo))
-
-
-# ── PLACSP: rescate desde el ATOM ────────────────────────────────────────────
-
-
-class RescatePliegosPlacsp:
-    """Pliegos de entries descartadas del ATOM que un aviso TED sin pareja espera.
-
-    El mapa ``idEvl → filas TED`` se carga una vez, perezosamente, con la
-    primera entry descartada: así un run sin descartes —o un test que parsea
-    una entry suelta— no toca la BD. Si la carga falla, el rescate se apaga
-    para el resto de la pasada; nunca puede tumbar el parseo.
-    """
-
-    def __init__(
-        self, cargar: Callable[[], Iterable[tuple[str, str | None]]] | None = None
-    ) -> None:
-        self._cargar = cargar or _ted_sin_pareja_con_id_evl
-        self._esperadas: dict[str, list[str]] | None = None
-        self.rescatados: dict[str, list[DocumentoReferencia]] = {}
-        #: ``<updated>`` de la versión guardada para cada fila TED.
-        self._version: dict[str, str] = {}
-
-    def _mapa(self) -> Mapping[str, list[str]]:
-        if self._esperadas is None:
-            esperadas: dict[str, list[str]] = {}
-            try:
-                for id_externo, url in self._cargar():
-                    if (evl := id_evl_de_url(url)) is not None:
-                        esperadas.setdefault(evl, []).append(id_externo)
-            except Exception as e:
-                log.warning("placsp_rescate_ted_no_disponible", error=str(e))
-                esperadas = {}
-            self._esperadas = esperadas
-        return self._esperadas
-
-    def espera(self, url_entry: str | None) -> bool:
-        """``True`` si alguna fila TED espera la entry de *url_entry*.
-
-        Para preguntarlo **antes** de leer sus pliegos: casi ninguna entry
-        descartada tiene un aviso TED esperándola, y extraer sus referencias
-        cuesta varias evaluaciones XPath por documento.
-        """
-        evl = id_evl_de_url(url_entry)
-        return evl is not None and bool(self._mapa().get(evl))
-
-    def considerar(
-        self,
-        url_entry: str | None,
-        documentos: list[DocumentoReferencia],
-        actualizado: str | None = None,
-    ) -> int:
-        """Guarda *documentos* para las filas TED que esperan esta entry. Devuelve cuántas.
-
-        El mismo expediente puede pasar varias veces en una pasada —el ATOM va
-        de más nuevo a más viejo; el ZIP mensual, al revés— y una rectificación
-        cambia los pliegos: gana la versión con el ``<updated>`` más reciente
-        (texto ISO de PLACSP, comparable tal cual).
-        """
-        if not documentos:
-            return 0
-        evl = id_evl_de_url(url_entry)
-        if evl is None:
-            return 0
-        filas = self._mapa().get(evl, [])
-        version = actualizado or ""
-        for id_externo in filas:
-            if id_externo in self.rescatados and version < self._version.get(id_externo, ""):
-                continue
-            self.rescatados[id_externo] = list(documentos)
-            self._version[id_externo] = version
-        return len(filas)
-
-    def persistir(self) -> int:
-        """Escribe lo rescatado. Fail-open por fila, como ``_persist_documentos``."""
-        if not self.rescatados:
-            return 0
-        from db.repositories.documentos import DocumentosRepository
-
-        repo = DocumentosRepository()
-        escritas = 0
-        for id_externo, refs in self.rescatados.items():
-            try:
-                repo.upsert_meta(id_externo, refs)
-                escritas += 1
-            except Exception as e:
-                log.warning(
-                    "placsp_rescate_ted_persist_failed", licitacion_id=id_externo, error=str(e)
-                )
-        log.info("placsp_rescate_ted", filas=escritas, total=len(self.rescatados))
-        self.rescatados = {}
-        self._version = {}
-        return escritas
-
-
-def _ted_sin_pareja_con_id_evl() -> list[tuple[str, str | None]]:
-    from db.repositories import dedupe as dedupe_repo
-
-    return [(str(f["id_externo"]), f.get("url")) for f in dedupe_repo.ted_sin_pareja_con_id_evl()]
 
 
 # ── Pasos tras la ingesta ────────────────────────────────────────────────────
