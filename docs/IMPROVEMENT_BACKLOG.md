@@ -494,7 +494,16 @@ _Sin ítems abiertos._
   dirigido: `scraper/reproceso_ted.py` y `reproceso-ted.yml` (manual, `aplicar`
   para escribir). Solo parsea del ZIP las entries que espera un aviso TED sin
   pareja, nunca pisa una fila que ya existe y recorre los meses del más nuevo al
-  más viejo. Queda anotar aquí su resultado.
+  más viejo.
+- **Resultado del reproceso (2026-11-04):** conteo de 2026-09 y 2026-10 sobre
+  173 avisos TED sin pareja; luego, con `aplicar`, octubre y septiembre por
+  separado (cada ZIP baja en 25–30 min, y los dos no caben en los 60 del
+  job). Quedan 150 expedientes `referencia_ted` y 162 avisos TED detrás de
+  ellos; de los avisos con `idEvl` sin pareja pasan de 173 a 25, y de los
+  abiertos, de 26 a 7, todos publicados en TED entre el 2 y el 4 de noviembre
+  (su entry llegará por el ATOM; el ZIP de noviembre aún no existe). Las TED
+  abiertas solo con el anuncio siguen en 67: enlazan portales autonómicos o
+  portadas, no un expediente de PLACSP.
 - **Files de partida:** [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [db/repositories/documentos.py](../db/repositories/documentos.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo — solo observación y una variable de entorno.
 
