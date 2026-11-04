@@ -70,6 +70,8 @@ COLUMNA_FECHA: dict[str, str] = {
     # caduca y solo entonces empieza a contar el plazo.
     "organization_invitations": "expires_at",
     "domain_events": "created_at",
+    # Por la fecha en que el job terminó, no por la de encolado.
+    "jobs": "updated_at",
 }
 
 
@@ -191,6 +193,16 @@ POLITICA_RETENCION: tuple[ReglaRetencion, ...] = (
         "Outbox de eventos. Solo los **ya despachados**: uno pendiente es trabajo por "
         "hacer. El payload puede nombrar a quien originó el evento.",
     ),
+    # Mismo ajuste que `extraction_runs` y no uno propio: es la misma clase de
+    # dato (diagnóstico de ejecuciones) y la vista Ejecuciones de Ops mira 90
+    # días atrás (`api/routes/admin_ejecuciones.py::HORIZONTE_DIAS`).
+    ReglaRetencion(
+        "jobs",
+        "RETENTION_EXTRACTION_RUNS_DAYS",
+        "Cola de trabajo. Solo los **terminados** (`done`/`failed`), desde que "
+        "terminaron: lo pendiente o en curso no caduca. El payload nombra el "
+        "expediente y la organización que lo pidió.",
+    ),
     ReglaRetencion(
         "rate_limits",
         "RETENTION_IDEMPOTENCY_KEYS_DAYS",
@@ -309,6 +321,7 @@ def run_retention(
             ("asistente_feedback", _plazo("asistente_feedback")),
             ("organization_invitations", _plazo("organization_invitations")),
             ("domain_events", _plazo("domain_events")),
+            ("jobs", _plazo("jobs")),
         )
     ]
 

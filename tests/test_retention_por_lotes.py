@@ -102,3 +102,31 @@ def test_exigir_completa_falla_con_cualquier_menos_uno() -> None:
     exigir_completa({"audit_log": 0, "documento_blobs": {"borrados": 0}})
     with pytest.raises(RetencionIncompleta, match="access_log, users"):
         exigir_completa({"users": -1, "audit_log": 3, "access_log": -1})
+
+
+def test_purga_los_jobs_terminados_y_respeta_la_cola_viva(tmp_db) -> None:
+    """La tabla ``jobs`` solo crecía: ningún paso la purgaba."""
+    db_mod, _ = tmp_db
+    viejo = (datetime.now(UTC) - timedelta(days=120)).isoformat()
+    with db_mod.connect() as c:
+        for estado, ts in (
+            ("done", viejo),
+            ("failed", viejo),
+            ("pending", viejo),
+            ("running", viejo),
+            ("done", datetime.now(UTC).isoformat()),
+        ):
+            c.execute(
+                "INSERT INTO jobs (tipo, payload_json, estado, updated_at) "
+                "VALUES ('ficha_pliego', '{}', %s, %s)",
+                (estado, ts),
+            )
+
+    from scheduler.retention import run_retention
+
+    resultado = run_retention(apply=True)
+
+    assert resultado["jobs"] == 2
+    with db_mod.connect_read() as c:
+        quedan = sorted(str(f[0]) for f in c.execute("SELECT estado FROM jobs").fetchall())
+    assert quedan == ["done", "pending", "running"]

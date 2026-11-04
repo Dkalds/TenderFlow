@@ -37,8 +37,12 @@ def _cutoff_iso(days: int) -> str:
 
 #: Condición adicional de la purga de una tabla (constantes internas). El outbox
 #: solo se purga una vez despachado: un evento pendiente es trabajo por hacer, y
-#: caduque cuando caduque su fecha, no se puede perder antes de entregarse.
-_SOLO_SI: dict[str, str] = {"domain_events": "dispatched_at IS NOT NULL"}
+#: caduque cuando caduque su fecha, no se puede perder antes de entregarse. De
+#: la cola de trabajo, igual: solo lo terminado, nunca lo que espera o corre.
+_SOLO_SI: dict[str, str] = {
+    "domain_events": "dispatched_at IS NOT NULL",
+    "jobs": "estado IN ('done', 'failed')",
+}
 
 
 def _purgar_tabla(table: str, date_col: str, cutoff: str, *, apply: bool) -> int:
