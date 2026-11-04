@@ -261,6 +261,37 @@ def test_libera_el_lock_aunque_el_job_falle():
     release.assert_called_once()
 
 
+def test_no_suelta_el_lock_si_el_job_sigue_vivo_tras_el_timeout():
+    """Un hilo no se puede matar: soltar el lock dejaría correr otro en paralelo."""
+    import threading
+
+    liberar = threading.Event()
+    job = ScheduledJob(
+        name="colgado",
+        fn=lambda: liberar.wait(10),
+        interval_env="TEST_COLGADO_INTERVAL_MINUTES",
+        default_interval_minutes=60,
+        plane="actions",
+        module="tests.colgado",
+        timeout_seconds=1,
+    )
+    plano = CronPlane([job], poll_segundos=1)
+    plano.planificar(AHORA)
+
+    try:
+        with (
+            patch("db.job_locks.release") as release,
+            patch("db.job_locks.renew", return_value=True) as renew,
+        ):
+            plano.tick(AHORA)
+    finally:
+        liberar.set()  # que el hilo daemon no sobreviva al test
+
+    release.assert_not_called()
+    assert renew.call_args.args[0] == "cron:colgado"
+    assert renew.call_args.kwargs["ttl_seconds"] == 1
+
+
 # ── 4. Reprogramación ───────────────────────────────────────────────────────
 
 
