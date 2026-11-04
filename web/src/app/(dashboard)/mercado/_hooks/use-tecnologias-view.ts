@@ -14,6 +14,7 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 export interface TecnologiaItem {
@@ -76,17 +77,10 @@ export interface DetalleResponse {
   items: DetalleItem[];
 }
 
-export interface ScoredItem {
-  id: string;
-  titulo: string;
-  importe: number;
-  score: number;
-  organo_contratacion?: string;
-}
+/** Oportunidad puntuada tal como la da `/analytics/scoring`: el id es `id_externo`. */
+export type ScoredItem = Schemas["ScoredOpportunity"];
 
-interface ScoringResponse {
-  opportunities: ScoredItem[];
-}
+type ScoringResponse = Schemas["ScoringResult"];
 
 /** Fila de cualquiera de los dos gráficos de barras: el ítem más su color. */
 export type BarItem = TecnologiaItem & { _color: string };
