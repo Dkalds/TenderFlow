@@ -89,9 +89,7 @@ def _core(esperadas: list[str]) -> _PlacspParseCore:
 
 
 def test_espera_compara_el_idevl_decodificado():
-    esperadas = EsperadasPorTed(
-        cargar=lambda: [f"{_DEEPLINK}CEGLc1%2fkxg%2fE6P%2fuLemXRw%3d%3d"]
-    )
+    esperadas = EsperadasPorTed(cargar=lambda: [f"{_DEEPLINK}CEGLc1%2fkxg%2fE6P%2fuLemXRw%3d%3d"])
 
     # El ATOM escribe el escape en mayúsculas y TED a veces en minúsculas.
     assert esperadas.espera(f"{_DEEPLINK}CEGLc1%2Fkxg%2FE6P%2FuLemXRw%3D%3D")
