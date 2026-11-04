@@ -122,6 +122,23 @@ def test_runner_persiste_y_avanza_cursor(db):
     assert get_cursor("fake")["last_seen_updated"] == "2026-01-31"
 
 
+def test_runner_deja_la_duracion_en_connector_run_done(db, monkeypatch):
+    """Sin la duración, saber cuánto tardó una fuente exigía restar marcas de tiempo."""
+    from unittest.mock import MagicMock
+
+    from scraper.connectors import base
+
+    registro = MagicMock()
+    monkeypatch.setattr(base, "log", registro)
+
+    run_connector(FakeConnector([{"id": "N1", "titulo": "Aviso uno"}]))
+
+    (llamada,) = [c for c in registro.info.call_args_list if c.args[0] == "connector_run_done"]
+    assert isinstance(llamada.kwargs["duracion_s"], float)
+    assert llamada.kwargs["duracion_s"] >= 0
+    assert llamada.kwargs["source_id"] == "fake"
+
+
 def test_runner_es_idempotente(db):
     notices = [{"id": "N1", "titulo": "Aviso uno"}]
     run_connector(FakeConnector(notices))
