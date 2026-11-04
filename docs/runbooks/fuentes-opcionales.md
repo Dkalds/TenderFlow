@@ -12,7 +12,7 @@ fila: sin ella constarían como «sin registro».
 |---|---|---|---|
 | `pscp` | `PSCP_DATASET_ID` | id del dataset Socrata (`scripts/probe_pscp.py`) | lo decide la variable de repo |
 | `tacrc` | `TACRC_INDEX_URL` | índice del Pleno, o el índice completo por años (abajo) | lo decide la variable de repo (ver la nota) |
-| `placsp_agregadas` | `PLACSP_AGREGADAS_ATOM_URL` | `URL_SINDICACION_1044` de `scraper/connectors/placsp_agregadas.py` | **encendida** desde el 2026-11-04 (la URL es el valor por defecto en `config/settings.py` y en el workflow); `off` la apaga |
+| `placsp_agregadas` | `PLACSP_AGREGADAS_ATOM_URL` | `URL_SINDICACION_1044` de `scraper/connectors/placsp_agregadas.py` | **encendida** desde el 2026-11-04 (la URL es el valor por defecto de `config/settings.py`; el workflow solo la pisa si la variable de repo está definida); `off` la apaga |
 | `placsp_menores` | `PLACSP_MENORES_ATOM_URL` | `URL_SINDICACION_1143` de `scraper/connectors/placsp_menores.py` | **apagada** (vacía en `config/settings.py`) |
 | `placsp_consultas` | `PLACSP_CONSULTAS_ATOM_URL` | `URL_SINDICACION_1403` de `scraper/connectors/placsp_consultas.py` | **apagada** y **sin programar** (ver abajo) |
 
