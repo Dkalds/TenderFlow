@@ -280,3 +280,106 @@ class TestIterLiveEntries:
         )
 
         assert meta["newest_updated"] == "2026-05-01T10:00:00Z"
+
+
+# ─── Tope de páginas y caché condicional ──────────────────────────────────────
+
+_PAGE2_URL = (
+    "https://contrataciondelsectorpublico.gob.es/sindicacion/"
+    "sindicacion_643/licitacionesPerfilesContratanteCompleto3.atom?page=2"
+)
+
+
+class TestTopeDePaginas:
+    """Agotar ``max_pages`` sin llegar al cursor no puede dar el hueco por leído."""
+
+    @patch("scraper.atom_live.record_event")
+    @patch("scraper.atom_live.fetch_atom_page")
+    @patch("scraper.atom_live.time.sleep")
+    def test_exhausted_con_cursor_conserva_el_cursor(self, mock_sleep, mock_fetch, mock_event):
+        from scraper.atom_live import EVENTO_TOPE_SIN_CURSOR, cursor_siguiente
+
+        mock_fetch.return_value = FetchResult(content=_ATOM_PAGE_1, status_code=200, etag='"e1"')
+        cursor_viejo = "2026-04-01T00:00:00Z"
+
+        _, meta = iter_live_entries(
+            last_seen_updated=cursor_viejo, start_url="https://x.com/feed", max_pages=1
+        )
+
+        assert meta["stopped_reason"] == "exhausted"
+        assert cursor_siguiente(meta, cursor_viejo) == {
+            "last_seen_updated": cursor_viejo,
+            "etag": None,
+            "last_modified": None,
+        }
+        assert mock_event.call_args.args[0] == EVENTO_TOPE_SIN_CURSOR
+
+    @patch("scraper.atom_live.record_event")
+    @patch("scraper.atom_live.fetch_atom_page")
+    @patch("scraper.atom_live.time.sleep")
+    def test_cursor_alcanzado_avanza_al_mas_nuevo(self, mock_sleep, mock_fetch, mock_event):
+        from scraper.atom_live import cursor_siguiente
+
+        mock_fetch.return_value = FetchResult(content=_ATOM_PAGE_1, status_code=200, etag='"e1"')
+
+        _, meta = iter_live_entries(
+            last_seen_updated="2026-05-01T09:30:00Z", start_url="https://x.com/feed"
+        )
+
+        assert cursor_siguiente(meta, "2026-05-01T09:30:00Z") == {
+            "last_seen_updated": "2026-05-01T10:00:00Z",
+            "etag": '"e1"',
+            "last_modified": None,
+        }
+        mock_event.assert_not_called()
+
+
+class TestCacheCondicional:
+    @patch("scraper.atom_live.fetch_atom_page")
+    @patch("scraper.atom_live.time.sleep")
+    def test_etag_y_last_modified_solo_en_la_primera_pagina(self, mock_sleep, mock_fetch):
+        pages = {
+            "https://x.com/feed": FetchResult(content=_ATOM_PAGE_1, status_code=200),
+            _PAGE2_URL: FetchResult(content=_ATOM_PAGE_2, status_code=200),
+        }
+        mock_fetch.side_effect = lambda url, **kw: pages[url]
+
+        iter_live_entries(
+            last_seen_updated="2026-04-01T00:00:00Z",
+            start_url="https://x.com/feed",
+            etag='"prev"',
+            last_modified="Sat, 05 Jul 2026 10:00:00 GMT",
+        )
+
+        primera, segunda = mock_fetch.call_args_list
+        assert primera.kwargs == {
+            "etag": '"prev"',
+            "last_modified": "Sat, 05 Jul 2026 10:00:00 GMT",
+        }
+        assert segunda.kwargs == {}
+
+    def test_conector_placsp_pasa_el_etag_del_cursor(self):
+        from scraper.connectors.placsp import PlacspAtomConnector
+
+        meta = {
+            "newest_updated": None,
+            "etag": '"prev"',
+            "last_modified": "lm",
+            "stopped_reason": "not_modified",
+        }
+        with patch("scraper.atom_live.iter_live_entries", return_value=([], meta)) as mock_iter:
+            conector = PlacspAtomConnector()
+            cursor = {
+                "last_seen_updated": "2026-07-04T00:00:00Z",
+                "etag": '"prev"',
+                "last_modified": "lm",
+            }
+            assert list(conector.fetch(cursor)) == []
+
+        assert mock_iter.call_args.kwargs["etag"] == '"prev"'
+        assert mock_iter.call_args.kwargs["last_modified"] == "lm"
+        assert conector.new_cursor() == {
+            "last_seen_updated": "2026-07-04T00:00:00Z",
+            "etag": '"prev"',
+            "last_modified": "lm",
+        }
