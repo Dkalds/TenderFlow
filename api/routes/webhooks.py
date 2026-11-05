@@ -119,6 +119,9 @@ def _validate_webhook_url(url: str) -> str:
     return url
 
 
+_URL_NO_PERMITIDA = "La URL del webhook no está permitida."
+
+
 async def _validar_url_resuelta(url: str) -> None:
     """Valida la URL resolviendo su host fuera del event loop.
 
@@ -133,7 +136,7 @@ async def _validar_url_resuelta(url: str) -> None:
         log.info("webhook_url_rechazada", error=str(exc))
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="La URL del webhook no está permitida.",
+            detail=_URL_NO_PERMITIDA,
         ) from exc
 
 
@@ -675,8 +678,10 @@ async def ping(
     try:
         await run_io(_validate_webhook_url, url)
     except ValueError as exc:
+        # El motivo («resuelve a una dirección no global», «DNS resolution
+        # failed for …») es un oráculo de la red interna: al log, no al cliente.
         log.warning("webhook_ping_ssrf_blocked", webhook_id=webhook_id, error=str(exc))
-        return WebhookPingResult(success=False, error=f"SSRF blocked: {exc}")
+        return WebhookPingResult(success=False, error=_URL_NO_PERMITIDA)
 
     headers = {
         "Content-Type": "application/json",
@@ -706,7 +711,12 @@ async def ping(
                 payload_size=len(payload),
             )
             return WebhookPingResult(success=ok, status_code=status_code, attempts=attempt + 1)
-        except (RequestException, ValueError) as exc:
+        except ValueError as exc:
+            # `_post_pinned_webhook` vuelve a resolver el host: un rebinding
+            # entre la validación y el envío llega aquí. No es transitorio.
+            log.warning("webhook_ping_ssrf_blocked", webhook_id=webhook_id, error=str(exc))
+            return WebhookPingResult(success=False, error=_URL_NO_PERMITIDA, attempts=attempt + 1)
+        except RequestException as exc:
             last_exc = exc
             if attempt < max_attempts - 1:
                 await _asyncio.sleep(0.5 * (2**attempt))  # 0.5s, 1s

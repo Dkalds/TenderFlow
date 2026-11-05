@@ -22,7 +22,7 @@ from fastapi import (
 from pydantic import BaseModel, Field, field_validator
 
 from api.concurrency import run_db
-from api.identidad import resolver_id_externo
+from api.identidad import id_vigente, resolver_id_externo
 from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
     _adj_repo,
@@ -435,6 +435,7 @@ class CompararBody(BaseModel):
 )
 async def post_comparar_fichas(
     body: CompararBody,
+    response: Response,
     _ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> ComparacionFichas:
     """F2.8 — determinista y sin LLM.
@@ -445,13 +446,17 @@ async def post_comparar_fichas(
     que una columna en blanco no se confunda con un pliego que no exige nada.
     """
 
+    # Un id anterior a la re-key de PLACSP se lee por el vigente, pero la
+    # respuesta conserva el que pidió el cliente: es su clave para pintar columnas.
+    vigentes = {str(i): await id_vigente(str(i), response) for i in body.ids}
+
     def _trabajo() -> ComparacionFichas:
         from services.rag.fact_sheet import get_fact_sheet
 
         fichas: dict[str, TenderFactSheet | None] = {}
-        for id_externo in body.ids:
-            record = get_fact_sheet(str(id_externo))
-            fichas[str(id_externo)] = record.facts if record else None
+        for pedido, vigente in vigentes.items():
+            record = get_fact_sheet(vigente)
+            fichas[pedido] = record.facts if record else None
         return comparar(fichas)
 
     return await run_db(_trabajo)

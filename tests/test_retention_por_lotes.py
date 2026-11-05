@@ -102,6 +102,8 @@ def test_exigir_completa_falla_con_cualquier_menos_uno() -> None:
     exigir_completa({"audit_log": 0, "documento_blobs": {"borrados": 0}})
     with pytest.raises(RetencionIncompleta, match="access_log, users"):
         exigir_completa({"users": -1, "audit_log": 3, "access_log": -1})
+    with pytest.raises(RetencionIncompleta, match="documento_blobs"):
+        exigir_completa({"audit_log": 0, "documento_blobs": {"candidatos": 3, "error": -1}})
 
 
 def test_purga_los_jobs_terminados_y_respeta_la_cola_viva(tmp_db) -> None:

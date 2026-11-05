@@ -24,6 +24,7 @@ from services.jobs import (
     enqueue,
     fail,
     job_activo,
+    latido,
     obtener,
     reclamar_caducados,
 )
@@ -236,6 +237,45 @@ def test_un_lock_vivo_no_se_reclama(tmp_db) -> None:
     enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-VIVO", "model": "m"})
     assert claim("worker-1") is not None
     assert reclamar_caducados(ttl_segundos=900) == ([], [])
+
+
+def test_el_latido_mantiene_vivo_el_lock_de_un_handler_largo(tmp_db) -> None:
+    """Un job que dura más que el TTL no lo libera la barrida mientras late."""
+    from db.database import connect
+
+    job_id = enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-LARGO", "model": "m"})
+    job = claim("worker-lento")
+    assert job is not None
+    with connect() as c:
+        c.execute("UPDATE jobs SET locked_at = NOW() - INTERVAL '1 hour' WHERE id = %s", (job_id,))
+
+    hace_un_minuto = datetime.now(UTC) - timedelta(minutes=1)
+    with latido(job, "worker-lento", intervalo_segundos=0.05):
+        espera = threading.Event()
+        for _ in range(100):
+            actual = obtener(job_id)
+            if (
+                actual is not None
+                and actual.locked_at is not None
+                and (actual.locked_at > hace_un_minuto)
+            ):
+                break
+            espera.wait(0.05)
+        # Con TTL de 60 s, el lock de hace una hora ya habría caducado.
+        assert reclamar_caducados(ttl_segundos=60) == ([], [])
+    vivo = obtener(job_id)
+    assert vivo is not None and vivo.estado == "running" and vivo.locked_by == "worker-lento"
+
+
+def test_el_latido_no_renueva_un_lock_que_ya_es_de_otro(tmp_db) -> None:
+    """Si la barrida se llevó el job y otro lo reclamó, el latido viejo se calla."""
+    enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-AJENO", "model": "m"})
+    assert claim("worker-viejo") is not None
+    assert reclamar_caducados(ttl_segundos=0) != ([], [])
+    nuevo = claim("worker-nuevo")
+    assert nuevo is not None
+    assert _REPO.renovar_lock(nuevo.id, worker_id="worker-viejo") is False
+    assert _REPO.renovar_lock(nuevo.id, worker_id="worker-nuevo") is True
 
 
 def test_un_job_que_mata_al_proceso_no_se_reencola_sin_fin(tmp_db, monkeypatch) -> None:

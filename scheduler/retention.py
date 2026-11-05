@@ -226,7 +226,12 @@ def exigir_completa(resultado: Mapping[str, object]) -> None:
     avisaba. Así se vio pasada tras pasada el ``UndefinedColumn`` de
     ``licitaciones_history`` (ver :data:`COLUMNA_FECHA`).
     """
-    fallidas = sorted(tabla for tabla, n in resultado.items() if n == -1)
+    # Un desglose anidado (los binarios del almacén) falla igual con un -1 dentro.
+    fallidas = sorted(
+        tabla
+        for tabla, n in resultado.items()
+        if n == -1 or (isinstance(n, Mapping) and -1 in n.values())
+    )
     if fallidas:
         raise RetencionIncompleta(f"retención incompleta, tablas con error: {', '.join(fallidas)}")
 

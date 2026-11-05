@@ -52,6 +52,37 @@ def test_ip_del_cliente(scope: Scope, esperada: str | None) -> None:
     assert _ip_del_cliente(scope) == esperada
 
 
+def _scope_cf(par: str, cf: str, forwarded: str) -> Scope:
+    return {
+        "type": "http",
+        "headers": [
+            (b"x-forwarded-for", forwarded.encode("latin-1")),
+            (b"cf-connecting-ip", cf.encode("latin-1")),
+        ],
+        "client": (par, 12345),
+    }
+
+
+@pytest.mark.parametrize(
+    ("scope", "esperada"),
+    [
+        # La cadena real tras Render: el último salto global es el borde de
+        # Cloudflare (172.71.x); quien llama es lo que dice CF-Connecting-IP.
+        (_scope_cf("10.19.4.7", "93.184.216.34", "93.184.216.34, 172.71.1.2"), "93.184.216.34"),
+        (
+            _scope_cf("10.19.4.7", "2a00:1450:4001:81b::9", "x, 172.71.1.2"),
+            "2a00:1450:4001:81b::/64",
+        ),
+        # Basura en CF-Connecting-IP: se vuelve a la cadena.
+        (_scope_cf("10.19.4.7", "no-es-ip", "93.184.216.34"), "93.184.216.34"),
+        # Con un par público no hay proxy delante: la cabecera la escribiría el cliente.
+        (_scope_cf("93.184.216.34", "1.2.3.4", ""), "93.184.216.34"),
+    ],
+)
+def test_tras_el_proxy_manda_cf_connecting_ip(scope: Scope, esperada: str) -> None:
+    assert _ip_del_cliente(scope) == esperada
+
+
 def test_el_middleware_deja_la_ip_visible_en_el_handler_y_la_restablece() -> None:
     vistas: list[str | None] = []
 

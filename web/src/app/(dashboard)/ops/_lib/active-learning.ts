@@ -52,20 +52,14 @@ function metricasNumericas(valor: unknown): Record<string, number> {
   );
 }
 
-/**
- * `active` de `/feedback/model-info` llega sin tipar (`dict[str, Any]` en el
- * backend): se comprueba su forma aquí en vez de darla por buena.
- * shortcut: validación local del dict, hasta que el backend lo declare como DTO.
- */
+/** La versión activa de `/feedback/model-info`, con solo sus métricas numéricas. */
 export function leerModeloActivo(active: ModelInfo["active"] | undefined): ModelVersionInfo | null {
   if (!active) return null;
-  const { version, trained_at, metrics, trained_on_n_feedbacks } = active;
-  if (typeof version !== "number" && typeof version !== "string") return null;
   return {
-    version,
-    trained_at: typeof trained_at === "string" ? trained_at : null,
-    metrics: metricasNumericas(metrics),
-    trained_on_n_feedbacks: typeof trained_on_n_feedbacks === "number" ? trained_on_n_feedbacks : null,
+    version: active.version,
+    trained_at: active.trained_at,
+    metrics: metricasNumericas(active.metrics),
+    trained_on_n_feedbacks: active.trained_on_n_feedbacks ?? null,
   };
 }
 

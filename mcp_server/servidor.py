@@ -242,40 +242,58 @@ class _CookieDeLogin:
             ligadura_navegador.reset(marca)
 
 
+def _ip_publica(valor: str) -> str | None:
+    """``valor`` como clave de cubo si es una IP global; IPv6 agrupada por su /64."""
+    try:
+        ip = ipaddress.ip_address(valor.strip())
+    except ValueError:
+        return None
+    if not ip.is_global:  # privada, loopback, link-local, CGNAT...
+        return None
+    if isinstance(ip, ipaddress.IPv6Address):
+        return str(ipaddress.ip_network(f"{ip}/64", strict=False))
+    return str(ip)
+
+
 def _ip_del_cliente(scope: Scope) -> str | None:
-    """La IP pública de quien llama: el último salto no privado de ``X-Forwarded-For``.
+    """La IP pública de quien llama, para los cubos por IP del rate limit.
 
-    Detrás del proxy de Render el par TCP es un nodo interno (``10.x``) y el
-    proxy **añade** la IP del cliente al final de ``X-Forwarded-For``; lo que va
-    a la izquierda lo escribe quien llama. Por eso se recorren los saltos de
-    derecha a izquierda (el par TCP cuenta como el último) y gana el primero que
-    es una IP global (ni privada, ni de loopback, ni compartida). Una IPv6 se
-    agrupa por su /64, que es lo que controla un abonado. ``None`` si no hay
-    ninguna pública (desarrollo local): entonces rigen solo los límites globales.
+    Delante del contenedor hay dos saltos: el borde de Cloudflare y el proxy
+    interno de Render (el par TCP, ``10.x``). La cadena que llega es
+    ``X-Forwarded-For: <lo que escriba el cliente>, <cliente>, <borde de
+    Cloudflare>`` (docs/rfc/2026-10-24-rfc-ip-del-cliente-tras-vercel-y-render.md
+    §«Qué llega»), así que el último salto global de esa cabecera es el **borde
+    de Cloudflare**, no el cliente: todos los que entran por el mismo nodo
+    compartirían cubo. Por eso, cuando el par TCP es interno, manda
+    ``CF-Connecting-IP``, que Cloudflare fija con quien le abrió la conexión y
+    rechaza (403) si viene falsificada.
 
-    No se puede comprobar desde el repo qué cabeceras pone la plataforma delante
-    del MCP: verificarlo en producción (``docs/runbooks/mcp-interno.md``).
+    Sin esa cabecera (desarrollo local, otra plataforma) se recorre
+    ``X-Forwarded-For`` de derecha a izquierda, con el par TCP como último
+    salto, y gana el primero global. Una IPv6 se agrupa por su /64, que es lo
+    que controla un abonado. ``None`` si no hay ninguna pública: entonces rigen
+    solo los límites globales.
     """
-    # shortcut: se fía del último salto global de `X-Forwarded-For` sin saber qué
-    # cabeceras pone la plataforma delante del MCP; subirlo cuando se compruebe en
-    # producción (si todos cuentan como la misma IP, el cubo por IP degrada al global).
-    saltos: list[str] = []
+    # shortcut: fiarse de `CF-Connecting-IP` presupone que Render sigue detrás de
+    # Cloudflare (no lo documenta); si dejara de estarlo y la cabecera pasara tal
+    # cual, un cliente podría repartirse entre cubos por IP inventados (los límites
+    # globales siguen mandando). Revisarlo si Render cambia de CDN.
+    cabeceras: dict[bytes, list[str]] = {}
     for nombre, valor in scope.get("headers", []):
-        if nombre == b"x-forwarded-for":
-            saltos.extend(s.strip() for s in valor.decode("latin-1").split(","))
+        cabeceras.setdefault(nombre.lower(), []).append(valor.decode("latin-1"))
     par = scope.get("client")
-    if par:
-        saltos.append(str(par[0]))
+    par_ip = str(par[0]) if par else None
+    tras_proxy = par_ip is None or _ip_publica(par_ip) is None
+    if tras_proxy:
+        for valor in cabeceras.get(b"cf-connecting-ip", []):
+            if (ip := _ip_publica(valor)) is not None:
+                return ip
+    saltos = [s for v in cabeceras.get(b"x-forwarded-for", []) for s in v.split(",")]
+    if par_ip:
+        saltos.append(par_ip)
     for salto in reversed(saltos):
-        try:
-            ip = ipaddress.ip_address(salto)
-        except ValueError:
-            continue
-        if not ip.is_global:  # privada, loopback, link-local, CGNAT...
-            continue
-        if isinstance(ip, ipaddress.IPv6Address):
-            return str(ipaddress.ip_network(f"{ip}/64", strict=False))
-        return str(ip)
+        if (ip := _ip_publica(salto)) is not None:
+            return ip
     return None
 
 
