@@ -23,7 +23,7 @@ from argon2 import PasswordHasher
 from fastapi import HTTPException, Response
 from starlette.requests import Request
 
-from api.routes import auth
+from api.routes.auth import login as auth
 from shared.auth_core import hash_password, verify_password_against_dummy
 
 _CORREO = "ana@example.com"

@@ -29,6 +29,7 @@ import api.auth as api_auth
 import api.routes.admin_users as admin_users
 import api.routes.auth as auth_routes
 import api.routes.me as me_routes
+from api.routes.auth import comun, oauth, sesion
 from config import settings
 
 _SESSION_TOKEN = "tok-de-prueba"  # pragma: allowlist secret
@@ -48,7 +49,7 @@ def _stub_session(
     es uno en vez de tres.
     """
     monkeypatch.setattr(
-        auth_routes,
+        comun,
         "validate_session_principal",
         lambda token: {
             "user_id": _USER_ID,
@@ -163,12 +164,12 @@ def test_logout_funciona_con_mfa_pendiente(monkeypatch: pytest.MonkeyPatch) -> N
     """Abandonar un login a medias no puede exigir completarlo."""
     revocadas: list[str] = []
     _stub_session(monkeypatch, mfa_required=True)
-    monkeypatch.setattr(auth_routes, "revoke_session", revocadas.append)
+    monkeypatch.setattr(sesion, "revoke_session", revocadas.append)
     client = _mini_app(auth_routes.router)
 
     resp = client.post(
         "/api/v1/auth/logout",
-        headers={"X-CSRF-Token": auth_routes._csrf_for_session(_SESSION_TOKEN)},
+        headers={"X-CSRF-Token": comun._csrf_for_session(_SESSION_TOKEN)},
     )
 
     assert resp.status_code == 200
@@ -192,7 +193,7 @@ def test_totp_verify_funciona_con_mfa_pendiente(monkeypatch: pytest.MonkeyPatch)
     resp = client.post(
         "/api/v1/auth/totp/verify",
         json={"code": "123456"},
-        headers={"X-CSRF-Token": auth_routes._csrf_for_session(_SESSION_TOKEN)},
+        headers={"X-CSRF-Token": comun._csrf_for_session(_SESSION_TOKEN)},
     )
 
     assert resp.status_code == 200
@@ -441,12 +442,12 @@ def test_oauth_admin_promueve_si_esta_en_la_lista(monkeypatch: pytest.MonkeyPatc
     llamadas: list[tuple[int, bool, str | None]] = []
     monkeypatch.setattr(settings, "OAUTH_ADMIN_EMAILS", "jefe@example.com")
     monkeypatch.setattr(
-        auth_routes,
+        oauth,
         "set_admin",
         lambda uid, value, granted_by=None: llamadas.append((uid, value, granted_by)),
     )
 
-    auth_routes._sync_oauth_admin(3, "jefe@example.com")
+    oauth._sync_oauth_admin(3, "jefe@example.com")
 
     assert llamadas == [(3, True, "oauth")]
 
@@ -459,16 +460,16 @@ def test_oauth_admin_degrada_si_salio_de_la_lista(monkeypatch: pytest.MonkeyPatc
     llamadas: list[tuple[int, bool, str | None]] = []
     monkeypatch.setattr(settings, "OAUTH_ADMIN_EMAILS", "jefe@example.com")
     monkeypatch.setattr(
-        auth_routes,
+        oauth,
         "set_admin",
         lambda uid, value, granted_by=None: llamadas.append((uid, value, granted_by)),
     )
     # La degradación se registra en el log, y para saber si hay algo que
     # registrar hace falta el estado previo.
-    monkeypatch.setattr(auth_routes, "is_admin", lambda uid: True)
-    monkeypatch.setattr(auth_routes, "admin_granted_by", lambda uid: "oauth")
+    monkeypatch.setattr(oauth, "is_admin", lambda uid: True)
+    monkeypatch.setattr(oauth, "admin_granted_by", lambda uid: "oauth")
 
-    auth_routes._sync_oauth_admin(3, "exjefe@example.com")
+    oauth._sync_oauth_admin(3, "exjefe@example.com")
 
     assert llamadas == [(3, False, None)]
 
@@ -480,14 +481,14 @@ def test_oauth_admin_no_degrada_una_concesion_del_panel(
     llamadas: list[tuple[int, bool, str | None]] = []
     monkeypatch.setattr(settings, "OAUTH_ADMIN_EMAILS", "jefe@example.com")
     monkeypatch.setattr(
-        auth_routes,
+        oauth,
         "set_admin",
         lambda uid, value, granted_by=None: llamadas.append((uid, value, granted_by)),
     )
-    monkeypatch.setattr(auth_routes, "is_admin", lambda uid: True)
-    monkeypatch.setattr(auth_routes, "admin_granted_by", lambda uid: "panel")
+    monkeypatch.setattr(oauth, "is_admin", lambda uid: True)
+    monkeypatch.setattr(oauth, "admin_granted_by", lambda uid: "panel")
 
-    auth_routes._sync_oauth_admin(3, "exjefe@example.com")
+    oauth._sync_oauth_admin(3, "exjefe@example.com")
 
     assert llamadas == []
 
@@ -496,9 +497,9 @@ def test_oauth_admin_no_toca_nada_si_la_lista_esta_vacia(monkeypatch: pytest.Mon
     """Lista vacía significa "OAuth no gobierna el flag", no "nadie es admin"."""
     llamadas: list[tuple[int, bool]] = []
     monkeypatch.setattr(settings, "OAUTH_ADMIN_EMAILS", "")
-    monkeypatch.setattr(auth_routes, "set_admin", lambda uid, value: llamadas.append((uid, value)))
+    monkeypatch.setattr(oauth, "set_admin", lambda uid, value: llamadas.append((uid, value)))
 
-    auth_routes._sync_oauth_admin(3, "quien@example.com")
+    oauth._sync_oauth_admin(3, "quien@example.com")
 
     assert llamadas == []
 
@@ -529,10 +530,10 @@ def test_callback_oauth_manda_a_verificar_si_la_cuenta_tiene_mfa() -> None:
     Google y Microsoft solo delegan en él. Comprobarlo en el cuerpo compartido
     cubre además a Microsoft, que antes no existía.
     """
-    fuente = inspect.getsource(auth_routes._oauth_callback_impl)
+    fuente = inspect.getsource(oauth._oauth_callback_impl)
 
     assert "is_totp_required" in fuente
     assert "/login?mfa=required" in fuente
     # Las dos rutas publicadas pasan por ahí; ninguna reimplementa el gate.
-    for ruta in (auth_routes.google_callback, auth_routes.oauth_callback):
+    for ruta in (oauth.google_callback, oauth.oauth_callback):
         assert "_oauth_callback_impl" in inspect.getsource(ruta)

@@ -710,7 +710,7 @@ def sesion(monkeypatch, client):
     flujo de login: lo que estos tests verifican es el reenvío del ámbito, no
     la autenticación.
     """
-    import api.routes.auth as auth_routes
+    import api.routes.auth.comun as auth_routes
 
     monkeypatch.setattr(
         auth_routes,

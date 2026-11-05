@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from api.routes.auth import _sync_oauth_admin
+from api.routes.auth.oauth import _sync_oauth_admin
 from db.users import admin_granted_by, create_user, is_admin, set_admin
 
 _LISTA = "jefa@example.test"
@@ -22,7 +22,7 @@ _LISTA = "jefa@example.test"
 
 def _con_lista_oauth():
     """Parchea la lista de admins de OAuth con un único email."""
-    return patch("api.routes.auth.settings.OAUTH_ADMIN_EMAILS", _LISTA)
+    return patch("api.routes.auth.oauth.settings.OAUTH_ADMIN_EMAILS", _LISTA)
 
 
 def test_el_panel_registra_su_procedencia(tmp_db):
@@ -89,7 +89,7 @@ def test_sin_lista_configurada_oauth_no_toca_nada(tmp_db):
     user_id = create_user(email="intacta@example.test", password_hash="h")
     set_admin(user_id, True, granted_by="panel")
 
-    with patch("api.routes.auth.settings.OAUTH_ADMIN_EMAILS", ""):
+    with patch("api.routes.auth.oauth.settings.OAUTH_ADMIN_EMAILS", ""):
         _sync_oauth_admin(user_id, "intacta@example.test")
 
     assert is_admin(user_id) is True

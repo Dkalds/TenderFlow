@@ -50,7 +50,7 @@ def test_cu31_pedir_acceso_recibirlo_y_crearse_la_cuenta(client, api_db):
     buzon = _Buzon()
     persona = TestClient(app, raise_server_exceptions=True)
     with (
-        patch("api.routes.auth._registro_abierto", return_value=False),
+        patch("api.routes.auth.registro._registro_abierto", return_value=False),
         patch("services.access_grants.oauth_email_allowed", return_value=False),
         patch("services.solicitudes_acceso.enviar_email_transaccional", new=buzon),
         patch("services.email_verification.enviar_email_transaccional", new=buzon),

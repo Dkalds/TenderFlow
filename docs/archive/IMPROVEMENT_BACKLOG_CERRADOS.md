@@ -332,7 +332,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
   - `get_or_create_oauth_user` no vincula la identidad de otro proveedor a un usuario existente solo porque el correo coincide.
   - Tests: un token de Entra firmado y válido cuyo correo no está verificado no entra, y no altera el `oauth_sub` de un usuario existente con esa dirección.
   - Comprobado en Render que `OAUTH_MICROSOFT_CLIENT_ID` está vacío mientras esto siga abierto. Si no lo está, este ítem es P0.
-- **Files de partida:** [shared/identity.py](../../shared/identity.py), [api/routes/auth.py](../../api/routes/auth.py), [db/users.py](../../db/users.py), [docs/adr/ADR-030-identidad-user-id-y-oidc.md](../adr/ADR-030-identidad-user-id-y-oidc.md)
+- **Files de partida:** [shared/identity.py](../../shared/identity.py), [api/routes/auth/](../../api/routes/auth/__init__.py), [db/users.py](../../db/users.py), [docs/adr/ADR-030-identidad-user-id-y-oidc.md](../adr/ADR-030-identidad-user-id-y-oidc.md)
 - **Riesgo:** alto — toca el login y la vinculación de cuentas; el camino de Google no debe cambiar.
 
 **Recuperación de contraseña, puntos 3, 4, 5, 6 y 8 — cerrados el 2026-10-23** (aprobados por el propietario; el ítem sigue abierto en el backlog con 1, 2 y 7):
@@ -1456,7 +1456,7 @@ Resueltos por los streams de [docs/plans/2026-08-plan-saneamiento.md](plans/2026
   - Columna que registre el origen de la concesión (p.ej. `admin_granted_by` con valores `oauth` / `panel`), vía nueva revisión Alembic (append-only, §3.3).
   - `_sync_oauth_admin` solo degrada concesiones de origen `oauth`; las del panel sobreviven al login de Google.
   - Test que promueve desde el panel, hace login OAuth con la lista configurada sin ese email, y verifica que el flag **se conserva**.
-- **Files de partida:** [api/routes/auth.py](../../api/routes/auth.py), [api/routes/admin_users.py](../../api/routes/admin_users.py)
+- **Files de partida:** [api/routes/auth/](../../api/routes/auth/__init__.py), [api/routes/admin_users.py](../../api/routes/admin_users.py)
 - **Riesgo:** bajo en código, medio en proceso — requiere migración de schema, que necesita OK humano (§6).
 - **Cerrado:** 2026-08-07, commit `ad2574e`.
 

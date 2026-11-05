@@ -24,7 +24,7 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException, Request
 
-import api.routes.auth as auth_routes
+import api.routes.auth.comun as auth_routes
 from api.routes.dual_auth import require_any_auth
 from db.sessions import session_max_age_seconds
 from shared.csrf import generate_csrf_token

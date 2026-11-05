@@ -241,7 +241,7 @@ def test_sin_sesion_no_se_cambia():
 
 
 def test_una_cuenta_sin_contrasena_recibe_409(client):
-    from api.routes.auth import _csrf_for_session
+    from api.routes.auth.comun import _csrf_for_session
     from db.sessions import create_session
     from db.users import get_or_create_oauth_user
 
@@ -268,10 +268,13 @@ def test_una_cuenta_sin_contrasena_recibe_409(client):
 
 def test_el_reset_encola_el_aviso_al_titular():
     with (
-        patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch(
+            "api.routes.auth.contrasena._password_reset_rate_allowed",
+            new=AsyncMock(return_value=True),
+        ),
         patch("db.password_reset.reset_token_vigente", return_value=True),
         patch("db.password_reset.consume_reset_token", MagicMock(return_value=7)),
-        patch("api.routes.auth.log_event"),
+        patch("api.routes.auth.contrasena.log_event"),
         patch("services.password_reset.notify_password_changed") as avisar,
     ):
         respuesta = TestClient(app).post(_CONFIRM, json={"token": _TOKEN, "password": _NUEVA})
@@ -282,7 +285,10 @@ def test_el_reset_encola_el_aviso_al_titular():
 
 def test_un_reset_fallido_no_avisa():
     with (
-        patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch(
+            "api.routes.auth.contrasena._password_reset_rate_allowed",
+            new=AsyncMock(return_value=True),
+        ),
         patch("db.password_reset.reset_token_vigente", return_value=True),
         patch("db.password_reset.consume_reset_token", MagicMock(return_value=None)),
         patch("services.password_reset.notify_password_changed") as avisar,

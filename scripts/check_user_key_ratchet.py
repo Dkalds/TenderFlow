@@ -203,7 +203,9 @@ CONGELADOS: frozenset[str] = frozenset(
         "scripts/check_follows_paridad.py",
         "api/routes/analytics.py",
         "api/routes/ask.py",
-        "api/routes/auth.py",
+        # `api/routes/auth.py` se partió en paquete por tema (2026-11). El único
+        # uso es `_session_principal`, que se fue con las dependencias de sesión.
+        "api/routes/auth/comun.py",
         "api/routes/competitive.py",
         "api/routes/dual_auth.py",
         "api/routes/exports.py",

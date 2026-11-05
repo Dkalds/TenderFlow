@@ -21,7 +21,7 @@ from fastapi import Request, Response
 def test_callback_success_sets_telemetry_cookie_only_without_mfa(
     monkeypatch, mfa_required, telemetry_cookie_expected
 ):
-    from api.routes import auth as auth_routes
+    from api.routes.auth import oauth as auth_routes
 
     class FakeTokenResponse:
         status_code = 200
@@ -195,7 +195,7 @@ def callback_vigilado(monkeypatch):
     Devuelve el módulo de rutas y la lista de lo que llegó a ejecutarse pasado
     el control de acceso. Con la dirección denegada tiene que quedar vacía.
     """
-    from api.routes import auth as auth_routes
+    from api.routes.auth import oauth as auth_routes
 
     ejecutado: list[str] = []
 

@@ -36,12 +36,18 @@ _ORIGEN = "https://app.example"
 def test_request_response_does_not_enumerate_accounts():
     client = TestClient(app)
     with (
-        patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch(
+            "api.routes.auth.contrasena._password_reset_rate_allowed",
+            new=AsyncMock(return_value=True),
+        ),
         patch("services.password_reset.issue_password_reset", return_value=(False, None)),
     ):
         missing = client.post(_REQUEST, json={"email": "missing@example.com"})
     with (
-        patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch(
+            "api.routes.auth.contrasena._password_reset_rate_allowed",
+            new=AsyncMock(return_value=True),
+        ),
         patch("services.password_reset.issue_password_reset", return_value=(True, "x" * 43)),
         patch("services.password_reset.send_password_reset_email", return_value=True),
     ):
@@ -54,7 +60,10 @@ def test_request_response_does_not_enumerate_accounts():
 def test_request_rate_limit_keeps_generic_response():
     client = TestClient(app)
     with (
-        patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=False)),
+        patch(
+            "api.routes.auth.contrasena._password_reset_rate_allowed",
+            new=AsyncMock(return_value=False),
+        ),
         patch("services.password_reset.issue_password_reset") as issue,
     ):
         response = client.post(_REQUEST, json={"email": "someone@example.com"})
@@ -66,7 +75,10 @@ def test_request_rate_limit_keeps_generic_response():
 def test_confirm_rejects_invalid_or_expired_token():
     client = TestClient(app)
     with (
-        patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch(
+            "api.routes.auth.contrasena._password_reset_rate_allowed",
+            new=AsyncMock(return_value=True),
+        ),
         patch("db.password_reset.reset_token_vigente", return_value=True),
         patch("db.password_reset.consume_reset_token", return_value=None),
     ):
@@ -83,10 +95,13 @@ def test_confirm_con_un_token_inexistente_no_calcula_argon2():
     """Un token inventado no debe costar el hash de 64 MiB de la contraseña nueva."""
     client = TestClient(app)
     with (
-        patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch(
+            "api.routes.auth.contrasena._password_reset_rate_allowed",
+            new=AsyncMock(return_value=True),
+        ),
         patch("db.password_reset.reset_token_vigente", return_value=False) as vigente,
         patch("db.password_reset.consume_reset_token") as consume,
-        patch("api.routes.auth.hash_password") as hashear,
+        patch("api.routes.auth.contrasena.hash_password") as hashear,
     ):
         response = client.post(_CONFIRM, json={"token": "x" * 43, "password": _NEW_PASSWORD})
 
@@ -136,15 +151,15 @@ def test_token_is_single_use_and_revokes_sessions(tmp_db):
 
 def _alta(client: TestClient, password: str):
     """``POST /auth/register`` con la persistencia simulada: solo importa la política."""
-    from api.routes import auth as auth_mod
+    from api.routes.auth import registro as auth_mod
 
     with (
         patch.object(auth_mod.settings, "ALLOW_SELF_REGISTRATION", True),
-        patch("api.routes.auth.get_user_by_email", return_value=None),
-        patch("api.routes.auth.create_user", return_value=7),
-        patch("api.routes.auth._activar_invitaciones"),
-        patch("api.routes.auth._set_session_cookie"),
-        patch("api.routes.auth.log_access"),
+        patch("api.routes.auth.registro.get_user_by_email", return_value=None),
+        patch("api.routes.auth.registro.create_user", return_value=7),
+        patch("api.routes.auth.registro._activar_invitaciones"),
+        patch("api.routes.auth.registro._set_session_cookie"),
+        patch("api.routes.auth.registro.log_access"),
     ):
         return client.post(_REGISTER, json={"email": "alta@example.com", "password": password})
 
@@ -152,10 +167,13 @@ def _alta(client: TestClient, password: str):
 def _confirmar(client: TestClient, password: str, *, consume: MagicMock | None = None):
     """``POST /auth/password-reset/confirm`` con un token que el repositorio da por bueno."""
     with (
-        patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch(
+            "api.routes.auth.contrasena._password_reset_rate_allowed",
+            new=AsyncMock(return_value=True),
+        ),
         patch("db.password_reset.reset_token_vigente", return_value=True),
         patch("db.password_reset.consume_reset_token", consume or MagicMock(return_value=7)),
-        patch("api.routes.auth.log_event"),
+        patch("api.routes.auth.contrasena.log_event"),
     ):
         return client.post(_CONFIRM, json={"token": _TOKEN, "password": password})
 
@@ -189,7 +207,11 @@ def test_alta_y_confirm_pasan_por_la_misma_funcion_de_politica():
 
     veredicto = PasswordCheckResult(is_strong=False, issues=("veredicto de la única política",))
     client = TestClient(app)
-    with patch("api.routes.auth.check_account_password", return_value=veredicto) as politica:
+    politica = MagicMock(return_value=veredicto)
+    with (
+        patch("api.routes.auth.registro.check_account_password", politica),
+        patch("api.routes.auth.contrasena.check_account_password", politica),
+    ):
         alta = _alta(client, _SIN_ESPECIAL)
         confirm = _confirmar(client, _SIN_ESPECIAL)
 
@@ -216,7 +238,10 @@ def test_confirm_rechaza_por_politica_sin_tocar_el_token():
 def test_confirm_limitado_responde_429_con_retry_after_y_no_consume():
     client = TestClient(app)
     with (
-        patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=False)),
+        patch(
+            "api.routes.auth.contrasena._password_reset_rate_allowed",
+            new=AsyncMock(return_value=False),
+        ),
         patch("db.password_reset.consume_reset_token") as consume,
     ):
         response = client.post(_CONFIRM, json={"token": _TOKEN, "password": _NEW_PASSWORD})
@@ -235,11 +260,14 @@ def test_confirm_limitado_responde_429_con_retry_after_y_no_consume():
 
 def test_request_no_hace_en_linea_nada_que_dependa_de_la_cuenta():
     """Con cuenta, la respuesta esperaba a dos escrituras más: se distinguía por tiempo."""
-    from api.routes import auth as auth_mod
+    from api.routes.auth import contrasena as auth_mod
 
     tareas = BackgroundTasks()
     with (
-        patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch(
+            "api.routes.auth.contrasena._password_reset_rate_allowed",
+            new=AsyncMock(return_value=True),
+        ),
         patch("services.password_reset.issue_password_reset", return_value=(True, _TOKEN)) as issue,
         patch("services.password_reset.send_password_reset_email", return_value=True) as send,
         patch("services.password_reset.log_event") as audit,
@@ -317,7 +345,10 @@ def test_la_respuesta_sale_entera_antes_de_empezar_el_trabajo_aplazado():
         await app(scope, receive, send)
 
     with (
-        patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch(
+            "api.routes.auth.contrasena._password_reset_rate_allowed",
+            new=AsyncMock(return_value=True),
+        ),
         patch("services.password_reset.process_password_reset_request", side_effect=_aplazado),
     ):
         asyncio.run(_llamar())
@@ -398,11 +429,16 @@ def test_request_responde_igual_aunque_el_trabajo_aplazado_falle():
     # si el fallo se propagara, este `post` no devolvería.
     client = TestClient(app)
     with (
-        patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch(
+            "api.routes.auth.contrasena._password_reset_rate_allowed",
+            new=AsyncMock(return_value=True),
+        ),
         patch("services.password_reset.issue_password_reset", side_effect=RuntimeError("bd")),
     ):
         fallido = client.post(_REQUEST, json={"email": "existing@example.com"})
-    with patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=False)):
+    with patch(
+        "api.routes.auth.contrasena._password_reset_rate_allowed", new=AsyncMock(return_value=False)
+    ):
         limitado = client.post(_REQUEST, json={"email": "existing@example.com"})
 
     assert fallido.status_code == limitado.status_code == 202
@@ -481,7 +517,10 @@ def test_la_url_del_enlace_no_sale_de_la_cabecera_host(origen_frontend: str):
     """Quien pide el enlace no decide a qué dominio apunta el correo de otro."""
     client = TestClient(app)
     with (
-        patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=True)),
+        patch(
+            "api.routes.auth.contrasena._password_reset_rate_allowed",
+            new=AsyncMock(return_value=True),
+        ),
         patch("services.password_reset.create_reset_token_for_email", return_value=True),
         patch("services.password_reset.log_event"),
         patch("services.password_reset.enviar_email_transaccional", return_value=True) as enviar,
