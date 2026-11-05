@@ -1166,7 +1166,7 @@ export interface paths {
         put?: never;
         /**
          * Revocar todas las sesiones activas
-         * @description Revoca todas las sesiones server-side del usuario.
+         * @description Revoca todas las sesiones server-side del usuario, también las de clientes MCP.
          */
         post: operations["logout_all_api_v1_auth_logout_all_post"];
         delete?: never;
