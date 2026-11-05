@@ -868,6 +868,7 @@ Claves: `PRIMARY KEY (id)`
 | `created_at` | `timestamp with time zone` | no |
 | `updated_at` | `timestamp with time zone` | no |
 | `revoked_at` | `timestamp with time zone` | sí |
+| `revoked_by` | `integer` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (kind, value)`
 

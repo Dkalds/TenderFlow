@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from api.routes.dual_auth import require_admin
+from api.routes.dual_auth import id_del_actor, require_admin
 from db.audit import log_event
 from db.sessions import revoke_all_sessions
 from db.users import (
@@ -136,6 +136,7 @@ def admin_set_admin(
     log_event(
         event_type=USER_ADMIN_CHANGED,
         actor=str(admin.get("user_id", "")),
+        user_id=id_del_actor(admin),
         resource=f"user:{user_id}",
         detail=f"is_admin={body.is_admin}",
     )
@@ -192,6 +193,7 @@ def admin_deactivate_user(
     log_event(
         event_type=_EVENTO_POR_ACCION[body.action],
         actor=str(admin.get("user_id", "")),
+        user_id=id_del_actor(admin),
         resource=f"user:{user_id}",
         detail=detail,
     )

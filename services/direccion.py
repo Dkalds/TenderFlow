@@ -67,12 +67,12 @@ from services.pursuits import (
     MINIMO_PERDIDAS_POR_MOTIVO,
     SIN_CODIFICAR,
     PursuitValidationError,
-    _parse_iso_datetime,
     _perdidas_por_motivo,
     _valor_ponderado,
     calcular_radar_quality,
 )
 from shared.dates import a_fecha
+from shared.dates import instante_utc as _utc
 from shared.dto import OrganizationSettings, PerdidaPorMotivo, RadarQuality
 from shared.procedimientos import etiqueta_procedimiento
 
@@ -210,8 +210,7 @@ def _cerradas(filas: Sequence[Mapping[str, Any]], ventana: Ventana) -> list[Mapp
     return [
         fila
         for fila in filas
-        if fila.get("outcome") in ("won", "lost")
-        and ventana.contiene(_parse_iso_datetime(fila.get("closed_at")))
+        if fila.get("outcome") in ("won", "lost") and ventana.contiene(_utc(fila.get("closed_at")))
     ]
 
 
@@ -902,9 +901,7 @@ def construir_cuadro(
     # El Radar mide una cohorte: lo que se abrió desde cada banda y cómo acabó.
     # Por eso su ventana es de altas, no de cierres —con cierres, la tasa de
     # cierre de cualquier banda saldría del 100 %—, y lo dice su panel.
-    cohorte = [
-        fila for fila in filas if actual.contiene(_parse_iso_datetime(fila.get("identified_at")))
-    ]
+    cohorte = [fila for fila in filas if actual.contiene(_utc(fila.get("identified_at")))]
     calidad = calcular_radar_quality(cohorte, period_from=actual.desde, period_to=actual.hasta)
 
     return CuadroDireccion(
@@ -957,12 +954,6 @@ def cuadro_de_direccion(
     with direccion_resuelta(user_id, organization_id) as resuelta:
         filas = PursuitRepository().metric_rows(resuelta)
         return construir_cuadro(resuelta, filas, _ajustes(resuelta), ventana=Ventana(desde, hasta))
-
-
-def _utc(momento: datetime | None) -> datetime | None:
-    if momento is None:
-        return None
-    return momento.replace(tzinfo=UTC) if momento.tzinfo is None else momento.astimezone(UTC)
 
 
 # ── F4.5: actividad de la organización ──────────────────────────────────────

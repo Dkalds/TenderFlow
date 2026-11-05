@@ -72,6 +72,7 @@ from db.sql_fragments import periodo_canonico, plegar_organo
 from observability.logging import get_logger
 from observability.runtime_metrics import dedupe_marked_total, dedupe_match_rate
 from services.normalization import normalize_company
+from shared.cpv import cpv4 as _cpv4
 from shared.identidad_placsp import es_fuente_placsp, expediente_natural
 
 if TYPE_CHECKING:
@@ -160,13 +161,6 @@ def natural_expediente(id_externo: str) -> str:
     gemelo SQL (``db/repositories/dedupe.py``).
     """
     return expediente_natural(id_externo)
-
-
-def _cpv4(cpv: str | None) -> str | None:
-    if not cpv:
-        return None
-    digits = cpv.strip()[:4]
-    return digits if len(digits) == 4 and digits.isdigit() else None
 
 
 def match_key(organo: str | None, expediente: str, cpv: str | None) -> str | None:

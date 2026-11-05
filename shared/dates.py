@@ -108,6 +108,25 @@ def to_iso_datetime(raw_date: str | None, raw_time: str | None = None) -> str | 
     return dt.isoformat()
 
 
+def instante_utc(valor: object) -> datetime | None:
+    """``valor`` (ISO-8601 o ``datetime``) como instante UTC, o ``None``.
+
+    Las columnas de fecha son TEXT (ADR-016/021) y pueden venir sin offset, con
+    ``Z`` o con el ``+00`` corto de ``now()::text``; sin offset vale UTC, no la
+    hora local. Una fecha sola vale su medianoche UTC.
+    """
+    if isinstance(valor, datetime):
+        momento = valor
+    elif isinstance(valor, str) and valor.strip():
+        try:
+            momento = datetime.fromisoformat(valor.strip())
+        except ValueError:
+            return None
+    else:
+        return None
+    return momento.replace(tzinfo=UTC) if momento.tzinfo is None else momento.astimezone(UTC)
+
+
 def hora_local_de_plazo(valor: object) -> str | None:
     """Hora peninsular (``HH:MM``) de un plazo guardado por :func:`to_iso_datetime`.
 

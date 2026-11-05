@@ -12,7 +12,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from api.routes.dual_auth import require_admin, require_any_auth
+from api.routes.dual_auth import id_del_actor, require_admin, require_any_auth
 from db.audit import log_event
 from db.feature_flags import FLAGS_DECLARADAS, list_flags, set_flag
 from observability.logging import get_logger
@@ -96,6 +96,7 @@ def set_feature_flags(
         log_event(
             event_type=FEATURE_FLAG_SET,
             actor=str(admin.get("user_id", "")),
+            user_id=id_del_actor(admin),
             resource=f"feature_flag:{f.flag}",
             detail=f"enabled={f.enabled} rollout_pct={f.rollout_pct}",
         )

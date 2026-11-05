@@ -14,10 +14,11 @@ y sin ``conceder`` solo sale si esa dirección ya entra —lista estática o
 concesión previa, con la misma comprobación que decide el login—: prometerle a
 alguien un acceso que le daría ``email_not_allowed`` es peor que no escribirle.
 
-La auditoría (``solicitud_acceso.estado``, ``access_grant.granted``,
-``access_grant.revoked``) se escribe con ``log_event`` una vez confirmada la
-escritura y es best-effort, como en todo el producto: no comparte transacción
-con la concesión.
+La auditoría de conceder y revocar (``access_grant.granted``,
+``access_grant.revoked`` y el ``solicitud_acceso.estado`` que acompaña a una
+concesión) va en la misma transacción que la escritura (ADR-039, en
+``db/access_grants.py``): si no se puede auditar, no se concede. Un cambio de
+estado sin concesión sigue auditándose con ``log_event``, best-effort.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ from pydantic import BaseModel
 
 from api.concurrency import run_db, run_io
 from api.routes.auth import _oauth_access_allowed
-from api.routes.dual_auth import require_admin
+from api.routes.dual_auth import id_del_actor, require_admin
 from db.access_grants import (
     AccessGrantKind,
     ConcesionInvalida,
@@ -48,8 +49,6 @@ from db.solicitudes_acceso import (
 from observability.logging import get_logger
 from services.solicitudes_acceso import notificar_acceso_concedido
 from shared.audit_events import (
-    ACCESS_GRANT_GRANTED,
-    ACCESS_GRANT_REVOKED,
     SOLICITUD_ACCESO_ESTADO,
 )
 
@@ -115,16 +114,6 @@ class AccessGrantOut(BaseModel):
     revoked_at: datetime | None = None
 
 
-def _id_del_admin(admin: dict[str, Any]) -> int | None:
-    """``users.id`` de quien actúa, para ``audit_log.user_id`` (ADR-030 §D).
-
-    Sin él la fila se guardaba con ``user_id`` NULL y la identidad del actor
-    quedaba solo como texto, en la columna que rellena ``actor``.
-    """
-    valor = admin.get("user_id")
-    return int(valor) if valor is not None else None
-
-
 @router.get("", response_model=list[SolicitudAccesoOut])
 async def listar(
     estado: str | None = Query(None, description="Filtra por estado de la cola"),
@@ -166,7 +155,7 @@ async def cambiar_estado(
             granted = grant_access_request(
                 solicitud_id,
                 body.conceder,
-                granted_by=int(admin["user_id"]),
+                granted_by=id_del_actor(admin),
             )
             if granted is None:
                 return False, None, None
@@ -176,27 +165,19 @@ async def cambiar_estado(
                 "estado": granted["previous_state"],
             }
             actualizada = True
-            grant = granted["grant"]
-            grant_id = grant["id"]
+            grant_id = granted["grant"]["id"]
         else:
             previa = obtener_solicitud(solicitud_id) if avisar else None
             actualizada = actualizar_estado(solicitud_id, body.estado)
-        if actualizada:
+        if actualizada and body.conceder is None:
+            # Con concesión, `grant_access_request` ya lo auditó en su transacción.
             log_event(
                 event_type=SOLICITUD_ACCESO_ESTADO,
                 actor=str(admin.get("user_id", "")),
-                user_id=_id_del_admin(admin),
+                user_id=id_del_actor(admin),
                 resource=f"solicitud_acceso:{solicitud_id}",
                 detail=body.estado,
             )
-            if body.conceder is not None:
-                log_event(
-                    event_type=ACCESS_GRANT_GRANTED,
-                    actor=str(admin.get("user_id", "")),
-                    user_id=_id_del_admin(admin),
-                    resource=f"access_grant:{grant_id}",
-                    detail={"kind": grant["kind"]},
-                )
         return actualizada, previa, grant_id
 
     try:
@@ -253,15 +234,8 @@ async def revocar_grant(
     grant_id: int,
     admin: dict[str, Any] = Depends(require_admin),
 ) -> AccessGrantOut:
-    grant = await run_db(revoke_access, grant_id)
+    # Revocar y auditarlo van en una transacción (ADR-039).
+    grant = await run_db(revoke_access, grant_id, revoked_by=id_del_actor(admin))
     if grant is None:
         raise HTTPException(status_code=404, detail="concesión no encontrada o ya revocada")
-    await run_db(
-        log_event,
-        event_type=ACCESS_GRANT_REVOKED,
-        actor=str(admin.get("user_id", "")),
-        user_id=_id_del_admin(admin),
-        resource=f"access_grant:{grant_id}",
-        detail={"kind": grant["kind"]},
-    )
     return AccessGrantOut.model_validate(grant)

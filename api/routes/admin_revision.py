@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 
 from api.concurrency import run_db
 from api.identidad import id_vigente
-from api.routes.dual_auth import require_admin
+from api.routes.dual_auth import id_del_actor, require_admin
 from db.audit import log_event
 from db.repositories.dedupe import pendientes_count, pendientes_de_revision, resolver_pendiente
 from db.repositories.organos import listar_pendientes, revision_pendiente_count
@@ -173,10 +173,6 @@ def _actor(admin: dict[str, Any]) -> str:
     return str(admin.get("user_id") or "api")
 
 
-def _user_id(admin: dict[str, Any]) -> int | None:
-    return int(admin["user_id"]) if admin.get("user_id") is not None else None
-
-
 #: Nombre del handler de ``GET /analytics/quality`` (``api/routes/analytics.py``):
 #: ``cache_response`` usa el nombre de la función como prefijo de la clave.
 _FUNCION_CALIDAD = "quality"
@@ -273,7 +269,7 @@ async def resolver_duplicado(
         log_event,
         event_type=DEDUPE_REVIEW_RESOLVED,
         actor=actor,
-        user_id=_user_id(admin),
+        user_id=id_del_actor(admin),
         resource=f"licitacion_duplicada:{licitacion_id}",
         detail=f"estado={estado}",
     )
@@ -344,7 +340,7 @@ async def resolver_organo(
         log_event,
         event_type=ORGANO_REVIEW_RESOLVED,
         actor=actor,
-        user_id=_user_id(admin),
+        user_id=id_del_actor(admin),
         resource=f"organo_review:{revision_id}",
         detail=(f"estado={estado} organo_id={decision.organo_id} filas={decision.filas_asignadas}"),
     )

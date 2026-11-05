@@ -16,9 +16,10 @@ Aquí vive el criterio de resolución. El SQL está en
 from __future__ import annotations
 
 import re
-import unicodedata
 from dataclasses import dataclass
 from typing import Any
+
+from shared.texto import sin_tildes
 
 #: `@` seguido de letras, dígitos, punto, guion o guion bajo, o de un nombre
 #: entre llaves para los que llevan espacio: `@{Ana María Ruiz}`.
@@ -37,10 +38,7 @@ def _plegar(texto: str) -> str:
     «Ana Ruiz», y tratarlas como iguales abriría la puerta a resolver una
     mención por un parecido que el autor no escribió.
     """
-    sin_tildes = "".join(
-        c for c in unicodedata.normalize("NFD", texto) if unicodedata.category(c) != "Mn"
-    )
-    return " ".join(sin_tildes.casefold().split())
+    return " ".join(sin_tildes(texto).casefold().split())
 
 
 @dataclass(frozen=True)

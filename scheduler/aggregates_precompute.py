@@ -19,34 +19,14 @@ diaria y de recarga bulk.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
-from db.database import connect, connect_read
+from db.repositories.mat_clusters import filas_para_clustering, reemplazar_clusters
 from db.repositories.publico import refrescar_vista_canonicas
-from db.sql_fragments import technology_observed_sql
 from observability.logging import get_logger
 from observability.ops_events import record_event
 
 log = get_logger(__name__)
-
-_INSERT_CHUNK = 500  # filas por INSERT multi-fila
-
-
-def _insert_batched(conn: Any, sql_prefix: str, columns: int, rows: list[tuple[Any, ...]]) -> None:
-    """Inserta ``rows`` en bloques de ``_INSERT_CHUNK`` con VALUES multi-fila.
-
-    ``executemany`` emite una sentencia (y por tanto un round-trip de red) por
-    fila contra un backend remoto -- a cientos de ms por fila, miles de filas
-    se traducen en minutos de latencia acumulada aunque el cómputo en sí sea
-    instantáneo. Agrupar en un único INSERT multi-fila por bloque reduce esos
-    round-trips de N a N/``_INSERT_CHUNK``.
-    """
-    for i in range(0, len(rows), _INSERT_CHUNK):
-        chunk = rows[i : i + _INSERT_CHUNK]
-        placeholders = ", ".join(f"({', '.join(['%s'] * columns)})" for _ in chunk)
-        values = [v for row in chunk for v in row]
-        conn.execute(f"{sql_prefix} VALUES {placeholders}", values)
-
 
 _N_CLUSTERS = 8  # número de clusters semánticos
 
@@ -54,9 +34,8 @@ _N_CLUSTERS = 8  # número de clusters semánticos
 # ── Clusters semánticos ───────────────────────────────────────────────────────
 
 
-def _compute_clusters(source: Any) -> list[dict[str, Any]]:
+def _compute_clusters(rows: list[tuple[str, str, str]]) -> list[dict[str, Any]]:
     """Calcula la asignación de clusters para las licitaciones dadas."""
-    rows = _load_clustering_data(source) if hasattr(source, "execute") else source
 
     if not rows:
         return []
@@ -100,62 +79,14 @@ def _compute_clusters(source: Any) -> list[dict[str, Any]]:
         return []
 
 
-def _load_clustering_data(conn: Any) -> list[tuple[str, str, str]]:
-    """Carga las licitaciones relevantes para el clustering.
-
-    Limitado a las últimas licitaciones para evitar cómputos excesivos.
-    """
-    # Cargar licitaciones de los últimos 12 meses o un máximo de 50,000 para evitar cómputos excesivos.
-    # Asume que 'fecha_publicacion' es el campo adecuado para el filtrado.
-    # Si no, se podría usar 'id' o 'rowid' con un LIMIT fijo.
-    cutoff_sql = "l.fecha_publicacion >= to_char(CURRENT_DATE - INTERVAL '12 months', 'YYYY-MM-DD')"
-    # El alias ``l`` no estaba y se añade sólo para poder interpolar el
-    # predicado canónico: ``technology_observed_sql`` siempre califica la
-    # columna, porque el índice parcial de v84 se acopla al texto del
-    # ``COALESCE`` y quitarle el prefijo sería otra grafía más. El alias no
-    # cambia el árbol que ve el planificador.
-    return cast(
-        "list[tuple[str, str, str]]",
-        conn.execute(
-            f"""
-        SELECT l.id_externo, l.titulo, SUBSTR(l.descripcion, 1, 500)
-        FROM licitaciones l
-        WHERE l.titulo IS NOT NULL
-          AND {technology_observed_sql()}
-          AND (l.fecha_publicacion IS NULL OR {cutoff_sql})
-        ORDER BY l.fecha_publicacion DESC
-        LIMIT 50000
-        """  # noqa: S608 — los fragmentos interpolados son constantes, sin input de usuario
-        ).fetchall(),
-    )
-
-
-def _persist_clusters(conn: Any, rows: list[dict[str, Any]]) -> None:
-    """Reemplaza atómicamente la tabla mat_clusters."""
-    conn.execute("DELETE FROM mat_clusters")
-    if rows:
-        _insert_batched(
-            conn,
-            "INSERT INTO mat_clusters (id_externo, cluster_id, cluster_label, updated_at)",
-            4,
-            [(r["id_externo"], r["cluster_id"], r["cluster_label"], r["updated_at"]) for r in rows],
-        )
-
-
 # ── Punto de entrada ──────────────────────────────────────────────────────────
 
 
 def _recalcular_clusters() -> int:
     """Recalcula ``mat_clusters`` y devuelve cuántas filas quedaron."""
-    # Cómputo fuera de la transacción de escritura.
-    with connect_read() as read_conn:
-        clustering_data = _load_clustering_data(read_conn)
-
-    clusters = _compute_clusters(clustering_data)
-
-    # Persistencia en una transacción separada.
-    with connect() as write_conn:
-        _persist_clusters(write_conn, clusters)
+    # Cómputo fuera de la transacción de escritura, que abre `reemplazar_clusters`.
+    clusters = _compute_clusters(filas_para_clustering())
+    reemplazar_clusters(clusters)
     log.info("aggregates_precompute.clusters_done", n=len(clusters))
     return len(clusters)
 

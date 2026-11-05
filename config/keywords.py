@@ -1745,7 +1745,10 @@ _NUNCA = "(?!)"
 
 
 def plegar(texto: str) -> str:
-    """Quita los diacríticos: «Administración» → «Administracion»."""
+    """Quita los diacríticos: «Administración» → «Administracion».
+
+    Gemela de ``shared.texto.sin_tildes``: ``config`` no puede importar de ``shared``.
+    """
     descompuesto = unicodedata.normalize("NFKD", texto)
     return "".join(c for c in descompuesto if not unicodedata.combining(c))
 

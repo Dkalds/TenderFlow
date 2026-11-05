@@ -607,6 +607,34 @@ def filas_de_reglas_activas() -> list[dict[str, Any]]:
         return rows_to_dicts(cur)
 
 
+def filas_de_reglas_a_evaluar() -> list[dict[str, Any]]:
+    """Las reglas activas con dueño y correo de entrega, para el job de avisos.
+
+    A diferencia de :func:`filas_de_reglas_activas`, trae ``user_key``,
+    ``email`` y ``last_notified_at``: el job decide a quién avisar y cuándo.
+    En una base sin v47/v64/v109 cae a la proyección corta en vez de romper.
+    """
+    with connect_read() as c:
+        try:
+            cur = c.execute(f"SELECT {_RULE_COLS} FROM watchlist_rules WHERE active = 1")
+            return rows_to_dicts(cur)
+        except Exception as exc:
+            if not _columna_ausente(exc):
+                raise
+    with connect_read() as c:
+        cur = c.execute(f"SELECT {_RULE_COLS_LEGACY} FROM watchlist_rules WHERE active = 1")
+        return rows_to_dicts(cur)
+
+
+def marcar_regla_notificada(rule_id: int, ts: str) -> None:
+    """Apunta cuándo se avisó por última vez de una regla."""
+    with connect() as c:
+        c.execute(
+            "UPDATE watchlist_rules SET last_notified_at = %s WHERE id = %s",
+            (ts, rule_id),
+        )
+
+
 def actualizar_regla(
     user_key: str,
     rule_id: int,

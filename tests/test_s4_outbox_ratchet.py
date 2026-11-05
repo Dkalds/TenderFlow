@@ -68,7 +68,14 @@ _DESPACHADOR = "scheduler/jobs/event_dispatch.py"
 
 #: Las dos puertas de escritura. Llamarlas, o importarlas con otro nombre, es
 #: escribir la salida.
-_FUNCIONES_PUERTA = frozenset({"insert_user_notification", "store_pending_digest"})
+_FUNCIONES_PUERTA = frozenset(
+    {
+        "insert_user_notification",
+        "insert_user_notifications",
+        "store_pending_digest",
+        "store_pending_digests",
+    }
+)
 
 #: El ``INSERT`` a mano en cualquiera de las dos tablas, en cualquier caja y
 #: con el esquema delante o no.

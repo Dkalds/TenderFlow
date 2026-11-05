@@ -39,11 +39,12 @@ nuevo se ve como código nuevo; nunca como el vecino más parecido.
 
 from __future__ import annotations
 
-import unicodedata
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Final, Literal
+
+from shared.texto import sin_tildes
 
 __all__ = [
     "CODICE_PROCEDIMIENTO_LIST_URI",
@@ -281,8 +282,7 @@ _TIPO_CONTRATO_POR_TEXTO: Final[Mapping[str, str]] = MappingProxyType(
 
 def _plegar(texto: str) -> str:
     """Sin tildes y en minúsculas, como ``fold_expr`` en SQL."""
-    sin_tildes = unicodedata.normalize("NFKD", texto)
-    return "".join(c for c in sin_tildes if not unicodedata.combining(c)).casefold().strip()
+    return sin_tildes(texto).casefold().strip()
 
 
 def codigo_tipo_contrato(valor: str | None) -> str | None:

@@ -23,6 +23,7 @@ from db.repositories.competencia_esperada import (
 )
 from db.sql_fragments import plegar_organo
 from services.pursuit_awards import identidad_fiscal
+from shared.cpv import cpv4 as _cpv4
 
 #: Estados de oportunidad que cuentan como «te presentaste».
 PRESENTADAS = frozenset({"submitted", "won", "lost"})
@@ -82,11 +83,6 @@ class HistorialPropio(BaseModel):
     en_cpv4: ResumenPropio | None = None
     oportunidades: OportunidadesConOrgano | None = None
     recientes: list[AdjudicacionPropia] = Field(default_factory=list)
-
-
-def _cpv4(cpv: str | None) -> str | None:
-    texto = (cpv or "").strip()[:4]
-    return texto if len(texto) == 4 and texto.isdigit() else None
 
 
 def _resumen(filas: list[FilaResumenPropio], ambito: Literal["organo", "cpv4"]) -> ResumenPropio:

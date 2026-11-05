@@ -19,6 +19,7 @@ lecturas siguen siendo duales para las filas que sólo tienen clave.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any, Literal, TypedDict
 
@@ -214,10 +215,7 @@ def insert_user_notification(
     clave, conflicto = _identidad_de_escritura(user_key, user_id, "licitacion_id, type")
     with connect() as c:
         cur = c.execute(
-            "INSERT INTO user_notifications "
-            "(user_key, user_id, created_at, type, title, body, licitacion_id, rule_id, "
-            " organization_id) "
-            f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) {conflicto} DO NOTHING",
+            _sql_insert_notificacion(conflicto),
             (
                 clave,
                 user_id,
@@ -231,6 +229,62 @@ def insert_user_notification(
             ),
         )
         return bool(cur.rowcount > 0)
+
+
+def _sql_insert_notificacion(conflicto: str) -> str:
+    return (
+        "INSERT INTO user_notifications "
+        "(user_key, user_id, created_at, type, title, body, licitacion_id, rule_id, "
+        " organization_id) "
+        f"VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) {conflicto} DO NOTHING"
+    )
+
+
+def insert_user_notifications(
+    *,
+    type_: str,
+    title: str,
+    filas: Sequence[tuple[str, str | None]],
+    organization_id: int,
+    user_id: int | None = None,
+    user_key: str | None = None,
+    rule_id: int | None = None,
+    created_at: str | None = None,
+) -> int:
+    """Varias alertas del mismo destinatario en una sola conexión; idempotente.
+
+    Lo mismo que :func:`insert_user_notification` para cada ``(licitacion_id,
+    body)`` de ``filas``, pero sin abrir una conexión por fila: el job de
+    reglas escribía hasta 50 alertas por regla, cada una con la suya. Todo va
+    en una transacción, así que un fallo no deja la mitad escrita; las que
+    falten las vuelve a encontrar la siguiente pasada. Devuelve cuántas insertó.
+    """
+    if user_id is None and not user_key:
+        raise ValueError("insert_user_notifications: hace falta user_id o user_key")
+    if not filas:
+        return 0
+    clave, conflicto = _identidad_de_escritura(user_key, user_id, "licitacion_id, type")
+    sql = _sql_insert_notificacion(conflicto)
+    momento = created_at or now_utc_iso()
+    insertadas = 0
+    with connect() as c:
+        for licitacion_id, body in filas:
+            cur = c.execute(
+                sql,
+                (
+                    clave,
+                    user_id,
+                    momento,
+                    type_,
+                    title,
+                    body,
+                    licitacion_id,
+                    rule_id,
+                    organization_id,
+                ),
+            )
+            insertadas += int(cur.rowcount > 0)
+    return insertadas
 
 
 #: Filtro de lectura de «Ver todas» en la campana. Cerrado: el predicado SQL de
