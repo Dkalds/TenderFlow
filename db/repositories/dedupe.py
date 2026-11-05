@@ -300,10 +300,9 @@ def ted_sin_pareja_con_id_evl() -> list[dict[str, Any]]:
     :func:`marcar_duplicados_por_referencia`, así que no tiene sentido volver a
     evaluarlas. Una ``pending`` sí entra: la referencia exacta la promueve.
 
-    Alimenta dos cosas: el re-emparejamiento del histórico
+    Alimenta el re-emparejamiento del histórico
     (``services.dedupe.reemparejar_ted_por_id_evl``), que la detección por
-    referencia solo hacía con los avisos de su ventana de 14 días, y el rescate
-    de pliegos de las entries del ATOM que el filtro de tecnología descarta.
+    referencia solo hacía con los avisos de su ventana de 14 días.
     Son unos cientos de filas sobre ``idx_lic_fuente``.
     """
     with connect_read() as c:
@@ -318,6 +317,25 @@ def ted_sin_pareja_con_id_evl() -> list[dict[str, Any]]:
                 ("%idevl=%",),
             )
         )
+
+
+def urls_ted_con_id_evl() -> list[str]:
+    """``url`` de toda fila TED con deeplink de PLACSP, tenga pareja o no.
+
+    La lee ``scraper.connectors.placsp.EsperadasPorTed``: el expediente de PLACSP
+    que un aviso TED enlaza entra aunque la puerta tecnológica lo descarte, y
+    tiene que seguir entrando **después** del emparejamiento, o sus
+    actualizaciones (adjudicación, rectificaciones) se perderían. Del orden del
+    millar de filas, sobre ``idx_lic_fuente``.
+    """
+    with connect_read() as c:
+        return [
+            str(fila[0])
+            for fila in c.execute(
+                "SELECT url FROM licitaciones WHERE fuente = 'ted' AND url ILIKE %s",
+                ("%idevl=%",),
+            ).fetchall()
+        ]
 
 
 def es_canonica_visible(id_externo: str) -> bool:
@@ -456,6 +474,7 @@ __all__ = [
     "pendientes_de_revision",
     "resolver_pendiente",
     "ted_sin_pareja_con_id_evl",
+    "urls_ted_con_id_evl",
 ]
 
 

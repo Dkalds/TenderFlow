@@ -1,8 +1,8 @@
 """Conectores de las sindicaciones 1143 (contratos menores) y 1044 (agregadas) de PLACSP.
 
-Los dos están **apagados por defecto** (decisión del dueño, revisión de D16):
-sin su variable de URL declaran ``disabled`` y no descargan nada. Lo que fija
-este fichero:
+Menores está **apagado por defecto** (revisión de D16) y agregadas encendido
+desde el 2026-11-04: apagados, declaran ``disabled`` y no descargan nada. Lo que
+fija este fichero:
 
 - Contratos menores: entran filtrados por la misma puerta tecnológica que
   PLACSP, pero **nunca como licitación abierta** —cerrados, sin plazo, fuera
@@ -336,20 +336,30 @@ def test_una_licitacion_agregada_entra_como_oportunidad_con_su_namespace():
     assert lic.tecnologia == "DESARROLLO"
 
 
-def test_de_una_agregada_solo_se_guardan_los_pliegos_de_hosts_que_acepta_el_descargador():
-    """Los de otro host no pasarían la allowlist del descargador.
-
-    Guardarlos dejaría filas de ``documentos`` condenadas a fallar en cada
-    pasada del job de pliegos. En el feed real **ninguna** referencia apunta a
-    PLACSP: son de contractaciopublica.cat (en la allowlist por PSCP), de
-    contratacion.euskadi.eus y de contratos-publicos.comunidad.madrid (fuera).
-    """
+def test_de_una_agregada_se_guardan_los_pliegos_de_las_plataformas_autonomicas():
+    """En el feed real **ninguna** referencia apunta a PLACSP: son de
+    contractaciopublica.cat, contratacion.euskadi.eus y
+    contratos-publicos.comunidad.madrid, los tres en la allowlist desde el
+    2026-11-04."""
     conector, parseadas = _agregadas_parseadas()
     blanes, bilbao = parseadas[1], parseadas[2]
     assert blanes is not None and bilbao is not None
 
     assert tuple(d.uri for d in blanes.documentos) == _URL_PLIEGOS_BLANES
-    assert bilbao.documentos == []
+    assert len(bilbao.documentos) == 2
+    assert all(d.uri.startswith("https://www.contratacion.euskadi.eus/") for d in bilbao.documentos)
+    assert conector.contadores_de_descarte()["placsp_agregadas_documentos_de_otro_host"] == 0
+
+
+def test_de_una_agregada_no_se_guardan_los_pliegos_de_un_host_fuera_de_la_allowlist(monkeypatch):
+    """Guardarlos dejaría filas de ``documentos`` condenadas a fallar en cada
+    pasada del job de pliegos: el descargador los rechazaría."""
+    from config import settings
+
+    monkeypatch.setattr(settings, "DOCUMENT_ALLOWED_HOSTS", "contractaciopublica.cat")
+    conector, parseadas = _agregadas_parseadas()
+
+    assert parseadas[2] is not None and parseadas[2].documentos == []
     assert conector.contadores_de_descarte()["placsp_agregadas_documentos_de_otro_host"] == 2
 
 
@@ -383,20 +393,36 @@ def test_el_expediente_natural_de_una_agregada_es_el_de_placsp():
     assert natural_expediente("placsp_agregadas:EXP-2026-77") == "EXP-2026-77"
 
 
-# ── Apagadas por defecto ─────────────────────────────────────────────────────
+# ── Apagadas ─────────────────────────────────────────────────────────────────
+
+
+def test_menores_sigue_apagada_por_defecto_y_agregadas_encendida():
+    """Agregadas se encendió el 2026-11-04 (D16); menores sigue esperando su revisión."""
+    from config import settings
+
+    campos = settings.__class__.model_fields
+    assert getattr(campos["PLACSP_MENORES_ATOM_URL"], "default", None) == ""
+    # `config/` no importa `scraper/`: el literal se copia y aquí se ata.
+    assert getattr(campos["PLACSP_AGREGADAS_ATOM_URL"], "default", None) == (
+        agregadas.URL_SINDICACION_1044
+    )
 
 
 @pytest.mark.parametrize(
-    ("modulo", "variable"),
-    [(menores, "PLACSP_MENORES_ATOM_URL"), (agregadas, "PLACSP_AGREGADAS_ATOM_URL")],
+    ("modulo", "variable", "valor"),
+    [
+        (menores, "PLACSP_MENORES_ATOM_URL", ""),
+        (agregadas, "PLACSP_AGREGADAS_ATOM_URL", ""),
+        # El workflow rellena la variable vacía con la URL: `off` es como se apaga allí.
+        (agregadas, "PLACSP_AGREGADAS_ATOM_URL", "off"),
+    ],
 )
-def test_sin_su_variable_la_fuente_se_declara_apagada_y_no_descarga(
-    modulo, variable, monkeypatch, feed
+def test_apagada_la_fuente_se_declara_disabled_y_no_descarga(
+    modulo, variable, valor, monkeypatch, feed
 ):
     from config import settings
 
-    assert getattr(settings.__class__.model_fields[variable], "default", None) == ""
-    monkeypatch.setattr(settings, variable, "")
+    monkeypatch.setattr(settings, variable, valor)
     apagadas: list[tuple[str, str]] = []
     monkeypatch.setattr(
         "scraper.connectors.base.record_source_disabled",
@@ -416,7 +442,10 @@ def test_estan_registradas_como_opcionales(modulo):
 
     assert fuente.estado == "opcional"
     assert fuente.modulo == modulo.__name__
-    assert "apagad" in fuente.alcance.lower()
+
+
+def test_menores_se_declara_apagada_en_su_alcance():
+    assert "apagad" in REGISTERED_SOURCES_BY_ID[menores.SOURCE_ID].alcance.lower()
 
 
 def test_los_contratos_menores_siguen_declarados_fuera_de_alcance():
@@ -655,3 +684,123 @@ def test_integration_una_agregada_que_ya_entra_por_pscp_queda_marcada_como_dupli
     }
     assert "placsp_agregadas:207:09-7-9.02-0016/2026" in radar
     assert "placsp_agregadas:935078:2026/15089Q" not in radar
+
+
+# ── Histórico de agregadas desde los ZIP mensuales ───────────────────────────
+
+
+@pytest.fixture()
+def zip_1044(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """``download_month`` sirve un ZIP con la fixture de la 1044; devuelve las llamadas."""
+    import zipfile
+
+    destino = tmp_path / "placsp_agregadas_202610.zip"
+    with zipfile.ZipFile(destino, "w") as zf:
+        zf.writestr("agregadas.atom", (_FIXTURES / "agregadas_1044.atom").read_bytes())
+    llamadas: list[dict[str, Any]] = []
+
+    def download_month(year: int, month: int, force: bool = False, **kwargs: Any) -> Path:
+        llamadas.append({"year": year, "month": month, **kwargs})
+        return destino
+
+    monkeypatch.setattr("scraper.bulk_downloader.download_month", download_month)
+    return llamadas
+
+
+def test_el_historico_lee_el_zip_de_la_1044_y_no_toca_el_cursor(zip_1044):
+    conector = agregadas.PlacspAgregadasHistorico(2026, 10, ya_existe=lambda _id: False)
+
+    parseadas = [conector.parse(raw) for raw in conector.fetch(None)]
+
+    assert zip_1044 == [
+        {
+            "year": 2026,
+            "month": 10,
+            "url_template": agregadas.URL_ZIP_1044,
+            "prefijo": "placsp_agregadas",
+        }
+    ]
+    # Lo mismo que el feed: cuatro admitidas y los parques infantiles fuera.
+    assert [p is not None for p in parseadas] == [True, True, True, True, False]
+    assert all(p.licitacion.fuente == "placsp_agregadas" for p in parseadas if p)
+    assert conector.new_cursor() is None
+
+
+def test_el_historico_no_pisa_lo_que_ya_existe(zip_1044):
+    """El ZIP no trae ``<updated>``: su versión puede ser más vieja que la del feed."""
+    conector = agregadas.PlacspAgregadasHistorico(2026, 10, ya_existe=lambda _id: True)
+
+    assert [conector.parse(raw) for raw in conector.fetch(None)] == [None] * 5
+    assert conector.contadores_de_descarte()["placsp_agregadas_ya_existian"] == 4
+
+
+def test_el_historico_recorre_los_meses_del_mas_nuevo_al_mas_viejo(monkeypatch):
+    vistos: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        "scraper.connectors.base.run_connector",
+        lambda conector: vistos.append((conector.year, conector.month)),
+    )
+
+    agregadas.ejecutar_historico("2026-08", "2026-10")
+
+    assert vistos == [(2026, 10), (2026, 9), (2026, 8)]
+
+
+def test_la_url_del_zip_de_la_1044_sigue_el_patron_de_la_643():
+    assert agregadas.URL_ZIP_1044.format(year=2026, month=9) == (
+        "https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_1044/"
+        "PlataformasAgregadasSinMenores_202609.zip"
+    )
+
+
+def test_download_month_descarga_la_plantilla_que_se_le_da(tmp_path, monkeypatch):
+    from config import settings
+    from scraper import bulk_downloader
+
+    pedidas: list[tuple[str, str]] = []
+    monkeypatch.setattr(settings, "DOWNLOADS_DIR", tmp_path)
+    monkeypatch.setattr(bulk_downloader.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(
+        bulk_downloader, "_download", lambda url, dest: pedidas.append((url, dest.name)) or dest
+    )
+
+    bulk_downloader.download_month(
+        2026, 9, url_template=agregadas.URL_ZIP_1044, prefijo="placsp_agregadas"
+    )
+
+    assert pedidas == [
+        (agregadas.URL_ZIP_1044.format(year=2026, month=9), "placsp_agregadas_202609.zip")
+    ]
+
+
+def test_integration_el_historico_escribe_lo_que_falta_y_respeta_lo_que_hay(db, zip_1044):
+    from db.database import get_cursor
+    from db.upsert import Licitacion
+    from scraper.connectors.base import run_connector
+
+    # La de Blanes ya la trajo el feed, con un título que el ZIP no tiene.
+    db.upsert_licitaciones_with_history(
+        [
+            Licitacion(
+                id_externo="placsp_agregadas:935078:2026/15089Q",
+                titulo="Versión del feed",
+                fuente="placsp_agregadas",
+            )
+        ],
+        source="placsp_agregadas",
+    )
+
+    resultado = run_connector(agregadas.PlacspAgregadasHistorico(2026, 10))
+
+    assert resultado.parsed == 3
+    with db.connect_read() as c:
+        titulo = c.execute(
+            "SELECT titulo FROM licitaciones WHERE id_externo = %s",
+            ("placsp_agregadas:935078:2026/15089Q",),
+        ).fetchone()
+        filas = c.execute(
+            "SELECT count(*) FROM licitaciones WHERE fuente = 'placsp_agregadas'"
+        ).fetchone()
+    assert titulo[0] == "Versión del feed"
+    assert filas[0] == 4
+    assert get_cursor("placsp_agregadas") is None

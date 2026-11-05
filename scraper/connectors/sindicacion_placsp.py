@@ -100,14 +100,15 @@ def ejecutar_sindicacion(
 ) -> ConnectorRunResult | None:
     """Una pasada incremental; ``None`` si la fuente está apagada.
 
-    Sin URL configurada la fuente está APAGADA, no rota: lo declara en
+    Sin URL configurada (o con ``off``, la forma de vaciarla desde un ``vars.``
+    con valor por defecto) la fuente está APAGADA, no rota: lo declara en
     ``source_ingestion_health`` (``disabled``), que es lo que lee el chequeo de
     frescura del healthcheck para no confundirla con una fuente muerta. No abre
     ni cierra la BD: el worker comparte el pool con la cola.
     """
     from scraper.connectors import base
 
-    if not url:
+    if not url or url.strip().lower() == "off":
         base.record_source_disabled(
             source_id,
             motivo=(

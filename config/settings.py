@@ -493,7 +493,9 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, ObjectStoreSetting
     DOCUMENT_ALLOWED_HOSTS: str = (
         "contrataciondelestado.es,*.contrataciondelestado.es,ted.europa.eu,contractaciopublica.cat,"
         # TACRC: PDF de la resolución vinculada (scraper/connectors/tacrc.py).
-        "www.hacienda.gob.es"
+        "www.hacienda.gob.es,"
+        # Pliegos de las plataformas agregadas en PLACSP (placsp_agregadas.py).
+        "www.contratacion.euskadi.eus,contratos-publicos.comunidad.madrid"
     )
     WEBHOOK_ALLOWED_HOSTS: str = ""
     # Alta ABIERTA a cualquier correo, sin verificar el buzón (el modo de dev y
@@ -525,7 +527,13 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, ObjectStoreSetting
     # workflow igual que `PSCP_DATASET_ID`: una variable de repo sin definir
     # llega como cadena vacía, que para un booleano es un error de arranque.
     PLACSP_MENORES_ATOM_URL: str = ""
-    PLACSP_AGREGADAS_ATOM_URL: str = ""
+    # Encendida el 2026-11-04 (decisión del dueño sobre D16): la URL documentada
+    # de `URL_SINDICACION_1044`, que `config/` no puede importar; un test exige
+    # que coincidan. `off` la apaga (ver `ejecutar_sindicacion`).
+    PLACSP_AGREGADAS_ATOM_URL: str = (
+        "https://contrataciondelsectorpublico.gob.es/sindicacion/"
+        "sindicacion_1044/PlataformasAgregadasSinMenores.atom"
+    )
     PLACSP_CONSULTAS_ATOM_URL: str = ""
     # Índice de resoluciones TACRC (Ministerio de Hacienda).
     #

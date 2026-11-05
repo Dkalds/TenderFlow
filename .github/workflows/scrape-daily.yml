@@ -116,6 +116,7 @@ jobs:
           IN_LLM_TECH_LABELING_MODEL: ${{ vars.LLM_TECH_LABELING_MODEL }}
           IN_LLM_TECH_LABELING_BATCH: ${{ vars.LLM_TECH_LABELING_BATCH }}
           IN_LLM_TECH_FEEDBACK_ENABLED: ${{ vars.LLM_TECH_FEEDBACK_ENABLED }}
+          IN_PLACSP_AGREGADAS_ATOM_URL: ${{ vars.PLACSP_AGREGADAS_ATOM_URL }}
         run: |
           set -u
           if [ -n "${IN_ALERT_MIN_LEVEL:-}" ]; then
@@ -132,6 +133,9 @@ jobs:
           fi
           if [ -n "${IN_LLM_TECH_FEEDBACK_ENABLED:-}" ]; then
             echo "LLM_TECH_FEEDBACK_ENABLED=$IN_LLM_TECH_FEEDBACK_ENABLED" >> "$GITHUB_ENV"
+          fi
+          if [ -n "${IN_PLACSP_AGREGADAS_ATOM_URL:-}" ]; then
+            echo "PLACSP_AGREGADAS_ATOM_URL=$IN_PLACSP_AGREGADAS_ATOM_URL" >> "$GITHUB_ENV"
           fi
 
       # INGESTA de PLACSP, sin cerrar la pasada.
@@ -273,17 +277,17 @@ jobs:
           TACRC_INDEX_URL: ${{ vars.TACRC_INDEX_URL }}
         run: python -m scraper.connectors.tacrc
 
-      # Sindicaciones 1044 y 1143 de PLACSP: apagadas por defecto (revisión de
-      # D16). Mismo patrón que PSCP/TACRC: corren siempre, y sin su variable de
-      # repo escriben `disabled` y terminan en 0. Se encienden fijando la URL
-      # documentada en la variable (docs/runbooks/fuentes-opcionales.md).
+      # Sindicaciones 1044 y 1143 de PLACSP (revisión de D16). Mismo patrón que
+      # PSCP/TACRC: corren siempre, y apagadas escriben `disabled` y terminan en
+      # 0. La 1044 (agregadas) está encendida desde el 2026-11-04: sin variable
+      # de repo manda el default de config/settings.py (exportado arriba solo si
+      # la variable está definida), y `off` la apaga. La 1143 sigue apagada
+      # hasta que se fije la suya (docs/runbooks/fuentes-opcionales.md).
       - name: Run PLACSP agregadas connector
         id: placsp_agregadas
         if: ${{ !cancelled() && steps.schema.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 10
-        env:
-          PLACSP_AGREGADAS_ATOM_URL: ${{ vars.PLACSP_AGREGADAS_ATOM_URL }}
         run: python -m scraper.connectors.placsp_agregadas
 
       - name: Run PLACSP contratos menores connector
