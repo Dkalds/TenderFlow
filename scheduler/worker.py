@@ -43,6 +43,7 @@ from observability.logging import get_logger
 from services.jobs import (
     CACHE_EXPORTS,
     EXPORT_TTL_SEGUNDOS,
+    FalloDefinitivo,
     Job,
     clave_cache_export,
     procesar_uno,
@@ -65,7 +66,7 @@ def ejecutar_ficha_pliego(job: Job) -> dict[str, Any]:
     es la forma de decirle a la cola «esto merece un reintento», sin duplicar en
     este módulo la lógica de persistencia del servicio.
     """
-    from services.rag.fact_sheet import get_fact_sheet, run_background_extraction
+    from services.rag.fact_sheet import SIN_PLIEGOS, get_fact_sheet, run_background_extraction
 
     licitacion_id = str(job.payload["licitacion_id"])
     run_background_extraction(
@@ -77,6 +78,8 @@ def ejecutar_ficha_pliego(job: Job) -> dict[str, Any]:
     ficha = get_fact_sheet(licitacion_id)
     if ficha is None:
         raise RuntimeError(f"La extracción no dejó ficha para {licitacion_id!r}")
+    if ficha.status == "failed" and ficha.error_detail == SIN_PLIEGOS:
+        raise FalloDefinitivo(SIN_PLIEGOS)
     if ficha.status == "failed":
         raise RuntimeError(ficha.error_detail or "La extracción de la ficha falló sin detalle")
     return {

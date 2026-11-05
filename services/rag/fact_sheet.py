@@ -722,6 +722,14 @@ def ensure_documents_ready(
     return counts
 
 
+#: Único motivo de «sin páginas» que no cambia con el tiempo: el worker lo
+#: reconoce para no reintentar (``scheduler.worker.ejecutar_ficha_pliego``).
+SIN_PLIEGOS = (
+    "La licitación no referencia ningún pliego descargable; "
+    "la ficha necesita al menos un documento adjunto en PLACSP."
+)
+
+
 def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
     """Mensaje 422 accionable según por qué no hay texto que extraer."""
     # Solo pliegos: un acta no es «un pliego que existe» (spec §3.3).
@@ -731,10 +739,7 @@ def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
         if row.get("tipo") in TIPOS_PLIEGO
     ]
     if not rows:
-        return (
-            "La licitación no referencia ningún pliego descargable; "
-            "la ficha necesita al menos un documento adjunto en PLACSP."
-        )
+        return SIN_PLIEGOS
     if any(row.get("sin_publicar") for row in rows):
         # Va antes que el resto porque es la causa y no un síntoma: hablar de
         # descargas fallidas o de enlaces caducados mandaría a esperar a «la

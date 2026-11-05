@@ -219,6 +219,14 @@ class JobDesconocido(ValueError):
     """El tipo pedido no está declarado en :data:`TIPOS`."""
 
 
+class FalloDefinitivo(RuntimeError):
+    """El handler sabe que reintentar no cambia el resultado.
+
+    :func:`procesar_uno` la cierra como ``failed`` sin backoff: repetir en 30 s
+    y 60 s algo que depende de un dato ausente solo gasta dos vueltas del worker.
+    """
+
+
 class CuotaDeJobsExcedida(RuntimeError):
     """La organización ya tiene demasiados jobs de ese tipo en la cola.
 
@@ -569,7 +577,12 @@ def procesar_uno(worker_id: str, *, tipos: tuple[str, ...] | None = None) -> Job
         with latido(job, worker_id):
             resultado = ejecutar(job)
     except Exception as exc:
-        fail(job.id, f"{type(exc).__name__}: {exc}", intentos=job.intentos)
+        fail(
+            job.id,
+            f"{type(exc).__name__}: {exc}",
+            intentos=job.intentos,
+            terminal=isinstance(exc, FalloDefinitivo),
+        )
         log.warning("job_handler_fallo", job_id=job.id, tipo=job.tipo, error=str(exc))
         return job
     ack(job.id, resultado)
@@ -591,6 +604,7 @@ __all__ = [
     "TIPO_PASO_PIPELINE",
     "TIPO_PUNTUACIONES_ACTA",
     "CuotaDeJobsExcedida",
+    "FalloDefinitivo",
     "Job",
     "JobDesconocido",
     "JobEstado",

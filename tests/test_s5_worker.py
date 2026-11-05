@@ -217,6 +217,21 @@ def test_el_handler_de_la_ficha_lanza_si_la_extraccion_quedo_en_failed() -> None
     extraer.assert_called_once()
 
 
+def test_el_handler_de_la_ficha_no_pide_reintento_si_no_hay_pliegos() -> None:
+    """Sin pliego en PLACSP, reintentar a los 30 s y 60 s da el mismo fallo."""
+    from scheduler.worker import ejecutar_ficha_pliego
+    from services.jobs import FalloDefinitivo
+    from services.rag.fact_sheet import SIN_PLIEGOS
+
+    ficha = MagicMock(status="failed", error_detail=SIN_PLIEGOS)
+    with (
+        patch("services.rag.fact_sheet.run_background_extraction"),
+        patch("services.rag.fact_sheet.get_fact_sheet", return_value=ficha),
+        pytest.raises(FalloDefinitivo),
+    ):
+        ejecutar_ficha_pliego(_job(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-1", "model": "m"}))
+
+
 def test_el_handler_de_la_ficha_publica_el_recuento_al_terminar() -> None:
     from scheduler.worker import ejecutar_ficha_pliego
 
@@ -342,6 +357,22 @@ def test_un_handler_roto_deja_el_error_en_la_fila_y_no_tumba_el_bucle(tmp_db) ->
     assert job is not None
     assert job.estado == "pending"  # primer intento: reintenta con backoff
     assert "proveedor caído" in (job.error_detail or "")
+
+
+def test_un_fallo_definitivo_cierra_el_job_al_primer_intento(tmp_db) -> None:
+    from scheduler.worker import Worker
+    from services.jobs import FalloDefinitivo, enqueue, obtener
+
+    job_id = enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-SIN-PLIEGO", "model": "m"})
+    with patch(
+        "scheduler.worker.ejecutar_ficha_pliego", side_effect=FalloDefinitivo("sin pliegos")
+    ):
+        assert Worker(worker_id="w").procesar_tanda() == 1
+
+    job = obtener(job_id)
+    assert job is not None
+    assert job.estado == "failed"
+    assert job.intentos == 1
 
 
 def test_un_despliegue_a_mitad_no_pierde_el_trabajo(tmp_db) -> None:
