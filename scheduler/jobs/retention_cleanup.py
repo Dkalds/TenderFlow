@@ -99,12 +99,19 @@ def run() -> dict[str, Any]:
     que a su vez los lee de `RETENTION_*` en `config/settings.py`. Hasta 2026-09
     este job repetía los ocho números como literales, de modo que el job y el CLI
     podían divergir del documento que los publica sin que nada fallara.
+
+    Raises:
+        RetencionIncompleta: si alguna tabla (o las sesiones) anotó ``-1``,
+            **después** de haber intentado todas. Así el cierre marca el paso
+            en error y ``_run_periodic`` suelta el lock diario para que la
+            pasada siguiente reintente, en vez de dar el día por purgado.
     """
-    from scheduler.retention import run_retention
+    from scheduler.retention import exigir_completa, run_retention
 
     # ``run_retention`` devuelve ``dict[str, int]``; el desglose de binarios es
     # un dict anidado, así que el resultado del job se ensancha a ``Any``.
     resultado: dict[str, Any] = dict(run_retention(apply=True))
     resultado["documento_blobs"] = _purgar_binarios_expedientes_cerrados(apply=True)
     resultado["sessions"] = _purgar_sesiones_caducadas()
+    exigir_completa(resultado)
     return resultado

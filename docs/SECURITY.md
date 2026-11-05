@@ -466,6 +466,7 @@ producto existe para conservar.
 | `asistente_feedback` | 365 días (1 año) | Votos sobre las respuestas del asistente. La pregunta en texto solo existe con el opt-in de quien votó; el voto agregado deja de aportar pasado un año. | `python scripts/retention_cleanup.py --apply` |
 | `organization_invitations` | 90 días (3 meses) | Invitaciones a una organización, desde que **caducan**. Guardan el correo de quien aún puede no tener cuenta; el hecho de la invitación queda en el audit log. | `python scripts/retention_cleanup.py --apply` |
 | `domain_events` | 365 días (1 año) | Outbox de eventos. Solo los **ya despachados**: uno pendiente es trabajo por hacer. El payload puede nombrar a quien originó el evento. | `python scripts/retention_cleanup.py --apply` |
+| `jobs` | 90 días (3 meses) | Cola de trabajo. Solo los **terminados** (`done`/`failed`), desde que terminaron: lo pendiente o en curso no caduca. El payload nombra el expediente y la organización que lo pidió. | `python scripts/retention_cleanup.py --apply` |
 | `rate_limits` | 1 día | Ventanas de rate limit. Se purgan las **expiradas** en cada pasada, sin esperar al plazo: la columna que manda es `reset_at`. | `python scripts/retention_cleanup.py --apply` (por `reset_at`, no por plazo) |
 
 <!-- END retencion -->

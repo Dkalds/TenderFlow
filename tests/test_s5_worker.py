@@ -361,7 +361,7 @@ def test_un_despliegue_a_mitad_no_pierde_el_trabajo(tmp_db) -> None:
 
     # El despliegue mata al proceso: nadie hace ack ni fail. Con TTL 0 la
     # barrida ve el lock caducado sin tener que dormir.
-    assert reclamar_caducados(ttl_segundos=0) == [job_id]
+    assert reclamar_caducados(ttl_segundos=0) == ([job_id], [])
 
     with patch(
         "scheduler.worker.ejecutar_ficha_pliego",
