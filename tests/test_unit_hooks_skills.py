@@ -105,6 +105,53 @@ def test_el_slash_command_del_usuario_cuenta_como_cargado(
     assert _editar(repo, monkeypatch, "web/src/app/globals.css", [usuario])[0] == 0
 
 
+def _editar_desde_subagente(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, skills_del_agente: list[str]
+) -> int:
+    """El hook recibe el transcript principal (vacío) y el `agent_id` del subagente."""
+    principal = repo.parent / "sesion.jsonl"
+    principal.write_text("", encoding="utf-8")
+    del_agente = repo.parent / "sesion" / "subagents" / "agent-abc123.jsonl"
+    del_agente.parent.mkdir(parents=True, exist_ok=True)
+    del_agente.write_text(
+        "\n".join(json.dumps(_skill(s)) for s in skills_del_agente), encoding="utf-8"
+    )
+    payload = {
+        "tool_input": {"file_path": str(repo / "tests/test_unit_x.py")},
+        "cwd": str(repo),
+        "transcript_path": str(principal),
+        "agent_id": "abc123",
+    }
+    monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
+    monkeypatch.setattr("sys.stderr", io.StringIO())
+    try:
+        _hook("pretooluse_edit_skills.py")["main"]()
+    except SystemExit as salida:
+        return int(salida.code or 0)
+    return 0
+
+
+def test_dentro_de_un_subagente_cuentan_sus_skills(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Antes solo se leía el transcript principal y se bloqueaba al subagente que sí los cargó."""
+    assert _editar_desde_subagente(repo, monkeypatch, ["ponytail", "python-testing-patterns"]) == 0
+
+
+def test_dentro_de_un_subagente_sin_skills_sigue_bloqueando(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _editar_desde_subagente(repo, monkeypatch, ["ponytail"]) == 2
+
+
+def test_un_agent_id_raro_no_sale_del_directorio(tmp_path: Path) -> None:
+    transcripts = _hook("pretooluse_edit_skills.py")["transcripts"]
+    principal = tmp_path / "sesion.jsonl"
+    principal.write_text("", encoding="utf-8")
+
+    assert transcripts({"transcript_path": str(principal), "agent_id": "../../x"}) == [principal]
+
+
 def test_docs_y_configuracion_no_exigen_nada(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert _editar(repo, monkeypatch, "docs/README.md", [])[0] == 0
 

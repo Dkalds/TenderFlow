@@ -7,6 +7,12 @@ hook busca en el transcript de la sesión una llamada a la herramienta `Skill`
 (o el slash-command que la sustituye) con cada skill que la ruta exige, y si
 falta alguno bloquea la edición (exit 2) diciendo cuál cargar.
 
+Dentro de un subagente, el `transcript_path` que recibe el hook es el de la
+sesión principal: los `Skill` que carga el subagente quedan en su propio
+transcript (`<sesión>/subagents/agent-<agent_id>.jsonl`) y antes no se veían,
+así que se bloqueaban sus ediciones aunque los hubiera cargado. Ahora cuentan
+los dos.
+
 Es best-effort al revés que un control de CI: si no puede leer el transcript
 o algo falla, deja pasar. Un hook roto no puede bloquear el trabajo.
 """
@@ -102,13 +108,25 @@ def skills_cargados(transcript: pathlib.Path) -> set[str]:
     return {nombre.rsplit(":", 1)[-1] for nombre in cargados if nombre}
 
 
+def transcripts(d: dict[str, object]) -> list[pathlib.Path]:
+    """El transcript de la sesión y, dentro de un subagente, también el suyo."""
+    principal = pathlib.Path(str(d.get("transcript_path") or ""))
+    rutas = [principal]
+    agente = str(d.get("agent_id") or "")
+    if agente and re.fullmatch(r"[\w-]+", agente):
+        rutas.append(principal.with_suffix("") / "subagents" / f"agent-{agente}.jsonl")
+    if d.get("agent_transcript_path"):
+        rutas.append(pathlib.Path(str(d["agent_transcript_path"])))
+    return [r for r in rutas if r.is_file()]
+
+
 def main() -> None:
     try:
         d = json.load(sys.stdin)
         fp = str((d.get("tool_input") or {}).get("file_path") or "")
         cwd = str(d.get("cwd") or "")
-        transcript = pathlib.Path(str(d.get("transcript_path") or ""))
-        if not fp or not transcript.is_file():
+        leidos = transcripts(d)
+        if not fp or not leidos:
             return
         ruta = pathlib.Path(fp)
         if not ruta.is_absolute():
@@ -120,7 +138,7 @@ def main() -> None:
         exigidos = skills_exigidos(rel)
         if not exigidos:
             return
-        cargados = skills_cargados(transcript)
+        cargados = set().union(*(skills_cargados(t) for t in leidos))
     except Exception:
         return
     faltan = [(skill, motivo) for skill, motivo in exigidos if skill not in cargados]
