@@ -219,8 +219,9 @@ def test_tecnologia_en_blanco_no_filtra_en_ninguno_de_los_dos_lados() -> None:
 
 def test_el_export_y_la_agenda_emiten_el_mismo_fragmento(monkeypatch: pytest.MonkeyPatch) -> None:
     """Los otros consumidores del fragmento heredan la forma sin cambiar sus ``params``."""
-    import db.repositories.licitaciones as repo_mod
+    import db.repositories.licitaciones.export as repo_mod
     from db.repositories.base import ambito_agenda_sql
+    from db.repositories.licitaciones import LicitacionRepository
 
     capturado: dict[str, Any] = {}
 
@@ -235,7 +236,7 @@ def test_el_export_y_la_agenda_emiten_el_mismo_fragmento(monkeypatch: pytest.Mon
 
     monkeypatch.setattr(repo_mod, "connect_read", _connect_read)
     monkeypatch.setattr(repo_mod, "rows_to_dicts", lambda _cur: [])
-    repo_mod.LicitacionRepository().fetch_for_pdf(tecnologia="SAP,ORACLE", limit=5)
+    LicitacionRepository().fetch_for_pdf(tecnologia="SAP,ORACLE", limit=5)
     assert f"{tecnologia_tokens_sql('tecnologia')} && ARRAY[%s,%s]::text[]" in capturado["sql"]
     assert capturado["params"] == ["SAP", "ORACLE", 5]
 

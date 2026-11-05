@@ -22,11 +22,8 @@ import pytest
 from sqlalchemy import and_, select
 
 from db.models import compile_query, licitaciones
-from db.repositories.licitaciones import (
-    LicitacionRepository,
-    _codigo_en,
-    _normaliza_codigo,
-)
+from db.repositories.licitaciones import LicitacionRepository
+from db.repositories.licitaciones.filtros import _codigo_en, _normaliza_codigo
 from shared.dto import FiltrosLicitacion
 
 _repo = LicitacionRepository()

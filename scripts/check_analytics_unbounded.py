@@ -178,7 +178,8 @@ def sin_cota() -> list[tuple[str, str]]:
     alcanzables = alcanzables_desde_la_analitica()
     hallazgos: list[tuple[str, str]] = []
 
-    for repo in sorted(_REPOSITORIOS.glob("*.py")):
+    # `rglob`: un repositorio partido en paquete (`licitaciones/`) sigue escaneado.
+    for repo in sorted(_REPOSITORIOS.rglob("*.py")):
         if repo.name == "base.py":
             continue
         for nombre, nodo in _metodos_de(repo).items():

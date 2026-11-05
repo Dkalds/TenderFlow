@@ -109,7 +109,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
   - Un modelo `FiltrosLicitacion` (Pydantic) inyectado con `Depends()` en las dos rutas del listado y pasado entero hasta el repositorio; las cinco firmas de arriba reciben el objeto, no la lista de parámetros. El OpenAPI de las dos operaciones no cambia (los `Query` individuales siguen saliendo con el mismo nombre y descripción: `check_api_breaking.py` en verde).
   - `shared/dto.py` partido en un paquete `shared/dto/` por dominio (público, paginación, watchlist, pursuits, analítica…) con re-export completo desde `shared/dto/__init__.py`: ningún `from shared.dto import X` cambia, y `components.schemas` de `api/openapi.json` queda idéntico (el nombre del componente sale de la clase, no del módulo).
   - Ninguna función nueva de 120 líneas o más en los módulos tocados; el conteo total (57) solo baja.
-- **Files de partida:** [shared/dto/](../../shared/dto/__init__.py), [api/routes/licitaciones/listado.py](../../api/routes/licitaciones/listado.py), [db/repositories/licitaciones.py](../../db/repositories/licitaciones.py), [scripts/check_api_breaking.py](../../scripts/check_api_breaking.py)
+- **Files de partida:** [shared/dto/](../../shared/dto/__init__.py), [api/routes/licitaciones/listado.py](../../api/routes/licitaciones/listado.py), [db/repositories/licitaciones/](../../db/repositories/licitaciones/__init__.py), [scripts/check_api_breaking.py](../../scripts/check_api_breaking.py)
 - **Riesgo:** medio — toca el camino más usado de la API; mitigado porque el contrato OpenAPI es el oráculo (codegen-drift y check_api_breaking lo fijan).
 
 ### [P2] Los `except Exception` que tragan errores en los módulos calientes, y el CLI que vive dentro de `sap_classifier`
