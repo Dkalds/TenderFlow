@@ -55,8 +55,12 @@ from scheduler.latido import enviar_latido  # noqa: E402
 
 log = get_logger(__name__)
 
+#: La conexión que entrega ``db.database.connect()``, que no está tipada
+#: (``Iterator[Any]``). Un alias para no repetir el ``Any`` en cada bloque.
+_Conexion = Any
 
-def _contar_licitaciones(c: Any) -> tuple[int, bool]:
+
+def _contar_licitaciones(c: _Conexion) -> tuple[int, bool]:
     """Filas de ``licitaciones``: estimación del planner, exacta si no sirve.
 
     Devuelve ``(total, estimado)``.
@@ -83,7 +87,7 @@ _CAIDA_CANONICAS_MAX = 0.10
 
 
 def _comprobar_vista_canonicas(
-    c: Any,
+    c: _Conexion,
     stale_hours: int,
     checks: list[dict[str, object]],
     warnings: list[str],
@@ -409,6 +413,285 @@ def _incorporar_errores_de_frontend(
     checks.append({"name": "client_errors_sin_actividad", "ok": not activos})
 
 
+def _incorporar_infraestructura(
+    c: _Conexion,
+    checks: list[dict[str, object]],
+    info: dict[str, object],
+) -> None:
+    """Tamaño de la BD y recuento de licitaciones: la BD se puede leer."""
+    # Tamaño real de la BD. Antes se leía el tamaño del fichero SQLite
+    # local, que con Postgres en producción era siempre 0 (ADR-021).
+    try:
+        info["db_size_bytes"] = int(
+            c.execute("SELECT pg_database_size(current_database())").fetchone()[0]
+        )
+    except Exception:
+        # ROLLBACK, como en los demás bloques: sin él, la transacción queda
+        # abortada y el recuento de licitaciones de justo debajo —que no
+        # captura nada— tumbaba el healthcheck entero con
+        # InFailedSqlTransaction.
+        with contextlib.suppress(Exception):
+            c.rollback()
+        info["db_size_bytes"] = 0
+
+    t0 = time.monotonic()
+    total, total_estimado = _contar_licitaciones(c)
+    info["last_query_ms"] = round((time.monotonic() - t0) * 1000, 2)
+    info["licitaciones_total"] = total
+    info["licitaciones_total_estimado"] = total_estimado
+    checks.append({"name": "db_readable", "ok": True})
+
+
+def _incorporar_ultima_ingesta(
+    c: _Conexion,
+    checks: list[dict[str, object]],
+    warnings: list[str],
+    info: dict[str, object],
+    errors: list[str],
+    *,
+    freshness_hours: int,
+    dlq_threshold: int,
+) -> None:
+    """Último ``extraction_run`` (fresco y sin error) y entradas pendientes en la DLQ."""
+    last_run = c.execute(
+        "SELECT run_id, started_at, status, months_ok, months_failed "
+        "FROM extraction_runs ORDER BY started_at DESC LIMIT 1"
+    ).fetchone()
+    run_ok = True
+    if last_run is None:
+        errors.append("sin_runs_registrados")
+        run_ok = False
+    else:
+        info["last_run"] = {
+            "run_id": last_run[0],
+            "started_at": last_run[1],
+            "status": last_run[2],
+            "months_ok": last_run[3],
+            "months_failed": last_run[4],
+        }
+        try:
+            started = datetime.fromisoformat(last_run[1])
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=UTC)
+        except (ValueError, TypeError):
+            started = datetime.now(UTC) - timedelta(days=365)
+        age = datetime.now(UTC) - started
+        info["last_run_age_hours"] = round(age.total_seconds() / 3600, 1)
+        if age > timedelta(hours=freshness_hours):
+            warnings.append(f"last_run_stale:{info['last_run_age_hours']}h")
+            run_ok = False
+        if last_run[2] == "error":
+            errors.append(f"last_run_failed:{last_run[0]}")
+            run_ok = False
+    checks.append({"name": "last_run_fresh", "ok": run_ok})
+
+    dlq_count = c.execute(
+        "SELECT COUNT(*) FROM failed_extractions WHERE resolved_at IS NULL"
+    ).fetchone()[0]
+    info["dlq_unresolved"] = int(dlq_count)
+    dlq_ok = dlq_count < dlq_threshold
+    if not dlq_ok:
+        warnings.append(f"dlq_above_threshold:{dlq_count}")
+    checks.append({"name": "dlq_below_threshold", "ok": dlq_ok})
+
+
+def _incorporar_resolucion_empresas(
+    c: _Conexion,
+    checks: list[dict[str, object]],
+    warnings: list[str],
+    info: dict[str, object],
+) -> None:
+    """Cobertura de la resolución de empresas sobre ``adjudicaciones``."""
+    # Cobertura de resolución de empresas. Va en su propio try/except (mismo
+    # patrón que ops_events y job_locks más abajo) porque es la parte más
+    # cara del healthcheck: dos recorridos completos de `adjudicaciones` —
+    # uno de ellos agrupa las filas sin resolver por identidad y las
+    # normaliza en Python. Si cruza el statement_timeout, un check
+    # secundario no puede llevarse por delante el informe entero: eso es lo
+    # que pasó con el COUNT(*) de licitaciones (ver _contar_licitaciones).
+    try:
+        empresa_total, empresa_linked = c.execute(
+            "SELECT COUNT(*), "
+            "SUM(CASE WHEN empresa_id IS NOT NULL THEN 1 ELSE 0 END) "
+            "FROM adjudicaciones"
+        ).fetchone()
+        empresa_total = int(empresa_total or 0)
+        empresa_linked = int(empresa_linked or 0)
+        from db.empresas import identidades_sin_resolver, pending_review_keys
+        from services.normalization import normalize_company, normalize_nif
+
+        review_keys = pending_review_keys(c)
+        empresa_review = sum(
+            filas
+            for nombre, nif, filas in identidades_sin_resolver(c)
+            if (normalize_company(nombre), normalize_nif(nif) or "") in review_keys
+        )
+        empresa_covered = empresa_linked + empresa_review
+        empresa_coverage = empresa_covered / empresa_total * 100 if empresa_total else 100.0
+        empresa_coverage_ok = empresa_coverage >= 99.0
+        info["empresa_resolution"] = {
+            "total": empresa_total,
+            "enlazadas": empresa_linked,
+            "en_revision": empresa_review,
+            "pendientes": empresa_total - empresa_covered,
+            "pct_filas": round(empresa_coverage, 2),
+        }
+        if not empresa_coverage_ok:
+            warnings.append(f"empresa_resolution_below_threshold:{empresa_coverage:.2f}%")
+        checks.append({"name": "empresa_resolution_coverage", "ok": empresa_coverage_ok})
+    except Exception as exc:
+        # ROLLBACK obligatorio antes de seguir: `connect()` abre una
+        # transacción (no es autocommit), así que una consulta fallida deja
+        # la sesión en estado abortado y TODO lo que viene después —
+        # kpi_snapshots, job_locks, ops_events — moriría con
+        # InFailedSqlTransaction. Sin esto, tragarse el error empeora el
+        # síntoma en vez de arreglarlo.
+        with contextlib.suppress(Exception):
+            c.rollback()
+        # Degrada a warning explícito: "no lo pude medir" es un estado
+        # distinto de "está por debajo del umbral", y ninguno de los dos
+        # justifica perder el resto del informe.
+        info["empresa_resolution_error"] = str(exc)[:200]
+        warnings.append("empresa_resolution_no_medida")
+        checks.append({"name": "empresa_resolution_coverage", "ok": True})
+
+
+def _incorporar_plano(
+    c: _Conexion,
+    info: dict[str, object],
+) -> None:
+    """Plano de orquestación activo y última pipeline canónica (ADR-012)."""
+    # ── Plano de orquestación activo (ADR-012) ────────────────────
+    import os
+
+    active_plane = os.environ.get("SCHEDULER_PLANE", "unknown")
+    info["active_plane"] = active_plane
+
+    # Última pipeline canónica: timestamp del último KPI snapshot
+    last_kpi = c.execute(
+        "SELECT computed_at FROM kpi_snapshots ORDER BY computed_at DESC LIMIT 1"
+    ).fetchone()
+    info["last_pipeline_run"] = last_kpi[0] if last_kpi else None
+
+
+def _incorporar_locks(
+    c: _Conexion,
+    info: dict[str, object],
+) -> None:
+    """Locks de ``job_locks`` vigentes (ADR-012)."""
+    # Locks activos (ADR-012)
+    try:
+        now_iso = datetime.now(UTC).isoformat()
+        active_locks = c.execute(
+            "SELECT name, holder, expires_at FROM job_locks WHERE expires_at > %s",
+            (now_iso,),
+        ).fetchall()
+        info["active_locks"] = [
+            {"name": r[0], "holder": r[1], "expires_at": r[2]} for r in active_locks
+        ]
+    except Exception:
+        # ROLLBACK, como en los demás bloques: sin él, el de ops_events de
+        # abajo moría con InFailedSqlTransaction y se informaba como
+        # `ops_events_error` un fallo que era de `job_locks`.
+        with contextlib.suppress(Exception):
+            c.rollback()
+        info["active_locks"] = []
+
+
+def _incorporar_ops_events(
+    c: _Conexion,
+    checks: list[dict[str, object]],
+    warnings: list[str],
+    info: dict[str, object],
+    *,
+    hay_corpus: bool,
+) -> None:
+    """Tripwires de persistencia leídos de ``ops_events`` y su retención."""
+    # ── Tripwires de persistencia (ops_events, ADR-004) ───────────
+    # Los counters Prometheus mueren con el proceso efimero del scheduler
+    # (GH Actions). ops_events persiste en BD para que este healthcheck,
+    # que SI corre en prod cada 6h, pueda leerlos.
+    # Umbrales espejo de observability/alert_rules.yml.
+    try:
+        ahora = datetime.now(UTC)
+        cutoff = (ahora - timedelta(hours=6)).isoformat()
+        cutoff_24h = (ahora - timedelta(hours=24)).isoformat()
+        rows = c.execute(
+            "SELECT event_type, COUNT(*) FILTER (WHERE ts > %s), COUNT(*) "
+            "FROM ops_events WHERE ts > %s GROUP BY event_type",
+            (cutoff, cutoff_24h),
+        ).fetchall()
+        ops_counts: dict[str, int] = {r[0]: int(r[1]) for r in rows if int(r[1]) > 0}
+        info["ops_events_6h"] = ops_counts
+        n_24h = sum(int(r[2]) for r in rows)
+        info["ops_events_24h"] = n_24h
+
+        # write_slow: >=20 warn
+        n_slow = ops_counts.get("write_slow", 0)
+        if n_slow >= 20:
+            warnings.append(f"write_slow_high:{n_slow}")
+        checks.append({"name": "ops_events_write_slow", "ok": n_slow < 20})
+
+        # writers_high: >=1 warn
+        n_wh = ops_counts.get("writers_high", 0)
+        if n_wh >= 1:
+            warnings.append(f"writers_high:{n_wh}")
+        checks.append({"name": "ops_events_writers_high", "ok": n_wh == 0})
+
+        # Errores capturados repetidos (observability/errores.py): el mismo
+        # paso de un módulo caliente fallando una y otra vez sin tumbar la
+        # pasada. Es el espejo de `DbConnectionErroresCapturados` y
+        # `LlmClientErroresCapturados` para los procesos efímeros (scraper,
+        # cierre de la pasada, pliegos), que Prometheus no ve.
+        repetidos = errores_repetidos(ops_counts)
+        for clave, n in repetidos.items():
+            warnings.append(f"errores_capturados:{clave}:{n}")
+        if repetidos:
+            info["errores_capturados_repetidos"] = repetidos
+        checks.append({"name": "ops_events_errores_capturados", "ok": not repetidos})
+
+        # Silencio: cada pasada de cierre emite varios eventos, así que un
+        # día entero sin ninguno es que no llegan, no que no pase nada. Es
+        # el estado en que estuvo la tabla de septiembre a octubre de 2026
+        # (el flush no encontraba la CA de verify-full), y entonces solo lo
+        # delataba de rebote `canonicas_sin_registro_de_refresco`. Con la
+        # base sin corpus —un schema de test, un entorno nuevo— nada tiene
+        # por qué emitir, y avisar ahí sería ruido: mismo criterio que el
+        # check de la vista pública, que es quien mide si hay corpus.
+        silencio = n_24h == 0 and hay_corpus
+        if silencio:
+            warnings.append("ops_events_sin_eventos_24h")
+        checks.append({"name": "ops_events_recientes", "ok": not silencio})
+
+        # Retención best-effort: eliminar eventos > 30 días
+        try:
+            retention_cutoff = (datetime.now(UTC) - timedelta(days=30)).isoformat()
+            c.execute("DELETE FROM ops_events WHERE ts < %s", (retention_cutoff,))
+        except Exception:
+            # Best-effort, pero sin dejar la transacción abortada: el
+            # `with connect()` intentaría confirmarla al salir.
+            with contextlib.suppress(Exception):
+                c.rollback()
+
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            c.rollback()
+        exc_msg = str(exc).lower()
+        # Postgres dice 'relation "ops_events" does not exist' (o su
+        # traducción, según `lc_messages`).
+        tabla_ausente = (
+            "no existe" in exc_msg or "does not exist" in exc_msg or "undefinedtable" in exc_msg
+        )
+        if tabla_ausente:
+            info["ops_events_missing"] = True
+            checks.append({"name": "ops_events_write_slow", "ok": True})
+            checks.append({"name": "ops_events_writers_high", "ok": True})
+            checks.append({"name": "ops_events_errores_capturados", "ok": True})
+            checks.append({"name": "ops_events_recientes", "ok": True})
+        else:
+            info["ops_events_error"] = str(exc)[:200]
+
+
 def run_check(
     freshness_hours: int = 36,
     dlq_threshold: int = 50,
@@ -432,133 +715,18 @@ def run_check(
         info["data_dir_free_bytes"] = None
 
     with connect() as c:
-        # Tamaño real de la BD. Antes se leía el tamaño del fichero SQLite
-        # local, que con Postgres en producción era siempre 0 (ADR-021).
-        try:
-            info["db_size_bytes"] = int(
-                c.execute("SELECT pg_database_size(current_database())").fetchone()[0]
-            )
-        except Exception:
-            # ROLLBACK, como en los demás bloques: sin él, la transacción queda
-            # abortada y el recuento de licitaciones de justo debajo —que no
-            # captura nada— tumbaba el healthcheck entero con
-            # InFailedSqlTransaction.
-            with contextlib.suppress(Exception):
-                c.rollback()
-            info["db_size_bytes"] = 0
-
-        t0 = time.monotonic()
-        total, total_estimado = _contar_licitaciones(c)
-        info["last_query_ms"] = round((time.monotonic() - t0) * 1000, 2)
-        info["licitaciones_total"] = total
-        info["licitaciones_total_estimado"] = total_estimado
-        checks.append({"name": "db_readable", "ok": True})
-
-        last_run = c.execute(
-            "SELECT run_id, started_at, status, months_ok, months_failed "
-            "FROM extraction_runs ORDER BY started_at DESC LIMIT 1"
-        ).fetchone()
-        run_ok = True
-        if last_run is None:
-            errors.append("sin_runs_registrados")
-            run_ok = False
-        else:
-            info["last_run"] = {
-                "run_id": last_run[0],
-                "started_at": last_run[1],
-                "status": last_run[2],
-                "months_ok": last_run[3],
-                "months_failed": last_run[4],
-            }
-            try:
-                started = datetime.fromisoformat(last_run[1])
-                if started.tzinfo is None:
-                    started = started.replace(tzinfo=UTC)
-            except (ValueError, TypeError):
-                started = datetime.now(UTC) - timedelta(days=365)
-            age = datetime.now(UTC) - started
-            info["last_run_age_hours"] = round(age.total_seconds() / 3600, 1)
-            if age > timedelta(hours=freshness_hours):
-                warnings.append(f"last_run_stale:{info['last_run_age_hours']}h")
-                run_ok = False
-            if last_run[2] == "error":
-                errors.append(f"last_run_failed:{last_run[0]}")
-                run_ok = False
-        checks.append({"name": "last_run_fresh", "ok": run_ok})
-
-        dlq_count = c.execute(
-            "SELECT COUNT(*) FROM failed_extractions WHERE resolved_at IS NULL"
-        ).fetchone()[0]
-        info["dlq_unresolved"] = int(dlq_count)
-        dlq_ok = dlq_count < dlq_threshold
-        if not dlq_ok:
-            warnings.append(f"dlq_above_threshold:{dlq_count}")
-        checks.append({"name": "dlq_below_threshold", "ok": dlq_ok})
-
-        # Cobertura de resolución de empresas. Va en su propio try/except (mismo
-        # patrón que ops_events y job_locks más abajo) porque es la parte más
-        # cara del healthcheck: dos recorridos completos de `adjudicaciones` —
-        # uno de ellos agrupa las filas sin resolver por identidad y las
-        # normaliza en Python. Si cruza el statement_timeout, un check
-        # secundario no puede llevarse por delante el informe entero: eso es lo
-        # que pasó con el COUNT(*) de licitaciones (ver _contar_licitaciones).
-        try:
-            empresa_total, empresa_linked = c.execute(
-                "SELECT COUNT(*), "
-                "SUM(CASE WHEN empresa_id IS NOT NULL THEN 1 ELSE 0 END) "
-                "FROM adjudicaciones"
-            ).fetchone()
-            empresa_total = int(empresa_total or 0)
-            empresa_linked = int(empresa_linked or 0)
-            from db.empresas import identidades_sin_resolver, pending_review_keys
-            from services.normalization import normalize_company, normalize_nif
-
-            review_keys = pending_review_keys(c)
-            empresa_review = sum(
-                filas
-                for nombre, nif, filas in identidades_sin_resolver(c)
-                if (normalize_company(nombre), normalize_nif(nif) or "") in review_keys
-            )
-            empresa_covered = empresa_linked + empresa_review
-            empresa_coverage = empresa_covered / empresa_total * 100 if empresa_total else 100.0
-            empresa_coverage_ok = empresa_coverage >= 99.0
-            info["empresa_resolution"] = {
-                "total": empresa_total,
-                "enlazadas": empresa_linked,
-                "en_revision": empresa_review,
-                "pendientes": empresa_total - empresa_covered,
-                "pct_filas": round(empresa_coverage, 2),
-            }
-            if not empresa_coverage_ok:
-                warnings.append(f"empresa_resolution_below_threshold:{empresa_coverage:.2f}%")
-            checks.append({"name": "empresa_resolution_coverage", "ok": empresa_coverage_ok})
-        except Exception as exc:
-            # ROLLBACK obligatorio antes de seguir: `connect()` abre una
-            # transacción (no es autocommit), así que una consulta fallida deja
-            # la sesión en estado abortado y TODO lo que viene después —
-            # kpi_snapshots, job_locks, ops_events — moriría con
-            # InFailedSqlTransaction. Sin esto, tragarse el error empeora el
-            # síntoma en vez de arreglarlo.
-            with contextlib.suppress(Exception):
-                c.rollback()
-            # Degrada a warning explícito: "no lo pude medir" es un estado
-            # distinto de "está por debajo del umbral", y ninguno de los dos
-            # justifica perder el resto del informe.
-            info["empresa_resolution_error"] = str(exc)[:200]
-            warnings.append("empresa_resolution_no_medida")
-            checks.append({"name": "empresa_resolution_coverage", "ok": True})
-
-        # ── Plano de orquestación activo (ADR-012) ────────────────────
-        import os
-
-        active_plane = os.environ.get("SCHEDULER_PLANE", "unknown")
-        info["active_plane"] = active_plane
-
-        # Última pipeline canónica: timestamp del último KPI snapshot
-        last_kpi = c.execute(
-            "SELECT computed_at FROM kpi_snapshots ORDER BY computed_at DESC LIMIT 1"
-        ).fetchone()
-        info["last_pipeline_run"] = last_kpi[0] if last_kpi else None
+        _incorporar_infraestructura(c, checks, info)
+        _incorporar_ultima_ingesta(
+            c,
+            checks,
+            warnings,
+            info,
+            errors,
+            freshness_hours=freshness_hours,
+            dlq_threshold=dlq_threshold,
+        )
+        _incorporar_resolucion_empresas(c, checks, warnings, info)
+        _incorporar_plano(c, info)
 
         # ── Frescura de la vista pública (v94) ─────────────────────────
         # `last_pipeline_run` NO sirve para esto y ese es justo el problema que
@@ -584,108 +752,8 @@ def run_check(
         _incorporar_errores_de_frontend(
             checks, warnings, info, horas=24, min_ocurrencias=client_errors_min_ocurrencias
         )
-
-        # Locks activos (ADR-012)
-        try:
-            now_iso = datetime.now(UTC).isoformat()
-            active_locks = c.execute(
-                "SELECT name, holder, expires_at FROM job_locks WHERE expires_at > %s",
-                (now_iso,),
-            ).fetchall()
-            info["active_locks"] = [
-                {"name": r[0], "holder": r[1], "expires_at": r[2]} for r in active_locks
-            ]
-        except Exception:
-            # ROLLBACK, como en los demás bloques: sin él, el de ops_events de
-            # abajo moría con InFailedSqlTransaction y se informaba como
-            # `ops_events_error` un fallo que era de `job_locks`.
-            with contextlib.suppress(Exception):
-                c.rollback()
-            info["active_locks"] = []
-
-        # ── Tripwires de persistencia (ops_events, ADR-004) ───────────
-        # Los counters Prometheus mueren con el proceso efimero del scheduler
-        # (GH Actions). ops_events persiste en BD para que este healthcheck,
-        # que SI corre en prod cada 6h, pueda leerlos.
-        # Umbrales espejo de observability/alert_rules.yml.
-        try:
-            ahora = datetime.now(UTC)
-            cutoff = (ahora - timedelta(hours=6)).isoformat()
-            cutoff_24h = (ahora - timedelta(hours=24)).isoformat()
-            rows = c.execute(
-                "SELECT event_type, COUNT(*) FILTER (WHERE ts > %s), COUNT(*) "
-                "FROM ops_events WHERE ts > %s GROUP BY event_type",
-                (cutoff, cutoff_24h),
-            ).fetchall()
-            ops_counts: dict[str, int] = {r[0]: int(r[1]) for r in rows if int(r[1]) > 0}
-            info["ops_events_6h"] = ops_counts
-            n_24h = sum(int(r[2]) for r in rows)
-            info["ops_events_24h"] = n_24h
-
-            # write_slow: >=20 warn
-            n_slow = ops_counts.get("write_slow", 0)
-            if n_slow >= 20:
-                warnings.append(f"write_slow_high:{n_slow}")
-            checks.append({"name": "ops_events_write_slow", "ok": n_slow < 20})
-
-            # writers_high: >=1 warn
-            n_wh = ops_counts.get("writers_high", 0)
-            if n_wh >= 1:
-                warnings.append(f"writers_high:{n_wh}")
-            checks.append({"name": "ops_events_writers_high", "ok": n_wh == 0})
-
-            # Errores capturados repetidos (observability/errores.py): el mismo
-            # paso de un módulo caliente fallando una y otra vez sin tumbar la
-            # pasada. Es el espejo de `DbConnectionErroresCapturados` y
-            # `LlmClientErroresCapturados` para los procesos efímeros (scraper,
-            # cierre de la pasada, pliegos), que Prometheus no ve.
-            repetidos = errores_repetidos(ops_counts)
-            for clave, n in repetidos.items():
-                warnings.append(f"errores_capturados:{clave}:{n}")
-            if repetidos:
-                info["errores_capturados_repetidos"] = repetidos
-            checks.append({"name": "ops_events_errores_capturados", "ok": not repetidos})
-
-            # Silencio: cada pasada de cierre emite varios eventos, así que un
-            # día entero sin ninguno es que no llegan, no que no pase nada. Es
-            # el estado en que estuvo la tabla de septiembre a octubre de 2026
-            # (el flush no encontraba la CA de verify-full), y entonces solo lo
-            # delataba de rebote `canonicas_sin_registro_de_refresco`. Con la
-            # base sin corpus —un schema de test, un entorno nuevo— nada tiene
-            # por qué emitir, y avisar ahí sería ruido: mismo criterio que el
-            # check de la vista pública, que es quien mide si hay corpus.
-            silencio = n_24h == 0 and hay_corpus
-            if silencio:
-                warnings.append("ops_events_sin_eventos_24h")
-            checks.append({"name": "ops_events_recientes", "ok": not silencio})
-
-            # Retención best-effort: eliminar eventos > 30 días
-            try:
-                retention_cutoff = (datetime.now(UTC) - timedelta(days=30)).isoformat()
-                c.execute("DELETE FROM ops_events WHERE ts < %s", (retention_cutoff,))
-            except Exception:
-                # Best-effort, pero sin dejar la transacción abortada: el
-                # `with connect()` intentaría confirmarla al salir.
-                with contextlib.suppress(Exception):
-                    c.rollback()
-
-        except Exception as exc:
-            with contextlib.suppress(Exception):
-                c.rollback()
-            exc_msg = str(exc).lower()
-            # Postgres dice 'relation "ops_events" does not exist' (o su
-            # traducción, según `lc_messages`).
-            tabla_ausente = (
-                "no existe" in exc_msg or "does not exist" in exc_msg or "undefinedtable" in exc_msg
-            )
-            if tabla_ausente:
-                info["ops_events_missing"] = True
-                checks.append({"name": "ops_events_write_slow", "ok": True})
-                checks.append({"name": "ops_events_writers_high", "ok": True})
-                checks.append({"name": "ops_events_errores_capturados", "ok": True})
-                checks.append({"name": "ops_events_recientes", "ok": True})
-            else:
-                info["ops_events_error"] = str(exc)[:200]
+        _incorporar_locks(c, info)
+        _incorporar_ops_events(c, checks, warnings, info, hay_corpus=hay_corpus)
 
     if errors:
         status = "critical"
