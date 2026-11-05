@@ -642,6 +642,25 @@ def test_ted_pide_a_la_api_el_titulo_y_el_expediente_del_comprador():
 
     assert "title-proc" in _FIELDS
     assert "internal-identifier-proc" in _FIELDS
+    assert "internal-identifier-lot" in _FIELDS
+
+
+@pytest.mark.parametrize(
+    ("campos", "esperado"),
+    [
+        ({"internal-identifier-proc": ["EXP-1"], "internal-identifier-lot": ["L1"]}, "EXP-1"),
+        # RTVM, 752237-2026: el BT-22 solo viene en el lote.
+        ({"internal-identifier-lot": ["2026-0443-ING"]}, "2026-0443-ING"),
+        ({"internal-identifier-lot": ["EXP-2", " EXP-2 "]}, "EXP-2"),
+        # Lotes con expedientes distintos: no hay uno del procedimiento que elegir.
+        ({"internal-identifier-lot": ["EXP-2-L1", "EXP-2-L2"]}, None),
+        ({}, None),
+    ],
+)
+def test_ted_el_expediente_cae_al_del_lote_si_falta_el_del_procedimiento(campos, esperado):
+    from scraper.connectors.ted import _expediente
+
+    assert _expediente(campos) == esperado
 
 
 def test_ted_el_titulo_es_bt21_y_no_el_notice_title():

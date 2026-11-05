@@ -516,6 +516,48 @@ _Sin ítems abiertos._
   de su ventana de 14 días. Queda anotar cuántas se emparejan. Las de ADIF
   necesitarían guardar el BT-22 del aviso (cambio de esquema); por cuatro no se
   hace.
+- **Histórico de agregadas (2026-11-05, `historico-agregadas.yml`):** el ZIP de
+  la 1044 existe con el nombre supuesto. Agregadas pasa de 30 a 2.503 filas
+  (169 abiertas); 73 avisos TED quedan detrás de una agregada (24 abiertos:
+  País Vasco 15, Madrid 7, Andalucía 1, La Rioja 1). Abiertas solo con el
+  anuncio: 55 de 271 (24 publicadas desde el 3 de noviembre).
+- **Las 11 de Euskadi y Madrid anteriores al 3 de noviembre que siguen sin
+  pareja**, una a una:
+  - **BT-22 solo en el lote (1, RTVM `ted:752237-2026`).** La agregada
+    `2026-0443-ING` existe y el órgano casa tras normalizar, pero el aviso solo
+    publica `InternalID` en `ProcurementProjectLot`; `_expediente`
+    (`scraper/connectors/ted.py`) lee solo `internal-identifier-proc`, así que
+    la TED se queda sin referencia. **Arreglado** (2026-11-05): cae a
+    `internal-identifier-lot` (BT-22-Lot en la API v3) cuando el del
+    procedimiento falta y todos los lotes traen el mismo valor.
+  - **BT-22 con otro formato (1, Hospital La Paz `ted:720793-2026`).** TED
+    publica `P.A.23/2026`; la agregada es `P.A. 23/2026`. Además el órgano de
+    TED lleva el prefijo «Servicio Madrileño de Salud - » y el título difiere,
+    así que tampoco casa por órgano ni por título. **Arreglado** (2026-11-05):
+    el expediente se compara sin espacios ni mayúsculas
+    (`shared.identidad_placsp.expediente_comparable` y su gemela SQL en
+    `iter_candidatas_por_referencia`), y el órgano casa también por su último
+    tramo tras « - » (`services.dedupe._organos_emparejables`). Se aplica a
+    los avisos ya ingeridos con una pasada de TED desde su fecha
+    (`historico-agregadas.yml`, `ted_desde`).
+  - **Descartadas por la puerta tecnológica, probable (6).** El órgano tiene
+    filas en agregadas pero no este contrato, y su CPV principal no es TI: TED
+    lo admite por un CPV secundario 48/72. Canal de Isabel II, contadores
+    (`ted:741470-2026`, CPV 38552000); Galdakao, grúa (`ted:722392-2026`,
+    50118110); EJIE, ampliación de almacenamiento BATERA (`ted:750370-2026`,
+    30200000); Lasarte-Oria, comunicación institucional ×2
+    (`ted:731746-2026`, `ted:747838-2026`, 79340000), y Azkuna Zentroa
+    (`ted:758948-2026`). No verificado contra el ZIP: no se guarda lo que la
+    puerta descarta. Lo cerraría hacer en agregadas lo que `EsperadasPorTed`
+    hace en el feed principal, por BT-22 en vez de `idEvl`.
+  - **No es agregada (2).** ADIF, DWDM (`ted:701657-2026`): PLACSP, enlace al
+    perfil sin `idEvl` (el caso ADIF de arriba). Cámara de Comercio de Madrid
+    (`ted:731982-2026`): ninguna fila del órgano en ninguna fuente.
+  - **Hueco del 1 al 3 de noviembre (1, Gobierno Vasco `ted:756873-2026`).**
+    El ZIP de octubre acaba el 31 y el feed de agregadas empezó el 4 leyendo
+    solo su primera página: lo agregado entre medias llegará con el ZIP de
+    noviembre (`historico-agregadas.yml` con `desde=hasta=2026-11` cuando se
+    publique).
 - **Files de partida:** [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [db/repositories/documentos.py](../db/repositories/documentos.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo — solo observación y una variable de entorno.
 

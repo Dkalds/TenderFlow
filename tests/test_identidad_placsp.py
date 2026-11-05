@@ -25,6 +25,8 @@ from shared.identidad_placsp import (
     codificar_organo,
     decodificar_organo,
     descomponer_clave_placsp,
+    expediente_comparable,
+    expediente_comparable_sql,
     expediente_natural,
     expediente_natural_sql,
 )
@@ -334,6 +336,21 @@ def test_integration_los_gemelos_del_expediente_natural_coinciden(tmp_db: Any) -
     with connect() as c:
         filas = c.execute(sql, (ids,)).fetchall()
     assert [f[0] for f in filas] == [expediente_natural(i) for i in ids]
+
+
+def test_el_expediente_comparable_quita_espacios_y_mayusculas() -> None:
+    assert expediente_comparable(" p.a. 23/2026 ") == expediente_comparable("P.A.23/2026")
+    assert expediente_comparable("P.A.23/2026") != expediente_comparable("P.A.24/2026")
+
+
+def test_integration_los_gemelos_del_expediente_comparable_coinciden(tmp_db: Any) -> None:
+    from db.database import connect
+
+    valores = ["P.A. 23/2026", "p.a.23/2026", "2026-0443-ING", "EXP \t 1 /2026"]
+    sql = f"SELECT {expediente_comparable_sql('v')} FROM unnest(%s::text[]) AS t(v)"  # noqa: S608
+    with connect() as c:
+        filas = c.execute(sql, (valores,)).fetchall()
+    assert [f[0] for f in filas] == [expediente_comparable(v) for v in valores]
 
 
 def test_integration_un_id_anterior_resuelve_y_la_api_avisa_con_deprecation(

@@ -105,6 +105,8 @@ _FIELDS = [
     "title-proc",
     # BT-22: el expediente en la plataforma del comprador. Ver referencias_cruzadas.
     "internal-identifier-proc",
+    # BT-22 del lote: hay avisos que solo lo publican ahí. Ver _expediente.
+    "internal-identifier-lot",
     "description-proc",
     "buyer-name",
     "classification-cpv",
@@ -210,13 +212,26 @@ def _titulo(notice: dict[str, Any], natural_id: str) -> str:
 
 
 def _expediente(notice: dict[str, Any]) -> str | None:
-    """BT-22 limpio, o ``None``. La API lo sirve como cadena o como lista de una."""
-    valor = notice.get("internal-identifier-proc")
-    if isinstance(valor, list):
-        valor = valor[0] if valor else None
-    if not isinstance(valor, str):
-        return None
-    return valor.strip() or None
+    """BT-22 limpio, o ``None``. La API lo sirve como cadena o como lista.
+
+    Primero el del procedimiento. Hay avisos que solo lo publican en el lote
+    (``ProcurementProjectLot/ProcurementProject/cbc:ID[@schemeName="InternalID"]``:
+    el 752237-2026 de Radio Televisión Madrid, 2026-11-05); sin él la TED se
+    quedaba sin referencia y no se emparejaba con su expediente. El del lote se
+    toma solo si todos los lotes traen el mismo: con varios distintos no hay un
+    expediente del procedimiento que elegir.
+    """
+    for campo in ("internal-identifier-proc", "internal-identifier-lot"):
+        valor = notice.get(campo)
+        valores = [valor] if isinstance(valor, str) else valor
+        if not isinstance(valores, list):
+            continue
+        limpios = {v.strip() for v in valores if isinstance(v, str) and v.strip()}
+        if len(limpios) == 1:
+            return limpios.pop()
+        if limpios:
+            return None
+    return None
 
 
 def _id_evl(notice: dict[str, Any]) -> str | None:

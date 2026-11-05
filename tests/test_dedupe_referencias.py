@@ -33,6 +33,7 @@ from services.dedupe import (
     _organo_emparejable,
     id_evl_de_url,
 )
+from shared.identidad_placsp import expediente_comparable
 
 _DEEPLINK = "https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&idEvl="
 
@@ -77,7 +78,8 @@ def _indices(
     for c in candidatas:
         if (evl := id_evl_de_url(c.get("url"))) is not None:
             por_evl.setdefault(evl, []).append(c)
-        por_expediente.setdefault(sd.natural_expediente(c["id_externo"]), []).append(c)
+        clave = expediente_comparable(sd.natural_expediente(c["id_externo"]))
+        por_expediente.setdefault(clave, []).append(c)
     return por_evl, por_expediente
 
 
@@ -162,6 +164,50 @@ def test_bt22_con_el_mismo_titulo_empareja_aunque_el_organo_se_escriba_distinto(
     )
 
     assert _elegir(fila, ref, [adif]) is not None
+
+
+def test_bt22_escrito_con_otros_espacios_y_el_organo_con_su_dependencia_empareja() -> None:
+    """Hospital La Paz (2026-11-05): TED publica ``P.A.23/2026`` bajo «Servicio
+    Madrileño de Salud - Hospital Universitario La Paz»; la Comunidad de Madrid,
+    ``P.A. 23/2026`` bajo «Hospital Universitario La Paz», con otro título."""
+    ref = ReferenciaCruzada(expediente="P.A.23/2026")
+    agregada = _placsp(
+        "placsp_agregadas:A13013768:P.A. 23/2026",
+        fuente="placsp_agregadas",
+        url=None,
+        organo_contratacion="Hospital Universitario La Paz",
+        titulo="Servicios de análisis, operación, soporte y mantenimiento de sistemas de información",
+    )
+    ted = _ted(
+        organo_contratacion="Servicio Madrileño de Salud - Hospital Universitario La Paz",
+        titulo="SERVICIOS DE ANALISIS PARA EL HOSPITAL UNIVERSITARIO LA PAZ",
+    )
+
+    assert _elegir(ted, ref, [agregada]) == (
+        "placsp_agregadas:A13013768:P.A. 23/2026",
+        "expediente:P.A.23/2026",
+    )
+
+
+def test_el_tramo_del_organo_no_empareja_otro_expediente() -> None:
+    ref = ReferenciaCruzada(expediente="P.A.24/2026")
+    agregada = _placsp(
+        "placsp_agregadas:A13013768:P.A. 23/2026",
+        url=None,
+        organo_contratacion="Hospital Universitario La Paz",
+    )
+    ted = _ted(organo_contratacion="Servicio Madrileño de Salud - Hospital Universitario La Paz")
+
+    assert _elegir(ted, ref, [agregada]) is None
+
+
+def test_el_detector_busca_las_candidatas_por_el_expediente_comparable() -> None:
+    fila = _ted()
+    _, _, candidatas = _correr(
+        [fila], [], {fila["id_externo"]: ReferenciaCruzada(expediente="p.a. 23/2026")}
+    )
+
+    assert candidatas.call_args.args[1] == ["P.A.23/2026"]
 
 
 def test_bt22_generico_de_otro_organo_no_empareja() -> None:
@@ -536,6 +582,33 @@ def test_integration_el_escape_en_minusculas_tambien_empareja(db) -> None:
 
     with connect_read() as c:
         assert _marca(c, ted["id_externo"]) == ("EXP-MIN", "confirmed")
+
+
+def test_integration_el_expediente_con_otros_espacios_empareja_con_la_agregada(db) -> None:
+    """El prefiltro SQL compara el expediente como ``expediente_comparable``."""
+    from db.database import connect, connect_read
+    from services.dedupe import detect_duplicados_por_referencia
+
+    agregada = _placsp(
+        "placsp_agregadas:A13013768:P.A. 23/2026",
+        fuente="placsp_agregadas",
+        url=None,
+        organo_contratacion="Hospital Universitario La Paz",
+    )
+    ted = _ted(organo_contratacion="Servicio Madrileño de Salud - Hospital Universitario La Paz")
+    with connect() as c:
+        _insertar(c, agregada)
+        _insertar(c, ted)
+
+    detect_duplicados_por_referencia(
+        fuente="ted", referencias={ted["id_externo"]: ReferenciaCruzada(expediente="P.A.23/2026")}
+    )
+
+    with connect_read() as c:
+        assert _marca(c, ted["id_externo"]) == (
+            "placsp_agregadas:A13013768:P.A. 23/2026",
+            "confirmed",
+        )
 
 
 def test_integration_no_se_esconde_ted_tras_una_gemela_que_no_se_publica(db) -> None:
