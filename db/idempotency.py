@@ -100,19 +100,32 @@ def cached_response(key: str | None, endpoint: str) -> dict[str, Any] | None:
 
 
 def store_response(key: str | None, endpoint: str, response: dict[str, Any]) -> None:
-    """Guarda la respuesta de *key* en *endpoint*. Sin clave, no hace nada."""
+    """Guarda la respuesta de *key* en *endpoint*. Sin clave, no hace nada.
+
+    Una fila caducada se reemplaza en la misma sentencia: con ``DO NOTHING``
+    la marca vieja se quedaba para siempre, :func:`cached_response` la daba
+    por caducada y cada reintento volvía a ejecutar el efecto. Una vigente no
+    se toca. Como en :func:`_caducada`, una fecha ilegible cuenta como caducada.
+    """
     if not key:
         return
+    limite = datetime.now(UTC) - timedelta(seconds=settings.IDEMPOTENCY_TTL_SECONDS)
     with connect() as c:
         c.execute(
             "INSERT INTO idempotency_keys "
             "(idem_key, endpoint, response_json, created_at) "
             "VALUES (%s, %s, %s, %s) "
-            "ON CONFLICT(idem_key, endpoint) DO NOTHING",
+            "ON CONFLICT(idem_key, endpoint) DO UPDATE SET "
+            "response_json = excluded.response_json, created_at = excluded.created_at "
+            # `created_at` es TEXT: el CASE evita castear lo que no parece una fecha.
+            "WHERE CASE WHEN idempotency_keys.created_at "
+            "~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}' "
+            "THEN idempotency_keys.created_at::timestamptz < %s ELSE true END",
             (
                 key[:MAX_KEY_LENGTH],
                 endpoint,
                 json.dumps(response, ensure_ascii=False),
                 now_utc_iso(),
+                limite,
             ),
         )

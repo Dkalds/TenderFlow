@@ -16,7 +16,7 @@ import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from api.concurrency import run_db
+from api.concurrency import run_db, run_io
 from api.middleware import _trusted_client_ip
 from api.routes.dual_auth import require_admin
 from db.repositories.client_errors import registrar as registrar_client_error
@@ -29,24 +29,40 @@ log = get_logger(__name__)
 router = APIRouter(prefix="/security", tags=["security"])
 _GITHUB_PARTNER_PUBLIC_KEYS_URL = "https://api.github.com/meta/public_keys/secret_scanning"
 _github_keys_cache: tuple[float, dict[str, str]] | None = None
+#: Tras una descarga fallida no se reintenta antes de esto: la ruta no tiene
+#: auth previa, y sin pausa cada POST costaba una petición saliente de 5 s.
+_GITHUB_KEYS_REINTENTO_S = 60.0
 
 
 def _github_public_key(identifier: str) -> str:
-    """Obtiene una clave ECDSA oficial de GitHub, con caché de una hora."""
+    """Obtiene una clave ECDSA oficial de GitHub, con caché de una hora.
+
+    Síncrona (``httpx.get``): se llama desde el threadpool. Si la descarga
+    falla, se siguen usando las claves anteriores (o ninguna) durante
+    ``_GITHUB_KEYS_REINTENTO_S``.
+    """
     global _github_keys_cache
     now = time.monotonic()
     if _github_keys_cache is None or now >= _github_keys_cache[0]:
-        response = httpx.get(_GITHUB_PARTNER_PUBLIC_KEYS_URL, timeout=5.0)
-        response.raise_for_status()
-        items = response.json().get("public_keys", [])
-        keys = {
-            str(item["key_identifier"]): str(item["key"])
-            for item in items
-            if isinstance(item, dict) and item.get("key_identifier") and item.get("key")
-        }
-        if not keys:
-            raise ValueError("GitHub returned no secret-scanning public keys")
-        _github_keys_cache = (now + 3600, keys)
+        anteriores = _github_keys_cache[1] if _github_keys_cache else {}
+        try:
+            response = httpx.get(_GITHUB_PARTNER_PUBLIC_KEYS_URL, timeout=5.0)
+            response.raise_for_status()
+            items = response.json().get("public_keys", [])
+            keys = {
+                str(item["key_identifier"]): str(item["key"])
+                for item in items
+                if isinstance(item, dict) and item.get("key_identifier") and item.get("key")
+            }
+            if not keys:
+                raise ValueError("GitHub returned no secret-scanning public keys")
+        except Exception:
+            _github_keys_cache = (now + _GITHUB_KEYS_REINTENTO_S, anteriores)
+            if not anteriores:
+                raise
+            log.warning("github_public_keys_refresh_failed", exc_info=True)
+        else:
+            _github_keys_cache = (now + 3600, keys)
     key = _github_keys_cache[1].get(identifier)
     if key is None:
         raise ValueError("Unknown GitHub secret-scanning key identifier")
@@ -353,7 +369,10 @@ async def leaked_key_notification(
     # Verificar firma GitHub (ECDSA P-256) — si API_HMAC_SECRET está configurado
     # se usa como fallback para tests. En producción se debería usar la clave pública
     # de GitHub descargada de https://api.github.com/meta/public_keys/secret_scanning
-    _verify_github_signature(
+    # En el threadpool: descarga las claves de GitHub (HTTP síncrono) y verifica
+    # ECDSA, y esta ruta no tiene auth previa que frene a quien la llame.
+    await run_io(
+        _verify_github_signature,
         x_github_public_key_identifier,
         x_github_public_key_signature,
         body_bytes,
@@ -376,7 +395,7 @@ async def leaked_key_notification(
         from api.auth import hash_api_key, revoke_api_key
 
         key_hash = hash_api_key(token)
-        revoked = revoke_api_key(key_hash)
+        revoked = await run_db(revoke_api_key, key_hash)
         # Una revocación que no pidió el dueño tiene que quedar en el rastro:
         # es la única forma de que después entienda por qué su clave dejó de
         # funcionar. Va el prefijo del hash, nunca el token.

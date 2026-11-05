@@ -30,7 +30,9 @@ class _Repo:
         fuera: dict[int, str] | None = None,
         creadas: int = 0,
         invitaciones: int = 0,
+        personal: bool = False,
     ) -> None:
+        self._personal = personal
         self._roles = roles
         self._fuera = fuera or {}
         self._creadas = creadas
@@ -65,6 +67,9 @@ class _Repo:
             "display_name": None,
             "email": None,
         }
+
+    def es_personal(self, organization_id: int) -> bool:
+        return self._personal
 
     def contar_organizaciones_creadas(self, user_id: int) -> int:
         return self._creadas
@@ -176,6 +181,36 @@ def test_un_admin_no_degrada_ni_retira_ni_reactiva_a_otro_admin(
     assert repo.escrito == []
 
 
+def _cuenta_verificada(monkeypatch: pytest.MonkeyPatch, user_id: int) -> None:
+    monkeypatch.setattr(svc, "get_active_user_by_email_ci", lambda *_a, **_k: {"id": user_id})
+
+
+def test_un_admin_no_degrada_a_otro_admin_repitiendo_su_correo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """El alta por correo es un upsert: sin la guarda del PUT, degradaba o reactivaba admins."""
+    repo = _con(monkeypatch, _Repo({1: "admin"}, fuera={2: "admin"}))
+    _cuenta_verificada(monkeypatch, 2)
+
+    with pytest.raises(svc.OrganizationPermissionError, match="otro admin"):
+        svc.add_member_by_email(1, 5, "admin@example.test", "member")
+    assert repo.escrito == []
+
+
+# ── Organizaciones personales: nadie entra en la de otro ─────────────────────
+
+
+def test_no_se_anade_a_nadie_a_una_organizacion_personal(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _con(monkeypatch, _Repo({1: "owner"}, personal=True))
+    _cuenta_verificada(monkeypatch, 2)
+
+    with pytest.raises(svc.OrganizationPermissionError, match="personal"):
+        svc.add_member_by_email(1, 5, "otra@example.test", "member")
+    with pytest.raises(svc.OrganizationPermissionError, match="personal"):
+        svc.create_invitation(1, 5, "otra@example.test", "member")
+    assert repo.escrito == [] and repo.invitados == []
+
+
 def test_un_admin_si_retira_a_un_member(monkeypatch: pytest.MonkeyPatch) -> None:
     repo = _con(monkeypatch, _Repo({1: "admin", 2: "member"}))
 
@@ -215,6 +250,15 @@ def test_no_se_mandan_invitaciones_sin_fin(monkeypatch: pytest.MonkeyPatch) -> N
     with pytest.raises(svc.OrganizationQuotaError):
         svc.create_invitation(1, 5, "otra@example.test", "member")
     assert repo.invitados == []
+
+
+def test_el_alta_directa_tambien_cuenta_para_la_cuota(monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _con(monkeypatch, _Repo({1: "owner"}, invitaciones=svc.MAX_INVITACIONES_POR_DIA))
+    _cuenta_verificada(monkeypatch, 2)
+
+    with pytest.raises(svc.OrganizationQuotaError):
+        svc.add_member_by_email(1, 5, "con-cuenta@example.test", "member")
+    assert repo.escrito == []
 
 
 def test_el_reenvio_tambien_cuenta_para_la_cuota(monkeypatch: pytest.MonkeyPatch) -> None:

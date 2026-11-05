@@ -579,3 +579,37 @@ def test_purgar_borra_lo_caducado_y_lo_huerfano(nuevo: Callable[..., None], usua
     }
     assert _clientes() == {CLIENTE, "huerfano-nuevo", "viejo-con-tokens"}
     assert purgar() == {"peticiones_y_codigos": 0, "tokens": 0, "clientes": 0}
+
+
+# ---------------------------------------------------------------------------
+# Cambiar la contraseña revoca también los tokens del MCP
+# ---------------------------------------------------------------------------
+
+
+def test_recuperar_la_contrasena_revoca_los_tokens_mcp(
+    usuario: int, nuevo: Callable[..., None]
+) -> None:
+    from db.password_reset import consume_reset_token, create_reset_token_for_email
+
+    nuevo("mcp-reset", kind="refresh", family_id="f-reset")
+    with connect() as c:
+        c.execute("UPDATE users SET password_hash = 'x' WHERE id = %s", (usuario,))
+    assert create_reset_token_for_email("admin@example.com", "digest-mcp", "2999-01-01T00:00:00Z")
+
+    assert consume_reset_token("digest-mcp", "hash-nuevo") == usuario  # pragma: allowlist secret
+
+    assert obtener_token("mcp-reset", "refresh") is None
+
+
+def test_cambiar_la_contrasena_revoca_los_tokens_mcp(
+    usuario: int, nuevo: Callable[..., None]
+) -> None:
+    from db.password_reset import change_password
+
+    nuevo("mcp-cambio", kind="access", family_id="f-cambio")
+
+    assert (
+        change_password(usuario, "hash-nuevo", sesion_actual="sin-sesion") == 0
+    )  # pragma: allowlist secret
+
+    assert obtener_token("mcp-cambio", "access") is None

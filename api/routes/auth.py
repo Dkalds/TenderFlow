@@ -1213,12 +1213,12 @@ class TotpCodeRequest(BaseModel):
         return normalized.lower()
 
 
-def _reject_if_mfa_locked(user_id: int) -> None:
+def _reject_if_mfa_locked(user_id: int, *, margen: int = 0) -> None:
     from db.rate_limits import is_mfa_locked_out
 
     locked, retry_after = is_mfa_locked_out(
         user_id,
-        max_attempts=settings.MFA_MAX_FAILURES,
+        max_attempts=settings.MFA_MAX_FAILURES + margen,
         window_seconds=float(settings.MFA_FAILURE_WINDOW_SECONDS),
     )
     if locked:
@@ -1229,10 +1229,18 @@ def _reject_if_mfa_locked(user_id: int) -> None:
         )
 
 
-def _record_mfa_failure(user_id: int) -> None:
+def _apuntar_intento_mfa(user_id: int) -> None:
+    """Apunta el intento ANTES de verificar el código, como el login.
+
+    Con «mirar el bloqueo, verificar, apuntar el fallo», N peticiones en
+    paralelo pasaban todas el control antes de que se apuntara ninguna. Apuntado
+    primero, la k-ésima ve al menos k filas, y el +1 deja pasar los mismos
+    ``MFA_MAX_FAILURES`` intentos. Un acierto lo borra (``clear_mfa_attempts``).
+    """
     from db.rate_limits import record_failed_mfa
 
     record_failed_mfa(user_id, window_seconds=float(settings.MFA_FAILURE_WINDOW_SECONDS))
+    _reject_if_mfa_locked(user_id, margen=1)
 
 
 async def require_recent_session_auth(
@@ -1300,6 +1308,7 @@ async def confirm_totp(
 
     def _confirm() -> list[str]:
         _reject_if_mfa_locked(user_id)
+        _apuntar_intento_mfa(user_id)
         record = get_totp_secret(user_id)
         if (
             record is None
@@ -1307,7 +1316,6 @@ async def confirm_totp(
             or not body.code.isdecimal()
             or not verify_totp(record["secret"], body.code)
         ):
-            _record_mfa_failure(user_id)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid TOTP code")
         confirm_totp_secret(user_id)
         mark_session_mfa_verified(str(user["session_token"]))
@@ -1343,6 +1351,7 @@ async def verify_totp_login(
 
     def _verify() -> None:
         _reject_if_mfa_locked(user_id)
+        _apuntar_intento_mfa(user_id)
         record = get_totp_secret(user_id)
         valid = bool(
             body.code.isdecimal()
@@ -1353,7 +1362,6 @@ async def verify_totp_login(
         if not valid and len(body.code) == 16:
             valid = use_recovery_code(user_id, body.code)
         if not valid:
-            _record_mfa_failure(user_id)
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA code")
         mark_session_mfa_verified(str(user["session_token"]))
         clear_mfa_attempts(user_id)
@@ -1400,8 +1408,8 @@ async def regenerate_recovery_codes(
         record = get_totp_secret(user_id)
         if record is None or not record["confirmed"]:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="TOTP not configured")
+        _apuntar_intento_mfa(user_id)
         if not (body.code.isdecimal() and verify_totp(record["secret"], body.code)):
-            _record_mfa_failure(user_id)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid TOTP code")
         clear_mfa_attempts(user_id)
         return generate_recovery_codes(user_id)
@@ -1455,11 +1463,11 @@ async def remove_totp(
         if record is None or not record["confirmed"]:
             # Nada que quitar: no es un código fallido y no cuenta como intento.
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="TOTP not configured")
+        _apuntar_intento_mfa(user_id)
         valid = body.code.isdecimal() and verify_totp(record["secret"], body.code)
         if not valid and len(body.code) == 16:
             valid = use_recovery_code(user_id, body.code)
         if not valid:
-            _record_mfa_failure(user_id)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid MFA code")
         delete_totp(user_id)
         clear_mfa_attempts(user_id)

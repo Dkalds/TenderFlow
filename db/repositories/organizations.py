@@ -822,12 +822,24 @@ class OrganizationRepository:
         return int(fila[0]) if fila else 0
 
     def contar_invitaciones_desde(self, user_id: int, desde: datetime) -> int:
-        """Invitaciones que esta persona ha emitido desde ``desde``, en cualquier organización."""
+        """Invitaciones y altas directas que esta persona ha emitido desde ``desde``.
+
+        En cualquier organización. Una membresía cuenta si la creó ella para otra
+        persona y no viene de canjear una invitación (esa ya contó al emitirse).
+        ``organization_memberships.created_at`` es texto ISO: se convierte para
+        compararlo con el instante.
+        """
         with connect_read() as conn:
             fila = conn.execute(
-                "SELECT COUNT(*) FROM organization_invitations "
-                "WHERE invited_by_user_id = %s AND created_at >= %s",
-                (user_id, desde),
+                "SELECT (SELECT COUNT(*) FROM organization_invitations "
+                "        WHERE invited_by_user_id = %s AND created_at >= %s) "
+                "     + (SELECT COUNT(*) FROM organization_memberships m "
+                "        WHERE m.invited_by_user_id = %s AND m.user_id <> m.invited_by_user_id "
+                "          AND m.created_at::timestamptz >= %s "
+                "          AND NOT EXISTS (SELECT 1 FROM organization_invitations i "
+                "                          WHERE i.organization_id = m.organization_id "
+                "                            AND i.accepted_user_id = m.user_id))",
+                (user_id, desde, user_id, desde),
             ).fetchone()
         return int(fila[0]) if fila else 0
 

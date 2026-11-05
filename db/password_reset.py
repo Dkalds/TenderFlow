@@ -6,7 +6,7 @@ el cambio sin que puedan esperarse la una a la otra en círculo.
 
 Cambiar la contraseña —por el enlace del correo o desde Ajustes— revoca en la
 misma transacción las credenciales que quien tuviera la cuenta pudo dejarse:
-sesiones y claves de API (:func:`_revocar_credenciales`).
+sesiones, claves de API y tokens OAuth del MCP (:func:`_revocar_credenciales`).
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from __future__ import annotations
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
+from db.mcp_oauth import revocar_de_usuario_en
 from db.sessions import _hash_token
 
 
@@ -183,7 +184,7 @@ def change_password(user_id: int, password_hash: str, *, sesion_actual: str) -> 
 
 
 def _revocar_credenciales(connection: Any, user_id: int, *, salvo_sesion: str | None = None) -> int:
-    """Revoca las sesiones (salvo la de hash ``salvo_sesion``) y las claves de API.
+    """Revoca las sesiones (salvo la de hash ``salvo_sesion``), las claves de API y el MCP.
 
     Dentro de la transacción de quien la llama, y sin tragarse errores: si algo
     falla, la contraseña tampoco cambia. Por eso no usa
@@ -211,8 +212,14 @@ def _revocar_credenciales(connection: Any, user_id: int, *, salvo_sesion: str | 
             "WHERE user_id = %s AND revoked = 0 AND token_hash <> %s",
             (ahora, user_id, salvo_sesion),
         )
-    cursor = connection.execute(
-        "UPDATE api_keys SET is_active = 0 WHERE user_id = %s AND is_active = 1",
-        (user_id,),
+    # El rowcount se lee ya: la conexión reutiliza el cursor en cada `execute`.
+    claves = int(
+        connection.execute(
+            "UPDATE api_keys SET is_active = 0 WHERE user_id = %s AND is_active = 1",
+            (user_id,),
+        ).rowcount
+        or 0
     )
-    return int(cursor.rowcount or 0)
+    # Los tokens OAuth de clientes MCP valen como una clave de API: también caen.
+    revocar_de_usuario_en(connection, user_id)
+    return claves

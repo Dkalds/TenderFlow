@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
-from db.connection import connect, connect_read
+from db.connection import _PgConnAdapter, connect, connect_read
 
 TipoToken = Literal["pendiente", "code", "access", "refresh"]
 
@@ -388,32 +388,41 @@ def revocar_de_usuario(user_id: int) -> int:
     usuario serializa dos revocaciones del mismo usuario, que si no podrían
     cruzar el orden de esas familias tardías.
     """
+    with connect() as c:
+        return revocar_de_usuario_en(c, user_id)
+
+
+def revocar_de_usuario_en(c: _PgConnAdapter, user_id: int) -> int:
+    """:func:`revocar_de_usuario` dentro de la transacción de quien llama.
+
+    La usa el cambio de contraseña (``db/password_reset.py``): si la revocación
+    falla, la contraseña tampoco cambia.
+    """
     total = 0
     cerradas: set[str] = set()
-    with connect() as c:
-        c.execute("SELECT pg_advisory_xact_lock(hashtext('mcp_oauth_usuario:' || %s))", (user_id,))
-        for pasada in range(_MAX_PASADAS):
-            vivas = {
-                str(f[0])
-                for f in c.execute(
-                    "SELECT DISTINCT family_id FROM mcp_oauth_tokens "
-                    "WHERE user_id = %s AND revoked_at IS NULL AND family_id IS NOT NULL",
-                    (user_id,),
-                ).fetchall()
-            }
-            nuevas = sorted(vivas - cerradas)
-            if pasada and not nuevas:
-                break
-            for familia in nuevas:
-                _cerrar_familia(c, familia)
-            cerradas.update(nuevas)
-            total += int(
-                c.execute(
-                    "UPDATE mcp_oauth_tokens SET revoked_at = now() "
-                    "WHERE user_id = %s AND revoked_at IS NULL",
-                    (user_id,),
-                ).rowcount
-            )
+    c.execute("SELECT pg_advisory_xact_lock(hashtext('mcp_oauth_usuario:' || %s))", (user_id,))
+    for pasada in range(_MAX_PASADAS):
+        vivas = {
+            str(f[0])
+            for f in c.execute(
+                "SELECT DISTINCT family_id FROM mcp_oauth_tokens "
+                "WHERE user_id = %s AND revoked_at IS NULL AND family_id IS NOT NULL",
+                (user_id,),
+            ).fetchall()
+        }
+        nuevas = sorted(vivas - cerradas)
+        if pasada and not nuevas:
+            break
+        for familia in nuevas:
+            _cerrar_familia(c, familia)
+        cerradas.update(nuevas)
+        total += int(
+            c.execute(
+                "UPDATE mcp_oauth_tokens SET revoked_at = now() "
+                "WHERE user_id = %s AND revoked_at IS NULL",
+                (user_id,),
+            ).rowcount
+        )
     return total
 
 
