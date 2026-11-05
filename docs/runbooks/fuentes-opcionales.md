@@ -67,8 +67,8 @@ apagada. Qué hace cada una está en el docstring de su módulo; lo operativo:
    `source_ingestion_health` con `status = 'success'`.
 
 La primera pasada, sin cursor, lee solo la primera página (500 entradas), como
-el feed principal. El histórico vendría de los ZIP mensuales de cada sindicación
-(`..._AAAAMM.zip`), que no tienen conector todavía. Volumen medido (20 páginas de
+el feed principal. El histórico viene de los ZIP mensuales de cada sindicación
+(`..._AAAAMM.zip`). Agregadas lo tiene desde el 2026-11-04: `python -m scraper.connectors.placsp_agregadas --desde YYYY-MM --hasta YYYY-MM`, o el workflow manual `historico-agregadas.yml`, que después vuelve a pasar TED para emparejar sus avisos; nunca pisa una fila que ya existe ni mueve el cursor del feed. Menores no lo tiene. Volumen medido (20 páginas de
 cada feed, 2026-10-24): menores publican ~2.500 entradas al día (~5 páginas) y
 admite el filtro un 2,4 %; agregadas ~2.300 al día y admite un 7,8 %.
 
