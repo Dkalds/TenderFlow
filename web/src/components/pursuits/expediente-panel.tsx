@@ -137,7 +137,7 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
       <div className="flex flex-col gap-4">
         <Panel>
           <SectionTitle>Señal tecnológica</SectionTitle>
-          <TecnologiasBlock licitacionId={licitacionId} />
+          <TecnologiasBlock licitacionId={licitacionId} conTitulo={false} />
         </Panel>
 
         <Panel>
@@ -152,11 +152,10 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
 
         <Panel>
           <SectionTitle>Recursos</SectionTitle>
-          {/* `ResolucionesBlock` no renderiza nada si no hay resoluciones del
-              TACRC, que es el caso normal: el rótulo se queda con el vacío
-              declarado debajo. */}
-          <ResolucionesBlock licitacionId={licitacionId} />
-          <p className="text-muted-foreground text-tf-meta">
+          {/* El vacío («Sin recursos registrados») y el fallo los dice el
+              propio bloque; el rótulo es el de este panel. */}
+          <ResolucionesBlock licitacionId={licitacionId} conTitulo={false} />
+          <p className="text-muted-foreground text-tf-meta mt-3">
             Solo aparecen aquí las resoluciones del TACRC publicadas para este expediente.
           </p>
         </Panel>

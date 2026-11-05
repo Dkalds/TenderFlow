@@ -2,8 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TecnologiasBlock } from "@/components/tecnologias-block";
+import { fetchWithAuth } from "@/lib/api-client";
 
-vi.mock("@/lib/api-client", () => ({
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api-client")>()),
   fetchWithAuth: vi.fn(() => new Promise(() => {})),
 }));
 
@@ -40,11 +42,40 @@ const RESULT = {
 };
 
 describe("TecnologiasBlock", () => {
-  it("renders nothing when there are no items", () => {
-    const { container } = withData("L-empty", { id_externo: "L-empty", items: [] }, (
-      <TecnologiasBlock licitacionId="L-empty" />
-    ));
-    expect(container.firstChild).toBeNull();
+  it("sin tecnologías lo dice, en vez de desaparecer", () => {
+    withData("L-empty", { id_externo: "L-empty", items: [] }, <TecnologiasBlock licitacionId="L-empty" />);
+    expect(screen.getByText("Tecnologías")).toBeInTheDocument();
+    expect(screen.getByText("Sin tecnología detectada")).toBeInTheDocument();
+  });
+
+  it("mientras carga pinta el esqueleto, no el vacío", () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { container } = render(
+      <QueryClientProvider client={qc}>
+        <TecnologiasBlock licitacionId="L-carga" />
+      </QueryClientProvider>,
+    );
+    expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull();
+    expect(screen.queryByText("Sin tecnología detectada")).not.toBeInTheDocument();
+  });
+
+  it("si la consulta falla lo dice con «Reintentar», no como «sin tecnología»", async () => {
+    vi.mocked(fetchWithAuth).mockRejectedValueOnce(new Error("Error del servidor"));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <TecnologiasBlock licitacionId="L-fallo" />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("No se pudo cargar la señal tecnológica")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /reintentar/i })).toBeInTheDocument();
+    expect(screen.queryByText("Sin tecnología detectada")).not.toBeInTheDocument();
+  });
+
+  it("sin título propio cuando el contenedor ya rotula la sección", () => {
+    withData("L1", RESULT, <TecnologiasBlock licitacionId="L1" conTitulo={false} />);
+    expect(screen.queryByText("Tecnologías")).not.toBeInTheDocument();
+    expect(screen.getByText("SAP")).toBeInTheDocument();
   });
 
   it("renders detected technologies with their origin chips", () => {

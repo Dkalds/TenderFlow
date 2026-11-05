@@ -2,9 +2,9 @@
 
 import * as React from "react";
 import { ExternalLink } from "lucide-react";
-import { PanelEmpty, SectionTitle } from "@/components/console/panel";
+import { SectionTitle } from "@/components/console/panel";
 import { EventosTimeline } from "@/components/eventos-timeline";
-import { ResolucionesBlock, useResoluciones } from "@/components/resoluciones-block";
+import { ResolucionesBlock } from "@/components/resoluciones-block";
 import { ScoreDesglose } from "@/components/score-desglose";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { fuenteLinkLabel } from "@/lib/fuentes";
@@ -125,23 +125,15 @@ export function FichaEventos({ licitacionId, as = "h3" }: { licitacionId: string
   );
 }
 
-/** Resoluciones del TACRC, o el vacío que dice que no consta ninguna. */
+/**
+ * Resoluciones del TACRC, el vacío que dice que no consta ninguna o el fallo
+ * de la consulta: los tres estados los pinta `ResolucionesBlock`. Antes un
+ * fallo caía aquí en «Sin recursos registrados».
+ */
 export function FichaRecursos({ licitacionId, className }: { licitacionId: string; className?: string }) {
-  const { data } = useResoluciones(licitacionId);
-  const total = data?.items?.length ?? 0;
-  if (total > 0) {
-    return (
-      <div className={cn("[&>*:first-child]:mt-0", className)}>
-        <ResolucionesBlock licitacionId={licitacionId} />
-      </div>
-    );
-  }
   return (
-    <PanelEmpty
-      size="sm"
-      className={className}
-      title="Sin recursos registrados"
-      hint="No consta ninguna resolución del TACRC para este expediente."
-    />
+    <div className={cn("[&>*:first-child]:mt-0", className)}>
+      <ResolucionesBlock licitacionId={licitacionId} />
+    </div>
   );
 }

@@ -1,12 +1,15 @@
 "use client";
 
+import type * as React from "react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth, type ApiGetResult } from "@/lib/api-client";
 import { ChevronRight, Cpu } from "lucide-react";
-import { SectionTitle } from "@/components/console/panel";
+import { PanelEmpty, PanelError, SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Schemas } from "@/lib/api-types";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { tecnologiasKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
@@ -80,30 +83,63 @@ function TecnologiaRow({ item }: { item: TecnologiaDetalle }) {
 /** Bloque "Tecnologías" del detail panel: consolida keyword-match de título,
  *  clasificador ML y señal detectada en el texto de los pliegos, con
  *  evidencia expandible (ver plan Pliegos+RAG en docs/IMPROVEMENT_BACKLOG.md).
- *  No se muestra cuando no hay ninguna tecnología detectada por ninguna
- *  fuente. (DocumentosBlock seguía este mismo criterio de `null` en vacío;
- *  desde que recibe `fichaUrl` ya no siempre: cuando la tiene, el vacío pasa a
- *  ser un enlace a la ficha del expediente. Aquí no hay equivalente — si no
- *  detectamos tecnologías, no hay ningún sitio al que mandar al usuario.) */
-export function TecnologiasBlock({ licitacionId }: { licitacionId: string }) {
-  const { data } = useQuery({
+ *
+ *  Carga, fallo y vacío se distinguen: hasta 2026-11 los tres devolvían
+ *  `null`, así que una API caída se leía como «no hay tecnología detectada».
+ *  `conTitulo={false}` cuando el contenedor ya rotula la sección (la ficha de
+ *  la oportunidad la llama «Señal tecnológica»). */
+export function TecnologiasBlock({ licitacionId, conTitulo = true }: { licitacionId: string; conTitulo?: boolean }) {
+  const { data, isPending, error, refetch } = useQuery({
     queryKey: tecnologiasKeys.byLicitacion(licitacionId),
     queryFn: () =>
       fetchWithAuth<TecnologiasResult>(`/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/tecnologias`),
     staleTime: 5 * 60 * 1000,
+    // El fallo se pinta aquí mismo (`PanelError`): sin toast encima.
+    meta: META_ERROR_EN_LINEA,
   });
 
   const items = data?.items ?? [];
-  if (items.length === 0) return null;
-
-  return (
-    <div className="mt-6 space-y-3">
-      <SectionTitle as="h3">Tecnologías</SectionTitle>
+  let cuerpo: React.ReactNode;
+  if (isPending) {
+    cuerpo = (
+      <div className="space-y-2" aria-hidden="true">
+        <Skeleton className="h-9 w-full" />
+        <Skeleton className="h-9 w-2/3" />
+      </div>
+    );
+  } else if (error) {
+    cuerpo = (
+      <PanelError
+        variant="inline"
+        className="py-0"
+        title="No se pudo cargar la señal tecnológica"
+        error={error}
+        onRetry={() => void refetch()}
+      />
+    );
+  } else if (items.length === 0) {
+    cuerpo = (
+      <PanelEmpty
+        size="sm"
+        className="py-0"
+        title="Sin tecnología detectada"
+        hint="Ni el título, ni el clasificador, ni el texto de los pliegos apuntan a una tecnología concreta."
+      />
+    );
+  } else {
+    cuerpo = (
       <ul className="space-y-2">
         {items.map((item) => (
           <TecnologiaRow key={item.tecnologia} item={item} />
         ))}
       </ul>
+    );
+  }
+
+  return (
+    <div className={cn("space-y-3", conTitulo && "mt-6")} aria-busy={isPending || undefined}>
+      {conTitulo && <SectionTitle as="h3">Tecnologías</SectionTitle>}
+      {cuerpo}
     </div>
   );
 }
