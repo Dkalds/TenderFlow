@@ -157,6 +157,22 @@ class JobsRepository:
             ).fetchone()
         return _fila(fila) if fila else None
 
+    def renovar_lock(self, job_id: int, *, worker_id: str) -> bool:
+        """Refresca ``locked_at`` del job que este consumidor sigue ejecutando.
+
+        Es el latido de un handler largo: sin él, un job que dura más que
+        ``JOBS_LOCK_TTL_SEGUNDOS`` lo libera la barrida estando vivo y otro
+        worker lo ejecuta a la vez. ``False`` si el lock ya no es suyo (la
+        barrida se lo llevó o el job se cerró), que es la señal de dejar de latir.
+        """
+        with connect() as c:
+            fila = c.execute(
+                "UPDATE jobs SET locked_at = NOW() "
+                "WHERE id = %s AND estado = 'running' AND locked_by = %s RETURNING id",
+                (job_id, worker_id),
+            ).fetchone()
+        return fila is not None
+
     # Los tres cierres devuelven cómo era el intento ANTES de cerrarlo —tipo,
     # ``run_after`` y ``locked_at``— y el ``NOW()`` del cierre: con eso
     # ``services.jobs`` mide la espera en cola y la duración con el reloj del

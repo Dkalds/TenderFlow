@@ -29,24 +29,7 @@ export type HistogramBin = Schemas["HistogramBin"];
 /** Cruce real Mes×Estado: `row` = mes `YYYY-MM`, `col` = código de estado. */
 export type HeatmapCellDto = Schemas["HeatmapCell"];
 
-export interface MesPico {
-  mes: string;
-  importe: number;
-  count: number;
-}
-
-/**
- * `mes_pico` es el único campo de `TrendsResult` que la API no tipa (sale como
- * `dict[str, Any]` de `services/analytics/trends.py`): se comprueba su forma
- * aquí en vez de dar por buena una interfaz escrita a mano.
- * shortcut: validación local del dict, hasta que el backend lo declare como DTO.
- */
-export function leerMesPico(valor: unknown): MesPico | undefined {
-  if (typeof valor !== "object" || valor === null) return undefined;
-  const { mes, importe, count } = valor as Record<string, unknown>;
-  if (typeof mes !== "string" || typeof importe !== "number" || typeof count !== "number") return undefined;
-  return { mes, importe, count };
-}
+export type MesPico = Schemas["MesPico"];
 
 /** Punto de la serie acumulada de importe. */
 export interface CumulativePoint {
@@ -177,7 +160,7 @@ export function useTendenciasView() {
 
   return {
     series,
-    mesPico: leerMesPico(trends?.mes_pico),
+    mesPico: trends?.mes_pico ?? undefined,
     waterfall: trends?.waterfall ?? [],
     histBins,
     useLogScale,

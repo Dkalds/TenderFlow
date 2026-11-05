@@ -51,13 +51,30 @@ class ModelHistoryEntry(BaseModel):
     metrics: dict[str, Any] | None
 
 
+class ModelActiveVersion(BaseModel):
+    """La fila activa de ``model_versions`` (``db.model_registry.get_active``)."""
+
+    id: int
+    name: str
+    version: int
+    path: str
+    sha256: str
+    trained_at: str
+    trained_on_n_samples: int | None = None
+    trained_on_n_feedbacks: int | None = None
+    is_active: int
+    notes: str | None = None
+    # Las métricas son un JSON libre que escribe cada entrenamiento (pr_auc, f1,
+    # umbrales por clase…): el registro no fija sus claves ni sus tipos.
+    metrics: dict[str, Any] = Field(default_factory=dict)
+
+
 class ModelInfoResult(BaseModel):
     """Resumen del modelo activo (registry) para el panel de active learning."""
 
     name: str
-    # Fila cruda del registry (id/version/path/sha256/metrics/...): forma libre
-    # del almacén, None si aún no hay versión activa.
-    active: dict[str, Any] | None
+    #: ``None`` si aún no hay versión activa.
+    active: ModelActiveVersion | None
     feedbacks_since_train: int
     history: list[ModelHistoryEntry]
 

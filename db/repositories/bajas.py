@@ -132,3 +132,48 @@ def fila_baja_de_referencia(
     with connect_read() as c:
         rows = rows_to_dicts(c.execute(sql, params))
     return rows[0] if rows else {}
+
+
+def bajas_medias_del_scoring(cutoff: str) -> tuple[dict[str, float], float | None]:
+    """Baja media (fracción 0-1) por CPV-4 y global, de adjudicaciones desde ``cutoff``.
+
+    Alimenta la señal de margen del scoring (``services.analytics.scoring_signals``).
+    El denominador es el presupuesto de cada fila de adjudicación —el de su lote
+    si lo tiene— vía ``BAJA_PCT_SQL``: agregar por licitación sobreestimaría la
+    baja de un expediente multi-lote. Un CPV-4 necesita tres adjudicaciones para
+    tener media propia, y los duplicados entre fuentes no cuentan: un mismo
+    contrato llegado por PLACSP y TED pesaba doble y podía llenar solo el umbral.
+    """
+    sql_cpv4 = f"""
+        SELECT substr(l.cpv, 1, 4) AS cpv4, AVG({BAJA_PCT_SQL} / 100) AS baja_media
+        FROM adjudicaciones a
+        JOIN licitaciones l ON l.id_externo = a.licitacion_id
+        LEFT JOIN lotes lo ON lo.id = a.lote_id
+        WHERE a.fecha_adjudicacion >= %s
+          AND {TECHNOLOGY_OBSERVED_SQL}
+          AND l.cpv IS NOT NULL
+          AND length(l.cpv) >= 4
+          AND {VALID_PAIR_LOTE}
+          AND {exclude_duplicados_sql()}
+        GROUP BY cpv4
+        HAVING COUNT(*) >= 3
+    """
+    sql_global = f"""
+        SELECT AVG({BAJA_PCT_SQL} / 100)
+        FROM adjudicaciones a
+        JOIN licitaciones l ON l.id_externo = a.licitacion_id
+        LEFT JOIN lotes lo ON lo.id = a.lote_id
+        WHERE a.fecha_adjudicacion >= %s
+          AND {TECHNOLOGY_OBSERVED_SQL}
+          AND {VALID_PAIR_LOTE}
+          AND {exclude_duplicados_sql()}
+    """
+    with connect_read() as c:
+        por_cpv4 = {
+            str(cpv4): float(media)
+            for cpv4, media in c.execute(sql_cpv4, (cutoff,)).fetchall()
+            if cpv4 is not None and media is not None
+        }
+        fila = c.execute(sql_global, (cutoff,)).fetchone()
+    global_ = float(fila[0]) if fila is not None and fila[0] is not None else None
+    return por_cpv4, global_

@@ -28,13 +28,10 @@ import time
 from calendar import monthrange
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
 
-from db.database import connect_read
 from db.repositories.aggregates import AggregateRepository
-from db.repositories.base import rows_to_dicts
+from db.repositories.bajas import bajas_medias_del_scoring
 from db.repositories.predicciones import PrediccionesRepository
-from db.sql_fragments import BAJA_PCT_SQL, TECHNOLOGY_OBSERVED_SQL, VALID_PAIR_LOTE
 from observability.logging import get_logger
 from services._data_cache import SignalAwareCache
 
@@ -248,39 +245,9 @@ def _load_competencia_stats_raw(cutoff_months: int = VENTANA_COMPETENCIA_MESES) 
 def _load_margen_stats_raw(cutoff_months: int = 24) -> MargenStats:
     """Carga sin caché — llamado solo por SignalAwareCache.get()."""
     cutoff = _cutoff_iso(cutoff_months)
-    # Baja media histórica por CPV-4 (de adjudicaciones 24 meses), como
-    # fracción 0-1 para comparar con la fórmula del scoring. El denominador es
-    # el presupuesto real de cada fila de adjudicación (el de su lote si lo
-    # tiene, v65_lotes) vía EFFECTIVE_BUDGET_SQL dentro de BAJA_PCT_SQL: la
-    # comparación es por fila, no agregada por licitación, así que usar
-    # ``l.importe`` sobreestimaría la baja de cualquier expediente multi-lote
-    # (mismo patrón que services/ml/scoring.py). La columna ``a.importe_licitacion``
-    # que se usaba antes no existe en el esquema: la query fallaba entera y el
-    # ``except`` devolvía stats vacías, dejando la señal de margen muerta.
-    sql_baja_cpv4 = f"""
-        SELECT
-            substr(l.cpv, 1, 4) AS cpv4,
-            AVG({BAJA_PCT_SQL} / 100) AS baja_media
-        FROM adjudicaciones a
-        JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        LEFT JOIN lotes lo ON lo.id = a.lote_id
-        WHERE a.fecha_adjudicacion >= %s
-          AND {TECHNOLOGY_OBSERVED_SQL}
-          AND l.cpv IS NOT NULL
-          AND length(l.cpv) >= 4
-          AND {VALID_PAIR_LOTE}
-        GROUP BY cpv4
-        HAVING COUNT(*) >= 3
-    """  # noqa: S608 — BAJA_PCT_SQL/VALID_PAIR_LOTE/TECHNOLOGY_OBSERVED_SQL son fragmentos constantes; el valor va con ?
-    sql_baja_global = f"""
-        SELECT AVG({BAJA_PCT_SQL} / 100) AS baja_media_global
-        FROM adjudicaciones a
-        JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        LEFT JOIN lotes lo ON lo.id = a.lote_id
-        WHERE a.fecha_adjudicacion >= %s
-          AND {TECHNOLOGY_OBSERVED_SQL}
-          AND {VALID_PAIR_LOTE}
-    """  # noqa: S608 — fragmentos constantes; el valor va con ?
+    # Baja media histórica por CPV-4 y global (adjudicaciones de 24 meses), como
+    # fracción 0-1 para comparar con la fórmula del scoring. El SQL vive en
+    # ``db/repositories/bajas.py`` (ADR-022); allí se explica el denominador.
     inicio = time.perf_counter()
     try:
         # El SELECT de `predicciones_baja` vive en `db/repositories/predicciones.py`
@@ -306,22 +273,7 @@ def _load_margen_stats_raw(cutoff_months: int = 24) -> MargenStats:
                 n_baseline += 1
             else:
                 n_modelo += 1
-        with connect_read() as c:
-            rows_cpv4: list[dict[str, Any]] = rows_to_dicts(c.execute(sql_baja_cpv4, (cutoff,)))
-            baja_media_por_cpv4 = {
-                str(r["cpv4"]): float(r["baja_media"])
-                for r in rows_cpv4
-                if r["cpv4"] is not None and r["baja_media"] is not None
-            }
-            row_global = c.execute(sql_baja_global, (cutoff,)).fetchone()
-            baja_media_global: float | None = None
-            if row_global is not None:
-                val = (
-                    row_global[0]
-                    if not hasattr(row_global, "keys")
-                    else row_global["baja_media_global"]
-                )
-                baja_media_global = float(val) if val is not None else None
+        baja_media_por_cpv4, baja_media_global = bajas_medias_del_scoring(cutoff)
         log.info(
             "scoring_signals_margen_cargada",
             predicciones=len(p50_por_licitacion),

@@ -32,7 +32,9 @@ veces al día). Ver la nota de ``db/alembic/versions/v106_jobs.py``.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
@@ -520,6 +522,39 @@ def ejecutar(job: Job) -> dict[str, Any] | None:
     return funcion(job)
 
 
+@contextmanager
+def latido(job: Job, worker_id: str, *, intervalo_segundos: float | None = None) -> Iterator[None]:
+    """Renueva el lock de ``job`` en un hilo mientras dura el bloque.
+
+    El intervalo por defecto es un tercio del TTL: hacen falta dos latidos
+    perdidos seguidos (BD caída un rato) para que la barrida lo dé por muerto.
+    Si el proceso muere, el latido muere con él y el TTL vuelve a hacer su
+    trabajo. Un fallo puntual al renovar no corta el handler: el siguiente
+    latido lo reintenta.
+    """
+    intervalo = (
+        max(1.0, jobs_lock_ttl_segundos() / 3) if intervalo_segundos is None else intervalo_segundos
+    )
+    parar = threading.Event()
+
+    def _latir() -> None:
+        while not parar.wait(intervalo):
+            try:
+                if not _repo.renovar_lock(job.id, worker_id=worker_id):
+                    log.warning("job_lock_perdido", job_id=job.id, tipo=job.tipo)
+                    return
+            except Exception as exc:  # la BD puede caerse un momento; el próximo latido reintenta
+                log.warning("job_latido_fallido", job_id=job.id, error=str(exc))
+
+    hilo = threading.Thread(target=_latir, name=f"job-latido-{job.id}", daemon=True)
+    hilo.start()
+    try:
+        yield
+    finally:
+        parar.set()
+        hilo.join(timeout=5)
+
+
 def procesar_uno(worker_id: str, *, tipos: tuple[str, ...] | None = None) -> Job | None:
     """Reclama, ejecuta y cierra un job. ``None`` si no había trabajo.
 
@@ -531,7 +566,8 @@ def procesar_uno(worker_id: str, *, tipos: tuple[str, ...] | None = None) -> Job
     if job is None:
         return None
     try:
-        resultado = ejecutar(job)
+        with latido(job, worker_id):
+            resultado = ejecutar(job)
     except Exception as exc:
         fail(job.id, f"{type(exc).__name__}: {exc}", intentos=job.intentos)
         log.warning("job_handler_fallo", job_id=job.id, tipo=job.tipo, error=str(exc))
@@ -566,6 +602,7 @@ __all__ = [
     "enqueue",
     "fail",
     "job_activo",
+    "latido",
     "obtener",
     "procesar_uno",
     "reclamar_caducados",

@@ -402,6 +402,37 @@ def test_integration_un_id_anterior_resuelve_y_la_api_avisa_con_deprecation(
     assert resolver_id_licitacion(_EXPEDIENTE) is None
 
 
+def test_integration_comparar_lee_la_ficha_del_id_vigente(
+    client: Any, auth: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Un id anterior en el cuerpo de /comparar se lee por el vigente.
+
+    La columna conserva el id pedido: es la clave con la que el cliente pinta.
+    """
+    from db.database import connect
+    from db.repositories.identidad import registrar_id_anterior
+
+    nuevo = clave_placsp("placsp", _ORGANO_A, _EXPEDIENTE)
+    with connect() as c:
+        _insertar_cruda(c, nuevo, "Mutua Intercomarcal", "placsp", None)
+    assert registrar_id_anterior(_EXPEDIENTE, nuevo, motivo="rekey_placsp_organo")
+
+    leidos: list[str] = []
+
+    def _ficha(id_externo: str) -> None:
+        leidos.append(id_externo)
+
+    monkeypatch.setattr("services.rag.fact_sheet.get_fact_sheet", _ficha)
+    r = client.post(
+        "/api/v1/licitaciones/comparar", headers=auth, json={"ids": [_EXPEDIENTE, "otro"]}
+    )
+
+    assert r.status_code == 200, r.text
+    assert leidos == [nuevo, "otro"]
+    assert r.json()["sin_ficha"] == [_EXPEDIENTE, "otro"]
+    assert r.headers["Deprecation"] == "true"
+
+
 def test_integration_el_inventario_detecta_la_pisada_en_el_historial(tmp_db: Any) -> None:
     from db.database import connect
     from db.repositories.identidad import (

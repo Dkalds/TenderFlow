@@ -11255,6 +11255,21 @@ export interface components {
             n_licitaciones: number;
         };
         /**
+         * MesPico
+         * @description Mes con mayor importe total del rango (primer máximo si hay empate).
+         */
+        MesPico: {
+            /** Count */
+            count: number;
+            /** Importe */
+            importe: number;
+            /**
+             * Mes
+             * @description `YYYY-MM`
+             */
+            mes: string;
+        };
+        /**
          * MetaFilters
          * @description Valores únicos disponibles para los selectores de filtros.
          */
@@ -11347,6 +11362,36 @@ export interface components {
             /** Version */
             version: number;
         };
+        /**
+         * ModelActiveVersion
+         * @description La fila activa de ``model_versions`` (``db.model_registry.get_active``).
+         */
+        ModelActiveVersion: {
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active: number;
+            /** Metrics */
+            metrics?: {
+                [key: string]: unknown;
+            };
+            /** Name */
+            name: string;
+            /** Notes */
+            notes?: string | null;
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+            /** Trained At */
+            trained_at: string;
+            /** Trained On N Feedbacks */
+            trained_on_n_feedbacks?: number | null;
+            /** Trained On N Samples */
+            trained_on_n_samples?: number | null;
+            /** Version */
+            version: number;
+        };
         /** ModelHistoryEntry */
         ModelHistoryEntry: {
             /** Metrics */
@@ -11363,10 +11408,7 @@ export interface components {
          * @description Resumen del modelo activo (registry) para el panel de active learning.
          */
         ModelInfoResult: {
-            /** Active */
-            active: {
-                [key: string]: unknown;
-            } | null;
+            active: components["schemas"]["ModelActiveVersion"] | null;
             /** Feedbacks Since Train */
             feedbacks_since_train: number;
             /** History */
@@ -16630,10 +16672,7 @@ export interface components {
             heatmap?: components["schemas"]["HeatmapCell"][];
             /** Histogram Bins */
             histogram_bins?: components["schemas"]["HistogramBin"][];
-            /** Mes Pico */
-            mes_pico?: {
-                [key: string]: unknown;
-            } | null;
+            mes_pico?: components["schemas"]["MesPico"] | null;
             /**
              * Serie Truncada
              * @description True si `series` alcanzó el techo de 4000 puntos y se recortó al tramo más reciente. Para cubrir un rango más largo sin perder tramo, pide una granularidad más gruesa en `group_by`. `waterfall` se calcula sobre la serie ya recortada; `heatmap`, `histogram_bins` y `mes_pico` siguen midiendo el rango completo.

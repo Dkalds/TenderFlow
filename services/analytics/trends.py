@@ -19,7 +19,7 @@ histórico.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -115,6 +115,14 @@ class HistogramBin(BaseModel):
     count: int
 
 
+class MesPico(BaseModel):
+    """Mes con mayor importe total del rango (primer máximo si hay empate)."""
+
+    mes: str = Field(description="`YYYY-MM`")
+    importe: float
+    count: int
+
+
 class TrendsResult(BaseModel):
     """Combined trends response."""
 
@@ -124,7 +132,7 @@ class TrendsResult(BaseModel):
     yoy_importe: float = 0.0
     waterfall: list[WaterfallPoint] = Field(default_factory=list)
     histogram_bins: list[HistogramBin] = Field(default_factory=list)
-    mes_pico: dict[str, Any] | None = None
+    mes_pico: MesPico | None = None
     group_by: TrendsFreq = Field(
         default="month",
         description=(
@@ -241,7 +249,7 @@ def _build_waterfall(series: list[TrendPoint]) -> list[WaterfallPoint]:
     return result
 
 
-def _find_mes_pico(daily: list[DiaImporteFila]) -> dict[str, Any] | None:
+def _find_mes_pico(daily: list[DiaImporteFila]) -> MesPico | None:
     """Mes con mayor importe total (primer máximo en caso de empate)."""
     monthly: dict[str, list[float]] = {}
     for row in daily:
@@ -252,7 +260,7 @@ def _find_mes_pico(daily: list[DiaImporteFila]) -> dict[str, Any] | None:
     if not monthly:
         return None
     best_mes, best = max(monthly.items(), key=lambda kv: kv[1][1])
-    return {"mes": best_mes, "importe": best[1], "count": int(best[0])}
+    return MesPico(mes=best_mes, importe=best[1], count=int(best[0]))
 
 
 # ---------------------------------------------------------------------------

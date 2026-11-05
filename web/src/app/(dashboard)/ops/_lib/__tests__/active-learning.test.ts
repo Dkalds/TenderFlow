@@ -64,15 +64,23 @@ describe("hacerPrincipal", () => {
 });
 
 describe("leerModeloActivo", () => {
-  it("toma la versión activa del dict sin tipar y se queda con las métricas numéricas", () => {
+  it("toma la versión activa y se queda con las métricas numéricas", () => {
     expect(
-      leerModeloActivo({ version: 3, trained_at: "2026-10-01", metrics: { f1: 0.8, nota: "x" }, otro: 1 }),
+      leerModeloActivo({
+        id: 1,
+        name: "sap_classifier",
+        version: 3,
+        path: "models/sap_v3.joblib",
+        sha256: "abc",
+        trained_at: "2026-10-01",
+        is_active: 1,
+        metrics: { f1: 0.8, nota: "x" },
+      }),
     ).toEqual({ version: 3, trained_at: "2026-10-01", metrics: { f1: 0.8 }, trained_on_n_feedbacks: null });
   });
 
-  it("sin modelo activo, o sin versión reconocible, no hay modelo", () => {
+  it("sin modelo activo no hay modelo", () => {
     expect(leerModeloActivo(null)).toBeNull();
     expect(leerModeloActivo(undefined)).toBeNull();
-    expect(leerModeloActivo({ metrics: {} })).toBeNull();
   });
 });

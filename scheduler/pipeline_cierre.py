@@ -204,7 +204,7 @@ def _cierre_por_cola(*, lane: str) -> dict[str, str]:
             que la cola no esté (una migración sin aplicar) no puede costar el
             cierre entero de la pasada.
     """
-    from services.jobs import TIPO_PASO_PIPELINE, ack, claim, ejecutar, enqueue, fail
+    from services.jobs import TIPO_PASO_PIPELINE, ack, claim, ejecutar, enqueue, fail, latido
 
     tipos = (TIPO_PASO_PIPELINE,)
 
@@ -245,7 +245,11 @@ def _cierre_por_cola(*, lane: str) -> dict[str, str]:
             ack(job.id, {"paso": nombre, "estado": STEP_SKIPPED_DEP, "dependencias": faltan})
             continue
         try:
-            resultado = ejecutar(job)
+            # La barrida de locks del consumidor de la API recorre todos los
+            # tipos: sin latido, un paso de más de JOBS_LOCK_TTL_SEGUNDOS
+            # volvería a `pending` mientras corre.
+            with latido(job, "pipeline_cierre"):
+                resultado = ejecutar(job)
         except Exception as exc:
             log.exception("pipeline_step_failed", step=nombre, tier=STEP_TIER.get(nombre))
             results[nombre] = STEP_ERROR

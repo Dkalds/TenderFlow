@@ -38,8 +38,10 @@ def _purgar_binarios_expedientes_cerrados(*, apply: bool = True) -> dict[str, in
     exactamente el número de claves que la fila conservaba y el bucket ya no
     tenía.
 
-    Fail-open: si el almacén no está configurado o falla, se registra y la
-    purga del resto de tablas sigue su curso.
+    Si el almacén no está configurado no hay nada que purgar. Si falla, la
+    purga del resto de tablas sigue su curso, pero el resultado lleva
+    ``"error": -1`` y ``exigir_completa`` pone el paso en rojo después: tragarse
+    el fallo dejaba el lock diario puesto y el bucket creciendo sin aviso.
     """
     resultado = {"candidatos": 0, "borrados": 0, "claves_olvidadas": 0}
     try:
@@ -67,7 +69,8 @@ def _purgar_binarios_expedientes_cerrados(*, apply: bool = True) -> dict[str, in
         # muerta que volvería a salir candidata cada noche.
         resultado["claves_olvidadas"] = repo.clear_blob_keys(int(f["id"]) for f in filas)
     except Exception as exc:
-        log.warning("retention_blobs_failed", error=str(exc))
+        log.warning("retention_blobs_failed", error=str(exc), exc_info=True)
+        resultado["error"] = -1
     log.info("retention_blobs", **resultado)
     return resultado
 

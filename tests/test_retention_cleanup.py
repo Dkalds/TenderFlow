@@ -47,6 +47,18 @@ class TestRunRetentionCleanup:
         assert all(isinstance(v, int) for v in blobs.values())
 
 
+class TestPurgaDeBinarios:
+    def test_un_fallo_del_almacen_se_anota_y_no_se_traga(self) -> None:
+        """Antes el ``except`` solo registraba: el paso salía verde con el bucket intacto."""
+        from scheduler.jobs.retention_cleanup import _purgar_binarios_expedientes_cerrados
+
+        roto = MagicMock(side_effect=RuntimeError("almacén caído"))
+        with patch("shared.object_store.get_object_store", roto):
+            resultado = _purgar_binarios_expedientes_cerrados(apply=True)
+
+        assert resultado["error"] == -1
+
+
 class TestPurgaDeSesiones:
     """``purge_expired_sessions`` existía sin llamador: la tabla solo crecía."""
 

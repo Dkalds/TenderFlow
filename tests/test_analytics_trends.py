@@ -141,9 +141,9 @@ def test_trends_mes_pico(tmp_db):
     res = tr_mod.get_trends(tr_mod.TrendsFilters())
 
     assert res.mes_pico is not None
-    assert res.mes_pico["mes"] == "2026-04"
-    assert res.mes_pico["importe"] == 500.0
-    assert res.mes_pico["count"] == 1
+    assert res.mes_pico.mes == "2026-04"
+    assert res.mes_pico.importe == 500.0
+    assert res.mes_pico.count == 1
 
 
 def test_trends_empty(tmp_db):

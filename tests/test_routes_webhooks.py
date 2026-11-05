@@ -221,6 +221,34 @@ def test_webhook_ping_exitoso(client, auth, monkeypatch):
     assert data["success"] is True
 
 
+@pytest.mark.parametrize("en_el_envio", [False, True])
+def test_webhook_ping_bloqueado_no_cuenta_por_que(client, auth, monkeypatch, en_el_envio):
+    """El motivo del bloqueo SSRF va al log; el cliente solo sabe que no se permite.
+
+    Con el motivo en la respuesta, un ping era un oráculo de la red interna
+    («resuelve a una dirección no global» frente a «DNS resolution failed»).
+    """
+    created = _create_webhook(client, auth, monkeypatch)
+    motivo = ValueError("Host resuelve a una dirección no global")
+
+    def _bloquear(*_args: object) -> object:
+        raise motivo
+
+    if en_el_envio:
+        monkeypatch.setattr("api.routes.webhooks._validate_webhook_url", lambda url: url)
+        monkeypatch.setattr("api.routes.webhooks._post_pinned_webhook", _bloquear)
+    else:
+        monkeypatch.setattr("api.routes.webhooks._validate_webhook_url", _bloquear)
+
+    r = client.post(f"/api/v1/webhooks/{created['id']}/ping", headers=auth)
+
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["success"] is False
+    assert data["error"] == "La URL del webhook no está permitida."
+    assert "global" not in r.text
+
+
 def test_webhook_ping_no_existe(client, auth):
     """ping /99999 → 404."""
     r = client.post("/api/v1/webhooks/99999/ping", headers=auth)

@@ -19,15 +19,14 @@ reclama — ``claim`` filtra por ``TIPOS_A_DEMANDA``.
 
 Vida del lock
 -------------
-``locked_at`` no se refresca mientras el handler corre: un job que tarde más
-que ``JOBS_LOCK_TTL_SEGUNDOS`` (900 s por defecto) puede ser reclamado por otro
-worker y ejecutarse dos veces. Los handlers son idempotentes —el upsert de la
-ficha, el ``replace_chunks`` de los embeddings, el maquetado del PDF y el
-``guardar`` de las puntuaciones del acta, que reemplaza el expediente entero,
-lo son—, así que el peor caso es trabajo repetido, no dato corrupto. El TTL está
-por encima del percentil alto de la extracción más larga; si algún tipo futuro
-lo supera de forma sistemática, lo que toca es un heartbeat, no subir el TTL
-hasta que un despliegue deje de recuperarse.
+``services.jobs.procesar_uno`` refresca ``locked_at`` cada tercio de
+``JOBS_LOCK_TTL_SEGUNDOS`` (900 s por defecto) mientras el handler corre
+(``services.jobs.latido``): la barrida solo libera los jobs cuyo proceso dejó
+de latir, no los que tardan. Si aun así dos workers llegaran a ejecutar el
+mismo job (la BD caída más de dos latidos), los handlers son idempotentes —el
+upsert de la ficha, el ``replace_chunks`` de los embeddings, el maquetado del
+PDF y el ``guardar`` de las puntuaciones del acta, que reemplaza el expediente
+entero, lo son—, así que el peor caso es trabajo repetido, no dato corrupto.
 """
 
 from __future__ import annotations
