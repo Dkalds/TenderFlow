@@ -26,10 +26,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from psycopg import errors as pg_errors
+
 from db.notifications import insert_user_notifications
 from db.repositories.watchlist_rules import filas_de_reglas_a_evaluar, marcar_regla_notificada
 from observability import get_logger
 from services.watchlist_rules import WatchlistRule, matches_since
+from shared.types import JsonDict
 
 log = get_logger(__name__)
 
@@ -191,9 +194,11 @@ def _write_user_notifications(
             rule_id=rule_id,
             created_at=now_ts,
         )
-    except Exception as exc:
-        # Si la tabla no existe (BD legacy sin migrar), continuar sin crash
-        log.debug("user_notifications_write_skip", error=str(exc)[:100])
+    except pg_errors.UndefinedTable as exc:
+        # Si la tabla no existe (BD legacy sin migrar), continuar sin crash. Solo
+        # eso: cualquier otro fallo sube, porque la ventana de la regla se marca
+        # después de escribir y tragarlo en silencio pierde la alerta.
+        log.warning("user_notifications_write_skip", error=str(exc)[:100])
         return 0
 
 
@@ -234,95 +239,112 @@ def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
 
     alerted = 0
     for row in rules:
-        if not _is_due(row, now):
-            continue
-        rule = _row_to_rule(row)
-        user_key = str(row["user_key"])
-        # `None` en bases sin v129 o en reglas que el backfill no resolvió.
-        raw_user_id = row.get("user_id")
-        user_id = int(raw_user_id) if raw_user_id is not None else None
-        new_matches = matches_since(
-            rule,
-            _since_date(row, default_since),
-            limit=limit_per_rule,
-            user_key=user_key,
-            user_id=user_id,
-        )
-        if len(new_matches) >= limit_per_rule:
-            # La página se llenó: hay más matches de los que caben en una
-            # evaluación. No se pierden —el anti-join hace que la siguiente
-            # empiece por los que quedaron— pero conviene que se vea, porque
-            # una regla que satura el tope cada día es una regla mal acotada.
-            log.warning(
-                "watchlist_rule_matches_truncados",
-                rule_id=int(row["id"]),
-                limit=limit_per_rule,
-            )
-        # Mover la ventana siempre (haya o no matches) para no re-escanear. Es
-        # seguro justo porque el corte ya no es lo que decide qué es nuevo: la
-        # ventana se solapa y la deduplicación la hace el anti-join.
-        marcar_regla_notificada(int(row["id"]), now_ts)
-        if not new_matches:
-            continue
-
-        rule_id = int(row["id"])
-        email = row.get("email")
-
-        # 1. Notificaciones in-app (siempre)
-        written = _write_user_notifications(
-            user_key, rule_id, new_matches, rule, now_ts, user_id=user_id
-        )
-
-        # 2. Email via pending_digests (solo si hay email configurado)
-        if email:
-            _enqueue_pending_digest(
-                user_key,
-                email,
-                rule_id,
-                new_matches,
-                row.get("frequency") or "daily",
-                rule,
-                now_ts,
-                user_id=user_id,
-            )
-
-        log.info(
-            "watchlist_rule_alert",
-            rule_id=rule_id,
-            total=len(new_matches),
-            in_app=written,
-            has_email=bool(email),
-        )
-
-        # El aviso a las integraciones externas ya no se entrega desde aquí:
-        # se escribe en el outbox (`domain_events`) y lo reparte
-        # `scheduler/jobs/event_dispatch.py`. Antes este bucle abría una
-        # conexión HTTP por webhook suscrito **dentro** de la evaluación de las
-        # reglas, así que un receptor lento retrasaba las alertas de todos los
-        # demás usuarios y una entrega fallida no dejaba rastro de qué la había
-        # originado. Sigue siendo best-effort: la alerta in-app ya está escrita
-        # y no puede caerse porque el evento no se pueda registrar.
         try:
-            from db.events import append_domain_event
-
-            append_domain_event(
-                "watchlist_rule.matched",
-                rule_id,
-                "watchlist_rule",
-                {
-                    "rule_id": rule_id,
-                    "user_key": user_key,
-                    "nombre": rule.nombre,
-                    "keyword": rule.keyword,
-                    "cpv": rule.cpv,
-                    "total_matches": len(new_matches),
-                    "licitaciones": [lic.get("id_externo") for lic in new_matches],
-                },
-                organization_id=rule.organization_id,
-            )
+            alerted += _evaluar_regla(row, now, now_ts, default_since, limit_per_rule)
         except Exception:
-            log.warning("watchlist_rule_event_failed", exc_info=True)
-
-        alerted += 1
+            # Una regla que falla no puede bloquear a las demás. Su ventana no
+            # avanzó (ver `_evaluar_regla`), así que la siguiente pasada la
+            # reintenta, y las escrituras son idempotentes.
+            log.error("watchlist_rule_fallo", rule_id=row.get("id"), exc_info=True)
 
     return alerted
+
+
+def _evaluar_regla(
+    row: JsonDict, now: datetime, now_ts: str, default_since: str, limit_per_rule: int
+) -> bool:
+    """Evalúa una regla; ``True`` si disparó alguna notificación.
+
+    La ventana (``last_notified_at``) avanza **después** de escribir la alerta:
+    si la escritura falla, la regla sigue pendiente y la pasada siguiente busca
+    lo mismo. Avanzarla antes perdía la alerta —una regla semanal solo solapa
+    :data:`_VENTANA_GRACIA_DIAS` días—, y como el fallo se tragaba, nadie lo veía.
+    """
+    if not _is_due(row, now):
+        return False
+    rule = _row_to_rule(row)
+    user_key = str(row["user_key"])
+    rule_id = int(row["id"])
+    # `None` en reglas que el backfill de v129 no resolvió.
+    raw_user_id = row.get("user_id")
+    user_id = int(raw_user_id) if raw_user_id is not None else None
+    new_matches = matches_since(
+        rule,
+        _since_date(row, default_since),
+        limit=limit_per_rule,
+        user_key=user_key,
+        user_id=user_id,
+    )
+    if len(new_matches) >= limit_per_rule:
+        # La página se llenó: hay más matches de los que caben en una
+        # evaluación. No se pierden —el anti-join hace que la siguiente
+        # empiece por los que quedaron— pero conviene que se vea, porque
+        # una regla que satura el tope cada día es una regla mal acotada.
+        log.warning("watchlist_rule_matches_truncados", rule_id=rule_id, limit=limit_per_rule)
+    if not new_matches:
+        # Mover la ventana aunque no haya matches, para no re-escanear. Es
+        # seguro justo porque el corte ya no es lo que decide qué es nuevo: la
+        # ventana se solapa y la deduplicación la hace el anti-join.
+        marcar_regla_notificada(rule_id, now_ts)
+        return False
+
+    email = row.get("email")
+
+    # 1. Notificaciones in-app (siempre)
+    written = _write_user_notifications(
+        user_key, rule_id, new_matches, rule, now_ts, user_id=user_id
+    )
+
+    # 2. Email via pending_digests (solo si hay email configurado)
+    if email:
+        _enqueue_pending_digest(
+            user_key,
+            email,
+            rule_id,
+            new_matches,
+            row.get("frequency") or "daily",
+            rule,
+            now_ts,
+            user_id=user_id,
+        )
+
+    marcar_regla_notificada(rule_id, now_ts)
+
+    log.info(
+        "watchlist_rule_alert",
+        rule_id=rule_id,
+        total=len(new_matches),
+        in_app=written,
+        has_email=bool(email),
+    )
+
+    # El aviso a las integraciones externas ya no se entrega desde aquí:
+    # se escribe en el outbox (`domain_events`) y lo reparte
+    # `scheduler/jobs/event_dispatch.py`. Antes este bucle abría una
+    # conexión HTTP por webhook suscrito **dentro** de la evaluación de las
+    # reglas, así que un receptor lento retrasaba las alertas de todos los
+    # demás usuarios y una entrega fallida no dejaba rastro de qué la había
+    # originado. Sigue siendo best-effort: la alerta in-app ya está escrita
+    # y no puede caerse porque el evento no se pueda registrar.
+    try:
+        from db.events import append_domain_event
+
+        append_domain_event(
+            "watchlist_rule.matched",
+            rule_id,
+            "watchlist_rule",
+            {
+                "rule_id": rule_id,
+                "user_key": user_key,
+                "nombre": rule.nombre,
+                "keyword": rule.keyword,
+                "cpv": rule.cpv,
+                "total_matches": len(new_matches),
+                "licitaciones": [lic.get("id_externo") for lic in new_matches],
+            },
+            organization_id=rule.organization_id,
+        )
+    except Exception:
+        log.warning("watchlist_rule_event_failed", exc_info=True)
+
+    return True

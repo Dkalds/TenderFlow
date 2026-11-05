@@ -138,6 +138,14 @@ def test_identificadores_peligrosos_se_rechazan() -> None:
         sentencias_grants("tenderflow_mcp", 'public"; --')
 
 
+def test_identificador_con_salto_de_linea_final_se_rechaza() -> None:
+    # `$` casa antes de un `\n` final: con `.match` el nombre pasaba la lista blanca.
+    with pytest.raises(ValueError):
+        sentencias_rol("tenderflow_mcp\n")
+    with pytest.raises(ValueError):
+        sentencias_grants("tenderflow_mcp", "public\n")
+
+
 def test_sql_generado_al_dia() -> None:
     res = subprocess.run(
         [sys.executable, "scripts/gen_mcp_grants.py", "--check"],

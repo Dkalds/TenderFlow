@@ -103,7 +103,7 @@ def check_database() -> bool:
         if importlib.util.find_spec("psycopg") is None:
             _err("psycopg no instalado. Ejecutá: pip install -r requirements.txt")
             return False
-        import psycopg  # type: ignore[import-not-found]
+        import psycopg
 
         with psycopg.connect(database_url, connect_timeout=5) as conn:
             conn.execute("SELECT 1").fetchone()
@@ -155,7 +155,7 @@ def check_predicciones_baja() -> bool:
 
         if importlib.util.find_spec("psycopg") is None:
             return True  # no podemos verificar sin psycopg
-        import psycopg  # type: ignore[import-not-found]
+        import psycopg
 
         with psycopg.connect(database_url, connect_timeout=5) as conn:
             row = conn.execute("SELECT COUNT(*) FROM predicciones_baja").fetchone()
@@ -203,7 +203,7 @@ def check_redis() -> bool:
                 return True
             _warn(f"Redis (Upstash) respuesta inesperada: {body[:40]}")
             return True
-        import redis as _redis  # type: ignore[import-not-found]
+        import redis as _redis
 
         _redis.from_url(redis_url, socket_connect_timeout=2).ping()
         _ok(f"Redis responde en {host}")

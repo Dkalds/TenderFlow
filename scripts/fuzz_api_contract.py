@@ -159,7 +159,8 @@ def _desactivar_rate_limiter() -> None:
         def check(self, key: str, *, max_calls: int = 120, window_seconds: float = 60.0) -> bool:
             return True
 
-    api.middleware.get_rate_limiter = lambda: _SinLimite()  # type: ignore[assignment]
+    # `get_rate_limiter` entra en api.middleware por import, sin reexportarlo: mypy no ve el atributo.
+    api.middleware.get_rate_limiter = lambda: _SinLimite()  # type: ignore[attr-defined]
 
 
 def _preparar_entorno() -> None:
