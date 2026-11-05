@@ -11,46 +11,16 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import type { BoxDatum } from "@/components/charts/clusters-charts";
 import { getSeriesColor } from "@/lib/chart-colors";
 import { truncate } from "@/lib/utils";
 
-export interface ImporteBox {
-  min: number;
-  q1: number;
-  median: number;
-  q3: number;
-  max: number;
-}
-
-export interface ClusterItem {
-  id_externo: string;
-  titulo: string | null;
-  organo_contratacion: string | null;
-  importe: number | null;
-  ccaa: string | null;
-  estado: string | null;
-}
-
-export interface ClusterEntry {
-  cluster_id: number;
-  label: string;
-  n: number;
-  importe_medio: number;
-  importe_total: number;
-  cpv_dominante?: string | null;
-  organo_dominante?: string | null;
-  importe_box: ImporteBox | null;
-  items: ClusterItem[];
-}
-
-export interface ClustersResponse {
-  n_clusters_detectados: number;
-  total: number;
-  silhouette?: number | null;
-  clusters: ClusterEntry[];
-}
+// Las formas salen del esquema generado (`useFilteredQuery` las deriva de la ruta).
+export type ClusterItem = Schemas["ClusterItem"];
+export type ClusterEntry = Schemas["ClusterEntry"];
+export type ClustersResponse = Schemas["ClustersResult"];
 
 export interface BarDatum {
   label: string;
@@ -64,7 +34,7 @@ export function useClustersView() {
   const [autoK, setAutoK] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState<number | null>(null);
 
-  const { data, isLoading, isFetching, error, refetch } = useFilteredQuery<ClustersResponse>(
+  const { data, isLoading, isFetching, error, refetch } = useFilteredQuery(
     ["analytics", "clusters", String(appliedK), String(autoK)],
     "/api/v1/analytics/clusters",
     // El error lo pinta la vista en línea (PanelError): sin toast además.

@@ -17,20 +17,20 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { urlApi } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { useSortToggle } from "@/hooks/use-sort-toggle";
 import { useFilters } from "@/lib/filters";
 import { toggleValue } from "@/lib/chart-interaction";
-import type { CompanyProfileData } from "@/components/competitors/company-profile-types";
 
 import { drillDownExtraParams, drillDownIds } from "./competidores-tabla";
-import type { CompetitorsData, Lente, Metrica, SortKey } from "./competidores-types";
+import type { Lente, Metrica, SortKey } from "./competidores-types";
 import { useCompetidoresView } from "./use-competidores-view";
 import { useMovimientosVigiladas } from "./use-vigilados";
 import { idsVigiladas } from "./vigilados";
 
 export function useCompetidoresData() {
-  const { data, isLoading, error, refetch } = useFilteredQuery<CompetitorsData>(
+  const { data, isLoading, error, refetch } = useFilteredQuery(
     ["analytics", "competitors"],
     "/api/v1/analytics/competitors",
     // El error lo pinta la vista en línea (PanelError): sin toast además.
@@ -93,9 +93,9 @@ export function useCompetidoresData() {
     isLoading: perfilLoading,
     error: perfilError,
     refetch: refetchPerfil,
-  } = useFilteredQuery<CompanyProfileData>(
+  } = useFilteredQuery(
     ["competitive-company-profile", String(perfilId ?? "none"), perfilIds.join(",")],
-    `/api/v1/competitive/empresas/${perfilId ?? 0}/perfil`,
+    urlApi("/api/v1/competitive/empresas/{empresa_id}/perfil", { empresa_id: perfilId ?? 0 }),
     { enabled: perfilId != null, staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
     perfilParams,
     true,

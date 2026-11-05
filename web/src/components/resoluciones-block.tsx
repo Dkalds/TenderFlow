@@ -1,24 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth } from "@/lib/api-client";
+import { apiGet } from "@/lib/api-client";
 import { SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { resolucionesKeys } from "@/lib/query-keys";
-
-interface Resolucion {
-  id: number;
-  tribunal: string;
-  numero_resolucion: string;
-  numero_recurso: string | null;
-  fecha: string | null;
-  sentido: string | null;
-  url_pdf: string | null;
-  resumen: string | null;
-}
 
 const SENTIDO_LABELS: Record<string, string> = {
   estimado: "Estimado",
@@ -35,10 +24,10 @@ const SENTIDO_VARIANTS: Record<string, "default" | "secondary" | "destructive" |
 };
 
 export function useResoluciones(licitacionId: string) {
-  return useQuery<{ items: Resolucion[] }>({
+  return useQuery({
     queryKey: resolucionesKeys.byLicitacion(licitacionId),
-    queryFn: () =>
-      fetchWithAuth(`/api/v1/resoluciones?licitacion_id=${encodeURIComponent(licitacionId)}`),
+    queryFn: ({ signal }) =>
+      apiGet("/api/v1/resoluciones", { params: { query: { licitacion_id: licitacionId } }, signal }),
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -61,7 +50,7 @@ export function ResolucionesBlock({ licitacionId }: { licitacionId: string }) {
               </Badge>
               {/* El tribunal es una sigla (TACRC): la versal es la suya, no un estilo. */}
               <span className="text-tf-body font-medium">
-                {r.tribunal.toUpperCase()} {r.numero_resolucion}
+                {[r.tribunal?.toUpperCase(), r.numero_resolucion].filter(Boolean).join(" ") || "Resolución"}
               </span>
               {r.fecha && <span className="tf-tnum text-tf-meta text-muted-foreground">{formatDate(r.fecha)}</span>}
             </div>

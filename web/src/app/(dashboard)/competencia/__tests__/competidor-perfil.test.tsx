@@ -96,6 +96,7 @@ const PERFIL: CompanyProfileData = {
   ],
   movimientos: [],
   participaciones_ute: [],
+  corte_min_n: 5,
 };
 
 const batalla = (n: number, resultado: Schemas["Batalla"]["resultado"]): Schemas["Batalla"] => ({

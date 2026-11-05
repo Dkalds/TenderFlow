@@ -12,7 +12,7 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, expectTypeOf, vi, beforeEach, afterEach } from "vitest";
 
 // ─── Mock @/lib/filters ────────────────────────────────────────────────────────
 // Must be hoisted before the hook import so the module factory runs first.
@@ -24,7 +24,13 @@ vi.mock("@/lib/filters", () => ({
 
 // ─── Subject under test ────────────────────────────────────────────────────────
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { urlApi } from "@/lib/api-client";
+import type { Schemas } from "@/lib/api-types";
 import { debeReintentar } from "@/lib/query-feedback";
+
+/** Ruta GET real del esquema: el hook ya no acepta una cadena cualquiera. */
+const RUTA = "/api/v1/analytics/overview";
+const LICITACIONES = "/api/v1/licitaciones";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -74,7 +80,7 @@ describe("useFilteredQuery", () => {
 
     // Simply render and verify the hook calls fetch with the correct query string
     // which implicitly proves the filter params are included in the query key
-    renderHook(() => useFilteredQuery<unknown>(["licitaciones"], "/api/v1/licitaciones"), { wrapper });
+    renderHook(() => useFilteredQuery(["licitaciones"], LICITACIONES), { wrapper });
 
     const mockFetch = global.fetch as ReturnType<typeof vi.fn>;
     await waitFor(() => expect(mockFetch).toHaveBeenCalled());
@@ -88,7 +94,7 @@ describe("useFilteredQuery", () => {
     mockUseFilterParams.mockReturnValue({ q: "first" });
     const wrapper = createWrapper();
 
-    const { rerender } = renderHook(() => useFilteredQuery<unknown[]>(["items"], "/api/v1/items"), { wrapper });
+    const { rerender } = renderHook(() => useFilteredQuery(["items"], RUTA), { wrapper });
 
     // Wait for the first fetch to complete
     await waitFor(() => expect(fetch).toHaveBeenCalledWith(expect.stringContaining("q=first"), expect.any(Object)));
@@ -107,11 +113,11 @@ describe("useFilteredQuery", () => {
     mockUseFilterParams.mockReturnValue({});
 
     const wrapper = createWrapper();
-    const { result } = renderHook(() => useFilteredQuery<unknown>(["noop"], "/api/v1/noop"), { wrapper });
+    const { result } = renderHook(() => useFilteredQuery(["noop"], RUTA), { wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(fetch).toHaveBeenCalledWith("/api/v1/noop", {
+    expect(fetch).toHaveBeenCalledWith(RUTA, {
       credentials: "include",
       signal: expect.any(AbortSignal),
       headers: { "Content-Type": "application/json" },
@@ -122,7 +128,7 @@ describe("useFilteredQuery", () => {
     mockUseFilterParams.mockReturnValue({ q: "cloud", estado: "publicada" });
 
     const wrapper = createWrapper();
-    const { result } = renderHook(() => useFilteredQuery<unknown>(["search"], "/api/v1/licitaciones"), { wrapper });
+    const { result } = renderHook(() => useFilteredQuery(["search"], LICITACIONES), { wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
@@ -141,7 +147,8 @@ describe("useFilteredQuery", () => {
 
     const wrapper = createWrapper();
     const { result } = renderHook(
-      () => useFilteredQuery<unknown>(["analytics", "trends"], "/api/v1/analytics/trends?group_by=month"),
+      () =>
+        useFilteredQuery(["analytics", "trends"], urlApi("/api/v1/analytics/trends", {}, { group_by: "month" })),
       { wrapper },
     );
 
@@ -162,9 +169,12 @@ describe("useFilteredQuery", () => {
     const wrapper = createWrapper();
     const { result } = renderHook(
       () =>
-        useFilteredQuery<unknown>(["analytics", "trends"], "/api/v1/analytics/trends?group_by=month", undefined, {
-          group_by: "day",
-        }),
+        useFilteredQuery(
+          ["analytics", "trends"],
+          urlApi("/api/v1/analytics/trends", {}, { group_by: "month" }),
+          undefined,
+          { group_by: "day" },
+        ),
       { wrapper },
     );
 
@@ -184,9 +194,9 @@ describe("useFilteredQuery", () => {
     const wrapper = createWrapper();
     const { result } = renderHook(
       () =>
-        useFilteredQuery<unknown>(
+        useFilteredQuery(
           ["merged"],
-          "/api/v1/licitaciones",
+          LICITACIONES,
           undefined,
           { estado: "publicada", page: "2" }, // extraParams
         ),
@@ -209,7 +219,7 @@ describe("useFilteredQuery", () => {
 
     const wrapper = createWrapper();
     const { result } = renderHook(
-      () => useFilteredQuery<unknown>(["extra-only"], "/api/v1/licitaciones", undefined, { page: "3", limit: "10" }),
+      () => useFilteredQuery(["extra-only"], LICITACIONES, undefined, { page: "3", limit: "10" }),
       { wrapper },
     );
 
@@ -225,7 +235,7 @@ describe("useFilteredQuery", () => {
 
   it("calls fetch with credentials: include", async () => {
     const wrapper = createWrapper();
-    const { result } = renderHook(() => useFilteredQuery<unknown>(["creds"], "/api/v1/creds"), { wrapper });
+    const { result } = renderHook(() => useFilteredQuery(["creds"], RUTA), { wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
@@ -246,7 +256,7 @@ describe("useFilteredQuery", () => {
     window.location = { href: "", pathname: "/protected", search: "" } as Location;
 
     const wrapper = createWrapper();
-    const { result } = renderHook(() => useFilteredQuery<unknown>(["auth"], "/api/v1/protected"), { wrapper });
+    const { result } = renderHook(() => useFilteredQuery(["auth"], RUTA), { wrapper });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
@@ -266,7 +276,7 @@ describe("useFilteredQuery", () => {
     );
 
     const wrapper = createWrapper();
-    const { result } = renderHook(() => useFilteredQuery<unknown>(["err503"], "/api/v1/down"), { wrapper });
+    const { result } = renderHook(() => useFilteredQuery(["err503"], RUTA), { wrapper });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
 
@@ -278,7 +288,7 @@ describe("useFilteredQuery", () => {
     vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(makeResponse({ detail: "Not found" }, 404)));
 
     const wrapper = createWrapper();
-    const { result } = renderHook(() => useFilteredQuery<unknown>(["err404"], "/api/v1/missing"), { wrapper });
+    const { result } = renderHook(() => useFilteredQuery(["err404"], RUTA), { wrapper });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect((result.current.error as Error).message).toBe("Not found");
@@ -307,7 +317,7 @@ describe("useFilteredQuery", () => {
 
     it("pasa el signal de React Query a fetch", async () => {
       const wrapper = createWrapper();
-      const { result } = renderHook(() => useFilteredQuery<unknown>(["senal"], "/api/v1/senal"), { wrapper });
+      const { result } = renderHook(() => useFilteredQuery(["senal"], RUTA), { wrapper });
       await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
       const init = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit;
@@ -328,9 +338,7 @@ describe("useFilteredQuery", () => {
         React.createElement(QueryClientProvider, { client: queryClient }, children);
 
       mockUseFilterParams.mockReturnValue({ q: "first" });
-      const { result, rerender } = renderHook(() => useFilteredQuery<{ q: string }>(["busqueda"], "/api/v1/items"), {
-        wrapper,
-      });
+      const { result, rerender } = renderHook(() => useFilteredQuery(["busqueda"], RUTA), { wrapper });
       await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
       const primera = fetchMock.mock.calls[0][1] as RequestInit;
 
@@ -362,11 +370,35 @@ describe("useFilteredQuery", () => {
 
     const wrapper = createWrapper();
     const { result } = renderHook(
-      () => useFilteredQuery<typeof payload>(["licitacion", "1"], "/api/v1/licitaciones/1"),
+      () => useFilteredQuery(["licitacion", "1"], urlApi("/api/v1/licitaciones/{id_externo}", { id_externo: "1" })),
       { wrapper },
     );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(payload);
+    expect(fetch).toHaveBeenCalledWith("/api/v1/licitaciones/1", expect.any(Object));
+  });
+
+  // ── tipado desde el esquema ──────────────────────────────────────────────────
+
+  it("deriva el tipo de la respuesta de la ruta, también con urlApi", () => {
+    const wrapper = createWrapper();
+    const literal = renderHook(() => useFilteredQuery(["overview"], RUTA), { wrapper });
+    const dinamica = renderHook(
+      () => useFilteredQuery(["organo"], urlApi("/api/v1/analytics/organos/{organo}", { organo: "X" })),
+      { wrapper },
+    );
+    expectTypeOf(literal.result.current.data).toEqualTypeOf<Schemas["OverviewResult"] | undefined>();
+    expectTypeOf(dinamica.result.current.data).toEqualTypeOf<Schemas["OrganoDetailResult"] | undefined>();
+  });
+});
+
+describe("urlApi", () => {
+  it("sustituye los parámetros de ruta codificados y añade la query fija", () => {
+    expect(urlApi("/api/v1/analytics/organos/{organo}", { organo: "Ayto. de A/B" })).toBe(
+      "/api/v1/analytics/organos/Ayto.%20de%20A%2FB",
+    );
+    expect(urlApi("/api/v1/analytics/trends", {}, { group_by: "day" })).toBe("/api/v1/analytics/trends?group_by=day");
+    expect(urlApi("/api/v1/analytics/overview")).toBe("/api/v1/analytics/overview");
   });
 });

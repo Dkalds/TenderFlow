@@ -104,6 +104,7 @@ const profile: CompanyProfileData = {
   por_anio: [],
   movimientos: [],
   participaciones_ute: [],
+  corte_min_n: 5,
 };
 
 // Los textos truncados y las barras llevan `Pista` (un `Tooltip`), que

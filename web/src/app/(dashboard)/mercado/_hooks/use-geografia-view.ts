@@ -17,27 +17,14 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { toggleValue } from "@/lib/chart-interaction";
 import { useFilters } from "@/lib/filters";
 
-export interface GeoItem {
-  ccaa: string;
-  count: number;
-  importe: number;
-  pct: number;
-}
-
-export interface ProvinciaItem {
-  provincia: string;
-  count: number;
-  importe: number;
-}
-
-export interface GeographyResponse {
-  by_ccaa: GeoItem[];
-  by_provincia?: ProvinciaItem[];
-}
+// Las formas salen del esquema generado (`useFilteredQuery` las deriva de la ruta).
+export type GeoItem = Schemas["GeoEntry"];
+export type ProvinciaItem = Schemas["ProvinciaEntry"];
 
 export type SortKey = "ccaa" | "count" | "importe" | "pct";
 export type SortDir = "asc" | "desc";
@@ -55,7 +42,7 @@ export function useGeografiaView() {
   const activeCcaa = useMemo(() => new Set(ccaas), [ccaas]);
   const toggleCcaa = (ccaa: string) => setCcaas(toggleValue(ccaa, ccaas));
 
-  const { data, isLoading, error, refetch } = useFilteredQuery<GeographyResponse>(
+  const { data, isLoading, error, refetch } = useFilteredQuery(
     ["analytics", "geography"],
     "/api/v1/analytics/geography",
     // El error lo pinta la vista en línea (PanelError): sin toast además.

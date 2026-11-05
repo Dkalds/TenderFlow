@@ -67,7 +67,7 @@ function nodosDeImporte(filas: FilaCategoria[], limite: number): NodoImporte[] {
 }
 
 export function useProyectosModulosView() {
-  const { data, isLoading, error, refetch } = useFilteredQuery<ProyectosModulosResponse>(
+  const { data, isLoading, error, refetch } = useFilteredQuery(
     ["analytics", "proyectos-modulos"],
     "/api/v1/analytics/proyectos-modulos",
     // El error lo pinta la vista en línea (PanelError): sin toast además.

@@ -45,7 +45,7 @@ export function TriajeResumen({
         signal,
       }),
     staleTime: 5 * 60_000,
-    select: (respuesta) => respuesta.opportunities.find((item) => item.id_externo === idExterno) ?? null,
+    select: (respuesta) => respuesta.opportunities?.find((item) => item.id_externo === idExterno) ?? null,
   });
   const score = puntuacion?.score ?? null;
   const banda = puntuacion?.band;

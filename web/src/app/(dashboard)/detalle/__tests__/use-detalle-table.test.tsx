@@ -130,6 +130,7 @@ describe("useDetalleRows", () => {
   ];
   const scoring: ScoringResponse = {
     opportunities: [{ id_externo: "A", score: 70, band: "media", desglose: {} }],
+    total_scored: 1,
   };
 
   function setup(rowSelection: RowSelectionState = {}) {

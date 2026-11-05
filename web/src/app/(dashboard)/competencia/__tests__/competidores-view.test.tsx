@@ -22,7 +22,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Schemas } from "@/lib/api-types";
 
 const { fetchWithAuth, apiGet } = vi.hoisted(() => ({ fetchWithAuth: vi.fn(), apiGet: vi.fn() }));
-vi.mock("@/lib/api-client", () => ({ fetchWithAuth, apiGet }));
+vi.mock("@/lib/api-client", async (importOriginal) => ({
+  // `urlApi` es una función pura (arma la URL tipada): se usa la real.
+  urlApi: (await importOriginal<typeof import("@/lib/api-client")>()).urlApi,
+  fetchWithAuth,
+  apiGet,
+}));
 
 vi.mock("@/lib/filters", () => ({
   useFilterParams: () => ({}),

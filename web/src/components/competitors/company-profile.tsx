@@ -319,7 +319,7 @@ export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
                   )}
                 </Panel>
                 <CompanyUteParticipations
-                  participations={profile.participaciones_ute}
+                  participations={profile.participaciones_ute ?? []}
                   companyName={profile.empresa.nombre}
                 />
               </div>

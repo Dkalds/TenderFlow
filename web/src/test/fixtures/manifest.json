@@ -9,6 +9,13 @@
       "status": "200"
     },
     {
+      "fixture": "feedback-queue.json",
+      "method": "GET",
+      "path": "/api/v1/feedback/queue",
+      "kind": "response",
+      "status": "200"
+    },
+    {
       "fixture": "admin-users.json",
       "method": "GET",
       "path": "/api/v1/admin/users",

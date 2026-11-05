@@ -2,36 +2,16 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth } from "@/lib/api-client";
+import { fetchWithAuth, type ApiGetResult } from "@/lib/api-client";
 import { ChevronRight, Cpu } from "lucide-react";
 import { SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
+import type { Schemas } from "@/lib/api-types";
 import { tecnologiasKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
-interface EvidenceRef {
-  documento_id: number;
-  page_number: number;
-  quote: string;
-  start_offset: number | null;
-  end_offset: number | null;
-}
-
-interface TecnologiaDetalle {
-  tecnologia: string;
-  en_titulo: boolean;
-  ml_probabilidad: number | null;
-  ml_threshold_aplicado: number | null;
-  pliego_keywords_score: number | null;
-  pliego_keywords_terms: string[] | null;
-  pliego_llm_score: number | null;
-  pliego_llm_evidence: EvidenceRef[] | null;
-}
-
-interface TecnologiasResult {
-  id_externo: string;
-  items: TecnologiaDetalle[];
-}
+type TecnologiaDetalle = Schemas["TecnologiaDetalle"];
+type TecnologiasResult = ApiGetResult<"/api/v1/licitaciones/{id_externo}/tecnologias">;
 
 function origenes(item: TecnologiaDetalle): string[] {
   const result: string[] = [];
@@ -106,10 +86,10 @@ function TecnologiaRow({ item }: { item: TecnologiaDetalle }) {
  *  ser un enlace a la ficha del expediente. Aquí no hay equivalente — si no
  *  detectamos tecnologías, no hay ningún sitio al que mandar al usuario.) */
 export function TecnologiasBlock({ licitacionId }: { licitacionId: string }) {
-  const { data } = useQuery<TecnologiasResult>({
+  const { data } = useQuery({
     queryKey: tecnologiasKeys.byLicitacion(licitacionId),
     queryFn: () =>
-      fetchWithAuth(`/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/tecnologias`),
+      fetchWithAuth<TecnologiasResult>(`/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/tecnologias`),
     staleTime: 5 * 60 * 1000,
   });
 
