@@ -2,7 +2,6 @@
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import type { ResumenNovedadesResult } from "@/lib/api-types";
 
 /**
  * Licitaciones publicadas desde tu última visita, en el ámbito de la barra
@@ -25,7 +24,7 @@ import type { ResumenNovedadesResult } from "@/lib/api-types";
  * el nuevo, la cifra mentiría durante la carga.
  */
 export function useNovedades() {
-  return useFilteredQuery<ResumenNovedadesResult>(
+  return useFilteredQuery(
     ["analytics", "resumen", "novedades"],
     "/api/v1/analytics/resumen/novedades",
     // El fallo se dice en la tarjeta: sin toast encima.

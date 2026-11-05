@@ -185,8 +185,8 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
         conceder: vars.conceder ?? null,
       }),
     onSuccess: (respuesta) => {
-      queryClient.invalidateQueries({ queryKey: adminKeys.solicitudes.all });
-      queryClient.invalidateQueries({ queryKey: adminKeys.accessGrants });
+      void queryClient.invalidateQueries({ queryKey: adminKeys.solicitudes.all });
+      void queryClient.invalidateQueries({ queryKey: adminKeys.accessGrants });
       // `notificado` distingue tres cosas y las tres importan: no se pidió
       // aviso (`null`), salió (`true`), o se pidió y NO salió (`false`). Sin
       // este reparto, un SMTP mal configurado dejaba al operador convencido de
@@ -212,7 +212,7 @@ export function useSolicitudesAcceso({ limite = LIMITE }: OpcionesSolicitudesAcc
     mutationFn: (grantId: number) =>
       apiMutate("DELETE", `/api/v1/admin/solicitudes-acceso/grants/${grantId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: adminKeys.accessGrants });
+      void queryClient.invalidateQueries({ queryKey: adminKeys.accessGrants });
       toast.success("Acceso revocado para nuevos inicios de sesión");
     },
     meta: { errorTitle: "No se pudo revocar el acceso" },

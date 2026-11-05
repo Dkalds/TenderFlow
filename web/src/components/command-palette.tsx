@@ -450,8 +450,11 @@ function CommandPaletteInner() {
                 value="copiar enlace con filtros link"
                 onSelect={() =>
                   run(() => {
-                    navigator.clipboard.writeText(window.location.href);
-                    toast.success("Enlace copiado");
+                    // Se avisa cuando el portapapeles responde: el navegador puede rechazarlo.
+                    navigator.clipboard.writeText(window.location.href).then(
+                      () => toast.success("Enlace copiado"),
+                      () => toast.error("No se pudo copiar el enlace"),
+                    );
                   })
                 }
                 className={FILA}

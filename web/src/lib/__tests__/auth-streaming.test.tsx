@@ -143,7 +143,7 @@ describe("SessionProvider y el HTML en streaming", () => {
     const respuesta = new Promise<Response>((resolver) => {
       responder = () =>
         resolver(
-          new Response(JSON.stringify({ user_id: "u1", email: "ana@example.test", display_name: "Ana", is_admin: false }), {
+          new Response(JSON.stringify({ user_id: 1, email: "ana@example.test", display_name: "Ana", is_admin: false }), {
             status: 200,
             headers: { "content-type": "application/json" },
           }),

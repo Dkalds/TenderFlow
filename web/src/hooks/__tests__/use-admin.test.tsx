@@ -35,7 +35,7 @@ describe("useAdmin", () => {
       ok: true,
       status: 200,
       json: vi.fn().mockResolvedValue({
-        user_id: "u1",
+        user_id: 1,
         email: "admin@test.com",
         is_admin: true,
       }),
@@ -44,19 +44,21 @@ describe("useAdmin", () => {
     await waitFor(() => expect(result.current).toBe(true));
   });
 
-  it("returns true when user has role='admin'", async () => {
+  // `/auth/me` no manda `role` (`UserInfo`): solo cuenta `is_admin`.
+  it("un `role` que la API no manda no da permisos de administrador", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: vi.fn().mockResolvedValue({
-        user_id: "u1",
+        user_id: 1,
         email: "admin@test.com",
         is_admin: false,
         role: "admin",
       }),
     }));
     const { result } = renderHook(() => useAdmin(), { wrapper: createWrapper() });
-    await waitFor(() => expect(result.current).toBe(true));
+    await new Promise((r) => setTimeout(r, 0));
+    await waitFor(() => expect(result.current).toBe(false));
   });
 
   it("returns false for regular users", async () => {
@@ -64,7 +66,7 @@ describe("useAdmin", () => {
       ok: true,
       status: 200,
       json: vi.fn().mockResolvedValue({
-        user_id: "u2",
+        user_id: 2,
         email: "user@test.com",
         is_admin: false,
       }),

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionProvider } from "@/lib/auth";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { callMethod, callUrl, jsonResponse } from "@/hooks/__tests__/fetch-call";
+import { respuestaDeContrato } from "@/test/contrato";
 
 /**
  * Usuarios de la instancia: quién es administrador y quién sigue teniendo acceso.
@@ -23,26 +24,16 @@ vi.mock("next/navigation", () => ({
 
 import { UsuariosCard } from "../_components/administracion/usuarios-card";
 
-const USUARIOS = [
-  { id: 1, email: "yo@tf.es", display_name: "Yo", is_admin: true, deactivated_at: null, last_access: null },
-  { id: 2, email: "ana@tf.es", display_name: "Ana", is_admin: false, deactivated_at: null, last_access: null },
-  {
-    id: 3,
-    email: "baja@tf.es",
-    display_name: "Baja",
-    is_admin: false,
-    deactivated_at: "2026-09-01T10:00:00+00:00",
-    last_access: null,
-  },
-];
+// yo@tf.es (id 1, administrador), ana@tf.es (id 2) y baja@tf.es (id 3, desactivada).
+const USUARIOS = respuestaDeContrato("/api/v1/admin/users");
+// La sesión es la de yo@tf.es: `user_id` llega como número, igual que `id` en la lista.
+const YO = respuestaDeContrato("/api/v1/auth/me");
 
 function montar() {
   const fetchMock = vi.fn().mockImplementation((...call: unknown[]) => {
     const url = callUrl(call);
     if (url.startsWith("/api/v1/auth/me")) {
-      return Promise.resolve(
-        jsonResponse({ user_id: "1", email: "yo@tf.es", display_name: "Yo", is_admin: true }),
-      );
+      return Promise.resolve(jsonResponse(YO));
     }
     if (callMethod(call) !== "GET") return Promise.resolve(jsonResponse({ status: "ok" }));
     return Promise.resolve(jsonResponse(USUARIOS));

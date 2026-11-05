@@ -196,7 +196,7 @@ export function useMiWatchlist(): MiWatchlistState {
     mutationFn: ({ body }: { body: RuleBody; ruido?: "si" | "no" }) =>
       apiMutate("POST", RULES_KEY, body),
     onSuccess: (_respuesta, { ruido }) => {
-      invalidate();
+      void invalidate();
       // Crear la primera regla de vigilancia es la señal de activación del
       // producto: es el momento en que alguien pasa de mirar el mercado a
       // pedirle al sistema que lo mire por él. `primeraVez` distingue esa

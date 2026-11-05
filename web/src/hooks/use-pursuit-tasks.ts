@@ -27,14 +27,6 @@ export type PursuitTask = Schemas["PursuitTaskOut"];
 export type PursuitTaskCreate = Schemas["PursuitTaskCreate"];
 export type PursuitTaskPatch = Schemas["PursuitTaskPatch"];
 
-/**
- * Los cuatro estados de `db/repositories/pursuit_tasks.py`. El esquema tipa
- * `estado` como `string` a secas —el backend no lo declara `Literal`—, así que
- * esta lista es lo único que impide mandar una etiqueta inventada que el
- * servidor rechazaría con 422 dejando la tarea sin tocar.
- */
-export const ESTADOS_TAREA = ["pendiente", "en_curso", "hecha", "descartada"] as const;
-
 /** Abierta = todavía cuenta como compromiso. Es el criterio del SQL. */
 export function tareaAbierta(tarea: PursuitTask): boolean {
   return tarea.estado === "pendiente" || tarea.estado === "en_curso";

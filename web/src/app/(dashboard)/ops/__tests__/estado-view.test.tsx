@@ -22,6 +22,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 import ObservabilidadView from "../_components/observabilidad-view";
+import { respuestaDeContrato } from "@/test/contrato";
 
 const SANO = {
   status: "ok",
@@ -52,7 +53,7 @@ function montar(health: unknown, { admin = false, status = 200 } = {}) {
     const url = callUrl(call);
     if (url.startsWith("/api/v1/auth/me")) {
       return Promise.resolve(
-        jsonResponse({ user_id: "1", email: "a@b.es", display_name: "A", is_admin: admin }),
+        jsonResponse({ ...respuestaDeContrato("/api/v1/auth/me"), is_admin: admin }),
       );
     }
     if (url.startsWith("/api/v1/health")) return Promise.resolve(jsonResponse(health, status));

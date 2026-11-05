@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import { ExternalLink } from "lucide-react";
-import { PanelEmpty, SectionTitle } from "@/components/console/panel";
+import { SectionTitle } from "@/components/console/panel";
 import { EventosTimeline } from "@/components/eventos-timeline";
-import { ResolucionesBlock, useResoluciones } from "@/components/resoluciones-block";
+import { ResolucionesBlock } from "@/components/resoluciones-block";
 import { ScoreDesglose } from "@/components/score-desglose";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { fuenteLinkLabel } from "@/lib/fuentes";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
+import { urlHttp } from "@/lib/url-http";
 import { cn, formatDate } from "@/lib/utils";
 
 /**
@@ -86,16 +87,17 @@ export function FichaDescripcion({
  * fresco como esa fecha.
  */
 export function FichaFuente({ licitacion: l, className }: { licitacion: LicitacionDetail; className?: string }) {
-  if (!l.url) return null;
+  const enlace = urlHttp(l.url);
+  if (!enlace) return null;
   return (
     <p className={cn("flex flex-wrap items-baseline gap-x-2 gap-y-0.5", className)}>
       <a
-        href={l.url}
+        href={enlace}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-1.5 text-tf-body font-medium"
       >
-        {fuenteLinkLabel(l.fuente, l.url)} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        {fuenteLinkLabel(l.fuente, enlace)} <ExternalLink className="h-3 w-3" aria-hidden="true" />
         <AvisoPestanaNueva />
       </a>
       {l.fecha_actualizacion_fuente && (
@@ -125,23 +127,15 @@ export function FichaEventos({ licitacionId, as = "h3" }: { licitacionId: string
   );
 }
 
-/** Resoluciones del TACRC, o el vacío que dice que no consta ninguna. */
+/**
+ * Resoluciones del TACRC, el vacío que dice que no consta ninguna o el fallo
+ * de la consulta: los tres estados los pinta `ResolucionesBlock`. Antes un
+ * fallo caía aquí en «Sin recursos registrados».
+ */
 export function FichaRecursos({ licitacionId, className }: { licitacionId: string; className?: string }) {
-  const { data } = useResoluciones(licitacionId);
-  const total = data?.items?.length ?? 0;
-  if (total > 0) {
-    return (
-      <div className={cn("[&>*:first-child]:mt-0", className)}>
-        <ResolucionesBlock licitacionId={licitacionId} />
-      </div>
-    );
-  }
   return (
-    <PanelEmpty
-      size="sm"
-      className={className}
-      title="Sin recursos registrados"
-      hint="No consta ninguna resolución del TACRC para este expediente."
-    />
+    <div className={cn("[&>*:first-child]:mt-0", className)}>
+      <ResolucionesBlock licitacionId={licitacionId} />
+    </div>
   );
 }

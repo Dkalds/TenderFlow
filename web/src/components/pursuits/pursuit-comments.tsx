@@ -249,7 +249,7 @@ export function PursuitCommentsThread({
   const thread = usePursuitComments(pursuitId);
   const remove = useDeletePursuitComment(pursuitId);
   const { user } = useSession();
-  const myUserId = user ? Number(user.user_id) : null;
+  const myUserId = user?.user_id ?? null;
   const listRef = React.useRef<HTMLDivElement>(null);
   const items = React.useMemo(() => thread.data?.items ?? [], [thread.data]);
   const hidden = Math.max(0, (thread.data?.total ?? 0) - items.length);

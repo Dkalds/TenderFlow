@@ -8,9 +8,10 @@
  * agregado completo, así que no hay nada que volver a pedir.
  */
 
+import { ChipBanda } from "@/components/console/chip-banda";
 import { Panel, PanelTitle } from "@/components/console/panel";
+import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Pista } from "@/components/ui/pista";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -89,21 +90,34 @@ export function TecnologiasTabla({
   );
 }
 
+/**
+ * La banda la decide el backend (ADR-014): el chip pinta `band`, no un umbral
+ * del score calculado aquí. El título abre la ficha como en el resto de listas.
+ */
 export function TecnologiasTopScore({ items }: { items: ScoredItem[] }) {
   return (
     <Panel>
       <PanelTitle title="Las 20 licitaciones mejor puntuadas" />
       <ul className="grid gap-3 sm:grid-cols-2">
-        {items.slice(0, 20).map((item, idx) => (
-          <li key={idx} className="space-y-1 rounded-md border border-divider p-3">
+        {items.slice(0, 20).map((item) => (
+          <li key={item.id_externo} className="space-y-1 rounded-md border border-divider p-3">
             <div className="flex items-start justify-between gap-2">
-              <span className="font-mono text-tf-micro text-muted-foreground">{item.id}</span>
-              <Badge variant={item.score >= 80 ? "default" : "secondary"} size="sm">
-                {item.score}
-              </Badge>
+              <span className="font-mono text-tf-micro text-muted-foreground">{item.id_externo}</span>
+              <span className="flex items-center gap-1.5">
+                <span className="text-tf-meta font-semibold tabular-nums">
+                  <span className="sr-only">Score </span>
+                  {item.score}
+                </span>
+                <ChipBanda banda={item.band} />
+              </span>
             </div>
-            <Pista contenido={item.titulo}>
-              <p className="line-clamp-2 text-tf-body font-medium">{item.titulo}</p>
+            <Pista contenido={item.titulo ?? item.id_externo}>
+              <EnlaceFicha
+                idExterno={item.id_externo}
+                className="line-clamp-2 text-tf-body font-medium hover:text-primary"
+              >
+                {item.titulo || item.id_externo}
+              </EnlaceFicha>
             </Pista>
             <div className="flex items-center justify-between gap-2 text-tf-meta text-muted-foreground">
               <span>{formatCurrency(item.importe)}</span>

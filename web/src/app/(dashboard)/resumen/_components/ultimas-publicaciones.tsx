@@ -9,7 +9,6 @@ import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useFilters } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { formatNumber } from "@/lib/utils";
-import type { TimelineScatterResult } from "@/lib/api-types";
 import { ITEMS_PER_PAGE, TIMELINE_MAX, esNueva, type TimelineItem } from "./types";
 import { ordenarPublicaciones, type DireccionOrden } from "./ultimas-publicaciones-data";
 import { ListaPublicacionesMovil, TablaPublicaciones } from "./ultimas-publicaciones-tabla";
@@ -50,7 +49,7 @@ export function UltimasPublicaciones() {
   // Ventana por defecto de 30 días cuando el ámbito no fija fecha de inicio.
   // eslint-disable-next-line react-hooks/purity
   const desde = rango.desde ?? new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
-  const timeline = useFilteredQuery<TimelineScatterResult>(
+  const timeline = useFilteredQuery(
     ["analytics", "resumen", "timeline", desde],
     "/api/v1/analytics/resumen/timeline",
     // El fallo lo pinta el panel: sin toast encima.

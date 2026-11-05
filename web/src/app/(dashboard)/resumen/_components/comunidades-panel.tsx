@@ -139,7 +139,7 @@ export function ComunidadesPanel({ className }: { className?: string }) {
   const { ccaas, setCcaas } = useFilters();
   const [todas, setTodas] = useState(false);
 
-  const overview = useFilteredQuery<AnalyticsOverview>(
+  const overview = useFilteredQuery(
     ["analytics", "overview"],
     "/api/v1/analytics/overview",
     // Misma consulta y opciones que la tira de contexto y la composición: una

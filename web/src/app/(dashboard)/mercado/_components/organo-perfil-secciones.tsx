@@ -11,6 +11,7 @@ import { ChipBanda, PanelLoading, SectionTitle } from "@/components/console/pane
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { Pista } from "@/components/ui/pista";
 import { CHART_SERIES } from "@/lib/chart-colors";
+import { urlHttp } from "@/lib/url-http";
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 
 import type { Adjudicatario, TopScoredItem } from "../_hooks/use-organos-view";
@@ -108,13 +109,14 @@ export function MejorPuntuadas({ items }: { items: TopScoredItem[] }) {
       <ul className="space-y-1.5">
         {visibles.map((s) => {
           const titulo = s.titulo ?? s.id_externo;
+          const enlace = urlHttp(s.url);
           return (
             <li key={s.id_externo} className="flex items-center gap-2 text-tf-meta">
               <ChipBanda banda={s.banda} className="w-[4.5rem] flex-none justify-center" />
               <Pista contenido={titulo}>
-                {s.url ? (
+                {enlace ? (
                   <a
-                    href={s.url}
+                    href={enlace}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="min-w-0 flex-1 truncate font-medium text-primary hover:underline"

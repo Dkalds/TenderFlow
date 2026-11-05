@@ -20,7 +20,7 @@ const { sesion, refresh } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/auth", () => ({
   useSession: () => ({
-    user: { user_id: "1", email: "ana@example.com", display_name: null, is_admin: false, mfa_required: sesion.mfa },
+    user: { user_id: 1, email: "ana@example.com", display_name: null, is_admin: false, mfa_required: sesion.mfa },
     isLoading: false,
     isAuthenticated: true,
     isAdmin: false,

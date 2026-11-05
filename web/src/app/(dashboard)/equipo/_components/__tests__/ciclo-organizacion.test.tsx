@@ -13,7 +13,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/lib/auth", () => ({
-  useSession: () => ({ user: { user_id: "1", email: "dora@example.com" }, isLoading: false }),
+  useSession: () => ({ user: { user_id: 1, email: "dora@example.com" }, isLoading: false }),
 }));
 
 import { type Organization, useOrganizationStore } from "@/hooks/use-organization";

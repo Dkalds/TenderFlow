@@ -285,7 +285,7 @@ export function useScopeSnapshot(): {
 
   const applySnapshot = useCallback(
     (next: ScopeSnapshot) => {
-      setParams(Object.fromEntries(SCOPE_KEYS.map((key) => [key, next[key] ?? ""])) as ScopeSnapshot);
+      void setParams(Object.fromEntries(SCOPE_KEYS.map((key) => [key, next[key] ?? ""])) as ScopeSnapshot);
     },
     [setParams],
   );

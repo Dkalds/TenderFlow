@@ -14,7 +14,7 @@
  */
 
 import type { PaginationState, RowSelectionState, SortingState } from "@tanstack/react-table";
-import type { LicitacionSummary } from "@/lib/api-types";
+import type { LicitacionSummary, Schemas } from "@/lib/api-types";
 import { neutralizarFormula } from "@/lib/export";
 
 export const PAGE_SIZE = 25;
@@ -34,16 +34,9 @@ export const SERVER_SORT: Record<string, string> = {
   fecha_publicacion: "fecha_publicacion",
 };
 
-export interface ScoringItem {
-  id_externo: string;
-  score: number;
-  band: string;
-  desglose: Record<string, number>;
-}
-
-export interface ScoringResponse {
-  opportunities: ScoringItem[];
-}
+/** Una oportunidad de `GET /analytics/scoring`; la respuesta, con su forma del esquema. */
+export type ScoringItem = Schemas["ScoredOpportunity"];
+export type ScoringResponse = Schemas["ScoringResult"];
 
 export interface MergedRow extends LicitacionSummary {
   score?: number;
@@ -136,7 +129,9 @@ export function conTotalConocido<P extends { total?: number | null }>(
 }
 
 /** Índice `id_externo → score` de la respuesta de scoring. */
-export function buildScoreMap(scoring: ScoringResponse | undefined | null): Map<string, ScoringItem> {
+export function buildScoreMap(
+  scoring: Pick<ScoringResponse, "opportunities"> | undefined | null,
+): Map<string, ScoringItem> {
   const map = new Map<string, ScoringItem>();
   for (const item of scoring?.opportunities ?? []) map.set(item.id_externo, item);
   return map;
@@ -247,7 +242,7 @@ const CSV_HEADERS = [
   "ccaa",
   "cpv",
   "tecnologia",
-] as const;
+] as const satisfies readonly (keyof LicitacionSummary)[];
 
 /**
  * CSV de las filas exportadas, con comillas escapadas al estilo RFC 4180 y los
@@ -260,7 +255,7 @@ export function buildCsv(rows: LicitacionSummary[]): string {
     CSV_HEADERS.join(","),
     ...rows.map((row) =>
       CSV_HEADERS.map((header) => {
-        const value = (row as unknown as Record<string, unknown>)[header];
+        const value = row[header];
         const text =
           typeof value === "string" ? neutralizarFormula(value) : value == null ? "" : String(value);
         return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;

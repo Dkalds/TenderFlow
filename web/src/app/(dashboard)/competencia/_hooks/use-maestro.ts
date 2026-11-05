@@ -1,7 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth } from "@/lib/api-client";
+import { fetchWithAuth, type ApiGetResult } from "@/lib/api-client";
+import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { empresasKeys } from "@/lib/query-keys";
 
@@ -18,35 +19,9 @@ import { empresasKeys } from "@/lib/query-keys";
 
 export type EmpresaSortKey = "nombre" | "nif" | "contratos" | "importe";
 
-export interface EmpresaRow {
-  empresa_id: number;
-  nombre_canonico: string;
-  nif_canonico: string | null;
-  es_ute: number;
-  es_pyme: number | null;
-  grupo: string | null;
-  n_adjudicaciones: number;
-  importe_total: number;
-}
-
-export interface EmpresasListResponse {
-  items: EmpresaRow[];
-  limit: number;
-  offset: number;
-  total: number;
-}
-
-export interface EmpresaDetail {
-  empresa_id: number;
-  nombre_canonico: string;
-  nif_canonico: string | null;
-  es_ute: number;
-  es_pyme: number | null;
-  grupo: string | null;
-  aliases: { alias_normalizado: string; nif_variante: string | null; fuente: string | null }[];
-  ute_miembros: { empresa_id: number; nombre_canonico: string }[];
-  participa_en_utes: { empresa_id: number; nombre_canonico: string }[];
-}
+// Las formas salen del esquema generado.
+export type EmpresaRow = Schemas["EmpresaListItem"];
+export type EmpresaDetail = Schemas["EmpresaDetail"];
 
 /**
  * Lo que la ficha del maestro lee del perfil competitivo: sólo los totales, para
@@ -54,14 +29,7 @@ export interface EmpresaDetail {
  * Competencia, que el enlace «Abrir ficha» abre en «Todo el histórico»: pide
  * este mismo perfil sin filtros, así que las cifras coinciden.
  */
-export interface PerfilEmpresa {
-  totales: {
-    contratos: number;
-    importe_total: number;
-    primera_adjudicacion: string | null;
-    ultima_adjudicacion: string | null;
-  };
-}
+export type PerfilEmpresa = Schemas["CompetitiveCompanyProfileDTO"];
 
 /** Filas por página del maestro. */
 export const PAGE_SIZE = 12;
@@ -77,7 +45,7 @@ export function useEmpresasList({
   sort: EmpresaSortKey;
   order: "asc" | "desc";
 }) {
-  return useQuery<EmpresasListResponse>({
+  return useQuery({
     queryKey: empresasKeys.list(search, page, sort, order),
     queryFn: () => {
       const params = new URLSearchParams({
@@ -87,7 +55,7 @@ export function useEmpresasList({
         order,
       });
       if (search) params.set("q", search);
-      return fetchWithAuth(`/api/v1/empresas?${params.toString()}`);
+      return fetchWithAuth<ApiGetResult<"/api/v1/empresas">>(`/api/v1/empresas?${params.toString()}`);
     },
     staleTime: 60 * 1000,
     // La página anterior se queda pintada mientras llega la siguiente, así que
@@ -101,18 +69,21 @@ export function useEmpresasList({
 }
 
 export function useEmpresaDetail(empresaId: number | null) {
-  return useQuery<EmpresaDetail>({
+  return useQuery({
     queryKey: empresasKeys.detail(empresaId ?? 0),
-    queryFn: () => fetchWithAuth(`/api/v1/empresas/${empresaId}`),
+    queryFn: () => fetchWithAuth<ApiGetResult<"/api/v1/empresas/{empresa_id}">>(`/api/v1/empresas/${empresaId}`),
     enabled: empresaId != null,
     meta: META_ERROR_EN_LINEA,
   });
 }
 
 export function useEmpresaPerfil(empresaId: number | null) {
-  return useQuery<PerfilEmpresa>({
+  return useQuery({
     queryKey: empresasKeys.perfil(empresaId ?? 0),
-    queryFn: () => fetchWithAuth(`/api/v1/competitive/empresas/${empresaId}/perfil`),
+    queryFn: () =>
+      fetchWithAuth<ApiGetResult<"/api/v1/competitive/empresas/{empresa_id}/perfil">>(
+        `/api/v1/competitive/empresas/${empresaId}/perfil`,
+      ),
     enabled: empresaId != null,
     // La ficha dice «No se pudo cargar la actividad» en su línea.
     meta: META_ERROR_EN_LINEA,

@@ -27,7 +27,7 @@ import {
 import { Field } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import type { Schemas } from "@/lib/api-types";
+import { urlApi } from "@/lib/api-client";
 import type { CuentaOrgano } from "@/hooks/use-cuentas";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { EMPTY, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
@@ -41,8 +41,6 @@ const OrganosEstacionalidadChart = dynamic(
   { ssr: false, loading: () => <Skeleton className="h-[200px] w-full rounded-md" /> },
 );
 
-type DetalleOrgano = Schemas["OrganoDetailResult"];
-
 export function AnalisisOrgano({ organos }: { organos: readonly CuentaOrgano[] }) {
   const [elegido, setElegido] = React.useState(organos[0]?.organo_nombre ?? "");
   const id = React.useId();
@@ -51,9 +49,9 @@ export function AnalisisOrgano({ organos }: { organos: readonly CuentaOrgano[] }
     ? elegido
     : (organos[0]?.organo_nombre ?? "");
 
-  const { data, isLoading, error, refetch } = useFilteredQuery<DetalleOrgano>(
+  const { data, isLoading, error, refetch } = useFilteredQuery(
     ["analytics", "organo-detail", organo],
-    `/api/v1/analytics/organos/${encodeURIComponent(organo)}`,
+    urlApi("/api/v1/analytics/organos/{organo}", { organo }),
     { enabled: Boolean(organo), staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
     undefined,
     true,

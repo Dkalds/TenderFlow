@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 type UsuarioSimulado = {
-  user_id: string;
+  user_id: number;
   email: string;
   display_name: null;
   is_admin: boolean;
@@ -49,7 +49,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const USUARIO: UsuarioSimulado = {
-  user_id: "u-1",
+  user_id: 1,
   email: "persona@example.test",
   display_name: null,
   is_admin: false,

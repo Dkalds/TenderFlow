@@ -6,6 +6,7 @@ import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { fuenteLinkLabel } from "@/lib/fuentes";
+import { urlHttp } from "@/lib/url-http";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
 import { formatNumber } from "@/lib/utils";
 import type { PasoDeFicha, PasosDeFicha } from "../_hooks/use-ficha-completa";
@@ -77,6 +78,7 @@ export function DetalleFichaCompleta({
   onVolver: () => void;
 }) {
   const { posicion, anterior, siguiente } = pasos;
+  const anuncio = urlHttp(licitacion?.url);
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex min-h-11 flex-none flex-wrap items-center gap-2 border-b border-divider px-3.5 py-1.5">
@@ -119,11 +121,11 @@ export function DetalleFichaCompleta({
         )}
       </div>
 
-      {licitacion?.url && (
+      {licitacion && anuncio && (
         <div className="flex flex-none border-t border-divider bg-card px-4 py-3 md:hidden">
           <Button asChild className="h-11 w-full">
-            <a href={licitacion.url} target="_blank" rel="noopener noreferrer">
-              {fuenteLinkLabel(licitacion.fuente, licitacion.url)}
+            <a href={anuncio} target="_blank" rel="noopener noreferrer">
+              {fuenteLinkLabel(licitacion.fuente, anuncio)}
               <ExternalLink aria-hidden="true" />
               <AvisoPestanaNueva />
             </a>

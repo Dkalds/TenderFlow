@@ -156,11 +156,14 @@ export function CompanyProfileSummary({ profile }: { profile: CompanyProfileData
         </StatStrip>
       </section>
 
-      <CompanyUteParticipations participations={profile.participaciones_ute} companyName={profile.empresa.nombre} />
+      <CompanyUteParticipations
+        participations={profile.participaciones_ute ?? []}
+        companyName={profile.empresa.nombre}
+      />
 
       <Panel>
         <PanelTitle title="Progreso anual" hint="Importe adjudicado y contratos ganados por ejercicio" />
-        <CompanyYearTrend rows={profile.por_anio} />
+        <CompanyYearTrend rows={profile.por_anio ?? []} />
       </Panel>
 
       <Panel className="p-0">
@@ -173,20 +176,20 @@ export function CompanyProfileSummary({ profile }: { profile: CompanyProfileData
           <BreakdownColumn
             title="Especialización"
             description="Familias CPV por peso económico"
-            rows={profile.por_cpv}
+            rows={profile.por_cpv ?? []}
             empty="Sin CPV clasificado"
             cpv
           />
           <BreakdownColumn
             title="Clientes principales"
             description={`Los 3 primeros: ${formatPercent(profile.concentracion_clientes.top3_importe_pct, 0)} del importe`}
-            rows={profile.organos_principales}
+            rows={profile.organos_principales ?? []}
             empty="Sin órgano identificado"
           />
           <BreakdownColumn
             title="Huella territorial"
             description="Distribución por comunidad autónoma"
-            rows={profile.por_ccaa}
+            rows={profile.por_ccaa ?? []}
             empty="Sin territorio identificado"
           />
         </div>
@@ -213,7 +216,7 @@ export function CompanyProfileSummary({ profile }: { profile: CompanyProfileData
 
       {profile.puntuaciones_acta ? <CompanyActas acta={profile.puntuaciones_acta} /> : null}
 
-      {profile.movimientos.length ? (
+      {profile.movimientos?.length ? (
         <section aria-labelledby="movements-title">
           <div className="mb-3">
             <h2 id="movements-title" className="text-tf-lede">

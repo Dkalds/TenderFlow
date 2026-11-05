@@ -22,7 +22,8 @@ export function SesionAbierta({
   destino,
   onCambiarCuenta,
 }: {
-  email: string;
+  /** `/auth/me` puede no traerlo (cuenta sin correo): entonces no se nombra. */
+  email: string | null | undefined;
   /** Ruta saneada del `?redirect=` (por defecto `/resumen`). */
   destino: string;
   onCambiarCuenta: () => Promise<void>;
@@ -30,7 +31,13 @@ export function SesionAbierta({
   return (
     <div className="space-y-4">
       <p className="text-sm">
-        Ya has entrado como <strong className="font-semibold break-all">{email}</strong>.
+        {email ? (
+          <>
+            Ya has entrado como <strong className="font-semibold break-all">{email}</strong>.
+          </>
+        ) : (
+          "Ya tienes la sesión abierta."
+        )}
       </p>
       <Button asChild className="w-full">
         <Link href={destino}>{destino === "/resumen" ? "Ir a Resumen" : "Continuar"}</Link>

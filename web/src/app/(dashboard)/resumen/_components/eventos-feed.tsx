@@ -9,7 +9,6 @@ import { useFilters } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { useMemo, useState } from "react";
 import { formatDate, formatNumber, truncate } from "@/lib/utils";
-import type { EventosFeedResult } from "@/lib/api-types";
 import { agruparPorDia } from "@/lib/agrupar-por-dia";
 import { BarraApilada, tramosApilados } from "./contexto-graficos";
 import { colorDeTipo, ImporteDelta, LeyendaTipos, TIPO_ICON, TIPO_LABEL } from "./eventos-tipos";
@@ -39,7 +38,7 @@ function ventanaLabel(desde: string | null, hasta: string | null): string {
  */
 export function EventosFeed() {
   const { rango } = useFilters();
-  const { data, isLoading, error, refetch } = useFilteredQuery<EventosFeedResult>(
+  const { data, isLoading, error, refetch } = useFilteredQuery(
     ["eventos", "feed"],
     "/api/v1/eventos",
     // El fallo se pinta en el sitio del panel: sin toast encima.
@@ -50,7 +49,7 @@ export function EventosFeed() {
   // `tipo`—; la barra y la leyenda siguen con la ventana entera. Sin datos
   // previos de relleno: cambiar de tipo no enseña un instante los del anterior.
   const [tipo, setTipo] = useState<string | null>(null);
-  const filtrada = useFilteredQuery<EventosFeedResult>(
+  const filtrada = useFilteredQuery(
     ["eventos", "feed"],
     "/api/v1/eventos",
     { staleTime: 2 * 60 * 1000, meta: META_ERROR_EN_LINEA, enabled: tipo !== null },

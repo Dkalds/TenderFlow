@@ -19,6 +19,7 @@ import { useAsistente } from "@/lib/asistente-store";
 import { fuenteLinkLabel } from "@/lib/fuentes";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
 import { riesgoLabel } from "@/lib/riesgos";
+import { urlHttp } from "@/lib/url-http";
 import { cn } from "@/lib/utils";
 
 /**
@@ -124,6 +125,8 @@ export function FichaAcciones({
     }
   }, [l.id_externo]);
   const abrirAsistente = useAsistente((s) => s.abrir);
+  // La URL del anuncio la escribe quien publica: sin http(s), no hay botón.
+  const fuente = urlHttp(l.url);
   const preguntar = () =>
     abrirAsistente({
       contexto: { expedientes: [{ id: l.id_externo, titulo: l.titulo ?? l.id_externo }], origen: "ficha" },
@@ -158,10 +161,10 @@ export function FichaAcciones({
       </Button>
       <DossierBoton licitacionId={l.id_externo} />
       <ReportarDatoBoton licitacionId={l.id_externo} />
-      {conFuente && l.url && (
+      {conFuente && fuente && (
         <Button asChild size="sm" className={claseFuente}>
-          <a href={l.url} target="_blank" rel="noopener noreferrer">
-            {fuenteLinkLabel(l.fuente, l.url)}
+          <a href={fuente} target="_blank" rel="noopener noreferrer">
+            {fuenteLinkLabel(l.fuente, fuente)}
             <ExternalLink aria-hidden="true" />
             <AvisoPestanaNueva />
           </a>

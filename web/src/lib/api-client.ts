@@ -348,14 +348,37 @@ export type ApiGetPath = keyof {
  * `init.signal` viaja en la `Request` que construye `openapi-fetch`: desde una
  * `queryFn`, pasa el `signal` de React Query igual que con `fetchWithAuth`.
  *
- * Migración por olas: `src/hooks/**` ya está migrado; `src/app/**`,
- * `src/components/**` y `src/lib/**` siguen pendientes.
+ * Migración por olas: `src/hooks/**` ya está migrado, y `useFilteredQuery`
+ * deriva el tipo de la ruta (`ApiGetPath` o `urlApi`) igual que aquí; quedan
+ * `fetchWithAuth<T>` sueltos en `src/app/**`, `src/components/**` y `src/lib/**`.
  */
 export type ApiGetResult<P extends ApiGetPath> = paths[P] extends {
   get: { responses: { 200: { content: { "application/json": infer R } } } };
 }
   ? R
   : never;
+
+/**
+ * URL concreta de una ruta GET del esquema: con sus `{param}` sustituidos y,
+ * si hace falta, una query fija. El tipo recuerda la ruta, así que quien la
+ * recibe (`useFilteredQuery`) deriva la respuesta con `ApiGetResult` igual que
+ * si le hubieran pasado el literal. Solo la construye {@link urlApi}.
+ */
+export type UrlApi<P extends ApiGetPath> = string & { readonly __rutaApi: P };
+
+/**
+ * `urlApi("/api/v1/analytics/organos/{organo}", { organo })` →
+ * `/api/v1/analytics/organos/Ayuntamiento%20de%20X`, tipada como esa ruta.
+ */
+export function urlApi<P extends ApiGetPath>(
+  ruta: P,
+  path: Record<string, string | number> = {},
+  query: Record<string, string> = {},
+): UrlApi<P> {
+  const url = ruta.replace(/\{(\w+)\}/g, (_, nombre: string) => encodeURIComponent(String(path[nombre] ?? "")));
+  const busqueda = new URLSearchParams(query).toString();
+  return (busqueda ? `${url}?${busqueda}` : url) as UrlApi<P>;
+}
 
 /**
  * Valor admisible en un parámetro de query.

@@ -104,7 +104,7 @@ function EnlaceFicha({ href, children }: { href: string; children: React.ReactNo
  *  la salida sigue siendo la ficha del expediente. */
 export function DocumentosBlock({
   licitacionId,
-  fichaUrl,
+  fichaUrl: fichaCruda,
 }: {
   licitacionId: string;
   /** Deeplink a la ficha del expediente (`licitacion.url`). Sin él el bloque
@@ -115,6 +115,8 @@ export function DocumentosBlock({
   // `["documentos", licitacionId]` con dos `queryFn` copiadas, que es la forma
   // en la que una de las dos deriva sin que nada avise.
   const { data } = useFactSheetDocumentos(licitacionId);
+  // `licitacion.url` también la escribe quien publica: misma comprobación que los adjuntos.
+  const fichaUrl = urlHttp(fichaCruda);
 
   const items: DocumentoSummary[] = data?.items ?? [];
   // F5.1: el documento que llegó después del primer lote se marca «Nuevo»
@@ -154,6 +156,7 @@ export function DocumentosBlock({
           // y el asistente no han podido leerlo (falta OCR).
           const escaneado = !sinPublicar && doc.status === "sin_texto";
           const apagado = sinPublicar || caducado;
+          const enlace = sinPublicar ? null : urlHttp(doc.uri);
           return (
             <li key={doc.id} className="flex items-start gap-2">
               <FileText
@@ -161,13 +164,13 @@ export function DocumentosBlock({
                 className={cn("mt-0.5 h-4 w-4 shrink-0", apagado ? "text-muted-foreground/60" : "text-muted-foreground")}
               />
               <div className="min-w-0 flex-1">
-                {sinPublicar || !urlHttp(doc.uri) ? (
+                {!enlace ? (
                   <span className="break-all text-tf-body text-muted-foreground">
                     {doc.filename ?? etiquetaTipo(doc)}
                   </span>
                 ) : (
                   <a
-                    href={doc.uri}
+                    href={enlace}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={cn(

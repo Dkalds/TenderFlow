@@ -21,6 +21,7 @@ import { Panel, ROTULO_DATO } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { urlHttp } from "@/lib/url-http";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { TextoResaltado } from "../_lib/highlight";
 import { plazoDe } from "../_lib/plazo";
@@ -58,6 +59,7 @@ interface Props {
 
 export function InvestigadorResultCard({ result, marcado, sinHueco, onAlternar }: Props) {
   const plazo = plazoDe(result.fecha_limite);
+  const fuente = urlHttp(result.url);
   const tecnologias = (result.tecnologia ?? "")
     .split(",")
     .map((t) => t.trim())
@@ -130,9 +132,9 @@ export function InvestigadorResultCard({ result, marcado, sinHueco, onAlternar }
           </span>
         )}
         <div className="ml-auto flex flex-none items-center gap-1">
-          {result.url && (
+          {fuente && (
             <Button asChild variant="ghost" size="sm">
-              <a href={result.url} target="_blank" rel="noopener noreferrer">
+              <a href={fuente} target="_blank" rel="noopener noreferrer">
                 <ExternalLink aria-hidden="true" />
                 Ver en la fuente
               </a>

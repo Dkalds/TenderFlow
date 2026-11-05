@@ -7,7 +7,6 @@ import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useScopedHref } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { EMPTY, formatCompactCurrency, formatDate, formatNumber } from "@/lib/utils";
-import type { AnalyticsOverview, ResumenHoyResult } from "@/lib/api-types";
 import { useNovedades } from "../_hooks/use-novedades";
 import { Proporcion } from "./cifras-graficos";
 import { ColaCierre } from "./cola-cierre";
@@ -47,7 +46,7 @@ import { ColaCierre } from "./cola-cierre";
 /** `/analytics/resumen/hoy` con la clave y las opciones que comparten la tira y la cola. */
 function useResumenHoy() {
   // El fallo se pinta en el sitio (`PanelError`): sin toast encima.
-  return useFilteredQuery<ResumenHoyResult>(
+  return useFilteredQuery(
     ["analytics", "resumen", "hoy"],
     "/api/v1/analytics/resumen/hoy",
     { staleTime: 2 * 60 * 1000, meta: META_ERROR_EN_LINEA },
@@ -106,7 +105,7 @@ export function AtencionCards() {
   const scopedHref = useScopedHref();
   const hoy = useResumenHoy();
   // Misma clave y opciones que `composicion-panel.tsx`: una sola petición.
-  const overview = useFilteredQuery<AnalyticsOverview>(
+  const overview = useFilteredQuery(
     ["analytics", "overview"],
     "/api/v1/analytics/overview",
     { staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },

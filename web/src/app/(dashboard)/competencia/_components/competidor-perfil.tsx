@@ -206,14 +206,14 @@ export function CompetidorPerfil({
           </div>
         ) : (
           <>
-            <DondeGana porCcaa={perfil.por_ccaa} territorios={perfil.totales.territorios} />
-            <QuienLeCompra organos={perfil.organos_principales} totalOrganos={perfil.totales.organos} />
+            <DondeGana porCcaa={perfil.por_ccaa ?? []} territorios={perfil.totales.territorios} />
+            <QuienLeCompra organos={perfil.organos_principales ?? []} totalOrganos={perfil.totales.organos} />
             <div className="flex min-w-0 flex-col gap-4">
               <section>
                 <SectionTitle as="h3" hint="importe y adjudicaciones por año">
                   Progreso anual
                 </SectionTitle>
-                <CompanyYearTrend rows={perfil.por_anio} compact />
+                <CompanyYearTrend rows={perfil.por_anio ?? []} compact />
               </section>
               <ContraTi empresaId={empresaId} empresaIds={empresaIds} hrefDetalle={hrefAnalisis ?? "/competencia"} />
             </div>

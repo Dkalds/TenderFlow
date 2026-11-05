@@ -17,25 +17,17 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { urlApi } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import type { Schemas, TrendPoint } from "@/lib/api-types";
 
-import {
-  splitForecastSeries,
-  type ForecastResponse,
-  type ForecastRow,
-} from "./forecast-series";
+import { splitForecastSeries, type ForecastRow } from "./forecast-series";
 
-export interface WaterfallPoint {
-  period: string;
-  delta: number;
-  cumulative: number;
-}
-
-export interface HistogramBin {
-  bin_label: string;
-  count: number;
-}
+// Las formas salen del esquema generado (`useFilteredQuery` las deriva de la ruta).
+export type WaterfallPoint = Schemas["WaterfallPoint"];
+export type HistogramBin = Schemas["HistogramBin"];
+/** Cruce real Mes×Estado: `row` = mes `YYYY-MM`, `col` = código de estado. */
+export type HeatmapCellDto = Schemas["HeatmapCell"];
 
 export interface MesPico {
   mes: string;
@@ -43,16 +35,18 @@ export interface MesPico {
   count: number;
 }
 
-export interface TrendsResponse {
-  series: TrendPoint[];
-  waterfall: WaterfallPoint[];
-  histogram_bins: HistogramBin[];
-  mes_pico: MesPico;
-  /** Cruce real Mes×Estado: `row` = mes `YYYY-MM`, `col` = código de estado. */
-  heatmap?: HeatmapCellDto[];
+/**
+ * `mes_pico` es el único campo de `TrendsResult` que la API no tipa (sale como
+ * `dict[str, Any]` de `services/analytics/trends.py`): se comprueba su forma
+ * aquí en vez de dar por buena una interfaz escrita a mano.
+ * shortcut: validación local del dict, hasta que el backend lo declare como DTO.
+ */
+export function leerMesPico(valor: unknown): MesPico | undefined {
+  if (typeof valor !== "object" || valor === null) return undefined;
+  const { mes, importe, count } = valor as Record<string, unknown>;
+  if (typeof mes !== "string" || typeof importe !== "number" || typeof count !== "number") return undefined;
+  return { mes, importe, count };
 }
-
-export type HeatmapCellDto = Schemas["HeatmapCell"];
 
 /** Punto de la serie acumulada de importe. */
 export interface CumulativePoint {
@@ -135,16 +129,16 @@ export function useTendenciasView() {
     isLoading: trendsLoading,
     error: trendsError,
     refetch: refetchTrends,
-  } = useFilteredQuery<TrendsResponse>(
+  } = useFilteredQuery(
     ["analytics", "trends"],
-    "/api/v1/analytics/trends?group_by=month",
+    urlApi("/api/v1/analytics/trends", {}, { group_by: "month" }),
     // El error lo pinta la vista en línea (PanelError): sin toast además.
     { staleTime: 5 * 60_000, meta: META_ERROR_EN_LINEA },
   );
 
-  const { data: forecast, isLoading: forecastLoading } = useFilteredQuery<ForecastResponse>(
+  const { data: forecast, isLoading: forecastLoading } = useFilteredQuery(
     ["analytics", "forecast", forecastMetric],
-    `/api/v1/analytics/forecast/volume?months_ahead=6&metric=${forecastMetric}`,
+    urlApi("/api/v1/analytics/forecast/volume", {}, { months_ahead: "6", metric: forecastMetric }),
     { staleTime: 5 * 60_000 },
   );
 
@@ -183,7 +177,7 @@ export function useTendenciasView() {
 
   return {
     series,
-    mesPico: trends?.mes_pico,
+    mesPico: leerMesPico(trends?.mes_pico),
     waterfall: trends?.waterfall ?? [],
     histBins,
     useLogScale,

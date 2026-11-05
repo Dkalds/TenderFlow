@@ -64,7 +64,7 @@ vi.mock("@/hooks/use-pursuit-comments", async (importOriginal) => {
 // Quien mira el hilo es el usuario 5: sus comentarios llevan la marca «tú».
 vi.mock("@/lib/auth", () => ({
   useSession: () => ({
-    user: { user_id: "5", email: "ana@example.test", display_name: "Ana Gómez", is_admin: false },
+    user: { user_id: 5, email: "ana@example.test", display_name: "Ana Gómez", is_admin: false },
     isLoading: false,
     isAuthenticated: true,
     isAdmin: false,

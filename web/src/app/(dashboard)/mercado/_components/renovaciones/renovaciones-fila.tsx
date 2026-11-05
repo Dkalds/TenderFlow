@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
 import { Pista } from "@/components/ui/pista";
 import { FechaFinOrigenBadge } from "@/components/pursuits/fecha-fin-origen-badge";
+import { urlHttp } from "@/lib/url-http";
 import { formatCurrency, formatDate, formatPercent, truncate } from "@/lib/utils";
 import type { MarcaPropia, RenovacionRow } from "../../_hooks/use-renovaciones";
 
@@ -61,6 +62,7 @@ export function CeldasRenovacion({
 }) {
   const relativo = maxScore > 0 ? Math.round((fila._score / maxScore) * 100) : 0;
   const propio = fila._propio ? MARCA_PROPIA[fila._propio] : null;
+  const anuncio = urlHttp(fila.url);
 
   return (
     <>
@@ -86,9 +88,9 @@ export function CeldasRenovacion({
       <TableCell className="max-w-[320px]">
         <div className="flex items-start gap-1.5">
           <span className="leading-snug">{truncate(fila.titulo ?? fila.licitacion_id, 90)}</span>
-          {fila.url && (
+          {anuncio && (
             <a
-              href={fila.url}
+              href={anuncio}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-0.5 shrink-0 text-muted-foreground transition-colors hover:text-foreground"

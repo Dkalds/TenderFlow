@@ -12,29 +12,23 @@
  * sin montar nada (`__tests__/forecast-series.test.ts`).
  */
 
-export interface ForecastPoint {
-  mes: string;
-  valor: number;
-  /**
-   * Discriminante SIN tilde. El backend emitía "histórico" y las vistas
-   * comparaban contra "historico": ningún punto pasado casaba, todos salían
-   * `undefined` y la proyección se pintaba flotando, sin serie histórica contra
-   * la que contrastarla. El valor normalizado lo fija `forecast.py`.
-   */
-  tipo: "historico" | "forecast";
-  lower?: number;
-  upper?: number;
-}
+import type { Schemas } from "@/lib/api-types";
 
-export interface ForecastResponse {
-  series: ForecastPoint[];
-  /** Motor que produjo la proyección: "holt-winters" | "regresion-lineal". */
-  modelo?: string | null;
-  /** Sigmas de la banda `lower`/`upper`. No es un intervalo de confianza. */
-  banda_sigmas?: number;
-  /** CPV al que corresponde la previsión; `null` = mercado entero. */
-  cpv?: string | null;
-}
+/**
+ * Un punto de la serie. `tipo` es "historico" o "forecast", SIN tilde: el
+ * backend emitía "histórico" y las vistas comparaban contra "historico":
+ * ningún punto pasado casaba, todos salían `undefined` y la proyección se
+ * pintaba flotando, sin serie histórica contra la que contrastarla. El valor
+ * normalizado lo fija `forecast.py`.
+ */
+export type ForecastPoint = Schemas["ForecastSeriesPoint"];
+
+/**
+ * `modelo`: motor que produjo la proyección ("holt-winters" |
+ * "regresion-lineal"). `banda_sigmas`: sigmas de la banda `lower`/`upper`, no
+ * un intervalo de confianza. `cpv`: CPV de la previsión; `null` = mercado.
+ */
+export type ForecastResponse = Schemas["ForecastVolumeResult"];
 
 /** Fila del `AreaChart`: una clave por serie dibujada, `undefined` donde no aplica. */
 export interface ForecastRow {
@@ -56,8 +50,8 @@ export function splitForecastSeries(series: ForecastPoint[] | undefined): Foreca
     mes: p.mes,
     historico: p.tipo === "historico" ? p.valor : undefined,
     forecast_val: p.tipo === "forecast" ? p.valor : undefined,
-    lower: p.tipo === "forecast" ? p.lower : undefined,
-    upper: p.tipo === "forecast" ? p.upper : undefined,
+    lower: p.tipo === "forecast" ? (p.lower ?? undefined) : undefined,
+    upper: p.tipo === "forecast" ? (p.upper ?? undefined) : undefined,
   }));
 }
 

@@ -22,12 +22,9 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { urlApi } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import type { Schemas, TrendPoint } from "@/lib/api-types";
-
-interface TrendsResponse {
-  series: TrendPoint[];
-}
 
 export type VencimientosResponse = Schemas["VencimientosResult"];
 
@@ -201,7 +198,7 @@ export function useCalendarioView() {
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [modo, setModo] = useState<CalendarioModo>("vencimientos");
 
-  const vencimientos = useFilteredQuery<VencimientosResponse>(
+  const vencimientos = useFilteredQuery(
     ["analytics", "calendario-vencimientos", String(selectedYear)],
     "/api/v1/analytics/calendario/vencimientos",
     // El error lo pinta la vista en línea (PanelError): sin toast además.
@@ -209,9 +206,9 @@ export function useCalendarioView() {
     { desde: `${selectedYear}-01-01`, hasta: `${selectedYear}-12-31` },
   );
 
-  const publicaciones = useFilteredQuery<TrendsResponse>(
+  const publicaciones = useFilteredQuery(
     ["analytics", "trends", "day"],
-    "/api/v1/analytics/trends?group_by=day",
+    urlApi("/api/v1/analytics/trends", {}, { group_by: "day" }),
     { staleTime: 5 * 60 * 1000, enabled: modo === "publicaciones", meta: META_ERROR_EN_LINEA },
   );
 

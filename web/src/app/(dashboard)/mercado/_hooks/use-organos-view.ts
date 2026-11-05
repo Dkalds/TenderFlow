@@ -19,79 +19,24 @@ import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { urlApi } from "@/lib/api-client";
+import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { useDebounce } from "@/hooks/use-debounce";
 import { foldText, truncate } from "@/lib/utils";
 
 export type MetricaOrganos = "count" | "importe";
 
-export interface OrganoItem {
-  organo_contratacion: string;
-  count: number;
-  importe: number;
-  pct: number;
-  ccaa?: string;
-}
-
-export interface OrganosResponse {
-  organos: OrganoItem[];
-  total_organos: number;
-  importe_total?: number;
-  concentracion_top10?: number;
-}
-
-/** Lo que el titular toma de `/analytics/overview`; el resto no se lee. */
-interface OverviewTotales {
-  total_licitaciones: number;
-  importe_medio: number;
-}
-
-export interface OrganoKpis {
-  total_licitaciones: number;
-  importe_total: number;
-  importe_medio: number;
-  pct_adjudicado: number;
-  lead_time_medio: number | null;
-  top_adjudicatario: string | null;
-  top_adj_importe: number;
-}
-
-export interface TopScoredItem {
-  id_externo: string;
-  titulo: string | null;
-  importe: number | null;
-  score: number;
-  ccaa?: string | null;
-  estado?: string | null;
-  estado_desc?: string | null;
-  banda?: string | null;
-  empresa?: string | null;
-  baja_pct?: number | null;
-  fecha_adjudicacion?: string | null;
-  modulos_str?: string | null;
-  url?: string | null;
-  tipo_proyecto?: string | null;
-  tipo_contrato_desc?: string | null;
-  cpv_desc?: string | null;
-}
-
-export interface Adjudicatario {
-  nombre: string;
-  count: number;
-  importe: number;
-}
-
-export interface OrganoDetailResponse {
-  kpis: OrganoKpis;
-  top_adjudicatarios: Adjudicatario[];
-  estacionalidad: { mes_numero: number; count: number }[];
-  top_scored: TopScoredItem[];
-}
+// Las formas salen del esquema generado (`useFilteredQuery` las deriva de la ruta).
+export type OrganoItem = Schemas["OrganoEntry"];
+export type TopScoredItem = Schemas["TopScored"];
+export type Adjudicatario = Schemas["TopAdjudicatario"];
+export type OrganoDetailResponse = Schemas["OrganoDetailResult"];
 
 /** Un órgano en el mapa de compradores. */
 export interface PuntoOrgano {
   organo: string;
-  ccaa?: string;
+  ccaa?: string | null;
   count: number;
   importe: number;
   /** Importe medio por licitación: el tamaño del punto. */
@@ -104,7 +49,7 @@ export interface PuntoOrgano {
 /** Una fila del gráfico mariposa: las dos medidas a escala del máximo visible. */
 export interface FilaMariposa {
   organo: string;
-  ccaa?: string;
+  ccaa?: string | null;
   count: number;
   importe: number;
   pctCount: number;
@@ -143,7 +88,7 @@ export function useOrganosView() {
   // actividad, así que un órgano fuera de ese ranking jamás aparecería
   // filtrando solo en cliente.
   const debouncedFilter = useDebounce(filter, 300);
-  const { data, isLoading, error, refetch } = useFilteredQuery<OrganosResponse>(
+  const { data, isLoading, error, refetch } = useFilteredQuery(
     ["analytics", "organos", debouncedFilter],
     "/api/v1/analytics/organos",
     // El error lo pinta la vista en línea (PanelError): sin toast además.
@@ -153,7 +98,7 @@ export function useOrganosView() {
 
   // Misma clave que el recuento de la barra de ámbito (`analyticsKeys.overview`),
   // así que en las pantallas que consumen el ámbito entero comparte caché.
-  const { data: overview } = useFilteredQuery<OverviewTotales>(
+  const { data: overview } = useFilteredQuery(
     ["analytics", "overview"],
     "/api/v1/analytics/overview",
     { meta: META_ERROR_EN_LINEA },
@@ -190,9 +135,9 @@ export function useOrganosView() {
     isLoading: detailLoading,
     error: detailError,
     refetch: refetchDetail,
-  } = useFilteredQuery<OrganoDetailResponse>(
+  } = useFilteredQuery(
     ["analytics", "organo-detail", organoAbierto ?? ""],
-    `/api/v1/analytics/organos/${encodeURIComponent(organoAbierto ?? "")}`,
+    urlApi("/api/v1/analytics/organos/{organo}", { organo: organoAbierto ?? "" }),
     { enabled: !!organoAbierto, staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
     undefined,
     true,

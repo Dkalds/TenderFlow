@@ -1,0 +1,7 @@
+{
+  "user_id": 1,
+  "email": "yo@tf.es",
+  "display_name": "Yo",
+  "is_admin": true,
+  "mfa_required": false
+}

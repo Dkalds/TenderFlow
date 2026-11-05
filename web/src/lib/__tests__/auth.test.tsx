@@ -9,11 +9,14 @@ import { renderHook, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionProvider, useSession } from "@/lib/auth";
+import { respuestaDeContrato } from "@/test/contrato";
 
-function createWrapper() {
+const YO = respuestaDeContrato("/api/v1/auth/me");
+
+function createWrapper(retry: boolean | number = false) {
   const queryClient = new QueryClient({
     defaultOptions: {
-      queries: { retry: false, gcTime: 0 },
+      queries: { retry, retryDelay: 0, gcTime: 0 },
     },
   });
   return function Wrapper({ children }: { children: React.ReactNode }) {
@@ -41,13 +44,7 @@ afterEach(() => {
 
 describe("useSession", () => {
   beforeEach(() => {
-    mockFetchMe(200, {
-      user_id: "u1",
-      email: "admin@test.com",
-      display_name: "Admin",
-      is_admin: true,
-      role: "admin",
-    });
+    mockFetchMe(200, { ...YO, email: "admin@test.com", is_admin: true });
   });
 
   it("throws when used outside SessionProvider", () => {
@@ -67,12 +64,7 @@ describe("useSession", () => {
   });
 
   it("detects non-admin users", async () => {
-    mockFetchMe(200, {
-      user_id: "u2",
-      email: "user@test.com",
-      display_name: "User",
-      is_admin: false,
-    });
+    mockFetchMe(200, { ...YO, user_id: 2, email: "user@test.com", is_admin: false });
     const { result } = renderHook(() => useSession(), {
       wrapper: createWrapper(),
     });
@@ -91,14 +83,40 @@ describe("useSession", () => {
     expect(result.current.user).toBeNull();
   });
 
-  it("returns isAuthenticated=false on network error", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Network error")));
-    const { result } = renderHook(() => useSession(), {
-      wrapper: createWrapper(),
-    });
+  it("403 también es «sin sesión», sin error", async () => {
+    mockFetchMe(403, { detail: "Forbidden" });
+    const { result } = renderHook(() => useSession(), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.user).toBeNull();
+    expect(result.current.error).toBeNull();
+  });
+
+  it("un 5xx no es «sin sesión»: queda como error, no como usuario anónimo", async () => {
+    mockFetchMe(503, { detail: "Arrancando" });
+    const { result } = renderHook(() => useSession(), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.isAuthenticated).toBe(false);
-    expect(result.current.user).toBeNull();
+    expect(result.current.error).toBeInstanceOf(Error);
+  });
+
+  it("un fallo de red queda como error, no como sesión cerrada", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    const { result } = renderHook(() => useSession(), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.error).toBeInstanceOf(Error);
+  });
+
+  it("reintenta con la política del QueryClient y recupera la sesión tras un 5xx", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 503, json: vi.fn().mockResolvedValue({}) })
+      .mockResolvedValue({ ok: true, status: 200, json: vi.fn().mockResolvedValue(YO) });
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => useSession(), { wrapper: createWrapper(1) });
+    await waitFor(() => expect(result.current.isAuthenticated).toBe(true));
+    expect(result.current.user?.user_id).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("provides a refresh function", async () => {

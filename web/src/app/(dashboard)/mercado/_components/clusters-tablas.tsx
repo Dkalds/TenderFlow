@@ -132,7 +132,7 @@ export function ClusterDetalleTabla({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {selected.items.map((it) => (
+          {(selected.items ?? []).map((it) => (
             <TableRow key={it.id_externo}>
               <TableCell className="max-w-sm font-medium">
                 <Pista contenido={it.titulo}>
@@ -149,7 +149,7 @@ export function ClusterDetalleTabla({
               <TableCell>{it.estado ?? EMPTY}</TableCell>
             </TableRow>
           ))}
-          {selected.items.length === 0 && (
+          {!selected.items?.length && (
             <TableRow>
               <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">
                 Este cluster no tiene licitaciones con el ámbito actual.

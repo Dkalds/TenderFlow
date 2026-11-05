@@ -9,27 +9,45 @@
 
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { errorDeRespuesta } from "@/lib/api-client";
+import type { Schemas } from "@/lib/api-types";
 import { authKeys } from "@/lib/claves-raiz";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
-export interface AuthUser {
-  user_id: string;
-  email: string;
-  display_name: string | null;
-  is_admin: boolean;
-  role?: string;
-  /**
-   * La cuenta tiene la verificación en dos pasos activa. `/auth/me` lo calcula
-   * en cada petición, así que tras activarla o quitarla basta con `refresh()`.
-   */
-  mfa_required?: boolean;
-}
+/**
+ * Lo que devuelve `GET /auth/me`. `mfa_required` dice si la cuenta tiene la
+ * verificación en dos pasos activa; se calcula en cada petición, así que tras
+ * activarla o quitarla basta con `refresh()`.
+ */
+export type AuthUser = Schemas["UserInfo"];
+
+const RUTA_ME = "/api/v1/auth/me";
 
 interface SessionContextValue {
   user: AuthUser | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   isAdmin: boolean;
+  /**
+   * `/auth/me` falló por algo que no es «sin sesión» (5xx, red) y se agotaron
+   * los reintentos. No significa que no haya sesión: quien redirige a /login
+   * tiene que mirar esto antes.
+   */
+  error: unknown;
   refresh: () => Promise<void>;
+}
+
+/**
+ * La sesión del servidor, o `null` si no la hay. Solo 401 y 403 son «sin
+ * sesión»; cualquier otro fallo se lanza para que React Query lo reintente con
+ * la política global (`debeReintentar`) en vez de echar al usuario a /login
+ * porque la API tardó en despertar.
+ */
+export async function pedirSesion(signal?: AbortSignal): Promise<AuthUser | null> {
+  const res = await fetch(RUTA_ME, { credentials: "include", signal });
+  if (res.status === 401 || res.status === 403) return null;
+  if (!res.ok) throw await errorDeRespuesta(res, "GET", RUTA_ME);
+  return (await res.json()) as AuthUser;
 }
 
 /**
@@ -91,19 +109,13 @@ const SessionContext = React.createContext<AlmacenSesion | null>(null);
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery<AuthUser | null>({
+  // Sin `retry` propio: hereda `debeReintentar` del QueryClient. El fallo no
+  // lanza toast; lo pinta en línea quien depende de la sesión (`AdminGuard`).
+  const { data, isLoading, error } = useQuery<AuthUser | null>({
     queryKey: authKeys.me,
-    queryFn: async () => {
-      try {
-        const res = await fetch("/api/v1/auth/me", { credentials: "include" });
-        if (!res.ok) return null;
-        return res.json() as Promise<AuthUser>;
-      } catch {
-        return null;
-      }
-    },
+    queryFn: ({ signal }) => pedirSesion(signal),
     staleTime: 10 * 60 * 1000,
-    retry: false,
+    meta: META_ERROR_EN_LINEA,
   });
 
   const refresh = React.useCallback(async () => {
@@ -117,10 +129,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       user: data ?? null,
       isLoading,
       isAuthenticated: data !== null && data !== undefined,
-      isAdmin: data?.is_admin === true || data?.role === "admin",
+      isAdmin: data?.is_admin === true,
+      error,
       refresh,
     }),
-    [data, isLoading, refresh],
+    [data, isLoading, error, refresh],
   );
 
   const [almacen] = React.useState(() => crearAlmacen(sesion));

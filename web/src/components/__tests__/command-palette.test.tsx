@@ -238,13 +238,24 @@ describe("CommandPalette — Acciones con filtros", () => {
     clickSpy.mockRestore();
   });
 
-  it("'Copiar enlace con filtros' copies the current URL and shows a toast", () => {
+  it("'Copiar enlace con filtros' copies the current URL and shows a toast", async () => {
+    writeText.mockResolvedValueOnce(undefined);
     filterParamsStub = { q: "obras" };
     useUiStore.setState({ commandOpen: true });
     renderPalette();
     fireEvent.click(screen.getByText("Copiar enlace con filtros"));
     expect(writeText).toHaveBeenCalledWith(window.location.href);
-    expect(toast.success).toHaveBeenCalledWith("Enlace copiado");
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Enlace copiado"));
+  });
+
+  it("si el portapapeles rechaza la copia, no dice «Enlace copiado»", async () => {
+    writeText.mockRejectedValueOnce(new Error("NotAllowedError"));
+    filterParamsStub = { q: "obras" };
+    useUiStore.setState({ commandOpen: true });
+    renderPalette();
+    fireEvent.click(screen.getByText("Copiar enlace con filtros"));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("No se pudo copiar el enlace"));
+    expect(toast.success).not.toHaveBeenCalled();
   });
 });
 

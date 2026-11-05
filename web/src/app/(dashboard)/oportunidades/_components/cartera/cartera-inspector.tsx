@@ -23,12 +23,14 @@ import { EnlaceIr, PanelEmpty, SectionTitle } from "@/components/console/panel";
 import { fechaCorta } from "@/lib/adjudicacion-prevista";
 import type { ContratoCartera } from "@/lib/cartera";
 import { plazoRestante, urgenciaCartera } from "@/lib/cartera";
+import { urlHttp } from "@/lib/url-http";
 import { cn, EMPTY, formatCompactCurrency, formatNumber } from "@/lib/utils";
 import { PrepararRenovacion } from "../preparar-renovacion";
 import { CarteraEventos } from "./cartera-eventos";
 import { OrigenFin } from "./origen-fin";
 
 export function CarteraInspector({ contrato }: { contrato: ContratoCartera | null }) {
+  const expediente = urlHttp(contrato?.url);
   return (
     <aside
       aria-label="Detalle del contrato seleccionado"
@@ -115,11 +117,11 @@ export function CarteraInspector({ contrato }: { contrato: ContratoCartera | nul
             <div className="flex items-baseline justify-between gap-3">
               <dt className="flex-none text-muted-foreground">Expediente</dt>
               <dd className="min-w-0 text-right">
-                {contrato.url ? (
+                {expediente ? (
                   // Al expediente en PLACSP, nunca al documento: los enlaces
                   // directos a pliegos llevan tokens rotativos y caducan.
                   <a
-                    href={contrato.url}
+                    href={expediente}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 truncate font-mono text-tf-micro hover:underline"

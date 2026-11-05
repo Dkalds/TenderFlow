@@ -1,11 +1,14 @@
 {
   "opportunities": [
     {
-      "band": "texto",
-      "id_externo": "texto",
-      "score": 1
+      "band": "Atractiva",
+      "id_externo": "PLACSP-2026-0001",
+      "score": 78,
+      "titulo": "Mantenimiento evolutivo de la plataforma SAP S/4HANA",
+      "importe": 480000,
+      "organo_contratacion": "Ayuntamiento de Ejemplo"
     }
   ],
   "signals": null,
-  "total_scored": 0
+  "total_scored": 1
 }

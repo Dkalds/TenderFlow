@@ -57,6 +57,8 @@ vi.mock("@/lib/query-feedback", async () => {
   notifyQueryError: (...args: unknown[]) => mockNotifyQueryError(...args),
   notifyMutationError: (...args: unknown[]) => mockNotifyMutationError(...args),
   notifyMutationSuccess: (...args: unknown[]) => mockNotifyMutationSuccess(...args),
+  // `SessionProvider` lo usa para que el fallo de `/auth/me` no lance toast.
+  META_ERROR_EN_LINEA: { silent: true },
   // La `MutationCache` también sale de aquí (la comparten los tests con
   // `crearQueryClientDePrueba`); el doble la cablea a los espías de arriba.
   crearMutationCache: () =>

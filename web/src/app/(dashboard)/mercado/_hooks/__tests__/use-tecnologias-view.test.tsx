@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import { callUrl, jsonResponse } from "@/hooks/__tests__/fetch-call";
 import { filteredQueryKey } from "@/lib/filtered-query";
+import { respuestaDeContrato } from "@/test/contrato";
 
 /**
  * `useTecnologiasView` con el ámbito **real**: nuqs leyendo la URL de la
@@ -58,7 +59,8 @@ const AGREGADO = {
 };
 
 const DETALLE = { tecnologia: "SAP", n: 1, importe_total: 10, importe_medio: 10, items: [] };
-const SCORING = { opportunities: [{ id: "X-1", titulo: "Top", importe: 1, score: 90 }] };
+// El cuerpo validado contra el OpenAPI: la API manda `id_externo` y `band`, no `id`.
+const SCORING = respuestaDeContrato("/api/v1/analytics/scoring");
 
 function cuerpo(url: string): unknown {
   if (url.includes("/tecnologias/detail")) return DETALLE;
