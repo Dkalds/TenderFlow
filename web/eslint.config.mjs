@@ -283,6 +283,25 @@ const restriccionTitleNativo = {
 //: cambio que se ve en el diff. `scripts/check_title_attrs.py` tiene el techo a 0.
 const deudaTitleNativo = [];
 
+//: Componentes que pasaban de 300 líneas cuando el límite llegó a
+//: `src/components/**` (2026-11). **Solo puede encoger**: se parte un fichero y
+//: se quita su línea; no se añaden. Con su tamaño de entonces, para ver de un
+//: vistazo cuánto falta.
+const deudaTamanoComponentes = [
+  "src/components/console/panel.tsx", // 720
+  "src/components/command-palette.tsx", // 495
+  "src/components/chat-thread.tsx", // 448
+  "src/components/pursuits/pursuit-comments.tsx", // 394
+  "src/components/pursuits/tender-fact-sheet.tsx", // 392
+  "src/components/competencia-esperada.tsx", // 352
+  "src/components/competitors/company-profile.tsx", // 342
+  "src/components/pliego/simulador-puntuacion.tsx", // 338
+  "src/components/charts/spain-map.tsx", // 336
+  "src/components/pursuits/pursuit-editor.tsx", // 315
+  "src/components/pursuits/puntuaciones-acta.tsx", // 309
+  "src/components/pursuits/adjudicacion-detectada.tsx", // 302
+];
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
@@ -458,6 +477,20 @@ const eslintConfig = defineConfig([
   // No se le añaden entradas: si una pantalla nueva no cabe en 300 líneas, se
   // parte antes de mergearla. Reabrir esta lista es volver a tener deuda sin
   // dueño, que es exactamente lo que costó cerrarla.
+
+  // ── Tamaño de fichero en `src/components/**` (2026-11) ────────────────────
+  //
+  // El mismo límite y por lo mismo que en `src/app/**`: hasta 2026-11 solo
+  // regía allí, y los componentes compartidos —los que más pantallas leen—
+  // crecían sin techo (`layout/scope-bar.tsx` llegó a 856 líneas; ya está
+  // partido en `scope-editor`, `scope-chips` y `scope-barras`).
+  {
+    files: ["src/components/**/*.ts", "src/components/**/*.tsx"],
+    ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.test.tsx", ...deudaTamanoComponentes],
+    rules: {
+      "max-lines": ["error", { max: 300, skipBlankLines: false, skipComments: false }],
+    },
+  },
 ]);
 
 export default eslintConfig;

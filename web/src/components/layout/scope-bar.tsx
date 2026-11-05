@@ -3,29 +3,21 @@
 import * as React from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Info, Redo2, RotateCcw, Search, Undo2, X } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { ETIQUETA_CAMPO } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { MultiSelect } from "@/components/ui/multi-select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { SearchAutocomplete } from "@/components/ui/search-autocomplete";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AmbitoIntro } from "@/components/layout/ambito-intro";
+import { BarraConAmbito, BarraSinAmbito } from "@/components/layout/scope-barras";
+import { chipsDelAmbito } from "@/components/layout/scope-chips";
+import { ScopeEditor } from "@/components/layout/scope-editor";
 import { ScrollEdge, useScrollEdgeState } from "@/components/layout/scroll-edge";
-import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { ExportPopover } from "@/components/export-popover";
 import { NotificationBell } from "@/components/notification-bell";
 import { useAnnounceOnChange } from "@/components/live-region";
-import { useDebounce } from "@/hooks/use-debounce";
-import { useValorDiferido, type ValorDiferido } from "@/hooks/use-valor-diferido";
+import { useValorDiferido } from "@/hooks/use-valor-diferido";
 import { useDataFreshness } from "@/hooks/use-data-freshness";
-import { fetchWithAuth } from "@/lib/api-client";
-import { estadoLabel } from "@/lib/estados";
+import { fetchWithAuth, type ApiGetResult } from "@/lib/api-client";
 import { useFilters, useFilterParams } from "@/lib/filters";
 import { useScopeHistory } from "@/lib/scope-history";
-import { useSearchHistory } from "@/lib/search-history";
 import { useUiStore } from "@/lib/ui-store";
 import {
   FILTROS_OPT_IN,
@@ -35,11 +27,9 @@ import {
   pathUsesGlobalFilters,
   type GlobalFilterKey,
 } from "@/lib/navigation";
-import { chipsListado, FiltrosListadoEditor } from "@/components/layout/scope-filtros-listado";
-import { cn, formatNumber } from "@/lib/utils";
+import { formatNumber } from "@/lib/utils";
 import { analyticsKeys } from "@/lib/query-keys";
 import { useMetaFilters } from "@/hooks/use-meta-filters";
-import type { MetaFilters } from "@/hooks/use-meta-filters";
 
 /**
  * Barra de ámbito — 52px, el objeto de contexto persistente.
@@ -56,11 +46,10 @@ import type { MetaFilters } from "@/hooks/use-meta-filters";
  * intermedio —la página que aplica solo un subconjunto—: los chips, el recuento
  * y el aviso se calculan todos sobre ese mismo subconjunto, para que la barra
  * no pueda afirmar un número que la pantalla no está enseñando.
+ *
+ * Las piezas viven al lado: el editor en `scope-editor.tsx`, los chips en
+ * `scope-chips.tsx` y las dos ramas de contenido en `scope-barras.tsx`.
  */
-
-interface OverviewData {
-  total_licitaciones: number;
-}
 
 /**
  * Params de URL que emite cada clave del ámbito (ver `filtersToParams` en
@@ -85,41 +74,6 @@ const FILTER_KEY_PARAMS: Record<GlobalFilterKey, readonly string[]> = {
 
 const TODAS_LAS_CLAVES = Object.keys(FILTER_KEY_PARAMS) as GlobalFilterKey[];
 
-function toIsoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-const DATE_PRESETS = [
-  {
-    label: "Últimos 7 días",
-    desde: () => toIsoDate(new Date(Date.now() - 7 * 86400000)),
-    hasta: () => toIsoDate(new Date()),
-  },
-  {
-    label: "Últimos 30 días",
-    desde: () => toIsoDate(new Date(Date.now() - 30 * 86400000)),
-    hasta: () => toIsoDate(new Date()),
-  },
-  {
-    label: "Últimos 90 días",
-    desde: () => toIsoDate(new Date(Date.now() - 90 * 86400000)),
-    hasta: () => toIsoDate(new Date()),
-  },
-  { label: "Este año (YTD)", desde: () => `${new Date().getFullYear()}-01-01`, hasta: () => toIsoDate(new Date()) },
-  {
-    label: "Últimos 12 meses",
-    desde: () => toIsoDate(new Date(Date.now() - 365 * 86400000)),
-    hasta: () => toIsoDate(new Date()),
-  },
-  { label: "Todo", desde: () => null, hasta: () => null },
-];
-
-const IMPORTE_PRESETS = [
-  { label: "> 100K", value: 100_000 },
-  { label: "> 500K", value: 500_000 },
-  { label: "> 1M", value: 1_000_000 },
-];
-
 /**
  * Espera de la búsqueda antes de tocar la URL. Cada escritura cambia la clave
  * de todas las consultas con filtros —en Resumen, ~7 agregados sobre el
@@ -136,235 +90,7 @@ const RETRASO_BUSQUEDA_MS = 300;
 const CABECERA =
   "sticky top-0 z-30 flex h-[52px] flex-none [scrollbar-width:none] items-center gap-2.5 overflow-x-auto bg-background px-3.5 [&::-webkit-scrollbar]:hidden";
 
-interface Chip {
-  key: string;
-  value: string;
-  remove: () => void;
-}
-
-const NAV_BUTTON = "grid h-6 w-6 place-items-center rounded-md border transition-colors";
-
-function ScopeChip({ chip }: { chip: Chip }) {
-  return (
-    // La clave y la «×» iban con `opacity-60`/`opacity-50` sobre el tinte del
-    // chip: 2,4:1, y la «×» medía 8×13 px. Ahora son tinta plena y la «×»
-    // ocupa 24×24 (WCAG 2.5.8), con el margen negativo para que el chip no
-    // crezca. La clave va en frase y en sans, a 11 px, y el valor a 12 px en
-    // medio: la jerarquía la da el peso, no una versal en mono.
-    <span className="border-primary-line bg-primary-selected text-primary inline-flex h-6.5 items-center gap-1.5 rounded-md border pr-0.5 pl-2">
-      <span className="text-tf-micro leading-none">{chip.key}</span>
-      <span className="text-tf-meta max-w-40 truncate leading-none font-medium">{chip.value}</span>
-      <button
-        type="button"
-        aria-label={`Quitar ${chip.key.toLowerCase()} ${chip.value}`}
-        onClick={chip.remove}
-        className="hover:bg-primary-selected -ml-1 grid h-6 w-6 cursor-pointer place-items-center rounded-sm border-0 bg-transparent p-0 transition-colors"
-      >
-        <X className="h-3 w-3" aria-hidden="true" />
-      </button>
-    </span>
-  );
-}
-
-/**
- * Atajos de valor del editor (periodos, importes). Pequeños pero con la diana
- * mínima de 24 px (WCAG 2.5.8); `tf-pressable` ya anima el color y la
- * pulsación.
- */
-const PRESET =
-  "tf-pressable inline-flex h-6 items-center rounded-md border border-divider px-2 text-tf-micro text-muted-foreground hover:border-primary-line-strong hover:text-foreground";
-
-/** Editor del ámbito: los seis controles que antes vivían sueltos en la barra. */
-function ScopeEditor({
-  meta,
-  shows,
-  singleTecnologia,
-  busqueda,
-}: {
-  meta: MetaFilters | undefined;
-  shows: (key: GlobalFilterKey) => boolean;
-  singleTecnologia: boolean;
-  /**
-   * El texto de búsqueda vive en la barra y no aquí: el editor se desmonta al
-   * cerrarse, y cerrarlo antes de que venza la espera perdería lo tecleado.
-   */
-  busqueda: ValorDiferido<string>;
-}) {
-  const filters = useFilters();
-  const { history, addToHistory } = useSearchHistory();
-
-  // Importe: input local con debounce de 400ms antes de tocar la URL, igual que
-  // en la barra anterior — sin él cada tecla dispara un refetch.
-  const [importeInput, setImporteInput] = React.useState<number | "">(filters.importeMin ?? "");
-  const debouncedImporte = useDebounce(importeInput, 400);
-  const [prevExternalImporte, setPrevExternalImporte] = React.useState(filters.importeMin);
-  if (filters.importeMin !== prevExternalImporte) {
-    setPrevExternalImporte(filters.importeMin);
-    const currentNum = importeInput === "" ? null : Number(importeInput);
-    if (currentNum !== filters.importeMin) setImporteInput(filters.importeMin ?? "");
-  }
-  React.useEffect(() => {
-    const next = debouncedImporte === "" ? null : Number(debouncedImporte);
-    if (next !== filters.importeMin) filters.setImporteMin(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo reacciona al valor debounced
-  }, [debouncedImporte]);
-
-  const label = cn(ETIQUETA_CAMPO, "mb-1.5");
-  const control = "h-8 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground";
-
-  return (
-    <div className="space-y-3 p-1">
-      {shows("q") && (
-        <div>
-          <span className={label}>Búsqueda</span>
-          {/* Cada tecla cambia sólo el campo; la URL recibe el valor cuando se
-              deja de teclear (`RETRASO_BUSQUEDA_MS`), o en el acto con Enter o
-              al elegir una búsqueda reciente. */}
-          <SearchAutocomplete
-            aria-label="Buscar licitaciones"
-            inputClassName="h-8 rounded-md bg-background pl-8 text-xs"
-            placeholder="Licitaciones, órganos, empresas…"
-            value={busqueda.valor}
-            onChange={busqueda.cambiar}
-            onSubmit={(valor) => {
-              busqueda.aplicarYa(valor);
-              addToHistory(valor);
-            }}
-            recentSearches={history}
-            leftIcon={<Search className="h-3.5 w-3.5" aria-hidden="true" />}
-          />
-        </div>
-      )}
-
-      {shows("fecha") && (
-        <div>
-          <span className={label}>Periodo</span>
-          <div className="flex items-center gap-1.5">
-            <input
-              type="date"
-              aria-label="Fecha desde"
-              value={filters.rango.desde ?? ""}
-              onChange={(event) => filters.setRango({ ...filters.rango, desde: event.target.value || null })}
-              className={control}
-            />
-            <input
-              type="date"
-              aria-label="Fecha hasta"
-              value={filters.rango.hasta ?? ""}
-              onChange={(event) => filters.setRango({ ...filters.rango, hasta: event.target.value || null })}
-              className={control}
-            />
-          </div>
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {DATE_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                onClick={() => filters.setRango({ desde: preset.desde(), hasta: preset.hasta() })}
-                className={PRESET}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {shows("ccaa") && (
-        <div>
-          <span className={label}>Comunidad autónoma</span>
-          <MultiSelect
-            aria-label="Añadir comunidad autónoma al ámbito"
-            options={meta?.ccaa ?? []}
-            selected={filters.ccaas}
-            onChange={filters.setCcaas}
-            placeholder="Añadir CCAA…"
-          />
-        </div>
-      )}
-
-      {shows("tecnologia") && (
-        <div>
-          <span className={label}>Tecnología</span>
-          <MultiSelect
-            aria-label="Filtrar por tecnología"
-            options={meta?.tecnologia ?? []}
-            selected={filters.tecnologias}
-            onChange={filters.setTecnologias}
-            placeholder={singleTecnologia ? "Todas" : "Añadir tecnología…"}
-            single={singleTecnologia}
-          />
-        </div>
-      )}
-
-      {shows("estado") && (
-        <div>
-          <span className={label}>Estado</span>
-          <MultiSelect
-            aria-label="Añadir estado al ámbito"
-            options={meta?.estado ?? []}
-            selected={filters.estados}
-            onChange={filters.setEstados}
-            placeholder="Añadir estado…"
-            // `/meta/filters` devuelve los códigos de la columna, no etiquetas:
-            // sin esto el desplegable ofrecía "AGR" y "EJEC" como opciones.
-            optionLabel={estadoLabel}
-          />
-          {/* Separado del multi-select porque no es un código más: descarta los
-              estados terminales, cualesquiera que sean. Marcar "PUB" y "EV" a
-              mano no es equivalente — deja fuera `ADM` y cualquier código que
-              la fuente publique mañana. */}
-          <div className="mt-1.5 flex items-center gap-2">
-            {/* `htmlFor`/`id` en vez de envolver el control: el Checkbox de Radix
-                renderiza un `<button role="checkbox">`, no un input nativo, así
-                que anidarlo no lo asocia con la etiqueta. */}
-            <Checkbox
-              id="scope-solo-abiertas"
-              checked={filters.soloAbiertas}
-              onCheckedChange={(value) => filters.setSoloAbiertas(value === true)}
-            />
-            <label htmlFor="scope-solo-abiertas" className="text-tf-meta text-muted-foreground cursor-pointer">
-              Sólo abiertas
-              <span className="text-tf-micro ml-1">(sin adjudicar ni cerrar)</span>
-            </label>
-          </div>
-        </div>
-      )}
-
-      {shows("importe") && (
-        <div>
-          <span className={label}>Importe mínimo</span>
-          <Input
-            aria-label="Importe mínimo"
-            type="number"
-            className="bg-background h-8 w-full text-xs"
-            placeholder="Sin mínimo"
-            value={importeInput}
-            onChange={(event) => setImporteInput(event.target.value ? Number(event.target.value) : "")}
-          />
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {IMPORTE_PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                type="button"
-                onClick={() => filters.setImporteMin(preset.value)}
-                className={PRESET}
-              >
-                {preset.label}
-              </button>
-            ))}
-            <button type="button" onClick={() => filters.setImporteMin(null)} className={PRESET}>
-              Cualquiera
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* F1.1 — sólo en las pantallas que los declaran (opt-in). */}
-      <FiltrosListadoEditor filters={filters} meta={meta} shows={shows} />
-    </div>
-  );
-}
+type Overview = ApiGetResult<"/api/v1/analytics/overview">;
 
 export function ScopeBar() {
   const pathname = usePathname();
@@ -462,11 +188,11 @@ export function ScopeBar() {
   // consumidores de `/analytics/overview` en vez de duplicar la petición. No se
   // puede usar el hook directamente: siempre fusiona `useFilterParams()`
   // completo, que es justo lo que aquí hay que recortar.
-  const { data: overview, isLoading: countLoading } = useQuery<OverviewData>({
+  const { data: overview, isLoading: countLoading } = useQuery<Overview>({
     queryKey: analyticsKeys.overview(scopedParams),
     queryFn: ({ signal }) => {
       const search = new URLSearchParams(scopedParams).toString();
-      return fetchWithAuth<OverviewData>(
+      return fetchWithAuth<Overview>(
         search ? `/api/v1/analytics/overview?${search}` : "/api/v1/analytics/overview",
         { signal },
       );
@@ -477,68 +203,7 @@ export function ScopeBar() {
     placeholderData: keepPreviousData,
   });
 
-  const chips: Chip[] = React.useMemo(() => {
-    const list: Chip[] = [];
-    if (shows("q") && filters.q) {
-      list.push({ key: "Busca", value: filters.q, remove: () => filters.setQ("") });
-    }
-    if (shows("fecha") && (filters.rango.desde || filters.rango.hasta)) {
-      const desde = filters.rango.desde ?? "…";
-      const hasta = filters.rango.hasta ?? "hoy";
-      list.push({
-        key: "Periodo",
-        value: `${desde} → ${hasta}`,
-        remove: () => filters.setRango({ desde: null, hasta: null }),
-      });
-    }
-    if (shows("estado")) {
-      // Va antes que los estados sueltos porque es el filtro más amplio de los
-      // dos: "abiertas" es una propiedad del expediente, no un código concreto.
-      if (filters.soloAbiertas) {
-        list.push({
-          key: "Estado",
-          value: "Sólo abiertas",
-          remove: () => filters.setSoloAbiertas(false),
-        });
-      }
-      for (const value of filters.estados) {
-        list.push({
-          key: "Estado",
-          // La chapa muestra la etiqueta pero filtra por el código: el valor
-          // que viaja en la URL y en la query sigue siendo `value`.
-          value: estadoLabel(value),
-          remove: () => filters.setEstados(filters.estados.filter((item) => item !== value)),
-        });
-      }
-    }
-    if (shows("ccaa")) {
-      for (const value of filters.ccaas) {
-        list.push({
-          key: "CCAA",
-          value,
-          remove: () => filters.setCcaas(filters.ccaas.filter((item) => item !== value)),
-        });
-      }
-    }
-    if (shows("tecnologia")) {
-      for (const value of filters.tecnologias) {
-        list.push({
-          key: "Tecnología",
-          value,
-          remove: () => filters.setTecnologias(filters.tecnologias.filter((item) => item !== value)),
-        });
-      }
-    }
-    if (shows("importe") && filters.importeMin != null) {
-      list.push({
-        key: "Importe",
-        value: `> ${formatNumber(filters.importeMin)} €`,
-        remove: () => filters.setImporteMin(null),
-      });
-    }
-    list.push(...chipsListado(filters, meta, shows));
-    return list;
-  }, [filters, shows, meta]);
+  const chips = React.useMemo(() => chipsDelAmbito(filters, shows, meta), [filters, shows, meta]);
 
   // Contrato de filtros por página: donde no aplican, no se pintan chips que no
   // filtran nada. Si además hay filtros activos, se dice.
@@ -609,248 +274,6 @@ export function ScopeBar() {
       {/* Detrás de la franja: el borde separa el cromo de lo que se desplaza
           en `#main-content`, y mientras la franja se ve el cromo acaba en ella. */}
       <ScrollEdge active={scrolled} />
-    </>
-  );
-}
-
-/**
- * «Buscar» abre la paleta. El atajo se enseña en un `<kbd>` que el lector de
- * pantalla no lee (lo anuncia `aria-keyshortcuts`), así que el nombre
- * accesible es la palabra que se ve (WCAG 2.5.3); antes era «Abrir búsqueda y
- * comandos» sobre un botón que decía «Buscar ⌘K».
- */
-// Acepta `ref` y el resto de props: va dentro de un `TooltipTrigger asChild`,
-// que le pasa su ref y sus manejadores. En React 19 `ref` es una prop más.
-function BotonBuscar({
-  onSearch,
-  onClick,
-  className,
-  ...props
-}: React.ComponentProps<"button"> & { onSearch: () => void }) {
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      {...props}
-      onClick={(event) => {
-        onClick?.(event);
-        onSearch();
-      }}
-      aria-keyshortcuts="Control+K Meta+K"
-      className={cn("text-muted-foreground hover:text-foreground flex-none", className)}
-    >
-      Buscar
-      <kbd
-        aria-hidden="true"
-        className="border-divider text-tf-micro rounded-sm border px-1 py-0.5 font-mono leading-none font-normal"
-      >
-        ⌘K
-      </kbd>
-    </Button>
-  );
-}
-
-/**
- * Cuándo se actualizaron los datos por última vez. En castellano y sin punto
- * de estado: el color no cambiaba con la antigüedad (salía verde también con
- * «sin registro»), y el pulso infinito se veía cien veces al día.
- */
-function textoActualizacion(relative: string | null): string {
-  return relative ? `Actualizado ${relative}` : "Sin actualizaciones registradas";
-}
-
-/**
- * Contenido de la barra en las pantallas que no aplican el ámbito. Comparte la
- * cabecera con scroll horizontal de la otra rama: sin él, a 375 px el rótulo
- * «Ámbito · no aplica…» más las utilidades medían ~650 px y empujaban el
- * documento entero (el desborde de 274 px de Mi Watchlist y de la Agenda en
- * `responsive.spec.ts`). El rótulo, además, se oculta en móvil.
- */
-function BarraSinAmbito({
-  activeCount,
-  onReset,
-  relative,
-  onSearch,
-}: {
-  activeCount: number;
-  onReset: () => void;
-  relative: string | null;
-  onSearch: () => void;
-}) {
-  return (
-    <>
-      {activeCount > 0 ? (
-        <>
-          <Info className="text-muted-foreground h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          {/* Por debajo de `md`, en una línea: encogido hasta su palabra más
-              larga ocupaba nueve líneas (144 px) en una barra de 52 que las
-              recortaba, y a 375 px solo se leía «no aplica en esta». Desde
-              `md` la barra mide unos 700 px o más y el aviso, como mucho, se
-              parte en dos líneas que caben: mejor eso que sacar Buscar y
-              Exportar de la vista. */}
-          <span className="text-tf-meta text-muted-foreground min-w-max md:min-w-auto">
-            El ámbito global no aplica en esta pantalla ({activeCount}{" "}
-            {activeCount === 1 ? "filtro activo" : "filtros activos"}).
-          </span>
-          <Button variant="ghost" size="sm" onClick={onReset}>
-            <RotateCcw aria-hidden="true" />
-            Limpiar
-          </Button>
-        </>
-      ) : (
-        <span className="text-tf-meta text-muted-foreground hidden flex-none sm:inline">
-          El ámbito no aplica en esta pantalla.
-        </span>
-      )}
-      <div className="flex-1" />
-      <span className="text-tf-meta text-muted-foreground hidden flex-none sm:inline">
-        {textoActualizacion(relative)}
-      </span>
-      <BotonBuscar onSearch={onSearch} />
-    </>
-  );
-}
-
-/** Contenido de la barra en las pantallas que aplican el ámbito (todo o parte). */
-function BarraConAmbito({
-  chips,
-  editor,
-  editorOpen,
-  onEditorOpenChange,
-  onAcercarseAlEditor,
-  historial,
-  outOfScopeCount,
-  onClearOutOfScope,
-  recuento,
-  relative,
-  onSearch,
-}: {
-  chips: Chip[];
-  editor: React.ReactNode;
-  editorOpen: boolean;
-  onEditorOpenChange: (open: boolean) => void;
-  /** Puntero o foco sobre «+ Añadir»: el editor está a punto de abrirse. */
-  onAcercarseAlEditor: () => void;
-  historial: { canUndo: boolean; canRedo: boolean; undo: () => void; redo: () => void };
-  outOfScopeCount: number;
-  onClearOutOfScope: () => void;
-  recuento: string;
-  relative: string | null;
-  onSearch: () => void;
-}) {
-  const { canUndo, canRedo, undo, redo } = historial;
-  return (
-    <>
-      <div className="border-divider flex flex-none items-center gap-1.5 border-r pr-2.5">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={undo}
-              disabled={!canUndo}
-              aria-label="Deshacer cambio de ámbito"
-              className={cn(
-                NAV_BUTTON,
-                canUndo
-                  ? "border-border text-muted-foreground hover:text-foreground cursor-pointer"
-                  : "border-divider-subtle text-muted-foreground/40 cursor-default",
-              )}
-            >
-              <Undo2 className="h-3 w-3" aria-hidden="true" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Deshacer cambio de ámbito</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={redo}
-              disabled={!canRedo}
-              aria-label="Rehacer cambio de ámbito"
-              className={cn(
-                NAV_BUTTON,
-                canRedo
-                  ? "border-border text-muted-foreground hover:text-foreground cursor-pointer"
-                  : "border-divider-subtle text-muted-foreground/40 cursor-default",
-              )}
-            >
-              <Redo2 className="h-3 w-3" aria-hidden="true" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Rehacer cambio de ámbito</TooltipContent>
-        </Tooltip>
-      </div>
-
-      <span className="text-tf-meta text-muted-foreground flex-none font-medium">Ámbito</span>
-
-      {/* Nunca más estrecho que sus chips (`min-w-max`): si la barra no cabe
-          —a 375 px siempre; en escritorio, con varios chips o con uno y el
-          aviso de filtros que no aplican—, se desplaza ella. Con `min-w-0` era
-          el único hijo que cedía ancho (sus hermanos son `flex-none`) y los
-          chips se le salían por encima del aviso y del recuento: el `truncate`
-          de cada chip solo corta valores de más de 160 px, no los estrecha. */}
-      <div data-slot="ambito-chips" className="flex min-w-max items-center gap-1.5">
-        {chips.map((chip) => (
-          <ScopeChip key={`${chip.key}-${chip.value}`} chip={chip} />
-        ))}
-
-        <Popover open={editorOpen} onOpenChange={onEditorOpenChange}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              aria-haspopup="dialog"
-              onPointerEnter={onAcercarseAlEditor}
-              onFocus={onAcercarseAlEditor}
-              className="border-border text-tf-meta text-muted-foreground hover:border-primary-line-strong hover:text-foreground inline-flex h-6.5 flex-none cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-transparent px-2.5 font-medium transition-colors"
-            >
-              + Añadir
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-80">
-            {editor}
-          </PopoverContent>
-        </Popover>
-      </div>
-
-      {/* El caso subconjunto también merece el aviso. Antes solo se decía «el
-            ámbito global no aplica» cuando NO aplicaba nada; con una pantalla
-            que aplica parte del ámbito —Radar, que filtra por tecnología y por
-            nada más— los filtros restantes quedaban activos, visibles en la URL
-            y sin efecto, sin que nada lo dijera. Se ofrece quitarlos por
-            separado: «Limpiar el ámbito» se llevaría por delante los que sí
-            filtran esta pantalla. */}
-      {outOfScopeCount > 0 && (
-        <div className="flex flex-none items-center gap-1.5">
-          <Info className="text-muted-foreground h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <span className="text-tf-meta text-muted-foreground">
-            {outOfScopeCount === 1
-              ? "1 filtro activo no aplica en esta pantalla"
-              : `${outOfScopeCount} filtros activos no aplican en esta pantalla`}
-          </span>
-          <Button variant="ghost" size="sm" onClick={onClearOutOfScope}>
-            <RotateCcw aria-hidden="true" />
-            {outOfScopeCount === 1 ? "Quitarlo" : "Quitarlos"}
-          </Button>
-        </div>
-      )}
-
-      <div className="flex-1" />
-
-      <div className="text-tf-meta text-muted-foreground flex flex-none items-center gap-1.5">
-        <span className="tf-tnum">{recuento}</span>
-        <span aria-hidden="true">·</span>
-        <span>{textoActualizacion(relative)}</span>
-      </div>
-
-      <SavedViewsMenu />
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <BotonBuscar onSearch={onSearch} />
-        </TooltipTrigger>
-        <TooltipContent>Licitaciones, órganos, empresas y acciones</TooltipContent>
-      </Tooltip>
     </>
   );
 }

@@ -19,7 +19,7 @@ import {
  *
  * Cada frase describe algo que la barra hace de verdad, no una promesa, y en
  * el lenguaje de quien la usa (no «vive en la dirección de la página»):
- * - el ámbito son los filtros del editor «+ Añadir» (`scope-bar.tsx`);
+ * - el ámbito son los filtros del editor «+ Añadir» (`scope-editor.tsx`);
  * - el número de la derecha es el recuento de `GET /analytics/overview` con
  *   esos mismos filtros;
  * - vive en la URL (`lib/filters.ts`, nuqs), así que un enlace lo lleva puesto.
