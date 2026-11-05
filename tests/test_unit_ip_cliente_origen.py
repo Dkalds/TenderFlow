@@ -188,7 +188,7 @@ class TestSecretoNoSeFiltra:
 class TestSesionUsaLaIpVerificada:
     def test_la_sesion_guarda_la_ip_del_visitante(self) -> None:
         """``/me/sesiones`` enseñaba el nodo del proxy: ``request.client.host``."""
-        from api.routes import auth as auth_routes
+        from api.routes.auth import comun as auth_routes
 
         settings_doble = _settings_con_secretos()
         peticion = _peticion({CABECERA_SECRETO_ORIGEN: SECRETO, "X-Real-IP": VISITANTE})

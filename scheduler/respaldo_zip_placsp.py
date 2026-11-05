@@ -50,7 +50,7 @@ ahí): ``last_seen_updated`` es el cursor del ATOM que se está viendo parado,
 del último respaldo del episodio. Cada respaldo deja además un log
 ``placsp_atom_respaldo_zip`` y un evento con ese nombre en ``ops_events``.
 
-Lo llama ``scheduler.pipeline_runs._run_daily_pipeline_connector``, que es el
+Lo llama ``scheduler.pipeline_carriles._run_daily_pipeline_connector``, que es el
 mismo camino en los dos planos (``scrape-daily.yml`` y
 ``scheduler/jobs/daily_atom.py``). Nunca lanza: un respaldo roto no puede tumbar
 una ingesta que ya terminó.

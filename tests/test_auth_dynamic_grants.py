@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from api.routes.auth import _oauth_access_allowed
+from api.routes.auth.comun import _oauth_access_allowed
 
 
 def test_static_grant_skips_database():

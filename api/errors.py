@@ -376,9 +376,7 @@ def instalar_openapi_con_errores(app: FastAPI) -> None:
             app.openapi_schema = documentar_errores(generar())
         return app.openapi_schema
 
-    # mypy no deja reasignar un método; es el punto de extensión que FastAPI
-    # documenta para personalizar el esquema.
-    app.openapi = openapi_con_errores  # type: ignore[method-assign]
+    app.openapi = openapi_con_errores  # type: ignore[method-assign]  # FastAPI documenta reasignar app.openapi para extender el esquema; mypy no deja reasignar un método
 
 
 # ── Exception handlers ───────────────────────────────────────────────────────

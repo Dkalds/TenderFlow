@@ -291,7 +291,7 @@ def test_tras_un_respaldo_el_siguiente_parte_de_su_fecha(cursores, eventos):
 
 
 def test_el_carril_diario_pasa_el_cursor_de_antes_y_el_de_despues(monkeypatch):
-    from scheduler import pipeline_runs
+    from scheduler import pipeline_carriles
     from scraper.connectors.base import ConnectorRunResult
 
     cursores_atom = iter([_CONGELADO, _CONGELADO])
@@ -300,7 +300,7 @@ def test_el_carril_diario_pasa_el_cursor_de_antes_y_el_de_despues(monkeypatch):
         "scraper.connectors.base.run_connector",
         lambda connector: ConnectorRunResult(source_id="placsp"),
     )
-    monkeypatch.setattr(pipeline_runs, "_run_post_ingestion_steps", lambda **kw: {})
+    monkeypatch.setattr(pipeline_carriles, "_run_post_ingestion_steps", lambda **kw: {})
     recibido: dict[str, Any] = {}
 
     def tras(**kw: Any) -> dict[str, Any]:
@@ -319,7 +319,7 @@ def test_el_carril_diario_pasa_el_cursor_de_antes_y_el_de_despues(monkeypatch):
     monkeypatch.setattr("observability.record_run", lambda run_id: _Run())
     monkeypatch.setattr("observability.bind_run_context", lambda **kw: "run")
 
-    resultado = pipeline_runs._run_daily_pipeline_connector(con_cierre=False)
+    resultado = pipeline_carriles._run_daily_pipeline_connector(con_cierre=False)
 
     assert recibido == {
         "cursor_antes": _CONGELADO,

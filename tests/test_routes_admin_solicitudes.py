@@ -372,9 +372,10 @@ def test_el_aviso_comprueba_el_acceso_con_la_funcion_del_callback():
     Si el PATCH tuviera su propia copia, el correo «ya tienes acceso» podría
     salir para una dirección que el callback rechaza, o al revés.
     """
-    from api.routes import admin_solicitudes, auth
+    from api.routes import admin_solicitudes
+    from api.routes.auth import oauth
 
-    assert admin_solicitudes._oauth_access_allowed is auth._oauth_access_allowed
+    assert admin_solicitudes._oauth_access_allowed is oauth._oauth_access_allowed
 
 
 class TestAccessGrants:

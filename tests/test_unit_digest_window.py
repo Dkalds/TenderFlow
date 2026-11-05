@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from scheduler.pipeline_runs import _es_ventana_matinal
+from scheduler.pipeline_pasos_impl import _es_ventana_matinal
 
 
 @pytest.mark.parametrize(

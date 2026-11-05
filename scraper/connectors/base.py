@@ -570,51 +570,85 @@ def resolver_lotes_adjudicaciones(
     return resueltas, sin_lote
 
 
-def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRunResult:
-    """Ejecuta un ciclo completo de ingesta para una fuente.
+class _LoteDeIngesta:
+    """El lote pendiente de escribir de un run, con su dedupe por recencia.
 
-    Procesa en lotes de ``batch_size`` para acotar transacciones. Un aviso
-    que falla al parsear va a la DLQ y no interrumpe el resto. El cursor
-    avanza después de cada lote persistido con éxito (no solo al final):
-    un fallo en ``fetch`` -- o una interrupción externa por timeout del job,
-    que no es una excepción Python y corta el proceso a mitad de camino --
-    conserva el progreso hasta el último lote; la próxima ejecución retoma
-    desde ahí en vez de reiniciar siempre desde el mismo punto.
+    Colección keyed por ``id_externo`` (no una lista): colapsa el mismo
+    expediente publicado varias veces dentro del run quedándose con la versión
+    más reciente. Sin esto, un feed newest-first trae el mismo aviso varias
+    veces y el ``executemany ... ON CONFLICT DO UPDATE`` procesa la lista en
+    orden → gana la ÚLTIMA = la más VIEJA (estado/importe/fecha_limite
+    regresados + filas de historial fantasma con diff nuevo→viejo).
     """
-    inicio = time.monotonic()
-    source_id = connector.source_id
-    result = ConnectorRunResult(source_id=source_id)
-    cursor = get_cursor(source_id)
-    record_source_started(source_id)
-    log.info("connector_run_start", source=source_id, cursor=cursor)
 
-    # Colección del lote pendiente keyed por id_externo (no una lista): colapsa
-    # el mismo expediente publicado varias veces dentro del run quedándose con la
-    # versión más reciente. Sin esto, un feed newest-first trae el mismo aviso
-    # varias veces y el `executemany ... ON CONFLICT DO UPDATE` procesa la lista
-    # en orden → gana la ÚLTIMA = la más VIEJA (estado/importe/fecha_limite
-    # regresados + filas de historial fantasma con diff nuevo→viejo).
-    lic_por_id: dict[str, Licitacion] = {}
-    adj_por_lic: dict[str, list[Adjudicacion]] = {}
-    docs_por_lic: dict[str, list[DocumentoReferencia]] = {}
-    lotes_por_lic: dict[str, list[Lote]] = {}
-    # Mejor recencia (fecha_actualizacion_fuente) vista por id_externo en TODO el
-    # run: persiste entre lotes para descartar reapariciones más viejas de un
-    # expediente ya escrito en un flush anterior.
-    mejor_recencia: dict[str, str] = {}
+    def __init__(
+        self,
+        connector: Connector,
+        result: ConnectorRunResult,
+        *,
+        advances_incrementally: bool,
+    ) -> None:
+        self.connector = connector
+        self.source_id = connector.source_id
+        self.result = result
+        self.advances_incrementally = advances_incrementally
+        self.lic_por_id: dict[str, Licitacion] = {}
+        self.adj_por_lic: dict[str, list[Adjudicacion]] = {}
+        self.docs_por_lic: dict[str, list[DocumentoReferencia]] = {}
+        self.lotes_por_lic: dict[str, list[Lote]] = {}
+        # Mejor recencia (fecha_actualizacion_fuente) vista por id_externo en TODO
+        # el run: persiste entre lotes para descartar reapariciones más viejas de
+        # un expediente ya escrito en un flush anterior.
+        self.mejor_recencia: dict[str, str] = {}
 
-    def _flush_once() -> tuple[Any, int, int]:
+    def __len__(self) -> int:
+        return len(self.lic_por_id)
+
+    def anadir(self, parsed: ParsedTender) -> None:
+        """Mete en el lote la versión de ``parsed``, salvo que ya haya una más reciente."""
+        lic_id = parsed.licitacion.id_externo
+        recencia = parsed.licitacion.fecha_actualizacion_fuente or ""
+        if _es_reaparicion_mas_vieja(
+            recencia, self.mejor_recencia.get(lic_id), stream_asc=self.advances_incrementally
+        ):
+            # Ya vimos una versión igual o más reciente de este expediente en
+            # el run (pendiente en el lote o ya persistida en un flush previo):
+            # no la pisamos con una más vieja. Con esto, tanto en feeds
+            # newest-first como ASC, gana siempre la versión más reciente
+            # —incluso cuando la fuente no dice cuál lo es.
+            return
+        self.mejor_recencia[lic_id] = recencia
+        self.lic_por_id[lic_id] = parsed.licitacion
+        # Companion data sincronizada con la versión conservada: se reemplaza
+        # (no se acumula) y se limpia con pop si viene vacía, para no mezclar
+        # adjudicaciones/lotes/docs de dos versiones ni borrar en BD las
+        # existentes con un replace vacío (los ids sin adj no entran al dict).
+        if parsed.adjudicaciones:
+            self.adj_por_lic[lic_id] = parsed.adjudicaciones
+        else:
+            self.adj_por_lic.pop(lic_id, None)
+        if parsed.documentos:
+            self.docs_por_lic[lic_id] = parsed.documentos
+        else:
+            self.docs_por_lic.pop(lic_id, None)
+        if parsed.lotes:
+            self.lotes_por_lic[lic_id] = parsed.lotes
+        else:
+            self.lotes_por_lic.pop(lic_id, None)
+
+    def _flush_once(self) -> tuple[Any, int, int]:
+        source_id = self.source_id
         upsert_result = upsert_licitaciones_with_history(
-            list(lic_por_id.values()), source=source_id
+            list(self.lic_por_id.values()), source=source_id
         )
         n_adj = n_failed = 0
-        if lotes_por_lic:
+        if self.lotes_por_lic:
             # Antes de persistir adjudicaciones: lote_id es un FK real a
             # lotes.id (autoincrement), así que hace falta el id que acaba de
             # asignar replace_lotes_batch para resolver lote_numero_raw en
             # cada Adjudicacion del mismo lote de escritura.
-            lote_ids_por_lic = replace_lotes_batch(lotes_por_lic)
-            resueltas, sin_lote = resolver_lotes_adjudicaciones(adj_por_lic, lote_ids_por_lic)
+            lote_ids_por_lic = replace_lotes_batch(self.lotes_por_lic)
+            resueltas, sin_lote = resolver_lotes_adjudicaciones(self.adj_por_lic, lote_ids_por_lic)
             if sin_lote:
                 # Un expediente con varios lotes cuyas adjudicaciones no dicen
                 # de cuál son: la agenda no puede cerrar la oportunidad de un
@@ -626,19 +660,22 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
                     sin_lote=sin_lote,
                     resueltas=resueltas,
                 )
-        if adj_por_lic:
+        if self.adj_por_lic:
             n_adj, n_dropped, n_failed = replace_adjudicaciones_batch(
-                adj_por_lic, run_id=None, fuente=source_id
+                self.adj_por_lic, run_id=None, fuente=source_id
             )
             if n_dropped:
                 log.warning("adj_rows_dropped", dropped=n_dropped, persisted=n_adj)
-        if docs_por_lic:
-            _persist_documentos(docs_por_lic, source_id=source_id)
+        if self.docs_por_lic:
+            _persist_documentos(self.docs_por_lic, source_id=source_id)
         return upsert_result, n_adj, n_failed
 
-    def _flush() -> None:
-        if not lic_por_id:
+    def flush(self) -> None:
+        """Escribe el lote pendiente, vuelca sus cifras en ``result`` y lo vacía."""
+        if not self.lic_por_id:
             return
+        source_id = self.source_id
+        result = self.result
         # Reintenta el lote completo (no solo el paso que falló): tanto el
         # upsert de licitaciones como el replace de adjudicaciones son
         # idempotentes, así que repetirlos contra el mismo batch es seguro. El
@@ -648,7 +685,7 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         attempt = 1
         while True:
             try:
-                upsert_result, n_adj, n_failed = _flush_once()
+                upsert_result, n_adj, n_failed = self._flush_once()
                 break
             except Exception as e:
                 if attempt >= _FLUSH_MAX_ATTEMPTS or not _is_retryable_db_error(e):
@@ -669,17 +706,17 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         result.modified_ids.extend(upsert_result.modified)
         result.adjudicaciones += n_adj
         result.errores += n_failed
-        lic_por_id.clear()
-        if advances_incrementally:
+        self.lic_por_id.clear()
+        if self.advances_incrementally:
             # Feeds ASC (PSCP): un id no reaparece más viejo en un lote posterior
             # (el stream avanza monótono por updated_at), así que no hace falta
             # recordar la recencia entre lotes; limpiarla acota la memoria en
             # runs enormes (catch-up de ~1.86M filas). Los feeds newest-first la
             # conservan para deduplicar entre lotes.
-            mejor_recencia.clear()
-        adj_por_lic.clear()
-        docs_por_lic.clear()
-        lotes_por_lic.clear()
+            self.mejor_recencia.clear()
+        self.adj_por_lic.clear()
+        self.docs_por_lic.clear()
+        self.lotes_por_lic.clear()
         # Avance de cursor por lote SOLO para conectores que lo declaran seguro
         # (``cursor_advances_incrementally``). Es correcto cuando ``new_cursor()``
         # refleja el progreso PARCIAL persistido (feeds procesados de más viejo a
@@ -689,15 +726,35 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
         # primer lote: avanzarlo aquí saltaría al tope y una ejecución cortada a
         # mitad perdería para siempre las entries viejas aún sin procesar. Esos
         # conectores avanzan el cursor solo al final, tras persistir todo el fetch.
-        if advances_incrementally:
-            new_cursor = connector.new_cursor()
+        if self.advances_incrementally:
+            new_cursor = self.connector.new_cursor()
             if new_cursor:
                 set_cursor(source_id, **new_cursor)
+
+
+def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRunResult:
+    """Ejecuta un ciclo completo de ingesta para una fuente.
+
+    Procesa en lotes de ``batch_size`` para acotar transacciones. Un aviso
+    que falla al parsear va a la DLQ y no interrumpe el resto. El cursor
+    avanza después de cada lote persistido con éxito (no solo al final):
+    un fallo en ``fetch`` -- o una interrupción externa por timeout del job,
+    que no es una excepción Python y corta el proceso a mitad de camino --
+    conserva el progreso hasta el último lote; la próxima ejecución retoma
+    desde ahí en vez de reiniciar siempre desde el mismo punto.
+    """
+    inicio = time.monotonic()
+    source_id = connector.source_id
+    result = ConnectorRunResult(source_id=source_id)
+    cursor = get_cursor(source_id)
+    record_source_started(source_id)
+    log.info("connector_run_start", source=source_id, cursor=cursor)
 
     # ¿El conector puede avanzar el cursor por lote (progreso parcial) o solo al
     # final del fetch? Opt-in por atributo; el default seguro es "solo al final"
     # (getattr evita forzar a todos los conectores a declararlo en el Protocol).
     advances_incrementally = bool(getattr(connector, "cursor_advances_incrementally", False))
+    lote = _LoteDeIngesta(connector, result, advances_incrementally=advances_incrementally)
 
     try:
         for raw in connector.fetch(cursor):
@@ -716,40 +773,12 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
                 result.descartadas += 1
                 continue
             result.parsed += 1
-            lic_id = parsed.licitacion.id_externo
-            recencia = parsed.licitacion.fecha_actualizacion_fuente or ""
-            if _es_reaparicion_mas_vieja(
-                recencia, mejor_recencia.get(lic_id), stream_asc=advances_incrementally
-            ):
-                # Ya vimos una versión igual o más reciente de este expediente en
-                # el run (pendiente en el lote o ya persistida en un flush previo):
-                # no la pisamos con una más vieja. Con esto, tanto en feeds
-                # newest-first como ASC, gana siempre la versión más reciente
-                # —incluso cuando la fuente no dice cuál lo es.
-                continue
-            mejor_recencia[lic_id] = recencia
-            lic_por_id[lic_id] = parsed.licitacion
-            # Companion data sincronizada con la versión conservada: se reemplaza
-            # (no se acumula) y se limpia con pop si viene vacía, para no mezclar
-            # adjudicaciones/lotes/docs de dos versiones ni borrar en BD las
-            # existentes con un replace vacío (los ids sin adj no entran al dict).
-            if parsed.adjudicaciones:
-                adj_por_lic[lic_id] = parsed.adjudicaciones
-            else:
-                adj_por_lic.pop(lic_id, None)
-            if parsed.documentos:
-                docs_por_lic[lic_id] = parsed.documentos
-            else:
-                docs_por_lic.pop(lic_id, None)
-            if parsed.lotes:
-                lotes_por_lic[lic_id] = parsed.lotes
-            else:
-                lotes_por_lic.pop(lic_id, None)
-            if len(lic_por_id) >= batch_size:
-                _flush()
-        _flush()
+            lote.anadir(parsed)
+            if len(lote) >= batch_size:
+                lote.flush()
+        lote.flush()
     except Exception as e:
-        # El cursor ya avanzó (en _flush) hasta el último lote persistido
+        # El cursor ya avanzó (en lote.flush) hasta el último lote persistido
         # con éxito; solo se pierde el progreso del lote aún sin flushear
         # en el momento del fallo -- la próxima corrida no reinicia desde cero.
         result.errores += 1

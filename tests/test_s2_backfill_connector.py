@@ -157,7 +157,7 @@ def _correr_bucle(**kwargs: Any) -> list[str]:
     devuelta es a la vez la secuencia de meses y la etiqueta con la que se
     escriben ``extracciones`` y la DLQ.
     """
-    from scheduler.pipeline_runs import _run_bulk_pipeline_connector
+    from scheduler.pipeline_carriles import _run_bulk_pipeline_connector
 
     vistos: list[str] = []
 
@@ -170,7 +170,7 @@ def _correr_bucle(**kwargs: Any) -> list[str]:
         patch("observability.bind_run_context", return_value="run-test"),
         patch("observability.record_run", return_value=nullcontext(MagicMock())),
         patch("scraper.pipeline._summarize"),
-        patch("scheduler.pipeline_runs._finalize_ingestion", return_value={"status": "ok"}),
+        patch("scheduler.pipeline_carriles._finalize_ingestion", return_value={"status": "ok"}),
     ):
         _run_bulk_pipeline_connector(**kwargs)
 
@@ -178,13 +178,13 @@ def _correr_bucle(**kwargs: Any) -> list[str]:
 
 
 def test_el_bucle_bulk_construye_un_conector_por_mes_reciente() -> None:
-    with patch("scheduler.pipeline_runs.meses_a_procesar", return_value=[(2026, 9), (2026, 8)]):
+    with patch("scheduler.pipeline_carriles.meses_a_procesar", return_value=[(2026, 9), (2026, 8)]):
         assert _correr_bucle(months=2) == ["bulk_202609", "bulk_202608"]
 
 
 def test_el_bucle_de_backfill_recorre_el_rango_completo() -> None:
     with patch(
-        "scheduler.pipeline_runs.meses_a_procesar",
+        "scheduler.pipeline_carriles.meses_a_procesar",
         return_value=[(2025, 12), (2026, 1), (2026, 2)],
     ):
         assert _correr_bucle(desde=(2025, 12)) == [
@@ -196,7 +196,7 @@ def test_el_bucle_de_backfill_recorre_el_rango_completo() -> None:
 
 def test_un_mes_que_revienta_no_aborta_los_siguientes() -> None:
     """Paridad con el legacy: un mes roto se registra y el bucle continúa."""
-    from scheduler.pipeline_runs import _run_bulk_pipeline_connector
+    from scheduler.pipeline_carriles import _run_bulk_pipeline_connector
 
     vistos: list[str] = []
     capturado: dict[str, Any] = {}
@@ -217,9 +217,9 @@ def test_un_mes_que_revienta_no_aborta_los_siguientes() -> None:
         patch("observability.bind_run_context", return_value="run-test"),
         patch("observability.record_run", return_value=nullcontext(MagicMock())),
         patch("scraper.pipeline._summarize"),
-        patch("scheduler.pipeline_runs._finalize_ingestion", side_effect=_fake_finalize),
+        patch("scheduler.pipeline_carriles._finalize_ingestion", side_effect=_fake_finalize),
         patch(
-            "scheduler.pipeline_runs.meses_a_procesar",
+            "scheduler.pipeline_carriles.meses_a_procesar",
             return_value=[(2026, 9), (2026, 8), (2026, 7)],
         ),
     ):
@@ -238,7 +238,7 @@ def test_un_mes_que_revienta_no_aborta_los_siguientes() -> None:
 def test_run_backfill_pipeline_delega_en_el_bucle_por_conectores() -> None:
     from scheduler.pipeline_runs import run_backfill_pipeline
 
-    with patch("scheduler.pipeline_runs._run_bulk_pipeline_connector") as bucle:
+    with patch("scheduler.pipeline_carriles._run_bulk_pipeline_connector") as bucle:
         run_backfill_pipeline(2024, 3)
 
     assert bucle.call_args.kwargs["desde"] == (2024, 3)
@@ -248,7 +248,7 @@ def test_run_backfill_pipeline_delega_en_el_bucle_por_conectores() -> None:
 def test_run_backfill_pipeline_pasa_el_tramo() -> None:
     from scheduler.pipeline_runs import run_backfill_pipeline
 
-    with patch("scheduler.pipeline_runs._run_bulk_pipeline_connector") as bucle:
+    with patch("scheduler.pipeline_carriles._run_bulk_pipeline_connector") as bucle:
         run_backfill_pipeline(2025, 1, hasta=(2025, 2))
 
     assert bucle.call_args.kwargs["desde"] == (2025, 1)
@@ -258,7 +258,7 @@ def test_run_backfill_pipeline_pasa_el_tramo() -> None:
 def test_run_bulk_pipeline_delega_en_el_bucle_por_conectores() -> None:
     from scheduler.pipeline_runs import run_bulk_pipeline
 
-    with patch("scheduler.pipeline_runs._run_bulk_pipeline_connector") as bucle:
+    with patch("scheduler.pipeline_carriles._run_bulk_pipeline_connector") as bucle:
         run_bulk_pipeline(5)
 
     bucle.assert_called_once_with(5)

@@ -56,7 +56,7 @@ def buzon(client) -> Iterator[_Buzon]:
 
     b = _Buzon()
     with (
-        patch("api.routes.auth._registro_abierto", return_value=False),
+        patch("api.routes.auth.registro._registro_abierto", return_value=False),
         patch("services.access_grants.oauth_email_allowed", return_value=False),
         patch("services.email_verification.enviar_email_transaccional", new=b),
         patch.object(settings, "CORS_ALLOWED_ORIGINS", _ORIGEN),
@@ -98,7 +98,7 @@ def test_alta_sin_concesion_da_403_y_no_crea_cuenta(client, buzon):
 def test_alta_concedida_crea_cuenta_sin_verificar_y_manda_el_enlace(client, buzon):
     _conceder("email", "ana@empresa.example")
 
-    with patch("api.routes.auth._activar_invitaciones") as activar:
+    with patch("api.routes.auth.registro._activar_invitaciones") as activar:
         resp = _alta(client, "Ana@Empresa.example")
 
     assert resp.status_code == 202, resp.text
@@ -147,7 +147,7 @@ def test_verificar_abre_sesion_activa_invitaciones_y_gasta_el_enlace(client, buz
     _alta(client, "ana@empresa.example")
     token = buzon.ultimo_token("/verificar-correo")
 
-    with patch("api.routes.auth._activar_invitaciones") as activar:
+    with patch("api.routes.auth.registro._activar_invitaciones") as activar:
         resp = client.post(_VERIFY, json={"token": token})
 
     assert resp.status_code == 200, resp.text

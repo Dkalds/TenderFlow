@@ -155,7 +155,7 @@ def test_el_paso_diario_va_antes_del_reparto_y_es_advisory():
 
 def test_el_paso_corre_una_vez_al_dia(monkeypatch):
     """Cadencia propia: la pasada corre cada cuatro horas, el aviso es diario."""
-    import scheduler.pipeline_runs as pipeline
+    import scheduler.pipeline_pasos_impl as pipeline
     from services import documentacion_caducidad
 
     ventanas: list[tuple[str, int]] = []

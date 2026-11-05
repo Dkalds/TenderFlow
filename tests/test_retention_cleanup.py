@@ -98,7 +98,7 @@ class TestUnaTablaFallidaFallaElPaso:
 
     def test_el_cierre_suelta_el_lock_diario_si_la_retencion_falla(self) -> None:
         """``_run_periodic`` libera el lock al propagar: la pasada siguiente reintenta."""
-        from scheduler.pipeline_runs import _run_retention_cleanup
+        from scheduler.pipeline_pasos_impl import _run_retention_cleanup
         from scheduler.retention import RetencionIncompleta
 
         with (

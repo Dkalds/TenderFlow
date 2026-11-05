@@ -190,7 +190,7 @@ def test_wal_checkpoint_is_gone():
 
 def test_periodic_runs_once_then_skips_within_window(tmp_db):
     """Segunda pasada dentro de la ventana no re-ejecuta (bug del digest x6)."""
-    from scheduler.pipeline_runs import _run_periodic
+    from scheduler.pipeline_pasos_impl import _run_periodic
 
     llamadas = []
 
@@ -205,7 +205,7 @@ def test_periodic_runs_once_then_skips_within_window(tmp_db):
 
 def test_periodic_releases_lock_on_failure(tmp_db):
     """Si falla, la siguiente pasada reintenta en vez de perder la ventana."""
-    from scheduler.pipeline_runs import _run_periodic
+    from scheduler.pipeline_pasos_impl import _run_periodic
 
     def _boom():
         raise RuntimeError("fallo transitorio")
@@ -225,13 +225,13 @@ def test_periodic_releases_lock_on_failure(tmp_db):
 
 
 def test_digests_step_drains_both_frequencies(tmp_db):
-    from scheduler import pipeline_runs
+    from scheduler import pipeline_pasos_impl
 
     with (
         patch("scheduler.watchlist_alerts.send_pending_digests", return_value=0) as send,
-        patch("scheduler.pipeline_runs._es_ventana_matinal", return_value=True),
+        patch("scheduler.pipeline_pasos_impl._es_ventana_matinal", return_value=True),
     ):
-        resultado = pipeline_runs._run_digests()
+        resultado = pipeline_pasos_impl._run_digests()
 
     assert resultado == {"immediate": "ok", "daily": "ok", "weekly": "ok"}
     assert {c.args[0] for c in send.call_args_list} == {"immediate", "daily", "weekly"}
@@ -240,13 +240,13 @@ def test_digests_step_drains_both_frequencies(tmp_db):
 def test_digests_fuera_de_la_ventana_solo_drena_inmediatas(tmp_db):
     """A las tres de la tarde no sale «el correo de la mañana», pero las
     inmediatas siguen saliendo en cada pasada."""
-    from scheduler import pipeline_runs
+    from scheduler import pipeline_pasos_impl
 
     with (
         patch("scheduler.watchlist_alerts.send_pending_digests", return_value=0) as send,
-        patch("scheduler.pipeline_runs._es_ventana_matinal", return_value=False),
+        patch("scheduler.pipeline_pasos_impl._es_ventana_matinal", return_value=False),
     ):
-        resultado = pipeline_runs._run_digests()
+        resultado = pipeline_pasos_impl._run_digests()
 
     assert resultado == {"immediate": "ok", "daily": "skipped", "weekly": "skipped"}
     assert [c.args[0] for c in send.call_args_list] == ["immediate"]

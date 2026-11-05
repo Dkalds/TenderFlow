@@ -17,7 +17,7 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException, Response
 
-from api.routes import auth
+from api.routes.auth import totp as auth
 
 _MAX = auth.settings.MFA_MAX_FAILURES
 _CODIGO = auth.TotpCodeRequest(code="123456")

@@ -29,7 +29,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from api.concurrency import run_db, run_io
-from api.routes.auth import _oauth_access_allowed
+from api.routes.auth.comun import _oauth_access_allowed
 from api.routes.dual_auth import require_admin
 from db.access_grants import (
     AccessGrantKind,

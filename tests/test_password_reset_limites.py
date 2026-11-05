@@ -16,7 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app import app
-from api.routes import auth as auth_mod
+from api.routes.auth import comun as auth_mod
 
 _REQUEST = "/api/v1/auth/password-reset/request"
 _CONFIRM = "/api/v1/auth/password-reset/confirm"
@@ -158,7 +158,7 @@ def test_por_http_un_cubo_de_solicitudes_agotado_no_da_429_al_confirmar():
         patch("services.password_reset.process_password_reset_request") as aplazado,
         patch("db.password_reset.reset_token_vigente", return_value=True),
         patch("db.password_reset.consume_reset_token", return_value=7),
-        patch("api.routes.auth.log_event"),
+        patch("api.routes.auth.contrasena.log_event"),
     ):
         pedido = client.post(_REQUEST, json={"email": _EMAIL})
         confirmacion = client.post(_CONFIRM, json={"token": "x" * 43, "password": _NEW_PASSWORD})
@@ -172,7 +172,10 @@ def test_por_http_un_cubo_de_solicitudes_agotado_no_da_429_al_confirmar():
 
 def test_el_429_de_confirm_anuncia_la_ventana_del_cubo():
     client = TestClient(app)
-    with patch("api.routes.auth._password_reset_rate_allowed", new=AsyncMock(return_value=False)):
+    with patch(
+        "api.routes.auth.contrasena._password_reset_rate_allowed",
+        new=AsyncMock(return_value=False),
+    ):
         response = client.post(_CONFIRM, json={"token": "x" * 43, "password": _NEW_PASSWORD})
 
     assert response.status_code == 429

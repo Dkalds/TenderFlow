@@ -290,7 +290,7 @@ def test_tech_signal_merge_deja_las_reparaciones_en_ops_events():
     import json
     from unittest.mock import patch
 
-    from scheduler import pipeline_runs
+    from scheduler import pipeline_pasos_impl as pipeline_runs
 
     resultado = {
         "licitaciones_merged": 3,

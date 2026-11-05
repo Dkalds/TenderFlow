@@ -301,7 +301,7 @@ def conexion():
     def _connect_read():
         yield conn
 
-    with patch("db.repositories.licitaciones.connect_read", _connect_read):
+    with patch("db.repositories.licitaciones.busqueda.connect_read", _connect_read):
         yield conn
 
 

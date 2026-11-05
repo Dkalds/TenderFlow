@@ -44,7 +44,7 @@ class _Conexion:
 
 @pytest.fixture()
 def sentencias(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, list[Any]]]:
-    import db.repositories.licitaciones as lic
+    import db.repositories.licitaciones.listado as lic
 
     capturadas: list[tuple[str, list[Any]]] = []
     monkeypatch.setattr(lic, "connect_read", lambda: _Conexion(capturadas))
@@ -75,7 +75,7 @@ def test_los_seis_ordenes_significan_lo_mismo_que_en_offset(
     sort: str, columna: str, descendente: bool
 ) -> None:
     """Mismo sentido que ``_SORT_MAP``: el front manda el mismo valor a los dos."""
-    from db.repositories.licitaciones import _SORT_MAP, _orden_cursor
+    from db.repositories.licitaciones.filtros import _SORT_MAP, _orden_cursor
 
     col, desc = _orden_cursor(sort)
     assert col.key == columna
@@ -85,7 +85,7 @@ def test_los_seis_ordenes_significan_lo_mismo_que_en_offset(
 
 
 def test_un_orden_desconocido_no_llega_al_sql() -> None:
-    from db.repositories.licitaciones import _orden_cursor
+    from db.repositories.licitaciones.filtros import _orden_cursor
 
     with pytest.raises(ValueError):
         _orden_cursor("ml_proba; DROP TABLE licitaciones")

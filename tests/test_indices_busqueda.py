@@ -65,7 +65,7 @@ def test_hay_un_trigram_por_cada_columna_de_la_busqueda() -> None:
     Si la búsqueda gana una columna, el índice que falte devuelve la consulta
     entera al escaneo secuencial aunque los otros cuatro existan.
     """
-    from db.repositories.licitaciones import _COLUMNAS_BUSQUEDA
+    from db.repositories.licitaciones.filtros import _COLUMNAS_BUSQUEDA
 
     columnas_buscadas = {columna.name for columna in _COLUMNAS_BUSQUEDA}
     columnas_indexadas = {

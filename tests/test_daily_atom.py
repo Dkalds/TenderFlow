@@ -269,21 +269,21 @@ def test_ejecutar_no_cierra_el_pool(conector: Conector) -> None:
 
 def test_run_continues_when_analytics_export_raises():
     """Si un paso post-ingesta falla, la pipeline canónica continúa."""
-    from scheduler.pipeline_runs import _run_post_ingestion_steps
+    from scheduler.pipeline_cierre import _run_post_ingestion_steps
 
     with (
         patch(
-            "scheduler.pipeline_runs._run_analytics_export",
+            "scheduler.pipeline_pasos_impl._run_analytics_export",
             side_effect=RuntimeError("boom"),
         ),
-        patch("scheduler.pipeline_runs._run_ml_scoring"),
-        patch("scheduler.pipeline_runs._run_ml_tecnologias"),
-        patch("scheduler.pipeline_runs._run_tech_signal_merge"),
-        patch("scheduler.pipeline_runs._run_kpi_precompute"),
-        patch("scheduler.pipeline_runs._run_aggregates_precompute"),
-        patch("scheduler.pipeline_runs._run_watchlist_notify"),
-        patch("scheduler.pipeline_runs._run_dlq_retry"),
-        patch("scheduler.pipeline_runs._run_anomaly_checks"),
+        patch("scheduler.pipeline_pasos_impl._run_ml_scoring"),
+        patch("scheduler.pipeline_pasos_impl._run_ml_tecnologias"),
+        patch("scheduler.pipeline_pasos_impl._run_tech_signal_merge"),
+        patch("scheduler.pipeline_pasos_impl._run_kpi_precompute"),
+        patch("scheduler.pipeline_pasos_impl._run_aggregates_precompute"),
+        patch("scheduler.pipeline_pasos_impl._run_watchlist_notify"),
+        patch("scheduler.pipeline_pasos_impl._run_dlq_retry"),
+        patch("scheduler.pipeline_pasos_impl._run_anomaly_checks"),
     ):
         results = _run_post_ingestion_steps()
 

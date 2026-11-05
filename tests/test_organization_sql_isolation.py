@@ -66,7 +66,8 @@ _ALLOWLIST: frozenset[str] = frozenset()
 
 
 def _route_files() -> list[Path]:
-    return sorted(p for p in _ROUTES_DIR.glob("*.py") if p.name != "__init__.py")
+    # `rglob`: las rutas partidas en paquete (`licitaciones/`, `auth/`) también.
+    return sorted(p for p in _ROUTES_DIR.rglob("*.py") if p.name != "__init__.py")
 
 
 def _imports_resolve_organization_directly(path: Path) -> bool:

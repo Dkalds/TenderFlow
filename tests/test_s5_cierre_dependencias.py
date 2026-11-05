@@ -3,12 +3,18 @@
 Sin BD: se parchean los quince ``_run_<paso>`` y se ejercita el ejecutor en
 línea, que es donde vive la lógica de dependencias que comparten los dos
 caminos del cierre (en línea y por cola).
+
+Cada pieza se parchea en su módulo dueño: los pasos en
+``scheduler.pipeline_pasos_impl`` y el ejecutor (con su copia de
+``CANONICAL_STEPS``) en ``scheduler.pipeline_cierre``.
 """
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from scheduler import pipeline_cierre, pipeline_pasos_impl
+from scheduler.pipeline_cierre import _run_post_ingestion_steps
 from scheduler.pipeline_runs import (
     CANONICAL_STEPS,
     STEP_DEPS,
@@ -16,7 +22,6 @@ from scheduler.pipeline_runs import (
     STEP_OK,
     STEP_SKIPPED,
     STEP_SKIPPED_DEP,
-    _run_post_ingestion_steps,
     dependencias_incumplidas,
     pasos_bloqueantes_fallidos,
     run_post_ingestion_only,
@@ -28,7 +33,7 @@ def _patch_todos(**overrides: object) -> object:
     objetivos: dict[str, object] = {f"_run_{name}": MagicMock() for name in CANONICAL_STEPS}
     for nombre, valor in overrides.items():
         objetivos[f"_run_{nombre}"] = valor
-    return patch.multiple("scheduler.pipeline_runs", **objetivos)
+    return patch.multiple("scheduler.pipeline_pasos_impl", **objetivos)
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +95,7 @@ def test_kpi_precompute_roto_no_impide_watchlist_notify() -> None:
     """
     with (
         _patch_todos(kpi_precompute=MagicMock(side_effect=RuntimeError("boom"))) as _,
-        patch("scheduler.pipeline_runs._notify_step_failure"),
+        patch("scheduler.pipeline_cierre._notify_step_failure"),
     ):
         results = _run_post_ingestion_steps()
 
@@ -104,7 +109,7 @@ def test_una_dependencia_rota_si_frena_a_quien_depende() -> None:
     """``watchlist_notify`` acumula en ``pending_digests`` y ``digests`` envía."""
     with (
         _patch_todos(watchlist_notify=MagicMock(side_effect=RuntimeError("smtp"))),
-        patch("scheduler.pipeline_runs._notify_step_failure"),
+        patch("scheduler.pipeline_cierre._notify_step_failure"),
     ):
         results = _run_post_ingestion_steps()
 
@@ -121,7 +126,7 @@ def test_un_paso_saltado_por_dependencia_no_se_ejecuta() -> None:
             watchlist_notify=MagicMock(side_effect=RuntimeError("smtp")),
             digests=digests,
         ),
-        patch("scheduler.pipeline_runs._notify_step_failure"),
+        patch("scheduler.pipeline_cierre._notify_step_failure"),
     ):
         _run_post_ingestion_steps()
 
@@ -132,7 +137,7 @@ def test_un_paso_saltado_por_dependencia_no_manda_email() -> None:
     """Un solo aviso por incidente: el del paso que falló de verdad."""
     with (
         _patch_todos(watchlist_notify=MagicMock(side_effect=RuntimeError("smtp"))),
-        patch("scheduler.pipeline_runs._notify_step_failure") as notificar,
+        patch("scheduler.pipeline_cierre._notify_step_failure") as notificar,
     ):
         _run_post_ingestion_steps()
 
@@ -155,7 +160,7 @@ def test_el_resumen_lista_skipped_por_dependencia_aparte_de_advisory_failed() ->
             watchlist_notify=MagicMock(side_effect=RuntimeError("smtp")),
             drift_checks=MagicMock(side_effect=RuntimeError("psi")),
         ),
-        patch("scheduler.pipeline_runs._notify_step_failure"),
+        patch("scheduler.pipeline_cierre._notify_step_failure"),
     ):
         resumen = run_post_ingestion_only(via_cola=False)
 
@@ -188,8 +193,6 @@ def test_si_la_cola_no_esta_disponible_el_cierre_corre_igual_en_linea() -> None:
     pasos del cierre —alertas de vigilancia y digests incluidos— por un fallo de
     la traza, no del trabajo.
     """
-    from scheduler import pipeline_runs
-
     with (
         _patch_todos(),
         patch(
@@ -200,7 +203,7 @@ def test_si_la_cola_no_esta_disponible_el_cierre_corre_igual_en_linea() -> None:
         resumen = run_post_ingestion_only()
 
     assert resumen["status"] == "ok"
-    assert set(resumen["steps"]) == set(pipeline_runs.CANONICAL_STEPS)
+    assert set(resumen["steps"]) == set(CANONICAL_STEPS)
 
 
 def test_la_cola_no_disponible_no_tapa_un_paso_sin_tier() -> None:
@@ -210,17 +213,15 @@ def test_la_cola_no_disponible_no_tapa_un_paso_sin_tier() -> None:
     cayera al camino en línea, este volvería a comprobar el tier y a abortar,
     pero con un aviso que culpa a la cola de un problema que no es suyo.
     """
-    from scheduler import pipeline_runs
-
     with (
-        patch.object(pipeline_runs, "CANONICAL_STEPS", ["ml_scoring", "paso_sin_tier"]),
-        patch.object(pipeline_runs, "_run_ml_scoring", MagicMock()),
-        patch.object(pipeline_runs, "_run_paso_sin_tier", MagicMock(), create=True),
+        patch.object(pipeline_cierre, "CANONICAL_STEPS", ["ml_scoring", "paso_sin_tier"]),
+        patch.object(pipeline_pasos_impl, "_run_ml_scoring", MagicMock()),
+        patch.object(pipeline_pasos_impl, "_run_paso_sin_tier", MagicMock(), create=True),
         patch("services.jobs.enqueue") as encolar,
     ):
         try:
-            pipeline_runs._cierre_por_cola(lane="daily")
-        except pipeline_runs.ColaNoDisponible:  # pragma: no cover - el aserto de abajo
+            pipeline_cierre._cierre_por_cola(lane="daily")
+        except pipeline_cierre.ColaNoDisponible:  # pragma: no cover - el aserto de abajo
             raise AssertionError("un paso sin tier no es un problema de la cola") from None
         except RuntimeError as exc:
             assert "sin tier declarado" in str(exc)
@@ -234,7 +235,7 @@ def test_apagar_la_cola_por_entorno_devuelve_el_cierre_al_camino_en_linea(monkey
     monkeypatch.setenv("JOBS_CIERRE_POR_COLA", "0")
     with (
         _patch_todos(),
-        patch("scheduler.pipeline_runs._cierre_por_cola") as por_cola,
+        patch("scheduler.pipeline_cierre._cierre_por_cola") as por_cola,
     ):
         resumen = run_post_ingestion_only()
 
@@ -254,15 +255,13 @@ def test_el_ejecutor_sigue_exigiendo_un_tier_por_paso() -> None:
     paso, y colocarla antes de ``step_tier`` habría dejado correr un paso sin
     severidad declarada.
     """
-    from scheduler import pipeline_runs
-
     with (
-        patch.object(pipeline_runs, "CANONICAL_STEPS", ["ml_scoring", "paso_sin_tier"]),
-        patch.object(pipeline_runs, "_run_ml_scoring", MagicMock()),
-        patch.object(pipeline_runs, "_run_paso_sin_tier", MagicMock(), create=True),
+        patch.object(pipeline_cierre, "CANONICAL_STEPS", ["ml_scoring", "paso_sin_tier"]),
+        patch.object(pipeline_pasos_impl, "_run_ml_scoring", MagicMock()),
+        patch.object(pipeline_pasos_impl, "_run_paso_sin_tier", MagicMock(), create=True),
     ):
         try:
-            pipeline_runs._run_post_ingestion_steps()
+            pipeline_cierre._run_post_ingestion_steps()
         except RuntimeError as exc:
             assert "sin tier declarado" in str(exc)
         else:  # pragma: no cover - el fallo es el aserto de abajo
@@ -273,10 +272,12 @@ def test_ejecutar_paso_es_el_unico_resolutor_de_implementaciones() -> None:
     """Los dos caminos del cierre resuelven el paso por el mismo sitio."""
     from scheduler.pipeline_runs import ejecutar_paso
 
-    with patch("scheduler.pipeline_runs._run_kpi_precompute", MagicMock(return_value=None)):
+    with patch("scheduler.pipeline_pasos_impl._run_kpi_precompute", MagicMock(return_value=None)):
         assert ejecutar_paso("kpi_precompute") == STEP_OK
 
-    with patch("scheduler.pipeline_runs._run_ml_scoring", MagicMock(return_value=STEP_SKIPPED)):
+    with patch(
+        "scheduler.pipeline_pasos_impl._run_ml_scoring", MagicMock(return_value=STEP_SKIPPED)
+    ):
         assert ejecutar_paso("ml_scoring") == STEP_SKIPPED
 
 

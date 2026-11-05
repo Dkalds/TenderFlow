@@ -167,7 +167,7 @@ def test_el_sexto_intento_seguido_responde_429_aunque_la_contrasena_sea_buena(cl
 
 
 def test_una_cuenta_con_veinte_fallos_en_la_hora_exige_pausa_entre_intentos(client):
-    from api.routes import auth as auth_mod
+    from api.routes.auth import login as auth_mod
     from db.rate_limits import record_failed_login
 
     _cuenta_con_contrasena()
