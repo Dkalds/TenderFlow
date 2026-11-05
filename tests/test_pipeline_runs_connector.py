@@ -30,7 +30,7 @@ _EMPTY_META = {
 
 def _patch_steps():
     return patch(
-        "scheduler.pipeline_runs._run_post_ingestion_steps",
+        "scheduler.pipeline_carriles._run_post_ingestion_steps",
         return_value={},
     )
 
@@ -39,7 +39,7 @@ class TestDailyConnectorWrapper:
     def test_ingestion_result_shape_matches_legacy(self, tmp_db):
         """inserted/modified son listas — _log_daily_summary no debe crashear."""
         from scheduler import run_update
-        from scheduler.pipeline_runs import _run_daily_pipeline_connector
+        from scheduler.pipeline_carriles import _run_daily_pipeline_connector
 
         with (
             _patch_steps(),
@@ -69,7 +69,7 @@ class TestDailyConnectorWrapper:
         no queda ningún escritor olvidado.
         """
         db_mod, _ = tmp_db
-        from scheduler.pipeline_runs import _run_daily_pipeline_connector
+        from scheduler.pipeline_carriles import _run_daily_pipeline_connector
 
         with (
             _patch_steps(),
@@ -88,7 +88,7 @@ class TestDailyConnectorWrapper:
 
     def test_fetch_failure_maps_to_error_fetch_without_raising(self, tmp_db):
         """Fetch fatal → status error_fetch (nombre legacy), notify, sin raise."""
-        from scheduler.pipeline_runs import _run_daily_pipeline_connector
+        from scheduler.pipeline_carriles import _run_daily_pipeline_connector
 
         with (
             _patch_steps(),
@@ -106,7 +106,7 @@ class TestDailyConnectorWrapper:
 
     def test_parse_errors_do_not_fail_the_run(self, tmp_db):
         """Errores por-entry (DLQ) mantienen status ok — paridad con legacy."""
-        from scheduler.pipeline_runs import _run_daily_pipeline_connector
+        from scheduler.pipeline_carriles import _run_daily_pipeline_connector
         from scraper.connectors.base import ConnectorRunResult
 
         fake = ConnectorRunResult(source_id="placsp", fetched=10, parsed=9, errores=1)

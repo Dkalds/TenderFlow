@@ -94,7 +94,7 @@ def test_el_paso_canonico_esta_registrado_con_tier() -> None:
 
 
 def test_el_paso_corre_y_devuelve_ok_o_skipped(corpus) -> None:
-    from scheduler.pipeline_runs import _run_organos_resolve
+    from scheduler.pipeline_pasos_impl import _run_organos_resolve
 
     assert _run_organos_resolve() == "ok"
     assert _run_organos_resolve() == "skipped"

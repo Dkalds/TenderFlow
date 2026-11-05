@@ -163,6 +163,6 @@ def test_el_paso_esta_declarado_y_es_advisory() -> None:
 def test_el_ejecutor_resuelve_el_paso_por_convencion() -> None:
     """`_run_{nombre}`: si el paso está en la lista y la función no existe, la
     pasada falla en runtime y no al importar."""
-    import scheduler.pipeline_runs as mod
+    import scheduler.pipeline_pasos_impl as mod
 
     assert callable(mod._run_follows_paridad)

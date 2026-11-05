@@ -81,12 +81,12 @@ def buzon(monkeypatch, locks: _TablaDeLocks) -> list[str]:
 
 def _pasada(**pasos_rotos: Exception) -> dict[str, str]:
     """Un cierre de pasada en línea con los quince pasos de pega; algunos, rotos."""
-    from scheduler.pipeline_runs import _run_post_ingestion_steps
+    from scheduler.pipeline_cierre import _run_post_ingestion_steps
 
     objetivos: dict[str, object] = {f"_run_{name}": MagicMock() for name in CANONICAL_STEPS}
     for nombre, error in pasos_rotos.items():
         objetivos[f"_run_{nombre}"] = MagicMock(side_effect=error)
-    with patch.multiple("scheduler.pipeline_runs", **objetivos):
+    with patch.multiple("scheduler.pipeline_pasos_impl", **objetivos):
         return _run_post_ingestion_steps()
 
 

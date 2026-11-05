@@ -576,7 +576,7 @@ def test_el_paso_no_lanza_aunque_el_envio_falle(tmp_db: Any) -> None:
     """Advisory de verdad: un ESP caído no puede tumbar la pasada de ingesta."""
     db_mod, _ = tmp_db
     from db.repositories import report_schedules
-    from scheduler.pipeline_runs import _run_informes_programados
+    from scheduler.pipeline_pasos_impl import _run_informes_programados
 
     user_id, org_id = _organizacion(db_mod, "esp-caido@example.test")
     _pursuit(db_mod, org_id, user_id, id_externo="ESP-1")

@@ -257,7 +257,7 @@ def test_sap_active_learning_es_paso_canonico():
 
 def test_sap_active_learning_invoca_maybe_retrain(tmp_db, monkeypatch):
     """El paso ejecuta maybe_retrain_classifier bajo la ventana periódica."""
-    import scheduler.pipeline_runs as pr
+    import scheduler.pipeline_pasos_impl as pr
 
     called: list[bool] = []
 

@@ -309,7 +309,7 @@ def test_mira_la_misma_release_que_el_resolvedor() -> None:
 
 def _sin_ventana(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ejecuta el paso sin ``db.job_locks``: la cadencia no es lo que se prueba."""
-    import scheduler.pipeline_runs as pr
+    import scheduler.pipeline_pasos_impl as pr
 
     def _directo(_name: str, _ttl: int, fn: Any) -> str:
         fn()
@@ -320,7 +320,7 @@ def _sin_ventana(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_el_paso_lanza_con_los_dos_hashes(monkeypatch: pytest.MonkeyPatch) -> None:
     """Un hallazgo sale como fallo del paso: así llega el email, no solo el log."""
-    import scheduler.pipeline_runs as pr
+    import scheduler.pipeline_pasos_impl as pr
 
     _sin_ventana(monkeypatch)
     activa = _fila("sap_classifier", 2, "data/models/sap_classifier.pkl", _SHA_REGISTRADO)
@@ -343,7 +343,7 @@ def test_el_paso_lanza_con_los_dos_hashes(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 def test_el_paso_no_lanza_por_un_fallo_de_red(monkeypatch: pytest.MonkeyPatch) -> None:
-    import scheduler.pipeline_runs as pr
+    import scheduler.pipeline_pasos_impl as pr
 
     _sin_ventana(monkeypatch)
     activa = _fila("sap_classifier", 2, "data/models/sap_classifier.pkl", _SHA_REGISTRADO)

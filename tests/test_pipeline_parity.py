@@ -101,7 +101,8 @@ class TestCanonicalPipelineSteps:
 
     def test_post_ingestion_steps_order(self) -> None:
         """_run_post_ingestion_steps calls all steps in the canonical order."""
-        from scheduler.pipeline_runs import CANONICAL_STEPS, _run_post_ingestion_steps
+        from scheduler.pipeline_cierre import _run_post_ingestion_steps
+        from scheduler.pipeline_runs import CANONICAL_STEPS
 
         called: list[str] = []
 
@@ -113,37 +114,45 @@ class TestCanonicalPipelineSteps:
             return m
 
         patches = {
-            "scheduler.pipeline_runs._run_ml_scoring": _make_mock("ml_scoring"),
-            "scheduler.pipeline_runs._run_ml_tecnologias": _make_mock("ml_tecnologias"),
-            "scheduler.pipeline_runs._run_tech_signal_merge": _make_mock("tech_signal_merge"),
-            "scheduler.pipeline_runs._run_llm_tech_labeling": _make_mock("llm_tech_labeling"),
-            "scheduler.pipeline_runs._run_analytics_export": _make_mock("analytics_export"),
-            "scheduler.pipeline_runs._run_organos_resolve": _make_mock("organos_resolve"),
-            "scheduler.pipeline_runs._run_kpi_precompute": _make_mock("kpi_precompute"),
-            "scheduler.pipeline_runs._run_aggregates_precompute": _make_mock(
+            "scheduler.pipeline_pasos_impl._run_ml_scoring": _make_mock("ml_scoring"),
+            "scheduler.pipeline_pasos_impl._run_ml_tecnologias": _make_mock("ml_tecnologias"),
+            "scheduler.pipeline_pasos_impl._run_tech_signal_merge": _make_mock("tech_signal_merge"),
+            "scheduler.pipeline_pasos_impl._run_llm_tech_labeling": _make_mock("llm_tech_labeling"),
+            "scheduler.pipeline_pasos_impl._run_analytics_export": _make_mock("analytics_export"),
+            "scheduler.pipeline_pasos_impl._run_organos_resolve": _make_mock("organos_resolve"),
+            "scheduler.pipeline_pasos_impl._run_kpi_precompute": _make_mock("kpi_precompute"),
+            "scheduler.pipeline_pasos_impl._run_aggregates_precompute": _make_mock(
                 "aggregates_precompute"
             ),
-            "scheduler.pipeline_runs._run_watchlist_notify": _make_mock("watchlist_notify"),
-            "scheduler.pipeline_runs._run_cartera_avisos": _make_mock("cartera_avisos"),
-            "scheduler.pipeline_runs._run_documentacion_avisos": _make_mock("documentacion_avisos"),
-            "scheduler.pipeline_runs._run_digests": _make_mock("digests"),
-            "scheduler.pipeline_runs._run_dlq_retry": _make_mock("dlq_retry"),
-            "scheduler.pipeline_runs._run_webhook_reintentos": _make_mock("webhook_reintentos"),
-            "scheduler.pipeline_runs._run_anomaly_checks": _make_mock("anomaly_checks"),
-            "scheduler.pipeline_runs._run_follows_paridad": _make_mock("follows_paridad"),
-            "scheduler.pipeline_runs._run_llm_models_canary": _make_mock("llm_models_canary"),
-            "scheduler.pipeline_runs._run_model_artifacts_canary": _make_mock(
+            "scheduler.pipeline_pasos_impl._run_watchlist_notify": _make_mock("watchlist_notify"),
+            "scheduler.pipeline_pasos_impl._run_cartera_avisos": _make_mock("cartera_avisos"),
+            "scheduler.pipeline_pasos_impl._run_documentacion_avisos": _make_mock(
+                "documentacion_avisos"
+            ),
+            "scheduler.pipeline_pasos_impl._run_digests": _make_mock("digests"),
+            "scheduler.pipeline_pasos_impl._run_dlq_retry": _make_mock("dlq_retry"),
+            "scheduler.pipeline_pasos_impl._run_webhook_reintentos": _make_mock(
+                "webhook_reintentos"
+            ),
+            "scheduler.pipeline_pasos_impl._run_anomaly_checks": _make_mock("anomaly_checks"),
+            "scheduler.pipeline_pasos_impl._run_follows_paridad": _make_mock("follows_paridad"),
+            "scheduler.pipeline_pasos_impl._run_llm_models_canary": _make_mock("llm_models_canary"),
+            "scheduler.pipeline_pasos_impl._run_model_artifacts_canary": _make_mock(
                 "model_artifacts_canary"
             ),
-            "scheduler.pipeline_runs._run_retention_cleanup": _make_mock("retention_cleanup"),
-            "scheduler.pipeline_runs._run_sap_active_learning": _make_mock("sap_active_learning"),
-            "scheduler.pipeline_runs._run_informes_programados": _make_mock("informes_programados"),
-            "scheduler.pipeline_runs._run_event_dispatch": _make_mock("event_dispatch"),
-            "scheduler.pipeline_runs._run_drift_checks": _make_mock("drift_checks"),
+            "scheduler.pipeline_pasos_impl._run_retention_cleanup": _make_mock("retention_cleanup"),
+            "scheduler.pipeline_pasos_impl._run_sap_active_learning": _make_mock(
+                "sap_active_learning"
+            ),
+            "scheduler.pipeline_pasos_impl._run_informes_programados": _make_mock(
+                "informes_programados"
+            ),
+            "scheduler.pipeline_pasos_impl._run_event_dispatch": _make_mock("event_dispatch"),
+            "scheduler.pipeline_pasos_impl._run_drift_checks": _make_mock("drift_checks"),
         }
 
         with patch.multiple(
-            "scheduler.pipeline_runs", **{k.split(".")[-1]: v for k, v in patches.items()}
+            "scheduler.pipeline_pasos_impl", **{k.split(".")[-1]: v for k, v in patches.items()}
         ):
             results = _run_post_ingestion_steps()
 
@@ -152,26 +161,26 @@ class TestCanonicalPipelineSteps:
 
     def test_post_ingestion_step_failure_continues(self) -> None:
         """A failing step is recorded as 'error' but does not stop other steps."""
-        from scheduler.pipeline_runs import _run_post_ingestion_steps
+        from scheduler.pipeline_cierre import _run_post_ingestion_steps
 
         def _boom() -> None:
             raise RuntimeError("boom")
 
         with (
-            patch("scheduler.pipeline_runs._run_ml_scoring", side_effect=_boom),
-            patch("scheduler.pipeline_runs._run_ml_tecnologias"),
-            patch("scheduler.pipeline_runs._run_tech_signal_merge"),
-            patch("scheduler.pipeline_runs._run_llm_tech_labeling"),
-            patch("scheduler.pipeline_runs._run_analytics_export"),
-            patch("scheduler.pipeline_runs._run_kpi_precompute"),
-            patch("scheduler.pipeline_runs._run_aggregates_precompute"),
-            patch("scheduler.pipeline_runs._run_watchlist_notify"),
-            patch("scheduler.pipeline_runs._run_digests"),
-            patch("scheduler.pipeline_runs._run_dlq_retry"),
-            patch("scheduler.pipeline_runs._run_anomaly_checks"),
-            patch("scheduler.pipeline_runs._run_retention_cleanup"),
-            patch("scheduler.pipeline_runs._run_sap_active_learning"),
-            patch("scheduler.pipeline_runs._run_drift_checks"),
+            patch("scheduler.pipeline_pasos_impl._run_ml_scoring", side_effect=_boom),
+            patch("scheduler.pipeline_pasos_impl._run_ml_tecnologias"),
+            patch("scheduler.pipeline_pasos_impl._run_tech_signal_merge"),
+            patch("scheduler.pipeline_pasos_impl._run_llm_tech_labeling"),
+            patch("scheduler.pipeline_pasos_impl._run_analytics_export"),
+            patch("scheduler.pipeline_pasos_impl._run_kpi_precompute"),
+            patch("scheduler.pipeline_pasos_impl._run_aggregates_precompute"),
+            patch("scheduler.pipeline_pasos_impl._run_watchlist_notify"),
+            patch("scheduler.pipeline_pasos_impl._run_digests"),
+            patch("scheduler.pipeline_pasos_impl._run_dlq_retry"),
+            patch("scheduler.pipeline_pasos_impl._run_anomaly_checks"),
+            patch("scheduler.pipeline_pasos_impl._run_retention_cleanup"),
+            patch("scheduler.pipeline_pasos_impl._run_sap_active_learning"),
+            patch("scheduler.pipeline_pasos_impl._run_drift_checks"),
         ):
             results = _run_post_ingestion_steps()
 
@@ -190,7 +199,8 @@ class TestLaneAwareSteps:
     """
 
     def test_daily_lane_skips_bulk_months_in_dlq(self) -> None:
-        from scheduler.pipeline_runs import LANE_DAILY, _run_dlq_retry
+        from scheduler.pipeline_pasos_impl import _run_dlq_retry
+        from scheduler.pipeline_runs import LANE_DAILY
 
         with patch("scheduler.dlq_retry.retry_failed_extractions") as retry:
             _run_dlq_retry(lane=LANE_DAILY)
@@ -198,7 +208,8 @@ class TestLaneAwareSteps:
         retry.assert_called_once_with(include_bulk=False)
 
     def test_bulk_lane_retries_bulk_months(self) -> None:
-        from scheduler.pipeline_runs import LANE_BULK, _run_dlq_retry
+        from scheduler.pipeline_pasos_impl import _run_dlq_retry
+        from scheduler.pipeline_runs import LANE_BULK
 
         with patch("scheduler.dlq_retry.retry_failed_extractions") as retry:
             _run_dlq_retry(lane=LANE_BULK)
@@ -207,7 +218,7 @@ class TestLaneAwareSteps:
 
     def test_default_lane_is_the_permissive_one(self) -> None:
         """Un caller que no declare carril no pierde trabajo en silencio."""
-        from scheduler.pipeline_runs import _run_dlq_retry
+        from scheduler.pipeline_pasos_impl import _run_dlq_retry
 
         with patch("scheduler.dlq_retry.retry_failed_extractions") as retry:
             _run_dlq_retry()
@@ -216,23 +227,24 @@ class TestLaneAwareSteps:
 
     def test_post_ingestion_forwards_lane_only_to_lane_aware_steps(self) -> None:
         """``lane`` llega a dlq_retry y a nadie más: el resto no lo acepta."""
-        from scheduler.pipeline_runs import LANE_DAILY, _run_post_ingestion_steps
+        from scheduler.pipeline_cierre import _run_post_ingestion_steps
+        from scheduler.pipeline_runs import LANE_DAILY
 
         with (
-            patch("scheduler.pipeline_runs._run_ml_scoring") as ml_scoring,
-            patch("scheduler.pipeline_runs._run_ml_tecnologias"),
-            patch("scheduler.pipeline_runs._run_tech_signal_merge"),
-            patch("scheduler.pipeline_runs._run_llm_tech_labeling"),
-            patch("scheduler.pipeline_runs._run_analytics_export"),
-            patch("scheduler.pipeline_runs._run_kpi_precompute"),
-            patch("scheduler.pipeline_runs._run_aggregates_precompute"),
-            patch("scheduler.pipeline_runs._run_watchlist_notify"),
-            patch("scheduler.pipeline_runs._run_digests"),
-            patch("scheduler.pipeline_runs._run_dlq_retry") as dlq_retry,
-            patch("scheduler.pipeline_runs._run_anomaly_checks"),
-            patch("scheduler.pipeline_runs._run_retention_cleanup"),
-            patch("scheduler.pipeline_runs._run_sap_active_learning"),
-            patch("scheduler.pipeline_runs._run_drift_checks"),
+            patch("scheduler.pipeline_pasos_impl._run_ml_scoring") as ml_scoring,
+            patch("scheduler.pipeline_pasos_impl._run_ml_tecnologias"),
+            patch("scheduler.pipeline_pasos_impl._run_tech_signal_merge"),
+            patch("scheduler.pipeline_pasos_impl._run_llm_tech_labeling"),
+            patch("scheduler.pipeline_pasos_impl._run_analytics_export"),
+            patch("scheduler.pipeline_pasos_impl._run_kpi_precompute"),
+            patch("scheduler.pipeline_pasos_impl._run_aggregates_precompute"),
+            patch("scheduler.pipeline_pasos_impl._run_watchlist_notify"),
+            patch("scheduler.pipeline_pasos_impl._run_digests"),
+            patch("scheduler.pipeline_pasos_impl._run_dlq_retry") as dlq_retry,
+            patch("scheduler.pipeline_pasos_impl._run_anomaly_checks"),
+            patch("scheduler.pipeline_pasos_impl._run_retention_cleanup"),
+            patch("scheduler.pipeline_pasos_impl._run_sap_active_learning"),
+            patch("scheduler.pipeline_pasos_impl._run_drift_checks"),
         ):
             results = _run_post_ingestion_steps(lane=LANE_DAILY)
 
@@ -242,6 +254,6 @@ class TestLaneAwareSteps:
 
     def test_lane_aware_steps_all_have_an_implementation(self) -> None:
         """Si un paso sale de CANONICAL_STEPS, no puede quedar en la frozenset."""
-        from scheduler.pipeline_runs import _LANE_AWARE_STEPS, CANONICAL_STEPS
+        from scheduler.pipeline_pasos import _LANE_AWARE_STEPS, CANONICAL_STEPS
 
         assert set(CANONICAL_STEPS) >= _LANE_AWARE_STEPS
