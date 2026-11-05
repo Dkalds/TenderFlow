@@ -130,16 +130,8 @@ class TestFeedbackModelInfo:
             "history": [],
         }
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "Defecto abierto: `ModelHistoryEntry.version` se declara `str` y el registry "
-            "guarda un entero (`MAX(version) + 1`), así que con una versión registrada la "
-            "validación falla y la ruta responde 400. Al arreglarlo, este test pasa y el "
-            "`strict` obliga a quitar la marca."
-        ),
-    )
     def test_resume_la_version_activa_del_registry(self, client, auth):
+        """El registry guarda la versión como entero; con ``str`` en el DTO la ruta daba 400."""
         from db.model_registry import register_version
 
         version = register_version(

@@ -46,7 +46,7 @@ class FeedbackStats(BaseModel):
 
 
 class ModelHistoryEntry(BaseModel):
-    version: str
+    version: int
     trained_at: str | None
     metrics: dict[str, Any] | None
 
