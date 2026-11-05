@@ -65,6 +65,16 @@ describe("ResolucionesBlock", () => {
     expect(screen.queryByText("Sin recursos registrados")).not.toBeInTheDocument();
   });
 
+  it("un url_pdf que no es http(s) no llega a ser un enlace", () => {
+    withData(
+      "L-js",
+      { items: [{ ...ITEMS.items[0], url_pdf: "javascript:alert(1)" }] },
+      <ResolucionesBlock licitacionId="L-js" />,
+    );
+    expect(screen.getByText("Estimado")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Ver resolución/ })).not.toBeInTheDocument();
+  });
+
   it("un tribunal o número que falta no rompe la fila", () => {
     withData(
       "L-nulos",

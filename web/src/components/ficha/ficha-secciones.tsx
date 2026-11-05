@@ -9,6 +9,7 @@ import { ScoreDesglose } from "@/components/score-desglose";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { fuenteLinkLabel } from "@/lib/fuentes";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
+import { urlHttp } from "@/lib/url-http";
 import { cn, formatDate } from "@/lib/utils";
 
 /**
@@ -86,16 +87,17 @@ export function FichaDescripcion({
  * fresco como esa fecha.
  */
 export function FichaFuente({ licitacion: l, className }: { licitacion: LicitacionDetail; className?: string }) {
-  if (!l.url) return null;
+  const enlace = urlHttp(l.url);
+  if (!enlace) return null;
   return (
     <p className={cn("flex flex-wrap items-baseline gap-x-2 gap-y-0.5", className)}>
       <a
-        href={l.url}
+        href={enlace}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-1.5 text-tf-body font-medium"
       >
-        {fuenteLinkLabel(l.fuente, l.url)} <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        {fuenteLinkLabel(l.fuente, enlace)} <ExternalLink className="h-3 w-3" aria-hidden="true" />
         <AvisoPestanaNueva />
       </a>
       {l.fecha_actualizacion_fuente && (

@@ -8,6 +8,7 @@ import { PanelEmpty, PanelError, SectionTitle } from "@/components/console/panel
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
+import { urlHttp } from "@/lib/url-http";
 import { cn, formatDate } from "@/lib/utils";
 import { ExternalLink } from "lucide-react";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
@@ -93,32 +94,40 @@ function ListaResoluciones({ items }: { items: Schemas["ResolucionOut"][] }) {
   return (
     <ul className="space-y-3">
       {items.map((r) => (
-        <li key={r.id} className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={SENTIDO_VARIANTS[r.sentido ?? ""] ?? "outline"} size="sm">
-              {SENTIDO_LABELS[r.sentido ?? ""] ?? r.sentido ?? "Resolución"}
-            </Badge>
-            {/* El tribunal es una sigla (TACRC): la versal es la suya, no un estilo. */}
-            <span className="text-tf-body font-medium">
-              {[r.tribunal?.toUpperCase(), r.numero_resolucion].filter(Boolean).join(" ") || "Resolución"}
-            </span>
-            {r.fecha && <span className="tf-tnum text-tf-meta text-muted-foreground">{formatDate(r.fecha)}</span>}
-          </div>
-          {r.numero_recurso && <p className="text-tf-meta text-muted-foreground">Recurso nº {r.numero_recurso}</p>}
-          {r.url_pdf && (
-            <a
-              href={r.url_pdf}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-tf-meta text-primary hover:underline"
-            >
-              Ver resolución <ExternalLink className="h-3 w-3" aria-hidden="true" />
-              <AvisoPestanaNueva />
-            </a>
-          )}
-        </li>
+        <FilaResolucion key={r.id} r={r} />
       ))}
     </ul>
+  );
+}
+
+function FilaResolucion({ r }: { r: Schemas["ResolucionOut"] }) {
+  // El PDF lo publica el tribunal: si no es http(s), no hay enlace.
+  const pdf = urlHttp(r.url_pdf);
+  return (
+    <li className="space-y-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant={SENTIDO_VARIANTS[r.sentido ?? ""] ?? "outline"} size="sm">
+          {SENTIDO_LABELS[r.sentido ?? ""] ?? r.sentido ?? "Resolución"}
+        </Badge>
+        {/* El tribunal es una sigla (TACRC): la versal es la suya, no un estilo. */}
+        <span className="text-tf-body font-medium">
+          {[r.tribunal?.toUpperCase(), r.numero_resolucion].filter(Boolean).join(" ") || "Resolución"}
+        </span>
+        {r.fecha && <span className="tf-tnum text-tf-meta text-muted-foreground">{formatDate(r.fecha)}</span>}
+      </div>
+      {r.numero_recurso && <p className="text-tf-meta text-muted-foreground">Recurso nº {r.numero_recurso}</p>}
+      {pdf && (
+        <a
+          href={pdf}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-tf-meta text-primary hover:underline"
+        >
+          Ver resolución <ExternalLink className="h-3 w-3" aria-hidden="true" />
+          <AvisoPestanaNueva />
+        </a>
+      )}
+    </li>
   );
 }
 

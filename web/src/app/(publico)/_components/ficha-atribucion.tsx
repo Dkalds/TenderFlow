@@ -1,5 +1,6 @@
 import type { LicitacionPublica } from "@/lib/publico-api";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
+import { urlHttp } from "@/lib/url-http";
 import { fechaOpcional } from "./ficha-formato";
 
 /**
@@ -17,6 +18,8 @@ import { fechaOpcional } from "./ficha-formato";
  */
 export function AtribucionFuente({ lic }: { lic: LicitacionPublica }) {
   const actualizado = fechaOpcional(lic.actualizado);
+  // La URL del anuncio la escribe quien publica: sin http(s), no hay enlace.
+  const anuncio = urlHttp(lic.url);
 
   return (
     <aside className="border-divider bg-card mt-12 rounded-xl border p-5 text-sm">
@@ -31,9 +34,9 @@ export function AtribucionFuente({ lic }: { lic: LicitacionPublica }) {
       </p>
       <p className="text-muted-foreground mt-3">
         Para presentar oferta, el documento válido es el del perfil del contratante.{" "}
-        {lic.url && (
+        {anuncio && (
           <a
-            href={lic.url}
+            href={anuncio}
             rel="nofollow noopener"
             target="_blank"
             className="text-foreground font-medium underline underline-offset-4"

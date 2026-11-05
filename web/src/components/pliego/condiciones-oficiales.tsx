@@ -12,6 +12,7 @@ import type {
   GarantiaOficial,
   RequisitoSolvenciaOficial,
 } from "@/hooks/use-condiciones-oficiales";
+import { urlHttp } from "@/lib/url-http";
 import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
 
 /**
@@ -192,6 +193,7 @@ export function CondicionesOficialesBloque({
   licitacionId: string;
 }) {
   const ambitos = datos.ambitos ?? [];
+  const publicacion = urlHttp(datos.url_publicacion);
   if (ambitos.length === 0) return null;
   return (
     <div className="space-y-4">
@@ -201,9 +203,9 @@ export function CondicionesOficialesBloque({
       >
         Publicación oficial (PLACSP)
       </SectionTitle>
-      {datos.url_publicacion && (
+      {publicacion && (
         <a
-          href={datos.url_publicacion}
+          href={publicacion}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 text-tf-meta font-medium text-primary hover:underline"

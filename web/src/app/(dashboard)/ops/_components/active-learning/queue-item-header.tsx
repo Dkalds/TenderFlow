@@ -8,6 +8,7 @@
 import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
 import { Badge } from "@/components/ui/badge";
+import { urlHttp } from "@/lib/url-http";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { QueueItem } from "../../_lib/active-learning";
 
@@ -21,12 +22,13 @@ export function QueueItemHeader({
   onToggleDesc: () => void;
 }) {
   const idDescripcion = `descripcion-${item.id_externo}`;
+  const origen = urlHttp(item.url_origen);
   return (
     <>
       <div>
         <p className="text-tf-body font-medium leading-snug">
-          {item.url_origen ? (
-            <a href={item.url_origen} target="_blank" rel="noopener noreferrer" className="hover:underline">
+          {origen ? (
+            <a href={origen} target="_blank" rel="noopener noreferrer" className="hover:underline">
               {item.titulo ?? "Sin título"}
               <ExternalLink className="ml-1 inline h-3 w-3 text-muted-foreground" aria-hidden="true" />
               <AvisoPestanaNueva />

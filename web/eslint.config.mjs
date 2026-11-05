@@ -41,6 +41,17 @@ const restriccionesDeSintaxis = [
     message:
       "Usa los helpers de @/lib/utils (formatNumber, formatDate…) en vez de toLocaleString.",
   },
+  // Las URL de anuncios, pliegos y resoluciones las escribe quien publica en
+  // PLACSP/TED: texto de terceros. Un campo `url`/`uri`/`url_*`/`*_url` no va
+  // directo a un `href`: pasa por `urlHttp` (`lib/url-http.ts`), que descarta
+  // `javascript:`, `data:` y `//host`. Solo mira el acceso directo al campo, que
+  // es la forma que tenían los once casos que se colaron (2026-11).
+  {
+    selector:
+      "JSXAttribute[name.name='href'] > JSXExpressionContainer > :matches(MemberExpression, ChainExpression > MemberExpression)[property.name=/^(url|uri)$|^url_|_url$/]",
+    message:
+      "Una URL que llega de la API va por urlHttp() (@/lib/url-http) antes del href, y sin enlace si devuelve null.",
+  },
 ];
 
 // ── Aspecto de plantilla (auditoría anti-vibecode del 2026-09-26) ──────────

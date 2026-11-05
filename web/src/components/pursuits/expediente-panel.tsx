@@ -33,6 +33,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { useLicitacion } from "@/hooks/use-licitacion";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { fuenteLinkLabel } from "@/lib/fuentes";
+import { urlHttp } from "@/lib/url-http";
 
 /**
  * ¿Es la descripción el resumen automático de PLACSP? Hay anuncios cuya
@@ -62,6 +63,8 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
   }
 
   const l = licitacion;
+  // La URL del anuncio la escribe quien publica: sin http(s), no hay enlace.
+  const anuncio = urlHttp(l.url);
 
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -109,14 +112,14 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
           )}
 
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
-            {l.url && (
+            {anuncio && (
               <a
-                href={l.url}
+                href={anuncio}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-tf-body font-medium"
               >
-                {fuenteLinkLabel(l.fuente, l.url)}
+                {fuenteLinkLabel(l.fuente, anuncio)}
                 <ExternalLink className="h-3 w-3" aria-hidden="true" />
                 <AvisoPestanaNueva />
               </a>
