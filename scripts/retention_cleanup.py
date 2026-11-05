@@ -107,6 +107,10 @@ def main() -> int:
     else:
         print(f"\n[retention] {total:,} registros serían purgados. Usa --apply para ejecutar.")
 
+    fallidas = sorted(t for t, n in results.items() if n == -1)
+    if fallidas:
+        print(f"[retention] ERROR en: {', '.join(fallidas)} (ver el log)", file=sys.stderr)
+        return 1
     return 0
 
 

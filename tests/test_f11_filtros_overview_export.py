@@ -101,7 +101,8 @@ class _Conexion:
 
 
 def test_la_consulta_del_export_aplica_los_tres(monkeypatch: pytest.MonkeyPatch) -> None:
-    import db.repositories.licitaciones as repo_mod
+    import db.repositories.licitaciones.export as repo_mod
+    from db.repositories.licitaciones import LicitacionRepository
 
     conexion = _Conexion()
 
@@ -111,7 +112,7 @@ def test_la_consulta_del_export_aplica_los_tres(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(repo_mod, "connect_read", _connect_read)
     monkeypatch.setattr(repo_mod, "rows_to_dicts", lambda cur: [])
-    repo_mod.LicitacionRepository().fetch_for_pdf(
+    LicitacionRepository().fetch_for_pdf(
         importe_min=10.0, importe_max=20.0, provincia="Madrid", procedimiento="06", limit=5
     )
     assert "importe >= %s" in conexion.sql

@@ -228,7 +228,8 @@ function ficherosFuente(dir = SRC): string[] {
   for (const entrada of readdirSync(dir, { withFileTypes: true })) {
     const ruta = path.join(dir, entrada.name);
     if (entrada.isDirectory()) {
-      if (entrada.name === "__tests__" || entrada.name === "generated") continue;
+      // `src/test/` es la infraestructura de los tests (setup, fixtures): no se pinta.
+      if (entrada.name === "__tests__" || entrada.name === "generated" || ruta === path.join(SRC, "test")) continue;
       salida.push(...ficherosFuente(ruta));
     } else if (
       /\.tsx?$/.test(entrada.name) &&

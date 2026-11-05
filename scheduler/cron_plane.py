@@ -90,6 +90,7 @@ from typing import Any
 from observability.logging import get_logger
 from scheduler.jobs import ScheduledJob, build_default_registry
 from scheduler.loop import (
+    _active_jobs,
     _backoff_interval,
     _env_int,
     _job_timeout_s,
@@ -170,7 +171,7 @@ def _con_lock(nombre: str, ttl_s: int, fn: Callable[[], Any]) -> bool:
     como «otro lo tiene», el plano de cron se apagaría en silencio, que es
     justo el modo de fallo que ADR-033 viene a terminar.
     """
-    from db.job_locks import acquire, release
+    from db.job_locks import acquire, release, renew
 
     holder = _holder()
     clave = f"{PREFIJO_LOCK}{nombre}"
@@ -188,7 +189,18 @@ def _con_lock(nombre: str, ttl_s: int, fn: Callable[[], Any]) -> bool:
     try:
         return _run_job(nombre, fn, heavy=False, timeout_s=ttl_s)
     finally:
-        if holder:
+        hilo = _active_jobs.get(nombre)
+        if holder and hilo is not None and hilo.is_alive():
+            # `_run_job` no puede matar un hilo: tras el timeout el job sigue
+            # corriendo. Soltar el lock dejaría a otra instancia lanzarlo en
+            # paralelo; se renueva una vez y, si el hilo sigue colgado, caduca
+            # solo por TTL.
+            log.warning("cron_plane_lock_retenido_job_vivo", job=nombre, lock=clave)
+            try:
+                renew(clave, holder=holder, ttl_seconds=ttl_s)
+            except Exception as exc:
+                log.warning("cron_plane_lock_no_renovado", job=nombre, error=str(exc))
+        elif holder:
             try:
                 release(clave, holder=holder)
             except Exception as exc:

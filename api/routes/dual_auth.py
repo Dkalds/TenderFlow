@@ -53,7 +53,7 @@ async def require_any_auth(
     scopes y ``last_used``) que usa ``require_api_key``.
     """
     if session:
-        from api.routes.auth import _reject_bad_csrf, get_current_session_user
+        from api.routes.auth.comun import _reject_bad_csrf, get_current_session_user
 
         session_user = await get_current_session_user(session)
         if session_user.get("mfa_required") and not session_user.get("mfa_verified_at"):

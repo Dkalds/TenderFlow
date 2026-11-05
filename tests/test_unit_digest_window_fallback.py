@@ -6,7 +6,7 @@ import builtins
 from datetime import UTC, datetime
 from typing import Any
 
-from scheduler.pipeline_runs import _es_ventana_matinal
+from scheduler.pipeline_pasos_impl import _es_ventana_matinal
 
 
 def _sin_zoneinfo(monkeypatch: Any) -> None:

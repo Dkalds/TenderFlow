@@ -4,6 +4,9 @@ El endpoint es el canal de reporte de errores de cliente: público, sin
 autenticación y sin persistencia (solo log). Lo que se fija aquí es lo que hace
 que eso sea aceptable — los topes que impiden usarlo como sumidero de logs y la
 lista de campos que **no** puede registrar.
+
+Al final, ``GET /api/v1/security/client-errors``: la vista agregada de
+``client_errors`` que lee la consola de Ops, solo para administradores.
 """
 
 from __future__ import annotations
@@ -219,3 +222,27 @@ class TestClientErrorAbuso:
         with patch("api.routes.security.log"):
             resp = client.post("/api/v1/security/client-error", json={"message": "boom"})
         assert resp.status_code == 204
+
+
+class TestListadoDeErroresDeCliente:
+    """``GET /api/v1/security/client-errors``: la vista agregada, solo para admin."""
+
+    def test_el_admin_ve_el_error_agregado_por_huella(self, client):
+        from db.repositories.client_errors import registrar
+        from tests.claves import clave_de_prueba, dueno_de_prueba
+
+        for _ in range(3):
+            registrar(mensaje="boom", ruta="/mercado", origen="onerror", build="b1")
+        admin = dueno_de_prueba("client-errors-admin", admin=True)
+        clave = clave_de_prueba("client-errors-admin", scopes="*", user_id=admin)
+
+        resp = client.get("/api/v1/security/client-errors", headers={"X-API-Key": clave})
+
+        assert resp.status_code == 200, resp.text
+        (fila,) = resp.json()["items"]
+        assert (fila["mensaje"], fila["ruta"], fila["ocurrencias"]) == ("boom", "/mercado", 3)
+
+    def test_quien_no_es_admin_recibe_403(self, client, auth):
+        resp = client.get("/api/v1/security/client-errors", headers=auth)
+
+        assert resp.status_code == 403, resp.text

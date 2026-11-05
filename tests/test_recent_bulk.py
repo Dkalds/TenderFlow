@@ -55,21 +55,21 @@ def test_run_calls_analytics_export_before_kpi_precompute():
 
 def test_run_continues_when_analytics_export_raises():
     """Si un paso post-ingesta falla, la pipeline canónica continúa."""
-    from scheduler.pipeline_runs import _run_post_ingestion_steps
+    from scheduler.pipeline_cierre import _run_post_ingestion_steps
 
     with (
         patch(
-            "scheduler.pipeline_runs._run_analytics_export",
+            "scheduler.pipeline_pasos_impl._run_analytics_export",
             side_effect=RuntimeError("boom"),
         ),
-        patch("scheduler.pipeline_runs._run_ml_scoring"),
-        patch("scheduler.pipeline_runs._run_ml_tecnologias"),
-        patch("scheduler.pipeline_runs._run_tech_signal_merge"),
-        patch("scheduler.pipeline_runs._run_kpi_precompute"),
-        patch("scheduler.pipeline_runs._run_aggregates_precompute"),
-        patch("scheduler.pipeline_runs._run_watchlist_notify"),
-        patch("scheduler.pipeline_runs._run_dlq_retry"),
-        patch("scheduler.pipeline_runs._run_anomaly_checks"),
+        patch("scheduler.pipeline_pasos_impl._run_ml_scoring"),
+        patch("scheduler.pipeline_pasos_impl._run_ml_tecnologias"),
+        patch("scheduler.pipeline_pasos_impl._run_tech_signal_merge"),
+        patch("scheduler.pipeline_pasos_impl._run_kpi_precompute"),
+        patch("scheduler.pipeline_pasos_impl._run_aggregates_precompute"),
+        patch("scheduler.pipeline_pasos_impl._run_watchlist_notify"),
+        patch("scheduler.pipeline_pasos_impl._run_dlq_retry"),
+        patch("scheduler.pipeline_pasos_impl._run_anomaly_checks"),
     ):
         results = _run_post_ingestion_steps()
 
@@ -113,16 +113,16 @@ def test_partial_failure_runs_post_ingestion_and_reports_degraded():
     ]
 
     with (
-        patch("scheduler.pipeline_runs.meses_a_procesar", return_value=[(2026, 5), (2026, 6)]),
+        patch("scheduler.pipeline_carriles.meses_a_procesar", return_value=[(2026, 5), (2026, 6)]),
         patch("scraper.connectors.base.run_connector", side_effect=_resultados_por_mes(results)),
         patch("observability.bind_run_context", return_value="run-test"),
         patch("observability.record_run", return_value=nullcontext(MagicMock())),
         patch("scraper.pipeline._summarize"),
         patch(
-            "scheduler.pipeline_runs._run_post_ingestion_steps",
+            "scheduler.pipeline_carriles._run_post_ingestion_steps",
             return_value={"dlq_retry": "ok"},
         ) as mock_steps,
-        patch("scheduler.pipeline_runs._notify_degraded") as mock_notify,
+        patch("scheduler.pipeline_carriles._notify_degraded") as mock_notify,
     ):
         out = run_bulk_pipeline(months=2)
 
@@ -142,12 +142,12 @@ def test_total_failure_raises_runtimeerror():
     ]
 
     with (
-        patch("scheduler.pipeline_runs.meses_a_procesar", return_value=[(2026, 5), (2026, 6)]),
+        patch("scheduler.pipeline_carriles.meses_a_procesar", return_value=[(2026, 5), (2026, 6)]),
         patch("scraper.connectors.base.run_connector", side_effect=_resultados_por_mes(results)),
         patch("observability.bind_run_context", return_value="run-test"),
         patch("observability.record_run", return_value=nullcontext(MagicMock())),
         patch("scraper.pipeline._summarize"),
-        patch("scheduler.pipeline_runs._run_post_ingestion_steps") as mock_steps,
+        patch("scheduler.pipeline_carriles._run_post_ingestion_steps") as mock_steps,
     ):
         with pytest.raises(RuntimeError, match="all 2 month"):
             run_bulk_pipeline(months=2)
@@ -186,7 +186,9 @@ def test_run_update_returns_1_on_degraded():
 
 
 class TestRunRecentBulk:
-    @patch("scheduler.pipeline_runs._run_bulk_pipeline_connector", return_value={"status": "ok"})
+    @patch(
+        "scheduler.pipeline_carriles._run_bulk_pipeline_connector", return_value={"status": "ok"}
+    )
     def test_success(self, bucle: MagicMock) -> None:
         from scheduler.jobs.recent_bulk import run
 
@@ -199,7 +201,7 @@ class TestRunRecentBulk:
         from scheduler.jobs.recent_bulk import run
 
         with (
-            patch("scheduler.pipeline_runs.meses_a_procesar", return_value=[(2026, 5)]),
+            patch("scheduler.pipeline_carriles.meses_a_procesar", return_value=[(2026, 5)]),
             patch(
                 "scraper.connectors.base.run_connector",
                 side_effect=_resultados_por_mes([{"year": 2026, "month": 5, "status": "error"}]),
@@ -213,7 +215,9 @@ class TestRunRecentBulk:
 
 
 class TestRunRecentBulkDefault:
-    @patch("scheduler.pipeline_runs._run_bulk_pipeline_connector", return_value={"status": "ok"})
+    @patch(
+        "scheduler.pipeline_carriles._run_bulk_pipeline_connector", return_value={"status": "ok"}
+    )
     def test_reads_env(self, bucle: MagicMock) -> None:
         with patch.dict("os.environ", {"SCHEDULER_BULK_MONTHS": "5"}):
             from scheduler.jobs.recent_bulk import run

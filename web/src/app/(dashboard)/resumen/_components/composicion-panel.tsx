@@ -9,7 +9,6 @@ import { getEstadoChartColor } from "@/lib/chart-colors";
 import { estadoLabel } from "@/lib/estados";
 import { useFilters } from "@/lib/filters";
 import { cn, formatNumber, formatPercent } from "@/lib/utils";
-import type { AnalyticsOverview } from "@/lib/api-types";
 import { BarraApilada, tramosApilados } from "./contexto-graficos";
 
 /**
@@ -84,7 +83,7 @@ export function ComposicionPanel({ className }: { className?: string }) {
   const { estados, setEstados } = useFilters();
   const [todos, setTodos] = useState(false);
 
-  const overview = useFilteredQuery<AnalyticsOverview>(
+  const overview = useFilteredQuery(
     ["analytics", "overview"],
     "/api/v1/analytics/overview",
     // Misma consulta y mismas opciones que la tira de contexto: el fallo se

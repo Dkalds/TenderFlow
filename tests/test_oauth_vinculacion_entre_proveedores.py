@@ -26,7 +26,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from fastapi import Request, Response
 
-from api.routes import auth as auth_routes
+from api.routes.auth import oauth as auth_routes
 from shared import identity
 
 _TENANT = "11111111-2222-3333-4444-555555555555"

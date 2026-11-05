@@ -897,41 +897,47 @@ class TestPipelineStepReleasesTheWindow:
 
     def test_systemic_failure_propagates(self):
         """Lanzar es lo que hace a `_run_periodic` soltar el lock del día."""
-        from scheduler.pipeline_runs import _run_llm_tech_labeling
+        from scheduler.pipeline_pasos_impl import _run_llm_tech_labeling
 
         roto = {"scored": 0, "no_signal": 0, "error": 5, "disabled": 0}
         with (
             patch("scheduler.jobs.llm_tech_labeling.run", return_value=roto),
-            patch("scheduler.pipeline_runs._run_periodic", side_effect=lambda _n, _t, fn: fn()),
+            patch(
+                "scheduler.pipeline_pasos_impl._run_periodic", side_effect=lambda _n, _t, fn: fn()
+            ),
             pytest.raises(RuntimeError, match="falló entero"),
         ):
             _run_llm_tech_labeling()
 
     def test_normal_run_does_not_raise(self):
-        from scheduler.pipeline_runs import _run_llm_tech_labeling
+        from scheduler.pipeline_pasos_impl import _run_llm_tech_labeling
 
         bien = {"scored": 10, "no_signal": 2, "error": 1, "disabled": 0}
         with (
             patch("scheduler.jobs.llm_tech_labeling.run", return_value=bien),
-            patch("scheduler.pipeline_runs._run_periodic", side_effect=lambda _n, _t, fn: fn()),
+            patch(
+                "scheduler.pipeline_pasos_impl._run_periodic", side_effect=lambda _n, _t, fn: fn()
+            ),
         ):
             _run_llm_tech_labeling()
 
     def test_disabled_run_does_not_raise(self):
         """Con el flag apagado el paso es un no-op, no un fallo."""
-        from scheduler.pipeline_runs import _run_llm_tech_labeling
+        from scheduler.pipeline_pasos_impl import _run_llm_tech_labeling
 
         apagado = {"scored": 0, "no_signal": 0, "error": 0, "disabled": 1}
         with (
             patch("scheduler.jobs.llm_tech_labeling.run", return_value=apagado),
-            patch("scheduler.pipeline_runs._run_periodic", side_effect=lambda _n, _t, fn: fn()),
+            patch(
+                "scheduler.pipeline_pasos_impl._run_periodic", side_effect=lambda _n, _t, fn: fn()
+            ),
         ):
             _run_llm_tech_labeling()
 
     def test_rejected_key_reaches_the_step_message(self):
         """El mensaje del paso es el cuerpo del email de alerta: tiene que
         nombrar la causa, no solo el recuento de errores."""
-        from scheduler.pipeline_runs import _run_llm_tech_labeling
+        from scheduler.pipeline_pasos_impl import _run_llm_tech_labeling
 
         rechazado = {
             "scored": 0,
@@ -942,14 +948,16 @@ class TestPipelineStepReleasesTheWindow:
         }
         with (
             patch("scheduler.jobs.llm_tech_labeling.run", return_value=rechazado),
-            patch("scheduler.pipeline_runs._run_periodic", side_effect=lambda _n, _t, fn: fn()),
+            patch(
+                "scheduler.pipeline_pasos_impl._run_periodic", side_effect=lambda _n, _t, fn: fn()
+            ),
             pytest.raises(RuntimeError, match=r"HTTP 401"),
         ):
             _run_llm_tech_labeling()
 
     def test_unavailable_model_reaches_the_step_message(self):
         """Del 2026-09-21 al 2026-09-24 el email decía «respuesta vacía» ×200."""
-        from scheduler.pipeline_runs import _run_llm_tech_labeling
+        from scheduler.pipeline_pasos_impl import _run_llm_tech_labeling
 
         retirado = {
             "scored": 0,
@@ -960,20 +968,24 @@ class TestPipelineStepReleasesTheWindow:
         }
         with (
             patch("scheduler.jobs.llm_tech_labeling.run", return_value=retirado),
-            patch("scheduler.pipeline_runs._run_periodic", side_effect=lambda _n, _t, fn: fn()),
+            patch(
+                "scheduler.pipeline_pasos_impl._run_periodic", side_effect=lambda _n, _t, fn: fn()
+            ),
             pytest.raises(RuntimeError, match=r"HTTP 410"),
         ):
             _run_llm_tech_labeling()
 
     def test_el_paso_acota_el_lote_por_reloj(self, monkeypatch):
         """#581: el lote comparte el step de cierre con lo que viene detrás."""
-        from scheduler.pipeline_runs import _run_llm_tech_labeling
+        from scheduler.pipeline_pasos_impl import _run_llm_tech_labeling
 
         monkeypatch.setattr(settings, "LLM_TECH_LABELING_BUDGET_S", 321, raising=False)
         bien = {"scored": 1, "no_signal": 0, "error": 0, "disabled": 0}
         with (
             patch("scheduler.jobs.llm_tech_labeling.run", return_value=bien) as run,
-            patch("scheduler.pipeline_runs._run_periodic", side_effect=lambda _n, _t, fn: fn()),
+            patch(
+                "scheduler.pipeline_pasos_impl._run_periodic", side_effect=lambda _n, _t, fn: fn()
+            ),
         ):
             _run_llm_tech_labeling()
 

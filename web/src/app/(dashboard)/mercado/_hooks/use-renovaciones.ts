@@ -35,6 +35,7 @@ import { useOrganizationStore } from "@/hooks/use-organization";
 import { fetchWithAuth } from "@/lib/api-client";
 import type { Renovacion, RenovacionesResult, RenovacionesResumenResult } from "@/lib/api-types";
 import { useFilters } from "@/lib/filters";
+import { renovacionesKeys } from "@/lib/query-keys";
 import { queryActual, reemplazarQuery } from "@/lib/url-superficial";
 import { truncate } from "@/lib/utils";
 import { opportunityScore } from "@/lib/opportunity-score";
@@ -164,7 +165,7 @@ export function useRenovaciones() {
     error,
     refetch: recargarLista,
   } = useQuery<RenovacionesResult>({
-    queryKey: ["renovaciones", meses, tecnologiaParam],
+    queryKey: renovacionesKeys.lista(Number(meses), tecnologiaParam),
     queryFn: () =>
       fetchWithAuth(
         // Esta lista alimenta **solo la tabla virtualizada**; los KPIs de
@@ -181,7 +182,7 @@ export function useRenovaciones() {
   });
 
   const { data: resumen, refetch: recargarResumen } = useQuery<RenovacionesResumenResult>({
-    queryKey: ["renovaciones-resumen", meses, tecnologiaParam],
+    queryKey: renovacionesKeys.resumen(Number(meses), tecnologiaParam),
     queryFn: () => fetchWithAuth(`/api/v1/competitive/renovaciones/resumen?months=${meses}${tecnologiaQs}`),
     staleTime: 5 * 60 * 1000,
   });

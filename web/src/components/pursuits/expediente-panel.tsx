@@ -33,6 +33,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { useLicitacion } from "@/hooks/use-licitacion";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { fuenteLinkLabel } from "@/lib/fuentes";
+import { urlHttp } from "@/lib/url-http";
 
 /**
  * ¿Es la descripción el resumen automático de PLACSP? Hay anuncios cuya
@@ -62,6 +63,8 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
   }
 
   const l = licitacion;
+  // La URL del anuncio la escribe quien publica: sin http(s), no hay enlace.
+  const anuncio = urlHttp(l.url);
 
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -109,14 +112,14 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
           )}
 
           <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2">
-            {l.url && (
+            {anuncio && (
               <a
-                href={l.url}
+                href={anuncio}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-tf-body font-medium"
               >
-                {fuenteLinkLabel(l.fuente, l.url)}
+                {fuenteLinkLabel(l.fuente, anuncio)}
                 <ExternalLink className="h-3 w-3" aria-hidden="true" />
                 <AvisoPestanaNueva />
               </a>
@@ -137,7 +140,7 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
       <div className="flex flex-col gap-4">
         <Panel>
           <SectionTitle>Señal tecnológica</SectionTitle>
-          <TecnologiasBlock licitacionId={licitacionId} />
+          <TecnologiasBlock licitacionId={licitacionId} conTitulo={false} />
         </Panel>
 
         <Panel>
@@ -152,11 +155,10 @@ export function ExpedientePanel({ licitacionId }: { licitacionId: string }) {
 
         <Panel>
           <SectionTitle>Recursos</SectionTitle>
-          {/* `ResolucionesBlock` no renderiza nada si no hay resoluciones del
-              TACRC, que es el caso normal: el rótulo se queda con el vacío
-              declarado debajo. */}
-          <ResolucionesBlock licitacionId={licitacionId} />
-          <p className="text-muted-foreground text-tf-meta">
+          {/* El vacío («Sin recursos registrados») y el fallo los dice el
+              propio bloque; el rótulo es el de este panel. */}
+          <ResolucionesBlock licitacionId={licitacionId} conTitulo={false} />
+          <p className="text-muted-foreground text-tf-meta mt-3">
             Solo aparecen aquí las resoluciones del TACRC publicadas para este expediente.
           </p>
         </Panel>

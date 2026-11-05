@@ -60,7 +60,7 @@ function LoginPageContent() {
   // pendiente y no dice si ya se verificó, así que a las cuentas con MFA se les
   // sigue enseñando el formulario, como antes; mientras `/auth/me` no ha
   // contestado, también.
-  const conMfa = user !== null && "mfa_required" in user && user.mfa_required === true;
+  const conMfa = user?.mfa_required === true;
   const sesionAbierta =
     !isLoading && user !== null && !conMfa && !login.mfaPending && !login.invitacion && !login.error;
 

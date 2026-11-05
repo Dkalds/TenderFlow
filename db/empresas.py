@@ -227,6 +227,23 @@ def pending_review_keys(conn: Any) -> set[tuple[str, str]]:
     return {(r[0], r[1]) for r in rows}
 
 
+def identidades_sin_resolver(conn: Any) -> list[tuple[str | None, str | None, int]]:
+    """``(nombre, nif, filas)`` de las adjudicaciones sin ``empresa_id``, agrupadas.
+
+    Lo usa la cobertura del healthcheck, que normaliza cada identidad en
+    Python: agrupar aquí convierte «una vuelta por adjudicación sin resolver»
+    en «una por identidad distinta», y el mismo licitador se repite en cientos
+    de filas. shortcut: la normalización sigue en Python porque
+    ``normalize_company`` no tiene equivalente SQL; resolverlo entero en la
+    base pide una columna normalizada (migración).
+    """
+    filas = conn.execute(
+        "SELECT nombre, nif, COUNT(*) FROM adjudicaciones "
+        "WHERE empresa_id IS NULL GROUP BY nombre, nif"
+    ).fetchall()
+    return [(f[0], f[1], int(f[2])) for f in filas]
+
+
 def list_pending_reviews(limit: int = 100) -> list[dict[str, Any]]:
     with connect() as c:
         cur = c.execute(

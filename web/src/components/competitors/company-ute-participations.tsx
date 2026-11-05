@@ -63,7 +63,7 @@ export function CompanyUteParticipations({
                   >
                     {participation.ute_nombre}
                   </Link>
-                  {participation.otros_miembros.length ? (
+                  {participation.otros_miembros?.length ? (
                     <div className="mt-2 flex flex-wrap items-center gap-1.5">
                       <span className="text-tf-meta text-muted-foreground">Otros miembros:</span>
                       {participation.otros_miembros.map((miembro) => (

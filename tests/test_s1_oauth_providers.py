@@ -17,7 +17,7 @@ from typing import Any, ClassVar
 import pytest
 from fastapi import HTTPException, Request, Response
 
-from api.routes import auth as auth_routes
+from api.routes.auth import oauth as auth_routes
 
 _ROOT = Path(__file__).resolve().parents[1]
 

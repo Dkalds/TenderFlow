@@ -279,8 +279,10 @@ def _scan_files(paths: list[Path]) -> set[str]:
 
 def _db_layer_files() -> list[Path]:
     db_dir = _REPO_ROOT / "db"
-    files = sorted(db_dir.glob("*.py")) + sorted((db_dir / "repositories").glob("*.py"))
-    return [f for f in files if f.name != "__init__.py"]
+    # `rglob` en repositorios: un repositorio partido en paquete sigue escaneado,
+    # también su `__init__.py` (el de `licitaciones/` lleva consultas).
+    files = sorted(db_dir.glob("*.py")) + sorted((db_dir / "repositories").rglob("*.py"))
+    return [f for f in files if f.name != "__init__.py" or f.parent.parent.name == "repositories"]
 
 
 # ── Allowlist: SOLO puede encoger (mismo espíritu que el ratchet TID251 /

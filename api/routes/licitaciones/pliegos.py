@@ -50,7 +50,7 @@ router = APIRouter(tags=["licitaciones"])
     },
 )
 async def post_guion_oferta(
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: dict[str, Any] = Depends(require_organization()),
     id_externo: str = Depends(resolver_id_externo),
 ) -> GuionOferta:
     """F2.6 — sólo esquema, nunca prosa (D33).
@@ -62,10 +62,11 @@ async def post_guion_oferta(
     El presupuesto se ata al mismo sujeto opaco que el resto de superficies
     LLM, con la `user_key` del auth y nunca el email ni el `user_id` crudo.
     """
-    from llm.budget import LLMBudgetExceeded, bind_budget_subject
+    from llm.budget import LLMBudgetExceeded, bind_budget_org, bind_budget_subject
 
     def _trabajo() -> GuionOferta:
         bind_budget_subject(_budget_subject(ctx))
+        bind_budget_org(str(ctx["organization_id"]))
         return generar_guion(id_externo)
 
     try:
@@ -194,7 +195,9 @@ def _budget_subject(ctx: dict[str, Any]) -> str | None:
     },
 )
 async def extract_tender_fact_sheet(
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    # ``write=True`` como ``…/extract-async``: extraer sobrescribe la ficha
+    # vigente y gasta presupuesto del equipo, y un viewer es de solo lectura.
+    ctx: dict[str, Any] = Depends(require_organization(write=True)),
     id_externo: str = Depends(resolver_id_externo),
 ) -> TenderFactSheetRecord:
     """Reextracción explícita; descarga bajo demanda los pliegos que aún
@@ -215,9 +218,9 @@ async def extract_tender_fact_sheet(
     # hilo y no se filtra a otra request—, igual que en ask.py::_stream_ask.
     scope_key = _budget_subject(ctx)
     # Misma regla que ``/ask`` (C2.9): sin la organización, el tope diario por
-    # organización nunca se alimenta con el gasto de la ficha.
-    raw_org = ctx.get("organization_id")
-    org_key = str(raw_org) if raw_org not in (None, "") else None
+    # organización nunca se alimenta con el gasto de la ficha. La resuelve
+    # ``require_organization``; el principal de ``require_any_auth`` no la trae.
+    org_key = str(ctx["organization_id"])
 
     # El nombre del closure viaja al span OTEL (``db.function``), así que se
     # elige parecido al de la función que envuelve para no romper búsquedas.

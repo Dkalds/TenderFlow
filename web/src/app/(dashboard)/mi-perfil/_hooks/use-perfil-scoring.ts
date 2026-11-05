@@ -131,8 +131,8 @@ export function usePerfilScoring() {
     mutationFn: (v: PerfilValores) =>
       apiMutate<UserProfile>("PUT", "/api/v1/me/profile", cuerpoDePerfil(v, activeOrganizationId)),
     onSuccess: (_respuesta, v) => {
-      queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
-      queryClient.invalidateQueries({ queryKey: radarKeys.scoring });
+      void queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
+      void queryClient.invalidateQueries({ queryKey: radarKeys.scoring });
       form.reset(v);
       // Configuración inicial del perfil (fue el primer paso de «Primeros
       // pasos» en /resumen hasta B5, plan 2026-10): hasta que existe este
@@ -150,9 +150,9 @@ export function usePerfilScoring() {
   const deleteMut = useMutation({
     mutationFn: () => apiMutate("DELETE", "/api/v1/me/profile"),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
+      void queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
       form.reset(VACIO);
-      queryClient.invalidateQueries({ queryKey: radarKeys.scoring });
+      void queryClient.invalidateQueries({ queryKey: radarKeys.scoring });
       toast.success("Perfil eliminado. La puntuación vuelve a los pesos globales.");
     },
     meta: { errorTitle: "No se pudo eliminar el perfil" },

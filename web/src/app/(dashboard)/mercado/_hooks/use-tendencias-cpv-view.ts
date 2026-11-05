@@ -16,37 +16,15 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { urlApi } from "@/lib/api-client";
+import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
-import {
-  splitForecastSeries,
-  type ForecastResponse,
-  type ForecastRow,
-} from "./forecast-series";
+import { splitForecastSeries, type ForecastRow } from "./forecast-series";
 
-export interface CpvSeriesPoint {
-  period: string;
-  count: number;
-  importe: number;
-}
-
-export interface CpvSeries {
-  cpv: string;
-  label: string;
-  series: CpvSeriesPoint[];
-}
-
-export interface TopCpv {
-  cpv: string;
-  importe_total: number;
-  count: number;
-}
-
-export interface TrendsCpvResponse {
-  series_by_cpv: CpvSeries[];
-  top_cpv_by_importe: TopCpv[];
-  summary: Record<string, unknown>;
-}
+// Las formas salen del esquema generado (`useFilteredQuery` las deriva de la ruta).
+export type CpvSeries = Schemas["CpvSeries"];
+export type TopCpv = Schemas["CpvImporteRank"];
 
 /**
  * Fila del gráfico multilínea: la clave `period` más una clave por CPV
@@ -86,7 +64,7 @@ export function useTendenciasCpvView() {
   const [selectedCpvs, setSelectedCpvs] = useState<Set<string>>(new Set());
   const [showForecast, setShowForecast] = useState(false);
 
-  const { data: cpvData, isLoading, error, refetch } = useFilteredQuery<TrendsCpvResponse>(
+  const { data: cpvData, isLoading, error, refetch } = useFilteredQuery(
     ["analytics", "trends-cpv"],
     "/api/v1/analytics/trends-cpv",
     // El error lo pinta la vista en línea (PanelError): sin toast además.
@@ -116,9 +94,9 @@ export function useTendenciasCpvView() {
     forecastCpvOptions.map((c) => c.cpv),
   );
 
-  const { data: forecast, isLoading: forecastLoading } = useFilteredQuery<ForecastResponse>(
+  const { data: forecast, isLoading: forecastLoading } = useFilteredQuery(
     ["analytics", "forecast", "volume", forecastCpv ?? "global"],
-    "/api/v1/analytics/forecast/volume?months_ahead=6",
+    urlApi("/api/v1/analytics/forecast/volume", {}, { months_ahead: "6" }),
     { staleTime: 5 * 60_000, enabled: showForecast },
     forecastCpv ? { cpv: forecastCpv } : undefined,
   );
@@ -139,7 +117,7 @@ export function useTendenciasCpvView() {
 
     const periodMap = new Map<string, Record<string, number>>();
     for (const cpvSeries of selected) {
-      for (const pt of cpvSeries.series) {
+      for (const pt of cpvSeries.series ?? []) {
         if (!periodMap.has(pt.period)) periodMap.set(pt.period, {});
         periodMap.get(pt.period)![cpvSeries.cpv] = pt.importe;
       }

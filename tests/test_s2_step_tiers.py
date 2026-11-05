@@ -73,7 +73,7 @@ PASOS_BLOQUEANTES = {
     "retention_cleanup",
 }
 
-_TODOS_LOS_PASOS = {f"scheduler.pipeline_runs._run_{name}": None for name in CANONICAL_STEPS}
+_TODOS_LOS_PASOS = {f"scheduler.pipeline_pasos_impl._run_{name}": None for name in CANONICAL_STEPS}
 
 
 def _patch_todos(**overrides: object) -> object:
@@ -81,7 +81,7 @@ def _patch_todos(**overrides: object) -> object:
     objetivos = {name.split(".")[-1]: MagicMock() for name in _TODOS_LOS_PASOS}
     for nombre, valor in overrides.items():
         objetivos[f"_run_{nombre}"] = valor
-    return patch.multiple("scheduler.pipeline_runs", **objetivos)
+    return patch.multiple("scheduler.pipeline_pasos_impl", **objetivos)
 
 
 # ---------------------------------------------------------------------------
@@ -115,15 +115,15 @@ def test_un_paso_sin_tier_no_se_ejecuta() -> None:
     Es deliberado: el default —cualquiera de los dos— sería una decisión
     tomada por omisión sobre si el job puede salir rojo.
     """
-    from scheduler import pipeline_runs
+    from scheduler import pipeline_cierre, pipeline_pasos_impl
 
     with (
-        patch.object(pipeline_runs, "CANONICAL_STEPS", ["ml_scoring", "paso_sin_tier"]),
-        patch.object(pipeline_runs, "_run_ml_scoring", MagicMock()),
-        patch.object(pipeline_runs, "_run_paso_sin_tier", MagicMock(), create=True),
+        patch.object(pipeline_cierre, "CANONICAL_STEPS", ["ml_scoring", "paso_sin_tier"]),
+        patch.object(pipeline_pasos_impl, "_run_ml_scoring", MagicMock()),
+        patch.object(pipeline_pasos_impl, "_run_paso_sin_tier", MagicMock(), create=True),
         pytest.raises(RuntimeError, match="sin tier declarado"),
     ):
-        pipeline_runs._run_post_ingestion_steps()
+        pipeline_cierre._run_post_ingestion_steps()
 
 
 # ---------------------------------------------------------------------------
@@ -132,11 +132,11 @@ def test_un_paso_sin_tier_no_se_ejecuta() -> None:
 
 
 def test_fallo_advisory_sale_como_error_en_el_resumen_pero_no_es_bloqueante() -> None:
-    from scheduler.pipeline_runs import _run_post_ingestion_steps
+    from scheduler.pipeline_cierre import _run_post_ingestion_steps
 
     with (
         _patch_todos(llm_models_canary=MagicMock(side_effect=RuntimeError("catálogo"))),
-        patch("scheduler.pipeline_runs._notify_step_failure") as notificar,
+        patch("scheduler.pipeline_cierre._notify_step_failure") as notificar,
     ):
         results = _run_post_ingestion_steps()
 
@@ -150,11 +150,11 @@ def test_fallo_advisory_sale_como_error_en_el_resumen_pero_no_es_bloqueante() ->
 
 
 def test_fallo_bloqueante_si_cuenta() -> None:
-    from scheduler.pipeline_runs import _run_post_ingestion_steps
+    from scheduler.pipeline_cierre import _run_post_ingestion_steps
 
     with (
         _patch_todos(kpi_precompute=MagicMock(side_effect=RuntimeError("boom"))),
-        patch("scheduler.pipeline_runs._notify_step_failure"),
+        patch("scheduler.pipeline_cierre._notify_step_failure"),
     ):
         results = _run_post_ingestion_steps()
 
@@ -222,7 +222,7 @@ def test_el_exit_code_de_la_ingesta_nunca_se_baja() -> None:
 
 def test_ml_scoring_reporta_skipped_si_el_precompute_no_encuentra_modelo() -> None:
     """La clave leída es ``skipped_no_model`` (contrato con services/ml/classifier_training)."""
-    from scheduler.pipeline_runs import _run_ml_scoring
+    from scheduler.pipeline_pasos_impl import _run_ml_scoring
 
     with patch(
         "services.ml.classifier_training.precompute_ml_proba",
@@ -232,7 +232,7 @@ def test_ml_scoring_reporta_skipped_si_el_precompute_no_encuentra_modelo() -> No
 
 
 def test_ml_scoring_reporta_ok_cuando_si_hay_modelo() -> None:
-    from scheduler.pipeline_runs import _run_ml_scoring
+    from scheduler.pipeline_pasos_impl import _run_ml_scoring
 
     with patch(
         "services.ml.classifier_training.precompute_ml_proba",
@@ -254,7 +254,7 @@ def test_ml_scoring_reporta_ok_cuando_si_hay_modelo() -> None:
 
 def test_ml_tecnologias_reporta_skipped_sin_modelo(monkeypatch: pytest.MonkeyPatch) -> None:
     """Con el flag encendido, el ``skipped`` sale del precompute, no del flag."""
-    from scheduler.pipeline_runs import _run_ml_tecnologias
+    from scheduler.pipeline_pasos_impl import _run_ml_tecnologias
 
     monkeypatch.setattr(settings, "ML_TECH_ENABLED", True)
     with patch(
@@ -274,7 +274,7 @@ def test_ml_tecnologias_reporta_skipped_con_el_flag_apagado(
     El precompute devolvería un ``ok``: si el paso lo llamara, el ``skipped``
     ya no podría salir.
     """
-    from scheduler.pipeline_runs import _run_ml_tecnologias
+    from scheduler.pipeline_pasos_impl import _run_ml_tecnologias
 
     monkeypatch.setattr(settings, "ML_TECH_ENABLED", False)
     with patch(
@@ -288,7 +288,7 @@ def test_ml_tecnologias_reporta_skipped_con_el_flag_apagado(
 
 def test_el_resumen_del_cierre_propaga_el_skipped_de_ml_scoring() -> None:
     """Es el punto del ítem: que el estado se VEA en el resumen de la pasada."""
-    from scheduler.pipeline_runs import _run_post_ingestion_steps
+    from scheduler.pipeline_cierre import _run_post_ingestion_steps
 
     with _patch_todos(ml_scoring=MagicMock(return_value="skipped")):
         results = _run_post_ingestion_steps()

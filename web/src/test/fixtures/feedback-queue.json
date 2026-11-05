@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "id_externo": "EXP-1",
+      "titulo": "Mantenimiento de la sede electrónica",
+      "descripcion": "Servicio de mantenimiento evolutivo y correctivo de la sede electrónica municipal.",
+      "cpv": "72267000",
+      "importe": 120000,
+      "organo": "Ayuntamiento de Ejemplo",
+      "ccaa": "Madrid",
+      "fecha_publicacion": "2026-10-20",
+      "url_origen": null,
+      "confidence": 0.62,
+      "uncertainty": 0.38,
+      "tecnologia": null,
+      "model": null,
+      "motivo": "familias_distintas",
+      "llm": null,
+      "sin_confianza": false
+    }
+  ],
+  "model_version": null,
+  "senal_clasificador": null,
+  "strategy": "desacuerdo"
+}

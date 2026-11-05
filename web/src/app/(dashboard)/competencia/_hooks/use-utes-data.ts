@@ -17,14 +17,13 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
-import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
 import { disponerRed, marcarSeleccion } from "./utes-red";
 import { filasAlianzas, filasMariposa, serieEvolucion } from "./utes-series";
 
 export function useUtesData() {
-  const { data, isLoading, error, refetch } = useFilteredQuery<Schemas["UTEResult"]>(
+  const { data, isLoading, error, refetch } = useFilteredQuery(
     ["analytics", "utes"],
     "/api/v1/analytics/utes",
     // El error lo pinta la vista en línea (PanelError): sin toast además.

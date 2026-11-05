@@ -160,7 +160,9 @@ class TestSuperficies:
 
     def test_la_busqueda_de_texto_escribe_la_misma_regla(self) -> None:
         """La rama FTS monta su `WHERE` a mano: la cláusula tiene que estar en su código."""
-        fuente = (ROOT / "db" / "repositories" / "licitaciones.py").read_text(encoding="utf-8")
+        fuente = (ROOT / "db" / "repositories" / "licitaciones" / "listado.py").read_text(
+            encoding="utf-8"
+        )
         cuerpo = re.search(r"def _list_fts\(.*?def list_cursor\(", fuente, re.S)
         assert cuerpo, "no se encontró _list_fts"
         assert 'exclude_duplicados_presentacion_sql("l.id_externo")' in cuerpo.group(0)

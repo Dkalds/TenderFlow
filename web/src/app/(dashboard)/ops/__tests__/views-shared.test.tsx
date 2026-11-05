@@ -159,7 +159,7 @@ function mockNonAdminSession() {
     ok: true,
     status: 200,
     json: vi.fn().mockResolvedValue({
-      user_id: "u2",
+      user_id: 2,
       email: "user@test.com",
       display_name: "User",
       is_admin: false,

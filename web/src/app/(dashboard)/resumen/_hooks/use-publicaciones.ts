@@ -19,9 +19,10 @@
 
 import { useMemo } from "react";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { urlApi } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { useFilters } from "@/lib/filters";
-import type { HistogramBin, TimelineScatterResult, TrendPoint, TrendsResult } from "@/lib/api-types";
+import type { HistogramBin, TrendPoint } from "@/lib/api-types";
 import type { TimelineItem } from "../_components/types";
 import {
   leyendaEstados,
@@ -72,9 +73,9 @@ export function useDesdeResumen(): string {
  * «Publicadas 30 d»; salió por repetir el gráfico que va debajo.
  */
 export function useRitmoDiario(desde: string) {
-  return useFilteredQuery<TrendsResult>(
+  return useFilteredQuery(
     ["analytics", "trends", "resumen", desde],
-    "/api/v1/analytics/trends?group_by=day",
+    urlApi("/api/v1/analytics/trends", {}, { group_by: "day" }),
     // El fallo lo pinta el panel (`PanelError`): sin toast encima.
     { staleTime: STALE_MS, meta: META_ERROR_EN_LINEA },
     { fecha_desde: desde },
@@ -86,7 +87,7 @@ export function usePublicaciones(corte: Corte): Publicaciones {
   const desde = useDesdeResumen();
   const trends = useRitmoDiario(desde);
 
-  const timeline = useFilteredQuery<TimelineScatterResult>(
+  const timeline = useFilteredQuery(
     ["analytics", "resumen", "timeline", "muestra", desde],
     "/api/v1/analytics/resumen/timeline",
     { staleTime: STALE_MS, enabled: corte === "dispersion", meta: META_ERROR_EN_LINEA },

@@ -60,7 +60,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, 
 from pydantic import BaseModel, Field, field_validator
 from requests import RequestException
 
-from api.concurrency import run_db
+from api.concurrency import run_db, run_io
 from api.routes.dual_auth import require_admin, require_any_auth
 from api.tenancy import require_organization, resolve_organization_ctx
 from config.settings import settings
@@ -119,6 +119,24 @@ def _validate_webhook_url(url: str) -> str:
     return url
 
 
+async def _validar_url_resuelta(url: str) -> None:
+    """Valida la URL resolviendo su host fuera del event loop.
+
+    No va en el ``field_validator``: ahí ``getaddrinfo`` bloqueaba el loop,
+    corría antes de comprobar el rol, y el motivo del ``ValueError`` («resuelve
+    a una dirección no global», «DNS resolution failed») salía en el 422 —
+    un oráculo para sondear la red interna. El motivo va al log.
+    """
+    try:
+        await run_io(_validate_webhook_url, url)
+    except ValueError as exc:
+        log.info("webhook_url_rechazada", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="La URL del webhook no está permitida.",
+        ) from exc
+
+
 def _idempotency_endpoint(ctx: dict[str, Any]) -> str:
     """Namespace an idempotency key by its authenticated owner."""
     return f"webhook.create:{actor_del_principal(ctx)}"
@@ -156,7 +174,7 @@ class WebhookCreate(BaseModel):
             raise ValueError("URL debe usar https://")
         if len(v) > 500:
             raise ValueError("URL demasiado larga (máx 500 chars)")
-        return _validate_webhook_url(v)
+        return v  # el host se valida en la ruta: `_validar_url_resuelta`
 
     @field_validator("event_types")
     @classmethod
@@ -237,7 +255,7 @@ class WebhookUpdate(BaseModel):
             raise ValueError("URL debe usar https://")
         if len(v) > 500:
             raise ValueError("URL demasiado larga")
-        return _validate_webhook_url(v)
+        return v  # el host se valida en la ruta: `_validar_url_resuelta`
 
     @field_validator("event_types")
     @classmethod
@@ -317,6 +335,7 @@ async def create(
     clave devuelve la respuesta original sin crear un duplicado.
     """
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True, roles=_GESTORES)
+    await _validar_url_resuelta(body.url)
     organization_id = int(ctx["organization_id"])
     formato = normalizar_formato(body.formato)
     response.headers["Cache-Control"] = "no-store"
@@ -554,6 +573,8 @@ async def update(
     ctx: dict[str, Any] = Depends(require_organization(write=True, roles=_GESTORES)),
 ) -> WebhookOut:
     """Actualiza nombre, URL, event_types, formato o active de un webhook."""
+    if body.url is not None:
+        await _validar_url_resuelta(body.url)
     organization_id = int(ctx["organization_id"])
     found = await run_db(
         _repo.update,
@@ -652,7 +673,7 @@ async def ping(
 
     url = str(wh["url"])
     try:
-        _validate_webhook_url(url)
+        await run_io(_validate_webhook_url, url)
     except ValueError as exc:
         log.warning("webhook_ping_ssrf_blocked", webhook_id=webhook_id, error=str(exc))
         return WebhookPingResult(success=False, error=f"SSRF blocked: {exc}")

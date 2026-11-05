@@ -8,13 +8,8 @@
 
 import type { Schemas } from "@/lib/api-types";
 
-export interface TechModel {
-  tech_scores: Record<string, number>;
-  tech_predicted: string[];
-  tech_principal: string | null;
-  tech_max_proba: number;
-  tech_thresholds: Record<string, number>;
-}
+/** Lo que el clasificador dijo de un expediente de la cola. */
+export type TechModel = Schemas["QueueModelBlock"];
 
 /** Lo que propone el LLM para un expediente de la cola por desacuerdo. */
 export type LlmProposal = Schemas["QueueLlmBlock"];
@@ -22,28 +17,12 @@ export type LlmProposal = Schemas["QueueLlmBlock"];
 /** Una etiqueta de la taxonomía (`GET /feedback/taxonomia`): código, nombre y nivel. */
 export type EtiquetaTaxonomia = Schemas["EtiquetaTaxonomia"];
 
-export interface QueueItem {
-  id_externo: string;
-  titulo?: string;
-  descripcion?: string;
-  cpv?: string | null;
-  importe?: number | null;
-  organo?: string | null;
-  ccaa?: string | null;
-  fecha_publicacion?: string | null;
-  url_origen?: string | null;
-  confidence?: number;
-  uncertainty?: number;
-  tecnologia?: string | null;
-  model?: TechModel | null;
-  /** Solo en la cola por desacuerdo: por qué está el expediente en ella. */
-  motivo?: string | null;
-  /** Solo en la cola por desacuerdo: la propuesta del LLM. */
-  llm?: LlmProposal | null;
-  /** El modelo no puntuó la licitación: `confidence` es relleno, no un dato. */
-  sin_confianza?: boolean;
-  [key: string]: unknown;
-}
+/**
+ * Un expediente de `GET /feedback/queue`. `motivo` y `llm` solo llegan en la
+ * cola por desacuerdo; con `sin_confianza` el modelo no puntuó la licitación y
+ * `confidence` es relleno, no un dato.
+ */
+export type QueueItem = Schemas["FeedbackQueueItem"];
 
 /**
  * Si la confianza del clasificador SAP es una señal (D55): solo con una versión
@@ -51,23 +30,43 @@ export interface QueueItem {
  */
 export type SenalClasificador = Schemas["SenalClasificadorDTO"];
 
-export interface QueueResponse {
-  items?: QueueItem[];
-  total?: number;
-  senal_clasificador?: SenalClasificador | null;
-}
+export type QueueResponse = Schemas["FeedbackQueueResult"];
 
+export type ModelInfo = Schemas["ModelInfoResult"];
+
+/** La versión activa del modelo, tal como la pinta la consola. */
 export interface ModelVersionInfo {
-  version: number;
+  version: number | string;
   trained_at: string | null;
   metrics: Record<string, number>;
   trained_on_n_feedbacks?: number | null;
 }
 
-export interface ModelInfo {
-  active: ModelVersionInfo | null;
-  feedbacks_since_train: number;
-  history: { version: number; trained_at: string | null; metrics: Record<string, number> }[];
+/** Solo las métricas numéricas: el registro las guarda como un dict libre. */
+function metricasNumericas(valor: unknown): Record<string, number> {
+  if (typeof valor !== "object" || valor === null) return {};
+  return Object.fromEntries(
+    Object.entries(valor as Record<string, unknown>).filter(
+      (par): par is [string, number] => typeof par[1] === "number",
+    ),
+  );
+}
+
+/**
+ * `active` de `/feedback/model-info` llega sin tipar (`dict[str, Any]` en el
+ * backend): se comprueba su forma aquí en vez de darla por buena.
+ * shortcut: validación local del dict, hasta que el backend lo declare como DTO.
+ */
+export function leerModeloActivo(active: ModelInfo["active"] | undefined): ModelVersionInfo | null {
+  if (!active) return null;
+  const { version, trained_at, metrics, trained_on_n_feedbacks } = active;
+  if (typeof version !== "number" && typeof version !== "string") return null;
+  return {
+    version,
+    trained_at: typeof trained_at === "string" ? trained_at : null,
+    metrics: metricasNumericas(metrics),
+    trained_on_n_feedbacks: typeof trained_on_n_feedbacks === "number" ? trained_on_n_feedbacks : null,
+  };
 }
 
 export type Strategy = "desacuerdo" | "uncertainty" | "random";

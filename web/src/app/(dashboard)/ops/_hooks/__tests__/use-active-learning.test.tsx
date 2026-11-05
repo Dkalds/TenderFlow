@@ -10,21 +10,28 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { callMethod, callUrl, jsonResponse } from "@/hooks/__tests__/fetch-call";
+import { respuestaDeContrato } from "@/test/contrato";
 import type { EtiquetaTaxonomia, QueueItem } from "../../_lib/active-learning";
 import { useActiveLearning } from "../use-active-learning";
 
+// Cada expediente parte del fixture validado contra el OpenAPI.
+const BASE = respuestaDeContrato("/api/v1/feedback/queue").items[0];
+
 const COLA: QueueItem[] = [
   {
+    ...BASE,
     id_externo: "EXP-SI",
     motivo: "familias_distintas",
     llm: { es_ti: true, confianza_es_ti: 0.9, familias: ["DESARROLLO", "SAP"], sin_evidencia: false },
   },
   {
+    ...BASE,
     id_externo: "EXP-NO",
     motivo: "llm_no_reglas_si",
     llm: { es_ti: false, confianza_es_ti: 0.8, familias: [], sin_evidencia: false },
   },
   {
+    ...BASE,
     id_externo: "EXP-SIN-RESPUESTA",
     motivo: "familias_distintas",
     llm: { es_ti: null, confianza_es_ti: null, familias: ["ORACLE"], sin_evidencia: false },

@@ -28,7 +28,11 @@ from pydantic import ValidationError
 from starlette.requests import Request
 
 from api.app import app
-from api.routes import auth, stream
+from api.routes import stream
+from api.routes.auth import contrasena, registro
+
+# Lo que se prueba aquí es el login; sus piezas viven en `api/routes/auth/login.py`.
+from api.routes.auth import login as auth
 from shared.concurrency import KDF_TOKENS, kdf_limiter, reset_limiters
 
 _CORREO = "ana@example.com"
@@ -279,7 +283,7 @@ def test_una_contrasena_buena_sin_acceso_tampoco_deja_fallos() -> None:
     assert [e for e in contadores.eventos if e[0] == "clear" and e[2] == "login_fail"]
 
 
-@pytest.mark.parametrize("modelo", [auth.LoginRequest, auth.RegisterRequest])
+@pytest.mark.parametrize("modelo", [auth.LoginRequest, registro.RegisterRequest])
 def test_las_contrasenas_de_login_y_alta_tienen_tope(modelo: Any) -> None:
     modelo(email=_CORREO, password="a" * 512)
     with pytest.raises(ValidationError):
@@ -294,7 +298,7 @@ def test_el_login_corre_tras_el_bulkhead_del_kdf() -> None:
     fuente = inspect.getsource(auth.login)
     assert "run_kdf(_authenticate)" in fuente
     assert "run_db(_authenticate)" not in fuente
-    assert "run_kdf(_consume)" in inspect.getsource(auth.confirm_password_reset)
+    assert "run_kdf(_consume)" in inspect.getsource(contrasena.confirm_password_reset)
 
 
 # ── run_kdf ──────────────────────────────────────────────────────────────────
@@ -470,12 +474,12 @@ def test_el_alta_abierta_sigue_valiendo_en_dev_y_apagada_en_prod() -> None:
 def test_el_alta_abierta_no_acepta_las_invitaciones_de_la_direccion() -> None:
     """Sin probar el buzón, quien registra primero la dirección heredaba sus invitaciones."""
     with (
-        patch.object(auth.settings, "ALLOW_SELF_REGISTRATION", True),
-        patch("api.routes.auth.get_user_by_email", return_value=None),
-        patch("api.routes.auth.create_user", return_value=7),
-        patch("api.routes.auth._activar_invitaciones") as activar,
-        patch("api.routes.auth._set_session_cookie"),
-        patch("api.routes.auth.log_access"),
+        patch.object(registro.settings, "ALLOW_SELF_REGISTRATION", True),
+        patch("api.routes.auth.registro.get_user_by_email", return_value=None),
+        patch("api.routes.auth.registro.create_user", return_value=7),
+        patch("api.routes.auth.registro._activar_invitaciones") as activar,
+        patch("api.routes.auth.registro._set_session_cookie"),
+        patch("api.routes.auth.registro.log_access"),
     ):
         respuesta = TestClient(app).post(
             "/api/v1/auth/register",

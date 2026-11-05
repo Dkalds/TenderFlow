@@ -217,7 +217,7 @@ def test_un_locked_at_caducado_vuelve_a_pending(tmp_db) -> None:
 
     # Con TTL 0, cualquier lock ya caducó: evita dormir en el test sin tocar
     # el reloj del proceso (el que compara es el del servidor, no el nuestro).
-    assert reclamar_caducados(ttl_segundos=0) == [job_id]
+    assert reclamar_caducados(ttl_segundos=0) == ([job_id], [])
 
     devuelto = obtener(job_id)
     assert devuelto is not None
@@ -235,7 +235,51 @@ def test_un_locked_at_caducado_vuelve_a_pending(tmp_db) -> None:
 def test_un_lock_vivo_no_se_reclama(tmp_db) -> None:
     enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-VIVO", "model": "m"})
     assert claim("worker-1") is not None
-    assert reclamar_caducados(ttl_segundos=900) == []
+    assert reclamar_caducados(ttl_segundos=900) == ([], [])
+
+
+def test_un_job_que_mata_al_proceso_no_se_reencola_sin_fin(tmp_db, monkeypatch) -> None:
+    """Un OOM no pasa por ``fail``: la barrida aplica el tope de intentos.
+
+    Antes cada barrida lo devolvía a ``pending`` con independencia de
+    ``intentos``, así que un pliego que tumbaba al worker lo tumbaba en cada
+    reclamación, para siempre.
+    """
+    monkeypatch.setenv("JOBS_MAX_INTENTOS", "2")
+    job_id = enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-OOM", "model": "m"})
+
+    # Primer intento: el proceso muere; aún le queda uno.
+    assert claim("worker-1") is not None
+    assert reclamar_caducados(ttl_segundos=0) == ([job_id], [])
+
+    # Segundo intento, también muerto: ya no vuelve a la cola.
+    segundo = claim("worker-2")
+    assert segundo is not None and segundo.intentos == 2
+    assert reclamar_caducados(ttl_segundos=0) == ([], [job_id])
+
+    final = obtener(job_id)
+    assert final is not None
+    assert final.estado == "failed"
+    assert final.locked_at is None
+    assert final.error_detail is not None
+    assert "lock caducado tras 2 intentos" in final.error_detail
+    assert claim("worker-3") is None
+
+
+def test_el_fallo_por_lock_caducado_conserva_el_ultimo_error(tmp_db, monkeypatch) -> None:
+    """Si un intento anterior dejó traza, el ``failed`` final no la borra."""
+    monkeypatch.setenv("JOBS_MAX_INTENTOS", "1")
+    job_id = enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-TRAZA", "model": "m"})
+    from db.database import connect
+
+    assert claim("worker-1") is not None
+    with connect() as c:
+        c.execute("UPDATE jobs SET error_detail = 'MemoryError: pliego' WHERE id = %s", (job_id,))
+
+    assert reclamar_caducados(ttl_segundos=0) == ([], [job_id])
+    final = obtener(job_id)
+    assert final is not None and final.error_detail is not None
+    assert "MemoryError: pliego" in final.error_detail
 
 
 # ---------------------------------------------------------------------------
@@ -328,3 +372,74 @@ def test_el_payload_se_serializa_como_json_valido(tmp_db) -> None:
     )
     assert fila is not None
     assert json.loads(fila["payload_json"])["licitacion_id"] == "EXP-Ñ"
+
+
+# ---------------------------------------------------------------------------
+# Métricas y logs del cierre: tipo, espera y duración
+# ---------------------------------------------------------------------------
+
+
+def _muestra(nombre: str, **etiquetas: str) -> float:
+    from prometheus_client import REGISTRY
+
+    return REGISTRY.get_sample_value(nombre, etiquetas) or 0.0
+
+
+def test_medir_cierre_calcula_espera_y_duracion_con_el_reloj_del_servidor() -> None:
+    from services.jobs import _medir_cierre
+
+    run_after = datetime(2026, 11, 4, 12, 0, 0, tzinfo=UTC)
+    cierre = {
+        "tipo": "ficha_pliego",
+        "run_after": run_after,
+        "locked_at": run_after + timedelta(seconds=40),
+        "ahora": run_after + timedelta(seconds=100),
+    }
+
+    assert _medir_cierre(cierre, "done") == {
+        "tipo": "ficha_pliego",
+        "espera_s": 40.0,
+        "duracion_s": 60.0,
+    }
+    # Un job cerrado sin haberlo reclamado nadie solo se cuenta.
+    assert _medir_cierre({**cierre, "locked_at": None}, "done") == {"tipo": "ficha_pliego"}
+    assert _medir_cierre(None, "done") == {}
+
+
+def test_ack_y_fail_cuentan_por_tipo_y_estado(tmp_db) -> None:
+    hechos = _muestra("jobs_terminados_total", tipo=TIPO_FICHA_PLIEGO, estado="done")
+    reintentos = _muestra("jobs_terminados_total", tipo=TIPO_FICHA_PLIEGO, estado="reintento")
+    duraciones = _muestra("jobs_duracion_segundos_count", tipo=TIPO_FICHA_PLIEGO, estado="done")
+    esperas = _muestra("jobs_espera_segundos_count", tipo=TIPO_FICHA_PLIEGO)
+
+    enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-MET-1", "model": "m"})
+    uno = claim("worker-1")
+    assert uno is not None
+    ack(uno.id, {"ok": True})
+
+    enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-MET-2", "model": "m"})
+    dos = claim("worker-1")
+    assert dos is not None
+    assert fail(dos.id, "boom", intentos=dos.intentos) == "pending"
+
+    assert _muestra("jobs_terminados_total", tipo=TIPO_FICHA_PLIEGO, estado="done") == hechos + 1
+    assert (
+        _muestra("jobs_terminados_total", tipo=TIPO_FICHA_PLIEGO, estado="reintento")
+        == reintentos + 1
+    )
+    assert (
+        _muestra("jobs_duracion_segundos_count", tipo=TIPO_FICHA_PLIEGO, estado="done")
+        == duraciones + 1
+    )
+    assert _muestra("jobs_espera_segundos_count", tipo=TIPO_FICHA_PLIEGO) == esperas + 2
+
+
+def test_un_job_muerto_por_lock_caducado_cuenta_como_fallido(tmp_db, monkeypatch) -> None:
+    monkeypatch.setenv("JOBS_MAX_INTENTOS", "1")
+    antes = _muestra("jobs_terminados_total", tipo=TIPO_FICHA_PLIEGO, estado="failed")
+    enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-MET-3", "model": "m"})
+    assert claim("worker-1") is not None
+
+    reclamar_caducados(ttl_segundos=0)
+
+    assert _muestra("jobs_terminados_total", tipo=TIPO_FICHA_PLIEGO, estado="failed") == antes + 1

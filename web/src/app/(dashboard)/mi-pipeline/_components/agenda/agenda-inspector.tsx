@@ -32,6 +32,7 @@
 import type { ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
+import { urlHttp } from "@/lib/url-http";
 import { cn, EMPTY, formatCompactCurrency, formatDate, truncate } from "@/lib/utils";
 import { estadoLabel } from "@/lib/estados";
 import { PanelEmpty, ROTULO_DATO } from "@/components/console/panel";
@@ -85,6 +86,7 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
   const esPursuitOTarea = item?.kind === "pursuit" || item?.kind === "tarea";
   const porCerrar = item?.kind === "pursuit" && bandaDe(item) === "plazo_pasado";
   const estado = item ? estadoDeFila(item) : null;
+  const expediente = urlHttp(item?.url);
 
   return (
     <aside
@@ -121,11 +123,11 @@ export function AgendaInspector({ agenda }: { agenda: Agenda }) {
                   No nos presentamos
                 </Button>
               )}
-              {item.url && (
+              {expediente && (
                 // Enlace a la página del expediente en PLACSP, nunca al documento:
                 // los enlaces directos a pliegos llevan tokens rotativos y caducan.
                 <a
-                  href={item.url}
+                  href={expediente}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={buttonVariants({

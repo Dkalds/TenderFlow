@@ -114,3 +114,45 @@ class TestFeedbackEndpoints:
         resp = client.get("/api/v1/feedback/queue?strategy=uncertainty", headers=auth)
         assert resp.status_code == 200
         assert resp.json()["strategy"] == "random"
+
+
+class TestFeedbackModelInfo:
+    """``GET /feedback/model-info``: el registry real, sin mocks."""
+
+    def test_sin_modelo_registrado_responde_vacio(self, client, auth):
+        resp = client.get("/api/v1/feedback/model-info", headers=auth)
+
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {
+            "name": "sap_classifier",
+            "active": None,
+            "feedbacks_since_train": 0,
+            "history": [],
+        }
+
+    def test_resume_la_version_activa_del_registry(self, client, auth):
+        """El registry guarda la versión como entero; sin convertirla a texto la ruta daba 400."""
+        from db.model_registry import register_version
+
+        version = register_version(
+            name="sap_classifier",
+            path="data/models/sap_classifier.pkl",
+            sha256="a" * 64,
+            metrics={"f1": 0.81},
+            activate=True,
+        )
+
+        resp = client.get("/api/v1/feedback/model-info", headers=auth)
+
+        assert resp.status_code == 200, resp.text
+        cuerpo = resp.json()
+        assert cuerpo["name"] == "sap_classifier"
+        assert cuerpo["active"]["version"] == version
+        assert [h["version"] for h in cuerpo["history"]] == [str(version)]
+        assert cuerpo["history"][0]["metrics"] == {"f1": 0.81}
+        assert cuerpo["feedbacks_since_train"] == 0
+
+    def test_sin_credenciales_es_401(self, client):
+        resp = client.get("/api/v1/feedback/model-info")
+
+        assert resp.status_code == 401, resp.text

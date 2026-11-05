@@ -24,7 +24,7 @@ def _dentro_de(dias: int) -> str:
 def _pasada() -> None:
     """El cierre: el paso diario escribe en el outbox y el despachador reparte."""
     from scheduler.jobs.event_dispatch import dispatch_pending
-    from scheduler.pipeline_runs import _run_documentacion_avisos
+    from scheduler.pipeline_pasos_impl import _run_documentacion_avisos
 
     assert _run_documentacion_avisos() == "ok"
     dispatch_pending()

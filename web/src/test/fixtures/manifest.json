@@ -2,6 +2,27 @@
   "_comentario": "Cada fixture declara la operacion del OpenAPI contra la que se valida. Lo verifica scripts/check_contract_fixtures.py.",
   "fixtures": [
     {
+      "fixture": "auth-me.json",
+      "method": "GET",
+      "path": "/api/v1/auth/me",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "feedback-queue.json",
+      "method": "GET",
+      "path": "/api/v1/feedback/queue",
+      "kind": "response",
+      "status": "200"
+    },
+    {
+      "fixture": "admin-users.json",
+      "method": "GET",
+      "path": "/api/v1/admin/users",
+      "kind": "response",
+      "status": "200"
+    },
+    {
       "fixture": "organizations.json",
       "method": "GET",
       "path": "/api/v1/organizations",

@@ -5,7 +5,6 @@ import { ROTULO_DATO } from "@/components/console/panel";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { cn, EMPTY, formatCompactCurrency, formatNumber, formatPercent } from "@/lib/utils";
-import type { AnalyticsOverview } from "@/lib/api-types";
 
 /**
  * Las cifras del periodo — lo publicado en 30 días y lo que se puso en juego.
@@ -32,7 +31,7 @@ import type { AnalyticsOverview } from "@/lib/api-types";
  * composición; aquí las cifras quedan en raya.
  */
 export function CifrasPeriodo({ className }: { className?: string }) {
-  const overview = useFilteredQuery<AnalyticsOverview>(
+  const overview = useFilteredQuery(
     ["analytics", "overview"],
     "/api/v1/analytics/overview",
     { staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },

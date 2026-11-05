@@ -237,6 +237,33 @@ def _solo_owner_asigna_admin(acting_role: str, role: str) -> None:
         raise OrganizationPermissionError("Solo un owner puede asignar el rol admin.")
 
 
+def _require_manager(user_id: int, organization_id: int) -> str:
+    """Solo owner o admin gestionan invitaciones; un ``member`` recibe 403. Devuelve el rol."""
+    _, role = resolve_organization(user_id, organization_id)
+    if role not in {"owner", "admin"}:
+        raise OrganizationPermissionError("Solo owner o admin puede gestionar miembros.")
+    return role
+
+
+def _rechazar_personal(organization_id: int) -> None:
+    """A la organización personal de alguien no se añade ni se invita a nadie.
+
+    Quien entrara no podría salir (``salir_de_organizacion`` la rechaza), y el
+    dato de la personal es de su dueño, no corporativo.
+    """
+    if _repo.es_personal(organization_id):
+        raise OrganizationPermissionError("No se puede añadir a nadie a una organización personal.")
+
+
+def _comprobar_cuota_invitaciones(user_id: int) -> None:
+    """Altas directas e invitaciones comparten el tope diario de quien las emite."""
+    ayer = datetime.now(UTC) - timedelta(days=1)
+    if _repo.contar_invitaciones_desde(user_id, ayer) >= MAX_INVITACIONES_POR_DIA:
+        raise OrganizationQuotaError(
+            f"Has alcanzado el máximo de {MAX_INVITACIONES_POR_DIA} invitaciones al día."
+        )
+
+
 def add_member_by_email(
     user_id: int,
     organization_id: int,
@@ -254,19 +281,25 @@ def add_member_by_email(
     quedaría quien la fijó. Esa persona pasa por la invitación, que se canjea
     al demostrar el buzón.
     """
-    _, acting_role = resolve_organization(user_id, organization_id)
-    if acting_role not in {"owner", "admin"}:
-        raise OrganizationPermissionError("Solo owner o admin puede gestionar miembros.")
+    acting_role = _require_manager(user_id, organization_id)
     _solo_owner_asigna_admin(acting_role, role)
+    _rechazar_personal(organization_id)
     target = get_active_user_by_email_ci(email, solo_verificadas=True)
     if target is None:
         raise OrganizationMemberNotFoundError(
             "No existe una cuenta activa con ese correo. La persona debe registrarse primero."
         )
-    _guard_owner_row(organization_id, int(target["id"]))
+    target_id = int(target["id"])
+    _guard_owner_row(organization_id, target_id)
+    # La misma guarda que ``upsert_membership``: el alta es un upsert, y sin
+    # ella un admin degradaba o reactivaba a otro admin repitiendo su correo.
+    rol_actual = _repo.get_membership_role(organization_id, target_id)
+    if acting_role != "owner" and rol_actual == "admin" and target_id != user_id:
+        raise OrganizationPermissionError("Solo un owner puede cambiar a otro admin.")
+    _comprobar_cuota_invitaciones(user_id)
     row = _repo.add_membership(
         organization_id,
-        int(target["id"]),
+        target_id,
         role,
         invited_by_user_id=user_id,
         status="active",
@@ -361,14 +394,6 @@ def _to_invitation_dto(row: dict[str, Any]) -> OrganizationInvitationOut:
     )
 
 
-def _require_manager(user_id: int, organization_id: int) -> str:
-    """Solo owner o admin gestionan invitaciones; un ``member`` recibe 403. Devuelve el rol."""
-    _, role = resolve_organization(user_id, organization_id)
-    if role not in {"owner", "admin"}:
-        raise OrganizationPermissionError("Solo owner o admin puede gestionar miembros.")
-    return role
-
-
 def _send_invitation_email(email: str, organization_name: str, token: str) -> bool:
     """Entrega el enlace sin escribir el token en logs ni en ningún otro sitio.
 
@@ -453,11 +478,8 @@ def create_invitation(
     organization = _repo.get_for_user(organization_id, user_id)
     if organization is None:
         raise OrganizationAccessError("No perteneces a esta organización.")
-    ayer = datetime.now(UTC) - timedelta(days=1)
-    if _repo.contar_invitaciones_desde(user_id, ayer) >= MAX_INVITACIONES_POR_DIA:
-        raise OrganizationQuotaError(
-            f"Has alcanzado el máximo de {MAX_INVITACIONES_POR_DIA} invitaciones al día."
-        )
+    _rechazar_personal(organization_id)
+    _comprobar_cuota_invitaciones(user_id)
 
     token, token_hash = _issue_invitation_token()
     row = _repo.create_invitation(

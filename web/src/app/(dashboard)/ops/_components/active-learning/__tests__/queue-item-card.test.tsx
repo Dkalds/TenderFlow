@@ -8,12 +8,14 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { respuestaDeContrato } from "@/test/contrato";
 import type { EtiquetaTaxonomia, QueueItem } from "../../../_lib/active-learning";
 import { QueueItemCard } from "../queue-item-card";
 
 type Props = ComponentProps<typeof QueueItemCard>;
 
 const ITEM: QueueItem = {
+  ...respuestaDeContrato("/api/v1/feedback/queue").items[0],
   id_externo: "EXP-1",
   titulo: "Mantenimiento de la sede electrónica",
   motivo: "familias_distintas",

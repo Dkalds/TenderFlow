@@ -1,6 +1,6 @@
 import { useQuery, keepPreviousData, type UseQueryOptions } from "@tanstack/react-query";
 import { useFilterParams } from "@/lib/filters";
-import { fetchWithAuth } from "@/lib/api-client";
+import { fetchWithAuth, type ApiGetPath, type ApiGetResult, type UrlApi } from "@/lib/api-client";
 import { filteredQueryKey, filteredQueryUrl, mergeFilteredParams } from "@/lib/filtered-query";
 
 /**
@@ -8,10 +8,11 @@ import { filteredQueryKey, filteredQueryUrl, mergeFilteredParams } from "@/lib/f
  * in the query key and URL.
  *
  * Uses fetchWithAuth from api-client.ts for centralized auth handling
- * (401 redirect, error formatting). No puede pasar por `apiGet`: la ruta es un
- * parámetro en runtime, no un literal del esquema, así que quien tipa la
- * respuesta es el llamante vía `T`. Los call sites viven en `src/app/**` y
- * `src/components/**` — olas siguientes de la migración.
+ * (401 redirect, error formatting). La ruta es una `ApiGetPath` (o una
+ * `UrlApi` de `urlApi()` cuando lleva `{param}` o query fija), y el tipo de la
+ * respuesta sale del esquema generado, como en `apiGet`. Hasta 2026-11 el
+ * llamante lo escribía a mano en `T` y así llegó a producción un `ScoredItem`
+ * con un `id` que la API no manda.
  *
  * La petición lleva el `signal` de React Query. Cambiar un filtro deja la
  * consulta anterior sin observadores y React Query la aborta: en Resumen son
@@ -21,7 +22,7 @@ import { filteredQueryKey, filteredQueryUrl, mergeFilteredParams } from "@/lib/f
  * silencio, sin pasar por el `onError` de la caché.
  *
  * @param baseKey - React Query cache key
- * @param url - API endpoint path (without query string)
+ * @param url - API route from the schema (without filters)
  * @param options - Additional React Query options
  * @param extraParams - Additional params merged with global filters
  * @param isRealtime - If true, does NOT use keepPreviousData (shows loading
@@ -29,10 +30,10 @@ import { filteredQueryKey, filteredQueryUrl, mergeFilteredParams } from "@/lib/f
  * @param overrideParams - Params that win over the global filters (see
  *   `mergeFilteredParams`): only for params that identify the resource.
  */
-export function useFilteredQuery<T>(
+export function useFilteredQuery<P extends ApiGetPath>(
   baseKey: string[],
-  url: string,
-  options?: Omit<UseQueryOptions<T>, "queryKey" | "queryFn">,
+  url: P | UrlApi<P>,
+  options?: Omit<UseQueryOptions<ApiGetResult<P>>, "queryKey" | "queryFn">,
   extraParams?: Record<string, string>,
   isRealtime?: boolean,
   overrideParams?: Record<string, string>,
@@ -41,11 +42,11 @@ export function useFilteredQuery<T>(
   const merged = mergeFilteredParams(filterParams, extraParams, overrideParams);
   const fullUrl = filteredQueryUrl(url, merged);
 
-  return useQuery<T>({
+  return useQuery<ApiGetResult<P>>({
     // Clave y URL salen de `lib/filtered-query.ts`, el mismo módulo con el que
     // el prefetch en servidor construye las suyas.
     queryKey: filteredQueryKey(baseKey, url, merged),
-    queryFn: ({ signal }) => fetchWithAuth<T>(fullUrl, { signal }),
+    queryFn: ({ signal }) => fetchWithAuth<ApiGetResult<P>>(fullUrl, { signal }),
     ...(isRealtime ? {} : { placeholderData: keepPreviousData }),
     ...options,
   });

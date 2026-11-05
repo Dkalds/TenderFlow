@@ -270,7 +270,7 @@ def test_la_salud_de_la_fuente_que_no_se_escribe_cuenta(monkeypatch: pytest.Monk
 
 
 def test_un_export_analitico_roto_cuenta(monkeypatch: pytest.MonkeyPatch) -> None:
-    from scheduler import pipeline_runs
+    from scheduler import pipeline_pasos_impl
 
     def _roto() -> None:
         raise RuntimeError("duckdb sin postgres_scanner")
@@ -278,7 +278,7 @@ def test_un_export_analitico_roto_cuenta(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr("db.analytics.run_analytics_export", _roto)
     antes = _valor("pipeline_runs_errores_total", "analytics_export")
 
-    pipeline_runs._run_analytics_export()
+    pipeline_pasos_impl._run_analytics_export()
 
     assert _valor("pipeline_runs_errores_total", "analytics_export") == antes + 1
     assert _eventos("error_capturado:pipeline_runs:analytics_export")
@@ -287,7 +287,7 @@ def test_un_export_analitico_roto_cuenta(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_un_aviso_secundario_roto_cuenta_y_los_demas_corren(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from scheduler import pipeline_runs
+    from scheduler import pipeline_pasos_impl
 
     corridos: list[str] = []
 
@@ -314,7 +314,7 @@ def test_un_aviso_secundario_roto_cuenta_y_los_demas_corren(
     )
     antes = _valor("pipeline_runs_errores_total", "avisos_competidores")
 
-    pipeline_runs._run_watchlist_notify()
+    pipeline_pasos_impl._run_watchlist_notify()
 
     assert _valor("pipeline_runs_errores_total", "avisos_competidores") == antes + 1
     assert corridos == ["reglas", "plazos", "adjudicaciones", "actas"]
@@ -323,7 +323,7 @@ def test_un_aviso_secundario_roto_cuenta_y_los_demas_corren(
 def test_encolar_las_actas_roto_cuenta_y_no_tumba_la_pasada(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from scheduler import pipeline_runs
+    from scheduler import pipeline_pasos_impl
 
     def _roto() -> int:
         raise RuntimeError("BD caída")
@@ -336,13 +336,13 @@ def test_encolar_las_actas_roto_cuenta_y_no_tumba_la_pasada(
     monkeypatch.setattr("services.puntuaciones_acta.encolar_pendientes", _roto)
     antes = _valor("pipeline_runs_errores_total", "puntuaciones_acta")
 
-    pipeline_runs._run_watchlist_notify()
+    pipeline_pasos_impl._run_watchlist_notify()
 
     assert _valor("pipeline_runs_errores_total", "puntuaciones_acta") == antes + 1
 
 
 def test_el_aviso_de_un_paso_roto_que_no_sale_cuenta(monkeypatch: pytest.MonkeyPatch) -> None:
-    from scheduler import pipeline_runs
+    from scheduler import pipeline_cierre
 
     def _roto(*_: object, **__: object) -> None:
         raise RuntimeError("buzón caído")
@@ -350,7 +350,7 @@ def test_el_aviso_de_un_paso_roto_que_no_sale_cuenta(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr("observability.alerts.notify", _roto)
     antes = _valor("pipeline_runs_errores_total", "aviso_paso")
 
-    pipeline_runs._notify_step_failure("dlq_retry", RuntimeError("roto"))
+    pipeline_cierre._notify_step_failure("dlq_retry", RuntimeError("roto"))
 
     assert _valor("pipeline_runs_errores_total", "aviso_paso") == antes + 1
 

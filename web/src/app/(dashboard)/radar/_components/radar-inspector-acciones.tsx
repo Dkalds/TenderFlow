@@ -8,6 +8,7 @@ import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
 import { Button } from "@/components/ui/button";
 import type { AccionAplazar, RadarTender } from "@/hooks/use-radar";
 import { fuenteLinkLabel } from "@/lib/fuentes";
+import { urlHttp } from "@/lib/url-http";
 
 /**
  * Barra de acciones del inspector, fija al pie.
@@ -63,6 +64,7 @@ export function InspectorAcciones({
 }) {
   const [plazo, setPlazo] = React.useState<number>(7);
   const selectId = React.useId();
+  const anuncio = urlHttp(tender.url);
 
   return (
     <div data-slot="radar-inspector-acciones" className="flex-none border-t border-divider bg-card">
@@ -152,12 +154,12 @@ export function InspectorAcciones({
             {opening && <Loader2 className="animate-spin" aria-hidden="true" />}
             Abrir oportunidad
           </Button>
-          {tender.url && (
+          {anuncio && (
             <a
-              href={tender.url}
+              href={anuncio}
               target="_blank"
               rel="noreferrer"
-              aria-label={`${fuenteLinkLabel(tender.fuente, tender.url)}${AVISO_PESTANA_NUEVA}`}
+              aria-label={`${fuenteLinkLabel(tender.fuente, anuncio)}${AVISO_PESTANA_NUEVA}`}
               className="tf-pressable grid size-8.5 flex-none place-items-center rounded-md border border-border text-muted-foreground hover:text-foreground"
             >
               <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />

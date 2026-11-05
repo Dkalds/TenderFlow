@@ -3,19 +3,22 @@
  *
  * Covers: renders children for admin, shows fallback for non-admin,
  *         shows loading skeleton while session resolves, redirects
- *         to login when unauthenticated.
+ *         to login when unauthenticated, and does not when `/auth/me` failed.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionProvider } from "@/lib/auth";
+import { respuestaDeContrato } from "@/test/contrato";
 
-// Mock next/navigation
+const push = vi.fn();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push }),
   usePathname: () => "/admin",
 }));
+
+const YO = respuestaDeContrato("/api/v1/auth/me");
 
 import { AdminGuard } from "@/components/admin-guard";
 
@@ -45,16 +48,12 @@ function mockFetchMe(status: number, body: unknown) {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  push.mockReset();
 });
 
 describe("AdminGuard", () => {
   it("renders children when user is admin", async () => {
-    mockFetchMe(200, {
-      user_id: "u1",
-      email: "admin@test.com",
-      display_name: "Admin",
-      is_admin: true,
-    });
+    mockFetchMe(200, { ...YO, is_admin: true });
     render(
       <AdminGuard>
         <div data-testid="admin-content">Admin Content</div>
@@ -67,12 +66,7 @@ describe("AdminGuard", () => {
   });
 
   it("shows access restricted when user is not admin", async () => {
-    mockFetchMe(200, {
-      user_id: "u2",
-      email: "user@test.com",
-      display_name: "User",
-      is_admin: false,
-    });
+    mockFetchMe(200, { ...YO, user_id: 2, is_admin: false });
     render(
       <AdminGuard>
         <div data-testid="admin-content">Admin Content</div>
@@ -85,12 +79,7 @@ describe("AdminGuard", () => {
   });
 
   it("renders custom fallback when user is not admin", async () => {
-    mockFetchMe(200, {
-      user_id: "u2",
-      email: "user@test.com",
-      display_name: "User",
-      is_admin: false,
-    });
+    mockFetchMe(200, { ...YO, user_id: 2, is_admin: false });
     render(
       <AdminGuard fallback={<div data-testid="custom-fallback">No access</div>}>
         <div data-testid="admin-content">Admin Content</div>
@@ -100,6 +89,31 @@ describe("AdminGuard", () => {
     const fallback = await screen.findByTestId("custom-fallback");
     expect(fallback).toBeDefined();
     expect(fallback.textContent).toBe("No access");
+  });
+
+  it("sin sesión (401) manda a /login", async () => {
+    mockFetchMe(401, { detail: "Unauthorized" });
+    render(
+      <AdminGuard>
+        <div>Admin Content</div>
+      </AdminGuard>,
+      { wrapper: createWrapper() },
+    );
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/login"));
+  });
+
+  it("si /auth/me falla (5xx) pinta el error con Reintentar y no manda a /login", async () => {
+    mockFetchMe(503, { detail: "Arrancando" });
+    render(
+      <AdminGuard>
+        <div data-testid="admin-content">Admin Content</div>
+      </AdminGuard>,
+      { wrapper: createWrapper() },
+    );
+    expect(await screen.findByText("No se pudo comprobar tu sesión")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /reintentar/i })).toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("admin-content")).toBeNull();
   });
 
   it("shows loading skeleton while session resolves", () => {

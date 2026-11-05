@@ -502,7 +502,14 @@ async def get_adjudicaciones_empresa(
 
 class WatchlistEmpresaRequest(BaseModel):
     empresa_id: int = Field(..., ge=1)
-    email: str | None = Field(None, max_length=200, description="Destino de alertas")
+    email: str | None = Field(
+        None,
+        max_length=200,
+        description=(
+            "Obsoleto: las alertas van siempre al correo de la cuenta. Si se manda, "
+            "tiene que ser ese mismo correo (422 si no)."
+        ),
+    )
     frequency: str = Field("daily", pattern="^(immediate|daily|weekly)$")
     organization_id: int | None = Field(default=None, ge=1)
     visibility: str = Field(default="private", pattern="^(private|organization)$")
@@ -651,6 +658,14 @@ async def post_watchlist(
     ctx: dict[str, Any] = Depends(require_any_auth),
 ) -> WatchlistEmpresaStatus:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
+    # Las alertas salen al correo de la sesión, como las reglas de watchlist:
+    # aceptar uno cualquiera convertía la vigilancia en un envío a terceros.
+    correo = ctx.get("email")
+    if body.email and body.email.strip().lower() != str(correo or "").strip().lower():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Las alertas van al correo de tu cuenta; no se puede indicar otro.",
+        )
     ambito = idem_scope(
         "competitive_watchlist",
         actor=_user_key(ctx),
@@ -660,7 +675,7 @@ async def post_watchlist(
         user_key=_user_key(ctx),
         user_id=int(ctx["user_id"]),
         empresa_id=body.empresa_id,
-        email=body.email or ctx.get("email"),
+        email=correo,
         frequency=body.frequency,
         organization_id=ctx["organization_id"],
         visibility=body.visibility,

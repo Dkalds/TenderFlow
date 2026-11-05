@@ -1166,7 +1166,7 @@ export interface paths {
         put?: never;
         /**
          * Revocar todas las sesiones activas
-         * @description Revoca todas las sesiones server-side del usuario.
+         * @description Revoca todas las sesiones server-side del usuario, también las de clientes MCP.
          */
         post: operations["logout_all_api_v1_auth_logout_all_post"];
         delete?: never;
@@ -17070,7 +17070,7 @@ export interface components {
         WatchlistEmpresaRequest: {
             /**
              * Email
-             * @description Destino de alertas
+             * @description Obsoleto: las alertas van siempre al correo de la cuenta. Si se manda, tiene que ser ese mismo correo (422 si no).
              */
             email?: string | null;
             /** Empresa Id */
@@ -20155,7 +20155,10 @@ export interface operations {
     };
     ask_question_api_v1_ask_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -25343,7 +25346,10 @@ export interface operations {
     };
     extract_tender_fact_sheet_api_v1_licitaciones__id_externo__ficha_pliego_extract_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -25470,7 +25476,10 @@ export interface operations {
     };
     post_guion_oferta_api_v1_licitaciones__id_externo__guion_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -25716,7 +25725,10 @@ export interface operations {
     };
     resumen_licitacion_api_v1_licitaciones__id_externo__resumen_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };

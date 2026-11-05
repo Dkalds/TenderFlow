@@ -3,95 +3,22 @@
 import type { Schemas } from "@/lib/api-types";
 import { formatPercent } from "@/lib/utils";
 
-export interface CompanyIdentity {
-  empresa_id: number;
-  nombre: string;
-  nif: string | null;
-  es_ute: boolean;
-  grupo: string | null;
-}
-
-export interface CompanyTotals {
-  contratos: number;
-  importe_total: number;
-  importe_mediano: number | null;
-  ofertas_medias: number | null;
-  baja_media_pct: number | null;
-  pct_oferta_unica: number | null;
-  cobertura_ofertas_pct: number;
-  primera_adjudicacion: string | null;
-  ultima_adjudicacion: string | null;
-  organos: number;
-  territorios: number;
-  familias_cpv: number;
-}
-
-export interface CompanyBreakdown {
-  codigo: string | null;
-  label: string;
-  cpv2?: string | null;
-  ccaa?: string | null;
-  organo?: string | null;
-  contratos: number;
-  importe: number;
-  cuota_empresa_pct: number;
-}
-
-export interface CompanyYear {
-  anio: number;
-  contratos: number;
-  importe: number;
-}
-
-export interface CompanyPosition {
-  rank: number | null;
-  empresas: number;
-  cuota_pct: number | null;
-  importe_segmento: number;
-}
-
-export interface CompanyComparison {
-  desde: string;
-  hasta: string;
-  anterior_desde: string;
-  anterior_hasta: string;
-  contratos: number;
-  contratos_anterior: number;
-  variacion_contratos_pct: number | null;
-  importe: number;
-  importe_anterior: number;
-  variacion_importe_pct: number | null;
-}
-
-export interface CompanyConcentration {
-  organo_principal: string | null;
-  top1_contratos_pct: number;
-  top1_importe_pct: number;
-  top3_importe_pct: number;
-}
-
-export interface CompanyMovement {
-  kind: string;
-  tone: "positive" | "neutral" | "warning" | "negative";
-  title: string;
-  detail: string;
-}
-
-export interface CompanyScope {
-  fecha_desde: string | null;
-  fecha_hasta: string | null;
-  cpv: string | null;
-  ccaas: string[];
-  tecnologias: string[];
-  importe_min: number | null;
-}
-
-export interface CompanyHistory {
-  contratos: number;
-  importe_total: number;
-  primera_adjudicacion: string | null;
-  ultima_adjudicacion: string | null;
-}
+/*
+ * El dossier de `GET /competitive/empresas/{empresa_id}/perfil`, con las
+ * formas del esquema generado. Hasta 2026-11 eran interfaces escritas a mano
+ * que daban por presentes listas que la API declara opcionales.
+ */
+export type CompanyProfileData = Schemas["CompetitiveCompanyProfileDTO"];
+export type CompanyIdentity = Schemas["CompetitiveCompanyIdentityDTO"];
+export type CompanyTotals = Schemas["CompetitiveCompanyTotalsDTO"];
+export type CompanyBreakdown = Schemas["CompetitiveCompanyBreakdownDTO"];
+export type CompanyYear = Schemas["CompetitiveCompanyYearDTO"];
+export type CompanyPosition = Schemas["CompetitiveCompanyPositionDTO"];
+export type CompanyComparison = Schemas["CompetitiveCompanyComparisonDTO"];
+export type CompanyConcentration = Schemas["CompetitiveCompanyConcentrationDTO"];
+export type CompanyMovement = Schemas["CompetitiveCompanySignalDTO"];
+export type CompanyScope = Schemas["CompetitiveCompanyScopeDTO"];
+export type CompanyHistory = Schemas["CompetitiveCompanyHistoryDTO"];
 
 /**
  * UTE en la que la empresa participa como miembro (`CompetitiveCompanyUteParticipationDTO`).
@@ -102,35 +29,7 @@ export interface CompanyHistory {
  * como empresa propia en la cuota de mercado, así que sumar estos importes a
  * los totales del dossier contaría el mismo dinero dos veces.
  */
-export interface CompanyUteParticipation {
-  ute_empresa_id: number;
-  ute_nombre: string;
-  otros_miembros: string[];
-  contratos: number;
-  importe_total: number;
-}
-
-export interface CompanyProfileData {
-  empresa: CompanyIdentity;
-  scope: CompanyScope;
-  actividad_historica: CompanyHistory;
-  totales: CompanyTotals;
-  posicion_mercado: CompanyPosition;
-  comparacion: CompanyComparison;
-  concentracion_clientes: CompanyConcentration;
-  por_cpv: CompanyBreakdown[];
-  por_ccaa: CompanyBreakdown[];
-  organos_principales: CompanyBreakdown[];
-  por_anio: CompanyYear[];
-  movimientos: CompanyMovement[];
-  participaciones_ute: CompanyUteParticipation[];
-  /** F3.5 — cortes por procedimiento y por tramo de importe (contrato generado). */
-  por_procedimiento?: CompanyCorte[];
-  por_tramo_importe?: CompanyCorte[];
-  corte_min_n?: number;
-  /** Dónde puntúa según las actas de la mesa leídas; nulo si no figura en ninguna. */
-  puntuaciones_acta?: CompanyActaScores | null;
-}
+export type CompanyUteParticipation = Schemas["CompetitiveCompanyUteParticipationDTO"];
 
 /** Celda de un corte F3.5: `baja_media` en tanto por uno, nula bajo el mínimo. */
 export type CompanyCorte = Schemas["CompetitiveCompanyCorteDTO"];
@@ -158,26 +57,8 @@ export function lecturaActas(acta: CompanyActaScores): string | null {
   return "Puntúa parecido en precio y en lo técnico.";
 }
 
-export interface CompanyAward {
-  licitacion_id: string;
-  titulo: string | null;
-  organo_contratacion: string | null;
-  fecha_adjudicacion: string | null;
-  cpv: string | null;
-  ccaa: string | null;
-  tecnologia: string | null;
-  presupuesto_licitacion: number | null;
-  importe_adjudicado: number | null;
-  baja_pct: number | null;
-  n_ofertas_recibidas: number | null;
-}
-
-export interface CompanyAwardsData {
-  items: CompanyAward[];
-  total: number;
-  limit: number;
-  offset: number;
-}
+export type CompanyAward = Schemas["CompetitiveCompanyAwardDTO"];
+export type CompanyAwardsData = Schemas["CompetitiveCompanyAwardsDTO"];
 
 const CPV_FAMILY_LABELS: Record<string, string> = {
   "30": "Equipamiento informático y oficina",
@@ -210,8 +91,8 @@ export function variacionFrenteAnterior(delta: number | null | undefined, detall
 
 export function buildExecutiveSummary(profile: CompanyProfileData): string {
   const parts: string[] = [];
-  const topCpv = profile.por_cpv[0];
-  const topRegion = profile.por_ccaa[0];
+  const topCpv = profile.por_cpv?.[0];
+  const topRegion = profile.por_ccaa?.[0];
   const concentration = profile.concentracion_clientes;
   const delta = profile.comparacion.variacion_importe_pct;
 

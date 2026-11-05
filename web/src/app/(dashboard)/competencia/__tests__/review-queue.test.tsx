@@ -29,7 +29,9 @@ vi.mock("@/lib/api-client", async (importOriginal) => ({
 
 const ITEMS: ReviewItem[] = [
   {
-    id: 1,
+    alias_normalizado: null,
+    created_at: null,
+    id:1,
     nombre_original: "INDRA SISTEMAS S.A",
     nif: "A28599033",
     score: 0.97,
@@ -38,7 +40,9 @@ const ITEMS: ReviewItem[] = [
     candidato_nif: "A28599033",
   },
   {
-    id: 3,
+    alias_normalizado: null,
+    created_at: null,
+    id:3,
     nombre_original: "AYESA ADVANCED TECHNOLOGIES SA",
     nif: "B41002205",
     score: 0.91,
@@ -47,7 +51,9 @@ const ITEMS: ReviewItem[] = [
     candidato_nif: "A41002205",
   },
   {
-    id: 7,
+    alias_normalizado: null,
+    created_at: null,
+    id:7,
     nombre_original: "BABEL SISTEMAS DE INFORMACION SL",
     nif: null,
     score: 0.79,

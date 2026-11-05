@@ -122,14 +122,9 @@ class PlacspWatchedCompanyAwardsConnector:
 
     def new_cursor(self) -> dict[str, Any] | None:
         """Cursor propio de este carril, separado del radar tecnológico."""
-        newest = self._meta.get("newest_updated") or self._last_seen_updated
-        if newest is None and not self._meta.get("etag"):
-            return None
-        return {
-            "last_seen_updated": newest,
-            "etag": self._meta.get("etag"),
-            "last_modified": self._meta.get("last_modified"),
-        }
+        from scraper.atom_live import cursor_siguiente
+
+        return cursor_siguiente(self._meta, self._last_seen_updated)
 
 
 class PlacspWatchedCompanyAwardsBulkConnector(PlacspWatchedCompanyAwardsConnector):

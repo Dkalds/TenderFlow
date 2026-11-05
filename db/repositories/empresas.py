@@ -49,11 +49,35 @@ _LISTA_GROUP = (
 # apuntan a los alias de salida del propio SELECT, que Postgres admite en
 # ``ORDER BY`` (es lo que ya hacía el orden fijo por importe).
 _ORDEN_EXPR: dict[str, str] = {
-    "nombre": "LOWER(e.nombre_canonico)",
-    "nif": "e.nif_canonico",
     "contratos": "n_adjudicaciones",
     "importe": "importe_total",
 }
+
+#: Órdenes que no dependen de los agregados: con ellos la página se corta sobre
+#: ``empresas`` y solo sus filas se agregan (``LATERAL`` sobre
+#: ``idx_adj_empresa``), en vez de agrupar todas las adjudicaciones del maestro
+#: para tirar todo menos ``limit`` filas. ``contratos`` e ``importe`` necesitan
+#: el agregado de todas para saber cuáles van primero: siguen por
+#: ``_LISTA_SELECT`` (precalcularlo sería una tabla o vista nueva, migración).
+_ORDEN_SIN_AGREGADOS: dict[str, str] = {
+    "nombre": "LOWER({t}.nombre_canonico)",
+    "nif": "{t}.nif_canonico",
+}
+
+_PAGINA_PRIMERO = (
+    "SELECT p.empresa_id, p.nombre_canonico, p.nif_canonico, p.es_ute, p.es_pyme, "
+    "       g.nombre AS grupo, agg.n_adjudicaciones, agg.importe_total "
+    "FROM (SELECT e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, e.es_pyme, "
+    "             e.grupo_id "
+    "      FROM empresas e {where}{orden_e}LIMIT %s OFFSET %s) p "
+    "LEFT JOIN grupos_empresariales g ON g.grupo_id = p.grupo_id "
+    "CROSS JOIN LATERAL ("
+    "  SELECT COUNT(a.id) AS n_adjudicaciones, "
+    "         COALESCE(SUM(a.importe_adjudicado), 0) AS importe_total "
+    "  FROM adjudicaciones a WHERE a.empresa_id = p.empresa_id"
+    ") agg "
+    "{orden_p}"
+)
 
 _COUNT_SELECT = "SELECT COUNT(*) FROM empresas e "
 
@@ -92,15 +116,19 @@ class EmpresasReadRepository:
         # empresas con el mismo importe pueden cruzarse entre la página 1 y la
         # 2 y una de ellas no aparece en ninguna.
         direction = "ASC" if order == "asc" else "DESC"
-        orden = f"ORDER BY {_ORDEN_EXPR[sort]} {direction} NULLS LAST, e.empresa_id ASC "
+        if sort in _ORDEN_SIN_AGREGADOS:
+            expr = _ORDEN_SIN_AGREGADOS[sort]
+            sql = _PAGINA_PRIMERO.format(
+                where=where,
+                orden_e=f"ORDER BY {expr.format(t='e')} {direction} NULLS LAST, e.empresa_id ASC ",
+                orden_p=f"ORDER BY {expr.format(t='p')} {direction} NULLS LAST, p.empresa_id ASC",
+            )
+        else:
+            orden = f"ORDER BY {_ORDEN_EXPR[sort]} {direction} NULLS LAST, e.empresa_id ASC "
+            sql = _LISTA_SELECT + where + _LISTA_GROUP + orden + "LIMIT %s OFFSET %s"
 
         with connect_read() as c:
-            rows = rows_to_dicts(
-                c.execute(
-                    _LISTA_SELECT + where + _LISTA_GROUP + orden + "LIMIT %s OFFSET %s",
-                    [*params, limit, offset],
-                )
-            )
+            rows = rows_to_dicts(c.execute(sql, [*params, limit, offset]))
             total_row = c.execute(_COUNT_SELECT + where, params).fetchone()
         return rows, int(total_row[0] if total_row else 0)
 

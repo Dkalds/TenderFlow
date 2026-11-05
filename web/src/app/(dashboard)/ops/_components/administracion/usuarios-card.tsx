@@ -96,7 +96,7 @@ export function UsuariosCard() {
         header: "Acciones",
         cell: ({ row }) => {
           const usuario = row.original;
-          if (miId != null && String(usuario.id) === miId) {
+          if (usuario.id === miId) {
             return <div className="text-right text-tf-meta text-muted-foreground">Tu cuenta</div>;
           }
           const armada = confirmando?.id === usuario.id ? confirmando.accion : null;

@@ -105,6 +105,28 @@ try:
         buckets=(1.0, 5.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0),
     )
 
+    # ── Cola de trabajo (`jobs`, ADR-028) ─────────────────────────────────────
+    # `tipo` es un conjunto cerrado (`services.jobs.TIPOS`): cardinalidad acotada.
+    jobs_terminados_total: _CounterMetric = Counter(
+        "jobs_terminados_total",
+        "Cierres de jobs de la cola por tipo y estado",
+        ["tipo", "estado"],  # estado: done | reintento | failed | lock_caducado
+    )
+
+    jobs_duracion_segundos: _HistogramMetric = Histogram(
+        "jobs_duracion_segundos",
+        "Duración de un intento de job, de la reclamación al cierre",
+        ["tipo", "estado"],
+        buckets=(1.0, 5.0, 15.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0),
+    )
+
+    jobs_espera_segundos: _HistogramMetric = Histogram(
+        "jobs_espera_segundos",
+        "Espera en cola de un job: de run_after a la reclamación",
+        ["tipo"],
+        buckets=(0.5, 1.0, 5.0, 15.0, 30.0, 60.0, 300.0, 900.0, 3600.0, 14400.0),
+    )
+
     # ── DB pool ───────────────────────────────────────────────────────────────
     # Etiquetadas por pool: hay uno de escritura y otro de lectura (ADR-025).
     db_pool_size: _GaugeMetric = Gauge(
@@ -316,6 +338,9 @@ except ImportError:  # pragma: no cover
     ml_inference_duration_seconds = _NoopMetric()
     scheduler_job_total = _NoopMetric()
     scheduler_job_duration_seconds = _NoopMetric()
+    jobs_terminados_total = _NoopMetric()
+    jobs_duracion_segundos = _NoopMetric()
+    jobs_espera_segundos = _NoopMetric()
     db_pool_size = _NoopMetric()
     db_pool_connections = _NoopMetric()
     db_pool_requests_waiting = _NoopMetric()

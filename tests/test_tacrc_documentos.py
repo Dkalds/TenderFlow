@@ -42,6 +42,33 @@ def test_la_referencia_es_un_adjunto_additional_con_identidad_estable():
     )
 
 
+def test_registrar_documentos_escribe_todas_las_licitaciones_en_un_lote(monkeypatch):
+    """Una escritura por pasada, no una por licitación; la que falla no cuenta."""
+    filas = [
+        {"licitacion_id": "A", "numero_resolucion": "1/2026", "url_pdf": "https://x.es/1.pdf"},
+        {"licitacion_id": "A", "numero_resolucion": "2/2026", "url_pdf": "https://x.es/2.pdf"},
+        {"licitacion_id": "B", "numero_resolucion": "3/2026", "url_pdf": "https://x.es/3.pdf"},
+    ]
+    lotes: list[dict[str, list[object]]] = []
+
+    class _Repo:
+        def upsert_meta(self, *_a: object) -> int:
+            raise AssertionError("una escritura por licitación")
+
+        def upsert_meta_batch(self, docs: dict[str, list[object]]) -> dict[str, Exception]:
+            lotes.append(docs)
+            return {"B": RuntimeError("roto")}
+
+    monkeypatch.setattr(
+        "db.resoluciones.resoluciones_vinculadas_sin_documento", lambda *_a, **_k: filas
+    )
+    monkeypatch.setattr("db.repositories.documentos.DocumentosRepository", _Repo)
+
+    assert registrar_documentos() == 2  # las dos de A; la de B falló
+    assert len(lotes) == 1
+    assert {lic: len(refs) for lic, refs in lotes[0].items()} == {"A": 2, "B": 1}
+
+
 def test_una_url_ya_escapada_no_se_escapa_dos_veces():
     url = "https://www.hacienda.gob.es/tacrc/documentos/resoluci%c3%b3n%20recurso%201028-2022.pdf"
     assert referencia_documento("1156/2022", url).uri == url

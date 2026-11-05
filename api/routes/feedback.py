@@ -441,7 +441,11 @@ async def feedback_model_info(
     """
     from db.model_registry import active_model_summary
 
-    return ModelInfoResult(**await run_db(active_model_summary))
+    resumen = await run_db(active_model_summary)
+    # El registry guarda la versión como entero y el contrato la publica como texto:
+    # sin convertirla, cualquier versión registrada hacía fallar la validación (400).
+    resumen["history"] = [{**h, "version": str(h["version"])} for h in resumen["history"]]
+    return ModelInfoResult(**resumen)
 
 
 @router.get(

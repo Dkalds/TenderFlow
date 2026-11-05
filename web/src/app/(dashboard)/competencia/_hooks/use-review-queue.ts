@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { apiMutate, fetchWithAuth, type ApiGetResult } from "@/lib/api-client";
+import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { empresasKeys } from "@/lib/query-keys";
 
@@ -23,19 +24,7 @@ import { empresasKeys } from "@/lib/query-keys";
 
 export const UNDO_MS = 6000;
 
-export interface ReviewItem {
-  id: number;
-  nombre_original: string | null;
-  nif: string | null;
-  score: number | null;
-  candidato_empresa_id: number | null;
-  candidato_nombre: string | null;
-  candidato_nif: string | null;
-}
-
-interface ReviewsResponse {
-  items: ReviewItem[];
-}
+export type ReviewItem = Schemas["EmpresaReviewItem"];
 
 /** Una decisión tomada y todavía no enviada. */
 interface DecisionPendiente {
@@ -57,9 +46,9 @@ export function useReviewQueue({
   onCommitError?: () => void;
 }) {
   const queryClient = useQueryClient();
-  const query = useQuery<ReviewsResponse>({
+  const query = useQuery({
     queryKey: empresasKeys.reviews,
-    queryFn: () => fetchWithAuth("/api/v1/empresas/reviews?limit=100"),
+    queryFn: () => fetchWithAuth<ApiGetResult<"/api/v1/empresas/reviews">>("/api/v1/empresas/reviews?limit=100"),
     enabled,
     // El fallo se dice en la propia cola (PanelError): sin toast además.
     meta: META_ERROR_EN_LINEA,

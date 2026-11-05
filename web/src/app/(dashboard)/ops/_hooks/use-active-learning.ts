@@ -14,12 +14,13 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { apiGet, apiMutate } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { feedbackKeys } from "@/lib/query-keys";
 import { useFeedbackStats, useTaxonomiaTecnologias, type FeedbackStats } from "@/hooks/use-feedback";
 import {
   headlineMetric,
+  leerModeloActivo,
   type EtiquetaTaxonomia,
   type HeadlineMetric,
   type ModelInfo,
@@ -81,14 +82,14 @@ export function useActiveLearning(): ActiveLearning {
 
   const colaQuery = useQuery<QueueResponse>({
     queryKey: feedbackKeys.queue(strategy),
-    queryFn: () => fetchWithAuth<QueueResponse>(`/api/v1/feedback/queue?strategy=${strategy}&limit=20`),
+    queryFn: () => apiGet("/api/v1/feedback/queue", { params: { query: { strategy, limit: 20 } } }),
     meta: META_ERROR_EN_LINEA, // el fallo lo pinta la cola (`PanelError`): sin toast encima
   });
   const { data: queue, isLoading: queueLoading } = colaQuery;
 
   const { data: modelInfo } = useQuery<ModelInfo>({
     queryKey: feedbackKeys.modelInfo,
-    queryFn: () => fetchWithAuth<ModelInfo>("/api/v1/feedback/model-info"),
+    queryFn: () => apiGet("/api/v1/feedback/model-info"),
   });
 
   const { data: stats, isLoading: statsLoading } = useFeedbackStats();
@@ -113,14 +114,15 @@ export function useActiveLearning(): ActiveLearning {
       }),
     onSuccess: (_data, vars) => {
       setDismissed((prev) => new Set(prev).add(vars.expediente));
-      queryClient.invalidateQueries({ queryKey: feedbackKeys.stats });
+      void queryClient.invalidateQueries({ queryKey: feedbackKeys.stats });
     },
     meta: { errorTitle: "No se pudo guardar la etiqueta" },
   });
 
   const items = useMemo(() => queue?.items ?? [], [queue]);
   const pendingItems = items.filter((it) => !dismissed.has(it.id_externo));
-  const queueSize = queue?.total ?? items.length;
+  // La API no manda un total de la cola: el tamaño es lo que vino.
+  const queueSize = items.length;
   const { seleccionDe, selectTech, toggleTech, clearSelection } = useSeleccionEtiquetas(items);
 
   const techCounts: Record<string, number> = {};
@@ -131,7 +133,7 @@ export function useActiveLearning(): ActiveLearning {
     }
   }
 
-  const activeModel = modelInfo?.active ?? null;
+  const activeModel = leerModeloActivo(modelInfo?.active);
   const metric = activeModel ? headlineMetric(activeModel.metrics) : null;
   const prevMetric =
     metric && modelInfo && modelInfo.history.length > 1

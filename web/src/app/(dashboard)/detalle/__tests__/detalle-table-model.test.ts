@@ -14,7 +14,6 @@ import {
   conTotalConocido,
   conjuntoDelListado,
   mergeRows,
-  type ScoringResponse,
 } from "../_hooks/detalle-table-model";
 import { cierreParams } from "../_hooks/use-cierre-recorte";
 import { PAGINATION, row } from "./detalle-fixtures";
@@ -138,7 +137,8 @@ describe("buildScoreMap", () => {
 
   it("tolera undefined y respuestas sin oportunidades", () => {
     expect(buildScoreMap(undefined).size).toBe(0);
-    expect(buildScoreMap({ opportunities: [] } as ScoringResponse).size).toBe(0);
+    expect(buildScoreMap({ opportunities: [] }).size).toBe(0);
+    expect(buildScoreMap({}).size).toBe(0);
   });
 });
 

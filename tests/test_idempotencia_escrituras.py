@@ -86,6 +86,46 @@ class TestCaducidad:
         assert _caducada(naive) is False
 
 
+def _envejecer(clave: str, endpoint: str, created_at: str) -> None:
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "UPDATE idempotency_keys SET created_at = %s WHERE idem_key = %s AND endpoint = %s",
+            (created_at, clave, endpoint),
+        )
+
+
+@pytest.mark.parametrize(
+    "marca_vieja",
+    [
+        (datetime.now(UTC) - timedelta(seconds=settings.IDEMPOTENCY_TTL_SECONDS + 60)).isoformat(),
+        "no es una fecha",
+    ],
+    ids=["pasada-del-ttl", "ilegible"],
+)
+def test_una_clave_caducada_se_reemplaza_al_guardar(tmp_db, marca_vieja: str) -> None:
+    """Con `DO NOTHING` la marca vieja quedaba y cada reintento repetía el efecto."""
+    from db.idempotency import cached_response, store_response
+
+    store_response("k", "ep", {"v": 1})
+    _envejecer("k", "ep", marca_vieja)
+    assert cached_response("k", "ep") is None
+
+    store_response("k", "ep", {"v": 2})
+
+    assert cached_response("k", "ep") == {"v": 2}
+
+
+def test_una_clave_vigente_no_se_pisa(tmp_db) -> None:
+    from db.idempotency import cached_response, store_response
+
+    store_response("k", "ep", {"v": 1})
+    store_response("k", "ep", {"v": 2})
+
+    assert cached_response("k", "ep") == {"v": 1}
+
+
 class TestContrato:
     """Las cuatro rutas declaran la cabecera en el OpenAPI."""
 

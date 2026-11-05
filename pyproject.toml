@@ -190,7 +190,6 @@ ignore = [
 "db/repositories/adjudicaciones.py" = ["S608"]
 "db/repositories/api_keys.py" = ["S608"]
 "db/repositories/extraction_runs.py" = ["S608"]
-"db/repositories/licitaciones.py" = ["S608"]  # SQL filter builder uses validated column names
 "db/repositories/watchlist.py" = ["S608"]
 "db/repositories/webhooks.py" = ["S608"]
 "api/routes/ask.py" = ["S608"]  # FTS5 query with validated user input via parameterized queries

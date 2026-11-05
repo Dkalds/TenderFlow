@@ -78,14 +78,9 @@ class FeedSindicacionPlacsp:
             yield RawNotice(natural_id=updated_str or "unknown", payload=(entry_elem, updated_str))
 
     def new_cursor(self) -> dict[str, Any] | None:
-        newest = self._meta.get("newest_updated") or self._last_seen_updated
-        if newest is None and not self._meta.get("etag"):
-            return None
-        return {
-            "last_seen_updated": newest,
-            "etag": self._meta.get("etag"),
-            "last_modified": self._meta.get("last_modified"),
-        }
+        from scraper.atom_live import cursor_siguiente
+
+        return cursor_siguiente(self._meta, self._last_seen_updated)
 
     def parse(self, raw: RawNotice) -> ParsedTender | None:  # pragma: no cover — abstracto
         raise NotImplementedError

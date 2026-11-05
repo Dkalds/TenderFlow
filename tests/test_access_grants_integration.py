@@ -78,7 +78,7 @@ def _login_permitido(email: str) -> bool:
     mitad estática en «no», que es lo que pasa en producción, para que la
     respuesta dependa solo de ``access_grants``.
     """
-    from api.routes.auth import _oauth_access_allowed
+    from api.routes.auth.comun import _oauth_access_allowed
 
     with patch("services.access_grants.oauth_email_allowed", return_value=False):
         return asyncio.run(_oauth_access_allowed(email))

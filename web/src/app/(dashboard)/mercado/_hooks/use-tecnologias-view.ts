@@ -14,79 +14,16 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
-export interface TecnologiaItem {
-  tecnologia: string;
-  count: number;
-  importe: number;
-  importe_medio: number;
-  pct: number;
-  pct_adjudicado: number;
-}
+// Las formas salen del esquema generado (`useFilteredQuery` las deriva de la ruta).
+export type TecnologiaItem = Schemas["TecnologiaEntry"];
+export type TecnologiasResponse = Schemas["TecnologiasResult"];
+export type DetalleResponse = Schemas["TecnologiaDetalleResult"];
 
-export interface CrossOrganoItem {
-  organo: string;
-  tecnologia: string;
-  count: number;
-}
-
-export interface CrossGeoItem {
-  ccaa: string;
-  tecnologia: string;
-  count: number;
-}
-
-export interface EvolucionItem {
-  mes: string;
-  tecnologia: string;
-  count: number;
-  importe: number;
-}
-
-export interface TecnologiasResponse {
-  tecnologias: TecnologiaItem[];
-  sin_clasificar: number;
-  total?: number;
-  n_tecnologias: number;
-  tecnologia_lider: string | null;
-  lider_count: number;
-  importe_medio_global: number;
-  tasa_adjudicacion_media: number;
-  cross_organo: CrossOrganoItem[];
-  cross_geo: CrossGeoItem[];
-  evolucion_mensual: EvolucionItem[];
-}
-
-export interface DetalleItem {
-  id_externo: string;
-  titulo: string | null;
-  organo_contratacion: string | null;
-  importe: number | null;
-  estado: string | null;
-  ccaa: string | null;
-  fecha_publicacion: string | null;
-}
-
-export interface DetalleResponse {
-  tecnologia: string;
-  n: number;
-  importe_total: number;
-  importe_medio: number;
-  items: DetalleItem[];
-}
-
-export interface ScoredItem {
-  id: string;
-  titulo: string;
-  importe: number;
-  score: number;
-  organo_contratacion?: string;
-}
-
-interface ScoringResponse {
-  opportunities: ScoredItem[];
-}
+/** Oportunidad puntuada tal como la da `/analytics/scoring`: el id es `id_externo`. */
+export type ScoredItem = Schemas["ScoredOpportunity"];
 
 /** Fila de cualquiera de los dos gráficos de barras: el ítem más su color. */
 export type BarItem = TecnologiaItem & { _color: string };
@@ -124,7 +61,7 @@ export function useTecnologiasView() {
   const [selectedTech, setSelectedTech] = useState<string>("");
   const [trendMetric, setTrendMetric] = useState<TrendMetric>("count");
 
-  const { data, isLoading, error, refetch } = useFilteredQuery<TecnologiasResponse>(
+  const { data, isLoading, error, refetch } = useFilteredQuery(
     ["analytics", "tecnologias"],
     "/api/v1/analytics/tecnologias",
     // El error lo pinta la vista en línea (PanelError): sin toast además.
@@ -145,7 +82,7 @@ export function useTecnologiasView() {
     isLoading: detalleLoading,
     error: detalleError,
     refetch: refetchDetalle,
-  } = useFilteredQuery<DetalleResponse>(
+  } = useFilteredQuery(
     ["analytics", "tecnologias", "detail", selectedTech],
     "/api/v1/analytics/tecnologias/detail",
     { enabled: !!selectedTech, staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
@@ -155,7 +92,7 @@ export function useTecnologiasView() {
   );
 
   // Top scored opportunities
-  const { data: scoringData } = useFilteredQuery<ScoringResponse>(
+  const { data: scoringData } = useFilteredQuery(
     ["analytics", "scoring", "top20"],
     "/api/v1/analytics/scoring",
     { staleTime: 5 * 60 * 1000 },

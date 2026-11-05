@@ -23,15 +23,15 @@ viaja en la misma transacción que el ``SELECT``: si el proceso muere entre
 ambos, no hay ambos — o la fila sigue ``pending`` o ya está reclamada.
 
 ``intentos`` se incrementa **al reclamar**, no al fallar. Es lo que acota
-también los fallos que no dejan traza (el proceso muere a mitad): el job vuelve
-a ``pending`` por ``reclamar_caducados`` con su intento ya contado, en vez de
-girar para siempre.
+también los fallos que no dejan traza (el proceso muere a mitad):
+``reclamar_caducados`` ve el intento ya contado y, si era el último, lo deja
+``failed`` en vez de devolverlo a ``pending`` para siempre.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, TypedDict
 
 from db.database import connect, connect_read
 
@@ -60,6 +60,33 @@ _RETURNING = ", ".join(f"j.{c}" for c in _COLUMNAS)
 def _fila(valores: Any) -> dict[str, Any]:
     """Empareja una tupla del cursor con :data:`_COLUMNAS`."""
     return dict(zip(_COLUMNAS, valores, strict=True))
+
+
+_RETURNING_CIERRE = "RETURNING j.tipo, a.run_after, a.locked_at, NOW()"
+
+
+class CierreJob(TypedDict):
+    """Cómo era un intento justo antes de cerrarlo, y cuándo se cerró."""
+
+    tipo: str
+    run_after: datetime
+    locked_at: datetime | None
+    ahora: datetime
+
+
+class JobCaducado(TypedDict):
+    """Un job liberado por la barrida de locks y el estado en que quedó."""
+
+    id: int
+    estado: str
+    tipo: str
+
+
+def _cierre(fila: tuple[str, datetime, datetime | None, datetime] | None) -> CierreJob | None:
+    """Fila de :data:`_RETURNING_CIERRE`, o ``None`` si el job no existía."""
+    if not fila:
+        return None
+    return CierreJob(tipo=str(fila[0]), run_after=fila[1], locked_at=fila[2], ahora=fila[3])
 
 
 class JobsRepository:
@@ -130,25 +157,38 @@ class JobsRepository:
             ).fetchone()
         return _fila(fila) if fila else None
 
-    def marcar_terminado(self, job_id: int, *, resultado_json: str | None) -> None:
+    # Los tres cierres devuelven cómo era el intento ANTES de cerrarlo —tipo,
+    # ``run_after`` y ``locked_at``— y el ``NOW()`` del cierre: con eso
+    # ``services.jobs`` mide la espera en cola y la duración con el reloj del
+    # servidor, sin otro viaje. El ``FROM jobs a`` es la misma fila leída con
+    # la instantánea de la sentencia, es decir, antes de que el ``SET`` vacíe
+    # ``locked_at``. ``None`` si el job no existía.
+
+    def marcar_terminado(self, job_id: int, *, resultado_json: str | None) -> CierreJob | None:
         """``done``: suelta el lock y guarda el resultado."""
         with connect() as c:
-            c.execute(
-                "UPDATE jobs SET estado = 'done', resultado_json = %s, error_detail = NULL, "
-                "locked_by = NULL, locked_at = NULL, updated_at = NOW() WHERE id = %s",
+            fila = c.execute(
+                "UPDATE jobs j SET estado = 'done', resultado_json = %s, error_detail = NULL, "
+                "locked_by = NULL, locked_at = NULL, updated_at = NOW() "
+                "FROM jobs a WHERE j.id = %s AND a.id = j.id " + _RETURNING_CIERRE,
                 (resultado_json, job_id),
-            )
+            ).fetchone()
+        return _cierre(fila)
 
-    def marcar_fallido(self, job_id: int, *, error_detail: str) -> None:
+    def marcar_fallido(self, job_id: int, *, error_detail: str) -> CierreJob | None:
         """``failed`` definitivo: se agotaron los intentos."""
         with connect() as c:
-            c.execute(
-                "UPDATE jobs SET estado = 'failed', error_detail = %s, "
-                "locked_by = NULL, locked_at = NULL, updated_at = NOW() WHERE id = %s",
+            fila = c.execute(
+                "UPDATE jobs j SET estado = 'failed', error_detail = %s, "
+                "locked_by = NULL, locked_at = NULL, updated_at = NOW() "
+                "FROM jobs a WHERE j.id = %s AND a.id = j.id " + _RETURNING_CIERRE,
                 (error_detail[:4000], job_id),
-            )
+            ).fetchone()
+        return _cierre(fila)
 
-    def reprogramar(self, job_id: int, *, error_detail: str, run_after: datetime) -> None:
+    def reprogramar(
+        self, job_id: int, *, error_detail: str, run_after: datetime
+    ) -> CierreJob | None:
         """Devuelve el job a ``pending`` con su próxima ventana (backoff).
 
         ``error_detail`` se conserva entre intentos a propósito: si el job acaba
@@ -156,33 +196,46 @@ class JobsRepository:
         aunque el proceso que lo intentó muriera sin poder contarlo.
         """
         with connect() as c:
-            c.execute(
-                "UPDATE jobs SET estado = 'pending', run_after = %s, error_detail = %s, "
-                "locked_by = NULL, locked_at = NULL, updated_at = NOW() WHERE id = %s",
+            fila = c.execute(
+                "UPDATE jobs j SET estado = 'pending', run_after = %s, error_detail = %s, "
+                "locked_by = NULL, locked_at = NULL, updated_at = NOW() "
+                "FROM jobs a WHERE j.id = %s AND a.id = j.id " + _RETURNING_CIERRE,
                 (run_after, error_detail[:4000], job_id),
-            )
+            ).fetchone()
+        return _cierre(fila)
 
-    def reclamar_caducados(self, *, ttl_segundos: int) -> list[int]:
-        """Devuelve a ``pending`` los ``running`` cuyo lock caducó.
+    def reclamar_caducados(self, *, ttl_segundos: int, max_intentos: int) -> list[JobCaducado]:
+        """Libera los ``running`` cuyo lock caducó; una fila ``{id, estado, tipo}`` por job.
 
         Es la red que hace verdad la promesa de S5.3: un despliegue mata al
         worker en mitad de una extracción, su ``locked_at`` deja de refrescarse
         y, pasado el TTL, otro worker la termina. Sin esto el job se quedaría
         ``running`` para siempre y el usuario sondeando un estado muerto.
 
+        Los que ya gastaron ``max_intentos`` pasan a ``failed`` y no a
+        ``pending``: un job que mata al proceso (OOM con un pliego enorme) no
+        llega nunca a ``services.jobs.fail``, que es donde se aplica el tope, y
+        sin este corte se reencolaba —y volvía a tumbar al worker— sin fin.
+
         El ``make_interval`` va parametrizado y no interpolado: el TTL viene de
         configuración y no tiene por qué ser un literal de confianza.
         """
         with connect() as c:
             filas = c.execute(
-                "UPDATE jobs SET estado = 'pending', locked_by = NULL, locked_at = NULL, "
-                "updated_at = NOW() "
+                "UPDATE jobs SET "
+                "estado = CASE WHEN intentos >= %(max)s THEN 'failed' ELSE 'pending' END, "
+                "error_detail = CASE WHEN intentos >= %(max)s THEN LEFT("
+                "'lock caducado tras ' || intentos || ' intentos: el proceso que lo "
+                "ejecutaba murió sin cerrarlo'"
+                " || COALESCE(' (último error registrado: ' || error_detail || ')', ''), 4000"
+                ") ELSE error_detail END, "
+                "locked_by = NULL, locked_at = NULL, updated_at = NOW() "
                 "WHERE estado = 'running' AND locked_at IS NOT NULL "
-                "AND locked_at < NOW() - make_interval(secs => %s) "
-                "RETURNING id",
-                (float(ttl_segundos),),
+                "AND locked_at < NOW() - make_interval(secs => %(ttl)s) "
+                "RETURNING id, estado, tipo",
+                {"max": max_intentos, "ttl": float(ttl_segundos)},
             ).fetchall()
-        return [int(f[0]) for f in filas]
+        return [JobCaducado(id=int(f[0]), estado=str(f[1]), tipo=str(f[2])) for f in filas]
 
     # ── Lectura ──────────────────────────────────────────────────────────
 
@@ -403,4 +456,4 @@ class JobsRepository:
         return [dict(zip(columnas, f, strict=True)) for f in filas]
 
 
-__all__ = ["JobsRepository"]
+__all__ = ["CierreJob", "JobCaducado", "JobsRepository"]

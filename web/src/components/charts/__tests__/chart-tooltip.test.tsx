@@ -31,6 +31,11 @@ describe("ChartTooltip", () => {
     expect(screen.getByText("Contratos:")).toBeInTheDocument();
   });
 
+  it("un valor de rango ([min, max]) se lee «min–max»", () => {
+    render(<ChartTooltip active payload={[{ name: "Banda", value: [10, 20] }]} />);
+    expect(screen.getByText("10–20")).toBeInTheDocument();
+  });
+
   it("falls back to dataKey when name is missing", () => {
     render(<ChartTooltip active payload={[{ dataKey: "pct", value: 42 }]} />);
     expect(screen.getByText("pct:")).toBeInTheDocument();

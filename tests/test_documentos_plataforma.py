@@ -182,6 +182,9 @@ class _RepoFalso:
     def __init__(self, filas: list[dict[str, Any]]) -> None:
         self.filas = filas
         self.escritos: dict[str, list[DocumentoReferencia]] = {}
+        #: Llamadas a ``upsert_meta_batch``; las filas de ``fallan`` no se escriben.
+        self.lotes = 0
+        self.fallan: set[str] = set()
 
     def pscp_vigentes_para_documentos(self, limit: int = 200) -> list[dict[str, Any]]:
         return self.filas[:limit]
@@ -192,6 +195,15 @@ class _RepoFalso:
     def upsert_meta(self, licitacion_id: str, refs: list[DocumentoReferencia]) -> int:
         self.escritos[licitacion_id] = refs
         return len(refs)
+
+    def upsert_meta_batch(
+        self, docs_por_lic: dict[str, list[DocumentoReferencia]]
+    ) -> dict[str, Exception]:
+        self.lotes += 1
+        for lic, refs in docs_por_lic.items():
+            if lic not in self.fallan:
+                self.escritos[lic] = refs
+        return {lic: RuntimeError("roto") for lic in docs_por_lic if lic in self.fallan}
 
 
 @pytest.fixture()
@@ -284,6 +296,18 @@ def test_completar_ted_da_el_anuncio_a_cada_candidata(repo_falso):
     ]
     assert set(repo.escritos) == {"ted:1-2026", "ted:2-2026"}
     assert resumen.con_documentos == 2
+    assert repo.lotes == 1  # una escritura para todas, no una por fila
+
+
+def test_completar_ted_cuenta_la_fila_que_no_se_pudo_escribir(repo_falso):
+    repo = repo_falso([{"id_externo": "ted:1-2026"}, {"id_externo": "ted:2-2026"}])
+    repo.fallan = {"ted:2-2026"}
+
+    resumen = dp.completar_documentos_ted()
+
+    assert set(repo.escritos) == {"ted:1-2026"}
+    assert (resumen.con_documentos, resumen.referencias, resumen.fallidas) == (1, 1, 1)
+    assert resumen.errores == ["ted:2-2026: roto"]
 
 
 # ── Conectores y runner ──────────────────────────────────────────────────────

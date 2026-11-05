@@ -68,7 +68,7 @@ def lectura(monkeypatch: pytest.MonkeyPatch) -> Callable[[bool], None]:
 @pytest.fixture()
 def sentencias(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     import db.repositories.aggregates as agg
-    import db.repositories.licitaciones as lic
+    import db.repositories.licitaciones.listado as lic
     import db.repositories.publico as pub
 
     capturadas: list[str] = []

@@ -59,7 +59,7 @@ export function OrganoPerfil({
   /** Posición del órgano en el ranking por la medida activa. */
   rango: number | null;
   ordenTxt: string;
-  ccaa?: string;
+  ccaa?: string | null;
   detalle: OrganoDetailResponse | undefined;
   isLoading: boolean;
   /** El fallo de la consulta del órgano: se dice, no se disfraza de «sin datos». */
@@ -158,8 +158,8 @@ export function OrganoPerfil({
           <>
             <AdjudicatariosCuota adjudicatarios={detalle.top_adjudicatarios ?? []} />
             <div className="flex min-w-0 flex-col gap-4">
-              {detalle.estacionalidad?.length > 0 && <CuandoPublica estacionalidad={detalle.estacionalidad} />}
-              {detalle.top_scored?.length > 0 && <MejorPuntuadas items={detalle.top_scored} />}
+              {detalle.estacionalidad?.length ? <CuandoPublica estacionalidad={detalle.estacionalidad} /> : null}
+              {detalle.top_scored?.length ? <MejorPuntuadas items={detalle.top_scored} /> : null}
             </div>
           </>
         ) : (

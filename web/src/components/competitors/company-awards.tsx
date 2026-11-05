@@ -84,15 +84,15 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
         );
       };
       const primera = await pedirPagina(0);
-      const rows: CompanyAward[] = [...primera.items];
+      const rows: CompanyAward[] = [...(primera.items ?? [])];
       // El paso es lo que devolvió la primera página: el backend puede recortar el `limit`.
-      const paso = primera.items.length;
+      const paso = rows.length;
       const restantes: number[] = [];
       if (paso > 0) for (let o = paso; o < primera.total; o += paso) restantes.push(o);
       // De tres en tres: en paralelo, pero sin disparar decenas de peticiones a la vez.
       for (let i = 0; i < restantes.length; i += 3) {
         const paginas = await Promise.all(restantes.slice(i, i + 3).map(pedirPagina));
-        for (const pagina of paginas) rows.push(...pagina.items);
+        for (const pagina of paginas) rows.push(...(pagina.items ?? []));
       }
 
       const header = [
@@ -210,7 +210,7 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
                     </TableCell>
                   </TableRow>
                 ))
-              ) : !data?.items.length ? (
+              ) : !data?.items?.length ? (
                 <TableRow>
                   <TableCell colSpan={6} className="h-28 text-center text-muted-foreground">
                     No hay adjudicaciones que coincidan con estos filtros.

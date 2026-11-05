@@ -361,7 +361,7 @@ def test_un_despliegue_a_mitad_no_pierde_el_trabajo(tmp_db) -> None:
 
     # El despliegue mata al proceso: nadie hace ack ni fail. Con TTL 0 la
     # barrida ve el lock caducado sin tener que dormir.
-    assert reclamar_caducados(ttl_segundos=0) == [job_id]
+    assert reclamar_caducados(ttl_segundos=0) == ([job_id], [])
 
     with patch(
         "scheduler.worker.ejecutar_ficha_pliego",
@@ -382,10 +382,11 @@ def test_un_despliegue_a_mitad_no_pierde_el_trabajo(tmp_db) -> None:
 
 def test_el_cierre_por_cola_deja_una_fila_por_paso(tmp_db) -> None:
     from db.repositories.jobs import JobsRepository
-    from scheduler.pipeline_runs import CANONICAL_STEPS, _cierre_por_cola
+    from scheduler.pipeline_cierre import _cierre_por_cola
+    from scheduler.pipeline_runs import CANONICAL_STEPS
 
     objetivos = {f"_run_{name}": MagicMock() for name in CANONICAL_STEPS}
-    with patch.multiple("scheduler.pipeline_runs", **objetivos):
+    with patch.multiple("scheduler.pipeline_pasos_impl", **objetivos):
         resultados = _cierre_por_cola(lane="daily")
 
     assert set(resultados) == set(CANONICAL_STEPS)
@@ -396,13 +397,14 @@ def test_el_cierre_por_cola_deja_una_fila_por_paso(tmp_db) -> None:
 def test_el_cierre_por_cola_no_reintenta_un_paso_roto(tmp_db) -> None:
     """Reintentar con backoff se comería la ventana de 55 min del job."""
     from db.repositories.jobs import JobsRepository
-    from scheduler.pipeline_runs import CANONICAL_STEPS, _cierre_por_cola
+    from scheduler.pipeline_cierre import _cierre_por_cola
+    from scheduler.pipeline_runs import CANONICAL_STEPS
 
     objetivos: dict[str, object] = {f"_run_{name}": MagicMock() for name in CANONICAL_STEPS}
     objetivos["_run_kpi_precompute"] = MagicMock(side_effect=RuntimeError("boom"))
     with (
-        patch.multiple("scheduler.pipeline_runs", **objetivos),
-        patch("scheduler.pipeline_runs._notify_step_failure"),
+        patch.multiple("scheduler.pipeline_pasos_impl", **objetivos),
+        patch("scheduler.pipeline_cierre._notify_step_failure"),
     ):
         resultados = _cierre_por_cola(lane="daily")
 
