@@ -39,7 +39,11 @@ PUT /api/v1/organizations/{id}/report-schedule
   resueltos en cada envío. Es lo que hace que dar de alta a un administrador
   nuevo no exija acordarse de editar esta lista. Una lista explícita la
   sustituye por completo y admite correos que no son cuentas de la aplicación
-  (una lista de distribución, el buzón de dirección).
+  (una lista de distribución, el buzón de dirección). Un correo de la lista
+  que es de un miembro activo se trata como ese miembro: si apagó el informe
+  no lo recibe, y el suyo lleva su enlace de baja. Los correos externos salen
+  **sin** `List-Unsubscribe`: no tienen preferencias que apagar y darse de
+  baja es quitarlos de la lista (pendiente: un mecanismo de baja propio).
 
 Lo programa quien puede abrir Dirección (owner o admin). El informe **es** esa
 pantalla en un correo: mandarlo a quien no puede abrirla sería enseñarle por

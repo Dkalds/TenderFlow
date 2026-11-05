@@ -234,6 +234,27 @@ def test_una_lista_explicita_sustituye_a_los_administradores(tmp_db: Any) -> Non
     assert destinos == [(None, "direccion@acme.test")]
 
 
+def test_un_miembro_en_la_lista_explicita_conserva_su_baja(tmp_db: Any) -> None:
+    """Estar en la lista no anula su opt-out, y su correo lleva su enlace de baja."""
+    db_mod, _ = tmp_db
+    from db.repositories import notification_preferences as prefs
+    from db.repositories.organizations import OrganizationRepository
+    from scheduler.jobs.informes_programados import TIPO_AVISO, _destinatarios
+
+    owner_id, org_id = _organizacion(db_mod, "jefa@example.test")
+    apagado_id, _ = _organizacion(db_mod, "apagado-lista@example.test", "Suya")
+    OrganizationRepository().add_membership(org_id, apagado_id, "member")
+    prefs.guardar(apagado_id, tipo=TIPO_AVISO, canal="email", frecuencia="off")
+
+    destinos = _destinatarios(
+        {
+            "organization_id": org_id,
+            "destinatarios": ["Jefa@Example.test", "apagado-lista@example.test", "buzon@acme.test"],
+        }
+    )
+    assert destinos == [(owner_id, "Jefa@Example.test"), (None, "buzon@acme.test")]
+
+
 # ── 3. Una organización vacía no recibe correo ──────────────────────────────
 
 

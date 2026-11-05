@@ -133,6 +133,8 @@ export interface AskParams extends StreamCallbacks {
   topK?: number;
   /** Filtros globales sobre el corpus (CCAA, tecnología, rango de publicación). */
   extras?: OpcionesCorpus;
+  /** Organización activa: el gasto cuenta contra su tope diario (C2.9). */
+  organizationId?: number | null;
   signal?: AbortSignal;
 }
 
@@ -141,7 +143,17 @@ export interface ResumenParams extends StreamCallbacks {
   model?: string;
   /** Regenerate ignoring the server-side cache (the "Regenerar" button). */
   force?: boolean;
+  /** Organización activa: el gasto cuenta contra su tope diario (C2.9). */
+  organizationId?: number | null;
   signal?: AbortSignal;
+}
+
+/**
+ * `?organization_id=` de la organización activa, o nada: sin ella el backend
+ * atribuye el gasto a la personal y el tope del equipo no lo ve.
+ */
+function conOrganizacion(url: string, organizationId: number | null | undefined): string {
+  return organizationId != null ? `${url}?organization_id=${organizationId}` : url;
 }
 
 /**
@@ -324,12 +336,13 @@ export async function streamAsk({
   model,
   topK = 10,
   extras,
+  organizationId,
   signal,
   ...callbacks
 }: AskParams): Promise<AskStreamResult> {
   const csrf = getCsrfToken();
   const varios = idsExternos && idsExternos.length > 0 ? idsExternos : undefined;
-  const url = "/api/v1/ask";
+  const url = conOrganizacion("/api/v1/ask", organizationId);
   const res = await fetch(url, {
     method: "POST",
     credentials: "include",
@@ -379,11 +392,15 @@ export async function streamResumen({
   idExterno,
   model,
   force,
+  organizationId,
   signal,
   ...callbacks
 }: ResumenParams): Promise<AskStreamResult> {
   const csrf = getCsrfToken();
-  const url = `/api/v1/licitaciones/${encodeURIComponent(idExterno)}/resumen`;
+  const url = conOrganizacion(
+    `/api/v1/licitaciones/${encodeURIComponent(idExterno)}/resumen`,
+    organizationId,
+  );
   const res = await fetch(url, {
     method: "POST",
     credentials: "include",

@@ -71,43 +71,55 @@ class Resumen:
 def _destinatarios(fila: dict[str, Any]) -> list[tuple[int | None, str]]:
     """``(user_id, email)`` de quien debe recibirlo, ya filtrado por opt-out.
 
-    Con lista explícita el ``user_id`` es ``None``: son correos que alguien
-    escribió y que pueden no corresponder a ninguna cuenta —una lista de
-    distribución, el buzón de dirección—. Esos no tienen preferencia que
-    consultar, y darse de baja de ellos es quitarlos de la lista.
+    Con lista explícita, cada correo que es de un miembro activo de la
+    organización se trata como ese miembro: su opt-out cuenta y el correo lleva
+    su enlace de baja. El resto lleva ``user_id`` ``None``: son correos que
+    alguien escribió y que no corresponden a ninguna cuenta del equipo —una
+    lista de distribución, el buzón de dirección—. Esos no tienen preferencia
+    que consultar, y darse de baja de ellos es quitarlos de la lista.
     """
-    from db.repositories import notification_preferences as prefs
     from db.repositories.organizations import OrganizationRepository
 
     organization_id = int(fila["organization_id"])
-    explicitos = fila.get("destinatarios") or []
+    activos = [
+        m
+        for m in OrganizationRepository().list_members(organization_id)
+        if str(m.get("status") or "active") == "active" and str(m.get("email") or "").strip()
+    ]
+    explicitos = [str(c).strip() for c in fila.get("destinatarios") or [] if str(c).strip()]
     if explicitos:
-        return [(None, str(correo).strip()) for correo in explicitos if str(correo).strip()]
+        por_correo = {str(m["email"]).strip().lower(): int(m["user_id"]) for m in activos}
+        salida: list[tuple[int | None, str]] = []
+        for correo in explicitos:
+            user_id = por_correo.get(correo.lower())
+            if user_id is not None and _lo_apago(user_id, organization_id):
+                continue
+            salida.append((user_id, correo))
+        return salida
 
-    salida: list[tuple[int | None, str]] = []
-    for miembro in OrganizationRepository().list_members(organization_id):
-        if str(miembro.get("role") or "") not in ROLES_POR_DEFECTO:
-            continue
-        if str(miembro.get("status") or "active") != "active":
-            continue
-        correo = str(miembro.get("email") or "").strip()
-        if not correo:
-            continue
-        user_id = int(miembro["user_id"])
-        try:
-            frecuencia = prefs.resolver(
-                user_id, tipo=TIPO_AVISO, canal="email", organization_id=organization_id
-            )
-        except Exception:
-            # Sin preferencia legible se envía: el informe es una función que
-            # el owner activó a propósito, y silenciarlo por un fallo de
-            # lectura sería decidir por él en la dirección menos recuperable.
-            log.warning("informe_prefs_ilegibles", user_id=user_id, exc_info=True)
-            frecuencia = "daily"
-        if frecuencia == "off":
-            continue
-        salida.append((user_id, correo))
-    return salida
+    return [
+        (int(m["user_id"]), str(m["email"]).strip())
+        for m in activos
+        if str(m.get("role") or "") in ROLES_POR_DEFECTO
+        and not _lo_apago(int(m["user_id"]), organization_id)
+    ]
+
+
+def _lo_apago(user_id: int, organization_id: int) -> bool:
+    """Si esa persona puso el informe en ``off`` en el canal ``email``."""
+    from db.repositories import notification_preferences as prefs
+
+    try:
+        frecuencia = prefs.resolver(
+            user_id, tipo=TIPO_AVISO, canal="email", organization_id=organization_id
+        )
+    except Exception:
+        # Sin preferencia legible se envía: el informe es una función que
+        # el owner activó a propósito, y silenciarlo por un fallo de
+        # lectura sería decidir por él en la dirección menos recuperable.
+        log.warning("informe_prefs_ilegibles", user_id=user_id, exc_info=True)
+        return False
+    return frecuencia == "off"
 
 
 def _enviar(fila: dict[str, Any], informe: Any, destinos: list[tuple[int | None, str]]) -> int:

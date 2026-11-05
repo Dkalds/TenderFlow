@@ -232,15 +232,28 @@ def movimientos_vigiladas(
 
 
 def list_all() -> list[dict[str, Any]]:
-    """Todas las entradas con destinatario — para el job de alertas."""
+    """Todas las entradas con destinatario — para el job de alertas.
+
+    Con ``user_id`` el destinatario es el correo **actual** de la cuenta, no el
+    guardado en la fila: la API aceptó durante un tiempo cualquier correo en el
+    alta, y una fila así seguía mandando la vigilancia a un tercero. Una cuenta
+    dada de baja deja de recibir, y una fila sin correo sigue siendo solo en la
+    app. Las filas anteriores a v129, sin ``user_id``, conservan el correo
+    guardado: no hay cuenta con la que contrastarlo.
+    """
     with connect() as c:
         return rows_to_dicts(
             c.execute(
                 "SELECT w.id, w.user_key, w.user_id, w.empresa_id, e.nombre_canonico, "
-                "       w.email, w.frequency, w.last_notified_at, w.organization_id "
+                "       d.email, w.frequency, w.last_notified_at, w.organization_id "
                 "FROM watchlist_empresas w "
                 "JOIN empresas e ON e.empresa_id = w.empresa_id "
-                "WHERE w.email IS NOT NULL AND w.email != ''"
+                "LEFT JOIN users u ON u.id = w.user_id AND u.deactivated_at IS NULL "
+                "CROSS JOIN LATERAL (SELECT CASE WHEN w.user_id IS NULL THEN w.email "
+                "                                ELSE u.email END AS email) d "
+                # `w.email` vacío sigue siendo «solo en la app», como antes.
+                "WHERE w.email IS NOT NULL AND w.email != '' "
+                "  AND d.email IS NOT NULL AND d.email != ''"
             )
         )
 

@@ -44,6 +44,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from api.concurrency import run_db
 from api.identidad import id_vigente, resolver_id_externo
 from api.routes.dual_auth import require_any_auth
+from api.tenancy import require_organization
 from config import settings
 from llm.prompts import ChatMessage, PromptMode
 from observability.logging import get_logger
@@ -265,9 +266,11 @@ def _budget_subject(user: dict[str, Any]) -> str | None:
 def _budget_org(user: dict[str, Any]) -> str | None:
     """Organización a la que atribuir el gasto (C2.9).
 
-    `None` cuando la petición no tiene organización resuelta —una API key sin
-    ámbito, por ejemplo—: entonces solo aplican el global y el del usuario, que
-    es el comportamiento anterior.
+    La pone ``require_organization``: la de ``?organization_id=`` o, sin ella,
+    la personal. El principal de ``require_any_auth`` no la trae, y leerla de
+    ahí dejaba el tope por organización sin aplicar en todas las rutas. `None`
+    solo con un principal sin resolver: entonces aplican el global y el del
+    usuario.
     """
     raw = user.get("organization_id")
     return str(raw) if raw not in (None, "") else None
@@ -837,7 +840,7 @@ async def _stream_ask(
 )
 async def ask_question(
     body: AskRequest,
-    user: dict[str, Any] = Depends(require_any_auth),
+    user: dict[str, Any] = Depends(require_organization()),
 ) -> StreamingResponse:
     """Responde preguntas con contexto del corpus o de una licitación concreta.
 
@@ -910,7 +913,7 @@ async def ask_question(
 )
 async def resumen_licitacion(
     body: ResumenRequest,
-    user: dict[str, Any] = Depends(require_any_auth),
+    user: dict[str, Any] = Depends(require_organization()),
     id_externo: str = Depends(resolver_id_externo),
 ) -> StreamingResponse:
     """Genera (o sirve cacheado) el resumen ejecutivo de la licitación.
