@@ -491,6 +491,24 @@ const eslintConfig = defineConfig([
       "max-lines": ["error", { max: 300, skipBlankLines: false, skipComments: false }],
     },
   },
+
+  // ── Promesas flotantes (2026-11) ───────────────────────────────────────────
+  //
+  // Una promesa que nadie espera ni marca con `void` se traga su error: el
+  // «Enlace copiado» de la paleta salía aunque el portapapeles lo rechazara.
+  // Necesita lint con tipos (`projectService`), así que solo se activa en el
+  // código de producción: en los tests los `act(() => promesa)` son el patrón
+  // de Testing Library y medirlos ahí cuesta tiempo de lint sin cazar nada.
+  {
+    files: ["src/**/*.ts", "src/**/*.tsx"],
+    ignores: ["**/__tests__/**", "**/*.test.ts", "**/*.test.tsx", "src/test/**", "src/generated/**"],
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
+    rules: {
+      "@typescript-eslint/no-floating-promises": "error",
+    },
+  },
 ]);
 
 export default eslintConfig;

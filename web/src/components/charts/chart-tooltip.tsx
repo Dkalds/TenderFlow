@@ -1,6 +1,7 @@
 "use client";
 
-import * as React from "react";
+import type * as React from "react";
+import type { TooltipPayloadEntry } from "recharts";
 import { cn } from "@/lib/utils";
 
 /**
@@ -30,12 +31,26 @@ export interface ChartTooltipRow {
   color?: string;
 }
 
+/**
+ * Lo que el tooltip lee de cada entrada de Recharts (`TooltipPayloadEntry`).
+ * Todo opcional: también la pintan tooltips hechos a mano con objetos sueltos
+ * (`waterfall-chart.tsx`), que no traen el `graphicalItemId` de Recharts.
+ */
+export type ChartTooltipEntry = Partial<
+  Pick<TooltipPayloadEntry, "name" | "value" | "dataKey" | "color" | "fill" | "payload">
+>;
+
+/** El valor de una entrada como texto o número; un rango (`[min, max]`) se lee «min–max». */
+function valorDe(valor: ChartTooltipEntry["value"]): number | string {
+  if (valor == null) return "";
+  return typeof valor === "number" || typeof valor === "string" ? valor : valor.join("–");
+}
+
 export interface ChartTooltipProps {
   /** Injected by Recharts */
   active?: boolean;
   /** Injected by Recharts */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  payload?: any[];
+  payload?: readonly ChartTooltipEntry[];
   /** Injected by Recharts */
   label?: React.ReactNode;
   /** Override the label rendered at the top */
@@ -44,8 +59,7 @@ export interface ChartTooltipProps {
   formatter?: (
     value: number | string,
     name: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    entry: any,
+    entry: ChartTooltipEntry,
   ) => ChartTooltipRow | [React.ReactNode, React.ReactNode] | string;
   /** Hide the series swatch */
   hideSwatch?: boolean;
@@ -64,9 +78,9 @@ export function ChartTooltip({
   if (!active || !payload || payload.length === 0) return null;
 
   const rows: ChartTooltipRow[] = payload.map((entry) => {
-    const rawName: string = entry?.name ?? entry?.dataKey ?? "";
-    const rawValue: number | string = entry?.value ?? "";
-    const fallbackColor: string | undefined = entry?.color ?? entry?.fill;
+    const rawName = String(entry.name ?? (typeof entry.dataKey === "function" ? "" : (entry.dataKey ?? "")));
+    const rawValue = valorDe(entry.value);
+    const fallbackColor = entry.color ?? entry.fill;
 
     if (!formatter) {
       return { name: rawName, value: String(rawValue), color: fallbackColor };

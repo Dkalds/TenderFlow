@@ -114,7 +114,7 @@ export function useActiveLearning(): ActiveLearning {
       }),
     onSuccess: (_data, vars) => {
       setDismissed((prev) => new Set(prev).add(vars.expediente));
-      queryClient.invalidateQueries({ queryKey: feedbackKeys.stats });
+      void queryClient.invalidateQueries({ queryKey: feedbackKeys.stats });
     },
     meta: { errorTitle: "No se pudo guardar la etiqueta" },
   });

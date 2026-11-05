@@ -242,7 +242,7 @@ const CSV_HEADERS = [
   "ccaa",
   "cpv",
   "tecnologia",
-] as const;
+] as const satisfies readonly (keyof LicitacionSummary)[];
 
 /**
  * CSV de las filas exportadas, con comillas escapadas al estilo RFC 4180 y los
@@ -255,7 +255,7 @@ export function buildCsv(rows: LicitacionSummary[]): string {
     CSV_HEADERS.join(","),
     ...rows.map((row) =>
       CSV_HEADERS.map((header) => {
-        const value = (row as unknown as Record<string, unknown>)[header];
+        const value = row[header];
         const text =
           typeof value === "string" ? neutralizarFormula(value) : value == null ? "" : String(value);
         return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
