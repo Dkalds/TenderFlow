@@ -639,6 +639,22 @@ _Sin ítems abiertos._
 
 ## P2 — Media
 
+### [P2] Auditoría del 2026-11-04: lo que quedó pendiente de migración o de decisión
+- **Área:** cola, retención, empresas, API pública, organizaciones, correo, frontend.
+- **Problema:** la rama `claude/keen-dijkstra-6wrh1r` arregló los hallazgos de la auditoría del 2026-11-04 (cola que reencolaba sin tope, retención que tragaba errores, tope LLM por organización, carrera del TOTP, alta directa en organizaciones personales, `metrics:read`, tokens MCP tras un reset, idempotencia caducada, ATOM que perdía entradas, reintentos de TED/RSS/TACRC, tipos del contrato en la web…). Lo que sigue no entró porque pide una migración (AGENTS.md §6), un RFC o una decisión del propietario:
+  - **Migraciones (piden OK):** índice parcial `jobs(updated_at) WHERE estado IN ('done','failed')` para la purga nueva de `jobs`; índice trigram sobre el nombre y el NIF plegados de `empresas` y `empresa_aliases` (`db/repositories/busqueda.py` lleva `shortcut:`); agregado precalculado por empresa para ordenar `/empresas` por importe o contratos (hoy esos dos órdenes siguen agregando todo el maestro); columna normalizada en `adjudicaciones` para resolver en SQL el recuento del healthcheck (`shortcut:` en `db/empresas.py`).
+  - **API pública:** `/publico` acepta `offset` hasta 1.000.000 y 10.000.000. Estrechar el `le` es un cambio incompatible (`docs/api-design.md`): necesita RFC y la etiqueta `api-breaking`. Propuesta medida: unos 250.000 en `listar_publicas` y 1.000.000 en `sitemap/entradas`, y keyset para el sitemap.
+  - **Producto:** el alta directa de un miembro sigue sin pedir su aceptación y su respuesta distingue cuenta existente de invitación (cambiarlo altera CU-12 y la UI de `/equipo`). Los destinatarios externos del informe semanal no tienen `List-Unsubscribe`: no existe un mecanismo de baja para quien no es cuenta. Las alertas de competidores de filas anteriores a v129 (sin `user_id`) siguen yendo al correo guardado.
+  - **Flecos de código:** los jobs de la cola no tienen heartbeat (uno que dure más que `JOBS_LOCK_TTL_SEGUNDOS` lo libera la barrida estando vivo); `_purgar_binarios_expedientes_cerrados` sigue tragándose sus errores; el ping de webhooks aún enseña el motivo del bloqueo SSRF; `mes_pico` (tendencias) y `active` (`/feedback/model-info`) salen como `dict` sin DTO; los fixtures de contrato solo los usan los tests de `/auth/me`, `/admin/users`, `/analytics/scoring` y `/feedback/queue`; `watched_company_awards` y `sindicacion_placsp` no mandan el etag del cursor.
+  - **Agentes:** `.claude/hooks/pretooluse_edit_skills.py` lee el transcript de la sesión principal y no ve los `Skill` que carga un subagente, así que bloquea sus ediciones aunque los haya cargado.
+- **Acceptance criteria:**
+  - Cada migración, con su OK, en una revisión nueva de Alembic y con un `EXPLAIN` antes/después.
+  - El RFC del `offset` de `/publico` aprobado o descartado.
+  - Una decisión escrita sobre el consentimiento del alta y la baja de los externos.
+  - El hook de skills acepta los `Skill` del transcript del subagente (con test).
+- **Files de partida:** [db/repositories/jobs.py](../db/repositories/jobs.py), [db/repositories/empresas.py](../db/repositories/empresas.py), [db/repositories/busqueda.py](../db/repositories/busqueda.py), [api/routes/publico.py](../api/routes/publico.py), [services/organizations.py](../services/organizations.py), [scheduler/jobs/informes_programados.py](../scheduler/jobs/informes_programados.py), [.claude/hooks/pretooluse_edit_skills.py](../.claude/hooks/pretooluse_edit_skills.py)
+- **Riesgo:** medio — migraciones y un cambio de contrato público.
+
 ### [P2] Medir y recalcular las etiquetas de tecnología tras las reglas de precisión (2026-10-30)
 - **Área:** services/tech_signal.py, config/keywords.py, api/routes/licitaciones/analitica.py, scripts/medir_etiquetas_tecnologia.py (acción del propietario: medir en producción, revisar la muestra y recalcular)
 - **Problema:** el detalle enseñaba demasiadas etiquetas de tecnología. El código ya está cambiado (ver «Cuántas etiquetas lleva una licitación» en [taxonomia-tecnologica.md](taxonomia-tecnologica.md)): el bloque del detalle solo lista lo que cada fuente predice, las keywords ambiguas no añaden etiqueta a una fila con señal firme y la señal de pliegos ignora lo que solo dice el pliego administrativo, topa las repeticiones y pide dos términos a las categorías.
