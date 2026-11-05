@@ -11356,7 +11356,7 @@ export interface components {
             /** Trained At */
             trained_at: string | null;
             /** Version */
-            version: number;
+            version: string;
         };
         /**
          * ModelInfoResult

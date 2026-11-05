@@ -131,7 +131,7 @@ class TestFeedbackModelInfo:
         }
 
     def test_resume_la_version_activa_del_registry(self, client, auth):
-        """El registry guarda la versión como entero; con ``str`` en el DTO la ruta daba 400."""
+        """El registry guarda la versión como entero; sin convertirla a texto la ruta daba 400."""
         from db.model_registry import register_version
 
         version = register_version(
@@ -148,7 +148,7 @@ class TestFeedbackModelInfo:
         cuerpo = resp.json()
         assert cuerpo["name"] == "sap_classifier"
         assert cuerpo["active"]["version"] == version
-        assert [h["version"] for h in cuerpo["history"]] == [version]
+        assert [h["version"] for h in cuerpo["history"]] == [str(version)]
         assert cuerpo["history"][0]["metrics"] == {"f1": 0.81}
         assert cuerpo["feedbacks_since_train"] == 0
 
