@@ -110,7 +110,8 @@ def test_el_predecesor_trae_la_clave_normalizada_del_adjudicatario(tmp_db: Any) 
         antes_de=None,
     )
 
-    assert (fila["adjudicatario"], fila["adjudicatario_clave"]) == ("ALFA SA", "B12345678")
+    nif = "B12345678"  # pragma: allowlist secret
+    assert (fila["adjudicatario"], fila["adjudicatario_clave"]) == ("ALFA SA", nif)
 
 
 def test_los_similares_son_de_cualquier_organo_mas_recientes_primero(tmp_db: Any) -> None:
