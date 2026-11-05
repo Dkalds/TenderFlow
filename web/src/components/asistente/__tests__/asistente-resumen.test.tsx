@@ -15,6 +15,11 @@ vi.mock("react-markdown", () => ({
   default: ({ children }: { children: string }) => <p>{children}</p>,
 }));
 vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
+// Sin organización activa: el resumen va a la personal y la URL no lleva `?organization_id=`.
+vi.mock("@/hooks/use-organization", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/use-organization")>()),
+  useActiveOrganizationId: () => null,
+}));
 
 import { AsistentePanel } from "@/components/asistente/asistente-panel";
 import { useAsistente } from "@/lib/asistente-store";

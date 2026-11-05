@@ -15,6 +15,11 @@ vi.mock("@/lib/analytics", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/analytics")>()),
   registrarEvento: vi.fn(),
 }));
+// Sin organización activa: la pregunta va a la personal y la URL no lleva `?organization_id=`.
+vi.mock("@/hooks/use-organization", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/use-organization")>()),
+  useActiveOrganizationId: () => null,
+}));
 
 import { AsistentePanel } from "@/components/asistente/asistente-panel";
 import { useAsistente } from "@/lib/asistente-store";
