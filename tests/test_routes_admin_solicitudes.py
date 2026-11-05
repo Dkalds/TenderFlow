@@ -229,8 +229,12 @@ class TestCambiarEstado:
             }
         ]
 
-    def test_conceder_se_audita_con_actor_recurso_y_user_id(self, client):
-        """Quién concedió y qué concesión, sin copiar el email al rastro."""
+    def test_conceder_pasa_el_actor_y_no_audita_por_su_cuenta(self, client):
+        """La auditoría de conceder va en la transacción de la concesión (ADR-039).
+
+        La ruta solo tiene que pasar quién concede; lo que se escribe en
+        ``audit_log`` lo fija ``tests/test_access_grants_integration.py``.
+        """
         app.dependency_overrides[require_any_auth] = _admin
         try:
             with (
@@ -242,7 +246,7 @@ class TestCambiarEstado:
                         "empresa": "Empresa SL",
                         "previous_state": "pendiente",
                     },
-                ),
+                ) as conceder,
                 patch("api.routes.admin_solicitudes.log_event") as auditar,
                 patch(
                     "api.routes.admin_solicitudes.notificar_acceso_concedido",
@@ -257,23 +261,8 @@ class TestCambiarEstado:
             app.dependency_overrides.clear()
 
         assert resp.status_code == 200, resp.text
-        # Igualdad exacta: ni falta el `user_id` ni se cuela la dirección.
-        assert [llamada.kwargs for llamada in auditar.call_args_list] == [
-            {
-                "event_type": "solicitud_acceso.estado",
-                "actor": "1",
-                "user_id": 1,
-                "resource": "solicitud_acceso:7",
-                "detail": "atendida",
-            },
-            {
-                "event_type": "access_grant.granted",
-                "actor": "1",
-                "user_id": 1,
-                "resource": "access_grant:11",
-                "detail": {"kind": "email"},
-            },
-        ]
+        conceder.assert_called_once_with(7, "email", granted_by=1)
+        auditar.assert_not_called()
 
     def test_conceder_el_dominio_de_un_correo_publico_es_422(self, client):
         """La regla de verdad, lanzada donde la lanza la BD: antes de escribir."""
@@ -412,7 +401,7 @@ class TestAccessGrants:
         assert cuerpo[1]["granted_by_name"] is None
         assert cuerpo[1]["revoked_at"] is not None
 
-    def test_revoca_y_audita(self, client):
+    def test_revoca_y_pasa_quien_revoca(self, client):
         app.dependency_overrides[require_any_auth] = _admin
         grant = {
             "id": 11,
@@ -426,7 +415,7 @@ class TestAccessGrants:
         }
         try:
             with (
-                patch("api.routes.admin_solicitudes.revoke_access", return_value=grant),
+                patch("api.routes.admin_solicitudes.revoke_access", return_value=grant) as revocar,
                 patch("api.routes.admin_solicitudes.log_event") as audit,
             ):
                 resp = client.delete(f"{RUTA}/grants/11")
@@ -435,38 +424,9 @@ class TestAccessGrants:
 
         assert resp.status_code == 200, resp.text
         assert resp.json()["active"] is False
-        assert audit.call_args.kwargs["event_type"] == "access_grant.revoked"
-
-    def test_la_revocacion_se_audita_con_actor_recurso_y_user_id(self, client):
-        """El audit log es el único sitio que guarda quién revocó: tiene que ir entero."""
-        app.dependency_overrides[require_any_auth] = _admin
-        revocada = _grant(
-            kind="domain",
-            value="empresa.example",
-            active=False,
-            updated_at="2026-09-01T00:01:00+00:00",
-            revoked_at="2026-09-01T00:01:00+00:00",
-        )
-        try:
-            with (
-                patch("api.routes.admin_solicitudes.revoke_access", return_value=revocada),
-                patch("api.routes.admin_solicitudes.log_event") as auditar,
-            ):
-                resp = client.delete(f"{RUTA}/grants/11")
-        finally:
-            app.dependency_overrides.clear()
-
-        assert resp.status_code == 200, resp.text
-        # Igualdad exacta: el dominio revocado no se copia al rastro.
-        assert [llamada.kwargs for llamada in auditar.call_args_list] == [
-            {
-                "event_type": "access_grant.revoked",
-                "actor": "1",
-                "user_id": 1,
-                "resource": "access_grant:11",
-                "detail": {"kind": "domain"},
-            }
-        ]
+        # Revocar y auditar van en una transacción dentro de `revoke_access`.
+        revocar.assert_called_once_with(11, revoked_by=1)
+        audit.assert_not_called()
 
     def test_revocar_lo_que_no_existe_o_ya_estaba_revocado_no_se_audita(self, client):
         app.dependency_overrides[require_any_auth] = _admin

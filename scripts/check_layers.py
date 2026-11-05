@@ -101,9 +101,7 @@ CONGELADAS: frozenset[str] = frozenset(
     {
         "api/routes/publico.py -> scraper.connectors",
         "config/secrets.py -> observability.logging",
-        "observability/alerts.py -> db.database",
         "observability/alerts.py -> db.job_locks",
-        "observability/alerts.py -> services.extraction_runs",
         "observability/mailer.py -> shared.outbound_http",
         "observability/metrics.py -> services.extraction_runs",
         "observability/ops_events.py -> db.connection",

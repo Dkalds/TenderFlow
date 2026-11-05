@@ -69,6 +69,7 @@ from services.pursuits_agenda import (
 from services.watchlist_rules import WatchlistRule, list_rules
 from shared.audit_events import PURSUIT_WEIGHTS_PROPOSAL_APPLIED
 from shared.dates import a_fecha, hora_local_de_plazo, hoy_peninsular
+from shared.dates import instante_utc as _parse_iso_datetime
 from shared.dto import (
     FilaActaRef,
     OrganizationSettings,
@@ -1062,23 +1063,6 @@ def _normalize_and_validate_update(
                 + "."
             )
     return changes
-
-
-def _parse_iso_datetime(value: object) -> datetime | None:
-    """``datetime`` UTC de un TEXT ISO de la base, o ``None`` si no lo es.
-
-    Las columnas de fecha son TEXT (ADR-016/021) y pueden venir sin offset;
-    asumir UTC en ese caso es la convención del módulo (``_elapsed_hours``).
-    """
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=UTC)
-    if not isinstance(value, str):
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
 
 def _as_utc_iso(value: datetime | None) -> str | None:

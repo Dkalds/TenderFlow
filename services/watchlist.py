@@ -6,6 +6,7 @@ para buscar licitaciones y gestionar ``pending_digests``.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from db.repositories.watchlist import WatchlistRepository
@@ -44,6 +45,28 @@ def store_pending_digest(
         recipient=recipient,
         entry_id=entry_id,
         licitacion_id=licitacion_id,
+        frequency=frequency,
+        matched_at=matched_at,
+        user_id=user_id,
+    )
+
+
+def store_pending_digests(
+    user_key: str,
+    recipient: str,
+    entry_id: int,
+    licitacion_ids: Sequence[str],
+    frequency: str,
+    matched_at: str,
+    *,
+    user_id: int | None = None,
+) -> bool:
+    """Varias coincidencias de una entrada en una sola conexión; todas o ninguna."""
+    return _repo.store_pending_digests(
+        user_key=user_key,
+        recipient=recipient,
+        entry_id=entry_id,
+        licitacion_ids=licitacion_ids,
         frequency=frequency,
         matched_at=matched_at,
         user_id=user_id,

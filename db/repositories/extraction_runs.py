@@ -94,21 +94,3 @@ class ExtractionRunRepository:
                 )
         except Exception as e:
             log.warning("run_metrics_persist_failed", error=str(e), run_id=run_id)
-
-    def load_recent_daily_statuses(self, limit: int) -> list[str]:
-        """Carga los últimos ``limit`` estados de runs del carril diario."""
-        try:
-            with connect_read() as c:
-                rows = c.execute(
-                    "SELECT status FROM extraction_runs "
-                    # `%%` obligatorio: la sentencia lleva `LIMIT %s`. Este
-                    # literal causó un bug de producción (ver ADR-018) — la
-                    # alerta de fallos consecutivos nunca se disparaba.
-                    "WHERE notas LIKE 'daily|%%' "
-                    "ORDER BY started_at DESC LIMIT %s",
-                    [limit],
-                ).fetchall()
-            return [r[0] for r in rows]
-        except Exception:
-            log.warning("recent_daily_statuses_load_failed", exc_info=True)
-            return []

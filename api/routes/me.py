@@ -299,6 +299,7 @@ def logout_all(ctx: dict[str, Any] = Depends(require_any_auth)) -> SessionsRevok
         log_event(
             event_type=AUTH_LOGOUT_ALL,
             user_key=_actor_key(ctx),
+            user_id=user_id,
             resource=f"user:{user_id}",
             detail={"sessions_revoked": n},
         )
@@ -852,6 +853,7 @@ def rotate_my_key(
     log_event(
         event_type=API_KEY_ROTATED,
         user_key=_actor_key(ctx),
+        user_id=user_id,
         resource=f"api_key:{key_id}",
         detail={"grace_days": grace_days, "old_expires_at": grace_expires},
     )

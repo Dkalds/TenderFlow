@@ -22,13 +22,13 @@ arregla con un alias. Por eso la asimetría: fusionar exige evidencia, separar n
 from __future__ import annotations
 
 import re
-import unicodedata
 from dataclasses import dataclass
 from typing import Any
 
 from db.repositories import organos as repo
 from observability.logging import get_logger
 from services.dedupe import normalize_organo
+from shared.texto import sin_tildes
 
 log = get_logger(__name__)
 
@@ -73,8 +73,7 @@ def normalizar(nombre: str | None) -> str | None:
     if not base:
         return None
     limpio = _RUIDO.sub(" ", base)
-    limpio = unicodedata.normalize("NFKD", limpio)
-    limpio = "".join(c for c in limpio if not unicodedata.combining(c))
+    limpio = sin_tildes(limpio)
     limpio = re.sub(r"[^a-z0-9 ]+", " ", limpio.lower())
     return " ".join(limpio.split()) or None
 

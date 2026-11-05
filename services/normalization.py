@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import functools
 import re
-import unicodedata
 from typing import Literal
+
+from shared.texto import sin_tildes
 
 # Sufijos societarios (España + frecuentes UE) — se eliminan al final
 _LEGAL_SUFFIXES = [
@@ -53,17 +54,12 @@ _PUNCT_RE = re.compile(r"[^\w\s]", flags=re.UNICODE)
 _WS_RE = re.compile(r"\s+")
 
 
-def _strip_accents(text: str) -> str:
-    nfkd = unicodedata.normalize("NFKD", text)
-    return "".join(c for c in nfkd if not unicodedata.combining(c))
-
-
 def fold_text(text: str) -> str:
     """Pliega texto para matching accent/case-insensitive (sin tildes + casefold).
 
     Pensado para búsquedas de usuario: ``fold_text("Informática") == fold_text("INFORMATICA")``.
     """
-    return _strip_accents(text).casefold()
+    return sin_tildes(text).casefold()
 
 
 def normalize_company(name: str | None) -> str | None:
@@ -87,7 +83,7 @@ def normalize_company(name: str | None) -> str | None:
 @functools.lru_cache(maxsize=65_536)
 def _normalize_company(name: str) -> str | None:
     s = name.strip().upper()
-    s = _strip_accents(s).upper()
+    s = sin_tildes(s).upper()
     # Pass 1: remove terminal legal suffixes before punctuation normalization
     while True:
         new = _SUFFIX_RE.sub("", s).strip(" ,.-")

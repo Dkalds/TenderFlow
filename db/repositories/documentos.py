@@ -28,6 +28,7 @@ from db.database import DocumentoReferencia, connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts, typed_rows
 from db.sql_fragments import columna_nucleo, columna_nucleo_sql, universo_producto_sql
 from observability.logging import get_logger
+from shared.dates import instante_utc as _instante
 from shared.estados import ESTADOS_CERRADOS, abierta_sql
 
 log = get_logger(__name__)
@@ -168,17 +169,6 @@ _ESPERA_MAXIMA = timedelta(days=7)
 #: 12:10 y las 17:05 UTC. Sin este margen, una noche que empieza antes que la
 #: anterior dejaría el reintento para el día siguiente.
 _HOLGURA_DEL_LOTE = timedelta(hours=6)
-
-
-def _instante(texto: str | None) -> datetime | None:
-    """Lee ``created_at``/``updated_at``, que son texto; ``None`` si no se deja."""
-    if not texto:
-        return None
-    try:
-        momento = datetime.fromisoformat(texto)
-    except ValueError:
-        return None
-    return momento if momento.tzinfo else momento.replace(tzinfo=UTC)
 
 
 def _toca_reintentar_descarga(

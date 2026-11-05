@@ -18,6 +18,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 from config.keywords import TECH_LABELS, es_ambigua, patron_de_keyword
 from observability.logging import get_logger
+from shared.texto import sin_tildes
 
 if TYPE_CHECKING:
     from collections.abc import Hashable
@@ -277,11 +278,9 @@ def _augment_text(
         parts.append(f"IMP_{round(log_imp * 10)}")
     if organo:
         import hashlib
-        import unicodedata
 
         # Normalización robusta: minúsculas, sin acentos, solo alfanumérico.
-        decomposed = unicodedata.normalize("NFKD", organo.lower())
-        stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
+        stripped = sin_tildes(organo.lower())
         org_norm = " ".join("".join(ch if ch.isalnum() else " " for ch in stripped).split())
         if org_norm:
             digest = hashlib.sha256(org_norm.encode("utf-8")).digest()
@@ -439,11 +438,9 @@ def _clave_grupo(titulo: str, descripcion: str) -> str:
     prórroga— y colapsa espacios.
     """
     import hashlib
-    import unicodedata
 
     base = f"{titulo} {descripcion}".strip()
-    decomposed = unicodedata.normalize("NFKD", base.lower())
-    stripped = "".join(c for c in decomposed if not unicodedata.combining(c))
+    stripped = sin_tildes(base.lower())
     solo_letras = "".join(ch if ch.isalpha() or ch.isspace() else " " for ch in stripped)
     norm = " ".join(solo_letras.split())[:120]
     if not norm:

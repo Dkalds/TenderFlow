@@ -20,6 +20,7 @@ from db.upsert import Licitacion
 from scraper.connectors.base import ParsedTender, RawNotice
 from scraper.filters import matches_technology
 from services.classification import normalizar_estado
+from shared.numeric import importes_en_texto
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -76,14 +77,8 @@ def _date(value: str | None) -> str | None:
 
 
 def _amount(value: str) -> float | None:
-    match = re.search(r"([\d.]+(?:,\d{1,2})?)\s*(?:€|&euro;|\beur\b)", value, re.IGNORECASE)
-    if not match:
-        return None
-    raw = match.group(1).replace(".", "").replace(",", ".")
-    try:
-        return float(raw)
-    except ValueError:
-        return None
+    importes = importes_en_texto(value)
+    return importes[0] if importes else None
 
 
 #: «sin IVA» en castellano, gallego («sen IVE»/«sen IVA»), catalán («sense IVA»)

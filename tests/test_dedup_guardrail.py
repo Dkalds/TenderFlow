@@ -65,6 +65,7 @@ _SCANNED_DIRS = ("services/competitive", "services/ml")
 # ``services/``. Ver el docstring: esta lista crece con cada ola del ratchet.
 _SCANNED_FILES = (
     "db/repositories/renovaciones.py",
+    "db/repositories/bajas.py",
     "db/repositories/adjudicaciones.py",
     "db/repositories/ml_dataset.py",
     "db/repositories/mercado.py",

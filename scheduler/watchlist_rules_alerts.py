@@ -26,8 +26,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from db.database import connect, connect_read
-from db.notifications import insert_user_notification
+from db.notifications import insert_user_notifications
+from db.repositories.watchlist_rules import filas_de_reglas_a_evaluar, marcar_regla_notificada
 from observability import get_logger
 from services.watchlist_rules import WatchlistRule, matches_since
 
@@ -47,42 +47,6 @@ _FREQ_INTERVAL = {"daily": timedelta(days=1), "weekly": timedelta(days=7)}
 #: único; una ventana muy larga acabaría pagando el escaneo sin cubrir ningún
 #: caso nuevo — la ingesta tardía real es de horas, no de días.
 _VENTANA_GRACIA_DIAS = 2
-
-
-#: Columnas de una regla activa. Incluye los seis criterios de S4.4: sin ellos
-#: el job evaluaría una regla MÁS ANCHA que la que el usuario escribió y
-#: notificaría lo que la pantalla no enseña.
-_COLS_ACTIVAS = (
-    "id, user_key, user_id, nombre, keyword, cpv, min_importe, ccaa, "
-    "frequency, active, last_notified_at, email, organization_id, visibility, "
-    "tecnologia, organo, procedimiento, tipo_contrato, banda_min, plazo_min_dias"
-)
-
-#: La misma proyección sin las columnas de v47/v64/v109, para bases sin migrar.
-_COLS_ACTIVAS_LEGACY = (
-    "id, user_key, nombre, keyword, cpv, min_importe, ccaa, frequency, active, last_notified_at"
-)
-
-
-def _load_active_rules() -> list[dict[str, Any]]:
-    # Intentar con las columnas completas. Fallback a la proyección corta en
-    # BDs legacy (sin v47/v64/v109).
-    try:
-        with connect_read() as c:
-            cur = c.execute(
-                f"SELECT {_COLS_ACTIVAS} FROM watchlist_rules WHERE active = 1"  # noqa: S608 — proyección constante, sin valores
-            )
-            cols = [d[0] for d in cur.description]
-            rows = cur.fetchall()
-        return [dict(zip(cols, r, strict=False)) for r in rows]
-    except Exception:
-        with connect_read() as c:
-            cur = c.execute(
-                f"SELECT {_COLS_ACTIVAS_LEGACY} FROM watchlist_rules WHERE active = 1"  # noqa: S608 — proyección constante, sin valores
-            )
-            cols = [d[0] for d in cur.description]
-            rows = cur.fetchall()
-        return [dict(zip(cols, r, strict=False)) for r in rows]
 
 
 def _is_due(row: dict[str, Any], now: datetime) -> bool:
@@ -153,14 +117,6 @@ def _row_to_rule(row: dict[str, Any]) -> WatchlistRule:
     )
 
 
-def _update_last_notified(rule_id: int, ts: str) -> None:
-    with connect() as c:
-        c.execute(
-            "UPDATE watchlist_rules SET last_notified_at = %s WHERE id = %s",
-            (ts, rule_id),
-        )
-
-
 def _build_title(rule: WatchlistRule, n: int) -> str:
     """Titulo corto para la notificacion in-app."""
     nombre = rule.nombre or rule.keyword or (f"CPV {rule.cpv}" if rule.cpv else None) or "tu regla"
@@ -212,37 +168,33 @@ def _write_user_notifications(
     Tolerante a la ausencia de la tabla (BDs sin migracion v48).
     Returns: numero de filas insertadas (las que no eran duplicados).
     """
-    inserted = 0
     if rule.organization_id is None:
         # Una alerta sin ámbito no aparece en ninguna campana (misma regla que
         # `services/deadline_reminders`): antes el INSERT la escribía igual y
         # gastaba la identidad única con una fila que nadie veía.
         log.warning("user_notifications_sin_organizacion", rule_id=rule_id, matches=len(matches))
         return 0
-    title = _build_title(rule, len(matches))
+    filas = [
+        (lic_id, f"{lic.get('titulo', '?')} | {lic.get('organo_contratacion', '?')}")
+        for lic in matches
+        if (lic_id := str(lic.get("id_externo") or ""))
+    ]
     try:
-        for lic in matches:
-            lic_id = str(lic.get("id_externo") or "")
-            if not lic_id:
-                continue
-            body = f"{lic.get('titulo', '?')} | {lic.get('organo_contratacion', '?')}"
-            inserted += int(
-                insert_user_notification(
-                    type_="rule_match",
-                    title=title,
-                    body=body,
-                    licitacion_id=lic_id,
-                    organization_id=rule.organization_id,
-                    user_id=user_id,
-                    user_key=user_key,
-                    rule_id=rule_id,
-                    created_at=now_ts,
-                )
-            )
+        # Una conexión para todas las de la regla, no una por coincidencia.
+        return insert_user_notifications(
+            type_="rule_match",
+            title=_build_title(rule, len(matches)),
+            filas=filas,
+            organization_id=rule.organization_id,
+            user_id=user_id,
+            user_key=user_key,
+            rule_id=rule_id,
+            created_at=now_ts,
+        )
     except Exception as exc:
         # Si la tabla no existe (BD legacy sin migrar), continuar sin crash
         log.debug("user_notifications_write_skip", error=str(exc)[:100])
-    return inserted
+        return 0
 
 
 def _enqueue_pending_digest(
@@ -256,13 +208,10 @@ def _enqueue_pending_digest(
     user_id: int | None = None,
 ) -> None:
     """Encola matches en pending_digests para entrega por email."""
-    from services.watchlist import store_pending_digest
+    from services.watchlist import store_pending_digests
 
-    for lic in matches:
-        lic_id = str(lic.get("id_externo") or "")
-        if not lic_id:
-            continue
-        store_pending_digest(user_key, email, rule_id, lic_id, frequency, now_ts, user_id=user_id)
+    lic_ids = [lic_id for lic in matches if (lic_id := str(lic.get("id_externo") or ""))]
+    store_pending_digests(user_key, email, rule_id, lic_ids, frequency, now_ts, user_id=user_id)
 
 
 def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
@@ -278,7 +227,7 @@ def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
     now_ts = now.isoformat()
     default_since = (now - timedelta(days=_LOOKBACK_DAYS)).date().isoformat()
 
-    rules = _load_active_rules()
+    rules = filas_de_reglas_a_evaluar()
     if not rules:
         log.debug("watchlist_rules_empty")
         return 0
@@ -312,7 +261,7 @@ def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
         # Mover la ventana siempre (haya o no matches) para no re-escanear. Es
         # seguro justo porque el corte ya no es lo que decide qué es nuevo: la
         # ventana se solapa y la deduplicación la hace el anti-join.
-        _update_last_notified(int(row["id"]), now_ts)
+        marcar_regla_notificada(int(row["id"]), now_ts)
         if not new_matches:
             continue
 

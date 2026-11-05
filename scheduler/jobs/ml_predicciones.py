@@ -24,6 +24,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from observability.logging import get_logger
+from shared.dates import instante_utc as _instante_utc
 
 if TYPE_CHECKING:
     from db.repositories.predicciones import PrediccionesRepository
@@ -246,22 +247,6 @@ def _a_utc(instante: datetime) -> datetime:
     if instante.tzinfo is None:
         return instante.replace(tzinfo=UTC)
     return instante.astimezone(UTC)
-
-
-def _instante_utc(valor: object) -> datetime | None:
-    """``valor`` (ISO-8601 o ``datetime``) como instante UTC, o ``None``.
-
-    ``computed_at`` es TEXT en el esquema (lo escribe ``now_utc_iso()``), pero
-    se acepta ``datetime`` por si algún backend lo devuelve ya tipado.
-    """
-    if isinstance(valor, datetime):
-        return _a_utc(valor)
-    if isinstance(valor, str) and valor:
-        try:
-            return _a_utc(datetime.fromisoformat(valor.replace("Z", "+00:00")))
-        except ValueError:
-            return None
-    return None
 
 
 def _edad_horas(valor: object) -> float | None:

@@ -8,11 +8,15 @@ diffs sobre columnas numéricas compara a través de ``values_equal``.
 
 Consumidores: ``db.upsert`` (historial de licitaciones) y
 ``services.contract_events`` (eventos derivados de ese historial).
+
+También vive aquí :func:`importes_en_texto`, el único lector de importes
+escritos en prosa española, que antes tenía dos copias que ya divergían.
 """
 
 from __future__ import annotations
 
 import math
+import re
 from decimal import Decimal
 from typing import Any
 
@@ -63,3 +67,28 @@ def values_equal(old: Any, new: Any, *, rel_tol: float = FLOAT_REL_TOL) -> bool:
     if _is_number(old) and _is_number(new):
         return math.isclose(float(old), float(new), rel_tol=rel_tol, abs_tol=FLOAT_ABS_TOL)
     return bool(old == new)
+
+
+# Un importe en euros en prosa española: «2.364.210,48 €», «1.500 euros»,
+# «12,5 EUR». Con un solo punto y una o dos cifras detrás («1.5 €», «12.50 €»)
+# el punto es decimal: leerlo como de miles daba 15 y 1250. El lookbehind
+# impide empezar a mitad de un número cuya forma no encaja («1.2345 €»).
+_IMPORTE_EN_TEXTO_RE = re.compile(
+    r"(?<![\d.,])(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)"
+    r"\s*(?:€|&euro;|eur(?:os)?\b)",
+    flags=re.IGNORECASE,
+)
+_MILES_RE = re.compile(r"\d{1,3}(?:\.\d{3})+")
+
+
+def _numero_es(crudo: str) -> float:
+    if "," in crudo:
+        return float(crudo.replace(".", "").replace(",", "."))
+    if _MILES_RE.fullmatch(crudo):
+        return float(crudo.replace(".", ""))
+    return float(crudo)
+
+
+def importes_en_texto(texto: str) -> list[float]:
+    """Los importes en euros que cita un texto, en el orden en que aparecen."""
+    return [_numero_es(m.group(1)) for m in _IMPORTE_EN_TEXTO_RE.finditer(texto)]

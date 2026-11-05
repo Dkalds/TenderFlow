@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-11-03
+Generado: 2026-11-04
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -38,18 +38,15 @@ Generado: 2026-11-03
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 
-**12 archivos** en whitelist (solo puede decrecer).
+**9 archivos** en whitelist (solo puede decrecer).
 
-- `scheduler/aggregates_precompute.py`
 - `scheduler/anomaly_alerts.py`
 - `scheduler/concept_drift.py`
 - `scheduler/drift_report.py`
 - `scheduler/healthcheck.py`
-- `scheduler/watchlist_rules_alerts.py`
 - `scraper/seed_negatives.py`
 - `scripts/seed_dev.py`
 - `services/analytics/scoring_signals.py`
-- `services/competitive/bajas.py`
 - `services/contract_events.py`
 - `services/entity_resolution.py`
 
@@ -61,15 +58,13 @@ Generado: 2026-11-03
 
 ## Ratchet de capas — imports contra el orden de paquetes
 
-**12 imports** van de una capa a otra superior (lista congelada; solo puede decrecer).
+**10 imports** van de una capa a otra superior (lista congelada; solo puede decrecer).
 
 `scripts/check_layers.py` falla ante uno nuevo, también si está dentro de una función. Orden, de abajo arriba: `config < observability < shared < llm < db < services < scraper < scheduler < api`.
 
 - `api/routes/publico.py -> scraper.connectors`
 - `config/secrets.py -> observability.logging`
-- `observability/alerts.py -> db.database`
 - `observability/alerts.py -> db.job_locks`
-- `observability/alerts.py -> services.extraction_runs`
 - `observability/mailer.py -> shared.outbound_http`
 - `observability/metrics.py -> services.extraction_runs`
 - `observability/ops_events.py -> db.connection`

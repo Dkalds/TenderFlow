@@ -26,17 +26,20 @@ from observability import AlertLevel, get_logger, notify
 
 log = get_logger(__name__)
 
+#: Filas tal como las devuelve el repositorio.
+_Filas = list[dict[str, Any]]
+
 # Ventana inicial cuando la entrada nunca ha notificado
 _LOOKBACK_DAYS = 30
 
 
-def _vencimientos_proximos(empresa_id: int) -> list[dict[str, Any]]:
+def _vencimientos_proximos(empresa_id: int) -> _Filas:
     from services.competitive.renovaciones import proximas_renovaciones
 
     return proximas_renovaciones(months_ahead=3, empresa_id=empresa_id, limit=20)
 
 
-def _build_body(secciones: list[tuple[str, list[dict[str, Any]], list[dict[str, Any]]]]) -> str:
+def _build_body(secciones: list[tuple[str, _Filas, _Filas]]) -> str:
     lines: list[str] = []
     for nombre, nuevas, vencimientos in secciones:
         lines.append(f"\n══ {nombre} ════════════════════")
@@ -76,7 +79,15 @@ def _build_body(secciones: list[tuple[str, list[dict[str, Any]], list[dict[str, 
     return "\n".join(lines)
 
 
-def _anotar_segmento(adjudicaciones: list[dict[str, Any]], organization_id: Any) -> None:
+#: Cruces de segmento ya resueltos en esta pasada, por ``(órgano, cpv)``.
+_Segmentos = dict[tuple[object, object], list[tuple[int, dict[str, Any]]]]
+
+
+def _anotar_segmento(
+    adjudicaciones: _Filas,
+    organization_id: Any,
+    segmentos: _Segmentos | None = None,
+) -> None:
     """Marca con ``_motivo_segmento`` las adjudicaciones que tocan a esta
     organización (F3.4).
 
@@ -91,7 +102,14 @@ def _anotar_segmento(adjudicaciones: list[dict[str, Any]], organization_id: Any)
     except (TypeError, ValueError):
         return
     for adj in adjudicaciones:
-        for org_id, motivo in _en_mi_segmento(adj):
+        clave = (adj.get("organo_contratacion"), adj.get("cpv"))
+        if segmentos is None:
+            cruces = _en_mi_segmento(adj)
+        elif clave in segmentos:
+            cruces = segmentos[clave]
+        else:
+            cruces = segmentos[clave] = _en_mi_segmento(adj)
+        for org_id, motivo in cruces:
             if org_id == objetivo:
                 adj["_motivo_segmento"] = motivo
                 break
@@ -109,19 +127,30 @@ def check_and_notify() -> int:
     now_ts = datetime.now(UTC).isoformat()
     default_since = (datetime.now(UTC) - timedelta(days=_LOOKBACK_DAYS)).isoformat()
 
-    by_recipient: dict[str, list[dict[str, Any]]] = {}
+    by_recipient: dict[str, _Filas] = {}
     for entry in entries:
         by_recipient.setdefault(entry["email"], []).append(entry)
 
     total_alertas = 0
     en_segmento: dict[tuple[int, int, str], dict[str, Any]] = {}
+    # Cachés de la pasada: varias personas siguen a la misma empresa y antes
+    # cada una repetía sus consultas (hasta ~52 por entrada). Por pasada y no
+    # por proceso, para no servir datos de ayer.
+    nuevas_por: dict[tuple[int, str], _Filas] = {}
+    vencimientos_por: dict[int, _Filas] = {}
+    segmentos: _Segmentos = {}
     for recipient, recipient_entries in by_recipient.items():
-        secciones: list[tuple[str, list[dict[str, Any]], list[dict[str, Any]]]] = []
+        secciones: list[tuple[str, _Filas, _Filas]] = []
         for entry in recipient_entries:
             since = entry.get("last_notified_at") or default_since
+            empresa_id = int(entry["empresa_id"])
             try:
-                nuevas = nuevas_adjudicaciones_de_empresa(int(entry["empresa_id"]), since)
-                vencimientos = _vencimientos_proximos(int(entry["empresa_id"]))
+                if (empresa_id, since) not in nuevas_por:
+                    nuevas_por[empresa_id, since] = nuevas_adjudicaciones_de_empresa(
+                        empresa_id, since
+                    )
+                if empresa_id not in vencimientos_por:
+                    vencimientos_por[empresa_id] = _vencimientos_proximos(empresa_id)
             except Exception as e:
                 log.warning(
                     "competitor_alert_query_failed",
@@ -129,7 +158,11 @@ def check_and_notify() -> int:
                     error=str(e),
                 )
                 continue
-            _anotar_segmento(nuevas, entry.get("organization_id"))
+            # Copias: `_anotar_segmento` marca las filas según la organización
+            # de cada entrada, y compartirlas filtraría el motivo de una a otra.
+            nuevas = [dict(adj) for adj in nuevas_por[empresa_id, since]]
+            vencimientos = vencimientos_por[empresa_id]
+            _anotar_segmento(nuevas, entry.get("organization_id"), segmentos)
             _acumular_en_segmento(en_segmento, entry, nuevas)
             if nuevas or vencimientos:
                 secciones.append((entry["nombre_canonico"], nuevas, vencimientos))
@@ -155,7 +188,7 @@ def check_and_notify() -> int:
 def _acumular_en_segmento(
     acumulado: dict[tuple[int, int, str], dict[str, Any]],
     entry: dict[str, Any],
-    adjudicaciones: list[dict[str, Any]],
+    adjudicaciones: _Filas,
 ) -> None:
     """Junta las adjudicaciones «en mi segmento» por (organización, empresa, expediente).
 

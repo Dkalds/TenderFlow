@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pydantic import BaseModel, Field
 
 from db.repositories.source_health import SourceHealthRepository
+from shared.dates import instante_utc as _parse_datetime
 
 #: Lotes de carga histórica: ``bulk_YYYYMM`` (PLACSP) y ``<conector>_bulk_YYYYMM``.
 #: Son efímeros por diseño —uno por mes reprocesado— y no tienen frescura que
@@ -44,18 +45,6 @@ class SourceFreshnessResult(BaseModel):
     total_sources: int = Field(ge=0)
     healthy_sources_pct: float = Field(ge=0, le=100)
     generated_at: str
-
-
-def _parse_datetime(value: object) -> datetime | None:
-    if value is None:
-        return None
-    try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
 
 
 def get_source_freshness(*, degraded_after_hours: float = 36.0) -> SourceFreshnessResult:

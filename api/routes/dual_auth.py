@@ -139,6 +139,16 @@ async def require_admin(user: dict[str, Any] = Depends(require_any_auth)) -> dic
     return user
 
 
+def id_del_actor(principal: dict[str, Any]) -> int | None:
+    """``users.id`` de quien actúa, para ``audit_log.user_id`` (ADR-030 §D).
+
+    Sin él la fila se guarda con ``user_id`` NULL y la identidad del actor
+    queda solo como texto en ``actor``. ``None`` para una clave sin dueño.
+    """
+    valor = principal.get("user_id")
+    return int(valor) if valor is not None else None
+
+
 def require_recent_session() -> Callable[..., Awaitable[dict[str, Any]]]:
     """Require a freshly authenticated browser session for destructive actions.
 

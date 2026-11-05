@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import re
 import threading
-import unicodedata
 from collections.abc import Iterable, Iterator
 from typing import Any, NamedTuple
 from urllib.parse import urlsplit
@@ -39,6 +38,7 @@ from services.normalization import fold_text
 from shared.dates import to_iso_date, to_iso_datetime
 from shared.geo import es_nuts_de_pais, nuts_to_ccaa
 from shared.identidad_placsp import clave_placsp
+from shared.texto import sin_tildes
 
 log = get_logger(__name__)
 
@@ -774,8 +774,7 @@ _CRITERIO_LOCALNAME = "AwardingCriteri"
 
 def _sin_acentos(texto: str) -> str:
     """Minúsculas sin diacríticos, para comparar descripciones del feed."""
-    descompuesto = unicodedata.normalize("NFKD", texto)
-    return "".join(ch for ch in descompuesto if not unicodedata.combining(ch)).lower()
+    return sin_tildes(texto).lower()
 
 
 def _criterios_raiz(entry: Any, cfs: str) -> list[Any]:

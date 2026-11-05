@@ -70,6 +70,7 @@ from services.analytics.scoring_signals import (
     load_importe_percentiles,
     load_margen_stats,
 )
+from shared.cpv import cpv4 as _cpv4
 from shared.dto import OrganizationSettings
 
 log = get_logger(__name__)
@@ -421,16 +422,6 @@ def _band(score: int) -> str:
     if score >= 25:
         return "Tibia"
     return "Descarte"
-
-
-def _cpv4(cpv: Any) -> str | None:
-    """Extrae los primeros 4 dígitos de un CPV; None si es inválido."""
-    if cpv is None or (isinstance(cpv, float) and pd.isna(cpv)):
-        return None
-    s = str(cpv).strip()
-    if len(s) >= 4 and s[:4].isdigit():
-        return s[:4]
-    return None
 
 
 # ---------------------------------------------------------------------------

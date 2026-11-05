@@ -59,8 +59,3 @@ def persist_run(
         errores_descarga=errores_descarga,
         notas=notas,
     )
-
-
-def load_recent_daily_statuses(limit: int) -> list[str]:
-    """Carga los últimos ``limit`` estados de runs del carril diario."""
-    return _repo.load_recent_daily_statuses(limit)

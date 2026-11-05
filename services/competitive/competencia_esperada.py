@@ -58,6 +58,7 @@ from services.ficha_pdf import BloqueFicha
 from services.pursuit_awards import IdentidadFiscal, identidad_fiscal
 from services.renovaciones_prorroga import sumar_meses
 from services.similares import Candidato, Metodo, predecesor_de
+from shared.cpv import cpv4 as _cpv4
 
 log = get_logger(__name__)
 
@@ -269,16 +270,6 @@ class CompetenciaEsperada(BaseModel):
 
 
 # ── Piezas puras (sin BD) ───────────────────────────────────────────────────
-
-
-def _cpv4_de(cpv: str | None) -> str | None:
-    """CPV-4 del expediente, con la expresión de la señal del score.
-
-    El score agrupa por ``substr(l.cpv, 1, 4)`` sin más; aquí se exigen además
-    cuatro dígitos, porque un CPV ilegible no es un segmento al que comparar.
-    """
-    texto = (cpv or "").strip()[:4]
-    return texto if len(texto) == 4 and texto.isdigit() else None
 
 
 def _redondeo(valor: float) -> int:
@@ -553,7 +544,7 @@ def competencia_esperada(
     identidad = _identidad(organization_id)
     ahora = ahora or datetime.now(UTC)
 
-    cpv4 = _cpv4_de(objetivo.get("cpv"))
+    cpv4 = _cpv4(objetivo.get("cpv"))
     organo_id = objetivo.get("organo_id")
     segmento = (
         Segmento(

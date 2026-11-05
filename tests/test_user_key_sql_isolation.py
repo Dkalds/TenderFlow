@@ -354,6 +354,12 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # alcanza ninguna ruta (`grep -rn "reglas_activas\|ids_abiertas_que_casan"
         # api/` vacío).
         "db/repositories/watchlist_rules.py::filas_de_reglas_activas",
+        # El job de avisos de reglas (scheduler/watchlist_rules_alerts.py)
+        # carga todas las activas en cada corrida y apunta la última
+        # notificación con un id que salió de ese barrido, nunca de input de
+        # usuario. Vivían en el job hasta que su SQL bajó a db/ (2026-11-04).
+        "db/repositories/watchlist_rules.py::filas_de_reglas_a_evaluar",
+        "db/repositories/watchlist_rules.py::marcar_regla_notificada",
         # La misma pregunta para la fase 5 de ese job (pre-generación del
         # resumen IA, 2026-09-18): devuelve solo ids de licitación ordenados
         # por demanda, y el resumen que se calienta es el del expediente, no el
@@ -417,7 +423,7 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # dato de un usuario. Detectado por este mismo test al ejecutarlo
         # (no estaba en el análisis manual previo): confirma que el escaneo
         # tiene dientes incluso para el propio autor del test.
-        "db/audit.py::log_action",
+        "db/audit.py::_escribir",
         # Rastro de auditoría **de una organización** (GET /organizations/{id}/
         # audit). Es un barrido por organización y no por usuario, y tiene que
         # serlo: el propietario de un espacio compartido pide ver quién invitó,
@@ -498,21 +504,10 @@ def test_db_layer_queries_scope_by_user_key() -> None:
 _GRANDFATHERED_NON_DB_FILES: tuple[str, ...] = (
     "services/watchlist_rules.py",
     "services/notifications.py",
-    "scheduler/watchlist_rules_alerts.py",
     "api/routes/watchlist_rules.py",
 )
 
-_GRANDFATHERED_LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
-    {
-        # Carga TODAS las reglas activas para evaluarlas en cada corrida del
-        # job (scheduler/watchlist_rules_alerts.py); análogo a
-        # load_pending_digests de arriba.
-        "scheduler/watchlist_rules_alerts.py::_load_active_rules",
-        # Actualiza el timestamp de una regla usando un id que vino del
-        # barrido global de arriba -- nunca de input de usuario final.
-        "scheduler/watchlist_rules_alerts.py::_update_last_notified",
-    }
-)
+_GRANDFATHERED_LEGITIMATE_SWEEPS: frozenset[str] = frozenset()
 
 _GRANDFATHERED_KNOWN_GAPS_PENDING_FIX: frozenset[str] = frozenset()
 

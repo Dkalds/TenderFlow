@@ -107,6 +107,45 @@ def test_store_pending_digest_returns_false_on_exception():
     assert result is False
 
 
+def test_store_pending_digests_usa_una_sola_conexion():
+    """El job de reglas encola todas las coincidencias de una regla de una vez."""
+    from unittest.mock import MagicMock
+
+    from db.repositories.watchlist import WatchlistRepository
+
+    conexion = MagicMock()
+    with patch("db.repositories.watchlist.connect") as connect:
+        connect.return_value.__enter__.return_value = conexion
+        ok = WatchlistRepository().store_pending_digests(
+            user_key="k",
+            recipient="a@example.test",
+            entry_id=7,
+            licitacion_ids=["L1", "L2"],
+            frequency="daily",
+            matched_at="2026-01-01",
+        )
+
+    assert ok is True
+    assert connect.call_count == 1
+    ((_, filas),) = [c.args for c in conexion.executemany.call_args_list]
+    assert [f[4] for f in filas] == ["L1", "L2"]
+
+
+def test_store_pending_digests_sin_coincidencias_no_abre_conexion():
+    from db.repositories.watchlist import WatchlistRepository
+
+    with patch("db.repositories.watchlist.connect") as connect:
+        assert WatchlistRepository().store_pending_digests(
+            user_key="k",
+            recipient="a@example.test",
+            entry_id=7,
+            licitacion_ids=[],
+            frequency="daily",
+            matched_at="2026-01-01",
+        )
+    connect.assert_not_called()
+
+
 # ── generate_atom_feed ────────────────────────────────────────────────────────
 
 
