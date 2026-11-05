@@ -57,6 +57,8 @@ __all__ = [
     "decodificar_organo",
     "descomponer_clave_placsp",
     "es_fuente_placsp",
+    "expediente_comparable",
+    "expediente_comparable_sql",
     "expediente_natural",
     "expediente_natural_sql",
 ]
@@ -205,3 +207,21 @@ def expediente_natural_sql(columna: str) -> str:
         f"WHEN position(':' in {columna}) > 0 THEN {sin_ficha_pscp} "
         f"ELSE {columna} END"
     )
+
+
+def expediente_comparable(expediente: str) -> str:
+    """El expediente sin espacios y en mayúsculas, para comparar dos fuentes.
+
+    Cada plataforma lo teclea a su manera: TED publica ``P.A.23/2026`` y la
+    Comunidad de Madrid ``P.A. 23/2026`` para el mismo contrato (Hospital La
+    Paz, 2026-11-05). Solo para comparar: la clave que se guarda no cambia.
+    """
+    return re.sub(r"\s+", "", expediente).upper()
+
+
+def expediente_comparable_sql(expresion: str) -> str:
+    """La expresión SQL (Postgres) equivalente a :func:`expediente_comparable`.
+
+    *expresion* se interpola tal cual: solo expresiones escritas en el código.
+    """
+    return f"upper(regexp_replace({expresion}, '\\s+', '', 'g'))"

@@ -527,16 +527,19 @@ _Sin ítems abiertos._
     `2026-0443-ING` existe y el órgano casa tras normalizar, pero el aviso solo
     publica `InternalID` en `ProcurementProjectLot`; `_expediente`
     (`scraper/connectors/ted.py`) lee solo `internal-identifier-proc`, así que
-    la TED se queda sin referencia. Arreglo: caer a `internal-identifier-lot`
-    (campo de la API v3, BT-22-Lot) cuando el del procedimiento falta y todos
-    los lotes traen el mismo valor.
+    la TED se queda sin referencia. **Arreglado** (2026-11-05): cae a
+    `internal-identifier-lot` (BT-22-Lot en la API v3) cuando el del
+    procedimiento falta y todos los lotes traen el mismo valor.
   - **BT-22 con otro formato (1, Hospital La Paz `ted:720793-2026`).** TED
     publica `P.A.23/2026`; la agregada es `P.A. 23/2026`. Además el órgano de
     TED lleva el prefijo «Servicio Madrileño de Salud - » y el título difiere,
-    así que tampoco casa por órgano ni por título. Arreglo: comparar el
-    expediente sin espacios (en `services.dedupe` y en el SQL de
-    `iter_candidatas_por_referencia`), y valorar casar el órgano por la mitad
-    derecha de «X - Y».
+    así que tampoco casa por órgano ni por título. **Arreglado** (2026-11-05):
+    el expediente se compara sin espacios ni mayúsculas
+    (`shared.identidad_placsp.expediente_comparable` y su gemela SQL en
+    `iter_candidatas_por_referencia`), y el órgano casa también por su último
+    tramo tras « - » (`services.dedupe._organos_emparejables`). Se aplica a
+    los avisos ya ingeridos con una pasada de TED desde su fecha
+    (`historico-agregadas.yml`, `ted_desde`).
   - **Descartadas por la puerta tecnológica, probable (6).** El órgano tiene
     filas en agregadas pero no este contrato, y su CPV principal no es TI: TED
     lo admite por un CPV secundario 48/72. Canal de Isabel II, contadores

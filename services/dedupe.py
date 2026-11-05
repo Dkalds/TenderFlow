@@ -73,7 +73,7 @@ from observability.logging import get_logger
 from observability.runtime_metrics import dedupe_marked_total, dedupe_match_rate
 from services.normalization import normalize_company
 from shared.cpv import cpv4 as _cpv4
-from shared.identidad_placsp import es_fuente_placsp, expediente_natural
+from shared.identidad_placsp import es_fuente_placsp, expediente_comparable, expediente_natural
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -605,6 +605,22 @@ def _organo_emparejable(nombre: str | None) -> str | None:
     return normalize_organo(nombre)
 
 
+def _organos_emparejables(nombre: str | None) -> set[str]:
+    """El órgano para comparar con TED, y también su último tramo tras « - ».
+
+    TED antepone a veces el organismo del que depende la unidad que licita
+    («Servicio Madrileño de Salud - Hospital Universitario La Paz») y la
+    plataforma del comprador solo pone la unidad («Hospital Universitario La
+    Paz»): el mismo contrato, que no casaba por órgano (2026-11-05). Basta con
+    que los dos conjuntos compartan una clave; el expediente ya tiene que ser
+    el mismo.
+    """
+    claves = {o} if (o := _organo_emparejable(nombre)) else set()
+    if nombre and " - " in nombre and (tramo := normalize_organo(nombre.rpartition(" - ")[2])):
+        claves.add(tramo)
+    return claves
+
+
 def _orden_de_candidata(fila: dict[str, Any]) -> tuple[bool, tuple[int, str, str, str]]:
     """Qué fila representa al contrato cuando TED tiene varias gemelas: PLACSP primero.
 
@@ -629,6 +645,9 @@ def _elegir_canonica_por_referencia(
     2. **BT-22 + órgano o título**: BT-22 solo no vale (ver el bloque de arriba),
        pero dentro de un mismo órgano el número de expediente no se repite, y
        dos contratos con el mismo expediente y el mismo título son el mismo.
+       El expediente se compara sin espacios ni mayúsculas
+       (``expediente_comparable``) y el órgano también por su último tramo
+       tras « - » (:func:`_organos_emparejables`).
 
     Las candidatas nunca son de TED: las trae así la consulta, y se vuelve a
     filtrar aquí porque la regla es de dominio, no de SQL.
@@ -646,13 +665,13 @@ def _elegir_canonica_por_referencia(
         if por_evl:
             return min(por_evl, key=_orden_de_candidata), f"idEvl:{referencia.id_evl}"
     if referencia.expediente:
-        organo = _organo_emparejable(fila_ted.get("organo_contratacion"))
+        organos = _organos_emparejables(fila_ted.get("organo_contratacion"))
         titulo = normalize_titulo(fila_ted.get("titulo"))
         mismo_contrato = ajenas(
             [
                 c
-                for c in por_expediente.get(referencia.expediente, [])
-                if (organo and _organo_emparejable(c.get("organo_contratacion")) == organo)
+                for c in por_expediente.get(expediente_comparable(referencia.expediente), [])
+                if organos & _organos_emparejables(c.get("organo_contratacion"))
                 or (titulo and normalize_titulo(c.get("titulo")) == titulo)
             ]
         )
@@ -701,7 +720,9 @@ def detect_duplicados_por_referencia(
         return result
 
     filas = dedupe_repo.filas_por_id(sorted(utiles))
-    expedientes = sorted({ref.expediente for ref in utiles.values() if ref.expediente})
+    expedientes = sorted(
+        {expediente_comparable(ref.expediente) for ref in utiles.values() if ref.expediente}
+    )
     id_evls = sorted({ref.id_evl for ref in utiles.values() if ref.id_evl})
 
     por_id_evl: dict[str, list[dict[str, Any]]] = {}
@@ -709,9 +730,9 @@ def detect_duplicados_por_referencia(
     for candidata in dedupe_repo.iter_candidatas_por_referencia(fuente, expedientes, id_evls):
         if (evl := id_evl_de_url(candidata.get("url"))) is not None:
             por_id_evl.setdefault(evl, []).append(candidata)
-        por_expediente.setdefault(natural_expediente(str(candidata["id_externo"])), []).append(
-            candidata
-        )
+        por_expediente.setdefault(
+            expediente_comparable(natural_expediente(str(candidata["id_externo"]))), []
+        ).append(candidata)
 
     marcas: list[tuple[str, str, str, float, str]] = []
     for fila in filas:

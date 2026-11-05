@@ -55,7 +55,7 @@ from db.repositories.base import rows_to_dicts
 # detector volvería a proponer canónicas que la superficie no publica.
 from db.repositories.publico import _publicable_sql
 from db.sql_fragments import exclude_duplicados_presentacion_sql, organo_normalizado_sql
-from shared.identidad_placsp import expediente_natural_sql
+from shared.identidad_placsp import expediente_comparable_sql, expediente_natural_sql
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -255,7 +255,8 @@ def iter_candidatas_por_referencia(
 
     Entran por cualquiera de las dos referencias que publica el aviso: el
     expediente natural (BT-22 frente al ``ContractFolderID`` de PLACSP o el
-    ``codi_expedient`` de PSCP) o el ``idEvl`` del deeplink de PLACSP. El
+    ``codi_expedient`` de PSCP; *expedientes* llegan ya comparables, sin espacios
+    y en mayúsculas) o el ``idEvl`` del deeplink de PLACSP. El
     emparejamiento fino —órgano o título para BT-22— lo hace
     ``services.dedupe``; aquí solo se acota, y sin pérdida: una fila que el
     ``OR`` deja fuera no comparte ninguna de las dos referencias.
@@ -276,7 +277,9 @@ def iter_candidatas_por_referencia(
     condiciones: list[str] = []
     params: list[object] = [fuente]
     if expedientes:
-        condiciones.append(f"{_EXPEDIENTE_NATURAL_SQL} = ANY(%s)")
+        # Comparables (``shared.identidad_placsp.expediente_comparable``): cada
+        # plataforma teclea el expediente a su manera, con o sin espacios.
+        condiciones.append(f"{expediente_comparable_sql(_EXPEDIENTE_NATURAL_SQL)} = ANY(%s)")
         params.append(list(expedientes))
     if id_evls:
         condiciones.append(f"{_ID_EVL_SQL} = ANY(%s)")
