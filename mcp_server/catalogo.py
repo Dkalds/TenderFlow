@@ -51,7 +51,7 @@ __all__ = [
 ROL_MCP = "tenderflow_mcp"
 POLITICA_LECTURA = "tenderflow_mcp_read"
 
-_IDENTIFICADOR = re.compile(r"^[a-z_][a-z0-9_]*$")
+_IDENTIFICADOR = re.compile(r"[a-z_][a-z0-9_]*")
 
 
 class Visibilidad(StrEnum):
@@ -576,7 +576,7 @@ def entrada_visible(tabla: str) -> EntradaCatalogo | None:
 
 def _ident(nombre: str) -> str:
     """Identificador SQL entre comillas dobles tras validarlo contra la lista blanca."""
-    if not _IDENTIFICADOR.match(nombre):
+    if not _IDENTIFICADOR.fullmatch(nombre):  # no `match` + `$`: `$` admite un `\n` final
         raise ValueError(f"Identificador SQL no válido: {nombre!r}")
     return f'"{nombre}"'
 

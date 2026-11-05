@@ -23,6 +23,11 @@ import argparse
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    # Solo para anotar: el import real va dentro de cada paso, tras ajustar sys.path.
+    from db.database import Adjudicacion, Licitacion
 
 # Asegurar que el package root está en sys.path cuando se corre como script
 _ROOT = Path(__file__).resolve().parent.parent
@@ -336,7 +341,7 @@ _SAMPLE_ADJUDICACIONES = [
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _build_licitacion(d: dict) -> object:
+def _build_licitacion(d: dict[str, Any]) -> Licitacion:
     from db.database import Licitacion
 
     now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -360,7 +365,7 @@ def _build_licitacion(d: dict) -> object:
     )
 
 
-def _build_adjudicacion(d: dict) -> object:
+def _build_adjudicacion(d: dict[str, Any]) -> Adjudicacion:
     from db.database import Adjudicacion
 
     # Los nombres del dict de ejemplo (`adjudicatario`, `importe`, `fecha`) no
@@ -424,12 +429,12 @@ def step_licitaciones() -> int:
 
 def step_adjudicaciones() -> None:
     """Inserta adjudicaciones de ejemplo usando replace_adjudicaciones_batch."""
-    from db.database import Adjudicacion, replace_adjudicaciones_batch
+    from db.database import replace_adjudicaciones_batch
 
     by_licitacion: dict[str, list[Adjudicacion]] = {}
     for d in _SAMPLE_ADJUDICACIONES:
         adj = _build_adjudicacion(d)
-        by_licitacion.setdefault(d["licitacion_id"], []).append(adj)  # type: ignore[arg-type]
+        by_licitacion.setdefault(str(d["licitacion_id"]), []).append(adj)
     replace_adjudicaciones_batch(by_licitacion)
     total = sum(len(v) for v in by_licitacion.values())
     print(f"[seed] Adjudicaciones: {total} insertadas")
@@ -587,7 +592,7 @@ def main() -> int:
         step_usuario_admin()
 
         if args.with_predicciones:
-            ids = [d["id_externo"] for d in _SAMPLE_LICITACIONES]
+            ids = [str(d["id_externo"]) for d in _SAMPLE_LICITACIONES]
             step_predicciones(ids)
 
         print(
