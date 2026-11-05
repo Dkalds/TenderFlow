@@ -581,6 +581,7 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
     conserva el progreso hasta el último lote; la próxima ejecución retoma
     desde ahí en vez de reiniciar siempre desde el mismo punto.
     """
+    inicio = time.monotonic()
     source_id = connector.source_id
     result = ConnectorRunResult(source_id=source_id)
     cursor = get_cursor(source_id)
@@ -805,6 +806,8 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
             _contar_error("contadores_descarte")
             log.warning("connector_contadores_fallaron", source=source_id, exc_info=True)
 
-    log.info("connector_run_done", **result.as_dict())
+    log.info(
+        "connector_run_done", duracion_s=round(time.monotonic() - inicio, 2), **result.as_dict()
+    )
     _record_source_completed(result)
     return result

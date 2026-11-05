@@ -50,9 +50,12 @@ from typing import Any, Final, Literal, NamedTuple
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from db.sql_fragments import (
+    FOLD_TABLE,
     TECHNOLOGY_OBSERVED_SQL,
     WATCHED_COMPANY_AWARDS_SQL,
+    escape_like,
     exclude_duplicados_sql,
+    fold_expr,
     round_sql,
     technology_observed_sql,
     tecnologia_en_csv_sql,
@@ -579,6 +582,11 @@ def filas_perfil_empresa(
     )
 
 
+def _patron_plegado(texto: str) -> str:
+    """*texto* plegado como ``fold_expr`` y con sus comodines escapados, entre ``%``."""
+    return f"%{escape_like(texto.strip().translate(FOLD_TABLE).lower())}%"
+
+
 def adjudicaciones_empresa(
     alcance: Alcance,
     *,
@@ -599,17 +607,21 @@ def adjudicaciones_empresa(
     where, scope_params = alcance
     params = list(scope_params)
     clauses = [where]
+    # Plegado de tildes como el resto de búsquedas (`fold_expr`): con `LOWER`
+    # a secas, «camara» no encontraba «Cámara».
+    organo_plegado = fold_expr("COALESCE(l.organo_contratacion, '')")
     if q and q.strip():
-        needle = f"%{q.strip().lower()}%"
+        needle = _patron_plegado(q)
+        titulo_plegado = fold_expr("COALESCE(l.titulo, '')")
+        expediente_plegado = fold_expr("COALESCE(a.licitacion_id, '')")
         clauses.append(
-            "(LOWER(COALESCE(l.titulo, '')) LIKE %s "
-            "OR LOWER(COALESCE(l.organo_contratacion, '')) LIKE %s "
-            "OR LOWER(COALESCE(a.licitacion_id, '')) LIKE %s)"
+            f"({titulo_plegado} LIKE %s OR {organo_plegado} LIKE %s "
+            f"OR {expediente_plegado} LIKE %s)"
         )
         params.extend([needle, needle, needle])
     if organo and organo.strip():
-        clauses.append("LOWER(COALESCE(l.organo_contratacion, '')) LIKE %s")
-        params.append(f"%{organo.strip().lower()}%")
+        clauses.append(f"{organo_plegado} LIKE %s")
+        params.append(_patron_plegado(organo))
     full_where = " AND ".join(clauses)
     safe_limit = max(1, min(int(limit), 500))
     safe_offset = max(0, int(offset))

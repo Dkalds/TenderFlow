@@ -269,16 +269,11 @@ class PlacspAtomConnector:
 
         self._last_seen_updated = last_seen_updated
 
-        entries, meta = iter_live_entries(
-            last_seen_updated=last_seen_updated,
+        # El etag y el last_modified del cursor van con la primera página: un 304
+        # termina la pasada sin leer nada y los devuelve en ``meta``.
+        entries, self._meta = iter_live_entries(
+            last_seen_updated=last_seen_updated, etag=etag, last_modified=last_modified
         )
-        self._meta = meta
-
-        # Propagar etag/last_modified del cursor anterior si la respuesta fue 304
-        if meta.get("etag") is None and etag:
-            self._meta["etag"] = etag
-        if meta.get("last_modified") is None and last_modified:
-            self._meta["last_modified"] = last_modified
 
         for entry_elem, updated_str in entries:
             yield RawNotice(
@@ -299,15 +294,14 @@ class PlacspAtomConnector:
         return self._core.contadores_de_descarte()
 
     def new_cursor(self) -> dict[str, Any] | None:
-        """Cursor con el timestamp más nuevo visto + etag/last_modified."""
-        newest = self._meta.get("newest_updated") or self._last_seen_updated
-        if newest is None and not self._meta.get("etag"):
-            return None
-        return {
-            "last_seen_updated": newest,
-            "etag": self._meta.get("etag"),
-            "last_modified": self._meta.get("last_modified"),
-        }
+        """Cursor con el timestamp más nuevo visto + etag/last_modified.
+
+        No avanza si la pasada agotó el tope de páginas sin llegar al cursor
+        (ver :func:`scraper.atom_live.cursor_siguiente`).
+        """
+        from scraper.atom_live import cursor_siguiente
+
+        return cursor_siguiente(self._meta, self._last_seen_updated)
 
 
 # ── Conector Bulk mensual ─────────────────────────────────────────────────────

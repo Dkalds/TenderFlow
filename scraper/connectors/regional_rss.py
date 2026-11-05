@@ -19,6 +19,7 @@ from config.keywords import etiquetas_con_senal_firme
 from db.upsert import Licitacion
 from scraper.connectors.base import ParsedTender, RawNotice
 from scraper.filters import matches_technology
+from scraper.resilience import pedir_con_reintentos
 from services.classification import normalizar_estado
 
 if TYPE_CHECKING:
@@ -150,8 +151,7 @@ class RegionalRssConnector:
         self._max_seen: str | None = None
 
     def fetch(self, cursor: dict[str, Any] | None) -> Iterator[RawNotice]:
-        response = self._session.get(self._feed_url, timeout=_TIMEOUT)
-        response.raise_for_status()
+        response = pedir_con_reintentos(lambda: self._session.get(self._feed_url, timeout=_TIMEOUT))
         content = response.content
         if len(content) > _MAX_FEED_BYTES:
             raise ValueError("El feed regional supera el límite seguro de 5 MiB.")

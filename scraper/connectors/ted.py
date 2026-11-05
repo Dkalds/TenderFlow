@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -49,6 +50,7 @@ from db.upsert import Adjudicacion, Licitacion
 from observability import get_logger
 from scraper.connectors.base import ParsedTender, RawNotice
 from scraper.filters import matches_technology
+from scraper.resilience import pedir_con_reintentos
 from services.dedupe import ReferenciaCruzada, id_evl_de_url
 from shared.geo import nuts_to_ccaa
 
@@ -381,17 +383,10 @@ class TedConnector:
         # recuperando el solapamiento en vez de tener que suponerlo.
         tras_watermark = 0
         while True:
-            resp = self._session.post(
-                _API_URL,
-                json={
-                    "query": query,
-                    "fields": _FIELDS,
-                    "page": page,
-                    "limit": _PAGE_SIZE,
-                },
-                timeout=_TIMEOUT,
+            cuerpo = {"query": query, "fields": _FIELDS, "page": page, "limit": _PAGE_SIZE}
+            resp = pedir_con_reintentos(
+                partial(self._session.post, _API_URL, json=cuerpo, timeout=_TIMEOUT)
             )
-            resp.raise_for_status()
             data = resp.json()
             notices = data.get("notices") or []
             if total is None:
