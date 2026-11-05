@@ -74,16 +74,27 @@ class CircuitOpenError(RuntimeError):
     """El circuit breaker está abierto — PLACSP está caído."""
 
 
-def download_month(year: int, month: int, force: bool = False) -> Path | None:
-    """Descarga el ZIP mensual. Devuelve la ruta o None si no existe."""
+def download_month(
+    year: int,
+    month: int,
+    force: bool = False,
+    *,
+    url_template: str = BULK_URL_TEMPLATE,
+    prefijo: str = "placsp",
+) -> Path | None:
+    """Descarga el ZIP mensual. Devuelve la ruta o None si no existe.
+
+    *url_template* y *prefijo* sirven a otra sindicación de PLACSP con ZIP
+    mensuales (la 1044 de agregadas, ``scraper.connectors.placsp_agregadas``).
+    """
     if not (1 <= month <= 12):
         raise ValueError(f"month must be 1-12, got {month}")
     if year < 2000:
         raise ValueError(f"year must be >= 2000, got {year}")
     ensure_data_dirs()
     assert settings.DOWNLOADS_DIR is not None  # garantizado por ensure_data_dirs()
-    url = BULK_URL_TEMPLATE.format(year=year, month=month)
-    dest = settings.DOWNLOADS_DIR / f"placsp_{year}{month:02d}.zip"
+    url = url_template.format(year=year, month=month)
+    dest = settings.DOWNLOADS_DIR / f"{prefijo}_{year}{month:02d}.zip"
 
     if dest.exists() and not force:
         if zipfile.is_zipfile(dest):

@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import math
 import re
-import unicodedata
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -26,6 +25,7 @@ from typing import Any, Literal
 from services.rag.fact_sheet import _MIN_FRAGMENTO_CHARS, ExtraccionHechos, _normalize_quote
 from services.rag.ficha_golden import CAMPOS_CLAVE, FAMILIAS, Caso, negativos, positivos
 from shared.tender_facts import FactItem
+from shared.texto import sin_tildes
 
 Comparacion = Literal["igual", "distinta", "sin_comparar"]
 Resultado = Literal[
@@ -70,8 +70,7 @@ _PALABRAS_VACIAS = frozenset(
 
 
 def _plano(texto: str) -> str:
-    sin_tildes = unicodedata.normalize("NFKD", texto.casefold())
-    return "".join(c for c in sin_tildes if not unicodedata.combining(c))
+    return sin_tildes(texto.casefold())
 
 
 def _todas_las_palabras(texto: str) -> frozenset[str]:

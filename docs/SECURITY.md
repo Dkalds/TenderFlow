@@ -367,7 +367,7 @@ en el log — es un bug del llamante, no un motivo para perder el rastro.
 | `export.*` | `downloaded`, `calendar_link_created` | `api/routes/exports.py` |
 | `gdpr.*` | `export`, `delete` | `api/routes/me.py` |
 | `user.*` | `admin_changed`, `deactivate`, `reactivate`, `anonymize` | `api/routes/admin_users.py` |
-| acceso | `solicitud_acceso.estado`, `access_grant.granted`, `access_grant.revoked` | `api/routes/admin_solicitudes.py` |
+| acceso | `solicitud_acceso.estado`, `access_grant.granted`, `access_grant.revoked` | `db/access_grants.py`, en la misma transacción que la concesión o la revocación ([ADR-039](adr/ADR-039-auditoria-como-condicion-del-control-de-acceso.md)); un cambio de estado sin concesión, `api/routes/admin_solicitudes.py` |
 | `webhook.*` | `created`, `updated`, `deleted`, `secret_rotated`, `redelivered` | `api/routes/webhooks.py` |
 | configuración | `feature_flag.set`, `tecnologias_keyword.{added,removed,seeded}`, `empresa.review_resolved`, `dedupe.review_resolved`, `organo.review_resolved` | rutas de administración; las dos colas del dato en `api/routes/admin_revision.py` |
 | operación | `dlq.requeued`, `dlq.discarded` | `api/routes/admin_dlq.py` |
@@ -379,6 +379,9 @@ Los valores de cabecera no pueden contener `|` (el escritor lo sustituye por `¦
 y un payload que empiece como una cabecera se marca con `detail=`) y el filtro por
 organización solo mira la cabecera: el nombre de una API key o de un webhook, que
 llega al payload, no puede plantar un evento en el rastro de otra organización.
+
+El rastro es best-effort —un fallo al escribirlo no tumba la operación— salvo
+para conceder y revocar acceso, donde es condición de la operación (ADR-039).
 
 Reglas del rastro (ADR-030 §D): el actor se guarda como `users.id` —columna
 `user_id` desde v129 y `user_key = str(id)`—, nunca el correo. Los eventos de

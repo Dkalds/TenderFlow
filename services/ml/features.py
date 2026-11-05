@@ -47,6 +47,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from db.repositories.ml_dataset import MlDatasetRepository
+from shared.cpv import cpv4 as _cpv4
 from shared.dates import to_iso_date
 from shared.estados import ESTADOS_CERRADOS
 
@@ -188,11 +189,6 @@ def _banda_importe(importe: float | None) -> str:
         if importe < corte:
             return f"b{i}"
     return f"b{len(_BANDAS_IMPORTE)}"
-
-
-def _cpv4(cpv: str | None) -> str | None:
-    digits = (cpv or "").strip()[:4]
-    return digits if len(digits) == 4 and digits.isdigit() else None
 
 
 # Año por debajo del cual una fecha del corpus es basura de la fuente, no un

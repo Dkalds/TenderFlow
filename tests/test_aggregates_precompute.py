@@ -2,7 +2,7 @@
 
 Cubre:
 - _compute_clusters: comportamiento con datos y fallback sin sklearn.
-- _persist_clusters: replace atómico en mat_clusters.
+- reemplazar_clusters (db/repositories/mat_clusters.py): replace atómico en mat_clusters.
 - run_aggregates_precompute: end-to-end con BD temporal.
 """
 
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import sys
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -37,11 +37,11 @@ def _insert_licitaciones(db_mod: Any, rows: list[tuple[str, str, str]]) -> None:
 
 def test_compute_clusters_empty_db(tmp_db):
     """Con BD vacía devuelve lista vacía."""
-    db_mod, _ = tmp_db
+    _db_mod, _ = tmp_db
+    from db.repositories.mat_clusters import filas_para_clustering
     from scheduler.aggregates_precompute import _compute_clusters
 
-    with db_mod.connect() as conn:
-        result = _compute_clusters(conn)
+    result = _compute_clusters(filas_para_clustering())
 
     assert result == []
 
@@ -58,10 +58,10 @@ def test_compute_clusters_with_data(tmp_db):
         ],
     )
 
+    from db.repositories.mat_clusters import filas_para_clustering
     from scheduler.aggregates_precompute import _compute_clusters
 
-    with db_mod.connect() as conn:
-        result = _compute_clusters(conn)
+    result = _compute_clusters(filas_para_clustering())
 
     assert len(result) == 12
     for r in result:
@@ -87,22 +87,23 @@ def test_compute_clusters_returns_empty_on_sklearn_missing(tmp_db):
                 "sklearn.feature_extraction.text": None,
             },
         ),
-        db_mod.connect() as conn,
     ):
-        result = ap_mod._compute_clusters(conn)
+        result = ap_mod._compute_clusters(
+            [("L001", "SAP ERP", "Desc 1"), ("L002", "SAP BW", "Desc 2")]
+        )
 
     assert isinstance(result, list)
 
 
 # ---------------------------------------------------------------------------
-# _persist_clusters
+# reemplazar_clusters
 # ---------------------------------------------------------------------------
 
 
-def test_persist_clusters_inserts_rows(tmp_db):
+def test_reemplazar_clusters_inserts_rows(tmp_db):
     """Inserta filas en mat_clusters."""
     db_mod, _ = tmp_db
-    from scheduler.aggregates_precompute import _persist_clusters
+    from db.repositories.mat_clusters import reemplazar_clusters
 
     rows = [
         {
@@ -113,19 +114,19 @@ def test_persist_clusters_inserts_rows(tmp_db):
         }
     ]
 
+    reemplazar_clusters(rows)
     with db_mod.connect() as conn:
-        _persist_clusters(conn, rows)
         count = conn.execute("SELECT COUNT(*) FROM mat_clusters").fetchone()[0]
 
     assert count == 1
 
 
-def test_persist_clusters_batches_across_chunk_boundary(tmp_db):
-    """Persiste correctamente un volumen que cruza el borde de _INSERT_CHUNK."""
+def test_reemplazar_clusters_batches_across_chunk_boundary(tmp_db):
+    """Persiste correctamente un volumen que cruza el borde de INSERT_CHUNK."""
     db_mod, _ = tmp_db
-    from scheduler.aggregates_precompute import _INSERT_CHUNK, _persist_clusters
+    from db.repositories.mat_clusters import INSERT_CHUNK, reemplazar_clusters
 
-    n = _INSERT_CHUNK * 2 + 7  # cruza dos bordes de chunk
+    n = INSERT_CHUNK * 2 + 7  # cruza dos bordes de chunk
     rows = [
         {
             "id_externo": f"EXP-{i:04d}",
@@ -136,8 +137,8 @@ def test_persist_clusters_batches_across_chunk_boundary(tmp_db):
         for i in range(n)
     ]
 
+    reemplazar_clusters(rows)
     with db_mod.connect() as conn:
-        _persist_clusters(conn, rows)
         count = conn.execute("SELECT COUNT(*) FROM mat_clusters").fetchone()[0]
         first = conn.execute(
             "SELECT cluster_label FROM mat_clusters WHERE id_externo = 'EXP-0000'"
@@ -151,10 +152,10 @@ def test_persist_clusters_batches_across_chunk_boundary(tmp_db):
     assert last == f"label-{(n - 1) % 8}"
 
 
-def test_persist_clusters_replaces_atomically(tmp_db):
+def test_reemplazar_clusters_replaces_atomically(tmp_db):
     """Segunda llamada reemplaza datos previos."""
     db_mod, _ = tmp_db
-    from scheduler.aggregates_precompute import _persist_clusters
+    from db.repositories.mat_clusters import reemplazar_clusters
 
     rows_a = [
         {
@@ -173,9 +174,9 @@ def test_persist_clusters_replaces_atomically(tmp_db):
         }
     ]
 
+    reemplazar_clusters(rows_a)
+    reemplazar_clusters(rows_b)
     with db_mod.connect() as conn:
-        _persist_clusters(conn, rows_a)
-        _persist_clusters(conn, rows_b)
         label = conn.execute("SELECT cluster_label FROM mat_clusters").fetchone()[0]
 
     assert label == "new"
@@ -212,11 +213,7 @@ def test_run_aggregates_precompute_returns_error_on_exception():
 
     import scheduler.aggregates_precompute as ap
 
-    err_ctx = MagicMock()
-    err_ctx.__enter__ = MagicMock(side_effect=RuntimeError("db down"))
-    err_ctx.__exit__ = MagicMock(return_value=False)
-
-    with patch.object(ap, "connect", return_value=err_ctx):
+    with patch.object(ap, "filas_para_clustering", side_effect=RuntimeError("db down")):
         result = ap.run_aggregates_precompute()
 
     assert result["status"] == "error"

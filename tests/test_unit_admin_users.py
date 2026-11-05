@@ -167,3 +167,53 @@ class TestAdminSetAdmin:
         finally:
             app.dependency_overrides.clear()
         assert resp.status_code == 400
+
+
+class TestAuditoriaConIdDelAdmin:
+    """``audit_log.user_id`` es la identidad del actor (ADR-030 §D): no puede ir NULL."""
+
+    def test_cambiar_admin_se_audita_con_el_id_del_admin(self, client):
+        target = {"id": 3, "email": "user@x.com", "is_admin": 0}
+        app.dependency_overrides[require_any_auth] = lambda: _admin_user()
+        try:
+            with (
+                patch("api.routes.admin_users.get_user_by_id", return_value=target),
+                patch("api.routes.admin_users.set_admin"),
+                patch("api.routes.admin_users.log_event") as auditar,
+            ):
+                client.put("/api/v1/admin/users/3/admin", json={"is_admin": True})
+        finally:
+            app.dependency_overrides.clear()
+        assert auditar.call_args.kwargs["user_id"] == 1
+
+    def test_desactivar_se_audita_con_el_id_del_admin(self, client):
+        target = {"id": 5, "email": "t@x.com", "is_admin": 0}
+        app.dependency_overrides[require_any_auth] = lambda: _admin_user()
+        try:
+            with (
+                patch("api.routes.admin_users.get_user_by_id", return_value=target),
+                patch("api.routes.admin_users.deactivate_user"),
+                patch("api.routes.admin_users.revoke_all_sessions", return_value=0),
+                patch("api.routes.admin_users.revoke_all_api_keys_for_user", return_value=0),
+                patch("api.routes.admin_users.log_event") as auditar,
+            ):
+                client.post("/api/v1/admin/users/5/deactivate", json={"action": "deactivate"})
+        finally:
+            app.dependency_overrides.clear()
+        assert auditar.call_args.kwargs["user_id"] == 1
+
+    def test_cambiar_una_flag_se_audita_con_el_id_del_admin(self, client):
+        app.dependency_overrides[require_any_auth] = lambda: _admin_user()
+        try:
+            with (
+                patch("api.routes.feature_flags.list_flags", return_value=[]),
+                patch("api.routes.feature_flags.set_flag"),
+                patch("api.routes.feature_flags.log_event") as auditar,
+            ):
+                resp = client.put(
+                    "/api/v1/feature-flags", json={"flags": [{"flag": "x", "enabled": True}]}
+                )
+        finally:
+            app.dependency_overrides.clear()
+        assert resp.status_code == 200
+        assert auditar.call_args.kwargs["user_id"] == 1

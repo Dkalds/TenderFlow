@@ -1,14 +1,14 @@
 """Contrato de ``db/repositories/extraction_runs.py``.
 
 El repositorio alimenta dos cosas que no pueden mentir: el historial de runs de
-`/ops` y la alerta de fallos consecutivos del carril diario. Hasta ahora solo lo
+`/ops` y la pantalla de calidad de datos. Hasta ahora solo lo
 rozaban los tests de pipeline (backlog P3 «Suites propias para
 `services/investigador/` y `extraction_runs`»).
 
 Los tests `*_bd` usan Postgres (`tmp_db`) y el conftest los marca
 `integration`; el resto sustituye la conexión por un doble y fija la forma de
-la consulta y los dos contratos defensivos: ni `persist_run` ni
-`load_recent_daily_statuses` propagan un fallo de BD.
+la consulta y el contrato defensivo: `persist_run` no propaga un
+fallo de BD.
 """
 
 from __future__ import annotations
@@ -112,24 +112,6 @@ def test_load_calidad_runs_pide_solo_las_columnas_de_calidad(bd: dict[str, Any])
     assert params == (90,), "el límite por defecto es el de la pantalla de calidad"
 
 
-def test_load_recent_daily_statuses_filtra_el_carril_diario(bd: dict[str, Any]) -> None:
-    bd["filas"] = [("error",), ("ok",)]
-
-    assert ExtractionRunRepository().load_recent_daily_statuses(3) == ["error", "ok"]
-    ((sql, params),) = bd["sentencias"]
-    # `%%` y no `%`: con `LIMIT %s` en la misma sentencia, un `%` suelto rompe
-    # el formateo y la alerta de fallos consecutivos no se disparaba (ADR-018).
-    assert "LIKE 'daily|%%'" in sql
-    assert params == [3]
-
-
-def test_load_recent_daily_statuses_no_propaga_un_fallo_de_bd(bd: dict[str, Any]) -> None:
-    """Quien pregunta es la alerta; un 500 aquí la dejaría ciega igual."""
-    bd["error"] = RuntimeError("BD caída")
-
-    assert ExtractionRunRepository().load_recent_daily_statuses(3) == []
-
-
 # ── Escritura ────────────────────────────────────────────────────────────────
 
 
@@ -170,4 +152,3 @@ def test_ida_y_vuelta_bd(tmp_db: Any) -> None:
     )
 
     assert [r["run_id"] for r in repo.load_runs(limit=10)] == ["bulk", "nuevo", "viejo"]
-    assert repo.load_recent_daily_statuses(5) == ["error", "ok"]

@@ -134,7 +134,7 @@ def test_ml_dataset_repository_owns_the_aggregate_formula() -> None:
 
 def test_bajas_py_uses_the_shared_fragment() -> None:
     """Confirma que el consumidor conocido de la fórmula rota ya usa la compartida."""
-    text = (_REPO_ROOT / "services/competitive/bajas.py").read_text(encoding="utf-8")
+    text = (_REPO_ROOT / "db/repositories/bajas.py").read_text(encoding="utf-8")
     assert "BAJA_PCT_SQL" in text
     assert "VALID_PAIR_LOTE" in text
 

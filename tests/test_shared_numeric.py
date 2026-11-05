@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import struct
 
-from shared.numeric import FLOAT_REL_TOL, values_equal
+import pytest
+
+from shared.numeric import FLOAT_REL_TOL, importes_en_texto, values_equal
 
 
 def _float4_roundtrip(value: float) -> float:
@@ -90,3 +92,25 @@ def test_bool_no_entra_en_la_comparacion_numerica():
     """``bool`` es subclase de ``int``; darle tolerancia no tendría sentido."""
     assert values_equal(True, True)
     assert not values_equal(True, 1.000001)
+
+
+@pytest.mark.parametrize(
+    ("texto", "esperado"),
+    [
+        ("Importe: 2.364.210,48 €", [2364210.48]),
+        ("1.500 euros", [1500.0]),
+        ("50000 EUR", [50000.0]),
+        ("12,5 €", [12.5]),
+        # Un solo punto con una o dos cifras detrás es decimal, no de miles.
+        ("1.5 €", [1.5]),
+        ("12.50 €", [12.5]),
+        ("300.000,00 euros y 1.200.000 €", [300000.0, 1200000.0]),
+        ("Importe: 7&euro;", [7.0]),
+        # Ni una forma ambigua ni un número sin moneda cuentan como importe.
+        ("1.2345 €", []),
+        ("expediente 2026/123", []),
+        ("12 europeos", []),
+    ],
+)
+def test_importes_en_texto(texto, esperado):
+    assert importes_en_texto(texto) == esperado

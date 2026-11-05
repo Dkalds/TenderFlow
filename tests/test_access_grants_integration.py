@@ -381,3 +381,47 @@ def test_avisar_sin_conceder_solo_escribe_a_quien_ya_puede_entrar(client, api_db
     # El cambio de estado se aplica en los dos casos.
     assert _estado(sin_acceso) == "atendida"
     assert _estado(con_acceso) == "atendida"
+
+
+# ── ADR-039: la auditoría es condición de conceder y revocar ─────────────────
+
+
+def test_si_no_se_puede_auditar_no_se_concede(api_db):
+    """Una concesión sin su fila de auditoría no puede existir."""
+    solicitud_id = _solicitud()
+
+    with (
+        patch("db.access_grants.registrar_evento", side_effect=RuntimeError("audit caída")),
+        pytest.raises(RuntimeError, match="audit caída"),
+    ):
+        grant_access_request(solicitud_id, "email", granted_by=None)
+
+    assert list_access_grants(include_inactive=True) == []
+    assert _estado(solicitud_id) == "pendiente"
+    assert is_access_granted("ana@example.com") is False
+
+
+def test_si_no_se_puede_auditar_no_se_revoca_y_revocar_guarda_quien(api_db):
+    from db.database import connect_read
+
+    admin = _crear_admin()
+    concedido = grant_access_request(_solicitud(), "email", granted_by=admin)
+    assert concedido is not None
+    grant_id = concedido["grant"]["id"]
+
+    with (
+        patch("db.access_grants.registrar_evento", side_effect=RuntimeError("audit caída")),
+        pytest.raises(RuntimeError),
+    ):
+        revoke_access(grant_id, revoked_by=admin)
+    assert is_access_granted("ana@example.com") is True
+
+    assert revoke_access(grant_id, revoked_by=admin) is not None
+    with connect_read() as conn:
+        fila = conn.execute(
+            "SELECT revoked_by FROM access_grants WHERE id = %s", (grant_id,)
+        ).fetchone()
+    assert fila is not None and fila[0] == admin
+    assert [(a, uid) for a, uid, _, _ in _rastro("access_grant.revoked")] == [
+        ("access_grant.revoked", admin)
+    ]

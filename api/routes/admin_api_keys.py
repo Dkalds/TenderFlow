@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from api.concurrency import run_db
-from api.routes.dual_auth import require_admin
+from api.routes.dual_auth import id_del_actor, require_admin
 from db.audit import log_event
 from db.repositories.api_keys import ApiKeyRepository
 from observability.logging import get_logger
@@ -111,12 +111,6 @@ router = APIRouter(prefix="/admin/api-keys", tags=["admin"])
 _repo = ApiKeyRepository()
 
 
-def _id_del_admin(admin: dict[str, Any]) -> int | None:
-    """``users.id`` de quien actúa, para ``audit_log.user_id`` (ADR-030 §D)."""
-    valor = admin.get("user_id")
-    return int(valor) if valor is not None else None
-
-
 @router.get(
     "",
     response_model=AdminApiKeysOut,
@@ -183,7 +177,7 @@ async def revocar_clave(
         log_event,
         event_type=API_KEY_REVOKED,
         actor=str(admin.get("user_id", "")),
-        user_id=_id_del_admin(admin),
+        user_id=id_del_actor(admin),
         resource=f"api_key:{key_id}",
         detail={"origen": "administracion", "dueno_user_id": revocada["user_id"]},
     )

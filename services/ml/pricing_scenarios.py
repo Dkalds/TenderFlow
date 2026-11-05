@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from db.repositories.pricing import PricingRepository
 from observability.logging import get_logger
+from shared.cpv import cpv4
 from shared.tender_facts import RateCardFact
 
 _MIN_INDICATIVE_N = 8
@@ -150,8 +151,7 @@ class _HistoryRow:
 
 
 def _cpv4(value: Any) -> str:
-    text = str(value or "").strip()
-    return text[:4] if len(text) >= 4 and text[:4].isdigit() else ""
+    return cpv4(value) or ""
 
 
 def _competition_band(value: Any) -> str | None:

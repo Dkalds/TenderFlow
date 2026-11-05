@@ -62,6 +62,10 @@ Uso::
 
     python -m scraper.connectors.placsp_agregadas --check --dump muestra.atom
     python -m scraper.connectors.placsp_agregadas        # pasada incremental
+    python -m scraper.connectors.placsp_agregadas --desde 2026-09 --hasta 2026-10  # histórico
+
+El histórico lee los ZIP mensuales de la sindicación (:class:`PlacspAgregadasHistorico`):
+el feed solo trae lo publicado desde su primera pasada (2026-11-04).
 """
 
 from __future__ import annotations
@@ -81,6 +85,8 @@ from scraper.connectors.sindicacion_placsp import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
     from db.upsert import DocumentoReferencia
     from scraper.connectors.base import ConnectorRunResult
 
@@ -146,6 +152,81 @@ class PlacspAgregadasConnector(FeedSindicacionPlacsp):
         }
 
 
+#: ZIP mensual de la misma sindicación, con el nombre del feed y ``_AAAAMM``,
+#: como ``licitacionesPerfilesContratanteCompleto3_AAAAMM.zip`` en la 643.
+URL_ZIP_1044 = f"{URL_BASE_SINDICACION}sindicacion_1044/PlataformasAgregadasSinMenores_{{year}}{{month:02d}}.zip"
+
+
+def _ya_existe(id_externo: str) -> bool:
+    from db.repositories import dedupe as dedupe_repo
+
+    return bool(dedupe_repo.filas_por_id([id_externo]))
+
+
+class PlacspAgregadasHistorico(PlacspAgregadasConnector):
+    """Un mes del ZIP de la sindicación 1044: lo que el feed ya no trae.
+
+    El conector incremental empezó el 2026-11-04 y solo lee hacia atrás hasta
+    su cursor, así que lo publicado antes no entró nunca. Mismo parseo, misma
+    puerta y mismo filtro de hosts que el feed.
+
+    **Nunca pisa una fila que ya existe**: el ZIP no trae ``<updated>`` y su
+    versión puede ser más vieja que la que trajo el feed. Por eso
+    :func:`ejecutar_historico` recorre los meses del más nuevo al más viejo.
+    ``new_cursor`` es ``None``: el cursor del feed no se toca.
+    """
+
+    def __init__(
+        self, year: int, month: int, *, ya_existe: Callable[[str], bool] | None = None
+    ) -> None:
+        super().__init__(URL_SINDICACION_1044)
+        self.year = year
+        self.month = month
+        self._ya_existe = ya_existe or _ya_existe
+        self.ya_existian = 0
+
+    def fetch(self, cursor: object) -> Iterator[RawNotice]:
+        from scraper.bulk_downloader import download_month, iter_xml_files
+        from scraper.connectors.placsp import _iter_atom_entries
+
+        zip_path = download_month(
+            self.year, self.month, url_template=URL_ZIP_1044, prefijo=SOURCE_ID
+        )
+        if zip_path is None:
+            log.info("placsp_agregadas_mes_no_publicado", year=self.year, month=self.month)
+            return
+        for nombre, contenido in iter_xml_files(zip_path):
+            for entry, _ in _iter_atom_entries(contenido):
+                yield RawNotice(natural_id=nombre, payload=(entry, None))
+
+    def parse(self, raw: RawNotice) -> ParsedTender | None:
+        parsed = super().parse(raw)
+        if parsed is not None and self._ya_existe(parsed.licitacion.id_externo):
+            self.ya_existian += 1
+            return None
+        return parsed
+
+    def new_cursor(self) -> None:
+        return None
+
+    def contadores_de_descarte(self) -> dict[str, int]:
+        return {
+            "placsp_agregadas_ya_existian": self.ya_existian,
+            **super().contadores_de_descarte(),
+        }
+
+
+def ejecutar_historico(desde: str, hasta: str) -> list[ConnectorRunResult]:
+    """Ingiere los meses ``desde``..``hasta`` (``YYYY-MM``), del más nuevo al más viejo."""
+    from scraper.connectors.base import run_connector
+    from scraper.reproceso_lotes import meses_entre
+
+    return [
+        run_connector(PlacspAgregadasHistorico(year, month))
+        for year, month in reversed(meses_entre(desde, hasta))
+    ]
+
+
 def ejecutar(*, url: str | None = None) -> ConnectorRunResult | None:
     """Una pasada incremental; ``None`` si la fuente está apagada (sin URL).
 
@@ -161,8 +242,23 @@ def ejecutar(*, url: str | None = None) -> ConnectorRunResult | None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    import argparse
+
+    historico = argparse.ArgumentParser(add_help=False)
+    historico.add_argument("--desde", help="Histórico desde los ZIP mensuales: primer mes, YYYY-MM")
+    historico.add_argument("--hasta", help="Último mes, YYYY-MM (por defecto, --desde)")
+    args, resto = historico.parse_known_args(argv)
+    if args.desde:
+        from db.database import close_pool, init_db
+
+        init_db()
+        try:
+            resultados = ejecutar_historico(args.desde, args.hasta or args.desde)
+        finally:
+            close_pool()
+        return 0 if all(r.errores == 0 for r in resultados) else 1
     return main_sindicacion(
-        argv,
+        resto,
         descripcion="Ingesta de las plataformas autonómicas agregadas en PLACSP (sindicación 1044)",
         source_id=SOURCE_ID,
         variable=VARIABLE,

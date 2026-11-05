@@ -351,34 +351,22 @@ servicio y estos pasos se reducen a poner los secretos.
 
 | Alerta | Nivel | Fuente | Umbral |
 |---|---|---|---|
-| Feed diario con lag | WARN | `check_daily_lag()` | > 8h sin actualización |
-| Feed diario: fallos consecutivos | ERROR | `check_daily_consecutive_failures()` | 3 fallos seguidos |
-| Modelo ML SAP obsoleto | WARN | `check_ml_model_staleness()` | > 30 días desde entrenamiento |
+| Ingesta: fuente(s) sin datos frescos | WARN | `scheduler/healthcheck.py` (`comprobar_frescura_fuentes`) | `max_lag_hours` de cada fuente en `REGISTERED_SOURCES` |
 | Scheduler job timeout | ERROR | `scheduler/loop.py` | > 600s (configurable) |
 | Scheduler job failure | ERROR | `scheduler/loop.py` | Excepción en ejecución |
 | DB pool acquire timeout | ERROR | `db/connection.py` | > 10s sin conexión |
 
-### 7.1 Feed diario con lag (> 8h)
+### 7.1 Ingesta: fuente(s) sin datos frescos
 
-**Síntoma**: alerta «Feed diario con lag de Xh».
+**Síntoma**: alerta «Ingesta: N fuente(s) sin datos frescos». El detalle por
+fuente (umbral, lag, último éxito) está en el informe del healthcheck, en
+`info.fuentes_frescura`; los avisos `fuente_atrasada:`,
+`fuente_sin_registro:` y `fuente_sin_datos_nuevos:` dicen cuál falla y cómo.
 
-```bash
-python -c "
-from db.database import get_cursor
-from datetime import datetime, UTC
-c = get_cursor('place_live_atom')
-if c:
-    last = c.get('last_seen_updated', 'N/A')
-    print(f'Last updated: {last}')
-    try:
-        dt = datetime.fromisoformat(last.replace('Z', '+00:00'))
-        print(f'Lag: {(datetime.now(UTC) - dt).total_seconds() / 3600:.1f}h')
-    except Exception:
-        pass
-else:
-    print('No cursor found — el scraper nunca corrió')
-"
-```
+Hasta el 2026-11-04 había además `check_daily_lag`,
+`check_daily_consecutive_failures` y `check_ml_model_staleness` en
+`observability/alerts.py`, pero nada los llamaba: se retiraron. La frescura por
+fuente cubre el lag y los fallos seguidos del feed diario.
 
 **Causas comunes**: el workflow `scrape-daily.yml` falló; el feed ATOM de PLACSP
 no tiene datos nuevos (normal fuera de horario laboral); timeout de red al
@@ -400,14 +388,7 @@ with connect() as c:
 "
 ```
 
-### 7.2 Feed diario: 3 fallos consecutivos
-
-```bash
-python -c "
-from services.extraction_runs import load_recent_daily_statuses
-print(f'Últimos 5 estados: {load_recent_daily_statuses(5)}')
-"
-```
+Si el carril diario falla en cada run:
 
 **Causas comunes**: PLACSP cambió la estructura del ATOM; error de parseo XML
 (ver DLQ); timeout de red persistente.
@@ -427,20 +408,7 @@ with connect() as c:
 python -m scheduler.dlq_retry
 ```
 
-### 7.3 Modelo ML SAP obsoleto (> 30 días)
-
-```bash
-python -c "
-import joblib
-from pathlib import Path
-p = Path('models/sap_classifier.pkl')
-print(joblib.load(p).metadata.get('trained_at', 'unknown') if p.exists() else 'Modelo no encontrado')
-"
-
-python -m services.ml.classifier_training --force
-```
-
-### 7.4 Scheduler job timeout
+### 7.2 Scheduler job timeout
 
 **Causas comunes**: job pesado (`daily_atom`, `recent_bulk`) por encima de 600 s;
 proceso esperando un lock de BD; presión de memoria.
@@ -451,7 +419,7 @@ export SCHEDULER_JOB_TIMEOUT_SECONDS=1200
 export SCHEDULER_BULK_MONTHS=1
 ```
 
-### 7.5 Scheduler job failure
+### 7.3 Scheduler job failure
 
 ```bash
 docker compose logs scheduler --tail=50
@@ -461,7 +429,7 @@ python -c "from scheduler.jobs import build_default_registry; \
     [j.fn() for j in build_default_registry() if j.name == 'NOMBRE_JOB']"
 ```
 
-### 7.6 DB pool acquire timeout
+### 7.4 DB pool acquire timeout
 
 **Síntoma**: `db_pool_acquire_timeout` en los logs, o la alerta
 `PgPoolAcquireTimeoutHigh` del plano B.

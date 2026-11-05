@@ -1,11 +1,21 @@
-"""Persistencia de concesiones dinámicas de acceso OAuth."""
+"""Persistencia de concesiones dinámicas de acceso OAuth.
+
+Conceder y revocar escriben su fila de ``audit_log`` en la misma transacción
+(ADR-039): si la auditoría no se puede escribir, la operación no ocurre.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import TypedDict, cast
 
+from db.audit import registrar_evento
 from db.database import connect, connect_read
+from shared.audit_events import (
+    ACCESS_GRANT_GRANTED,
+    ACCESS_GRANT_REVOKED,
+    SOLICITUD_ACCESO_ESTADO,
+)
 from shared.auth_core import oauth_email_parts
 from shared.concesiones_acceso import AccessGrantKind as AccessGrantKind
 from shared.concesiones_acceso import ConcesionInvalida as ConcesionInvalida
@@ -108,7 +118,8 @@ def grant_access_request(
 ) -> GrantedAccessRequest | None:
     """Concede y marca la solicitud atendida en una única transacción.
 
-    Lanza :class:`ConcesionInvalida` si la solicitud no da para esa concesión
+    La auditoría del cambio de estado y de la concesión va en esa misma
+    transacción (ADR-039), con ``granted_by`` como actor. Lanza :class:`ConcesionInvalida` si la solicitud no da para esa concesión
     (su correo no tiene forma de dirección, o el dominio no es concedible). La
     transacción se deshace entera: ni concesión ni cambio de estado.
     """
@@ -143,24 +154,55 @@ def grant_access_request(
             "UPDATE solicitudes_acceso SET estado = 'atendida' WHERE id = %s",
             (solicitud_id,),
         )
+        grant = _row_to_grant(grant_row)
+        registrar_evento(
+            connection,
+            event_type=SOLICITUD_ACCESO_ESTADO,
+            user_id=granted_by,
+            resource=f"solicitud_acceso:{solicitud_id}",
+            detail="atendida",
+        )
+        registrar_evento(
+            connection,
+            event_type=ACCESS_GRANT_GRANTED,
+            user_id=granted_by,
+            resource=f"access_grant:{grant['id']}",
+            detail={"kind": grant["kind"]},
+        )
     return GrantedAccessRequest(
-        grant=_row_to_grant(grant_row),
+        grant=grant,
         email=email,
         empresa=empresa,
         previous_state=previous_state,
     )
 
 
-def revoke_access(grant_id: int) -> AccessGrant | None:
+def revoke_access(grant_id: int, *, revoked_by: int | None = None) -> AccessGrant | None:
+    """Revoca una concesión viva y lo audita en la misma transacción (ADR-039).
+
+    ``revoked_by`` queda en la concesión (v171) y como actor del evento.
+    ``None`` si no existe o ya estaba revocada: entonces no se audita nada.
+    """
     with connect() as connection:
         cursor = connection.execute(
-            "UPDATE access_grants SET active = FALSE, revoked_at = NOW(), updated_at = NOW() "
+            "UPDATE access_grants SET active = FALSE, revoked_at = NOW(), updated_at = NOW(), "
+            "revoked_by = %s "
             "WHERE id = %s AND active = TRUE "
             "RETURNING id, kind, value, active, granted_by, created_at, updated_at, revoked_at",
-            (grant_id,),
+            (revoked_by, grant_id),
         )
         row = cursor.fetchone()
-    return _row_to_grant(row) if row is not None else None
+        if row is None:
+            return None
+        grant = _row_to_grant(row)
+        registrar_evento(
+            connection,
+            event_type=ACCESS_GRANT_REVOKED,
+            user_id=revoked_by,
+            resource=f"access_grant:{grant_id}",
+            detail={"kind": grant["kind"]},
+        )
+    return grant
 
 
 def list_access_grants(*, include_inactive: bool = False) -> list[AccessGrantListado]:

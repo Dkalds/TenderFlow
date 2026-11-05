@@ -17,12 +17,18 @@ Acciones estándar:
 from __future__ import annotations
 
 import hmac
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from db.database import connect, now_utc_iso
 from db.database import get_table_columns as _get_cols
 from observability.logging import get_logger
 from shared.audit_events import es_evento_conocido
+
+if TYPE_CHECKING:
+    from db.connection import _PgConnAdapter
+
+#: Lo que acepta ``detail``: texto, o un dict que se guarda en JSON.
+_Detalle = str | dict[str, Any]
 
 log = get_logger(__name__)
 
@@ -144,6 +150,116 @@ def _assert_or_bootstrap_chain_state(connection: Any) -> tuple[str, int, bool]:
     return stored_head, stored_count, True
 
 
+def _escribir(
+    c: _PgConnAdapter,
+    user_key: str,
+    session_hash: str,
+    action: str,
+    detail: str,
+    user_id: int | None,
+) -> None:
+    """Añade la fila a ``audit_log`` (y avanza la cadena) en la conexión ``c``.
+
+    Lanza si no puede: quien la llama decide si eso tumba la operación
+    (:func:`registrar_evento`) o solo se registra (:func:`log_action`).
+    """
+    import json
+
+    now = now_utc_iso()
+    # Detectar si la tabla tiene columnas de hash chain (migración 26)
+    cols_info = _get_cols(c, "audit_log")
+    has_hash_chain = "prev_hash" in cols_info and "this_hash" in cols_info
+    has_hash_version = "hash_version" in cols_info
+    has_chain_state = bool(_get_cols(c, "audit_chain_state"))
+    # v129: columna opcional para bases a medio migrar.
+    col_uid = ", user_id" if "user_id" in cols_info else ""
+    val_uid = ", %s" if col_uid else ""
+    params_uid: tuple[int | None, ...] = (user_id,) if col_uid else ()
+
+    if has_hash_chain:
+        _serialize_audit_chain_write(c)
+        if has_chain_state:
+            prev_hash, entry_count, state_exists = _assert_or_bootstrap_chain_state(c)
+        else:
+            prev_row = c.execute(
+                "SELECT this_hash FROM audit_log ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            prev_hash = str(prev_row[0]) if prev_row and prev_row[0] else "genesis"
+            entry_count = 0
+            state_exists = False
+
+        # Calcular this_hash
+        row_json = json.dumps(
+            {
+                "user_key": user_key,
+                "session_hash": session_hash,
+                "action": action,
+                "detail": detail,
+                "created_at": now,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        this_hash = _audit_hmac(f"{prev_hash}{row_json}")
+        if has_hash_version:
+            c.execute(
+                "INSERT INTO audit_log "
+                "(user_key, session_hash, action, detail, created_at, prev_hash, "
+                f" this_hash, hash_version{col_uid}) "
+                f"VALUES (%s, %s, %s, %s, %s, %s, %s, 'hmac-sha256-v1'{val_uid})",
+                (
+                    user_key,
+                    session_hash,
+                    action,
+                    detail,
+                    now,
+                    prev_hash,
+                    this_hash,
+                    *params_uid,
+                ),
+            )
+        else:
+            c.execute(
+                "INSERT INTO audit_log "
+                "(user_key, session_hash, action, detail, created_at, prev_hash, "
+                f" this_hash{col_uid}) "
+                f"VALUES (%s, %s, %s, %s, %s, %s, %s{val_uid})",
+                (
+                    user_key,
+                    session_hash,
+                    action,
+                    detail,
+                    now,
+                    prev_hash,
+                    this_hash,
+                    *params_uid,
+                ),
+            )
+        if has_chain_state:
+            next_count = entry_count + 1
+            next_signature = _state_hmac(this_hash, next_count)
+            if state_exists:
+                c.execute(
+                    "UPDATE audit_chain_state SET head_hash = %s, entry_count = %s, "
+                    "state_hmac = %s, updated_at = %s WHERE chain_name = %s",
+                    (this_hash, next_count, next_signature, now, _CHAIN_NAME),
+                )
+            else:
+                c.execute(
+                    "INSERT INTO audit_chain_state "
+                    "(chain_name, head_hash, entry_count, state_hmac, updated_at) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (_CHAIN_NAME, this_hash, next_count, next_signature, now),
+                )
+    else:
+        c.execute(
+            "INSERT INTO audit_log "
+            f"(user_key, session_hash, action, detail, created_at{col_uid}) "
+            f"VALUES (%s, %s, %s, %s, %s{val_uid})",
+            (user_key, session_hash, action, detail, now, *params_uid),
+        )
+
+
 def log_action(
     user_key: str,
     session_hash: str,
@@ -167,103 +283,9 @@ def log_action(
             firma exactamente lo que firmaba antes, así que las filas
             anteriores siguen verificando.
     """
-    import json
-
     try:
-        now = now_utc_iso()
         with connect() as c:
-            # Detectar si la tabla tiene columnas de hash chain (migración 26)
-            cols_info = _get_cols(c, "audit_log")
-            has_hash_chain = "prev_hash" in cols_info and "this_hash" in cols_info
-            has_hash_version = "hash_version" in cols_info
-            has_chain_state = bool(_get_cols(c, "audit_chain_state"))
-            # v129: columna opcional para bases a medio migrar.
-            col_uid = ", user_id" if "user_id" in cols_info else ""
-            val_uid = ", %s" if col_uid else ""
-            params_uid: tuple[int | None, ...] = (user_id,) if col_uid else ()
-
-            if has_hash_chain:
-                _serialize_audit_chain_write(c)
-                if has_chain_state:
-                    prev_hash, entry_count, state_exists = _assert_or_bootstrap_chain_state(c)
-                else:
-                    prev_row = c.execute(
-                        "SELECT this_hash FROM audit_log ORDER BY id DESC LIMIT 1"
-                    ).fetchone()
-                    prev_hash = str(prev_row[0]) if prev_row and prev_row[0] else "genesis"
-                    entry_count = 0
-                    state_exists = False
-
-                # Calcular this_hash
-                row_json = json.dumps(
-                    {
-                        "user_key": user_key,
-                        "session_hash": session_hash,
-                        "action": action,
-                        "detail": detail,
-                        "created_at": now,
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                )
-                this_hash = _audit_hmac(f"{prev_hash}{row_json}")
-                if has_hash_version:
-                    c.execute(
-                        "INSERT INTO audit_log "
-                        "(user_key, session_hash, action, detail, created_at, prev_hash, "
-                        f" this_hash, hash_version{col_uid}) "
-                        f"VALUES (%s, %s, %s, %s, %s, %s, %s, 'hmac-sha256-v1'{val_uid})",
-                        (
-                            user_key,
-                            session_hash,
-                            action,
-                            detail,
-                            now,
-                            prev_hash,
-                            this_hash,
-                            *params_uid,
-                        ),
-                    )
-                else:
-                    c.execute(
-                        "INSERT INTO audit_log "
-                        "(user_key, session_hash, action, detail, created_at, prev_hash, "
-                        f" this_hash{col_uid}) "
-                        f"VALUES (%s, %s, %s, %s, %s, %s, %s{val_uid})",
-                        (
-                            user_key,
-                            session_hash,
-                            action,
-                            detail,
-                            now,
-                            prev_hash,
-                            this_hash,
-                            *params_uid,
-                        ),
-                    )
-                if has_chain_state:
-                    next_count = entry_count + 1
-                    next_signature = _state_hmac(this_hash, next_count)
-                    if state_exists:
-                        c.execute(
-                            "UPDATE audit_chain_state SET head_hash = %s, entry_count = %s, "
-                            "state_hmac = %s, updated_at = %s WHERE chain_name = %s",
-                            (this_hash, next_count, next_signature, now, _CHAIN_NAME),
-                        )
-                    else:
-                        c.execute(
-                            "INSERT INTO audit_chain_state "
-                            "(chain_name, head_hash, entry_count, state_hmac, updated_at) "
-                            "VALUES (%s, %s, %s, %s, %s)",
-                            (_CHAIN_NAME, this_hash, next_count, next_signature, now),
-                        )
-            else:
-                c.execute(
-                    "INSERT INTO audit_log "
-                    f"(user_key, session_hash, action, detail, created_at{col_uid}) "
-                    f"VALUES (%s, %s, %s, %s, %s{val_uid})",
-                    (user_key, session_hash, action, detail, now, *params_uid),
-                )
+            _escribir(c, user_key, session_hash, action, detail, user_id)
     except Exception as exc:
         log.warning("audit_log_persist_failed", action=action, error=str(exc))
 
@@ -308,6 +330,69 @@ def componer_detalle(
     return " | ".join(parts)
 
 
+def _actor(actor: str, user_id: int | None) -> str:
+    """La columna ``user_key`` del evento.
+
+    Quien ya tiene ``user_id`` no tiene por qué repetirlo como clave: la columna
+    queda con el id en texto, que es la forma que el backfill de v129 resuelve.
+    """
+    if not actor and user_id is not None:
+        return str(user_id)
+    return actor or "system"
+
+
+def _detalle(
+    event_type: str,
+    outcome: str,
+    ip: str | None,
+    resource: str | None,
+    detail: _Detalle,
+) -> str:
+    """El ``detail`` del evento: cabecera más el texto o el dict en JSON."""
+    import json
+
+    if not es_evento_conocido(event_type):
+        log.warning("audit_event_type_unknown", event_type=event_type)
+    if isinstance(detail, dict):
+        try:
+            detail_str = json.dumps(detail, ensure_ascii=False, default=str)[:2000]
+        except Exception:
+            # El detalle degradado a repr() sigue siendo mejor que perder el
+            # evento, pero un detalle no serializable es un bug del llamante.
+            log.warning("audit_detail_not_serializable", event_type=event_type, exc_info=True)
+            detail_str = str(detail)[:2000]
+    else:
+        detail_str = str(detail)[:2000]
+    return componer_detalle(event_type, outcome, ip, resource, detail_str)
+
+
+def registrar_evento(
+    connection: _PgConnAdapter,
+    *,
+    event_type: str,
+    user_id: int | None,
+    resource: str | None = None,
+    detail: _Detalle = "",
+    outcome: str = "success",
+) -> None:
+    """Escribe un evento de auditoría **en la transacción de quien llama**.
+
+    Para las operaciones cuya auditoría es condición de la operación (ADR-039:
+    conceder y revocar acceso). A diferencia de :func:`log_event`, no se traga
+    el error: si la fila no se puede escribir, la excepción deshace la
+    transacción entera y la operación no ocurre sin rastro. Toma el advisory
+    lock de la cadena hasta el commit de quien llama.
+    """
+    _escribir(
+        connection,
+        _actor("", user_id),
+        "-",
+        event_type,
+        _detalle(event_type, outcome, None, resource, detail),
+        user_id,
+    )
+
+
 def log_event(
     *,
     event_type: str,
@@ -317,7 +402,7 @@ def log_event(
     outcome: str = "success",
     ip: str | None = None,
     resource: str | None = None,
-    detail: str | dict[str, Any] = "",
+    detail: _Detalle = "",
     user_id: int | None = None,
 ) -> None:
     """Variante extendida de :func:`log_action` con outcome + ip + resource (E8).
@@ -347,34 +432,11 @@ def log_event(
     tipo fuera del catálogo se registra igual y deja un aviso en el log. Es
     un bug del llamante, no un motivo para perder el rastro.
     """
-    import json
-
-    if not es_evento_conocido(event_type):
-        log.warning("audit_event_type_unknown", event_type=event_type)
-
-    user_key = actor or user_key
-    # Quien ya tiene ``user_id`` no tiene por qué repetirlo como clave: la
-    # columna ``user_key`` queda con el id en texto, que es la forma que el
-    # backfill de v129 resuelve y la que llevan los llamadores más recientes.
-    if not user_key and user_id is not None:
-        user_key = str(user_id)
-
-    if isinstance(detail, dict):
-        try:
-            detail_str = json.dumps(detail, ensure_ascii=False, default=str)[:2000]
-        except Exception:
-            # El detalle degradado a repr() sigue siendo mejor que perder el
-            # evento, pero un detalle no serializable es un bug del llamante.
-            log.warning("audit_detail_not_serializable", event_type=event_type, exc_info=True)
-            detail_str = str(detail)[:2000]
-    else:
-        detail_str = str(detail)[:2000]
-
     log_action(
-        user_key=user_key or "system",
+        user_key=_actor(actor or user_key, user_id),
         session_hash=session_hash or "-",
         action=event_type,
-        detail=componer_detalle(event_type, outcome, ip, resource, detail_str),
+        detail=_detalle(event_type, outcome, ip, resource, detail),
         user_id=user_id,
     )
 

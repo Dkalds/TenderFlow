@@ -6,6 +6,7 @@ El CRUD por CPV y su matching viven en ``db/watchlist.py`` (ADR-022,
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from db.database import connect, connect_read
@@ -136,22 +137,53 @@ class WatchlistRepository:
         ``user_id`` se escribe junto a ``user_key`` cuando el productor lo
         conoce (escritura doble de ADR-030 fase 2).
         """
+        return self.store_pending_digests(
+            user_key=user_key,
+            recipient=recipient,
+            entry_id=entry_id,
+            licitacion_ids=[licitacion_id],
+            frequency=frequency,
+            matched_at=matched_at,
+            user_id=user_id,
+        )
+
+    def store_pending_digests(
+        self,
+        *,
+        user_key: str,
+        recipient: str,
+        entry_id: int,
+        licitacion_ids: Sequence[str],
+        frequency: str,
+        matched_at: str,
+        user_id: int | None = None,
+    ) -> bool:
+        """Varias coincidencias de una misma entrada en una sola conexión.
+
+        Todas o ninguna: un fallo se registra y devuelve ``False`` sin dejar la
+        mitad encolada. ``ON CONFLICT`` hace que repetir no duplique.
+        """
+        if not licitacion_ids:
+            return True
         try:
             with connect() as c:
-                c.execute(
+                c.executemany(
                     "INSERT INTO pending_digests "
                     "(user_key, user_id, recipient_email, entry_id, licitacion_id, "
                     " frequency, matched_at) "
                     "VALUES (%s, %s, %s, %s, %s, %s, %s) "
                     "ON CONFLICT(entry_id, licitacion_id) DO NOTHING",
-                    (user_key, user_id, recipient, entry_id, licitacion_id, frequency, matched_at),
+                    [
+                        (user_key, user_id, recipient, entry_id, lic, frequency, matched_at)
+                        for lic in licitacion_ids
+                    ],
                 )
             return True
         except Exception as exc:
             log.warning(
                 "pending_digest_store_failed",
                 entry_id=entry_id,
-                licitacion_id=licitacion_id,
+                licitaciones=len(licitacion_ids),
                 error=str(exc),
             )
             return False

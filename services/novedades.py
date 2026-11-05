@@ -33,6 +33,7 @@ from db.notifications import marcar_visita_ficha, ultima_visita_ficha
 from db.repositories.novedades import NovedadesRepository
 from observability.logging import get_logger
 from services.avisos import Aviso, aviso_documento_nuevo, aviso_recurso, clasificar_cambio
+from shared.dates import instante_utc as _instante
 
 log = get_logger(__name__)
 
@@ -94,25 +95,6 @@ class VisitaMarcada(BaseModel):
 
 #: Clave de orden de los ítems sin fecha legible: quedan por debajo de todos.
 _SIN_INSTANTE = datetime.min.replace(tzinfo=UTC)
-
-
-def _instante(cuando: str) -> datetime | None:
-    """``cuando`` como instante UTC, o ``None`` si no se entiende.
-
-    Las cuatro fuentes no escriben la fecha igual: el historial y el ledger
-    llevan ISO con ``T``, los pliegos antiguos el ``now()::text`` de Postgres
-    (con espacio y offset corto, ``2026-09-16 15:00:00+00``) y los recursos
-    sólo la fecha. Comparadas como texto, ``' ' < 'T'`` dejaba un pliego de hoy
-    por debajo de cualquier cambio de hoy aunque fuera posterior. Una fecha sin
-    hora vale su medianoche UTC, que es como la comparaba el texto.
-    """
-    if not cuando:
-        return None
-    try:
-        dt = datetime.fromisoformat(cuando.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
 
 def _cuando_iso(cuando: Any) -> str:

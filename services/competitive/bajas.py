@@ -8,33 +8,23 @@ sobreestima la baja en cualquier procedimiento con más de un lote. Solo
 considera pares con presupuesto y adjudicación positivos y descarta
 outliers donde el adjudicado supera ese presupuesto en más de un 50%
 (errores de fuente o modificados mal atribuidos).
+
+El SQL vive en ``db/repositories/bajas.py`` (ADR-022); aquí queda la regla
+de qué base se compara.
 """
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from typing import Any
 
-from db.database import connect_read
-from db.repositories.base import rows_to_dicts
+from db.repositories.bajas import fila_baja_de_referencia, filas_bajas_agregadas
 from db.sql_fragments import (
-    BAJA_PCT_SQL,
     BASE_DECLARADA_SQL,
     BASE_MIXTA,
     BASE_SIN_IVA,
     SIN_IVA_CONOCIDO_SQL,
-    TECHNOLOGY_OBSERVED_SQL,
-    VALID_PAIR_LOTE,
-    round_sql,
 )
-from services.dedupe import exclude_duplicados_sql
-
-_GROUP_COLUMNS = {
-    "empresa": ("a.empresa_id", "COALESCE(e.nombre_canonico, a.nombre)"),
-    "organo": (None, "l.organo_contratacion"),
-    "cpv": (None, "substr(l.cpv, 1, 2)"),
-    "ccaa": (None, "l.ccaa"),
-}
 
 
 def _filtro_de_base(solo_base_declarada: bool) -> tuple[str, str]:
@@ -90,64 +80,19 @@ def bajas_agregadas(
     - ``ccaa`` admite varias separadas por comas, como la barra global. Antes
       se comparaba el CSV entero por igualdad y con dos CCAA no casaba nada.
     """
-    if group_by not in _GROUP_COLUMNS:
-        raise ValueError(f"group_by inválido: {group_by!r} (válidos: {sorted(_GROUP_COLUMNS)})")
-    id_col, label_col = _GROUP_COLUMNS[group_by]
     filtro_base, base = _filtro_de_base(solo_base_declarada)
-
-    select_id = f"{id_col} AS grupo_id," if id_col else ""
-    group_cols = f"{id_col}, {label_col}" if id_col else label_col
-
-    # S608: las columnas interpoladas salen de _GROUP_COLUMNS (whitelist
-    # interna) y VALID_PAIR_LOTE es un fragmento constante; los valores van con ?.
-    sql = f"""
-        SELECT {select_id}
-               {label_col} AS grupo,
-               COUNT(*) AS contratos,
-               {round_sql(f"AVG({BAJA_PCT_SQL})", 2)} AS baja_media_pct,
-               {round_sql(f"MIN({BAJA_PCT_SQL})", 2)} AS baja_min_pct,
-               {round_sql(f"MAX({BAJA_PCT_SQL})", 2)} AS baja_max_pct,
-               COALESCE(SUM(a.importe_adjudicado), 0) AS importe_total,
-               {round_sql("AVG(a.n_ofertas_recibidas)", 1)} AS ofertas_medias
-        FROM adjudicaciones a
-        JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        LEFT JOIN lotes lo ON lo.id = a.lote_id
-        LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
-        WHERE {VALID_PAIR_LOTE} AND {TECHNOLOGY_OBSERVED_SQL} AND {exclude_duplicados_sql()}
-          AND {filtro_base}
-    """  # noqa: S608 — columnas de _GROUP_COLUMNS y fragmentos constantes; valores con %s
-    params: list[object] = []
-    if cpv_prefix:
-        sql += " AND l.cpv LIKE %s"
-        params.append(f"{cpv_prefix}%")
-    ccaas = [c.strip() for c in (ccaa or "").split(",") if c.strip()]
-    if len(ccaas) == 1:
-        sql += " AND l.ccaa = %s"
-        params.append(ccaas[0])
-    elif ccaas:
-        sql += " AND l.ccaa IN (" + ",".join("%s" for _ in ccaas) + ")"
-        params.extend(ccaas)
-    if fecha_desde is not None:
-        sql += " AND a.fecha_adjudicacion >= %s"
-        params.append(fecha_desde.isoformat())
-    if fecha_hasta is not None:
-        # Cota exclusiva al día siguiente: `fecha_adjudicacion` es texto ISO y
-        # puede llevar hora, y `'2026-03-31T10:00' <= '2026-03-31'` es falso.
-        sql += " AND a.fecha_adjudicacion < %s"
-        params.append((fecha_hasta + timedelta(days=1)).isoformat())
-    if importe_min is not None:
-        sql += " AND l.importe >= %s"
-        params.append(float(importe_min))
-    sql += f"""
-        GROUP BY {group_cols}
-        HAVING COUNT(*) >= %s AND {label_col} IS NOT NULL
-        ORDER BY contratos DESC
-        LIMIT %s
-    """
-    params.extend([max(1, int(min_contratos)), max(1, min(int(limit), 500))])
-
-    with connect_read() as c:
-        return rows_to_dicts(c.execute(sql, params)), base
+    filas = filas_bajas_agregadas(
+        group_by=group_by,
+        filtro_base=filtro_base,
+        min_contratos=min_contratos,
+        cpv_prefix=cpv_prefix,
+        ccaa=ccaa,
+        limit=limit,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
+        importe_min=importe_min,
+    )
+    return filas, base
 
 
 def baja_de_referencia(
@@ -166,29 +111,7 @@ def baja_de_referencia(
     :func:`_filtro_de_base`. Sin ese campo, la cifra no se puede interpretar.
     """
     filtro_base, base = _filtro_de_base(solo_base_declarada)
-    sql = f"""
-        SELECT COUNT(*) AS contratos,
-               {round_sql(f"AVG({BAJA_PCT_SQL})", 2)} AS baja_media_pct,
-               {round_sql(f"MIN({BAJA_PCT_SQL})", 2)} AS baja_min_pct,
-               {round_sql(f"MAX({BAJA_PCT_SQL})", 2)} AS baja_max_pct,
-               {round_sql("AVG(a.n_ofertas_recibidas)", 1)} AS ofertas_medias
-        FROM adjudicaciones a
-        JOIN licitaciones l ON l.id_externo = a.licitacion_id
-        LEFT JOIN lotes lo ON lo.id = a.lote_id
-        WHERE {VALID_PAIR_LOTE} AND {TECHNOLOGY_OBSERVED_SQL} AND {exclude_duplicados_sql()}
-          AND {filtro_base}
-    """  # noqa: S608 — VALID_PAIR_LOTE es un fragmento constante; valores con ?
-    params: list[object] = []
-    if organo:
-        sql += " AND l.organo_contratacion = %s"
-        params.append(organo)
-    if cpv_prefix:
-        sql += " AND l.cpv LIKE %s"
-        params.append(f"{cpv_prefix}%")
-
-    with connect_read() as c:
-        rows = rows_to_dicts(c.execute(sql, params))
-    result = rows[0] if rows else {}
+    result = fila_baja_de_referencia(filtro_base=filtro_base, organo=organo, cpv_prefix=cpv_prefix)
     result["organo"] = organo
     result["cpv_prefix"] = cpv_prefix
     result["base"] = base

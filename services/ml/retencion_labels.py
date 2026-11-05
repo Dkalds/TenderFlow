@@ -56,7 +56,8 @@ from db.contrato_eventos import contar_por_licitacion_y_tipo
 from db.repositories.adjudicaciones import AdjudicacionRepository
 from observability.logging import get_logger
 from services.dedupe import normalize_organo
-from services.ml.features import _cpv4, _fecha_dt, _fecha_opt
+from services.ml.features import _fecha_dt, _fecha_opt
+from shared.cpv import cpv4 as _cpv4
 
 log = get_logger(__name__)
 

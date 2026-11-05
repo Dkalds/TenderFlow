@@ -37,7 +37,6 @@ hace lo que hace.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal
@@ -61,6 +60,7 @@ from shared.dto import (
     OrganizationReferencia,
     OrganizationTeamProfile,
 )
+from shared.numeric import importes_en_texto
 from shared.tender_facts import (
     CertificationRequirement,
     EvidenceRef,
@@ -209,15 +209,6 @@ def _contiene(texto: str, aguja: str) -> bool:
     return aguja_plegada in fold_text(texto)
 
 
-# Importes en castellano: "1.200.000 €", "300.000,00 euros", "50000 EUR".
-# El separador de miles es el punto y el decimal la coma, así que el orden de
-# los reemplazos importa.
-_IMPORTE_RE = re.compile(
-    r"(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:,\d{1,2})?)\s*(?:€|eur\b|euros\b)",
-    flags=re.IGNORECASE,
-)
-
-
 def _importe_en_texto(texto: str) -> float | None:
     """El umbral en euros que menciona un requisito, o ``None``.
 
@@ -226,13 +217,7 @@ def _importe_en_texto(texto: str) -> float | None:
     puede concurrir es el más alto. Quedarse con el primero haría depender el
     veredicto del orden en que el extractor los escribió.
     """
-    valores: list[float] = []
-    for match in _IMPORTE_RE.finditer(texto):
-        crudo = match.group(1).replace(".", "").replace(",", ".")
-        try:
-            valores.append(float(crudo))
-        except ValueError:  # pragma: no cover - el regex ya acota la forma
-            continue
+    valores = importes_en_texto(texto)
     return max(valores) if valores else None
 
 

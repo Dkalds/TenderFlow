@@ -153,3 +153,17 @@ def test_identidad_dual_por_user_id(organizaciones):
 
     pagina = listar_alertas("clave-nueva", org, user_id=uid, estado="todas", limit=10, offset=0)
     assert pagina["total"] == 1
+
+
+def test_varias_alertas_en_una_conexion_son_idempotentes(organizaciones):
+    """``insert_user_notifications`` (el job de reglas): cuenta solo lo que inserta."""
+    from db.notifications import insert_user_notifications, listar_alertas
+
+    una, _ = organizaciones
+    filas = [("EXP-1", "uno"), ("EXP-2", None)]
+    comunes = {"type_": "rule_match", "title": "Regla", "organization_id": una, "user_key": "k1"}
+
+    assert insert_user_notifications(filas=filas, **comunes) == 2
+    assert insert_user_notifications(filas=[*filas, ("EXP-3", "tres")], **comunes) == 1
+    assert insert_user_notifications(filas=[], **comunes) == 0
+    assert listar_alertas("k1", una)["total"] == 3

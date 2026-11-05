@@ -34,6 +34,7 @@ from typing import Any, Literal
 from db.repositories import similares as repo
 from observability.logging import get_logger
 from services.embeddings import embeddings_masivos_disponibles, semantic_match
+from shared.cpv import cpv4 as _cpv4
 
 log = get_logger(__name__)
 
@@ -137,13 +138,6 @@ def _solape(a: str | None, b: str | None) -> float:
     if not ta or not tb:
         return 0.0
     return len(ta & tb) / len(ta | tb)
-
-
-def _cpv4(cpv: str | None) -> str | None:
-    if not cpv:
-        return None
-    digitos = cpv.strip()[:4]
-    return digitos if len(digitos) == 4 and digitos.isdigit() else None
 
 
 def _baja(importe: float | None, adjudicado: float | None) -> float | None:
