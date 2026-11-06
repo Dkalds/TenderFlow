@@ -217,7 +217,7 @@ _Sin ítems abiertos._
 - **Acceptance criteria (lo que queda):**
   - Decidir la variable de repo `PLIEGO_FACTS_ENABLED`: a `true`, `pliegos.yml` extrae la ficha de los expedientes abiertos cada noche (gasto acotado por el presupuesto LLM y `PLIEGO_FACTS_BATCH`); sin ella, lotes, criterios y solvencia del pliego solo aparecen al abrir una oportunidad. La publicación oficial de CODICE (v148) no depende de esto.
   - Comprobar que `domain_events_pending` baja tras el primer cierre con el despachador: corrió a las 16:17 (`procesados: 0, ignorados: 1, fallidos: 0`), lo que todavía no lo demuestra.
-  - El criterio de «P0 del ATOM y P1 de los pliegos de PSCP verificados con datos tras el primer deploy» ya está cumplido: ambos constan como cerrados en el [archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md) (2026-10-17 y 2026-10-24).
+  - El criterio de «P0 del ATOM y P1 de los pliegos de PSCP verificados con datos tras el primer deploy» ya está cumplido: ambos figuran como cerrados en el [archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md) (2026-10-17 y 2026-10-24).
 - **Riesgo:** bajo-medio — las migraciones ya están; queda el primer reparto real de avisos de caducidad y de la campana nueva.
 - **Historial:** runs, horas y detalle de la ventana del 2026-10-15 en `git show 1e2aef2:docs/IMPROVEMENT_BACKLOG.md` (ítem del mismo título).
 
