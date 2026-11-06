@@ -538,8 +538,9 @@ def _materialize_schema_ddl(url: str) -> str:
 #: - ``schema`` (por defecto): un schema Postgres nuevo por test. Es lo que se
 #:   hacía hasta 2026-09 y su coste es el DDL completo —unas 50 tablas más sus
 #:   índices— en cada uno de los cientos de tests de integración.
-#: - ``truncate``: un solo schema por sesión (por worker bajo xdist) y
-#:   ``TRUNCATE … RESTART IDENTITY CASCADE`` entre tests.
+#: - ``truncate``: un solo schema por sesión (por worker bajo xdist) vaciado
+#:   entre tests (``DELETE`` sin triggers; ``TRUNCATE`` si el rol no puede,
+#:   ver `_limpia_schema`). El nombre se queda por compatibilidad.
 #:
 #: **El default sigue siendo ``schema`` a propósito.** El camino rápido está
 #: escrito y cubierto por `tests/test_aislamiento_entre_tests.py`, pero cambiar
@@ -721,6 +722,19 @@ _CONSULTAS_HUELLA: tuple[str, ...] = (
     # la columna de `information_schema.columns` de arriba).
     "SELECT c.relname, c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
     "WHERE n.nspname = %s AND c.relkind IN ('v', 'm') ORDER BY 1",
+    # RLS y permisos: los tests de RLS crean políticas y grants sobre el schema
+    # del test y los retiran al salir; si uno no los retira, el siguiente
+    # heredaría un schema con otras reglas de acceso.
+    "SELECT tablename, policyname, cmd, roles::text, qual, with_check "
+    "FROM pg_policies WHERE schemaname = %s ORDER BY 1, 2",
+    # `COALESCE` con `acldefault`: un `REVOKE … FROM rol` sobre una tabla con
+    # permisos por defecto materializa el ACL del dueño (NULL → explícito), y
+    # retirar luego el rol no lo devuelve a NULL. Son los mismos permisos.
+    "SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity, "
+    "COALESCE(c.relacl, acldefault((CASE c.relkind WHEN 'S' THEN 's' ELSE 'r' END)::\"char\", "
+    "c.relowner))::text "
+    "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+    "WHERE n.nspname = %s ORDER BY 1",
 )
 
 
@@ -738,18 +752,52 @@ def _huella_ddl(conn, schema: str) -> tuple:
     )
 
 
+def _puede_saltarse_triggers(conn) -> bool:
+    """¿Puede esta conexión fijar ``session_replication_role = replica``?
+
+    Hace falta superusuario (o ``GRANT SET ON PARAMETER``). El Postgres de CI
+    (`POSTGRES_USER` de la imagen) y el de dev lo son; un rol sin ese permiso
+    vacía con ``TRUNCATE``, más lento pero igual de limpio.
+    """
+    import psycopg
+
+    try:
+        with conn.transaction():
+            conn.execute("SET LOCAL session_replication_role = replica")
+    except psycopg.errors.InsufficientPrivilege:
+        return False
+    return True
+
+
 def _limpia_schema(conn, estado: _SchemaSesion) -> None:
     """Deja el schema como recién migrado, sin volver a crearlo.
 
-    Un solo `TRUNCATE` con todas las tablas y `CASCADE`: hacerlo tabla a tabla
-    fallaría por las claves foráneas y costaría una ida y vuelta por tabla.
-    Después, semillas y secuencias vuelven a su estado de recién migrado
-    (`_snapshot_secuencias` explica por qué no basta `RESTART IDENTITY`).
+    Vacía con ``DELETE`` y no con ``TRUNCATE``: con un centenar de tablas casi
+    vacías, ``TRUNCATE`` crea ficheros nuevos para cada tabla e índice y cuesta
+    lo mismo que crear el schema entero (≈1 s por test medido el 2026-11-06),
+    mientras que los ``DELETE`` cuestan ≈0,1 s (medido con todos en una
+    transacción, con el cluster cargado por otras suites). Con
+    ``session_replication_role = replica`` no saltan las FKs ni los triggers,
+    así que el orden de las tablas da igual. Cada ``DELETE`` es su propia
+    transacción (autocommit) enviada en un pipeline: una ida y vuelta, y sin
+    retener a la vez los locks de cien tablas y sus índices, que en un cluster
+    compartido agotaban ``max_locks_per_transaction``. Sin ese permiso,
+    ``TRUNCATE … CASCADE``. Después, semillas y secuencias vuelven a su estado
+    de recién migrado (`_snapshot_secuencias` explica por qué no basta
+    reiniciarlas a 1).
     """
     schema = estado.schema
     if estado.tablas:
-        lista = ", ".join(f'"{schema}"."{t}"' for t in estado.tablas)
-        conn.execute(f"TRUNCATE {lista} RESTART IDENTITY CASCADE")
+        if estado.vaciar_con_delete:
+            conn.execute("SET session_replication_role = replica")
+            with conn.pipeline():
+                for tabla in estado.tablas:
+                    # Identificadores del catálogo, no entrada externa.
+                    conn.execute(f'DELETE FROM "{schema}"."{tabla}"')  # noqa: S608
+            conn.execute("RESET session_replication_role")
+        else:
+            lista = ", ".join(f'"{schema}"."{t}"' for t in estado.tablas)
+            conn.execute(f"TRUNCATE {lista} RESTART IDENTITY CASCADE")
     _restaura_semillas(conn, schema, estado.semillas)
     _restaura_secuencias(conn, schema, estado.secuencias)
     for vista in estado.vistas:
@@ -773,10 +821,13 @@ class _SchemaSesion:
         self.semillas: dict[str, tuple[list[str], list[tuple]]] = {}
         self.secuencias: dict[str, tuple[int, bool]] = {}
         self.huella: tuple = ()
+        self.vaciar_con_delete = False
 
     def construir(self) -> None:
+        """(Re)crea el schema. Hasta que acaba bien, ``huella`` queda vacía."""
         import psycopg
 
+        self.huella = ()
         schema = self.schema
         with psycopg.connect(self.base_url, autocommit=True) as conn:
             conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
@@ -790,6 +841,7 @@ class _SchemaSesion:
             self.semillas = _snapshot_semillas(conn, schema, self.tablas)
             self.secuencias = _snapshot_secuencias(conn, schema)
             self.huella = _huella_ddl(conn, schema)
+            self.vaciar_con_delete = _puede_saltarse_triggers(conn)
 
     def destruir(self) -> None:
         import psycopg
@@ -802,12 +854,13 @@ class _SchemaSesion:
 def _pg_schema_sesion(_pg_schema_ddl):
     """Un schema por sesión, reutilizado entre tests (estrategia ``truncate``).
 
-    Se materializa aunque la estrategia sea ``schema``: no cuesta nada crearlo
-    perezosamente, y tenerlo aquí mantiene las dos ramas simétricas.
+    No se construye aquí sino en el primer test que lo usa
+    (`_pg_schema_por_truncado`): un fallo al construirlo en un fixture de
+    sesión quedaría cacheado y tumbaría todos los tests del worker, mientras
+    que construido por test se reintenta en el siguiente.
     """
     base_url, ddl = _pg_schema_ddl
     estado = _SchemaSesion(base_url, ddl, f"tf_sesion_{os.getpid()}")
-    estado.construir()
     yield estado
     estado.destruir()
 
@@ -844,8 +897,17 @@ def _pg_schema_por_truncado(request):
 
     estado: _SchemaSesion = request.getfixturevalue("_pg_schema_sesion")
 
-    with psycopg.connect(estado.base_url, autocommit=True) as conn:
-        _limpia_schema(conn, estado)
+    if not estado.huella:
+        estado.construir()
+    else:
+        try:
+            with psycopg.connect(estado.base_url, autocommit=True) as conn:
+                _limpia_schema(conn, estado)
+        except psycopg.Error:
+            # Un schema a medio reconstruir (la reconstrucción falló, p. ej. por
+            # falta de locks en un cluster cargado) no se vacía: se rehace. Sin
+            # esto, un solo fallo dejaba en error al resto de tests del worker.
+            estado.construir()
 
     scoped_url = _url_con_schema(estado.base_url, estado.schema)
 

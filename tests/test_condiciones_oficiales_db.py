@@ -193,6 +193,7 @@ def test_dos_versiones_en_el_mismo_lote_gana_la_ultima(db: Any) -> None:
     assert [g["porcentaje"] for g in _filas(db, "licitacion_garantias")] == [5.0]
 
 
+@pytest.mark.schema_propio  # tira las tres tablas de condiciones
 def test_sin_las_tablas_la_ingesta_sigue(db: Any) -> None:
     """Código desplegado antes que la migración: la licitación entra igual."""
     with db.connect() as c:
@@ -253,6 +254,7 @@ def test_el_repositorio_sin_filas_devuelve_listas_vacias(db: Any) -> None:
     }
 
 
+@pytest.mark.schema_propio  # tira `licitacion_criterios_adjudicacion`
 def test_el_repositorio_sin_las_tablas_responde_sin_condiciones(db: Any) -> None:
     """Código desplegado antes que v148: no hay condiciones guardadas, y se dice así."""
     from db.repositories.condiciones_oficiales import CondicionesOficialesRepository
