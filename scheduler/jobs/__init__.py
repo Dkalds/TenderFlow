@@ -101,7 +101,7 @@ def build_default_registry() -> list[ScheduledJob]:
         ),
         ScheduledJob(
             # plane='actions' (2026-08): el reentrenamiento salió de
-            # CANONICAL_STEPS a `.github/workflows/train-predictivos.yml`. La
+            # CANONICAL_STEPS a `.github/workflows/ml-entrenar.yml` (modelo `predictivos`). La
             # pipeline canónica corre con `contents: read`, así que entrenaba
             # sin poder publicar el .pkl en la Release y dejaba filas de
             # model_versions apuntando a rutas de runners ya destruidos.
@@ -115,7 +115,8 @@ def build_default_registry() -> list[ScheduledJob]:
             default_interval_minutes=43_200,  # mensual
             initial_offset_minutes=720,
             heavy=True,
-            timeout_seconds=45 * 60,  # `timeout-minutes: 45` de train-predictivos.yml
+            # `timeout-minutes: 45` del job `predictivos` de ml-entrenar.yml
+            timeout_seconds=45 * 60,
         ),
         ScheduledJob(
             name="documentos_embeddings",

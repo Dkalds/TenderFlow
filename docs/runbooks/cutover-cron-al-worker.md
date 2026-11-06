@@ -34,7 +34,7 @@ está en el árbol y es inerte mientras `SCHEDULER_PLANE` no diga `worker`.
 |---|---|---|
 | `daily_atom` — PLACSP, los conectores multi-fuente, el cierre y el healthcheck | `scrape-daily.yml`, cada 4 h | **worker**, cada 4 h |
 | `ml_scoring_baja` — scoring, drift, calibración, purgas | `ml-scoring.yml`, tras cada ingesta, una vez al día UTC | **worker**, una vez al día UTC (mismo guard) |
-| `ml_retrain_baja` | `train-predictivos.yml`, mensual | Actions, sin cambios |
+| `ml_retrain_baja` | `ml-entrenar.yml` (modelo `predictivos`), mensual | Actions, sin cambios |
 | `documentos_embeddings` | `pliegos.yml`, nocturno | Actions, sin cambios |
 
 Los dos que se quedan tienen el motivo escrito en
@@ -108,7 +108,7 @@ fila):
 | `WEBHOOK_ALLOWED_HOSTS` | igual que la API | `tenderflow-api`. El cierre reintenta los webhooks salientes; sin la allowlist quedan deshabilitados |
 | `EMAIL_BACKEND`, `EMAIL_FROM`, `EMAIL_FROM_NAME` y la clave de su proveedor | solo si la API las tiene | `tenderflow-api`. Sin ellas los digests salen por SMTP con `ALERT_SMTP_USER` de remitente, que es lo que hacía Actions |
 | `ALERT_MIN_LEVEL` | solo si está definida en Actions | GitHub → Settings → Variables → Actions |
-| `GITHUB_TOKEN` | token *fine-grained* solo sobre `Dkalds/TenderFlow`, con `Contents: Read-only` y nada más | <https://github.com/settings/personal-access-tokens/new> (no `settings/keys`, que son deploy keys SSH). El scoring descarga el modelo de la Release `ml-models`; sin token, la llamada va anónima y degrada a baseline. Al caducar pasa lo mismo, y avisa por correo: apuntá la fecha. *Actions: write* no sirve de nada aquí: el paso semanal de aprendizaje activo solo puede lanzar `train-model.yml` dentro de Actions (necesita también `GITHUB_REPOSITORY` y `GITHUB_REF_NAME`), y en el worker avisa por correo para lanzarlo a mano |
+| `GITHUB_TOKEN` | token *fine-grained* solo sobre `Dkalds/TenderFlow`, con `Contents: Read-only` y nada más | <https://github.com/settings/personal-access-tokens/new> (no `settings/keys`, que son deploy keys SSH). El scoring descarga el modelo de la Release `ml-models`; sin token, la llamada va anónima y degrada a baseline. Al caducar pasa lo mismo, y avisa por correo: apuntá la fecha. *Actions: write* no sirve de nada aquí: el paso semanal de aprendizaje activo solo puede lanzar `ml-entrenar.yml` (modelo `sap`) dentro de Actions (necesita también `GITHUB_REPOSITORY` y `GITHUB_REF_NAME`), y en el worker avisa por correo para lanzarlo a mano |
 | `PSCP_DATASET_ID`, `TACRC_INDEX_URL` | los de Actions | GitHub → Settings → Variables. Sin ellas la fuente se declara `disabled` |
 | `PSCP_APP_TOKEN` | el token de Socrata | La cuenta de datos abiertos de Catalunya (el secret de GitHub no se puede leer) |
 | `LLM_TECH_LABELING_ENABLED`, `LLM_TECH_LABELING_MODEL`, `LLM_TECH_LABELING_BATCH`, `LLM_TECH_FEEDBACK_ENABLED` | solo las que estén definidas en Actions | GitHub → Settings → Variables. Si no están, manda el default del código, como en Actions |
@@ -172,7 +172,7 @@ ejecución que ya está corriendo; si hay una, esperar a que termine.
    - `Scrape PLACSP diario (ATOM live feed + conectores)` (`scrape-daily.yml`)
    - `ML scoring predicciones` (`ml-scoring.yml`)
 
-   No tocar `pliegos.yml`, `train-predictivos.yml` ni `healthcheck.yml`.
+   No tocar `pliegos.yml`, `ml-entrenar.yml` (modelo `predictivos`) ni `healthcheck.yml`.
 2. **Encender el worker.** Render → `tenderflow-worker` → Environment →
    `SCHEDULER_PLANE = worker` → Save. Render redespliega el servicio.
 3. **Verificar en los logs**, en este orden:
@@ -230,10 +230,10 @@ Rellená esta tabla al terminar:
 
 ## 6. Secretos de Actions: qué se puede retirar
 
-Poco, de momento. `DATABASE_URL` lo siguen leyendo trece workflows (los que no
-son de cron: `healthcheck`, `migrate`, `pliegos`, `train-predictivos`,
-`scrape-bulk`, los backfills…), `PSCP_APP_TOKEN` lo usa también
-`purga-pscp.yml` y `NVIDIA_API_KEY` `pliegos.yml` y `scrape-bulk.yml`.
+Poco, de momento. `DATABASE_URL` lo siguen leyendo once workflows (los que no
+son de cron: `healthcheck`, `migrate`, `pliegos`, `ml-entrenar`,
+`scrape-bulk`, `operaciones-datos`…), `PSCP_APP_TOKEN` lo usa también
+`operaciones-datos.yml` (operacion `purga-pscp`) y `NVIDIA_API_KEY` `pliegos.yml` y `scrape-bulk.yml`.
 Compruébalo antes de borrar nada:
 
 ```bash
@@ -302,7 +302,7 @@ Después del paso 7 la vuelta atrás ya no es de un clic: hay que revertir ese P
 | Ningún log del cron y el worker vivo | El hilo murió, o `APP_PROFILE` no es `worker` | Reiniciar; si se repite es un bug, el bucle traga excepciones por diseño |
 | `daily_atom_conector_presupuesto_agotado` | La fuente tardó más que su `timeout-minutes` | Igual que en Actions: el cierre sigue sin ella. Si se repite, mirar la fuente |
 | `daily_atom_conector_saltado_por_solape` | El hilo de la pasada anterior de ese conector sigue colgado | Se resuelve cuando termina. Si dura, reiniciar el servicio |
-| `ML scoring degradado a baseline` | El worker no pudo descargar el `.pkl` activo | `GITHUB_TOKEN` (paso 1), y que `train-predictivos.yml` lo haya subido |
+| `ML scoring degradado a baseline` | El worker no pudo descargar el `.pkl` activo | `GITHUB_TOKEN` (paso 1), y que `ml-entrenar.yml` (modelo `predictivos`) lo haya subido |
 | Timeouts de pool (`PoolTimeout`) | Dos conexiones de escritura no bastan con un conector colgado | Subir `DB_POOL_SIZE` a `3`, comprobando antes el margen del pooler (nota en `render.yaml`) |
 | No llegan correos | Faltan las `ALERT_*` | Paso 1; probar con el `notify` del paso 1.3 |
 | `cron_plane_job_saltado_por_lock` continuo | Otro worker activo | Buscar la segunda instancia |

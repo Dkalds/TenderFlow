@@ -212,7 +212,7 @@ def test_features_abiertas_usa_historico_y_excluye_adjudicadas(db):
 # `19/002/5-2` en producción, y '0202-02-27' otro de PSCP -- parseaba bien,
 # ganaba el `LEAST` que calcula `fecha_anchor`, se reserializaba como
 # '19-12-10' y reventaba el siguiente parseo dentro de `_folds_rolling`. El
-# reentrenamiento mensual de `train-predictivos.yml` llevaba desde el
+# reentrenamiento mensual de `ml-entrenar.yml` (modelo `predictivos`) llevaba desde el
 # 2026-09-01 en rojo por esa única fila, y solo en Linux.
 
 

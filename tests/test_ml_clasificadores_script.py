@@ -78,7 +78,7 @@ def test_el_informe_de_entrenamiento_sap() -> None:
     assert not any("promotion" in linea for linea in ok)
     assert any("Versión 4 registrada SIN activar" in linea for linea in ok)
     assert any("sap_classifier-abc123def456.pkl" in linea for linea in ok)
-    assert ok[-1].endswith("gh workflow run train-model.yml")
+    assert ok[-1].endswith("gh workflow run ml-entrenar.yml -f modelo=sap")
 
     rechazo = cli.lineas_entrenamiento_sap(
         {"f1": 0.2, "promotion": {"version": 5, "motivos_rechazo": ["recall_no_keyword"]}},

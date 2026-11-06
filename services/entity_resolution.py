@@ -55,7 +55,7 @@ FUZZY_THRESHOLD = 0.92
 # resolución se lleva como mucho estos 2 min, deja el cursor persistido y le
 # cede el resto del step a dedupe, eventos de contrato y la señal de caché.
 # Drenar un backlog grande no es trabajo del carril de ingesta sino de
-# `.github/workflows/backfill-empresas.yml`.
+# `.github/workflows/operaciones-datos.yml` (operacion `backfill-empresas`).
 HOOK_TIME_BUDGET_S = 120.0
 
 

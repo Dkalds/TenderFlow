@@ -454,7 +454,7 @@ def _run_sap_active_learning() -> str:
     ventana semanal solo limita el coste del conteo.
 
     **Lanza, no entrena** (2026-10). Por encima del umbral encola
-    ``train-model.yml`` —el único camino que entrena, publica y solo entonces
+    ``ml-entrenar.yml`` (modelo ``sap``) —el único camino que entrena, publica y solo entonces
     activa— o, si no puede, avisa con el comando. Hasta entonces entrenaba y
     activaba la versión aquí mismo, en un runner que se destruye al acabar el
     job, con un aviso en el log como único recordatorio de subir el ``.pkl`` a

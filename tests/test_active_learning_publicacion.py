@@ -8,7 +8,7 @@ pedía un sha256 que ningún artefacto publicado tenía, y ``ml_scoring`` cayó
 por ``ModelArtifactMismatch`` en cada pasada.
 
 El job ya no entrena en ningún plano —tampoco sin ``SCHEDULER_PLANE``, en un
-checkout local—: lanza ``train-model.yml``, que es el único camino que entrena
+checkout local—: lanza ``ml-entrenar.yml`` (modelo ``sap``), que es el único camino que entrena
 **y** publica, y si no puede lanzarlo avisa de que toca hacerlo a mano. El
 reentrenamiento en proceso y su dataset propio
 (``_fetch_training_dataframe``) se retiraron en 2026-10.
@@ -95,7 +95,7 @@ def test_lanza_el_workflow_que_entrena_y_publica(monkeypatch: pytest.MonkeyPatch
     result, mocks = _correr(59, dispatch=True)
 
     mocks["dispatch"].assert_called_once_with(
-        "Dkalds/TenderFlow", "train-model.yml", ref="master", token="token-de-prueba"
+        "Dkalds/TenderFlow", "ml-entrenar.yml", ref="master", token="token-de-prueba"
     )
     assert result["retrain_lanzado"] is True
     assert "retrain_pendiente" not in result
@@ -117,7 +117,7 @@ def test_si_github_rechaza_el_lanzamiento_avisa(monkeypatch: pytest.MonkeyPatch)
     _nivel, titulo, cuerpo = mocks["notify"].call_args[0]
     assert "reentrenar" in titulo
     assert "59" in cuerpo
-    assert "gh workflow run train-model.yml" in cuerpo
+    assert "gh workflow run ml-entrenar.yml -f modelo=sap" in cuerpo
 
 
 @pytest.mark.parametrize("plano", ["docker", "worker"])
@@ -206,7 +206,7 @@ def test_sin_plano_declarado_tampoco_entrena(monkeypatch: pytest.MonkeyPatch) ->
     assert result["retrain_pendiente"] is True
     _nivel, _titulo, cuerpo = mocks["notify"].call_args[0]
     assert "sin SCHEDULER_PLANE" in cuerpo
-    assert "gh workflow run train-model.yml" in cuerpo
+    assert "gh workflow run ml-entrenar.yml -f modelo=sap" in cuerpo
 
 
 def test_sin_plano_pero_con_entorno_de_actions_lanza(monkeypatch: pytest.MonkeyPatch) -> None:

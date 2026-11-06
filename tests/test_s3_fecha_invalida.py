@@ -1,6 +1,6 @@
 """O0.3 — una fecha no ISO no puede abortar el reentrenamiento mensual.
 
-El 2026-09-01, la primera ejecución programada de ``train-predictivos.yml``
+El 2026-09-01, la primera ejecución programada de ``train-predictivos.yml`` (hoy ``ml-entrenar.yml``, modelo ``predictivos``)
 murió dentro de ``_folds_rolling`` con::
 
     ValueError: time data '19-12-10' does not match format '%Y-%m-%d'

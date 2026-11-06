@@ -1,4 +1,4 @@
-"""``train-model.yml`` sube el fichero cuyo sha256 quedó registrado, y activa después.
+"""``ml-entrenar.yml`` (job ``sap``) sube el fichero cuyo sha256 quedó registrado, y activa después.
 
 Publicar un modelo son dos escrituras en sitios distintos: la fila de
 ``model_versions`` (ruta y sha256, ``services.ml.promotion.promote_if_better``)
@@ -14,7 +14,7 @@ Estos fijan lo que vive en YAML, donde no llega ningún otro test: que el
 workflow sube **ese** fichero —el que emite el entrenamiento, no un nombre
 escrito aquí— a la Release fija ``ml-models`` sin borrar antes ningún asset,
 que la activación va **después** de la subida, y que los dos workflows que
-rodean a este —quien lo lanza y quien recalcula ``ml_proba``— tienen lo que
+rodean a este job —quien lo lanza y quien recalcula ``ml_proba``— tienen lo que
 necesitan.
 """
 
@@ -29,7 +29,8 @@ from services.ml.classifier_training import _MODEL_DIR
 from services.ml.sap_classifier import _MODEL_PATH
 
 _WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
-WORKFLOW = _WORKFLOWS / "train-model.yml"
+WORKFLOW = _WORKFLOWS / "ml-entrenar.yml"
+_JOB = "sap"
 _ENTRENAMIENTO = "Train model"
 _SUBIDA = "Upload model to release"
 _ACTIVACION = "Activar la versión publicada"
@@ -50,8 +51,10 @@ def _disparadores(doc: dict[Any, Any]) -> dict[str, Any]:
 
 
 def _steps(ruta: Path | None = None) -> list[dict[str, Any]]:
+    """Los pasos del job ``sap`` o, con ``ruta``, los de todos los jobs de ese workflow."""
     doc = _doc(ruta or WORKFLOW)
-    return [step for job in doc["jobs"].values() for step in job.get("steps", [])]
+    jobs = [doc["jobs"][_JOB]] if ruta is None else doc["jobs"].values()
+    return [step for job in jobs for step in job.get("steps", [])]
 
 
 def _step(nombre: str, ruta: Path | None = None) -> dict[str, Any]:
@@ -217,8 +220,12 @@ def test_la_auditoria_mide_despues_de_recalcular_ml_proba() -> None:
 def test_dos_entrenamientos_no_corren_a_la_vez() -> None:
     """Lo lanzan una persona y el paso semanal: los dos numeran y activan."""
     concurrencia = _doc(WORKFLOW)["concurrency"]
+    grupo = str(concurrencia["group"])
 
-    assert concurrencia["group"] == "train-model"
+    # Un grupo por modelo, no por run: el dispatch sin entradas cae en el del SAP.
+    assert grupo.startswith("ml-entrenar-${{")
+    assert "inputs.modelo || 'sap'" in grupo
+    assert "run_id" not in grupo
     assert concurrencia["cancel-in-progress"] is False
 
 
@@ -248,14 +255,16 @@ def test_el_entrenamiento_se_puede_lanzar_por_dispatch() -> None:
     from scheduler.concept_drift import _WORKFLOW_ENTRENAMIENTO
 
     assert WORKFLOW.name == _WORKFLOW_ENTRENAMIENTO
-    assert "workflow_dispatch" in _disparadores(_doc(WORKFLOW))
+    dispatch = _disparadores(_doc(WORKFLOW))["workflow_dispatch"]
+    # El dispatch no manda entradas: el default tiene que ser el modelo SAP.
+    assert dispatch["inputs"]["modelo"]["default"] == _JOB
 
 
 # ---------------------------------------------------------------------------
-# rescore-ml-proba.yml
+# operaciones-datos.yml, operación rescore-ml-proba
 # ---------------------------------------------------------------------------
 
-_RESCORE = _WORKFLOWS / "rescore-ml-proba.yml"
+_RESCORE = _WORKFLOWS / "operaciones-datos.yml"
 
 
 def test_el_rescore_solo_se_lanza_a_mano() -> None:

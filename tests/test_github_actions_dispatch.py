@@ -1,6 +1,6 @@
 """Tests de ``shared/github_actions.py`` — lanzar un workflow por dispatch.
 
-Lo usa el paso semanal de active learning para pedir ``train-model.yml`` en
+Lo usa el paso semanal de active learning para pedir ``ml-entrenar.yml`` en
 vez de entrenar dentro de un runner que no puede publicar el artefacto.
 """
 
@@ -14,7 +14,7 @@ import pytest
 
 from shared import github_actions
 
-_URL = "https://api.github.com/repos/Dkalds/TenderFlow/actions/workflows/train-model.yml/dispatches"
+_URL = "https://api.github.com/repos/Dkalds/TenderFlow/actions/workflows/ml-entrenar.yml/dispatches"
 
 
 class _Respuesta:
@@ -39,7 +39,7 @@ def _lanzar(respuesta: Any, **kwargs: Any) -> tuple[bool, Any]:
     with patch.object(github_actions, "pinned_https_request", side_effect=respuesta) as request:
         aceptado = github_actions.dispatch_workflow(
             argumentos.pop("repo", "Dkalds/TenderFlow"),
-            argumentos.pop("workflow", "train-model.yml"),
+            argumentos.pop("workflow", "ml-entrenar.yml"),
             **argumentos,
         )
     return aceptado, request

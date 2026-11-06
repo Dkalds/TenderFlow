@@ -201,7 +201,7 @@ class TestMetricasOperativas:
 #
 # `_download_release_asset` busca el asset por el nombre EXACTO de
 # `Path(model_versions.path).name`. Registrando el artefacto versionado, el
-# registro pedía `sap_classifier_v{N}.pkl` mientras `train-model.yml` subía
+# registro pedía `sap_classifier_v{N}.pkl` mientras `ml-entrenar.yml` (modelo `sap`) subía
 # `sap_classifier.pkl`: la resolución moría en `asset_not_in_release` y el
 # scoring de la pipeline volvía a `no_model`. Se registra el publicado.
 
@@ -322,7 +322,7 @@ def test_si_el_gate_rechaza_no_se_publica_y_se_registra_el_versionado(tmp_path):
 # El gate no activa nunca (2026-10)
 # ---------------------------------------------------------------------------
 #
-# `train-model.yml` sube el artefacto DESPUÉS del paso que entrena. Activando
+# `ml-entrenar.yml` (modelo `sap`) sube el artefacto DESPUÉS del paso que entrena. Activando
 # dentro de `promote_if_better`, un fallo entre los dos dejaba activa una
 # versión sin artefacto publicado; y el reentrenamiento semanal la llamaba con
 # el `activar=True` por defecto dentro de un runner efímero, que es como quedó

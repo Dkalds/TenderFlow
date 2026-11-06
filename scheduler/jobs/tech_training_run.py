@@ -1,6 +1,6 @@
 """Entrenamiento del clasificador multi-tecnología — entrypoint del workflow.
 
-Invocado por ``.github/workflows/train-tech.yml``. Cierra el hueco más ancho
+Invocado por ``.github/workflows/ml-entrenar.yml`` (modelo ``tecnologias``). Cierra el hueco más ancho
 del subsistema ML: ``data/models/tech_classifier.pkl`` no lo producía ningún
 workflow —solo el subcomando local ``python -m services.ml.sap_classifier
 train-tech``— y ``TechnologyClassifier`` ni siquiera tenía ``ensure_downloaded``,

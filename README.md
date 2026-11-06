@@ -146,7 +146,7 @@ ejecución registra una versión nueva del modelo. Necesita al menos 50 filas de
 entrenamiento (`MIN_TRAIN_SAMPLES`) y el candidato tiene que pasar además el gate
 de promoción. Si lo pasa, escribe `data/models/sap_classifier-<sha12>.pkl`
 (joblib) y lo registra como inactivo; para servirlo hay que publicarlo y
-activarlo con el workflow `train-model.yml`, así que `train` por sí solo no cambia
+activarlo con el workflow `ml-entrenar.yml` (modelo `sap`), así que `train` por sí solo no cambia
 el modelo que sirve la API.
 
 ---

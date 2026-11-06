@@ -15,7 +15,7 @@ Coexistían dos caminos de reentrenamiento con garantías opuestas:
 
 Este módulo concentró primero la decisión para que ambos caminos pasaran por
 la misma puerta. Desde 2026-10 queda **un solo camino**: el reentrenamiento
-semanal ya no entrena, lanza ``train-model.yml``
+semanal ya no entrena, lanza ``ml-entrenar.yml`` (modelo ``sap``)
 (``scheduler.concept_drift.maybe_retrain_classifier``), y este gate **no
 activa nunca**. Registra el candidato —inactivo— y, si pasa, escribe el
 artefacto que hay que publicar; activarlo es cosa de
@@ -131,7 +131,7 @@ class ResultadoPromocion:
     pendiente_de_activar: bool = False
     #: Ruta del artefacto publicado (``<stem>-<sha256[:12]>.pkl``) si el gate
     #: pasó y había ``publicar_como``; es la registrada en ``model_versions`` y
-    #: la que ``train-model.yml`` sube a la Release. ``None`` si no se publicó.
+    #: la que ``ml-entrenar.yml`` (modelo ``sap``) sube a la Release. ``None`` si no se publicó.
     artefacto: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
@@ -434,7 +434,7 @@ def promote_if_better(
     lo que se escribe y se registra es ``sap_classifier-<sha256[:12]>.pkl`` en
     ese directorio (``services.ml.model_artifacts.content_addressed_path``), igual
     que ``baja_model`` y ``retencion_model``. Con el nombre fijo, subir el
-    candidato sustituía el asset de la versión activa, y ``train-model.yml``
+    candidato sustituía el asset de la versión activa, y ``ml-entrenar.yml`` (modelo ``sap``)
     tenía que retirarla antes de subir: el modelo se servía sin cotejar hasta
     activar el nuevo, y un fallo de la subida dejaba a los runners sin modelo.
     El fichero de nombre fijo de ``publicar_como`` no se toca: es el que se
@@ -496,11 +496,11 @@ def promote_if_better(
     # tiene que ser el del fichero que de verdad viaja a la Release, porque es
     # el nombre EXACTO por el que ``resolve_active_artifact`` lo pedirá desde
     # otro runner (``_download_release_asset`` casa por ``Path(path).name``).
-    # Registrando el versionado, ``train-model.yml`` subía ``sap_classifier.pkl``
+    # Registrando el versionado, ``ml-entrenar.yml`` (modelo ``sap``) subía ``sap_classifier.pkl``
     # mientras el registro apuntaba a ``sap_classifier_v{N}.pkl`` -- un nombre
     # que no existe en la Release, así que la resolución moría en
     # ``asset_not_in_release`` y el paso de scoring volvía a ``no_model``. Es la
-    # invariante que ya cumple ``train-predictivos.yml``: se sube el fichero
+    # invariante que ya cumple ``ml-entrenar.yml`` (modelo ``predictivos``): se sube el fichero
     # cuyo path se registró.
     #
     # Con el sha256 en el nombre: un fichero nuevo por versión, así que subirlo
@@ -520,7 +520,7 @@ def promote_if_better(
     n_samples = int(metrics.get("n_train") or 0) + int(metrics.get("n_test") or 0)
     # De aquí en adelante ``version`` es la que asignó el registro: es la que
     # existe en ``model_versions``, y la que tienen que nombrar los logs, la
-    # notificación y el resumen de ``train-model.yml``.
+    # notificación y el resumen de ``ml-entrenar.yml`` (modelo ``sap``).
     version = register_version(
         name=name,
         # Mismo sha en los dos: el publicado es copia byte a byte de

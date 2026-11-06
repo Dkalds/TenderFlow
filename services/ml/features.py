@@ -238,7 +238,7 @@ def _fecha_opt(fecha: Any) -> datetime | None:
     aquí sin problema, ganaba el ``LEAST`` que calcula ``fecha_anchor``, se
     reserializaba como ``'19-12-10'`` al construir ``FilaDataset.fecha`` y
     reventaba el siguiente parseo. El reentrenamiento mensual de
-    ``train-predictivos.yml`` murió así, y solo en Linux -- por eso la suite
+    ``ml-entrenar.yml`` (modelo ``predictivos``) murió así, y solo en Linux -- por eso la suite
     local nunca lo vio. Descartarlo en el único parser tolerante lo mantiene
     fuera de todos los consumidores a la vez, y el ``or`` de ``_ancla`` cae a
     ``fecha_publicacion``, que para esas filas sí es una fecha real.

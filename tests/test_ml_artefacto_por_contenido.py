@@ -1,7 +1,7 @@
 """Artefactos de modelo con el sha256 en el nombre (2026-09).
 
 Toda versión de ``baja_model``/``retencion_model`` se guardaba como
-``data/models/baja_model.pkl`` y ``train-predictivos.yml`` la subía a la
+``data/models/baja_model.pkl`` y ``ml-entrenar.yml`` (modelo ``predictivos``) la subía a la
 Release con ``--clobber``. Con vN activa, el reentrenamiento mensual registra
 vN+1 SIN activarla y pisaba su asset: ``ml-scoring`` bajaba vN+1 para la fila
 vN, el sha256 no cuadraba y ``ModelArtifactMismatch`` tumbaba el scoring cada

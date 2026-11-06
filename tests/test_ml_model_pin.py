@@ -215,7 +215,7 @@ def test_resolve_artifact_devuelve_none_si_la_release_tampoco_lo_tiene() -> None
 
 
 def test_tech_resolve_artifact_tambien_cae_a_la_release() -> None:
-    """Gemelo del SAP: hoy no encuentra nada porque `train-tech.yml` aún no publica."""
+    """Gemelo del SAP: hoy no encuentra nada porque `ml-entrenar.yml` (modelo `tecnologias`) aún no publica."""
     from services.ml.tech_classifier import TechnologyClassifier
 
     with (

@@ -263,7 +263,7 @@ _Sin ítems abiertos._
 - **Riesgo:** alto — cambia la PK de la tabla central y sus referencias.
 
 ### [P1] Cerrar el incidente de la v2 de `sap_classifier`: ver la pasada en verde y unificar los dos caminos de entrenamiento
-- **Área:** scheduler/concept_drift.py, scheduler/jobs/ml_training_run.py, services/ml/promotion.py, services/ml/model_artifacts.py, .github/workflows/train-model.yml, `model_versions` (producción)
+- **Área:** scheduler/concept_drift.py, scheduler/jobs/ml_training_run.py, services/ml/promotion.py, services/ml/model_artifacts.py, .github/workflows/ml-entrenar.yml (modelo sap), `model_versions` (producción)
 - **Progreso (2026-10-26, D55):** mientras no haya versión validada, la probabilidad del clasificador no es señal (`services/ml/senal_clasificador.py`); el Radar ya no la leía. Ver [plan 2026-10](plans/2026-10-plan-foco-piloto.md) §8.
 - **Problema:** `scrape-daily` está en rojo desde el 2026-09-29T18:08Z (15
   runs hasta el 2026-10-03T23:09Z). En el primero el paso semanal
@@ -292,15 +292,15 @@ _Sin ítems abiertos._
     «`ModelArtifactMismatch`» del runbook.
   - PR #403 (`2e341907`): `promote_if_better` numera desde el máximo
     registrado, como `register_version`.
-  - PR #405 (`ec970a77`): `train-model.yml` activa **después** de subir
+  - PR #405 (`ec970a77`): `train-model.yml` (hoy `ml-entrenar.yml`, modelo `sap`) activa **después** de subir
     (entrenar → subir → cotejar el `digest` → activar → `precompute`); el paso
-    semanal lanza `train-model.yml` por `workflow_dispatch` (`actions: write`
+    semanal lanza `ml-entrenar.yml` (modelo `sap`) por `workflow_dispatch` (`actions: write`
     en `scrape-daily.yml`) y, si no puede, avisa; el disparador cuenta el
     feedback posterior a la última versión **registrada**, no a la activa, para
     no relanzar cada semana un entrenamiento que el gate ya rechazó;
-    `rescore-ml-proba.yml`, manual, para recalcular `ml_proba` con el modelo
+    `operaciones-datos.yml` (operacion `rescore-ml-proba`), manual, para recalcular `ml_proba` con el modelo
     servido.
-  - 2026-10-04T01:12Z, producción: `rescore-ml-proba.yml` (run 37167276246,
+  - 2026-10-04T01:12Z, producción: `rescore-ml-proba.yml` (hoy `operaciones-datos.yml`, operacion `rescore-ml-proba`) (run 37167276246,
     3 min). Cargó el asset de mayo (`trained_at` 2026-05-20, umbral 0,466),
     reescribió 24.593 filas y borró 978 scores fuera de la población: la
     población quedó con 0 filas sin `ml_proba`, incluidas las 481 que la
@@ -321,22 +321,22 @@ _Sin ítems abiertos._
     un fallo vivo; la fila de un paso recuperado lleva ahora la fecha de su
     último fallo.
 - **Acceptance criteria:**
-  - Ver correr por primera vez el flujo nuevo de `train-model.yml` (subir →
+  - Ver correr por primera vez el flujo nuevo de `ml-entrenar.yml` (modelo `sap`) (subir →
     cotejar → activar) y el `workflow_dispatch` desde el cierre. El orden de
     pasos, los permisos y el `env` están fijados por tests sobre el YAML; ni la
     activación ni el dispatch contra la API real se han ejecutado todavía: el
-    paso semanal corrió el 2026-10-06T18:47Z sin lanzar nada (`train-model.yml`
+    paso semanal corrió el 2026-10-06T18:47Z sin lanzar nada (`train-model.yml` (hoy `ml-entrenar.yml`, modelo `sap`)
     no tiene runs desde el 2026-09-27).
-  - Decidir qué entrena cada camino: el candidato de `train-model.yml` del
+  - Decidir qué entrena cada camino: el candidato de `ml-entrenar.yml` (modelo `sap`) del
     2026-09-27 (v1, 17.641 filas) fue rechazado con `recall_no_keyword` 0 y el
     del reentrenamiento automático (v2, 57.913 filas, `_fetch_training_dataframe`
     sobre la tabla entera) pasó con 0,33 — uno de tres ejemplos del golden. Con
-    el dispatch, el automático entrena ya por el camino de `train-model.yml`;
+    el dispatch, el automático entrena ya por el camino de `ml-entrenar.yml` (modelo `sap`);
     queda retirar o alinear el dataset del otro, que solo corre sin plano
     declarado. Ver «Ampliar el golden set del clasificador SAP».
     **Hecho en código el 2026-10-25 (un solo camino):** se retiró el
     reentrenamiento en proceso de `maybe_retrain_classifier` y su dataset
-    (`_fetch_training_dataframe`); el paso semanal lanza `train-model.yml` o
+    (`_fetch_training_dataframe`); el paso semanal lanza `ml-entrenar.yml` (modelo `sap`) o
     avisa con el comando en **cualquier** plano, también sin
     `SCHEDULER_PLANE`. `promote_if_better` ya no tiene parámetro `activar` ni
     campo `activada`: registra siempre inactivo y deja el candidato que pasa
@@ -346,9 +346,9 @@ _Sin ítems abiertos._
     el sha256 con la Release antes. Tests: `test_active_learning_publicacion.py`
     (sin plano no entrena; el módulo ya no importa gate ni clasificador),
     `test_ml_promotion_gate.py::test_no_hay_forma_de_pedirle_al_gate_que_active`.
-    Runbook: «Verificar la primera pasada de `train-model.yml`» en
+    Runbook: «Verificar la primera pasada de `ml-entrenar.yml` (modelo `sap`)» en
     [model-rollback.md](runbooks/model-rollback.md). Queda el primer criterio
-    (acción del dueño): `gh workflow run train-model.yml` y comprobar lo que
+    (acción del dueño): `gh workflow run ml-entrenar.yml -f modelo=sap` y comprobar lo que
     lista esa sección —resumen con `Asset: sap_classifier-<sha12>.pkl` y
     «Versión activada», asset en `ml-models` con `digest` igual al `sha256`
     de `get_active("sap_classifier")`, y `model_artifacts_canary`/`ml_scoring`
@@ -364,20 +364,20 @@ _Sin ítems abiertos._
     `resolve_artifact` y no por `ensure_downloaded` + `load()`.
     **Hecho en código el 2026-10-24:** `promote_if_better` publica y registra
     `sap_classifier-<sha12>.pkl` (`services.ml.model_artifacts.content_addressed_path`,
-    la misma regla que `rename_to_content_address`); `train-model.yml` lo sube
+    la misma regla que `rename_to_content_address`); `ml-entrenar.yml` (modelo `sap`) lo sube
     a la Release `ml-models` sin `delete-asset` ni retirar la versión activa
     (entrenar → verificar artefactos → subir → activar → medir); la ingesta
     carga por `SAPClassifier.resolve_artifact()` + `load(ruta)` y la cola de
     feedback por `api.model_cache.get_classifier()`. Sin versión activa se
     sigue sirviendo el `sap_classifier.pkl` de mayo de `v1.0.0-models`, que
     `ensure_downloaded` busca ahora con `locate_release_asset`. Queda verlo en
-    la primera ejecución de `train-model.yml` (forma parte del primer
+    la primera ejecución de `ml-entrenar.yml` (modelo `sap`) (forma parte del primer
     criterio): el resumen debe decir `Asset: sap_classifier-<sha12>.pkl` en
     `ml-models`, el canary dar `ok` y la ingesta registrar
     `pipeline.ml_clf_loaded` con esa ruta. `drift_report`, `ml_eval` y
     `sample_golden_candidates` siguen con `SAPClassifier.load()`.
-- *Nota (2026-10-24):* el camino de F3 del plan de tres niveles (`scripts/entrenar_nivel1.py`, `services/ml/nivel1.py`) no registra ni activa nada. Al unificar los dos caminos, el que sobreviva debería ser ese y no `train_from_db`, cuya etiqueta es circular. *(2026-10-25: se unificaron quedándose `train_from_db`, que es el que publica y activa por `train-model.yml`; cambiar su etiqueta por la de nivel 1 sigue abierto y no exige otro camino.)* Registrar en `model_versions` y la semana en sombra siguen pendientes de OK.
-- **Files de partida:** [scheduler/jobs/ml_training_run.py](../scheduler/jobs/ml_training_run.py), [scheduler/concept_drift.py](../scheduler/concept_drift.py), [services/ml/promotion.py](../services/ml/promotion.py), [.github/workflows/train-model.yml](../.github/workflows/train-model.yml), [docs/runbooks/model-rollback.md](runbooks/model-rollback.md)
+- *Nota (2026-10-24):* el camino de F3 del plan de tres niveles (`scripts/entrenar_nivel1.py`, `services/ml/nivel1.py`) no registra ni activa nada. Al unificar los dos caminos, el que sobreviva debería ser ese y no `train_from_db`, cuya etiqueta es circular. *(2026-10-25: se unificaron quedándose `train_from_db`, que es el que publica y activa por `train-model.yml` (hoy `ml-entrenar.yml`, modelo `sap`); cambiar su etiqueta por la de nivel 1 sigue abierto y no exige otro camino.)* Registrar en `model_versions` y la semana en sombra siguen pendientes de OK.
+- **Files de partida:** [scheduler/jobs/ml_training_run.py](../scheduler/jobs/ml_training_run.py), [scheduler/concept_drift.py](../scheduler/concept_drift.py), [services/ml/promotion.py](../services/ml/promotion.py), [.github/workflows/ml-entrenar.yml (modelo sap)](../.github/workflows/ml-entrenar.yml), [docs/runbooks/model-rollback.md](runbooks/model-rollback.md)
 - **Riesgo:** bajo para las verificaciones; medio para el nombre por
   contenido, que toca el camino por el que la ingesta y la API cargan el
   modelo.
@@ -408,7 +408,7 @@ _Sin ítems abiertos._
       dataset). La pasada diaria de `scrape-daily.yml`, que no lleva `--desde`,
       siguió desde ahí —cayendo tres veces más por el mismo timeout— y alcanzó
       la cabeza del dataset el 2026-09-28 17:09 UTC: el recorrido completo está
-      hecho, aunque el último run de `purga-pscp.yml` siga en rojo.
+      hecho, aunque el último run de `operaciones-datos.yml` (operacion `purga-pscp`) siga en rojo.
     - Medido en producción el 2026-10-09 (solo lectura): 60.107 filas de PSCP.
       59.910 llevan `fecha_actualizacion_fuente`, es decir, las ha escrito el
       conector actual. Las otras 197 no la llevan, ni `analysis_universe` ni
@@ -427,7 +427,7 @@ _Sin ítems abiertos._
     - Falta lo demás: balance, delta de `make audit-truth-check` y el RFC.
   - Tras el `VACUUM (ANALYZE)`, `pg_relation_size('licitaciones')` anotado aquí.
     - **Medido el 2026-10-25 (MCP, solo lectura):** `pg_relation_size('licitaciones')` = **89 MB** (era ~870 MB); 88.925 filas en total, de las que 60.737 son `pscp` y **16.798 llevan `tecnologia`** (el ítem citaba 3.268 sobre 685.500: la cifra es anterior a la purga y a la reingesta). Siguen 195 filas `pscp` sin `fecha_actualizacion_fuente` (la decisión sobre ellas sigue abierta). La purga y la reingesta están hechas; lo único que falta para cerrar es el balance en el RFC y el delta de `make audit-truth-check`, que exige la BD real.
-- **Files de partida:** [.github/workflows/purga-pscp.yml](../.github/workflows/purga-pscp.yml) (dry-run por defecto; `apply` + `reingerir_desde`), [scripts/purgar_pscp_sin_tecnologia.py](../scripts/purgar_pscp_sin_tecnologia.py), [db/repositories/purga_licitaciones.py](../db/repositories/purga_licitaciones.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py) (`senal_tecnologica`)
+- **Files de partida:** [.github/workflows/operaciones-datos.yml (operacion purga-pscp)](../.github/workflows/operaciones-datos.yml) (dry-run por defecto; `aplicar` + `reingerir_desde`), [scripts/purgar_pscp_sin_tecnologia.py](../scripts/purgar_pscp_sin_tecnologia.py), [db/repositories/purga_licitaciones.py](../db/repositories/purga_licitaciones.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py) (`senal_tecnologica`)
 - **Riesgo:** alto — borra ~680.000 filas y sus dependientes. Mitigado: reevalúa con la
   misma puerta que el conector, conserva las filas con trabajo de usuario, es
   reanudable, y el dato es público y reingestable (`--desde`).
@@ -493,7 +493,7 @@ _Sin ítems abiertos._
   con `placsp_agregadas` encendida (30 filas, 23 con pliegos de Madrid, Euskadi
   y Catalunya). Para los avisos TED anteriores al cambio, cuya entry PLACSP ya
   no vuelve a pasar por el ATOM (19 abiertas de octubre), hay un reproceso
-  dirigido: `scraper/reproceso_ted.py` y `reproceso-ted.yml` (manual, `aplicar`
+  dirigido: `scraper/reproceso_ted.py` y `operaciones-datos.yml` (operacion `reproceso-ted`) (manual, `aplicar`
   para escribir). Solo parsea del ZIP las entries que espera un aviso TED sin
   pareja, nunca pisa una fila que ya existe y recorre los meses del más nuevo al
   más viejo.
@@ -512,12 +512,12 @@ _Sin ítems abiertos._
   retraso), PLACSP con `idEvl` de noviembre 4, ADIF con enlace al perfil sin
   `idEvl` 4, instituciones europeas 4 y Galicia y La Rioja 1 cada una. Para las
   agregadas, histórico desde los ZIP de la sindicación 1044 y nueva pasada de
-  TED (`historico-agregadas.yml`): el feed de agregadas solo trae lo publicado
+  TED (`operaciones-datos.yml` (operacion `historico-agregadas`)): el feed de agregadas solo trae lo publicado
   desde que se encendió, y el emparejamiento por BT-22 solo ve los avisos TED
   de su ventana de 14 días. Queda anotar cuántas se emparejan. Las de ADIF
   necesitarían guardar el BT-22 del aviso (cambio de esquema); por cuatro no se
   hace.
-- **Histórico de agregadas (2026-11-05, `historico-agregadas.yml`):** el ZIP de
+- **Histórico de agregadas (2026-11-05, `historico-agregadas.yml` (hoy `operaciones-datos.yml`, operacion `historico-agregadas`)):** el ZIP de
   la 1044 existe con el nombre supuesto. Agregadas pasa de 30 a 2.503 filas
   (169 abiertas); 73 avisos TED quedan detrás de una agregada (24 abiertos:
   País Vasco 15, Madrid 7, Andalucía 1, La Rioja 1). Abiertas solo con el
@@ -540,7 +540,7 @@ _Sin ítems abiertos._
     `iter_candidatas_por_referencia`), y el órgano casa también por su último
     tramo tras « - » (`services.dedupe._organos_emparejables`). Se aplica a
     los avisos ya ingeridos con una pasada de TED desde su fecha
-    (`historico-agregadas.yml`, `ted_desde`).
+    (`operaciones-datos.yml` (operacion `historico-agregadas`), `ted_desde`).
   - **Descartadas por la puerta tecnológica, probable (6).** El órgano tiene
     filas en agregadas pero no este contrato, y su CPV principal no es TI: TED
     lo admite por un CPV secundario 48/72. Canal de Isabel II, contadores
@@ -557,7 +557,7 @@ _Sin ítems abiertos._
   - **Hueco del 1 al 3 de noviembre (1, Gobierno Vasco `ted:756873-2026`).**
     El ZIP de octubre acaba el 31 y el feed de agregadas empezó el 4 leyendo
     solo su primera página: lo agregado entre medias llegará con el ZIP de
-    noviembre (`historico-agregadas.yml` con `desde=hasta=2026-11` cuando se
+    noviembre (`historico-agregadas.yml` (hoy `operaciones-datos.yml`, operacion `historico-agregadas`) con `desde=hasta=2026-11` cuando se
     publique).
 - **Files de partida:** [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [db/repositories/documentos.py](../db/repositories/documentos.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo — solo observación y una variable de entorno.
@@ -947,7 +947,7 @@ _Sin ítems abiertos._
 
 ### [P2] `baja_model` v2 y `retencion_model` v1 están entrenados y publicados, pero nadie puede decidir si activarlos
 - **Área:** db/model_registry.py, services/ml/baja_model.py, services/ml/calibration.py (acción del usuario)
-- **Problema:** desde el 2026-09-03 el reentrenamiento vuelve a completar y sus artefactos están en la Release, pero las tres filas de `model_versions` siguen con `is_active = 0`, así que `ml-scoring.yml` sirve baseline **en verde**. La activación es decisión humana por diseño (`train-predictivos.yml`: *"salvo `ML_PRED_AUTO_ACTIVATE`"*), y el problema es que **las métricas registradas no permiten tomarla**:
+- **Problema:** desde el 2026-09-03 el reentrenamiento vuelve a completar y sus artefactos están en la Release, pero las tres filas de `model_versions` siguen con `is_active = 0`, así que `ml-scoring.yml` sirve baseline **en verde**. La activación es decisión humana por diseño (`train-predictivos.yml` (hoy `ml-entrenar.yml`, modelo `predictivos`): *"salvo `ML_PRED_AUTO_ACTIVATE`"*), y el problema es que **las métricas registradas no permiten tomarla**:
   - `baja_model` v2 mejora al baseline un **3,3%** (`mae_p50` 0.12494 vs `mae_baseline` 0.12999, o sea 0.005), pero su propia dispersión entre folds es **`mae_p50_std_folds` = 0.01287**, dos veces y media esa mejora. Es indistinguible de ruido con la evidencia que hay.
   - `retencion_model` v1 no registra **ninguna** métrica de baseline (`pr_auc` 0.2453 sobre prevalencia 0.1099, `ece` 0.054): no hay contra qué compararlo.
   - `baja_model` v1 (2026-08-05) sí registra una mejora del 17,8%, pero su ventana de validación dice `valid_hasta: "2032-06-23"` —una fecha futura, o sea basura— y se entrenó antes del arreglo del rolling origin y del filtro de fechas. No es comparable, y su artefacto ya no está en la Release.
@@ -956,11 +956,11 @@ _Sin ítems abiertos._
   - Un criterio de promoción escrito para los predictivos, del mismo tipo que el del clasificador SAP: qué margen sobre el baseline y con qué dispersión se considera suficiente.
   - `retencion_model` registra una métrica de baseline comparable (el ranking trivial por prevalencia o por antigüedad del contrato).
   - Decidido y ejecutado: activar o descartar, con el número que lo justifica anotado en `notes` de `model_versions`.
-- **Files de partida:** [db/model_registry.py](../db/model_registry.py), [services/ml/baja_model.py](../services/ml/baja_model.py), [services/ml/promotion.py](../services/ml/promotion.py) (el gate del SAP, como referencia), [.github/workflows/train-predictivos.yml](../.github/workflows/train-predictivos.yml)
+- **Files de partida:** [db/model_registry.py](../db/model_registry.py), [services/ml/baja_model.py](../services/ml/baja_model.py), [services/ml/promotion.py](../services/ml/promotion.py) (el gate del SAP, como referencia), [.github/workflows/ml-entrenar.yml (modelo predictivos)](../.github/workflows/ml-entrenar.yml)
 - **Riesgo:** medio — activar cambia lo que sirve `predicciones_baja` sin red que lo detecte.
-- **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — los dos primeros criterios ya estaban en código; queda solo la decisión humana.** Comprobado contra el código: el criterio escrito existe desde #274 (v2 S6.4) — `services.ml.promotion.evaluar_promocion_predictiva`: una versión solo es promocionable si su mejora sobre el baseline mide al menos `MIN_IMPROVEMENT_OVER_FOLD_DISPERSION` (1.0) veces la dispersión de la métrica entre folds, sin dispersión medida no se promociona, y los criterios del RFC entran como motivos extra. `baja_model.entrenar` y `retencion_model.entrenar` lo aplican y dejan el veredicto en `notes` (`promotion_reason`); retención registra `pr_auc_baseline` (prevalencia) y `pr_auc_std_folds` (bloques contiguos de validación). Tests en `tests/test_ml_promocion_predictiva.py`; el runbook `model-rollback.md` lo cita. Esta rama añade a retención el rival de antigüedad que pedía el criterio: `pr_auc_baseline_antiguedad` (ordenar por `antiguedad_relacion_meses`), **informativo, no gatea**. Aplicado a los números de arriba, baja v2 sale «indistinguible de ruido» (0.005 < 0.0129). **Falta (humano):** relanzar `train-predictivos.yml` para que retención tenga dispersión y rival registrados —v1 es anterior al gate—, y decidir activar o descartar con el `promotion_reason` delante.
+- **Progreso parcial (2026-09-18, rama worktree-agent-a3fd0bc81b8a949c2) — los dos primeros criterios ya estaban en código; queda solo la decisión humana.** Comprobado contra el código: el criterio escrito existe desde #274 (v2 S6.4) — `services.ml.promotion.evaluar_promocion_predictiva`: una versión solo es promocionable si su mejora sobre el baseline mide al menos `MIN_IMPROVEMENT_OVER_FOLD_DISPERSION` (1.0) veces la dispersión de la métrica entre folds, sin dispersión medida no se promociona, y los criterios del RFC entran como motivos extra. `baja_model.entrenar` y `retencion_model.entrenar` lo aplican y dejan el veredicto en `notes` (`promotion_reason`); retención registra `pr_auc_baseline` (prevalencia) y `pr_auc_std_folds` (bloques contiguos de validación). Tests en `tests/test_ml_promocion_predictiva.py`; el runbook `model-rollback.md` lo cita. Esta rama añade a retención el rival de antigüedad que pedía el criterio: `pr_auc_baseline_antiguedad` (ordenar por `antiguedad_relacion_meses`), **informativo, no gatea**. Aplicado a los números de arriba, baja v2 sale «indistinguible de ruido» (0.005 < 0.0129). **Falta (humano):** relanzar `train-predictivos.yml` (hoy `ml-entrenar.yml`, modelo `predictivos`) para que retención tenga dispersión y rival registrados —v1 es anterior al gate—, y decidir activar o descartar con el `promotion_reason` delante.
 - **Progreso (2026-09-24, rama `claude/ml-scoring-improvements-da84e5`) — activar ya no rompe el scoring al mes siguiente.** Hasta hoy todas las versiones se publicaban como `baja_model.pkl`/`retencion_model.pkl` con `--clobber`: activar vN y dejar que el reentrenamiento mensual registrara vN+1 sin activar pisaba el asset de vN, y `ml-scoring.yml` caía cada día por `ModelArtifactMismatch` hasta activar vN+1. Ahora cada versión nueva lleva un nombre derivado de su contenido (`baja_model-<sha12>.pkl`) en la Release fija `ml-models`. La resolución busca por nombre en `ml-models` → *latest* → las 30 Releases más recientes, así que las filas actuales (v2 y v1, de nombre fijo) se siguen encontrando. La decisión pendiente es solo la de arriba.
-- **Progreso (2026-10-23):** el criterio aplicado a estas dos versiones, condición por condición y con sus constantes, está en `docs/runbooks/model-rollback.md` § «`baja_model` v2 y `retencion_model` v1: qué hace falta para decidir». Resultado con lo registrado: baja v2 **no promocionable** (falla la dispersión y el 10 % relativo); retención v1 **no decidible** (sin `pr_auc_std_folds`; su margen sobre la prevalencia, 0,135, tampoco llega al 0,15 del RFC). Sigue faltando relanzar `train-predictivos.yml` y decidir sobre la versión nueva. No se activó ni se descartó nada.
+- **Progreso (2026-10-23):** el criterio aplicado a estas dos versiones, condición por condición y con sus constantes, está en `docs/runbooks/model-rollback.md` § «`baja_model` v2 y `retencion_model` v1: qué hace falta para decidir». Resultado con lo registrado: baja v2 **no promocionable** (falla la dispersión y el 10 % relativo); retención v1 **no decidible** (sin `pr_auc_std_folds`; su margen sobre la prevalencia, 0,135, tampoco llega al 0,15 del RFC). Sigue faltando relanzar `train-predictivos.yml` (hoy `ml-entrenar.yml`, modelo `predictivos`) y decidir sobre la versión nueva. No se activó ni se descartó nada.
 
 ### [P2] ml-scoring: verificar en producción el arreglo del 2026-09-24 y cerrar sus flecos
 - **Área:** services/ml/, scheduler/jobs/ml_predicciones.py, .github/workflows/ml-scoring.yml, shared/release_assets.py
@@ -986,7 +986,7 @@ _Sin ítems abiertos._
   - Decidir `ML_RETENCION_EXCLUIR_RESUELTOS` tras auditar una muestra de `resueltos_detectados`. Hoy está apagado: la heurística órgano + CPV-4 da falsos positivos en segmentos con mucha actividad, y excluir un contrato lo esconde del orden «score». `scripts/audit_retencion.py` solo audita pares de entrenamiento; hay que añadirle un modo `--resueltos`.
   - Que el entrenamiento de retención deje de ser cuadrático. `construir_pares` llama a `_features_historicas` por cada par (~5,5K pares × ~698K adjudicaciones × 2), y `_emparejar` es O(Σ n²) por segmento. Solución: índices por clave más bisect, con paridad contra la referencia como en `tests/test_ml_retencion_serving.py`.
   - Resolver la clave de `predicciones_retencion` **antes de activar `retencion_model`**; exige migración. La tabla guarda un riesgo por expediente (`licitacion_id` es la PK), pero Renovaciones pinta una fila por empresa adjudicataria. Con el modelo, que sí depende de la empresa, un expediente con varios adjudicatarios mostraría a todos el riesgo del primero.
-  - Pasar a `locate_release_asset` y a una Release fija lo que aún publica y busca solo en *latest*: `ensure_downloaded` de `services/ml/sap_classifier.py` y de `services/ml/tech_classifier.py`, más `train-model.yml` y `train-tech.yml`. *SAP hecho el 2026-10-24* (`ensure_downloaded` busca con `locate_release_asset` y `train-model.yml` publica en `ml-models`); quedan `tech_classifier` y `train-tech.yml`.
+  - Pasar a `locate_release_asset` y a una Release fija lo que aún publica y busca solo en *latest*: `ensure_downloaded` de `services/ml/sap_classifier.py` y de `services/ml/tech_classifier.py`, más `train-model.yml` (hoy `ml-entrenar.yml`, modelo `sap`) y `train-tech.yml` (hoy `ml-entrenar.yml`, modelo `tecnologias`). *SAP hecho el 2026-10-24* (`ensure_downloaded` busca con `locate_release_asset` y `train-model.yml` (hoy `ml-entrenar.yml`, modelo `sap`) publica en `ml-models`); quedan `tech_classifier` y `train-tech.yml` (hoy `ml-entrenar.yml`, modelo `tecnologias`).
   - ~~Arreglar `observability/logging.py::redact_dsn`, que no redacta la contraseña de los DSN con driver (`postgresql+psycopg://…`).~~ **Hecho el 2026-10-25:** la regex admite `+driver` y la propia de `db/schema_revision.py` se retira (test parametrizado en `tests/test_observability_logging.py`).
 - **Files de partida:** [scheduler/jobs/ml_predicciones.py](../scheduler/jobs/ml_predicciones.py), [services/ml/retencion_labels.py](../services/ml/retencion_labels.py), [shared/release_assets.py](../shared/release_assets.py), [.github/workflows/ml-scoring.yml](../.github/workflows/ml-scoring.yml)
 - **Riesgo:** bajo para las verificaciones; medio para la clave de `predicciones_retencion`, que exige migración.
