@@ -17,6 +17,7 @@ name: Operaciones manuales de datos
 # | reproceso-lotes      | desde, hasta, aplicar                      |
 # | historico-agregadas  | desde, hasta, ted_desde                    |
 # | purga-pscp           | aplicar, reingerir_desde                   |
+# | partir-adjudicatarios-pscp | aplicar                             |
 # | backfill-empresas    | scope_fuente, time_budget, restart         |
 # | rescore-ml-proba     | (ninguna)                                  |
 #
@@ -36,10 +37,11 @@ on:
           - reproceso-lotes
           - historico-agregadas
           - purga-pscp
+          - partir-adjudicatarios-pscp
           - backfill-empresas
           - rescore-ml-proba
       aplicar:
-        description: "Escribir en la BD (sin marcar, solo cuenta). Reprocesos y purga"
+        description: "Escribir en la BD (sin marcar, solo cuenta). Reprocesos, purga y partir adjudicatarios"
         type: boolean
         default: false
       desde:
@@ -333,6 +335,53 @@ jobs:
           PSCP_APP_TOKEN: ${{ secrets.PSCP_APP_TOKEN }}
           DESDE: ${{ inputs.reingerir_desde }}
         run: python -m scraper.connectors.pscp --desde "$DESDE"
+
+  # ── partir-adjudicatarios-pscp ─────────────────────────────────────────────
+  # Ejecuta `scripts/partir_adjudicatarios_pscp.py` contra la BD de producción.
+  #
+  # Hasta el 2026-11-06 el conector de PSCP guardaba como un solo adjudicatario
+  # la fila que publica varios («A SL||B SA», NIF «B1||B2») y el maestro creaba
+  # con ella una empresa compuesta. Esto parte las adjudicaciones guardadas así,
+  # borra las empresas compuestas sin uso y enlaza las filas nuevas por NIF.
+  # Sin `aplicar` solo cuenta; con él va en una transacción y es idempotente.
+  #
+  # Comparte `concurrency.group: scrape` con la ingesta: nunca corre a la vez
+  # que un carril de PSCP que podría escribir esas mismas adjudicaciones.
+  partir_adjudicatarios_pscp:
+    if: inputs.operacion == 'partir-adjudicatarios-pscp'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      ENV: prod
+      APP_PROFILE: scraper
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preparar Python
+        uses: ./.github/actions/preparar-python
+
+      - name: Partir adjudicatarios (dry-run salvo aplicar)
+        shell: bash
+        env:
+          APLICAR: ${{ inputs.aplicar }}
+        run: |
+          ARGS=()
+          if [ "$APLICAR" = "true" ]; then
+            ARGS+=(--apply)
+          fi
+          echo "Args: ${ARGS[*]}"
+          {
+            echo '```'
+            python -m scripts.partir_adjudicatarios_pscp "${ARGS[@]}"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
   # ── backfill-empresas ─────────────────────────────────────────────
   # Antes: backfill-empresas.yml («Backfill maestro de empresas (manual)»).
