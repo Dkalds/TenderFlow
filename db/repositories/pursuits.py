@@ -1300,8 +1300,14 @@ class PursuitRepository:
         pursuit_id: int,
         actor_user_id: int,
         payload: Mapping[str, object],
+        idempotency_key: str | None = None,
     ) -> None:
-        """Anota una confirmación de fila. Sin ``UPDATE``: el ledger es append-only."""
+        """Anota una confirmación de fila. Sin ``UPDATE``: el ledger es append-only.
+
+        Con ``idempotency_key``, repetir la petición no anota otro evento: el
+        índice parcial ``(pursuit_id, idempotency_key)`` de v61 y el
+        ``ON CONFLICT DO NOTHING`` de :meth:`_append_event` lo descartan.
+        """
         with connect() as conn:
             self._append_event(
                 conn,
@@ -1310,7 +1316,7 @@ class PursuitRepository:
                 event_type=self.FILA_ACTA_EVENT_TYPE,
                 actor_user_id=actor_user_id,
                 payload=payload,
-                idempotency_key=None,
+                idempotency_key=idempotency_key,
                 created_at=now_utc_iso(),
             )
 

@@ -550,6 +550,7 @@ def test_patch_solo_fila_acta_anota_el_ledger_y_no_actualiza(patch_env: _Patch) 
         pursuit_id=_PURSUIT,
         actor_user_id=_USUARIO,
         payload={"lote_numero": "1", "licitador_normalizado": _ADELANTE_N},
+        idempotency_key=None,
     )
     patch_env.detalle.assert_called_once_with(_ACTUAL, _ORG, _PURSUIT)
 

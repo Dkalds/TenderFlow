@@ -211,6 +211,31 @@ def test_patch_solo_fila_acta_no_sube_la_version(client, api_db):
     assert _lote_1(con_cambio.json())["fila_propia_confirmada"] is True
 
 
+def test_repetir_el_patch_con_la_misma_clave_no_anota_otra_fila(client, api_db):
+    sembrar_licitacion(_LIC, "Soporte y mantenimiento")
+    sesion = abrir_sesion("fila-idempotente@example.com", client)
+    pid = _abrir_oportunidad(sesion)
+    _sembrar_acta(_LIC)
+    ref = {"lote_numero": "1", "licitador_normalizado": _ADELANTE_N}
+
+    # Solo la fila, y la fila con otro cambio: en los dos caminos un reintento no duplica.
+    for clave, cuerpo in (
+        ("reintento-solo-fila", {"fila_acta": ref}),
+        ("reintento-con-cambio", {"fila_acta": ref, "next_action": "Pedir vista"}),
+    ):
+        for _ in range(2):
+            respuesta = sesion.client.patch(
+                f"/api/v1/pursuits/{pid}",
+                json=cuerpo,
+                headers={**sesion.cab, "X-Idempotency-Key": clave},
+            )
+            assert respuesta.status_code == 200, respuesta.text
+
+    tipos = [e["event_type"] for e in sesion.get(f"/pursuits/{pid}").json()["events"]]
+    assert tipos.count("fila_acta_confirmada") == 2
+    assert tipos.count("pursuit.updated") == 1
+
+
 def test_la_ficha_distingue_acta_sin_leer_de_expediente_sin_acta(client, api_db):
     sembrar_licitacion("EXP-ESC-ACTA-PENDIENTE", "Con acta, sin leer")
     sembrar_licitacion("EXP-ESC-SIN-ACTA", "Sin acta")
