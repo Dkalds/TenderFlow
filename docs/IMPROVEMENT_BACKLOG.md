@@ -7,7 +7,8 @@ Lista viva de mejoras conocidas, priorizadas. **Diseñada para que un agente pue
 - **Prioridad**: P0 (urgente / bloquea) · P1 (alta) · P2 (media) · P3 (nice-to-have).
 - **Riesgo**: bajo (cambio aislado) · medio (afecta varios módulos) · alto (toca core / migra schema / cambia contrato).
 - Si añadís un ítem nuevo, copiá la plantilla del final.
-- Al cerrarlo, no lo dejes tachado aquí: **movélo entero a la sección _Cerrados_** del final con la fecha y el commit/PR que lo resolvió. Las secciones P1/P2/P3 contienen **solo ítems abiertos**.
+- Al cerrarlo, no lo dejes tachado aquí: **borralo**. El rastro es el PR que lo resuelve («Cierra: <título>» y la medición en su descripción); una decisión o un procedimiento duraderos van a un ADR, un RFC o un runbook, y el backlog solo enlaza. Las secciones P0-P3 contienen **solo ítems abiertos**.
+- El histórico anterior al 2026-11-06 está en [archive/IMPROVEMENT_BACKLOG_CERRADOS.md](archive/IMPROVEMENT_BACKLOG_CERRADOS.md) y [archive/IMPROVEMENT_BACKLOG_INFORMES_DE_PLAN.md](archive/IMPROVEMENT_BACKLOG_INFORMES_DE_PLAN.md): congelados, no se les añade nada.
 
 ## Plan 2026-10 — foco de piloto (EN EJECUCIÓN desde el 2026-10-26)
 
@@ -1320,12 +1321,6 @@ _Sin ítems abiertos._
 - **Acceptance criteria:** las cuatro rutas en su `objetivo` de `web/bundle-budget.json`; el paso de CI cambiado a `next analyze --output` (editar `ci.yml` pide OK, AGENTS.md §6).
 - **Files de partida:** [web/bundle-budget.json](../web/bundle-budget.json), [web/src/__tests__/first-load-diferido.test.ts](../web/src/__tests__/first-load-diferido.test.ts), [scripts/check_bundle_budget.py](../scripts/check_bundle_budget.py)
 - **Riesgo:** bajo.
-
-## Cerrados
-
-Aquí no se acumulan. El histórico vive en
-[archive/IMPROVEMENT_BACKLOG_CERRADOS.md](archive/IMPROVEMENT_BACKLOG_CERRADOS.md). Al cerrar un ítem,
-movelo entero allí con su fecha y el PR que lo resolvió.
 
 ## Plantilla nueva entrada
 

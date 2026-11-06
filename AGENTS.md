@@ -46,11 +46,12 @@ no alcanza. No es un congelamiento —añadir un endpoint cuesta una línea—; 
 que impide es añadirlo sin haberse hecho la pregunta.
 
 Salvo que el usuario priorice otra cosa, seguí el orden de
-[docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md). Los ítems cerrados
-se archivan en
-[docs/archive/IMPROVEMENT_BACKLOG_CERRADOS.md](docs/archive/IMPROVEMENT_BACKLOG_CERRADOS.md)
-en vez de acumularse en el backlog: un backlog que nadie puede leer entero no
-prioriza nada.
+[docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md). Un ítem cerrado se
+**borra** del backlog en vez de acumularse: el rastro es el PR que lo cerró
+(`git log` y su descripción), y lo duradero va a su sitio —ADR, RFC o
+runbook—. [docs/archive/IMPROVEMENT_BACKLOG_CERRADOS.md](docs/archive/IMPROVEMENT_BACKLOG_CERRADOS.md)
+es histórico congelado: no se le añade nada. Un backlog que nadie puede leer
+entero no prioriza nada.
 
 No escribas aquí hechos calculables (conteos de tests, coverage, tamaño de
 ratchets, jobs o endpoints): pertenecen a [docs/STATUS.md](docs/STATUS.md), que
@@ -197,7 +198,7 @@ mano.
 1. Corré `/check` o los tres controles Python de §4. Si faltan prerrequisitos, reportá los controles no ejecutados.
 2. Si el CLI y `graphify-out/graph.json` están disponibles, corré `graphify update .`; usá `--force` para módulos nuevos, renames o moves. Si no están, omitilo. (En Claude Code y Codex lo lanza solo el hook de Stop al acabar el turno; `--force` sigue siendo a mano.)
 3. Si el cambio contradice una decisión registrada en `docs/adr/` o un invariante de la sección 3, abrí una nueva revisión ADR en `docs/adr/` antes de mergear.
-4. Si el cambio resuelve (total o parcialmente) un ítem de [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md), movélo a **Cerrados** (o anotá progreso parcial) en ese mismo momento. No dejarlo para después.
+4. Si el cambio resuelve (total o parcialmente) un ítem de [docs/IMPROVEMENT_BACKLOG.md](docs/IMPROVEMENT_BACKLOG.md), borralo del backlog (o anotá progreso parcial) en ese mismo cambio, y pon en el PR «Cierra: <título del ítem>» con la medición que lo demuestra. Si la decisión o el procedimiento tienen que sobrevivir al PR, van a un ADR o a un runbook. No dejarlo para después.
 5. Si tocaste customizaciones de agentes, corré `make check-agent-docs`.
 
 **Regla general de las instrucciones:** describen el estado real del repo, no la intención. Si encontrás una que el código desmiente, arreglá la instrucción en el mismo cambio (o anotala en el backlog si el arreglo es grande) — una instrucción falsa cuesta más que ninguna.

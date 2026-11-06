@@ -19,6 +19,11 @@ puede leer entero no prioriza nada.
 No se borra nada: el histórico de por qué se hizo cada cosa sigue siendo
 útil, solo deja de competir por la atención con lo que está abierto.
 
+> **Congelado desde el 2026-11-06.** No se le añaden entradas: cerrar un ítem
+> del backlog es borrarlo, y el rastro es el PR que lo cerró («Cierra:
+> <título>» y su medición). Un SHA citado aquí puede no existir tras un
+> squash-merge (ver el aviso de arriba); el número de PR sí es estable.
+
 ---
 
 ## Cerrados movidos desde el backlog el 2026-11-06 (entradas del 2026-08-08 al 2026-11-04)
