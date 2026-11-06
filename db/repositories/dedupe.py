@@ -55,7 +55,12 @@ from db.repositories.base import rows_to_dicts
 # detector volvería a proponer canónicas que la superficie no publica.
 from db.repositories.publico import _publicable_sql
 from db.sql_fragments import exclude_duplicados_presentacion_sql, organo_normalizado_sql
-from shared.identidad_placsp import expediente_comparable_sql, expediente_natural_sql
+from shared.identidad_placsp import (
+    FUENTE_AGREGADAS,
+    expediente_comparable_sql,
+    expediente_natural_sql,
+    expediente_sin_codigo_entidad_sql,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -280,6 +285,14 @@ def iter_candidatas_por_referencia(
         # Comparables (``shared.identidad_placsp.expediente_comparable``): cada
         # plataforma teclea el expediente a su manera, con o sin espacios.
         condiciones.append(f"{expediente_comparable_sql(_EXPEDIENTE_NATURAL_SQL)} = ANY(%s)")
+        params.append(list(expedientes))
+        # Y, en las agregadas, sin el `NNNN_` de entidad que BT-22 no lleva
+        # (gemelo de ``services.dedupe._claves_de_candidata``).
+        sin_codigo = expediente_sin_codigo_entidad_sql(_EXPEDIENTE_NATURAL_SQL)
+        condiciones.append(
+            f"(l.fuente = '{FUENTE_AGREGADAS}' "
+            f"AND {expediente_comparable_sql(sin_codigo)} = ANY(%s))"
+        )
         params.append(list(expedientes))
     if id_evls:
         condiciones.append(f"{_ID_EVL_SQL} = ANY(%s)")
