@@ -50,6 +50,7 @@ import re
 from typing import Final, NamedTuple
 
 __all__ = [
+    "FUENTE_AGREGADAS",
     "PREFIJOS_ACOTADOS_POR_ORGANO",
     "ClavePlacsp",
     "clave_placsp",
@@ -61,6 +62,8 @@ __all__ = [
     "expediente_comparable_sql",
     "expediente_natural",
     "expediente_natural_sql",
+    "expediente_sin_codigo_entidad",
+    "expediente_sin_codigo_entidad_sql",
 ]
 
 #: Prefijos cuyo ``id_externo`` es ``<prefijo>:<órgano>:<expediente>`` y cuyo
@@ -225,3 +228,30 @@ def expediente_comparable_sql(expresion: str) -> str:
     *expresion* se interpola tal cual: solo expresiones escritas en el código.
     """
     return f"upper(regexp_replace({expresion}, '\\s+', '', 'g'))"
+
+
+#: La sindicación de plataformas agregadas (1044), la única fuente con ese código.
+FUENTE_AGREGADAS: Final[str] = "placsp_agregadas"
+
+#: Código de entidad que algunas plataformas agregadas anteponen al expediente.
+_CODIGO_ENTIDAD_RE: Final[str] = "^[0-9]+_"
+
+
+def expediente_sin_codigo_entidad(expediente: str) -> str:
+    """El expediente sin el ``NNNN_`` que antepone la plataforma agregada.
+
+    La Comunidad de Madrid publica en la sindicación 1044 ``8379_0005-CP01-2026-000095``
+    y el DOUE (BT-22) ``0005-CP01-2026-000095``; Navarra hace lo mismo con
+    ``2003_``, ``3167_``… (2026-11-06). No sustituye al expediente: en otras
+    plataformas el ``NN_`` es parte de él (``26_07_L1_03``), así que solo sirve
+    como variante más al comparar, nunca como clave.
+    """
+    return re.sub(_CODIGO_ENTIDAD_RE, "", expediente, count=1)
+
+
+def expediente_sin_codigo_entidad_sql(expresion: str) -> str:
+    """La expresión SQL (Postgres) equivalente a :func:`expediente_sin_codigo_entidad`.
+
+    *expresion* se interpola tal cual: solo expresiones escritas en el código.
+    """
+    return f"regexp_replace({expresion}, '{_CODIGO_ENTIDAD_RE}', '')"

@@ -73,7 +73,13 @@ from observability.logging import get_logger
 from observability.runtime_metrics import dedupe_marked_total, dedupe_match_rate
 from services.normalization import normalize_company
 from shared.cpv import cpv4 as _cpv4
-from shared.identidad_placsp import es_fuente_placsp, expediente_comparable, expediente_natural
+from shared.identidad_placsp import (
+    FUENTE_AGREGADAS,
+    es_fuente_placsp,
+    expediente_comparable,
+    expediente_natural,
+    expediente_sin_codigo_entidad,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -621,6 +627,21 @@ def _organos_emparejables(nombre: str | None) -> set[str]:
     return claves
 
 
+def _claves_de_candidata(candidata: Mapping[str, Any]) -> set[str]:
+    """Con qué BT-22 puede casar una candidata: su expediente comparable.
+
+    En las agregadas, también sin el ``NNNN_`` de entidad que la plataforma
+    antepone y el DOUE no publica
+    (:func:`shared.identidad_placsp.expediente_sin_codigo_entidad`). Gemelo del
+    prefiltro de ``db.repositories.dedupe.iter_candidatas_por_referencia``.
+    """
+    natural = natural_expediente(str(candidata["id_externo"]))
+    claves = {expediente_comparable(natural)}
+    if candidata.get("fuente") == FUENTE_AGREGADAS:
+        claves.add(expediente_comparable(expediente_sin_codigo_entidad(natural)))
+    return claves
+
+
 def _orden_de_candidata(fila: dict[str, Any]) -> tuple[bool, tuple[int, str, str, str]]:
     """Qué fila representa al contrato cuando TED tiene varias gemelas: PLACSP primero.
 
@@ -730,9 +751,8 @@ def detect_duplicados_por_referencia(
     for candidata in dedupe_repo.iter_candidatas_por_referencia(fuente, expedientes, id_evls):
         if (evl := id_evl_de_url(candidata.get("url"))) is not None:
             por_id_evl.setdefault(evl, []).append(candidata)
-        por_expediente.setdefault(
-            expediente_comparable(natural_expediente(str(candidata["id_externo"]))), []
-        ).append(candidata)
+        for clave in _claves_de_candidata(candidata):
+            por_expediente.setdefault(clave, []).append(candidata)
 
     marcas: list[tuple[str, str, str, float, str]] = []
     for fila in filas:

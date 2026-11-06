@@ -55,302 +55,43 @@ _Sin ítems abiertos._
 ### [P1] Cerrar el incidente de la v2 de `sap_classifier`: ver la pasada en verde y unificar los dos caminos de entrenamiento
 - **Área:** scheduler/concept_drift.py, scheduler/jobs/ml_training_run.py, services/ml/promotion.py, services/ml/model_artifacts.py, .github/workflows/ml-entrenar.yml (modelo sap), `model_versions` (producción)
 - **Progreso (2026-10-26, D55):** mientras no haya versión validada, la probabilidad del clasificador no es señal (`services/ml/senal_clasificador.py`); el Radar ya no la leía. Ver [plan 2026-10](plans/2026-10-plan-foco-piloto.md) §8.
-- **Problema:** `scrape-daily` está en rojo desde el 2026-09-29T18:08Z (15
-  runs hasta el 2026-10-03T23:09Z). En el primero el paso semanal
-  `sap_active_learning` contó 59
-  feedbacks humanos (umbral 50), reentrenó **dentro del runner**, pasó el gate y
-  dejó activa la v2 en `model_versions` (sha256 `c45898ee…`, nota
-  `active_learning_auto_retrain`). El `.pkl` se escribió en `data/models/` de
-  ese runner y nadie lo subió a ninguna Release ni al bucket: ya no existe. El
-  `precompute_ml_proba(force=True)` posterior agotó los 20 minutos del step
-  (primer rojo). Desde la pasada siguiente, `resolve_active_artifact` bajaba el
-  `sap_classifier.pkl` de `v1.0.0-models` —el del 2026-05-22, sha256
-  `5ddcc0ee…`—, no coincidía con el registrado y `ml_scoring` (bloqueante)
-  lanzaba `ModelArtifactMismatch`. Hasta entonces no había versión activa y la
-  pasada servía ese mismo asset de mayo por `ensure_downloaded`, sin cotejar.
-  La semana anterior (2026-09-22) el mismo paso había fallado al entrenar por
-  desbalance (1,2 % de positivos con las 709k filas de PSCP), y por eso no
-  ocurrió antes.
-- **Hecho:**
-  - 2026-10-04T00:19Z, producción: la v2 quedó desactivada (una fila). El
-    modelo no tiene versión activa y la pasada sirve el asset de mayo.
-  - PR #404 (`ea76b40a`): con `SCHEDULER_PLANE` declarado,
-    `maybe_retrain_classifier` no entrena ni activa; paso canónico
-    `model_artifacts_canary` (advisory, diario), que coteja el sha256 de cada
-    versión activa con el `digest` del asset de la Release sin descargarlo;
-    `db.model_registry.list_active`/`deactivate`; sección
-    «`ModelArtifactMismatch`» del runbook.
-  - PR #403 (`2e341907`): `promote_if_better` numera desde el máximo
-    registrado, como `register_version`.
-  - PR #405 (`ec970a77`): `train-model.yml` (hoy `ml-entrenar.yml`, modelo `sap`) activa **después** de subir
-    (entrenar → subir → cotejar el `digest` → activar → `precompute`); el paso
-    semanal lanza `ml-entrenar.yml` (modelo `sap`) por `workflow_dispatch` (`actions: write`
-    en `scrape-daily.yml`) y, si no puede, avisa; el disparador cuenta el
-    feedback posterior a la última versión **registrada**, no a la activa, para
-    no relanzar cada semana un entrenamiento que el gate ya rechazó;
-    `operaciones-datos.yml` (operacion `rescore-ml-proba`), manual, para recalcular `ml_proba` con el modelo
-    servido.
-  - 2026-10-04T01:12Z, producción: `rescore-ml-proba.yml` (hoy `operaciones-datos.yml`, operacion `rescore-ml-proba`) (run 37167276246,
-    3 min). Cargó el asset de mayo (`trained_at` 2026-05-20, umbral 0,466),
-    reescribió 24.593 filas y borró 978 scores fuera de la población: la
-    población quedó con 0 filas sin `ml_proba`, incluidas las 481 que la
-    pasada no había podido puntuar desde el 29/09. **La distribución cambió**:
-    `ml_proba ≥ 0,69` pasó de 5.859 de 25.090 filas puntuadas (23 %, medido el
-    2026-10-03) a 14.819 de 24.593 (60 %), y `≥ 0,30` de 32 % a 81 %. Dos
-    lecturas: la reescritura de la v2 del 29/09, que se cortó a los 68 s, había
-    cubierto casi toda la población; y el modelo de mayo da por SAP a la
-    mayoría, que es el problema de «El corpus de PSCP ahoga el dataset del
-    clasificador SAP». No es reversible: el artefacto de la v2 no existe.
-  - 2026-10-09, producción (tabla `jobs`): `ml_scoring` volvió a `ok` en la
-    pasada del 2026-10-04T06:09Z y no ha fallado desde entonces — 14 fallos
-    entre el 2026-09-29T23:58Z y el 2026-10-03T23:13Z, 17 pasadas `ok` después
-    (la última medida, 2026-10-09T06:25Z). `model_artifacts_canary` da `ok` a
-    diario y `sap_classifier` sigue sin versión activa. Ops › Ejecuciones
-    seguía enseñando ese día el texto del error —6 de los fallos quedaban
-    dentro de su ventana de siete días— sin decir de cuándo era, y se leyó como
-    un fallo vivo; la fila de un paso recuperado lleva ahora la fecha de su
-    último fallo.
-- **Acceptance criteria:**
-  - Ver correr por primera vez el flujo nuevo de `ml-entrenar.yml` (modelo `sap`) (subir →
-    cotejar → activar) y el `workflow_dispatch` desde el cierre. El orden de
-    pasos, los permisos y el `env` están fijados por tests sobre el YAML; ni la
-    activación ni el dispatch contra la API real se han ejecutado todavía: el
-    paso semanal corrió el 2026-10-06T18:47Z sin lanzar nada (`train-model.yml` (hoy `ml-entrenar.yml`, modelo `sap`)
-    no tiene runs desde el 2026-09-27).
-  - Decidir qué entrena cada camino: el candidato de `ml-entrenar.yml` (modelo `sap`) del
-    2026-09-27 (v1, 17.641 filas) fue rechazado con `recall_no_keyword` 0 y el
-    del reentrenamiento automático (v2, 57.913 filas, `_fetch_training_dataframe`
-    sobre la tabla entera) pasó con 0,33 — uno de tres ejemplos del golden. Con
-    el dispatch, el automático entrena ya por el camino de `ml-entrenar.yml` (modelo `sap`);
-    queda retirar o alinear el dataset del otro, que solo corre sin plano
-    declarado. Ver «Ampliar el golden set del clasificador SAP».
-    **Hecho en código el 2026-10-25 (un solo camino):** se retiró el
-    reentrenamiento en proceso de `maybe_retrain_classifier` y su dataset
-    (`_fetch_training_dataframe`); el paso semanal lanza `ml-entrenar.yml` (modelo `sap`) o
-    avisa con el comando en **cualquier** plano, también sin
-    `SCHEDULER_PLANE`. `promote_if_better` ya no tiene parámetro `activar` ni
-    campo `activada`: registra siempre inactivo y deja el candidato que pasa
-    en `pendiente_de_activar`; `train_from_db()` tampoco activa, y
-    `scripts/ml_clasificadores.py train` lo dice («registrada SIN activar»).
-    La única activación es `ml_training_run activar --version N`, que coteja
-    el sha256 con la Release antes. Tests: `test_active_learning_publicacion.py`
-    (sin plano no entrena; el módulo ya no importa gate ni clasificador),
-    `test_ml_promotion_gate.py::test_no_hay_forma_de_pedirle_al_gate_que_active`.
-    Runbook: «Verificar la primera pasada de `ml-entrenar.yml` (modelo `sap`)» en
-    [model-rollback.md](runbooks/model-rollback.md). Queda el primer criterio
-    (acción del dueño): `gh workflow run ml-entrenar.yml -f modelo=sap` y comprobar lo que
-    lista esa sección —resumen con `Asset: sap_classifier-<sha12>.pkl` y
-    «Versión activada», asset en `ml-models` con `digest` igual al `sha256`
-    de `get_active("sap_classifier")`, y `model_artifacts_canary`/`ml_scoring`
-    en `ok` en la pasada siguiente—.
-  - Nombrar el asset de `sap_classifier` por contenido, como los predictivos
-    (`rename_to_content_address`). Con nombre fijo, la subida sustituye el
-    asset de la versión activa, y por eso «Train model» la retira antes: entre
-    ese paso y la activación el modelo se sirve sin cotejar contra el registro,
-    y un fallo de la subida después de borrar el asset deja a los runners sin
-    modelo. Es el mismo cambio que el punto «Pasar a `locate_release_asset` y
-    a una Release fija» de «ml-scoring: verificar en producción el arreglo del
-    2026-09-24», y exige que la ingesta resuelva el modelo por
-    `resolve_artifact` y no por `ensure_downloaded` + `load()`.
-    **Hecho en código el 2026-10-24:** `promote_if_better` publica y registra
-    `sap_classifier-<sha12>.pkl` (`services.ml.model_artifacts.content_addressed_path`,
-    la misma regla que `rename_to_content_address`); `ml-entrenar.yml` (modelo `sap`) lo sube
-    a la Release `ml-models` sin `delete-asset` ni retirar la versión activa
-    (entrenar → verificar artefactos → subir → activar → medir); la ingesta
-    carga por `SAPClassifier.resolve_artifact()` + `load(ruta)` y la cola de
-    feedback por `api.model_cache.get_classifier()`. Sin versión activa se
-    sigue sirviendo el `sap_classifier.pkl` de mayo de `v1.0.0-models`, que
-    `ensure_downloaded` busca ahora con `locate_release_asset`. Queda verlo en
-    la primera ejecución de `ml-entrenar.yml` (modelo `sap`) (forma parte del primer
-    criterio): el resumen debe decir `Asset: sap_classifier-<sha12>.pkl` en
-    `ml-models`, el canary dar `ok` y la ingesta registrar
-    `pipeline.ml_clf_loaded` con esa ruta. `drift_report`, `ml_eval` y
-    `sample_golden_candidates` siguen con `SAPClassifier.load()`.
-- *Nota (2026-10-24):* el camino de F3 del plan de tres niveles (`scripts/entrenar_nivel1.py`, `services/ml/nivel1.py`) no registra ni activa nada. Al unificar los dos caminos, el que sobreviva debería ser ese y no `train_from_db`, cuya etiqueta es circular. *(2026-10-25: se unificaron quedándose `train_from_db`, que es el que publica y activa por `train-model.yml` (hoy `ml-entrenar.yml`, modelo `sap`); cambiar su etiqueta por la de nivel 1 sigue abierto y no exige otro camino.)* Registrar en `model_versions` y la semana en sombra siguen pendientes de OK.
+- **Problema:** `scrape-daily` estuvo en rojo del 2026-09-29 al 2026-10-03 (15 runs). El paso semanal `sap_active_learning` reentrenó dentro del runner, activó la v2 en `model_versions` y su `.pkl` no se subió a ninguna Release; la pasada siguiente bajaba el asset de mayo (sha256 distinto) y `ml_scoring`, bloqueante, lanzaba `ModelArtifactMismatch`.
+- **Hecho:** la v2 se desactivó en producción (2026-10-04) y `sap_classifier` sigue sin versión activa, sirviéndose el asset de mayo. #404: canario diario `model_artifacts_canary` (coteja el sha256 de cada versión activa con el `digest` de la Release) y sección «`ModelArtifactMismatch`» del runbook. #403: `promote_if_better` numera desde el máximo registrado. #405: `ml-entrenar.yml` (modelo `sap`) activa **después** de subir y cotejar. En código desde el 2026-10-24/25: un solo camino de entrenamiento (se retiró el reentrenamiento en proceso; `promote_if_better` registra siempre inactivo y la única activación es `ml_training_run activar --version N`, que coteja el sha256) y asset por contenido `sap_classifier-<sha12>.pkl`, cargado por `SAPClassifier.resolve_artifact()`. `ml_scoring` volvió a `ok` el 2026-10-04 y no había vuelto a fallar el 2026-10-09.
+- **No reversible:** el rescore del 2026-10-04 con el modelo de mayo cambió la distribución (`ml_proba ≥ 0,69`: de 23 % a 60 % de lo puntuado) y el artefacto de la v2 no existe. Es el problema de «El corpus de PSCP ahoga el dataset del clasificador SAP».
+- **Acceptance criteria (lo que queda):**
+  - Acción del dueño: `gh workflow run ml-entrenar.yml -f modelo=sap` y comprobar lo que lista «Verificar la primera pasada» en [runbooks/model-rollback.md](runbooks/model-rollback.md): resumen con `Asset: sap_classifier-<sha12>.pkl` y «Versión activada», asset en `ml-models` con `digest` igual al `sha256` de `get_active("sap_classifier")`, `model_artifacts_canary` y `ml_scoring` en `ok` en la pasada siguiente e ingesta con `pipeline.ml_clf_loaded` de esa ruta. El orden de pasos y los permisos están fijados por tests sobre el YAML; ni la activación ni el `workflow_dispatch` contra la API real se han ejecutado (el paso semanal del 2026-10-06 no lanzó nada).
+  - La etiqueta de `train_from_db` es circular («alguna keyword»). El camino del nivel 1 (`scripts/entrenar_nivel1.py`, `services/ml/nivel1.py`) la sustituye pero no registra ni activa nada; registrarlo en `model_versions` y la semana en sombra siguen pendientes de OK. Ver «Ampliar el golden set del clasificador SAP».
+  - `drift_report`, `ml_eval` y `sample_golden_candidates` siguen cargando con `SAPClassifier.load()`, sin cotejar contra el registro: valorar pasarlos a `resolve_artifact()`.
 - **Files de partida:** [scheduler/jobs/ml_training_run.py](../scheduler/jobs/ml_training_run.py), [scheduler/concept_drift.py](../scheduler/concept_drift.py), [services/ml/promotion.py](../services/ml/promotion.py), [.github/workflows/ml-entrenar.yml (modelo sap)](../.github/workflows/ml-entrenar.yml), [docs/runbooks/model-rollback.md](runbooks/model-rollback.md)
-- **Riesgo:** bajo para las verificaciones; medio para el nombre por
-  contenido, que toca el camino por el que la ingesta y la API cargan el
-  modelo.
+- **Riesgo:** bajo para las verificaciones; medio para cualquier cambio en el camino por el que la ingesta y la API cargan el modelo.
+- **Historial:** cronología (runs, SHAs, medidas del rescore) en `git show 1e2aef2:docs/IMPROVEMENT_BACKLOG.md` (ítem del mismo título).
 
 ### [P1] Ejecutar en producción la purga de PSCP sin tecnología
 - **Área:** scripts/purgar_pscp_sin_tecnologia.py, db/repositories/purga_licitaciones.py (acción del usuario: borrado irreversible)
-- **Problema:** de ~685.500 filas de PSCP solo 3.268 llevan `tecnologia` (medido el
-  2026-09-26). Las otras son el censo catalán entero —limpieza, obras, reactivos—
-  y 100.421 tienen `analysis_universe` NULL, que cuenta como `technology_observed`:
-  salen en el Radar, en las cifras de cuentas y en los avisos (hay notificaciones
-  enviadas sobre «Missatges WhatsApp Business»). Son además el 97 % del heap de
-  `licitaciones`, que es lo que hace lentas las vistas de Mercado sin filtros.
-  El código de la purga y la puerta endurecida del conector están hechos
-  (RFC [2026-09-26](rfc/2026-09-26-rfc-purga-pscp-sin-tecnologia.md)); falta
-  ejecutarla, y eso lo decide el propietario.
-- **Acceptance criteria:**
-  - ~~Dry-run revisado y pregunta abierta decidida~~ (2026-09-26): primer dry-run en
-    producción hecho; lo que es TI solo por CPV 48/72 **se conserva** (RFC). Falta
-    repetir el dry-run con la regla ampliada.
-  - `--apply` ejecutado y PSCP reingerida entera (`--desde 2000-01-01`) para
-    refrescar las etiquetas desactualizadas; balance y delta de
-    `make audit-truth-check` anotados en el RFC, que pasa a `implemented`.
-    - **Estado al 2026-10-09** (issue #408; logs de Actions): la reingesta del
-      run 36287345654 (2026-09-27, con `apply`) murió a los 55 min y 812.591
-      avisos por un «Read timed out» de Socrata en una página, que no tenía
-      reintento. Lo escrito no se perdió: el cursor avanza con cada lote y quedó
-      en `2026-07-13T13:26:08.273Z` (la marca de la republicación completa del
-      dataset). La pasada diaria de `scrape-daily.yml`, que no lleva `--desde`,
-      siguió desde ahí —cayendo tres veces más por el mismo timeout— y alcanzó
-      la cabeza del dataset el 2026-09-28 17:09 UTC: el recorrido completo está
-      hecho, aunque el último run de `operaciones-datos.yml` (operacion `purga-pscp`) siga en rojo.
-    - Medido en producción el 2026-10-09 (solo lectura): 60.107 filas de PSCP.
-      59.910 llevan `fecha_actualizacion_fuente`, es decir, las ha escrito el
-      conector actual. Las otras 197 no la llevan, ni `analysis_universe` ni
-      `inclusion_reason`: su última extracción es de entre el 2026-06-12 y el
-      2026-07-29 (182 con CPV 48/72, 33 con `tecnologia`). Una muestra de 6 ya
-      no está en el dataset (2.007.085 filas hoy, ninguna con marca anterior a
-      la republicación), así que relanzar la reingesta no las tocaría. Con el
-      universo a NULL cuentan como `technology_observed`; qué hacer con ellas
-      está sin decidir.
-    - Arreglado el 2026-10-09: la petición de página reintenta con el
-      `http_retry` compartido (`_pedir_pagina` en el conector).
-    - Sin tocar, por si se relanza: `--desde` no reanuda. Ignora el cursor,
-      vuelve a recorrer los ~2 M de filas (más de 2 h) y mientras dura rebobina el
-      cursor de la pasada diaria al punto por el que va; y el step de reingesta
-      solo corre con `apply`, así que relanzarlo repite antes la purga.
-    - Falta lo demás: balance, delta de `make audit-truth-check` y el RFC.
-  - Tras el `VACUUM (ANALYZE)`, `pg_relation_size('licitaciones')` anotado aquí.
-    - **Medido el 2026-10-25 (MCP, solo lectura):** `pg_relation_size('licitaciones')` = **89 MB** (era ~870 MB); 88.925 filas en total, de las que 60.737 son `pscp` y **16.798 llevan `tecnologia`** (el ítem citaba 3.268 sobre 685.500: la cifra es anterior a la purga y a la reingesta). Siguen 195 filas `pscp` sin `fecha_actualizacion_fuente` (la decisión sobre ellas sigue abierta). La purga y la reingesta están hechas; lo único que falta para cerrar es el balance en el RFC y el delta de `make audit-truth-check`, que exige la BD real.
+- **Problema:** de ~685.500 filas de PSCP solo 3.268 llevaban `tecnologia` (2026-09-26). El resto era el censo catalán entero —limpieza, obras, reactivos—, 100.421 con `analysis_universe` NULL, que cuenta como `technology_observed`: salían en el Radar, en las cifras de cuentas y en los avisos, y eran el 97 % del heap de `licitaciones`. El código de la purga y la puerta endurecida del conector están hechos (RFC [2026-09-26](rfc/2026-09-26-rfc-purga-pscp-sin-tecnologia.md)).
+- **Hecho:** dry-run en producción (lo que es TI solo por CPV 48/72 **se conserva**), purga y reingesta. La reingesta del 2026-09-27 murió por un «Read timed out» de Socrata, pero el cursor avanzó y la pasada diaria alcanzó la cabeza del dataset el 2026-09-28; la petición de página reintenta con `http_retry` desde el 2026-10-09. Medido el 2026-10-25 (MCP, solo lectura): `pg_relation_size('licitaciones')` = 89 MB (era ~870 MB); 88.925 filas, 60.737 `pscp`, 16.798 con `tecnologia`.
+- **Acceptance criteria (lo que queda):**
+  - Balance anotado en el RFC, que pasa a `implemented`, y delta de `make audit-truth-check`, que exige la BD real.
+  - Decidir qué hacer con las 195 filas `pscp` sin `fecha_actualizacion_fuente` (tampoco llevan `analysis_universe` ni `inclusion_reason`; su última extracción es de junio-julio y una muestra de 6 ya no está en el dataset, así que una reingesta no las tocaría). Con el universo a NULL cuentan como `technology_observed`.
+- **Si se relanza la reingesta:** `--desde` no reanuda (ignora el cursor, recorre ~2 M de filas en más de 2 h y rebobina el cursor de la pasada diaria), y el step de reingesta solo corre con `apply`, así que repetirlo repite antes la purga.
 - **Files de partida:** [.github/workflows/operaciones-datos.yml (operacion purga-pscp)](../.github/workflows/operaciones-datos.yml) (dry-run por defecto; `aplicar` + `reingerir_desde`), [scripts/purgar_pscp_sin_tecnologia.py](../scripts/purgar_pscp_sin_tecnologia.py), [db/repositories/purga_licitaciones.py](../db/repositories/purga_licitaciones.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py) (`senal_tecnologica`)
-- **Riesgo:** alto — borra ~680.000 filas y sus dependientes. Mitigado: reevalúa con la
-  misma puerta que el conector, conserva las filas con trabajo de usuario, es
-  reanudable, y el dato es público y reingestable (`--desde`).
+- **Riesgo:** alto — borra ~680.000 filas y sus dependientes. Mitigado: reevalúa con la misma puerta que el conector, conserva las filas con trabajo de usuario, es reanudable, y el dato es público y reingestable.
+- **Historial:** diagnóstico por run y medidas intermedias en `git show 1e2aef2:docs/IMPROVEMENT_BACKLOG.md` (ítem del mismo título).
 
 ### [P2] Medir en producción los documentos de TED y PSCP tras el despliegue
 - **Área:** scraper/documentos_plataforma.py, scraper/connectors/{ted,pscp,placsp}.py, config/settings.py
-- **Problema:** hasta el 2026-10-02 ninguna fila TED ni PSCP tenía documentos
-  (de ~248 convocatorias TED abiertas, solo las 87 emparejadas con PLACSP veían
-  pliegos, los de su canónica). Desde entonces: el PDF del anuncio TED para las
-  convocatorias sin pareja, los pliegos de PLACSP rescatados de las entries que
-  el ATOM descarta, la ficha JSON de la PSCP y el emparejamiento TED↔PSCP por el
-  anuncio que la ficha cita. Nada de eso está medido en producción, y una cosa
-  puede dejarlo mudo sin error: que Render fije `DOCUMENT_ALLOWED_HOSTS` con el
-  valor viejo (solo PLACSP; la descarga bajo demanda de la API rechazaría TED y
-  la PSCP con «Host no incluido»). `.env.example` ya lleva el valor nuevo.
-- **Acceptance criteria:**
-  - Logs `ted_documentos_completados`, `pscp_documentos_completados` y
-    `placsp_rescate_ted` en un run de `scrape-daily.yml`, con sus recuentos aquí.
-  - `SELECT l.fuente, count(DISTINCT d.licitacion_id) FROM documentos d JOIN licitaciones l ON l.id_externo = d.licitacion_id WHERE l.fuente IN ('ted','pscp') GROUP BY 1`
-    y cuántos llegan a `extracted` tras el lote nocturno de `pliegos.yml`.
-  - Marcas `clave_match LIKE 'publicacion_oficial:%'` contadas.
-  - `DOCUMENT_ALLOWED_HOSTS` en Render comprobado (sin definir, o con
-    `ted.europa.eu` y `contractaciopublica.cat`).
-  - PSCP guarda sin etiqueta de tecnología lo que entra solo por CPV 48/72
-    (`cpv_ti_universe`: 48 de 122 convocatorias vigentes ese día) y por eso no se
-    publica, mientras su anuncio TED sí. Decidir con el diagnóstico de la
-    clasificación si esa asimetría se mantiene.
-- **Progreso (2026-10-03, #395 en producción desde las 08:39 UTC):**
-  - **TED, medido.** El backfill de ese día dejó 193 convocatorias con su
-    anuncio (`ted_documentos_completados candidatas=193 con_documentos=193`), y
-    la pasada programada de las 13:29 ya no encontró ninguna (`candidatas=0`).
-    De las 239 convocatorias TED abiertas: 119 emparejadas (116 con pliegos en
-    la canónica, 91 extraídos) y 120 con su anuncio; ninguna sin documentos. Los
-    193 anuncios seguían `pending` a las 14:00 UTC, con el lote de `pliegos.yml`
-    en curso: falta anotar cuántos llegan a `extracted`.
-  - **Rescate del ATOM, sin ocasión todavía.** `ted_reemparejo_id_evl
-    evaluadas=147 confirmados=0`: son los avisos que esperan una entry
-    descartada. El ATOM no trajo entradas nuevas en esa pasada (sábado), así que
-    no hay `placsp_rescate_ted` que contar.
-  - **PSCP, sin ejecutar**: ver el ítem P1 de arriba. 0 filas con documentos y
-    0 marcas `publicacion_oficial:%`.
-  - **Render, sin comprobar.** El MCP de Render no lista variables de entorno
-    (solo las escribe): hay que mirarlo en el panel. Fuera de Render no la pisa
-    nadie: ni `render.yaml`, ni los workflows, ni las variables del repositorio.
-- **Progreso (2026-10-24, MCP de solo lectura):** PSCP, 217 licitaciones con
-  documentos (1.589 documentos, 1.416 `extracted`); TED, 409 (960 documentos,
-  283 `extracted`); 32 marcas `publicacion_oficial:%`, todas `confirmed`. El P1
-  de los pliegos de la PSCP está en _Cerrados_. Siguen abiertos el recuento de
-  `placsp_rescate_ted`, `DOCUMENT_ALLOWED_HOSTS` en Render y la asimetría de CPV.
-- **Progreso (2026-11-04):** el rescate de solo-pliegos (`placsp_rescate_ted`)
-  ya no existe. El conector de PLACSP ingiere **entera** la entry que la puerta
-  descartaría si un aviso TED sin pareja enlaza su `idEvl`
-  (`scraper.connectors.placsp.EsperadasPorTed`, `inclusion_reason =
-  'referencia_ted'`), y `reemparejar_ted_por_id_evl` la hace canónica en la
-  pasada de TED: el contrato se ve con lotes, criterios e importes de PLACSP, no
-  solo con sus pliegos. Medido ese día: 22 TED abiertas con `idEvl` y sin pareja
-  (todas con los pliegos copiados) y 4 publicadas ese día sin nada; las 22 se
-  completan cuando su entry vuelva a pasar por el ATOM o al reprocesar su ZIP
-  mensual. En lugar del recuento de `placsp_rescate_ted`, medir cuántas filas
-  `inclusion_reason = 'referencia_ted'` entran y cuántas quedan como canónica de
-  una TED.
-- **Progreso (2026-11-04, tarde):** primera pasada tras el merge en `success`,
-  con `placsp_agregadas` encendida (30 filas, 23 con pliegos de Madrid, Euskadi
-  y Catalunya). Para los avisos TED anteriores al cambio, cuya entry PLACSP ya
-  no vuelve a pasar por el ATOM (19 abiertas de octubre), hay un reproceso
-  dirigido: `scraper/reproceso_ted.py` y `operaciones-datos.yml` (operacion `reproceso-ted`) (manual, `aplicar`
-  para escribir). Solo parsea del ZIP las entries que espera un aviso TED sin
-  pareja, nunca pisa una fila que ya existe y recorre los meses del más nuevo al
-  más viejo.
-- **Resultado del reproceso (2026-11-04):** conteo de 2026-09 y 2026-10 sobre
-  173 avisos TED sin pareja; luego, con `aplicar`, octubre y septiembre por
-  separado (cada ZIP baja en 25–30 min, y los dos no caben en los 60 del
-  job). Quedan 150 expedientes `referencia_ted` y 162 avisos TED detrás de
-  ellos; de los avisos con `idEvl` sin pareja pasan de 173 a 25, y de los
-  abiertos, de 26 a 7, todos publicados en TED entre el 2 y el 4 de noviembre
-  (su entry llegará por el ATOM; el ZIP de noviembre aún no existe). Las TED
-  abiertas solo con el anuncio siguen en 67: enlazan portales autonómicos o
-  portadas, no un expediente de PLACSP.
-- **Las 67 que quedan solo con el anuncio (2026-11-04):** ninguna tiene ya su
-  contrato en la BD por otra fuente. Por plataforma: Euskadi 20, Comunidad de
-  Madrid 12, Andalucía 11, Navarra 5, Catalunya 5 (PSCP, con 1–2 días de
-  retraso), PLACSP con `idEvl` de noviembre 4, ADIF con enlace al perfil sin
-  `idEvl` 4, instituciones europeas 4 y Galicia y La Rioja 1 cada una. Para las
-  agregadas, histórico desde los ZIP de la sindicación 1044 y nueva pasada de
-  TED (`operaciones-datos.yml` (operacion `historico-agregadas`)): el feed de agregadas solo trae lo publicado
-  desde que se encendió, y el emparejamiento por BT-22 solo ve los avisos TED
-  de su ventana de 14 días. Queda anotar cuántas se emparejan. Las de ADIF
-  necesitarían guardar el BT-22 del aviso (cambio de esquema); por cuatro no se
-  hace.
-- **Histórico de agregadas (2026-11-05, `historico-agregadas.yml` (hoy `operaciones-datos.yml`, operacion `historico-agregadas`)):** el ZIP de
-  la 1044 existe con el nombre supuesto. Agregadas pasa de 30 a 2.503 filas
-  (169 abiertas); 73 avisos TED quedan detrás de una agregada (24 abiertos:
-  País Vasco 15, Madrid 7, Andalucía 1, La Rioja 1). Abiertas solo con el
-  anuncio: 55 de 271 (24 publicadas desde el 3 de noviembre).
-- **Las 11 de Euskadi y Madrid anteriores al 3 de noviembre que siguen sin
-  pareja**, una a una:
-  - **BT-22 solo en el lote (1, RTVM `ted:752237-2026`).** La agregada
-    `2026-0443-ING` existe y el órgano casa tras normalizar, pero el aviso solo
-    publica `InternalID` en `ProcurementProjectLot`; `_expediente`
-    (`scraper/connectors/ted.py`) lee solo `internal-identifier-proc`, así que
-    la TED se queda sin referencia. **Arreglado** (2026-11-05): cae a
-    `internal-identifier-lot` (BT-22-Lot en la API v3) cuando el del
-    procedimiento falta y todos los lotes traen el mismo valor.
-  - **BT-22 con otro formato (1, Hospital La Paz `ted:720793-2026`).** TED
-    publica `P.A.23/2026`; la agregada es `P.A. 23/2026`. Además el órgano de
-    TED lleva el prefijo «Servicio Madrileño de Salud - » y el título difiere,
-    así que tampoco casa por órgano ni por título. **Arreglado** (2026-11-05):
-    el expediente se compara sin espacios ni mayúsculas
-    (`shared.identidad_placsp.expediente_comparable` y su gemela SQL en
-    `iter_candidatas_por_referencia`), y el órgano casa también por su último
-    tramo tras « - » (`services.dedupe._organos_emparejables`). Se aplica a
-    los avisos ya ingeridos con una pasada de TED desde su fecha
-    (`operaciones-datos.yml` (operacion `historico-agregadas`), `ted_desde`).
-  - **Descartadas por la puerta tecnológica, probable (6).** El órgano tiene
-    filas en agregadas pero no este contrato, y su CPV principal no es TI: TED
-    lo admite por un CPV secundario 48/72. Canal de Isabel II, contadores
-    (`ted:741470-2026`, CPV 38552000); Galdakao, grúa (`ted:722392-2026`,
-    50118110); EJIE, ampliación de almacenamiento BATERA (`ted:750370-2026`,
-    30200000); Lasarte-Oria, comunicación institucional ×2
-    (`ted:731746-2026`, `ted:747838-2026`, 79340000), y Azkuna Zentroa
-    (`ted:758948-2026`). No verificado contra el ZIP: no se guarda lo que la
-    puerta descarta. Lo cerraría hacer en agregadas lo que `EsperadasPorTed`
-    hace en el feed principal, por BT-22 en vez de `idEvl`.
-  - **No es agregada (2).** ADIF, DWDM (`ted:701657-2026`): PLACSP, enlace al
-    perfil sin `idEvl` (el caso ADIF de arriba). Cámara de Comercio de Madrid
-    (`ted:731982-2026`): ninguna fila del órgano en ninguna fuente.
-  - **Hueco del 1 al 3 de noviembre (1, Gobierno Vasco `ted:756873-2026`).**
-    El ZIP de octubre acaba el 31 y el feed de agregadas empezó el 4 leyendo
-    solo su primera página: lo agregado entre medias llegará con el ZIP de
-    noviembre (`historico-agregadas.yml` (hoy `operaciones-datos.yml`, operacion `historico-agregadas`) con `desde=hasta=2026-11` cuando se
-    publique).
+- **Problema:** hasta el 2026-10-02 ninguna fila TED ni PSCP tenía documentos. Desde entonces entran el PDF del anuncio TED (convocatorias sin pareja), la ficha JSON de la PSCP y el emparejamiento TED↔PSCP por el anuncio que la ficha cita. Una cosa puede dejarlo mudo sin error: que Render fije `DOCUMENT_ALLOWED_HOSTS` con el valor viejo (solo PLACSP) y la descarga bajo demanda rechace TED y PSCP con «Host no incluido». `.env.example` ya lleva el valor nuevo.
+- **Estado (2026-11-05):** medido el 2026-10-24, PSCP tenía 217 licitaciones con documentos (1.589 documentos, 1.416 `extracted`) y TED 409 (960, 283 `extracted`), con 32 marcas `publicacion_oficial:%`, todas `confirmed`. El rescate de solo-pliegos (`placsp_rescate_ted`) ya no existe: PLACSP ingiere entera la entry que espera un aviso TED sin pareja (`EsperadasPorTed`, `inclusion_reason = 'referencia_ted'`), con reproceso dirigido de los ZIP (`operaciones-datos.yml`, operación `reproceso-ted`) y, para agregadas, `historico-agregadas` (de 30 a 2.503 filas). Las TED abiertas que siguen solo con el anuncio son 55 de 271 (67 el 2026-11-04): enlazan portales autonómicos o portadas, no un expediente de PLACSP.
+- **Las 11 de Euskadi y Madrid anteriores al 3 de noviembre que seguían sin pareja:** 2 arregladas el 2026-11-05 (BT-22 solo en el lote: `_expediente` cae a `internal-identifier-lot`; BT-22 con otro formato, `P.A.23/2026` frente a `P.A. 23/2026`: `expediente_comparable`, y el órgano se compara también por su último tramo tras « - »); 6 descartadas probablemente por la puerta tecnológica (CPV principal no TI, TED las admite por un CPV secundario 48/72; no verificado contra el ZIP); 2 que no son agregada (ADIF DWDM `ted:701657-2026`, Cámara de Comercio de Madrid `ted:731982-2026`); 1 en el hueco del 1 al 3 de noviembre (Gobierno Vasco `ted:756873-2026`), que llegará con el ZIP de noviembre.
+- **Acceptance criteria (lo que queda):**
+  - `DOCUMENT_ALLOWED_HOSTS` en Render comprobado en el panel (el MCP de Render no lista variables): sin definir, o con `ted.europa.eu` y `contractaciopublica.cat`.
+  - Contar las filas `inclusion_reason = 'referencia_ted'` que entran y cuántas quedan como canónica de una TED.
+  - Aplicar a los avisos ya ingeridos los dos arreglos del 2026-11-05 con una pasada de TED desde su fecha (`historico-agregadas`, `ted_desde`), y lanzar `historico-agregadas` con `desde=hasta=2026-11` cuando exista el ZIP de noviembre; anotar cuántas se emparejan.
+  - Decidir la asimetría de CPV: la PSCP guarda sin etiqueta de tecnología lo que entra solo por CPV 48/72 (48 de 122 convocatorias vigentes el 2026-10-03) y no lo publica, mientras su anuncio TED sí.
+  - Las 6 descartadas por la puerta se cerrarían haciendo en agregadas lo que `EsperadasPorTed` hace en el feed principal, por BT-22 en vez de `idEvl`. Las de ADIF necesitarían guardar el BT-22 del aviso (cambio de esquema): por cuatro no se hace.
 - **Files de partida:** [scraper/documentos_plataforma.py](../scraper/documentos_plataforma.py), [db/repositories/documentos.py](../db/repositories/documentos.py), [config/settings.py](../config/settings.py)
 - **Riesgo:** bajo — solo observación y una variable de entorno.
+- **Historial:** cronología, logs y el detalle de cada aviso en `git show 1e2aef2:docs/IMPROVEMENT_BACKLOG.md` (ítem del mismo título).
 
 ### [P1] Ampliar el golden set del clasificador SAP a 300-500 ejemplos etiquetados a mano
 - **Área:** tests/fixtures/golden_set.jsonl, tests/fixtures/golden_set_tech.jsonl, scripts/sample_golden_candidates.py (acción del usuario: etiquetar)
@@ -456,32 +197,13 @@ _Sin ítems abiertos._
 ### [P1] Poner en producción la rama `claude/funcionalidades-2026-10` (acción del propietario)
 - **Área:** db/alembic/versions (v147–v149), `.github/workflows/scrape-daily.yml`, variables de repo
 - **Problema:** la rama trae funciones que no se ven hasta que alguien las enciende fuera del código: tres migraciones, un cambio de workflow aprobado el 2026-10-12, y la ficha nocturna del pliego, que sigue apagada por coste.
-- **Acceptance criteria:**
-  - v147 (tipo de documento acreditativo), v148 (condiciones oficiales de CODICE) y v149 (el ledger de oportunidades deja borrar la organización) aplicadas con `plan` antes de `apply` ([runbooks/disaster-recovery.md §5](runbooks/disaster-recovery.md)); `/health/ready → schema: ok`. v149 toca el trigger de un registro inmutable: revisar su test antes.
-  - Decidida la variable de repo `PLIEGO_FACTS_ENABLED`: con ella a `true`, `pliegos.yml` extrae la ficha de los expedientes abiertos cada noche (gasto acotado por el presupuesto LLM y `PLIEGO_FACTS_BATCH`); sin ella, lotes, criterios y solvencia del pliego solo aparecen al abrir una oportunidad. La publicación oficial de CODICE (v148) no depende de esto.
-  - Comprobado que `domain_events_pending` baja tras el primer cierre con el despachador (ver el cerrado del 2026-10-12).
-  - Tras el primer deploy: el P0 del ATOM y el P1 de los pliegos de PSCP verificados con datos.
-- **Estado (2026-10-15):** fusionada como `e8889a0` (#471) y en producción. El
-  primer criterio está hecho: v147–v149 aplicadas con `plan` (run 38765966684)
-  y `apply` (run 38766204885), de v146 a `v149_ledger_borrado_org` a las 16:07
-  UTC; `deploy.yml` (run 38766484577) en verde con `schema_revision = ok
-  (v149_ledger_borrado_org)` y el smoke en verde (pero sondeó la instancia que
-  ya servía, que era del mismo commit; ese gate se arregló el 2026-10-17).
-  API, worker y Vercel sirven `e8889a0`. No se comprobó que hubiera una copia
-  reciente de Supabase antes del `apply`: ninguna herramienta de la sesión
-  lista los backups.
-  El autodeploy de Render (P2 de `render.yaml`) llevó `e8889a0` a la API a las
-  14:52 y al worker a las 15:17, antes de las migraciones. La API no dio 5xx en
-  esa ventana. La pasada del worker de las 15:17 sí corrió contra v146: el paso
-  `documentacion_avisos` falló con `UndefinedColumn: column c.tipo does not
-  exist` (la columna es de v147) y saltó la alerta «[pipeline] paso
-  documentacion_avisos falló»; el resto de la pasada terminó. `_run_periodic`
-  libera el lock al fallar, así que la pasada de las 16:17, ya sobre v149, lo
-  reintentó con éxito (`avisos: 0`).
-  Siguen abiertos los otros tres criterios. El despachador corrió a las 16:17
-  (`procesados: 0, ignorados: 1, fallidos: 0`), pero eso todavía no dice si la
-  cola de `domain_events_pending` baja.
+- **Estado (2026-10-15):** fusionada como `e8889a0` (#471) y en producción. v147–v149 aplicadas con `plan` (run 38765966684) y `apply` (run 38766204885); `deploy.yml` en verde con `schema_revision = ok (v149_ledger_borrado_org)`. No se comprobó que hubiera una copia reciente de Supabase antes del `apply`: ninguna herramienta de la sesión lista los backups. El autodeploy de Render llevó el código a la API y al worker antes de las migraciones y la pasada del worker de las 15:17 falló un paso contra el esquema viejo (se recuperó en la de las 16:17); es el fallo del P2 de `render.yaml`.
+- **Acceptance criteria (lo que queda):**
+  - Decidir la variable de repo `PLIEGO_FACTS_ENABLED`: a `true`, `pliegos.yml` extrae la ficha de los expedientes abiertos cada noche (gasto acotado por el presupuesto LLM y `PLIEGO_FACTS_BATCH`); sin ella, lotes, criterios y solvencia del pliego solo aparecen al abrir una oportunidad. La publicación oficial de CODICE (v148) no depende de esto.
+  - Comprobar que `domain_events_pending` baja tras el primer cierre con el despachador: corrió a las 16:17 (`procesados: 0, ignorados: 1, fallidos: 0`), lo que todavía no lo demuestra.
+  - El criterio de «P0 del ATOM y P1 de los pliegos de PSCP verificados con datos tras el primer deploy» ya está cumplido: ambos figuran como cerrados en el [archivo](archive/IMPROVEMENT_BACKLOG_CERRADOS.md) (2026-10-17 y 2026-10-24).
 - **Riesgo:** bajo-medio — las migraciones ya están; queda el primer reparto real de avisos de caducidad y de la campana nueva.
+- **Historial:** runs, horas y detalle de la ventana del 2026-10-15 en `git show 1e2aef2:docs/IMPROVEMENT_BACKLOG.md` (ítem del mismo título).
 
 ## P2 — Media
 
@@ -594,37 +316,18 @@ _Sin ítems abiertos._
 
 ### [P2] `render.yaml` no gobierna el servicio que corre en producción
 - **Área:** render.yaml, Render Dashboard (acción del usuario)
-- **Problema:** el Blueprint está en el repo, pero el servicio de producción se creó a mano por el dashboard y nunca se vinculó a él, así que el fichero documenta una intención que nadie aplica: editarlo no cambia nada y leerlo puede inducir a error sobre cómo está configurado el servicio real. Lo que sí está activo es `autoDeploy`, y **sin healthcheck configurado** — es decir, un deploy que arranca mal reemplaza igualmente al que funcionaba, sin rollback automático. (Estado observado en la sesión del 2026-08-04; **reconfirmar en el dashboard antes de actuar**, que es barato.)
-- **Progreso 2026-09-06 (O0.2 del plan v2, cierra D4):** la decisión ya está tomada y escrita — **se vincula el Blueprint y manda `render.yaml`**, con `autoDeploy: false` y `deploy.yml` como único disparador, porque es la única de las dos ramas que conserva CI como gate en vez de dejarlo en advisory. Lo que queda de este ítem es **exactamente lo que un agente no puede hacer**: vincular el Blueprint y apagar `autoDeploy` en el dashboard, y comprobar que un push a `master` produce un solo deploy.
-- **Reconfirmado (2026-10-15), y ya con un fallo:** la API es el servicio
-  `TenderFlow` (`srv-d8dq7df40ujc73cur9q0`, plan `standard`), con `autoDeploy:
-  yes`, disparador `commit` y `healthCheckPath` vacío. El worker `TenderFlow-1`
-  (`srv-db58n80473hc73a94rsg`) tiene healthcheck (`/api/v1/health/ready`) y
-  autodeploy con disparador `checksPass`. Cada push a `master` produce dos
-  deploys por servicio: el automático y el de `deploy.yml` (`deploy_hook`). Con
-  `e8889a0`, la API se desplegó a las 14:52 (`dep-db8egkh42hec73c9a7sg`) y a
-  las 16:09 (`dep-db8fl4t9fdbs739gc3bg`); el worker, a las 15:17 y a las 16:10.
-  Los dos automáticos llegaron antes de que se aplicaran v147–v149 (16:07), y
-  la pasada del worker de las 15:17 falló un paso contra el esquema viejo
-  (detalle en el P1 de la rama `claude/funcionalidades-2026-10`). El gate de
-  schema de `deploy.yml` presupone migrar antes de desplegar, y el autodeploy
-  se adelanta a los dos: cada PR que trae una migración que el código ya lee
-  repetirá el fallo.
-- **Estado (2026-10-18, 01:22 UTC):** el autodeploy **sigue activo** según la API de Render,
-  aunque se dio por apagado en el dashboard: `TenderFlow` con `autoDeploy: yes` y disparador
-  `commit`, y `TenderFlow-1` con `yes` y `checksPass`. La prueba: `aec5c4b` (#496), fusionado
-  a las 01:16:56, se desplegó solo en la API a las 01:16:59 (`dep-dba1s2oae00c739beh30`,
-  `trigger: new_commit`). `tenderflow-mcp`, creado el 2026-10-17, ya tiene `autoDeploy: no`.
-  Comprobar con `get_service` tras cambiarlo: el campo `updatedAt` del servicio cambia
-  cuando se guarda el ajuste.
+- **Problema:** el Blueprint está en el repo, pero el servicio de producción se creó a mano por el dashboard y nunca se vinculó a él: editar el fichero no cambia nada y leerlo induce a error sobre cómo está configurado el servicio real. Lo que sí está activo es `autoDeploy`, y la API **sin healthcheck**: un deploy que arranca mal reemplaza igualmente al que funcionaba, sin rollback automático.
+- **Decisión (2026-09-06, O0.2 del plan v2, D4):** se vincula el Blueprint y manda `render.yaml`, con `autoDeploy: false` y `deploy.yml` como único disparador, porque es la única opción que conserva CI como gate.
+- **Estado observado (2026-10-18, API de Render):** `TenderFlow` (`srv-d8dq7df40ujc73cur9q0`) con `autoDeploy: yes`, disparador `commit` y `healthCheckPath` vacío; el worker `TenderFlow-1` (`srv-db58n80473hc73a94rsg`) con healthcheck `/api/v1/health/ready` y autodeploy `checksPass`; `tenderflow-mcp` ya con `autoDeploy: no`. Cada push a `master` produce dos deploys por servicio, y el automático se adelanta a las migraciones: el 2026-10-15 la pasada del worker de las 15:17 falló un paso (`UndefinedColumn: column c.tipo`) contra el esquema viejo y se recuperó en la siguiente. Cada PR con una migración que el código ya lee repetirá el fallo. **Reconfirmar en el dashboard antes de actuar.**
 - **Acceptance criteria (lo que queda, todo acción del usuario):**
-  - Blueprint vinculado y `autoDeploy` apagado en el servicio real; la cabecera de `render.yaml` anota la fecha de verificación.
+  - Blueprint vinculado y `autoDeploy` apagado en el servicio real (comprobar con `get_service`: `updatedAt` cambia al guardar); la cabecera de `render.yaml` anota la fecha de verificación.
   - `healthCheckPath` efectivo, verificado con un deploy deliberadamente fallido.
   - Un push a `master` produce exactamente un deploy, observado siete días.
+- **Al apagar `autoDeploy`:** los hooks de `deploy.yml` pueden pasar `?ref=<sha>` para desplegar exactamente `github.sha`. Render responde 404 si el SHA no existe, pero **desplegar un commit concreto apaga el autodeploy del servicio**: por eso no se hizo antes. Una vez apagado a propósito, ya no hay efecto lateral.
 - **Files de partida:** [render.yaml](../render.yaml), [.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
-- **Relación:** comparte superficie con el P3 de staging y plan de la API (más abajo); si se toca el servicio, conviene decidir ambos a la vez.
+- **Relación:** comparte superficie con el P3 de staging; si se toca el servicio, conviene decidir ambos a la vez.
 - **Riesgo:** bajo-medio — vincular un Blueprint a un servicio existente puede recrearlo; hacerlo en ventana y con el healthcheck decidido de antemano.
-- **Al apagar `autoDeploy`:** los hooks de `deploy.yml` pueden pasar `?ref=<sha>` para desplegar exactamente `github.sha` en vez de la punta de `master` del momento. Render lo admite y responde 404 si el SHA no existe, pero **desplegar un commit concreto apaga el autodeploy del servicio**: por eso no se hizo en el arreglo del gate del 2026-10-17 (ver _Cerrados_). Una vez apagado a propósito, ya no hay efecto lateral.
+- **Historial:** IDs de deploy y cronología del 2026-10-15 al 10-18 en `git show 1e2aef2:docs/IMPROVEMENT_BACKLOG.md` (ítem del mismo título).
 
 ### [P2] Migrar `licitaciones.importe` de `real` a `double precision`
 - **Área:** db/alembic, db/upsert.py, shared/numeric.py
@@ -716,35 +419,13 @@ _Sin ítems abiertos._
 
 ### [P2] El corpus de PSCP ahoga el dataset del clasificador SAP: no se puede reentrenar, y el modelo servido no discrimina
 - **Área:** services/ml/classifier_training.py (`train_from_db`), scraper/connectors/pscp.py, services/ml/classifier_pipeline.py (`validate_training_data`)
-- **Problema:** `train_from_db` construye el dataset con un `SELECT … FROM licitaciones` **sin filtro de fuente**, y la etiqueta es «`raw_keywords` no vacío OR `tecnologia` no vacía». Medido contra producción el 2026-09-04:
-
-  | fuente | filas | positivos | % |
-  |---|---|---|---|
-  | **pscp** | 683.076 | 3.113 | **0,46%** |
-  | placsp | 6.853 | 4.412 | 64% |
-  | bulk_* | 13.095 | 376 | 2,9% |
-  | ted | 2.015 | 140 | 6,9% |
-  | **total** | **705.094** | **8.041** | **1,14%** |
-
-  Dos consecuencias, las dos verificadas:
-  1. **No se puede reentrenar.** `validate_training_data` exige ≥5% de clase minoritaria y aborta con `Minority class is only 1.1% of data`. El run [33855421538](https://github.com/Dkalds/TenderFlow/actions/runs/33855421538) (2026-09-04) murió ahí. El gate hizo su trabajo: no se publicó nada.
-  2. **El modelo servido no discrimina sobre esa población.** El de mayo se entrenó cuando el corpus eran ~4k filas de PLACSP con 64% de positivos. Hoy puntúa 683k registros de PSCP que nunca vio y da **90,64% del corpus por encima del umbral** (0,4657), con 42% de las filas en la banda 0,9-1,0. Un binario que dice «SAP» a 9 de cada 10 es una constante, no un clasificador.
-
-  Esto salió a la luz al arreglar la descarga de modelos (#263): hasta entonces el 96% de las filas tenía `ml_proba` a NULL y no había con qué verlo.
-- **La bifurcación (hay que elegir, no es solo trabajo):**
-  1. **Acotar la población de entrenamiento** por fuente. PLACSP + bulk + TED son 21.963 filas con 4.928 positivos = **22,4%**, muy por encima del suelo: el entrenamiento saldría hoy. Contrapartida: el modelo aprendería de una población distinta de la que puntúa, que es una forma nueva del mismo problema.
-  2. **Arreglar el etiquetado de PSCP**, si esas 683k filas deberían llevar `tecnologia`/`raw_keywords` y no las llevan. Sería un bug de conector, y haría innecesaria la opción 1.
-  3. **Aceptar** y dejar el modelo de mayo, asumiendo que su score no informa sobre PSCP.
-- **Orden sugerido:** mirar primero por qué las filas de PSCP no llevan `tecnologia`. Si es un bug de conector, la opción 2 resuelve las dos consecuencias a la vez; si es correcto (el corpus de PSCP realmente es 99,5% no-TI), entonces la pregunta de verdad es por qué se ingiere entero, y eso conecta con la «contaminación PSCP» de la auditoría de 2026-08.
-- **Files de partida:** [services/ml/classifier_training.py](../services/ml/classifier_training.py) (`train_from_db`, la query y la etiqueta), [services/ml/classifier_pipeline.py](../services/ml/classifier_pipeline.py) (`validate_training_data`), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py)
-- **Relación:** bloquea el P1 del golden set (ampliarlo no sirve de nada si el dataset de entrenamiento está ahogado) y explica por qué `model_versions` no tiene ninguna fila de `sap_classifier`.
+- **Problema (medido el 2026-09-04):** `train_from_db` leía `licitaciones` sin filtro de fuente, con la etiqueta «`raw_keywords` o `tecnologia` no vacíos»: 705.094 filas con 1,14 % de positivos (PSCP, 683.076 filas, 0,46 %). Consecuencias: `validate_training_data` abortaba (exige ≥5 % de clase minoritaria) y el modelo de mayo, entrenado con ~4k filas de PLACSP (64 % de positivos), daba el 90,64 % del corpus por encima del umbral (0,4657): una constante, no un clasificador.
+- **Estado (2026-10-25):** la población ya no es el problema. La población acotada está en código y con tests (`poblacion_clasificador_sql` excluye `pscp_observed` y los duplicados confirmados; `tests/test_ml_poblacion_entrenamiento.py`), la purga se ejecutó (PSCP quedó en 35.542 filas; no eran un bug de etiquetado sino el censo catalán entero, RFC [2026-09-26](rfc/2026-09-26-rfc-purga-pscp-sin-tecnologia.md)) y el reentreno del 2026-09-27 pasó `validate_training_data` (32.641 filas, 21,7 % de positivos). El gate lo rechazó: `recall_no_keyword` 0/3 y F1 temporal 0,52 frente a 0,94 en validación cruzada. La causa es la etiqueta («alguna keyword»), no el corpus.
+- **Qué mantiene abierto el ítem:** el modelo servido sigue siendo el de mayo, así que su score no informa sobre PSCP. El código de F3 ([plan](plans/2026-09-27-clasificacion-tres-niveles.md) §6) sustituye la etiqueta por la humana o la del LLM cuando su acuerdo es apto, sin submuestrear negativos y con calibración isotónica temporal (`services/ml/nivel1.py`); su gate (`services/ml/nivel1_eval.py`) exige batir a «solo keywords» y «solo CPV 48/72» con la cota inferior del IC95 por encima de cero. No se ha entrenado: falta el golden. Se cierra al promocionar un binario entrenado con el golden humano.
+- **Files de partida:** [services/ml/classifier_training.py](../services/ml/classifier_training.py), [services/ml/classifier_pipeline.py](../services/ml/classifier_pipeline.py), [scraper/connectors/pscp.py](../scraper/connectors/pscp.py)
+- **Relación:** depende del P1 «Ampliar el golden set del clasificador SAP».
 - **Riesgo:** medio — cambiar la población de entrenamiento cambia qué aprende el clasificador que decide el rescate ML en ingesta.
-- **Progreso parcial (2026-09-14, Ola 1 · Taxonomía):** parte del 0,46 % era vocabulario, no población: el diccionario solo tenía castellano y la PSCP publica en catalán. `config/keywords.py` añade nueve categorías de TI con formas en catalán, euskera y gallego ([docs/taxonomia-tecnologica.md](taxonomia-tecnologica.md)); tras resembrar, la tasa de positivos de PSCP hay que volver a medirla antes de decidir la bifurcación. No toca la población de entrenamiento ni `validate_training_data`.
-- *Estado (2026-10-24):* el código de F3 ([plan](plans/2026-09-27-clasificacion-tres-niveles.md) §6) sustituye la etiqueta «alguna keyword» por la humana o la del LLM cuando su acuerdo es apto, sin submuestrear negativos y con calibración isotónica temporal (`services/ml/nivel1.py`). El gate (`services/ml/nivel1_eval.py`) exige batir a los baselines «solo keywords» y «solo CPV 48/72» con la cota inferior del IC95 de la diferencia por encima de cero. No se ha entrenado: falta el golden (ver «Ampliar el golden set…»).
-- *Estado (2026-10-25):* revisado al trabajar el golden: **no queda filtro ni estratificación que añadir al dataset**. La opción 1 está en código y con tests (`poblacion_clasificador_sql` excluye `pscp_observed` y los duplicados confirmados, `tests/test_ml_poblacion_entrenamiento.py`), la purga se ejecutó y el reentreno del 2026-09-27 ya pasó `validate_training_data` (21,7 % de positivos), y `precompute_ml_proba` puntúa la misma población. Lo que mantiene abierto el ítem es la consecuencia 2 —el modelo servido sigue siendo el de mayo— y su causa es la etiqueta, no el corpus: se cierra cuando se promocione un binario entrenado con el golden humano. Candidato a archivar en cuanto eso pase.
-- *Estado (2026-09-27):* la purga se ejecutó (PSCP quedó en 35.542 filas) y ese mismo día el binario reentrenado sobre la población acotada (32.641 filas, 21,7 % de positivos) completó y el gate lo rechazó: `recall_no_keyword` 0/3, F1 temporal 0,52 frente a 0,94 en validación cruzada. La causa ya no es la población sino la etiqueta, que sigue siendo «alguna keyword»: el plan [2026-09-27-clasificacion-tres-niveles](plans/2026-09-27-clasificacion-tres-niveles.md) la sustituye por etiquetas del LLM revisadas por humanos.
-- *Estado (2026-09-26):* medido contra producción, las 683k filas de PSCP **no** eran un bug de etiquetado: son el censo catalán entero (0 filas se llegaron a marcar `pscp_censo`). El RFC [2026-09-26](rfc/2026-09-26-rfc-purga-pscp-sin-tecnologia.md) las purga reevaluando cada fila con la puerta del conector —conserva las que el diccionario de hoy sí reconoce, y la reingesta posterior las reetiqueta—; queda pendiente de ejecutar (P1 «Ejecutar en producción la purga de PSCP»). Tras ella, la población de entrenamiento deja de depender del acotado.
-- *Estado (2026-09-19):* **la bifurcación ya se tomó en código, por la opción 1**, y el ítem no lo decía. Desde S6.1 del plan v2 (`#274`, 2026-09-08) `train_from_db` (`services/ml/classifier_training.py:374-418`) no lee `licitaciones` entera: entrena sobre `db.repositories.ml_dataset.filas_entrenamiento_sap`, acotada por `poblacion_clasificador_sql` (universo tecnológico observado, no un filtro por nombre de fuente, y sin duplicados confirmados), pasa `validate_training_data` en ese mismo camino y registra la población como `train_population`. Lo que sigue abierto es la consecuencia que la propia opción 1 anunciaba —el modelo puntúa una población distinta de la que aprende— y la medida: `domain-truth.yml` seguía dando `ml_proba > 0,7` en el 72,9 % de lo puntuado del 12 al 18/09 (ver el P2 de `importe_tipo`). No se comprobó aquí si hay ya una versión de `sap_classifier` entrenada con esa población.
+- **Historial:** tabla por fuente, la bifurcación original y los estados intermedios en `git show 1e2aef2:docs/IMPROVEMENT_BACKLOG.md` (ítem del mismo título).
 
 ### [P2] `baja_model` v2 y `retencion_model` v1 están entrenados y publicados, pero nadie puede decidir si activarlos
 - **Área:** db/model_registry.py, services/ml/baja_model.py, services/ml/calibration.py (acción del usuario)
@@ -765,30 +446,14 @@ _Sin ítems abiertos._
 
 ### [P2] ml-scoring: verificar en producción el arreglo del 2026-09-24 y cerrar sus flecos
 - **Área:** services/ml/, scheduler/jobs/ml_predicciones.py, .github/workflows/ml-scoring.yml, shared/release_assets.py
-- **Problema:** El job estaba al borde de su `timeout-minutes: 20`: el 2026-09-20 consumió 1.190 de los 1.200 s. Unos 11 minutos se iban en features de retención que la rama baseline calculaba y tiraba, y otro minuto en hilos del pool que no se cerraban. La rama `claude/ml-scoring-improvements-da84e5` corrige eso y nueve puntos más:
-  - disparo tras la ingesta, con un guard de una corrida al día;
-  - preflight de schema;
-  - verify por `computed_at`;
-  - artefactos con nombre por contenido;
-  - drift que solo alerta según el régimen servido;
-  - dedup de alertas;
-  - población sin zombis;
-  - baseline de retención con shrinkage jerárquico;
-  - purga de filas viejas.
-
-  Falta medirlo en producción y cerrar lo que no entró.
+- **Problema:** el job estaba al borde de su `timeout-minutes: 20` (el 2026-09-20 consumió 1.190 de 1.200 s): ~11 minutos en features de retención que la rama baseline calculaba y tiraba, y otro minuto en hilos del pool que no se cerraban. La rama `claude/ml-scoring-improvements-da84e5` lo corrige con nueve puntos más (disparo tras la ingesta con una corrida al día, preflight de schema, verify por `computed_at`, artefactos con nombre por contenido, drift que solo alerta según el régimen servido, dedup de alertas, población sin zombis, baseline de retención con shrinkage jerárquico, purga de filas viejas). Falta medirlo en producción y cerrar lo que no entró.
 - **Acceptance criteria:**
-  - En los primeros runs tras el merge:
-    - el step de scoring tarda menos de 6 min (`duraciones_s` en el resumen del job);
-    - hay una sola corrida por día UTC (las demás salen con `ya_puntuado_hoy`);
-    - el preflight sale verde;
-    - el verify corre en modo `corrida`.
-  - Medir cuántas filas borra `purgar_sin_adjudicar` en su primera pasada y cómo cambia el PSI del drift con la población viva. Antes, la mediana de `n_obs_organo` era 3 en scoring y 1.293 en la referencia.
+  - En los primeros runs tras el merge: el step de scoring tarda menos de 6 min (`duraciones_s` en el resumen del job), hay una sola corrida por día UTC (las demás salen con `ya_puntuado_hoy`), el preflight sale verde y el verify corre en modo `corrida`.
+  - Medir cuántas filas borra `purgar_sin_adjudicar` en su primera pasada y cómo cambia el PSI del drift con la población viva (antes, la mediana de `n_obs_organo` era 3 en scoring y 1.293 en la referencia).
   - Decidir `ML_RETENCION_EXCLUIR_RESUELTOS` tras auditar una muestra de `resueltos_detectados`. Hoy está apagado: la heurística órgano + CPV-4 da falsos positivos en segmentos con mucha actividad, y excluir un contrato lo esconde del orden «score». `scripts/audit_retencion.py` solo audita pares de entrenamiento; hay que añadirle un modo `--resueltos`.
-  - Que el entrenamiento de retención deje de ser cuadrático. `construir_pares` llama a `_features_historicas` por cada par (~5,5K pares × ~698K adjudicaciones × 2), y `_emparejar` es O(Σ n²) por segmento. Solución: índices por clave más bisect, con paridad contra la referencia como en `tests/test_ml_retencion_serving.py`.
-  - Resolver la clave de `predicciones_retencion` **antes de activar `retencion_model`**; exige migración. La tabla guarda un riesgo por expediente (`licitacion_id` es la PK), pero Renovaciones pinta una fila por empresa adjudicataria. Con el modelo, que sí depende de la empresa, un expediente con varios adjudicatarios mostraría a todos el riesgo del primero.
-  - Pasar a `locate_release_asset` y a una Release fija lo que aún publica y busca solo en *latest*: `ensure_downloaded` de `services/ml/sap_classifier.py` y de `services/ml/tech_classifier.py`, más `train-model.yml` (hoy `ml-entrenar.yml`, modelo `sap`) y `train-tech.yml` (hoy `ml-entrenar.yml`, modelo `tecnologias`). *SAP hecho el 2026-10-24* (`ensure_downloaded` busca con `locate_release_asset` y `train-model.yml` (hoy `ml-entrenar.yml`, modelo `sap`) publica en `ml-models`); quedan `tech_classifier` y `train-tech.yml` (hoy `ml-entrenar.yml`, modelo `tecnologias`).
-  - ~~Arreglar `observability/logging.py::redact_dsn`, que no redacta la contraseña de los DSN con driver (`postgresql+psycopg://…`).~~ **Hecho el 2026-10-25:** la regex admite `+driver` y la propia de `db/schema_revision.py` se retira (test parametrizado en `tests/test_observability_logging.py`).
+  - Que el entrenamiento de retención deje de ser cuadrático: `construir_pares` llama a `_features_historicas` por cada par (~5,5K pares × ~698K adjudicaciones × 2) y `_emparejar` es O(Σ n²) por segmento. Índices por clave más bisect, con paridad contra la referencia como en `tests/test_ml_retencion_serving.py`.
+  - Resolver la clave de `predicciones_retencion` **antes de activar `retencion_model`**; exige migración. La tabla guarda un riesgo por expediente (`licitacion_id` es la PK), pero Renovaciones pinta una fila por empresa adjudicataria y el modelo sí depende de la empresa: un expediente con varios adjudicatarios mostraría a todos el riesgo del primero.
+  - Pasar a `locate_release_asset` y a una Release fija lo que aún publica y busca solo en *latest*: `ensure_downloaded` de `services/ml/tech_classifier.py` y el workflow de entrenamiento de tecnologías (`ml-entrenar.yml`, modelo `tecnologias`). El de SAP está hecho desde el 2026-10-24.
 - **Files de partida:** [scheduler/jobs/ml_predicciones.py](../scheduler/jobs/ml_predicciones.py), [services/ml/retencion_labels.py](../services/ml/retencion_labels.py), [shared/release_assets.py](../shared/release_assets.py), [.github/workflows/ml-scoring.yml](../.github/workflows/ml-scoring.yml)
 - **Riesgo:** bajo para las verificaciones; medio para la clave de `predicciones_retencion`, que exige migración.
 
@@ -1120,30 +785,18 @@ _Sin ítems abiertos._
 
 ### [P3] F5: Refactor de repositories por olas (TID251 whitelist decreciente)
 - **Área:** services/, scheduler/, api/routes/, scraper/, scripts/
-- **Problema:** El ratchet TID251 tiene una whitelist que solo puede decrecer (conteo vigente: [STATUS.md](STATUS.md), generado por `make status`). **Destino fijado por [ADR-022](adr/ADR-022-frontera-de-persistencia.md)**: el SQL se mueve a `db/`, y `db/repositories/*` (clases) y `db/*.py` (funciones de módulo) son el mismo estrato — o sea que **no hay renombrado de por medio**, cada archivo va al módulo `db/` de su tabla en la forma que ya tenga. Antes de ADR-022 este ítem no tenía estado final declarado, que era el motivo real de que llevara meses parado: refactorizar hacia un destino indefinido produce un idioma más, no menos.
-- **Baseline (medido 2026-07-30 sobre `pyproject.toml`):** services/ 18 · scheduler/ 9 · scripts/ 5 · api/ 4 · scraper/ 2 = **38 archivos** en whitelist, más los dos globs estructurales que no son deuda (`db/**` y `tests/*`, exentos por diseño). El "= 44 entradas" del baseline anterior no cuadraba con el desglose (que ya sumaba 40 contando los globs); la cifra de referencia es la de STATUS.md, que cuenta archivos.
-- **Progreso 2026-08-10 — primera ola, 38 → 36:** `services/job_locks.py` entero pasa a `db/job_locks.py` (aprovechando que había que corregir su `release()`, que borraba locks ajenos) y el `SELECT 1` de `services/health.py` pasa a `db.connection.ping()`. El ratchet llevaba meses sin moverse; la lección de esta ola es que sale barato cuando se hace **al pasar por el módulo por otro motivo**, no como pasada dedicada.
-- **Progreso 2026-08-18 — 34 → 32:** `services/licitaciones.py` y `services/ml/retencion_labels.py` salen de la whitelist; su SQL pasa a `db/repositories/licitaciones.py` y `db/repositories/adjudicaciones.py`, con tests de caracterización escritos **antes** de mover. El listado de renovaciones también se movió a `db/repositories/renovaciones.py` (ítem de `/renovaciones`, ver Cerrados), pero su entrada del ratchet **no se puede quitar todavía** porque los agregados hermanos (`resumen_renovaciones`/`totales_renovaciones`) siguen en `services/`.
-- **Corrección de conteo:** la cifra "38 → 36" de la ola anterior nunca cuadró con [STATUS.md](STATUS.md), que el 2026-08-13 ya contaba **34**. La cifra buena es siempre la de STATUS.md, que se genera con `make status`; anotar el conteo a mano en este fichero solo produce dos números que se contradicen.
-- **Dos efectos colaterales que esta migración tiene y nadie había registrado** (descubiertos el 2026-08-18 al ejecutar la ola):
-  1. **Erosiona el guardrail de dedupe.** `tests/test_dedup_guardrail.py` escaneaba solo `services/`; mover SQL analítico a `db/` lo sacaba de su radio en silencio. Ya está corregido (el escáner tiene ahora una lista explícita de módulos de `db/`), pero **cada ola futura debe añadir a `_SCANNED_FILES` el módulo de `db/` que crea**, en el mismo cambio. Lo que destapó al ampliarlo es un ítem P1 propio.
-  2. **Tienta a invertir las capas.** Al mover una query se mueven con ella los fragmentos SQL que interpola, y el reflejo es importarlos de `services/` — que ADR-024 prohíbe (`db/` no depende de `services/`). El destino correcto es `db/sql_fragments.py`, creado el 2026-08-18 con `FECHA_FIN_SQL`, `TECHNOLOGY_OBSERVED_SQL` y `exclude_duplicados_sql`; `services/` los reexporta.
-- **Progreso 2026-09-24 — 26 → 25:** `services/ml/scoring.py` sale. El upsert de retención, duplicado en las ramas de modelo y de baseline, y la baja real por expediente (`_baja_real`) pasan a `db/repositories/predicciones.py` (`guardar_retencion`, `baja_real_de_expediente`); la división sigue en services. `db/repositories/predicciones.py` entra en `_SCANNED_FILES` del guardrail de dedupe en el mismo cambio, con sus dos purgas como exentas por diseño.
-- **Progreso 2026-09-16 — 28 → 26:** `scheduler/kpi_precompute.py` pasa a `db/kpi_precompute.py` (no a `db/repositories/kpi_snapshots.py`, que es de las métricas `ov_*` y advierte que no se mezclen) y `services/competitive/mercado.py` pasa a `db/repositories/mercado.py`, con el `WHERE` construido por `alcance_sql` en vez de interpolación suelta — el candidato «aparte» de más abajo queda cerrado. Equivalencia verificada con un arnés que compara SQL y parámetros contra `HEAD`; `db/repositories/mercado.py` entra en `_SCANNED_FILES` del guardrail de dedupe en el mismo cambio.
-- **Progreso 2026-10-25 — 18 → 12** (rama `agente/ratchets-y-modulos-dios`; `MAX_ENTRADAS_WHITELIST = 12`). Salen seis, todos con su SQL en `db/`: `services/resoluciones.py` (vinculación en `db/resoluciones.py::vincular_pendientes`, con el emparejamiento por expediente + órgano como función pura en el servicio, y el listado en `listar_resoluciones`), `services/deadline_reminders.py` (tres métodos nuevos de `WatchlistRepository`; el barrido de usuarios entra en `_LEGITIMATE_SWEEPS` de `tests/test_user_key_sql_isolation.py` porque es la misma consulta que ya corría inline), `services/competitive/renovaciones.py` (los dos agregados a `db/repositories/renovaciones.py`, que ya estaba en `_SCANNED_FILES` del guardrail de dedupe y los dos llevan `exclude_duplicados_sql`; los umbrales de «caliente» se quedan en el servicio y entran como parámetros), `scheduler/competitor_alerts.py` (→ `db/watchlist_empresas.py::nuevas_adjudicaciones_de_empresa`), `scheduler/retention.py` (la purga con sus savepoints → `db/retention.py::purgar_por_fecha`; la política publicada se queda) y `scripts/rotate_api_keys.py` (→ `ApiKeyRepository.expirar_por_nombre`).
-- **Progreso 2026-11-04 — 12 → 9** (`MAX_ENTRADAS_WHITELIST = 9`): salen `services/competitive/bajas.py` (SQL en `db/repositories/bajas.py`, que entra en el escáner de `test_dedup_guardrail.py`), `scheduler/watchlist_rules_alerts.py` (`db/repositories/watchlist_rules.py`) y `scheduler/aggregates_precompute.py` (`db/repositories/mat_clusters.py`). `scoring_signals.py` siguió hasta el 2026-11-05 (ver abajo).
-- **Progreso 2026-11-05 — 9 → 8** (`MAX_ENTRADAS_WHITELIST = 8`): los dos agregados de baja de `services/analytics/scoring_signals.py` bajan a `db/repositories/bajas.py::bajas_medias_del_scoring`, y ahora **sí** excluyen duplicados confirmados, como su hermana `fila_baja_de_referencia`: un contrato llegado por dos fuentes pesaba doble en la media y podía llenar solo el umbral de tres adjudicaciones por CPV-4. Cambia un poco la señal de margen del scoring. `mcp_server/catalogo.py` no está en la whitelist: sus `S608` generan un script DDL que no se ejecuta ahí.
-- Siguientes candidatos por coste: `services/entity_resolution.py` (1 `connect`, pero solo abre la transacción del lote y el SQL ya está en `db/empresas.py`: hay que mover el bucle entero o pasar la transacción por un callback), `services/competitive/bajas.py` (2), `scheduler/aggregates_precompute.py` (2).
-- **~~Candidato aparte~~ — hecho el 2026-09-16 (ver progreso arriba).** `services/competitive/mercado.py` concentraba ~12 de los ~30 `# noqa: S608` del repo (conteo del 2026-08-18). Cada supresión está justificada una por una y el idioma de fragmentos constantes está documentado en `services/sql_fragments.py`, así que no es un bug — pero es la mayor densidad de SQL interpolado del proyecto en un solo fichero, y cada filtro nuevo que se añade ahí es otra oportunidad de que un valor entre por concatenación sin que nadie lo note. Al moverlo a `db/`, hacerlo con un builder de `WHERE` testeado en lugar de arrastrar la interpolación tal cual (patrón de `tests/test_adjudicaciones_dedupe_sql.py`, que verifica que los `%s` siguen cuadrando con los parámetros).
-- **Orden de olas:** services/ → api/ → scheduler/ → scripts/ (por densidad; `services/` es además el único que viola la capa de dominio de ADR-007)
-- **Excepción declarada:** `services/sql_fragments.py` se queda — expone fragmentos SQL constantes pero no ejecuta nada (ADR-022 §3).
+- **Problema:** el ratchet TID251 tiene una whitelist que solo puede decrecer (conteo vigente: [STATUS.md](STATUS.md), generado por `make status`; anotarlo a mano aquí solo produce dos números que se contradicen). **Destino fijado por [ADR-022](adr/ADR-022-frontera-de-persistencia.md)**: el SQL se mueve a `db/`, y `db/repositories/*` y `db/*.py` son el mismo estrato, así que cada archivo va al módulo `db/` de su tabla en la forma que ya tenga, sin renombrado de por medio.
+- **Cómo ha ido (olas del 2026-08-10 al 2026-11-05):** sale barato cuando se hace **al pasar por el módulo por otro motivo**, no como pasada dedicada; los tests de caracterización van **antes** de mover. Dos efectos colaterales a vigilar en cada ola: (1) mover SQL analítico a `db/` lo saca del radio de `tests/test_dedup_guardrail.py` si no se añade el módulo nuevo a `_SCANNED_FILES` en el mismo cambio; (2) al mover una query se mueven con ella los fragmentos SQL que interpola, y el destino es `db/sql_fragments.py`, nunca importarlos de `services/` (ADR-024).
+- **Siguiente candidato:** `services/entity_resolution.py` (1 `connect`, que solo abre la transacción del lote; el SQL ya está en `db/empresas.py`): hay que mover el bucle entero o pasar la transacción por un callback.
+- **Orden de olas:** services/ → api/ → scheduler/ → scripts/ (por densidad; `services/` es además el único que viola la capa de dominio de ADR-007). **Excepción declarada:** `services/sql_fragments.py` se queda: expone fragmentos constantes pero no ejecuta nada (ADR-022 §3).
 - **Acceptance criteria por ola:**
   - `make check` verde tras cada ola.
-  - `ruff check --select TID251 --statistics .` monotónamente decreciente (anotar conteo en cada PR).
+  - `ruff check --select TID251 --statistics .` monotónamente decreciente (anotar el conteo en cada PR).
   - Tests de caracterización donde falten.
   - Estado final: whitelist vacía (`db/**` no la necesita: importar `connect` desde dentro de `db/` está permitido).
 - **Files de partida:** `pyproject.toml` (whitelist TID251), `db/repositories/`
-- **Riesgo:** medio — toca caminos de datos; mitigado por ratchet como gate y tests de caracterización previos a cada movimiento.
+- **Riesgo:** medio — toca caminos de datos; mitigado por el ratchet como gate y los tests de caracterización previos a cada movimiento.
+- **Historial:** el detalle de cada ola (módulos que salieron y cómo) en `git show 1e2aef2:docs/IMPROVEMENT_BACKLOG.md` (ítem del mismo título).
 
 
 ### [P2] Aislamiento de la suite: una base por sesión en vez de un schema por test
