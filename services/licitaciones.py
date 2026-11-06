@@ -3,7 +3,7 @@
 Centraliza la lógica de carga, filtrado y paginación de licitaciones,
 delegando en ``db/repositories/licitaciones.py`` para queries SQL. Las
 analíticas ya NO pasan por aquí: agregan en Postgres vía
-``db/repositories/aggregates.py`` (ADR-023) — los loaders full-table
+``db/repositories/aggregates/`` (ADR-023) — los loaders full-table
 (``load_stats_base_df``/``load_dataframe`` y sus cachés) se retiraron al
 migrar el último consumidor, junto con el cortacircuitos de Render que los
 bloqueaba.

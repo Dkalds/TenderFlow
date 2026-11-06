@@ -211,6 +211,7 @@ def test_la_consulta_de_competencia_interpola_el_fragmento(
     detecta también una copia del ``COALESCE`` pegada a mano en la consulta.
     """
     from db.repositories import aggregates as mod
+    from db.repositories.aggregates import scoring
 
     ejecutadas: list[str] = []
 
@@ -234,7 +235,7 @@ def test_la_consulta_de_competencia_interpola_el_fragmento(
         def __exit__(self, *exc: Any) -> bool:
             return False
 
-    monkeypatch.setattr(mod, "connect_read", _Conn)
+    monkeypatch.setattr(scoring, "connect_read", _Conn)
 
     rows, media_global = mod.AggregateRepository().competencia_ofertas_por_cpv4(
         cutoff_iso="2024-08-17T00:00:00+00:00"

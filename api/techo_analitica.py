@@ -4,7 +4,7 @@ Dependencia de router de ``/analytics`` y ``/competitive``: fija en el contexto
 de la petición el techo ``API_ANALYTICS_STATEMENT_TIMEOUT_MS`` para todas las
 lecturas que no pidan el suyo (``db.connection.fijar_techo_de_sentencia``).
 
-Va en el contexto de la petición, y no en ``db/repositories/aggregates.py``,
+Va en el contexto de la petición, y no en ``db/repositories/aggregates/``,
 porque esas mismas funciones las llaman los jobs de precálculo
 (``scheduler/kpi_precompute``), que necesitan justo las consultas largas que el
 techo cortaría. Con el setting a 0 —su valor por defecto, ver

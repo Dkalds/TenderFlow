@@ -1,6 +1,6 @@
 """El listado y los agregados filtran ``q`` y ``tecnologia`` con la misma expresión.
 
-``db/repositories/aggregates.py::build_licitaciones_where`` (texto, KPIs y
+``db/repositories/aggregates/filtros.py::build_licitaciones_where`` (texto, KPIs y
 agregados) y ``db/repositories/licitaciones.py::LicitacionRepository._base_filters``
 (SQLAlchemy Core, listado y cursor) construyen el filtro de la misma pantalla
 con dos implementaciones. Los dos docstrings citan este fichero como el que

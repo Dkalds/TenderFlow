@@ -23,6 +23,7 @@ from unittest.mock import patch
 import pytest
 
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
+from tests.dobles_aggregates import connect_read_de_aggregates
 
 _MIGRACION = "db.alembic.versions.v144_lic_indices_analitica"
 _ESQUEMA = Path(__file__).resolve().parents[1] / "docs" / "database-schema.md"
@@ -206,7 +207,7 @@ def test_las_agregaciones_de_mercado_solo_leen_columnas_del_indice(nombre: str) 
     cubiertas = {"fecha_publicacion", *_migracion().COLUMNAS_CUBIERTAS}
     columnas = _columnas_de_licitaciones()
     conexion = _Conexion()
-    with patch("db.repositories.aggregates.connect_read", return_value=conexion):
+    with connect_read_de_aggregates(return_value=conexion):
         _AGREGACIONES[nombre](AggregateRepository())
 
     assert conexion.sql

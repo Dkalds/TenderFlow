@@ -40,7 +40,8 @@ _REPOSITORIOS = _REPO_ROOT / "db" / "repositories"
 
 #: Violaciones vivas el 2026-09-06 (ocho; siete desde el 2026-09-18; seis desde el 2026-09-19). **Solo puede encoger.**
 #:
-#: Formato `fichero::metodo`. Añadir una entrada es declarar que se introduce un
+#: Formato `fichero::metodo`, con el fichero relativo a `db/repositories/`
+#: (`aggregates/scoring.py::…` desde que `aggregates` es un paquete). Añadir una entrada es declarar que se introduce un
 #: escaneo sin cota alcanzable desde la analítica: una decisión explícita, no un
 #: descuido.
 #:
@@ -73,13 +74,13 @@ ALLOWLIST: frozenset[str] = frozenset(
         # serie por un extremo y sesga la predicción. Sus adjudicaciones
         # (`adjudicaciones_para_forecast`) salieron el 2026-09-18: leen por
         # `= ANY(%s)` los ids de esta proyección, así que su cota es esta.
-        "aggregates.py::retendering_universe",
+        "aggregates/calidad_forecast.py::retendering_universe",
         # Proyecciones acotadas por filtro (un órgano, una ventana de fechas).
-        "aggregates.py::licitaciones_por_organo",
-        "aggregates.py::pipeline_window",
+        "aggregates/scoring.py::licitaciones_por_organo",
+        "aggregates/scoring.py::pipeline_window",
         # El universo puntuable del Radar. Truncarlo es truncar el Radar, así
         # que su cota tiene que venir con `truncado` en la respuesta.
-        "aggregates.py::scoring_candidates",
+        "aggregates/scoring.py::scoring_candidates",
         # `SELECT … FROM predicciones_baja` sin WHERE, a propósito: el modo
         # page-aligned del Detalle necesita el p50 de todas las puntuadas. Crece
         # con el modelo, no con el corpus, y el job de ML ya la purga por
@@ -178,10 +179,13 @@ def sin_cota() -> list[tuple[str, str]]:
     alcanzables = alcanzables_desde_la_analitica()
     hallazgos: list[tuple[str, str]] = []
 
-    # `rglob`: un repositorio partido en paquete (`licitaciones/`) sigue escaneado.
+    # `rglob`: un repositorio partido en paquete (`licitaciones/`, `aggregates/`)
+    # sigue escaneado. La clave lleva la ruta relativa: dos paquetes pueden tener
+    # un `filtros.py`.
     for repo in sorted(_REPOSITORIOS.rglob("*.py")):
         if repo.name == "base.py":
             continue
+        fichero = repo.relative_to(_REPOSITORIOS).as_posix()
         for nombre, nodo in _metodos_de(repo).items():
             if nombre.startswith("_") or nombre not in alcanzables:
                 continue
@@ -190,7 +194,7 @@ def sin_cota() -> list[tuple[str, str]]:
             sql = _literales_de_cadena(nodo)
             if _COTA_EN_SQL.search(sql) or _POR_IDENTIDAD.search(sql):
                 continue
-            hallazgos.append((repo.name, nombre))
+            hallazgos.append((fichero, nombre))
     return hallazgos
 
 

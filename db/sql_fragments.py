@@ -732,7 +732,7 @@ def columna_nucleo_sql(nombre: str, alias: str | None = "l", *, tipada: bool | N
     encendiendo el flag y confiando.
 
     ``alias`` vacío o ``None`` deja la columna sin calificar: las agregaciones
-    de ``db/repositories/aggregates.py`` leen de ``licitaciones`` a secas.
+    de ``db/repositories/aggregates/`` leen de ``licitaciones`` a secas.
     """
     return _calificada(columna_nucleo(nombre, tipada=tipada), alias)
 

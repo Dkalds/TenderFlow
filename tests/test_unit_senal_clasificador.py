@@ -158,7 +158,9 @@ def test_lee_la_version_activa_del_sap_classifier(monkeypatch: pytest.MonkeyPatc
 _MODULOS_DEL_RADAR = (
     "api/routes/radar.py",
     "api/routes/analytics.py",
-    "db/repositories/aggregates.py",
+    *sorted(
+        p.relative_to(_RAIZ).as_posix() for p in (_RAIZ / "db/repositories/aggregates").glob("*.py")
+    ),
     "db/sql_fragments.py",
     "services/sql_fragments.py",
     *sorted(p.relative_to(_RAIZ).as_posix() for p in (_RAIZ / "services/analytics").glob("*.py")),

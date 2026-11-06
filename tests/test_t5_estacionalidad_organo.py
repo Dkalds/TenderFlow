@@ -299,7 +299,7 @@ def test_ventana_mensual_es_un_rango_sargable(mes_hasta: str, tras_el_fin: str) 
     from db.repositories.aggregates import AggregateRepository
 
     conexion = _ConexionFalsa()
-    with patch("db.repositories.aggregates.connect_read", return_value=conexion):
+    with patch("db.repositories.aggregates.calidad_forecast.connect_read", return_value=conexion):
         AggregateRepository().publicaciones_mensuales(
             LicitacionesFilters(organo=ORGANO),
             mes_desde="2024-01",

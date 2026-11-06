@@ -330,7 +330,7 @@ def _sql_de(llamada) -> str:
     from db.repositories.aggregates import AggregateRepository
 
     conexion = _ConexionQueApunta()
-    with patch("db.repositories.aggregates.connect_read", return_value=conexion):
+    with patch("db.repositories.aggregates.organos.connect_read", return_value=conexion):
         llamada(AggregateRepository())
     [sql] = conexion.sql
     return sql

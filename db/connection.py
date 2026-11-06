@@ -908,7 +908,7 @@ def connect() -> Iterator[Any]:
 #: Lo pone el camino HTTP de la analítica con :func:`techo_de_sentencia` y nunca
 #: los jobs: el precálculo de agregados necesita precisamente las consultas
 #: largas que este techo cortaría, y llama a las mismas funciones de
-#: ``db/repositories/aggregates.py``. Por eso el techo va en el contexto de la
+#: ``db/repositories/aggregates/``. Por eso el techo va en el contexto de la
 #: petición y no en esas funciones.
 _techo_sentencia: ContextVar[int | None] = ContextVar("techo_sentencia_lectura", default=None)
 

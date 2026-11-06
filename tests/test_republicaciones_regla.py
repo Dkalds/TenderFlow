@@ -122,11 +122,13 @@ class TestSuperficies:
 
     @staticmethod
     def _cuerpo(metodo: str) -> str:
-        fuente = (ROOT / "db" / "repositories" / "aggregates.py").read_text(encoding="utf-8")
         patron = rf"    def {re.escape(metodo)}\(.*?(?=\n    def |\n    # ──|\Z)"
-        cuerpo = re.search(patron, fuente, re.S)
-        assert cuerpo, f"no se encontró {metodo}"
-        return cuerpo.group(0)
+        # Un submódulo por familia: el método está en uno solo de ellos.
+        for fichero in sorted((ROOT / "db" / "repositories" / "aggregates").glob("*.py")):
+            cuerpo = re.search(patron, fichero.read_text(encoding="utf-8"), re.S)
+            if cuerpo:
+                return cuerpo.group(0)
+        raise AssertionError(f"no se encontró {metodo}")
 
     @pytest.mark.parametrize("metodo", PRESENTACION)
     def test_las_superficies_de_presentacion_piden_la_exclusion(self, metodo: str) -> None:
