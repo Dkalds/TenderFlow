@@ -200,13 +200,54 @@ def _date(record: dict[str, Any], concept: str) -> str | None:
 
 
 def _number(record: dict[str, Any], concept: str) -> float | None:
-    value = _text(record, concept)
-    if value is None:
+    return _a_numero(_text(record, concept))
+
+
+def _a_numero(value: str | None) -> float | None:
+    if not value:
         return None
     try:
         return float(value.replace(",", "."))
     except ValueError:
         return None
+
+
+#: Separador con el que PSCP publica varios adjudicatarios en una sola fila.
+SEPARADOR_ADJUDICATARIOS = "||"
+
+
+def adjudicatarios_de_la_fila(
+    nombres: str | None, nifs: str | None, importes: str | None
+) -> list[tuple[str, str | None, float | None]]:
+    """``(nombre, nif, importe)`` de cada adjudicatario de una fila de PSCP.
+
+    Un acuerdo marco o un lote con varias empresas llega en UNA fila con los
+    tres campos unidos por ``||`` y alineados por posición
+    (``"A SL||B SA"``, ``"B1||A2"``, ``"100.0||200.0"``). Tomarlo como un solo
+    adjudicatario creaba en el maestro una empresa ficticia con el nombre y el
+    NIF compuestos (1.821 medidas el 2026-11-06) y dejaba el importe sin leer.
+
+    Se reparte por posición, como hace PLACSP (una fila por lote y
+    adjudicatario; si el importe se repite en todos, es el del acuerdo marco y
+    así se publica). Si NIFs o importes no tienen tantas posiciones como
+    nombres, no se pueden atribuir y quedan a ``None``: un NIF cruzado con la
+    empresa equivocada es peor que ninguno, y un importe único repartido entre
+    N empresas se contaría N veces.
+    """
+    lista_nombres = (nombres or "").split(SEPARADOR_ADJUDICATARIOS)
+    n = len(lista_nombres)
+
+    def _alineado(valor: str | None) -> list[str]:
+        partes = (valor or "").split(SEPARADOR_ADJUDICATARIOS)
+        return partes if len(partes) == n else [""] * n
+
+    return [
+        (nombre.strip(), nif.strip() or None, _a_numero(importe.strip()))
+        for nombre, nif, importe in zip(
+            lista_nombres, _alineado(nifs), _alineado(importes), strict=True
+        )
+        if nombre.strip()
+    ]
 
 
 def _numero_de_campo(record: dict[str, Any], name: str) -> float | None:
@@ -606,25 +647,31 @@ class PscpConnector:
         )
 
         adjudicaciones: list[Adjudicacion] = []
-        adjudicatario = _text(record, "adjudicatario")
-        if adjudicatario:
+        repartidos = adjudicatarios_de_la_fila(
+            _text(record, "adjudicatario"),
+            _text(record, "nif_adjudicatario"),
+            _text(record, "importe_adjudicacion"),
+        )
+        if repartidos:
             n_ofertas = _number(record, "n_ofertas")
-            adjudicaciones.append(
+            fecha_adjudicacion = self._fecha_adjudicacion_plausible(
+                _date(record, "fecha_adjudicacion"),
+                respaldo=lic.fecha_publicacion,
+                expediente=raw.natural_id,
+            )
+            adjudicaciones = [
                 Adjudicacion(
                     licitacion_id=lic.id_externo,
-                    nombre=adjudicatario,
-                    nif=_text(record, "nif_adjudicatario"),
-                    importe_adjudicado=_number(record, "importe_adjudicacion"),
-                    fecha_adjudicacion=self._fecha_adjudicacion_plausible(
-                        _date(record, "fecha_adjudicacion"),
-                        respaldo=lic.fecha_publicacion,
-                        expediente=raw.natural_id,
-                    ),
+                    nombre=nombre,
+                    nif=nif,
+                    importe_adjudicado=importe,
+                    fecha_adjudicacion=fecha_adjudicacion,
                     n_ofertas_recibidas=int(n_ofertas) if n_ofertas is not None else None,
                     nuts_code=nuts,
                     ccaa=ccaa,
                 )
-            )
+                for nombre, nif, importe in repartidos
+            ]
         return ParsedTender(licitacion=lic, adjudicaciones=adjudicaciones)
 
     def _fecha_adjudicacion_plausible(
