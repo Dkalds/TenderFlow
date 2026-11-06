@@ -16,8 +16,6 @@ contra un ``cuenta_id: int`` sería un 422, no la ruta siguiente.
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -62,6 +60,7 @@ from shared.dto import (
     OrganoCandidato,
     SafeStr,
 )
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -109,7 +108,7 @@ class EtiquetasPorObjeto(BaseModel):
     por_objeto: dict[str, list[EtiquetaAplicada]] = Field(default_factory=dict)
 
 
-def _user_id(ctx: dict[str, Any]) -> int:
+def _user_id(ctx: Principal) -> int:
     return int(ctx["user_id"])
 
 
@@ -129,7 +128,7 @@ async def get_cuentas(
             "cuenta aunque el órgano se añadiera escrito de otra forma."
         ),
     ),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> list[CuentaObjetivo]:
     try:
         return await run_db(
@@ -151,7 +150,7 @@ async def get_cuentas(
 async def post_cuenta(
     body: CuentaObjetivoCreate,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> CuentaObjetivo:
     """Con ``organo``: idempotente, seguir dos veces el mismo órgano no crea dos
     cuentas. Con ``organos``: una cuenta nueva con todos, todo o nada.
@@ -179,7 +178,7 @@ async def post_cuenta(
 @router.get("/cuentas/resumen", summary="Qué pasa hoy en cada cuenta, en cuatro números")
 async def get_cuentas_resumen(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> CuentasResumen:
     """Abiertas hoy, última publicación, contratos que vencen y oportunidades
     activas de cada cuenta, con el universo y la ventana de cada cifra."""
@@ -196,7 +195,7 @@ async def get_cuentas_resumen(
 async def get_buscar_organos(
     q: SafeStr = Query(max_length=200, description="Parte del nombre del órgano"),
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> list[OrganoCandidato]:
     """Un término de menos de tres caracteres devuelve lista vacía, no un 422:
     el campo pregunta en cada tecla, como la paleta de búsqueda."""
@@ -215,7 +214,7 @@ async def get_buscar_organos(
 async def delete_organo_seguido(
     organo: SafeStr = Query(min_length=1, max_length=500),
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> None:
     """La inversa de ``POST /cuentas`` con ``organo``: la estrella de Mercado.
 
@@ -241,7 +240,7 @@ async def delete_organo_seguido(
 async def get_ficha_cuenta(
     cuenta_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> FichaCuenta:
     try:
         ficha = await run_db(
@@ -266,7 +265,7 @@ async def patch_cuenta(
     cuenta_id: int,
     body: CuentaObjetivoUpdate,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> CuentaObjetivo:
     try:
         cuenta = await run_db(
@@ -299,7 +298,7 @@ async def post_organos_de_cuenta(
     cuenta_id: int,
     body: CuentaOrganosAdd,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> CuentaObjetivo:
     """Todo o nada, e idempotente para los órganos que ya eran de esta cuenta."""
     try:
@@ -331,7 +330,7 @@ async def delete_organo_de_cuenta(
     cuenta_id: int,
     cuenta_organo_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> CuentaObjetivo:
     """Devuelve la cuenta como queda. Quitar el último órgano es un 409: una
     cuenta sin órganos no avisaría de nada, y para eso se deja de seguir."""
@@ -360,7 +359,7 @@ async def delete_organo_de_cuenta(
 async def delete_cuenta(
     cuenta_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> None:
     """Se lleva sus órganos y las etiquetas aplicadas a la cuenta."""
     try:
@@ -379,7 +378,7 @@ async def delete_cuenta(
 @router.get("/etiquetas", summary="Etiquetas de la organización")
 async def get_etiquetas(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> list[Etiqueta]:
     try:
         return await run_db(listar_etiquetas, _user_id(ctx), organization_id=organization_id)
@@ -396,7 +395,7 @@ async def get_etiquetas(
 async def post_etiqueta(
     body: EtiquetaCreate,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> Etiqueta:
     """Crear una etiqueta que ya existe devuelve la existente, no un error.
 
@@ -426,7 +425,7 @@ async def post_etiqueta(
 async def delete_etiqueta(
     etiqueta_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> None:
     try:
         ok = await run_db(
@@ -446,7 +445,7 @@ async def delete_etiqueta(
 async def post_aplicar_etiqueta(
     body: EtiquetaAplicacion,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> ResultadoEtiquetado:
     try:
         aplicada = await run_db(
@@ -469,7 +468,7 @@ async def post_aplicar_etiqueta(
 async def post_quitar_etiqueta(
     body: EtiquetaAplicacion,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> ResultadoEtiquetado:
     try:
         quitada = await run_db(
@@ -495,7 +494,7 @@ async def post_etiquetas_por_objeto(
     # secas, un byte NUL en el cuerpo llegaba a psycopg y salía como 500.
     objeto_ids: list[SafeStr] = Body(default_factory=list, embed=True, max_length=200),
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> EtiquetasPorObjeto:
     """POST y no GET porque la lista de ids puede ser larga.
 

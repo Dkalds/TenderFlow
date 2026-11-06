@@ -48,6 +48,7 @@ from api.tenancy import require_organization
 from config import settings
 from llm.prompts import ChatMessage, PromptMode
 from observability.logging import get_logger
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -236,7 +237,7 @@ class ResumenRequest(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _check_ask_scope(user: dict[str, Any]) -> None:
+def _check_ask_scope(user: Principal) -> None:
     """Scope check para auth por API key (usuarios de sesión siempre permitidos)."""
     if user.get("auth_method") == "api_key":
         raw_scopes = user.get("scopes", "")
@@ -253,7 +254,7 @@ def _check_ask_scope(user: dict[str, Any]) -> None:
             )
 
 
-def _budget_subject(user: dict[str, Any]) -> str | None:
+def _budget_subject(user: Principal) -> str | None:
     """Sujeto del presupuesto: la ``user_key`` opaca que adjunta el auth.
 
     Nunca el email ni el ``user_id`` crudo: ``user_key`` es el identificador
@@ -263,7 +264,7 @@ def _budget_subject(user: dict[str, Any]) -> str | None:
     return raw if isinstance(raw, str) and raw else None
 
 
-def _budget_org(user: dict[str, Any]) -> str | None:
+def _budget_org(user: Principal) -> str | None:
     """Organización a la que atribuir el gasto (C2.9).
 
     La pone ``require_organization``: la de ``?organization_id=`` o, sin ella,
@@ -273,10 +274,10 @@ def _budget_org(user: dict[str, Any]) -> str | None:
     usuario.
     """
     raw = user.get("organization_id")
-    return str(raw) if raw not in (None, "") else None
+    return str(raw) if raw is not None else None
 
 
-def _check_budget(user: dict[str, Any]) -> None:
+def _check_budget(user: Principal) -> None:
     """Check eager del presupuesto ANTES de abrir el SSE: con enforce y ventana
     agotada respondemos 429 sin llamar al proveedor ni hacer retrieval
     (RFC llm-dependencia-gestionada). En monitor solo instrumenta.
@@ -840,7 +841,7 @@ async def _stream_ask(
 )
 async def ask_question(
     body: AskRequest,
-    user: dict[str, Any] = Depends(require_organization()),
+    user: Principal = Depends(require_organization()),
 ) -> StreamingResponse:
     """Responde preguntas con contexto del corpus o de una licitación concreta.
 
@@ -913,7 +914,7 @@ async def ask_question(
 )
 async def resumen_licitacion(
     body: ResumenRequest,
-    user: dict[str, Any] = Depends(require_organization()),
+    user: Principal = Depends(require_organization()),
     id_externo: str = Depends(resolver_id_externo),
 ) -> StreamingResponse:
     """Genera (o sirve cacheado) el resumen ejecutivo de la licitación.
@@ -1050,7 +1051,7 @@ async def resumen_licitacion(
     summary="Modelos LLM disponibles para el endpoint /ask",
 )
 async def list_ask_models(
-    _user: dict[str, Any] = Depends(require_any_auth),
+    _user: Principal = Depends(require_any_auth),
 ) -> AskModelInfo:
     """Lista los modelos LLM disponibles para usar en POST /api/v1/ask."""
     from llm.client import AVAILABLE_MODELS, DEFAULT_MODEL

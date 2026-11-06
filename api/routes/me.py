@@ -79,7 +79,7 @@ from shared.audit_events import (
 )
 from shared.cache import ainvalidate_organization_scoped, ainvalidate_user_scoped
 from shared.dto import SessionsRevoked, StatusMessage, StatusOk
-from shared.identity import actor_del_principal
+from shared.identity import Principal, actor_del_principal
 
 log = get_logger(__name__)
 
@@ -102,7 +102,7 @@ class RotatedKey(BaseModel):
     old_key_expires_at: str
 
 
-def _user_key(ctx: dict[str, Any]) -> str:
+def _user_key(ctx: Principal) -> str:
     """Clave opaca y estable por usuario.
 
     ``require_any_auth`` (sesión o API key) siempre adjunta ``user_key`` al
@@ -126,7 +126,7 @@ async def _invalidate_profile_scoring(user_key: str, *organization_ids: int | No
         await ainvalidate_organization_scoped("analytics", "scoring", organization_id)
 
 
-def _actor_key(ctx: dict[str, Any]) -> str:
+def _actor_key(ctx: Principal) -> str:
     """Quién actúa, para el audit log: la convención única de ``shared.identity``.
 
     Hasta 2026-10 recortaba ``key_hash`` o el **correo** a ocho caracteres;
@@ -143,7 +143,7 @@ def _actor_key(ctx: dict[str, Any]) -> str:
     response_class=StreamingResponse,
     responses={200: {"content": {"application/zip": {}}}},
 )
-def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> Response:
+def export_my_data(ctx: Principal = Depends(require_any_auth)) -> Response:
     """Exporta watchlist, seguimientos, reglas, perfil, notificaciones, feedback, API keys y
     audit log en un ZIP JSON. Funciona con sesión OAuth o API key.
     """
@@ -245,7 +245,7 @@ def export_my_data(ctx: dict[str, Any] = Depends(require_any_auth)) -> Response:
 )
 def delete_my_data(
     body: DeleteMyDataRequest,
-    ctx: dict[str, Any] = Depends(require_recent_session()),
+    ctx: Principal = Depends(require_recent_session()),
 ) -> StatusMessage:
     """Anonimiza watchlist/reglas/perfil/notificaciones y revoca credenciales.
 
@@ -293,7 +293,7 @@ def delete_my_data(
     summary="Revocar todas las sesiones activas",
     status_code=200,
 )
-def logout_all(ctx: dict[str, Any] = Depends(require_any_auth)) -> SessionsRevoked:
+def logout_all(ctx: Principal = Depends(require_any_auth)) -> SessionsRevoked:
     """Revoca todas las sesiones server-side del usuario, también las de clientes MCP."""
     user_id = int(ctx["user_id"])
     if user_id:
@@ -340,7 +340,7 @@ class SessionsResult(BaseModel):
 )
 async def list_my_sessions(
     request: Request,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> SessionsResult:
     """Sesiones abiertas del usuario, con la actual marcada.
 
@@ -378,7 +378,7 @@ async def list_my_sessions(
 )
 async def delete_my_session(
     session_id: str,
-    ctx: dict[str, Any] = Depends(require_recent_session()),
+    ctx: Principal = Depends(require_recent_session()),
 ) -> None:
     """Cierra una sesión concreta sin tocar las demás.
 
@@ -498,7 +498,7 @@ class NotificationPreferencesResult(BaseModel):
 )
 async def get_notification_preferences(
     organization_id: int | None = Query(None, description="Acota a una organización"),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> NotificationPreferencesResult:
     """Qué avisos quiere recibir el usuario, y por dónde.
 
@@ -539,7 +539,7 @@ async def get_notification_preferences(
 )
 async def put_notification_preferences(
     body: list[NotificationPreference],
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> StatusOk:
     """Guarda las preferencias enviadas. Idempotente por `(org, tipo, canal)`.
 
@@ -609,7 +609,7 @@ class MyApiKeysResult(BaseModel):
     summary="Listar mis API keys (sin el secret — solo metadatos y tier)",
     responses={401: {"description": "API key inválida"}},
 )
-def list_my_keys(ctx: dict[str, Any] = Depends(require_any_auth)) -> MyApiKeysResult:
+def list_my_keys(ctx: Principal = Depends(require_any_auth)) -> MyApiKeysResult:
     """Devuelve las API keys vinculadas al usuario autenticado.
 
     Para API key auth: usa ``key_id``. For session auth: usa ``user_id``.
@@ -664,7 +664,7 @@ class CreatedKey(BaseModel):
 _SCOPES_RESERVADOS = frozenset({"admin", "*", SCOPE_METRICAS})
 
 
-def _validar_scopes(pedidos: str | None, ctx: dict[str, Any]) -> str | None:
+def _validar_scopes(pedidos: str | None, ctx: Principal) -> str | None:
     """Rechaza los scopes que el rol del usuario no puede conceder."""
     if not pedidos:
         return None
@@ -693,7 +693,7 @@ def _validar_scopes(pedidos: str | None, ctx: dict[str, Any]) -> str | None:
 )
 async def create_my_key(
     body: CreateKeyBody,
-    ctx: dict[str, Any] = Depends(require_recent_session()),
+    ctx: Principal = Depends(require_recent_session()),
 ) -> CreatedKey:
     """Acuña una API key personal (C2.3, D25).
 
@@ -762,7 +762,7 @@ _SUFIJO_ROTADA = " (rotada)"
 )
 async def revoke_my_key(
     key_id: int,
-    ctx: dict[str, Any] = Depends(require_recent_session()),
+    ctx: Principal = Depends(require_recent_session()),
 ) -> None:
     """Apaga una clave al momento, sin esperar a que caduque.
 
@@ -803,7 +803,7 @@ async def revoke_my_key(
     },
 )
 def rotate_my_key(
-    ctx: dict[str, Any] = Depends(require_recent_session()),
+    ctx: Principal = Depends(require_recent_session()),
     key_id: int | None = Query(None, description="ID de la API key a rotar."),
     grace_days: int = Query(7, ge=0, le=30),
 ) -> RotatedKey:
@@ -968,7 +968,7 @@ class UserProfileOut(BaseModel):
 
 @router.get("/me/profile", summary="Obtener el perfil de scoring del usuario")
 async def get_profile(
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: Principal = Depends(require_organization()),
 ) -> UserProfileOut:
     """Devuelve el perfil de scoring personalizado del usuario.
 
@@ -1006,7 +1006,7 @@ async def get_profile(
 @router.put("/me/profile", summary="Crear o actualizar el perfil de scoring")
 async def put_profile(
     body: UserProfileBody,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> StatusOk:
     """Crea o actualiza el perfil de scoring personalizado.
 
@@ -1052,7 +1052,7 @@ async def put_profile(
 
 @router.delete("/me/profile", summary="Eliminar el perfil de scoring")
 async def delete_profile(
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> StatusOk:
     """Elimina el perfil de scoring. El scoring vuelve a los settings globales."""
     from db.repositories.user_profiles import delete_user_profile, get_own_user_profile
@@ -1079,7 +1079,7 @@ async def delete_profile(
 async def preview_profile(
     body: UserProfileBody,
     limit: int = Query(default=10, ge=1, le=25, description="Cuántas oportunidades devolver."),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> ScoringPreview:
     """Puntúa el Radar con el perfil del cuerpo y lo compara con el guardado.
 

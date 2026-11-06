@@ -26,7 +26,7 @@ from api.concurrency import run_db
 from api.errors import ReautenticacionRequerida
 from config import settings
 from observability.logging import get_logger
-from shared.identity import user_key_from_email
+from shared.identity import Principal, user_key_from_email
 
 log = get_logger(__name__)
 
@@ -40,7 +40,7 @@ async def require_any_auth(
     session: str | None = Cookie(default=None, alias="session"),
     x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
     background_tasks: BackgroundTasks = BackgroundTasks(),
-) -> dict[str, Any]:
+) -> Principal:
     """Acepta sesión o API key, devolviendo un principal coherente.
 
     Las mutaciones autenticadas con cookie exigen CSRF. Las API keys sin un
@@ -128,7 +128,7 @@ async def require_any_auth(
     )
 
 
-async def require_admin(user: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
+async def require_admin(user: Principal = Depends(require_any_auth)) -> Principal:
     """Exige que el principal autenticado (sesión o API key) sea admin.
 
     Antes triplicado idénticamente en admin_users.py/feature_flags.py/
@@ -139,7 +139,7 @@ async def require_admin(user: dict[str, Any] = Depends(require_any_auth)) -> dic
     return user
 
 
-def id_del_actor(principal: dict[str, Any]) -> int | None:
+def id_del_actor(principal: Principal) -> int | None:
     """``users.id`` de quien actúa, para ``audit_log.user_id`` (ADR-030 §D).
 
     Sin él la fila se guarda con ``user_id`` NULL y la identidad del actor
@@ -149,7 +149,7 @@ def id_del_actor(principal: dict[str, Any]) -> int | None:
     return int(valor) if valor is not None else None
 
 
-def require_recent_session() -> Callable[..., Awaitable[dict[str, Any]]]:
+def require_recent_session() -> Callable[..., Awaitable[Principal]]:
     """Require a freshly authenticated browser session for destructive actions.
 
     API keys are excellent for automation but should not be sufficient to
@@ -158,7 +158,7 @@ def require_recent_session() -> Callable[..., Awaitable[dict[str, Any]]]:
     recent successful second-factor verification.
     """
 
-    async def _dependency(ctx: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
+    async def _dependency(ctx: Principal = Depends(require_any_auth)) -> Principal:
         if ctx.get("auth_method") != "session":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

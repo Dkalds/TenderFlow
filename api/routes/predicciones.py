@@ -22,8 +22,6 @@ agregado, no un cambio de unidad.
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, field_validator
 
@@ -34,6 +32,7 @@ from services.ml.calibration import CalibracionBajaDTO, calibracion_baja_dto
 from services.ml.pricing_scenarios import PriceScenariosResult, get_price_scenarios
 from services.ml.scoring import LoteDesconocidoError, prediccion_baja
 from shared.cache import cache_response
+from shared.identity import Principal
 
 router = APIRouter(tags=["predicciones"])
 
@@ -129,7 +128,7 @@ class PrediccionBajaResult(BaseModel):
 )
 async def get_prediccion_baja(
     lote_id: int | None = None,
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
     licitacion_id: str = Depends(resolver_licitacion_id),
 ) -> PrediccionBajaResult:
     try:
@@ -161,7 +160,7 @@ async def get_prediccion_baja(
 @cache_response(ttl=_CALIBRACION_CACHE_TTL_S, namespace="ml")
 async def get_calibracion_baja(
     incluir_lote: bool = False,
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> CalibracionBajaDTO:
     """Cobertura real del intervalo p10-p90 vs bajas observadas (closed-loop).
 
@@ -192,7 +191,7 @@ async def get_calibracion_baja(
 async def get_escenarios_precio(
     lote_id: int | None = None,
     competencia_esperada: int | None = None,
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
     licitacion_id: str = Depends(resolver_licitacion_id),
 ) -> PriceScenariosResult:
     """Devuelve cuantiles históricos; deliberadamente no devuelve P(ganar).

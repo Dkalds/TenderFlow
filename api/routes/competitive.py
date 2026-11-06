@@ -69,6 +69,7 @@ from shared.dto import (
     CompetitiveCompanyAwardsDTO,
     CompetitiveCompanyProfileDTO,
 )
+from shared.identity import Principal
 from shared.metric_scope import MetricScope
 
 log = get_logger(__name__)
@@ -84,7 +85,7 @@ router = APIRouter(
 _adj_repo = AdjudicacionRepository()
 
 
-def _user_key(ctx: dict[str, Any]) -> str:
+def _user_key(ctx: Principal) -> str:
     """Clave opaca estable de la identidad humana autenticada."""
     if ctx.get("user_key"):
         return str(ctx["user_key"])
@@ -144,7 +145,7 @@ async def get_renovaciones(
     # servidor: el front pide 200 y recibe el top-N real, no una muestra.
     limit: int = Query(200, ge=1, le=MAX_PAGE_LIMIT),
     offset: int = Query(0, ge=0),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> RenovacionesResult:
     """Pipeline de renovaciones: cada fila es un contrato-adjudicatario con
     fecha de fin efectiva (explícita o calculada con la duración CODICE)."""
@@ -188,7 +189,7 @@ async def get_renovaciones_resumen(
         max_length=200,
         description="Tecnología(s) separadas por comas (filtro global)",
     ),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> RenovacionesResumenResult:
     tecnologias = [t.strip() for t in (tecnologia or "").split(",") if t.strip()]
     items = await run_db(
@@ -340,7 +341,7 @@ async def get_bajas(
             'sabe que lleva IVA y se declara `base: "mixta"`.'
         ),
     ),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> BajasResult:
     items, base = await run_db(
         bajas_agregadas,
@@ -365,7 +366,7 @@ async def get_baja_referencia(
     solo_base_declarada: bool = Query(
         False, description="Ver el mismo parámetro en `/competitive/bajas`."
     ),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> BajaReferencia:
     """'¿Cuánto hay que bajar para ganar en este órgano/CPV?'
 
@@ -392,7 +393,7 @@ async def get_cuota(
     ccaa: str | None = Query(None, max_length=50),
     desde: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
     limit: int = Query(50, ge=1, le=500),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> CuotaResult:
     items = await run_db(cuota_mercado, cpv_prefix=cpv, ccaa=ccaa, desde=desde, limit=limit)
     scope = await run_db(metric_scope, cpv_prefix=cpv, ccaa=ccaa, desde=desde)
@@ -404,7 +405,7 @@ async def get_cuota(
 async def get_hhi(
     segment_by: str = Query("cpv", pattern="^(cpv|ccaa|organo|tecnologia)$"),
     min_contratos: int = Query(5, ge=1, le=100),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> HhiResult:
     items = await run_db(concentracion_hhi, segment_by=segment_by, min_contratos=min_contratos)
     scope = await run_db(metric_scope)
@@ -431,7 +432,7 @@ async def get_perfil(
     ccaa: str | None = Query(None, max_length=500),
     tecnologia: str | None = Query(None, max_length=500),
     importe_min: float | None = Query(None, ge=0),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> dict[str, Any]:
     perfil = await run_db(
         perfil_empresa,
@@ -477,7 +478,7 @@ async def get_adjudicaciones_empresa(
         pattern="^(fecha_desc|fecha_asc|importe_desc|importe_asc)$",
     ),
     page: PageParams = Depends(pagina(25)),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> dict[str, Any]:
     return await run_db(
         listar_adjudicaciones_empresa,
@@ -529,7 +530,7 @@ async def get_partners(
     ),
     ccaa: str | None = Query(None, max_length=100, description="Comunidad Autónoma"),
     limit: int = Query(10, ge=1, le=50),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> SugerenciaSocios:
     """F3.3 — el primer consumidor de `services/partners.py`.
 
@@ -575,7 +576,7 @@ async def get_batallas(
         max_length=500,
         description="IDs adicionales del grupo (separados por comas) para cruzar también sus adjudicaciones",
     ),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> BatallasContraMi:
     """El historial de cruces, con el límite de lo afirmable declarado.
 
@@ -605,7 +606,7 @@ async def get_batallas(
 
 @router.get("/watchlist", summary="Empresas vigiladas por el usuario")
 async def get_watchlist(
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: Principal = Depends(require_organization()),
 ) -> WatchlistEmpresasResult:
     items = await run_db(
         list_entries, _user_key(ctx), ctx["organization_id"], user_id=int(ctx["user_id"])
@@ -620,7 +621,7 @@ async def get_watchlist(
 )
 async def get_watchlist_movimientos(
     dias: int = Query(30, ge=1, le=180, description="Ventana hacia atrás, en días"),
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: Principal = Depends(require_organization()),
 ) -> MovimientosVigiladasResult:
     """Qué han hecho en la ventana las empresas que vigila el usuario.
 
@@ -655,7 +656,7 @@ async def post_watchlist(
             "efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`."
         ),
     ),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> WatchlistEmpresaStatus:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     # Las alertas salen al correo de la sesión, como las reglas de watchlist:
@@ -711,7 +712,7 @@ async def post_watchlist(
 @router.delete("/watchlist/{empresa_id}", summary="Dejar de vigilar una empresa")
 async def delete_watchlist(
     empresa_id: int,
-    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    ctx: Principal = Depends(require_organization(write=True)),
 ) -> WatchlistEmpresaStatus:
     removed = await run_db(
         remove_entry,

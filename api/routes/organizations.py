@@ -72,12 +72,13 @@ from shared.dto import (
     OrganizationSummary,
     StatusOk,
 )
+from shared.identity import Principal
 
 router = APIRouter(tags=["pursuits"])
 
 
 async def _auditar_organizacion(
-    ctx: dict[str, Any], event_type: str, organization_id: int, **detail: Any
+    ctx: Principal, event_type: str, organization_id: int, **detail: Any
 ) -> None:
     """Deja el rastro de un evento ``org.*`` (``shared/audit_events.py``).
 
@@ -97,7 +98,7 @@ async def _auditar_organizacion(
 
 @router.get("/organizations", response_model=list[OrganizationSummary])
 async def get_organizations(
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> list[OrganizationSummary]:
     """Lista las organizaciones activas del principal."""
     return await run_db(list_organizations, int(ctx["user_id"]))
@@ -110,7 +111,7 @@ async def get_organizations(
 )
 async def post_organization(
     body: OrganizationCreate,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> OrganizationSummary:
     try:
         creada = await run_db(create_organization, int(ctx["user_id"]), body.name)
@@ -123,7 +124,7 @@ async def post_organization(
 @router.get("/organizations/active", response_model=OrganizationSummary)
 async def get_active_organization_route(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> OrganizationSummary:
     try:
         return await run_db(
@@ -183,7 +184,7 @@ class OrganizationDeletionSummary(BaseModel):
 async def post_transfer_ownership(
     organization_id: int,
     body: TransferOwnershipBody,
-    ctx: dict[str, Any] = Depends(require_recent_session()),
+    ctx: Principal = Depends(require_recent_session()),
 ) -> StatusOk:
     """Mueve el rol `owner` a otro miembro (C2.2).
 
@@ -231,7 +232,7 @@ async def post_transfer_ownership(
 )
 async def post_leave_organization(
     organization_id: int,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> StatusOk:
     """Salida voluntaria (C2.2).
 
@@ -259,7 +260,7 @@ async def post_leave_organization(
 )
 async def get_deletion_preview(
     organization_id: int,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> OrganizationDeletionSummary:
     """El recuento que la confirmación tiene que enseñar antes de pedirla."""
     try:
@@ -285,7 +286,7 @@ async def get_deletion_preview(
 async def post_delete_organization(
     organization_id: int,
     body: DeleteOrganizationBody,
-    ctx: dict[str, Any] = Depends(require_recent_session()),
+    ctx: Principal = Depends(require_recent_session()),
 ) -> OrganizationDeletionSummary:
     """Borra la organización y su dato corporativo (C2.2, ADR-030 §D).
 
@@ -324,7 +325,7 @@ async def post_delete_organization(
 )
 async def get_organization_members(
     organization_id: int,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> list[OrganizationMembershipOut]:
     try:
         return await run_db(list_members, int(ctx["user_id"]), organization_id)
@@ -338,7 +339,7 @@ async def get_organization_members(
 )
 async def post_accept_organization_invitation(
     body: OrganizationInvitationAccept,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> OrganizationSummary:
     """Canjea el enlace de invitación recibido por correo.
 
@@ -371,7 +372,7 @@ async def post_accept_organization_invitation(
 async def post_organization_member(
     organization_id: int,
     body: OrganizationMemberInvite,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> OrganizationMembershipOut | OrganizationInvitationOut:
     """Incorpora a alguien al equipo por su correo.
 
@@ -417,7 +418,7 @@ async def post_organization_member(
 )
 async def get_organization_invitations(
     organization_id: int,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> list[OrganizationInvitationOut]:
     """Invitaciones pendientes del equipo.
 
@@ -437,7 +438,7 @@ async def get_organization_invitations(
 async def post_resend_organization_invitation(
     organization_id: int,
     invitation_id: int,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> OrganizationInvitationOut:
     """Vuelve a enviar el correo con un enlace nuevo; el anterior deja de valer."""
     try:
@@ -467,7 +468,7 @@ async def post_resend_organization_invitation(
 async def delete_organization_invitation(
     organization_id: int,
     invitation_id: int,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> StatusOk:
     """Anula una invitación pendiente sin borrar su rastro."""
     try:
@@ -493,7 +494,7 @@ async def put_organization_member(
     organization_id: int,
     member_user_id: int,
     body: OrganizationMembershipUpsert,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> OrganizationMembershipOut:
     if body.user_id != member_user_id:
         raise HTTPException(status_code=422, detail="user_id no coincide con la ruta.")

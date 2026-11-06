@@ -29,6 +29,7 @@ from shared.audit_events import (
     USER_REACTIVATE,
 )
 from shared.dto import MAX_PAGE_LIMIT, StatusOk
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -96,7 +97,7 @@ def admin_list_users(
     # consumidor externo, pero un tope propio aquí es exactamente cómo vuelve a
     # dispersarse el contrato.
     limit: int = Query(200, ge=1, le=MAX_PAGE_LIMIT),
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> list[AdminUserOut]:
     """Lista todos los usuarios (solo admin)."""
     return [
@@ -108,7 +109,7 @@ def admin_list_users(
 @router.get("/{user_id}")
 def admin_get_user(
     user_id: int,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> AdminUserOut:
     """Detalle de un usuario (incluye desactivados)."""
     user = get_user_by_id(user_id, include_deactivated=True)
@@ -121,7 +122,7 @@ def admin_get_user(
 def admin_set_admin(
     user_id: int,
     body: SetAdminBody,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> StatusOk:
     """Promover/degradar admin de un usuario."""
     if user_id == admin.get("user_id"):
@@ -147,7 +148,7 @@ def admin_set_admin(
 def admin_deactivate_user(
     user_id: int,
     body: DeactivateBody,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> AdminUserAction:
     """Desactivar, reactivar o anonimizar un usuario.
 

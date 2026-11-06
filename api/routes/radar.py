@@ -37,6 +37,7 @@ from observability.logging import get_logger
 from services.classification import ESTADOS_PRE_LICITACION
 from shared.cache import ainvalidate_user_scoped
 from shared.dto import RadarBanda, SafeStr
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -45,18 +46,18 @@ _lic_repo = LicitacionRepository()
 router = APIRouter(prefix="/radar", tags=["radar"])
 
 
-def _user_key(ctx: dict[str, Any]) -> str:
+def _user_key(ctx: Principal) -> str:
     """Clave opaca y estable por usuario (la adjunta ``require_any_auth``)."""
     return str(ctx["user_key"])
 
 
-def _user_id(ctx: dict[str, Any]) -> int | None:
+def _user_id(ctx: Principal) -> int | None:
     """Identidad interna del principal (v129): la lectura dual va por ella."""
     raw = ctx.get("user_id")
     return int(raw) if raw is not None else None
 
 
-async def _organizacion_activa(ctx: dict[str, Any]) -> int | None:
+async def _organizacion_activa(ctx: Principal) -> int | None:
     """La organización desde la que el usuario descarta o pospone, o ``None``.
 
     Hace falta para dos cosas: `posponer` la necesita para entregar el
@@ -199,7 +200,7 @@ class RadarDismissalsResult(BaseModel):
 
 @router.get("/dismissals", summary="Listar las señales descartadas por el usuario")
 async def get_dismissals(
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> RadarDismissalsResult:
     return await _resultado(_user_key(ctx), _user_id(ctx))
 
@@ -221,7 +222,7 @@ async def post_dismissal(
             "efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`."
         ),
     ),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> RadarDismissalsResult:
     user_key = _user_key(ctx)
     # Obligatorio desde v135: la PK del descarte es `(user_id, id_externo)`.
@@ -296,7 +297,7 @@ async def post_dismissal(
     summary="Deshacer el descarte de una señal",
 )
 async def delete_dismissal(
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
 ) -> None:
     ok = await run_db(radar_dismissals.remove, _user_key(ctx), id_externo, user_id=_user_id(ctx))
@@ -380,7 +381,7 @@ class RadarProximasResult(BaseModel):
 )
 async def get_proximas(
     page: PageParams = Depends(pagina(50)),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> RadarProximasResult:
     """Lista **sólo** ``PRE`` y ``CPM`` abiertos, con su fecha prevista si la hay.
 

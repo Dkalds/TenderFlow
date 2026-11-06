@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
 
@@ -22,6 +20,7 @@ from observability.logging import get_logger
 from shared.audit_events import AUTH_PASSWORD_CHANGED, AUTH_PASSWORD_RESET_COMPLETED
 from shared.auth_core import hash_password, verify_password
 from shared.dto import DetailMessage, StatusOk
+from shared.identity import Principal
 
 # El nombre de antes de partir el módulo: `logger` sale en cada línea de log.
 log = get_logger("api.routes.auth")
@@ -170,7 +169,7 @@ _CAMBIO_SIN_CONTRASENA = (
 async def change_password(
     body: PasswordChangeRequest,
     background_tasks: BackgroundTasks,
-    user: dict[str, Any] = Depends(require_csrf),
+    user: Principal = Depends(require_csrf),
 ) -> StatusOk:
     """Cambia la contraseña conociendo la actual.
 

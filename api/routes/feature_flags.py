@@ -7,8 +7,6 @@ PUT (toggle/rollout) solo admin, con auditoría.
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
@@ -18,6 +16,7 @@ from db.feature_flags import FLAGS_DECLARADAS, list_flags, set_flag
 from observability.logging import get_logger
 from shared.audit_events import FEATURE_FLAG_SET
 from shared.dto import SafeStr, StatusOk
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -47,7 +46,7 @@ class SetFlagsBody(BaseModel):
 
 @router.get("", response_model=list[FlagOut])
 def get_feature_flags(
-    _user: dict[str, Any] = Depends(require_any_auth),
+    _user: Principal = Depends(require_any_auth),
 ) -> list[FlagOut]:
     """Lista TODOS los flags del backend (incl. los que no estaban en ningún hardcode).
 
@@ -77,7 +76,7 @@ def get_feature_flags(
 @router.put("")
 def set_feature_flags(
     body: SetFlagsBody,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> StatusOk:
     """Persiste enabled/rollout de los flags (solo admin), auditando cada cambio.
 

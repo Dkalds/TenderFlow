@@ -8,7 +8,6 @@ resto de la API (``UserInfo``, ``SESSION_COOKIE``, ``get_current_session_user``,
 from __future__ import annotations
 
 import hashlib
-from typing import Any
 
 from fastapi import Cookie, Depends, Header, HTTPException, Request, Response, status
 from pydantic import BaseModel
@@ -18,7 +17,7 @@ from config import settings
 from db.sessions import create_session, session_max_age_seconds, validate_session_principal
 from observability.logging import get_logger
 from shared.csrf import csrf_token_valido, generate_csrf_token
-from shared.identity import user_key_from_email
+from shared.identity import Principal, user_key_from_email
 
 # El nombre de antes de partir el módulo: `logger` sale en cada línea de log.
 log = get_logger("api.routes.auth")
@@ -215,7 +214,7 @@ def _clear_session_cookies(response: Response) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _session_principal(session: str | None) -> dict[str, Any]:
+def _session_principal(session: str | None) -> Principal:
     """Resuelve el principal de la cookie de sesión, sin gate de MFA.
 
     Síncrona a propósito: va a BD (``validate_session_principal``: una lectura
@@ -256,7 +255,7 @@ def _session_principal(session: str | None) -> dict[str, Any]:
     }
 
 
-def _reject_pending_mfa(user: dict[str, Any]) -> None:
+def _reject_pending_mfa(user: Principal) -> None:
     """Corta una sesión cuyo segundo factor todavía no se verificó."""
     if user.get("mfa_required") and not user.get("mfa_verified_at"):
         raise HTTPException(
@@ -267,7 +266,7 @@ def _reject_pending_mfa(user: dict[str, Any]) -> None:
 
 async def get_current_session_user(
     session: str | None = Cookie(default=None, alias=_SESSION_COOKIE),
-) -> dict[str, Any]:
+) -> Principal:
     """Dependency that reads the session cookie and returns user info.
 
     El gate de MFA vive aquí y no en cada ruta: cuando solo lo aplicaba
@@ -284,7 +283,7 @@ async def get_current_session_user(
 
 async def get_session_user_pending_mfa(
     session: str | None = Cookie(default=None, alias=_SESSION_COOKIE),
-) -> dict[str, Any]:
+) -> Principal:
     """Variante sin gate, solo para el propio flujo de segundo factor.
 
     La usan ``POST /auth/totp/verify`` (donde se verifica el factor),
@@ -304,7 +303,7 @@ async def get_session_user_pending_mfa(
 # ---------------------------------------------------------------------------
 
 
-def _reject_bad_csrf(user: dict[str, Any], x_csrf_token: str | None) -> None:
+def _reject_bad_csrf(user: Principal, x_csrf_token: str | None) -> None:
     """Valida el double-submit token contra la sesión que lo emitió.
 
     ``max_age`` es la vida de la sesión y no el default de una hora de
@@ -321,18 +320,18 @@ def _reject_bad_csrf(user: dict[str, Any], x_csrf_token: str | None) -> None:
 
 
 async def require_csrf(
-    user: dict[str, Any] = Depends(get_current_session_user),
+    user: Principal = Depends(get_current_session_user),
     x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
-) -> dict[str, Any]:
+) -> Principal:
     """Validates that X-CSRF-Token header matches the value stored in the session."""
     _reject_bad_csrf(user, x_csrf_token)
     return user
 
 
 async def require_csrf_pending_mfa(
-    user: dict[str, Any] = Depends(get_session_user_pending_mfa),
+    user: Principal = Depends(get_session_user_pending_mfa),
     x_csrf_token: str | None = Header(default=None, alias="X-CSRF-Token"),
-) -> dict[str, Any]:
+) -> Principal:
     """Igual que :func:`require_csrf` pero admite sesiones pendientes de MFA.
 
     ``/auth/logout`` y ``/auth/totp/verify`` son mutaciones y siguen exigiendo

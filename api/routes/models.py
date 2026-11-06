@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from api.routes.dual_auth import require_admin, require_any_auth
 from db.model_registry import activate_version, get_active, list_versions
+from shared.identity import Principal
 
 router = APIRouter(prefix="/models", tags=["models"])
 
@@ -38,7 +39,7 @@ class ModelActivated(BaseModel):
 @router.get("/{name}", summary="Versión activa de un modelo")
 def get_active_model(
     name: str,
-    _ctx: Any = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> ModelVersionOut:
     """Devuelve los metadatos de la versión activa del modelo ``name``."""
     active = get_active(name)
@@ -51,7 +52,7 @@ def get_active_model(
 def list_model_versions(
     name: str,
     limit: int = Query(50, ge=1, le=500),
-    _ctx: Any = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> list[ModelVersionOut]:
     """Histórico de versiones para auditoría y A/B testing."""
     # Devolvía `list[dict[str, Any]]` -> `unknown[]` en el cliente TS. Las filas
@@ -67,7 +68,7 @@ def list_model_versions(
 def activate_model_version(
     name: str,
     version: int,
-    _ctx: Any = Depends(require_admin),
+    _ctx: Principal = Depends(require_admin),
 ) -> ModelActivated:
     """Activa la ``version`` indicada. Requiere ser administrador.
 

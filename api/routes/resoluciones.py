@@ -7,14 +7,13 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from services.resoluciones import SENTIDOS_VALIDOS, resoluciones
+from shared.identity import Principal
 
 router = APIRouter(tags=["resoluciones"])
 
@@ -51,7 +50,7 @@ async def get_resoluciones(
         None, description="Solo resoluciones vinculadas a esta licitación"
     ),
     limit: int = Query(100, ge=1, le=500),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> ResolucionesResult:
     if sentido and sentido not in SENTIDOS_VALIDOS:
         raise HTTPException(

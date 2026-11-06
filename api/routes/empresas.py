@@ -7,8 +7,6 @@ matches fuzzy (listar + resolver).
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
@@ -24,6 +22,7 @@ from db.repositories.empresas import (
 )
 from observability.logging import get_logger
 from shared.audit_events import EMPRESA_REVIEW_RESOLVED
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -128,7 +127,7 @@ class EmpresaDetail(BaseModel):
     participa_en_utes: list[EmpresaRef]
 
 
-def _require_review_admin(ctx: dict[str, Any] = Depends(require_any_auth)) -> dict[str, Any]:
+def _require_review_admin(ctx: Principal = Depends(require_any_auth)) -> Principal:
     """Human entity-resolution reviews mutate global canonical data."""
     if not ctx.get("is_admin"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required.")
@@ -144,7 +143,7 @@ async def list_empresas(
     page: PageParams = Depends(pagina(50)),
     sort: EmpresasOrderBy = Query("importe", description="Columna por la que ordenar"),
     order: EmpresasOrderDir = Query("desc", description="Sentido del orden"),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> EmpresasListResult:
     """Página del maestro, ordenada por la columna pedida, con el total del filtro.
 
@@ -165,7 +164,7 @@ async def list_empresas(
 
 
 @router.get("/stats", summary="Cobertura del maestro de empresas")
-async def empresas_stats(_ctx: dict[str, Any] = Depends(require_any_auth)) -> EmpresasStats:
+async def empresas_stats(_ctx: Principal = Depends(require_any_auth)) -> EmpresasStats:
     """% de adjudicaciones (filas e importe) resueltas a empresa canónica."""
     return EmpresasStats(**await run_db(resolution_stats))
 
@@ -173,7 +172,7 @@ async def empresas_stats(_ctx: dict[str, Any] = Depends(require_any_auth)) -> Em
 @router.get("/reviews", summary="Cola de revisión de matches fuzzy")
 async def pending_reviews(
     limit: int = Query(100, ge=1, le=500),
-    _ctx: dict[str, Any] = Depends(_require_review_admin),
+    _ctx: Principal = Depends(_require_review_admin),
 ) -> EmpresaReviewsResult:
     items = await run_db(list_pending_reviews, limit)
     return EmpresaReviewsResult(items=[EmpresaReviewItem(**item) for item in items])
@@ -194,7 +193,7 @@ class ReviewDecision(BaseModel):
 async def resolve_review(
     review_id: int,
     body: ReviewDecision,
-    ctx: dict[str, Any] = Depends(_require_review_admin),
+    ctx: Principal = Depends(_require_review_admin),
 ) -> ReviewResolved:
     """Acepta o rechaza un match dudoso y vincula sus adjudicaciones pendientes."""
     resolved_by = str(ctx.get("email") or ctx.get("key_hash") or "api")[:64]
@@ -221,7 +220,7 @@ async def resolve_review(
 )
 async def get_empresa(
     empresa_id: int,
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> EmpresaDetail:
     """Empresa con sus aliases, miembros de UTE y UTEs en las que participa."""
     empresa = await run_db(_repo.get_empresa, empresa_id)

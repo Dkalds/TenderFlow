@@ -19,7 +19,7 @@ from observability.logging import get_logger
 from services.ml.senal_clasificador import EstadoSenal, estado_senal_sap
 from shared.audit_events import FEEDBACK_SUBMITTED
 from shared.dto import SenalClasificadorDTO
-from shared.identity import actor_del_principal
+from shared.identity import Principal, actor_del_principal
 
 log = get_logger(__name__)
 
@@ -346,7 +346,7 @@ class FeedbackResponse(BaseModel):
 async def submit_feedback(
     body: FeedbackRequest,
     response: Response,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> FeedbackResponse:
     """Registra el feedback de relevancia de una licitación.
@@ -437,7 +437,7 @@ async def submit_feedback(
     responses={401: {"description": "API key inválida"}},
 )
 async def feedback_stats(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> FeedbackStats:
     """Devuelve estadísticas agregadas del feedback recogido."""
     return FeedbackStats(**await run_db(_repo.stats))
@@ -449,7 +449,7 @@ async def feedback_stats(
     responses={401: {"description": "API key inválida"}},
 )
 async def feedback_model_info(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> ModelInfoResult:
     """Versión del modelo activo, etiquetas desde el último reentreno y tendencia
     de métricas — para que el etiquetado muestre su impacto, no se sienta gratis.
@@ -471,7 +471,7 @@ async def feedback_model_info(
     responses={401: {"description": "API key inválida"}},
 )
 async def feedback_taxonomia(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> TaxonomiaResult:
     """Todas las etiquetas que acepta ``POST /feedback`` en ``tecnologia`` y
     ``tecnologias_secundarias``, con su nombre legible y su nivel: ``categoria``
@@ -499,7 +499,7 @@ async def feedback_taxonomia(
 async def feedback_queue(
     strategy: str = Query("uncertainty", description="desacuerdo | uncertainty | random"),
     limit: int = Query(20, ge=1, le=200),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> FeedbackQueueResult:
     """Devuelve licitaciones priorizadas para etiquetado.
 
@@ -712,7 +712,7 @@ class AsistentePeorPregunta(BaseModel):
 async def submit_asistente_feedback(
     body: AsistenteFeedbackRequest,
     response: Response,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> AsistenteFeedbackResponse:
     """Persiste el voto del chat, que hasta C5.4 moría como evento de telemetría.
 
@@ -747,7 +747,7 @@ async def submit_asistente_feedback(
 )
 async def asistente_feedback_resumen(
     dias: int = Query(30, ge=1, le=365),
-    _ctx: dict[str, Any] = Depends(require_admin),
+    _ctx: Principal = Depends(require_admin),
 ) -> AsistenteFeedbackResumen:
     """Panel de `/ops` → Active learning. Publica ratio **y** población."""
     from db.repositories.asistente_feedback import resumen
@@ -763,7 +763,7 @@ async def asistente_feedback_resumen(
 async def asistente_feedback_peores(
     limit: int = Query(20, ge=1, le=200),
     dias: int = Query(30, ge=1, le=365),
-    _ctx: dict[str, Any] = Depends(require_admin),
+    _ctx: Principal = Depends(require_admin),
 ) -> list[AsistentePeorPregunta]:
     """Agrupadas por hash: una respuesta mala y la misma doscientas veces no
     pueden leerse igual."""

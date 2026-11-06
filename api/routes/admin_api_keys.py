@@ -29,6 +29,7 @@ from db.audit import log_event
 from db.repositories.api_keys import ApiKeyRepository
 from observability.logging import get_logger
 from shared.audit_events import API_KEY_REVOKED
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -118,7 +119,7 @@ _repo = ApiKeyRepository()
 )
 async def listar_claves(
     limit: int = Query(500, ge=1, le=1000),
-    _admin: dict[str, Any] = Depends(require_admin),
+    _admin: Principal = Depends(require_admin),
 ) -> AdminApiKeysOut:
     """Todas las claves, de cualquier dueño o de ninguno, y su recuento.
 
@@ -167,7 +168,7 @@ async def listar_claves(
 )
 async def revocar_clave(
     key_id: int,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> AdminApiKeyRevocadaOut:
     """Apaga la clave al momento. Revocar una ya revocada responde 200."""
     revocada = await run_db(_repo.revoke_by_id, key_id)

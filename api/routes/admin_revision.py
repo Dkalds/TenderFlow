@@ -41,6 +41,7 @@ from services.organos import decidir_revision
 from services.verdad_dominio import EstadoSeccion, evaluar, medir_bd, resumir
 from shared.audit_events import DEDUPE_REVIEW_RESOLVED, ORGANO_REVIEW_RESOLVED
 from shared.cache import cache_response, get_cache
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -168,7 +169,7 @@ def _num(valor: Any) -> float | None:
     return None if valor is None else float(valor)
 
 
-def _actor(admin: dict[str, Any]) -> str:
+def _actor(admin: Principal) -> str:
     """Quién decide, como id de usuario (ADR-030 §D). Una API key sin dueño: ``api``."""
     return str(admin.get("user_id") or "api")
 
@@ -200,7 +201,7 @@ def _invalidar_calidad() -> None:
 )
 async def listar_duplicados(
     limit: int = Query(50, ge=1, le=500),
-    _admin: dict[str, Any] = Depends(require_admin),
+    _admin: Principal = Depends(require_admin),
 ) -> DuplicadosPendientes:
     def _trabajo() -> DuplicadosPendientes:
         return DuplicadosPendientes(
@@ -248,7 +249,7 @@ async def resolver_duplicado(
     id_externo: str = Path(
         min_length=1, max_length=512, description="La fila marcada como duplicada."
     ),
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> DuplicadoResuelto:
     # `{id_externo:path}`, como el resto de rutas que direccionan un expediente
     # (`tests/test_licitaciones_identificador.py`): un id de PLACSP lleva barras.
@@ -290,7 +291,7 @@ async def resolver_duplicado(
 )
 async def listar_organos(
     limit: int = Query(50, ge=1, le=500),
-    _admin: dict[str, Any] = Depends(require_admin),
+    _admin: Principal = Depends(require_admin),
 ) -> OrganosPendientes:
     def _trabajo() -> OrganosPendientes:
         return OrganosPendientes(
@@ -326,7 +327,7 @@ async def listar_organos(
 async def resolver_organo(
     body: RevisionDecision,
     revision_id: int = Path(ge=1),
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> OrganoResuelto:
     actor = _actor(admin)
     decision = await run_db(decidir_revision, revision_id, aceptar=body.aceptar, resolved_by=actor)
@@ -398,7 +399,7 @@ def medir_verdad() -> VerdadDominio:
     summary="Auditoría de verdad del dato contra sus umbrales calibrados",
 )
 @cache_response(ttl=VERDAD_CACHE_TTL_S, namespace="admin", user_scoped=False)
-def verdad_dominio(_admin: dict[str, Any] = Depends(require_admin)) -> VerdadDominio:
+def verdad_dominio(_admin: Principal = Depends(require_admin)) -> VerdadDominio:
     """Las secciones de BD de ``scripts/audit_domain_truth.py``, cacheadas una hora.
 
     La (b), multi-lote, no está: lee ZIP en disco que el servidor de la API no

@@ -40,7 +40,7 @@ from api.auth import validate_api_key_credential
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from api.scopes import has_scope
-from api.tenancy import require_organization, resolve_organization_ctx
+from api.tenancy import require_organization, resolve_organization_ctx, resolver_organizacion
 from config.settings import jobs_export_umbral_filas
 from db.audit import log_event
 from db.repositories.watchlist import WatchlistRepository
@@ -52,6 +52,7 @@ from observability.logging import get_logger
 from services.exports import build_pdf_export
 from shared.audit_events import EXPORT_CALENDAR_LINK_CREATED, EXPORT_DOWNLOADED
 from shared.dto import CalendarioEnlace, JobEstadoDTO
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -173,7 +174,7 @@ async def download_export(
             "decirlo. Solo aplica a `csv` y `excel`."
         ),
     ),
-    _user: dict[str, Any] = Depends(require_any_auth),
+    _user: Principal = Depends(require_any_auth),
 ) -> Response:
     """Descarga (CSV, Excel o PDF) con los filtros actuales.
 
@@ -278,7 +279,7 @@ async def download_export(
     return _adjunto(content, media_type, filename)
 
 
-async def _encolar_export_pdf(payload: dict[str, Any], ctx: dict[str, Any]) -> JSONResponse:
+async def _encolar_export_pdf(payload: dict[str, Any], ctx: Principal) -> JSONResponse:
     """Encola el maquetado y responde 202 con el estado del trabajo."""
     from api.routes.jobs import a_dto
     from services.jobs import TIPO_EXPORT_PDF, CuotaDeJobsExcedida, enqueue, obtener
@@ -327,7 +328,7 @@ async def _encolar_export_pdf(payload: dict[str, Any], ctx: dict[str, Any]) -> J
 )
 async def descargar_export_encolado(
     job_id: int = Path(ge=1, description="Identificador que devolvió el 202 de /download"),
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: Principal = Depends(require_organization()),
 ) -> Response:
     """Sirve el PDF que dejó maquetado el worker, mientras siga en caché.
 
@@ -392,7 +393,7 @@ async def _download_pursuits(
     status_filtro: str | None,
     responsible_user_id: int | None,
     limit: int,
-    user: dict[str, Any],
+    user: Principal,
 ) -> Response:
     """Export del tablero de oportunidades (C6.7).
 
@@ -467,7 +468,7 @@ async def download_crm(
     ),
     responsible_user_id: int | None = Query(None, ge=1, description="Filtro de responsable"),
     limit: int = Query(10000, ge=1, le=50000),
-    user: dict[str, Any] = Depends(require_any_auth),
+    user: Principal = Depends(require_any_auth),
 ) -> Response:
     """F6.3 — el tablero de oportunidades en el vocabulario de un CRM.
 
@@ -695,7 +696,7 @@ def _eventos_calendario(user_key: str, user_id: int, organization_id: int) -> li
     return events
 
 
-async def _organizacion_del_calendario(ctx: dict[str, Any]) -> int:
+async def _organizacion_del_calendario(user_id: int) -> int:
     """Organización con la que se leen los favoritos del calendario.
 
     Siempre la **personal** del usuario, y por una razón concreta: el enlace de
@@ -706,8 +707,8 @@ async def _organizacion_del_calendario(ctx: dict[str, Any]) -> int:
     corresponde con su calendario. Los pursuits, que son el grueso del ICS, no
     dependen de esto: se leen por ``user_id``.
     """
-    resuelto = await resolve_organization_ctx(ctx, None)
-    return int(resuelto["organization_id"])
+    organization_id, _rol = await resolver_organizacion(user_id, None)
+    return organization_id
 
 
 @router.get(
@@ -717,7 +718,7 @@ async def _organizacion_del_calendario(ctx: dict[str, Any]) -> int:
 )
 async def calendario_enlace(
     response: Response,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> CalendarioEnlace:
     """Ruta firmada para suscribirse desde Google/Apple/Outlook, y cuántos
     eventos devolvería hoy. El cliente antepone su propio origen: el mismo
@@ -729,7 +730,7 @@ async def calendario_enlace(
 
     user_id = int(ctx["user_id"])
     user_key = str(ctx.get("user_key") or "")
-    organization_id = await _organizacion_del_calendario(ctx)
+    organization_id = await _organizacion_del_calendario(ctx["user_id"])
     eventos = await run_db(_eventos_calendario, user_key, user_id, organization_id)
     query = urlencode({"u": user_id, "t": _firma_calendario(user_id)})
     # Emitir el enlace firmado es dar acceso sin sesión al calendario: se
@@ -806,9 +807,7 @@ async def calendario_ics(
         )
     user_key = user_key_from_email(owner.get("email"), int(owner["id"]))
 
-    organization_id = await _organizacion_del_calendario(
-        {"user_id": int(owner["id"]), "user_key": user_key}
-    )
+    organization_id = await _organizacion_del_calendario(int(owner["id"]))
     events = await run_db(_eventos_calendario, user_key, int(owner["id"]), organization_id)
 
     ics_content = _generate_ics(events, cal_name="TenderFlow - Compromisos")

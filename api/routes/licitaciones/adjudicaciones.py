@@ -7,8 +7,6 @@ nivel y por eso tiene su propio módulo en vez de esconderse en el listado.
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import (
     APIRouter,
     Depends,
@@ -27,6 +25,7 @@ from observability.logging import get_logger
 from shared.dto import (
     Pagina,
 )
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -64,7 +63,7 @@ async def list_adjudicaciones(
     fecha_hasta: str | None = Query(None, description="Fecha adjudicación hasta"),
     with_total: bool = Query(True, description="Incluir total"),
     page: PageParams = Depends(pagina(50)),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> Pagina[AdjudicacionSummary]:
     """Devuelve lista paginada de adjudicaciones."""
     _validate_date(fecha_desde, "fecha_desde")

@@ -120,40 +120,40 @@ def test_tenancy_dependency_resolves_unconditionally() -> None:
     ``require_organization``, body en ``resolve_organization_ctx``).
 
     Verificación estructural mínima -- no un intérprete de flujo de control
-    completo: confirma que la ÚNICA llamada a resolve_organization en el
-    módulo vive directamente en el cuerpo de ``resolve_organization_ctx``
-    (no anidada dentro de un ``ast.If``), que es de donde beben ambas rutas
-    de uso.
+    completo: confirma que la llamada a resolve_organization vive
+    directamente en el cuerpo de ``resolver_organizacion`` y que
+    ``resolve_organization_ctx`` --de donde beben ambas rutas de uso-- llama
+    a ésta, las dos sin anidarse dentro de un ``ast.If``.
     """
     tenancy_path = _REPO_ROOT / "api" / "tenancy.py"
     tree = ast.parse(tenancy_path.read_text(encoding="utf-8"), filename=str(tenancy_path))
+    funciones = {
+        node.name: node for node in ast.walk(tree) if isinstance(node, ast.AsyncFunctionDef)
+    }
 
-    target_fn: ast.AsyncFunctionDef | None = None
-    for node in ast.walk(tree):
-        if isinstance(node, ast.AsyncFunctionDef) and node.name == "resolve_organization_ctx":
-            target_fn = node
-            break
-    assert target_fn is not None, "resolve_organization_ctx no encontrada en api/tenancy.py"
-
-    def _references_resolve_organization(node: ast.AST) -> bool:
+    def _contains_reference_outside_if(node: ast.AST, name: str) -> bool:
         # ``resolve_organization`` se invoca vía ``run_db(resolve_organization,
         # ...)`` -- pasada por referencia como argumento, no como
         # ``resolve_organization(...)`` directo -- así que basta con
         # localizar el ``Name`` en cualquier posición, no solo como función
         # de un ``Call``.
-        return isinstance(node, ast.Name) and node.id == _BANNED_NAME
-
-    def _contains_reference_outside_if(node: ast.AST) -> bool:
         for child in ast.iter_child_nodes(node):
             if isinstance(child, ast.If):
                 continue
-            if _references_resolve_organization(child) or _contains_reference_outside_if(child):
+            if (isinstance(child, ast.Name) and child.id == name) or (
+                _contains_reference_outside_if(child, name)
+            ):
                 return True
         return False
 
-    assert _contains_reference_outside_if(target_fn), (
-        "resolve_organization_ctx ya no llama a resolve_organization fuera de "
-        "un `if` -- si la resolución volvió a hacerse condicional, una "
-        "petición sin organization_id explícito puede volver a saltarse la "
-        "frontera de organización."
-    )
+    for funcion, llamada in (
+        ("resolver_organizacion", _BANNED_NAME),
+        ("resolve_organization_ctx", "resolver_organizacion"),
+    ):
+        assert funcion in funciones, f"{funcion} no encontrada en api/tenancy.py"
+        assert _contains_reference_outside_if(funciones[funcion], llamada), (
+            f"{funcion} ya no llama a {llamada} fuera de un `if` -- si la "
+            "resolución volvió a hacerse condicional, una petición sin "
+            "organization_id explícito puede volver a saltarse la frontera "
+            "de organización."
+        )

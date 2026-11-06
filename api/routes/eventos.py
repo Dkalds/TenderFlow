@@ -27,6 +27,7 @@ from services.contract_events import (
     eventos_recientes,
     timeline,
 )
+from shared.identity import Principal
 
 router = APIRouter(tags=["eventos"])
 
@@ -67,7 +68,7 @@ class TimelineResult(BaseModel):
     responses={404: {"description": "Licitación no encontrada"}},
 )
 async def get_timeline(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
     licitacion_id: str = Depends(resolver_licitacion_id),
 ) -> TimelineResult:
     """Hitos del ciclo de vida: publicación → adjudicación → formalización →
@@ -122,7 +123,7 @@ async def get_eventos(
     q: str | None = Query(
         None, max_length=200, description="Búsqueda en título, órgano o expediente"
     ),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> EventosFeedResult:
     """Movimientos de contrato recientes, acotados por el ámbito global.
 

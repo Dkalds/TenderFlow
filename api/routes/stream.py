@@ -70,6 +70,7 @@ from api.errors import deprecate_route, sunset_anunciado
 from api.routes.dual_auth import require_any_auth
 from db.repositories.licitaciones import RecienteRow
 from observability.logging import get_logger
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -435,7 +436,7 @@ async def _event_generator(
 )
 async def licitaciones_stream(
     request: Request,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> StreamingResponse:
     """Endpoint SSE para notificaciones push de nuevas licitaciones."""
     cupo = _tomar_cupo(str(ctx.get("user_id")))

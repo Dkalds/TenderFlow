@@ -7,8 +7,6 @@ siempre viene de un documento—.
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import (
     APIRouter,
     Depends,
@@ -29,6 +27,7 @@ from services.reportes_dato import COLA_POR_TIPO, TipoReporte, registrar_reporte
 from shared.dto import (
     SafeStr,
 )
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -72,7 +71,7 @@ class DocumentosResult(BaseModel):
     responses={401: {"description": "API key inválida"}},
 )
 async def get_documentos(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
 ) -> DocumentosResult:
     """Metadatos de los adjuntos (pliegos) parseados del CODICE/UBL para esta
@@ -122,7 +121,7 @@ class ReporteDatoResult(BaseModel):
 )
 async def post_reporte_dato(
     body: ReporteDatoBody,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
 ) -> ReporteDatoResult:
     """F6.2 — «este dato está mal», desde la ficha.
@@ -164,7 +163,7 @@ async def get_pagina_documento(
         default=None, ge=0, description="Offset absoluto de inicio de la cita"
     ),
     fin: int | None = Query(default=None, ge=0, description="Offset absoluto de fin de la cita"),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> PaginaDocumento:
     """F2.5 — el texto de una página del pliego o del acta de la mesa, y dónde cae la cita.
 

@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from api.concurrency import run_db
 from api.routes.dual_auth import require_admin
 from db.repositories.jobs import JobsRepository
+from shared.identity import Principal
 
 router = APIRouter(prefix="/admin/ejecuciones", tags=["admin"])
 
@@ -181,7 +182,7 @@ def componer_resumen(
 )
 async def resumen_ejecuciones(
     dias: int = Query(7, ge=1, le=30, description="Ventana del recuento de fallos, en días"),
-    _admin: dict[str, Any] = Depends(require_admin),
+    _admin: Principal = Depends(require_admin),
 ) -> EjecucionesResumen:
     # Import diferido, como el resto de usos de `scheduler` desde la API: el
     # módulo declara el cierre entero y no hace falta al arrancar.

@@ -34,6 +34,7 @@ from observability.logging import get_logger
 from services.ml.senal_clasificador import estado_senal_sap
 from services.simulador_precio import SimulacionPrecio, simular_precio_de
 from shared.dto import SenalClasificadorDTO
+from shared.identity import Principal
 from shared.tender_facts import EvidenceRef
 
 log = get_logger(__name__)
@@ -91,7 +92,7 @@ class ExplainResult(BaseModel):
 )
 async def explain_licitacion(
     top_k: int = Query(5, ge=1, le=20),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
 ) -> ExplainResult:
     """Devuelve los top-K términos que más influyen en la clasificación."""
@@ -169,7 +170,7 @@ async def get_simulador_precio(
         le=1,
         description="Baja del rival contra el que medirse (p. ej. el p90 de la predicción)",
     ),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
 ) -> SimulacionPrecio:
     """F2.2 — el simulador de puntuación de la oferta.
@@ -211,7 +212,7 @@ class TechScoresResult(BaseModel):
     },
 )
 async def get_tech_scores(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
 ) -> TechScoresResult:
     """Devuelve los scores por tecnología desde ``licitacion_tecnologia_score``.
@@ -267,7 +268,7 @@ class TecnologiasSenalResult(BaseModel):
     },
 )
 async def get_tecnologias(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
 ) -> TecnologiasSenalResult:
     """Une por nombre de tecnología las tres fuentes de la categorización:

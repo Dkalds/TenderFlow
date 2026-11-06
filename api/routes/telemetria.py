@@ -24,6 +24,7 @@ from observability.runtime_metrics import (
 )
 from shared.dto import EventoProductoIn
 from shared.eventos_producto import PROPIEDADES, dimensiones
+from shared.identity import Principal
 
 router = APIRouter(tags=["telemetria"])
 
@@ -36,7 +37,7 @@ router = APIRouter(tags=["telemetria"])
 )
 async def post_evento_producto(
     body: EventoProductoIn,
-    _ctx: object = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> Response:
     if body.evento not in PROPIEDADES:
         raise HTTPException(

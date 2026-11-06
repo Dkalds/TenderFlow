@@ -55,6 +55,7 @@ from shared.dto import (
     OrganizationNifsIn,
     OrganizationNifsOut,
 )
+from shared.identity import Principal
 
 router = APIRouter(tags=["pursuits"])
 
@@ -70,7 +71,7 @@ _ROLES_GESTORES = frozenset({"owner", "admin"})
 
 
 async def _organizacion_gestionada(
-    ctx: dict[str, Any], organization_id: int | None, *, write: bool
+    ctx: Principal, organization_id: int | None, *, write: bool
 ) -> int:
     """Organización resuelta por ``api/tenancy.py``, exigiendo owner o admin.
 
@@ -216,7 +217,7 @@ def _escribir_nifs(
 )
 async def get_organization_nifs(
     organization_id: int,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> OrganizationNifsOut:
     """Identidad fiscal declarada, con su enlace al maestro de empresas."""
     resolved_id = await _organizacion_gestionada(ctx, organization_id, write=False)
@@ -231,7 +232,7 @@ async def get_organization_nifs(
 async def put_organization_nifs(
     organization_id: int,
     body: OrganizationNifsIn,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> OrganizationNifsOut:
     """Reemplaza el conjunto completo de NIFs: manda la lista entera, no un alta."""
     resolved_id = await _organizacion_gestionada(ctx, organization_id, write=True)
@@ -281,7 +282,7 @@ def _escribir_capacidad(
 )
 async def get_organization_capabilities(
     organization_id: int,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> OrganizationCapabilitiesOut:
     """Certificaciones, facturación, referencias y perfiles de equipo declarados.
 
@@ -304,7 +305,7 @@ async def get_organization_capabilities(
 async def put_organization_capabilities(
     organization_id: int,
     body: OrganizationCapabilities,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> OrganizationCapabilitiesOut:
     """Reemplaza el perfil completo. Es dato corporativo, no personal."""
     resolved_id = await _organizacion_gestionada(ctx, organization_id, write=True)
@@ -336,7 +337,7 @@ async def put_organization_capabilities(
 async def get_pursuit_checklist(
     pursuit_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> GoNoGoChecklist:
     """Veredicto por requisito: ``cumple``, ``no_cumple`` o ``desconocido``.
 

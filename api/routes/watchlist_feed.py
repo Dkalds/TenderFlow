@@ -40,7 +40,7 @@ from fastapi.security import APIKeyHeader
 
 from api.auth import AuthContext, validate_api_key_credential
 from api.concurrency import run_db
-from api.tenancy import resolve_organization_ctx
+from api.tenancy import resolver_organizacion
 from db.users import get_user_by_id
 from observability.logging import get_logger
 from services.watchlist import generate_atom_feed
@@ -139,9 +139,9 @@ async def watchlist_feed(
         raise _UNAUTHORIZED
     # La organización la resuelve `api/tenancy.py`, como en el resto de rutas:
     # sin membresía, 403; sin parámetro, la personal del titular.
-    ambito = await resolve_organization_ctx({"user_id": ctx.user_id}, organization_id)
+    ambito, _rol = await resolver_organizacion(ctx.user_id, organization_id)
     try:
-        xml = await run_db(_feed_del_titular, ctx.user_id, int(ambito["organization_id"]), limit)
+        xml = await run_db(_feed_del_titular, ctx.user_id, ambito, limit)
     except HTTPException:
         raise
     except Exception as exc:
