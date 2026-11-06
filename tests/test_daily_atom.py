@@ -236,6 +236,11 @@ def test_los_conectores_son_los_del_workflow() -> None:
     assert [(c.nombre, c.modulo, c.presupuesto_s) for c in CONECTORES] == _steps_de_conectores()
 
 
+def test_ted_corre_despues_de_las_plataformas_del_comprador() -> None:
+    """Solo la pasada de TED empareja TED↔PLACSP/PSCP: la gemela tiene que estar ya en BD."""
+    assert CONECTORES[-1].nombre == "ted"
+
+
 @pytest.mark.parametrize("conector", CONECTORES, ids=lambda c: c.nombre)
 def test_cada_conector_expone_ejecutar_sin_argumentos_obligatorios(conector: Conector) -> None:
     ejecutar = importlib.import_module(conector.modulo).ejecutar
