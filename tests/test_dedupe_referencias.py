@@ -33,7 +33,6 @@ from services.dedupe import (
     _organo_emparejable,
     id_evl_de_url,
 )
-from shared.identidad_placsp import expediente_comparable
 
 _DEEPLINK = "https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&idEvl="
 
@@ -78,8 +77,8 @@ def _indices(
     for c in candidatas:
         if (evl := id_evl_de_url(c.get("url"))) is not None:
             por_evl.setdefault(evl, []).append(c)
-        clave = expediente_comparable(sd.natural_expediente(c["id_externo"]))
-        por_expediente.setdefault(clave, []).append(c)
+        for clave in sd._claves_de_candidata(c):
+            por_expediente.setdefault(clave, []).append(c)
     return por_evl, por_expediente
 
 
@@ -199,6 +198,30 @@ def test_el_tramo_del_organo_no_empareja_otro_expediente() -> None:
     ted = _ted(organo_contratacion="Servicio Madrileño de Salud - Hospital Universitario La Paz")
 
     assert _elegir(ted, ref, [agregada]) is None
+
+
+def test_bt22_casa_con_la_agregada_sin_su_codigo_de_entidad() -> None:
+    """Madrid publica ``8379_0005-…`` en la sindicación 1044 y el DOUE ``0005-…`` (2026-11-06)."""
+    ref = ReferenciaCruzada(expediente="0005-CP01-2026-000095")
+    agregada = _placsp(
+        "placsp_agregadas:S7138185I:8379_0005-CP01-2026-000095",
+        fuente="placsp_agregadas",
+        url=None,
+        organo_contratacion="el Director General de Telecomunicaciones y Digitalización",
+    )
+    ted = _ted(organo_contratacion="Dirección General de Telecomunicaciones y Digitalización")
+
+    assert _elegir(ted, ref, [agregada]) == (
+        agregada["id_externo"],
+        "expediente:0005-CP01-2026-000095",
+    )
+
+
+def test_el_codigo_de_entidad_solo_se_quita_en_las_agregadas() -> None:
+    """En el feed principal ``26_07`` es el expediente entero, no ``26_`` + ``07``."""
+    placsp = _placsp("placsp:1234:26_07", url=None)
+
+    assert _elegir(_ted(), ReferenciaCruzada(expediente="07"), [placsp]) is None
 
 
 def test_el_detector_busca_las_candidatas_por_el_expediente_comparable() -> None:
@@ -609,6 +632,31 @@ def test_integration_el_expediente_con_otros_espacios_empareja_con_la_agregada(d
             "placsp_agregadas:A13013768:P.A. 23/2026",
             "confirmed",
         )
+
+
+def test_integration_el_prefiltro_trae_la_agregada_sin_su_codigo_de_entidad(db) -> None:
+    """El SQL tiene que dejar pasar ``8379_0005-…`` para un BT-22 ``0005-…``."""
+    from db.database import connect, connect_read
+    from services.dedupe import detect_duplicados_por_referencia
+
+    agregada = _placsp(
+        "placsp_agregadas:S7138185I:8379_0005-CP01-2026-000095",
+        fuente="placsp_agregadas",
+        url=None,
+        organo_contratacion="el Director General de Telecomunicaciones y Digitalización",
+    )
+    ted = _ted(organo_contratacion="Dirección General de Telecomunicaciones y Digitalización")
+    with connect() as c:
+        _insertar(c, agregada)
+        _insertar(c, ted)
+
+    detect_duplicados_por_referencia(
+        fuente="ted",
+        referencias={ted["id_externo"]: ReferenciaCruzada(expediente="0005-CP01-2026-000095")},
+    )
+
+    with connect_read() as c:
+        assert _marca(c, ted["id_externo"]) == (agregada["id_externo"], "confirmed")
 
 
 def test_integration_no_se_esconde_ted_tras_una_gemela_que_no_se_publica(db) -> None:

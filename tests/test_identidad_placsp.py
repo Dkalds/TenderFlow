@@ -29,6 +29,8 @@ from shared.identidad_placsp import (
     expediente_comparable_sql,
     expediente_natural,
     expediente_natural_sql,
+    expediente_sin_codigo_entidad,
+    expediente_sin_codigo_entidad_sql,
 )
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "placsp"
@@ -351,6 +353,23 @@ def test_integration_los_gemelos_del_expediente_comparable_coinciden(tmp_db: Any
     with connect() as c:
         filas = c.execute(sql, (valores,)).fetchall()
     assert [f[0] for f in filas] == [expediente_comparable(v) for v in valores]
+
+
+def test_el_codigo_de_entidad_se_quita_solo_del_principio() -> None:
+    assert expediente_sin_codigo_entidad("8379_0005-CP01-2026-000095") == "0005-CP01-2026-000095"
+    assert expediente_sin_codigo_entidad("2003_MA26_0004") == "MA26_0004"
+    assert expediente_sin_codigo_entidad("EXP_2026_1") == "EXP_2026_1"
+    assert expediente_sin_codigo_entidad("2026/0443") == "2026/0443"
+
+
+def test_integration_los_gemelos_del_codigo_de_entidad_coinciden(tmp_db: Any) -> None:
+    from db.database import connect
+
+    valores = ["8379_0005-CP01-2026-000095", "2003_MA26_0004", "EXP_2026_1", "2026/0443", "_1"]
+    sql = f"SELECT {expediente_sin_codigo_entidad_sql('v')} FROM unnest(%s::text[]) AS t(v)"  # noqa: S608
+    with connect() as c:
+        filas = c.execute(sql, (valores,)).fetchall()
+    assert [f[0] for f in filas] == [expediente_sin_codigo_entidad(v) for v in valores]
 
 
 def test_integration_un_id_anterior_resuelve_y_la_api_avisa_con_deprecation(
