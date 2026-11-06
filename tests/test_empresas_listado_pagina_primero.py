@@ -17,6 +17,8 @@ from typing import Any
 
 import pytest
 
+from db.repositories.empresas import _LISTA_WHERE_BUSQUEDA, _parametros_busqueda
+
 #: La consulta de antes, copiada tal cual: es la referencia de la equivalencia.
 _REFERENCIA = (
     "SELECT e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, e.es_pyme, "
@@ -31,11 +33,10 @@ _REFERENCIA = (
     "ORDER BY {expr} {dir} NULLS LAST, e.empresa_id ASC "
     "LIMIT %s OFFSET %s"
 )
-_WHERE_Q = (
-    "WHERE e.nombre_canonico LIKE %s OR e.nif_canonico LIKE %s "
-    "OR e.empresa_id IN "
-    "(SELECT empresa_id FROM empresa_aliases WHERE alias_normalizado LIKE %s) "
-)
+#: El filtro de búsqueda es el del repositorio: lo que este test fija es que la
+#: paginación sobre ``empresas`` da lo mismo que agrupar todo, no qué casa con
+#: ``q`` (eso lo fija ``test_busca_por_nombre_sin_distinguir_mayusculas_ni_tildes``).
+_WHERE_Q = _LISTA_WHERE_BUSQUEDA
 _EXPR = {"nombre": "LOWER(e.nombre_canonico)", "nif": "e.nif_canonico"}
 
 
@@ -90,10 +91,7 @@ def _referencia(q: str | None, sort: str, order: str, limit: int, offset: int) -
     from db.database import connect_read
     from db.repositories.base import rows_to_dicts
 
-    params: list[object] = []
-    if q:
-        like = f"%{q.upper()}%"
-        params = [like, like, like]
+    params: list[object] = _parametros_busqueda(q) if q else []
     sql = _REFERENCIA.format(
         where=_WHERE_Q if q else "", expr=_EXPR[sort], dir="ASC" if order == "asc" else "DESC"
     )
@@ -154,3 +152,27 @@ def test_por_nombre_no_agrupa_el_maestro_entero(maestro: None, monkeypatch: Any)
     with connect_read() as c:
         plan = json.dumps(c.execute("EXPLAIN (FORMAT JSON) " + pagina, [3, 0]).fetchone()[0])
     assert '"Group Key"' not in plan
+
+
+@pytest.mark.parametrize(
+    ("q", "esperadas"),
+    [
+        # El nombre se compara plegado, como en la paleta: las tres grafías de
+        # Acme casan, y la tercera rama trae a Theta por su alias «ACME ANTIGUA».
+        ("acme", {"ACME SISTEMAS", "acme sistemas", "Acme Sistemas", "Theta Consultores"}),
+        ("epsilon", {"Épsilon Software"}),
+        ("ÉPSILON", {"Épsilon Software"}),
+        ("b0000005", {"CIRCULO DATOS"}),
+        # Un comodín escrito por el usuario es un literal, no «todo».
+        ("%", set()),
+    ],
+)
+def test_busca_por_nombre_sin_distinguir_mayusculas_ni_tildes(
+    maestro: None, q: str, esperadas: set[str]
+) -> None:
+    from db.repositories.empresas import EmpresasReadRepository
+
+    filas, total = EmpresasReadRepository().list_empresas(q, 50, 0, "nombre", "asc")
+
+    assert {f["nombre_canonico"] for f in filas} == esperadas
+    assert total == len(esperadas)

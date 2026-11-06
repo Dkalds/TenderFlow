@@ -66,9 +66,7 @@ class BusquedaRepository:
         # Las columnas del maestro son `empresa_id` y `nif_canonico`: con `id` y
         # `nif` la consulta fallaba siempre y la paleta, que es fail-open por
         # tipo, nunca devolvía empresas.
-        # shortcut: `LIKE '%q%'` sin índice trigram recorre el maestro entero,
-        # subirlo con un GIN trigram sobre `fold_expr('nombre_canonico')`
-        # (migración) cuando la paleta lo note.
+        # `LIKE '%q%'` sobre el nombre plegado: lo resuelve el trigram de v172.
         with connect_read() as c:
             cur = c.execute(
                 "SELECT empresa_id AS id, nombre_canonico AS titulo, nif_canonico AS subtitulo "
