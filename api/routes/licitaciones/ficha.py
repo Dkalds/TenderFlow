@@ -59,6 +59,7 @@ from shared.cache import cache_response
 from shared.dto import (
     SafeStr,
 )
+from shared.identity import Principal
 from shared.tender_facts import TenderFactSheet
 
 log = get_logger(__name__)
@@ -102,7 +103,7 @@ router_detalle = APIRouter(tags=["licitaciones"])
     },
 )
 async def get_licitacion(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
 ) -> Any:
     """Devuelve todos los campos de una licitación por su ID externo.
@@ -211,7 +212,7 @@ class SimilaresResult(BaseModel):
     summary="Predecesor y expedientes similares",
 )
 async def get_similares(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
     limit: int = Query(10, ge=1, le=50, description="Máximo de similares"),
 ) -> SimilaresResult:
@@ -257,7 +258,7 @@ async def get_similares(
 # los rivales a la organización que mira y declara su cuota aparte.
 @cache_response(ttl=300)
 async def get_competencia_esperada(
-    _ctx: dict[str, Any] = Depends(require_organization()),
+    _ctx: Principal = Depends(require_organization()),
     id_externo: str = Depends(resolver_id_externo),
 ) -> CompetenciaEsperada:
     """Lo que se viene a preguntar al abrir el expediente, sobre su propio segmento.
@@ -291,7 +292,7 @@ async def get_competencia_esperada(
     },
 )
 async def get_checklist_licitacion(
-    _ctx: dict[str, Any] = Depends(require_organization()),
+    _ctx: Principal = Depends(require_organization()),
     id_externo: str = Depends(resolver_id_externo),
 ) -> GoNoGoChecklist:
     """El checklist de `/pursuits/{id}/checklist` sin tener que abrir la oportunidad.
@@ -326,7 +327,7 @@ async def get_checklist_licitacion(
 )
 # Sin caché: quien acaba de declarar su NIF vuelve a la ficha esperando verlo.
 async def get_historial_propio(
-    _ctx: dict[str, Any] = Depends(require_organization()),
+    _ctx: Principal = Depends(require_organization()),
     id_externo: str = Depends(resolver_id_externo),
 ) -> HistorialPropio:
     """Adjudicaciones propias con el órgano y el CPV-4, y cómo acabaron las oportunidades.
@@ -357,7 +358,7 @@ async def get_historial_propio(
     },
 )
 async def get_dossier_pdf(
-    _ctx: dict[str, Any] = Depends(require_organization()),
+    _ctx: Principal = Depends(require_organization()),
     id_externo: str = Depends(resolver_id_externo),
 ) -> Response:
     """El papel para el comité que decide si la organización se presenta.
@@ -392,7 +393,7 @@ async def get_dossier_pdf(
     responses={404: {"description": "No encontrado"}},
 )
 async def post_visita_ficha(
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
 ) -> NovedadesDeFicha:
     """La franja «cambió desde tu última visita» de la ficha.
@@ -436,7 +437,7 @@ class CompararBody(BaseModel):
 async def post_comparar_fichas(
     body: CompararBody,
     response: Response,
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> ComparacionFichas:
     """F2.8 — determinista y sin LLM.
 

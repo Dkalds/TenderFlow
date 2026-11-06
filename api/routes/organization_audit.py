@@ -31,7 +31,7 @@ import base64
 import csv
 import io
 from datetime import date, timedelta
-from typing import Any, Literal
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
@@ -47,6 +47,7 @@ from shared.dto import (
     CursorPaginatedResponse,
 )
 from shared.export_safety import sanitize_spreadsheet_record
+from shared.identity import Principal
 
 router = APIRouter(tags=["pursuits"])
 
@@ -130,7 +131,7 @@ async def get_organization_audit(
         None, max_length=512, description="`next_cursor` de la página anterior."
     ),
     formato: Literal["json", "csv"] = Query("json"),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> CursorPaginatedResponse[AuditEntryOut] | Response:
     """Eventos de la organización: pertenencia, invitaciones, configuración,
     capacidad y ciclo de vida (familia ``org.*`` de ``shared/audit_events.py``).

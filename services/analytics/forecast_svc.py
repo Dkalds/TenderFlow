@@ -300,7 +300,7 @@ def get_estacionalidad_organo(filters: EstacionalidadFilters) -> EstacionalidadO
         if not publicaciones:
             continue
         # ``fecha_publicacion`` es TEXT y hay filas legado que el CHECK de v59
-        # no cubre (ver cabecera de db/repositories/aggregates.py): un bucket
+        # no cubre (ver cabecera de db/repositories/aggregates/__init__.py): un bucket
         # que no sea YYYY-MM se descarta en vez de tumbar el endpoint o de
         # colarse como un mes 13.
         ordinal = _ordinal_mes(mes_iso)

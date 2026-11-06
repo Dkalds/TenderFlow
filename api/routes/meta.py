@@ -16,6 +16,7 @@ from db.repositories.kpi_snapshots import read_meta_cpv
 from db.repositories.licitaciones import LicitacionRepository
 from services.classification import CPV_NAMES
 from shared.cache import API_NAMESPACE, aget_cache, cache_key, single_flight
+from shared.identity import Principal
 from shared.procedimientos import Familia, opciones
 
 router = APIRouter(prefix="/meta", tags=["meta"])
@@ -127,7 +128,7 @@ def _con_catalogos(dinamicos: dict[str, Any]) -> MetaFilters:
 )
 async def get_filter_options(
     response: Response,
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> MetaFilters:
     """Devuelve los valores únicos disponibles para cada filtro de licitaciones.
 
@@ -189,7 +190,7 @@ async def get_filter_options(
     responses={401: {"description": "API key inválida"}},
 )
 async def get_last_extraction(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> LastExtraction:
     """Devuelve la fecha/hora de la última extracción del scraper.
 

@@ -37,6 +37,7 @@ def _cargar(nombre: str) -> Any:
 
 _V142 = _cargar("v142_lic_tecnologia_tokens_gin")
 _V143 = _cargar("v143_lic_busqueda_plegada_trgm")
+_V172 = _cargar("v172_empresas_busqueda_trgm")
 
 
 # ── Las expresiones congeladas son las vivas ─────────────────────────────────
@@ -134,7 +135,7 @@ def test_v143_crea_los_cuatro_trigram_y_analiza_una_vez() -> None:
     op_falso.get_context.return_value.autocommit_block.assert_called_once()
 
 
-@pytest.mark.parametrize("modulo", [_V142, _V143], ids=["v142", "v143"])
+@pytest.mark.parametrize("modulo", [_V142, _V143, _V172], ids=["v142", "v143", "v172"])
 def test_un_indice_invalido_de_un_intento_fallido_se_tira_antes_de_crear(modulo: Any) -> None:
     """El ``IF NOT EXISTS`` de un reintento daría por bueno un índice ``INVALID``."""
     emitido, _ = _sql_emitido(modulo, "upgrade", indisvalid=False)
@@ -149,7 +150,7 @@ def test_un_indice_invalido_de_un_intento_fallido_se_tira_antes_de_crear(modulo:
         assert siguiente.startswith(f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {nombre} ")
 
 
-@pytest.mark.parametrize("modulo", [_V142, _V143], ids=["v142", "v143"])
+@pytest.mark.parametrize("modulo", [_V142, _V143, _V172], ids=["v142", "v143", "v172"])
 def test_un_indice_valido_no_se_toca(modulo: Any) -> None:
     emitido, _ = _sql_emitido(modulo, "upgrade", indisvalid=True)
 
@@ -171,7 +172,7 @@ def test_los_downgrades_tiran_sus_indices_sin_bloquear() -> None:
     ]
 
 
-@pytest.mark.parametrize("modulo", [_V142, _V143], ids=["v142", "v143"])
+@pytest.mark.parametrize("modulo", [_V142, _V143, _V172], ids=["v142", "v143", "v172"])
 @pytest.mark.parametrize("funcion", ["upgrade", "downgrade"])
 def test_fuera_de_postgres_no_emite_nada(modulo: Any, funcion: str) -> None:
     emitido, _ = _sql_emitido(modulo, funcion, dialecto="sqlite")
@@ -182,3 +183,28 @@ def test_fuera_de_postgres_no_emite_nada(modulo: Any, funcion: str) -> None:
 def test_las_dos_revisiones_se_encadenan_sobre_v141() -> None:
     assert _V142.down_revision == "v141_tasas_anulacion_organo"
     assert _V143.down_revision == _V142.revision
+
+
+# ── v172: búsqueda de empresas ───────────────────────────────────────────────
+
+
+def test_v172_indexa_el_nombre_plegado_que_buscan_la_paleta_y_el_listado() -> None:
+    from db.repositories import busqueda, empresas
+
+    assert fold_expr("nombre_canonico") == _V172.NOMBRE_PLEGADO
+    # Las dos consultas preguntan por esa misma expresión, o el índice no sirve.
+    assert f"{_V172.NOMBRE_PLEGADO} LIKE %s" in empresas._LISTA_WHERE_BUSQUEDA
+    assert "fold_expr('nombre_canonico')" in Path(busqueda.__file__).read_text(encoding="utf-8")
+
+
+def test_v172_crea_un_trigram_por_rama_de_la_busqueda_sin_bloquear() -> None:
+    emitido, op_falso = _sql_emitido(_V172, "upgrade")
+
+    assert [s for s in emitido if s.startswith("CREATE INDEX")] == [
+        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {nombre} "
+        f"ON {tabla} USING gin (({expresion}) gin_trgm_ops)"
+        for nombre, (tabla, expresion) in _V172.INDICES.items()
+    ]
+    assert emitido[-2:] == ["ANALYZE empresas", "ANALYZE empresa_aliases"]
+    op_falso.get_context.return_value.autocommit_block.assert_called_once()
+    assert _V172.down_revision == "v171_access_grants_revoked_by"

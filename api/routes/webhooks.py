@@ -54,7 +54,7 @@ import hmac
 import json
 import re
 import secrets
-from typing import Any, Literal
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, field_validator
@@ -78,7 +78,7 @@ from shared.events import (
     renderizar,
     suscripciones_validas,
 )
-from shared.identity import actor_del_principal
+from shared.identity import Principal, actor_del_principal
 from shared.outbound_http import pinned_https_request
 from shared.ssrf import validate_outbound_url
 
@@ -140,7 +140,7 @@ async def _validar_url_resuelta(url: str) -> None:
         ) from exc
 
 
-def _idempotency_endpoint(ctx: dict[str, Any]) -> str:
+def _idempotency_endpoint(ctx: Principal) -> str:
     """Namespace an idempotency key by its authenticated owner."""
     return f"webhook.create:{actor_del_principal(ctx)}"
 
@@ -329,7 +329,7 @@ registrar_metrica_pendientes()
 async def create(
     body: WebhookCreate,
     response: Response,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ) -> WebhookCreateResponse:
     """Crea un webhook en tu organización. Devuelve el ``secret`` solo aquí.
@@ -500,7 +500,7 @@ class WebhookPingResult(BaseModel):
     responses={401: {"description": "API key inválida"}},
 )
 async def list_all(
-    ctx: dict[str, Any] = Depends(require_organization(roles=_GESTORES)),
+    ctx: Principal = Depends(require_organization(roles=_GESTORES)),
 ) -> list[WebhookOut]:
     """Listado de webhooks de la organización activa, sin el secret."""
     # Devolvía `list[dict[str, Any]]` -> `unknown[]` en el cliente, mientras el
@@ -517,7 +517,7 @@ async def list_all(
     responses={401: {"description": "API key inválida"}, 403: {"description": "Requiere admin"}},
 )
 async def list_global(
-    _ctx: dict[str, Any] = Depends(require_admin),
+    _ctx: Principal = Depends(require_admin),
 ) -> list[WebhookOut]:
     """Todos los webhooks, de cualquier organización y sin dueño.
 
@@ -535,7 +535,7 @@ async def list_global(
     responses={401: {"description": "API key inválida"}},
 )
 async def event_types(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> WebhookEventTypes:
     """Lista los eventos válidos, derivada de la misma constante que valida el alta.
 
@@ -553,7 +553,7 @@ async def event_types(
 )
 async def get_one(
     webhook_id: int,
-    ctx: dict[str, Any] = Depends(require_organization(roles=_GESTORES)),
+    ctx: Principal = Depends(require_organization(roles=_GESTORES)),
 ) -> WebhookOut:
     wh = await run_db(_repo.get_by_id, webhook_id, organization_id=int(ctx["organization_id"]))
     if wh is None:
@@ -573,7 +573,7 @@ async def get_one(
 async def update(
     webhook_id: int,
     body: WebhookUpdate,
-    ctx: dict[str, Any] = Depends(require_organization(write=True, roles=_GESTORES)),
+    ctx: Principal = Depends(require_organization(write=True, roles=_GESTORES)),
 ) -> WebhookOut:
     """Actualiza nombre, URL, event_types, formato o active de un webhook."""
     if body.url is not None:
@@ -614,7 +614,7 @@ async def update(
 )
 async def delete(
     webhook_id: int,
-    ctx: dict[str, Any] = Depends(require_organization(write=True, roles=_GESTORES)),
+    ctx: Principal = Depends(require_organization(write=True, roles=_GESTORES)),
 ) -> None:
     if not await run_db(_repo.delete, webhook_id, organization_id=int(ctx["organization_id"])):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No existe")
@@ -638,7 +638,7 @@ async def delete(
 )
 async def ping(
     webhook_id: int,
-    ctx: dict[str, Any] = Depends(require_organization(write=True, roles=_GESTORES)),
+    ctx: Principal = Depends(require_organization(write=True, roles=_GESTORES)),
 ) -> WebhookPingResult:
     """Envía un payload de prueba al URL del webhook para verificar conectividad.
 
@@ -745,7 +745,7 @@ async def ping(
 async def rotate_secret(
     webhook_id: int,
     response: Response,
-    ctx: dict[str, Any] = Depends(require_organization(write=True, roles=_GESTORES)),
+    ctx: Principal = Depends(require_organization(write=True, roles=_GESTORES)),
 ) -> WebhookSecretRotated:
     """Genera un secret nuevo y lo devuelve **una sola vez**, como en la creación.
 
@@ -793,7 +793,7 @@ async def rotate_secret(
 async def redeliver(
     webhook_id: int,
     delivery_id: int,
-    ctx: dict[str, Any] = Depends(require_organization(write=True, roles=_GESTORES)),
+    ctx: Principal = Depends(require_organization(write=True, roles=_GESTORES)),
 ) -> StatusOk:
     """Vuelve a intentar una entrega concreta (C2.4).
 
@@ -854,7 +854,7 @@ async def redeliver(
 async def deliveries(
     webhook_id: int,
     limit: int = Query(50, ge=1, le=200),
-    ctx: dict[str, Any] = Depends(require_organization(roles=_GESTORES)),
+    ctx: Principal = Depends(require_organization(roles=_GESTORES)),
 ) -> list[WebhookDelivery]:
     """Devuelve las últimas entregas realizadas para este webhook."""
     scope = int(ctx["organization_id"])

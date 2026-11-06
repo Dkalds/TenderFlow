@@ -16,7 +16,7 @@ import hmac
 import json
 import time
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, Required, TypedDict
 
 from observability.logging import get_logger
 
@@ -24,6 +24,40 @@ if TYPE_CHECKING:  # pragma: no cover - solo para el tipado
     from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 
 log = get_logger(__name__)
+
+
+class Principal(TypedDict, total=False):
+    """Quién hace la petición, tal como lo entregan las dependencias de auth.
+
+    Lo construyen ``api.routes.auth._session_principal`` (cookie) y
+    ``api.routes.dual_auth.require_any_auth`` (cookie o API key), y lo
+    enriquece ``api.tenancy.resolve_organization_ctx``. Vive aquí, y no en
+    ``api/``, porque ``actor_del_principal`` lo recibe. Un ``TypedDict`` y no
+    ``dict[str, Any]`` para que una clave mal escrita la detecte mypy.
+    """
+
+    # Siempre presentes, venga de sesión o de API key.
+    user_id: Required[int]
+    email: Required[str | None]
+    display_name: Required[str | None]
+    is_admin: Required[bool]
+    user_key: Required[str]
+    # Lo fija ``require_any_auth``; el principal de sesión crudo no lo lleva.
+    auth_method: Literal["session", "api_key"]
+    # Solo sesión. Las marcas de tiempo llegan tal cual las da el driver.
+    csrf: str
+    session_token: str
+    authenticated_at: object
+    mfa_verified_at: object
+    mfa_required: bool
+    # Solo API key.
+    api_key_id: int
+    owner_is_admin: bool
+    key_hash: str
+    scopes: frozenset[str]
+    # Solo tras ``resolve_organization_ctx``.
+    organization_id: int
+    organization_role: str
 
 
 def user_key_from_email(email: str | None, user_id: int) -> str:

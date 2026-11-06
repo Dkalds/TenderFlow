@@ -51,6 +51,7 @@ from services.solicitudes_acceso import notificar_acceso_concedido
 from shared.audit_events import (
     SOLICITUD_ACCESO_ESTADO,
 )
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -118,7 +119,7 @@ class AccessGrantOut(BaseModel):
 async def listar(
     estado: str | None = Query(None, description="Filtra por estado de la cola"),
     limit: int = Query(100, ge=1, le=500),
-    _admin: dict[str, Any] = Depends(require_admin),
+    _admin: Principal = Depends(require_admin),
 ) -> list[SolicitudAccesoOut]:
     if estado is not None and estado not in ESTADOS:
         raise HTTPException(status_code=422, detail=f"estado no válido: {estado}")
@@ -130,7 +131,7 @@ async def listar(
 async def cambiar_estado(
     solicitud_id: int,
     body: EstadoBody,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> CambioEstadoOut:
     if body.estado not in ESTADOS:
         raise HTTPException(status_code=422, detail=f"estado no válido: {body.estado}")
@@ -223,7 +224,7 @@ async def cambiar_estado(
 @router.get("/grants", response_model=list[AccessGrantOut])
 async def listar_grants(
     include_inactive: bool = Query(False),
-    _admin: dict[str, Any] = Depends(require_admin),
+    _admin: Principal = Depends(require_admin),
 ) -> list[AccessGrantOut]:
     rows = await run_db(list_access_grants, include_inactive=include_inactive)
     return [AccessGrantOut.model_validate(row) for row in rows]
@@ -232,7 +233,7 @@ async def listar_grants(
 @router.delete("/grants/{grant_id}", response_model=AccessGrantOut)
 async def revocar_grant(
     grant_id: int,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> AccessGrantOut:
     # Revocar y auditarlo van en una transacción (ADR-039).
     grant = await run_db(revoke_access, grant_id, revoked_by=id_del_actor(admin))

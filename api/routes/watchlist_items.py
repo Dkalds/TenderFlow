@@ -28,6 +28,7 @@ from shared.dto import (
     WatchlistFavoriteItem,
     WatchlistFavoritesResult,
 )
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -36,7 +37,7 @@ router = APIRouter(prefix="/watchlist/items", tags=["watchlist"])
 _repo = WatchlistRepository()
 
 
-def _user_key(ctx: dict[str, Any]) -> str:
+def _user_key(ctx: Principal) -> str:
     """Clave opaca y estable por usuario.
 
     ``require_any_auth`` (sesión o API key) siempre adjunta ``user_key`` al
@@ -49,7 +50,7 @@ def _user_key(ctx: dict[str, Any]) -> str:
     return str(ctx["user_key"])
 
 
-def _user_id(ctx: dict[str, Any]) -> int | None:
+def _user_id(ctx: Principal) -> int | None:
     """Devuelve el propietario humano, también para API keys vinculadas."""
     raw = ctx.get("user_id")
     return int(raw) if raw is not None else None
@@ -76,7 +77,7 @@ class WatchlistNotaBody(BaseModel):
 @router.get("", summary="Listar favoritos del usuario (enriquecidos)")
 async def get_items(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: Principal = Depends(require_organization()),
 ) -> WatchlistFavoritesResult:
     if organization_id is not None:
         await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
@@ -102,7 +103,7 @@ async def post_item(
             "efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`."
         ),
     ),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> WatchlistFavoriteCreated:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     # Un id anterior a una re-key se guarda con el id vigente.
@@ -148,7 +149,7 @@ async def post_item(
     summary="Eliminar un favorito propio",
 )
 async def delete_item(
-    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    ctx: Principal = Depends(require_organization(write=True)),
     id_externo: str = Depends(resolver_id_externo),
 ) -> None:
     ok = await run_db(
@@ -168,7 +169,7 @@ async def delete_item(
 )
 async def put_item_nota(
     body: WatchlistNotaBody,
-    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    ctx: Principal = Depends(require_organization(write=True)),
     id_externo: str = Depends(resolver_id_externo),
 ) -> WatchlistNotaBody:
     """La nota es de quien la escribe, no de la organización.

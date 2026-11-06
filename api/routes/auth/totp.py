@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field, field_validator
@@ -18,6 +17,7 @@ from shared.audit_events import (
     AUTH_TOTP_RECOVERY_REGENERATED,
 )
 from shared.dto import StatusOk
+from shared.identity import Principal
 
 router = APIRouter()
 
@@ -83,8 +83,8 @@ def _apuntar_intento_mfa(user_id: int) -> None:
 
 
 async def require_recent_session_auth(
-    user: dict[str, Any] = Depends(require_csrf),
-) -> dict[str, Any]:
+    user: Principal = Depends(require_csrf),
+) -> Principal:
     """Require a recently-created browser session before changing MFA state."""
     from api.routes.dual_auth import require_recent_session
 
@@ -99,7 +99,7 @@ async def require_recent_session_auth(
 @router.post("/totp/setup")
 async def setup_totp(
     response: Response,
-    user: dict[str, Any] = Depends(require_recent_session_auth),
+    user: Principal = Depends(require_recent_session_auth),
 ) -> TotpSetupResult:
     """Inicia el alta de TOTP; el secreto solo se revela en esta respuesta.
 
@@ -135,7 +135,7 @@ async def setup_totp(
 async def confirm_totp(
     body: TotpCodeRequest,
     response: Response,
-    user: dict[str, Any] = Depends(require_recent_session_auth),
+    user: Principal = Depends(require_recent_session_auth),
 ) -> TotpConfirmResult:
     """Confirma el primer código TOTP y entrega recovery codes una sola vez."""
     from db.rate_limits import clear_mfa_attempts
@@ -175,7 +175,7 @@ async def confirm_totp(
 @router.post("/totp/verify")
 async def verify_totp_login(
     body: TotpCodeRequest,
-    user: dict[str, Any] = Depends(require_csrf_pending_mfa),
+    user: Principal = Depends(require_csrf_pending_mfa),
 ) -> StatusOk:
     """Eleva una sesión pendiente tras verificar TOTP o un recovery code.
 
@@ -221,7 +221,7 @@ async def verify_totp_login(
 async def regenerate_recovery_codes(
     body: TotpCodeRequest,
     response: Response,
-    user: dict[str, Any] = Depends(require_recent_session_auth),
+    user: Principal = Depends(require_recent_session_auth),
 ) -> TotpConfirmResult:
     """Códigos de recuperación nuevos sin desactivar el segundo factor.
 
@@ -275,7 +275,7 @@ async def regenerate_recovery_codes(
 )
 async def remove_totp(
     body: TotpCodeRequest,
-    user: dict[str, Any] = Depends(require_recent_session_auth),
+    user: Principal = Depends(require_recent_session_auth),
 ) -> StatusOk:
     """Desactiva el segundo factor con un código vigente o uno de recuperación.
 

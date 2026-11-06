@@ -11,7 +11,6 @@ tocar base, y el recuento real contra un corpus con los dos casos.
 from __future__ import annotations
 
 from collections.abc import Callable
-from unittest.mock import patch
 
 import pytest
 
@@ -20,6 +19,7 @@ from db.repositories.aggregates import (
     LicitacionesFilters,
     build_licitaciones_where,
 )
+from tests.dobles_aggregates import connect_read_de_aggregates
 
 # ---------------------------------------------------------------------------
 # Forma del SQL — sin base de datos
@@ -110,7 +110,7 @@ class _ConexionQueApunta:
 
 def _sql_de(llamada: Callable[[AggregateRepository], object], fila: tuple[int, ...] | None = None):
     conexion = _ConexionQueApunta(fila)
-    with patch("db.repositories.aggregates.connect_read", return_value=conexion):
+    with connect_read_de_aggregates(return_value=conexion):
         resultado = llamada(AggregateRepository())
     return conexion.sentencias, resultado
 

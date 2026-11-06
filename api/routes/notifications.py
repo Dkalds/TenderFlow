@@ -42,6 +42,7 @@ from services.notifications import (
     mark_all_read,
 )
 from shared.dto import DESCRIPCION_GRANDES_EN_PLAZO, StatusOk
+from shared.identity import Principal
 
 log = get_logger(__name__)
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -53,7 +54,7 @@ SUNSET_CAMPANA_ANTIGUA = sunset_anunciado(date(2027, 2, 1), anunciado=date(2026,
 _RFC_CAMPANA_ANTIGUA = "docs/rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md"
 
 
-def _user_key(ctx: dict[str, Any]) -> str:
+def _user_key(ctx: Principal) -> str:
     """Clave opaca y estable por usuario.
 
     ``require_any_auth`` (sesión o API key) siempre adjunta ``user_key`` al
@@ -66,7 +67,7 @@ def _user_key(ctx: dict[str, Any]) -> str:
     return str(ctx["user_key"])
 
 
-def _user_id_int(ctx: dict[str, Any]) -> int | None:
+def _user_id_int(ctx: Principal) -> int | None:
     uid = ctx.get("user_id")
     try:
         return int(uid) if uid is not None else None
@@ -181,7 +182,7 @@ class MarkAlertsReadRequest(BaseModel):
 
 @router.get("", summary="Resumen de notificaciones (alertas; campos de mercado deprecados)")
 async def get_notifications(
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: Principal = Depends(require_organization()),
 ) -> NotificationsResult:
     # Nota de implementación (fuera del docstring: FastAPI lo publica en el
     # OpenAPI). Las lecturas comparten una conexión y un ámbito
@@ -222,7 +223,7 @@ async def get_alertas(
     estado: EstadoLectura = Query(default="todas", description="`todas`, `sin_leer` o `leidas`."),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=10_000),
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: Principal = Depends(require_organization()),
 ) -> AlertasPagina:
     """Lo que te concierne en la organización activa, lo más reciente arriba.
 
@@ -257,7 +258,7 @@ async def get_alertas(
 async def post_mark_read(
     body: MarkReadRequest,
     response: Response,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> StatusOk:
     """Marca novedades del mercado como leídas. Sin consumidor desde el 2026-10-12.
 
@@ -279,7 +280,7 @@ async def post_mark_read(
 @router.post("/alerts/read", summary="Marcar alertas como leidas")
 async def post_mark_alerts_read(
     body: MarkAlertsReadRequest,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> StatusOk:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)

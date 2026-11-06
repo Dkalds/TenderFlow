@@ -804,7 +804,7 @@ Dos ítems P1 pedían al propietario aplicar `v142`/`v143` y `v144` con `migrate
   producción la purga de PSCP»: el 97 % del heap es el censo de PSCP que se borra.
   Medir de nuevo estas vistas después de la purga, antes de invertir en snapshots o
   en más cómputo.
-- **Files de partida:** [db/alembic/versions/v144_lic_indices_analitica.py](../../db/alembic/versions/v144_lic_indices_analitica.py), [db/repositories/aggregates.py](../../db/repositories/aggregates.py), [tests/test_v144_indices_analitica.py](../../tests/test_v144_indices_analitica.py)
+- **Files de partida:** [db/alembic/versions/v144_lic_indices_analitica.py](../../db/alembic/versions/v144_lic_indices_analitica.py), [db/repositories/aggregates/](../../db/repositories/aggregates/), [tests/test_v144_indices_analitica.py](../../tests/test_v144_indices_analitica.py)
 - **Riesgo:** medio — los índices son aditivos, pero migran schema: +100-200 MB de disco
   y más escritura por fila; el autovacuum al 2 % añade E/S de fondo.
 

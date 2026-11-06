@@ -39,8 +39,6 @@ inconsistencia, es el orden de la migración.
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field
 
@@ -51,6 +49,7 @@ from api.tenancy import require_organization, resolve_organization_ctx
 from db.repositories import follows as repo
 from observability.logging import get_logger
 from shared.dto import FollowItem, FollowsResult
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -63,11 +62,11 @@ _TARGET_TYPE_RE = "^(licitacion|lote|empresa|organo|cpv)$"
 _KIND_RE = "^(seguir|descartar)$"
 
 
-def _user_key(ctx: dict[str, Any]) -> str:
+def _user_key(ctx: Principal) -> str:
     return str(ctx["user_key"])
 
 
-def _user_id(ctx: dict[str, Any]) -> int | None:
+def _user_id(ctx: Principal) -> int | None:
     raw = ctx.get("user_id")
     return int(raw) if raw is not None else None
 
@@ -102,7 +101,7 @@ async def get_follows(
     ),
     limit: int = Query(default=1000, ge=1, le=5000),
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: Principal = Depends(require_organization()),
 ) -> FollowsResult:
     items = await run_db(
         repo.listar,
@@ -121,7 +120,7 @@ async def get_follows(
 async def post_follow(
     body: FollowBody,
     response: Response,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> FollowItem:
     """Idempotente: seguir dos veces lo mismo devuelve la misma fila.
 
@@ -168,7 +167,7 @@ async def delete_follow(
     target_type: str,
     target_id: str,
     kind: str = Query(default="seguir", pattern=_KIND_RE),
-    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    ctx: Principal = Depends(require_organization(write=True)),
 ) -> None:
     ok = await run_db(
         repo.olvidar,

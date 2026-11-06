@@ -13,8 +13,6 @@ ficha (criterios, garantías, solvencia), y la pestaña Pliego pide las dos.
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import (
     APIRouter,
     Depends,
@@ -34,6 +32,7 @@ from api.tenancy import require_organization
 from observability.logging import get_logger
 from services.rag.guion_oferta import GuionOferta, generar_guion, guion_pdf
 from shared.dto import CondicionesOficiales
+from shared.identity import Principal
 from shared.tender_facts import TenderFactSheetRecord
 
 log = get_logger(__name__)
@@ -50,7 +49,7 @@ router = APIRouter(tags=["licitaciones"])
     },
 )
 async def post_guion_oferta(
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: Principal = Depends(require_organization()),
     id_externo: str = Depends(resolver_id_externo),
 ) -> GuionOferta:
     """F2.6 — sólo esquema, nunca prosa (D33).
@@ -88,7 +87,7 @@ async def post_guion_oferta(
     },
 )
 async def get_guion_oferta_pdf(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
 ) -> Response:
     """F2.6 — descarga en PDF del guion **ya generado**.
@@ -122,7 +121,7 @@ async def get_guion_oferta_pdf(
     },
 )
 async def get_tender_fact_sheet(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
 ) -> TenderFactSheetRecord:
     """Lee la extracción vigente sin invocar al proveedor LLM."""
@@ -147,7 +146,7 @@ async def get_tender_fact_sheet(
     },
 )
 async def get_condiciones_oficiales(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
 ) -> CondicionesOficiales:
     """Lo que el anuncio CODICE publica en ``cac:TenderingTerms`` (v148).
@@ -168,7 +167,7 @@ async def get_condiciones_oficiales(
     return resultado
 
 
-def _budget_subject(ctx: dict[str, Any]) -> str | None:
+def _budget_subject(ctx: Principal) -> str | None:
     """Sujeto al que atribuir el gasto LLM: la ``user_key`` opaca del auth.
 
     Réplica deliberada de ``api/routes/ask.py::_budget_subject``: es el
@@ -197,7 +196,7 @@ def _budget_subject(ctx: dict[str, Any]) -> str | None:
 async def extract_tender_fact_sheet(
     # ``write=True`` como ``…/extract-async``: extraer sobrescribe la ficha
     # vigente y gasta presupuesto del equipo, y un viewer es de solo lectura.
-    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    ctx: Principal = Depends(require_organization(write=True)),
     id_externo: str = Depends(resolver_id_externo),
 ) -> TenderFactSheetRecord:
     """Reextracción explícita; descarga bajo demanda los pliegos que aún
@@ -297,7 +296,7 @@ class ExpedienteJobEncolado(BaseModel):
     },
 )
 async def extract_tender_fact_sheet_async(
-    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    ctx: Principal = Depends(require_organization(write=True)),
     id_externo: str = Depends(resolver_id_externo),
 ) -> FactSheetExtractionState:
     """Variante asíncrona de ``…/ficha-pliego/extract`` para la UI.
@@ -354,7 +353,7 @@ async def extract_tender_fact_sheet_async(
     },
 )
 async def enqueue_expediente_embeddings(
-    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    ctx: Principal = Depends(require_organization(write=True)),
     id_externo: str = Depends(resolver_id_externo),
 ) -> ExpedienteJobEncolado:
     """Calcula los embeddings de los pliegos de ESTE expediente, ya.
@@ -392,7 +391,7 @@ async def enqueue_expediente_embeddings(
     responses={401: {"description": "Autenticación inválida"}},
 )
 async def get_tender_fact_sheet_state(
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: Principal = Depends(require_organization()),
     id_externo: str = Depends(resolver_id_externo),
 ) -> FactSheetExtractionState:
     """Estado de la extracción para el polling de la UI. El resultado en sí se

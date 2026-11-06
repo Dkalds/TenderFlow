@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -25,6 +24,7 @@ from db.saved_filters import (
 from observability.logging import get_logger
 from services.organizations import claim_legacy_scope
 from shared.dto import StatusOk
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -33,7 +33,7 @@ router = APIRouter(prefix="/saved-filters", tags=["saved-filters"])
 _MAX_FILTERS_JSON = 8_000
 
 
-def _user_key(ctx: dict[str, Any]) -> str:
+def _user_key(ctx: Principal) -> str:
     """Clave opaca y estable por usuario (email de sesión o hash de API key)."""
     if ctx.get("user_key"):
         return str(ctx["user_key"])
@@ -41,7 +41,7 @@ def _user_key(ctx: dict[str, Any]) -> str:
     return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
 
-def _user_id(ctx: dict[str, Any]) -> int | None:
+def _user_id(ctx: Principal) -> int | None:
     """Identidad interna del principal (v129): la lectura dual va por ella."""
     raw = ctx.get("user_id")
     return int(raw) if raw is not None else None
@@ -77,7 +77,7 @@ class SavedFilterSaved(BaseModel):
 @router.get("", summary="Listar vistas guardadas del usuario")
 async def get_saved_filters(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: Principal = Depends(require_organization()),
 ) -> SavedFiltersResult:
     if organization_id is not None:
         await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
@@ -90,7 +90,7 @@ async def get_saved_filters(
 @router.post("", status_code=status.HTTP_201_CREATED, summary="Guardar (o actualizar) una vista")
 async def post_saved_filter(
     body: SaveFilterRequest,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> SavedFilterSaved:
     # Validar que el payload sea JSON serializable (defensa frente a basura).
     try:
@@ -118,7 +118,7 @@ async def post_saved_filter(
 @router.delete("/{filter_id}", summary="Eliminar una vista guardada")
 async def delete_saved_filter_route(
     filter_id: int,
-    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    ctx: Principal = Depends(require_organization(write=True)),
 ) -> StatusOk:
     user_key = _user_key(ctx)
     user_id = _user_id(ctx)

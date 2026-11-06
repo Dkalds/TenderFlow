@@ -54,13 +54,14 @@ from shared.dto import (
     WatchlistRuleMatch,
     WatchlistRuleMatchesResult,
 )
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
 router = APIRouter(prefix="/watchlist/rules", tags=["watchlist"])
 
 
-def _user_key(ctx: dict[str, Any]) -> str:
+def _user_key(ctx: Principal) -> str:
     """Clave opaca y estable por usuario.
 
     ``require_any_auth`` (sesión o API key) siempre adjunta ``user_key`` al
@@ -92,13 +93,13 @@ def _auditar(
     )
 
 
-def _ctx_email(ctx: dict[str, Any]) -> str | None:
+def _ctx_email(ctx: Principal) -> str | None:
     """Email del usuario de sesion OAuth; None para API-key (sin email recuperable)."""
     email = ctx.get("email")
     return str(email) if email else None
 
 
-def _user_id(ctx: dict[str, Any]) -> int | None:
+def _user_id(ctx: Principal) -> int | None:
     """Identidad interna del principal (v129): la lectura dual va por ella."""
     raw = ctx.get("user_id")
     return int(raw) if raw is not None else None
@@ -203,7 +204,7 @@ def _matches_for(rule: WatchlistRule, limit: int) -> list[dict[str, Any]]:
 @router.get("", summary="Listar reglas del usuario (con conteo real de matches)")
 async def get_rules(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: Principal = Depends(require_organization()),
 ) -> WatchlistRulesResult:
     if organization_id is not None:
         await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
@@ -223,7 +224,7 @@ async def post_rule(
             "efecto. Caduca según `IDEMPOTENCY_TTL_SECONDS`."
         ),
     ),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> CreatedId:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)
@@ -269,7 +270,7 @@ async def post_rule(
 async def put_rule(
     rule_id: int,
     body: WatchlistRuleBody,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> StatusOk:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     user_key = _user_key(ctx)
@@ -305,7 +306,7 @@ async def put_rule(
 @router.delete("/{rule_id}", summary="Eliminar una regla propia")
 async def delete_rule_route(
     rule_id: int,
-    ctx: dict[str, Any] = Depends(require_organization(write=True)),
+    ctx: Principal = Depends(require_organization(write=True)),
 ) -> StatusOk:
     organization_id = ctx["organization_id"]
     user_key, user_id = _user_key(ctx), _user_id(ctx)
@@ -325,7 +326,7 @@ async def delete_rule_route(
 @router.get("/{rule_id}/matches", summary="Licitaciones que coinciden con una regla")
 async def get_rule_matches(
     rule_id: int,
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: Principal = Depends(require_organization()),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> WatchlistRuleMatchesResult:
     reglas = await run_db(list_rules, _user_key(ctx), ctx["organization_id"], user_id=_user_id(ctx))
@@ -373,7 +374,7 @@ class PreviewResult(TotalCount):
 )
 async def preview_matches(
     body: WatchlistRuleBody,
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> PreviewResult:
     """Cuántos expedientes casan hoy y cuántos casaron cada una de las últimas
     ocho semanas.

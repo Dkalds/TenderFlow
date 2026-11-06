@@ -41,6 +41,7 @@ from db.dlq import (
 )
 from observability.logging import get_logger
 from shared.audit_events import DLQ_DISCARDED, DLQ_REQUEUED
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -137,7 +138,7 @@ async def listar_dlq(
         "abiertas", description="Abiertas (en ciclo de reintento) o agotadas (sin más intentos)"
     ),
     limit: int = Query(50, ge=1, le=200),
-    _admin: dict[str, Any] = Depends(require_admin),
+    _admin: Principal = Depends(require_admin),
 ) -> DlqListado:
     def _trabajo() -> DlqListado:
         filas = list_exhausted(limit) if estado == "agotadas" else list_unresolved(limit)
@@ -188,7 +189,7 @@ _DETALLES = {
 )
 async def reintentar_dlq(
     failure_id: int = Path(ge=1),
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> DlqReintento:
     previo = await run_db(requeue, failure_id)
     if previo == "inexistente":
@@ -230,7 +231,7 @@ _DETALLES_DESCARTE = {
 )
 async def descartar_dlq(
     failure_id: int = Path(ge=1),
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> DlqDescarte:
     previo = await run_db(discard, failure_id)
     if previo == "inexistente":

@@ -22,8 +22,6 @@ Dos cosas, con dos almacenes distintos y a propósito:
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from api.concurrency import run_db
@@ -58,6 +56,7 @@ from shared.dto import (
     ReportSchedule,
     ReportScheduleOut,
 )
+from shared.identity import Principal
 
 router = APIRouter(tags=["pursuits"])
 
@@ -69,7 +68,7 @@ router = APIRouter(tags=["pursuits"])
 )
 async def get_organization_settings(
     organization_id: int,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> OrganizationSettingsOut:
     try:
         return await run_db(get_settings, int(ctx["user_id"]), organization_id)
@@ -85,7 +84,7 @@ async def get_organization_settings(
 async def put_organization_settings(
     organization_id: int,
     body: OrganizationSettings,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> OrganizationSettingsOut:
     try:
         guardados = await run_db(update_settings, int(ctx["user_id"]), organization_id, body)
@@ -115,7 +114,7 @@ async def put_organization_settings(
 )
 async def get_report_schedule(
     organization_id: int,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> ReportScheduleOut:
     """Devuelve los valores por defecto cuando todavía no hay programación.
 
@@ -140,7 +139,7 @@ async def get_report_schedule(
 async def put_report_schedule(
     organization_id: int,
     body: ReportSchedule,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> ReportScheduleOut:
     """Activa, cambia el día y la hora, o fija la lista de destinatarios.
 
@@ -191,7 +190,7 @@ async def put_report_schedule(
 )
 async def get_plantilla_tareas(
     organization_id: int,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PlantillaTareasOut:
     """Cualquier miembro la lee; `puede_editar` dice si además la cambia."""
     try:
@@ -209,7 +208,7 @@ async def get_plantilla_tareas(
 async def put_plantilla_tareas(
     organization_id: int,
     body: PlantillaTareas,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PlantillaTareasOut:
     """Sustituye la plantilla entera. No toca las tareas ya creadas."""
     try:
@@ -242,7 +241,7 @@ async def put_plantilla_tareas(
 )
 async def get_plantillas_miembro(
     organization_id: int,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PlantillasMiembroOut:
     """Cualquier miembro las lee; `puede_editar` dice si además las cambia."""
     try:
@@ -264,7 +263,7 @@ async def get_plantillas_miembro(
 async def post_plantilla_miembro(
     organization_id: int,
     body: PlantillaMiembroIn,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PlantillasMiembroOut:
     """Se copia a quien acepte una invitación **a partir de ahora**, una vez.
 
@@ -306,7 +305,7 @@ async def post_plantilla_miembro(
 async def delete_plantilla_miembro(
     organization_id: int,
     plantilla_id: int,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PlantillasMiembroOut:
     """No toca las copias ya repartidas: son de cada miembro."""
     try:

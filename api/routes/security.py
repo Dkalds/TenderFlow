@@ -23,6 +23,7 @@ from db.repositories.client_errors import registrar as registrar_client_error
 from observability.logging import get_logger, redact_text
 from services.rate_limiting import get_rate_limiter
 from shared.audit_events import API_KEY_REVOKED
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -450,7 +451,7 @@ class AuditChainVerification(BaseModel):
     tags=["admin"],
 )
 async def verify_audit_integrity(
-    _ctx: dict[str, Any] = Depends(require_admin),
+    _ctx: Principal = Depends(require_admin),
 ) -> AuditChainVerification:
     """Recorre el audit log y verifica que el hash chain no ha sido alterado.
 
@@ -495,7 +496,7 @@ class ClientErroresResult(BaseModel):
 )
 async def list_client_errors(
     limit: int = Query(100, ge=1, le=500),
-    _ctx: dict[str, Any] = Depends(require_admin),
+    _ctx: Principal = Depends(require_admin),
 ) -> ClientErroresResult:
     """Lo que falla en el navegador, con un destino que alguien mira (C2.6).
 

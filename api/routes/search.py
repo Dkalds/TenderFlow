@@ -42,7 +42,7 @@ Ejemplo::
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
@@ -62,6 +62,7 @@ from services.investigador.busqueda import (
 )
 from services.investigador.busqueda import preparar as preparar_consulta
 from services.investigador.consulta import ConsultaInterpretada
+from shared.identity import Principal
 from shared.procedimientos import etiqueta_procedimiento
 
 log = get_logger(__name__)
@@ -330,7 +331,7 @@ class SemanticSearchResponse(BaseModel):
 )
 async def semantic_search(
     body: SemanticSearchRequest,
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> SemanticSearchResponse:
     """Búsqueda semántica híbrida."""
     import time
@@ -429,7 +430,7 @@ async def get_search_global(
         ),
     ),
     limit: int = Query(5, ge=1, le=20, description="Máximo por tipo"),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> BusquedaGlobal:
     """F1.2 — un término, cuatro clases de resultado.
 

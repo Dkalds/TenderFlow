@@ -10,14 +10,13 @@ trabajo saltándose esas comprobaciones.
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 
 from api.concurrency import run_db
 from api.tenancy import require_organization
 from services.jobs import Job
 from shared.dto import JobEstadoDTO, JobResultado
+from shared.identity import Principal
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -53,7 +52,7 @@ def a_dto(job: Job) -> JobEstadoDTO:
 )
 async def get_job(
     job_id: int = Path(ge=1, description="Identificador devuelto por el 202 que lo encoló"),
-    ctx: dict[str, Any] = Depends(require_organization()),
+    ctx: Principal = Depends(require_organization()),
 ) -> JobEstadoDTO:
     """Devuelve el estado del trabajo: si sigue en cola, si falló o su resultado.
 

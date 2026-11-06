@@ -67,12 +67,12 @@ def lectura(monkeypatch: pytest.MonkeyPatch) -> Callable[[bool], None]:
 
 @pytest.fixture()
 def sentencias(monkeypatch: pytest.MonkeyPatch) -> list[str]:
-    import db.repositories.aggregates as agg
     import db.repositories.licitaciones.listado as lic
     import db.repositories.publico as pub
+    from tests.dobles_aggregates import modulos_con_connect_read
 
     capturadas: list[str] = []
-    for modulo in (lic, agg, pub):
+    for modulo in (lic, *modulos_con_connect_read(), pub):
         monkeypatch.setattr(modulo, "connect_read", lambda: _Conexion(capturadas))
     monkeypatch.setattr(lic, "fts_available", lambda: True)
     return capturadas

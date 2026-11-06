@@ -61,7 +61,7 @@ sombra, no la del dato que gobierna la visibilidad.
 
 | # | Camino | Implementación | Frescura | Cuándo usarlo |
 |---|---|---|---|---|
-| 1 | **SQL en vivo** | `db/repositories/aggregates.py` → `services/analytics/*` → `/api/v1/analytics/*` | tiempo real | Por defecto. Cualquier agregado con filtros del usuario. |
+| 1 | **SQL en vivo** | `db/repositories/aggregates/` → `services/analytics/*` → `/api/v1/analytics/*` | tiempo real | Por defecto. Cualquier agregado con filtros del usuario. |
 | 2 | **SQL acotado + pandas** | `db/repositories/adjudicaciones.py::load_*` → `services/analytics/competitors.py` | tiempo real | **Solo** cuando la transformación no es expresable en SQL (resolución de identidad de empresa por componentes conexos). Obligatorio `LIMIT` en la query y alcance declarado en el resultado. |
 | 3 | **Snapshot `kpi_snapshots`** | `scheduler/kpi_precompute.py` → `db/repositories/kpi_snapshots.py` | por ejecución del cierre (≤ 4 h) | Camino rápido del overview **sin filtros**. Es también la señal de frescura que lee `scheduler/healthcheck.py`. |
 | 4 | **Tabla materializada `mat_clusters`** | `scheduler/aggregates_precompute.py` → `AggregateRepository.load_mat_clusters` | por ejecución del cierre | Clustering, cuyo cálculo no cabe en una request. |

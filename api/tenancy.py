@@ -16,23 +16,23 @@ vía ``resolve_organization_ctx`` llamado explícitamente con ese valor).
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any
 
 from fastapi import Depends, HTTPException, Query, status
 
 from api.concurrency import run_db
 from api.routes.dual_auth import require_any_auth
 from services.organizations import resolve_organization
+from shared.identity import Principal
 from shared.tenant_context import set_organization
 
 
 async def resolve_organization_ctx(
-    ctx: dict[str, Any],
+    ctx: Principal,
     organization_id: int | None,
     *,
     write: bool = False,
     roles: frozenset[str] | None = None,
-) -> dict[str, Any]:
+) -> Principal:
     """Resuelve la organización (o la personal por defecto) y valida el rol.
 
     Traduce el rechazo de dominio (sin membresía, o viewer intentando
@@ -58,9 +58,29 @@ async def resolve_organization_ctx(
     función se usa como dependency (GET/DELETE) y llamada a mano desde
     handlers POST/PUT.
     """
+    resolved_id, role = await resolver_organizacion(
+        ctx["user_id"], organization_id, write=write, roles=roles
+    )
+    return {**ctx, "organization_id": resolved_id, "organization_role": role}
+
+
+async def resolver_organizacion(
+    user_id: int,
+    organization_id: int | None,
+    *,
+    write: bool = False,
+    roles: frozenset[str] | None = None,
+) -> tuple[int, str]:
+    """El núcleo de :func:`resolve_organization_ctx`, para quien solo tiene un id.
+
+    Lo usan las rutas que autentican por su cuenta (feed Atom, calendario ICS)
+    y no tienen un :class:`~shared.identity.Principal` completo: devuelve
+    ``(organization_id, rol)`` con las mismas comprobaciones y el mismo
+    ``set_organization``.
+    """
     try:
         resolved_id, role = await run_db(
-            resolve_organization, int(ctx["user_id"]), organization_id, write=write
+            resolve_organization, int(user_id), organization_id, write=write
         )
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
@@ -70,12 +90,12 @@ async def resolve_organization_ctx(
             detail=f"Requiere el rol {' o '.join(sorted(roles))} en la organización.",
         )
     set_organization(resolved_id)
-    return {**ctx, "organization_id": resolved_id, "organization_role": role}
+    return resolved_id, role
 
 
 def require_organization(
     *, write: bool = False, roles: frozenset[str] | None = None
-) -> Callable[..., Awaitable[dict[str, Any]]]:
+) -> Callable[..., Awaitable[Principal]]:
     """Dependency para rutas GET/DELETE: ``organization_id`` viaja en la query.
 
     Para POST/PUT donde ``organization_id`` viaja en el body del request,
@@ -90,8 +110,8 @@ def require_organization(
             ge=1,
             description="Organización activa; por defecto la personal del usuario.",
         ),
-        ctx: dict[str, Any] = Depends(require_any_auth),
-    ) -> dict[str, Any]:
+        ctx: Principal = Depends(require_any_auth),
+    ) -> Principal:
         return await resolve_organization_ctx(ctx, organization_id, write=write, roles=roles)
 
     _dependency.__name__ = f"require_organization_write_{write}"

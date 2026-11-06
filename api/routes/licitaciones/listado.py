@@ -9,7 +9,7 @@ ninguna lleva ``{id_externo}`` y todas devuelven un envoltorio paginado.
 from __future__ import annotations
 
 from collections.abc import Generator
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 from fastapi import (
     APIRouter,
@@ -50,6 +50,7 @@ from shared.dto import (
     SafeStr,
 )
 from shared.export_safety import sanitize_spreadsheet_record
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -127,7 +128,7 @@ _DESC_WITH_TOTAL_CURSOR = (
 
 
 async def _organizacion_de_la_etiqueta(
-    ctx: dict[str, Any], etiqueta: int | None, organization_id: int | None
+    ctx: Principal, etiqueta: int | None, organization_id: int | None
 ) -> int | None:
     """La organización resuelta para el filtro por etiqueta, o ``None`` sin él.
 
@@ -144,7 +145,7 @@ async def _organizacion_de_la_etiqueta(
 
 
 async def _validados(
-    ctx: dict[str, Any], filtros: FiltrosLicitacion, organization_id: int | None
+    ctx: Principal, filtros: FiltrosLicitacion, organization_id: int | None
 ) -> FiltrosLicitacion:
     """Valida los filtros y les pone la organización ya resuelta de la etiqueta.
 
@@ -210,7 +211,7 @@ async def _filtros_offset(
     ),
     etiqueta: int | None = Query(None, ge=1, description=_DESC_ETIQUETA),
     organization_id: int | None = Query(None, ge=1, description=_DESC_ORGANIZACION_ETIQUETA),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> FiltrosLicitacion:
     """Los filtros de ``GET /licitaciones``, validados y con la etiqueta resuelta."""
     filtros = FiltrosLicitacion(
@@ -281,7 +282,7 @@ async def _filtros_cursor(
     ),
     etiqueta: int | None = Query(None, ge=1, description=_DESC_ETIQUETA),
     organization_id: int | None = Query(None, ge=1, description=_DESC_ORGANIZACION_ETIQUETA),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> FiltrosLicitacion:
     """Los filtros de ``GET /licitaciones/cursor``: los de offset salvo la tecnología predicha."""
     filtros = FiltrosLicitacion(
@@ -337,7 +338,7 @@ async def list_licitaciones(
     filtros: FiltrosLicitacion = Depends(_filtros_offset),
     orden: _OrdenListado = Depends(_orden_offset),
     page: PageParams = Depends(pagina(50)),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> Pagina[LicitacionSummary]:
     """Devuelve lista paginada con filtros opcionales.
 
@@ -398,7 +399,7 @@ async def list_licitaciones_cursor(
     limit: int = Query(100, ge=1, le=MAX_PAGE_LIMIT),
     filtros: FiltrosLicitacion = Depends(_filtros_cursor),
     orden: _OrdenListado = Depends(_orden_del_cursor),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> CursorPaginatedResponseWithTotal[LicitacionSummary]:
     """Paginación estable por cursor (fecha_publicacion, id_externo).
 
@@ -497,7 +498,7 @@ class SearchRequest(BaseModel):
 )
 async def search_licitaciones(
     body: SearchRequest,
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> Pagina[LicitacionSummary]:
     """Búsqueda con criterios complejos que no caben en query string.
 
@@ -577,7 +578,7 @@ async def bulk_get_licitaciones(
     body: BulkGetRequest,
     response: Response,
     format: str = Query("json", description="Formato de respuesta: json | csv"),
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> BulkGetResult | StreamingResponse:
     """Recupera hasta 100 licitaciones por ``id_externo`` en una sola request.
 

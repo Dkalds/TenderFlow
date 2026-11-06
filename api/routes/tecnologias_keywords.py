@@ -11,8 +11,6 @@ el mundo a la vez, que es el fallo más caro de detectar.
 
 from __future__ import annotations
 
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
@@ -31,6 +29,7 @@ from shared.audit_events import (
     TECNOLOGIAS_KEYWORD_SEEDED,
 )
 from shared.dto import SafeStr, StatusOk
+from shared.identity import Principal
 
 log = get_logger(__name__)
 
@@ -71,7 +70,7 @@ class ImpactoOut(BaseModel):
 @router.get("", response_model=DiccionarioOut)
 async def get_keywords(
     incluir_inactivas: bool = Query(default=False),
-    _user: dict[str, Any] = Depends(require_any_auth),
+    _user: Principal = Depends(require_any_auth),
 ) -> DiccionarioOut:
     """Diccionario vigente, con su versión.
 
@@ -104,7 +103,7 @@ async def get_keywords(
 async def get_impacto(
     keyword: str = Query(min_length=2, max_length=120),
     dias: int = Query(default=VENTANA_IMPACTO_DIAS, ge=1, le=365),
-    _admin: dict[str, Any] = Depends(require_admin),
+    _admin: Principal = Depends(require_admin),
 ) -> ImpactoOut:
     """«Esta keyword añadiría N expedientes de los últimos 90 días» (D28).
 
@@ -118,7 +117,7 @@ async def get_impacto(
 @router.put("", response_model=DiccionarioOut)
 async def put_keyword(
     body: KeywordIn,
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> DiccionarioOut:
     """Añade (o reactiva) una keyword. Queda auditada **con su impacto**.
 
@@ -160,7 +159,7 @@ async def put_keyword(
 async def delete_keyword(
     tecnologia: str = Query(min_length=1, max_length=80),
     keyword: str = Query(min_length=2, max_length=120),
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> DiccionarioOut:
     """Retira una keyword. **Desactiva, no borra**: la decisión es revisable."""
     version_antes = (await run_db(vigente))[1]
@@ -187,7 +186,7 @@ async def delete_keyword(
 
 @router.post("/sembrar", response_model=StatusOk)
 async def post_sembrar(
-    admin: dict[str, Any] = Depends(require_admin),
+    admin: Principal = Depends(require_admin),
 ) -> StatusOk:
     """Vuelca en la tabla las keywords de la semilla que falten. Idempotente.
 

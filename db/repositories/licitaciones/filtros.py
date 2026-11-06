@@ -158,7 +158,7 @@ def _plegado(column: Any) -> Any:
 
 
 #: Dónde busca ``q``. Es la misma lista que arma
-#: ``db/repositories/aggregates.py::build_licitaciones_where``, y tiene que
+#: ``db/repositories/aggregates/filtros.py::build_licitaciones_where``, y tiene que
 #: serlo: el listado y los KPIs de la misma pantalla salen de las dos, y hasta
 #: 2026-09 buscaban en sitios distintos (aquí título + descripción, allí título
 #: + órgano + id) sin plegar acentos en este lado. El mismo texto en la misma
@@ -249,7 +249,7 @@ def _tecnologia_en_csv(codes: list[str]) -> Any:
     ``licitaciones.tecnologia`` no es un código, es ``"SAP,SALESFORCE"``: la
     igualdad dejaba fuera los expedientes multi-tecnología, así que filtrar por
     SAP escondía justo los que además llevan otra. Mismo universo que resuelve
-    ``db/repositories/aggregates.py`` para los agregados de analytics —el
+    ``db/repositories/aggregates/`` para los agregados de analytics —el
     listado y los KPIs de la misma pantalla tienen que contar lo mismo—.
 
     Hasta 2026-09 esto eran cuatro ``LIKE`` por código (igual, ``'c,%'``,

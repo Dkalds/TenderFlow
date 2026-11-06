@@ -6,7 +6,6 @@ Las rutas de organizaciones viven en :mod:`api.routes.organizations`.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 from urllib.parse import quote, unquote
 
 from fastapi import (
@@ -94,6 +93,7 @@ from shared.dto import (
     PursuitSummary,
     PursuitUpdate,
 )
+from shared.identity import Principal
 
 log = get_logger(__name__)
 router = APIRouter(tags=["pursuits"])
@@ -270,7 +270,7 @@ async def post_pursuit(
         alias="X-Idempotency-Key",
         max_length=200,
     ),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PursuitSummary:
     """Abre una oportunidad; reintentar la misma licitación no duplica.
 
@@ -299,9 +299,7 @@ async def post_pursuit(
     return pursuit
 
 
-async def _lanzar_ficha_si_falta(
-    licitacion_id: str, organization_id: int, ctx: dict[str, Any]
-) -> None:
+async def _lanzar_ficha_si_falta(licitacion_id: str, organization_id: int, ctx: Principal) -> None:
     """Encola la extracción de la ficha si no existe. Nunca falla la creación.
 
     Va por la cola (ADR-028) y no por ``BackgroundTasks``, por tres motivos que
@@ -375,7 +373,7 @@ async def get_pursuits(
         description="Sólo las oportunidades de este expediente (igualdad exacta del `id_externo`).",
     ),
     page: PageParams = Depends(pagina(50)),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PursuitListResponse:
     """Lista únicamente opportunities de una organización autorizada.
 
@@ -406,7 +404,7 @@ async def get_pursuit_metrics(
     organization_id: int | None = Query(default=None, ge=1),
     period_from: datetime | None = Query(default=None),
     period_to: datetime | None = Query(default=None),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PursuitMetrics:
     """Calcula funnel, win-rate, importe y tiempo de decisión."""
     try:
@@ -448,7 +446,7 @@ async def get_pursuits_agenda(
             "la organización y por eso no entran por defecto."
         ),
     ),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PipelineAgendaResponse:
     """Agenda de compromisos: fusión, orden y bandas calculados en backend.
 
@@ -484,7 +482,7 @@ async def get_pursuits_agenda(
 @router.get("/pursuits/weights-proposal", response_model=PesosPropuestos)
 async def get_pursuits_weights_proposal(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PesosPropuestos:
     """Propone un ajuste de los pesos del Radar a partir de lo ganado y perdido.
 
@@ -517,7 +515,7 @@ async def get_pursuits_weights_proposal(
 )
 async def get_cartera(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> list[ContratoCartera]:
     """La cartera, con la ventana de relicitación de cada contrato.
 
@@ -542,7 +540,7 @@ async def get_cartera(
 )
 async def get_cartera_resumen(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> CarteraResumen:
     """Los totales de la cartera, calculados en backend (ADR-014).
 
@@ -572,7 +570,7 @@ async def get_cartera_resumen(
 async def get_cartera_eventos(
     cartera_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> list[ContratoEvento]:
     """Qué le pasó al contrato después de ganarlo, del más antiguo al más nuevo.
 
@@ -608,7 +606,7 @@ async def patch_cartera_fecha_fin(
     cartera_id: int,
     body: FechaFinManualIn,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> ContratoCartera:
     """Fija la fecha de fin que la fuente no publicó, con origen `manual`.
 
@@ -648,7 +646,7 @@ async def post_cartera_renovacion(
     body: PrepararRenovacionIn,
     response: Response,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> RenovacionPreparada:
     """Crea la oportunidad de la relicitación, enlazada al contrato.
 
@@ -675,7 +673,7 @@ async def post_cartera_renovacion(
 @router.post("/pursuits/weights-proposal/apply", response_model=PesosPropuestosAplicados)
 async def post_pursuits_weights_proposal_apply(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PesosPropuestosAplicados:
     """Aplica la propuesta vigente al perfil de scoring. Queda en el audit log.
 
@@ -711,7 +709,7 @@ async def get_direccion(
     period_to: datetime | None = Query(
         default=None, description="Fin de la ventana de cierres (excluido); sin él, ahora"
     ),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> CuadroDireccion:
     """El control de rol está **en el servicio**, no en el rail.
 
@@ -746,7 +744,7 @@ async def get_direccion(
 )
 async def get_direccion_carga(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> CargaEquipo:
     """Quién tiene qué abierto hoy y qué de eso pide atención.
 
@@ -771,7 +769,7 @@ async def get_actividad(
     ),
     usuario: int | None = Query(default=None, ge=1, description="Filtrar por quién lo hizo"),
     limit: int = Query(50, ge=1, le=200),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> FeedActividad:
     """Paginado **por cursor de id** y no por `offset`.
 
@@ -810,7 +808,7 @@ async def get_actividad(
 async def get_tasks_agenda(
     organization_id: int | None = Query(default=None, ge=1),
     limit: int = Query(default=100, ge=1, le=500),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> list[PursuitTaskOut]:
     """Tareas abiertas de la organización por urgencia (Mi Pipeline → Agenda)."""
     from services.pursuit_tasks import agenda
@@ -835,7 +833,7 @@ async def get_tasks_agenda(
 
 @router.get("/pursuits/adjuntos/politica", response_model=PursuitAttachmentPolicy)
 async def get_adjuntos_politica(
-    _ctx: dict[str, Any] = Depends(require_any_auth),
+    _ctx: Principal = Depends(require_any_auth),
 ) -> PursuitAttachmentPolicy:
     """Si este entorno acepta adjuntos, el tope por fichero y los tipos admitidos.
 
@@ -862,7 +860,7 @@ async def get_adjuntos_politica(
 async def get_adjunto_enlace(
     attachment_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PursuitAttachmentLink:
     """Emite un enlace de descarga **firmado y con caducidad**.
 
@@ -901,7 +899,7 @@ async def get_adjunto_descarga(
     exp: int = Query(description="Caducidad del enlace (epoch); es parte de lo firmado"),
     t: str = Query(description="Firma HMAC emitida por `/enlace`"),
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> Response:
     """Sirve el binario si la firma vale y no ha caducado.
 
@@ -961,7 +959,7 @@ async def put_adjunto_indexable(
     attachment_id: int,
     body: PursuitAttachmentIndexableIn,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PursuitAttachmentOut:
     """Levanta o baja el opt-in del RAG **para un adjunto concreto**.
 
@@ -993,7 +991,7 @@ async def put_adjunto_indexable(
 async def delete_adjunto(
     attachment_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> None:
     """Borra el adjunto y su binario del almacén."""
     from services.pursuit_attachments import borrar
@@ -1014,7 +1012,7 @@ async def delete_adjunto(
 @router.get("/pursuits/mi-baja", response_model=MiBajaOut)
 async def get_mi_baja(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> MiBajaOut:
     """Mi baja media por CPV4 y por órgano, frente a la del mercado.
 
@@ -1036,7 +1034,7 @@ async def get_mi_baja(
 async def get_pursuit_detail(
     pursuit_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PursuitDetail:
     try:
         return await run_db(
@@ -1066,7 +1064,7 @@ async def get_pursuit_detail(
 async def get_pursuit_ficha_pdf(
     pursuit_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> Response:
     """F2.7 — el one-pager que se lleva a un comité.
 
@@ -1118,7 +1116,7 @@ class KitResponsableBody(BaseModel):
 async def get_pursuit_kit(
     pursuit_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> KitPresentacion:
     """F2.3 — qué hay que entregar, en qué sobre, y qué falta."""
     try:
@@ -1144,7 +1142,7 @@ async def post_pursuit_kit_item(
     pursuit_id: int,
     body: KitItemBody,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> KitPresentacion:
     """Anota el marcado en el ledger y devuelve el kit ya actualizado.
 
@@ -1185,7 +1183,7 @@ async def post_pursuit_kit_responsable(
     pursuit_id: int,
     body: KitResponsableBody,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> KitPresentacion:
     """F2.3 + C6.1 — el responsable de un documento es el de su tarea.
 
@@ -1220,7 +1218,7 @@ async def patch_pursuit(
         alias="X-Idempotency-Key",
         max_length=200,
     ),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PursuitDetail:
     """Aplica una transición validada y añade un único evento.
 
@@ -1255,7 +1253,7 @@ async def get_pursuit_comments(
     pursuit_id: int,
     organization_id: int | None = Query(default=None, ge=1),
     page: PageParams = Depends(pagina(200)),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PursuitCommentListResponse:
     """Conversación del equipo sobre la oportunidad.
 
@@ -1291,7 +1289,7 @@ async def post_pursuit_comment(
         alias="X-Idempotency-Key",
         max_length=200,
     ),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PursuitCommentOut:
     """Publica un comentario; reintentar con la misma clave no lo duplica."""
     try:
@@ -1318,7 +1316,7 @@ async def delete_pursuit_comment(
     pursuit_id: int,
     comment_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> None:
     """Borra un comentario propio; owner y admin pueden borrar cualquiera."""
     try:
@@ -1342,7 +1340,7 @@ async def delete_pursuit_comment(
 async def get_pursuit_tasks(
     pursuit_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> list[PursuitTaskOut]:
     """Tareas de la oportunidad: abiertas primero y por vencimiento."""
     from services.pursuit_tasks import list_tasks
@@ -1367,7 +1365,7 @@ async def post_pursuit_task(
     pursuit_id: int,
     body: PursuitTaskCreate,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PursuitTaskOut:
     """Crea una tarea y recalcula `next_action`, que pasa a derivarse de estas."""
     from services.pursuit_tasks import create_task
@@ -1395,7 +1393,7 @@ async def patch_pursuit_task(
     task_id: int,
     body: PursuitTaskPatch,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PursuitTaskOut:
     from services.pursuit_tasks import PursuitTaskNotFoundError, update_task
 
@@ -1430,7 +1428,7 @@ async def delete_pursuit_task(
     pursuit_id: int,
     task_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> None:
     from services.pursuit_tasks import PursuitTaskNotFoundError, delete_task
 
@@ -1455,7 +1453,7 @@ async def delete_pursuit_task(
 async def get_pursuit_adjuntos(
     pursuit_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> list[PursuitAttachmentOut]:
     """Adjuntos propios de la oportunidad, recientes primero."""
     from services.pursuit_attachments import listar
@@ -1499,7 +1497,7 @@ async def post_pursuit_adjunto(
         ),
     ),
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> PursuitAttachmentOut:
     """Sube un adjunto: **cuerpo crudo**, no `multipart/form-data`.
 
@@ -1579,7 +1577,7 @@ async def post_pursuit_adjunto(
 @router.get("/organizations/go-no-go/weights", response_model=GoNoGoWeightsOut)
 async def get_go_no_go_weights(
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> GoNoGoWeightsOut:
     from services.go_no_go_puntuacion import get_weights
 
@@ -1595,7 +1593,7 @@ async def get_go_no_go_weights(
 async def put_go_no_go_weights(
     body: GoNoGoWeightsIn,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> GoNoGoWeightsOut:
     """Cambia los pesos de la plantilla. Solo owner/admin; queda auditado."""
     from services.go_no_go_puntuacion import set_weights
@@ -1614,7 +1612,7 @@ async def put_go_no_go_weights(
 async def get_pursuit_go_no_go(
     pursuit_id: int,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> GoNoGoScoreOut:
     """Puntuación ponderada de la oportunidad y si contradice la decisión tomada."""
     from services.go_no_go_puntuacion import get_score
@@ -1636,7 +1634,7 @@ async def put_pursuit_go_no_go(
     pursuit_id: int,
     body: GoNoGoScoreIn,
     organization_id: int | None = Query(default=None, ge=1),
-    ctx: dict[str, Any] = Depends(require_any_auth),
+    ctx: Principal = Depends(require_any_auth),
 ) -> GoNoGoScoreOut:
     from services.go_no_go_puntuacion import set_score
 

@@ -18,6 +18,7 @@ from typing import Any, Literal
 
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
+from db.sql_fragments import FOLD_TABLE, escape_like, fold_expr
 
 EmpresasOrderBy = Literal["nombre", "nif", "contratos", "importe"]
 EmpresasOrderDir = Literal["asc", "desc"]
@@ -32,11 +33,28 @@ _LISTA_SELECT = (
     "LEFT JOIN adjudicaciones a ON a.empresa_id = e.empresa_id "
 )
 
+# Una rama por índice trigram de ``v172``, unidas por ``UNION`` dentro del ``IN``:
+# con las tres en ``OR`` sobre ``empresas`` la rama de alias (una subconsulta)
+# no admite ``BitmapOr`` y la consulta volvía a recorrer el maestro entero. El
+# nombre se compara plegado, con la misma expresión que la paleta y su índice.
 _LISTA_WHERE_BUSQUEDA = (
-    "WHERE e.nombre_canonico LIKE %s OR e.nif_canonico LIKE %s "
-    "OR e.empresa_id IN "
-    "(SELECT empresa_id FROM empresa_aliases WHERE alias_normalizado LIKE %s) "
+    "WHERE e.empresa_id IN ("
+    f"SELECT empresa_id FROM empresas WHERE {fold_expr('nombre_canonico')} LIKE %s "
+    "UNION SELECT empresa_id FROM empresas WHERE nif_canonico LIKE %s "
+    "UNION SELECT empresa_id FROM empresa_aliases WHERE alias_normalizado LIKE %s) "
 )
+
+
+def _parametros_busqueda(q: str) -> list[object]:
+    """Los tres patrones de :data:`_LISTA_WHERE_BUSQUEDA`, en su orden.
+
+    El nombre se compara plegado y en minúsculas; NIF y alias ya se guardan en
+    mayúsculas y sin tildes. Los comodines del usuario se escapan.
+    """
+    plegado = escape_like(q.strip().translate(FOLD_TABLE))
+    mayusculas = f"%{plegado.upper()}%"
+    return [f"%{plegado.lower()}%", mayusculas, mayusculas]
+
 
 _LISTA_GROUP = (
     "GROUP BY e.empresa_id, e.nombre_canonico, e.nif_canonico, e.es_ute, e.es_pyme, g.nombre "
@@ -106,8 +124,7 @@ class EmpresasReadRepository:
         where = _LISTA_WHERE_BUSQUEDA if q else ""
         params: list[object] = []
         if q:
-            like = f"%{q.upper()}%"
-            params.extend([like, like, like])
+            params.extend(_parametros_busqueda(q))
 
         # ``NULLS LAST`` en los dos sentidos: un NIF ausente no es el valor más
         # pequeño, es la fila de la que no se sabe el dato, y en el maestro esa

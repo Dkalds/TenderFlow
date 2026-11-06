@@ -509,8 +509,7 @@ def update_pursuit(
         changes = _normalize_and_validate_update(current, requested, resolved_id)
         if fila_acta is not None and not changes:
             # Solo se confirmó la fila: nada que actualizar, así que la versión no sube.
-            # shortcut: este camino no honra ``idempotency_key`` (no pasa por ``_repo.update``); repetir la confirmación anota otro evento igual y el último manda, subir si el ledger debe contar una sola
-            _anotar_fila_acta(resolved_id, pursuit_id, user_id, fila_acta)
+            _anotar_fila_acta(resolved_id, pursuit_id, user_id, fila_acta, idempotency_key)
             return _detalle(current, resolved_id, pursuit_id)
         event_payload = {
             "changes": {
@@ -536,7 +535,7 @@ def update_pursuit(
         if updated is None:
             raise PursuitNotFoundError("Oportunidad no encontrada.")
         if fila_acta is not None:
-            _anotar_fila_acta(resolved_id, pursuit_id, user_id, fila_acta)
+            _anotar_fila_acta(resolved_id, pursuit_id, user_id, fila_acta, idempotency_key)
         if changes.get("responsible_user_id") is not None:
             _adelantar_aviso_de_asignacion(updated, actor_user_id=user_id)
         if changes.get("status") == "preparing":
@@ -549,18 +548,26 @@ def update_pursuit(
 
 
 def _anotar_fila_acta(
-    organization_id: int, pursuit_id: int, user_id: int, fila_acta: FilaActaRef
+    organization_id: int,
+    pursuit_id: int,
+    user_id: int,
+    fila_acta: FilaActaRef,
+    idempotency_key: str | None,
 ) -> None:
     """Deja en el ledger la fila del acta que la persona confirma como suya.
 
     Una confirmación posterior del mismo lote la sustituye al leer
-    (:func:`services.puntuaciones_acta.puntuaciones_de_pursuit`).
+    (:func:`services.puntuaciones_acta.puntuaciones_de_pursuit`). La clave de
+    idempotencia lleva sufijo propio porque el mismo PATCH puede anotar también
+    ``pursuit.updated`` con la clave tal cual, y el índice único es por
+    ``(pursuit_id, idempotency_key)``: repetir la petición no anota otra fila.
     """
     _repo.append_fila_acta_event(
         organization_id=organization_id,
         pursuit_id=pursuit_id,
         actor_user_id=user_id,
         payload=fila_acta.model_dump(),
+        idempotency_key=f"{idempotency_key}:fila_acta" if idempotency_key else None,
     )
 
 
