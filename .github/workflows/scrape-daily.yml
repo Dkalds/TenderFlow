@@ -196,20 +196,6 @@ jobs:
       # Se usa `!cancelled()` y no `always()` para que una cancelación
       # (concurrency, timeout del job) sí los detenga.
       #
-      # Conector TED — Search API v3 (RFC 20260611-1 / ADR-009: fue el
-      # conector usado para validar el framework multi-fuente, ~69 avisos
-      # con 38/39 enlazados al maestro en la primera pasada). API pública sin
-      # auth y sin dataset/índice por entorno que configurar, así que corre
-      # sin gate de variable (a diferencia de PSCP/TACRC más abajo).
-      - name: Run TED connector
-        id: ted
-        if: ${{ !cancelled() && steps.schema.outcome == 'success' }}
-        continue-on-error: true
-        # Presupuesto propio: no debe consumir el timeout del job si la API
-        # pública se degrada.
-        timeout-minutes: 10
-        run: python -m scraper.connectors.ted
-
       # RSS oficiales sin credenciales. Su alcance es de descubrimiento reciente
       # y cada fuente queda aislada para que una indisponibilidad regional no
       # impida la actualización nacional ni las demás fuentes.
@@ -298,6 +284,24 @@ jobs:
         env:
           PLACSP_MENORES_ATOM_URL: ${{ vars.PLACSP_MENORES_ATOM_URL }}
         run: python -m scraper.connectors.placsp_menores
+
+      # TED va el ÚLTIMO: solo su pasada empareja TED↔PLACSP/PSCP (BT-22 e idEvl
+      # viven en memoria, ver services/dedupe.py), así que la gemela de la
+      # plataforma del comprador tiene que estar ya en BD. Con TED primero, lo
+      # que entraba por agregadas o PSCP en la misma pasada salía duplicado.
+      # Conector TED — Search API v3 (RFC 20260611-1 / ADR-009: fue el
+      # conector usado para validar el framework multi-fuente, ~69 avisos
+      # con 38/39 enlazados al maestro en la primera pasada). API pública sin
+      # auth y sin dataset/índice por entorno que configurar, así que corre
+      # sin gate de variable (a diferencia de PSCP/TACRC, más arriba).
+      - name: Run TED connector
+        id: ted
+        if: ${{ !cancelled() && steps.schema.outcome == 'success' }}
+        continue-on-error: true
+        # Presupuesto propio: no debe consumir el timeout del job si la API
+        # pública se degrada.
+        timeout-minutes: 10
+        run: python -m scraper.connectors.ted
 
       # CIERRE de la pasada: la secuencia canónica completa, ahora que las
       # siete fuentes ya han ingerido. Es lo que hace verdadero el contrato de

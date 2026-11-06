@@ -70,8 +70,12 @@ class Conector:
 
 
 #: Los conectores de ``scrape-daily.yml``, en el orden de sus steps.
+#:
+#: TED va el último: solo su pasada empareja TED con PLACSP/PSCP (BT-22 e
+#: ``idEvl`` viven en memoria, ver ``services.dedupe``), así que la gemela de la
+#: plataforma del comprador tiene que estar ya en BD. Con TED primero, lo que
+#: entraba por agregadas o PSCP en la misma pasada salía duplicado (2026-11-06).
 CONECTORES: tuple[Conector, ...] = (
-    Conector("ted", "scraper.connectors.ted", 10 * 60),
     Conector("galicia", "scraper.connectors.galicia", 5 * 60),
     Conector("euskadi", "scraper.connectors.euskadi", 5 * 60),
     Conector("watched_awards", "scraper.connectors.watched_company_awards", 5 * 60),
@@ -81,6 +85,7 @@ CONECTORES: tuple[Conector, ...] = (
     # terminan al momento (`scraper.connectors.sindicacion_placsp`).
     Conector("placsp_agregadas", "scraper.connectors.placsp_agregadas", 10 * 60),
     Conector("placsp_menores", "scraper.connectors.placsp_menores", 10 * 60),
+    Conector("ted", "scraper.connectors.ted", 10 * 60),
 )
 
 #: Hilo de la última pasada de cada conector: el guardarraíl de solape.
