@@ -3,7 +3,7 @@
 Hay trabajo que un job programado puede **decidir** pero no debe **hacer**: el
 paso semanal de active learning sabe cuándo toca reentrenar el clasificador,
 pero corre en un runner con ``contents: read`` y sin dónde publicar el
-artefacto. Quien entrena y publica es ``train-model.yml``. Este módulo es el
+artefacto. Quien entrena y publica es ``ml-entrenar.yml`` (modelo ``sap``). Este módulo es el
 puente: una petición a la API de GitHub que encola ese workflow.
 
 Requiere un token con ``actions: write``. El de ``github.token`` vale: los

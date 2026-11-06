@@ -55,7 +55,7 @@ _TAG_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
 # Campo ``digest`` de un asset en la API de Releases.
 _DIGEST_RE = re.compile(r"sha256:([0-9a-f]{64})")
 
-#: Tag de la Release **fija** donde ``train-predictivos.yml`` publica los
+#: Tag de la Release **fija** donde ``ml-entrenar.yml`` (modelo ``predictivos``) publica los
 #: artefactos de modelo. El workflow la crea con ``--latest=false``: una
 #: release de software no la desplaza y ella no desplaza a ninguna. El YAML
 #: repite el literal (``TAG``) y ``tests/test_unit_train_predictivos_workflow.py``
@@ -89,9 +89,9 @@ _TIMEOUT_DESCARGA_SEGUNDOS = 120.0
 def fetch_latest_release(repo: str, *, token: str = "") -> dict[str, Any] | None:
     """Metadata de la Release marcada como *latest*, o ``None`` si no se pudo.
 
-    Es donde sigue subiendo ``train-tech.yml``, y la que consulta
+    Es donde sigue subiendo ``ml-entrenar.yml`` (modelo ``tecnologias``), y la que consulta
     directamente ``TechnologyClassifier.ensure_downloaded``.
-    ``train-model.yml`` publica en la Release fija desde 2026-10, y
+    ``train-model.yml`` (hoy ``ml-entrenar.yml``, modelo ``sap``) publica en la Release fija desde 2026-10, y
     ``SAPClassifier.ensure_downloaded`` busca por :func:`locate_release_asset`.
     Para los artefactos de ``model_versions`` ya no es el primer sitio.
     """
@@ -173,8 +173,8 @@ def locate_release_asset(
 ) -> AssetLocalizado | None:
     """Primera Release que publica un asset llamado exactamente ``asset_name``.
 
-    Orden: la Release de ``tag_fijo`` (donde publican ``train-predictivos.yml`` y
-    ``train-model.yml``), *latest* (donde sigue subiendo ``train-tech.yml``) y
+    Orden: la Release de ``tag_fijo`` (donde publican ``ml-entrenar.yml`` (modelo ``predictivos``) y
+    ``ml-entrenar.yml`` (modelo ``sap``)), *latest* (donde sigue subiendo ``ml-entrenar.yml`` (modelo ``tecnologias``)) y
     las ``recientes`` más recientes, que es donde quedaron los assets subidos a
     una *latest* que dejó de serlo: las filas de ``model_versions`` con nombre
     fijo (``baja_model.pkl``), anteriores al tag fijo, se resuelven por aquí.

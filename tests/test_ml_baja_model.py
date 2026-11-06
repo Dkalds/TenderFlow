@@ -843,7 +843,7 @@ def test_scoring_marca_degradado_si_el_artefacto_no_resuelve(db, monkeypatch):
     """Versión activa cuyo .pkl no existe ni se puede descargar de la Release.
 
     Es el estado en el que quedaba cualquier versión entrenada en un runner
-    efímero antes de que `train-predictivos.yml` publicara los artefactos.
+    efímero antes de que `ml-entrenar.yml` (modelo `predictivos`) publicara los artefactos.
     """
     from db.database import connect
     from db.model_registry import register_version

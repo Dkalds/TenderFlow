@@ -120,7 +120,7 @@ def train_from_db() -> dict[str, Any]:
     **No activa nada.** El candidato que pasa el gate queda registrado sin
     activar y ``metrics["promotion"]`` lo dice con ``pendiente_de_activar``;
     lo activa ``scheduler.jobs.ml_training_run.activar_publicada`` cuando la
-    Release publica su sha256 (``train-model.yml``: entrenar → subir →
+    Release publica su sha256 (``ml-entrenar.yml`` (modelo ``sap``): entrenar → subir →
     activar). Es el único camino de entrenamiento del clasificador SAP: el
     reentrenamiento semanal por feedback lanza ese workflow en vez de entrenar.
 
@@ -135,7 +135,7 @@ def train_from_db() -> dict[str, Any]:
     El gate de promoción (``services.ml.promotion``) decide si el candidato
     se publica. El que lo pasa queda en ``data/models/sap_classifier-<sha12>.pkl``
     (nombre por contenido; ``metrics["promotion"]["artefacto"]``), que es lo
-    que ``train-model.yml`` sube a la Release ``ml-models``.
+    que ``ml-entrenar.yml`` (modelo ``sap``) sube a la Release ``ml-models``.
     """
     import pandas as pd
 

@@ -10,7 +10,7 @@
   del RFC cumplidos). La activación es decisión humana vía model_registry.
 
 :func:`main` es el CLI que ejecutan ``.github/workflows/ml-scoring.yml`` y
-``train-predictivos.yml``; sus subcomandos están descritos en la sección CLI.
+``ml-entrenar.yml`` (modelo ``predictivos``); sus subcomandos están descritos en la sección CLI.
 """
 
 from __future__ import annotations
@@ -217,7 +217,7 @@ def run_retrain() -> dict[str, Any]:
 #   $GITHUB_STEP_SUMMARY. Sale con 1 si baja falla o el serving se degradó.
 # - `verify`: lee `ML_VERIFY_COMPUTED_AT` y `ML_VERIFY_FILAS` (los outputs de
 #   `scoring`) y comprueba que esas filas están en la BD.
-# - `retrain` (train-predictivos.yml): escribe `artefactos` en $GITHUB_OUTPUT.
+# - `retrain` (ml-entrenar.yml (modelo predictivos)): escribe `artefactos` en $GITHUB_OUTPUT.
 #
 # Todos cierran el pool Postgres al salir (`main`).
 
@@ -435,7 +435,7 @@ def run_scoring_programado() -> dict[str, Any]:
         raise RuntimeError(
             "ML scoring degradado a baseline: hay una versión activa en model_versions "
             f"cuyo artefacto no se pudo servir ({degradados}). Revisá que "
-            "train-predictivos.yml haya subido el .pkl a la Release y que el proceso "
+            "ml-entrenar.yml (modelo predictivos) haya subido el .pkl a la Release y que el proceso "
             "tenga GITHUB_TOKEN para descargarlo."
         )
     salidas = _salidas_scoring(baja)
@@ -668,7 +668,7 @@ def run_scoring_cli() -> int:
             "ML scoring degradado a baseline",
             "Hay una versión activa en model_versions cuyo artefacto no se pudo "
             "servir; las predicciones publicadas son el baseline histórico. "
-            "Revisá que train-predictivos.yml haya subido el .pkl a la Release.",
+            "Revisá que ml-entrenar.yml (modelo predictivos) haya subido el .pkl a la Release.",
             **degradados,
         )
         return 1
@@ -809,7 +809,7 @@ def _verificar_frescura(repo: PrediccionesRepository) -> int:
 def run_retrain_cli() -> int:
     """Re-entrena los modelos predictivos y publica sus artefactos.
 
-    Invocado por ``.github/workflows/train-predictivos.yml``. Escribe en
+    Invocado por ``.github/workflows/ml-entrenar.yml`` (modelo ``predictivos``). Escribe en
     ``$GITHUB_OUTPUT`` la lista de ficheros que el workflow debe subir a la
     Release: sin ese paso el ``.pkl`` muere con el runner efímero y la fila de
     ``model_versions`` apunta a una ruta que ningún job posterior puede

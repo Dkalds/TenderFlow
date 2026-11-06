@@ -163,7 +163,7 @@ def test_registro_y_release_coinciden() -> None:
 
 
 def _con_sap_por_contenido(sha256: str) -> dict[str, object]:
-    """Producción tras la primera pasada nueva de ``train-model.yml``.
+    """Producción tras la primera pasada nueva de ``ml-entrenar.yml`` (modelo ``sap``).
 
     ``ml-models`` gana ``sap_classifier-<sha12>.pkl`` y ``v1.0.0-models`` sigue
     con el ``sap_classifier.pkl`` de mayo, que nadie borra.

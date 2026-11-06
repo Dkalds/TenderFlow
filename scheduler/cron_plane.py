@@ -114,7 +114,7 @@ PLANOS_ASUMIDOS: frozenset[str] = frozenset({"actions"})
 #: Actions; el motivo dice qué tiene que cambiar antes.
 SE_QUEDAN_EN_ACTIONS: dict[str, str] = {
     "ml_retrain_baja": (
-        "train-predictivos.yml publica el .pkl en la Release `ml-models` con "
+        "ml-entrenar.yml (modelo predictivos) publica el .pkl en la Release `ml-models` con "
         "`gh release upload`; en el worker el artefacto quedaría en el disco "
         "efímero del contenedor y `model_versions` apuntaría a una ruta que "
         "ningún scoring puede resolver (el fallo que sacó este job de la "

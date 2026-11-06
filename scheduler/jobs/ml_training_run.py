@@ -1,6 +1,6 @@
 """Entrenamiento del clasificador SAP — entrypoint del workflow de release.
 
-Invocado por ``.github/workflows/train-model.yml`` en dos pasos, con la subida
+Invocado por ``.github/workflows/ml-entrenar.yml`` (modelo ``sap``) en dos pasos, con la subida
 a la Release en medio:
 
 1. ``python -m scheduler.jobs.ml_training_run`` — seed de negativos →
@@ -24,14 +24,14 @@ los dos pasos el modelo se servía sin cotejar, y un fallo de la subida tras
 borrar el asset dejaba a los runners sin modelo.
 
 ``python -m scheduler.jobs.ml_training_run rescore`` es el tercer subcomando,
-el de ``rescore-ml-proba.yml``: recalcula ``ml_proba`` con el modelo que se
+el de ``operaciones-datos.yml`` (operacion ``rescore-ml-proba``): recalcula ``ml_proba`` con el modelo que se
 sirve, sin entrenar nada.
 
 Vivía como heredoc ``python -c`` dentro del YAML, fuera del alcance de ruff,
 mypy y los tests; aquí queda como código normal.
 
 El clasificador **multi-tecnología** tiene su propio entrypoint desde #263:
-``scheduler/jobs/tech_training_run.py``, invocado por ``train-tech.yml``. Este
+``scheduler/jobs/tech_training_run.py``, invocado por ``ml-entrenar.yml`` (modelo ``tecnologias``). Este
 módulo llegó a tener un subcomando ``tech`` que hacía lo mismo; se retiró al
 fusionar, porque el de allí aplica un gate de etiquetas circulares más estricto
 —un suelo absoluto de etiquetas independientes— y tener dos caminos para
@@ -111,7 +111,7 @@ def promocionado(metrics: dict[str, Any]) -> bool:
 
     ``train_from_db`` delega en ``services.ml.promotion.promote_if_better``,
     que **solo** escribe ``data/models/sap_classifier-<sha12>.pkl`` —el asset
-    que ``train-model.yml`` sube a la Release— si el candidato supera el gate.
+    que ``ml-entrenar.yml`` (modelo ``sap``) sube a la Release— si el candidato supera el gate.
     Un rechazo no es un error: es el mecanismo funcionando.
 
     El candidato que pasa queda ``pendiente_de_activar``: el gate no activa
@@ -249,7 +249,7 @@ def rescore() -> dict[str, Any]:
 def _emitir_salida_github(metrics: dict[str, Any]) -> None:
     """Escribe el desenlace en ``$GITHUB_OUTPUT`` para que el workflow decida.
 
-    Sin esto, ``train-model.yml`` no puede distinguir "el gate rechazó al
+    Sin esto, ``ml-entrenar.yml`` (modelo ``sap``) no puede distinguir "el gate rechazó al
     candidato" de "el entrenamiento reventó": en ambos casos falta el
     ``.pkl``, y el paso de verificación moría con un ``ls: cannot access``
     que no explica nada.
@@ -264,7 +264,7 @@ def _emitir_salida_github(metrics: dict[str, Any]) -> None:
         f"promoted={'true' if promocionado(metrics) else 'false'}",
         f"version={promocion.get('version') or ''}",
         # Lo que el workflow sube, ya con el sha256 en el nombre, separado por
-        # espacios: mismo contrato que `artefactos` de `train-predictivos.yml`.
+        # espacios: mismo contrato que `artefactos` de `ml-entrenar.yml` (modelo `predictivos`).
         f"artefactos={' '.join(artefactos_publicados(metrics))}",
         # Una sola línea: los outputs multilinea necesitan heredoc y estos
         # motivos son frases cortas.
@@ -365,7 +365,7 @@ def main(argv: list[str] | None = None) -> int:
         return _rescore_cli()
     # Un solo camino de entrenamiento: el clasificador SAP binario. El
     # multi-etiqueta tiene su propio entrypoint desde #263
-    # (`scheduler/jobs/tech_training_run.py`, workflow `train-tech.yml`), con un
+    # (`scheduler/jobs/tech_training_run.py`, workflow `ml-entrenar.yml` (modelo `tecnologias`)), con un
     # gate de etiquetas circulares más estricto que el que este módulo llegó a
     # tener: un suelo absoluto de etiquetas independientes, en vez de fiarse
     # del flag `labels_circulares`, que se apaga en cuanto UNA fila trae

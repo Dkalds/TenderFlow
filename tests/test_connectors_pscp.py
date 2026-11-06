@@ -645,7 +645,7 @@ def test_cada_keyword_ambigua_existe_en_la_semilla() -> None:
 # ── Reintento por página (issue #408) ───────────────────────────────────────
 #
 # La petición de página no tenía reintento a ningún nivel. El 2026-09-27 la
-# reingesta completa de `purga-pscp.yml` murió a los 55 minutos y 812.591 avisos
+# reingesta completa de `operaciones-datos.yml` (operacion `purga-pscp`) murió a los 55 minutos y 812.591 avisos
 # por UN «Read timed out» de Socrata, y en los dos días siguientes la pasada
 # diaria cayó tres veces más por lo mismo, tapada por su `continue-on-error`.
 
@@ -852,7 +852,7 @@ class _Pasada:
         self.fallos: list[tuple[str, str]] = []
 
     def ejecutar(self, sesion) -> int:
-        """La invocación de ``purga-pscp.yml``: ``python -m scraper.connectors.pscp --desde …``."""
+        """La invocación de ``operaciones-datos.yml`` (operacion ``purga-pscp``): ``python -m scraper.connectors.pscp --desde …``."""
         from scraper.connectors import pscp
 
         self._monkeypatch.setattr(

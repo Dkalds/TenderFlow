@@ -60,7 +60,7 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 # Repo cuyas Releases publican los artefactos: la de tag fijo
-# (``train-predictivos.yml``, ``train-model.yml``) y *latest* (``train-tech.yml``
+# (``ml-entrenar.yml`` (modelo ``predictivos``), ``ml-entrenar.yml`` (modelo ``sap``)) y *latest* (``ml-entrenar.yml`` (modelo ``tecnologias``)
 # y los assets de nombre fijo anteriores, como el ``sap_classifier.pkl`` de mayo
 # en ``v1.0.0-models``).
 _RELEASE_REPO = "Dkalds/TenderFlow"
@@ -265,7 +265,7 @@ def rename_to_content_address(path: Path) -> tuple[Path, str]:
     """Renombra un artefacto recién guardado a ``<stem>-<sha256[:12]><suffix>``.
 
     Devuelve ``(ruta_nueva, sha256)``. La ruta es la que se registra en
-    ``model_versions`` y la que ``train-predictivos.yml`` sube a la Release.
+    ``model_versions`` y la que ``ml-entrenar.yml`` (modelo ``predictivos``) sube a la Release.
 
     Con la ruta fija (``data/models/baja_model.pkl``) todas las versiones
     compartían nombre de asset, y ``gh release upload --clobber`` hacía que el

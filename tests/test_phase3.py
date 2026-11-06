@@ -187,7 +187,7 @@ class TestPromotionGate:
     Hasta 2026-10 ``maybe_retrain_classifier`` entrenaba en proceso (sin
     ``SCHEDULER_PLANE``) y delegaba en ``services.ml.promotion.promote_if_better``
     con activación inmediata. Desde que hay un solo camino de entrenamiento
-    —``train-model.yml`` → ``scheduler.jobs.ml_training_run``— el job no
+    —``ml-entrenar.yml`` (modelo ``sap``) → ``scheduler.jobs.ml_training_run``— el job no
     entrena, no evalúa y no registra nada en ningún plano. La lógica del gate
     se testea en ``tests/test_ml_promotion_gate.py`` y el lanzamiento en
     ``tests/test_active_learning_publicacion.py``; aquí solo el cableado.

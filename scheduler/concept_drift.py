@@ -283,11 +283,11 @@ def _plano_declarado() -> str:
 
 
 #: Workflow que entrena, publica el artefacto en la Release y activa la versión.
-_WORKFLOW_ENTRENAMIENTO = "train-model.yml"
+_WORKFLOW_ENTRENAMIENTO = "ml-entrenar.yml"  # sin entradas: el default es `modelo: sap`
 
 
 def _lanzar_entrenamiento() -> bool:
-    """Encola ``train-model.yml`` por ``workflow_dispatch``. ``True`` si se aceptó.
+    """Encola ``ml-entrenar.yml`` (modelo ``sap``) por ``workflow_dispatch``. ``True`` si se aceptó.
 
     Solo puede funcionar dentro de GitHub Actions, que es donde existen las
     tres variables: ``GITHUB_TOKEN`` (el step tiene que exportarlo, y el
@@ -314,7 +314,7 @@ def maybe_retrain_classifier(
 
     Cuenta cuántas filas de feedback humano en ``ml_feedback`` son posteriores
     al ``trained_at`` de la **última versión registrada**, esté activa o no.
-    Si supera ``threshold``, lanza ``train-model.yml`` —el único camino que
+    Si supera ``threshold``, lanza ``ml-entrenar.yml`` (modelo ``sap``) —el único camino que
     entrena, publica el artefacto en la Release y solo entonces activa— y, si
     no puede lanzarlo, avisa con el comando exacto.
 
@@ -340,7 +340,7 @@ def maybe_retrain_classifier(
     Returns:
         Dict con ``triggered`` (siempre ``False`` salvo en ``dry_run``: aquí no
         se entrena), ``feedbacks_new``, ``retrain_lanzado`` cuando se encoló
-        ``train-model.yml`` y ``retrain_pendiente`` cuando tocaba reentrenar y
+        ``ml-entrenar.yml`` (modelo ``sap``) y ``retrain_pendiente`` cuando tocaba reentrenar y
         solo se pudo avisar.
     """
     from db.model_registry import feedbacks_since_last_train, get_active
@@ -394,7 +394,7 @@ def maybe_retrain_classifier(
         f"Este proceso ({plano}) no ha podido lanzar {_WORKFLOW_ENTRENAMIENTO} "
         "y no reentrena por su cuenta: una versión activa sin artefacto "
         "publicado deja sin modelo a todos los procesos.\n"
-        f"Lanzá el workflow que entrena y publica: gh workflow run {_WORKFLOW_ENTRENAMIENTO}",
+        f"Lanzá el workflow que entrena y publica: gh workflow run {_WORKFLOW_ENTRENAMIENTO} -f modelo=sap",
     )
     return result
 

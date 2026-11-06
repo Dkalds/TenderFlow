@@ -66,7 +66,7 @@ _ALIAS_PIPELINE: dict[str, str] = {
     "watchlist_rules": "watchlist_notify",
 }
 # `ml_retrain_baja` salió de este mapa en 2026-08 al pasar a plane='actions'
-# (`.github/workflows/train-predictivos.yml`): dejarlo apuntando a un paso que
+# (`.github/workflows/ml-entrenar.yml` (modelo `predictivos`)): dejarlo apuntando a un paso que
 # ya no existe en CANONICAL_STEPS solo serviría para enmascarar un revert.
 
 

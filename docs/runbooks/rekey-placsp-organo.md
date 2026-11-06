@@ -111,10 +111,10 @@ cuando la base tiene la clave nueva y la ingesta vuelve a correr.
    gh workflow disable scrape-daily.yml      # PLACSP, empresas vigiladas, agregadas, DLQ
    gh workflow disable ml-scoring.yml        # tecnologia_score, predicciones
    gh workflow disable pliegos.yml           # documentos, fichas del pliego
-   gh workflow disable rescore-ml-proba.yml
+   gh workflow disable operaciones-datos.yml # reprocesos, purga, backfill, rescore
    ```
 
-   `scrape-bulk.yml` y `reproceso-lotes.yml` son manuales: no lanzarlos. No hay
+   `scrape-bulk.yml` es manual: no lanzarlo. No hay
    worker desplegado (2026-10-19, [cutover-cron-al-worker.md](cutover-cron-al-worker.md));
    si lo hubiera (`SCHEDULER_PLANE=worker`), suspenderlo en Render.
 3. **Vaciar la cola y la DLQ de PLACSP**: ningún `jobs` en `pending`/`running`

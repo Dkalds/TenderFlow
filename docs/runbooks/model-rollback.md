@@ -46,7 +46,7 @@ Cómo se llega: algo activó una versión sin publicar su artefacto. El
 código no puede repetirse:
 
 - El paso semanal `sap_active_learning` no entrena en ningún plano —tampoco
-  sin `SCHEDULER_PLANE`, en un checkout local—: lanza `train-model.yml`, o
+  sin `SCHEDULER_PLANE`, en un checkout local—: lanza `ml-entrenar.yml` (modelo `sap`), o
   avisa con el comando si no puede.
 - El gate (`services.ml.promotion.promote_if_better`) **no activa nunca**: ya
   no tiene parámetro `activar`. Registra el candidato inactivo y, si pasa,
@@ -54,7 +54,7 @@ código no puede repetirse:
   para `python scripts/ml_clasificadores.py train`, que ahora dice «registrada
   SIN activar» en vez de «Modelo guardado».
 - Lo único que activa es `python -m scheduler.jobs.ml_training_run activar
-  --version N`, el paso de `train-model.yml` posterior a la subida, y solo si
+  --version N`, el paso de `ml-entrenar.yml` (modelo `sap`) posterior a la subida, y solo si
   la Release publica el sha256 registrado.
 
 Lo que queda son los caminos manuales que se saltan todo eso: un
@@ -69,7 +69,7 @@ o alguien que sustituye el asset a mano.
    BD.
 2. **Hay otra versión cuyo artefacto sí está publicado**: `activate_version`,
    como en «Marcar versión anterior como activa en BD». Desde 2026-10 es lo
-   normal para `sap_classifier`: cada versión publicada por `train-model.yml`
+   normal para `sap_classifier`: cada versión publicada por `ml-entrenar.yml` (modelo `sap`)
    conserva su asset en `ml-models`.
 3. **Ninguna de las dos** (el caso del 2026-09-29: el `.pkl` murió con el
    runner): dejá el modelo sin versión activa. Los consumidores vuelven al
@@ -88,14 +88,14 @@ o alguien que sustituye el asset a mano.
    Desactivar no relanza ningún entrenamiento: el paso semanal
    `sap_active_learning` cuenta el feedback humano posterior a la última
    versión **registrada**, esté activa o no. Si querés un modelo nuevo,
-   `gh workflow run train-model.yml`.
+   `gh workflow run ml-entrenar.yml -f modelo=sap`.
 
 Después de cualquiera de las tres, la siguiente pasada de `scrape-daily` puntúa
 lo que quedó pendiente (`ml_proba IS NULL`), y `model_artifacts_canary` deja de
 avisar. Las filas que ya tenían score lo conservan, y puede ser el de un modelo
 que ya no se sirve: ver «Recalcular `ml_proba`».
 
-## `train-model.yml` falló después de «Train model»
+## `ml-entrenar.yml` (modelo `sap`) falló después de «Train model»
 
 El workflow va en este orden: entrenar y pasar el gate → verificar que hay
 artefacto → subirlo a la Release `ml-models` → comprobar que lo publicado es lo
@@ -143,12 +143,12 @@ un recálculo que se cortó a medias—, las filas ya puntuadas conservan el sco
 del modelo anterior. Para reescribirlas todas con el que se sirve ahora:
 
 ```bash
-gh workflow run rescore-ml-proba.yml
+gh workflow run operaciones-datos.yml -f operacion=rescore-ml-proba
 ```
 
 Desde Actions y no desde un checkout: el score depende de las versiones de
 scikit-learn y numpy con las que se carga el artefacto, y las que cuentan son
-las de `requirements.txt`. `train-model.yml` ya hace este recálculo al activar
+las de `requirements.txt`. `ml-entrenar.yml` (modelo `sap`) ya hace este recálculo al activar
 una versión nueva.
 
 ## Criterio de promoción: cuándo una versión puede activarse
@@ -190,10 +190,10 @@ entrenamiento pisaba su asset y el scoring caía por `ModelArtifactMismatch`.
 Las filas anteriores a ese cambio, con nombre fijo, se siguen resolviendo por
 nombre entre las 30 Releases más recientes. **No crees la Release `ml-models` a
 mano** (UI o token personal): dispararía `release-sdk.yml`. La crean
-`train-predictivos.yml` o `train-model.yml` con su propio token.
+`ml-entrenar.yml` (modelo `predictivos`) o `ml-entrenar.yml` (modelo `sap`) con su propio token.
 
 **Artefactos del clasificador SAP (desde 2026-10).** Igual que los
-predictivos: `train-model.yml` sube `sap_classifier-<sha256[:12]>.pkl` y su
+predictivos: `ml-entrenar.yml` (modelo `sap`) sube `sap_classifier-<sha256[:12]>.pkl` y su
 `.sha256` a `ml-models`, sin borrar nada antes, y registra esa ruta en
 `model_versions`. Revertir a una versión publicada así es `activate_version`.
 Quién lo carga y cómo:
@@ -286,7 +286,7 @@ o con el LLM: el golden juzga a esas fuentes.
 
 ### `baja_model` v2 y `retencion_model` v1: qué hace falta para decidir
 
-La decisión es humana (`train-predictivos.yml` no activa salvo
+La decisión es humana (`ml-entrenar.yml` (modelo `predictivos`) no activa salvo
 `ML_PRED_AUTO_ACTIVATE`), pero no a ojo: se activa una versión cuando
 **todas** estas condiciones se cumplen con los números de su fila de
 `model_versions` delante, y se anota el número que lo justifica en `notes`.
@@ -310,7 +310,7 @@ están entrenados…»):
 - **`retencion_model` v1: no decidible.** Es anterior al gate y no registra
   `pr_auc_std_folds`; `pr_auc` 0,2453 sobre prevalencia 0,1099 (margen 0,135 <
   0,15) tampoco pasaría el criterio del RFC. Hay que relanzar
-  `train-predictivos.yml` para tener la versión con dispersión y rival de
+  `ml-entrenar.yml` (modelo `predictivos`) para tener la versión con dispersión y rival de
   antigüedad registrados, y decidir sobre esa.
 - `pr_auc_baseline_antiguedad` (ordenar por antigüedad de la relación) **no
   gatea**: si el modelo no lo supera, actívalo sabiendo que un `ORDER BY` hacía
@@ -332,7 +332,7 @@ saber antes de tocar el clasificador:
   medido sobre **tres** ejemplos del golden legado (27 ejemplos escritos a
   mano). Un gate sobre un golden tan pequeño no protege: es la razón de fondo
   del golden real (`golden_ti.jsonl`, [etiquetado-ti.md](etiquetado-ti.md)).
-- **Qué se cambió.** Nadie entrena ni activa fuera de `train-model.yml`, que
+- **Qué se cambió.** Nadie entrena ni activa fuera de `ml-entrenar.yml` (modelo `sap`), que
   activa **después** de subir y cotejar el `digest` (#404, #405);
   `model_artifacts_canary` coteja a diario. En 2026-10 se retiró el segundo
   camino: el reentrenamiento en proceso de `maybe_retrain_classifier` (que
@@ -343,18 +343,18 @@ saber antes de tocar el clasificador:
 - **Qué sigue abierto.** Ver correr el flujo nuevo de punta a punta —con el
   asset ya nombrado por contenido en `ml-models` (2026-10), que nunca se ha
   ejecutado en producción—: ver «Verificar la primera pasada de
-  `train-model.yml`» justo debajo. La etiqueta de `train_from_db` sigue siendo
+  `ml-entrenar.yml` (modelo `sap`)» justo debajo. La etiqueta de `train_from_db` sigue siendo
   circular (keywords); sustituirla por la de nivel 1 es otro ítem del backlog.
 
-## Verificar la primera pasada de `train-model.yml`
+## Verificar la primera pasada de `ml-entrenar.yml` (modelo `sap`)
 
 Es la acción pendiente del dueño para cerrar el incidente. Con un token que
 pueda lanzar workflows y leer Releases, y `.env` apuntando a producción:
 
 ```bash
 # 1. Lanzar y esperar.
-gh workflow run train-model.yml
-RUN="$(gh run list --workflow=train-model.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh workflow run ml-entrenar.yml -f modelo=sap
+RUN="$(gh run list --workflow=ml-entrenar.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
 gh run watch "$RUN"
 
 # 2. El resumen del run. Si el gate rechazó, lo dice con los motivos y sale
@@ -390,8 +390,8 @@ LIMIT 6;
 
 y en el log de la ingesta, `pipeline.ml_clf_loaded` con la ruta
 `sap_classifier-<sha12>.pkl`. El `workflow_dispatch` desde el paso semanal se
-ve igual: un run de `train-model.yml` con evento `workflow_dispatch`
-(`gh run list --workflow=train-model.yml`), tras el aviso «reentrenamiento del
+ve igual: un run de `ml-entrenar.yml` (modelo `sap`) con evento `workflow_dispatch`
+(`gh run list --workflow=ml-entrenar.yml`), tras el aviso «reentrenamiento del
 clasificador SAP lanzado».
 
 ## Ver modelos en disco

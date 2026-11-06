@@ -1181,7 +1181,7 @@ class TechnologyClassifier:
         artefacto y salía ``no_model`` en **todas** las pasadas de
         ``scrape-daily.yml``, no solo desde el 2026-07-27.
 
-        Quien publica el asset es ``.github/workflows/train-tech.yml``.
+        Quien publica el asset es ``.github/workflows/ml-entrenar.yml`` (modelo ``tecnologias``).
 
         Returns:
             True si el modelo está disponible (ya existía o se descargó).
@@ -1269,7 +1269,7 @@ class TechnologyClassifier:
 
         El tercer canal —:meth:`ensure_downloaded`, el asset de la Release por
         nombre— es el que trae el artefacto sin registro. Lo sube
-        ``.github/workflows/train-tech.yml`` a la Release *latest* cuando el gate
+        ``.github/workflows/ml-entrenar.yml`` (modelo ``tecnologias``) a la Release *latest* cuando el gate
         de etiquetas no circulares lo deja pasar; la primera vez fue el
         2026-09-27. Mientras siga publicado, llamar aquí sin el fichero en disco
         lo descarga de GitHub, así que un test que llegue hasta este método sin
@@ -1369,7 +1369,7 @@ def registrar_entrenamiento(metrics: dict[str, Any], path: Path | None = None) -
     ``.gitignore`` y el runner es efímero, así que en CI el fichero arranca
     vacío y contiene una sola entrada: la del run. El histórico solo se acumula
     en local. Lo que persiste del run es el **step summary**, donde
-    ``train-tech.yml`` vuelca esta entrada — por eso la entrada tiene que ser
+    ``ml-entrenar.yml`` (modelo ``tecnologias``) vuelca esta entrada — por eso la entrada tiene que ser
     autosuficiente (fecha, columna elegida, conteo por origen) y no un delta
     contra la anterior.
     """

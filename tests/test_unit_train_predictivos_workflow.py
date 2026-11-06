@@ -1,4 +1,4 @@
-"""``train-predictivos.yml`` publica donde el resolvedor busca primero.
+"""``ml-entrenar.yml`` (job ``predictivos``) publica donde el resolvedor busca primero.
 
 El workflow subía los artefactos a lo que fuera *latest*, y ``release.yml``
 crea una *latest* nueva —sin assets de modelo— con cada tag ``v*``: publicar
@@ -20,13 +20,15 @@ import yaml
 
 from shared.release_assets import ML_MODELS_RELEASE_TAG
 
-WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "train-predictivos.yml"
+WORKFLOW = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ml-entrenar.yml"
+_JOB = "predictivos"
 _SUBIDA = "Upload artifacts to release"
 
 
 def _steps() -> list[dict[str, Any]]:
     doc = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    return [step for job in doc["jobs"].values() for step in job.get("steps", [])]
+    steps: list[dict[str, Any]] = doc["jobs"][_JOB]["steps"]
+    return steps
 
 
 def _step(nombre: str) -> dict[str, Any]:

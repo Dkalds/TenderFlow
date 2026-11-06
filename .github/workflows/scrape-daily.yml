@@ -25,7 +25,7 @@ on:
 permissions:
   contents: read
   # Para que el paso semanal `sap_active_learning` del cierre lance
-  # `train-model.yml` por `workflow_dispatch` cuando toca reentrenar el
+  # `ml-entrenar.yml` (modelo `sap`) por `workflow_dispatch` cuando toca reentrenar el
   # clasificador (`scheduler/concept_drift.py`). Este job no puede publicar un
   # artefacto de modelo —no tiene `contents: write`, y no debe tenerlo—, así
   # que en vez de entrenar pide el workflow que sí puede. Sin este permiso el

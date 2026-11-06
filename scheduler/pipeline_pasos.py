@@ -228,7 +228,7 @@ def pasos_bloqueantes_fallidos(steps: dict[str, str]) -> list[str]:
 
 
 # `ml_retrain` salió de la lista en 2026-08: vive en
-# `.github/workflows/train-predictivos.yml`. Entrenaba aquí, dentro de un job
+# `.github/workflows/ml-entrenar.yml` (modelo `predictivos`). Entrenaba aquí, dentro de un job
 # con `permissions: contents: read`, así que el artefacto no podía publicarse
 # en la Release y moría con el runner efímero — dejando filas de
 # `model_versions` con un `path` que ningún job posterior podía resolver. El

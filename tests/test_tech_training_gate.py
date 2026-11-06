@@ -1,4 +1,4 @@
-"""Gate de publicación del clasificador multi-tecnología (``train-tech.yml``).
+"""Gate de publicación del clasificador multi-tecnología (``ml-entrenar.yml`` (modelo ``tecnologias``)).
 
 Publicar un modelo entrenado sobre ``licitaciones.tecnologia`` es publicar una
 copia del regex ``matches_technology()``, porque esa columna la escriben los

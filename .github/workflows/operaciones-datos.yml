@@ -1,0 +1,471 @@
+name: Operaciones manuales de datos
+
+# Las operaciones de una vez contra la BD de producción, en un solo workflow:
+# se elige cuál con `operacion` y solo corre su job. Antes eran seis ficheros
+# (`reproceso-ted.yml`, `reproceso-lotes.yml`, `historico-agregadas.yml`,
+# `purga-pscp.yml`, `backfill-empresas.yml` y `rescore-ml-proba.yml`), cada uno
+# con el mismo arranque; el porqué de cada operación sigue encima de su job.
+#
+# **Sin `schedule` a propósito**: todas se lanzan a mano y, salvo el histórico
+# y el rescore, sin `aplicar` solo cuentan lo que harían.
+#
+# Cada operación lee solo las entradas que le tocan; las demás se ignoran:
+#
+# | operacion            | entradas                                   |
+# |----------------------|--------------------------------------------|
+# | reproceso-ted        | desde, hasta, aplicar                      |
+# | reproceso-lotes      | desde, hasta, aplicar                      |
+# | historico-agregadas  | desde, hasta, ted_desde                    |
+# | purga-pscp           | aplicar, reingerir_desde                   |
+# | backfill-empresas    | scope_fuente, time_budget, restart         |
+# | rescore-ml-proba     | (ninguna)                                  |
+#
+# El tamaño de lote del backfill y el de borrado de la purga ya no son entradas:
+# corren con el default de su script (5000 y 500), que era también el de sus
+# workflows. Para otro valor, el script admite `--batch` / `--lote-borrado`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      operacion:
+        description: "Qué operación lanzar"
+        type: choice
+        required: true
+        options:
+          - reproceso-ted
+          - reproceso-lotes
+          - historico-agregadas
+          - purga-pscp
+          - backfill-empresas
+          - rescore-ml-proba
+      aplicar:
+        description: "Escribir en la BD (sin marcar, solo cuenta). Reprocesos y purga"
+        type: boolean
+        default: false
+      desde:
+        description: "Primer mes, YYYY-MM. Reprocesos e histórico"
+        required: false
+        default: ""
+      hasta:
+        description: "Último mes, YYYY-MM (incluido). Reprocesos e histórico"
+        required: false
+        default: ""
+      ted_desde:
+        description: "Histórico: primer día de la pasada de TED, YYYYMMDD (vacío = sin pasada)"
+        required: false
+        default: ""
+      reingerir_desde:
+        description: "Purga, solo con aplicar: reingerir PSCP desde AAAA-MM-DD (vacío = no)"
+        required: false
+        default: ""
+      scope_fuente:
+        description: "Backfill: acotar a una fuente (placsp, pscp, ted, bulk_YYYYMM…). Vacío = todas"
+        required: false
+        default: ""
+      time_budget:
+        description: "Backfill: segundos de pared antes de cortar (el cursor queda guardado)"
+        required: false
+        default: "3600"
+      restart:
+        description: "Backfill: ignorar el cursor guardado y recorrer desde el principio"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Las que escriben licitaciones comparten el grupo de la ingesta (ADR-012):
+# nunca corren a la vez que un bulk o un tick diario contra la misma BD. El
+# rescore solo se excluye consigo mismo: dos a la vez escribirían las mismas
+# filas dos veces.
+concurrency:
+  group: ${{ inputs.operacion == 'rescore-ml-proba' && 'rescore-ml-proba' || 'scrape' }}
+  cancel-in-progress: false
+
+jobs:
+  # ── reproceso-ted ─────────────────────────────────────────────
+  # Antes: reproceso-ted.yml («Reproceso de los expedientes que esperan avisos TED (manual)»).
+  #
+  # Ingiere, desde los ZIP mensuales de PLACSP, los expedientes que enlaza (idEvl)
+  # un aviso TED sin pareja y que la puerta tecnológica descartó
+  # (`scraper/reproceso_ted.py`). Tras el último mes, el aviso TED queda detrás de
+  # la fila de PLACSP.
+  #
+  # Existe porque la ingesta entera de esos expedientes entró el 2026-11-04
+  # (`EsperadasPorTed`) y solo alcanza a lo que el ATOM publica desde ese día. El
+  # bulk (`scrape-bulk.yml`) reingiere el mes entero en más de dos horas y pisaría
+  # con la versión del ZIP lo que el ATOM trajo después; esto solo escribe los
+  # expedientes que faltan y nunca toca una fila que ya existe.
+  #
+  # Sin `aplicar` solo cuenta lo que escribiría. Repetir no cambia nada.
+  reproceso_ted:
+    if: inputs.operacion == 'reproceso-ted'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      ENV: prod
+      APP_PROFILE: scraper
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preparar Python
+        uses: ./.github/actions/preparar-python
+
+      # Mismo preflight que `scrape-daily.yml` (#577): el reproceso parsea
+      # entradas PLACSP y escribe con la clave del código; contra una BD de
+      # otra generación crearía filas nuevas junto a las viejas.
+      - name: Preflight de schema
+        timeout-minutes: 3
+        run: python -m db.schema_revision
+
+      - name: Reprocesar
+        env:
+          DESDE: ${{ inputs.desde }}
+          HASTA: ${{ inputs.hasta }}
+          APLICAR: ${{ inputs.aplicar }}
+        run: |
+          set -eu
+          if ! [[ "$DESDE" =~ ^[0-9]{4}-[0-9]{2}$ && "$HASTA" =~ ^[0-9]{4}-[0-9]{2}$ ]]; then
+            echo "::error::desde/hasta obligatorios: se espera YYYY-MM"
+            exit 1
+          fi
+          if [ "$APLICAR" = "true" ]; then
+            python -m scraper.reproceso_ted --desde "$DESDE" --hasta "$HASTA" --aplicar
+          else
+            python -m scraper.reproceso_ted --desde "$DESDE" --hasta "$HASTA"
+          fi
+
+  # ── reproceso-lotes ─────────────────────────────────────────────
+  # Antes: reproceso-lotes.yml («Reproceso del lote de las adjudicaciones (manual)»).
+  #
+  # Asigna su lote a las adjudicaciones ya guardadas de los expedientes
+  # multilote, leyendo los ZIP mensuales de PLACSP (`scraper/reproceso_lotes.py`).
+  #
+  # Existe porque hasta 2026-10 el parser no leía el lote del `TenderResult` y
+  # ninguna adjudicación multilote tenía `lote_id`. La ingesta corrige lo que
+  # vuelve a publicarse, pero el bulk (`scrape-bulk.yml`) tarda más de dos horas
+  # por mes —escribe los documentos de cada expediente uno a uno— y no puede
+  # reprocesar el histórico. Esto solo rellena `lote_id` en sitio: no toca la
+  # licitación, los documentos ni la resolución de empresas.
+  #
+  # Sin `aplicar` solo cuenta lo que asignaría; con `aplicar`, escribe mes a mes,
+  # así que un rango largo puede partirse en varias ejecuciones. Repetir un mes
+  # no cambia nada.
+  reproceso_lotes:
+    if: inputs.operacion == 'reproceso-lotes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    env:
+      ENV: prod
+      APP_PROFILE: scraper
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preparar Python
+        uses: ./.github/actions/preparar-python
+
+      # Mismo preflight que `scrape-daily.yml` (#577): el reproceso re-parsea
+      # entradas PLACSP y escribe con la clave del código; contra una BD de
+      # otra generación crearía filas nuevas junto a las viejas.
+      - name: Preflight de schema
+        timeout-minutes: 3
+        run: python -m db.schema_revision
+
+      - name: Reprocesar
+        env:
+          DESDE: ${{ inputs.desde }}
+          HASTA: ${{ inputs.hasta }}
+          APLICAR: ${{ inputs.aplicar }}
+        run: |
+          set -eu
+          if ! [[ "$DESDE" =~ ^[0-9]{4}-[0-9]{2}$ && "$HASTA" =~ ^[0-9]{4}-[0-9]{2}$ ]]; then
+            echo "::error::desde/hasta obligatorios: se espera YYYY-MM"
+            exit 1
+          fi
+          if [ "$APLICAR" = "true" ]; then
+            python -m scraper.reproceso_lotes --desde "$DESDE" --hasta "$HASTA" --aplicar
+          else
+            python -m scraper.reproceso_lotes --desde "$DESDE" --hasta "$HASTA"
+          fi
+
+  # ── historico-agregadas ─────────────────────────────────────────────
+  # Antes: historico-agregadas.yml («Histórico de las plataformas agregadas y pasada de TED (manual)»).
+  #
+  # Ingiere desde los ZIP mensuales de la sindicación 1044 de PLACSP lo que las
+  # plataformas autonómicas (Euskadi, Comunidad de Madrid, Catalunya…) agregaron
+  # antes de que se encendiera el feed de agregadas, el 2026-11-04
+  # (`python -m scraper.connectors.placsp_agregadas --desde … --hasta …`). Nunca
+  # pisa una fila que ya existe y no mueve el cursor del feed.
+  #
+  # Después vuelve a leer TED desde `ted_desde`: el emparejamiento por expediente
+  # (BT-22) solo ve los avisos de la pasada, y los de octubre ya habían salido de
+  # su ventana de 14 días cuando llegaron sus expedientes agregados.
+  historico_agregadas:
+    if: inputs.operacion == 'historico-agregadas'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+
+    env:
+      ENV: prod
+      APP_PROFILE: scraper
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preparar Python
+        uses: ./.github/actions/preparar-python
+
+      # Mismo preflight que `scrape-daily.yml` (#577): el histórico parsea
+      # entradas PLACSP y escribe con la clave del código; contra una BD de
+      # otra generación crearía filas nuevas junto a las viejas.
+      - name: Preflight de schema
+        timeout-minutes: 3
+        run: python -m db.schema_revision
+
+      - name: Histórico de agregadas
+        timeout-minutes: 100
+        env:
+          DESDE: ${{ inputs.desde }}
+          HASTA: ${{ inputs.hasta }}
+        run: |
+          set -eu
+          if ! [[ "$DESDE" =~ ^[0-9]{4}-[0-9]{2}$ && "$HASTA" =~ ^[0-9]{4}-[0-9]{2}$ ]]; then
+            echo "::error::desde/hasta inválidos: se espera YYYY-MM"
+            exit 1
+          fi
+          python -m scraper.connectors.placsp_agregadas --desde "$DESDE" --hasta "$HASTA"
+
+      - name: Pasada de TED
+        if: inputs.ted_desde != ''
+        timeout-minutes: 30
+        env:
+          TED_DESDE: ${{ inputs.ted_desde }}
+        run: |
+          set -eu
+          if ! [[ "$TED_DESDE" =~ ^[0-9]{8}$ ]]; then
+            echo "::error::ted_desde inválido '$TED_DESDE': se espera YYYYMMDD"
+            exit 1
+          fi
+          python -m scraper.connectors.ted --desde "$TED_DESDE"
+
+  # ── purga-pscp ─────────────────────────────────────────────
+  # Antes: purga-pscp.yml («Purga de PSCP sin tecnología (manual)»).
+  #
+  # Ejecuta `scripts/purgar_pscp_sin_tecnologia.py` contra la BD de producción
+  # (RFC docs/rfc/2026-09-26-rfc-purga-pscp-sin-tecnologia.md).
+  #
+  # **Sin `schedule` a propósito**: es una operación de una vez. Por defecto es un
+  # dry-run —mide, enseña ejemplos y no escribe nada—; el balance queda en el
+  # resumen del run. Con `aplicar` borra, y es reanudable: si el job se corta,
+  # relanzarlo continúa donde quedó.
+  #
+  # `reingerir_desde` encadena, tras el borrado, una reingesta completa de PSCP
+  # (`python -m scraper.connectors.pscp --desde …`). Es lo que refresca las
+  # etiquetas de las filas que la purga conserva pero que se guardaron con un
+  # diccionario viejo: `tecnologia` solo la escribe el upsert de ingesta.
+  #
+  # Comparte `concurrency.group: scrape` con los carriles de ingesta (ADR-012: un
+  # solo plano activo contra la misma BD), así que nunca corre a la vez que
+  # `scrape-daily.yml`.
+  purga_pscp:
+    if: inputs.operacion == 'purga-pscp'
+    runs-on: ubuntu-latest
+    # El borrado recorre ~685k filas y la reingesta completa pagina ~1,9 M de
+    # la API Socrata: holgura hasta el máximo de un runner alojado.
+    timeout-minutes: 350
+
+    env:
+      # Mismo perfil que los carriles de ingesta: escribe en la BD de
+      # producción, con los validators de datos activos.
+      ENV: prod
+      APP_PROFILE: scraper
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preparar Python
+        uses: ./.github/actions/preparar-python
+
+      - name: Purga (dry-run salvo aplicar)
+        shell: bash
+        env:
+          APLICAR: ${{ inputs.aplicar }}
+        run: |
+          ARGS=()
+          if [ "$APLICAR" = "true" ]; then
+            ARGS+=(--apply)
+          fi
+          echo "Args: ${ARGS[*]}"
+          {
+            echo '```'
+            python -m scripts.purgar_pscp_sin_tecnologia "${ARGS[@]}"
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Reingesta completa de PSCP
+        if: ${{ inputs.aplicar && inputs.reingerir_desde != '' }}
+        env:
+          PSCP_DATASET_ID: ${{ vars.PSCP_DATASET_ID }}
+          PSCP_APP_TOKEN: ${{ secrets.PSCP_APP_TOKEN }}
+          DESDE: ${{ inputs.reingerir_desde }}
+        run: python -m scraper.connectors.pscp --desde "$DESDE"
+
+  # ── backfill-empresas ─────────────────────────────────────────────
+  # Antes: backfill-empresas.yml («Backfill maestro de empresas (manual)»).
+  #
+  # Drena las adjudicaciones sin `empresa_id` contra el maestro de empresas.
+  #
+  # **No tiene `schedule` a propósito.** Esto vivía colgado del hook post-ingesta
+  # de cada conector (`scraper/connectors/base.py::_post_ingestion`), que barría
+  # la tabla entera desde el id 0 en cada ejecución: en agosto de 2026 eso eran
+  # ~1,05 M de filas pendientes — el 99,96 % de una sola fuente, PSCP — a ~10
+  # filas/s. No cabía en los 10 min del step, moría por SIGKILL, y se llevaba por
+  # delante al dedupe y a los eventos de contrato que corrían después.
+  #
+  # Desde entonces el hook solo resuelve lo de SU fuente, con cursor persistido y
+  # 2 min de presupuesto (`services.entity_resolution.HOOK_TIME_BUDGET_S`).
+  # Drenar el histórico acumulado es trabajo de este workflow.
+  #
+  # Es reanudable: el cursor por ámbito vive en `ingestion_cursors`
+  # (`entity_resolution_{ámbito}`), así que lanzarlo N veces continúa donde quedó
+  # en vez de repetir el prefijo. Por eso el presupuesto por run es corto — es
+  # preferible encadenar varias ejecuciones a monopolizar la BD durante horas.
+  #
+  # Comparte el `concurrency.group: scrape` con `scrape-daily.yml` y
+  # `scrape-bulk.yml`: ADR-012 exige un solo plano activo contra la misma BD. El
+  # presupuesto por defecto (1 h) queda por debajo de la cadencia de 4 h del
+  # carril diario, así que un backfill retrasa como mucho un tick.
+  #
+  # Cuándo lanzarlo:
+  #   - backlog de adjudicaciones sin enlazar (ver `--dry-run`, o la cobertura de
+  #     `db.empresas.resolution_stats`);
+  #   - tras vaciar la cola de revisión: las filas que quedaron `skipped` por
+  #     tener una revisión pendiente están por debajo del cursor y no se
+  #     reintentan solas — hace falta `restart: true`;
+  #   - tras incorporar una fuente nueva con histórico.
+  backfill_empresas:
+    if: inputs.operacion == 'backfill-empresas'
+    runs-on: ubuntu-latest
+    # Holgura sobre el presupuesto por defecto (1 h) para checkout, instalación
+    # de dependencias y el lote en curso cuando salta el corte: el presupuesto
+    # se comprueba ENTRE lotes, así que el último puede desbordarlo.
+    timeout-minutes: 90
+
+    env:
+      # Mismo perfil que los carriles de ingesta: escribe en la BD de
+      # producción, así que los validators de datos (TLS de DATABASE_URL,
+      # alertas) tienen que estar activos. APP_PROFILE=scraper omite los
+      # secretos que sólo necesita el proceso HTTP.
+      ENV: prod
+      APP_PROFILE: scraper
+      # ADR-012: el plano de orquestación activo es GitHub Actions.
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preparar Python
+        uses: ./.github/actions/preparar-python
+
+      - name: Cobertura antes
+        run: python -m scripts.backfill_empresas --dry-run
+
+      - name: Run backfill
+        env:
+          SCOPE_FUENTE: ${{ inputs.scope_fuente }}
+          # Sin `|| '3600'`: el input ya declara su `default:` y solo se
+          # dispara a mano, así que nunca llega vacío. Es el idioma que
+          # scripts/check_env_parity.py prohíbe dentro de un `env:` porque
+          # suele pisar al del código.
+          TIME_BUDGET: ${{ inputs.time_budget }}
+          RESTART: ${{ inputs.restart }}
+        run: |
+          ARGS=(--time-budget "$TIME_BUDGET")
+          if [ -n "$SCOPE_FUENTE" ]; then
+            ARGS+=(--scope-fuente "$SCOPE_FUENTE")
+          fi
+          if [ "$RESTART" = "true" ]; then
+            ARGS+=(--restart)
+          fi
+          echo "Args: ${ARGS[*]}"
+          python -m scripts.backfill_empresas "${ARGS[@]}"
+
+  # ── rescore-ml-proba ─────────────────────────────────────────────
+  # Antes: rescore-ml-proba.yml («Rescore ml_proba (clasificador SAP)»).
+  #
+  # Reescribe `licitaciones.ml_proba` de TODA la población del clasificador con
+  # el modelo que se sirve en ese momento. No entrena ni cambia qué versión está
+  # activa.
+  #
+  # Para cuando la columna no sale de un solo modelo. La pasada diaria solo
+  # puntúa lo que tiene `ml_proba IS NULL`, así que después de retirar una
+  # versión (`db.model_registry.deactivate`), de un rollback con
+  # `activate_version` o de un `precompute` forzado que se cortó a medias, las
+  # filas ya puntuadas conservan el score del modelo anterior. El 2026-09-29 una
+  # versión se activó, reescribió parte de la columna durante 68 segundos y se
+  # retiró cinco días después: los scores que dejó no los puede reproducir ni
+  # explicar ningún modelo que exista.
+  #
+  # Solo manual. `ml-entrenar.yml` (modelo `sap`) ya hace este mismo recálculo al activar una
+  # versión nueva; aquí vive el caso en que el modelo servido cambia sin que
+  # nadie entrene.
+  #
+  # En Actions y no desde un checkout: el resultado depende de las versiones de
+  # scikit-learn y numpy con las que se carga el artefacto, y las que cuentan son
+  # las de `requirements.txt`, que son las que usa la pasada diaria.
+  rescore_ml_proba:
+    if: inputs.operacion == 'rescore-ml-proba'
+    name: Recalcular ml_proba con el modelo servido
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preparar Python
+        uses: ./.github/actions/preparar-python
+
+      - name: Rescore
+        env:
+          # ENV=prod porque este job escribe en la BD de producción, así que
+          # los validators de datos (TLS de DATABASE_URL) deben estar activos.
+          # APP_PROFILE=scraper omite los secretos del proceso HTTP.
+          ENV: prod
+          APP_PROFILE: scraper
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          LOG_FORMAT: json
+          # El runner viene sin `data/models/`: el artefacto se baja de la
+          # Release, y la API de GitHub pide token para no chocar con el
+          # límite anónimo.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m scheduler.jobs.ml_training_run rescore

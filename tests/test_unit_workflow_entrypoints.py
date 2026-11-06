@@ -256,7 +256,7 @@ def test_verify_cli_sin_outputs_cae_a_la_frescura(monkeypatch, filas):
 
 
 # ---------------------------------------------------------------------------
-# ml_predicciones — retrain (train-predictivos.yml)
+# ml_predicciones — retrain (ml-entrenar.yml (modelo predictivos))
 # ---------------------------------------------------------------------------
 
 
@@ -607,7 +607,7 @@ def test_activar_cli_sale_con_0_y_deja_el_resumen(tmp_path, monkeypatch, sin_ent
 
 
 def test_sin_subcomando_entrena(sin_entorno_actions):
-    """`train-model.yml` llama sin argumentos: tiene que seguir entrenando."""
+    """`ml-entrenar.yml` (modelo `sap`) llama sin argumentos: tiene que seguir entrenando."""
     with patch.object(training_job, "run", return_value=_METRICAS_RECHAZADAS) as run:
         assert training_job.main([]) == 0
     run.assert_called_once_with()
@@ -667,7 +667,7 @@ def test_salida_github_permite_al_workflow_distinguir_rechazo_de_fallo(tmp_path,
 
 
 def test_salida_github_lleva_el_artefacto_con_nombre_por_contenido(tmp_path, monkeypatch):
-    """`artefactos` es lo que `train-model.yml` sube: el `.pkl` registrado y su
+    """`artefactos` es lo que `ml-entrenar.yml` (modelo `sap`) sube: el `.pkl` registrado y su
     `.sha256`, por ruta y con el sha256 en el nombre."""
     pkl = tmp_path / _ASSET_CANDIDATO
     pkl.write_bytes(b"modelo")

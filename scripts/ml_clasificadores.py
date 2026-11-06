@@ -63,7 +63,7 @@ def lineas_entrenamiento_sap(
                 f"Versión {promocion.get('version')} registrada SIN activar; "
                 f"artefacto en: {promocion.get('artefacto') or ruta_modelo}",
                 "Para servirla hay que publicarla y activarla, en ese orden: "
-                "gh workflow run train-model.yml",
+                "gh workflow run ml-entrenar.yml -f modelo=sap",
             ]
         motivos = "; ".join(str(m) for m in promocion.get("motivos_rechazo") or [])
         return [
