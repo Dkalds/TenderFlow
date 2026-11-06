@@ -13,6 +13,7 @@ import json
 import os
 import runpy
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -46,6 +47,7 @@ def _buscar(
     herramienta: str = "Bash",
     comando: str = "rg TODO",
     cli: bool = True,
+    arranca: bool = True,
 ) -> tuple[int, str]:
     """Lanza el hook de búsqueda; devuelve (exit code, stderr)."""
     transcript = repo.parent / "sesion.jsonl"
@@ -62,11 +64,25 @@ def _buscar(
     stderr = io.StringIO()
     monkeypatch.setattr("sys.stderr", stderr)
     monkeypatch.setattr("shutil.which", lambda nombre: "/bin/graphify" if cli else None)
+    _cli_arranca(monkeypatch, arranca)
     try:
         runpy.run_path(str(HOOKS / "pretooluse_bash_grep_hint.py"), run_name="hook")
     except SystemExit as salida:
         return int(salida.code or 0), stderr.getvalue()
     return 0, stderr.getvalue()
+
+
+def _cli_arranca(monkeypatch: pytest.MonkeyPatch, arranca: bool = True) -> None:
+    """`graphify --help` responde, o falla como lo bloquea el Control de aplicaciones de Windows."""
+
+    def run(*_: object, **__: object) -> subprocess.CompletedProcess[bytes]:
+        if not arranca:
+            raise PermissionError(
+                4551, "Una directiva de Control de aplicaciones bloqueó este archivo"
+            )
+        return subprocess.CompletedProcess(args=[], returncode=0)
+
+    monkeypatch.setattr(subprocess, "run", run)
 
 
 _SIN_GRAFO = [_uso("Bash", command="git status"), _uso("Read", file_path="x.py")]
@@ -110,6 +126,49 @@ def test_un_filtro_de_tuberia_no_es_una_busqueda(
 
 def test_sin_cli_no_bloquea(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert _buscar(repo, monkeypatch, _SIN_GRAFO, cli=False)[0] == 0
+
+
+def test_un_cli_que_no_arranca_no_bloquea_y_remite_a_code_map(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """En el PATH pero bloqueado: exigir `graphify query` sería pedir lo imposible."""
+    (repo / "scripts").mkdir()
+    (repo / "scripts/code_map.py").touch()
+    assert _buscar(repo, monkeypatch, _SIN_GRAFO, arranca=False)[0] == 0
+    assert "code_map.py" in sys.stdout.getvalue()
+
+
+# ── Arranque de sesión: no prometer lo que la máquina no puede hacer ───────
+
+
+def _contexto() -> dict[str, Any]:
+    return runpy.run_path(str(HOOKS / "session_start_contexto.py"), run_name="hook")
+
+
+def test_el_arranque_avisa_si_graphify_no_arranca(monkeypatch: pytest.MonkeyPatch) -> None:
+    hook = _contexto()
+    monkeypatch.setattr("shutil.which", lambda nombre: "/bin/graphify")
+    _cli_arranca(monkeypatch, arranca=False)
+    assert "code_map.py" in hook["aviso_graphify"]()
+
+
+def test_el_arranque_calla_si_graphify_arranca(monkeypatch: pytest.MonkeyPatch) -> None:
+    hook = _contexto()
+    monkeypatch.setattr("shutil.which", lambda nombre: "/bin/graphify")
+    _cli_arranca(monkeypatch)
+    assert hook["aviso_graphify"]() == ""
+
+
+@pytest.mark.parametrize(("salida", "hay"), [("", False), ("U\x00b\x00u\x00n\x00t\x00u\x00", True)])
+def test_wsl_solo_cuenta_con_alguna_distro(
+    monkeypatch: pytest.MonkeyPatch, salida: str, hay: bool
+) -> None:
+    """Windows trae `wsl.exe` siempre; sin distro, `wsl -l -q` sale vacío."""
+    hook = _contexto()
+    monkeypatch.setattr(
+        subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a, 0, stdout=salida)
+    )
+    assert hook["hay_distro_wsl"]() is hay
 
 
 def test_un_transcript_de_otro_cliente_no_bloquea(
@@ -271,9 +330,8 @@ def test_el_bloqueo_escribe_en_utf8_aunque_stderr_sea_cp1252(
         "transcript_path": str(transcript),
     }
     monkeypatch.setattr("shutil.which", lambda nombre: "/bin/graphify")
+    _cli_arranca(monkeypatch)
     assert _correr_busqueda(monkeypatch, json.dumps(payload)) == 2
-    import sys
-
     sys.stderr.flush()
     assert "Búsqueda bloqueada" in crudo.getvalue().decode("utf-8")
 

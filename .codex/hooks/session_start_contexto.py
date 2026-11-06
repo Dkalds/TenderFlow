@@ -19,6 +19,7 @@ comprobación tiene su plazo, y un fallo se traduce en una línea menos, nunca e
 una sesión que no arranca.
 """
 
+import functools
 import importlib.util
 import json
 import os
@@ -103,12 +104,41 @@ def python_del_venv(base: pathlib.Path) -> pathlib.Path | None:
     return None
 
 
+@functools.cache
+def graphify_arranca() -> bool:
+    """¿Está el CLI de graphify y se deja ejecutar? (el Control de aplicaciones de Windows puede bloquearlo)"""
+    binario = shutil.which("graphify")
+    if binario is None:
+        return False
+    try:
+        subprocess.run([binario, "--help"], capture_output=True, timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return True
+
+
+def aviso_graphify() -> str:
+    """Si el CLI está en el PATH pero no arranca, el grafo ni se consulta ni se refresca."""
+    if shutil.which("graphify") is None or graphify_arranca():
+        return ""
+    return (
+        "Grafo: `graphify` está en el PATH pero no arranca (en Windows, el Control de "
+        "aplicaciones puede bloquear `graphify.exe`): el grafo no se consulta ni se refresca. "
+        "Navegá con `python scripts/code_map.py` (AGENTS.md §1)."
+    )
+
+
+def hay_distro_wsl() -> bool:
+    """`wsl -l -q` sale vacío sin distros, y entonces `wsl_run.sh` falla (lista en UTF-16)."""
+    return bool(run(["wsl.exe", "-l", "-q"], 10).replace("\x00", "").strip())
+
+
 def sembrar_grafo(principal: pathlib.Path | None) -> str:
     """Copia el grafo del checkout principal a un worktree que no tiene ninguno."""
     destino = ROOT / "graphify-out"
     if (destino / "graph.json").is_file():
         return ""
-    if principal is None or shutil.which("graphify") is None:
+    if principal is None or not graphify_arranca():
         return ""
     origen = principal / "graphify-out"
     if not (origen / "graph.json").is_file():
@@ -167,11 +197,14 @@ def entorno(principal: pathlib.Path | None) -> list[str]:
         lineas.append(
             "Frontend: falta `web/node_modules`; `npm ci` en `web/` antes de lint o tests."
         )
-    if (ROOT / "scripts/dev/wsl_run.sh").is_file() and shutil.which("wsl.exe"):
+    if (ROOT / "scripts/dev/wsl_run.sh").is_file() and shutil.which("wsl.exe") and hay_distro_wsl():
         lineas.append(
             "WSL: `bash scripts/dev/wsl_run.sh <comando>` ejecuta con los pines del lock y "
             "Postgres de tests (p. ej. `bash scripts/dev/wsl_run.sh make check`)."
         )
+    aviso = aviso_graphify()
+    if aviso:
+        lineas.append(aviso)
     return lineas
 
 
