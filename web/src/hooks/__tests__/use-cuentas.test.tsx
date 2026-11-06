@@ -44,22 +44,16 @@ import {
 } from "@/hooks/use-cuentas";
 import { cuentaKeys, organizationKeys } from "@/lib/query-keys";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
+import { respuestaDeContrato } from "@/test/contrato";
 import { crearQueryClientDePrueba } from "@/test/query-client";
 
-const PERSONAL = { id: 3, name: "Personal", role: "owner", is_personal: true };
-const EQUIPO = { id: 21, name: "Equipo", role: "member", is_personal: false };
+// Organizaciones y cuentas parten de los fixtures validados contra el OpenAPI.
+const [ORGANIZACION] = respuestaDeContrato("/api/v1/organizations");
+const PERSONAL = { ...ORGANIZACION, id: 3, is_personal: true };
+const EQUIPO = { ...ORGANIZACION, id: 21, is_personal: false };
 
-const ALCALA: Cuenta = {
-  id: 7,
-  organization_id: 21,
-  nombre: "Ayuntamiento de Alcalá",
-  organo_nombre: "Ayuntamiento de Alcalá",
-  organo_norm: "ayuntamiento de alcala",
-  organos: [
-    { id: 70, organo_nombre: "Ayuntamiento de Alcalá", organo_norm: "ayuntamiento de alcala" },
-  ],
-  created_at: "2026-09-20T00:00:00Z",
-};
+const [CUENTA] = respuestaDeContrato("/api/v1/cuentas");
+const ALCALA: Cuenta = { ...CUENTA, id: 7, organization_id: 21, nombre: "Ayuntamiento de Alcalá" };
 
 type Respuesta = readonly [cuerpo: unknown, estado?: number];
 
@@ -371,7 +365,7 @@ describe("resumen, ficha y buscador", () => {
   it("el resumen y la ficha preguntan en la organización activa", async () => {
     const fetchMock = servidor({
       "GET /api/v1/organizations": [[PERSONAL, EQUIPO]],
-      "GET /api/v1/cuentas/resumen": [{ filas: [] }],
+      "GET /api/v1/cuentas/resumen": [respuestaDeContrato("/api/v1/cuentas/resumen")],
       "GET /api/v1/cuentas/7": [{ cuenta: ALCALA }],
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -402,13 +396,7 @@ describe("resumen, ficha y buscador", () => {
   });
 
   it("el buscador no pregunta con menos de tres letras y luego sí, con el término", async () => {
-    const candidato = {
-      organo_nombre: "Pleno del Ayuntamiento de Soria",
-      organo_norm: "pleno del ayuntamiento de soria",
-      expedientes: 12,
-      cuenta_id: null,
-      cuenta_nombre: null,
-    };
+    const [candidato] = respuestaDeContrato("/api/v1/cuentas/buscar-organos");
     const fetchMock = servidor({
       "GET /api/v1/organizations": [[EQUIPO]],
       "GET /api/v1/cuentas/buscar-organos": [[candidato]],

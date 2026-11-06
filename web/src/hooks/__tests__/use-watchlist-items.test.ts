@@ -30,33 +30,16 @@ import {
   type WatchlistItem,
 } from "@/hooks/use-watchlist-items";
 import { callCredentials, callMethod, callUrl, jsonResponse } from "./fetch-call";
+import { respuestaDeContrato } from "@/test/contrato";
 import { crearQueryClientDePrueba } from "@/test/query-client";
 
 const WATCHLIST_ITEMS_KEY = ["watchlist-items"];
 
+// Cada favorito parte del fixture validado contra el OpenAPI.
+const [FAVORITO] = respuestaDeContrato("/api/v1/watchlist/items").items;
 const ITEMS: WatchlistItem[] = [
-  {
-    id: 1,
-    id_externo: "EXT-1",
-    created_at: "2024-01-01T00:00:00Z",
-    organization_id: null,
-    visibility: null,
-    titulo: "Licitación uno",
-    importe: 1000,
-    estado: "PUB",
-    fecha_publicacion: "2024-01-01",
-  },
-  {
-    id: 2,
-    id_externo: "EXT-2",
-    created_at: "2024-01-02T00:00:00Z",
-    organization_id: null,
-    visibility: null,
-    titulo: "Licitación dos",
-    importe: 2000,
-    estado: "PUB",
-    fecha_publicacion: "2024-01-02",
-  },
+  { ...FAVORITO, id: 1, id_externo: "EXT-1" },
+  { ...FAVORITO, id: 2, id_externo: "EXT-2" },
 ];
 
 /**

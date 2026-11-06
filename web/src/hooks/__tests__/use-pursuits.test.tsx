@@ -11,6 +11,8 @@ import {
   useUpdatePursuit,
 } from "@/hooks/use-pursuits";
 import { useOrganizationStore } from "@/hooks/use-organization";
+import type { ApiGetResult } from "@/lib/api-client";
+import { respuestaDeContrato } from "@/test/contrato";
 import { callUrl, jsonResponse } from "./fetch-call";
 import { primeraVez, registrarEvento } from "@/lib/analytics";
 
@@ -42,6 +44,7 @@ const pursuit = {
   created_at: "2026-07-30T10:00:00Z",
   updated_at: "2026-07-30T10:00:00Z",
   version: 1,
+  comments_count: 0,
 } as const;
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -70,7 +73,10 @@ describe("pursuit hooks", () => {
           jsonResponse(
             callUrl(call).includes("/organizations")
               ? [{ id: 1, name: "Equipo", is_personal: true, role: "owner", created_at: "2026-07-30T10:00:00Z" }]
-              : { items: [pursuit], total: 1 },
+              : ({
+                  ...respuestaDeContrato("/api/v1/pursuits"),
+                  items: [pursuit],
+                } satisfies ApiGetResult<"/api/v1/pursuits">),
           ),
         ),
       );
@@ -186,16 +192,7 @@ describe("pursuit hooks", () => {
 // debajo del 66% que exige web/vitest.config.ts. Estos tests las ejercitan y,
 // de paso, fijan el contrato que el hook implementa.
 
-const agenda = {
-  items: [],
-  kpis: {},
-  organization_id: 1,
-  pursuits_total: 0,
-  pursuits_truncados: false,
-  renovaciones_horizonte_meses: 6,
-  senales_truncadas: false,
-  solo_mios: false,
-} as const;
+const agenda = respuestaDeContrato("/api/v1/pursuits/agenda");
 
 const ORG = {
   id: 1,

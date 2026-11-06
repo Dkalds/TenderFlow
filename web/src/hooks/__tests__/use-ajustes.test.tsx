@@ -28,7 +28,9 @@ import {
   useRotarClave,
   useSesiones,
 } from "@/hooks/use-ajustes";
+import type { ApiGetResult } from "@/lib/api-client";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
+import { respuestaDeContrato } from "@/test/contrato";
 import { crearQueryClientDePrueba } from "@/test/query-client";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -56,9 +58,10 @@ afterEach(() => {
 
 describe("useSesiones", () => {
   it("lee las sesiones abiertas del usuario", async () => {
+    const [sesion] = respuestaDeContrato("/api/v1/me/sessions").items ?? [];
     const fetchMock = stub({
-      items: [{ id: "abc123", actual: true, ip: "1.2.3.4", user_agent: "Firefox" }],
-    });
+      items: [{ ...sesion, actual: true }],
+    } satisfies ApiGetResult<"/api/v1/me/sessions">);
     const { wrapper } = crearEntorno();
 
     const { result } = renderHook(() => useSesiones(), { wrapper });
@@ -88,7 +91,10 @@ describe("useRevocarSesion", () => {
 
 describe("useClaves", () => {
   it("lee las claves con su tier", async () => {
-    const fetchMock = stub({ items: [{ id: 1, name: "ci", tier: "standard", is_active: true }] });
+    const [clave] = respuestaDeContrato("/api/v1/me/keys").items ?? [];
+    const fetchMock = stub({
+      items: [{ ...clave, tier: "standard" }],
+    } satisfies ApiGetResult<"/api/v1/me/keys">);
     const { wrapper } = crearEntorno();
 
     const { result } = renderHook(() => useClaves(), { wrapper });
@@ -174,7 +180,7 @@ describe("useRevocarClave", () => {
 
 describe("preferencias de notificación", () => {
   it("lee las preferencias del usuario", async () => {
-    const fetchMock = stub({ items: [{ tipo: "digest", canal: "email", frecuencia: "diaria" }] });
+    const fetchMock = stub(respuestaDeContrato("/api/v1/me/notification-preferences"));
     const { wrapper } = crearEntorno();
 
     const { result } = renderHook(() => usePreferencias(), { wrapper });

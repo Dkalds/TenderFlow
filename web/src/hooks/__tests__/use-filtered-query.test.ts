@@ -27,6 +27,7 @@ import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { urlApi } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { debeReintentar } from "@/lib/query-feedback";
+import { respuestaDeContrato } from "@/test/contrato";
 
 /** Ruta GET real del esquema: el hook ya no acepta una cadena cualquiera. */
 const RUTA = "/api/v1/analytics/overview";
@@ -365,7 +366,7 @@ describe("useFilteredQuery", () => {
   // ── happy path ────────────────────────────────────────────────────────────────
 
   it("returns data from a successful response", async () => {
-    const payload = { id: 1, title: "Licitación test" };
+    const payload = { ...respuestaDeContrato("/api/v1/licitaciones/{id_externo}"), id_externo: "1" };
     vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(makeResponse(payload, 200)));
 
     const wrapper = createWrapper();

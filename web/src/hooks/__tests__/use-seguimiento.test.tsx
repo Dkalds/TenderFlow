@@ -30,6 +30,7 @@ import { fuenteDe } from "@/hooks/use-seguimiento";
 import { useOrganizationStore } from "@/hooks/use-organization";
 import { SeguirBoton } from "@/components/seguir-boton";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
+import { respuestaDeContrato } from "@/test/contrato";
 
 function crearCliente() {
   return new QueryClient({
@@ -103,7 +104,11 @@ describe("SeguirBoton sobre un expediente", () => {
   it("respeta el nombre accesible de la pantalla", async () => {
     vi.stubGlobal(
       "fetch",
-      servidor({ "GET /api/v1/watchlist/items": { items: [{ id: 1, id_externo: "LIC-1" }] } }),
+      servidor({
+        "GET /api/v1/watchlist/items": {
+          items: [{ ...respuestaDeContrato("/api/v1/watchlist/items").items[0], id_externo: "LIC-1" }],
+        },
+      }),
     );
 
     render(
@@ -157,15 +162,9 @@ describe("SeguirBoton sobre una empresa", () => {
 
 // ── Órganos: la cuenta de la organización ───────────────────────────────────
 
-const EQUIPO = { id: 21, name: "Equipo", role: "member", is_personal: false };
-const ALCALA = {
-  id: 7,
-  organization_id: 21,
-  nombre: "Ayuntamiento de Alcalá",
-  organo_nombre: "Ayuntamiento de Alcalá",
-  organo_norm: "ayuntamiento de alcala",
-  created_at: "2026-09-20T00:00:00Z",
-};
+// Organización y cuenta parten de los fixtures validados contra el OpenAPI.
+const EQUIPO = { ...respuestaDeContrato("/api/v1/organizations")[0], id: 21, is_personal: false };
+const ALCALA = { ...respuestaDeContrato("/api/v1/cuentas")[0], id: 7, organization_id: 21, nombre: "Ayuntamiento de Alcalá" };
 
 /**
  * Servidor con estado para las cuentas: lo que contesta `GET /cuentas` depende

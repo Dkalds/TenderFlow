@@ -14,6 +14,7 @@ import { useCartera } from "@/hooks/use-cartera";
 import { filasATareas, tareasAFilas } from "@/hooks/use-plantilla-tareas";
 import { pursuitKeys } from "@/lib/query-keys";
 import { registrarEvento } from "@/lib/analytics";
+import { respuestaDeContrato } from "@/test/contrato";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
 
 vi.mock("@/lib/analytics", () => ({
@@ -21,7 +22,7 @@ vi.mock("@/lib/analytics", () => ({
   tramoDeItems: vi.fn(() => "1-5"),
 }));
 
-const ORG = { id: 7, name: "Equipo", is_personal: false, role: "owner", created_at: "2026-09-18" };
+const ORG = { ...respuestaDeContrato("/api/v1/organizations")[0], id: 7, is_personal: false };
 
 function stub(respuesta: (url: string, method: string) => unknown) {
   const fetchMock = vi.fn().mockImplementation((...call: unknown[]) => {
@@ -161,7 +162,7 @@ describe("kit de presentación (F2.3)", () => {
 describe("cartera (F4.3)", () => {
   it("manda la organización activa: sin ella el backend resuelve la personal", async () => {
     useOrganizationStore.setState({ activeOrganizationId: 7 });
-    const fetchMock = stub(() => []);
+    const fetchMock = stub(() => respuestaDeContrato("/api/v1/pursuits/cartera"));
     const { wrapper } = clienteYWrapper();
 
     const { result } = renderHook(() => useCartera(), { wrapper });

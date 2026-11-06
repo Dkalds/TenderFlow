@@ -3,8 +3,10 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { useDismissRadarTender, useRadar, useRadarDismissals, useRestoreRadarTender } from "@/hooks/use-radar";
+import type { Schemas } from "@/lib/api-types";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
 import { registrarEvento } from "@/lib/analytics";
+import { respuestaDeContrato } from "@/test/contrato";
 
 // La organización activa se puede cambiar a mitad de test (ver «datos previos»).
 const { organizacionRef } = vi.hoisted(() => ({
@@ -27,23 +29,18 @@ vi.mock("@/hooks/use-organization", () => ({
  * listado por fecha y le alineaba el score por id, así que mostraba "las 24
  * abiertas más recientes reordenadas" mientras la UI prometía priorización de
  * mercado — el orden era lo fabricado, no el número.
+ *
+ * Ranking y oportunidades parten del fixture validado contra el OpenAPI.
  */
+const RANKING = respuestaDeContrato("/api/v1/analytics/scoring");
+const [OPORTUNIDAD] = RANKING.opportunities ?? [];
 const scored = (id: string, score: number, tecnologia = "SAP") => ({
+  ...OPORTUNIDAD,
   id_externo: id,
-  titulo: `Licitación ${id}`,
-  organo_contratacion: "Ayuntamiento",
-  importe: 120000,
   fecha_limite: "2026-12-01T00:00:00Z",
-  fecha_publicacion: "2026-07-01T00:00:00Z",
-  ccaa: "MAD",
-  cpv: "72000000",
   tecnologia,
-  ml_tech_principal: null,
   score,
-  band: score >= 75 ? "Caliente" : "Tibia",
-  risk_flags: [],
-  desglose: {},
-});
+}) satisfies Schemas["ScoredOpportunity"];
 
 function wrapper({ children }: { children: React.ReactNode }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -54,7 +51,7 @@ function stubApi(options: { opportunities?: ReturnType<typeof scored>[]; dismiss
   const fetchMock = vi.fn().mockImplementation((...call: unknown[]) => {
     const body = callUrl(call).includes("/radar/dismissals")
       ? { ids: options.dismissals ?? [] }
-      : { opportunities: options.opportunities ?? [] };
+      : { ...RANKING, opportunities: options.opportunities ?? [] };
     return Promise.resolve(jsonResponse(body));
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -195,7 +192,10 @@ describe("useRadar — datos previos al cambiar un filtro", () => {
     const fetchMock = vi.fn().mockImplementation((...call: unknown[]) => {
       const url = callUrl(call);
       const respuesta = () =>
-        jsonResponse({ opportunities: [scored(url.includes("tecnologia=") ? "FILTRADA" : "GLOBAL", 60)] });
+        jsonResponse({
+          ...RANKING,
+          opportunities: [scored(url.includes("tecnologia=") ? "FILTRADA" : "GLOBAL", 60)],
+        });
       if (url.includes(`tecnologia=${pendiente}`)) {
         return new Promise((resolve) => {
           liberar = () => resolve(respuesta());

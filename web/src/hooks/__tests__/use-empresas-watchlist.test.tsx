@@ -19,7 +19,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { useEmpresasWatchlist, useToggleEmpresaWatch } from "@/hooks/use-empresas-watchlist";
 import { watchlistKeys } from "@/lib/query-keys";
+import { respuestaDeContrato } from "@/test/contrato";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
+
+// Cada empresa seguida parte del fixture validado contra el OpenAPI.
+const [EMPRESA] = respuestaDeContrato("/api/v1/competitive/watchlist").items;
 
 /** Un `QueryClient` estable por test (ver `use-meta-filters.test.tsx`). */
 function crearEntorno() {
@@ -43,7 +47,7 @@ function stubFetch(
     if (forzada) return Promise.resolve(forzada);
     if (callMethod(call) === "GET") {
       return Promise.resolve(
-        jsonResponse({ items: seguidas.map((empresa_id) => ({ empresa_id })) }),
+        jsonResponse({ items: seguidas.map((empresa_id) => ({ ...EMPRESA, empresa_id })) }),
       );
     }
     if (callMethod(call) === "DELETE") return Promise.resolve(new Response(null, { status: 204 }));
@@ -144,7 +148,7 @@ describe("useToggleEmpresaWatch", () => {
     let seguidas: number[] = [];
     const fetchMock = stubFetch([], (call) => {
       if (callMethod(call) === "GET") {
-        return jsonResponse({ items: seguidas.map((empresa_id) => ({ empresa_id })) });
+        return jsonResponse({ items: seguidas.map((empresa_id) => ({ ...EMPRESA, empresa_id })) });
       }
       seguidas = [...seguidas, 7];
       return jsonResponse({ ok: true }, 201);

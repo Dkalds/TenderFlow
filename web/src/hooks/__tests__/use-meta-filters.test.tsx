@@ -17,14 +17,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { useMetaFilters, type MetaFilters } from "@/hooks/use-meta-filters";
 import { metaKeys } from "@/lib/query-keys";
+import { respuestaDeContrato } from "@/test/contrato";
 import { callUrl, jsonResponse } from "./fetch-call";
 
-const CATALOGOS: MetaFilters = {
-  estado: ["PUB", "ADJ"],
-  ccaa: ["MD", "CT"],
-  tecnologia: ["SAP", "MICROSOFT"],
-  cpv: ["72000000"],
-};
+const CATALOGOS: MetaFilters = respuestaDeContrato("/api/v1/meta/filters");
 
 /**
  * Un `QueryClient` por test, devuelto junto al wrapper.

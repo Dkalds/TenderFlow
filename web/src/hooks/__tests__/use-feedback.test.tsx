@@ -13,6 +13,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { useFeedbackStats } from "@/hooks/use-feedback";
 import { feedbackKeys } from "@/lib/query-keys";
+import { respuestaDeContrato } from "@/test/contrato";
 import { callUrl, jsonResponse } from "./fetch-call";
 
 /** Un `QueryClient` estable por test (ver `use-meta-filters.test.tsx`). */
@@ -61,7 +62,7 @@ describe("useFeedbackStats", () => {
     // montan juntas. Con la clave del registro comparten entrada de caché; con
     // dos literales iguales pero dos `queryFn` distintas —lo que había—
     // compartirían caché y no contrato, y ganaría la que montara primero.
-    const fetchMock = stub({ total: 5 });
+    const fetchMock = stub(respuestaDeContrato("/api/v1/feedback/stats"));
     const { client, wrapper } = crearEntorno();
 
     const { result } = renderHook(

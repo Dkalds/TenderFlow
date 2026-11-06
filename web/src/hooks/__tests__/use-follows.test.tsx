@@ -36,19 +36,15 @@ vi.mock("@/hooks/use-seguir-cuenta", () => ({
 
 import { toast } from "sonner";
 import { registrarEvento } from "@/lib/analytics";
-import { useFollows, useSeguir, useDejarDeSeguir, type Follow } from "@/hooks/use-follows";
+import { useFollows, useSeguir, useDejarDeSeguir } from "@/hooks/use-follows";
 import { SeguirBoton } from "@/components/seguir-boton";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
+import { respuestaDeContrato } from "@/test/contrato";
 import { crearQueryClientDePrueba } from "@/test/query-client";
 
-const CPV: Follow = {
-  id: 1,
-  target_type: "cpv",
-  target_id: "72260000",
-  kind: "seguir",
-  visibility: "private",
-  created_at: "2026-09-01T00:00:00Z",
-};
+// El seguimiento parte del fixture validado contra el OpenAPI.
+const [SEGUIMIENTO] = respuestaDeContrato("/api/v1/follows").items;
+const CPV = { ...SEGUIMIENTO, target_type: "cpv", target_id: "72260000" };
 
 /**
  * Respuestas **reales** y una por llamada.

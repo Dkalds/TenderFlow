@@ -1531,7 +1531,13 @@ _Sin ítems abiertos._
   al día siguiente) en el filtro común, adjudicaciones, exportación, ventana de deriva y Mercado, y
   `v172_fecha_publicacion_sin_hora` las normaliza con su sombra `_ts`. (4) `watched_company_awards`
   y `sindicacion_placsp` mandan el etag del cursor. (5) `fila_baja_de_referencia` ya no promete un
-  `{}` imposible. Tests: `tests/test_unit_ficha_fallos_definitivos.py`, `tests/test_unit_cota_hasta.py`,
+  `{}` imposible. (6) Los 15 tests de `web/src/hooks/__tests__/` que escribían a mano la respuesta
+  de rutas con fixture de contrato parten ahora de `respuestaDeContrato` (con `satisfies` donde
+  sobrescriben): destaparon 10 cuerpos que no cuadraban con la API (una `frecuencia` que no existe,
+  `id`/`title` en vez de `id_externo`/`titulo`, campos obligatorios ausentes); `pursuits-agenda.json`
+  y `pursuit-detalle.json` traen ya sus campos con valor por defecto. *Queda:* los cuerpos a mano de
+  `/webhooks`, `/cuentas/{id}` y `/pursuits/{id}` en esos mismos tests, y el `Follow` escrito a mano de
+  `use-follows.ts`. Tests: `tests/test_unit_ficha_fallos_definitivos.py`, `tests/test_unit_cota_hasta.py`,
   `tests/test_v172_fecha_publicacion_sin_hora_migration.py`, `tests/test_s5_*.py`, `tests/test_atom_live.py`.
 
 - [2026-11-04] **La auditoría de conceder y revocar acceso ya no puede perderse, y la revocación guarda quién la hizo** (rama `claude/app-improvements-2eb30b`) —

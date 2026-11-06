@@ -11,7 +11,8 @@
  *     instalado después nunca llegaba a usarse.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, apiGet } from "@/lib/api-client";
+import { ApiError, apiGet, type ApiGetResult } from "@/lib/api-client";
+import { respuestaDeContrato } from "@/test/contrato";
 import { callCredentials, callMethod, callUrl, jsonResponse } from "./fetch-call";
 
 /** Una respuesta nueva por llamada: el cuerpo de `Response` solo se lee una vez. */
@@ -27,7 +28,10 @@ afterEach(() => {
 
 describe("apiGet", () => {
   it("usa el fetch global vigente en el momento de la llamada", async () => {
-    const fetchMock = stub({ last_extraction: "2026-08-17T00:00:00Z" });
+    const fetchMock = stub({
+      ...respuestaDeContrato("/api/v1/meta/last-extraction"),
+      last_extraction: "2026-08-17T00:00:00Z",
+    } satisfies ApiGetResult<"/api/v1/meta/last-extraction">);
 
     const data = await apiGet("/api/v1/meta/last-extraction");
 
@@ -36,7 +40,7 @@ describe("apiGet", () => {
   });
 
   it("pide la ruta del esquema con la cookie de sesión", async () => {
-    const fetchMock = stub({ ids: [] });
+    const fetchMock = stub(respuestaDeContrato("/api/v1/radar/dismissals"));
 
     await apiGet("/api/v1/radar/dismissals");
 
@@ -49,7 +53,7 @@ describe("apiGet", () => {
   it("serializa la query y descarta los parámetros sin valor", async () => {
     // Es lo que sustituye al `if (x) params.set(...)` de cada hook: un filtro
     // vacío no debe acotar la consulta.
-    const fetchMock = stub({ opportunities: [] });
+    const fetchMock = stub(respuestaDeContrato("/api/v1/analytics/scoring"));
 
     await apiGet("/api/v1/analytics/scoring", {
       params: { query: { limit: 24, exclude_dismissed: true, tecnologia: undefined } },
@@ -62,7 +66,7 @@ describe("apiGet", () => {
   });
 
   it("sin query no añade interrogante a la URL", async () => {
-    const fetchMock = stub({ items: [] });
+    const fetchMock = stub(respuestaDeContrato("/api/v1/watchlist/items"));
 
     await apiGet("/api/v1/watchlist/items", { params: { query: { organization_id: null } } });
 

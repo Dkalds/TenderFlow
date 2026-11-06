@@ -12,7 +12,8 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { ApiError } from "@/lib/api-client";
+import { ApiError, type ApiGetResult } from "@/lib/api-client";
+import { respuestaDeContrato } from "@/test/contrato";
 import type { AskParams, AskStreamResult, ResumenParams } from "@/lib/ask-stream";
 import { callUrl, jsonResponse } from "./fetch-call";
 
@@ -419,7 +420,12 @@ describe("useAskModels", () => {
     const fetchMock = vi
       .fn()
       .mockImplementation(() =>
-        Promise.resolve(jsonResponse({ default: "gpt-4", models: ["gpt-4", "gpt-3.5"] })),
+        Promise.resolve(
+          jsonResponse({
+            ...respuestaDeContrato("/api/v1/ask/models"),
+            models: ["gpt-4", "gpt-3.5"],
+          } satisfies ApiGetResult<"/api/v1/ask/models">),
+        ),
       );
     vi.stubGlobal("fetch", fetchMock);
 
