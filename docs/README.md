@@ -18,8 +18,10 @@ añade aquí en el mismo cambio.
 ## Estado y trabajo pendiente
 
 - [STATUS.md](STATUS.md) — estado calculado desde el código (generado).
-- [IMPROVEMENT_BACKLOG.md](IMPROVEMENT_BACKLOG.md) — el trabajo priorizado; lo
-  cerrado pasa a [archive/IMPROVEMENT_BACKLOG_CERRADOS.md](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
+- [IMPROVEMENT_BACKLOG.md](IMPROVEMENT_BACKLOG.md) — el trabajo priorizado, solo
+  lo abierto; lo cerrado se borra y su rastro es el PR. El histórico anterior
+  al 2026-11-06 está congelado en
+  [archive/IMPROVEMENT_BACKLOG_CERRADOS.md](archive/IMPROVEMENT_BACKLOG_CERRADOS.md).
 - [UX_AUDIT.md](UX_AUDIT.md) — diagnóstico UX/UI del frontend y su roadmap por olas.
 - [casos-de-uso.md](casos-de-uso.md) — lo que una persona hace con el producto
   de punta a punta, y el test que lo recorre.
