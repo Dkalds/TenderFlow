@@ -18,6 +18,7 @@ name: Operaciones manuales de datos
 # | historico-agregadas  | desde, hasta, ted_desde                    |
 # | purga-pscp           | aplicar, reingerir_desde                   |
 # | partir-adjudicatarios-pscp | aplicar                             |
+# | reingesta-pscp       | reingerir_desde                            |
 # | backfill-empresas    | scope_fuente, time_budget, restart         |
 # | rescore-ml-proba     | (ninguna)                                  |
 #
@@ -38,6 +39,7 @@ on:
           - historico-agregadas
           - purga-pscp
           - partir-adjudicatarios-pscp
+          - reingesta-pscp
           - backfill-empresas
           - rescore-ml-proba
       aplicar:
@@ -57,7 +59,7 @@ on:
         required: false
         default: ""
       reingerir_desde:
-        description: "Purga, solo con aplicar: reingerir PSCP desde AAAA-MM-DD (vacío = no)"
+        description: "PSCP: reingerir desde AAAA-MM-DD (purga con aplicar, vacío = no; reingesta-pscp, obligatorio)"
         required: false
         default: ""
       scope_fuente:
@@ -382,6 +384,48 @@ jobs:
             python -m scripts.partir_adjudicatarios_pscp "${ARGS[@]}"
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # ── reingesta-pscp ─────────────────────────────────────────────
+  # Reingiere PSCP desde una fecha (`python -m scraper.connectors.pscp --desde`)
+  # sin pasar por la purga: `purga-pscp` solo reingiere tras borrar con
+  # `aplicar`, y ese borrado es otra decisión. El conector reescribe cada
+  # licitación que admite y sus adjudicaciones (`replace_adjudicaciones`), así
+  # que corrige lo que un parser anterior guardó mal; no borra nada más.
+  #
+  # `--desde` filtra por la `:updated_at` de Socrata, no por la publicación: una
+  # republicación masiva del dataset hace que una fecha de 2026 recorra casi
+  # todo el corpus. Comparte `concurrency.group: scrape` con la ingesta.
+  reingesta_pscp:
+    if: inputs.operacion == 'reingesta-pscp'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+
+    env:
+      ENV: prod
+      APP_PROFILE: scraper
+      SCHEDULER_PLANE: actions
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+      LOG_FORMAT: json
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preparar Python
+        uses: ./.github/actions/preparar-python
+
+      - name: Reingesta de PSCP
+        env:
+          PSCP_DATASET_ID: ${{ vars.PSCP_DATASET_ID }}
+          PSCP_APP_TOKEN: ${{ secrets.PSCP_APP_TOKEN }}
+          DESDE: ${{ inputs.reingerir_desde }}
+        run: |
+          if ! [[ "$DESDE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "::error::reingerir_desde obligatorio, AAAA-MM-DD (recibido '$DESDE')"
+            exit 1
+          fi
+          python -m scraper.connectors.pscp --desde "$DESDE"
 
   # ── backfill-empresas ─────────────────────────────────────────────
   # Antes: backfill-empresas.yml («Backfill maestro de empresas (manual)»).
