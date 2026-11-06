@@ -48,7 +48,7 @@ from types import MappingProxyType
 from typing import Any, Final, Literal, NamedTuple
 
 from db.database import connect_read
-from db.repositories.base import rows_to_dicts
+from db.repositories.base import cota_hasta, rows_to_dicts
 from db.sql_fragments import (
     FOLD_TABLE,
     TECHNOLOGY_OBSERVED_SQL,
@@ -372,8 +372,9 @@ def alcance_sql(
         clauses.append("a.fecha_adjudicacion >= %s")
         params.append(fecha_desde.isoformat())
     if fecha_hasta is not None:
-        clauses.append("a.fecha_adjudicacion <= %s")
-        params.append(fecha_hasta.isoformat())
+        clausula, valor = cota_hasta("a.fecha_adjudicacion", fecha_hasta.isoformat())
+        clauses.append(clausula)
+        params.append(valor)
     if cpv_prefix:
         clauses.append("l.cpv LIKE %s")
         params.append(f"{cpv_prefix}%")

@@ -206,15 +206,29 @@ def test_el_handler_de_la_ficha_lanza_si_la_extraccion_quedo_en_failed() -> None
     """
     from scheduler.worker import ejecutar_ficha_pliego
 
-    ficha = MagicMock(status="failed", error_detail="sin páginas")
+    ficha = MagicMock(status="failed", error_detail="PLACSP no responde")
     with (
-        patch("services.rag.fact_sheet.run_background_extraction") as extraer,
+        patch("services.rag.fact_sheet.run_background_extraction", return_value=False) as extraer,
         patch("services.rag.fact_sheet.get_fact_sheet", return_value=ficha),
-        pytest.raises(RuntimeError, match="sin páginas"),
+        pytest.raises(RuntimeError, match="PLACSP no responde"),
     ):
         ejecutar_ficha_pliego(_job(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-1", "model": "m"}))
 
     extraer.assert_called_once()
+
+
+def test_un_fallo_definitivo_de_la_ficha_no_se_reintenta() -> None:
+    """Sin pliegos que leer, repetir la extracción no cambia nada."""
+    from scheduler.worker import ejecutar_ficha_pliego
+    from services.jobs import JobNoReintentable
+
+    ficha = MagicMock(status="failed", error_detail="sin pliegos")
+    with (
+        patch("services.rag.fact_sheet.run_background_extraction", return_value=True),
+        patch("services.rag.fact_sheet.get_fact_sheet", return_value=ficha),
+        pytest.raises(JobNoReintentable, match="sin pliegos"),
+    ):
+        ejecutar_ficha_pliego(_job(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-1", "model": "m"}))
 
 
 def test_el_handler_de_la_ficha_publica_el_recuento_al_terminar() -> None:

@@ -555,6 +555,15 @@ def latido(job: Job, worker_id: str, *, intervalo_segundos: float | None = None)
         hilo.join(timeout=5)
 
 
+class JobNoReintentable(Exception):
+    """Un handler que falla por una causa que repetirlo no arregla.
+
+    La cola lo cierra como ``failed`` al primer intento en vez de esperar el
+    backoff de los demás: reintentar una ficha de un expediente sin pliegos
+    solo alarga el «Extrayendo…» que ve el usuario.
+    """
+
+
 def procesar_uno(worker_id: str, *, tipos: tuple[str, ...] | None = None) -> Job | None:
     """Reclama, ejecuta y cierra un job. ``None`` si no había trabajo.
 
@@ -568,6 +577,10 @@ def procesar_uno(worker_id: str, *, tipos: tuple[str, ...] | None = None) -> Job
     try:
         with latido(job, worker_id):
             resultado = ejecutar(job)
+    except JobNoReintentable as exc:
+        fail(job.id, f"{type(exc).__name__}: {exc}", intentos=job.intentos, terminal=True)
+        log.warning("job_handler_fallo_definitivo", job_id=job.id, tipo=job.tipo, error=str(exc))
+        return job
     except Exception as exc:
         fail(job.id, f"{type(exc).__name__}: {exc}", intentos=job.intentos)
         log.warning("job_handler_fallo", job_id=job.id, tipo=job.tipo, error=str(exc))
@@ -594,6 +607,7 @@ __all__ = [
     "Job",
     "JobDesconocido",
     "JobEstado",
+    "JobNoReintentable",
     "TipoJob",
     "ack",
     "claim",

@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from db.database import connect_read
 from db.models import compile_query, licitacion_tecnologia_score
-from db.repositories.base import rows_to_dicts, typed_rows
+from db.repositories.base import cota_hasta, rows_to_dicts, typed_rows
 from db.repositories.feedback import FUENTE_REVISION_TI, FUENTES_HUMANAS
 from db.repositories.licitaciones.filas import (
     CandidatoEtiquetadoRow,
@@ -315,12 +315,13 @@ class MlMixin:
             return typed_rows(ZonaIncertidumbreRow, rows_to_dicts(cur))
 
     def load_drift_window(self, start: str, end: str) -> list[DriftRow]:
-        """Carga licitaciones de un rango de fechas para drift detection."""
+        """Carga licitaciones de un rango de fechas para drift detection (ambos días incluidos)."""
+        hasta, valor_hasta = cota_hasta("fecha_publicacion", end)
         with connect_read() as c:
             cur = c.execute(
                 "SELECT importe, cpv, ccaa, tecnologia, estado "
                 "FROM licitaciones "
-                "WHERE fecha_publicacion >= %s AND fecha_publicacion <= %s",
-                (start, end),
+                "WHERE fecha_publicacion >= %s AND " + hasta,
+                (start, valor_hasta),
             )
             return typed_rows(DriftRow, rows_to_dicts(cur))

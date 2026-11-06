@@ -57,7 +57,8 @@ _FRAGMENTO_RENDERIZADO = {
     "empresa_id": "a.empresa_id = 7",
     "empresa_ids": "a.empresa_id IN (17, 19, 23)",
     "fecha_desde": "a.fecha_adjudicacion >= '2026-01-01'",
-    "fecha_hasta": "a.fecha_adjudicacion <= '2026-12-31'",
+    # Cota exclusiva al día siguiente: una fecha con hora el día 31 también entra.
+    "fecha_hasta": "a.fecha_adjudicacion < '2027-01-01'",
     "cpv_prefix": "l.cpv LIKE '7220%'",
     "ccaas": "l.ccaa IN ('Madrid', 'Cataluña')",
     # Solapamiento con el CSV de la fila, no `IN`: «ERP,SAP» también es SAP.

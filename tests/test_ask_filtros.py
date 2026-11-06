@@ -229,8 +229,9 @@ class TestAmbitoBusquedaSql:
 
     def test_las_fechas_acotan_la_publicacion(self):
         assert ambito_busqueda_sql("l", fecha_desde="2026-01-01", fecha_hasta="2026-06-30") == (
-            ["l.fecha_publicacion >= %s", "l.fecha_publicacion <= %s"],
-            ["2026-01-01", "2026-06-30"],
+            # «Hasta» incluye el día entero, también una fecha guardada con hora.
+            ["l.fecha_publicacion >= %s", "l.fecha_publicacion < %s"],
+            ["2026-01-01", "2026-07-01"],
         )
 
     def test_una_fecha_mal_formada_se_ignora_como_en_la_busqueda(self):

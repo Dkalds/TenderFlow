@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-11-05
+Generado: 2026-11-06
 
-Revisión Alembic aplicada: `v171_access_grants_revoked_by`.
+Revisión Alembic aplicada: `v172_fecha_publicacion_sin_hora`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas

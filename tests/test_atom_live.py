@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from scraper.atom_live import (
     FetchResult,
     _entry_updated,
@@ -357,6 +359,28 @@ class TestCacheCondicional:
             "last_modified": "Sat, 05 Jul 2026 10:00:00 GMT",
         }
         assert segunda.kwargs == {}
+
+    @pytest.mark.parametrize("conector", ["vigiladas", "sindicacion"])
+    def test_los_otros_conectores_atom_tambien_pasan_el_etag_del_cursor(self, conector):
+        """Sin él, cada pasada de un feed sin cambios se lo descargaba entero."""
+        from scraper.connectors.sindicacion_placsp import FeedSindicacionPlacsp
+        from scraper.connectors.watched_company_awards import (
+            PlacspWatchedCompanyAwardsConnector,
+        )
+
+        meta = {"newest_updated": None, "etag": '"prev"', "stopped_reason": "not_modified"}
+        with patch("scraper.atom_live.iter_live_entries", return_value=([], meta)) as mock_iter:
+            instancia = (
+                PlacspWatchedCompanyAwardsConnector(["B12345674"])
+                if conector == "vigiladas"
+                else FeedSindicacionPlacsp(
+                    "https://contrataciondelsectorpublico.gob.es/sindicacion/feed.atom"
+                )
+            )
+            cursor = {"last_seen_updated": "2026-07-04T00:00:00Z", "etag": '"prev"'}
+            assert list(instancia.fetch(cursor)) == []
+
+        assert mock_iter.call_args.kwargs["etag"] == '"prev"'
 
     def test_conector_placsp_pasa_el_etag_del_cursor(self):
         from scraper.connectors.placsp import PlacspAtomConnector

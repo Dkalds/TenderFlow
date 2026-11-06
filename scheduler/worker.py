@@ -44,6 +44,7 @@ from services.jobs import (
     CACHE_EXPORTS,
     EXPORT_TTL_SEGUNDOS,
     Job,
+    JobNoReintentable,
     clave_cache_export,
     procesar_uno,
     reclamar_caducados,
@@ -68,7 +69,7 @@ def ejecutar_ficha_pliego(job: Job) -> dict[str, Any]:
     from services.rag.fact_sheet import get_fact_sheet, run_background_extraction
 
     licitacion_id = str(job.payload["licitacion_id"])
-    run_background_extraction(
+    definitivo = run_background_extraction(
         licitacion_id,
         model=str(job.payload["model"]),
         budget_subject=job.payload.get("budget_subject"),
@@ -78,7 +79,8 @@ def ejecutar_ficha_pliego(job: Job) -> dict[str, Any]:
     if ficha is None:
         raise RuntimeError(f"La extracción no dejó ficha para {licitacion_id!r}")
     if ficha.status == "failed":
-        raise RuntimeError(ficha.error_detail or "La extracción de la ficha falló sin detalle")
+        detalle = ficha.error_detail or "La extracción de la ficha falló sin detalle"
+        raise JobNoReintentable(detalle) if definitivo else RuntimeError(detalle)
     return {
         "licitacion_id": licitacion_id,
         "estado_ficha": ficha.status,

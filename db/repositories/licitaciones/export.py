@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from db.database import connect_read
-from db.repositories.base import csv_values, rows_to_dicts, typed_rows
+from db.repositories.base import cota_hasta, csv_values, rows_to_dicts, typed_rows
 from db.repositories.licitaciones.filas import ExportPdfRow, RecienteRow
 from db.repositories.licitaciones.filtros import _normaliza_codigo
 from db.sql_fragments import (
@@ -97,8 +97,9 @@ class ExportMixin:
             conditions.append("fecha_publicacion >= %s")
             params.append(fecha_desde)
         if fecha_hasta:
-            conditions.append("fecha_publicacion <= %s")
-            params.append(fecha_hasta)
+            clausula, valor = cota_hasta("fecha_publicacion", fecha_hasta)
+            conditions.append(clausula)
+            params.append(valor)
         if importe_min is not None:
             conditions.append("importe >= %s")
             params.append(float(importe_min))

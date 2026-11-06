@@ -16,7 +16,7 @@ from pydantic.fields import FieldInfo
 from db.repositories.documentos import TIPOS_PLIEGO, DocumentosRepository
 from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
 from llm.client import DEFAULT_MODEL, stream_llm_response
-from llm.json_utils import extract_json_object
+from llm.json_utils import RespuestaTruncada, extract_json_object
 from observability.logging import get_logger
 from shared.tender_facts import (
     EvidenceRef,
@@ -808,9 +808,12 @@ class SinPaginasError(ValueError):
     que dejar el ``failed`` para que la siguiente lectura lo encuentre.
     """
 
-    def __init__(self, mensaje: str, *, licitacion_id: str) -> None:
+    def __init__(self, mensaje: str, *, licitacion_id: str, reintentable: bool = False) -> None:
         super().__init__(mensaje)
         self.licitacion_id = licitacion_id
+        #: Solo un PLACSP que no responde se arregla en minutos. Sin pliegos,
+        #: sin publicar, sin extractor o escaneados no cambian con un reintento.
+        self.reintentable = reintentable
 
 
 def extract_fact_sheet_on_demand(
@@ -839,7 +842,9 @@ def extract_fact_sheet_on_demand(
     pages = DocumentosRepository().list_pages_by_licitacion(licitacion_id)
     if not any(str(page.get("texto") or "").strip() for page in pages):
         raise SinPaginasError(
-            _missing_pages_detail(licitacion_id, fetched), licitacion_id=licitacion_id
+            _missing_pages_detail(licitacion_id, fetched),
+            licitacion_id=licitacion_id,
+            reintentable=bool(fetched.get("skipped") and not fetched.get("error")),
         )
     return extract_fact_sheet(licitacion_id, model=model)
 
@@ -1039,7 +1044,14 @@ def _extraer_de_seleccion(
         keywords=_TOPIC_TERMS,
         max_tokens=_MAX_OUTPUT_TOKENS,
     )
-    facts, invalid = _parse_facts(extract_json_object(raw))
+    try:
+        payload = extract_json_object(raw)
+    except RespuestaTruncada as exc:
+        raise RespuestaTruncada(
+            f"{exc}. El pliego da para más de {_MAX_OUTPUT_TOKENS} tokens de ficha "
+            "y un reintento se cortaría igual."
+        ) from exc
+    facts, invalid = _parse_facts(payload)
     # Contra todas las páginas, no solo las seleccionadas: una cita que el
     # modelo atribuye a la página contigua se corrige si el texto está allí.
     facts, unverifiable = _validate_fact_evidence(facts, pages)
@@ -1271,11 +1283,13 @@ def run_background_extraction(
     model: str,
     budget_subject: str | None = None,
     budget_org: str | None = None,
-) -> None:
+) -> bool:
     """Cuerpo del BackgroundTask de ``POST …/ficha-pliego/extract-async``.
 
     Nunca lanza: el resultado se comunica por la fila persistida (que el
-    frontend consulta por polling) y por logs. El caso «sin páginas» —el único
+    frontend consulta por polling) y por logs. Devuelve ``True`` si falló por
+    una causa que un reintento no arregla (sin pliegos que leer, o una
+    respuesta cortada por el tope de tokens), para que la cola no lo repita. El caso «sin páginas» —el único
     en que ``extract_fact_sheet_on_demand`` falla SIN persistir— se materializa
     aquí como ``failed`` con detalle, o el polling vería un 404 mudo para
     siempre.
@@ -1297,9 +1311,12 @@ def run_background_extraction(
         except ValidationError:
             # extract_fact_sheet ya persistió el estado failed con su detalle.
             log.warning("fact_sheet_background_validation_failed", licitacion_id=licitacion_id)
-            return
+            return False
         except ValueError as exc:
             destino = exc.licitacion_id if isinstance(exc, SinPaginasError) else licitacion_id
+            definitivo = isinstance(exc, RespuestaTruncada) or (
+                isinstance(exc, SinPaginasError) and not exc.reintentable
+            )
             try:
                 TenderFactSheetsRepository().upsert(
                     licitacion_id=destino,
@@ -1323,14 +1340,14 @@ def run_background_extraction(
                     error=str(exc),
                     exc_info=True,
                 )
-            return
+            return definitivo
         except Exception as exc:
             log.warning(
                 "fact_sheet_background_extract_failed",
                 licitacion_id=licitacion_id,
                 error=str(exc),
             )
-            return
+            return False
 
         try:
             from services.tech_signal import ingest_llm_technologies
@@ -1343,5 +1360,6 @@ def run_background_extraction(
                 licitacion_id=licitacion_id,
                 error=str(exc),
             )
+        return False
     finally:
         clear_extraction_running(licitacion_id)

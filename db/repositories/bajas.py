@@ -108,7 +108,11 @@ def filas_bajas_agregadas(
 def fila_baja_de_referencia(
     *, filtro_base: str, organo: str | None, cpv_prefix: str | None
 ) -> dict[str, Any]:
-    """Baja media y rango en un segmento (órgano y/o CPV); ``{}`` si no hay fila."""
+    """Baja media y rango en un segmento (órgano y/o CPV).
+
+    Un agregado sin ``GROUP BY`` siempre devuelve una fila: con el segmento
+    vacío, ``contratos`` es 0 y el resto ``None``.
+    """
     sql = f"""
         SELECT COUNT(*) AS contratos,
                {round_sql(f"AVG({BAJA_PCT_SQL})", 2)} AS baja_media_pct,
@@ -130,8 +134,8 @@ def fila_baja_de_referencia(
         params.append(f"{cpv_prefix}%")
 
     with connect_read() as c:
-        rows = rows_to_dicts(c.execute(sql, params))
-    return rows[0] if rows else {}
+        (fila,) = rows_to_dicts(c.execute(sql, params))
+    return fila
 
 
 def bajas_medias_del_scoring(cutoff: str) -> tuple[dict[str, float], float | None]:

@@ -278,6 +278,22 @@ def test_el_latido_no_renueva_un_lock_que_ya_es_de_otro(tmp_db) -> None:
     assert _REPO.renovar_lock(nuevo.id, worker_id="worker-nuevo") is True
 
 
+def test_un_fallo_no_reintentable_queda_failed_al_primer_intento(tmp_db, monkeypatch) -> None:
+    from services.jobs import JobNoReintentable, procesar_uno
+
+    def _sin_remedio(_job: object) -> None:
+        raise JobNoReintentable("la licitación no tiene pliegos")
+
+    monkeypatch.setattr("services.jobs.ejecutar", _sin_remedio)
+    job_id = enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-SIN", "model": "m"})
+
+    assert procesar_uno("worker-1") is not None
+
+    final = obtener(job_id)
+    assert final is not None and final.estado == "failed" and final.intentos == 1
+    assert final.error_detail is not None and "no tiene pliegos" in final.error_detail
+
+
 def test_un_job_que_mata_al_proceso_no_se_reencola_sin_fin(tmp_db, monkeypatch) -> None:
     """Un OOM no pasa por ``fail``: la barrida aplica el tope de intentos.
 

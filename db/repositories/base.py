@@ -99,6 +99,20 @@ def ambito_agenda_sql(
 _FECHA_ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
+def cota_hasta(columna: str, fecha_hasta: str) -> tuple[str, str]:
+    """``(cláusula, parámetro)`` para «``columna`` hasta el día ``fecha_hasta`` incluido».
+
+    Las fechas son texto ISO y algunas filas llevan hora: con ``<= '2026-04-16'``
+    la de ``'2026-04-16T19:30'`` quedaba fuera de su propio día. Un día suelto
+    se compara con cota exclusiva al día siguiente; cualquier otro valor (un
+    instante completo), tal cual. ``columna`` es siempre un literal del código.
+    """
+    if not _FECHA_ISO_RE.match(fecha_hasta):
+        return f"{columna} <= %s", fecha_hasta
+    siguiente = date.fromisoformat(fecha_hasta) + timedelta(days=1)
+    return f"{columna} < %s", siguiente.isoformat()
+
+
 def _valores_filtro(value: str | Sequence[str] | None) -> list[str]:
     """Los valores de un filtro multi-valor, lleguen como CSV o como lista.
 
@@ -188,8 +202,9 @@ def ambito_busqueda_sql(
         clauses.append(f"{alias}.fecha_publicacion >= %s")
         params.append(fecha_desde)
     if fecha_hasta and _FECHA_ISO_RE.match(fecha_hasta):
-        clauses.append(f"{alias}.fecha_publicacion <= %s")
-        params.append(fecha_hasta)
+        clausula, valor = cota_hasta(f"{alias}.fecha_publicacion", fecha_hasta)
+        clauses.append(clausula)
+        params.append(valor)
     importe = columna_nucleo_sql("importe", alias)
     if importe_min is not None:
         clauses.append(f"{importe} >= %s")

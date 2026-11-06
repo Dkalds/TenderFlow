@@ -7,7 +7,7 @@ from typing import Any, TypedDict
 
 from db.database import connect_read
 from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_where
-from db.repositories.base import count_where, csv_values, rows_to_dicts, typed_rows
+from db.repositories.base import cota_hasta, count_where, csv_values, rows_to_dicts, typed_rows
 from db.sql_fragments import (
     exclude_duplicados_sql,
     fecha_fin_sql,
@@ -235,8 +235,9 @@ def _adj_filter_conditions(
         conditions.append("a.fecha_adjudicacion >= %s")
         params.append(fecha_desde)
     if fecha_hasta and _DATE_RE.match(fecha_hasta):
-        conditions.append("a.fecha_adjudicacion <= %s")
-        params.append(fecha_hasta)
+        clausula, valor = cota_hasta("a.fecha_adjudicacion", fecha_hasta)
+        conditions.append(clausula)
+        params.append(valor)
     return conditions, params
 
 
@@ -293,8 +294,9 @@ class AdjudicacionRepository:
             conditions.append("fecha_adjudicacion >= %s")
             params.append(fecha_desde)
         if fecha_hasta and _DATE_RE.match(fecha_hasta):
-            conditions.append("fecha_adjudicacion <= %s")
-            params.append(fecha_hasta)
+            clausula, valor = cota_hasta("fecha_adjudicacion", fecha_hasta)
+            conditions.append(clausula)
+            params.append(valor)
 
         where = " AND ".join(conditions)
         with connect_read() as c:
@@ -392,8 +394,9 @@ class AdjudicacionRepository:
             conditions.append("a.fecha_adjudicacion >= %s")
             params.append(fecha_desde)
         if fecha_hasta and _DATE_RE.match(fecha_hasta):
-            conditions.append("a.fecha_adjudicacion <= %s")
-            params.append(fecha_hasta)
+            clausula, valor = cota_hasta("a.fecha_adjudicacion", fecha_hasta)
+            conditions.append(clausula)
+            params.append(valor)
         if importe_min is not None:
             conditions.append("l.importe >= %s")
             params.append(importe_min)

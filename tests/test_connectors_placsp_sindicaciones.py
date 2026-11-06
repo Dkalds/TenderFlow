@@ -495,6 +495,9 @@ def test_el_fetch_lee_la_url_configurada_desde_el_cursor(feed):
         {
             "last_seen_updated": "2026-10-10T00:00:00+02:00",
             "start_url": menores.URL_SINDICACION_1143,
+            # El cursor no trae etag: la primera página va sin If-None-Match.
+            "etag": None,
+            "last_modified": None,
         }
     ]
     assert conector.new_cursor() == {

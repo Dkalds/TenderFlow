@@ -96,3 +96,18 @@ def test_la_ventana_de_drift_incluye_ambos_extremos(tmp_db: Any) -> None:
     cpvs = {r["cpv"] for r in _ml.load_drift_window("2026-09-01", "2026-09-30")}
 
     assert cpvs == {"PRIMERO", "ULTIMO"}
+
+
+def test_la_ventana_de_drift_incluye_el_ultimo_dia_aunque_la_fecha_lleve_hora(
+    tmp_db: Any,
+) -> None:
+    """En producción quedaban filas con ``fecha_publicacion`` con hora (v172)."""
+    db_mod, _ = tmp_db
+    with db_mod.connect() as c:
+        _licitacion(c, "CON-HORA", publicada="2026-09-30T19:30:59+02:00")
+        _licitacion(c, "DESPUES", publicada="2026-10-01T00:00:00+00:00")
+        c.execute("UPDATE licitaciones SET cpv = id_externo")
+
+    cpvs = {r["cpv"] for r in _ml.load_drift_window("2026-09-01", "2026-09-30")}
+
+    assert cpvs == {"CON-HORA"}

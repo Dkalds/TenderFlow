@@ -701,7 +701,6 @@ _Sin ítems abiertos._
   - **Migraciones (piden OK):** índice parcial `jobs(updated_at) WHERE estado IN ('done','failed')` para la purga nueva de `jobs`; índice trigram sobre el nombre y el NIF plegados de `empresas` y `empresa_aliases` (`db/repositories/busqueda.py` lleva `shortcut:`); agregado precalculado por empresa para ordenar `/empresas` por importe o contratos (hoy esos dos órdenes siguen agregando todo el maestro); columna normalizada en `adjudicaciones` para resolver en SQL el recuento del healthcheck (`shortcut:` en `db/empresas.py`).
   - **API pública:** `/publico` acepta `offset` hasta 1.000.000 y 10.000.000. Estrechar el `le` es un cambio incompatible (`docs/api-design.md`): necesita RFC y la etiqueta `api-breaking`. Propuesta medida: unos 250.000 en `listar_publicas` y 1.000.000 en `sitemap/entradas`, y keyset para el sitemap.
   - **Producto:** el alta directa de un miembro sigue sin pedir su aceptación y su respuesta distingue cuenta existente de invitación (cambiarlo altera CU-12 y la UI de `/equipo`). Los destinatarios externos del informe semanal no tienen `List-Unsubscribe`: no existe un mecanismo de baja para quien no es cuenta. Las alertas de competidores de filas anteriores a v129 (sin `user_id`) siguen yendo al correo guardado.
-  - **Flecos de código:** los fixtures de contrato solo los usan los tests de `/auth/me`, `/admin/users`, `/analytics/scoring` y `/feedback/queue`; `watched_company_awards` y `sindicacion_placsp` no mandan el etag del cursor.
 - **Progreso 2026-11-05 (rama `claude/ecstatic-wright-ltp55k`):** cuatro flecos de código cerrados. Los jobs de la cola laten (`services.jobs.latido`, cada tercio del TTL, también en los pasos del cierre de `scheduler/pipeline_cierre.py`; `JobsRepository.renovar_lock` solo renueva el lock propio). `_purgar_binarios_expedientes_cerrados` anota `"error": -1` y `exigir_completa` pone el paso en rojo. El ping de webhooks responde «La URL del webhook no está permitida.» y deja el motivo en el log, también cuando el bloqueo salta al enviar. `mes_pico` (`MesPico`) y `active` (`ModelActiveVersion`) tienen DTO, y la web ya no los valida a mano. Tests en `tests/test_s5_cola.py`, `tests/test_retention_*.py`, `tests/test_routes_webhooks.py` y `tests/test_analytics_trends.py`. El hook de skills también se cerró el mismo día, con el permiso del propietario: `.claude/hooks/pretooluse_edit_skills.py` (y su copia de `.codex/hooks/`) lee, además del transcript principal, el del subagente (`<sesión>/subagents/agent-<agent_id>.jsonl`, o `agent_transcript_path` si llega); tests en `tests/test_unit_hooks_skills.py`.
 - **Acceptance criteria:**
   - Cada migración, con su OK, en una revisión nueva de Alembic y con un `EXPLAIN` antes/después.
@@ -1517,6 +1516,23 @@ _Sin ítems abiertos._
 - **Riesgo:** bajo.
 
 ## Cerrados
+
+- [2026-11-06] **Repaso contra datos de producción: fallos de la ficha, el «hasta» de las fechas y los últimos flecos de la auditoría del 2026-11-04** (rama `claude/ecstatic-wright-ltp55k`) —
+  medido con el MCP de solo lectura el 2026-11-06. (1) 15 de los 24 `ficha_pliego` fallidos eran
+  «sin pliegos» o «aún sin publicar» y se reintentaban tres veces: `SinPaginasError.reintentable`
+  (solo con el breaker de PLACSP abierto), `run_background_extraction` devuelve si el fallo es
+  definitivo y `scheduler/worker.py` lanza `services.jobs.JobNoReintentable`, que `procesar_uno`
+  cierra con `fail(terminal=True)`. (2) Dos fichas de pliegos grandes fallaban con el JSON cortado
+  por el tope de 8000 tokens (`Expecting ',' delimiter`): `llm.json_utils.RespuestaTruncada` lo
+  distingue de un JSON mal escrito y la ficha lo trata como definitivo. *Queda:* que la ficha de
+  esos pliegos salga, no solo que falle claro (partir la extracción o salvar el JSON parcial).
+  (3) 307 filas de `placsp` guardaban `fecha_publicacion` con hora y los filtros «hasta»
+  (`<= 'AAAA-MM-DD'`) las dejaban fuera de su día: `db.repositories.base.cota_hasta` (cota exclusiva
+  al día siguiente) en el filtro común, adjudicaciones, exportación, ventana de deriva y Mercado, y
+  `v172_fecha_publicacion_sin_hora` las normaliza con su sombra `_ts`. (4) `watched_company_awards`
+  y `sindicacion_placsp` mandan el etag del cursor. (5) `fila_baja_de_referencia` ya no promete un
+  `{}` imposible. Tests: `tests/test_unit_ficha_fallos_definitivos.py`, `tests/test_unit_cota_hasta.py`,
+  `tests/test_v172_fecha_publicacion_sin_hora_migration.py`, `tests/test_s5_*.py`, `tests/test_atom_live.py`.
 
 - [2026-11-04] **La auditoría de conceder y revocar acceso ya no puede perderse, y la revocación guarda quién la hizo** (rama `claude/app-improvements-2eb30b`) —
   [ADR-039](adr/ADR-039-auditoria-como-condicion-del-control-de-acceso.md): `db.audit.registrar_evento`
