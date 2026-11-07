@@ -1232,6 +1232,14 @@
       "tipo": "<class 'bool'>",
       "validation_alias": "None"
     },
+    "PLIEGO_FACTS_REINTENTO_DIAS": {
+      "alias": "None",
+      "default": "7",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
     "PLIEGO_FETCH_BATCH": {
       "alias": "None",
       "default": "300",

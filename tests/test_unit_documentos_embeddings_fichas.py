@@ -274,6 +274,21 @@ class TestLoQueCasaConReglasVaDetrasDeLaDemanda:
         assert kwargs["limit"] == 3
         assert counts["casan_regla"] == 2
 
+    def test_la_espera_entre_reintentos_sale_de_la_configuracion(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "PLIEGO_FACTS_REINTENTO_DIAS", 3, raising=False)
+        fichas = MagicMock()
+        fichas.list_pending_licitaciones.return_value = []
+
+        with patch(
+            "db.repositories.tender_fact_sheets.TenderFactSheetsRepository",
+            return_value=fichas,
+        ):
+            _run_facts_phase(limit=3)
+
+        assert fichas.list_pending_licitaciones.call_args.kwargs["reintento_dias"] == 3
+
     def test_si_el_casado_falla_el_lote_sale_con_el_orden_de_antes(
         self, sin_reglas_de_vigilancia: MagicMock
     ) -> None:
