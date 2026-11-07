@@ -52,6 +52,7 @@ from typing import Final, NamedTuple
 __all__ = [
     "FUENTE_AGREGADAS",
     "PREFIJOS_ACOTADOS_POR_ORGANO",
+    "UUID_FICHA_EN_URL_RE",
     "ClavePlacsp",
     "clave_placsp",
     "codificar_organo",
@@ -86,6 +87,9 @@ _RE_PREFIJO_Y_ORGANO: Final[re.Pattern[str]] = re.compile(_PREFIJO_Y_ORGANO)
 #: expediente es el código, no la ficha. Misma expresión en Python y en SQL.
 _UUID_FICHA_PSCP_RE: Final[str] = "^[0-9a-f-]{36}:"
 _RE_UUID_FICHA_PSCP: Final[re.Pattern[str]] = re.compile(_UUID_FICHA_PSCP_RE)
+
+#: La misma ficha en la URL pública de la plataforma catalana; la captura es el UUID.
+UUID_FICHA_EN_URL_RE: Final[str] = "detall-publicacio/([0-9a-f-]{36})/"
 
 
 def es_fuente_placsp(fuente: str | None) -> bool:
