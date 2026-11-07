@@ -137,7 +137,7 @@ class TestSecretoDeOrigen:
 
 class TestSecretoNoSeFiltra:
     def test_el_secreto_no_aparece_en_ningun_log(self) -> None:
-        """Ni en ``http_request`` ni en el diagnóstico temporal; la IP elegida sí."""
+        """El secreto no sale en ``http_request``; la IP elegida sí."""
 
         async def handler(request: Request) -> Response:
             return JSONResponse({"ok": True})
@@ -149,21 +149,15 @@ class TestSecretoNoSeFiltra:
         with (
             patch.dict("sys.modules", {"config": MagicMock(settings=settings_doble)}),
             patch("api.middleware.log") as log_middleware,
-            patch("api.diagnostico_proxy.log") as log_diag,
         ):
             respuesta = TestClient(app).get("/api/v1/auth/me", headers=cabeceras)
         assert respuesta.status_code == 200
 
-        volcado = repr(log_middleware.mock_calls) + repr(log_diag.mock_calls)
-        assert SECRETO not in volcado
+        assert SECRETO not in repr(log_middleware.mock_calls)
         (acceso,) = [
             c.kwargs for c in log_middleware.info.call_args_list if c.args == ("http_request",)
         ]
         assert acceso["client_ip"] == VISITANTE
-        (diag,) = [
-            c.kwargs for c in log_diag.info.call_args_list if c.args == ("proxy_cabeceras_diag",)
-        ]
-        assert diag["origen_acreditado"] is True
 
     def test_sentry_no_envia_la_cabecera_del_secreto(self) -> None:
         from observability.sentry import _strip_pii

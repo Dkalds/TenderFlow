@@ -76,8 +76,9 @@ Lo hace el propietario: son peticiones contra producción.
    - cada persona tiene su `client_ip`, **pública**, distinta de la otra y
      estable durante la sesión;
    - ninguna empieza por `10.`.
-3. En `proxy_cabeceras_diag` (diagnóstico temporal) `origen_acreditado` es
-   `true` y `ip_elegida.h` coincide con `x_real_ip.h`.
+3. (Hecho el 2026-11-07 con el diagnóstico temporal `proxy_cabeceras_diag`,
+   ya retirado: `origen_acreditado` era `true` y la IP elegida, pública y
+   distinta por persona.)
 4. Petición directa al host de Render, sin pasar por Vercel, con una IP
    inventada y un secreto falso:
 
@@ -92,8 +93,8 @@ Lo hace el propietario: son peticiones contra producción.
    una red → 429 ahí; la misma cuenta entra desde la otra red.
 6. `/me/sesiones` enseña la IP del visitante, no la del proxy.
 
-Anotar fecha y resultado en el RFC (§7 y criterios de aceptación). Con eso se
-puede retirar `api/diagnostico_proxy.py` y su test.
+Anotar fecha y resultado en el RFC (§7 y criterios de aceptación).
+`api/diagnostico_proxy.py` se retiró el 2026-11-07 tras los pasos 2 y 3.
 
 ## Rotar el secreto
 
@@ -113,10 +114,11 @@ conoce puede elegir con qué IP cuenta en las cuotas, pero no autenticarse.
   Render. La API funciona y cuenta por nodo del proxy.
 - **La API no arranca: «API_ORIGIN_SECRET tiene que tener al menos 32
   caracteres»**: valor corto o mal pegado en Render.
-- **Siguen saliendo `10.x` con el secreto en los dos lados**: mirar
-  `origen_acreditado` en `proxy_cabeceras_diag`. Si es `false`, los valores no
-  coinciden o Vercel no aplica la regla (paso 3). Si es `true` y aun así sale
-  `10.x`, no llega `x-real-ip` ni un `X-Forwarded-For` utilizable: revisar el
-  RFC (§4 y §6).
+- **Siguen saliendo `10.x` con el secreto en los dos lados** (en rutas con
+  visitante; las de build e ISR de `/publico/*` salen siempre con `10.x`):
+  o los valores no coinciden o Vercel no aplica la regla (paso 3), o no llega
+  `x-real-ip` ni un `X-Forwarded-For` utilizable. El diagnóstico que lo
+  distinguía (`api/diagnostico_proxy.py`) se retiró el 2026-11-07: recuperarlo
+  de la historia de git (RFC §4) para volver a mirarlo.
 - **Marcha atrás**: vaciar `API_ORIGIN_SECRET` en Render. Vuelve el
   comportamiento de antes; no hace falta tocar Vercel.

@@ -5,7 +5,7 @@ issue: "(sin issue: punto 2 del P1 «Recuperación de contraseña: comprobar la 
 author: agent:claude-code
 date: 2026-10-24
 status: partially-implemented
-evidence: "Código en el árbol (comprobado el 2026-11-01): cabecera x-tf-origin-secret en api/middleware.py, API_ORIGIN_SECRET en config/settings.py, web/src/lib/server-prefetch.ts, api/diagnostico_proxy.py, tests/test_unit_ip_cliente_origen.py y docs/runbooks/ip-del-cliente.md. Falta lo que solo puede hacer el propietario (el secreto en Vercel y en Render) y la verificación en producción de §7."
+evidence: "Código en el árbol: cabecera x-tf-origin-secret en api/middleware.py, API_ORIGIN_SECRET en config/settings.py, web/src/lib/server-prefetch.ts, tests/test_unit_ip_cliente_origen.py y docs/runbooks/ip-del-cliente.md. Secreto puesto en Vercel y Render y verificado en el log de producción el 2026-11-07 (origen acreditado, IP pública y distinta por persona); api/diagnostico_proxy.py retirado ese día. Faltan los pasos 4-6 de la verificación de §7."
 related:
   - "[[ADR-006-etag-pdf-export-ratelimit-redis]]"
 ---
@@ -49,9 +49,9 @@ Cómo quedó, frente al plan de §6:
   `user-agent` y `referer`; un test fija que la cabecera no sale.
 - El secreto no se registra en ningún sitio. El arranque en `ENV=prod` sin él
   emite `api_origin_secret_not_configured` (solo el nombre de la variable).
-- **`api/diagnostico_proxy.py` se queda** hasta que el propietario haga la
-  verificación de §7 en producción; ahora añade `origen_acreditado` (booleano)
-  para ver si el secreto casó. Se retira en el cambio que anote esa verificación.
+- **`api/diagnostico_proxy.py` se retiró el 2026-11-07**, tras comprobar en
+  producción con él que el secreto casa (`origen_acreditado: true`) y que la IP
+  elegida es la pública del visitante y distinta por persona (§7).
 
 ## Por qué hace falta un RFC
 
@@ -299,6 +299,14 @@ Cómo leerlo, tras desplegar:
 
 Se retira en el mismo cambio que aplique la opción elegida.
 
+**Lectura en producción (2026-11-07, log de Render del 2026-11-04 al 07):**
+`xff_saltos` = 3 en todas las líneas: el visitante (pública, distinta por
+persona y estable en la sesión), la salida de Vercel (AWS, `52.47/16`,
+`15.237/16`, `35.180/16`… cambia por petición) y el borde de Cloudflare
+(`172.69/16`, `172.71/16`, `162.158/16`, `104.23/16`). `peer_reescrito` siempre
+`false`, `origen_acreditado` siempre `true` e `ip_elegida` = primer salto =
+`x_vercel_forwarded_for`. El diagnóstico se retiró ese día.
+
 ## 5. Recomendación
 
 **B**, con la variante A2 como respaldo para el tráfico que no pasa por Vercel
@@ -385,10 +393,14 @@ nadie.
 
 ## Acceptance criteria
 
-- [ ] Diagnóstico leído en producción y la cadena real anotada en §2.
+- [x] Diagnóstico leído en producción y la cadena real anotada en §4 (2026-11-07).
 - [x] Opción elegida por el propietario y anotada aquí (B, 2026-10-26).
-- [ ] Verificación de §7 hecha y anotada con fecha.
-- [ ] Secreto puesto en Vercel y Render, y la regla de `web/vercel.json`
-  validada en un preview.
-- [ ] `api/diagnostico_proxy.py` retirado (tras la verificación de §7).
+- [ ] Verificación de §7 hecha y anotada con fecha. *Parcial (2026-11-07):*
+  IP del visitante pública, distinta por persona y estable en `/api/v1/auth/*`.
+  Las peticiones de `/publico/*` siguen con `10.x`: son de build e ISR, sin
+  visitante (§6), así que el segundo punto de §7 no aplica a ellas. Faltan la
+  petición directa con secreto falso, la cuota por persona y `/me/sesiones`.
+- [x] Secreto puesto en Vercel y Render, y la regla de `web/vercel.json`
+  funcionando en producción (2026-11-07: `origen_acreditado: true`).
+- [x] `api/diagnostico_proxy.py` retirado (2026-11-07).
 - [ ] `make lint && make typecheck && make test-unit` en verde.
