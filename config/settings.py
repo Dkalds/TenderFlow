@@ -784,6 +784,13 @@ class Settings(ResumenPregenSettings, EmbeddingsOnnxSettings, ObjectStoreSetting
     # salida de hasta 8k, cada ficha tarda de 40 a 110 s, y los 10 min de antes
     # solo daban para 6-10 fichas por noche frente a un lote de 25.
     PLIEGO_FACTS_MAX_SECONDS: int = 1800
+    # Días entre reintentos de una ficha `failed` por un fallo del proveedor
+    # (401, modelo retirado, respuesta vacía, tope de reloj) con la versión
+    # vigente del extractor. Los demás fallos no esperan a esto: los de una
+    # versión anterior se reintentan una vez y los de los documentos cuando
+    # estos cambian (`TenderFactSheetsRepository.list_pending_licitaciones`).
+    # Los reintentos salen del mismo `PLIEGO_FACTS_BATCH`: no suben el gasto.
+    PLIEGO_FACTS_REINTENTO_DIAS: int = 7
     # Tamaño del lote de licitaciones puntuadas por corrida de la fase de
     # señal de tecnología (keywords sobre el texto del pliego).
     PLIEGO_TECH_SIGNAL_BATCH: int = 500

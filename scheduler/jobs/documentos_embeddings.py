@@ -366,7 +366,10 @@ def _run_facts_phase(
     casan_regla = _abiertas_que_casan_reglas()
     counts["casan_regla"] = len(casan_regla)
     pendientes = repo.list_pending_licitaciones(
-        extraction_version=EXTRACTION_VERSION, limit=limit, casan_regla=casan_regla
+        extraction_version=EXTRACTION_VERSION,
+        limit=limit,
+        casan_regla=casan_regla,
+        reintento_dias=settings.PLIEGO_FACTS_REINTENTO_DIAS,
     )
     inicio = time.monotonic()
     for posicion, licitacion_id in enumerate(pendientes):

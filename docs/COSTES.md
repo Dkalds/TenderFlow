@@ -140,8 +140,14 @@ El tope mensual propio de la ficha (D52) sigue por fijar.
 
 Desde el 2026-10-26 el lote ordena oportunidad abierta → favorito → **abierta
 con plazo que casa con alguna regla de vigilancia activa** → el resto
-(`TenderFactSheetsRepository.list_pending_licitaciones`). Cambia qué fichas se
-pagan, no cuántas: el número lo sigue fijando `PLIEGO_FACTS_BATCH`.
+(`TenderFactSheetsRepository.list_pending_licitaciones`). Desde el 2026-11-07,
+tras las reglas van la **abierta con plazo que encaja con las tecnologías de
+alguna organización** y después cualquier otra abierta con plazo, antes que lo
+cerrado; y una ficha `failed` solo vuelve al lote si su licitación sigue
+abierta (o tiene oportunidad o favorito) y el fallo puede no repetirse: una vez
+por versión del extractor, cuando cambian los documentos si el fallo era de
+ellos, o cada `PLIEGO_FACTS_REINTENTO_DIAS` (7) si era del proveedor. Cambia
+qué fichas se pagan, no cuántas: el número lo sigue fijando `PLIEGO_FACTS_BATCH`.
 
 | Concepto | Valor |
 |---|---|
