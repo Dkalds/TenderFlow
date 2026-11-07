@@ -1,6 +1,6 @@
-"""Consultas recientes del Investigador, guardadas por usuario (v173).
+"""Consultas recientes del Investigador, guardadas por usuario (v176).
 
-Hasta v173 vivían en el ``localStorage`` de cada navegador. Aquí se fija que la
+Hasta v176 vivían en el ``localStorage`` de cada navegador. Aquí se fija que la
 lista es de la persona —no del navegador ni de otra cuenta—, que repetir una
 consulta la sube en vez de duplicarla, que no crece más allá del tope y que el
 export y el borrado RGPD la cubren.

@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-11-07
 
-Revisión Alembic aplicada: `v173_consultas_recientes`.
+Revisión Alembic aplicada: `v176_consultas_recientes`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -30,10 +30,10 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Organizaciones y oportunidades | 15 | 143 | 31 |
 | Identidad, acceso y auditoría | 16 | 113 | 25 |
 | Seguimiento y notificaciones | 12 | 135 | 38 |
-| ML y predicciones | 7 | 55 | 14 |
+| ML y predicciones | 8 | 63 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 24 | 185 | 35 |
-| **Total** | **107** | **979** | **244** |
+| **Total** | **108** | **987** | **244** |
 
 ## Licitaciones y fuente
 
@@ -1452,21 +1452,36 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (name, version)`
 | `model_version` | `integer` | sí |
 | `computed_at` | `text` | no |
 | `lote_numero` | `text` | sí |
+| `prob_sin_baja` | `double precision` | sí |
 
 Índices: `idx_pred_baja_computed`, `uq_pred_baja_expediente` (único), `uq_pred_baja_lote` (único)
+
+### `predicciones_baja_sombra`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `licitacion_id` | `text` | no |
+| `model_version` | `integer` | no |
+| `p10` | `double precision` | no |
+| `p50` | `double precision` | no |
+| `p90` | `double precision` | no |
+| `prob_sin_baja` | `double precision` | sí |
+| `computed_at` | `text` | no |
+
+Claves: `PRIMARY KEY (licitacion_id, model_version)`
 
 ### `predicciones_retencion`
 
 | Columna | Tipo | Nulo |
 |---|---|---|
 | `licitacion_id` | `text` | no |
-| `empresa_id` | `integer` | sí |
+| `empresa_id` | `integer` | no |
 | `prob_retencion` | `double precision` | no |
 | `riesgo_cambio` | `double precision` | no |
 | `model_version` | `integer` | sí |
 | `computed_at` | `text` | no |
 
-Claves: `PRIMARY KEY (licitacion_id)`
+Claves: `PRIMARY KEY (licitacion_id, empresa_id)`
 
 Índices: `idx_pred_ret_riesgo`
 

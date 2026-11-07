@@ -1,4 +1,4 @@
-"""v173: las consultas recientes del Investigador se guardan por usuario.
+"""v176: las consultas recientes del Investigador se guardan por usuario.
 
 Qué corrige
 -----------
@@ -28,8 +28,8 @@ logs ni en telemetría, igual que en ``/search/semantic``.
 
 DIALECT-GUARDED: solo actúa en Postgres.
 
-Revision ID: v173_consultas_recientes
-Revises: v172_empresas_busqueda_trgm
+Revision ID: v176_consultas_recientes
+Revises: v175_predicciones_retencion_por_empresa
 Create Date: 2026-11-07
 """
 
@@ -39,8 +39,8 @@ from collections.abc import Sequence
 
 from alembic import op
 
-revision: str = "v173_consultas_recientes"
-down_revision: str | Sequence[str] | None = "v172_empresas_busqueda_trgm"
+revision: str = "v176_consultas_recientes"
+down_revision: str | Sequence[str] | None = "v175_predicciones_retencion_por_empresa"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

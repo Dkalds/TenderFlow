@@ -360,8 +360,8 @@ _TABLAS: tuple[tuple[str, Visibilidad, str, str], ...] = (
         _O,
         _SEG,
         # Oculta: la frase es la estrategia comercial de quien la escribe y no va a
-        # logs ni a telemetría (v173); tampoco a una consulta SQL de terceros.
-        "Últimas consultas del Investigador de cada usuario (v173).",
+        # logs ni a telemetría (v176); tampoco a una consulta SQL de terceros.
+        "Últimas consultas del Investigador de cada usuario (v176).",
     ),
     ("user_profiles", _V, _SEG, "Perfil de relevancia del usuario (pesos, CPV y CCAA preferidos)."),
     ("user_notifications", _V, _SEG, "Notificaciones generadas para cada usuario."),
@@ -411,10 +411,16 @@ _TABLAS: tuple[tuple[str, Visibilidad, str, str], ...] = (
         "Predicción de baja de adjudicación (p10/p50/p90) por licitación.",
     ),
     (
+        "predicciones_baja_sombra",
+        _V,
+        _ML,
+        "Predicción de baja del modelo candidato, sin servir (modo sombra).",
+    ),
+    (
         "predicciones_retencion",
         _V,
         _ML,
-        "Probabilidad de retención del adjudicatario por licitación.",
+        "Probabilidad de retención de cada adjudicatario por licitación.",
     ),
     ("asistente_feedback", _V, _ML, "Votos de utilidad sobre las respuestas del asistente."),
     ("tasas_anulacion_organo", _V, _ML, "Tasa de anulación de expedientes por órgano y CPV."),

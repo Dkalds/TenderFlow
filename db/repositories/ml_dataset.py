@@ -57,7 +57,7 @@ no una baja inflada contra el presupuesto total.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict, cast
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
@@ -79,6 +79,13 @@ from shared.dates import ANIO_MINIMO_PLAUSIBLE
 _NO_DUPLICADOS = exclude_duplicados_sql("a.licitacion_id")
 
 _UNIVERSO = TECHNOLOGY_OBSERVED_SQL
+
+# TED no publica presupuesto base: su ``importe`` es el valor estimado (BT-27,
+# que incluye prórrogas) o, sin él, el propio valor adjudicado (BT-161), ver
+# ``scraper/connectors/ted.py``. Contra lo adjudicado da una baja inflada o un
+# 0 por construcción: medido el 2026-11-07, el 83 % de sus pares valía
+# exactamente 0. Solo sale del target; el scoring de abiertas no cambia.
+_CON_PRESUPUESTO = "l.fuente <> 'ted'"
 
 # Tolerancia de validez del par agregado: descarta expedientes donde lo
 # adjudicado supera el presupuesto en más de un 50% (errores de fuente o
@@ -201,7 +208,7 @@ def _sql_agregado(hasta: str | None) -> tuple[str, list[Any]]:
             JOIN licitaciones l ON l.id_externo = adj.lic_id
             LEFT JOIN lotes_adjudicados la ON la.lic_id = adj.lic_id
             LEFT JOIN lotes_publicados lp ON lp.lic_id = adj.lic_id
-            WHERE l.importe > 0 AND {_UNIVERSO}
+            WHERE l.importe > 0 AND {_UNIVERSO} AND {_CON_PRESUPUESTO}
         ) t
         WHERE t.presupuesto_efectivo > 0
           AND t.total_adjudicado <= t.presupuesto_efectivo * {_TOLERANCIA_SOBRECOSTE}
@@ -296,7 +303,7 @@ def _sql_por_lote(hasta: str | None) -> tuple[str, list[Any]]:
             JOIN licitaciones l ON l.id_externo = adj.lic_id
             LEFT JOIN lotes lo ON lo.id = adj.lote_id
             LEFT JOIN lotes_publicados lp ON lp.lic_id = adj.lic_id
-            WHERE l.importe > 0 AND {_UNIVERSO}
+            WHERE l.importe > 0 AND {_UNIVERSO} AND {_CON_PRESUPUESTO}
               AND (
                   (adj.lote_id IS NOT NULL AND lo.importe > 0)
                   OR (adj.lote_id IS NULL AND NOT EXISTS (
@@ -344,6 +351,23 @@ _AGREGADOS_CALIBRACION = """
     AVG(ABS(realizada - p50)) AS mae,
     AVG(realizada - p50) AS sesgo
 """
+
+
+class MedidaSombra(TypedDict):
+    """Una fila de :meth:`MlDatasetRepository.calibracion_baja_sombra`."""
+
+    model_version: int
+    n: int
+    cobertura: float | None
+    fallo_inferior: float | None
+    fallo_inferior_con_empates: float | None
+    fallo_superior: float | None
+    fallo_superior_con_empates: float | None
+    mae: float | None
+    n_con_servido: int
+    mae_mismos_pares: float | None
+    mae_servido: float | None
+
 
 _SIN_DATOS: dict[str, Any] = {"n": 0, "cobertura": None, "mae": None, "sesgo": None}
 
@@ -654,6 +678,52 @@ class MlDatasetRepository:
         with connect_read() as c:
             filas = c.execute(envuelto, params).fetchall()
         return _por_regimen(list(filas))
+
+    def calibracion_baja_sombra(self) -> list[MedidaSombra]:
+        """Calibración del candidato en sombra (v174), por versión.
+
+        Mismos pares que :meth:`calibracion_baja` (misma regla de denominador),
+        pero con la predicción que el candidato **habría** servido. Junto a la
+        suya va la MAE de lo que sí se sirvió sobre exactamente los mismos
+        expedientes (``mae_servido``): es la comparación que decide si activarlo,
+        y sin el mismo conjunto de pares no compara nada. Las colas van por lado
+        y con empates, como el gate de entrenamiento
+        (``services.ml.baja_model.motivos_cobertura``).
+        """
+        sql, params = _sql_agregado(None)
+        envuelto = f"""
+            WITH evaluadas AS (
+                SELECT s.model_version, s.p10, s.p50, s.p90,
+                       pb.p50 AS p50_servido,
+                       (t2.presupuesto_efectivo - t2.total_adjudicado)
+                           / t2.presupuesto_efectivo AS realizada
+                FROM predicciones_baja_sombra s
+                JOIN ({sql}) t2 ON t2.id_externo = s.licitacion_id
+                LEFT JOIN predicciones_baja pb ON pb.licitacion_id = s.licitacion_id
+                                              AND pb.lote_numero IS NULL
+            )
+            SELECT model_version,
+                   COUNT(*) AS n,
+                   AVG(CASE WHEN realizada BETWEEN p10 AND p90 THEN 1.0 ELSE 0.0 END)
+                       AS cobertura,
+                   AVG(CASE WHEN realizada < p10 THEN 1.0 ELSE 0.0 END) AS fallo_inferior,
+                   AVG(CASE WHEN realizada <= p10 THEN 1.0 ELSE 0.0 END)
+                       AS fallo_inferior_con_empates,
+                   AVG(CASE WHEN realizada > p90 THEN 1.0 ELSE 0.0 END) AS fallo_superior,
+                   AVG(CASE WHEN realizada >= p90 THEN 1.0 ELSE 0.0 END)
+                       AS fallo_superior_con_empates,
+                   AVG(ABS(realizada - p50)) AS mae,
+                   COUNT(p50_servido) AS n_con_servido,
+                   AVG(ABS(realizada - p50)) FILTER (WHERE p50_servido IS NOT NULL)
+                       AS mae_mismos_pares,
+                   AVG(ABS(realizada - p50_servido)) AS mae_servido
+            FROM evaluadas
+            GROUP BY model_version
+            ORDER BY model_version
+        """  # SQL propio del módulo; los valores van con %s.
+        with connect_read() as c:
+            filas = rows_to_dicts(c.execute(envuelto, params))
+        return [cast(MedidaSombra, fila) for fila in filas]
 
     def calibracion_baja_por_lote(self) -> dict[str, Any]:
         """Lo mismo que :meth:`calibracion_baja`, pero un par por **lote**.

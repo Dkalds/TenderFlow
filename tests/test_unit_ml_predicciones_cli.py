@@ -477,8 +477,8 @@ def test_resumen_markdown_tolera_monitores_sin_cifras():
 
 def test_resumen_markdown_de_un_resumen_vacio():
     filas = _filas_tabla(ml_job.resumen_markdown({}))
-    # Cabecera + las seis fases, todas sin dato.
-    assert len(filas) == 7
+    # Cabecera + las siete fases, todas sin dato.
+    assert len(filas) == 8
 
 
 def test_resumen_markdown_marca_la_purga_que_fallo():
@@ -589,6 +589,7 @@ def fases(monkeypatch):
         "retencion": fase("retencion", {"status": "baseline"}),
         "drift": fase("drift", {"status": "ok"}),
         "calibracion": fase("calibracion", {"status": "ok"}),
+        "sombra": fase("sombra", {"status": "sin_candidato"}),
         "cerradas": fase("cerradas", {"status": "ok", "borradas": 1}),
         "sin_adjudicar": fase("sin_adjudicar", {"status": "ok", "borradas": 2}),
     }
@@ -598,6 +599,7 @@ def fases(monkeypatch):
     monkeypatch.setattr("services.ml.scoring.score_predicciones_retencion", mocks["retencion"])
     monkeypatch.setattr("services.ml.drift.comprobar_drift_baja", mocks["drift"])
     monkeypatch.setattr("services.ml.calibration.comprobar_calibracion_baja", mocks["calibracion"])
+    monkeypatch.setattr("services.ml.calibration.calibracion_sombra", mocks["sombra"])
     monkeypatch.setattr(ml_job, "_score_baja_por_lote_si_activo", mocks["por_lote"])
     monkeypatch.setattr(ml_job, "purgar_predicciones_cerradas", mocks["cerradas"])
     monkeypatch.setattr(ml_job, "purgar_predicciones_sin_adjudicar", mocks["sin_adjudicar"])
@@ -633,6 +635,7 @@ def test_run_scoring_purga_despues_de_escribir_con_el_corte_del_inicio(fases):
         "retencion",
         "drift",
         "calibracion",
+        "sombra",
         "cerradas",
         "sin_adjudicar",
     ]
@@ -655,8 +658,16 @@ def test_run_scoring_cronometra_cada_fase_con_un_decimal(fases, monkeypatch):
 
     monkeypatch.setattr(ml_job, "time", _Reloj())
     resumen = ml_job.run_scoring()
-    fases_esperadas = ("baja", "baja_por_lote", "retencion", "drift", "calibracion", "purga")
-    assert resumen["duraciones_s"] == {**dict.fromkeys(fases_esperadas, 0.3), "total": 4.4}
+    fases_esperadas = (
+        "baja",
+        "baja_por_lote",
+        "retencion",
+        "drift",
+        "calibracion",
+        "sombra",
+        "purga",
+    )
+    assert resumen["duraciones_s"] == {**dict.fromkeys(fases_esperadas, 0.3), "total": 5.1}
 
 
 def test_cronometrar_anota_la_fase_aunque_el_bloque_lance():
@@ -695,3 +706,24 @@ def test_purga_sin_adjudicar_es_fail_open():
     assert resultado["status"] == "error"
     assert resultado["borradas"] == 0
     assert "lock timeout" in resultado["error"]
+
+
+def test_resumen_markdown_pinta_el_candidato_en_sombra():
+    md = ml_job.resumen_markdown(
+        {
+            "sombra": {
+                "status": "warn",
+                "version": 6,
+                "filas": 900,
+                "version_medida": 6,
+                "n": 120,
+                "mae_p50": 0.1,
+                "mae_servido": 0.12,
+                "mejora_sobre_servido": 0.1667,
+                "motivos": ["cola superior 0.2000 > 0.15"],
+            }
+        }
+    )
+    fila = _filas_tabla(md)["Candidato en sombra"]
+    assert "v6 puntuada" in fila and "n 120" in fila and "mejora 0.1667" in fila
+    assert "cola superior" in fila

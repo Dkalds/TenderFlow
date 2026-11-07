@@ -316,6 +316,20 @@ class DecisionPredictiva:
         }
 
 
+def huella_dataset(filas: list[tuple[object, ...]]) -> str:
+    """Huella del dataset de entrenamiento: sha256 (16 hex) de sus filas ordenadas.
+
+    Entre dos reentrenamientos de ``baja_model`` el ``n_train`` pasó de 81.931 a
+    33.778, 9.239 y 18.486 sin que el registro dijera por qué: cada versión se
+    medía sobre otra población y las métricas no eran comparables entre sí.
+    Con la huella (y el reparto por fuente que la acompaña) dos versiones se
+    pueden comparar solo si vieron el mismo dato, y un cambio de población se
+    ve en el registro en vez de deducirse.
+    """
+    texto = "\n".join(sorted(repr(f) for f in filas))
+    return hashlib.sha256(texto.encode()).hexdigest()[:16]
+
+
 def evaluar_promocion_predictiva(
     *,
     metrica: float,

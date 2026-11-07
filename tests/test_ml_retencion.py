@@ -7,6 +7,7 @@ from datetime import date, timedelta
 
 import pytest
 
+import services.ml.retencion_labels as rl
 import services.ml.retencion_model as retencion_model_mod
 from config import settings
 from services.ml.drift import _psi, _psi_detalle, comprobar_drift_baja
@@ -17,6 +18,16 @@ from services.ml.retencion_labels import (
 )
 from services.ml.retencion_model import MODEL_NAME, RetencionModel, entrenar
 from services.ml.scoring import score_predicciones_retencion
+
+
+@pytest.fixture(autouse=True)
+def _ventanas_cerradas(monkeypatch):
+    """Estos tests fijan el emparejamiento, no la censura: todas las ventanas
+    cuentan como cerradas. La censura tiene sus tests en
+    ``tests/test_ml_retencion_censura.py``."""
+    from datetime import datetime
+
+    monkeypatch.setattr(rl, "_corte_de_datos", lambda _adj: datetime(2100, 1, 1))
 
 
 @pytest.fixture()

@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import calendar
 from collections import Counter, defaultdict
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -150,6 +151,11 @@ class _Emparejamiento:
     ancla: str
     ancla_dt: datetime
     label: int
+    #: La ventana de sucesión ``[fin - anticipación, fin + ventana]`` ya terminó
+    #: en el último dato cargado. Con la ventana abierta la sucesora elegida es
+    #: la más cercana *de las que ya existen*, y la verdadera puede no haber
+    #: llegado: ver :func:`_emparejar`.
+    ventana_cerrada: bool = True
 
 
 def _cargar_adjudicaciones() -> list[dict[str, Any]]:
@@ -281,6 +287,19 @@ def _features_del_contrato(
     }
 
 
+def _corte_de_datos(adjudicaciones: Sequence[Mapping[str, object]]) -> datetime:
+    """Último instante observado: la ``fecha_adjudicacion`` más reciente cargada.
+
+    Es el corte contra el que se decide si la ventana de sucesión de un
+    vencimiento ya terminó. El dato, no el reloj: una carga atrasada no puede
+    dar por cerrada una ventana que los datos aún no cubren.
+    """
+    # Texto ISO: el máximo como cadena es el máximo como fecha.
+    return _fecha_dt(
+        max((str(a["fecha_adjudicacion"])[:10] for a in adjudicaciones), default="1990-01-01")
+    )
+
+
 def _emparejar(
     adjudicaciones: list[dict[str, Any]],
     *,
@@ -289,12 +308,23 @@ def _emparejar(
 ) -> list[_Emparejamiento]:
     """Empareja cada vencimiento con su sucesora y calcula el ancla y el label.
 
+    Marca ``ventana_cerrada`` contra el último ``fecha_adjudicacion`` cargado
+    (el corte de los datos, no hoy). Un par con la ventana abierta tiene una
+    etiqueta provisional: la sucesora es la más cercana de las adjudicadas
+    hasta ahora, a menudo otro contrato del mismo órgano y CPV-4, así que
+    sesga a negativo justo el tramo más reciente. Medido en las versiones
+    v2-v4 del modelo: el último bloque de validación siempre era el peor
+    (PR-AUC 0,113, 0,094 y 0,080). Entrenar y calcular tasas solo usa pares
+    cerrados; detectar resueltos sí usa los abiertos (una sucesora que ya
+    existe es un hecho, aunque falte ver si llega otra más cercana).
+
     No toca las features: quien solo necesita etiquetas (el baseline de
     ``services.ml.scoring``) no puede pagar el coste de
     :func:`_features_historicas`, que recorre el histórico entero por par.
     """
     delta_post = timedelta(days=ventana_meses * 30)
     delta_pre = timedelta(days=anticipacion_meses * 30)
+    corte = _corte_de_datos(adjudicaciones)
 
     # Índice de candidatas a sucesora por (órgano normalizado, CPV-4).
     por_segmento: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
@@ -351,6 +381,7 @@ def _emparejar(
                 ancla=ancla_dt.strftime("%Y-%m-%d"),
                 ancla_dt=ancla_dt,
                 label=1 if sucesora.get("empresa_id") == empresa_id else 0,
+                ventana_cerrada=fin_dt + delta_post <= corte,
             )
         )
     return emparejados
@@ -401,6 +432,7 @@ def construir_pares(
             ventana_meses=ventana_meses,
             anticipacion_meses=anticipacion_meses,
         )
+        if e.ventana_cerrada
     ]
 
     pares.sort(key=lambda p: p.fecha_sucesor)
@@ -462,10 +494,12 @@ def etiquetas_por_segmento(
         ventana_meses=ventana_meses,
         anticipacion_meses=anticipacion_meses,
     ):
+        con_sucesora.add(e.licitacion_id)
+        if not e.ventana_cerrada:
+            continue
         clave = (e.organo_n, e.cpv4)
         retenidos[clave] += e.label
         pares[clave] += 1
-        con_sucesora.add(e.licitacion_id)
     return EtiquetasPorSegmento(
         conteos={clave: (retenidos[clave], n) for clave, n in pares.items()},
         con_sucesora=frozenset(con_sucesora),
@@ -591,31 +625,34 @@ class _Vencimiento:
 def _vencimientos(
     adjudicaciones: list[dict[str, Any]], *, desde: str, hasta: str
 ) -> list[_Vencimiento]:
-    """Contratos con empresa cuyo fin cae en ``[desde, hasta]``, uno por expediente.
+    """Contratos con empresa cuyo fin cae en ``[desde, hasta]``, uno por expediente y empresa.
 
-    Es el filtro que aplicaba ``features_para_vencimientos`` antes de separar
-    población y features, sin cambios: fin efectivo (como texto) dentro de la
-    ventana, ``empresa_id``, órgano normalizado y CPV-4 válido, y del
-    expediente multi-lote la **primera fila que pasa** en el orden cronológico
-    de la carga. Las condiciones baratas van primero para no normalizar el
+    Fin efectivo (como texto) dentro de la ventana, ``empresa_id``, órgano
+    normalizado y CPV-4 válido; de cada ``(expediente, empresa)`` la **primera
+    fila que pasa** en el orden cronológico de la carga. Hasta 2026-11 era uno
+    por expediente: Renovaciones pinta una fila por adjudicatario y las
+    features dependen de la empresa (antigüedad, cuota, contratos previos), así
+    que en un expediente con varios adjudicatarios todos veían el riesgo del
+    primero. Las condiciones baratas van primero para no normalizar el
     órgano de las ~698K filas cuando solo unas miles caen en la ventana; el
     orden de las comprobaciones no cambia qué filas pasan.
     """
     vencimientos: list[_Vencimiento] = []
-    vistos: set[str] = set()
+    vistos: set[tuple[str, int]] = set()
     for adj in adjudicaciones:
         fin = adj.get("fecha_fin_efectiva")
         empresa_id = adj.get("empresa_id")
         if not fin or empresa_id is None or not (desde <= str(fin)[:10] <= hasta):
             continue
         lic_id = str(adj["licitacion_id"])
-        if lic_id in vistos:
+        clave = (lic_id, int(empresa_id))
+        if clave in vistos:
             continue
         organo_n = normalize_organo(adj.get("organo"))
         cpv4 = _cpv4(adj.get("cpv"))
         if not organo_n or not cpv4:
             continue
-        vistos.add(lic_id)
+        vistos.add(clave)
         vencimientos.append(
             _Vencimiento(
                 adj=adj,
@@ -743,7 +780,7 @@ def vencimientos_proximos(
     """Población de scoring **sin features**: lo único que necesita el baseline.
 
     Contratos con empresa que vencen dentro de :func:`ventana_vencimientos`,
-    uno por expediente, con ``features={}``. El baseline solo mira ``organo``
+    uno por expediente y empresa, con ``features={}``. El baseline solo mira ``organo``
     y ``cpv4``, su clave de segmento: calcular aquí las features para tirarlas
     era el grueso del batch (ver el docstring del módulo).
     """

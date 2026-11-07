@@ -235,6 +235,7 @@ def entrenar(
     from sklearn.ensemble import HistGradientBoostingClassifier
     from sklearn.metrics import average_precision_score, brier_score_loss
 
+    from services.ml.promotion import huella_dataset
     from services.ml.retencion_labels import construir_pares
 
     pares = construir_pares()
@@ -281,6 +282,10 @@ def entrenar(
         "n_valid": len(valid),
         "valid_desde": valid[0].fecha_sucesor,
         "valid_hasta": valid[-1].fecha_sucesor,
+        # Ver `services.ml.promotion.huella_dataset`: dos versiones solo se
+        # comparan si vieron los mismos pares.
+        "dataset_sha256": huella_dataset([(p.licitacion_id, p.sucesor_id, p.label) for p in pares]),
+        "n_pares": len(pares),
     }
 
     # Gate de promoción (S6.4): los dos criterios del RFC entran como motivos

@@ -275,8 +275,8 @@ def test_guardar_baja_es_idempotente_en_las_dos_granularidades(db):
         _seed_licitacion(c, "UPS1", 100_000.0)
     repo = PrediccionesRepository()
     filas = [
-        ("UPS1", None, 0.10, 0.20, 0.30, None, "2026-09-18T00:00:00+00:00"),
-        ("UPS1", "1", 0.05, 0.15, 0.25, None, "2026-09-18T00:00:00+00:00"),
+        ("UPS1", None, 0.10, 0.20, 0.30, None, "2026-09-18T00:00:00+00:00", 0.4),
+        ("UPS1", "1", 0.05, 0.15, 0.25, None, "2026-09-18T00:00:00+00:00", None),
     ]
     repo.guardar_baja(filas)
     repo.guardar_baja([(*f[:3], 0.99, *f[4:]) for f in filas])

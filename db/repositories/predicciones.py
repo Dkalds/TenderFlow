@@ -91,13 +91,14 @@ class PrediccionesRepository:
 
     def guardar_baja(
         self,
-        filas: list[tuple[str, str | None, float, float, float, int | None, str]],
+        filas: list[tuple[str, str | None, float, float, float, int | None, str, float | None]],
     ) -> int:
         """Upsert idempotente de predicciones de baja, agregadas o por lote.
 
         Cada fila es ``(licitacion_id, lote_numero, p10, p50, p90,
-        model_version, computed_at)``; ``lote_numero`` ``None`` es la predicción
-        del expediente entero.
+        model_version, computed_at, prob_sin_baja)``; ``lote_numero`` ``None``
+        es la predicción del expediente entero y ``prob_sin_baja`` (v173) es
+        ``None`` cuando no hay probabilidad que dar.
 
         Dos sentencias y no una porque desde v140 la unicidad son **dos únicos
         parciales** (``uq_pred_baja_expediente`` / ``uq_pred_baja_lote``), y el
@@ -117,12 +118,14 @@ class PrediccionesRepository:
         por_lote = [f for f in filas if f[1] is not None]
         actualizar = (
             "p10=excluded.p10, p50=excluded.p50, p90=excluded.p90, "
-            "model_version=excluded.model_version, computed_at=excluded.computed_at"
+            "model_version=excluded.model_version, computed_at=excluded.computed_at, "
+            "prob_sin_baja=excluded.prob_sin_baja"
         )
         columnas = (
             "INSERT INTO predicciones_baja "
-            "(licitacion_id, lote_numero, p10, p50, p90, model_version, computed_at) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+            "(licitacion_id, lote_numero, p10, p50, p90, model_version, computed_at, "
+            " prob_sin_baja) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
         )
         with connect() as c:
             if agregadas:
@@ -136,6 +139,42 @@ class PrediccionesRepository:
                     columnas + "ON CONFLICT (licitacion_id, lote_numero) "
                     f"WHERE lote_numero IS NOT NULL DO UPDATE SET {actualizar}",
                     por_lote,
+                )
+        return len(filas)
+
+    def guardar_baja_sombra(
+        self,
+        filas: list[tuple[str, float, float, float, float | None]],
+        *,
+        model_version: int,
+        computed_at: str,
+    ) -> int:
+        """Upsert de las predicciones del candidato en sombra (v174).
+
+        Cada fila es ``(licitacion_id, p10, p50, p90, prob_sin_baja)``. En la
+        misma transacción se borran las filas de **otras** versiones: solo se
+        mide un candidato a la vez, y el anterior o ya se activó (su par
+        servido está en ``predicciones_baja``) o lo sustituyó uno más nuevo.
+        Las filas de esta versión ya adjudicadas se conservan: son los pares
+        que mide ``MlDatasetRepository.calibracion_baja_sombra``.
+
+        Returns:
+            Filas enviadas.
+        """
+        with connect() as c:
+            c.execute(
+                "DELETE FROM predicciones_baja_sombra WHERE model_version <> %s",
+                (model_version,),
+            )
+            if filas:
+                c.executemany(
+                    "INSERT INTO predicciones_baja_sombra "
+                    "(licitacion_id, model_version, p10, p50, p90, prob_sin_baja, computed_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                    "ON CONFLICT (licitacion_id, model_version) DO UPDATE SET "
+                    "p10=excluded.p10, p50=excluded.p50, p90=excluded.p90, "
+                    "prob_sin_baja=excluded.prob_sin_baja, computed_at=excluded.computed_at",
+                    [(f[0], model_version, *f[1:], computed_at) for f in filas],
                 )
         return len(filas)
 
@@ -167,7 +206,8 @@ class PrediccionesRepository:
         """Upsert de ``predicciones_retencion`` y purga de lo que la corrida no tocó.
 
         Cada fila es ``(licitacion_id, empresa_id, prob_retencion,
-        riesgo_cambio, model_version, computed_at)``; ``model_version`` es
+        riesgo_cambio, model_version, computed_at)``, una por expediente y
+        empresa adjudicataria (clave desde v175); ``model_version`` es
         ``None`` cuando la sirve el baseline. ``computed_at`` es el de la
         corrida, el mismo que llevan sus filas.
 
@@ -196,8 +236,7 @@ class PrediccionesRepository:
                 "INSERT INTO predicciones_retencion "
                 "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio, "
                 " model_version, computed_at) VALUES (%s, %s, %s, %s, %s, %s) "
-                "ON CONFLICT (licitacion_id) DO UPDATE SET "
-                "empresa_id = excluded.empresa_id, "
+                "ON CONFLICT (licitacion_id, empresa_id) DO UPDATE SET "
                 "prob_retencion = excluded.prob_retencion, "
                 "riesgo_cambio = excluded.riesgo_cambio, "
                 "model_version = excluded.model_version, "
@@ -256,7 +295,7 @@ class PrediccionesRepository:
         with connect_read() as c:
             rows = rows_to_dicts(
                 c.execute(
-                    "SELECT p10, p50, p90, model_version, computed_at "
+                    "SELECT p10, p50, p90, model_version, computed_at, prob_sin_baja "
                     f"FROM predicciones_baja WHERE licitacion_id = %s AND {clausula}",
                     parametros,
                 )
@@ -281,7 +320,7 @@ class PrediccionesRepository:
             return rows_to_dicts(
                 c.execute(
                     "SELECT lo.id AS lote_id, p.lote_numero, p.p10, p.p50, p.p90, "
-                    "       p.model_version, p.computed_at "
+                    "       p.model_version, p.computed_at, p.prob_sin_baja "
                     "FROM predicciones_baja p "
                     "JOIN lotes lo ON lo.licitacion_id = p.licitacion_id "
                     "             AND lo.numero = p.lote_numero "

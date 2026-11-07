@@ -1,7 +1,7 @@
-"""Consultas recientes del Investigador, por usuario (v173).
+"""Consultas recientes del Investigador, por usuario (v176).
 
 Las diez últimas frases que buscó cada persona, para ofrecérselas de nuevo en
-cualquier navegador. Hasta v173 vivían en ``localStorage``.
+cualquier navegador. Hasta v176 vivían en ``localStorage``.
 
 La frase es la estrategia comercial de quien la escribe: este módulo no la
 escribe en ningún log.
@@ -14,7 +14,7 @@ from db.database import connect, connect_read
 #: Cuántas se recuerdan. El frontend enseña las mismas (``MAX_HISTORY``).
 MAX_CONSULTAS = 10
 
-#: El techo de la columna (``CHECK`` de v173) y de ``SemanticSearchRequest.q``.
+#: El techo de la columna (``CHECK`` de v176) y de ``SemanticSearchRequest.q``.
 MAX_LARGO = 500
 
 
