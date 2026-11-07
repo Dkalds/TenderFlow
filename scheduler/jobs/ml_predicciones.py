@@ -224,7 +224,15 @@ def run_retrain() -> dict[str, Any]:
 #
 # Todos cierran el pool Postgres al salir (`main`).
 
-_USO = "python -m scheduler.jobs.ml_predicciones [scoring|verify|retrain|debe-correr]"
+_USO = (
+    "python -m scheduler.jobs.ml_predicciones "
+    "[scoring|verify|retrain|debe-correr|activar <modelo>:<version> [--aplicar]]"
+)
+
+#: Modelos que se activan por :func:`activar_predictivo`. El clasificador SAP
+#: tiene su propio camino (``ml_training_run activar``), que además recalcula
+#: ``ml_proba``.
+MODELOS_PREDICTIVOS = ("baja_model", "baja_model_lote", "retencion_model")
 
 # Estados de `score_predicciones_baja` que NO son fallo: "sin_abiertas" es el
 # caso legítimo de no haber licitaciones abiertas que puntuar.
@@ -831,8 +839,9 @@ def run_retrain_cli() -> int:
     siempre). Aquí un fallo al escribir el output sí se propaga: sin él no se
     sube nada.
 
-    La activación de la versión nueva sigue siendo decisión humana vía
-    ``db.model_registry`` salvo ``ML_PRED_AUTO_ACTIVATE``.
+    La activación de la versión nueva sigue siendo decisión humana salvo
+    ``ML_PRED_AUTO_ACTIVATE``: :func:`activar_predictivo`, que lanza
+    ``operaciones-datos.yml`` (operación ``activar-predictivo``).
     """
     from pathlib import Path
 
@@ -868,6 +877,116 @@ def run_retrain_cli() -> int:
     return 0
 
 
+# ── Activación ────────────────────────────────────────────────────────────────
+
+
+class ActivacionRechazada(RuntimeError):
+    """La versión no se puede activar; el mensaje dice por qué, con su número."""
+
+
+def activar_predictivo(nombre: str, version: int, *, aplicar: bool) -> dict[str, Any]:
+    """Comprueba que ``nombre`` v``version`` se puede servir y, con ``aplicar``, la activa.
+
+    Hasta 2026-11 activar un predictivo exigía escribir en ``model_versions``
+    de producción a mano (credenciales de la BD o la clave de administrador de
+    la API): ningún workflow lo hacía. Esto lo hace con las mismas garantías
+    que exige el scoring antes de servir:
+
+    1. La versión existe y su gate la dio por **promocionable**
+       (``promotion_reason`` en sus métricas). No hay forma de saltarse el
+       gate desde aquí: una activación fuera de criterio sigue siendo
+       ``db.model_registry.activate_version`` a mano, y queda a la vista.
+    2. Su artefacto se resuelve y coincide con el sha256 registrado
+       (:func:`services.ml.model_artifacts.resolve_version_artifact`).
+    3. Se carga, y en baja su layout de features es el del código actual: lo
+       que ``score_predicciones_baja`` degradaría a baseline no se activa.
+
+    Sin ``aplicar`` solo comprueba. Lanza :class:`ActivacionRechazada`.
+    """
+    from db.model_registry import activate_version, get_active, list_versions
+    from services.ml.model_artifacts import ModelArtifactError, resolve_version_artifact
+
+    if nombre not in MODELOS_PREDICTIVOS:
+        raise ActivacionRechazada(f"modelo desconocido: {nombre} (uno de {MODELOS_PREDICTIVOS})")
+    fila = next((v for v in list_versions(nombre) if int(v["version"]) == version), None)
+    if fila is None:
+        raise ActivacionRechazada(f"{nombre} no tiene versión {version}")
+    metricas = fila.get("metrics") or {}
+    razon = str(metricas.get("promotion_reason") or fila.get("notes") or "")
+    if metricas.get("promocionable") is not True:
+        raise ActivacionRechazada(f"{nombre} v{version} no pasó el gate: {razon}")
+
+    try:
+        artefacto = resolve_version_artifact(nombre, version)
+    except ModelArtifactError as exc:
+        raise ActivacionRechazada(f"artefacto de {nombre} v{version}: {exc}") from exc
+    if artefacto is None:
+        raise ActivacionRechazada(f"el artefacto de {nombre} v{version} no se puede resolver")
+    if nombre == "retencion_model":
+        from services.ml.retencion_model import RetencionModel
+
+        RetencionModel.load(artefacto)
+    else:
+        from services.ml.baja_model import BajaModel, FeatureSchemaMismatch
+
+        try:
+            BajaModel.load(artefacto, por_lote=nombre == "baja_model_lote").verificar_features()
+        except FeatureSchemaMismatch as exc:
+            raise ActivacionRechazada(str(exc)) from exc
+
+    anterior = get_active(nombre)
+    if aplicar and not activate_version(nombre, version):
+        raise ActivacionRechazada(f"{nombre} v{version} desapareció del registro al activar")
+    return {
+        "modelo": nombre,
+        "version": version,
+        "activada": aplicar,
+        "version_anterior": int(anterior["version"]) if anterior else None,
+        "promotion_reason": razon,
+        "artefacto": artefacto.name,
+    }
+
+
+def activar_cli(args: list[str]) -> int:
+    """``activar <modelo>:<version> [--aplicar]``; resumen en ``$GITHUB_STEP_SUMMARY``."""
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="python -m scheduler.jobs.ml_predicciones activar")
+    parser.add_argument("objetivo", help="modelo:version, p. ej. retencion_model:5")
+    parser.add_argument("--aplicar", action="store_true", help="Activar (sin él solo comprueba)")
+    parsed = parser.parse_args(args)
+    nombre, _, version = str(parsed.objetivo).partition(":")
+    if not version.isdigit():
+        log.error("ml_activacion_argumento_invalido", objetivo=parsed.objetivo)
+        return 2
+
+    lineas: list[str]
+    try:
+        r = activar_predictivo(nombre.strip(), int(version), aplicar=parsed.aplicar)
+    except ActivacionRechazada as exc:
+        log.error("ml_activacion_rechazada", objetivo=parsed.objetivo, motivo=str(exc))
+        lineas = ["## Versión NO activada", "", str(exc)]
+        codigo = 1
+    else:
+        log.info("ml_activacion", **r)
+        titulo = "Versión activada" if r["activada"] else "Comprobación superada (sin activar)"
+        lineas = [
+            f"## {titulo}",
+            "",
+            f"- Modelo: `{r['modelo']}` v{r['version']} (antes: {r['version_anterior']})",
+            f"- Gate: {r['promotion_reason']}",
+            f"- Artefacto verificado: `{r['artefacto']}`",
+        ]
+        if not r["activada"]:
+            lineas.append("- Relanzar con `aplicar` para activarla.")
+        codigo = 0
+    destino = os.environ.get("GITHUB_STEP_SUMMARY")
+    if destino:
+        with open(destino, "a", encoding="utf-8") as fh:
+            fh.write("\n".join(lineas) + "\n")
+    return codigo
+
+
 def main(argv: list[str] | None = None) -> int:
     """Despacha el subcomando y cierra el pool Postgres pase lo que pase.
 
@@ -886,6 +1005,7 @@ def main(argv: list[str] | None = None) -> int:
         "verify": verify_predicciones_cli,
         "retrain": run_retrain_cli,
         "debe-correr": debe_correr_cli,
+        "activar": lambda: activar_cli(args[1:]),
     }
     ejecutar = subcomandos.get(cmd)
     if ejecutar is None:

@@ -315,9 +315,10 @@ jobs:
   # resolvedor busca por nombre en `ml-models`, en *latest* y en las Releases
   # más recientes.
   #
-  # La activación de la versión nueva sigue siendo decisión humana vía
-  # `db.model_registry` (salvo `ML_PRED_AUTO_ACTIVATE`): este workflow deja el
-  # artefacto disponible, no cambia lo que se sirve.
+  # La activación de la versión nueva sigue siendo decisión humana (salvo
+  # `ML_PRED_AUTO_ACTIVATE`): `operaciones-datos.yml`, operación
+  # `activar-predictivo`. Este workflow deja el artefacto disponible, no cambia
+  # lo que se sirve.
   predictivos:
     if: github.event.schedule == '0 3 1 * *' || inputs.modelo == 'predictivos'
     name: Retrain baja/retención & upload to release
