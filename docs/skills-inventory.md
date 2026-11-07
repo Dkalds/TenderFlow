@@ -7,7 +7,7 @@ Derivado de [`skills-lock.json`](../skills-lock.json) y el frontmatter de cada
 `python scripts/gen_skills_inventory.py` tras instalar/actualizar un skill.
 Ver AGENTS.md §7 para qué significa `trust`.
 
-Total: 34 skills.
+Total: 33 skills.
 
 | Skill | Trust | Source | Descripción |
 | --- | --- | --- | --- |
@@ -19,7 +19,6 @@ Total: 34 skills.
 | `emil-design-eng` | community | emilkowalski/skill | Emil Kowalski's design-engineering rules for UI polish and motion - whether to animate, easing, durations, springs, press feedback,… |
 | `fastapi-python` | community | mindrally/skills | Expert in FastAPI Python development with best practices for APIs and async operations |
 | `find-animation-opportunities` | community | emilkowalski/skill | Search a codebase or UI for places that don't animate but should, and reject everything that shouldn't. Read-only; it proposes motion… |
-| `full-output-enforcement` | community | Leonxlnx/taste-skill | Deliver every requested deliverable complete, with no placeholder code, and split very long output at a clean boundary. Use when the… |
 | `impeccable` | community | pbakaus/impeccable | Use when the user wants to design, redesign, shape, critique, audit, polish, simplify, harden, animate, or otherwise improve a frontend… |
 | `improve-animations` | community | emilkowalski/skill | Survey a codebase's animation and motion code as a senior motion advisor, then produce a prioritized audit and self-contained… |
 | `minimalist-ui` | community | Leonxlnx/taste-skill | Clean editorial-style interfaces. Warm monochrome palette, typographic contrast, flat bento grids, muted pastels. No gradients, no… |

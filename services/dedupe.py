@@ -627,7 +627,7 @@ def _organos_emparejables(nombre: str | None) -> set[str]:
     return claves
 
 
-def _claves_de_candidata(candidata: Mapping[str, Any]) -> set[str]:
+def _claves_de_candidata(candidata: Mapping[str, object]) -> set[str]:
     """Con qué BT-22 puede casar una candidata: su expediente comparable.
 
     En las agregadas, también sin el ``NNNN_`` de entidad que la plataforma

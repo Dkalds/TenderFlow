@@ -312,7 +312,9 @@ se edita a mano.
 Los skills instalados son genéricos y de terceros: donde choquen con este
 archivo, manda este archivo. Choques ya vistos: markers manuales de categoría,
 SQLite o una carpeta por tipo de test (§3.4, §4); handlers `async` sobre el
-`db/` síncrono; cambios de esquema fuera de Alembic (§3.3); instalar skills
+`db/` síncrono; cambios de esquema fuera de Alembic (§3.3), que el skill
+`supabase` y el MCP de Supabase proponen con `execute_sql` o `supabase
+migration` —por eso ese skill no se invoca solo—; instalar skills
 en global (`-g`) o sin pasar por `skills-lock.json` y los dos árboles; y,
 con `ponytail`, tratar el typing strict, los DTOs, el test del caso de uso o
 los docs generados como «boilerplate que nadie pidió», o dar por hecho un

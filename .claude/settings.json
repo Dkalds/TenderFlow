@@ -50,11 +50,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start_pg.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start_pg.py\""
+            "command": "if command -v python >/dev/null 2>&1; then python \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start_pg.py\"; else python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start_pg.py\"; fi"
           },
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start_contexto.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start_contexto.py\"",
+            "command": "if command -v python >/dev/null 2>&1; then python \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start_contexto.py\"; else python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/session_start_contexto.py\"; fi",
             "timeout": 45
           },
           {
@@ -90,7 +90,7 @@
           },
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop_graph_refresh.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop_graph_refresh.py\"",
+            "command": "if command -v python >/dev/null 2>&1; then python \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop_graph_refresh.py\"; else python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop_graph_refresh.py\"; fi",
             "timeout": 10
           }
         ]
@@ -106,7 +106,7 @@
           },
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_revision_visual.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_revision_visual.py\""
+            "command": "if command -v python >/dev/null 2>&1; then python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_revision_visual.py\"; else python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_bash_revision_visual.py\"; fi"
           }
         ]
       },
@@ -124,7 +124,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_edit_stale.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_edit_stale.py\""
+            "command": "if command -v python >/dev/null 2>&1; then python \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_edit_stale.py\"; else python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pretooluse_edit_stale.py\"; fi"
           },
           {
             "type": "command",

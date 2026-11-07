@@ -10,6 +10,10 @@ sesión del PR #650 se ignoró de principio a fin con el grafo disponible.
 Sin alguno de los tres (otro cliente, CLI sin instalar, sin grafo) queda el
 aviso de antes: una vez por sesión y solo cuando el comando *empieza* una
 búsqueda, no cuando `grep` filtra la salida de otro comando en una tubería.
+
+«CLI instalado» quiere decir que arranca, no que esté en el PATH: en Windows el
+Control de aplicaciones puede bloquear `graphify.exe` (visto el 2026-11-06), y
+entonces el bloqueo exigía una consulta imposible.
 """
 
 import io
@@ -17,6 +21,7 @@ import json
 import pathlib
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -34,7 +39,8 @@ CON_GRAFO = (
     "Read GRAPH_REPORT.md only for broad architecture context."
 )
 SIN_GRAFO = (
-    "No hay grafo de graphify en este checkout. Para «dónde se define X» o «quién "
+    "El grafo de graphify no se puede consultar aquí (no hay grafo, o el CLI no está "
+    "o no arranca). Para «dónde se define X» o «quién "
     "importa Y» en Python, `python scripts/code_map.py simbolo <nombre>` / "
     "`importadores <módulo>` / `paquete <paquete>` responden desde el AST sin "
     "dependencias; para el resto, búsqueda de texto."
@@ -145,14 +151,27 @@ def es_busqueda(d: dict[str, object]) -> bool:
     return isinstance(entrada, dict) and empieza_una_busqueda(str(entrada.get("command", "")))
 
 
+def cli_arranca() -> bool:
+    """¿Está el CLI de graphify en el PATH y se deja ejecutar?"""
+    binario = shutil.which("graphify")
+    if binario is None:
+        return False
+    try:
+        subprocess.run([binario, "--help"], capture_output=True, timeout=15, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return True
+
+
 def hay_que_bloquear(raiz: pathlib.Path, transcript: str) -> bool:
     """Grafo y CLI disponibles, transcript legible y sin consultar el grafo todavía."""
     ruta = pathlib.Path(transcript) if transcript else None
     if ruta is None or not ruta.is_file():
         return False
-    if not (raiz / "graphify-out/graph.json").is_file() or shutil.which("graphify") is None:
+    if not (raiz / "graphify-out/graph.json").is_file():
         return False
-    return grafo_consultado(ruta) is False
+    # El CLI se prueba al final: tras la primera consulta ya no hace falta lanzarlo.
+    return grafo_consultado(ruta) is False and cli_arranca()
 
 
 try:
@@ -181,7 +200,10 @@ if bloquear:
 try:
     if busca and not ya_avisado(session_id):
         raiz = raiz_del_checkout(cwd)
-        hay_grafo = (raiz / "graphify-out/graph.json").is_file()
+        # Sin CLI queda el MCP sobre graph.json; un CLI que no arranca no sirve de nada.
+        hay_grafo = (raiz / "graphify-out/graph.json").is_file() and (
+            shutil.which("graphify") is None or cli_arranca()
+        )
         hay_mapa = (raiz / "scripts/code_map.py").is_file()
         mensaje = CON_GRAFO if hay_grafo else SIN_GRAFO if hay_mapa else ""
         if mensaje:

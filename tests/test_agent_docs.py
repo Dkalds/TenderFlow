@@ -434,7 +434,12 @@ class AgentHookTests(unittest.TestCase):
         output = StringIO()
         try:
             os.chdir(self.foreign_cwd)
-            with patch("sys.stdin", StringIO(json.dumps(payload))), redirect_stdout(output):
+            # Sin CLI, como en CI: un graphify instalado (o bloqueado) cambiaría el aviso.
+            with (
+                patch("sys.stdin", StringIO(json.dumps(payload))),
+                patch("shutil.which", return_value=None),
+                redirect_stdout(output),
+            ):
                 runpy.run_path(str(hook), run_name="__main__")
         finally:
             os.chdir(previous_cwd)
