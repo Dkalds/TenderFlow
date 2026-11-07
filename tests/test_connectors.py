@@ -1042,6 +1042,7 @@ def _cierre_trazado(monkeypatch, *, roto: str | None = None):
 
     monkeypatch.setattr("services.entity_resolution.resolve_all_unlinked", paso("empresas"))
     monkeypatch.setattr("services.dedupe.detect_duplicates", paso("dedupe"))
+    monkeypatch.setattr("services.dedupe.detect_republicaciones", paso("dedupe_republicaciones"))
     monkeypatch.setattr(
         "services.dedupe.detect_duplicados_por_referencia", paso("dedupe_referencias")
     )
@@ -1077,7 +1078,14 @@ def test_el_cierre_del_lote_deja_en_el_log_cuanto_dura_cada_paso(monkeypatch):
     """
     traza = _cierre_trazado(monkeypatch)
 
-    pasos = ["empresas", "dedupe", "dedupe_referencias", "documentos", "eventos_contrato"]
+    pasos = [
+        "empresas",
+        "dedupe",
+        "dedupe_republicaciones",
+        "dedupe_referencias",
+        "documentos",
+        "eventos_contrato",
+    ]
     esperado = [
         (evento, p)
         for p in pasos
@@ -1100,6 +1108,7 @@ def test_un_paso_roto_se_cronometra_como_fallido_y_el_cierre_sigue(monkeypatch):
     assert terminados == {
         "empresas": True,
         "dedupe": False,
+        "dedupe_republicaciones": True,
         "dedupe_referencias": True,
         "documentos": True,
         "eventos_contrato": True,
@@ -1109,6 +1118,22 @@ def test_un_paso_roto_se_cronometra_como_fallido_y_el_cierre_sigue(monkeypatch):
         "connector_dedupe_failed",
         {"source": "pscp", "error": "dedupe roto", "exc_info": True},
     ) in traza
+
+
+def test_el_cierre_pasa_el_inicio_de_la_pasada_a_las_republicaciones(monkeypatch):
+    """Sin cursor, la primera pasada no puede encolar la fuente entera."""
+    from scraper.connectors import base
+
+    llamadas: list[dict[str, object]] = []
+    monkeypatch.setattr("services.entity_resolution.resolve_all_unlinked", lambda **kw: None)
+    monkeypatch.setattr("services.dedupe.detect_duplicates", lambda **kw: None)
+    monkeypatch.setattr("services.dedupe.detect_republicaciones", lambda **kw: llamadas.append(kw))
+    monkeypatch.setattr("services.contract_events.derive_new_events", lambda: None)
+    monkeypatch.setattr("db.cache_signal.signal_cache_invalidation", lambda: None)
+
+    base._post_ingestion("pscp", extraidas_desde="2026-11-07T06:00:00+00:00")
+
+    assert llamadas == [{"fuente": "pscp", "sin_cursor_desde": "2026-11-07T06:00:00+00:00"}]
 
 
 def test_el_paso_de_documentos_se_cronometra_tambien_fuera_del_cierre(monkeypatch):

@@ -274,6 +274,7 @@ def test_dedupe_roto_en_la_ingesta_deja_senal_y_no_solo_un_log():
     with (
         patch("services.entity_resolution.resolve_all_unlinked"),
         patch.object(services.dedupe, "detect_duplicates", side_effect=RuntimeError("índice roto")),
+        patch.object(services.dedupe, "detect_republicaciones"),
         patch("services.contract_events.derive_new_events"),
         patch("db.cache_signal.signal_cache_invalidation"),
     ):
