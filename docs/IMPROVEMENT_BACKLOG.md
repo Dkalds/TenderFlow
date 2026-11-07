@@ -396,8 +396,8 @@ _Sin ítems abiertos._
 - **Área:** .github/workflows/scrape-daily.yml, scheduler/pipeline_cierre.py, LLM_TECH_LABELING_BUDGET_S
 - **Problema:** el `timeout-minutes: 20` del step de cierre mató la pasada del 2026-11-07 a las 06:28 mientras corría `dlq_retry`; `llm_tech_labeling` sola se había comido 9 min. Pasó también el 10-26 y el 10-28: los pasos que quedan detrás no corren en esa pasada. Desde la rama `agente/mejoras-2026-11-07` el cierre siguiente descarta los restos y avisa por correo.
 - **Acceptance criteria:**
-  - Subido el `timeout-minutes` del step o acotado `LLM_TECH_LABELING_BUDGET_S` para que el cierre quepa (editar workflows requiere OK del propietario).
-  - Antes de subir `JOBS_CONSUMIDORES` por encima de 1, medida la RAM de la API con dos extracciones a la vez; y `JOBS_CONSUMIDORES` en `.env.example`.
+  - Subido el `timeout-minutes` del step o acotado `LLM_TECH_LABELING_BUDGET_S` para que el cierre quepa. *Hecho en código (2026-11-07, OK del propietario):* step de 20 a 35 min y job de 140 a 155; falta ver una semana de pasadas sin el aviso de cierre interrumpido.
+  - Antes de subir `JOBS_CONSUMIDORES` por encima de 1, medida la RAM de la API con dos extracciones a la vez (`JOBS_CONSUMIDORES` ya está en `.env.example`).
 - **Files de partida:** [scheduler/pipeline_cierre.py](../scheduler/pipeline_cierre.py), [scheduler/worker.py](../scheduler/worker.py)
 - **Riesgo:** bajo.
 

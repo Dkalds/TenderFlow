@@ -47,8 +47,9 @@ jobs:
     # se canceló a los 56 y el cierre —vista pública, alertas de vigilancia— no
     # llegó a correr en esa pasada. Pasó de 120 a 140 con los dos conectores de
     # sindicaciones de PLACSP (2026-10): apagados tardan segundos, pero el
-    # presupuesto se cuenta para cuando estén encendidos.
-    timeout-minutes: 140
+    # presupuesto se cuenta para cuando estén encendidos. Pasó de 140 a 155
+    # cuando el cierre subió de 20 a 35 (2026-11-07, ver ese step).
+    timeout-minutes: 155
 
     env:
       # ENV=prod: este job escribe en la BD de producción, así que los
@@ -314,7 +315,10 @@ jobs:
       # refresco de la vista pública y las alertas de vigilancia.
       - name: Cierre de la pasada (pasos post-ingesta)
         if: ${{ !cancelled() && steps.schema.outcome == 'success' }}
-        timeout-minutes: 20
+        # 20 min no bastaban: `llm_tech_labeling` sola puede gastar sus 10
+        # (`LLM_TECH_LABELING_BUDGET_S`) y el 2026-10-26, el 10-28 y el 11-07 el
+        # step se cortó a mitad, con los pasos de detrás sin correr.
+        timeout-minutes: 35
         env:
           ALERT_EMAIL_TO: ${{ secrets.ALERT_EMAIL_TO }}
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
