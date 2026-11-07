@@ -884,7 +884,7 @@ class ActivacionRechazada(RuntimeError):
     """La versión no se puede activar; el mensaje dice por qué, con su número."""
 
 
-def activar_predictivo(nombre: str, version: int, *, aplicar: bool) -> dict[str, Any]:
+def activar_predictivo(nombre: str, version: int, *, aplicar: bool) -> dict[str, object]:
     """Comprueba que ``nombre`` v``version`` se puede servir y, con ``aplicar``, la activa.
 
     Hasta 2026-11 activar un predictivo exigía escribir en ``model_versions``
