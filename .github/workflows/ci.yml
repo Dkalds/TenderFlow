@@ -124,7 +124,9 @@ jobs:
   test:
     name: Tests (Postgres)
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # El paso de pytest tarda ~27 min (medido el 2026-11-06 en master) y un
+    # runner lento lo llevó a más de 34: con 35 se cortaba al 99 % sin fallos.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
