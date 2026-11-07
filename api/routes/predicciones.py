@@ -59,6 +59,8 @@ class PrediccionBajaLote(BaseModel):
     model_version: int | None = None
     computed_at: str | None = None
     serving: str
+    #: P(adjudicar sin baja) del lote, ADITIVO (v173). Ver ``PrediccionBajaResult``.
+    prob_sin_baja: float | None = None
 
 
 class PrediccionBajaResult(BaseModel):
@@ -103,6 +105,12 @@ class PrediccionBajaResult(BaseModel):
     #: que es la que se sirve por defecto mientras la comparación de
     #: ``mae_p50`` no diga otra cosa.
     lotes: list[PrediccionBajaLote] | None = None
+    #: Probabilidad de que se adjudique sin baja (al presupuesto), ADITIVA
+    #: (v173). En la práctica es la de que solo se presente un licitador. Solo
+    #: aparece si la sirvió un modelo cuyo clasificador batió a la prevalencia;
+    #: el baseline no la da. Es independiente del intervalo: p10..p90 describen
+    #: la baja contando también los casos sin baja.
+    prob_sin_baja: float | None = None
 
     @field_validator("model_version", mode="before")
     @classmethod

@@ -30,6 +30,9 @@ function DesgloseLotes({ lotes }: { lotes: PrediccionBajaLote[] }) {
             <span className="text-muted-foreground">
               · {pct(l.p10)} – {pct(l.p90)}
             </span>
+            {l.prob_sin_baja != null && (
+              <span className="text-muted-foreground">· sin baja {pct(l.prob_sin_baja)}</span>
+            )}
             <span className="text-muted-foreground">
               · {l.serving === "modelo" ? `modelo por lote v${l.model_version}` : "estimación histórica"}
             </span>
@@ -127,6 +130,12 @@ export function PrediccionBajaBlock({ licitacionId }: { licitacionId: string }) 
           style={{ left: `${mediana}%` }}
         />
       </div>
+      {data.prob_sin_baja != null && (
+        <p className="text-tf-body">
+          Adjudicar sin baja <span className="font-semibold">{pct(data.prob_sin_baja)}</span>
+          <span className="text-muted-foreground"> · suele pasar cuando solo se presenta una oferta</span>
+        </p>
+      )}
       <p className="text-tf-meta text-muted-foreground">
         {data.computed_at ? `Calculado el ${formatDate(data.computed_at)} · ` : ""}estimación que describe el
         mercado, no una recomendación de puja.

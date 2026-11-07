@@ -138,8 +138,12 @@ class MLSettings(BaseSettings):
     # Conformaliza el intervalo p10-p90 del modelo de baja (split-CQR) sobre un
     # bloque temporal que el ajuste no vio: la cobertura del 80% se cumple por
     # construcción en vez de depender de que los tres cuantiles salgan bien
-    # calibrados por su cuenta. Ver services.ml.baja_model._offset_conformal.
+    # calibrados por su cuenta. Ver services.ml.baja_model._offsets_conformal_por_lado.
     ML_BAJA_CONFORMAL: bool = True
+    # Modo sombra: el batch puntúa además la versión registrada más nueva que la
+    # activa y la guarda en `predicciones_baja_sombra` (v174) sin servirla, para
+    # medir su calibración real antes de activarla. Fail-open.
+    ML_BAJA_SOMBRA: bool = True
     # Cortes de validación rolling-origin del modelo de baja. 1 reproduce el
     # holdout único anterior.
     ML_BAJA_FOLDS: int = 3

@@ -122,7 +122,7 @@ def run_scoring() -> dict[str, Any]:
     el siguiente acercamiento al timeout en el resumen del job, antes de que
     lo toque. ``baja`` incluye construir las features.
     """
-    from services.ml.calibration import comprobar_calibracion_baja
+    from services.ml.calibration import calibracion_sombra, comprobar_calibracion_baja
     from services.ml.drift import comprobar_drift_baja
     from services.ml.features import corte_abiertas_vivas, features_licitaciones_abiertas
     from services.ml.scoring import score_predicciones_baja, score_predicciones_retencion
@@ -147,6 +147,8 @@ def run_scoring() -> dict[str, Any]:
         drift = comprobar_drift_baja(scoring=filas, regimen=baja.get("serving"))
     with _cronometrar(duraciones, "calibracion"):
         calibracion = comprobar_calibracion_baja()
+    with _cronometrar(duraciones, "sombra"):
+        sombra = calibracion_sombra(baja.get("sombra"))
     # Después de escribir, nunca antes: si el batch se cae a mitad, lo último
     # que conviene es haber borrado ya filas que iba a refrescar.
     with _cronometrar(duraciones, "purga"):
@@ -161,6 +163,7 @@ def run_scoring() -> dict[str, Any]:
         "retencion": retencion,
         "drift": drift,
         "calibracion": calibracion,
+        "sombra": sombra,
         "purga": purga,
         "duraciones_s": duraciones,
     }
@@ -475,6 +478,7 @@ _FASES_RESUMEN: tuple[tuple[str, str], ...] = (
     ("retencion", "Retención"),
     ("drift", "Drift"),
     ("calibracion", "Calibración"),
+    ("sombra", "Candidato en sombra"),
     ("purga", "Purgas"),
 )
 
@@ -508,6 +512,16 @@ _CAMPOS_RESUMEN: dict[str, tuple[tuple[str, str], ...]] = {
         ("n", "n {}"),
         ("mae_p50", "mae_p50 {}"),
         ("regimen_servido", "régimen {}"),
+    ),
+    "sombra": (
+        ("version", "v{} puntuada"),
+        ("filas", "{} filas"),
+        ("version_medida", "v{} medida"),
+        ("n", "n {}"),
+        ("mae_p50", "mae_p50 {}"),
+        ("mae_servido", "servido {}"),
+        ("mejora_sobre_servido", "mejora {}"),
+        ("motivos", "motivos: {}"),
     ),
 }
 
@@ -543,7 +557,7 @@ def _detalle_fase(fase: str, bloque: dict[str, Any]) -> list[str]:
         partes.append(f"{psi} ({_valor(peor)})" if peor else psi)
     for clave, plantilla in _CAMPOS_RESUMEN.get(fase, ()):
         valor = bloque.get(clave)
-        if valor is not None and valor != "":
+        if valor is not None and valor != "" and valor != []:
             partes.append(plantilla.format(_valor(valor)))
     if bloque.get("error"):
         partes.append(f"error: {_valor(bloque['error'])}")

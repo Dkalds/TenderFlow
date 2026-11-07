@@ -13277,6 +13277,8 @@ export interface components {
             p50: number;
             /** P90 */
             p90: number;
+            /** Prob Sin Baja */
+            prob_sin_baja?: number | null;
             /** Serving */
             serving: string;
         };
@@ -13314,6 +13316,8 @@ export interface components {
             p90?: number | null;
             /** Prediccion Ambito */
             prediccion_ambito?: string | null;
+            /** Prob Sin Baja */
+            prob_sin_baja?: number | null;
             /** Serving */
             serving?: string | null;
         };

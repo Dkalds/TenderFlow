@@ -37,9 +37,16 @@ salía 0.005 contra 0.0129: una mejora dos veces y media menor que su propio
 error de medición. El motivo, con su número, queda en
 ``model_versions.notes`` como ``promotion_reason``.
 
-Los intervalos se **conformalizan** (split-CQR) sobre un bloque temporal que
-el ajuste no vio: la cobertura del 80% pasa a cumplirse por construcción en vez
-de depender de que los tres cuantiles salgan bien calibrados por su cuenta.
+Los intervalos se **conformalizan** (split-CQR asimétrico, un offset por
+extremo) sobre un bloque temporal que el ajuste no vio: cada cola del 10 % pasa
+a cumplirse por construcción en vez de depender de que los tres cuantiles
+salgan bien calibrados por su cuenta. Por lado y no simétrico porque el target
+tiene masa en 0 (adjudicar al presupuesto): ver
+:func:`_offsets_conformal_por_lado` y :func:`motivos_cobertura`.
+
+Además del intervalo, un clasificador auxiliar estima **P(sin baja)**
+(:data:`UMBRAL_SIN_BAJA`), que en la práctica es la probabilidad de que solo
+se presente un licitador. Solo se sirve si bate a la prevalencia en Brier.
 
 El **baseline** (:func:`predecir_baseline`, lo que se sirve mientras no haya
 versión activa) se conformaliza igual, pero contra los pares
@@ -73,6 +80,7 @@ from services.ml.features import (
     construir_dataset_baja,
     fecha_valida,
 )
+from services.ml.promotion import huella_dataset
 
 if TYPE_CHECKING:
     import numpy as np
@@ -108,9 +116,21 @@ _BASELINE_ANCHO_RELATIVO = 0.4
 _FRACCION_NEGATIVA_TOLERADA = 0.05
 # Criterios de activación (acceptance del RFC).
 MEJORA_MINIMA_RELATIVA = 0.10
-COBERTURA_OBJETIVO = (0.75, 0.85)
 # Cobertura nominal del intervalo servido (p10..p90).
 _COBERTURA_NOMINAL = 0.80
+# Lo que cada extremo puede dejar fuera: un 10 % por debajo de p10 y otro por
+# encima de p90. El gate lo juzga **por lado** y con su tolerancia, no sobre la
+# cobertura total: el RFC pedía cobertura en (0,75, 0,85), y con una masa de
+# bajas exactamente 0 hasta el intervalo de los cuantiles verdaderos cubre más
+# del 80 % (los ceros caen sobre p10 = 0, ni dentro holgado ni fuera). Eso
+# rechazó la v5 (cobertura 0,875) con una mejora del 15 %. Ver
+# :func:`motivos_cobertura`.
+_COLA_NOMINAL = (1.0 - _COBERTURA_NOMINAL) / 2
+_TOLERANCIA_COLA = 0.05
+# Por debajo de este umbral la baja cuenta como "sin baja": adjudicado al
+# presupuesto (redondeo incluido). En PLACSP es el 28 % de los pares, casi
+# siempre con un único licitador.
+UMBRAL_SIN_BAJA = 0.0005
 
 _BASELINE_FALLBACK = ("baja_media_organo_cpv4", "baja_media_cpv4", "baja_media_organo")
 
@@ -160,6 +180,9 @@ class Prediccion:
     p90: float
     #: ``None`` = predicción del expediente entero (ver ``FilaDataset``).
     lote_numero: str | None = None
+    #: P(baja < :data:`UMBRAL_SIN_BAJA`): adjudicar al presupuesto. ``None`` si
+    #: el artefacto no lo trae o su clasificador no batió a la prevalencia.
+    prob_sin_baja: float | None = None
 
 
 def _aprender_categorias(filas: list[FilaDataset], col: str) -> dict[str, int]:
@@ -303,15 +326,32 @@ class BajaModel:
         modelos: dict[float, Any],
         categorias: dict[str, dict[str, int]],
         metadata: dict[str, Any],
+        clasificador_sin_baja: Any | None = None,
     ) -> None:
         self.modelos = modelos
         self.categorias = categorias
         self.metadata = metadata
+        self.clasificador_sin_baja = clasificador_sin_baja
 
     @property
-    def conformal_offset(self) -> float:
-        """Corrección de anchura del intervalo aprendida en calibración."""
-        return float(self.metadata.get("conformal_offset") or 0.0)
+    def offsets_conformal(self) -> tuple[float, float]:
+        """``(inferior, superior)``: corrección de cada extremo aprendida en calibración.
+
+        Los artefactos anteriores al offset por lado guardan uno solo,
+        simétrico (``conformal_offset``), que vale para los dos.
+        """
+        simetrico = float(self.metadata.get("conformal_offset") or 0.0)
+        return (
+            float(self.metadata.get("conformal_offset_inf", simetrico) or 0.0),
+            float(self.metadata.get("conformal_offset_sup", simetrico) or 0.0),
+        )
+
+    def _prob_sin_baja(self, X: npt.NDArray[np.float64]) -> list[float | None]:
+        # getattr: los .pkl anteriores al clasificador no tienen el atributo.
+        clf = getattr(self, "clasificador_sin_baja", None)
+        if clf is None or not self.metadata.get("prob_sin_baja_util"):
+            return [None] * X.shape[0]
+        return [float(p) for p in clf.predict_proba(X)[:, 1]]
 
     def verificar_features(self) -> None:
         """Comprueba que el artefacto se entrenó con las columnas actuales.
@@ -360,13 +400,14 @@ class BajaModel:
         X_completa, _ = _codificar(filas, self.categorias)
         X = _aplicar_mascara(X_completa, self.mascara_features)
         por_quantil = {q: self.modelos[q].predict(X) for q in QUANTILES}
-        offset = self.conformal_offset
+        offset_inf, offset_sup = self.offsets_conformal
+        probs = self._prob_sin_baja(X)
         out: list[Prediccion] = []
         for i, fila in enumerate(filas):
             crudos = {q: float(por_quantil[q][i]) for q in QUANTILES}
-            # El offset conformal ensancha (o estrecha, si sobraba anchura) el
-            # intervalo; la mediana no se toca.
-            ajustados = (crudos[0.10] - offset, crudos[0.50], crudos[0.90] + offset)
+            # Cada offset ensancha (o estrecha, si sobraba anchura) su extremo;
+            # la mediana no se toca.
+            ajustados = (crudos[0.10] - offset_inf, crudos[0.50], crudos[0.90] + offset_sup)
             # Monotonicidad: los tres fits son independientes y pueden cruzarse.
             p10, p50, p90 = sorted(min(max(v, 0.0), _BAJA_MAX) for v in ajustados)
             out.append(
@@ -376,6 +417,7 @@ class BajaModel:
                     p50=p50,
                     p90=p90,
                     lote_numero=fila.lote_numero,
+                    prob_sin_baja=probs[i],
                 )
             )
         return out
@@ -627,6 +669,32 @@ def _fit_quantil(
     return est
 
 
+def _fit_sin_baja(
+    X: npt.NDArray[np.float64],
+    y: npt.NDArray[np.float64],
+    pesos: npt.NDArray[np.float64],
+    cat_mask: list[bool],
+) -> Any | None:
+    """Clasificador de P(baja < :data:`UMBRAL_SIN_BAJA`); ``None`` con una sola clase.
+
+    Hiperparámetros fijos (los de partida del regresor): es un modelo auxiliar
+    y su utilidad se juzga contra la prevalencia, no se tunea.
+    """
+    import numpy as np
+    from sklearn.ensemble import HistGradientBoostingClassifier
+
+    etiqueta = (y < UMBRAL_SIN_BAJA).astype(np.int64)
+    if len(np.unique(etiqueta)) < 2:
+        return None
+    est = HistGradientBoostingClassifier(
+        categorical_features=cat_mask,
+        random_state=42,
+        **_HIPER_BASE,
+    )
+    est.fit(X, etiqueta, sample_weight=pesos)
+    return est
+
+
 def _combinaciones(n: int, semilla: int = 42) -> list[dict[str, Any]]:
     """``n`` combinaciones distintas de :data:`_REJILLA`, más la base.
 
@@ -728,6 +796,56 @@ def _offset_conformal(
     return _cuantil_conformal(np.maximum(p10 - y, y - p90), cobertura)
 
 
+def _offsets_conformal_por_lado(
+    p10: npt.NDArray[np.float64],
+    p90: npt.NDArray[np.float64],
+    y: npt.NDArray[np.float64],
+    cola: float = _COLA_NOMINAL,
+) -> tuple[float, float]:
+    """``(inferior, superior)``: split-CQR asimétrico (Romano et al., §6).
+
+    El offset simétrico corta el máximo de los dos scores por un único
+    cuantil. Con bajas exactamente 0 —el 28 % de PLACSP— y ``p10`` clipado a
+    0, esos pares dan score 0 justo donde cae el cuantil del 80 %: el offset se
+    quedaba clavado en 0,0 (las cinco versiones registradas) y el extremo
+    superior no se podía estrechar. Por lado, cada extremo garantiza su cola
+    (``P(y < p10') <= cola`` y ``P(y > p90') <= cola``) y el superior, cuyos
+    scores no empatan, se ajusta de verdad.
+    """
+    if len(y) < _MIN_VALID_SAMPLES:
+        return 0.0, 0.0
+    return (
+        _cuantil_conformal(p10 - y, 1.0 - cola),
+        _cuantil_conformal(y - p90, 1.0 - cola),
+    )
+
+
+def motivos_cobertura(metricas: Mapping[str, float]) -> list[str]:
+    """Motivos de rechazo del intervalo, juzgado por lado y con empates.
+
+    Un ``p_q`` está calibrado si ``P(y < p_q) <= q <= P(y <= p_q)``: con una
+    masa de probabilidad en el extremo (bajas = 0 sobre ``p10`` = 0) la
+    igualdad estricta no existe, y la cobertura total no distingue un intervalo
+    que falla 0 % por abajo y 20 % por arriba de uno centrado. Cada lado debe
+    dejar fuera como mucho la cola nominal más la tolerancia, y contando los
+    empates, al menos la cola menos la tolerancia.
+    """
+    techo, suelo = _COLA_NOMINAL + _TOLERANCIA_COLA, _COLA_NOMINAL - _TOLERANCIA_COLA
+    motivos: list[str] = []
+    for lado, estricto, con_empates in (
+        ("inferior", "fallo_inferior", "fallo_inferior_con_empates"),
+        ("superior", "fallo_superior", "fallo_superior_con_empates"),
+    ):
+        if metricas[estricto] > techo:
+            motivos.append(f"cola {lado} {metricas[estricto]:.4f} > {techo:.2f}")
+        if metricas[con_empates] < suelo:
+            motivos.append(
+                f"cola {lado} con empates {metricas[con_empates]:.4f} < {suelo:.2f}: "
+                "intervalo más ancho de lo que dice"
+            )
+    return motivos
+
+
 def _cuantil_conformal(scores: npt.NDArray[np.float64], cobertura: float) -> float:
     """Cuantil ``⌈(n+1)·cobertura⌉/n`` de los scores de conformidad.
 
@@ -748,18 +866,26 @@ def _metricas_fold(
     X_valid: npt.NDArray[np.float64],
     media_global: float,
     mediana_train: float,
-    offset: float,
+    offsets: tuple[float, float],
+    clasificador: Any | None = None,
+    prevalencia_sin_baja: float = 0.0,
 ) -> dict[str, float]:
     import numpy as np
-    from sklearn.metrics import mean_absolute_error, mean_pinball_loss
+    from sklearn.metrics import brier_score_loss, mean_absolute_error, mean_pinball_loss
 
     y = _y_de(valid)
     pred = {q: np.clip(modelos[q].predict(X_valid), 0.0, _BAJA_MAX) for q in QUANTILES}
     p10 = np.clip(
-        np.minimum(pred[0.10], np.minimum(pred[0.50], pred[0.90])) - offset, 0.0, _BAJA_MAX
+        np.minimum(pred[0.10], np.minimum(pred[0.50], pred[0.90])) - offsets[0], 0.0, _BAJA_MAX
     )
     p90 = np.clip(
-        np.maximum(pred[0.90], np.maximum(pred[0.50], pred[0.10])) + offset, 0.0, _BAJA_MAX
+        np.maximum(pred[0.90], np.maximum(pred[0.50], pred[0.10])) + offsets[1], 0.0, _BAJA_MAX
+    )
+    sin_baja = (y < UMBRAL_SIN_BAJA).astype(np.int64)
+    prob = (
+        clasificador.predict_proba(X_valid)[:, 1]
+        if clasificador is not None
+        else np.full(len(y), prevalencia_sin_baja, dtype=np.float64)
     )
 
     baseline = np.array([_baseline(f, media_global) for f in valid], dtype=np.float64)
@@ -781,6 +907,18 @@ def _metricas_fold(
         "pinball_p10": float(mean_pinball_loss(y, pred[0.10], alpha=0.10)),
         "pinball_p90": float(mean_pinball_loss(y, pred[0.90], alpha=0.90)),
         "cobertura_intervalo_80": float(np.mean((y >= p10) & (y <= p90))),
+        "fallo_inferior": float(np.mean(y < p10)),
+        "fallo_inferior_con_empates": float(np.mean(y <= p10)),
+        "fallo_superior": float(np.mean(y > p90)),
+        "fallo_superior_con_empates": float(np.mean(y >= p90)),
+        "prevalencia_sin_baja": float(sin_baja.mean()),
+        # El clasificador frente a predecir siempre la prevalencia del train.
+        "brier_sin_baja": float(brier_score_loss(sin_baja, prob, pos_label=1)),
+        "brier_sin_baja_constante": float(
+            brier_score_loss(
+                sin_baja, np.full(len(y), prevalencia_sin_baja, dtype=np.float64), pos_label=1
+            )
+        ),
     }
 
 
@@ -800,7 +938,8 @@ def entrenar(
 
     ``activar=None`` aplica la política del RFC: solo activa si
     ``ML_PRED_AUTO_ACTIVATE`` está encendido Y el modelo bate el baseline ≥10%
-    relativo en MAE Y la cobertura del intervalo 80% nominal cae en [75, 85]%.
+    relativo en MAE Y cada extremo del intervalo deja fuera su 10 % con ±5
+    puntos de tolerancia (:func:`motivos_cobertura`).
     Devuelve el resumen con métricas (clave ``activado``).
 
     ``por_lote=True`` entrena el modelo **por lote** sobre
@@ -892,14 +1031,16 @@ def entrenar(
     modelos: dict[float, Any] = {
         q: _fit_quantil(q, X_train, y_train, pesos, cat_mask_usadas, hiper) for q in QUANTILES
     }
+    clasificador = _fit_sin_baja(X_train, y_train, pesos, cat_mask_usadas)
+    prevalencia_train = float(np.mean(y_train < UMBRAL_SIN_BAJA))
 
     media_global = float(y_train.mean())
-    offset = 0.0
+    offsets = (0.0, 0.0)
     if calibracion:
         X_cal_completa, _ = _codificar(calibracion, categorias)
         X_cal = _aplicar_mascara(X_cal_completa, mask_features)
         pred_cal = {q: np.clip(modelos[q].predict(X_cal), 0.0, _BAJA_MAX) for q in QUANTILES}
-        offset = _offset_conformal(
+        offsets = _offsets_conformal_por_lado(
             np.minimum(pred_cal[0.10], pred_cal[0.50]),
             np.maximum(pred_cal[0.90], pred_cal[0.50]),
             _y_de(calibracion),
@@ -916,7 +1057,14 @@ def entrenar(
             X_va = _aplicar_mascara(X_va_completa, mask_features)
             por_fold.append(
                 _metricas_fold(
-                    modelos, valid, X_va, media_global, float(np.median(y_train)), offset
+                    modelos,
+                    valid,
+                    X_va,
+                    media_global,
+                    float(np.median(y_train)),
+                    offsets,
+                    clasificador,
+                    prevalencia_train,
                 )
             )
             continue
@@ -926,12 +1074,13 @@ def entrenar(
         X_tr = _aplicar_mascara(X_tr_completa, mask_f)
         X_va = _aplicar_mascara(X_va_completa, mask_f)
         y_tr = _y_de(train)
+        pesos_f = _pesos_recencia(train, halflife)
         modelos_f = {
             q: _fit_quantil(
                 q,
                 X_tr,
                 y_tr,
-                _pesos_recencia(train, halflife),
+                pesos_f,
                 _filtrar(cat_mask, mask_f),
                 hiper,
             )
@@ -939,7 +1088,14 @@ def entrenar(
         }
         por_fold.append(
             _metricas_fold(
-                modelos_f, valid, X_va, float(y_tr.mean()), float(np.median(y_tr)), offset
+                modelos_f,
+                valid,
+                X_va,
+                float(y_tr.mean()),
+                float(np.median(y_tr)),
+                offsets,
+                _fit_sin_baja(X_tr, y_tr, pesos_f, _filtrar(cat_mask, mask_f)),
+                float(np.mean(y_tr < UMBRAL_SIN_BAJA)),
             )
         )
 
@@ -953,6 +1109,12 @@ def entrenar(
 
     mejora = _media("mejora_relativa")
     cobertura = _media("cobertura_intervalo_80")
+    # P(sin baja) solo se sirve si bate a la prevalencia en la media de folds:
+    # una probabilidad peor que la constante engaña más que no darla. No
+    # gatea el intervalo: es una salida aparte.
+    prob_util = clasificador is not None and _media("brier_sin_baja") < _media(
+        "brier_sin_baja_constante"
+    )
     metricas: dict[str, Any] = {
         "mae_p50": _media("mae_p50"),
         "mae_baseline": _media("mae_baseline"),
@@ -963,6 +1125,14 @@ def entrenar(
         "pinball_p90": _media("pinball_p90"),
         "mae_mediana_constante": _media("mae_mediana_constante"),
         "cobertura_intervalo_80": cobertura,
+        "fallo_inferior": _media("fallo_inferior"),
+        "fallo_inferior_con_empates": _media("fallo_inferior_con_empates"),
+        "fallo_superior": _media("fallo_superior"),
+        "fallo_superior_con_empates": _media("fallo_superior_con_empates"),
+        "prevalencia_sin_baja": _media("prevalencia_sin_baja"),
+        "brier_sin_baja": _media("brier_sin_baja"),
+        "brier_sin_baja_constante": _media("brier_sin_baja_constante"),
+        "prob_sin_baja_util": prob_util,
         "mae_p50_std_folds": _desv("mae_p50"),
         "cobertura_std_folds": _desv("cobertura_intervalo_80"),
         "n_folds": len(por_fold),
@@ -980,7 +1150,8 @@ def entrenar(
         # del ajuste (ver `_columnas_observadas`).
         "features_descartadas_sin_cobertura": features_descartadas,
         "n_features_usadas": len(features_usadas),
-        "conformal_offset": round(offset, 5),
+        "conformal_offset_inf": round(offsets[0], 5),
+        "conformal_offset_sup": round(offsets[1], 5),
         "hiper": hiper,
         "hiper_explorados": n_explorados,
         "halflife_meses": halflife,
@@ -989,7 +1160,16 @@ def entrenar(
         # Cardinalidad efectiva por columna categórica: es la métrica que se
         # acercó al techo de 255 sin que nadie la mirara hasta que reventó.
         "categorias": {col: len(categorias[col]) for col in CATEGORICAL_COLUMNS},
+        "dataset_sha256": huella_dataset(
+            [
+                (f.licitacion_id, f.lote_numero, f.fecha, round(float(f.baja or 0.0), 6))
+                for f in filas
+            ]
+        ),
+        "n_dataset": len(filas),
+        "n_por_fuente": dict(Counter(str(f.features.get("fuente")) for f in filas)),
     }
+    metricas.update(_comparar_con_activa(nombre_modelo, valid_final, por_fold[-1]["mae_p50"]))
 
     # Gate de promoción (S6.4). Los dos criterios del RFC —mejora relativa y
     # cobertura en rango— siguen siendo condición necesaria y entran como
@@ -1000,14 +1180,16 @@ def entrenar(
     from services.ml.promotion import evaluar_promocion_predictiva
 
     motivos_rfc: list[str] = []
+    if metricas.get("mejora_sobre_activa") is not None and metricas["mejora_sobre_activa"] <= 0:
+        motivos_rfc.append(
+            f"no mejora a la versión activa en el mismo bloque de validación "
+            f"(mae_p50 {por_fold[-1]['mae_p50']:.5f} vs {metricas['mae_p50_activa']:.5f})"
+        )
     if mejora < MEJORA_MINIMA_RELATIVA:
         motivos_rfc.append(
             f"mejora relativa {mejora:.4f} < {MEJORA_MINIMA_RELATIVA} (criterio RFC 20260611-2)"
         )
-    if not COBERTURA_OBJETIVO[0] <= cobertura <= COBERTURA_OBJETIVO[1]:
-        motivos_rfc.append(
-            f"cobertura del intervalo 80% {cobertura:.4f} fuera de {COBERTURA_OBJETIVO}"
-        )
+    motivos_rfc.extend(motivos_cobertura(metricas))
 
     decision = evaluar_promocion_predictiva(
         metrica=metricas["mae_p50"],
@@ -1032,12 +1214,15 @@ def entrenar(
             # Subconjunto que el ajuste llegó a ver: `predict` recorta por él.
             "feature_columns_usadas": features_usadas,
             "feature_columns_descartadas": features_descartadas,
-            "conformal_offset": offset,
+            "conformal_offset_inf": offsets[0],
+            "conformal_offset_sup": offsets[1],
+            "prob_sin_baja_util": prob_util,
             "metrics": metricas,
             # Granularidad del target: un artefacto por lote servido como
             # agregado (o al revés) predeciría otra magnitud sin error visible.
             "granularidad": "lote" if por_lote else "expediente",
         },
+        clasificador_sin_baja=clasificador,
     )
     # Nombre por contenido: con la ruta fija, el reentrenamiento pisaba en la
     # Release (`--clobber`) el asset de la versión activa y `ml-scoring` caía
@@ -1075,6 +1260,45 @@ def entrenar(
         "cumple_criterios": cumple,
         "path": str(path),
         **metricas,
+    }
+
+
+def _comparar_con_activa(
+    nombre_modelo: str, valid: list[FilaDataset], mae_candidato: float
+) -> dict[str, Any]:
+    """MAE de la versión activa sobre el **mismo** bloque de validación del candidato.
+
+    El gate comparaba cada versión contra el baseline, y cada una con sus
+    propios folds: un candidato podía pasar siendo peor que lo que ya se sirve.
+    Aquí la activa predice exactamente las filas del último fold del
+    candidato. Sin versión activa, o si su artefacto no se puede resolver o es
+    de otro layout de features, no hay comparación (y no bloquea: el scoring
+    tampoco podría servirla).
+    """
+    from db.model_registry import get_active
+
+    activa = get_active(nombre_modelo)
+    if not activa:
+        return {}
+    try:
+        from services.ml.model_artifacts import resolve_active_artifact
+
+        artefacto = resolve_active_artifact(nombre_modelo)
+        if artefacto is None:
+            return {"comparacion_activa": "artefacto_irresoluble"}
+        modelo = BajaModel.load(artefacto, por_lote=nombre_modelo == MODEL_NAME_LOTE)
+        preds = modelo.predict(valid)
+    except FeatureSchemaMismatch:
+        return {"comparacion_activa": "otro_layout_de_features"}
+    except Exception as exc:  # comparar es informativo: no tumba el entrenamiento
+        log.warning("baja_model_comparacion_activa_error", error=str(exc))
+        return {"comparacion_activa": f"error: {type(exc).__name__}"}
+    y = _y_de(valid)
+    mae_activa = sum(abs(p.p50 - float(v)) for p, v in zip(preds, y, strict=True)) / len(preds)
+    return {
+        "version_activa": int(activa["version"]),
+        "mae_p50_activa": round(mae_activa, 5),
+        "mejora_sobre_activa": round(1.0 - mae_candidato / mae_activa, 5) if mae_activa else None,
     }
 
 

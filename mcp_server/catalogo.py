@@ -403,10 +403,16 @@ _TABLAS: tuple[tuple[str, Visibilidad, str, str], ...] = (
         "Predicción de baja de adjudicación (p10/p50/p90) por licitación.",
     ),
     (
+        "predicciones_baja_sombra",
+        _V,
+        _ML,
+        "Predicción de baja del modelo candidato, sin servir (modo sombra).",
+    ),
+    (
         "predicciones_retencion",
         _V,
         _ML,
-        "Probabilidad de retención del adjudicatario por licitación.",
+        "Probabilidad de retención de cada adjudicatario por licitación.",
     ),
     ("asistente_feedback", _V, _ML, "Votos de utilidad sobre las respuestas del asistente."),
     ("tasas_anulacion_organo", _V, _ML, "Tasa de anulación de expedientes por órgano y CPV."),

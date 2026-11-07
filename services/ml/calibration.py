@@ -295,6 +295,66 @@ def comparar_mae_p50() -> dict[str, Any]:
     return resultado
 
 
+def calibracion_sombra(puntuado: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Calibración del candidato en sombra contra la realidad, y contra lo servido.
+
+    ``puntuado`` es lo que devolvió el batch (``{version, filas}`` o
+    ``{version, error}``); se incluye para que el resumen diga a la vez qué se
+    puntuó hoy y cómo va lo puntuado antes. Mide la versión más reciente con
+    pares resueltos. ``motivos`` aplica el gate de colas del entrenamiento
+    (:func:`services.ml.baja_model.motivos_cobertura`) a lo observado, y
+    ``mejora_sobre_servido`` compara MAE sobre los mismos expedientes.
+
+    Es una lectura: no activa nada. Fail-open como los demás monitores.
+    """
+    from services.ml.baja_model import motivos_cobertura
+
+    base: dict[str, Any] = dict(puntuado or {})
+    try:
+        medidas = MlDatasetRepository().calibracion_baja_sombra()
+    except Exception as e:  # fail-open: sin la tabla (v174) o sin conexión
+        log.warning("ml_calibracion_sombra_failed", error=str(e))
+        return {**base, "status": "error", "error": str(e)}
+    if not medidas:
+        return {**base, "status": "sin_candidato" if not base else "sin_datos"}
+    ultima = medidas[-1]
+    n = int(ultima["n"] or 0)
+    resultado: dict[str, Any] = {
+        **base,
+        "version_medida": int(ultima["model_version"]),
+        "n": n,
+    }
+    if n < _MIN_EVALUADAS:
+        return {**resultado, "status": "sin_datos"}
+    colas = {
+        clave: float(ultima[clave])
+        for clave in (
+            "fallo_inferior",
+            "fallo_inferior_con_empates",
+            "fallo_superior",
+            "fallo_superior_con_empates",
+        )
+    }
+    mae = float(ultima["mae"])
+    mae_mismos = ultima.get("mae_mismos_pares")
+    mae_servido = ultima.get("mae_servido")
+    resultado.update(
+        cobertura=round(float(ultima["cobertura"]), 4),
+        mae_p50=round(mae, 4),
+        mae_servido=None if mae_servido is None else round(float(mae_servido), 4),
+        mejora_sobre_servido=(
+            round(1.0 - float(mae_mismos) / float(mae_servido), 4)
+            if mae_mismos is not None and mae_servido
+            else None
+        ),
+        motivos=motivos_cobertura(colas),
+        **{clave: round(valor, 4) for clave, valor in colas.items()},
+    )
+    resultado["status"] = "ok" if not resultado["motivos"] else "warn"
+    log.info("ml_calibracion_sombra", **resultado)
+    return resultado
+
+
 # ---------------------------------------------------------------------------
 # DTO para GET /predicciones/calibracion (plan Pliegos+RAG, F11)
 # ---------------------------------------------------------------------------

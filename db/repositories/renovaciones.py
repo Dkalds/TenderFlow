@@ -215,6 +215,7 @@ def proximas_renovaciones(
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN empresas e ON e.empresa_id = a.empresa_id
         LEFT JOIN predicciones_retencion pr ON pr.licitacion_id = a.licitacion_id
+                                           AND pr.empresa_id = a.empresa_id
         {ficha_join}
         WHERE {fecha_fin} {rango_vencimiento_sql()}
           AND {TECHNOLOGY_OBSERVED_SQL}
@@ -323,6 +324,7 @@ def totales_ventana(
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
         LEFT JOIN predicciones_retencion pr ON pr.licitacion_id = a.licitacion_id
+                                           AND pr.empresa_id = a.empresa_id
         WHERE {fecha_fin} {rango_vencimiento_sql()}
           AND {TECHNOLOGY_OBSERVED_SQL}
           AND {exclude_duplicados_sql()}

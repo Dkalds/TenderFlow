@@ -26,6 +26,17 @@ import pytest
 import services.ml.retencion_labels as rl
 from services.dedupe import normalize_organo
 
+
+@pytest.fixture(autouse=True)
+def _ventanas_cerradas(monkeypatch):
+    """Estos tests fijan el emparejamiento, no la censura: todas las ventanas
+    cuentan como cerradas. La censura tiene sus tests en
+    ``tests/test_ml_retencion_censura.py``."""
+    from datetime import datetime
+
+    monkeypatch.setattr(rl, "_corte_de_datos", lambda _adj: datetime(2100, 1, 1))
+
+
 _ORGANO = "Ayuntamiento de Madrid"
 _CPV = "72000000"
 

@@ -39,6 +39,34 @@ describe("PrediccionBajaBlock", () => {
     expect(screen.getByText("15,0%")).toBeInTheDocument();
   });
 
+  it("shows the probability of an award without discount when the model gives it", () => {
+    renderWithData("L6", {
+      licitacion_id: "L6",
+      p10: 0,
+      p50: 0.1,
+      p90: 0.25,
+      model_version: "4",
+      computed_at: "2026-11-07T03:00:00Z",
+      serving: "modelo",
+      prob_sin_baja: 0.35,
+    });
+    expect(screen.getByText("Adjudicar sin baja")).toBeInTheDocument();
+    expect(screen.getByText("35,0%")).toBeInTheDocument();
+  });
+
+  it("omits the award-without-discount line when the response does not carry it", () => {
+    renderWithData("L7", {
+      licitacion_id: "L7",
+      p10: 0.1,
+      p50: 0.2,
+      p90: 0.4,
+      model_version: null,
+      computed_at: "2026-11-07T03:00:00Z",
+      serving: "baseline",
+    });
+    expect(screen.queryByText("Adjudicar sin baja")).not.toBeInTheDocument();
+  });
+
   it("renders the baseline label when serving is baseline", () => {
     renderWithData("L2", {
       licitacion_id: "L2",

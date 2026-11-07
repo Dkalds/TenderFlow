@@ -319,6 +319,24 @@ def resolve_active_artifact(name: str) -> Path | None:
     activa = get_active(name)
     if not activa:
         return None
+    return _resolver_fila(name, activa)
+
+
+def resolve_version_artifact(name: str, version: int) -> Path | None:
+    """Lo mismo que :func:`resolve_active_artifact` para una versión concreta.
+
+    La usa el modo sombra (``services.ml.scoring``), que puntúa un candidato
+    registrado sin activar. Mismas garantías: sha256 verificado venga de donde
+    venga el fichero, ``None`` si no se puede resolver.
+    """
+    from db.model_registry import list_versions
+
+    fila = next((v for v in list_versions(name) if int(v["version"]) == version), None)
+    return _resolver_fila(name, fila) if fila else None
+
+
+def _resolver_fila(name: str, activa: dict[str, Any]) -> Path | None:
+    """Resuelve y verifica el artefacto de una fila de ``model_versions``."""
     path = Path(str(activa["path"]))
     expected = str(activa.get("sha256") or "")
 
