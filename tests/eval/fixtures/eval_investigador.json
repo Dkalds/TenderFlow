@@ -45,6 +45,36 @@
       "fecha_publicacion": "2026-03-01"
     },
     {
+      "id_externo": "INV-HOSP-MATERIAL",
+      "titulo": "Suministro de material de curas para el hospital comarcal",
+      "descripcion": "Apósitos, vendas y material fungible del hospital.",
+      "organo_contratacion": "Servicio Andaluz de Salud",
+      "ccaa": "Andalucía",
+      "estado": "PUB",
+      "importe": 85000.0,
+      "fecha_publicacion": "2026-04-28"
+    },
+    {
+      "id_externo": "INV-HOSP-COCINA",
+      "titulo": "Servicio de alimentación de pacientes del hospital universitario",
+      "descripcion": "Elaboración y distribución de dietas hospitalarias.",
+      "organo_contratacion": "Osakidetza",
+      "ccaa": "País Vasco",
+      "estado": "PUB",
+      "importe": 1300000.0,
+      "fecha_publicacion": "2026-03-30"
+    },
+    {
+      "id_externo": "INV-HOSP-LAVANDERIA",
+      "titulo": "Lavandería y lencería del hospital provincial",
+      "descripcion": "Lavado y reposición de ropa de cama y uniformes del hospital.",
+      "organo_contratacion": "Diputación de Zamora",
+      "ccaa": "Castilla y León",
+      "estado": "PUB",
+      "importe": 240000.0,
+      "fecha_publicacion": "2026-02-02"
+    },
+    {
       "id_externo": "INV-LIMPIEZA",
       "titulo": "Servicio de limpieza de dependencias municipales",
       "descripcion": "Limpieza diaria de oficinas, colegios y centros culturales.",

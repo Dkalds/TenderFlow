@@ -42,7 +42,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from api.concurrency import run_db
+from api.concurrency import run_db, run_ml
 from api.identidad import id_vigente, resolver_id_externo
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization
@@ -689,7 +689,9 @@ async def _stream_ask(
 
     _validate_model(request.model)
 
-    docs, mode, declarados, recuperacion_fallida = await run_db(
+    # Con la búsqueda por significado se codifica la pregunta: va al pool de
+    # modelos, como en ``/search/semantic``, para no ocupar el de la BD.
+    docs, mode, declarados, recuperacion_fallida = await (run_ml if semantica else run_db)(
         _prepare_ask_context, request, semantica
     )
 

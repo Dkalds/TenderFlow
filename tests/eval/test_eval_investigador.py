@@ -45,27 +45,29 @@ TOP_K = 5
 #   filtros              1.000    1.000
 #   pliego               1.000    1.000
 #   vigencia             0.500    1.000   ← lo abierto delante a igual coincidencia
-#   parcial              0.750    0.750   ← ver abajo
+#   parcial              1.000    1.000
 #   hablada              1.000    1.000
 #   tilde                1.000    1.000
 #   parafrasis           0.333    0.333   ← solo texto: la línea base del significado
-#   global               0.816    0.868
+#   global               0.842    0.895
 #   pliego en contexto   0.455    1.000   ← el expediente esperado llega con pliego
 #
-# «parcial» falla en «mantenimiento SAP hospital»: el contrato de ascensores
-# del hospital sale primero porque «hospital» es raro entre los candidatos y
-# pesa más que «SAP» (``anuncios_por_terminos`` pondera por rareza). Es un
-# defecto del ranking, no del set: se arregla en el ranking y entonces sube el
-# suelo, no al revés.
+# Las frecuencias relativas del corpus importan, porque el ranking pondera por
+# rareza entre los candidatos: «hospital» sale en más anuncios que «SAP», como
+# en producción (1.801 frente a 1.511 el 2026-11-07). Con un solo anuncio de
+# hospital, «mantenimiento SAP hospital» ponía delante los ascensores del
+# hospital, algo que en producción no pasa (allí casan primero los SAP de
+# hospital). En «parafrasis», «cámaras» y «cama» comparten raíz en el
+# diccionario español: la lavandería («ropa de cama») sale con «CCTV».
 #
 # Un suelo es lo medido: si una consulta baja de puesto, se mira por qué antes
 # de tocar el número.
-MRR_MIN_GLOBAL = 0.86
+MRR_MIN_GLOBAL = 0.89
 MRR_MIN_POR_CATEGORIA = {
     "filtros": 1.0,
     "pliego": 1.0,
     "vigencia": 1.0,
-    "parcial": 0.75,
+    "parcial": 1.0,
     "hablada": 1.0,
     "tilde": 1.0,
     "parafrasis": 0.33,

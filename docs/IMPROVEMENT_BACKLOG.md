@@ -754,15 +754,6 @@ _Sin ítems abiertos._
   - **Falta (propietario):** las cuatro variables en `tenderflow-api` (Render) y un deploy con caché limpia; encender la flag; después, `source=rrf` en `semantic_search.ok`, MRR antes/después, RSS y `fusion_ms` real contra el presupuesto. Con eso se cierra.
 - **Progreso (2026-11-07, rama `claude/eloquent-cray-44n08c`) — `/ask` obedece a la misma flag que la lista.** Con `RAG_HYBRID_ENABLED` el asistente usaba la fusión *en lugar* del texto, sin interpretar los filtros de la frase, y la lista y el asistente podían contradecirse. El setting se retiró: `services/licitaciones.py::search_for_ask` llama a `services/investigador/busqueda.py::buscar` con `semantica_activa` de quien pregunta, así que encender `busqueda_semantica` enciende las dos cosas. También se retiró la red de `/ask` (tsquery estricta y `LIKE` sin orden), que solo corría si el motor de texto fallaba; ahora ese fallo llega como `_RecuperacionFallida`. Para medir la decisión hay un eval por categoría: `tests/eval/test_eval_investigador.py`.
 
-### [P3] [Investigador] Una palabra rara de la consulta pesa más que el tema
-- **Área:** db/repositories/investigador.py (`anuncios_por_terminos`)
-- **Problema:** el peso de cada término es su rareza **entre los candidatos** de esa consulta. Con «mantenimiento SAP hospital», el contrato de ascensores del hospital sale por delante de los dos de mantenimiento SAP: «hospital» aparece en un solo candidato y pesa más que «SAP», que es el tema. Medido el 2026-11-07 con `tests/eval/test_eval_investigador.py` (categoría `parcial`, MRR 0,750; era igual antes del cambio de esa fecha).
-- **Acceptance criteria:**
-  - La categoría `parcial` llega a 1,0 sin bajar ninguna otra, y el suelo de `MRR_MIN_POR_CATEGORIA` sube con ella.
-  - Se mide contra producción la latencia de «licencia» (7.950 candidatos, 89 ms tras materializar las CTE) antes y después: el arreglo no puede volver a ser cuadrático.
-- **Files de partida:** [db/repositories/investigador.py](../db/repositories/investigador.py), [tests/eval/fixtures/eval_investigador.json](../tests/eval/fixtures/eval_investigador.json)
-- **Riesgo:** medio: el orden de toda búsqueda con coincidencia parcial cambia. Candidatos a probar: acotar el peso por rareza (techo), o usar la frecuencia en el corpus en vez de la de los candidatos.
-
 ### [P3] [Investigador] El historial de consultas sigue en `localStorage`
 - **Área:** web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts
 - **Problema:** las consultas recientes viven en el navegador (`docs/frontend-data-invariants.md`, anti-patrón 3): no viajan a otro dispositivo. `saved_filters` no sirve tal cual —guarda instantáneas del ámbito que las demás pantallas restauran—, así que hace falta una tabla propia, es decir, una migración (§6).

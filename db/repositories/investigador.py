@@ -497,6 +497,12 @@ def pasajes_de_contexto(
     Mismo orden documental y misma exclusión del acta que
     ``DocumentosRepository.list_chunks_by_licitacion``: el acta no es pliego.
     Por ``id_externo``, con las claves que cita ``/ask``.
+
+    Puntúa todos los fragmentos de ``ids``, sin tope previo. Medido contra
+    producción el 2026-11-07: 0,28 s con los cinco primeros de «soporte SAP»
+    (búsqueda incluida) y, en el peor caso —los 20 expedientes con más pliego,
+    unos 19.000 fragmentos—, 0,36 s en caliente; 0,57 s en frío con los cinco
+    mayores.
     """
     if not ids:
         return {}
