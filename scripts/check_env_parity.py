@@ -131,8 +131,19 @@ def _required_in_prod() -> set[str]:
     Se leen del AST y no con un import: importar ``config.settings`` construye
     un ``Settings()``, que en un entorno sin variables falla precisamente por lo
     que este script quiere reportar.
+
+    ``Settings`` compone un mixin por dominio (``config/settings_<dominio>.py``)
+    y un validador puede nombrar un campo de otro módulo, así que se leen todos
+    como un único árbol.
     """
-    tree = ast.parse(SETTINGS_PY.read_text(encoding="utf-8"))
+    tree = ast.Module(
+        body=[
+            nodo
+            for ruta in sorted(SETTINGS_PY.parent.glob("settings*.py"))
+            for nodo in ast.parse(ruta.read_text(encoding="utf-8")).body
+        ],
+        type_ignores=[],
+    )
     campos = {
         node.target.id: node
         for node in ast.walk(tree)
