@@ -68,26 +68,34 @@ def _ted(id_externo: str = "ted:533989-2026", **campos: Any) -> dict[str, Any]:
     return base
 
 
-def _indices(
-    candidatas: list[dict[str, Any]],
-) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
-    """Los dos índices que construye el detector, a partir de las candidatas."""
-    por_evl: dict[str, list[dict[str, Any]]] = {}
-    por_expediente: dict[str, list[dict[str, Any]]] = {}
+_Indice = dict[str, list[dict[str, Any]]]
+
+
+def _indices(candidatas: list[dict[str, Any]]) -> tuple[_Indice, _Indice, _Indice]:
+    """Los tres índices que construye el detector, a partir de las candidatas."""
+    por_evl: _Indice = {}
+    por_ficha: _Indice = {}
+    por_expediente: _Indice = {}
     for c in candidatas:
         if (evl := id_evl_de_url(c.get("url"))) is not None:
             por_evl.setdefault(evl, []).append(c)
+        if (ficha := sd.uuid_ficha_de_url(c.get("url"))) is not None:
+            por_ficha.setdefault(ficha, []).append(c)
         for clave in sd._claves_de_candidata(c):
             por_expediente.setdefault(clave, []).append(c)
-    return por_evl, por_expediente
+    return por_evl, por_ficha, por_expediente
 
 
 def _elegir(
     fila: dict[str, Any], ref: ReferenciaCruzada, candidatas: list[dict[str, Any]]
 ) -> tuple[str, str] | None:
-    por_evl, por_expediente = _indices(candidatas)
+    por_evl, por_ficha, por_expediente = _indices(candidatas)
     elegida = _elegir_canonica_por_referencia(
-        fila, ref, por_id_evl=por_evl, por_expediente=por_expediente
+        fila,
+        ref,
+        por_id_evl=por_evl,
+        por_procedimiento=por_ficha,
+        por_expediente=por_expediente,
     )
     return None if elegida is None else (elegida[0]["id_externo"], elegida[1])
 
@@ -222,6 +230,48 @@ def test_el_codigo_de_entidad_solo_se_quita_en_las_agregadas() -> None:
     placsp = _placsp("placsp:1234:26_07", url=None)
 
     assert _elegir(_ted(), ReferenciaCruzada(expediente="07"), [placsp]) is None
+
+
+_FICHA_PSCP = "df345a38-27da-4e29-b988-94b237a04de5"
+_URL_FICHA = f"https://contractaciopublica.cat/ca/detall-publicacio/{_FICHA_PSCP}/300876733"
+
+
+def test_bt04_casa_con_la_ficha_catalana_sin_bt22_ni_organo() -> None:
+    """559302-2026 no trae BT-22 ni deeplink; su BT-04 es la ficha de la fila PSCP (2026-11-07)."""
+    pscp = _placsp(
+        f"pscp:{_FICHA_PSCP}:CO.04.2025",
+        fuente="pscp",
+        url=_URL_FICHA,
+        organo_contratacion="Otro nombre del órgano",
+        titulo="Otro título",
+    )
+
+    assert _elegir(_ted(), ReferenciaCruzada(procedimiento=_FICHA_PSCP), [pscp]) == (
+        pscp["id_externo"],
+        f"procedimiento:{_FICHA_PSCP}",
+    )
+
+
+def test_bt04_que_no_es_ficha_catalana_no_empareja() -> None:
+    """Un BT-04 de otro remitente es un UUID cualquiera: sin ficha que lo lleve, nada."""
+    placsp = _placsp("EXP-1", url=None)
+
+    assert _elegir(_ted(), ReferenciaCruzada(procedimiento=_FICHA_PSCP), [placsp]) is None
+
+
+def test_uuid_ficha_de_url() -> None:
+    assert sd.uuid_ficha_de_url(_URL_FICHA) == _FICHA_PSCP
+    assert sd.uuid_ficha_de_url("https://contractaciopublica.cat/ca/perfils/detall/1") is None
+    assert sd.uuid_ficha_de_url(None) is None
+
+
+def test_el_detector_pide_las_candidatas_por_bt04() -> None:
+    fila = _ted()
+    _, _, candidatas = _correr(
+        [fila], [], {fila["id_externo"]: ReferenciaCruzada(procedimiento=_FICHA_PSCP)}
+    )
+
+    assert candidatas.call_args.args[3] == [_FICHA_PSCP]
 
 
 def test_el_detector_busca_las_candidatas_por_el_expediente_comparable() -> None:
@@ -365,7 +415,7 @@ def test_el_detector_pide_solo_las_referencias_de_la_pasada() -> None:
 
     _, _, candidatas_mock = _correr([], [], refs)
 
-    candidatas_mock.assert_called_once_with("ted", ["EXP-A", "EXP-B"], ["evl/2=="])
+    candidatas_mock.assert_called_once_with("ted", ["EXP-A", "EXP-B"], ["evl/2=="], [])
 
 
 def test_sin_referencias_el_detector_no_toca_la_base() -> None:
@@ -657,6 +707,26 @@ def test_integration_el_prefiltro_trae_la_agregada_sin_su_codigo_de_entidad(db) 
 
     with connect_read() as c:
         assert _marca(c, ted["id_externo"]) == (agregada["id_externo"], "confirmed")
+
+
+def test_integration_el_prefiltro_trae_la_ficha_catalana_por_bt04(db) -> None:
+    """El SQL tiene que dejar pasar la fila cuya URL lleva la ficha que cita BT-04."""
+    from db.database import connect, connect_read
+    from services.dedupe import detect_duplicados_por_referencia
+
+    pscp = _placsp(f"pscp:{_FICHA_PSCP}:CO.04.2025", fuente="pscp", url=_URL_FICHA)
+    ted = _ted()
+    with connect() as c:
+        _insertar(c, pscp)
+        _insertar(c, ted)
+
+    detect_duplicados_por_referencia(
+        fuente="ted",
+        referencias={ted["id_externo"]: ReferenciaCruzada(procedimiento=_FICHA_PSCP)},
+    )
+
+    with connect_read() as c:
+        assert _marca(c, ted["id_externo"]) == (pscp["id_externo"], "confirmed")
 
 
 def test_integration_no_se_esconde_ted_tras_una_gemela_que_no_se_publica(db) -> None:

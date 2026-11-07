@@ -57,6 +57,7 @@ from db.repositories.publico import _publicable_sql
 from db.sql_fragments import exclude_duplicados_presentacion_sql, organo_normalizado_sql
 from shared.identidad_placsp import (
     FUENTE_AGREGADAS,
+    UUID_FICHA_EN_URL_RE,
     expediente_comparable_sql,
     expediente_natural_sql,
     expediente_sin_codigo_entidad_sql,
@@ -112,6 +113,11 @@ def _deshacer_escape(expr: str, escape: str, decodificado: str) -> str:
 _ID_EVL_SQL = "substring(l.url from '[?&][iI][dD][eE][vV][lL]=([^&#]+)')"
 for _escape, _decodificado in (("2F", "/"), ("2B", "+"), ("3D", "=")):
     _ID_EVL_SQL = _deshacer_escape(_ID_EVL_SQL, _escape, _decodificado)
+
+
+#: UUID de la ficha de ``contractaciopublica.cat`` en ``l.url``. Gemelo SQL de
+#: ``services.dedupe.uuid_ficha_de_url``: el mismo patrón de ``shared``.
+_UUID_FICHA_SQL = f"substring(l.url from '{UUID_FICHA_EN_URL_RE}')"
 
 
 def _iter_dicts(sql: str, params: tuple[Any, ...]) -> Iterator[dict[str, Any]]:
@@ -254,17 +260,21 @@ def filas_por_id(ids: Sequence[str]) -> list[dict[str, Any]]:
 
 
 def iter_candidatas_por_referencia(
-    fuente: str, expedientes: Sequence[str], id_evls: Sequence[str]
+    fuente: str,
+    expedientes: Sequence[str],
+    id_evls: Sequence[str],
+    procedimientos: Sequence[str] = (),
 ) -> Iterator[dict[str, Any]]:
     """Filas de **otras** fuentes que un aviso TED puede estar republicando.
 
-    Entran por cualquiera de las dos referencias que publica el aviso: el
+    Entran por cualquiera de las tres referencias que publica el aviso: el
     expediente natural (BT-22 frente al ``ContractFolderID`` de PLACSP o el
     ``codi_expedient`` de PSCP; *expedientes* llegan ya comparables, sin espacios
-    y en mayúsculas) o el ``idEvl`` del deeplink de PLACSP. El
+    y en mayúsculas), el ``idEvl`` del deeplink de PLACSP o BT-04 frente al UUID
+    de la ficha catalana en ``url`` (*procedimientos*, en minúsculas). El
     emparejamiento fino —órgano o título para BT-22— lo hace
     ``services.dedupe``; aquí solo se acota, y sin pérdida: una fila que el
-    ``OR`` deja fuera no comparte ninguna de las dos referencias.
+    ``OR`` deja fuera no comparte ninguna de las tres referencias.
 
     **Solo filas que siguen visibles**: publicables con el mismo predicado que
     la superficie pública, y sin marca de duplicado ni ``confirmed`` ni
@@ -297,6 +307,10 @@ def iter_candidatas_por_referencia(
     if id_evls:
         condiciones.append(f"{_ID_EVL_SQL} = ANY(%s)")
         params.append(list(id_evls))
+    if procedimientos:
+        # BT-04 frente a la ficha de la plataforma catalana en la URL.
+        condiciones.append(f"{_UUID_FICHA_SQL} = ANY(%s)")
+        params.append(list(procedimientos))
     if not condiciones:
         return
     sql = (

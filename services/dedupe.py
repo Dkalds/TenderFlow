@@ -55,6 +55,7 @@ evalúa filas nuevas de la pasada — sin full scan de pares.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, Self
 from urllib.parse import unquote, urlparse
@@ -75,6 +76,7 @@ from services.normalization import normalize_company
 from shared.cpv import cpv4 as _cpv4
 from shared.identidad_placsp import (
     FUENTE_AGREGADAS,
+    UUID_FICHA_EN_URL_RE,
     es_fuente_placsp,
     expediente_comparable,
     expediente_natural,
@@ -555,14 +557,29 @@ class ReferenciaCruzada:
     PLACSP coincide con el ``ContractFolderID`` y en PSCP con el
     ``codi_expedient``. ``id_evl`` es el identificador del deeplink de PLACSP
     que el aviso publica como acceso a los pliegos (BT-15), ya decodificado.
+    ``procedimiento`` es BT-04 en minúsculas: en lo que envía la plataforma
+    catalana es el UUID de su ficha (:func:`uuid_ficha_de_url`).
     """
 
     expediente: str | None = None
     id_evl: str | None = None
+    procedimiento: str | None = None
 
     @property
     def vacia(self) -> bool:
-        return not self.expediente and not self.id_evl
+        return not self.expediente and not self.id_evl and not self.procedimiento
+
+
+def uuid_ficha_de_url(url: str | None) -> str | None:
+    """UUID de la ficha de ``contractaciopublica.cat`` en *url*, o ``None``.
+
+    Lo llevan todas las filas PSCP y las agregadas que vienen de la plataforma
+    catalana (``…/detall-publicacio/<uuid>/<id>``). Gemelo de
+    ``db.repositories.dedupe._UUID_FICHA_SQL``.
+    """
+    if not url or (encontrado := re.search(UUID_FICHA_EN_URL_RE, url)) is None:
+        return None
+    return encontrado.group(1)
 
 
 def id_evl_de_url(url: str | None) -> str | None:
@@ -627,6 +644,10 @@ def _organos_emparejables(nombre: str | None) -> set[str]:
     return claves
 
 
+#: Candidatas por la referencia con la que casan (``idEvl``, BT-04 o expediente).
+_IndiceCandidatas = dict[str, list[dict[str, Any]]]
+
+
 def _claves_de_candidata(candidata: Mapping[str, object]) -> set[str]:
     """Con qué BT-22 puede casar una candidata: su expediente comparable.
 
@@ -655,15 +676,18 @@ def _elegir_canonica_por_referencia(
     fila_ted: dict[str, Any],
     referencia: ReferenciaCruzada,
     *,
-    por_id_evl: Mapping[str, list[dict[str, Any]]],
-    por_expediente: Mapping[str, list[dict[str, Any]]],
+    por_id_evl: _IndiceCandidatas,
+    por_procedimiento: _IndiceCandidatas,
+    por_expediente: _IndiceCandidatas,
 ) -> tuple[dict[str, Any], str] | None:
     """(canónica, clave de match) para una fila TED, o ``None`` si no tiene gemela.
 
-    Dos caminos, en orden de fuerza:
+    Tres caminos, en orden de fuerza:
 
     1. **``idEvl``**: identifica un expediente de PLACSP sin ambigüedad. Basta.
-    2. **BT-22 + órgano o título**: BT-22 solo no vale (ver el bloque de arriba),
+    2. **BT-04 = UUID de la ficha catalana** (:func:`uuid_ficha_de_url`): un
+       UUID v4 tampoco se repite. Basta.
+    3. **BT-22 + órgano o título**: BT-22 solo no vale (ver el bloque de arriba),
        pero dentro de un mismo órgano el número de expediente no se repite, y
        dos contratos con el mismo expediente y el mismo título son el mismo.
        El expediente se compara sin espacios ni mayúsculas
@@ -685,6 +709,13 @@ def _elegir_canonica_por_referencia(
         por_evl = ajenas(por_id_evl.get(referencia.id_evl, []))
         if por_evl:
             return min(por_evl, key=_orden_de_candidata), f"idEvl:{referencia.id_evl}"
+    if referencia.procedimiento:
+        por_ficha = ajenas(por_procedimiento.get(referencia.procedimiento, []))
+        if por_ficha:
+            return (
+                min(por_ficha, key=_orden_de_candidata),
+                f"procedimiento:{referencia.procedimiento}",
+            )
     if referencia.expediente:
         organos = _organos_emparejables(fila_ted.get("organo_contratacion"))
         titulo = normalize_titulo(fila_ted.get("titulo"))
@@ -745,12 +776,18 @@ def detect_duplicados_por_referencia(
         {expediente_comparable(ref.expediente) for ref in utiles.values() if ref.expediente}
     )
     id_evls = sorted({ref.id_evl for ref in utiles.values() if ref.id_evl})
+    procedimientos = sorted({ref.procedimiento for ref in utiles.values() if ref.procedimiento})
 
-    por_id_evl: dict[str, list[dict[str, Any]]] = {}
-    por_expediente: dict[str, list[dict[str, Any]]] = {}
-    for candidata in dedupe_repo.iter_candidatas_por_referencia(fuente, expedientes, id_evls):
+    por_id_evl: _IndiceCandidatas = {}
+    por_procedimiento: _IndiceCandidatas = {}
+    por_expediente: _IndiceCandidatas = {}
+    for candidata in dedupe_repo.iter_candidatas_por_referencia(
+        fuente, expedientes, id_evls, procedimientos
+    ):
         if (evl := id_evl_de_url(candidata.get("url"))) is not None:
             por_id_evl.setdefault(evl, []).append(candidata)
+        if (ficha := uuid_ficha_de_url(candidata.get("url"))) is not None:
+            por_procedimiento.setdefault(ficha, []).append(candidata)
         for clave in _claves_de_candidata(candidata):
             por_expediente.setdefault(clave, []).append(candidata)
 
@@ -761,6 +798,7 @@ def detect_duplicados_por_referencia(
             fila,
             utiles[str(fila["id_externo"])],
             por_id_evl=por_id_evl,
+            por_procedimiento=por_procedimiento,
             por_expediente=por_expediente,
         )
         if elegida is None:
