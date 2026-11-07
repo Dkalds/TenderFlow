@@ -779,6 +779,22 @@ def test_ted_el_acceso_restringido_y_bt22_en_lista_tambien_cuentan():
     }
 
 
+def test_ted_expone_bt04_en_minusculas():
+    from scraper.connectors.ted import _FIELDS
+    from services.dedupe import ReferenciaCruzada
+
+    notice = _ted_notice_cn()
+    notice["procedure-identifier"] = " DF345A38-27DA-4E29-B988-94B237A04DE5 "
+    connector = TedConnector()
+
+    connector.parse(RawNotice(natural_id="559302-2026", payload=notice))
+
+    assert "procedure-identifier" in _FIELDS
+    assert connector.referencias_cruzadas() == {
+        "ted:559302-2026": ReferenciaCruzada(procedimiento="df345a38-27da-4e29-b988-94b237a04de5")
+    }
+
+
 def test_ted_sin_referencias_no_registra_nada():
     connector = TedConnector()
 

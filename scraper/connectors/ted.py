@@ -55,7 +55,7 @@ from services.dedupe import ReferenciaCruzada, id_evl_de_url
 from shared.geo import nuts_to_ccaa
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Mapping
 
     from scraper.connectors.base import ConnectorRunResult
 
@@ -109,6 +109,8 @@ _FIELDS = [
     "internal-identifier-proc",
     # BT-22 del lote: hay avisos que solo lo publican ahí. Ver _expediente.
     "internal-identifier-lot",
+    # BT-04: en lo que envía la plataforma catalana, el UUID de su ficha. Ver _procedimiento.
+    "procedure-identifier",
     "description-proc",
     "buyer-name",
     "classification-cpv",
@@ -252,6 +254,22 @@ def _id_evl(notice: dict[str, Any]) -> str | None:
             if isinstance(candidato, str) and (evl := id_evl_de_url(candidato)):
                 return evl
     return None
+
+
+def _procedimiento(notice: Mapping[str, object]) -> str | None:
+    """BT-04 en minúsculas, o ``None``. La API lo sirve como cadena (o lista de una).
+
+    Lo genera quien envía el aviso al DOUE. Cuando es la plataforma catalana,
+    es el UUID de su ficha (``contractaciopublica.cat/…/detall-publicacio/<uuid>/``):
+    los avisos de la Agència de Ciberseguretat 559302-2026 y 621898-2026 no traen
+    BT-22 ni deeplink, pero sí ``df345a38-…``, la ficha de su fila PSCP (2026-11-07).
+    """
+    valor = notice.get("procedure-identifier")
+    valores = [valor] if isinstance(valor, str) else valor
+    if not isinstance(valores, list):
+        return None
+    limpios = {v.strip().lower() for v in valores if isinstance(v, str) and v.strip()}
+    return limpios.pop() if len(limpios) == 1 else None
 
 
 def _first_date(value: Any) -> str | None:
@@ -513,7 +531,9 @@ class TedConnector:
                 )
             )
 
-        referencia = ReferenciaCruzada(expediente=_expediente(n), id_evl=_id_evl(n))
+        referencia = ReferenciaCruzada(
+            expediente=_expediente(n), id_evl=_id_evl(n), procedimiento=_procedimiento(n)
+        )
         if not referencia.vacia:
             self._referencias[lic.id_externo] = referencia
         return ParsedTender(licitacion=lic, adjudicaciones=adjudicaciones)
