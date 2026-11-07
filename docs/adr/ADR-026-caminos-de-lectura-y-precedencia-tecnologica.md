@@ -208,6 +208,15 @@ que el índice no incluye— rompería. Las métricas competitivas (`mercado`,
 `exclude_duplicados_sql`. Lo fijan `tests/test_listado_esconde_duplicados.py`
 (Postgres) y `tests/test_republicaciones_regla.py` (quién pide qué).
 
+*Nota del 2026-11-07.* Hasta esa fecha `detect_republicaciones` no corría en
+producción: solo lo llamaban los tests. Las marcas `pending` venían de otros
+detectores y la fila «listados» escondía únicamente esas; una reemisión sin otra
+referencia (el aviso TED 622630-2026 de NASERTIC frente a su fila de PLACSP
+agregadas) se enseñaba dos veces. Desde entonces corre en el cierre de cada
+pasada de conector (`scraper/connectors/base.py`, `_post_ingestion`), antes del
+dedupe por referencia. En una fuente sin cursor arranca en el inicio de la
+pasada y no en el corpus entero, que habría encolado unas 9.300 marcas de golpe.
+
 ### Por qué esta asimetría y no una regla única
 
 Porque los dos errores no cuestan lo mismo.

@@ -404,7 +404,7 @@ def _clave_de_fila(row: dict[str, Any]) -> str | None:
     )
 
 
-def detect_republicaciones(*, fuente: str) -> DedupeResult:
+def detect_republicaciones(*, fuente: str, sin_cursor_desde: str = "") -> DedupeResult:
     """Detecta reemisiones del mismo contrato entre las filas nuevas de ``fuente``.
 
     :func:`detect_duplicates` no las ve, y no por olvido: consulta candidatas
@@ -438,16 +438,21 @@ def detect_republicaciones(*, fuente: str) -> DedupeResult:
     abrir el índice a otras fuentes, los pares PLACSP↔PSCP que el SQL sí colapsa
     no llegaban nunca a la cola.
 
-    Volumen: la primera pasada sobre una fuente sin cursor evalúa la fuente
-    entera y puede encolar muchísima revisión (PSCP aporta ~566k filas). En
-    régimen solo mira lo llegado desde el watermark, como el resto del módulo.
+    Volumen: sin cursor, la pasada evalúa lo extraído desde ``sin_cursor_desde``,
+    y con él vacío la fuente entera. El runner de conectores pasa el inicio de
+    la pasada (``scraper.connectors.base``), y es lo que evita que la primera
+    tras activarlo encole de golpe la fuente entera: medido el 2026-11-07, la
+    misma clave daba ~9.300 marcas ``pending`` sobre todo el corpus, frente a
+    286 en la cola. Lo antiguo entra cuando su fila vuelve a leerse (la ventana
+    de TED, un backfill). En régimen solo mira lo llegado desde el watermark,
+    como el resto del módulo.
     El índice se acota además a los órganos de las filas nuevas: el diseño
     anterior materializaba la fuente entera —~1,7 M filas de PSCP como lista de
     dicts— en cada pasada con al menos una fila nueva.
     """
     result = DedupeResult(fuente=fuente)
     cursor_source = f"republicacion_{fuente}"
-    watermark = str((get_cursor(cursor_source) or {}).get("last_seen_updated") or "")
+    watermark = str((get_cursor(cursor_source) or {}).get("last_seen_updated") or sin_cursor_desde)
 
     nuevas = dedupe_repo.filas_nuevas_de_fuente(fuente, watermark)
     if not nuevas:

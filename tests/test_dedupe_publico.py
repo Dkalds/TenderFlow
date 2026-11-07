@@ -567,6 +567,31 @@ def test_una_pasada_sin_pares_mueve_igualmente_el_watermark() -> None:
     assert set_cursor.call_args.kwargs["last_seen_updated"] == "2026-03-02T00:00:00"
 
 
+def test_sin_cursor_la_pasada_arranca_en_el_inicio_que_le_dan() -> None:
+    """Activado sobre una fuente sin cursor, no evalúa el corpus entero."""
+    import services.dedupe as sd
+
+    with (
+        patch.object(sd.dedupe_repo, "filas_nuevas_de_fuente", return_value=[]) as nuevas,
+        patch.object(sd, "get_cursor", return_value=None),
+    ):
+        sd.detect_republicaciones(fuente="pscp", sin_cursor_desde="2026-11-07T06:00:00+00:00")
+
+    nuevas.assert_called_once_with("pscp", "2026-11-07T06:00:00+00:00")
+
+
+def test_con_cursor_manda_el_cursor() -> None:
+    import services.dedupe as sd
+
+    with (
+        patch.object(sd.dedupe_repo, "filas_nuevas_de_fuente", return_value=[]) as nuevas,
+        patch.object(sd, "get_cursor", return_value={"last_seen_updated": "2026-11-01T00:00:00"}),
+    ):
+        sd.detect_republicaciones(fuente="pscp", sin_cursor_desde="2026-11-07T06:00:00+00:00")
+
+    nuevas.assert_called_once_with("pscp", "2026-11-01T00:00:00")
+
+
 def test_sin_organos_el_indice_no_toca_la_base() -> None:
     """Una pasada sin órganos no puede degenerar en un SELECT sin WHERE útil."""
     from db.repositories import dedupe as dedupe_repo

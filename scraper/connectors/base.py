@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from db.database import (
     get_cursor,
+    now_utc_iso,
     replace_adjudicaciones_batch,
     replace_lotes_batch,
     set_cursor,
@@ -453,12 +454,16 @@ def _post_ingestion(
     *,
     referencias: Mapping[str, ReferenciaCruzada] | None = None,
     completar_documentos: Callable[[], object] | None = None,
+    extraidas_desde: str = "",
 ) -> None:
     """Resolución de empresas + dedupe + documentos + eventos de contrato + caché. Fail-open.
 
     ``referencias`` son las del conector (ver :func:`_referencias_de`). Con
     ellas corre además el dedupe por referencia explícita, que es el único que
     ve una fila TED como copia de la de PLACSP o PSCP.
+
+    ``extraidas_desde`` es cuándo empezó la pasada: acota la primera de las
+    reemisiones en una fuente sin cursor (ver ``detect_republicaciones``).
 
     ``completar_documentos`` va **después** de los dos dedupes: un aviso TED que
     acaba de emparejarse lee los pliegos de su canónica y no necesita los suyos,
@@ -506,6 +511,23 @@ def _post_ingestion(
         _contar_dedupe_fallido(source_id)
         _contar_error("dedupe")
         log.warning("connector_dedupe_failed", source=source_id, error=str(e), exc_info=True)
+    try:
+        from services.dedupe import detect_republicaciones
+
+        # Antes del dedupe por referencia: si este marca `pending` un aviso TED
+        # que el siguiente empareja por BT-22, BT-04 o idEvl, la marca se promueve.
+        with _cronometro(source_id, "dedupe_republicaciones"):
+            detect_republicaciones(fuente=source_id, sin_cursor_desde=extraidas_desde)
+    except Exception as e:
+        # Mismo trato que el dedupe de arriba: fail-open, pero contado.
+        _contar_dedupe_fallido(source_id)
+        _contar_error("dedupe_republicaciones")
+        log.warning(
+            "connector_dedupe_republicaciones_failed",
+            source=source_id,
+            error=str(e),
+            exc_info=True,
+        )
     if referencias:
         try:
             from services.dedupe import detect_duplicados_por_referencia
@@ -744,6 +766,8 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
     desde ahí en vez de reiniciar siempre desde el mismo punto.
     """
     inicio = time.monotonic()
+    # Toda fila que parsee esta pasada lleva una `fecha_extraccion` posterior.
+    extraidas_desde = now_utc_iso()
     source_id = connector.source_id
     result = ConnectorRunResult(source_id=source_id)
     cursor = get_cursor(source_id)
@@ -814,6 +838,7 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
             source_id,
             referencias=_referencias_de(connector),
             completar_documentos=completar_documentos,
+            extraidas_desde=extraidas_desde,
         )
     else:
         # Sin lote no hay empresas que resolver ni filas que deduplicar, pero el
