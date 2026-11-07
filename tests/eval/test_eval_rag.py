@@ -12,12 +12,15 @@ en la pregunta, de forma que el ranking BM25/LIKE la identifique sin
 ambigüedad incluso con licitaciones de "ruido" (términos genéricos SAP/ERP
 que se solapan a propósito) sembradas junto a ellas.
 
-Baseline medido 2026-07-13 sobre este golden set (FTS puro, flag
-``RAG_HYBRID_ENABLED`` en su default False — el camino que realmente corre
-en CI/producción hoy): ``hit_rate@5 = 1.00``, ``MRR = 1.00``. Los umbrales de
-abajo son un ratchet con margen bajo ese baseline; si una regresión de
-``search_for_ask``/``search_like_for_ask`` los rompe, el
-review debe justificar el cambio, no bajar el umbral.
+Baseline medido 2026-07-13 sobre este golden set (FTS puro, el camino que
+corría entonces en CI/producción): ``hit_rate@5 = 1.00``, ``MRR = 1.00``. Los
+umbrales de abajo son un ratchet con margen bajo ese baseline; si una regresión
+de ``search_for_ask`` los rompe, el review debe justificar el cambio, no bajar
+el umbral.
+
+Este set ya no discrimina (cualquier motor lo acierta): el ranking por tipo de
+consulta lo mide ``test_eval_investigador.py``. Se conserva como red de que el
+pipeline retrieval → contexto de ``/ask`` no se rompe.
 
 Nada aquí necesita red ni proveedor LLM: los tests de retrieval llaman al
 motor de búsqueda directamente, y el único que toca ``/ask`` sustituye el
@@ -183,7 +186,7 @@ def _measure(
 
 
 def _retrieve_production(question: str) -> list[str]:
-    """Camino que sirve ``/ask`` hoy: ``search_for_ask`` (FTS + LIKE fallback)."""
+    """Camino que sirve ``/ask`` hoy: ``search_for_ask`` (la búsqueda del Investigador)."""
     from services.licitaciones import search_for_ask
 
     return [d["id_externo"] for d in search_for_ask(question, TOP_K)]
@@ -292,12 +295,10 @@ def test_strict_tsquery_alone_leaves_questions_unanswered(tmp_db):
 def test_backend_ranking_vs_production_path(tmp_db):
     """Mide el MRR del ranking de ``PgTsBackend`` sobre el mismo golden set.
 
-    ``/ask`` no pasa por este backend: usa
-    ``LicitacionRepository.search_fts_docs`` y, cuando esa query no devuelve
-    nada, ``search_like_for_ask`` — un LIKE **sin ORDER BY**, o sea un orden
-    arbitrario. Ese es el origen del MRR 0.689 con hit_rate@5 = 1.000: el
-    documento correcto entra al contexto, pero su posición la decide el plan de
-    ejecución, no la relevancia.
+    ``/ask`` no pasa por este backend. Hasta 2026-10 usaba
+    ``search_fts_docs`` y, cuando esa query no devolvía nada, un LIKE **sin
+    ORDER BY**: ese fue el origen del MRR 0.689 con hit_rate@5 = 1.000. Hoy
+    responde la búsqueda del Investigador.
 
     Este test imprime los dos números lado a lado para que CI produzca la
     evidencia que aquí no se puede producir (esta máquina no tiene Postgres).

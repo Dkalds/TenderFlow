@@ -7,8 +7,8 @@ lo aceptaba; ``AskRequest`` declaraba ``ccaa``/``tecnologia`` como ``str |
 None`` —con una CCAA o una tecnología marcadas, preguntar daba 422— y no tenía
 fechas, así que el rango del chip se ignoraba en silencio.
 
-Aquí se fija el contrato y que los cuatro filtros lleguen, iguales, a los tres
-caminos del retrieval (híbrido, FTS y LIKE). Que el SQL resultante sea válido y
+Aquí se fija el contrato y que los cuatro filtros lleguen, iguales, a la búsqueda
+del Investigador, que es el único camino del retrieval. Que el SQL resultante sea válido y
 acote de verdad —también el lado vectorial de la fusión— lo prueban
 ``tests/test_search_backend_hybrid.py`` (texto) y
 ``tests/test_search_semantic_hybrid.py`` (Postgres).
@@ -93,7 +93,17 @@ class TestLosFiltrosLleganAlRetrieval:
 
         args, kwargs = buscar.call_args
         assert args == ("soporte sap", req.top_k)
-        assert kwargs == {**_FILTROS, "interpretar": True}
+        assert kwargs == {**_FILTROS, "interpretar": True, "semantica": False}
+
+    def test_la_flag_de_significado_llega_al_retrieval(self):
+        """La misma flag que la lista: si la tiene quien pregunta, el asistente
+        también busca por significado."""
+        req = AskRequest(question="soporte sap")
+
+        with patch("services.licitaciones.search_for_ask", return_value=[]) as buscar:
+            _prepare_ask_context(req, True)
+
+        assert buscar.call_args.kwargs["semantica"] is True
 
     def test_interpretar_false_llega_al_retrieval(self):
         """«Buscar el texto tal cual» vale también para el contexto del asistente."""
@@ -104,65 +114,47 @@ class TestLosFiltrosLleganAlRetrieval:
 
         assert buscar.call_args.kwargs["interpretar"] is False
 
-    def test_el_hibrido_y_el_motor_de_texto_reciben_los_mismos_filtros(self, monkeypatch):
-        """El que responda, acota igual."""
-        from config import settings
+    def test_responde_la_busqueda_del_investigador_con_su_flag(self):
+        """Un solo camino: ``buscar``, con los filtros entendidos y la flag de
+        significado de quien pregunta. Antes, con ``RAG_HYBRID_ENABLED``, la
+        fusión sustituía al texto y la frase no se interpretaba."""
+        from services.investigador.busqueda import Resultado
         from services.licitaciones import search_for_ask
 
-        monkeypatch.setattr(settings, "RAG_HYBRID_ENABLED", True, raising=False)
+        with patch(
+            "services.investigador.busqueda.buscar", return_value=Resultado([], "fts")
+        ) as buscar:
+            assert search_for_ask("soporte sap", 5, **_FILTROS, semantica=True) == []
+
+        consulta, ambito, top_k = buscar.call_args.args
+        assert top_k == 5
+        assert consulta.terminos == ("soporte", "sap")
+        assert ambito.ccaa == ("Galicia", "Madrid")
+        assert ambito.tecnologia == ("SAP",)
+        assert (ambito.fecha_desde, ambito.fecha_hasta) == ("2026-01-01", "2026-06-30")
+        assert buscar.call_args.kwargs == {"semantica": True}
+
+    def test_un_fallo_de_la_busqueda_se_propaga(self):
+        """Sin red de LIKE: ``/ask`` tiene que poder distinguir «falló» de «no
+        hay nada» (``_RecuperacionFallida``)."""
+        from services.licitaciones import search_for_ask
+
         with (
-            patch("services.licitaciones._try_hybrid_search", return_value=None) as hibrido,
-            patch("services.licitaciones._contexto_por_texto", return_value=[]) as texto,
+            patch("services.investigador.busqueda.buscar", side_effect=RuntimeError("bd")),
+            pytest.raises(RuntimeError),
         ):
-            search_for_ask("soporte sap", 5, **_FILTROS)
-
-        hibrido.assert_called_once_with("soporte sap", 5, **_FILTROS)
-        texto.assert_called_once_with("soporte sap", 5, **_FILTROS, interpretar=True)
-
-    def test_si_el_motor_de_texto_falla_la_red_recibe_los_mismos_filtros(self, monkeypatch):
-        """El camino anterior (FTS estricto y LIKE) queda de red para cuando el
-        motor de texto **falla**, y acota igual que él."""
-        from config import settings
-        from services.licitaciones import _repo, search_for_ask
-
-        monkeypatch.setattr(settings, "RAG_HYBRID_ENABLED", False, raising=False)
-        with (
-            patch("services.licitaciones._contexto_por_texto", side_effect=RuntimeError("bd")),
-            patch.object(_repo, "search_fts_docs", return_value=[]) as fts,
-            patch.object(_repo, "search_like_for_ask", return_value=[]) as like,
-        ):
-            search_for_ask("soporte sap", 5, **_FILTROS)
-
-        fts.assert_called_once_with("soporte sap", limit=5, **_FILTROS)
-        like.assert_called_once_with("soporte sap", limit=5, **_FILTROS)
-
-    def test_sin_resultados_no_se_cae_a_la_red(self, monkeypatch):
-        """Que el motor de texto no encuentre nada no es un fallo: la pregunta
-        llega al modelo sin contexto, y no con el de un LIKE sin orden."""
-        from config import settings
-        from services.licitaciones import _repo, search_for_ask
-
-        monkeypatch.setattr(settings, "RAG_HYBRID_ENABLED", False, raising=False)
-        with (
-            patch("services.licitaciones._contexto_por_texto", return_value=[]),
-            patch.object(_repo, "search_fts_docs") as fts,
-            patch.object(_repo, "search_like_for_ask") as like,
-        ):
-            assert search_for_ask("soporte sap", 5) == []
-
-        fts.assert_not_called()
-        like.assert_not_called()
+            search_for_ask("soporte sap", 5)
 
     def test_el_motor_de_texto_recibe_la_pregunta_entendida(self):
         """Los filtros que dice la pregunta acotan el contexto del asistente
         igual que la lista de resultados, y los explícitos mandan."""
         from services.investigador.busqueda import Resultado
-        from services.licitaciones import _contexto_por_texto
+        from services.licitaciones import search_for_ask
 
         with patch(
-            "services.investigador.busqueda.buscar_por_texto", return_value=Resultado([], "fts")
+            "services.investigador.busqueda.buscar", return_value=Resultado([], "fts")
         ) as buscar:
-            _contexto_por_texto(
+            search_for_ask(
                 "soporte SAP abiertas en Andalucía", 5, ccaa=None, tecnologia="SAP, ORACLE"
             )
 
@@ -173,28 +165,9 @@ class TestLosFiltrosLleganAlRetrieval:
         assert ambito.tecnologia == ("SAP", "ORACLE")
         assert ambito.solo_abiertas is True
 
-    def test_el_hibrido_pasa_los_filtros_a_la_fusion(self):
-        fila = type("Row", (), {"tolist": lambda self: [0.1, 0.2]})()
-
-        class _Matriz(list):
-            def __getitem__(self, idx):
-                return fila if idx == 0 else super().__getitem__(idx)
-
-        from services.licitaciones import _try_hybrid_search
-
-        with (
-            patch("services.embeddings.embeddings_available", return_value=True),
-            patch("services.embeddings.encode_texts", return_value=_Matriz([None])),
-            patch("db.search_backend.hybrid_search_docs", return_value=[]) as fusion,
-        ):
-            _try_hybrid_search("soporte sap", 5, **_FILTROS)
-
-        _, kwargs = fusion.call_args
-        assert kwargs == {**_FILTROS, "limit": 5}
-
 
 class TestAmbitoBusquedaSql:
-    """Las cláusulas que comparten los tres caminos de ``/ask``."""
+    """Las cláusulas del ámbito, las mismas para el texto y para la fusión."""
 
     def test_sin_filtros_no_anade_nada(self):
         assert ambito_busqueda_sql("l") == ([], [])
@@ -315,19 +288,6 @@ class TestConsultasDelRepositorio:
         for clausula in clausulas:
             assert clausula in conexion.sql
         assert conexion.params == ["soporte sap", *valores, "soporte sap", 5]
-        assert conexion.sql.count("%s") == len(conexion.params)
-
-    def test_el_like_ya_no_ignora_la_tecnologia_ni_las_fechas(self, conexion):
-        """El último recurso de ``/ask`` solo miraba la CCAA: si el FTS no
-        encontraba nada, el contexto podía traer cualquier tecnología."""
-        from db.repositories.licitaciones import LicitacionRepository
-
-        LicitacionRepository().search_like_for_ask("soporte mantenimiento", limit=5, **_FILTROS)
-
-        clausulas, valores = ambito_busqueda_sql("l", **_FILTROS)
-        for clausula in clausulas:
-            assert clausula in conexion.sql
-        assert conexion.params[-(len(valores) + 1) :] == [*valores, 5]
         assert conexion.sql.count("%s") == len(conexion.params)
 
 

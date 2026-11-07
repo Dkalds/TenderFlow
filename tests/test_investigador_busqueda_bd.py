@@ -318,6 +318,88 @@ class TestContextoDeAsk:
 
         assert [d["id_externo"] for d in docs] == ["A-COMPLETO"]
 
+    def test_lo_que_casa_por_el_anuncio_lleva_el_fragmento_que_responde(self, corpus):
+        """Antes solo llevaba pliego el expediente cuyo pasaje tenía **todos**
+        los términos; el resto llegaba al modelo con título y descripción."""
+        from db.database import connect
+        from services.licitaciones import search_for_ask
+
+        documento_id = _sembrar_pasaje("C-ORACLE", "Objeto del contrato: suministro.")
+        with connect() as c:
+            c.execute(
+                "INSERT INTO documento_chunks (documento_id, chunk_index, texto, page_number) "
+                "VALUES (%s, 1, 'Las licencias Oracle incluyen soporte de 24 meses.', 9)",
+                (documento_id,),
+            )
+
+        docs = search_for_ask("¿Cuánto soporte incluyen las licencias Oracle?", 5)
+
+        (oracle,) = [d for d in docs if d["id_externo"] == "C-ORACLE"]
+        assert [(ch["chunk_index"], ch["page_number"]) for ch in oracle["chunks"]] == [(1, 9)]
+
+    def test_sin_terminos_en_el_pliego_va_su_arranque_y_el_acta_no(self, corpus):
+        from db.database import connect
+        from db.repositories.investigador import pasajes_de_contexto
+
+        with connect() as c:
+            acta = c.execute(
+                "INSERT INTO documentos (licitacion_id, tipo, uri, filename, status, texto) "
+                "VALUES ('C-ORACLE', 'acta', 'https://example.com/acta.pdf', 'acta.pdf', "
+                "'extracted', 'x') RETURNING id"
+            ).fetchone()[0]
+            c.execute(
+                "INSERT INTO documento_chunks (documento_id, chunk_index, texto) "
+                "VALUES (%s, 0, 'Acta de la mesa: licencias Oracle adjudicadas.')",
+                (acta,),
+            )
+        _sembrar_pasaje("C-ORACLE", "Objeto del contrato: suministro.")
+
+        assert pasajes_de_contexto(["C-ORACLE"], ["licencias"])["C-ORACLE"]["texto"] == (
+            "Objeto del contrato: suministro."
+        )
+        assert pasajes_de_contexto(["C-ORACLE"], [])["C-ORACLE"]["tipo"] == "legal"
+        assert pasajes_de_contexto(["E-LIMPIEZA"], ["licencias"]) == {}
+
+
+class TestLoAbiertoVaDelante:
+    """A igual coincidencia, lo que aún se puede presentar va antes que lo cerrado."""
+
+    @pytest.fixture()
+    def gemelos(self, tmp_db):
+        _sembrar(
+            {
+                # Casa mejor por texto (dos veces en el título): sin el
+                # desempate por vigencia iría primero.
+                "id_externo": "G-ADJUDICADA",
+                "titulo": "Videovigilancia: renovación de la videovigilancia",
+                "descripcion": "Videovigilancia de la sede.",
+                "estado": "ADJ",
+                "fecha_publicacion": "2026-01-10",
+            },
+            {
+                "id_externo": "Z-ABIERTA",
+                "titulo": "Servicio de seguridad",
+                "descripcion": "Incluye videovigilancia del aparcamiento.",
+                "estado": "PUB",
+                "fecha_publicacion": "2025-01-10",
+            },
+        )
+
+    def test_en_el_anuncio(self, gemelos):
+        assert _ids(_buscar("videovigilancia")) == ["Z-ABIERTA", "G-ADJUDICADA"]
+
+    def test_en_el_pliego(self, gemelos):
+        _sembrar_pasaje("G-ADJUDICADA", "Cámaras con grabación de 30 días.")
+        _sembrar_pasaje("Z-ABIERTA", "Cámaras con grabación de 30 días.")
+
+        assert _ids(_buscar("grabación cámaras")) == ["Z-ABIERTA", "G-ADJUDICADA"]
+
+    def test_las_mas_recientes_no_lo_cambia(self, gemelos):
+        assert _ids(_buscar("las más recientes de videovigilancia")) == [
+            "G-ADJUDICADA",
+            "Z-ABIERTA",
+        ]
+
 
 class TestRutaDePuntaAPunta:
     def test_la_respuesta_declara_lo_entendido_y_donde_casa(self, corpus, api_key):

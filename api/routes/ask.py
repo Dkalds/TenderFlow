@@ -1,8 +1,9 @@
 """Endpoints IA — POST /api/v1/ask y POST /api/v1/licitaciones/{id}/resumen
 
 ``/ask`` responde preguntas en lenguaje natural con soporte de conversación
-multi-turno (``messages``). Sin ``id_externo`` recupera licitaciones relevantes
-por FTS5 como contexto (modo general: si el corpus no cubre la pregunta, el
+multi-turno (``messages``). Sin ``id_externo`` el contexto son los expedientes
+que encuentra la búsqueda del Investigador, cada uno con un fragmento de su
+pliego si lo tiene (modo general: si el corpus no cubre la pregunta, el
 modelo responde con conocimiento general indicándolo). Con ``id_externo`` el
 contexto es esa licitación concreta: metadatos del anuncio + fragmentos de sus
 pliegos (``services/rag/context.py``). Con ``ids_externos`` (hasta tres, F2.8)
@@ -318,12 +319,13 @@ def _retrieve_docs(
     fecha_desde: str | None,
     fecha_hasta: str | None,
     interpretar: bool = True,
+    semantica: bool = False,
 ) -> list[dict[str, Any]]:
     """Recupera los expedientes de contexto de una pregunta sobre el corpus.
 
-    Delega en ``services.licitaciones.search_for_ask``, que responde con el
-    mismo motor de texto que ``/search/semantic`` (anuncios y pasajes de
-    pliego, con los filtros que diga la pregunta).
+    Delega en ``services.licitaciones.search_for_ask``, que responde con la
+    misma búsqueda que ``/search/semantic`` (anuncios y pasajes de pliego, con
+    los filtros que diga la pregunta, y por significado si ``semantica``).
 
     Si la búsqueda **falla** levanta :class:`_RecuperacionFallida`: hasta
     2026-10 devolvía ``[]`` y el modelo respondía «con conocimiento general»,
@@ -340,6 +342,7 @@ def _retrieve_docs(
             fecha_desde=fecha_desde,
             fecha_hasta=fecha_hasta,
             interpretar=interpretar,
+            semantica=semantica,
         )
     except Exception as exc:
         log.warning("ask.retrieve_docs_failed", error=str(exc))
@@ -349,9 +352,9 @@ def _retrieve_docs(
 def _fuentes_documentos(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Evento aditivo ``fuentes_documentos``: fragmentos de pliego citables.
 
-    Con retrieval híbrido (RAG_HYBRID_ENABLED) o contexto de licitación
-    (``id_externo``), cada doc puede traer ``chunks``; sin ellos el evento no
-    se emite — comportamiento idéntico al contrato SSE previo. Los chunks
+    Cada doc puede traer ``chunks`` (el fragmento de pliego del modo general,
+    o los del expediente con ``id_externo``); sin ellos el evento no se
+    emite — comportamiento idéntico al contrato SSE previo. Los chunks
     viajan tal cual (contrato aditivo: el camino ``id_externo`` añade
     ``tipo``/``filename`` a cada chunk).
     """
@@ -597,6 +600,7 @@ def _contexto_comparacion(
 
 def _prepare_ask_context(
     request: AskRequest,
+    semantica: bool = False,
 ) -> tuple[list[dict[str, Any]], PromptMode, list[dict[str, Any]], bool]:
     """Recupera los documentos de contexto para la pregunta (trabajo de BD).
 
@@ -605,6 +609,9 @@ def _prepare_ask_context(
     retrieval FTS + pgvector) y corría en el event loop, bloqueando la API
     entera durante cientos de milisegundos por pregunta. El streaming de tokens
     del LLM ya estaba correctamente aislado en un thread.
+
+    ``semantica`` es la flag ``busqueda_semantica`` de quien pregunta: solo
+    cuenta en el modo general, como en la lista del Investigador.
 
     El tercer elemento declara, en una pregunta cruzada (F2.8), qué expediente
     entró, con cuántos fragmentos y si se recortó. Vacío en los demás modos. El
@@ -660,6 +667,7 @@ def _prepare_ask_context(
                 fecha_desde=request.fecha_desde,
                 fecha_hasta=request.fecha_hasta,
                 interpretar=request.interpretar,
+                semantica=semantica,
             )
         except _RecuperacionFallida:
             docs, fallida = [], True
@@ -669,7 +677,11 @@ def _prepare_ask_context(
 
 
 async def _stream_ask(
-    request: AskRequest, scope_key: str | None, org_key: str | None = None
+    request: AskRequest,
+    scope_key: str | None,
+    org_key: str | None = None,
+    *,
+    semantica: bool = False,
 ) -> AsyncGenerator[str]:
     """Prepara contexto + historial y devuelve el stream SSE del LLM."""
     from llm.budget import bind_budget_org, bind_budget_subject
@@ -677,7 +689,9 @@ async def _stream_ask(
 
     _validate_model(request.model)
 
-    docs, mode, declarados, recuperacion_fallida = await run_db(_prepare_ask_context, request)
+    docs, mode, declarados, recuperacion_fallida = await run_db(
+        _prepare_ask_context, request, semantica
+    )
 
     keywords = [w for w in request.question.split() if len(w) > 3][:10]
     history: list[ChatMessage] = [
@@ -845,9 +859,9 @@ async def ask_question(
 ) -> StreamingResponse:
     """Responde preguntas con contexto del corpus o de una licitación concreta.
 
-    Sin ``id_externo``: recupera las licitaciones más relevantes (FTS5) como
-    contexto; si el corpus no cubre la pregunta, el modelo responde con
-    conocimiento general indicándolo. Con ``id_externo``: el contexto es esa
+    Sin ``id_externo``: el contexto son los expedientes de la búsqueda del
+    Investigador, con un fragmento de pliego cada uno; si el corpus no cubre la
+    pregunta, el modelo responde con conocimiento general indicándolo. Con ``id_externo``: el contexto es esa
     licitación (anuncio + fragmentos de pliegos). ``messages`` habilita la
     conversación multi-turno.
 
@@ -884,7 +898,17 @@ async def ask_question(
 
     _check_budget(user)
 
-    generator = await _stream_ask(body, _budget_subject(user), _budget_org(user))
+    # La misma flag que la lista del Investigador: si a quien pregunta le
+    # responde la búsqueda por significado, al asistente también.
+    semantica = False
+    if not body.expedientes():
+        from services.investigador.busqueda import semantica_activa
+
+        semantica = await run_db(semantica_activa, user.get("email"))
+
+    generator = await _stream_ask(
+        body, _budget_subject(user), _budget_org(user), semantica=semantica
+    )
 
     return StreamingResponse(
         generator,

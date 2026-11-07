@@ -134,7 +134,7 @@ class BusquedaMixin:
         """Búsqueda por ``search_vector`` con metadatos completos (para RAG endpoint).
 
         Los filtros son los de :func:`ambito_busqueda_sql`, los mismos que
-        aplican la fusión híbrida y el LIKE de ``/ask``.
+        aplica la fusión híbrida.
         """
         ambito, valores = ambito_busqueda_sql(
             "l", ccaa=ccaa, tecnologia=tecnologia, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
@@ -153,56 +153,3 @@ class BusquedaMixin:
                 [query, *valores, query, limit],
             )
             return rows_to_dicts(cur)
-
-    def search_like_for_ask(
-        self,
-        question: str,
-        *,
-        ccaa: str | Sequence[str] | None = None,
-        tecnologia: str | Sequence[str] | None = None,
-        fecha_desde: str | None = None,
-        fecha_hasta: str | None = None,
-        limit: int = 20,
-    ) -> list[dict[str, Any]]:
-        """LIKE fallback para /ask endpoint cuando FTS5 no devuelve resultados.
-
-        Acota con los mismos filtros que el FTS (:func:`ambito_busqueda_sql`).
-        Solo miraba la CCAA: cuando el FTS no encontraba nada, el contexto de
-        una pregunta filtrada por SAP podía traer cualquier tecnología.
-        """
-        from shared.palabras_clave import extract_keywords
-
-        # Reutiliza la misma extracción de keywords que FTS5 (filtra stopwords
-        # y palabras interrogativas) para no buscar por conectores genéricos
-        # que devuelven documentos irrelevantes.
-        words = extract_keywords(question)[:5]
-        if not words:
-            words = [w for w in question.split() if len(w) > 3][:5]
-        if not words:
-            return []
-        like_op = "ILIKE"
-        like_clauses = " OR ".join(
-            f"titulo {like_op} %s ESCAPE '\\' OR descripcion {like_op} %s ESCAPE '\\'"
-            for _ in words
-        )
-        params: list[object] = []
-        for w in words:
-            escaped = f"%{escape_like(w)}%"
-            params.extend([escaped, escaped])
-        ambito, valores = ambito_busqueda_sql(
-            "l", ccaa=ccaa, tecnologia=tecnologia, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta
-        )
-        params.extend(valores)
-        where = " AND ".join([f"({like_clauses})", *ambito])
-        try:
-            with connect_read() as c:
-                cur = c.execute(
-                    "SELECT id_externo, titulo, organo_contratacion, importe, "
-                    "estado, descripcion, ccaa, tecnologia, fecha_publicacion "
-                    f"FROM licitaciones l WHERE {where} LIMIT %s",
-                    [*params, limit],
-                )
-                return rows_to_dicts(cur)
-        except Exception:
-            log.warning("like_search_for_ask_failed", exc_info=True)
-            return []

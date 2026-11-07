@@ -1053,9 +1053,9 @@ export interface paths {
          * Pregunta en lenguaje natural (chat multi-turno, RAG + LLM)
          * @description Responde preguntas con contexto del corpus o de una licitación concreta.
          *
-         *     Sin ``id_externo``: recupera las licitaciones más relevantes (FTS5) como
-         *     contexto; si el corpus no cubre la pregunta, el modelo responde con
-         *     conocimiento general indicándolo. Con ``id_externo``: el contexto es esa
+         *     Sin ``id_externo``: el contexto son los expedientes de la búsqueda del
+         *     Investigador, con un fragmento de pliego cada uno; si el corpus no cubre la
+         *     pregunta, el modelo responde con conocimiento general indicándolo. Con ``id_externo``: el contexto es esa
          *     licitación (anuncio + fragmentos de pliegos). ``messages`` habilita la
          *     conversación multi-turno.
          *

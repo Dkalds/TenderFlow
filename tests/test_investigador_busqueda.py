@@ -90,8 +90,10 @@ class _Repo:
         self.por_id: dict[str, dict[str, Any]] = {}
         self.literales: list[dict[str, Any]] = []
         self.del_ambito: list[dict[str, Any]] = []
+        self.contexto: dict[str, dict[str, Any]] = {}
         self.pasajes_revienta = False
         self.mejores_revienta = False
+        self.contexto_revienta = False
         self.llamadas: list[tuple[str, dict[str, Any]]] = []
 
     def anuncios_por_terminos(
@@ -136,6 +138,14 @@ class _Repo:
         if self.mejores_revienta:
             raise RuntimeError("timeout")
         return {i: self.mejores[i] for i in ids if i in self.mejores}
+
+    def pasajes_de_contexto(
+        self, ids: Any, terminos: Any, acentuadas: Any = ()
+    ) -> dict[str, dict[str, Any]]:
+        self.llamadas.append(("contexto", {"ids": list(ids), "terminos": tuple(terminos)}))
+        if self.contexto_revienta:
+            raise RuntimeError("timeout")
+        return {i: self.contexto[i] for i in ids if i in self.contexto}
 
     def anuncios_por_id(self, ids: Any) -> dict[str, dict[str, Any]]:
         self.llamadas.append(("por_id", {"ids": list(ids)}))
@@ -484,25 +494,79 @@ class TestCaminos:
         assert fake.nombres() == ["terminos"]
 
 
+def _contexto(q: str, **kw: Any) -> list[dict[str, Any]]:
+    resultado = _buscar(q, **kw)
+    consulta, _ = preparar(q)
+    return documentos_de_contexto(resultado.hits, consulta)
+
+
+def _trozo(licitacion_id: str, largo: int = 50) -> dict[str, Any]:
+    """Una fila de ``pasajes_de_contexto``."""
+    return {**_fragmento(licitacion_id), "texto": "x" * largo, "extracto": None}
+
+
 class TestDocumentosDeContexto:
     def test_solo_viaja_el_expediente_y_su_fragmento(self, fake: _Repo) -> None:
         fake.anuncios = [_anuncio("A")]
         fake.pasajes = [("A", 1)]
         fake.mejores = {"A": _fragmento("A")}
 
-        (doc,) = documentos_de_contexto(_buscar("baja temeraria").hits)
+        (doc,) = _contexto("baja temeraria")
 
         assert doc["id_externo"] == "A"
         assert doc["chunks"][0]["texto"] == "texto entero del fragmento"
         for presentacion in ("score", "coincide_en", "titulo_tramos", "extracto", "pasaje"):
             assert presentacion not in doc
+        # Ya tenía su pasaje: no se pide otro.
+        assert "contexto" not in fake.nombres()
 
-    def test_sin_pasaje_no_hay_clave_chunks(self, fake: _Repo) -> None:
+    def test_lo_que_caso_por_el_anuncio_lleva_tambien_su_pliego(self, fake: _Repo) -> None:
+        """Antes llegaba al modelo con título y descripción, sin nada que citar."""
+        fake.anuncios = [_anuncio("A")]
+        fake.contexto = {"A": _trozo("A")}
+
+        (doc,) = _contexto("licencias sap")
+
+        assert doc["chunks"] == [
+            {
+                "documento_id": 7,
+                "chunk_index": 3,
+                "page_number": 14,
+                "tipo": "legal",
+                "filename": "PCAP.pdf",
+                "texto": "x" * 50,
+            }
+        ]
+        assert ("contexto", {"ids": ["A"], "terminos": ("licencias", "sap")}) in fake.llamadas
+
+    def test_sin_pliego_no_hay_clave_chunks(self, fake: _Repo) -> None:
         """``_fuentes_documentos`` de ``/ask`` emite el evento si la clave tiene algo."""
         fake.anuncios = [_anuncio("A")]
 
-        (doc,) = documentos_de_contexto(_buscar("licencias sap").hits)
+        (doc,) = _contexto("licencias sap")
 
+        assert "chunks" not in doc
+
+    def test_el_pliego_entra_mientras_cabe_y_en_el_orden_de_la_lista(self, fake: _Repo) -> None:
+        """Un fragmento de más en el primero dejaba fuera del bloque al último
+        (``build_context_block`` corta en el techo y descarta el resto)."""
+        libre = busqueda._presupuesto_de_pliego(3)
+        cabe = libre // 2 - busqueda._CABECERA_FRAGMENTO
+        fake.anuncios = [_anuncio("A"), _anuncio("B"), _anuncio("C")]
+        fake.contexto = {"A": _trozo("A", cabe), "B": _trozo("B", libre), "C": _trozo("C", 10)}
+
+        docs = _contexto("licencias sap")
+
+        con_pliego = [d["id_externo"] for d in docs if d.get("chunks")]
+        assert con_pliego == ["A", "C"]
+
+    def test_si_la_consulta_de_fragmentos_falla_se_responde_sin_ellos(self, fake: _Repo) -> None:
+        fake.anuncios = [_anuncio("A")]
+        fake.contexto_revienta = True
+
+        (doc,) = _contexto("licencias sap")
+
+        assert doc["id_externo"] == "A"
         assert "chunks" not in doc
 
 
@@ -659,11 +723,43 @@ class TestFormaDeLasConsultas:
     def test_licitaciones_con_pasaje_sin_ambito_no_une_licitaciones(
         self, conexion: _Conexion
     ) -> None:
+        """La muestra de fragmentos no se une a ``licitaciones`` sin ámbito; el
+        estado para desempatar se lee después, sobre los expedientes ya
+        agrupados."""
         repo.licitaciones_con_pasaje("baja temeraria", Ambito(), expresion=True)
 
-        assert "JOIN licitaciones" not in conexion.sql
+        assert "JOIN licitaciones l " not in conexion.sql
+        assert conexion.sql.index("GROUP BY") < conexion.sql.index("JOIN licitaciones v")
         assert "websearch_to_tsquery" in conexion.sql
         assert conexion.sql.count("%s") == len(conexion.params)
+
+    def test_a_igual_coincidencia_lo_abierto_va_delante(self, conexion: _Conexion) -> None:
+        repo.anuncios_por_terminos(["licencias"], Ambito(), limit=5)
+
+        assert "puntos DESC, o.abierta DESC, o.rank DESC" in conexion.sql
+        assert "AS abierta" in conexion.sql
+
+    def test_con_recientes_manda_la_fecha(self, conexion: _Conexion) -> None:
+        repo.anuncios_por_terminos(["licencias"], Ambito(), limit=5, recientes=True)
+
+        assert "abierta DESC" not in conexion.sql
+
+    def test_pasajes_de_contexto(self, conexion: _Conexion) -> None:
+        repo.pasajes_de_contexto(["A", "B"], ["instalacion", "solar"], ["instalación", ""])
+
+        assert conexion.sql.count("%s") == len(conexion.params)
+        assert conexion.params == [
+            ["instalacion", "solar"],
+            ["instalación", ""],
+            ["A", "B"],
+        ]
+        # Basta alguno de los términos, y el acta no es pliego.
+        assert "' | '" in conexion.sql
+        assert "d.tipo <> 'acta'" in conexion.sql
+
+    def test_pasajes_de_contexto_sin_ids_no_consulta(self, conexion: _Conexion) -> None:
+        assert repo.pasajes_de_contexto([], ["x"]) == {}
+        assert conexion.sql == ""
 
     def test_mejores_pasajes(self, conexion: _Conexion) -> None:
         repo.mejores_pasajes(["A", "B"], "baja temeraria")

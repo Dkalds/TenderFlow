@@ -353,6 +353,8 @@ class TestAskStreaming:
             "fecha_desde": "2026-01-01",
             "fecha_hasta": None,
             "interpretar": True,
+            # La flag ``busqueda_semantica``, apagada mientras no tenga fila.
+            "semantica": False,
         }
 
     def test_ask_emits_fuentes_documentos_when_docs_carry_chunks(self, ask_client):

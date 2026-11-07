@@ -339,9 +339,6 @@ class TestFiltrosDelLadoVectorial:
         422, y las fuentes citables se quedan dentro del ámbito."""
         import json
 
-        from config import settings
-
-        monkeypatch.setattr(settings, "RAG_HYBRID_ENABLED", True, raising=False)
         self._sembrar()
 
         def _respuesta(*_args: Any, **_kwargs: Any) -> Any:
@@ -351,7 +348,8 @@ class TestFiltrosDelLadoVectorial:
         resp = search_client.post(
             "/api/v1/ask",
             json={
-                # No casa por FTS con ninguna: solo responde el lado vectorial.
+                # No deja términos que buscar: responde lo más reciente del
+                # ámbito, con el arranque de su pliego como fuente citable.
                 "question": "¿Qué exige el pliego?",
                 "ccaa": ["Madrid"],
                 "tecnologia": ["SAP"],

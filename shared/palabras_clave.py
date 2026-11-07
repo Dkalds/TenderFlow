@@ -1,8 +1,8 @@
 """Qué cuenta como palabra relevante de una pregunta en lenguaje natural.
 
-``extract_keywords`` y ``FTS5_STOPWORDS`` los comparten el último recurso por
-subcadena de ``/ask`` (``db/repositories/licitaciones.py::search_like_for_ask``)
-y la interpretación de la frase (:mod:`services.investigador.consulta`). Viven
+``extract_keywords`` y ``FTS5_STOPWORDS`` los comparten los fragmentos de pliego
+del MCP interno (:mod:`services.rag.fragmentos`) y la interpretación de la frase
+(:mod:`services.investigador.consulta`). Viven
 en ``shared/`` porque los consume la persistencia, que no puede importar de la
 capa de dominio (AGENTS.md §2); ``services.investigador.search_engine`` los
 reexporta. Solo biblioteca estándar.
@@ -18,7 +18,6 @@ import re
 # para evitar que saturen el ranking con documentos irrelevantes. Deliberadamente
 # NO incluye sustantivos de dominio discriminantes (contrato, servicio, obra,
 # pública...) — esos sí aportan señal en búsquedas por palabra clave.
-# Compartido con el fallback LIKE del repositorio (search_like_for_ask).
 FTS5_STOPWORDS: frozenset[str] = frozenset(
     {
         # Conectores y artículos
@@ -169,8 +168,7 @@ def extract_keywords(query: str) -> list[str]:
 
     Elimina metacaracteres, pasa a minúsculas, filtra stopwords y tokens de
     <=2 caracteres, y deduplica conservando los términos más largos (heurística
-    barata de especificidad). Lo usa el último recurso LIKE de ``/ask``
-    (``search_like_for_ask``).
+    barata de especificidad).
     """
     cleaned = re.sub(r'["*+\-():\^/¿¡!?,.;]', " ", query).lower()
     tokens = [t for t in cleaned.split() if len(t) > 2 and t not in FTS5_STOPWORDS]

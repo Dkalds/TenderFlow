@@ -1296,14 +1296,6 @@
       "tipo": "<class 'str'>",
       "validation_alias": "None"
     },
-    "RAG_HYBRID_ENABLED": {
-      "alias": "None",
-      "default": "False",
-      "default_factory": "None",
-      "metadata": "[]",
-      "tipo": "<class 'bool'>",
-      "validation_alias": "None"
-    },
     "REDIS_PASSWORD": {
       "alias": "None",
       "default": "SecretStr('')",

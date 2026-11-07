@@ -168,7 +168,6 @@ _BUSQUEDAS: dict[str, Callable[[Any], set[str]]] = {
     "fts_organo": lambda r: _ids(r.list_paginated(FiltrosLicitacion(q="nube", organo=LITERAL))[0]),
     "avanzada_q": lambda r: _ids(r.search_advanced(q=LITERAL)[0]),
     "pdf_q": lambda r: _ids(r.fetch_for_pdf(q=LITERAL)),
-    "ask": lambda r: _ids(r.search_like_for_ask(LITERAL)),
 }
 
 

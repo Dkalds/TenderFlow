@@ -188,40 +188,6 @@ def test_repo_search_fts_docs_sin_match(tmp_db):
 
 
 # ---------------------------------------------------------------------------
-# search_like_for_ask
-# ---------------------------------------------------------------------------
-
-
-def test_repo_search_like_devuelve_resultados(tmp_db):
-    """search_like_for_ask encuentra licitaciones que contienen las keywords."""
-    db_mod, _ = tmp_db
-    seed_licitaciones(db_mod, 5)
-
-    from db.repositories.licitaciones import LicitacionRepository
-
-    repo = LicitacionRepository()
-    # "mantenimiento" es una palabra que aparece en todos los titulos sembrados
-    results = repo.search_like_for_ask("mantenimiento SAP")
-    assert isinstance(results, list)
-    assert len(results) > 0
-    for r in results:
-        assert "id_externo" in r
-
-
-def test_repo_search_like_vacio_sin_match(tmp_db):
-    """search_like_for_ask sin matches devuelve lista vacía."""
-    db_mod, _ = tmp_db
-    seed_licitaciones(db_mod, 3)
-
-    from db.repositories.licitaciones import LicitacionRepository
-
-    repo = LicitacionRepository()
-    results = repo.search_like_for_ask("XYZXYZ palabras inexistentes absolutamente")
-    assert isinstance(results, list)
-    assert results == []
-
-
-# ---------------------------------------------------------------------------
 # get_last_extraction_date
 # ---------------------------------------------------------------------------
 

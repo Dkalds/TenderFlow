@@ -736,7 +736,7 @@ _Sin ítems abiertos._
 - **Problema:** `hybrid_search` exige `sentence-transformers` para codificar la consulta y la imagen de la API no lo instala a propósito (C3.1: PyTorch pesa ~2 GB). Medido el 2026-10-09: `POST /search/semantic` responde siempre `fts` o `like`, y los 345.422 fragmentos embebidos de `documento_chunks` (2,2 GB de los 6,9 GB de la base; el HNSW, 637 MB) no los consulta ninguna ruta por vector. Desde esa fecha la pantalla ya no lo promete —«Tipo de coincidencia» solo aparece si una respuesta llega por `rrf`— y la búsqueda por texto mira dentro de los pliegos, pero la decisión sigue pendiente.
 - **Acceptance criteria:**
   - Decisión tomada entre codificar la consulta en la API sin PyTorch (el mismo `paraphrase-multilingual-MiniLM-L12-v2` en ONNX; es una dependencia nueva, §6), o dejar de embeber los pliegos y soltar el índice.
-  - Si se sirve: `source=rrf` en el log `semantic_search.ok` de producción, y el MRR del golden set (`tests/eval/test_eval_rag.py`) medido antes y después.
+  - Si se sirve: `source=rrf` en el log `semantic_search.ok` de producción, y el MRR medido antes y después con `tests/eval/test_eval_investigador.py` (categoría `parafrasis`, línea base 0,333 solo con texto; el set de `test_eval_rag.py` lo acierta cualquier motor y no puede mostrar diferencia).
 - **Files de partida:** [services/investigador/search_engine.py](../services/investigador/search_engine.py), [services/embeddings.py](../services/embeddings.py), [requirements-api.in](../requirements-api.in)
 - **Riesgo:** medio — dependencia nueva y memoria del proceso de la API.
 - **Progreso (2026-10-17, rama `claude/quirky-wozniak-xp20q0`):** lo que la fusión haría al encenderse ya no empeora la pantalla. Hasta esa fecha, con embeddings la ruta respondía **solo** con la fusión: sin `coincide_en`, pasaje, resaltados ni `fecha_limite`, ignorando «las más recientes» y, en la lista vectorial, las comillas y la `-exclusión`. Ahora completa la lista del texto (`services/investigador/busqueda.py::combinar`): primero lo que casa con todos los términos, después lo que solo se parece por significado (`coincide_en=["significado"]`, con su fragmento), y al final lo parcial. No corre con operadores, con «recientes» ni con `alpha=0`. La decisión de servirla sigue pendiente.
@@ -752,6 +752,16 @@ _Sin ítems abiertos._
   - Presupuesto de latencia en `docs/sli-slo.md` § 8 (`fusion_ms` P95 ≤ 1,5 s; respuesta P95 ≤ 2,5 s; `error` < 1 %), con lo medido: codificar P95 21 ms en local, consulta HNSW 0,9–1,6 s por el MCP.
   - La pantalla ya decía qué modo respondió: la insignia de `source` (`rrf` = «Por significado y texto», `fts` = «Por texto»), así que el DTO no cambia.
   - **Falta (propietario):** las cuatro variables en `tenderflow-api` (Render) y un deploy con caché limpia; encender la flag; después, `source=rrf` en `semantic_search.ok`, MRR antes/después, RSS y `fusion_ms` real contra el presupuesto. Con eso se cierra.
+- **Progreso (2026-11-07, rama `claude/eloquent-cray-44n08c`) — `/ask` obedece a la misma flag que la lista.** Con `RAG_HYBRID_ENABLED` el asistente usaba la fusión *en lugar* del texto, sin interpretar los filtros de la frase, y la lista y el asistente podían contradecirse. El setting se retiró: `services/licitaciones.py::search_for_ask` llama a `services/investigador/busqueda.py::buscar` con `semantica_activa` de quien pregunta, así que encender `busqueda_semantica` enciende las dos cosas. También se retiró la red de `/ask` (tsquery estricta y `LIKE` sin orden), que solo corría si el motor de texto fallaba; ahora ese fallo llega como `_RecuperacionFallida`. Para medir la decisión hay un eval por categoría: `tests/eval/test_eval_investigador.py`.
+
+### [P3] [Investigador] Una palabra rara de la consulta pesa más que el tema
+- **Área:** db/repositories/investigador.py (`anuncios_por_terminos`)
+- **Problema:** el peso de cada término es su rareza **entre los candidatos** de esa consulta. Con «mantenimiento SAP hospital», el contrato de ascensores del hospital sale por delante de los dos de mantenimiento SAP: «hospital» aparece en un solo candidato y pesa más que «SAP», que es el tema. Medido el 2026-11-07 con `tests/eval/test_eval_investigador.py` (categoría `parcial`, MRR 0,750; era igual antes del cambio de esa fecha).
+- **Acceptance criteria:**
+  - La categoría `parcial` llega a 1,0 sin bajar ninguna otra, y el suelo de `MRR_MIN_POR_CATEGORIA` sube con ella.
+  - Se mide contra producción la latencia de «licencia» (7.950 candidatos, 89 ms tras materializar las CTE) antes y después: el arreglo no puede volver a ser cuadrático.
+- **Files de partida:** [db/repositories/investigador.py](../db/repositories/investigador.py), [tests/eval/fixtures/eval_investigador.json](../tests/eval/fixtures/eval_investigador.json)
+- **Riesgo:** medio: el orden de toda búsqueda con coincidencia parcial cambia. Candidatos a probar: acotar el peso por rareza (techo), o usar la frecuencia en el corpus en vez de la de los candidatos.
 
 ### [P3] [Investigador] El historial de consultas sigue en `localStorage`
 - **Área:** web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts
