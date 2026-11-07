@@ -330,3 +330,86 @@ def resolution_stats() -> dict[str, Any]:
         "empresas": int(n_empresas),
         "revisiones_pendientes": int(n_pending),
     }
+
+
+# ── Adjudicatarios compuestos de PSCP ────────────────────────────────────────
+#
+# Hasta el 2026-11-06 el conector de PSCP guardaba como UN adjudicatario la
+# fila que publica varios, con nombres, NIFs e importes unidos por ``||``; la
+# resolución de entidades creaba con ella una empresa de nombre y NIF
+# compuestos. El parser ya los reparte (``adjudicatarios_de_la_fila``); esto
+# arregla lo guardado antes. Mismo criterio que el parser: el NIF solo se
+# atribuye si tiene tantas posiciones como nombres, y el importe guardado no se
+# reparte (el parser antiguo no sabía leer ``"1||2"``, así que el que hay es
+# único para varias empresas y se contaría N veces).
+
+_ADJ_COMPUESTA = "a.nombre LIKE '%||%'"
+
+_PARTES_SQL = (
+    "SELECT a.id AS origen, btrim(u.nombre) AS nombre, "
+    "       CASE WHEN cardinality(string_to_array(a.nif, '||')) "
+    "               = cardinality(string_to_array(a.nombre, '||')) "
+    "            THEN nullif(btrim((string_to_array(a.nif, '||'))[u.pos]), '') END AS nif "
+    "  FROM adjudicaciones a "
+    "  CROSS JOIN LATERAL unnest(string_to_array(a.nombre, '||')) "
+    "       WITH ORDINALITY AS u(nombre, pos) "
+    f" WHERE {_ADJ_COMPUESTA} AND btrim(u.nombre) <> ''"
+)
+
+# Las columnas que no son de cada empresa (lote, fechas, ofertas, territorio)
+# se copian; importe, es_pyme y empresa_id quedan a NULL. La resolución de
+# entidades enlaza después las filas nuevas por su NIF.
+_PARTIR_SQL = (
+    f"WITH partes AS ({_PARTES_SQL}) "
+    "INSERT INTO adjudicaciones (licitacion_id, nif, nombre, provincia, ccaa, nuts_code, "
+    "       fecha_adjudicacion, n_ofertas_recibidas, oferta_minima, oferta_maxima, "
+    "       result_code, result_description, fecha_extraccion, lote_id) "
+    "SELECT a.licitacion_id, p.nif, p.nombre, a.provincia, a.ccaa, a.nuts_code, "
+    "       a.fecha_adjudicacion, a.n_ofertas_recibidas, a.oferta_minima, a.oferta_maxima, "
+    "       a.result_code, a.result_description, a.fecha_extraccion, a.lote_id "
+    "  FROM partes p JOIN adjudicaciones a ON a.id = p.origen"
+)
+
+# Una empresa compuesta se queda si alguna adjudicación que NO es compuesta la
+# referencia (no ocurre, pero borrarla rompería la FK) o si tiene predicciones
+# de retención (FK sin cascada). Sus alias, miembros de UTE y candidaturas de
+# revisión caen por ``ON DELETE CASCADE``.
+_EMPRESAS_COMPUESTAS_SIN_USO = (
+    "FROM empresas e WHERE e.nombre_canonico LIKE '%||%' "
+    "AND NOT EXISTS (SELECT 1 FROM adjudicaciones a "
+    "                 WHERE a.empresa_id = e.empresa_id AND NOT " + _ADJ_COMPUESTA + ") "
+    "AND NOT EXISTS (SELECT 1 FROM predicciones_retencion p WHERE p.empresa_id = e.empresa_id)"
+)
+
+
+@dataclass(frozen=True)
+class LimpiezaCompuestas:
+    """Recuento de :func:`limpiar_adjudicatarios_compuestos`."""
+
+    adjudicaciones_compuestas: int
+    adjudicaciones_nuevas: int
+    empresas_borradas: int
+
+
+def limpiar_adjudicatarios_compuestos(*, aplicar: bool) -> LimpiezaCompuestas:
+    """Parte las adjudicaciones con varios adjudicatarios y borra las empresas compuestas.
+
+    Sin ``aplicar`` solo cuenta lo que haría. Con él, todo va en una
+    transacción: si algo falla no queda ni la mitad partida ni la otra mitad
+    sin borrar. Es idempotente: una segunda pasada no encuentra nada.
+    """
+    with connect() as c:
+        compuestas = int(
+            c.execute(f"SELECT count(*) FROM adjudicaciones a WHERE {_ADJ_COMPUESTA}").fetchone()[0]
+        )
+        if not aplicar:
+            nuevas = int(c.execute(f"SELECT count(*) FROM ({_PARTES_SQL}) p").fetchone()[0])
+            empresas = int(
+                c.execute("SELECT count(*) " + _EMPRESAS_COMPUESTAS_SIN_USO).fetchone()[0]
+            )
+            return LimpiezaCompuestas(compuestas, nuevas, empresas)
+        nuevas = c.execute(_PARTIR_SQL).rowcount
+        # Las filas nuevas ya no llevan `||`: este DELETE solo ve las de origen.
+        c.execute(f"DELETE FROM adjudicaciones a WHERE {_ADJ_COMPUESTA}")
+        borradas = c.execute("DELETE " + _EMPRESAS_COMPUESTAS_SIN_USO).rowcount
+        return LimpiezaCompuestas(compuestas, int(nuevas), int(borradas))

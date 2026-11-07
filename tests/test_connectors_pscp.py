@@ -90,6 +90,57 @@ def test_pscp_parse_adjudicacion_crea_adjudicacion():
     assert adj.licitacion_id == "pscp:CTTI-2026-00123"
 
 
+def _adjudicada(nombres: str, nifs: str, importes: str) -> list:
+    record = _pscp_record()
+    record["fase_publicacio"] = "Adjudicació"
+    record["denominacio_adjudicatari"] = nombres
+    record["identificacio_adjudicatari"] = nifs
+    record["import_adjudicacio_sense"] = importes
+    record["ofertes_rebudes"] = "3"
+    parsed = PscpConnector(dataset_id="test-test").parse(
+        RawNotice(natural_id="CTTI-2026-00123", payload=record)
+    )
+    return parsed.adjudicaciones
+
+
+def test_varios_adjudicatarios_en_una_fila_salen_uno_por_empresa():
+    """Forma real de la API (expediente CS/CC00/1101277967/22/AMUP, 2026-11-06)."""
+    adjs = _adjudicada(
+        "3M ESPAÑA SL||BARD DE ESPAÑA SLU||B.BRAUN MEDICAL,S.A.",
+        "B28078020||B08780249||A08092744",
+        "443444.49||9412.87||1022225.19",
+    )
+
+    assert [(a.nombre, a.nif, a.importe_adjudicado) for a in adjs] == [
+        ("3M ESPAÑA SL", "B28078020", 443444.49),
+        ("BARD DE ESPAÑA SLU", "B08780249", 9412.87),
+        ("B.BRAUN MEDICAL,S.A.", "A08092744", 1022225.19),
+    ]
+    assert {a.n_ofertas_recibidas for a in adjs} == {3}
+    assert all("||" not in (a.nombre + (a.nif or "")) for a in adjs)
+
+
+def test_importes_vacios_o_sin_alinear_no_se_atribuyen():
+    # `||` sin cifras: la API publica así los acuerdos marco sin importe.
+    assert [a.importe_adjudicado for a in _adjudicada("A SL||B SL", "B1||B2", "||")] == [
+        None,
+        None,
+    ]
+    # Un importe para dos empresas: repartirlo lo contaría dos veces.
+    adjs = _adjudicada("A SL||B SL", "B1||B2", "1000")
+    assert [(a.nif, a.importe_adjudicado) for a in adjs] == [("B1", None), ("B2", None)]
+
+
+def test_nifs_sin_alinear_no_se_cruzan_con_otra_empresa():
+    adjs = _adjudicada("A SL||B SL||C SL", "B1||B2", "1||2||3")
+
+    assert [(a.nombre, a.nif, a.importe_adjudicado) for a in adjs] == [
+        ("A SL", None, 1.0),
+        ("B SL", None, 2.0),
+        ("C SL", None, 3.0),
+    ]
+
+
 def test_pscp_parse_sin_titulo_descarta():
     record = {"codi_expedient": "X-1", "fase_publicacio": "Anunci"}
     assert PscpConnector(dataset_id="t-t").parse(RawNotice("X-1", record)) is None
