@@ -88,6 +88,21 @@ def jobs_backoff_base_segundos() -> int:
     return _entero_env("JOBS_BACKOFF_BASE_SEGUNDOS", JOBS_BACKOFF_BASE_SEGUNDOS_DEFAULT, minimo=1)
 
 
+#: Hilos que consumen la cola a demanda en cada proceso (API o worker). Uno es
+#: un consumidor serie: con N fichas en cola, la última espera N extracciones
+#: de 1-5 min. Varios no se pisan (``FOR UPDATE SKIP LOCKED``), pero cada ficha
+#: abre su propio proceso ``spawn`` para el PDF (``scraper/document_fetcher.py``)
+#: y comparte el pool de BD del proceso (``max=5``): se sube con la memoria de
+#: la instancia a la vista, no a ciegas. shortcut: 1 por defecto porque la RAM
+#: de la instancia de la API no está medida con dos extracciones a la vez;
+#: subirlo cuando ``jobs_espera_segundos`` crezca y esa medida exista.
+JOBS_CONSUMIDORES_DEFAULT = 1
+
+
+def jobs_consumidores() -> int:
+    return _entero_env("JOBS_CONSUMIDORES", JOBS_CONSUMIDORES_DEFAULT, minimo=1)
+
+
 def jobs_worker_poll_segundos() -> float:
     return _flotante_env("JOBS_WORKER_POLL_SEGUNDOS", JOBS_WORKER_POLL_SEGUNDOS_DEFAULT, minimo=0.1)
 

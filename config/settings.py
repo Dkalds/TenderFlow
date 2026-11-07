@@ -51,6 +51,7 @@ from config.settings_bd import (
 from config.settings_cola import (
     EVENT_DISPATCH_MAX_AGE_HOURS_DEFAULT,
     JOBS_BACKOFF_BASE_SEGUNDOS_DEFAULT,
+    JOBS_CONSUMIDORES_DEFAULT,
     JOBS_EXPORT_UMBRAL_FILAS_DEFAULT,
     JOBS_LOCK_TTL_SEGUNDOS_DEFAULT,
     JOBS_MAX_INTENTOS_DEFAULT,
@@ -60,6 +61,7 @@ from config.settings_cola import (
     jobs_backoff_base_segundos,
     jobs_cierre_por_cola,
     jobs_consumidor_en_api,
+    jobs_consumidores,
     jobs_export_umbral_filas,
     jobs_lock_ttl_segundos,
     jobs_max_intentos,
@@ -87,6 +89,7 @@ from config.settings_scraper import ScraperSettings
 __all__ = [
     "EVENT_DISPATCH_MAX_AGE_HOURS_DEFAULT",
     "JOBS_BACKOFF_BASE_SEGUNDOS_DEFAULT",
+    "JOBS_CONSUMIDORES_DEFAULT",
     "JOBS_EXPORT_UMBRAL_FILAS_DEFAULT",
     "JOBS_LOCK_TTL_SEGUNDOS_DEFAULT",
     "JOBS_MAX_INTENTOS_DEFAULT",
@@ -106,6 +109,7 @@ __all__ = [
     "jobs_backoff_base_segundos",
     "jobs_cierre_por_cola",
     "jobs_consumidor_en_api",
+    "jobs_consumidores",
     "jobs_export_umbral_filas",
     "jobs_lock_ttl_segundos",
     "jobs_max_intentos",

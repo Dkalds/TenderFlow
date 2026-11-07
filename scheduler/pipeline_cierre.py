@@ -75,6 +75,35 @@ def _notify_step_failure(step: str, exc: Exception) -> None:
         log.warning("pipeline_step_alert_failed", step=step, exc_info=True)
 
 
+def _avisar_cierre_interrumpido(descartados: list[str], en_curso: list[str]) -> None:
+    """Avisa de que el cierre anterior murió a mitad y estos pasos no corrieron.
+
+    Pasa cuando Actions mata el step del cierre por su ``timeout-minutes``: el
+    proceso muere sin ``fail`` ni aviso de paso, y los que faltaban se quedan
+    ``pending`` hasta que esta pasada los descarta. Del 2026-10-26 al
+    2026-11-07 ocurrió tres veces —la última, nueve pasos (retención, canarios,
+    drift…) sin correr durante ocho horas— y solo lo decía un run rojo.
+    Best-effort, como el aviso de paso fallido.
+    """
+    try:
+        from observability.alerts import COOLDOWN_RECORDATORIO_DIARIO_S, notify
+
+        cuerpo = f"No llegaron a correr: {', '.join(descartados)}."
+        if en_curso:
+            cuerpo += f" En curso al cortarse: {', '.join(en_curso)}."
+        notify(
+            "warn",
+            "[pipeline] el cierre de la pasada anterior no terminó",
+            body=cuerpo,
+            dedup_key="pipeline_cierre_interrumpido",
+            cooldown_s=COOLDOWN_RECORDATORIO_DIARIO_S,
+            pasos=len(descartados),
+        )
+    except Exception:
+        _contar_error("aviso_cierre_interrumpido")
+        log.warning("pipeline_cierre_interrumpido_alert_failed", exc_info=True)
+
+
 def _clave_aviso_de_paso(step: str) -> str:
     return f"pipeline_step:{step}"
 
@@ -223,6 +252,8 @@ def _cierre_por_cola(*, lane: str) -> dict[str, str]:
         raise ColaNoDisponible(f"no se pudo encolar el cierre: {exc}") from exc
 
     results: dict[str, str] = {}
+    descartados: list[str] = []
+    en_curso_al_cortarse: list[str] = []
     # Techo defensivo: además de los propios, el bucle puede encontrarse los
     # restos de una pasada anterior, y cada uno consume una vuelta.
     for _ in range(len(CANONICAL_STEPS) * 4):
@@ -237,6 +268,10 @@ def _cierre_por_cola(*, lane: str) -> dict[str, str]:
                 "pipeline_step_job_de_pasada_anterior_descartado", step=nombre, job_id=job.id
             )
             ack(job.id, {"paso": nombre, "estado": "descartado_pasada_anterior"})
+            descartados.append(nombre)
+            # Más de un intento: ya lo había reclamado el cierre que murió.
+            if job.intentos > 1:
+                en_curso_al_cortarse.append(nombre)
             continue
         faltan = dependencias_incumplidas(nombre, results)
         if faltan:
@@ -267,6 +302,8 @@ def _cierre_por_cola(*, lane: str) -> dict[str, str]:
     if sin_consumir:
         log.warning("pipeline_cierre_pasos_sin_consumir", pasos=sin_consumir)
 
+    if descartados:
+        _avisar_cierre_interrumpido(descartados, en_curso_al_cortarse)
     _cerrar_avisos_de_pasos_recuperados(results)
     return results
 

@@ -63,12 +63,15 @@ def ejecutar_ficha_pliego(job: Job) -> dict[str, Any]:
     ``tender_fact_sheets``, incluido el ``failed`` con detalle del caso «sin
     páginas». Aquí se relee esa fila y, si quedó en ``failed``, se lanza — que
     es la forma de decirle a la cola «esto merece un reintento», sin duplicar en
-    este módulo la lógica de persistencia del servicio.
+    este módulo la lógica de persistencia del servicio. Si la extracción dice
+    que repetir no cambiaría nada (sin pliegos, modelo retirado), se lanza
+    :class:`~services.jobs.JobSinReintento` y el job queda ``failed`` ya.
     """
+    from services.jobs import JobSinReintento
     from services.rag.fact_sheet import get_fact_sheet, run_background_extraction
 
     licitacion_id = str(job.payload["licitacion_id"])
-    run_background_extraction(
+    reintentable = run_background_extraction(
         licitacion_id,
         model=str(job.payload["model"]),
         budget_subject=job.payload.get("budget_subject"),
@@ -78,7 +81,8 @@ def ejecutar_ficha_pliego(job: Job) -> dict[str, Any]:
     if ficha is None:
         raise RuntimeError(f"La extracción no dejó ficha para {licitacion_id!r}")
     if ficha.status == "failed":
-        raise RuntimeError(ficha.error_detail or "La extracción de la ficha falló sin detalle")
+        detalle = ficha.error_detail or "La extracción de la ficha falló sin detalle"
+        raise RuntimeError(detalle) if reintentable else JobSinReintento(detalle)
     return {
         "licitacion_id": licitacion_id,
         "estado_ficha": ficha.status,
@@ -224,30 +228,36 @@ class Worker:
     def parado(self) -> bool:
         return self._parar.is_set()
 
-    def procesar_tanda(self, *, maximo: int = 100) -> int:
+    def procesar_tanda(self, *, maximo: int = 100, worker_id: str | None = None) -> int:
         """Procesa hasta ``maximo`` jobs disponibles y devuelve cuántos hizo.
 
         Se detiene en cuanto la cola queda vacía. Es la unidad que consume el
         cierre de la pasada (S5.3): drena SU cola dentro del job de Actions y
-        vuelve, sin quedarse esperando trabajo nuevo.
+        vuelve, sin quedarse esperando trabajo nuevo. ``worker_id`` es el del
+        hilo que la consume, si no es el del worker.
         """
         hechos = 0
         while hechos < maximo and not self._parar.is_set():
-            job = procesar_uno(self.worker_id, tipos=self.tipos)
+            job = procesar_uno(worker_id or self.worker_id, tipos=self.tipos)
             if job is None:
                 break
             hechos += 1
         return hechos
 
-    def run_forever(self) -> None:
+    def run_forever(self, *, worker_id: str | None = None) -> None:
         """Consume hasta que alguien llame a :meth:`detener`.
 
         Un fallo de la cola misma (BD caída) no mata el bucle: se registra y se
         espera al siguiente ciclo. Matarlo dejaría el servicio vivo para el
         healthcheck de Render y mudo para la cola, que es el peor de los dos
         estados posibles.
+
+        Varios hilos pueden correr este bucle sobre el mismo worker, cada uno
+        con su ``worker_id``: es el que firma ``locked_by`` y el que la valla de
+        ``ack``/``fail`` compara, así que no puede compartirse.
         """
-        log.info("worker_arrancado", worker_id=self.worker_id, tipos=self.tipos)
+        worker_id = worker_id or self.worker_id
+        log.info("worker_arrancado", worker_id=worker_id, tipos=self.tipos)
         ultima_barrida = 0.0
         while not self._parar.is_set():
             try:
@@ -260,24 +270,33 @@ class Worker:
                     # agotaron intentos quedan `failed` y no vuelven a esta cola.
                     reclamar_caducados()
                     ultima_barrida = ahora
-                if self.procesar_tanda(maximo=10) > 0:
+                if self.procesar_tanda(maximo=10, worker_id=worker_id) > 0:
                     continue
             except Exception as exc:
                 log.warning("worker_ciclo_fallido", error=str(exc), exc_info=True)
             self._parar.wait(self.poll_segundos)
-        log.info("worker_detenido", worker_id=self.worker_id)
+        log.info("worker_detenido", worker_id=worker_id)
 
 
 def arrancar_en_hilo() -> Worker:
-    """Arranca el bucle en un hilo daemon y devuelve el worker para pararlo.
+    """Arranca el bucle en hilos daemon y devuelve el worker para pararlos.
 
-    Lo usa el lifespan de ``api/app.py`` con ``APP_PROFILE=worker``: el proceso
-    sirve ``/api/v1/health/ready`` (que es lo que sondea Render) mientras el
-    hilo consume la cola.
+    Lo usa el lifespan de ``api/app.py`` (perfil ``worker``, o ``api`` según
+    ADR-028 §G): el proceso sirve ``/api/v1/health/ready`` mientras los hilos
+    consumen la cola. Cuántos, ``JOBS_CONSUMIDORES``; :meth:`Worker.detener`
+    los para a todos.
     """
+    from config.settings import jobs_consumidores
+
     worker = Worker()
-    hilo = threading.Thread(target=worker.run_forever, name="tenderflow-worker", daemon=True)
-    hilo.start()
+    for n in range(jobs_consumidores()):
+        hilo = threading.Thread(
+            target=worker.run_forever,
+            kwargs={"worker_id": worker.worker_id if n == 0 else f"{worker.worker_id}#{n}"},
+            name=f"tenderflow-worker-{n}",
+            daemon=True,
+        )
+        hilo.start()
     return worker
 
 
