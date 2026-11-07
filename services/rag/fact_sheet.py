@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import threading
+import unicodedata
 from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -353,12 +354,46 @@ Lista vacía si el pliego no enumera documentos a presentar.
 #: PDFs cuyo texto sale con las tildes cambiadas»).
 _LETRAS_CAMBIADAS = str.maketrans({"æ": "á", "ñ": "á", "ø": "é", "œ": "ú", "˝": "í"})
 
-#: La raya de una fracción no llega al texto del PDF: el numerador y el
-#: denominador salen en líneas distintas y sin nada entre ellos. En el PPT de
-#: `placsp:10000400045061:IPA 1/27` (p. 37) la fórmula del precio es
-#: «= OV * X ⏎ O», y el modelo, que la lee como fracción, la cita «OV * X / O».
-#: La barra se ignora al comparar, igual que los blancos.
-_BARRAS_DE_FRACCION = str.maketrans("", "", "/÷")
+#: Signos sin contenido que el modelo reescribe al citar, y que por eso se
+#: ignoran al comparar, igual que los blancos. Medido el 2026-11-07 sobre las
+#: 12 310 citas aceptadas de las fichas v6 a v9, comparando cuántas recorren
+#: cada signo con cuántas lo harían si el modelo lo copiara tal cual (las
+#: comillas angulares y la raya, que sí copia, salen a la par; las que faltan
+#: son citas descartadas):
+#:
+#: - Barras de fracción. La raya de una fracción no llega al texto del PDF: en
+#:   el PPT de `placsp:10000400045061:IPA 1/27` (p. 37) la fórmula del precio es
+#:   «= OV * X ⏎ O», y el modelo, que la lee como fracción, la cita «OV * X / O».
+#: - Comillas y apóstrofos tipográficos (U+2018 a U+201F): el modelo escribe
+#:   las rectas. El apóstrofo curvo recorre 101 citas esperadas y solo 8
+#:   aceptadas lo llevan: el catalán («l'empresa», «d'adjudicació») perdía
+#:   casi toda cita.
+#: - Guiones de cualquier clase: el corte de palabra a final de línea
+#:   («tractar-⏎se», «adjudi-⏎cación», que el modelo une), el guion blando
+#:   U+00AD y los guiones Unicode (U+2010 a U+2015, U+2212) que escribe «-».
+#: - Viñetas: las de la fuente Symbol salen al área de uso privado (U+F0A1,
+#:   U+F0B7…: 365 esperadas, 113 aceptadas) y el modelo las omite al citar
+#:   una lista; también «•», «▪» y compañía.
+#: - El punto volado del catalán («col·lectiu», que el modelo escribe «ll»:
+#:   52 esperadas, 29 aceptadas) y de las fórmulas (por el aspa de multiplicar).
+#:
+#: Ninguno cambia el significado de la cita: los caracteres que quedan tienen
+#: que estar todos, en orden y seguidos, en la página. Las comas, puntos y
+#: dígitos sí cuentan: quitarlos igualaría «10.000» y «100,00».
+_SIN_CONTENIDO: dict[int, str | None] = {
+    **dict.fromkeys(map(ord, "/÷\"'«»•◦▪▫●○■□►▸➢➤✓✔·-"), None),
+    # Barra de fracción, comillas tipográficas y angulares simples.
+    **dict.fromkeys([0x2044, *range(0x2018, 0x2020), 0x2039, 0x203A], None),
+    # Guiones Unicode, signo menos y guion blando.
+    **dict.fromkeys([*range(0x2010, 0x2016), 0x2212, 0x00AD], None),
+    # Formato invisible: anchos cero y BOM.
+    **dict.fromkeys([0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF], None),
+    # Área de uso privado del BMP: viñetas de fuentes Symbol/Wingdings.
+    **dict.fromkeys(range(0xE000, 0xF900), None),
+    # m² se cita «m2».
+    ord("²"): "2",
+    ord("³"): "3",
+}
 
 
 def _normalize_quote(value: str) -> str:
@@ -371,10 +406,17 @@ def _normalize_quote(value: str) -> str:
     real se descartaba por ese «( ». Quitar los blancos no deja pasar texto
     inventado: los caracteres tienen que estar todos, en orden.
 
-    Tampoco distingue las letras de :data:`_LETRAS_CAMBIADAS` ni mira las
-    barras de :data:`_BARRAS_DE_FRACCION`.
+    Tampoco distingue las letras de :data:`_LETRAS_CAMBIADAS` ni mira los
+    signos de :data:`_SIN_CONTENIDO`. NFC antes de nada: una tilde que el PDF
+    trae como letra + acento combinante es la misma letra que la del modelo.
+    ``casefold`` ya deshace las ligaduras («ﬁ» → «fi»).
     """
-    normalizado = value.casefold().translate(_LETRAS_CAMBIADAS).translate(_BARRAS_DE_FRACCION)
+    normalizado = (
+        unicodedata.normalize("NFC", value)
+        .casefold()
+        .translate(_LETRAS_CAMBIADAS)
+        .translate(_SIN_CONTENIDO)
+    )
     return "".join(normalizado.split())
 
 
@@ -592,6 +634,10 @@ def _validate_fact_evidence(
     """Descarta hechos sin una cita que exista literalmente en la página."""
     page_index = {(int(page["documento_id"]), int(page["page_number"])): page for page in pages}
     rechazados: Counter[str] = Counter()
+    # Las citas descartadas no se guardan en la ficha: sin unos ejemplos en el
+    # log, medir por qué se descartan exigía volver a llamar al modelo
+    # (2026-11-07). Recortadas: es texto del pliego, no hace falta entero.
+    ejemplos: list[str] = []
     for field_name in TenderFactSheet.model_fields:
         kept: list[object] = []
         for fact in getattr(facts, field_name):
@@ -602,6 +648,10 @@ def _validate_fact_evidence(
             ]
             if not valid:
                 rechazados[field_name] += 1
+                ejemplos.extend(
+                    f"{field_name} doc:{item.documento_id} p.{item.page_number}: {item.quote[:160]}"
+                    for item in fact.evidence[: 5 - len(ejemplos)]
+                )
                 continue
             fact.evidence = valid
             kept.append(fact)
@@ -609,7 +659,7 @@ def _validate_fact_evidence(
     # Por familia: el recuento suelto de `fact_sheet_items_rejected` no decía
     # que lo perdido en la oportunidad 18 era justo la fórmula del precio.
     if rechazados:
-        log.info("fact_sheet_items_unverifiable", familias=dict(rechazados))
+        log.info("fact_sheet_items_unverifiable", familias=dict(rechazados), ejemplos=ejemplos)
     return facts, sum(rechazados.values())
 
 
