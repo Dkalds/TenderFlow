@@ -692,10 +692,23 @@ class TestExtractFactSheetOnDemand:
         assert fetch_mock.call_count == 0
 
 
+def _abrir(*licitacion_ids: str) -> None:
+    """Abierta con plazo: una ficha ``failed`` solo vuelve al lote si lo está."""
+    with connect() as c:
+        c.execute(
+            "UPDATE licitaciones SET estado = 'PUB', "
+            "fecha_limite = to_char(now() + interval '30 days', 'YYYY-MM-DD') "
+            "WHERE id_externo = ANY(%s)",
+            (list(licitacion_ids),),
+        )
+
+
 class TestListPendingLicitacionesSelector:
     """Selector de tests/documentos pendientes de ficha, arreglado en v2:
     antes solo miraba "sin fila", así que un bump de ``EXTRACTION_VERSION``
     no reprocesaba nada y ``status='failed'`` quedaba bloqueado para siempre.
+    Desde 2026-11 una ``failed`` vuelve una vez por versión del extractor y
+    solo si sigue abierta (``tests/test_ficha_cobertura_selector.py``).
     """
 
     def test_never_attempted_is_pending(self, tmp_db):
@@ -790,16 +803,17 @@ class TestListPendingLicitacionesSelector:
         )
         assert repo.get("SEL-GOOD")["facts"] == {"lots": [1]}
 
-    def test_failed_is_pending_regardless_of_its_version(self, tmp_db):
+    def test_failed_of_an_older_version_is_pending_while_open(self, tmp_db):
         _db_mod, _ = tmp_db
         from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
 
         _seed_pages("SEL-4")
+        _abrir("SEL-4")
         repo = TenderFactSheetsRepository()
         repo.upsert(
             licitacion_id="SEL-4",
             status="failed",
-            extraction_version="tender-facts-v2",
+            extraction_version="tender-facts-v1",
             model="gpt-4o-mini",
             facts=None,
             field_count=0,
@@ -815,6 +829,7 @@ class TestListPendingLicitacionesSelector:
         _seed_pages("SEL-NEVER")
         _seed_pages("SEL-STALE")
         _seed_pages("SEL-FAILED")
+        _abrir("SEL-NEVER", "SEL-STALE", "SEL-FAILED")
         repo = TenderFactSheetsRepository()
         repo.upsert(
             licitacion_id="SEL-STALE",
@@ -828,7 +843,7 @@ class TestListPendingLicitacionesSelector:
         repo.upsert(
             licitacion_id="SEL-FAILED",
             status="failed",
-            extraction_version="tender-facts-v2",
+            extraction_version="tender-facts-v1",
             model="m",
             facts=None,
             field_count=0,
@@ -858,13 +873,14 @@ class TestListPendingLicitacionesSelector:
         _seed_pages("SEL-TECH", texto="otro pliego")
         with connect() as c:
             c.execute("UPDATE licitaciones SET tecnologia = 'SAP' WHERE id_externo = 'SEL-TECH'")
+        _abrir("SEL-NO-TECH", "SEL-TECH")
         repo = TenderFactSheetsRepository()
         # SEL-NO-TECH falla PRIMERO (updated_at más antiguo) pese a tener la
         # peor tech_priority; SEL-TECH falla después.
         repo.upsert(
             licitacion_id="SEL-NO-TECH",
             status="failed",
-            extraction_version="tender-facts-v2",
+            extraction_version="tender-facts-v1",
             model="m",
             facts=None,
             field_count=0,
@@ -874,7 +890,7 @@ class TestListPendingLicitacionesSelector:
         repo.upsert(
             licitacion_id="SEL-TECH",
             status="failed",
-            extraction_version="tender-facts-v2",
+            extraction_version="tender-facts-v1",
             model="m",
             facts=None,
             field_count=0,

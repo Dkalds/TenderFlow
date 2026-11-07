@@ -95,14 +95,16 @@ def test_lo_que_casa_va_tras_el_favorito_y_antes_del_resto(corpus):
     assert set(pendientes[2:]) == {"PRI-OTRA", "PRI-CERRADA", "PRI-VENCIDA"}
 
 
-def test_sin_casado_el_orden_es_el_de_antes(corpus):
+def test_sin_casado_lo_abierto_va_por_id_y_antes_que_lo_cerrado(corpus):
     pendientes = TenderFactSheetsRepository().list_pending_licitaciones(
         extraction_version=_VERSION, limit=10
     )
 
     assert pendientes[0] == "PRI-FAVORITA"
-    # Sin nivel de regla, PRI-REGLA no adelanta a nadie: el resto va por id.
-    assert pendientes[1:] == sorted(pendientes[1:])
+    # Sin nivel de regla, PRI-REGLA no adelanta a nadie: lo abierto con plazo va
+    # por id y lo cerrado o vencido detrás (tests/test_ficha_cobertura_selector.py).
+    assert pendientes[1:3] == ["PRI-OTRA", "PRI-REGLA"]
+    assert pendientes[3:] == ["PRI-CERRADA", "PRI-VENCIDA"]
 
 
 def test_solo_cuentan_las_reglas_activas(corpus):

@@ -1,0 +1,1699 @@
+{
+  "campos": {
+    "ALERT_EMAIL_TO": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "ALERT_MIN_LEVEL": {
+      "alias": "None",
+      "default": "'warn'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "ALERT_SMTP_HOST": {
+      "alias": "None",
+      "default": "'smtp.gmail.com'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "ALERT_SMTP_PASSWORD": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "ALERT_SMTP_PORT": {
+      "alias": "None",
+      "default": "587",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "ALERT_SMTP_USER": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "ALLOW_SELF_REGISTRATION": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "ANOMALY_ALERT_ENABLED": {
+      "alias": "None",
+      "default": "True",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "ANOMALY_BAJA_THRESHOLD": {
+      "alias": "None",
+      "default": "80.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "ANOMALY_IMPORTE_SIGMA": {
+      "alias": "None",
+      "default": "2.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "ANOMALY_SPIKE_FACTOR": {
+      "alias": "None",
+      "default": "3.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "API_ANALYTICS_STATEMENT_TIMEOUT_MS": {
+      "alias": "None",
+      "default": "0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "API_CPU_BOUND_TOKENS": {
+      "alias": "None",
+      "default": "2",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "API_HMAC_SECRET": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "API_KEY_DEFAULT_SCOPES": {
+      "alias": "None",
+      "default": "'data:read'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "API_KEY_DEFAULT_TTL_DAYS": {
+      "alias": "None",
+      "default": "90",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "API_KEY_MAX_TTL_DAYS": {
+      "alias": "None",
+      "default": "365",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "API_ML_TOKENS": {
+      "alias": "None",
+      "default": "2",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "API_MODEL_CACHE_TTL_SECONDS": {
+      "alias": "None",
+      "default": "300.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "API_ORIGIN_SECRET": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "API_ORIGIN_SECRET_PREVIOUS": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "API_RATE_LIMIT_MAX_CALLS": {
+      "alias": "None",
+      "default": "120",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "API_RATE_LIMIT_WINDOW_SECONDS": {
+      "alias": "None",
+      "default": "60.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "API_THREADPOOL_TOKENS": {
+      "alias": "None",
+      "default": "24",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "APP_PROFILE": {
+      "alias": "None",
+      "default": "'api'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "typing.Literal['api', 'worker', 'scraper', 'mcp']",
+      "validation_alias": "None"
+    },
+    "ASK_LLM_TIMEOUT_SECONDS": {
+      "alias": "None",
+      "default": "120.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "AUDIT_HMAC_KEY": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "BACKFILL_MAX_WORKERS": {
+      "alias": "None",
+      "default": "3",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "BREAKER_BASE_TIMEOUT": {
+      "alias": "None",
+      "default": "60",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "BREAKER_MAX_TIMEOUT": {
+      "alias": "None",
+      "default": "1800",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "COMPETITORS_IDENTITY_SQL": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "CORS_ALLOWED_ORIGINS": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "DAILY_MAX_PAGES": {
+      "alias": "None",
+      "default": "50",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "DATABASE_SSL_ROOT_CERT": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "DATABASE_URL": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "DATA_DIR": {
+      "alias": "None",
+      "default": "Path('data')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pathlib._local.Path'>",
+      "validation_alias": "None"
+    },
+    "DB_CONNECT_TIMEOUT": {
+      "alias": "None",
+      "default": "10",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "DB_IDLE_TX_TIMEOUT_MS": {
+      "alias": "None",
+      "default": "60000",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "DB_POOL_MAX_IDLE_SECONDS": {
+      "alias": "None",
+      "default": "120.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "DB_POOL_MAX_LIFETIME_SECONDS": {
+      "alias": "None",
+      "default": "1800.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "DB_POOL_MIN_SIZE": {
+      "alias": "None",
+      "default": "2",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "DB_POOL_SIZE": {
+      "alias": "None",
+      "default": "5",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "DB_POOL_TIMEOUT": {
+      "alias": "None",
+      "default": "10.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "DB_READ_POOL_MIN_SIZE": {
+      "alias": "None",
+      "default": "4",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "DB_READ_POOL_SIZE": {
+      "alias": "None",
+      "default": "0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "DB_STATEMENT_TIMEOUT_MS": {
+      "alias": "None",
+      "default": "30000",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "DOCUMENT_ALLOWED_HOSTS": {
+      "alias": "None",
+      "default": "'contrataciondelestado.es,*.contrataciondelestado.es,ted.europa.eu,contractaciopublica.cat,www.hacienda.gob.es,www.contratacion.euskadi.eus,contratos-publicos.comunidad.madrid'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "DOCUMENT_BLOB_BACKEND": {
+      "alias": "None",
+      "default": "'auto'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "DOCUMENT_BLOB_BUCKET": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "DOCUMENT_BLOB_DIR": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "DOCUMENT_BLOB_ENDPOINT_URL": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "DOCUMENT_BLOB_PREFIX": {
+      "alias": "None",
+      "default": "'documentos/'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "DOCUMENT_BLOB_REGION": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "DOCUMENT_BLOB_SUPABASE_KEY": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "DOCUMENT_BLOB_SUPABASE_URL": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "DOCUMENT_EXTRACTION_TIMEOUT_SECONDS": {
+      "alias": "None",
+      "default": "30",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "DOWNLOADS_DIR": {
+      "alias": "None",
+      "default": "None",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "pathlib._local.Path | None",
+      "validation_alias": "None"
+    },
+    "EMAIL_API_KEY": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "EMAIL_BACKEND": {
+      "alias": "None",
+      "default": "'smtp'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "typing.Literal['smtp', 'resend', 'postmark', 'console']",
+      "validation_alias": "None"
+    },
+    "EMAIL_FROM": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "EMAIL_FROM_NAME": {
+      "alias": "None",
+      "default": "'TenderFlow'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "EMAIL_REPLY_TO": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "EMBEDDINGS_ONNX_DIR": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "EMBEDDING_MODEL": {
+      "alias": "None",
+      "default": "'paraphrase-multilingual-MiniLM-L12-v2'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "EMBEDDING_VERSION": {
+      "alias": "None",
+      "default": "'v1'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "ENV": {
+      "alias": "None",
+      "default": "'prod'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "typing.Literal['dev', 'staging', 'prod']",
+      "validation_alias": "None"
+    },
+    "FECHAS_TS_LECTURA": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "FOLLOWS_LECTURA": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "FORWARDED_ALLOW_IPS": {
+      "alias": "None",
+      "default": "'127.0.0.1'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "GF_SECURITY_ADMIN_PASSWORD": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "GOOGLE_CLIENT_ID": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "GOOGLE_CLIENT_SECRET": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "HEALTHCHECK_HEARTBEAT_URL": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "IDEMPOTENCY_TTL_SECONDS": {
+      "alias": "None",
+      "default": "86400",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "LLM_BUDGET_MODE": {
+      "alias": "None",
+      "default": "'enforce'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "typing.Literal['monitor', 'enforce']",
+      "validation_alias": "None"
+    },
+    "LLM_BUDGET_USD_DAILY": {
+      "alias": "None",
+      "default": "5.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "LLM_BUDGET_USD_DAILY_PER_ORG": {
+      "alias": "None",
+      "default": "5.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "LLM_BUDGET_USD_DAILY_PER_USER": {
+      "alias": "None",
+      "default": "1.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "LLM_BUDGET_USD_MONTHLY": {
+      "alias": "None",
+      "default": "50.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "LLM_GUION_MAX_TOKENS": {
+      "alias": "None",
+      "default": "2500",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "LLM_TECH_FEEDBACK_ENABLED": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "LLM_TECH_FEEDBACK_MIN_CONF": {
+      "alias": "None",
+      "default": "0.9",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "LLM_TECH_LABELING_BATCH": {
+      "alias": "None",
+      "default": "200",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "LLM_TECH_LABELING_BUDGET_S": {
+      "alias": "None",
+      "default": "600",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "LLM_TECH_LABELING_ENABLED": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "LLM_TECH_LABELING_MODEL": {
+      "alias": "None",
+      "default": "'nvidia/nemotron-3-ultra-550b-a55b'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "LOG_FORMAT": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "MAX_DOCUMENT_PAGES": {
+      "alias": "None",
+      "default": "250",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "MAX_DOCUMENT_SIZE_BYTES": {
+      "alias": "None",
+      "default": "52428800",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "MAX_DOCUMENT_TEXT_CHARS": {
+      "alias": "None",
+      "default": "2000000",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "MAX_DOWNLOAD_SIZE_BYTES": {
+      "alias": "None",
+      "default": "419430400",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "MAX_XML_SIZE_BYTES": {
+      "alias": "None",
+      "default": "157286400",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "METRICS_ALLOWED_IPS": {
+      "alias": "None",
+      "default": "'127.0.0.1'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "MFA_FAILURE_WINDOW_SECONDS": {
+      "alias": "None",
+      "default": "300",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "MFA_MAX_FAILURES": {
+      "alias": "None",
+      "default": "5",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "MFA_STEP_UP_MAX_AGE_SECONDS": {
+      "alias": "None",
+      "default": "900",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "ML_BAJA_CONFORMAL": {
+      "alias": "None",
+      "default": "True",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "ML_BAJA_FOLDS": {
+      "alias": "None",
+      "default": "3",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "ML_BAJA_HALFLIFE_MESES": {
+      "alias": "None",
+      "default": "18.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "ML_BAJA_LOTE_MODEL_SHA256": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "ML_BAJA_MODEL_SHA256": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "ML_BAJA_POR_LOTE": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "ML_BAJA_SEARCH_COMBOS": {
+      "alias": "None",
+      "default": "8",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "ML_CONFIDENCE_THRESHOLD": {
+      "alias": "None",
+      "default": "0.7",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "ML_COST_FN": {
+      "alias": "None",
+      "default": "3.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "ML_COST_FP": {
+      "alias": "None",
+      "default": "1.0",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "ML_FBETA": {
+      "alias": "None",
+      "default": "1.5",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "ML_GOLDEN_SET_PATH": {
+      "alias": "None",
+      "default": "'tests/fixtures/golden_set.jsonl'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "ML_MODEL_SHA256": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "ML_PRED_AUTO_ACTIVATE": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "ML_PU_LEARNING": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "ML_PU_UNLABELED_WEIGHT": {
+      "alias": "None",
+      "default": "0.5",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "ML_RETENCION_EXCLUIR_RESUELTOS": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "ML_RETENCION_MODEL_SHA256": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "ML_TECH_DEFAULT_THRESHOLD": {
+      "alias": "None",
+      "default": "0.5",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "ML_TECH_ENABLED": {
+      "alias": "None",
+      "default": "True",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "ML_TECH_FRAGILE_C": {
+      "alias": "None",
+      "default": "0.3",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "ML_TECH_FRAGILE_MIN_PRECISION": {
+      "alias": "None",
+      "default": "0.7",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "ML_TECH_GATING_PRACTICES": {
+      "alias": "None",
+      "default": "['SAP']",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "list[str]",
+      "validation_alias": "None"
+    },
+    "ML_TECH_LLM_MIN_SCORE": {
+      "alias": "None",
+      "default": "0.5",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "ML_TECH_MIN_POS_FRAGILE": {
+      "alias": "None",
+      "default": "20",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "ML_TECH_MIN_POS_READY": {
+      "alias": "None",
+      "default": "50",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "ML_TECH_MODEL_SHA256": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "ML_TECH_RULES_MIN_KEYWORDS": {
+      "alias": "None",
+      "default": "1",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "ML_TECH_THRESHOLDS": {
+      "alias": "None",
+      "default": "{}",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "dict[str, float]",
+      "validation_alias": "None"
+    },
+    "ML_TUNE_ON_TRAIN": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "ML_TUNE_THRESHOLD_ON_GOLDEN": {
+      "alias": "None",
+      "default": "True",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "ML_UNCERTAINTY_HI": {
+      "alias": "None",
+      "default": "0.7",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "ML_UNCERTAINTY_LO": {
+      "alias": "None",
+      "default": "0.3",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "ML_USE_CALIBRATION": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "ML_USE_EMBEDDINGS": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "ML_USE_ORGANO_FEATURE": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "MODEL_BLOB_PREFIX": {
+      "alias": "None",
+      "default": "'modelos/'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "NUCLEO_TIPADO_LECTURA": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "OAUTH_ADMIN_EMAILS": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "OAUTH_ALLOWED_DOMAINS": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "OAUTH_ALLOWED_EMAILS": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "OAUTH_REDIRECT_URI": {
+      "alias": "None",
+      "default": "'http://localhost:8000/api/v1/auth/oauth/google/callback'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "ORGANOS_RESOLVE_BUDGET_S": {
+      "alias": "None",
+      "default": "120",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "ORGANOS_RESOLVE_MAX_GRAFIAS": {
+      "alias": "None",
+      "default": "500",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "OTEL_EXPORTER_OTLP_ENDPOINT": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "OTEL_SAMPLE_RATIO": {
+      "alias": "None",
+      "default": "0.1",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "OTEL_SERVICE_NAME": {
+      "alias": "None",
+      "default": "'tenderflow'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "PLACSP_AGREGADAS_ATOM_URL": {
+      "alias": "None",
+      "default": "'https://contrataciondelsectorpublico.gob.es/sindicacion/sindicacion_1044/PlataformasAgregadasSinMenores.atom'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "PLACSP_ATOM_PASADAS_SIN_AVANCE_ZIP": {
+      "alias": "None",
+      "default": "6",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "PLACSP_CONSULTAS_ATOM_URL": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "PLACSP_MENORES_ATOM_URL": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "PLIEGO_EMBED_BATCH": {
+      "alias": "None",
+      "default": "100",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "PLIEGO_EMBED_MAX_SECONDS": {
+      "alias": "None",
+      "default": "900",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "PLIEGO_FACTS_BATCH": {
+      "alias": "None",
+      "default": "25",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "PLIEGO_FACTS_ENABLED": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "PLIEGO_FACTS_MAX_SECONDS": {
+      "alias": "None",
+      "default": "1800",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "PLIEGO_FACTS_MODEL": {
+      "alias": "None",
+      "default": "'nvidia/nemotron-3-ultra-550b-a55b'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "PLIEGO_FACTS_ON_PURSUIT": {
+      "alias": "None",
+      "default": "True",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "PLIEGO_FACTS_REINTENTO_DIAS": {
+      "alias": "None",
+      "default": "7",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "PLIEGO_FETCH_BATCH": {
+      "alias": "None",
+      "default": "300",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "PLIEGO_FETCH_MAX_SECONDS": {
+      "alias": "None",
+      "default": "1200",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "PLIEGO_TECH_MIN_SCORE": {
+      "alias": "None",
+      "default": "0.5",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "PLIEGO_TECH_SIGNAL_BATCH": {
+      "alias": "None",
+      "default": "500",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "PSCP_APP_TOKEN": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "PSCP_DATASET_ID": {
+      "alias": "None",
+      "default": "'ybgg-dgi6'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "PSCP_DOMAIN": {
+      "alias": "None",
+      "default": "'analisi.transparenciacatalunya.cat'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "RAG_HYBRID_ENABLED": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "REDIS_PASSWORD": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "REDIS_REST_TOKEN": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "REDIS_URL": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "REQUEST_DELAY_SECONDS": {
+      "alias": "None",
+      "default": "1.5",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'float'>",
+      "validation_alias": "None"
+    },
+    "REQUEST_TIMEOUT": {
+      "alias": "None",
+      "default": "30",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RESUMEN_PREGEN_BATCH": {
+      "alias": "None",
+      "default": "20",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RESUMEN_PREGEN_ENABLED": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "RESUMEN_PREGEN_MODEL": {
+      "alias": "None",
+      "default": "'nvidia/nemotron-3-ultra-550b-a55b'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "RETENTION_ACCESS_LOG_DAYS": {
+      "alias": "None",
+      "default": "180",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RETENTION_ASISTENTE_FEEDBACK_DAYS": {
+      "alias": "None",
+      "default": "365",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RETENTION_AUDIT_LOG_DAYS": {
+      "alias": "None",
+      "default": "180",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RETENTION_CLIENT_ERRORS_DAYS": {
+      "alias": "None",
+      "default": "30",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RETENTION_DLQ_DAYS": {
+      "alias": "None",
+      "default": "30",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RETENTION_DOMAIN_EVENTS_DAYS": {
+      "alias": "None",
+      "default": "365",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RETENTION_EXTRACTION_RUNS_DAYS": {
+      "alias": "None",
+      "default": "90",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RETENTION_IDEMPOTENCY_KEYS_DAYS": {
+      "alias": "None",
+      "default": "1",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RETENTION_LICITACIONES_HISTORY_DAYS": {
+      "alias": "None",
+      "default": "365",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RETENTION_ORG_INVITATIONS_DAYS": {
+      "alias": "None",
+      "default": "90",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RETENTION_PASSWORD_RESET_DAYS": {
+      "alias": "None",
+      "default": "7",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RETENTION_SOLICITUDES_ACCESO_MESES": {
+      "alias": "None",
+      "default": "24",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RETENTION_UNVERIFIED_SIGNUP_DAYS": {
+      "alias": "None",
+      "default": "7",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "RETENTION_WEBHOOK_DELIVERIES_DAYS": {
+      "alias": "None",
+      "default": "90",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "SCORING_AFINIDAD_KEYWORDS": {
+      "alias": "None",
+      "default": "[]",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "list[str]",
+      "validation_alias": "None"
+    },
+    "SCORING_WEIGHTS": {
+      "alias": "None",
+      "default": "{'importe': 20, 'plazo': 15, 'competencia': 20, 'margen': 20, 'afinidad': 15, 'senal_tecnica': 10, 'organo_anula_frecuente': 8}",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "dict[str, int]",
+      "validation_alias": "None"
+    },
+    "SECRETS_CACHE_TTL_SECONDS": {
+      "alias": "None",
+      "default": "300",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "SENSITIVE_ACTION_MAX_AGE_SECONDS": {
+      "alias": "None",
+      "default": "900",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "SESSION_ABSOLUTE_DAYS": {
+      "alias": "None",
+      "default": "30",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "SESSION_IDLE_HOURS": {
+      "alias": "None",
+      "default": "24",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "SESSION_REMEMBER_DAYS": {
+      "alias": "None",
+      "default": "90",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "SIGNING_KEY": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "TACRC_INDEX_URL": {
+      "alias": "None",
+      "default": "'https://www.hacienda.gob.es/es-ES/Areas%20Tematicas/Contratacion/TACRC/Paginas/Resoluciones-Pleno.aspx'",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "TACRC_PRIMER_ANIO": {
+      "alias": "None",
+      "default": "2010",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "TOTP_ENCRYPTION_KEY": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    },
+    "UPSERT_CHUNK_SIZE": {
+      "alias": "None",
+      "default": "500",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
+    "WATCHLIST_RULES_JOB_ENABLED": {
+      "alias": "None",
+      "default": "False",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
+    "WEBHOOK_ALLOWED_HOSTS": {
+      "alias": "None",
+      "default": "''",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'str'>",
+      "validation_alias": "None"
+    },
+    "WEBHOOK_SIGNING_KEY": {
+      "alias": "None",
+      "default": "SecretStr('')",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'pydantic.types.SecretStr'>",
+      "validation_alias": "None"
+    }
+  },
+  "field_validators": {
+    "_validate_analytics_statement_timeout": {
+      "campos": [
+        "API_ANALYTICS_STATEMENT_TIMEOUT_MS"
+      ],
+      "mode": "before"
+    },
+    "_validate_database_url_scheme": {
+      "campos": [
+        "DATABASE_URL"
+      ],
+      "mode": "before"
+    },
+    "_validate_ml_tech_default_threshold": {
+      "campos": [
+        "ML_TECH_DEFAULT_THRESHOLD"
+      ],
+      "mode": "before"
+    },
+    "_validate_ml_threshold": {
+      "campos": [
+        "ML_CONFIDENCE_THRESHOLD"
+      ],
+      "mode": "before"
+    },
+    "_validate_otel_sample_ratio": {
+      "campos": [
+        "OTEL_SAMPLE_RATIO"
+      ],
+      "mode": "before"
+    },
+    "_validate_pool_min_size": {
+      "campos": [
+        "DB_POOL_MIN_SIZE",
+        "DB_READ_POOL_MIN_SIZE"
+      ],
+      "mode": "before"
+    },
+    "_validate_pool_size": {
+      "campos": [
+        "DB_POOL_SIZE"
+      ],
+      "mode": "before"
+    },
+    "_validate_request_timeout": {
+      "campos": [
+        "REQUEST_TIMEOUT"
+      ],
+      "mode": "before"
+    },
+    "_validate_smtp_port": {
+      "campos": [
+        "ALERT_SMTP_PORT"
+      ],
+      "mode": "before"
+    },
+    "_validate_threadpool_tokens": {
+      "campos": [
+        "API_THREADPOOL_TOKENS"
+      ],
+      "mode": "before"
+    }
+  },
+  "model_config": {
+    "case_sensitive": "False",
+    "env_file": "'.env'",
+    "env_file_encoding": "'utf-8'",
+    "env_nested_delimiter": "None",
+    "env_prefix": "''",
+    "extra": "'ignore'"
+  },
+  "model_validators": {
+    "_pool_minimo_por_perfil": "after",
+    "_relax_batch_statement_timeout": "after",
+    "_set_derived_paths": "after",
+    "_validate_api_origin_secret": "after",
+    "_validate_ml_uncertainty_range": "after",
+    "_validate_prod_api_hmac_secret": "after",
+    "_validate_prod_audit_hmac_secret": "after",
+    "_validate_prod_closed_registration": "after",
+    "_validate_prod_cors_origins": "after",
+    "_validate_prod_database_ssl": "after",
+    "_validate_prod_egress_allowlists": "after",
+    "_validate_prod_email_backend": "after",
+    "_validate_prod_forwarded_allow_ips": "after",
+    "_validate_prod_oauth_domains": "after",
+    "_validate_prod_password_not_weak": "after",
+    "_validate_prod_redis": "after",
+    "_validate_prod_signing_key": "after",
+    "_validate_prod_signing_key_strength": "after",
+    "_validate_prod_smtp_password": "after",
+    "_validate_prod_webhook_signing_key": "after",
+    "_validate_retention_days": "after",
+    "_validate_scoring_weights": "after"
+  }
+}

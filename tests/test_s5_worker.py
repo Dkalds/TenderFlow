@@ -394,6 +394,30 @@ def test_el_cierre_por_cola_deja_una_fila_por_paso(tmp_db) -> None:
     assert JobsRepository().contar_por_estado() == {"done": len(CANONICAL_STEPS)}
 
 
+def test_el_cierre_avisa_de_los_restos_de_una_pasada_que_murio(tmp_db) -> None:
+    """Actions mata el step del cierre por timeout: la pasada siguiente lo dice."""
+    from scheduler.pipeline_cierre import _cierre_por_cola
+    from scheduler.pipeline_runs import CANONICAL_STEPS
+    from services.jobs import claim, enqueue, reclamar_caducados
+
+    # El cierre viejo dejó `dlq_retry` a medias (reclamado, lock caducado) y
+    # `drift_checks` sin empezar.
+    enqueue(TIPO_PASO_PIPELINE, {"paso": "dlq_retry", "lane": "daily"}, deduplicar=False)
+    assert claim("pipeline_cierre", tipos=(TIPO_PASO_PIPELINE,)) is not None
+    reclamar_caducados(ttl_segundos=0)
+    enqueue(TIPO_PASO_PIPELINE, {"paso": "drift_checks", "lane": "daily"}, deduplicar=False)
+
+    objetivos = {f"_run_{name}": MagicMock() for name in CANONICAL_STEPS}
+    with (
+        patch.multiple("scheduler.pipeline_pasos_impl", **objetivos),
+        patch("scheduler.pipeline_cierre._avisar_cierre_interrumpido") as avisar,
+    ):
+        resultados = _cierre_por_cola(lane="daily")
+
+    assert set(resultados) == set(CANONICAL_STEPS)
+    avisar.assert_called_once_with(["dlq_retry", "drift_checks"], ["dlq_retry"])
+
+
 def test_el_cierre_por_cola_no_reintenta_un_paso_roto(tmp_db) -> None:
     """Reintentar con backoff se comería la ventana de 55 min del job."""
     from db.repositories.jobs import JobsRepository

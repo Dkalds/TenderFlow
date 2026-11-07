@@ -153,6 +153,123 @@ class TestVerificacionDeCitas:
         assert fs._validated_evidence(cita, _indice((1, 37, self.PAGINA_FRACCION))) is None
 
 
+#: Viñeta de la fuente Symbol tal como sale del PDF (área de uso privado).
+_VINETA_SYMBOL = chr(0xF0A1)
+#: Guion blando (U+00AD), invisible en el PDF y presente en el texto extraído.
+_GUION_BLANDO = chr(0xAD)
+#: Apóstrofo tipográfico (U+2019) de los PDF en catalán.
+_APOSTROFO = chr(0x2019)
+
+
+def _valida(quote: str, texto: str) -> bool:
+    cita = EvidenceRef(documento_id=1, page_number=1, quote=quote)
+    return fs._validated_evidence(cita, _indice((1, 1, texto))) is not None
+
+
+class TestSignosQueElModeloReescribe:
+    """Citas buenas que se descartaban por un signo sin contenido.
+
+    Los textos tienen la forma de páginas reales de producción (2026-11-07):
+    un PCAP catalán de la PSCP y un PCAP del Ministerio de Defensa en PLACSP.
+    """
+
+    #: PCAP catalán: apóstrofos tipográficos, corte de línea tras guion,
+    #: punto volado y comillas curvas.
+    PAGINA_CATALANA = (
+        f"la composen. \nLes proposicions s{_APOSTROFO}han de signar pels representants "
+        "legals de les empreses licitadores i, en cas de tractar-\n"
+        f"se d{_APOSTROFO}empreses que concorrin amb el compromís de constituir-se en UTE si resulten adjudicatàries. \n"
+        "El conveni col·lectiu de referència utilitzat pel càlcul del pressupost base"
+    )
+    #: PCAP de Defensa: lista con viñetas Symbol y comillas curvas.
+    PAGINA_VINETAS = (
+        "ormidad por el adjudicatario, en el mismo acto de formalización del contrato, está "
+        f"constituida por: \n{_VINETA_SYMBOL} El presente Pliego de Cláusulas Administrativas "
+        f"Particulares. \n{_VINETA_SYMBOL} El Pliego de Prescripciones Técnicas. \n"
+        "deberá estar en posesión de la “Habilitación Personal de Seguridad” \n"
+        "de grado igual o superior al de dicha información."
+    )
+
+    def test_el_apostrofo_recto_casa_con_el_tipografico(self):
+        assert _valida(
+            "Les proposicions s'han de signar pels representants legals",
+            self.PAGINA_CATALANA,
+        )
+
+    def test_la_palabra_cortada_a_final_de_linea_casa_unida_o_con_guion(self):
+        for quote in (
+            "en cas de tractarse d'empreses que concorrin",
+            "en cas de tractar-se d'empreses que concorrin",
+        ):
+            assert _valida(quote, self.PAGINA_CATALANA), quote
+
+    def test_el_corte_con_guion_blando_casa_con_la_palabra_entera(self):
+        texto = f"Se procederá a la adjudi{_GUION_BLANDO}\ncación del contrato en el plazo de diez días."
+        assert _valida("Se procederá a la adjudicación del contrato en el plazo", texto)
+
+    def test_el_punto_volado_se_ignora(self):
+        assert _valida(
+            "El conveni collectiu de referència utilitzat pel càlcul", self.PAGINA_CATALANA
+        )
+
+    def test_una_lista_citada_sin_sus_vinetas_casa(self):
+        assert _valida(
+            "constituida por: El presente Pliego de Cláusulas Administrativas Particulares. "
+            "El Pliego de Prescripciones Técnicas.",
+            self.PAGINA_VINETAS,
+        )
+
+    def test_las_comillas_rectas_casan_con_las_curvas(self):
+        assert _valida(
+            'deberá estar en posesión de la "Habilitación Personal de Seguridad"',
+            self.PAGINA_VINETAS,
+        )
+
+    def test_el_superindice_casa_con_el_digito(self):
+        assert _valida(
+            "una superficie útil de 120 m2 en planta baja",
+            "una superficie útil de 120 m² en planta baja",
+        )
+
+    def test_la_tilde_descompuesta_del_pdf_casa_con_la_compuesta(self):
+        texto = "La garanti" + chr(0x301) + "a definitiva sera" + chr(0x301) + " del 5 por ciento."
+        assert _valida("La garantía definitiva será del 5 por ciento.", texto)
+
+    def test_ignorar_signos_no_deja_pasar_otra_palabra(self):
+        assert not _valida(
+            "Les proposicions s'han de presentar pels representants legals",
+            self.PAGINA_CATALANA,
+        )
+
+    def test_ignorar_signos_no_deja_pasar_otra_cifra(self):
+        """Comas, puntos y dígitos siguen contando: «10.000» no es «100,00»."""
+        texto = "El presupuesto base de licitación asciende a 10.000,00 euros."
+        assert not _valida("El presupuesto base de licitación asciende a 100,0000 euros.", texto)
+
+
+def test_las_citas_descartadas_dejan_ejemplos_en_el_log():
+    """La ficha no guarda lo descartado: el log es el único rastro para medir por qué."""
+    facts, _ = fs._parse_facts(
+        {
+            "penalties": [
+                {
+                    "description": f"Penalidad {n}",
+                    "confidence": 0.8,
+                    "evidence": [{"documento_id": 1, "page_number": 1, "quote": f"inventada {n}"}],
+                }
+                for n in range(7)
+            ]
+        }
+    )
+    pagina = {"documento_id": 1, "page_number": 1, "texto": "otra cosa", "start_offset": 0}
+    with patch.object(fs, "log") as log:
+        _, rechazados = fs._validate_fact_evidence(facts, [pagina])
+    assert rechazados == 7
+    ejemplos = log.info.call_args.kwargs["ejemplos"]
+    assert len(ejemplos) == 5
+    assert ejemplos[0] == "penalties doc:1 p.1: inventada 0"
+
+
 class TestNormalizacionDeHechos:
     def _hecho(self, **extra: Any) -> dict[str, Any]:
         return {"description": "Garantía definitiva", "confidence": 0.8, **extra}

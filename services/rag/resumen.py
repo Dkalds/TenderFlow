@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from observability.logging import get_logger
 
 if TYPE_CHECKING:
+    from db.repositories.documentos import DocumentoMeta
     from services.rag.context import LicitacionContext
 
 log = get_logger(__name__)
@@ -53,7 +54,7 @@ def resumen_cache_key(
     id_externo: str,
     model: str,
     doc: dict[str, Any],
-    documentos: list[dict[str, Any]],
+    documentos: list[DocumentoMeta],
     ficha_extracted_at: str | None,
 ) -> str:
     """Clave de caché del resumen: expediente + modelo + firma de estado.

@@ -87,6 +87,7 @@ import tempfile
 import time
 import zipfile
 import zlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, NoReturn
@@ -1295,7 +1296,7 @@ def _guardar_binario(
 
 
 def _contenido_desde_blob(
-    documento_id: int, fila: dict[str, Any] | None
+    documento_id: int, fila: Mapping[str, Any] | None
 ) -> tuple[bytes, str | None] | None:
     """Recupera el binario guardado de un documento, si lo hay.
 
@@ -1321,7 +1322,7 @@ def _contenido_desde_blob(
     return datos, (str(fila["content_type"]) if fila.get("content_type") else None)
 
 
-def fetch_and_extract(documento: dict[str, Any]) -> str:
+def fetch_and_extract(documento: Mapping[str, Any]) -> str:
     """Descarga ``documento['uri']``, extrae su texto y persiste el resultado
     vía ``DocumentosRepository``.
 

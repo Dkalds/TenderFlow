@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import threading
+import unicodedata
 from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -16,7 +17,7 @@ from pydantic.fields import FieldInfo
 from db.repositories.documentos import TIPOS_PLIEGO, DocumentosRepository
 from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
 from llm.client import DEFAULT_MODEL, stream_llm_response
-from llm.json_utils import extract_json_object
+from llm.json_utils import extract_json_object, extract_json_object_admitiendo_corte
 from observability.logging import get_logger
 from shared.tender_facts import (
     EvidenceRef,
@@ -353,12 +354,46 @@ Lista vacía si el pliego no enumera documentos a presentar.
 #: PDFs cuyo texto sale con las tildes cambiadas»).
 _LETRAS_CAMBIADAS = str.maketrans({"æ": "á", "ñ": "á", "ø": "é", "œ": "ú", "˝": "í"})
 
-#: La raya de una fracción no llega al texto del PDF: el numerador y el
-#: denominador salen en líneas distintas y sin nada entre ellos. En el PPT de
-#: `placsp:10000400045061:IPA 1/27` (p. 37) la fórmula del precio es
-#: «= OV * X ⏎ O», y el modelo, que la lee como fracción, la cita «OV * X / O».
-#: La barra se ignora al comparar, igual que los blancos.
-_BARRAS_DE_FRACCION = str.maketrans("", "", "/÷")
+#: Signos sin contenido que el modelo reescribe al citar, y que por eso se
+#: ignoran al comparar, igual que los blancos. Medido el 2026-11-07 sobre las
+#: 12 310 citas aceptadas de las fichas v6 a v9, comparando cuántas recorren
+#: cada signo con cuántas lo harían si el modelo lo copiara tal cual (las
+#: comillas angulares y la raya, que sí copia, salen a la par; las que faltan
+#: son citas descartadas):
+#:
+#: - Barras de fracción. La raya de una fracción no llega al texto del PDF: en
+#:   el PPT de `placsp:10000400045061:IPA 1/27` (p. 37) la fórmula del precio es
+#:   «= OV * X ⏎ O», y el modelo, que la lee como fracción, la cita «OV * X / O».
+#: - Comillas y apóstrofos tipográficos (U+2018 a U+201F): el modelo escribe
+#:   las rectas. El apóstrofo curvo recorre 101 citas esperadas y solo 8
+#:   aceptadas lo llevan: el catalán («l'empresa», «d'adjudicació») perdía
+#:   casi toda cita.
+#: - Guiones de cualquier clase: el corte de palabra a final de línea
+#:   («tractar-⏎se», «adjudi-⏎cación», que el modelo une), el guion blando
+#:   U+00AD y los guiones Unicode (U+2010 a U+2015, U+2212) que escribe «-».
+#: - Viñetas: las de la fuente Symbol salen al área de uso privado (U+F0A1,
+#:   U+F0B7…: 365 esperadas, 113 aceptadas) y el modelo las omite al citar
+#:   una lista; también «•», «▪» y compañía.
+#: - El punto volado del catalán («col·lectiu», que el modelo escribe «ll»:
+#:   52 esperadas, 29 aceptadas) y de las fórmulas (por el aspa de multiplicar).
+#:
+#: Ninguno cambia el significado de la cita: los caracteres que quedan tienen
+#: que estar todos, en orden y seguidos, en la página. Las comas, puntos y
+#: dígitos sí cuentan: quitarlos igualaría «10.000» y «100,00».
+_SIN_CONTENIDO: dict[int, str | None] = {
+    **dict.fromkeys(map(ord, "/÷\"'«»•◦▪▫●○■□►▸➢➤✓✔·-"), None),
+    # Barra de fracción, comillas tipográficas y angulares simples.
+    **dict.fromkeys([0x2044, *range(0x2018, 0x2020), 0x2039, 0x203A], None),
+    # Guiones Unicode, signo menos y guion blando.
+    **dict.fromkeys([*range(0x2010, 0x2016), 0x2212, 0x00AD], None),
+    # Formato invisible: anchos cero y BOM.
+    **dict.fromkeys([0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF], None),
+    # Área de uso privado del BMP: viñetas de fuentes Symbol/Wingdings.
+    **dict.fromkeys(range(0xE000, 0xF900), None),
+    # m² se cita «m2».
+    ord("²"): "2",
+    ord("³"): "3",
+}
 
 
 def _normalize_quote(value: str) -> str:
@@ -371,10 +406,17 @@ def _normalize_quote(value: str) -> str:
     real se descartaba por ese «( ». Quitar los blancos no deja pasar texto
     inventado: los caracteres tienen que estar todos, en orden.
 
-    Tampoco distingue las letras de :data:`_LETRAS_CAMBIADAS` ni mira las
-    barras de :data:`_BARRAS_DE_FRACCION`.
+    Tampoco distingue las letras de :data:`_LETRAS_CAMBIADAS` ni mira los
+    signos de :data:`_SIN_CONTENIDO`. NFC antes de nada: una tilde que el PDF
+    trae como letra + acento combinante es la misma letra que la del modelo.
+    ``casefold`` ya deshace las ligaduras («ﬁ» → «fi»).
     """
-    normalizado = value.casefold().translate(_LETRAS_CAMBIADAS).translate(_BARRAS_DE_FRACCION)
+    normalizado = (
+        unicodedata.normalize("NFC", value)
+        .casefold()
+        .translate(_LETRAS_CAMBIADAS)
+        .translate(_SIN_CONTENIDO)
+    )
     return "".join(normalizado.split())
 
 
@@ -592,6 +634,10 @@ def _validate_fact_evidence(
     """Descarta hechos sin una cita que exista literalmente en la página."""
     page_index = {(int(page["documento_id"]), int(page["page_number"])): page for page in pages}
     rechazados: Counter[str] = Counter()
+    # Las citas descartadas no se guardan en la ficha: sin unos ejemplos en el
+    # log, medir por qué se descartan exigía volver a llamar al modelo
+    # (2026-11-07). Recortadas: es texto del pliego, no hace falta entero.
+    ejemplos: list[str] = []
     for field_name in TenderFactSheet.model_fields:
         kept: list[object] = []
         for fact in getattr(facts, field_name):
@@ -602,6 +648,10 @@ def _validate_fact_evidence(
             ]
             if not valid:
                 rechazados[field_name] += 1
+                ejemplos.extend(
+                    f"{field_name} doc:{item.documento_id} p.{item.page_number}: {item.quote[:160]}"
+                    for item in fact.evidence[: 5 - len(ejemplos)]
+                )
                 continue
             fact.evidence = valid
             kept.append(fact)
@@ -609,7 +659,7 @@ def _validate_fact_evidence(
     # Por familia: el recuento suelto de `fact_sheet_items_rejected` no decía
     # que lo perdido en la oportunidad 18 era justo la fórmula del precio.
     if rechazados:
-        log.info("fact_sheet_items_unverifiable", familias=dict(rechazados))
+        log.info("fact_sheet_items_unverifiable", familias=dict(rechazados), ejemplos=ejemplos)
     return facts, sum(rechazados.values())
 
 
@@ -806,11 +856,18 @@ class SinPaginasError(ValueError):
     síncrona, ``failed`` con detalle en la de background). Lleva el expediente
     que se miró, que en una republicación no es el que se pidió: es donde hay
     que dejar el ``failed`` para que la siguiente lectura lo encuentre.
+
+    ``reintentable`` dice si repetirlo en minutos puede cambiar algo: solo con
+    el breaker de PLACSP abierto, cuando no se llegó a intentar ninguna
+    descarga. Un expediente sin pliegos, uno anunciado sin publicar o un
+    formato que no se lee no se curan con el backoff de la cola, sino con la
+    ingesta siguiente.
     """
 
-    def __init__(self, mensaje: str, *, licitacion_id: str) -> None:
+    def __init__(self, mensaje: str, *, licitacion_id: str, reintentable: bool = False) -> None:
         super().__init__(mensaje)
         self.licitacion_id = licitacion_id
+        self.reintentable = reintentable
 
 
 def extract_fact_sheet_on_demand(
@@ -839,7 +896,9 @@ def extract_fact_sheet_on_demand(
     pages = DocumentosRepository().list_pages_by_licitacion(licitacion_id)
     if not any(str(page.get("texto") or "").strip() for page in pages):
         raise SinPaginasError(
-            _missing_pages_detail(licitacion_id, fetched), licitacion_id=licitacion_id
+            _missing_pages_detail(licitacion_id, fetched),
+            licitacion_id=licitacion_id,
+            reintentable=bool(fetched.get("skipped")) and not fetched.get("error"),
         )
     return extract_fact_sheet(licitacion_id, model=model)
 
@@ -1039,7 +1098,13 @@ def _extraer_de_seleccion(
         keywords=_TOPIC_TERMS,
         max_tokens=_MAX_OUTPUT_TOKENS,
     )
-    facts, invalid = _parse_facts(extract_json_object(raw))
+    payload, cortado = extract_json_object_admitiendo_corte(raw)
+    facts, invalid = _parse_facts(payload)
+    if cortado:
+        # La salida llegó al tope de tokens: lo completo se queda, el último
+        # hecho a medias cuenta como inválido y la ficha sale `needs_review`.
+        invalid += 1
+        log.warning("fact_sheet_salida_cortada", licitacion_id=licitacion_id, chars=len(raw))
     # Contra todas las páginas, no solo las seleccionadas: una cita que el
     # modelo atribuye a la página contigua se corrige si el texto está allí.
     facts, unverifiable = _validate_fact_evidence(facts, pages)
@@ -1271,7 +1336,7 @@ def run_background_extraction(
     model: str,
     budget_subject: str | None = None,
     budget_org: str | None = None,
-) -> None:
+) -> bool:
     """Cuerpo del BackgroundTask de ``POST …/ficha-pliego/extract-async``.
 
     Nunca lanza: el resultado se comunica por la fila persistida (que el
@@ -1284,8 +1349,14 @@ def run_background_extraction(
     si la licitación es una republicación (:class:`SinPaginasError` dice cuál
     se miró). Guardarlo en la del anuncio TED lo dejaría en una fila que
     ``get_fact_sheet`` nunca consulta.
+
+    Returns:
+        Si un fallo, de haberlo, puede curarse repitiendo en minutos. Lo lee el
+        handler de la cola (``scheduler.worker``) para no gastar reintentos en
+        un expediente sin pliegos o en un modelo retirado.
     """
     from llm.budget import bind_budget_org, bind_budget_subject
+    from llm.providers import LLMAuthError, LLMModelUnavailableError
 
     try:
         bind_budget_subject(budget_subject)
@@ -1297,7 +1368,7 @@ def run_background_extraction(
         except ValidationError:
             # extract_fact_sheet ya persistió el estado failed con su detalle.
             log.warning("fact_sheet_background_validation_failed", licitacion_id=licitacion_id)
-            return
+            return True
         except ValueError as exc:
             destino = exc.licitacion_id if isinstance(exc, SinPaginasError) else licitacion_id
             try:
@@ -1323,14 +1394,23 @@ def run_background_extraction(
                     error=str(exc),
                     exc_info=True,
                 )
-            return
+            return exc.reintentable if isinstance(exc, SinPaginasError) else True
+        except (LLMAuthError, LLMModelUnavailableError) as exc:
+            # ``extract_fact_sheet`` ya dejó el ``failed``. La misma llamada
+            # fallaría igual hasta que alguien cambie la key o el modelo.
+            log.warning(
+                "fact_sheet_background_extract_failed",
+                licitacion_id=licitacion_id,
+                error=str(exc),
+            )
+            return False
         except Exception as exc:
             log.warning(
                 "fact_sheet_background_extract_failed",
                 licitacion_id=licitacion_id,
                 error=str(exc),
             )
-            return
+            return True
 
         try:
             from services.tech_signal import ingest_llm_technologies
@@ -1343,5 +1423,6 @@ def run_background_extraction(
                 licitacion_id=licitacion_id,
                 error=str(exc),
             )
+        return True
     finally:
         clear_extraction_running(licitacion_id)

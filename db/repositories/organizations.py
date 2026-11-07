@@ -9,7 +9,7 @@ from typing import Any, TypeAlias, TypedDict
 from psycopg import Connection
 
 from db.database import connect, connect_read, now_utc, now_utc_iso
-from db.repositories.base import rows_to_dicts
+from db.repositories.base import rows_to_dicts, typed_rows
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -30,6 +30,60 @@ _INVITATION_COLUMNS = (
 )
 
 
+class OrganizacionConRol(TypedDict):
+    """La organización con el rol de quien pregunta (``_organization_with_role``)."""
+
+    id: int
+    name: str
+    is_personal: bool
+    role: str
+    #: ``organizations.created_at`` es texto ISO, no ``timestamptz``.
+    created_at: str
+
+
+class Organizacion(TypedDict):
+    """Una fila de :meth:`OrganizationRepository.get_by_id`."""
+
+    id: int
+    name: str
+    is_personal: bool
+    created_at: str
+    updated_at: str
+
+
+class Membresia(TypedDict):
+    """Una fila de ``organization_memberships`` (fechas en texto ISO)."""
+
+    organization_id: int
+    user_id: int
+    role: str
+    status: str
+    created_at: str
+    updated_at: str
+
+
+class Miembro(Membresia):
+    """Una membresía con el nombre y el correo de la cuenta (``users``)."""
+
+    display_name: str | None
+    email: str | None
+
+
+class Invitacion(TypedDict):
+    """Las columnas de ``_INVITATION_COLUMNS`` (sin ``token_hash``)."""
+
+    id: int
+    organization_id: int
+    email: str
+    role: str
+    invited_by_user_id: int | None
+    created_at: datetime
+    expires_at: datetime
+    accepted_at: datetime | None
+    accepted_user_id: int | None
+    revoked_at: datetime | None
+
+
 class OrganizacionParaAlerta(TypedDict):
     """Una fila de :meth:`OrganizationRepository.para_alerta_por_defecto`."""
 
@@ -42,7 +96,7 @@ class OrganizacionParaAlerta(TypedDict):
 class OrganizationRepository:
     """Queries finas para el scope colaborativo."""
 
-    def ensure_personal_organization(self, user_id: int) -> dict[str, Any]:
+    def ensure_personal_organization(self, user_id: int) -> OrganizacionConRol:
         """Devuelve o crea la organización personal y su membresía owner.
 
         **Camino rápido de solo lectura.** Se llama en cada petición que no
@@ -62,8 +116,8 @@ class OrganizationRepository:
             return personal
         now = now_utc_iso()
         with connect() as conn:
-            existing = self._personal_for_user(conn, user_id)
-            if existing is None:
+            existing_id = self._personal_for_user(conn, user_id)
+            if existing_id is None:
                 user_row = conn.execute(
                     "SELECT display_name, email FROM users WHERE id = %s",
                     (user_id,),
@@ -97,7 +151,7 @@ class OrganizationRepository:
                     (organization_id, user_id, now, now),
                 )
             else:
-                organization_id = int(existing["id"])
+                organization_id = existing_id
                 conn.execute(
                     "INSERT INTO organization_memberships "
                     "(organization_id, user_id, role, status, created_at, updated_at) "
@@ -110,7 +164,7 @@ class OrganizationRepository:
             raise RuntimeError("La organización personal quedó sin membresía.")
         return result
 
-    def create_organization(self, name: str, owner_user_id: int) -> dict[str, Any]:
+    def create_organization(self, name: str, owner_user_id: int) -> OrganizacionConRol:
         """Crea una organización compartida y asigna owner atómicamente."""
         now = now_utc_iso()
         with connect() as conn:
@@ -140,7 +194,7 @@ class OrganizationRepository:
         *,
         invited_by_user_id: int | None = None,
         status: str = "active",
-    ) -> dict[str, Any]:
+    ) -> Miembro:
         """Crea o actualiza una membresía de forma idempotente."""
         now = now_utc_iso()
         with connect() as conn:
@@ -172,10 +226,10 @@ class OrganizationRepository:
                 "WHERE m.organization_id = %s AND m.user_id = %s",
                 (organization_id, user_id),
             )
-            results = rows_to_dicts(row)
+            results = typed_rows(Miembro, rows_to_dicts(row))
         return results[0]
 
-    def get_active_membership(self, organization_id: int, user_id: int) -> dict[str, Any] | None:
+    def get_active_membership(self, organization_id: int, user_id: int) -> Membresia | None:
         with connect_read() as conn:
             cur = conn.execute(
                 "SELECT organization_id, user_id, role, status, created_at, updated_at "
@@ -183,7 +237,7 @@ class OrganizationRepository:
                 "WHERE organization_id = %s AND user_id = %s AND status = 'active'",
                 (organization_id, user_id),
             )
-            rows = rows_to_dicts(cur)
+            rows = typed_rows(Membresia, rows_to_dicts(cur))
         return rows[0] if rows else None
 
     def get_membership_role(self, organization_id: int, user_id: int) -> str | None:
@@ -196,7 +250,7 @@ class OrganizationRepository:
             ).fetchone()
         return str(fila[0]) if fila else None
 
-    def personal_organization_if_ready(self, user_id: int) -> dict[str, Any] | None:
+    def personal_organization_if_ready(self, user_id: int) -> OrganizacionConRol | None:
         """La organización personal con el rol del usuario, si ya está lista.
 
         "Lista" es que exista y que el usuario tenga en ella una membresía
@@ -214,10 +268,10 @@ class OrganizationRepository:
                 "AND m.status = 'active'",
                 (user_id, user_id),
             )
-            rows = rows_to_dicts(cur)
+            rows = typed_rows(OrganizacionConRol, rows_to_dicts(cur))
         return rows[0] if rows else None
 
-    def list_for_user(self, user_id: int) -> list[dict[str, Any]]:
+    def list_for_user(self, user_id: int) -> list[OrganizacionConRol]:
         with connect_read() as conn:
             cur = conn.execute(
                 "SELECT o.id, o.name, o.is_personal, m.role, o.created_at "
@@ -227,9 +281,9 @@ class OrganizationRepository:
                 "ORDER BY o.is_personal DESC, o.name, o.id",
                 (user_id,),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(OrganizacionConRol, rows_to_dicts(cur))
 
-    def list_for_user_con_personal(self, user_id: int) -> tuple[list[dict[str, Any]], bool]:
+    def list_for_user_con_personal(self, user_id: int) -> tuple[list[OrganizacionConRol], bool]:
         """:meth:`list_for_user` y, en la misma consulta, si su personal ya está lista.
 
         El segundo valor es ``True`` si entre las filas está la organización
@@ -253,13 +307,13 @@ class OrganizationRepository:
         for fila in filas:
             if fila.pop("es_la_personal", False):
                 tiene_personal = True
-        return filas, tiene_personal
+        return typed_rows(OrganizacionConRol, filas), tiene_personal
 
-    def get_for_user(self, organization_id: int, user_id: int) -> dict[str, Any] | None:
+    def get_for_user(self, organization_id: int, user_id: int) -> OrganizacionConRol | None:
         with connect_read() as conn:
             return self._organization_with_role(conn, organization_id, user_id)
 
-    def get_by_id(self, organization_id: int) -> dict[str, Any] | None:
+    def get_by_id(self, organization_id: int) -> Organizacion | None:
         """La organización, sin pasar por la membresía de nadie.
 
         Las lecturas existentes (`get_for_user`, `list_for_user`) resuelven
@@ -268,16 +322,15 @@ class OrganizationRepository:
         quien pregunte: sólo hace falta el nombre para el asunto del correo.
         """
         with connect_read() as conn:
-            filas = rows_to_dicts(
-                conn.execute(
-                    "SELECT id, name, is_personal, created_at, updated_at "
-                    "FROM organizations WHERE id = %s",
-                    (organization_id,),
-                )
+            cur = conn.execute(
+                "SELECT id, name, is_personal, created_at, updated_at "
+                "FROM organizations WHERE id = %s",
+                (organization_id,),
             )
+            filas = typed_rows(Organizacion, rows_to_dicts(cur))
         return filas[0] if filas else None
 
-    def list_members(self, organization_id: int) -> list[dict[str, Any]]:
+    def list_members(self, organization_id: int) -> list[Miembro]:
         with connect_read() as conn:
             cur = conn.execute(
                 "SELECT m.organization_id, m.user_id, m.role, m.status, "
@@ -287,7 +340,7 @@ class OrganizationRepository:
                 "WHERE m.organization_id = %s ORDER BY m.role, m.user_id",
                 (organization_id,),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(Miembro, rows_to_dicts(cur))
 
     # ── Invitaciones a correos sin cuenta (v104) ───────────────────────────
 
@@ -300,7 +353,7 @@ class OrganizationRepository:
         token_hash: str,
         invited_by_user_id: int,
         expires_at: datetime,
-    ) -> dict[str, Any]:
+    ) -> Invitacion:
         """Crea la invitación, reemplazando la pendiente del mismo correo.
 
         Reinvitar antes de que caduque la anterior es lo que hace cualquiera
@@ -333,12 +386,12 @@ class OrganizationRepository:
                     expires_at,
                 ),
             )
-            rows = rows_to_dicts(cur)
+            rows = typed_rows(Invitacion, rows_to_dicts(cur))
         return rows[0]
 
     def list_invitations(
         self, organization_id: int, *, only_pending: bool = True
-    ) -> list[dict[str, Any]]:
+    ) -> list[Invitacion]:
         """Invitaciones de la organización, las vivas primero."""
         sql = (
             f"SELECT {_INVITATION_COLUMNS} FROM organization_invitations WHERE organization_id = %s"
@@ -347,34 +400,32 @@ class OrganizationRepository:
             sql += " AND accepted_at IS NULL AND revoked_at IS NULL"
         sql += " ORDER BY created_at DESC, id DESC"
         with connect_read() as conn:
-            return rows_to_dicts(conn.execute(sql, (organization_id,)))
+            return typed_rows(Invitacion, rows_to_dicts(conn.execute(sql, (organization_id,))))
 
-    def get_invitation(self, organization_id: int, invitation_id: int) -> dict[str, Any] | None:
+    def get_invitation(self, organization_id: int, invitation_id: int) -> Invitacion | None:
         with connect_read() as conn:
-            rows = rows_to_dicts(
-                conn.execute(
-                    f"SELECT {_INVITATION_COLUMNS} FROM organization_invitations "
-                    "WHERE id = %s AND organization_id = %s",
-                    (invitation_id, organization_id),
-                )
+            cur = conn.execute(
+                f"SELECT {_INVITATION_COLUMNS} FROM organization_invitations "
+                "WHERE id = %s AND organization_id = %s",
+                (invitation_id, organization_id),
             )
+            rows = typed_rows(Invitacion, rows_to_dicts(cur))
         return rows[0] if rows else None
 
-    def get_pending_invitation_by_token(self, token_hash: str) -> dict[str, Any] | None:
+    def get_pending_invitation_by_token(self, token_hash: str) -> Invitacion | None:
         """Invitación viva y sin caducar que corresponde a ese token.
 
         Una fila aceptada, revocada o caducada devuelve ``None``: el «un solo
         uso» del token es esta condición, no la firma del token.
         """
         with connect_read() as conn:
-            rows = rows_to_dicts(
-                conn.execute(
-                    f"SELECT {_INVITATION_COLUMNS} FROM organization_invitations "
-                    "WHERE token_hash = %s AND accepted_at IS NULL "
-                    "AND revoked_at IS NULL AND expires_at > %s",
-                    (token_hash, now_utc()),
-                )
+            cur = conn.execute(
+                f"SELECT {_INVITATION_COLUMNS} FROM organization_invitations "
+                "WHERE token_hash = %s AND accepted_at IS NULL "
+                "AND revoked_at IS NULL AND expires_at > %s",
+                (token_hash, now_utc()),
             )
+            rows = typed_rows(Invitacion, rows_to_dicts(cur))
         return rows[0] if rows else None
 
     def revoke_invitation(self, organization_id: int, invitation_id: int, actor_id: int) -> bool:
@@ -388,7 +439,7 @@ class OrganizationRepository:
             )
             return int(getattr(cur, "rowcount", 0) or 0) > 0
 
-    def accept_invitations_for_email(self, email: str, user_id: int) -> list[dict[str, Any]]:
+    def accept_invitations_for_email(self, email: str, user_id: int) -> list[Invitacion]:
         """Convierte en membresías activas las invitaciones vivas de ese correo.
 
         Es el camino que se dispara al registrarse o al entrar por OAuth: la
@@ -402,16 +453,15 @@ class OrganizationRepository:
         """
         now = now_utc()
         with connect() as conn:
-            pendientes = rows_to_dicts(
-                conn.execute(
-                    f"SELECT {_INVITATION_COLUMNS} FROM organization_invitations "
-                    "WHERE lower(email) = lower(%s) AND accepted_at IS NULL "
-                    "AND revoked_at IS NULL AND expires_at > %s "
-                    "ORDER BY id FOR UPDATE",
-                    (email, now),
-                )
+            cur = conn.execute(
+                f"SELECT {_INVITATION_COLUMNS} FROM organization_invitations "
+                "WHERE lower(email) = lower(%s) AND accepted_at IS NULL "
+                "AND revoked_at IS NULL AND expires_at > %s "
+                "ORDER BY id FOR UPDATE",
+                (email, now),
             )
-            aceptadas: list[dict[str, Any]] = []
+            pendientes = typed_rows(Invitacion, rows_to_dicts(cur))
+            aceptadas: list[Invitacion] = []
             for invitacion in pendientes:
                 conn.execute(
                     "INSERT INTO organization_memberships "
@@ -436,7 +486,7 @@ class OrganizationRepository:
                     f"RETURNING {_INVITATION_COLUMNS}",
                     (now, user_id, invitacion["id"]),
                 )
-                aceptadas.extend(rows_to_dicts(cur))
+                aceptadas.extend(typed_rows(Invitacion, rows_to_dicts(cur)))
         return aceptadas
 
     def anonymize_invitations_for_user(self, user_id: int) -> None:
@@ -601,7 +651,7 @@ class OrganizationRepository:
                 changed += max(0, int(getattr(cur, "rowcount", 0) or 0))
         return changed
 
-    def export_memberships_for_user(self, user_id: int) -> list[dict[str, Any]]:
+    def export_memberships_for_user(self, user_id: int) -> list[dict[str, object]]:
         """Vínculos de esta persona con organizaciones, incluidas las invitaciones.
 
         La invitación pendiente a su correo es un dato personal suyo que el
@@ -676,19 +726,20 @@ class OrganizationRepository:
             return [int(row[0]) for row in cur.fetchall()]
 
     @staticmethod
-    def _personal_for_user(conn: Any, user_id: int) -> dict[str, Any] | None:
+    def _personal_for_user(conn: _Conexion, user_id: int) -> int | None:
+        """Id de la organización personal de ``user_id``, si existe."""
         cur = conn.execute(
             "SELECT id, name, is_personal, created_at "
             "FROM organizations WHERE personal_owner_user_id = %s",
             (user_id,),
         )
         rows = rows_to_dicts(cur)
-        return rows[0] if rows else None
+        return int(rows[0]["id"]) if rows else None
 
     @staticmethod
     def _organization_with_role(
-        conn: Any, organization_id: int, user_id: int
-    ) -> dict[str, Any] | None:
+        conn: _Conexion, organization_id: int, user_id: int
+    ) -> OrganizacionConRol | None:
         cur = conn.execute(
             "SELECT o.id, o.name, o.is_personal, m.role, o.created_at "
             "FROM organizations o JOIN organization_memberships m "
@@ -696,7 +747,7 @@ class OrganizationRepository:
             "WHERE o.id = %s AND m.user_id = %s AND m.status = 'active'",
             (organization_id, user_id),
         )
-        rows = rows_to_dicts(cur)
+        rows = typed_rows(OrganizacionConRol, rows_to_dicts(cur))
         return rows[0] if rows else None
 
     # ── Ciclo de vida de la organización (C2.2, ADR-030 §D) ─────────────────

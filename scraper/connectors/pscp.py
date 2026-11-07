@@ -278,9 +278,17 @@ def _importes(record: dict[str, Any]) -> dict[str, Any]:
       estimado sin IVA) pero **no** es presupuesto: va a ``valor_estimado`` y
       ``importe_base_sin_iva`` queda vacío, para que bajas y pricing no lo
       comparen contra lo adjudicado.
+    - Sin presupuesto ni valor estimado, el importe adjudicado:
+      ``import_adjudicacio_sense`` → ``sin_iva`` e ``import_adjudicacio_amb_iva``
+      → ``con_iva``, sin tocar ``importe_base_sin_iva`` (lo adjudicado no es un
+      presupuesto contra el que medir una baja). Es el caso de las
+      publicaciones agregadas de contratos menores (``AGR``), que no traen otro
+      importe: el 2026-11-07 eran 26.265 de las 27.041 filas PSCP en
+      ``desconocido``, y en el dataset solo 4 de ~2 millones de filas traen el
+      ``_amb`` sin el ``_sense``.
     - Los candidatos históricos sin sufijo (``pressupost_licitacio``,
-      ``import_licitacio``) y el importe adjudicado usado como último recurso →
-      ``desconocido``: su base no se puede afirmar.
+      ``import_licitacio``, ``import_adjudicacio``) → ``desconocido``: su base
+      no se puede afirmar. El dataset vivo ya no los tiene.
     """
     sense = _numero_de_campo(record, "pressupost_licitacio_sense")
     amb = _numero_de_campo(record, "pressupost_licitacio_amb")
@@ -296,6 +304,12 @@ def _importes(record: dict[str, Any]) -> dict[str, Any]:
     estimado = _numero_de_campo(record, "valor_estimat_contracte")
     if estimado is not None:
         return {"importe": estimado, "valor_estimado": estimado, "importe_tipo": "sin_iva"}
+    adjudicado_sense = _numero_de_campo(record, "import_adjudicacio_sense")
+    if adjudicado_sense is not None:
+        return {"importe": adjudicado_sense, "importe_tipo": "sin_iva"}
+    adjudicado_amb = _numero_de_campo(record, "import_adjudicacio_amb_iva")
+    if adjudicado_amb is not None:
+        return {"importe": adjudicado_amb, "importe_tipo": "con_iva"}
     importe = _number(record, "importe") or _number(record, "importe_adjudicacion")
     if importe is None:
         return {"importe": None, "importe_tipo": None}

@@ -16,12 +16,9 @@ Fuente única de la política. De este módulo salen tres cosas, y solo estas:
   de una migración obliga a clasificarla aquí, y toda columna con nombre de
   secreto obliga a excluirla o a dejar escrito por qué no lo es.
 
-Sobre la regla «todo el SQL vive en ``db/``» (AGENTS.md §3): este módulo solo
-**genera cadenas** SQL para un script de administración y para un test; nunca
-las ejecuta, igual que ``db/sql_fragments.py`` solo compone fragmentos.
-Quien las ejecuta es un humano con el rol dueño (el script) o el test, contra
-un rol efímero. Por eso los identificadores se validan aquí con una lista
-blanca estricta (``^[a-z_][a-z0-9_]*$``) antes de quedar entre comillas dobles.
+El SQL lo escribe ``db/mcp_rol.py`` (todo el SQL vive en ``db/``, AGENTS.md
+§3.10); este módulo solo le pasa qué tablas y columnas son visibles. Ese módulo
+valida cada identificador contra una lista blanca estricta antes de usarlo.
 
 Fallo cerrado: una tabla que no figura aquí no recibe ``GRANT`` ni política, y
 el rol no hereda privilegios por defecto (no hay ``ALTER DEFAULT PRIVILEGES``).
@@ -29,11 +26,12 @@ el rol no hereda privilegios por defecto (no hay ``ALTER DEFAULT PRIVILEGES``).
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
+
+from db import mcp_rol
 
 __all__ = [
     "CATALOGO",
@@ -50,8 +48,6 @@ __all__ = [
 
 ROL_MCP = "tenderflow_mcp"
 POLITICA_LECTURA = "tenderflow_mcp_read"
-
-_IDENTIFICADOR = re.compile(r"[a-z_][a-z0-9_]*")
 
 
 class Visibilidad(StrEnum):
@@ -574,100 +570,18 @@ def entrada_visible(tabla: str) -> EntradaCatalogo | None:
     return entrada
 
 
-def _ident(nombre: str) -> str:
-    """Identificador SQL entre comillas dobles tras validarlo contra la lista blanca."""
-    if not _IDENTIFICADOR.fullmatch(nombre):  # no `match` + `$`: `$` admite un `\n` final
-        raise ValueError(f"Identificador SQL no válido: {nombre!r}")
-    return f'"{nombre}"'
-
-
 def sentencias_rol(rol: str = ROL_MCP) -> list[str]:
-    """``ALTER ROLE`` con los límites del rol de solo lectura (sin ``;`` final).
-
-    No lleva ``NOSUPERUSER``: desde Postgres 16 tocar ese atributo, aunque sea
-    para quitarlo, exige ser superusuario, y el ``postgres`` de Supabase no lo
-    es (el script abortaba con 42501 en producción). Un rol creado por un no
-    superusuario nace ``NOSUPERUSER``; la primera sentencia lo comprueba y
-    aborta si no fuera así.
-
-    ``extra_float_digits = 3``: Supabase fija ``0`` en su fichero de
-    configuración, y con ``0`` Postgres envía los ``real`` con 6 cifras
-    significativas (``11782155`` llega como ``1.17822e+07``). El SQL libre
-    devolvería importes adjudicados redondeados a la centena de miles.
-    """
-    r = _ident(rol)
-    return [
-        "DO $$ BEGIN IF (SELECT rolsuper FROM pg_roles WHERE rolname = "  # noqa: S608 - rol validado por _ident; nunca se ejecuta aquí
-        f"'{rol}') THEN RAISE EXCEPTION '{rol} no puede ser superusuario'; "
-        "END IF; END $$",
-        f"ALTER ROLE {r} NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION "
-        "NOBYPASSRLS CONNECTION LIMIT 5",
-        f"ALTER ROLE {r} SET default_transaction_read_only = on",
-        f"ALTER ROLE {r} SET statement_timeout = '15s'",
-        f"ALTER ROLE {r} SET idle_in_transaction_session_timeout = '30s'",
-        f"ALTER ROLE {r} SET work_mem = '32MB'",
-        f"ALTER ROLE {r} SET search_path = pg_catalog, public",
-        f"ALTER ROLE {r} SET extra_float_digits = 3",
-    ]
+    """``ALTER ROLE`` con los límites del rol de solo lectura; ver :func:`db.mcp_rol.sentencias_rol`."""
+    return mcp_rol.sentencias_rol(rol)
 
 
 def sentencias_grants(rol: str = ROL_MCP, schema: str = "public") -> list[str]:
-    """``GRANT`` de solo lectura por tabla visible y la política RLS, sin ``;`` final.
-
-    Idempotente: parte de un ``REVOKE`` completo, de modo que volver a ejecutarlo
-    tras ocultar una tabla o una columna retira lo que ya no corresponde.
-
-    La primera sentencia aborta con un error claro si falta alguna tabla visible
-    (típico: ejecutar el script antes de ``alembic upgrade head``), antes de
-    revocar nada: sin ella, un ``GRANT`` fallido deja pasar el resto y el único
-    ``DO`` de políticas se desharía entero, dejando al rol sin filas y sin error.
-    """
-    r = _ident(rol)
-    s = _ident(schema)
-    visibles = tablas_visibles()
-    nombres = ", ".join(f"'{e.tabla}'" for e in visibles)
-    sentencias = [
-        "DO $$\n"  # noqa: S608 - identificadores validados por _ident; nunca se ejecuta aquí
-        "DECLARE faltan text;\n"
-        "BEGIN\n"
-        "    SELECT string_agg(t, ', ' ORDER BY t) INTO faltan\n"
-        f"    FROM unnest(ARRAY[{nombres}]) AS t\n"
-        f"    WHERE to_regclass(format('%I.%I', '{schema}', t)) IS NULL;\n"
-        "    IF faltan IS NOT NULL THEN\n"
-        "        RAISE EXCEPTION\n"
-        f"            'tenderflow_mcp: faltan tablas visibles en {schema}: %. '\n"
-        "            'Aplica antes `alembic upgrade head`.', faltan;\n"
-        "    END IF;\n"
-        "END $$",
-        f"REVOKE ALL ON ALL TABLES IN SCHEMA {s} FROM {r}",
-        f"REVOKE CREATE ON SCHEMA {s} FROM {r}",
-        f"GRANT USAGE ON SCHEMA {s} TO {r}",
+    """``GRANT`` y política RLS de las tablas visibles; ver :func:`db.mcp_rol.sentencias_grants`."""
+    tablas = [
+        (
+            e.tabla,
+            e.columnas_permitidas if e.visibilidad is Visibilidad.COLUMNAS_EXCLUIDAS else None,
+        )
+        for e in tablas_visibles()
     ]
-    for e in visibles:
-        t = _ident(e.tabla)
-        if e.visibilidad is Visibilidad.COLUMNAS_EXCLUIDAS:
-            columnas = ", ".join(_ident(c) for c in e.columnas_permitidas)
-            sentencias.append(f"GRANT SELECT ({columnas}) ON {s}.{t} TO {r}")
-        else:
-            sentencias.append(f"GRANT SELECT ON {s}.{t} TO {r}")
-    # Las tablas tienen RLS activo (v52): sin política el rol vería cero filas.
-    # ``IF NOT EXISTS`` porque ``CREATE POLICY`` no admite ``OR REPLACE``.
-    sentencias.append(
-        "DO $$\n"  # noqa: S608 - identificadores validados por _ident; nunca se ejecuta aquí
-        "DECLARE t text;\n"
-        "BEGIN\n"
-        f"    FOREACH t IN ARRAY ARRAY[{nombres}] LOOP\n"
-        "        IF NOT EXISTS (\n"
-        "            SELECT 1 FROM pg_policies\n"
-        f"            WHERE schemaname = '{schema}' AND tablename = t\n"
-        f"              AND policyname = '{POLITICA_LECTURA}' AND '{rol}' = ANY (roles)\n"
-        "        ) THEN\n"
-        "            EXECUTE format(\n"
-        f"                'CREATE POLICY {POLITICA_LECTURA} ON %I.%I FOR SELECT TO %I USING (true)',\n"
-        f"                '{schema}', t, '{rol}'\n"
-        "            );\n"
-        "        END IF;\n"
-        "    END LOOP;\n"
-        "END $$"
-    )
-    return sentencias
+    return mcp_rol.sentencias_grants(rol, schema, tablas, POLITICA_LECTURA)

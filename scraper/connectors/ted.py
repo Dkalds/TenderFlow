@@ -122,6 +122,8 @@ _FIELDS = [
     "document-url-lot",
     "document-restricted-url-lot",
     "estimated-value-proc",
+    # BT-27 del lote: hay avisos que solo lo dan ahí. Ver `parse`.
+    "estimated-value-lot",
     "result-value-notice",
     "winner-name",
     "place-of-performance",
@@ -288,6 +290,19 @@ def _to_float(value: Any) -> float | None:
         return float(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _suma(value: object) -> float | None:
+    """Suma de un campo por lote (la API lo sirve como lista), o ``None``.
+
+    Si algún valor no se lee, ``None``: una suma parcial daría por bueno un
+    importe menor que el real.
+    """
+    valores = value if isinstance(value, list) else [value]
+    numeros = [_to_float(v) for v in valores if v is not None]
+    if not numeros or any(v is None for v in numeros):
+        return None
+    return sum(v for v in numeros if v is not None)
 
 
 def _nuts_provincial(value: Any) -> str | None:
@@ -471,21 +486,24 @@ class TedConnector:
         # lleva a los adjuntos. No se pierde nada al desplazarlo — el PDF se
         # reconstruye desde el id (ted:{pub} → ted.europa.eu/es/notice/{pub}/pdf).
         url = _documents_url(n) or anuncio_url
-        # La base del importe (ADR-032, D21). En eForms el valor estimado del
-        # procedimiento (BT-27) se publica **sin IVA** por definición, así que
-        # es `sin_iva` — pero es valor estimado, no presupuesto base: va a
-        # `valor_estimado` y `importe_base_sin_iva` queda vacío, para que bajas
-        # y pricing no lo comparen contra lo adjudicado. Cuando falta y el
-        # importe cae al valor del resultado (lo adjudicado), el número no es
-        # un presupuesto de nada: `desconocido`.
-        valor_estimado = _to_float(n.get("estimated-value-proc"))
+        # La base del importe (ADR-032, D21). En eForms el valor estimado
+        # (BT-27) se publica **sin IVA** por definición, así que es `sin_iva` —
+        # pero es valor estimado, no presupuesto base: va a `valor_estimado` y
+        # `importe_base_sin_iva` queda vacío, para que bajas y pricing no lo
+        # comparen contra lo adjudicado. Hay avisos que solo lo dan por lote
+        # (99 de 1.494 avisos ESP/TI desde el 2026-07, medido el 2026-11-07):
+        # el del procedimiento es la suma de los lotes.
+        #
+        # Sin valor estimado, el importe cae al valor de los contratos
+        # adjudicados (BT-161), también sin IVA: de 1.117 avisos TED con su
+        # duplicado PLACSP adjudicado, 1.021 coincidían con el adjudicado sin
+        # IVA de PLACSP y 1 con él más el 21 %. Va como `sin_iva` y tampoco a
+        # `importe_base_sin_iva`: lo adjudicado no es un presupuesto.
+        valor_estimado = _to_float(n.get("estimated-value-proc")) or _suma(
+            n.get("estimated-value-lot")
+        )
         importe = valor_estimado or _to_float(n.get("result-value-notice"))
-        if importe is None:
-            importe_tipo: str | None = None
-        elif valor_estimado:
-            importe_tipo = "sin_iva"
-        else:
-            importe_tipo = "desconocido"
+        importe_tipo = "sin_iva" if importe is not None else None
         naturalezas = n.get("contract-nature") or []
         tipo = str(naturalezas[0]) if isinstance(naturalezas, list) and naturalezas else None
 

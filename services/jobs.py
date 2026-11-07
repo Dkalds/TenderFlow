@@ -219,6 +219,18 @@ class JobDesconocido(ValueError):
     """El tipo pedido no está declarado en :data:`TIPOS`."""
 
 
+class JobSinReintento(RuntimeError):
+    """El handler sabe que repetir el job no cambiaría el resultado.
+
+    :func:`procesar_uno` la cierra como ``failed`` en el primer intento en vez
+    de reprogramarla con backoff. Es para causas que no se curan en minutos: un
+    expediente sin pliegos, un modelo que el proveedor ya no sirve. Reintentarlas
+    gastaba dos turnos más del consumidor —y en el caso del modelo, dos llamadas
+    al proveedor— para llegar al mismo error (24 ``ficha_pliego`` fallidas
+    hasta el 2026-11-03, 18 de ellas por causas así, todas con tres intentos).
+    """
+
+
 class CuotaDeJobsExcedida(RuntimeError):
     """La organización ya tiene demasiados jobs de ese tipo en la cola.
 
@@ -408,18 +420,42 @@ def _medir_cierre(cierre: CierreJob | None, estado: str) -> dict[str, object]:
     return campos
 
 
-def ack(job_id: int, resultado: dict[str, Any] | None = None) -> None:
-    """Cierra el job como ``done`` con su resultado."""
+def _cierre_perdido(job_id: int, worker_id: str | None) -> bool:
+    """Registra que un cierre con dueño no se aplicó: el lock ya no era suyo."""
+    if worker_id is None:
+        return False
+    log.warning("job_cierre_sin_lock", job_id=job_id, worker_id=worker_id)
+    return True
+
+
+def ack(
+    job_id: int, resultado: dict[str, Any] | None = None, *, worker_id: str | None = None
+) -> None:
+    """Cierra el job como ``done`` con su resultado.
+
+    Con ``worker_id`` el cierre solo se aplica si el job sigue reclamado por
+    ese consumidor (ver la valla en ``db/repositories/jobs.py``).
+    """
     cierre = _repo.marcar_terminado(
         job_id,
         resultado_json=(
             None if resultado is None else json.dumps(resultado, ensure_ascii=False, default=str)
         ),
+        locked_by=worker_id,
     )
+    if cierre is None and _cierre_perdido(job_id, worker_id):
+        return
     log.info("job_terminado", job_id=job_id, **_medir_cierre(cierre, "done"))
 
 
-def fail(job_id: int, error: str, *, intentos: int, terminal: bool = False) -> JobEstado:
+def fail(
+    job_id: int,
+    error: str,
+    *,
+    intentos: int,
+    terminal: bool = False,
+    worker_id: str | None = None,
+) -> JobEstado:
     """Registra el fallo: reintento con backoff, o ``failed`` definitivo.
 
     ``intentos`` es el contador que ya lleva la fila (se incrementó al
@@ -433,11 +469,17 @@ def fail(job_id: int, error: str, *, intentos: int, terminal: bool = False) -> J
     pasada siguiente, cuatro horas después, que es el comportamiento que el
     cierre ya tenía.
 
+    ``worker_id`` es la misma valla que en :func:`ack`: si el lock ya no es de
+    quien falla, la fila no se toca y el estado devuelto es el que tenía que
+    quedar, no el que quedó.
+
     Returns:
         El estado en el que queda el job: ``"pending"`` o ``"failed"``.
     """
     if terminal or intentos >= jobs_max_intentos():
-        cierre = _repo.marcar_fallido(job_id, error_detail=error)
+        cierre = _repo.marcar_fallido(job_id, error_detail=error, locked_by=worker_id)
+        if cierre is None and _cierre_perdido(job_id, worker_id):
+            return "failed"
         log.warning(
             "job_fallido_definitivo",
             job_id=job_id,
@@ -449,7 +491,9 @@ def fail(job_id: int, error: str, *, intentos: int, terminal: bool = False) -> J
 
     espera = jobs_backoff_base_segundos() * (2 ** max(0, intentos - 1))
     proximo = datetime.now(UTC) + timedelta(seconds=espera)
-    cierre = _repo.reprogramar(job_id, error_detail=error, run_after=proximo)
+    cierre = _repo.reprogramar(job_id, error_detail=error, run_after=proximo, locked_by=worker_id)
+    if cierre is None and _cierre_perdido(job_id, worker_id):
+        return "pending"
     log.info(
         "job_reprogramado",
         job_id=job_id,
@@ -569,10 +613,16 @@ def procesar_uno(worker_id: str, *, tipos: tuple[str, ...] | None = None) -> Job
         with latido(job, worker_id):
             resultado = ejecutar(job)
     except Exception as exc:
-        fail(job.id, f"{type(exc).__name__}: {exc}", intentos=job.intentos)
+        fail(
+            job.id,
+            f"{type(exc).__name__}: {exc}",
+            intentos=job.intentos,
+            terminal=isinstance(exc, JobSinReintento),
+            worker_id=worker_id,
+        )
         log.warning("job_handler_fallo", job_id=job.id, tipo=job.tipo, error=str(exc))
         return job
-    ack(job.id, resultado)
+    ack(job.id, resultado, worker_id=worker_id)
     return job
 
 
@@ -594,6 +644,7 @@ __all__ = [
     "Job",
     "JobDesconocido",
     "JobEstado",
+    "JobSinReintento",
     "TipoJob",
     "ack",
     "claim",

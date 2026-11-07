@@ -14,6 +14,9 @@ Comprueba:
        es una fuente fresca.
     7. Ningún error de JavaScript del navegador (`client_errors`) sigue
        ocurriendo después de haberse repetido.
+    8. La cola de trabajo a demanda (`jobs`, ADR-028) se mueve: nada
+       reclamable desde hace más de media hora ni con el lock caducado sin
+       barrer.
 
 Salida:
   exit 0 → healthy
@@ -413,6 +416,60 @@ def _incorporar_errores_de_frontend(
     checks.append({"name": "client_errors_sin_actividad", "ok": not activos})
 
 
+#: Minutos que un job a demanda puede esperar reclamable antes de contar como
+#: atascado. Con el consumidor vivo la espera es de segundos (sondea cada 5 s)
+#: o de lo que tarde la cola por delante; media hora sin moverse es un
+#: consumidor parado o una cola que ya no da abasto.
+JOBS_ATASCO_MINUTOS = 30
+
+
+def _incorporar_cola_jobs(
+    checks: list[dict[str, object]],
+    warnings: list[str],
+    info: dict[str, object],
+) -> None:
+    """Avisa de la cola a demanda (ADR-028) que nadie está moviendo.
+
+    Del 14 de septiembre al 1 de octubre de 2026 los ``ficha_pliego`` se
+    encolaron sin consumidor —el worker nunca arrancó— y nada avisó: la pestaña
+    Pliego decía «Extrayendo…» para siempre (ADR-028 §G). Este bloque es el
+    aviso que faltaba: jobs reclamables desde hace más de
+    :data:`JOBS_ATASCO_MINUTOS` o ``running`` con el lock caducado sin barrer.
+
+    Solo los tipos a demanda. Los pasos del cierre los consume el job de
+    Actions dentro de su propia pasada: si muere a mitad, sus restos esperan a
+    la pasada siguiente, que los descarta y lo avisa
+    (``scheduler.pipeline_cierre``). Los ``failed`` no entran: ya los cuentan
+    ``jobs_terminados_total`` y la vista Ejecuciones de Ops.
+    """
+    from config.settings import jobs_lock_ttl_segundos
+    from db.repositories.jobs import JobsRepository
+    from services.jobs import TIPOS_A_DEMANDA
+
+    try:
+        atascados = JobsRepository().atascados(
+            tipos=tuple(TIPOS_A_DEMANDA),
+            espera_segundos=JOBS_ATASCO_MINUTOS * 60,
+            ttl_segundos=jobs_lock_ttl_segundos(),
+        )
+    except Exception as exc:
+        info["jobs_atascados_error"] = str(exc)[:200]
+        warnings.append("jobs_atascados_no_medido")
+        checks.append({"name": "jobs_cola_a_demanda_al_dia", "ok": True})
+        return
+
+    total = sum(f["pendientes"] + f["sin_barrer"] for f in atascados)
+    if total:
+        warnings.append(f"jobs_atascados:{total}")
+        # Plano y no dict: el correo solo lleva los valores planos de `info`.
+        info["jobs_atascados"] = ", ".join(
+            f"{f['tipo']}: {f['pendientes']} sin reclamar, {f['sin_barrer']} con lock "
+            f"caducado, el más antiguo hace {f['mas_antiguo_s'] // 60} min"
+            for f in atascados
+        )
+    checks.append({"name": "jobs_cola_a_demanda_al_dia", "ok": not total})
+
+
 def _incorporar_infraestructura(
     c: _Conexion,
     checks: list[dict[str, object]],
@@ -752,6 +809,7 @@ def run_check(
         _incorporar_errores_de_frontend(
             checks, warnings, info, horas=24, min_ocurrencias=client_errors_min_ocurrencias
         )
+        _incorporar_cola_jobs(checks, warnings, info)
         _incorporar_locks(c, info)
         _incorporar_ops_events(c, checks, warnings, info, hay_corpus=hay_corpus)
 
