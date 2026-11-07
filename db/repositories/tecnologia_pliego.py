@@ -27,7 +27,7 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any, NamedTuple, TypedDict
 
 from db.database import connect, connect_read, now_utc_iso
-from db.repositories.base import rows_to_dicts
+from db.repositories.base import rows_to_dicts, typed_rows
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -96,6 +96,36 @@ class RespuestaLlmVigente(TypedDict):
 
     es_ti: bool | None
     familias: list[str]
+
+
+class SenalPliego(TypedDict):
+    """Una fila de :meth:`TecnologiaPliegoRepository.list_for_licitacion`.
+
+    Las fechas son texto ISO y ``matched_terms``/``evidence_json`` JSON sin
+    parsear, como están en la tabla.
+    """
+
+    tecnologia: str
+    method: str
+    score: float
+    matched_terms: str | None
+    evidence_json: str | None
+    signal_version: str
+    computed_at: str
+    merged_at: str | None
+
+
+class SenalParaMerge(TypedDict):
+    """Una fila de :meth:`TecnologiaPliegoRepository.list_signals_for_merge`."""
+
+    licitacion_id: str
+    tecnologia: str
+    method: str
+    score: float
+    matched_terms: str | None
+    evidence_json: str | None
+    signal_version: str
+    merged_at: str | None
 
 
 class MergeOutcome(NamedTuple):
@@ -528,7 +558,7 @@ class TecnologiaPliegoRepository:
 
     def list_signals_for_merge(
         self, *, min_score: float, licitacion_ids: list[str] | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> list[SenalParaMerge]:
         """Filas de señal candidatas al merge (``score >= min_score``).
 
         Con ``licitacion_ids``, cubre exactamente esas licitaciones (tras
@@ -592,7 +622,7 @@ class TecnologiaPliegoRepository:
                 "ORDER BY p.licitacion_id",
                 params,
             )
-            return rows_to_dicts(cur)
+            return typed_rows(SenalParaMerge, rows_to_dicts(cur))
 
     def stamp_merged(self, rows: list[tuple[str, str, str]], *, merged_at: str) -> None:
         """Marca ``merged_at`` la primera vez. Sirve para dos cosas: dedupe
@@ -611,7 +641,7 @@ class TecnologiaPliegoRepository:
                 [(merged_at, lic, tech, method) for (lic, tech, method) in rows],
             )
 
-    def list_for_licitacion(self, licitacion_id: str) -> list[dict[str, Any]]:
+    def list_for_licitacion(self, licitacion_id: str) -> list[SenalPliego]:
         """Señales (todas, cualquier score) de una licitación para el
         endpoint de detalle -- excluye los sentinels (``SENTINELS``): la ruta
         crea una entrada por cada fila que recibe."""
@@ -624,7 +654,7 @@ class TecnologiaPliegoRepository:
                 "ORDER BY score DESC",
                 (licitacion_id, list(SENTINELS)),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(SenalPliego, rows_to_dicts(cur))
 
     def respuestas_llm_vigentes(self, licitacion_ids: list[str]) -> dict[str, RespuestaLlmVigente]:
         """La respuesta vigente del LLM (nivel 1 + familias) por licitación,

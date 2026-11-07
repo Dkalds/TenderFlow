@@ -197,9 +197,9 @@ def ejecutar(ahora: datetime | None = None) -> Resumen:
     for fila in filas:
         organization_id = int(fila["organization_id"])
         try:
-            org = organizaciones.get_by_id(organization_id) or {}
+            org = organizaciones.get_by_id(organization_id)
             informe = construir(
-                organization_id, organizacion=str(org.get("name") or ""), ahora=instante
+                organization_id, organizacion=org["name"] if org else "", ahora=instante
             )
 
             if informe.vacio:
