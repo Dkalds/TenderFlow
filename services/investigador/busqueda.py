@@ -39,7 +39,7 @@ import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, TypedDict
 
 from db.feature_flags import FLAG_BUSQUEDA_SEMANTICA, is_enabled
 from db.repositories import investigador as repo
@@ -107,11 +107,38 @@ _CAMPOS = (
 _ESPACIOS_RE = re.compile(r"\s+")
 
 
+class Hit(TypedDict):
+    """Un resultado de la búsqueda, antes de pasar por el DTO de la ruta.
+
+    Las columnas del expediente (:data:`_CAMPOS`) y la explicación de por qué
+    salió. ``chunks`` no viaja a la lista: es lo que ``/ask`` puede citar.
+    """
+
+    id_externo: str
+    titulo: str | None
+    organo_contratacion: str | None
+    importe: float | None
+    descripcion: str | None
+    url: str | None
+    fecha_publicacion: str | None
+    fecha_limite: str | None
+    ccaa: str | None
+    estado: str | None
+    tecnologia: str | None
+    coincide_en: list[str]
+    terminos_ausentes: list[str]
+    titulo_tramos: list[dict[str, Any]]
+    extracto: list[dict[str, Any]]
+    score: float
+    pasaje: dict[str, Any] | None
+    chunks: list[dict[str, Any]]
+
+
 @dataclass(frozen=True)
 class Resultado:
     """Lo que devolvió una búsqueda y por qué camino."""
 
-    hits: list[dict[str, Any]]
+    hits: list[Hit]
     #: Camino REALMENTE ejecutado: uno de :data:`FUENTES`.
     fuente: str
     #: Qué fue de la búsqueda por significado: uno de los ``SEMANTICA_*``.
@@ -226,8 +253,38 @@ def _con_resaltado(lista: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return lista if any(t["resaltado"] for t in lista) else []
 
 
-def _base(fila: dict[str, Any]) -> dict[str, Any]:
-    return {campo: fila.get(campo) for campo in _CAMPOS}
+def _hit(
+    fila: dict[str, Any],
+    *,
+    coincide_en: list[str],
+    score: float,
+    terminos_ausentes: list[str] | None = None,
+    titulo_tramos: list[dict[str, Any]] | None = None,
+    extracto: list[dict[str, Any]] | None = None,
+    pasaje: dict[str, Any] | None = None,
+    chunks: list[dict[str, Any]] | None = None,
+) -> Hit:
+    """Un resultado: las columnas de ``fila`` y lo que explica por qué salió."""
+    return Hit(
+        id_externo=str(fila["id_externo"]),
+        titulo=fila.get("titulo"),
+        organo_contratacion=fila.get("organo_contratacion"),
+        importe=fila.get("importe"),
+        descripcion=fila.get("descripcion"),
+        url=fila.get("url"),
+        fecha_publicacion=fila.get("fecha_publicacion"),
+        fecha_limite=fila.get("fecha_limite"),
+        ccaa=fila.get("ccaa"),
+        estado=fila.get("estado"),
+        tecnologia=fila.get("tecnologia"),
+        coincide_en=coincide_en,
+        terminos_ausentes=terminos_ausentes or [],
+        titulo_tramos=titulo_tramos or [],
+        extracto=extracto or [],
+        score=score,
+        pasaje=pasaje,
+        chunks=chunks or [],
+    )
 
 
 def _pasaje(fragmento: dict[str, Any]) -> dict[str, Any]:
@@ -299,7 +356,7 @@ def _proporcion(fila: dict[str, Any]) -> float:
 
 def _por_texto(
     consulta: ConsultaInterpretada, ambito: Ambito, top_k: int, *, con_pliegos: bool
-) -> list[dict[str, Any]]:
+) -> list[Hit]:
     recientes = consulta.orden == "recientes"
     if consulta.con_operadores:
         anuncios = repo.anuncios_por_expresion(
@@ -336,7 +393,7 @@ def _por_texto(
         por_id.update(repo.anuncios_por_id(faltan))
     mejores = _mejores_seguro([i for i in ids if i in con_pasaje], consulta)
 
-    hits: list[dict[str, Any]] = []
+    hits: list[Hit] = []
     for id_ in ids:
         fila = por_id.get(id_)
         if fila is None:
@@ -345,35 +402,34 @@ def _por_texto(
             continue
         en_anuncio = "cobertura" in fila or (consulta.con_operadores and "rank" in fila)
         en_pliego = id_ in con_pasaje
-        hit = _base(fila)
-        hit["coincide_en"] = [
-            lugar for lugar, si in ((EN_ANUNCIO, en_anuncio), (EN_PLIEGO, en_pliego)) if si
-        ]
-        hit["terminos_ausentes"] = [] if en_pliego else list(fila.get("ausentes") or [])
-        hit["titulo_tramos"] = tramos(fila.get("titulo_marcado"))
-        hit["extracto"] = _con_resaltado(tramos(fila.get("extracto")))
-        hit["score"] = 1.0 if en_pliego else _proporcion(fila)
         fragmento = mejores.get(id_)
-        hit["pasaje"] = _pasaje(fragmento) if fragmento else None
-        hit["chunks"] = [_chunk(fragmento)] if fragmento else []
-        hits.append(hit)
+        hits.append(
+            _hit(
+                fila,
+                coincide_en=[
+                    lugar for lugar, si in ((EN_ANUNCIO, en_anuncio), (EN_PLIEGO, en_pliego)) if si
+                ],
+                terminos_ausentes=[] if en_pliego else list(fila.get("ausentes") or []),
+                titulo_tramos=tramos(fila.get("titulo_marcado")),
+                extracto=_con_resaltado(tramos(fila.get("extracto"))),
+                score=1.0 if en_pliego else _proporcion(fila),
+                pasaje=_pasaje(fragmento) if fragmento else None,
+                chunks=[_chunk(fragmento)] if fragmento else [],
+            )
+        )
     return hits
 
 
-def _simples(filas: list[dict[str, Any]], *, con_proporcion: bool) -> list[dict[str, Any]]:
+def _simples(filas: list[dict[str, Any]], *, con_proporcion: bool) -> list[Hit]:
     """Resultados sin marcas ni pasaje: el último recurso y el de solo filtros."""
-    hits: list[dict[str, Any]] = []
-    for fila in filas:
-        hit = _base(fila)
-        hit["coincide_en"] = [EN_ANUNCIO] if con_proporcion else []
-        hit["terminos_ausentes"] = []
-        hit["titulo_tramos"] = []
-        hit["extracto"] = []
-        hit["score"] = _proporcion(fila) if con_proporcion else 0.0
-        hit["pasaje"] = None
-        hit["chunks"] = []
-        hits.append(hit)
-    return hits
+    return [
+        _hit(
+            fila,
+            coincide_en=[EN_ANUNCIO] if con_proporcion else [],
+            score=_proporcion(fila) if con_proporcion else 0.0,
+        )
+        for fila in filas
+    ]
 
 
 def buscar_por_texto(
@@ -404,36 +460,45 @@ def buscar_por_texto(
     return Resultado(_simples(literales, con_proporcion=True), FUENTE_LITERAL)
 
 
-def _fuerte(hit: dict[str, Any]) -> bool:
+def _fuerte(hit: Hit) -> bool:
     """Casó con todos los términos, en el anuncio o en el pliego."""
     return bool(hit["coincide_en"]) and not hit["terminos_ausentes"]
 
 
-def _parecido(doc: dict[str, Any], fila: dict[str, Any], score: float) -> dict[str, Any]:
-    """Un resultado que solo trajo la fusión, con el fragmento que lo acercó."""
-    hit = _base(fila)
-    hit["coincide_en"] = [EN_SIGNIFICADO]
-    hit["terminos_ausentes"] = []
-    hit["titulo_tramos"] = []
-    hit["extracto"] = []
-    hit["score"] = score
+def _parecido(doc: dict[str, Any], fila: dict[str, Any], score: float) -> Hit:
+    """Un resultado que solo trajo la fusión, con el fragmento que lo acercó.
+
+    Ese fragmento viaja también en ``chunks``: es lo que lo trajo, y lo que
+    ``/ask`` tiene que poder citar de él.
+    """
     chunks = doc.get("chunks") or []
     texto = _ESPACIOS_RE.sub(" ", str(chunks[0].get("texto") or "")).strip() if chunks else ""
     if len(texto) > _MAX_FRAGMENTO_PARECIDO:
         texto = texto[:_MAX_FRAGMENTO_PARECIDO].rsplit(" ", 1)[0] + " …"
-    hit["pasaje"] = (
-        {
-            "documento_id": None,
-            "tipo": None,
-            "filename": None,
-            "page_number": None,
-            "tramos": [{"texto": texto, "resaltado": False}],
-        }
-        if texto
-        else None
+    return _hit(
+        fila,
+        coincide_en=[EN_SIGNIFICADO],
+        score=score,
+        pasaje=(
+            {
+                "documento_id": None,
+                "tipo": None,
+                "filename": None,
+                "page_number": None,
+                "tramos": [{"texto": texto, "resaltado": False}],
+            }
+            if texto
+            else None
+        ),
+        chunks=[_chunk(chunks[0])] if texto else [],
     )
-    hit["chunks"] = []
-    return hit
+
+
+def _con_significado(hit: Hit) -> Hit:
+    """``hit`` con ``significado`` añadido a ``coincide_en``, sin tocar el original."""
+    nuevo = hit.copy()
+    nuevo["coincide_en"] = [*hit["coincide_en"], EN_SIGNIFICADO]
+    return nuevo
 
 
 def combinar(por_texto: Resultado, fusion: list[dict[str, Any]], top_k: int) -> Resultado:
@@ -460,7 +525,7 @@ def combinar(por_texto: Resultado, fusion: list[dict[str, Any]], top_k: int) -> 
     if not fusion:
         return por_texto
     max_rrf = max(float(d.get("rrf_score") or 0.0) for d in fusion)
-    vistos = {str(h["id_externo"]) for h in por_texto.hits}
+    vistos = {h["id_externo"] for h in por_texto.hits}
     nuevos = [d for d in fusion if str(d.get("id_externo")) not in vistos]
     filas = repo.anuncios_por_id([str(d["id_externo"]) for d in nuevos]) if nuevos else {}
     parecidos = [
@@ -473,12 +538,7 @@ def combinar(por_texto: Resultado, fusion: list[dict[str, Any]], top_k: int) -> 
         if str(d["id_externo"]) in filas
     ]
     en_fusion = {str(d.get("id_externo")) for d in fusion}
-    texto = [
-        {**h, "coincide_en": [*h["coincide_en"], EN_SIGNIFICADO]}
-        if str(h["id_externo"]) in en_fusion
-        else h
-        for h in por_texto.hits
-    ]
+    texto = [_con_significado(h) if h["id_externo"] in en_fusion else h for h in por_texto.hits]
     fuertes = [h for h in texto if _fuerte(h)] if por_texto.fuente == FUENTE_TEXTO else []
     debiles = [h for h in texto if not (por_texto.fuente == FUENTE_TEXTO and _fuerte(h))]
     if not parecidos and not any(EN_SIGNIFICADO in h["coincide_en"] for h in texto):
@@ -561,17 +621,66 @@ def buscar(
     )
 
 
-def documentos_de_contexto(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Los resultados en la forma que ``/ask`` manda al modelo.
+#: Lo que ocupa en el contexto un expediente sin pliego: el extracto de la
+#: descripción del modo general y, de margen, sus metadatos y cabeceras. Es el
+#: mismo margen que ``api.routes.ask._presupuesto_por_expediente``.
+_MARGEN_ANUNCIO = 600
+#: Cabecera de cada fragmento en el bloque («--- Fragmento de pliego (…) ---»).
+_CABECERA_FRAGMENTO = 100
 
-    Las columnas del expediente y, si un pasaje del pliego casó, ese fragmento
-    entero en ``chunks``: es lo que el asistente puede citar. Los campos de
-    presentación (tramos, escalón) no viajan al modelo.
+
+def _presupuesto_de_pliego(n_docs: int) -> int:
+    """Caracteres de pliego que caben junto a ``n_docs`` anuncios en modo general.
+
+    ``llm.prompts.build_context_block`` corta en el techo y descarta lo que
+    queda: un fragmento de más en el primer expediente dejaba fuera al último.
     """
+    from llm.prompts import context_chars_for, excerpt_chars_for
+
+    por_anuncio = excerpt_chars_for("general") + _MARGEN_ANUNCIO
+    return max(0, context_chars_for("general") - n_docs * por_anuncio)
+
+
+def _doc(hit: Hit) -> dict[str, Any]:
+    """Las columnas del expediente, sin la explicación del resultado."""
+    return {k: v for k, v in hit.items() if k in _CAMPOS}
+
+
+def documentos_de_contexto(hits: list[Hit], consulta: ConsultaInterpretada) -> list[dict[str, Any]]:
+    """Los resultados en la forma que ``/ask`` manda al modelo, con su pliego.
+
+    Las columnas del expediente y un fragmento de pliego en ``chunks``, que es
+    lo que el asistente puede citar: el pasaje que casó, si lo hubo, o el que
+    mejor responde a la pregunta (``repo.pasajes_de_contexto``). Hasta
+    2026-11 solo llevaba pliego el expediente cuyo pasaje contenía **todos**
+    los términos, y el resto llegaba al modelo con título y descripción.
+
+    Un fragmento por expediente, en el orden de la lista y mientras quepa en el
+    presupuesto del modo general (:func:`_presupuesto_de_pliego`). Los campos
+    de presentación (tramos, escalón) no viajan al modelo. Si la consulta de
+    fragmentos falla, se responde sin ellos: los pliegos suman, no sostienen.
+    """
+    sin_pliego = [h["id_externo"] for h in hits if not h["chunks"]]
+    try:
+        extra = (
+            repo.pasajes_de_contexto(sin_pliego, consulta.terminos, consulta.acentuadas)
+            if sin_pliego
+            else {}
+        )
+    except Exception:
+        log.warning("investigador.pasajes_de_contexto_failed", exc_info=True)
+        extra = {}
+
+    libre = _presupuesto_de_pliego(len(hits))
     docs: list[dict[str, Any]] = []
     for hit in hits:
-        doc = _base(hit)
-        if hit.get("chunks"):
-            doc["chunks"] = hit["chunks"]
+        doc = _doc(hit)
+        fragmento = extra.get(hit["id_externo"])
+        chunks = hit["chunks"] or ([_chunk(fragmento)] if fragmento else [])
+        coste = sum(len(c["texto"]) + _CABECERA_FRAGMENTO for c in chunks)
+        # El pasaje que casó viaja siempre, como antes; el añadido, si cabe.
+        if chunks and (hit["chunks"] or coste <= libre):
+            doc["chunks"] = chunks
+            libre -= coste
         docs.append(doc)
     return docs

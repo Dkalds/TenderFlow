@@ -1,0 +1,261 @@
+{
+  "licitaciones": [
+    {
+      "id_externo": "INV-SAP-AND",
+      "titulo": "Servicio de mantenimiento y soporte del sistema SAP ERP de la Consejería de Hacienda",
+      "descripcion": "Mantenimiento correctivo, adaptativo y evolutivo del ERP corporativo.",
+      "organo_contratacion": "Consejería de Hacienda y Financiación Europea",
+      "ccaa": "Andalucía",
+      "estado": "PUB",
+      "importe": 650000.0,
+      "fecha_publicacion": "2026-05-12",
+      "pliego": [
+        "Objeto del contrato: servicios de mantenimiento del sistema de información económico-financiero.",
+        "El adjudicatario prestará soporte correctivo y evolutivo sobre los módulos SAP FI, CO y MM con un acuerdo de nivel de servicio de 4 horas para incidencias críticas."
+      ]
+    },
+    {
+      "id_externo": "INV-SAP-MAD",
+      "titulo": "Mantenimiento del sistema SAP de gestión económica municipal",
+      "descripcion": "Soporte funcional y técnico de la plataforma SAP del Ayuntamiento.",
+      "organo_contratacion": "Ayuntamiento de Alcobendas",
+      "ccaa": "Madrid",
+      "estado": "PUB",
+      "importe": 120000.0,
+      "fecha_publicacion": "2026-04-02"
+    },
+    {
+      "id_externo": "INV-SAP-AND-2024",
+      "titulo": "Soporte del sistema SAP ERP de la Consejería de Salud",
+      "descripcion": "Soporte técnico a usuarios del ERP.",
+      "organo_contratacion": "Consejería de Salud y Consumo",
+      "ccaa": "Andalucía",
+      "estado": "ADJ",
+      "importe": 700000.0,
+      "fecha_publicacion": "2024-03-20"
+    },
+    {
+      "id_externo": "INV-ASCENSORES",
+      "titulo": "Mantenimiento de ascensores y escaleras mecánicas",
+      "descripcion": "Mantenimiento preventivo y correctivo de los aparatos elevadores del hospital.",
+      "organo_contratacion": "Servicio Madrileño de Salud",
+      "ccaa": "Madrid",
+      "estado": "PUB",
+      "importe": 95000.0,
+      "fecha_publicacion": "2026-03-01"
+    },
+    {
+      "id_externo": "INV-HOSP-MATERIAL",
+      "titulo": "Suministro de material de curas para el hospital comarcal",
+      "descripcion": "Apósitos, vendas y material fungible del hospital.",
+      "organo_contratacion": "Servicio Andaluz de Salud",
+      "ccaa": "Andalucía",
+      "estado": "PUB",
+      "importe": 85000.0,
+      "fecha_publicacion": "2026-04-28"
+    },
+    {
+      "id_externo": "INV-HOSP-COCINA",
+      "titulo": "Servicio de alimentación de pacientes del hospital universitario",
+      "descripcion": "Elaboración y distribución de dietas hospitalarias.",
+      "organo_contratacion": "Osakidetza",
+      "ccaa": "País Vasco",
+      "estado": "PUB",
+      "importe": 1300000.0,
+      "fecha_publicacion": "2026-03-30"
+    },
+    {
+      "id_externo": "INV-HOSP-LAVANDERIA",
+      "titulo": "Lavandería y lencería del hospital provincial",
+      "descripcion": "Lavado y reposición de ropa de cama y uniformes del hospital.",
+      "organo_contratacion": "Diputación de Zamora",
+      "ccaa": "Castilla y León",
+      "estado": "PUB",
+      "importe": 240000.0,
+      "fecha_publicacion": "2026-02-02"
+    },
+    {
+      "id_externo": "INV-LIMPIEZA",
+      "titulo": "Servicio de limpieza de dependencias municipales",
+      "descripcion": "Limpieza diaria de oficinas, colegios y centros culturales.",
+      "organo_contratacion": "Ayuntamiento de Getafe",
+      "ccaa": "Madrid",
+      "estado": "PUB",
+      "importe": 1800000.0,
+      "fecha_publicacion": "2026-02-14",
+      "pliego": [
+        "Cláusula 14. Ofertas anormalmente bajas: se considerará que una oferta incurre en baja temeraria cuando sea inferior en más de diez unidades porcentuales a la media aritmética de las ofertas presentadas."
+      ]
+    },
+    {
+      "id_externo": "INV-MOBILIARIO",
+      "titulo": "Suministro de mobiliario de oficina de baja altura",
+      "descripcion": "Mesas, armarios bajos y cajoneras.",
+      "organo_contratacion": "Diputación de Toledo",
+      "ccaa": "Castilla-La Mancha",
+      "estado": "PUB",
+      "importe": 60000.0,
+      "fecha_publicacion": "2026-05-30"
+    },
+    {
+      "id_externo": "INV-SOC",
+      "titulo": "Servicios de ciberseguridad y centro de operaciones de seguridad (SOC)",
+      "descripcion": "Monitorización 24x7, respuesta a incidentes y gestión de vulnerabilidades.",
+      "organo_contratacion": "Centre de Seguretat de la Informació de Catalunya",
+      "ccaa": "Cataluña",
+      "estado": "PUB",
+      "importe": 2400000.0,
+      "fecha_publicacion": "2025-11-03"
+    },
+    {
+      "id_externo": "INV-SOC-2023",
+      "titulo": "Centro de operaciones de seguridad (SOC): servicio de ciberseguridad gestionada del SOC",
+      "descripcion": "Servicio SOC de ciberseguridad.",
+      "organo_contratacion": "Agencia Digital de Andalucía",
+      "ccaa": "Andalucía",
+      "estado": "ADJ",
+      "importe": 1500000.0,
+      "fecha_publicacion": "2026-01-20"
+    },
+    {
+      "id_externo": "INV-VIDEO",
+      "titulo": "Instalación de sistema de videovigilancia en edificios municipales",
+      "descripcion": "Videovigilancia con grabación centralizada y visionado remoto.",
+      "organo_contratacion": "Ayuntamiento de Murcia",
+      "ccaa": "Región de Murcia",
+      "estado": "PUB",
+      "importe": 210000.0,
+      "fecha_publicacion": "2026-06-10"
+    },
+    {
+      "id_externo": "INV-LIMPIEZA-EDIF",
+      "titulo": "Limpieza de edificios municipales y colegios públicos",
+      "descripcion": "Servicio de limpieza de edificios de titularidad municipal.",
+      "organo_contratacion": "Ayuntamiento de Cartagena",
+      "ccaa": "Región de Murcia",
+      "estado": "PUB",
+      "importe": 900000.0,
+      "fecha_publicacion": "2026-06-11"
+    },
+    {
+      "id_externo": "INV-NUBE",
+      "titulo": "Migración de servidores y aplicaciones a la nube pública",
+      "descripcion": "Traslado de la infraestructura del centro de proceso de datos a un proveedor de nube.",
+      "organo_contratacion": "Gobierno de Aragón",
+      "ccaa": "Aragón",
+      "estado": "PUB",
+      "importe": 480000.0,
+      "fecha_publicacion": "2026-03-18"
+    },
+    {
+      "id_externo": "INV-M365",
+      "titulo": "Licencias Microsoft 365 para el personal de la Administración",
+      "descripcion": "Suscripción anual de correo, Teams y paquete de escritorio.",
+      "organo_contratacion": "Junta de Castilla y León",
+      "ccaa": "Castilla y León",
+      "estado": "PUB",
+      "importe": 750000.0,
+      "fecha_publicacion": "2026-04-22"
+    },
+    {
+      "id_externo": "INV-GIS",
+      "titulo": "Plataforma de información geográfica corporativa",
+      "descripcion": "Evolución del sistema de información geográfica y sus visores.",
+      "organo_contratacion": "Cabildo de Gran Canaria",
+      "ccaa": "Canarias",
+      "estado": "PUB",
+      "importe": 330000.0,
+      "fecha_publicacion": "2026-05-05",
+      "pliego": [
+        "Requisitos técnicos: la solución se desplegará sobre ArcGIS Enterprise 11 con publicación de servicios WMS y WFS."
+      ]
+    },
+    {
+      "id_externo": "INV-HCE",
+      "titulo": "Evolución de la historia clínica electrónica del Servicio Gallego de Salud",
+      "descripcion": "Nuevas funcionalidades y mantenimiento de la historia clínica electrónica.",
+      "organo_contratacion": "Servizo Galego de Saúde",
+      "ccaa": "Galicia",
+      "estado": "PUB",
+      "importe": 2500000.0,
+      "fecha_publicacion": "2026-02-27",
+      "pliego": [
+        "El sistema garantizará la interoperabilidad con los sistemas del Sistema Nacional de Salud mediante el estándar HL7 FHIR R4."
+      ]
+    },
+    {
+      "id_externo": "INV-HCE-CENTRO",
+      "titulo": "Mantenimiento de la historia clínica electrónica del centro de salud",
+      "descripcion": "Soporte a la historia clínica electrónica de atención primaria.",
+      "organo_contratacion": "Consorcio Sanitario de Vigo",
+      "ccaa": "Galicia",
+      "estado": "PUB",
+      "importe": 90000.0,
+      "fecha_publicacion": "2026-03-09"
+    },
+    {
+      "id_externo": "INV-SOLAR",
+      "titulo": "Instalación de placas fotovoltaicas en cubiertas de edificios públicos",
+      "descripcion": "Instalación fotovoltaica de autoconsumo con monitorización.",
+      "organo_contratacion": "Diputación de Valencia",
+      "ccaa": "Comunitat Valenciana",
+      "estado": "PUB",
+      "importe": 410000.0,
+      "fecha_publicacion": "2026-05-19"
+    },
+    {
+      "id_externo": "INV-FORMACION",
+      "titulo": "Formación en competencias digitales para empleados públicos",
+      "descripcion": "Cursos en línea y presenciales de alfabetización digital.",
+      "organo_contratacion": "Instituto Andaluz de Administración Pública",
+      "ccaa": "Andalucía",
+      "estado": "PUB",
+      "importe": 150000.0,
+      "fecha_publicacion": "2026-04-15"
+    },
+    {
+      "id_externo": "INV-CAU",
+      "titulo": "Servicio de atención a usuarios (CAU) y soporte microinformático",
+      "descripcion": "Atención a usuarios de nivel 1 y 2 y soporte in situ.",
+      "organo_contratacion": "Generalitat Valenciana",
+      "ccaa": "Comunitat Valenciana",
+      "estado": "PUB",
+      "importe": 1200000.0,
+      "fecha_publicacion": "2025-09-01",
+      "pliego": [
+        "El centro de atención a usuarios resolverá en primer nivel el 70 % de las incidencias y escalará al segundo nivel el resto."
+      ]
+    },
+    {
+      "id_externo": "INV-CAU-2022",
+      "titulo": "Centro de atención a usuarios (CAU): servicio de atención a usuarios",
+      "descripcion": "CAU para los usuarios del Ayuntamiento.",
+      "organo_contratacion": "Ayuntamiento de Valencia",
+      "ccaa": "Comunitat Valenciana",
+      "estado": "RES",
+      "importe": 300000.0,
+      "fecha_publicacion": "2026-01-10"
+    }
+  ],
+  "consultas": [
+    {"q": "mantenimiento SAP en Andalucía", "categoria": "filtros", "esperados": ["INV-SAP-AND"]},
+    {"q": "soporte SAP de más de 500K", "categoria": "filtros", "esperados": ["INV-SAP-AND", "INV-SAP-AND-2024"]},
+    {"q": "SAP abiertas en Madrid", "categoria": "filtros", "esperados": ["INV-SAP-MAD"]},
+    {"q": "historia clínica electrónica de más de 1 millón", "categoria": "filtros", "esperados": ["INV-HCE"]},
+    {"q": "¿Qué licitaciones hablan de baja temeraria?", "categoria": "pliego", "esperados": ["INV-LIMPIEZA"]},
+    {"q": "ArcGIS Enterprise", "categoria": "pliego", "esperados": ["INV-GIS"]},
+    {"q": "interoperabilidad FHIR", "categoria": "pliego", "esperados": ["INV-HCE"]},
+    {"q": "baja temeraria en Madrid", "categoria": "pliego", "esperados": ["INV-LIMPIEZA"]},
+    {"q": "centro de operaciones de seguridad SOC", "categoria": "vigencia", "esperados": ["INV-SOC"]},
+    {"q": "atención a usuarios CAU", "categoria": "vigencia", "esperados": ["INV-CAU"]},
+    {"q": "mantenimiento SAP hospital", "categoria": "parcial", "esperados": ["INV-SAP-AND", "INV-SAP-MAD"]},
+    {"q": "soporte microinformático y CAU para hospitales", "categoria": "parcial", "esperados": ["INV-CAU"]},
+    {"q": "¿puedes mirar si hay algo de formación digital para funcionarios?", "categoria": "hablada", "esperados": ["INV-FORMACION"]},
+    {"q": "dame las licitaciones de ciberseguridad que estén abiertas", "categoria": "hablada", "esperados": ["INV-SOC"]},
+    {"q": "instalacion fotovoltaica", "categoria": "tilde", "esperados": ["INV-SOLAR"]},
+    {"q": "informacion geografica", "categoria": "tilde", "esperados": ["INV-GIS"]},
+    {"q": "cámaras de seguridad CCTV", "categoria": "parafrasis", "esperados": ["INV-VIDEO"]},
+    {"q": "migración a cloud", "categoria": "parafrasis", "esperados": ["INV-NUBE"]},
+    {"q": "ofimática en la nube", "categoria": "parafrasis", "esperados": ["INV-M365"]}
+  ]
+}

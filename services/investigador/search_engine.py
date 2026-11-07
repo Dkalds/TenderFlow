@@ -54,9 +54,10 @@ def hybrid_search(
     listas antes de fusionar. Hasta 2026-10 la ruta filtraba después, contra un
     conjunto de ids con tope, y un ámbito ancho perdía resultados.
 
-    Nota: esto NO mira ``settings.RAG_HYBRID_ENABLED``. Ese flag existe para
-    decidir si ``/ask`` cambia de recuperación por debajo de un LLM que ya
-    responde; aquí la única pregunta es si hay embeddings con los que fusionar.
+    Quién la pide lo decide la flag ``busqueda_semantica``
+    (:func:`services.investigador.busqueda.semantica_activa`), la misma para la
+    lista del Investigador y para ``/ask``; aquí la única pregunta es si hay
+    embeddings con los que fusionar.
     """
     from services.embeddings import embeddings_available, encode_texts
 

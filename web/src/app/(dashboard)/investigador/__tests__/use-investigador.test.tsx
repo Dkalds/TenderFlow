@@ -23,7 +23,17 @@ import { NuqsTestingAdapter, type UrlUpdateEvent } from "nuqs/adapters/testing";
 import type { SearchResult, SemanticSearchResponse } from "../_lib/types";
 
 const fetchWithAuth = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/api-client", () => ({ fetchWithAuth }));
+// Las consultas recientes de la cuenta: un servidor en memoria que se vacía en
+// cada test (`beforeEach`).
+const cuenta = vi.hoisted(() => ({ consultas: [] as string[] }));
+vi.mock("@/lib/api-client", () => ({
+  fetchWithAuth,
+  apiGet: vi.fn(() => Promise.resolve({ consultas: [...cuenta.consultas] })),
+  apiMutate: vi.fn((_metodo: string, _ruta: string, cuerpo: { consulta: string }) => {
+    cuenta.consultas = [cuerpo.consulta, ...cuenta.consultas.filter((c) => c !== cuerpo.consulta)].slice(0, 10);
+    return Promise.resolve({ consultas: [...cuenta.consultas] });
+  }),
+}));
 
 const registrarEvento = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/analytics", () => ({ registrarEvento }));
@@ -115,6 +125,7 @@ function montar(searchParams = "") {
 
 beforeEach(() => {
   window.localStorage.clear();
+  cuenta.consultas = [];
   fetchWithAuth.mockReset().mockResolvedValue(respuesta());
   registrarEvento.mockReset();
   useAsistente.getState().reiniciar();
@@ -224,7 +235,7 @@ describe("la consulta vive en la URL", () => {
 });
 
 describe("historial y ajustes", () => {
-  it("cada consulta entra en «Recientes», sin repetirse, y sobrevive a la recarga", async () => {
+  it("cada consulta entra en «Recientes», sin repetirse, y la cuenta la conserva al recargar", async () => {
     const { result } = montar();
 
     act(() => result.current.submit("uno"));
@@ -544,7 +555,6 @@ describe("el asistente", () => {
     expect(result.current.showEmpty).toBe(true);
   });
 });
-
 
 describe("«Mostrar más»", () => {
   it("pide la misma búsqueda con la tanda siguiente, sin perder la lista mientras llega", async () => {

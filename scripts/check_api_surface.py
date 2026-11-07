@@ -56,6 +56,20 @@ MOTIVO_MINIMO = 40
 # alcanza"``. Una por línea, en orden alfabético de ruta, para que dos ramas
 # que añaden operaciones distintas no choquen al fusionar.
 NUEVAS: dict[str, str] = {
+    "GET /api/v1/me/consultas-recientes": (
+        "Se miró GET /saved-filters, que guarda instantáneas del ámbito (comunidades, "
+        "tecnologías, fechas) para que otras pantallas las restauren, no frases; y GET "
+        "/me/notification-preferences y /me/profile, que son ajustes, no un historial. "
+        "Las consultas recientes del Investigador vivían en localStorage y no viajaban "
+        "a otro navegador (backlog P3 «El historial de consultas sigue en localStorage»)."
+    ),
+    "POST /api/v1/me/consultas-recientes": (
+        "Se miró POST /search/semantic, que conoce la consulta y a quien la hace, pero "
+        "también la llaman «Mostrar más» y las API keys de integraciones: apuntar desde ahí "
+        "llenaría el historial de lo que la persona no buscó. POST /saved-filters guarda "
+        "vistas con nombre, no un historial con tope. Apuntar es un gesto explícito de la "
+        "pantalla cuando la búsqueda responde."
+    ),
     "POST /api/v1/auth/password/change": (
         "Se miró POST /auth/password-reset/confirm, que cambia la contraseña pero exige el "
         "token de un solo uso que llega por correo, no la contraseña actual: quien la "

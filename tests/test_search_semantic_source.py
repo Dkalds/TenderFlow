@@ -292,7 +292,9 @@ class TestCombinarTextoYFusion:
         assert hit["coincide_en"] == ["significado"]
         assert hit["fecha_limite"] == "2026-12-01"
         assert hit["pasaje"]["tramos"] == [{"texto": "mantenimiento del ERP", "resaltado": False}]
-        assert "rrf_score" not in hit and hit["chunks"] == []
+        assert "rrf_score" not in hit
+        # El fragmento que lo trajo es lo que ``/ask`` puede citar de él.
+        assert [c["texto"] for c in hit["chunks"]] == ["  mantenimiento\n del ERP  "]
 
     def test_lo_que_casa_por_texto_y_por_significado_lo_dice_sin_moverse(
         self, monkeypatch: pytest.MonkeyPatch

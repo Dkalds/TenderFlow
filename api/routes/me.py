@@ -570,6 +570,69 @@ async def put_notification_preferences(
     return StatusOk(status="ok")
 
 
+class ConsultasRecientes(BaseModel):
+    """Las consultas recientes del Investigador, la más reciente primero."""
+
+    consultas: list[str] = Field(default_factory=list)
+
+
+class NuevaConsultaReciente(BaseModel):
+    """Una consulta que se acaba de buscar."""
+
+    consulta: str = Field(min_length=1, description="Lo que se escribió en la caja.")
+
+    @field_validator("consulta")
+    @classmethod
+    def _limpia(cls, valor: str) -> str:
+        from db.repositories.consultas_recientes import MAX_LARGO
+
+        limpia = " ".join(valor.split())
+        if not limpia:
+            raise ValueError("La consulta está vacía.")
+        if len(limpia) > MAX_LARGO:
+            raise ValueError(f"La consulta no puede pasar de {MAX_LARGO} caracteres.")
+        return limpia
+
+
+@router.get(
+    "/me/consultas-recientes",
+    summary="Mis consultas recientes del Investigador",
+)
+async def get_consultas_recientes(
+    ctx: Principal = Depends(require_any_auth),
+) -> ConsultasRecientes:
+    """Las últimas consultas que buscó el usuario, en cualquier navegador.
+
+    Hasta 2026-11 vivían en el ``localStorage`` de cada navegador; ahora ese
+    almacén es solo la caché de esta lista.
+    """
+    from db.repositories import consultas_recientes
+
+    return ConsultasRecientes(
+        consultas=await run_db(consultas_recientes.listar, int(ctx["user_id"]))
+    )
+
+
+@router.post(
+    "/me/consultas-recientes",
+    summary="Apuntar una consulta reciente del Investigador",
+)
+async def post_consulta_reciente(
+    body: NuevaConsultaReciente,
+    ctx: Principal = Depends(require_any_auth),
+) -> ConsultasRecientes:
+    """La sube al principio de la lista (o la añade) y devuelve la lista nueva.
+
+    La frase es la estrategia comercial de quien la escribe: no se registra en
+    el log, como en ``/search/semantic``.
+    """
+    from db.repositories import consultas_recientes
+
+    return ConsultasRecientes(
+        consultas=await run_db(consultas_recientes.registrar, int(ctx["user_id"]), body.consulta)
+    )
+
+
 class MyApiKeyOut(BaseModel):
     """Una API key del usuario, sin secreto.
 

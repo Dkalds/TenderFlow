@@ -399,12 +399,12 @@ async def semantic_search(
         user=ctx.get("user_id"),
     )
 
-    campos = SemanticHit.model_fields
     return SemanticSearchResponse(
         q=body.q,
         top_k=body.top_k,
         source=source,
-        hits=[SemanticHit(**{k: v for k, v in h.items() if k in campos}) for h in hits],
+        # Lo que el DTO no declara (``chunks``, que es para ``/ask``) se descarta.
+        hits=[SemanticHit.model_validate(h) for h in hits],
         hay_mas=hay_mas,
         elapsed_ms=elapsed_ms,
         interpretacion=Interpretacion.de(consulta),

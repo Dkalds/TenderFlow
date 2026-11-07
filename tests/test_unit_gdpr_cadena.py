@@ -75,6 +75,7 @@ def test_la_cadena_de_borrado_alcanza_tareas_y_segundo_factor(
         ("services.notifications", "delete_email_prefs"),
         ("db.repositories.follows", "borrar_de_usuario"),
         ("db.repositories.asistente_feedback", "borrar_de_usuario"),
+        ("db.repositories.consultas_recientes", "borrar_de_usuario"),
         ("db.repositories.notification_preferences", "borrar_de_usuario"),
     ):
         monkeypatch.setattr(f"{modulo}.{funcion}", lambda *a, **k: 0)
@@ -158,6 +159,7 @@ def test_la_sesion_se_exporta_con_su_id_publico_y_sin_el_hash(
     monkeypatch.setattr(gdpr.radar_dismissals, "list_detalle", lambda *a, **k: [])
     monkeypatch.setattr("db.repositories.asistente_feedback.exportar_de_usuario", lambda uid: [])
     monkeypatch.setattr(gdpr._pursuit_task_repo, "export_for_user", lambda uid: [])
+    monkeypatch.setattr("db.repositories.consultas_recientes.listar", lambda uid: ["sap"])
 
     cuenta = gdpr.export_account_data(3, "clave")
 
@@ -169,7 +171,9 @@ def test_la_sesion_se_exporta_con_su_id_publico_y_sin_el_hash(
         "descartes_radar",
         "asistente_feedback",
         "pursuit_tasks",
+        "consultas_recientes",
     }
+    assert cuenta["consultas_recientes"] == [{"consulta": "sap"}]
     (sesion,) = cuenta["sesiones"]
     assert "token_hash" not in sesion
     assert sesion["ip"] == "10.0.0.1"

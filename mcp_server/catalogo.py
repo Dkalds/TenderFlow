@@ -355,6 +355,14 @@ _TABLAS: tuple[tuple[str, Visibilidad, str, str], ...] = (
         "Reglas de alerta compuestas (palabra clave, CPV, importe, órgano…).",
     ),
     ("saved_filters", _V, _SEG, "Filtros de búsqueda guardados."),
+    (
+        "consultas_recientes",
+        _O,
+        _SEG,
+        # Oculta: la frase es la estrategia comercial de quien la escribe y no va a
+        # logs ni a telemetría (v176); tampoco a una consulta SQL de terceros.
+        "Últimas consultas del Investigador de cada usuario (v176).",
+    ),
     ("user_profiles", _V, _SEG, "Perfil de relevancia del usuario (pesos, CPV y CCAA preferidos)."),
     ("user_notifications", _V, _SEG, "Notificaciones generadas para cada usuario."),
     ("notification_reads", _V, _SEG, "Marca de lectura de las notificaciones."),

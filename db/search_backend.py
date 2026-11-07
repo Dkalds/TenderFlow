@@ -336,9 +336,10 @@ class PgTsBackend:
         # paquete de repositories.
         from db.repositories.base import ambito_busqueda_sql
 
-        # Las mismas cláusulas que el FTS y el LIKE a los que cae
-        # `search_for_ask`: la tecnología se busca en el CSV de la fila («ERP,SAP»
-        # también es SAP) y un CSV de varios códigos se trocea.
+        # Las mismas cláusulas que el ámbito del Investigador
+        # (`db.repositories.investigador.Ambito`): la tecnología se busca en el
+        # CSV de la fila («ERP,SAP» también es SAP) y un CSV de varios códigos
+        # se trocea.
         ambito, ambito_params = ambito_busqueda_sql(
             "l",
             ccaa=ccaa,
@@ -523,8 +524,8 @@ def hybrid_search_docs(
     """``PgTsBackend.hybrid_search_docs`` abriendo su propia conexión de lectura.
 
     El método del backend recibe la conexión porque hay call-sites que ya
-    están dentro de una; ``services/licitaciones.py::search_for_ask`` no lo
-    está, y abrirla allí era una de las entradas del ratchet TID251. ADR-022:
+    están dentro de una; ``services.investigador.search_engine.hybrid_search``
+    no lo está, y abrirla allí era una de las entradas del ratchet TID251. ADR-022:
     la conexión se abre en ``db/``.
 
     Fail-open igual que el método: los errores de consulta ya los captura y

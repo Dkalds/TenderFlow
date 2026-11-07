@@ -27,12 +27,6 @@ class PliegosSettings(BaseSettings):
     # retiró en 2026-07.)
     EMBEDDING_VERSION: str = "v1"
 
-    # ── RAG híbrido sobre pliegos (plan Pliegos+RAG, F9) ───────────────────
-    # Default False: /ask sigue siendo FTS puro hasta activarlo explícitamente
-    # (requiere Postgres + extra [ml] instalado + documento_chunks poblada).
-    # Con el flag off, search_for_ask() es idéntico byte-a-byte al camino
-    # anterior — PR mergeable sin riesgo.
-    RAG_HYBRID_ENABLED: bool = False
     # Extracción tipada de ficha del pliego. Requiere credencial para el modelo
     # seleccionado; se activa de forma explícita para no generar gasto por el
     # mero despliegue de la migración.

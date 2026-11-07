@@ -26,6 +26,10 @@ Lo que hay aquí:
 - :func:`anuncios_del_ambito` — sin texto que buscar: lo más reciente del
   ámbito.
 
+A igual coincidencia, lo que sigue abierto va delante
+(:func:`shared.estados.abierta_sql`): con los mismos términos, quien prepara
+ofertas busca lo que aún puede presentar, no un expediente adjudicado hace años.
+
 En todos el ámbito va **en el WHERE** (``ambito_busqueda_sql``): el orden se
 calcula ya dentro de él. Y en todos se esconden los duplicados marcados
 (``confirmed`` y ``pending``, :func:`_visibles`), como en cualquier listado: el
@@ -48,6 +52,7 @@ from db.sql_fragments import (
     exclude_duplicados_presentacion_sql,
     fold_expr,
 )
+from shared.estados import abierta_sql
 
 __all__ = [
     "MARCA_FIN",
@@ -60,6 +65,7 @@ __all__ = [
     "anuncios_por_terminos",
     "licitaciones_con_pasaje",
     "mejores_pasajes",
+    "pasajes_de_contexto",
 ]
 
 #: Delimitadores que ``ts_headline`` pone alrededor de lo que casa. Dos
@@ -188,9 +194,9 @@ def anuncios_por_terminos(
     término crece con lo raro que es **entre los candidatos** de esta misma
     consulta. Así un expediente que casa con todos va delante, y entre los que
     casan a medias gana el que tiene la palabra que distingue («temeraria»), no
-    el que tiene la que está en todas partes («servicio»). A igualdad,
-    ``ts_rank_cd`` con los pesos de ``db.search_backend`` (título por delante
-    de la descripción).
+    el que tiene la que está en todas partes («servicio»). A igualdad de
+    términos, lo abierto delante de lo cerrado, y después ``ts_rank_cd`` con
+    los pesos de ``db.search_backend`` (título por delante de la descripción).
 
     Con ``recientes`` van primero los que casan con todos y, dentro, los de
     publicación más reciente.
@@ -217,13 +223,13 @@ def anuncios_por_terminos(
         "(cardinality(c.casados) = (SELECT count(*) FROM terminos)) DESC, "
         "c.fpub DESC NULLS LAST, c.id_externo"
         if recientes
-        else "puntos DESC, c.rank DESC, c.id_externo"
+        else "puntos DESC, c.abierta DESC, c.rank DESC, c.id_externo"
     )
     orden_final = (
         "(cardinality(o.casados) = (SELECT count(*) FROM terminos)) DESC, "
         "l.fecha_publicacion DESC NULLS LAST, o.id_externo"
         if recientes
-        else "o.puntos DESC, o.rank DESC, o.id_externo"
+        else "o.puntos DESC, o.abierta DESC, o.rank DESC, o.id_externo"
     )
     sql = f"""
         WITH terminos AS MATERIALIZED (
@@ -243,6 +249,7 @@ def anuncios_por_terminos(
         ),
         cand AS MATERIALIZED (
             SELECT l.id_externo, l.fecha_publicacion AS fpub,
+                   {abierta_sql("l.estado")} AS abierta,
                    ARRAY(
                        SELECT t.ord FROM terminos t
                        WHERE l.search_vector @@ t.lex_txt::tsquery
@@ -260,7 +267,7 @@ def anuncios_por_terminos(
             FROM frecuencia f
         ),
         ordenadas AS (
-            SELECT c.id_externo, c.casados, c.rank,
+            SELECT c.id_externo, c.casados, c.rank, c.abierta,
                    (SELECT COALESCE(sum(p.peso), 0) FROM pesos p WHERE p.ord = ANY(c.casados))
                        AS puntos
             FROM cand c
@@ -390,7 +397,7 @@ def licitaciones_con_pasaje(
     """Expedientes con algún fragmento de pliego que contiene **todo** ``texto``.
 
     ``[(id_externo, pasajes)]``, primero los que tienen más fragmentos que
-    casan. Dentro de un fragmento se exigen todos los términos: uno solo, sobre
+    casan y, a igual número, los que siguen abiertos. Dentro de un fragmento se exigen todos los términos: uno solo, sobre
     345.000 fragmentos, casa con decenas de miles y no dice nada.
 
     ``limite_pasajes`` acota los fragmentos que se llegan a mirar. Un término
@@ -414,18 +421,22 @@ def licitaciones_con_pasaje(
     tsq, valores_tsq = _tsquery_de_pasaje(texto, expresion=expresion, acentuado=acentuado)
     join_ambito = "JOIN licitaciones l ON l.id_externo = d.licitacion_id " if clausulas else ""
     sql = f"""
-        SELECT m.licitacion_id, count(*) AS pasajes
+        SELECT p.licitacion_id, p.pasajes
         FROM (
-            SELECT d.licitacion_id
-            FROM documento_chunks dc
-            JOIN documentos d ON d.id = dc.documento_id
-            {join_ambito}
-            WHERE dc.search_vector @@ {tsq}{_y(clausulas)}
-              AND {exclude_duplicados_presentacion_sql("d.licitacion_id")}
-            LIMIT %s
-        ) m
-        GROUP BY m.licitacion_id
-        ORDER BY pasajes DESC, m.licitacion_id
+            SELECT m.licitacion_id, count(*) AS pasajes
+            FROM (
+                SELECT d.licitacion_id
+                FROM documento_chunks dc
+                JOIN documentos d ON d.id = dc.documento_id
+                {join_ambito}
+                WHERE dc.search_vector @@ {tsq}{_y(clausulas)}
+                  AND {exclude_duplicados_presentacion_sql("d.licitacion_id")}
+                LIMIT %s
+            ) m
+            GROUP BY m.licitacion_id
+        ) p
+        JOIN licitaciones v ON v.id_externo = p.licitacion_id
+        ORDER BY p.pasajes DESC, {abierta_sql("v.estado")} DESC, p.licitacion_id
         LIMIT %s
     """
     with connect_read() as c:
@@ -467,6 +478,67 @@ def mejores_pasajes(
         cur = c.execute(
             sql, [list(ids), *valores_tsq, *valores_tsq, *valores_tsq, _OPCIONES_EXTRACTO]
         )
+        filas = rows_to_dicts(cur)
+    return {str(f["licitacion_id"]): f for f in filas}
+
+
+def pasajes_de_contexto(
+    ids: Sequence[str], terminos: Sequence[str], acentuadas: Sequence[str] = ()
+) -> dict[str, dict[str, Any]]:
+    """El fragmento de pliego de cada expediente de ``ids`` que mejor responde.
+
+    Para el contexto de ``/ask``, no para la lista: :func:`mejores_pasajes` exige
+    todos los términos y casi nunca encuentra uno en un expediente que casó
+    solo por el anuncio, así que el asistente respondía sobre el título y la
+    descripción. Aquí basta **alguno** de ``terminos`` y manda ``ts_rank_cd``;
+    si ninguno aparece, o no hay términos, el primero en orden documental
+    (pliego administrativo, luego técnico), que suele traer el objeto.
+
+    Mismo orden documental y misma exclusión del acta que
+    ``DocumentosRepository.list_chunks_by_licitacion``: el acta no es pliego.
+    Por ``id_externo``, con las claves que cita ``/ask``.
+
+    Puntúa todos los fragmentos de ``ids``, sin tope previo. Medido contra
+    producción el 2026-11-07: 0,28 s con los cinco primeros de «soporte SAP»
+    (búsqueda incluida) y, en el peor caso —los 20 expedientes con más pliego,
+    unos 19.000 fragmentos—, 0,36 s en caliente; 0,57 s en frío con los cinco
+    mayores.
+    """
+    if not ids:
+        return {}
+    sql = """
+        WITH consulta AS MATERIALIZED (
+            SELECT string_agg('(' || lex::text || ')', ' | ')::tsquery AS q
+            FROM unnest(%s::text[], %s::text[]) AS u(t, a)
+            CROSS JOIN LATERAL (
+                SELECT CASE WHEN u.a <> ''
+                    THEN plainto_tsquery('spanish', u.t) || plainto_tsquery('spanish', u.a)
+                    ELSE plainto_tsquery('spanish', u.t)
+                END AS lex
+            ) x
+            WHERE numnode(lex) > 0
+        )
+        SELECT licitacion_id, documento_id, tipo, filename, chunk_index, page_number, texto
+        FROM (
+            SELECT d.licitacion_id, d.id AS documento_id, d.tipo, d.filename,
+                   dc.chunk_index, dc.page_number, dc.texto,
+                   row_number() OVER (
+                       PARTITION BY d.licitacion_id
+                       ORDER BY COALESCE(ts_rank_cd(dc.search_vector, c.q), 0) DESC,
+                                CASE d.tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1
+                                            ELSE 2 END,
+                                dc.documento_id, dc.chunk_index
+                   ) AS puesto
+            FROM documento_chunks dc
+            JOIN documentos d ON d.id = dc.documento_id
+            CROSS JOIN consulta c
+            WHERE d.licitacion_id = ANY(%s) AND d.tipo <> 'acta'
+              AND COALESCE(dc.texto, '') <> ''
+        ) f
+        WHERE puesto = 1
+    """
+    with connect_read() as c:
+        cur = c.execute(sql, [list(terminos), _alineadas(acentuadas, len(terminos)), list(ids)])
         filas = rows_to_dicts(cur)
     return {str(f["licitacion_id"]): f for f in filas}
 

@@ -142,13 +142,8 @@ export const simuladorKeys = {
 
 export const paginaKeys = {
   all: ["pagina-pliego"] as const,
-  detail: (
-    licitacionId: string,
-    documentoId: number,
-    pagina: number,
-    inicio: number | null,
-    fin: number | null,
-  ) => ["pagina-pliego", licitacionId, documentoId, pagina, inicio, fin] as const,
+  detail: (licitacionId: string, documentoId: number, pagina: number, inicio: number | null, fin: number | null) =>
+    ["pagina-pliego", licitacionId, documentoId, pagina, inicio, fin] as const,
 };
 
 export const guionKeys = {
@@ -235,6 +230,8 @@ export const investigadorKeys = {
    * lista donde estaba, sin pedirla otra vez.
    */
   busqueda: (peticion: Readonly<Record<string, unknown>>) => ["investigador", "busqueda", peticion] as const,
+  /** Las consultas recientes de la cuenta (`/me/consultas-recientes`). */
+  historial: ["investigador", "historial"] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -286,8 +283,7 @@ export const competitiveKeys = {
   contraMi: (empresaKey: string, organizationId: OrganizacionDeClave, meses: number, grupo: string | null = null) =>
     ["competitive", "contra-mi", empresaKey, organizationId, meses, grupo] as const,
   /** Socios de UTE de un segmento (`GET /competitive/partners`, F3.3). */
-  partners: (cpv: string | null, ccaa: string | null) =>
-    ["competitive", "partners", cpv, ccaa] as const,
+  partners: (cpv: string | null, ccaa: string | null) => ["competitive", "partners", cpv, ccaa] as const,
   /**
    * Competencia esperada de un expediente
    * (`GET /licitaciones/{id}/competencia-esperada`). Lleva la organización: la
@@ -307,12 +303,10 @@ export const competitiveKeys = {
    * (`/bajas`) y la baja de referencia de un segmento (`/bajas/referencia`).
    * No dependen de quién pregunta: el backend las cachea compartidas.
    */
-  hhi: (segmentBy: string, minContratos: number) =>
-    ["competitive", "hhi", segmentBy, minContratos] as const,
+  hhi: (segmentBy: string, minContratos: number) => ["competitive", "hhi", segmentBy, minContratos] as const,
   cuota: (params: Record<string, string>) => ["competitive", "cuota", params] as const,
   bajas: (params: Record<string, string>) => ["competitive", "bajas", params] as const,
-  bajaReferencia: (params: Record<string, string>) =>
-    ["competitive", "bajas-referencia", params] as const,
+  bajaReferencia: (params: Record<string, string>) => ["competitive", "bajas-referencia", params] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -322,8 +316,7 @@ export const competitiveKeys = {
 export const searchKeys = {
   all: ["search"] as const,
   /** `GET /search/global` (F1.2), por término y organización activa. */
-  global: (q: string, organizationId: OrganizacionDeClave) =>
-    ["search", "global", q, organizationId] as const,
+  global: (q: string, organizationId: OrganizacionDeClave) => ["search", "global", q, organizationId] as const,
 };
 
 // ---------------------------------------------------------------------------
@@ -346,11 +339,7 @@ export const pursuitKeys = {
    * una entrada por ventana; `pursuits` sigue siendo prefijo de todas, que es
    * lo que hace que cerrar una oportunidad las invalide.
    */
-  metricsPeriodo: (
-    organizationId: OrganizacionDeClave,
-    desde: string | null,
-    hasta: string | null,
-  ) =>
+  metricsPeriodo: (organizationId: OrganizacionDeClave, desde: string | null, hasta: string | null) =>
     desde == null && hasta == null
       ? (["pursuits", "metrics", organizationId] as const)
       : (["pursuits", "metrics", organizationId, desde, hasta] as const),
@@ -359,8 +348,7 @@ export const pursuitKeys = {
    * Contraste ficha × capacidad de una oportunidad
    * (`GET /pursuits/{id}/checklist`, S2.3).
    */
-  checklist: (pursuitId: number | string) =>
-    ["pursuits", "checklist", String(pursuitId)] as const,
+  checklist: (pursuitId: number | string) => ["pursuits", "checklist", String(pursuitId)] as const,
   /**
    * Prefijos del contraste y del kit de todas las oportunidades. Los dos salen
    * de la ficha del pliego, que es de la licitación y no de la oportunidad:
@@ -420,18 +408,14 @@ export const pursuitKeys = {
    * `pursuits` por lo mismo que `weightsProposal`: cerrar una oportunidad
    * cambia el win rate.
    */
-  direccion: (
-    organizationId: OrganizacionDeClave,
-    desde: string | null = null,
-    hasta: string | null = null,
-  ) => ["pursuits", "direccion", organizationId, desde, hasta] as const,
+  direccion: (organizationId: OrganizacionDeClave, desde: string | null = null, hasta: string | null = null) =>
+    ["pursuits", "direccion", organizationId, desde, hasta] as const,
   /**
    * Carga del equipo (`GET /pursuits/direccion/carga`): quién tiene qué
    * abierto. Cuelga de `pursuits`: asignar, mover o cerrar una oportunidad
    * cambia la carga de alguien.
    */
-  direccionCarga: (organizationId: OrganizacionDeClave) =>
-    ["pursuits", "direccion-carga", organizationId] as const,
+  direccionCarga: (organizationId: OrganizacionDeClave) => ["pursuits", "direccion-carga", organizationId] as const,
   /**
    * Feed de actividad del equipo (`GET /pursuits/actividad`, F4.5), por
    * organización y persona filtrada. Cuelga de `pursuits`: cada mutación de una
@@ -454,8 +438,7 @@ export const pursuitKeys = {
    * pantalla y ninguna se deriva de la otra. Lo que invalidan las mutaciones es
    * `pursuits`, que es prefijo de las dos.
    */
-  carteraResumen: (organizationId: OrganizacionDeClave) =>
-    ["pursuits", "cartera", "resumen", organizationId] as const,
+  carteraResumen: (organizationId: OrganizacionDeClave) => ["pursuits", "cartera", "resumen", organizationId] as const,
   /**
    * Cronología del contrato de una entrada de cartera
    * (`GET /pursuits/cartera/{id}/eventos`). Va por contrato porque es el
@@ -478,8 +461,7 @@ export const pursuitKeys = {
 export const cuentaKeys = {
   all: ["cuentas"] as const,
   lista: (organizationId: OrganizacionDeClave) => ["cuentas", "lista", organizationId] as const,
-  resumen: (organizationId: OrganizacionDeClave) =>
-    ["cuentas", "resumen", organizationId] as const,
+  resumen: (organizationId: OrganizacionDeClave) => ["cuentas", "resumen", organizationId] as const,
   ficha: (organizationId: OrganizacionDeClave, cuentaId: number) =>
     ["cuentas", "ficha", organizationId, cuentaId] as const,
   deOrgano: (organizationId: OrganizacionDeClave, organo: string) =>
@@ -585,10 +567,8 @@ export const featureFlagKeys = {
 
 export const renovacionesKeys = {
   all: ["renovaciones"] as const,
-  lista: (meses: number, tecnologia: string | null) =>
-    ["renovaciones", meses, tecnologia] as const,
-  resumen: (meses: number, tecnologia: string | null) =>
-    ["renovaciones-resumen", meses, tecnologia] as const,
+  lista: (meses: number, tecnologia: string | null) => ["renovaciones", meses, tecnologia] as const,
+  resumen: (meses: number, tecnologia: string | null) => ["renovaciones-resumen", meses, tecnologia] as const,
 };
 
 // ---------------------------------------------------------------------------

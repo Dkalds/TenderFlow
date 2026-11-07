@@ -167,12 +167,12 @@ def export_account_data(user_id: int, user_key: str) -> dict[str, list[dict[str,
 
     La fila de ``users`` (sin credenciales), los accesos, las sesiones activas
     (con el id público, nunca el hash), las preferencias de notificación, los
-    descartes vigentes del Radar, los votos del asistente y las tareas asignadas:
-    todo lo que el borrado ya alcanza y el export omitía. Las claves son nombres
-    de fichero del ZIP.
+    descartes vigentes del Radar, los votos del asistente, las tareas asignadas
+    y las consultas recientes del Investigador: todo lo que el borrado alcanza.
+    Las claves son nombres de fichero del ZIP.
     """
     from db import sessions, users
-    from db.repositories import asistente_feedback, notification_preferences
+    from db.repositories import asistente_feedback, consultas_recientes, notification_preferences
 
     return {
         "cuenta": users.export_account(user_id),
@@ -188,6 +188,9 @@ def export_account_data(user_id: int, user_key: str) -> dict[str, list[dict[str,
         "descartes_radar": radar_dismissals.list_detalle(user_key, user_id=user_id),
         "asistente_feedback": asistente_feedback.exportar_de_usuario(user_id),
         "pursuit_tasks": _pursuit_task_repo.export_for_user(user_id),
+        "consultas_recientes": [
+            {"consulta": consulta} for consulta in consultas_recientes.listar(user_id)
+        ],
     }
 
 
@@ -222,14 +225,19 @@ def anonymize_user_data(
 
     Cubre watchlist (empresa/CPV), favoritos, reglas de watchlist por criterio,
     perfil de scoring, alertas in-app y sus marcas de lectura, descartes del Radar, seguimientos
-    (``follows``), votos del asistente, preferencias de notificación y de
+    (``follows``), votos del asistente, consultas recientes del Investigador, preferencias de notificación y de
     correo, el segundo factor (TOTP), las tareas asignadas y el nombre de la
     organización personal — todo lo persistido bajo ``user_key`` **o** ``user_id`` (v129: un
     borrado que sólo mirase la clave del correo actual dejaría vivo lo
     guardado con el anterior). Si se pasa ``key_id`` (autenticación por API
     key), además revoca esa key.
     """
-    from db.repositories import asistente_feedback, follows, notification_preferences
+    from db.repositories import (
+        asistente_feedback,
+        consultas_recientes,
+        follows,
+        notification_preferences,
+    )
     from db.saved_filters import delete_all_for_user as delete_all_saved_filters
     from services.notifications import delete_all_alerts, delete_email_prefs
     from services.watchlist_rules import delete_all_for_user
@@ -246,6 +254,7 @@ def anonymize_user_data(
     if user_id is not None:
         _feedback_repo.delete_for_user(user_id)
         asistente_feedback.borrar_de_usuario(user_id)
+        consultas_recientes.borrar_de_usuario(user_id)
         notification_preferences.borrar_de_usuario(user_id)
         _pursuit_repo.anonymize_user_references(user_id)
         _pursuit_comment_repo.anonymize_author(user_id)

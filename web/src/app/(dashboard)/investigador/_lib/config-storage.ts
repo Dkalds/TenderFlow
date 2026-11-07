@@ -1,6 +1,9 @@
 /**
  * Persistencia local de la consola del Investigador: ajustes e historial.
  *
+ * El historial es solo la caché de `/api/v1/me/consultas-recientes`
+ * (`_hooks/use-ajustes.ts`); los ajustes sí viven aquí.
+ *
  * Solo `localStorage` (vía `@/lib/storage`, que tolera su ausencia). Se lee
  * después del montaje, nunca durante el render del servidor: leerlo antes
  * rompía la hidratación.
@@ -11,6 +14,8 @@ import type { InvestigadorConfig } from "./types";
 
 const CONFIG_KEY = "investigador_config";
 const HISTORY_KEY = "search_history";
+/** El historial de este navegador ya se subió a la cuenta (o la cuenta ya tenía uno). */
+const HISTORY_SUBIDO_KEY = "search_history_subido";
 
 /** Tamaño máximo del historial de consultas que se recuerda. */
 export const MAX_HISTORY = 10;
@@ -72,4 +77,12 @@ export function loadHistory(): string[] {
 
 export function saveHistory(h: string[]) {
   setJSON(HISTORY_KEY, h);
+}
+
+export function historialSubido(): boolean {
+  return getJSON<unknown>(HISTORY_SUBIDO_KEY, false) === true;
+}
+
+export function marcarHistorialSubido() {
+  setJSON(HISTORY_SUBIDO_KEY, true);
 }
