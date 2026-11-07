@@ -199,9 +199,22 @@ consulta que lo encuentra.
 polling entre encolar y ejecutar. El coste mensual del servicio se anota en
 [docs/COSTES.md](../COSTES.md).
 
-**Riesgo.** Un worker parado deja la cola creciendo en silencio. Lo cubren
-`/health/ready` del worker (Render lo usa) y la métrica de pendientes por
-tipo, con el mismo criterio que `domain_events_pending` de ADR-027.
+**Riesgo.** Un worker parado deja la cola creciendo en silencio. La «métrica
+de pendientes por tipo» que este párrafo prometía nunca se escribió, y §G es
+justo ese silencio. Desde el 2026-11-07 lo cubre el healthcheck
+(`scheduler/healthcheck.py`, tras cada pasada y cada seis horas): un job a
+demanda reclamable desde hace más de media hora, o `running` con el lock
+caducado sin barrer, degrada el estado y sale en el correo. Los restos de un
+cierre de pasada que Actions mató a mitad los avisa la pasada siguiente al
+descartarlos (`scheduler/pipeline_cierre.py`).
+
+**Reintentos (2026-11-07).** Tres intentos con backoff de 30 s y 60 s, salvo
+que el handler lance `services.jobs.JobSinReintento`: entonces el job queda
+`failed` al primer intento. La ficha la lanza cuando repetir en minutos no
+cambia nada (expediente sin pliegos, pliego anunciado sin publicar, modelo
+retirado, key rechazada). `ack` y `fail` del consumidor llevan la valla de su
+`worker_id`: un cierre tardío de un lock que ya no es suyo no pisa al
+consumidor que lo reclamó después.
 
 **Lo que este ADR no decide.** Qué trabajos concretos se encolan (S5.2) —salvo
 la excepción de §F, que dice cuáles **no**—, ni el desglose por pasos del

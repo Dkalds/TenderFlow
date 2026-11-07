@@ -233,6 +233,59 @@ def test_un_locked_at_caducado_vuelve_a_pending(tmp_db) -> None:
     assert otro.intentos == 2
 
 
+def test_un_cierre_tardio_no_pisa_al_consumidor_que_reclamo_despues(tmp_db) -> None:
+    """La valla de ``ack``/``fail``: exactamente un dueño cierra cada intento.
+
+    El worker viejo pierde el lock (la barrida se lo lleva) y otro reclama el
+    job. Si el viejo cierra después, sin valla devolvía a ``pending`` un job que
+    el nuevo seguía ejecutando, y un tercero lo tomaba.
+    """
+    job_id = enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-VALLA", "model": "m"})
+    viejo = claim("worker-viejo")
+    assert viejo is not None
+    assert reclamar_caducados(ttl_segundos=0) == ([job_id], [])
+    nuevo = claim("worker-nuevo")
+    assert nuevo is not None and nuevo.id == job_id
+
+    fail(job_id, "tarde", intentos=viejo.intentos, worker_id="worker-viejo")
+    ack(job_id, {"de": "viejo"}, worker_id="worker-viejo")
+
+    sigue = obtener(job_id)
+    assert sigue is not None
+    assert (sigue.estado, sigue.locked_by) == ("running", "worker-nuevo")
+    assert claim("worker-tercero") is None
+
+    ack(job_id, {"de": "nuevo"}, worker_id="worker-nuevo")
+    final = obtener(job_id)
+    assert final is not None
+    assert (final.estado, final.resultado) == ("done", {"de": "nuevo"})
+
+
+def test_atascados_cuenta_lo_que_ningun_consumidor_mueve(tmp_db) -> None:
+    """Lo que lee el healthcheck: pendientes viejos y locks caducados sin barrer."""
+    from db.database import connect
+    from services.jobs import TIPO_PASO_PIPELINE, TIPOS_A_DEMANDA
+
+    hace = datetime.now(UTC) - timedelta(hours=2)
+    colgado = enqueue(
+        TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-COLGADO", "model": "m"}, run_after=hace
+    )
+    assert claim("worker-muerto") is not None
+    with connect() as c:
+        c.execute("UPDATE jobs SET locked_at = %s WHERE id = %s", (hace, colgado))
+    enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-OLVIDADO", "model": "m"}, run_after=hace)
+    enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-RECIENTE", "model": "m"})
+    # Un paso del cierre viejo no es de la cola a demanda.
+    enqueue(TIPO_PASO_PIPELINE, {"paso": "digests"}, run_after=hace, deduplicar=False)
+
+    filas = _REPO.atascados(tipos=tuple(TIPOS_A_DEMANDA), espera_segundos=1800, ttl_segundos=900)
+
+    assert len(filas) == 1
+    fila = filas[0]
+    assert (fila["tipo"], fila["pendientes"], fila["sin_barrer"]) == (TIPO_FICHA_PLIEGO, 1, 1)
+    assert fila["mas_antiguo_s"] >= 7000
+
+
 def test_un_lock_vivo_no_se_reclama(tmp_db) -> None:
     enqueue(TIPO_FICHA_PLIEGO, {"licitacion_id": "EXP-VIVO", "model": "m"})
     assert claim("worker-1") is not None

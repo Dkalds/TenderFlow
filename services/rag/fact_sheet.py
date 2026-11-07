@@ -16,7 +16,7 @@ from pydantic.fields import FieldInfo
 from db.repositories.documentos import TIPOS_PLIEGO, DocumentosRepository
 from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
 from llm.client import DEFAULT_MODEL, stream_llm_response
-from llm.json_utils import extract_json_object
+from llm.json_utils import extract_json_object, extract_json_object_admitiendo_corte
 from observability.logging import get_logger
 from shared.tender_facts import (
     EvidenceRef,
@@ -806,11 +806,18 @@ class SinPaginasError(ValueError):
     síncrona, ``failed`` con detalle en la de background). Lleva el expediente
     que se miró, que en una republicación no es el que se pidió: es donde hay
     que dejar el ``failed`` para que la siguiente lectura lo encuentre.
+
+    ``reintentable`` dice si repetirlo en minutos puede cambiar algo: solo con
+    el breaker de PLACSP abierto, cuando no se llegó a intentar ninguna
+    descarga. Un expediente sin pliegos, uno anunciado sin publicar o un
+    formato que no se lee no se curan con el backoff de la cola, sino con la
+    ingesta siguiente.
     """
 
-    def __init__(self, mensaje: str, *, licitacion_id: str) -> None:
+    def __init__(self, mensaje: str, *, licitacion_id: str, reintentable: bool = False) -> None:
         super().__init__(mensaje)
         self.licitacion_id = licitacion_id
+        self.reintentable = reintentable
 
 
 def extract_fact_sheet_on_demand(
@@ -839,7 +846,9 @@ def extract_fact_sheet_on_demand(
     pages = DocumentosRepository().list_pages_by_licitacion(licitacion_id)
     if not any(str(page.get("texto") or "").strip() for page in pages):
         raise SinPaginasError(
-            _missing_pages_detail(licitacion_id, fetched), licitacion_id=licitacion_id
+            _missing_pages_detail(licitacion_id, fetched),
+            licitacion_id=licitacion_id,
+            reintentable=bool(fetched.get("skipped")) and not fetched.get("error"),
         )
     return extract_fact_sheet(licitacion_id, model=model)
 
@@ -1039,7 +1048,13 @@ def _extraer_de_seleccion(
         keywords=_TOPIC_TERMS,
         max_tokens=_MAX_OUTPUT_TOKENS,
     )
-    facts, invalid = _parse_facts(extract_json_object(raw))
+    payload, cortado = extract_json_object_admitiendo_corte(raw)
+    facts, invalid = _parse_facts(payload)
+    if cortado:
+        # La salida llegó al tope de tokens: lo completo se queda, el último
+        # hecho a medias cuenta como inválido y la ficha sale `needs_review`.
+        invalid += 1
+        log.warning("fact_sheet_salida_cortada", licitacion_id=licitacion_id, chars=len(raw))
     # Contra todas las páginas, no solo las seleccionadas: una cita que el
     # modelo atribuye a la página contigua se corrige si el texto está allí.
     facts, unverifiable = _validate_fact_evidence(facts, pages)
@@ -1271,7 +1286,7 @@ def run_background_extraction(
     model: str,
     budget_subject: str | None = None,
     budget_org: str | None = None,
-) -> None:
+) -> bool:
     """Cuerpo del BackgroundTask de ``POST …/ficha-pliego/extract-async``.
 
     Nunca lanza: el resultado se comunica por la fila persistida (que el
@@ -1284,8 +1299,14 @@ def run_background_extraction(
     si la licitación es una republicación (:class:`SinPaginasError` dice cuál
     se miró). Guardarlo en la del anuncio TED lo dejaría en una fila que
     ``get_fact_sheet`` nunca consulta.
+
+    Returns:
+        Si un fallo, de haberlo, puede curarse repitiendo en minutos. Lo lee el
+        handler de la cola (``scheduler.worker``) para no gastar reintentos en
+        un expediente sin pliegos o en un modelo retirado.
     """
     from llm.budget import bind_budget_org, bind_budget_subject
+    from llm.providers import LLMAuthError, LLMModelUnavailableError
 
     try:
         bind_budget_subject(budget_subject)
@@ -1297,7 +1318,7 @@ def run_background_extraction(
         except ValidationError:
             # extract_fact_sheet ya persistió el estado failed con su detalle.
             log.warning("fact_sheet_background_validation_failed", licitacion_id=licitacion_id)
-            return
+            return True
         except ValueError as exc:
             destino = exc.licitacion_id if isinstance(exc, SinPaginasError) else licitacion_id
             try:
@@ -1323,14 +1344,23 @@ def run_background_extraction(
                     error=str(exc),
                     exc_info=True,
                 )
-            return
+            return exc.reintentable if isinstance(exc, SinPaginasError) else True
+        except (LLMAuthError, LLMModelUnavailableError) as exc:
+            # ``extract_fact_sheet`` ya dejó el ``failed``. La misma llamada
+            # fallaría igual hasta que alguien cambie la key o el modelo.
+            log.warning(
+                "fact_sheet_background_extract_failed",
+                licitacion_id=licitacion_id,
+                error=str(exc),
+            )
+            return False
         except Exception as exc:
             log.warning(
                 "fact_sheet_background_extract_failed",
                 licitacion_id=licitacion_id,
                 error=str(exc),
             )
-            return
+            return True
 
         try:
             from services.tech_signal import ingest_llm_technologies
@@ -1343,5 +1373,6 @@ def run_background_extraction(
                 licitacion_id=licitacion_id,
                 error=str(exc),
             )
+        return True
     finally:
         clear_extraction_running(licitacion_id)

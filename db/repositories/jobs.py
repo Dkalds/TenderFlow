@@ -89,6 +89,24 @@ def _cierre(fila: tuple[str, datetime, datetime | None, datetime] | None) -> Cie
     return CierreJob(tipo=str(fila[0]), run_after=fila[1], locked_at=fila[2], ahora=fila[3])
 
 
+def _valla(locked_by: str | None) -> tuple[str, tuple[str, ...]]:
+    """Condición extra de un cierre con dueño, y su parámetro (vacía sin dueño)."""
+    if locked_by is None:
+        return "", ()
+    # Sobre `j`, la fila que se actualiza: es la que Postgres vuelve a evaluar si
+    # otra transacción la cambió entre medias; `a` es la instantánea anterior.
+    return " AND j.estado = 'running' AND j.locked_by = %s", (locked_by,)
+
+
+class JobAtascado(TypedDict):
+    """Jobs de un tipo que nadie está moviendo, para el healthcheck."""
+
+    tipo: str
+    pendientes: int
+    sin_barrer: int
+    mas_antiguo_s: int
+
+
 class JobsRepository:
     """Repositorio fino para ``jobs``. Sin lógica de reintento ni de handlers."""
 
@@ -179,31 +197,49 @@ class JobsRepository:
     # servidor, sin otro viaje. El ``FROM jobs a`` es la misma fila leída con
     # la instantánea de la sentencia, es decir, antes de que el ``SET`` vacíe
     # ``locked_at``. ``None`` si el job no existía.
+    #
+    # ``locked_by`` es la valla de quien cierra lo que reclamó: con él, el cierre
+    # solo se aplica si el job sigue ``running`` a su nombre. Sin valla, un
+    # worker cuyo lock barrió la barrida (BD caída más de dos latidos) y que
+    # otro ya ha vuelto a reclamar pisaría el estado del segundo —un ``fail``
+    # lo devolvía a ``pending`` y lo tomaba un tercero—. Con valla, el cierre
+    # tardío no toca nada y devuelve ``None``.
 
-    def marcar_terminado(self, job_id: int, *, resultado_json: str | None) -> CierreJob | None:
+    def marcar_terminado(
+        self, job_id: int, *, resultado_json: str | None, locked_by: str | None = None
+    ) -> CierreJob | None:
         """``done``: suelta el lock y guarda el resultado."""
+        valla, dueno = _valla(locked_by)
         with connect() as c:
             fila = c.execute(
                 "UPDATE jobs j SET estado = 'done', resultado_json = %s, error_detail = NULL, "
                 "locked_by = NULL, locked_at = NULL, updated_at = NOW() "
-                "FROM jobs a WHERE j.id = %s AND a.id = j.id " + _RETURNING_CIERRE,
-                (resultado_json, job_id),
+                "FROM jobs a WHERE j.id = %s AND a.id = j.id" + valla + " " + _RETURNING_CIERRE,
+                (resultado_json, job_id, *dueno),
             ).fetchone()
         return _cierre(fila)
 
-    def marcar_fallido(self, job_id: int, *, error_detail: str) -> CierreJob | None:
+    def marcar_fallido(
+        self, job_id: int, *, error_detail: str, locked_by: str | None = None
+    ) -> CierreJob | None:
         """``failed`` definitivo: se agotaron los intentos."""
+        valla, dueno = _valla(locked_by)
         with connect() as c:
             fila = c.execute(
                 "UPDATE jobs j SET estado = 'failed', error_detail = %s, "
                 "locked_by = NULL, locked_at = NULL, updated_at = NOW() "
-                "FROM jobs a WHERE j.id = %s AND a.id = j.id " + _RETURNING_CIERRE,
-                (error_detail[:4000], job_id),
+                "FROM jobs a WHERE j.id = %s AND a.id = j.id" + valla + " " + _RETURNING_CIERRE,
+                (error_detail[:4000], job_id, *dueno),
             ).fetchone()
         return _cierre(fila)
 
     def reprogramar(
-        self, job_id: int, *, error_detail: str, run_after: datetime
+        self,
+        job_id: int,
+        *,
+        error_detail: str,
+        run_after: datetime,
+        locked_by: str | None = None,
     ) -> CierreJob | None:
         """Devuelve el job a ``pending`` con su próxima ventana (backoff).
 
@@ -211,12 +247,13 @@ class JobsRepository:
         agotando los reintentos, el detalle del último fallo ya está escrito
         aunque el proceso que lo intentó muriera sin poder contarlo.
         """
+        valla, dueno = _valla(locked_by)
         with connect() as c:
             fila = c.execute(
                 "UPDATE jobs j SET estado = 'pending', run_after = %s, error_detail = %s, "
                 "locked_by = NULL, locked_at = NULL, updated_at = NOW() "
-                "FROM jobs a WHERE j.id = %s AND a.id = j.id " + _RETURNING_CIERRE,
-                (run_after, error_detail[:4000], job_id),
+                "FROM jobs a WHERE j.id = %s AND a.id = j.id" + valla + " " + _RETURNING_CIERRE,
+                (run_after, error_detail[:4000], job_id, *dueno),
             ).fetchone()
         return _cierre(fila)
 
@@ -334,6 +371,42 @@ class JobsRepository:
         with connect_read() as c:
             filas = c.execute("SELECT estado, COUNT(*) FROM jobs GROUP BY estado").fetchall()
         return {str(f[0]): int(f[1]) for f in filas}
+
+    def atascados(
+        self, *, tipos: tuple[str, ...], espera_segundos: int, ttl_segundos: int
+    ) -> list[JobAtascado]:
+        """Por tipo, los jobs que ningún consumidor está moviendo.
+
+        ``pendientes``: ``pending`` reclamables desde hace más de
+        ``espera_segundos`` (el consumidor no está, o no da abasto).
+        ``sin_barrer``: ``running`` cuyo lock caducó hace más de
+        ``espera_segundos`` y que nadie devolvió a la cola (la barrida vive en
+        el consumidor: si este no corre, tampoco ella). Solo filas atascadas,
+        así que va por los índices parciales ``ix_jobs_pendientes`` e
+        ``ix_jobs_corriendo`` y no recorre el histórico.
+        """
+        with connect_read() as c:
+            filas = c.execute(
+                "SELECT tipo, "
+                "       COUNT(*) FILTER (WHERE estado = 'pending'), "
+                "       COUNT(*) FILTER (WHERE estado = 'running'), "
+                "       EXTRACT(EPOCH FROM NOW() - MIN("
+                "         CASE WHEN estado = 'pending' THEN run_after ELSE locked_at END))::int "
+                "  FROM jobs "
+                " WHERE tipo = ANY(%(tipos)s) AND ("
+                "       (estado = 'pending' "
+                "        AND run_after < NOW() - make_interval(secs => %(espera)s)) "
+                "    OR (estado = 'running' "
+                "        AND locked_at < NOW() - make_interval(secs => %(ttl)s + %(espera)s))) "
+                " GROUP BY tipo ORDER BY tipo",
+                {"tipos": list(tipos), "espera": float(espera_segundos), "ttl": ttl_segundos},
+            ).fetchall()
+        return [
+            JobAtascado(
+                tipo=str(f[0]), pendientes=int(f[1]), sin_barrer=int(f[2]), mas_antiguo_s=int(f[3])
+            )
+            for f in filas
+        ]
 
     # ── Resúmenes para la vista Ejecuciones de Ops ───────────────────────
 
@@ -472,4 +545,4 @@ class JobsRepository:
         return [dict(zip(columnas, f, strict=True)) for f in filas]
 
 
-__all__ = ["CierreJob", "JobCaducado", "JobsRepository"]
+__all__ = ["CierreJob", "JobAtascado", "JobCaducado", "JobsRepository"]
