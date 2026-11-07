@@ -1005,10 +1005,13 @@ def test_totales_renovaciones_incluye_kpis_de_riesgo(db):
             ("R-K2", RIESGO_ALTO + 0.1),
             ("R-K3", RIESGO_ALTO - 0.3),
         ):
+            # Desde v175 la predicción es del adjudicatario: la de su empresa.
             c.execute(
                 "INSERT INTO predicciones_retencion "
-                "(licitacion_id, prob_retencion, riesgo_cambio) VALUES (%s, %s, %s)",
-                (lic_id, 1.0 - riesgo, riesgo),
+                "(licitacion_id, empresa_id, prob_retencion, riesgo_cambio) "
+                "SELECT %s, a.empresa_id, %s, %s FROM adjudicaciones a "
+                "WHERE a.licitacion_id = %s",
+                (lic_id, 1.0 - riesgo, riesgo, lic_id),
             )
 
     totales = totales_renovaciones(months_ahead=6)

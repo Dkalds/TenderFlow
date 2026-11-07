@@ -824,6 +824,14 @@
       "tipo": "<class 'int'>",
       "validation_alias": "None"
     },
+    "ML_BAJA_SOMBRA": {
+      "alias": "None",
+      "default": "True",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'bool'>",
+      "validation_alias": "None"
+    },
     "ML_CONFIDENCE_THRESHOLD": {
       "alias": "None",
       "default": "0.7",

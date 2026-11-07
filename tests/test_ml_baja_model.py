@@ -1245,3 +1245,161 @@ def test_el_split_unico_de_respaldo_tambien_embarga_el_train():
     assert train and valid
     corte = min(f.fecha for f in valid)
     assert max(fechas_label[f.licitacion_id] for f in train) < corte
+
+
+# ---------------------------------------------------------------------------
+# Masa en 0: offset por lado, gate por cola y P(sin baja)
+# ---------------------------------------------------------------------------
+
+
+def _con_masa_en_cero(n: int = 1000, fraccion_cero: float = 0.3):
+    """Bajas con un 30 % exactamente a 0 y el resto uniforme en (0,05, 0,35)."""
+    import numpy as np
+
+    rng = np.random.default_rng(7)
+    y = rng.uniform(0.05, 0.35, n)
+    y[: int(n * fraccion_cero)] = 0.0
+    return y
+
+
+def test_offset_simetrico_se_clava_en_cero_con_masa_en_cero():
+    """El fallo que motivó el offset por lado: con p10 = 0 y bajas = 0 el
+    score vale 0 justo donde cae el cuantil y el extremo superior, que sobra
+    de ancho, no se puede estrechar."""
+    import numpy as np
+
+    from services.ml.baja_model import _offset_conformal, _offsets_conformal_por_lado
+
+    y = _con_masa_en_cero()
+    p10, p90 = np.zeros(len(y)), np.full(len(y), 0.50)  # p90 muy holgado
+
+    assert _offset_conformal(p10, p90, y) == 0.0
+    inferior, superior = _offsets_conformal_por_lado(p10, p90, y)
+    assert superior < 0, "el extremo superior debe estrecharse"
+    assert float(np.mean(y > p90 + superior)) == pytest.approx(0.10, abs=0.02)
+    assert float(np.mean(y < p10 - inferior)) <= 0.10
+
+
+def test_motivos_cobertura_acepta_la_masa_en_cero_sobre_p10():
+    from services.ml.baja_model import motivos_cobertura
+
+    # Cuantiles verdaderos con un 30 % de ceros: nada cae por debajo de p10 = 0,
+    # el 30 % empata con él, y un 10 % cae por encima de p90.
+    assert (
+        motivos_cobertura(
+            {
+                "fallo_inferior": 0.0,
+                "fallo_inferior_con_empates": 0.30,
+                "fallo_superior": 0.10,
+                "fallo_superior_con_empates": 0.10,
+            }
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    ("metricas", "esperado"),
+    [
+        (
+            {
+                "fallo_inferior": 0.0,
+                "fallo_inferior_con_empates": 0.0,
+                "fallo_superior": 0.10,
+                "fallo_superior_con_empates": 0.10,
+            },
+            "cola inferior con empates",
+        ),
+        (
+            {
+                "fallo_inferior": 0.10,
+                "fallo_inferior_con_empates": 0.10,
+                "fallo_superior": 0.20,
+                "fallo_superior_con_empates": 0.20,
+            },
+            "cola superior 0.2000",
+        ),
+    ],
+)
+def test_motivos_cobertura_rechaza_un_lado_descalibrado(metricas, esperado):
+    from services.ml.baja_model import motivos_cobertura
+
+    assert any(esperado in m for m in motivos_cobertura(metricas))
+
+
+def test_entrenar_con_bajas_a_cero_sirve_prob_sin_baja(db, monkeypatch, tmp_path):
+    """Órgano C adjudica siempre al presupuesto: el clasificador lo aprende y
+    la probabilidad viaja hasta la predicción."""
+    from db.database import connect
+
+    monkeypatch.setattr(baja_model_mod, "MIN_TRAIN_SAMPLES", 40)
+    with connect() as c:
+        i = _sembrar_historico(c)
+        for mes in range(14):
+            yyyy, mm = divmod(mes, 12)
+            fecha = f"{2025 + yyyy}-{mm + 1:02d}-20"
+            for k in range(4):
+                lic = f"C{mes}-{k}"
+                c.execute(
+                    "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, "
+                    " ccaa, importe, tipo_contrato, fuente, fecha_publicacion, "
+                    " fecha_extraccion) VALUES (%s, 'x', 'Organo C', '72000000', 'Madrid', "
+                    " 100000, 'Servicios', 'placsp', %s, CURRENT_TIMESTAMP)",
+                    (lic, fecha),
+                )
+                c.execute(
+                    "INSERT INTO adjudicaciones (licitacion_id, nombre, importe_adjudicado, "
+                    " fecha_adjudicacion, n_ofertas_recibidas, fecha_extraccion) "
+                    "VALUES (%s, 'Empresa Y', 100000, %s, 1, CURRENT_TIMESTAMP)",
+                    (lic, fecha),
+                )
+        assert i > 0
+        _insertar_abierta(c, "ABIERTA_C", organo="Organo C")
+        _insertar_abierta(c, "ABIERTA_B", organo="Organo B")
+
+    resumen = entrenar(activar=False, model_path=tmp_path / "baja.pkl")
+
+    assert resumen["status"] == "ok"
+    for clave in ("fallo_inferior", "fallo_superior", "brier_sin_baja", "conformal_offset_sup"):
+        assert clave in resumen
+    assert resumen["prob_sin_baja_util"] is True
+
+    from db.model_registry import activate_version, list_versions
+
+    activate_version(MODEL_NAME, list_versions(MODEL_NAME)[0]["version"])
+    score_predicciones_baja()
+
+    prob_c = prediccion_baja("ABIERTA_C")["prob_sin_baja"]
+    prob_b = prediccion_baja("ABIERTA_B")["prob_sin_baja"]
+    assert prob_c is not None and prob_b is not None
+    assert prob_c > 0.5 > prob_b
+
+
+def test_artefacto_sin_offset_por_lado_usa_el_simetrico_en_los_dos():
+    from services.ml.baja_model import BajaModel
+
+    modelo = BajaModel({}, {}, metadata={"conformal_offset": 0.03})
+    assert modelo.offsets_conformal == (0.03, 0.03)
+
+
+def test_el_candidato_se_compara_con_la_activa_sobre_el_mismo_valid(db, monkeypatch, tmp_path):
+    """Sobre el mismo dataset la huella coincide y la activa se mide en el
+    bloque de validación del candidato. Un candidato que no la mejora no pasa."""
+    from db.database import connect
+    from db.model_registry import activate_version
+
+    monkeypatch.setattr(baja_model_mod, "MIN_TRAIN_SAMPLES", 40)
+    with connect() as c:
+        _sembrar_historico(c)
+
+    primero = entrenar(activar=False, model_path=tmp_path / "a.pkl")
+    activate_version(MODEL_NAME, primero["version"])
+    segundo = entrenar(activar=False, model_path=tmp_path / "b.pkl")
+
+    assert segundo["dataset_sha256"] == primero["dataset_sha256"]
+    assert segundo["n_por_fuente"] == {"placsp": segundo["n_dataset"]}
+    assert segundo["version_activa"] == primero["version"]
+    # Mismo dato, mismo entrenamiento determinista: no mejora a la activa.
+    assert segundo["mejora_sobre_activa"] == pytest.approx(0.0, abs=1e-9)
+    assert segundo["cumple_criterios"] is False
+    assert "no mejora a la versión activa" in segundo["promotion_reason"]

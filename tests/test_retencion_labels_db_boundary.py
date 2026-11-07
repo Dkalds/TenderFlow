@@ -18,7 +18,19 @@ import pathlib
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import services.ml.retencion_labels as rl
+
+
+@pytest.fixture(autouse=True)
+def _ventanas_cerradas(monkeypatch):
+    """Estos tests fijan el emparejamiento, no la censura: todas las ventanas
+    cuentan como cerradas. La censura tiene sus tests en
+    ``tests/test_ml_retencion_censura.py``."""
+    from datetime import datetime
+
+    monkeypatch.setattr(rl, "_corte_de_datos", lambda _adj: datetime(2100, 1, 1))
 
 
 def _adj(

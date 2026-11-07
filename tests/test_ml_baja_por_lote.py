@@ -145,9 +145,9 @@ def test_guardar_baja_usa_un_arbitro_por_indice_parcial():
     with patch.object(mod, "connect", return_value=ctx):
         mod.PrediccionesRepository().guardar_baja(
             [
-                ("E1", None, 0.1, 0.2, 0.3, None, "t"),
-                ("E1", "1", 0.1, 0.2, 0.3, None, "t"),
-                ("E1", "2", 0.1, 0.2, 0.3, None, "t"),
+                ("E1", None, 0.1, 0.2, 0.3, None, "t", None),
+                ("E1", "1", 0.1, 0.2, 0.3, None, "t", None),
+                ("E1", "2", 0.1, 0.2, 0.3, None, "t", None),
             ]
         )
 

@@ -6,7 +6,7 @@ inferencia online por request. Idempotente: clave natural + upsert
 ejecución produce las mismas filas. En ``predicciones_baja`` la clave son los
 dos únicos parciales de v140 (expediente, o expediente + ``lote_numero``), y el
 upsert vive en ``PrediccionesRepository.guardar_baja``. En
-``predicciones_retencion`` la clave es el expediente, y
+``predicciones_retencion`` la clave es el expediente y la empresa (v175), y
 ``PrediccionesRepository.guardar_retencion`` purga además lo que la corrida no
 refrescó. El módulo no abre conexiones: todo su SQL vive en ``db/`` (ADR-022).
 
@@ -207,9 +207,15 @@ def _score_baja(
                 round(p.p90, 5),
                 version,
                 computed_at,
+                None if p.prob_sin_baja is None else round(p.prob_sin_baja, 5),
             )
             for p in preds
         ]
+    )
+    sombra = (
+        None
+        if por_lote
+        else _score_baja_sombra(filas, int(activa["version"]) if activa else 0, computed_at)
     )
     log.info(
         "baja_scoring_done",
@@ -229,7 +235,67 @@ def _score_baja(
         "degradado": degradado,
         "conformal_offset_baseline": offset_baseline,
         "computed_at": computed_at,
+        "sombra": sombra,
     }
+
+
+def _score_baja_sombra(
+    filas: list[FilaDataset], version_activa: int, computed_at: str
+) -> dict[str, object] | None:
+    """Puntúa el candidato (la versión registrada más nueva que la activa) sin servirlo.
+
+    Escribe en ``predicciones_baja_sombra`` (v174) para que, cuando esas
+    licitaciones se adjudiquen, haya pares predicción↔realidad del candidato
+    antes de decidir activarlo (``MlDatasetRepository.calibracion_baja_sombra``).
+    Fail-open: el batch servido ya está escrito y nada de aquí lo toca. Se
+    apaga con ``ML_BAJA_SOMBRA=false``.
+
+    ``None`` si está apagado o no hay candidato; si no, ``{version, filas}`` o
+    ``{version, error}``.
+    """
+    from config import settings
+    from db.model_registry import list_versions
+    from services.ml.model_artifacts import resolve_version_artifact
+
+    if not bool(getattr(settings, "ML_BAJA_SOMBRA", True)):
+        return None
+    minima = version_activa
+    try:
+        candidatas = [
+            int(v["version"])
+            for v in list_versions(MODEL_NAME)
+            if not v["is_active"] and int(v["version"]) > minima
+        ]
+    except Exception as exc:  # fail-open: sin registro legible no hay candidato
+        log.warning("baja_sombra_error", version=None, error=str(exc))
+        return {"version": None, "error": type(exc).__name__}
+    if not candidatas:
+        return None
+    version = max(candidatas)
+    try:
+        artefacto = resolve_version_artifact(MODEL_NAME, version)
+        if artefacto is None:
+            return {"version": version, "error": "artefacto_irresoluble"}
+        preds = BajaModel.load(artefacto).predict(filas)
+        n = PrediccionesRepository().guardar_baja_sombra(
+            [
+                (
+                    p.licitacion_id,
+                    round(p.p10, 5),
+                    round(p.p50, 5),
+                    round(p.p90, 5),
+                    None if p.prob_sin_baja is None else round(p.prob_sin_baja, 5),
+                )
+                for p in preds
+            ],
+            model_version=version,
+            computed_at=computed_at,
+        )
+    except Exception as exc:  # fail-open: la sombra nunca tumba el batch servido
+        log.warning("baja_sombra_error", version=version, error=str(exc))
+        return {"version": version, "error": type(exc).__name__}
+    log.info("baja_sombra_done", version=version, filas=n)
+    return {"version": version, "filas": n}
 
 
 # ── Retención ─────────────────────────────────────────────────────────────
@@ -596,6 +662,10 @@ def prediccion_baja(licitacion_id: str, lote_id: int | None = None) -> dict[str,
             computed_at=pred["computed_at"],
             serving="modelo" if model_version else "baseline",
         )
+        # Aditivo (v173): solo si el modelo la dio, para que una respuesta sin
+        # ella siga siendo la de siempre (la ruta serializa con exclude_unset).
+        if pred.get("prob_sin_baja") is not None:
+            data["prob_sin_baja"] = pred["prob_sin_baja"]
     if real is not None:
         baja_real, importe_adjudicado = real
         data["baja_real"] = baja_real
@@ -614,6 +684,11 @@ def prediccion_baja(licitacion_id: str, lote_id: int | None = None) -> dict[str,
                 "model_version": fila["model_version"],
                 "computed_at": fila["computed_at"],
                 "serving": "modelo" if fila["model_version"] else "baseline",
+                **(
+                    {"prob_sin_baja": fila["prob_sin_baja"]}
+                    if fila.get("prob_sin_baja") is not None
+                    else {}
+                ),
             }
             for fila in desglose
         ]
@@ -683,6 +758,8 @@ def _prediccion_baja_lote(licitacion_id: str, lote_id: int) -> dict[str, Any] | 
             serving="modelo" if model_version else "baseline",
             prediccion_ambito=ambito,
         )
+        if pred.get("prob_sin_baja") is not None:
+            data["prob_sin_baja"] = pred["prob_sin_baja"]
     if real is not None:
         data["baja_real"], data["importe_adjudicado"] = real
     return data

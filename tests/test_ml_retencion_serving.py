@@ -166,13 +166,14 @@ def _poblacion_de_antes(
 
     Solo cambia de dónde salen los bordes: los recibe en vez de calcularlos,
     porque la ventana sí cambió a propósito (meses de calendario, ver
-    :func:`test_la_ventana_usa_meses_de_calendario_como_la_vista`).
+    :func:`test_la_ventana_usa_meses_de_calendario_como_la_vista`), y la
+    deduplicación, que desde v175 es por expediente **y empresa**.
     """
     from services.dedupe import normalize_organo
     from services.ml.features import _cpv4
 
     filas = []
-    vistos: set[str] = set()
+    vistos: set[tuple[str, int]] = set()
     for adj in adjudicaciones:
         fin = adj.get("fecha_fin_efectiva")
         empresa_id = adj.get("empresa_id")
@@ -184,11 +185,11 @@ def _poblacion_de_antes(
             or empresa_id is None
             or not organo_n
             or not cpv4
-            or lic_id in vistos
+            or (lic_id, int(empresa_id)) in vistos
             or not (desde <= str(fin)[:10] <= hasta)
         ):
             continue
-        vistos.add(lic_id)
+        vistos.add((lic_id, int(empresa_id)))
         filas.append(
             (
                 lic_id,

@@ -164,9 +164,25 @@ criterio escrito es este, y no la intuición de quien mire el número:
   `services.ml.promotion.evaluar_promocion_predictiva`. Una versión solo se
   promociona si **su mejora sobre el baseline supera la dispersión de esa misma
   métrica entre folds** (`MIN_IMPROVEMENT_OVER_FOLD_DISPERSION`, hoy 1.0). Los
-  criterios del RFC 20260611-2 (mejora relativa ≥10% y cobertura del intervalo
-  en [75, 85]% para baja; PR-AUC > prevalencia + 0.15 y ECE < 0.08 para
+  criterios del RFC 20260611-2 (mejora relativa ≥10% y colas del intervalo
+  calibradas para baja; PR-AUC > prevalencia + 0.15 y ECE < 0.08 para
   retención) siguen siendo condición necesaria y entran en la misma decisión.
+  Además, si hay versión activa, el candidato tiene que mejorarla en el
+  **mismo** bloque de validación (`mejora_sobre_activa`, desde 2026-11).
+
+  **Colas por lado en vez de cobertura total (2026-11).** El RFC pedía
+  `cobertura_intervalo_80` en [0,75, 0,85]. Con una masa de bajas exactamente 0
+  (el 28 % de los pares de PLACSP, adjudicaciones al presupuesto) hasta el
+  intervalo de los cuantiles verdaderos cubre más del 80 %: los ceros caen
+  sobre `p10 = 0`. Así se rechazó la v5 (cobertura 0,875) con una mejora del
+  15 % y una dispersión 19 veces menor. El criterio vigente es
+  `services.ml.baja_model.motivos_cobertura`: cada lado deja fuera como mucho un
+  15 % (`fallo_inferior`, `fallo_superior`) y, contando los empates con el
+  extremo, al menos un 5 % (`*_con_empates`). Sin empates equivale a la regla
+  del RFC con la tolerancia repartida por lado, y además detecta un intervalo
+  descentrado que la cobertura total daba por bueno. El offset conformal pasó
+  a ser uno por extremo por la misma razón: el simétrico se quedaba clavado en
+  0,0 (las cinco versiones registradas hasta entonces).
 
   El caso que motivó el criterio: `baja_model` v2 mejoraba el baseline un 3,3%
   (`mae_p50` 0.12494 vs 0.12999, o sea 0.005) con `mae_p50_std_folds` = 0.01287
@@ -295,10 +311,11 @@ La decisión es humana (`ml-entrenar.yml` (modelo `predictivos`) no activa salvo
 | --- | --- | --- |
 | `baja_model` | `mae_baseline − mae_p50 ≥ mae_p50_std_folds × MIN_IMPROVEMENT_OVER_FOLD_DISPERSION` (1.0) | `evaluar_promocion_predictiva` |
 | | mejora relativa en MAE ≥ 10 % (`MEJORA_MINIMA_RELATIVA`) | `baja_model.py`, RFC 20260611-2 |
-| | `cobertura_intervalo_80` en [0,75, 0,85] | `baja_model.py`, RFC 20260611-2 |
+| | colas del intervalo por lado: `fallo_*` ≤ 0,15 y `fallo_*_con_empates` ≥ 0,05 | `baja_model.motivos_cobertura` (revisa el criterio del RFC, ver arriba) |
+| | con versión activa: `mejora_sobre_activa` > 0 en el mismo bloque de validación | `baja_model._comparar_con_activa` |
 | `retencion_model` | `pr_auc − pr_auc_baseline ≥ pr_auc_std_folds × 1.0` (baseline = prevalencia) | `evaluar_promocion_predictiva` |
 | | `pr_auc > prevalencia + 0,15` (`PR_AUC_MARGEN`) y `ece < 0,08` (`ECE_MAX`) | `retencion_model.py`, RFC 20260611-2 |
-| | Resuelta la clave de `predicciones_retencion` (hoy un riesgo por expediente, pinta una fila por adjudicatario) | backlog P2, exige migración |
+| | Pares solo con la ventana de sucesión cerrada (`ventana_cerrada`, desde 2026-11): las versiones v2–v4 se entrenaron con etiquetas provisionales | `retencion_labels._emparejar` |
 | Los dos | Sin dispersión medida **no se activa**: una mejora sin error asociado no se distingue del ruido | `evaluar_promocion_predictiva` |
 
 Aplicado a lo registrado (backlog P2 «`baja_model` v2 y `retencion_model` v1
@@ -312,6 +329,13 @@ están entrenados…»):
   0,15) tampoco pasaría el criterio del RFC. Hay que relanzar
   `ml-entrenar.yml` (modelo `predictivos`) para tener la versión con dispersión y rival de
   antigüedad registrados, y decidir sobre esa.
+- **Antes de activar una versión de baja, mirar su sombra.** El batch diario
+  puntúa la versión registrada más nueva que la activa en
+  `predicciones_baja_sombra` (v174; se apaga con `ML_BAJA_SOMBRA=false`). La
+  fila «Candidato en sombra» del resumen de `ml-scoring` da, sobre las
+  licitaciones que ya se adjudicaron, su `mae_p50`, la de lo servido en los
+  mismos expedientes (`mejora`) y los motivos de cola. Con `n` ≥ 30 y sin
+  motivos, la decisión tiene evidencia fuera de la validación.
 - `pr_auc_baseline_antiguedad` (ordenar por antigüedad de la relación) **no
   gatea**: si el modelo no lo supera, actívalo sabiendo que un `ORDER BY` hacía
   lo mismo.
