@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-11-06
+Generado: 2026-11-07
 
-Revisión Alembic aplicada: `v172_empresas_busqueda_trgm`.
+Revisión Alembic aplicada: `v173_consultas_recientes`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -32,8 +32,8 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Seguimiento y notificaciones | 12 | 135 | 38 |
 | ML y predicciones | 7 | 55 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
-| Otras | 23 | 182 | 35 |
-| **Total** | **106** | **976** | **244** |
+| Otras | 24 | 185 | 35 |
+| **Total** | **107** | **979** | **244** |
 
 ## Licitaciones y fuente
 
@@ -1606,6 +1606,16 @@ Claves: `PRIMARY KEY (id)`
 Claves: `PRIMARY KEY (id)`
 
 Índices: `idx_client_errors_fingerprint` (único), `idx_client_errors_ultima_vez`
+
+### `consultas_recientes`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `user_id` | `integer` | no |
+| `consulta` | `text` | no |
+| `usada_en` | `timestamp with time zone` | no |
+
+Claves: `PRIMARY KEY (user_id, consulta)`
 
 ### `contratos_cartera`
 

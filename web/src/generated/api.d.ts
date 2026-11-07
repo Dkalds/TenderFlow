@@ -3502,6 +3502,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/consultas-recientes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mis consultas recientes del Investigador
+         * @description Las últimas consultas que buscó el usuario, en cualquier navegador.
+         *
+         *     Hasta 2026-11 vivían en el ``localStorage`` de cada navegador; ahora ese
+         *     almacén es solo la caché de esta lista.
+         */
+        get: operations["get_consultas_recientes_api_v1_me_consultas_recientes_get"];
+        put?: never;
+        /**
+         * Apuntar una consulta reciente del Investigador
+         * @description La sube al principio de la lista (o la añade) y devuelve la lista nueva.
+         *
+         *     La frase es la estrategia comercial de quien la escribe: no se registra en
+         *     el log, como en ``/search/semantic``.
+         */
+        post: operations["post_consulta_reciente_api_v1_me_consultas_recientes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/data": {
         parameters: {
             query?: never;
@@ -8236,6 +8266,14 @@ export interface components {
             valor_estimado?: number | null;
         };
         /**
+         * ConsultasRecientes
+         * @description Las consultas recientes del Investigador, la más reciente primero.
+         */
+        ConsultasRecientes: {
+            /** Consultas */
+            consultas?: string[];
+        };
+        /**
          * ContratoCartera
          * @description Un contrato ganado que sigue vivo.
          */
@@ -11690,6 +11728,17 @@ export interface components {
              * @default false
              */
             ventana_recortada: boolean;
+        };
+        /**
+         * NuevaConsultaReciente
+         * @description Una consulta que se acaba de buscar.
+         */
+        NuevaConsultaReciente: {
+            /**
+             * Consulta
+             * @description Lo que se escribió en la caja.
+             */
+            consulta: string;
         };
         /**
          * OAuthAuthorizeResult
@@ -26317,6 +26366,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatusMessage"];
+                };
+            };
+            /** @description La petición no pasó la validación (``errors`` por campo). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Error: cualquier código no listado (RFC 9457). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    get_consultas_recientes_api_v1_me_consultas_recientes_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsultasRecientes"];
+                };
+            };
+            /** @description La petición no pasó la validación (``errors`` por campo). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Error: cualquier código no listado (RFC 9457). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    post_consulta_reciente_api_v1_me_consultas_recientes_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NuevaConsultaReciente"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsultasRecientes"];
                 };
             };
             /** @description La petición no pasó la validación (``errors`` por campo). */

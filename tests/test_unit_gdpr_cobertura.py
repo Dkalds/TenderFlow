@@ -39,8 +39,11 @@ def _anonimizar(**kwargs: object) -> dict[str, MagicMock]:
         prefs = pila.enter_context(
             patch("db.repositories.notification_preferences.borrar_de_usuario")
         )
+        consultas = pila.enter_context(
+            patch("db.repositories.consultas_recientes.borrar_de_usuario")
+        )
         anonymize_user_data("clave", **kwargs)  # type: ignore[arg-type]  # kwargs de test
-    return {"follows": follows, "votos": votos, "prefs": prefs}
+    return {"follows": follows, "votos": votos, "prefs": prefs, "consultas": consultas}
 
 
 def test_el_borrado_alcanza_follows_votos_y_preferencias() -> None:
@@ -48,6 +51,7 @@ def test_el_borrado_alcanza_follows_votos_y_preferencias() -> None:
     llamadas["follows"].assert_called_once_with("clave", user_id=5)
     llamadas["votos"].assert_called_once_with(5)
     llamadas["prefs"].assert_called_once_with(5)
+    llamadas["consultas"].assert_called_once_with(5)
 
 
 def test_sin_user_id_solo_se_borra_lo_que_se_guarda_por_clave() -> None:
@@ -55,6 +59,7 @@ def test_sin_user_id_solo_se_borra_lo_que_se_guarda_por_clave() -> None:
     llamadas["follows"].assert_called_once_with("clave", user_id=None)
     llamadas["votos"].assert_not_called()
     llamadas["prefs"].assert_not_called()
+    llamadas["consultas"].assert_not_called()
 
 
 def test_export_follows_delega_en_el_repositorio() -> None:

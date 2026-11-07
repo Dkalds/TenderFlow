@@ -34,10 +34,10 @@ datos había que deducirlas leyendo el esquema.
 | **Finalidad** | Prestar el servicio: identificar a la persona usuaria, mantener su sesión y su organización. |
 | **Base jurídica** | Ejecución de contrato (art. 6.1.b RGPD). |
 | **Categorías de interesados** | Personas usuarias registradas. |
-| **Categorías de datos** | Email, nombre, hash de contraseña (argon2/bcrypt), proveedor OAuth, secreto TOTP cifrado, marcas temporales. |
+| **Categorías de datos** | Email, nombre, hash de contraseña (argon2/bcrypt), proveedor OAuth, secreto TOTP cifrado, marcas temporales, y las diez últimas consultas del Investigador (`consultas_recientes`, desde v173; no van a logs ni a telemetría). |
 | **Destinatarios** | Proveedor de base de datos (Supabase) y de cómputo (Render), ambos como encargados. Proveedores OIDC (Google; Microsoft cuando exista) como responsables independientes del lado de su identidad. |
 | **Transferencias internacionales** | Sí, según la región del proveedor. Ver §4. |
-| **Plazo** | Mientras la cuenta exista. El borrado autoservicio (`DELETE /me`) anonimiza; `access_log` se purga a los 180 días. |
+| **Plazo** | Mientras la cuenta exista. El borrado autoservicio (`DELETE /me`) anonimiza y borra las consultas recientes; `access_log` se purga a los 180 días. |
 | **Medidas de seguridad** | Cifrado en tránsito y en reposo, CSRF firmado con HMAC, scopes por API key, rate limiting, auditoría encadenada por SHA-256. |
 
 ### 2.2 Solicitudes de acceso desde la superficie pública

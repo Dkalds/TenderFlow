@@ -754,16 +754,6 @@ _Sin ítems abiertos._
   - **Falta (propietario):** las cuatro variables en `tenderflow-api` (Render) y un deploy con caché limpia; encender la flag; después, `source=rrf` en `semantic_search.ok`, MRR antes/después, RSS y `fusion_ms` real contra el presupuesto. Con eso se cierra.
 - **Progreso (2026-11-07, rama `claude/eloquent-cray-44n08c`) — `/ask` obedece a la misma flag que la lista.** Con `RAG_HYBRID_ENABLED` el asistente usaba la fusión *en lugar* del texto, sin interpretar los filtros de la frase, y la lista y el asistente podían contradecirse. El setting se retiró: `services/licitaciones.py::search_for_ask` llama a `services/investigador/busqueda.py::buscar` con `semantica_activa` de quien pregunta, así que encender `busqueda_semantica` enciende las dos cosas. También se retiró la red de `/ask` (tsquery estricta y `LIKE` sin orden), que solo corría si el motor de texto fallaba; ahora ese fallo llega como `_RecuperacionFallida`. Para medir la decisión hay un eval por categoría: `tests/eval/test_eval_investigador.py`.
 
-### [P3] [Investigador] El historial de consultas sigue en `localStorage`
-- **Área:** web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts
-- **Problema:** las consultas recientes viven en el navegador (`docs/frontend-data-invariants.md`, anti-patrón 3): no viajan a otro dispositivo. `saved_filters` no sirve tal cual —guarda instantáneas del ámbito que las demás pantallas restauran—, así que hace falta una tabla propia, es decir, una migración (§6).
-- **Acceptance criteria:**
-  - Las consultas recientes se guardan por usuario en servidor y `localStorage` queda como caché.
-  - El término no llega a la telemetría de producto (sigue siendo «la estrategia comercial de quien lo escribe»).
-- **Files de partida:** [web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts](<../web/src/app/(dashboard)/investigador/_hooks/use-ajustes.ts>)
-- **Riesgo:** bajo.
-- **Nota (2026-10-25):** no se hizo junto con la búsqueda por significado: la tabla nueva es una migración en `db/alembic/`, que pide OK del propietario (AGENTS.md §6).
-
 ### [P3] [Rendimiento 2026-09] Flecos de la rama de rendimiento
 - **Área:** web/bundle-budget.json, .env.example (OK humano), varios
 - **Problema:** lo que la rama no pudo cerrar por falta de build, de permiso o de alcance:
