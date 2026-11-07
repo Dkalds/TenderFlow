@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import calendar
 from collections import Counter, defaultdict
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -286,7 +287,7 @@ def _features_del_contrato(
     }
 
 
-def _corte_de_datos(adjudicaciones: list[dict[str, Any]]) -> datetime:
+def _corte_de_datos(adjudicaciones: Sequence[Mapping[str, object]]) -> datetime:
     """Último instante observado: la ``fecha_adjudicacion`` más reciente cargada.
 
     Es el corte contra el que se decide si la ventana de sucesión de un

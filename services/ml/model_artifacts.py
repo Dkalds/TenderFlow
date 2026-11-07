@@ -335,7 +335,7 @@ def resolve_version_artifact(name: str, version: int) -> Path | None:
     return _resolver_fila(name, fila) if fila else None
 
 
-def _resolver_fila(name: str, activa: dict[str, Any]) -> Path | None:
+def _resolver_fila(name: str, activa: Mapping[str, object]) -> Path | None:
     """Resuelve y verifica el artefacto de una fila de ``model_versions``."""
     path = Path(str(activa["path"]))
     expected = str(activa.get("sha256") or "")

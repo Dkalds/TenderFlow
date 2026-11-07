@@ -51,7 +51,7 @@ def upgrade() -> None:
     if not _is_postgres():
         return
     op.create_table(
-        _TABLA,
+        "predicciones_baja_sombra",
         sa.Column(
             "licitacion_id",
             sa.Text,

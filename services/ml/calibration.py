@@ -49,6 +49,7 @@ despertar a alguien por un número que ningún usuario ve.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -295,7 +296,7 @@ def comparar_mae_p50() -> dict[str, Any]:
     return resultado
 
 
-def calibracion_sombra(puntuado: dict[str, Any] | None = None) -> dict[str, Any]:
+def calibracion_sombra(puntuado: Mapping[str, object] | None = None) -> dict[str, object]:
     """Calibración del candidato en sombra contra la realidad, y contra lo servido.
 
     ``puntuado`` es lo que devolvió el batch (``{version, filas}`` o
@@ -309,7 +310,7 @@ def calibracion_sombra(puntuado: dict[str, Any] | None = None) -> dict[str, Any]
     """
     from services.ml.baja_model import motivos_cobertura
 
-    base: dict[str, Any] = dict(puntuado or {})
+    base: dict[str, object] = dict(puntuado or {})
     try:
         medidas = MlDatasetRepository().calibracion_baja_sombra()
     except Exception as e:  # fail-open: sin la tabla (v174) o sin conexión
@@ -319,27 +320,25 @@ def calibracion_sombra(puntuado: dict[str, Any] | None = None) -> dict[str, Any]
         return {**base, "status": "sin_candidato" if not base else "sin_datos"}
     ultima = medidas[-1]
     n = int(ultima["n"] or 0)
-    resultado: dict[str, Any] = {
+    resultado: dict[str, object] = {
         **base,
         "version_medida": int(ultima["model_version"]),
         "n": n,
     }
     if n < _MIN_EVALUADAS:
         return {**resultado, "status": "sin_datos"}
+    # Con n >= _MIN_EVALUADAS los AVG nunca son NULL; el `or 0.0` es para mypy.
     colas = {
-        clave: float(ultima[clave])
-        for clave in (
-            "fallo_inferior",
-            "fallo_inferior_con_empates",
-            "fallo_superior",
-            "fallo_superior_con_empates",
-        )
+        "fallo_inferior": float(ultima["fallo_inferior"] or 0.0),
+        "fallo_inferior_con_empates": float(ultima["fallo_inferior_con_empates"] or 0.0),
+        "fallo_superior": float(ultima["fallo_superior"] or 0.0),
+        "fallo_superior_con_empates": float(ultima["fallo_superior_con_empates"] or 0.0),
     }
-    mae = float(ultima["mae"])
+    mae = float(ultima["mae"] or 0.0)
     mae_mismos = ultima.get("mae_mismos_pares")
     mae_servido = ultima.get("mae_servido")
     resultado.update(
-        cobertura=round(float(ultima["cobertura"]), 4),
+        cobertura=round(float(ultima["cobertura"] or 0.0), 4),
         mae_p50=round(mae, 4),
         mae_servido=None if mae_servido is None else round(float(mae_servido), 4),
         mejora_sobre_servido=(

@@ -212,7 +212,11 @@ def _score_baja(
             for p in preds
         ]
     )
-    sombra = None if por_lote else _score_baja_sombra(filas, activa, computed_at)
+    sombra = (
+        None
+        if por_lote
+        else _score_baja_sombra(filas, int(activa["version"]) if activa else 0, computed_at)
+    )
     log.info(
         "baja_scoring_done",
         granularidad=granularidad,
@@ -236,8 +240,8 @@ def _score_baja(
 
 
 def _score_baja_sombra(
-    filas: list[FilaDataset], activa: dict[str, Any] | None, computed_at: str
-) -> dict[str, Any] | None:
+    filas: list[FilaDataset], version_activa: int, computed_at: str
+) -> dict[str, object] | None:
     """Puntúa el candidato (la versión registrada más nueva que la activa) sin servirlo.
 
     Escribe en ``predicciones_baja_sombra`` (v174) para que, cuando esas
@@ -255,7 +259,7 @@ def _score_baja_sombra(
 
     if not bool(getattr(settings, "ML_BAJA_SOMBRA", True)):
         return None
-    minima = int(activa["version"]) if activa else 0
+    minima = version_activa
     try:
         candidatas = [
             int(v["version"])

@@ -85,6 +85,7 @@ from services.ml.promotion import huella_dataset
 if TYPE_CHECKING:
     import numpy as np
     import numpy.typing as npt
+    from sklearn.ensemble import HistGradientBoostingClassifier
 
 log = get_logger(__name__)
 
@@ -326,7 +327,7 @@ class BajaModel:
         modelos: dict[float, Any],
         categorias: dict[str, dict[str, int]],
         metadata: dict[str, Any],
-        clasificador_sin_baja: Any | None = None,
+        clasificador_sin_baja: HistGradientBoostingClassifier | None = None,
     ) -> None:
         self.modelos = modelos
         self.categorias = categorias
@@ -674,7 +675,7 @@ def _fit_sin_baja(
     y: npt.NDArray[np.float64],
     pesos: npt.NDArray[np.float64],
     cat_mask: list[bool],
-) -> Any | None:
+) -> HistGradientBoostingClassifier | None:
     """Clasificador de P(baja < :data:`UMBRAL_SIN_BAJA`); ``None`` con una sola clase.
 
     Hiperparámetros fijos (los de partida del regresor): es un modelo auxiliar
@@ -867,7 +868,7 @@ def _metricas_fold(
     media_global: float,
     mediana_train: float,
     offsets: tuple[float, float],
-    clasificador: Any | None = None,
+    clasificador: HistGradientBoostingClassifier | None = None,
     prevalencia_sin_baja: float = 0.0,
 ) -> dict[str, float]:
     import numpy as np
@@ -1265,7 +1266,7 @@ def entrenar(
 
 def _comparar_con_activa(
     nombre_modelo: str, valid: list[FilaDataset], mae_candidato: float
-) -> dict[str, Any]:
+) -> dict[str, float | int | str | None]:
     """MAE de la versión activa sobre el **mismo** bloque de validación del candidato.
 
     El gate comparaba cada versión contra el baseline, y cada una con sus
@@ -1276,13 +1277,12 @@ def _comparar_con_activa(
     tampoco podría servirla).
     """
     from db.model_registry import get_active
+    from services.ml.model_artifacts import resolve_active_artifact
 
-    activa = get_active(nombre_modelo)
-    if not activa:
-        return {}
     try:
-        from services.ml.model_artifacts import resolve_active_artifact
-
+        activa = get_active(nombre_modelo)
+        if not activa:
+            return {}
         artefacto = resolve_active_artifact(nombre_modelo)
         if artefacto is None:
             return {"comparacion_activa": "artefacto_irresoluble"}

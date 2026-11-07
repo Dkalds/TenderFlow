@@ -38,6 +38,16 @@ import services.ml.scoring as scoring
 from config import settings
 from services.dedupe import normalize_organo
 
+
+@pytest.fixture(autouse=True)
+def _ventanas_cerradas(monkeypatch):
+    """Estos tests fijan las tasas, no la censura: todas las ventanas cuentan
+    como cerradas (la censura, en ``tests/test_ml_retencion_censura.py``)."""
+    from datetime import datetime
+
+    monkeypatch.setattr(rl, "_corte_de_datos", lambda _adj: datetime(2100, 1, 1))
+
+
 _CPV = "72000000"
 _CPV4 = "7200"
 _INCUMBENTE = 7

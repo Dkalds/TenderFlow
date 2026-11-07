@@ -57,7 +57,7 @@ no una baja inflada contra el presupuesto total.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict, cast
 
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
@@ -351,6 +351,23 @@ _AGREGADOS_CALIBRACION = """
     AVG(ABS(realizada - p50)) AS mae,
     AVG(realizada - p50) AS sesgo
 """
+
+
+class MedidaSombra(TypedDict):
+    """Una fila de :meth:`MlDatasetRepository.calibracion_baja_sombra`."""
+
+    model_version: int
+    n: int
+    cobertura: float | None
+    fallo_inferior: float | None
+    fallo_inferior_con_empates: float | None
+    fallo_superior: float | None
+    fallo_superior_con_empates: float | None
+    mae: float | None
+    n_con_servido: int
+    mae_mismos_pares: float | None
+    mae_servido: float | None
+
 
 _SIN_DATOS: dict[str, Any] = {"n": 0, "cobertura": None, "mae": None, "sesgo": None}
 
@@ -662,7 +679,7 @@ class MlDatasetRepository:
             filas = c.execute(envuelto, params).fetchall()
         return _por_regimen(list(filas))
 
-    def calibracion_baja_sombra(self) -> list[dict[str, Any]]:
+    def calibracion_baja_sombra(self) -> list[MedidaSombra]:
         """Calibración del candidato en sombra (v174), por versión.
 
         Mismos pares que :meth:`calibracion_baja` (misma regla de denominador),
@@ -705,7 +722,8 @@ class MlDatasetRepository:
             ORDER BY model_version
         """  # SQL propio del módulo; los valores van con %s.
         with connect_read() as c:
-            return rows_to_dicts(c.execute(envuelto, params))
+            filas = rows_to_dicts(c.execute(envuelto, params))
+        return [cast(MedidaSombra, fila) for fila in filas]
 
     def calibracion_baja_por_lote(self) -> dict[str, Any]:
         """Lo mismo que :meth:`calibracion_baja`, pero un par por **lote**.
