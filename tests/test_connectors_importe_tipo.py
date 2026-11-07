@@ -61,11 +61,52 @@ def test_pscp_valor_estimado_es_sin_iva_pero_no_presupuesto() -> None:
     assert lic.importe_base_sin_iva is None
 
 
-def test_pscp_importe_adjudicado_como_ultimo_recurso_es_desconocido() -> None:
-    lic = _pscp(import_adjudicacio_sense="90000")
-    assert lic.importe == 90000.0
-    assert lic.importe_tipo == "desconocido"
-    assert lic.importe_base_sin_iva is None
+#: Publicación agregada de un contrato menor, tal como la sirve la API Socrata
+#: (expediente 2302/081 de Informació i Comunicació de Barcelona, leído el
+#: 2026-11-07): sin presupuesto ni valor estimado, solo lo adjudicado.
+_AGREGADA_REAL = {
+    "codi_expedient": "2302/081",
+    "tipus_contracte": "Subministraments",
+    "procediment": "Contracte menor",
+    "fase_publicacio": "Publicació agregada de contractes",
+    "denominacio": "Compra de llicències Office",
+    "codi_cpv": "72267000-4",
+    "identificacio_adjudicatari": "B61172219",
+    "denominacio_adjudicatari": "SEIDOR SOLUTIONS S.L.",
+    "import_adjudicacio_sense": "769.5",
+    "import_adjudicacio_amb_iva": "931.1",
+    "enllac_publicacio": {
+        "url": "https://contractaciopublica.cat/ca/detall-publicacio/"
+        "93b05970-c56b-42d0-82b8-78d21a231f37/200070348"
+    },
+    "data_adjudicacio_contracte": "2023-02-23T00:00:00.000",
+    "data_publicacio_contracte": "2023-06-01T12:03:00.000",
+}
+
+
+def test_pscp_agregada_lleva_lo_adjudicado_sin_iva_y_no_lo_hace_presupuesto() -> None:
+    """Las agregadas eran el 97 % del ``desconocido`` de PSCP (2026-11-07)."""
+    assert _importes(_AGREGADA_REAL) == {"importe": 769.5, "importe_tipo": "sin_iva"}
+
+
+def test_pscp_agregada_parseada_entera_declara_su_base() -> None:
+    parsed = PscpConnector(dataset_id="test-test").parse(
+        RawNotice(
+            natural_id="93b05970-c56b-42d0-82b8-78d21a231f37:2302/081", payload=_AGREGADA_REAL
+        )
+    )
+    assert parsed is not None
+    assert parsed.licitacion.importe == 769.5
+    assert parsed.licitacion.importe_tipo == "sin_iva"
+    assert parsed.licitacion.importe_base_sin_iva is None
+    assert parsed.adjudicaciones[0].importe_adjudicado == 769.5
+
+
+def test_pscp_solo_adjudicado_con_iva_es_con_iva() -> None:
+    assert _importes({"import_adjudicacio_amb_iva": "931.1"}) == {
+        "importe": 931.1,
+        "importe_tipo": "con_iva",
+    }
 
 
 def test_pscp_campo_historico_sin_sufijo_es_desconocido() -> None:
@@ -103,11 +144,51 @@ def test_ted_valor_estimado_es_sin_iva_y_va_a_valor_estimado() -> None:
     assert lic.importe_base_sin_iva is None
 
 
-def test_ted_valor_del_resultado_es_desconocido() -> None:
-    lic = _ted(**{"result-value-notice": "300000"})
-    assert lic.importe == 300000.0
-    assert lic.importe_tipo == "desconocido"
+def test_ted_valor_del_resultado_es_sin_iva_pero_no_presupuesto() -> None:
+    """BT-161 sin valor estimado: forma real del 748601-2026 (2026-11-07)."""
+    lic = _ted(
+        **{
+            "notice-type": "can-standard",
+            "result-value-notice": "661676",
+            "tender-value": ["661676"],
+        }
+    )
+    assert lic.importe == 661676.0
+    assert lic.importe_tipo == "sin_iva"
     assert lic.valor_estimado is None
+    assert lic.importe_base_sin_iva is None
+
+
+def test_ted_valor_estimado_solo_por_lote_se_suma() -> None:
+    """Forma real del 509147-2026: BT-27 solo en el lote, como lista."""
+    lic = _ted(
+        **{
+            "notice-type": "can-social",
+            "estimated-value-lot": ["332089.6"],
+            "estimated-value-cur-lot": ["EUR"],
+            "result-value-notice": "76000",
+        }
+    )
+    assert lic.importe == 332089.6
+    assert lic.valor_estimado == 332089.6
+    assert lic.importe_tipo == "sin_iva"
+
+
+def test_ted_valor_estimado_de_varios_lotes_es_su_suma() -> None:
+    lic = _ted(**{"estimated-value-lot": ["100000", "50000.5"]})
+    assert lic.valor_estimado == 150000.5
+
+
+def test_ted_un_lote_ilegible_no_da_una_suma_parcial() -> None:
+    lic = _ted(**{"estimated-value-lot": ["100000", "n/d"], "result-value-notice": "90000"})
+    assert lic.valor_estimado is None
+    assert lic.importe == 90000.0
+
+
+def test_ted_pide_el_valor_estimado_del_lote() -> None:
+    from scraper.connectors.ted import _FIELDS
+
+    assert "estimated-value-lot" in _FIELDS
 
 
 def test_ted_sin_importe_no_inventa_tipo() -> None:
