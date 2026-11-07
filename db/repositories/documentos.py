@@ -262,6 +262,42 @@ class _DocumentoExistente(TypedDict):
     error_detail: str | None
 
 
+class DocumentoPendiente(TypedDict):
+    """Una fila de :meth:`DocumentosRepository.list_pendientes`."""
+
+    id: int
+    licitacion_id: str
+    tipo: str
+    uri: str
+    filename: str | None
+    content_type: str | None
+    size_bytes: int | None
+    source_hash: str | None
+    blob_key: str | None
+
+
+class DocumentoMeta(TypedDict):
+    """Una fila de :meth:`DocumentosRepository.list_by_licitacion` (sin ``texto``)."""
+
+    id: int
+    tipo: str
+    uri: str
+    filename: str | None
+    content_type: str | None
+    size_bytes: int | None
+    status: str
+    #: Texto ISO: ``documentos.created_at`` no es ``timestamptz``.
+    created_at: str
+    sin_publicar: bool
+
+
+class ConvocatoriaPscp(TypedDict):
+    """Una fila de :meth:`DocumentosRepository.pscp_vigentes_para_documentos`."""
+
+    id_externo: str
+    url: str | None
+
+
 _SQL_DOCUMENTOS_EXISTENTES = (
     "SELECT id, licitacion_id, tipo, uri, filename, source_hash, status, error_detail "
     "FROM documentos WHERE licitacion_id = ANY(%s)"
@@ -694,7 +730,7 @@ class DocumentosRepository:
         log.info("documentos_descargas_revividas", candidatas=len(candidatas), revividas=len(ids))
         return len(ids)
 
-    def list_pendientes(self, limit: int = 100) -> list[dict[str, Any]]:
+    def list_pendientes(self, limit: int = 100) -> list[DocumentoPendiente]:
         """Documentos con ``status='pending'``, priorizados por relevancia.
 
         El backlog (~44k documentos referenciados, ~1k licitaciones
@@ -760,9 +796,9 @@ class DocumentosRepository:
                 "LIMIT %s",
                 (max(1, min(int(limit), 1000)),),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(DocumentoPendiente, rows_to_dicts(cur))
 
-    def list_by_licitacion(self, licitacion_id: str) -> list[dict[str, Any]]:
+    def list_by_licitacion(self, licitacion_id: str) -> list[DocumentoMeta]:
         """Metadatos de los documentos de una licitación, para mostrarlos en el
         detalle de la UI (bloque "Documentos") y para el contexto del asistente
         IA. Excluye ``texto`` (puede ser muy pesado y solo lo usa el pipeline
@@ -796,7 +832,7 @@ class DocumentosRepository:
                 "d.created_at DESC, d.id",
                 (licitacion_id,),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(DocumentoMeta, rows_to_dicts(cur))
 
     def ted_vigentes_sin_documentos(self, limit: int = 300) -> list[str]:
         """Convocatorias TED vigentes, sin pareja confirmada y sin ningún documento.
@@ -823,7 +859,7 @@ class DocumentosRepository:
 
     def pscp_vigentes_para_documentos(
         self, limit: int = 200, *, dias_refresco: int = 21
-    ) -> list[dict[str, Any]]:
+    ) -> list[ConvocatoriaPscp]:
         """Convocatorias tecnológicas vigentes de la PSCP cuya ficha toca leer.
 
         Las que aún no tienen documentos y, de las que sí, las publicadas en los
@@ -856,7 +892,7 @@ class DocumentosRepository:
                 "LIMIT %s",
                 (max(0, int(dias_refresco)), max(1, min(int(limit), 1000))),
             )
-            return rows_to_dicts(cur)
+            return typed_rows(ConvocatoriaPscp, rows_to_dicts(cur))
 
     def mark_downloaded(
         self,

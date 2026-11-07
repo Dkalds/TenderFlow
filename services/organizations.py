@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 from pydantic import ValidationError
 
-from db.repositories.organizations import OrganizationRepository
+from db.repositories.organizations import Invitacion, OrganizationRepository
 from db.users import get_active_user_by_email_ci
 from observability.logging import get_logger
 from services.email_html import CERRAR_DOCUMENTO, ESTILO_ENLACE, abrir_documento
@@ -352,7 +352,7 @@ def _invitation_signature_valid(raw: str) -> bool:
     return verify(nonce.encode("utf-8"), firma)
 
 
-def _invitation_status(row: dict[str, Any]) -> str:
+def _invitation_status(row: Invitacion) -> str:
     """Estado derivado de las tres marcas de tiempo de la fila."""
     if row.get("accepted_at") is not None:
         return "accepted"
@@ -364,7 +364,7 @@ def _invitation_status(row: dict[str, Any]) -> str:
     return "invited"
 
 
-def _to_invitation_dto(row: dict[str, Any]) -> OrganizationInvitationOut:
+def _to_invitation_dto(row: Invitacion) -> OrganizationInvitationOut:
     """Proyección explícita, campo a campo.
 
     Antes volcaba la fila entera (``{**row, ...}``) y eso fallaba con
@@ -543,7 +543,7 @@ def accept_invitations_for_email(user_id: int, email: str | None) -> int:
     return len(aceptadas)
 
 
-def _aplicar_plantillas_de(aceptadas: list[dict[str, Any]], user_id: int) -> None:
+def _aplicar_plantillas_de(aceptadas: list[Invitacion], user_id: int) -> None:
     """F6.4 — copia las plantillas de cada organización recién aceptada.
 
     ``services.cuentas.aplicar_plantillas`` existía y nadie la llamaba: cada

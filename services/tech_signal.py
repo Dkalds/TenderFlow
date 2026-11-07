@@ -28,7 +28,11 @@ from config.keywords import (
 )
 from db.database import now_utc_iso
 from db.events import append_event
-from db.repositories.tecnologia_pliego import TechSignal, TecnologiaPliegoRepository
+from db.repositories.tecnologia_pliego import (
+    SenalParaMerge,
+    TechSignal,
+    TecnologiaPliegoRepository,
+)
 from observability.logging import get_logger
 from observability.runtime_metrics import pliego_tech_merge_total
 from shared.tender_facts import TenderFactSheetRecord
@@ -193,7 +197,7 @@ def _terminos_distintos(terminos: Iterable[str]) -> int:
     return len(representantes)
 
 
-def _decode_evidence(row: dict[str, Any]) -> Any:
+def _decode_evidence(row: SenalParaMerge) -> object:
     """Evidencia legible para el payload del evento -- decodifica el JSON
     persistido (matched_terms de keywords o evidence_json de LLM) en vez de
     reencapsular el string crudo dentro de otro JSON."""
@@ -328,7 +332,7 @@ def merge_doc_signals(licitacion_ids: list[str] | None = None) -> dict[str, int]
     signals = repo.list_signals_for_merge(
         min_score=settings.PLIEGO_TECH_MIN_SCORE, licitacion_ids=licitacion_ids
     )
-    by_licitacion: dict[str, list[dict[str, Any]]] = {}
+    by_licitacion: dict[str, list[SenalParaMerge]] = {}
     for row in signals:
         by_licitacion.setdefault(str(row["licitacion_id"]), []).append(row)
     # Reparación = ninguna fila de la licitación quedaba por estampar. En la

@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
-from db.repositories.documentos import DocumentosRepository
+from db.repositories.documentos import DocumentoMeta, DocumentosRepository
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -35,7 +35,7 @@ class LicitacionContext(TypedDict):
     """Contexto completo de una licitación para consumo del LLM."""
 
     detail: dict[str, Any]
-    documentos: list[dict[str, Any]]
+    documentos: list[DocumentoMeta]
     chunks: list[dict[str, Any]]
     has_pliego_text: bool
     truncated: bool
@@ -194,7 +194,7 @@ def build_licitacion_context(
         return None
 
     repo = DocumentosRepository()
-    documentos: list[dict[str, Any]] = []
+    documentos: list[DocumentoMeta] = []
     try:
         documentos = repo.list_by_licitacion(id_externo)
     except Exception:
