@@ -275,8 +275,14 @@ def _run_aggregates_precompute() -> dict[str, Any]:
     result = run_aggregates_precompute()
     log.info(
         "pipeline_aggregates_precompute_completed",
-        n_clusters=result.get("n_clusters"),
+        status=result.get("status"),
+        n_canonicas=result.get("n_canonicas"),
     )
+    # `run_aggregates_precompute` captura sus fallos y los devuelve en `status`;
+    # `ejecutar_paso` solo distingue `skipped` de lo demás, así que sin esto un
+    # refresco caído salía `ok` en un paso bloqueante.
+    if result.get("status") != "ok":
+        raise RuntimeError(f"aggregates_precompute {result.get('status')}: {result.get('error')}")
     return result
 
 

@@ -430,7 +430,7 @@ def borrar_licitaciones_en_colision(ids: Sequence[str]) -> int:
     ``resoluciones_recurso`` no la tienen y se limpian antes. ``mat_clusters``
     tampoco tiene FK pero su clave es el id: una fila huérfana choca con la de
     la vieja cuando ``v164`` la repunta (run 41164414325 del 2026-10-31), así
-    que se borra; la recalcula entera ``scheduler/aggregates_precompute.py``.
+    que se borra (la tabla está congelada desde 2026-11-08: ya no la recalcula nadie).
     Las demás columnas sin FK (eventos, notificaciones) no son únicas y quedan
     con el id, que ``v164`` da enseguida a la fila vieja del mismo expediente.
     Una transacción: si algo falla, nada.

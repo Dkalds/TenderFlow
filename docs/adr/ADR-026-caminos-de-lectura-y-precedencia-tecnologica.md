@@ -64,7 +64,7 @@ sombra, no la del dato que gobierna la visibilidad.
 | 1 | **SQL en vivo** | `db/repositories/aggregates/` → `services/analytics/*` → `/api/v1/analytics/*` | tiempo real | Por defecto. Cualquier agregado con filtros del usuario. |
 | 2 | **SQL acotado + pandas** | `db/repositories/adjudicaciones.py::load_*` → `services/analytics/competitors.py` | tiempo real | **Solo** cuando la transformación no es expresable en SQL (resolución de identidad de empresa por componentes conexos). Obligatorio `LIMIT` en la query y alcance declarado en el resultado. |
 | 3 | **Snapshot `kpi_snapshots`** | `scheduler/kpi_precompute.py` → `db/repositories/kpi_snapshots.py` | por ejecución del cierre (≤ 4 h) | Camino rápido del overview **sin filtros**. Es también la señal de frescura que lee `scheduler/healthcheck.py`. |
-| 4 | **Tabla materializada `mat_clusters`** | `scheduler/aggregates_precompute.py` → `AggregateRepository.load_mat_clusters` | por ejecución del cierre | Clustering, cuyo cálculo no cabe en una request. |
+| 4 | ~~**Tabla materializada `mat_clusters`**~~ | Retirado el 2026-11-08 (ver addendum): ya no se calcula ni se sirve | — | — |
 | 5 | **Vista materializada `licitaciones_canonicas`** | `v94` → `v98` → `v99`; refresco en `db/repositories/publico.py` | ≤ 4 h, vigilada por `canonicas_frescas` / `canonicas_tamano` en `ops_events` | **Toda** la superficie pública indexable: fichas, hubs, sitemap, portada. |
 | 6 | **DuckDB → Parquet** | `db/analytics.py` + `shared/parquet_manifest.py`, disparado por `kpi_precompute --export-parquet` | por ejecución | Exportación analítica histórica. Nunca en el camino de una request HTTP. |
 
@@ -358,3 +358,18 @@ usan `technology_observed_sql` no cambian.
 - **El ruido de la división 32.** Trae cámaras y megafonía, que es justo lo que
   `CPV_PREFIXES_TI` deja fuera de la corroboración de keywords. El filtro de
   tecnología del listado sigue sirviendo a quien solo quiera lo etiquetado.
+
+## Addendum 2026-11-08 — `mat_clusters` deja de calcularse
+
+El camino 4 no tenía lector: `AggregateRepository.load_mat_clusters` ya no
+existía y ninguna request, informe ni modelo leía la tabla. Lo único que la
+exponía era el catálogo MCP, que servía a `consultar_sql` unos clústeres que
+nadie usaba para decidir. El cierre pagaba aun así un KMeans por ejecución.
+
+- `scheduler/aggregates_precompute.py` ya no la recalcula; el paso refresca
+  `licitaciones_canonicas` y las tasas de anulación por órgano.
+- La tabla queda **congelada** y **oculta** en el catálogo MCP
+  (`mcp_server/catalogo.py`), para que nadie lea clústeres viejos como vigentes.
+- Borrarla es una migración aparte, reversible, cuando se confirme que no
+  vuelve a hacer falta. Hasta entonces la regla de §A sigue valiendo: son cinco
+  caminos vivos, y uno nuevo no se añade sin actualizar la tabla.
