@@ -23,13 +23,19 @@ Pasos:
 6. **Tests con cobertura potencialmente débil**: módulos sin un `test_*` correspondiente. Comparar `ls services/` vs `ls tests/test_services_*.py` etc.
 7. **Imports no usados / circulares**: si hay output reciente de ruff, mencionalo (no lo corras de nuevo).
 
+**Antes de reportar, verificá cada candidata** (AGENTS.md §0, «Una mejora se verifica antes de proponerla»):
+
+- Contra el código: buscá el símbolo, fichero o setting que la mejora daría por ausente. Si existe, no es una mejora pendiente.
+- Contra `docs/IMPROVEMENT_BACKLOG.md`: si el tema ya tiene ítem, mandá su línea **Estado actual**, no su **Problema**, que se queda en el día en que se abrió. No propongas como nuevo lo que el ítem ya cubre.
+- Clasificá lo que queda: `código` (hay que escribirlo), `propietario` (el código está; falta una acción que solo hace el dueño) o `medir` (falta mirarlo en producción).
+
 **Reporte final** (formato):
 
 ```
 ## Mejoras detectadas
 
 ### Alta prioridad
-- [área] descripción — files: X, Y — esfuerzo estimado
+- [área] descripción — `código` | `propietario` | `medir` — verificado en: file:símbolo — files: X, Y — esfuerzo estimado
 
 ### Media
 - ...

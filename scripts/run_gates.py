@@ -78,7 +78,7 @@ STDLIB: tuple[Gate, ...] = (
     Gate("check_casos_uso.py", que="cada caso de uso tiene recorrido"),
     Gate("check_env_parity.py", env=_DEV, que="settings ↔ render.yaml ↔ .env.example"),
     Gate("check_requirements_sync.py", que="requirements.txt cubre requirements.in"),
-    Gate("check_backlog_freshness.py", que="frescura del backlog (informe)"),
+    Gate("check_backlog_freshness.py", que="Estado actual de cada ítem; frescura (informe)"),
     Gate("check_agent_docs.py", que="instrucciones, skills, commands y hooks"),
 )
 

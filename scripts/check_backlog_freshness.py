@@ -9,12 +9,16 @@ hace que alguien lo trabaje dos veces.
 Este script no cierra nada: avisa. Cerrar un ítem es una decisión, y borrarlo
 con el PR que lo resolvió es trabajo de quien lo cerró.
 
+Lo que sí falla siempre: un ítem sin su primera línea **Estado actual** (fecha
+y clase `código|propietario|medir|mixto`). Es lo que se lee para saber qué
+queda; sin ella, quien lea el ítem tomará el Problema por el estado.
+
 Uso::
 
     python scripts/check_backlog_freshness.py            # informe
     python scripts/check_backlog_freshness.py --strict   # los avisos fallan
 
-Exit 0 salvo con `--strict` y avisos.
+Exit 1 si falta algún Estado actual, o con `--strict` y avisos; 0 en el resto.
 """
 
 from __future__ import annotations
@@ -31,6 +35,12 @@ _VERSIONS = _REPO_ROOT / "db" / "alembic" / "versions"
 _ITEM = re.compile(r"^###\s*\[(P[0-3])\]\s*(.+?)\s*$", re.M)
 #: Revisión Alembic citada en el cuerpo de un ítem (`v98`, `v112`…).
 _REVISION = re.compile(r"\bv(\d{2,3})\b")
+#: Primera línea obligatoria de cada ítem: lo que queda hoy, con fecha y clase.
+#: El «Problema» se queda en el día en que se abrió y leerlo como estado hizo
+#: proponer como pendientes cosas hechas (AGENTS.md §0).
+_ESTADO_ACTUAL = re.compile(
+    r"^- \*\*Estado actual \(\d{4}-\d{2}-\d{2}\):\*\* `(código|propietario|medir|mixto)`"
+)
 
 _SECCIONES_ABIERTAS = ("## P0", "## P1", "## P2", "## P3")
 #: Tras los ítems solo queda la plantilla, cuyo `### [P0|P1|…]` no es un ítem.
@@ -69,6 +79,15 @@ def main() -> int:
     items = _cuerpo_de_items(_BACKLOG.read_text(encoding="utf-8"))
     revisiones = _revisiones_presentes()
 
+    errores = [
+        f"[{prioridad}] {titulo!r} no empieza por «- **Estado actual (AAAA-MM-DD):** "
+        "`código|propietario|medir|mixto`» (ver Convenciones del backlog)."
+        for prioridad, titulo, cuerpo in items
+        if not _ESTADO_ACTUAL.match(cuerpo.strip())
+    ]
+    for e in errores:
+        print(f"ERROR {e}")
+
     avisos: list[str] = []
     for prioridad, titulo, cuerpo in items:
         citadas = {rev for rev in _REVISION.findall(cuerpo) if rev in revisiones}
@@ -82,6 +101,9 @@ def main() -> int:
     for a in avisos:
         print(f"WARN  {a}")
 
+    if errores:
+        print(f"\n{len(errores)} ítem/s sin «Estado actual».")
+        return 1
     if estricto and avisos:
         print(f"\n{len(avisos)} problema/s de frescura en el backlog.")
         return 1
