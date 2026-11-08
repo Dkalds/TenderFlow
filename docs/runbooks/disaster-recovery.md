@@ -156,7 +156,11 @@ deploy: el camino es rollback + fix + PR.
 ## 5. Migraciones pendientes (`schema: behind`)
 
 No es un desastre, pero aparece en todos los demás. `migrate.yml` es manual a
-propósito: producción no migra sola.
+propósito: producción no migra sola. Por eso el orden es **primero
+`migrate.yml`, después `deploy.yml`**: desde el 2026-11-07 `deploy.yml` corre
+`python -m db.schema_revision` antes de llamar a Render y no despliega si la BD
+va por detrás (o por delante) del commit elegido; un rollback consciente a
+código más viejo que el schema pasa con `skip_smoke`.
 
 ```bash
 # plan antes de apply: qué revisiones faltan

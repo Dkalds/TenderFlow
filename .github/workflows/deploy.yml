@@ -9,8 +9,9 @@ name: Deploy a producción (Render)
 # además compite con este workflow — un mismo push llega a producir dos deploys.
 # Todo el aparato de gates (jobs de CI, ratchets, fuzzing, E2E) queda entonces como
 # advisory: informa, no impide. Con `autoDeploy: false` en `render.yaml` el
-# único camino es este, que se lanza a mano sobre un commit elegido y verifica
-# el resultado en tres pasos (healthcheck, alineación de schema, smoke).
+# único camino es este, que se lanza a mano sobre un commit elegido, comprueba
+# antes de desplegar que la BD ya tiene sus migraciones (preflight de schema) y
+# verifica el resultado en tres pasos (healthcheck, alineación de schema, smoke).
 #
 # Alcance exacto de «único»: gobierna `tenderflow-api`, que es el servicio que
 # atiende internet (y consume la cola a demanda, ADR-028 §G), y
@@ -47,12 +48,14 @@ name: Deploy a producción (Render)
 #     se queda atrás en otra generación del código que la BD lee con un esquema
 #     que ya no es el suyo.
 #   - vars.SMOKE_BASE_URL / secrets.SMOKE_API_KEY (los mismos que usa smoke.yml).
+#   - secrets.DATABASE_URL (+ DATABASE_SSL_ROOT_CERT), los mismos que usan los
+#     workflows de datos, para el preflight de schema.
 
 on:
   workflow_dispatch:
     inputs:
       skip_smoke:
-        description: "Desplegar sin esperar al chequeo posterior (solo para rollbacks urgentes)"
+        description: "Desplegar sin preflight de schema ni chequeo posterior (solo para rollbacks urgentes)"
         type: boolean
         default: false
 
@@ -85,6 +88,33 @@ jobs:
             echo "::error title=Falta SMOKE_BASE_URL::Sin la URL pública no se puede verificar el deploy."
             exit 1
           fi
+
+      # El gate de schema de después del deploy descubre el desfase con el
+      # código ya sirviendo: las peticiones que tocan columnas nuevas fallan
+      # hasta que alguien lanza `migrate.yml`. Aquí se comprueba antes, con el
+      # mismo criterio (`db/schema_revision.py`, el preflight de los workflows
+      # de datos) y las cabezas de este checkout, que es el commit a desplegar:
+      # `behind` para el deploy y dice que toca `migrate.yml` (mode=apply).
+      # `ahead` también para (un código más viejo que la BD): un rollback
+      # consciente pasa con `skip_smoke`, como el resto de verificaciones.
+      - name: Preparar Python
+        if: ${{ !inputs.skip_smoke }}
+        uses: ./.github/actions/preparar-python
+        with:
+          requirements: requirements-api.txt
+
+      - name: Preflight de schema (antes de desplegar)
+        if: ${{ !inputs.skip_smoke }}
+        timeout-minutes: 3
+        env:
+          # Mismo entorno que el preflight de `ml-scoring.yml`: validators de
+          # producción (TLS de DATABASE_URL) sin los secretos del proceso HTTP.
+          ENV: prod
+          APP_PROFILE: scraper
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          LOG_FORMAT: json
+        run: python -m db.schema_revision
 
       - name: Disparar deploy en Render
         env:

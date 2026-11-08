@@ -15,7 +15,9 @@ Se fija aquí:
 - que ``scripts/esperar_deploy.py`` no acepta un 200 de otra versión, ni de la
   anterior a este gate (sin el campo);
 - que ``deploy.yml`` espera a ``github.sha`` y que el gate de schema lee el
-  payload verificado en vez de volver a preguntar.
+  payload verificado en vez de volver a preguntar;
+- que ``deploy.yml`` corre el preflight de schema (``db.schema_revision``)
+  antes de llamar al deploy hook, no solo después.
 
 Sin red ni base de datos: el sondeo se sustituye por dobles.
 """
@@ -28,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from api.routes import health
 from scripts import esperar_deploy
@@ -287,3 +290,20 @@ def test_deploy_yml_espera_a_github_sha_y_el_schema_lee_lo_verificado() -> None:
     # de otra instancia.
     assert 'cat "$RUNNER_TEMP/health-ready.json"' in texto
     assert 'curl -sS --max-time 30 "$SMOKE_BASE_URL/api/v1/health/ready"' not in texto
+
+
+def test_deploy_yml_comprueba_el_schema_antes_de_disparar_el_deploy() -> None:
+    pasos = yaml.safe_load(_DEPLOY_YML.read_text(encoding="utf-8"))["jobs"]["deploy"]["steps"]
+    nombres = [p.get("name") for p in pasos]
+    preflight = pasos[nombres.index("Preflight de schema (antes de desplegar)")]
+
+    assert nombres.index("Preparar Python") < nombres.index(
+        "Preflight de schema (antes de desplegar)"
+    )
+    assert nombres.index("Preflight de schema (antes de desplegar)") < nombres.index(
+        "Disparar deploy en Render"
+    )
+    assert preflight["run"] == "python -m db.schema_revision"
+    assert preflight["env"]["DATABASE_URL"] == "${{ secrets.DATABASE_URL }}"
+    # Un rollback consciente (código más viejo que la BD) pasa con skip_smoke.
+    assert preflight["if"] == "${{ !inputs.skip_smoke }}"
