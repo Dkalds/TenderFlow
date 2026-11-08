@@ -9,12 +9,22 @@ hace que alguien lo trabaje dos veces.
 Este script no cierra nada: avisa. Cerrar un ítem es una decisión, y borrarlo
 con el PR que lo resolvió es trabajo de quien lo cerró.
 
+Lo que sí falla siempre: un ítem sin su primera línea **Estado actual** (fecha
+y clase `código|propietario|medir|mixto`), o con una nota de progreso de fecha
+posterior a la de esa línea. Es lo que se lee para saber qué queda; sin ella, o
+sin reescribirla al avanzar, quien lea el ítem tomará el Problema por el estado.
+
 Uso::
 
     python scripts/check_backlog_freshness.py            # informe
     python scripts/check_backlog_freshness.py --strict   # los avisos fallan
+    python scripts/check_backlog_freshness.py --estado   # qué queda de cada ítem
 
-Exit 0 salvo con `--strict` y avisos.
+`--estado` (`make backlog-estado`) es la forma de leer el backlog para proponer
+o planificar: título, clase y Estado actual, sin el resto del texto.
+
+Exit 1 si falta o está desactualizado algún Estado actual, o con `--strict` y
+avisos; 0 en el resto (y siempre con `--estado`).
 """
 
 from __future__ import annotations
@@ -31,6 +41,61 @@ _VERSIONS = _REPO_ROOT / "db" / "alembic" / "versions"
 _ITEM = re.compile(r"^###\s*\[(P[0-3])\]\s*(.+?)\s*$", re.M)
 #: Revisión Alembic citada en el cuerpo de un ítem (`v98`, `v112`…).
 _REVISION = re.compile(r"\bv(\d{2,3})\b")
+#: Primera línea obligatoria de cada ítem: lo que queda hoy, con fecha y clase.
+#: El «Problema» se queda en el día en que se abrió y leerlo como estado hizo
+#: proponer como pendientes cosas hechas (AGENTS.md §0).
+_ESTADO_ACTUAL = re.compile(
+    r"^- \*\*Estado actual \((\d{4}-\d{2}-\d{2})\):\*\* `(código|propietario|medir|mixto)`"
+    r"(?: — )?(.*)$",
+    re.M,
+)
+#: Nota de progreso con fecha en su etiqueta: `- **Progreso (2026-11-03):**`,
+#: `- *Estado (2026-10-17):*`, `**Medido 2026-10-24 (log…):**`. La fecha tiene
+#: que estar dentro de la negrita o cursiva de apertura, no en la prosa.
+_NOTA_CON_FECHA = re.compile(r"^\s*(?:-\s*)?\*{1,2}[^*\n]{0,60}?(\d{4}-\d{2}-\d{2})", re.M)
+
+
+def _estado(cuerpo: str) -> tuple[str, str, str] | None:
+    """`(fecha, clase, texto)` del Estado actual, si el ítem empieza por él."""
+    m = _ESTADO_ACTUAL.match(cuerpo.strip())
+    return (m.group(1), m.group(2), m.group(3).strip()) if m else None
+
+
+def _errores_de_estado(items: list[tuple[str, str, str]]) -> list[str]:
+    """Ítems sin Estado actual, o con una nota de progreso posterior a él.
+
+    Lo segundo es el fallo que la línea vino a evitar, desplazado: alguien
+    apunta progreso debajo y no reescribe el estado, que vuelve a mentir.
+    """
+    errores: list[str] = []
+    for prioridad, titulo, cuerpo in items:
+        estado = _estado(cuerpo)
+        if estado is None:
+            errores.append(
+                f"[{prioridad}] {titulo!r} no empieza por «- **Estado actual (AAAA-MM-DD):** "
+                "`código|propietario|medir|mixto`» (ver Convenciones del backlog)."
+            )
+            continue
+        resto = cuerpo.strip().split("\n", 1)[1] if "\n" in cuerpo.strip() else ""
+        posteriores = sorted(f for f in _NOTA_CON_FECHA.findall(resto) if f > estado[0])
+        if posteriores:
+            errores.append(
+                f"[{prioridad}] {titulo!r}: su Estado actual es del {estado[0]} y tiene "
+                f"una nota del {posteriores[-1]}. Reescribe el Estado actual con lo que "
+                "queda hoy."
+            )
+    return errores
+
+
+def resumen(items: list[tuple[str, str, str]]) -> str:
+    """Lo que queda de cada ítem, sin el resto del texto (`make backlog-estado`)."""
+    lineas: list[str] = []
+    for prioridad, titulo, cuerpo in items:
+        estado = _estado(cuerpo)
+        clase, texto = (estado[1], estado[2]) if estado else ("SIN ESTADO", "")
+        lineas.append(f"[{prioridad}] `{clase}` {titulo}\n    {texto}")
+    return "\n".join(lineas)
+
 
 _SECCIONES_ABIERTAS = ("## P0", "## P1", "## P2", "## P3")
 #: Tras los ítems solo queda la plantilla, cuyo `### [P0|P1|…]` no es un ítem.
@@ -67,7 +132,14 @@ def _revisiones_presentes() -> set[str]:
 def main() -> int:
     estricto = "--strict" in sys.argv
     items = _cuerpo_de_items(_BACKLOG.read_text(encoding="utf-8"))
+    if "--estado" in sys.argv:
+        print(resumen(items))
+        return 0
     revisiones = _revisiones_presentes()
+
+    errores = _errores_de_estado(items)
+    for e in errores:
+        print(f"ERROR {e}")
 
     avisos: list[str] = []
     for prioridad, titulo, cuerpo in items:
@@ -82,6 +154,9 @@ def main() -> int:
     for a in avisos:
         print(f"WARN  {a}")
 
+    if errores:
+        print(f"\n{len(errores)} ítem/s sin «Estado actual» o con él desactualizado.")
+        return 1
     if estricto and avisos:
         print(f"\n{len(avisos)} problema/s de frescura en el backlog.")
         return 1

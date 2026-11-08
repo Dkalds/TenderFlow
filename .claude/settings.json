@@ -96,6 +96,17 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if command -v python >/dev/null 2>&1; then python \"$CLAUDE_PROJECT_DIR/.claude/hooks/userprompt_verificar_mejoras.py\"; else python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/userprompt_verificar_mejoras.py\"; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",

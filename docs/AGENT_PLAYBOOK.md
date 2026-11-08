@@ -40,6 +40,7 @@ El [Makefile](../Makefile) es la fuente canónica. Targets habituales:
 | Suite estándar | `make test` |
 | Tests de integración | `make test-integration` |
 | Validar customizaciones agénticas | `make check-agent-docs` |
+| Qué queda de cada ítem del backlog, antes de proponer mejoras (AGENTS.md §0) | `make backlog-estado` |
 | Validar contrato API | `make check-api-contract` |
 | Dirección de imports entre paquetes | `make check-layers` |
 | `print()` fuera de un `__main__` en `scraper/`, `services/`, `scheduler/` | `make check-prints` |
@@ -68,6 +69,7 @@ schema aislado mediante las fixtures de `tests/conftest.py`.
 | `make gates` | disponible: stdlib + git | disponible |
 | `make gates-deps` | requiere deps | disponible |
 | `make check-agent-docs` | disponible: stdlib | disponible |
+| `make backlog-estado` | disponible: stdlib | disponible |
 | `make check-frontend-invariants` | disponible: stdlib | disponible |
 | `make lint` | requiere ruff | disponible |
 | `make typecheck` | requiere deps y mypy | disponible |
@@ -108,7 +110,7 @@ copia coincida:
 | `make gates` | `check_casos_uso.py` | cada caso de uso tiene recorrido |
 | `make gates` | `check_env_parity.py` | settings ↔ render.yaml ↔ .env.example |
 | `make gates` | `check_requirements_sync.py` | requirements.txt cubre requirements.in |
-| `make gates` | `check_backlog_freshness.py` | frescura del backlog (informe) |
+| `make gates` | `check_backlog_freshness.py` | Estado actual de cada ítem; frescura (informe) |
 | `make gates` | `check_agent_docs.py` | instrucciones, skills, commands y hooks |
 | `make gates-deps` | `check_job_parity.py` | todo job tiene plano (ADR-012) |
 | `make gates-deps` | `check_api_surface.py` | operación nueva con motivo (AGENTS.md §0) |
