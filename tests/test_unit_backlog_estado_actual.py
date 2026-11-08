@@ -97,6 +97,29 @@ def test_notas_que_no_desactualizan_el_estado(
     assert _correr(tmp_path, monkeypatch, item) == 0
 
 
+def test_un_estado_que_cita_un_fichero_inexistente_falla(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    item = (
+        "### [P2] Algo\n- **Estado actual (2026-11-08):** `código` — retirar "
+        "`scheduler/no_existe_este_job.py`.\n"
+    )
+
+    assert _correr(tmp_path, monkeypatch, item) == 1
+    assert "scheduler/no_existe_este_job.py" in capsys.readouterr().out
+
+
+def test_un_estado_que_cita_un_fichero_existente_pasa(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    item = (
+        "### [P2] Algo\n- **Estado actual (2026-11-08):** `código` — tocar "
+        "`scripts/check_backlog_freshness.py`.\n"
+    )
+
+    assert _correr(tmp_path, monkeypatch, item) == 0
+
+
 def test_el_resumen_da_clase_y_estado_sin_el_resto(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

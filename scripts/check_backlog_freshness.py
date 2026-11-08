@@ -53,6 +53,12 @@ _ESTADO_ACTUAL = re.compile(
 #: `- *Estado (2026-10-17):*`, `**Medido 2026-10-24 (log…):**`. La fecha tiene
 #: que estar dentro de la negrita o cursiva de apertura, no en la prosa.
 _NOTA_CON_FECHA = re.compile(r"^\s*(?:-\s*)?\*{1,2}[^*\n]{0,60}?(\d{4}-\d{2}-\d{2})", re.M)
+#: Ruta del repo citada entre comillas invertidas en el Estado actual
+#: (`scripts/x.py`, `db/alembic/versions/v159_….py`, `docs/STATUS.md`). Una frase
+#: falsa no se detecta, pero sí la que nombra un fichero que ya no está.
+_RUTA_CITADA = re.compile(
+    r"`((?:\.?[\w-]+/)+[\w.-]+\.(?:py|ts|tsx|md|yml|yaml|json|sql|toml|mjs|txt))`"
+)
 
 
 def _estado(cuerpo: str) -> tuple[str, str, str] | None:
@@ -76,6 +82,14 @@ def _errores_de_estado(items: list[tuple[str, str, str]]) -> list[str]:
                 "`código|propietario|medir|mixto`» (ver Convenciones del backlog)."
             )
             continue
+        faltan = sorted(
+            r for r in _RUTA_CITADA.findall(estado[2]) if not (_REPO_ROOT / r.rstrip("/")).exists()
+        )
+        if faltan:
+            errores.append(
+                f"[{prioridad}] {titulo!r}: su Estado actual cita {', '.join(faltan)}, "
+                "que no existe en el repo. ¿Se movió, se renombró o ya no aplica?"
+            )
         resto = cuerpo.strip().split("\n", 1)[1] if "\n" in cuerpo.strip() else ""
         posteriores = sorted(f for f in _NOTA_CON_FECHA.findall(resto) if f > estado[0])
         if posteriores:
