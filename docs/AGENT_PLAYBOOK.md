@@ -40,6 +40,7 @@ El [Makefile](../Makefile) es la fuente canónica. Targets habituales:
 | Suite estándar | `make test` |
 | Tests de integración | `make test-integration` |
 | Validar customizaciones agénticas | `make check-agent-docs` |
+| Qué queda de cada ítem del backlog, antes de proponer mejoras (AGENTS.md §0) | `make backlog-estado` |
 | Validar contrato API | `make check-api-contract` |
 | Dirección de imports entre paquetes | `make check-layers` |
 | `print()` fuera de un `__main__` en `scraper/`, `services/`, `scheduler/` | `make check-prints` |
@@ -68,6 +69,7 @@ schema aislado mediante las fixtures de `tests/conftest.py`.
 | `make gates` | disponible: stdlib + git | disponible |
 | `make gates-deps` | requiere deps | disponible |
 | `make check-agent-docs` | disponible: stdlib | disponible |
+| `make backlog-estado` | disponible: stdlib | disponible |
 | `make check-frontend-invariants` | disponible: stdlib | disponible |
 | `make lint` | requiere ruff | disponible |
 | `make typecheck` | requiere deps y mypy | disponible |

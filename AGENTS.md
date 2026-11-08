@@ -56,12 +56,16 @@ entero no prioriza nada.
 **Una mejora se verifica antes de proponerla.** El **Problema** de un ítem se
 queda en el día en que se abrió; lo que sigue abierto lo dice su línea
 **Estado actual**, que se reescribe (no se apila) cada vez que el ítem avanza y
-lo clasifica como `código`, `propietario` o `medir`. Antes de proponer o
-planificar algo, sea del backlog o nuevo, buscá en el código el símbolo,
-fichero o setting que daría por ausente. El 2026-11-07 un informe propuso siete
-mejoras leyendo solo los Problema y cinco ya estaban hechas: faltaban acciones
-del propietario, que viven en la sección «Acciones del propietario» del
-backlog.
+lo clasifica como `código`, `propietario` o `medir`. El backlog se lee para
+proponer con `make backlog-estado` (título, clase y Estado actual de cada
+ítem), no en diagonal. Antes de proponer o planificar algo, sea del backlog o
+nuevo, buscá en el código el símbolo, fichero o setting que daría por ausente.
+El 2026-11-07 un informe propuso siete mejoras leyendo solo los Problema y
+cinco ya estaban hechas: faltaban acciones del propietario, que viven en la
+sección «Acciones del propietario» del backlog. Lo sostienen
+`check_backlog_freshness.py`, que falla si un ítem no tiene Estado actual o
+tiene una nota posterior a él, y, en Claude Code y Codex, un hook que recuerda
+esta regla cuando se piden mejoras.
 
 No escribas aquí hechos calculables (conteos de tests, coverage, tamaño de
 ratchets, jobs o endpoints): pertenecen a [docs/STATUS.md](docs/STATUS.md), que

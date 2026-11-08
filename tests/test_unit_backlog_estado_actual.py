@@ -59,3 +59,54 @@ def test_un_estado_actual_mal_formado_falla(
 
 def test_la_plantilla_no_cuenta_como_item(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert _correr(tmp_path, monkeypatch, "") == 0
+
+
+_ESTADO = "- **Estado actual (2026-11-08):** `medir` — queda mirar el log.\n"
+
+
+@pytest.mark.parametrize(
+    "nota",
+    [
+        "- **Progreso (2026-11-09):** hecho el arreglo.",
+        "- *Estado (2026-11-10):* ya está en producción.",
+        "  **Medido 2026-11-12 (log de Render):** sale bien.",
+    ],
+)
+def test_una_nota_posterior_al_estado_actual_falla(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], nota: str
+) -> None:
+    item = f"### [P2] Algo\n{_ESTADO}- **Problema:** x.\n{nota}\n"
+
+    assert _correr(tmp_path, monkeypatch, item) == 1
+    assert "Reescribe el Estado actual" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "nota",
+    [
+        "- **Progreso (2026-11-08):** del mismo día que el estado.",
+        "- **Progreso (2026-10-01):** anterior.",
+        "- **Hecho:** la v2 se desactivó en producción (2026-12-01), fecha en la prosa.",
+    ],
+)
+def test_notas_que_no_desactualizan_el_estado(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nota: str
+) -> None:
+    item = f"### [P2] Algo\n{_ESTADO}{nota}\n"
+
+    assert _correr(tmp_path, monkeypatch, item) == 0
+
+
+def test_el_resumen_da_clase_y_estado_sin_el_resto(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    item = f"### [P2] Algo\n{_ESTADO}- **Problema:** texto largo que no debe salir.\n"
+    backlog = tmp_path / "IMPROVEMENT_BACKLOG.md"
+    backlog.write_text(_CABECERA + item + _PLANTILLA, encoding="utf-8")
+    monkeypatch.setattr(chequeo, "_BACKLOG", backlog)
+    monkeypatch.setattr(chequeo.sys, "argv", ["check_backlog_freshness.py", "--estado"])
+
+    assert chequeo.main() == 0
+    salida = capsys.readouterr().out
+    assert "[P2] `medir` Algo\n    queda mirar el log." in salida
+    assert "Problema" not in salida
