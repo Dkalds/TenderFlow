@@ -98,21 +98,25 @@ export function useRadar(tecnologia: string | null = null) {
 }
 
 /**
- * Las descartadas, puntuadas — para su propio segmento del Radar.
+ * Licitaciones concretas, puntuadas — para los segmentos del Radar que no salen
+ * del ranking: las descartadas y las seguidas.
  *
- * El ranking ya no las trae (`exclude_dismissed`), así que hay que pedirlas
- * aparte. Se usa el modo page-aligned (`ids=`), el mismo que alinea el score
- * del listado de Detalle: puntúa exactamente esas licitaciones sin recortar
- * por plazo ni por estado, que es lo que hace falta para poder repasar lo
- * descartado y restaurarlo.
+ * El ranking es un top-24 (`useRadar`): las descartadas ya no vienen en él
+ * (`exclude_dismissed`), y una seguida fuera del corte tampoco. Contar o pintar
+ * esos segmentos sobre el ranking decía «sigues 3» a quien seguía 9. Se usa el
+ * modo page-aligned (`ids=`), el mismo que alinea el score del listado de
+ * Detalle: puntúa exactamente esas licitaciones sin recortar por plazo ni por
+ * estado, que es lo que hace falta para repasarlas.
  */
-const MAX_DESCARTADAS_HIDRATADAS = 200;
+const MAX_HIDRATADAS = 200;
 
-export function useRadarDismissedTenders(ids: string[], enabled: boolean) {
+type SegmentoPorIds = "dismissed-tenders" | "followed-tenders";
+
+function useScoringPorIds(segmento: SegmentoPorIds, ids: readonly string[], enabled: boolean) {
   const organizationId = useActiveOrganizationId();
-  const visibles = ids.slice(0, MAX_DESCARTADAS_HIDRATADAS);
+  const visibles = ids.slice(0, MAX_HIDRATADAS);
   const query = useQuery({
-    queryKey: radarKeys.dismissed(organizationId, visibles),
+    queryKey: radarKeys.porIds(segmento, organizationId, visibles),
     queryFn: ({ signal }) =>
       apiGet("/api/v1/analytics/scoring", {
         params: {
@@ -125,6 +129,11 @@ export function useRadarDismissedTenders(ids: string[], enabled: boolean) {
       }),
     enabled: enabled && visibles.length > 0 && organizacionResuelta(organizationId),
     staleTime: 5 * 60_000,
+    // Seguir, dejar de seguir o restaurar cambian los ids, y con ellos la clave:
+    // sin esto el segmento pasaba por el esqueleto en cada gesto. Mismo criterio
+    // que `useRadar`: sólo dentro de la misma organización (posición 3).
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[3] === organizationId ? previous : undefined,
   });
 
   return {
@@ -132,6 +141,14 @@ export function useRadarDismissedTenders(ids: string[], enabled: boolean) {
     isLoading: query.isPending && enabled && visibles.length > 0,
     truncadas: Math.max(0, ids.length - visibles.length),
   };
+}
+
+export function useRadarDismissedTenders(ids: readonly string[], enabled: boolean) {
+  return useScoringPorIds("dismissed-tenders", ids, enabled);
+}
+
+export function useRadarFollowedTenders(ids: readonly string[], enabled: boolean) {
+  return useScoringPorIds("followed-tenders", ids, enabled);
 }
 
 /** Señales que el usuario descartó, persistidas server-side. */
