@@ -36,7 +36,11 @@ class SourceHealthRepository:
         cursor_value: str | None,
     ) -> None:
         now = now_utc_iso()
-        success_at = now if status == "success" else None
+        # Un `partial` que ingirió algo también renueva la frescura: con un aviso
+        # ilegible por pasada, la fuente quedaba «atrasada» para siempre. Los
+        # `errors` siguen siendo la señal de calidad.
+        renueva = status == "success" or (status == "partial" and parsed > 0)
+        success_at = now if renueva else None
         with connect() as c:
             c.execute(
                 "INSERT INTO source_ingestion_health "

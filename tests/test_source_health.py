@@ -140,3 +140,69 @@ def test_cada_fuente_se_mide_contra_el_sla_de_su_registro():
     assert por_id["placsp"].is_degraded
     # Sin registro no hay SLA propio: se queda con el umbral del carril diario.
     assert por_id["conector_sin_registrar"].is_degraded
+
+
+# ---------------------------------------------------------------------------
+# Un `partial` que ingirió está al día
+#
+# `scraper/connectors/base.py` marca `partial` cualquier pasada con un aviso que
+# no se pudo leer. Hasta 2026-11-08 sólo `success` renovaba `last_success_at`:
+# una fuente con un aviso ilegible por pasada nunca renovaba el sello, y el
+# healthcheck la daba por atrasada cada 6 h para siempre.
+# ---------------------------------------------------------------------------
+
+
+def _parcial(parsed: int, errors: int) -> dict[str, object]:
+    fila = _fila("placsp", "partial", 2)
+    fila.update(parsed=parsed, errors=errors)
+    return fila
+
+
+def test_un_parcial_con_ingesta_no_degrada_y_avisa_de_los_errores():
+    fuente = _frescura([_parcial(parsed=120, errors=1)]).sources[0]
+
+    assert not fuente.is_degraded
+    assert fuente.errors == 1
+    assert fuente.warning == "La última pasada terminó con 1 aviso sin leer."
+
+
+def test_un_parcial_sin_ingesta_sigue_degradado():
+    fuente = _frescura([_parcial(parsed=0, errors=40)]).sources[0]
+
+    assert fuente.is_degraded
+
+
+def _marcar(status: str, parsed: int) -> None:
+    from db.repositories.source_health import SourceHealthRepository
+
+    SourceHealthRepository().mark_completed(
+        source="placsp",
+        status=status,
+        fetched=parsed,
+        parsed=parsed,
+        discarded=0,
+        errors=0 if status == "success" else 1,
+        cursor_value=None,
+    )
+
+
+def _ultimo_exito() -> str | None:
+    from db.repositories.source_health import SourceHealthRepository
+
+    fila = next(f for f in SourceHealthRepository().list_health() if f["source"] == "placsp")
+    return None if fila["last_success_at"] is None else str(fila["last_success_at"])
+
+
+def test_un_parcial_con_ingesta_renueva_last_success_at(tmp_db):
+    _marcar("partial", parsed=120)
+
+    assert _ultimo_exito() is not None
+
+
+def test_un_parcial_sin_ingesta_no_renueva_last_success_at(tmp_db):
+    _marcar("success", parsed=5)
+    antes = _ultimo_exito()
+
+    _marcar("partial", parsed=0)
+
+    assert _ultimo_exito() == antes
