@@ -24,7 +24,7 @@ _PIDE_MEJORAS = re.compile(
 #: developer, y un modelo puede tomarlo por la tarea (openai/codex#40680): por
 #: eso empieza diciendo que no lo es.
 AVISO = (
-    "Nota sobre la petición anterior del usuario, no una tarea nueva: responde a lo "
+    "Nota sobre el mensaje del usuario de este turno, no una tarea nueva: responde a lo "
     "que pide. Antes de proponer o planificar mejoras (AGENTS.md §0), lee lo que queda con "
     "`make backlog-estado` (o `python scripts/check_backlog_freshness.py --estado`), "
     "no el «Problema» de cada ítem, que se queda en el día en que se abrió. Para cada "
@@ -41,6 +41,8 @@ def main() -> int:
         return 0
     prompt = datos.get("prompt") if isinstance(datos, dict) else None
     if isinstance(prompt, str) and _PIDE_MEJORAS.search(prompt):
+        # JSON en ASCII (`ó`): en Windows la salida va en la página de códigos
+        # de la consola y los acentos llegaban rotos al modelo («petici�n»).
         print(
             json.dumps(
                 {
@@ -48,8 +50,7 @@ def main() -> int:
                         "hookEventName": "UserPromptSubmit",
                         "additionalContext": AVISO,
                     }
-                },
-                ensure_ascii=False,
+                }
             )
         )
     return 0

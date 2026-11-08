@@ -37,13 +37,16 @@ def _lanzar(
 def test_avisa_cuando_se_piden_mejoras(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], prompt: str
 ) -> None:
-    salida = json.loads(_lanzar(monkeypatch, capsys, json.dumps({"prompt": prompt})))
+    crudo = _lanzar(monkeypatch, capsys, json.dumps({"prompt": prompt}))
+    # ASCII puro: en Windows la consola no es UTF-8 y los acentos llegaban rotos.
+    assert crudo.isascii()
+    salida = json.loads(crudo)
 
     contexto = salida["hookSpecificOutput"]
     assert contexto["hookEventName"] == "UserPromptSubmit"
     assert "make backlog-estado" in contexto["additionalContext"]
     # Codex lo pone tras el mensaje del usuario: no puede leerse como la tarea.
-    assert contexto["additionalContext"].startswith("Nota sobre la petición anterior")
+    assert contexto["additionalContext"].startswith("Nota sobre el mensaje del usuario")
 
 
 @pytest.mark.parametrize(
