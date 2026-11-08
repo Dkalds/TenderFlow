@@ -21,6 +21,7 @@ name: Operaciones manuales de datos
 # | reingesta-pscp       | reingerir_desde                            |
 # | backfill-empresas    | scope_fuente, time_budget, restart         |
 # | rescore-ml-proba     | (ninguna)                                  |
+# | activar-predictivo   | modelo_version, aplicar                    |
 #
 # El tamaño de lote del backfill y el de borrado de la purga ya no son entradas:
 # corren con el default de su script (5000 y 500), que era también el de sus
@@ -42,8 +43,9 @@ on:
           - reingesta-pscp
           - backfill-empresas
           - rescore-ml-proba
+          - activar-predictivo
       aplicar:
-        description: "Escribir en la BD (sin marcar, solo cuenta). Reprocesos, purga y partir adjudicatarios"
+        description: "Escribir en la BD (sin marcar, solo cuenta). Reprocesos, purga, partir adjudicatarios y activar"
         type: boolean
         default: false
       desde:
@@ -74,6 +76,10 @@ on:
         description: "Backfill: ignorar el cursor guardado y recorrer desde el principio"
         type: boolean
         default: false
+      modelo_version:
+        description: "Activar: modelo:versión (baja_model:6, retencion_model:5, baja_model_lote:N)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -83,7 +89,10 @@ permissions:
 # rescore solo se excluye consigo mismo: dos a la vez escribirían las mismas
 # filas dos veces.
 concurrency:
-  group: ${{ inputs.operacion == 'rescore-ml-proba' && 'rescore-ml-proba' || 'scrape' }}
+  group: >-
+    ${{ inputs.operacion == 'rescore-ml-proba' && 'rescore-ml-proba'
+    || inputs.operacion == 'activar-predictivo' && 'activar-predictivo'
+    || 'scrape' }}
   cancel-in-progress: false
 
 jobs:
@@ -562,3 +571,55 @@ jobs:
           # límite anónimo.
           GITHUB_TOKEN: ${{ github.token }}
         run: python -m scheduler.jobs.ml_training_run rescore
+
+  # ── activar-predictivo ─────────────────────────────────────────────
+  # Activa una versión de `baja_model`, `baja_model_lote` o `retencion_model`
+  # (`scheduler.jobs.ml_predicciones activar`). Hasta 2026-11 no había camino:
+  # el reentreno registra las versiones sin activar y activar exigía escribir
+  # en `model_versions` con las credenciales de la BD o la clave de
+  # administrador de la API.
+  #
+  # Solo activa una versión que su gate dio por promocionable, cuyo artefacto
+  # se resuelve con el sha256 registrado y que carga con el layout de features
+  # del código actual: lo mismo que el scoring exige antes de servirla. Sin
+  # `aplicar` solo comprueba. El scoring siguiente (`ml-scoring.yml`) ya sirve
+  # la versión nueva; el rollback es esta misma operación con la anterior.
+  #
+  # No toca el clasificador SAP: su activación recalcula `ml_proba` y vive en
+  # `ml-entrenar.yml` (modelo `sap`).
+  activar_predictivo:
+    if: inputs.operacion == 'activar-predictivo'
+    name: Activar una versión de un modelo predictivo
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Preparar Python
+        uses: ./.github/actions/preparar-python
+
+      - name: Activar
+        env:
+          ENV: prod
+          APP_PROFILE: scraper
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
+          LOG_FORMAT: json
+          # El artefacto se baja de la Release para verificarlo: la API de
+          # GitHub pide token para no chocar con el límite anónimo.
+          GITHUB_TOKEN: ${{ github.token }}
+          OBJETIVO: ${{ inputs.modelo_version }}
+          APLICAR: ${{ inputs.aplicar }}
+        run: |
+          set -eu
+          if ! [[ "$OBJETIVO" =~ ^[a-z_]+:[0-9]+$ ]]; then
+            echo "::error::modelo_version obligatorio: se espera modelo:versión, p. ej. retencion_model:5"
+            exit 1
+          fi
+          if [ "$APLICAR" = "true" ]; then
+            python -m scheduler.jobs.ml_predicciones activar "$OBJETIVO" --aplicar
+          else
+            python -m scheduler.jobs.ml_predicciones activar "$OBJETIVO"
+          fi

@@ -503,6 +503,28 @@ else:
 EOF
 ```
 
+## Activar un modelo predictivo
+
+`baja_model`, `baja_model_lote` y `retencion_model` se activan (o se revierten
+a una versión anterior) desde **Actions → «Operaciones manuales de datos»**,
+operación `activar-predictivo`, con `modelo_version` = `modelo:versión`
+(p. ej. `retencion_model:5`):
+
+```bash
+gh workflow run operaciones-datos.yml -f operacion=activar-predictivo \
+  -f modelo_version=retencion_model:5            # solo comprueba
+gh workflow run operaciones-datos.yml -f operacion=activar-predictivo \
+  -f modelo_version=retencion_model:5 -f aplicar=true
+```
+
+Solo activa una versión que su gate dio por promocionable, cuyo artefacto se
+resuelve con el sha256 registrado y que carga con el layout de features del
+código actual (`scheduler.jobs.ml_predicciones.activar_predictivo`). El resumen
+del run dice la versión anterior: el rollback es la misma operación con ella.
+La pasada siguiente de `ml-scoring.yml` ya sirve la versión nueva. Activar
+fuera de criterio sigue siendo `activate_version` a mano, como en la sección
+de abajo, y queda fuera de este camino a propósito.
+
 ## De dónde sale `$ADMIN_API_KEY`
 
 Los dos `curl` de abajo son los únicos pasos del runbook que no se resuelven con
