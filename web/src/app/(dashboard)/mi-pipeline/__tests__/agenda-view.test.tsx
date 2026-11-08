@@ -1450,3 +1450,62 @@ describe("AgendaView — contrato sin fecha de fin", () => {
     expect(screen.getByLabelText("Fecha de fin del contrato")).toHaveValue("2027-03-12");
   });
 });
+
+describe("AgendaView — la próxima acción a medias", () => {
+  function manual(pursuit_id: number, titulo: string, next_action: string) {
+    return item({
+      kind: "tarea",
+      urgencia: "hoy",
+      banda: "hoy",
+      due_kind: "accion",
+      dias_restantes: 0,
+      tarea_id: null,
+      tarea_texto: next_action,
+      pursuit_id,
+      licitacion_id: `EXP-${pursuit_id}`,
+      titulo,
+      next_action,
+    });
+  }
+  const campo = () =>
+    within(inspector()).getByLabelText("Editar la próxima acción a mano") as HTMLInputElement;
+
+  it("cambiar de fila no tira lo escrito: al volver se recupera", () => {
+    agendaState.data = payload({
+      items: [manual(41, "Soporte Ariba", "Llamar al órgano"), manual(42, "Licencias BTP", "Pedir pliego")],
+    });
+    render(<AgendaView />);
+
+    fireEvent.click(within(lista()).getByText("Llamar al órgano"));
+    fireEvent.change(campo(), { target: { value: "Llamar al órgano y pedir aclaración" } });
+    expect(within(inspector()).getByText("Cambios sin guardar")).toBeInTheDocument();
+
+    fireEvent.click(within(lista()).getByText("Pedir pliego"));
+    expect(campo().value).toBe("Pedir pliego");
+
+    fireEvent.click(within(lista()).getByText("Llamar al órgano"));
+    expect(campo().value).toBe("Llamar al órgano y pedir aclaración");
+    expect(within(inspector()).getByText("Borrador sin guardar, recuperado")).toBeInTheDocument();
+  });
+
+  it("si el servidor cambió el valor entretanto, el borrador no lo pisa", () => {
+    agendaState.data = payload({
+      items: [manual(43, "Soporte Ariba", "Llamar al órgano"), manual(44, "Licencias BTP", "Pedir pliego")],
+    });
+    const { rerender } = render(<AgendaView />);
+
+    fireEvent.click(within(lista()).getByText("Llamar al órgano"));
+    fireEvent.change(campo(), { target: { value: "Mi borrador" } });
+    fireEvent.click(within(lista()).getByText("Pedir pliego"));
+
+    agendaState.data = payload({
+      items: [
+        { ...manual(43, "Soporte Ariba", "Lo cambió otra persona"), version: 3 },
+        manual(44, "Licencias BTP", "Pedir pliego"),
+      ],
+    });
+    rerender(<AgendaView />);
+    fireEvent.click(within(lista()).getByText("Lo cambió otra persona"));
+    expect(campo().value).toBe("Lo cambió otra persona");
+  });
+});

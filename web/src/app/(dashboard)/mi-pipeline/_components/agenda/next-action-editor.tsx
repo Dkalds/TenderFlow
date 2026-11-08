@@ -18,6 +18,13 @@
  * Va como componente aparte y montado con `key` por selección/versión: cambiar
  * de fila remonta el editor con el valor del servidor, sin efectos que
  * sincronicen estado (react-hooks).
+ *
+ * **Lo escrito sin guardar sobrevive al cambio de fila.** El remontaje tiraba el
+ * texto: un clic en otra fila, o J/K tras salir del campo, y la próxima acción
+ * a medias se perdía sin aviso. Se guarda un borrador por oportunidad en
+ * memoria (no sobrevive a recargar) y se recupera al volver, siempre que el
+ * servidor siga teniendo el valor sobre el que se escribió: si otro lo cambió
+ * entretanto, el borrador se descarta en vez de pisarlo.
  */
 
 import * as React from "react";
@@ -26,6 +33,18 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { type PipelineAgendaItem, useUpdatePursuit } from "@/hooks/use-pursuits";
+
+interface Borrador {
+  accion: string;
+  vence: string;
+  /** Los valores del servidor sobre los que se escribió. */
+  base: string;
+}
+
+const borradores = new Map<number, Borrador>();
+
+const baseDe = (item: PipelineAgendaItem) =>
+  JSON.stringify([item.next_action ?? "", item.next_action_due ?? ""]);
 
 export function NextActionEditor({
   item,
@@ -40,8 +59,13 @@ export function NextActionEditor({
   enfoque?: number;
 }) {
   const updatePursuit = useUpdatePursuit(item.pursuit_id ?? "", { errorTitle: "No se pudo guardar la próxima acción" });
-  const [accion, setAccion] = React.useState(item.next_action ?? "");
-  const [vence, setVence] = React.useState(item.next_action_due ?? "");
+  const pursuitId = item.pursuit_id;
+  const [borrador] = React.useState(() => {
+    const guardado = pursuitId == null ? undefined : borradores.get(pursuitId);
+    return guardado?.base === baseDe(item) ? guardado : undefined;
+  });
+  const [accion, setAccion] = React.useState(borrador?.accion ?? item.next_action ?? "");
+  const [vence, setVence] = React.useState(borrador?.vence ?? item.next_action_due ?? "");
   const campo = React.useRef<HTMLInputElement>(null);
   const accionId = React.useId();
   const venceId = React.useId();
@@ -52,6 +76,16 @@ export function NextActionEditor({
 
   const dirty = accion !== (item.next_action ?? "") || vence !== (item.next_action_due ?? "");
 
+  // Se escribe en el cambio, no al desmontar: en el remontaje por `key` el
+  // valor nuevo ya está en la caché y la limpieza no sabría distinguirlo.
+  const recordar = (siguienteAccion: string, siguienteVence: string) => {
+    if (pursuitId == null) return;
+    const limpio =
+      siguienteAccion === (item.next_action ?? "") && siguienteVence === (item.next_action_due ?? "");
+    if (limpio) borradores.delete(pursuitId);
+    else borradores.set(pursuitId, { accion: siguienteAccion, vence: siguienteVence, base: baseDe(item) });
+  };
+
   const guardar = () => {
     if (item.version == null) return;
     updatePursuit.mutate(
@@ -61,7 +95,10 @@ export function NextActionEditor({
         expected_version: item.version,
       },
       {
-        onSuccess: () => toast.success("Próxima acción guardada"),
+        onSuccess: () => {
+          if (pursuitId != null) borradores.delete(pursuitId);
+          toast.success("Próxima acción guardada");
+        },
       },
     );
   };
@@ -73,7 +110,10 @@ export function NextActionEditor({
           id={accionId}
           ref={campo}
           value={accion}
-          onChange={(event) => setAccion(event.target.value)}
+          onChange={(event) => {
+            setAccion(event.target.value);
+            recordar(event.target.value, vence);
+          }}
           placeholder="p. ej. preparar el borrador de la oferta"
           maxLength={300}
           className="h-8 text-tf-meta"
@@ -86,7 +126,10 @@ export function NextActionEditor({
         id={venceId}
         type="date"
         value={vence}
-        onChange={(event) => setVence(event.target.value)}
+        onChange={(event) => {
+          setVence(event.target.value);
+          recordar(accion, event.target.value);
+        }}
         className="mb-2 h-8 text-tf-meta"
       />
       <Button
@@ -99,6 +142,11 @@ export function NextActionEditor({
       >
         {updatePursuit.isPending ? "Guardando…" : "Guardar"}
       </Button>
+      {dirty && !updatePursuit.isPending && (
+        <p className="mt-1.5 text-tf-micro text-muted-foreground" role="status">
+          {borrador ? "Borrador sin guardar, recuperado" : "Cambios sin guardar"}
+        </p>
+      )}
     </div>
   );
 }
