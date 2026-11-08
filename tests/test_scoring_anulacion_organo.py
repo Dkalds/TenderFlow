@@ -212,7 +212,6 @@ class TestPrecalculo:
         import scheduler.aggregates_precompute as ap
 
         with (
-            patch.object(ap, "_recalcular_clusters", return_value=3),
             patch.object(ap, "refrescar_vista_canonicas", return_value=5),
             patch.object(ap, "record_event"),
             patch.object(ap, "_recalcular_tasas_anulacion", side_effect=RuntimeError("x")),
@@ -220,13 +219,12 @@ class TestPrecalculo:
             resultado = ap.run_aggregates_precompute()
         assert resultado["status"] == "partial"
         assert resultado["error"] == "tasas_anulacion"
-        assert (resultado["n_clusters"], resultado["n_canonicas"]) == (3, 5)
+        assert resultado["n_canonicas"] == 5
 
     def test_todo_bien(self) -> None:
         import scheduler.aggregates_precompute as ap
 
         with (
-            patch.object(ap, "_recalcular_clusters", return_value=3),
             patch.object(ap, "refrescar_vista_canonicas", return_value=5),
             patch.object(ap, "record_event"),
             patch.object(ap, "_recalcular_tasas_anulacion", return_value=40),

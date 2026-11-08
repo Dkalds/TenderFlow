@@ -10,6 +10,7 @@ import { RadarInspectorPanel } from "./radar-inspector-panel";
 import { RadarCabecera, RadarLista } from "./radar-lista";
 import { RadarPie } from "./radar-pie";
 import { RadarProximas } from "./radar-proximas";
+import { RestaurarDescartadas } from "./restaurar-descartadas";
 import { useAnchoDeTabla, useModoInspector } from "../_hooks/use-media-query";
 import { useRadarConsola } from "../_hooks/use-radar-consola";
 import { useRadarTeclado } from "../_hooks/use-radar-teclado";
@@ -182,6 +183,13 @@ export function RadarView() {
           }}
         />
       )}
+
+      <RestaurarDescartadas
+        abierto={consola.confirmarRestaurar.abierto}
+        total={consola.confirmarRestaurar.total}
+        onCancelar={consola.confirmarRestaurar.cancelar}
+        onConfirmar={consola.confirmarRestaurar.confirmar}
+      />
     </div>
   );
 }

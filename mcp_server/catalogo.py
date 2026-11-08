@@ -205,7 +205,12 @@ _TABLAS: tuple[tuple[str, Visibilidad, str, str], ...] = (
     ("empresa_aliases", _V, _EMP, "Alias y variantes de NIF que resuelven a una empresa canónica."),
     ("empresa_review_queue", _V, _EMP, "Cola de revisión de coincidencias dudosas de empresas."),
     ("grupos_empresariales", _V, _EMP, "Grupos empresariales a los que pertenecen las empresas."),
-    ("mat_clusters", _V, _EMP, "Clúster de mercado asignado a cada licitación."),
+    (
+        "mat_clusters",
+        _O,
+        _EMP,
+        "Congelada desde 2026-11-08 (ya no se recalcula): oculta para no servir clústeres viejos.",
+    ),
     ("ute_miembros", _V, _EMP, "Empresas miembro de cada UTE."),
     ("organos", _V, _EMP, "Órganos de contratación canónicos (DIR3, CCAA, tipo, perfil)."),
     (

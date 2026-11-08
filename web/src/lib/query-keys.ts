@@ -198,8 +198,11 @@ export const radarKeys = {
   scoring: ["radar", "scoring"] as const,
   scopedScoring: (organizationId: OrganizacionDeClave, tecnologia: string | null) =>
     ["radar", "scoring", organizationId, tecnologia] as const,
-  dismissed: (organizationId: OrganizacionDeClave, visibles: readonly string[]) =>
-    ["radar", "dismissed-tenders", organizationId, visibles] as const,
+  porIds: (
+    segmento: "dismissed-tenders" | "followed-tenders",
+    organizationId: OrganizacionDeClave,
+    visibles: readonly string[],
+  ) => ["radar", segmento, organizationId, visibles] as const,
   // Estas dos las usa también el prefetch en servidor del Radar
   // (`radar/page.tsx`): son las del Radar que no dependen de la organización
   // activa, que vive en `localStorage` y el servidor no puede leer.
