@@ -84,6 +84,72 @@ def test_euskadi_uses_a_namespaced_id_and_discards_non_technology_notice() -> No
     assert ignored is None
 
 
+#: Lo que el SERGAS pone en todos sus avisos (galicia_rss:829511, 2026-11-05).
+_LUGAR_SILEX = (
+    "Lugar de presentación de ofertas: El expediente se licitará a través del "
+    "sistema de licitación electrónica de la Xunta de Galicia (SILEX)."
+)
+
+
+def _galicia(title: str, description: str) -> RawNotice:
+    return RawNotice(
+        "829511",
+        {
+            "title": f"{title} - ID: 829511",
+            "link": "https://www.contratosdegalicia.gal//licitacion?N=829511",
+            "description": description,
+            "published": "2026-11-05T08:42:00+00:00",
+        },
+    )
+
+
+def test_galicia_discards_notice_whose_only_signal_is_tramitacion_boilerplate() -> None:
+    parsed = GaliciaRssConnector().parse(
+        _galicia(
+            "AB-ASS1-26-048. Suministro de dos vehículos de nueve plazas",
+            f"Estado: En curso Tipo de contrato: Subministracións {_LUGAR_SILEX}",
+        )
+    )
+
+    assert parsed is None
+
+
+def test_galicia_keeps_tramitacion_keyword_when_the_title_names_it() -> None:
+    parsed = GaliciaRssConnector().parse(
+        _galicia("Implantación de una plataforma de licitación electrónica", _LUGAR_SILEX)
+    )
+
+    assert parsed is not None
+    assert parsed.licitacion.tecnologia == "ADMIN_ELECTRONICA"
+
+
+def test_galicia_keeps_firm_keyword_from_the_description() -> None:
+    parsed = GaliciaRssConnector().parse(
+        _galicia("CTM-2026-0011: Subministración", f"Obxecto: sistema ERP {_LUGAR_SILEX}")
+    )
+
+    assert parsed is not None
+    assert parsed.licitacion.tecnologia == "ERP"
+    assert parsed.licitacion.raw_keywords is not None
+    assert "licitación electrónica" not in parsed.licitacion.raw_keywords
+
+
+def test_euskadi_discards_notice_whose_only_signal_is_basque_tramitacion() -> None:
+    parsed = EuskadiRssConnector().parse(
+        RawNotice(
+            "102",
+            {
+                "title": "Altzarien hornidura / Suministro de mobiliario",
+                "link": "https://www.euskadi.eus/x?N=102",
+                "description": "Lizitazio elektronikoa. Sinadura elektronikoa beharrezkoa.",
+                "published": "2026-11-05T08:00:00+00:00",
+            },
+        )
+    )
+
+    assert parsed is None
+
+
 def test_galicia_cli_initializes_db_and_returns_connector_status(monkeypatch: Any) -> None:
     monkeypatch.setattr("db.database.init_db", lambda: None)
     monkeypatch.setattr(

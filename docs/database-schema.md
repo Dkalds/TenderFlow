@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-11-07
 
-Revisión Alembic aplicada: `v176_consultas_recientes`.
+Revisión Alembic aplicada: `v177_rss_autonomico_sin_tramitacion`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
