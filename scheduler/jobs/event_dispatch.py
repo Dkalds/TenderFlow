@@ -275,6 +275,11 @@ def _tipo_notificacion(evento: dict[str, Any], spec: EspecificacionEvento) -> st
         return (
             f"{base}:{payload.get('cartera_id')}:{payload.get('meses')}:{payload.get('fecha_fin')}"
         )
+    if spec.tipo in ("plazo.recordatorio", "renovacion.en_ventana"):
+        # El productor ya calcula el `type` con la ventana o la fecha
+        # (`deadline_7`, `accion_0`…): son los mismos valores que escribía
+        # antes de pasar al outbox, así que lo ya avisado no se repite.
+        return str(payload.get("aviso") or base)
     if spec.tipo == "organizacion.documento_caduca":
         # El mismo documento avisa a 60, 30 y 7 días y al caducar, y otra vez
         # cuando se renueva con otra fecha: `documento_id` ya identifica el

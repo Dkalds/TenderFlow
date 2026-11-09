@@ -1,13 +1,16 @@
 """Recordatorios de vencimiento para favoritos del usuario (Feature D).
 
-Genera notificaciones in-app (y opcionalmente email via pending_digests)
-para licitaciones favoritas del usuario cuyo plazo (fecha_limite) o
-fin de contrato (fecha_fin) se aproxima.
+Escribe en el outbox (``domain_events``) un evento por recordatorio de las
+licitaciones favoritas cuyo plazo (``fecha_limite``) o fin de contrato
+(``fecha_fin``) se aproxima, de la próxima acción de las oportunidades y de los
+aplazamientos del Radar que vencen; el despachador los reparte a la campana y a
+los webhooks.
 
 Ventanas: 30 dias, 7 dias, 1 dia.
-El tipo de notificacion incluye la ventana para que la identidad de la alerta
-—``(user_id, licitacion_id, type)`` desde v162; por ``user_key`` solo en los
-favoritos que el backfill de v129 no resolvió— evite duplicados entre runs.
+El ``aviso`` de cada evento lleva la ventana y es el ``type`` de la alerta en la
+campana, como antes de pasar al outbox. La idempotencia entre pasadas la da la
+clave del agregado ``recordatorio`` (:func:`_emitir`), y la campana deduplica
+además por ``(user_id, licitacion_id, type)`` (v162).
 """
 
 from __future__ import annotations
@@ -15,7 +18,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from db.notifications import insert_user_notification
+from db.events import agregados_con_evento, append_domain_event
 from db.repositories.pursuits import PursuitRepository
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
@@ -30,6 +33,66 @@ _DEADLINE_WINDOWS = [30, 7, 1]
 #: Ventanas de la próxima acción de un pursuit. ``0`` es «hoy»: la acción la
 #: fijó el propio equipo y el día señalado merece aviso aunque no falte nada.
 _ACCION_WINDOWS = [7, 1, 0]
+
+#: Agregado de los eventos de este módulo: su id es la clave del recordatorio.
+_AGREGADO = "recordatorio"
+
+#: ``(tipo de evento, clave, payload, organization_id)`` de un recordatorio.
+_Candidato = tuple[str, str, dict[str, Any], int]
+
+
+def _candidato(
+    *,
+    aviso: str,
+    lic_id: str,
+    organization_id: int,
+    titulo: str,
+    aviso_titulo: str,
+    detalle: str,
+    user_id: int | None,
+    user_key: str | None = None,
+    fecha_fin: str | None = None,
+) -> _Candidato:
+    """Un recordatorio listo para el outbox.
+
+    La clave es la misma identidad que la alerta: aviso, expediente, persona y
+    organización. ``user_key`` solo viaja cuando no hay ``user_id`` (favoritos
+    que el backfill de v129 no resolvió).
+    """
+    destinatario = str(user_id) if user_id is not None else f"k:{user_key}"
+    seguidor: dict[str, Any] = {"user_id": user_id, "organization_id": organization_id}
+    if user_id is None:
+        seguidor["user_key"] = user_key
+    payload: dict[str, Any] = {
+        "id_externo": lic_id,
+        "licitacion_id": lic_id,
+        "aviso": aviso,
+        "titulo": titulo,
+        "aviso_titulo": aviso_titulo,
+        "detalle": detalle,
+        "organization_id": organization_id,
+        "seguidores": [seguidor],
+    }
+    tipo = "plazo.recordatorio"
+    if fecha_fin is not None:
+        tipo = "renovacion.en_ventana"
+        payload["fecha_fin"] = fecha_fin
+    return tipo, f"{aviso}:{lic_id}:{destinatario}:{organization_id}", payload, organization_id
+
+
+def _emitir(candidatos: list[_Candidato]) -> int:
+    """Escribe los recordatorios que aún no tienen evento. Devuelve cuántos."""
+    emitidos = 0
+    for tipo in sorted({c[0] for c in candidatos}):
+        del_tipo = [c for c in candidatos if c[0] == tipo]
+        ya = agregados_con_evento(tipo, _AGREGADO, {c[1] for c in del_tipo})
+        for _tipo, clave, payload, organization_id in del_tipo:
+            if clave in ya:
+                continue
+            ya.add(clave)
+            append_domain_event(tipo, clave, _AGREGADO, payload, organization_id=organization_id)
+            emitidos += 1
+    return emitidos
 
 
 def _get_watchlist_items(user_key: str, user_id: int | None = None) -> dict[str, int]:
@@ -84,19 +147,13 @@ def _deadline_type(days_left: int, field: str) -> str:
 
 
 def check_deadlines_and_notify(user_key: str, *, user_id: int | None = None) -> int:
-    """Genera notificaciones de deadline para los favoritos del usuario.
+    """Emite los recordatorios de plazo de los favoritos del usuario.
 
-    Idempotente: ``ON CONFLICT DO NOTHING`` sobre la identidad de
-    ``user_notifications`` (``user_id``, o ``user_key`` si el favorito no tiene id).
-
-    La escritura pasa por :func:`db.notifications.insert_user_notification`, el
-    único productor de alertas de producto, para que la alerta lleve la
-    ``organization_id`` del favorito. Hasta 2026-09 este job repetía aquí su
-    propio ``INSERT`` y era el único de los tres productores que no ponía la
-    columna: escribía alertas correctas e invisibles.
+    Cada recordatorio lleva la ``organization_id`` del favorito: una alerta sin
+    ella no aparece en ninguna campana.
 
     Returns:
-        Numero de notificaciones nuevas escritas.
+        Número de eventos nuevos escritos.
     """
     favoritos = _get_watchlist_items(user_key, user_id)
     if not favoritos:
@@ -104,8 +161,7 @@ def check_deadlines_and_notify(user_key: str, *, user_id: int | None = None) -> 
 
     lics = _get_licitaciones_for_deadlines(list(favoritos))
     now = datetime.now(UTC)
-    now_ts = now.isoformat()
-    written = 0
+    candidatos: list[_Candidato] = []
 
     for lic in lics:
         lic_id = str(lic.get("id_externo") or "")
@@ -135,25 +191,23 @@ def check_deadlines_and_notify(user_key: str, *, user_id: int | None = None) -> 
             for window in _DEADLINE_WINDOWS:
                 if days_left > window:
                     continue
-                notif_type = _deadline_type(window, field)
                 label = "presentacion" if field == "fecha_limite" else "fin de contrato"
-                title = f"Plazo de {label} en {days_left} dia(s): {titulo[:80]}"
-                body = (
-                    f"La licitacion '{titulo}' vence el {dt.date().isoformat()} ({days_left} dias)."
-                )
-                written += int(
-                    insert_user_notification(
-                        user_key=user_key,
-                        type_=notif_type,
-                        title=title,
-                        body=body,
-                        licitacion_id=lic_id,
+                candidatos.append(
+                    _candidato(
+                        aviso=_deadline_type(window, field),
+                        lic_id=lic_id,
                         organization_id=organization_id,
-                        created_at=now_ts,
+                        titulo=titulo[:80],
+                        aviso_titulo=f"Plazo de {label} en {days_left} dia(s)",
+                        detalle=f"La licitacion '{titulo}' vence el "
+                        f"{dt.date().isoformat()} ({days_left} dias).",
                         user_id=user_id,
+                        user_key=user_key,
+                        fecha_fin=dt.date().isoformat() if field == "fecha_fin" else None,
                     )
                 )
 
+    written = _emitir(candidatos)
     if written:
         log.info("deadline_notifications_written", user_key=user_key[:8], count=written)
     return written
@@ -185,7 +239,7 @@ def check_pursuit_deadlines() -> int:
     # de mañana por ser de un pursuit creado ayer.
     horizonte = hoy + timedelta(days=max([*_DEADLINE_WINDOWS, *_ACCION_WINDOWS]))
     rows = PursuitRepository().deadline_rows(desde=hoy.isoformat(), hasta=horizonte.isoformat())
-    written = 0
+    candidatos: list[_Candidato] = []
     for row in rows:
         email = row.get("responsible_email")
         responsable = row.get("responsible_user_id")
@@ -200,14 +254,15 @@ def check_pursuit_deadlines() -> int:
             for window in _DEADLINE_WINDOWS:
                 if dias > window:
                     continue
-                written += int(
-                    insert_user_notification(
-                        type_=_deadline_type(window, "fecha_limite"),
-                        title=f"Plazo de presentacion en {dias} dia(s): {titulo[:80]}",
-                        body=f"La oportunidad '{titulo}' vence el "
-                        f"{str(row.get('fecha_limite'))[:10]} ({dias} dias).",
-                        licitacion_id=lic_id,
+                candidatos.append(
+                    _candidato(
+                        aviso=_deadline_type(window, "fecha_limite"),
+                        lic_id=lic_id,
                         organization_id=organization_id,
+                        titulo=titulo[:80],
+                        aviso_titulo=f"Plazo de presentacion en {dias} dia(s)",
+                        detalle=f"La oportunidad '{titulo}' vence el "
+                        f"{str(row.get('fecha_limite'))[:10]} ({dias} dias).",
                         user_id=int(responsable),
                     )
                 )
@@ -219,16 +274,18 @@ def check_pursuit_deadlines() -> int:
             for window in _ACCION_WINDOWS:
                 if accion_dias > window:
                     continue
-                written += int(
-                    insert_user_notification(
-                        type_=f"accion_{window}",
-                        title=f"Proxima accion {cuando}: {accion}",
-                        body=f"Oportunidad '{titulo[:80]}'.",
-                        licitacion_id=lic_id,
+                candidatos.append(
+                    _candidato(
+                        aviso=f"accion_{window}",
+                        lic_id=lic_id,
                         organization_id=organization_id,
+                        titulo=accion,
+                        aviso_titulo=f"Proxima accion {cuando}",
+                        detalle=f"Oportunidad '{titulo[:80]}'.",
                         user_id=int(responsable),
                     )
                 )
+    written = _emitir(candidatos)
     if written:
         log.info("pursuit_deadline_notifications_written", count=written)
     return written
@@ -239,7 +296,7 @@ def check_all_users_deadlines() -> int:
     para los pursuits abiertos.
 
     Llamado desde ``_run_watchlist_notify`` (pipeline canónica, cada pasada).
-    Returns: total de notificaciones escritas.
+    Returns: total de eventos escritos.
     """
     usuarios = _repo_watchlist.usuarios_con_favoritos()
 
@@ -264,11 +321,11 @@ def check_radar_postponements() -> int:
     """F5.6 — avisa de los aplazamientos del Radar que vencen.
 
     «Recuérdamelo en N días» sólo es una promesa si alguien la cumple. Este
-    check convierte cada aplazamiento vencido en una alerta in-app, con la
-    misma idempotencia que el resto: el ``type_`` lleva la fecha del
-    vencimiento, así que la identidad única de ``user_notifications``
-    impide repetirla aunque el job pase cada hora, y un segundo aplazamiento
-    del mismo expediente —con otra fecha— sí genera su propio aviso.
+    check convierte cada aplazamiento vencido en un recordatorio, con la
+    misma idempotencia que el resto: el ``aviso`` lleva la fecha del
+    vencimiento, así que no se repite aunque el job pase cada hora, y un
+    segundo aplazamiento del mismo expediente —con otra fecha— sí genera su
+    propio aviso.
 
     Ventana de dos días hacia atrás: cubre de sobra la cadencia del pipeline
     (varias pasadas al día) y evita recorrer el histórico entero en cada
@@ -277,7 +334,7 @@ def check_radar_postponements() -> int:
     recordatorios de hace meses el día que el job vuelva a arrancar, que es el
     fallo más ruidoso de los dos.
 
-    Devuelve cuántas alertas escribió.
+    Devuelve cuántos eventos escribió.
     """
     from db import radar_dismissals
 
@@ -288,7 +345,7 @@ def check_radar_postponements() -> int:
         log.warning("radar_postponement_query_error", error=str(exc)[:200])
         return 0
 
-    escritas = 0
+    candidatos: list[_Candidato] = []
     sin_organizacion = 0
     for fila in vencidos:
         organization_id = fila.get("organization_id")
@@ -299,17 +356,20 @@ def check_radar_postponements() -> int:
             sin_organizacion += 1
             continue
         vencimiento = str(fila.get("hasta") or "")[:10]
-        escritas += int(
-            insert_user_notification(
-                user_key=str(fila["user_key"]),
-                type_=f"radar_recordatorio_{vencimiento}",
-                title="Vuelve a tu Radar la licitación que aplazaste",
-                body=("Pediste que te la recordáramos hoy. Ya está otra vez en la bandeja."),
-                licitacion_id=str(fila["id_externo"]),
+        user_id = fila.get("user_id")
+        candidatos.append(
+            _candidato(
+                aviso=f"radar_recordatorio_{vencimiento}",
+                lic_id=str(fila["id_externo"]),
                 organization_id=int(organization_id),
-                user_id=fila.get("user_id"),
+                titulo=str(fila["id_externo"]),
+                aviso_titulo="Vuelve a tu Radar la licitación que aplazaste",
+                detalle="Pediste que te la recordáramos hoy. Ya está otra vez en la bandeja.",
+                user_id=int(user_id) if user_id is not None else None,
+                user_key=str(fila["user_key"]),
             )
         )
+    escritas = _emitir(candidatos)
     if escritas or sin_organizacion:
         log.info(
             "radar_postponement_notifications_written",

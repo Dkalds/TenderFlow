@@ -4,15 +4,18 @@ Hasta 2026-09 ganada, perdida e importe adjudicado se tecleaban a mano aunque
 la ingesta ya traía adjudicatario, importe y número de ofertas del mismo
 expediente: el win rate dependía de que alguien se acordase de volver a la
 ficha. Este job cierra ese hueco por la vía honesta —avisa, no decide—: escribe
-una alerta in-app a la persona responsable (o a toda la organización si no la
-hay) y la ficha de la oportunidad propone el cierre con los datos publicados.
+un ``adjudicacion.detectada`` en el outbox para la persona responsable (o toda
+la organización si no la hay), el despachador lo reparte a la campana y a los
+webhooks, y la ficha de la oportunidad propone el cierre con los datos
+publicados.
 Quién ganó lo confirma una persona: el sistema no conoce el NIF de la
 organización y adivinarlo sería fabricar el dato que las métricas de producto
 existen para medir.
 
-Idempotente por construcción: la identidad de ``user_notifications`` es
-``(user_id, licitacion_id, type)`` (v162), así que repetir la pasada no vuelve
-a avisar, tampoco si la persona cambió de correo entre una y otra.
+Idempotente: un evento por oportunidad (la pasada siguiente lo encuentra en
+``domain_events`` y no lo repite), y la campana deduplica además por
+``(user_id, licitacion_id, type)`` (v162), así que lo avisado antes de pasar al
+outbox no se vuelve a avisar.
 
 **Desde S2.1 el sistema sí conoce el NIF de la organización** (tabla
 ``organization_nifs``), así que la ficha ya no llega en blanco: propone
@@ -28,7 +31,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from db.notifications import insert_user_notification
+from db.events import append_domain_event, get_events
 from db.repositories.organization_nifs import OrganizationNifRepository
 from db.repositories.organizations import OrganizationRepository
 from db.repositories.pursuits import OpenWithAwardRow, PursuitRepository
@@ -38,7 +41,9 @@ from shared.dto import PursuitAdjudicatario
 
 log = get_logger(__name__)
 
-TIPO_NOTIFICACION = "adjudicacion_detectada"
+EVENTO = "adjudicacion.detectada"
+_AGREGADO = "pursuit"
+_AVISO_TITULO = "Adjudicación publicada"
 _MAX_TITULO = 80
 
 _nif_repo = OrganizationNifRepository()
@@ -159,35 +164,53 @@ def build_notification(row: OpenWithAwardRow) -> tuple[str, str]:
     if importe:
         detalle += f" por {importe}"
     return (
-        f"Adjudicación publicada: {titulo}",
+        f"{_AVISO_TITULO}: {titulo}",
         f"{detalle}. Cierra la oportunidad con el resultado real desde su ficha.",
     )
 
 
 def notify_detected_awards(*, limit: int = 500) -> int:
-    """Escribe las alertas pendientes. Devuelve cuántas insertó de verdad."""
+    """Emite los ``adjudicacion.detectada`` pendientes. Devuelve cuántos escribió."""
     rows = PursuitRepository().open_with_award_rows(limit=limit)
-    written = 0
+    emitidos = 0
     for row in rows:
-        title, body = build_notification(row)
-        for user_id in _destinatarios(row):
-            try:
-                inserted = insert_user_notification(
-                    user_id=user_id,
-                    type_=TIPO_NOTIFICACION,
-                    title=title,
-                    body=body,
-                    licitacion_id=str(row["licitacion_id"]),
-                    organization_id=int(row["organization_id"]),
-                )
-            except Exception as exc:
-                log.warning(
-                    "pursuit_award_notification_failed",
-                    pursuit_id=row.get("pursuit_id"),
-                    error=str(exc)[:200],
-                )
+        pursuit_id = int(row["pursuit_id"])
+        organization_id = int(row["organization_id"])
+        try:
+            if get_events(_AGREGADO, pursuit_id, event_type=EVENTO, limit=1):
                 continue
-            written += int(inserted)
-    if written:
-        log.info("pursuit_awards_notified", pursuits=len(rows), notifications=written)
-    return written
+            _titulo, cuerpo = build_notification(row)
+            append_domain_event(
+                EVENTO,
+                pursuit_id,
+                _AGREGADO,
+                {
+                    "id_externo": str(row["licitacion_id"]),
+                    "licitacion_id": str(row["licitacion_id"]),
+                    "pursuit_id": pursuit_id,
+                    "organization_id": organization_id,
+                    "titulo": str(row.get("titulo") or row.get("licitacion_id") or "")[
+                        :_MAX_TITULO
+                    ],
+                    "aviso_titulo": _AVISO_TITULO,
+                    "detalle": cuerpo,
+                    "adjudicatarios": row.get("adjudicatarios"),
+                    "importe_total": row.get("importe_total"),
+                    "seguidores": [
+                        {"user_id": user_id, "organization_id": organization_id}
+                        for user_id in _destinatarios(row)
+                    ],
+                },
+                organization_id=organization_id,
+            )
+        except Exception as exc:
+            log.warning(
+                "pursuit_award_event_failed",
+                pursuit_id=pursuit_id,
+                error=str(exc)[:200],
+            )
+            continue
+        emitidos += 1
+    if emitidos:
+        log.info("pursuit_awards_emitted", pursuits=len(rows), eventos=emitidos)
+    return emitidos
