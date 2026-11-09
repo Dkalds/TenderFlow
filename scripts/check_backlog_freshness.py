@@ -144,7 +144,7 @@ def _revisiones_presentes() -> set[str]:
 
 
 def main() -> int:
-    # La consola de Windows escribe en cp1252, que no tiene «≥» ni otras del backlog.
+    # En Windows, stdout redirigido o en tubería (make, Git Bash) es cp1252, sin «≥».
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     estricto = "--strict" in sys.argv
