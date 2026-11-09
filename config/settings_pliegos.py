@@ -78,8 +78,8 @@ class PliegosSettings(BaseSettings):
     # señal de tecnología (keywords sobre el texto del pliego).
     PLIEGO_TECH_SIGNAL_BATCH: int = 500
     # Su tope de reloj, con la regla de los de arriba. Una noche normal puntúa
-    # unas 50 licitaciones en ~2 min; tras un cambio de versión del filtro todo
-    # el lote vuelve a pendiente y el 2026-10-30 la fase pasó de 20 min.
+    # unas 50 licitaciones en ~2 min, pero el 2026-10-30 la fase pasó de 20 min
+    # y el job se canceló por su `timeout-minutes`. Con 600 s caben unas 250.
     PLIEGO_TECH_SIGNAL_MAX_SECONDS: int = 600
     # Score mínimo (matched_terms ponderado por tipo de documento) para que
     # una señal de pliego entre al merge hacia ml_tecnologias/licitacion_tecnologia_score.

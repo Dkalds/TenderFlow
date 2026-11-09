@@ -34,7 +34,7 @@ resto del scraper):
 Si el extra ``[ml-embeddings]`` no está instalado, la fase de embeddings se
 salta con un warning (no rompe la fase de fetch, que solo necesita ``[pliegos]``).
 
-Las fases 1-3 tienen además un tope de reloj (``PLIEGO_*_MAX_SECONDS``): lo
+Las fases 1-4 tienen además un tope de reloj (``PLIEGO_*_MAX_SECONDS``): lo
 que no cabe se cuenta como ``aplazados`` y queda para el lote siguiente, de
 modo que una fase lenta no deja sin turno a las que van detrás.
 """
@@ -471,10 +471,10 @@ def _run_tech_signal_phase(
 
     ``max_seconds`` acota la fase por reloj (``_presupuesto_agotado``): las
     licitaciones que no caben se cuentan en ``aplazados``, siguen pendientes
-    y solo se funde la señal de las que se puntuaron. El 2026-10-30, con el
-    lote entero pendiente tras un cambio de versión del filtro, la fase siguió
-    20 min después de las fichas y pliegos.yml se canceló por su
-    ``timeout-minutes``.
+    y solo se funde la señal de las que se puntuaron. El 2026-10-30 la fase
+    siguió 20 min después de las fichas, sin un log, y pliegos.yml se canceló
+    por su ``timeout-minutes``. Un cambio de versión del filtro deja pendiente
+    el lote entero (``PLIEGO_TECH_SIGNAL_BATCH``).
     """
     from db.repositories.documentos import DocumentosRepository
     from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
