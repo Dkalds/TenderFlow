@@ -16,12 +16,19 @@ vi.mock("@/components/layout/superficie-privada", () => ({
 }));
 vi.mock("@/components/connection-banner", () => ({ ConnectionBanner: () => null }));
 vi.mock("@/components/layout/console-frame", () => ({
-  ConsoleFrame: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
+  ConsoleFrame: ({ children, lateral }: { children: React.ReactNode; lateral?: React.ReactNode }) => (
+    <main>
+      {children}
+      {lateral}
+    </main>
+  ),
 }));
 vi.mock("@/components/oauth-login-telemetry", () => ({ OAuthLoginTelemetry: () => null }));
-// Los overlays (paleta, copiloto…) también pintan tooltips: van dentro.
+// Los overlays (paleta, copiloto…) también pintan tooltips: van dentro. La ficha
+// de la licitación (inspector con tooltips) cuelga de la ranura `lateral` del marco.
 vi.mock("@/components/layout/overlays-dashboard", () => ({
   OverlaysDashboard: () => <Pista texto="overlay" />,
+  FichaFlotanteDiferida: () => <Pista texto="ficha" />,
 }));
 
 import DashboardLayout from "@/app/(dashboard)/layout";
@@ -36,7 +43,7 @@ function Pista({ texto }: { texto: string }) {
 }
 
 describe("layout del dashboard", () => {
-  it("da TooltipProvider a las pantallas y a los overlays", () => {
+  it("da TooltipProvider a las pantallas, a los overlays y a la ficha anclada", () => {
     render(
       <DashboardLayout>
         <Pista texto="pantalla" />
@@ -45,5 +52,6 @@ describe("layout del dashboard", () => {
 
     expect(screen.getByRole("button", { name: "pantalla" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "overlay" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ficha" })).toBeInTheDocument();
   });
 });
