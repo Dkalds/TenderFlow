@@ -127,7 +127,7 @@ def build_default_registry() -> list[ScheduledJob]:
             default_interval_minutes=1440,  # nocturno
             initial_offset_minutes=300,  # tras la ingesta diaria + scoring
             heavy=True,  # descarga de red + inferencia del modelo de embeddings
-            timeout_seconds=90 * 60,  # `timeout-minutes: 90` del job de pliegos.yml
+            timeout_seconds=100 * 60,  # `timeout-minutes: 100` del job de pliegos.yml
         ),
         # ── Light jobs (daemon threads) ───────────────────────────────
         ScheduledJob(
