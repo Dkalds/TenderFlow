@@ -144,6 +144,9 @@ def _revisiones_presentes() -> set[str]:
 
 
 def main() -> int:
+    # En Windows, stdout redirigido o en tubería (make, Git Bash) es cp1252, sin «≥».
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     estricto = "--strict" in sys.argv
     items = _cuerpo_de_items(_BACKLOG.read_text(encoding="utf-8"))
     if "--estado" in sys.argv:

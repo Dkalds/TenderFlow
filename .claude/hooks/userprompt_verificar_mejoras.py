@@ -29,7 +29,7 @@ AVISO = (
     "`make backlog-estado` (o `python scripts/check_backlog_freshness.py --estado`), "
     "no el «Problema» de cada ítem, que se queda en el día en que se abrió. Para cada "
     "propuesta, busca en el código el símbolo, fichero o setting que darías por ausente, "
-    "y di si lo que queda es `código`, `propietario` o `medir`. Lo que solo puede hacer "
+    "y di si lo que queda es `código`, `propietario`, `medir` o `mixto`. Lo que solo puede hacer "
     "el dueño está en «Acciones del propietario» del backlog."
 )
 

@@ -8,6 +8,7 @@ con la línea que dice qué queda hoy.
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import pytest
@@ -133,3 +134,20 @@ def test_el_resumen_da_clase_y_estado_sin_el_resto(
     salida = capsys.readouterr().out
     assert "[P2] `medir` Algo\n    queda mirar el log." in salida
     assert "Problema" not in salida
+
+
+def test_el_resumen_no_falla_con_una_salida_cp1252(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """En Windows, stdout en tubería es cp1252, que no tiene «≥»."""
+    item = "### [P2] Algo\n- **Estado actual (2026-11-08):** `medir` — con ≥ 30 pares.\n"
+    backlog = tmp_path / "IMPROVEMENT_BACKLOG.md"
+    backlog.write_text(_CABECERA + item + _PLANTILLA, encoding="utf-8")
+    salida = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    monkeypatch.setattr(chequeo, "_BACKLOG", backlog)
+    monkeypatch.setattr(chequeo.sys, "argv", ["check_backlog_freshness.py", "--estado"])
+    monkeypatch.setattr(chequeo.sys, "stdout", salida)
+
+    assert chequeo.main() == 0
+    salida.flush()
+    assert "con ≥ 30 pares.".encode() in salida.buffer.getvalue()
