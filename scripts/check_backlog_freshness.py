@@ -144,6 +144,9 @@ def _revisiones_presentes() -> set[str]:
 
 
 def main() -> int:
+    # La consola de Windows escribe en cp1252, que no tiene «≥» ni otras del backlog.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     estricto = "--strict" in sys.argv
     items = _cuerpo_de_items(_BACKLOG.read_text(encoding="utf-8"))
     if "--estado" in sys.argv:
