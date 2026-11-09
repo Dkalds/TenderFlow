@@ -119,8 +119,13 @@ function AyudaAtajosDiferida() {
   return vista ? <KeyboardHelp /> : null;
 }
 
-/** La ficha de una licitación sobre la pantalla actual (`?ver=`, ver `enlace-ficha.tsx`). */
-function FichaFlotanteDiferida() {
+/**
+ * La ficha de una licitación junto a la pantalla actual (`?ver=`, ver
+ * `enlace-ficha.tsx`). No va en `OverlaysDashboard`: a partir de `xl` se ancla
+ * como columna del marco y desplaza la pantalla, así que la monta el layout en
+ * la ranura `lateral` de `ConsoleFrame`.
+ */
+export function FichaFlotanteDiferida() {
   const [idExterno] = useFichaFlotante();
   const vista = useAbiertoAlgunaVez(Boolean(idExterno));
   return vista ? <FichaFlotante /> : null;
@@ -133,7 +138,6 @@ export function OverlaysDashboard() {
       <AsistenteDiferido />
       <BandejaDiferida />
       <AyudaAtajosDiferida />
-      <FichaFlotanteDiferida />
     </>
   );
 }

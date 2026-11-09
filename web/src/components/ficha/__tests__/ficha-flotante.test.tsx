@@ -1,9 +1,10 @@
 /**
  * CU-02 — la ficha flotante (`ficha-flotante.tsx`): con `?ver=` pinta la ficha
- * sobre la pantalla actual sin taparla con un velo, pulsar fuera no la cierra
+ * junto a la pantalla actual sin taparla con un velo, pulsar fuera no la cierra
  * (la lista de debajo sigue viva) y la X la cierra quitando `ver` de la URL.
+ * Desde `xl` va anclada como columna del marco (sin diálogo) y cierra con Esc.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { withNuqsTestingAdapter, type UrlUpdateEvent } from "nuqs/adapters/testing";
 
@@ -41,6 +42,7 @@ function montar() {
   render(
     <>
       <button>Otra licitación</button>
+      <input aria-label="Buscar" />
       <FichaFlotante />
     </>,
     { wrapper: withNuqsTestingAdapter({ searchParams: "?ver=EXP-1", onUrlUpdate }) },
@@ -87,5 +89,59 @@ describe("FichaFlotante", () => {
 
     expect(screen.getByRole("alert")).toHaveTextContent("No se pudo abrir la ficha");
     expect(screen.getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
+  });
+});
+
+describe("FichaFlotante anclada (≥ xl)", () => {
+  // jsdom no evalúa media queries y el stub de `src/test/setup.ts` responde «no
+  // match» a todo, que aquí es la franja del `Sheet`. Pantalla de 1440 px: casan
+  // `md` y `xl`, y la ficha se ancla.
+  let original: typeof window.matchMedia;
+  beforeEach(() => {
+    original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: true,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+  });
+  afterEach(() => {
+    window.matchMedia = original;
+  });
+
+  it("es una columna del marco, no un panel modal encima: sin diálogo", () => {
+    licitacion.estado = { data: { id_externo: "EXP-1", titulo: "Mantenimiento SAP" }, error: null };
+    montar();
+
+    expect(screen.getByRole("heading", { name: "Mantenimiento SAP" })).toBeInTheDocument();
+    // Ni `Sheet` ni `Dialog`: lo que hay debajo no queda tapado ni inerte.
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Otra licitación" })).toBeVisible();
+  });
+
+  it("Esc la cierra quitando `ver` de la URL", async () => {
+    licitacion.estado = { data: { id_externo: "EXP-1", titulo: "Mantenimiento SAP" }, error: null };
+    const onUrlUpdate = montar();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await vi.waitFor(() => expect(onUrlUpdate).toHaveBeenCalledOnce());
+    expect(onUrlUpdate.mock.calls[0][0].searchParams.get("ver")).toBeNull();
+  });
+
+  it("Esc dentro de un campo de texto no la cierra", async () => {
+    licitacion.estado = { data: { id_externo: "EXP-1", titulo: "Mantenimiento SAP" }, error: null };
+    const onUrlUpdate = montar();
+    const campo = screen.getByRole("textbox", { name: "Buscar" });
+
+    fireEvent.keyDown(campo, { key: "Escape" });
+
+    await new Promise((resolver) => setTimeout(resolver, 100));
+    expect(onUrlUpdate).not.toHaveBeenCalled();
   });
 });
