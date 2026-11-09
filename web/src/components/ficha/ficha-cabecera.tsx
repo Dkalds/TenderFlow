@@ -36,7 +36,7 @@ export function FichaEstado({ licitacion: l, className }: { licitacion: Licitaci
       {/* F1.8 — «Evaluación» no dice que ya no se puede presentar. */}
       <GlosarioHint termino={l.estado ?? undefined} />
       <RecurridoBadge licitacionId={l.id_externo} />
-      <span className="truncate font-mono text-tf-micro text-muted-foreground">{l.id_externo}</span>
+      <span className="truncate font-mono text-tf-micro text-muted-foreground">{l.expediente ?? l.id_externo}</span>
     </div>
   );
 }

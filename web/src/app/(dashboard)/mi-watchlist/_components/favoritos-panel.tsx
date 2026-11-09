@@ -17,7 +17,7 @@ import * as React from "react";
 import Link from "next/link";
 import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { NotebookPen, Trash2 } from "lucide-react";
-import { PanelEmpty } from "@/components/console/panel";
+import { PanelEmpty, PanelError } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,7 +30,19 @@ import { formatCurrency, formatDate, truncate } from "@/lib/utils";
 import { NotaFavorito } from "./nota-favorito";
 
 export function FavoritosPanel() {
-  const { data: items, isLoading } = useWatchlistItems();
+  const { data: items, isLoading, error, refetch } = useWatchlistItems();
+  const lista = React.useRef<HTMLUListElement>(null);
+  // La fila se va al instante (retirada optimista) y con ella el botón que
+  // tenía el foco: sin esto el teclado caía en `body`. Pasa al «Quitar» que
+  // ocupa su sitio, o al anterior si era el último.
+  const quitar = (idExterno: string, indice: number) => {
+    removeItem.mutate(idExterno);
+    requestAnimationFrame(() => {
+      const botones = lista.current?.querySelectorAll<HTMLElement>("[data-quitar-favorito]");
+      if (!botones?.length) return;
+      botones[Math.min(indice, botones.length - 1)]?.focus();
+    });
+  };
   const removeItem = useRemoveWatchlistItem();
   // Una nota abierta a la vez: dos editores abiertos son dos borradores que
   // compiten por el mismo foco.
@@ -54,6 +66,19 @@ export function FavoritosPanel() {
     );
   }
 
+  // La consulta es silenciosa (también la usa «Seguir» en otras pantallas):
+  // el fallo se pinta aquí. Sin esto caía en «No tienes favoritos», un vacío
+  // falso que invitaba a volver a marcarlos.
+  if (error) {
+    return (
+      <PanelError
+        title="No se pudieron cargar tus favoritos"
+        error={error}
+        onRetry={() => void refetch()}
+      />
+    );
+  }
+
   if (!items || items.length === 0) {
     return (
       // Dice dónde está la estrella y lleva hasta ella (C7.3).
@@ -73,8 +98,8 @@ export function FavoritosPanel() {
   }
 
   return (
-    <ul className="divide-divider border-divider bg-card divide-y rounded-xl border">
-      {items.map((item) => (
+    <ul ref={lista} className="divide-divider border-divider bg-card divide-y rounded-xl border">
+      {items.map((item, indice) => (
         <li key={item.id_externo} className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:gap-3">
           <div className="min-w-0 flex-1">
             <EnlaceFicha
@@ -142,8 +167,11 @@ export function FavoritosPanel() {
                 variant="ghost"
                 size="icon-sm"
                 className="text-destructive shrink-0"
-                aria-label="Quitar de favoritos"
-                onClick={() => removeItem.mutate(item.id_externo)}
+                // Con el expediente en el nombre: en la lista de botones del
+                // lector de pantalla, veinte «Quitar de favoritos» no se distinguen.
+                aria-label={`Quitar de favoritos: ${item.titulo ?? item.id_externo}`}
+                data-quitar-favorito
+                onClick={() => quitar(item.id_externo, indice)}
               >
                 <Trash2 aria-hidden="true" />
               </Button>

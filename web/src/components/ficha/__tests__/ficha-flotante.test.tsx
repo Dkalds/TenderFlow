@@ -56,10 +56,30 @@ afterEach(() => {
   licitacion.estado = { data: undefined, error: null };
 });
 
+/** Casa solo lo que se le pase (`md` = tableta); jsdom no evalúa media queries. */
+function conAnchos(...casan: string[]) {
+  const original = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: casan.includes(query),
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+  return () => {
+    window.matchMedia = original;
+  };
+}
+
 describe("FichaFlotante", () => {
-  it("pinta la ficha sin velo y pulsar fuera no la cierra", async () => {
+  it("en tableta pinta la ficha sin velo y pulsar fuera no la cierra", async () => {
+    const restaurar = conAnchos("(min-width: 48rem)");
     licitacion.estado = { data: { id_externo: "EXP-1", titulo: "Mantenimiento SAP" }, error: null };
     const onUrlUpdate = montar();
+    restaurar();
 
     expect(screen.getByRole("heading", { name: "Mantenimiento SAP" })).toBeInTheDocument();
     // Sin velo: lo que hay debajo sigue accesible y pulsable.
@@ -69,6 +89,14 @@ describe("FichaFlotante", () => {
     // nuqs escribe la URL en diferido: se le da tiempo antes de afirmar que no la tocó.
     await new Promise((resolver) => setTimeout(resolver, 100));
     expect(onUrlUpdate).not.toHaveBeenCalled();
+  });
+
+  it("en el móvil es modal: lo de detrás, que el panel tapa, sale del recorrido del teclado", () => {
+    licitacion.estado = { data: { id_externo: "EXP-1", titulo: "Mantenimiento SAP" }, error: null };
+    montar();
+
+    expect(screen.getByRole("dialog", { name: "Ficha de la licitación" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Otra licitación" })).not.toBeInTheDocument();
   });
 
   it("la X quita `ver` de la URL, y «Ficha completa» lleva a /detalle", async () => {

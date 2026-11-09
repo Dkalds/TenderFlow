@@ -91,7 +91,11 @@ export function OrganosCabecera({
           leftIcon={<Search className="h-4 w-4" aria-hidden="true" />}
           inputClassName="pl-9"
         />
-        <ExportPopover extraParams={{ section: "organos" }} label="Exportar órganos" />
+        {/* Con la búsqueda: si la tabla enseña un órgano, el fichero también. */}
+        <ExportPopover
+          extraParams={filter.trim() ? { recurso: "organos", organo_q: filter.trim() } : { recurso: "organos" }}
+          label="Exportar órganos"
+        />
       </div>
     </div>
   );

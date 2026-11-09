@@ -12,13 +12,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 const { mutate, items } = vi.hoisted(() => ({
   mutate: vi.fn(),
   items: {
-    lista: [] as Array<Record<string, unknown>>,
+    lista: [] as Array<Record<string, unknown>> | undefined,
+    error: null as unknown,
   },
 }));
 
 vi.mock("@/hooks/use-watchlist-items", () => ({
   MAX_NOTA_FAVORITO: 2000,
-  useWatchlistItems: () => ({ data: items.lista, isLoading: false }),
+  useWatchlistItems: () => ({ data: items.lista, isLoading: false, error: items.error, refetch: vi.fn() }),
   useRemoveWatchlistItem: () => ({ mutate: vi.fn() }),
   useSetWatchlistNota: () => ({ mutate, isPending: false }),
 }));
@@ -57,6 +58,17 @@ function pintar() {
 
 beforeEach(() => {
   mutate.mockClear();
+  items.error = null;
+});
+
+describe("FavoritosPanel cuando la carga falla", () => {
+  it("dice que no se pudieron cargar, no que no tienes favoritos", () => {
+    items.lista = undefined;
+    items.error = new Error("503");
+    pintar();
+    expect(screen.getByText("No se pudieron cargar tus favoritos")).toBeInTheDocument();
+    expect(screen.queryByText(/No tienes licitaciones marcadas/)).not.toBeInTheDocument();
+  });
 });
 
 describe("Nota del favorito", () => {

@@ -109,7 +109,9 @@ export function PursuitCard({
         {!enExpediente && lote ? <PursuitLoteBadge pursuit={pursuit} /> : null}
       </div>
 
-      {/* «Sin importe» a `tf-title` ocupa casi todo el ancho de una columna del
+      {/* «Sin oferta» y no «Sin importe»: lo que falta es la oferta prevista,
+          y «Sin importe» es la cifra de la tira (licitación sin importe
+          publicado). A `tf-title` ocupa casi todo el ancho de una columna del
           tablero en un portátil: el rótulo baja entero a la línea de abajo en
           vez de partir las dos piezas por la mitad. */}
       <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-1">
@@ -119,7 +121,7 @@ export function PursuitCard({
             sinImporte && !cerrada && "text-warning",
           )}
         >
-          {sinImporte && !cerrada ? "Sin importe" : formatCompactCurrency(importe)}
+          {sinImporte && !cerrada ? "Sin oferta" : formatCompactCurrency(importe)}
         </span>
         <span className="text-muted-foreground text-tf-micro font-medium whitespace-nowrap">
           {sinImporte && !cerrada ? "a completar" : cerrada ? "adjudicado" : "oferta"}

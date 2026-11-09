@@ -96,7 +96,8 @@ export function InspectorAcciones({
             id={selectId}
             value={plazo}
             onChange={(event) => setPlazo(Number(event.target.value))}
-            className="h-7 rounded-md border border-border bg-card px-1.5 text-tf-micro"
+            // `text-campo` en móvil: a 11 px iOS hace zoom al enfocarlo.
+            className="h-7 rounded-md border border-border bg-card px-1.5 text-campo md:text-tf-micro"
           >
             {PLAZOS_RECORDATORIO.map((dias) => (
               <option key={dias} value={dias}>

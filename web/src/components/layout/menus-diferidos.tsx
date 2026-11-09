@@ -62,11 +62,17 @@ export function MenuCuentaDiferido() {
 const cargarExportar = () => import("@/components/export-popover").then((modulo) => modulo.ExportPopover);
 
 /** «Exportar» de la barra de ámbito (`ExportPopover`), con la talla de la consola. */
-export function ExportarDiferido({ label = "Exportar" }: { label?: string }) {
+export function ExportarDiferido({
+  label = "Exportar",
+  extraParams,
+}: {
+  label?: string;
+  extraParams?: Record<string, string>;
+}) {
   return (
     <Diferido
       cargar={cargarExportar}
-      props={{ label }}
+      props={{ label, extraParams }}
       abreCon="pulsar"
       disparador={(eventos) => (
         <button

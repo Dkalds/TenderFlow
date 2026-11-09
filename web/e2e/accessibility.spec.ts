@@ -164,6 +164,8 @@ test.describe("Accesibilidad básica con sesión", () => {
     "/radar",
     `/detalle?lic=${SEED_LICITACION.id}`,
     "/mi-watchlist",
+    // La Agenda tuvo filas `role="button"` con botones dentro (nested-interactive).
+    "/mi-pipeline",
     "/mi-perfil",
     "/equipo",
     "/ops",

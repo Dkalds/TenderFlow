@@ -19,7 +19,7 @@ import { useMemo, useState } from "react";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { urlApi } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import type { Schemas, TrendPoint } from "@/lib/api-types";
+import type { Schemas } from "@/lib/api-types";
 
 import { splitForecastSeries, type ForecastRow } from "./forecast-series";
 
@@ -82,28 +82,6 @@ export function mesHref(mes: string, estado?: string): string {
 
 export type ForecastMetric = "count" | "sum";
 
-/**
- * Variación interanual: los últimos doce meses contra la ventana anterior.
- *
- * OJO con el denominador (ADR-014): la ventana previa es `slice(-24, -12)`, que
- * sólo tiene doce meses cuando la serie llega a veinticuatro. Entre trece y
- * veintitrés puntos devuelve igualmente un número, comparando doce meses contra
- * una ventana MÁS CORTA — el porcentaje sale inflado. Es el comportamiento que
- * hay en producción desde siempre y se conserva tal cual aquí; el arreglo
- * (exigir 24 puntos, o normalizar por el tamaño de cada ventana) cambia la cifra
- * en pantalla, así que va aparte. Los tests lo dejan clavado.
- */
-function computeYoY(series: TrendPoint[], field: "count" | "importe"): number | null {
-  if (series.length < 13) return null;
-  const recent = series.slice(-12);
-  const prior = series.slice(-24, -12);
-  if (prior.length === 0) return null;
-  const sumRecent = recent.reduce((s, p) => s + (field === "count" ? p.count : (p.importe ?? 0)), 0);
-  const sumPrior = prior.reduce((s, p) => s + (field === "count" ? p.count : (p.importe ?? 0)), 0);
-  if (sumPrior === 0) return null;
-  return ((sumRecent - sumPrior) / sumPrior) * 100;
-}
-
 export function useTendenciasView() {
   const [forecastMetric, setForecastMetric] = useState<ForecastMetric>("count");
 
@@ -131,8 +109,11 @@ export function useTendenciasView() {
 
   const totalCount = useMemo(() => series.reduce((s, p) => s + p.count, 0), [series]);
   const totalImporte = useMemo(() => series.reduce((s, p) => s + (p.importe ?? 0), 0), [series]);
-  const yoyCount = useMemo(() => computeYoY(series, "count"), [series]);
-  const yoyImporte = useMemo(() => computeYoY(series, "importe"), [series]);
+  // La variación interanual la calcula el backend (365 días contra los 365
+  // anteriores) y la deja en `null` cuando el año previo está incompleto. La
+  // de aquí comparaba doce puntos contra una ventana más corta (ADR-014).
+  const yoyCount = trends?.yoy_count ?? null;
+  const yoyImporte = trends?.yoy_importe ?? null;
 
   const cumulativeData = useMemo<CumulativePoint[]>(() => {
     const result: CumulativePoint[] = [];

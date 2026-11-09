@@ -146,7 +146,7 @@ def test_un_documento_nuevo_avisa_una_vez_por_organizacion_seguidora(
     assert de_org1["tipo"] == "licitacion.documento_nuevo"
     assert de_org1["payload"]["documento_id"] == 6
     assert de_org1["payload"]["subtipo"] == "documento_nuevo"
-    assert de_org1["payload"]["aviso_titulo"] == "Documento nuevo: technical"
+    assert de_org1["payload"]["aviso_titulo"] == "Documento nuevo: Pliego técnico (PPT)"
     # Cada organización sólo ve a sus seguidores, y nadie sin organización.
     assert {s["user_id"] for s in de_org1["payload"]["seguidores"]} == {10, 11}
     # El expediente sin seguidores no emite, pero el cursor sí lo deja atrás.

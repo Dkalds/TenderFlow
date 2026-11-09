@@ -162,6 +162,9 @@ def fetch_for_pdf(
     importe_max: float | None = None,
     provincia: str | None = None,
     procedimiento: str | None = None,
+    solo_abiertas: bool = False,
+    cierre_desde: str | None = None,
+    cierre_hasta: str | None = None,
     limit: int = 500,
 ) -> list[ExportPdfRow]:
     """Carga licitaciones para exportación (CSV, Excel y PDF)."""
@@ -176,6 +179,9 @@ def fetch_for_pdf(
         importe_max=importe_max,
         provincia=provincia,
         procedimiento=procedimiento,
+        solo_abiertas=solo_abiertas,
+        cierre_desde=cierre_desde,
+        cierre_hasta=cierre_hasta,
         limit=limit,
     )
 

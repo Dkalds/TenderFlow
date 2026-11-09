@@ -7,7 +7,7 @@
  */
 
 import { StatCell, StatStrip } from "@/components/console/panel";
-import { formatNumber, formatPercent } from "@/lib/utils";
+import { EMPTY, formatNumber, formatPercent } from "@/lib/utils";
 
 export function GeografiaKpis({
   topCcaa,
@@ -18,7 +18,7 @@ export function GeografiaKpis({
 }: {
   topCcaa: string;
   /** % de licitaciones que acumulan las tres CCAA más activas. */
-  top3Concentration: number;
+  top3Concentration: number | null;
   totalCcaas: number;
   ccaaMayorTicket: string;
   isLoading: boolean;
@@ -28,7 +28,7 @@ export function GeografiaKpis({
       <StatCell label="CCAA más activa" value={topCcaa} loading={isLoading} />
       <StatCell
         label="Concentración en las 3 primeras"
-        value={formatPercent(top3Concentration)}
+        value={top3Concentration == null ? EMPTY : formatPercent(top3Concentration)}
         hint="Del total de licitaciones"
         loading={isLoading}
       />

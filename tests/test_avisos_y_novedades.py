@@ -147,6 +147,10 @@ class TestDocumentoNuevo:
         """Un pliego, una rectificación y unas respuestas no piden lo mismo."""
         assert "PCAP" in aviso_documento_nuevo("PCAP").titulo
 
+    def test_el_tipo_de_bd_sale_con_su_nombre_en_castellano(self) -> None:
+        """`technical` es el valor de la columna; al correo llega su nombre."""
+        assert aviso_documento_nuevo("technical").titulo == "Documento nuevo: Pliego técnico (PPT)"
+
     def test_sin_tipo_sigue_avisando(self) -> None:
         aviso = aviso_documento_nuevo(None)
         assert aviso.subtipo == "documento_nuevo"

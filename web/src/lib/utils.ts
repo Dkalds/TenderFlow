@@ -84,6 +84,13 @@ export function formatCompactCurrency(
   currency = "EUR",
 ): string {
   if (sinDato(value)) return EMPTY;
+  // CLDR `es` escribe 10⁹–10¹⁰ como «2922,8 M €» y a partir de 10¹⁰ como
+  // «11 mil M €»: en una misma lista salían las dos formas. Desde 10⁹, siempre
+  // «mil M €».
+  if (locale.startsWith("es") && currency === "EUR" && Math.abs(value) >= 1e9) {
+    const milMillones = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(value / 1e9);
+    return `${milMillones} mil M €`;
+  }
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
@@ -238,6 +245,18 @@ export function formatDate(
  * significa publicar el día anterior al que el visitante tiene en el reloj.
  */
 export const ZONA_ES = "Europe/Madrid";
+
+/**
+ * El día (`AAAA-MM-DD`) de un instante en Madrid. `toISOString().slice(0, 10)`
+ * da el día UTC: entre las 00:00 y las 01:00 o 02:00 de Madrid es todavía
+ * ayer, y «cierran hoy» o «vencen en 48 h» se calculaban con un día de menos.
+ */
+export function diaISO(instante: number | Date = Date.now(), timeZone = ZONA_ES): string {
+  // `en-CA` formatea la fecha como AAAA-MM-DD.
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(
+    instante,
+  );
+}
 
 /**
  * Fecha + hora ("12 ago 2026, 14:30").

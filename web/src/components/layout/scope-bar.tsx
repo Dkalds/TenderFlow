@@ -119,7 +119,14 @@ export function ScopeBar() {
   // El contrato de un espacio es el de la vista que se mira: Competencia ›
   // Empresas no lee el ámbito aunque Competidores sí (`lib/navigation.ts`). La
   // barra ya va dentro de un `Suspense` (`console-frame.tsx`).
-  const vista = useSearchParams()?.get("vista") ?? null;
+  const searchParams = useSearchParams();
+  const vista = searchParams?.get("vista") ?? null;
+  // La ventana de cierre de /detalle no es un chip, pero acota la tabla: el
+  // export la lleva para bajar lo que se ve.
+  const cierreExport = React.useMemo(
+    () => Object.fromEntries(["cierre_desde", "cierre_hasta"].flatMap((k) => (searchParams?.get(k) ? [[k, searchParams.get(k)!]] : []))),
+    [searchParams],
+  );
   const subsetKeys = pageGlobalFilterKeys(pathname, vista);
   const singleValueKeys = pageSingleValueFilterKeys(pathname);
   const optInKeys = React.useMemo(() => pageOptInFilterKeys(pathname, vista), [pathname, vista]);
@@ -275,7 +282,7 @@ export function ScopeBar() {
               saca lo que gobierna esta barra — el ámbito activo. Sin ámbito, el
               rótulo de siempre. La talla es la de la consola (`sm`), la misma
               que «Buscar». */}
-          <ExportarDiferido label={filtersApply ? "Exportar ámbito" : undefined} />
+          <ExportarDiferido label={filtersApply ? "Exportar ámbito" : undefined} extraParams={cierreExport} />
           <CampanaDiferida />
         </div>
       </header>

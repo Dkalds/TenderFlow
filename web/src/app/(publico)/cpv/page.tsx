@@ -5,6 +5,7 @@ import { obtenerHubs } from "@/lib/publico-api";
 import { OG_IMAGE_COMPARTIDA, TWITTER_COMPARTIDO } from "@/lib/site";
 import { listaJsonLd, migasJsonLd, serializarJsonLd } from "@/lib/jsonld";
 import { rutaHubCpv } from "@/lib/slug";
+import { descripcionDivision } from "../_components/hub-cpv";
 import { cn, formatNumber } from "@/lib/utils";
 import { KICKER, TARJETA_INDICE, TITULO_PAGINA } from "../_components/piel-publica";
 
@@ -80,6 +81,12 @@ export default async function IndiceCpv() {
                   <span className="group-hover:text-primary block truncate font-mono text-sm font-semibold transition-colors">
                     {hub.codigo}
                   </span>
+                  {/* El código solo no dice nada a quien no lo tiene en la cabeza. */}
+                  {descripcionDivision(hub.codigo) && (
+                    <span className="text-muted-foreground mt-0.5 block truncate text-sm first-letter:uppercase">
+                      {descripcionDivision(hub.codigo)}
+                    </span>
+                  )}
                   <span className="text-muted-foreground tf-tnum text-tf-meta mt-0.5 block">
                     {formatNumber(hub.total)} licitaciones
                   </span>

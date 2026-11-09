@@ -159,7 +159,7 @@ export function RadarView() {
           </>
         )}
 
-        <RadarPie statusLine={statusLine} />
+        <RadarPie statusLine={statusLine} ranking={!enProximas} />
       </section>
 
       {!enProximas && (

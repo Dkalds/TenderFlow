@@ -93,7 +93,8 @@ export function AgendaAccion({
       type="button"
       variant="outline"
       size="icon-sm"
-      aria-label={nombre}
+      // Con el título: el mismo icono se repite en cada fila.
+      aria-label={`${nombre}: ${tituloDe(item)}`}
       onClick={detener(acciones.onAbrir)}
       className={cn("flex-none", NEUTRO)}
     >

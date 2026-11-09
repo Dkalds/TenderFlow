@@ -42,8 +42,12 @@ export function GlosarioHint({ termino, entrada, className }: GlosarioHintProps)
   // Una vez por ayuda montada: pasar el ratón tres veces por el mismo `?` no
   // son tres consultas al glosario, y contarlas inflaría el uso.
   const medida = React.useRef(false)
+  // Controlado para que el toque también lo abra: un Tooltip de Radix solo
+  // responde a hover y foco, y en el móvil la definición era inalcanzable.
+  const [abierto, setAbierto] = React.useState(false)
   const alAbrir = React.useCallback(
     (abierto: boolean) => {
+      setAbierto(abierto)
       if (!abierto || medida.current) return
       medida.current = true
       // F1.8 — sin el término: qué palabra no entiende alguien es un dato
@@ -61,9 +65,13 @@ export function GlosarioHint({ termino, entrada, className }: GlosarioHintProps)
   if (!definicion) return null
 
   return (
-    <Tooltip onOpenChange={alAbrir}>
+    <Tooltip open={abierto} onOpenChange={alAbrir}>
       <TooltipTrigger
         type="button"
+        // Radix cierra el tooltip al pulsar el disparador; sin ese cierre, el
+        // clic (o el toque) lo alterna.
+        onPointerDown={(evento) => evento.preventDefault()}
+        onClick={() => alAbrir(!abierto)}
         className={cn(
           // 24×24 de diana (WCAG 2.5.8) con el margen negativo que la deja en
           // los 16 px de siempre en el flujo: el icono no cambia de sitio.

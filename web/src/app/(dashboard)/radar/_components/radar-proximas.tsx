@@ -6,10 +6,9 @@ import { PanelEmpty, PanelError, ROTULO_DATO } from "@/components/console/panel"
 import { Badge } from "@/components/ui/badge";
 import { GlosarioHint } from "@/components/ui/glosario-hint";
 import { estadoLabel } from "@/lib/estados";
-import { formatDate, cn } from "@/lib/utils";
+import { formatCompactCurrency, formatDate, cn } from "@/lib/utils";
 import type { RadarProxima, RadarProximasConsola } from "../_hooks/use-radar-proximas";
 import { RadarEsqueleto } from "./radar-esqueleto";
-import { shortEur } from "./radar-shared";
 
 /**
  * Bandeja «Próximas» (T5) — lo que se va a comprar y todavía no se puede ofertar.
@@ -52,15 +51,22 @@ function ProximaFila({ item }: { item: RadarProxima }) {
   const codigos = [item.id_externo, item.cpv ? `CPV ${item.cpv}` : null].filter(Boolean).join(" · ");
 
   return (
-    <EnlaceFicha
-      idExterno={item.id_externo}
+    <div
       className={cn(
-        "flex flex-col gap-2 border-b border-divider-subtle px-3 py-3 transition-colors md:px-3.5",
-        "hover:bg-primary-hover focus-visible:bg-primary-hover focus-visible:outline-none active:bg-primary-selected active:duration-0",
+        "relative flex flex-col gap-2 border-b border-divider-subtle px-3 py-3 transition-colors md:px-3.5",
+        "hover:bg-primary-hover has-[a:focus-visible]:bg-primary-hover has-[a:active]:bg-primary-selected has-[a:active]:duration-0",
         "lg:grid lg:grid-cols-[132px_1fr_176px_108px_120px] lg:items-center lg:gap-3 lg:px-3.5 lg:py-2.5",
       )}
     >
-      <span className="flex flex-none items-center gap-1.5">
+      {/* El enlace va EN CAPA, hermano del «?» del glosario: con la fila
+          entera como enlace, el «?» era un botón dentro de un `<a>` y tocarlo
+          abría la ficha. El «?» sube con `relative z-10`. */}
+      <EnlaceFicha
+        idExterno={item.id_externo}
+        aria-label={item.titulo ?? item.id_externo}
+        className="focus-visible:ring-ring absolute inset-0 focus-visible:ring-2 focus-visible:ring-inset focus-visible:outline-none"
+      />
+      <span className="relative z-10 flex flex-none items-center gap-1.5">
         <Badge variant="info" size="sm">
           {estadoLabel(codigo) || "—"}
         </Badge>
@@ -84,13 +90,13 @@ function ProximaFila({ item }: { item: RadarProxima }) {
         {item.organo_contratacion ?? "—"}
       </span>
 
-      <span className="tf-tnum text-tf-body font-semibold lg:text-right">{shortEur(item.importe)}</span>
+      <span className="tf-tnum text-tf-body font-semibold lg:text-right">{formatCompactCurrency(item.importe)}</span>
 
       <span className="flex items-baseline gap-1.5 lg:flex-col lg:items-end lg:gap-0.5">
         <span className={ROTULO_DATO}>Prevista</span>
         <FechaPrevista iso={item.fecha_prevista} />
       </span>
-    </EnlaceFicha>
+    </div>
   );
 }
 

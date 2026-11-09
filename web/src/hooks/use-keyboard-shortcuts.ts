@@ -40,6 +40,25 @@ function isTypingContext(target: EventTarget | null): boolean {
   return target.closest(TYPING_ROLES) !== null;
 }
 
+/**
+ * ¿La tecla es de otro control y no de la lista? Guard común de los atajos de
+ * lista (J/K, flechas, S, X…) que escuchan en `window`: Radar, Detalle y Agenda.
+ *
+ * Además de los campos y los widgets de `isTypingContext` (que incluyen los
+ * diálogos: X sobre «Restaurar descartadas» descartaba la fila de detrás):
+ * un `<select>` nativo, cuyas flechas cambian la opción y no la fila, y una
+ * región con scroll propio (`role="region"` enfocable, como el cuerpo del
+ * inspector), cuyas flechas la desplazan.
+ */
+export function teclaDeOtroControl(event: KeyboardEvent): boolean {
+  if (event.metaKey || event.ctrlKey || event.altKey) return true;
+  const target = event.target;
+  if (isTypingContext(target) || target instanceof HTMLSelectElement) return true;
+  return (
+    event.key.startsWith("Arrow") && target instanceof HTMLElement && target.getAttribute("role") === "region"
+  );
+}
+
 export function useKeyboardShortcuts() {
   const router = useRouter();
 

@@ -39,7 +39,7 @@ export function InspectorCabecera({ tender, onClose }: { tender: RadarTender; on
     <div className="flex-none border-b border-divider px-4.5 pb-3.5 pt-4">
       <div className="mb-2.5 flex items-center gap-2">
         {(sinPuntuar || esBandaConocida(band)) && <ChipBanda banda={sinPuntuar ? null : band} size="md" />}
-        <span className="font-mono text-tf-micro text-muted-foreground">{tender.id_externo}</span>
+        <span className="font-mono text-tf-micro text-muted-foreground">{tender.expediente ?? tender.id_externo}</span>
         <div className="flex-1" />
         <span className="tf-tnum text-tf-title font-semibold leading-none">
           {sinPuntuar ? "—" : Math.round(tender.score!)}

@@ -6,7 +6,7 @@ import { useAnnounceOnChange } from "@/components/live-region";
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
 import { useScopedHref } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { EMPTY, formatCompactCurrency, formatDate, formatNumber } from "@/lib/utils";
+import { diaISO, EMPTY, formatCompactCurrency, formatDate, formatNumber } from "@/lib/utils";
 import { useNovedades } from "../_hooks/use-novedades";
 import { Proporcion } from "./cifras-graficos";
 import { ColaCierre } from "./cola-cierre";
@@ -70,8 +70,8 @@ function useVencenHref(): string {
   return useMemo(() => {
     // eslint-disable-next-line react-hooks/purity
     const ahora = Date.now();
-    const desde = new Date(ahora).toISOString().slice(0, 10);
-    const hasta = new Date(ahora + 2 * 86400000).toISOString().slice(0, 10);
+    const desde = diaISO(ahora);
+    const hasta = diaISO(ahora + 2 * 86400000);
     return `/detalle?solo_abiertas=true&cierre_desde=${desde}&cierre_hasta=${hasta}`;
   }, []);
 }
@@ -117,7 +117,7 @@ export function AtencionCards() {
   // hora — el mismo redondeo que la cola de cierre.
   const hoyIso = useMemo(
     // eslint-disable-next-line react-hooks/purity
-    () => new Date(Date.now()).toISOString().slice(0, 10),
+    () => diaISO(Date.now()),
     [],
   );
 

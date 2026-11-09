@@ -1,4 +1,4 @@
-import { EMPTY, formatDate } from "@/lib/utils";
+import { EMPTY, formatDate, ZONA_ES } from "@/lib/utils";
 
 /**
  * Fecha de la ficha pública, o `null` si la fuente no la publica.
@@ -14,6 +14,7 @@ import { EMPTY, formatDate } from "@/lib/utils";
  * razón de que viva en su propio módulo y no dentro de uno de los dos.
  */
 export function fechaOpcional(valor: string | null | undefined): string | null {
-  const formateada = formatDate(valor);
+  // Se pinta en servidor (UTC): sin la zona, de madrugada salía el día anterior.
+  const formateada = formatDate(valor, "es-ES", ZONA_ES);
   return formateada === EMPTY ? null : formateada;
 }

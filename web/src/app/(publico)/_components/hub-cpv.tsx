@@ -32,15 +32,19 @@ const POR_PAGINA = 50;
  *
  * Es una tabla, sí, pero no de las que prohíbe el invariante 3: el CPV es una
  * nomenclatura pública y estable de la UE, no un dato que el backend calcule.
- * Solo se listan las divisiones que el corpus puede contener — el filtro de
- * ingesta acota a 48 (software) y 72 (servicios TI).
+ * Solo se nombran las divisiones TI que el corpus contiene: 48 y 72 (las del
+ * filtro por CPV) y 30 y 32 (equipos, que entran por la señal tecnológica).
+ * Las demás divisiones que aparecen en el índice quedan sin nombre, no con
+ * uno inventado.
  */
 const DIVISIONES: Record<string, string> = {
+  "30": "equipo de oficina y de informática",
+  "32": "equipos de comunicaciones y telecomunicaciones",
   "48": "paquetes de software y sistemas de información",
   "72": "servicios de tecnologías de la información",
 };
 
-function descripcionDivision(codigo: string): string | null {
+export function descripcionDivision(codigo: string): string | null {
   return DIVISIONES[codigo.slice(0, 2)] ?? null;
 }
 

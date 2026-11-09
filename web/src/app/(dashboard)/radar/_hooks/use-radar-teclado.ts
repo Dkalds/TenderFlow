@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { teclaDeOtroControl } from "@/hooks/use-keyboard-shortcuts";
 import type { RadarTender } from "@/hooks/use-radar";
 
 /**
@@ -45,10 +46,8 @@ export function useRadarTeclado({
 }): React.RefObject<HTMLDivElement | null> {
   React.useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const tag = target?.tagName ?? "";
-      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (teclaDeOtroControl(event)) return;
       if (!filas) return;
       const key = event.key.toLowerCase();
       if (key === "j" || event.key === "ArrowDown") {

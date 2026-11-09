@@ -51,7 +51,7 @@ export function UtesCabecera({
         </p>
       </div>
 
-      <ExportPopover extraParams={{ section: "utes" }} label="Exportar UTE" />
+      <ExportPopover extraParams={{ recurso: "utes" }} label="Exportar UTE" />
     </div>
   );
 }

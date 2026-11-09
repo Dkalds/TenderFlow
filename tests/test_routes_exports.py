@@ -63,6 +63,9 @@ _SIN_FILTROS: dict[str, Any] = {
     "importe_max": None,
     "provincia": None,
     "procedimiento": None,
+    "solo_abiertas": False,
+    "cierre_desde": None,
+    "cierre_hasta": None,
     "limit": 10000,
 }
 
@@ -189,6 +192,9 @@ class TestDescargaPdfSincrona:
             "importe_max": 500_000.0,
             "provincia": "Madrid,Toledo",
             "procedimiento": "1,6",
+            "solo_abiertas": False,
+            "cierre_desde": None,
+            "cierre_hasta": None,
             "limit": 250,
         }
 

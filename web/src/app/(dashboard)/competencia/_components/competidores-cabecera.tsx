@@ -108,7 +108,7 @@ export function CompetidoresCabecera({
           leftIcon={<Search className="h-4 w-4" aria-hidden="true" />}
           inputClassName="pl-9"
         />
-        <ExportPopover extraParams={{ section: "competitors" }} label="Exportar competidores" />
+        <ExportPopover extraParams={{ recurso: "competidores" }} label="Exportar competidores" />
       </div>
     </div>
   );

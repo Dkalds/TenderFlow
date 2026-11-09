@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { fetchWithAuth } from "@/lib/api-client";
 import { useFilters } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { cn, formatDate, formatNumber } from "@/lib/utils";
+import { cn, diaISO, formatDate, formatNumber } from "@/lib/utils";
 
 import {
   EnlaceIr,
@@ -85,9 +85,7 @@ interface CompanyProfileProps {
 }
 
 function dateDaysAgo(days: number): string {
-  const value = new Date();
-  value.setDate(value.getDate() - days);
-  return value.toISOString().slice(0, 10);
+  return diaISO(Date.now() - days * 86400000);
 }
 
 const ID_PESTANAS = "dossier-empresa";
@@ -123,10 +121,10 @@ export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
       if (filters.rango.hasta) params.set("fecha_hasta", filters.rango.hasta);
     } else if (period === "12m") {
       params.set("fecha_desde", dateDaysAgo(364));
-      params.set("fecha_hasta", new Date().toISOString().slice(0, 10));
+      params.set("fecha_hasta", diaISO());
     } else if (period === "3y") {
       params.set("fecha_desde", dateDaysAgo(1095));
-      params.set("fecha_hasta", new Date().toISOString().slice(0, 10));
+      params.set("fecha_hasta", diaISO());
     }
     return params.toString();
   }, [

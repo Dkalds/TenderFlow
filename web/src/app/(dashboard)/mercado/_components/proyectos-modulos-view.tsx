@@ -74,7 +74,7 @@ function ProyectosModulosContenido() {
     <div className="space-y-6">
       <div className="flex items-center justify-end">
         <h1 className="sr-only">Proyectos y módulos</h1>
-        <ExportPopover extraParams={{ section: "proyectos-modulos" }} label="Exportar licitaciones" />
+        <ExportPopover label="Exportar licitaciones" />
       </div>
 
       <Seccion id={idFamilias} titulo="Por familia tecnológica">

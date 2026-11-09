@@ -13,6 +13,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiMutate } from "@/lib/api-client";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import type { Schemas } from "@/lib/api-types";
 import { numeroDeTexto } from "@/lib/forms/valores";
 import type { RuleBody } from "./watchlist-rule-types";
@@ -23,6 +24,9 @@ const PREVIEW_URL = "/api/v1/watchlist/rules/preview";
 
 export function usePreviewRegla() {
   return useMutation({
+    // El fallo lo pinta en línea quien llama (alta y edición): sin esto salía
+    // además el toast global, dos avisos para un fallo (D6).
+    meta: META_ERROR_EN_LINEA,
     mutationFn: (body: RuleBody) => apiMutate<PreviewRegla>("POST", PREVIEW_URL, body),
   });
 }

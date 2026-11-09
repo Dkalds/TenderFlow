@@ -185,6 +185,17 @@ def clasificar_cambio(
     return Aviso("cambio", "Cambio en el expediente", detalle)
 
 
+#: Los mismos nombres que `TIPO_LABELS` de `web/src/components/documentos-block.tsx`:
+#: el titular llega a la campana y al correo, y el valor de BD (`technical`) no
+#: es castellano.
+_NOMBRE_DOCUMENTO: dict[str, str] = {
+    "legal": "Pliego administrativo (PCAP)",
+    "technical": "Pliego técnico (PPT)",
+    "additional": "Documento adicional",
+    "acta": "Acta",
+}
+
+
 def aviso_documento_nuevo(tipo_documento: str | None) -> Aviso:
     """F5.1 — un adjunto nuevo en un expediente seguido.
 
@@ -193,9 +204,10 @@ def aviso_documento_nuevo(tipo_documento: str | None) -> Aviso:
     consultas no piden lo mismo.
     """
     tipo = (tipo_documento or "").strip()
+    nombre = _NOMBRE_DOCUMENTO.get(tipo, tipo)
     return Aviso(
         "documento_nuevo",
-        f"Documento nuevo: {tipo}" if tipo else "Documento nuevo en el expediente",
+        f"Documento nuevo: {nombre}" if nombre else "Documento nuevo en el expediente",
         "Publicado después del anuncio.",
     )
 

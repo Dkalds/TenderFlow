@@ -61,14 +61,22 @@ export function TreemapContent({
         rx={borderRadius}
         opacity={opacity}
       />
-      {/* White labels are a deliberate exception: they sit on saturated categorical fills, not theme surfaces. */}
-      <text x={x + 6} y={y + 16} fill="#fff" fontSize={fontSize} fontWeight={600}>
+      {/* Texto claro sobre las series del tema claro (saturadas y oscuras) y
+          oscuro sobre las del tema oscuro, que son claras: el blanco fijo daba
+          ~1,6:1 sobre `--chart-3` en oscuro. */}
+      <text x={x + 6} y={y + 16} className="fill-card dark:fill-background" fontSize={fontSize} fontWeight={600}>
         {name.length > width / (fontSize * 0.6)
           ? `${name.slice(0, Math.floor(width / (fontSize * 0.6)))}…`
           : name}
       </text>
       {height > minHeight + 14 && (
-        <text x={x + 6} y={y + 16 + fontSize + 4} fill="#fff" fontSize={valueFontSize} opacity={0.8}>
+        <text
+          x={x + 6}
+          y={y + 16 + fontSize + 4}
+          className="fill-card dark:fill-background"
+          fontSize={valueFontSize}
+          opacity={0.8}
+        >
           {formatValue(value)}
         </text>
       )}

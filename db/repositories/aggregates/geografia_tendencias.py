@@ -20,6 +20,7 @@ class CcaaImporteFila(TypedDict):
     ccaa: str
     count: int
     importe: float
+    importe_medio: float | None
 
 
 class ProvinciaImporteFila(TypedDict):
@@ -60,10 +61,16 @@ class GeografiaTendenciasMixin:
     # ── Geography ────────────────────────────────────────────────────────
 
     def geography_by_ccaa(self, filters: LicitacionesFilters) -> list[CcaaImporteFila]:
-        """(ccaa, count, importe) ordenado por count DESC; ccaa NULL excluida."""
+        """(ccaa, count, importe, importe_medio) ordenado por count DESC; ccaa NULL excluida.
+
+        ``importe_medio`` es ``AVG(importe)``: solo cuenta las filas con importe.
+        Dividir ``importe`` entre ``count`` bajaba la media de la comunidad que
+        más expedientes publica sin importe.
+        """
         where, params = _build_where(filters)
         sql = (
-            "SELECT ccaa, COUNT(*) AS count, COALESCE(SUM(importe), 0) AS importe "
+            "SELECT ccaa, COUNT(*) AS count, COALESCE(SUM(importe), 0) AS importe, "
+            "AVG(importe) AS importe_medio "
             "FROM licitaciones "
             "WHERE " + where + " AND ccaa IS NOT NULL "
             "GROUP BY ccaa ORDER BY count DESC, ccaa"

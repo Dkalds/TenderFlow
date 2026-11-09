@@ -8,8 +8,14 @@ from datetime import datetime
 from typing import Any, Literal
 
 import pandas as pd
+from pydantic import BaseModel
 
 from observability.logging import get_logger
+from services.analytics.competitors import CompetitorFilters, get_competitors
+from services.analytics.geography import GeoFilters, get_geography
+from services.analytics.organos import OrganosFilters, get_organos
+from services.analytics.tecnologias import TecnologiasFilters, get_tecnologias
+from services.analytics.utes import UTEFilters, get_utes
 from shared.export_safety import sanitize_spreadsheet_record
 
 logger = get_logger(__name__)
@@ -116,6 +122,88 @@ def generate_excel(
 _EXTENSIONS: dict[str, str] = {"csv": "csv", "excel": "xlsx", "pdf": "pdf"}
 
 
+#: Las tablas de Competencia y Mercado que tienen botón de exportar.
+SeccionExport = Literal["competidores", "utes", "geografia", "organos", "tecnologias"]
+
+
+#: Cabeceras del fichero: los nombres de campo (`count`, `cuota`…) son del
+#: contrato de la API, no castellano para quien abre el Excel.
+_CABECERAS: dict[str, str] = {
+    "nombre": "Nombre",
+    "organo_contratacion": "Órgano de contratación",
+    "organo": "Órgano",
+    "tecnologia": "Tecnología",
+    "ccaa": "Comunidad autónoma",
+    "count": "Licitaciones",
+    "contratos": "Contratos",
+    "importe": "Importe (€)",
+    "importe_medio": "Importe medio (€)",
+    "pct": "% del total",
+    "pct_adjudicado": "% adjudicado",
+    "cuota": "Cuota (%)",
+    "empresa_id": "Id. de empresa",
+    "nif": "NIF",
+    "es_agrupacion": "Agrupación",
+    "contratos_por_anio": "Contratos por año",
+    "baja_media": "Baja media (%)",
+    "n_organos": "Órganos",
+    "ofertas_medias": "Ofertas medias",
+    "pct_monopolio": "% con oferta única",
+    "pct_top_organo": "% en su primer órgano",
+    "ultima": "Última adjudicación",
+}
+
+
+def _filtros_de(modelo: type[BaseModel], filtros: Mapping[str, object]) -> dict[str, object]:
+    """Solo los filtros que ese servicio entiende: los demás no los aplica su pantalla."""
+    return {k: v for k, v in filtros.items() if k in modelo.model_fields and v not in (None, "")}
+
+
+def filas_de_seccion(
+    seccion: SeccionExport, filtros: Mapping[str, object]
+) -> list[dict[str, object]]:
+    """Las filas de la tabla de una sección, con los filtros que esa sección aplica.
+
+    Sale del mismo servicio que su endpoint de analítica, así que el fichero
+    dice lo mismo que la pantalla. Antes el botón «Exportar competidores» (y
+    los de UTE, geografía, órganos y tecnologías) mandaba un ``section`` que
+    nadie leía y bajaba el listado de licitaciones. Los campos que son listas
+    (series, desgloses) se quedan fuera: no caben en una celda.
+    """
+    entradas: Sequence[BaseModel]
+    if seccion == "competidores":
+        # El tope del endpoint (100), no los 20 de la pantalla: quien exporta
+        # quiere la cola también.
+        competidores = CompetitorFilters.model_validate(
+            {**_filtros_de(CompetitorFilters, filtros), "limit": 100}
+        )
+        entradas = get_competitors(competidores).competitors
+    elif seccion == "utes":
+        entradas = get_utes(
+            UTEFilters.model_validate(_filtros_de(UTEFilters, filtros))
+        ).top_miembros
+    elif seccion == "geografia":
+        entradas = get_geography(
+            GeoFilters.model_validate(_filtros_de(GeoFilters, filtros))
+        ).by_ccaa
+    elif seccion == "organos":
+        organos = OrganosFilters.model_validate(
+            {**_filtros_de(OrganosFilters, filtros), "limit": 500}
+        )
+        entradas = get_organos(organos).organos
+    else:
+        tecnologias = TecnologiasFilters.model_validate(_filtros_de(TecnologiasFilters, filtros))
+        entradas = get_tecnologias(tecnologias).tecnologias
+    return [
+        {
+            _CABECERAS.get(k, k): v
+            for k, v in entrada.model_dump().items()
+            if not isinstance(v, (list, dict))
+        }
+        for entrada in entradas
+    ]
+
+
 def get_export_filename(format: ExportFormat, prefix: str = "licitaciones") -> str:
     """Return a filename like ``licitaciones_20260529.csv``."""
     date_str = datetime.now().strftime("%Y%m%d")
@@ -186,6 +274,9 @@ def build_pdf_export(payload: dict[str, Any]) -> tuple[bytes, int]:
         importe_max=payload.get("importe_max"),
         provincia=payload.get("provincia"),
         procedimiento=payload.get("procedimiento"),
+        solo_abiertas=bool(payload.get("solo_abiertas")),
+        cierre_desde=payload.get("cierre_desde"),
+        cierre_hasta=payload.get("cierre_hasta"),
         limit=int(payload.get("limit") or 10000),
     )
     title = "Licitaciones SAP — Exportación"

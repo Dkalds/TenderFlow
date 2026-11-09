@@ -135,7 +135,7 @@ export function AgendaLista({ agenda }: { agenda: Agenda }) {
           {atajos.map((shortcut) => (
             <span
               key={shortcut.key}
-              className="flex items-center gap-1 text-tf-micro text-muted-foreground/70"
+              className="flex items-center gap-1 text-tf-micro text-muted-foreground"
             >
               <kbd className="rounded-sm border border-divider bg-secondary px-1 font-mono text-tf-micro">
                 {shortcut.key}

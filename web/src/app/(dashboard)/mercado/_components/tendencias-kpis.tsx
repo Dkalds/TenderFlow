@@ -34,14 +34,14 @@ export function TendenciasKpis({
         label="Variación interanual (licitaciones)"
         value={yoyCount != null ? `${yoyCount >= 0 ? "+" : ""}${formatPercent(yoyCount)}` : EMPTY}
         tono={yoyCount == null ? undefined : yoyCount >= 0 ? "success" : "destructive"}
-        hint={yoyCount == null ? "Hacen falta dos años completos" : undefined}
+        hint={yoyCount == null ? "Hace falta el año anterior completo" : undefined}
         loading={isLoading}
       />
       <StatCell
         label="Variación interanual (importe)"
         value={yoyImporte != null ? `${yoyImporte >= 0 ? "+" : ""}${formatPercent(yoyImporte)}` : EMPTY}
         tono={yoyImporte == null ? undefined : yoyImporte >= 0 ? "success" : "destructive"}
-        hint={yoyImporte == null ? "Hacen falta dos años completos" : undefined}
+        hint={yoyImporte == null ? "Hace falta el año anterior completo" : undefined}
         loading={isLoading}
       />
       <StatCell

@@ -825,11 +825,19 @@ class PublicoRepository:
             return [str(fila[0]) for fila in c.execute(sql).fetchall() if fila[0]]
 
     def hubs_cpv(self, *, conn: Any | None = None) -> list[HubCpvRow]:
-        """Códigos CPV con volumen suficiente para tener página."""
+        """Códigos CPV con volumen suficiente para tener página.
+
+        Por los ocho dígitos, no por la cadena: la fuente escribe el mismo
+        código con y sin dígito de control (``48000000-8`` / ``48000000``) o
+        varios unidos (``79140000-7||72310000-1``), y agrupar el texto crudo
+        partía cada código en dos tarjetas que llevan a la misma página. Es la
+        misma clave que filtra la página del código (``cpv LIKE '<código>%'``),
+        así que la cifra de la tarjeta es la de la página.
+        """
         sql = (
-            "SELECT c.cpv AS codigo, COUNT(*) AS total "
-            f"FROM {VISTA_CANONICAS} c WHERE c.cpv IS NOT NULL "
-            f"AND c.cpv <> '' GROUP BY c.cpv HAVING COUNT(*) >= {_MIN_POR_HUB} "
+            "SELECT left(c.cpv, 8) AS codigo, COUNT(*) AS total "
+            f"FROM {VISTA_CANONICAS} c WHERE c.cpv ~ '^[0-9]{{8}}' "
+            f"GROUP BY 1 HAVING COUNT(*) >= {_MIN_POR_HUB} "
             "ORDER BY total DESC"
         )
 

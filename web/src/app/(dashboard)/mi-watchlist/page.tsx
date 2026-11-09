@@ -74,7 +74,13 @@ export default function MiWatchlistPage() {
                 saving={w.savingEdit}
               />
 
-              {w.activeRules.length > 0 && <ResultadosCombinados combined={w.combined} loading={w.matchesLoading} />}
+              {w.activeRules.length > 0 && <ResultadosCombinados
+                  combined={w.combined}
+                  loading={w.matchesLoading}
+                  error={w.matchesError}
+                  sinRespuesta={w.reglasSinRespuesta}
+                  onRetry={w.refetchMatches}
+                />}
             </>
           )}
         </div>

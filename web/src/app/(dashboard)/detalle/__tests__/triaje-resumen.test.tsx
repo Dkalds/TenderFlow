@@ -28,6 +28,8 @@ vi.mock("@/lib/toast", () => {
 const setActiveOrganizationId = vi.fn();
 vi.mock("@/hooks/use-organization", () => ({
   useOrganizationStore: (selector: (s: unknown) => unknown) => selector({ setActiveOrganizationId }),
+  useActiveOrganizationId: () => 7,
+  organizacionResuelta: (id: unknown) => id !== undefined,
 }));
 
 const dismissMutate = vi.fn();
@@ -88,7 +90,7 @@ describe("TriajeResumen", () => {
     montar("interesa");
     expect(screen.getByText("Desde tu resumen diario")).toBeInTheDocument();
     await conPuntuacion();
-    expect(String(fetchWithAuth.mock.calls[0][0])).toBe("/api/v1/analytics/scoring?ids=EXP-1");
+    expect(String(fetchWithAuth.mock.calls[0][0])).toBe("/api/v1/analytics/scoring?ids=EXP-1&organization_id=7");
     expect(createPursuit).not.toHaveBeenCalled();
     expect(dismissMutate).not.toHaveBeenCalled();
   });

@@ -128,8 +128,10 @@ class TrendsResult(BaseModel):
 
     series: list[TrendPoint] = Field(default_factory=list)
     heatmap: list[HeatmapCell] = Field(default_factory=list)
-    yoy_count: float = 0.0
-    yoy_importe: float = 0.0
+    # `None` cuando no hay un año previo completo con el que comparar (sin
+    # datos en él, o un «Fecha desde» que lo corta): `0.0` se leía «+0 %».
+    yoy_count: float | None = None
+    yoy_importe: float | None = None
     waterfall: list[WaterfallPoint] = Field(default_factory=list)
     histogram_bins: list[HistogramBin] = Field(default_factory=list)
     mes_pico: MesPico | None = None
@@ -220,17 +222,28 @@ def _clip_series(series: list[TrendPoint]) -> tuple[list[TrendPoint], bool]:
     return series[-MAX_TREND_POINTS:], True
 
 
-def _yoy_from_repo(filters: LicitacionesFilters) -> tuple[float, float]:
+def _yoy_from_repo(filters: LicitacionesFilters) -> tuple[float | None, float | None]:
+    """Últimos 365 días contra los 365 anteriores, o ``None`` si no se puede decir.
+
+    Las dos ventanas van ancladas en hoy: un ``fecha_desde`` posterior al
+    inicio del año previo recorta esa ventana, y un ``fecha_hasta`` anterior a
+    hoy vacía la actual (daba -100 %). En los dos casos no hay variación que dar.
+    """
     hoy = datetime.now(UTC)
+    hace_730d = hoy - timedelta(days=730)
+    if filters.fecha_desde and filters.fecha_desde > hace_730d.date().isoformat():
+        return None, None
+    if filters.fecha_hasta and filters.fecha_hasta < hoy.date().isoformat():
+        return None, None
     vals = _repo.trends_yoy(
         filters,
         hace_365d_iso=(hoy - timedelta(days=365)).isoformat(),
-        hace_730d_iso=(hoy - timedelta(days=730)).isoformat(),
+        hace_730d_iso=hace_730d.isoformat(),
     )
     cnt_cur, cnt_prev = vals["cnt_cur"], vals["cnt_prev"]
     imp_cur, imp_prev = vals["imp_cur"], vals["imp_prev"]
-    yoy_count = ((cnt_cur - cnt_prev) / cnt_prev * 100) if cnt_prev else 0.0
-    yoy_importe = ((imp_cur - imp_prev) / imp_prev * 100) if imp_prev else 0.0
+    yoy_count = ((cnt_cur - cnt_prev) / cnt_prev * 100) if cnt_prev else None
+    yoy_importe = ((imp_cur - imp_prev) / imp_prev * 100) if imp_prev else None
     return yoy_count, yoy_importe
 
 

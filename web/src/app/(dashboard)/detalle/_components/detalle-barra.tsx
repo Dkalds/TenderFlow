@@ -90,7 +90,7 @@ export function DetalleBarra({
           onChange={(event) =>
             onOrdenar(event.target.value ? { id: event.target.value, desc: orden?.desc ?? false } : null)
           }
-          className="h-7 rounded-md border border-border bg-card px-1.5 text-tf-micro text-foreground"
+          className="h-7 rounded-md border border-border bg-card px-1.5 text-campo text-foreground md:text-tf-micro"
         >
           <option value="">Sin orden</option>
           {ORDENES.map((opcion) => (

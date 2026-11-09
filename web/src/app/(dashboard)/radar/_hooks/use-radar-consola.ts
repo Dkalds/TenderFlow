@@ -244,11 +244,11 @@ export function useRadarConsola(): RadarConsola {
 
   const openPursuit = React.useCallback(
     async (tender: RadarTender) => {
+      if (createPursuit.isPending) return; // un doble clic o ⏎ repetido abría dos veces
       try {
         const pursuit = await createPursuit.mutateAsync({
           licitacion_id: tender.id_externo,
-          // Sella la puntuación que motivó abrirla (win rate por banda) y su
-          // desglose, sin el que `/pursuits/weights-proposal` nunca propone nada.
+          // Sella score, banda y desglose: sin él `/pursuits/weights-proposal` no propone nada.
           score_al_abrir: tender.score,
           banda_al_abrir: esBandaConocida(tender.band) ? tender.band : null,
           desglose_al_abrir: tender.desglose ?? null,

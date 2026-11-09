@@ -298,7 +298,7 @@ describe("RadarPage", () => {
     // `GET /analytics/scoring?limit=24`, el top-24 del corpus abierto.
     renderRadar();
 
-    expect(screen.getByText(/las 24 abiertas que mejor encajan con tu perfil/)).toBeInTheDocument();
+    expect(screen.getByText(/hasta 24 abiertas, las que mejor encajan con tu perfil/)).toBeInTheDocument();
   });
 
   it("renders the countdown to the deadline the API now returns", () => {

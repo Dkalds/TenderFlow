@@ -13,7 +13,8 @@
  */
 
 import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
-import { PanelEmpty, PanelTitle } from "@/components/console/panel";
+import { Aviso } from "@/components/console/aviso";
+import { PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,9 +24,16 @@ import type { MatchItem } from "../_hooks/watchlist-rule-types";
 export function ResultadosCombinados({
   combined,
   loading,
+  error,
+  sinRespuesta = 0,
+  onRetry,
 }: {
   combined: MatchItem[] | undefined;
   loading: boolean;
+  error?: unknown;
+  /** Reglas que no respondieron; las demás sí, así que la lista es parcial. */
+  sinRespuesta?: number;
+  onRetry?: () => void;
 }) {
   return (
     <>
@@ -37,7 +45,21 @@ export function ResultadosCombinados({
           hint={combined ? `${formatNumber(combined.length)} licitaciones` : undefined}
         />
 
-        {loading ? (
+        {sinRespuesta > 0 && !error && (
+          <Aviso tone="warning" className="mb-2">
+            {sinRespuesta === 1
+              ? "Una de tus reglas no respondió: la lista puede estar incompleta."
+              : `${formatNumber(sinRespuesta)} de tus reglas no respondieron: la lista puede estar incompleta.`}
+          </Aviso>
+        )}
+        {error ? (
+          <PanelError
+            variant="inline"
+            title="No se pudieron cargar los resultados de tus reglas"
+            error={error}
+            onRetry={onRetry}
+          />
+        ) : loading ? (
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
               <Skeleton key={i} className="h-14 w-full rounded-md" />

@@ -33,7 +33,7 @@ function DetalleCabecera({
       <tr className="h-[30px] border-b border-divider">
         <th scope="col" className="px-1 pl-3.5">
           <Checkbox
-            className="h-3.5 w-3.5"
+            className="relative h-3.5 w-3.5 after:absolute after:-inset-1.5 after:content-['']"
             aria-label="Seleccionar todas las filas de la página"
             checked={allPageSelected}
             onCheckedChange={onToggleAllPage}

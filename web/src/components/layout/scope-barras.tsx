@@ -68,9 +68,10 @@ function BotonBuscar({
       className={cn("text-muted-foreground hover:text-foreground flex-none", className)}
     >
       Buscar
+      {/* Sin teclado no hay atajo que enseñar: por debajo de `md` se oculta. */}
       <kbd
         aria-hidden="true"
-        className="border-divider text-tf-micro rounded-sm border px-1 py-0.5 font-mono leading-none font-normal"
+        className="border-divider text-tf-micro hidden rounded-sm border px-1 py-0.5 font-mono leading-none font-normal md:inline"
       >
         ⌘K
       </kbd>

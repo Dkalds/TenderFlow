@@ -80,6 +80,16 @@ def test_geography_by_ccaa_counts_and_pct(tmp_db):
     assert res.concentracion_top3 == 100.0
 
 
+def test_el_importe_medio_solo_cuenta_las_licitaciones_con_importe(tmp_db):
+    """Una licitación sin importe no baja la media de su comunidad."""
+    _insert([*_rows(), {"id_externo": "L5", "ccaa": "Madrid", "importe": None}])
+
+    by = {e.ccaa: e for e in get_geography(GeoFilters()).by_ccaa}
+
+    assert by["Madrid"].count == 3
+    assert by["Madrid"].importe_medio == 150.0
+
+
 def test_geography_by_provincia_aggregates_full_dataset(tmp_db):
     _insert(_rows())
 
