@@ -456,7 +456,10 @@ def facts_failed_systemically(counts: Mapping[str, object]) -> bool:
 
 
 def _run_tech_signal_phase(
-    limit: int = _TECH_SIGNAL_BATCH_SIZE, *, licitacion_ids: list[str] | None = None
+    limit: int = _TECH_SIGNAL_BATCH_SIZE,
+    *,
+    licitacion_ids: list[str] | None = None,
+    max_seconds: float | None = None,
 ) -> dict[str, int]:
     """Puntúa (keywords) licitaciones con páginas extraídas y sin señal
     vigente, y funde de inmediato la señal de ese lote hacia
@@ -465,6 +468,13 @@ def _run_tech_signal_phase(
 
     Con ``licitacion_ids`` puntúa exactamente esas en vez de pedir las
     pendientes (``scripts/medir_etiquetas_tecnologia.py recalcular``).
+
+    ``max_seconds`` acota la fase por reloj (``_presupuesto_agotado``): las
+    licitaciones que no caben se cuentan en ``aplazados``, siguen pendientes
+    y solo se funde la señal de las que se puntuaron. El 2026-10-30, con el
+    lote entero pendiente tras un cambio de versión del filtro, la fase siguió
+    20 min después de las fichas y pliegos.yml se canceló por su
+    ``timeout-minutes``.
     """
     from db.repositories.documentos import DocumentosRepository
     from db.repositories.tecnologia_pliego import TecnologiaPliegoRepository
@@ -475,7 +485,7 @@ def _run_tech_signal_phase(
     doc_repo = DocumentosRepository()
     signal_repo = TecnologiaPliegoRepository()
     signal_version = current_filter_version()
-    counts = {"scored": 0, "no_signal": 0, "error": 0}
+    counts = {"scored": 0, "no_signal": 0, "error": 0, "aplazados": 0}
 
     pendientes = (
         licitacion_ids
@@ -484,7 +494,18 @@ def _run_tech_signal_phase(
             signal_version=signal_version, limit=limit
         )
     )
-    for licitacion_id in pendientes:
+    inicio = time.monotonic()
+    for posicion, licitacion_id in enumerate(pendientes):
+        if _presupuesto_agotado(inicio, max_seconds):
+            counts["aplazados"] = len(pendientes) - posicion
+            log.info(
+                "documentos_tech_signal_budget_exhausted",
+                puntuadas=posicion,
+                aplazados=counts["aplazados"],
+                max_seconds=max_seconds,
+            )
+            pendientes = pendientes[:posicion]
+            break
         try:
             pages = doc_repo.list_pages_by_licitacion(licitacion_id)
             scores = score_documents(pages)
@@ -645,9 +666,9 @@ def run() -> dict[str, Any]:
 
     Los límites por fase vienen de ``config.settings`` (PLIEGO_FETCH_BATCH /
     PLIEGO_EMBED_BATCH / PLIEGO_FACTS_BATCH / PLIEGO_TECH_SIGNAL_BATCH /
-    RESUMEN_PREGEN_BATCH), igual que los topes de reloj de las tres primeras
+    RESUMEN_PREGEN_BATCH), igual que los topes de reloj de las cuatro primeras
     (PLIEGO_FETCH_MAX_SECONDS / PLIEGO_EMBED_MAX_SECONDS /
-    PLIEGO_FACTS_MAX_SECONDS); las
+    PLIEGO_FACTS_MAX_SECONDS / PLIEGO_TECH_SIGNAL_MAX_SECONDS); las
     constantes de módulo ``_FETCH_BATCH_SIZE`` etc. quedan como default de
     cada función para quien las invoque directamente (tests, backfills
     manuales) sin pasar por aquí, y sin tope de reloj.
@@ -663,7 +684,10 @@ def run() -> dict[str, Any]:
     facts_result = _run_facts_phase(
         limit=settings.PLIEGO_FACTS_BATCH, max_seconds=settings.PLIEGO_FACTS_MAX_SECONDS
     )
-    tech_signal_result = _run_tech_signal_phase(limit=settings.PLIEGO_TECH_SIGNAL_BATCH)
+    tech_signal_result = _run_tech_signal_phase(
+        limit=settings.PLIEGO_TECH_SIGNAL_BATCH,
+        max_seconds=settings.PLIEGO_TECH_SIGNAL_MAX_SECONDS,
+    )
     resumen_result = _run_resumen_pregen_phase(limit=settings.RESUMEN_PREGEN_BATCH)
     log.info(
         "documentos_embeddings_job_done",

@@ -1280,6 +1280,14 @@
       "tipo": "<class 'int'>",
       "validation_alias": "None"
     },
+    "PLIEGO_TECH_SIGNAL_MAX_SECONDS": {
+      "alias": "None",
+      "default": "600",
+      "default_factory": "None",
+      "metadata": "[]",
+      "tipo": "<class 'int'>",
+      "validation_alias": "None"
+    },
     "PSCP_APP_TOKEN": {
       "alias": "None",
       "default": "SecretStr('')",
