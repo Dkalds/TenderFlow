@@ -30,6 +30,12 @@ Este runbook vale con estos cambios, y donde diga «worker» léase
   `scheduler/cron_proceso.py`, sin tocar los 12 + 12 de la API. Se despliega con
   `deploy.yml` y se comprueba en la Shell el `import lxml, sklearn, statsmodels`.
   No hay deploy hook nuevo.
+- La tabla del paso 1 no lista dos variables que `scrape-daily.yml` sí pasa:
+  `PLACSP_AGREGADAS_ATOM_URL` y `PLACSP_MENORES_ATOM_URL`. El 2026-11-09 no
+  están definidas en el repositorio (`gh variable list`), así que manda el
+  default del código; si alguien las define allí, hay que copiarlas aquí.
+  Ese día las variables de repositorio que sí existen y hay que copiar son
+  `PSCP_DATASET_ID`, `TACRC_INDEX_URL` y `LLM_TECH_LABELING_ENABLED`.
 - **Paso 4.2** pone `SCHEDULER_PLANE=worker` en `tenderflow-api`. Guardar una
   variable en Render despliega `master`: hacerlo sobre un commit en verde.
 - **Paso 4.3**: antes de `cron_plane_arrancado` tiene que salir
