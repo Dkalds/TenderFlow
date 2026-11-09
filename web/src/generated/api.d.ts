@@ -3231,6 +3231,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/licitaciones/{id_externo}/marco": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Acuerdo marco o SDA del expediente: admitidos, vigencia y si tu organización está
+         * @description Los admitidos de un marco o un SDA, su vigencia y si tu organización está entre ellos.
+         *
+         *     En un contrato basado solo dice que lo es: las fuentes no publican de qué
+         *     marco cuelga. Ver `services/marcos.py`.
+         */
+        get: operations["get_marco_api_v1_licitaciones__id_externo__marco_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/licitaciones/{id_externo}/reportes": {
         parameters: {
             query?: never;
@@ -6541,6 +6564,23 @@ export interface components {
             last_access?: string | null;
             /** Oauth Provider */
             oauth_provider?: string | null;
+        };
+        /**
+         * AdmitidoMarco
+         * @description Una empresa admitida en el marco: adjudicataria de alguno de sus lotes.
+         */
+        AdmitidoMarco: {
+            /**
+             * Es Tu Organizacion
+             * @default false
+             */
+            es_tu_organizacion: boolean;
+            /** Lotes */
+            lotes?: string[];
+            /** Nif */
+            nif?: string | null;
+            /** Nombre */
+            nombre: string;
         };
         /** AlertItem */
         AlertItem: {
@@ -11030,6 +11070,8 @@ export interface components {
             raw_keywords?: string | null;
             /** Republicacion De */
             republicacion_de?: string | null;
+            /** Sistema Contratacion */
+            sistema_contratacion?: ("ninguno" | "marco" | "sda" | "basado_marco" | "basado_sda") | null;
             /** Tecnologia */
             tecnologia?: string | null;
             /** Tipo Contrato */
@@ -11239,6 +11281,30 @@ export interface components {
             numero: string;
             /** Titulo */
             titulo?: string | null;
+        };
+        /**
+         * MarcoDeLicitacion
+         * @description Lo que se sabe del acuerdo marco o el SDA de un expediente.
+         *
+         *     Para un marco o un SDA, sus admitidos y su vigencia. Para un contrato
+         *     basado, solo que lo es: ninguna fuente publica de qué marco cuelga, así que
+         *     ``admitidos_total`` y ``organizacion_admitida`` llegan a ``None`` —sin
+         *     dato—, nunca a cero.
+         */
+        MarcoDeLicitacion: {
+            /** Admitidos */
+            admitidos?: components["schemas"]["AdmitidoMarco"][];
+            /** Admitidos Total */
+            admitidos_total?: number | null;
+            /** Identidad Conocida */
+            identidad_conocida: boolean;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Organizacion Admitida */
+            organizacion_admitida?: boolean | null;
+            /** Sistema */
+            sistema?: ("ninguno" | "marco" | "sda" | "basado_marco" | "basado_sda") | null;
+            vigencia?: components["schemas"]["VigenciaMarco"] | null;
         };
         /**
          * MargenImplicito
@@ -14757,6 +14823,8 @@ export interface components {
             retencion_model_version: number | null;
             /** Riesgo Cambio */
             riesgo_cambio: number | null;
+            /** Sistema Contratacion */
+            sistema_contratacion: ("ninguno" | "marco" | "sda" | "basado_marco" | "basado_sda") | null;
             /** Titulo */
             titulo: string | null;
             /** Url */
@@ -17139,6 +17207,21 @@ export interface components {
             tipo: "certificacion_tecnica" | "corriente_aeat" | "corriente_seguridad_social" | "rolece" | "clasificacion_empresarial";
             /** Vigente Hasta */
             vigente_hasta?: string | null;
+        };
+        /**
+         * VigenciaMarco
+         * @description Hasta cuándo está vivo el marco. Es la fecha que usa Renovaciones.
+         */
+        VigenciaMarco: {
+            /** Dias Restantes */
+            dias_restantes?: number | null;
+            /** Fecha Fin */
+            fecha_fin?: string | null;
+            /**
+             * Origen
+             * @enum {string}
+             */
+            origen: "real" | "estimada_inicio" | "estimada_adjudicacion" | "desconocida";
         };
         /**
          * VisitaMarcada
@@ -25742,6 +25825,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HistorialPropio"];
+                };
+            };
+            /** @description No perteneces a esa organización */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description No encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description La petición no pasó la validación (``errors`` por campo). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Error: cualquier código no listado (RFC 9457). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    get_marco_api_v1_licitaciones__id_externo__marco_get: {
+        parameters: {
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                id_externo: string;
+            };
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarcoDeLicitacion"];
                 };
             };
             /** @description No perteneces a esa organización */

@@ -409,6 +409,24 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Desde la cabecera abre la oportunidad (o va a la que ya existe, sin
   duplicarla) y descarga el dossier de decisión en PDF.
 
+### CU-36 — Leer un acuerdo marco o un sistema dinámico como tal
+
+- **Quién:** quien evalúa un expediente para su organización. **Dónde:**
+  `/detalle`, ficha completa, sección Competencia; y Mercado › Renovaciones.
+- En un acuerdo marco o un sistema dinámico de adquisición ve cuántas empresas
+  están admitidas y cuáles —una por empresa, con sus lotes, no una por fila de
+  adjudicación—, y hasta cuándo está vivo, con la fecha rotulada «estimada»
+  cuando sale de la duración.
+- Ve si su organización está entre los admitidos, por sus NIF declarados; sin
+  NIF declarado se le pide declararlo, y si algún admitido se publicó sin NIF
+  no se le dice que no está.
+- En un contrato basado ve que lo es y que solo compiten los admitidos del
+  marco; cuántos son y si su organización es uno de ellos sale como «sin dato»,
+  porque la fuente no publica de qué marco cuelga. Tampoco se enseñan, por lo
+  mismo, los contratos basados de un marco.
+- En Renovaciones, el marco que vence va rotulado como tal: lo que se relicita
+  es el marco entero, y cada fila es uno de sus admitidos.
+
 ## Trazabilidad
 
 <!-- trazabilidad: generado por scripts/check_casos_uso.py — no editar a mano -->
@@ -450,7 +468,8 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-33** Mantener la integración del equipo por webhook | [test_escenario_webhooks.py](../tests/test_escenario_webhooks.py) (x2) | — | [webhook-row.test.tsx](../web/src/app/(dashboard)/ops/_components/webhooks/__tests__/webhook-row.test.tsx) |
 | **CU-34** Arrancar por lo que da valor | — | [recorrido-primeros-pasos.spec.ts](../web/e2e/recorrido-primeros-pasos.spec.ts) | [primeros-pasos.test.tsx](../web/src/app/(dashboard)/resumen/_components/__tests__/primeros-pasos.test.tsx) |
 | **CU-35** Decidir desde la ficha si se presenta | [test_escenario_ficha_decidir.py](../tests/test_escenario_ficha_decidir.py) | — | [test_unit_dossier_licitacion.py](../tests/test_unit_dossier_licitacion.py)<br>[test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py)<br>[condiciones-oficiales.test.tsx](../web/src/components/pliego/__tests__/condiciones-oficiales.test.tsx) |
+| **CU-36** Leer un acuerdo marco o un sistema dinámico como tal | [test_escenario_marcos.py](../tests/test_escenario_marcos.py) | — | [test_unit_marcos.py](../tests/test_unit_marcos.py) |
 
-**35 casos**, 35 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
+**36 casos**, 36 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
 
 <!-- fin trazabilidad -->

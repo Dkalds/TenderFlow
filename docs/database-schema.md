@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-11-07
 
-Revisión Alembic aplicada: `v177_rss_autonomico_sin_tramitacion`.
+Revisión Alembic aplicada: `v178_sistema_contratacion`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -262,6 +262,7 @@ Claves: `PRIMARY KEY (id)`
 | `fecha_fin_ts` | `timestamp with time zone` | sí |
 | `fecha_actualizacion_fuente_ts` | `timestamp with time zone` | sí |
 | `organo_ref_fuente` | `text` | sí |
+| `sistema_contratacion` | `text` | sí |
 
 Claves: `PRIMARY KEY (id_externo)`
 

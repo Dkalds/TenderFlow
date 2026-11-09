@@ -56,6 +56,16 @@ MOTIVO_MINIMO = 40
 # alcanza"``. Una por línea, en orden alfabético de ruta, para que dos ramas
 # que añaden operaciones distintas no choquen al fusionar.
 NUEVAS: dict[str, str] = {
+    "GET /api/v1/licitaciones/{id_externo:path}/marco": (
+        "Se miró GET /licitaciones/{id}, que ya trae los adjudicatarios y la duración de "
+        "un acuerdo marco, pero fila a fila por lote y sin organización: no puede decir "
+        "cuántas empresas distintas están admitidas ni si la tuya es una de ellas, y su "
+        "respuesta se cachea igual para todos. GET /licitaciones/{id}/historial-propio "
+        "cuenta lo que ganaste con el órgano y en el CPV, no si estás dentro de este marco; "
+        "y /competencia-esperada estima rivales por segmento, cuando en un marco los que "
+        "compiten son los admitidos, no una estimación. La ficha gana además el campo "
+        "sistema_contratacion, que es lo que decide si se pide esta ruta."
+    ),
     "GET /api/v1/me/consultas-recientes": (
         "Se miró GET /saved-filters, que guarda instantáneas del ámbito (comunidades, "
         "tecnologías, fechas) para que otras pantallas las restauren, no frases; y GET "

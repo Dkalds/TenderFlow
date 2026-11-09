@@ -53,10 +53,12 @@ from services.competitive.competencia_esperada import (
 from services.competitive.historial_propio import HistorialPropio, historial_propio
 from services.dossier_licitacion import dossier_pdf
 from services.go_no_go import GoNoGoChecklist, checklist_de_licitacion
+from services.marcos import marco_de_licitacion
 from services.novedades import NovedadesDeFicha, visita_a_ficha
 from services.organizations import OrganizationAccessError
 from shared.cache import cache_response
 from shared.dto import (
+    MarcoDeLicitacion,
     SafeStr,
 )
 from shared.identity import Principal
@@ -336,6 +338,36 @@ async def get_historial_propio(
     """
     resultado = await run_db(
         historial_propio, id_externo, organization_id=int(_ctx["organization_id"])
+    )
+    if resultado is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
+    return resultado
+
+
+# ── /licitaciones/{id_externo}/marco ─────────────────────────────────────
+
+
+@router.get(
+    "/licitaciones/{id_externo:path}/marco",
+    response_model=MarcoDeLicitacion,
+    summary="Acuerdo marco o SDA del expediente: admitidos, vigencia y si tu organización está",
+    responses={
+        403: {"description": "No perteneces a esa organización"},
+        404: {"description": "No encontrado"},
+    },
+)
+# Sin caché: quien acaba de declarar su NIF vuelve a la ficha esperando verlo.
+async def get_marco(
+    _ctx: Principal = Depends(require_organization()),
+    id_externo: str = Depends(resolver_id_externo),
+) -> MarcoDeLicitacion:
+    """Los admitidos de un marco o un SDA, su vigencia y si tu organización está entre ellos.
+
+    En un contrato basado solo dice que lo es: las fuentes no publican de qué
+    marco cuelga. Ver `services/marcos.py`.
+    """
+    resultado = await run_db(
+        marco_de_licitacion, id_externo, organization_id=int(_ctx["organization_id"])
     )
     if resultado is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
