@@ -49,7 +49,8 @@ class ScraperSettings(EntornoSettings):
     # Union de `dominios_documentos` del inventario de fuentes, en su orden
     # (`scraper/connectors/__init__.py`); `config/` no puede importar `scraper/`,
     # así que se copia a mano y `test_allowlist_de_documentos_por_defecto_sale_del_inventario`
-    # exige que coincidan.
+    # exige que coincidan. Render la fija a mano en la API desde el 2026-11-09: un host
+    # nuevo se añade también allí, o se borra la variable para volver a este valor.
     DOCUMENT_ALLOWED_HOSTS: str = (
         "contrataciondelestado.es,*.contrataciondelestado.es,ted.europa.eu,contractaciopublica.cat,"
         # TACRC: PDF de la resolución vinculada (scraper/connectors/tacrc.py).
