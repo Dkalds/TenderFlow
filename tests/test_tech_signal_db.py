@@ -1143,3 +1143,182 @@ class TestRespuestasLlmVigentes:
         )
 
         assert repo.respuestas_llm_vigentes(["RLV-2"]) == {"RLV-2": {"es_ti": None, "familias": []}}
+
+
+def _keywords(licitacion_id: str, tecnologia: str = "CIBERSEGURIDAD") -> None:
+    TecnologiaPliegoRepository().upsert_signals(
+        licitacion_id,
+        method="keywords",
+        signal_version="v1",
+        scores={tecnologia: TechSignal(score=1.0, matched_terms=["firma electrónica"])},
+    )
+
+
+def _respuesta_llm(licitacion_id: str, *marcadores: str) -> None:
+    TecnologiaPliegoRepository().upsert_signals(
+        licitacion_id,
+        method="llm_metadata",
+        signal_version="llm-meta-v4/m",
+        scores={m: TechSignal(score=0.0, evidence=[{"es_ti": False}]) for m in marcadores},
+    )
+
+
+def _ml_tecnologias(licitacion_id: str) -> str | None:
+    with connect() as c:
+        row = c.execute(
+            "SELECT ml_tecnologias FROM licitaciones WHERE id_externo = %s", (licitacion_id,)
+        ).fetchone()
+    return None if row is None else row[0]
+
+
+class TestVetoNoEsTi:
+    """El pliego administrativo de cualquier contrato nombra «licitación
+    electrónica» o «firma electrónica»: si el LLM dijo que la licitación no es
+    TI, esas palabras clave no le ponen tecnologías (2026-11-09, un suministro
+    de placas solares salía con cuatro)."""
+
+    def test_el_merge_no_recoge_las_palabras_clave_de_una_no_ti(self, repo):
+        _insert_licitacion("VETO-1")
+        _keywords("VETO-1")
+        repo.upsert_signals(
+            "VETO-1",
+            method="llm",
+            signal_version="tender-facts-v9",
+            scores={"SAP": TechSignal(score=0.9, evidence=[])},
+        )
+        _respuesta_llm("VETO-1", NO_ES_TI_SENTINEL)
+
+        con_ids = repo.list_signals_for_merge(min_score=0.5, licitacion_ids=["VETO-1"])
+        sin_ids = repo.list_signals_for_merge(min_score=0.5)
+
+        # La ficha del pliego cita su evidencia: esa no se veta.
+        assert {(r["tecnologia"], r["method"]) for r in con_ids} == {("SAP", "llm")}
+        assert {(r["tecnologia"], r["method"]) for r in sin_ids} == {("SAP", "llm")}
+
+    def test_sin_evidencia_en_la_misma_version_anula_el_veto(self, repo):
+        _insert_licitacion("VETO-SE")
+        _keywords("VETO-SE")
+        _respuesta_llm("VETO-SE", NO_ES_TI_SENTINEL, SIN_EVIDENCIA_SENTINEL)
+
+        rows = repo.list_signals_for_merge(min_score=0.5, licitacion_ids=["VETO-SE"])
+
+        assert {r["tecnologia"] for r in rows} == {"CIBERSEGURIDAD"}
+
+    def test_solo_cuenta_la_version_vigente_del_llm(self, repo):
+        _insert_licitacion("VETO-VER")
+        _keywords("VETO-VER")
+        _insert_tech_row(
+            "VETO-VER",
+            NO_ES_TI_SENTINEL,
+            signal_version="v1",
+            computed_at="2026-09-01T00:00:00+00:00",
+            score=0.0,
+        )
+        _insert_tech_row(
+            "VETO-VER",
+            ES_TI_SENTINEL,
+            signal_version="v2",
+            computed_at="2026-09-15T00:00:00+00:00",
+            score=0.0,
+        )
+
+        rows = repo.list_signals_for_merge(min_score=0.5, licitacion_ids=["VETO-VER"])
+
+        assert {r["tecnologia"] for r in rows} == {"CIBERSEGURIDAD"}
+
+    def test_la_pasada_sin_ids_no_repara_una_vetada_sin_fin(self, repo):
+        """La palabra clave vetada nunca se estampa ni entra en el resumen; si
+        la pasada de cada 4 h la viera, elegiría la licitación en cada corrida
+        y la contaría como reparada por su otra señal, ya fundida."""
+        _insert_licitacion("VETO-LOOP")
+        repo.upsert_signals(
+            "VETO-LOOP",
+            method="llm",
+            signal_version="tender-facts-v9",
+            scores={"SAP": TechSignal(score=0.9, evidence=[])},
+        )
+        merge_doc_signals(licitacion_ids=["VETO-LOOP"])
+        _respuesta_llm("VETO-LOOP", NO_ES_TI_SENTINEL)
+        _keywords("VETO-LOOP")
+
+        resultado = merge_doc_signals()
+
+        assert resultado["licitaciones_candidatas"] == 0
+        assert _ml_tecnologias("VETO-LOOP") == "SAP"
+
+    def test_no_rehace_la_tecnologia_que_otra_senal_repone(self, repo):
+        """Si la ficha del pliego también cita la tecnología, el merge la
+        vuelve a poner: rehacerla sería un bucle en cada pasada."""
+        _insert_licitacion("VETO-DOBLE")
+        _keywords("VETO-DOBLE")
+        repo.upsert_signals(
+            "VETO-DOBLE",
+            method="llm",
+            signal_version="tender-facts-v9",
+            scores={"CIBERSEGURIDAD": TechSignal(score=0.9, evidence=[])},
+        )
+        merge_doc_signals(licitacion_ids=["VETO-DOBLE"])
+        _respuesta_llm("VETO-DOBLE", NO_ES_TI_SENTINEL)
+
+        assert repo.licitaciones_con_palabras_clave_vetadas(min_score=0.5) == []
+
+    def test_deshace_lo_fundido_antes_de_la_respuesta_del_llm(self, repo, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from services import tech_signal
+
+        _insert_licitacion("VETO-UNDO")
+        _keywords("VETO-UNDO")
+        merge_doc_signals(licitacion_ids=["VETO-UNDO"])
+        assert _ml_tecnologias("VETO-UNDO") == "CIBERSEGURIDAD"
+        _respuesta_llm("VETO-UNDO", NO_ES_TI_SENTINEL)
+        assert repo.licitaciones_con_palabras_clave_vetadas(min_score=0.5) == ["VETO-UNDO"]
+
+        clf = MagicMock()
+        clf.predict_batch.side_effect = lambda items: [
+            {
+                "predicted": [],
+                "max_proba": 0.02,
+                "principal": None,
+                "scores": {"CIBERSEGURIDAD": 0.02},
+                "thresholds": {"CIBERSEGURIDAD": 0.5},
+            }
+            for _ in items
+        ]
+        clasificador = MagicMock()
+        clasificador.load.return_value = clf
+        monkeypatch.setattr("services.ml.tech_classifier.TechnologyClassifier", clasificador)
+
+        assert tech_signal.deshacer_palabras_clave_vetadas() == 1
+        assert not _ml_tecnologias("VETO-UNDO")
+        # Idempotente: rehecha, ya no vuelve a salir.
+        assert tech_signal.deshacer_palabras_clave_vetadas() == 0
+
+    def test_sin_modelo_no_toca_nada(self, repo, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from services import tech_signal
+
+        _insert_licitacion("VETO-NOMOD")
+        _keywords("VETO-NOMOD")
+        merge_doc_signals(licitacion_ids=["VETO-NOMOD"])
+        _respuesta_llm("VETO-NOMOD", NO_ES_TI_SENTINEL)
+        clasificador = MagicMock()
+        clasificador.resolve_artifact.return_value = None
+        monkeypatch.setattr("services.ml.tech_classifier.TechnologyClassifier", clasificador)
+
+        assert tech_signal.deshacer_palabras_clave_vetadas() == 0
+        assert _ml_tecnologias("VETO-NOMOD") == "CIBERSEGURIDAD"
+
+    def test_con_el_clasificador_apagado_no_toca_nada(self, repo, monkeypatch):
+        from config import settings
+        from services import tech_signal
+
+        _insert_licitacion("VETO-OFF")
+        _keywords("VETO-OFF")
+        merge_doc_signals(licitacion_ids=["VETO-OFF"])
+        _respuesta_llm("VETO-OFF", NO_ES_TI_SENTINEL)
+        monkeypatch.setattr(settings, "ML_TECH_ENABLED", False)
+
+        assert tech_signal.deshacer_palabras_clave_vetadas() == 0
+        assert _ml_tecnologias("VETO-OFF") == "CIBERSEGURIDAD"

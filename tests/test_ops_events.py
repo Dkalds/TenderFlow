@@ -300,6 +300,7 @@ def test_tech_signal_merge_deja_las_reparaciones_en_ops_events():
         "licitaciones_reparadas": 2,
     }
     with (
+        patch("services.tech_signal.deshacer_palabras_clave_vetadas", return_value=0),
         patch("services.tech_signal.merge_doc_signals", return_value=resultado) as merge,
         patch.object(pipeline_runs, "record_event") as record,
     ):
@@ -315,3 +316,27 @@ def test_tech_signal_merge_deja_las_reparaciones_en_ops_events():
     detalle = json.loads(kwargs["detail"])
     assert detalle["licitaciones_candidatas"] == 3
     assert "elapsed_ms" in detalle
+
+
+def test_tech_signal_merge_sigue_si_falla_deshacer_las_vetadas():
+    """Lo de las vetadas corre antes del merge y no es fail-open: un fallo suyo
+    no puede dejar la pasada sin merge ni sin el evento de reparaciones."""
+    from unittest.mock import patch
+
+    from scheduler import pipeline_pasos_impl as pipeline_runs
+
+    with (
+        patch(
+            "services.tech_signal.deshacer_palabras_clave_vetadas",
+            side_effect=RuntimeError("statement timeout"),
+        ),
+        patch(
+            "services.tech_signal.merge_doc_signals",
+            return_value={"licitaciones_reparadas": 0},
+        ) as merge,
+        patch.object(pipeline_runs, "record_event") as record,
+    ):
+        pipeline_runs._run_tech_signal_merge()
+
+    merge.assert_called_once_with()
+    record.assert_called_once()

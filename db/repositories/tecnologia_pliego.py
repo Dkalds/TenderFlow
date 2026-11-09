@@ -81,6 +81,32 @@ SENTINELS: tuple[str, ...] = (
 )
 
 
+# Licitaciones cuya respuesta vigente del LLM (``llm_metadata``) dice «no es
+# TI»: sus palabras clave del pliego no se funden. El pliego administrativo de
+# cualquier contrato nombra «licitación electrónica», «firma electrónica» o
+# «copias de seguridad», y el 2026-11-09 eso dejaba 114 licitaciones que el
+# LLM descartó (placas solares, obras) con cuatro tecnologías TI cada una.
+# Misma versión vigente que ``respuestas_llm_vigentes``, y ``__sin_evidencia__``
+# en esa versión anula el marcador (:func:`_respuesta_desde_filas_vigentes`).
+# Correlacionada con la licitación de fuera: va por el prefijo de la PK
+# ``(licitacion_id, …)`` en vez de ordenar las ~10.000 filas ``llm_metadata``
+# en cada merge por ids (uno por ficha del pliego).
+def _vetada_por_llm_sql(licitacion_id: str) -> str:
+    """Condición SQL «el LLM vigente dice no TI» para la columna dada (un
+    alias fijo del código, nunca un dato)."""
+    return (
+        "(SELECT bool_or(m.tecnologia = '" + NO_ES_TI_SENTINEL + "') "
+        "AND NOT bool_or(m.tecnologia = '" + SIN_EVIDENCIA_SENTINEL + "') "
+        "FROM licitacion_tecnologia_pliego m "
+        f"WHERE m.licitacion_id = {licitacion_id} AND m.method = 'llm_metadata' "
+        "AND m.signal_version = ("
+        "  SELECT m2.signal_version FROM licitacion_tecnologia_pliego m2 "
+        f"  WHERE m2.licitacion_id = {licitacion_id} AND m2.method = 'llm_metadata' "
+        "  ORDER BY m2.computed_at DESC, m2.signal_version DESC LIMIT 1"
+        ")) IS TRUE"
+    )
+
+
 class TechSignal(NamedTuple):
     """Señal detectada para una tecnología: score + evidencia (una de las dos)."""
 
@@ -587,6 +613,13 @@ class TecnologiaPliegoRepository:
         Los ``SENTINELS`` se excluyen explícitamente en los dos caminos, y no
         solo por su score 0: un ``PLIEGO_TECH_MIN_SCORE=0`` por entorno
         bastaría para fusionar ``__es_ti__`` en ``ml_tecnologias``.
+
+        Tampoco entran, por los dos caminos, las palabras clave de una
+        licitación que el LLM declaró «no TI» (:func:`_vetada_por_llm_sql`). En el
+        camino sin ids es lo que evita que la pasada de cada 4 h vea esa señal
+        fuera del resumen y la «repare» sin fin; deshacer lo que ya se fundió
+        antes de la respuesta es cosa de
+        :meth:`licitaciones_con_palabras_clave_vetadas`.
         """
         sentinels = list(SENTINELS)
         params: list[object] = [min_score, sentinels]
@@ -603,7 +636,11 @@ class TecnologiaPliegoRepository:
                 " AND p.licitacion_id IN ("
                 "  SELECT q.licitacion_id FROM licitacion_tecnologia_pliego q"
                 "  JOIN licitaciones l ON l.id_externo = q.licitacion_id"
-                "  WHERE q.score >= %s AND q.tecnologia <> ALL(%s) AND ("
+                "  WHERE q.score >= %s AND q.tecnologia <> ALL(%s)"
+                "  AND NOT (q.method = 'keywords' AND "
+                + _vetada_por_llm_sql("q.licitacion_id")
+                + ")"
+                "  AND ("
                 "    q.merged_at IS NULL"
                 "    OR l.ml_tecnologias IS NULL"
                 "    OR l.ml_proba_max IS NULL"
@@ -619,10 +656,46 @@ class TecnologiaPliegoRepository:
                 "p.evidence_json, p.signal_version, p.merged_at "
                 "FROM licitacion_tecnologia_pliego p "
                 f"WHERE p.score >= %s AND p.tecnologia <> ALL(%s){extra} "
-                "ORDER BY p.licitacion_id",
+                "AND NOT (p.method = 'keywords' AND "
+                + _vetada_por_llm_sql("p.licitacion_id")
+                + ") ORDER BY p.licitacion_id",
                 params,
             )
             return typed_rows(SenalParaMerge, rows_to_dicts(cur))
+
+    def licitaciones_con_palabras_clave_vetadas(self, *, min_score: float) -> list[str]:
+        """Licitaciones «no TI» según el LLM que aún llevan en ``ml_tecnologias``
+        una tecnología que sus palabras clave fundieron antes de esa respuesta.
+
+        El merge no borra nunca, y lo habitual es que las palabras clave del
+        pliego lleguen antes que el LLM: el veto de :meth:`list_signals_for_merge`
+        impide fundirlas, no deshace lo fundido. Las que salen aquí hay que
+        volver a puntuarlas solo con el clasificador y fundir de nuevo
+        (``services.tech_signal.deshacer_palabras_clave_vetadas``).
+
+        Una tecnología que otra señal del pliego (la ficha, el propio LLM)
+        también sostiene no cuenta: el merge la repone, y la licitación
+        volvería a salir en cada pasada.
+
+        shortcut: si el clasificador predice por sí solo la misma tecnología
+        que la palabra clave, la licitación sigue saliendo y se vuelve a puntuar
+        en cada pasada (barato: es local y por lotes); con una columna de origen
+        en ``licitacion_tecnologia_score`` se distinguiría.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT DISTINCT p.licitacion_id FROM licitacion_tecnologia_pliego p "
+                "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
+                "WHERE p.method = 'keywords' AND p.score >= %s AND p.tecnologia <> ALL(%s) "
+                "AND p.tecnologia = ANY(string_to_array(l.ml_tecnologias, ',')) "
+                "AND NOT EXISTS (SELECT 1 FROM licitacion_tecnologia_pliego o "
+                "  WHERE o.licitacion_id = p.licitacion_id AND o.tecnologia = p.tecnologia "
+                "  AND o.method <> 'keywords' AND o.score >= %s) "
+                "AND " + _vetada_por_llm_sql("p.licitacion_id") + " "
+                "ORDER BY p.licitacion_id",
+                (min_score, list(SENTINELS), min_score),
+            )
+            return [str(row[0]) for row in cur.fetchall()]
 
     def stamp_merged(self, rows: list[tuple[str, str, str]], *, merged_at: str) -> None:
         """Marca ``merged_at`` la primera vez. Sirve para dos cosas: dedupe

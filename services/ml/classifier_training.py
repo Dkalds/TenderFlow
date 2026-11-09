@@ -323,7 +323,9 @@ def precompute_ml_proba(*, batch_size: int = 500, force: bool = False) -> dict[s
     }
 
 
-def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> dict[str, Any]:
+def precompute_ml_tecnologias(
+    *, batch_size: int = 500, force: bool = False, licitacion_ids: list[str] | None = None
+) -> dict[str, Any]:
     """Puntúa el clasificador multi-tecnología y lo persiste en su única fuente.
 
     Escribe **solo** ``licitacion_tecnologia_score`` (un score por tecnología,
@@ -336,6 +338,8 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
     Args:
         batch_size: Número de filas por batch (control de memoria).
         force: Si True, sustituye las filas de score existentes.
+        licitacion_ids: Solo estas, y sustituyendo sus filas (implica
+            ``force``): lo que fundió el pliego se borra con ellas.
 
     Returns:
         ``{"updated": N, "scores_inserted": M, "skipped_no_model": bool}``.
@@ -359,7 +363,9 @@ def precompute_ml_tecnologias(*, batch_size: int = 500, force: bool = False) -> 
         guardar_scores_tecnologia,
     )
 
-    rows = filas_pendientes_ml_tecnologias(force=force)
+    if licitacion_ids is not None:
+        force = True
+    rows = filas_pendientes_ml_tecnologias(force=force, licitacion_ids=licitacion_ids)
 
     if not rows:
         log.info("precompute_ml_tecnologias.nothing_to_update")
