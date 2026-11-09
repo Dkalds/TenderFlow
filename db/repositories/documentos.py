@@ -26,7 +26,13 @@ from typing import Any, Final, TypedDict
 
 from db.database import DocumentoReferencia, connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts, typed_rows
-from db.sql_fragments import columna_nucleo, columna_nucleo_sql, universo_producto_sql
+from db.sql_fragments import (
+    columna_nucleo,
+    columna_nucleo_sql,
+    instante_sql,
+    param_instante_sql,
+    universo_producto_sql,
+)
 from observability.logging import get_logger
 from shared.dates import instante_utc as _instante
 from shared.estados import ESTADOS_CERRADOS, abierta_sql
@@ -292,7 +298,7 @@ class DocumentoMeta(TypedDict):
 
 
 class ConvocatoriaPscp(TypedDict):
-    """Una fila de :meth:`DocumentosRepository.pscp_vigentes_para_documentos`."""
+    """Una fila de :meth:`DocumentosRepository.pscp_para_documentos`."""
 
     id_externo: str
     url: str | None
@@ -857,16 +863,38 @@ class DocumentosRepository:
             )
             return [str(fila[0]) for fila in cur.fetchall()]
 
-    def pscp_vigentes_para_documentos(
-        self, limit: int = 200, *, dias_refresco: int = 21
+    def pscp_para_documentos(
+        self, limit: int = 200, *, dias_refresco: int = 21, dias_cambio: int | None = 7
     ) -> list[ConvocatoriaPscp]:
-        """Convocatorias tecnológicas vigentes de la PSCP cuya ficha toca leer.
+        """Expedientes tecnológicos de la PSCP cuya ficha toca leer.
 
-        Las que aún no tienen documentos y, de las que sí, las publicadas en los
-        últimos *dias_refresco* días: en ese margen llegan las rectificaciones
-        de pliegos y el anuncio TED que la ficha cita, que es con lo que se
+        Vigentes (``PUB`` con plazo, :func:`_vigente_sql`): las que aún no tienen
+        documentos y, de las que sí, las publicadas en los últimos
+        *dias_refresco* días: en ese margen llegan las rectificaciones de
+        pliegos y el anuncio TED que la ficha cita, que es con lo que se
         empareja el aviso TED (``services.dedupe.marcar_republicaciones_ted``).
-        Sin documentos primero; dentro, lo más reciente.
+
+        El resto (plazo vencido, evaluación, adjudicación, formalización,
+        ejecución, anulación), solo sin ningún documento y sin pareja
+        ``confirmed``, cuya ficha lee los pliegos de la canónica
+        (``services.dedupe.expediente_del_pliego``). Hasta el 2026-11-09 no se
+        leían: de lo publicado en 2026 tenían documentos el 0,2 % de los
+        resueltos y el 0,7 % de los adjudicados, frente al 71 % y el 49 % de
+        PLACSP, que los trae en el ATOM en cualquier fase. Entran los que
+        cambiaron en origen (``fecha_actualizacion_fuente``, el ``:updated_at``
+        de Socrata) en los últimos *dias_cambio* días: un expediente sin anuncio
+        en la plataforma no tiene pliegos, y sin ventana se releería en cada
+        pasada. Con ``None`` entran todos: es el barrido de
+        ``scripts/backfill_documentos_pscp.py``. Las agregadas, los anuncios
+        previos y las consultas preliminares no tienen pliego y no entran: el
+        2026-11-09, 16 fichas agregadas de 16 tenían una sola fase y ningún
+        documento.
+
+        Las vigentes primero, sin documentos delante; detrás, las cerradas, de
+        la que cambió más recientemente a la más antigua. Ese orden protege el
+        refresco de las vigentes: un retoque masivo del dataset (el 2026-07-13
+        movió el ``:updated_at`` de 79.435 filas PSCP) mete en la ventana miles
+        de cerradas, que así solo se llevan lo que sobre del presupuesto.
 
         El corte es el universo del listado
         (:func:`db.sql_fragments.universo_producto_sql`): el tecnológico **más**
@@ -876,21 +904,39 @@ class DocumentosRepository:
         convocatorias vigentes, y sin leer su ficha el aviso TED se quedaba sin
         pliegos. Leer la de un contrato de limpieza no serviría a nadie.
         """
+        reciente = "TRUE"
+        desde: tuple[str, ...] = ()
+        if dias_cambio is not None:
+            # shortcut: una cerrada sin anuncio se relee en cada pasada (cada 4 h)
+            # durante dias_cambio días; cambiarlo por una marca de fase leída
+            # cuando se guarden también las actas de PSCP.
+            cambio = instante_sql("licitaciones", "fecha_actualizacion_fuente", "l")
+            reciente = f"COALESCE({cambio} >= {param_instante_sql()}, FALSE)"
+            desde = ((datetime.now(UTC) - timedelta(days=max(0, int(dias_cambio)))).isoformat(),)
         with connect_read() as c:
             cur = c.execute(
                 "SELECT l.id_externo, l.url FROM ("
-                "  SELECT l.id_externo, l.url, l.fecha_pub_d, "
+                "  SELECT l.id_externo, l.url, l.fecha_pub_d, l.fecha_actualizacion_fuente, "
+                # Sin plazo ni fecha, `_vigente_sql` es NULL: la fila se perdería de las dos ramas.
+                f"  COALESCE(l.estado = 'PUB' AND {_vigente_sql()}, FALSE) AS vigente, "
+                f"  {reciente} AS reciente, "
                 "  NOT EXISTS (SELECT 1 FROM documentos d "
                 "      WHERE d.licitacion_id = l.id_externo) AS sin_documentos "
                 "  FROM licitaciones l "
-                "  WHERE l.fuente = 'pscp' AND l.estado = 'PUB' "
-                f"  AND {_vigente_sql()} "
+                # Sin COALESCE, `NULL NOT IN (…)` dejaría fuera una fila sin estado.
+                "  WHERE l.fuente = 'pscp' AND COALESCE(l.estado, '') NOT IN ('AGR', 'PRE', 'CPM') "
                 f"  AND {universo_producto_sql('l')}"
                 ") l "
-                "WHERE l.sin_documentos OR l.fecha_pub_d >= current_date - %s::int "
-                "ORDER BY l.sin_documentos DESC, l.fecha_pub_d DESC NULLS LAST, l.id_externo "
+                "WHERE (l.vigente AND (l.sin_documentos OR l.fecha_pub_d >= current_date - %s::int)) "
+                "OR (NOT l.vigente AND l.sin_documentos AND l.reciente "
+                "    AND NOT EXISTS (SELECT 1 FROM licitaciones_duplicados x "
+                "        WHERE x.licitacion_id = l.id_externo AND x.status = 'confirmed')) "
+                "ORDER BY l.vigente DESC, l.sin_documentos DESC, "
+                "l.fecha_actualizacion_fuente DESC NULLS LAST, l.fecha_pub_d DESC NULLS LAST, "
+                "l.id_externo "
                 "LIMIT %s",
-                (max(0, int(dias_refresco)), max(1, min(int(limit), 1000))),
+                # Hasta 50.000: el barrido lee el atraso entero en una sola lista.
+                (*desde, max(0, int(dias_refresco)), max(1, min(int(limit), 50_000))),
             )
             return typed_rows(ConvocatoriaPscp, rows_to_dicts(cur))
 

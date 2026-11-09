@@ -4,7 +4,10 @@ Dos caminos: el PDF del anuncio TED y la ficha JSON de la PSCP (el expediente
 de PLACSP que enlaza un aviso TED lo ingiere el propio conector:
 ``tests/test_placsp_esperadas_por_ted.py``). El JSON de ``tests/fixtures/pscp/detall_publicacio_expedient.json`` es un
 recorte real (expediente 2026/6150/1428 de Esplugues, 2026-10-02), con el
-anuncio TED 675385-2026 que cita.
+anuncio TED 675385-2026 que cita. ``fase_formalitzacio.json`` y
+``fase_anunci.json`` son otros dos (expediente SER_NSP_2026_0002, resuelto,
+2026-11-09): la publicación de su última fase, que es la que guarda
+``licitaciones.url``, y la del anuncio que enlaza su ``navegacioFases``.
 
 Los tests unitarios doblan red y BD. Los ``test_integration_*`` del final
 corren contra Postgres.
@@ -36,10 +39,34 @@ _FICHA_PSCP = (
     "fcd0edf9-2bd9-4f2e-9924-24b8627a96de/300885821"
 )
 _DEEPLINK = "https://contrataciondelestado.es/wps/poc?uri=deeplink:detalle_licitacion&idEvl="
+_FIXTURE_FORMALITZACIO = _FIXTURE_PSCP.with_name("fase_formalitzacio.json")
+_FIXTURE_ANUNCI = _FIXTURE_PSCP.with_name("fase_anunci.json")
+_FICHA_CERRADA = (
+    "https://contractaciopublica.cat/ca/detall-publicacio/"
+    "5f414a80-c061-48ab-b865-8cc23e05e3af/300751065"
+)
+_API_EXPEDIENTE_CERRADO = (
+    "https://contractaciopublica.cat/portal-api/detall-publicacio-expedient/"
+    "5f414a80-c061-48ab-b865-8cc23e05e3af"
+)
 
 
 def _detalle_pscp() -> Any:
     return json.loads(_FIXTURE_PSCP.read_text(encoding="utf-8"))
+
+
+def _formalitzacio() -> Any:
+    return json.loads(_FIXTURE_FORMALITZACIO.read_text(encoding="utf-8"))
+
+
+def _portal(por_publicacion: dict[str, Any], pedidas: list[str]) -> Any:
+    """Un ``obtener`` que sirve el JSON de cada publicación del expediente cerrado."""
+
+    def obtener(url: str) -> bytes:
+        pedidas.append(url)
+        return json.dumps(por_publicacion[url.rsplit("/", 1)[-1]]).encode()
+
+    return obtener
 
 
 # ── Anuncio TED ──────────────────────────────────────────────────────────────
@@ -178,6 +205,77 @@ def test_documentos_de_pscp_no_pide_nada_si_la_url_no_es_una_ficha():
     )
 
 
+def test_los_documentos_de_otra_fase_no_entran_como_pliego():
+    """El contrato firmado de la formalización, como ``additional``, iría al RAG y a la ficha."""
+    assert parse_detalle_pscp(_formalitzacio()).documentos == []
+
+
+def test_un_expediente_cerrado_lee_los_pliegos_de_su_anuncio():
+    pedidas: list[str] = []
+    anunci = json.loads(_FIXTURE_ANUNCI.read_text(encoding="utf-8"))
+    portal = _portal({"300751065": _formalitzacio(), "300719618": anunci}, pedidas)
+
+    detalle = dp.documentos_de_pscp(_FICHA_CERRADA, obtener=portal)
+
+    assert pedidas == [
+        f"{_API_EXPEDIENTE_CERRADO}/300751065",
+        f"{_API_EXPEDIENTE_CERRADO}/300719618",
+    ]
+    assert detalle is not None
+    assert [(d.tipo, d.filename) for d in detalle.documentos] == [
+        ("legal", "SER_NSP_2026_0002-PCAP_diligenciat.pdf"),
+        ("technical", "SER_NSP_2026_0002-PPT-diligenciat.pdf"),
+        ("additional", "SER_NSP_2026_0002-Informe previ.pdf"),
+        ("additional", "SER_NSP_2026_0002-Decret aprovar Plecs_CA.pdf"),
+    ]
+
+
+def test_solo_vale_el_aviso_ted_que_cita_la_ficha_del_anuncio():
+    """El de otra fase podría ser el del acuerdo marco, y se marcaría ``confirmed``."""
+
+    def citando(datos: Any, numero: str) -> Any:
+        datos["dades"]["publicacio"]["publicacionsOficials"] = [
+            {"tipus": {"text": "DOUE"}, "url": f"https://ted.europa.eu/en/notice/-/detail/{numero}"}
+        ]
+        return datos
+
+    anunci = json.loads(_FIXTURE_ANUNCI.read_text(encoding="utf-8"))
+    portal = _portal(
+        {
+            "300751065": citando(_formalitzacio(), "111111-2026"),
+            "300719618": citando(anunci, "222222-2026"),
+        },
+        [],
+    )
+
+    detalle = dp.documentos_de_pscp(_FICHA_CERRADA, obtener=portal)
+
+    assert detalle is not None and detalle.anuncios_ted == ["222222-2026"]
+
+
+def test_sin_anuncio_en_la_plataforma_no_hay_nada_mas_que_pedir():
+    """Un negociado sin publicidad o un contrato basado en un acuerdo marco no lo tuvo."""
+    datos = _formalitzacio()
+    datos["navegacioFases"] = [f for f in datos["navegacioFases"] if f["fase"] != 1000040]
+    pedidas: list[str] = []
+
+    detalle = dp.documentos_de_pscp(_FICHA_CERRADA, obtener=_portal({"300751065": datos}, pedidas))
+
+    assert pedidas == [f"{_API_EXPEDIENTE_CERRADO}/300751065"]
+    assert detalle == dp.DetallePscp(documentos=[], anuncios_ted=[])
+
+
+@pytest.mark.parametrize("publicacion", ["1/../../x", "300719618?a=1", "", None, 12345678901234])
+def test_un_id_de_publicacion_que_compondria_otra_ruta_no_se_pide(publicacion):
+    datos = _formalitzacio()
+    datos["navegacioFases"] = [{"fase": 1000040, "publicacioId": publicacion}]
+    pedidas: list[str] = []
+
+    dp.documentos_de_pscp(_FICHA_CERRADA, obtener=_portal({"300751065": datos}, pedidas))
+
+    assert pedidas == [f"{_API_EXPEDIENTE_CERRADO}/300751065"]
+
+
 class _RepoFalso:
     def __init__(self, filas: list[dict[str, Any]]) -> None:
         self.filas = filas
@@ -186,7 +284,9 @@ class _RepoFalso:
         self.lotes = 0
         self.fallan: set[str] = set()
 
-    def pscp_vigentes_para_documentos(self, limit: int = 200) -> list[dict[str, Any]]:
+    def pscp_para_documentos(
+        self, limit: int = 200, *, dias_cambio: int | None = 7
+    ) -> list[dict[str, Any]]:
         return self.filas[:limit]
 
     def ted_vigentes_sin_documentos(self, limit: int = 300) -> list[str]:
@@ -270,6 +370,19 @@ def test_completar_pscp_corta_tras_cinco_fallos_seguidos(repo_falso, monkeypatch
     assert pedidas == 5
     assert resumen.fallidas == 5
     assert len(resumen.as_dict()["errores"]) == 5
+
+
+def test_si_no_llega_la_ficha_del_anuncio_cuenta_como_fallo_y_no_escribe(repo_falso):
+    repo = repo_falso([{"id_externo": "pscp:cerrada", "url": _FICHA_CERRADA}])
+
+    def obtener(url: str) -> bytes:
+        if url.endswith("/300719618"):
+            raise ConnectionError("plataforma caída")
+        return _FIXTURE_FORMALITZACIO.read_bytes()
+
+    resumen = dp.completar_documentos_pscp(pausa_s=0, obtener=obtener)
+
+    assert (resumen.candidatas, resumen.fallidas, repo.escritos) == (1, 1, {})
 
 
 def test_completar_pscp_respeta_el_presupuesto(repo_falso, monkeypatch):
@@ -601,7 +714,8 @@ def test_completar_pscp_no_deja_que_una_peticion_pase_del_presupuesto(repo_falso
     monkeypatch.setattr(
         "services.dedupe.marcar_republicaciones_ted", lambda *a: RepublicacionesTed()
     )
-    instantes = iter([100.0, 100.0, 108.0])
+    # Inicio; y por fila, la comprobación del presupuesto y el tope de su petición.
+    instantes = iter([100.0, 100.0, 100.0, 108.0, 108.0])
     topes: list[float] = []
 
     def obtener(url: str, *, host: str, timeout_s: float | None = None) -> bytes:
@@ -617,6 +731,27 @@ def test_completar_pscp_no_deja_que_una_peticion_pase_del_presupuesto(repo_falso
 
     assert resumen.candidatas == 2
     assert topes == [10.0, 2.0]
+
+
+def test_la_ficha_del_anuncio_solo_tiene_lo_que_dejo_la_primera(repo_falso, monkeypatch):
+    """Un expediente cerrado pide dos fichas; el tope de la segunda descuenta la primera."""
+    repo_falso([{"id_externo": "pscp:cerrada", "url": _FICHA_CERRADA}])
+    instantes = iter([100.0, 100.0, 100.0, 107.0])
+    topes: list[float] = []
+    por_publicacion = {"300751065": _FIXTURE_FORMALITZACIO, "300719618": _FIXTURE_ANUNCI}
+
+    def obtener(url: str, *, host: str, timeout_s: float | None = None) -> bytes:
+        topes.append(float(timeout_s or 0))
+        return por_publicacion[url.rsplit("/", 1)[-1]].read_bytes()
+
+    monkeypatch.setattr(dp, "_obtener", obtener)
+
+    resumen = dp.completar_documentos_pscp(
+        presupuesto_s=10, pausa_s=0, reloj=lambda: next(instantes)
+    )
+
+    assert topes == [10.0, 3.0]
+    assert (resumen.con_documentos, resumen.referencias) == (1, 4)
 
 
 # ── Red: un circuito por plataforma ──────────────────────────────────────────
@@ -764,21 +899,21 @@ def test_integration_completar_ted_pone_el_anuncio_una_sola_vez(db) -> None:
     ]
 
 
-def test_integration_pscp_vigentes_para_documentos(db) -> None:
+def _sembrar_pscp() -> None:
+    """Convocatorias vigentes y expedientes ya cerrados de la PSCP."""
     from db.database import connect
-    from db.repositories.documentos import DocumentosRepository
+
+    tic = {"analysis_universe": "pscp_observed", "tecnologia": "SAP"}
+
+    def cambio(dias: int) -> str:
+        """``fecha_actualizacion_fuente`` como la escribe Socrata."""
+        return f"{_dia(dias)}T09:00:15.740Z"
 
     with connect() as c:
-        _insertar(c, "pscp:SIN-DOCS", analysis_universe="pscp_observed", tecnologia="SAP")
-        _insertar(c, "pscp:RECIENTE", analysis_universe="pscp_observed", tecnologia="SAP")
+        _insertar(c, "pscp:SIN-DOCS", **tic)
+        _insertar(c, "pscp:RECIENTE", **tic)
         _documento(c, "pscp:RECIENTE")
-        _insertar(
-            c,
-            "pscp:YA-LEIDA",
-            analysis_universe="pscp_observed",
-            tecnologia="SAP",
-            fecha_publicacion=_dia(-40),
-        )
+        _insertar(c, "pscp:YA-LEIDA", **tic, fecha_publicacion=_dia(-40))
         _documento(c, "pscp:YA-LEIDA")
         _insertar(c, "pscp:LIMPIEZA", analysis_universe="pscp_observed", tecnologia=None)
         # Solo por CPV 48/72: no se publica, pero su anuncio TED sí.
@@ -788,14 +923,68 @@ def test_integration_pscp_vigentes_para_documentos(db) -> None:
             analysis_universe="pscp_observed",
             inclusion_reason="cpv_ti_universe",
         )
+        # Cerradas: la ficha guarda su última fase, y los pliegos están en la del anuncio.
+        _insertar(c, "pscp:CERRADA", **tic, estado="ADJ")  # sin cambio que fechar
+        _insertar(c, "pscp:RESUELTA", **tic, estado="RES", fecha_actualizacion_fuente=cambio(-1))
         _insertar(
-            c, "pscp:CERRADA", analysis_universe="pscp_observed", tecnologia="SAP", estado="ADJ"
+            c,
+            "pscp:VENCIDA",
+            **tic,
+            fecha_limite=_dia(-5),
+            fecha_actualizacion_fuente=cambio(-2),
+        )
+        _insertar(c, "pscp:LEIDA", **tic, estado="RES", fecha_actualizacion_fuente=cambio(-1))
+        _documento(c, "pscp:LEIDA")
+        _insertar(c, "pscp:AGREGADA", **tic, estado="AGR", fecha_actualizacion_fuente=cambio(-1))
+        _insertar(c, "pscp:VIEJA", **tic, estado="RES", fecha_actualizacion_fuente=cambio(-30))
+        _insertar(c, "pscp:SIN-ESTADO", **tic, estado=None, fecha_actualizacion_fuente=cambio(-3))
+        # Republicación de una agregada de PLACSP: su ficha lee los pliegos de la canónica.
+        _insertar(c, "placsp_agregadas:1:X", **tic, estado="ADJ")
+        _insertar(c, "pscp:DUPLICADA", **tic, estado="ADJ", fecha_actualizacion_fuente=cambio(-1))
+        c.execute(
+            "INSERT INTO licitaciones_duplicados (licitacion_id, canonical_id, clave_match, "
+            " confianza, status) VALUES ('pscp:DUPLICADA', 'placsp_agregadas:1:X', 'x', 1.0, "
+            " 'confirmed')"
         )
 
-    filas = DocumentosRepository().pscp_vigentes_para_documentos()
 
-    # Sin documentos primero; la ya leída hace 40 días no se vuelve a pedir.
-    assert [f["id_externo"] for f in filas] == ["pscp:SIN-DOCS", "pscp:SOLO-CPV", "pscp:RECIENTE"]
+def test_integration_pscp_para_documentos(db) -> None:
+    from db.repositories.documentos import DocumentosRepository
+
+    _sembrar_pscp()
+
+    filas = DocumentosRepository().pscp_para_documentos()
+
+    # Las vigentes delante (sin documentos primero), para que un retoque masivo del
+    # dataset no deje sin presupuesto su refresco; las cerradas, solo si cambiaron
+    # en la última semana. La vigente leída hace 40 días no se vuelve a pedir.
+    assert [f["id_externo"] for f in filas] == [
+        "pscp:SIN-DOCS",
+        "pscp:SOLO-CPV",
+        "pscp:RECIENTE",
+        "pscp:RESUELTA",
+        "pscp:VENCIDA",
+        "pscp:SIN-ESTADO",
+    ]
+
+
+def test_integration_el_barrido_lee_todas_las_cerradas_sin_documentos(db) -> None:
+    from db.repositories.documentos import DocumentosRepository
+
+    _sembrar_pscp()
+
+    filas = DocumentosRepository().pscp_para_documentos(dias_cambio=None)
+
+    assert [f["id_externo"] for f in filas] == [
+        "pscp:SIN-DOCS",
+        "pscp:SOLO-CPV",
+        "pscp:RECIENTE",
+        "pscp:RESUELTA",
+        "pscp:VENCIDA",
+        "pscp:SIN-ESTADO",
+        "pscp:VIEJA",
+        "pscp:CERRADA",
+    ]
 
 
 def test_integration_reempareja_los_ted_antiguos_por_id_evl(db) -> None:
