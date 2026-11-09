@@ -31,7 +31,7 @@ import {
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
 import { crearQueryClientDePrueba } from "@/test/query-client";
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 /** Un `QueryClient` estable por test (ver `use-meta-filters.test.tsx`). */
 function crearEntorno() {
@@ -103,7 +103,7 @@ describe("useClaves", () => {
 
 describe("useCrearClave", () => {
   it("acuña la clave y refresca el listado, sin toast de éxito", async () => {
-    const { toast } = await import("sonner");
+    const { toast } = await import("@/lib/toast");
     const fetchMock = stub({ id: 7, name: "ci", api_key: "tf_secreto" });
     const { client, wrapper } = crearEntorno();
     const invalidar = vi.spyOn(client, "invalidateQueries");
@@ -126,7 +126,7 @@ describe("useCrearClave", () => {
     // tiene (la sesión antigua pide volver a entrar: ver `claves-view.test`).
     // El toast propio que había —«No se pudo crear la clave», sin motivo— se
     // sumaba además al global de las mutaciones.
-    const { toast } = await import("sonner");
+    const { toast } = await import("@/lib/toast");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation(() => Promise.reject(new Error("403")))
@@ -201,7 +201,7 @@ describe("preferencias de notificación", () => {
   });
 
   it("avisa cuando el guardado falla", async () => {
-    const { toast } = await import("sonner");
+    const { toast } = await import("@/lib/toast");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockImplementation(() => Promise.reject(new Error("500")))

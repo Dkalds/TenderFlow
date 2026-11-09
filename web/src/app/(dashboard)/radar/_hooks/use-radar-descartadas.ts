@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { type RadarTender, useRadarDismissedTenders } from "@/hooks/use-radar";
 import { formatNumber } from "@/lib/utils";
 

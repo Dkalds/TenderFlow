@@ -3,7 +3,7 @@
 import * as React from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { CondicionesOficialesBloque } from "@/components/pliego/condiciones-oficiales";
 import { PaginaPliegoDialog } from "@/components/pliego/pagina-pliego-dialog";
 import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle, SectionTitle } from "@/components/console/panel";

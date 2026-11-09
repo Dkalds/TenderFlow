@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Download, FileDown, Loader2, RefreshCw } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { PanelEmpty, PanelError, SUPERFICIE_PANEL } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

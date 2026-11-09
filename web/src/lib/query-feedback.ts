@@ -13,7 +13,7 @@
  * servidor no respondió" frente a "el servidor respondió que no".
  */
 import { MutationCache } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { ApiError, MENSAJE_SIN_CONEXION, mensajePorEstado } from "@/lib/api-client";
 
 /** Meta flags recognized by the global query/mutation feedback handlers. */

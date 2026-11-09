@@ -4,7 +4,8 @@
  * single source of truth for how export query params are assembled.
  */
 
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
+import { neutralizarFormula } from "./neutralizar-formula";
 
 import { dimensionesDeDescarga, registrarEvento, type EventosProducto } from "./analytics";
 
@@ -191,23 +192,7 @@ function formatoDeNombre(nombre: string): EventosProducto["export_lanzado"]["for
   return "otro";
 }
 
-/**
- * Lo que un cliente de hojas de cálculo evalúa como fórmula: `=`, `+`, `-` o
- * `@` al empezar la celda, también tras los blancos que algunos motores recortan
- * antes de decidirlo (misma lista que `_LEADING_IGNORABLES` de
- * `shared/export_safety.py`, la del CSV de servidor), o una celda que arranca
- * por tabulador o retorno de carro.
- */
-const PREFIJO_DE_FORMULA = /^(?:[ \t\r\n ​]*[=+\-@]|[\t\r])/;
-
-/**
- * Deja un texto como literal en una hoja de cálculo: si Excel lo ejecutaría al
- * abrir el fichero (inyección CSV), un apóstrofo delante lo vuelve texto. Los
- * títulos y órganos son texto de terceros, así que esto no es teórico.
- */
-export function neutralizarFormula(text: string): string {
-  return PREFIJO_DE_FORMULA.test(text) ? `'${text}` : text;
-}
+export { neutralizarFormula };
 
 /**
  * Una celda de CSV compuesto en el cliente: entre comillas, con las comillas

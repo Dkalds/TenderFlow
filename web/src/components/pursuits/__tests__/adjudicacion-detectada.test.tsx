@@ -4,7 +4,7 @@ import { AdjudicacionDetectada } from "@/components/pursuits/adjudicacion-detect
 import type { Pursuit } from "@/hooks/use-pursuits";
 import type { EvidenceRef } from "@/lib/api-types";
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 // El visor real pide la página a la API; aquí basta con saber qué página abre.
 vi.mock("@/components/pliego/pagina-pliego-dialog", () => ({

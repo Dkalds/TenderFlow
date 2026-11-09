@@ -12,7 +12,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { ApiError, apiGet, apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type {
   Schemas,

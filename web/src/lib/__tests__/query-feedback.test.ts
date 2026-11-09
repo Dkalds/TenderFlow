@@ -14,14 +14,14 @@ import {
 } from "@/lib/query-feedback";
 import { ApiError } from "@/lib/api-client";
 
-vi.mock("sonner", () => ({
+vi.mock("@/lib/toast", () => ({
   toast: {
     error: vi.fn(),
     success: vi.fn(),
   },
 }));
 
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 describe("consulta cancelada por statement_timeout (503 query-timeout)", () => {
   const cancelada = () =>

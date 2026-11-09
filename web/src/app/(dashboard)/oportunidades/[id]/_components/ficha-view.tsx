@@ -1,13 +1,13 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { PursuitLoteBadge, loteEtiqueta } from "@/components/pursuits/pursuit-presenters";
 import { ChecklistGoNoGo } from "@/components/pursuits/checklist-go-no-go";
 import { AdjudicacionDetectada } from "@/components/pursuits/adjudicacion-detectada";
-import { KitPresentacionPanel } from "@/components/pursuits/kit-presentacion";
 import { EtiquetaChips, EtiquetasEditor } from "@/components/etiquetas/etiquetas-objeto";
-import { PanelError, PanelTabs, panelDePestana } from "@/components/console/panel";
+import { Panel, PanelError, PanelLoading, PanelTabs, panelDePestana } from "@/components/console/panel";
 import {
   ScrollEdgeDelProveedor,
   ScrollEdgeProvider,
@@ -29,6 +29,20 @@ import { PathFases } from "./path-fases";
 import { PrecargaFicha, idDeRuta } from "./precarga-ficha";
 import { SalidaDeFase } from "./salida-fase";
 import { PestanaDiferida, pestanasDeFicha, type TabKey } from "./secciones-diferidas";
+
+// El kit va bajo el pliego y el checklist, fuera de la vista al entrar, y trae
+// Radix Select (el responsable de cada documento): llega después de pintar. El
+// hueco es el de su propia carga y conserva el ancla del paso «kit».
+const KitPresentacionPanel = dynamic(
+  () => import("@/components/pursuits/kit-presentacion").then((modulo) => modulo.KitPresentacionPanel),
+  {
+    loading: () => (
+      <Panel id="ficha-kit" tabIndex={-1} className="outline-none">
+        <PanelLoading height={160} />
+      </Panel>
+    ),
+  },
+);
 
 /** Los paneles del Resumen a los que lleva un paso pendiente. */
 const ANCLA_DE_LUGAR = { decision: "ficha-decision", contraste: "ficha-requisitos", kit: "ficha-kit" } as const;

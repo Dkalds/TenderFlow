@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Aviso, esBandaConocida } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { useOrganizationStore } from "@/hooks/use-organization";

@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const crear = vi.fn();
 const anadir = vi.fn();
@@ -14,7 +14,7 @@ vi.mock("@/hooks/use-organization", () => ({
   useAddOrganizationMember: () => ({ mutateAsync: anadir, isPending: false }),
 }));
 
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { AnadirMiembroForm } from "../anadir-miembro-form";
 import { CrearOrganizacionForm } from "../crear-organizacion-form";
 

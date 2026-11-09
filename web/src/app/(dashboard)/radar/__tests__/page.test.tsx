@@ -19,7 +19,7 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
 const toastCall = vi.fn();
-vi.mock("sonner", () => {
+vi.mock("@/lib/toast", () => {
   const toast = (...a: unknown[]) => toastCall(...a);
   toast.success = (...a: unknown[]) => toastSuccess(...a);
   toast.error = (...a: unknown[]) => toastError(...a);

@@ -5,7 +5,7 @@ ejecutar SQL propio y correr desde el job de alertas del scheduler. Cubre:
 
 - Las tres ventanas (30/7/1 días) y su tipo de notificación.
 - ``fecha_fin`` genera ``renovacion_*`` y ``fecha_limite`` genera ``deadline_*``.
-- Idempotencia: re-ejecutar no duplica (ON CONFLICT DO NOTHING).
+- Idempotencia: re-ejecutar no duplica (la clave del evento en el outbox).
 - Las licitaciones ya vencidas no generan aviso.
 - ``check_all_users_deadlines`` recorre a todos los usuarios con favoritos.
 - El aviso hereda la ``organization_id`` del favorito (S4.3): sin ella la fila
@@ -90,7 +90,19 @@ def seeded(tmp_db, organizacion):
     return db_mod, _seed
 
 
+def _repartir() -> None:
+    """Los avisos salen del outbox: el despachador los lleva a la campana."""
+    from scheduler.jobs import event_dispatch
+
+    with (
+        patch.object(event_dispatch, "_canal_webhook", lambda _e, _s: 0),
+        patch.object(event_dispatch, "_canal_cache", lambda: None),
+    ):
+        event_dispatch.dispatch_pending()
+
+
 def _notifications(db_mod, user_key: str = "alice") -> list[tuple[str, str]]:
+    _repartir()
     with db_mod.connect_read() as c:
         rows = c.execute(
             "SELECT type, licitacion_id FROM user_notifications WHERE user_key = %s ORDER BY type",
@@ -129,7 +141,7 @@ def test_fecha_fin_genera_renovacion_no_deadline(seeded):
 
 
 def test_es_idempotente_entre_ejecuciones(seeded):
-    """Re-ejecutar el job no duplica avisos (UNIQUE + ON CONFLICT DO NOTHING).
+    """Re-ejecutar el job no duplica avisos (la clave del evento en el outbox).
 
     Es la propiedad que hace seguro correrlo cada día desde el scheduler.
     """
@@ -198,6 +210,7 @@ def test_check_all_users_recorre_cada_usuario_con_favoritos(seeded):
 
 
 def _organizaciones_de_avisos(db_mod, user_key: str = "alice") -> set[int | None]:
+    _repartir()
     with db_mod.connect_read() as c:
         rows = c.execute(
             "SELECT organization_id FROM user_notifications WHERE user_key = %s",
@@ -316,9 +329,9 @@ def test_unit_el_aviso_lleva_la_organizacion_del_favorito_y_salta_al_huerfano():
 
     escritas: list[dict[str, Any]] = []
 
-    def _insert(**kwargs: Any) -> bool:
-        escritas.append(kwargs)
-        return True
+    def _append(_tipo: str, _clave: str, _agregado: str, payload: dict[str, Any], **_: Any) -> int:
+        escritas.append(payload)
+        return len(escritas)
 
     conexion = _ConexionFalsa(
         favoritos=[("EXP-A", 42), ("EXP-HUERFANO", None)],
@@ -330,7 +343,8 @@ def test_unit_el_aviso_lleva_la_organizacion_del_favorito_y_salta_al_huerfano():
 
     with (
         patch("db.repositories.watchlist.connect_read", return_value=conexion),
-        patch.object(mod, "insert_user_notification", side_effect=_insert),
+        patch.object(mod, "agregados_con_evento", return_value=set()),
+        patch.object(mod, "append_domain_event", side_effect=_append),
     ):
         total = mod.check_deadlines_and_notify("alice")
 
@@ -338,7 +352,7 @@ def test_unit_el_aviso_lleva_la_organizacion_del_favorito_y_salta_al_huerfano():
     assert total == len(escritas) == 2
     assert {e["licitacion_id"] for e in escritas} == {"EXP-A"}
     assert {e["organization_id"] for e in escritas} == {42}
-    assert sorted(e["type_"] for e in escritas) == ["deadline_30", "deadline_7"]
+    assert sorted(e["aviso"] for e in escritas) == ["deadline_30", "deadline_7"]
 
 
 def test_unit_todos_los_favoritos_huerfanos_equivalen_a_no_tener_favoritos():
@@ -348,8 +362,8 @@ def test_unit_todos_los_favoritos_huerfanos_equivalen_a_no_tener_favoritos():
 
     with (
         patch("db.repositories.watchlist.connect_read", return_value=conexion),
-        patch.object(mod, "insert_user_notification") as insert,
+        patch.object(mod, "append_domain_event") as append,
     ):
         assert mod.check_deadlines_and_notify("alice") == 0
 
-    insert.assert_not_called()
+    append.assert_not_called()

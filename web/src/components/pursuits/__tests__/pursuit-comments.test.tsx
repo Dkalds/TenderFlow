@@ -19,7 +19,7 @@ function montar(ui: ReactElement) {
   return render(<TooltipProvider>{ui}</TooltipProvider>);
 }
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const state = {
   items: [] as PursuitComment[],

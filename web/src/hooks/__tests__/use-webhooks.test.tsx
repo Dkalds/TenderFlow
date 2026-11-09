@@ -6,7 +6,7 @@ import { useCreateWebhook, usePingWebhook, useWebhookEventTypes, useWebhooks } f
 import { callUrl, jsonResponse } from "./fetch-call";
 
 const toastCalls: Array<[string, string]> = [];
-vi.mock("sonner", () => ({
+vi.mock("@/lib/toast", () => ({
   toast: {
     success: (m: string) => toastCalls.push(["success", m]),
     warning: (m: string) => toastCalls.push(["warning", m]),

@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm, useWatch, type PathValue } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type * as z from "zod/mini";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { primeraVez, registrarEvento } from "@/lib/analytics";

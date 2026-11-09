@@ -23,7 +23,7 @@ const { toastSuccess, toastError, toastWarning, descargarBlob } = vi.hoisted(() 
   toastWarning: vi.fn(),
   descargarBlob: vi.fn(),
 }));
-vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError, warning: toastWarning } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: toastSuccess, error: toastError, warning: toastWarning } }));
 vi.mock("@/lib/export", () => ({ descargarBlob }));
 
 type Entrada = Schemas["AuditEntryOut"];

@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Collection
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
@@ -194,6 +195,25 @@ def get_events(
         ev["payload"] = json.loads(ev.pop("payload_json", "{}") or "{}")
         events.append(ev)
     return events
+
+
+def agregados_con_evento(
+    event_type: str, aggregate_type: str, aggregate_ids: Collection[str]
+) -> set[str]:
+    """Cuáles de esos agregados ya tienen un evento de ese tipo.
+
+    La idempotencia de los productores que corren en cada pasada: preguntan por
+    todos sus candidatos en una consulta y emiten solo los que faltan.
+    """
+    if not aggregate_ids:
+        return set()
+    with connect() as c:
+        filas = c.execute(
+            "SELECT DISTINCT aggregate_id FROM domain_events "
+            "WHERE event_type=%s AND aggregate_type=%s AND aggregate_id = ANY(%s)",
+            (event_type, aggregate_type, list(aggregate_ids)),
+        ).fetchall()
+    return {str(fila[0]) for fila in filas}
 
 
 def get_events_by_type(

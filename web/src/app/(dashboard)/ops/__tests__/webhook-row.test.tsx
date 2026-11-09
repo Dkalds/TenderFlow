@@ -13,7 +13,7 @@ import { callMethod, callUrl, jsonResponse } from "@/hooks/__tests__/fetch-call"
  * destructivas se confirman en dos pasos dentro de la propia fila.
  */
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
 import { WebhookRow } from "../_components/webhooks/webhook-row";
 import type { WebhookAmpliado } from "../_hooks/use-webhooks-ambito";

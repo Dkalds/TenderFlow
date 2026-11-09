@@ -10,7 +10,7 @@ import { toast } from "sonner";
 
 vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 
-import { Toaster } from "@/components/toaster";
+import { Toaster } from "@/components/toaster-sonner";
 
 afterEach(() => {
   act(() => {

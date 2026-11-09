@@ -23,7 +23,7 @@ vi.mock("next/navigation", () => ({
 const toastCall = vi.fn();
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
-vi.mock("sonner", () => {
+vi.mock("@/lib/toast", () => {
   const toast = (...a: unknown[]) => toastCall(...a);
   toast.success = (...a: unknown[]) => toastSuccess(...a);
   toast.error = (...a: unknown[]) => toastError(...a);

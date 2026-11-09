@@ -12,7 +12,7 @@ import type { Schemas } from "@/lib/api-types";
  * compartir al guardarlo como propio.
  */
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn(), primeraVez: () => true }));
 
 const organizacion: { actual: number | null | undefined } = { actual: 5 };

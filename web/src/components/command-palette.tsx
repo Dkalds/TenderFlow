@@ -19,7 +19,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { Command } from "cmdk";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { AlignJustify, Bookmark, LayoutGrid, Link2, Moon, Sun, type LucideIcon } from "lucide-react";
 import { isSpaceVisible, CONSOLE_GROUP_ORDER, CONSOLE_SPACES, type ConsoleGroup } from "@/lib/console-spaces";
 import { ICONO_CONCEPTO, ICONO_ENTIDAD } from "@/lib/iconos";

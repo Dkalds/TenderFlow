@@ -20,7 +20,7 @@
 
 import * as React from "react";
 import { Download } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Panel, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -85,6 +85,7 @@ function DeleteAccountCard({ email }: { email: string }) {
       //      (`DeleteMyDataRequest`, `api/routes/me.py`). Se enviaba vacío.
       await apiMutate("DELETE", "/api/v1/me", { confirmation: "DELETE" });
       toast.success("Cuenta eliminada");
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- recarga completa a propósito: la cuenta ya no existe y la caché de React Query y el SessionProvider tienen que arrancar sin sesión
       window.location.href = "/login";
     } catch {
       toast.error("No se pudo eliminar la cuenta");

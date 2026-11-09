@@ -9,9 +9,9 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 
-vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { callMethod, callUrl } from "@/hooks/__tests__/fetch-call";
 import { ComparacionFichasTabla } from "@/components/pliego/comparar-fichas";
 import { BandejaComparacion, CompararBoton } from "@/components/pliego/comparacion-bandeja";

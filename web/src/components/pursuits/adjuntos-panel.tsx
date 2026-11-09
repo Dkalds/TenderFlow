@@ -21,7 +21,7 @@
  */
 import * as React from "react";
 import { Download, Trash2, Upload } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Aviso, Panel, PanelEmpty, PanelError, PanelLoading, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { usePuedeEscribir } from "@/hooks/use-organization";

@@ -66,6 +66,7 @@ FAMILIAS: tuple[str, ...] = (
     "competidor",
     "cuenta",
     "organizacion",
+    "plazo",
 )
 
 
@@ -244,12 +245,26 @@ CATALOGO: dict[str, EspecificacionEvento] = dict(
             ("in_app", "webhook"),
             tipo_notificacion="adjudicacion_detectada",
         ),
+        # Los emite `services/deadline_reminders` a 30, 7 y 1 día del fin de un
+        # contrato en favoritos. `aviso` es el `type` de la campana
+        # (`renovacion_<n>`): la ventana entra en la identidad de la alerta.
         _spec(
             "renovacion.en_ventana",
             "Renovación en ventana",
-            ("id_externo", "fecha_fin"),
+            ("id_externo", "fecha_fin", "aviso"),
             ("in_app", "webhook"),
             tipo_notificacion="renovacion_en_ventana",
+        ),
+        # Los emite `services/deadline_reminders`: plazo de presentación de un
+        # favorito o de una oportunidad (`deadline_<n>`), próxima acción de una
+        # oportunidad (`accion_<n>`) y aplazamiento del Radar que vence
+        # (`radar_recordatorio_<fecha>`). `aviso` es el `type` de la campana.
+        _spec(
+            "plazo.recordatorio",
+            "Recordatorio de plazo",
+            ("id_externo", "aviso"),
+            ("in_app", "webhook"),
+            tipo_notificacion="plazo_recordatorio",
         ),
         _spec(
             "ficha.extraida",

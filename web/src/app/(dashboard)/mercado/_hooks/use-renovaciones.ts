@@ -26,7 +26,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { abrirFicha } from "@/components/ficha/enlace-ficha";
 import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { useCreatePursuit, usePursuits } from "@/hooks/use-pursuits";
 import { useCartera } from "@/hooks/use-cartera";

@@ -11,7 +11,7 @@
  */
 import * as React from "react";
 import { RefreshCcw } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { PanelError } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";

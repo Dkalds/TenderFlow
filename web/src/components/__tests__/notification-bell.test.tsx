@@ -28,7 +28,7 @@ vi.mock("@/hooks/use-organization", () => ({
   useActiveOrganizationId: () => 7,
   organizacionResuelta: (id: unknown) => id !== undefined,
 }));
-vi.mock("sonner", () => ({ toast }));
+vi.mock("@/lib/toast", () => ({ toast }));
 // «Ver todas» se carga bajo demanda con `next/dynamic`; aquí, el componente real.
 vi.mock("next/dynamic", async () => {
   const { VerTodasSheet } = await import("@/components/campana/ver-todas-sheet");

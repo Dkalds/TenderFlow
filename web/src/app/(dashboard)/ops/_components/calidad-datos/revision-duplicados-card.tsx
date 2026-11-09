@@ -19,7 +19,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle, ROTULO_DATO } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";

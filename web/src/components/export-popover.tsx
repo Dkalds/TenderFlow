@@ -8,11 +8,12 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { buttonVariants } from "@/components/ui/button";
+import { type MontajeDiferido, useMontajeDiferido } from "@/components/ui/carga-diferida";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import { useFilterParams } from "@/lib/filters";
 import { buildExportUrl, triggerDownload } from "@/lib/export";
 
-interface ExportPopoverProps {
+interface ExportPopoverProps extends MontajeDiferido {
   endpoint?: string;
   extraParams?: Record<string, string>;
   /**
@@ -36,8 +37,11 @@ export function ExportPopover({
   extraParams,
   label = "Exportar",
   size = "sm",
+  ...montaje
 }: ExportPopoverProps) {
   const filterParams = useFilterParams();
+  // El marco lo monta diferido (`components/layout/menus-diferidos.tsx`).
+  const { disparador, abiertoAlMontar } = useMontajeDiferido(montaje);
 
   // `format` es el parámetro de la API, no la extensión: el Excel se pide como
   // `excel` y se recibe como `.xlsx`. Pedirlo como `xlsx` devolvía un 422.
@@ -47,8 +51,8 @@ export function ExportPopover({
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger className={buttonVariants({ variant: "outline", size })}>
+    <DropdownMenu defaultOpen={abiertoAlMontar}>
+      <DropdownMenuTrigger ref={disparador} className={buttonVariants({ variant: "outline", size })}>
         <Download aria-hidden="true" />
         {label}
       </DropdownMenuTrigger>

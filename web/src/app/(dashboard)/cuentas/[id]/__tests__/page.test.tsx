@@ -26,7 +26,7 @@ vi.mock("next/navigation", () => ({
   useParams: () => ({ id: estado.id }),
   useRouter: () => ({ push: vi.fn() }),
 }));
-vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }));
+vi.mock("@/lib/toast", () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }));
 vi.mock("@/hooks/use-organization", () => ({ usePuedeEscribir: () => estado.puedeEscribir }));
 vi.mock("@/hooks/use-etiquetas", () => ({ useEtiquetasDe: () => ({ data: {} }) }));
 vi.mock("@/components/etiquetas/etiquetas-objeto", () => ({

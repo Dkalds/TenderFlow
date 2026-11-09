@@ -17,10 +17,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
-vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 import { track } from "@vercel/analytics";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   buildExportUrl,
   csvCell,

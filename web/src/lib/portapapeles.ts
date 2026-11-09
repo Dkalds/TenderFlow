@@ -1,4 +1,4 @@
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 /**
  * Copia un texto y lo confirma con un aviso breve. Si el navegador lo niega

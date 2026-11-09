@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { type FiltroEtiqueta, useFiltroEtiqueta } from "@/components/etiquetas/filtro-etiqueta";
 import { useCreatePursuit } from "@/hooks/use-pursuits";
 import { useSeguimiento } from "@/hooks/use-seguimiento";

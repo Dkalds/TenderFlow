@@ -42,10 +42,10 @@ PRODUCTORES_DIRECTOS: frozenset[str] = frozenset(
         "scheduler/watchlist_rules_alerts.py",
         # Watchlist de empresas (v36): encola digests de sus coincidencias.
         "scheduler/watchlist_alerts.py",
-        # Recordatorios de vencimiento y de renovación.
-        "services/deadline_reminders.py",
-        # Adjudicación detectada sobre una oportunidad abierta.
-        "services/pursuit_awards.py",
+        # `services/deadline_reminders.py` salió el 2026-11-08: emite
+        # `plazo.recordatorio` y `renovacion.en_ventana`.
+        # `services/pursuit_awards.py` salió el 2026-11-08: emite
+        # `adjudicacion.detectada`, uno por oportunidad.
         # `services/pursuits.py` (asignación) salió el 2026-10-25: el
         # repositorio escribe `pursuit.assigned` en la transacción de la
         # asignación y lo reparte el despachador.

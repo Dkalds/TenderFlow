@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { ExternalLink, Link2, MessageSquareText } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { DossierBoton, ExtraerPliegoBoton, OportunidadBoton } from "@/components/ficha/ficha-oportunidad";
 import { CompararBoton } from "@/components/pliego/comparacion-bandeja";
 import { ReportarDatoBoton } from "@/components/pliego/reportar-dato";

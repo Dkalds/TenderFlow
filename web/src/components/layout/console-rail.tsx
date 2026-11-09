@@ -4,20 +4,12 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useTheme } from "next-themes";
-import { AlignJustify, LayoutGrid, LogOut, Menu, Moon, Sun } from "lucide-react";
+import { Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { TenderFlowLogo } from "@/components/layout/tenderflow-logo";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { MenuCuentaDiferido } from "@/components/layout/menus-diferidos";
 import {
   isSpaceVisible,
   CONSOLE_GROUP_ORDER,
@@ -29,19 +21,10 @@ import {
 } from "@/lib/console-spaces";
 import { useAccesoEspacios } from "@/hooks/use-acceso-espacios";
 import { useWithFilters } from "@/lib/filters";
-import { useDensity, initDensity } from "@/lib/density";
-import { apiMutate } from "@/lib/api-client";
-import { reportError } from "@/lib/report-error";
+import { initDensity } from "@/lib/density";
 import { registrarEvento } from "@/lib/analytics";
-import { ICONO_ENTIDAD, ICONO_ESPACIO } from "@/lib/iconos";
 
-// Lo que solo existe abierto llega al abrirlo (ver cada módulo): el selector
-// de organización, dentro del menú de cuenta, y el cajón de móvil. El hueco del
-// selector mide lo mismo que su disparador para que el menú no salte.
-const SelectorOrganizacion = dynamic(
-  () => import("@/components/layout/selector-organizacion").then((modulo) => modulo.SelectorOrganizacion),
-  { ssr: false, loading: () => <Skeleton className="h-8 w-full" /> },
-);
+// El cajón de móvil solo existe abierto: llega al abrirlo.
 const NavegacionMovil = dynamic(
   () => import("@/components/layout/navegacion-movil").then((modulo) => modulo.NavegacionMovil),
   { ssr: false },
@@ -119,92 +102,6 @@ function RailButton({ space, active, href }: { space: ConsoleSpace; active: bool
   );
 }
 
-/** Tú (la cuenta) y tu equipo: los glifos de persona y equipo del mapa de iconos. */
-const IconoCuenta = ICONO_ENTIDAD.persona;
-const IconoEquipo = ICONO_ESPACIO.equipo;
-
-/** Menú de cuenta: lo que vivía en el extremo derecho del TopNav. */
-function AccountMenu() {
-  // `resolvedTheme`, no `theme`: con `defaultTheme="system"` el valor de
-  // `theme` es "system" hasta que el usuario elige, y este toggle decide el
-  // siguiente tema a partir del que se está viendo de verdad.
-  const { resolvedTheme, setTheme } = useTheme();
-  const { compact, toggleCompact } = useDensity();
-
-  React.useEffect(() => {
-    initDensity();
-  }, []);
-
-  const handleLogout = async () => {
-    try {
-      await apiMutate("POST", "/api/v1/auth/logout");
-    } catch (err) {
-      reportError("ConsoleRail.logout", err);
-    }
-    window.location.href = "/login";
-  };
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          aria-label="Menú de cuenta"
-          // Neutro: el naranja es de la acción y del destino activo, no de un
-          // avatar que está siempre ahí.
-          className="tf-pressable grid h-8 w-8 place-items-center rounded-full border border-divider bg-secondary text-muted-foreground hover:text-foreground"
-        >
-          <IconoCuenta className="h-4 w-4" aria-hidden="true" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="right" align="end" className="w-60">
-        <p className="px-2 pt-1 pb-1.5 text-tf-micro font-medium text-muted-foreground">Organización activa</p>
-        <div className="px-2 pb-2">
-          <SelectorOrganizacion />
-        </div>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/equipo">
-            <IconoEquipo className="h-4 w-4" aria-hidden="true" />
-            Gestionar equipo
-          </Link>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.preventDefault();
-            toggleCompact();
-          }}
-        >
-          {compact ? (
-            <LayoutGrid className="h-4 w-4" aria-hidden="true" />
-          ) : (
-            <AlignJustify className="h-4 w-4" aria-hidden="true" />
-          )}
-          {compact ? "Densidad cómoda" : "Densidad compacta"}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={(event) => {
-            event.preventDefault();
-            setTheme(resolvedTheme === "dark" ? "light" : "dark");
-          }}
-        >
-          {resolvedTheme === "dark" ? (
-            <Sun className="h-4 w-4" aria-hidden="true" />
-          ) : (
-            <Moon className="h-4 w-4" aria-hidden="true" />
-          )}
-          {resolvedTheme === "dark" ? "Modo claro" : "Modo oscuro"}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => handleLogout()} className="text-destructive focus:text-destructive">
-          <LogOut className="h-4 w-4" aria-hidden="true" />
-          Cerrar sesión
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 export function ConsoleRail() {
   const activeKey = useActiveSpaceKey();
   const acceso = useAccesoEspacios();
@@ -213,6 +110,12 @@ export function ConsoleRail() {
   // Se monta al abrirlo por primera vez y se queda montado: así el cajón anima
   // también al cerrarse, y reabrirlo no vuelve a pedir nada.
   const [navegacionMontada, setNavegacionMontada] = React.useState(false);
+
+  // La densidad guardada se aplica al cargar, no al llegar el menú de cuenta
+  // (diferido), que es donde se cambia.
+  React.useEffect(() => {
+    initDensity();
+  }, []);
 
   const spaces = CONSOLE_SPACES.filter((space) => isSpaceVisible(space, acceso));
 
@@ -251,7 +154,7 @@ export function ConsoleRail() {
           ))}
         </div>
 
-        <AccountMenu />
+        <MenuCuentaDiferido />
       </nav>
 
       {/* Móvil: el rail se pliega en un cajón. El diseño es de escritorio, pero
@@ -278,7 +181,7 @@ export function ConsoleRail() {
           <TenderFlowLogo boxSize={28} />
         </Link>
         <span className="ml-auto">
-          <AccountMenu />
+          <MenuCuentaDiferido />
         </span>
       </div>
 

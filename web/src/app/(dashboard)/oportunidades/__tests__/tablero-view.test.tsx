@@ -14,7 +14,7 @@ import { callMethod, callUrl, jsonResponse } from "@/hooks/__tests__/fetch-call"
 import TableroView from "../_components/tablero-view";
 import { FILTROS_VACIOS, TOPE_TABLERO, type FiltrosTablero } from "../_lib/filtros-tablero";
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 vi.mock("@/hooks/use-organization", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/hooks/use-organization")>();
   return { ...actual, useActiveOrganizationId: () => 7 };

@@ -8,7 +8,7 @@ convierte esos diffs en eventos tipados del ciclo de vida del contrato:
   ANUL: **anulacion** · resto: **cambio_estado**
 - ``importe`` → **modificacion** con ``importe_delta``
 - ``fecha_fin`` / ``duracion_*`` → **prorroga** si extiende, **modificacion**
-  si recorta
+  si recorta; un plazo que pasa de vacío a tener valor no es evento
 
 El valor "después" de un cambio es el snapshot del siguiente registro de
 historial de la misma licitación (cada snapshot es el estado previo al
@@ -266,17 +266,20 @@ def _classify(campo: str, antes: Any, despues: Any) -> tuple[str, float | None, 
         if not delta:
             return None
         return "modificacion", delta, f"importe {antes} → {despues}"
+    if campo in ("fecha_fin", "duracion_valor", "duracion_unidad") and antes in (None, ""):
+        # Un plazo que llega por primera vez no amplía ni recorta el contrato.
+        return None
     if campo == "fecha_fin":
         if not despues:
             return None
-        tipo = "prorroga" if not antes or str(despues) > str(antes) else "modificacion"
+        tipo = "prorroga" if str(despues) > str(antes) else "modificacion"
         return tipo, None, f"fecha_fin {antes or '—'} → {despues}"
     if campo in ("duracion_valor", "duracion_unidad"):
         if despues is None:
             return None
         if campo == "duracion_valor":
             try:
-                extiende = antes is None or float(despues) > float(antes)
+                extiende = float(despues) > float(antes)
             except (TypeError, ValueError):
                 extiende = False
             tipo = "prorroga" if extiende else "modificacion"

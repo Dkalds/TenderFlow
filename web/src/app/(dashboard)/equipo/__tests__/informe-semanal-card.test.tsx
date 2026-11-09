@@ -22,7 +22,7 @@ const { toastSuccess, toastError } = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }));
-vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: toastSuccess, error: toastError } }));
 
 const fetchWithAuth = vi.hoisted(() => vi.fn());
 const apiMutate = vi.hoisted(() => vi.fn());

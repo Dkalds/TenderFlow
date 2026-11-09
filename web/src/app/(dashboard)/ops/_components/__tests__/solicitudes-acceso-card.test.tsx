@@ -16,7 +16,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
  * pinta: filtrar en cliente pasaría igual de verde y volvería a perder filas.
  */
 
-vi.mock("sonner", () => ({
+vi.mock("@/lib/toast", () => ({
   toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() },
 }));
 
@@ -47,7 +47,7 @@ vi.mock("@/lib/api-client", async (importOriginal) => ({
 
 import { SolicitudesAccesoCard } from "@/app/(dashboard)/ops/_components/solicitudes-acceso-card";
 import type { OpcionesSolicitudesAcceso } from "@/app/(dashboard)/ops/_hooks/use-solicitudes-acceso";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { crearQueryClient } from "@/components/providers";
 import { ApiError, apiMutate } from "@/lib/api-client";
 

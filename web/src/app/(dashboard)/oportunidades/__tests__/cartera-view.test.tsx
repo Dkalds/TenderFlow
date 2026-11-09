@@ -27,7 +27,7 @@ vi.mock("@/lib/analytics", async (importOriginal) => ({
   registrarEvento: vi.fn(),
 }));
 const toastSuccess = vi.fn();
-vi.mock("sonner", () => ({ toast: { success: (...a: unknown[]) => toastSuccess(...a), error: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: (...a: unknown[]) => toastSuccess(...a), error: vi.fn() } }));
 
 const mutate = vi.fn();
 const contratos = [

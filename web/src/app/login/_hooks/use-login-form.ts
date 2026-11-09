@@ -14,6 +14,7 @@
  * `/verificar-correo` (RFC 2026-10-21-alta-con-contrasena-tras-concesion).
  */
 
+/* eslint-disable @next/next/no-location-assign-relative-destination -- frontera de entrada: toda navegación de este hook es una recarga completa a propósito, para que el SessionProvider y React Query arranquen con la cookie nueva (o sin ella) */
 import { useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { useForm, type Resolver } from "react-hook-form";

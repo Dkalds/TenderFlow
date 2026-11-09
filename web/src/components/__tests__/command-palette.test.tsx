@@ -37,10 +37,10 @@ vi.mock("@/lib/filters", () => ({
   useWithFilters: () => (p: string) => p,
   useFilterParams: () => filterParamsStub,
 }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { CommandPalette } from "@/components/command-palette";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 function renderPalette() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });

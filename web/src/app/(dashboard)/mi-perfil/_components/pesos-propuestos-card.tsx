@@ -26,7 +26,7 @@
 
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Panel, PanelError, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import {

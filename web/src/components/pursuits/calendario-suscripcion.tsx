@@ -12,7 +12,7 @@
 import * as React from "react";
 import { Download } from "lucide-react";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { PanelError } from "@/components/console/panel";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
