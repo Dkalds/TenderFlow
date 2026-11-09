@@ -22,6 +22,7 @@ from db.events import agregados_con_evento, append_domain_event
 from db.repositories.pursuits import PursuitRepository
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
+from shared.dates import instante_utc
 
 log = get_logger(__name__)
 
@@ -177,11 +178,8 @@ def check_deadlines_and_notify(user_key: str, *, user_id: int | None = None) -> 
             raw_date = lic.get(field)
             if not raw_date:
                 continue
-            try:
-                dt = datetime.fromisoformat(str(raw_date))
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=UTC)
-            except (ValueError, TypeError):
+            dt = instante_utc(raw_date)
+            if dt is None:
                 continue
 
             days_left = (dt - now).days

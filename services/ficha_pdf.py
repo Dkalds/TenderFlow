@@ -31,6 +31,8 @@ from datetime import UTC, datetime
 from html import escape
 from typing import Any
 
+from services.pdf_accesible import metadatos
+
 __all__ = ["BloqueFicha", "FichaOportunidad", "construir_pdf"]
 
 #: Ancho máximo de una celda de texto antes de recortarla. Un valor largo
@@ -120,7 +122,7 @@ def construir_pdf(ficha: FichaOportunidad) -> bytes:
     doc = SimpleDocTemplate(
         buf,
         pagesize=A4,
-        title=ficha.titulo,
+        **metadatos(titulo=ficha.titulo, asunto=ficha.subtitulo),
         leftMargin=18 * mm,
         rightMargin=18 * mm,
         topMargin=16 * mm,

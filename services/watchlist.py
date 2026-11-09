@@ -16,6 +16,7 @@ from db.watchlist import list_entries as _list_entries
 from db.watchlist import remove_entry as _remove_entry
 from db.watchlist import update_frequency as _update_frequency
 from observability.logging import get_logger
+from shared.dates import instante_utc
 
 log = get_logger(__name__)
 
@@ -128,14 +129,9 @@ def _rfc3339(valor: object, por_defecto: str) -> str:
     ``10:00+02:00`` como ``10:00Z`` la adelantaba dos horas. Una sin zona (las
     de solo día, que son casi todas) se toma como UTC, igual que antes.
     """
-    from datetime import UTC, datetime
-
-    try:
-        fecha = datetime.fromisoformat(str(valor).replace("Z", "+00:00"))
-    except ValueError:
+    fecha = instante_utc(valor)
+    if fecha is None:
         return por_defecto
-    if fecha.tzinfo is not None:
-        fecha = fecha.astimezone(UTC)
     return fecha.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 

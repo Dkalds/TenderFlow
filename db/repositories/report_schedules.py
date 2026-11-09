@@ -28,6 +28,7 @@ from typing import Any
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
+from shared.dates import instante_utc
 
 log = get_logger(__name__)
 
@@ -171,8 +172,12 @@ def pendientes(ahora: datetime | None = None) -> list[dict[str, Any]]:
         if (instante - ventana) >= timedelta(days=1):
             continue
         ultimo = fila.get("ultimo_envio_at")
-        if ultimo and datetime.fromisoformat(str(ultimo)) >= ventana:
-            continue
+        if ultimo:
+            ultimo_dt = instante_utc(ultimo)
+            if ultimo_dt is None:
+                raise ValueError(f"ultimo_envio_at ilegible: {ultimo!r}")
+            if ultimo_dt >= ventana:
+                continue
         listas.append(fila)
     return listas
 

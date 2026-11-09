@@ -48,11 +48,11 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Collection
-from datetime import UTC, datetime
 from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
 from observability.logging import get_logger
+from shared.dates import instante_utc
 from shared.events import Canal, validar_payload, validar_tipo
 
 log = get_logger(__name__)
@@ -498,13 +498,10 @@ def get_latest_cache_invalidation_timestamp() -> float:
         ).fetchone()
     if row is None or row[0] is None:
         return 0.0
-    try:
-        parsed = datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
-    except ValueError:
+    parsed = instante_utc(row[0])
+    if parsed is None:
         log.warning("cache_invalidation_timestamp_invalid", value=str(row[0]))
         return 0.0
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
     return parsed.timestamp()
 
 

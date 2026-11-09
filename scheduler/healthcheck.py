@@ -55,6 +55,7 @@ from observability import AlertLevel, configure_logging, get_logger, notify  # n
 from observability.alerts import COOLDOWN_RECORDATORIO_DIARIO_S  # noqa: E402
 from observability.errores import errores_repetidos  # noqa: E402
 from scheduler.latido import enviar_latido  # noqa: E402
+from shared.dates import instante_utc  # noqa: E402
 
 log = get_logger(__name__)
 
@@ -138,11 +139,8 @@ def _comprobar_vista_canonicas(
         checks.append({"name": "canonicas_frescas", "ok": not con_datos})
         return con_datos
 
-    try:
-        ultimo = datetime.fromisoformat(str(filas[0][0]))
-        if ultimo.tzinfo is None:
-            ultimo = ultimo.replace(tzinfo=UTC)
-    except (ValueError, TypeError):
+    ultimo = instante_utc(filas[0][0]) if filas[0][0] is not None else None
+    if ultimo is None:
         ultimo = datetime.now(UTC) - timedelta(days=365)
 
     edad_horas = (datetime.now(UTC) - ultimo).total_seconds() / 3600
@@ -193,12 +191,9 @@ def _lag_horas(last_success_at: Any, momento: datetime) -> float | None:
     """
     if not last_success_at:
         return None
-    try:
-        ultimo = datetime.fromisoformat(str(last_success_at).replace("Z", "+00:00"))
-    except (ValueError, TypeError):
+    ultimo = instante_utc(last_success_at)
+    if ultimo is None:
         return None
-    if ultimo.tzinfo is None:
-        ultimo = ultimo.replace(tzinfo=UTC)
     return (momento - ultimo).total_seconds() / 3600
 
 
@@ -526,11 +521,8 @@ def _incorporar_ultima_ingesta(
             "months_ok": last_run[3],
             "months_failed": last_run[4],
         }
-        try:
-            started = datetime.fromisoformat(last_run[1])
-            if started.tzinfo is None:
-                started = started.replace(tzinfo=UTC)
-        except (ValueError, TypeError):
+        started = instante_utc(last_run[1])
+        if started is None:
             started = datetime.now(UTC) - timedelta(days=365)
         age = datetime.now(UTC) - started
         info["last_run_age_hours"] = round(age.total_seconds() / 3600, 1)

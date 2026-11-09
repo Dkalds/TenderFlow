@@ -1082,15 +1082,10 @@ def _as_utc_iso(value: datetime | None) -> str | None:
 def _elapsed_hours(start: object, end: object) -> float | None:
     if not isinstance(start, str) or not isinstance(end, str):
         return None
-    try:
-        start_dt = datetime.fromisoformat(start.replace("Z", "+00:00"))
-        end_dt = datetime.fromisoformat(end.replace("Z", "+00:00"))
-    except ValueError:
+    start_dt = _parse_iso_datetime(start)
+    end_dt = _parse_iso_datetime(end)
+    if start_dt is None or end_dt is None:
         return None
-    if start_dt.tzinfo is None:
-        start_dt = start_dt.replace(tzinfo=UTC)
-    if end_dt.tzinfo is None:
-        end_dt = end_dt.replace(tzinfo=UTC)
     seconds = (end_dt - start_dt).total_seconds()
     return max(0.0, seconds / 3600)
 
