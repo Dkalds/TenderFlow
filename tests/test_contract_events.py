@@ -144,6 +144,30 @@ def test_ruido_float4_del_importe_no_genera_modificacion():
     assert _classify("importe", 12_345_700.0, 12_345_679.0) is None
 
 
+@pytest.mark.parametrize(
+    ("campo", "antes", "despues"),
+    [
+        ("fecha_fin", None, "2027-06-30"),
+        ("fecha_fin", "", "2027-06-30"),
+        ("duracion_valor", None, 24),
+        ("duracion_unidad", None, "MON"),
+    ],
+)
+def test_plazo_que_llega_por_primera_vez_no_es_evento(campo, antes, despues):
+    """Medido el 2026-11-03: 900 de 1.695 «prórrogas» eran un dato nuevo, no una ampliación."""
+    from services.contract_events import _classify
+
+    assert _classify(campo, antes, despues) is None
+
+
+def test_ampliar_la_duracion_es_prorroga():
+    from services.contract_events import _classify
+
+    evento = _classify("duracion_valor", 12, 24)
+    assert evento is not None
+    assert evento[0] == "prorroga"
+
+
 def test_modificacion_real_de_importe_sigue_generando_evento():
     from services.contract_events import _classify
 
