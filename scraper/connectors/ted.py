@@ -23,6 +23,10 @@ en PLACSP o PSCP. El conector no puede saberlo al parsear, pero sí recoge lo qu
 el aviso dice del expediente original —BT-22 y el ``idEvl`` del deeplink de
 PLACSP— y lo expone con ``referencias_cruzadas()``; el runner se lo pasa a
 ``services.dedupe.detect_duplicados_por_referencia`` tras persistir el lote.
+Esas referencias no se guardan: las convocatorias vigentes que siguen sin
+pareja pasada su ventana se releen en la API cada pasada
+(``TedConnector.reemparejar_vigentes``), para emparejarlas en cuanto llegue su
+expediente.
 
 Cursor: ``last_seen_updated`` guarda el máximo ``publication-date`` visto, pero
 cada run consulta desde ``watermark - _OVERLAP_DAYS``. Sin ese solapamiento, lo
@@ -51,11 +55,11 @@ from observability import get_logger
 from scraper.connectors.base import ParsedTender, RawNotice
 from scraper.filters import matches_technology
 from scraper.resilience import pedir_con_reintentos
-from services.dedupe import ReferenciaCruzada, id_evl_de_url
+from services.dedupe import DedupeResult, ReferenciaCruzada, id_evl_de_url
 from shared.geo import nuts_to_ccaa
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping
 
     from scraper.connectors.base import ConnectorRunResult
 
@@ -128,6 +132,21 @@ _FIELDS = [
     "winner-name",
     "place-of-performance",
     "contract-nature",
+]
+
+#: Tope por petición y por pasada de ``reemparejar_vigentes``: corre dentro del
+#: step de 10 minutos de ``scrape-daily.yml`` y lo que no pida lo pide la siguiente.
+_TIMEOUT_REFERENCIAS_S = 20
+_PRESUPUESTO_REEMPAREJO_S = 60.0
+
+#: Lo que ``reemparejar_vigentes`` relee de cada aviso: sus referencias al expediente.
+_FIELDS_REFERENCIAS = [
+    "publication-number",
+    "internal-identifier-proc",
+    "internal-identifier-lot",
+    "procedure-identifier",
+    "document-url-lot",
+    "document-restricted-url-lot",
 ]
 
 # notice-type eForms → estado canónico (códigos PLACSP)
@@ -569,15 +588,73 @@ class TedConnector:
 
     # ── documentos ───────────────────────────────────────────────────────
 
+    def reemparejar_vigentes(
+        self,
+        *,
+        limite: int = 300,
+        presupuesto_s: float = _PRESUPUESTO_REEMPAREJO_S,
+        reloj: Callable[[], float] = time.monotonic,
+    ) -> DedupeResult:
+        """Empareja las convocatorias vigentes sin pareja que esta pasada no releyó.
+
+        Su BT-22, su BT-04 y su ``idEvl`` solo viven en el aviso, así que se le
+        piden de nuevo a la API (una petición por cada ``_PAGE_SIZE``). Es lo que
+        empareja una convocatoria cuyo expediente llega pasada su ventana de 14
+        días (las agregadas entraron el 2026-11-04) o que una regla nueva ya
+        reconoce. Las que releyó esta pasada ya se evaluaron en el cierre del lote.
+
+        Sin reintentos y con presupuesto, como las fichas de PSCP: corre dentro
+        del cierre del lote, antes de los eventos de contrato, y la pasada
+        siguiente repite lo que esta no llegó a pedir. *reloj* existe para los tests.
+        """
+        from db.repositories import dedupe as dedupe_repo
+        from scraper.documentos_plataforma import numero_publicacion_ted
+        from services.dedupe import detect_duplicados_por_referencia
+
+        numeros = [
+            numero
+            for id_externo in dedupe_repo.ted_vigentes_sin_pareja(
+                limit=limite, excluir=sorted(self._referencias)
+            )
+            if (numero := numero_publicacion_ted(id_externo)) is not None
+        ]
+        referencias: dict[str, ReferenciaCruzada] = {}
+        inicio_s = reloj()
+        for inicio in range(0, len(numeros), _PAGE_SIZE):
+            if reloj() - inicio_s >= presupuesto_s:
+                log.info("ted_reemparejo_vigentes_sin_presupuesto", pedidos=inicio)
+                break
+            lote = numeros[inicio : inicio + _PAGE_SIZE]
+            cuerpo = {
+                "query": f"publication-number IN ({' '.join(lote)})",
+                "fields": _FIELDS_REFERENCIAS,
+                "limit": len(lote),
+            }
+            resp = self._session.post(_API_URL, json=cuerpo, timeout=_TIMEOUT_REFERENCIAS_S)
+            resp.raise_for_status()
+            for notice in resp.json().get("notices") or []:
+                referencia = ReferenciaCruzada(
+                    expediente=_expediente(notice),
+                    id_evl=_id_evl(notice),
+                    procedimiento=_procedimiento(notice),
+                )
+                if notice.get("publication-number") and not referencia.vacia:
+                    referencias[f"{SOURCE_ID}:{notice['publication-number']}"] = referencia
+            time.sleep(_PAGE_PAUSE_S)
+        return detect_duplicados_por_referencia(fuente=SOURCE_ID, referencias=referencias)
+
     def completar_documentos(self) -> None:
         """Tras la ingesta y el dedupe: pliegos para los avisos que no los tienen.
 
-        Dos pasos, en este orden y cada uno fail-open:
+        Tres pasos, en este orden y cada uno fail-open:
 
         1. Re-emparejar por ``idEvl`` los avisos antiguos que siguen sin pareja
            (``services.dedupe.reemparejar_ted_por_id_evl``): emparejados, su
            ficha lee los pliegos del expediente de PLACSP.
-        2. Dar el PDF del anuncio como documento a las convocatorias vigentes
+        2. Re-emparejar las convocatorias vigentes que siguen sin pareja con las
+           referencias que se releen de su aviso (:meth:`reemparejar_vigentes`):
+           BT-22 y BT-04 casan con las agregadas y la PSCP, que ``idEvl`` no ve.
+        3. Dar el PDF del anuncio como documento a las convocatorias vigentes
            que, aun así, se quedan sin pareja ni documentos
            (``scraper.documentos_plataforma.completar_documentos_ted``).
 
@@ -593,6 +670,11 @@ class TedConnector:
             log.info("ted_reemparejo_id_evl", **reemparejo.as_dict())
         except Exception as e:
             log.warning("ted_reemparejo_id_evl_failed", error=str(e))
+        try:
+            vigentes = self.reemparejar_vigentes()
+            log.info("ted_reemparejo_vigentes", **vigentes.as_dict())
+        except Exception as e:
+            log.warning("ted_reemparejo_vigentes_failed", error=str(e))
         try:
             resumen = completar_documentos_ted()
             log.info("ted_documentos_completados", **resumen.as_dict())

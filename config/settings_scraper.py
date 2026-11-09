@@ -54,8 +54,9 @@ class ScraperSettings(EntornoSettings):
         "contrataciondelestado.es,*.contrataciondelestado.es,ted.europa.eu,contractaciopublica.cat,"
         # TACRC: PDF de la resolución vinculada (scraper/connectors/tacrc.py).
         "www.hacienda.gob.es,"
-        # Pliegos de las plataformas agregadas en PLACSP (placsp_agregadas.py).
-        "www.contratacion.euskadi.eus,contratos-publicos.comunidad.madrid"
+        # Pliegos de las plataformas agregadas en PLACSP (placsp_agregadas.py); los
+        # de la Junta de Andalucía, de su ficha (documentos_plataforma.py).
+        "www.contratacion.euskadi.eus,contratos-publicos.comunidad.madrid,www.juntadeandalucia.es"
     )
     WEBHOOK_ALLOWED_HOSTS: str = ""
 

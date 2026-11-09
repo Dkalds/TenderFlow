@@ -386,9 +386,9 @@ def _referencias_de(connector: Connector) -> Mapping[str, ReferenciaCruzada]:
 def _completar_documentos_de(connector: Connector) -> Callable[[], object] | None:
     """El paso ``completar_documentos`` del conector, si lo tiene.
 
-    Opt-in por atributo, como :func:`_referencias_de`: lo tienen TED, PSCP y
-    los dos de PLACSP, que completan documentos que su feed no trae (ver
-    ``scraper.documentos_plataforma``).
+    Opt-in por atributo, como :func:`_referencias_de`: lo tienen TED, PSCP,
+    los dos de PLACSP y el de agregadas, que completan documentos que su feed no
+    trae (ver ``scraper.documentos_plataforma``).
     """
     paso = getattr(connector, "completar_documentos", None)
     return paso if callable(paso) else None
@@ -402,8 +402,8 @@ def _completar_documentos_primero(connector: Connector) -> bool:
     de lo que escriben la resolución de empresas o los dedupes de
     :func:`_post_ingestion`: el de TED sí lo necesita (un aviso recién
     emparejado lee los pliegos de su canónica) y el de PLACSP persiste lo que
-    rescató el parseo; el de PSCP lee de la BD las convocatorias vigentes y nada
-    más, así que es el único que lo declara.
+    rescató el parseo; los de PSCP y agregadas leen de la BD las convocatorias
+    vigentes y nada más, así que son los que lo declaran.
     """
     return bool(getattr(connector, "completar_documentos_primero", False))
 

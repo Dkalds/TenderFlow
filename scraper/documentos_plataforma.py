@@ -1,4 +1,4 @@
-"""Documentos de las convocatorias que no los traen en su feed (TED y PSCP).
+"""Documentos de las convocatorias que no los traen en su feed (TED, PSCP y Andalucía).
 
 PLACSP mete las referencias a los pliegos en cada entry del ATOM y
 ``run_connector`` las persiste al ingerir. TED y la plataforma catalana no:
@@ -38,15 +38,27 @@ hueco sobre datos abiertos:
   Medido el 2026-11-09 sobre 36 expedientes cerrados sin documentos: 32 tenían
   anuncio con pliegos; los otros cuatro no lo tuvieron en la plataforma
   (negociados sin publicidad, contratos basados en un acuerdo marco).
+- **Perfil de Contratante de la Junta de Andalucía**
+  (:func:`documentos_de_andalucia`). Sus expedientes llegan por la sindicación
+  de agregadas de PLACSP sin una sola referencia a documentos (383 de 383 el
+  2026-11-09), pero la ficha pública de cada uno, que enlaza su ``url``
+  (``detalle-licitacion?idExpediente=…``), los lista en el JSON del buscador
+  que pinta su web: categoría (PCAP, PPT, documento adicional…), ``sha256`` del
+  fichero y descarga directa. Se pide como lo pide esa web, por el
+  ``idExpediente``; su ``robots.txt`` no restringe esas rutas. Solo los
+  expedientes vigentes: en uno adjudicado la ficha ya solo trae la resolución
+  de adjudicación. Un aviso TED emparejado con la agregada lee estos pliegos.
 
-Los dos pasos que se ejecutan tras cada ingesta —:func:`completar_documentos_ted`
-y :func:`completar_documentos_pscp`— los llama ``run_connector`` a través del
-``completar_documentos`` de cada conector, con presupuesto de tiempo: corren
-dentro del step de 10 minutos de ``scrape-daily.yml``. El de TED va dentro de
-``_post_ingestion``, tras los dedupes, porque necesita sus marcas; el de PSCP va
-antes de ese cierre (``completar_documentos_primero``), porque no las necesita y
-detrás de la resolución de empresas el step se cortaba antes de llegar. Sin lote
-se llaman igual, porque leen de la BD y no de lo que trajo la pasada.
+Los tres pasos que se ejecutan tras cada ingesta —:func:`completar_documentos_ted`,
+:func:`completar_documentos_pscp` y :func:`completar_documentos_andalucia`— los
+llama ``run_connector`` a través del ``completar_documentos`` de cada conector
+(el último, el de agregadas), con presupuesto de tiempo: corren dentro del step
+de 10 minutos de ``scrape-daily.yml``. El de TED va dentro de
+``_post_ingestion``, tras los dedupes, porque necesita sus marcas; los otros dos
+van antes de ese cierre (``completar_documentos_primero``), porque no las
+necesitan y detrás de la resolución de empresas el step se cortaba antes de
+llegar. Sin lote se llaman igual, porque leen de la BD y no de lo que trajo la
+pasada.
 """
 
 from __future__ import annotations
@@ -57,7 +69,7 @@ import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from config import USER_AGENT, settings
 from db.upsert import DocumentoReferencia
@@ -92,6 +104,19 @@ _TIPO_POR_APARTADO_PSCP = {
     "plecsDeClausulesAdministratives": "legal",
     "plecsDePrescripcionsTecniques": "technical",
 }
+
+_HOST_ANDALUCIA = "www.juntadeandalucia.es"
+_APL_ANDALUCIA = f"https://{_HOST_ANDALUCIA}/haciendayadministracionpublica/apl"
+#: El buscador con el que la web del Perfil de Contratante pinta cada expediente.
+_API_ANDALUCIA = f"{_APL_ANDALUCIA}/pdc-front-publico/elastic/sirec_pdc_expedientes_details/_search"
+_DESCARGA_ANDALUCIA = f"{_APL_ANDALUCIA}/pdc_sirec_documentacion/rest/descargar/documento/{{id}}"
+_ID_ANDALUCIA = re.compile(r"\d{1,15}")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+#: Prefijo de la categoría → ``documentos.tipo``. El resto (documento
+#: adicional, memoria justificativa, aprobación del expediente…) es ``additional``.
+_TIPO_POR_CATEGORIA_ANDALUCIA = (("PCAP", "legal"), ("PPT", "technical"))
+#: Lo que cuelga del expediente sin ser pliego: actas de la mesa y adjudicación.
+_NO_PLIEGO_ANDALUCIA = re.compile(r"\bacta\b|adjudicaci", re.IGNORECASE)
 
 #: Tras tantos fallos seguidos se da la plataforma por caída en esta pasada:
 #: seguir pidiendo solo gasta el presupuesto y la cortesía con su servidor.
@@ -282,8 +307,11 @@ def _referencia_pscp(doc: Any, apartado: str) -> DocumentoReferencia | None:
     )
 
 
-def _obtener(url: str, *, host: str, timeout_s: float | None = None) -> bytes:
-    """GET de *url*, que tiene que estar en *host*, con las guardas del descargador.
+def _obtener(
+    url: str, *, host: str, timeout_s: float | None = None, cuerpo: bytes | None = None
+) -> bytes:
+    """GET de *url* —POST si lleva *cuerpo* JSON—, que tiene que estar en *host*, con
+    las guardas del descargador.
 
     Sin reintentos ni circuito: es una consulta de metadatos que la pasada
     siguiente repite sola, y el circuito de la plataforma es para la descarga
@@ -292,10 +320,14 @@ def _obtener(url: str, *, host: str, timeout_s: float | None = None) -> bytes:
     *timeout_s* lo fija quien tiene un presupuesto que cuidar; sin él manda el
     ``REQUEST_TIMEOUT`` global.
     """
+    cabeceras = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+    if cuerpo is not None:
+        cabeceras["Content-Type"] = "application/json"
     respuesta = pinned_https_request(
-        "GET",
+        "GET" if cuerpo is None else "POST",
         url,
-        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
+        headers=cabeceras,
+        body=cuerpo,
         timeout_seconds=float(timeout_s if timeout_s is not None else settings.REQUEST_TIMEOUT),
         allowed_hosts=frozenset({host}),
     )
@@ -355,6 +387,105 @@ def documentos_de_pscp(
             anuncios_ted=list(dict.fromkeys(detalle.anuncios_ted + del_anunci.anuncios_ted)),
         )
     return detalle
+
+
+# ── Andalucía ────────────────────────────────────────────────────────────────
+
+
+def id_expediente_andalucia(url_ficha: str | None) -> str | None:
+    """El ``idExpediente`` de la ficha de un expediente en el Perfil de Contratante, o ``None``.
+
+    Las agregadas guardan la ficha vieja (``pdc_sirec/…/detalle-licitacion.jsf``)
+    y la web la redirige a la nueva (``pdc-front-publico/…/detalle-licitacion``):
+    sirven las dos.
+    """
+    if not url_ficha:
+        return None
+    partes = urlparse(url_ficha)
+    host = (partes.hostname or "").lower()
+    if host != _HOST_ANDALUCIA or "/detalle-licitacion" not in partes.path:
+        return None
+    valores = parse_qs(partes.query).get("idExpediente") or []
+    return valores[0] if len(valores) == 1 and _ID_ANDALUCIA.fullmatch(valores[0]) else None
+
+
+def parse_detalle_andalucia(datos: Any) -> list[DocumentoReferencia]:
+    """Los pliegos del JSON del buscador para un expediente (``hits.hits[0]._source``).
+
+    Solo los ``Activo``: los ``Inactivo`` son versiones sustituidas, que la web
+    enseña aparte. La descarga se compone con el ``id`` y la identidad es el
+    ``sha256`` del fichero, que publica la propia Junta: con él ``upsert_meta``
+    refresca la fila en vez de duplicarla.
+    """
+    hits = datos.get("hits") if isinstance(datos, dict) else None
+    encontrados = hits.get("hits") if isinstance(hits, dict) else None
+    if not isinstance(encontrados, list) or len(encontrados) != 1:
+        return []
+    fuente = encontrados[0].get("_source") if isinstance(encontrados[0], dict) else None
+    documentos = fuente.get("documentos") if isinstance(fuente, dict) else None
+    referencias: dict[str, DocumentoReferencia] = {}
+    for doc in documentos if isinstance(documentos, list) else []:
+        referencia = _referencia_andalucia(doc)
+        if referencia is not None:
+            referencias.setdefault(referencia.uri, referencia)
+    return list(referencias.values())
+
+
+def _referencia_andalucia(doc: Any) -> DocumentoReferencia | None:
+    if not isinstance(doc, dict) or doc.get("estado") != "Activo":
+        return None
+    categoria = str(doc.get("categoria") or "")
+    identificador = str(doc.get("id") or "")
+    huella = str(doc.get("sha256") or "").lower()
+    # El id va a la ruta de la descarga y el hash a la identidad del documento:
+    # solo con la forma que sirve la Junta, para que un valor raro no componga otra.
+    if (
+        _NO_PLIEGO_ANDALUCIA.search(categoria)
+        or not _ID_ANDALUCIA.fullmatch(identificador)
+        or not _SHA256.fullmatch(huella)
+    ):
+        return None
+    tipo = next(
+        (
+            t
+            for prefijo, t in _TIPO_POR_CATEGORIA_ANDALUCIA
+            if categoria.upper().startswith(prefijo)
+        ),
+        "additional",
+    )
+    nombre = doc.get("nombre")
+    return DocumentoReferencia(
+        tipo=tipo,
+        uri=_DESCARGA_ANDALUCIA.format(id=identificador),
+        filename=(nombre.strip() or None) if isinstance(nombre, str) else None,
+        source_hash=huella,
+    )
+
+
+def _obtener_andalucia_con_tope(restante_s: Callable[[], float]) -> Callable[[str, bytes], bytes]:
+    """La consulta al buscador con un timeout que no pasa de lo que queda de presupuesto."""
+
+    def obtener(url: str, cuerpo: bytes) -> bytes:
+        tope = max(_TOPE_MINIMO_S, min(float(settings.REQUEST_TIMEOUT), restante_s()))
+        return _obtener(url, host=_HOST_ANDALUCIA, timeout_s=tope, cuerpo=cuerpo)
+
+    return obtener
+
+
+def documentos_de_andalucia(
+    url_ficha: str | None, *, obtener: Callable[[str, bytes], bytes] | None = None
+) -> list[DocumentoReferencia] | None:
+    """Los pliegos de un expediente de la Junta, o ``None`` si la URL no es su ficha.
+
+    Una petición: la misma que hace su web al abrir la ficha. *obtener* existe
+    para los tests: por defecto pide de verdad.
+    """
+    identificador = id_expediente_andalucia(url_ficha)
+    if identificador is None:
+        return None
+    cuerpo = json.dumps({"query": {"match": {"_id": identificador}}}).encode()
+    pedir = obtener or (lambda url, datos: _obtener(url, host=_HOST_ANDALUCIA, cuerpo=datos))
+    return parse_detalle_andalucia(json.loads(pedir(_API_ANDALUCIA, cuerpo)))
 
 
 # ── Pasos tras la ingesta ────────────────────────────────────────────────────
@@ -491,4 +622,62 @@ def completar_documentos_pscp(
                         resumen.referencias += len(detalle.documentos)
             except Exception as e:
                 resumen.errores.append(f"{id_externo}: {e}")
+    return resumen
+
+
+def completar_documentos_andalucia(
+    *,
+    limite: int = 60,
+    presupuesto_s: float = 60.0,
+    pausa_s: float = 0.5,
+    obtener: Callable[[str, bytes], bytes] | None = None,
+    reloj: Callable[[], float] = time.monotonic,
+) -> ResumenDocumentos:
+    """Pliegos de las convocatorias vigentes de la Junta de Andalucía agregadas en PLACSP.
+
+    Candidatas (``DocumentosRepository.andalucia_para_documentos``): las que aún
+    no tienen documentos y, de las que sí, las publicadas hace poco, que es
+    cuando llegan las rectificaciones de pliegos. Una petición por expediente,
+    con el mismo presupuesto, tope por petición y corte por fallos seguidos que
+    :func:`completar_documentos_pscp`. *obtener* y *reloj* existen para los tests.
+    """
+    from db.repositories.documentos import DocumentosRepository
+
+    repo = DocumentosRepository()
+    resumen = ResumenDocumentos()
+    inicio = reloj()
+    pedir = obtener or _obtener_andalucia_con_tope(lambda: presupuesto_s - (reloj() - inicio))
+    fallos_seguidos = 0
+    for fila in repo.andalucia_para_documentos(limit=limite):
+        if presupuesto_s - (reloj() - inicio) <= 0:
+            resumen.sin_presupuesto = True
+            break
+        if fallos_seguidos >= _FALLOS_SEGUIDOS_MAX:
+            break
+        resumen.candidatas += 1
+        id_externo = str(fila["id_externo"])
+        try:
+            documentos = documentos_de_andalucia(fila.get("url"), obtener=pedir)
+        except Exception as e:
+            fallos_seguidos += 1
+            resumen.fallidas += 1
+            resumen.errores.append(f"{id_externo}: {e}")
+            continue
+        finally:
+            if pausa_s:
+                time.sleep(pausa_s)
+        fallos_seguidos = 0
+        if not documentos:
+            continue
+        try:
+            # shortcut: una versión que la Junta pasa a `Inactivo` y ya se guardó
+            # sigue como documento (como en PSCP y PLACSP); retirarla cuando
+            # `upsert_meta` sepa dar de baja lo que la fuente ya no lista.
+            repo.upsert_meta(id_externo, documentos)
+        except Exception as e:
+            resumen.fallidas += 1
+            resumen.errores.append(f"{id_externo}: {e}")
+        else:
+            resumen.con_documentos += 1
+            resumen.referencias += len(documentos)
     return resumen

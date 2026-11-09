@@ -218,11 +218,19 @@ pscp_breaker = _nuevo_breaker("pscp")
 #: PDFs de resoluciones del TACRC (2026-10). Mismo motivo: sin el suyo, cinco
 #: fallos de hacienda.gob.es abrían el de PLACSP.
 tacrc_breaker = _nuevo_breaker("tacrc")
+#: Pliegos de las plataformas autonómicas agregadas en PLACSP (Euskadi y Madrid
+#: desde el 2026-11-04, Andalucía desde el 2026-11-09). Mismo motivo.
+euskadi_breaker = _nuevo_breaker("euskadi")
+madrid_breaker = _nuevo_breaker("madrid")
+andalucia_breaker = _nuevo_breaker("andalucia")
 
 _BREAKERS_POR_HOST: tuple[tuple[str, pybreaker.CircuitBreaker], ...] = (
     ("ted.europa.eu", ted_breaker),
     ("contractaciopublica.cat", pscp_breaker),
     ("hacienda.gob.es", tacrc_breaker),
+    ("contratacion.euskadi.eus", euskadi_breaker),
+    ("contratos-publicos.comunidad.madrid", madrid_breaker),
+    ("juntadeandalucia.es", andalucia_breaker),
 )
 
 

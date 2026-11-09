@@ -300,6 +300,71 @@ def test_bt22_generico_de_otro_organo_no_empareja() -> None:
     assert _elegir(fila, ref, [tenerife]) is None
 
 
+def _diputacio() -> dict[str, Any]:
+    """La agregada de ``ted:768929-2026`` (2026-11-09): en catalán y con su valor estimado."""
+    return _placsp(
+        "placsp_agregadas:11202843:2026/0027291",
+        fuente="placsp_agregadas",
+        url=None,
+        organo_contratacion="Diputació de Barcelona",
+        titulo="Servei d'administració dels sistemes de base de la Diputació de la Barcelona",
+        valor_estimado=2046661.24,
+    )
+
+
+def _ted_diputacio(valor_estimado: float | None = 2046661.24) -> dict[str, Any]:
+    return _ted(
+        "ted:768929-2026",
+        organo_contratacion="DIPUTACIÓN DE BARCELONA",
+        titulo="Servicio de administración de los sistemas de base de la Diputació de Barcelona",
+        valor_estimado=valor_estimado,
+    )
+
+
+def test_bt22_en_otro_idioma_empareja_por_el_valor_estimado() -> None:
+    """TED publica en castellano lo que la plataforma catalana publica en catalán."""
+    ref = ReferenciaCruzada(expediente="2026/0027291")
+
+    assert _elegir(_ted_diputacio(), ref, [_diputacio()]) == (
+        "placsp_agregadas:11202843:2026/0027291",
+        "expediente:2026/0027291",
+    )
+
+
+@pytest.mark.parametrize("valor_ted", [2046661.25, None, 0.0])
+def test_bt22_en_otro_idioma_sin_el_mismo_valor_no_empareja(valor_ted: float | None) -> None:
+    """Un céntimo de diferencia, o un aviso sin valor estimado, no confirman nada."""
+    ref = ReferenciaCruzada(expediente="2026/0027291")
+
+    assert _elegir(_ted_diputacio(valor_estimado=valor_ted), ref, [_diputacio()]) is None
+
+
+def test_con_varias_candidatas_el_valor_estimado_no_elige() -> None:
+    """«01/2026» lo comparten decenas de órganos: un importe redondo repetido no basta."""
+    ref = ReferenciaCruzada(expediente="01/2026")
+    tenerife = _placsp(
+        "01/2026",
+        organo_contratacion="Consejo de Administración de Spet, Turismo de Tenerife, S.A.",
+        titulo="Servicio de promoción turística en ferias internacionales",
+        url=None,
+        valor_estimado=300000.0,
+    )
+    otro = _placsp(
+        "placsp:2:01/2026",
+        organo_contratacion="Ayuntamiento de Castrillón",
+        titulo="Suministro de mobiliario urbano",
+        url=None,
+        valor_estimado=120000.0,
+    )
+    fila = _ted(
+        organo_contratacion="Mesa del Senado",
+        titulo="Suministro de licencias de ciberseguridad",
+        valor_estimado=300000.0,
+    )
+
+    assert _elegir(fila, ref, [tenerife, otro]) is None
+
+
 def test_un_id_evl_distinto_no_se_rescata_por_bt22_de_otro_organo() -> None:
     """Cada discrepancia de ``idEvl`` medida era un falso positivo de BT-22."""
     ref = ReferenciaCruzada(expediente="01/2026", id_evl="OTRO/idEvl==")
@@ -583,8 +648,8 @@ def db(tmp_db):
 def _insertar(c: Any, fila: dict[str, Any], *, importe: float | None = 120000.0) -> None:
     c.execute(
         "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, cpv, importe, url, "
-        " fecha_publicacion, fuente, fecha_extraccion) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        " fecha_publicacion, fuente, fecha_extraccion, valor_estimado) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
         (
             fila["id_externo"],
             fila["titulo"],
@@ -595,6 +660,7 @@ def _insertar(c: Any, fila: dict[str, Any], *, importe: float | None = 120000.0)
             fila["fecha_publicacion"],
             fila["fuente"],
             fila["fecha_extraccion"],
+            fila.get("valor_estimado"),
         ),
     )
 
@@ -703,6 +769,24 @@ def test_integration_el_prefiltro_trae_la_agregada_sin_su_codigo_de_entidad(db) 
     detect_duplicados_por_referencia(
         fuente="ted",
         referencias={ted["id_externo"]: ReferenciaCruzada(expediente="0005-CP01-2026-000095")},
+    )
+
+    with connect_read() as c:
+        assert _marca(c, ted["id_externo"]) == (agregada["id_externo"], "confirmed")
+
+
+def test_integration_el_valor_estimado_empareja_la_agregada_en_otro_idioma(db) -> None:
+    """Las candidatas traen ``valor_estimado``: sin él el SQL dejaría la regla muda."""
+    from db.database import connect, connect_read
+    from services.dedupe import detect_duplicados_por_referencia
+
+    agregada, ted = _diputacio(), _ted_diputacio()
+    with connect() as c:
+        _insertar(c, agregada)
+        _insertar(c, ted)
+
+    detect_duplicados_por_referencia(
+        fuente="ted", referencias={ted["id_externo"]: ReferenciaCruzada(expediente="2026/0027291")}
     )
 
     with connect_read() as c:

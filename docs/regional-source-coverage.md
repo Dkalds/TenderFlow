@@ -144,6 +144,15 @@ Desde 2026-10 se suma una cuarta:
   (`scraper.connectors.tacrc.registrar_documentos`). Una resolución sin
   vincular no es documento de nadie y no se emite.
 
+Y desde el 2026-11-09, una quinta:
+
+- **Junta de Andalucía** (`www.juntadeandalucia.es`), a través de las agregadas
+  de PLACSP: su CODICE no trae referencias, pero la ficha pública del Perfil de
+  Contratante que enlaza cada fila lista sus pliegos en el JSON con el que la
+  pinta su web (`scraper.documentos_plataforma.documentos_de_andalucia`). Solo
+  de las convocatorias vigentes: adjudicado, el expediente ya no los enseña.
+  Un aviso TED emparejado con la agregada lee esos pliegos.
+
 **Galicia y Euskadi no emiten referencias, y no por olvido.** Su conector
 descarga solo el RSS, y cada `item` trae título, enlace a la ficha, fecha y una
 descripción en prosa (estado, órgano, tipo, importe, plazos) sin un solo enlace

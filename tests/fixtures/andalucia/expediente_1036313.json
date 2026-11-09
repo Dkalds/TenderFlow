@@ -1,0 +1,56 @@
+{
+  "took": 2,
+  "timed_out": false,
+  "hits": {
+    "total": {"value": 1, "relation": "eq"},
+    "max_score": 1.0,
+    "hits": [
+      {
+        "_index": "sirec_pdc_expedientes_details",
+        "_id": "1036313",
+        "_score": 1.0,
+        "_source": {
+          "idExpediente": 1036313,
+          "numeroExpediente": "EXPT26-00040",
+          "titulo": "IMPLANTACIÓN DEL ERP MICROSOFT DYNAMICS 365 BUSINESS CENTRAL",
+          "estado": {"codigo": "PUB", "nombre": "Publicado"},
+          "documentos": [
+            {
+              "id": 441311,
+              "categoria": "PCAP - Pliego de Cláusulas Administrativas Particulares",
+              "nombre": "PCAP - Pliegos de Cláusulas Administrativas Particulares",
+              "sha256": "2cdad472d2db2b0619f2ad930eb7fb4bff8d043ab1eec9f1e34aa9acf54f6431",
+              "estado": "Activo",
+              "fechaPublicacion": "2026-11-06T10:19:38+0100",
+              "referenciaAnuncio": null,
+              "descarga": "https://www.juntadeandalucia.es/haciendayadministracionpublica/apl/pdc_sirec_documentacion/rest/descargar/documento/441311",
+              "descargaAnuncio": null
+            },
+            {
+              "id": 441224,
+              "categoria": "PPT - Pliego de prescripciones técnicas",
+              "nombre": "PPT - Pliego de prescripciones técnicas",
+              "sha256": "6291fa79282a5710f92ed19e910850cee7ced1d981f487769cfea87376c57793",
+              "estado": "Activo",
+              "fechaPublicacion": "2026-11-06T10:19:38+0100",
+              "referenciaAnuncio": null,
+              "descarga": "https://www.juntadeandalucia.es/haciendayadministracionpublica/apl/pdc_sirec_documentacion/rest/descargar/documento/441224",
+              "descargaAnuncio": null
+            },
+            {
+              "id": 441227,
+              "categoria": "PCAP - Pliego de Cláusulas Administrativas Particulares",
+              "nombre": "DEUC",
+              "sha256": "036c6a6ed068fa1118bdcebf46280d5fd8fccdac3f58ee53ce702245c673c984",
+              "estado": "Activo",
+              "fechaPublicacion": "2026-11-06T10:19:38+0100",
+              "referenciaAnuncio": null,
+              "descarga": "https://www.juntadeandalucia.es/haciendayadministracionpublica/apl/pdc_sirec_documentacion/rest/descargar/documento/441227",
+              "descargaAnuncio": null
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

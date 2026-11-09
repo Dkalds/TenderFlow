@@ -304,6 +304,13 @@ class ConvocatoriaPscp(TypedDict):
     url: str | None
 
 
+class ConvocatoriaAndalucia(TypedDict):
+    """Una fila de :meth:`DocumentosRepository.andalucia_para_documentos`."""
+
+    id_externo: str
+    url: str | None
+
+
 _SQL_DOCUMENTOS_EXISTENTES = (
     "SELECT id, licitacion_id, tipo, uri, filename, source_hash, status, error_detail "
     "FROM documentos WHERE licitacion_id = ANY(%s)"
@@ -939,6 +946,43 @@ class DocumentosRepository:
                 (*desde, max(0, int(dias_refresco)), max(1, min(int(limit), 50_000))),
             )
             return typed_rows(ConvocatoriaPscp, rows_to_dicts(cur))
+
+    def andalucia_para_documentos(
+        self, limit: int = 60, *, dias_refresco: int = 21
+    ) -> list[ConvocatoriaAndalucia]:
+        """Convocatorias vigentes de la Junta de Andalucía, agregadas en PLACSP, cuya ficha toca leer.
+
+        Su CODICE agregado no referencia documentos; la ficha del Perfil de
+        Contratante sí (``scraper.documentos_plataforma.completar_documentos_andalucia``).
+        Las que aún no tienen documentos y, de las que sí, las publicadas en los
+        últimos *dias_refresco* días, que es cuando llegan las rectificaciones.
+        Solo vigentes: adjudicado, el expediente ya no enseña sus pliegos. Sin las
+        que son duplicado ``confirmed`` de otra fila, cuyos pliegos ya lee su
+        canónica. Unas decenas de filas sobre ``idx_lic_fuente``.
+        """
+        with connect_read() as c:
+            cur = c.execute(
+                "SELECT l.id_externo, l.url FROM ("
+                "  SELECT l.id_externo, l.url, l.fecha_pub_d, "
+                "  NOT EXISTS (SELECT 1 FROM documentos d "
+                "      WHERE d.licitacion_id = l.id_externo) AS sin_documentos "
+                "  FROM licitaciones l "
+                "  WHERE l.fuente = 'placsp_agregadas' AND l.estado = 'PUB' "
+                "  AND l.url LIKE %s "
+                f"  AND {_vigente_sql()} "
+                "  AND NOT EXISTS (SELECT 1 FROM licitaciones_duplicados x "
+                "      WHERE x.licitacion_id = l.id_externo AND x.status = 'confirmed')"
+                ") l "
+                "WHERE l.sin_documentos OR l.fecha_pub_d >= current_date - %s::int "
+                "ORDER BY l.sin_documentos DESC, l.fecha_pub_d DESC NULLS LAST, l.id_externo "
+                "LIMIT %s",
+                (
+                    "https://www.juntadeandalucia.es/%",
+                    max(0, int(dias_refresco)),
+                    max(1, min(int(limit), 1000)),
+                ),
+            )
+            return typed_rows(ConvocatoriaAndalucia, rows_to_dicts(cur))
 
     def mark_downloaded(
         self,

@@ -48,6 +48,10 @@ from typing import TYPE_CHECKING, Any
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 
+# Privado a propósito, como `_publicable_sql` abajo: es la definición de
+# «convocatoria vigente» con la que se completan los documentos de TED.
+from db.repositories.documentos import _vigente_sql
+
 # Importa el privado a propósito. `_publicable_sql` es la definición de qué hace
 # publicable a una fila (umbral de sustancia + dedupe ya marcado) y una segunda
 # copia aquí sería justo la divergencia que el docstring de `_sustancia_sql`
@@ -76,9 +80,12 @@ if TYPE_CHECKING:
 #: ``fecha_extraccion``, que el upsert reescribe en cada pasada. Sin traerla, los
 #: gemelos Python de ``services/dedupe.py`` no pueden reproducir lo que hace la
 #: proyección y el detector elegiría otra canónica que la superficie pública.
+#:
+#: ``valor_estimado`` confirma un BT-22 cuando órgano y título vienen en otro
+#: idioma (``services.dedupe._elegir_canonica_por_referencia``).
 _COLUMNAS = (
     "l.id_externo, l.organo_contratacion, l.titulo, l.cpv, l.fuente, "
-    "l.fecha_publicacion, l.primera_extraccion, l.fecha_extraccion"
+    "l.fecha_publicacion, l.primera_extraccion, l.fecha_extraccion, l.valor_estimado"
 )
 
 #: Expediente natural: el ``id_externo`` sin el namespace de fuente (ADR-009).
@@ -347,6 +354,37 @@ def ted_sin_pareja_con_id_evl() -> list[dict[str, Any]]:
                 ("%idevl=%",),
             )
         )
+
+
+def ted_vigentes_sin_pareja(limit: int = 300, *, excluir: Sequence[str] = ()) -> list[str]:
+    """``id_externo`` de las convocatorias TED vigentes sin pareja decidida.
+
+    Las re-empareja cada pasada de TED releyendo sus referencias en la API
+    (``TedConnector.reemparejar_vigentes``): BT-22 y BT-04 no se guardan, y sin
+    esto una convocatoria abierta solo se comparaba durante sus 14 días de
+    ventana. «Vigente» es la misma regla que da el anuncio TED como documento
+    (``_vigente_sql``) y «decidida», la de :func:`ted_sin_pareja_con_id_evl`.
+    75 filas el 2026-11-09, sobre ``idx_lic_fuente``.
+
+    *excluir* son las que la pasada ya evaluó. Se quitan antes del ``LIMIT``:
+    son las más recientes, y quitadas después dejarían fuera a las antiguas.
+    """
+    with connect_read() as c:
+        return [
+            str(fila[0])
+            for fila in c.execute(
+                "SELECT l.id_externo FROM licitaciones l "
+                "WHERE l.fuente = 'ted' AND l.estado IN ('PUB', 'PRE') "
+                f"AND {_vigente_sql()} "
+                "AND NOT (l.id_externo = ANY(%s)) "
+                "AND NOT EXISTS (SELECT 1 FROM licitaciones_duplicados d "
+                "    WHERE d.licitacion_id = l.id_externo "
+                "    AND (d.status = 'confirmed' OR d.resolved_at IS NOT NULL)) "
+                "ORDER BY l.fecha_pub_d DESC NULLS LAST, l.id_externo "
+                "LIMIT %s",
+                (list(excluir), max(1, min(int(limit), 1000))),
+            ).fetchall()
+        ]
 
 
 def urls_ted_con_id_evl() -> list[str]:

@@ -44,9 +44,17 @@ en 20 páginas del feed real (9.349 entradas, 728 admitidas por el filtro) las
 ``contrataciondelestado.es``: ``contractaciopublica.cat`` (544, ya en la
 allowlist por PSCP), ``www.contratacion.euskadi.eus`` (346) y
 ``contratos-publicos.comunidad.madrid`` (167). Con el filtro «solo PLACSP» se
-habrían descartado todas. Los dos últimos hosts siguen fuera de la allowlist y
-se cuentan (``placsp_agregadas_documentos_de_otro_host``): ampliarla es una
-decisión de seguridad del propietario (ver el backlog).
+habrían descartado todas. Los dos últimos hosts entraron en la allowlist el
+2026-11-04, por decisión del propietario; una referencia a un host que siga
+fuera se cuenta (``placsp_agregadas_documentos_de_otro_host``).
+
+Las de la Junta de Andalucía no traen ninguna referencia (383 de 383 el
+2026-11-09). Sus pliegos los lee el paso de documentos del conector
+(:meth:`PlacspAgregadasConnector.completar_documentos`) de la ficha pública que
+enlaza su ``url``, solo mientras la convocatoria está vigente
+(``scraper.documentos_plataforma.completar_documentos_andalucia``). Su host,
+``www.juntadeandalucia.es``, entró en la allowlist el 2026-11-09 con el OK del
+propietario.
 
 **Identidad.** El ``ContractFolderID`` solo es único dentro del órgano: en el
 muestreo 57 los comparten órganos distintos (74 filas que se habrían pisado de
@@ -151,6 +159,17 @@ class PlacspAgregadasConnector(FeedSindicacionPlacsp):
             **self._core.contadores_de_descarte(),
         }
 
+    #: El paso de documentos lee de la BD las convocatorias andaluzas vigentes, no
+    #: el lote ni las marcas del dedupe: va antes del cierre, como el de PSCP.
+    completar_documentos_primero = True
+
+    def completar_documentos(self) -> None:
+        """Pliegos de las convocatorias vigentes de Andalucía, que su CODICE no referencia."""
+        from scraper.documentos_plataforma import completar_documentos_andalucia
+
+        resumen = completar_documentos_andalucia()
+        log.info("placsp_agregadas_documentos_andalucia", **resumen.as_dict())
+
 
 #: ZIP mensual de la misma sindicación, con el nombre del feed y ``_AAAAMM``,
 #: como ``licitacionesPerfilesContratanteCompleto3_AAAAMM.zip`` en la 643.
@@ -208,6 +227,13 @@ class PlacspAgregadasHistorico(PlacspAgregadasConnector):
 
     def new_cursor(self) -> None:
         return None
+
+    def completar_documentos(self) -> None:
+        """Nada: las fichas andaluzas las relee cada pasada del feed, no cada mes del histórico.
+
+        ``ejecutar_historico`` corre un mes por llamada, y heredado el paso
+        pediría las mismas fichas vigentes una vez por mes.
+        """
 
     def contadores_de_descarte(self) -> dict[str, int]:
         return {

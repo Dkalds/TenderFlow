@@ -8,6 +8,9 @@ anuncio TED 675385-2026 que cita. ``fase_formalitzacio.json`` y
 ``fase_anunci.json`` son otros dos (expediente SER_NSP_2026_0002, resuelto,
 2026-11-09): la publicación de su última fase, que es la que guarda
 ``licitaciones.url``, y la del anuncio que enlaza su ``navegacioFases``.
+``fixtures/andalucia/expediente_1036313.json`` es la respuesta real del buscador
+del Perfil de Contratante de la Junta para EXPT26-00040 (SANDETEL, 2026-11-09),
+recortada a lo que se lee.
 
 Los tests unitarios doblan red y BD. Los ``test_integration_*`` del final
 corren contra Postgres.
@@ -276,6 +279,109 @@ def test_un_id_de_publicacion_que_compondria_otra_ruta_no_se_pide(publicacion):
     assert pedidas == [f"{_API_EXPEDIENTE_CERRADO}/300751065"]
 
 
+_FIXTURE_ANDALUCIA = Path(__file__).parent / "fixtures" / "andalucia" / "expediente_1036313.json"
+_FICHA_ANDALUCIA = (
+    "https://www.juntadeandalucia.es/haciendayadministracionpublica/apl/pdc_sirec/"
+    "perfiles-licitaciones/detalle-licitacion.jsf?idExpediente=1036313"
+)
+_DESCARGA_JUNTA = (
+    "https://www.juntadeandalucia.es/haciendayadministracionpublica/apl/"
+    "pdc_sirec_documentacion/rest/descargar/documento/"
+)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        _FICHA_ANDALUCIA,
+        # La ficha nueva, a la que la web redirige la vieja.
+        "https://www.juntadeandalucia.es/haciendayadministracionpublica/apl/pdc-front-publico/"
+        "perfiles-licitaciones/detalle-licitacion?idExpediente=1036313",
+    ],
+)
+def test_id_expediente_de_la_ficha_vieja_y_de_la_nueva(url):
+    assert dp.id_expediente_andalucia(url) == "1036313"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        None,
+        "https://www.juntadeandalucia.es/temas/contratacion-publica.html",
+        "https://www.juntadeandalucia.es/x/detalle-licitacion.jsf?idExpediente=1036313/../1",
+        "https://www.juntadeandalucia.es/x/detalle-licitacion.jsf?idExpediente=1&idExpediente=2",
+        "https://evil.example/x/detalle-licitacion.jsf?idExpediente=1036313",
+    ],
+)
+def test_sin_ficha_de_la_junta_no_hay_expediente(url):
+    assert dp.id_expediente_andalucia(url) is None
+
+
+def test_detalle_andalucia_mapea_las_categorias_y_usa_el_sha256_como_identidad():
+    crudo = json.loads(_FIXTURE_ANDALUCIA.read_text("utf-8"))
+    documentos = dp.parse_detalle_andalucia(crudo)
+
+    assert [(d.tipo, d.uri, d.filename) for d in documentos] == [
+        (
+            "legal",
+            f"{_DESCARGA_JUNTA}441311",
+            "PCAP - Pliegos de Cláusulas Administrativas Particulares",
+        ),
+        ("technical", f"{_DESCARGA_JUNTA}441224", "PPT - Pliego de prescripciones técnicas"),
+        ("legal", f"{_DESCARGA_JUNTA}441227", "DEUC"),
+    ]
+    publicados = crudo["hits"]["hits"][0]["_source"]["documentos"]
+    assert [d.source_hash for d in documentos] == [doc["sha256"] for doc in publicados]
+
+
+def test_detalle_andalucia_solo_trae_pliegos_activos_con_forma_valida():
+    """Ni versiones sustituidas, ni actas ni adjudicación, ni un id o hash que compondría otra ruta."""
+    huella = "a" * 64
+
+    def doc(**campos: Any) -> dict[str, Any]:
+        return {"id": 7, "categoria": "Documento adicional", "nombre": "Anexo I", "sha256": huella,
+                "estado": "Activo", **campos}  # fmt: skip
+
+    datos = {"hits": {"hits": [{"_source": {"documentos": [
+        doc(),
+        doc(id=8, estado="Inactivo"),
+        doc(id=9, categoria="Acta de la mesa de contratación"),
+        doc(id=10, categoria="Resolución de adjudicación"),
+        doc(id="11/../12"),
+        doc(id=13, sha256="no-es-un-hash"),
+        doc(),  # repetido: un solo documento
+    ]}}]}}  # fmt: skip
+
+    assert [(d.tipo, d.uri) for d in dp.parse_detalle_andalucia(datos)] == [
+        ("additional", f"{_DESCARGA_JUNTA}7")
+    ]
+
+
+@pytest.mark.parametrize("datos", [{}, {"hits": {"hits": []}}, {"hits": {"hits": [{}, {}]}}, None])
+def test_detalle_andalucia_sin_un_expediente_no_falla(datos):
+    assert dp.parse_detalle_andalucia(datos) == []
+
+
+def test_documentos_de_andalucia_pide_el_expediente_como_lo_pide_su_web():
+    pedidas: list[tuple[str, Any]] = []
+
+    def obtener(url: str, cuerpo: bytes) -> bytes:
+        pedidas.append((url, json.loads(cuerpo)))
+        return _FIXTURE_ANDALUCIA.read_bytes()
+
+    documentos = dp.documentos_de_andalucia(_FICHA_ANDALUCIA, obtener=obtener)
+
+    assert pedidas == [(dp._API_ANDALUCIA, {"query": {"match": {"_id": "1036313"}}})]
+    assert documentos is not None and len(documentos) == 3
+
+
+def test_documentos_de_andalucia_no_pide_nada_si_la_url_no_es_su_ficha():
+    def obtener(url: str, cuerpo: bytes) -> bytes:
+        raise AssertionError("no debía pedir nada")
+
+    assert dp.documentos_de_andalucia("https://ted.europa.eu/x", obtener=obtener) is None
+
+
 class _RepoFalso:
     def __init__(self, filas: list[dict[str, Any]]) -> None:
         self.filas = filas
@@ -291,6 +397,9 @@ class _RepoFalso:
 
     def ted_vigentes_sin_documentos(self, limit: int = 300) -> list[str]:
         return [f["id_externo"] for f in self.filas][:limit]
+
+    def andalucia_para_documentos(self, limit: int = 60) -> list[dict[str, Any]]:
+        return self.filas[:limit]
 
     def upsert_meta(self, licitacion_id: str, refs: list[DocumentoReferencia]) -> int:
         self.escritos[licitacion_id] = refs
@@ -423,6 +532,62 @@ def test_completar_ted_cuenta_la_fila_que_no_se_pudo_escribir(repo_falso):
     assert resumen.errores == ["ted:2-2026: roto"]
 
 
+def test_completar_andalucia_escribe_los_pliegos_de_cada_vigente(repo_falso):
+    repo = repo_falso(
+        [
+            {"id_externo": "placsp_agregadas:EICE21:EXPT26-00040", "url": _FICHA_ANDALUCIA},
+            {"id_externo": "placsp_agregadas:X:sin-ficha", "url": "https://otra.example/"},
+        ]
+    )
+
+    resumen = dp.completar_documentos_andalucia(
+        pausa_s=0, obtener=lambda url, cuerpo: _FIXTURE_ANDALUCIA.read_bytes()
+    )
+
+    assert len(repo.escritos["placsp_agregadas:EICE21:EXPT26-00040"]) == 3
+    assert set(repo.escritos) == {"placsp_agregadas:EICE21:EXPT26-00040"}
+    assert (resumen.candidatas, resumen.con_documentos, resumen.referencias) == (2, 1, 3)
+
+
+def test_completar_andalucia_corta_tras_cinco_fallos_seguidos(repo_falso):
+    repo_falso([{"id_externo": f"a:{i}", "url": _FICHA_ANDALUCIA} for i in range(20)])
+    pedidas = 0
+
+    def caida(url: str, cuerpo: bytes) -> bytes:
+        nonlocal pedidas
+        pedidas += 1
+        raise ConnectionError("plataforma caída")
+
+    resumen = dp.completar_documentos_andalucia(pausa_s=0, obtener=caida)
+
+    assert (pedidas, resumen.fallidas) == (5, 5)
+
+
+def test_completar_andalucia_no_deja_que_una_peticion_pase_del_presupuesto(repo_falso, monkeypatch):
+    repo_falso([{"id_externo": f"a:{i}", "url": _FICHA_ANDALUCIA} for i in range(2)])
+    instantes = iter([100.0, 100.0, 100.0, 108.0, 108.0])
+    topes: list[float] = []
+
+    def obtener(
+        url: str, *, host: str, timeout_s: float | None = None, cuerpo: Any = None
+    ) -> bytes:
+        assert (host, json.loads(cuerpo)) == (
+            "www.juntadeandalucia.es",
+            {"query": {"match": {"_id": "1036313"}}},
+        )
+        topes.append(float(timeout_s or 0))
+        return _FIXTURE_ANDALUCIA.read_bytes()
+
+    monkeypatch.setattr(dp, "_obtener", obtener)
+
+    resumen = dp.completar_documentos_andalucia(
+        presupuesto_s=10, pausa_s=0, reloj=lambda: next(instantes)
+    )
+
+    assert resumen.candidatas == 2
+    assert topes == [10.0, 2.0]
+
+
 # ── Conectores y runner ──────────────────────────────────────────────────────
 
 
@@ -435,16 +600,110 @@ def test_ted_reempareja_antes_de_dar_anuncios_y_un_fallo_no_salta_el_otro(monkey
         orden.append("reemparejar")
         raise RuntimeError("BD caída")
 
+    def vigentes(self: TedConnector) -> Any:
+        orden.append("vigentes")
+        raise ConnectionError("API de TED caída")
+
     def completar() -> dp.ResumenDocumentos:
         orden.append("anuncios")
         return dp.ResumenDocumentos()
 
     monkeypatch.setattr("services.dedupe.reemparejar_ted_por_id_evl", reemparejar)
+    monkeypatch.setattr(TedConnector, "reemparejar_vigentes", vigentes)
     monkeypatch.setattr("scraper.documentos_plataforma.completar_documentos_ted", completar)
 
     TedConnector().completar_documentos()
 
-    assert orden == ["reemparejar", "anuncios"]
+    assert orden == ["reemparejar", "vigentes", "anuncios"]
+
+
+class _RespuestaTed:
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict[str, Any]:
+        return self._payload
+
+
+class _ApiTedReferencias:
+    """API de TED que contesta ``publication-number IN (…)`` con los avisos que tiene."""
+
+    def __init__(self, avisos: dict[str, dict[str, Any]]) -> None:
+        self.avisos = avisos
+        self.pedidos: list[list[str]] = []
+
+    def post(self, url: str, json: dict[str, Any], timeout: float) -> _RespuestaTed:
+        numeros = json["query"].removeprefix("publication-number IN (").removesuffix(")").split()
+        self.pedidos.append(numeros)
+        return _RespuestaTed({"notices": [self.avisos[n] for n in numeros if n in self.avisos]})
+
+
+def test_ted_reempareja_las_vigentes_releyendo_sus_referencias(monkeypatch):
+    """BT-22 y BT-04 no se guardan: se le piden de nuevo a la API, por lotes."""
+    from scraper.connectors import ted
+
+    monkeypatch.setattr(ted, "_PAGE_SIZE", 2)
+    monkeypatch.setattr(ted, "_PAGE_PAUSE_S", 0)
+    excluidas: list[list[str]] = []
+
+    def vigentes(limit: int, *, excluir: list[str]) -> list[str]:
+        excluidas.append(list(excluir))
+        todas = ["ted:111-2026", "ted:222-2026", "ted:333-2026", "ted:mal", "ted:999-2026"]
+        return [i for i in todas if i not in excluir]
+
+    monkeypatch.setattr("db.repositories.dedupe.ted_vigentes_sin_pareja", vigentes)
+    api = _ApiTedReferencias(
+        {
+            "111-2026": {"publication-number": "111-2026", "internal-identifier-proc": "EJIE-1"},
+            "222-2026": {"publication-number": "222-2026"},
+            "333-2026": {"publication-number": "333-2026", "procedure-identifier": "AB-CD"},
+        }
+    )
+    recibidas: dict[str, ReferenciaCruzada] = {}
+
+    def detectar(*, fuente: str, referencias: dict[str, ReferenciaCruzada]) -> Any:
+        assert fuente == "ted"
+        recibidas.update(referencias)
+        return dp.ResumenDocumentos()
+
+    monkeypatch.setattr("services.dedupe.detect_duplicados_por_referencia", detectar)
+    connector = ted.TedConnector(session=api)
+    # La pasada ya releyó 999: su referencia se evaluó en el cierre del lote.
+    connector._referencias["ted:999-2026"] = ReferenciaCruzada(expediente="X")
+
+    connector.reemparejar_vigentes()
+
+    # Lo ya evaluado se quita en la consulta, antes de su LIMIT, no después.
+    assert excluidas == [["ted:999-2026"]]
+    assert api.pedidos == [["111-2026", "222-2026"], ["333-2026"]]
+    assert recibidas == {
+        "ted:111-2026": ReferenciaCruzada(expediente="EJIE-1"),
+        "ted:333-2026": ReferenciaCruzada(procedimiento="ab-cd"),
+    }
+
+
+def test_ted_reemparejo_no_pasa_de_su_presupuesto(monkeypatch):
+    """Corre dentro del cierre del lote: lo que no pide esta pasada lo pide la siguiente."""
+    from scraper.connectors import ted
+
+    monkeypatch.setattr(ted, "_PAGE_SIZE", 1)
+    monkeypatch.setattr(ted, "_PAGE_PAUSE_S", 0)
+    monkeypatch.setattr(
+        "db.repositories.dedupe.ted_vigentes_sin_pareja",
+        lambda limit, excluir: ["ted:111-2026", "ted:222-2026"],
+    )
+    monkeypatch.setattr(
+        "services.dedupe.detect_duplicados_por_referencia", lambda **kw: dp.ResumenDocumentos()
+    )
+    api = _ApiTedReferencias({})
+    instantes = iter([0.0, 0.0, 61.0])
+
+    ted.TedConnector(session=api).reemparejar_vigentes(reloj=lambda: next(instantes))
+
+    assert api.pedidos == [["111-2026"]]
 
 
 def test_post_ingestion_completa_documentos_tras_el_dedupe_y_es_fail_open(monkeypatch):
@@ -674,14 +933,49 @@ def test_sin_declararlo_el_paso_sigue_detras_de_los_dedupes(runner_con_lote, mon
     assert orden == ["empresas", "dedupe", "documentos"]
 
 
-def test_solo_pscp_pide_el_paso_de_documentos_antes_del_cierre():
+def test_pscp_y_agregadas_piden_el_paso_de_documentos_antes_del_cierre():
     from scraper.connectors.placsp import PlacspAtomConnector, PlacspBulkConnector
+    from scraper.connectors.placsp_agregadas import (
+        URL_SINDICACION_1044,
+        PlacspAgregadasConnector,
+    )
     from scraper.connectors.pscp import PscpConnector
     from scraper.connectors.ted import TedConnector
 
-    assert getattr(PscpConnector(), "completar_documentos_primero", False) is True
+    for primero in (PscpConnector(), PlacspAgregadasConnector(URL_SINDICACION_1044)):
+        assert getattr(primero, "completar_documentos_primero", False) is True
     for otro in (TedConnector(), PlacspAtomConnector(), PlacspBulkConnector(2026, 9)):
         assert not getattr(otro, "completar_documentos_primero", False)
+
+
+def test_el_conector_de_agregadas_lee_los_pliegos_de_andalucia(monkeypatch):
+    from scraper.connectors.placsp_agregadas import (
+        URL_SINDICACION_1044,
+        PlacspAgregadasConnector,
+    )
+
+    llamadas: list[str] = []
+
+    def completar() -> dp.ResumenDocumentos:
+        llamadas.append("andalucia")
+        return dp.ResumenDocumentos()
+
+    monkeypatch.setattr("scraper.documentos_plataforma.completar_documentos_andalucia", completar)
+
+    PlacspAgregadasConnector(URL_SINDICACION_1044).completar_documentos()
+
+    assert llamadas == ["andalucia"]
+
+
+def test_el_historico_de_agregadas_no_relee_las_fichas_en_cada_mes(monkeypatch):
+    from scraper.connectors.placsp_agregadas import PlacspAgregadasHistorico
+
+    def completar() -> dp.ResumenDocumentos:
+        raise AssertionError("el histórico no debe pedir fichas")
+
+    monkeypatch.setattr("scraper.documentos_plataforma.completar_documentos_andalucia", completar)
+
+    PlacspAgregadasHistorico(2026, 9, ya_existe=lambda _id: False).completar_documentos()
 
 
 def test_el_conector_pscp_acota_el_paso_con_su_presupuesto(monkeypatch):
@@ -762,6 +1056,9 @@ def test_la_ficha_del_anuncio_solo_tiene_lo_que_dejo_la_primera(repo_falso, monk
     [
         ("ted.europa.eu", "ted"),
         ("contractaciopublica.cat", "pscp"),
+        ("www.juntadeandalucia.es", "andalucia"),
+        ("www.contratacion.euskadi.eus", "euskadi"),
+        ("contratos-publicos.comunidad.madrid", "madrid"),
         ("contrataciondelestado.es", "placsp"),
         ("www.contrataciondelestado.es", "placsp"),
         ("eviltd.europa.eu.example", "placsp"),
@@ -872,6 +1169,70 @@ def test_integration_ted_vigentes_sin_documentos(db) -> None:
         _insertar(c, "ted:7-2026", estado="PRE", fecha_limite=None, fecha_publicacion=_dia(-200))
 
     assert set(DocumentosRepository().ted_vigentes_sin_documentos()) == {"ted:1-2026", "ted:6-2026"}
+
+
+def test_integration_ted_vigentes_sin_pareja(db) -> None:
+    """Lo que re-empareja cada pasada: vigentes sin pareja decidida, tengan o no el anuncio."""
+    from db.database import connect
+    from db.repositories import dedupe as dedupe_repo
+
+    def marcar(c: Any, ted: str, status: str, *, resuelta: bool = False) -> None:
+        c.execute(
+            "INSERT INTO licitaciones_duplicados (licitacion_id, canonical_id, clave_match, "
+            " confianza, status, resolved_at) VALUES (%s, 'EXP-CANON', 'x', 1.0, %s, %s)",
+            (ted, status, _dia(0) if resuelta else None),
+        )
+
+    with connect() as c:
+        _insertar(c, "EXP-CANON")
+        _insertar(c, "ted:1-2026")  # vigente sin pareja: entra
+        _insertar(c, "ted:2-2026")
+        _documento(c, "ted:2-2026")  # con el anuncio puesto: entra igual
+        _insertar(c, "ted:3-2026")
+        marcar(c, "ted:3-2026", "confirmed")
+        _insertar(c, "ted:4-2026")
+        marcar(c, "ted:4-2026", "pending")  # sin decidir: entra
+        _insertar(c, "ted:5-2026")
+        marcar(c, "ted:5-2026", "rejected", resuelta=True)  # alguien dijo que no
+        _insertar(c, "ted:6-2026", fecha_limite=_dia(-1))
+        _insertar(c, "ted:7-2026", estado="RES")
+
+    assert set(dedupe_repo.ted_vigentes_sin_pareja()) == {"ted:1-2026", "ted:2-2026", "ted:4-2026"}
+    # Lo que la pasada ya evaluó se quita antes del LIMIT: si no, se comería el hueco.
+    assert dedupe_repo.ted_vigentes_sin_pareja(limit=1, excluir=["ted:1-2026"]) == ["ted:2-2026"]
+
+
+def test_integration_andalucia_para_documentos(db) -> None:
+    from db.database import connect
+    from db.repositories.documentos import DocumentosRepository
+
+    with connect() as c:
+        _insertar(c, "placsp_agregadas:EICE21:SIN-DOCS", url=_FICHA_ANDALUCIA)
+        _insertar(c, "placsp_agregadas:EICE21:RECIENTE", url=_FICHA_ANDALUCIA)
+        _documento(c, "placsp_agregadas:EICE21:RECIENTE")
+        _insertar(
+            c, "placsp_agregadas:EICE21:LEIDA", url=_FICHA_ANDALUCIA, fecha_publicacion=_dia(-40)
+        )
+        _documento(c, "placsp_agregadas:EICE21:LEIDA")
+        _insertar(c, "placsp_agregadas:EICE21:ADJ", url=_FICHA_ANDALUCIA, estado="ADJ")
+        _insertar(c, "placsp_agregadas:EICE21:VENCIDA", url=_FICHA_ANDALUCIA, fecha_limite=_dia(-1))
+        _insertar(
+            c, "placsp_agregadas:X:MADRID", url="https://contratos-publicos.comunidad.madrid/x"
+        )
+        _insertar(c, "placsp:1:EXP", url=_FICHA_ANDALUCIA)
+        _insertar(c, "placsp_agregadas:EICE21:DUPLICADA", url=_FICHA_ANDALUCIA)
+        c.execute(
+            "INSERT INTO licitaciones_duplicados (licitacion_id, canonical_id, clave_match, "
+            " confianza, status) VALUES ('placsp_agregadas:EICE21:DUPLICADA', 'placsp:1:EXP', "
+            " 'x', 1.0, 'confirmed')"
+        )
+
+    filas = DocumentosRepository().andalucia_para_documentos()
+
+    assert [f["id_externo"] for f in filas] == [
+        "placsp_agregadas:EICE21:SIN-DOCS",
+        "placsp_agregadas:EICE21:RECIENTE",
+    ]
 
 
 def test_integration_completar_ted_pone_el_anuncio_una_sola_vez(db) -> None:

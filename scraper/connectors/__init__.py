@@ -102,8 +102,9 @@ class RegisteredSource:
     #: enlazara. Vacío significa «esta fuente no emite referencias a
     #: documentos». Desde el 2026-10-02 las emiten PLACSP, TED (el PDF de su
     #: anuncio, ``scraper.documentos_plataforma``) y PSCP (los pliegos de la
-    #: ficha de cada publicación), y desde 2026-10 TACRC (el PDF de la
-    #: resolución vinculada). Galicia y Euskadi no: su RSS no enlaza ningún
+    #: ficha de cada publicación), desde 2026-10 TACRC (el PDF de la
+    #: resolución vinculada) y desde el 2026-11-09 las agregadas de la Junta de
+    #: Andalucía (los pliegos de su ficha). Galicia y Euskadi no: su RSS no enlaza ningún
     #: documento (ver ``docs/regional-source-coverage.md``). Cuando un
     #: conector empiece a emitir ``DocumentoReferencia``, su dominio se declara
     #: aquí y el test de paridad exige que la allowlist por defecto lo incluya.
@@ -308,13 +309,16 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
         estado="opcional",
         # Los pliegos de las agregadas apuntan a hosts autonómicos, no a PLACSP
         # (medido 2026-10-24): 544 de 1.057 al catalán, 346 al vasco y 167 al de
-        # Madrid. Los dos últimos entran en la allowlist el 2026-11-04.
+        # Madrid. Los dos últimos entran en la allowlist el 2026-11-04. Los de la
+        # Junta de Andalucía no vienen en el feed: los lee el paso de documentos
+        # de su ficha (2026-11-09).
         dominios_documentos=(
             "contrataciondelestado.es",
             "*.contrataciondelestado.es",
             "contractaciopublica.cat",
             "www.contratacion.euskadi.eus",
             "contratos-publicos.comunidad.madrid",
+            "www.juntadeandalucia.es",
         ),
         max_antiguedad_dato_hours=_DATO_PLACSP,
     ),
