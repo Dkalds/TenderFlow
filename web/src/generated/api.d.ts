@@ -16738,12 +16738,30 @@ export interface components {
             serie_truncada: boolean;
             /** Series */
             series?: components["schemas"]["TrendPoint"][];
+            /**
+             * Variacion Importe
+             * @description % de importe de los últimos 365 días frente a los 365 anteriores.
+             */
+            variacion_importe?: number | null;
+            /**
+             * Variacion Licitaciones
+             * @description % de licitaciones de los últimos 365 días frente a los 365 anteriores.
+             */
+            variacion_licitaciones?: number | null;
             /** Waterfall */
             waterfall?: components["schemas"]["WaterfallPoint"][];
-            /** Yoy Count */
-            yoy_count?: number | null;
-            /** Yoy Importe */
-            yoy_importe?: number | null;
+            /**
+             * Yoy Count
+             * @description Obsoleto: da 0.0 también cuando no hay con qué comparar. Usá `variacion_licitaciones`.
+             * @default 0
+             */
+            yoy_count: number;
+            /**
+             * Yoy Importe
+             * @description Obsoleto: da 0.0 también cuando no hay con qué comparar. Usá `variacion_importe`.
+             * @default 0
+             */
+            yoy_importe: number;
         };
         /**
          * TrimestreCount

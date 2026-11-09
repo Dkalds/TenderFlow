@@ -112,8 +112,8 @@ export function useTendenciasView() {
   // La variación interanual la calcula el backend (365 días contra los 365
   // anteriores) y la deja en `null` cuando el año previo está incompleto. La
   // de aquí comparaba doce puntos contra una ventana más corta (ADR-014).
-  const yoyCount = trends?.yoy_count ?? null;
-  const yoyImporte = trends?.yoy_importe ?? null;
+  const yoyCount = trends?.variacion_licitaciones ?? null;
+  const yoyImporte = trends?.variacion_importe ?? null;
 
   const cumulativeData = useMemo<CumulativePoint[]>(() => {
     const result: CumulativePoint[] = [];

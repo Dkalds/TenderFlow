@@ -128,10 +128,25 @@ class TrendsResult(BaseModel):
 
     series: list[TrendPoint] = Field(default_factory=list)
     heatmap: list[HeatmapCell] = Field(default_factory=list)
+    yoy_count: float = Field(
+        default=0.0,
+        description="Obsoleto: da 0.0 también cuando no hay con qué comparar. Usá `variacion_licitaciones`.",
+    )
+    yoy_importe: float = Field(
+        default=0.0,
+        description="Obsoleto: da 0.0 también cuando no hay con qué comparar. Usá `variacion_importe`.",
+    )
     # `None` cuando no hay un año previo completo con el que comparar (sin
     # datos en él, o un «Fecha desde» que lo corta): `0.0` se leía «+0 %».
-    yoy_count: float | None = None
-    yoy_importe: float | None = None
+    # Campos nuevos en vez de anular `yoy_*`: cambiarles el tipo rompe el contrato.
+    variacion_licitaciones: float | None = Field(
+        default=None,
+        description="% de licitaciones de los últimos 365 días frente a los 365 anteriores.",
+    )
+    variacion_importe: float | None = Field(
+        default=None,
+        description="% de importe de los últimos 365 días frente a los 365 anteriores.",
+    )
     waterfall: list[WaterfallPoint] = Field(default_factory=list)
     histogram_bins: list[HistogramBin] = Field(default_factory=list)
     mes_pico: MesPico | None = None
@@ -297,8 +312,10 @@ def get_trends(filters: TrendsFilters) -> TrendsResult:
     result = TrendsResult(
         series=series,
         heatmap=heatmap,
-        yoy_count=yoy_count,
-        yoy_importe=yoy_importe,
+        yoy_count=yoy_count or 0.0,
+        yoy_importe=yoy_importe or 0.0,
+        variacion_licitaciones=yoy_count,
+        variacion_importe=yoy_importe,
         waterfall=_build_waterfall(series),
         histogram_bins=[
             HistogramBin(bin_label=label, count=count)
