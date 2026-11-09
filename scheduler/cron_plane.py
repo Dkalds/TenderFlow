@@ -46,6 +46,16 @@ que puedan estar dos activos. La exclusión se sostiene en dos sitios:
   ninguno toma ese lock — por eso el cutover apaga los workflows antes de
   encender este plano, y no los deja convivir (ver el runbook).
 
+Dos formas de alojarlo
+----------------------
+* **Un hilo** del proceso ``APP_PROFILE=worker``: lo que describe este
+  docstring, incluida la sección «Hilos y no procesos».
+* **Un proceso hijo de la API** (``python -m scheduler.cron_plane``, lanzado
+  por ``scheduler/cron_proceso.py``): la enmienda del 2026-11-09 de ADR-033.
+  Es el que corre en producción, donde no hay worker. Allí el argumento de
+  memoria contra un segundo proceso no aplica (2 GB, medido al 13 %), y el
+  hilo no sirve porque heredaría el techo de sentencia de la API.
+
 Qué jobs asume, y por qué esos
 ------------------------------
 Los declarados ``plane="actions"`` —los que hoy ejecuta un workflow
@@ -81,13 +91,16 @@ los jobs ligeros del loop de Docker y los handlers de la cola a demanda
 from __future__ import annotations
 
 import os
+import signal
 import socket
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
+from types import FrameType
 from typing import Any
 
-from observability.logging import get_logger
+from observability.logging import configure_logging, get_logger
+from scheduler.cron_proceso import PLANO
 from scheduler.jobs import ScheduledJob, build_default_registry
 from scheduler.loop import (
     _active_jobs,
@@ -99,9 +112,6 @@ from scheduler.loop import (
 )
 
 log = get_logger(__name__)
-
-#: Valor de ``SCHEDULER_PLANE`` que activa este plano.
-PLANO = "worker"
 
 #: Planos del registry que este plano asume. Ver el docstring del módulo.
 PLANOS_ASUMIDOS: frozenset[str] = frozenset({"actions"})
@@ -308,3 +318,49 @@ def arrancar_en_hilo() -> CronPlane | None:
     hilo = threading.Thread(target=plano.run_forever, name="tenderflow-cron", daemon=True)
     hilo.start()
     return plano
+
+
+def main() -> int:
+    """Entry point de ``python -m scheduler.cron_plane``: el hijo de la API.
+
+    Lo lanza ``scheduler/cron_proceso.py`` con ``APP_PROFILE=scraper``. El plano
+    corre en el hilo principal.
+
+    SIGTERM (un despliegue de la API) **no espera al job en curso**: el hilo
+    principal está dentro de ``_run_job`` y una pasada dura hasta 140 min. El
+    manejador suelta los locks ``cron:<job>`` de este proceso y sale, para
+    que el hijo de la instancia nueva repita la pasada en vez de encontrarla
+    bloqueada hasta el TTL. Cortar a mitad es seguro: el upsert es
+    idempotente y cada fuente retoma por su cursor.
+    """
+    # Otro intérprete: no hereda el logging que `api/app.py` configura al
+    # importarse. Sin esto no hay redacción de secretos ni filtro de nivel.
+    configure_logging(json_logs=os.environ.get("LOG_FORMAT") == "json")
+
+    if not plano_activo():
+        log.info("cron_plane_inactivo", scheduler_plane=plano_declarado() or "(sin definir)")
+        return 0
+
+    plano = CronPlane()
+
+    def _parar(_sig: int, _frame: FrameType | None) -> None:
+        log.info("cron_plane_sigterm_recibido")
+        try:
+            from db.job_locks import release_many
+
+            release_many([f"{PREFIJO_LOCK}{j.name}" for j in plano.jobs], holder=_holder())
+        except Exception as exc:
+            # El TTL los suelta igualmente.
+            log.warning("cron_plane_locks_no_liberados", error=str(exc))
+        # `_exit` y no `sys.exit`: el `finally` de `_con_lock` vería el hilo
+        # del job vivo y renovaría el lock que se acaba de soltar.
+        os._exit(0)
+
+    signal.signal(signal.SIGTERM, _parar)
+    signal.signal(signal.SIGINT, _parar)
+    plano.run_forever()
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - entry point
+    raise SystemExit(main())

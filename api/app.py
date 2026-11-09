@@ -105,6 +105,7 @@ from observability.logging import get_logger
 
 if TYPE_CHECKING:  # solo para anotar; los módulos se importan en el lifespan
     from scheduler.cron_plane import CronPlane
+    from scheduler.cron_proceso import CronProceso
     from scheduler.worker import Worker
 
 log = get_logger(__name__)
@@ -200,7 +201,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # pidió. El import va aquí dentro para que la API normal no cargue
     # `scheduler/worker.py` —ni sus handlers— por arrancar.
     worker: Worker | None = None
-    cron: CronPlane | None = None
+    cron: CronPlane | CronProceso | None = None
     if settings.APP_PROFILE == "worker":
         from scheduler.worker import arrancar_en_hilo
 
@@ -220,7 +221,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         # programados: `claim` filtra por `TIPOS_A_DEMANDA`). Desde que
         # `tenderflow-worker` se retiró (2026-10-19) es el único consumidor en
         # producción: sin esto la ficha del pliego se encolaría y no la
-        # ejecutaría nadie. Solo la cola, nunca el plano de cron.
+        # ejecutaría nadie.
         from config.settings import jobs_consumidor_en_api
 
         if jobs_consumidor_en_api(settings.ENV):
@@ -228,6 +229,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
             worker = arrancar_en_hilo()
             log.info("api_consumidor_cola_arrancado")
+
+        # Plano de cron (ADR-033, enmienda 2026-11-09): con
+        # `SCHEDULER_PLANE=worker` la API lanza la ingesta y el scoring en un
+        # proceso hijo, nunca en este: el hijo lleva el techo de sentencia de
+        # batch y las dependencias del pipeline que este proceso no importa.
+        from scheduler.cron_proceso import arrancar_en_proceso
+
+        cron = arrancar_en_proceso()
 
     yield
 
