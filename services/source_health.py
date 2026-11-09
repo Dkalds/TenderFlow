@@ -88,8 +88,14 @@ def get_source_freshness(*, degraded_after_hours: float = 36.0) -> SourceFreshne
         is_backfill = _LOTE_HISTORICO_RE.search(source) is not None
         registrada = REGISTERED_SOURCES_BY_ID.get(source)
         umbral = float(registrada.max_lag_hours) if registrada else degraded_after_hours
+        errors = int(row.get("errors") or 0)
+        # Mismo criterio que `SourceHealthRepository.mark_completed`: un parcial
+        # que ingirió está al día; sus errores se avisan abajo, no lo degradan.
+        parcial_con_ingesta = status == "partial" and int(row.get("parsed") or 0) > 0
         is_degraded = not is_backfill and (
-            status != "success" or lag_hours is None or lag_hours > umbral
+            (status != "success" and not parcial_con_ingesta)
+            or lag_hours is None
+            or lag_hours > umbral
         )
         warning: str | None = None
         if status == "running" and row.get("last_started_at"):
@@ -106,6 +112,10 @@ def get_source_freshness(*, degraded_after_hours: float = 36.0) -> SourceFreshne
         elif detected_pct is not None and detected_pct < 90:
             warning = "Menos del 90% de la muestra se detectó en menos de 24 horas."
             is_degraded = True
+        elif parcial_con_ingesta:
+            warning = (
+                f"La última pasada terminó con {errors} aviso{'s' if errors != 1 else ''} sin leer."
+            )
         sources.append(
             SourceFreshness(
                 source=source,
@@ -119,7 +129,7 @@ def get_source_freshness(*, degraded_after_hours: float = 36.0) -> SourceFreshne
                 fetched=int(row.get("fetched") or 0),
                 parsed=int(row.get("parsed") or 0),
                 discarded=int(row.get("discarded") or 0),
-                errors=int(row.get("errors") or 0),
+                errors=errors,
                 is_degraded=is_degraded,
                 is_backfill=is_backfill,
                 warning=warning,

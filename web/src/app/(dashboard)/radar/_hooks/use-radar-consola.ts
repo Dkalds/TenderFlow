@@ -17,13 +17,14 @@ import {
   useDismissRadarTender,
   useRadar,
   useRadarDismissals,
-  useRadarDismissedTenders,
+  useRadarFollowedTenders,
   useRestoreRadarTender,
 } from "@/hooks/use-radar";
 import { daysLeft } from "../_components/radar-shared";
 import type { SegmentKey, SortKey } from "./radar-segmentos";
 import { useExplicacionesAbiertas } from "./use-explicaciones-abiertas";
 import { type RadarProximasConsola, useRadarProximas } from "./use-radar-proximas";
+import { type ConfirmacionRestaurar, useRadarDescartadas } from "./use-radar-descartadas";
 
 /**
  * Estado y acciones de la consola del Radar, fuera del árbol de render.
@@ -71,7 +72,9 @@ export interface RadarConsola {
   opening: boolean;
   dismiss: (tender: RadarTender) => void;
   aplazar: (tender: RadarTender, accion: AccionAplazar, dias: number) => void;
+  /** Abre la confirmación de `confirmarRestaurar`; no escribe nada. */
   restoreAll: () => void;
+  confirmarRestaurar: ConfirmacionRestaurar;
   toggleFollow: (tender: RadarTender) => void;
   /** Aviso con deshacer tras alternar desde `SeguirBoton`. */
   avisarSeguimiento: (tender: RadarTender, ahoraSigue: boolean) => void;
@@ -118,10 +121,13 @@ export function useRadarConsola(): RadarConsola {
 
   const all = React.useMemo(() => data?.items ?? [], [data]);
 
-  // El ranking llega ya sin las descartadas (`exclude_dismissed`), así que su
-  // segmento se hidrata aparte y su contador es el total real, no la
-  // intersección con un top-24 del que ya salieron.
-  const descartadas = useRadarDismissedTenders(dismissedIds, segment === "descartadas");
+  const restore = React.useCallback((id: string) => restoreTender.mutate(id), [restoreTender]);
+  // El ranking es un top-24 sin descartadas en el que una seguida puede no
+  // entrar: los dos segmentos se hidratan por id y cuentan el total real (con 9
+  // seguidas y 6 fuera del corte, «Siguiendo» decía 3).
+  const descartadas = useRadarDescartadas(dismissedIds, segment === "descartadas", restore);
+  const idsSeguidos = React.useMemo(() => [...followedIds].sort(), [followedIds]);
+  const seguidas = useRadarFollowedTenders(idsSeguidos, segment === "siguiendo");
 
   // «Próximas» sale de su propio endpoint (`/radar/proximas`): son estados sin
   // score ni plazo, así que no comparten ni el tipo ni el ranking con el resto
@@ -129,7 +135,7 @@ export function useRadarConsola(): RadarConsola {
   // longitud de la página recibida.
   const proximas = useRadarProximas();
   // F1.6 — las etiquetas de un expediente son las de su favorito (`id_externo`).
-  const idsVisibles = [...all, ...descartadas.items].map((t) => t.id_externo);
+  const idsVisibles = [...all, ...descartadas.items, ...seguidas.items].map((t) => t.id_externo);
   const etiqueta = useFiltroEtiqueta("favorito", idsVisibles);
   const pasaEtiqueta = etiqueta.pasa;
 
@@ -138,11 +144,11 @@ export function useRadarConsola(): RadarConsola {
       bandeja: all.filter((t) => !dismissed.has(t.id_externo) && !followedIds.has(t.id_externo))
         .length,
       proximas: proximas.total,
-      siguiendo: all.filter((t) => followedIds.has(t.id_externo)).length,
-      descartadas: dismissedIds.length,
+      siguiendo: followedIds.size,
+      descartadas: descartadas.vigentes.length,
       todas: all.length,
     }),
-    [all, dismissed, dismissedIds, followedIds, proximas.total],
+    [all, dismissed, descartadas.vigentes, followedIds, proximas.total],
   );
 
   const rows = React.useMemo(() => {
@@ -152,7 +158,8 @@ export function useRadarConsola(): RadarConsola {
     if (segment === "proximas") return [];
     // El backend ya excluyó las descartadas; el filtro cliente cubre la ventana
     // entre la mutación optimista y el refetch del ranking.
-    const base = segment === "descartadas" ? descartadas.items : all;
+    const base =
+      segment === "descartadas" ? descartadas.items : segment === "siguiendo" ? seguidas.items : all;
     const filtered = base.filter((tender) => {
       if (!pasaEtiqueta(tender.id_externo)) return false;
       if (segment === "bandeja")
@@ -167,7 +174,7 @@ export function useRadarConsola(): RadarConsola {
         return (daysLeft(a.fecha_limite) ?? 9999) - (daysLeft(b.fecha_limite) ?? 9999);
       return (b.importe ?? 0) - (a.importe ?? 0);
     });
-  }, [all, descartadas.items, segment, sort, dismissed, followedIds, pasaEtiqueta]);
+  }, [all, descartadas.items, seguidas.items, segment, sort, dismissed, followedIds, pasaEtiqueta]);
 
   const activeIndex = Math.min(selected, Math.max(0, rows.length - 1));
   const active: RadarTender | undefined = rows[activeIndex];
@@ -176,18 +183,6 @@ export function useRadarConsola(): RadarConsola {
     setSegmentState(next);
     setSelected(0);
   }, []);
-
-  const restore = React.useCallback(
-    (id: string) => {
-      restoreTender.mutate(id);
-    },
-    [restoreTender],
-  );
-
-  const restoreAll = React.useCallback(
-    () => dismissed.forEach((id) => restore(id)),
-    [dismissed, restore],
-  );
 
   const { marcar: marcarExplicacion, abierta: explicacionAbierta } = useExplicacionesAbiertas();
 
@@ -275,7 +270,11 @@ export function useRadarConsola(): RadarConsola {
     counts,
     proximas,
     signals: data?.signals,
-    isLoading,
+    // Los segmentos por id cargan aparte: sin esto pintaban «vacío» al llegar.
+    isLoading:
+      isLoading ||
+      (segment === "siguiendo" && seguidas.isLoading) ||
+      (segment === "descartadas" && descartadas.isLoading),
     error,
     refetch,
     segment,
@@ -284,13 +283,14 @@ export function useRadarConsola(): RadarConsola {
     setSort,
     selected,
     setSelected,
-    dismissedCount: dismissed.size,
+    dismissedCount: descartadas.vigentes.length,
     followedIds,
     lastVisit,
     opening: createPursuit.isPending,
     dismiss,
     aplazar,
-    restoreAll,
+    restoreAll: descartadas.pedir,
+    confirmarRestaurar: descartadas.confirmacion,
     toggleFollow,
     avisarSeguimiento,
     openPursuit,

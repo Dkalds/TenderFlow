@@ -34,6 +34,8 @@ const estado = vi.hoisted(() => ({
   items: [] as RadarTender[],
   descartadas: [] as string[],
   seguidas: [] as string[],
+  // Seguidas que no entran en el top-24 del ranking: sólo llegan por `ids=`.
+  fueraDelRanking: [] as RadarTender[],
   proximasTotal: 3 as number | null,
   tecnologiaPedida: undefined as string | null | undefined,
   descartadasPedidas: undefined as { ids: string[]; enabled: boolean } | undefined,
@@ -55,6 +57,13 @@ vi.mock("@/hooks/use-radar", () => ({
       truncadas: 0,
     };
   },
+  useRadarFollowedTenders: (ids: string[], enabled: boolean) => ({
+    items: enabled
+      ? [...estado.items, ...estado.fueraDelRanking].filter((t) => ids.includes(t.id_externo))
+      : [],
+    isLoading: false,
+    truncadas: 0,
+  }),
   useDismissRadarTender: () => ({ mutate: dismissMutate }),
   useRestoreRadarTender: () => ({ mutate: restoreMutate }),
   esBandaConocida: (valor: unknown) => valor === "Caliente" || valor === "Tibia",
@@ -149,6 +158,7 @@ beforeEach(() => {
   ];
   estado.descartadas = ["D"];
   estado.seguidas = ["C"];
+  estado.fueraDelRanking = [];
   estado.proximasTotal = 3;
   localStorage.clear();
 });
@@ -275,12 +285,69 @@ describe("useRadarConsola", () => {
     delete etiquetasPorObjeto.B;
   });
 
-  it("restaurar todo restaura cada descartada", () => {
-    estado.descartadas = ["D", "A"];
+  it("«Siguiendo» cuenta y pinta las seguidas aunque no entren en el top-24", () => {
+    estado.seguidas = ["C", "X", "Y"];
+    estado.fueraDelRanking = [tender("X", { score: 40 }), tender("Y", { score: 95 })];
     const { result } = montar();
-    act(() => result.current.restoreAll());
-    expect(restoreMutate.mock.calls.map((c) => c[0])).toEqual(["D", "A"]);
-    expect(result.current.dismissedCount).toBe(2);
+    expect(result.current.counts.siguiendo).toBe(3);
+
+    act(() => result.current.setSegment("siguiendo"));
+    expect(result.current.rows.map((r) => r.id_externo)).toEqual(["Y", "C", "X"]);
+  });
+
+  describe("restaurar todas las descartadas", () => {
+    /** Opciones del aviso que sale al confirmar (`toast(titulo, opciones)`). */
+    function aviso() {
+      const opciones = toastCall.mock.calls.at(-1)?.[1] as {
+        action: { onClick: () => void };
+        onAutoClose: () => void;
+        onDismiss: () => void;
+      };
+      return opciones;
+    }
+
+    it("el botón pide confirmación con el recuento y no escribe", () => {
+      estado.descartadas = ["D", "A"];
+      const { result } = montar();
+      act(() => result.current.restoreAll());
+      expect(result.current.confirmarRestaurar).toMatchObject({ abierto: true, total: 2 });
+      expect(restoreMutate).not.toHaveBeenCalled();
+
+      act(() => result.current.confirmarRestaurar.cancelar());
+      expect(result.current.confirmarRestaurar.abierto).toBe(false);
+      expect(restoreMutate).not.toHaveBeenCalled();
+    });
+
+    it("al confirmar salen del segmento y se escriben cuando el aviso se cierra", () => {
+      estado.descartadas = ["D", "A"];
+      const { result } = montar();
+      act(() => result.current.restoreAll());
+      act(() => result.current.confirmarRestaurar.confirmar());
+
+      expect(restoreMutate).not.toHaveBeenCalled();
+      expect(result.current.dismissedCount).toBe(0);
+      expect(result.current.counts.descartadas).toBe(0);
+      expect(toastCall.mock.calls.at(-1)?.[0]).toBe("2 descartadas vuelven a la bandeja");
+
+      act(() => aviso().onAutoClose());
+      expect(restoreMutate.mock.calls.map((c) => c[0])).toEqual(["D", "A"]);
+      // Cerrar el aviso a mano después no vuelve a escribir.
+      act(() => aviso().onDismiss());
+      expect(restoreMutate).toHaveBeenCalledTimes(2);
+    });
+
+    it("«Deshacer» las devuelve sin escribir nada", () => {
+      estado.descartadas = ["D", "A"];
+      const { result } = montar();
+      act(() => result.current.restoreAll());
+      act(() => result.current.confirmarRestaurar.confirmar());
+
+      act(() => aviso().action.onClick());
+      // sonner cierra el aviso tras la acción: ese cierre tampoco escribe.
+      act(() => aviso().onDismiss());
+      expect(restoreMutate).not.toHaveBeenCalled();
+      expect(result.current.dismissedCount).toBe(2);
+    });
   });
 
   it("seguir y dejar de seguir alternan según el estado real de la watchlist", () => {

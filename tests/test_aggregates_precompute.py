@@ -1,186 +1,15 @@
-"""Tests para scheduler/aggregates_precompute.py.
+"""Tests para scheduler/aggregates_precompute.py y su paso de pipeline.
 
 Cubre:
-- _compute_clusters: comportamiento con datos y fallback sin sklearn.
-- reemplazar_clusters (db/repositories/mat_clusters.py): replace atómico en mat_clusters.
-- run_aggregates_precompute: end-to-end con BD temporal.
+- run_aggregates_precompute: refresco de canónicas y tasas, cada uno en su try.
+- _run_aggregates_precompute: un resultado que no es ``ok`` pone el paso en rojo.
 """
 
 from __future__ import annotations
 
-import sys
-from typing import Any
 from unittest.mock import patch
 
 import pytest
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _insert_licitaciones(db_mod: Any, rows: list[tuple[str, str, str]]) -> None:
-    """Inserta rows de (id_externo, titulo, descripcion)."""
-    with db_mod.connect() as conn:
-        for id_ext, titulo, desc in rows:
-            conn.execute(
-                "INSERT INTO licitaciones (id_externo, titulo, descripcion, fecha_extraccion) "
-                "VALUES (%s, %s, %s, %s)",
-                (id_ext, titulo, desc, "2026-01-01"),
-            )
-
-
-# ---------------------------------------------------------------------------
-# _compute_clusters
-# ---------------------------------------------------------------------------
-
-
-def test_compute_clusters_empty_db(tmp_db):
-    """Con BD vacía devuelve lista vacía."""
-    _db_mod, _ = tmp_db
-    from db.repositories.mat_clusters import filas_para_clustering
-    from scheduler.aggregates_precompute import _compute_clusters
-
-    result = _compute_clusters(filas_para_clustering())
-
-    assert result == []
-
-
-def test_compute_clusters_with_data(tmp_db):
-    """Devuelve una asignación por cada licitación cuando sklearn está disponible."""
-    pytest.importorskip("sklearn")
-    db_mod, _ = tmp_db
-    _insert_licitaciones(
-        db_mod,
-        [
-            (f"L{i:03d}", f"SAP ERP módulo {i}", f"Implantación de SAP en org {i}")
-            for i in range(12)
-        ],
-    )
-
-    from db.repositories.mat_clusters import filas_para_clustering
-    from scheduler.aggregates_precompute import _compute_clusters
-
-    result = _compute_clusters(filas_para_clustering())
-
-    assert len(result) == 12
-    for r in result:
-        for key in ("id_externo", "cluster_id", "cluster_label", "updated_at"):
-            assert key in r
-
-
-def test_compute_clusters_returns_empty_on_sklearn_missing(tmp_db):
-    """Si sklearn no está instalado, devuelve lista vacía sin propagar excepción."""
-    db_mod, _ = tmp_db
-    _insert_licitaciones(db_mod, [("L001", "SAP ERP", "Desc 1"), ("L002", "SAP BW", "Desc 2")])
-
-    import scheduler.aggregates_precompute as ap_mod
-
-    # Patch the sklearn import at the point of use by making it raise ImportError
-    with (
-        patch.dict(
-            sys.modules,
-            {
-                "sklearn": None,
-                "sklearn.cluster": None,
-                "sklearn.feature_extraction": None,
-                "sklearn.feature_extraction.text": None,
-            },
-        ),
-    ):
-        result = ap_mod._compute_clusters(
-            [("L001", "SAP ERP", "Desc 1"), ("L002", "SAP BW", "Desc 2")]
-        )
-
-    assert isinstance(result, list)
-
-
-# ---------------------------------------------------------------------------
-# reemplazar_clusters
-# ---------------------------------------------------------------------------
-
-
-def test_reemplazar_clusters_inserts_rows(tmp_db):
-    """Inserta filas en mat_clusters."""
-    db_mod, _ = tmp_db
-    from db.repositories.mat_clusters import reemplazar_clusters
-
-    rows = [
-        {
-            "id_externo": "EXP-001",
-            "cluster_id": 0,
-            "cluster_label": "sap · erp · implantación",
-            "updated_at": "2026-01-01T00:00:00+00:00",
-        }
-    ]
-
-    reemplazar_clusters(rows)
-    with db_mod.connect() as conn:
-        count = conn.execute("SELECT COUNT(*) FROM mat_clusters").fetchone()[0]
-
-    assert count == 1
-
-
-def test_reemplazar_clusters_batches_across_chunk_boundary(tmp_db):
-    """Persiste correctamente un volumen que cruza el borde de INSERT_CHUNK."""
-    db_mod, _ = tmp_db
-    from db.repositories.mat_clusters import INSERT_CHUNK, reemplazar_clusters
-
-    n = INSERT_CHUNK * 2 + 7  # cruza dos bordes de chunk
-    rows = [
-        {
-            "id_externo": f"EXP-{i:04d}",
-            "cluster_id": i % 8,
-            "cluster_label": f"label-{i % 8}",
-            "updated_at": "2026-01-01T00:00:00+00:00",
-        }
-        for i in range(n)
-    ]
-
-    reemplazar_clusters(rows)
-    with db_mod.connect() as conn:
-        count = conn.execute("SELECT COUNT(*) FROM mat_clusters").fetchone()[0]
-        first = conn.execute(
-            "SELECT cluster_label FROM mat_clusters WHERE id_externo = 'EXP-0000'"
-        ).fetchone()[0]
-        last = conn.execute(
-            "SELECT cluster_label FROM mat_clusters WHERE id_externo = %s", [f"EXP-{n - 1:04d}"]
-        ).fetchone()[0]
-
-    assert count == n
-    assert first == "label-0"
-    assert last == f"label-{(n - 1) % 8}"
-
-
-def test_reemplazar_clusters_replaces_atomically(tmp_db):
-    """Segunda llamada reemplaza datos previos."""
-    db_mod, _ = tmp_db
-    from db.repositories.mat_clusters import reemplazar_clusters
-
-    rows_a = [
-        {
-            "id_externo": "EXP-001",
-            "cluster_id": 0,
-            "cluster_label": "old",
-            "updated_at": "2026-01-01T00:00:00+00:00",
-        }
-    ]
-    rows_b = [
-        {
-            "id_externo": "EXP-001",
-            "cluster_id": 2,
-            "cluster_label": "new",
-            "updated_at": "2026-06-01T00:00:00+00:00",
-        }
-    ]
-
-    reemplazar_clusters(rows_a)
-    reemplazar_clusters(rows_b)
-    with db_mod.connect() as conn:
-        label = conn.execute("SELECT cluster_label FROM mat_clusters").fetchone()[0]
-
-    assert label == "new"
-
 
 # ---------------------------------------------------------------------------
 # run_aggregates_precompute
@@ -195,72 +24,93 @@ def test_run_aggregates_precompute_returns_ok_status(tmp_db):
     result = run_aggregates_precompute()
 
     assert result["status"] == "ok"
-    assert "n_clusters" in result
-
-
-def test_run_aggregates_precompute_no_longer_reports_empresas(tmp_db):
-    """``mat_top_empresas_ccaa`` se eliminó: no tenía lectores (ADR-017)."""
-    _db_mod, _ = tmp_db
-    from scheduler.aggregates_precompute import run_aggregates_precompute
-
-    result = run_aggregates_precompute()
-
-    assert "n_empresas" not in result
-
-
-def test_run_aggregates_precompute_returns_error_on_exception():
-    """Sin BD alguna, las dos mitades caen y el status es error, sin propagar."""
-
-    import scheduler.aggregates_precompute as ap
-
-    with patch.object(ap, "filas_para_clustering", side_effect=RuntimeError("db down")):
-        result = ap.run_aggregates_precompute()
-
-    assert result["status"] == "error"
-    assert "error" in result
-
-
-# ---------------------------------------------------------------------------
-# Independencia de las dos mitades
-#
-# Los dos precálculos comparten paso y disparador, no destino. El refresco de
-# `licitaciones_canonicas` alimenta las seis superficies públicas indexables;
-# los clusters, una vista analítica interna. Hasta el 2026-08-30 vivían en el
-# mismo `try` —con un comentario que afirmaba justo lo contrario— así que un
-# fallo cargando o persistiendo clusters se saltaba el refresco y congelaba el
-# sitio público en silencio.
-# ---------------------------------------------------------------------------
-
-
-def test_el_refresco_corre_aunque_el_clustering_falle(tmp_db):
-    """Regresión: un clustering roto no puede dejar la vista sin refrescar."""
-    _db_mod, _ = tmp_db
-    import scheduler.aggregates_precompute as ap
-
-    with patch.object(ap, "_recalcular_clusters", side_effect=RuntimeError("clustering roto")):
-        result = ap.run_aggregates_precompute()
-
-    # `partial`, no `error`: una de las dos mitades sí salió, y el paso tiene
-    # que poder distinguirlo — no es lo mismo que no haber hecho nada.
-    assert result["status"] == "partial"
-    assert result["error"] == "clusters"
-    assert result["n_clusters"] is None
-    # Lo que importa: la vista se refrescó igual.
     assert result["n_canonicas"] is not None
 
 
-def test_el_clustering_corre_aunque_el_refresco_falle(tmp_db):
-    """La independencia va en los dos sentidos, no solo en el que duele más."""
-    _db_mod, _ = tmp_db
+def test_ya_no_recalcula_agregados_sin_lector():
+    """``mat_clusters`` (2026-11) y ``mat_top_empresas_ccaa`` (2026-07) no tenían lector."""
     import scheduler.aggregates_precompute as ap
 
-    with patch.object(ap, "refrescar_vista_canonicas", side_effect=RuntimeError("vista bloqueada")):
+    with (
+        patch.object(ap, "refrescar_vista_canonicas", return_value=5),
+        patch.object(ap, "record_event"),
+        patch.object(ap, "_recalcular_tasas_anulacion", return_value=40),
+    ):
         result = ap.run_aggregates_precompute()
 
-    assert result["status"] == "partial"
+    assert result["status"] == "ok"
+    assert "n_clusters" not in result
+    assert "n_empresas" not in result
+    assert not hasattr(ap, "_recalcular_clusters")
+
+
+def test_un_refresco_caido_es_error_y_las_tasas_corren_igual():
+    """El refresco es la pieza crítica: si cae es ``error``, no ``partial``."""
+    import scheduler.aggregates_precompute as ap
+
+    with (
+        patch.object(ap, "refrescar_vista_canonicas", side_effect=RuntimeError("vista bloqueada")),
+        patch.object(ap, "record_event"),
+        patch.object(ap, "_recalcular_tasas_anulacion", return_value=40) as tasas,
+    ):
+        result = ap.run_aggregates_precompute()
+
+    assert result["status"] == "error"
     assert result["error"] == "canonicas"
     assert result["n_canonicas"] is None
-    assert result["n_clusters"] is not None
+    tasas.assert_called_once()
+    assert result["n_tasas_anulacion"] == 40
+
+
+# ---------------------------------------------------------------------------
+# El paso bloqueante no puede salir verde con un precálculo roto
+#
+# `run_aggregates_precompute` captura sus fallos y los devuelve en `status`, y
+# `ejecutar_paso` solo distingue `skipped` de lo demás: hasta 2026-11-08 un
+# refresco de la vista caído dejaba la pasada verde, y la única señal era el
+# healthcheck horas después.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("status", ["error", "partial"])
+def test_el_paso_lanza_si_el_precalculo_no_sale_ok(status):
+    import scheduler.pipeline_pasos_impl as impl
+
+    resultado = {"status": status, "error": "canonicas"}
+    with (
+        patch("scheduler.aggregates_precompute.run_aggregates_precompute", return_value=resultado),
+        pytest.raises(RuntimeError, match=status),
+    ):
+        impl._run_aggregates_precompute()
+
+
+def test_un_precalculo_roto_deja_el_paso_en_error_y_la_pasada_roja():
+    from scheduler import pipeline_cierre
+    from scheduler.pipeline_pasos import STEP_ERROR, pasos_bloqueantes_fallidos
+
+    roto = {"status": "error", "error": "canonicas"}
+    with (
+        patch.object(pipeline_cierre, "CANONICAL_STEPS", ["aggregates_precompute"]),
+        patch("scheduler.aggregates_precompute.run_aggregates_precompute", return_value=roto),
+        patch.object(pipeline_cierre, "_notify_step_failure") as aviso,
+        patch.object(pipeline_cierre, "_cerrar_avisos_de_pasos_recuperados"),
+    ):
+        resultados = pipeline_cierre._run_post_ingestion_steps()
+
+    assert resultados == {"aggregates_precompute": STEP_ERROR}
+    aviso.assert_called_once()
+    assert pasos_bloqueantes_fallidos(resultados) == ["aggregates_precompute"]
+
+
+def test_un_precalculo_ok_deja_el_paso_ok():
+    from scheduler import pipeline_cierre
+    from scheduler.pipeline_pasos import STEP_OK
+
+    with patch(
+        "scheduler.aggregates_precompute.run_aggregates_precompute",
+        return_value={"status": "ok", "n_canonicas": 5},
+    ):
+        assert pipeline_cierre.ejecutar_paso("aggregates_precompute") == STEP_OK
 
 
 def test_el_refresco_deja_rastro_en_ops_events(tmp_db):

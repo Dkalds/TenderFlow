@@ -1,6 +1,6 @@
 import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { RadarTender, ScoringSignals } from "@/hooks/use-radar";
@@ -137,6 +137,8 @@ vi.mock("@/hooks/use-radar", () => ({
   useRadar: () => radarState,
   useRadarDismissals: () => ({ data: useDismissedStub() }),
   useRadarDismissedTenders: (ids: string[], enabled: boolean) => useDismissedTendersStub(ids, enabled),
+  // «Siguiendo» también se hidrata por ids: mismo stub, mismo conjunto sintético.
+  useRadarFollowedTenders: (ids: string[], enabled: boolean) => useDismissedTendersStub(ids, enabled),
   useDismissRadarTender: () => ({ mutate: dismissMutate }),
   useRestoreRadarTender: () => ({ mutate: restoreMutate }),
   // `esBandaConocida` es una función pura, no un hook: se deja la de verdad.
@@ -362,7 +364,16 @@ describe("RadarPage", () => {
     expect(screen.queryByText("Mantenimiento SAP")).not.toBeInTheDocument();
     expect(screen.getByText("Bandeja al día")).toBeInTheDocument();
 
+    // Restaurar todas pide confirmación con el recuento, y la escritura espera
+    // a que se cierre el aviso con «Deshacer».
     fireEvent.click(screen.getByRole("button", { name: /Restaurar 1 descartada/ }));
+    const dialogo = screen.getByRole("dialog", { name: "Restaurar la descartada" });
+    fireEvent.click(within(dialogo).getByRole("button", { name: "Restaurar" }));
+    expect(restoreMutate).not.toHaveBeenCalled();
+
+    const opciones = toastCall.mock.calls.at(-1)?.[1] as { onAutoClose: () => void };
+    act(() => opciones.onAutoClose());
+    expect(restoreMutate).toHaveBeenCalledWith("LIC-1");
     expect(screen.getAllByText("Mantenimiento SAP").length).toBeGreaterThan(0);
   });
 

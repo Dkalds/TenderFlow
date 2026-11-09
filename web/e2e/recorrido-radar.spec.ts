@@ -50,15 +50,18 @@ test("una señal descartada sale de la bandeja, sigue descartada al recargar y s
   await expect(filaDelRadar(page, TITULO)).toBeVisible();
 
   // ── Recuperarla ──────────────────────────────────────────────────────────
-  // Con el botón de la barra y no con el «Deshacer» del aviso: el aviso se va
-  // solo a los pocos segundos, y un test que dependa de llegar a tiempo falla
-  // el día que el runner va lento.
+  // Con el botón de la barra, que pide confirmación. Al confirmar, la fila sale
+  // de «Descartadas» enseguida pero el DELETE espera a que el aviso con
+  // «Deshacer» se cierre solo (8 s): de ahí el margen de la espera.
+  await page.getByRole("button", { name: "Restaurar 1 descartada" }).click();
+  const confirmacion = page.getByRole("dialog", { name: "Restaurar la descartada" });
   const [restauracion] = await Promise.all([
     page.waitForResponse(
       (candidata) =>
         candidata.url().includes(`/api/v1/radar/dismissals/${ID}`) && candidata.request().method() === "DELETE",
+      { timeout: 20_000 },
     ),
-    page.getByRole("button", { name: "Restaurar 1 descartada" }).click(),
+    confirmacion.getByRole("button", { name: "Restaurar", exact: true }).click(),
   ]);
   expect(restauracion.ok(), `DELETE del descarte devolvió ${restauracion.status()}`).toBe(true);
   await expect(bandejas.getByRole("button", { name: /^Descartadas\s*0$/ })).toBeVisible();

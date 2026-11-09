@@ -168,7 +168,7 @@ const FABRICAS: readonly Fabrica[] = [
     miembros: [
       { nombre: "radarKeys.scoring", clave: radarKeys.scoring },
       { nombre: "radarKeys.scopedScoring", clave: radarKeys.scopedScoring(1, "SAP") },
-      { nombre: "radarKeys.dismissed", clave: radarKeys.dismissed(1, ["ES-1"]) },
+      { nombre: "radarKeys.porIds", clave: radarKeys.porIds("dismissed-tenders", 1, ["ES-1"]) },
     ],
   },
   {
@@ -537,7 +537,7 @@ describe("las fábricas parametrizadas", () => {
     { nombre: "analyticsKeys.overview", conA: () => analyticsKeys.overview({ desde: "2026-01-01" }), conB: () => analyticsKeys.overview({ desde: "2026-02-01" }) },
     { nombre: "analyticsKeys.scoringBatch", conA: () => analyticsKeys.scoringBatch(["ES-1"]), conB: () => analyticsKeys.scoringBatch(["ES-1", "ES-2"]) },
     { nombre: "radarKeys.scopedScoring", conA: () => radarKeys.scopedScoring(1, "SAP"), conB: () => radarKeys.scopedScoring(2, "SAP") },
-    { nombre: "radarKeys.dismissed", conA: () => radarKeys.dismissed(1, ["ES-1"]), conB: () => radarKeys.dismissed(1, ["ES-2"]) },
+    { nombre: "radarKeys.porIds", conA: () => radarKeys.porIds("dismissed-tenders", 1, ["ES-1"]), conB: () => radarKeys.porIds("followed-tenders", 1, ["ES-1"]) },
     { nombre: "watchlistKeys.combined", conA: () => watchlistKeys.combined("1,2"), conB: () => watchlistKeys.combined("1,3") },
     { nombre: "empresasKeys.list", conA: () => empresasKeys.list("acme"), conB: () => empresasKeys.list("globex") },
     { nombre: "empresasKeys.detail", conA: () => empresasKeys.detail(7), conB: () => empresasKeys.detail(8) },
@@ -638,7 +638,7 @@ const FABRICAS_CON_ARGUMENTOS: readonly string[] = [
   "competitiveKeys.watchlistMovimientos",
   "searchKeys.global",
   "radarKeys.scopedScoring",
-  "radarKeys.dismissed",
+  "radarKeys.porIds",
   "watchlistKeys.combined",
   "empresasKeys.list",
   "empresasKeys.detail",
