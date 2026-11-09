@@ -73,6 +73,7 @@ from lxml import html as lxml_html
 from config import settings
 from db.database import get_cursor, set_cursor
 from db.dlq import record_failure
+from db.repositories.documentos import PREFIJO_HASH_RESOLUCION_TACRC
 from db.upsert import DocumentoReferencia
 from observability import get_logger
 from scraper.resilience import pedir_con_reintentos
@@ -298,8 +299,9 @@ def parse_listado_json(texto: str, base_url: str = "") -> list[Resolucion]:
 
 #: Prefijo de ``documentos.source_hash`` del PDF de una resolución. Ver
 #: :func:`registrar_documentos` y ``db.resoluciones.resoluciones_vinculadas_sin_documento``,
-#: que construye la misma cadena en SQL.
-PREFIJO_HASH_DOCUMENTO = "tacrc-"
+#: que construye la misma cadena en SQL. Se define en ``db/`` porque la cola de
+#: descarga lo usa para no tratar la resolución como un anexo.
+PREFIJO_HASH_DOCUMENTO = PREFIJO_HASH_RESOLUCION_TACRC
 
 #: Caracteres que no se re-escapan al normalizar la URL del PDF. ``%`` está
 #: dentro: las URL del índice ya llegan escapadas (``resoluci%c3%b3n``) y

@@ -72,6 +72,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from config import USER_AGENT, settings
+from db.repositories.documentos import PREFIJO_HASH_ANUNCIO_TED
 from db.upsert import DocumentoReferencia
 from observability import get_logger
 from shared.outbound_http import pinned_https_request
@@ -155,7 +156,7 @@ def referencia_anuncio_ted(id_externo: str) -> DocumentoReferencia | None:
         tipo="additional",
         uri=_URL_ANUNCIO_TED.format(numero=numero),
         filename=f"Anuncio TED {numero}.pdf",
-        source_hash=f"ted-{numero}",
+        source_hash=f"{PREFIJO_HASH_ANUNCIO_TED}{numero}",
     )
 
 

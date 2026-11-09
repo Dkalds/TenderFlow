@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from db.database import DocumentoReferencia
-from db.repositories.documentos import DocumentosRepository
+from db.repositories.documentos import PREFIJO_HASH_ANUNCIO_TED, DocumentosRepository
 
 
 @pytest.fixture()
@@ -525,6 +525,27 @@ class TestListPendientes:
         pendientes = repo.list_pendientes()
 
         assert [p["licitacion_id"] for p in pendientes] == ["EXP-ABIERTO", "EXP-CERRADO"]
+
+    def test_el_anuncio_ted_va_con_los_pliegos_y_no_con_los_anexos(self, repo):
+        """El PDF del anuncio TED es ``additional`` sin ser un anexo: es el
+        único documento de una convocatoria TED sin pareja."""
+        _insert_licitacion("EXP-TED")
+        _insert_licitacion("EXP-ANEXO-TEC", tecnologia="SAP")
+        anuncio = DocumentoReferencia(
+            tipo="additional",
+            uri="https://x/ted.pdf",
+            source_hash=f"{PREFIJO_HASH_ANUNCIO_TED}123456-2026",
+        )
+        repo.upsert_meta("EXP-TED", [anuncio])
+        repo.upsert_meta(
+            "EXP-ANEXO-TEC", [DocumentoReferencia(tipo="additional", uri="https://x/an.pdf")]
+        )
+        ted = next(p for p in repo.list_pendientes() if p["licitacion_id"] == "EXP-TED")
+        _set_created_at(ted["id"], "2020-01-01T00:00:00+00:00")
+
+        pendientes = repo.list_pendientes()
+
+        assert [p["licitacion_id"] for p in pendientes] == ["EXP-TED", "EXP-ANEXO-TEC"]
 
 
 _SERVLET = "https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet"

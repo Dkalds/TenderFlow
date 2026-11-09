@@ -372,7 +372,11 @@ class TecnologiaPliegoRepository:
     ) -> list[str]:
         """Licitaciones con al menos un documento ``extracted`` y sin señal
         ``method`` vigente (inexistente o de una ``signal_version`` distinta
-        -- un bump del filtro de keywords reprocesa el universo)."""
+        -- un bump del filtro de keywords reprocesa el universo), o con un
+        documento extraído después de su señal. La cola de descarga baja el
+        PCAP y el PPT antes que los anexos, y un documento llega también bajo
+        demanda o con una rectificación: sin esto, la señal se quedaba con lo
+        que hubiera la primera noche."""
         with connect_read() as c:
             rows = c.execute(
                 "SELECT DISTINCT d.licitacion_id FROM documentos d "
@@ -382,7 +386,9 @@ class TecnologiaPliegoRepository:
                 "AND NOT EXISTS ("
                 "  SELECT 1 FROM licitacion_tecnologia_pliego p "
                 "  WHERE p.licitacion_id = d.licitacion_id AND p.method = %s "
-                "  AND p.signal_version = %s"
+                "  AND p.signal_version = %s "
+                # Texto ISO de now_utc_iso() en los dos lados: se comparan como texto.
+                "  AND p.computed_at >= coalesce(d.fetched_at, '')"
                 ") "
                 "ORDER BY d.licitacion_id LIMIT %s",
                 (method, signal_version, max(1, min(int(limit), 2000))),

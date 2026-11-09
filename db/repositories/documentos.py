@@ -54,6 +54,14 @@ TIPO_ACTA: Final = "acta"
 #: las actas hay que pedirlas por su tipo.
 TIPOS_PLIEGO: Final[frozenset[str]] = frozenset({"legal", "technical", "additional"})
 
+#: ``source_hash`` de los dos documentos que se guardan como ``additional`` sin
+#: ser anexos: el PDF del anuncio TED (el único documento de una convocatoria
+#: TED sin pareja) y el de una resolución del TACRC. Los conectores construyen
+#: el hash con ellos y :meth:`DocumentosRepository.list_pendientes` los pone con
+#: el PCAP y el PPT, no detrás.
+PREFIJO_HASH_ANUNCIO_TED: Final = "ted-"
+PREFIJO_HASH_RESOLUCION_TACRC: Final = "tacrc-"
+
 #: Servlet con el que PLACSP sirve los adjuntos de sus expedientes. Un adjunto
 #: alojado en otra plataforma no depende de lo que PLACSP haya publicado.
 _SERVLET_PLACSP = "/FileSystem/servlet/GetDocumentByIdServlet"
@@ -746,14 +754,20 @@ class DocumentosRepository:
     def list_pendientes(self, limit: int = 100) -> list[DocumentoPendiente]:
         """Documentos con ``status='pending'``, priorizados por relevancia.
 
-        El backlog (155.000 documentos el 2026-11-09, 89.000 de ellos anexos)
-        se drena por lotes diarios pequeños frente al feed PLACSP diario, así
-        que el orden decide qué se procesa primero:
+        El backlog (155.000 documentos el 2026-11-09, 89.000 de ellos
+        ``additional``) se drena por lotes diarios pequeños frente al feed
+        PLACSP diario, así que el orden decide qué se procesa primero:
         0. Demanda real (oportunidad abierta, favorito) y, tras ella, los
            expedientes con el plazo de ofertas todavía abierto.
-        1. Pliegos (``legal``, ``technical``) antes que anexos
+        1. PCAP y PPT (``legal``, ``technical``) antes que los anexos
            (``additional``): son lo que se lee, se busca y alimenta la ficha.
-           Lo de 0 entra entero, anexos incluidos.
+           El anuncio TED y la resolución del TACRC son ``additional`` sin ser
+           anexos (:data:`PREFIJO_HASH_ANUNCIO_TED`,
+           :data:`PREFIJO_HASH_RESOLUCION_TACRC`) y van con ellos. Lo de 0
+           entra entero, anexos incluidos. Así una licitación puede bajar el
+           pliego noches antes que sus anexos: la señal de tecnología la vuelve
+           a puntuar cuando llegan
+           (``TecnologiaPliegoRepository.list_licitaciones_pending_signal``).
         2. Licitaciones con ``tecnologia`` (keyword match en título) o
            ``ml_tecnologias`` (clasificador) no vacíos van primero -- son las
            que la categorización necesita antes de nada.
@@ -806,15 +820,21 @@ class DocumentosRepository:
                 # 400 documentos de expedientes abiertos esperando detrás de
                 # 35k pendientes, muchos insertados por un backfill reciente—.
                 "(l.fecha_limite_ts IS NOT NULL AND l.fecha_limite_ts > now()) DESC, "
-                # Pliegos antes que anexos: a 300 documentos por noche, el
-                # 2026-11-09 esperaban 66.000 pliegos detrás de una cola que
-                # mezclaba 89.000 anexos por fecha de alta.
-                "(d.tipo IN ('legal', 'technical')) DESC, "
+                # PCAP y PPT antes que anexos: a 300 documentos por noche, el
+                # 2026-11-09 esperaban 66.000 detrás de una cola que los
+                # mezclaba con 89.000 `additional` por fecha de alta.
+                "(d.tipo IN ('legal', 'technical') "
+                " OR starts_with(coalesce(d.source_hash, ''), %s) "
+                " OR starts_with(coalesce(d.source_hash, ''), %s)) DESC, "
                 "(l.tecnologia IS NOT NULL AND l.tecnologia != '') DESC, "
                 "(l.ml_tecnologias IS NOT NULL AND l.ml_tecnologias != '') DESC, "
                 "d.created_at DESC "
                 "LIMIT %s",
-                (max(1, min(int(limit), 1000)),),
+                (
+                    PREFIJO_HASH_ANUNCIO_TED,
+                    PREFIJO_HASH_RESOLUCION_TACRC,
+                    max(1, min(int(limit), 1000)),
+                ),
             )
             return typed_rows(DocumentoPendiente, rows_to_dicts(cur))
 
