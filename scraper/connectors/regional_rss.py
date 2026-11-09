@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urlparse
 import requests
 from lxml import etree
 
-from config.keywords import etiquetas_con_senal_firme
+from config.keywords import KEYWORDS_DE_TRAMITACION, etiquetas_con_senal_firme
 from db.upsert import Licitacion
 from scraper.connectors.base import ParsedTender, RawNotice
 from scraper.filters import matches_technology
@@ -130,6 +130,32 @@ def _label(text: str, labels: tuple[str, ...]) -> str | None:
     return None
 
 
+def _sin_tramitacion_fuera_del_titulo(
+    matches: dict[str, list[str]], titulo: str
+) -> dict[str, list[str]]:
+    """Quita el vocabulario de tramitación que solo sale de la descripción.
+
+    La descripción del RSS es prosa fija del portal: el SERGAS pone en todos
+    sus avisos «se licitará a través del sistema de licitación electrónica de
+    la Xunta (SILEX)», y con eso entraban como ADMIN_ELECTRONICA furgonetas,
+    lácteos o climatización (21 de las 30 filas de ``galicia_rss`` el
+    2026-11-09). Es la regla que la señal de pliegos ya aplica a
+    :data:`KEYWORDS_DE_TRAMITACION`: en el título nombra lo que se compra; en el
+    resto del texto, no.
+    """
+    _, en_titulo = matches_technology(titulo)
+    del_titulo = {kw for kws in en_titulo.values() for kw in kws}
+    return {
+        tec: firmes
+        for tec, kws in matches.items()
+        if (
+            firmes := [
+                kw for kw in kws if kw in del_titulo or kw.casefold() not in KEYWORDS_DE_TRAMITACION
+            ]
+        )
+    }
+
+
 class RegionalRssConnector:
     """Implementación común para un RSS oficial con id namespaceado."""
 
@@ -200,6 +226,7 @@ class RegionalRssConnector:
         if not tender_title:
             return None
         _, matches = matches_technology(f"{tender_title} {description}", None)
+        matches = _sin_tramitacion_fuera_del_titulo(matches, tender_title)
         if not matches:
             return None
         matches = etiquetas_con_senal_firme(matches)

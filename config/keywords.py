@@ -1625,6 +1625,26 @@ KEYWORDS_DE_TRAMITACION: frozenset[str] = frozenset(
         "esquema nacional de interoperabilidade",
         "sinadura digitala",
         "ziurtagiri digitala",
+        # Tercera (2026-11-09): los RSS de Galicia y Euskadi pasan su descripción
+        # por esta lista (`scraper.connectors.regional_rss`), y la prosa del
+        # portal viene en gallego o en euskera: faltaban esas formas de lo mismo.
+        "rexistro electrónico",
+        "sinatura electrónica",
+        "sinatura dixital",
+        "certificado dixital",
+        "arquivo electrónico",
+        "lizitazio elektronikoa",
+        "kontratazio elektronikoa",
+        "faktura elektronikoa",
+        "fakturazio elektronikoa",
+        "erregistro elektronikoa",
+        "sinadura elektronikoa",
+        "egoitza elektronikoa",
+        "jakinarazpen elektronikoa",
+        "jakinarazpen elektronikoak",
+        "espediente elektronikoa",
+        "artxibo elektronikoa",
+        "elkarreragingarritasun eskema nazionala",
     }
 )
 
@@ -1703,10 +1723,11 @@ def etiquetas_con_senal_firme(coincidencias: dict[str, list[str]]) -> dict[str, 
 #: o la forma de decidir qué etiquetas sostiene lo casado (2026-10-30: las
 #: etiquetas solo ambiguas y las reglas de precisión de la señal de pliegos;
 #: 2026-10-31: el vocabulario de tramitación deja de contar en los pliegos, y
-#: sus formas cooficiales). Un
+#: sus formas cooficiales; 2026-11-09: las formas gallegas y vascas que
+#: faltaban, y los RSS autonómicos aplican la misma regla a su descripción). Un
 #: cambio aquí cambia `filter_version`, y con él la señal de pliegos se vuelve a
 #: puntuar entera (`list_licitaciones_pending_signal`).
-VERSION_MATCHER = "2026-10-31-tramitacion-cooficial"
+VERSION_MATCHER = "2026-11-09-tramitacion-rss"
 
 #: Letras que un título escribe con o sin diacrítico. La keyword se pliega
 #: antes, y cada una de estas letras se convierte en la clase con sus variantes.
