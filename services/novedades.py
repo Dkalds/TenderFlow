@@ -162,15 +162,13 @@ def corte_ultima_visita(last_seen: str | None) -> tuple[datetime, bool]:
     tope = datetime.now(UTC) - timedelta(days=DIAS_MAXIMOS)
     if not last_seen:
         return tope, False
-    try:
-        marcado = datetime.fromisoformat(str(last_seen).replace("Z", "+00:00"))
-    except ValueError:
-        log.warning("novedades_last_seen_invalido", valor=str(last_seen)[:40])
-        return tope, False
     # En UTC siempre: el corte viaja al SQL como texto y se compara con
     # columnas escritas en UTC, así que una marca en `+02:00` cortaría en su
     # hora de pared y dejaría fuera las dos horas siguientes.
-    marcado = marcado.replace(tzinfo=UTC) if marcado.tzinfo is None else marcado.astimezone(UTC)
+    marcado = _instante(last_seen)
+    if marcado is None:
+        log.warning("novedades_last_seen_invalido", valor=str(last_seen)[:40])
+        return tope, False
     if marcado < tope:
         return tope, True
     return marcado, False

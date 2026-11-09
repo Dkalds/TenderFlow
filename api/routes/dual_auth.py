@@ -26,6 +26,7 @@ from api.concurrency import run_db
 from api.errors import ReautenticacionRequerida
 from config import settings
 from observability.logging import get_logger
+from shared.dates import instante_utc
 from shared.identity import Principal, user_key_from_email
 
 log = get_logger(__name__)
@@ -166,13 +167,7 @@ def require_recent_session() -> Callable[..., Awaitable[Principal]]:
             )
 
         def _parse_timestamp(value: object) -> datetime | None:
-            if not isinstance(value, str) or not value:
-                return None
-            try:
-                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-            except ValueError:
-                return None
-            return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+            return instante_utc(value) if isinstance(value, str) and value else None
 
         now = datetime.now(UTC)
         authenticated_at = _parse_timestamp(ctx.get("authenticated_at"))

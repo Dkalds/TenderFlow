@@ -35,6 +35,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from observability.logging import get_logger
+from services.pdf_accesible import metadatos
 from shared.tender_facts import EvidenceRef
 
 log = get_logger(__name__)
@@ -511,7 +512,7 @@ def a_pdf(guion: GuionOferta, nombres: dict[int, str] | None = None) -> bytes:
     doc = SimpleDocTemplate(
         buf,
         pagesize=A4,
-        title=titulo,
+        **metadatos(titulo=titulo, asunto=f"Expediente {guion.licitacion_id}"),
         leftMargin=18 * mm,
         rightMargin=18 * mm,
         topMargin=16 * mm,

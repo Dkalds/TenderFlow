@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from db.repositories.product_metrics import ProductMetricsRepository
 from services.pursuits import calcular_radar_quality
+from shared.dates import instante_utc
 from shared.dto import RadarQuality
 
 
@@ -42,15 +43,10 @@ class ProductStatus(BaseModel):
 def _hours(start: object, end: object) -> float | None:
     if not start or not end:
         return None
-    try:
-        start_dt = datetime.fromisoformat(str(start).replace("Z", "+00:00"))
-        end_dt = datetime.fromisoformat(str(end).replace("Z", "+00:00"))
-    except ValueError:
+    start_dt = instante_utc(start)
+    end_dt = instante_utc(end)
+    if start_dt is None or end_dt is None:
         return None
-    if start_dt.tzinfo is None:
-        start_dt = start_dt.replace(tzinfo=UTC)
-    if end_dt.tzinfo is None:
-        end_dt = end_dt.replace(tzinfo=UTC)
     elapsed = (end_dt - start_dt).total_seconds() / 3600
     return elapsed if elapsed >= 0 else None
 
@@ -63,11 +59,7 @@ def _as_datetime(value: str | None) -> datetime | None:
     """
     if not value:
         return None
-    try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    return instante_utc(value)
 
 
 def _aggregate(
