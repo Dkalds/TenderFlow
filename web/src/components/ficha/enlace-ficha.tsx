@@ -6,8 +6,9 @@
  * Hasta 2026-11 cada lista de la consola (Resumen, Watchlist, Competencia,
  * Cuentas…) enlazaba a `/detalle?lic=`: mirar una licitación te sacaba de la
  * lista, y mirar la siguiente obligaba a volver atrás. Ahora el clic abre la
- * ficha en un panel lateral (`FichaFlotante`) encima de la misma pantalla, que
- * sigue siendo pulsable: otro clic cambia la ficha.
+ * ficha en un panel lateral (`FichaFlotante`) junto a la misma pantalla —desde
+ * `xl` la desplaza, por debajo se superpone—, que sigue siendo pulsable: otro
+ * clic cambia la ficha.
  *
  * El `href` sigue apuntando a `/detalle?lic=`: Ctrl/⌘-clic, el botón central y
  * «Abrir en una pestaña nueva» llevan a la ficha de siempre. En `/detalle` el

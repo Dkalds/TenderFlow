@@ -58,15 +58,22 @@ async function montar(searchParams = "") {
   vi.resetModules();
   doblarOverlays();
   descargados.clear();
-  const { OverlaysDashboard } = await import("@/components/layout/overlays-dashboard");
+  const { OverlaysDashboard, FichaFlotanteDiferida } = await import("@/components/layout/overlays-dashboard");
   const { useKeyboardShortcuts } = await import("@/hooks/use-keyboard-shortcuts");
   const { useUiStore } = await import("@/lib/ui-store");
   const { useBandejaComparacion } = await import("@/hooks/use-comparacion");
   const { useAsistente } = await import("@/lib/asistente-store");
 
+  // La ficha no cuelga de `OverlaysDashboard` sino de la ranura `lateral` del
+  // marco (`app/(dashboard)/layout.tsx`): aquí se monta donde la monta el layout.
   function Dashboard() {
     useKeyboardShortcuts();
-    return <OverlaysDashboard />;
+    return (
+      <>
+        <OverlaysDashboard />
+        <FichaFlotanteDiferida />
+      </>
+    );
   }
   render(<Dashboard />, { wrapper: withNuqsTestingAdapter({ searchParams }) });
   return { useUiStore, useBandejaComparacion, useAsistente };

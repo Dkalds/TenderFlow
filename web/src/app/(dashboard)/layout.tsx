@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SuperficiePrivada } from "@/components/layout/superficie-privada";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { ConsoleFrame } from "@/components/layout/console-frame";
-import { OverlaysDashboard } from "@/components/layout/overlays-dashboard";
+import { FichaFlotanteDiferida, OverlaysDashboard } from "@/components/layout/overlays-dashboard";
 import { OAuthLoginTelemetry } from "@/components/oauth-login-telemetry";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -43,7 +43,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Dentro de `Providers`: lee el caché de React Query para saber si hay
             reintentos en vuelo (arranque en frío de la API). */}
         <ConnectionBanner />
-        <ConsoleFrame>{children}</ConsoleFrame>
+        {/* La ficha de una licitación (`?ver=`) va en el marco, no en los
+            overlays: anclada, desplaza la pantalla en vez de taparla. */}
+        <ConsoleFrame lateral={<FichaFlotanteDiferida />}>{children}</ConsoleFrame>
         {/* Paleta, asistente, bandeja de comparación (F2.8: los expedientes
             marcados siguen a mano al cambiar de pantalla) y ayuda de atajos.
             Cerrados al entrar, así que se descargan la primera vez que se abren:

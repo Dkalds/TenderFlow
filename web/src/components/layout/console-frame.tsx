@@ -44,8 +44,12 @@ import { ScrollEdgeProvider } from "@/components/layout/scroll-edge";
  * `h-dvh` y no `h-screen`: en iOS Safari `100vh` es el alto con la barra de
  * direcciones recogida, así que el marco sobresalía por debajo y el final de
  * `#main-content` quedaba tapado hasta que el usuario desplazaba el documento.
+ *
+ * `lateral` es una columna más del marco, a la derecha de la pantalla: cuando
+ * existe, la pantalla se estrecha y le deja sitio en vez de quedarse debajo.
+ * Es donde se ancla la ficha de una licitación (`ficha-flotante.tsx`).
  */
-export function ConsoleFrame({ children }: { children: React.ReactNode }) {
+export function ConsoleFrame({ children, lateral }: { children: React.ReactNode; lateral?: React.ReactNode }) {
   return (
     // El proveedor del borde de scroll envuelve el marco entero porque el
     // contenedor que scrollea (`DashboardShell`) y el cromo que dibuja el borde
@@ -74,6 +78,8 @@ export function ConsoleFrame({ children }: { children: React.ReactNode }) {
             <Suspense fallback={null}>{children}</Suspense>
           </DashboardShell>
         </div>
+
+        {lateral}
       </div>
     </ScrollEdgeProvider>
   );

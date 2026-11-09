@@ -63,6 +63,31 @@ describe("ConsoleFrame", () => {
   });
 });
 
+describe("ConsoleFrame — lateral", () => {
+  it("la ranura lateral es una columna hermana de la pantalla, no un hijo de ella", () => {
+    // Hermana de la columna en el marco en fila: la pantalla cede ancho en vez
+    // de quedarse debajo (la ficha anclada desplaza, no tapa).
+    render(
+      <ConsoleFrame lateral={<aside data-testid="lateral" />}>
+        <p>contenido</p>
+      </ConsoleFrame>,
+    );
+    const columna = screen.getByTestId("shell").parentElement!;
+
+    expect(screen.getByTestId("lateral").parentElement).toBe(columna.parentElement);
+    expect(columna).toHaveClass("min-w-0", "flex-1");
+  });
+
+  it("sin ranura no añade nada", () => {
+    render(
+      <ConsoleFrame>
+        <p>contenido</p>
+      </ConsoleFrame>,
+    );
+    expect(screen.queryByTestId("lateral")).not.toBeInTheDocument();
+  });
+});
+
 describe("ConsoleFrame — móvil", () => {
   // jsdom no aplica media queries ni calcula cajas: lo que se fija es el
   // contrato de clases. La medida real (375×812: `main` en x=0 con todo el
