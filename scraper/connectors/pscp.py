@@ -67,7 +67,9 @@ _PAGE_PAUSE_S = 0.5  # cortesía con la API pública
 #: con 120 s quedan unos ocho minutos para el resto si el fetch fue corto, que
 #: es lo habitual (el dataset se actualiza una vez al día). La pasada en seco
 #: del 2026-10-03 leyó las 120 candidatas vigentes en 52 s, así que cabe entero
-#: con margen; el de cada petición lo acota `completar_documentos_pscp`.
+#: con margen; el de cada petición lo acota `completar_documentos_pscp`. Los
+#: expedientes cerrados que cambiaron de fase van detrás y se llevan lo que sobre
+#: (67 el 2026-11-09, dos peticiones cada uno de ~0,1-0,2 s).
 PRESUPUESTO_DOCUMENTOS_S = 120.0
 # Toda la PSCP es contratación catalana: NUTS2 Cataluña (fallback si la
 # fila no trae codi_nuts).
@@ -737,10 +739,12 @@ class PscpConnector:
     # ── documentos ───────────────────────────────────────────────────────
 
     def completar_documentos(self) -> None:
-        """Tras la ingesta: pliegos de las convocatorias vigentes y su anuncio TED.
+        """Tras la ingesta: pliegos de los expedientes y su anuncio TED.
 
-        El dataset de Socrata no trae adjuntos; la ficha pública de cada
-        publicación sí (``scraper.documentos_plataforma.completar_documentos_pscp``).
+        Las convocatorias vigentes primero y, detrás, los expedientes cerrados
+        que cambiaron de fase. El dataset de Socrata no trae adjuntos; la ficha
+        pública del anuncio de cada expediente sí
+        (``scraper.documentos_plataforma.completar_documentos_pscp``).
         No depende del lote del run sino de la BD: así cubre también lo que se
         ingirió antes de que existiera este paso.
         """

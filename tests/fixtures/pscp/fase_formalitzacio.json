@@ -1,0 +1,64 @@
+{
+  "expedientId": "5f414a80-c061-48ab-b865-8cc23e05e3af",
+  "publicacioId": 300751065,
+  "fase": 1000043,
+  "codiExpedient": "SER_NSP_2026_0002",
+  "navegacioFases": [
+    {
+      "fase": 1000040,
+      "numeroLotsActius": null,
+      "publicacioId": 300719618,
+      "dataPublicacio": "2026-03-12T08:18:13.654Z",
+      "faseActiva": false
+    },
+    {
+      "fase": 1000042,
+      "numeroLotsActius": null,
+      "publicacioId": 300750837,
+      "dataPublicacio": "2026-04-17T07:56:11.412Z",
+      "faseActiva": false
+    },
+    {
+      "fase": 1000043,
+      "numeroLotsActius": null,
+      "publicacioId": 300751065,
+      "dataPublicacio": "2026-04-17T09:32:07.865Z",
+      "faseActiva": true
+    },
+    {
+      "fase": 1008286,
+      "numeroLotsActius": null,
+      "publicacioId": 300750776,
+      "dataPublicacio": "2026-04-17T07:40:07.205Z",
+      "faseActiva": false
+    }
+  ],
+  "dades": {
+    "publicacio": {
+      "id": null,
+      "fase": {
+        "id": 1000043,
+        "text": "Formalització"
+      },
+      "dadesPublicacioLot": [
+        {
+          "documentFormalitzacio": {
+            "docs": [
+              {
+                "id": 302180046,
+                "titol": "SER_NSP_2026_0002-Contracte_per signar-corp.pdf_ca.pdf",
+                "hash": "1FA1E7EA915C27E0AE64D94143EBF5E8",
+                "mida": 221680,
+                "idioma": "ca"
+              }
+            ]
+          },
+          "altraDocumentacio": {
+            "docs": []
+          }
+        }
+      ],
+      "publicacionsOficials": []
+    }
+  }
+}

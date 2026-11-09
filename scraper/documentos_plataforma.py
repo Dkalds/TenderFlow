@@ -30,6 +30,15 @@ hueco sobre datos abiertos:
   que es la referencia exacta para emparejarlos: el BT-15 de esos avisos apunta
   al perfil del comprador, no al expediente, y el BT-22 falta en muchos.
 
+  El JSON es **por publicación**, no por expediente: cada fase (anuncio,
+  evaluación, adjudicación, formalización, ejecución…) es otra publicación, y
+  solo la del anuncio de licitación trae los pliegos. Un expediente cerrado
+  guarda en ``licitaciones.url`` la de su última fase, así que leerla sola no
+  daba nada; su ``navegacioFases`` enlaza la del anuncio, que es la que se lee.
+  Medido el 2026-11-09 sobre 36 expedientes cerrados sin documentos: 32 tenían
+  anuncio con pliegos; los otros cuatro no lo tuvieron en la plataforma
+  (negociados sin publicidad, contratos basados en un acuerdo marco).
+
 Los dos pasos que se ejecutan tras cada ingesta —:func:`completar_documentos_ted`
 y :func:`completar_documentos_pscp`— los llama ``run_connector`` a través del
 ``completar_documentos`` de cada conector, con presupuesto de tiempo: corren
@@ -72,6 +81,11 @@ _API_PSCP = f"https://{_HOST_PSCP}/portal-api"
 _RUTA_DETALLE_PSCP = re.compile(r"/detall-publicacio/([0-9a-fA-F-]{36})/(\d{1,12})(?:/|$)")
 _ID_DOCUMENTO_PSCP = re.compile(r"\d{1,15}")
 _HASH_DOCUMENTO_PSCP = re.compile(r"[0-9A-Za-z]{8,128}")
+_ID_PUBLICACION_PSCP = re.compile(r"\d{1,12}")
+#: ``fase`` de la publicación del anuncio de licitación, la única con pliegos.
+#: Las demás (evaluación 1008286, adjudicación 1000042, formalización 1000043,
+#: ejecución 1000045, anulación 1000041…) traen actas, resoluciones y contratos.
+_FASE_ANUNCI_PSCP = "1000040"
 #: Apartado del JSON → ``documentos.tipo``. El resto (memoria justificativa,
 #: aprobación, «altres documents», anexos por lote) son ``additional``.
 _TIPO_POR_APARTADO_PSCP = {
@@ -178,10 +192,18 @@ def parse_detalle_pscp(datos: Any) -> DetallePscp:
     que usa su web. ``hash`` identifica el contenido, así que va a
     ``source_hash``: es la identidad con la que ``upsert_meta`` refresca la fila
     en vez de duplicarla.
+
+    Solo la publicación del anuncio de licitación aporta documentos y avisos
+    TED. Las de otras fases traen actas de la mesa, resoluciones y contratos:
+    guardarlos como ``additional`` los metería en la descarga nocturna, el RAG y
+    la ficha como si fueran pliego. Y su cita a TED no está comprobada como la
+    del mismo contrato, que es lo que la marca ``confirmed`` de
+    ``marcar_republicaciones_ted`` da por hecho: un contrato basado en un
+    acuerdo marco podría citar el aviso del acuerdo.
     """
     dades = datos.get("dades") if isinstance(datos, dict) else None
     publicacion = dades.get("publicacio") if isinstance(dades, dict) else None
-    if not isinstance(publicacion, dict):
+    if not isinstance(publicacion, dict) or not _es_anunci_pscp(datos):
         return DetallePscp(documentos=[], anuncios_ted=[])
 
     documentos: list[DocumentoReferencia] = []
@@ -205,6 +227,39 @@ def parse_detalle_pscp(datos: Any) -> DetallePscp:
 
     recorrer(publicacion, "")
     return DetallePscp(documentos=documentos, anuncios_ted=numeros_ted_citados(publicacion))
+
+
+def _es_anunci_pscp(datos: object) -> bool:
+    """¿Es *datos* la publicación del anuncio de licitación?
+
+    Sin ``fase`` se da por tal: es lo que se hacía antes de mirarla, y el JSON
+    real la trae siempre.
+    """
+    fase = datos.get("fase") if isinstance(datos, dict) else None
+    return fase is None or str(fase) == _FASE_ANUNCI_PSCP
+
+
+def _urls_del_anunci_pscp(api: str, datos: object) -> list[str]:
+    """El JSON de la publicación del anuncio, si *datos* es de otra fase del expediente.
+
+    Lo da ``navegacioFases`` (``[{fase, publicacioId, …}]``), que lista la
+    última versión de cada fase. Sin anuncio (un negociado sin publicidad, un
+    contrato basado en un acuerdo marco) no hay nada que pedir.
+    """
+    if _es_anunci_pscp(datos):
+        return []
+    fases = datos.get("navegacioFases") if isinstance(datos, dict) else None
+    expediente = api.rsplit("/", 1)[0]
+    urls: list[str] = []
+    for fase in fases if isinstance(fases, list) else []:
+        if not isinstance(fase, dict) or str(fase.get("fase")) != _FASE_ANUNCI_PSCP:
+            continue
+        publicacion = str(fase.get("publicacioId") or "")
+        url = f"{expediente}/{publicacion}"
+        # Va a la ruta de la URL, como el id de un documento: solo dígitos.
+        if _ID_PUBLICACION_PSCP.fullmatch(publicacion) and url not in urls:
+            urls.append(url)
+    return urls
 
 
 def _referencia_pscp(doc: Any, apartado: str) -> DocumentoReferencia | None:
@@ -261,10 +316,18 @@ def _obtener(url: str, *, host: str, timeout_s: float | None = None) -> bytes:
 _TOPE_MINIMO_S = 1.0
 
 
-def _obtener_pscp_con_tope(restante_s: float) -> Callable[[str], bytes]:
-    """Descarga de la ficha con un timeout que no pasa de lo que queda de presupuesto."""
-    tope = max(_TOPE_MINIMO_S, min(float(settings.REQUEST_TIMEOUT), restante_s))
-    return lambda url: _obtener(url, host=_HOST_PSCP, timeout_s=tope)
+def _obtener_pscp_con_tope(restante_s: Callable[[], float]) -> Callable[[str], bytes]:
+    """Descarga de la ficha con un timeout que no pasa de lo que queda de presupuesto.
+
+    *restante_s* se consulta en cada petición: un expediente cerrado pide dos
+    (su fase y la del anuncio), y la segunda solo tiene lo que dejó la primera.
+    """
+
+    def obtener(url: str) -> bytes:
+        tope = max(_TOPE_MINIMO_S, min(float(settings.REQUEST_TIMEOUT), restante_s()))
+        return _obtener(url, host=_HOST_PSCP, timeout_s=tope)
+
+    return obtener
 
 
 def documentos_de_pscp(
@@ -272,13 +335,26 @@ def documentos_de_pscp(
 ) -> DetallePscp | None:
     """El detalle de una publicación de la PSCP, o ``None`` si la URL no es una ficha.
 
+    Si la publicación es de una fase posterior al anuncio, los pliegos salen de
+    la del anuncio que enlaza su ``navegacioFases``: una petición más. Si esa
+    falla, falla la ficha entera: cuenta como fallo de la plataforma y la fila
+    sigue candidata para la pasada siguiente.
+
     *obtener* existe para los tests: por defecto descarga de verdad.
     """
     api = url_api_pscp(url_ficha)
     if api is None:
         return None
-    cuerpo = (obtener or (lambda url: _obtener(url, host=_HOST_PSCP)))(api)
-    return parse_detalle_pscp(json.loads(cuerpo))
+    pedir = obtener or (lambda url: _obtener(url, host=_HOST_PSCP))
+    datos = json.loads(pedir(api))
+    detalle = parse_detalle_pscp(datos)
+    for url in _urls_del_anunci_pscp(api, datos):
+        del_anunci = parse_detalle_pscp(json.loads(pedir(url)))
+        detalle = DetallePscp(
+            documentos=detalle.documentos + del_anunci.documentos,
+            anuncios_ted=list(dict.fromkeys(detalle.anuncios_ted + del_anunci.anuncios_ted)),
+        )
+    return detalle
 
 
 # ── Pasos tras la ingesta ────────────────────────────────────────────────────
@@ -338,16 +414,21 @@ def completar_documentos_pscp(
     limite: int = 200,
     presupuesto_s: float = 120.0,
     pausa_s: float = 0.3,
+    dias_cambio: int | None = 7,
     obtener: Callable[[str], bytes] | None = None,
     reloj: Callable[[], float] = time.monotonic,
 ) -> ResumenDocumentos:
-    """Pliegos de las convocatorias vigentes de la PSCP, y su anuncio TED.
+    """Pliegos de los expedientes de la PSCP, y su anuncio TED.
 
-    Las candidatas son las que aún no tienen documentos y, entre las que sí,
-    las publicadas hace poco (``DocumentosRepository.pscp_vigentes_para_documentos``):
-    una rectificación añade pliegos, y el anuncio TED que el JSON cita llega días
-    después de la publicación en la plataforma. Cada ficha es una petición; el
-    presupuesto de tiempo y el corte por fallos seguidos acotan la pasada.
+    Las candidatas (``DocumentosRepository.pscp_para_documentos``) son las
+    vigentes que aún no tienen documentos y, entre las que sí, las publicadas
+    hace poco: una rectificación añade pliegos, y el anuncio TED que el JSON
+    cita llega días después de la publicación en la plataforma. Detrás, los
+    expedientes ya cerrados sin documentos que cambiaron en origen en los
+    últimos *dias_cambio* días; con ``None``, todos (es el backfill,
+    ``scripts/backfill_documentos_pscp.py``). Cada ficha es una petición, dos si
+    hay que saltar al anuncio; el presupuesto de tiempo y el corte por fallos
+    seguidos acotan la pasada.
 
     El presupuesto acota también **cada petición**: sin eso solo se miraba
     antes de pedir la ficha, y la que estaba en vuelo tenía el
@@ -367,10 +448,10 @@ def completar_documentos_pscp(
     repo = DocumentosRepository()
     resumen = ResumenDocumentos()
     inicio = reloj()
+    pedir = obtener or _obtener_pscp_con_tope(lambda: presupuesto_s - (reloj() - inicio))
     fallos_seguidos = 0
-    for fila in repo.pscp_vigentes_para_documentos(limit=limite):
-        restante = presupuesto_s - (reloj() - inicio)
-        if restante <= 0:
+    for fila in repo.pscp_para_documentos(limit=limite, dias_cambio=dias_cambio):
+        if presupuesto_s - (reloj() - inicio) <= 0:
             resumen.sin_presupuesto = True
             break
         if fallos_seguidos >= _FALLOS_SEGUIDOS_MAX:
@@ -378,9 +459,7 @@ def completar_documentos_pscp(
         resumen.candidatas += 1
         id_externo = str(fila["id_externo"])
         try:
-            detalle = documentos_de_pscp(
-                fila.get("url"), obtener=obtener or _obtener_pscp_con_tope(restante)
-            )
+            detalle = documentos_de_pscp(fila.get("url"), obtener=pedir)
         except Exception as e:
             fallos_seguidos += 1
             resumen.fallidas += 1
