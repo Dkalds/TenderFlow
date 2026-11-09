@@ -2,22 +2,23 @@
 
 Para cada regla **activa** que este "due" segun su frecuencia
 (``immediate``/``daily``/``weekly``), busca licitaciones nuevas (con
-``fecha_publicacion`` posterior a ``last_notified_at``) que coincidan con sus
-criterios y:
+``fecha_publicacion`` posterior a ``last_notified_at``, menos la gracia) que
+coincidan con sus criterios y escribe **un** ``watchlist_rule.matched`` en el
+outbox (``domain_events``, ADR-027). Lo reparte
+``scheduler/jobs/event_dispatch.py``, que en el cierre corre después de este
+paso y antes de ``digests``:
 
-1. Escribe un registro en ``user_notifications`` (INSERT OR IGNORE) para la
-   bandeja in-app del usuario.
-2. Si la regla tiene ``email`` configurado, encola en ``pending_digests``
-   para que ``send_pending_digests`` lo entregue por email.
-3. Escribe ``watchlist_rule.matched`` en el outbox (``domain_events``); las
-   entregas a webhooks externos las hace después
-   ``scheduler/jobs/event_dispatch.py``, fuera de este bucle.
+1. la campana: una fila de ``user_notifications`` por licitación, con
+   ``rule_id``;
+2. el correo: ``pending_digests`` con la frecuencia y el correo de la regla,
+   leídos de la regla al despachar (no viajan en el evento, que también sale
+   por webhook);
+3. los webhooks suscritos.
 
-Ya NO llama a ``notify()`` global (que mandaba todo al ALERT_EMAIL_TO).
-La entrega por email queda sujeta a la frecuencia de la regla; ``immediate``
-se entregara en el proximo run del job de digests (~4h en GH Actions).
+Hasta 2026-11 este job escribía la campana y el digest a mano y el evento
+solo llevaba el webhook.
 
-Espeja ``scheduler/watchlist_alerts.py`` (watchlist de empresas) pero sobre la
+Espeja ``scheduler/watchlist_alerts.py`` (watchlist de instancia) pero sobre la
 tabla ``watchlist_rules`` (RFC ux-mi-watchlist, increment 4).
 """
 
@@ -26,9 +27,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from psycopg import errors as pg_errors
-
-from db.notifications import insert_user_notifications
+from db.events import agregados_pendientes, append_domain_event
 from db.repositories.watchlist_rules import filas_de_reglas_a_evaluar, marcar_regla_notificada
 from observability import get_logger
 from services.watchlist_rules import WatchlistRule, matches_since
@@ -51,6 +50,10 @@ _FREQ_INTERVAL = {"daily": timedelta(days=1), "weekly": timedelta(days=7)}
 #: único; una ventana muy larga acabaría pagando el escaneo sin cubrir ningún
 #: caso nuevo — la ingesta tardía real es de horas, no de días.
 _VENTANA_GRACIA_DIAS = 2
+
+#: El evento de una regla con matches nuevos, con la regla como agregado.
+_EVENTO = "watchlist_rule.matched"
+_AGREGADO = "watchlist_rule"
 
 
 def _is_due(row: dict[str, Any], now: datetime) -> bool:
@@ -115,12 +118,6 @@ def _row_to_rule(row: dict[str, Any]) -> WatchlistRule:
     )
 
 
-def _build_title(rule: WatchlistRule, n: int) -> str:
-    """Titulo corto para la notificacion in-app."""
-    nombre = rule.nombre or rule.keyword or (f"CPV {rule.cpv}" if rule.cpv else None) or "tu regla"
-    return f"{n} licitacion(es) nueva(s) para «{nombre}»"
-
-
 def _build_body(rule: WatchlistRule, matches: list[dict[str, Any]]) -> str:
     """Texto del cuerpo para email / in-app."""
     crit: list[str] = []
@@ -146,82 +143,11 @@ def _build_body(rule: WatchlistRule, matches: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _write_user_notifications(
-    user_key: str,
-    rule_id: int,
-    matches: list[dict[str, Any]],
-    rule: WatchlistRule,
-    now_ts: str,
-    user_id: int | None = None,
-) -> int:
-    """Escribe notificaciones in-app (idempotentes) para los matches de una regla.
-
-    Pasa por :func:`db.notifications.insert_user_notification`, la única
-    escritura de alertas: hasta v162 este módulo repetía aquí su propio
-    ``INSERT ... ON CONFLICT (user_key, …)``, y al cambiar la identidad de la
-    tabla a ``user_id`` habría quedado tecleado por la clave vieja. ``user_id``
-    es el de la regla; sin él (regla que el backfill de v129 no resolvió) la
-    alerta sale sólo con la clave, como siempre.
-
-    Tolerante a la ausencia de la tabla (BDs sin migracion v48).
-    Returns: numero de filas insertadas (las que no eran duplicados).
-    """
-    if rule.organization_id is None:
-        # Una alerta sin ámbito no aparece en ninguna campana (misma regla que
-        # `services/deadline_reminders`): antes el INSERT la escribía igual y
-        # gastaba la identidad única con una fila que nadie veía.
-        log.warning("user_notifications_sin_organizacion", rule_id=rule_id, matches=len(matches))
-        return 0
-    filas = [
-        (lic_id, f"{lic.get('titulo', '?')} | {lic.get('organo_contratacion', '?')}")
-        for lic in matches
-        if (lic_id := str(lic.get("id_externo") or ""))
-    ]
-    try:
-        # Una conexión para todas las de la regla, no una por coincidencia.
-        return insert_user_notifications(
-            type_="rule_match",
-            title=_build_title(rule, len(matches)),
-            filas=filas,
-            organization_id=rule.organization_id,
-            user_id=user_id,
-            user_key=user_key,
-            rule_id=rule_id,
-            created_at=now_ts,
-        )
-    except pg_errors.UndefinedTable as exc:
-        # Si la tabla no existe (BD legacy sin migrar), continuar sin crash. Solo
-        # eso: cualquier otro fallo sube, porque la ventana de la regla se marca
-        # después de escribir y tragarlo en silencio pierde la alerta.
-        log.warning("user_notifications_write_skip", error=str(exc)[:100])
-        return 0
-
-
-def _enqueue_pending_digest(
-    user_key: str,
-    email: str,
-    rule_id: int,
-    matches: list[dict[str, Any]],
-    frequency: str,
-    rule: WatchlistRule,
-    now_ts: str,
-    user_id: int | None = None,
-) -> None:
-    """Encola matches en pending_digests para entrega por email."""
-    from services.watchlist import store_pending_digests
-
-    lic_ids = [lic_id for lic in matches if (lic_id := str(lic.get("id_externo") or ""))]
-    store_pending_digests(user_key, email, rule_id, lic_ids, frequency, now_ts, user_id=user_id)
-
-
 def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
-    """Evalua las reglas activas "due" y persiste alertas de matches nuevos.
-
-    - Escribe en ``user_notifications`` (in-app) para todos los matches.
-    - Si la regla tiene email, encola en ``pending_digests``.
+    """Evalua las reglas activas "due" y escribe un evento por regla con matches nuevos.
 
     Returns:
-        Numero de reglas que dispararon al menos una notificacion.
+        Numero de reglas que emitieron su ``watchlist_rule.matched``.
     """
     now = datetime.now(UTC)
     now_ts = now.isoformat()
@@ -232,34 +158,50 @@ def check_rules_and_notify(*, limit_per_rule: int = 50) -> int:
         log.debug("watchlist_rules_empty")
         return 0
 
+    en_cola = agregados_pendientes(_EVENTO, _AGREGADO)
     alerted = 0
     for row in rules:
         try:
-            alerted += _evaluar_regla(row, now, now_ts, default_since, limit_per_rule)
+            alerted += _evaluar_regla(row, now, now_ts, default_since, limit_per_rule, en_cola)
         except Exception:
             # Una regla que falla no puede bloquear a las demás. Su ventana no
             # avanzó (ver `_evaluar_regla`), así que la siguiente pasada la
-            # reintenta, y las escrituras son idempotentes.
+            # reintenta.
             log.error("watchlist_rule_fallo", rule_id=row.get("id"), exc_info=True)
 
     return alerted
 
 
 def _evaluar_regla(
-    row: JsonDict, now: datetime, now_ts: str, default_since: str, limit_per_rule: int
+    row: JsonDict,
+    now: datetime,
+    now_ts: str,
+    default_since: str,
+    limit_per_rule: int,
+    en_cola: set[str],
 ) -> bool:
-    """Evalúa una regla; ``True`` si disparó alguna notificación.
+    """Evalúa una regla; ``True`` si emitió su evento.
 
-    La ventana (``last_notified_at``) avanza **después** de escribir la alerta:
+    La ventana (``last_notified_at``) avanza **después** de escribir el evento:
     si la escritura falla, la regla sigue pendiente y la pasada siguiente busca
-    lo mismo. Avanzarla antes perdía la alerta —una regla semanal solo solapa
-    :data:`_VENTANA_GRACIA_DIAS` días—, y como el fallo se tragaba, nadie lo veía.
+    lo mismo.
+
+    Una regla con su aviso anterior aún en cola (``en_cola``) no se evalúa: el
+    anti-join de ``matches_since`` mira la campana, que escribe el despachador,
+    así que reevaluarla antes emitiría las mismas licitaciones otra vez y el
+    webhook las recibiría dos veces. Con el cierre canónico el despacho corre
+    en la misma pasada y esto no pasa; la guarda cubre el despachador apagado,
+    caído o con la cola por encima del lote. Tampoco avanza su ventana: lo que
+    se publique mientras tanto entra en la evaluación siguiente.
     """
     if not _is_due(row, now):
         return False
+    rule_id = int(row["id"])
+    if str(rule_id) in en_cola:
+        log.info("watchlist_rule_aviso_en_cola", rule_id=rule_id)
+        return False
     rule = _row_to_rule(row)
     user_key = str(row["user_key"])
-    rule_id = int(row["id"])
     # `None` en reglas que el backfill de v129 no resolvió.
     raw_user_id = row.get("user_id")
     user_id = int(raw_user_id) if raw_user_id is not None else None
@@ -283,63 +225,24 @@ def _evaluar_regla(
         marcar_regla_notificada(rule_id, now_ts)
         return False
 
-    email = row.get("email")
-
-    # 1. Notificaciones in-app (siempre)
-    written = _write_user_notifications(
-        user_key, rule_id, new_matches, rule, now_ts, user_id=user_id
+    # Sin correo ni frecuencia: los lee el despachador de la regla. El payload
+    # es también el cuerpo del webhook de la organización.
+    append_domain_event(
+        _EVENTO,
+        rule_id,
+        _AGREGADO,
+        {
+            "rule_id": rule_id,
+            "user_key": user_key,
+            "nombre": rule.nombre,
+            "keyword": rule.keyword,
+            "cpv": rule.cpv,
+            "total_matches": len(new_matches),
+            "licitaciones": [lic.get("id_externo") for lic in new_matches],
+        },
+        organization_id=rule.organization_id,
     )
-
-    # 2. Email via pending_digests (solo si hay email configurado)
-    if email:
-        _enqueue_pending_digest(
-            user_key,
-            email,
-            rule_id,
-            new_matches,
-            row.get("frequency") or "daily",
-            rule,
-            now_ts,
-            user_id=user_id,
-        )
-
     marcar_regla_notificada(rule_id, now_ts)
 
-    log.info(
-        "watchlist_rule_alert",
-        rule_id=rule_id,
-        total=len(new_matches),
-        in_app=written,
-        has_email=bool(email),
-    )
-
-    # El aviso a las integraciones externas ya no se entrega desde aquí:
-    # se escribe en el outbox (`domain_events`) y lo reparte
-    # `scheduler/jobs/event_dispatch.py`. Antes este bucle abría una
-    # conexión HTTP por webhook suscrito **dentro** de la evaluación de las
-    # reglas, así que un receptor lento retrasaba las alertas de todos los
-    # demás usuarios y una entrega fallida no dejaba rastro de qué la había
-    # originado. Sigue siendo best-effort: la alerta in-app ya está escrita
-    # y no puede caerse porque el evento no se pueda registrar.
-    try:
-        from db.events import append_domain_event
-
-        append_domain_event(
-            "watchlist_rule.matched",
-            rule_id,
-            "watchlist_rule",
-            {
-                "rule_id": rule_id,
-                "user_key": user_key,
-                "nombre": rule.nombre,
-                "keyword": rule.keyword,
-                "cpv": rule.cpv,
-                "total_matches": len(new_matches),
-                "licitaciones": [lic.get("id_externo") for lic in new_matches],
-            },
-            organization_id=rule.organization_id,
-        )
-    except Exception:
-        log.warning("watchlist_rule_event_failed", exc_info=True)
-
+    log.info("watchlist_rule_alert", rule_id=rule_id, total=len(new_matches))
     return True

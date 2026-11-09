@@ -1,12 +1,18 @@
-"""Comprueba la watchlist tras cada ejecución del pipeline y envía alertas por email.
+"""Watchlist de instancia (``watchlist_cpv``): coincidencias al outbox y envío de digests.
 
-Lógica:
-- Entradas con ``frequency='immediate'``: se envían en el momento (máx 1 email por usuario
-  por ejecución agrupando todas sus coincidencias).
-- Entradas con ``frequency='daily'`` o ``'weekly'``: las coincidencias se acumulan en
-  ``pending_digests`` y se envían en batch cuando se llama ``send_pending_digests()``.
-- Siempre se actualiza ``last_notified_at`` para que la próxima ejecución solo vea
-  licitaciones publicadas después de este momento.
+``check_and_notify`` corre tras cada ingesta. Por cada destinatario con
+coincidencias nuevas escribe un ``watchlist_match`` en el outbox
+(``domain_events``, ADR-027); lo reparte ``scheduler/jobs/event_dispatch.py``,
+que lee el correo y la frecuencia de cada entrada al despachar:
+
+- ``frequency='immediate'``: un correo en el momento por destinatario
+  (:func:`avisar_al_momento`).
+- ``frequency='daily'`` o ``'weekly'``: las coincidencias se acumulan en
+  ``pending_digests`` y salen en batch con ``send_pending_digests()``.
+- Los webhooks globales suscritos a ``watchlist_match``.
+
+Siempre se actualiza ``last_notified_at`` para que la próxima ejecución solo vea
+licitaciones publicadas después de este momento.
 """
 
 from __future__ import annotations
@@ -14,6 +20,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from db.events import append_domain_event
 from db.watchlist import list_entries, matches_licitacion, update_last_notified
 from observability import AlertLevel, get_logger, notify
 from observability.alerts import enviar_email_transaccional
@@ -21,8 +28,8 @@ from services.watchlist import (
     load_pending_digests,
     mark_digests_sent,
     query_licitaciones_batch,
-    store_pending_digest,
 )
+from shared.types import JsonDict
 
 if TYPE_CHECKING:
     from services.email_digest import BloqueDigest
@@ -79,33 +86,38 @@ def _build_body(matches_by_entry: list[tuple[dict[str, Any], list[dict[str, Any]
     return "\n".join(lines)
 
 
-def _store_pending_digests(
-    recipient: str,
-    user_key: str,
-    matches_by_entry: list[tuple[dict[str, Any], list[dict[str, Any]]]],
-    frequency: str,
-    now_ts: str,
-) -> int:
-    """Persiste coincidencias en ``pending_digests`` para envío posterior."""
-    stored = 0
-    for entry, lics in matches_by_entry:
-        entry_id = int(entry["id"])
-        for lic in lics:
-            if store_pending_digest(
-                user_key, recipient, entry_id, str(lic["id_externo"]), frequency, now_ts
-            ):
-                stored += 1
-    return stored
+def avisar_al_momento(
+    recipient: str, matches_by_entry: list[tuple[JsonDict, list[JsonDict]]]
+) -> None:
+    """El correo inmediato de la watchlist de instancia: uno por destinatario.
+
+    Lo llama el despachador al repartir ``watchlist_match`` para las entradas
+    con ``frequency='immediate'``.
+    """
+    n = sum(len(lics) for _, lics in matches_by_entry)
+    notify(
+        AlertLevel.INFO,
+        f"Watchlist: {n} licitación(es) nueva(s)",
+        _build_body(matches_by_entry),
+        to_addr=recipient,
+        entradas_con_coincidencias=len(matches_by_entry),
+        total_coincidencias=n,
+    )
 
 
 def check_and_notify() -> int:
-    """Comprueba la watchlist del usuario y gestiona las alertas según frecuencia.
+    """Escribe un ``watchlist_match`` por destinatario con coincidencias nuevas.
 
-    - ``frequency='immediate'``: envía un email inmediato por destinatario.
-    - ``frequency='daily'`` / ``'weekly'``: acumula en ``pending_digests``.
+    El reparto —correo inmediato, digest y webhook— lo hace el despachador con
+    el correo y la frecuencia de cada entrada leídos al despachar: el evento no
+    los lleva porque se guarda para siempre.
+
+    El evento se escribe antes de mover la ventana: si la marca falla, la
+    pasada siguiente vuelve a emitir (el digest no duplica; el webhook sí), y
+    al revés se perderían las coincidencias.
 
     Returns:
-        Número total de licitaciones notificadas de forma inmediata.
+        Número total de coincidencias emitidas.
     """
     user_key = _user_key()
     entries = list_entries(user_key)
@@ -117,30 +129,20 @@ def check_and_notify() -> int:
     now_ts = datetime.now(UTC).isoformat()
     default_since = (datetime.now(UTC) - timedelta(days=_LOOKBACK_DAYS)).date().isoformat()
 
-    # Separar entradas por modo: inmediato vs digest
     from collections import defaultdict
 
-    immediate_by_email: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    digest_by_email: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    entries_without_email: list[dict[str, Any]] = []
-
+    by_email: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for entry in entries:
-        freq = entry.get("frequency") or "daily"
-        if not entry.get("email"):
-            entries_without_email.append(entry)
-        elif freq == "immediate":
-            immediate_by_email[entry["email"]].append(entry)
+        if entry.get("email"):
+            by_email[entry["email"]].append(entry)
         else:
-            # 'daily' o 'weekly' → digest
-            digest_by_email[entry["email"]].append(entry)
+            # Sin correo no hay a quién avisar: solo se mueve la marca.
+            update_last_notified(int(entry["id"]), now_ts)
 
     total_notified = 0
-
-    # ── Entradas inmediatas: un email por destinatario ─────────────────
-    for recipient, recipient_entries in immediate_by_email.items():
-        matches_by_entry: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+    for recipient_entries in by_email.values():
         candidates_by_prefix = _query_licitaciones_batch(recipient_entries, default_since)
-
+        matches_by_entry: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
         for entry in recipient_entries:
             candidates = candidates_by_prefix.get(entry["cpv_prefix"], [])
             matched = [lic for lic in candidates if matches_licitacion(entry, lic)]
@@ -150,39 +152,22 @@ def check_and_notify() -> int:
                 keyword=entry.get("keyword"),
                 candidates=len(candidates),
                 matches=len(matched),
-                recipient=recipient,
-                frequency="immediate",
+                frequency=entry.get("frequency"),
             )
             if matched:
                 matches_by_entry.append((entry, matched))
 
-        for entry in recipient_entries:
-            update_last_notified(int(entry["id"]), now_ts)
-
-        if not matches_by_entry:
-            continue
-
-        n = sum(len(lics) for _, lics in matches_by_entry)
-        body = _build_body(matches_by_entry)
-        notify(
-            AlertLevel.INFO,
-            f"Watchlist: {n} licitación(es) nueva(s)",
-            body,
-            to_addr=recipient,
-            entradas_con_coincidencias=len(matches_by_entry),
-            total_coincidencias=n,
-        )
-        # B5: dispara webhook a suscriptores externos (best-effort, no bloquea)
-        try:
-            from db.webhooks import trigger_event
-
-            trigger_event(
+        if matches_by_entry:
+            n = sum(len(lics) for _, lics in matches_by_entry)
+            append_domain_event(
                 "watchlist_match",
+                min(int(e["id"]) for e, _ in matches_by_entry),
+                "watchlist_cpv",
                 {
-                    "recipient": recipient,
                     "total_matches": n,
                     "entries": [
                         {
+                            "entry_id": int(e["id"]),
                             "cpv_prefix": e["cpv_prefix"],
                             "keyword": e.get("keyword"),
                             "matches": [lic.get("id_externo") for lic in lics],
@@ -191,49 +176,13 @@ def check_and_notify() -> int:
                     ],
                 },
             )
-        except Exception:
-            log.warning("webhook_trigger_failed", exc_info=True)
-        log.info("watchlist_alert_sent", recipient=recipient, total=n, frequency="immediate")
-        total_notified += n
-
-    # ── Entradas digest: acumular en pending_digests ───────────────────
-    for recipient, recipient_entries in digest_by_email.items():
-        candidates_by_prefix = _query_licitaciones_batch(recipient_entries, default_since)
-        matches_by_entry = []
-
-        for entry in recipient_entries:
-            candidates = candidates_by_prefix.get(entry["cpv_prefix"], [])
-            matched = [lic for lic in candidates if matches_licitacion(entry, lic)]
-            log.debug(
-                "watchlist_entry_checked",
-                cpv=entry["cpv_prefix"],
-                keyword=entry.get("keyword"),
-                candidates=len(candidates),
-                matches=len(matched),
-                recipient=recipient,
-                frequency=entry.get("frequency"),
-            )
-            if matched:
-                matches_by_entry.append((entry, matched))
+            log.info("watchlist_match_emitido", entradas=len(matches_by_entry), total=n)
+            total_notified += n
 
         for entry in recipient_entries:
             update_last_notified(int(entry["id"]), now_ts)
 
-        if matches_by_entry:
-            freq = recipient_entries[0].get("frequency") or "daily"
-            stored = _store_pending_digests(recipient, user_key, matches_by_entry, freq, now_ts)
-            log.info(
-                "watchlist_digest_queued",
-                recipient=recipient,
-                stored=stored,
-                frequency=freq,
-            )
-
-    # ── Entradas sin email: solo actualizar timestamp ──────────────────
-    for entry in entries_without_email:
-        update_last_notified(int(entry["id"]), now_ts)
-
-    if total_notified == 0 and not digest_by_email:
+    if total_notified == 0:
         log.info("watchlist_no_new_matches", entries=len(entries))
 
     return total_notified

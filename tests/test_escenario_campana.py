@@ -4,9 +4,10 @@ Recorrido completo por la API con sesión real. Ver ``tests/escenarios.py`` y
 ``docs/casos-de-uso.md``.
 
 Dos piezas no las hace una persona y por eso el escenario las hace a mano, como
-las haría la pasada: el job de reglas deja su alerta en la bandeja
-(``scheduler/watchlist_rules_alerts.py``), y el despachador del outbox reparte
-la mención (``scheduler/jobs/event_dispatch.dispatch_pending``).
+las haría la pasada: la alerta de una regla en la bandeja (la que escribe el
+despachador al repartir el ``watchlist_rule.matched`` de
+``scheduler/watchlist_rules_alerts.py``), y la mención, que reparte el
+despachador del outbox (``scheduler/jobs/event_dispatch.dispatch_pending``).
 """
 
 from __future__ import annotations

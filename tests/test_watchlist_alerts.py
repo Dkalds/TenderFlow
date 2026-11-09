@@ -148,11 +148,12 @@ def test_check_and_notify_no_email_no_notify(tmp_db, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# check_and_notify - entry with email, has matches -> notify
+# check_and_notify - entry with email, has matches -> evento en el outbox
 # ---------------------------------------------------------------------------
 
 
-def test_check_and_notify_with_matches_sends_alert(tmp_db):
+def test_check_and_notify_with_matches_emite_el_evento(tmp_db):
+    """El correo y el webhook los reparte el despachador; aquí sale el evento."""
     _, _ = tmp_db
 
     import importlib
@@ -188,15 +189,24 @@ def test_check_and_notify_with_matches_sends_alert(tmp_db):
         patch("scheduler.watchlist_alerts.list_entries", return_value=[entry]),
         patch("scheduler.watchlist_alerts._query_licitaciones_batch", return_value={"48": [lic]}),
         patch("scheduler.watchlist_alerts.matches_licitacion", return_value=True),
-        patch("scheduler.watchlist_alerts.update_last_notified"),
+        patch("scheduler.watchlist_alerts.update_last_notified") as mock_update,
+        patch("scheduler.watchlist_alerts.append_domain_event") as mock_evento,
         patch("scheduler.watchlist_alerts.notify") as mock_notify,
     ):
         result = watchlist_alerts.check_and_notify()
 
     assert result == 1
-    mock_notify.assert_called_once()
-    call_args = mock_notify.call_args
-    assert call_args[1]["to_addr"] == "test@example.com"
+    mock_notify.assert_not_called()
+    mock_update.assert_called_once()
+    tipo, _agregado_id, _agregado, payload = mock_evento.call_args.args
+    assert tipo == "watchlist_match"
+    assert mock_evento.call_args.kwargs.get("organization_id") is None
+    assert payload == {
+        "total_matches": 1,
+        "entries": [{"entry_id": 2, "cpv_prefix": "48", "keyword": "SAP", "matches": ["LIC-001"]}],
+    }
+    # El correo no queda en `domain_events`: lo lee el despachador al repartir.
+    assert "test@example.com" not in repr(payload)
 
 
 def test_check_and_notify_with_email_no_matches_no_notify(tmp_db):
@@ -221,67 +231,78 @@ def test_check_and_notify_with_email_no_matches_no_notify(tmp_db):
     with (
         patch("scheduler.watchlist_alerts.list_entries", return_value=[entry]),
         patch("scheduler.watchlist_alerts.update_last_notified"),
-        patch("scheduler.watchlist_alerts.notify") as mock_notify,
+        patch("scheduler.watchlist_alerts.append_domain_event") as mock_evento,
     ):
         result = watchlist_alerts.check_and_notify()
 
     assert result == 0
-    mock_notify.assert_not_called()
+    mock_evento.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# _store_pending_digests
+# El despachador encola el digest de la watchlist (antes `_store_pending_digests`)
 # ---------------------------------------------------------------------------
+
+
+def _entrada_diaria(user_key: str, email: str) -> int:
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO watchlist_cpv (user_key, cpv_prefix, keyword, min_importe, ccaa, email, frequency, created_at) "
+            "VALUES (%s, '48', NULL, NULL, NULL, %s, 'daily', '2024-01-01')",
+            (user_key, email),
+        )
+        return int(c.execute("SELECT MAX(id) FROM watchlist_cpv").fetchone()[0])
+
+
+def _despachar_watchlist(entry_id: int, lic_id: str) -> int:
+    from scheduler.jobs.event_dispatch import ResultadoDespacho, _digest_de_watchlist
+
+    resultado = ResultadoDespacho()
+    _digest_de_watchlist(
+        {
+            "id": 1,
+            "payload": {
+                "total_matches": 1,
+                "entries": [{"entry_id": entry_id, "cpv_prefix": "48", "matches": [lic_id]}],
+            },
+        },
+        resultado,
+    )
+    return resultado.digest
 
 
 def test_store_pending_digests_inserts_rows(tmp_db):
-    """_store_pending_digests persiste filas en pending_digests."""
+    """El despachador persiste en pending_digests con el correo de la entrada."""
     from db.database import connect
 
-    with connect() as c:
-        c.execute(
-            "INSERT INTO watchlist_cpv (user_key, cpv_prefix, keyword, min_importe, ccaa, email, frequency, created_at) "
-            "VALUES ('testkey', '48', NULL, NULL, NULL, 'u@example.com', 'daily', '2024-01-01')"
-        )
-        entry_id = c.execute("SELECT MAX(id) FROM watchlist_cpv").fetchone()[0]
+    entry_id = _entrada_diaria("testkey", "u@example.com")
 
-    entry = {"id": entry_id, "cpv_prefix": "48", "keyword": None, "min_importe": None, "ccaa": None}
-    lic = {"id_externo": "LIC-STORE-01", "titulo": "T"}
-
-    from scheduler.watchlist_alerts import _store_pending_digests
-
-    stored = _store_pending_digests(
-        "testkey", "u@example.com", [(entry, [lic])], "daily", "2024-01-01T00:00:00"
-    )
-    assert stored == 1
+    assert _despachar_watchlist(entry_id, "LIC-STORE-01") == 1
 
     with connect() as c:
         row = c.execute(
-            "SELECT licitacion_id FROM pending_digests WHERE licitacion_id = 'LIC-STORE-01'"
+            "SELECT recipient_email, frequency FROM pending_digests "
+            "WHERE licitacion_id = 'LIC-STORE-01'"
         ).fetchone()
-    assert row is not None
+    assert tuple(row) == ("u@example.com", "daily")
 
 
 def test_store_pending_digests_idempotent(tmp_db):
-    """Insertar la misma fila dos veces → OR IGNORE, segunda no inserta."""
+    """Despachar dos veces el mismo evento → ON CONFLICT, una sola fila."""
     from db.database import connect
 
+    entry_id = _entrada_diaria("testkey2", "u2@example.com")
+
+    _despachar_watchlist(entry_id, "LIC-DUP-01")
+    _despachar_watchlist(entry_id, "LIC-DUP-01")
+
     with connect() as c:
-        c.execute(
-            "INSERT INTO watchlist_cpv (user_key, cpv_prefix, keyword, min_importe, ccaa, email, frequency, created_at) "
-            "VALUES ('testkey2', '48', NULL, NULL, NULL, 'u2@example.com', 'daily', '2024-01-01')"
-        )
-        entry_id = c.execute("SELECT MAX(id) FROM watchlist_cpv").fetchone()[0]
-
-    entry = {"id": entry_id, "cpv_prefix": "48", "keyword": None, "min_importe": None, "ccaa": None}
-    lic = {"id_externo": "LIC-DUP-01", "titulo": "T"}
-
-    from scheduler.watchlist_alerts import _store_pending_digests
-
-    first = _store_pending_digests(
-        "testkey2", "u2@example.com", [(entry, [lic])], "daily", "2024-01-01"
-    )
-    assert first == 1
+        n = c.execute(
+            "SELECT COUNT(*) FROM pending_digests WHERE licitacion_id = 'LIC-DUP-01'"
+        ).fetchone()[0]
+    assert n == 1
 
 
 # ---------------------------------------------------------------------------

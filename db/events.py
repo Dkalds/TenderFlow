@@ -216,6 +216,22 @@ def agregados_con_evento(
     return {str(fila[0]) for fila in filas}
 
 
+def agregados_pendientes(event_type: str, aggregate_type: str) -> set[str]:
+    """Agregados con un evento de ese tipo que el despachador aún no repartió.
+
+    Lo usa el productor de reglas: su anti-join mira la campana, que el
+    despachador escribe después, así que reevaluar una regla con su aviso aún
+    en cola lo emitiría dos veces. Usa el índice parcial de pendientes (v107).
+    """
+    with connect_read() as c:
+        filas = c.execute(
+            "SELECT DISTINCT aggregate_id FROM domain_events "
+            "WHERE dispatched_at IS NULL AND event_type=%s AND aggregate_type=%s",
+            (event_type, aggregate_type),
+        ).fetchall()
+    return {str(fila[0]) for fila in filas}
+
+
 def get_events_by_type(
     event_type: str,
     *,
