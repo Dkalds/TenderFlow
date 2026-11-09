@@ -42,7 +42,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from api.concurrency import run_db, run_ml
+from api.concurrency import run_db, run_io, run_ml
 from api.identidad import id_vigente, resolver_id_externo
 from api.routes.dual_auth import require_any_auth
 from api.tenancy import require_organization
@@ -278,17 +278,21 @@ def _budget_org(user: Principal) -> str | None:
     return str(raw) if raw is not None else None
 
 
-def _check_budget(user: Principal) -> None:
+async def _check_budget(user: Principal) -> None:
     """Check eager del presupuesto ANTES de abrir el SSE: con enforce y ventana
     agotada respondemos 429 sin llamar al proveedor ni hacer retrieval
     (RFC llm-dependencia-gestionada). En monitor solo instrumenta.
 
     Se verifica el tope global y el del propio usuario, para que una cuenta que
-    agota su cuota no arrastre a las demás."""
+    agota su cuota no arrastre a las demás.
+
+    ``check()`` habla con Redis (``INCRBYFLOAT``), así que va al threadpool: en
+    el event loop dejaba esperando a todos los endpoints del proceso.
+    """
     from llm.budget import LLMBudgetExceeded, get_budget_guard
 
     try:
-        get_budget_guard().check(_budget_subject(user), _budget_org(user))
+        await run_io(get_budget_guard().check, _budget_subject(user), _budget_org(user))
     except LLMBudgetExceeded as exc:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -898,7 +902,7 @@ async def ask_question(
         user_key_id=user.get("user_id"),
     )
 
-    _check_budget(user)
+    await _check_budget(user)
 
     # La misma flag que la lista del Investigador: si a quien pregunta le
     # responde la búsqueda por significado, al asistente también.
@@ -968,7 +972,7 @@ async def resumen_licitacion(
         user_key_id=user.get("user_id"),
     )
 
-    _check_budget(user)
+    await _check_budget(user)
 
     from llm.budget import bind_budget_org, bind_budget_subject
     from llm.client import stream_llm_response

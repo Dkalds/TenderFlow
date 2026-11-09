@@ -51,12 +51,13 @@ import hashlib
 import hmac
 import os
 import warnings
-from datetime import UTC, datetime
+from datetime import datetime
 from functools import lru_cache
 
 from cryptography.fernet import Fernet, InvalidToken
 
 from observability.logging import get_logger
+from shared.dates import instante_utc
 
 log = get_logger(__name__)
 
@@ -190,9 +191,10 @@ def segundos_unix(marca: str | datetime) -> int:
     if isinstance(marca, datetime):
         momento = marca
     else:
-        momento = datetime.fromisoformat(marca.strip().replace("Z", "+00:00"))
-    if momento.tzinfo is None:
-        momento = momento.replace(tzinfo=UTC)
+        parsed = instante_utc(marca)
+        if parsed is None:
+            raise ValueError(f"marca ISO 8601 inválida: {marca!r}")
+        momento = parsed
     return int(momento.timestamp())
 
 

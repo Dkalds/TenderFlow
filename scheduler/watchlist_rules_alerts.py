@@ -32,6 +32,7 @@ from db.notifications import insert_user_notifications
 from db.repositories.watchlist_rules import filas_de_reglas_a_evaluar, marcar_regla_notificada
 from observability import get_logger
 from services.watchlist_rules import WatchlistRule, matches_since
+from shared.dates import instante_utc
 from shared.types import JsonDict
 
 log = get_logger(__name__)
@@ -61,12 +62,9 @@ def _is_due(row: dict[str, Any], now: datetime) -> bool:
     if freq == "immediate":
         return True
     interval = _FREQ_INTERVAL.get(freq, _FREQ_INTERVAL["daily"])
-    try:
-        last_dt = datetime.fromisoformat(str(last))
-    except ValueError:
+    last_dt = instante_utc(last)
+    if last_dt is None:
         return True
-    if last_dt.tzinfo is None:
-        last_dt = last_dt.replace(tzinfo=UTC)
     return (now - last_dt) >= interval
 
 
@@ -88,14 +86,11 @@ def _since_date(row: dict[str, Any], default_since: str) -> str:
     last = row.get("last_notified_at")
     if not last:
         return default_since
-    try:
-        ultimo = datetime.fromisoformat(str(last))
-    except (ValueError, TypeError):
+    ultimo = instante_utc(last)
+    if ultimo is None:
         # Marca ilegible: se cae al lookback largo en vez de inventar un corte.
         # Con el anti-join, mirar de más es barato; mirar de menos pierde avisos.
         return default_since
-    if ultimo.tzinfo is None:
-        ultimo = ultimo.replace(tzinfo=UTC)
     return (ultimo - timedelta(days=_VENTANA_GRACIA_DIAS)).date().isoformat()
 
 

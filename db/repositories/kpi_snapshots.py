@@ -60,6 +60,7 @@ from db.database import connect_read
 from db.repositories.aggregates import AggregateRepository, LicitacionesFilters
 from db.repositories.base import csv_values, loose_distinct_strings
 from observability.logging import get_logger
+from shared.dates import instante_utc
 
 log = get_logger(__name__)
 
@@ -333,11 +334,11 @@ def _read_metricas(
         )
         computed_at = max(computed_at, str(fila_computed_at))
 
-    try:
-        edad = (datetime.now(UTC) - datetime.fromisoformat(computed_at)).total_seconds()
-    except ValueError:
+    edad_marca = instante_utc(computed_at)
+    if edad_marca is None:
         log.warning("kpi_snapshot_computed_at_ilegible", computed_at=computed_at)
         return None
+    edad = (datetime.now(UTC) - edad_marca).total_seconds()
     if edad > max_age_seconds:
         log.info("kpi_snapshot_caducado", edad_s=int(edad), max_age_s=max_age_seconds)
         return None

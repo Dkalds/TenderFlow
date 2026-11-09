@@ -32,6 +32,7 @@ from db.dlq import (
 )
 from observability.alerts import AlertLevel, notify
 from observability.logging import bind_run_context, get_logger
+from shared.dates import instante_utc
 
 log = get_logger(__name__)
 
@@ -71,11 +72,8 @@ def _is_due(failure: dict[str, Any]) -> bool:
     raw = failure.get("last_attempt_at") or failure.get("created_at")
     if not raw:
         return True
-    try:
-        last_attempt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-        if last_attempt.tzinfo is None:
-            last_attempt = last_attempt.replace(tzinfo=UTC)
-    except (ValueError, TypeError):
+    last_attempt = instante_utc(raw)
+    if last_attempt is None:
         return True
     retry_count = int(failure.get("retry_count") or 0)
     due_after = last_attempt + timedelta(seconds=_backoff_seconds(retry_count))

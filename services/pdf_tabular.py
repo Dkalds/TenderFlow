@@ -39,6 +39,8 @@ from datetime import UTC, datetime
 from html import escape
 from typing import Any
 
+from services.pdf_accesible import metadatos
+
 #: Tope de filas por tabla. Ver «Límites deliberados».
 MAX_FILAS = 500
 
@@ -140,7 +142,13 @@ def construir_pdf_secciones(
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=landscape(A4), rightMargin=20, leftMargin=20)
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=landscape(A4),
+        rightMargin=20,
+        leftMargin=20,
+        **metadatos(titulo=title, asunto=subtitulo),
+    )
     estilos = getSampleStyleSheet()
     story: list[Any] = [
         Paragraph(_texto(title), estilos["Title"]),

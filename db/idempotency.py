@@ -29,6 +29,7 @@ from typing import Any
 from config.settings import settings
 from db.database import connect, connect_read, now_utc_iso
 from observability.logging import get_logger
+from shared.dates import instante_utc
 
 log = get_logger(__name__)
 
@@ -45,13 +46,10 @@ def _caducada(created_at: str | None) -> bool:
     """
     if not created_at:
         return True
-    try:
-        marca = datetime.fromisoformat(str(created_at))
-    except ValueError:
+    marca = instante_utc(created_at)
+    if marca is None:
         log.warning("idempotency_created_at_ilegible", created_at=str(created_at)[:40])
         return True
-    if marca.tzinfo is None:
-        marca = marca.replace(tzinfo=UTC)
     return datetime.now(UTC) - marca > timedelta(seconds=settings.IDEMPOTENCY_TTL_SECONDS)
 
 

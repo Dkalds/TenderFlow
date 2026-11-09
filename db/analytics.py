@@ -153,18 +153,17 @@ def _source_db_mtime() -> float:
     Devuelve ``0.0`` si la tabla está vacía o la fecha no es parseable: el
     manifest se escribe igual y el lector interpreta 0 como "sin señal".
     """
-    from datetime import datetime
-
     from db.repositories.licitaciones import LicitacionRepository
+    from shared.dates import instante_utc
 
     raw = LicitacionRepository().get_last_extraction_date()
     if not raw:
         return 0.0
-    try:
-        return datetime.fromisoformat(str(raw)).timestamp()
-    except ValueError:
+    momento = instante_utc(raw)
+    if momento is None:
         log.warning("analytics_source_mtime_unparseable", value=str(raw))
         return 0.0
+    return momento.timestamp()
 
 
 def _postgres_row_counts(tables: Iterable[str]) -> dict[str, int]:

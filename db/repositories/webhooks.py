@@ -20,6 +20,7 @@ from shared.crypto import (
     resolve_derived_secret,
     sentinel_rotado,
 )
+from shared.dates import instante_utc
 
 log = get_logger(__name__)
 
@@ -375,13 +376,10 @@ class WebhookRepository:
         """Return whether an idempotency reservation is no longer usable."""
         if max_age_seconds <= 0 or not isinstance(created_at, str):
             return True
-        try:
-            created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-        except ValueError:
+        created = instante_utc(created_at)
+        if created is None:
             return True
-        if created.tzinfo is None:
-            created = created.replace(tzinfo=UTC)
-        return (datetime.now(UTC) - created.astimezone(UTC)).total_seconds() > max_age_seconds
+        return (datetime.now(UTC) - created).total_seconds() > max_age_seconds
 
     def idempotency_reserve(
         self,

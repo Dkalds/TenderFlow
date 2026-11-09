@@ -55,6 +55,7 @@ from typing import Any
 from config.settings import settings
 from db.database import connect, connect_read, now_utc_iso
 from observability.logging import get_logger
+from shared.dates import instante_utc
 
 log = get_logger(__name__)
 
@@ -71,8 +72,10 @@ def _hash_token(token: str) -> str:
 
 def _as_utc(value: str) -> datetime:
     """Parsea un timestamp ISO de la BD como datetime aware en UTC."""
-    parsed = datetime.fromisoformat(value)
-    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
+    parsed = instante_utc(value)
+    if parsed is None:
+        raise ValueError(f"timestamp ISO inválido: {value!r}")
+    return parsed
 
 
 # ---------------------------------------------------------------------------
