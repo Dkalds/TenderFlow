@@ -196,10 +196,11 @@ def test_run_pasa_a_cada_fase_su_tope_de_settings() -> None:
         patch.object(settings, "PLIEGO_FETCH_MAX_SECONDS", 11),
         patch.object(settings, "PLIEGO_EMBED_MAX_SECONDS", 22),
         patch.object(settings, "PLIEGO_FACTS_MAX_SECONDS", 33),
+        patch.object(settings, "PLIEGO_TECH_SIGNAL_MAX_SECONDS", 44),
         patch.object(documentos_embeddings, "_run_fetch_phase", return_value={}) as fetch,
         patch.object(documentos_embeddings, "_run_embed_phase", return_value={}) as embed,
         patch.object(documentos_embeddings, "_run_facts_phase", return_value={}) as facts,
-        patch.object(documentos_embeddings, "_run_tech_signal_phase", return_value={}),
+        patch.object(documentos_embeddings, "_run_tech_signal_phase", return_value={}) as tech,
         patch.object(documentos_embeddings, "_run_resumen_pregen_phase", return_value={}),
     ):
         run()
@@ -207,6 +208,37 @@ def test_run_pasa_a_cada_fase_su_tope_de_settings() -> None:
     assert fetch.call_args.kwargs["max_seconds"] == 11
     assert embed.call_args.kwargs["max_seconds"] == 22
     assert facts.call_args.kwargs["max_seconds"] == 33
+    assert tech.call_args.kwargs["max_seconds"] == 44
+
+
+# ── Fase tech_signal ──────────────────────────────────────────────────────
+
+
+class TestTechSignalConTope:
+    def test_agotado_el_tope_se_aplaza_el_resto_y_solo_se_funde_lo_puntuado(self) -> None:
+        senal = MagicMock()
+        senal.list_licitaciones_pending_signal.return_value = ["L1", "L2", "L3"]
+
+        # Arranque de la fase y una lectura antes de cada licitación: la
+        # segunda ya llega pasado el tope.
+        with (
+            patch("db.repositories.documentos.DocumentosRepository"),
+            patch(
+                "db.repositories.tecnologia_pliego.TecnologiaPliegoRepository", return_value=senal
+            ),
+            patch("scraper.lineage.current_filter_version", return_value="v-test"),
+            patch("services.tech_signal.score_documents", return_value={"SAP": 1.0}),
+            patch(
+                "services.tech_signal.merge_doc_signals", return_value={"licitaciones_merged": 1}
+            ) as merge,
+            patch.object(documentos_embeddings, "time", _reloj(0.0, 0.0, 700.0)),
+        ):
+            counts = documentos_embeddings._run_tech_signal_phase(limit=3, max_seconds=600)
+
+        assert (counts["scored"], counts["aplazados"]) == (1, 2)
+        assert senal.upsert_signals.call_count == 1
+        # Las aplazadas no se puntuaron: no hay señal nueva que fundir.
+        assert merge.call_args.kwargs["licitacion_ids"] == ["L1"]
 
 
 # ── Texto que Postgres no acepta ──────────────────────────────────────────

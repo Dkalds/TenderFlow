@@ -442,5 +442,7 @@ def test_run_passes_batch_sizes_from_settings(repo):
     fetch.assert_called_once_with(limit=7, max_seconds=settings.PLIEGO_FETCH_MAX_SECONDS)
     embed.assert_called_once_with(limit=3, max_seconds=settings.PLIEGO_EMBED_MAX_SECONDS)
     facts.assert_called_once_with(limit=2, max_seconds=settings.PLIEGO_FACTS_MAX_SECONDS)
-    tech_signal.assert_called_once_with(limit=9)
+    tech_signal.assert_called_once_with(
+        limit=9, max_seconds=settings.PLIEGO_TECH_SIGNAL_MAX_SECONDS
+    )
     resumen_pregen.assert_called_once_with(limit=4)
