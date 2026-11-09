@@ -173,12 +173,26 @@ def _run_tech_signal_merge() -> None:
     import json
     import time as _time
 
-    from services.tech_signal import merge_doc_signals
+    from services.tech_signal import deshacer_palabras_clave_vetadas, merge_doc_signals
 
     t0 = _time.monotonic()
+    # Antes del merge: lo que el LLM declaró «no TI» después de que sus palabras
+    # clave se fundieran se rehace aquí, y no cuenta como reparación. No es
+    # fail-open como el merge: un fallo suyo no puede dejar sin merge ni sin el
+    # evento de reparaciones a toda la pasada.
+    try:
+        vetadas = deshacer_palabras_clave_vetadas()
+    except Exception:
+        log.warning("pipeline_tech_signal_vetadas_failed", exc_info=True)
+        vetadas = 0
     result = merge_doc_signals()
     elapsed_ms = int((_time.monotonic() - t0) * 1000)
-    log.info("pipeline_tech_signal_merge_completed", elapsed_ms=elapsed_ms, **result)
+    log.info(
+        "pipeline_tech_signal_merge_completed",
+        elapsed_ms=elapsed_ms,
+        vetadas_deshechas=vetadas,
+        **result,
+    )
     record_event(
         EVENTO_TECH_SIGNAL_MERGE,
         value=float(result.get("licitaciones_reparadas", 0)),

@@ -467,7 +467,7 @@ class TestPrecomputeMlTecnologias:
         result = precompute_ml_tecnologias(force=True, batch_size=10)
         assert result["updated"] == 1
         assert result["scores_inserted"] == 2
-        mock_pendientes.assert_called_once_with(force=True)
+        mock_pendientes.assert_called_once_with(force=True, licitacion_ids=None)
         # Una sola fuente (T3): solo filas de score, y con force se sustituyen.
         mock_guardar.assert_called_once_with(
             scores=[("ext1", "SAP", 0.9, 0.5), ("ext1", "ORACLE", 0.7, 0.5)],

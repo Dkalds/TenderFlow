@@ -431,6 +431,42 @@ def merge_doc_signals(licitacion_ids: list[str] | None = None) -> dict[str, int]
     }
 
 
+def deshacer_palabras_clave_vetadas() -> int:
+    """Quita de ``ml_tecnologias`` lo que fundieron las palabras clave del
+    pliego en licitaciones que el LLM declaró después «no TI».
+
+    El merge nunca borra, así que la única forma de sacar esa tecnología es
+    rehacer las filas de score de la licitación con el clasificador (que borra
+    también lo fundido) y volver a fundir: :func:`merge_doc_signals` ya no
+    recoge esas palabras clave (``TecnologiaPliegoRepository.list_signals_for_merge``)
+    y repone el resto de señales. Devuelve cuántas licitaciones rehízo; 0 si
+    el clasificador está apagado (``ML_TECH_ENABLED``), porque rehacer las
+    filas con un modelo desactivado cambiaría más de lo que quita.
+    """
+    from config import settings
+    from services.ml.classifier_training import precompute_ml_tecnologias
+
+    if not settings.ML_TECH_ENABLED:
+        return 0
+    ids = TecnologiaPliegoRepository().licitaciones_con_palabras_clave_vetadas(
+        min_score=settings.PLIEGO_TECH_MIN_SCORE
+    )
+    if not ids:
+        return 0
+    rehecho = precompute_ml_tecnologias(licitacion_ids=ids)
+    if rehecho.get("skipped_no_model"):
+        # Sin clasificador no hay con qué rehacer las filas: borrar sin
+        # reponer dejaría la licitación sin puntuar. Se reintenta en la
+        # siguiente pasada.
+        log.warning("tech_signal_vetadas_sin_modelo", n_licitaciones=len(ids))
+        return 0
+    merge_doc_signals(licitacion_ids=ids)
+    # Un lote que falla al predecir no escribe nada: se cuenta lo rehecho.
+    rehechas = int(rehecho.get("updated", 0))
+    log.info("tech_signal_vetadas_deshechas", n_licitaciones=rehechas, candidatas=len(ids))
+    return rehechas
+
+
 def ingest_llm_technologies(record: TenderFactSheetRecord) -> int:
     """Normaliza ``record.facts.technologies`` (nombre libre extraído por el
     LLM) a ``TECH_LABELS`` reutilizando los patrones de ``scraper.filters``,

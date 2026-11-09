@@ -1157,7 +1157,9 @@ def guardar_ml_proba(pares: list[tuple[float, str]]) -> int:
     return len(pares)
 
 
-def filas_pendientes_ml_tecnologias(*, force: bool = False) -> list[dict[str, Any]]:
+def filas_pendientes_ml_tecnologias(
+    *, force: bool = False, licitacion_ids: list[str] | None = None
+) -> list[dict[str, Any]]:
     """Licitaciones que ``precompute_ml_tecnologias`` tiene que puntuar.
 
     ``force=False`` (default) solo devuelve las que nunca se puntuaron
@@ -1165,12 +1167,18 @@ def filas_pendientes_ml_tecnologias(*, force: bool = False) -> list[dict[str, An
     de ``licitacion_tecnologia_score`` en cuanto la licitación tiene alguna fila
     de score; la que se puntuó sin ninguna (todas las etiquetas a 0.0) la marca
     :func:`guardar_scores_tecnologia`, así que no vuelve a salir aquí.
+
+    Con ``licitacion_ids`` devuelve exactamente esas, puntuadas o no.
     """
-    where = "" if force else " WHERE ml_proba_max IS NULL"
+    if licitacion_ids is not None:
+        where, params = " WHERE id_externo = ANY(%s)", [list(licitacion_ids)]
+    else:
+        where, params = ("" if force else " WHERE ml_proba_max IS NULL"), []
     with connect_read() as c:
         return rows_to_dicts(
             c.execute(
-                "SELECT id_externo, titulo, descripcion, cpv, importe FROM licitaciones" + where
+                "SELECT id_externo, titulo, descripcion, cpv, importe FROM licitaciones" + where,
+                params,
             )
         )
 
