@@ -339,6 +339,32 @@ def test_bt22_en_otro_idioma_sin_el_mismo_valor_no_empareja(valor_ted: float | N
     assert _elegir(_ted_diputacio(valor_estimado=valor_ted), ref, [_diputacio()]) is None
 
 
+def test_con_varias_candidatas_el_valor_estimado_no_elige() -> None:
+    """«01/2026» lo comparten decenas de órganos: un importe redondo repetido no basta."""
+    ref = ReferenciaCruzada(expediente="01/2026")
+    tenerife = _placsp(
+        "01/2026",
+        organo_contratacion="Consejo de Administración de Spet, Turismo de Tenerife, S.A.",
+        titulo="Servicio de promoción turística en ferias internacionales",
+        url=None,
+        valor_estimado=300000.0,
+    )
+    otro = _placsp(
+        "placsp:2:01/2026",
+        organo_contratacion="Ayuntamiento de Castrillón",
+        titulo="Suministro de mobiliario urbano",
+        url=None,
+        valor_estimado=120000.0,
+    )
+    fila = _ted(
+        organo_contratacion="Mesa del Senado",
+        titulo="Suministro de licencias de ciberseguridad",
+        valor_estimado=300000.0,
+    )
+
+    assert _elegir(fila, ref, [tenerife, otro]) is None
+
+
 def test_un_id_evl_distinto_no_se_rescata_por_bt22_de_otro_organo() -> None:
     """Cada discrepancia de ``idEvl`` medida era un falso positivo de BT-22."""
     ref = ReferenciaCruzada(expediente="01/2026", id_evl="OTRO/idEvl==")

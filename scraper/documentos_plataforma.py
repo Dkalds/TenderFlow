@@ -402,9 +402,8 @@ def id_expediente_andalucia(url_ficha: str | None) -> str | None:
     if not url_ficha:
         return None
     partes = urlparse(url_ficha)
-    if (
-        partes.hostname or ""
-    ).lower() != _HOST_ANDALUCIA or "/detalle-licitacion" not in partes.path:
+    host = (partes.hostname or "").lower()
+    if host != _HOST_ANDALUCIA or "/detalle-licitacion" not in partes.path:
         return None
     valores = parse_qs(partes.query).get("idExpediente") or []
     return valores[0] if len(valores) == 1 and _ID_ANDALUCIA.fullmatch(valores[0]) else None
@@ -671,6 +670,9 @@ def completar_documentos_andalucia(
         if not documentos:
             continue
         try:
+            # shortcut: una versión que la Junta pasa a `Inactivo` y ya se guardó
+            # sigue como documento (como en PSCP y PLACSP); retirarla cuando
+            # `upsert_meta` sepa dar de baja lo que la fuente ya no lista.
             repo.upsert_meta(id_externo, documentos)
         except Exception as e:
             resumen.fallidas += 1

@@ -554,7 +554,11 @@ def detect_republicaciones(*, fuente: str, sin_cursor_desde: str = "") -> Dedupe
 # catalán en la agregada, «DIPUTACIÓN DE BARCELONA» en castellano en TED). El
 # valor estimado (BT-27, sin IVA en las dos) coincidía al céntimo en 75 de los
 # 77 confirmados y en 33 de las 53, y nunca con dos candidatas a la vez: es la
-# tercera confirmación, la que no depende del idioma.
+# tercera confirmación, la que no depende del idioma. Las 33 eran el mismo
+# contrato (revisadas una a una) y en las 33 el expediente tenía una sola
+# candidata. Por eso el valor solo confirma un expediente sin ambigüedad: con
+# varias candidatas, BT-22 es el «01/2026» que comparten decenas de órganos, y
+# un importe redondo repetido no basta para elegir.
 
 #: Fuente que nunca es canónica frente a otra: publica en el DOUE lo que el
 #: comprador ya publicó en su plataforma, con menos detalle (sin lotes, sin
@@ -711,8 +715,9 @@ def _elegir_canonica_por_referencia(
     3. **BT-22 + órgano, título o valor estimado**: BT-22 solo no vale (ver el
        bloque de arriba), pero dentro de un mismo órgano el número de
        expediente no se repite, y dos contratos con el mismo expediente y el
-       mismo título, o el mismo valor estimado al céntimo, son el mismo. El
-       valor es lo que confirma cuando órgano y título están en otro idioma.
+       mismo título son el mismo. El valor estimado al céntimo confirma cuando
+       órgano y título están en otro idioma, y solo si el expediente tiene una
+       única candidata: con varias, no distingue cuál.
        El expediente se compara sin espacios ni mayúsculas
        (``expediente_comparable``) y el órgano también por su último tramo
        tras « - » (:func:`_organos_emparejables`).
@@ -742,16 +747,15 @@ def _elegir_canonica_por_referencia(
     if referencia.expediente:
         organos = _organos_emparejables(fila_ted.get("organo_contratacion"))
         titulo = normalize_titulo(fila_ted.get("titulo"))
-        valor = _valor_estimado(fila_ted)
-        mismo_contrato = ajenas(
-            [
-                c
-                for c in por_expediente.get(expediente_comparable(referencia.expediente), [])
-                if organos & _organos_emparejables(c.get("organo_contratacion"))
-                or (titulo and normalize_titulo(c.get("titulo")) == titulo)
-                or (valor is not None and _valor_estimado(c) == valor)
-            ]
-        )
+        candidatas = ajenas(por_expediente.get(expediente_comparable(referencia.expediente), []))
+        valor = _valor_estimado(fila_ted) if len(candidatas) == 1 else None
+        mismo_contrato = [
+            c
+            for c in candidatas
+            if organos & _organos_emparejables(c.get("organo_contratacion"))
+            or (titulo and normalize_titulo(c.get("titulo")) == titulo)
+            or (valor is not None and _valor_estimado(c) == valor)
+        ]
         if mismo_contrato:
             return (
                 min(mismo_contrato, key=_orden_de_candidata),
@@ -776,7 +780,7 @@ def detect_duplicados_por_referencia(
 
     **Marca ``confirmed``**, y no ``pending`` como las reemisiones: ``idEvl`` es
     un identificador exacto, y BT-22 dentro del mismo órgano (o con el mismo
-    título o valor estimado) también lo es. Eso retira la fila TED de las métricas competitivas,
+    título, o con el mismo valor estimado si es su única candidata) también lo es. Eso retira la fila TED de las métricas competitivas,
     que es justo lo que hace falta: el aviso de adjudicación de TED trae su
     propia ``Adjudicacion`` y, sin la marca, la cuota de mercado contaba dos
     veces el contrato.

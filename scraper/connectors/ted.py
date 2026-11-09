@@ -59,7 +59,7 @@ from services.dedupe import DedupeResult, ReferenciaCruzada, id_evl_de_url
 from shared.geo import nuts_to_ccaa
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Callable, Iterator, Mapping
 
     from scraper.connectors.base import ConnectorRunResult
 
@@ -133,6 +133,11 @@ _FIELDS = [
     "place-of-performance",
     "contract-nature",
 ]
+
+#: Tope por petición y por pasada de ``reemparejar_vigentes``: corre dentro del
+#: step de 10 minutos de ``scrape-daily.yml`` y lo que no pida lo pide la siguiente.
+_TIMEOUT_REFERENCIAS_S = 20
+_PRESUPUESTO_REEMPAREJO_S = 60.0
 
 #: Lo que ``reemparejar_vigentes`` relee de cada aviso: sus referencias al expediente.
 _FIELDS_REFERENCIAS = [
@@ -583,7 +588,13 @@ class TedConnector:
 
     # ── documentos ───────────────────────────────────────────────────────
 
-    def reemparejar_vigentes(self, *, limite: int = 300) -> DedupeResult:
+    def reemparejar_vigentes(
+        self,
+        *,
+        limite: int = 300,
+        presupuesto_s: float = _PRESUPUESTO_REEMPAREJO_S,
+        reloj: Callable[[], float] = time.monotonic,
+    ) -> DedupeResult:
         """Empareja las convocatorias vigentes sin pareja que esta pasada no releyó.
 
         Su BT-22, su BT-04 y su ``idEvl`` solo viven en el aviso, así que se le
@@ -591,6 +602,10 @@ class TedConnector:
         empareja una convocatoria cuyo expediente llega pasada su ventana de 14
         días (las agregadas entraron el 2026-11-04) o que una regla nueva ya
         reconoce. Las que releyó esta pasada ya se evaluaron en el cierre del lote.
+
+        Sin reintentos y con presupuesto, como las fichas de PSCP: corre dentro
+        del cierre del lote, antes de los eventos de contrato, y la pasada
+        siguiente repite lo que esta no llegó a pedir. *reloj* existe para los tests.
         """
         from db.repositories import dedupe as dedupe_repo
         from scraper.documentos_plataforma import numero_publicacion_ted
@@ -598,21 +613,25 @@ class TedConnector:
 
         numeros = [
             numero
-            for id_externo in dedupe_repo.ted_vigentes_sin_pareja(limit=limite)
-            if id_externo not in self._referencias
-            and (numero := numero_publicacion_ted(id_externo)) is not None
+            for id_externo in dedupe_repo.ted_vigentes_sin_pareja(
+                limit=limite, excluir=sorted(self._referencias)
+            )
+            if (numero := numero_publicacion_ted(id_externo)) is not None
         ]
         referencias: dict[str, ReferenciaCruzada] = {}
+        inicio_s = reloj()
         for inicio in range(0, len(numeros), _PAGE_SIZE):
+            if reloj() - inicio_s >= presupuesto_s:
+                log.info("ted_reemparejo_vigentes_sin_presupuesto", pedidos=inicio)
+                break
             lote = numeros[inicio : inicio + _PAGE_SIZE]
             cuerpo = {
                 "query": f"publication-number IN ({' '.join(lote)})",
                 "fields": _FIELDS_REFERENCIAS,
                 "limit": len(lote),
             }
-            resp = pedir_con_reintentos(
-                partial(self._session.post, _API_URL, json=cuerpo, timeout=_TIMEOUT)
-            )
+            resp = self._session.post(_API_URL, json=cuerpo, timeout=_TIMEOUT_REFERENCIAS_S)
+            resp.raise_for_status()
             for notice in resp.json().get("notices") or []:
                 referencia = ReferenciaCruzada(
                     expediente=_expediente(notice),

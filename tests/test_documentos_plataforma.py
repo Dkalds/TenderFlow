@@ -647,10 +647,14 @@ def test_ted_reempareja_las_vigentes_releyendo_sus_referencias(monkeypatch):
 
     monkeypatch.setattr(ted, "_PAGE_SIZE", 2)
     monkeypatch.setattr(ted, "_PAGE_PAUSE_S", 0)
-    monkeypatch.setattr(
-        "db.repositories.dedupe.ted_vigentes_sin_pareja",
-        lambda limit: ["ted:111-2026", "ted:222-2026", "ted:333-2026", "ted:mal", "ted:999-2026"],
-    )
+    excluidas: list[list[str]] = []
+
+    def vigentes(limit: int, *, excluir: list[str]) -> list[str]:
+        excluidas.append(list(excluir))
+        todas = ["ted:111-2026", "ted:222-2026", "ted:333-2026", "ted:mal", "ted:999-2026"]
+        return [i for i in todas if i not in excluir]
+
+    monkeypatch.setattr("db.repositories.dedupe.ted_vigentes_sin_pareja", vigentes)
     api = _ApiTedReferencias(
         {
             "111-2026": {"publication-number": "111-2026", "internal-identifier-proc": "EJIE-1"},
@@ -672,11 +676,34 @@ def test_ted_reempareja_las_vigentes_releyendo_sus_referencias(monkeypatch):
 
     connector.reemparejar_vigentes()
 
+    # Lo ya evaluado se quita en la consulta, antes de su LIMIT, no después.
+    assert excluidas == [["ted:999-2026"]]
     assert api.pedidos == [["111-2026", "222-2026"], ["333-2026"]]
     assert recibidas == {
         "ted:111-2026": ReferenciaCruzada(expediente="EJIE-1"),
         "ted:333-2026": ReferenciaCruzada(procedimiento="ab-cd"),
     }
+
+
+def test_ted_reemparejo_no_pasa_de_su_presupuesto(monkeypatch):
+    """Corre dentro del cierre del lote: lo que no pide esta pasada lo pide la siguiente."""
+    from scraper.connectors import ted
+
+    monkeypatch.setattr(ted, "_PAGE_SIZE", 1)
+    monkeypatch.setattr(ted, "_PAGE_PAUSE_S", 0)
+    monkeypatch.setattr(
+        "db.repositories.dedupe.ted_vigentes_sin_pareja",
+        lambda limit, excluir: ["ted:111-2026", "ted:222-2026"],
+    )
+    monkeypatch.setattr(
+        "services.dedupe.detect_duplicados_por_referencia", lambda **kw: dp.ResumenDocumentos()
+    )
+    api = _ApiTedReferencias({})
+    instantes = iter([0.0, 0.0, 61.0])
+
+    ted.TedConnector(session=api).reemparejar_vigentes(reloj=lambda: next(instantes))
+
+    assert api.pedidos == [["111-2026"]]
 
 
 def test_post_ingestion_completa_documentos_tras_el_dedupe_y_es_fail_open(monkeypatch):
@@ -940,6 +967,17 @@ def test_el_conector_de_agregadas_lee_los_pliegos_de_andalucia(monkeypatch):
     assert llamadas == ["andalucia"]
 
 
+def test_el_historico_de_agregadas_no_relee_las_fichas_en_cada_mes(monkeypatch):
+    from scraper.connectors.placsp_agregadas import PlacspAgregadasHistorico
+
+    def completar() -> dp.ResumenDocumentos:
+        raise AssertionError("el histórico no debe pedir fichas")
+
+    monkeypatch.setattr("scraper.documentos_plataforma.completar_documentos_andalucia", completar)
+
+    PlacspAgregadasHistorico(2026, 9, ya_existe=lambda _id: False).completar_documentos()
+
+
 def test_el_conector_pscp_acota_el_paso_con_su_presupuesto(monkeypatch):
     from scraper.connectors import pscp
 
@@ -1160,6 +1198,8 @@ def test_integration_ted_vigentes_sin_pareja(db) -> None:
         _insertar(c, "ted:7-2026", estado="RES")
 
     assert set(dedupe_repo.ted_vigentes_sin_pareja()) == {"ted:1-2026", "ted:2-2026", "ted:4-2026"}
+    # Lo que la pasada ya evaluó se quita antes del LIMIT: si no, se comería el hueco.
+    assert dedupe_repo.ted_vigentes_sin_pareja(limit=1, excluir=["ted:1-2026"]) == ["ted:2-2026"]
 
 
 def test_integration_andalucia_para_documentos(db) -> None:

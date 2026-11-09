@@ -356,7 +356,7 @@ def ted_sin_pareja_con_id_evl() -> list[dict[str, Any]]:
         )
 
 
-def ted_vigentes_sin_pareja(limit: int = 300) -> list[str]:
+def ted_vigentes_sin_pareja(limit: int = 300, *, excluir: Sequence[str] = ()) -> list[str]:
     """``id_externo`` de las convocatorias TED vigentes sin pareja decidida.
 
     Las re-empareja cada pasada de TED releyendo sus referencias en la API
@@ -364,7 +364,10 @@ def ted_vigentes_sin_pareja(limit: int = 300) -> list[str]:
     esto una convocatoria abierta solo se comparaba durante sus 14 días de
     ventana. «Vigente» es la misma regla que da el anuncio TED como documento
     (``_vigente_sql``) y «decidida», la de :func:`ted_sin_pareja_con_id_evl`.
-    Unas decenas de filas sobre ``idx_lic_fuente``.
+    75 filas el 2026-11-09, sobre ``idx_lic_fuente``.
+
+    *excluir* son las que la pasada ya evaluó. Se quitan antes del ``LIMIT``:
+    son las más recientes, y quitadas después dejarían fuera a las antiguas.
     """
     with connect_read() as c:
         return [
@@ -373,12 +376,13 @@ def ted_vigentes_sin_pareja(limit: int = 300) -> list[str]:
                 "SELECT l.id_externo FROM licitaciones l "
                 "WHERE l.fuente = 'ted' AND l.estado IN ('PUB', 'PRE') "
                 f"AND {_vigente_sql()} "
+                "AND NOT (l.id_externo = ANY(%s)) "
                 "AND NOT EXISTS (SELECT 1 FROM licitaciones_duplicados d "
                 "    WHERE d.licitacion_id = l.id_externo "
                 "    AND (d.status = 'confirmed' OR d.resolved_at IS NOT NULL)) "
                 "ORDER BY l.fecha_pub_d DESC NULLS LAST, l.id_externo "
                 "LIMIT %s",
-                (max(1, min(int(limit), 1000)),),
+                (list(excluir), max(1, min(int(limit), 1000))),
             ).fetchall()
         ]
 

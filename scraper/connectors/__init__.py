@@ -102,8 +102,9 @@ class RegisteredSource:
     #: enlazara. Vacío significa «esta fuente no emite referencias a
     #: documentos». Desde el 2026-10-02 las emiten PLACSP, TED (el PDF de su
     #: anuncio, ``scraper.documentos_plataforma``) y PSCP (los pliegos de la
-    #: ficha de cada publicación), y desde 2026-10 TACRC (el PDF de la
-    #: resolución vinculada). Galicia y Euskadi no: su RSS no enlaza ningún
+    #: ficha de cada publicación), desde 2026-10 TACRC (el PDF de la
+    #: resolución vinculada) y desde el 2026-11-09 las agregadas de la Junta de
+    #: Andalucía (los pliegos de su ficha). Galicia y Euskadi no: su RSS no enlaza ningún
     #: documento (ver ``docs/regional-source-coverage.md``). Cuando un
     #: conector empiece a emitir ``DocumentoReferencia``, su dominio se declara
     #: aquí y el test de paridad exige que la allowlist por defecto lo incluya.
