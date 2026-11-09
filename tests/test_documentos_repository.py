@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from db.database import DocumentoReferencia
-from db.repositories.documentos import DocumentosRepository
+from db.repositories.documentos import PREFIJO_HASH_ANUNCIO_TED, DocumentosRepository
 
 
 @pytest.fixture()
@@ -493,6 +493,59 @@ class TestListPendientes:
         pendientes = repo.list_pendientes()
 
         assert [p["licitacion_id"] for p in pendientes] == ["EXP-NEW", "EXP-OLD"]
+
+    def test_un_pliego_va_antes_que_un_anexo_mas_nuevo_y_con_tecnologia(self, repo):
+        """Con el plazo cerrado, el pliego pasa delante de un anexo aunque el
+        anexo sea más reciente y su licitación tenga señal de tecnología."""
+        _insert_licitacion("EXP-PLIEGO")
+        _insert_licitacion("EXP-ANEXO", tecnologia="SAP")
+        repo.upsert_meta(
+            "EXP-PLIEGO", [DocumentoReferencia(tipo="legal", uri="https://x/pcap.pdf")]
+        )
+        repo.upsert_meta(
+            "EXP-ANEXO", [DocumentoReferencia(tipo="additional", uri="https://x/an.pdf")]
+        )
+        pliego = next(p for p in repo.list_pendientes() if p["licitacion_id"] == "EXP-PLIEGO")
+        _set_created_at(pliego["id"], "2020-01-01T00:00:00+00:00")
+
+        pendientes = repo.list_pendientes()
+
+        assert [p["licitacion_id"] for p in pendientes] == ["EXP-PLIEGO", "EXP-ANEXO"]
+
+    def test_con_el_plazo_abierto_el_anexo_va_antes_que_un_pliego_cerrado(self, repo):
+        """La prioridad de los pliegos va detrás de la del plazo abierto: de un
+        expediente vivo se baja todo, también los anexos."""
+        _insert_licitacion_con_plazo("EXP-ABIERTO")
+        _insert_licitacion("EXP-CERRADO", tecnologia="SAP")
+        repo.upsert_meta(
+            "EXP-ABIERTO", [DocumentoReferencia(tipo="additional", uri="https://x/a.pdf")]
+        )
+        repo.upsert_meta("EXP-CERRADO", [DocumentoReferencia(tipo="legal", uri="https://x/c.pdf")])
+
+        pendientes = repo.list_pendientes()
+
+        assert [p["licitacion_id"] for p in pendientes] == ["EXP-ABIERTO", "EXP-CERRADO"]
+
+    def test_el_anuncio_ted_va_con_los_pliegos_y_no_con_los_anexos(self, repo):
+        """El PDF del anuncio TED es ``additional`` sin ser un anexo: es el
+        único documento de una convocatoria TED sin pareja."""
+        _insert_licitacion("EXP-TED")
+        _insert_licitacion("EXP-ANEXO-TEC", tecnologia="SAP")
+        anuncio = DocumentoReferencia(
+            tipo="additional",
+            uri="https://x/ted.pdf",
+            source_hash=f"{PREFIJO_HASH_ANUNCIO_TED}123456-2026",
+        )
+        repo.upsert_meta("EXP-TED", [anuncio])
+        repo.upsert_meta(
+            "EXP-ANEXO-TEC", [DocumentoReferencia(tipo="additional", uri="https://x/an.pdf")]
+        )
+        ted = next(p for p in repo.list_pendientes() if p["licitacion_id"] == "EXP-TED")
+        _set_created_at(ted["id"], "2020-01-01T00:00:00+00:00")
+
+        pendientes = repo.list_pendientes()
+
+        assert [p["licitacion_id"] for p in pendientes] == ["EXP-TED", "EXP-ANEXO-TEC"]
 
 
 _SERVLET = "https://contrataciondelestado.es/FileSystem/servlet/GetDocumentByIdServlet"

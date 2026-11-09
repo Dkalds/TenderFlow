@@ -56,7 +56,9 @@ fallidas (esas las revive el propio lote, `revivir_descargas_fallidas`).
 3. Comprobar que la siguiente cuenta da 0 (es idempotente) y dejar que el lote
    nocturno de `pliegos.yml` los drene. Van detrás en `list_pendientes`
    (newest-first y sin plazo abierto casi todos), a razón del lote diario, así
-   que tardan varias noches. El resumen del job lo cuenta por formato
+   que tardan varias noches. Los anexos (`additional`) esperan además a que
+   bajen los PCAP y PPT pendientes, que van antes desde el 2026-11-09: pueden
+   tardar meses. El resumen del job lo cuenta por formato
    (`documentos_por_formato` en `/analytics/quality`).
 
 ## Qué esperar

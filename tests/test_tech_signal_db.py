@@ -619,6 +619,29 @@ class TestListLicitacionesPendingSignal:
         repo.upsert_signals("PEND-4", method="keywords", signal_version="v1", scores={})
         assert repo.list_licitaciones_pending_signal(signal_version="v2") == ["PEND-4"]
 
+    def test_un_documento_extraido_despues_de_la_senal_la_reabre(self, repo):
+        """La cola de descarga baja el PCAP antes que los anexos: el anexo que
+        llega otra noche tiene que volver a puntuar la licitación."""
+        _seed_pages("PEND-5", "algo", tipo="legal")
+        repo.upsert_signals("PEND-5", method="keywords", signal_version="v1", scores={})
+        with connect() as c:
+            c.execute(
+                "UPDATE licitacion_tecnologia_pliego SET computed_at = %s WHERE licitacion_id = %s",
+                ("2026-01-01T00:00:00+00:00", "PEND-5"),
+            )
+        docs = DocumentosRepository()
+        docs.upsert_meta(
+            "PEND-5", [DocumentoReferencia(tipo="additional", uri="https://x/PEND-5-anexo.pdf")]
+        )
+        anexo = docs.list_pendientes()[0]
+        docs.mark_extracted(anexo["id"], texto="anexo", sha256="h2", pages=["anexo"])
+
+        assert repo.list_licitaciones_pending_signal(signal_version="v1") == ["PEND-5"]
+
+        repo.upsert_signals("PEND-5", method="keywords", signal_version="v1", scores={})
+
+        assert repo.list_licitaciones_pending_signal(signal_version="v1") == []
+
 
 class TestLicitacionesConSenalObsoleta:
     def test_solo_lo_fundible_de_otra_version(self, repo):
