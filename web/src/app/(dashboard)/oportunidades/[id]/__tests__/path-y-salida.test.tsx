@@ -4,7 +4,7 @@ import type { Pursuit } from "@/hooks/use-pursuits";
 import { PathFases } from "../_components/path-fases";
 import { SalidaDeFase } from "../_components/salida-fase";
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/hooks/use-pursuit-kit", () => ({
   usePursuitKit: () => ({ data: undefined }),
   resumenKit: () => ({ listos: 0, total: 0 }),

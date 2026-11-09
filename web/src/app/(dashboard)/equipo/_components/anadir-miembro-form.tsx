@@ -10,7 +10,7 @@
 
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Button } from "@/components/ui/button";
 import { AYUDA_CAMPO, Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";

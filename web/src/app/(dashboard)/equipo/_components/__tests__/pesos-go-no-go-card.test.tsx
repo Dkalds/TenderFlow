@@ -18,7 +18,7 @@ import type { Schemas } from "@/lib/api-types";
 import { partesDelTotal, PesosGoNoGoCard } from "../pesos-go-no-go-card";
 
 const { toastSuccess, toastError } = vi.hoisted(() => ({ toastSuccess: vi.fn(), toastError: vi.fn() }));
-vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: toastSuccess, error: toastError } }));
 
 const criterio = (c: string, etiqueta: string, peso: number): Schemas["GoNoGoCriterioOut"] => ({
   criterio: c,

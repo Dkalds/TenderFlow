@@ -8,9 +8,9 @@ vi.mock("@/lib/filters", () => ({
 }));
 
 vi.mock("@vercel/analytics", () => ({ track: vi.fn() }));
-vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { ExportPopover } from "@/components/export-popover";
 
 const toastErrorMock = vi.mocked(toast.error);

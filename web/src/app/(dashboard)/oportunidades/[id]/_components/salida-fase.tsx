@@ -3,7 +3,7 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { Check } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { SUPERFICIE_PANEL, TONO_PANEL } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { statusLabel } from "@/components/pursuits/pursuit-presenters";

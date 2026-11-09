@@ -11,7 +11,7 @@
  */
 
 import dynamic from "next/dynamic";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Panel, PanelLoading } from "@/components/console/panel";
 import { useUpdatePursuit, type Pursuit } from "@/hooks/use-pursuits";
 import { formatCurrency } from "@/lib/utils";

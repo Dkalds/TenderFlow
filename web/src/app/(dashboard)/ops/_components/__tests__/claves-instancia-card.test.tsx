@@ -15,7 +15,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ClaveInstancia, ClavesInstancia } from "@/app/(dashboard)/ops/_hooks/use-admin-api-keys";
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { ClavesInstanciaCard } from "@/app/(dashboard)/ops/_components/administracion/claves-instancia-card";
 

@@ -57,6 +57,7 @@ function redirectToLogin(): void {
   if (typeof window === "undefined") return;
   if (window.location.pathname === "/login") return;
   const destino = window.location.pathname + window.location.search;
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- el 401 cierra la sesión: recarga completa para tirar la caché de React Query de la sesión caducada
   window.location.href = `/login?redirect=${encodeURIComponent(destino)}`;
 }
 

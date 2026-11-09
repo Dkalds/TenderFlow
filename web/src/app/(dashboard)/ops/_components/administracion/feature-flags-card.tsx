@@ -22,7 +22,7 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

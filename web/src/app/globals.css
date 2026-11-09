@@ -985,7 +985,7 @@ body {
  * roja, verde y ámbar con su disco relleno son la demo de Sonner que se ve en
  * cientos de apps; aquí la caja es una capa flotante de la consola (`--card`,
  * borde, sombra md, radio de panel, la sans de la app) y el tipo lo dicen la
- * forma y el color del icono de contorno, que pone `components/toaster.tsx`.
+ * forma y el color del icono de contorno, que pone `components/toaster-sonner.tsx`.
  * Esto sustituye al parche de 2026-09-19, que solo oscurecía el texto de
  * `richColors` para pasar axe en /ops?vista=webhooks.
  *

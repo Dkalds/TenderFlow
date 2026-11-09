@@ -22,7 +22,7 @@
 
 import * as React from "react";
 import { Plus } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { AvisoReautenticacion } from "@/components/console/aviso-reautenticacion";
 import { Button } from "@/components/ui/button";

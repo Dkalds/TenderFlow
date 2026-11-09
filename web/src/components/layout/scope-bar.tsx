@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import { usePathname, useSearchParams } from "next/navigation";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
@@ -8,10 +9,8 @@ import { Button } from "@/components/ui/button";
 import { AmbitoIntro } from "@/components/layout/ambito-intro";
 import { BarraConAmbito, BarraSinAmbito } from "@/components/layout/scope-barras";
 import { chipsDelAmbito } from "@/components/layout/scope-chips";
-import { ScopeEditor } from "@/components/layout/scope-editor";
 import { ScrollEdge, useScrollEdgeState } from "@/components/layout/scroll-edge";
-import { ExportPopover } from "@/components/export-popover";
-import { NotificationBell } from "@/components/notification-bell";
+import { CampanaDiferida, ExportarDiferido } from "@/components/layout/menus-diferidos";
 import { useAnnounceOnChange } from "@/components/live-region";
 import { useValorDiferido } from "@/hooks/use-valor-diferido";
 import { useDataFreshness } from "@/hooks/use-data-freshness";
@@ -50,6 +49,15 @@ import { useMetaFilters } from "@/hooks/use-meta-filters";
  * Las piezas viven al lado: el editor en `scope-editor.tsx`, los chips en
  * `scope-chips.tsx` y las dos ramas de contenido en `scope-barras.tsx`.
  */
+
+// El editor solo existe con «+ Añadir» abierto: llega al abrirlo, y se adelanta
+// al acercarse al botón (`pedirCatalogo`). Mientras llega, el mismo rótulo de
+// carga que la lista de vistas guardadas.
+const cargarEditor = () => import("@/components/layout/scope-editor");
+const ScopeEditor = dynamic(() => cargarEditor().then((modulo) => modulo.ScopeEditor), {
+  ssr: false,
+  loading: () => <p className="text-muted-foreground px-2 py-3 text-center text-tf-meta">Cargando…</p>,
+});
 
 /**
  * Params de URL que emite cada clave del ámbito (ver `filtersToParams` en
@@ -142,7 +150,10 @@ export function ScopeBar() {
   const [catalogoPedido, setCatalogoPedido] = React.useState(false);
   const chipsSinEtiqueta = shows("procedimiento") && filters.procedimientos.length > 0;
   const { data: meta } = useMetaFilters(filtersApply && (catalogoPedido || chipsSinEtiqueta));
-  const pedirCatalogo = React.useCallback(() => setCatalogoPedido(true), []);
+  const pedirCatalogo = React.useCallback(() => {
+    setCatalogoPedido(true);
+    void cargarEditor().catch(() => undefined);
+  }, []);
   const onEditorOpenChange = React.useCallback((open: boolean) => {
     setEditorOpen(open);
     if (open) setCatalogoPedido(true);
@@ -264,8 +275,8 @@ export function ScopeBar() {
               saca lo que gobierna esta barra — el ámbito activo. Sin ámbito, el
               rótulo de siempre. La talla es la de la consola (`sm`), la misma
               que «Buscar». */}
-          <ExportPopover label={filtersApply ? "Exportar ámbito" : undefined} />
-          <NotificationBell />
+          <ExportarDiferido label={filtersApply ? "Exportar ámbito" : undefined} />
+          <CampanaDiferida />
         </div>
       </header>
       {/* Primer uso: qué es esta barra. Solo en la rama con ámbito, que es

@@ -32,7 +32,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({ replace: vi.fn() }),
 }));
-vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
+vi.mock("@/lib/toast", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
 vi.mock("@/hooks/use-admin", () => ({ useAdmin: () => estado.admin }));
 // El shell del espacio pinta la cabecera y el conmutador; aquí interesa lo que
 // la página le pasa —cuerpo, acciones, contadores y si va a sangre— y el
@@ -61,7 +61,7 @@ vi.mock("@/components/layout/space-shell", () => ({
 vi.mock("../_components/competidores-view", () => ({ default: () => <p>Vista de competidores</p> }));
 vi.mock("../_components/utes-view", () => ({ default: () => <p>Vista de UTEs</p> }));
 
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import CompetenciaPage from "@/app/(dashboard)/competencia/page";
 
 /**

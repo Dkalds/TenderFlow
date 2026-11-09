@@ -12,9 +12,9 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { QueryClientProvider } from "@tanstack/react-query";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
 
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { WebhookRow } from "../webhook-row";
 import type { WebhookAmpliado } from "../../../_hooks/use-webhooks-ambito";
 import { crearQueryClientDePrueba } from "@/test/query-client";

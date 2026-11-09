@@ -18,7 +18,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { adminKeys } from "@/lib/query-keys";

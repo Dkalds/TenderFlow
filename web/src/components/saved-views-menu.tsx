@@ -11,6 +11,7 @@ import * as React from "react";
 import { Bookmark, Check, Plus, Trash2 } from "lucide-react";
 import { PanelEmpty } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
+import { type MontajeDiferido, useMontajeDiferido } from "@/components/ui/carga-diferida";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useFilters } from "@/lib/filters";
@@ -31,10 +32,16 @@ import {
  * se abre. Al acercarse al botón (puntero o foco) se adelanta la petición, para
  * que al abrir la lista ya esté.
  */
-export function SavedViewsMenu() {
+export function SavedViewsMenu(montaje: MontajeDiferido = {}) {
   const filters = useFilters();
   const open = useUiStore((s) => s.savedViewsOpen);
   const setOpen = useUiStore((s) => s.setSavedViewsOpen);
+  // La barra de ámbito lo monta diferido (`components/layout/menus-diferidos.tsx`):
+  // si se pulsó el disparador provisional, llega abierto.
+  const { disparador, abiertoAlMontar } = useMontajeDiferido(montaje);
+  React.useEffect(() => {
+    if (abiertoAlMontar) setOpen(true);
+  }, [abiertoAlMontar, setOpen]);
   const [name, setName] = React.useState("");
   const [precargar, setPrecargar] = React.useState(false);
   const adelantar = React.useCallback(() => setPrecargar(true), []);
@@ -54,6 +61,7 @@ export function SavedViewsMenu() {
       {precargar && <PrecargaVistas />}
       <PopoverTrigger asChild>
         <Button
+          ref={disparador}
           variant="ghost"
           size="sm"
           aria-haspopup="dialog"

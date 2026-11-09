@@ -22,7 +22,7 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
 
-vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
 
 import { registrarEvento } from "@/lib/analytics";

@@ -12,7 +12,7 @@ const { push, mutateAsync, usePursuitsMock, setActiveOrganizationId, fichaMock, 
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock("@/hooks/use-tender-fact-sheet", () => ({
   useTenderFactSheet: () => fichaMock(),
   useTenderFactSheetExtraction: () => extraccionMock(),

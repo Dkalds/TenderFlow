@@ -15,7 +15,7 @@ import { callMethod, callUrl, jsonResponse } from "@/hooks/__tests__/fetch-call"
 import { cuerpoDeAjustes } from "@/hooks/use-organization-settings";
 import { ProbabilidadesEtapaCard } from "../probabilidades-etapa-card";
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const AJUSTES = {
   organization_id: 7,

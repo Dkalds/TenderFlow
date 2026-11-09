@@ -15,7 +15,7 @@
 
 import type { PaginationState, RowSelectionState, SortingState } from "@tanstack/react-table";
 import type { LicitacionSummary, Schemas } from "@/lib/api-types";
-import { neutralizarFormula } from "@/lib/export";
+import { neutralizarFormula } from "@/lib/neutralizar-formula";
 
 export const PAGE_SIZE = 25;
 

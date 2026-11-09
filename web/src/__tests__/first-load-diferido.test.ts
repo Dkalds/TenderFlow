@@ -43,6 +43,10 @@ vi.mock("recharts", (original) => anotar("recharts", original));
 vi.mock("leaflet", (original) => anotar("leaflet", original));
 vi.mock("react-markdown", (original) => anotar("react-markdown", original));
 vi.mock("cmdk", (original) => anotar("cmdk", original));
+vi.mock("sonner", (original) => anotar("sonner", original));
+vi.mock("@radix-ui/react-dropdown-menu", (original) => anotar("Radix DropdownMenu", original));
+vi.mock("@radix-ui/react-popover", (original) => anotar("Radix Popover", original));
+vi.mock("@/components/layout/scope-editor", (original) => anotar("layout/scope-editor", original));
 
 beforeEach(() => {
   vi.resetModules();
@@ -64,6 +68,19 @@ describe("First Load del dashboard: lo que se carga al usarse", LENTO, () => {
       () => import("@/components/layout/console-frame"),
       ["ui/select (Radix Select)", "ui/sheet (Radix Dialog)", "react-markdown", "cmdk", "leaflet", "recharts"],
     );
+    expect(cargados).toEqual([]);
+  });
+
+  it("el marco no carga Sonner, los menús de Radix ni el editor del ámbito: llegan después de pintar", async () => {
+    const cargados = await cargadosAlImportar(
+      () => import("@/components/layout/console-frame"),
+      ["sonner", "Radix DropdownMenu", "Radix Popover", "layout/scope-editor"],
+    );
+    expect(cargados).toEqual([]);
+  });
+
+  it("el Toaster común no carga Sonner al importarse", async () => {
+    const cargados = await cargadosAlImportar(() => import("@/components/toaster"), ["sonner"]);
     expect(cargados).toEqual([]);
   });
 
@@ -114,10 +131,10 @@ describe("First Load del dashboard: lo que se carga al usarse", LENTO, () => {
     expect(cargados).toEqual([]);
   });
 
-  it("/oportunidades/[id] no carga zod ni los editores de celda", async () => {
+  it("/oportunidades/[id] no carga zod, los editores de celda ni el Select del kit de presentación", async () => {
     const cargados = await cargadosAlImportar(
       () => import("@/app/(dashboard)/oportunidades/[id]/_components/ficha-view"),
-      ["zod", "react-hook-form", "recharts"],
+      ["zod", "react-hook-form", "recharts", "ui/select (Radix Select)"],
     );
     expect(cargados).toEqual([]);
   });

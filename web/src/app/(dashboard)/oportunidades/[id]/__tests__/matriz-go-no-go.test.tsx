@@ -18,7 +18,7 @@ import type { PuntuacionGoNoGo } from "@/hooks/use-pursuit-go-no-go";
 
 const h = vi.hoisted(() => ({ puedeEscribir: true, toastSuccess: vi.fn(), toastError: vi.fn() }));
 
-vi.mock("sonner", () => ({ toast: { success: h.toastSuccess, error: h.toastError } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: h.toastSuccess, error: h.toastError } }));
 vi.mock("@/hooks/use-organization", () => ({
   useActiveOrganizationId: () => 7,
   organizacionResuelta: (id: unknown) => id !== undefined,

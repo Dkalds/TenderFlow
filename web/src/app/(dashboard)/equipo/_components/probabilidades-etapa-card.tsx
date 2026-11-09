@@ -20,7 +20,7 @@
 import * as React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Panel, PanelError, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";

@@ -180,6 +180,16 @@ const restriccionesDeAspecto = [
 // flat config el último bloque que declara una regla la gana entera.
 const deudaCard = [];
 
+// Sonner fuera del First Load (2026-11): `toast` sale de `@/lib/toast`, que
+// descarga Sonner aparte y guarda lo que llegue antes; solo ese módulo y el
+// `Toaster` real lo importan. Un `import { toast } from "sonner"` en cualquier
+// otro sitio lo devolvería a la carga inicial de todas las pantallas.
+const usoDirectoDeSonner = ["src/lib/toast.ts", "src/components/toaster-sonner.tsx"];
+const importacionSonner = {
+  name: "sonner",
+  message: "Importa `toast` de @/lib/toast: Sonner se carga aparte y no viaja en el First Load (ver ese módulo).",
+};
+
 const importacionesRetiradas = [
   {
     name: "@/components/ui/card",
@@ -434,7 +444,13 @@ const eslintConfig = defineConfig([
   // módulo, y `navigation.test.ts` importa Sparkles para asertar su ausencia.
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/**/__tests__/**", "src/**/*.test.{ts,tsx}", ...deudaCard],
+    ignores: ["src/**/__tests__/**", "src/**/*.test.{ts,tsx}", ...deudaCard, ...usoDirectoDeSonner],
+    rules: {
+      "no-restricted-imports": ["error", { paths: [...importacionesRetiradas, importacionSonner] }],
+    },
+  },
+  {
+    files: usoDirectoDeSonner,
     rules: {
       "no-restricted-imports": ["error", { paths: importacionesRetiradas }],
     },

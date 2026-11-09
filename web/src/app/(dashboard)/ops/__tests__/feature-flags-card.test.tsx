@@ -15,7 +15,7 @@ import { callMethod, callUrl, jsonResponse } from "@/hooks/__tests__/fetch-call"
  */
 
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), info: vi.fn() }));
-vi.mock("sonner", () => ({ toast: toastMock }));
+vi.mock("@/lib/toast", () => ({ toast: toastMock }));
 
 import { FeatureFlagsCard } from "../_components/administracion/feature-flags-card";
 

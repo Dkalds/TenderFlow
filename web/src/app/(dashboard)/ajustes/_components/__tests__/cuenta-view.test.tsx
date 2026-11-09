@@ -2,7 +2,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-vi.mock("sonner", () => ({
+vi.mock("@/lib/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 

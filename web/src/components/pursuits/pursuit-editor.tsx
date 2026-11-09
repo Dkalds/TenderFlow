@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react";
 import { useForm, useWatch, type PathValue } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import type * as z from "zod/mini";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Aviso } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { AYUDA_CAMPO, ETIQUETA_CAMPO } from "@/components/ui/field";

@@ -29,7 +29,7 @@ const estado = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
-vi.mock("sonner", () => ({
+vi.mock("@/lib/toast", () => ({
   toast: Object.assign(estado.toast, { error: vi.fn(), success: vi.fn() }),
 }));
 vi.mock("@/components/layout/space-shell", () => ({

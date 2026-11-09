@@ -145,7 +145,8 @@ aquí: la tabla de `DESIGN.md` dice qué se toma de cada una.
 
 ## Toasts
 
-`components/toaster.tsx` envuelve Sonner **sin `richColors`**: la caja es una
+`components/toaster-sonner.tsx` envuelve Sonner **sin `richColors`** (lo carga
+diferido `components/toaster.tsx`, y `toast()` se importa de `lib/toast.ts`): la caja es una
 capa flotante de la consola (`--card`, borde, sombra md, la sans de la app) y
 el tipo lo dicen la forma y el color del icono de contorno. Las variables de
 Sonner (`--normal-bg`, `--normal-border`, `--normal-text`) se redefinen desde

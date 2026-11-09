@@ -11,7 +11,7 @@ import { AdjuntosPanel } from "@/components/pursuits/adjuntos-panel";
 import { callMethod, callUrl, jsonResponse } from "@/hooks/__tests__/fetch-call";
 
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
-vi.mock("sonner", () => ({ toast }));
+vi.mock("@/lib/toast", () => ({ toast }));
 
 const guardarFichero = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/export", () => ({ guardarFichero }));

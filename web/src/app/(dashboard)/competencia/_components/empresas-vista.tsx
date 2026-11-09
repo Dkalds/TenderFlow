@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { useAdmin } from "@/hooks/use-admin";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useEmpresasStats } from "@/hooks/use-empresas-stats";

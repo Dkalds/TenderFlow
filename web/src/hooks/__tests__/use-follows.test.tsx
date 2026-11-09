@@ -23,7 +23,7 @@ import { renderHook, render, screen, waitFor, act, fireEvent } from "@testing-li
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
 
-vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
 // `SeguirBoton` instancia también la fuente de cuentas, que pregunta por la
 // organización activa: en blanco, para que las respuestas en orden de este
@@ -34,7 +34,7 @@ vi.mock("@/hooks/use-seguir-cuenta", () => ({
   useDejarDeSeguirOrgano: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { registrarEvento } from "@/lib/analytics";
 import { useFollows, useSeguir, useDejarDeSeguir, type Follow } from "@/hooks/use-follows";
 import { SeguirBoton } from "@/components/seguir-boton";

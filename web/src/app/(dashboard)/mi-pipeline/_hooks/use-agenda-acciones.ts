@@ -19,7 +19,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { cambioDeDecision, type Decision } from "@/components/pursuits/decidir-go-no-go";
 import { decisionLabel } from "@/components/pursuits/pursuit-presenters";
 import { useFijarFechaFin } from "@/hooks/use-cartera";

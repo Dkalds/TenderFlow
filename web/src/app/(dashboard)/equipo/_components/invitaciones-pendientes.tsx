@@ -11,7 +11,7 @@
  * Salió de `page.tsx` en el troceado de S7 (allowlist de `max-lines`).
  */
 
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";

@@ -14,7 +14,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { ApiError, apiGet, apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";

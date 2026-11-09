@@ -11,7 +11,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const { toast } = vi.hoisted(() => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock("sonner", () => ({ toast }));
+vi.mock("@/lib/toast", () => ({ toast }));
 
 import { CambioContrasena } from "@/app/(dashboard)/ajustes/_components/cambio-contrasena";
 

@@ -134,7 +134,7 @@ describe("GuionOfertaPanel · PDF", () => {
   });
 
   it("un 404 explica que hay que volver a generarlo", async () => {
-    const { toast } = await import("sonner");
+    const { toast } = await import("@/lib/toast");
     const aviso = vi.spyOn(toast, "error").mockImplementation(() => "id");
     fetchPorRuta(
       [/guion\.pdf$/, { detail: "No hay guion generado" }, 404],

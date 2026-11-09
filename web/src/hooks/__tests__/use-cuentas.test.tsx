@@ -23,10 +23,10 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
 
-vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn() }));
 
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { registrarEvento } from "@/lib/analytics";
 import { useOrganizationStore } from "@/hooks/use-organization";
 import {

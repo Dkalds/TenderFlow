@@ -17,7 +17,7 @@ vi.mock("next/navigation", () => import("@/test/navegacion-superficial"));
 
 const toastInfo = vi.fn();
 const toastError = vi.fn();
-vi.mock("sonner", () => ({
+vi.mock("@/lib/toast", () => ({
   toast: Object.assign(vi.fn(), {
     info: (...a: unknown[]) => toastInfo(...a),
     // El PUT fallido avisa por el aviso global de mutaciones.

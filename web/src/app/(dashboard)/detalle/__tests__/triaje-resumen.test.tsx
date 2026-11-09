@@ -19,7 +19,7 @@ vi.mock("next/navigation", () => import("@/test/navegacion-superficial"));
 
 const toastSuccess = vi.fn();
 const toastCall = vi.fn();
-vi.mock("sonner", () => {
+vi.mock("@/lib/toast", () => {
   const toast = (...a: unknown[]) => toastCall(...a);
   toast.success = (...a: unknown[]) => toastSuccess(...a);
   return { toast };

@@ -3,10 +3,10 @@
 import * as React from "react";
 import { Info, Redo2, RotateCcw, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Diferido } from "@/components/ui/carga-diferida";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ScopeChip, type Chip } from "@/components/layout/scope-chips";
-import { SavedViewsMenu } from "@/components/saved-views-menu";
+import { VistasDiferidas } from "@/components/layout/menus-diferidos";
 import { cn } from "@/lib/utils";
 
 /**
@@ -14,6 +14,30 @@ import { cn } from "@/lib/utils";
  * las pantallas que aplican el ámbito y la de las que no. Comparten la
  * cabecera y el hueco del final, que pinta la barra.
  */
+
+/**
+ * «+ Añadir», el disparador del editor del ámbito. Lo comparten el provisional
+ * de aquí y el real (`popover-editor-ambito.tsx`); acepta `ref` y el resto de
+ * props porque el real va dentro de un `PopoverTrigger asChild`.
+ */
+export function BotonAnadir({ className, ...props }: React.ComponentProps<"button">) {
+  return (
+    <button
+      type="button"
+      aria-haspopup="dialog"
+      className={cn(
+        "border-border text-tf-meta text-muted-foreground hover:border-primary-line-strong hover:text-foreground inline-flex h-6.5 flex-none cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-transparent px-2.5 font-medium transition-colors",
+        className,
+      )}
+      {...props}
+    >
+      + Añadir
+    </button>
+  );
+}
+
+const cargarPopoverEditor = () =>
+  import("@/components/layout/popover-editor-ambito").then((modulo) => modulo.PopoverEditorAmbito);
 
 const NAV_BUTTON = "grid h-6 w-6 place-items-center rounded-md border transition-colors";
 
@@ -199,22 +223,28 @@ export function BarraConAmbito({
           <ScopeChip key={`${chip.key}-${chip.value}`} chip={chip} />
         ))}
 
-        <Popover open={editorOpen} onOpenChange={onEditorOpenChange}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              aria-haspopup="dialog"
-              onPointerEnter={onAcercarseAlEditor}
-              onFocus={onAcercarseAlEditor}
-              className="border-border text-tf-meta text-muted-foreground hover:border-primary-line-strong hover:text-foreground inline-flex h-6.5 flex-none cursor-pointer items-center gap-1.5 rounded-md border border-dashed bg-transparent px-2.5 font-medium transition-colors"
-            >
-              + Añadir
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-80">
-            {editor}
-          </PopoverContent>
-        </Popover>
+        {/* Radix Popover llega después de pintar (`ui/carga-diferida.tsx`). */}
+        <Diferido
+          cargar={cargarPopoverEditor}
+          props={{ open: editorOpen, onOpenChange: onEditorOpenChange, onAcercarse: onAcercarseAlEditor, editor }}
+          abreCon="clic"
+          montarYa={editorOpen}
+          disparador={(eventos) => (
+            <BotonAnadir
+              aria-expanded={false}
+              data-state="closed"
+              {...eventos}
+              onPointerEnter={() => {
+                onAcercarseAlEditor();
+                eventos.onPointerEnter();
+              }}
+              onFocus={() => {
+                onAcercarseAlEditor();
+                eventos.onFocus();
+              }}
+            />
+          )}
+        />
       </div>
 
       {/* El caso subconjunto también merece el aviso. Antes solo se decía «el
@@ -247,7 +277,7 @@ export function BarraConAmbito({
         <span>{textoActualizacion(relative)}</span>
       </div>
 
-      <SavedViewsMenu />
+      <VistasDiferidas />
 
       <Tooltip>
         <TooltipTrigger asChild>

@@ -29,7 +29,7 @@
  * propuesta, el selector arranca vacío y el cierre espera a que alguien elija.
  */
 import { useId, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { SUPERFICIE_PANEL, TONO_PANEL } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { AYUDA_CAMPO, ETIQUETA_CAMPO } from "@/components/ui/field";

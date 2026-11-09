@@ -23,7 +23,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, useWatch } from "react-hook-form";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import * as z from "zod/mini";
 
 import { Panel, PanelError, PanelTitle } from "@/components/console/panel";

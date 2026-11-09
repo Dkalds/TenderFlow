@@ -123,12 +123,14 @@ vi.mock("@tanstack/react-query", () => ({
   },
 }));
 vi.mock("@/components/live-region", () => ({ useAnnounceOnChange: vi.fn() }));
-vi.mock("@/components/saved-views-menu", () => ({ SavedViewsMenu: () => null }));
-vi.mock("@/components/export-popover", () => ({ ExportPopover: () => null }));
-vi.mock("@/components/notification-bell", async () => {
+// Los menús del marco llegan diferidos (`menus-diferidos.tsx`); aquí importa
+// dónde viven, no su Radix.
+vi.mock("@/components/layout/menus-diferidos", async () => {
   const React = await import("react");
   return {
-    NotificationBell: () => {
+    VistasDiferidas: () => null,
+    ExportarDiferido: () => null,
+    CampanaDiferida: () => {
       React.useEffect(() => {
         campanaRef.montajes += 1;
         return () => {
@@ -532,12 +534,21 @@ describe("ScopeBar — utilidades", () => {
   });
 });
 
-describe("ScopeBar — editor del ámbito", () => {
-  it("«+ Añadir» abre el editor con los controles que había sueltos en la barra", () => {
-    renderBar();
-    fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
+/**
+ * «+ Añadir» llega diferido: su Radix Popover y el editor se descargan al
+ * usarse (`ui/carga-diferida.tsx`), así que abrirlo se espera.
+ */
+async function abrirEditorDelAmbito() {
+  fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
+  const dialog = await screen.findByRole("dialog");
+  await within(dialog).findByLabelText("Buscar licitaciones");
+  return dialog;
+}
 
-    const dialog = screen.getByRole("dialog");
+describe("ScopeBar — editor del ámbito", () => {
+  it("«+ Añadir» abre el editor con los controles que había sueltos en la barra", async () => {
+    renderBar();
+    const dialog = await abrirEditorDelAmbito();
     expect(within(dialog).getByLabelText("Buscar licitaciones")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Fecha desde")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Fecha hasta")).toBeInTheDocument();
@@ -545,17 +556,17 @@ describe("ScopeBar — editor del ámbito", () => {
     expect(within(dialog).getByLabelText("Filtrar por tecnología")).toBeInTheDocument();
   });
 
-  it("un preset de fecha fija el rango completo", () => {
+  it("un preset de fecha fija el rango completo", async () => {
     renderBar();
-    fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
+    await abrirEditorDelAmbito();
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Todo" }));
     expect(filtersRef.current.setRango).toHaveBeenCalledWith({ desde: null, hasta: null });
   });
 
-  it("añadir una CCAA la acumula sin perder las que ya estaban", () => {
+  it("añadir una CCAA la acumula sin perder las que ya estaban", async () => {
     filtersRef.current = { ...filtersRef.current, ccaas: ["Cataluña"] };
     renderBar();
-    fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
+    await abrirEditorDelAmbito();
     // El control es un multi-select real (Popover + opciones), no un `<select>`
     // que "añade" al cambiar: se abre y se marca la opción.
     fireEvent.click(within(screen.getByRole("dialog")).getByLabelText("Añadir comunidad autónoma al ámbito"));
@@ -563,10 +574,10 @@ describe("ScopeBar — editor del ámbito", () => {
     expect(filtersRef.current.setCcaas).toHaveBeenCalledWith(["Cataluña", "Madrid"]);
   });
 
-  it("desmarcar una CCAA ya seleccionada la quita desde el propio control", () => {
+  it("desmarcar una CCAA ya seleccionada la quita desde el propio control", async () => {
     filtersRef.current = { ...filtersRef.current, ccaas: ["Madrid"] };
     renderBar();
-    fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
+    await abrirEditorDelAmbito();
     fireEvent.click(within(screen.getByRole("dialog")).getByLabelText("Añadir comunidad autónoma al ámbito"));
     const option = screen.getByRole("option", { name: "Madrid" });
     expect(option).toHaveAttribute("aria-selected", "true");
@@ -574,10 +585,10 @@ describe("ScopeBar — editor del ámbito", () => {
     expect(filtersRef.current.setCcaas).toHaveBeenCalledWith([]);
   });
 
-  it("el editor ofrece limpiar el ámbito solo si hay algo que limpiar", () => {
+  it("el editor ofrece limpiar el ámbito solo si hay algo que limpiar", async () => {
     filterParamsRef.current = { q: "sap" };
     renderBar();
-    fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
+    await abrirEditorDelAmbito();
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /Limpiar el ámbito/ }));
     expect(filtersRef.current.resetFilters).toHaveBeenCalled();
   });
@@ -614,14 +625,11 @@ describe("ScopeBar — búsqueda con espera", () => {
    * clave de todas las consultas con filtros: en Resumen, siete peticiones por
    * letra y una entrada de deshacer por letra.
    */
-  const abrirEditor = () => {
-    fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
-    return within(screen.getByRole("dialog")).getByLabelText("Buscar licitaciones");
-  };
+  const abrirEditor = async () => within(await abrirEditorDelAmbito()).getByLabelText("Buscar licitaciones");
 
-  it("la búsqueda llega a la URL 300 ms después de la última tecla, no en cada una", () => {
+  it("la búsqueda llega a la URL 300 ms después de la última tecla, no en cada una", async () => {
     renderBar();
-    const campo = abrirEditor();
+    const campo = await abrirEditor();
     // Sólo `setTimeout`: el popover de Radix ya está abierto y no se toca.
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
@@ -638,9 +646,9 @@ describe("ScopeBar — búsqueda con espera", () => {
     expect(filtersRef.current.setQ).toHaveBeenCalledWith("sap");
   });
 
-  it("Enter la aplica en el acto, sin esperar", () => {
+  it("Enter la aplica en el acto, sin esperar", async () => {
     renderBar();
-    const campo = abrirEditor();
+    const campo = await abrirEditor();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
     fireEvent.change(campo, { target: { value: "obras" } });
@@ -652,9 +660,9 @@ describe("ScopeBar — búsqueda con espera", () => {
     expect(filtersRef.current.setQ).toHaveBeenCalledTimes(1);
   });
 
-  it("cerrar el editor antes de que venza la espera no pierde lo tecleado", () => {
+  it("cerrar el editor antes de que venza la espera no pierde lo tecleado", async () => {
     renderBar();
-    const campo = abrirEditor();
+    const campo = await abrirEditor();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
     fireEvent.change(campo, { target: { value: "sap" } });
@@ -665,9 +673,9 @@ describe("ScopeBar — búsqueda con espera", () => {
     expect(filtersRef.current.setQ).toHaveBeenCalledWith("sap");
   });
 
-  it("si la búsqueda cambia fuera (deshacer, limpiar, un enlace), el campo se pone a su altura", () => {
+  it("si la búsqueda cambia fuera (deshacer, limpiar, un enlace), el campo se pone a su altura", async () => {
     const { rerender } = renderBar();
-    const campo = abrirEditor();
+    const campo = await abrirEditor();
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 
     fireEvent.change(campo, { target: { value: "sap" } });
@@ -739,9 +747,9 @@ describe("ScopeBar — catálogo de filtros bajo demanda", () => {
     expect(metaEnabledRef.current).toBe(true);
   });
 
-  it("lo pide al abrir el editor, y queda pedido al cerrarlo", () => {
+  it("lo pide al abrir el editor, y queda pedido al cerrarlo", async () => {
     renderBar();
-    fireEvent.click(screen.getByRole("button", { name: "+ Añadir" }));
+    await abrirEditorDelAmbito();
     expect(metaEnabledRef.current).toBe(true);
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(metaEnabledRef.current).toBe(true);

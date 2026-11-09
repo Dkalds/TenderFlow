@@ -13,7 +13,7 @@
 
 import type * as React from "react";
 import { Copy } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Aviso } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 

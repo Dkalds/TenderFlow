@@ -23,7 +23,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // La página monta el aviso de cambios sin guardar, que navega con el router.
 vi.mock("next/navigation", () => import("@/test/navegacion-superficial"));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 vi.mock("@/lib/api-client", () => ({
   fetchWithAuth: vi.fn(),

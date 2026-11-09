@@ -18,9 +18,8 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Bell } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,13 +27,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { buttonVariants } from "@/components/ui/button";
+import { type MontajeDiferido, useMontajeDiferido } from "@/components/ui/carga-diferida";
 import { useActiveOrganizationId } from "@/hooks/use-organization";
 import { registrarEvento } from "@/lib/analytics";
 import { apiMutate } from "@/lib/api-client";
 import { pursuitKeys, radarKeys } from "@/lib/query-keys";
 import { reportError } from "@/lib/report-error";
-import { cn } from "@/lib/utils";
 import {
   type Aviso,
   AVISOS_EN_VISTA_PREVIA,
@@ -44,21 +42,26 @@ import {
   useAvisos,
   useMarcarLeidos,
 } from "./campana/avisos";
+import {
+  CLASE_DISPARADOR_CAMPANA,
+  ContenidoDisparadorCampana,
+  etiquetaCampana,
+  REFRESCO_CAMPANA_MS,
+} from "./campana/disparador";
 
 // «Ver todas» solo se descarga cuando alguien la abre: la campana viaja en el
 // First Load de todas las pantallas.
 const VerTodasSheet = dynamic(() => import("./campana/ver-todas-sheet").then((m) => m.VerTodasSheet));
 
-/** Refresco del distintivo con la pestaña a la vista. */
-const REFRESCO_MS = 5 * 60_000;
-
 const CLASE_SECUNDARIA = "h-6 px-1.5 py-0 text-tf-micro text-muted-foreground";
 
-export function NotificationBell() {
+export function NotificationBell(montaje: MontajeDiferido = {}) {
   const queryClient = useQueryClient();
+  // El marco la monta diferida (`components/layout/menus-diferidos.tsx`).
+  const { disparador, abiertoAlMontar } = useMontajeDiferido(montaje);
   const organizationId = useActiveOrganizationId();
   const [verTodas, setVerTodas] = React.useState(false);
-  const vistaPrevia = useAvisos(organizationId, { refetchInterval: REFRESCO_MS });
+  const vistaPrevia = useAvisos(organizationId, { refetchInterval: REFRESCO_CAMPANA_MS });
   const marcar = useMarcarLeidos(organizationId);
 
   const avisos = vistaPrevia.data?.items ?? [];
@@ -73,23 +76,10 @@ export function NotificationBell() {
 
   return (
     <>
-      <DropdownMenu>
-        {/* La talla de la barra de ámbito (`icon-sm`), junto a «Exportar» y
-            «Buscar». El recuento es la señal de «hay algo nuevo», no un error:
-            va en el primario, no en rojo. */}
-        <DropdownMenuTrigger
-          className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "relative")}
-          aria-label={`Notificaciones${sinLeer > 0 ? ` (${sinLeer} sin leer)` : ""}`}
-        >
-          <Bell aria-hidden="true" />
-          {sinLeer > 0 && (
-            <span
-              aria-hidden="true"
-              className="tf-tnum absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-tf-micro leading-none font-semibold text-primary-foreground"
-            >
-              {sinLeer > 99 ? "99+" : sinLeer}
-            </span>
-          )}
+      <DropdownMenu defaultOpen={abiertoAlMontar}>
+        {/* El botón y su recuento viven en `campana/disparador.tsx`. */}
+        <DropdownMenuTrigger ref={disparador} className={CLASE_DISPARADOR_CAMPANA} aria-label={etiquetaCampana(sinLeer)}>
+          <ContenidoDisparadorCampana sinLeer={sinLeer} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-80 p-2">
           <div className="mb-1 flex items-center justify-between gap-2 px-2">

@@ -3,7 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { PursuitEditor } from "@/components/pursuits/pursuit-editor";
 import type { Pursuit } from "@/hooks/use-pursuits";
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/toast", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const mutateAsync = vi.fn().mockResolvedValue({});
 const membersRef = { current: [] as Array<{ user_id: number; display_name: string | null; email: string | null }> };

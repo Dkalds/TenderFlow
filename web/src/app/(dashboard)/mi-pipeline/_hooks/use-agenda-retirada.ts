@@ -12,7 +12,7 @@
  */
 
 import * as React from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { getErrorMessage } from "@/lib/query-feedback";
 import { type PipelineAgendaItem, useMoverPursuit } from "@/hooks/use-pursuits";
 import { tituloDe } from "../_components/agenda/agenda-texto";
