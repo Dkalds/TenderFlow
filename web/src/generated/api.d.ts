@@ -10263,6 +10263,8 @@ export interface components {
             count: number;
             /** Importe */
             importe: number;
+            /** Importe Medio */
+            importe_medio?: number | null;
             /** Pct */
             pct: number;
         };
@@ -15358,6 +15360,8 @@ export interface components {
             };
             /** Estado */
             estado?: string | null;
+            /** Expediente */
+            expediente?: string | null;
             /** Explicacion */
             explicacion?: string[];
             /** Fecha Limite */
@@ -16734,15 +16738,27 @@ export interface components {
             serie_truncada: boolean;
             /** Series */
             series?: components["schemas"]["TrendPoint"][];
+            /**
+             * Variacion Importe
+             * @description % de importe de los últimos 365 días frente a los 365 anteriores.
+             */
+            variacion_importe?: number | null;
+            /**
+             * Variacion Licitaciones
+             * @description % de licitaciones de los últimos 365 días frente a los 365 anteriores.
+             */
+            variacion_licitaciones?: number | null;
             /** Waterfall */
             waterfall?: components["schemas"]["WaterfallPoint"][];
             /**
              * Yoy Count
+             * @description Obsoleto: da 0.0 también cuando no hay con qué comparar. Usá `variacion_licitaciones`.
              * @default 0
              */
             yoy_count: number;
             /**
              * Yoy Importe
+             * @description Obsoleto: da 0.0 también cuando no hay con qué comparar. Usá `variacion_importe`.
              * @default 0
              */
             yoy_importe: number;
@@ -23406,8 +23422,8 @@ export interface operations {
         parameters: {
             query?: {
                 format?: "csv" | "excel" | "pdf";
-                /** @description Qué se exporta. `pursuits` baja el tablero de oportunidades de tu organización con los filtros del tablero (C6.7); `licitaciones`, el corpus con los filtros de búsqueda. No se mezclan: son dos colecciones con columnas distintas. */
-                recurso?: "licitaciones" | "pursuits";
+                /** @description Qué se exporta. `pursuits` baja el tablero de oportunidades de tu organización con los filtros del tablero (C6.7); `licitaciones`, el corpus con los filtros de búsqueda. `competidores`, `utes`, `geografia`, `organos` y `tecnologias` bajan la tabla de esa sección de Competencia o Mercado, con los filtros que esa sección aplica. No se mezclan: son colecciones con columnas distintas. Las secciones solo salen en CSV o Excel. */
+                recurso?: "licitaciones" | "pursuits" | "competidores" | "utes" | "geografia" | "organos" | "tecnologias";
                 /** @description Filtro de estado del tablero. Solo con `recurso=pursuits`. */
                 pursuit_status?: string | null;
                 /** @description Filtro de responsable. Solo con `recurso=pursuits`. */
@@ -23426,6 +23442,14 @@ export interface operations {
                 provincia?: string | null;
                 /** @description Código CODICE de procedimiento (multi-valor); se compara normalizado */
                 procedimiento?: string | null;
+                /** @description Solo licitaciones que siguen abiertas, como el listado */
+                solo_abiertas?: boolean;
+                /** @description Plazo de presentación desde (YYYY-MM-DD), inclusive */
+                cierre_desde?: string | null;
+                /** @description Plazo de presentación hasta (YYYY-MM-DD), inclusive */
+                cierre_hasta?: string | null;
+                /** @description Búsqueda por nombre de órgano. Solo con `recurso=organos`, como su pantalla. */
+                organo_q?: string | null;
                 limit?: number;
                 /** @description Organización a la que se atribuye la exportación encolada. */
                 organization_id?: number | null;

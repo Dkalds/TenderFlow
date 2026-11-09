@@ -15,7 +15,7 @@
  * que corta el correo sin perder la regla.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type * as React from "react";
 import { Eye, Mail, Pencil, Trash2 } from "lucide-react";
 import { Aviso, Panel } from "@/components/console/panel";
@@ -53,6 +53,13 @@ export function ReglaCard({
   onDelete: (id: number) => void;
 }) {
   const [confirmando, setConfirmando] = useState(false);
+  // Al cerrar el aviso sin borrar, el foco vuelve a la papelera: el botón que
+  // lo tenía desaparece con el aviso y el teclado caía en `body`.
+  const papelera = useRef<HTMLButtonElement>(null);
+  const cerrarAviso = () => {
+    setConfirmando(false);
+    papelera.current?.focus();
+  };
   const desactivar = () => onUpdate(rule.id, ruleToBody(rule, { active: !rule.active }));
   // Se apaga la regla pausada, no la tarjeta: la confirmación de borrado vive
   // dentro y al 50 % no llegaba al contraste AA.
@@ -75,7 +82,9 @@ export function ReglaCard({
               <Button
                 variant="ghost"
                 size="icon-sm"
-                aria-label={rule.active ? "Desactivar regla" : "Activar regla"}
+                // Etiqueta fija y el estado en `aria-pressed`: con las dos
+                // cambiando, la regla activa se oía «Desactivar regla, pulsado».
+                aria-label="Avisos de esta regla"
                 aria-pressed={rule.active}
                 onClick={desactivar}
               >
@@ -98,6 +107,7 @@ export function ReglaCard({
                 variant="ghost"
                 size="icon-sm"
                 className="text-destructive"
+                ref={papelera}
                 aria-label="Eliminar regla"
                 aria-expanded={confirmando}
                 onClick={() => setConfirmando(true)}
@@ -137,14 +147,14 @@ export function ReglaCard({
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  setConfirmando(false);
+                  cerrarAviso();
                   desactivar();
                 }}
               >
                 Desactivar
               </Button>
             )}
-            <Button variant="ghost" size="sm" onClick={() => setConfirmando(false)}>
+            <Button variant="ghost" size="sm" onClick={cerrarAviso}>
               Cancelar
             </Button>
           </div>

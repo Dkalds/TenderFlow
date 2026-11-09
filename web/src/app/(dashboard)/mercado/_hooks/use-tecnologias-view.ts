@@ -14,6 +14,7 @@
 import { useMemo, useState } from "react";
 
 import { useFilteredQuery } from "@/hooks/use-filtered-query";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import type { Schemas } from "@/lib/api-types";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
@@ -92,11 +93,14 @@ export function useTecnologiasView() {
   );
 
   // Top scored opportunities
+  // Con la organización activa: el score sale de su perfil, y en la clave
+  // (los params van en ella) para no servir el de otra al cambiar.
+  const organizationId = useActiveOrganizationId();
   const { data: scoringData } = useFilteredQuery(
     ["analytics", "scoring", "top20"],
     "/api/v1/analytics/scoring",
-    { staleTime: 5 * 60 * 1000 },
-    { limit: "20" },
+    { staleTime: 5 * 60 * 1000, enabled: organizacionResuelta(organizationId) },
+    organizationId != null ? { limit: "20", organization_id: String(organizationId) } : { limit: "20" },
   );
 
   const items = useMemo(() => data?.tecnologias ?? [], [data]);

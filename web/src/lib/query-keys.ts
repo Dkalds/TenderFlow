@@ -174,7 +174,10 @@ export const analyticsKeys = {
   overview: (params: Record<string, string>) =>
     ["analytics", "overview", "/api/v1/analytics/overview", params] as const,
   /** Score de las filas visibles de `detalle` (batch por `id_externo`). */
-  scoringBatch: (ids: readonly string[]) => ["scoring-batch", ids] as const,
+  /** El score se calcula con el perfil de la organización: sin ella en la clave,
+   *  cambiar de organización servía el de la anterior desde la caché. */
+  scoringBatch: (organizationId: OrganizacionDeClave, ids: readonly string[]) =>
+    ["scoring-batch", organizationId, ids] as const,
   /**
    * Diff personal del Resumen (`GET /analytics/resumen/desde-mi-ultima-visita`,
    * F5.4). No se comparte con `resumen/novedades`: es otra pregunta y otro

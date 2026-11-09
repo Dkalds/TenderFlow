@@ -6,8 +6,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Pista } from "@/components/ui/pista";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
-import { bandColor, shortEur } from "../../radar/_components/radar-shared";
+import { cn, formatCompactCurrency, formatCurrency, formatDate } from "@/lib/utils";
+import { bandColor } from "../../radar/_components/radar-shared";
 import { useMetaFilters } from "@/hooks/use-meta-filters";
 import { resolverCodigo } from "@/lib/procedimientos";
 import type { MergedRow } from "../_hooks/detalle-table-model";
@@ -128,6 +128,8 @@ export function DetalleFila({
       aria-selected={picked}
       onClick={() => onOpen(index, row.id_externo)}
       onKeyDown={(event) => {
+        // Intro o Espacio en un control de la fila son de ese control.
+        if (event.target !== event.currentTarget) return;
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onOpen(index, row.id_externo);
@@ -152,7 +154,7 @@ export function DetalleFila({
           style={{ background: open ? bandColor(row.band) : "transparent" }}
         />
         <Checkbox
-          className="mt-0.5 h-3.5 w-3.5"
+          className="relative mt-0.5 h-3.5 w-3.5 after:absolute after:-inset-1.5 after:content-['']" // diana de 26 px
           aria-label={`Seleccionar ${row.titulo}`}
           checked={picked}
           onCheckedChange={() => onToggleSelect(row.id_externo)}
@@ -183,7 +185,7 @@ export function DetalleFila({
             clases={{
               base: "tf-pressable grid h-6 w-6 place-items-center rounded-md",
               activo: "text-primary",
-              inactivo: "text-muted-foreground/45",
+              inactivo: "text-muted-foreground",
             }}
           />
         </div>
@@ -267,7 +269,7 @@ export function DetalleFila({
         )}
       </td>
       <td className={cn("tf-tnum px-1 text-right text-tf-meta font-semibold", celda)}>
-        {compact ? shortEur(row.importe) : formatCurrency(row.importe)}
+        {compact ? formatCompactCurrency(row.importe) : formatCurrency(row.importe)}
       </td>
       <td className={cn("px-1", celda)}>
         {row.fecha_limite ? (

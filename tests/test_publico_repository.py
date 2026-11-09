@@ -36,8 +36,10 @@ _DESCRIPCION_LARGA = "d" * 200
 #: distinta cada uno.
 _FILAS = (
     ("P-01", _TITULO_LARGO, None, 100000.0, "Comunidad de Madrid", "72000000"),
-    ("P-02", _TITULO_LARGO, None, 200000.0, "Comunidad de Madrid", "72000000"),
-    ("P-03", _TITULO_LARGO, None, 300000.0, "Comunidad de Madrid", "72000000"),
+    # El mismo código en las tres grafías que publica la fuente: el hub las
+    # cuenta juntas (con dígito de control, sin él y unido a otro).
+    ("P-02", _TITULO_LARGO, None, 200000.0, "Comunidad de Madrid", "72000000-5"),
+    ("P-03", _TITULO_LARGO, None, 300000.0, "Comunidad de Madrid", "72000000-5||48000000-8"),
     ("P-04", _TITULO_LARGO, None, 400000.0, "Castilla y León", "48000000"),
     ("P-05", _TITULO_LARGO, _DESCRIPCION_LARGA, None, "Castilla y León", "48000000"),
     # Título corto: no llega a ser una página.

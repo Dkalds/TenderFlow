@@ -194,11 +194,11 @@ def test_las_cuatro_fuentes_llegan_fusionadas_y_con_nombre(tmp_db):
     assert titulos["plazo_ampliado"] == "Plazo ampliado al 10/12/2026"
     # El tipo de adjunto y el sentido van en el titular: deciden si hay que
     # dejarlo todo, y sin ellos las dos líneas dirían lo mismo.
-    assert titulos["documento_nuevo"] == "Documento nuevo: technical"
+    assert titulos["documento_nuevo"] == "Documento nuevo: Pliego técnico (PPT)"
     assert titulos["recurso"] == "Recurso estimado"
     assert titulos["pursuit"] == "Tu equipo movió «Expediente NOV-1»"
     pursuit = next(n for n in resultado.items if n.subtipo == "pursuit")
-    assert pursuit.detalle == "Ahora está en identified."
+    assert pursuit.detalle == "Ahora está en Identificada."
 
 
 def test_lo_que_no_se_sigue_no_es_novedad(tmp_db):

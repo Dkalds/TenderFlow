@@ -119,7 +119,11 @@ export function RitmoChart({ serie, serieTruncada, ventana, onDia }: RitmoChartP
         </div>
       </div>
       <p className="mt-2 text-tf-micro text-muted-foreground">
-        {formatNumber(total)} publicaciones {ventana}, en {serie.length} días con actividad.
+        {/* «Anuncios», no «publicaciones»: la serie es métrica (ADR-026 D23) y
+            cuenta cada fuente aparte; «Publicadas 30 d», encima, cuenta
+            expedientes. Con el mismo nombre parecían dos totales distintos. */}
+        {formatNumber(total)} anuncios {ventana} (un expediente publicado en dos fuentes cuenta dos veces), en{" "}
+        {serie.length} días con actividad.
         {findes.length > 0 ? " La banda gris marca los sábados y domingos." : ""}
         {serieTruncada
           ? " El periodo es demasiado largo para dibujarlo entero: faltan días; acórtalo para verlos todos."

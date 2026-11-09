@@ -24,6 +24,7 @@ el producto estaba mirando.
 from __future__ import annotations
 
 import json
+import textwrap
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -51,6 +52,19 @@ __all__ = [
 #: llevaba tres meses fuera traería tres meses de cambios y el diff dejaría de
 #: ser un diff. Catorce días es lo que cabe leer de una sentada.
 DIAS_MAXIMOS = 14
+
+#: Los nombres de fase de `statusCopy` (`web/src/components/pursuits/pursuit-presenters.tsx`):
+#: la línea se compone aquí y la web la pinta tal cual.
+_FASE: dict[str, str] = {
+    "identified": "Identificada",
+    "qualifying": "En cualificación",
+    "go_no_go": "Decisión",
+    "preparing": "Preparando oferta",
+    "submitted": "Presentada",
+    "won": "Ganada",
+    "lost": "Perdida",
+    "withdrawn": "Retirada",
+}
 
 
 class Novedad(BaseModel):
@@ -246,11 +260,12 @@ def desde_ultima_visita(
         try:
             for fila in _repo.pursuits_movidos(organization_id, desde_iso=desde_iso):
                 titulo = str(fila.get("titulo") or fila.get("licitacion_id") or "")
+                fase = str(fila.get("status") or "")
                 items.append(
                     Novedad(
                         subtipo="pursuit",
-                        titulo=f"Tu equipo movió «{titulo[:70]}»",
-                        detalle=f"Ahora está en {fila.get('status')}.",
+                        titulo=f"Tu equipo movió «{textwrap.shorten(titulo, 70, placeholder='…')}»",
+                        detalle=f"Ahora está en {_FASE.get(fase, fase)}.",
                         licitacion_id=str(fila.get("licitacion_id") or "") or None,
                         cuando=_cuando_iso(fila.get("created_at")),
                     )

@@ -153,18 +153,3 @@ export function daysLeft(iso: string | null | undefined): number | null {
   const startOfDay = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
   return Math.round((startOfDay(target) - startOfDay(today)) / 86400000);
 }
-
-/**
- * Importe en la forma corta de la consola: `4,82 M€` / `740K €`. Es la misma
- * lectura que el mock, pensada para una columna tabular estrecha; el importe
- * exacto vive en el inspector.
- */
-export function shortEur(value: number | null | undefined): string {
-  if (value == null) return "—";
-  if (Math.abs(value) >= 1e6) {
-    const millions = value / 1e6;
-    return `${millions.toFixed(Math.abs(value) >= 1e7 ? 1 : 2).replace(".", ",")} M€`;
-  }
-  if (Math.abs(value) >= 1000) return `${Math.round(value / 1000)}K €`;
-  return `${Math.round(value)} €`;
-}

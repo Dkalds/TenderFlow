@@ -38,6 +38,13 @@ export const SERVER_SORT: Record<string, string> = {
 export type ScoringItem = Schemas["ScoredOpportunity"];
 export type ScoringResponse = Schemas["ScoringResult"];
 
+/** La query de `GET /analytics/scoring?ids=`, con la organización activa si se sabe. */
+export function parametrosScoring(ids: readonly string[], organizationId: number | null | undefined): URLSearchParams {
+  const params = new URLSearchParams({ ids: ids.join(",") });
+  if (organizationId != null) params.set("organization_id", String(organizationId));
+  return params;
+}
+
 export interface MergedRow extends LicitacionSummary {
   score?: number;
   band?: string;

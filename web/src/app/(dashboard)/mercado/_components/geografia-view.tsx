@@ -54,7 +54,7 @@ export default function GeografiaView() {
             Dónde se licita: reparto por comunidad autónoma y provincia.
           </p>
         </div>
-        <ExportPopover extraParams={{ section: "geografia" }} label="Exportar geografía" />
+        <ExportPopover extraParams={{ recurso: "geografia" }} label="Exportar geografía" />
       </div>
 
       <GeografiaKpis

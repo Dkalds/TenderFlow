@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { teclaDeOtroControl } from "@/hooks/use-keyboard-shortcuts";
 import type { MergedRow } from "./detalle-table-model";
 import { pasosDeFicha } from "./use-ficha-completa";
 
@@ -47,15 +48,18 @@ export function useDetalleTeclado({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof HTMLElement ? event.target : null;
       const tag = target?.tagName ?? "";
-      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (event.key === "Escape") {
+        // Escape cierra el comparador o la ficha salvo mientras se escribe;
+        // dentro del Sheet de la ficha también, que es lo que se espera de él.
+        if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
         if (showComparator) closeComparator();
         else if (detailId) closeDetail();
         return;
       }
+      if (teclaDeOtroControl(event)) return;
       if (!mergedRows.length) return;
       const key = event.key.toLowerCase();
       if (fichaCompleta) {
@@ -82,6 +86,10 @@ export function useDetalleTeclado({
         event.preventDefault();
         if (current) toggleFavorite(current.id_externo);
       } else if (event.key === "Enter") {
+        // ⏎ sobre un enlace o un botón (el rail, «Ver en PLACSP», «Cerrar
+        // ficha», la paginación) es de ese control: escuchando en `window`, el
+        // `preventDefault` lo cancelaba y abría la fila del cursor.
+        if (target?.closest('a, button, select, [role="button"]')) return;
         event.preventDefault();
         if (current) openDetail(current.id_externo);
       }

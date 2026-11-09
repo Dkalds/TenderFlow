@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { fetchWithAuth } from "@/lib/api-client";
 import { useFilterParams } from "@/lib/filters";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { cn, formatCompactCurrency, formatNumber } from "@/lib/utils";
+import { cn, diaISO, formatCompactCurrency, formatNumber } from "@/lib/utils";
 import type { LicitacionesCursorPage } from "@/lib/api-types";
 import { RelojCierre } from "./cifras-graficos";
 import {
@@ -135,8 +135,8 @@ export function ColaCierre({
     // eslint-disable-next-line react-hooks/purity
     const ahora = Date.now();
     return {
-      cierre_desde: new Date(ahora).toISOString().slice(0, 10),
-      cierre_hasta: new Date(ahora + 2 * 86400000).toISOString().slice(0, 10),
+      cierre_desde: diaISO(ahora),
+      cierre_hasta: diaISO(ahora + 2 * 86400000),
     };
   }, []);
 

@@ -122,6 +122,30 @@ def test_la_consulta_del_export_aplica_los_tres(monkeypatch: pytest.MonkeyPatch)
     assert conexion.params == [10.0, 20.0, "Madrid", "6", 5]
 
 
+def test_el_export_aplica_solo_abiertas_y_la_ventana_de_cierre(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """«Cierran en 48 h» en /detalle: la tabla y el fichero, con el mismo recorte."""
+    import db.repositories.licitaciones.export as repo_mod
+    from db.repositories.licitaciones import LicitacionRepository
+
+    conexion = _Conexion()
+
+    @contextmanager
+    def _connect_read() -> Any:
+        yield conexion
+
+    monkeypatch.setattr(repo_mod, "connect_read", _connect_read)
+    monkeypatch.setattr(repo_mod, "rows_to_dicts", lambda cur: [])
+    LicitacionRepository().fetch_for_pdf(
+        solo_abiertas=True, cierre_desde="2026-11-09", cierre_hasta="2026-11-10", limit=5
+    )
+    assert "licitaciones.estado" in conexion.sql
+    assert "fecha_limite" in conexion.sql
+    # La cota superior es exclusiva del día siguiente, como en el listado.
+    assert conexion.params == ["2026-11-09", "2026-11-11", 5]
+
+
 def test_el_csv_tambien_los_respeta() -> None:
     """El camino CSV/Excel consulta aparte del PDF: tienen que llegarle igual."""
     import api.routes.exports as exports_mod
@@ -141,6 +165,9 @@ def test_el_csv_tambien_los_respeta() -> None:
         "importe_max": 300_000.0,
         "provincia": "Madrid",
         "procedimiento": "1",
+        "solo_abiertas": False,
+        "cierre_desde": None,
+        "cierre_hasta": None,
         "limit": 100,
         "organization_id": None,
         "por_lote": False,

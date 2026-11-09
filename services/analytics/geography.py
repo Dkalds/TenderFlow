@@ -39,6 +39,8 @@ class GeoEntry(BaseModel):
     count: int
     importe: float
     pct: float
+    #: Media sobre las licitaciones con importe; ``None`` si ninguna lo publica.
+    importe_medio: float | None = None
 
 
 class ProvinciaEntry(BaseModel):
@@ -88,6 +90,7 @@ def get_geography(filters: GeoFilters) -> GeoResult:
             count=int(r["count"]),
             importe=float(r["importe"] or 0),
             pct=float(int(r["count"]) / total * 100) if total else 0.0,
+            importe_medio=float(r["importe_medio"]) if r["importe_medio"] is not None else None,
         )
         for r in ccaa_rows
     ]

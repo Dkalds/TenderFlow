@@ -4,7 +4,7 @@ import * as React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScoreDesglose } from "@/components/score-desglose";
-import { cn } from "@/lib/utils";
+import { cn, formatCompactCurrency } from "@/lib/utils";
 import type { RadarTender } from "@/hooks/use-radar";
 import { RadarAcciones } from "./radar-acciones";
 import {
@@ -12,7 +12,6 @@ import {
   claseFondoBanda,
   claseTextoBanda,
   daysLeft,
-  shortEur,
   urgency,
 } from "./radar-shared";
 
@@ -219,7 +218,7 @@ export function RadarFila({
               para los códigos (expediente y CPV); la comunidad es una palabra. */}
           <div className="mt-0.5 block truncate text-tf-micro text-muted-foreground">
             <span className="font-mono">
-              {[tender.id_externo, tender.cpv ? `CPV ${tender.cpv}` : null].filter(Boolean).join(" · ")}
+              {[tender.expediente ?? tender.id_externo, tender.cpv ? `CPV ${tender.cpv}` : null].filter(Boolean).join(" · ")}
             </span>
             {tender.ccaa ? <> · {tender.ccaa}</> : null}
             {/* Desde `xl` la tecnología no tiene columna (el inspector anclado
@@ -253,7 +252,7 @@ export function RadarFila({
       </div>
 
       <div className="flex items-center justify-between gap-3 lg:contents">
-        <span className="tf-tnum text-tf-body font-semibold lg:text-right">{shortEur(tender.importe)}</span>
+        <span className="tf-tnum text-tf-body font-semibold lg:text-right">{formatCompactCurrency(tender.importe)}</span>
 
         <div className="flex flex-none flex-col items-end gap-1.5">
           <span className={cn("tf-tnum text-tf-meta font-semibold leading-none", urg.texto)}>

@@ -14,6 +14,7 @@ const TIPO_LABELS: Record<string, string> = {
   legal: "Pliego administrativo (PCAP)",
   technical: "Pliego técnico (PPT)",
   additional: "Documento adicional",
+  acta: "Acta",
 };
 
 function hostDe(url: string): string {

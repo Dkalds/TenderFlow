@@ -36,7 +36,8 @@ import {
   useCriteriosDelPrefill,
   usePreviewRegla,
 } from "./use-preview-regla";
-import { activeRulesOf, dedupeMatches } from "./watchlist-matches";
+import { activeRulesOf } from "./watchlist-matches";
+import { useResultadosCombinados } from "./use-resultados-combinados";
 import { ccaaOptions } from "./watchlist-rule-options";
 import type { ApiRule, CatalogosCodificados, MatchItem, RuleBody } from "./watchlist-rule-types";
 
@@ -131,6 +132,11 @@ export interface MiWatchlistState {
   deleteRule: (id: number) => void;
   combined: MatchItem[] | undefined;
   matchesLoading: boolean;
+  /** Fallaron todas las reglas: no hay nada que enseñar, y no es un vacío. */
+  matchesError: unknown;
+  /** Reglas activas que no respondieron cuando otras sí: la lista es parcial. */
+  reglasSinRespuesta: number;
+  refetchMatches: () => void;
 }
 
 export function useMiWatchlist(): MiWatchlistState {
@@ -193,6 +199,7 @@ export function useMiWatchlist(): MiWatchlistState {
   const invalidate = () => qc.invalidateQueries({ queryKey: watchlistKeys.rules });
 
   const createMut = useMutation({
+    meta: { errorTitle: "No se pudo crear la regla" },
     mutationFn: ({ body }: { body: RuleBody; ruido?: "si" | "no" }) =>
       apiMutate("POST", RULES_KEY, body),
     onSuccess: (_respuesta, { ruido }) => {
@@ -212,11 +219,13 @@ export function useMiWatchlist(): MiWatchlistState {
     },
   });
   const updateMut = useMutation({
+    meta: { errorTitle: "No se pudo guardar la regla" },
     mutationFn: ({ id, body }: { id: number; body: RuleBody }) =>
       apiMutate("PUT", `${RULES_KEY}/${id}`, body),
     onSuccess: invalidate,
   });
   const deleteMut = useMutation({
+    meta: { errorTitle: "No se pudo borrar la regla" },
     mutationFn: (id: number) => apiMutate("DELETE", `${RULES_KEY}/${id}`),
     onSuccess: invalidate,
   });
@@ -226,10 +235,17 @@ export function useMiWatchlist(): MiWatchlistState {
   const previewNueva = usePreviewRegla();
   const crear = (valores: NuevaReglaValores) => {
     const body = cuerpoDeNuevaRegla(valores, criteriosDelPrefill);
-    createMut.mutate({ body, ruido: ruidoAvisado(previewNueva, body) });
-    nuevaForm.reset(NUEVA_VACIA);
-    vaciarCriteriosDelPrefill();
-    previewNueva.reset();
+    // Se vacía al guardar, no al pulsar: si el POST falla, lo escrito se queda.
+    createMut.mutate(
+      { body, ruido: ruidoAvisado(previewNueva, body) },
+      {
+        onSuccess: () => {
+          nuevaForm.reset(NUEVA_VACIA);
+          vaciarCriteriosDelPrefill();
+          previewNueva.reset();
+        },
+      },
+    );
   };
   // `handleSubmit` dentro del evento, no al renderizar (compilador de React).
   const submit = () => void nuevaForm.handleSubmit(crear)();
@@ -241,25 +257,9 @@ export function useMiWatchlist(): MiWatchlistState {
   const activeRules = useMemo(() => activeRulesOf(rules), [rules]);
 
   /* ---- Resultados combinados (matches reales por regla activa) ---- */
-  const { data: combined, isLoading: matchesLoading } = useQuery<MatchItem[]>({
-    queryKey: watchlistKeys.combined(activeRules.map((r) => r.id).join(",")),
-    enabled: activeRules.length > 0,
-    queryFn: async () => {
-      const perRule = await Promise.all(
-        activeRules.map(async (rule) => {
-          try {
-            const data = await fetchWithAuth<{ items?: MatchItem[] }>(
-              `${RULES_KEY}/${rule.id}/matches?limit=20`,
-            );
-            return data.items ?? [];
-          } catch {
-            return [];
-          }
-        }),
-      );
-      return dedupeMatches(perRule);
-    },
-  });
+  const { data: matches, isLoading: matchesLoading, error: matchesError, refetch: refetchMatches } =
+    useResultadosCombinados(activeRules);
+  const combined = matches?.items;
 
   return {
     tab,
@@ -293,5 +293,8 @@ export function useMiWatchlist(): MiWatchlistState {
     deleteRule: (id) => deleteMut.mutate(id),
     combined,
     matchesLoading,
+    matchesError,
+    reglasSinRespuesta: matches?.sinRespuesta ?? 0,
+    refetchMatches: () => void refetchMatches(),
   };
 }

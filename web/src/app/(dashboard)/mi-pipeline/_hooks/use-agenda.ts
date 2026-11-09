@@ -27,6 +27,7 @@
 
 import * as React from "react";
 import { useSearchParams } from "next/navigation";
+import { teclaDeOtroControl } from "@/hooks/use-keyboard-shortcuts";
 import { useFilters } from "@/lib/filters";
 import { queryActual, reemplazarQuery } from "@/lib/url-superficial";
 import { type PipelineAgendaItem, usePipelineAgenda } from "@/hooks/use-pursuits";
@@ -150,9 +151,7 @@ export function useAgenda() {
       // hay foco en ningún control y el atajo es de la lista.
       const target = event.target instanceof HTMLElement ? event.target : null;
       const tag = target?.tagName ?? "";
-      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
-      if (target?.closest('[role="dialog"]')) return;
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (teclaDeOtroControl(event)) return;
       if (!items.length) return;
       const key = event.key.toLowerCase();
       if (key === "j" || event.key === "ArrowDown") {

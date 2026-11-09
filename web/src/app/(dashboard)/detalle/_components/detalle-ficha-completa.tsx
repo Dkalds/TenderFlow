@@ -86,7 +86,7 @@ export function DetalleFichaCompleta({
           <ArrowLeft aria-hidden="true" />
           Volver a la tabla
         </Button>
-        <span className="min-w-0 truncate font-mono text-tf-micro text-muted-foreground">{idExterno}</span>
+        <span className="min-w-0 truncate font-mono text-tf-micro text-muted-foreground">{licitacion?.expediente ?? idExterno}</span>
         <div className="flex-1" />
         {posicion && (
           <span className="tf-tnum text-tf-meta text-muted-foreground">

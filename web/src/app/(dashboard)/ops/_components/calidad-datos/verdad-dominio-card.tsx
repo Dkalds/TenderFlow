@@ -43,15 +43,18 @@ function cifra(valor: number | null | undefined, unidad: string): string {
 
 function FilaMetrica({ metrica }: { metrica: Metrica }) {
   return (
-    <tr className="border-b border-divider-subtle last:border-b-0">
-      <td className="py-1.5 pr-3">
+    <tr className="border-divider-subtle border-b last:border-b-0">
+      {/* `th` de fila: la métrica es la cabecera de su valor y su límite. */}
+      <th scope="row" className="py-1.5 pr-3 text-left font-normal">
         {metrica.etiqueta}
-        {metrica.detalle ? <span className="block text-tf-meta text-muted-foreground">{metrica.detalle}</span> : null}
-      </td>
+        {metrica.detalle ? <span className="text-tf-meta text-muted-foreground block">{metrica.detalle}</span> : null}
+      </th>
       <td className={`tf-tnum py-1.5 pr-3 text-right font-medium ${metrica.supera ? "text-destructive" : ""}`}>
         {cifra(metrica.valor, metrica.unidad)}
+        {/* Que supera el límite no se dice solo con el rojo (WCAG 1.4.1). */}
+        {metrica.supera ? <span className="text-tf-micro block font-normal">supera el límite</span> : null}
       </td>
-      <td className="tf-tnum py-1.5 text-right text-muted-foreground">
+      <td className="tf-tnum text-muted-foreground py-1.5 text-right">
         {metrica.limite == null ? "sin límite" : `límite ${cifra(metrica.limite, metrica.unidad)}`}
       </td>
     </tr>
@@ -78,9 +81,9 @@ export function VerdadDominioCard() {
         title="Verdad del dato"
         hint={data?.medido_en ? `Medido ${formatDateTime(data.medido_en)}` : undefined}
       />
-      <p className="mb-3 max-w-prose text-tf-meta text-muted-foreground">
-        Defectos conocidos del dato, medidos contra el valor que tenían al calibrarse. Una cifra fuera de rango es
-        que algo ha empeorado desde entonces.
+      <p className="text-tf-meta text-muted-foreground mb-3 max-w-prose">
+        Defectos conocidos del dato, medidos contra el valor que tenían al calibrarse. Una cifra fuera de rango es que
+        algo ha empeorado desde entonces.
       </p>
       {sinPermiso ? (
         <Aviso tone="info">Sólo los administradores pueden ver la auditoría del dato.</Aviso>
@@ -93,12 +96,19 @@ export function VerdadDominioCard() {
       ) : (
         <div className="space-y-4">
           {violaciones.length > 0 && (
-            <Aviso tone="warning" title={`${formatNumber(violaciones.length)} avisos fuera de rango`}>
+            <Aviso
+              tone="warning"
+              title={
+                violaciones.length === 1
+                  ? "1 aviso fuera de rango"
+                  : `${formatNumber(violaciones.length)} avisos fuera de rango`
+              }
+            >
               {/* Las mismas frases que el correo de la auditoría: plegadas, porque
                   la tabla de abajo ya dice qué cifra se salió. */}
               <details>
-                <summary className="cursor-pointer text-tf-meta">Ver el texto de los avisos</summary>
-                <ul className="mt-1 list-disc space-y-1 pl-4 text-tf-meta">
+                <summary className="text-tf-meta cursor-pointer">Ver el texto de los avisos</summary>
+                <ul className="text-tf-meta mt-1 list-disc space-y-1 pl-4">
                   {violaciones.map((v) => (
                     <li key={v}>{v}</li>
                   ))}
@@ -116,9 +126,10 @@ export function VerdadDominioCard() {
                   </Badge>
                 </div>
                 {s.error ? (
-                  <p className="text-tf-meta text-muted-foreground">No se pudo medir: {s.error}</p>
+                  // El error en crudo va plegado, como en el resto de la consola.
+                  <PanelError variant="inline" title="No se pudo medir" detail={s.error} />
                 ) : s.metricas && s.metricas.length > 0 ? (
-                  <table className="w-full max-w-2xl text-tf-body">
+                  <table className="text-tf-body w-full max-w-2xl">
                     <caption className="sr-only">{s.titulo}</caption>
                     <tbody>
                       {s.metricas.map((m) => (

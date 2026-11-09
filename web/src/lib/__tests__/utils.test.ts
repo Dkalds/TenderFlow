@@ -12,6 +12,7 @@ import {
   EMPTY,
   cn,
   foldText,
+  diaISO,
   formatCompactCurrency,
   formatCurrency,
   formatNumber,
@@ -426,6 +427,13 @@ describe("formatCompactCurrency", () => {
     expect(result).toContain("M");
   });
 
+  it("escribe igual los miles de millones por debajo y por encima de 10¹⁰", () => {
+    // CLDR daba «2922,8 M €» junto a «11 mil M €» en la misma lista.
+    expect(formatCompactCurrency(2_922_800_000)).toBe("2,9 mil M €");
+    expect(formatCompactCurrency(11_000_000_000)).toBe("11 mil M €");
+    expect(formatCompactCurrency(-1_500_000_000)).toBe("-1,5 mil M €");
+  });
+
   it("uses the es-ES decimal comma, not a point", () => {
     // La barra de KPI mezclaba "1.5M €" (punto decimal) con "1.234.567"
     // (punto de millares) a pocos píxeles de distancia.
@@ -480,5 +488,13 @@ describe("formatMonth", () => {
 
   it("devuelve la cadena intacta si no tiene forma de mes", () => {
     expect(formatMonth("sin-fecha")).toBe("sin-fecha");
+  });
+});
+
+describe("diaISO", () => {
+  it("da el día de Madrid, no el UTC, de madrugada", () => {
+    // 23:30 UTC del 9 de noviembre son las 00:30 del 10 en Madrid.
+    expect(diaISO(Date.UTC(2026, 10, 9, 23, 30))).toBe("2026-11-10");
+    expect(diaISO(Date.UTC(2026, 10, 9, 12, 0))).toBe("2026-11-09");
   });
 });

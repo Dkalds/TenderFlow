@@ -49,7 +49,7 @@ export function TableroMetricas({
     >
       <StatCell
         label="Valor del pipeline"
-        hint="Oferta prevista de lo que sigue abierto"
+        hint="Importe de licitación ponderado por fase"
         value={metrics ? formatCompactCurrency(metrics.pipeline_value_eur) : "—"}
         loading={cargando}
       />
@@ -60,8 +60,8 @@ export function TableroMetricas({
         loading={cargando}
       />
       <StatCell
-        label="Sin importe"
-        hint="Quedan fuera de las dos cifras anteriores"
+        label="Sin importe publicado"
+        hint="Licitaciones que quedan fuera de las dos cifras"
         value={metrics ? formatNumber(metrics.pipeline_sin_importe) : "—"}
         loading={cargando}
         tono="warning"

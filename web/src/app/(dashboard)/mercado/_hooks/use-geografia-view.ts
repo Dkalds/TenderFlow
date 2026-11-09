@@ -51,28 +51,19 @@ export function useGeografiaView() {
 
   const items = useMemo(() => data?.by_ccaa ?? [], [data]);
 
-  const topCcaa = items.length > 0 ? items[0].ccaa : "-";
-  const top3Concentration = useMemo(() => {
-    if (items.length === 0) return 0;
-    const total = items.reduce((s, i) => s + i.count, 0);
-    const top3 = items.slice(0, 3).reduce((s, i) => s + i.count, 0);
-    return total > 0 ? (top3 / total) * 100 : 0;
-  }, [items]);
-
-  // CCAA with highest average ticket
+  // Lo agregado viene del backend (ADR-014); aquí solo se elige el máximo.
+  // Antes el «mayor importe medio» dividía entre todas las licitaciones, también
+  // las que no publican importe, y bajaba a quien más las publica sin él.
+  const topCcaa = data?.ccaa_mas_activa ?? "-";
+  // Sin comunidades no hay concentración: el `0.0` por defecto no es un dato.
+  const top3Concentration = data && items.length > 0 ? data.concentracion_top3 : null;
   const ccaaMayorTicket = useMemo(() => {
-    if (items.length === 0) return "-";
-    let best = items[0];
-    let bestRatio = best.count > 0 ? best.importe / best.count : 0;
+    let mejor: { ccaa: string; medio: number } | null = null;
     for (const item of items) {
-      if (item.count === 0) continue;
-      const ratio = item.importe / item.count;
-      if (ratio > bestRatio) {
-        best = item;
-        bestRatio = ratio;
-      }
+      if (item.importe_medio == null) continue;
+      if (!mejor || item.importe_medio > mejor.medio) mejor = { ccaa: item.ccaa, medio: item.importe_medio };
     }
-    return best.ccaa;
+    return mejor?.ccaa ?? "-";
   }, [items]);
 
   const mapData = useMemo(

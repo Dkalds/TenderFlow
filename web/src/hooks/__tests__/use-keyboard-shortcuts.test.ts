@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook } from "@testing-library/react";
-import { NUMBER_SHORTCUTS, useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { NUMBER_SHORTCUTS, teclaDeOtroControl, useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useUiStore } from "@/lib/ui-store";
 
 const push = vi.fn();
@@ -152,5 +152,36 @@ describe("useKeyboardShortcuts", () => {
     const { unmount } = renderHook(() => useKeyboardShortcuts());
     unmount();
     expect(removeSpy).toHaveBeenCalledWith("keydown", expect.any(Function));
+  });
+});
+
+describe("teclaDeOtroControl", () => {
+  function evento(key: string, target: HTMLElement): KeyboardEvent {
+    const event = new KeyboardEvent("keydown", { key, bubbles: true });
+    Object.defineProperty(event, "target", { value: target });
+    return event;
+  }
+
+  it("las flechas de un select cambian su opción, no la fila", () => {
+    expect(teclaDeOtroControl(evento("ArrowDown", document.createElement("select")))).toBe(true);
+  });
+
+  it("X dentro de un diálogo no descarta la fila de detrás", () => {
+    const dialogo = document.createElement("div");
+    dialogo.setAttribute("role", "dialog");
+    const boton = document.createElement("button");
+    dialogo.append(boton);
+    expect(teclaDeOtroControl(evento("x", boton))).toBe(true);
+  });
+
+  it("las flechas desplazan una región con scroll propio", () => {
+    const region = document.createElement("div");
+    region.setAttribute("role", "region");
+    expect(teclaDeOtroControl(evento("ArrowDown", region))).toBe(true);
+    expect(teclaDeOtroControl(evento("j", region))).toBe(false);
+  });
+
+  it("fuera de esos casos, la tecla es de la lista", () => {
+    expect(teclaDeOtroControl(evento("j", document.body))).toBe(false);
   });
 });

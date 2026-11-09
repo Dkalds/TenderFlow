@@ -49,7 +49,7 @@ from observability.logging import get_logger
 # `build_pdf_export` (consulta + maquetado) vive en `services/exports.py`: la
 # ejecutan esta ruta y el worker de la cola, y el worker no puede importar
 # `api/routes/` para hacerlo. El maquetador, en `services/pdf_tabular.py`.
-from services.exports import build_pdf_export
+from services.exports import SeccionExport, build_pdf_export
 from shared.audit_events import EXPORT_CALENDAR_LINK_CREATED, EXPORT_DOWNLOADED
 from shared.dto import CalendarioEnlace, JobEstadoDTO
 from shared.identity import Principal
@@ -122,13 +122,18 @@ def _adjunto(contenido: bytes, media_type: str, filename: str) -> Response:
 )
 async def download_export(
     format: Literal["csv", "excel", "pdf"] = Query("csv"),
-    recurso: Literal["licitaciones", "pursuits"] = Query(
+    recurso: Literal[
+        "licitaciones", "pursuits", "competidores", "utes", "geografia", "organos", "tecnologias"
+    ] = Query(
         "licitaciones",
         description=(
             "Qué se exporta. `pursuits` baja el tablero de oportunidades de tu "
             "organización con los filtros del tablero (C6.7); `licitaciones`, el "
-            "corpus con los filtros de búsqueda. No se mezclan: son dos "
-            "colecciones con columnas distintas."
+            "corpus con los filtros de búsqueda. `competidores`, `utes`, "
+            "`geografia`, `organos` y `tecnologias` bajan la tabla de esa "
+            "sección de Competencia o Mercado, con los filtros que esa sección "
+            "aplica. No se mezclan: son colecciones con columnas distintas. "
+            "Las secciones solo salen en CSV o Excel."
         ),
     ),
     pursuit_status: str | None = Query(
@@ -158,6 +163,20 @@ async def download_export(
         None,
         max_length=100,
         description="Código CODICE de procedimiento (multi-valor); se compara normalizado",
+    ),
+    solo_abiertas: bool = Query(
+        False, description="Solo licitaciones que siguen abiertas, como el listado"
+    ),
+    cierre_desde: str | None = Query(
+        None, max_length=10, description="Plazo de presentación desde (YYYY-MM-DD), inclusive"
+    ),
+    cierre_hasta: str | None = Query(
+        None, max_length=10, description="Plazo de presentación hasta (YYYY-MM-DD), inclusive"
+    ),
+    organo_q: str | None = Query(
+        None,
+        max_length=200,
+        description="Búsqueda por nombre de órgano. Solo con `recurso=organos`, como su pantalla.",
     ),
     limit: int = Query(10000, ge=1, le=50000),
     organization_id: int | None = Query(
@@ -203,8 +222,21 @@ async def download_export(
         "importe_max": importe_max,
         "provincia": provincia,
         "procedimiento": procedimiento,
+        "solo_abiertas": solo_abiertas,
+        "cierre_desde": cierre_desde,
+        "cierre_hasta": cierre_hasta,
         "limit": limit,
     }
+
+    # Antes que el PDF encolado: una sección en PDF es un 422, no el PDF del
+    # listado de licitaciones.
+    if recurso in ("competidores", "utes", "geografia", "organos", "tecnologias"):
+        if format == "pdf":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Las tablas de sección se exportan en CSV o Excel, no en PDF.",
+            )
+        return await _download_seccion(recurso, format, {**filtros, "organo_q": organo_q}, _user)
 
     if format == "pdf" and limit > jobs_export_umbral_filas():
         return await _encolar_export_pdf(
@@ -243,6 +275,9 @@ async def download_export(
             importe_max=importe_max,
             provincia=provincia,
             procedimiento=procedimiento,
+            solo_abiertas=solo_abiertas,
+            cierre_desde=cierre_desde,
+            cierre_hasta=cierre_hasta,
             limit=limit,
         )
         if por_lote:
@@ -277,6 +312,53 @@ async def download_export(
     )
     log.info("export_download", format=format, n_rows=n_rows)
     return _adjunto(content, media_type, filename)
+
+
+async def _download_seccion(
+    seccion: SeccionExport,
+    format: Literal["csv", "excel"],
+    filtros: Mapping[str, object],
+    user: Principal,
+) -> Response:
+    """CSV o Excel de la tabla de una sección (ver ``filas_de_seccion``)."""
+    from pydantic import ValidationError
+
+    from services.exports import (
+        filas_de_seccion,
+        generate_csv,
+        generate_excel,
+        get_export_filename,
+    )
+
+    def _render() -> tuple[bytes, str, int]:
+        """Consulta y serialización, fuera del event loop."""
+        filas = filas_de_seccion(seccion, filtros)
+        columnas = list(filas[0]) if filas else []
+        if format == "excel":
+            contenido = generate_excel(filas, columnas, sheet_name=seccion.capitalize())
+            return (
+                contenido,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                len(filas),
+            )
+        return generate_csv(filas, columnas), "text/csv; charset=utf-8", len(filas)
+
+    try:
+        contenido, media_type, n_filas = await run_db(_render)
+    except ValidationError as exc:  # una fecha mal escrita en la URL
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Filtro con formato no válido.",
+        ) from exc
+    await run_db(
+        log_event,
+        event_type=EXPORT_DOWNLOADED,
+        user_id=int(user["user_id"]),
+        resource=f"user:{int(user['user_id'])}",
+        detail={"recurso": seccion, "format": format, "n_rows": n_filas, "por_lote": False},
+    )
+    log.info("export_download", recurso=seccion, format=format, n_rows=n_filas)
+    return _adjunto(contenido, media_type, get_export_filename(format, prefix=seccion))
 
 
 async def _encolar_export_pdf(payload: dict[str, Any], ctx: Principal) -> JSONResponse:

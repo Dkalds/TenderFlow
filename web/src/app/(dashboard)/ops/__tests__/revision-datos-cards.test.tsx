@@ -194,8 +194,10 @@ describe("VerdadDominioCard", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Fuera de rango")).toBeInTheDocument();
     expect(screen.getByText("Sin medir")).toBeInTheDocument();
-    expect(screen.getByText("No se pudo medir: statement timeout")).toBeInTheDocument();
-    expect(screen.getByText("1 avisos fuera de rango")).toBeInTheDocument();
+    // El error de la BD va plegado en el detalle técnico, no en el texto.
+    expect(screen.getByText("No se pudo medir")).toBeInTheDocument();
+    expect(screen.getByText("statement timeout")).toBeInTheDocument();
+    expect(screen.getByText("1 aviso fuera de rango")).toBeInTheDocument();
   });
 
   it("sin permisos de admin lo dice", async () => {

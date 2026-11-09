@@ -15,6 +15,7 @@ import { Panel, ROTULO_DATO, StatCell, StatStrip } from "@/components/console/pa
 import { Button } from "@/components/ui/button";
 import { cn, EMPTY, formatCurrency, formatNumber, formatPercent } from "@/lib/utils";
 import { valorOEmpty } from "@/lib/cobertura";
+import { useAdmin } from "@/hooks/use-admin";
 
 import type { TecnologiasResponse } from "../_hooks/use-tecnologias-view";
 
@@ -63,8 +64,12 @@ export function TecnologiasCobertura({
 }) {
   const total = data?.total ?? 0;
   const sin = data?.sin_clasificar ?? 0;
-  const pctClasificado = total > 0 ? ((total - sin) / total) * 100 : 0;
-  const low = total > 0 && pctClasificado < 70;
+  // Sin total no hay porcentaje: «0,0 %» afirmaba que no se clasificó nada.
+  const pctClasificado = total > 0 ? ((total - sin) / total) * 100 : null;
+  const low = pctClasificado != null && pctClasificado < 70;
+  // La cola de etiquetado es de Ops (solo administración): a los demás el
+  // botón los llevaba a una pantalla que no pueden abrir.
+  const isAdmin = useAdmin();
 
   return (
     <Panel
@@ -76,16 +81,18 @@ export function TecnologiasCobertura({
       <div>
         <p className={ROTULO_DATO}>Licitaciones con tecnología identificada</p>
         <p className={cn("mt-1 text-tf-title font-semibold", low && "text-warning")}>
-          {isLoading ? "…" : formatPercent(pctClasificado)}
+          {isLoading ? "…" : valorOEmpty(pctClasificado, formatPercent)}
         </p>
         <p className="mt-0.5 text-tf-meta text-muted-foreground">
           {formatNumber(sin)} sin clasificar de {formatNumber(total)} licitaciones
           {low && ". Por debajo del 70 %, las cifras de esta vista se quedan cortas."}
         </p>
       </div>
-      <Button asChild size="sm" variant={low ? "default" : "outline"}>
-        <Link href="/active-learning">Revisar sin clasificar</Link>
-      </Button>
+      {isAdmin && (
+        <Button asChild size="sm" variant={low ? "default" : "outline"}>
+          <Link href="/active-learning">Revisar sin clasificar</Link>
+        </Button>
+      )}
     </Panel>
   );
 }

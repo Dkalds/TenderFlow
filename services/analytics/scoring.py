@@ -51,7 +51,7 @@ from typing import Any, NamedTuple
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from config import settings
 from config.scoring_weights import dimension_weights
@@ -72,6 +72,7 @@ from services.analytics.scoring_signals import (
 )
 from shared.cpv import cpv4 as _cpv4
 from shared.dto import OrganizationSettings
+from shared.identidad_placsp import expediente_natural
 
 log = get_logger(__name__)
 
@@ -193,6 +194,16 @@ class ScoredOpportunity(BaseModel):
     # consola no tenga que interpretar el desglose por su cuenta y para que
     # las frases sean idénticas en la tarjeta, el inspector y el PDF.
     explicacion: list[str] = Field(default_factory=list)
+
+    # El número que publica el órgano, sin la clave interna: lo mismo que
+    # `LicitacionSummary.expediente`, para que el Radar no enseñe `placsp:…:…`.
+    expediente: str | None = None
+
+    @model_validator(mode="after")
+    def _expediente_desde_id(self) -> ScoredOpportunity:
+        if self.expediente is None:
+            self.expediente = expediente_natural(self.id_externo)
+        return self
 
 
 class ScoringSignalsHealth(BaseModel):

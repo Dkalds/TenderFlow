@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { fetchWithAuth } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { analyticsKeys, licitacionKeys, licitacionesKeys } from "@/lib/query-keys";
@@ -11,6 +12,7 @@ import {
   conTotalConocido,
   conjuntoDelListado,
   pageIdsOf,
+  parametrosScoring,
   type ScoringItem,
   type ScoringResponse,
   type TotalConocido,
@@ -66,6 +68,7 @@ export function useDetalleQueries({
   /** La ficha completa está en pantalla y dice ella misma si la ficha falla. */
   errorDetalleEnLinea?: boolean;
 }): DetalleQueries {
+  const organizationId = useActiveOrganizationId();
   const { data, isLoading, error, isFetching, isPlaceholderData, refetch } = useQuery({
     queryKey: licitacionesKeys.list(queryParams),
     queryFn: ({ signal }) =>
@@ -106,12 +109,14 @@ export function useDetalleQueries({
   const pageIds = useMemo(() => pageIdsOf(data?.items), [data]);
 
   const { data: scoring } = useQuery({
-    queryKey: analyticsKeys.scoringBatch(pageIds),
+    // Con la organización activa, como el Radar: sin ella el backend puntúa con
+    // el perfil de la personal y la misma fila salía con otra banda aquí.
+    queryKey: analyticsKeys.scoringBatch(organizationId, pageIds),
     queryFn: ({ signal }) =>
-      fetchWithAuth<ScoringResponse>(`/api/v1/analytics/scoring?${new URLSearchParams({ ids: pageIds.join(",") })}`, {
+      fetchWithAuth<ScoringResponse>(`/api/v1/analytics/scoring?${parametrosScoring(pageIds, organizationId)}`, {
         signal,
       }),
-    enabled: pageIds.length > 0,
+    enabled: pageIds.length > 0 && organizacionResuelta(organizationId),
     staleTime: 5 * 60_000,
     placeholderData: (previous) => previous,
   });

@@ -62,7 +62,7 @@ export default function TecnologiasView() {
             Qué tecnologías se licitan, cómo evolucionan y dónde.
           </p>
         </div>
-        <ExportPopover extraParams={{ section: "tecnologias" }} label="Exportar tecnologías" />
+        <ExportPopover extraParams={{ recurso: "tecnologias" }} label="Exportar tecnologías" />
       </div>
 
       <TecnologiasKpis data={data} isLoading={isLoading} />

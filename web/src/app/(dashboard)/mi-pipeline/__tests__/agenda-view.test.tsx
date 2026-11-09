@@ -371,6 +371,12 @@ function lista(): HTMLElement {
   return document.querySelector('[data-slot="agenda-filas"]') as HTMLElement;
 }
 
+/** El botón en capa de una fila: en el navegador recibe el clic que cae en el título. */
+function filaDe(titulo: string): HTMLElement {
+  const escapado = titulo.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return within(lista()).getByRole("button", { name: new RegExp(`: ${escapado}`) });
+}
+
 function inspector(): HTMLElement {
   return screen.getByRole("complementary", { name: "Detalle del compromiso" });
 }
@@ -486,7 +492,7 @@ describe("AgendaView — una fila por clase de compromiso", () => {
     render(<AgendaView />);
 
     const filas = within(lista());
-    expect(filas.getByRole("button", { name: "Abrir ficha" })).toBeInTheDocument();
+    expect(filas.getByRole("button", { name: /^Abrir ficha/ })).toBeInTheDocument();
     expect(filas.getByRole("button", { name: "Completar" })).toBeInTheDocument();
     // El contrato con ventana abierta y sin renovación reutiliza el diálogo de
     // Oportunidades; el que ya la tiene, enlaza a ella.
@@ -502,7 +508,7 @@ describe("AgendaView — una fila por clase de compromiso", () => {
     fireEvent.dblClick(within(lista()).getByRole("button", { name: "Completar" }));
     expect(push).not.toHaveBeenCalled();
 
-    fireEvent.dblClick(within(lista()).getByText("Mantenimiento BW AEAT"));
+    fireEvent.dblClick(filaDe("Mantenimiento BW AEAT"));
     expect(push).toHaveBeenCalledWith("/oportunidades/123");
   });
 
@@ -651,7 +657,7 @@ describe("AgendaView — inspector", () => {
   it("el contrato enseña fin efectivo, prórrogas, ventana y sus dos enlaces", () => {
     render(<AgendaView />);
     // Seleccionar la fila del contrato ya renovado (la cuarta del carril).
-    fireEvent.click(within(lista()).getByText("Mantenimiento BW AEAT"));
+    fireEvent.click(filaDe("Mantenimiento BW AEAT"));
 
     const panel = inspector();
     expect(within(panel).getByText("Fin efectivo")).toBeInTheDocument();
@@ -808,7 +814,7 @@ describe("AgendaView — plazos que ya no obligan", () => {
     agendaState.data = payload({ items: [PASADO] });
     render(<AgendaView />);
 
-    fireEvent.click(within(lista()).getByRole("button", { name: "Abrir ficha" }));
+    fireEvent.click(within(lista()).getByRole("button", { name: /^Abrir ficha/ }));
     expect(push).toHaveBeenCalledWith("/oportunidades/19");
   });
 
@@ -1039,7 +1045,7 @@ describe("AgendaView — próxima acción desde la fila", () => {
     agendaState.data = payload({ items: [SIN_PASO] });
     render(<AgendaView />);
 
-    fireEvent.click(within(lista()).getByRole("button", { name: "Abrir ficha" }));
+    fireEvent.click(within(lista()).getByRole("button", { name: /^Abrir ficha/ }));
     expect(push).toHaveBeenCalledWith("/oportunidades/17");
   });
 
@@ -1177,7 +1183,7 @@ describe("AgendaView — el expediente ya cerrado", () => {
     render(<AgendaView />);
 
     expect(within(lista()).queryByRole("button", { name: "Registrar resultado" })).toBeNull();
-    expect(within(lista()).getByRole("button", { name: "Abrir ficha" })).toBeInTheDocument();
+    expect(within(lista()).getByRole("button", { name: /^Abrir ficha/ })).toBeInTheDocument();
   });
 
   it("de una oportunidad por cerrar el inspector no ofrece tareas nuevas", () => {
@@ -1206,7 +1212,7 @@ describe("AgendaView — decidir desde la fila", () => {
     expect(within(lista()).getByRole("button", { name: "Decidir" })).toBeInTheDocument();
     expect(within(lista()).queryByRole("button", { name: "Apuntar acción" })).toBeNull();
     // Y sigue dejando abrir su ficha, que en móvil no tiene otro camino.
-    fireEvent.click(within(lista()).getByRole("button", { name: "Abrir ficha" }));
+    fireEvent.click(within(lista()).getByRole("button", { name: /^Abrir ficha/ }));
     expect(push).toHaveBeenCalledWith("/oportunidades/16");
   });
 
@@ -1437,7 +1443,7 @@ describe("AgendaView — contrato sin fecha de fin", () => {
     agendaState.data = payload({ items: [CONTRATO_SIN_FIN] });
     render(<AgendaView />);
 
-    fireEvent.click(within(lista()).getByRole("button", { name: "Ver contrato" }));
+    fireEvent.click(within(lista()).getByRole("button", { name: /^Ver contrato/ }));
     expect(push).toHaveBeenCalledWith("/oportunidades/92");
   });
 
@@ -1476,14 +1482,14 @@ describe("AgendaView — la próxima acción a medias", () => {
     });
     render(<AgendaView />);
 
-    fireEvent.click(within(lista()).getByText("Llamar al órgano"));
+    fireEvent.click(filaDe("Llamar al órgano"));
     fireEvent.change(campo(), { target: { value: "Llamar al órgano y pedir aclaración" } });
     expect(within(inspector()).getByText("Cambios sin guardar")).toBeInTheDocument();
 
-    fireEvent.click(within(lista()).getByText("Pedir pliego"));
+    fireEvent.click(filaDe("Pedir pliego"));
     expect(campo().value).toBe("Pedir pliego");
 
-    fireEvent.click(within(lista()).getByText("Llamar al órgano"));
+    fireEvent.click(filaDe("Llamar al órgano"));
     expect(campo().value).toBe("Llamar al órgano y pedir aclaración");
     expect(within(inspector()).getByText("Borrador sin guardar, recuperado")).toBeInTheDocument();
   });
@@ -1494,9 +1500,9 @@ describe("AgendaView — la próxima acción a medias", () => {
     });
     const { rerender } = render(<AgendaView />);
 
-    fireEvent.click(within(lista()).getByText("Llamar al órgano"));
+    fireEvent.click(filaDe("Llamar al órgano"));
     fireEvent.change(campo(), { target: { value: "Mi borrador" } });
-    fireEvent.click(within(lista()).getByText("Pedir pliego"));
+    fireEvent.click(filaDe("Pedir pliego"));
 
     agendaState.data = payload({
       items: [
@@ -1505,7 +1511,7 @@ describe("AgendaView — la próxima acción a medias", () => {
       ],
     });
     rerender(<AgendaView />);
-    fireEvent.click(within(lista()).getByText("Lo cambió otra persona"));
+    fireEvent.click(filaDe("Lo cambió otra persona"));
     expect(campo().value).toBe("Lo cambió otra persona");
   });
 });

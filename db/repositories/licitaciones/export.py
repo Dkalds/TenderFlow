@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from db.database import connect_read
-from db.repositories.base import csv_values, rows_to_dicts, typed_rows
+from db.repositories.base import ambito_busqueda_sql, csv_values, rows_to_dicts, typed_rows
 from db.repositories.licitaciones.filas import ExportPdfRow, RecienteRow
 from db.repositories.licitaciones.filtros import _normaliza_codigo
 from db.sql_fragments import (
@@ -58,6 +58,9 @@ class ExportMixin:
         importe_max: float | None = None,
         provincia: str | None = None,
         procedimiento: str | None = None,
+        solo_abiertas: bool = False,
+        cierre_desde: str | None = None,
+        cierre_hasta: str | None = None,
         limit: int = 500,
     ) -> list[ExportPdfRow]:
         """Carga licitaciones para exportación PDF.
@@ -120,6 +123,17 @@ class ExportMixin:
             )
             eq = escape_like(q)
             params.extend([f"%{eq}%", f"%{eq}%"])
+        # «Solo abiertas» y la ventana de cierre de /detalle («Cierran en 48 h»),
+        # con los mismos predicados que el listado: sin ellos la tabla tenía 12
+        # filas y el fichero miles, cerradas incluidas.
+        recorte, recorte_params = ambito_busqueda_sql(
+            "licitaciones",
+            solo_abiertas=solo_abiertas,
+            cierre_desde=cierre_desde,
+            cierre_hasta=cierre_hasta,
+        )
+        conditions.extend(recorte)
+        params.extend(recorte_params)
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
         with connect_read() as c:
             cur = c.execute(

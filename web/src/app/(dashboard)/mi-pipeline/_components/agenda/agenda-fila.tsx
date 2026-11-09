@@ -65,37 +65,39 @@ export function AgendaFila({
   return (
     <div
       data-active={activa || undefined}
-      role="button"
-      // Nombre explícito y no el texto que la fila contiene: sin él, el nombre
-      // accesible de la fila era la concatenación de todo lo de dentro —chip,
-      // importe y la etiqueta del botón de acción incluidos—, así que un lector
-      // de pantalla anunciaba «… 940 mil € Preparar renovación» antes de que el
-      // usuario supiera de qué contrato hablaba. Lleva la línea entera aunque la
-      // fila vaya anidada: quien no ve la de encima no sabe de quién es.
-      aria-label={`${etiquetaKind(item)}: ${tituloDe(item)}. ${aviso ? `${aviso}. ` : ""}${metaLinea(item)}${fecha ? `. ${fecha}` : ""}`}
-      tabIndex={0}
-      onClick={onSeleccionar}
-      onDoubleClick={(event) => {
-        // Dos clics seguidos sobre un botón son dos clics sobre ese botón, no
-        // el doble clic que abre la fila: «Completar» navegaba a media acción.
-        if (event.target instanceof Element && event.target.closest("button, a")) return;
-        acciones.onAbrir();
-      }}
-      onKeyDown={(event) => {
-        // Solo el ⏎ de la propia fila: el de un botón o un campo de dentro
-        // —también los de una capa flotante, que burbujea por el árbol de
-        // React aunque se pinte fuera— es de ese control.
-        if (event.key === "Enter" && event.target === event.currentTarget) acciones.onAbrir();
-      }}
       className={cn(
-        "flex cursor-pointer flex-col gap-2 border-b border-divider-subtle px-3 py-3 transition-colors",
+        "relative flex flex-col gap-2 border-b border-divider-subtle px-3 py-3 transition-colors",
         "md:grid md:items-center md:py-0",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-line-strong focus-visible:ring-inset",
         GRID,
         rowPad,
         activa ? "bg-primary-selected" : "hover:bg-secondary/60",
       )}
     >
+      {/* Seleccionar es un botón EN CAPA, hermano de la acción y no su
+          ancestro: con la fila entera `role="button"` y botones dentro era
+          `nested-interactive` (el mismo arreglo que la fila del Radar). La
+          acción sube con `relative z-10`; un clic en el título sigue cayendo
+          en la capa. */}
+      <button
+        type="button"
+        // Nombre explícito y no el texto que la fila contiene: sin él, el nombre
+        // accesible era la concatenación de todo lo de dentro —chip, importe y
+        // la etiqueta del botón de acción incluidos—, así que un lector de
+        // pantalla anunciaba «… 940 mil € Preparar renovación» antes de saber
+        // de qué contrato hablaba. Lleva la línea entera aunque la fila vaya
+        // anidada: quien no ve la de encima no sabe de quién es.
+        aria-label={`${etiquetaKind(item)}: ${tituloDe(item)}. ${aviso ? `${aviso}. ` : ""}${metaLinea(item)}${fecha ? `. ${fecha}` : ""}`}
+        onClick={onSeleccionar}
+        onDoubleClick={acciones.onAbrir}
+        onKeyDown={(event) => {
+          // Espacio lo resuelve el click nativo (seleccionar). Intro abre, como
+          // en la fila de antes; `preventDefault` evita su click sintético.
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          acciones.onAbrir();
+        }}
+        className="absolute inset-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-line-strong focus-visible:ring-inset"
+      />
       {/* Envoltorios de la ficha: `md:contents` los disuelve
           y sus hijos vuelven a las columnas de la tabla, en
           el mismo orden. Un árbol, dos presentaciones. */}
@@ -147,7 +149,7 @@ export function AgendaFila({
               cada tarea suya (tres tareas no son tres veces 2,3 M €). */}
           {anidada ? null : item.importe_eur != null ? formatCompactCurrency(item.importe_eur) : EMPTY}
         </span>
-        <span className="flex min-w-0 flex-none justify-end">
+        <span className="relative z-10 flex min-w-0 flex-none justify-end">
           <AgendaAccion item={item} acciones={acciones} filtro={filtro} />
         </span>
       </div>

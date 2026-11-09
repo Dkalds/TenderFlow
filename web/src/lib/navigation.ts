@@ -157,6 +157,8 @@ export const SECTIONS: NavSection[] = [
         label: "Tendencias CPV",
         slug: "tendencias-cpv",
         description: "Importes por CPV a lo largo del tiempo, con su previsión.",
+        // Lo que acepta `GET /analytics/trends-cpv`; el resto la barra no lo ofrecía en vano.
+        globalFilterKeys: ["fecha", "ccaa", "tecnologia"],
       },
       {
         label: "Calendario",
@@ -177,21 +179,29 @@ export const SECTIONS: NavSection[] = [
         label: "Geografía",
         slug: "geografia",
         description: "Dónde se licita: por comunidad autónoma y por importe.",
+        // `GET /analytics/geography` solo filtra por fechas y tecnología.
+        globalFilterKeys: ["fecha", "tecnologia"],
       },
       {
         label: "Tecnologías",
         slug: "tecnologias",
         description: "Qué tecnologías piden las licitaciones (SAP, Oracle, Salesforce…) y cómo evolucionan.",
+        // `GET /analytics/tecnologias` solo filtra por fechas y CCAA.
+        globalFilterKeys: ["fecha", "ccaa"],
       },
       {
         label: "Proyectos y módulos",
         slug: "proyectos-modulos",
         description: "Qué se licita por familia tecnológica (ERP, CRM, cloud, ciberseguridad…), con los módulos de SAP dentro de ERP.",
+        // `GET /analytics/proyectos-modulos` solo filtra por fechas y tecnología.
+        globalFilterKeys: ["fecha", "tecnologia"],
       },
       {
         label: "Clusters",
         slug: "clusters",
         description: "Licitaciones parecidas agrupadas, para ver patrones y nichos de mercado.",
+        // `GET /analytics/clusters` solo filtra por fechas y CCAA.
+        globalFilterKeys: ["fecha", "ccaa"],
       },
       {
         // Reestructura 2026-09-20: `/renovaciones` la absorbe Mercado
@@ -216,6 +226,8 @@ export const SECTIONS: NavSection[] = [
         label: "Competidores",
         slug: "competidores",
         description: "Quién gana, con qué cuota y frente a quién.",
+        // `GET /analytics/competitors` no busca por texto ni acota por importe máximo.
+        globalFilterKeys: ["fecha", "ccaa", "tecnologia", "estado", "importe"],
       },
       {
         label: "Empresas",
@@ -227,6 +239,8 @@ export const SECTIONS: NavSection[] = [
         label: "UTEs",
         slug: "utes",
         description: "Uniones temporales de empresas: quién se alía con quién y qué ganan.",
+        // `GET /analytics/utes` solo filtra por fechas y CCAA.
+        globalFilterKeys: ["fecha", "ccaa"],
       },
     ],
   },
@@ -371,8 +385,17 @@ function absorbedPages(slug: string, vista?: string | null): NavPage[] {
  * Rutas desconocidas devuelven `true` (comportamiento histórico). `vista` es
  * el `?vista=` de un espacio: ver `absorbedPages`.
  */
+/**
+ * Espacios que no leen el ámbito y no absorben ninguna ruta que lo declare: sin
+ * esto caían en «ruta desconocida = todos» y la barra ofrecía filtros que no
+ * cambiaban nada en Dirección ni en Ajustes. Cuentas no está: la ficha de un
+ * órgano (`/cuentas/[id]`) sí filtra su análisis.
+ */
+const ESPACIOS_SIN_AMBITO: ReadonlySet<string> = new Set(["direccion", "ajustes"]);
+
 export function pathUsesGlobalFilters(pathname: string, vista?: string | null): boolean {
   const slug = pathname.replace(/^\//, "").split("/")[0];
+  if (ESPACIOS_SIN_AMBITO.has(slug)) return false;
   const page = findPage(slug);
   if (page) return page.usesGlobalFilters !== false;
 
@@ -389,12 +412,27 @@ export function pathUsesGlobalFilters(pathname: string, vista?: string | null): 
  * página consume todos (comportamiento por defecto). La GlobalFilterBar usa
  * esto para renderizar solo los controles relevantes.
  */
+/**
+ * Subrutas con su propio contrato de filtros. La ficha de empresa traduce CCAA,
+ * tecnología, importe mínimo y fechas (`company-profile.tsx`); heredaba el del
+ * espacio y la barra ofrecía estado y búsqueda que no cambiaban nada.
+ */
+const SUBRUTAS_CON_FILTROS: ReadonlyArray<readonly [string, GlobalFilterKey[]]> = [
+  ["/competencia/empresa/", ["fecha", "ccaa", "tecnologia", "importe"]],
+];
+
 export function pageGlobalFilterKeys(pathname: string, vista?: string | null): GlobalFilterKey[] | null {
+  const subruta = SUBRUTAS_CON_FILTROS.find(([prefijo]) => pathname.startsWith(prefijo));
+  if (subruta) return subruta[1];
   const slug = pathname.replace(/^\//, "").split("/")[0];
   const page = findPage(slug);
   if (page) return page.globalFilterKeys ?? null;
 
-  const absorbed = absorbedPages(slug, vista);
+  // Una vista que no lee el ámbito (Competencia › Empresas) no aporta filtros
+  // a la unión; contarla como «todos» devolvía la barra entera en el espacio.
+  const absorbed = absorbedPages(slug, vista).filter(
+    (item) => item.usesGlobalFilters !== false || item.globalFilterKeys,
+  );
   if (!absorbed.length) return null;
   // Si alguna vista del espacio consume todos los filtros, el espacio también:
   // recortar la barra al subconjunto de otra vista escondería un control que

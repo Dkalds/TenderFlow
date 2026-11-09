@@ -196,7 +196,7 @@ def test_el_documento_nuevo_llega_a_la_campana_y_al_digest(seguidora, sin_salida
 
     alertas = get_user_alerts(clave, organization_id=org_id, user_id=user_id)
     assert len(alertas) == 1
-    assert alertas[0]["title"].startswith("Documento nuevo: technical")
+    assert alertas[0]["title"].startswith("Documento nuevo: Pliego técnico (PPT)")
     # Por defecto `daily`: una línea en el digest, con el evento cruzado.
     filas = WatchlistRepository().load_pending_digests("daily")
     assert len(filas) == 1

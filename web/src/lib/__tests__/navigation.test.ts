@@ -105,9 +105,19 @@ describe("contrato de filtros de los espacios", () => {
     expect(pageGlobalFilterKeys("/mi-pipeline")).toEqual(["tecnologia", "ccaa"]);
   });
 
-  it("Competencia hereda el contrato completo de competidores y UTEs", () => {
+  it("Competencia lee el ámbito, con lo que aplican competidores y UTEs", () => {
     expect(pathUsesGlobalFilters("/competencia")).toBe(true);
-    expect(pageGlobalFilterKeys("/competencia")).toBeNull();
+    expect(pageGlobalFilterKeys("/competencia")).not.toBeNull();
+  });
+
+  it("la ficha de empresa ofrece solo los filtros que traduce", () => {
+    expect(pageGlobalFilterKeys("/competencia/empresa/42")).toEqual(["fecha", "ccaa", "tecnologia", "importe"]);
+  });
+
+  it("Dirección y Ajustes no leen el ámbito: la barra no ofrece filtros", () => {
+    expect(pathUsesGlobalFilters("/direccion")).toBe(false);
+    expect(pathUsesGlobalFilters("/ajustes", "claves")).toBe(false);
+    expect(pathUsesGlobalFilters("/cuentas/12")).toBe(true);
   });
 
   it("una ruta desconocida mantiene el comportamiento histórico", () => {
@@ -126,7 +136,25 @@ describe("contrato de filtros de una vista", () => {
     // a través de `ESPACIOS_ABSORBIDOS`.
     expect(pathUsesGlobalFilters("/competencia", "revision")).toBe(false);
     expect(pathUsesGlobalFilters("/competencia", "competidores")).toBe(true);
-    expect(pageGlobalFilterKeys("/competencia", "competidores")).toBeNull();
+    // Lo que acepta `GET /analytics/competitors`: ni texto ni importe máximo.
+    expect(pageGlobalFilterKeys("/competencia", "competidores")).toEqual([
+      "fecha",
+      "ccaa",
+      "tecnologia",
+      "estado",
+      "importe",
+    ]);
+  });
+
+  it("Mercado › Geografía no ofrece los filtros que su endpoint descarta", () => {
+    expect(pageGlobalFilterKeys("/mercado", "geografia")).toEqual(["fecha", "tecnologia"]);
+  });
+
+  it("Competencia sin vista ofrece la unión de las vistas que leen el ámbito, no la barra entera", () => {
+    // Empresas no lee el ámbito: no cuenta. Competidores y UTE, sí.
+    expect(new Set(pageGlobalFilterKeys("/competencia", null))).toEqual(
+      new Set(["fecha", "ccaa", "tecnologia", "estado", "importe"]),
+    );
   });
 
   it("Mercado › Renovaciones ofrece solo lo que aplica: tecnología", () => {

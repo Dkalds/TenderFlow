@@ -30,13 +30,23 @@ import { useLicitacion } from "@/hooks/use-licitacion";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
 import { rutaFicha, useFichaFlotante } from "./enlace-ficha";
 
+const sinSuscripcion = () => () => {};
+
 export function FichaFlotante() {
   const [abierta, setVer] = useFichaFlotante();
   // La última abierta sigue pintada mientras el panel sale al cerrarse.
   const [idExterno, setIdExterno] = React.useState(abierta);
   if (abierta && abierta !== idExterno) setIdExterno(abierta);
   const router = useRouter();
-  const anclada = useModoInspector() === "anclado";
+  const modo = useModoInspector();
+  // En la hidratación `modo` es el del servidor («tarjeta»): sin esto, con
+  // `?ver=` en la URL el escritorio montaba un instante el Sheet modal.
+  const hidratado = React.useSyncExternalStore(
+    sinSuscripcion,
+    () => true,
+    () => false,
+  );
+  const anclada = modo === "anclado";
   // El mismo GET y la misma clave que /detalle, que lo tipa con `lib/licitacion-detail`
   // (campos opcionales como `null`): de ahí el `as` del inspector.
   const { data, error, refetch } = useLicitacion(idExterno);
@@ -86,7 +96,10 @@ export function FichaFlotante() {
   }
 
   return (
-    <Sheet open={Boolean(abierta)} modal={false} onOpenChange={(abierto) => !abierto && cerrar()}>
+    // Modal por debajo de `md`: a 94vw tapa la lista, y sin trampa de foco el
+    // Tab seguía por filas ocultas detrás del panel (WCAG 2.4.3 y 2.4.11). En
+    // tableta no: la lista de al lado se sigue usando con la ficha abierta.
+    <Sheet open={Boolean(abierta)} modal={modo === "tarjeta" && hidratado} onOpenChange={(abierto) => !abierto && cerrar()}>
       <SheetContent
         side="right"
         // Mismo marco que el `Sheet` de /detalle: el inspector trae su ritmo
