@@ -95,11 +95,15 @@ jobs:
     # tecnología 10 (esta, desde el 2026-11-09). Lo que queda fuera, medido
     # del 2026-10-29 al 2026-11-09: el setup (2-3 min; 7 si el OCR de abajo
     # agota su tope), lo que cada fase se pasa del suyo con el último elemento
-    # (hasta 2,5 min las fichas; el OCR de un escaneado puede llegar a 10), la
-    # fusión de la señal (~1 min) y el cierre con el report (~1 min). Con las
-    # cuatro fases llenas, unos 85 min, y 89 con apt lento. 75 → 90 el
-    # 2026-09-28 (tope de fichas de 10 a 30 min, tender-facts-v6) y 90 → 100
-    # el 2026-11-09, porque con 90 ese margen se quedaba en 1-5 min.
+    # (hasta 2,5 min las fichas), la fusión de la señal (~1 min) y el cierre
+    # con el report (~1 min). Con las cuatro fases llenas, unos 85 min, y 89
+    # con apt lento: con 90 el margen se quedaba en 1-5 min. Con 100 cabe
+    # también un OCR que agote sus 10 min al final del fetch (95, o 99 con apt
+    # lento), aunque en estas pasadas el más largo registrado tardó 78 s. No
+    # cuenta la fase de resumen IA: está apagada (`RESUMEN_PREGEN_ENABLED`) y
+    # no tiene tope, así que encenderla pide darle uno o rehacer esta cuenta.
+    # 75 → 90 el 2026-09-28 (tope de fichas de 10 a 30 min, tender-facts-v6);
+    # 90 → 100 el 2026-11-09.
     timeout-minutes: 100
 
     steps:
@@ -124,24 +128,34 @@ jobs:
       #
       # `continue-on-error`: el OCR es cobertura extra. Si el mirror de apt está
       # caído, el fetcher degrada solo (`ocr_binario()` devuelve None y un PDF
-      # escaneado vuelve a terminar en `error`, como antes de S8.3) y el lote de
-      # ~44k documentos se drena igual. Romper la ingesta por no poder instalar
-      # un extra sería el intercambio equivocado.
+      # escaneado acaba en `sin_texto`) y el lote se drena igual. Romper la
+      # ingesta por no poder instalar un extra sería el intercambio equivocado.
       #
-      # `timeout-minutes`: `continue-on-error` cubre un apt que falla, no uno
+      # Tope de tiempo: `continue-on-error` cubre un apt que falla, no uno
       # lento. El 2026-11-06 el mirror sirvió a 30 kB/s, el paso tardó 31 min
       # (lo normal, de 15 s a 1 min) y el job se canceló por su timeout antes
-      # de acabar las fases. Al agotar el tope el paso cuenta como fallido y el
-      # job sigue sin OCR. Aquel día los 31 min fueron todos de descarga, y apt
-      # no instala nada hasta tener todos los paquetes.
+      # de acabar las fases. El corte lo hace `timeout` dentro del script: el
+      # `timeout-minutes` del paso no mata sus procesos, que siguen huérfanos
+      # hasta el final del job (le pasó al lote de PSCP en octubre), y apt
+      # podría acabar instalando a mitad del fetch. Queda de respaldo.
+      #
+      # Fallido o cortado, el run sale verde. El paso de debajo lo avisa,
+      # porque esa noche los escaneados se quedan en `sin_texto`, que es
+      # terminal, y `reencolar_documentos_no_soportados.py --sin-texto` solo
+      # devuelve a `pending` los leídos antes del 2026-09-08.
       - name: Instalar ocrmypdf (OCR de escaneados)
+        id: ocr
         continue-on-error: true
         timeout-minutes: 5
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo timeout 1m apt-get update
+          sudo timeout 3m apt-get install -y --no-install-recommends \
             ocrmypdf tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng
           ocrmypdf --version
+
+      - name: Avisar si la pasada va sin OCR
+        if: ${{ steps.ocr.outcome != 'success' }}
+        run: echo "::warning title=Pasada sin OCR::No se pudo instalar ocrmypdf (fallo o tope de tiempo). Los PDF escaneados de esta pasada se quedan en sin_texto."
 
       - name: Install dependencies
         run: |
