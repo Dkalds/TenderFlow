@@ -547,6 +547,14 @@ def detect_republicaciones(*, fuente: str, sin_cursor_desde: str = "") -> Dedupe
 #   coincidía, y cada discrepancia de ``idEvl`` era un falso positivo de BT-22.
 # - El único par verdadero con órgano distinto («ADIF - Presidencia» frente a
 #   «Administrador de Infraestructuras Ferroviarias») coincidía en título.
+#
+# Medido el 2026-11-09 sobre las 410 convocatorias TED sin pareja: en 130 el
+# BT-22 casaba con una fila de otra fuente. Órgano o título confirmaban 77; en
+# las otras 53 fallaban sobre todo por el idioma (la Diputació de Barcelona en
+# catalán en la agregada, «DIPUTACIÓN DE BARCELONA» en castellano en TED). El
+# valor estimado (BT-27, sin IVA en las dos) coincidía al céntimo en 75 de los
+# 77 confirmados y en 33 de las 53, y nunca con dos candidatas a la vez: es la
+# tercera confirmación, la que no depende del idioma.
 
 #: Fuente que nunca es canónica frente a otra: publica en el DOUE lo que el
 #: comprador ya publicó en su plataforma, con menos detalle (sin lotes, sin
@@ -649,6 +657,14 @@ def _organos_emparejables(nombre: str | None) -> set[str]:
     return claves
 
 
+def _valor_estimado(fila: Mapping[str, object]) -> float | None:
+    """``valor_estimado`` en céntimos para comparar, o ``None`` si no hay uno positivo."""
+    valor = fila.get("valor_estimado")
+    if isinstance(valor, int | float) and valor > 0:
+        return round(float(valor), 2)
+    return None
+
+
 #: Candidatas por la referencia con la que casan (``idEvl``, BT-04 o expediente).
 _IndiceCandidatas = dict[str, list[dict[str, Any]]]
 
@@ -692,9 +708,11 @@ def _elegir_canonica_por_referencia(
     1. **``idEvl``**: identifica un expediente de PLACSP sin ambigüedad. Basta.
     2. **BT-04 = UUID de la ficha catalana** (:func:`uuid_ficha_de_url`): un
        UUID v4 tampoco se repite. Basta.
-    3. **BT-22 + órgano o título**: BT-22 solo no vale (ver el bloque de arriba),
-       pero dentro de un mismo órgano el número de expediente no se repite, y
-       dos contratos con el mismo expediente y el mismo título son el mismo.
+    3. **BT-22 + órgano, título o valor estimado**: BT-22 solo no vale (ver el
+       bloque de arriba), pero dentro de un mismo órgano el número de
+       expediente no se repite, y dos contratos con el mismo expediente y el
+       mismo título, o el mismo valor estimado al céntimo, son el mismo. El
+       valor es lo que confirma cuando órgano y título están en otro idioma.
        El expediente se compara sin espacios ni mayúsculas
        (``expediente_comparable``) y el órgano también por su último tramo
        tras « - » (:func:`_organos_emparejables`).
@@ -724,12 +742,14 @@ def _elegir_canonica_por_referencia(
     if referencia.expediente:
         organos = _organos_emparejables(fila_ted.get("organo_contratacion"))
         titulo = normalize_titulo(fila_ted.get("titulo"))
+        valor = _valor_estimado(fila_ted)
         mismo_contrato = ajenas(
             [
                 c
                 for c in por_expediente.get(expediente_comparable(referencia.expediente), [])
                 if organos & _organos_emparejables(c.get("organo_contratacion"))
                 or (titulo and normalize_titulo(c.get("titulo")) == titulo)
+                or (valor is not None and _valor_estimado(c) == valor)
             ]
         )
         if mismo_contrato:
@@ -756,7 +776,7 @@ def detect_duplicados_por_referencia(
 
     **Marca ``confirmed``**, y no ``pending`` como las reemisiones: ``idEvl`` es
     un identificador exacto, y BT-22 dentro del mismo órgano (o con el mismo
-    título) también lo es. Eso retira la fila TED de las métricas competitivas,
+    título o valor estimado) también lo es. Eso retira la fila TED de las métricas competitivas,
     que es justo lo que hace falta: el aviso de adjudicación de TED trae su
     propia ``Adjudicacion`` y, sin la marca, la cuota de mercado contaba dos
     veces el contrato.

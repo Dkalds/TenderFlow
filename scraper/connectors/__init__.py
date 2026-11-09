@@ -308,13 +308,16 @@ REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
         estado="opcional",
         # Los pliegos de las agregadas apuntan a hosts autonómicos, no a PLACSP
         # (medido 2026-10-24): 544 de 1.057 al catalán, 346 al vasco y 167 al de
-        # Madrid. Los dos últimos entran en la allowlist el 2026-11-04.
+        # Madrid. Los dos últimos entran en la allowlist el 2026-11-04. Los de la
+        # Junta de Andalucía no vienen en el feed: los lee el paso de documentos
+        # de su ficha (2026-11-09).
         dominios_documentos=(
             "contrataciondelestado.es",
             "*.contrataciondelestado.es",
             "contractaciopublica.cat",
             "www.contratacion.euskadi.eus",
             "contratos-publicos.comunidad.madrid",
+            "www.juntadeandalucia.es",
         ),
         max_antiguedad_dato_hours=_DATO_PLACSP,
     ),

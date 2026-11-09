@@ -370,7 +370,7 @@
     },
     "DOCUMENT_ALLOWED_HOSTS": {
       "alias": "None",
-      "default": "'contrataciondelestado.es,*.contrataciondelestado.es,ted.europa.eu,contractaciopublica.cat,www.hacienda.gob.es,www.contratacion.euskadi.eus,contratos-publicos.comunidad.madrid'",
+      "default": "'contrataciondelestado.es,*.contrataciondelestado.es,ted.europa.eu,contractaciopublica.cat,www.hacienda.gob.es,www.contratacion.euskadi.eus,contratos-publicos.comunidad.madrid,www.juntadeandalucia.es'",
       "default_factory": "None",
       "metadata": "[]",
       "tipo": "<class 'str'>",

@@ -48,6 +48,12 @@ habrían descartado todas. Los dos últimos hosts siguen fuera de la allowlist y
 se cuentan (``placsp_agregadas_documentos_de_otro_host``): ampliarla es una
 decisión de seguridad del propietario (ver el backlog).
 
+Las de la Junta de Andalucía no traen ninguna referencia (383 de 383 el
+2026-11-09). Sus pliegos los lee el paso de documentos del conector
+(:meth:`PlacspAgregadasConnector.completar_documentos`) de la ficha pública que
+enlaza su ``url``, solo mientras la convocatoria está vigente
+(``scraper.documentos_plataforma.completar_documentos_andalucia``).
+
 **Identidad.** El ``ContractFolderID`` solo es único dentro del órgano: en el
 muestreo 57 los comparten órganos distintos (74 filas que se habrían pisado de
 7.956, el 0,9 %). Por eso la clave lo acota con el órgano, como el feed
@@ -150,6 +156,17 @@ class PlacspAgregadasConnector(FeedSindicacionPlacsp):
             "placsp_agregadas_documentos_de_otro_host": self._documentos_de_otro_host,
             **self._core.contadores_de_descarte(),
         }
+
+    #: El paso de documentos lee de la BD las convocatorias andaluzas vigentes, no
+    #: el lote ni las marcas del dedupe: va antes del cierre, como el de PSCP.
+    completar_documentos_primero = True
+
+    def completar_documentos(self) -> None:
+        """Pliegos de las convocatorias vigentes de Andalucía, que su CODICE no referencia."""
+        from scraper.documentos_plataforma import completar_documentos_andalucia
+
+        resumen = completar_documentos_andalucia()
+        log.info("placsp_agregadas_documentos_andalucia", **resumen.as_dict())
 
 
 #: ZIP mensual de la misma sindicación, con el nombre del feed y ``_AAAAMM``,
