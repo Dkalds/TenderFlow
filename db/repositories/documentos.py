@@ -746,15 +746,18 @@ class DocumentosRepository:
     def list_pendientes(self, limit: int = 100) -> list[DocumentoPendiente]:
         """Documentos con ``status='pending'``, priorizados por relevancia.
 
-        El backlog (~44k documentos referenciados, ~1k licitaciones
-        tech-relevantes) se drena por lotes diarios pequeños frente al feed
-        PLACSP diario, así que el orden decide qué se procesa primero:
+        El backlog (155.000 documentos el 2026-11-09, 89.000 de ellos anexos)
+        se drena por lotes diarios pequeños frente al feed PLACSP diario, así
+        que el orden decide qué se procesa primero:
         0. Demanda real (oportunidad abierta, favorito) y, tras ella, los
            expedientes con el plazo de ofertas todavía abierto.
-        1. Licitaciones con ``tecnologia`` (keyword match en título) o
+        1. Pliegos (``legal``, ``technical``) antes que anexos
+           (``additional``): son lo que se lee, se busca y alimenta la ficha.
+           Lo de 0 entra entero, anexos incluidos.
+        2. Licitaciones con ``tecnologia`` (keyword match en título) o
            ``ml_tecnologias`` (clasificador) no vacíos van primero -- son las
            que la categorización necesita antes de nada.
-        2. Dentro de cada grupo, más recientes primero: los enlaces de PLACSP
+        3. Dentro de cada grupo, más recientes primero: los enlaces de PLACSP
            usan tokens rotativos que caducan (~82% de los antiguos), así que
            el backlog viejo tiene tasa de error de descarga alta y queda al
            final -- newest-first evita gastar el lote diario en URIs muertas.
@@ -803,6 +806,10 @@ class DocumentosRepository:
                 # 400 documentos de expedientes abiertos esperando detrás de
                 # 35k pendientes, muchos insertados por un backfill reciente—.
                 "(l.fecha_limite_ts IS NOT NULL AND l.fecha_limite_ts > now()) DESC, "
+                # Pliegos antes que anexos: a 300 documentos por noche, el
+                # 2026-11-09 esperaban 66.000 pliegos detrás de una cola que
+                # mezclaba 89.000 anexos por fecha de alta.
+                "(d.tipo IN ('legal', 'technical')) DESC, "
                 "(l.tecnologia IS NOT NULL AND l.tecnologia != '') DESC, "
                 "(l.ml_tecnologias IS NOT NULL AND l.ml_tecnologias != '') DESC, "
                 "d.created_at DESC "
