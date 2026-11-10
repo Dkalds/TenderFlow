@@ -164,15 +164,25 @@ def test_solo_es_indexable_lo_que_se_adjunta_y_se_sabe_leer() -> None:
     assert supported_content_types() >= memoria.TIPOS_INDEXABLES
 
 
-def test_docx_solo_es_indexable_si_la_imagen_de_la_api_lo_lee() -> None:
-    # El adjunto lo extrae el consumidor de la cola de la API: sin python-docx
-    # en su lock, un DOCX indexable quedaría `unsupported` para siempre.
-    from pathlib import Path
+def test_cada_tipo_indexable_se_lee_sin_los_extras_que_la_api_no_trae(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # El adjunto lo extrae el consumidor de la cola de la API, cuya imagen no
+    # trae python-docx ni odfpy: un tipo indexable que los necesitara quedaría
+    # `unsupported` para siempre. DOCX y ODT se leen con la biblioteca estándar.
+    import sys
 
-    lock = (Path(__file__).resolve().parents[1] / "requirements-api.txt").read_text()
-    docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    if "python-docx==" not in lock:
-        assert docx not in memoria.TIPOS_INDEXABLES
+    from scraper.document_fetcher import ExtractorAusenteError, extraer_paginas
+
+    monkeypatch.setitem(sys.modules, "docx", None)
+    monkeypatch.setitem(sys.modules, "odf", None)
+    for tipo in memoria.TIPOS_INDEXABLES:
+        try:
+            extraer_paginas(b"", tipo)
+        except ExtractorAusenteError:
+            pytest.fail(f"{tipo} necesita un extra que la imagen de la API no trae")
+        except Exception:
+            pass
 
 
 def test_los_topes_salen_del_entorno_y_cero_apaga(monkeypatch: pytest.MonkeyPatch) -> None:

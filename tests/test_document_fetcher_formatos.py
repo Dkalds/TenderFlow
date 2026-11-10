@@ -20,8 +20,8 @@ tesseract esté instalado.
 
 from __future__ import annotations
 
-import importlib
 import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -82,14 +82,9 @@ def _sin_dependencia(monkeypatch, paquete: str) -> None:
     Se fuerza en vez de confiar en el entorno: el test tiene que decir lo mismo
     en el runner de CI (donde ``[pliegos]`` sí está) que en una máquina pelada.
     """
-    real = importlib.import_module
-
-    def _falso(nombre: str, *args, **kwargs):
-        if nombre == paquete or nombre.startswith(f"{paquete}."):
-            raise ImportError(f"simulado: {paquete} no instalado")
-        return real(nombre, *args, **kwargs)
-
-    monkeypatch.setattr(df.importlib, "import_module", _falso)
+    # Con `None` en `sys.modules`, cualquier `import paquete` lanza ImportError,
+    # importe como importe el módulo bajo prueba.
+    monkeypatch.setitem(sys.modules, paquete, None)
 
 
 # ── S8.2: formatos ─────────────────────────────────────────────────────────
@@ -151,13 +146,12 @@ class TestFormatosSoportados:
             _extract_paginas(b"\xd0\xcf\x11\xe0", "application/msword")
         assert exc.value.content_type == "application/msword"
 
-    def test_sin_python_docx_el_docx_es_unsupported_no_error(self, monkeypatch):
-        """La dependencia opcional que falta es cobertura ausente, no un fallo."""
+    def test_sin_python_docx_el_docx_se_lee_igual(self, monkeypatch):
+        """Desde 2026-11 el DOCX se lee con la biblioteca estándar: sin python-docx
+        (la imagen de la API) ya no es ``unsupported`` ni se queda pendiente."""
         _sin_dependencia(monkeypatch, "docx")
-        with pytest.raises(UnsupportedDocumentError) as exc:
-            _extract_paginas(_fixture("pliego.docx"), CONTENT_TYPE_DOCX)
-        assert exc.value.content_type == CONTENT_TYPE_DOCX
-        assert "python-docx" in str(exc.value)
+        paginas = _extract_paginas(_fixture("pliego.docx"), CONTENT_TYPE_DOCX)
+        assert FRASE in paginas[0].texto
 
     def test_sin_odfpy_el_odt_se_lee_igual(self, monkeypatch):
         """Desde 2026-10 el ODT se lee con la biblioteca estándar: sin odfpy
@@ -400,35 +394,34 @@ class TestBinarioConservado:
 class TestExtractorAusente:
     """La imagen de la API no trae python-docx ni odfpy (traen lxml).
 
-    Un DOCX que la API descarga para la ficha bajo demanda no puede quedar
-    ``unsupported``: saldría para siempre del lote nocturno, que sí sabe leerlo.
+    Hasta 2026-11 un DOCX descargado allí se quedaba ``pending`` para el lote
+    (``skipped_no_extra``). Desde que se lee con la biblioteca estándar se
+    extrae en el acto, también dentro de un ZIP.
     """
 
-    def test_el_docx_sin_python_docx_se_queda_pendiente(self, repo, monkeypatch):
+    def test_el_docx_sin_python_docx_se_extrae(self, repo, monkeypatch):
         _sin_dependencia(monkeypatch, "docx")
         doc = _seed(repo)
         with patch(
             "scraper.document_fetcher._download_bytes",
             return_value=(_fixture("pliego.docx"), CONTENT_TYPE_DOCX),
         ):
-            assert fetch_and_extract(doc) == "skipped_no_extra"
+            assert fetch_and_extract(doc) == "extracted"
 
         fila = repo.get(doc["id"])
         assert fila is not None
-        assert fila["status"] == "pending"
-        assert doc["id"] in {d["id"] for d in repo.list_pendientes()}
+        assert fila["status"] == "extracted"
 
-    def test_el_zip_con_un_docx_no_se_da_por_extraido_a_medias(self, monkeypatch):
-        """Saltarse el DOCX de dentro dejaría el ZIP `extracted` sin él."""
+    def test_el_zip_con_un_docx_se_extrae_entero_sin_python_docx(self, monkeypatch):
         _sin_dependencia(monkeypatch, "docx")
-        with pytest.raises(df.ExtractorAusenteError):
-            _extract_paginas(_fixture("adjuntos.zip"), CONTENT_TYPE_ZIP)
+        texto = "\n".join(
+            p.texto for p in _extract_paginas(_fixture("adjuntos.zip"), CONTENT_TYPE_ZIP)
+        )
+        assert "CLAUSULAS ADMINISTRATIVAS" in texto  # el DOCX interno
 
-    def test_sigue_siendo_unsupported_para_quien_solo_extrae(self, monkeypatch):
-        """Los llamadores que no persisten no tienen que distinguirlo."""
-        _sin_dependencia(monkeypatch, "docx")
-        with pytest.raises(UnsupportedDocumentError):
-            _extract_paginas(_fixture("pliego.docx"), CONTENT_TYPE_DOCX)
+    def test_un_extractor_ausente_sigue_siendo_unsupported(self):
+        """Los llamadores que solo extraen no tienen que distinguirlo."""
+        assert issubclass(df.ExtractorAusenteError, UnsupportedDocumentError)
 
 
 class TestEstadoUnsupported:

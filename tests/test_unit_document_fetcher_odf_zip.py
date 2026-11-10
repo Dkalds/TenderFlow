@@ -18,6 +18,7 @@ Lo que fija:
 from __future__ import annotations
 
 import io
+import sys
 import zipfile
 
 import pytest
@@ -92,14 +93,7 @@ class TestOpenDocument:
 
     def test_odt_no_necesita_odfpy(self, monkeypatch):
         """La imagen de la API no trae odfpy: el ODT se lee igual."""
-        real = df.importlib.import_module
-
-        def _sin_odf(nombre: str, *args, **kwargs):
-            if nombre == "odf" or nombre.startswith("odf."):
-                raise ImportError("simulado")
-            return real(nombre, *args, **kwargs)
-
-        monkeypatch.setattr(df.importlib, "import_module", _sin_odf)
+        monkeypatch.setitem(sys.modules, "odf", None)  # `import odf` lanza ImportError
         odt = _odf("<office:text><text:p>Solvencia técnica</text:p></office:text>")
         assert _texto(_extract_paginas(odt, CONTENT_TYPE_ODT)) == "Solvencia técnica"
 

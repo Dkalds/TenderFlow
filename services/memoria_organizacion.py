@@ -60,12 +60,10 @@ __all__ = [
 #: subconjunto de lo que lee ``scraper.document_fetcher`` (lo comprueba
 #: ``tests/test_unit_memoria_organizacion.py``): una hoja de cálculo de Office,
 #: una presentación o una imagen se pueden adjuntar, pero no indexar.
-#: shortcut: sin DOCX porque lo extrae el consumidor de la cola de la API, cuya
-#: imagen (`requirements-api.txt`) no lleva `python-docx`; volver a incluirlo
-#: cuando esa imagen lo lea (lo vigila `tests/test_unit_memoria_organizacion.py`).
 TIPOS_INDEXABLES: Final[frozenset[str]] = frozenset(
     {
         "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/vnd.oasis.opendocument.text",
         "application/vnd.oasis.opendocument.spreadsheet",
         "application/zip",
