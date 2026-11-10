@@ -362,6 +362,13 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # usuario. Vivían en el job hasta que su SQL bajó a db/ (2026-11-04).
         "db/repositories/watchlist_rules.py::filas_de_reglas_a_evaluar",
         "db/repositories/watchlist_rules.py::marcar_regla_notificada",
+        # El despachador del outbox (scheduler/jobs/event_dispatch.py) lee el
+        # dueño, el correo y la frecuencia de la regla o de la entrada de
+        # `watchlist_match` al repartir. El id sale del evento que escribió el
+        # job a partir de su propio barrido, nunca de input de usuario, y
+        # ninguna ruta las alcanza (2026-11-10).
+        "db/repositories/watchlist_rules.py::fila_de_regla",
+        "db/watchlist.py::entradas_por_id",
         # La misma pregunta para la fase 5 de ese job (pre-generación del
         # resumen IA, 2026-09-18): devuelve solo ids de licitación ordenados
         # por demanda, y el resumen que se calienta es el del expediente, no el

@@ -77,6 +77,10 @@ def test_run_enabled_delegates_to_check_rules_and_notify(tmp_db, monkeypatch):
         _insert_lic(c, "L1", titulo="Implantacion SAP")
 
     result = job.run()
+    # La campana la escribe el despachador del outbox, el paso siguiente.
+    from scheduler.jobs.event_dispatch import dispatch_pending
+
+    dispatch_pending()
 
     assert result == 1
     with connect() as c:
@@ -103,11 +107,15 @@ def test_anti_doble_ejecucion_pipeline_y_job_activos_una_sola_notificacion(tmp_d
         _insert_lic(c, "L1", titulo="Implantacion SAP S/4HANA")
 
     # 1) La pipeline canónica corre primero (scheduler/pipeline_runs.py::_run_watchlist_notify)
+    from scheduler.jobs.event_dispatch import dispatch_pending
+
     check_rules_and_notify()
+    dispatch_pending()
     # 2) El job dedicado corre después sobre la MISMA licitación (frequency
     #    "immediate" -- is_due() siempre True, así que reintentaría sin la
     #    guarda de idempotencia de user_notifications).
     job.run()
+    dispatch_pending()
 
     with connect() as c:
         rows = c.execute(

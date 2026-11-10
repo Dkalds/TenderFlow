@@ -84,7 +84,31 @@ def test_toda_familia_del_catalogo_esta_declarada():
     """``FAMILIAS`` gobierna los comodines: una familia sin declarar no se puede
     suscribir con ``x.*`` aunque sus tipos existan."""
     for tipo in TIPOS:
+        if "." not in tipo:
+            # `watchlist_match`: nombre publicado antes del catálogo, sin
+            # familia; se suscribe por su nombre exacto.
+            continue
         assert tipo.split(".", 1)[0] in FAMILIAS, tipo
+
+
+def test_el_webhook_legado_de_la_watchlist_esta_en_el_catalogo():
+    assert "watchlist_match" in suscripciones_validas()
+    assert suscripcion_cubre({"watchlist_match"}, "watchlist_match")
+    assert not suscripcion_cubre({"watchlist_rule.*"}, "watchlist_match")
+    assert especificacion("watchlist_match").canales == ("digest", "webhook")
+
+
+def test_las_reglas_de_watchlist_salen_por_campana_digest_y_webhook():
+    spec = especificacion("watchlist_rule.matched")
+    assert spec.canales == ("in_app", "digest", "webhook")
+    assert spec.tipo_notificacion == "rule_match"
+
+
+def test_ningun_evento_de_oportunidad_invalida_la_cache_global():
+    """La señal de caché es global: una oportunidad es de una organización."""
+    for tipo in TIPOS:
+        if tipo.startswith("pursuit."):
+            assert "cache" not in especificacion(tipo).canales, tipo
 
 
 def test_suscripciones_validas_incluye_comodines_y_tipos():
