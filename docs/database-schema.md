@@ -6,7 +6,7 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-11-07
+Generado: 2026-11-10
 
 Revisión Alembic aplicada: `v178_sistema_contratacion`.
 
@@ -24,7 +24,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 15 | 201 | 66 |
+| Licitaciones y fuente | 15 | 203 | 67 |
 | Documentos y pliegos | 6 | 67 | 13 |
 | Empresas y mercado | 6 | 34 | 11 |
 | Organizaciones y oportunidades | 15 | 143 | 31 |
@@ -33,7 +33,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | ML y predicciones | 8 | 63 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 24 | 185 | 35 |
-| **Total** | **108** | **987** | **244** |
+| **Total** | **108** | **989** | **245** |
 
 ## Licitaciones y fuente
 
