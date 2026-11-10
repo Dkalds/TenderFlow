@@ -119,7 +119,13 @@ RUN pip install --no-cache-dir --no-deps . \
     && find /usr/local/lib/python3.13 -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true \
     && find /usr/local/lib/python3.13 -name '*.pyc' -delete
 
-RUN mkdir -p /data && chown appuser:appuser /data
+# `/app/data/models` es donde los clasificadores SAP y de tecnologías descargan
+# su modelo (`services/ml/*_classifier.py::_MODEL_PATH`, ruta fija bajo el
+# checkout). `data/` no viaja en la imagen (.dockerignore) y `/app` es de root:
+# sin crearlo aquí, los pasos `ml_scoring` y `ml_tecnologias` del cierre fallan
+# con PermissionError en cuanto la ingesta corre en este contenedor (visto el
+# 2026-11-09, primera pasada del plano de cron en la API).
+RUN mkdir -p /data /app/data/models && chown -R appuser:appuser /data /app/data
 # El modelo ONNX solo se activa si el build lo descargó: `${VAR:+valor}` deja
 # la variable vacía (motor desactivado) cuando no hubo revisión, en vez de
 # apuntar a un directorio vacío y avisar en cada arranque de que falta.
