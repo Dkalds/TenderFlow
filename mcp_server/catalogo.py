@@ -160,6 +160,12 @@ _TABLAS: tuple[tuple[str, Visibilidad, str, str], ...] = (
         "Ids anteriores de una licitación re-escrita (alias viejo -> id_externo vigente).",
     ),
     ("lotes", _V, _LIC, "Lotes de cada licitación con su CPV, importe y plazo."),
+    (
+        "contrato_modificaciones",
+        _V,
+        _LIC,
+        "Modificaciones publicadas de cada contrato: motivo, importe y fecha.",
+    ),
     ("resoluciones_recurso", _V, _LIC, "Resoluciones de tribunales de recursos contractuales."),
     (
         "source_ingestion_health",
@@ -508,6 +514,8 @@ COLUMNAS_REVISADAS: frozenset[tuple[str, str]] = frozenset(
         ("tecnologias_keywords", "keyword"),
         # Clave de deduplicación entre fuentes (texto normalizado del expediente).
         ("licitaciones_duplicados", "clave_match"),
+        # Identificador de la modificación en su fuente (árbitro del ON CONFLICT).
+        ("contrato_modificaciones", "clave"),
         # Clave del objeto en el almacén de binarios y hash del contenido público
         # del pliego; sin las credenciales del almacén no abren nada.
         ("documentos", "storage_key"),
