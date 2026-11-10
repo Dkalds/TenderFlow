@@ -3,10 +3,11 @@
 Recorrido completo por la API con sesión real. Ver ``tests/escenarios.py`` y
 ``docs/casos-de-uso.md``.
 
-Dos piezas no las hace una persona y por eso el escenario las hace a mano, como
-las haría la pasada: el job de reglas deja su alerta en la bandeja
-(``scheduler/watchlist_rules_alerts.py``), y el despachador del outbox reparte
-la mención (``scheduler/jobs/event_dispatch.dispatch_pending``).
+Dos piezas no las hace una persona y por eso el escenario las lanza a mano,
+en el orden del cierre: el job de reglas (``scheduler/watchlist_rules_alerts.py``),
+que escribe ``watchlist_rule.matched`` en el outbox, y el despachador
+(``scheduler/jobs/event_dispatch.dispatch_pending``), que reparte a la campana
+la alerta de la regla y la mención.
 """
 
 from __future__ import annotations
@@ -14,23 +15,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from tests.escenarios import abrir_sesion, sembrar_licitacion
-
-
-def _alerta_de_regla(sesion, organization_id: int, rule_id: int, licitacion_id: str) -> None:
-    """Lo que deja el job de reglas cuando un expediente casa (una fila por regla y expediente)."""
-    from db.notifications import insert_user_notification
-    from shared.identity import user_key_from_email
-
-    assert insert_user_notification(
-        user_key=user_key_from_email(sesion.email, sesion.user_id),
-        user_id=sesion.user_id,
-        type_="watchlist_rule",
-        title="Tu regla «SAP» encontró un expediente",
-        body="Soporte SAP para el ayuntamiento",
-        licitacion_id=licitacion_id,
-        organization_id=organization_id,
-        rule_id=rule_id,
-    )
 
 
 def _bandeja(sesion, oid: int, **params) -> dict:
@@ -42,9 +26,10 @@ def _bandeja(sesion, oid: int, **params) -> dict:
 def test_cu29_la_campana_ensena_solo_lo_tuyo_y_lo_marca_al_abrirlo(client, api_db):
     """CU-29 — alertas propias, leídas una a una, todas a la vez, y la regla en pausa."""
     from scheduler.jobs.event_dispatch import dispatch_pending
+    from scheduler.watchlist_rules_alerts import check_rules_and_notify
 
     hoy = datetime.now(UTC).date().isoformat()
-    sembrar_licitacion("EXP-CAMP-SAP", "Soporte SAP para el ayuntamiento")
+    sembrar_licitacion("EXP-CAMP-SAP", "Soporte SAP para el ayuntamiento", fecha_publicacion=hoy)
     # Una novedad del mercado publicada hoy: no es de nadie, no va a la campana.
     sembrar_licitacion("EXP-CAMP-MERCADO", "Suministro de papel", fecha_publicacion=hoy)
     ana = abrir_sesion("campana-ana@example.com", client, nombre="Ana")
@@ -64,7 +49,7 @@ def test_cu29_la_campana_ensena_solo_lo_tuyo_y_lo_marca_al_abrirlo(client, api_d
     )
     assert regla.status_code == 201, regla.text
     rule_id = regla.json()["id"]
-    _alerta_de_regla(ana, oid, rule_id, "EXP-CAMP-SAP")
+    assert check_rules_and_notify() == 1
     # …y una mención de Bea en el hilo de una oportunidad del equipo.
     oportunidad = ana.post(
         "/pursuits", json={"licitacion_id": "EXP-CAMP-SAP", "organization_id": oid}
@@ -83,8 +68,9 @@ def test_cu29_la_campana_ensena_solo_lo_tuyo_y_lo_marca_al_abrirlo(client, api_d
     assert bandeja["total"] == 2
     assert bandeja["sin_leer"] == 2
     por_tipo = {a["type"].split(":")[0]: a for a in bandeja["items"]}
-    assert set(por_tipo) == {"watchlist_rule", "pursuit_mencion"}
-    assert por_tipo["watchlist_rule"]["rule_id"] == rule_id
+    assert set(por_tipo) == {"rule_match", "pursuit_mencion"}
+    assert por_tipo["rule_match"]["rule_id"] == rule_id
+    assert por_tipo["rule_match"]["licitacion_id"] == "EXP-CAMP-SAP"
     # El expediente ya es una oportunidad: la campana enlaza a su ficha.
     assert por_tipo["pursuit_mencion"]["pursuit_id"] == pid
     assert "EXP-CAMP-MERCADO" not in {a["licitacion_id"] for a in bandeja["items"]}
@@ -103,7 +89,7 @@ def test_cu29_la_campana_ensena_solo_lo_tuyo_y_lo_marca_al_abrirlo(client, api_d
     assert _bandeja(ana, oid)["sin_leer"] == 1
     assert [a["id"] for a in _bandeja(ana, oid, estado="leidas")["items"]] == [mencion]
     sin_leer = _bandeja(ana, oid, estado="sin_leer")
-    assert [a["type"] for a in sin_leer["items"]] == ["watchlist_rule"]
+    assert [a["type"] for a in sin_leer["items"]] == ["rule_match"]
 
     # «Ver todas» pagina sin perder ninguna.
     primera = _bandeja(ana, oid, limit=1)

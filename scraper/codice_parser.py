@@ -38,6 +38,7 @@ from services.normalization import fold_text
 from shared.dates import to_iso_date, to_iso_datetime
 from shared.geo import es_nuts_de_pais, nuts_to_ccaa
 from shared.identidad_placsp import clave_placsp
+from shared.sistema_contratacion import SistemaContratacion, desde_codice
 from shared.texto import sin_tildes
 
 log = get_logger(__name__)
@@ -693,6 +694,21 @@ def _tendering_process_codes(
     )
 
 
+def _sistema_contratacion(
+    root: object, tendering_process_prefix: str
+) -> SistemaContratacion | None:
+    """Marco, SDA, basado en uno de ellos o ninguno (``cbc:ContractingSystemCode``).
+
+    Hermano de ``cbc:ProcedureCode`` en ``cac:TenderingProcess``. Al revés que
+    el procedimiento, se guarda normalizado: ver ``shared/sistema_contratacion.py``.
+
+    El ATOM no publica **de qué** marco cuelga un basado: en los fixtures
+    reales (``20``, ``22``, ``23`` y ``24``) el marco solo aparece nombrado en
+    el título («Am02 Lote 4», «SDA-TIC 3-23 CC»), y de ahí no se deduce.
+    """
+    return desde_codice(_text(root, f"{tendering_process_prefix}/cbc:ContractingSystemCode"))
+
+
 # Un criterio de adjudicación se reconoce por su tipo cuando la fuente lo
 # codifica en texto (UBL 2.1 / eForms usan `PRICE` y `COST`).
 _TIPOS_CRITERIO_PRECIO = frozenset({"price", "cost"})
@@ -1324,6 +1340,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
     fecha_fin = to_iso_date(_text(entry, f"{pp}/cbc:EndDate"))
     fecha_limite = _tender_deadline(entry, f"{cfs}/cac:TenderingProcess")
     procedimiento, tramitacion = _tendering_process_codes(entry, f"{cfs}/cac:TenderingProcess")
+    sistema_contratacion = _sistema_contratacion(entry, f"{cfs}/cac:TenderingProcess")
     peso_precio_pct = parse_peso_precio(entry)
 
     prorroga = _text(
@@ -1393,6 +1410,7 @@ def parse_entry(entry: Any) -> Licitacion | None:
         tramitacion=tramitacion,
         peso_precio_pct=peso_precio_pct,
         tipos_anuncio=_tipos_anuncio(entry, cfs),
+        sistema_contratacion=sistema_contratacion,
         condiciones=_condiciones_o_none(entry),
     )
 
@@ -1483,6 +1501,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
     fecha_fin = to_iso_date(_text(entry, f"{pp}/cbc:EndDate"))
     fecha_limite = _tender_deadline(entry, f"{cfs}/cac:TenderingProcess")
     procedimiento, tramitacion = _tendering_process_codes(entry, f"{cfs}/cac:TenderingProcess")
+    sistema_contratacion = _sistema_contratacion(entry, f"{cfs}/cac:TenderingProcess")
     peso_precio_pct = parse_peso_precio(entry)
     prorroga = _text(
         entry,
@@ -1533,6 +1552,7 @@ def parse_entry_unfiltered(entry: Any) -> Licitacion | None:
         tramitacion=tramitacion,
         peso_precio_pct=peso_precio_pct,
         tipos_anuncio=_tipos_anuncio(entry, cfs),
+        sistema_contratacion=sistema_contratacion,
         condiciones=_condiciones_o_none(entry),
     )
 

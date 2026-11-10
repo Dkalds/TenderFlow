@@ -136,7 +136,9 @@ def test_una_interrupcion_a_mitad_no_duplica_entregas(tmp_db, monkeypatch):
     monkeypatch.setattr(event_dispatch, "_canal_webhook", _webhook)
     monkeypatch.setattr(event_dispatch, "_canal_cache", _cache)
 
-    _crear_evento()
+    # `ficha.extraida` sale por `webhook` y `cache`; `pursuit.*` ya no lleva
+    # `cache` (una invalidación global por cada oportunidad privada).
+    append_domain_event("ficha.extraida", "LIC-1", "licitacion", {"id_externo": "LIC-1"})
 
     primera = event_dispatch.dispatch_pending()
     assert primera.fallidos == 1

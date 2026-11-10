@@ -70,7 +70,7 @@ def test_caducar_viejos_pasa_la_marca_de_corte_y_registra_la_metrica(
     llamadas: list[str] = []
     registrados: list[tuple[str, float | None, str | None]] = []
 
-    def _caducar(creados_antes_de: str) -> dict[str, int]:
+    def _caducar(creados_antes_de: str, **_kw: object) -> dict[str, int]:
         llamadas.append(creados_antes_de)
         return {"pursuit.assigned": 3, "licitacion.cambiada": 2}
 
@@ -94,7 +94,7 @@ def test_caducar_viejos_pasa_la_marca_de_corte_y_registra_la_metrica(
 
 def test_sin_nada_que_caducar_no_se_registra_metrica(monkeypatch: pytest.MonkeyPatch) -> None:
     registrados: list[str] = []
-    monkeypatch.setattr("db.events.caducar_pendientes", lambda _corte: {})
+    monkeypatch.setattr("db.events.caducar_pendientes", lambda _corte, **_kw: {})
     monkeypatch.setattr(
         "observability.ops_events.record_event", lambda tipo, **_: registrados.append(tipo)
     )

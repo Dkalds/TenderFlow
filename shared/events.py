@@ -144,23 +144,25 @@ def _spec(
 #: despachador lo reparta y para que un webhook pueda suscribirse a él.
 CATALOGO: dict[str, EspecificacionEvento] = dict(
     (
+        # Sin canal `cache`: la señal es global, y cada cambio de una
+        # oportunidad privada invalidaría la caché de todas las organizaciones.
         _spec(
             "pursuit.created",
             "Nueva oportunidad",
             ("pursuit_id", "licitacion_id", "organization_id"),
-            ("webhook", "cache"),
+            ("webhook",),
         ),
         _spec(
             "pursuit.state_changed",
             "Cambio de estado de una oportunidad",
             ("pursuit_id", "licitacion_id", "estado_anterior", "estado_nuevo"),
-            ("webhook", "cache"),
+            ("webhook",),
         ),
         _spec(
             "pursuit.decided",
             "Decisión sobre una oportunidad",
             ("pursuit_id", "licitacion_id", "decision"),
-            ("webhook", "cache"),
+            ("webhook",),
         ),
         _spec(
             "pursuit.assigned",
@@ -275,11 +277,29 @@ CATALOGO: dict[str, EspecificacionEvento] = dict(
         # `user_key` sigue en el payload a propósito: retirarlo rompe a los
         # receptores externos y va con ventana de deprecación
         # (docs/rfc/2026-09-18-rfc-retirar-user-key-payload-watchlist-rule-matched.md).
+        # Lo emite `scheduler/watchlist_rules_alerts`. La campana (una fila por
+        # licitación, con `rule_id`) y el digest los escribe el despachador con
+        # el dueño, el correo y la frecuencia **de la regla**, leídos al
+        # despachar: en el payload, el correo llegaría al webhook.
         _spec(
             "watchlist_rule.matched",
             "Coincidencias de una regla de seguimiento",
-            ("rule_id", "user_key", "total_matches"),
-            ("webhook",),
+            ("rule_id", "user_key", "total_matches", "licitaciones"),
+            ("in_app", "digest", "webhook"),
+            tipo_notificacion="rule_match",
+        ),
+        # La watchlist de instancia por prefijo CPV (`watchlist_cpv`), que emite
+        # `scheduler/watchlist_alerts`. El nombre, sin familia, es el del
+        # webhook publicado desde v15: renombrarlo rompería a sus receptores.
+        # `entries` lleva `entry_id`; el correo y la frecuencia de cada entrada
+        # los lee el despachador, y el `recipient` del cuerpo lo añade al
+        # entregar (solo a los webhooks globales: el evento no tiene
+        # organización), para que el correo no quede en `domain_events`.
+        _spec(
+            "watchlist_match",
+            "Coincidencias de la watchlist",
+            ("total_matches", "entries"),
+            ("digest", "webhook"),
         ),
         # Ya existía como suscripción de webhook antes de S4 (la emite
         # `api/routes/publico_solicitudes.py`). Entra al catálogo para que el
@@ -352,6 +372,12 @@ CATALOGO: dict[str, EspecificacionEvento] = dict(
 )
 
 TIPOS: frozenset[str] = frozenset(CATALOGO)
+
+#: Tipos que el despachador entrega aunque superen la antigüedad máxima.
+#: Sus productores mueven la ventana de la regla o de la entrada al escribir el
+#: evento, así que caducarlo perdería las coincidencias para siempre: son un
+#: digest, no un aviso que se quede viejo.
+TIPOS_SIN_CADUCIDAD: frozenset[str] = frozenset({"watchlist_rule.matched", "watchlist_match"})
 
 
 def validar_tipo(tipo: str) -> str:
@@ -639,6 +665,7 @@ __all__ = [
     "FORMATOS",
     "FORMATO_POR_DEFECTO",
     "TIPOS",
+    "TIPOS_SIN_CADUCIDAD",
     "Canal",
     "EspecificacionEvento",
     "Formato",

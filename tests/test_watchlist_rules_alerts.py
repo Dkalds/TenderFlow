@@ -3,6 +3,10 @@
 Cubre: due/no-due por frecuencia, reglas inactivas, sin matches (mueve ventana),
 corte temporal, deduplicación por anti-join y escritura en user_notifications.
 
+Desde 2026-11 el job solo escribe ``watchlist_rule.matched`` en el outbox; la
+campana y el digest los escribe el despachador. :func:`_pasada` hace lo que el
+cierre canónico: el paso ``watchlist_notify`` y, después, ``event_dispatch``.
+
 El corte temporal se prueba en sus DOS formas, y la segunda es la que faltaba
 hasta el 2026-08-30: días distintos (siempre funcionó) y **el mismo día que el
 cursor**, que es el estado normal de producción y no notificaba nunca.
@@ -49,6 +53,15 @@ def _regla(user_key: str, rule: WatchlistRule) -> int:
     return create_rule(user_key, rule, organization_id=org)
 
 
+def _pasada(**kwargs) -> int:
+    """El job de reglas y el despachador, en el orden del cierre canónico."""
+    from scheduler.jobs.event_dispatch import dispatch_pending
+
+    n = watchlist_rules_alerts.check_rules_and_notify(**kwargs)
+    dispatch_pending()
+    return n
+
+
 def _set_last_notified(c, rule_id, iso_ts):
     c.execute("UPDATE watchlist_rules SET last_notified_at = %s WHERE id = %s", (iso_ts, rule_id))
 
@@ -66,7 +79,7 @@ def test_regla_due_con_matches_nuevos_notifica(tmp_db):
     with connect() as c:
         _insert_lic(c, "L1", titulo="Implantacion SAP", fecha=_recent(3))
 
-    n = watchlist_rules_alerts.check_rules_and_notify()
+    n = _pasada()
     assert n == 1
 
     # Verifica que se actualizo last_notified_at
@@ -164,8 +177,12 @@ def test_regla_due_con_matches_escribe_el_evento_en_el_outbox(tmp_db):
     assert payload["licitaciones"] == ["L1"]
 
 
-def test_fallo_al_registrar_el_evento_no_rompe_la_notificacion(tmp_db, monkeypatch):
-    """El registro del evento es best-effort: si falla, la alerta in-app persiste."""
+def test_si_el_outbox_falla_la_ventana_no_avanza(tmp_db, monkeypatch):
+    """El evento es la alerta: si no se escribe, la regla sigue pendiente.
+
+    Hasta 2026-11 el evento solo llevaba el webhook y era best-effort, porque
+    la campana ya estaba escrita. Ahora tragarse el fallo perdería el aviso.
+    """
     from db.database import connect
 
     _, _ = tmp_db
@@ -173,22 +190,26 @@ def test_fallo_al_registrar_el_evento_no_rompe_la_notificacion(tmp_db, monkeypat
     def _boom(*_args, **_kwargs):
         raise RuntimeError("outbox no disponible")
 
-    # El job importa `append_domain_event` dentro del bucle, así que el parche
-    # va sobre el módulo de origen y no sobre una referencia ya resuelta.
-    monkeypatch.setattr("db.events.append_domain_event", _boom)
+    monkeypatch.setattr(watchlist_rules_alerts, "append_domain_event", _boom)
 
-    _regla("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
+    rid = _regla("user-a", WatchlistRule(keyword="SAP", frequency="daily"))
     with connect() as c:
         _insert_lic(c, "L1", titulo="Implantacion SAP", fecha=_recent(3))
 
-    n = watchlist_rules_alerts.check_rules_and_notify()  # no debe propagar la excepción
-    assert n == 1
+    assert _pasada() == 0  # el fallo de una regla no propaga
 
     with connect() as c:
+        last = c.execute(
+            "SELECT last_notified_at FROM watchlist_rules WHERE id = %s", (rid,)
+        ).fetchone()[0]
         count = c.execute(
             "SELECT COUNT(*) FROM user_notifications WHERE type = 'rule_match'"
         ).fetchone()[0]
-    assert count == 1
+    assert last is None
+    assert count == 0
+
+    monkeypatch.undo()
+    assert _pasada() == 1  # la pasada siguiente lo recupera
 
 
 def test_sin_matches_no_escribe_evento(tmp_db):
@@ -211,7 +232,7 @@ def test_solo_matches_posteriores_a_last_notified(tmp_db):
         _insert_lic(c, "OLD", titulo="SAP viejo", fecha=_recent(10))  # antes del corte
         _insert_lic(c, "NEW", titulo="SAP nuevo", fecha=_recent(1))  # despues del corte
 
-    n = watchlist_rules_alerts.check_rules_and_notify()
+    n = _pasada()
     assert n == 1
 
     # Verifica que solo el match nuevo llego a user_notifications
@@ -251,7 +272,7 @@ def test_notifica_lo_publicado_el_mismo_dia_en_que_la_regla_ya_se_evaluo(tmp_db)
         _set_last_notified(c, rid, hoy.isoformat())
         _insert_lic(c, "HOY", titulo="Implantacion SAP", fecha=hoy.date().isoformat())
 
-    assert watchlist_rules_alerts.check_rules_and_notify() == 1
+    assert _pasada() == 1
 
     with connect() as c:
         notifs = c.execute(
@@ -269,10 +290,10 @@ def test_no_repite_una_notificacion_ya_escrita(tmp_db):
     with connect() as c:
         _insert_lic(c, "L1", titulo="SAP", fecha=_recent(0))
 
-    assert watchlist_rules_alerts.check_rules_and_notify() == 1
+    assert _pasada() == 1
     # Segunda pasada inmediata: la misma licitación sigue dentro de la ventana
     # (por eso el anti-join es imprescindible), pero ya no es nueva.
-    assert watchlist_rules_alerts.check_rules_and_notify() == 0
+    assert _pasada() == 0
 
     with connect() as c:
         total = c.execute(
@@ -297,11 +318,94 @@ def test_el_tope_no_se_gasta_en_lo_ya_notificado(tmp_db):
         for i, dias in enumerate((0, 1, 2)):
             _insert_lic(c, f"L{i}", titulo="SAP", fecha=_recent(dias))
 
-    assert watchlist_rules_alerts.check_rules_and_notify(limit_per_rule=2) == 1
-    assert watchlist_rules_alerts.check_rules_and_notify(limit_per_rule=2) == 1
+    assert _pasada(limit_per_rule=2) == 1
+    assert _pasada(limit_per_rule=2) == 1
 
     with connect() as c:
         notifs = c.execute(
             "SELECT licitacion_id FROM user_notifications WHERE type = 'rule_match'"
         ).fetchall()
     assert {r[0] for r in notifs} == {"L0", "L1", "L2"}
+
+
+# ── Idempotencia del reparto por el outbox ───────────────────────────────────
+
+
+def test_con_el_aviso_en_cola_la_regla_no_se_reevalua(tmp_db):
+    """Sin despacho entre pasadas, la segunda no emite lo mismo otra vez.
+
+    El anti-join mira la campana, que todavía no existe: sin la guarda, el
+    webhook recibiría las mismas licitaciones dos veces.
+    """
+    from db.database import connect
+
+    _, _ = tmp_db
+    _regla("user-a", WatchlistRule(keyword="SAP", frequency="immediate"))
+    with connect() as c:
+        _insert_lic(c, "L1", titulo="SAP", fecha=_recent(0))
+
+    assert watchlist_rules_alerts.check_rules_and_notify() == 1
+    assert watchlist_rules_alerts.check_rules_and_notify() == 0
+    assert len(_eventos_de_regla()) == 1
+
+
+def test_repetir_la_pasada_no_duplica_campana_digest_ni_webhook(tmp_db, monkeypatch):
+    """Una regla con correo y un webhook suscrito: dos pasadas, una salida de cada.
+
+    Y el correo de la regla no llega al webhook: el despachador lo lee de la
+    regla para el digest y no lo pone en el evento.
+    """
+    import db.webhooks as salida
+    from db.database import connect
+    from db.repositories.webhooks import WebhookRepository
+
+    _, _ = tmp_db
+    entregas: list[bytes] = []
+    monkeypatch.setattr(
+        WebhookRepository,
+        "list_active_subscribers",
+        lambda self, **_: [
+            {
+                "id": 1,
+                "url": "https://hooks.example.test/x",
+                "secret": "s",  # pragma: allowlist secret -- literal de test
+                "event_types": ["watchlist_rule.matched"],
+                "formato": "json",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        salida, "entregar_firmado", lambda **kw: entregas.append(kw["body"]) or True
+    )
+
+    rid = _regla("user-a", WatchlistRule(keyword="SAP", frequency="weekly"))
+    with connect() as c:
+        c.execute(
+            "UPDATE watchlist_rules SET email = 'regla-privada@example.test' WHERE id = %s",
+            (rid,),
+        )
+        _insert_lic(c, "L1", titulo="SAP uno", fecha=_recent(0))
+        _insert_lic(c, "L2", titulo="SAP dos", fecha=_recent(1))
+
+    assert _pasada() == 1
+    assert _pasada() == 0
+    with connect() as c:
+        c.execute("UPDATE watchlist_rules SET last_notified_at = NULL WHERE id = %s", (rid,))
+    assert _pasada() == 0  # ventana reabierta: el anti-join ya ve la campana
+
+    with connect() as c:
+        campana = c.execute(
+            "SELECT licitacion_id, rule_id FROM user_notifications "
+            "WHERE type = 'rule_match' ORDER BY licitacion_id"
+        ).fetchall()
+        digest = c.execute(
+            "SELECT licitacion_id, recipient_email, frequency, entry_id FROM pending_digests "
+            "ORDER BY licitacion_id"
+        ).fetchall()
+    assert [tuple(f) for f in campana] == [("L1", rid), ("L2", rid)]
+    assert [tuple(f) for f in digest] == [
+        ("L1", "regla-privada@example.test", "weekly", rid),
+        ("L2", "regla-privada@example.test", "weekly", rid),
+    ]
+    assert len(entregas) == 1
+    assert b"regla-privada" not in entregas[0]

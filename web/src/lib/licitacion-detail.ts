@@ -1,4 +1,5 @@
 import type { Adjudicatario, Lote } from "@/lib/api-types";
+import type { SistemaContratacion } from "@/lib/sistema-contratacion";
 
 /** Ficha de licitación tal como la consumen /detalle, el inspector y el comparador. */
 export interface LicitacionDetail {
@@ -40,6 +41,8 @@ export interface LicitacionDetail {
   importe_con_iva?: number | null;
   valor_estimado?: number | null;
   fecha_actualizacion_fuente?: string | null;
+  /** Acuerdo marco, SDA, basado en uno de ellos o ninguno; `null` si la fuente no lo dice. */
+  sistema_contratacion?: SistemaContratacion | null;
   /** Lista vacía = lote único implícito, no «sin medir». */
   lotes?: Lote[];
   /**

@@ -49,6 +49,7 @@ from scraper.resilience import http_retry
 from services.classification import normalizar_estado
 from shared.dates import ANIO_MINIMO_PLAUSIBLE, es_fecha_plausible
 from shared.geo import nuts_to_ccaa
+from shared.sistema_contratacion import SistemaContratacion
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -126,6 +127,22 @@ _FIELD_CANDIDATES: dict[str, tuple[str, ...]] = {
     "url": ("enllac_publicacio", "url_publicacio", "enllac"),
     "nuts": ("codi_nuts",),
     "n_ofertas": ("ofertes_rebudes",),
+    # «Sistema de racionalització de la contractació». Ver _SISTEMA_CONTRATACION.
+    "sistema": ("racionalitzacio_contractacio",),
+}
+
+# Los cuatro valores de ``racionalitzacio_contractacio`` en el dataset vivo
+# (2026-11-10: 474.829 filas con valor, 1.585.998 sin él), en minúscula. Sin
+# valor es «la fuente no lo dice», no «ninguno»: la columna
+# vacía es el caso de tres de cada cuatro filas y no afirma nada.
+#
+# De qué marco cuelga un basado no está en el dataset: va en el JSON de cada
+# fase (``expedientIdReferencia``), que este conector no lee.
+_SISTEMA_CONTRATACION: dict[str, SistemaContratacion] = {
+    "acord marc": "marco",
+    "sistema dinàmic d'adquisició": "sda",
+    "contracte basat en acord marc": "basado_marco",
+    "específic de sistema dinàmic d'adquisició": "basado_sda",
 }
 
 
@@ -659,6 +676,9 @@ class PscpConnector:
                 INCLUSION_CPV_TI if senal.motivo == MOTIVO_CPV_TI else "regional_source_record"
             ),
             analysis_universe="pscp_observed",
+            sistema_contratacion=_SISTEMA_CONTRATACION.get(
+                (_text(record, "sistema") or "").casefold()
+            ),
             fuente=SOURCE_ID,
         )
 

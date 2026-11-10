@@ -411,6 +411,35 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Desde la cabecera abre la oportunidad (o va a la que ya existe, sin
   duplicarla) y descarga el dossier de decisión en PDF.
 
+### CU-36 — Leer un acuerdo marco o un sistema dinámico como tal
+
+- **Quién:** quien evalúa un expediente para su organización. **Dónde:**
+  `/detalle`, ficha completa, sección Competencia; y Mercado › Renovaciones.
+- En un acuerdo marco o un sistema dinámico de adquisición ve cuántas empresas
+  están admitidas y cuáles —una por empresa, con sus lotes, no una por fila de
+  adjudicación—, y hasta cuándo está vivo, con la fecha rotulada «estimada»
+  cuando sale de la duración. De un marco que aún se licita ve la duración
+  publicada, sin fecha. De un sistema dinámico casi nunca hay admitidos: las
+  fuentes no los publican, y sale «sin dato».
+- Ve si su organización está entre los admitidos, por sus NIF declarados; sin
+  NIF declarado se le pide declararlo, y si algún admitido se publicó sin NIF
+  no se le dice que no está.
+- En un contrato basado ve que lo es y que solo compiten los admitidos del
+  marco. Si la fuente publica cuál es su marco (TED lo hace) y ese marco está
+  en el producto, ve cuántos admitidos tiene ese marco —en todos sus lotes: la
+  fuente no dice de cuál cuelga el contrato—, si su organización es uno de
+  ellos y hasta cuándo vive el marco, con enlace a su ficha. Si el marco se
+  conoce pero no está en el producto, ve su referencia; si está pero se recogió
+  antes de leerse como marco, ve el enlace y los admitidos «sin dato». Si la fuente no lo
+  publica (PLACSP solo lo nombra en el título), todo eso sale como «sin dato»:
+  no se deduce.
+- En el marco ve los contratos basados que lo citan, con enlace a cada uno;
+  si ninguno lo cita sale «sin dato», no cero.
+- En Renovaciones, el marco que vence va rotulado como tal: lo que se relicita
+  es el marco entero, y cada fila es uno de sus admitidos. Un marco sin
+  admitidos publicados —casi todos los sistemas dinámicos— no aparece ahí: el
+  listado es de contratos adjudicados.
+
 ### CU-37 — Citar los documentos propios de la organización
 
 - **Quién:** equipo de preventa. **Dónde:** ficha de la oportunidad, Adjuntos;
@@ -470,8 +499,9 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-33** Mantener la integración del equipo por webhook | [test_escenario_webhooks.py](../tests/test_escenario_webhooks.py) (x2) | — | [webhook-row.test.tsx](../web/src/app/(dashboard)/ops/_components/webhooks/__tests__/webhook-row.test.tsx) |
 | **CU-34** Arrancar por lo que da valor | — | [recorrido-primeros-pasos.spec.ts](../web/e2e/recorrido-primeros-pasos.spec.ts) | [primeros-pasos.test.tsx](../web/src/app/(dashboard)/resumen/_components/__tests__/primeros-pasos.test.tsx) |
 | **CU-35** Decidir desde la ficha si se presenta | [test_escenario_ficha_decidir.py](../tests/test_escenario_ficha_decidir.py) | — | [test_unit_dossier_licitacion.py](../tests/test_unit_dossier_licitacion.py)<br>[test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py)<br>[condiciones-oficiales.test.tsx](../web/src/components/pliego/__tests__/condiciones-oficiales.test.tsx) |
+| **CU-36** Leer un acuerdo marco o un sistema dinámico como tal | [test_escenario_marcos.py](../tests/test_escenario_marcos.py) | — | [test_unit_marcos.py](../tests/test_unit_marcos.py)<br>[ficha-marco.test.tsx](../web/src/components/ficha/__tests__/ficha-marco.test.tsx) |
 | **CU-37** Citar los documentos propios de la organización | [test_escenario_adjuntos.py](../tests/test_escenario_adjuntos.py) | — | [test_unit_memoria_organizacion.py](../tests/test_unit_memoria_organizacion.py)<br>[adjuntos-panel.test.tsx](../web/src/components/pursuits/__tests__/adjuntos-panel.test.tsx)<br>[citas-organizacion.test.tsx](../web/src/components/pursuits/__tests__/citas-organizacion.test.tsx) |
 
-**36 casos**, 36 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
+**37 casos**, 37 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
 
 <!-- fin trazabilidad -->

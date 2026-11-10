@@ -24,6 +24,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field, model_validator
 
 from shared.identidad_placsp import expediente_natural
+from shared.sistema_contratacion import SistemaContratacion
 
 
 class LicitacionSummary(BaseModel):
@@ -116,6 +117,10 @@ class LicitacionDetail(LicitacionSummary):
     prorroga_descripcion: str | None = None
     fecha_inicio: str | None = None
     fecha_fin: str | None = None
+    #: Acuerdo marco, SDA, contrato basado en uno de ellos o ninguno (v178).
+    #: ``None`` si la fuente no lo dice. El detalle —admitidos, vigencia, si tu
+    #: organización está— lo sirve `GET /licitaciones/{id}/marco`.
+    sistema_contratacion: SistemaContratacion | None = None
     # ADR-032 §A — los importes con su base. `importe` (heredado del resumen)
     # es el alias de la base sin IVA y `importe_tipo` dice si esta fila lo es
     # de verdad (`sin_iva`, `con_iva`, `desconocido`).

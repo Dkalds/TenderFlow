@@ -40,10 +40,11 @@ Uso directo (backfill o cron):
 
 from __future__ import annotations
 
+import re
 import time
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 from urllib.parse import urlparse
 
 import requests
@@ -57,6 +58,7 @@ from scraper.filters import matches_technology
 from scraper.resilience import pedir_con_reintentos
 from services.dedupe import DedupeResult, ReferenciaCruzada, id_evl_de_url
 from shared.geo import nuts_to_ccaa
+from shared.sistema_contratacion import MARCOS, SistemaContratacion
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping
@@ -130,8 +132,21 @@ _FIELDS = [
     "estimated-value-lot",
     "result-value-notice",
     "winner-name",
+    # BT-501: el identificador fiscal de cada adjudicatario. Ver _adjudicatarios.
+    "winner-identifier",
     "place-of-performance",
     "contract-nature",
+    # BT-765 / BT-766: acuerdo marco y sistema dinámico; BT-768 y OPT-100: el
+    # contrato se adjudica dentro de un marco, y cuál. Ver _sistema_y_marco.
+    "framework-agreement-lot",
+    "dps-usage-lot",
+    "contract-framework-agreement",
+    "framework-notice-id",
+    # BT-36, BT-536 y BT-537: duración, inicio y fin. Ver _vigencia.
+    "duration-period-value-lot",
+    "duration-period-unit-lot",
+    "contract-duration-start-date-lot",
+    "contract-duration-end-date-lot",
 ]
 
 #: Tope por petición y por pasada de ``reemparejar_vigentes``: corre dentro del
@@ -322,6 +337,129 @@ def _suma(value: object) -> float | None:
     if not numeros or any(v is None for v in numeros):
         return None
     return sum(v for v in numeros if v is not None)
+
+
+def _valores(value: object) -> list[str]:
+    """Un campo por lote (cadena, booleano o lista de ellos) como textos en minúscula."""
+    lista = value if isinstance(value, list) else [value]
+    return [str(v).strip().lower() for v in lista if v is not None and str(v).strip()]
+
+
+def _unico(value: object) -> str | None:
+    """El valor de un campo por lote si todos los lotes dicen lo mismo; si no, ``None``."""
+    distintos = set(_valores(value))
+    return distintos.pop() if len(distintos) == 1 else None
+
+
+#: ``framework-notice-id`` (OPT-100) en su forma de número de publicación,
+#: ``649072-2024``: la de ``id_externo`` de un aviso. La otra forma, el UUID
+#: del aviso con su versión (``9ddd55cd-…-01``), no lleva a ninguna fila.
+_NUMERO_PUBLICACION = re.compile(r"\d{1,8}-\d{4}")
+
+
+def _sistema_y_marco(
+    notice: Mapping[str, object], tipo_aviso: str
+) -> tuple[SistemaContratacion | None, str | None]:
+    """``(sistema de contratación, id_externo del marco)`` de un aviso eForms.
+
+    Nombres de campo y valores comprobados contra la API el 2026-11-10:
+
+    - ``contract-framework-agreement`` (BT-768) o ``framework-notice-id``
+      (OPT-100) dicen que el contrato se adjudica dentro de un acuerdo marco;
+      el segundo, cuál (257 de las 259 adjudicaciones basadas, 12 meses de
+      ESP con CPV 48, 72 y 32). Se mira antes que BT-765, porque el aviso del
+      basado repite el ``fa-*`` de su marco.
+    - ``framework-agreement-lot`` (BT-765) distinto de ``none``: el aviso
+      establece el marco, o es su adjudicación.
+    - ``dps-usage-lot`` (BT-766) distinto de ``none`` en una convocatoria:
+      establece el sistema dinámico. En una adjudicación no hay campo que
+      diga si es la del sistema o la de un contrato específico, y queda sin
+      dato (66 avisos).
+
+    Los dos campos presentes y a ``none`` es «ninguno»; sin ellos, sin dato.
+
+    shortcut: el 23 % de los ``framework-notice-id`` va como UUID del aviso y
+    no como número de publicación; no se guarda. Subirlo pide el
+    ``notice-identifier`` de cada fila o resolverlo contra la API.
+    """
+    referencias = _valores(notice.get("framework-notice-id"))
+    if referencias or "true" in _valores(notice.get("contract-framework-agreement")):
+        numero = _unico(referencias)
+        if numero is None or not _NUMERO_PUBLICACION.fullmatch(numero):
+            return "basado_marco", None
+        # El XML de eForms rellena el número con ceros (``00649072-2024``);
+        # el ``publication-number`` del que sale ``id_externo`` no los lleva.
+        return "basado_marco", f"{SOURCE_ID}:{numero.lstrip('0')}"
+    marco = set(_valores(notice.get("framework-agreement-lot")))
+    sda = set(_valores(notice.get("dps-usage-lot")))
+    if marco - {"none"}:
+        return "marco", None
+    if sda - {"none"}:
+        return ("sda" if tipo_aviso.startswith("cn") else None), None
+    return ("ninguno" if marco and sda else None), None
+
+
+_UNIDAD_DURACION = {"year": "ANN", "month": "MON", "day": "DAY"}
+
+
+class _Vigencia(TypedDict):
+    """Las cuatro columnas de ``Licitacion`` que dicen hasta cuándo dura el contrato."""
+
+    duracion_valor: float | None
+    duracion_unidad: str | None
+    fecha_inicio: str | None
+    fecha_fin: str | None
+
+
+_SIN_VIGENCIA: _Vigencia = {
+    "duracion_valor": None,
+    "duracion_unidad": None,
+    "fecha_inicio": None,
+    "fecha_fin": None,
+}
+
+
+def _vigencia(notice: Mapping[str, object]) -> _Vigencia:
+    """Duración, inicio y fin (BT-36, BT-536, BT-537) en las columnas de ``Licitacion``.
+
+    Vienen por lote: solo se guardan si todos los lotes coinciden, porque la
+    fila es el aviso entero y una fecha de un lote no es la de los demás.
+    """
+    valor = _to_float(_unico(notice.get("duration-period-value-lot")))
+    unidad = _UNIDAD_DURACION.get(_unico(notice.get("duration-period-unit-lot")) or "")
+    return {
+        "duracion_valor": valor if unidad else None,
+        "duracion_unidad": unidad if valor is not None else None,
+        "fecha_inicio": _first_date(_unico(notice.get("contract-duration-start-date-lot"))),
+        "fecha_fin": _first_date(_unico(notice.get("contract-duration-end-date-lot"))),
+    }
+
+
+def _adjudicatarios(notice: Mapping[str, object]) -> list[tuple[str, str | None]]:
+    """``(nombre, identificador)`` de cada adjudicatario del aviso, sin repetir.
+
+    ``winner-name`` trae uno por contrato adjudicado: en la adjudicación de un
+    acuerdo marco son todos sus admitidos (diecinueve en el 649072-2024).
+    ``winner-identifier`` (BT-501) solo se atribuye si viene uno por nombre:
+    un NIF cruzado con otra empresa es peor que ninguno.
+    """
+    crudo = notice.get("winner-name")
+    if isinstance(crudo, dict):
+        crudo = next((crudo[lang] for lang in ("spa", "eng") if lang in crudo), None) or next(
+            iter(crudo.values()), None
+        )
+    nombres = [str(n).strip() for n in (crudo if isinstance(crudo, list) else [crudo]) if n]
+    identificadores = notice.get("winner-identifier")
+    nifs: list[object] = (
+        identificadores
+        if isinstance(identificadores, list) and len(identificadores) == len(nombres)
+        else [None] * len(nombres)
+    )
+    vistos: dict[str, str | None] = {}
+    for nombre, nif in zip(nombres, nifs, strict=True):
+        if nombre and nombre not in vistos:
+            vistos[nombre] = str(nif).strip() or None if nif is not None else None
+    return list(vistos.items())
 
 
 def _nuts_provincial(value: Any) -> str | None:
@@ -526,6 +664,13 @@ class TedConnector:
         naturalezas = n.get("contract-nature") or []
         tipo = str(naturalezas[0]) if isinstance(naturalezas, list) and naturalezas else None
 
+        sistema, marco_ref = _sistema_y_marco(n, notice_type)
+        # shortcut: la vigencia solo se guarda en marcos y sistemas dinámicos.
+        # eForms la publica en cualquier aviso, pero guardarla en todos metería
+        # las adjudicaciones de TED en Renovaciones sin haber medido cuántas son
+        # el mismo contrato que ya trae PLACSP; abrirlo cuando se mida.
+        vigencia = _vigencia(n) if sistema in MARCOS else _SIN_VIGENCIA
+
         _, tech_matches = matches_technology(titulo, descripcion)
         tech_matches = etiquetas_con_senal_firme(tech_matches)
         tecnologias = sorted(tech_matches)
@@ -551,22 +696,32 @@ class TedConnector:
             ccaa=nuts_to_ccaa(nuts) if nuts else None,
             inclusion_reason="source_cpv_query",
             analysis_universe="technology_observed",
+            sistema_contratacion=sistema,
+            marco_ref=marco_ref,
             fuente=SOURCE_ID,
+            **vigencia,
         )
 
-        adjudicaciones: list[Adjudicacion] = []
-        winner = _first_lang(n.get("winner-name"))
-        if winner and estado == "RES":
-            adjudicaciones.append(
-                Adjudicacion(
-                    licitacion_id=lic.id_externo,
-                    nombre=winner,
-                    importe_adjudicado=_to_float(n.get("result-value-notice")),
-                    fecha_adjudicacion=lic.fecha_publicacion,
-                    nuts_code=nuts,
-                    ccaa=lic.ccaa,
-                )
+        # Hasta 2026-11-10 solo se guardaba el primer adjudicatario: la
+        # adjudicación de un acuerdo marco perdía a todos sus admitidos menos
+        # uno. El importe del aviso (BT-161) es de todos los contratos, así que
+        # solo se atribuye cuando hay un único adjudicatario.
+        ganadores = _adjudicatarios(n) if estado == "RES" else []
+        importe_adjudicado = (
+            _to_float(n.get("result-value-notice")) if len(ganadores) == 1 else None
+        )
+        adjudicaciones = [
+            Adjudicacion(
+                licitacion_id=lic.id_externo,
+                nombre=nombre,
+                nif=nif,
+                importe_adjudicado=importe_adjudicado,
+                fecha_adjudicacion=lic.fecha_publicacion,
+                nuts_code=nuts,
+                ccaa=lic.ccaa,
             )
+            for nombre, nif in ganadores
+        ]
 
         referencia = ReferenciaCruzada(
             expediente=_expediente(n), id_evl=_id_evl(n), procedimiento=_procedimiento(n)

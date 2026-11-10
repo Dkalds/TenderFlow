@@ -10,10 +10,12 @@ siempre. Es lo que hace que cambiar de correo no pierda la watchlist.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from db.database import connect, now_utc_iso
+from shared.types import JsonDict
 
 #: Predicado de identidad dual. Parámetros: ``(user_id, user_key, user_id)``.
 #: Con ``user_id=None`` se reduce a ``user_key = %s``; ver
@@ -125,6 +127,25 @@ def list_entries(
                 "ORDER BY created_at DESC",
                 (user_id, user_key, user_id),
             )
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
+
+
+def entradas_por_id(ids: Sequence[int]) -> list[JsonDict]:
+    """Entradas por id, con dueño, correo y frecuencia (las que sigan existiendo).
+
+    La lee el despachador al repartir ``watchlist_match``: el correo no viaja
+    en el evento, que se guarda para siempre.
+    """
+    if not ids:
+        return []
+    with connect() as c:
+        cur = c.execute(
+            "SELECT id, user_key, user_id, email, cpv_prefix, keyword, min_importe, ccaa, "
+            "COALESCE(frequency, 'daily') AS frequency "
+            "FROM watchlist_cpv WHERE id = ANY(%s) ORDER BY id",
+            (list(ids),),
+        )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 

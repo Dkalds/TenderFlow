@@ -87,6 +87,8 @@ export const licitacionKeys = {
   checklist: (id: string) => ["licitacion", id, "checklist"] as const,
   /** `GET /licitaciones/{id}/historial-propio`. */
   historialPropio: (id: string) => ["licitacion", id, "historial-propio"] as const,
+  /** `GET /licitaciones/{id}/marco`. */
+  marco: (id: string) => ["licitacion", id, "marco"] as const,
 };
 
 export const licitacionesKeys = {

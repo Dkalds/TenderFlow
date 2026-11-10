@@ -37,11 +37,9 @@ _RAIZ = Path(__file__).resolve().parents[1]
 #: outbox. La lista solo puede encoger.
 PRODUCTORES_DIRECTOS: frozenset[str] = frozenset(
     {
-        # Alertas de reglas de watchlist: escribe el INSERT a mano y encola el
-        # digest. Es el productor más antiguo y el que más filas escribe.
-        "scheduler/watchlist_rules_alerts.py",
-        # Watchlist de empresas (v36): encola digests de sus coincidencias.
-        "scheduler/watchlist_alerts.py",
+        # `scheduler/watchlist_rules_alerts.py` y `scheduler/watchlist_alerts.py`
+        # salieron el 2026-11-10: emiten `watchlist_rule.matched` y
+        # `watchlist_match`, y la campana y el digest los escribe el despachador.
         # `services/deadline_reminders.py` salió el 2026-11-08: emite
         # `plazo.recordatorio` y `renovacion.en_ventana`.
         # `services/pursuit_awards.py` salió el 2026-11-08: emite

@@ -27,6 +27,8 @@ export type Lote = Schemas["LoteOut"];
 /** `GET /licitaciones/{id}/similares`: predecesor y parecidos, con método y `n`. */
 export type SimilaresResult = Schemas["SimilaresResult"];
 export type HistorialPropio = Schemas["HistorialPropio"];
+/** `GET /licitaciones/{id}/marco`: admitidos y vigencia de un acuerdo marco o un SDA. */
+export type MarcoDeLicitacion = Schemas["MarcoDeLicitacion"];
 export type NovedadesDeFicha = Schemas["NovedadesDeFicha"];
 export type TrendPoint = Schemas["TrendPoint"];
 export type TrendsResult = Schemas["TrendsResult"];

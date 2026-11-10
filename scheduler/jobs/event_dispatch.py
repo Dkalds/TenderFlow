@@ -43,6 +43,7 @@ from db.events import (
 )
 from observability.logging import get_logger
 from shared.events import CATALOGO, Canal, EspecificacionEvento, renderizar, suscripcion_cubre
+from shared.types import JsonDict
 
 log = get_logger(__name__)
 
@@ -622,6 +623,21 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
             webhooks=len(candidatos),
         )
         return 0
+    formato_fijo: str | None = None
+    if spec.tipo == "watchlist_match":
+        # Contrato publicado desde v15 por `trigger_event`: sale solo con las
+        # entradas inmediatas, siempre en JSON y con el correo del destinatario
+        # en `recipient`. El evento no lo guarda: se lee de la entrada, y el
+        # evento sin organización solo sale por los webhooks globales.
+        inmediatas = [
+            e
+            for e in _entradas_de_watchlist(payload).values()
+            if e.get("frequency") == "immediate" and e.get("email")
+        ]
+        if not inmediatas:
+            return 0
+        payload = {"recipient": str(inmediatas[0]["email"]), **payload}
+        formato_fijo = "json"
 
     marca = str(evento.get("created_at") or now_utc_iso())
     entregados = 0
@@ -630,7 +646,7 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
             renderizar(
                 spec.tipo,
                 payload,
-                formato=str(fila.get("formato") or ""),
+                formato=formato_fijo or str(fila.get("formato") or ""),
                 timestamp=marca,
             ),
             ensure_ascii=False,
@@ -654,6 +670,171 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
     return entregados
 
 
+# ── Alertas de watchlist: el destinatario se lee del origen, no del evento ──
+#
+# `watchlist_rule.matched` y `watchlist_match` no traen seguidores: la persona,
+# su correo y la frecuencia son de la regla o de la entrada, y se leen al
+# despachar. En el payload, el correo llegaría a los webhooks y quedaría para
+# siempre en `domain_events` (ADR-030).
+
+
+def _ids(valores: object) -> list[str]:
+    return [str(v) for v in valores if v] if isinstance(valores, list) else []
+
+
+def _licitaciones(ids: list[str]) -> dict[str, JsonDict]:
+    """Título, órgano, importe… de las licitaciones, por ``id_externo``."""
+    from db.repositories.licitaciones import LicitacionRepository
+
+    repo = LicitacionRepository()
+    filas: dict[str, JsonDict] = {}
+    # `get_by_ids` admite como mucho 100 ids por llamada.
+    for inicio in range(0, len(ids), 100):
+        for fila in repo.get_by_ids(ids[inicio : inicio + 100]):
+            filas[fila["id_externo"]] = dict(fila)
+    return filas
+
+
+def _titulo_de_regla(regla: JsonDict, n: int) -> str:
+    """Título de la campana de una regla, el mismo que escribía el job de reglas."""
+    nombre = (
+        regla.get("nombre")
+        or regla.get("keyword")
+        or (f"CPV {regla['cpv']}" if regla.get("cpv") else None)
+        or "tu regla"
+    )
+    return f"{n} licitacion(es) nueva(s) para «{nombre}»"
+
+
+def _campana_de_regla(regla: JsonDict, licitaciones: list[str], created_at: str) -> int:
+    """Una fila de campana por licitación, con ``rule_id``. Devuelve las nuevas.
+
+    Idempotente: la puerta hace ``ON CONFLICT DO NOTHING`` sobre la identidad
+    de la alerta, que es también la del anti-join de ``matches_since``.
+    Tolerante a la ausencia de la tabla (BDs sin migración v48); cualquier otro
+    fallo sube y libera el canal para la pasada siguiente.
+    """
+    from psycopg import errors as pg_errors
+
+    from db.notifications import insert_user_notifications
+
+    rule_id = int(regla["id"])
+    organization_id = regla.get("organization_id")
+    if organization_id is None:
+        # Una alerta sin ámbito no aparece en ninguna campana (misma regla que
+        # `services/deadline_reminders`).
+        log.warning(
+            "user_notifications_sin_organizacion", rule_id=rule_id, matches=len(licitaciones)
+        )
+        return 0
+    textos = _licitaciones(licitaciones)
+    filas = []
+    for lic_id in licitaciones:
+        lic = textos.get(lic_id, {})
+        filas.append(
+            (lic_id, f"{lic.get('titulo') or '?'} | {lic.get('organo_contratacion') or '?'}")
+        )
+    raw_user_id = regla.get("user_id")
+    try:
+        return insert_user_notifications(
+            type_="rule_match",
+            title=_titulo_de_regla(regla, len(licitaciones)),
+            filas=filas,
+            organization_id=int(organization_id),
+            user_id=int(raw_user_id) if raw_user_id is not None else None,
+            user_key=str(regla["user_key"]),
+            rule_id=rule_id,
+            created_at=created_at,
+        )
+    except pg_errors.UndefinedTable as exc:
+        log.warning("user_notifications_write_skip", error=str(exc)[:100])
+        return 0
+
+
+def _encolar_digest(entrada: JsonDict, licitaciones: list[str]) -> int:
+    """Encola las coincidencias de una regla o entrada con su correo y frecuencia.
+
+    ``entry_id`` positivo es el id del origen, que es como ``load_pending_digests``
+    recupera sus criterios. Idempotente por ``(entry_id, licitacion_id)``. La
+    puerta no lanza: si no encola, se lanza aquí para que el canal se reintente.
+    """
+    from services.watchlist import store_pending_digests
+
+    raw_user_id = entrada.get("user_id")
+    if not store_pending_digests(
+        str(entrada["user_key"]),
+        str(entrada["email"]),
+        int(entrada["id"]),
+        licitaciones,
+        str(entrada.get("frequency") or "daily"),
+        now_utc_iso(),
+        user_id=int(raw_user_id) if raw_user_id is not None else None,
+    ):
+        raise RuntimeError(f"pending_digests no aceptó las coincidencias de {entrada['id']}")
+    return len(licitaciones)
+
+
+def _canal_regla(canal: Canal, evento: JsonDict, resultado: ResultadoDespacho) -> None:
+    """Campana y digest de ``watchlist_rule.matched``, con la regla leída ahora."""
+    from db.repositories.watchlist_rules import fila_de_regla
+
+    payload = evento.get("payload") or {}
+    regla = fila_de_regla(int(payload["rule_id"]))
+    if regla is None:
+        log.info("event_dispatch_regla_borrada", event_id=evento.get("id"))
+        return
+    licitaciones = _ids(payload.get("licitaciones"))
+    if canal == "in_app":
+        created_at = str(evento.get("created_at") or now_utc_iso())
+        resultado.in_app += _campana_de_regla(regla, licitaciones, created_at)
+    elif canal == "digest" and regla.get("email") and licitaciones:
+        resultado.digest += _encolar_digest(regla, licitaciones)
+
+
+def _entradas_de_watchlist(payload: JsonDict) -> dict[int, JsonDict]:
+    from db.watchlist import entradas_por_id
+
+    ids = [
+        int(item["entry_id"])
+        for item in payload.get("entries") or []
+        if isinstance(item, dict) and item.get("entry_id") is not None
+    ]
+    return {int(e["id"]): e for e in entradas_por_id(ids)}
+
+
+def _digest_de_watchlist(evento: JsonDict, resultado: ResultadoDespacho) -> None:
+    """Correo de ``watchlist_match`` según la frecuencia de cada entrada.
+
+    ``daily``/``weekly`` se encolan; ``immediate`` sale en esta pasada, un
+    correo por destinatario, como antes de pasar al outbox.
+    """
+    from collections import defaultdict
+
+    from scheduler.watchlist_alerts import avisar_al_momento
+
+    payload = evento.get("payload") or {}
+    entradas = _entradas_de_watchlist(payload)
+    inmediatas: dict[str, list[tuple[JsonDict, list[str]]]] = defaultdict(list)
+    for item in payload.get("entries") or []:
+        if not isinstance(item, dict) or item.get("entry_id") is None:
+            continue
+        entrada = entradas.get(int(item["entry_id"]))
+        licitaciones = _ids(item.get("matches"))
+        if entrada is None or not entrada.get("email") or not licitaciones:
+            continue
+        if entrada.get("frequency") == "immediate":
+            inmediatas[str(entrada["email"])].append((entrada, licitaciones))
+        else:
+            resultado.digest += _encolar_digest(entrada, licitaciones)
+    for recipient, grupo in inmediatas.items():
+        lics = _licitaciones([lic_id for _, ids in grupo for lic_id in ids])
+        avisar_al_momento(
+            recipient,
+            [(entrada, [lics[i] for i in ids if i in lics]) for entrada, ids in grupo],
+        )
+        resultado.correos += 1
+
+
 def _canal_cache() -> None:
     """Invalida la caché compartida entre el scraper y la API.
 
@@ -672,7 +853,11 @@ def _canal_cache() -> None:
 def _despachar_canal(
     canal: Canal, evento: dict[str, Any], spec: EspecificacionEvento, resultado: ResultadoDespacho
 ) -> None:
-    if canal == "in_app":
+    if spec.tipo == "watchlist_rule.matched" and canal in ("in_app", "digest"):
+        _canal_regla(canal, evento, resultado)
+    elif spec.tipo == "watchlist_match" and canal == "digest":
+        _digest_de_watchlist(evento, resultado)
+    elif canal == "in_app":
         resultado.in_app += _canal_in_app(evento, spec)
     elif canal == "digest":
         encoladas, enviados = _canal_digest(evento, spec)
@@ -702,15 +887,20 @@ def caducar_viejos(max_age_hours: int | None = None) -> int:
     ``EVENT_DISPATCH_ENABLED=0`` más de dos días— caduca igual en vez de salir
     tarde. El evento no se borra: sigue en ``domain_events`` para la
     cronología y la auditoría, sólo deja de estar pendiente.
+
+    Excepción: ``shared.events.TIPOS_SIN_CADUCIDAD`` (alertas de watchlist),
+    cuyo productor ya movió la ventana al escribir el evento. Caducarlos
+    perdería las coincidencias; salen tarde.
     """
     from datetime import timedelta
 
     from config.settings import event_dispatch_max_age_hours
     from db.events import caducar_pendientes
+    from shared.events import TIPOS_SIN_CADUCIDAD
 
     horas = max_age_hours if max_age_hours is not None else event_dispatch_max_age_hours()
     limite = (now_utc() - timedelta(hours=max(1, int(horas)))).isoformat()
-    conteo = caducar_pendientes(limite)
+    conteo = caducar_pendientes(limite, salvo=TIPOS_SIN_CADUCIDAD)
     total = sum(conteo.values())
     if total:
         log.warning("event_dispatch_caducados", total=total, horas=horas, por_tipo=conteo)
