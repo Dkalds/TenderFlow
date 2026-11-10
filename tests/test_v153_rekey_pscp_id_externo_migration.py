@@ -134,6 +134,7 @@ _FK_POSTERIORES_A_V153: dict[str, str] = {
     "acta_extracciones.licitacion_id": "v170_actas_puntuaciones",
     "acta_puntuaciones.licitacion_id": "v170_actas_puntuaciones",
     "predicciones_baja_sombra.licitacion_id": "v174_predicciones_baja_sombra",
+    "contrato_modificaciones.licitacion_id": "v180_contrato_modificaciones",
 }
 
 

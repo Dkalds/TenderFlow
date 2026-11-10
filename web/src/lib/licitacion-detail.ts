@@ -1,4 +1,4 @@
-import type { Adjudicatario, Lote } from "@/lib/api-types";
+import type { Adjudicatario, Lote, ModificacionesDeLicitacion } from "@/lib/api-types";
 import type { SistemaContratacion } from "@/lib/sistema-contratacion";
 
 /** Ficha de licitación tal como la consumen /detalle, el inspector y el comparador. */
@@ -51,6 +51,8 @@ export interface LicitacionDetail {
    * `GET /licitaciones/{id}` lo manda siempre (lista vacía si no hay).
    */
   adjudicatarios?: Adjudicatario[];
+  /** Modificaciones publicadas (art. 207.3 LCSP); solo la manda `GET /licitaciones/{id}`. */
+  modificaciones?: ModificacionesDeLicitacion;
   score?: number;
   /** Banda del scoring (`Caliente|Atractiva|Tibia|Descarte`), si ya llegó. */
   band?: string | null;

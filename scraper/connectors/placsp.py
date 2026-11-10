@@ -105,6 +105,7 @@ class _PlacspParseCore:
             parse_entry,
             parse_entry_unfiltered,
             parse_lotes,
+            parse_modificaciones,
         )
         from scraper.lineage import current_filter_version
         from scraper.pipeline import (
@@ -164,7 +165,13 @@ class _PlacspParseCore:
             lotes: list[Lote] = parse_lotes(
                 entry_elem, lic.id_externo, fallback_fecha_limite=lic.fecha_limite
             )
-            return ParsedTender(licitacion=lic, adjudicaciones=adjs, documentos=docs, lotes=lotes)
+            return ParsedTender(
+                licitacion=lic,
+                adjudicaciones=adjs,
+                documentos=docs,
+                lotes=lotes,
+                modificaciones=parse_modificaciones(entry_elem, lic.id_externo),
+            )
 
         except Exception as exc:
             log.debug("placsp_parse_entry_failed", error=str(exc))

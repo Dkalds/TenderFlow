@@ -6666,6 +6666,29 @@ export interface components {
             motivo: string;
         };
         /**
+         * AmpliacionDelOrgano
+         * @description Cuánto acaban costando, sobre lo adjudicado, los contratos modificados del órgano.
+         *
+         *     Solo cuentan los contratos con una modificación publicada que trae importe
+         *     final y cuya adjudicación está publicada (``n``). Por debajo de
+         *     ``muestra_minima`` no hay cifra: ``mediana_pct`` es ``None`` y la ficha dice
+         *     «sin datos suficientes».
+         */
+        AmpliacionDelOrgano: {
+            /**
+             * Base
+             * @default sin_iva
+             * @constant
+             */
+            base: "sin_iva";
+            /** Mediana Pct */
+            mediana_pct?: number | null;
+            /** Muestra Minima */
+            muestra_minima: number;
+            /** N */
+            n: number;
+        };
+        /**
          * AsistenteFeedbackRequest
          * @description Voto sobre un turno del asistente.
          *
@@ -8474,6 +8497,28 @@ export interface components {
             posicion?: ("por_encima" | "en_linea" | "por_debajo") | null;
             /** Valor */
             valor?: number | null;
+        };
+        /**
+         * CosteDeContrato
+         * @description Lo adjudicado frente a lo que el contrato cuesta tras su última modificación.
+         *
+         *     Solo cuando las dos cifras están publicadas y en la misma base (sin IVA).
+         */
+        CosteDeContrato: {
+            /** Adjudicado */
+            adjudicado: number;
+            /**
+             * Base
+             * @default sin_iva
+             * @constant
+             */
+            base: "sin_iva";
+            /** Final */
+            final: number;
+            /** Lote Numero */
+            lote_numero?: string | null;
+            /** Variacion Pct */
+            variacion_pct: number;
         };
         /**
          * CpvEntry
@@ -11113,6 +11158,7 @@ export interface components {
             ml_tech_principal?: string | null;
             /** Ml Tecnologias */
             ml_tecnologias?: string | null;
+            modificaciones?: components["schemas"]["ModificacionesDeLicitacion"] | null;
             /** Moneda */
             moneda?: string | null;
             /** Nuts Code */
@@ -11633,6 +11679,64 @@ export interface components {
             trained_on_n_samples: number | null;
             /** Version */
             version: number;
+        };
+        /**
+         * ModificacionPublicada
+         * @description Una modificación tal como la publicó su fuente. Lo no publicado va a ``None``.
+         */
+        ModificacionPublicada: {
+            /** Aviso Original */
+            aviso_original?: string | null;
+            /** Descripcion */
+            descripcion?: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion?: string | null;
+            /**
+             * Fuente
+             * @enum {string}
+             */
+            fuente: "placsp" | "ted";
+            /** Importe Aviso */
+            importe_aviso?: number | null;
+            /** Importe Aviso Base */
+            importe_aviso_base?: ("sin_iva" | "con_iva" | "desconocido") | null;
+            /** Importe Final */
+            importe_final?: number | null;
+            /** Importe Final Base */
+            importe_final_base?: ("sin_iva" | "con_iva" | "desconocido") | null;
+            /** Importe Modificacion */
+            importe_modificacion?: number | null;
+            /** Importe Modificacion Base */
+            importe_modificacion_base?: ("sin_iva" | "con_iva" | "desconocido") | null;
+            /** Lote Numero */
+            lote_numero?: string | null;
+            /** Moneda */
+            moneda?: string | null;
+            /** Motivo */
+            motivo?: string | null;
+            /** Motivo Codigo */
+            motivo_codigo?: string | null;
+            /** Numero */
+            numero?: string | null;
+            /** Plazo Final */
+            plazo_final?: number | null;
+            /** Plazo Modificacion */
+            plazo_modificacion?: number | null;
+            /** Plazo Unidad */
+            plazo_unidad?: string | null;
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * ModificacionesDeLicitacion
+         * @description Las modificaciones publicadas del expediente y lo que dicen de su coste.
+         */
+        ModificacionesDeLicitacion: {
+            /** Costes */
+            costes?: components["schemas"]["CosteDeContrato"][];
+            /** Items */
+            items?: components["schemas"]["ModificacionPublicada"][];
+            organo: components["schemas"]["AmpliacionDelOrgano"];
         };
         /**
          * ModuloEntry
