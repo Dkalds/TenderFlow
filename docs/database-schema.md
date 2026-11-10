@@ -263,10 +263,11 @@ Claves: `PRIMARY KEY (id)`
 | `fecha_actualizacion_fuente_ts` | `timestamp with time zone` | sí |
 | `organo_ref_fuente` | `text` | sí |
 | `sistema_contratacion` | `text` | sí |
+| `marco_ref` | `text` | sí |
 
 Claves: `PRIMARY KEY (id_externo)`
 
-Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_analitica`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_descripcion_plegada_trgm`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_extraccion_ts`, `idx_lic_fecha_limite`, `idx_lic_fecha_limite_ts`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fecha_publicacion_ts`, `idx_lic_fuente`, `idx_lic_id_externo_plegado_trgm`, `idx_lic_importe`, `idx_lic_importe_base_sin_iva`, `idx_lic_ml_proba`, `idx_lic_organo_id`, `idx_lic_organo_norm`, `idx_lic_organo_plegado_trgm`, `idx_lic_tecnologia`, `idx_lic_tecnologia_cubriente`, `idx_lic_tecnologia_tokens`, `idx_lic_titulo_plegado_trgm`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
+Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_analitica`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_descripcion_plegada_trgm`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_extraccion_ts`, `idx_lic_fecha_limite`, `idx_lic_fecha_limite_ts`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fecha_publicacion_ts`, `idx_lic_fuente`, `idx_lic_id_externo_plegado_trgm`, `idx_lic_importe`, `idx_lic_importe_base_sin_iva`, `idx_lic_marco_ref`, `idx_lic_ml_proba`, `idx_lic_organo_id`, `idx_lic_organo_norm`, `idx_lic_organo_plegado_trgm`, `idx_lic_tecnologia`, `idx_lic_tecnologia_cubriente`, `idx_lic_tecnologia_tokens`, `idx_lic_titulo_plegado_trgm`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
 
 ### `licitaciones_duplicados`
 

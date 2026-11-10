@@ -3239,11 +3239,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Acuerdo marco o SDA del expediente: admitidos, vigencia y si tu organización está
+         * Acuerdo marco o SDA del expediente: admitidos, vigencia, basados y si tu organización está
          * @description Los admitidos de un marco o un SDA, su vigencia y si tu organización está entre ellos.
          *
-         *     En un contrato basado solo dice que lo es: las fuentes no publican de qué
-         *     marco cuelga. Ver `services/marcos.py`.
+         *     En un contrato basado son los de su marco, cuando la fuente publica cuál es
+         *     y está en el producto; si no, van sin dato. Ver `services/marcos.py`.
          */
         get: operations["get_marco_api_v1_licitaciones__id_externo__marco_get"];
         put?: never;

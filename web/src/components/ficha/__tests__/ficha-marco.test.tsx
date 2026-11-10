@@ -15,6 +15,7 @@ vi.mock("@/hooks/use-organization", () => ({
 
 import { FichaMarco } from "@/components/ficha/ficha-marco";
 
+/** Lo que responde `GET /licitaciones/{id}/marco` (CU-36). */
 function servir(respuesta: Partial<MarcoDeLicitacion>) {
   const fetchMock = vi.fn(() =>
     Promise.resolve(jsonResponse({ licitacion_id: "AM-1", sistema: "marco", identidad_conocida: true, ...respuesta })),
@@ -75,12 +76,39 @@ describe("FichaMarco", () => {
     expect(screen.getByText("Tu organización · Lotes 1, 2")).toBeInTheDocument();
   });
 
-  it("los contratos basados van como sin dato, no como cero", async () => {
-    servir({ admitidos_total: 2, admitidos: ADMITIDOS, organizacion_admitida: false });
+  it("sin basados que lo citen dice sin dato, no cero", async () => {
+    servir({ admitidos_total: 2, admitidos: ADMITIDOS, organizacion_admitida: false, basados_total: null });
     montar("marco");
 
     expect(await screen.findByText("No está entre los admitidos")).toBeInTheDocument();
-    expect(screen.getByText(/no publican de qué acuerdo marco cuelga cada contrato basado/)).toBeInTheDocument();
+    expect(screen.getByText(/PLACSP no publica de qué acuerdo marco cuelga cada uno/)).toBeInTheDocument();
+    expect(screen.queryByText(/contratos? lo citan?/)).not.toBeInTheDocument();
+  });
+
+  it("enseña los contratos basados que lo citan, con enlace a su ficha", async () => {
+    servir({
+      admitidos_total: 2,
+      admitidos: ADMITIDOS,
+      organizacion_admitida: true,
+      basados_total: 14,
+      basados: [
+        {
+          licitacion_id: "ted:684052-2026",
+          titulo: "Servicios de nube para la Consejería",
+          organo_contratacion: "Consejería de Digitalización",
+          importe: 120000,
+          fecha_publicacion: "2026-10-12",
+        },
+      ],
+    });
+    montar("marco");
+
+    expect(await screen.findByText("14 contratos lo citan")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Servicios de nube para la Consejería" })).toHaveAttribute(
+      "href",
+      "/detalle?lic=ted%3A684052-2026",
+    );
+    expect(screen.getByText("Son los 1 más recientes de 14.")).toBeInTheDocument();
   });
 
   it("sin NIF declarado manda a declararlo en vez de decir que no estás", async () => {
@@ -93,13 +121,17 @@ describe("FichaMarco", () => {
   });
 
   it("con admitidos sin NIF publicado no afirma que no estás", async () => {
-    servir({ admitidos_total: 1, admitidos: [{ nombre: "Empresa X", lotes: [], es_tu_organizacion: false }], organizacion_admitida: null });
+    servir({
+      admitidos_total: 1,
+      admitidos: [{ nombre: "Empresa X", lotes: [], es_tu_organizacion: false }],
+      organizacion_admitida: null,
+    });
     montar("marco");
 
     expect(await screen.findByText(/no se puede descartar que seas uno de ellos/)).toBeInTheDocument();
   });
 
-  it("un marco sin adjudicar ni duración lo dice", async () => {
+  it("un sistema dinámico sin adjudicar ni duración lo dice", async () => {
     servir({
       sistema: "sda",
       admitidos_total: 0,
@@ -109,20 +141,54 @@ describe("FichaMarco", () => {
     });
     montar("sda");
 
-    expect(await screen.findByText(/no ha publicado admitidos/)).toBeInTheDocument();
+    expect(await screen.findByText(/no publica qué empresas están admitidas en un sistema dinámico/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Sistema dinámico de adquisición" })).toBeInTheDocument();
     expect(screen.getByText("La fuente no publica fecha de fin ni duración.")).toBeInTheDocument();
     expect(screen.queryByText(/^Ver l/)).not.toBeInTheDocument();
   });
 
-  it("en un contrato basado los admitidos que compiten son sin dato y no se pide nada", () => {
-    const fetchMock = servir({});
+  it("un basado con su marco dice cuántos admitidos compiten y si estás entre ellos", async () => {
+    servir({
+      sistema: "basado_marco",
+      marco: {
+        licitacion_id: "ted:649072-2024",
+        titulo: "Acuerdo marco de servicios de nube",
+        organo_contratacion: "Agencia para la Administración Digital",
+        sistema: "marco",
+      },
+      admitidos_total: 2,
+      admitidos: ADMITIDOS,
+      organizacion_admitida: true,
+      vigencia: { fecha_fin: "2026-12-01", origen: "real", dias_restantes: 21 },
+    });
     montar("basado_marco");
 
+    expect(await screen.findByText("2 empresas")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Contrato basado en un acuerdo marco" })).toBeInTheDocument();
+    expect(screen.getByText("Admitidos que compiten")).toBeInTheDocument();
+    expect(screen.getByText("Está admitida")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Acuerdo marco de servicios de nube" })).toHaveAttribute(
+      "href",
+      "/detalle?lic=ted%3A649072-2024",
+    );
+    expect(screen.getByText("Vigencia del acuerdo marco")).toBeInTheDocument();
+  });
+
+  it("un basado cuyo marco no está aquí da su referencia y deja los admitidos sin dato", async () => {
+    servir({ sistema: "basado_marco", marco: null, marco_referencia: "TED 111111-2020" });
+    montar("basado_marco");
+
+    expect(await screen.findByText(/Su marco es el aviso TED 111111-2020/)).toBeInTheDocument();
+    expect(screen.queryByText(/empresas?$/)).not.toBeInTheDocument();
+  });
+
+  it("un basado sin enlace publicado lo dice, sin deducirlo del título", async () => {
+    servir({ sistema: "basado_sda", marco: null, marco_referencia: null });
+    montar("basado_sda");
+
+    expect(await screen.findByText(/no publica de qué sistema dinámico cuelga este contrato/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Contrato basado en un sistema dinámico" })).toBeInTheDocument();
     expect(screen.getByText(/Solo pueden presentar oferta las empresas ya admitidas/)).toBeInTheDocument();
     expect(screen.getAllByText("Sin dato", { exact: false }).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText(/no publica de qué acuerdo marco cuelga este contrato/)).toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

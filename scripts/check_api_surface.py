@@ -59,8 +59,9 @@ NUEVAS: dict[str, str] = {
     "GET /api/v1/licitaciones/{id_externo:path}/marco": (
         "Se miró GET /licitaciones/{id}, que ya trae los adjudicatarios y la duración de "
         "un acuerdo marco, pero fila a fila por lote y sin organización: no puede decir "
-        "cuántas empresas distintas están admitidas ni si la tuya es una de ellas, y su "
-        "respuesta se cachea igual para todos. GET /licitaciones/{id}/historial-propio "
+        "cuántas empresas distintas están admitidas ni si la tuya es una de ellas, no "
+        "lleva los admitidos del marco a la ficha de un contrato basado ni lista los "
+        "basados que citan a un marco, y su respuesta se cachea igual para todos. GET /licitaciones/{id}/historial-propio "
         "cuenta lo que ganaste con el órgano y en el CPV, no si estás dentro de este marco; "
         "y /competencia-esperada estima rivales por segmento, cuando en un marco los que "
         "compiten son los admitidos, no una estimación. La ficha gana además el campo "

@@ -15,6 +15,9 @@ código, eForms con dos campos) y lo que el producto pregunta —«¿es un marco
 ``None`` significa que la fuente no lo dice; ``ninguno``, que dice que no
 aplica.
 
+De qué marco cuelga un basado va aparte, en ``licitaciones.marco_ref``, y solo
+donde la fuente lo publica como dato.
+
 Procedencia de :data:`_CODICE`: ``ContractingSystemTypeCode-2.08.gc``, la lista
 que declara el ``listURI`` de ``cbc:ContractingSystemCode`` en el ATOM, leída
 del servidor de la Plataforma el 2026-11-10.

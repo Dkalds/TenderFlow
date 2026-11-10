@@ -350,7 +350,7 @@ async def get_historial_propio(
 @router.get(
     "/licitaciones/{id_externo:path}/marco",
     response_model=MarcoDeLicitacion,
-    summary="Acuerdo marco o SDA del expediente: admitidos, vigencia y si tu organización está",
+    summary="Acuerdo marco o SDA del expediente: admitidos, vigencia, basados y si tu organización está",
     responses={
         403: {"description": "No perteneces a esa organización"},
         404: {"description": "No encontrado"},
@@ -363,8 +363,8 @@ async def get_marco(
 ) -> MarcoDeLicitacion:
     """Los admitidos de un marco o un SDA, su vigencia y si tu organización está entre ellos.
 
-    En un contrato basado solo dice que lo es: las fuentes no publican de qué
-    marco cuelga. Ver `services/marcos.py`.
+    En un contrato basado son los de su marco, cuando la fuente publica cuál es
+    y está en el producto; si no, van sin dato. Ver `services/marcos.py`.
     """
     resultado = await run_db(
         marco_de_licitacion, id_externo, organization_id=int(_ctx["organization_id"])
