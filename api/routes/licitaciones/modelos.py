@@ -161,4 +161,6 @@ class LicitacionDetail(LicitacionSummary):
     # v180 — las modificaciones del contrato que publicó el órgano (art. 207.3
     # LCSP), lo que cuesta tras ellas y cuánto amplía el órgano sus contratos.
     # `items` vacío = no se ha publicado ninguna (o la fuente no las trae).
-    modificaciones: ModificacionesDeLicitacion
+    # `None` = no se calculó (el detalle siempre lo calcula; los fixtures de
+    # contrato anteriores a v180 no lo traen).
+    modificaciones: ModificacionesDeLicitacion | None = None

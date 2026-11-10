@@ -92,12 +92,15 @@ def test_cu38_modificaciones_y_coste_final_en_la_ficha(client, api_db):
 
     # TED: el original de una adjudicación está en el producto; otro aviso solo trae
     # el expediente (BT-22) dentro del mismo órgano; otro, el mismo expediente en
-    # otro órgano; y otro no se sabe de qué es.
+    # otro órgano; otro no se sabe de qué es; y otro modifica una modificación
+    # anterior que, antes de v180, entró como licitación (la fila sigue ahí).
     sembrar_licitacion("ted:700100-2026", "Soporte de la plataforma de administración electrónica",
                        fuente="ted", **comun)  # fmt: skip
     _adjudicar("ted:700100-2026", 100000.0)
     sembrar_licitacion("placsp:ORG1:EXP-MOD-2", "Licencias y soporte del ERP municipal SAP",
                        **comun)  # fmt: skip
+    sembrar_licitacion("ted:800001-2026", "Soporte de la plataforma de administración electrónica",
+                       fuente="ted", **comun)  # fmt: skip
     ted = TedConnector()
     avisos = [
         _aviso_modificacion(
@@ -109,6 +112,9 @@ def test_cu38_modificaciones_y_coste_final_en_la_ficha(client, api_db):
             **{"internal-identifier-proc": "EXP-MOD-2", "buyer-name": {"spa": ["Otro órgano"]}},
         ),
         _aviso_modificacion("800004-2026"),
+        _aviso_modificacion(
+            "800005-2026", **{"modification-previous-notice-identifier": ["00800001-2026"]}
+        ),
     ]
     for _ in range(2):  # la ventana de solapamiento de TED los relee
         for aviso in avisos:
@@ -130,6 +136,11 @@ def test_cu38_modificaciones_y_coste_final_en_la_ficha(client, api_db):
         # Mismo expediente, otro órgano: BT-22 solo no basta.
         {"clave": "ted:800003-2026", "licitacion_id": None, "enlace": None},
         {"clave": "ted:800004-2026", "licitacion_id": None, "enlace": None},
+        # Cita a 800001-2026 (con ceros, como el XML): va al expediente de esa
+        # modificación, no a su vieja fila de licitación. En la primera pasada
+        # 800001 aún no estaba enlazada; la segunda lo reintenta.
+        {"clave": "ted:800005-2026", "licitacion_id": "ted:700100-2026",
+         "enlace": "aviso_original"},
     ]  # fmt: skip
 
     sesion = abrir_sesion("modificaciones@example.com", client)
@@ -161,7 +172,9 @@ def test_cu38_modificaciones_y_coste_final_en_la_ficha(client, api_db):
 
     # El aviso de TED, en la ficha del expediente al que modifica, con su motivo.
     del_aviso = sesion.get("/licitaciones/ted:700100-2026").json()["modificaciones"]
-    [aviso] = del_aviso["items"]
+    # Las dos de la cadena, en el expediente que modifican.
+    aviso, segunda = del_aviso["items"]
+    assert segunda["aviso_original"] == "800001-2026"
     assert (aviso["fuente"], aviso["motivo_codigo"]) == ("ted", "add-wss")
     assert aviso["motivo"] == "Necesidad de servicios adicionales"
     assert aviso["descripcion"] == "Ampliación del soporte a dos sedes más"

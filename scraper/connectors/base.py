@@ -210,7 +210,8 @@ class ParsedTender:
     # resuelven lote_id=None, el "lote único implícito" de siempre).
     lotes: list[Lote] = field(default_factory=list)
     # v180: modificaciones de contrato publicadas en la misma entry (PLACSP).
-    # Upsert por clave, sin borrar: una que la fuente deja de publicar se queda.
+    # La entry es una foto completa: sustituyen a las de la fuente en el
+    # expediente (`db.repositories.modificaciones.reemplazar_de_expedientes`).
     modificaciones: list[ModificacionContrato] = field(default_factory=list)
 
 
@@ -386,21 +387,31 @@ def _persistir_modificaciones(
         )
 
 
-def _modificaciones_sin_licitacion(connector: Connector) -> None:
+def _modificaciones_sin_licitacion(connector: Connector) -> bool:
     """Escribe y enlaza las modificaciones que el conector no colgó de un expediente.
 
     Opt-in por atributo, como ``referencias_cruzadas``: hoy solo TED, cuyos
     avisos ``can-modif`` no son una licitación sino la modificación de otra
     (:meth:`scraper.connectors.ted.TedConnector.modificaciones_pendientes`).
     Tras escribirlas se intenta enlazar las que siguen sin expediente, también
-    las de pasadas anteriores cuyo expediente ha llegado después. Fail-open.
+    las de pasadas anteriores cuyo expediente ha llegado después.
+
+    Devuelve si se escribieron: si no, el llamador no avanza el cursor. Que el
+    enlazado falle no impide avanzar: lo sin enlazar se reintenta en cada pasada.
     """
     pendientes = getattr(connector, "modificaciones_pendientes", None)
     if not callable(pendientes):
-        return
+        return True
     source_id = connector.source_id
     try:
-        _persistir_modificaciones(list(pendientes()), source_id=source_id)
+        from db.repositories import modificaciones as repo
+
+        repo.upsert(list(pendientes()))
+    except Exception:
+        _contar_error("modificaciones")
+        log.warning("connector_modificaciones_persist_failed", source=source_id, exc_info=True)
+        return False
+    try:
         from services.modificaciones import enlazar_pendientes
 
         with _cronometro(source_id, "modificaciones"):
@@ -408,6 +419,7 @@ def _modificaciones_sin_licitacion(connector: Connector) -> None:
     except Exception:
         _contar_error("modificaciones")
         log.warning("connector_modificaciones_enlazar_failed", source=source_id, exc_info=True)
+    return True
 
 
 def _contar_dedupe_fallido(source_id: str) -> None:
@@ -887,14 +899,16 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
     # los conectores no incrementales (feeds newest-first) este es el único
     # avance; para los incrementales es idempotente (mismo valor que el último
     # lote ya persistido).
-    final_cursor = connector.new_cursor()
-    if final_cursor:
-        set_cursor(source_id, **final_cursor)
+    # Antes del cursor: un aviso de modificación ya no entra como licitación,
+    # así que si no se escribe aquí no queda en ningún sitio, y el cursor no
+    # avanza (la pasada siguiente lo relee; con `v180` sin aplicar, todas).
+    # Corre aunque el lote venga vacío: una pasada de TED puede traer solo
+    # avisos de modificación.
+    modificaciones_escritas = _modificaciones_sin_licitacion(connector)
 
-    # Antes del cierre del lote: el enlazado lee `licitaciones` y no depende de
-    # la resolución de empresas ni de los dedupes. Corre aunque el lote venga
-    # vacío: una pasada de TED puede traer solo avisos de modificación.
-    _modificaciones_sin_licitacion(connector)
+    final_cursor = connector.new_cursor()
+    if final_cursor and modificaciones_escritas:
+        set_cursor(source_id, **final_cursor)
 
     completar_documentos = _completar_documentos_de(connector)
     if completar_documentos is not None and _completar_documentos_primero(connector):

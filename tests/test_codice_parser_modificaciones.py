@@ -107,3 +107,55 @@ def test_una_resolucion_con_final_a_cero_no_es_un_contrato_gratis() -> None:
     assert suspension.importe_modificacion_base is None
     assert resolucion.importe_modificacion == -714954.12
     assert (resolucion.importe_final, resolucion.importe_final_base) == (None, None)
+
+
+_ENTRY_DOS_CONTRATOS = """<entry xmlns="http://www.w3.org/2005/Atom"
+  xmlns:cbc="urn:dgpe:names:draft:codice:schema:xsd:CommonBasicComponents-2"
+  xmlns:cac="urn:dgpe:names:draft:codice:schema:xsd:CommonAggregateComponents-2"
+  xmlns:cacext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonAggregateComponents-2"
+  xmlns:cbcext="urn:dgpe:names:draft:codice-place-ext:schema:xsd:CommonBasicComponents-2">
+  <cacext:ContractFolderStatus>
+    <cacext:ValidNoticeInfo>
+      <cbcext:NoticeTypeCode>DOC_MOD</cbcext:NoticeTypeCode>
+      <cacext:AdditionalPublicationStatus>
+        <cbcext:PublicationMediaName>Perfil del contratante</cbcext:PublicationMediaName>
+        {fechas}
+      </cacext:AdditionalPublicationStatus>
+    </cacext:ValidNoticeInfo>
+    {bloques}
+  </cacext:ContractFolderStatus>
+</entry>"""
+
+
+def _entry_sintetica(orden: list[tuple[str, str]]) -> etree._Element:
+    fechas = "".join(
+        f"<cacext:AdditionalPublicationDocumentReference><cbc:IssueDate>2024-0{i + 1}-01"
+        "</cbc:IssueDate></cacext:AdditionalPublicationDocumentReference>"
+        for i in range(len(orden))
+    )
+    bloques = "".join(
+        f"<cac:ContractModification><cbc:ID>{n}</cbc:ID><cbc:ContractID>{c}</cbc:ContractID>"
+        "</cac:ContractModification>"
+        for c, n in orden
+    )
+    return etree.fromstring(_ENTRY_DOS_CONTRATOS.format(fechas=fechas, bloques=bloques).encode())
+
+
+def test_contratos_a_ritmos_distintos_no_cruzan_fechas() -> None:
+    # A1, A2, A3 y luego B1: por número saldría A1, B1, A2, A3, y B1 se quedaría
+    # con la fecha de A2. Sin cronología fiable, sin fecha.
+    entry = _entry_sintetica([("A", "1"), ("A", "2"), ("A", "3"), ("B", "1")])
+
+    assert {m.fecha_publicacion for m in parse_modificaciones(entry, "X")} == {None}
+
+
+def test_en_orden_de_numero_las_fechas_van_por_posicion() -> None:
+    entry = _entry_sintetica([("A", "1"), ("B", "1"), ("A", "2")])
+
+    assert [
+        (m.contrato_ref, m.numero, m.fecha_publicacion) for m in parse_modificaciones(entry, "X")
+    ] == [
+        ("A", "1", "2024-01-01"),
+        ("B", "1", "2024-02-01"),
+        ("A", "2", "2024-03-01"),
+    ]

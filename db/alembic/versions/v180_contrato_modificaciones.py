@@ -43,8 +43,10 @@ repiten), así que se guarda como «valor publicado en el aviso», base
 ``desconocido``, y no se compara con nada.
 
 ``identificador_aviso`` es el ``notice-identifier`` (UUID) de un aviso de TED:
-el BT-1501 de la modificación siguiente apunta a él, y así una cadena de
-modificaciones encuentra su expediente aunque solo la primera case.
+el BT-1501 de la modificación siguiente puede apuntar a él. ``expediente_ref``
+(BT-22), ``procedimiento_ref`` (BT-04) e ``id_evl`` son las referencias con las
+que se busca el expediente cuando el aviso original no está aquí: no son
+columnas de ``licitaciones`` y el aviso no se vuelve a pedir.
 
 Las fechas son ``text`` ISO (``YYYY-MM-DD``), como en ``licitaciones``.
 
@@ -118,6 +120,8 @@ def upgrade() -> None:
             identificador_aviso text,
             aviso_original text,
             expediente_ref text,
+            procedimiento_ref text,
+            id_evl text,
             organo text,
             url text,
             fecha_extraccion text NOT NULL

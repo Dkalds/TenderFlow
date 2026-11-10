@@ -38,6 +38,7 @@ __all__ = [
     "enlazar",
     "expedientes_de_avisos",
     "expedientes_de_avisos_previos",
+    "expedientes_de_modificaciones",
     "reemplazar_de_expedientes",
     "sin_enlazar",
     "upsert",
@@ -83,7 +84,11 @@ class ModificacionContrato:
     #: BT-1501 tal como lo publica TED: el número del aviso (``123-2025``) o su
     #: UUID con versión (``…-01``).
     aviso_original: str | None = None
+    #: BT-22, BT-04 y el ``idEvl`` del deeplink de PLACSP: con qué se busca el
+    #: expediente si el aviso original no está (``services.dedupe``).
     expediente_ref: str | None = None
+    procedimiento_ref: str | None = None
+    id_evl: str | None = None
     organo: str | None = None
     url: str | None = None
     fecha_extraccion: str = field(default_factory=now_utc_iso)
@@ -181,15 +186,16 @@ class FilaSinEnlazar(TypedDict):
     clave: str
     aviso_original: str | None
     expediente_ref: str | None
+    procedimiento_ref: str | None
+    id_evl: str | None
     organo: str | None
-    url: str | None
 
 
 def sin_enlazar(*, fuente: str, limite: int) -> list[FilaSinEnlazar]:
     """Las modificaciones de ``fuente`` sin expediente, de la más reciente a la más antigua."""
     with connect_read() as c:
         cur = c.execute(
-            "SELECT clave, aviso_original, expediente_ref, organo, url "
+            "SELECT clave, aviso_original, expediente_ref, procedimiento_ref, id_evl, organo "
             "FROM contrato_modificaciones "
             "WHERE fuente = %s AND licitacion_id IS NULL "
             "ORDER BY fecha_publicacion DESC NULLS LAST, clave LIMIT %s",
@@ -321,7 +327,12 @@ def adjudicado_por_lote(licitacion_ids: Sequence[str]) -> list[FilaAdjudicado]:
 
 
 def expedientes_de_avisos(ids: Sequence[str]) -> dict[str, str]:
-    """``{id_externo: expediente}`` de los ``ids`` que están en ``licitaciones``.
+    """``{id_externo: expediente}`` de los ``ids`` que están en ``licitaciones`` y no son modificaciones.
+
+    Una fila ``ted:`` que también es la clave de una modificación es un aviso
+    ``can-modif`` que se ingirió como licitación antes de ``v180``: no es el
+    expediente, y quien la cita se enlaza por la modificación
+    (:func:`expedientes_de_modificaciones`).
 
     El expediente es la canónica cuando la fila es una republicación
     **confirmada** de otra (``licitaciones_duplicados``), y la propia fila si
@@ -340,6 +351,7 @@ def expedientes_de_avisos(ids: Sequence[str]) -> dict[str, str]:
             "LEFT JOIN licitaciones_duplicados d "
             "  ON d.licitacion_id = l.id_externo AND d.status = 'confirmed' "
             "WHERE l.id_externo = ANY(%s) "
+            "  AND NOT EXISTS (SELECT 1 FROM contrato_modificaciones m WHERE m.clave = l.id_externo) "
             "ORDER BY l.id_externo, d.confianza DESC NULLS LAST",
             (list(ids),),
         )
@@ -359,5 +371,22 @@ def expedientes_de_avisos_previos(identificadores: Sequence[str]) -> dict[str, s
             "SELECT identificador_aviso, licitacion_id FROM contrato_modificaciones "
             "WHERE identificador_aviso = ANY(%s) AND licitacion_id IS NOT NULL",
             (list(identificadores),),
+        )
+        return {str(fila[0]): str(fila[1]) for fila in cur.fetchall()}
+
+
+def expedientes_de_modificaciones(claves: Sequence[str]) -> dict[str, str]:
+    """``{clave: expediente}`` de las modificaciones ya enlazadas entre ``claves``.
+
+    Una modificación cuyo BT-1501 es otro aviso de modificación (la segunda de
+    una cadena) va al expediente de aquella.
+    """
+    if not claves:
+        return {}
+    with connect_read() as c:
+        cur = c.execute(
+            "SELECT clave, licitacion_id FROM contrato_modificaciones "
+            "WHERE clave = ANY(%s) AND licitacion_id IS NOT NULL",
+            (list(claves),),
         )
         return {str(fila[0]): str(fila[1]) for fila in cur.fetchall()}

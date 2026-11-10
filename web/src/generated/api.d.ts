@@ -1088,6 +1088,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/dev-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dev Login
+         * @description DEV ONLY: Set session cookie for user_id=1 without credentials.
+         *
+         *     This endpoint is only available when ENV=dev. It allows quick
+         *     login during local development without requiring Google OAuth
+         *     or password setup.
+         */
+        post: operations["dev_login_api_v1_auth_dev_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -11093,7 +11117,7 @@ export interface components {
             ml_tech_principal?: string | null;
             /** Ml Tecnologias */
             ml_tecnologias?: string | null;
-            modificaciones: components["schemas"]["ModificacionesDeLicitacion"];
+            modificaciones?: components["schemas"]["ModificacionesDeLicitacion"] | null;
             /** Moneda */
             moneda?: string | null;
             /** Nuts Code */
@@ -20572,6 +20596,35 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Error: cualquier código no listado (RFC 9457). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    dev_login_api_v1_auth_dev_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserInfo"];
                 };
             };
             /** @description Error: cualquier código no listado (RFC 9457). */

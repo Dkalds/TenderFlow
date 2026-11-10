@@ -547,9 +547,10 @@ def _modificacion(notice: Mapping[str, object], natural_id: str) -> Modificacion
     Guarda lo que permite enlazarla después (el aviso que modifica, BT-1501,
     que es su número o su UUID con versión; el suyo propio,
     ``notice-identifier``, por si otra modificación lo cita; el expediente,
-    BT-22; el órgano, y el enlace a los pliegos por si lleva el ``idEvl``) y lo
-    que la explica: el motivo (BT-200 código, BT-201 texto) y la descripción
-    (BT-202).
+    BT-22; el procedimiento, BT-04; el ``idEvl`` de sus enlaces a pliegos, y el
+    órgano) y lo que la explica: el motivo (BT-200 código, BT-201 texto) y la
+    descripción (BT-202). ``url`` es el aviso, no los pliegos: es lo que la
+    ficha enlaza como «Ver el aviso».
 
     BT-720 va a ``importe_aviso`` con base ``desconocido``: en los avisos de
     España es unas veces el valor tras la modificación y otras una copia del
@@ -559,7 +560,9 @@ def _modificacion(notice: Mapping[str, object], natural_id: str) -> Modificacion
     links = notice.get("links")
     pdf = links.get("pdf") if isinstance(links, dict) else None
     anuncio_url = pdf.get("SPA") if isinstance(pdf, dict) else None
-    originales = set(_valores(notice.get("modification-previous-notice-identifier")))
+    originales = {
+        _sin_ceros(v) for v in _valores(notice.get("modification-previous-notice-identifier"))
+    }
     valor = _unico(notice.get("BT-720-Tender"))
     importe_aviso = _to_float(valor) if valor is not None else None
     return ModificacionContrato(
@@ -576,9 +579,24 @@ def _modificacion(notice: Mapping[str, object], natural_id: str) -> Modificacion
         # más de un original no hay uno con el que enlazar por esta vía.
         aviso_original=originales.pop() if len(originales) == 1 else None,
         expediente_ref=_expediente(dict(notice)),
+        procedimiento_ref=_procedimiento(notice),
+        id_evl=_id_evl(dict(notice)),
         organo=_first_lang(notice.get("buyer-name")),
-        url=_documents_url(dict(notice)) or anuncio_url,
+        url=anuncio_url or f"https://ted.europa.eu/es/notice/{natural_id}/pdf",
     )
+
+
+def _sin_ceros(aviso: str) -> str:
+    """``00023108-2025`` → ``23108-2025``: el XML guarda ceros que la API y ``id_externo`` no."""
+    if _NUMERO_PUBLICACION.fullmatch(aviso):
+        numero, _, anio = aviso.partition("-")
+        return f"{numero.lstrip('0') or '0'}-{anio}"
+    return aviso
+
+
+_UUID_CON_VERSION = re.compile(
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-\d+"
+)
 
 
 class TedConnector:
@@ -809,9 +827,64 @@ class TedConnector:
         No cuelgan de una licitación de la pasada, así que no viajan en un
         ``ParsedTender``: los escribe y los enlaza con su expediente
         ``scraper.connectors.base._modificaciones_sin_licitacion``.
+
+        Antes, el BT-1501 en forma de UUID se traduce al número de publicación
+        del aviso que cita (:meth:`_numeros_de_avisos`): es la forma de
+        ``id_externo``, y el 34 % de los avisos lo publica así (medido el
+        2026-11-10; 241 de los 245 originales eran adjudicaciones). Lo que la
+        API no resuelva se queda como UUID.
         """
         pendientes, self._modificaciones = self._modificaciones, []
+        uuids = {
+            m.aviso_original: encontrado.group(1)
+            for m in pendientes
+            if m.aviso_original and (encontrado := _UUID_CON_VERSION.fullmatch(m.aviso_original))
+        }
+        if uuids:
+            numeros = self._numeros_de_avisos(sorted(set(uuids.values())))
+            for m in pendientes:
+                if m.aviso_original in uuids and (n := numeros.get(uuids[m.aviso_original])):
+                    m.aviso_original = n
         return pendientes
+
+    def _numeros_de_avisos(
+        self,
+        identificadores: list[str],
+        *,
+        presupuesto_s: float = _PRESUPUESTO_REEMPAREJO_S,
+        reloj: Callable[[], float] = time.monotonic,
+    ) -> dict[str, str]:
+        """``{notice-identifier: publication-number}`` según la API. Fail-open.
+
+        Sin reintentos y con presupuesto, como :meth:`reemparejar_vigentes`: lo
+        que no se resuelva aquí se queda en UUID y aún puede enlazar por BT-22,
+        BT-04 o ``idEvl``.
+        """
+        numeros: dict[str, str] = {}
+        inicio_s = reloj()
+        for inicio in range(0, len(identificadores), _PAGE_SIZE):
+            if reloj() - inicio_s >= presupuesto_s:
+                break
+            lote = identificadores[inicio : inicio + _PAGE_SIZE]
+            cuerpo = {
+                "query": f"notice-identifier IN ({' '.join(lote)})",
+                "fields": ["publication-number", "notice-identifier"],
+                "limit": len(lote),
+                "scope": "ALL",
+            }
+            try:
+                resp = self._session.post(_API_URL, json=cuerpo, timeout=_TIMEOUT_REFERENCIAS_S)
+                resp.raise_for_status()
+                avisos = resp.json().get("notices") or []
+            except Exception as e:
+                log.warning("ted_avisos_originales_no_resueltos", error=str(e), n=len(lote))
+                continue
+            for aviso in avisos:
+                uuid = _unico(aviso.get("notice-identifier"))
+                numero = aviso.get("publication-number")
+                if uuid and isinstance(numero, str) and _NUMERO_PUBLICACION.fullmatch(numero):
+                    numeros[uuid] = numero
+        return numeros
 
     # ── documentos ───────────────────────────────────────────────────────
 

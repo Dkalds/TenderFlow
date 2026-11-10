@@ -253,7 +253,7 @@ _NOTICE_MODIFICACION = "DOC_MOD"
 _MEDIO_PERFIL = "Perfil del contratante"
 
 
-def _fechas_de_anuncios_de_modificacion(entry: Any, cfs: str) -> list[str]:
+def _fechas_de_anuncios_de_modificacion(entry: etree._Element, cfs: str) -> list[str]:
     """Los ``IssueDate`` del anuncio ``DOC_MOD`` en el perfil del contratante, ordenados.
 
     Uno por publicación, repetidos incluidos: dos modificaciones publicadas el
@@ -276,7 +276,7 @@ def _numero_de_orden(numero: str | None) -> tuple[int, str]:
     return (int(texto), "") if texto.isdigit() else (2**31, texto)
 
 
-def _plazo(bloque: Any, nombre: str) -> tuple[float | None, str | None]:
+def _plazo(bloque: etree._Element, nombre: str) -> tuple[float | None, str | None]:
     """``(valor, unitCode)`` de un ``*DurationMeasure`` del bloque."""
     nodos = bloque.xpath(f"./cbc:{nombre}", namespaces=NS)
     if not nodos:
@@ -286,7 +286,7 @@ def _plazo(bloque: Any, nombre: str) -> tuple[float | None, str | None]:
     return valor, unidad
 
 
-def parse_modificaciones(entry: Any, licitacion_id: str) -> list[ModificacionContrato]:
+def parse_modificaciones(entry: etree._Element, licitacion_id: str) -> list[ModificacionContrato]:
     """Las modificaciones de contrato publicadas en la entry (``cac:ContractModification``).
 
     Una por bloque: el órgano publica en él el importe sin IVA de la
@@ -298,10 +298,12 @@ def parse_modificaciones(entry: Any, licitacion_id: str) -> list[ModificacionCon
     El bloque no trae fecha. El anuncio ``DOC_MOD`` del perfil trae un
     ``IssueDate`` por publicación; cuando hay tantos como modificaciones (el
     92,6 % de las entries con bloques del ZIP 2026-10, medido el 2026-11-10) se
-    asignan por orden: la más antigua a la primera modificación por número y,
-    dentro del mismo número, por posición en la entry, que la fuente reescribe
-    entera y en orden en cada actualización. Si no coinciden, ``None``:
-    repartir menos fechas que modificaciones sería inventarlas.
+    asignan por posición en la entry, que la fuente reescribe entera y en orden
+    de publicación: la más antigua al primer bloque. Solo si el orden por
+    posición es el mismo que por número: si no lo es (contratos que se
+    modifican a ritmos distintos, o un bloque fuera de su orden), la posición
+    no es una cronología fiable. Si no, ``None``: repartir fechas que no casan
+    sería inventarlas.
 
     El lote sale del ``ContractID``: es el ``cac:Contract/cbc:ID`` de una
     adjudicación. Si dos lotes comparten ``ContractID`` (lo hacen: S-06722-2023)
@@ -328,7 +330,11 @@ def parse_modificaciones(entry: Any, licitacion_id: str) -> list[ModificacionCon
         enumerate(bloques), key=lambda par: (_numero_de_orden(_text(par[1], "./cbc:ID")), par[0])
     )
     fechas = _fechas_de_anuncios_de_modificacion(entry, cfs)
-    fechas_por_orden = fechas if len(fechas) == len(ordenados) else [None] * len(ordenados)
+    # El orden por número es el de la entry: la posición es el de publicación.
+    por_posicion = [posicion for posicion, _ in ordenados] == list(range(len(bloques)))
+    fechas_por_orden: list[str | None] = (
+        list(fechas) if por_posicion and len(fechas) == len(bloques) else [None] * len(bloques)
+    )
 
     out: list[ModificacionContrato] = []
     vistas: Counter[str] = Counter()

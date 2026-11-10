@@ -156,20 +156,50 @@ def test_un_numero_repetido_en_el_mismo_lote_no_tiene_coste(
     assert servicio.modificaciones_de_licitacion("placsp:O:E1").costes == []
 
 
+def test_un_aviso_de_ted_en_el_mismo_expediente_no_borra_el_coste(
+    repo: dict[str, list[dict[str, Any]]],
+) -> None:
+    # El aviso de TED no trae lote ni contrato: no hace ambiguo el de PLACSP.
+    aviso = {**_fila(contrato=None, numero=None), "fuente": "ted"}  # type: ignore[arg-type]
+    repo["propias"] = [_fila(numero="1", final=1100.0), _fila(numero="2", final=1200.0), aviso]
+    repo["adjudicado"] = [_adj("placsp:O:E1", None, 1000.0)]
+
+    [coste] = servicio.modificaciones_de_licitacion("placsp:O:E1").costes
+    assert (coste.final, coste.variacion_pct) == (1200.0, 20.0)
+
+
+def _sin_enlazar(clave: str, **campos: Any) -> dict[str, Any]:
+    return {
+        "clave": clave,
+        "aviso_original": None,
+        "expediente_ref": None,
+        "procedimiento_ref": None,
+        "id_evl": None,
+        "organo": "Ayto",
+        **campos,
+    }
+
+
 def test_enlazar_por_aviso_original_cadena_y_referencia(monkeypatch: pytest.MonkeyPatch) -> None:
     filas = [
-        {"clave": "ted:1-2026", "aviso_original": "9-2025", "expediente_ref": None,
-         "organo": "Ayto", "url": None},
-        {"clave": "ted:2-2026", "aviso_original": None, "expediente_ref": "EXP/1",
-         "organo": "Ayto", "url": None},
-        {"clave": "ted:3-2026", "aviso_original": "8-2025", "expediente_ref": None,
-         "organo": "Ayto", "url": None},
-        # La segunda modificación de una cadena cita el UUID (con versión) de la primera.
-        {"clave": "ted:4-2026", "aviso_original": "be80e249-3d04-4f02-91f7-761b9ad0ed4f-01",
-         "expediente_ref": None, "organo": "Ayto", "url": None},
-    ]  # fmt: skip
+        # BT-1501 que es una adjudicación en `licitaciones`.
+        _sin_enlazar("ted:1-2026", aviso_original="9-2025"),
+        # Sin original: por referencia (BT-22 en el órgano, BT-04 o idEvl).
+        _sin_enlazar("ted:2-2026", expediente_ref="EXP/1"),
+        # Original que no está: queda sin enlazar, no se cuelga de nada.
+        _sin_enlazar("ted:3-2026", aviso_original="8-2025"),
+        # Segunda de una cadena: cita a otra modificación ya enlazada.
+        _sin_enlazar("ted:4-2026", aviso_original="1-2026"),
+        # BT-1501 que la API no resolvió: el UUID (con versión) de una modificación enlazada.
+        _sin_enlazar("ted:5-2026", aviso_original="be80e249-3d04-4f02-91f7-761b9ad0ed4f-01"),
+    ]
     escritos: list[tuple[str, str, str]] = []
     monkeypatch.setattr(servicio.repo, "sin_enlazar", lambda **_k: filas)
+    monkeypatch.setattr(
+        servicio.repo,
+        "expedientes_de_modificaciones",
+        lambda claves: {"ted:1-2026": "placsp:O:EXP/9"} if "ted:1-2026" in claves else {},
+    )
     monkeypatch.setattr(
         servicio.repo, "expedientes_de_avisos", lambda ids: {"ted:9-2025": "placsp:O:EXP/9"}
     )
@@ -185,9 +215,10 @@ def test_enlazar_por_aviso_original_cadena_y_referencia(monkeypatch: pytest.Monk
     )
     monkeypatch.setattr(servicio.repo, "enlazar", lambda e: escritos.extend(e) or len(e))
 
-    assert servicio.enlazar_pendientes(fuente="ted") == 3
+    assert servicio.enlazar_pendientes(fuente="ted") == 4
     assert escritos == [
         ("ted:1-2026", "placsp:O:EXP/9", "aviso_original"),
-        ("ted:4-2026", "placsp:O:EXP/4", "aviso_original"),
+        ("ted:4-2026", "placsp:O:EXP/9", "aviso_original"),
+        ("ted:5-2026", "placsp:O:EXP/4", "aviso_original"),
         ("ted:2-2026", "placsp:O:EXP/1", "referencia"),
     ]

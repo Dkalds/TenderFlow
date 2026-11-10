@@ -83,7 +83,10 @@ function Costes({ costes }: { costes: CosteDeContrato[] }) {
             <>
               <span className="tf-tnum">{formatCurrency(c.final)}</span>{" "}
               <span className="text-tf-meta tf-tnum font-normal">{variacion(c.variacion_pct)}</span>
-              <span className={NOTA}>Adjudicado por {formatCurrency(c.adjudicado)}. Sin IVA.</span>
+              <span className={NOTA}>
+                Adjudicado por {formatCurrency(c.adjudicado)}. Sin IVA; incluye las prórrogas publicadas como
+                modificación.
+              </span>
             </>
           }
         />
@@ -168,7 +171,8 @@ function Organo({ organo }: { organo: ModificacionesDeLicitacion["organo"] }) {
           <span className="tf-tnum">{variacion(organo.mediana_pct)}</span>
           <span className={NOTA}>
             Mediana entre {contar(organo.n, "contrato modificado", "contratos modificados")} con adjudicación e importe
-            final publicados, sin IVA. Los contratos que no se modifican no cuentan.
+            final publicados, sin IVA. Cuentan también las prórrogas que el órgano publica como modificación; los
+            contratos que no se modifican, no.
           </span>
         </>
       }

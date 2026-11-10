@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 
 from db.repositories import modificaciones as repo
 from observability import get_logger
-from services.dedupe import ReferenciaCruzada, expedientes_por_referencia, id_evl_de_url
+from services.dedupe import ReferenciaCruzada, expedientes_por_referencia
 from shared.dto import (
     AmpliacionDelOrgano,
     CosteDeContrato,
@@ -50,9 +50,9 @@ MUESTRA_MINIMA_ORGANO = 10
 _MAX_SIN_ENLAZAR = 5_000
 
 
-#: BT-1501 en su forma de número de publicación (``871071-2025``): la de
-#: ``id_externo`` de un aviso. La otra, el UUID del aviso con su versión
-#: (``cb2be52c-…-01``), solo lleva a otro aviso de modificación.
+#: BT-1501 en su forma de número de publicación (``871071-2025``), la de
+#: ``id_externo`` de un aviso. El conector de TED ya traduce a esta forma el
+#: UUID con versión (``cb2be52c-…-01``) cuando la API lo resuelve.
 _NUMERO_PUBLICACION = re.compile(r"\d{1,8}-\d{4}")
 _VERSION_DE_UUID = re.compile(
     r"^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-\d+$"
@@ -68,10 +68,18 @@ def _uuid_del_aviso(aviso: str) -> str:
 def enlazar_pendientes(*, fuente: str) -> int:
     """Enlaza con su expediente las modificaciones de ``fuente`` que siguen sin él.
 
-    Por este orden: el aviso original (BT-1501) si es una fila de
-    ``licitaciones``; si es otro aviso de modificación ya enlazado, su
-    expediente; y si no, ``idEvl`` o BT-22 dentro del mismo órgano. Devuelve
-    cuántas se enlazaron. Idempotente: solo toca filas sin expediente.
+    Por este orden, y la primera que da un expediente gana:
+
+    1. El aviso que modifica (BT-1501) es otra modificación ya enlazada (la
+       segunda de una cadena): su expediente.
+    2. Es una fila de ``licitaciones`` que no es una modificación: ese
+       expediente, o la canónica de la que es republicación confirmada.
+    3. Su BT-1501 sigue en forma de UUID (la API no lo resolvió) y es el
+       ``notice-identifier`` de una modificación ya enlazada.
+    4. ``idEvl``, BT-04 o BT-22 dentro del mismo órgano
+       (``services.dedupe.expedientes_por_referencia``).
+
+    Devuelve cuántas se enlazaron. Idempotente: solo toca filas sin expediente.
     """
     filas = repo.sin_enlazar(fuente=fuente, limite=_MAX_SIN_ENLAZAR)
     if not filas:
@@ -86,21 +94,32 @@ def enlazar_pendientes(*, fuente: str) -> int:
         for f in filas
         if f["aviso_original"] and f["clave"] not in numeros
     }
-    originales = repo.expedientes_de_avisos(sorted(set(numeros.values())))
+    citados = sorted(set(numeros.values()))
+    por_modificacion = repo.expedientes_de_modificaciones(citados)
+    por_licitacion = repo.expedientes_de_avisos(citados)
     previos = repo.expedientes_de_avisos_previos(sorted(set(uuids.values())))
 
     enlaces: list[tuple[str, str, str]] = []
     restantes: dict[str, tuple[str | None, ReferenciaCruzada]] = {}
     for fila in filas:
         clave = fila["clave"]
-        expediente = originales.get(numeros.get(clave, "")) or previos.get(uuids.get(clave, ""))
+        citado = numeros.get(clave, "")
+        expediente = (
+            por_modificacion.get(citado)
+            or por_licitacion.get(citado)
+            or previos.get(uuids.get(clave, ""))
+        )
         if expediente is not None:
             enlaces.append((clave, expediente, "aviso_original"))
             continue
-        referencia = ReferenciaCruzada(
-            expediente=fila["expediente_ref"], id_evl=id_evl_de_url(fila["url"])
+        restantes[clave] = (
+            fila["organo"],
+            ReferenciaCruzada(
+                expediente=fila["expediente_ref"],
+                id_evl=fila["id_evl"],
+                procedimiento=fila["procedimiento_ref"],
+            ),
         )
-        restantes[clave] = (fila["organo"], referencia)
     enlaces.extend(
         (clave, expediente, "referencia")
         for clave, expediente in expedientes_por_referencia(restantes).items()
@@ -155,6 +174,11 @@ def _costes(
     contratos: dict[tuple[str, str | None], set[str | None]] = {}
     numeros: dict[tuple[str, str | None], list[str | None]] = {}
     for licitacion_id, fila in modificaciones:
+        # Solo las de CODICE: son las que traen el importe final sin IVA y el
+        # contrato. Un aviso de TED enlazado al mismo expediente no tiene lote
+        # ni contrato, y haría ambiguo un contrato que no lo es.
+        if fila["fuente"] != "placsp":
+            continue
         clave = (licitacion_id, fila["lote_numero"])
         contratos.setdefault(clave, set()).add(fila["contrato_ref"])
         numeros.setdefault(clave, []).append(fila["numero"])
