@@ -26,9 +26,9 @@ import pytest
 class Persona:
     """Usuario real y la clave con la que el despachador le entrega la campana.
 
-    Los favoritos y los recordatorios se identifican por ``id`` (v181); la
-    bandeja (``user_notifications``) sigue indexada por la clave que el
-    despachador deriva del correo del usuario.
+    Los favoritos y los recordatorios se identifican por ``id`` (v181), y la
+    bandeja también: con ``user_id`` la fila de ``user_notifications`` nace sin
+    ``user_key`` (ADR-030 fase 3). La clave queda para sembrar filas legadas.
     """
 
     id: int
@@ -140,8 +140,8 @@ def _notifications(db_mod, persona: Persona) -> list[tuple[str, str]]:
     _repartir()
     with db_mod.connect_read() as c:
         rows = c.execute(
-            "SELECT type, licitacion_id FROM user_notifications WHERE user_key = %s ORDER BY type",
-            (persona.key,),
+            "SELECT type, licitacion_id FROM user_notifications WHERE user_id = %s ORDER BY type",
+            (persona.id,),
         ).fetchall()
     return [(str(r[0]), str(r[1])) for r in rows]
 
@@ -248,8 +248,8 @@ def _organizaciones_de_avisos(db_mod, persona: Persona) -> set[int | None]:
     _repartir()
     with db_mod.connect_read() as c:
         rows = c.execute(
-            "SELECT organization_id FROM user_notifications WHERE user_key = %s",
-            (persona.key,),
+            "SELECT organization_id FROM user_notifications WHERE user_id = %s",
+            (persona.id,),
         ).fetchall()
     return {r[0] for r in rows}
 
@@ -275,7 +275,7 @@ def test_el_aviso_hereda_la_organizacion_del_favorito(seeded, organizacion, alic
     assert _organizaciones_de_avisos(db_mod, alice) == {organizacion}
     # Y lo que importa de verdad: la lectura CON ámbito —la que hace la
     # campana— los devuelve. Un plazo a 5 días cae en dos ventanas.
-    avisos = get_user_alerts(alice.key, organization_id=organizacion)
+    avisos = get_user_alerts(alice.key, organization_id=organizacion, user_id=alice.id)
     assert {a["licitacion_id"] for a in avisos} == {"EXP-ORG"}
     assert {a["type"] for a in avisos} == {"deadline_30", "deadline_7"}
 

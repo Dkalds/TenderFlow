@@ -280,13 +280,15 @@ def test_escribir_para_otra_organizacion_dentro_del_ambito_falla(
                 "VALUES (%s, %s, %s, %s, %s)",
                 ("rls-intruso", s["user_a"], "LIC-RLS-B", s["org_b"], "private"),
             )
-        # Control positivo: la propia organización sí puede escribir.
+        # Control positivo: la propia organización sí puede escribir. Otro
+        # expediente: `user_a` ya sigue LIC-RLS-B (la fila legada) y v181 hace
+        # único `(user_id, id_externo)`.
         with db_mod.connect() as c:
             c.execute(
                 "INSERT INTO watchlist_items "
                 "(user_key, user_id, id_externo, organization_id, visibility) "
                 "VALUES (%s, %s, %s, %s, %s)",
-                ("rls-a-bis", s["user_a"], "LIC-RLS-B", s["org_a"], "private"),
+                ("rls-a-bis", s["user_a"], "LIC-RLS-A2", s["org_a"], "private"),
             )
         # Mover una fila a otra organización tampoco: WITH CHECK cubre UPDATE.
         with (

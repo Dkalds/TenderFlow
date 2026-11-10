@@ -63,15 +63,6 @@ def _pasada(**kwargs) -> int:
     return n
 
 
-def _pasada(**kwargs) -> int:
-    """El job de reglas y el despachador, en el orden del cierre canónico."""
-    from scheduler.jobs.event_dispatch import dispatch_pending
-
-    n = watchlist_rules_alerts.check_rules_and_notify(**kwargs)
-    dispatch_pending()
-    return n
-
-
 def _set_last_notified(c, rule_id, iso_ts):
     c.execute("UPDATE watchlist_rules SET last_notified_at = %s WHERE id = %s", (iso_ts, rule_id))
 
@@ -102,7 +93,7 @@ def test_regla_due_con_matches_nuevos_notifica(tmp_db):
     # Verifica que se escribio en user_notifications
     with connect() as c:
         count = c.execute(
-            "SELECT COUNT(*) FROM user_notifications WHERE user_key LIKE '%' AND type = 'rule_match'"
+            "SELECT COUNT(*) FROM user_notifications WHERE user_id IS NOT NULL AND type = 'rule_match'"
         ).fetchone()[0]
     assert count >= 1
 
