@@ -1,7 +1,7 @@
 """v180: ``contrato_modificaciones`` — los anuncios de modificación de contrato (art. 207.3 LCSP).
 
 Revision ID: v180_contrato_modificaciones
-Revises: v178_sistema_contratacion
+Revises: v179_memoria_organizacion
 Create Date: 2026-11-10
 
 Qué falta hoy
@@ -68,7 +68,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "v180_contrato_modificaciones"
-down_revision: str | Sequence[str] | None = "v178_sistema_contratacion"
+down_revision: str | Sequence[str] | None = "v179_memoria_organizacion"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

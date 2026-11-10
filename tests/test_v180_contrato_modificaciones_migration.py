@@ -45,7 +45,7 @@ def _sql_emitido(funcion: str, *, dialecto: str = "postgresql") -> list[str]:
 def test_encadena_con_v178() -> None:
     modulo = _cargar()
     assert modulo.revision == "v180_contrato_modificaciones"
-    assert modulo.down_revision == "v178_sistema_contratacion"
+    assert modulo.down_revision == "v179_memoria_organizacion"
 
 
 def test_fuera_de_postgres_no_emite_nada() -> None:
