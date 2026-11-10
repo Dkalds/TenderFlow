@@ -1,10 +1,10 @@
 """Job de pliegos: descarga+extracción (F7) + chunking+embeddings (F8).
 
-Patrón ``scheduler/jobs/ml_predicciones.py::run_scoring`` — ``run()`` es un
-callable zero-argumento registrado en ambos planos de orquestación (ADR-012):
-``build_default_registry()`` (APScheduler/Docker) y su workflow dedicado
-``.github/workflows/pliegos.yml`` (GitHub Actions, cron nocturno + dispatch)
-— nunca corren activos a la vez contra la misma BD.
+``run()`` hace el lote. Lo llaman dos entradas, que juzgan el resultado cada
+una a su manera: ``run_programado()``, la del plano de cron de la API
+(ADR-033), que avisa por correo; y ``run_cli()``, la de
+``.github/workflows/pliegos.yml``, que desde el 2026-11-10 solo se lanza a
+mano y deja el run en rojo.
 
 Fases independientes por corrida, todas fail-open a nivel de documento/
 licitación (uno roto no aborta el resto del lote, mismo criterio que el
@@ -31,8 +31,9 @@ resto del scraper):
    compartida). Mismo corte por credencial rechazada que la fase 3, más el
    del presupuesto LLM.
 
-Si el extra ``[ml-embeddings]`` no está instalado, la fase de embeddings se
-salta con un warning (no rompe la fase de fetch, que solo necesita ``[pliegos]``).
+Sin motor de embeddings —sentence-transformers en el runner, el modelo ONNX
+en la imagen de la API— la fase de embeddings se salta y lo dice en su
+resultado (``sin_motor``); no rompe la fase de fetch.
 
 Las fases 1-4 tienen además un tope de reloj (``PLIEGO_*_MAX_SECONDS``): lo
 que no cabe se cuenta como ``aplazados`` y queda para el lote siguiente, de
@@ -270,6 +271,7 @@ def _run_embed_phase(
         "error": 0,
         "reembebidos": 0,
         "aplazados": 0,
+        "sin_motor": 0,
     }
 
     candidatos = repo.list_extracted_without_chunks(limit=limit)
@@ -294,6 +296,10 @@ def _run_embed_phase(
         # comprueba ANTES del loop (embeddings_available() es una simple
         # comprobación de import, no dispara la carga del modelo) para no
         # contar cada documento del lote como "error" individualmente.
+        # En la imagen de la API el motor es el ONNX que descarga el build. Si
+        # un día falta, quien avisa es `run_programado`, que lee esta marca.
+        counts["sin_motor"] = 1
+        _contar_error("embed_sin_motor")
         log.warning("documentos_embed_phase_skipped_no_ml_extra")
         return counts
 
@@ -755,6 +761,61 @@ def _alertar_fichas_fallidas(facts: Mapping[str, object]) -> None:
     )
 
 
+def _fetch_fallido(fetch: Mapping[str, object]) -> bool:
+    """True si el lote entero de descarga falló sin dejar nada procesado.
+
+    Un PDF corrupto suelto es normal; que todos fallen señala un problema
+    sistémico (red, SSRF, breaker abierto). ``unsupported`` y ``sin_texto``
+    cuentan como lote procesado: son cobertura que falta, no un fallo.
+    """
+    return bool(fetch.get("error")) and not (
+        fetch.get("extracted") or fetch.get("unsupported") or fetch.get("sin_texto")
+    )
+
+
+def run_programado() -> Mapping[str, object]:
+    """Entrada del plano de cron: el lote, y un correo si no sirvió de nada.
+
+    El plano da por bueno cualquier retorno sin excepción, así que el juicio
+    que ``run_cli`` expresa con su código de salida aquí tiene que ser un
+    aviso: sin él, una credencial del LLM rechazada saldría en verde cada
+    noche, que es el incidente de las once noches de 401 (2026-09). Avisa y
+    no lanza: una excepción haría que el backoff del plano multiplicara un
+    intervalo que ya es de un día.
+    """
+    from observability.alerts import notify
+
+    resumen = run()
+
+    fetch = resumen["fetch"]
+    if _fetch_fallido(fetch):
+        log.error("documentos_embeddings_cli_batch_failed", fetch=fetch)
+        notify(
+            "error",
+            "Pliegos: el lote entero de descarga falló",
+            f"{fetch.get('error')} documentos en error y ninguno extraído. El motivo de "
+            "cada uno está en `documentos.error_detail`.",
+        )
+
+    if resumen["embed"].get("sin_motor"):
+        notify(
+            "error",
+            "Pliegos: no hay motor de embeddings",
+            "La fase de embeddings se saltó entera. En la imagen de la API el motor "
+            "es el modelo ONNX que descarga el build (EMBEDDINGS_ONNX_REVISION).",
+        )
+
+    facts = resumen["facts"]
+    if facts_failed_systemically(facts):
+        _alertar_fichas_fallidas(facts)
+    if facts.get("disabled"):
+        # El workflow la encendía con la variable de repositorio; aquí tiene
+        # que estar en el entorno del servicio.
+        log.warning("documentos_fichas_apagadas", hint="PLIEGO_FACTS_ENABLED")
+
+    return resumen
+
+
 def run_cli() -> int:
     """Corre el job y falla si el lote entero de fetch o de fichas se cayó.
 
@@ -783,9 +844,7 @@ def run_cli() -> int:
     fallo = False
 
     fetch = resumen["fetch"]
-    if fetch.get("error") and not (
-        fetch.get("extracted") or fetch.get("unsupported") or fetch.get("sin_texto")
-    ):
+    if _fetch_fallido(fetch):
         log.error("documentos_embeddings_cli_batch_failed", fetch=fetch)
         fallo = True
 

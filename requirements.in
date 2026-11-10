@@ -112,6 +112,12 @@ boto3>=1.43.56,<1.44
 # POST /ficha-pliego/extract descarga y extrae adjuntos bajo demanda
 # (services/rag/fact_sheet.py::ensure_documents_ready). Mismo rango que el extra.
 pypdf>=4.0,<7
+# Pliegos en Office Open XML (scraper/document_fetcher.py). Vivía solo en el
+# extra [pliegos], que el runner de pliegos.yml instalaba sin pinar; entra en el
+# lock el 2026-11-10 porque el lote de pliegos pasa al plano de cron de la API
+# (ADR-033), cuya imagen se construye con requirements-pipeline.txt. Mismo rango
+# que el extra. `odfpy` no entra: el ODT se lee de `content.xml` sin él.
+python-docx>=1.1,<2
 # Codificador ONNX de la consulta de la búsqueda por significado
 # (services/embeddings_onnx.py): el mismo modelo que sentence-transformers, sin
 # PyTorch. Lo instala la imagen de la API (requirements-api.in); aquí para que

@@ -51,6 +51,21 @@ Este runbook vale con estos cambios, y donde diga «worker» léase
   antes de empezar**: tiene `SCHEDULER_PLANE=worker`, código del 2026-10-18 y
   despierta con cualquier petición (pasó el 2026-11-09).
 
+**Ejecutado el 2026-11-09, 23:15 UTC.** Los dos workflows están deshabilitados
+(`gh workflow list --all`) y `tenderflow-api` lleva `SCHEDULER_PLANE=worker`,
+`REQUIREMENTS_FILE=requirements-pipeline.txt` y `LOG_FORMAT=json`. Desde el
+2026-11-10 el plano ejecuta además `domain_truth_audit`, y `domain-truth.yml`
+ya no tiene `schedule:`. Ese mismo día entra el lote de pliegos
+(`documentos_embeddings`): `pliegos.yml` queda solo para lanzarlo a mano, que
+es la única pasada con OCR, y `tenderflow-api` necesita
+`PLIEGO_FACTS_ENABLED=true`. Es la única variable de repositorio que leía el
+workflow y que existe (`gh variable list`, 2026-11-10): `PLIEGO_FACTS_MODEL`,
+`RESUMEN_PREGEN_ENABLED`, las `DOCUMENT_OCR_*` y las `DOCUMENT_BLOB_*` no
+están definidas, y tampoco los secretos de OpenAI, Anthropic o del bucket.
+Un job que ya corrió dentro de su intervalo no
+se repite tras un despliegue: lo dice su marca `cron-hecho:<job>` en
+`job_locks`. Para forzar una pasada, borrar esa fila.
+
 **Estado anterior (2026-10-19): en pausa, sin worker.** `tenderflow-worker` llegó a
 crearse (2026-10-10) en el plan `free`, que lo hibernaba a los ~15 min, y se
 retiró el 2026-10-19 (nota en `render.yaml`, ADR-033). La ingesta y el scoring
