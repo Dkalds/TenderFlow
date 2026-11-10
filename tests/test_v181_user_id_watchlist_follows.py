@@ -53,7 +53,7 @@ def _ejecutar(monkeypatch: pytest.MonkeyPatch, paso: str) -> str:
 def test_cadena_e_identidad() -> None:
     migracion = _load()
     assert migracion.revision == "v181_user_id_watchlist_follows"
-    assert migracion.down_revision == "v179_memoria_organizacion"
+    assert migracion.down_revision == "v180_contrato_modificaciones"
     assert set(migracion.TABLAS_BACKFILL) == {
         "watchlist_cpv",
         "watchlist_items",
