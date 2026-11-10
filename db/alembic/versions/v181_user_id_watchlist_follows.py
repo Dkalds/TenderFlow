@@ -44,9 +44,18 @@ Lo que hace
    actual, calculada en la base. Con ella ``db/`` escribe la columna y resuelve
    la mitad legacy del predicado dual sin que ningún llamador tenga que
    conocer la clave: es lo que saca a rutas, servicios y jobs del ratchet de
-   ``user_key``. ``STABLE`` y ``LANGUAGE sql``: el planificador la inlinea y la
-   evalúa una vez por sentencia. ``SECURITY INVOKER`` (por defecto): quien no
-   puede leer ``users`` no obtiene nada de ella.
+   ``user_key``. ``STABLE``: comparada con un argumento constante se evalúa
+   una vez por sentencia; en un filtro sin índice, por fila, pero el predicado
+   solo la alcanza en filas con ``user_id IS NULL``. ``SECURITY INVOKER`` (por
+   defecto): quien no puede leer ``users`` no obtiene nada de ella. ``EXECUTE``
+   explícito para ``tenderflow_app`` (v59 lo quitó a ``PUBLIC``).
+
+Queda para una revisión **posterior** al despliegue: convertir los ``UNIQUE``
+por ``user_key`` en parciales ``WHERE user_id IS NULL``. Mientras sigan
+enteros, quien registra el correo que otro usuario dejó y sigue lo mismo que
+él choca con la fila ajena (500 en favoritos, 503 en follows). Antes de esta
+revisión era peor y en silencio: recibía la fila del otro. No puede ir aquí
+porque el código anterior arbitra su ``ON CONFLICT`` por esos ``UNIQUE``.
 
 Lo que NO hace
 --------------
@@ -125,9 +134,17 @@ SQL_FUNCION = (
     "$$"
 )
 
-#: Los roles de la Data API de Supabase no la ejecutan (como v52 con el resto).
-_REVOCAR_EXPUESTOS = (
+#: Permisos de la función. v59 quitó a ``PUBLIC`` el ``EXECUTE`` por defecto de
+#: las funciones nuevas, así que el rol de la app (``tenderflow_app``, el de
+#: ``scripts/setup_pg_roles.sql``) lo necesita explícito, como las tablas de
+#: v104; sin él toda lectura de watchlist, reglas y follows falla con
+#: ``permission denied for function``. Los roles de la Data API de Supabase no
+#: la ejecutan (como v52 con el resto).
+_PERMISOS = (
     "DO $$ BEGIN "
+    f"REVOKE EXECUTE ON FUNCTION public.{FUNCION}(integer) FROM PUBLIC; "
+    "IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tenderflow_app') THEN "
+    f"GRANT EXECUTE ON FUNCTION public.{FUNCION}(integer) TO tenderflow_app; END IF; "
     "IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN "
     f"REVOKE EXECUTE ON FUNCTION public.{FUNCION}(integer) FROM anon; END IF; "
     "IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN "
@@ -207,7 +224,7 @@ def upgrade() -> None:
         return
 
     op.execute(SQL_FUNCION)
-    op.execute(_REVOCAR_EXPUESTOS)
+    op.execute(_PERMISOS)
 
     backfill = _presentes(TABLAS_BACKFILL)
     if backfill:

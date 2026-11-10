@@ -222,12 +222,14 @@ def test_lectura_dual_sirve_filas_legacy_antes_del_backfill(tmp_db):
     assert [f["name"] for f in list_saved_filters(clave, organization_id, user_id=user_id)] == [
         "Vista legacy"
     ]
-    # Un tercero con la misma clave (imposible en la práctica, pero es el
-    # predicado el que se prueba) y otro id no ve nada una vez la fila tiene
-    # dueño.
+    # Quien registra después el correo que este usuario dejó tiene su misma
+    # clave, y no ve nada una vez la fila tiene dueño.
     with connect() as c:
         c.execute("UPDATE watchlist_items SET user_id = %s WHERE user_key = %s", (user_id, clave))
-    assert repo.list_items(user_id + 1000, organization_id) == []
+    _cambiar_email(user_id, _EMAIL_NUEVO)
+    heredero = _crear_usuario(_EMAIL_VIEJO)
+    assert user_key_from_email(_EMAIL_VIEJO, heredero) == clave
+    assert repo.list_items(heredero, organization_id) == []
 
 
 def test_watchlist_empresas_sobrevive_al_cambio_de_correo(tmp_db):
@@ -420,6 +422,10 @@ def test_cambiar_de_email_conserva_seguimientos_y_digest_pendiente(sesion):
     Seguir otra vez lo mismo con el correo nuevo no lo duplica —antes la clave
     nueva no chocaba con el ``UNIQUE`` por la antigua— y el digest que encoló
     el job con la clave antigua sigue saliendo con los criterios de su regla.
+    Lo segundo ya se cumplía antes de v181 (el digest casa con su regla por la
+    clave que copió); se fija aquí para que no se pierda al retirarla. A qué
+    buzón sale no cambia: al ``recipient_email`` que guardó el job, el de la
+    regla en ese momento.
     """
     client, csrf, user_id = sesion
     cab = {"X-CSRF-Token": csrf}

@@ -96,6 +96,11 @@ def test_upgrade_crea_la_funcion_y_comprueba_antes_de_indexar(
     assert "CREATE OR REPLACE FUNCTION public.clave_legada_de_usuario(p_user_id integer)" in sql
     assert "LANGUAGE sql STABLE" in sql
     assert "FROM anon" in sql and "FROM authenticated" in sql
+    # v59 quitó el EXECUTE por defecto a PUBLIC: el rol de la app lo necesita.
+    assert (
+        "GRANT EXECUTE ON FUNCTION public.clave_legada_de_usuario(integer) TO tenderflow_app" in sql
+    )
+    assert sql.index("CREATE OR REPLACE FUNCTION") < sql.index("GRANT EXECUTE")
     for tabla in migracion.TABLAS_BACKFILL:
         assert migracion.sql_backfill(tabla) in sql
     for tabla in ("watchlist_items", "watchlist_empresas"):
