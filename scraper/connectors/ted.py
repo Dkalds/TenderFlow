@@ -51,6 +51,7 @@ import requests
 
 from config import CPV_PREFIXES_UNIVERSO
 from config.keywords import etiquetas_con_senal_firme
+from db.repositories.modificaciones import ModificacionContrato
 from db.upsert import Adjudicacion, Licitacion
 from observability import get_logger
 from scraper.connectors.base import ParsedTender, RawNotice
@@ -147,7 +148,17 @@ _FIELDS = [
     "duration-period-unit-lot",
     "contract-duration-start-date-lot",
     "contract-duration-end-date-lot",
+    # BG-791, la modificación de un ``can-modif``: motivo (BT-200 código y
+    # BT-201 texto), qué cambia (BT-202) y el aviso que modifica (BT-1501).
+    # Ver `_modificacion`.
+    "BT-200-Contract",
+    "BT-201-Contract",
+    "BT-202-Contract",
+    "modification-previous-notice-identifier",
 ]
+
+#: ``notice-type`` del aviso de modificación (art. 207.3 LCSP; eForms 38-40).
+_NOTICE_MODIFICACION = "can-modif"
 
 #: Tope por petición y por pasada de ``reemparejar_vigentes``: corre dentro del
 #: step de 10 minutos de ``scrape-daily.yml`` y lo que no pida lo pide la siguiente.
@@ -526,6 +537,38 @@ def _documents_url(notice: dict[str, Any]) -> str | None:
     return mejor
 
 
+def _modificacion(notice: Mapping[str, object], natural_id: str) -> ModificacionContrato:
+    """La modificación que publica un aviso ``can-modif``, sin expediente todavía.
+
+    Guarda lo que permite enlazarla después (el aviso original, BT-1501; el
+    expediente, BT-22; el órgano, y el enlace a los pliegos por si lleva el
+    ``idEvl``) y lo que la explica: el motivo (BT-200 código, BT-201 texto) y
+    la descripción (BT-202).
+    """
+    links = notice.get("links")
+    pdf = links.get("pdf") if isinstance(links, dict) else None
+    anuncio_url = pdf.get("SPA") if isinstance(pdf, dict) else None
+    originales = {
+        v
+        for v in _valores(notice.get("modification-previous-notice-identifier"))
+        if _NUMERO_PUBLICACION.fullmatch(v)
+    }
+    return ModificacionContrato(
+        clave=f"{SOURCE_ID}:{natural_id}",
+        fuente=SOURCE_ID,
+        fecha_publicacion=_first_date(notice.get("publication-date")),
+        motivo_codigo=_unico(notice.get("BT-200-Contract")),
+        motivo=_first_lang(notice.get("BT-201-Contract")),
+        descripcion=_first_lang(notice.get("BT-202-Contract")),
+        # Un aviso puede modificar varios contratos de distintos avisos: con
+        # más de un original no hay uno con el que enlazar por esta vía.
+        aviso_original=originales.pop() if len(originales) == 1 else None,
+        expediente_ref=_expediente(dict(notice)),
+        organo=_first_lang(notice.get("buyer-name")),
+        url=_documents_url(dict(notice)) or anuncio_url,
+    )
+
+
 class TedConnector:
     """Implementación del contrato Connector para la Search API v3 de TED."""
 
@@ -547,6 +590,7 @@ class TedConnector:
         self._session = session or requests.Session()
         self._max_pub_date: str | None = None
         self._referencias: dict[str, ReferenciaCruzada] = {}
+        self._modificaciones: list[ModificacionContrato] = []
 
     # ── fetch ────────────────────────────────────────────────────────────
 
@@ -630,6 +674,12 @@ class TedConnector:
         estado = _ESTADO_MAP.get(notice_type.split("-")[0])
         if estado is None:
             return None  # tipos no relevantes (sanciones, perfiles, etc.)
+        if notice_type == _NOTICE_MODIFICACION:
+            # No es una licitación: es la modificación de un contrato que ya se
+            # adjudicó. Hasta 2026-11-10 entraba como una fila `RES` más (471
+            # filas ese día), sin el motivo ni el aviso que modifica.
+            self._modificaciones.append(_modificacion(n, raw.natural_id))
+            return None
 
         titulo = _titulo(n, raw.natural_id)
         descripcion = _first_lang(n.get("description-proc"))
@@ -740,6 +790,16 @@ class TedConnector:
         consume ``scraper.connectors.base._post_ingestion``.
         """
         return dict(self._referencias)
+
+    def modificaciones_pendientes(self) -> list[ModificacionContrato]:
+        """Los avisos ``can-modif`` parseados desde la última llamada; vacía el búfer.
+
+        No cuelgan de una licitación de la pasada, así que no viajan en un
+        ``ParsedTender``: los escribe y los enlaza con su expediente
+        ``scraper.connectors.base._modificaciones_sin_licitacion``.
+        """
+        pendientes, self._modificaciones = self._modificaciones, []
+        return pendientes
 
     # ── documentos ───────────────────────────────────────────────────────
 

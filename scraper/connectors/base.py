@@ -48,6 +48,7 @@ from observability.runtime_metrics import scraper_conector_errores_total
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator, Mapping, Sequence
 
+    from db.repositories.modificaciones import ModificacionContrato
     from db.upsert import Adjudicacion, DocumentoReferencia, Licitacion, Lote
     from services.dedupe import ReferenciaCruzada
 
@@ -208,6 +209,9 @@ class ParsedTender:
     # pueblan siguen funcionando igual (adjudicaciones sin lote_numero_raw
     # resuelven lote_id=None, el "lote único implícito" de siempre).
     lotes: list[Lote] = field(default_factory=list)
+    # v180: modificaciones de contrato publicadas en la misma entry (PLACSP).
+    # Upsert por clave, sin borrar: una que la fuente deja de publicar se queda.
+    modificaciones: list[ModificacionContrato] = field(default_factory=list)
 
 
 @runtime_checkable
@@ -348,6 +352,54 @@ def _persist_documentos(
             fallidas=len(fallos),
             total=len(docs_por_lic),
         )
+
+
+def _persistir_modificaciones(
+    modificaciones: Sequence[ModificacionContrato], *, source_id: str
+) -> None:
+    """Escribe las modificaciones de contrato (v180). Fail-open, como los documentos.
+
+    Las licitaciones y adjudicaciones del lote ya están escritas: un fallo aquí
+    se cuenta y se registra, y la siguiente publicación del expediente lo repite.
+    """
+    if not modificaciones:
+        return
+    try:
+        from db.repositories import modificaciones as repo
+
+        repo.upsert(modificaciones)
+    except Exception:
+        _contar_error("modificaciones")
+        log.warning(
+            "connector_modificaciones_persist_failed",
+            source=source_id,
+            n=len(modificaciones),
+            exc_info=True,
+        )
+
+
+def _modificaciones_sin_licitacion(connector: Connector) -> None:
+    """Escribe y enlaza las modificaciones que el conector no colgó de un expediente.
+
+    Opt-in por atributo, como ``referencias_cruzadas``: hoy solo TED, cuyos
+    avisos ``can-modif`` no son una licitación sino la modificación de otra
+    (:meth:`scraper.connectors.ted.TedConnector.modificaciones_pendientes`).
+    Tras escribirlas se intenta enlazar las que siguen sin expediente, también
+    las de pasadas anteriores cuyo expediente ha llegado después. Fail-open.
+    """
+    pendientes = getattr(connector, "modificaciones_pendientes", None)
+    if not callable(pendientes):
+        return
+    source_id = connector.source_id
+    try:
+        _persistir_modificaciones(list(pendientes()), source_id=source_id)
+        from services.modificaciones import enlazar_pendientes
+
+        with _cronometro(source_id, "modificaciones"):
+            enlazar_pendientes(fuente=source_id)
+    except Exception:
+        _contar_error("modificaciones")
+        log.warning("connector_modificaciones_enlazar_failed", source=source_id, exc_info=True)
 
 
 def _contar_dedupe_fallido(source_id: str) -> None:
@@ -618,6 +670,7 @@ class _LoteDeIngesta:
         self.adj_por_lic: dict[str, list[Adjudicacion]] = {}
         self.docs_por_lic: dict[str, list[DocumentoReferencia]] = {}
         self.lotes_por_lic: dict[str, list[Lote]] = {}
+        self.modificaciones_por_lic: dict[str, list[ModificacionContrato]] = {}
         # Mejor recencia (fecha_actualizacion_fuente) vista por id_externo en TODO
         # el run: persiste entre lotes para descartar reapariciones más viejas de
         # un expediente ya escrito en un flush anterior.
@@ -657,6 +710,10 @@ class _LoteDeIngesta:
             self.lotes_por_lic[lic_id] = parsed.lotes
         else:
             self.lotes_por_lic.pop(lic_id, None)
+        if parsed.modificaciones:
+            self.modificaciones_por_lic[lic_id] = parsed.modificaciones
+        else:
+            self.modificaciones_por_lic.pop(lic_id, None)
 
     def _flush_once(self) -> tuple[Any, int, int]:
         source_id = self.source_id
@@ -690,6 +747,11 @@ class _LoteDeIngesta:
                 log.warning("adj_rows_dropped", dropped=n_dropped, persisted=n_adj)
         if self.docs_por_lic:
             _persist_documentos(self.docs_por_lic, source_id=source_id)
+        if self.modificaciones_por_lic:
+            _persistir_modificaciones(
+                [m for ms in self.modificaciones_por_lic.values() for m in ms],
+                source_id=source_id,
+            )
         return upsert_result, n_adj, n_failed
 
     def flush(self) -> None:
@@ -739,6 +801,7 @@ class _LoteDeIngesta:
         self.adj_por_lic.clear()
         self.docs_por_lic.clear()
         self.lotes_por_lic.clear()
+        self.modificaciones_por_lic.clear()
         # Avance de cursor por lote SOLO para conectores que lo declaran seguro
         # (``cursor_advances_incrementally``). Es correcto cuando ``new_cursor()``
         # refleja el progreso PARCIAL persistido (feeds procesados de más viejo a
@@ -822,6 +885,11 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
     final_cursor = connector.new_cursor()
     if final_cursor:
         set_cursor(source_id, **final_cursor)
+
+    # Antes del cierre del lote: el enlazado lee `licitaciones` y no depende de
+    # la resolución de empresas ni de los dedupes. Corre aunque el lote venga
+    # vacío: una pasada de TED puede traer solo avisos de modificación.
+    _modificaciones_sin_licitacion(connector)
 
     completar_documentos = _completar_documentos_de(connector)
     if completar_documentos is not None and _completar_documentos_primero(connector):
