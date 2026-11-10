@@ -1,7 +1,7 @@
 """v181: ``watchlist_*``, ``follows`` y ``pending_digests`` se identifican por ``user_id``.
 
 Revision ID: v181_user_id_watchlist_follows
-Revises: v178_sistema_contratacion
+Revises: v179_memoria_organizacion
 Create Date: 2026-11-10
 
 ADR-030 fase 3, cuarta tanda: las tablas que v165 dejó para después.
@@ -93,7 +93,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "v181_user_id_watchlist_follows"
-down_revision: str | Sequence[str] | None = "v178_sistema_contratacion"
+down_revision: str | Sequence[str] | None = "v179_memoria_organizacion"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
