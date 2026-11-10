@@ -50,9 +50,9 @@ def test_con_escritura_doble_la_paridad_sale_en_cero(tmp_db: Any) -> None:
     db_mod, _ = tmp_db
     from db.repositories.watchlist import WatchlistRepository
 
-    user_id, org_id, user_key = _usuario(db_mod, "job-paridad@example.test")
+    user_id, org_id, _ = _usuario(db_mod, "job-paridad@example.test")
     _licitacion(db_mod, "LIC-JOB-OK")
-    WatchlistRepository().add_item(user_key, user_id, "LIC-JOB-OK", org_id, "private")
+    WatchlistRepository().add_item(user_id, "LIC-JOB-OK", org_id, "private")
 
     with patch("observability.ops_events.record_event") as evento:
         resumen = ejecutar()

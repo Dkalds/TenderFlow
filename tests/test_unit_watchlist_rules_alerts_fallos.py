@@ -63,7 +63,8 @@ def _fila(rule_id: int) -> dict[str, Any]:
         "last_notified_at": None,
         "email": f"privado{rule_id}@example.test",
         "organization_id": 7,
-        "user_id": None,
+        # La regla se evalúa por su dueño (v181): sin id el job la salta.
+        "user_id": 100 + rule_id,
     }
 
 
@@ -125,6 +126,17 @@ def test_sin_coincidencias_la_ventana_avanza_igual(monkeypatch: pytest.MonkeyPat
     assert alertas.check_rules_and_notify() == 0
 
     assert eventos == [("ventana", 1)]
+
+
+def test_una_regla_sin_usuario_ni_emite_ni_mueve_la_ventana(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sin ``user_id`` no hay anti-join contra la campana: reevaluaría lo mismo cada pasada."""
+    eventos, _ = _pasada(monkeypatch, [{**_fila(1), "user_id": None}, _fila(2)])
+
+    assert alertas.check_rules_and_notify() == 1
+
+    assert eventos == [("evento", 2), ("ventana", 2)]
 
 
 def test_una_regla_con_su_aviso_en_cola_ni_emite_ni_mueve_la_ventana(

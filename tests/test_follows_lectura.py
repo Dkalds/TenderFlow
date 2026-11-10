@@ -78,7 +78,7 @@ def _leer_todo() -> None:
     from db import radar_dismissals, watchlist_empresas
     from db.repositories.watchlist import WatchlistRepository
 
-    WatchlistRepository().list_items("k", 7, 3)
+    WatchlistRepository().list_items(3, 7)
     watchlist_empresas.list_entries(3, 7)
     radar_dismissals.list_detalle("k", user_id=3)
     radar_dismissals.list_ids("k", user_id=3)

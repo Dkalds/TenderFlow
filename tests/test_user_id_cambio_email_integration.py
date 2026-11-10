@@ -415,7 +415,7 @@ def test_escribir_tras_el_cambio_no_duplica(sesion):
 
 
 def test_cambiar_de_email_conserva_seguimientos_y_digest_pendiente(sesion):
-    """CU-29 y el digest de CU-04 tras un cambio de correo (ADR-030, v181).
+    """CU-03 (seguir un expediente) y el digest de CU-04 tras un cambio de correo (ADR-030, v181).
 
     Seguir otra vez lo mismo con el correo nuevo no lo duplica —antes la clave
     nueva no chocaba con el ``UNIQUE`` por la antigua— y el digest que encoló

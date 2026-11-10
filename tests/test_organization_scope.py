@@ -40,24 +40,12 @@ def test_organization_visibility_shares_only_explicit_items(tmp_db):
             )
 
     repo = WatchlistRepository()
-    repo.add_item(
-        "owner-key",
-        owner,
-        "SCOPE-SHARED",
-        organization_id,
-        "organization",
-    )
-    repo.add_item(
-        "owner-key",
-        owner,
-        "SCOPE-PRIVATE",
-        organization_id,
-        "private",
-    )
+    repo.add_item(owner, "SCOPE-SHARED", organization_id, "organization")
+    repo.add_item(owner, "SCOPE-PRIVATE", organization_id, "private")
 
-    member_items = repo.list_items("member-key", organization_id, member)
+    member_items = repo.list_items(member, organization_id)
     assert [item["id_externo"] for item in member_items] == ["SCOPE-SHARED"]
-    owner_items = repo.list_items("owner-key", organization_id, owner)
+    owner_items = repo.list_items(owner, organization_id)
     assert {item["id_externo"] for item in owner_items} == {
         "SCOPE-SHARED",
         "SCOPE-PRIVATE",

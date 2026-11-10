@@ -303,22 +303,24 @@ def test_watchlist_with_user_id(tmp_db):
         oauth_sub="sub_wl",
     )
     entry = wl_mod.WatchlistEntry(
-        user_key="hash_wl",
+        user_id=uid,
         cpv_prefix="72",
         keyword="sap",
-        user_id=uid,
     )
     wl_mod.add_entry(entry)
 
-    # Buscar por user_key
-    items = wl_mod.list_entries("hash_wl")
+    # Buscar por user_id
+    items = wl_mod.list_entries(uid)
     assert len(items) == 1
     assert items[0]["user_id"] == uid
+    assert items[0]["cpv_prefix"] == "72"
 
-    # Buscar por user_id
-    items2 = wl_mod.list_entries("different_key", user_id=uid)
-    assert len(items2) == 1
-    assert items2[0]["cpv_prefix"] == "72"
+    # La columna user_key la deriva la base del correo (v181): quien lee por la
+    # clave literal, como el job de instancia, encuentra la misma fila.
+    from shared.identity import user_key_from_email
+
+    items2 = wl_mod.list_entries_por_clave(user_key_from_email("wl@example.com", uid))
+    assert [i["id"] for i in items2] == [items[0]["id"]]
 
 
 def test_log_access_oauth(tmp_db):

@@ -184,11 +184,13 @@ def test_export_watchlist_rules(tmp_db):
     from services.gdpr import export_watchlist_rules
     from services.watchlist_rules import WatchlistRule, create_rule
 
-    create_rule("uk1", WatchlistRule(keyword="SAP", frequency="daily"))
-    rows = export_watchlist_rules("uk1")
+    _, titular = _organizacion_y_owner("gdpr-export-reglas")
+    _, otro = _organizacion_y_owner("gdpr-export-reglas-otro")
+    create_rule(titular, WatchlistRule(keyword="SAP", frequency="daily"))
+    rows = export_watchlist_rules(titular)
     assert len(rows) == 1
     assert rows[0]["keyword"] == "SAP"
-    assert export_watchlist_rules("otro-usuario") == []
+    assert export_watchlist_rules(otro) == []
 
 
 def test_export_user_profile(tmp_db):
@@ -245,11 +247,12 @@ def test_anonymize_user_data_covers_rules_profile_and_notifications(tmp_db):
     from db.repositories.user_profiles import upsert_user_profile
     from services.gdpr import anonymize_user_data
     from services.watchlist_rules import WatchlistRule, create_rule
+    from shared.identity import user_key_from_email
 
     organizacion, owner = _organizacion_y_owner("gdpr-anonimizacion")
 
     create_rule(
-        "uk1", WatchlistRule(keyword="SAP", frequency="daily"), organization_id=organizacion
+        owner, WatchlistRule(keyword="SAP", frequency="daily"), organization_id=organizacion
     )
     upsert_user_profile({"weights": {"importe": 100}}, organizacion, user_id=owner)
     with connect() as c:
@@ -267,7 +270,8 @@ def test_anonymize_user_data_covers_rules_profile_and_notifications(tmp_db):
 
     with connect() as c:
         n_rules = c.execute(
-            "SELECT COUNT(*) FROM watchlist_rules WHERE user_key = %s", ("uk1",)
+            "SELECT COUNT(*) FROM watchlist_rules WHERE user_id = %s OR user_key = %s",
+            (owner, user_key_from_email("gdpr-anonimizacion@example.test", owner)),
         ).fetchone()[0]
         n_profile = c.execute(
             "SELECT COUNT(*) FROM user_profiles WHERE user_id = %s", (owner,)

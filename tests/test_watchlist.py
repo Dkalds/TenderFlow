@@ -5,6 +5,17 @@ from __future__ import annotations
 import pandas as pd
 
 
+def _usuario(nombre: str) -> int:
+    """Usuario real: ``watchlist_cpv`` se identifica por ``user_id`` (v181)."""
+    from db.users import create_user
+
+    return create_user(
+        email=f"{nombre}@example.test",
+        password_hash="test-hash",  # pragma: allowlist secret -- literal de test
+        display_name=nombre,
+    )
+
+
 def test_crud_lifecycle(tmp_db):
     from db.watchlist import (
         WatchlistEntry,
@@ -13,27 +24,29 @@ def test_crud_lifecycle(tmp_db):
         remove_entry,
     )
 
+    alice = _usuario("alice")
     e = WatchlistEntry(
-        user_key="alice", cpv_prefix="72", keyword="sap", min_importe=10000.0, ccaa="Madrid"
+        user_id=alice, cpv_prefix="72", keyword="sap", min_importe=10000.0, ccaa="Madrid"
     )
     add_entry(e)
-    items = list_entries("alice")
+    items = list_entries(alice)
     assert len(items) == 1
     assert items[0]["cpv_prefix"] == "72"
     assert items[0]["keyword"] == "sap"
     assert items[0]["ccaa"] == "Madrid"
 
-    assert remove_entry(int(items[0]["id"]), "alice") is True
-    assert list_entries("alice") == []
+    assert remove_entry(int(items[0]["id"]), alice) is True
+    assert list_entries(alice) == []
 
 
 def test_add_entry_is_idempotent(tmp_db):
     from db.watchlist import WatchlistEntry, add_entry, list_entries
 
-    entry = WatchlistEntry(user_key="u", cpv_prefix="72")
+    u = _usuario("u")
+    entry = WatchlistEntry(user_id=u, cpv_prefix="72")
     add_entry(entry)
     add_entry(entry)
-    assert len(list_entries("u")) == 1
+    assert len(list_entries(u)) == 1
 
 
 def test_matches_licitacion_cpv_prefix():
@@ -143,25 +156,29 @@ def test_remove_entry_no_borra_la_entrada_de_otro_usuario(tmp_db):
     """
     from db.watchlist import WatchlistEntry, add_entry, list_entries, remove_entry
 
-    add_entry(WatchlistEntry(user_key="alice", cpv_prefix="72", keyword="sap"))
-    entry_id = int(list_entries("alice")[0]["id"])
+    alice = _usuario("alice")
+    mallory = _usuario("mallory")
+    add_entry(WatchlistEntry(user_id=alice, cpv_prefix="72", keyword="sap"))
+    entry_id = int(list_entries(alice)[0]["id"])
 
-    assert remove_entry(entry_id, "mallory") is False
-    assert len(list_entries("alice")) == 1
+    assert remove_entry(entry_id, mallory) is False
+    assert len(list_entries(alice)) == 1
 
-    assert remove_entry(entry_id, "alice") is True
-    assert list_entries("alice") == []
+    assert remove_entry(entry_id, alice) is True
+    assert list_entries(alice) == []
 
 
 def test_update_frequency_no_toca_la_entrada_de_otro_usuario(tmp_db):
     """Mismo hueco que remove_entry, misma tabla y mismo patrón."""
     from db.watchlist import WatchlistEntry, add_entry, list_entries, update_frequency
 
-    add_entry(WatchlistEntry(user_key="alice", cpv_prefix="72", keyword="sap"))
-    entry_id = int(list_entries("alice")[0]["id"])
+    alice = _usuario("alice")
+    mallory = _usuario("mallory")
+    add_entry(WatchlistEntry(user_id=alice, cpv_prefix="72", keyword="sap"))
+    entry_id = int(list_entries(alice)[0]["id"])
 
-    assert update_frequency(entry_id, "weekly", "mallory") is False
-    assert list_entries("alice")[0]["frequency"] != "weekly"
+    assert update_frequency(entry_id, "weekly", mallory) is False
+    assert list_entries(alice)[0]["frequency"] != "weekly"
 
-    assert update_frequency(entry_id, "weekly", "alice") is True
-    assert list_entries("alice")[0]["frequency"] == "weekly"
+    assert update_frequency(entry_id, "weekly", alice) is True
+    assert list_entries(alice)[0]["frequency"] == "weekly"

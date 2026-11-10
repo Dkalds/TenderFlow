@@ -80,14 +80,11 @@ def test_queda_a_nombre_de_quien_guarda_privada_y_con_su_correo() -> None:
 
     assert ids == [41]
     args: Any = crear.call_args
-    organization_id, clave, valores = args.args
+    organization_id, user_id, valores = args.args
     assert organization_id == 7
-    assert args.kwargs["user_id"] == 3
+    # Solo el id: la clave heredada la deriva la base (v181, ADR-030 fase 3).
+    assert user_id == 3
     assert args.kwargs["email"] == "owner@example.test"
-    # La clave heredada es la del login de esa persona (ADR-030, escritura dual).
-    from shared.identity import user_key_from_email
-
-    assert clave == user_key_from_email("owner@example.test", 3)
     (valor,) = valores
     assert valor["tecnologia"] == "SAP"
     assert valor["frequency"] == "daily"

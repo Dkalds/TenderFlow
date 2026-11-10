@@ -117,18 +117,8 @@ def test_solo_cuentan_las_reglas_activas(corpus):
         display_name="Dueña de las reglas",
     )
     org_id = int(OrganizationRepository().ensure_personal_organization(user_id)["id"])
-    create_rule(
-        "ficha-reglas",
-        WatchlistRule(keyword="backup"),
-        user_id=user_id,
-        organization_id=org_id,
-    )
-    create_rule(
-        "ficha-reglas",
-        WatchlistRule(keyword="mobiliario", active=False),
-        user_id=user_id,
-        organization_id=org_id,
-    )
+    create_rule(user_id, WatchlistRule(keyword="backup"), organization_id=org_id)
+    create_rule(user_id, WatchlistRule(keyword="mobiliario", active=False), organization_id=org_id)
 
     activas = reglas_activas()
 

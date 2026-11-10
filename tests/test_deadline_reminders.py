@@ -14,11 +14,37 @@ ejecutar SQL propio y correr desde el job de alertas del scheduler. Cubre:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import patch
 
 import pytest
+
+
+@dataclass(frozen=True)
+class Persona:
+    """Usuario real y la clave con la que el despachador le entrega la campana.
+
+    Los favoritos y los recordatorios se identifican por ``id`` (v181); la
+    bandeja (``user_notifications``) sigue indexada por la clave que el
+    despachador deriva del correo del usuario.
+    """
+
+    id: int
+    key: str
+
+
+def _persona(nombre: str) -> Persona:
+    from db.users import create_user
+    from shared.identity import user_key_from_email
+
+    correo = f"{nombre}-plazos@example.test"
+    user_id = create_user(
+        email=correo,
+        password_hash="test-hash",  # pragma: allowlist secret
+    )
+    return Persona(user_id, user_key_from_email(correo, user_id))
 
 
 def _iso_in(days: float) -> str:
@@ -53,16 +79,26 @@ def organizacion(tmp_db) -> int:
 
 
 @pytest.fixture()
-def seeded(tmp_db, organizacion):
+def alice(tmp_db) -> Persona:
+    return _persona("alice")
+
+
+@pytest.fixture()
+def bob(tmp_db) -> Persona:
+    return _persona("bob")
+
+
+@pytest.fixture()
+def seeded(tmp_db, organizacion, alice):
     """Una licitación y un favorito de ``alice``; la fecha la pone cada test.
 
-    ``alice`` y ``bob`` son dos claves de usuario de la MISMA organización, que
-    es el caso real de dos personas de un equipo: cada una recibe sus propios
-    avisos y los dos llevan el ámbito del equipo.
+    ``alice`` y ``bob`` son dos usuarios de la MISMA organización, que es el
+    caso real de dos personas de un equipo: cada una recibe sus propios avisos
+    y los dos llevan el ámbito del equipo.
     """
     db_mod, _ = tmp_db
 
-    def _seed(id_externo: str, user_key: str = "alice", **fechas: str | None) -> None:
+    def _seed(id_externo: str, persona: Persona = alice, **fechas: str | None) -> None:
         from db.repositories.watchlist import WatchlistRepository
 
         with db_mod.connect() as c:
@@ -81,8 +117,7 @@ def seeded(tmp_db, organizacion):
                 ),
             )
         WatchlistRepository().add_item(
-            user_key=user_key,
-            user_id=None,
+            user_id=persona.id,
             id_externo=id_externo,
             organization_id=organizacion,
         )
@@ -101,12 +136,12 @@ def _repartir() -> None:
         event_dispatch.dispatch_pending()
 
 
-def _notifications(db_mod, user_key: str = "alice") -> list[tuple[str, str]]:
+def _notifications(db_mod, persona: Persona) -> list[tuple[str, str]]:
     _repartir()
     with db_mod.connect_read() as c:
         rows = c.execute(
             "SELECT type, licitacion_id FROM user_notifications WHERE user_key = %s ORDER BY type",
-            (user_key,),
+            (persona.key,),
         ).fetchall()
     return [(str(r[0]), str(r[1])) for r in rows]
 
@@ -115,32 +150,32 @@ def _notifications(db_mod, user_key: str = "alice") -> list[tuple[str, str]]:
     ("days_left", "expected"),
     [(0.5, "deadline_1"), (5, "deadline_7"), (20, "deadline_30")],
 )
-def test_deadline_window_picks_the_tightest_type(seeded, days_left, expected):
+def test_deadline_window_picks_the_tightest_type(seeded, alice, days_left, expected):
     """Cada plazo cae en su ventana más ajustada."""
     from services.deadline_reminders import check_deadlines_and_notify
 
     db_mod, seed = seeded
     seed("EXP-1", fecha_limite=_iso_in(days_left))
 
-    assert check_deadlines_and_notify("alice") >= 1
-    tipos = {t for t, _ in _notifications(db_mod)}
+    assert check_deadlines_and_notify(alice.id) >= 1
+    tipos = {t for t, _ in _notifications(db_mod, alice)}
     assert expected in tipos
 
 
-def test_fecha_fin_genera_renovacion_no_deadline(seeded):
+def test_fecha_fin_genera_renovacion_no_deadline(seeded, alice):
     """``fecha_fin`` es fin de contrato: su aviso es de renovación."""
     from services.deadline_reminders import check_deadlines_and_notify
 
     db_mod, seed = seeded
     seed("EXP-2", fecha_fin=_iso_in(5))
 
-    check_deadlines_and_notify("alice")
-    tipos = {t for t, _ in _notifications(db_mod)}
+    check_deadlines_and_notify(alice.id)
+    tipos = {t for t, _ in _notifications(db_mod, alice)}
     assert "renovacion_7" in tipos
     assert not any(t.startswith("deadline_") for t in tipos)
 
 
-def test_es_idempotente_entre_ejecuciones(seeded):
+def test_es_idempotente_entre_ejecuciones(seeded, alice):
     """Re-ejecutar el job no duplica avisos (la clave del evento en el outbox).
 
     Es la propiedad que hace seguro correrlo cada día desde el scheduler.
@@ -150,27 +185,27 @@ def test_es_idempotente_entre_ejecuciones(seeded):
     db_mod, seed = seeded
     seed("EXP-3", fecha_limite=_iso_in(5))
 
-    primera = check_deadlines_and_notify("alice")
-    tras_primera = _notifications(db_mod)
-    segunda = check_deadlines_and_notify("alice")
+    primera = check_deadlines_and_notify(alice.id)
+    tras_primera = _notifications(db_mod, alice)
+    segunda = check_deadlines_and_notify(alice.id)
 
     assert primera >= 1
     assert segunda == 0
-    assert _notifications(db_mod) == tras_primera
+    assert _notifications(db_mod, alice) == tras_primera
 
 
-def test_licitacion_vencida_no_genera_aviso(seeded):
+def test_licitacion_vencida_no_genera_aviso(seeded, alice):
     """Un plazo ya pasado no avisa: no hay nada que preparar."""
     from services.deadline_reminders import check_deadlines_and_notify
 
     db_mod, seed = seeded
     seed("EXP-4", fecha_limite=_iso_in(-3))
 
-    assert check_deadlines_and_notify("alice") == 0
-    assert _notifications(db_mod) == []
+    assert check_deadlines_and_notify(alice.id) == 0
+    assert _notifications(db_mod, alice) == []
 
 
-def test_fecha_ilegible_no_rompe_el_job(seeded):
+def test_fecha_ilegible_no_rompe_el_job(seeded, alice):
     """Una fecha con forma ISO pero inexistente se salta sin abortar el resto.
 
     No vale cualquier basura: ``ck_licitaciones_fecha_limite_iso`` (v59) exige
@@ -187,39 +222,39 @@ def test_fecha_ilegible_no_rompe_el_job(seeded):
     seed("EXP-5", fecha_limite="2026-13-45")
     seed("EXP-6", fecha_limite=_iso_in(5))
 
-    assert check_deadlines_and_notify("alice") >= 1
-    assert {lic for _, lic in _notifications(db_mod)} == {"EXP-6"}
+    assert check_deadlines_and_notify(alice.id) >= 1
+    assert {lic for _, lic in _notifications(db_mod, alice)} == {"EXP-6"}
 
 
-def test_check_all_users_recorre_cada_usuario_con_favoritos(seeded):
+def test_check_all_users_recorre_cada_usuario_con_favoritos(seeded, alice, bob):
     """El job del scheduler cubre a todos los usuarios, no solo al primero."""
     from services.deadline_reminders import check_all_users_deadlines
 
     db_mod, seed = seeded
-    seed("EXP-7", user_key="alice", fecha_limite=_iso_in(5))
-    seed("EXP-8", user_key="bob", fecha_limite=_iso_in(5))
+    seed("EXP-7", alice, fecha_limite=_iso_in(5))
+    seed("EXP-8", bob, fecha_limite=_iso_in(5))
 
     total = check_all_users_deadlines()
 
     assert total >= 2
-    assert _notifications(db_mod, "alice")
-    assert _notifications(db_mod, "bob")
+    assert _notifications(db_mod, alice)
+    assert _notifications(db_mod, bob)
 
 
 # ── Ámbito de organización del aviso (S4.3) ──────────────────────────────────
 
 
-def _organizaciones_de_avisos(db_mod, user_key: str = "alice") -> set[int | None]:
+def _organizaciones_de_avisos(db_mod, persona: Persona) -> set[int | None]:
     _repartir()
     with db_mod.connect_read() as c:
         rows = c.execute(
             "SELECT organization_id FROM user_notifications WHERE user_key = %s",
-            (user_key,),
+            (persona.key,),
         ).fetchall()
     return {r[0] for r in rows}
 
 
-def test_el_aviso_hereda_la_organizacion_del_favorito(seeded, organizacion):
+def test_el_aviso_hereda_la_organizacion_del_favorito(seeded, organizacion, alice):
     """Un aviso sin organización existe en la tabla y no lo ve nadie.
 
     ``services/notifications.get_user_alerts`` y sus vecinas filtran por
@@ -235,17 +270,17 @@ def test_el_aviso_hereda_la_organizacion_del_favorito(seeded, organizacion):
     db_mod, seed = seeded
     seed("EXP-ORG", fecha_limite=_iso_in(5))
 
-    assert check_deadlines_and_notify("alice") >= 1
+    assert check_deadlines_and_notify(alice.id) >= 1
 
-    assert _organizaciones_de_avisos(db_mod) == {organizacion}
+    assert _organizaciones_de_avisos(db_mod, alice) == {organizacion}
     # Y lo que importa de verdad: la lectura CON ámbito —la que hace la
     # campana— los devuelve. Un plazo a 5 días cae en dos ventanas.
-    avisos = get_user_alerts("alice", organization_id=organizacion)
+    avisos = get_user_alerts(alice.key, organization_id=organizacion)
     assert {a["licitacion_id"] for a in avisos} == {"EXP-ORG"}
     assert {a["type"] for a in avisos} == {"deadline_30", "deadline_7"}
 
 
-def test_un_favorito_legacy_sin_organizacion_no_genera_un_aviso_invisible(seeded):
+def test_un_favorito_legacy_sin_organizacion_no_genera_un_aviso_invisible(seeded, alice):
     """Un favorito anterior al ámbito no produce una alerta huérfana.
 
     Esas filas existen: se escribieron cuando ``organization_id`` era opcional
@@ -266,14 +301,16 @@ def test_un_favorito_legacy_sin_organizacion_no_genera_un_aviso_invisible(seeded
         )
         # A propósito por SQL crudo: el repositorio ya no permite construir
         # esta fila, y es justo la que hay en producción desde antes de S4.3.
+        # Sin ``user_id`` y con la clave que da el correo de ``alice``: así la
+        # lectura (id, o clave legada si no hay id) la encuentra.
         c.execute(
             "INSERT INTO watchlist_items (user_key, user_id, id_externo, organization_id) "
             "VALUES (%s, %s, %s, NULL)",
-            ("alice", None, "EXP-LEGACY"),
+            (alice.key, None, "EXP-LEGACY"),
         )
 
-    assert check_deadlines_and_notify("alice") == 0
-    assert _notifications(db_mod) == []
+    assert check_deadlines_and_notify(alice.id) == 0
+    assert _notifications(db_mod, alice) == []
 
 
 # ── La misma regla, sin base de datos ────────────────────────────────────────
@@ -346,7 +383,7 @@ def test_unit_el_aviso_lleva_la_organizacion_del_favorito_y_salta_al_huerfano():
         patch.object(mod, "agregados_con_evento", return_value=set()),
         patch.object(mod, "append_domain_event", side_effect=_append),
     ):
-        total = mod.check_deadlines_and_notify("alice")
+        total = mod.check_deadlines_and_notify(3)
 
     # Un plazo a 5 días cae en las ventanas de 30 y 7, y solo para EXP-A.
     assert total == len(escritas) == 2
@@ -364,6 +401,6 @@ def test_unit_todos_los_favoritos_huerfanos_equivalen_a_no_tener_favoritos():
         patch("db.repositories.watchlist.connect_read", return_value=conexion),
         patch.object(mod, "append_domain_event") as append,
     ):
-        assert mod.check_deadlines_and_notify("alice") == 0
+        assert mod.check_deadlines_and_notify(3) == 0
 
     append.assert_not_called()

@@ -106,7 +106,7 @@ _COLS_PROPIAS = (
 )
 
 
-def list_entries_por_clave(user_key: str) -> list[dict[str, Any]]:
+def list_entries_por_clave(user_key: str) -> list[JsonDict]:
     """Entradas guardadas bajo una ``user_key`` literal, sin resolver ningún usuario.
 
     Solo para el job de alertas de instancia (``scheduler/watchlist_alerts.py``),
