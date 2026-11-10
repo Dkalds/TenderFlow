@@ -17,7 +17,7 @@ Generado: 2026-11-10
 | `retention_cleanup` | pipeline | CANONICAL_STEPS[retention_cleanup] |
 | `ml_scoring_baja` | actions | python -m scheduler.jobs.ml_predicciones |
 | `ml_retrain_baja` | actions | python -m scheduler.jobs.ml_predicciones |
-| `documentos_embeddings` | actions | python -m scheduler.jobs.documentos_embeddings |
+| `documentos_embeddings` | render | tenderflow-api (ADR-033, proceso hijo) |
 | `domain_truth_audit` | render | tenderflow-api (ADR-033, proceso hijo) |
 | `dlq_retry` | pipeline | CANONICAL_STEPS[dlq_retry] |
 | `webhook_reintentos` | pipeline | CANONICAL_STEPS[webhook_reintentos] |

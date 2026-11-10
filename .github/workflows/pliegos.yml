@@ -1,10 +1,16 @@
 name: Pliegos (fetch + chunking + embeddings + fichas)
 
+# Desde el 2026-11-10 el lote diario lo ejecuta el plano de cron de la API
+# (`documentos_embeddings`, ADR-033) y este workflow ya no tiene `schedule:`:
+# con los dos, cada documento se descargaría y se embebería dos veces.
+#
+# Queda para lanzarlo a mano. Es el único sitio con OCR: la imagen de la API no
+# lleva `ocrmypdf` ni `tesseract` a propósito —es la que atiende internet—, así
+# que allí un PDF escaneado queda `sin_texto`. Hoy no hay forma limpia de
+# traerlos aquí: `reencolar_sin_texto` tiene la fecha fija y, una vez en
+# `pending`, el lote diario se los volvería a llevar. Es un coste aceptado
+# (ADR-033, añadido del 2026-11-10), no una recuperación resuelta.
 on:
-  schedule:
-    # Nocturno, tras la ingesta diaria y el scoring ML (07:30 UTC) — deja
-    # tiempo a que haya documentos `pending` nuevos del día antes de procesarlos.
-    - cron: "0 9 * * *"
   workflow_dispatch:
     inputs:
       fetch_batch:

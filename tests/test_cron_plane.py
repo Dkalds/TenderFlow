@@ -133,7 +133,12 @@ def test_las_exclusiones_nombran_jobs_reales_de_actions():
 def test_el_plano_asume_la_ingesta_el_scoring_y_la_auditoria():
     """Lo que corre en la API. Si cambia, cambia el runbook."""
     asumidos = {j.name for j in jobs_del_plano(build_default_registry())}
-    assert asumidos == {"daily_atom", "ml_scoring_baja", "domain_truth_audit"}
+    assert asumidos == {
+        "daily_atom",
+        "ml_scoring_baja",
+        "domain_truth_audit",
+        "documentos_embeddings",
+    }
 
 
 # ── 2. No se activa solo ────────────────────────────────────────────────────
