@@ -35,6 +35,7 @@ from db.database import connect, connect_read
 from db.models import compile_query, licitaciones
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
+from shared.types import JsonDict
 
 log = get_logger(__name__)
 
@@ -624,6 +625,19 @@ def filas_de_reglas_a_evaluar() -> list[dict[str, Any]]:
     with connect_read() as c:
         cur = c.execute(f"SELECT {_RULE_COLS_LEGACY} FROM watchlist_rules WHERE active = 1")
         return rows_to_dicts(cur)
+
+
+def fila_de_regla(rule_id: int) -> JsonDict | None:
+    """Una regla por id, con dueño, correo y frecuencia, o ``None`` si ya no existe.
+
+    La lee el despachador al repartir ``watchlist_rule.matched``: el correo y la
+    frecuencia no viajan en el evento, que también sale por webhook.
+    """
+    with connect_read() as c:
+        filas = rows_to_dicts(
+            c.execute(f"SELECT {_RULE_COLS} FROM watchlist_rules WHERE id = %s", (rule_id,))
+        )
+    return filas[0] if filas else None
 
 
 def marcar_regla_notificada(rule_id: int, ts: str) -> None:
