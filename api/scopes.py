@@ -10,7 +10,7 @@ becoming reachable by a read-only key.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
@@ -188,3 +188,31 @@ def has_scope(scopes: Iterable[str], required_scope: str) -> bool:
     if "*" in available or required_scope in available:
         return True
     return bool(available & _LEGACY_SCOPE_ALIASES.get(required_scope, frozenset()))
+
+
+def scopes_del_principal(principal: Mapping[str, object]) -> frozenset[str]:
+    """Scopes de la API key del principal, sea cual sea la forma en que lleguen."""
+    crudos = principal.get("scopes", "")
+    if isinstance(crudos, str):
+        return frozenset(scope.strip() for scope in crudos.split(",") if scope.strip())
+    if isinstance(crudos, (set, frozenset, list, tuple)):
+        return frozenset(str(scope).strip() for scope in crudos if str(scope).strip())
+    return frozenset()
+
+
+def organizacion_para_citas(principal: Mapping[str, object]) -> int | None:
+    """Organización cuyos documentos propios puede citar una respuesta, o ``None``.
+
+    Una sesión cita los de su organización activa. Una API key solo si además
+    puede leer oportunidades (``pursuits:read``): los adjuntos cuelgan de
+    ellas, y ni ``ask:read`` ni ``licitaciones:write`` los abrían hasta ADR-040.
+    Lo usan las dos superficies que enseñan esas citas: ``/ask`` y el guion.
+    """
+    organizacion = principal.get("organization_id")
+    if not isinstance(organizacion, int) or isinstance(organizacion, bool):
+        return None
+    if principal.get("auth_method") == "api_key" and not has_scope(
+        scopes_del_principal(principal), "pursuits:read"
+    ):
+        return None
+    return organizacion

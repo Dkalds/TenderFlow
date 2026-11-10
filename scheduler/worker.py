@@ -25,8 +25,9 @@ Vida del lock
 de latir, no los que tardan. Si aun así dos workers llegaran a ejecutar el
 mismo job (la BD caída más de dos latidos), los handlers son idempotentes —el
 upsert de la ficha, el ``replace_chunks`` de los embeddings, el maquetado del
-PDF y el ``guardar`` de las puntuaciones del acta, que reemplaza el expediente
-entero, lo son—, así que el peor caso es trabajo repetido, no dato corrupto.
+PDF, el ``guardar`` de las puntuaciones del acta, que reemplaza el expediente
+entero, y el indexado de un adjunto, que sustituye sus fragmentos, lo son—, así
+que el peor caso es trabajo repetido, no dato corrupto.
 """
 
 from __future__ import annotations
@@ -172,6 +173,58 @@ def ejecutar_puntuaciones_acta(job: Job) -> dict[str, str]:
     licitacion_id = str(job.payload["licitacion_id"])
     status = extraer_puntuaciones(licitacion_id, model=str(job.payload["model"]))
     return {"licitacion_id": licitacion_id, "status": status}
+
+
+def _paginas_de_adjunto(contenido: bytes, content_type: str) -> list[str]:
+    """Texto por página de un adjunto, con los fallos de extracción traducidos.
+
+    ``services/`` no puede importar el extractor (``scraper/`` está por encima),
+    así que este handler se lo pasa hecho: lo que el extractor llama «formato
+    no soportado», «PDF sin texto» o «documento ilegible» llega al servicio
+    como :class:`TextoNoExtraible` con el estado que el adjunto debe enseñar.
+    """
+    from scraper.document_fetcher import (
+        DocumentFetchError,
+        PdfSinTextoError,
+        UnsupportedDocumentError,
+        extraer_paginas,
+    )
+    from services.memoria_organizacion import TextoNoExtraible
+
+    try:
+        return [pagina.texto for pagina in extraer_paginas(contenido, content_type)]
+    except PdfSinTextoError as exc:
+        raise TextoNoExtraible(
+            "sin_texto", "El PDF no tiene texto que leer: parece un documento escaneado."
+        ) from exc
+    except UnsupportedDocumentError as exc:
+        raise TextoNoExtraible(
+            "unsupported", "De este formato no se puede extraer texto en este entorno."
+        ) from exc
+    except DocumentFetchError as exc:
+        raise TextoNoExtraible("error", f"No se pudo leer el documento: {exc}") from exc
+
+
+def ejecutar_indexado_adjunto(job: Job) -> dict[str, object]:
+    """Indexa UN adjunto que su organización marcó indexable (ADR-040).
+
+    El trabajo es de ``services.memoria_organizacion.indexar``, que fija el
+    ámbito de la organización antes de leer o escribir nada: aquí no hay
+    petición que lo haga, y la tabla de fragmentos no deja ver nada sin él.
+    """
+    from config.settings import jobs_max_intentos
+    from services.jobs import JobSinReintento
+    from services.memoria_organizacion import indexar
+
+    if job.organization_id is None:
+        # Un indexado sin organización no se puede acotar, y repetirlo no la pondría.
+        raise JobSinReintento("indexado_adjunto sin organización")
+    return indexar(
+        int(job.payload["attachment_id"]),
+        job.organization_id,
+        extraer=_paginas_de_adjunto,
+        ultimo_intento=job.intentos >= jobs_max_intentos(),
+    )
 
 
 def ejecutar_export_pdf(job: Job) -> dict[str, Any]:

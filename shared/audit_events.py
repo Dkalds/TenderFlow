@@ -123,6 +123,10 @@ DLQ_DISCARDED: Final = "dlq.discarded"
 FEEDBACK_SUBMITTED: Final = "feedback.submitted"
 PURSUIT_WEIGHTS_PROPOSAL_APPLIED: Final = "pursuit.weights_proposal_applied"
 GO_NO_GO_WEIGHTS_UPDATED: Final = "go_no_go.weights_updated"
+#: Alguien permitió, o dejó de permitir, que un adjunto de la organización se
+#: indexe para citarlo (ADR-040). ``resource="org:<id>"``; el detalle lleva el
+#: adjunto, su oportunidad, el valor nuevo y si fue por retirar el adjunto.
+PURSUIT_ATTACHMENT_INDEXING_CHANGED: Final = "pursuit_attachment.indexing_changed"
 
 # ── watchlist_rule.* — las alertas, de las que sale el resumen diario ──────
 #: El 2026-10-26 había cero reglas tras 34 avisos y no constaba quién las
@@ -200,7 +204,12 @@ FAMILIAS: Final[Mapping[str, frozenset[str]]] = {
     ),
     "operacion": frozenset({DLQ_REQUEUED, DLQ_DISCARDED}),
     "producto": frozenset(
-        {FEEDBACK_SUBMITTED, PURSUIT_WEIGHTS_PROPOSAL_APPLIED, GO_NO_GO_WEIGHTS_UPDATED}
+        {
+            FEEDBACK_SUBMITTED,
+            PURSUIT_WEIGHTS_PROPOSAL_APPLIED,
+            GO_NO_GO_WEIGHTS_UPDATED,
+            PURSUIT_ATTACHMENT_INDEXING_CHANGED,
+        }
     ),
     "watchlist_rule": frozenset(
         {

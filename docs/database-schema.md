@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-11-10
 
-Revisión Alembic aplicada: `v178_sistema_contratacion`.
+Revisión Alembic aplicada: `v179_memoria_organizacion`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -27,13 +27,13 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Licitaciones y fuente | 15 | 203 | 67 |
 | Documentos y pliegos | 6 | 67 | 13 |
 | Empresas y mercado | 6 | 34 | 11 |
-| Organizaciones y oportunidades | 15 | 143 | 31 |
+| Organizaciones y oportunidades | 16 | 156 | 35 |
 | Identidad, acceso y auditoría | 16 | 113 | 25 |
 | Seguimiento y notificaciones | 12 | 135 | 38 |
 | ML y predicciones | 8 | 63 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 24 | 185 | 35 |
-| **Total** | **108** | **989** | **245** |
+| **Total** | **109** | **1002** | **249** |
 
 ## Licitaciones y fuente
 
@@ -732,6 +732,25 @@ Claves: `PRIMARY KEY (id)`
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (personal_owner_user_id)`
 
+### `pursuit_attachment_chunks`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `bigint` | no |
+| `attachment_id` | `integer` | no |
+| `organization_id` | `integer` | no |
+| `chunk_index` | `integer` | no |
+| `page_number` | `integer` | sí |
+| `texto` | `text` | no |
+| `embedding` | `vector` | sí |
+| `embedding_model` | `text` | sí |
+| `embedding_version` | `text` | sí |
+| `search_vector` | `tsvector` | sí |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (attachment_id, chunk_index)`
+
+Índices: `idx_pursuit_attachment_chunks_org`, `idx_pursuit_attachment_chunks_search`
+
 ### `pursuit_attachments`
 
 | Columna | Tipo | Nulo |
@@ -748,10 +767,13 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (personal_owner_user_id)`
 | `indexable` | `boolean` | no |
 | `created_at` | `text` | no |
 | `deleted_at` | `timestamp with time zone` | sí |
+| `index_status` | `text` | sí |
+| `index_error` | `text` | sí |
+| `index_embedding_version` | `text` | sí |
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (blob_key)`
 
-Índices: `idx_pursuit_attachments_org`, `idx_pursuit_attachments_pursuit`, `idx_pursuit_attachments_vivas`
+Índices: `idx_pursuit_attachments_indexables`, `idx_pursuit_attachments_org`, `idx_pursuit_attachments_pursuit`, `idx_pursuit_attachments_vivas`, `uq_pursuit_attachments_id_org` (único)
 
 ### `pursuit_comment_mentions`
 

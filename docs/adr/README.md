@@ -43,7 +43,7 @@ el cuerpo.
 
 <!-- BEGIN indice-adr (generado por scripts/gen_adr_index.py — no editar a mano) -->
 
-**38 ADR**, de los cuales **35** están vigentes. `accepted` 35 · `rejected` 1 · `superseded` 2.
+**39 ADR**, de los cuales **36** están vigentes. `accepted` 36 · `rejected` 1 · `superseded` 2.
 
 Esta tabla se genera con `python scripts/gen_adr_index.py` a partir del frontmatter de cada ADR; CI la verifica con `--check`, igual que `make check-agent-docs` y la suite (`tests/test_unit_ratchet_indice_adr.py`). Un ADR sin `id` o `status` —o con un estado fuera del vocabulario— la hace fallar.
 
@@ -94,5 +94,6 @@ Esta tabla se genera con `python scripts/gen_adr_index.py` a partir del frontmat
 | [ADR-037](ADR-037-correo-acreditado-y-vinculacion-por-proveedor.md) | Un correo solo cuenta si el proveedor lo acredita, y no une cuentas de proveedores distintos | `accepted` | 2026-10-23 | — |
 | [ADR-038](ADR-038-clave-de-placsp-acotada-por-organo.md) | El id_externo de una fuente cuyo expediente no es único entre órganos se acota por el órgano: PLACSP pasa a `placsp:<órgano>:<expediente>` | `accepted` | 2026-10-26 | — |
 | [ADR-039](ADR-039-auditoria-como-condicion-del-control-de-acceso.md) | Conceder y revocar acceso no ocurren sin su fila de auditoría: la auditoría va en la misma transacción | `accepted` | 2026-11-04 | — |
+| [ADR-040](ADR-040-memoria-de-la-organizacion.md) | Memoria de la organización: el texto de sus adjuntos se indexa en un almacén propio y solo se cita literal | `accepted` | 2026-11-10 | — |
 
 <!-- END indice-adr -->

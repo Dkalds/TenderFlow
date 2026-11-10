@@ -28,9 +28,15 @@ from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
     _lic_repo,
 )
+from api.scopes import organizacion_para_citas
 from api.tenancy import require_organization
 from observability.logging import get_logger
-from services.rag.guion_oferta import GuionOferta, generar_guion, guion_pdf
+from services.rag.guion_oferta import (
+    GuionOferta,
+    con_citas_de_organizacion,
+    generar_guion,
+    guion_pdf,
+)
 from shared.dto import CondicionesOficiales
 from shared.identity import Principal
 from shared.tender_facts import TenderFactSheetRecord
@@ -60,13 +66,21 @@ async def post_guion_oferta(
 
     El presupuesto se ata al mismo sujeto opaco que el resto de superficies
     LLM, con la `user_key` del auth y nunca el email ni el `user_id` crudo.
+
+    Cada criterio trae además `citas_organizacion`: extractos literales de los
+    documentos que la organización activa marcó indexables (ADR-040). Se buscan
+    en cada petición y no se guardan con el guion, que es común a todas.
     """
     from llm.budget import LLMBudgetExceeded, bind_budget_org, bind_budget_subject
 
     def _trabajo() -> GuionOferta:
         bind_budget_subject(_budget_subject(ctx))
         bind_budget_org(str(ctx["organization_id"]))
-        return generar_guion(id_externo)
+        guion = generar_guion(id_externo)
+        # Mismo criterio que `/ask`: una clave de API sin `pursuits:read` recibe
+        # el guion, que es del pliego, pero no extractos de los adjuntos.
+        organizacion = organizacion_para_citas(ctx)
+        return guion if organizacion is None else con_citas_de_organizacion(guion, organizacion)
 
     try:
         return await run_db(_trabajo)

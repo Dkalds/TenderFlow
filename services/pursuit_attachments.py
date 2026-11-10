@@ -8,9 +8,11 @@ subir un fichero al producto no sea una vía de entrada:
    —«todo menos .exe»— es una carrera que se pierde: basta un formato nuevo.
 2. **Cómo se descarga.** Un enlace **firmado y caducado**, no una URL adivinable.
    El binario nunca se sirve desde una ruta que solo dependa del id.
-3. **Qué NO se hace con él.** El RAG no lo indexa. La columna `indexable` de
-   `v127` existe para que ese permiso pueda levantarse por fichero, y nace en
-   `false`.
+3. **Qué NO se hace con él.** El RAG no lo indexa salvo permiso **por
+   fichero**: la columna `indexable` de `v127` nace en `false`, y levantarla
+   (:func:`marcar_indexable`) encola su indexado en el almacén propio de la
+   organización (`services/memoria_organizacion.py`, ADR-040). Bajarla, o
+   retirar el adjunto, borra ese texto en la misma transacción.
 
 El binario va al almacén de objetos de v2 S8.1; la fila, a `pursuit_attachments`.
 """
@@ -24,12 +26,14 @@ import time
 from dataclasses import dataclass
 from typing import Any, Final
 
+from config.settings_memoria import pursuit_attachment_max_bytes_por_organizacion
 from db.repositories.pursuit_attachments import (
     PursuitAttachmentExists,
     PursuitAttachmentsRepository,
 )
 from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
+from services.memoria_organizacion import PoliticaIndexado, politica_indexado
 from services.organizations import alcance_resuelto
 from services.pursuits import PursuitNotFoundError
 from shared.object_store import get_object_store
@@ -53,15 +57,35 @@ class AttachmentStoreUnavailable(AttachmentError):
     """No hay almacén configurado: sin bucket no se acepta la subida."""
 
 
+class IndexadoRechazado(AttachmentError):
+    """Ese adjunto no se puede marcar indexable: tipo, tamaño o tope de la organización."""
+
+
+class IndexadoNoDisponible(AttachmentError):
+    """La cola de indexado no aceptó el trabajo: es un fallo nuestro, no de la petición."""
+
+
 #: Tope por fichero. 25 MiB cubre una propuesta con anexos maquetados; por
 #: encima, el sitio de un fichero no es una petición HTTP. Duplicado como CHECK
 #: en `v127`, a propósito: una ruta nueva que olvide validar choca con la base.
 MAX_BYTES: Final = 25 * 1024 * 1024
 
-#: Tope por organización. Sin él, el coste del bucket lo fija un cliente.
-#: Se mide con `PursuitAttachmentsRepository.ocupacion`, que es una fila, no un
-#: listado del bucket.
+#: Tope por organización **por defecto**. Sin él, el coste del bucket lo fija un
+#: cliente. Se mide con `PursuitAttachmentsRepository.ocupacion`, que es una
+#: fila, no un listado del bucket. El vigente lo da
+#: :func:`max_bytes_por_organizacion`.
 MAX_BYTES_POR_ORGANIZACION: Final = 2 * 1024 * 1024 * 1024
+
+
+def max_bytes_por_organizacion() -> int:
+    """Cuota de adjuntos por organización (``PURSUIT_ATTACHMENT_MAX_BYTES_POR_ORGANIZACION``).
+
+    Configurable porque cuánto se ofrece es una decisión del propietario que
+    sigue abierta (backlog, flecos de `funcionalidades-2026-10`); el valor por
+    defecto es el que ya regía.
+    """
+    return pursuit_attachment_max_bytes_por_organizacion()
+
 
 #: Lista BLANCA de tipos. Lo que se sube a una oportunidad es una propuesta y
 #: sus anexos: documentos, hojas, presentaciones, imágenes y el comprimido con
@@ -223,6 +247,8 @@ class PoliticaAdjuntos:
     almacen_disponible: bool
     max_bytes: int
     tipos: tuple[tuple[str, tuple[str, ...]], ...]
+    #: Topes del indexado (ADR-040): lo que el interruptor dice antes de activarse.
+    indexado: PoliticaIndexado
 
 
 def politica() -> PoliticaAdjuntos:
@@ -238,6 +264,7 @@ def politica() -> PoliticaAdjuntos:
         almacen_disponible=get_object_store().enabled,
         max_bytes=MAX_BYTES,
         tipos=tuple(sorted(TIPOS_PERMITIDOS.items())),
+        indexado=politica_indexado(),
     )
 
 
@@ -268,6 +295,41 @@ def obtener(
         return PursuitAttachmentsRepository().get(attachment_id, organization_id=resuelta)
 
 
+def _exigir_indexable(content_type: str, size_bytes: int, *, ya_indexables: int) -> None:
+    """Lanza :class:`IndexadoRechazado` si ese adjunto no puede indexarse ahora."""
+    vigente = politica_indexado()
+    if not vigente.disponible:
+        raise IndexadoRechazado("El indexado de documentos propios no está activado.")
+    if content_type not in vigente.tipos:
+        raise IndexadoRechazado(
+            "De este tipo de fichero no se puede extraer texto: se indexan PDF, Word "
+            "(.docx), OpenDocument, texto y ZIP."
+        )
+    if size_bytes > vigente.max_bytes:
+        raise IndexadoRechazado(
+            f"El fichero supera el tope para indexar ({vigente.max_bytes / (1024 * 1024):g} MiB)."
+        )
+    if ya_indexables >= vigente.max_documentos:
+        raise IndexadoRechazado(
+            f"Tu organización ya tiene {ya_indexables} documentos indexados, que es su tope. "
+            "Desactiva alguno para indexar este."
+        )
+
+
+def _encolar_indexado(attachment_id: int, organization_id: int) -> int:
+    from services.jobs import TIPO_INDEXADO_ADJUNTO, enqueue
+
+    # Sin deduplicar: un job ya `running` puede haber leído «sin permiso» justo
+    # antes de esta reactivación, y devolverlo como equivalente dejaría el
+    # adjunto «pendiente» sin nadie que lo indexe. El handler es idempotente.
+    return enqueue(
+        TIPO_INDEXADO_ADJUNTO,
+        {"attachment_id": attachment_id},
+        organization_id=organization_id,
+        deduplicar=False,
+    )
+
+
 def marcar_indexable(
     user_id: int,
     attachment_id: int,
@@ -275,11 +337,58 @@ def marcar_indexable(
     indexable: bool,
     organization_id: int | None = None,
 ) -> dict[str, Any] | None:
-    """Levanta o baja el opt-in del RAG para UN adjunto. `viewer` no escribe."""
+    """Levanta o baja el opt-in del RAG para UN adjunto. `viewer` no escribe.
+
+    Levantarlo comprueba el tipo, el tamaño y el tope de la organización, deja
+    el adjunto ``pending`` y encola su indexado. Bajarlo borra su texto y sus
+    embeddings en la misma transacción que el permiso. Los dos cambios quedan
+    en el rastro de auditoría —lo escribe el repositorio, en esa misma
+    transacción (ADR-039 §3)—; repetir el mismo valor no hace nada.
+
+    shortcut: el tope se cuenta antes de escribir, así que dos altas
+    simultáneas pueden pasarlo por uno. Es un tope de coste, no una frontera;
+    llevarlo al ``UPDATE`` si se vuelve un límite contractual.
+    """
     with alcance_resuelto(user_id, organization_id, write=True) as (resuelta, _role):
-        return PursuitAttachmentsRepository().set_indexable(
-            attachment_id, organization_id=resuelta, indexable=indexable
+        repo = PursuitAttachmentsRepository()
+        previa = repo.get(attachment_id, organization_id=resuelta)
+        if previa is None:
+            return None
+        cambia = bool(previa.get("indexable")) != indexable
+        if cambia and indexable:
+            _exigir_indexable(
+                str(previa["content_type"]),
+                int(previa["size_bytes"]),
+                ya_indexables=repo.contar_indexables(resuelta),
+            )
+        fila = repo.set_indexable(
+            attachment_id, organization_id=resuelta, indexable=indexable, actor_user_id=user_id
         )
+        if fila is None or not (cambia and indexable):
+            return fila
+        try:
+            _encolar_indexado(attachment_id, resuelta)
+        except Exception as exc:
+            from services.jobs import CuotaDeJobsExcedida
+
+            # Sin job, el adjunto diría «pendiente» para siempre: se deshace el
+            # permiso (y el rastro lo dice) en vez de prometer un indexado que
+            # no viene.
+            repo.set_indexable(
+                attachment_id,
+                organization_id=resuelta,
+                indexable=False,
+                actor_user_id=user_id,
+                motivo="cola_no_disponible",
+            )
+            log.warning("pursuit_attachment_indexado_no_encolado", error=str(exc)[:200])
+            if isinstance(exc, CuotaDeJobsExcedida):
+                raise IndexadoRechazado(str(exc)) from exc
+            raise IndexadoNoDisponible(
+                "No se pudo poner el documento en la cola de indexado. "
+                "Vuelve a intentarlo en unos minutos."
+            ) from exc
+        return fila
 
 
 def subir(
@@ -316,13 +425,14 @@ def subir(
 
         repo = PursuitAttachmentsRepository()
         ocupado = repo.ocupacion(organization_id_resuelta)
-        if ocupado["bytes"] + len(data) > MAX_BYTES_POR_ORGANIZACION:
+        tope = max_bytes_por_organizacion()
+        if ocupado["bytes"] + len(data) > tope:
             # El mensaje no invita a borrar: desde v131 un adjunto retirado
             # conserva su binario y sigue contando en `ocupacion`, así que
             # borrar no liberaría nada y el usuario lo intentaría en vano.
             raise AttachmentTooLarge(
                 "La organización ha llegado a su tope de adjuntos "
-                f"({MAX_BYTES_POR_ORGANIZACION // (1024**3)} GiB, retirados incluidos). "
+                f"({tope / (1024**3):g} GiB, retirados incluidos). "
                 "Escribe a soporte para ampliarlo."
             )
 
@@ -386,7 +496,8 @@ def borrar(user_id: int, attachment_id: int, *, organization_id: int | None = No
     """Retira el adjunto de la oportunidad. ``False`` si no existía o no era suyo.
 
     Desde v131 el borrado es **lógico**: la fila se marca y el objeto del
-    almacén **se conserva**. La llamada a ``get_object_store().delete()`` que
+    almacén **se conserva**. Lo que no se conserva es su texto indexado (v179):
+    el repositorio lo borra en la misma transacción. La llamada a ``get_object_store().delete()`` que
     había aquí se retiró a propósito, no por olvido: borrar el binario haría
     irreversible lo que la marca hace reversible, y una restauración daría una
     descarga rota.
@@ -398,7 +509,9 @@ def borrar(user_id: int, attachment_id: int, *, organization_id: int | None = No
     anotado de otro con un clic.
     """
     with alcance_resuelto(user_id, organization_id, write=True) as (resuelta, _role):
-        clave = PursuitAttachmentsRepository().delete(attachment_id, organization_id=resuelta)
+        clave = PursuitAttachmentsRepository().delete(
+            attachment_id, organization_id=resuelta, actor_user_id=user_id
+        )
         if clave is None:
             return False
         log.info("pursuit_attachment_borrado", attachment_id=attachment_id, blob_conservado=True)
