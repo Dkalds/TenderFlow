@@ -45,6 +45,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from api.concurrency import run_db, run_io, run_ml
 from api.identidad import id_vigente, resolver_id_externo
 from api.routes.dual_auth import require_any_auth
+from api.scopes import organizacion_para_citas, scopes_del_principal
 from api.tenancy import require_organization
 from config import settings
 from llm.prompts import ChatMessage, PromptMode
@@ -241,18 +242,31 @@ class ResumenRequest(BaseModel):
 def _check_ask_scope(user: Principal) -> None:
     """Scope check para auth por API key (usuarios de sesión siempre permitidos)."""
     if user.get("auth_method") == "api_key":
-        raw_scopes = user.get("scopes", "")
-        if isinstance(raw_scopes, str):
-            scopes = frozenset(scope.strip() for scope in raw_scopes.split(",") if scope.strip())
-        elif isinstance(raw_scopes, (set, frozenset, list, tuple)):
-            scopes = frozenset(str(scope).strip() for scope in raw_scopes if str(scope).strip())
-        else:
-            scopes = frozenset()
+        scopes = scopes_del_principal(user)
         if "*" not in scopes and "ask:read" not in scopes:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Acceso denegado. Scope insuficiente.",
             )
+
+
+def _fuentes_organizacion(question: str, organization_id: int) -> list[dict[str, object]] | None:
+    """Evento aditivo ``fuentes_organizacion``: citas de documentos propios (ADR-040).
+
+    Extractos literales de lo que la organización indexó, con su fichero, su
+    página y su oportunidad. **No** entran en el contexto del modelo ni en la
+    huella de la caché de respuestas: van al lado de la respuesta, no dentro.
+
+    ``None`` si la búsqueda **falló**: no rompe la pregunta, pero tampoco se
+    presenta como «no hay nada» (``ask_meta.citas_propias_fallidas``).
+    """
+    try:
+        from services.memoria_organizacion import citas
+
+        return [c.model_dump() for c in citas(organization_id, [question])[0]]
+    except Exception:
+        log.warning("ask.fuentes_organizacion_failed", exc_info=True)
+        return None
 
 
 def _budget_subject(user: Principal) -> str | None:
@@ -686,6 +700,7 @@ async def _stream_ask(
     org_key: str | None = None,
     *,
     semantica: bool = False,
+    organizacion_citas: int | None = None,
 ) -> AsyncGenerator[str]:
     """Prepara contexto + historial y devuelve el stream SSE del LLM."""
     from llm.budget import bind_budget_org, bind_budget_subject
@@ -729,6 +744,13 @@ async def _stream_ask(
     pre_events: list[dict[str, Any]] = [{"ask_meta": ask_meta}]
     if fuentes:
         pre_events.append({"fuentes_documentos": fuentes})
+    if organizacion_citas is not None:
+        propias = await run_db(_fuentes_organizacion, request.question, organizacion_citas)
+        if propias is None:
+            # `ask_meta` ya está en `pre_events` y aún no ha salido: se anota ahí.
+            ask_meta["citas_propias_fallidas"] = True
+        elif propias:
+            pre_events.append({"fuentes_organizacion": propias})
 
     # ── Caché de respuestas (C5.5) ───────────────────────────────────────────
     #
@@ -913,7 +935,11 @@ async def ask_question(
         semantica = await run_db(semantica_activa, user.get("email"))
 
     generator = await _stream_ask(
-        body, _budget_subject(user), _budget_org(user), semantica=semantica
+        body,
+        _budget_subject(user),
+        _budget_org(user),
+        semantica=semantica,
+        organizacion_citas=organizacion_para_citas(user),
     )
 
     return StreamingResponse(

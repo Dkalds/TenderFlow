@@ -30,6 +30,7 @@ const GUION: GuionOferta = {
   licitacion_id: "LIC-1",
   firma: "abc",
   sin_guion: null,
+  citas_organizacion_fallidas: false,
   criterios: [
     {
       criterio: "Metodología",
@@ -89,6 +90,41 @@ describe("GuionOfertaPanel", () => {
     expect(screen.getByRole("dialog")).toHaveTextContent("PPT.pdf · página 4 de 9");
     // La cita del guion no trae offsets: se dice, en vez de fingir un resaltado.
     expect(screen.getByRole("dialog")).toHaveTextContent("La cita no guarda su posición");
+  });
+
+  it("enseña bajo cada criterio lo que la organización ya escribió, rotulado y aparte de los puntos", async () => {
+    const propia = {
+      attachment_id: 11,
+      filename: "Memoria técnica.pdf",
+      page_number: 12,
+      cita: "La migración se organiza en tres oleadas de carga.",
+      pursuit_id: 42,
+      licitacion_id: "EXP-9",
+      licitacion_titulo: "Migración del ERP provincial",
+    };
+    const conCitas = { ...GUION, criterios: [{ ...GUION.criterios![0], citas_organizacion: [propia] }] };
+    fetchPorRuta([/\/guion$/, conCitas], [/documentos$/, DOCUMENTOS]);
+    renderConQuery(<GuionOfertaPanel licitacionId="LIC-1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Generar guion" }));
+
+    expect(await screen.findByText("De documentos de tu organización (1)")).toBeInTheDocument();
+    expect(screen.getByText("Memoria técnica.pdf, p. 12")).toBeInTheDocument();
+    expect(screen.getByText("La migración se organiza en tres oleadas de carga.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Oportunidad: Migración del ERP provincial" })).toHaveAttribute(
+      "href",
+      "/oportunidades/42",
+    );
+  });
+
+  it("si no se pudieron consultar los documentos propios, lo dice en vez de callar", async () => {
+    fetchPorRuta([/\/guion$/, { ...GUION, citas_organizacion_fallidas: true }], [/documentos$/, DOCUMENTOS]);
+    renderConQuery(<GuionOfertaPanel licitacionId="LIC-1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Generar guion" }));
+
+    expect(await screen.findByText(/No se pudieron consultar los documentos de tu organización/)).toBeInTheDocument();
+    expect(screen.queryByText(/De documentos de tu organización/)).not.toBeInTheDocument();
   });
 
   it("un pliego sin criterios dice por qué y no cuenta como uso", async () => {

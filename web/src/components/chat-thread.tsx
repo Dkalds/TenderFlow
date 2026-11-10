@@ -12,6 +12,7 @@ import { ApiError, MENSAJE_SIN_CONEXION, mensajePorEstado } from "@/lib/api-clie
 import { detalleTecnico } from "@/lib/query-feedback";
 import { FeedbackButtons } from "@/components/feedback-buttons";
 import { MarkdownAnswer } from "@/components/markdown-answer";
+import { CitasOrganizacion } from "@/components/pursuits/citas-organizacion";
 import type { ChatTurn } from "@/hooks/use-ask";
 import type { AskMeta, DegradedInfo, FuenteDocumento, ResumenMeta, SourcesInfo } from "@/lib/ask-stream";
 
@@ -207,6 +208,15 @@ function RecuperacionFallidaNotice() {
   );
 }
 
+/** La respuesta sale igual; lo que falta es lo que el equipo ya había escrito. */
+function CitasPropiasFallidasNotice() {
+  return (
+    <p className="mt-2 text-tf-meta text-muted-foreground">
+      No se pudieron consultar los documentos de tu organización, así que esta respuesta no los cita.
+    </p>
+  );
+}
+
 const ESTADO_DOCUMENTO: Record<string, string> = {
   pending: "pendiente",
   downloaded: "descargado",
@@ -352,6 +362,8 @@ const TurnoAsistente = React.memo(function TurnoAsistente({
       {turno.askMeta?.recuperacion_fallida ? <RecuperacionFallidaNotice /> : null}
       {turno.degraded ? <DegradedNotice degraded={turno.degraded} /> : null}
       {turno.sources ? <CitasBlock info={turno.sources} /> : null}
+      {turno.fuentesOrganizacion ? <CitasOrganizacion citas={turno.fuentesOrganizacion} /> : null}
+      {turno.askMeta?.citas_propias_fallidas ? <CitasPropiasFallidasNotice /> : null}
       {turno.sources?.sinFuentes ? <SinFuentesNotice /> : null}
       {turno.fuentes && turno.fuentes.length > 0 ? <FuentesBlock fuentes={turno.fuentes} /> : null}
       {turno.content && !turno.degraded && !enCurso ? (

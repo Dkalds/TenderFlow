@@ -7,6 +7,7 @@ import { PanelEmpty, PanelError, SUPERFICIE_PANEL } from "@/components/console/p
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PaginaPliegoDialog } from "@/components/pliego/pagina-pliego-dialog";
+import { CitasOrganizacion } from "@/components/pursuits/citas-organizacion";
 import { guionAMarkdown, useGuionOferta } from "@/hooks/use-guion-oferta";
 import { useFactSheetDocumentos } from "@/hooks/use-tender-fact-sheet";
 import { ApiError, fetchBlobWithAuth } from "@/lib/api-client";
@@ -137,6 +138,12 @@ export function GuionOfertaPanel({ licitacionId }: { licitacionId: string }) {
 
       {guion?.sin_guion && <PanelEmpty size="sm" title="Sin guion para este pliego" hint={guion.sin_guion} />}
 
+      {guion?.citas_organizacion_fallidas && (
+        <p className="mt-3 text-tf-meta text-muted-foreground">
+          No se pudieron consultar los documentos de tu organización. Regenera el guion para volver a intentarlo.
+        </p>
+      )}
+
       {criterios.length > 0 && (
         <ol className="mt-4 space-y-4" aria-live="polite">
           {criterios.map((criterio, i) => (
@@ -175,6 +182,9 @@ export function GuionOfertaPanel({ licitacionId }: { licitacionId: string }) {
                   </li>
                 ))}
               </ul>
+              {/* Lo que el equipo ya escribió sobre este criterio: extractos de
+                  sus documentos, no puntos del guion. */}
+              <CitasOrganizacion citas={criterio.citas_organizacion ?? []} />
             </li>
           ))}
         </ol>

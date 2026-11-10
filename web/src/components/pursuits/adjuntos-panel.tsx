@@ -18,12 +18,15 @@
  *   subir 25 MB para oír que no.
  * - **Quién escribe.** Un `viewer` ve y descarga, pero no sube ni retira: el
  *   botón no aparece (`usePuedeEscribir`) y la API lo rechazaría igual.
+ *
+ * Cada fichero lleva además su permiso de cita (`permiso-de-cita.tsx`).
  */
 import * as React from "react";
 import { Download, Trash2, Upload } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { Aviso, Panel, PanelEmpty, PanelError, PanelLoading, PanelTitle } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
+import { PermisoDeCita } from "@/components/pursuits/permiso-de-cita";
 import { usePuedeEscribir } from "@/hooks/use-organization";
 import {
   useDescargarAdjunto,
@@ -32,7 +35,13 @@ import {
   useRetirarAdjunto,
   useSubirAdjunto,
 } from "@/hooks/use-pursuit-adjuntos";
-import { extensionesAdmitidas, validarFichero, type Adjunto } from "@/lib/adjuntos";
+import {
+  extensionesAdmitidas,
+  extensionesCitables,
+  validarFichero,
+  type Adjunto,
+  type PoliticaAdjuntos,
+} from "@/lib/adjuntos";
 import { formatDate, formatTamano } from "@/lib/utils";
 
 export function AdjuntosPanel({ pursuitId }: { pursuitId: number }) {
@@ -119,6 +128,14 @@ export function AdjuntosPanel({ pursuitId }: { pursuitId: number }) {
             Hasta {formatTamano(politica.data.max_bytes)} por fichero. Se admiten {admitidas.join(", ")}.
           </p>
         )}
+        {puedeEscribir && politica.data && politica.data.indexado_max_documentos > 0 && (
+          <p className="text-muted-foreground mb-3 text-tf-meta">
+            Puedes permitir que el Investigador y el guion de la oferta citen un adjunto: hasta{" "}
+            {politica.data.indexado_max_documentos} a la vez en tu organización, de{" "}
+            {formatTamano(politica.data.indexado_max_bytes)} como mucho cada uno (
+            {extensionesCitables(politica.data).join(", ")}).
+          </p>
+        )}
         {!puedeEscribir && (
           <p className="text-muted-foreground mb-3 text-tf-meta">
             Tienes acceso de lectura: puedes ver y descargar los adjuntos, pero no subir ni retirar.
@@ -133,6 +150,7 @@ export function AdjuntosPanel({ pursuitId }: { pursuitId: number }) {
           onReintentar={() => void adjuntos.refetch()}
           puedeRetirar={puedeEscribir}
           puedeDescargar={almacen}
+          politica={politica.data}
         />
       </section>
     </Panel>
@@ -147,6 +165,7 @@ function ListaAdjuntos({
   onReintentar,
   puedeRetirar,
   puedeDescargar,
+  politica,
 }: {
   pursuitId: number;
   adjuntos: Adjunto[] | undefined;
@@ -155,6 +174,7 @@ function ListaAdjuntos({
   onReintentar: () => void;
   puedeRetirar: boolean;
   puedeDescargar: boolean;
+  politica: PoliticaAdjuntos | undefined;
 }) {
   if (cargando) return <PanelLoading height={96} />;
   if (error) {
@@ -178,6 +198,7 @@ function ListaAdjuntos({
           adjunto={adjunto}
           puedeRetirar={puedeRetirar}
           puedeDescargar={puedeDescargar}
+          politica={politica}
         />
       ))}
     </ul>
@@ -189,11 +210,13 @@ function FilaAdjunto({
   adjunto,
   puedeRetirar,
   puedeDescargar,
+  politica,
 }: {
   pursuitId: number;
   adjunto: Adjunto;
   puedeRetirar: boolean;
   puedeDescargar: boolean;
+  politica: PoliticaAdjuntos | undefined;
 }) {
   const descargar = useDescargarAdjunto();
   const retirar = useRetirarAdjunto(pursuitId);
@@ -264,6 +287,8 @@ function FilaAdjunto({
           )}
         </div>
       )}
+      {/* Debajo y a todo el ancho: en un móvil, junto a los botones no cabe. */}
+      <PermisoDeCita pursuitId={pursuitId} adjunto={adjunto} puedeCambiarlo={puedeRetirar} politica={politica} />
     </li>
   );
 }

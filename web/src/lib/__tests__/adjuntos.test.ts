@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  estadoDeCita,
   extensionDe,
   extensionesAdmitidas,
+  extensionesCitables,
+  motivoNoCitable,
   nombreParaCabecera,
   tipoDeFichero,
   validarFichero,
@@ -17,6 +20,9 @@ const politica: PoliticaAdjuntos = {
     { content_type: "text/csv", extensiones: [".csv"] },
     { content_type: "text/plain", extensiones: [".txt", ".md"] },
   ],
+  indexado_max_documentos: 5,
+  indexado_max_bytes: 5 * 1024 * 1024,
+  indexado_tipos: ["application/pdf", "text/plain"],
 };
 
 describe("reglas de adjuntos leídas de la política", () => {
@@ -61,5 +67,35 @@ describe("reglas de adjuntos leídas de la política", () => {
 
   it("codifica el nombre para la cabecera: una cabecera solo lleva Latin-1", () => {
     expect(nombreParaCabecera("Oferta — v2 Łódź.pdf")).toBe("Oferta%20%E2%80%94%20v2%20%C5%81%C3%B3d%C5%BA.pdf");
+  });
+
+  it("dice de qué extensiones se puede leer el texto para citarlo", () => {
+    expect(extensionesCitables(politica)).toEqual([".md", ".pdf", ".txt"]);
+  });
+
+  it("explica por qué un fichero no puede citarse, en el orden del servidor", () => {
+    expect(motivoNoCitable({ content_type: "application/pdf", size_bytes: 1024 }, politica)).toBeNull();
+    expect(motivoNoCitable({ content_type: "text/csv", size_bytes: 1024 }, politica)).toContain(
+      "no se puede leer el texto",
+    );
+    expect(motivoNoCitable({ content_type: "application/pdf", size_bytes: 6 * 1024 * 1024 }, politica)).toContain(
+      "el máximo es 5 MB",
+    );
+  });
+
+  it("traduce el estado del servidor a lo que se enseña en la fila", () => {
+    const base = { indexable: true, index_error: null };
+    expect(estadoDeCita({ indexable: false, index_status: null, index_error: null })).toBeNull();
+    expect(estadoDeCita({ ...base, index_status: "pending" })).toEqual({
+      tono: "info",
+      etiqueta: "Leyendo el documento…",
+    });
+    expect(estadoDeCita({ ...base, index_status: "indexed" })?.etiqueta).toBe("Se puede citar");
+    expect(estadoDeCita({ ...base, index_status: "sin_texto", index_error: "El PDF no tiene texto." })).toEqual({
+      tono: "warning",
+      etiqueta: "Sin texto que citar",
+      detalle: "El PDF no tiene texto.",
+    });
+    expect(estadoDeCita({ ...base, index_status: "error" })?.etiqueta).toBe("No se pudo leer");
   });
 });

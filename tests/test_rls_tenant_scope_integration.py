@@ -76,6 +76,7 @@ _REVISIONES_CON_TABLAS: tuple[str, ...] = (
     "v130_follows",
     "v132_informes_programados",
     "v145_cuenta_organos",
+    "v179_memoria_organizacion",
 )
 
 
@@ -566,6 +567,184 @@ def test_direccion_acota_la_peticion_entera(
         "Dirección corrió sin ámbito: el `with` se cerró al devolver el id y la "
         f"consulta quedó fuera. {ambitos}"
     )
+
+
+# ── 5-quater: el texto indexado de los adjuntos (v179, ADR-040) ────────────
+#
+# `pursuit_attachment_chunks` lleva las mismas dos políticas, pero **sin** el
+# paso franco de v128: sin ámbito no se ve ni se escribe nada. Por eso hasta la
+# semilla entra con `tenant_scope`, que es lo que hace el worker al indexar.
+
+
+def _adjunto_indexado(db_mod: Any, organization_id: int, user_id: int, texto: str) -> int:
+    """Un adjunto indexable con un fragmento, escrito como lo escribe el indexado."""
+    from db.repositories.pursuit_attachments import PursuitAttachmentsRepository
+
+    repo = PursuitAttachmentsRepository()
+    huella = f"{organization_id:064d}"
+    with tenant_scope(organization_id):
+        with db_mod.connect_read() as c:
+            pursuit_id = int(
+                c.execute(
+                    "SELECT id FROM pursuits WHERE organization_id = %s", (organization_id,)
+                ).fetchone()[0]
+            )
+        fila = repo.create(
+            pursuit_id=pursuit_id,
+            organization_id=organization_id,
+            blob_key=f"adjuntos/{organization_id}/{pursuit_id}/{huella}",
+            filename="propuesta.txt",
+            content_type="text/plain",
+            size_bytes=len(texto),
+            sha256=huella,
+            uploaded_by_user_id=user_id,
+        )
+        assert fila is not None
+        attachment_id = int(fila["id"])
+        repo.set_indexable(attachment_id, organization_id=organization_id, indexable=True)
+        guardados = repo.reemplazar_fragmentos(
+            attachment_id, organization_id=organization_id, fragmentos=[texto], paginas=[1]
+        )
+        assert guardados == 1
+    return attachment_id
+
+
+def _fragmentos_visibles(db_mod: Any) -> list[int]:
+    with db_mod.connect_read() as c:
+        cur = c.execute("SELECT organization_id FROM pursuit_attachment_chunks")
+        return [int(r[0]) for r in cur.fetchall()]
+
+
+def test_el_texto_indexado_no_se_ve_sin_ambito_ni_desde_otra_organizacion(
+    rol_runtime: str, tmp_db: Any
+) -> None:
+    from db.repositories.pursuit_attachments import PursuitAttachmentsRepository
+
+    db_mod, _ = tmp_db
+    s = _sembrar(db_mod)
+    de_a = _adjunto_indexado(db_mod, s["org_a"], s["user_a"], "Migramos el ERP a SAP en un año.")
+    _adjunto_indexado(db_mod, s["org_b"], s["user_b"], "Migramos el ERP a Oracle en dos años.")
+    repo = PursuitAttachmentsRepository()
+
+    # Sin ámbito no hay paso franco: ni un script ni una ruta que olvide
+    # resolver la organización leen una propuesta.
+    assert _fragmentos_visibles(db_mod) == []
+    assert repo.buscar_por_palabras(s["org_a"], ["migramos", "erp"]) == []
+
+    with tenant_scope(s["org_a"]):
+        assert _fragmentos_visibles(db_mod) == [s["org_a"]]
+        (propio,) = repo.buscar_por_palabras(s["org_a"], ["migramos", "erp"])
+        assert propio["attachment_id"] == de_a
+        assert propio["licitacion_id"] == "LIC-RLS-A"
+        assert "SAP" in propio["extracto"]
+
+    with tenant_scope(s["org_b"]):
+        assert _fragmentos_visibles(db_mod) == [s["org_b"]]
+        # El fallo que la RLS respalda: una consulta que filtrara por la
+        # organización equivocada. Con el ámbito de B, las filas de A no existen.
+        assert repo.buscar_por_palabras(s["org_a"], ["migramos", "erp"]) == []
+        assert repo.textos_de_fragmentos(de_a, organization_id=s["org_a"]) == []
+
+
+def test_un_fragmento_no_se_escribe_sin_ambito_ni_para_otra_organizacion(
+    rol_runtime: str, tmp_db: Any
+) -> None:
+    import psycopg
+
+    db_mod, _ = tmp_db
+    s = _sembrar(db_mod)
+    de_a = _adjunto_indexado(db_mod, s["org_a"], s["user_a"], "Texto de A.")
+    de_b = _adjunto_indexado(db_mod, s["org_b"], s["user_b"], "Texto de B.")
+    insertar = (
+        "INSERT INTO pursuit_attachment_chunks "
+        "(attachment_id, organization_id, chunk_index, texto) VALUES (%s, %s, 99, 'colado')"
+    )
+
+    # Sin ámbito, ni siquiera lo propio.
+    with (
+        pytest.raises(psycopg.errors.InsufficientPrivilege, match="row-level security"),
+        db_mod.connect() as c,
+    ):
+        c.execute(insertar, (de_a, s["org_a"]))
+
+    with tenant_scope(s["org_a"]):
+        # Con la organización de otro: lo para la política.
+        with (
+            pytest.raises(psycopg.errors.InsufficientPrivilege, match="row-level security"),
+            db_mod.connect() as c,
+        ):
+            c.execute(insertar, (de_b, s["org_b"]))
+        # Con la propia pero colgado del adjunto de otro: lo para la FK compuesta.
+        with pytest.raises(psycopg.errors.ForeignKeyViolation), db_mod.connect() as c:
+            c.execute(insertar, (de_b, s["org_a"]))
+        # Control positivo.
+        with db_mod.connect() as c:
+            c.execute(insertar, (de_a, s["org_a"]))
+        assert len(_fragmentos_visibles(db_mod)) == 2
+
+
+def test_retirar_el_permiso_borra_el_texto_y_la_busqueda_por_significado_no_cruza(
+    tmp_db: Any,
+) -> None:
+    """Sin rol sonda: aquí se prueba el SQL del repositorio, no la política."""
+    from db.repositories.pursuit_attachments import PursuitAttachmentsRepository
+
+    db_mod, _ = tmp_db
+    s = _sembrar(db_mod)
+    de_a = _adjunto_indexado(db_mod, s["org_a"], s["user_a"], "Texto de A.")
+    de_b = _adjunto_indexado(db_mod, s["org_b"], s["user_b"], "Texto de B.")
+    repo = PursuitAttachmentsRepository()
+    vector = [1.0] + [0.0] * 383
+
+    # Los dos se indexaron sin vectores: los dos esperan al relleno.
+    assert repo.pendientes_de_embedding("v1", limit=10) == [
+        {"id": de_a, "organization_id": s["org_a"]},
+        {"id": de_b, "organization_id": s["org_b"]},
+    ]
+    for attachment_id, org in ((de_a, s["org_a"]), (de_b, s["org_b"])):
+        assert repo.guardar_embeddings(
+            attachment_id,
+            organization_id=org,
+            indices=[0],
+            embeddings=[vector],
+            embedding_model="modelo-de-prueba",
+            embedding_version="v1",
+        )
+    assert repo.pendientes_de_embedding("v1", limit=10) == []
+
+    # Los dos fragmentos tienen el mismo vector; cada organización ve el suyo.
+    (cerca,) = repo.buscar_por_significado(s["org_a"], vector, embedding_version="v1")
+    assert cerca["attachment_id"] == de_a
+    assert float(cerca["score"]) == pytest.approx(1.0)
+    assert repo.buscar_por_significado(s["org_a"], vector, embedding_version="v2") == []
+
+    # El permiso de otra organización no se toca desde la propia...
+    assert repo.set_indexable(de_b, organization_id=s["org_a"], indexable=False) is None
+    assert (
+        repo.reemplazar_fragmentos(
+            de_b, organization_id=s["org_a"], fragmentos=["colado"], paginas=[1]
+        )
+        is None
+    )
+    assert _fragmentos_visibles(db_mod).count(s["org_b"]) == 1
+
+    # ...y retirar el propio borra su texto en la misma operación.
+    retirado = repo.set_indexable(de_a, organization_id=s["org_a"], indexable=False)
+    assert retirado is not None
+    assert retirado["index_status"] is None
+    assert _fragmentos_visibles(db_mod) == [s["org_b"]]
+    assert repo.buscar_por_significado(s["org_a"], vector, embedding_version="v1") == []
+    # Sin permiso, un indexado que llegara tarde no escribe nada.
+    assert (
+        repo.reemplazar_fragmentos(
+            de_a, organization_id=s["org_a"], fragmentos=["tarde"], paginas=[1]
+        )
+        is None
+    )
+
+    # Retirar el adjunto hace lo mismo.
+    assert repo.delete(de_b, organization_id=s["org_b"]) is not None
+    assert _fragmentos_visibles(db_mod) == []
 
 
 # ── 6: estructural ─────────────────────────────────────────────────────────

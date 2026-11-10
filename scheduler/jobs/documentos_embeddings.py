@@ -695,6 +695,7 @@ def run() -> dict[str, Any]:
         max_seconds=settings.PLIEGO_TECH_SIGNAL_MAX_SECONDS,
     )
     resumen_result = _run_resumen_pregen_phase(limit=settings.RESUMEN_PREGEN_BATCH)
+    memoria_result = _run_memoria_organizacion_phase()
     log.info(
         "documentos_embeddings_job_done",
         fetch=fetch_result,
@@ -702,6 +703,7 @@ def run() -> dict[str, Any]:
         facts=facts_result,
         tech_signal=tech_signal_result,
         resumen_pregen=resumen_result,
+        memoria_organizacion=memoria_result,
     )
     return {
         "fetch": fetch_result,
@@ -709,7 +711,25 @@ def run() -> dict[str, Any]:
         "facts": facts_result,
         "tech_signal": tech_signal_result,
         "resumen_pregen": resumen_result,
+        "memoria_organizacion": memoria_result,
     }
+
+
+def _run_memoria_organizacion_phase() -> dict[str, int]:
+    """Vectores para los documentos propios que se indexaron sin ellos (ADR-040).
+
+    Este job no lee esos documentos ni sabe de qué organización son: el
+    servicio entra a cada una con su ámbito. Va la última y no puede tumbar a
+    las demás fases, que son las del corpus público.
+    """
+    from services.memoria_organizacion import completar_embeddings
+
+    try:
+        return completar_embeddings()
+    except Exception:
+        _contar_error("memoria_organizacion")
+        log.warning("documentos_memoria_organizacion_failed", exc_info=True)
+        return {"adjuntos": 0, "fragmentos": 0, "errores": 1}
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

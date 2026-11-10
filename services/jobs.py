@@ -77,6 +77,9 @@ TIPO_DESPACHO_EVENTOS = "despacho_eventos"
 #: ``services.puntuaciones_acta.encolar_pendientes`` tras cada pasada, no una
 #: persona, pero es trabajo pesado que el worker de la cola a demanda consume.
 TIPO_PUNTUACIONES_ACTA = "puntuaciones_acta"
+#: Extracción, fragmentos y embeddings de UN adjunto que su organización marcó
+#: indexable (ADR-040). Lo encola ``services.pursuit_attachments.marcar_indexable``.
+TIPO_INDEXADO_ADJUNTO = "indexado_adjunto"
 
 
 @dataclass(frozen=True)
@@ -135,6 +138,15 @@ TIPOS_A_DEMANDA: dict[str, TipoJob] = {
         handler="scheduler.worker:ejecutar_puntuaciones_acta",
         clave_dedupe="licitacion_id",
         descripcion="Lee las puntuaciones por licitador del acta de la mesa.",
+    ),
+    TIPO_INDEXADO_ADJUNTO: TipoJob(
+        nombre=TIPO_INDEXADO_ADJUNTO,
+        handler="scheduler.worker:ejecutar_indexado_adjunto",
+        # Sin deduplicar, como el despacho de eventos: quitar y volver a dar el
+        # permiso mientras un job corre tiene que encolar otro (ver
+        # `services.pursuit_attachments._encolar_indexado`).
+        clave_dedupe=None,
+        descripcion="Indexa un adjunto propio que su organización marcó indexable.",
     ),
 }
 
@@ -243,7 +255,7 @@ class CuotaDeJobsExcedida(RuntimeError):
 #: cola es un FIFO global: sin tope por organización, una sola puede dejar sin
 #: turno a las demás (auditoría de seguridad 2026-11, G1-2-4 / G1-3-3).
 TIPOS_CON_CUOTA: frozenset[str] = frozenset(
-    {TIPO_FICHA_PLIEGO, TIPO_EMBEDDINGS_EXPEDIENTE, TIPO_EXPORT_PDF}
+    {TIPO_FICHA_PLIEGO, TIPO_EMBEDDINGS_EXPEDIENTE, TIPO_EXPORT_PDF, TIPO_INDEXADO_ADJUNTO}
 )
 
 #: Jobs ``pending``/``running`` por organización y tipo. shortcut: constante fija
@@ -638,6 +650,7 @@ __all__ = [
     "TIPO_EMBEDDINGS_EXPEDIENTE",
     "TIPO_EXPORT_PDF",
     "TIPO_FICHA_PLIEGO",
+    "TIPO_INDEXADO_ADJUNTO",
     "TIPO_PASO_PIPELINE",
     "TIPO_PUNTUACIONES_ACTA",
     "CuotaDeJobsExcedida",
