@@ -46,6 +46,7 @@ parche para eso; el paquete las sustituye:
 - ``jobs``: estado de la cola de trabajo.
 - ``condiciones``: condiciones oficiales de PLACSP.
 - ``filtros``: los filtros del listado de licitaciones (``FiltrosLicitacion``).
+- ``marcos``: acuerdos marco y SDA en la ficha.
 
 Este ``__init__`` re-exporta todo lo público, así que **se importa siempre del
 paquete** (``from shared.dto import X``) y nunca del submódulo: dónde vive un
@@ -162,6 +163,13 @@ from shared.dto.jobs import (
     JobEstadoDTO,
     JobResultado,
 )
+from shared.dto.marcos import (
+    AdmitidoMarco,
+    ContratoBasado,
+    MarcoDeLicitacion,
+    MarcoEnlazado,
+    VigenciaMarco,
+)
 from shared.dto.organizaciones import (
     PROBABILIDADES_ETAPA_DEFAULT,
     AuditEntryOut,
@@ -267,6 +275,7 @@ __all__ = [
     "MAX_PAGE_LIMIT",
     "PROBABILIDADES_ETAPA_DEFAULT",
     "PURSUIT_COMMENT_MAX_CHARS",
+    "AdmitidoMarco",
     "AgendaBanda",
     "AgendaContador",
     "AgendaDueKind",
@@ -299,6 +308,7 @@ __all__ = [
     "CompetitiveCompanyYearDTO",
     "CondicionesAmbito",
     "CondicionesOficiales",
+    "ContratoBasado",
     "CreatedId",
     "CriterioOficial",
     "CriterioPuntuado",
@@ -334,6 +344,8 @@ __all__ = [
     "JobResultado",
     "LicitacionPublica",
     "LotePublico",
+    "MarcoDeLicitacion",
+    "MarcoEnlazado",
     "ObjetoEtiquetable",
     "OportunidadCuenta",
     "OrganizationCapabilities",
@@ -408,6 +420,7 @@ __all__ = [
     "TotalCount",
     "VencimientoCuenta",
     "VigenciaDocumento",
+    "VigenciaMarco",
     "WatchlistEntry",
     "WatchlistFavoriteCreated",
     "WatchlistFavoriteItem",

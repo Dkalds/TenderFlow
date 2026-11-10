@@ -48,6 +48,7 @@ from db.repositories.renovaciones import (
 from db.sql_fragments import FECHA_FIN_SQL as FECHA_FIN_SQL
 from db.sql_fragments import TECHNOLOGY_OBSERVED_SQL as TECHNOLOGY_OBSERVED_SQL
 from db.sql_fragments import fecha_fin_sql as fecha_fin_sql
+from shared.sistema_contratacion import SistemaContratacion
 
 # ── Umbrales de "contrato caliente" ───────────────────────────────────────
 # Definición canónica y única (ADR-014): vivía duplicada en el cliente
@@ -81,6 +82,10 @@ class Renovacion(BaseModel):
     cpv: str | None
     ccaa: str | None
     url: str | None
+    #: ``marco`` o ``sda`` cuando lo que vence es un acuerdo marco o un sistema
+    #: dinámico: se relicita el marco entero, y la fila es uno de sus admitidos,
+    #: no un contrato con importe propio. ``None`` si la fuente no lo dice.
+    sistema_contratacion: SistemaContratacion | None
     empresa_id: int | None
     empresa: str | None
     es_ute: int | None

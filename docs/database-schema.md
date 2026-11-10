@@ -6,7 +6,7 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-11-07
+Generado: 2026-11-10
 
 Revisión Alembic aplicada: `v181_user_id_watchlist_follows`.
 
@@ -24,16 +24,16 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 15 | 201 | 66 |
+| Licitaciones y fuente | 15 | 203 | 67 |
 | Documentos y pliegos | 6 | 67 | 13 |
 | Empresas y mercado | 6 | 34 | 11 |
 | Organizaciones y oportunidades | 15 | 143 | 31 |
 | Identidad, acceso y auditoría | 16 | 113 | 25 |
-| Seguimiento y notificaciones | 12 | 135 | 38 |
+| Seguimiento y notificaciones | 12 | 135 | 40 |
 | ML y predicciones | 8 | 63 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
-| Otras | 24 | 185 | 35 |
-| **Total** | **108** | **987** | **244** |
+| Otras | 24 | 185 | 36 |
+| **Total** | **108** | **989** | **248** |
 
 ## Licitaciones y fuente
 
@@ -262,10 +262,12 @@ Claves: `PRIMARY KEY (id)`
 | `fecha_fin_ts` | `timestamp with time zone` | sí |
 | `fecha_actualizacion_fuente_ts` | `timestamp with time zone` | sí |
 | `organo_ref_fuente` | `text` | sí |
+| `sistema_contratacion` | `text` | sí |
+| `marco_ref` | `text` | sí |
 
 Claves: `PRIMARY KEY (id_externo)`
 
-Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_analitica`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_descripcion_plegada_trgm`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_extraccion_ts`, `idx_lic_fecha_limite`, `idx_lic_fecha_limite_ts`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fecha_publicacion_ts`, `idx_lic_fuente`, `idx_lic_id_externo_plegado_trgm`, `idx_lic_importe`, `idx_lic_importe_base_sin_iva`, `idx_lic_ml_proba`, `idx_lic_organo_id`, `idx_lic_organo_norm`, `idx_lic_organo_plegado_trgm`, `idx_lic_tecnologia`, `idx_lic_tecnologia_cubriente`, `idx_lic_tecnologia_tokens`, `idx_lic_titulo_plegado_trgm`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
+Índices: `idx_ccaa`, `idx_cpv`, `idx_estado`, `idx_fecha_pub`, `idx_lic_analitica`, `idx_lic_clave_canonica_v101`, `idx_lic_cursor`, `idx_lic_descripcion_plegada_trgm`, `idx_lic_fecha_act_fuente`, `idx_lic_fecha_extraccion`, `idx_lic_fecha_extraccion_ts`, `idx_lic_fecha_limite`, `idx_lic_fecha_limite_ts`, `idx_lic_fecha_pub_d`, `idx_lic_fecha_pub_tech`, `idx_lic_fecha_publicacion_ts`, `idx_lic_fuente`, `idx_lic_id_externo_plegado_trgm`, `idx_lic_importe`, `idx_lic_importe_base_sin_iva`, `idx_lic_marco_ref`, `idx_lic_ml_proba`, `idx_lic_organo_id`, `idx_lic_organo_norm`, `idx_lic_organo_plegado_trgm`, `idx_lic_tecnologia`, `idx_lic_tecnologia_cubriente`, `idx_lic_tecnologia_tokens`, `idx_lic_titulo_plegado_trgm`, `idx_lic_universo_cpv`, `idx_licitaciones_analysis_lineage`, `idx_licitaciones_search_vector`, `idx_licitaciones_titulo_trgm`, `idx_ml_tech_principal`, `idx_organo`
 
 ### `licitaciones_duplicados`
 

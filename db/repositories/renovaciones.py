@@ -198,6 +198,7 @@ def proximas_renovaciones(
                l.cpv,
                l.ccaa,
                l.url,
+               l.sistema_contratacion,
                a.empresa_id,
                COALESCE(e.nombre_canonico, a.nombre) AS empresa,
                e.es_ute,

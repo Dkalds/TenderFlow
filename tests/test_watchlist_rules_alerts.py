@@ -63,6 +63,15 @@ def _pasada(**kwargs) -> int:
     return n
 
 
+def _pasada(**kwargs) -> int:
+    """El job de reglas y el despachador, en el orden del cierre canónico."""
+    from scheduler.jobs.event_dispatch import dispatch_pending
+
+    n = watchlist_rules_alerts.check_rules_and_notify(**kwargs)
+    dispatch_pending()
+    return n
+
+
 def _set_last_notified(c, rule_id, iso_ts):
     c.execute("UPDATE watchlist_rules SET last_notified_at = %s WHERE id = %s", (iso_ts, rule_id))
 
