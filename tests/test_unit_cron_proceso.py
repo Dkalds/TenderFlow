@@ -243,35 +243,8 @@ def test_sigterm_suelta_los_locks_y_sale_sin_esperar_al_job(
         assert cron_plane.main() == 0
         manejadores[cron_plane.signal.SIGTERM](cron_plane.signal.SIGTERM, None)  # type: ignore[operator]
 
-    soltar.assert_any_call(["cron:daily_atom"], holder=cron_plane._holder())
+    soltar.assert_called_once_with(["cron:daily_atom"], holder=cron_plane._holder())
     salir.assert_called_once_with(0)
-
-
-def test_sigterm_devuelve_la_cadencia_del_job_que_corta(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Lo que el despliegue deja a medias tiene que repetirse al arrancar; lo
-    que ya terminó dentro de su intervalo, no."""
-    monkeypatch.setenv("SCHEDULER_PLANE", "worker")
-    en_curso, terminado = MagicMock(), MagicMock()
-    en_curso.name, terminado.name = "daily_atom", "ml_scoring_baja"
-    plano = MagicMock(jobs=[en_curso, terminado])
-    manejadores: dict[int, object] = {}
-    hilo_vivo = MagicMock()
-    hilo_vivo.is_alive.return_value = True
-
-    with (
-        patch.object(cron_plane, "configure_logging"),
-        patch.object(cron_plane, "CronPlane", return_value=plano),
-        patch.object(cron_plane.signal, "signal", side_effect=manejadores.__setitem__),
-        patch.dict(cron_plane._active_jobs, {"daily_atom": hilo_vivo}, clear=True),
-        patch("db.job_locks.release_many") as soltar,
-        patch.object(cron_plane.os, "_exit"),
-    ):
-        cron_plane.main()
-        manejadores[cron_plane.signal.SIGTERM](cron_plane.signal.SIGTERM, None)  # type: ignore[operator]
-
-    soltar.assert_any_call(["cron-hecho:daily_atom"], holder=cron_plane._holder())
 
 
 def test_sigterm_sale_aunque_no_pueda_soltar_los_locks(
