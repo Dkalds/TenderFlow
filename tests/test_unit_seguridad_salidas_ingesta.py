@@ -304,10 +304,11 @@ def test_una_bomba_de_deflate_en_el_docx_se_rechaza_sin_materializarla() -> None
 
 
 def test_una_bomba_con_el_tamano_declarado_mentido_tambien_se_rechaza() -> None:
-    """``ZipFile.read`` no acota por ``file_size``: se mide lo que sale de verdad."""
+    """Un ``file_size`` falso no deja pasar la bomba: ``zipfile`` corta en lo
+    declarado y el CRC no cuadra, así que es ``error`` y no se materializa."""
     from scraper import document_fetcher as df
 
-    with pytest.raises(df.DocumentFetchError):
+    with pytest.raises(df.DocumentFetchError, match=r"del DOCX: entrada ilegible"):
         df._extract_docx_paginas(_mentir_el_tamano(_bomba(30), 1000))
 
 

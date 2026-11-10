@@ -423,6 +423,37 @@ class TestExtractorAusente:
         """Los llamadores que solo extraen no tienen que distinguirlo."""
         assert issubclass(df.ExtractorAusenteError, UnsupportedDocumentError)
 
+    def test_un_extractor_ausente_deja_la_fila_pendiente(self, repo, monkeypatch):
+        """Hoy ningún formato lo lanza; si vuelve a hacerlo, la fila no se pierde."""
+        doc = _seed(repo)
+
+        def _sin_extractor(content, content_type):
+            raise df.ExtractorAusenteError("simulado", content_type=content_type)
+
+        monkeypatch.setattr(df, "_extract_paginas", _sin_extractor)
+        with patch(
+            "scraper.document_fetcher._download_bytes",
+            return_value=(_fixture("pliego.docx"), CONTENT_TYPE_DOCX),
+        ):
+            assert fetch_and_extract(doc) == "skipped_no_extra"
+        fila = repo.get(doc["id"])
+        assert fila is not None
+        assert fila["status"] == "pending"
+
+    def test_el_zip_no_se_da_por_extraido_sin_una_entrada_ilegible_aqui(self, monkeypatch):
+        """Saltarse una entrada que este proceso no sabe leer dejaría el ZIP
+        `extracted` sin ella: el ``ExtractorAusenteError`` sube entero."""
+        real = df._extraer_paginas_de_tipo
+
+        def _sin_extractor_docx(content, content_type):
+            if content_type == CONTENT_TYPE_DOCX:
+                raise df.ExtractorAusenteError("simulado", content_type=content_type)
+            return real(content, content_type)
+
+        monkeypatch.setattr(df, "_extraer_paginas_de_tipo", _sin_extractor_docx)
+        with pytest.raises(df.ExtractorAusenteError):
+            _extract_paginas(_fixture("adjuntos.zip"), CONTENT_TYPE_ZIP)
+
 
 class TestEstadoUnsupported:
     def test_un_formato_sin_soporte_no_se_marca_error(self, repo):

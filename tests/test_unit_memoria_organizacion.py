@@ -164,25 +164,23 @@ def test_solo_es_indexable_lo_que_se_adjunta_y_se_sabe_leer() -> None:
     assert supported_content_types() >= memoria.TIPOS_INDEXABLES
 
 
-def test_cada_tipo_indexable_se_lee_sin_los_extras_que_la_api_no_trae(
+def test_el_worker_de_la_api_extrae_un_docx_sin_python_docx(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # El adjunto lo extrae el consumidor de la cola de la API, cuya imagen no
-    # trae python-docx ni odfpy: un tipo indexable que los necesitara quedaría
-    # `unsupported` para siempre. DOCX y ODT se leen con la biblioteca estándar.
+    # trae python-docx: un DOCX indexable tiene que salir con texto igual.
     import sys
+    from pathlib import Path
 
-    from scraper.document_fetcher import ExtractorAusenteError, extraer_paginas
+    from scheduler.worker import _paginas_de_adjunto
 
+    docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    assert docx in memoria.TIPOS_INDEXABLES
     monkeypatch.setitem(sys.modules, "docx", None)
-    monkeypatch.setitem(sys.modules, "odf", None)
-    for tipo in memoria.TIPOS_INDEXABLES:
-        try:
-            extraer_paginas(b"", tipo)
-        except ExtractorAusenteError:
-            pytest.fail(f"{tipo} necesita un extra que la imagen de la API no trae")
-        except Exception:
-            pass
+    fixture = Path(__file__).parent / "fixtures" / "documentos" / "pliego.docx"
+    paginas = _paginas_de_adjunto(fixture.read_bytes(), docx)
+    assert paginas
+    assert "CLAUSULAS ADMINISTRATIVAS" in "\n".join(paginas)
 
 
 def test_los_topes_salen_del_entorno_y_cero_apaga(monkeypatch: pytest.MonkeyPatch) -> None:

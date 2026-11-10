@@ -115,3 +115,36 @@ def test_sin_parte_principal_roto_o_vacio_es_error() -> None:
         _texto(_docx("<w:p><w:r><w:t>sin cerrar</w:r></w:p>"))
     with pytest.raises(DocumentFetchError, match="sin texto"):
         _texto(_docx(_p("<w:t>  </w:t>")))
+
+
+def test_el_marcador_de_un_campo_sin_rellenar_no_es_contenido() -> None:
+    vacio = (
+        '<w:p><w:r><w:t xml:space="preserve">Procedimiento: </w:t></w:r>'
+        "<w:sdt><w:sdtPr><w:showingPlcHdr/></w:sdtPr>"
+        "<w:sdtContent><w:r><w:t>Elija un elemento.</w:t></w:r></w:sdtContent></w:sdt></w:p>"
+    )
+    relleno = (
+        '<w:p><w:r><w:t xml:space="preserve">Lugar: </w:t></w:r>'
+        "<w:sdt><w:sdtPr/><w:sdtContent><w:r><w:t>Madrid</w:t></w:r></w:sdtContent></w:sdt></w:p>"
+    )
+    assert _texto(_docx(vacio + relleno)) == "Procedimiento:\nLugar: Madrid"
+
+
+def test_el_indice_automatico_no_duplica_los_encabezados() -> None:
+    indice = (
+        "<w:sdt><w:sdtPr><w:docPartObj>"
+        '<w:docPartGallery w:val="Table of Contents"/></w:docPartObj></w:sdtPr>'
+        "<w:sdtContent>" + _p("<w:t>CLÁUSULA 12</w:t><w:tab/><w:t>14</w:t>") + "</w:sdtContent>"
+        "</w:sdt>"
+    )
+    assert _texto(_docx(indice + _p("<w:t>CLÁUSULA 12</w:t>"))) == "CLÁUSULA 12"
+
+
+def test_la_tabulacion_posicional_y_las_formulas_son_texto() -> None:
+    ns_m = 'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"'
+    parrafo = (
+        f"<w:p {ns_m}><w:r><w:t>Cláusula 5</w:t><w:ptab/><w:t>12</w:t></w:r>"
+        '<w:r><w:t xml:space="preserve"> Fórmula: </w:t></w:r>'
+        "<m:oMath><m:r><m:t>P=Pmax*(Omin/Oi)</m:t></m:r></m:oMath></w:p>"
+    )
+    assert _texto(_docx(parrafo)) == "Cláusula 5\t12 Fórmula: P=Pmax*(Omin/Oi)"

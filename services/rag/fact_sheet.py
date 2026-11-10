@@ -744,7 +744,8 @@ def ensure_documents_ready(
     # ``skipped`` lo devuelve el fetcher cuando el breaker está abierto: no se
     # llegó a intentar la descarga y la fila sigue ``pending``.
     # ``skipped_no_extra``, cuando el formato se sabe leer pero no en este
-    # proceso (hoy, solo un PDF sin pypdf): también sigue ``pending``.
+    # proceso: también sigue ``pending``. Hoy ningún formato lo produce (DOCX y
+    # OpenDocument se leen con la biblioteca estándar); sin pypdf se sale antes.
     # ``unsupported`` (S8.2) es un formato que no sabemos leer. Se declaran para
     # que el diagnóstico pueda distinguirlos de un fallo real.
     counts = {

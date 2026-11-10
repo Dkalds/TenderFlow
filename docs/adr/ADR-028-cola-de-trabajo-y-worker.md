@@ -163,12 +163,17 @@ de abrir una oportunidad, en `BackgroundTasks`) moría al importar el fetcher.
 2. `tenacity` y `pybreaker` pasan a `requirements-api.in`. `python-docx` y
    `odfpy` no (traen `lxml`): un DOCX que la API descarga se queda `pending`
    para el lote nocturno (`ExtractorAusenteError`), en vez de `unsupported`.
+   *Nota 2026-11-10:* ya no pasa. OpenDocument (2026-10) y DOCX (2026-11) se
+   leen con la biblioteca estándar, así que la API los extrae en el acto.
 3. Abrir una oportunidad encola el job en vez de usar `BackgroundTasks` (§D).
 
 **Lo que se acepta.** La extracción vuelve a compartir proceso con la API, que
 es lo que §A quería evitar; el parseo del PDF va en un proceso `spawn` aparte
 en `prod` (`scraper/document_fetcher.py`), así que lo que comparte es sobre todo
-la espera al LLM. Lo que **no** vuelve es lo peor de `BackgroundTasks`: el
+la espera al LLM. Desde 2026-11 también comparte el parseo de DOCX y
+OpenDocument (``expat``, sin `spawn`): el peor caso medido, un
+`word/document.xml` de 25 MiB (el tope por entrada), son unos 7,6 s de CPU y
+58 MiB de pico. Lo que **no** vuelve es lo peor de `BackgroundTasks`: el
 trabajo sigue siendo una fila con intentos, error y TTL, y un despliegue lo
 devuelve a `pending` en vez de perderlo.
 

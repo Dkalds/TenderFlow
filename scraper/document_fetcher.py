@@ -38,7 +38,10 @@ no está en el fichero. Se agrupan los párrafos no vacíos en bloques de
 igual que en un PDF (``mark_extracted`` los calcula sobre el texto agregado),
 así que una cita de la ficha sigue anclando a una región concreta y verificable
 del documento; lo que no puede hacer es decir «página 3 de la impresión». Es
-estable frente a re-extracciones porque sólo depende del orden de los párrafos.
+estable frente a re-extracciones porque sólo depende del orden de los párrafos,
+con una excepción: un DOCX extraído antes de 2026-11 con ``python-docx`` (tablas
+al final, sin controles de contenido ni cuadros de texto) sale distinto si se
+re-extrae, y los offsets de sus citas guardadas se moverían.
 
 **Zip bomb**: están acotados el número de entradas (:data:`_ZIP_MAX_ENTRADAS`),
 el tamaño descomprimido por entrada (:data:`_ZIP_MAX_BYTES_POR_ENTRADA`) y
@@ -918,6 +921,7 @@ def _extract_odf_paginas(content: bytes, content_type: str = CONTENT_TYPE_ODT) -
 
 _NS_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _NS_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+_NS_MATH = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 
 #: Parte principal del documento. shortcut: no se resuelve por
 #: ``_rels/.rels``; Word, LibreOffice y Google Docs la escriben siempre aquí.
@@ -925,14 +929,19 @@ _NS_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 #: ``officeDocument``.
 _DOCX_PARTE_PRINCIPAL = "word/document.xml"
 
-_DOCX_TEXTO = f"{_NS_W} t"
-_DOCX_TAB = f"{_NS_W} tab"
+#: Texto de un run y de una fórmula (OMML): en un pliego la fórmula es la de la
+#: puntuación económica, que la ficha necesita.
+_DOCX_TEXTOS = frozenset({f"{_NS_W} t", f"{_NS_MATH} t"})
+_DOCX_TABS = frozenset({f"{_NS_W} tab", f"{_NS_W} ptab"})
 _DOCX_SALTOS = frozenset({f"{_NS_W} br", f"{_NS_W} cr"})
 _DOCX_GUION = f"{_NS_W} noBreakHyphen"
 #: Subárboles cuyo texto no es contenido: las propiedades del párrafo (su
 #: ``w:tabs`` son paradas de tabulación, no tabuladores), lo borrado o movido
 #: del control de cambios y la copia VML de un cuadro de texto
-#: (``mc:Fallback`` repite lo que ya trae ``mc:Choice``). El texto de un código
+#: (``mc:Fallback`` repite lo que ya trae ``mc:Choice``; shortcut: un símbolo
+#: que Word escribe como ``w16se:symEx`` sin texto en el ``Choice`` y ``w:t`` en
+#: el ``Fallback`` se pierde; leer el ``Fallback`` cuando el ``Choice`` no aporte
+#: texto si aparece en pliegos reales). El texto de un código
 #: de campo va en ``w:instrText`` y el borrado en ``w:delText``: como solo se
 #: lee ``w:t``, ninguno entra.
 _DOCX_IGNORADOS = frozenset(
@@ -945,33 +954,59 @@ _DOCX_IGNORADOS = frozenset(
 )
 
 
+#: Controles de contenido (``w:sdt``) cuyo ``w:sdtContent`` no es contenido: el
+#: texto de marcador de posición de un campo sin rellenar («Elija un elemento.»)
+#: y el índice automático, que repetiría cada encabezado con su número de página.
+_DOCX_SDT = f"{_NS_W} sdt"
+_DOCX_SDT_CONTENIDO = f"{_NS_W} sdtContent"
+_DOCX_SDT_MARCADOR = f"{_NS_W} showingPlcHdr"
+_DOCX_SDT_GALERIA = f"{_NS_W} docPartGallery"
+_DOCX_GALERIA_INDICE = "Table of Contents"
+
+
 class _LectorDocx(_LectorOdf):
     """Recorre ``word/document.xml`` con las convenciones de :class:`_LectorOdf`.
 
     Cada ``w:p`` es un párrafo, una fila ``w:tr`` es una línea con sus celdas
     ``w:tc`` no vacías unidas por `` | ``, y las tablas quedan **en su sitio**
-    del documento (con ``python-docx`` iban todas al final, porque su API no
-    expone el orden entre párrafos y tablas).
+    del documento. Frente a ``python-docx``, que solo leía los párrafos y
+    tablas hijos directos del cuerpo y ponía las tablas al final, entran
+    además el texto rellenado en controles de contenido, los cuadros de texto,
+    las tablas anidadas (aplanadas en su celda) y las fórmulas.
     """
 
     def __init__(self) -> None:
         super().__init__()
         self._en_texto = 0
+        #: Por cada ``w:sdt`` abierto: ¿se salta su ``w:sdtContent``? Se decide
+        #: en ``w:sdtPr``, que siempre lo precede.
+        self._sdt_saltar: list[bool] = []
 
     def inicio(self, nombre: str, atributos: dict[str, str]) -> None:
-        del atributos
         if self._ignorando or nombre in _DOCX_IGNORADOS:
             self._ignorando += 1
             return
-        if nombre == f"{_NS_W} p":
+        if nombre == _DOCX_SDT:
+            self._sdt_saltar.append(False)
+        elif self._sdt_saltar and (
+            nombre == _DOCX_SDT_MARCADOR
+            or (
+                nombre == _DOCX_SDT_GALERIA
+                and atributos.get(f"{_NS_W} val") == _DOCX_GALERIA_INDICE
+            )
+        ):
+            self._sdt_saltar[-1] = True
+        elif nombre == _DOCX_SDT_CONTENIDO and self._sdt_saltar and self._sdt_saltar[-1]:
+            self._ignorando += 1
+        elif nombre == f"{_NS_W} p":
             self._buffers.append([])
         elif nombre == f"{_NS_W} tr":
             self._filas.append([])
         elif nombre == f"{_NS_W} tc":
             self._celdas.append([])
-        elif nombre == _DOCX_TEXTO:
+        elif nombre in _DOCX_TEXTOS:
             self._en_texto += 1
-        elif self._buffers and nombre == _DOCX_TAB:
+        elif self._buffers and nombre in _DOCX_TABS:
             self._buffers[-1].append("\t")
         elif self._buffers and nombre in _DOCX_SALTOS:
             self._buffers[-1].append("\n")
@@ -982,7 +1017,9 @@ class _LectorDocx(_LectorOdf):
         if self._ignorando:
             self._ignorando -= 1
             return
-        if nombre == _DOCX_TEXTO:
+        if nombre == _DOCX_SDT and self._sdt_saltar:
+            self._sdt_saltar.pop()
+        elif nombre in _DOCX_TEXTOS:
             self._en_texto = max(0, self._en_texto - 1)
         elif nombre == f"{_NS_W} p" and self._buffers:
             self._emitir("".join(self._buffers.pop()))
@@ -1190,7 +1227,9 @@ def _extract_zip_paginas(content: bytes) -> list[PaginaExtraida]:
                 de_la_entrada = _extraer_paginas_de_tipo(datos, tipo_interno)
             except ExtractorAusenteError:
                 # No es un adjunto roto: saltarlo dejaría el ZIP `extracted`
-                # sin el DOCX de dentro, y ninguna pasada volvería a por él.
+                # sin esa entrada, y ninguna pasada volvería a por ella. Hoy
+                # ningún formato de dentro lo lanza (DOCX y OpenDocument se leen
+                # con la biblioteca estándar); queda para el que lo necesite.
                 raise
             except DocumentFetchError as exc:
                 # Un adjunto roto dentro del ZIP no invalida los demás: mismo
