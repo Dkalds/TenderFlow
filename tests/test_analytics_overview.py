@@ -231,7 +231,10 @@ def test_por_ccaa_reparte_el_ambito_por_comunidad(db):
     for r in _ROWS:
         n, importe = esperado.setdefault(r[2], [0, 0.0])
         esperado[r[2]] = [n + 1, importe + (r[4] or 0.0)]
-    assert {c.ccaa: [c.n, c.importe] for c in res.por_ccaa} == pytest.approx(esperado)
+    # approx por valor: desde pytest 9.2 no admite un dict con listas dentro.
+    assert {c.ccaa: [c.n, c.importe] for c in res.por_ccaa} == {
+        ccaa: pytest.approx(valores) for ccaa, valores in esperado.items()
+    }
     # De más a menos expedientes, y los del ámbito sin CCAA fuera.
     assert [c.n for c in res.por_ccaa] == sorted((c.n for c in res.por_ccaa), reverse=True)
     assert sum(c.n for c in res.por_ccaa) <= res.total_licitaciones

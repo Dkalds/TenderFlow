@@ -110,6 +110,13 @@
       "allowedVersions": "<10"
     },
     {
+      "description": "js-yaml 5 rompe `npm run codegen:file`: @redocly/openapi-core, que trae openapi-typescript 7, llama a `types.merge`, que v5 quitó (PR #700). El override de web/package.json sigue en 4.x hasta que esa cadena lo soporte.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["js-yaml"],
+      "minimumReleaseAge": "7 days",
+      "allowedVersions": "<5"
+    },
+    {
       "description": "La imagen base sigue la versión de Python de CI y del lockfile (`--python-version 3.13`): solo parches de 3.13.",
       "matchManagers": ["dockerfile"],
       "matchPackageNames": ["python"],
