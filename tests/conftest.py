@@ -508,11 +508,14 @@ def _materialize_schema_ddl(url: str) -> str:
     # Se descartan: sentencias de extensión (son globales a la base), las de
     # search_path (lo fija la propia conexión) y los meta-comandos de psql
     # (`\restrict` / `\unrestrict`, que pg_dump >= 16.10 emite y psycopg no
-    # entiende porque no son SQL).
+    # entiende porque no son SQL). `check_function_bodies = false` se conserva:
+    # pg_dump crea las funciones antes que las tablas, y sin él el cuerpo de una
+    # función `LANGUAGE sql` que cita una tabla (v181) falla al validarse.
     lines = [
         ln
         for ln in dump.splitlines()
-        if not ln.startswith(
+        if ln.startswith("SET check_function_bodies")
+        or not ln.startswith(
             (
                 "SET ",
                 "SELECT pg_catalog.set_config",
