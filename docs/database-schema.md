@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-11-07
 
-Revisión Alembic aplicada: `v177_rss_autonomico_sin_tramitacion`.
+Revisión Alembic aplicada: `v181_user_id_watchlist_follows`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -1260,7 +1260,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, cpv_prefix, keyword, ccaa)`
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, empresa_id)`
 
-Índices: `idx_watchlist_empresas_organization`, `idx_watchlist_empresas_user_id`, `idx_wl_emp_user`
+Índices: `idx_watchlist_empresas_organization`, `idx_watchlist_empresas_user_id`, `idx_wl_emp_user`, `uq_watchlist_empresas_user_id` (único)
 
 ### `watchlist_items`
 
@@ -1277,7 +1277,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, empresa_id)`
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, id_externo)`
 
-Índices: `idx_watchlist_items_organization`, `idx_watchlist_items_user_id`, `idx_wl_items_user`
+Índices: `idx_watchlist_items_organization`, `idx_watchlist_items_user_id`, `idx_wl_items_user`, `uq_watchlist_items_user_id` (único)
 
 ### `watchlist_rules`
 
@@ -1766,7 +1766,7 @@ Claves: `PRIMARY KEY (id)`
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, target_type, target_id, kind)`
 
-Índices: `idx_follows_hasta`, `idx_follows_organization`, `idx_follows_target`, `idx_follows_user`, `idx_follows_user_id`
+Índices: `idx_follows_hasta`, `idx_follows_organization`, `idx_follows_target`, `idx_follows_user`, `idx_follows_user_id`, `uq_follows_user_id` (único)
 
 ### `go_no_go_scores`
 

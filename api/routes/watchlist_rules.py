@@ -61,23 +61,9 @@ log = get_logger(__name__)
 router = APIRouter(prefix="/watchlist/rules", tags=["watchlist"])
 
 
-def _user_key(ctx: Principal) -> str:
-    """Clave opaca y estable por usuario.
-
-    ``require_any_auth`` (sesión o API key) siempre adjunta ``user_key`` al
-    contexto vía ``shared.identity.user_key_from_email`` — es la única
-    derivación canónica. Antes esta función tenía un fallback local con una
-    fórmula distinta (sin ``.strip().lower()``, usando ``key_hash`` en vez de
-    ``user_id`` como semilla alternativa) que nunca se ejercitaba en la
-    práctica pero podía divergir silenciosamente si algún día lo hiciera.
-    """
-    return str(ctx["user_key"])
-
-
 def _auditar(
     event_type: str,
-    user_key: str,
-    user_id: int | None,
+    user_id: int,
     rule_id: int,
     organization_id: int | None,
     **detalle: object,
@@ -85,8 +71,6 @@ def _auditar(
     """Rastro de una regla. Con organización, en el suyo (CU-32): ids, nunca correos."""
     log_event(
         event_type=event_type,
-        # Sin ``user_id`` (clave de API heredada) queda la clave como actor.
-        actor="" if user_id is not None else user_key,
         user_id=user_id,
         resource=f"org:{organization_id}" if organization_id else None,
         detail={"rule_id": rule_id, **detalle},
@@ -99,10 +83,9 @@ def _ctx_email(ctx: Principal) -> str | None:
     return str(email) if email else None
 
 
-def _user_id(ctx: Principal) -> int | None:
-    """Identidad interna del principal (v129): la lectura dual va por ella."""
-    raw = ctx.get("user_id")
-    return int(raw) if raw is not None else None
+def _user_id(ctx: Principal) -> int:
+    """Identidad interna del principal: por ella se resuelven las reglas."""
+    return int(ctx["user_id"])
 
 
 class WatchlistRuleBody(BaseModel):
@@ -161,11 +144,9 @@ class WatchlistRulesResult(BaseModel):
     items: list[WatchlistRuleOut]
 
 
-def _rules_with_counts(
-    user_key: str, organization_id: int, user_id: int | None = None
-) -> list[WatchlistRuleOut]:
+def _rules_with_counts(user_id: int, organization_id: int) -> list[WatchlistRuleOut]:
     """Lista las reglas del usuario con su conteo real de matches y email de entrega."""
-    rows_raw = list_rules_rows(user_key, organization_id, user_id=user_id)
+    rows_raw = list_rules_rows(user_id, organization_id)
 
     rules = [
         WatchlistRule(
@@ -206,9 +187,10 @@ async def get_rules(
     organization_id: int | None = Query(default=None, ge=1),
     ctx: Principal = Depends(require_organization()),
 ) -> WatchlistRulesResult:
+    user_id = _user_id(ctx)
     if organization_id is not None:
-        await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
-    items = await run_db(_rules_with_counts, _user_key(ctx), ctx["organization_id"], _user_id(ctx))
+        await run_db(claim_legacy_scope, user_id)
+    items = await run_db(_rules_with_counts, user_id, ctx["organization_id"])
     return WatchlistRulesResult(items=items)
 
 
@@ -227,13 +209,12 @@ async def post_rule(
     ctx: Principal = Depends(require_any_auth),
 ) -> CreatedId:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
-    user_key = _user_key(ctx)
+    user_id = _user_id(ctx)
     email = _ctx_email(ctx)
     rule = body.to_rule()
     organization_id = ctx["organization_id"]
 
-    ambito = idem_scope("watchlist_rules", actor=user_key, organization_id=organization_id)
-    user_id = int(ctx["user_id"])
+    ambito = idem_scope("watchlist_rules", actor=str(user_id), organization_id=organization_id)
 
     def _create() -> dict[str, int]:
         """Clave, alta de la regla y guardado, en UN salto al threadpool."""
@@ -241,17 +222,15 @@ async def post_rule(
         if cacheada is not None:
             return {"id": int(cacheada["id"])}
         rule_id = create_rule(
-            user_key,
+            user_id,
             rule,
-            user_id=user_id,
             organization_id=organization_id,
             visibility=body.visibility,
         )
         if email is not None:
-            set_rule_email(user_key, rule_id, email, user_id=user_id)
+            set_rule_email(user_id, rule_id, email)
         _auditar(
             WATCHLIST_RULE_CREATED,
-            user_key,
             user_id,
             rule_id,
             organization_id,
@@ -273,22 +252,20 @@ async def put_rule(
     ctx: Principal = Depends(require_any_auth),
 ) -> StatusOk:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
-    user_key = _user_key(ctx)
     user_id = _user_id(ctx)
     email = _ctx_email(ctx)
     organization_id = ctx["organization_id"]
 
     def _update() -> bool:
         rule = body.to_rule()
-        ok = update_rule(user_key, rule_id, rule, organization_id, user_id=user_id)
+        ok = update_rule(user_id, rule_id, rule, organization_id)
         if not ok:
             return False
         if email is not None:
-            set_rule_email(user_key, rule_id, email, user_id=user_id)
+            set_rule_email(user_id, rule_id, email)
         # ``active`` dice si el cambio fue pausarla, que corta el correo igual que borrarla.
         _auditar(
             WATCHLIST_RULE_UPDATED,
-            user_key,
             user_id,
             rule_id,
             organization_id,
@@ -309,12 +286,12 @@ async def delete_rule_route(
     ctx: Principal = Depends(require_organization(write=True)),
 ) -> StatusOk:
     organization_id = ctx["organization_id"]
-    user_key, user_id = _user_key(ctx), _user_id(ctx)
+    user_id = _user_id(ctx)
 
     def _delete() -> bool:
-        ok = delete_rule(user_key, rule_id, organization_id, user_id=user_id)
+        ok = delete_rule(user_id, rule_id, organization_id)
         if ok:
-            _auditar(WATCHLIST_RULE_DELETED, user_key, user_id, rule_id, organization_id)
+            _auditar(WATCHLIST_RULE_DELETED, user_id, rule_id, organization_id)
         return ok
 
     ok = await run_db(_delete)
@@ -329,7 +306,7 @@ async def get_rule_matches(
     ctx: Principal = Depends(require_organization()),
     limit: int = Query(default=50, ge=1, le=200),
 ) -> WatchlistRuleMatchesResult:
-    reglas = await run_db(list_rules, _user_key(ctx), ctx["organization_id"], user_id=_user_id(ctx))
+    reglas = await run_db(list_rules, _user_id(ctx), ctx["organization_id"])
     by_id = {r.id: r for r in reglas}
     rule = by_id.get(rule_id)
     if rule is None:

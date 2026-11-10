@@ -113,7 +113,7 @@ def test_export_feedback(tmp_db):
 
 
 def test_export_watchlist_unknown_user_is_empty(tmp_db):
-    """Un user_key sin entradas exporta lista vacía (la tabla real es watchlist_cpv).
+    """Un usuario sin entradas exporta lista vacía (la tabla real es watchlist_cpv).
 
     Histórico: este test se llamaba ``test_export_watchlist_returns_empty_gracefully``
     y documentaba el bug de la tabla inexistente; el flujo real está cubierto en
@@ -122,7 +122,7 @@ def test_export_watchlist_unknown_user_is_empty(tmp_db):
     _db_mod, _ = tmp_db
     from services.gdpr import export_watchlist
 
-    assert export_watchlist("somehash") == []
+    assert export_watchlist(999_999) == []
 
 
 def test_export_audit_log(tmp_db):

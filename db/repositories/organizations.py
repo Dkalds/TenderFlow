@@ -620,13 +620,15 @@ class OrganizationRepository:
         sin_organizacion = sum(int(fila[1] or 0) for fila in filas)
         return {"total": total, "sin_organizacion": sin_organizacion}
 
-    def claim_legacy_rows(self, user_id: int, user_key: str) -> int:
+    def claim_legacy_rows(self, user_id: int) -> int:
         """Asigna filas sin scope al espacio personal, nunca a uno compartido.
 
         Desde v129 las siete tablas llevan ``user_id``, así que el predicado es
         el dual de ADR-030 fase 2 en todas: la fila es del usuario por su id, o
-        por su clave si el backfill no pudo resolverla. Una fila con OTRO id y
-        la misma clave no se reclama.
+        —sin id, porque el backfill no pudo resolverla— por la clave que da su
+        correo actual, que desde v181 calcula la base
+        (``clave_legada_de_usuario``). Una fila con OTRO id y la misma clave no
+        se reclama.
         """
         personal = self.ensure_personal_organization(user_id)
         organization_id = int(personal["id"])
@@ -645,8 +647,9 @@ class OrganizationRepository:
                 cur = conn.execute(
                     f"UPDATE {table} SET organization_id = %s "
                     "WHERE organization_id IS NULL "
-                    "AND (user_id = %s OR (user_key = %s AND user_id IS NULL))",
-                    (organization_id, user_id, user_key),
+                    "AND (user_id = %s OR "
+                    "(user_id IS NULL AND user_key = clave_legada_de_usuario(%s)))",
+                    (organization_id, user_id, user_id),
                 )
                 changed += max(0, int(getattr(cur, "rowcount", 0) or 0))
         return changed

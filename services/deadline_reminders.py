@@ -57,8 +57,8 @@ def _candidato(
     """Un recordatorio listo para el outbox.
 
     La clave es la misma identidad que la alerta: aviso, expediente, persona y
-    organización. ``user_key`` solo viaja cuando no hay ``user_id`` (favoritos
-    que el backfill de v129 no resolvió).
+    organización. ``user_key`` solo viaja cuando no hay ``user_id`` (aplazamientos
+    del Radar que el backfill no resolvió).
     """
     destinatario = str(user_id) if user_id is not None else f"k:{user_key}"
     seguidor: dict[str, Any] = {"user_id": user_id, "organization_id": organization_id}
@@ -96,11 +96,11 @@ def _emitir(candidatos: list[_Candidato]) -> int:
     return emitidos
 
 
-def _get_watchlist_items(user_key: str, user_id: int | None = None) -> dict[str, int]:
+def _get_watchlist_items(user_id: int) -> dict[str, int]:
     """``id_externo -> organization_id`` de los favoritos del usuario.
 
-    Con ``user_id`` (v129) la lectura es dual: sin él, los favoritos guardados
-    bajo la clave de un correo anterior no tendrían recordatorio.
+    Incluye los guardados bajo la clave de un correo anterior que el backfill
+    no resolvió: sin ellos no tendrían recordatorio.
 
     Devuelve un mapa y no una lista porque el recordatorio **hereda la
     organización del favorito que lo origina**. La campana lee
@@ -119,7 +119,7 @@ def _get_watchlist_items(user_key: str, user_id: int | None = None) -> dict[str,
     el favorito pasa a la organización personal de su dueño (lo hizo el
     backfill de tenencia, ya ejecutado), la siguiente pasada del job lo avisa.
     """
-    filas = _repo_watchlist.favoritos_con_organizacion(user_key, user_id)
+    filas = _repo_watchlist.favoritos_con_organizacion(user_id)
     items = {lic: org for lic, org in filas if org is not None}
     descartados = len(filas) - len(items)
     if descartados:
@@ -128,7 +128,7 @@ def _get_watchlist_items(user_key: str, user_id: int | None = None) -> dict[str,
         # backfill de tenencia.
         log.warning(
             "watchlist_items_sin_organizacion",
-            user_key=user_key[:8],
+            user_id=user_id,
             descartados=descartados,
         )
     return items
@@ -147,7 +147,7 @@ def _deadline_type(days_left: int, field: str) -> str:
     return f"{prefix}_{days_left}"
 
 
-def check_deadlines_and_notify(user_key: str, *, user_id: int | None = None) -> int:
+def check_deadlines_and_notify(user_id: int) -> int:
     """Emite los recordatorios de plazo de los favoritos del usuario.
 
     Cada recordatorio lleva la ``organization_id`` del favorito: una alerta sin
@@ -156,7 +156,7 @@ def check_deadlines_and_notify(user_key: str, *, user_id: int | None = None) -> 
     Returns:
         Número de eventos nuevos escritos.
     """
-    favoritos = _get_watchlist_items(user_key, user_id)
+    favoritos = _get_watchlist_items(user_id)
     if not favoritos:
         return 0
 
@@ -200,14 +200,13 @@ def check_deadlines_and_notify(user_key: str, *, user_id: int | None = None) -> 
                         detalle=f"La licitacion '{titulo}' vence el "
                         f"{dt.date().isoformat()} ({days_left} dias).",
                         user_id=user_id,
-                        user_key=user_key,
                         fecha_fin=dt.date().isoformat() if field == "fecha_fin" else None,
                     )
                 )
 
     written = _emitir(candidatos)
     if written:
-        log.info("deadline_notifications_written", user_key=user_key[:8], count=written)
+        log.info("deadline_notifications_written", user_id=user_id, count=written)
     return written
 
 
@@ -299,11 +298,11 @@ def check_all_users_deadlines() -> int:
     usuarios = _repo_watchlist.usuarios_con_favoritos()
 
     total = 0
-    for user_key, user_id in usuarios:
+    for user_id in usuarios:
         try:
-            total += check_deadlines_and_notify(user_key, user_id=user_id)
+            total += check_deadlines_and_notify(user_id)
         except Exception as exc:
-            log.warning("deadline_check_error", user_key=user_key[:8], error=str(exc))
+            log.warning("deadline_check_error", user_id=user_id, error=str(exc))
     try:
         total += check_pursuit_deadlines()
     except Exception as exc:

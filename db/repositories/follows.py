@@ -27,12 +27,16 @@ seguimiento con efectos es la cuenta objetivo de la organización
 (`cuentas_objetivo`, ver `services/cuentas.py`), y una fila `organo` de esta
 tabla es personal y no la lee ningún productor de avisos.
 
-Identidad dual
---------------
-Mismo predicado que el resto de tablas de usuario tras v129 (ADR-030 fase 2):
-la fila es tuya por `user_id`, o por `user_key` si el backfill no pudo
-resolver el id. Una fila con OTRO id y tu misma clave no es tuya — es lo que
-impide que quien registre mañana el correo que tú usabas herede lo que seguías.
+Identidad
+---------
+Desde v181 (ADR-030 fase 3) el usuario se identifica solo por `user_id`. La
+fila es tuya por `user_id`, o —si no lo tiene— por la clave legada que
+`clave_legada_de_usuario(user_id)` calcula en la base con tu correo actual:
+la misma mitad legacy del predicado dual de v129, sin que el llamador tenga
+que conocer la clave. Una fila con OTRO id y tu misma clave no es tuya — es lo
+que impide que quien registre mañana el correo que tú usabas herede lo que
+seguías. La columna `user_key` se sigue escribiendo, derivada igual, porque la
+paridad con las tablas de origen la compara; retirarla va por RFC.
 """
 
 from __future__ import annotations
@@ -63,8 +67,8 @@ _COLS = (
     "visibility, channels_json, hasta, created_at"
 )
 
-#: Ver el docstring del módulo. Recibe siempre la terna `(user_id, user_key, user_id)`.
-_IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
+#: Ver el docstring del módulo. Recibe siempre el par `(user_id, user_id)`.
+_IDENT = "(user_id = %s OR (user_id IS NULL AND user_key = clave_legada_de_usuario(%s)))"
 
 
 def _fila(row: dict[str, Any]) -> dict[str, Any]:
@@ -88,8 +92,7 @@ def _fila(row: dict[str, Any]) -> dict[str, Any]:
 
 def registrar(
     *,
-    user_key: str,
-    user_id: int | None,
+    user_id: int,
     organization_id: int | None,
     target_type: str,
     target_id: str,
@@ -120,17 +123,19 @@ def registrar(
                     "INSERT INTO follows "
                     " (organization_id, user_id, user_key, target_type, target_id,"
                     "  kind, visibility, hasta) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) "
-                    "ON CONFLICT ON CONSTRAINT uq_follows_user_target DO UPDATE SET "
+                    "VALUES (%s, %s, clave_legada_de_usuario(%s), %s, %s, %s, %s, %s) "
+                    # Árbitro por id (v181): tras un cambio de correo la clave
+                    # nueva no chocaba con la fila de la antigua y la duplicaba.
+                    "ON CONFLICT (user_id, target_type, target_id, kind) "
+                    "WHERE user_id IS NOT NULL DO UPDATE SET "
                     " organization_id = COALESCE(EXCLUDED.organization_id, follows.organization_id),"
-                    " user_id = COALESCE(EXCLUDED.user_id, follows.user_id),"
                     " visibility = EXCLUDED.visibility,"
                     " hasta = EXCLUDED.hasta "
                     f"RETURNING {_COLS}",
                     (
                         organization_id,
                         user_id,
-                        user_key,
+                        user_id,
                         target_type,
                         str(target_id),
                         kind,
@@ -153,8 +158,7 @@ def registrar(
 
 def olvidar(
     *,
-    user_key: str,
-    user_id: int | None,
+    user_id: int,
     target_type: str,
     target_id: str,
     kind: str = "seguir",
@@ -171,7 +175,7 @@ def olvidar(
             cur = c.execute(
                 "DELETE FROM follows WHERE target_type = %s AND target_id = %s "
                 f"AND kind = %s AND {_IDENT}",
-                (target_type, str(target_id), kind, user_id, user_key, user_id),
+                (target_type, str(target_id), kind, user_id, user_id),
             )
             return bool(cur.rowcount > 0)
     except Exception as exc:
@@ -181,8 +185,7 @@ def olvidar(
 
 def listar(
     *,
-    user_key: str,
-    user_id: int | None,
+    user_id: int,
     organization_id: int | None = None,
     target_type: str | None = None,
     kind: str = "seguir",
@@ -197,7 +200,7 @@ def listar(
     Pedir `vigentes=False` es lo que quiere la auditoría, no la interfaz.
     """
     condiciones = [f"({_IDENT} OR (organization_id = %s AND visibility = 'organization'))"]
-    params: list[object] = [user_id, user_key, user_id, organization_id]
+    params: list[object] = [user_id, user_id, organization_id]
     condiciones.append("kind = %s")
     params.append(kind)
     if target_type is not None:
@@ -276,9 +279,7 @@ def _iso(valor: Any) -> Any:
     return valor.isoformat() if isinstance(valor, datetime) else valor
 
 
-def favoritos_desde_follows(
-    user_key: str, organization_id: int, user_id: int | None = None
-) -> list[dict[str, Any]]:
+def favoritos_desde_follows(organization_id: int, user_id: int) -> list[dict[str, Any]]:
     """Forma de ``WatchlistRepository.list_items``, con la pertenencia de ``follows``.
 
     Mismo ámbito que la gemela: la organización activa, y dentro de ella lo
@@ -298,16 +299,14 @@ def favoritos_desde_follows(
                 "LEFT JOIN licitaciones l ON l.id_externo = f.target_id "
                 "WHERE f.target_type = 'licitacion' AND f.kind = 'seguir' "
                 "AND f.organization_id = %s AND (f.visibility = 'organization' OR "
-                "(f.user_id = %s OR (f.user_key = %s AND (f.user_id IS NULL OR %s::int IS NULL)))) "
+                "(f.user_id = %s OR (f.user_id IS NULL AND f.user_key = clave_legada_de_usuario(%s)))) "
                 "ORDER BY f.created_at DESC, f.id DESC",
-                (organization_id, user_id, user_key, user_id),
+                (organization_id, user_id, user_id),
             )
         )
 
 
-def empresas_desde_follows(
-    user_key: str, organization_id: int, *, user_id: int | None = None
-) -> list[dict[str, Any]]:
+def empresas_desde_follows(organization_id: int, *, user_id: int) -> list[dict[str, Any]]:
     """Forma de ``db.watchlist_empresas.list_entries``, con la pertenencia de ``follows``.
 
     ``target_id`` es texto (el objetivo es polimórfico); se compara contra
@@ -328,15 +327,15 @@ def empresas_desde_follows(
                 " AND w.organization_id = f.organization_id "
                 "WHERE f.target_type = 'empresa' AND f.kind = 'seguir' "
                 "AND f.organization_id = %s AND (f.visibility = 'organization' OR "
-                "(f.user_id = %s OR (f.user_key = %s AND (f.user_id IS NULL OR %s::int IS NULL)))) "
+                "(f.user_id = %s OR (f.user_id IS NULL AND f.user_key = clave_legada_de_usuario(%s)))) "
                 "ORDER BY e.nombre_canonico",
-                (organization_id, user_id, user_key, user_id),
+                (organization_id, user_id, user_id),
             )
         )
     return [{**f, "created_at": _iso(f["created_at"])} for f in filas]
 
 
-def descartes_desde_follows(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+def descartes_desde_follows(*, user_id: int) -> list[dict[str, Any]]:
     """Forma de ``db.radar_dismissals.list_detalle``, con la pertenencia de ``follows``.
 
     Vigencia y caducidad (``hasta``) salen de ``follows``; ``accion``,
@@ -357,9 +356,9 @@ def descartes_desde_follows(user_key: str, *, user_id: int | None = None) -> lis
             ") rd ON TRUE "
             "WHERE f.target_type = 'licitacion' AND f.kind = 'descartar' "
             "AND (f.hasta IS NULL OR f.hasta > now()) "
-            "AND (f.user_id = %s OR (f.user_key = %s AND (f.user_id IS NULL OR %s::int IS NULL))) "
+            "AND (f.user_id = %s OR (f.user_id IS NULL AND f.user_key = clave_legada_de_usuario(%s))) "
             "ORDER BY f.target_id, f.created_at DESC",
-            (user_id, user_key, user_id),
+            (user_id, user_id),
         )
         filas = sorted(cur.fetchall(), key=lambda row: row[5], reverse=True)
     return [
@@ -374,23 +373,23 @@ def descartes_desde_follows(user_key: str, *, user_id: int | None = None) -> lis
     ]
 
 
-def borrar_de_usuario(user_key: str, *, user_id: int | None = None) -> int:
+def borrar_de_usuario(*, user_id: int) -> int:
     """Borra todos los seguimientos del usuario. Lo llama el borrado GDPR."""
     with connect() as c:
         cur = c.execute(
             f"DELETE FROM follows WHERE {_IDENT}",
-            (user_id, user_key, user_id),
+            (user_id, user_id),
         )
         return int(cur.rowcount or 0)
 
 
-def exportar_de_usuario(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+def exportar_de_usuario(*, user_id: int) -> list[dict[str, Any]]:
     """Seguimientos del usuario para el export de datos personales (GDPR)."""
     with connect_read() as c:
         filas = rows_to_dicts(
             c.execute(
                 f"SELECT {_COLS} FROM follows WHERE {_IDENT} ORDER BY id LIMIT 5000",
-                (user_id, user_key, user_id),
+                (user_id, user_id),
             )
         )
     return [_fila(f) for f in filas]

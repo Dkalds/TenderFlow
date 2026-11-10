@@ -698,7 +698,7 @@ def _verificar_firma_calendario(user_id: int, token: str) -> bool:
     return verify(_PREFIJO_FIRMA_CALENDARIO + str(int(user_id)).encode("ascii"), token)
 
 
-def _eventos_calendario(user_key: str, user_id: int, organization_id: int) -> list[dict[str, Any]]:
+def _eventos_calendario(user_id: int, organization_id: int) -> list[dict[str, Any]]:
     """Eventos ICS del usuario: pursuits abiertos primero, favoritos después.
 
     Un expediente que es a la vez pursuit y favorito sale una sola vez, como
@@ -706,8 +706,8 @@ def _eventos_calendario(user_key: str, user_id: int, organization_id: int) -> li
 
     ``organization_id`` no es decorativa: los favoritos se leen con el mismo
     predicado de visibilidad que ``GET /watchlist/items``. Hasta 2026-09 esta
-    función ejecutaba su propio SQL en la ruta, filtrando sólo por
-    ``wi.user_key`` — sin organización ni visibilidad— y lo hacía además desde
+    función ejecutaba su propio SQL en la ruta, filtrando sólo por la clave
+    del usuario —sin organización ni visibilidad— y lo hacía además desde
     un endpoint alcanzable con un enlace firmado de larga vida, sin sesión.
     """
     from db.repositories.pursuits import PursuitRepository
@@ -756,7 +756,7 @@ def _eventos_calendario(user_key: str, user_id: int, organization_id: int) -> li
                 }
             )
 
-    for favorito in _repo_watchlist.calendar_items(user_key, organization_id, user_id):
+    for favorito in _repo_watchlist.calendar_items(user_id, organization_id):
         id_ext = str(favorito.get("id_externo", ""))
         if id_ext in con_pursuit:
             continue
@@ -811,9 +811,8 @@ async def calendario_enlace(
     response.headers["Cache-Control"] = "private, no-store"
 
     user_id = int(ctx["user_id"])
-    user_key = str(ctx.get("user_key") or "")
     organization_id = await _organizacion_del_calendario(ctx["user_id"])
-    eventos = await run_db(_eventos_calendario, user_key, user_id, organization_id)
+    eventos = await run_db(_eventos_calendario, user_id, organization_id)
     query = urlencode({"u": user_id, "t": _firma_calendario(user_id)})
     # Emitir el enlace firmado es dar acceso sin sesión al calendario: se
     # anota como cualquier otra credencial. La firma no viaja al rastro.
@@ -861,7 +860,6 @@ async def calendario_ics(
       revoca rotando ``SIGNING_KEY`` (``shared/signing``, con ``kid``).
     """
     from db.users import get_user_by_id
-    from shared.identity import user_key_from_email
 
     user_id: int | None = None
     if api_key_raw:
@@ -887,13 +885,12 @@ async def calendario_ics(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="API key owner unavailable"
         )
-    user_key = user_key_from_email(owner.get("email"), int(owner["id"]))
 
     organization_id = await _organizacion_del_calendario(int(owner["id"]))
-    events = await run_db(_eventos_calendario, user_key, int(owner["id"]), organization_id)
+    events = await run_db(_eventos_calendario, int(owner["id"]), organization_id)
 
     ics_content = _generate_ics(events, cal_name="TenderFlow - Compromisos")
-    log.info("calendario_ics_export", user_key=user_key[:8], events=len(events))
+    log.info("calendario_ics_export", user_id=int(owner["id"]), events=len(events))
     return Response(
         content=ics_content.encode("utf-8"),
         media_type="text/calendar; charset=utf-8",

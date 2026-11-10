@@ -92,26 +92,23 @@ def add_entry(entry: WatchlistEntry) -> None:
     _add_entry(entry)
 
 
-def remove_entry(entry_id: int, user_key: str, *, user_id: int | None = None) -> bool:
+def remove_entry(entry_id: int, user_id: int) -> bool:
     """Remove a watchlist entry by ID, scoped to its owner."""
-    return _remove_entry(entry_id, user_key, user_id=user_id)
+    return _remove_entry(entry_id, user_id)
 
 
 def list_entries(
-    user_key: str,
+    user_id: int,
     *,
-    user_id: int | None = None,
     organization_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """List watchlist entries for a user."""
-    return _list_entries(user_key, user_id=user_id, organization_id=organization_id)
+    return _list_entries(user_id, organization_id=organization_id)
 
 
-def update_frequency(
-    entry_id: int, frequency: str, user_key: str, *, user_id: int | None = None
-) -> bool:
+def update_frequency(entry_id: int, frequency: str, user_id: int) -> bool:
     """Update notification frequency for a watchlist entry, scoped to its owner."""
-    return _update_frequency(entry_id, frequency, user_key, user_id=user_id)
+    return _update_frequency(entry_id, frequency, user_id)
 
 
 #: Tope de reglas que se cruzan por petición del feed.
@@ -136,10 +133,9 @@ def _rfc3339(valor: object, por_defecto: str) -> str:
 
 
 def generate_atom_feed(
-    user_key: str,
+    user_id: int,
     limit: int = 50,
     *,
-    user_id: int | None = None,
     organization_id: int | None = None,
 ) -> str:
     """Feed Atom 1.0 con lo que casan las alertas activas del usuario.
@@ -152,9 +148,8 @@ def generate_atom_feed(
     veía las reglas que la gente crea hoy ni respetaba su importe mínimo.
 
     Args:
-        user_key: Identidad heredada del titular (``user_key_from_email``).
+        user_id: Titular de las reglas.
         limit: Número máximo de entradas del feed.
-        user_id: Titular; hace dual la lectura de sus reglas (v129).
         organization_id: Organización cuyas reglas se leen: las suyas y las
             que el equipo comparte, las mismas que ve en ``/mi-watchlist``.
             ``None`` lee solo las suyas, en todas sus organizaciones.
@@ -168,9 +163,7 @@ def generate_atom_feed(
     from services.watchlist_rules import list_matches, list_rules
 
     ahora = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    reglas = [
-        regla for regla in list_rules(user_key, organization_id, user_id=user_id) if regla.active
-    ]
+    reglas = [regla for regla in list_rules(user_id, organization_id) if regla.active]
 
     vistas: set[str] = set()
     lics: list[dict[str, Any]] = []
@@ -190,7 +183,7 @@ def generate_atom_feed(
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<feed xmlns="http://www.w3.org/2005/Atom">',
         f"  <title>{html.escape(titulo)}</title>",
-        f"  <id>urn:watchlist:{html.escape(user_key[:8])}</id>",
+        f"  <id>urn:watchlist:{user_id}</id>",
         f"  <updated>{actualizado}</updated>",
         # Atom exige autor en el feed si las entradas no lo llevan.
         "  <author><name>TenderFlow</name></author>",

@@ -934,7 +934,7 @@ def get_agenda(
             )
         )
 
-        reglas = [regla for regla in list_rules(user_key, resolved_id) if regla.active]
+        reglas = [regla for regla in list_rules(user_id, resolved_id) if regla.active]
         senal_items, senales_truncadas = _agenda_senales(
             reglas,
             user_key,

@@ -62,13 +62,8 @@ _TARGET_TYPE_RE = "^(licitacion|lote|empresa|organo|cpv)$"
 _KIND_RE = "^(seguir|descartar)$"
 
 
-def _user_key(ctx: Principal) -> str:
-    return str(ctx["user_key"])
-
-
-def _user_id(ctx: Principal) -> int | None:
-    raw = ctx.get("user_id")
-    return int(raw) if raw is not None else None
+def _user_id(ctx: Principal) -> int:
+    return int(ctx["user_id"])
 
 
 class FollowBody(BaseModel):
@@ -105,7 +100,6 @@ async def get_follows(
 ) -> FollowsResult:
     items = await run_db(
         repo.listar,
-        user_key=_user_key(ctx),
         user_id=_user_id(ctx),
         organization_id=ctx.get("organization_id"),
         target_type=target_type,
@@ -135,7 +129,6 @@ async def post_follow(
         body = body.model_copy(update={"target_id": await id_vigente(body.target_id, response)})
     fila = await run_db(
         repo.registrar,
-        user_key=_user_key(ctx),
         user_id=_user_id(ctx),
         organization_id=ctx.get("organization_id"),
         target_type=body.target_type,
@@ -171,7 +164,6 @@ async def delete_follow(
 ) -> None:
     ok = await run_db(
         repo.olvidar,
-        user_key=_user_key(ctx),
         user_id=_user_id(ctx),
         target_type=target_type,
         target_id=target_id,

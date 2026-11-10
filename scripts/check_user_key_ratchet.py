@@ -198,7 +198,6 @@ _REPORTEROS = frozenset(
 # convención única del autor en `audit_log` (ADR-030 §D).
 CONGELADOS: frozenset[str] = frozenset(
     {
-        "api/routes/follows.py",
         "db/repositories/follows.py",
         "scripts/check_follows_paridad.py",
         "api/routes/analytics.py",
@@ -206,9 +205,7 @@ CONGELADOS: frozenset[str] = frozenset(
         # `api/routes/auth.py` se partió en paquete por tema (2026-11). El único
         # uso es `_session_principal`, que se fue con las dependencias de sesión.
         "api/routes/auth/comun.py",
-        "api/routes/competitive.py",
         "api/routes/dual_auth.py",
-        "api/routes/exports.py",
         # `api/routes/licitaciones.py` se partió en paquete por familias
         # (2026-09). El único uso de `user_key` era `_budget_subject`, que
         # atribuye el gasto LLM, y se fue entero con la familia `pliegos`.
@@ -219,8 +216,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "api/routes/pursuits.py",
         "api/routes/radar.py",
         "api/routes/saved_filters.py",
-        "api/routes/watchlist_feed.py",
-        "api/routes/watchlist_items.py",
         "api/routes/watchlist_rules.py",
         "db/audit.py",
         "db/events.py",
@@ -248,7 +243,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "services/gdpr.py",
         "services/notifications.py",
         "services/novedades.py",
-        "services/organizations.py",
         "services/pursuits.py",
         "services/watchlist.py",
         "services/watchlist_rules.py",

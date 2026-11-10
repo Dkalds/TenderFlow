@@ -158,18 +158,18 @@ def export_my_data(ctx: Principal = Depends(require_any_auth)) -> Response:
         # ``user_id`` (v129): el export cubre lo guardado bajo cualquier correo
         # anterior de la persona, no sólo la clave del actual.
         uid = int(ctx["user_id"])
-        watchlist = export_watchlist(user_key, user_id=uid)
+        watchlist = export_watchlist(uid)
         zf.writestr("watchlist.json", json.dumps(watchlist, ensure_ascii=False, indent=2))
 
-        watchlist_items = export_watchlist_items(user_key, user_id=uid)
+        watchlist_items = export_watchlist_items(uid)
         zf.writestr(
             "watchlist_items.json", json.dumps(watchlist_items, ensure_ascii=False, indent=2)
         )
 
-        seguimientos = export_follows(user_key, user_id=uid)
+        seguimientos = export_follows(uid)
         zf.writestr("follows.json", json.dumps(seguimientos, ensure_ascii=False, indent=2))
 
-        watchlist_rules = export_watchlist_rules(user_key, user_id=uid)
+        watchlist_rules = export_watchlist_rules(uid)
         zf.writestr(
             "watchlist_rules.json", json.dumps(watchlist_rules, ensure_ascii=False, indent=2)
         )

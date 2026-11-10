@@ -156,7 +156,7 @@ def test_la_empresa_seguida_deja_fila_en_follows(tmp_db: Any) -> None:
     from db.repositories import follows as repo
     from db.watchlist_empresas import WatchlistEmpresaEntry, add_entry, remove_entry
 
-    user_id, org_id, user_key = _usuario(db_mod, "empresa@example.test")
+    user_id, org_id, _ = _usuario(db_mod, "empresa@example.test")
     with db_mod.connect() as c:
         fila = c.execute(
             "INSERT INTO empresas (nombre_canonico, created_at, updated_at) "
@@ -167,26 +167,18 @@ def test_la_empresa_seguida_deja_fila_en_follows(tmp_db: Any) -> None:
 
     add_entry(
         WatchlistEmpresaEntry(
-            user_key=user_key,
             user_id=user_id,
             empresa_id=empresa_id,
             organization_id=org_id,
         )
     )
-    seguidas = repo.listar(
-        user_key=user_key, user_id=user_id, organization_id=org_id, target_type="empresa"
-    )
+    seguidas = repo.listar(user_id=user_id, organization_id=org_id, target_type="empresa")
     # `target_id` es texto aunque la empresa sea un entero: el objetivo es
     # polimórfico y por eso no puede llevar clave foránea (ADR-031 §Riesgo).
     assert [f["target_id"] for f in seguidas] == [str(empresa_id)]
 
-    remove_entry(user_key, empresa_id, org_id, user_id=user_id)
-    assert (
-        repo.listar(
-            user_key=user_key, user_id=user_id, organization_id=org_id, target_type="empresa"
-        )
-        == []
-    )
+    remove_entry(user_id, empresa_id, org_id)
+    assert repo.listar(user_id=user_id, organization_id=org_id, target_type="empresa") == []
 
 
 def test_el_descarte_del_radar_deja_fila_con_signo_negativo(tmp_db: Any) -> None:
