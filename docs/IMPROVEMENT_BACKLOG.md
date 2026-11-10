@@ -52,7 +52,7 @@ Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Esta
 
 **Variables y secretos**
 
-- Corregir `EMBEDDINGS_ONNX_SHA256_CONFIG`, desplegar y encender la flag `busqueda_semantica` — [La búsqueda por significado no corre en producción: decidir si se sirve](#p2-investigador-la-búsqueda-por-significado-no-corre-en-producción-decidir-si-se-sirve)
+- Encender la flag `busqueda_semantica` en Administración (el modelo ya está en la imagen) — [La búsqueda por significado no corre en producción: decidir si se sirve](#p2-investigador-la-búsqueda-por-significado-no-corre-en-producción-decidir-si-se-sirve)
 - `SENTRY_DSN` en `tenderflow-api` — [Confirmar que Sentry captura en el backend de producción (acción del propietario)](#p2-confirmar-que-sentry-captura-en-el-backend-de-producción-acción-del-propietario)
 - Check externo del latido y secret `HEALTHCHECK_HEARTBEAT_URL` — [Dar de alta el check externo del latido del healthcheck (acción del propietario)](#p2-dar-de-alta-el-check-externo-del-latido-del-healthcheck-acción-del-propietario)
 - `API_ANALYTICS_STATEMENT_TIMEOUT_MS` en Render — [Medir la analítica en producción y encender su techo de sentencia](#p2-rendimiento-2026-09-medir-la-analítica-en-producción-y-encender-su-techo-de-sentencia)
@@ -879,7 +879,7 @@ _Sin ítems abiertos._
 - **Riesgo:** medio — es el dato más sensible del producto; el aislamiento está probado por la API y con un rol sonda, pero los tests con base de datos de esta entrega no se ejecutaron en local.
 
 ### [P2] [Investigador] La búsqueda por significado no corre en producción: decidir si se sirve
-- **Estado actual (2026-11-08):** `mixto` — Las cuatro variables `EMBEDDINGS_ONNX_*` se pusieron en Render el 2026-11-08 y el build falla porque `EMBEDDINGS_ONNX_SHA256_CONFIG` lleva el hash del modelo. Propietario: corregirla, desplegar y encender la flag `busqueda_semantica`. Medir después: `source=rrf`, MRR, RSS y `fusion_ms`.
+- **Estado actual (2026-11-10):** `mixto` — El modelo ya está en la imagen de producción: `EMBEDDINGS_ONNX_SHA256_CONFIG` se corrigió el 2026-11-08 (el build de las 00:59 UTC falló por llevar el hash del modelo; el de las 01:01 pasó) y los tres despliegues posteriores, hasta `bdb48011` el 2026-11-09, descargan y verifican el modelo. Propietario: encender la flag `busqueda_semantica` en Administración (no tiene fila en `feature_flags`, así que sigue apagada). Medir después: `source=rrf`, MRR, RSS y `fusion_ms`.
 - **Área:** services/investigador/search_engine.py, services/embeddings.py, requirements-api.in, docker/Dockerfile.api
 - **Problema:** `hybrid_search` exige `sentence-transformers` para codificar la consulta y la imagen de la API no lo instala a propósito (C3.1: PyTorch pesa ~2 GB). Medido el 2026-10-09: `POST /search/semantic` responde siempre `fts` o `like`, y los 345.422 fragmentos embebidos de `documento_chunks` (2,2 GB de los 6,9 GB de la base; el HNSW, 637 MB) no los consulta ninguna ruta por vector. Desde esa fecha la pantalla ya no lo promete —«Tipo de coincidencia» solo aparece si una respuesta llega por `rrf`— y la búsqueda por texto mira dentro de los pliegos, pero la decisión sigue pendiente.
 - **Acceptance criteria:**
