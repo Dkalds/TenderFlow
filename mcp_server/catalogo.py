@@ -272,6 +272,13 @@ _TABLAS: tuple[tuple[str, Visibilidad, str, str], ...] = (
         _ORG,
         "Adjuntos de una oportunidad (metadatos y clave del binario).",
     ),
+    (
+        "pursuit_attachment_chunks",
+        _O,
+        _ORG,
+        "Texto indexado de los adjuntos que una organización marcó indexables (v179): "
+        "es el contenido de sus propuestas y solo lo lee esa organización (ADR-040).",
+    ),
     ("pursuit_comments", _V, _ORG, "Comentarios del equipo sobre una oportunidad."),
     (
         "pursuit_comment_mentions",

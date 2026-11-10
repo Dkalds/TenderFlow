@@ -47,6 +47,7 @@ function makeResult(overrides: Partial<AskStreamResult> = {}): AskStreamResult {
     resumenMeta: null,
     askMeta: null,
     sources: null,
+    fuentesOrganizacion: [],
     ...overrides,
   };
 }

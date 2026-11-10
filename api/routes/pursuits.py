@@ -6,6 +6,7 @@ Las rutas de organizaciones viven en :mod:`api.routes.organizations`.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from urllib.parse import quote, unquote
 
 from fastapi import (
@@ -164,6 +165,11 @@ class PursuitAttachmentOut(BaseModel):
     uploaded_by_name: str | None = None
     #: Opt-in del RAG por adjunto (C6.3). `false` mientras nadie lo levante.
     indexable: bool = False
+    #: Dónde va su indexado (ADR-040); `null` mientras no sea indexable.
+    #: `unsupported` y `sin_texto` no son fallos: de ese fichero no sale texto.
+    index_status: Literal["pending", "indexed", "error", "unsupported", "sin_texto"] | None = None
+    #: Por qué no se indexó, en palabras para quien lo subió.
+    index_error: str | None = None
     created_at: str
 
 
@@ -196,6 +202,13 @@ class PursuitAttachmentPolicy(BaseModel):
     almacen_disponible: bool
     max_bytes: int
     tipos: list[TipoAdjuntoOut]
+    #: Documentos que una organización puede tener indexados a la vez (ADR-040).
+    #: `0`: el indexado está apagado en este entorno.
+    indexado_max_documentos: int = 0
+    #: Tamaño máximo de un fichero para poder indexarse.
+    indexado_max_bytes: int = 0
+    #: Tipos de los que se sabe extraer texto; los demás se adjuntan, no se indexan.
+    indexado_tipos: list[str] = Field(default_factory=list)
 
 
 class GoNoGoCriterioOut(BaseModel):
@@ -853,6 +866,9 @@ async def get_adjuntos_politica(
             TipoAdjuntoOut(content_type=tipo, extensiones=list(extensiones))
             for tipo, extensiones in vigente.tipos
         ],
+        indexado_max_documentos=vigente.indexado.max_documentos,
+        indexado_max_bytes=vigente.indexado.max_bytes,
+        indexado_tipos=list(vigente.indexado.tipos),
     )
 
 
@@ -954,6 +970,12 @@ def _content_disposition(nombre: str) -> str:
 @router.put(
     "/pursuits/adjuntos/{attachment_id}/indexable",
     response_model=PursuitAttachmentOut,
+    responses={
+        403: {"description": "Sin acceso a la organización, o rol de solo lectura"},
+        404: {"description": "No existe, o no es de tu organización"},
+        422: {"description": "Ese fichero no se puede indexar: tipo, tamaño o tope alcanzado"},
+        503: {"description": "La cola de indexado no está disponible; el permiso no cambió"},
+    },
 )
 async def put_adjunto_indexable(
     attachment_id: int,
@@ -966,8 +988,16 @@ async def put_adjunto_indexable(
     Por adjunto y no por organización: una propuesta puede llevar el CV de
     alguien y el pliego técnico en el mismo expediente, y un permiso global
     obligaría a decidir por el conjunto.
+
+    Levantarlo encola el indexado y responde con `index_status: "pending"`;
+    bajarlo borra el texto y los embeddings antes de responder. Los dos quedan
+    en el rastro de auditoría de la organización.
     """
-    from services.pursuit_attachments import marcar_indexable
+    from services.pursuit_attachments import (
+        IndexadoNoDisponible,
+        IndexadoRechazado,
+        marcar_indexable,
+    )
 
     try:
         fila = await run_db(
@@ -979,6 +1009,10 @@ async def put_adjunto_indexable(
         )
     except (OrganizationAccessError, OrganizationPermissionError) as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except IndexadoRechazado as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except IndexadoNoDisponible as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if fila is None:
         raise HTTPException(status_code=404, detail="Adjunto no encontrado.")
     return PursuitAttachmentOut.model_validate(fila)
@@ -993,7 +1027,10 @@ async def delete_adjunto(
     organization_id: int | None = Query(default=None, ge=1),
     ctx: Principal = Depends(require_any_auth),
 ) -> None:
-    """Borra el adjunto y su binario del almacén."""
+    """Retira el adjunto: deja de listarse y se borra su texto indexado.
+
+    El binario se conserva (borrado lógico, v131).
+    """
     from services.pursuit_attachments import borrar
 
     try:

@@ -10,7 +10,9 @@ configura un entorno sin bucket S3.
 
 from __future__ import annotations
 
+import json
 from typing import Any
+from unittest.mock import patch
 from urllib.parse import quote
 
 import pytest
@@ -154,3 +156,190 @@ def test_cu27_sin_almacen_la_politica_lo_dice_y_la_subida_no_promete(client, api
     )
     assert subida.status_code == 503, subida.text
     assert ana.get(f"/pursuits/{pid}/adjuntos").json() == []
+
+
+# ── Memoria de la organización (ADR-040) ────────────────────────────────────
+
+_PROPUESTA = (
+    "Metodología de migración. En la Diputación migramos el ERP a SAP S/4HANA "
+    "en nueve meses, con un equipo de doce personas y sin parada de servicio."
+).encode()
+_NOTA_AJENA = (
+    "Metodología de migración de la otra empresa: pasamos el ERP a Oracle Fusion "
+    "en dos años y con parada de servicio."
+).encode()
+_PREGUNTA = "¿Qué metodología de migración del ERP hemos seguido?"
+
+
+def _respuesta_de_prueba(*_args: Any, **_kwargs: Any) -> Any:
+    yield "Respuesta de prueba."
+
+
+def _preguntar(sesion: Sesion, oid: int) -> list[dict[str, Any]]:
+    """Las citas de documentos propios que acompañan a una pregunta al Investigador."""
+    with patch("llm.client.stream_llm_response", _respuesta_de_prueba):
+        respuesta = sesion.post(
+            "/ask", params={"organization_id": oid}, json={"question": _PREGUNTA}
+        )
+    assert respuesta.status_code == 200, respuesta.text
+    citas: list[dict[str, Any]] = []
+    for linea in respuesta.text.splitlines():
+        if linea.startswith("data: {"):
+            citas.extend(json.loads(linea[6:]).get("fuentes_organizacion", []))
+    return citas
+
+
+def _indexar_lo_encolado() -> None:
+    """Hace de worker: en los tests nadie consume la cola por su cuenta."""
+    from services.jobs import procesar_uno
+
+    while procesar_uno("escenario-memoria") is not None:
+        pass
+
+
+def _fragmentos_guardados(attachment_id: int) -> int:
+    """Filas de texto indexado de un adjunto, leídas sin pasar por la API.
+
+    La API no distingue «no se devuelve» de «no existe»; para afirmar que
+    desmarcar **borra**, hay que mirar la tabla.
+    """
+    from db.database import connect_read
+
+    with connect_read() as c:
+        fila = c.execute(
+            "SELECT COUNT(*) FROM pursuit_attachment_chunks WHERE attachment_id = %s",
+            (attachment_id,),
+        ).fetchone()
+    return int(fila[0])
+
+
+def _oportunidad(sesion: Sesion, licitacion_id: str, oid: int) -> int:
+    creada = sesion.post("/pursuits", json={"licitacion_id": licitacion_id, "organization_id": oid})
+    assert creada.status_code == 201, creada.text
+    return int(creada.json()["id"])
+
+
+def _adjuntar_texto(sesion: Sesion, pursuit_id: int, oid: int, nombre: str, datos: bytes) -> int:
+    subida = _subir(sesion, pursuit_id, oid, nombre=nombre, tipo="text/plain", datos=datos)
+    assert subida.status_code == 201, subida.text
+    assert subida.json()["indexable"] is False
+    return int(subida.json()["id"])
+
+
+def _marcar_indexable(sesion: Sesion, attachment_id: int, oid: int, valor: bool) -> Any:
+    return sesion.put(
+        f"/pursuits/adjuntos/{attachment_id}/indexable",
+        params={"organization_id": oid},
+        json={"indexable": valor},
+    )
+
+
+def test_cu37_documentos_propios_indexados_citados_y_aislados(client, api_db, almacen, monkeypatch):
+    """CU-37 — una organización indexa sus documentos, el Investigador los cita y otra no los alcanza.
+
+    Es también la parte de CU-13 que toca al texto indexado: ni preguntando lo
+    mismo ni pidiendo el adjunto por su identificador.
+    """
+    import services.embeddings as embeddings
+    from api.app import app
+
+    # Como el proceso de la API en producción: sin motor para embeber documentos,
+    # así que el recorrido usa la búsqueda por palabras, que es determinista.
+    monkeypatch.setattr(embeddings, "embeddings_masivos_disponibles", lambda: False)
+    monkeypatch.setattr(embeddings, "embeddings_available", lambda: False)
+    monkeypatch.setenv("MEMORIA_ORG_MAX_DOCUMENTOS", "1")
+
+    sembrar_licitacion("EXP-MEM-A", "Migración del ERP provincial")
+    sembrar_licitacion("EXP-MEM-B", "Renovación del ERP municipal")
+    duena = abrir_sesion("duena.memoria@example.com", client, nombre="Marta Díaz")
+    lectora = abrir_sesion("lectora.memoria@example.com", TestClient(app))
+    ajena = abrir_sesion("ajena.memoria@example.com", TestClient(app))
+    equipo = duena.post("/organizations", json={"name": "Integradora Memoria"})
+    assert equipo.status_code == 201, equipo.text
+    oid = int(equipo.json()["id"])
+    oid_ajena = ajena.organization_id
+    invitada = duena.post(
+        f"/organizations/{oid}/members", json={"email": lectora.email, "role": "viewer"}
+    )
+    assert invitada.status_code == 201, invitada.text
+
+    pid = _oportunidad(duena, "EXP-MEM-A", oid)
+    propio = _adjuntar_texto(duena, pid, oid, "Propuesta técnica.txt", _PROPUESTA)
+    anexo = _adjuntar_texto(duena, pid, oid, "Anexo.txt", b"Anexo de precios de la propuesta.")
+    de_la_otra = _adjuntar_texto(
+        ajena, _oportunidad(ajena, "EXP-MEM-B", oid_ajena), oid_ajena, "Nota.txt", _NOTA_AJENA
+    )
+
+    # Antes de activar nada, la pantalla sabe cuántos documentos caben y de qué tipos.
+    politica = duena.get("/pursuits/adjuntos/politica").json()
+    assert politica["indexado_max_documentos"] == 1
+    assert "text/plain" in politica["indexado_tipos"]
+    assert "image/png" not in politica["indexado_tipos"]
+
+    # Sin permiso no se cita nada, aunque el fichero esté subido.
+    assert _preguntar(duena, oid) == []
+
+    # Quien solo lee no concede el permiso; quien escribe sí, y queda pendiente.
+    assert _marcar_indexable(lectora, propio, oid, True).status_code == 403
+    activado = _marcar_indexable(duena, propio, oid, True)
+    assert activado.status_code == 200, activado.text
+    assert activado.json()["index_status"] == "pending"
+    # El tope es por organización: el segundo documento no entra.
+    sin_hueco = _marcar_indexable(duena, anexo, oid, True)
+    assert sin_hueco.status_code == 422, sin_hueco.text
+    assert "tope" in sin_hueco.json()["detail"]
+
+    # La otra organización indexa lo suyo, que habla de lo mismo.
+    assert _marcar_indexable(ajena, de_la_otra, oid_ajena, True).status_code == 200
+    _indexar_lo_encolado()
+
+    listado = duena.get(f"/pursuits/{pid}/adjuntos", params={"organization_id": oid}).json()
+    assert {a["id"]: a["index_status"] for a in listado} == {propio: "indexed", anexo: None}
+    assert _fragmentos_guardados(propio) > 0
+
+    # El Investigador cita el documento propio: extracto literal, fichero,
+    # página y oportunidad de origen. La lectora de la organización también lo ve.
+    (cita,) = _preguntar(duena, oid)
+    assert cita["attachment_id"] == propio
+    assert cita["filename"] == "Propuesta técnica.txt"
+    assert cita["page_number"] == 1
+    assert cita["pursuit_id"] == pid
+    assert cita["licitacion_id"] == "EXP-MEM-A"
+    assert cita["licitacion_titulo"] == "Migración del ERP provincial"
+    assert cita["cita"].rstrip("…") in _PROPUESTA.decode()
+    assert [c["attachment_id"] for c in _preguntar(lectora, oid)] == [propio]
+
+    # La otra organización, con la misma pregunta, solo recibe lo suyo...
+    assert [c["attachment_id"] for c in _preguntar(ajena, oid_ajena)] == [de_la_otra]
+    # ...no pregunta como si fuera de la primera, ni alcanza el adjunto por su id.
+    colada = ajena.post("/ask", params={"organization_id": oid}, json={"question": _PREGUNTA})
+    assert colada.status_code == 403, colada.text
+    assert _marcar_indexable(ajena, propio, oid_ajena, False).status_code == 404
+    assert ajena.get(f"/pursuits/adjuntos/{propio}/enlace").status_code == 404
+    assert _fragmentos_guardados(propio) > 0
+
+    # Desmarcar borra el texto indexado, no solo lo esconde.
+    desactivado = _marcar_indexable(duena, propio, oid, False)
+    assert desactivado.status_code == 200, desactivado.text
+    assert desactivado.json()["index_status"] is None
+    assert _fragmentos_guardados(propio) == 0
+    assert _preguntar(duena, oid) == []
+    assert [c["attachment_id"] for c in _preguntar(ajena, oid_ajena)] == [de_la_otra]
+
+    # Retirar un adjunto indexado también lo borra.
+    assert _marcar_indexable(duena, propio, oid, True).status_code == 200
+    _indexar_lo_encolado()
+    assert _fragmentos_guardados(propio) > 0
+    retirado = duena.delete(f"/pursuits/adjuntos/{propio}", params={"organization_id": oid})
+    assert retirado.status_code == 204, retirado.text
+    assert _fragmentos_guardados(propio) == 0
+    assert _preguntar(duena, oid) == []
+
+    # Cada cambio de permiso está en el rastro de la organización (CU-32), con
+    # ids y sin el nombre del fichero.
+    rastro = duena.get(f"/organizations/{oid}/audit").json()["items"]
+    cambios = [e for e in rastro if e["event_type"] == "pursuit_attachment.indexing_changed"]
+    assert len(cambios) == 4
+    assert all(json.loads(e["detail"])["attachment_id"] == propio for e in cambios)
+    assert json.loads(cambios[0]["detail"])["motivo"] == "adjunto_retirado"
+    assert "Propuesta" not in "".join(e["detail"] for e in cambios)

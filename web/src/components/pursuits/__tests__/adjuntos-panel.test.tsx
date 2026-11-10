@@ -29,6 +29,9 @@ const POLITICA = {
     { content_type: "application/pdf", extensiones: [".pdf"] },
     { content_type: "text/csv", extensiones: [".csv"] },
   ],
+  indexado_max_documentos: 5,
+  indexado_max_bytes: 5 * 1024 * 1024,
+  indexado_tipos: ["application/pdf"],
 };
 
 const ADJUNTO = {
@@ -61,6 +64,9 @@ function servir({ politica = POLITICA, adjuntos = [ADJUNTO] }: { politica?: unkn
       // Cuerpo de texto y no `Blob`: el `Blob` de jsdom no es el que espera el
       // `Response` de Node, y su `.blob()` fallaría por el doble, no por el código.
       return Promise.resolve(new Response("%PDF", { status: 200 }));
+    }
+    if (url.startsWith("/api/v1/pursuits/adjuntos/11/indexable") && metodo === "PUT") {
+      return Promise.resolve(jsonResponse({ ...ADJUNTO, indexable: true, index_status: "pending" }));
     }
     if (url.startsWith("/api/v1/pursuits/adjuntos/11") && metodo === "DELETE") {
       return Promise.resolve(new Response(null, { status: 204 }));
@@ -187,5 +193,88 @@ describe("AdjuntosPanel", () => {
     await screen.findByText("Propuesta técnica.pdf");
     expect(screen.queryByRole("button", { name: /Subir adjunto/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Descargar/ })).not.toBeInTheDocument();
+  });
+
+  // ── CU-37: el permiso de cita por fichero ─────────────────────────────────
+
+  it("dice los topes de las citas y permite citar en dos pasos, explicando antes lo que implica", async () => {
+    const fetchMock = servir();
+    montar();
+
+    expect(await screen.findByText(/hasta 5 a la vez en tu organización, de 5 MB como mucho cada uno \(\.pdf\)/)).toBeInTheDocument();
+    const interruptor = await screen.findByRole("switch", { name: "Permitir que se cite Propuesta técnica.pdf" });
+    expect(interruptor).not.toBeChecked();
+
+    fireEvent.click(interruptor);
+    // Activar no pide nada todavía: primero se dice quién lo verá y qué se guarda.
+    expect(llamadas(fetchMock, "PUT", "/api/v1/pursuits/adjuntos/11/indexable")).toHaveLength(0);
+    const grupo = screen.getByRole("group", { name: "Confirmar el permiso de cita" });
+    expect(within(grupo).getByText(/a cualquier\s+persona de tu organización, y a nadie de fuera/)).toBeInTheDocument();
+    expect(within(grupo).getByText(/se borra si quitas\s+el permiso o retiras el fichero/)).toBeInTheDocument();
+
+    fireEvent.click(within(grupo).getByRole("button", { name: "Permitir" }));
+    await waitFor(() => expect(llamadas(fetchMock, "PUT", "/api/v1/pursuits/adjuntos/11/indexable")).toHaveLength(1));
+    const [peticion] = llamadas(fetchMock, "PUT", "/api/v1/pursuits/adjuntos/11/indexable");
+    expect(callUrl(peticion)).toBe("/api/v1/pursuits/adjuntos/11/indexable?organization_id=7");
+    expect(JSON.parse(String((peticion[1] as RequestInit).body))).toEqual({ indexable: true });
+  });
+
+  it("cancelar el permiso de cita no pide nada", async () => {
+    const fetchMock = servir();
+    montar();
+
+    fireEvent.click(await screen.findByRole("switch", { name: /Permitir que se cite/ }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Confirmar el permiso de cita" })).getByRole("button", { name: "Cancelar" }));
+
+    expect(screen.queryByRole("group", { name: "Confirmar el permiso de cita" })).not.toBeInTheDocument();
+    expect(llamadas(fetchMock, "PUT", "/api/v1/pursuits/adjuntos/11/indexable")).toHaveLength(0);
+  });
+
+  it("quitar el permiso es inmediato y enseña el estado del fichero", async () => {
+    const fetchMock = servir({ adjuntos: [{ ...ADJUNTO, indexable: true, index_status: "indexed" }] });
+    montar();
+
+    expect(await screen.findByText("Se puede citar")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: /Permitir que se cite/ }));
+
+    await waitFor(() => expect(llamadas(fetchMock, "PUT", "/api/v1/pursuits/adjuntos/11/indexable")).toHaveLength(1));
+    const [peticion] = llamadas(fetchMock, "PUT", "/api/v1/pursuits/adjuntos/11/indexable");
+    expect(JSON.parse(String((peticion[1] as RequestInit).body))).toEqual({ indexable: false });
+  });
+
+  it("un fichero que no se pudo leer lo dice con su motivo", async () => {
+    servir({
+      adjuntos: [{ ...ADJUNTO, indexable: true, index_status: "sin_texto", index_error: "El PDF no tiene texto." }],
+    });
+    montar();
+
+    expect(await screen.findByText("Sin texto que citar")).toBeInTheDocument();
+    expect(screen.getByText("El PDF no tiene texto.")).toBeInTheDocument();
+  });
+
+  it("un tipo del que no se lee texto no ofrece el interruptor y dice por qué", async () => {
+    servir({ adjuntos: [{ ...ADJUNTO, filename: "precios.csv", content_type: "text/csv" }] });
+    montar();
+
+    expect(await screen.findByText(/No se puede citar: de este tipo de fichero/)).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
+  it("quien solo lee ve si un fichero se cita, sin poder cambiarlo", async () => {
+    rol.puedeEscribir = false;
+    servir({ adjuntos: [{ ...ADJUNTO, indexable: true, index_status: "indexed" }] });
+    montar();
+
+    expect(await screen.findByText("Se puede citar")).toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  });
+
+  it("con las citas apagadas en el entorno no se ofrece el permiso", async () => {
+    servir({ politica: { ...POLITICA, indexado_max_documentos: 0 } });
+    montar();
+
+    await screen.findByText("Propuesta técnica.pdf");
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Puedes permitir que el Investigador/)).not.toBeInTheDocument();
   });
 });

@@ -6,7 +6,9 @@
  *
  * `GET|POST /pursuits/{id}/adjuntos`, `GET /pursuits/adjuntos/{id}/enlace` y
  * `DELETE /pursuits/adjuntos/{id}`, más `GET /pursuits/adjuntos/politica`, que
- * dice antes de subir si el entorno tiene almacén, el tope y los tipos.
+ * dice antes de subir si el entorno tiene almacén, el tope y los tipos, y
+ * `PUT /pursuits/adjuntos/{id}/indexable`, el permiso para que el Investigador
+ * y el guion citen ese fichero.
  *
  * Tres decisiones que vienen del servidor y que aquí solo se respetan:
  *
@@ -56,6 +58,10 @@ export function usePursuitAdjuntos(pursuitId: number) {
     queryFn: ({ signal }) => fetchWithAuth<Adjunto[]>(rutaAdjuntos(pursuitId, organizationId), { signal }),
     enabled: organizacionResuelta(organizationId),
     staleTime: 30_000,
+    // Mientras un fichero se está leyendo para poder citarse, la lista se
+    // vuelve a pedir sola: el estado cambia sin que nadie toque la pantalla.
+    refetchInterval: (query) =>
+      query.state.data?.some((adjunto) => adjunto.index_status === "pending") ? 4_000 : false,
     meta: META_ERROR_EN_LINEA,
   });
 }
@@ -93,6 +99,26 @@ export function useRetirarAdjunto(pursuitId: number) {
 }
 
 /**
+ * Permite o deja de permitir que un adjunto se cite. Al quitar el permiso el
+ * servidor borra el texto que guardó para buscarlo; un rechazo (tipo, tamaño o
+ * tope de la organización) llega con su motivo en el aviso de error.
+ */
+export function useMarcarCitable(pursuitId: number) {
+  const queryClient = useQueryClient();
+  const organizationId = useActiveOrganizationId();
+  return useMutation({
+    meta: { errorTitle: "No se pudo cambiar el permiso de cita" },
+    mutationFn: ({ attachmentId, citable }: { attachmentId: number; citable: boolean }) =>
+      apiMutate<Adjunto>(
+        "PUT",
+        `/api/v1/pursuits/adjuntos/${attachmentId}/indexable${conOrganizacion(organizationId)}`,
+        { indexable: citable },
+      ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: pursuitKeys.adjuntos(pursuitId) }),
+  });
+}
+
+/**
  * Pide el enlace firmado, descarga el binario y lo entrega con su nombre.
  *
  * Por `fetch` y no con un ancla a la ruta firmada: así un enlace caducado o un
@@ -103,7 +129,7 @@ export function useDescargarAdjunto() {
   const organizationId = useActiveOrganizationId();
   return useMutation({
     meta: { errorTitle: "No se pudo descargar el adjunto" },
-    mutationFn: async (adjunto: Adjunto) => {
+    mutationFn: async (adjunto: Pick<Adjunto, "id" | "filename">) => {
       const enlace = await fetchWithAuth<EnlaceAdjunto>(
         `/api/v1/pursuits/adjuntos/${adjunto.id}/enlace${conOrganizacion(organizationId)}`,
       );
