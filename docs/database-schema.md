@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-11-07
+Generado: 2026-11-10
 
-Revisión Alembic aplicada: `v178_sistema_contratacion`.
+Revisión Alembic aplicada: `v180_contrato_modificaciones`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -24,7 +24,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 16 | 229 | 70 |
+| Licitaciones y fuente | 15 | 203 | 67 |
 | Documentos y pliegos | 6 | 67 | 13 |
 | Empresas y mercado | 6 | 34 | 11 |
 | Organizaciones y oportunidades | 15 | 143 | 31 |
@@ -32,8 +32,8 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Seguimiento y notificaciones | 12 | 135 | 38 |
 | ML y predicciones | 8 | 63 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
-| Otras | 24 | 185 | 35 |
-| **Total** | **109** | **1015** | **248** |
+| Otras | 25 | 215 | 38 |
+| **Total** | **109** | **1019** | **248** |
 
 ## Licitaciones y fuente
 
@@ -85,43 +85,6 @@ Claves: `PRIMARY KEY (id)`
 Claves: `PRIMARY KEY (id)`
 
 Índices: `idx_eventos_dedupe` (único), `idx_eventos_lic`, `idx_eventos_tipo`
-
-### `contrato_modificaciones`
-
-| Columna | Tipo | Nulo |
-|---|---|---|
-| `id` | `bigint` | no |
-| `clave` | `text` | no |
-| `fuente` | `text` | no |
-| `licitacion_id` | `text` | sí |
-| `enlace` | `text` | sí |
-| `numero` | `text` | sí |
-| `contrato_ref` | `text` | sí |
-| `lote_numero` | `text` | sí |
-| `fecha_publicacion` | `text` | sí |
-| `motivo_codigo` | `text` | sí |
-| `motivo` | `text` | sí |
-| `descripcion` | `text` | sí |
-| `importe_modificacion` | `double precision` | sí |
-| `importe_modificacion_base` | `text` | sí |
-| `importe_final` | `double precision` | sí |
-| `importe_final_base` | `text` | sí |
-| `importe_aviso` | `double precision` | sí |
-| `importe_aviso_base` | `text` | sí |
-| `moneda` | `text` | sí |
-| `plazo_modificacion` | `double precision` | sí |
-| `plazo_final` | `double precision` | sí |
-| `plazo_unidad` | `text` | sí |
-| `identificador_aviso` | `text` | sí |
-| `aviso_original` | `text` | sí |
-| `expediente_ref` | `text` | sí |
-| `organo` | `text` | sí |
-| `url` | `text` | sí |
-| `fecha_extraccion` | `text` | no |
-
-Claves: `PRIMARY KEY (id)`, `UNIQUE (clave)`, `FOREIGN KEY (licitacion_id) REFERENCES licitaciones(id_externo) ON DELETE SET NULL ON UPDATE CASCADE`
-
-Índices: `contrato_modificaciones_clave_key` (único), `idx_contrato_modif_aviso`, `idx_contrato_modif_licitacion`, `idx_contrato_modif_sin_enlazar`
 
 ### `extraction_runs`
 
@@ -1670,6 +1633,45 @@ Claves: `PRIMARY KEY (id)`
 | `usada_en` | `timestamp with time zone` | no |
 
 Claves: `PRIMARY KEY (user_id, consulta)`
+
+### `contrato_modificaciones`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `bigint` | no |
+| `clave` | `text` | no |
+| `fuente` | `text` | no |
+| `licitacion_id` | `text` | sí |
+| `enlace` | `text` | sí |
+| `numero` | `text` | sí |
+| `contrato_ref` | `text` | sí |
+| `lote_numero` | `text` | sí |
+| `fecha_publicacion` | `text` | sí |
+| `motivo_codigo` | `text` | sí |
+| `motivo` | `text` | sí |
+| `descripcion` | `text` | sí |
+| `importe_modificacion` | `double precision` | sí |
+| `importe_modificacion_base` | `text` | sí |
+| `importe_final` | `double precision` | sí |
+| `importe_final_base` | `text` | sí |
+| `importe_aviso` | `double precision` | sí |
+| `importe_aviso_base` | `text` | sí |
+| `moneda` | `text` | sí |
+| `plazo_modificacion` | `double precision` | sí |
+| `plazo_final` | `double precision` | sí |
+| `plazo_unidad` | `text` | sí |
+| `identificador_aviso` | `text` | sí |
+| `aviso_original` | `text` | sí |
+| `expediente_ref` | `text` | sí |
+| `procedimiento_ref` | `text` | sí |
+| `id_evl` | `text` | sí |
+| `organo` | `text` | sí |
+| `url` | `text` | sí |
+| `fecha_extraccion` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (clave)`
+
+Índices: `idx_contrato_modif_aviso`, `idx_contrato_modif_licitacion`, `idx_contrato_modif_sin_enlazar`
 
 ### `contratos_cartera`
 
