@@ -16,7 +16,13 @@ import { useQuery } from "@tanstack/react-query";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import type { GoNoGoChecklist } from "@/hooks/use-pursuit-checklist";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
-import type { HistorialPropio, LicitacionDetail, NovedadesDeFicha, SimilaresResult } from "@/lib/api-types";
+import type {
+  HistorialPropio,
+  LicitacionDetail,
+  MarcoDeLicitacion,
+  NovedadesDeFicha,
+  SimilaresResult,
+} from "@/lib/api-types";
 import { licitacionKeys } from "@/lib/query-keys";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 
@@ -93,6 +99,22 @@ export function useHistorialPropio(id: string | null) {
       ),
     enabled: Boolean(id) && organizacionResuelta(organizationId),
     staleTime: 5 * 60 * 1000,
+    meta: META_ERROR_EN_LINEA,
+  });
+}
+
+/** Admitidos y vigencia del acuerdo marco o el SDA, y si tu organización está entre ellos. */
+export function useMarco(id: string | null) {
+  const organizationId = useActiveOrganizationId();
+  return useQuery({
+    queryKey: [...licitacionKeys.marco(id ?? ""), organizationId],
+    queryFn: ({ signal }) =>
+      fetchWithAuth<MarcoDeLicitacion>(
+        conOrganizacion(`/api/v1/licitaciones/${encodeURIComponent(id!)}/marco`, organizationId),
+        { signal },
+      ),
+    enabled: Boolean(id) && organizacionResuelta(organizationId),
+    // Sin `staleTime`: quien declara su NIF y vuelve a la ficha tiene que ver el cambio.
     meta: META_ERROR_EN_LINEA,
   });
 }

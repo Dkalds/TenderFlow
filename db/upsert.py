@@ -331,6 +331,15 @@ class Licitacion:
     #: `"DOC_CD,DOC_CN,DOC_PIN_RTL"`—. Dice qué anuncios tuvo el expediente;
     #: `DOC_PIN*` es el anuncio de información previa (spike T5).
     tipos_anuncio: str | None = None
+    #: Acuerdo marco, SDA, contrato basado en uno de ellos o ninguno (v178):
+    #: un valor de ``shared.sistema_contratacion.SistemaContratacion``,
+    #: normalizado entre fuentes. ``None`` = la fuente no lo dice.
+    sistema_contratacion: str | None = None
+    #: El marco del que cuelga un contrato basado, como ``id_externo`` del
+    #: expediente del marco (v178): ``ted:649072-2024``. Solo lo rellena la
+    #: fuente que lo publica como dato; PLACSP no lo hace. Puede no existir en
+    #: ``licitaciones``: el marco no es de TI, o es anterior a lo ingerido.
+    marco_ref: str | None = None
     # Fuente de ingesta (ADR-009): 'placsp', 'ted', 'pscp'… Las fuentes
     # nuevas namespacean ademas su id_externo como "{fuente}:{id_natural}".
     fuente: str = "placsp"
@@ -442,6 +451,11 @@ _LIC_COALESCE_UPDATE_FIELDS = frozenset(
         # `None` por no saberlo, no porque el expediente haya dejado de tener
         # sus anuncios. Un valor no nulo sí pisa, como en el resto de este set.
         "tipos_anuncio",
+        # `sistema_contratacion` (v178): cuelga de `cac:TenderingProcess`, como
+        # `procedimiento`, y un camino que no lo lee no sabe si el expediente
+        # dejó de ser un marco.
+        "sistema_contratacion",
+        "marco_ref",
         # ── Linaje de inclusión ──
         "filter_version",
         "classifier_model_version",

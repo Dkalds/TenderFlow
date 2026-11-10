@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { TableCell } from "@/components/ui/table";
 import { Pista } from "@/components/ui/pista";
 import { FechaFinOrigenBadge } from "@/components/pursuits/fecha-fin-origen-badge";
+import { esMarco } from "@/lib/sistema-contratacion";
 import { urlHttp } from "@/lib/url-http";
 import { formatCurrency, formatDate, formatPercent, truncate } from "@/lib/utils";
 import type { MarcaPropia, RenovacionRow } from "../../_hooks/use-renovaciones";
@@ -88,6 +89,12 @@ export function CeldasRenovacion({
       <TableCell className="max-w-[320px]">
         <div className="flex items-start gap-1.5">
           <span className="leading-snug">{truncate(fila.titulo ?? fila.licitacion_id, 90)}</span>
+          {esMarco(fila.sistema_contratacion) && (
+            // Lo que vence es el marco entero: la fila es uno de sus admitidos.
+            <Badge variant="outline" size="sm" className="mt-0.5 flex-none">
+              {fila.sistema_contratacion === "sda" ? "SDA" : "Acuerdo marco"}
+            </Badge>
+          )}
           {anuncio && (
             <a
               href={anuncio}
