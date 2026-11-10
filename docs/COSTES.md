@@ -40,16 +40,10 @@ grep -n "name:\|type:\|plan:\|sizeGB:" render.yaml
 
 **Pendientes de coste conocido en este plan:**
 
-- No hay servicio `worker`: se retiró el 2026-10-19 y `render.yaml` ya no lo
-  declara. La cola la consume `tenderflow-api`, y el plano de cron, cuando se
-  haga el cutover, corre como proceso hijo de ese mismo servicio
-  ([ADR-033](adr/ADR-033-plano-de-cron-en-el-worker.md), enmienda 2026-11-09):
-  sin coste de cómputo añadido.
-- Por la API de Render, el 2026-11-09 el workspace tiene tres servicios:
-  `TenderFlow` (la API, `standard`), `tenderflow-mcp` (`starter`) y
-  `TenderFlow-1` (el worker de octubre, `free`, pendiente de borrar).
-  `tenderflow-prometheus`, `tenderflow-alertmanager` y `tenderflow-grafana`
-  están declarados en `render.yaml` y **no existen**: no facturan.
+- No hay servicio `worker` de [ADR-028](adr/ADR-028-cola-de-trabajo-y-worker.md):
+  se retiró el 2026-10-19 y ya no se declara en `render.yaml`. El dueño decidió
+  el 2026-11-10 no pagarlo y dejar el cron en GitHub Actions
+  ([runbook del cutover](runbooks/cutover-cron-al-worker.md), estado revertido).
 - El preview por PR de C3.5 es efímero: su coste es proporcional a las PR
   abiertas y se anota tras el primer mes de uso real, no antes.
 

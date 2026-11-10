@@ -30,10 +30,7 @@ def build_default_registry() -> list[ScheduledJob]:
     from scheduler.dlq_retry import retry_failed_extractions
     from scheduler.drift_report import run_drift_report
     from scheduler.jobs.daily_atom import run as run_daily_atom
-    from scheduler.jobs.documentos_embeddings import (
-        run_programado as run_documentos_embeddings,
-    )
-    from scheduler.jobs.domain_truth import run as run_domain_truth
+    from scheduler.jobs.documentos_embeddings import run as run_documentos_embeddings
     from scheduler.jobs.event_dispatch import run as run_event_dispatch
     from scheduler.jobs.llm_models_canary import run as run_llm_models_canary
     from scheduler.jobs.llm_tech_labeling import run as run_llm_tech_labeling
@@ -122,36 +119,15 @@ def build_default_registry() -> list[ScheduledJob]:
             timeout_seconds=45 * 60,
         ),
         ScheduledJob(
-            # plane='render' (2026-11-10): el lote diario lo ejecuta el plano de
-            # cron de la API. Los embeddings salen del motor ONNX de la imagen,
-            # no de sentence-transformers.
-            # shortcut: la imagen no lleva OCR, así que un PDF escaneado queda
-            # `sin_texto` y hoy nada lo devuelve a un runner con OCR
-            # (`reencolar_sin_texto` tiene la fecha fija y el lote diario se lo
-            # volvería a llevar); subirlo cuando los `sin_texto` pesen: 84 de
-            # 15.851 extraídos pasaron por OCR hasta el 2026-11-10.
             name="documentos_embeddings",
-            plane="render",
+            plane="actions",
             module="scheduler.jobs.documentos_embeddings",
             fn=run_documentos_embeddings,
             interval_env="SCHEDULER_DOCUMENTOS_EMBEDDINGS_INTERVAL_MINUTES",
             default_interval_minutes=1440,  # nocturno
-            # Detrás de la ingesta, el scoring y la auditoría. Eran 300, del
-            # loop de Docker; en la API cada despliegue reinicia el reloj, y
-            # con cinco horas de espera el lote dependía de que nadie desplegara.
-            initial_offset_minutes=90,
+            initial_offset_minutes=300,  # tras la ingesta diaria + scoring
             heavy=True,  # descarga de red + inferencia del modelo de embeddings
-            timeout_seconds=100 * 60,  # el `timeout-minutes: 100` de pliegos.yml
-        ),
-        ScheduledJob(
-            name="domain_truth_audit",
-            plane="render",
-            fn=run_domain_truth,
-            interval_env="SCHEDULER_DOMAIN_TRUTH_INTERVAL_MINUTES",
-            default_interval_minutes=1440,
-            initial_offset_minutes=60,  # detrás de la ingesta y el scoring
-            heavy=True,  # mide sobre `adjudicaciones` entera (76 s una sola consulta)
-            timeout_seconds=15 * 60,  # el `timeout-minutes: 15` de domain-truth.yml
+            timeout_seconds=100 * 60,  # `timeout-minutes: 100` del job de pliegos.yml
         ),
         # ── Light jobs (daemon threads) ───────────────────────────────
         ScheduledJob(

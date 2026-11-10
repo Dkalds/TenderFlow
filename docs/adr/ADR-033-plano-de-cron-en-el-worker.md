@@ -13,9 +13,16 @@ tags: [adr]
 
 # ADR-033 — Plano de cron dentro del worker de Render
 
-- **Estado:** aceptado, **enmendado el 2026-10-10** (ver [Enmienda](#enmienda-2026-10-10-lo-que-el-worker-no-hacía-igual-que-actions))
-  y el **2026-11-09**: el plano puede correr como proceso hijo de la API (ver
-  [Enmienda](#enmienda-2026-11-09-el-plano-como-proceso-hijo-de-la-api)).
+- **Estado:** aceptado, **enmendado el 2026-10-10** (ver [Enmienda](#enmienda-2026-10-10-lo-que-el-worker-no-hacía-igual-que-actions)).
+  **Enmienda 2026-11-09, revertida el 2026-11-10:** el plano corrió unas
+  20 h como proceso hijo de `tenderflow-api` (PR #710, #712 y #713), con la
+  auditoría diaria y el lote de pliegos. Se volvió a Actions por decisión del
+  dueño. Lo medido sirve a un reintento: la API usaba el 10-13 % de su
+  memoria; el proceso hijo hacía falta porque el `statement_timeout` de 30 s
+  de la API no cabe en consultas del cierre de 40-76 s; sin OCR en la imagen
+  de la API, 84 de 15.851 documentos extraídos habrían quedado `sin_texto`; y
+  un calendario en memoria se reinicia con cada despliegue, así que un job
+  diario necesita una marca de cadencia persistente.
   **Sin efecto en producción desde el 2026-10-19:** el servicio
   `tenderflow-worker` se creó el 2026-10-10 con `SCHEDULER_PLANE=worker`, pero
   en el plan `free` de Render, que lo hibernaba a los ~15 min; su plano de cron
@@ -230,140 +237,3 @@ Por último, el servicio de Render de este ADR **no existe todavía** (verificad
 el 2026-09-30) y su plan pasa de `starter` a `standard`: el scoring y la ingesta
 corren en el mismo proceso que la cola y el healthcheck, y ninguno de los dos se
 ha medido fuera de un runner de Actions.
-
-## Enmienda 2026-11-09: el plano como proceso hijo de la API
-
-El worker dedicado no existe y el dueño no va a pagarlo: `tenderflow-api`
-(`standard`, 2 GB, 1 CPU) es el único servicio de cómputo. Medido en el panel
-de Render del 2026-11-03 al 2026-11-09, ese servicio usa entre el 10 y el 13 %
-de su memoria y menos del 2 % de su CPU. El margen que el §4 daba por
-inexistente (`plan: starter`, 512 MB) aquí sobra.
-
-**Decisión.** Con `APP_PROFILE=api` y `SCHEDULER_PLANE=worker`, el lifespan de
-la API lanza `python -m scheduler.cron_plane` como **proceso hijo**
-(`scheduler/cron_proceso.py`) y lo relanza si muere. El hijo ejecuta el mismo
-`CronPlane`, con los mismos jobs, locks y presupuestos. El perfil `worker`
-conserva el plano en un hilo, como hasta ahora.
-
-**Por qué un proceso y no el hilo del §1 y el §4.** En el proceso de la API un
-hilo no sirve, y no por memoria:
-
-1. **El techo de sentencia.** Con `APP_PROFILE=api` cada conexión lleva
-   `statement_timeout` de 30 s, que protege el pool de las peticiones. El
-   cierre de la pasada tiene consultas legítimas de 40 a 76 s
-   (`Settings._relax_batch_statement_timeout`): se cancelarían a medias y en
-   silencio. El hijo arranca con `APP_PROFILE=scraper`, el perfil de los
-   workflows, y hereda el techo de batch y su propio pool.
-2. **La imagen.** El proceso de la API sigue sin importar lxml ni scikit-learn
-   (`tests/test_unit_api_imagen_slim.py`). La imagen sí tiene que llevarlos:
-   el servicio se construye con `REQUIREMENTS_FILE=requirements-pipeline.txt`.
-3. **El aislamiento.** Un job colgado o un pico del scoring no ocupa los hilos
-   ni las conexiones que atienden a los usuarios, y el hijo sí se puede matar.
-
-**Lo que cuesta.**
-
-- Cada despliegue de la API corta la pasada en curso y el hijo nuevo la
-  repite al arrancar: el calendario vive en su memoria. No se pierden datos
-  (upsert idempotente, cursor por fuente). Al recibir SIGTERM el hijo suelta
-  sus locks `cron:<job>` y sale sin esperar al job; si no llega a hacerlo,
-  el lock dura hasta su TTL y esa pasada se salta.
-- Un hijo que muere por su cuenta también empieza con una ingesta al
-  relanzarse. El supervisor dobla la espera en cada caída, de un minuto a
-  una hora, para que un fallo permanente no las encadene; no hay más freno
-  que ese y el aviso `cron_proceso_caido`.
-- El hijo abre su propio pool, de 2 + 2 conexiones, que se suman a las de
-  la API contra el mismo pooler.
-- `tenderflow-api` pasa a tener las credenciales del pipeline (el token de
-  lectura de la Release de modelos, el de PSCP, el SMTP de alertas). El
-  [runbook](../runbooks/cutover-cron-al-worker.md) las lista.
-- El pico de memoria del scoring junto a la API no está medido: es lo primero
-  que hay que mirar en las 48 h de observación.
-
-`ml_retrain_baja` y `documentos_embeddings` siguen en Actions por los motivos
-de la enmienda anterior. La exclusión con Actions sigue siendo la del runbook:
-los workflows se apagan antes de encender la variable.
-
-### Añadido el 2026-11-10: la cadencia sobrevive a los reinicios, y un plano propio
-
-El cutover se ejecutó el 2026-11-09 a las 23:15 UTC: `scrape-daily.yml` y
-`ml-scoring.yml` quedaron deshabilitados y `tenderflow-api` lleva
-`SCHEDULER_PLANE=worker`. Dos cosas salieron de verlo correr:
-
-- **La marca de cadencia.** El calendario del plano vive en la memoria del
-  hijo, y el hijo se reinicia con cada despliegue de la API: cada reinicio
-  repetía la ingesta, y un job diario con horas de offset dependía de que nadie
-  desplegara mientras tanto. Antes de ejecutar, el plano toma en `job_locks`
-  la marca `cron-hecho:<job>`; si sigue viva, el job no toca y se vuelve a
-  preguntar a los diez minutos. La marca se toma con el presupuesto del job
-  como TTL y solo se alarga al 95 % del intervalo cuando el job termina bien:
-  un proceso que muere a media pasada sin poder devolverla (sin memoria, un
-  `kill`) no deja el job parado un intervalo entero. Un job que falla, o que
-  un despliegue corta a medias, la devuelve.
-- **`plane="render"`.** Para los jobs que solo ejecuta este plano. El primero
-  es `domain_truth_audit`, la auditoría diaria que lanzaba `domain-truth.yml`:
-  `check_job_parity.py` lo da por cubierto si el plano lo asume, y el workflow
-  pierde su `schedule:` en el mismo cambio (queda `workflow_dispatch`). El job
-  mide en el proceso del plano, sin la sección (b) de los ZIP mensuales, y deja
-  las mediciones en el log `domain_truth_mediciones` en vez de en un artefacto:
-  la próxima recalibración de umbrales sale de ahí. `daily_atom` y
-  `ml_scoring_baja` siguen declarados `actions` hasta que sus workflows pierdan
-  el `schedule:`; hoy están deshabilitados a mano, que el repositorio no ve.
-
-Lo que **no** se mueve, con su motivo:
-
-- `ml_retrain_baja` y el entrenamiento de tecnologías (`ml-entrenar.yml`):
-  publican el modelo en una Release de GitHub, que es de donde lo lee quien lo
-  sirve. Moverlos pide publicar en el almacén de objetos
-  ([ADR-029](ADR-029-almacen-de-objetos.md)), y en producción no hay ninguno:
-  el 2026-11-10 ningún `documentos.blob_key` tiene valor. Corren dos veces al
-  mes; se quedan en Actions hasta que exista el bucket.
-- `healthcheck.yml` y `smoke.yml` se quedan en Actions a propósito: vigilan la
-  API desde fuera, y dentro de ella caerían con ella.
-
-### Añadido el 2026-11-10 (2): el lote de pliegos, sin OCR
-
-`documentos_embeddings` pasa a `plane="render"` y `pliegos.yml` pierde su
-`schedule:`. Tres decisiones, medidas ese día contra producción (174.777
-documentos, 156.785 todavía `pending`):
-
-- **OCR: no entra en la imagen de la API.** `ocrmypdf`, `tesseract` y
-  `ghostscript` son binarios que procesan ficheros de terceros, en el
-  contenedor que atiende internet. Lo que compran es poco: 84 de los 15.851
-  documentos extraídos (0,5 %) pasaron por OCR. Un PDF escaneado queda
-  `sin_texto`. **Es un coste, no una recuperación resuelta:** `pliegos.yml`
-  conserva el OCR para lanzarlo a mano, pero hoy nada le lleva esos
-  documentos (`reencolar_sin_texto` tiene la fecha fija y, una vez en
-  `pending`, el lote diario se los volvería a llevar). Hace falta un modo que
-  procese los `sin_texto` sin pasar por `pending` cuando pesen.
-- **`python-docx` entra en `requirements-pipeline.txt`; `odfpy`, no.** 24.495
-  documentos son DOC/DOCX, uno de cada siete. Hasta ahora salía del extra
-  `[pliegos]`, que el runner instalaba sin pinar; ahora va con hash en el
-  lock, que es lo único que instala la imagen. El ODT se lee de `content.xml`
-  con la biblioteca estándar desde octubre, así que `odfpy` no hace falta.
-- **Embeddings: el motor ONNX de la imagen.** Es el mismo modelo que
-  sentence-transformers, sin PyTorch. La cautela de
-  `embeddings_masivos_disponibles` (no codificar un corpus dentro de una
-  petición) no aplica: el lote corre en el proceso hijo, no en el que sirve.
-  Si el build no descargó el modelo, la fase se salta y el job manda un
-  correo. Que los vectores coincidan con los de sentence-transformers lo
-  mide `tests/test_embeddings_onnx_paridad.py` donde están los dos motores;
-  por eso `EMBEDDING_VERSION` no cambia.
-
-El plano llama a `run_programado`, no a `run`: da por bueno cualquier retorno
-sin excepción, así que el juicio que el workflow expresaba con su rojo (el
-lote entero de descarga caído, la credencial del LLM rechazada) aquí es un
-correo.
-
-Lo que cuesta:
-
-- El plano ejecuta sus jobs en serie: la ingesta espera mientras corre el
-  lote de pliegos (hasta 100 min, una vez al día).
-- El hijo es de larga vida, así que el modelo ONNX (unos 470 MB) queda
-  residente tras la primera pasada.
-- Un despliegue a media pasada corta el lote; lo ya procesado queda guardado
-  y el resto se repite 90 min después del arranque.
-- Con `python-docx` en la imagen, el proceso de la API también lee DOCX: la
-  ficha bajo demanda (`POST …/ficha-pliego/extract`) lo extrae en línea en
-  vez de dejarlo `pending`. Es un fichero de terceros parseado por una
-  biblioteca Python con `lxml`, no por un binario externo, que es donde se
-  puso el límite con el OCR.

@@ -18,13 +18,11 @@ from typing import Any, Literal
 #                  gate obligaba a programar un job que nadie quiere diario.
 # - ``pipeline`` — lo ejecuta la pipeline canónica (``scheduler/pipeline_runs.py``),
 #                  así que corre en cualquiera de los dos planos sin workflow propio.
-# - ``render``   — solo el plano de cron de la API (``scheduler/cron_plane.py``,
-#                  ADR-033): nunca tuvo, o ya no tiene, un workflow que lo lance.
 #
 # ``scripts/check_job_parity.py`` verifica en CI que la declaración coincide
 # con la realidad: un job ``actions`` sin step que lo invoque es un job muerto
 # en producción, que es exactamente el fallo que este campo previene.
-Plane = Literal["loop", "actions", "manual", "pipeline", "render"]
+Plane = Literal["loop", "actions", "manual", "pipeline"]
 
 
 @dataclass(frozen=True)

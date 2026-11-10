@@ -7,17 +7,14 @@ name: Domain truth audit
 # solo cuando alguien lo ejecutaba a mano — así que en la práctica se
 # descubrían semanas después, mirando la aplicación.
 #
-# Desde el 2026-11-10 la auditoría diaria la ejecuta el plano de cron de la API
-# (`scheduler/jobs/domain_truth.py`, ADR-033) y este workflow ya no tiene
-# `schedule:`: con los dos saldrían dos correos por cada umbral superado. Queda
-# para lanzarla a mano, que es además la única forma de medir la sección (b) y
-# de obtener las mediciones como artefacto.
-#
+# Corre después del scrape mensual de las 06:00 para medir sobre datos frescos.
 # La alerta viaja por email (observability.notify): el job en rojo significa
 # "la auditoría no pudo ejecutarse", no "el dato está mal". Mismo contrato que
 # healthcheck.yml.
 
 on:
+  schedule:
+    - cron: "30 7 * * *"
   workflow_dispatch:
 
 permissions:
