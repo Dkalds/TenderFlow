@@ -234,8 +234,8 @@ def _marcar_indexable(sesion: Sesion, attachment_id: int, oid: int, valor: bool)
     )
 
 
-def test_cu36_documentos_propios_indexados_citados_y_aislados(client, api_db, almacen, monkeypatch):
-    """CU-36 — una organización indexa sus documentos, el Investigador los cita y otra no los alcanza.
+def test_cu37_documentos_propios_indexados_citados_y_aislados(client, api_db, almacen, monkeypatch):
+    """CU-37 — una organización indexa sus documentos, el Investigador los cita y otra no los alcanza.
 
     Es también la parte de CU-13 que toca al texto indexado: ni preguntando lo
     mismo ni pidiendo el adjunto por su identificador.

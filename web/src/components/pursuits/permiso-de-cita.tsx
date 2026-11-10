@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * El permiso de cita de un adjunto (ADR-040, CU-36).
+ * El permiso de cita de un adjunto (ADR-040, CU-37).
  *
  * Quien escribe puede dejar que el Investigador y el guion de la oferta citen
  * extractos de un fichero. Es por fichero porque en la misma oportunidad

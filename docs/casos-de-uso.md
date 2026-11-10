@@ -294,7 +294,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Quien solo lee los ve y los descarga, pero no sube ni retira; otra
   organización no los alcanza ni por su identificador.
 - Un entorno sin almacén de documentos lo dice y no acepta ningún fichero.
-- Lo que el equipo permite citar de esos documentos es CU-36.
+- Lo que el equipo permite citar de esos documentos es CU-37.
 
 ### CU-28 — Acotar Detalle y el tablero por etiqueta, responsable y plazo
 
@@ -354,7 +354,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   Equipo › Actividad, rastro de auditoría.
 - Ve, del más reciente al más antiguo, quién entró y salió del equipo, los
   cambios de rol, de configuración, de capacidad y de pesos del go/no-go, y
-  qué adjuntos se permitió citar o se dejó de permitir (CU-36), con quién lo
+  qué adjuntos se permitió citar o se dejó de permitir (CU-37), con quién lo
   hizo (por su identidad, nunca por su correo).
 - Acota por fechas, recorre el rastro página a página sin repetir ni saltarse
   nada y se lo lleva en CSV.
@@ -411,7 +411,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Desde la cabecera abre la oportunidad (o va a la que ya existe, sin
   duplicarla) y descarga el dossier de decisión en PDF.
 
-### CU-36 — Citar los documentos propios de la organización
+### CU-37 — Citar los documentos propios de la organización
 
 - **Quién:** equipo de preventa. **Dónde:** ficha de la oportunidad, Adjuntos;
   el Investigador y el guion de la oferta.
@@ -470,7 +470,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-33** Mantener la integración del equipo por webhook | [test_escenario_webhooks.py](../tests/test_escenario_webhooks.py) (x2) | — | [webhook-row.test.tsx](../web/src/app/(dashboard)/ops/_components/webhooks/__tests__/webhook-row.test.tsx) |
 | **CU-34** Arrancar por lo que da valor | — | [recorrido-primeros-pasos.spec.ts](../web/e2e/recorrido-primeros-pasos.spec.ts) | [primeros-pasos.test.tsx](../web/src/app/(dashboard)/resumen/_components/__tests__/primeros-pasos.test.tsx) |
 | **CU-35** Decidir desde la ficha si se presenta | [test_escenario_ficha_decidir.py](../tests/test_escenario_ficha_decidir.py) | — | [test_unit_dossier_licitacion.py](../tests/test_unit_dossier_licitacion.py)<br>[test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py)<br>[condiciones-oficiales.test.tsx](../web/src/components/pliego/__tests__/condiciones-oficiales.test.tsx) |
-| **CU-36** Citar los documentos propios de la organización | [test_escenario_adjuntos.py](../tests/test_escenario_adjuntos.py) | — | [adjuntos-panel.test.tsx](../web/src/components/pursuits/__tests__/adjuntos-panel.test.tsx)<br>[citas-organizacion.test.tsx](../web/src/components/pursuits/__tests__/citas-organizacion.test.tsx) |
+| **CU-37** Citar los documentos propios de la organización | [test_escenario_adjuntos.py](../tests/test_escenario_adjuntos.py) | — | [adjuntos-panel.test.tsx](../web/src/components/pursuits/__tests__/adjuntos-panel.test.tsx)<br>[citas-organizacion.test.tsx](../web/src/components/pursuits/__tests__/citas-organizacion.test.tsx) |
 
 **36 casos**, 36 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
 

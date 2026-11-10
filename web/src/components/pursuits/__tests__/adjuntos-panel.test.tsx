@@ -195,7 +195,7 @@ describe("AdjuntosPanel", () => {
     expect(screen.queryByRole("button", { name: /^Descargar/ })).not.toBeInTheDocument();
   });
 
-  // ── CU-36: el permiso de cita por fichero ─────────────────────────────────
+  // ── CU-37: el permiso de cita por fichero ─────────────────────────────────
 
   it("dice los topes de las citas y permite citar en dos pasos, explicando antes lo que implica", async () => {
     const fetchMock = servir();

@@ -22,7 +22,7 @@ tags: [adr]
   binario), [ADR-028](ADR-028-cola-de-trabajo-y-worker.md) (quién indexa),
   [ADR-030](ADR-030-identidad-user-id-y-oidc.md) §D (el adjunto es dato
   corporativo).
-- **Implementa:** migración `v179_memoria_organizacion`, CU-36 de
+- **Implementa:** migración `v179_memoria_organizacion`, CU-37 de
   [docs/casos-de-uso.md](../casos-de-uso.md).
 
 ---
@@ -125,7 +125,7 @@ con el encargado del tratamiento del LLM y la caché por delante.
 
 **Riesgo.** La RLS es un respaldo: mientras el runtime conecte con un rol que
 la salta (ADR-034, «Producción hoy»), la frontera efectiva es el SQL. Por eso
-el escenario de CU-36 prueba el aislamiento por la API, y los tests con rol
+el escenario de CU-37 prueba el aislamiento por la API, y los tests con rol
 sonda prueban la política aparte.
 
 **Lo que este ADR no decide.** La cuota por organización, el coste de los

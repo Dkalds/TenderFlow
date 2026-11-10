@@ -1,5 +1,5 @@
 /**
- * CU-36 — las citas de documentos propios que acompañan a una respuesta del
+ * CU-37 — las citas de documentos propios que acompañan a una respuesta del
  * Investigador o a un criterio del guion: rotuladas, con su origen y con la
  * descarga firmada de siempre. El evento del stream se prueba aquí también,
  * porque es lo que las trae.
