@@ -17,6 +17,7 @@ que es regla de dominio:
 
 from __future__ import annotations
 
+import re
 import statistics
 from typing import TYPE_CHECKING
 
@@ -49,30 +50,57 @@ MUESTRA_MINIMA_ORGANO = 10
 _MAX_SIN_ENLAZAR = 5_000
 
 
+#: BT-1501 en su forma de número de publicación (``871071-2025``): la de
+#: ``id_externo`` de un aviso. La otra, el UUID del aviso con su versión
+#: (``cb2be52c-…-01``), solo lleva a otro aviso de modificación.
+_NUMERO_PUBLICACION = re.compile(r"\d{1,8}-\d{4}")
+_VERSION_DE_UUID = re.compile(
+    r"^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-\d+$"
+)
+
+
+def _uuid_del_aviso(aviso: str) -> str:
+    """El UUID de un BT-1501 sin su sufijo de versión, o el valor tal cual."""
+    encontrado = _VERSION_DE_UUID.match(aviso.strip().lower())
+    return encontrado.group(1) if encontrado else aviso.strip().lower()
+
+
 def enlazar_pendientes(*, fuente: str) -> int:
     """Enlaza con su expediente las modificaciones de ``fuente`` que siguen sin él.
 
-    Devuelve cuántas se enlazaron. Idempotente: solo toca filas sin expediente.
+    Por este orden: el aviso original (BT-1501) si es una fila de
+    ``licitaciones``; si es otro aviso de modificación ya enlazado, su
+    expediente; y si no, ``idEvl`` o BT-22 dentro del mismo órgano. Devuelve
+    cuántas se enlazaron. Idempotente: solo toca filas sin expediente.
     """
     filas = repo.sin_enlazar(fuente=fuente, limite=_MAX_SIN_ENLAZAR)
     if not filas:
         return 0
+    numeros = {
+        f["clave"]: f"ted:{f['aviso_original']}"
+        for f in filas
+        if f["aviso_original"] and _NUMERO_PUBLICACION.fullmatch(f["aviso_original"])
+    }
+    uuids = {
+        f["clave"]: _uuid_del_aviso(f["aviso_original"])
+        for f in filas
+        if f["aviso_original"] and f["clave"] not in numeros
+    }
+    originales = repo.expedientes_de_avisos(sorted(set(numeros.values())))
+    previos = repo.expedientes_de_avisos_previos(sorted(set(uuids.values())))
+
     enlaces: list[tuple[str, str, str]] = []
-    originales = repo.expedientes_de_avisos(
-        sorted({f"ted:{f['aviso_original']}" for f in filas if f["aviso_original"]})
-    )
     restantes: dict[str, tuple[str | None, ReferenciaCruzada]] = {}
     for fila in filas:
-        original = (
-            originales.get(f"ted:{fila['aviso_original']}") if fila["aviso_original"] else None
-        )
-        if original is not None:
-            enlaces.append((fila["clave"], original, "aviso_original"))
+        clave = fila["clave"]
+        expediente = originales.get(numeros.get(clave, "")) or previos.get(uuids.get(clave, ""))
+        if expediente is not None:
+            enlaces.append((clave, expediente, "aviso_original"))
             continue
         referencia = ReferenciaCruzada(
             expediente=fila["expediente_ref"], id_evl=id_evl_de_url(fila["url"])
         )
-        restantes[fila["clave"]] = (fila["organo"], referencia)
+        restantes[clave] = (fila["organo"], referencia)
     enlaces.extend(
         (clave, expediente, "referencia")
         for clave, expediente in expedientes_por_referencia(restantes).items()
@@ -119,20 +147,26 @@ def _costes(
 
     El final es el de la última modificación del contrato que lo publica
     (``modificaciones`` llega ordenada de la más antigua a la más reciente). Un
-    lote con modificaciones de varios contratos distintos no entra: no hay un
-    adjudicado que sea de uno de ellos.
+    lote con modificaciones de varios contratos distintos, o con un número de
+    modificación repetido, no entra: no hay un adjudicado que sea de uno de
+    ellos.
     """
     final: dict[tuple[str, str | None], float] = {}
     contratos: dict[tuple[str, str | None], set[str | None]] = {}
+    numeros: dict[tuple[str, str | None], list[str | None]] = {}
     for licitacion_id, fila in modificaciones:
         clave = (licitacion_id, fila["lote_numero"])
         contratos.setdefault(clave, set()).add(fila["contrato_ref"])
+        numeros.setdefault(clave, []).append(fila["numero"])
         if fila["importe_final"] is not None and fila["importe_final_base"] == "sin_iva":
             final[clave] = fila["importe_final"]
     out: list[tuple[str, CosteDeContrato]] = []
     for clave, importe_final in final.items():
         base = adjudicado.get(clave)
-        if base is None or len(contratos[clave]) > 1:
+        # Dos modificaciones con el mismo número en el mismo contrato son de
+        # lotes que comparten `ContractID` sin decir cuál: no hay un final.
+        repetidos = len(numeros[clave]) != len(set(numeros[clave]))
+        if base is None or len(contratos[clave]) > 1 or repetidos:
             continue
         out.append(
             (

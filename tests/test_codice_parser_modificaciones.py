@@ -1,6 +1,8 @@
 """``cac:ContractModification`` → ``contrato_modificaciones`` (v180).
 
-Sobre expedientes reales del corpus (``tests/fixtures/placsp``).
+Sobre expedientes reales del corpus (``tests/fixtures/placsp``): el 25 (ZIP
+2026-06) y los 26 a 28, entries del ZIP 2026-10 elegidas en la medición del
+2026-11-10 por lo que tienen de raro.
 """
 
 from __future__ import annotations
@@ -56,3 +58,52 @@ def test_un_anuncio_para_dos_modificaciones_no_reparte_fechas() -> None:
 
 def test_un_expediente_sin_modificaciones_no_devuelve_ninguna() -> None:
     assert parse_modificaciones(_entry("24_documentos_real.xml"), "placsp:O:E") == []
+
+
+def test_cada_lote_su_contrato_y_las_fechas_del_perfil_por_orden() -> None:
+    # S-03913-2023: dos prórrogas por lote, con `ContractID` distinto por lote y
+    # cuatro fechas del `DOC_MOD` del perfil para cuatro modificaciones.
+    modificaciones = parse_modificaciones(_entry("26_modificaciones_por_lote_real.xml"), "X")
+
+    assert [
+        (m.contrato_ref, m.numero, m.lote_numero, m.fecha_publicacion) for m in modificaciones
+    ] == [
+        ("S-03913-2023-2", "1", "2", "2025-06-11"),
+        ("S-03913-2023-1", "1", "1", "2025-06-19"),
+        ("S-03913-2023-2", "2", "2", "2026-09-17"),
+        ("S-03913-2023-1", "2", "1", "2026-10-01"),
+    ]
+    # Una modificación a la baja se guarda tal cual, con su signo.
+    assert modificaciones[1].importe_modificacion == -8200.0
+
+
+def test_dos_lotes_con_el_mismo_contrato_no_inventan_lote_ni_pisan_claves() -> None:
+    # S-06722-2023: los dos lotes publican el mismo `ContractID` y cada uno su
+    # modificación 1 y 2; el lote solo lo dice el `Note`. El `DOC_MOD` del perfil
+    # trae cinco fechas para cuatro modificaciones: sin fecha.
+    modificaciones = parse_modificaciones(
+        _entry("27_modificaciones_contrato_compartido_real.xml"), "X"
+    )
+
+    assert len({m.clave for m in modificaciones}) == 4
+    assert {m.lote_numero for m in modificaciones} == {None}
+    assert {m.fecha_publicacion for m in modificaciones} == {None}
+    # `ANN` para el plazo añadido y `MON` para el final: ninguna unidad vale para los dos.
+    segunda = next(m for m in modificaciones if m.importe_final == 1182444.96)
+    assert (segunda.plazo_modificacion, segunda.plazo_final, segunda.plazo_unidad) == (
+        None,
+        None,
+        None,
+    )
+
+
+def test_una_resolucion_con_final_a_cero_no_es_un_contrato_gratis() -> None:
+    # AGP-165/2025: una suspensión sin importes y una resolución que publica el final a 0.
+    suspension, resolucion = parse_modificaciones(
+        _entry("28_modificaciones_sin_importes_real.xml"), "X"
+    )
+
+    assert suspension.importe_modificacion is None and suspension.importe_final is None
+    assert suspension.importe_modificacion_base is None
+    assert resolucion.importe_modificacion == -714954.12
+    assert (resolucion.importe_final, resolucion.importe_final_base) == (None, None)

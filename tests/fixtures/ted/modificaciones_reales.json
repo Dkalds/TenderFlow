@@ -1,0 +1,428 @@
+{
+ "notices": [
+  {
+   "notice-identifier": "be80e249-3d04-4f02-91f7-761b9ad0ed4f",
+   "notice-type": "can-modif",
+   "BT-202-Contract": {
+    "spa": [
+     "De acuerdo con el apartado 5 del pliego de cláusulas administrativas, las licencias de software constan de estos conceptos: -Capacidad para calcular nóminas de 2.000 empleados -30 licencias de usuario para gestores del software -9 licencias QLIK SENSE por la analítica de datos El cálculo del coste de las licencias se realizó en base a los conceptos del punto anterior. Al inicio del expediente de contratación se contemplaron necesarias 30 licencias de usuarios tal y como se detalló en el apartado 5 del pliego de cláusulas técnicas. El Ayuntamiento de Sabadell ha incorporado personal al servicio de Recursos Humanos en el transcurso de la redacción de los documentos técnicos y de la tramitación del expediente de contratación, personal que necesita acceder en el programa informático para desarrollar sus tareas. Las licencias del software de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) son licencias nominales, es decir, cada usuario tiene que tener la suya y no se pueden compartir de acuerdo con la política de seguridad del Ayuntamiento y los requerimientos del Esquema Nacional de Seguridad y la normativa de protección de datos."
+    ]
+   },
+   "publication-number": "786-2026",
+   "BT-200-Contract": [
+    "add-wss"
+   ],
+   "BT-1501(c)-Contract": [
+    "CON-0001"
+   ],
+   "procedure-identifier": "2b7d8b43-35dc-4277-85d7-bce5a45b9016",
+   "total-value": 279472,
+   "modification-previous-notice-identifier": [
+    "cb2be52c-ecc0-4a3d-be12-af16ec0b3b6b-01"
+   ],
+   "BT-720-Tender": [
+    "320477.00"
+   ],
+   "classification-cpv": [
+    "48450000",
+    "48450000"
+   ],
+   "BT-1501(n)-Contract": [
+    "cb2be52c-ecc0-4a3d-be12-af16ec0b3b6b-01"
+   ],
+   "publication-date": "2026-01-02+01:00",
+   "buyer-name": {
+    "spa": [
+     "Ajuntament de Sabadell"
+    ]
+   },
+   "links": {
+    "xml": {
+     "MUL": "https://ted.europa.eu/en/notice/786-2026/xml"
+    },
+    "pdf": {
+     "BUL": "https://ted.europa.eu/bg/notice/786-2026/pdf",
+     "SPA": "https://ted.europa.eu/es/notice/786-2026/pdf",
+     "CES": "https://ted.europa.eu/cs/notice/786-2026/pdf",
+     "DAN": "https://ted.europa.eu/da/notice/786-2026/pdf",
+     "DEU": "https://ted.europa.eu/de/notice/786-2026/pdf",
+     "EST": "https://ted.europa.eu/et/notice/786-2026/pdf",
+     "ELL": "https://ted.europa.eu/el/notice/786-2026/pdf",
+     "ENG": "https://ted.europa.eu/en/notice/786-2026/pdf",
+     "FRA": "https://ted.europa.eu/fr/notice/786-2026/pdf",
+     "GLE": "https://ted.europa.eu/ga/notice/786-2026/pdf",
+     "HRV": "https://ted.europa.eu/hr/notice/786-2026/pdf",
+     "ITA": "https://ted.europa.eu/it/notice/786-2026/pdf",
+     "LAV": "https://ted.europa.eu/lv/notice/786-2026/pdf",
+     "LIT": "https://ted.europa.eu/lt/notice/786-2026/pdf",
+     "HUN": "https://ted.europa.eu/hu/notice/786-2026/pdf",
+     "MLT": "https://ted.europa.eu/mt/notice/786-2026/pdf",
+     "NLD": "https://ted.europa.eu/nl/notice/786-2026/pdf",
+     "POL": "https://ted.europa.eu/pl/notice/786-2026/pdf",
+     "POR": "https://ted.europa.eu/pt/notice/786-2026/pdf",
+     "RON": "https://ted.europa.eu/ro/notice/786-2026/pdf",
+     "SLK": "https://ted.europa.eu/sk/notice/786-2026/pdf",
+     "SLV": "https://ted.europa.eu/sl/notice/786-2026/pdf",
+     "FIN": "https://ted.europa.eu/fi/notice/786-2026/pdf",
+     "SWE": "https://ted.europa.eu/sv/notice/786-2026/pdf"
+    },
+    "pdfs": {
+     "SPA": "https://ted.europa.eu/es/notice/786-2026/pdfs"
+    },
+    "html": {
+     "BUL": "https://ted.europa.eu/bg/notice/-/detail/786-2026",
+     "SPA": "https://ted.europa.eu/es/notice/-/detail/786-2026",
+     "CES": "https://ted.europa.eu/cs/notice/-/detail/786-2026",
+     "DAN": "https://ted.europa.eu/da/notice/-/detail/786-2026",
+     "DEU": "https://ted.europa.eu/de/notice/-/detail/786-2026",
+     "EST": "https://ted.europa.eu/et/notice/-/detail/786-2026",
+     "ELL": "https://ted.europa.eu/el/notice/-/detail/786-2026",
+     "ENG": "https://ted.europa.eu/en/notice/-/detail/786-2026",
+     "FRA": "https://ted.europa.eu/fr/notice/-/detail/786-2026",
+     "GLE": "https://ted.europa.eu/ga/notice/-/detail/786-2026",
+     "HRV": "https://ted.europa.eu/hr/notice/-/detail/786-2026",
+     "ITA": "https://ted.europa.eu/it/notice/-/detail/786-2026",
+     "LAV": "https://ted.europa.eu/lv/notice/-/detail/786-2026",
+     "LIT": "https://ted.europa.eu/lt/notice/-/detail/786-2026",
+     "HUN": "https://ted.europa.eu/hu/notice/-/detail/786-2026",
+     "MLT": "https://ted.europa.eu/mt/notice/-/detail/786-2026",
+     "NLD": "https://ted.europa.eu/nl/notice/-/detail/786-2026",
+     "POL": "https://ted.europa.eu/pl/notice/-/detail/786-2026",
+     "POR": "https://ted.europa.eu/pt/notice/-/detail/786-2026",
+     "RON": "https://ted.europa.eu/ro/notice/-/detail/786-2026",
+     "SLK": "https://ted.europa.eu/sk/notice/-/detail/786-2026",
+     "SLV": "https://ted.europa.eu/sl/notice/-/detail/786-2026",
+     "FIN": "https://ted.europa.eu/fi/notice/-/detail/786-2026",
+     "SWE": "https://ted.europa.eu/sv/notice/-/detail/786-2026"
+    },
+    "htmlDirect": {
+     "BUL": "https://ted.europa.eu/bg/notice/786-2026/html",
+     "SPA": "https://ted.europa.eu/es/notice/786-2026/html",
+     "CES": "https://ted.europa.eu/cs/notice/786-2026/html",
+     "DAN": "https://ted.europa.eu/da/notice/786-2026/html",
+     "DEU": "https://ted.europa.eu/de/notice/786-2026/html",
+     "EST": "https://ted.europa.eu/et/notice/786-2026/html",
+     "ELL": "https://ted.europa.eu/el/notice/786-2026/html",
+     "ENG": "https://ted.europa.eu/en/notice/786-2026/html",
+     "FRA": "https://ted.europa.eu/fr/notice/786-2026/html",
+     "GLE": "https://ted.europa.eu/ga/notice/786-2026/html",
+     "HRV": "https://ted.europa.eu/hr/notice/786-2026/html",
+     "ITA": "https://ted.europa.eu/it/notice/786-2026/html",
+     "LAV": "https://ted.europa.eu/lv/notice/786-2026/html",
+     "LIT": "https://ted.europa.eu/lt/notice/786-2026/html",
+     "HUN": "https://ted.europa.eu/hu/notice/786-2026/html",
+     "MLT": "https://ted.europa.eu/mt/notice/786-2026/html",
+     "NLD": "https://ted.europa.eu/nl/notice/786-2026/html",
+     "POL": "https://ted.europa.eu/pl/notice/786-2026/html",
+     "POR": "https://ted.europa.eu/pt/notice/786-2026/html",
+     "RON": "https://ted.europa.eu/ro/notice/786-2026/html",
+     "SLK": "https://ted.europa.eu/sk/notice/786-2026/html",
+     "SLV": "https://ted.europa.eu/sl/notice/786-2026/html",
+     "FIN": "https://ted.europa.eu/fi/notice/786-2026/html",
+     "SWE": "https://ted.europa.eu/sv/notice/786-2026/html"
+    }
+   },
+   "organisation-name-buyer": {
+    "spa": [
+     "Ajuntament de Sabadell"
+    ]
+   },
+   "notice-title": {
+    "hun": "Spanyolország – Időelszámoló vagy humánerőforrás-szoftvercsomag – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "lav": "Spānija – Laika uzskaites vai darbaspēka programmatūras pakotne – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "swe": "Spanien – Programvara för tidsredovisning eller personal – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "gle": "An Spáinn – Time accounting or human resources software package – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "ell": "Ισπανία – Πακέτα λογισμικού παρακολούθησης χρόνου εργασίας ή ανθρώπινων πόρων – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "spa": "España – Paquetes de software de contabilización del tiempo o recursos humanos – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "est": "Hispaania – Tööajaarvestus- või personalitarkvarapakett – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "nld": "Spanje – Software voor tijdregistratie of human reousrces – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "fin": "Espanja – Ajanseuranta- tai henkilöstöhallinto-ohjelmatuotteet – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "pol": "Hiszpania – Pakiety oprogramowania do rozliczania czasu lub zarządzania zasobami ludzkimi – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "hrv": "Španjolska – Programski paket za obračun vremena ili za ljudske resurse – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "ces": "Španělsko – Balík programů pro měření a zúčtování pracovní doby a lidských zdrojů – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "dan": "Spanien – Programpakke til tidsregnskab eller personalestyring – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "ron": "Spania – Pachete software de contabilizare a timpului sau pentru resurse umane – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "por": "Espanha – Pacote de software para contabilização do tempo de trabalho ou recursos humanos – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "slk": "Španielsko – Softvérový balík pre časové účtovníctvo a ľudské zdroje – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "fra": "Espagne – Logiciels de gestion des temps de travail et des ressources humaines – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "mlt": "Spanja – Pakketti tas-softwer għall-kontabbiltà tal-ħinijiet tax-xogħol u r-riżorsi umani – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "deu": "Spanien – Softwarepaket für Zeiterfassung und Personalverwaltung – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "lit": "Ispanija – Laiko apskaitos arba žmogiškųjų išteklių valdymo programinės įrangos paketai – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "ita": "Spagna – Pacchetti software di contabilizzazione del tempo o per le risorse umane – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "bul": "Иcпaния – Софтуерни пакети за управление на работното време и човешките ресурси – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "slv": "Španija – Programski paket za obračunavanje časa ali človeške vire – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "eng": "Spain – Time accounting or human resources software package – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios."
+   },
+   "BT-201-Contract": {
+    "spa": [
+     "El contrato inicial, adjudicado a Grupo Castilla People, SA, con NIF A43066299, tiene un precio de adjudicación de 338.015,92 euros (IVA incluido de 58.663,92 euros) y una duración de cuatro años desde el 19 de octubre de 2025 con los importes que se detallan a continuación: - 294.368,80 euros (IVA incluido de 51.088,80 euros) por las licencias en modalidad SaaS. - 94,38 euros/hora (IVA incluido de 16,38 euros) por el servicio de apoyo al usuario (SAU), con un importe máximo de 6.040,32 euros (IVA incluido) por los cuatro años de contrato. - 134,31 euros/ hora (IVA incluido de 23,31 euros), por el servicio de apoyo extendido en forma de bolsa de horas con un importe máximo de 37.606,80 euros (IVA incluido) por los cuatro años de contrato. El presente contrato, con la modificación aprobada, queda de la siguiente manera: -Importe: 387.777,17 euros. -Plazo: cuatro años, desde el 9 de septiembre de 2025. Las 25 nuevas licencias se iniciarán con la formalización de la modificación, el 21/11/2025 y finalizarán con el conjunto de las inicialmente contratadas. -Licencias: 55 licencias de usuario para gestores del software 9 licencias QLIK SENSE por la analítica de datos"
+    ]
+   }
+  },
+  {
+   "notice-identifier": "cb4cfa87-4224-4fdb-bf99-139a9363101e",
+   "notice-type": "can-modif",
+   "BT-202-Contract": {
+    "spa": [
+     "Esta modificación no prevista deriva de la necesidad de aumentar el suministro de las licencias del software de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) con el objetivo de garantizar que todo el personal del Servicio de Recursos Humanos, teniendo en cuenta las nuevas incorporaciones, puede acceder a esta herramienta imprescindible para desarrollar sus tareas; y de la necesidad de ampliar las jornadas por la implantación del complemento de productividad de los trabajadores municipales."
+    ]
+   },
+   "publication-number": "718637-2026",
+   "BT-200-Contract": [
+    "add-wss"
+   ],
+   "BT-1501(c)-Contract": [
+    "CON-0001"
+   ],
+   "procedure-identifier": "2b7d8b43-35dc-4277-85d7-bce5a45b9016",
+   "total-value": 279472,
+   "modification-previous-notice-identifier": [
+    "be80e249-3d04-4f02-91f7-761b9ad0ed4f-01"
+   ],
+   "BT-720-Tender": [
+    "354140.00"
+   ],
+   "classification-cpv": [
+    "48450000",
+    "48450000"
+   ],
+   "BT-1501(n)-Contract": [
+    "be80e249-3d04-4f02-91f7-761b9ad0ed4f-01"
+   ],
+   "publication-date": "2026-10-16+02:00",
+   "buyer-name": {
+    "spa": [
+     "Ajuntament de Sabadell"
+    ]
+   },
+   "links": {
+    "xml": {
+     "MUL": "https://ted.europa.eu/en/notice/718637-2026/xml"
+    },
+    "pdf": {
+     "BUL": "https://ted.europa.eu/bg/notice/718637-2026/pdf",
+     "SPA": "https://ted.europa.eu/es/notice/718637-2026/pdf",
+     "CES": "https://ted.europa.eu/cs/notice/718637-2026/pdf",
+     "DAN": "https://ted.europa.eu/da/notice/718637-2026/pdf",
+     "DEU": "https://ted.europa.eu/de/notice/718637-2026/pdf",
+     "EST": "https://ted.europa.eu/et/notice/718637-2026/pdf",
+     "ELL": "https://ted.europa.eu/el/notice/718637-2026/pdf",
+     "ENG": "https://ted.europa.eu/en/notice/718637-2026/pdf",
+     "FRA": "https://ted.europa.eu/fr/notice/718637-2026/pdf",
+     "GLE": "https://ted.europa.eu/ga/notice/718637-2026/pdf",
+     "HRV": "https://ted.europa.eu/hr/notice/718637-2026/pdf",
+     "ITA": "https://ted.europa.eu/it/notice/718637-2026/pdf",
+     "LAV": "https://ted.europa.eu/lv/notice/718637-2026/pdf",
+     "LIT": "https://ted.europa.eu/lt/notice/718637-2026/pdf",
+     "HUN": "https://ted.europa.eu/hu/notice/718637-2026/pdf",
+     "MLT": "https://ted.europa.eu/mt/notice/718637-2026/pdf",
+     "NLD": "https://ted.europa.eu/nl/notice/718637-2026/pdf",
+     "POL": "https://ted.europa.eu/pl/notice/718637-2026/pdf",
+     "POR": "https://ted.europa.eu/pt/notice/718637-2026/pdf",
+     "RON": "https://ted.europa.eu/ro/notice/718637-2026/pdf",
+     "SLK": "https://ted.europa.eu/sk/notice/718637-2026/pdf",
+     "SLV": "https://ted.europa.eu/sl/notice/718637-2026/pdf",
+     "FIN": "https://ted.europa.eu/fi/notice/718637-2026/pdf",
+     "SWE": "https://ted.europa.eu/sv/notice/718637-2026/pdf"
+    },
+    "pdfs": {
+     "SPA": "https://ted.europa.eu/es/notice/718637-2026/pdfs"
+    },
+    "html": {
+     "BUL": "https://ted.europa.eu/bg/notice/-/detail/718637-2026",
+     "SPA": "https://ted.europa.eu/es/notice/-/detail/718637-2026",
+     "CES": "https://ted.europa.eu/cs/notice/-/detail/718637-2026",
+     "DAN": "https://ted.europa.eu/da/notice/-/detail/718637-2026",
+     "DEU": "https://ted.europa.eu/de/notice/-/detail/718637-2026",
+     "EST": "https://ted.europa.eu/et/notice/-/detail/718637-2026",
+     "ELL": "https://ted.europa.eu/el/notice/-/detail/718637-2026",
+     "ENG": "https://ted.europa.eu/en/notice/-/detail/718637-2026",
+     "FRA": "https://ted.europa.eu/fr/notice/-/detail/718637-2026",
+     "GLE": "https://ted.europa.eu/ga/notice/-/detail/718637-2026",
+     "HRV": "https://ted.europa.eu/hr/notice/-/detail/718637-2026",
+     "ITA": "https://ted.europa.eu/it/notice/-/detail/718637-2026",
+     "LAV": "https://ted.europa.eu/lv/notice/-/detail/718637-2026",
+     "LIT": "https://ted.europa.eu/lt/notice/-/detail/718637-2026",
+     "HUN": "https://ted.europa.eu/hu/notice/-/detail/718637-2026",
+     "MLT": "https://ted.europa.eu/mt/notice/-/detail/718637-2026",
+     "NLD": "https://ted.europa.eu/nl/notice/-/detail/718637-2026",
+     "POL": "https://ted.europa.eu/pl/notice/-/detail/718637-2026",
+     "POR": "https://ted.europa.eu/pt/notice/-/detail/718637-2026",
+     "RON": "https://ted.europa.eu/ro/notice/-/detail/718637-2026",
+     "SLK": "https://ted.europa.eu/sk/notice/-/detail/718637-2026",
+     "SLV": "https://ted.europa.eu/sl/notice/-/detail/718637-2026",
+     "FIN": "https://ted.europa.eu/fi/notice/-/detail/718637-2026",
+     "SWE": "https://ted.europa.eu/sv/notice/-/detail/718637-2026"
+    },
+    "htmlDirect": {
+     "BUL": "https://ted.europa.eu/bg/notice/718637-2026/html",
+     "SPA": "https://ted.europa.eu/es/notice/718637-2026/html",
+     "CES": "https://ted.europa.eu/cs/notice/718637-2026/html",
+     "DAN": "https://ted.europa.eu/da/notice/718637-2026/html",
+     "DEU": "https://ted.europa.eu/de/notice/718637-2026/html",
+     "EST": "https://ted.europa.eu/et/notice/718637-2026/html",
+     "ELL": "https://ted.europa.eu/el/notice/718637-2026/html",
+     "ENG": "https://ted.europa.eu/en/notice/718637-2026/html",
+     "FRA": "https://ted.europa.eu/fr/notice/718637-2026/html",
+     "GLE": "https://ted.europa.eu/ga/notice/718637-2026/html",
+     "HRV": "https://ted.europa.eu/hr/notice/718637-2026/html",
+     "ITA": "https://ted.europa.eu/it/notice/718637-2026/html",
+     "LAV": "https://ted.europa.eu/lv/notice/718637-2026/html",
+     "LIT": "https://ted.europa.eu/lt/notice/718637-2026/html",
+     "HUN": "https://ted.europa.eu/hu/notice/718637-2026/html",
+     "MLT": "https://ted.europa.eu/mt/notice/718637-2026/html",
+     "NLD": "https://ted.europa.eu/nl/notice/718637-2026/html",
+     "POL": "https://ted.europa.eu/pl/notice/718637-2026/html",
+     "POR": "https://ted.europa.eu/pt/notice/718637-2026/html",
+     "RON": "https://ted.europa.eu/ro/notice/718637-2026/html",
+     "SLK": "https://ted.europa.eu/sk/notice/718637-2026/html",
+     "SLV": "https://ted.europa.eu/sl/notice/718637-2026/html",
+     "FIN": "https://ted.europa.eu/fi/notice/718637-2026/html",
+     "SWE": "https://ted.europa.eu/sv/notice/718637-2026/html"
+    }
+   },
+   "organisation-name-buyer": {
+    "spa": [
+     "Ajuntament de Sabadell"
+    ]
+   },
+   "notice-title": {
+    "hun": "Spanyolország – Időelszámoló vagy humánerőforrás-szoftvercsomag – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "lav": "Spānija – Laika uzskaites vai darbaspēka programmatūras pakotne – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "swe": "Spanien – Programvara för tidsredovisning eller personal – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "gle": "An Spáinn – Time accounting or human resources software package – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "ell": "Ισπανία – Πακέτα λογισμικού παρακολούθησης χρόνου εργασίας ή ανθρώπινων πόρων – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "spa": "España – Paquetes de software de contabilización del tiempo o recursos humanos – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "est": "Hispaania – Tööajaarvestus- või personalitarkvarapakett – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "nld": "Spanje – Software voor tijdregistratie of human reousrces – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "fin": "Espanja – Ajanseuranta- tai henkilöstöhallinto-ohjelmatuotteet – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "pol": "Hiszpania – Pakiety oprogramowania do rozliczania czasu lub zarządzania zasobami ludzkimi – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "hrv": "Španjolska – Programski paket za obračun vremena ili za ljudske resurse – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "ces": "Španělsko – Balík programů pro měření a zúčtování pracovní doby a lidských zdrojů – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "dan": "Spanien – Programpakke til tidsregnskab eller personalestyring – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "ron": "Spania – Pachete software de contabilizare a timpului sau pentru resurse umane – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "por": "Espanha – Pacote de software para contabilização do tempo de trabalho ou recursos humanos – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "slk": "Španielsko – Softvérový balík pre časové účtovníctvo a ľudské zdroje – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "fra": "Espagne – Logiciels de gestion des temps de travail et des ressources humaines – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "mlt": "Spanja – Pakketti tas-softwer għall-kontabbiltà tal-ħinijiet tax-xogħol u r-riżorsi umani – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "deu": "Spanien – Softwarepaket für Zeiterfassung und Personalverwaltung – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "lit": "Ispanija – Laiko apskaitos arba žmogiškųjų išteklių valdymo programinės įrangos paketai – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "ita": "Spagna – Pacchetti software di contabilizzazione del tempo o per le risorse umane – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "bul": "Иcпaния – Софтуерни пакети за управление на работното време и човешките ресурси – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "slv": "Španija – Programski paket za obračunavanje časa ali človeške vire – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios.",
+    "eng": "Spain – Time accounting or human resources software package – 176/2025 Contrato de suministro de las licencias del programario de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de soporte a los usuarios."
+   },
+   "BT-201-Contract": {
+    "spa": [
+     "Contrato de suministro de las licencias del software de gestión de personal y recursos humanos (Epsilon RH) en modalidad de suscripción (SaaS) y servicios de apoyo a los usuarios” con un presupuesto base de licitación de 338.161,12 euros (IVA incluido del 21% de 58.689,12 euros), con un valor estimado de 279.472,00 euros i una duración de cuatro años, a contar des del 19 de octubre de 2025 o desde el día siguiente a la fecha de formalización del contrato (que tendrá lugar con la firma de la Tenencia de Alcaldía), si ésta fuera posterior. El contrato actual, con la segunda modificación aprobada, queda de la siguiente forma: -Grupo Castilla People, SA con NIF A43066299. -Importe: 428.509,40 euros, IVA incluido. -Licencias: 70 licencias de usuario para gestores del software. 9 licencias QLIK Sense por la analítica de datos. -Bolsa de horas: 29 jornadas de 7 horas (203 horas) -Plazo: cuatro años, desde el 9 de septiembre de 2025. Las 15 nuevas licencias se iniciarán con la formalización de la modificación y finalizarán con el conjunto de las inicialmente contratadas."
+    ]
+   }
+  }
+ ],
+ "totalNoticeCount": 2,
+ "iterationNextToken": null,
+ "timedOut": false,
+ "_nota": "Respuesta real de POST https://api.ted.europa.eu/v3/notices/search (2026-11-10), query 'publication-number IN (786-2026 718637-2026)'. Dos can-modif de Ajuntament de Sabadell encadenados (718637-2026 modifica 786-2026, que modifica el CAN original 871071-2025). '_aviso_original_referencia' es la respuesta de la API para el CAN original, añadida para comparar.",
+ "_aviso_original_referencia": {
+  "notice-identifier": "cb2be52c-ecc0-4a3d-be12-af16ec0b3b6b",
+  "notice-type": "can-standard",
+  "BT-720-Tender": [
+   "279352"
+  ],
+  "publication-number": "871071-2025",
+  "publication-date": "2025-12-31+01:00",
+  "buyer-name": {
+   "spa": [
+    "Ajuntament de Sabadell"
+   ]
+  },
+  "procedure-identifier": "2b7d8b43-35dc-4277-85d7-bce5a45b9016",
+  "links": {
+   "xml": {
+    "MUL": "https://ted.europa.eu/en/notice/871071-2025/xml"
+   },
+   "pdf": {
+    "BUL": "https://ted.europa.eu/bg/notice/871071-2025/pdf",
+    "SPA": "https://ted.europa.eu/es/notice/871071-2025/pdf",
+    "CES": "https://ted.europa.eu/cs/notice/871071-2025/pdf",
+    "DAN": "https://ted.europa.eu/da/notice/871071-2025/pdf",
+    "DEU": "https://ted.europa.eu/de/notice/871071-2025/pdf",
+    "EST": "https://ted.europa.eu/et/notice/871071-2025/pdf",
+    "ELL": "https://ted.europa.eu/el/notice/871071-2025/pdf",
+    "ENG": "https://ted.europa.eu/en/notice/871071-2025/pdf",
+    "FRA": "https://ted.europa.eu/fr/notice/871071-2025/pdf",
+    "GLE": "https://ted.europa.eu/ga/notice/871071-2025/pdf",
+    "HRV": "https://ted.europa.eu/hr/notice/871071-2025/pdf",
+    "ITA": "https://ted.europa.eu/it/notice/871071-2025/pdf",
+    "LAV": "https://ted.europa.eu/lv/notice/871071-2025/pdf",
+    "LIT": "https://ted.europa.eu/lt/notice/871071-2025/pdf",
+    "HUN": "https://ted.europa.eu/hu/notice/871071-2025/pdf",
+    "MLT": "https://ted.europa.eu/mt/notice/871071-2025/pdf",
+    "NLD": "https://ted.europa.eu/nl/notice/871071-2025/pdf",
+    "POL": "https://ted.europa.eu/pl/notice/871071-2025/pdf",
+    "POR": "https://ted.europa.eu/pt/notice/871071-2025/pdf",
+    "RON": "https://ted.europa.eu/ro/notice/871071-2025/pdf",
+    "SLK": "https://ted.europa.eu/sk/notice/871071-2025/pdf",
+    "SLV": "https://ted.europa.eu/sl/notice/871071-2025/pdf",
+    "FIN": "https://ted.europa.eu/fi/notice/871071-2025/pdf",
+    "SWE": "https://ted.europa.eu/sv/notice/871071-2025/pdf"
+   },
+   "pdfs": {
+    "SPA": "https://ted.europa.eu/es/notice/871071-2025/pdfs"
+   },
+   "html": {
+    "BUL": "https://ted.europa.eu/bg/notice/-/detail/871071-2025",
+    "SPA": "https://ted.europa.eu/es/notice/-/detail/871071-2025",
+    "CES": "https://ted.europa.eu/cs/notice/-/detail/871071-2025",
+    "DAN": "https://ted.europa.eu/da/notice/-/detail/871071-2025",
+    "DEU": "https://ted.europa.eu/de/notice/-/detail/871071-2025",
+    "EST": "https://ted.europa.eu/et/notice/-/detail/871071-2025",
+    "ELL": "https://ted.europa.eu/el/notice/-/detail/871071-2025",
+    "ENG": "https://ted.europa.eu/en/notice/-/detail/871071-2025",
+    "FRA": "https://ted.europa.eu/fr/notice/-/detail/871071-2025",
+    "GLE": "https://ted.europa.eu/ga/notice/-/detail/871071-2025",
+    "HRV": "https://ted.europa.eu/hr/notice/-/detail/871071-2025",
+    "ITA": "https://ted.europa.eu/it/notice/-/detail/871071-2025",
+    "LAV": "https://ted.europa.eu/lv/notice/-/detail/871071-2025",
+    "LIT": "https://ted.europa.eu/lt/notice/-/detail/871071-2025",
+    "HUN": "https://ted.europa.eu/hu/notice/-/detail/871071-2025",
+    "MLT": "https://ted.europa.eu/mt/notice/-/detail/871071-2025",
+    "NLD": "https://ted.europa.eu/nl/notice/-/detail/871071-2025",
+    "POL": "https://ted.europa.eu/pl/notice/-/detail/871071-2025",
+    "POR": "https://ted.europa.eu/pt/notice/-/detail/871071-2025",
+    "RON": "https://ted.europa.eu/ro/notice/-/detail/871071-2025",
+    "SLK": "https://ted.europa.eu/sk/notice/-/detail/871071-2025",
+    "SLV": "https://ted.europa.eu/sl/notice/-/detail/871071-2025",
+    "FIN": "https://ted.europa.eu/fi/notice/-/detail/871071-2025",
+    "SWE": "https://ted.europa.eu/sv/notice/-/detail/871071-2025"
+   },
+   "htmlDirect": {
+    "BUL": "https://ted.europa.eu/bg/notice/871071-2025/html",
+    "SPA": "https://ted.europa.eu/es/notice/871071-2025/html",
+    "CES": "https://ted.europa.eu/cs/notice/871071-2025/html",
+    "DAN": "https://ted.europa.eu/da/notice/871071-2025/html",
+    "DEU": "https://ted.europa.eu/de/notice/871071-2025/html",
+    "EST": "https://ted.europa.eu/et/notice/871071-2025/html",
+    "ELL": "https://ted.europa.eu/el/notice/871071-2025/html",
+    "ENG": "https://ted.europa.eu/en/notice/871071-2025/html",
+    "FRA": "https://ted.europa.eu/fr/notice/871071-2025/html",
+    "GLE": "https://ted.europa.eu/ga/notice/871071-2025/html",
+    "HRV": "https://ted.europa.eu/hr/notice/871071-2025/html",
+    "ITA": "https://ted.europa.eu/it/notice/871071-2025/html",
+    "LAV": "https://ted.europa.eu/lv/notice/871071-2025/html",
+    "LIT": "https://ted.europa.eu/lt/notice/871071-2025/html",
+    "HUN": "https://ted.europa.eu/hu/notice/871071-2025/html",
+    "MLT": "https://ted.europa.eu/mt/notice/871071-2025/html",
+    "NLD": "https://ted.europa.eu/nl/notice/871071-2025/html",
+    "POL": "https://ted.europa.eu/pl/notice/871071-2025/html",
+    "POR": "https://ted.europa.eu/pt/notice/871071-2025/html",
+    "RON": "https://ted.europa.eu/ro/notice/871071-2025/html",
+    "SLK": "https://ted.europa.eu/sk/notice/871071-2025/html",
+    "SLV": "https://ted.europa.eu/sl/notice/871071-2025/html",
+    "FIN": "https://ted.europa.eu/fi/notice/871071-2025/html",
+    "SWE": "https://ted.europa.eu/sv/notice/871071-2025/html"
+   }
+  },
+  "total-value": 279472
+ }
+}

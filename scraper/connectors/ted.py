@@ -155,6 +155,10 @@ _FIELDS = [
     "BT-201-Contract",
     "BT-202-Contract",
     "modification-previous-notice-identifier",
+    # BT-720 y el UUID del aviso: el valor que publica y lo que el BT-1501 de
+    # la modificación siguiente cita. Ver `_modificacion`.
+    "BT-720-Tender",
+    "notice-identifier",
 ]
 
 #: ``notice-type`` del aviso de modificación (art. 207.3 LCSP; eForms 38-40).
@@ -540,19 +544,24 @@ def _documents_url(notice: dict[str, Any]) -> str | None:
 def _modificacion(notice: Mapping[str, object], natural_id: str) -> ModificacionContrato:
     """La modificación que publica un aviso ``can-modif``, sin expediente todavía.
 
-    Guarda lo que permite enlazarla después (el aviso original, BT-1501; el
-    expediente, BT-22; el órgano, y el enlace a los pliegos por si lleva el
-    ``idEvl``) y lo que la explica: el motivo (BT-200 código, BT-201 texto) y
-    la descripción (BT-202).
+    Guarda lo que permite enlazarla después (el aviso que modifica, BT-1501,
+    que es su número o su UUID con versión; el suyo propio,
+    ``notice-identifier``, por si otra modificación lo cita; el expediente,
+    BT-22; el órgano, y el enlace a los pliegos por si lleva el ``idEvl``) y lo
+    que la explica: el motivo (BT-200 código, BT-201 texto) y la descripción
+    (BT-202).
+
+    BT-720 va a ``importe_aviso`` con base ``desconocido``: en los avisos de
+    España es unas veces el valor tras la modificación y otras una copia del
+    valor del original (260 de 262 pares lo repiten, medido el 2026-11-10), y
+    la base de IVA varía. No es el importe final ni el de la modificación.
     """
     links = notice.get("links")
     pdf = links.get("pdf") if isinstance(links, dict) else None
     anuncio_url = pdf.get("SPA") if isinstance(pdf, dict) else None
-    originales = {
-        v
-        for v in _valores(notice.get("modification-previous-notice-identifier"))
-        if _NUMERO_PUBLICACION.fullmatch(v)
-    }
+    originales = set(_valores(notice.get("modification-previous-notice-identifier")))
+    valor = _unico(notice.get("BT-720-Tender"))
+    importe_aviso = _to_float(valor) if valor is not None else None
     return ModificacionContrato(
         clave=f"{SOURCE_ID}:{natural_id}",
         fuente=SOURCE_ID,
@@ -560,6 +569,9 @@ def _modificacion(notice: Mapping[str, object], natural_id: str) -> Modificacion
         motivo_codigo=_unico(notice.get("BT-200-Contract")),
         motivo=_first_lang(notice.get("BT-201-Contract")),
         descripcion=_first_lang(notice.get("BT-202-Contract")),
+        importe_aviso=importe_aviso,
+        importe_aviso_base="desconocido" if importe_aviso is not None else None,
+        identificador_aviso=_unico(notice.get("notice-identifier")),
         # Un aviso puede modificar varios contratos de distintos avisos: con
         # más de un original no hay uno con el que enlazar por esta vía.
         aviso_original=originales.pop() if len(originales) == 1 else None,

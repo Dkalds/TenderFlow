@@ -37,6 +37,8 @@ __all__ = [
     "del_organo_de",
     "enlazar",
     "expedientes_de_avisos",
+    "expedientes_de_avisos_previos",
+    "reemplazar_de_expedientes",
     "sin_enlazar",
     "upsert",
 ]
@@ -68,10 +70,18 @@ class ModificacionContrato:
     importe_modificacion_base: str | None = None
     importe_final: float | None = None
     importe_final_base: str | None = None
+    #: BT-720 de un aviso de TED: «valor publicado en el aviso», sin decir si es
+    #: anterior o posterior a la modificación ni su base (ver ``v180``).
+    importe_aviso: float | None = None
+    importe_aviso_base: str | None = None
     moneda: str | None = None
     plazo_modificacion: float | None = None
     plazo_final: float | None = None
     plazo_unidad: str | None = None
+    #: ``notice-identifier`` (UUID) del propio aviso de TED.
+    identificador_aviso: str | None = None
+    #: BT-1501 tal como lo publica TED: el número del aviso (``123-2025``) o su
+    #: UUID con versión (``…-01``).
     aviso_original: str | None = None
     expediente_ref: str | None = None
     organo: str | None = None
@@ -85,6 +95,7 @@ _COLUMNAS: tuple[str, ...] = tuple(ModificacionContrato.__dataclass_fields__)
 _TIPOS: dict[str, str] = {
     "importe_modificacion": "double precision",
     "importe_final": "double precision",
+    "importe_aviso": "double precision",
     "plazo_modificacion": "double precision",
     "plazo_final": "double precision",
 }
@@ -138,6 +149,30 @@ def upsert(items: Sequence[ModificacionContrato]) -> int:
             )
             tocadas += c.execute(sql, valores).rowcount or 0
     return tocadas
+
+
+def reemplazar_de_expedientes(por_licitacion: dict[str, list[ModificacionContrato]]) -> int:
+    """Deja las modificaciones de PLACSP de cada expediente como las trae su entry.
+
+    La entry es una foto completa y acumulativa del expediente, y el ``cbc:ID``
+    de una modificación no es estable: el 2,3 % de las claves cambiaron de
+    contenido entre versiones en el ZIP 2026-10 (el ordinal se reutiliza para
+    otra modificación). Por eso, además del upsert, se borran las de la fuente
+    que la foto nueva ya no trae. Solo de los expedientes que llegan con alguna:
+    una entry sin bloques no borra nada, porque los conectores que no leen el
+    bloque (consultas, menores) también escriben expedientes ``placsp:``.
+    """
+    con_alguna = {lic: ms for lic, ms in por_licitacion.items() if ms}
+    if not con_alguna:
+        return 0
+    claves = [m.clave for ms in con_alguna.values() for m in ms]
+    with connect() as c:
+        c.execute(
+            "DELETE FROM contrato_modificaciones "
+            "WHERE fuente = 'placsp' AND licitacion_id = ANY(%s) AND NOT (clave = ANY(%s))",
+            (list(con_alguna), claves),
+        )
+    return upsert([m for ms in con_alguna.values() for m in ms])
 
 
 class FilaSinEnlazar(TypedDict):
@@ -194,6 +229,8 @@ class FilaModificacion(TypedDict):
     importe_modificacion_base: str | None
     importe_final: float | None
     importe_final_base: str | None
+    importe_aviso: float | None
+    importe_aviso_base: str | None
     moneda: str | None
     plazo_modificacion: float | None
     plazo_final: float | None
@@ -205,7 +242,8 @@ class FilaModificacion(TypedDict):
 _SELECT_FICHA = (
     "SELECT m.clave, m.fuente, m.numero, m.contrato_ref, m.lote_numero, m.fecha_publicacion, "
     "m.motivo_codigo, m.motivo, m.descripcion, m.importe_modificacion, "
-    "m.importe_modificacion_base, m.importe_final, m.importe_final_base, m.moneda, "
+    "m.importe_modificacion_base, m.importe_final, m.importe_final_base, m.importe_aviso, "
+    "m.importe_aviso_base, m.moneda, "
     "m.plazo_modificacion, m.plazo_final, m.plazo_unidad, m.aviso_original, m.url "
 )
 # Número de modificación como número cuando lo es («10» va detrás de «9»).
@@ -304,5 +342,22 @@ def expedientes_de_avisos(ids: Sequence[str]) -> dict[str, str]:
             "WHERE l.id_externo = ANY(%s) "
             "ORDER BY l.id_externo, d.confianza DESC NULLS LAST",
             (list(ids),),
+        )
+        return {str(fila[0]): str(fila[1]) for fila in cur.fetchall()}
+
+
+def expedientes_de_avisos_previos(identificadores: Sequence[str]) -> dict[str, str]:
+    """``{notice-identifier: expediente}`` de avisos de modificación de TED ya enlazados.
+
+    Lo que permite enlazar una cadena: el BT-1501 de la segunda modificación de
+    un contrato es el UUID del aviso de la primera, no el de la adjudicación.
+    """
+    if not identificadores:
+        return {}
+    with connect_read() as c:
+        cur = c.execute(
+            "SELECT identificador_aviso, licitacion_id FROM contrato_modificaciones "
+            "WHERE identificador_aviso = ANY(%s) AND licitacion_id IS NOT NULL",
+            (list(identificadores),),
         )
         return {str(fila[0]): str(fila[1]) for fila in cur.fetchall()}

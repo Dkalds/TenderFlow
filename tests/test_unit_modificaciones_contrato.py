@@ -1,4 +1,4 @@
-"""Lo que un contrato acaba costando y cuánto amplía un órgano sus contratos (v180).
+"""Lo que un contrato acaba costando y cuánto amplía un órgano sus contratos (v180, CU-38).
 
 Reglas de ``services/modificaciones.py`` sin BD: el repositorio se sustituye por
 filas como las que devuelve su ``SELECT``.
@@ -36,6 +36,8 @@ def _fila(
         "importe_modificacion_base": None,
         "importe_final": final,
         "importe_final_base": base if final is not None else None,
+        "importe_aviso": None,
+        "importe_aviso_base": None,
         "moneda": "EUR",
         "plazo_modificacion": None,
         "plazo_final": None,
@@ -144,7 +146,17 @@ def test_el_organo_con_muestra_da_la_mediana_de_sus_contratos(
     assert organo.mediana_pct == 45.0
 
 
-def test_enlazar_por_aviso_original_y_por_referencia(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_un_numero_repetido_en_el_mismo_lote_no_tiene_coste(
+    repo: dict[str, list[dict[str, Any]]],
+) -> None:
+    # Dos lotes que comparten `ContractID` y no dicen cuál es cuál (S-06722-2023).
+    repo["propias"] = [_fila(numero="1", final=1100.0), _fila(numero="1", final=900.0)]
+    repo["adjudicado"] = [_adj("placsp:O:E1", None, 1000.0)]
+
+    assert servicio.modificaciones_de_licitacion("placsp:O:E1").costes == []
+
+
+def test_enlazar_por_aviso_original_cadena_y_referencia(monkeypatch: pytest.MonkeyPatch) -> None:
     filas = [
         {"clave": "ted:1-2026", "aviso_original": "9-2025", "expediente_ref": None,
          "organo": "Ayto", "url": None},
@@ -152,11 +164,19 @@ def test_enlazar_por_aviso_original_y_por_referencia(monkeypatch: pytest.MonkeyP
          "organo": "Ayto", "url": None},
         {"clave": "ted:3-2026", "aviso_original": "8-2025", "expediente_ref": None,
          "organo": "Ayto", "url": None},
+        # La segunda modificación de una cadena cita el UUID (con versión) de la primera.
+        {"clave": "ted:4-2026", "aviso_original": "be80e249-3d04-4f02-91f7-761b9ad0ed4f-01",
+         "expediente_ref": None, "organo": "Ayto", "url": None},
     ]  # fmt: skip
     escritos: list[tuple[str, str, str]] = []
     monkeypatch.setattr(servicio.repo, "sin_enlazar", lambda **_k: filas)
     monkeypatch.setattr(
         servicio.repo, "expedientes_de_avisos", lambda ids: {"ted:9-2025": "placsp:O:EXP/9"}
+    )
+    monkeypatch.setattr(
+        servicio.repo,
+        "expedientes_de_avisos_previos",
+        lambda ids: {"be80e249-3d04-4f02-91f7-761b9ad0ed4f": "placsp:O:EXP/4"} if ids else {},
     )
     monkeypatch.setattr(
         servicio,
@@ -165,8 +185,9 @@ def test_enlazar_por_aviso_original_y_por_referencia(monkeypatch: pytest.MonkeyP
     )
     monkeypatch.setattr(servicio.repo, "enlazar", lambda e: escritos.extend(e) or len(e))
 
-    assert servicio.enlazar_pendientes(fuente="ted") == 2
+    assert servicio.enlazar_pendientes(fuente="ted") == 3
     assert escritos == [
         ("ted:1-2026", "placsp:O:EXP/9", "aviso_original"),
+        ("ted:4-2026", "placsp:O:EXP/4", "aviso_original"),
         ("ted:2-2026", "placsp:O:EXP/1", "referencia"),
     ]

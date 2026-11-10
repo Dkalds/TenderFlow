@@ -438,6 +438,27 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   admitidos publicados —casi todos los sistemas dinámicos— no aparece ahí: el
   listado es de contratos adjudicados.
 
+### CU-38 — Ver lo que un contrato ha acabado costando y si su órgano suele ampliarlos
+
+- **Quién:** quien evalúa un expediente o sigue un contrato vigente. **Dónde:**
+  `/detalle`, ficha completa.
+- Ve las modificaciones que el órgano publicó del contrato (art. 207.3 LCSP),
+  de la más antigua a la más reciente: fecha, motivo, lo que añade cada una en
+  importe y en plazo, el importe tras ella y de qué fuente sale (PLACSP o el
+  aviso de modificación de TED, con enlace al aviso). Lo que la fuente no
+  publica —la fecha cuando un anuncio cubre varias modificaciones, el motivo
+  cuando no lo escribe— sale como «sin dato», no deducido.
+- Por contrato (lote), ve lo adjudicado frente al importe tras la última
+  modificación y la variación, solo cuando las dos cifras están publicadas y
+  sin IVA.
+- Ve cuánto suele ampliar ese órgano sus contratos: la mediana de esa
+  variación entre sus contratos modificados, con su N. Por debajo de la muestra
+  mínima (10 contratos) ve «sin datos suficientes» y el N, no una cifra.
+- Un aviso de modificación de TED aparece en la ficha del expediente que
+  modifica cuando se sabe cuál es (el aviso original, el `idEvl`, o el
+  expediente dentro del mismo órgano); si no, no se cuelga de ninguno por
+  parecido de título. Y ya no aparece como una licitación más.
+
 ## Trazabilidad
 
 <!-- trazabilidad: generado por scripts/check_casos_uso.py — no editar a mano -->
@@ -480,7 +501,8 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-34** Arrancar por lo que da valor | — | [recorrido-primeros-pasos.spec.ts](../web/e2e/recorrido-primeros-pasos.spec.ts) | [primeros-pasos.test.tsx](../web/src/app/(dashboard)/resumen/_components/__tests__/primeros-pasos.test.tsx) |
 | **CU-35** Decidir desde la ficha si se presenta | [test_escenario_ficha_decidir.py](../tests/test_escenario_ficha_decidir.py) | — | [test_unit_dossier_licitacion.py](../tests/test_unit_dossier_licitacion.py)<br>[test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py)<br>[condiciones-oficiales.test.tsx](../web/src/components/pliego/__tests__/condiciones-oficiales.test.tsx) |
 | **CU-36** Leer un acuerdo marco o un sistema dinámico como tal | [test_escenario_marcos.py](../tests/test_escenario_marcos.py) | — | [test_unit_marcos.py](../tests/test_unit_marcos.py)<br>[ficha-marco.test.tsx](../web/src/components/ficha/__tests__/ficha-marco.test.tsx) |
+| **CU-38** Ver lo que un contrato ha acabado costando y si su órgano suele ampliarlos | [test_escenario_modificaciones.py](../tests/test_escenario_modificaciones.py) | — | [test_connectors_modificaciones_ted.py](../tests/test_connectors_modificaciones_ted.py)<br>[test_unit_modificaciones_contrato.py](../tests/test_unit_modificaciones_contrato.py)<br>[test_v180_contrato_modificaciones_migration.py](../tests/test_v180_contrato_modificaciones_migration.py)<br>[ficha-modificaciones.test.tsx](../web/src/components/ficha/__tests__/ficha-modificaciones.test.tsx) |
 
-**36 casos**, 36 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
+**37 casos**, 37 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
 
 <!-- fin trazabilidad -->

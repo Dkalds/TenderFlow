@@ -355,19 +355,27 @@ def _persist_documentos(
 
 
 def _persistir_modificaciones(
-    modificaciones: Sequence[ModificacionContrato], *, source_id: str
+    modificaciones: Sequence[ModificacionContrato] | dict[str, list[ModificacionContrato]],
+    *,
+    source_id: str,
 ) -> None:
     """Escribe las modificaciones de contrato (v180). Fail-open, como los documentos.
 
-    Las licitaciones y adjudicaciones del lote ya están escritas: un fallo aquí
-    se cuenta y se registra, y la siguiente publicación del expediente lo repite.
+    Por expediente (``dict``), las de la entry sustituyen a las que había de
+    esa fuente (:func:`db.repositories.modificaciones.reemplazar_de_expedientes`);
+    sueltas (TED), upsert por clave. Las licitaciones y adjudicaciones del lote
+    ya están escritas: un fallo aquí se cuenta y se registra, y la siguiente
+    publicación del expediente lo repite.
     """
     if not modificaciones:
         return
     try:
         from db.repositories import modificaciones as repo
 
-        repo.upsert(modificaciones)
+        if isinstance(modificaciones, dict):
+            repo.reemplazar_de_expedientes(modificaciones)
+        else:
+            repo.upsert(modificaciones)
     except Exception:
         _contar_error("modificaciones")
         log.warning(
@@ -748,10 +756,7 @@ class _LoteDeIngesta:
         if self.docs_por_lic:
             _persist_documentos(self.docs_por_lic, source_id=source_id)
         if self.modificaciones_por_lic:
-            _persistir_modificaciones(
-                [m for ms in self.modificaciones_por_lic.values() for m in ms],
-                source_id=source_id,
-            )
+            _persistir_modificaciones(self.modificaciones_por_lic, source_id=source_id)
         return upsert_result, n_adj, n_failed
 
     def flush(self) -> None:

@@ -33,7 +33,18 @@ no la borra (por eso no hay un ``CHECK`` que ate ``enlace`` a
 modificación.
 
 Cada importe lleva su base (ADR-032) en su propia columna, con el mismo
-vocabulario que ``licitaciones.importe_tipo``.
+vocabulario que ``licitaciones.importe_tipo``. ``importe_modificacion`` e
+``importe_final`` son los de CODICE, sin IVA. ``importe_aviso`` es el BT-720
+de un aviso de TED: la documentación de eForms lo llama «el valor de la
+modificación» sin decir si es el incremento ni la base, en los avisos de
+España es el valor del contrato tras la modificación unas veces y una copia
+del valor del original otras (260 de 262 pares medidos el 2026-11-10 lo
+repiten), así que se guarda como «valor publicado en el aviso», base
+``desconocido``, y no se compara con nada.
+
+``identificador_aviso`` es el ``notice-identifier`` (UUID) de un aviso de TED:
+el BT-1501 de la modificación siguiente apunta a él, y así una cadena de
+modificaciones encuentra su expediente aunque solo la primera case.
 
 Las fechas son ``text`` ISO (``YYYY-MM-DD``), como en ``licitaciones``.
 
@@ -98,10 +109,13 @@ def upgrade() -> None:
                 CHECK (importe_modificacion_base IN ({_en(_BASES)})),
             importe_final double precision,
             importe_final_base text CHECK (importe_final_base IN ({_en(_BASES)})),
+            importe_aviso double precision,
+            importe_aviso_base text CHECK (importe_aviso_base IN ({_en(_BASES)})),
             moneda text,
             plazo_modificacion double precision,
             plazo_final double precision,
             plazo_unidad text,
+            identificador_aviso text,
             aviso_original text,
             expediente_ref text,
             organo text,
@@ -114,6 +128,10 @@ def upgrade() -> None:
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_contrato_modif_licitacion "
         "ON contrato_modificaciones (licitacion_id) WHERE licitacion_id IS NOT NULL"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_contrato_modif_aviso "
+        "ON contrato_modificaciones (identificador_aviso) WHERE identificador_aviso IS NOT NULL"
     )
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_contrato_modif_sin_enlazar "

@@ -34,12 +34,16 @@ class ModificacionPublicada(BaseModel):
     #: El importe del contrato tras la modificación.
     importe_final: float | None = None
     importe_final_base: BaseImporte | None = None
+    #: BT-720 de un aviso de TED: el valor que publica el aviso, sin que diga si
+    #: es el de antes o el de después de la modificación ni su base.
+    importe_aviso: float | None = None
+    importe_aviso_base: BaseImporte | None = None
     moneda: str | None = None
     plazo_modificacion: float | None = None
     plazo_final: float | None = None
     #: ``ANN``, ``MON``, ``DAY``… tal como lo publica la fuente.
     plazo_unidad: str | None = None
-    #: Número del aviso TED que se modifica (BT-1501).
+    #: El aviso de TED que se modifica (BT-1501): su número o su UUID.
     aviso_original: str | None = None
     url: str | None = None
 

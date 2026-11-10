@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 import threading
+from collections import Counter
 from collections.abc import Iterable, Iterator
 from typing import Any, NamedTuple
 from urllib.parse import urlsplit
@@ -249,15 +250,24 @@ def parse_adjudicaciones(entry: Any, licitacion_id: str) -> list[Adjudicacion]:
 _NOTICE_MODIFICACION = "DOC_MOD"
 
 
+_MEDIO_PERFIL = "Perfil del contratante"
+
+
 def _fechas_de_anuncios_de_modificacion(entry: Any, cfs: str) -> list[str]:
-    """Los ``IssueDate`` de los anuncios ``DOC_MOD`` de la entry, ordenados."""
+    """Los ``IssueDate`` del anuncio ``DOC_MOD`` en el perfil del contratante, ordenados.
+
+    Uno por publicación, repetidos incluidos: dos modificaciones publicadas el
+    mismo día son dos fechas. Solo el perfil: el ``DOC_MOD`` del DOUE, cuando
+    existe, repite las mismas modificaciones con otros días.
+    """
     fechas = entry.xpath(
         f"{cfs}/cacext:ValidNoticeInfo[normalize-space(cbcext:NoticeTypeCode)="
         f"'{_NOTICE_MODIFICACION}']/cacext:AdditionalPublicationStatus"
+        f"[normalize-space(cbcext:PublicationMediaName)='{_MEDIO_PERFIL}']"
         "/cacext:AdditionalPublicationDocumentReference/cbc:IssueDate/text()",
         namespaces=NS,
     )
-    return sorted({d for d in (to_iso_date(str(f)) for f in fechas) if d})
+    return sorted(d for d in (to_iso_date(str(f)) for f in fechas) if d)
 
 
 def _numero_de_orden(numero: str | None) -> tuple[int, str]:
@@ -285,23 +295,34 @@ def parse_modificaciones(entry: Any, licitacion_id: str) -> list[ModificacionCon
     final, el contrato al que se aplica (``ContractID``, el ``cac:Contract/cbc:ID``
     de una adjudicación, que da el lote) y, a veces, el motivo (``cbc:Note``).
 
-    El bloque no trae fecha. La entry trae un ``IssueDate`` por anuncio
-    ``DOC_MOD``; solo cuando hay tantos como modificaciones se asignan por orden
-    de número. Si no, la fecha queda ``None``: repartir menos fechas que
-    modificaciones sería inventarla.
+    El bloque no trae fecha. El anuncio ``DOC_MOD`` del perfil trae un
+    ``IssueDate`` por publicación; cuando hay tantos como modificaciones (el
+    92,6 % de las entries con bloques del ZIP 2026-10, medido el 2026-11-10) se
+    asignan por orden: la más antigua a la primera modificación por número y,
+    dentro del mismo número, por posición en la entry, que la fuente reescribe
+    entera y en orden en cada actualización. Si no coinciden, ``None``:
+    repartir menos fechas que modificaciones sería inventarlas.
 
-    Los importes son ``TaxExclusiveAmount``: base sin IVA (ADR-032). Un cero no
-    se trata como «no publicado»: una modificación de solo plazo es de 0 €.
+    El lote sale del ``ContractID``: es el ``cac:Contract/cbc:ID`` de una
+    adjudicación. Si dos lotes comparten ``ContractID`` (lo hacen: S-06722-2023)
+    el lote no se sabe y queda ``None``. Un mismo ``(ContractID, ID)`` puede
+    repetirse en la entry (3,1 % de las entries del ZIP); la repetición se
+    distingue en la clave por su orden.
+
+    Los importes son ``TaxExclusiveAmount``: base sin IVA (ADR-032). Un cero en
+    la modificación es un valor (una de solo plazo es de 0 €); en el importe
+    final es «no publicado», como en las adjudicaciones
+    (:func:`_importe_informado`): una resolución lo publica a 0.
     """
     cfs = "./cacext:ContractFolderStatus"
     bloques = entry.xpath(f"{cfs}/cac:ContractModification", namespaces=NS)
     if not bloques:
         return []
-    lote_de_contrato: dict[str, str | None] = {}
+    lotes_de_contrato: dict[str, set[str | None]] = {}
     for tr in entry.xpath(f"{cfs}/cac:TenderResult", namespaces=NS):
         contrato = _text(tr, "./cac:Contract/cbc:ID")
         if contrato:
-            lote_de_contrato[contrato] = _lote_del_resultado(tr)
+            lotes_de_contrato.setdefault(contrato, set()).add(_lote_del_resultado(tr))
 
     ordenados = sorted(
         enumerate(bloques), key=lambda par: (_numero_de_orden(_text(par[1], "./cbc:ID")), par[0])
@@ -310,6 +331,7 @@ def parse_modificaciones(entry: Any, licitacion_id: str) -> list[ModificacionCon
     fechas_por_orden = fechas if len(fechas) == len(ordenados) else [None] * len(ordenados)
 
     out: list[ModificacionContrato] = []
+    vistas: Counter[str] = Counter()
     for (posicion, bloque), fecha in zip(ordenados, fechas_por_orden, strict=True):
         # Sin `cbc:ID`, la posición en la entry: la fuente republica el
         # expediente entero, en el mismo orden, en cada actualización.
@@ -324,17 +346,22 @@ def parse_modificaciones(entry: Any, licitacion_id: str) -> list[ModificacionCon
         modif_xp = "./cac:ContractModificationLegalMonetaryTotal/cbc:TaxExclusiveAmount"
         final_xp = "./cac:FinalLegalMonetaryTotal/cbc:TaxExclusiveAmount"
         importe_modif = _float(bloque, modif_xp)
-        importe_final = _float(bloque, final_xp)
+        importe_final = _importe_informado(bloque, final_xp)
         monedas = bloque.xpath(f"{modif_xp}/@currencyID | {final_xp}/@currencyID", namespaces=NS)
+        clave = f"{licitacion_id}#{contrato or ''}#{numero}"
+        vistas[clave] += 1
+        if vistas[clave] > 1:
+            clave = f"{clave}#{vistas[clave]}"
+        lotes = lotes_de_contrato.get(contrato or "", set())
         out.append(
             ModificacionContrato(
-                clave=f"{licitacion_id}#{contrato or ''}#{numero}",
+                clave=clave,
                 fuente="placsp",
                 licitacion_id=licitacion_id,
                 enlace="fuente",
                 numero=numero,
                 contrato_ref=contrato,
-                lote_numero=lote_de_contrato.get(contrato) if contrato else None,
+                lote_numero=next(iter(lotes)) if len(lotes) == 1 else None,
                 fecha_publicacion=fecha,
                 motivo=_text(bloque, "./cbc:Note"),
                 importe_modificacion=importe_modif,
