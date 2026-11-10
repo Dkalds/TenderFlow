@@ -31,6 +31,7 @@ def build_default_registry() -> list[ScheduledJob]:
     from scheduler.drift_report import run_drift_report
     from scheduler.jobs.daily_atom import run as run_daily_atom
     from scheduler.jobs.documentos_embeddings import run as run_documentos_embeddings
+    from scheduler.jobs.domain_truth import run as run_domain_truth
     from scheduler.jobs.event_dispatch import run as run_event_dispatch
     from scheduler.jobs.llm_models_canary import run as run_llm_models_canary
     from scheduler.jobs.llm_tech_labeling import run as run_llm_tech_labeling
@@ -128,6 +129,16 @@ def build_default_registry() -> list[ScheduledJob]:
             initial_offset_minutes=300,  # tras la ingesta diaria + scoring
             heavy=True,  # descarga de red + inferencia del modelo de embeddings
             timeout_seconds=100 * 60,  # `timeout-minutes: 100` del job de pliegos.yml
+        ),
+        ScheduledJob(
+            name="domain_truth_audit",
+            plane="render",
+            fn=run_domain_truth,
+            interval_env="SCHEDULER_DOMAIN_TRUTH_INTERVAL_MINUTES",
+            default_interval_minutes=1440,
+            initial_offset_minutes=60,  # detrás de la ingesta y el scoring
+            heavy=True,  # mide sobre `adjudicaciones` entera (76 s una sola consulta)
+            timeout_seconds=15 * 60,  # el `timeout-minutes: 15` de domain-truth.yml
         ),
         # ── Light jobs (daemon threads) ───────────────────────────────
         ScheduledJob(

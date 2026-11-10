@@ -76,6 +76,8 @@ def _sin_lock_real():
     with (
         patch("db.job_locks.acquire", return_value=True),
         patch("db.job_locks.release", return_value=True),
+        patch("db.job_locks.release_many", return_value=0),
+        patch("db.job_locks.renew", return_value=True),
     ):
         yield
 
@@ -83,15 +85,16 @@ def _sin_lock_real():
 # ── 1. Qué jobs asume ───────────────────────────────────────────────────────
 
 
-def test_asume_exactamente_los_jobs_de_actions():
+def test_asume_exactamente_los_jobs_de_actions_y_los_propios():
     registry = [
         _job("uno", plane="actions"),
         _job("dos", plane="pipeline"),
         _job("tres", plane="manual"),
         _job("cuatro", plane="loop"),
         _job("cinco", plane="actions"),
+        _job("seis", plane="render"),
     ]
-    assert [j.name for j in jobs_del_plano(registry)] == ["uno", "cinco"]
+    assert [j.name for j in jobs_del_plano(registry)] == ["uno", "cinco", "seis"]
 
 
 def test_el_registry_real_declara_al_menos_un_job_de_actions():
@@ -106,7 +109,7 @@ def test_el_registry_real_declara_al_menos_un_job_de_actions():
     assert {j.plane for j in asumidos} <= PLANOS_ASUMIDOS
     # Todo job de Actions declara su `module`: es lo que el checker de paridad
     # busca en los workflows, y lo que permite compararlos uno a uno.
-    assert all(j.module for j in asumidos)
+    assert all(j.module for j in asumidos if j.plane == "actions")
 
 
 def test_no_asume_los_jobs_que_se_quedan_en_actions():
@@ -127,10 +130,10 @@ def test_las_exclusiones_nombran_jobs_reales_de_actions():
         assert motivo.strip(), f"{nombre} se queda en Actions sin motivo escrito"
 
 
-def test_el_worker_asume_la_ingesta_y_el_scoring():
-    """Los dos jobs que el cutover mueve. Si cambia, cambia el runbook."""
+def test_el_plano_asume_la_ingesta_el_scoring_y_la_auditoria():
+    """Lo que corre en la API. Si cambia, cambia el runbook."""
     asumidos = {j.name for j in jobs_del_plano(build_default_registry())}
-    assert asumidos == {"daily_atom", "ml_scoring_baja"}
+    assert asumidos == {"daily_atom", "ml_scoring_baja", "domain_truth_audit"}
 
 
 # ── 2. No se activa solo ────────────────────────────────────────────────────
@@ -166,12 +169,17 @@ def test_no_ejecuta_si_otro_tiene_el_lock():
     plano = CronPlane([job], poll_segundos=1)
     plano.planificar(AHORA)
 
-    with patch("db.job_locks.acquire", return_value=False) as acquire:
+    with (
+        _locks(cadencia=True, ejecucion=False) as acquire,
+        patch("db.job_locks.release_many") as soltar,
+    ):
         ejecutados = plano.tick(AHORA)
 
     assert ejecutados == ["con_lock_ajeno"]  # tocaba, y se dio por atendido
     assert _llamadas(job) == []  # pero no se ejecutó
     assert acquire.call_args.args[0] == "cron:con_lock_ajeno"
+    # No corrió aquí: devuelve la marca en vez de dar el intervalo por hecho.
+    assert soltar.call_args.args[0] == ["cron-hecho:con_lock_ajeno"]
 
 
 def test_ejecuta_igual_si_la_tabla_de_locks_no_responde():
@@ -347,3 +355,103 @@ def test_el_intervalo_sale_del_entorno_si_esta(monkeypatch):
     plano = CronPlane([job], poll_segundos=1)
 
     assert plano.intervalos["configurable"] == timedelta(minutes=15)
+
+
+# ── 5. Cadencia que sobrevive a los reinicios ───────────────────────────────
+
+
+def _locks(*, cadencia: bool, ejecucion: bool = True):
+    """``acquire`` falso que distingue la marca de cadencia del lock de ejecución."""
+
+    def _acquire(nombre: str, **_: object) -> bool:
+        return cadencia if nombre.startswith("cron-hecho:") else ejecucion
+
+    return patch("db.job_locks.acquire", side_effect=_acquire)
+
+
+def test_un_job_que_ya_corrio_en_su_intervalo_no_se_repite_tras_reiniciar():
+    """El calendario vive en memoria y el proceso se reinicia en cada despliegue
+    de la API: sin la marca, cada reinicio repetía la ingesta."""
+    job = _job("diario", minutos=1440)
+    plano = CronPlane([job], poll_segundos=1)
+    plano.planificar(AHORA)
+
+    with _locks(cadencia=False):
+        assert plano.tick(AHORA) == []
+
+    assert _llamadas(job) == []
+    # Vuelve a preguntar pronto, no dentro de un día: la marca puede caducar antes.
+    assert plano.proxima["diario"] == AHORA + timedelta(minutes=10)
+
+
+def test_la_marca_se_toma_con_el_presupuesto_del_job_y_se_alarga_al_terminar():
+    """Si el proceso muere a media pasada sin devolverla (sin memoria, un
+    ``kill``), la marca tiene que caducar con el job y no con su intervalo: con
+    el intervalo, una auditoría diaria que mata al proceso no volvía en 23 h."""
+    job = ScheduledJob(
+        name="cada_cuatro_horas",
+        fn=lambda: None,
+        interval_env="TEST_CADENCIA_INTERVAL_MINUTES",
+        default_interval_minutes=240,
+        plane="render",
+        timeout_seconds=900,
+    )
+    plano = CronPlane([job], poll_segundos=1)
+    plano.planificar(AHORA)
+
+    with (
+        patch("db.job_locks.acquire", return_value=True) as acquire,
+        patch("db.job_locks.renew", return_value=True) as renew,
+    ):
+        plano.tick(AHORA)
+
+    marca = next(c for c in acquire.call_args_list if c.args[0].startswith("cron-hecho:"))
+    assert marca.kwargs["ttl_seconds"] == 900
+    assert renew.call_args.args[0] == "cron-hecho:cada_cuatro_horas"
+    assert renew.call_args.kwargs["ttl_seconds"] == int(240 * 60 * 0.95)
+
+
+def test_un_job_que_falla_devuelve_su_marca_para_reintentarse():
+    job = ScheduledJob(
+        name="roto",
+        fn=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
+        interval_env="TEST_ROTO_INTERVAL_MINUTES",
+        default_interval_minutes=60,
+        plane="render",
+    )
+    plano = CronPlane([job], poll_segundos=1)
+    plano.planificar(AHORA)
+
+    with (
+        patch("db.job_locks.release_many") as soltar,
+        patch("db.job_locks.renew") as renew,
+    ):
+        plano.tick(AHORA)
+
+    soltar.assert_called_once()
+    assert soltar.call_args.args[0] == ["cron-hecho:roto"]
+    renew.assert_not_called()  # un fallo no cuenta como pasada hecha
+
+
+def test_un_job_que_termina_bien_conserva_su_marca():
+    job = _job("sano", minutos=60)
+    plano = CronPlane([job], poll_segundos=1)
+    plano.planificar(AHORA)
+
+    with patch("db.job_locks.release_many") as soltar:
+        plano.tick(AHORA)
+
+    assert _llamadas(job) == ["sano"]
+    soltar.assert_not_called()
+
+
+def test_sin_tabla_de_locks_la_cadencia_no_frena_al_job():
+    """Mismo criterio que el lock de ejecución: con la BD caída, se intenta."""
+    job = _job("resiliente", minutos=60)
+    plano = CronPlane([job], poll_segundos=1)
+    plano.planificar(AHORA)
+
+    with patch("db.job_locks.acquire", side_effect=RuntimeError("bd caída")):
+        plano.tick(AHORA)
+
+    assert _llamadas(job) == ["resiliente"]
