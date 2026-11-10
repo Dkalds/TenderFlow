@@ -186,6 +186,13 @@
       "verifiedHash": "cdb8a646d09955fb79af317a95a311644913d47750a50f775f9515ab87de418f",
       "trust": "community"
     },
+    "security-audit": {
+      "source": "cloudflare/security-audit-skill",
+      "sourceType": "github",
+      "skillPath": "skills/security-audit/SKILL.md",
+      "trust": "community",
+      "verifiedHash": "4347408c32b1e6e5ce190c2345adca8d741db738588708f2e5072fa1e86826dc"
+    },
     "seo": {
       "source": "addyosmani/web-quality-skills",
       "sourceType": "autoskills-registry",
