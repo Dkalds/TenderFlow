@@ -165,18 +165,17 @@ def owned_api_key(api_db):
     """API key CON propietario.
 
     La fixture genérica `api_key` crea la key sin `user_id`, y este endpoint
-    deriva el `user_key` del propietario: sin él responde 401 y el cuerpo del
+    lee los favoritos del propietario: sin él responde 401 y el cuerpo del
     handler no llega a ejecutarse.
     """
     from api.auth import create_api_key
     from db.users import create_user
     from shared.auth_core import hash_password
-    from shared.identity import user_key_from_email
 
     email = "calendario@example.com"
     user_id = create_user(email=email, password_hash=hash_password(_PASSWORD))
     token = create_api_key("calendario-key", scopes="*", user_id=user_id)
-    return token, user_key_from_email(email, user_id), user_id
+    return token, user_id
 
 
 def _organizacion_personal(user_id: int) -> int:
@@ -195,7 +194,7 @@ def _organizacion_personal(user_id: int) -> int:
     return int(organization_id)
 
 
-def _seed_favorito_con_plazos(user_key: str, user_id: int, organization_id: int) -> None:
+def _seed_favorito_con_plazos(user_id: int, organization_id: int) -> None:
     import db.database as db_mod
     from db.repositories.watchlist import WatchlistRepository
 
@@ -213,7 +212,6 @@ def _seed_favorito_con_plazos(user_key: str, user_id: int, organization_id: int)
             ),
         )
     WatchlistRepository().add_item(
-        user_key=user_key,
         user_id=user_id,
         id_externo="EXP-ICS-1",
         organization_id=organization_id,
@@ -222,8 +220,8 @@ def _seed_favorito_con_plazos(user_key: str, user_id: int, organization_id: int)
 
 def test_calendario_ics_devuelve_los_favoritos_con_fecha(client, api_db, owned_api_key):
     """El .ics incluye un VEVENT por deadline y otro por fin de contrato."""
-    token, user_key, user_id = owned_api_key
-    _seed_favorito_con_plazos(user_key, user_id, _organizacion_personal(user_id))
+    token, user_id = owned_api_key
+    _seed_favorito_con_plazos(user_id, _organizacion_personal(user_id))
 
     resp = client.get("/api/v1/exports/calendario.ics", headers={"X-API-Key": token})
 
@@ -239,7 +237,7 @@ def test_calendario_ics_no_saca_los_favoritos_de_otra_organizacion(client, api_d
     """El ICS lo sirve un enlace firmado de larga vida y sin sesión.
 
     Hasta 2026-09 la ruta ejecutaba su propio SQL filtrando sólo por
-    ``wi.user_key``, sin organización ni visibilidad (O0.8 + ADR-022). Ahora lee
+    la clave del usuario, sin organización ni visibilidad (O0.8 + ADR-022). Ahora lee
     por ``WatchlistRepository.calendar_items`` con el mismo predicado que
     ``GET /watchlist/items``: un favorito privado del usuario en OTRA
     organización no viaja en el calendario personal.
@@ -248,8 +246,8 @@ def test_calendario_ics_no_saca_los_favoritos_de_otra_organizacion(client, api_d
     from db.repositories.organizations import OrganizationRepository
     from db.repositories.watchlist import WatchlistRepository
 
-    token, user_key, user_id = owned_api_key
-    _seed_favorito_con_plazos(user_key, user_id, _organizacion_personal(user_id))
+    token, user_id = owned_api_key
+    _seed_favorito_con_plazos(user_id, _organizacion_personal(user_id))
 
     otra = int(OrganizationRepository().create_organization("Otro equipo", user_id)["id"])
     with db_mod.connect() as c:
@@ -259,7 +257,6 @@ def test_calendario_ics_no_saca_los_favoritos_de_otra_organizacion(client, api_d
             ("EXP-ICS-OTRA", "De otro equipo", "2026-10-30", datetime.now(UTC).isoformat()),
         )
     WatchlistRepository().add_item(
-        user_key=user_key,
         user_id=user_id,
         id_externo="EXP-ICS-OTRA",
         organization_id=otra,
@@ -275,7 +272,7 @@ def test_calendario_ics_no_saca_los_favoritos_de_otra_organizacion(client, api_d
 
 def test_calendario_ics_sin_favoritos_sigue_siendo_valido(client, api_db, owned_api_key):
     """Sin favoritos el .ics existe y está bien formado, no es un 500."""
-    token, _user_key, _user_id = owned_api_key
+    token, _user_id = owned_api_key
 
     resp = client.get("/api/v1/exports/calendario.ics", headers={"X-API-Key": token})
 
@@ -287,7 +284,7 @@ def test_calendario_ics_sin_favoritos_sigue_siendo_valido(client, api_db, owned_
 
 def test_calendario_ics_exige_la_cabecera_no_la_query(client, api_db, owned_api_key):
     """El token va en X-API-Key y solo ahí: en la URL acabaría en los logs."""
-    token, _user_key, _user_id = owned_api_key
+    token, _user_id = owned_api_key
 
     resp = client.get(f"/api/v1/exports/calendario.ics?token={token}")
 

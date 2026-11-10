@@ -47,6 +47,7 @@ parche para eso; el paquete las sustituye:
 - ``condiciones``: condiciones oficiales de PLACSP.
 - ``filtros``: los filtros del listado de licitaciones (``FiltrosLicitacion``).
 - ``marcos``: acuerdos marco y SDA en la ficha.
+- ``modificaciones``: modificaciones de contrato publicadas, en la ficha.
 
 Este ``__init__`` re-exporta todo lo público, así que **se importa siempre del
 paquete** (``from shared.dto import X``) y nunca del submódulo: dónde vive un
@@ -170,6 +171,13 @@ from shared.dto.marcos import (
     MarcoEnlazado,
     VigenciaMarco,
 )
+from shared.dto.modificaciones import (
+    AmpliacionDelOrgano,
+    BaseImporte,
+    CosteDeContrato,
+    ModificacionesDeLicitacion,
+    ModificacionPublicada,
+)
 from shared.dto.organizaciones import (
     PROBABILIDADES_ETAPA_DEFAULT,
     AuditEntryOut,
@@ -282,7 +290,9 @@ __all__ = [
     "AgendaItemKind",
     "AgendaUrgencia",
     "AmbitoCifra",
+    "AmpliacionDelOrgano",
     "AuditEntryOut",
+    "BaseImporte",
     "BloqueOportunidadesCuenta",
     "BloquePublicacionesCuenta",
     "BloqueVencimientosCuenta",
@@ -309,6 +319,7 @@ __all__ = [
     "CondicionesAmbito",
     "CondicionesOficiales",
     "ContratoBasado",
+    "CosteDeContrato",
     "CreatedId",
     "CriterioOficial",
     "CriterioPuntuado",
@@ -346,6 +357,8 @@ __all__ = [
     "LotePublico",
     "MarcoDeLicitacion",
     "MarcoEnlazado",
+    "ModificacionPublicada",
+    "ModificacionesDeLicitacion",
     "ObjetoEtiquetable",
     "OportunidadCuenta",
     "OrganizationCapabilities",

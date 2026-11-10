@@ -1,7 +1,8 @@
 """Regresión GDPR: export/anonimización de watchlist CPV apunta a la tabla real.
 
-Hasta 2026-08, ``WatchlistRepository.export_by_user_key`` y
-``anonymize_by_user_key`` consultaban una tabla ``watchlist`` inexistente con
+Hasta 2026-08, ``WatchlistRepository.export_cpv`` y
+``anonymize_cpv`` (entonces ``export_by_user_key`` y ``anonymize_by_user_key``)
+consultaban una tabla ``watchlist`` inexistente con
 el error tragado por un ``except``: el export devolvía siempre ``[]`` y el
 borrado no borraba nada, sin log ni test que lo delatara (ítem P1 del
 backlog). Estos tests siembran datos reales y verifican que aparecen en el
@@ -12,24 +13,32 @@ from __future__ import annotations
 
 from db.repositories.base import rows_to_dicts
 from db.repositories.watchlist import WatchlistRepository
+from db.users import create_user
 from db.watchlist import WatchlistEntry, add_entry
+from shared.identity import user_key_from_email
 
 
-def _seed(user_key: str) -> None:
+def _seed(nombre: str) -> int:
+    """Crea el usuario (``watchlist_cpv`` se identifica por ``user_id``, v181) y su entrada."""
+    user_id = create_user(
+        email=f"{nombre}@example.test",
+        password_hash="test-hash",  # pragma: allowlist secret -- literal de test
+    )
     add_entry(
         WatchlistEntry(
-            user_key=user_key,
+            user_id=user_id,
             cpv_prefix="72",
             keyword="sap",
             email="ana@example.com",
         )
     )
+    return user_id
 
 
 def test_export_returns_seeded_entry(tmp_db):
-    _seed("gdpr-user-1")
+    user_id = _seed("gdpr-user-1")
 
-    rows = WatchlistRepository().export_by_user_key("gdpr-user-1")
+    rows = WatchlistRepository().export_cpv(user_id)
 
     assert len(rows) == 1
     assert rows[0]["cpv_prefix"] == "72"
@@ -37,23 +46,24 @@ def test_export_returns_seeded_entry(tmp_db):
 
 
 def test_export_via_service_layer(tmp_db):
-    _seed("gdpr-user-2")
+    user_id = _seed("gdpr-user-2")
     from services.gdpr import export_watchlist
 
-    rows = export_watchlist("gdpr-user-2")
+    rows = export_watchlist(user_id)
 
     assert len(rows) == 1
-    assert rows[0]["user_key"] == "gdpr-user-2"
+    # La columna la deriva la base del correo del usuario (v181).
+    assert rows[0]["user_key"] == user_key_from_email("gdpr-user-2@example.test", user_id)
 
 
 def test_anonymize_removes_pii_and_hides_from_export(tmp_db):
-    _seed("gdpr-user-3")
+    user_id = _seed("gdpr-user-3")
     repo = WatchlistRepository()
-    assert repo.export_by_user_key("gdpr-user-3")
+    assert repo.export_cpv(user_id)
 
-    repo.anonymize_by_user_key("gdpr-user-3")
+    repo.anonymize_cpv(user_id)
 
-    assert repo.export_by_user_key("gdpr-user-3") == []
+    assert repo.export_cpv(user_id) == []
     # La fila sobrevive anonimizada: sin user_key real, sin email, sin user_id.
     from db.database import connect_read
 

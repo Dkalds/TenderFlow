@@ -23,7 +23,7 @@ import pytest
 from api.app import app
 from api.routes.dual_auth import require_any_auth
 from api.routes.me import _user_key
-from api.routes.watchlist_rules import _user_key as _watchlist_rules_user_key
+from api.routes.watchlist_rules import _user_id as _watchlist_rules_user_id
 from shared.identity import user_key_from_email
 
 # Fixtures client, auth, api_db se heredan de conftest.py
@@ -48,6 +48,19 @@ def _session_ctx(user_id: int = 7, email: str = "session-user@test.com"):
     }
 
 
+def _usuario_real(email: str = "session-user@test.com"):
+    """Ctx de sesión de un usuario que existe en ``users``.
+
+    Las reglas se identifican por ``user_id`` y la base deriva su ``user_key``
+    del correo del usuario (v181): con un id inventado la regla no podría ni
+    escribirse.
+    """
+    from db.users import create_user
+
+    user_id = create_user(email=email, password_hash="h")  # pragma: allowlist secret
+    return _session_ctx(user_id, email)
+
+
 @pytest.fixture(autouse=True)
 def _clear_overrides():
     yield
@@ -55,14 +68,20 @@ def _clear_overrides():
 
 
 # ---------------------------------------------------------------------------
-# user_key derivation consistency (regresión del bug de identidad)
+# Identidad consistente (regresión del bug de identidad)
 # ---------------------------------------------------------------------------
 
 
-def test_user_key_matches_watchlist_rules_convention():
-    """me.py y watchlist_rules.py deben derivar el mismo user_key del mismo ctx."""
+def test_me_y_watchlist_rules_identifican_al_mismo_usuario():
+    """me.py y watchlist_rules.py leen del mismo ctx la misma identidad.
+
+    Las reglas van por ``user_id`` desde v181 (su ruta ya no tiene
+    ``_user_key``); lo que me.py sigue derivando es la clave heredada para lo
+    que aún se guarda por ella.
+    """
     ctx = _session_ctx()
-    assert _user_key(ctx) == _watchlist_rules_user_key(ctx)
+    assert _watchlist_rules_user_id(ctx) == ctx["user_id"]
+    assert _user_key(ctx) == user_key_from_email(ctx["email"], ctx["user_id"])
 
 
 # ---------------------------------------------------------------------------
@@ -83,12 +102,11 @@ def test_export_my_data_session_includes_watchlist_rule(client, api_db):
     Antes del fix, export_watchlist* se consultaba con el key_hash crudo
     (inexistente para sesión) y siempre devolvía listas vacías.
     """
-    ctx = _session_ctx()
-    user_key = _user_key(ctx)
+    ctx = _usuario_real()
 
     from services.watchlist_rules import WatchlistRule, create_rule
 
-    create_rule(user_key, WatchlistRule(keyword="SAP", frequency="daily"))
+    create_rule(ctx["user_id"], WatchlistRule(keyword="SAP", frequency="daily"))
 
     app.dependency_overrides[require_any_auth] = lambda: ctx
     resp = client.get("/api/v1/me/data")
@@ -152,18 +170,18 @@ def test_delete_my_data_rejects_api_key_even_with_explicit_confirmation(client, 
 
 def test_delete_my_data_session_deletes_watchlist_rule(client, api_db):
     """End-to-end: borrar mis datos por sesión borra mis reglas de watchlist."""
-    ctx = _session_ctx(user_id=55)
-    user_key = _user_key(ctx)
+    ctx = _usuario_real("borrar-reglas@test.com")
+    user_id = ctx["user_id"]
 
     from services.watchlist_rules import WatchlistRule, create_rule, list_rules
 
-    create_rule(user_key, WatchlistRule(keyword="SAP", frequency="daily"))
-    assert len(list_rules(user_key)) == 1
+    create_rule(user_id, WatchlistRule(keyword="SAP", frequency="daily"))
+    assert len(list_rules(user_id)) == 1
 
     app.dependency_overrides[require_any_auth] = lambda: ctx
     resp = client.request("DELETE", "/api/v1/me", json={"confirmation": "DELETE"})
     assert resp.status_code == 200, resp.text
-    assert list_rules(user_key) == []
+    assert list_rules(user_id) == []
 
 
 # ---------------------------------------------------------------------------

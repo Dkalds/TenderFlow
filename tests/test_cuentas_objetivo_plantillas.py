@@ -65,10 +65,10 @@ def _plantilla(org: int, tipo: str, nombre: str, contenido: dict[str, Any], auto
     )
 
 
-def _reglas(email: str, user_id: int, org: int) -> list[tuple[Any, ...]]:
+def _reglas(user_id: int, org: int) -> list[tuple[Any, ...]]:
     return [
         (r.nombre, r.keyword, r.ccaa, r.visibility, r.organization_id)
-        for r in list_rules(user_key_from_email(email, user_id), org)
+        for r in list_rules(user_id, org)
     ]
 
 
@@ -125,14 +125,12 @@ def test_copia_reglas_y_vistas_como_objetos_privados_del_miembro(tmp_db: object)
     # La etiqueta cuenta aunque no se duplica: ya es de la organización.
     assert copias == 3
     assert _copias_registradas(e.org, e.miembro) == [3]
-    assert _reglas(e.miembro_email, e.miembro, e.org) == [
-        ("SAP en Madrid", "sap", "Madrid", "private", e.org)
-    ]
+    assert _reglas(e.miembro, e.org) == [("SAP en Madrid", "sap", "Madrid", "private", e.org)]
     assert _vistas(e.miembro_email, e.miembro, e.org) == [
         ("Radar SAP", {"q": "sap", "ccaa": "Madrid"}, "private")
     ]
     # Privadas de verdad: el owner, que creó las plantillas, no ve las copias.
-    assert _reglas(e.owner_email, e.owner, e.org) == []
+    assert _reglas(e.owner, e.org) == []
     assert _vistas(e.owner_email, e.owner, e.org) == []
 
     # Contenidos, no referencias: borrar las plantillas no toca las copias.
@@ -140,7 +138,7 @@ def test_copia_reglas_y_vistas_como_objetos_privados_del_miembro(tmp_db: object)
     for plantilla in plantillas.list_for_organization(e.org):
         assert plantillas.delete(e.org, int(plantilla["id"]))
     assert plantillas.list_for_organization(e.org) == []
-    assert [r[0] for r in _reglas(e.miembro_email, e.miembro, e.org)] == ["SAP en Madrid"]
+    assert [r[0] for r in _reglas(e.miembro, e.org)] == ["SAP en Madrid"]
     assert [v[0] for v in _vistas(e.miembro_email, e.miembro, e.org)] == ["Radar SAP"]
 
 
@@ -159,14 +157,14 @@ def test_el_miembro_borra_sus_copias_y_la_plantilla_sigue_intacta(tmp_db: object
     assert aplicar_plantillas(e.org, e.miembro) == 2
 
     user_key = user_key_from_email(e.miembro_email, e.miembro)
-    [regla_copiada] = list_rules(user_key, e.org)
+    [regla_copiada] = list_rules(e.miembro, e.org)
     [vista_copiada] = list_saved_filters(user_key, e.org, user_id=e.miembro)
     assert regla_copiada.id is not None
-    assert delete_rule(user_key, regla_copiada.id, e.org)
+    assert delete_rule(e.miembro, regla_copiada.id, e.org)
     assert delete_saved_filter(
         int(vista_copiada["id"]), user_key=user_key, organization_id=e.org, user_id=e.miembro
     )
-    assert _reglas(e.miembro_email, e.miembro, e.org) == []
+    assert _reglas(e.miembro, e.org) == []
     assert _vistas(e.miembro_email, e.miembro, e.org) == []
 
     assert PlantillasRepository().list_for_organization(e.org) == antes
@@ -174,9 +172,7 @@ def test_el_miembro_borra_sus_copias_y_la_plantilla_sigue_intacta(tmp_db: object
     recien_llegado = _user(recien_llegado_email)
     OrganizationRepository().add_membership(e.org, recien_llegado, "member")
     assert aplicar_plantillas(e.org, recien_llegado) == 2
-    assert [r[0] for r in _reglas(recien_llegado_email, recien_llegado, e.org)] == [
-        "ERP en Galicia"
-    ]
+    assert [r[0] for r in _reglas(recien_llegado, e.org)] == ["ERP en Galicia"]
     assert [v[0] for v in _vistas(recien_llegado_email, recien_llegado, e.org)] == ["Radar ERP"]
 
 
@@ -187,7 +183,7 @@ def test_aplicar_dos_veces_al_mismo_miembro_no_duplica(tmp_db: object) -> None:
     assert aplicar_plantillas(e.org, e.miembro) == 1
     assert aplicar_plantillas(e.org, e.miembro) == 0
 
-    assert len(_reglas(e.miembro_email, e.miembro, e.org)) == 1
+    assert len(_reglas(e.miembro, e.org)) == 1
     # El segundo intento no pisa el recuento del primero con su cero.
     assert _copias_registradas(e.org, e.miembro) == [1]
 
@@ -203,7 +199,7 @@ def test_una_plantilla_rota_no_deja_al_miembro_sin_las_demas(tmp_db: object) -> 
 
     assert copias == 1
     assert _copias_registradas(e.org, e.miembro) == [1]
-    assert [r[0] for r in _reglas(e.miembro_email, e.miembro, e.org)] == ["Buena"]
+    assert [r[0] for r in _reglas(e.miembro, e.org)] == ["Buena"]
 
 
 def test_sin_plantillas_se_registra_la_aplicacion_con_cero_copias(tmp_db: object) -> None:
@@ -219,7 +215,7 @@ def test_sin_plantillas_se_registra_la_aplicacion_con_cero_copias(tmp_db: object
 
     _plantilla(e.org, "regla", "Tardía", {"nombre": "Tardía"}, e.owner)
     assert aplicar_plantillas(e.org, e.miembro) == 0
-    assert _reglas(e.miembro_email, e.miembro, e.org) == []
+    assert _reglas(e.miembro, e.org) == []
 
 
 def test_las_plantillas_de_otra_organizacion_no_se_copian(tmp_db: object) -> None:
@@ -231,7 +227,7 @@ def test_las_plantillas_de_otra_organizacion_no_se_copian(tmp_db: object) -> Non
 
     assert aplicar_plantillas(e.org, e.miembro) == 1
 
-    assert [r[0] for r in _reglas(e.miembro_email, e.miembro, e.org)] == ["Propia"]
+    assert [r[0] for r in _reglas(e.miembro, e.org)] == ["Propia"]
     assert _vistas(e.miembro_email, e.miembro, e.org) == []
 
 
@@ -246,5 +242,5 @@ def test_la_idempotencia_es_por_organizacion_y_miembro(tmp_db: object) -> None:
     assert aplicar_plantillas(e.org, e.miembro) == 1
     assert aplicar_plantillas(otro.org, e.miembro) == 1
 
-    assert [r[0] for r in _reglas(e.miembro_email, e.miembro, e.org)] == ["Del primero"]
-    assert [r[0] for r in _reglas(e.miembro_email, e.miembro, otro.org)] == ["Del segundo"]
+    assert [r[0] for r in _reglas(e.miembro, e.org)] == ["Del primero"]
+    assert [r[0] for r in _reglas(e.miembro, otro.org)] == ["Del segundo"]

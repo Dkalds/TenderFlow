@@ -81,28 +81,28 @@ def get_user_id_from_key_id(key_id: int) -> int | None:
     return result
 
 
-def export_watchlist(key_hash: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+def export_watchlist(user_id: int) -> list[dict[str, Any]]:
     """Exporta las entradas de watchlist del usuario."""
-    return _watchlist_repo.export_by_user_key(key_hash, user_id)
+    return _watchlist_repo.export_cpv(user_id)
 
 
-def export_watchlist_items(key_hash: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+def export_watchlist_items(user_id: int) -> list[dict[str, Any]]:
     """Exporta los favoritos de licitaciones (watchlist_items) del usuario."""
-    return _watchlist_repo.export_items_by_user_key(key_hash, user_id)
+    return _watchlist_repo.export_items(user_id)
 
 
-def export_follows(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+def export_follows(user_id: int) -> list[dict[str, Any]]:
     """Exporta los seguimientos unificados (``follows``) del usuario."""
     from db.repositories import follows
 
-    return follows.exportar_de_usuario(user_key, user_id=user_id)
+    return follows.exportar_de_usuario(user_id=user_id)
 
 
-def export_watchlist_rules(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+def export_watchlist_rules(user_id: int) -> list[dict[str, Any]]:
     """Exporta las reglas de watchlist por criterio (mi-watchlist) del usuario."""
     from services.watchlist_rules import list_rules
 
-    return [r.model_dump() for r in list_rules(user_key, user_id=user_id)]
+    return [r.model_dump() for r in list_rules(user_id)]
 
 
 def export_saved_filters(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
@@ -242,16 +242,18 @@ def anonymize_user_data(
     from services.notifications import delete_all_alerts, delete_email_prefs
     from services.watchlist_rules import delete_all_for_user
 
-    _watchlist_repo.anonymize_by_user_key(user_key, user_id)
-    _watchlist_repo.anonymize_items_by_user_key(user_key, user_id)
-    delete_all_for_user(user_key, user_id=user_id)
     delete_all_saved_filters(user_key, user_id=user_id)
     delete_user_profile(user_key, user_id=user_id)
     delete_all_alerts(user_key, user_id=user_id)
     delete_email_prefs(user_key, user_id=user_id)
     radar_dismissals.delete_all_for_user(user_key, user_id=user_id)
-    follows.borrar_de_usuario(user_key, user_id=user_id)
     if user_id is not None:
+        # watchlist_*, reglas y follows se identifican por id desde v181: lo
+        # guardado bajo un correo anterior lleva ese mismo id.
+        _watchlist_repo.anonymize_cpv(user_id)
+        _watchlist_repo.anonymize_items(user_id)
+        delete_all_for_user(user_id)
+        follows.borrar_de_usuario(user_id=user_id)
         _feedback_repo.delete_for_user(user_id)
         asistente_feedback.borrar_de_usuario(user_id)
         consultas_recientes.borrar_de_usuario(user_id)

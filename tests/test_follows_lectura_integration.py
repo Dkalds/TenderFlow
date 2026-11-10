@@ -59,17 +59,17 @@ def test_favoritos_iguales_desde_las_dos_tablas(tmp_db: Any, lectura: Any) -> No
     db_mod, _ = tmp_db
     from db.repositories.watchlist import WatchlistRepository
 
-    user_id, org_id, user_key = _usuario("fav-lectura@example.test")
+    user_id, org_id, _ = _usuario("fav-lectura@example.test")
     repo = WatchlistRepository()
     for id_externo in ("LIC-A", "LIC-B"):
         _licitacion(db_mod, id_externo)
-        repo.add_item(user_key, user_id, id_externo, org_id, "private")
-    repo.set_nota(user_key, "LIC-A", "revisar solvencia", user_id)
+        repo.add_item(user_id, id_externo, org_id, "private")
+    repo.set_nota(user_id, "LIC-A", "revisar solvencia")
 
     lectura(False)
-    vieja = repo.list_items(user_key, org_id, user_id)
+    vieja = repo.list_items(user_id, org_id)
     lectura(True)
-    nueva = repo.list_items(user_key, org_id, user_id)
+    nueva = repo.list_items(user_id, org_id)
 
     assert sorted(_sin_volatiles(vieja, "created_at"), key=lambda f: f["id_externo"]) == sorted(
         _sin_volatiles(nueva, "created_at"), key=lambda f: f["id_externo"]
@@ -82,7 +82,7 @@ def test_empresas_iguales_desde_las_dos_tablas(tmp_db: Any, lectura: Any) -> Non
     db_mod, _ = tmp_db
     from db.watchlist_empresas import WatchlistEmpresaEntry, add_entry, list_entries
 
-    user_id, org_id, user_key = _usuario("emp-lectura@example.test")
+    user_id, org_id, _ = _usuario("emp-lectura@example.test")
     with db_mod.connect() as c:
         fila = c.execute(
             "INSERT INTO empresas (nombre_canonico, created_at, updated_at) "
@@ -92,7 +92,6 @@ def test_empresas_iguales_desde_las_dos_tablas(tmp_db: Any, lectura: Any) -> Non
     empresa_id = int(fila[0])
     add_entry(
         WatchlistEmpresaEntry(
-            user_key=user_key,
             user_id=user_id,
             empresa_id=empresa_id,
             organization_id=org_id,
@@ -101,9 +100,9 @@ def test_empresas_iguales_desde_las_dos_tablas(tmp_db: Any, lectura: Any) -> Non
     )
 
     lectura(False)
-    vieja = list_entries(user_key, org_id, user_id=user_id)
+    vieja = list_entries(user_id, org_id)
     lectura(True)
-    nueva = list_entries(user_key, org_id, user_id=user_id)
+    nueva = list_entries(user_id, org_id)
 
     assert _sin_volatiles(vieja, "created_at") == _sin_volatiles(nueva, "created_at")
     assert isinstance(nueva[0]["created_at"], str)  # el DTO lo declara `str`

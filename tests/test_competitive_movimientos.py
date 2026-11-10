@@ -146,6 +146,7 @@ def test_movimientos_vigiladas_marca_territorio_nuevo(db):
     from db.watchlist_empresas import WatchlistEmpresaEntry, add_entry, movimientos_vigiladas
     from tests.test_competitive import (
         _organizacion_de_pruebas,
+        _usuario_y_organizacion,
         insert_contract,
         resolve,
     )
@@ -165,11 +166,11 @@ def test_movimientos_vigiladas_marca_territorio_nuevo(db):
             "SELECT empresa_id FROM adjudicaciones WHERE licitacion_id = 'M-1'"
         ).fetchone()
     empresa_id = int(row[0])
-    org = _organizacion_de_pruebas("movimientos-equipo")
-    add_entry(WatchlistEmpresaEntry(user_key="u1", empresa_id=empresa_id, organization_id=org))
+    user_id, org = _usuario_y_organizacion("movimientos-equipo")
+    add_entry(WatchlistEmpresaEntry(user_id=user_id, empresa_id=empresa_id, organization_id=org))
 
     desde = (datetime.now(UTC) - timedelta(days=30)).strftime("%Y-%m-%d")
-    datos = movimientos_vigiladas("u1", org, desde_iso=desde)
+    datos = movimientos_vigiladas(user_id, org, desde_iso=desde)
 
     assert datos["resumen"][0]["adjudicaciones"] == 2
     por_lic = {f["licitacion_id"]: f for f in datos["adjudicaciones"]}
@@ -179,7 +180,7 @@ def test_movimientos_vigiladas_marca_territorio_nuevo(db):
 
     # Otra organización no ve la watchlist ajena.
     otra = _organizacion_de_pruebas("movimientos-otro")
-    assert movimientos_vigiladas("u1", otra, desde_iso=desde) == {
+    assert movimientos_vigiladas(user_id, otra, desde_iso=desde) == {
         "resumen": [],
         "adjudicaciones": [],
     }

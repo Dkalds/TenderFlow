@@ -26,24 +26,25 @@ def _insert_lic(c, lic_id, *, titulo="Lic", fecha=None):
     )
 
 
-def _regla(user_key: str, rule: WatchlistRule) -> int:
-    """Una regla como las crea la API: con organización.
+def _regla(nombre: str, rule: WatchlistRule) -> int:
+    """Una regla como las crea la API: de un usuario real y con organización.
 
     `POST /watchlist/rules` exige organización desde S4.3, y una alerta sin
     ella no aparece en ninguna campana: desde v162 el job la descarta en vez
     de escribirla invisible, así que una regla sin organización ya no sirve
-    para probar que notifica.
+    para probar que notifica. Tampoco sirve una sin `user_id` (v181): el job
+    no la evalúa porque no tiene a quién avisar.
     """
     from db.repositories.organizations import OrganizationRepository
     from db.users import create_user
 
     owner = create_user(
-        email=f"{user_key}-{rule.keyword.lower()}-{rule.frequency}@example.test",
+        email=f"{nombre}-{rule.keyword.lower()}-{rule.frequency}@example.test",
         password_hash="test-hash",  # pragma: allowlist secret -- literal de test
-        display_name=user_key,
+        display_name=nombre,
     )
     org = int(OrganizationRepository().create_organization(f"org-{owner}", owner)["id"])
-    return create_rule(user_key, rule, organization_id=org)
+    return create_rule(owner, rule, organization_id=org)
 
 
 def test_run_disabled_by_default_is_noop(tmp_db, monkeypatch):

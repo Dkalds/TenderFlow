@@ -10,6 +10,7 @@ import { FichaAdjudicatarios } from "@/components/ficha/ficha-adjudicatarios";
 import { FichaCumplo } from "@/components/ficha/ficha-cumplo";
 import { FichaHistorialPropio } from "@/components/ficha/ficha-historial-propio";
 import { FichaMarco } from "@/components/ficha/ficha-marco";
+import { FichaModificaciones } from "@/components/ficha/ficha-modificaciones";
 import { FichaNovedades } from "@/components/ficha/ficha-novedades";
 import { FichaRequisitos } from "@/components/ficha/ficha-requisitos";
 import { FichaSimilares } from "@/components/ficha/ficha-similares";
@@ -201,6 +202,11 @@ export function DetalleFichaCuerpo({ licitacion: l }: { licitacion: LicitacionDe
           </section>
 
           <section id="ficha-historia" aria-label="Historia" className={SECCION}>
+            {/* Sin modificaciones publicadas ni dato del órgano no pinta nada:
+                `empty:hidden` no deja un panel en blanco. */}
+            <Panel className="empty:hidden">
+              <FichaModificaciones licitacion={l} />
+            </Panel>
             <Panel>
               <FichaEventos licitacionId={l.id_externo} />
             </Panel>

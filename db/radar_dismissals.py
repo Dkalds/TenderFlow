@@ -126,8 +126,10 @@ def add(
     # sea una copia, un fallo suyo no puede impedir que el usuario descarte.
     from db.repositories import follows as _follows
 
+    if user_id is None:
+        # `follows` se teclea por id (v181); sin él no hay copia que mantener.
+        return
     _follows.registrar(
-        user_key=user_key,
         user_id=user_id,
         organization_id=organization_id,
         target_type="licitacion",
@@ -151,13 +153,13 @@ def remove(user_key: str, id_externo: str, *, user_id: int | None = None) -> boo
     # Se limpia `follows` aunque no hubiera nada que borrar aquí: si las dos
     # tablas divergieron, esta es la ocasión de volver a cuadrarlas, y dejar un
     # descarte huérfano en `follows` sería peor que el no-op.
-    _follows.olvidar(
-        user_key=user_key,
-        user_id=user_id,
-        target_type="licitacion",
-        target_id=id_externo,
-        kind="descartar",
-    )
+    if user_id is not None:
+        _follows.olvidar(
+            user_id=user_id,
+            target_type="licitacion",
+            target_id=id_externo,
+            kind="descartar",
+        )
     return borrado
 
 
@@ -189,10 +191,8 @@ def list_ids(user_key: str, *, user_id: int | None = None) -> list[str]:
     """
     from db.repositories import follows as _follows
 
-    if _follows.lectura_desde_follows():
-        return [
-            d["id_externo"] for d in _follows.descartes_desde_follows(user_key, user_id=user_id)
-        ]
+    if user_id is not None and _follows.lectura_desde_follows():
+        return [d["id_externo"] for d in _follows.descartes_desde_follows(user_id=user_id)]
     with connect_read() as c:
         cur = c.execute(
             "SELECT DISTINCT ON (id_externo) id_externo, created_at FROM radar_dismissals "
@@ -219,8 +219,8 @@ def list_detalle(user_key: str, *, user_id: int | None = None) -> list[dict[str,
     """
     from db.repositories import follows as _follows
 
-    if _follows.lectura_desde_follows():
-        return _follows.descartes_desde_follows(user_key, user_id=user_id)
+    if user_id is not None and _follows.lectura_desde_follows():
+        return _follows.descartes_desde_follows(user_id=user_id)
     with connect_read() as c:
         cur = c.execute(
             "SELECT DISTINCT ON (id_externo) id_externo, hasta, accion, score, banda, "

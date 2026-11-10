@@ -40,24 +40,12 @@ def test_organization_visibility_shares_only_explicit_items(tmp_db):
             )
 
     repo = WatchlistRepository()
-    repo.add_item(
-        "owner-key",
-        owner,
-        "SCOPE-SHARED",
-        organization_id,
-        "organization",
-    )
-    repo.add_item(
-        "owner-key",
-        owner,
-        "SCOPE-PRIVATE",
-        organization_id,
-        "private",
-    )
+    repo.add_item(owner, "SCOPE-SHARED", organization_id, "organization")
+    repo.add_item(owner, "SCOPE-PRIVATE", organization_id, "private")
 
-    member_items = repo.list_items("member-key", organization_id, member)
+    member_items = repo.list_items(member, organization_id)
     assert [item["id_externo"] for item in member_items] == ["SCOPE-SHARED"]
-    owner_items = repo.list_items("owner-key", organization_id, owner)
+    owner_items = repo.list_items(owner, organization_id)
     assert {item["id_externo"] for item in owner_items} == {
         "SCOPE-SHARED",
         "SCOPE-PRIVATE",
@@ -84,23 +72,25 @@ def test_legacy_rows_are_claimed_by_personal_organization(tmp_db):
     """
     db_mod, _ = tmp_db
     user_id = _user("legacy-scope@example.test")
+    # La clave que daba su correo: la que la base deriva desde v181.
+    clave = user_key_from_email("legacy-scope@example.test", user_id)
     with db_mod.connect() as conn:
         conn.execute(
             "INSERT INTO saved_filters (user_key, name, filters_json, created_at, "
             " organization_id) VALUES (%s, %s, %s, %s, NULL)",
-            ("legacy-key", "Filtro", '{"q":"sap"}', "2026-01-01T00:00:00+00:00"),
+            (clave, "Filtro", '{"q":"sap"}', "2026-01-01T00:00:00+00:00"),
         )
 
     organizations = OrganizationRepository()
     personal_id = int(organizations.ensure_personal_organization(user_id)["id"])
 
     # Antes del claim la fila existe pero nadie la ve: es el síntoma exacto.
-    assert list_saved_filters("legacy-key", personal_id) == []
+    assert list_saved_filters(clave, personal_id) == []
     assert contar_huerfanos()["saved_filters"] == 1
 
-    claim_legacy_scope(user_id, "legacy-key")
+    claim_legacy_scope(user_id)
 
-    rows = list_saved_filters("legacy-key", personal_id)
+    rows = list_saved_filters(clave, personal_id)
     assert len(rows) == 1
     assert rows[0]["organization_id"] == personal_id
     assert rows[0]["visibility"] == "private"
@@ -123,7 +113,7 @@ def test_claim_legacy_scope_no_toca_filas_ya_compartidas(tmp_db):
     equipo_id = int(organizations.create_organization("Equipo legacy", user_id)["id"])
     save_filter("legacy-key", "Vista del equipo", '{"q":"erp"}', equipo_id, "organization")
 
-    claim_legacy_scope(user_id, "legacy-key")
+    claim_legacy_scope(user_id)
 
     assert [row["name"] for row in list_saved_filters("legacy-key", equipo_id)] == [
         "Vista del equipo"

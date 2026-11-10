@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-11-10
 
-Revisión Alembic aplicada: `v179_memoria_organizacion`.
+Revisión Alembic aplicada: `v181_user_id_watchlist_follows`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -29,11 +29,11 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Empresas y mercado | 6 | 34 | 11 |
 | Organizaciones y oportunidades | 16 | 156 | 35 |
 | Identidad, acceso y auditoría | 16 | 113 | 25 |
-| Seguimiento y notificaciones | 12 | 135 | 38 |
+| Seguimiento y notificaciones | 12 | 135 | 40 |
 | ML y predicciones | 8 | 63 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
-| Otras | 24 | 185 | 35 |
-| **Total** | **109** | **1002** | **249** |
+| Otras | 25 | 215 | 39 |
+| **Total** | **110** | **1032** | **255** |
 
 ## Licitaciones y fuente
 
@@ -1284,7 +1284,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, cpv_prefix, keyword, ccaa)`
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, empresa_id)`
 
-Índices: `idx_watchlist_empresas_organization`, `idx_watchlist_empresas_user_id`, `idx_wl_emp_user`
+Índices: `idx_watchlist_empresas_organization`, `idx_watchlist_empresas_user_id`, `idx_wl_emp_user`, `uq_watchlist_empresas_user_id` (único)
 
 ### `watchlist_items`
 
@@ -1301,7 +1301,7 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, empresa_id)`
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, id_externo)`
 
-Índices: `idx_watchlist_items_organization`, `idx_watchlist_items_user_id`, `idx_wl_items_user`
+Índices: `idx_watchlist_items_organization`, `idx_watchlist_items_user_id`, `idx_wl_items_user`, `uq_watchlist_items_user_id` (único)
 
 ### `watchlist_rules`
 
@@ -1656,6 +1656,45 @@ Claves: `PRIMARY KEY (id)`
 
 Claves: `PRIMARY KEY (user_id, consulta)`
 
+### `contrato_modificaciones`
+
+| Columna | Tipo | Nulo |
+|---|---|---|
+| `id` | `bigint` | no |
+| `clave` | `text` | no |
+| `fuente` | `text` | no |
+| `licitacion_id` | `text` | sí |
+| `enlace` | `text` | sí |
+| `numero` | `text` | sí |
+| `contrato_ref` | `text` | sí |
+| `lote_numero` | `text` | sí |
+| `fecha_publicacion` | `text` | sí |
+| `motivo_codigo` | `text` | sí |
+| `motivo` | `text` | sí |
+| `descripcion` | `text` | sí |
+| `importe_modificacion` | `double precision` | sí |
+| `importe_modificacion_base` | `text` | sí |
+| `importe_final` | `double precision` | sí |
+| `importe_final_base` | `text` | sí |
+| `importe_aviso` | `double precision` | sí |
+| `importe_aviso_base` | `text` | sí |
+| `moneda` | `text` | sí |
+| `plazo_modificacion` | `double precision` | sí |
+| `plazo_final` | `double precision` | sí |
+| `plazo_unidad` | `text` | sí |
+| `identificador_aviso` | `text` | sí |
+| `aviso_original` | `text` | sí |
+| `expediente_ref` | `text` | sí |
+| `procedimiento_ref` | `text` | sí |
+| `id_evl` | `text` | sí |
+| `organo` | `text` | sí |
+| `url` | `text` | sí |
+| `fecha_extraccion` | `text` | no |
+
+Claves: `PRIMARY KEY (id)` · `UNIQUE (clave)`
+
+Índices: `idx_contrato_modif_aviso`, `idx_contrato_modif_licitacion`, `idx_contrato_modif_sin_enlazar`
+
 ### `contratos_cartera`
 
 | Columna | Tipo | Nulo |
@@ -1790,7 +1829,7 @@ Claves: `PRIMARY KEY (id)`
 
 Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, target_type, target_id, kind)`
 
-Índices: `idx_follows_hasta`, `idx_follows_organization`, `idx_follows_target`, `idx_follows_user`, `idx_follows_user_id`
+Índices: `idx_follows_hasta`, `idx_follows_organization`, `idx_follows_target`, `idx_follows_user`, `idx_follows_user_id`, `uq_follows_user_id` (único)
 
 ### `go_no_go_scores`
 

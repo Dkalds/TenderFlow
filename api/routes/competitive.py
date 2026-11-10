@@ -20,7 +20,6 @@ cachea aquí.
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 
@@ -83,14 +82,6 @@ router = APIRouter(
 )
 
 _adj_repo = AdjudicacionRepository()
-
-
-def _user_key(ctx: Principal) -> str:
-    """Clave opaca estable de la identidad humana autenticada."""
-    if ctx.get("user_key"):
-        return str(ctx["user_key"])
-    seed = str(ctx.get("email") or ctx.get("key_hash") or "anon")
-    return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
 
 
 def _split_filter(value: str | None) -> list[str] | None:
@@ -608,9 +599,7 @@ async def get_batallas(
 async def get_watchlist(
     ctx: Principal = Depends(require_organization()),
 ) -> WatchlistEmpresasResult:
-    items = await run_db(
-        list_entries, _user_key(ctx), ctx["organization_id"], user_id=int(ctx["user_id"])
-    )
+    items = await run_db(list_entries, int(ctx["user_id"]), ctx["organization_id"])
     return WatchlistEmpresasResult(items=[WatchlistEmpresaItem(**item) for item in items])
 
 
@@ -634,10 +623,7 @@ async def get_watchlist_movimientos(
 
     def _trabajo() -> MovimientosVigiladasResult:
         datos = movimientos_vigiladas(
-            _user_key(ctx),
-            int(ctx["organization_id"]),
-            desde_iso=desde,
-            user_id=int(ctx["user_id"]),
+            int(ctx["user_id"]), int(ctx["organization_id"]), desde_iso=desde
         )
         return construir_movimientos(datos, dias=dias, desde=desde)
 
@@ -669,11 +655,10 @@ async def post_watchlist(
         )
     ambito = idem_scope(
         "competitive_watchlist",
-        actor=_user_key(ctx),
+        actor=str(ctx["user_id"]),
         organization_id=ctx.get("organization_id"),
     )
     entry = WatchlistEmpresaEntry(
-        user_key=_user_key(ctx),
         user_id=int(ctx["user_id"]),
         empresa_id=body.empresa_id,
         email=correo,
@@ -714,13 +699,7 @@ async def delete_watchlist(
     empresa_id: int,
     ctx: Principal = Depends(require_organization(write=True)),
 ) -> WatchlistEmpresaStatus:
-    removed = await run_db(
-        remove_entry,
-        _user_key(ctx),
-        empresa_id,
-        ctx["organization_id"],
-        user_id=int(ctx["user_id"]),
-    )
+    removed = await run_db(remove_entry, int(ctx["user_id"]), empresa_id, ctx["organization_id"])
     if not removed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

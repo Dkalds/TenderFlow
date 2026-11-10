@@ -58,7 +58,6 @@ def test_el_envio_usa_el_correo_de_la_cuenta_y_no_el_guardado(client: Any, empre
     sesion = abrir_sesion("cuenta@example.com", client)
     add_entry(
         WatchlistEmpresaEntry(
-            user_key="clave-opaca",
             user_id=sesion.user_id,
             empresa_id=empresa_id,
             organization_id=sesion.organization_id,

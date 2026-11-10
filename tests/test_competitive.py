@@ -826,12 +826,13 @@ def _watched_empresa(db, nombre="Watched SL", nif="B99999997"):
         )
 
 
-def _organizacion_de_pruebas(nombre: str) -> int:
-    """Crea una organización real (con su owner) y devuelve su id.
+def _usuario_y_organizacion(nombre: str) -> tuple[int, int]:
+    """Crea un usuario real con su organización y devuelve ``(user_id, organization_id)``.
 
     ``watchlist_empresas.organization_id`` es FK contra ``organizations``
     (v64), así que un id inventado revienta el INSERT con
-    ``ForeignKeyViolation`` antes de ejercitar nada del CRUD.
+    ``ForeignKeyViolation`` antes de ejercitar nada del CRUD. Y desde v181 la
+    fila se identifica por ``user_id``: hace falta un usuario que exista.
     """
     from db.repositories.organizations import OrganizationRepository
     from db.users import create_user
@@ -841,7 +842,12 @@ def _organizacion_de_pruebas(nombre: str) -> int:
         password_hash="test-hash",  # pragma: allowlist secret -- literal de test
         display_name=nombre,
     )
-    return int(OrganizationRepository().create_organization(nombre, owner)["id"])
+    return owner, int(OrganizationRepository().create_organization(nombre, owner)["id"])
+
+
+def _organizacion_de_pruebas(nombre: str) -> int:
+    """Id de una organización real (con su owner): ver :func:`_usuario_y_organizacion`."""
+    return _usuario_y_organizacion(nombre)[1]
 
 
 def test_watchlist_crud(db):
@@ -856,10 +862,11 @@ def test_watchlist_crud(db):
     from db.watchlist_empresas import WatchlistEmpresaEntry, add_entry, list_entries, remove_entry
 
     empresa_id = _watched_empresa(db)
-    equipo = _organizacion_de_pruebas("competidores-equipo")
+    dueno, equipo = _usuario_y_organizacion("competidores-equipo")
     otro_equipo = _organizacion_de_pruebas("competidores-otro-equipo")
+    otro_usuario, _ = _usuario_y_organizacion("competidores-otro-usuario")
     entry = WatchlistEmpresaEntry(
-        user_key="u1",
+        user_id=dueno,
         empresa_id=empresa_id,
         organization_id=equipo,
         email="a@b.com",
@@ -867,21 +874,21 @@ def test_watchlist_crud(db):
 
     assert add_entry(entry) is not None
     assert add_entry(entry) is None  # duplicado → no-op
-    assert len(list_entries("u1", equipo)) == 1
-    assert list_entries("u1", equipo)[0]["nombre_canonico"] == "Watched SL"
+    assert len(list_entries(dueno, equipo)) == 1
+    assert list_entries(dueno, equipo)[0]["nombre_canonico"] == "Watched SL"
 
     # La entrada no se ve ni se borra desde otra organización.
-    assert list_entries("u1", otro_equipo) == []
-    assert remove_entry("u1", empresa_id, otro_equipo) is False
-    assert len(list_entries("u1", equipo)) == 1
+    assert list_entries(dueno, otro_equipo) == []
+    assert remove_entry(dueno, empresa_id, otro_equipo) is False
+    assert len(list_entries(dueno, equipo)) == 1
 
     # Ni desde la propia organización si el que borra no es el dueño.
-    assert remove_entry("otro-usuario", empresa_id, equipo) is False
-    assert len(list_entries("u1", equipo)) == 1
+    assert remove_entry(otro_usuario, empresa_id, equipo) is False
+    assert len(list_entries(dueno, equipo)) == 1
 
-    assert remove_entry("u1", empresa_id, equipo) is True
-    assert remove_entry("u1", empresa_id, equipo) is False
-    assert list_entries("u1", equipo) == []
+    assert remove_entry(dueno, empresa_id, equipo) is True
+    assert remove_entry(dueno, empresa_id, equipo) is False
+    assert list_entries(dueno, equipo) == []
 
 
 def test_competitor_alerts_detecta_nuevas_y_territorio(db, monkeypatch):
@@ -893,11 +900,12 @@ def test_competitor_alerts_detecta_nuevas_y_territorio(db, monkeypatch):
     # (notifica a todos los destinatarios, no a una organización); la entrada
     # se crea igualmente con su organización porque el modelo ya no admite
     # construirla sin ámbito.
+    dueno, organizacion = _usuario_y_organizacion("competidores-alertas")
     add_entry(
         WatchlistEmpresaEntry(
-            user_key="u1",
+            user_id=dueno,
             empresa_id=empresa_id,
-            organization_id=_organizacion_de_pruebas("competidores-alertas"),
+            organization_id=organizacion,
             email="a@b.com",
         )
     )
@@ -912,7 +920,8 @@ def test_competitor_alerts_detecta_nuevas_y_territorio(db, monkeypatch):
     # Primera pasada: el contrato W-01 cae dentro del lookback inicial → alerta
     n = competitor_alerts.check_and_notify()
     assert n == 1
-    assert sent[0]["to_addr"] == "a@b.com"
+    # El destinatario es el correo de la cuenta, no el guardado en la fila.
+    assert sent[0]["to_addr"] == "competidores-alertas@example.test"
     assert "Watched SL" in sent[0]["body"]
 
     # Segunda pasada sin novedades → silencio

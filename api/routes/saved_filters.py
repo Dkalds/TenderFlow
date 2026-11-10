@@ -80,7 +80,7 @@ async def get_saved_filters(
     ctx: Principal = Depends(require_organization()),
 ) -> SavedFiltersResult:
     if organization_id is not None:
-        await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
+        await run_db(claim_legacy_scope, int(ctx["user_id"]))
     rows = await run_db(
         list_saved_filters, _user_key(ctx), ctx["organization_id"], user_id=_user_id(ctx)
     )

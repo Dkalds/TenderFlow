@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 import threading
+from collections import Counter
 from collections.abc import Iterable, Iterator
 from typing import Any, NamedTuple
 from urllib.parse import urlsplit
@@ -32,6 +33,7 @@ from db.database import (
     Lote,
     RequisitoSolvencia,
 )
+from db.repositories.modificaciones import ModificacionContrato
 from observability.logging import get_logger
 from scraper.puerta_tecnologica import MOTIVO_ADMITIDA, senal_tecnologica
 from services.normalization import fold_text
@@ -241,6 +243,143 @@ def parse_adjudicaciones(entry: Any, licitacion_id: str) -> list[Adjudicacion]:
                     lote_numero_raw=lote_numero,
                 )
             )
+    return out
+
+
+#: Código de ``ValidNoticeInfo`` del anuncio de modificación (art. 207.3 LCSP).
+_NOTICE_MODIFICACION = "DOC_MOD"
+
+
+_MEDIO_PERFIL = "Perfil del contratante"
+
+
+def _fechas_de_anuncios_de_modificacion(entry: etree._Element, cfs: str) -> list[str]:
+    """Los ``IssueDate`` del anuncio ``DOC_MOD`` en el perfil del contratante, ordenados.
+
+    Uno por publicación, repetidos incluidos: dos modificaciones publicadas el
+    mismo día son dos fechas. Solo el perfil: el ``DOC_MOD`` del DOUE, cuando
+    existe, repite las mismas modificaciones con otros días.
+    """
+    fechas = entry.xpath(
+        f"{cfs}/cacext:ValidNoticeInfo[normalize-space(cbcext:NoticeTypeCode)="
+        f"'{_NOTICE_MODIFICACION}']/cacext:AdditionalPublicationStatus"
+        f"[normalize-space(cbcext:PublicationMediaName)='{_MEDIO_PERFIL}']"
+        "/cacext:AdditionalPublicationDocumentReference/cbc:IssueDate/text()",
+        namespaces=NS,
+    )
+    return sorted(d for d in (to_iso_date(str(f)) for f in fechas) if d)
+
+
+def _numero_de_orden(numero: str | None) -> tuple[int, str]:
+    """Orden de las modificaciones por su ``cbc:ID``: numérico si lo es («10» tras «9»)."""
+    texto = numero or ""
+    return (int(texto), "") if texto.isdigit() else (2**31, texto)
+
+
+def _plazo(bloque: etree._Element, nombre: str) -> tuple[float | None, str | None]:
+    """``(valor, unitCode)`` de un ``*DurationMeasure`` del bloque."""
+    nodos = bloque.xpath(f"./cbc:{nombre}", namespaces=NS)
+    if not nodos:
+        return None, None
+    valor = _float(bloque, f"./cbc:{nombre}")
+    unidad = str(nodos[0].get("unitCode") or "").strip() or None
+    return valor, unidad
+
+
+def parse_modificaciones(entry: etree._Element, licitacion_id: str) -> list[ModificacionContrato]:
+    """Las modificaciones de contrato publicadas en la entry (``cac:ContractModification``).
+
+    Una por bloque: el órgano publica en él el importe sin IVA de la
+    modificación (``ContractModificationLegalMonetaryTotal``), el importe del
+    contrato tras ella (``FinalLegalMonetaryTotal``), el plazo que añade y el
+    final, el contrato al que se aplica (``ContractID``, el ``cac:Contract/cbc:ID``
+    de una adjudicación, que da el lote) y, a veces, el motivo (``cbc:Note``).
+
+    El bloque no trae fecha. El anuncio ``DOC_MOD`` del perfil trae un
+    ``IssueDate`` por publicación; cuando hay tantos como modificaciones (el
+    92,6 % de las entries con bloques del ZIP 2026-10, medido el 2026-11-10) se
+    asignan por posición en la entry, que la fuente reescribe entera y en orden
+    de publicación: la más antigua al primer bloque. Solo si el orden por
+    posición es el mismo que por número: si no lo es (contratos que se
+    modifican a ritmos distintos, o un bloque fuera de su orden), la posición
+    no es una cronología fiable. Si no, ``None``: repartir fechas que no casan
+    sería inventarlas.
+
+    El lote sale del ``ContractID``: es el ``cac:Contract/cbc:ID`` de una
+    adjudicación. Si dos lotes comparten ``ContractID`` (lo hacen: S-06722-2023)
+    el lote no se sabe y queda ``None``. Un mismo ``(ContractID, ID)`` puede
+    repetirse en la entry (3,1 % de las entries del ZIP); la repetición se
+    distingue en la clave por su orden.
+
+    Los importes son ``TaxExclusiveAmount``: base sin IVA (ADR-032). Un cero en
+    la modificación es un valor (una de solo plazo es de 0 €); en el importe
+    final es «no publicado», como en las adjudicaciones
+    (:func:`_importe_informado`): una resolución lo publica a 0.
+    """
+    cfs = "./cacext:ContractFolderStatus"
+    bloques = entry.xpath(f"{cfs}/cac:ContractModification", namespaces=NS)
+    if not bloques:
+        return []
+    lotes_de_contrato: dict[str, set[str | None]] = {}
+    for tr in entry.xpath(f"{cfs}/cac:TenderResult", namespaces=NS):
+        contrato = _text(tr, "./cac:Contract/cbc:ID")
+        if contrato:
+            lotes_de_contrato.setdefault(contrato, set()).add(_lote_del_resultado(tr))
+
+    ordenados = sorted(
+        enumerate(bloques), key=lambda par: (_numero_de_orden(_text(par[1], "./cbc:ID")), par[0])
+    )
+    fechas = _fechas_de_anuncios_de_modificacion(entry, cfs)
+    # El orden por número es el de la entry: la posición es el de publicación.
+    por_posicion = [posicion for posicion, _ in ordenados] == list(range(len(bloques)))
+    fechas_por_orden: list[str | None] = (
+        list(fechas) if por_posicion and len(fechas) == len(bloques) else [None] * len(bloques)
+    )
+
+    out: list[ModificacionContrato] = []
+    vistas: Counter[str] = Counter()
+    for (posicion, bloque), fecha in zip(ordenados, fechas_por_orden, strict=True):
+        # Sin `cbc:ID`, la posición en la entry: la fuente republica el
+        # expediente entero, en el mismo orden, en cada actualización.
+        numero = _text(bloque, "./cbc:ID") or f"#{posicion + 1}"
+        contrato = _text(bloque, "./cbc:ContractID")
+        delta, unidad_delta = _plazo(bloque, "ContractModificationDurationMeasure")
+        final, unidad_final = _plazo(bloque, "FinalDurationMeasure")
+        # Con unidades distintas no hay una unidad que poner a los dos valores.
+        unidades = {u for u in (unidad_delta, unidad_final) if u}
+        if len(unidades) > 1:
+            delta = final = None
+        modif_xp = "./cac:ContractModificationLegalMonetaryTotal/cbc:TaxExclusiveAmount"
+        final_xp = "./cac:FinalLegalMonetaryTotal/cbc:TaxExclusiveAmount"
+        importe_modif = _float(bloque, modif_xp)
+        importe_final = _importe_informado(bloque, final_xp)
+        monedas = bloque.xpath(f"{modif_xp}/@currencyID | {final_xp}/@currencyID", namespaces=NS)
+        clave = f"{licitacion_id}#{contrato or ''}#{numero}"
+        vistas[clave] += 1
+        if vistas[clave] > 1:
+            clave = f"{clave}#{vistas[clave]}"
+        lotes = lotes_de_contrato.get(contrato or "", set())
+        out.append(
+            ModificacionContrato(
+                clave=clave,
+                fuente="placsp",
+                licitacion_id=licitacion_id,
+                enlace="fuente",
+                numero=numero,
+                contrato_ref=contrato,
+                lote_numero=next(iter(lotes)) if len(lotes) == 1 else None,
+                fecha_publicacion=fecha,
+                motivo=_text(bloque, "./cbc:Note"),
+                importe_modificacion=importe_modif,
+                importe_modificacion_base=TIPO_SIN_IVA if importe_modif is not None else None,
+                importe_final=importe_final,
+                importe_final_base=TIPO_SIN_IVA if importe_final is not None else None,
+                moneda=(str(monedas[0]).strip() or None) if monedas else None,
+                plazo_modificacion=delta,
+                plazo_final=final,
+                plazo_unidad=unidades.pop() if len(unidades) == 1 else None,
+            )
+        )
     return out
 
 

@@ -200,16 +200,19 @@ def _evaluar_regla(
     if str(rule_id) in en_cola:
         log.info("watchlist_rule_aviso_en_cola", rule_id=rule_id)
         return False
-    rule = _row_to_rule(row)
-    user_key = str(row["user_key"])
-    # `None` en reglas que el backfill de v129 no resolvió.
     raw_user_id = row.get("user_id")
-    user_id = int(raw_user_id) if raw_user_id is not None else None
+    if raw_user_id is None:
+        # Regla de una clave que ningún usuario conserva (el backfill de v181 no
+        # le encontró dueño): sin id no hay anti-join contra la campana, y sin
+        # él cada pasada volvería a emitir lo mismo. No avanza su ventana.
+        log.warning("watchlist_rule_sin_usuario", rule_id=rule_id)
+        return False
+    rule = _row_to_rule(row)
+    user_id = int(raw_user_id)
     new_matches = matches_since(
         rule,
         _since_date(row, default_since),
         limit=limit_per_rule,
-        user_key=user_key,
         user_id=user_id,
     )
     if len(new_matches) >= limit_per_rule:
@@ -233,7 +236,7 @@ def _evaluar_regla(
         _AGREGADO,
         {
             "rule_id": rule_id,
-            "user_key": user_key,
+            "user_key": str(row["user_key"]),
             "nombre": rule.nombre,
             "keyword": rule.keyword,
             "cpv": rule.cpv,

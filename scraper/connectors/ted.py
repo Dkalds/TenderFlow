@@ -51,6 +51,7 @@ import requests
 
 from config import CPV_PREFIXES_UNIVERSO
 from config.keywords import etiquetas_con_senal_firme
+from db.repositories.modificaciones import ModificacionContrato
 from db.upsert import Adjudicacion, Licitacion
 from observability import get_logger
 from scraper.connectors.base import ParsedTender, RawNotice
@@ -147,7 +148,21 @@ _FIELDS = [
     "duration-period-unit-lot",
     "contract-duration-start-date-lot",
     "contract-duration-end-date-lot",
+    # BG-791, la modificación de un ``can-modif``: motivo (BT-200 código y
+    # BT-201 texto), qué cambia (BT-202) y el aviso que modifica (BT-1501).
+    # Ver `_modificacion`.
+    "BT-200-Contract",
+    "BT-201-Contract",
+    "BT-202-Contract",
+    "modification-previous-notice-identifier",
+    # BT-720 y el UUID del aviso: el valor que publica y lo que el BT-1501 de
+    # la modificación siguiente cita. Ver `_modificacion`.
+    "BT-720-Tender",
+    "notice-identifier",
 ]
+
+#: ``notice-type`` del aviso de modificación (art. 207.3 LCSP; eForms 38-40).
+_NOTICE_MODIFICACION = "can-modif"
 
 #: Tope por petición y por pasada de ``reemparejar_vigentes``: corre dentro del
 #: step de 10 minutos de ``scrape-daily.yml`` y lo que no pida lo pide la siguiente.
@@ -526,6 +541,64 @@ def _documents_url(notice: dict[str, Any]) -> str | None:
     return mejor
 
 
+def _modificacion(notice: Mapping[str, object], natural_id: str) -> ModificacionContrato:
+    """La modificación que publica un aviso ``can-modif``, sin expediente todavía.
+
+    Guarda lo que permite enlazarla después (el aviso que modifica, BT-1501,
+    que es su número o su UUID con versión; el suyo propio,
+    ``notice-identifier``, por si otra modificación lo cita; el expediente,
+    BT-22; el procedimiento, BT-04; el ``idEvl`` de sus enlaces a pliegos, y el
+    órgano) y lo que la explica: el motivo (BT-200 código, BT-201 texto) y la
+    descripción (BT-202). ``url`` es el aviso, no los pliegos: es lo que la
+    ficha enlaza como «Ver el aviso».
+
+    BT-720 va a ``importe_aviso`` con base ``desconocido``: en los avisos de
+    España es unas veces el valor tras la modificación y otras una copia del
+    valor del original (260 de 262 pares lo repiten, medido el 2026-11-10), y
+    la base de IVA varía. No es el importe final ni el de la modificación.
+    """
+    links = notice.get("links")
+    pdf = links.get("pdf") if isinstance(links, dict) else None
+    anuncio_url = pdf.get("SPA") if isinstance(pdf, dict) else None
+    originales = {
+        _sin_ceros(v) for v in _valores(notice.get("modification-previous-notice-identifier"))
+    }
+    valor = _unico(notice.get("BT-720-Tender"))
+    importe_aviso = _to_float(valor) if valor is not None else None
+    return ModificacionContrato(
+        clave=f"{SOURCE_ID}:{natural_id}",
+        fuente=SOURCE_ID,
+        fecha_publicacion=_first_date(notice.get("publication-date")),
+        motivo_codigo=_unico(notice.get("BT-200-Contract")),
+        motivo=_first_lang(notice.get("BT-201-Contract")),
+        descripcion=_first_lang(notice.get("BT-202-Contract")),
+        importe_aviso=importe_aviso,
+        importe_aviso_base="desconocido" if importe_aviso is not None else None,
+        identificador_aviso=_unico(notice.get("notice-identifier")),
+        # Un aviso puede modificar varios contratos de distintos avisos: con
+        # más de un original no hay uno con el que enlazar por esta vía.
+        aviso_original=originales.pop() if len(originales) == 1 else None,
+        expediente_ref=_expediente(dict(notice)),
+        procedimiento_ref=_procedimiento(notice),
+        id_evl=_id_evl(dict(notice)),
+        organo=_first_lang(notice.get("buyer-name")),
+        url=anuncio_url or f"https://ted.europa.eu/es/notice/{natural_id}/pdf",
+    )
+
+
+def _sin_ceros(aviso: str) -> str:
+    """``00023108-2025`` → ``23108-2025``: el XML guarda ceros que la API y ``id_externo`` no."""
+    if _NUMERO_PUBLICACION.fullmatch(aviso):
+        numero, _, anio = aviso.partition("-")
+        return f"{numero.lstrip('0') or '0'}-{anio}"
+    return aviso
+
+
+_UUID_CON_VERSION = re.compile(
+    r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})-\d+"
+)
+
+
 class TedConnector:
     """Implementación del contrato Connector para la Search API v3 de TED."""
 
@@ -547,6 +620,7 @@ class TedConnector:
         self._session = session or requests.Session()
         self._max_pub_date: str | None = None
         self._referencias: dict[str, ReferenciaCruzada] = {}
+        self._modificaciones: list[ModificacionContrato] = []
 
     # ── fetch ────────────────────────────────────────────────────────────
 
@@ -630,6 +704,12 @@ class TedConnector:
         estado = _ESTADO_MAP.get(notice_type.split("-")[0])
         if estado is None:
             return None  # tipos no relevantes (sanciones, perfiles, etc.)
+        if notice_type == _NOTICE_MODIFICACION:
+            # No es una licitación: es la modificación de un contrato que ya se
+            # adjudicó. Hasta 2026-11-10 entraba como una fila `RES` más (471
+            # filas ese día), sin el motivo ni el aviso que modifica.
+            self._modificaciones.append(_modificacion(n, raw.natural_id))
+            return None
 
         titulo = _titulo(n, raw.natural_id)
         descripcion = _first_lang(n.get("description-proc"))
@@ -740,6 +820,71 @@ class TedConnector:
         consume ``scraper.connectors.base._post_ingestion``.
         """
         return dict(self._referencias)
+
+    def modificaciones_pendientes(self) -> list[ModificacionContrato]:
+        """Los avisos ``can-modif`` parseados desde la última llamada; vacía el búfer.
+
+        No cuelgan de una licitación de la pasada, así que no viajan en un
+        ``ParsedTender``: los escribe y los enlaza con su expediente
+        ``scraper.connectors.base._modificaciones_sin_licitacion``.
+
+        Antes, el BT-1501 en forma de UUID se traduce al número de publicación
+        del aviso que cita (:meth:`_numeros_de_avisos`): es la forma de
+        ``id_externo``, y el 34 % de los avisos lo publica así (medido el
+        2026-11-10; 241 de los 245 originales eran adjudicaciones). Lo que la
+        API no resuelva se queda como UUID.
+        """
+        pendientes, self._modificaciones = self._modificaciones, []
+        uuids = {
+            m.aviso_original: encontrado.group(1)
+            for m in pendientes
+            if m.aviso_original and (encontrado := _UUID_CON_VERSION.fullmatch(m.aviso_original))
+        }
+        if uuids:
+            numeros = self._numeros_de_avisos(sorted(set(uuids.values())))
+            for m in pendientes:
+                if m.aviso_original in uuids and (n := numeros.get(uuids[m.aviso_original])):
+                    m.aviso_original = n
+        return pendientes
+
+    def _numeros_de_avisos(
+        self,
+        identificadores: list[str],
+        *,
+        presupuesto_s: float = _PRESUPUESTO_REEMPAREJO_S,
+        reloj: Callable[[], float] = time.monotonic,
+    ) -> dict[str, str]:
+        """``{notice-identifier: publication-number}`` según la API. Fail-open.
+
+        Sin reintentos y con presupuesto, como :meth:`reemparejar_vigentes`: lo
+        que no se resuelva aquí se queda en UUID y aún puede enlazar por BT-22,
+        BT-04 o ``idEvl``.
+        """
+        numeros: dict[str, str] = {}
+        inicio_s = reloj()
+        for inicio in range(0, len(identificadores), _PAGE_SIZE):
+            if reloj() - inicio_s >= presupuesto_s:
+                break
+            lote = identificadores[inicio : inicio + _PAGE_SIZE]
+            cuerpo = {
+                "query": f"notice-identifier IN ({' '.join(lote)})",
+                "fields": ["publication-number", "notice-identifier"],
+                "limit": len(lote),
+                "scope": "ALL",
+            }
+            try:
+                resp = self._session.post(_API_URL, json=cuerpo, timeout=_TIMEOUT_REFERENCIAS_S)
+                resp.raise_for_status()
+                avisos = resp.json().get("notices") or []
+            except Exception as e:
+                log.warning("ted_avisos_originales_no_resueltos", error=str(e), n=len(lote))
+                continue
+            for aviso in avisos:
+                uuid = _unico(aviso.get("notice-identifier"))
+                numero = aviso.get("publication-number")
+                if uuid and isinstance(numero, str) and _NUMERO_PUBLICACION.fullmatch(numero):
+                    numeros[uuid] = numero
+        return numeros
 
     # ── documentos ───────────────────────────────────────────────────────
 

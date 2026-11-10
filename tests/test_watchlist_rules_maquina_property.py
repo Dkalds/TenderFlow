@@ -159,7 +159,7 @@ def test_las_reglas_de_alerta_se_comportan_como_su_modelo(tmp_db):
 
         @rule(target=vivas, persona=st.sampled_from(_PERSONAS), regla=_reglas)
         def crear(self, persona: str, regla: WatchlistRule) -> tuple[str, int]:
-            rid = create_rule(persona, regla, user_id=ids[persona])
+            rid = create_rule(ids[persona], regla)
             assert rid > 0
             self.modelo[persona][rid] = regla
             return persona, rid
@@ -167,7 +167,7 @@ def test_las_reglas_de_alerta_se_comportan_como_su_modelo(tmp_db):
         @rule(viva=vivas, regla=_reglas)
         def editar(self, viva: tuple[str, int], regla: WatchlistRule) -> None:
             persona, rid = viva
-            assert update_rule(persona, rid, regla, user_id=ids[persona]) is True
+            assert update_rule(ids[persona], rid, regla) is True
             self.modelo[persona][rid] = regla
 
         @rule(viva=vivas, regla=_reglas)
@@ -176,21 +176,21 @@ def test_las_reglas_de_alerta_se_comportan_como_su_modelo(tmp_db):
         ) -> None:
             persona, rid = viva
             (otra,) = (p for p in _PERSONAS if p != persona)
-            assert update_rule(otra, rid, regla, user_id=ids[otra]) is False
-            assert delete_rule(otra, rid, user_id=ids[otra]) is False
+            assert update_rule(ids[otra], rid, regla) is False
+            assert delete_rule(ids[otra], rid) is False
 
         @rule(viva=consumes(vivas))
         def borrar(self, viva: tuple[str, int]) -> None:
             persona, rid = viva
-            assert delete_rule(persona, rid, user_id=ids[persona]) is True
+            assert delete_rule(ids[persona], rid) is True
             del self.modelo[persona][rid]
             # Borrada, ya no existe ni para su dueña.
-            assert delete_rule(persona, rid, user_id=ids[persona]) is False
+            assert delete_rule(ids[persona], rid) is False
 
         @invariant()
         def cada_persona_ve_exactamente_sus_reglas(self) -> None:
             for persona in _PERSONAS:
-                listado = list_rules(persona, user_id=ids[persona])
+                listado = list_rules(ids[persona])
                 assert {r.id: _comparable(r) for r in listado} == {
                     rid: _comparable(regla) for rid, regla in self.modelo[persona].items()
                 }

@@ -81,16 +81,14 @@ def test_seguir_y_descartar_lo_mismo_conviven(tmp_db: Any) -> None:
     db_mod, _ = tmp_db
     from db.repositories import follows as repo
 
-    user_id, org_id, user_key = _usuario(db_mod, "dos-signos@example.test")
+    user_id, org_id, _ = _usuario(db_mod, "dos-signos@example.test")
     a = repo.registrar(
-        user_key=user_key,
         user_id=user_id,
         organization_id=org_id,
         target_type="licitacion",
         target_id="LIC-DOS",
     )
     b = repo.registrar(
-        user_key=user_key,
         user_id=user_id,
         organization_id=org_id,
         target_type="licitacion",
@@ -105,12 +103,11 @@ def test_registrar_es_idempotente_y_mueve_la_caducidad(tmp_db: Any) -> None:
     db_mod, _ = tmp_db
     from db.repositories import follows as repo
 
-    user_id, org_id, user_key = _usuario(db_mod, "posponer@example.test")
+    user_id, org_id, _ = _usuario(db_mod, "posponer@example.test")
     semana = (datetime.now(UTC) + timedelta(days=7)).isoformat()
     mes = (datetime.now(UTC) + timedelta(days=30)).isoformat()
 
     primero = repo.registrar(
-        user_key=user_key,
         user_id=user_id,
         organization_id=org_id,
         target_type="licitacion",
@@ -119,7 +116,6 @@ def test_registrar_es_idempotente_y_mueve_la_caducidad(tmp_db: Any) -> None:
         hasta=semana,
     )
     segundo = repo.registrar(
-        user_key=user_key,
         user_id=user_id,
         organization_id=org_id,
         target_type="licitacion",
@@ -140,15 +136,15 @@ def test_el_favorito_deja_fila_en_follows(tmp_db: Any) -> None:
     from db.repositories import follows as repo
     from db.repositories.watchlist import WatchlistRepository
 
-    user_id, org_id, user_key = _usuario(db_mod, "favorito@example.test")
+    user_id, org_id, _ = _usuario(db_mod, "favorito@example.test")
     _licitacion(db_mod, "LIC-FAV")
 
-    WatchlistRepository().add_item(user_key, user_id, "LIC-FAV", org_id, "private")
-    seguidos = repo.listar(user_key=user_key, user_id=user_id, organization_id=org_id)
+    WatchlistRepository().add_item(user_id, "LIC-FAV", org_id, "private")
+    seguidos = repo.listar(user_id=user_id, organization_id=org_id)
     assert [(f["target_type"], f["target_id"]) for f in seguidos] == [("licitacion", "LIC-FAV")]
 
-    WatchlistRepository().remove_item(user_key, "LIC-FAV", org_id, user_id)
-    assert repo.listar(user_key=user_key, user_id=user_id, organization_id=org_id) == []
+    WatchlistRepository().remove_item(user_id, "LIC-FAV", org_id)
+    assert repo.listar(user_id=user_id, organization_id=org_id) == []
 
 
 def test_la_empresa_seguida_deja_fila_en_follows(tmp_db: Any) -> None:
@@ -156,7 +152,7 @@ def test_la_empresa_seguida_deja_fila_en_follows(tmp_db: Any) -> None:
     from db.repositories import follows as repo
     from db.watchlist_empresas import WatchlistEmpresaEntry, add_entry, remove_entry
 
-    user_id, org_id, user_key = _usuario(db_mod, "empresa@example.test")
+    user_id, org_id, _ = _usuario(db_mod, "empresa@example.test")
     with db_mod.connect() as c:
         fila = c.execute(
             "INSERT INTO empresas (nombre_canonico, created_at, updated_at) "
@@ -167,26 +163,18 @@ def test_la_empresa_seguida_deja_fila_en_follows(tmp_db: Any) -> None:
 
     add_entry(
         WatchlistEmpresaEntry(
-            user_key=user_key,
             user_id=user_id,
             empresa_id=empresa_id,
             organization_id=org_id,
         )
     )
-    seguidas = repo.listar(
-        user_key=user_key, user_id=user_id, organization_id=org_id, target_type="empresa"
-    )
+    seguidas = repo.listar(user_id=user_id, organization_id=org_id, target_type="empresa")
     # `target_id` es texto aunque la empresa sea un entero: el objetivo es
     # polimórfico y por eso no puede llevar clave foránea (ADR-031 §Riesgo).
     assert [f["target_id"] for f in seguidas] == [str(empresa_id)]
 
-    remove_entry(user_key, empresa_id, org_id, user_id=user_id)
-    assert (
-        repo.listar(
-            user_key=user_key, user_id=user_id, organization_id=org_id, target_type="empresa"
-        )
-        == []
-    )
+    remove_entry(user_id, empresa_id, org_id)
+    assert repo.listar(user_id=user_id, organization_id=org_id, target_type="empresa") == []
 
 
 def test_el_descarte_del_radar_deja_fila_con_signo_negativo(tmp_db: Any) -> None:
@@ -202,18 +190,13 @@ def test_el_descarte_del_radar_deja_fila_con_signo_negativo(tmp_db: Any) -> None
     )
 
     # No aparece entre lo seguido...
-    assert repo.listar(user_key=user_key, user_id=user_id, organization_id=org_id) == []
+    assert repo.listar(user_id=user_id, organization_id=org_id) == []
     # ...sino entre lo descartado. Descartar es seguir con signo negativo.
-    descartes = repo.listar(
-        user_key=user_key, user_id=user_id, organization_id=org_id, kind="descartar"
-    )
+    descartes = repo.listar(user_id=user_id, organization_id=org_id, kind="descartar")
     assert [f["target_id"] for f in descartes] == ["LIC-DESC"]
 
     radar_dismissals.remove(user_key, "LIC-DESC", user_id=user_id)
-    assert (
-        repo.listar(user_key=user_key, user_id=user_id, organization_id=org_id, kind="descartar")
-        == []
-    )
+    assert repo.listar(user_id=user_id, organization_id=org_id, kind="descartar") == []
 
 
 # ── 3. La copia no puede tumbar al original ─────────────────────────────────
@@ -224,11 +207,11 @@ def test_si_follows_falla_el_favorito_se_guarda_igual(tmp_db: Any) -> None:
     db_mod, _ = tmp_db
     from db.repositories.watchlist import WatchlistRepository
 
-    user_id, org_id, user_key = _usuario(db_mod, "resiliente@example.test")
+    user_id, org_id, _ = _usuario(db_mod, "resiliente@example.test")
     _licitacion(db_mod, "LIC-RESIL")
 
     with patch("db.repositories.follows.connect", side_effect=RuntimeError("follows caída")):
-        item = WatchlistRepository().add_item(user_key, user_id, "LIC-RESIL", org_id, "private")
+        item = WatchlistRepository().add_item(user_id, "LIC-RESIL", org_id, "private")
 
     assert item["id_externo"] == "LIC-RESIL"
     with db_mod.connect_read() as c:
@@ -247,11 +230,10 @@ def test_seguir_un_organo_y_un_cpv(tmp_db: Any) -> None:
     db_mod, _ = tmp_db
     from db.repositories import follows as repo
 
-    user_id, org_id, user_key = _usuario(db_mod, "organo@example.test")
+    user_id, org_id, _ = _usuario(db_mod, "organo@example.test")
     for tipo, objetivo in (("organo", "E05068001"), ("cpv", "72000000")):
         assert (
             repo.registrar(
-                user_key=user_key,
                 user_id=user_id,
                 organization_id=org_id,
                 target_type=tipo,
@@ -260,10 +242,7 @@ def test_seguir_un_organo_y_un_cpv(tmp_db: Any) -> None:
             is not None
         )
 
-    tipos = {
-        f["target_type"]
-        for f in repo.listar(user_key=user_key, user_id=user_id, organization_id=org_id)
-    }
+    tipos = {f["target_type"] for f in repo.listar(user_id=user_id, organization_id=org_id)}
     assert tipos == {"organo", "cpv"}
 
 
@@ -274,9 +253,8 @@ def test_quien_sigue_esto(tmp_db: Any) -> None:
 
     a_id, a_org, a_key = _usuario(db_mod, "sigue-a@example.test")
     b_id, b_org, b_key = _usuario(db_mod, "sigue-b@example.test")
-    for uid, org, key in ((a_id, a_org, a_key), (b_id, b_org, b_key)):
+    for uid, org in ((a_id, a_org), (b_id, b_org)):
         repo.registrar(
-            user_key=key,
             user_id=uid,
             organization_id=org,
             target_type="organo",
@@ -305,9 +283,9 @@ def test_el_script_de_paridad_da_cero_con_la_escritura_doble(tmp_db: Any) -> Non
     from db.repositories.watchlist import WatchlistRepository
     from scripts.check_follows_paridad import medir
 
-    user_id, org_id, user_key = _usuario(db_mod, "paridad@example.test")
+    user_id, org_id, _ = _usuario(db_mod, "paridad@example.test")
     _licitacion(db_mod, "LIC-PAR")
-    WatchlistRepository().add_item(user_key, user_id, "LIC-PAR", org_id, "private")
+    WatchlistRepository().add_item(user_id, "LIC-PAR", org_id, "private")
 
     diferencias = {d.tabla: d for d in medir()}
     favoritos = diferencias["watchlist_items"]
@@ -344,10 +322,9 @@ def test_un_descarte_caducado_deja_de_contar_sin_borrarse(tmp_db: Any) -> None:
     db_mod, _ = tmp_db
     from db.repositories import follows as repo
 
-    user_id, org_id, user_key = _usuario(db_mod, "caducado@example.test")
+    user_id, org_id, _ = _usuario(db_mod, "caducado@example.test")
     ayer = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     repo.registrar(
-        user_key=user_key,
         user_id=user_id,
         organization_id=org_id,
         target_type="licitacion",
@@ -356,14 +333,11 @@ def test_un_descarte_caducado_deja_de_contar_sin_borrarse(tmp_db: Any) -> None:
         hasta=ayer,
     )
 
-    vigentes = repo.listar(
-        user_key=user_key, user_id=user_id, organization_id=org_id, kind="descartar"
-    )
+    vigentes = repo.listar(user_id=user_id, organization_id=org_id, kind="descartar")
     assert vigentes == []
 
     # La fila sigue ahí: hace falta para poder decir «lo descartaste el día X».
     todos = repo.listar(
-        user_key=user_key,
         user_id=user_id,
         organization_id=org_id,
         kind="descartar",

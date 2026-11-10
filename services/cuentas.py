@@ -669,9 +669,8 @@ def _copiar_para_miembro(
         from services.watchlist_rules import WatchlistRule, create_rule
 
         create_rule(
-            user_key,
+            user_id,
             WatchlistRule(**contenido),
-            user_id=user_id,
             organization_id=organization_id,
             # `private`: la copia es **del miembro**, no de la organización.
             # Con `organization` la vería todo el equipo y editarla se la

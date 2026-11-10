@@ -129,18 +129,16 @@ def _valores(rule: WatchlistRule) -> ValoresRegla:
 
 
 def create_rule(
-    user_key: str,
+    user_id: int,
     rule: WatchlistRule,
     *,
-    user_id: int | None = None,
     organization_id: int | None = None,
     visibility: str = "private",
 ) -> int:
     """Persiste una regla nueva y devuelve su id."""
     return insertar_regla(
-        user_key,
+        user_id,
         _valores(rule),
-        user_id=user_id,
         organization_id=organization_id,
         visibility=visibility,
     )
@@ -238,7 +236,6 @@ def asegurar_alerta_por_defecto(
     if not reglas:
         return []
     from db.users import get_user_by_id
-    from shared.identity import user_key_from_email
 
     usuario = get_user_by_id(user_id)
     email = str((usuario or {}).get("email") or "").strip()
@@ -247,9 +244,8 @@ def asegurar_alerta_por_defecto(
         return []
     ids = crear_reglas_por_defecto(
         organization_id,
-        user_key_from_email(email, user_id),
+        user_id,
         [_valores(regla) for regla in reglas],
-        user_id=user_id,
         email=email,
         creada_en=datetime.now(UTC).isoformat(),
     )
@@ -286,50 +282,42 @@ def _fila_a_regla(row: Mapping[str, Any]) -> WatchlistRule:
     )
 
 
-def list_rules(
-    user_key: str, organization_id: int | None = None, *, user_id: int | None = None
-) -> list[WatchlistRule]:
+def list_rules(user_id: int, organization_id: int | None = None) -> list[WatchlistRule]:
     """Reglas de un usuario, más recientes primero."""
-    filas = filas_de_reglas(user_key, organization_id, user_id=user_id)
+    filas = filas_de_reglas(user_id, organization_id)
     return [_fila_a_regla(fila) for fila in filas]
 
 
 def update_rule(
-    user_key: str,
+    user_id: int,
     rule_id: int,
     rule: WatchlistRule,
     organization_id: int | None = None,
-    *,
-    user_id: int | None = None,
 ) -> bool:
     """Actualiza una regla propia. ``False`` si no existe o no es del usuario."""
-    return actualizar_regla(user_key, rule_id, _valores(rule), organization_id, user_id=user_id)
+    return actualizar_regla(user_id, rule_id, _valores(rule), organization_id)
 
 
-def delete_rule(
-    user_key: str,
-    rule_id: int,
-    organization_id: int | None = None,
-    *,
-    user_id: int | None = None,
-) -> bool:
+def delete_rule(user_id: int, rule_id: int, organization_id: int | None = None) -> bool:
     """Borra una regla propia. ``False`` si no existe o no es del usuario."""
-    return borrar_regla(user_key, rule_id, organization_id, user_id=user_id)
+    return borrar_regla(user_id, rule_id, organization_id)
 
 
-def delete_all_for_user(user_key: str, *, user_id: int | None = None) -> int:
+def delete_all_for_user(user_id: int) -> int:
     """Borra todas las reglas del usuario (GDPR). Devuelve el numero de filas borradas."""
-    return borrar_reglas_de_usuario(user_key, user_id=user_id)
+    return borrar_reglas_de_usuario(user_id)
 
 
-def deactivate_all_for_user(user_key: str, *, user_id: int | None = None) -> int:
-    """Pausa todas las reglas del usuario. Devuelve cuántas estaban activas.
+def deactivate_all_for_user(user_key: str) -> int:
+    """Pausa todas las reglas con esa clave. Devuelve cuántas estaban activas.
 
     Es la «baja» del enlace que va al pie de cada digest: no borra nada —las
     reglas siguen en Mi Watchlist y se reactivan desde allí— pero corta el
-    correo de inmediato, que es lo único que quien pulsa ese enlace quiere.
+    correo de inmediato, que es lo único que quien pulsa ese enlace quiere. Va
+    **por clave** porque los correos ya enviados llevan la ``user_key`` firmada
+    y no un ``user_id``.
     """
-    return pausar_reglas_de_usuario(user_key, user_id=user_id)
+    return pausar_reglas_de_usuario(user_key)
 
 
 # ---------------------------------------------------------------------------
@@ -738,7 +726,6 @@ def matches_since(
     since: str | None,
     *,
     limit: int = 50,
-    user_key: str | None = None,
     user_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """Matches de la regla desde ``since`` que aún no se han notificado.
@@ -751,10 +738,9 @@ def matches_since(
     sembraban días distintos. El razonamiento completo está en
     ``db.repositories.watchlist_rules``.
 
-    ``user_key`` activa el anti-join contra las notificaciones ya escritas, que
+    ``user_id`` activa el anti-join contra las notificaciones ya escritas, que
     es lo que hace seguro el solape de ventanas. Sin él —vista previa, tests que
     no ejercen el job— la función es un listado con corte temporal y basta.
-    ``user_id`` (v129) hace dual ese anti-join y no cambia nada más.
     """
     clauses = _rule_clauses(rule)
     if rule.banda_min:
@@ -767,6 +753,5 @@ def matches_since(
         _MATCH_COLS,
         desde=since,
         limit=limit,
-        user_key=user_key,
         user_id=user_id,
     )

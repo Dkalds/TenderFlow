@@ -48,7 +48,7 @@ def _anonimizar(**kwargs: object) -> dict[str, MagicMock]:
 
 def test_el_borrado_alcanza_follows_votos_y_preferencias() -> None:
     llamadas = _anonimizar(user_id=5)
-    llamadas["follows"].assert_called_once_with("clave", user_id=5)
+    llamadas["follows"].assert_called_once_with(user_id=5)
     llamadas["votos"].assert_called_once_with(5)
     llamadas["prefs"].assert_called_once_with(5)
     llamadas["consultas"].assert_called_once_with(5)
@@ -56,7 +56,8 @@ def test_el_borrado_alcanza_follows_votos_y_preferencias() -> None:
 
 def test_sin_user_id_solo_se_borra_lo_que_se_guarda_por_clave() -> None:
     llamadas = _anonimizar()
-    llamadas["follows"].assert_called_once_with("clave", user_id=None)
+    # `follows` se identifica por id desde v181: sin él no hay nada suyo.
+    llamadas["follows"].assert_not_called()
     llamadas["votos"].assert_not_called()
     llamadas["prefs"].assert_not_called()
     llamadas["consultas"].assert_not_called()
@@ -67,5 +68,5 @@ def test_export_follows_delega_en_el_repositorio() -> None:
 
     filas = [{"id": 1}]
     with patch("db.repositories.follows.exportar_de_usuario", return_value=filas) as exportar:
-        assert export_follows("clave", user_id=5) == filas
-    exportar.assert_called_once_with("clave", user_id=5)
+        assert export_follows(5) == filas
+    exportar.assert_called_once_with(user_id=5)

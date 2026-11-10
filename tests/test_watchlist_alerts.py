@@ -106,7 +106,7 @@ def test_check_and_notify_empty_watchlist_returns_zero(tmp_db):
 
     importlib.reload(watchlist_alerts)
 
-    with patch("scheduler.watchlist_alerts.list_entries", return_value=[]):
+    with patch("scheduler.watchlist_alerts.list_entries_por_clave", return_value=[]):
         result = watchlist_alerts.check_and_notify()
     assert result == 0
 
@@ -136,7 +136,7 @@ def test_check_and_notify_no_email_no_notify(tmp_db, monkeypatch):
     }
 
     with (
-        patch("scheduler.watchlist_alerts.list_entries", return_value=[entry]),
+        patch("scheduler.watchlist_alerts.list_entries_por_clave", return_value=[entry]),
         patch("scheduler.watchlist_alerts.update_last_notified") as mock_update,
         patch("scheduler.watchlist_alerts.notify") as mock_notify,
     ):
@@ -186,7 +186,7 @@ def test_check_and_notify_with_matches_emite_el_evento(tmp_db):
     }
 
     with (
-        patch("scheduler.watchlist_alerts.list_entries", return_value=[entry]),
+        patch("scheduler.watchlist_alerts.list_entries_por_clave", return_value=[entry]),
         patch("scheduler.watchlist_alerts._query_licitaciones_batch", return_value={"48": [lic]}),
         patch("scheduler.watchlist_alerts.matches_licitacion", return_value=True),
         patch("scheduler.watchlist_alerts.update_last_notified") as mock_update,
@@ -229,7 +229,7 @@ def test_check_and_notify_with_email_no_matches_no_notify(tmp_db):
     }
 
     with (
-        patch("scheduler.watchlist_alerts.list_entries", return_value=[entry]),
+        patch("scheduler.watchlist_alerts.list_entries_por_clave", return_value=[entry]),
         patch("scheduler.watchlist_alerts.update_last_notified"),
         patch("scheduler.watchlist_alerts.append_domain_event") as mock_evento,
     ):
@@ -269,7 +269,7 @@ def test_inmediatas_y_digest_van_en_eventos_separados_y_un_fallo_no_frena_al_otr
 
     with (
         patch(
-            "scheduler.watchlist_alerts.list_entries",
+            "scheduler.watchlist_alerts.list_entries_por_clave",
             return_value=[entrada(1, "immediate"), entrada(2, "daily")],
         ),
         patch("scheduler.watchlist_alerts._query_licitaciones_batch", return_value={"48": [lic]}),

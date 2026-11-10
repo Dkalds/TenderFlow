@@ -84,18 +84,19 @@ def test_lo_ya_emitido_no_se_vuelve_a_emitir() -> None:
 
 
 def test_check_all_users_suma_favoritos_y_pursuits_y_sobrevive_a_un_fallo() -> None:
+    sentencias: list[str] = []
+
     class _Cursor:
-        # Dos columnas desde v129: la consulta es
-        # `SELECT user_key, MAX(user_id) ... GROUP BY user_key`, porque una
-        # clave con filas resueltas y sin resolver por el backfill es UN
-        # usuario. La segunda entrada llega sin `user_id` a propósito: es la
-        # fila que el backfill no pudo casar por correo, y el camino tiene que
-        # seguir funcionando con `None`.
-        def fetchall(self) -> list[tuple[str, int | None]]:
-            return [("clave-a", 7), ("clave-b", None)]
+        # Una columna desde v181: la consulta es
+        # `SELECT DISTINCT user_id ... WHERE user_id IS NOT NULL`. Las filas sin
+        # id (claves que ningún usuario reclamó) no tienen a quién avisar y la
+        # propia consulta las deja fuera.
+        def fetchall(self) -> list[tuple[int]]:
+            return [(7,), (8,)]
 
     class _Conn:
-        def execute(self, *_: Any) -> _Cursor:
+        def execute(self, sql: str, *_: Any) -> _Cursor:
+            sentencias.append(sql)
             return _Cursor()
 
         def __enter__(self) -> _Conn:
@@ -106,7 +107,12 @@ def test_check_all_users_suma_favoritos_y_pursuits_y_sobrevive_a_un_fallo() -> N
 
     with (
         patch("db.repositories.watchlist.connect_read", return_value=_Conn()),
-        patch.object(mod, "check_deadlines_and_notify", side_effect=[2, RuntimeError("boom")]),
+        patch.object(
+            mod, "check_deadlines_and_notify", side_effect=[2, RuntimeError("boom")]
+        ) as comprobar,
         patch.object(mod, "check_pursuit_deadlines", side_effect=RuntimeError("sin tabla")),
     ):
         assert mod.check_all_users_deadlines() == 2
+
+    assert [c.args for c in comprobar.call_args_list] == [(7,), (8,)]
+    assert "user_id IS NOT NULL" in sentencias[0]
