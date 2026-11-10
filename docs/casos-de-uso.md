@@ -294,6 +294,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Quien solo lee los ve y los descarga, pero no sube ni retira; otra
   organización no los alcanza ni por su identificador.
 - Un entorno sin almacén de documentos lo dice y no acepta ningún fichero.
+- Lo que el equipo permite citar de esos documentos es CU-36.
 
 ### CU-28 — Acotar Detalle y el tablero por etiqueta, responsable y plazo
 
@@ -352,8 +353,9 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - **Quién:** propietario o administrador de la organización. **Dónde:**
   Equipo › Actividad, rastro de auditoría.
 - Ve, del más reciente al más antiguo, quién entró y salió del equipo, los
-  cambios de rol, de configuración, de capacidad y de pesos del go/no-go, con
-  quién lo hizo (por su identidad, nunca por su correo).
+  cambios de rol, de configuración, de capacidad y de pesos del go/no-go, y
+  qué adjuntos se permitió citar o se dejó de permitir (CU-36), con quién lo
+  hizo (por su identidad, nunca por su correo).
 - Acota por fechas, recorre el rastro página a página sin repetir ni saltarse
   nada y se lo lleva en CSV.
 - Un miembro que no administra no lo ve.
@@ -409,6 +411,24 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - Desde la cabecera abre la oportunidad (o va a la que ya existe, sin
   duplicarla) y descarga el dossier de decisión en PDF.
 
+### CU-36 — Citar los documentos propios de la organización
+
+- **Quién:** equipo de preventa. **Dónde:** ficha de la oportunidad, Adjuntos;
+  el Investigador y el guion de la oferta.
+- Permite, fichero a fichero, que un adjunto se cite. Antes de activarlo, la
+  pantalla dice quién verá los extractos y qué se guarda; después ve si el
+  fichero se está leyendo, si ya se puede citar o por qué no se pudo leer.
+- El Investigador y el guion de la oferta enseñan, junto a las citas del
+  pliego, extractos literales de esos documentos, rotulados como de su
+  organización, con el fichero, la página y la oportunidad de la que salen. El
+  fichero se descarga con el enlace que caduca.
+- Quitar el permiso o retirar el adjunto borra el texto guardado. Quien solo
+  lee ve las citas, pero no cambia el permiso.
+- Otra organización no recibe esos extractos ni preguntando lo mismo ni
+  pidiendo el adjunto por su identificador.
+- Cuántos documentos pueden citarse, y de qué tamaño y tipo, lo dicta el
+  servidor; cada cambio de permiso queda en el rastro de la organización.
+
 ## Trazabilidad
 
 <!-- trazabilidad: generado por scripts/check_casos_uso.py — no editar a mano -->
@@ -427,7 +447,7 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-10** Priorizar con el Radar | [test_escenario_seguimiento.py](../tests/test_escenario_seguimiento.py) | [navigation.spec.ts](../web/e2e/navigation.spec.ts)<br>[recorrido-radar.spec.ts](../web/e2e/recorrido-radar.spec.ts) | — |
 | **CU-11** Seguir una cuenta objetivo | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | [recorrido-cuenta.spec.ts](../web/e2e/recorrido-cuenta.spec.ts) | — |
 | **CU-12** Trabajar en equipo con roles | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | — |
-| **CU-13** Mantener separados los datos de cada organización | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | — |
+| **CU-13** Mantener separados los datos de cada organización | [test_escenario_adjuntos.py](../tests/test_escenario_adjuntos.py)<br>[test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | — |
 | **CU-14** Integrar por API con una clave propia | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | — | [claves-view.test.tsx](../web/src/app/(dashboard)/ajustes/_components/__tests__/claves-view.test.tsx) |
 | **CU-15** Exportar mis datos y borrar mi cuenta | [test_escenario_equipo_y_cuentas.py](../tests/test_escenario_equipo_y_cuentas.py) | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
 | **CU-16** Exportar el ámbito a CSV | — | [critical-workflows.spec.ts](../web/e2e/critical-workflows.spec.ts) | — |
@@ -446,11 +466,12 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 | **CU-29** Enterarme de lo que me concierne desde la campana | [test_escenario_campana.py](../tests/test_escenario_campana.py) | — | [notification-bell.test.tsx](../web/src/components/__tests__/notification-bell.test.tsx)<br>[ver-todas-sheet.test.tsx](../web/src/components/campana/__tests__/ver-todas-sheet.test.tsx) |
 | **CU-30** Tener al día la documentación acreditativa | [test_escenario_documentacion.py](../tests/test_escenario_documentacion.py) | — | [test_unit_referencias_sugeridas.py](../tests/test_unit_referencias_sugeridas.py)<br>[page.test.tsx](../web/src/app/(dashboard)/equipo/__tests__/page.test.tsx)<br>[organizacion-documentacion.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/organizacion-documentacion.test.tsx)<br>[organizacion-referencias-sugeridas.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/organizacion-referencias-sugeridas.test.tsx) |
 | **CU-31** Pedir acceso, recibirlo y crearme la cuenta | [test_escenario_alta_tras_concesion.py](../tests/test_escenario_alta_tras_concesion.py) | — | — |
-| **CU-32** Revisar y exportar lo que cambió en la organización | [test_escenario_gobierno_organizacion.py](../tests/test_escenario_gobierno_organizacion.py) | — | [auditoria-organizacion-card.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/auditoria-organizacion-card.test.tsx) |
+| **CU-32** Revisar y exportar lo que cambió en la organización | [test_escenario_adjuntos.py](../tests/test_escenario_adjuntos.py)<br>[test_escenario_gobierno_organizacion.py](../tests/test_escenario_gobierno_organizacion.py) | — | [auditoria-organizacion-card.test.tsx](../web/src/app/(dashboard)/equipo/_components/__tests__/auditoria-organizacion-card.test.tsx) |
 | **CU-33** Mantener la integración del equipo por webhook | [test_escenario_webhooks.py](../tests/test_escenario_webhooks.py) (x2) | — | [webhook-row.test.tsx](../web/src/app/(dashboard)/ops/_components/webhooks/__tests__/webhook-row.test.tsx) |
 | **CU-34** Arrancar por lo que da valor | — | [recorrido-primeros-pasos.spec.ts](../web/e2e/recorrido-primeros-pasos.spec.ts) | [primeros-pasos.test.tsx](../web/src/app/(dashboard)/resumen/_components/__tests__/primeros-pasos.test.tsx) |
 | **CU-35** Decidir desde la ficha si se presenta | [test_escenario_ficha_decidir.py](../tests/test_escenario_ficha_decidir.py) | — | [test_unit_dossier_licitacion.py](../tests/test_unit_dossier_licitacion.py)<br>[test_user_key_sql_isolation.py](../tests/test_user_key_sql_isolation.py)<br>[condiciones-oficiales.test.tsx](../web/src/components/pliego/__tests__/condiciones-oficiales.test.tsx) |
+| **CU-36** Citar los documentos propios de la organización | [test_escenario_adjuntos.py](../tests/test_escenario_adjuntos.py) | — | [adjuntos-panel.test.tsx](../web/src/components/pursuits/__tests__/adjuntos-panel.test.tsx)<br>[citas-organizacion.test.tsx](../web/src/components/pursuits/__tests__/citas-organizacion.test.tsx) |
 
-**35 casos**, 35 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
+**36 casos**, 36 con recorrido y 0 sin él (ver `SIN_RECORRIDO` en `scripts/check_casos_uso.py`).
 
 <!-- fin trazabilidad -->

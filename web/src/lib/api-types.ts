@@ -184,6 +184,8 @@ export type GuionOferta = Schemas["GuionOferta"];
 export type RenovacionPreparada = Schemas["RenovacionPreparada"];
 export type GuionCriterio = Schemas["GuionCriterio"];
 export type PuntoGuion = Schemas["PuntoGuion"];
+/** Extracto literal de un documento que la organización permitió citar (ADR-040). */
+export type CitaOrganizacion = Schemas["CitaOrganizacion"];
 export type ComparacionFichas = Schemas["ComparacionFichas"];
 export type FilaComparacion = Schemas["FilaComparacion"];
 export type CeldaComparacion = Schemas["CeldaComparacion"];

@@ -30,7 +30,12 @@ from api.routes.licitaciones._base import (
 )
 from api.tenancy import require_organization
 from observability.logging import get_logger
-from services.rag.guion_oferta import GuionOferta, generar_guion, guion_pdf
+from services.rag.guion_oferta import (
+    GuionOferta,
+    con_citas_de_organizacion,
+    generar_guion,
+    guion_pdf,
+)
 from shared.dto import CondicionesOficiales
 from shared.identity import Principal
 from shared.tender_facts import TenderFactSheetRecord
@@ -60,13 +65,17 @@ async def post_guion_oferta(
 
     El presupuesto se ata al mismo sujeto opaco que el resto de superficies
     LLM, con la `user_key` del auth y nunca el email ni el `user_id` crudo.
+
+    Cada criterio trae además `citas_organizacion`: extractos literales de los
+    documentos que la organización activa marcó indexables (ADR-040). Se buscan
+    en cada petición y no se guardan con el guion, que es común a todas.
     """
     from llm.budget import LLMBudgetExceeded, bind_budget_org, bind_budget_subject
 
     def _trabajo() -> GuionOferta:
         bind_budget_subject(_budget_subject(ctx))
         bind_budget_org(str(ctx["organization_id"]))
-        return generar_guion(id_externo)
+        return con_citas_de_organizacion(generar_guion(id_externo), int(ctx["organization_id"]))
 
     try:
         return await run_db(_trabajo)

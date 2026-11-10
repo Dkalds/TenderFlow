@@ -12,6 +12,7 @@ import { ApiError, MENSAJE_SIN_CONEXION, mensajePorEstado } from "@/lib/api-clie
 import { detalleTecnico } from "@/lib/query-feedback";
 import { FeedbackButtons } from "@/components/feedback-buttons";
 import { MarkdownAnswer } from "@/components/markdown-answer";
+import { CitasOrganizacion } from "@/components/pursuits/citas-organizacion";
 import type { ChatTurn } from "@/hooks/use-ask";
 import type { AskMeta, DegradedInfo, FuenteDocumento, ResumenMeta, SourcesInfo } from "@/lib/ask-stream";
 
@@ -352,6 +353,7 @@ const TurnoAsistente = React.memo(function TurnoAsistente({
       {turno.askMeta?.recuperacion_fallida ? <RecuperacionFallidaNotice /> : null}
       {turno.degraded ? <DegradedNotice degraded={turno.degraded} /> : null}
       {turno.sources ? <CitasBlock info={turno.sources} /> : null}
+      {turno.fuentesOrganizacion ? <CitasOrganizacion citas={turno.fuentesOrganizacion} /> : null}
       {turno.sources?.sinFuentes ? <SinFuentesNotice /> : null}
       {turno.fuentes && turno.fuentes.length > 0 ? <FuentesBlock fuentes={turno.fuentes} /> : null}
       {turno.content && !turno.degraded && !enCurso ? (

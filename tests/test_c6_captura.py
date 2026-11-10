@@ -610,7 +610,12 @@ class TestAdjuntosPropios:
         assert 'sa.text("false")' in fuente
 
     def test_ningun_camino_de_indexacion_mira_la_tabla(self) -> None:
-        """La garantía es estructural: el RAG lee `documentos`, no adjuntos propios."""
+        """El RAG de pliegos lee `documentos`, no adjuntos propios.
+
+        Desde v179 un adjunto se indexa con permiso por fichero, pero en su
+        almacén (`services/memoria_organizacion.py`, ADR-040): el job del
+        corpus público y el motor de embeddings siguen sin nombrar la tabla.
+        """
         import inspect as _inspect
 
         import scheduler.jobs.documentos_embeddings as job
@@ -676,7 +681,7 @@ class TestAdjuntosPropios:
 
         cuerpo = inspect.getsource(mod.borrar).split('"""')[2]
         assert "get_object_store" not in cuerpo
-        assert "PursuitAttachmentsRepository().delete" in cuerpo
+        assert "repo.delete(" in cuerpo
 
     # ── GDPR: dato corporativo ───────────────────────────────────────────
 

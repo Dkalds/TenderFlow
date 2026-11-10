@@ -3176,6 +3176,10 @@ export interface paths {
          *
          *     El presupuesto se ata al mismo sujeto opaco que el resto de superficies
          *     LLM, con la `user_key` del auth y nunca el email ni el `user_id` crudo.
+         *
+         *     Cada criterio trae además `citas_organizacion`: extractos literales de los
+         *     documentos que la organización activa marcó indexables (ADR-040). Se buscan
+         *     en cada petición y no se guardan con el guion, que es común a todas.
          */
         post: operations["post_guion_oferta_api_v1_licitaciones__id_externo__guion_post"];
         delete?: never;
@@ -4866,7 +4870,9 @@ export interface paths {
         post?: never;
         /**
          * Delete Adjunto
-         * @description Borra el adjunto y su binario del almacén.
+         * @description Retira el adjunto: deja de listarse y se borra su texto indexado.
+         *
+         *     El binario se conserva (borrado lógico, v131).
          */
         delete: operations["delete_adjunto_api_v1_pursuits_adjuntos__attachment_id__delete"];
         options?: never;
@@ -4939,6 +4945,10 @@ export interface paths {
          *     Por adjunto y no por organización: una propuesta puede llevar el CV de
          *     alguien y el pliego técnico en el mismo expediente, y un permiso global
          *     obligaría a decidir por el conjunto.
+         *
+         *     Levantarlo encola el indexado y responde con `index_status: "pending"`;
+         *     bajarlo borra el texto y los embeddings antes de responder. Los dos quedan
+         *     en el rastro de auditoría de la organización.
          */
         put: operations["put_adjunto_indexable_api_v1_pursuits_adjuntos__attachment_id__indexable_put"];
         post?: never;
@@ -7443,6 +7453,30 @@ export interface components {
              * @enum {string}
              */
             veredicto: "cumple" | "no_cumple" | "desconocido";
+        };
+        /**
+         * CitaOrganizacion
+         * @description Un extracto literal de un documento que la organización indexó.
+         *
+         *     No lleva ``organization_id`` ni la clave del binario: quien la recibe ya es
+         *     de la organización, y el fichero se abre por el enlace firmado de siempre
+         *     (``GET /pursuits/adjuntos/{attachment_id}/enlace``).
+         */
+        CitaOrganizacion: {
+            /** Attachment Id */
+            attachment_id: number;
+            /** Cita */
+            cita: string;
+            /** Filename */
+            filename: string;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Licitacion Titulo */
+            licitacion_titulo?: string | null;
+            /** Page Number */
+            page_number?: number | null;
+            /** Pursuit Id */
+            pursuit_id: number;
         };
         /**
          * ClientErrorRow
@@ -10413,6 +10447,8 @@ export interface components {
          * @description Los puntos de un criterio de adjudicación.
          */
         GuionCriterio: {
+            /** Citas Organizacion */
+            citas_organizacion?: components["schemas"]["CitaOrganizacion"][];
             /** Criterio */
             criterio: string;
             /** Peso Pct */
@@ -13847,6 +13883,10 @@ export interface components {
             filename: string;
             /** Id */
             id: number;
+            /** Index Error */
+            index_error?: string | null;
+            /** Index Status */
+            index_status?: ("pending" | "indexed" | "error" | "unsupported" | "sin_texto") | null;
             /**
              * Indexable
              * @default false
@@ -13876,6 +13916,18 @@ export interface components {
         PursuitAttachmentPolicy: {
             /** Almacen Disponible */
             almacen_disponible: boolean;
+            /**
+             * Indexado Max Bytes
+             * @default 0
+             */
+            indexado_max_bytes: number;
+            /**
+             * Indexado Max Documentos
+             * @default 0
+             */
+            indexado_max_documentos: number;
+            /** Indexado Tipos */
+            indexado_tipos?: string[];
             /** Max Bytes */
             max_bytes: number;
             /** Tipos */
@@ -29919,7 +29971,25 @@ export interface operations {
                     "application/json": components["schemas"]["PursuitAttachmentOut"];
                 };
             };
-            /** @description La petición no pasó la validación (``errors`` por campo). */
+            /** @description Sin acceso a la organización, o rol de solo lectura */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description No existe, o no es de tu organización */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Ese fichero no se puede indexar: tipo, tamaño o tope alcanzado */
             422: {
                 headers: {
                     [name: string]: unknown;

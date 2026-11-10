@@ -8,7 +8,7 @@
  */
 
 import { errorDeRespuesta, getCsrfToken, type ApiError } from "./api-client";
-import type { OpcionesCorpus } from "./api-types";
+import type { CitaOrganizacion, OpcionesCorpus } from "./api-types";
 import { registrarEvento } from "./analytics";
 
 export interface ChatMessage {
@@ -104,6 +104,8 @@ export interface AskStreamResult {
   resumenMeta: ResumenMeta | null;
   askMeta: AskMeta | null;
   sources: SourcesInfo | null;
+  /** Extractos de documentos propios de la organización que casan con la pregunta. */
+  fuentesOrganizacion: CitaOrganizacion[];
 }
 
 interface StreamCallbacks {
@@ -119,6 +121,7 @@ interface StreamCallbacks {
   onResumenMeta?: (meta: ResumenMeta) => void;
   onAskMeta?: (meta: AskMeta) => void;
   onSources?: (info: SourcesInfo) => void;
+  onFuentesOrganizacion?: (citas: CitaOrganizacion[]) => void;
 }
 
 export interface AskParams extends StreamCallbacks {
@@ -183,6 +186,7 @@ async function consumeStream(res: Response, cb: StreamCallbacks, signal?: AbortS
     resumenMeta: null,
     askMeta: null,
     sources: null,
+    fuentesOrganizacion: [],
   };
 
   // Tokens agrupados por frame. Un modelo rápido emite varios tokens por frame
@@ -225,6 +229,9 @@ async function consumeStream(res: Response, cb: StreamCallbacks, signal?: AbortS
     if (Array.isArray(parsed.fuentes_documentos)) {
       result.fuentes = parsed.fuentes_documentos as FuenteDocumento[];
       cb.onFuentes?.(result.fuentes);
+    } else if (Array.isArray(parsed.fuentes_organizacion)) {
+      result.fuentesOrganizacion = parsed.fuentes_organizacion as CitaOrganizacion[];
+      cb.onFuentesOrganizacion?.(result.fuentesOrganizacion);
     } else if (parsed.degraded) {
       result.degraded = {
         reason: String(parsed.reason ?? "unknown"),

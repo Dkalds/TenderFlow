@@ -35,6 +35,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from observability.logging import get_logger
+from services.memoria_organizacion import MAX_CITAS, CitaOrganizacion
 from services.pdf_accesible import metadatos
 from shared.tender_facts import EvidenceRef
 
@@ -46,6 +47,7 @@ __all__ = [
     "GuionOferta",
     "PuntoGuion",
     "a_pdf",
+    "con_citas_de_organizacion",
     "contar_frases",
     "generar_guion",
     "guion_generado",
@@ -101,6 +103,10 @@ class GuionCriterio(BaseModel):
     criterio: str
     peso_pct: float | None = Field(default=None, ge=0, le=100)
     puntos: list[PuntoGuion] = Field(default_factory=list)
+    #: Extractos de documentos que la organización de quien pregunta indexó
+    #: (ADR-040). Los pone :func:`con_citas_de_organizacion` por petición: el
+    #: guion cacheado es el mismo para todas las organizaciones y nunca los lleva.
+    citas_organizacion: list[CitaOrganizacion] = Field(default_factory=list, max_length=MAX_CITAS)
 
 
 class GuionOferta(BaseModel):
@@ -169,6 +175,37 @@ def marcar_sin_base(guion: GuionOferta, paginas_validas: set[tuple[int, int]]) -
         criterios=criterios,
         firma=guion.firma,
         sin_guion=guion.sin_guion,
+    )
+
+
+def con_citas_de_organizacion(guion: GuionOferta, organization_id: int) -> GuionOferta:
+    """El guion con, en cada criterio, lo que la organización ya escribió sobre él.
+
+    Son extractos **literales** de sus documentos indexados, no puntos nuevos:
+    D33 sigue valiendo, y lo que se añade se comprueba abriendo el fichero.
+
+    Devuelve una copia. El guion que entra es el de la caché, compartido entre
+    organizaciones: escribir las citas sobre él las serviría a la siguiente.
+    Si la búsqueda falla, el guion sale igual sin ellas.
+    """
+    if not guion.criterios:
+        return guion
+    from services.memoria_organizacion import citas
+
+    try:
+        por_criterio = citas(organization_id, [c.criterio for c in guion.criterios])
+    except Exception:
+        log.warning("guion_citas_organizacion_fallidas", exc_info=True)
+        return guion
+    if not any(por_criterio):
+        return guion
+    return guion.model_copy(
+        update={
+            "criterios": [
+                criterio.model_copy(update={"citas_organizacion": propias})
+                for criterio, propias in zip(guion.criterios, por_criterio, strict=True)
+            ]
+        }
     )
 
 

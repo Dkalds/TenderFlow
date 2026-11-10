@@ -434,6 +434,9 @@ def test_run_passes_batch_sizes_from_settings(repo):
         patch.object(
             documentos_embeddings, "_run_resumen_pregen_phase", return_value={}
         ) as resumen_pregen,
+        patch.object(
+            documentos_embeddings, "_run_memoria_organizacion_phase", return_value={}
+        ) as memoria,
     ):
         run()
 
@@ -446,3 +449,5 @@ def test_run_passes_batch_sizes_from_settings(repo):
         limit=9, max_seconds=settings.PLIEGO_TECH_SIGNAL_MAX_SECONDS
     )
     resumen_pregen.assert_called_once_with(limit=4)
+    # La última, y sin argumentos: no lee documentos, solo rellena vectores.
+    memoria.assert_called_once_with()

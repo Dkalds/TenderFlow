@@ -371,7 +371,7 @@ en el log — es un bug del llamante, no un motivo para perder el rastro.
 | `webhook.*` | `created`, `updated`, `deleted`, `secret_rotated`, `redelivered` | `api/routes/webhooks.py` |
 | configuración | `feature_flag.set`, `tecnologias_keyword.{added,removed,seeded}`, `empresa.review_resolved`, `dedupe.review_resolved`, `organo.review_resolved` | rutas de administración; las dos colas del dato en `api/routes/admin_revision.py` |
 | operación | `dlq.requeued`, `dlq.discarded` | `api/routes/admin_dlq.py` |
-| producto | `feedback.submitted`, `pursuit.weights_proposal_applied`, `go_no_go.weights_updated` | `api/routes/feedback.py`, `services/pursuits.py`, `services/go_no_go_puntuacion.py` |
+| producto | `feedback.submitted`, `pursuit.weights_proposal_applied`, `go_no_go.weights_updated`, `pursuit_attachment.indexing_changed` (quién permitió o dejó de permitir que un adjunto se cite, con `resource=org:<id>`; [ADR-040](adr/ADR-040-memoria-de-la-organizacion.md)) | `api/routes/feedback.py`, `services/pursuits.py`, `services/go_no_go_puntuacion.py`, `services/pursuit_attachments.py` |
 | `watchlist_rule.*` | `created`, `updated`, `deleted`, `paused_all` (la baja del enlace del correo, sin recurso) | `api/routes/watchlist_rules.py`; la alerta por defecto, en `services/watchlist_rules.py` |
 
 `detail` se persiste como `event=… | outcome=… | [ip=… |] [resource=… |] payload`.

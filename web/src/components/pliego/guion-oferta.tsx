@@ -7,6 +7,7 @@ import { PanelEmpty, PanelError, SUPERFICIE_PANEL } from "@/components/console/p
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PaginaPliegoDialog } from "@/components/pliego/pagina-pliego-dialog";
+import { CitasOrganizacion } from "@/components/pursuits/citas-organizacion";
 import { guionAMarkdown, useGuionOferta } from "@/hooks/use-guion-oferta";
 import { useFactSheetDocumentos } from "@/hooks/use-tender-fact-sheet";
 import { ApiError, fetchBlobWithAuth } from "@/lib/api-client";
@@ -175,6 +176,9 @@ export function GuionOfertaPanel({ licitacionId }: { licitacionId: string }) {
                   </li>
                 ))}
               </ul>
+              {/* Lo que el equipo ya escribió sobre este criterio: extractos de
+                  sus documentos, no puntos del guion. */}
+              <CitasOrganizacion citas={criterio.citas_organizacion ?? []} />
             </li>
           ))}
         </ol>

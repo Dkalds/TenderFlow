@@ -74,3 +74,51 @@ export function validarFichero(
 export function nombreParaCabecera(nombre: string): string {
   return encodeURIComponent(nombre);
 }
+
+/** Extensiones de los tipos de los que se sabe leer el texto, para decirlas. */
+export function extensionesCitables(politica: PoliticaAdjuntos): string[] {
+  const citables = new Set(politica.indexado_tipos ?? []);
+  return [
+    ...new Set(politica.tipos.filter((t) => citables.has(t.content_type)).flatMap((t) => t.extensiones)),
+  ].sort();
+}
+
+/**
+ * Por qué este fichero no puede citarse, o `null` si puede. Mismo orden que el
+ * servidor (`services/pursuit_attachments._exigir_indexable`), que es quien
+ * decide: esto solo evita ofrecer un interruptor que va a decir que no. El tope
+ * de documentos por organización no se comprueba aquí; lo conoce el servidor.
+ */
+export function motivoNoCitable(
+  adjunto: Pick<Adjunto, "content_type" | "size_bytes">,
+  politica: PoliticaAdjuntos,
+): string | null {
+  if (!(politica.indexado_tipos ?? []).includes(adjunto.content_type)) {
+    return "de este tipo de fichero no se puede leer el texto.";
+  }
+  if (adjunto.size_bytes > politica.indexado_max_bytes) {
+    return `ocupa ${formatTamano(adjunto.size_bytes)} y para citarse el máximo es ${formatTamano(politica.indexado_max_bytes)}.`;
+  }
+  return null;
+}
+
+export interface EstadoCita {
+  tono: "info" | "success" | "warning";
+  etiqueta: string;
+  /** El motivo, cuando el fichero no se pudo leer. */
+  detalle?: string;
+}
+
+/** Cómo va un adjunto que se permitió citar, o `null` si no tiene ese permiso. */
+export function estadoDeCita(adjunto: Pick<Adjunto, "indexable" | "index_status" | "index_error">): EstadoCita | null {
+  if (!adjunto.indexable) return null;
+  if (adjunto.index_status === "indexed") return { tono: "success", etiqueta: "Se puede citar" };
+  if (adjunto.index_status == null || adjunto.index_status === "pending") {
+    return { tono: "info", etiqueta: "Leyendo el documento…" };
+  }
+  return {
+    tono: "warning",
+    etiqueta: adjunto.index_status === "error" ? "No se pudo leer" : "Sin texto que citar",
+    detalle: adjunto.index_error ?? undefined,
+  };
+}

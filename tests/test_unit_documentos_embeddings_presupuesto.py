@@ -202,6 +202,7 @@ def test_run_pasa_a_cada_fase_su_tope_de_settings() -> None:
         patch.object(documentos_embeddings, "_run_facts_phase", return_value={}) as facts,
         patch.object(documentos_embeddings, "_run_tech_signal_phase", return_value={}) as tech,
         patch.object(documentos_embeddings, "_run_resumen_pregen_phase", return_value={}),
+        patch.object(documentos_embeddings, "_run_memoria_organizacion_phase", return_value={}),
     ):
         run()
 

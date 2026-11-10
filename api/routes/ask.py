@@ -238,21 +238,57 @@ class ResumenRequest(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
+def _scopes(user: Principal) -> frozenset[str]:
+    """Scopes de la API key del principal, sea cual sea la forma en que lleguen."""
+    raw_scopes = user.get("scopes", "")
+    if isinstance(raw_scopes, str):
+        return frozenset(scope.strip() for scope in raw_scopes.split(",") if scope.strip())
+    if isinstance(raw_scopes, (set, frozenset, list, tuple)):
+        return frozenset(str(scope).strip() for scope in raw_scopes if str(scope).strip())
+    return frozenset()
+
+
 def _check_ask_scope(user: Principal) -> None:
     """Scope check para auth por API key (usuarios de sesión siempre permitidos)."""
     if user.get("auth_method") == "api_key":
-        raw_scopes = user.get("scopes", "")
-        if isinstance(raw_scopes, str):
-            scopes = frozenset(scope.strip() for scope in raw_scopes.split(",") if scope.strip())
-        elif isinstance(raw_scopes, (set, frozenset, list, tuple)):
-            scopes = frozenset(str(scope).strip() for scope in raw_scopes if str(scope).strip())
-        else:
-            scopes = frozenset()
+        scopes = _scopes(user)
         if "*" not in scopes and "ask:read" not in scopes:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Acceso denegado. Scope insuficiente.",
             )
+
+
+def _organizacion_para_citas(user: Principal) -> int | None:
+    """Organización cuyos documentos propios puede citar esta respuesta, o ``None``.
+
+    Una sesión cita los de su organización activa. Una API key solo si además
+    de preguntar puede leer oportunidades (``pursuits:read``): los adjuntos
+    cuelgan de ellas, y ``ask:read`` a secas no los abría hasta ahora.
+    """
+    raw = user.get("organization_id")
+    if raw is None:
+        return None
+    if user.get("auth_method") == "api_key" and not _scopes(user) & {"*", "pursuits:read"}:
+        return None
+    return int(raw)
+
+
+def _fuentes_organizacion(question: str, organization_id: int) -> list[dict[str, object]]:
+    """Evento aditivo ``fuentes_organizacion``: citas de documentos propios (ADR-040).
+
+    Extractos literales de lo que la organización indexó, con su fichero, su
+    página y su oportunidad. **No** entran en el contexto del modelo ni en la
+    huella de la caché de respuestas: van al lado de la respuesta, no dentro.
+    Un fallo aquí no puede romper la pregunta: se queda sin esas citas.
+    """
+    try:
+        from services.memoria_organizacion import citas
+
+        return [c.model_dump() for c in citas(organization_id, [question])[0]]
+    except Exception:
+        log.warning("ask.fuentes_organizacion_failed", exc_info=True)
+        return []
 
 
 def _budget_subject(user: Principal) -> str | None:
@@ -686,6 +722,7 @@ async def _stream_ask(
     org_key: str | None = None,
     *,
     semantica: bool = False,
+    organizacion_citas: int | None = None,
 ) -> AsyncGenerator[str]:
     """Prepara contexto + historial y devuelve el stream SSE del LLM."""
     from llm.budget import bind_budget_org, bind_budget_subject
@@ -729,6 +766,10 @@ async def _stream_ask(
     pre_events: list[dict[str, Any]] = [{"ask_meta": ask_meta}]
     if fuentes:
         pre_events.append({"fuentes_documentos": fuentes})
+    if organizacion_citas is not None:
+        propias = await run_db(_fuentes_organizacion, request.question, organizacion_citas)
+        if propias:
+            pre_events.append({"fuentes_organizacion": propias})
 
     # ── Caché de respuestas (C5.5) ───────────────────────────────────────────
     #
@@ -913,7 +954,11 @@ async def ask_question(
         semantica = await run_db(semantica_activa, user.get("email"))
 
     generator = await _stream_ask(
-        body, _budget_subject(user), _budget_org(user), semantica=semantica
+        body,
+        _budget_subject(user),
+        _budget_org(user),
+        semantica=semantica,
+        organizacion_citas=_organizacion_para_citas(user),
     )
 
     return StreamingResponse(

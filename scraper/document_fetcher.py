@@ -1264,6 +1264,17 @@ def _extract_paginas(content: bytes, content_type: str | None) -> list[PaginaExt
     return _extraer_paginas_de_tipo(content, content_type or CONTENT_TYPE_PDF)
 
 
+def extraer_paginas(content: bytes, declarado: str | None) -> list[PaginaExtraida]:
+    """Páginas de un binario que **ya se tiene**: ni descarga ni escribe.
+
+    El mismo camino que los pliegos —formato por la firma del contenido, no por
+    el tipo declarado; OCR si el PDF no trae texto— para quien indexa algo que
+    no vive en ``documentos`` (los adjuntos propios de una oportunidad,
+    ``scheduler/worker.py``). Lanza las mismas :class:`DocumentFetchError`.
+    """
+    return _extract_paginas(content, _resolver_content_type(content, declarado))
+
+
 # ── Almacén de objetos (S8.1) ──────────────────────────────────────────────
 
 
