@@ -40,14 +40,10 @@ grep -n "name:\|type:\|plan:\|sizeGB:" render.yaml
 
 **Pendientes de coste conocido en este plan:**
 
-- El servicio `worker` de [ADR-028](adr/ADR-028-cola-de-trabajo-y-worker.md)
-  está declarado en `render.yaml` pero **no existe todavía en Render**: se crea
-  en el paso 1 del [runbook del cutover del cron](runbooks/cutover-cron-al-worker.md).
-  Declarado en `standard` (2 GB) y no en `starter` porque, con el plano de cron
-  de [ADR-033](adr/ADR-033-plano-de-cron-en-el-worker.md), corre el scoring y la
-  ingesta diaria en el mismo proceso que la cola; el motivo y cuándo
-  revisarlo están junto al servicio en `render.yaml`. Su facturado se anota
-  aquí tras el primer mes.
+- No hay servicio `worker` de [ADR-028](adr/ADR-028-cola-de-trabajo-y-worker.md):
+  se retiró el 2026-10-19 y ya no se declara en `render.yaml`. El dueño decidió
+  el 2026-11-10 no pagarlo y dejar el cron en GitHub Actions
+  ([runbook del cutover](runbooks/cutover-cron-al-worker.md), estado revertido).
 - El preview por PR de C3.5 es efímero: su coste es proporcional a las PR
   abiertas y se anota tras el primer mes de uso real, no antes.
 

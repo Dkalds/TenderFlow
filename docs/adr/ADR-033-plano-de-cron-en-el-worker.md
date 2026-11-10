@@ -14,6 +14,15 @@ tags: [adr]
 # ADR-033 — Plano de cron dentro del worker de Render
 
 - **Estado:** aceptado, **enmendado el 2026-10-10** (ver [Enmienda](#enmienda-2026-10-10-lo-que-el-worker-no-hacía-igual-que-actions)).
+  **Enmienda 2026-11-09, revertida el 2026-11-10:** el plano corrió unas
+  20 h como proceso hijo de `tenderflow-api` (PR #710, #712 y #713), con la
+  auditoría diaria y el lote de pliegos. Se volvió a Actions por decisión del
+  dueño. Lo medido sirve a un reintento: la API usaba el 10-13 % de su
+  memoria; el proceso hijo hacía falta porque el `statement_timeout` de 30 s
+  de la API no cabe en consultas del cierre de 40-76 s; sin OCR en la imagen
+  de la API, 84 de 15.851 documentos extraídos habrían quedado `sin_texto`; y
+  un calendario en memoria se reinicia con cada despliegue, así que un job
+  diario necesita una marca de cadencia persistente.
   **Sin efecto en producción desde el 2026-10-19:** el servicio
   `tenderflow-worker` se creó el 2026-10-10 con `SCHEDULER_PLANE=worker`, pero
   en el plan `free` de Render, que lo hibernaba a los ~15 min; su plano de cron

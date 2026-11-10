@@ -164,6 +164,17 @@ def test_solo_es_indexable_lo_que_se_adjunta_y_se_sabe_leer() -> None:
     assert supported_content_types() >= memoria.TIPOS_INDEXABLES
 
 
+def test_docx_solo_es_indexable_si_la_imagen_de_la_api_lo_lee() -> None:
+    # El adjunto lo extrae el consumidor de la cola de la API: sin python-docx
+    # en su lock, un DOCX indexable quedaría `unsupported` para siempre.
+    from pathlib import Path
+
+    lock = (Path(__file__).resolve().parents[1] / "requirements-api.txt").read_text()
+    docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    if "python-docx==" not in lock:
+        assert docx not in memoria.TIPOS_INDEXABLES
+
+
 def test_los_topes_salen_del_entorno_y_cero_apaga(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("MEMORIA_ORG_MAX_DOCUMENTOS", raising=False)
     monkeypatch.delenv("MEMORIA_ORG_MAX_BYTES_POR_DOCUMENTO", raising=False)

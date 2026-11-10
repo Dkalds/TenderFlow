@@ -59,6 +59,7 @@ Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Esta
 - `COMPETITORS_IDENTITY_SQL` en Render — [Migrar la resolución de identidad de `competitors.py` a SQL (union-find + unaccent)](#p3-migrar-la-resolución-de-identidad-de-competitorspy-a-sql-union-find--unaccent)
 - Variable de repo `PLIEGO_FACTS_ENABLED` (coste LLM) — [Poner en producción la rama `claude/funcionalidades-2026-10` (acción del propietario)](#p1-poner-en-producción-la-rama-claudefuncionalidades-2026-10-acción-del-propietario)
 - Topes de la memoria de la organización (`MEMORIA_ORG_MAX_DOCUMENTOS`, `MEMORIA_ORG_MAX_BYTES_POR_DOCUMENTO`) y cuota de adjuntos (`PURSUIT_ATTACHMENT_MAX_BYTES_POR_ORGANIZACION`) en Render — [Memoria de la organización: ponerla en producción, decidir sus topes y medir sus citas](#p2-memoria-de-la-organización-ponerla-en-producción-decidir-sus-topes-y-medir-sus-citas)
+- Reactivar `scrape-daily.yml` y `ml-scoring.yml` en GitHub (desactivados por el cutover revertido) — [Cola de trabajo y worker: un despliegue mata lo que un usuario pidió](#p1-ola-1--s5-cola-de-trabajo-y-worker-un-despliegue-mata-lo-que-un-usuario-pidió)
 - Antes de activar Microsoft: `OAUTH_MICROSOFT_CLIENT_ID` y claims en Entra — [Antes de activar Microsoft en producción: dos comprobaciones del propietario](#p2-antes-de-activar-microsoft-en-producción-dos-comprobaciones-del-propietario)
 
 **Ejecutar en producción**
@@ -231,7 +232,7 @@ _Sin ítems abiertos._
 - **Riesgo:** medio — dos migraciones y una regla de producto nueva; el golden `golden_go_no_go.jsonl` es la red.
 
 ### [P1] [Ola 1 · S5] Cola de trabajo y worker: un despliegue mata lo que un usuario pidió
-- **Estado actual (2026-11-10):** `propietario` — La cola, sus arreglos del 2026-11-07 y el consumo desde la API están en código. El dueño decidió no pagar un worker y dejar el plano de cron en GitHub Actions: se revirtió el cron como proceso hijo de la API (#710, #712, #713). Queda el §A (sacar la extracción del proceso de la API), sin destino mientras no haya worker.
+- **Estado actual (2026-11-10):** `propietario` — La cola, sus arreglos del 2026-11-07 y el consumo desde la API están en código. El dueño decidió no pagar un worker y dejar el plano de cron en GitHub Actions: se revirtió el cron como proceso hijo de la API (#710, #712, #713) y `tenderflow-api` ya lleva `SCHEDULER_PLANE=actions`. Propietario: reactivar `scrape-daily.yml` y `ml-scoring.yml`, desactivados por el cutover. Queda el §A (sacar la extracción del proceso de la API), sin destino mientras no haya worker.
 - **Área:** services/jobs.py, db/repositories/jobs.py, scheduler/worker.py, api/routes/jobs.py, scheduler/pipeline_runs.py, render.yaml
 - **Problema:** la extracción asíncrona de la ficha corre en `BackgroundTasks` de la API con 30 s de drenado al apagar (`api/app.py`), y `autoDeploy` está activo en el servicio real: un push a `master` en mitad de una extracción la pierde, y el usuario ve un estado que nunca avanza. El cierre post-ingesta son quince pasos secuenciales dentro de un job de Actions cada cuatro horas, donde un paso caído arrastra a los que no dependen de él.
 - **Decisión ya tomada (2026-09-06):** D14 → worker en Render para lo que pide un usuario y Actions para lo programado, sobre la misma tabla de cola. El servicio nuevo exige O0.2 cerrado primero (un solo camino de despliegue).

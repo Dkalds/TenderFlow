@@ -14,7 +14,19 @@ administración del repositorio en GitHub. **Ningún agente puede hacerlo**: los
 pasos 1, 4 y 8 son cambios de configuración en las plataformas, y el 7 toca
 workflows.
 
-**Estado (2026-10-19): en pausa, sin worker.** `tenderflow-worker` llegó a
+**Estado (2026-11-10): revertido, el cron sigue en Actions.** El cutover se
+ejecutó el 2026-11-09 a las 23:15 UTC sobre `tenderflow-api`, con el plano como
+proceso hijo de la API (PR #710, #712 y #713), y se deshizo el 2026-11-10: el
+dueño prefiere mantener el cron en GitHub Actions. Vuelta atrás aplicada:
+`SCHEDULER_PLANE=actions`, `REQUIREMENTS_FILE=requirements-api.txt` y
+`PLIEGO_FACTS_ENABLED=false` en `tenderflow-api` (el log
+`cron_proceso_inactivo` lo confirmó a las 20:07 UTC). Falta reactivar
+`scrape-daily.yml` y `ml-scoring.yml` en GitHub (Actions → el workflow →
+*Enable workflow*): desde el 2026-11-10 00:10 están `disabled_manually`. `TenderFlow-1`, el worker de octubre, ya
+no existe en Render (2026-11-10). Lo que se midió en ese intento está en la
+enmienda revertida de ADR-033.
+
+**Estado anterior (2026-10-19): en pausa, sin worker.** `tenderflow-worker` llegó a
 crearse (2026-10-10) en el plan `free`, que lo hibernaba a los ~15 min, y se
 retiró el 2026-10-19 (nota en `render.yaml`, ADR-033). La ingesta y el scoring
 siguen en Actions y `deploy.yml` ya no despliega ningún worker. Si se retoma,
