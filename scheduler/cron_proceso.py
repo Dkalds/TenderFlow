@@ -10,8 +10,9 @@ motivos que un proceso hijo resuelve a la vez:
   (``Settings._relax_batch_statement_timeout``); el hijo arranca con
   ``APP_PROFILE=scraper``, igual que los workflows, y hereda su techo de batch.
 * **La imagen.** El proceso de la API sigue sin importar lxml ni scikit-learn
-  (``tests/test_unit_api_imagen_slim.py``): solo el hijo los carga, y los
-  devuelve al terminar.
+  (``tests/test_unit_api_imagen_slim.py``): solo el hijo los carga. Es de
+  larga vida, así que lo que carga —también el modelo ONNX del lote de
+  pliegos— se queda residente.
 * **El aislamiento.** Un job colgado o un pico de memoria del scoring no ocupa
   ni el pool ni los hilos que atienden a los usuarios.
 
@@ -47,9 +48,9 @@ PERFIL_DEL_HIJO = "scraper"
 POOL_DEL_HIJO = "2"
 
 #: Espera antes de relanzar un hijo muerto, y su techo. Se dobla con cada
-#: caída: el calendario del plano vive en la memoria del hijo, así que cada
-#: relanzado empieza con una ingesta, y un hijo que muere siempre (la imagen
-#: sin las dependencias del pipeline, el scoring sin memoria) las encadenaría.
+#: caída: un hijo que muere siempre (la imagen sin las dependencias del
+#: pipeline, el scoring sin memoria) repetiría el job que lo mata en cuanto
+#: caducara su marca de cadencia.
 ESPERA_RELANZADO_S = 60.0
 ESPERA_RELANZADO_MAX_S = 3600.0
 

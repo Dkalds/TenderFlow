@@ -282,3 +282,88 @@ hilo no sirve, y no por memoria:
 `ml_retrain_baja` y `documentos_embeddings` siguen en Actions por los motivos
 de la enmienda anterior. La exclusión con Actions sigue siendo la del runbook:
 los workflows se apagan antes de encender la variable.
+
+### Añadido el 2026-11-10: la cadencia sobrevive a los reinicios, y un plano propio
+
+El cutover se ejecutó el 2026-11-09 a las 23:15 UTC: `scrape-daily.yml` y
+`ml-scoring.yml` quedaron deshabilitados y `tenderflow-api` lleva
+`SCHEDULER_PLANE=worker`. Dos cosas salieron de verlo correr:
+
+- **La marca de cadencia.** El calendario del plano vive en la memoria del
+  hijo, y el hijo se reinicia con cada despliegue de la API: cada reinicio
+  repetía la ingesta, y un job diario con horas de offset dependía de que nadie
+  desplegara mientras tanto. Antes de ejecutar, el plano toma en `job_locks`
+  la marca `cron-hecho:<job>`; si sigue viva, el job no toca y se vuelve a
+  preguntar a los diez minutos. La marca se toma con el presupuesto del job
+  como TTL y solo se alarga al 95 % del intervalo cuando el job termina bien:
+  un proceso que muere a media pasada sin poder devolverla (sin memoria, un
+  `kill`) no deja el job parado un intervalo entero. Un job que falla, o que
+  un despliegue corta a medias, la devuelve.
+- **`plane="render"`.** Para los jobs que solo ejecuta este plano. El primero
+  es `domain_truth_audit`, la auditoría diaria que lanzaba `domain-truth.yml`:
+  `check_job_parity.py` lo da por cubierto si el plano lo asume, y el workflow
+  pierde su `schedule:` en el mismo cambio (queda `workflow_dispatch`). El job
+  mide en el proceso del plano, sin la sección (b) de los ZIP mensuales, y deja
+  las mediciones en el log `domain_truth_mediciones` en vez de en un artefacto:
+  la próxima recalibración de umbrales sale de ahí. `daily_atom` y
+  `ml_scoring_baja` siguen declarados `actions` hasta que sus workflows pierdan
+  el `schedule:`; hoy están deshabilitados a mano, que el repositorio no ve.
+
+Lo que **no** se mueve, con su motivo:
+
+- `ml_retrain_baja` y el entrenamiento de tecnologías (`ml-entrenar.yml`):
+  publican el modelo en una Release de GitHub, que es de donde lo lee quien lo
+  sirve. Moverlos pide publicar en el almacén de objetos
+  ([ADR-029](ADR-029-almacen-de-objetos.md)), y en producción no hay ninguno:
+  el 2026-11-10 ningún `documentos.blob_key` tiene valor. Corren dos veces al
+  mes; se quedan en Actions hasta que exista el bucket.
+- `healthcheck.yml` y `smoke.yml` se quedan en Actions a propósito: vigilan la
+  API desde fuera, y dentro de ella caerían con ella.
+
+### Añadido el 2026-11-10 (2): el lote de pliegos, sin OCR
+
+`documentos_embeddings` pasa a `plane="render"` y `pliegos.yml` pierde su
+`schedule:`. Tres decisiones, medidas ese día contra producción (174.777
+documentos, 156.785 todavía `pending`):
+
+- **OCR: no entra en la imagen de la API.** `ocrmypdf`, `tesseract` y
+  `ghostscript` son binarios que procesan ficheros de terceros, en el
+  contenedor que atiende internet. Lo que compran es poco: 84 de los 15.851
+  documentos extraídos (0,5 %) pasaron por OCR. Un PDF escaneado queda
+  `sin_texto`. **Es un coste, no una recuperación resuelta:** `pliegos.yml`
+  conserva el OCR para lanzarlo a mano, pero hoy nada le lleva esos
+  documentos (`reencolar_sin_texto` tiene la fecha fija y, una vez en
+  `pending`, el lote diario se los volvería a llevar). Hace falta un modo que
+  procese los `sin_texto` sin pasar por `pending` cuando pesen.
+- **`python-docx` entra en `requirements-pipeline.txt`; `odfpy`, no.** 24.495
+  documentos son DOC/DOCX, uno de cada siete. Hasta ahora salía del extra
+  `[pliegos]`, que el runner instalaba sin pinar; ahora va con hash en el
+  lock, que es lo único que instala la imagen. El ODT se lee de `content.xml`
+  con la biblioteca estándar desde octubre, así que `odfpy` no hace falta.
+- **Embeddings: el motor ONNX de la imagen.** Es el mismo modelo que
+  sentence-transformers, sin PyTorch. La cautela de
+  `embeddings_masivos_disponibles` (no codificar un corpus dentro de una
+  petición) no aplica: el lote corre en el proceso hijo, no en el que sirve.
+  Si el build no descargó el modelo, la fase se salta y el job manda un
+  correo. Que los vectores coincidan con los de sentence-transformers lo
+  mide `tests/test_embeddings_onnx_paridad.py` donde están los dos motores;
+  por eso `EMBEDDING_VERSION` no cambia.
+
+El plano llama a `run_programado`, no a `run`: da por bueno cualquier retorno
+sin excepción, así que el juicio que el workflow expresaba con su rojo (el
+lote entero de descarga caído, la credencial del LLM rechazada) aquí es un
+correo.
+
+Lo que cuesta:
+
+- El plano ejecuta sus jobs en serie: la ingesta espera mientras corre el
+  lote de pliegos (hasta 100 min, una vez al día).
+- El hijo es de larga vida, así que el modelo ONNX (unos 470 MB) queda
+  residente tras la primera pasada.
+- Un despliegue a media pasada corta el lote; lo ya procesado queda guardado
+  y el resto se repite 90 min después del arranque.
+- Con `python-docx` en la imagen, el proceso de la API también lee DOCX: la
+  ficha bajo demanda (`POST …/ficha-pliego/extract`) lo extrae en línea en
+  vez de dejarlo `pending`. Es un fichero de terceros parseado por una
+  biblioteca Python con `lxml`, no por un binario externo, que es donde se
+  puso el límite con el OCR.

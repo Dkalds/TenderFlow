@@ -1,8 +1,10 @@
 # Dependencias del plano de ingesta y ML (C3.1).
 #
 # Compilar con `make lock`. Lo instalan los runners de GitHub Actions
-# (`scrape-daily.yml`, `pliegos.yml`, los jobs de ML) y el worker de ADR-028
-# cuando exista. **No** viaja a la imagen de la API.
+# (`pliegos.yml` a mano, los jobs de ML) y, desde 2026-11, la imagen de
+# producción: `tenderflow-api` se construye con
+# `REQUIREMENTS_FILE=requirements-pipeline.txt` porque su plano de cron ejecuta
+# la ingesta, el scoring y el lote de pliegos en un proceso hijo (ADR-033).
 #
 # Incluye todo lo de la API porque el pipeline comparte persistencia,
 # observabilidad y modelos con ella: un job que escribe en `licitaciones`
@@ -32,6 +34,14 @@ scikit-learn>=1.3.0,<1.9
 joblib>=1.3.0,<2
 statsmodels>=0.15.0,<1
 networkx>=3.0,<4
+
+# ── Pliegos en DOCX ──────────────────────────────────────────────────────────
+# Un pliego de cada siete llega en Office Open XML (24.495 de 174.000 documentos
+# el 2026-11-10). Estaba solo en el extra `[pliegos]`; desde que el lote de
+# pliegos corre en el plano de cron de la API (ADR-033) tiene que ir en el lock,
+# que es lo único que instala esa imagen. Mismo rango que el extra. El ODT no
+# necesita `odfpy`: se lee de `content.xml` con la biblioteca estándar.
+python-docx>=1.1,<2
 
 # ── Extras que solo el pipeline instala ──────────────────────────────────────
 #

@@ -63,7 +63,9 @@ REQUIREMENTS_MCP_TXT = REPO_ROOT / "requirements-mcp.txt"
 #: moría en el import de `scraper/resilience.py`. joblib entró el 2026-10, al
 #: pasar `requirements.in` a ser también las dependencias del paquete: llega con
 #: scikit-learn y solo lo importan los modelos de `services/ml/`.
-SOLO_PIPELINE = frozenset({"lxml", "scikit-learn", "joblib", "statsmodels", "networkx"})
+SOLO_PIPELINE = frozenset(
+    {"lxml", "scikit-learn", "joblib", "statsmodels", "networkx", "python-docx"}
+)
 
 #: Paquetes de `requirements.in` que solo instala el proceso MCP
 #: (`requirements-mcp.in`). Siguen en `requirements.in` para que el lock que
