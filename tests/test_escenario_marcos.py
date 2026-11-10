@@ -82,6 +82,16 @@ def test_cu36_acuerdo_marco_en_la_ficha(client, api_db):
         sistema_contratacion="basado_marco",
         marco_ref=MARCO_TED,
     )
+    # Un basado que cita una fila recogida antes de v178: existe, pero no consta como marco.
+    sembrar_licitacion("ted:500000-2025", "Acuerdo marco de licencias", fuente="ted", estado="RES")
+    _admitir("ted:500000-2025", "El Único Guardado SA", "A28000003")
+    sembrar_licitacion(
+        "ted:700002-2026",
+        "Licencias para el Instituto",
+        fuente="ted",
+        sistema_contratacion="basado_marco",
+        marco_ref="ted:500000-2025",
+    )
     # Un basado cuyo marco no es de TI: la referencia está, la fila no.
     sembrar_licitacion(
         "ted:700001-2026",
@@ -156,6 +166,12 @@ def test_cu36_acuerdo_marco_en_la_ficha(client, api_db):
     con_basados = marco_de(MARCO_TED)
     assert con_basados["basados_total"] == 1
     assert [b["licitacion_id"] for b in con_basados["basados"]] == [BASADO_TED]
+
+    # La fila citada no consta como marco: se enlaza, pero su adjudicatario no se da por admitido.
+    antiguo = marco_de("ted:700002-2026")
+    assert antiguo["marco"]["licitacion_id"] == "ted:500000-2025"
+    assert antiguo["admitidos_total"] is None
+    assert antiguo["organizacion_admitida"] is None
 
     # El marco existe pero no está en el producto: se da la referencia, no admitidos.
     fuera = marco_de("ted:700001-2026")

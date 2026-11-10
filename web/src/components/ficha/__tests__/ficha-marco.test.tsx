@@ -174,6 +174,19 @@ describe("FichaMarco", () => {
     expect(screen.getByText("Vigencia del acuerdo marco")).toBeInTheDocument();
   });
 
+  it("un basado cuyo marco aún no consta como marco lo enlaza sin contar admitidos", async () => {
+    servir({
+      sistema: "basado_marco",
+      marco: { licitacion_id: "ted:649072-2024", titulo: "Servicios de nube (2 lotes)", sistema: null },
+      admitidos_total: null,
+    });
+    montar("basado_marco");
+
+    expect(await screen.findByRole("link", { name: "Servicios de nube (2 lotes)" })).toBeInTheDocument();
+    expect(screen.getByText("Todavía no se conocen los admitidos de su acuerdo marco.")).toBeInTheDocument();
+    expect(screen.queryByText("Tu organización")).not.toBeInTheDocument();
+  });
+
   it("un basado cuyo marco no está aquí da su referencia y deja los admitidos sin dato", async () => {
     servir({ sistema: "basado_marco", marco: null, marco_referencia: "TED 111111-2020" });
     montar("basado_marco");

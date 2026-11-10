@@ -197,9 +197,18 @@ function Basado({ marco, sistema }: { marco: MarcoDeLicitacion; sistema: Sistema
             </>
           }
         />
-        <Admitidos marco={marco} label="Admitidos que compiten" esSda={marco.marco.sistema === "sda"} />
-        <TuOrganizacion marco={marco} />
-        <Vigencia vigencia={marco.vigencia} label={`Vigencia del ${nombreCorto(sistema)}`} />
+        {marco.admitidos_total == null ? (
+          <Fact
+            label="Admitidos que compiten"
+            value={<SinDato>Todavía no se conocen los admitidos de su {nombreCorto(sistema)}.</SinDato>}
+          />
+        ) : (
+          <>
+            <Admitidos marco={marco} label="Admitidos que compiten" esSda={marco.marco.sistema === "sda"} />
+            <TuOrganizacion marco={marco} />
+            <Vigencia vigencia={marco.vigencia} label={`Vigencia del ${nombreCorto(sistema)}`} />
+          </>
+        )}
       </div>
       <ListaDeAdmitidos marco={marco} />
     </>

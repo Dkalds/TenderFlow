@@ -16,7 +16,7 @@ dato: no se deduce del título.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, cast
+from typing import TypedDict, cast
 
 from db.repositories import marcos as repo
 from db.repositories.marcos import FilaAdmitido, FilaExpedienteMarco
@@ -93,8 +93,16 @@ def _sistema(fila: FilaExpedienteMarco) -> SistemaContratacion | None:
     return cast("SistemaContratacion", valor) if valor in SISTEMAS else None
 
 
-def _admitidos_y_vigencia(marco: FilaExpedienteMarco, identidad: IdentidadFiscal) -> dict[str, Any]:
+class _DelMarco(TypedDict):
     """Los campos de la respuesta que salen del marco, sea el expediente o el de un basado."""
+
+    admitidos_total: int
+    admitidos: list[AdmitidoMarco]
+    organizacion_admitida: bool | None
+    vigencia: VigenciaMarco
+
+
+def _admitidos_y_vigencia(marco: FilaExpedienteMarco, identidad: IdentidadFiscal) -> _DelMarco:
     admitidos, organizacion_admitida = agrupar_admitidos(
         repo.admitidos(marco["id_externo"]), identidad
     )
@@ -158,14 +166,15 @@ def marco_de_licitacion(id_externo: str, *, organization_id: int) -> MarcoDeLici
     marco = repo.expediente(marco_ref)
     if marco is None:
         return base.model_copy(update={"marco_referencia": referencia_legible(marco_ref)})
-    return base.model_copy(
-        update={
-            "marco": MarcoEnlazado(
-                licitacion_id=marco["id_externo"],
-                titulo=marco["titulo"],
-                organo_contratacion=marco["organo_contratacion"],
-                sistema=_sistema(marco),
-            ),
-            **_admitidos_y_vigencia(marco, identidad),
-        }
+    enlazado = MarcoEnlazado(
+        licitacion_id=marco["id_externo"],
+        titulo=marco["titulo"],
+        organo_contratacion=marco["organo_contratacion"],
+        sistema=_sistema(marco),
     )
+    if enlazado.sistema not in MARCOS:
+        # La fila citada no consta como marco: se recogió antes de v178, cuando
+        # de un aviso de TED solo se guardaba el primer adjudicatario. Contar
+        # los suyos sería dar por admitidos a los que haya; se enlaza y nada más.
+        return base.model_copy(update={"marco": enlazado})
+    return base.model_copy(update={"marco": enlazado, **_admitidos_y_vigencia(marco, identidad)})

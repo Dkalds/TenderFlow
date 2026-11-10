@@ -44,7 +44,7 @@ import re
 import time
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 from urllib.parse import urlparse
 
 import requests
@@ -400,7 +400,24 @@ def _sistema_y_marco(
 _UNIDAD_DURACION = {"year": "ANN", "month": "MON", "day": "DAY"}
 
 
-def _vigencia(notice: Mapping[str, object]) -> dict[str, Any]:
+class _Vigencia(TypedDict):
+    """Las cuatro columnas de ``Licitacion`` que dicen hasta cuándo dura el contrato."""
+
+    duracion_valor: float | None
+    duracion_unidad: str | None
+    fecha_inicio: str | None
+    fecha_fin: str | None
+
+
+_SIN_VIGENCIA: _Vigencia = {
+    "duracion_valor": None,
+    "duracion_unidad": None,
+    "fecha_inicio": None,
+    "fecha_fin": None,
+}
+
+
+def _vigencia(notice: Mapping[str, object]) -> _Vigencia:
     """Duración, inicio y fin (BT-36, BT-536, BT-537) en las columnas de ``Licitacion``.
 
     Vienen por lote: solo se guardan si todos los lotes coinciden, porque la
@@ -650,7 +667,7 @@ class TedConnector:
         # eForms la publica en cualquier aviso, pero guardarla en todos metería
         # las adjudicaciones de TED en Renovaciones sin haber medido cuántas son
         # el mismo contrato que ya trae PLACSP; abrirlo cuando se mida.
-        vigencia = _vigencia(n) if sistema in MARCOS else {}
+        vigencia = _vigencia(n) if sistema in MARCOS else _SIN_VIGENCIA
 
         _, tech_matches = matches_technology(titulo, descripcion)
         tech_matches = etiquetas_con_senal_firme(tech_matches)

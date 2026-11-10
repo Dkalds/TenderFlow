@@ -694,7 +694,9 @@ def _tendering_process_codes(
     )
 
 
-def _sistema_contratacion(root: Any, tendering_process_prefix: str) -> SistemaContratacion | None:
+def _sistema_contratacion(
+    root: object, tendering_process_prefix: str
+) -> SistemaContratacion | None:
     """Marco, SDA, basado en uno de ellos o ninguno (``cbc:ContractingSystemCode``).
 
     Hermano de ``cbc:ProcedureCode`` en ``cac:TenderingProcess``. Al revés que

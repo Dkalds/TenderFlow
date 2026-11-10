@@ -85,7 +85,8 @@ class MarcoDeLicitacion(BaseModel):
     #: Solo en un basado cuyo marco se conoce pero no está en el producto: la
     #: referencia tal como se puede buscar fuera («TED 649072-2024»).
     marco_referencia: str | None = None
-    #: Empresas distintas admitidas en el marco. ``None`` si no se conoce el marco.
+    #: Empresas distintas admitidas en el marco. ``None`` si no se conoce el
+    #: marco, o si su fila no consta todavía como marco.
     admitidos_total: int | None = Field(default=None, ge=0)
     #: La organización que mira va la primera; el resto, por orden alfabético,
     #: hasta el tope de la respuesta.
