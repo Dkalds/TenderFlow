@@ -231,7 +231,7 @@ _Sin ítems abiertos._
 - **Riesgo:** medio — dos migraciones y una regla de producto nueva; el golden `golden_go_no_go.jsonl` es la red.
 
 ### [P1] [Ola 1 · S5] Cola de trabajo y worker: un despliegue mata lo que un usuario pidió
-- **Estado actual (2026-11-08):** `propietario` — La cola, sus arreglos del 2026-11-07 y el consumo desde la API están en código. Queda el §A (sacar la extracción del proceso de la API): el propietario decide si paga un worker `standard`; solo entonces hay código (`render.yaml`, `deploy.yml`).
+- **Estado actual (2026-11-10):** `propietario` — La cola, sus arreglos del 2026-11-07 y el consumo desde la API están en código. El dueño decidió no pagar un worker y dejar el plano de cron en GitHub Actions: se revirtió el cron como proceso hijo de la API (#710, #712, #713). Queda el §A (sacar la extracción del proceso de la API), sin destino mientras no haya worker.
 - **Área:** services/jobs.py, db/repositories/jobs.py, scheduler/worker.py, api/routes/jobs.py, scheduler/pipeline_runs.py, render.yaml
 - **Problema:** la extracción asíncrona de la ficha corre en `BackgroundTasks` de la API con 30 s de drenado al apagar (`api/app.py`), y `autoDeploy` está activo en el servicio real: un push a `master` en mitad de una extracción la pierde, y el usuario ve un estado que nunca avanza. El cierre post-ingesta son quince pasos secuenciales dentro de un job de Actions cada cuatro horas, donde un paso caído arrastra a los que no dependen de él.
 - **Decisión ya tomada (2026-09-06):** D14 → worker en Render para lo que pide un usuario y Actions para lo programado, sobre la misma tabla de cola. El servicio nuevo exige O0.2 cerrado primero (un solo camino de despliegue).
