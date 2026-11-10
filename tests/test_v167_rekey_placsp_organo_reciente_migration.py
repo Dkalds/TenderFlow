@@ -156,6 +156,7 @@ _POSTERIORES_A_V167: list[tuple[str, str, str]] = [
     ("acta_extracciones", "licitacion_id", ""),
     ("acta_puntuaciones", "licitacion_id", ""),
     ("predicciones_baja_sombra", "licitacion_id", ""),
+    ("contrato_modificaciones", "licitacion_id", ""),
 ]
 
 

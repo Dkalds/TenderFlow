@@ -29,6 +29,10 @@ export type SimilaresResult = Schemas["SimilaresResult"];
 export type HistorialPropio = Schemas["HistorialPropio"];
 /** `GET /licitaciones/{id}/marco`: admitidos y vigencia de un acuerdo marco o un SDA. */
 export type MarcoDeLicitacion = Schemas["MarcoDeLicitacion"];
+/** Modificaciones publicadas del contrato, su coste final y lo que amplía su órgano (v180). */
+export type ModificacionesDeLicitacion = Schemas["ModificacionesDeLicitacion"];
+export type ModificacionPublicada = Schemas["ModificacionPublicada"];
+export type CosteDeContrato = Schemas["CosteDeContrato"];
 export type NovedadesDeFicha = Schemas["NovedadesDeFicha"];
 export type TrendPoint = Schemas["TrendPoint"];
 export type TrendsResult = Schemas["TrendsResult"];

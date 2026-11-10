@@ -860,6 +860,63 @@ def detect_duplicados_por_referencia(
     return result
 
 
+def expedientes_por_referencia(
+    avisos: Mapping[str, tuple[str | None, ReferenciaCruzada]],
+) -> dict[str, str]:
+    """Para cada aviso de TED, el expediente de otra fuente que es su mismo contrato.
+
+    ``avisos`` va de una clave cualquiera a ``(órgano del aviso, referencia)``.
+    Más estricto que :func:`_elegir_canonica_por_referencia`, porque aquí no se
+    esconde una fila: se cuelga un dato de un expediente. Valen el ``idEvl``
+    (identifica el expediente de PLACSP sin ambigüedad), BT-04 cuando es el
+    UUID de la ficha de la plataforma catalana (tampoco se repite) y BT-22
+    **dentro del mismo órgano**; ni el título ni el valor estimado bastan, y BT-22 sin
+    órgano solo es un techo (2026-11-10: 611 BT-22 distintos de avisos de
+    modificación casaban con 327 filas, sin saber cuántas eran el contrato).
+    Lo usa el enlazado de las modificaciones de TED
+    (``services.modificaciones.enlazar_pendientes``). Sin candidata, el aviso
+    no sale en el resultado.
+    """
+    utiles = {k: v for k, v in avisos.items() if not v[1].vacia}
+    if not utiles:
+        return {}
+    expedientes = sorted(
+        {expediente_comparable(ref.expediente) for _, ref in utiles.values() if ref.expediente}
+    )
+    id_evls = sorted({ref.id_evl for _, ref in utiles.values() if ref.id_evl})
+    procedimientos = sorted({ref.procedimiento for _, ref in utiles.values() if ref.procedimiento})
+    por_id_evl: _IndiceCandidatas = {}
+    por_procedimiento: _IndiceCandidatas = {}
+    por_expediente: _IndiceCandidatas = {}
+    for candidata in dedupe_repo.iter_candidatas_por_referencia(
+        FUENTE_TED, expedientes, id_evls, procedimientos
+    ):
+        if candidata.get("fuente") == FUENTE_TED:
+            continue
+        if (evl := id_evl_de_url(candidata.get("url"))) is not None:
+            por_id_evl.setdefault(evl, []).append(candidata)
+        if (ficha := uuid_ficha_de_url(candidata.get("url"))) is not None:
+            por_procedimiento.setdefault(ficha, []).append(candidata)
+        for clave in _claves_de_candidata(candidata):
+            por_expediente.setdefault(clave, []).append(candidata)
+
+    out: dict[str, str] = {}
+    for aviso, (organo, ref) in utiles.items():
+        candidatas = por_id_evl.get(ref.id_evl, []) if ref.id_evl else []
+        if not candidatas and ref.procedimiento:
+            candidatas = por_procedimiento.get(ref.procedimiento, [])
+        if not candidatas and ref.expediente:
+            organos = _organos_emparejables(organo)
+            candidatas = [
+                c
+                for c in por_expediente.get(expediente_comparable(ref.expediente), [])
+                if organos & _organos_emparejables(c.get("organo_contratacion"))
+            ]
+        if candidatas:
+            out[aviso] = str(min(candidatas, key=_orden_de_candidata)["id_externo"])
+    return out
+
+
 def reemparejar_ted_por_id_evl() -> DedupeResult:
     """Pasa por la detección por referencia las filas TED antiguas que siguen sin pareja.
 

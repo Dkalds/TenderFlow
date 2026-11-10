@@ -119,6 +119,9 @@ un NIF con `schemeName="OTROS"`, un `&#13;` dentro de un texto y dos
 | `23_ambos_periodos_real` | Real. Los dos periodos de plazo presentes con la misma fecha y hora, que es como los publica el feed; adjudicado |
 | `24_documentos_real` | Real. Pliego legal, técnico y un anexo `.xlsx`; un solo lote; la solvencia económica (`ZZZ`) publica «PRECIO» como descripción. Sin `ValidNoticeInfo`: `fecha_publicacion` sale del día del `updated` (`2026-10-23`; hasta el 2026-10-25, el timestamp entero) |
 | `25_multilote_real_por_lote` | **Real** (ZIP 2026-06). Cuatro lotes, cuatro `TenderResult` con su `ProcurementProjectLotID`; la misma empresa gana el 2 y el 3 por importes distintos. Incidente del 2026-10-24: en producción las adjudicaciones de los lotes 1 y 3 seguían sin `lote_id` aunque el XML lo publica, porque 188.800,9 y 24.545,6 no caben exactos en `real` y el reproceso comparaba el importe por igualdad |
+| `26_modificaciones_por_lote_real` | **Real** (ZIP 2026-10). Dos prórrogas por lote, cada lote con su `ContractID`; cuatro fechas del `DOC_MOD` del perfil para cuatro `ContractModification` (se asignan por orden); una modificación a la baja (-8.200) |
+| `27_modificaciones_contrato_compartido_real` | **Real** (ZIP 2026-10). Dos lotes que publican el mismo `ContractID` y repiten `(ContractID, ID)`: el lote no se sabe y la clave se distingue por orden; cinco fechas para cuatro modificaciones, así que sin fecha; un plazo en `ANN` con el final en `MON` |
+| `28_modificaciones_sin_importes_real` | **Real** (ZIP 2026-10). Una suspensión sin importes y una resolución que publica el importe final a 0 (queda «no publicado») |
 
 El caso 11 existe porque sin él invertir la prioridad en `_tender_deadline` no
 rompía ningún test del corpus (el 23, real, no basta: sus dos fechas
