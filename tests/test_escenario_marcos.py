@@ -14,6 +14,9 @@ from tests.escenarios import abrir_sesion, sembrar_licitacion
 NIF_PROPIO = "B11223344"  # pragma: allowlist secret -- NIF de prueba
 
 MARCO = "AM-TI-2026"
+#: Un marco y su basado tal como llegan de TED, que sí publica el enlace.
+MARCO_TED = "ted:649072-2024"
+BASADO_TED = "ted:684052-2026"
 
 
 def _lote(licitacion_id: str, numero: str) -> int:
@@ -28,7 +31,7 @@ def _lote(licitacion_id: str, numero: str) -> int:
     return int(fila[0])
 
 
-def _admitir(licitacion_id: str, nombre: str, nif: str, lote_id: int) -> None:
+def _admitir(licitacion_id: str, nombre: str, nif: str, lote_id: int | None = None) -> None:
     """Lo que escribe la ingesta cuando el marco se adjudica: una fila por admitido y lote."""
     from db.database import connect
 
@@ -41,7 +44,7 @@ def _admitir(licitacion_id: str, nombre: str, nif: str, lote_id: int) -> None:
 
 
 def test_cu36_acuerdo_marco_en_la_ficha(client, api_db):
-    """CU-36 — admitidos, vigencia, si tu organización está, el basado sin dato y Renovaciones."""
+    """CU-36 — admitidos, vigencia, pertenencia, basados enlazados o sin dato, y Renovaciones."""
     fin = (datetime.now().astimezone() + timedelta(days=90)).date().isoformat()
     sembrar_licitacion(
         MARCO,
@@ -55,15 +58,46 @@ def test_cu36_acuerdo_marco_en_la_ficha(client, api_db):
     _admitir(MARCO, "Mi Empresa SL", NIF_PROPIO, lote_1)
     _admitir(MARCO, "Mi Empresa SL", NIF_PROPIO, lote_2)
     _admitir(MARCO, "Rival Uno SA", "A28000001", lote_1)
+    # PLACSP dice que es un basado, pero no de qué marco: solo lo nombra el título.
     sembrar_licitacion(
         "CB-2026-014",
         "Desarrollo SAP para la Agencia, basado en el AM-TI-2026",
         sistema_contratacion="basado_marco",
     )
     sembrar_licitacion("EXP-ABIERTO-2026", "Soporte SAP", sistema_contratacion="ninguno")
+    # TED sí publica el marco de cada basado.
+    sembrar_licitacion(
+        MARCO_TED,
+        "Acuerdo marco de servicios de nube",
+        fuente="ted",
+        estado="RES",
+        sistema_contratacion="marco",
+    )
+    _admitir(MARCO_TED, "Mi Empresa SL", NIF_PROPIO)
+    _admitir(MARCO_TED, "Rival Dos SA", "A28000002")
+    sembrar_licitacion(
+        BASADO_TED,
+        "Servicios de nube para la Consejería",
+        fuente="ted",
+        sistema_contratacion="basado_marco",
+        marco_ref=MARCO_TED,
+    )
+    # Un basado cuyo marco no es de TI: la referencia está, la fila no.
+    sembrar_licitacion(
+        "ted:700001-2026",
+        "Licencias ofimáticas, basado en acuerdo marco",
+        fuente="ted",
+        sistema_contratacion="basado_marco",
+        marco_ref="ted:111111-2020",
+    )
 
     sesion = abrir_sesion("marcos@example.com", client)
     org = {"organization_id": sesion.organization_id}
+
+    def marco_de(licitacion_id: str) -> dict:
+        respuesta = sesion.get(f"/licitaciones/{licitacion_id}/marco", params=org)
+        assert respuesta.status_code == 200, respuesta.text
+        return respuesta.json()
 
     # La ficha dice qué es el expediente: de ahí decide la pantalla si pide el marco.
     ficha = sesion.get(f"/licitaciones/{MARCO}")
@@ -71,9 +105,7 @@ def test_cu36_acuerdo_marco_en_la_ficha(client, api_db):
     assert ficha.json()["sistema_contratacion"] == "marco"
 
     # Sin NIF declarado: admitidos y vigencia sí, pertenencia no se afirma.
-    sin_nif = sesion.get(f"/licitaciones/{MARCO}/marco", params=org)
-    assert sin_nif.status_code == 200, sin_nif.text
-    marco = sin_nif.json()
+    marco = marco_de(MARCO)
     assert marco["sistema"] == "marco"
     assert marco["identidad_conocida"] is False
     assert marco["organizacion_admitida"] is None
@@ -82,6 +114,9 @@ def test_cu36_acuerdo_marco_en_la_ficha(client, api_db):
     assert marco["vigencia"]["fecha_fin"] == fin
     assert marco["vigencia"]["origen"] == "real"
     assert marco["vigencia"]["dias_restantes"] in (89, 90, 91)
+    # Ningún basado lo cita —PLACSP no publica ese enlace—: sin dato, no cero.
+    assert marco["basados_total"] is None
+    assert marco["basados"] == []
 
     declarado = sesion.put(
         f"/organizations/{sesion.organization_id}/nifs",
@@ -90,7 +125,7 @@ def test_cu36_acuerdo_marco_en_la_ficha(client, api_db):
     assert declarado.status_code == 200, declarado.text
 
     # Con NIF: tu organización está, va la primera y con sus dos lotes.
-    marco = sesion.get(f"/licitaciones/{MARCO}/marco", params=org).json()
+    marco = marco_de(MARCO)
     assert marco["identidad_conocida"] is True
     assert marco["organizacion_admitida"] is True
     propia, rival = marco["admitidos"]
@@ -98,16 +133,38 @@ def test_cu36_acuerdo_marco_en_la_ficha(client, api_db):
     assert propia["lotes"] == ["1", "2"]
     assert (rival["nombre"], rival["es_tu_organizacion"]) == ("Rival Uno SA", False)
 
-    # Un basado dice que lo es; de qué marco cuelga no lo publica la fuente: sin dato, no ceros.
-    basado = sesion.get("/licitaciones/CB-2026-014/marco", params=org).json()
+    # Un basado sin enlace dice que lo es y deja lo demás sin dato: el título no se interpreta.
+    basado = marco_de("CB-2026-014")
     assert basado["sistema"] == "basado_marco"
+    assert basado["marco"] is None
+    assert basado["marco_referencia"] is None
     assert basado["admitidos_total"] is None
     assert basado["organizacion_admitida"] is None
     assert basado["admitidos"] == []
     assert basado["vigencia"] is None
 
+    # Un basado con su marco: compiten los admitidos del marco, y tu organización es uno.
+    enlazado = marco_de(BASADO_TED)
+    assert enlazado["sistema"] == "basado_marco"
+    assert enlazado["marco"]["licitacion_id"] == MARCO_TED
+    assert enlazado["marco"]["titulo"] == "Acuerdo marco de servicios de nube"
+    assert enlazado["admitidos_total"] == 2
+    assert enlazado["organizacion_admitida"] is True
+    assert enlazado["basados_total"] is None  # los basados son del marco, no de otro basado
+
+    # Y el marco enseña los contratos basados que lo citan.
+    con_basados = marco_de(MARCO_TED)
+    assert con_basados["basados_total"] == 1
+    assert [b["licitacion_id"] for b in con_basados["basados"]] == [BASADO_TED]
+
+    # El marco existe pero no está en el producto: se da la referencia, no admitidos.
+    fuera = marco_de("ted:700001-2026")
+    assert fuera["marco"] is None
+    assert fuera["marco_referencia"] == "TED 111111-2020"
+    assert fuera["admitidos_total"] is None
+
     # Un expediente corriente no es un marco.
-    corriente = sesion.get("/licitaciones/EXP-ABIERTO-2026/marco", params=org).json()
+    corriente = marco_de("EXP-ABIERTO-2026")
     assert corriente["sistema"] == "ninguno"
     assert corriente["admitidos_total"] is None
 

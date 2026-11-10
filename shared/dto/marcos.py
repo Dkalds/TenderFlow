@@ -38,13 +38,38 @@ class VigenciaMarco(BaseModel):
     dias_restantes: int | None = None
 
 
+class MarcoEnlazado(BaseModel):
+    """El marco del que cuelga un contrato basado, cuando está en el producto."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    licitacion_id: str
+    titulo: str
+    organo_contratacion: str | None = None
+    sistema: SistemaContratacion | None = None
+
+
+class ContratoBasado(BaseModel):
+    """Un contrato basado que cita al marco."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    licitacion_id: str
+    titulo: str
+    organo_contratacion: str | None = None
+    estado: str | None = None
+    importe: float | None = None
+    fecha_publicacion: str | None = None
+
+
 class MarcoDeLicitacion(BaseModel):
     """Lo que se sabe del acuerdo marco o el SDA de un expediente.
 
-    Para un marco o un SDA, sus admitidos y su vigencia. Para un contrato
-    basado, solo que lo es: ninguna fuente publica de qué marco cuelga, así que
-    ``admitidos_total`` y ``organizacion_admitida`` llegan a ``None`` —sin
-    dato—, nunca a cero.
+    En un marco o un SDA, ``admitidos`` y ``vigencia`` son los suyos. En un
+    contrato basado son los de su marco, y solo llegan si la fuente publica
+    cuál es y ese marco está en el producto (``marco``). Donde no se sabe,
+    ``admitidos_total``, ``organizacion_admitida`` y ``basados_total`` son
+    ``None`` —sin dato—, nunca cero.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -55,11 +80,22 @@ class MarcoDeLicitacion(BaseModel):
     #: ``False`` si la organización no ha declarado ningún NIF: sin él no se
     #: puede decir si está entre los admitidos.
     identidad_conocida: bool
-    #: Empresas distintas admitidas. ``None`` fuera de un marco o un SDA.
+    #: Solo en un basado: su marco, si la fuente lo publica y está en el producto.
+    marco: MarcoEnlazado | None = None
+    #: Solo en un basado cuyo marco se conoce pero no está en el producto: la
+    #: referencia tal como se puede buscar fuera («TED 649072-2024»).
+    marco_referencia: str | None = None
+    #: Empresas distintas admitidas en el marco. ``None`` si no se conoce el marco.
     admitidos_total: int | None = Field(default=None, ge=0)
-    #: Las primeras por orden alfabético, hasta el tope de la respuesta.
+    #: La organización que mira va la primera; el resto, por orden alfabético,
+    #: hasta el tope de la respuesta.
     admitidos: list[AdmitidoMarco] = Field(default_factory=list)
     #: ``None`` si no se puede saber: sin NIF declarado, sin admitidos
-    #: publicados, o en un contrato basado.
+    #: publicados, algún admitido sin NIF, o un basado sin marco conocido.
     organizacion_admitida: bool | None = None
     vigencia: VigenciaMarco | None = None
+    #: Solo en un marco o un SDA: contratos basados que lo citan. ``None`` si
+    #: su fuente no publica ese enlace; cero solo si lo publica y ninguno lo cita.
+    basados_total: int | None = Field(default=None, ge=0)
+    #: Los más recientes, hasta el tope de la respuesta.
+    basados: list[ContratoBasado] = Field(default_factory=list)

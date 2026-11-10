@@ -1,4 +1,4 @@
-"""v178: ``sistema_contratacion`` en ``licitaciones`` — marco, SDA, basado o ninguno.
+"""v178: ``sistema_contratacion`` y ``marco_ref`` en ``licitaciones`` — marcos y SDA.
 
 Revision ID: v178_sistema_contratacion
 Revises: v177_rss_autonomico_sin_tramitacion
@@ -11,8 +11,9 @@ procedimiento (códigos ``7`` y ``12`` de ``shared/procedimientos.py``), y esa
 etiqueta no los recoge: medido el 2026-11-10 sobre los 12 meses desde
 2025-11-01, 494 expedientes de TI nombran un acuerdo marco o un sistema
 dinámico en el título, 73 llevan el procedimiento ``7`` y ninguno el ``12``.
-El dato sí viene en la fuente: ``cac:TenderingProcess/cbc:ContractingSystemCode``
-de CODICE, que el parser no leía.
+El dato sí viene en las fuentes y no se leía: ``cbc:ContractingSystemCode`` de
+CODICE, ``framework-agreement-lot`` / ``dps-usage-lot`` de eForms (TED) y la
+columna ``racionalitzacio_contractacio`` de PSCP.
 
 Forma, y por qué
 ----------------
@@ -29,13 +30,23 @@ revisión: no hay backfill aquí, el dato entra al reingerir. El ``CHECK`` se
 añade ``NOT VALID`` y se valida aparte para no tener la tabla bloqueada
 mientras se recorre.
 
-Sin índice: lo único que lee la columna es la ficha de un expediente, por su
-clave primaria, y el listado de renovaciones, que la proyecta sin filtrar por
-ella.
+Sin índice sobre ``sistema_contratacion``: lo único que la lee es la ficha de un
+expediente, por su clave primaria, y el listado de renovaciones, que la
+proyecta sin filtrar por ella.
 
-No hay columna para el marco del que cuelga un basado: ninguna fuente lo
-publica como dato (en el ATOM solo aparece nombrado en el título), y no se
-deduce.
+``marco_ref`` es el marco del que cuelga un contrato basado, escrito como el
+``id_externo`` que tendría el expediente del marco (``ted:649072-2024``). No es
+clave ajena: el marco puede no estar en ``licitaciones`` (no es de TI, o es
+anterior a lo ingerido), y la referencia vale igual para cuando llegue. Solo la
+rellena la fuente que publica el enlace como dato. Medido el 2026-11-10: TED lo
+trae en ``framework-notice-id`` (257 de 259 adjudicaciones basadas en un
+acuerdo marco); PLACSP no lo trae (ninguna etiqueta de enlace entre las 158 del
+feed, solo el título lo nombra) y ahí queda ``NULL``, sin deducirlo; PSCP lo
+trae en el JSON de cada fase, que el conector aún no lee.
+
+Su índice es parcial —casi todas las filas son ``NULL``— y sirve la única
+consulta que filtra por ella: los basados de un marco. Se crea
+``CONCURRENTLY`` para no bloquear las escrituras de la ingesta.
 
 DIALECT-GUARDED: solo actúa en Postgres.
 """
@@ -53,6 +64,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 _CHECK = "ck_lic_sistema_contratacion"
+_IDX = "idx_lic_marco_ref"
 # Congelados aquí, no importados de `shared.sistema_contratacion`: una
 # migración describe el esquema del día en que se escribió.
 _VALORES = ("ninguno", "marco", "sda", "basado_marco", "basado_sda")
@@ -66,6 +78,7 @@ def upgrade() -> None:
     if not _is_postgres():
         return
     op.add_column("licitaciones", sa.Column("sistema_contratacion", sa.Text, nullable=True))
+    op.add_column("licitaciones", sa.Column("marco_ref", sa.Text, nullable=True))
     valores = ", ".join(f"'{v}'" for v in _VALORES)
     op.execute(
         f"ALTER TABLE licitaciones ADD CONSTRAINT {_CHECK} "
@@ -74,10 +87,17 @@ def upgrade() -> None:
     with op.get_context().autocommit_block():
         # SHARE UPDATE EXCLUSIVE: la ingesta y la API siguen leyendo y escribiendo.
         op.execute(f"ALTER TABLE licitaciones VALIDATE CONSTRAINT {_CHECK}")
+        op.execute(
+            f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX} "
+            "ON licitaciones (marco_ref) WHERE marco_ref IS NOT NULL"
+        )
 
 
 def downgrade() -> None:
     if not _is_postgres():
         return
+    with op.get_context().autocommit_block():
+        op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX}")
     op.execute(f"ALTER TABLE licitaciones DROP CONSTRAINT IF EXISTS {_CHECK}")
+    op.drop_column("licitaciones", "marco_ref")
     op.drop_column("licitaciones", "sistema_contratacion")

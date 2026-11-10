@@ -163,7 +163,13 @@ from shared.dto.jobs import (
     JobEstadoDTO,
     JobResultado,
 )
-from shared.dto.marcos import AdmitidoMarco, MarcoDeLicitacion, VigenciaMarco
+from shared.dto.marcos import (
+    AdmitidoMarco,
+    ContratoBasado,
+    MarcoDeLicitacion,
+    MarcoEnlazado,
+    VigenciaMarco,
+)
 from shared.dto.organizaciones import (
     PROBABILIDADES_ETAPA_DEFAULT,
     AuditEntryOut,
@@ -302,6 +308,7 @@ __all__ = [
     "CompetitiveCompanyYearDTO",
     "CondicionesAmbito",
     "CondicionesOficiales",
+    "ContratoBasado",
     "CreatedId",
     "CriterioOficial",
     "CriterioPuntuado",
@@ -338,6 +345,7 @@ __all__ = [
     "LicitacionPublica",
     "LotePublico",
     "MarcoDeLicitacion",
+    "MarcoEnlazado",
     "ObjetoEtiquetable",
     "OportunidadCuenta",
     "OrganizationCapabilities",

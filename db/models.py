@@ -92,6 +92,8 @@ licitaciones = Table(
     # v178_sistema_contratacion: marco, SDA, basado o ninguno, normalizado
     # (`shared/sistema_contratacion.py`). NULL = la fuente no lo dice.
     Column("sistema_contratacion", String),
+    # v178: `id_externo` del marco del que cuelga un basado, si la fuente lo publica.
+    Column("marco_ref", Text),
     # v133_nucleo_tipado_sombra (T2): sombras tipadas. Nadie proyecta la tabla
     # entera con `select(licitaciones)`; están aquí para que el listado y el
     # cursor filtren y ordenen por ellas vía `db.sql_fragments.columna_nucleo`

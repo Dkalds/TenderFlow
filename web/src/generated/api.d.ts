@@ -8314,6 +8314,24 @@ export interface components {
             consultas?: string[];
         };
         /**
+         * ContratoBasado
+         * @description Un contrato basado que cita al marco.
+         */
+        ContratoBasado: {
+            /** Estado */
+            estado?: string | null;
+            /** Fecha Publicacion */
+            fecha_publicacion?: string | null;
+            /** Importe */
+            importe?: number | null;
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Titulo */
+            titulo: string;
+        };
+        /**
          * ContratoCartera
          * @description Un contrato ganado que sigue vivo.
          */
@@ -11286,25 +11304,47 @@ export interface components {
          * MarcoDeLicitacion
          * @description Lo que se sabe del acuerdo marco o el SDA de un expediente.
          *
-         *     Para un marco o un SDA, sus admitidos y su vigencia. Para un contrato
-         *     basado, solo que lo es: ninguna fuente publica de qué marco cuelga, así que
-         *     ``admitidos_total`` y ``organizacion_admitida`` llegan a ``None`` —sin
-         *     dato—, nunca a cero.
+         *     En un marco o un SDA, ``admitidos`` y ``vigencia`` son los suyos. En un
+         *     contrato basado son los de su marco, y solo llegan si la fuente publica
+         *     cuál es y ese marco está en el producto (``marco``). Donde no se sabe,
+         *     ``admitidos_total``, ``organizacion_admitida`` y ``basados_total`` son
+         *     ``None`` —sin dato—, nunca cero.
          */
         MarcoDeLicitacion: {
             /** Admitidos */
             admitidos?: components["schemas"]["AdmitidoMarco"][];
             /** Admitidos Total */
             admitidos_total?: number | null;
+            /** Basados */
+            basados?: components["schemas"]["ContratoBasado"][];
+            /** Basados Total */
+            basados_total?: number | null;
             /** Identidad Conocida */
             identidad_conocida: boolean;
             /** Licitacion Id */
             licitacion_id: string;
+            marco?: components["schemas"]["MarcoEnlazado"] | null;
+            /** Marco Referencia */
+            marco_referencia?: string | null;
             /** Organizacion Admitida */
             organizacion_admitida?: boolean | null;
             /** Sistema */
             sistema?: ("ninguno" | "marco" | "sda" | "basado_marco" | "basado_sda") | null;
             vigencia?: components["schemas"]["VigenciaMarco"] | null;
+        };
+        /**
+         * MarcoEnlazado
+         * @description El marco del que cuelga un contrato basado, cuando está en el producto.
+         */
+        MarcoEnlazado: {
+            /** Licitacion Id */
+            licitacion_id: string;
+            /** Organo Contratacion */
+            organo_contratacion?: string | null;
+            /** Sistema */
+            sistema?: ("ninguno" | "marco" | "sda" | "basado_marco" | "basado_sda") | null;
+            /** Titulo */
+            titulo: string;
         };
         /**
          * MargenImplicito

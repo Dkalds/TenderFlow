@@ -93,7 +93,7 @@ describe("FichaMarco", () => {
   });
 
   it("con admitidos sin NIF publicado no afirma que no estás", async () => {
-    servir({ admitidos_total: 1, admitidos: [{ nombre: "Empresa X", lotes: [] }], organizacion_admitida: null });
+    servir({ admitidos_total: 1, admitidos: [{ nombre: "Empresa X", lotes: [], es_tu_organizacion: false }], organizacion_admitida: null });
     montar("marco");
 
     expect(await screen.findByText(/no se puede descartar que seas uno de ellos/)).toBeInTheDocument();

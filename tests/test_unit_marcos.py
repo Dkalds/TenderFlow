@@ -75,3 +75,10 @@ def test_la_empresa_del_maestro_tambien_reconoce_a_la_organizacion() -> None:
 
 def test_un_marco_sin_adjudicar_no_tiene_admitidos_ni_respuesta() -> None:
     assert agrupar_admitidos([], PROPIA) == ([], None)
+
+
+def test_la_referencia_de_un_marco_que_no_esta_se_da_como_se_busca_en_su_fuente() -> None:
+    from services.marcos import referencia_legible
+
+    assert referencia_legible("ted:649072-2024") == "TED 649072-2024"
+    assert referencia_legible("sin-prefijo") == "sin-prefijo"
