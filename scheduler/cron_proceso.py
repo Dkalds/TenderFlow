@@ -47,9 +47,9 @@ PERFIL_DEL_HIJO = "scraper"
 POOL_DEL_HIJO = "2"
 
 #: Espera antes de relanzar un hijo muerto, y su techo. Se dobla con cada
-#: caída: el calendario del plano vive en la memoria del hijo, así que cada
-#: relanzado empieza con una ingesta, y un hijo que muere siempre (la imagen
-#: sin las dependencias del pipeline, el scoring sin memoria) las encadenaría.
+#: caída: un hijo que muere siempre (la imagen sin las dependencias del
+#: pipeline, el scoring sin memoria) repetiría el job que lo mata en cuanto
+#: caducara su marca de cadencia.
 ESPERA_RELANZADO_S = 60.0
 ESPERA_RELANZADO_MAX_S = 3600.0
 

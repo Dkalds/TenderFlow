@@ -18,6 +18,7 @@ Generado: 2026-11-10
 | `ml_scoring_baja` | actions | python -m scheduler.jobs.ml_predicciones |
 | `ml_retrain_baja` | actions | python -m scheduler.jobs.ml_predicciones |
 | `documentos_embeddings` | actions | python -m scheduler.jobs.documentos_embeddings |
+| `domain_truth_audit` | render | tenderflow-api (ADR-033, proceso hijo) |
 | `dlq_retry` | pipeline | CANONICAL_STEPS[dlq_retry] |
 | `webhook_reintentos` | pipeline | CANONICAL_STEPS[webhook_reintentos] |
 | `event_dispatch` | pipeline | CANONICAL_STEPS[event_dispatch] |
@@ -34,7 +35,7 @@ Generado: 2026-11-10
 | `puntuaciones_acta` | cola | tenderflow-api (ADR-028 §G) |
 | `paso_pipeline` | pipeline | cierre de la pasada (Actions) |
 
-**21 jobs, todos con plano verificado.**
+**22 jobs, todos con plano verificado.**
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 

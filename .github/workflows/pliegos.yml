@@ -85,14 +85,26 @@ jobs:
     # 45 min tampoco bastaron: del run #65 (2026-09-15) al #73 (2026-09-23)
     # nueve noches seguidas se cancelaron a mitad del embed o de tech_signal,
     # sin llegar a `run_cli` ni a su alerta. El fetch de 300 documentos iba de
-    # 17 a 37 min y el embed de 100, de 15 a más de 25. Desde entonces fetch,
-    # embed y fichas tienen tope de reloj propio (PLIEGO_*_MAX_SECONDS en
-    # config/settings.py: 20 + 15 + 30 min), y este timeout es la red de
-    # seguridad, no lo que corta el trabajo. Si salta, algo sin tope (el setup,
-    # tech_signal o el report) se disparó, y hay que mirarlo antes de subirlo.
-    # 75 → 90 el 2026-09-28, al pasar el tope de fichas de 10 a 30 min
-    # (tender-facts-v6): se conserva el mismo margen para lo que no tiene tope.
-    timeout-minutes: 90
+    # 17 a 37 min y el embed de 100, de 15 a más de 25. Desde entonces las
+    # fases tienen tope de reloj propio (PLIEGO_*_MAX_SECONDS en
+    # config/settings_pliegos.py), y este timeout es la red de seguridad, no
+    # lo que corta el trabajo. Si salta, algo sin tope se disparó, y hay que
+    # mirarlo antes de subirlo.
+    #
+    # Los topes suman 75 min: fetch 20 + embed 15 + fichas 30 + señal de
+    # tecnología 10 (esta, desde el 2026-11-09). Lo que queda fuera, medido
+    # del 2026-10-29 al 2026-11-09: el setup (2-3 min; 7 si el OCR de abajo
+    # agota su tope), lo que cada fase se pasa del suyo con el último elemento
+    # (hasta 2,5 min las fichas), la fusión de la señal (~1 min) y el cierre
+    # con el report (~1 min). Con las cuatro fases llenas, unos 85 min, y 89
+    # con apt lento: con 90 el margen se quedaba en 1-5 min. Con 100 cabe
+    # también un OCR que agote sus 10 min al final del fetch (95, o 99 con apt
+    # lento), aunque en estas pasadas el más largo registrado tardó 78 s. No
+    # cuenta la fase de resumen IA: está apagada (`RESUMEN_PREGEN_ENABLED`) y
+    # no tiene tope, así que encenderla pide darle uno o rehacer esta cuenta.
+    # 75 → 90 el 2026-09-28 (tope de fichas de 10 a 30 min, tender-facts-v6);
+    # 90 → 100 el 2026-11-09.
+    timeout-minutes: 100
 
     steps:
       - name: Checkout
@@ -116,16 +128,34 @@ jobs:
       #
       # `continue-on-error`: el OCR es cobertura extra. Si el mirror de apt está
       # caído, el fetcher degrada solo (`ocr_binario()` devuelve None y un PDF
-      # escaneado vuelve a terminar en `error`, como antes de S8.3) y el lote de
-      # ~44k documentos se drena igual. Romper la ingesta por no poder instalar
-      # un extra sería el intercambio equivocado.
+      # escaneado acaba en `sin_texto`) y el lote se drena igual. Romper la
+      # ingesta por no poder instalar un extra sería el intercambio equivocado.
+      #
+      # Tope de tiempo: `continue-on-error` cubre un apt que falla, no uno
+      # lento. El 2026-11-06 el mirror sirvió a 30 kB/s, el paso tardó 31 min
+      # (lo normal, de 15 s a 1 min) y el job se canceló por su timeout antes
+      # de acabar las fases. El corte lo hace `timeout` dentro del script: el
+      # `timeout-minutes` del paso no mata sus procesos, que siguen huérfanos
+      # hasta el final del job (le pasó al lote de PSCP en octubre), y apt
+      # podría acabar instalando a mitad del fetch. Queda de respaldo.
+      #
+      # Fallido o cortado, el run sale verde. El paso de debajo lo avisa,
+      # porque esa noche los escaneados se quedan en `sin_texto`, que es
+      # terminal, y `reencolar_documentos_no_soportados.py --sin-texto` solo
+      # devuelve a `pending` los leídos antes del 2026-09-08.
       - name: Instalar ocrmypdf (OCR de escaneados)
+        id: ocr
         continue-on-error: true
+        timeout-minutes: 5
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo timeout 1m apt-get update
+          sudo timeout 3m apt-get install -y --no-install-recommends \
             ocrmypdf tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng
           ocrmypdf --version
+
+      - name: Avisar si la pasada va sin OCR
+        if: ${{ steps.ocr.outcome != 'success' }}
+        run: echo "::warning title=Pasada sin OCR::No se pudo instalar ocrmypdf (fallo o tope de tiempo). Los PDF escaneados de esta pasada se quedan en sin_texto."
 
       - name: Install dependencies
         run: |
