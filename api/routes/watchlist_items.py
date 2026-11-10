@@ -37,25 +37,6 @@ router = APIRouter(prefix="/watchlist/items", tags=["watchlist"])
 _repo = WatchlistRepository()
 
 
-def _user_key(ctx: Principal) -> str:
-    """Clave opaca y estable por usuario.
-
-    ``require_any_auth`` (sesión o API key) siempre adjunta ``user_key`` al
-    contexto vía ``shared.identity.user_key_from_email`` — es la única
-    derivación canónica. Antes esta función tenía un fallback local con una
-    fórmula distinta (sin ``.strip().lower()``, usando ``key_hash`` en vez de
-    ``user_id`` como semilla alternativa) que nunca se ejercitaba en la
-    práctica pero podía divergir silenciosamente si algún día lo hiciera.
-    """
-    return str(ctx["user_key"])
-
-
-def _user_id(ctx: Principal) -> int | None:
-    """Devuelve el propietario humano, también para API keys vinculadas."""
-    raw = ctx.get("user_id")
-    return int(raw) if raw is not None else None
-
-
 class WatchlistItemBody(BaseModel):
     """Cuerpo de creación de un favorito."""
 
@@ -80,13 +61,8 @@ async def get_items(
     ctx: Principal = Depends(require_organization()),
 ) -> WatchlistFavoritesResult:
     if organization_id is not None:
-        await run_db(claim_legacy_scope, int(ctx["user_id"]), _user_key(ctx))
-    items = await run_db(
-        _repo.list_items,
-        _user_key(ctx),
-        ctx["organization_id"],
-        _user_id(ctx),
-    )
+        await run_db(claim_legacy_scope, int(ctx["user_id"]))
+    items = await run_db(_repo.list_items, int(ctx["user_id"]), ctx["organization_id"])
     return WatchlistFavoritesResult(items=[WatchlistFavoriteItem(**item) for item in items])
 
 
@@ -108,13 +84,12 @@ async def post_item(
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     # Un id anterior a una re-key se guarda con el id vigente.
     body = body.model_copy(update={"id_externo": await id_vigente(body.id_externo, response)})
+    user_id = int(ctx["user_id"])
     ambito = idem_scope(
         "watchlist_items",
-        actor=_user_key(ctx),
+        actor=str(user_id),
         organization_id=ctx.get("organization_id"),
     )
-    user_key = _user_key(ctx)
-    user_id = _user_id(ctx)
     organization_id = ctx["organization_id"]
 
     def _trabajo() -> dict[str, Any]:
@@ -129,7 +104,7 @@ async def post_item(
         cacheada = cached_response(idempotency_key, ambito)
         if cacheada is not None:
             return cacheada
-        item = _repo.add_item(user_key, user_id, body.id_externo, organization_id, body.visibility)
+        item = _repo.add_item(user_id, body.id_externo, organization_id, body.visibility)
         respuesta = WatchlistFavoriteCreated(**item).model_dump(mode="json")
         store_response(idempotency_key, ambito, respuesta)
         return respuesta
@@ -152,9 +127,7 @@ async def delete_item(
     ctx: Principal = Depends(require_organization(write=True)),
     id_externo: str = Depends(resolver_id_externo),
 ) -> None:
-    ok = await run_db(
-        _repo.remove_item, _user_key(ctx), id_externo, ctx["organization_id"], _user_id(ctx)
-    )
+    ok = await run_db(_repo.remove_item, int(ctx["user_id"]), id_externo, ctx["organization_id"])
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorito no encontrado.")
 
@@ -174,11 +147,11 @@ async def put_item_nota(
 ) -> WatchlistNotaBody:
     """La nota es de quien la escribe, no de la organización.
 
-    El repositorio filtra solo por `user_key` a propósito: dos personas que
+    El repositorio filtra solo por la identidad a propósito: dos personas que
     siguen el mismo expediente tienen cada una la suya, y un compañero no puede
     sobrescribir la de otro aunque el favorito esté compartido.
     """
-    ok = await run_db(_repo.set_nota, _user_key(ctx), id_externo, body.nota, _user_id(ctx))
+    ok = await run_db(_repo.set_nota, int(ctx["user_id"]), id_externo, body.nota)
     if not ok:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Favorito no encontrado.")
     return body

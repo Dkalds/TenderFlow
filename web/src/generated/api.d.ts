@@ -5984,7 +5984,7 @@ export interface paths {
          * Escribir o borrar la nota personal de un favorito
          * @description La nota es de quien la escribe, no de la organización.
          *
-         *     El repositorio filtra solo por `user_key` a propósito: dos personas que
+         *     El repositorio filtra solo por la identidad a propósito: dos personas que
          *     siguen el mismo expediente tienen cada una la suya, y un compañero no puede
          *     sobrescribir la de otro aunque el favorito esté compartido.
          */

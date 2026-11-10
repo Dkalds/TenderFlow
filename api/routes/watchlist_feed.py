@@ -44,7 +44,6 @@ from api.tenancy import resolver_organizacion
 from db.users import get_user_by_id
 from observability.logging import get_logger
 from services.watchlist import generate_atom_feed
-from shared.identity import user_key_from_email
 
 log = get_logger(__name__)
 
@@ -97,11 +96,9 @@ async def _clave_del_feed(
 
 def _feed_del_titular(user_id: int, organization_id: int, limit: int) -> str:
     """Lee al titular y genera el feed en un solo salto al threadpool."""
-    titular = get_user_by_id(user_id)
-    if titular is None:
+    if get_user_by_id(user_id) is None:
         raise _UNAUTHORIZED
-    user_key = user_key_from_email(titular.get("email"), user_id)
-    return generate_atom_feed(user_key, limit, user_id=user_id, organization_id=organization_id)
+    return generate_atom_feed(user_id, limit, organization_id=organization_id)
 
 
 @router.get(

@@ -98,12 +98,10 @@ def test_la_alerta_se_ve_en_mi_watchlist_de_quien_guarda(equipo: dict[str, int])
 
     update_settings(equipo["owner"], equipo["org"], OrganizationSettings(tecnologias=["SAP"]))
 
-    clave = user_key_from_email("alerta-owner@example.test", equipo["owner"])
-    (regla,) = list_rules(clave, equipo["org"], user_id=equipo["owner"])
+    (regla,) = list_rules(equipo["owner"], equipo["org"])
     assert regla.tecnologia == "SAP"
     # El admin no la ve: es privada de quien la recibe.
-    clave_admin = user_key_from_email("alerta-admin@example.test", equipo["admin"])
-    assert list_rules(clave_admin, equipo["org"], user_id=equipo["admin"]) == []
+    assert list_rules(equipo["admin"], equipo["org"]) == []
 
 
 def test_volver_a_guardar_no_duplica(equipo: dict[str, int]) -> None:
@@ -118,19 +116,16 @@ def test_volver_a_guardar_no_duplica(equipo: dict[str, int]) -> None:
 def test_borrarla_es_una_baja_definitiva(equipo: dict[str, int]) -> None:
     update_settings(equipo["owner"], equipo["org"], OrganizationSettings(tecnologias=["SAP"]))
     (regla,) = _reglas(equipo["org"])
-    clave = user_key_from_email("alerta-owner@example.test", equipo["owner"])
-    assert delete_rule(clave, int(regla["id"]), equipo["org"], user_id=equipo["owner"])
+    assert delete_rule(equipo["owner"], int(regla["id"]), equipo["org"])
 
     update_settings(equipo["owner"], equipo["org"], OrganizationSettings(tecnologias=["SAP"]))
     assert _reglas(equipo["org"]) == []
 
 
 def test_con_alguna_regla_en_la_organizacion_no_crea(equipo: dict[str, int]) -> None:
-    clave = user_key_from_email("alerta-admin@example.test", equipo["admin"])
     create_rule(
-        clave,
+        equipo["admin"],
         WatchlistRule(nombre="La mía", keyword="erp"),
-        user_id=equipo["admin"],
         organization_id=equipo["org"],
     )
 

@@ -48,10 +48,10 @@ MATCH_COUNT_CAP = 1000
 #: clave de deduplicación; la otra mitad son ``user_key`` y ``licitacion_id``.
 TIPO_NOTIFICACION_REGLA = "rule_match"
 
-#: Predicado de identidad dual (v129, ADR-030 fase 2). Parámetros:
-#: ``(user_id, user_key, user_id)``; con ``user_id=None`` se reduce a
-#: ``user_key = %s``. Ver ``db/repositories/watchlist.py``.
-_IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
+#: La regla es tuya por ``user_id`` o, si no lo tiene, por la clave legada que
+#: ``clave_legada_de_usuario`` (v181, ADR-030 fase 3) calcula con tu correo
+#: actual. Recibe siempre el par ``(user_id, user_id)``.
+_IDENT = "(user_id = %s OR (user_id IS NULL AND user_key = clave_legada_de_usuario(%s)))"
 
 
 def _bounded_count_stmt(clauses: Sequence[Any]) -> Select[tuple[int]]:
@@ -150,7 +150,7 @@ def daily_match_counts(clauses: Sequence[Any], *, desde_iso: str) -> dict[str, i
 # solo evita que el tope se gaste en filas cuyo INSERT iba a ser un no-op.
 
 
-def _sin_notificar(user_key: str, user_id: int | None = None) -> Any:
+def _sin_notificar(user_id: int) -> Any:
     """``NOT EXISTS`` contra las notificaciones ya escritas para ese usuario.
 
     Se escribe con ``text()`` y no con una tabla de ``db.models`` porque
@@ -158,20 +158,21 @@ def _sin_notificar(user_key: str, user_id: int | None = None) -> Any:
     columnas de un anti-join sería más superficie de la que resuelve. Los
     valores viajan como bind params, nunca interpolados.
 
-    La identidad es la dual de v129: con ``user_id`` se descartan también las
-    alertas escritas bajo la clave de un correo anterior; sin él, sólo las de
-    ``user_key``, que es lo que replica el índice único.
+    La identidad es la de v181: se descartan las alertas del ``user_id`` y
+    también las escritas sin id bajo la clave de un correo anterior, que
+    ``clave_legada_de_usuario`` calcula en la base y es lo que replica el
+    índice único.
     """
     return text(
         "NOT EXISTS ("
         " SELECT 1 FROM user_notifications n"
         " WHERE (n.user_id = :wr_user_id"
-        "        OR (n.user_key = :wr_user_key"
-        "            AND (n.user_id IS NULL OR CAST(:wr_user_id AS INTEGER) IS NULL)))"
+        "        OR (n.user_id IS NULL"
+        "            AND n.user_key = clave_legada_de_usuario(:wr_user_id)))"
         "   AND n.type = :wr_tipo"
         "   AND n.licitacion_id = licitaciones.id_externo"
         ")"
-    ).bindparams(wr_user_key=user_key, wr_user_id=user_id, wr_tipo=TIPO_NOTIFICACION_REGLA)
+    ).bindparams(wr_user_id=user_id, wr_tipo=TIPO_NOTIFICACION_REGLA)
 
 
 def _stmt_matches(
@@ -180,16 +181,15 @@ def _stmt_matches(
     *,
     desde: str | None,
     limit: int,
-    user_key: str | None,
-    user_id: int | None = None,
+    user_id: int | None,
 ) -> Select[Any]:
     condiciones = list(clauses)
     if desde:
         # Inclusivo: ver el bloque de arriba. La deduplicación la hace el
         # anti-join, no el operador de comparación.
         condiciones.append(licitaciones.c.fecha_publicacion >= desde)
-    if user_key is not None:
-        condiciones.append(_sin_notificar(user_key, user_id))
+    if user_id is not None:
+        condiciones.append(_sin_notificar(user_id))
     stmt = select(*columns).select_from(licitaciones)
     if condiciones:
         stmt = stmt.where(and_(*condiciones))
@@ -216,34 +216,30 @@ def matches_pendientes(
     *,
     desde: str | None,
     limit: int,
-    user_key: str | None = None,
     user_id: int | None = None,
 ) -> list[dict[str, Any]]:
-    """Matches de una regla que todavía no se han notificado a ``user_key``.
+    """Matches de una regla que todavía no se han notificado a ``user_id``.
 
-    Con ``user_key=None`` se comporta como un listado con corte temporal
+    Con ``user_id=None`` se comporta como un listado con corte temporal
     inclusivo y sin anti-join: es lo que consumen la vista previa y los tests
-    que no ejercen el job. ``user_id`` afina el anti-join (v129) y no cambia
-    nada más.
+    que no ejercen el job.
 
     Las cláusulas del filtro las construye ``services.watchlist_rules`` sobre la
     misma tabla de ``db.models``; aquí se componen y se ejecutan (ADR-022).
     """
-    stmt = _stmt_matches(
-        clauses, columns, desde=desde, limit=limit, user_key=user_key, user_id=user_id
-    )
+    stmt = _stmt_matches(clauses, columns, desde=desde, limit=limit, user_id=user_id)
     sql, params = compile_query(stmt)
     with connect_read() as c:
         try:
             return rows_to_dicts(c.execute(sql, params))
         except Exception as exc:
-            if user_key is None or not _tabla_ausente(exc):
+            if user_id is None or not _tabla_ausente(exc):
                 raise
     # BD legacy sin la revisión v48: se degrada al listado sin anti-join en vez
     # de dejar al usuario sin alertas. El INSERT posterior ya tolera lo mismo.
     log.warning("watchlist_matches_sin_tabla_notificaciones")
     sql, params = compile_query(
-        _stmt_matches(clauses, columns, desde=desde, limit=limit, user_key=None)
+        _stmt_matches(clauses, columns, desde=desde, limit=limit, user_id=None)
     )
     with connect_read() as c:
         return rows_to_dicts(c.execute(sql, params))
@@ -271,9 +267,7 @@ _RULE_COLS_LEGACY = (
 )
 
 
-def list_rules_rows(
-    user_key: str, organization_id: int, *, user_id: int | None = None
-) -> list[dict[str, Any]]:
+def list_rules_rows(user_id: int, organization_id: int) -> list[dict[str, Any]]:
     """Filas crudas de las reglas visibles en la organización, ordenadas por id.
 
     Devuelve dicts y no DTOs a propósito: quien llama necesita tanto los campos
@@ -286,17 +280,18 @@ def list_rules_rows(
                 "SELECT " + _RULE_COLS + " FROM watchlist_rules "
                 "WHERE organization_id = %s "
                 f"AND (visibility = 'organization' OR {_IDENT}) ORDER BY id",
-                (organization_id, user_id, user_key, user_id),
+                (organization_id, user_id, user_id),
             )
             return rows_to_dicts(cur)
         except Exception as exc:
             if not _columna_ausente(exc):
                 raise
-    log.warning("watchlist_rules_schema_legacy", user_key=user_key[:8])
+    log.warning("watchlist_rules_schema_legacy", user_id=user_id)
     with connect_read() as c:
         cur = c.execute(
-            "SELECT " + _RULE_COLS_LEGACY + " FROM watchlist_rules WHERE user_key = %s ORDER BY id",
-            (user_key,),
+            "SELECT " + _RULE_COLS_LEGACY + " FROM watchlist_rules "
+            "WHERE user_key = clave_legada_de_usuario(%s) ORDER BY id",
+            (user_id,),
         )
         return rows_to_dicts(cur)
 
@@ -313,12 +308,12 @@ def _columna_ausente(exc: Exception) -> bool:
     return "column" in mensaje or "columna" in mensaje
 
 
-def set_rule_email(user_key: str, rule_id: int, email: str, *, user_id: int | None = None) -> None:
+def set_rule_email(user_id: int, rule_id: int, email: str) -> None:
     """Fija el destinatario de una regla propia. No-op si no es del usuario."""
     with connect() as c:
         c.execute(
             f"UPDATE watchlist_rules SET email = %s WHERE id = %s AND {_IDENT}",
-            (email, rule_id, user_id, user_key, user_id),
+            (email, rule_id, user_id, user_id),
         )
 
 
@@ -421,17 +416,18 @@ _INSERT_REGLA = (
     " frequency, active, organization_id, visibility, "
     " tecnologia, organo, organo_norm, procedimiento, tipo_contrato, "
     " banda_min, plazo_min_dias, email) "
-    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
+    # La columna ``user_key`` sigue escribiéndose, derivada del ``user_id``
+    # (v181): la leen el enlace de baja y el payload de ``watchlist_rule.matched``.
+    "VALUES (clave_legada_de_usuario(%s), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, "
     "        %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"
 )
 
 
 def _insertar_en(
     c: Connection[TupleRow],
-    user_key: str,
+    user_id: int,
     valores: ValoresRegla,
     *,
-    user_id: int | None,
     organization_id: int | None,
     visibility: str,
     email: str | None = None,
@@ -445,7 +441,7 @@ def _insertar_en(
     row = c.execute(
         _INSERT_REGLA,
         (
-            user_key,
+            user_id,
             user_id,
             valores["nombre"],
             valores["keyword"],
@@ -470,10 +466,9 @@ def _insertar_en(
 
 
 def insertar_regla(
-    user_key: str,
+    user_id: int,
     valores: ValoresRegla,
     *,
-    user_id: int | None = None,
     organization_id: int | None = None,
     visibility: str = "private",
 ) -> int:
@@ -481,9 +476,8 @@ def insertar_regla(
     with connect() as c:
         return _insertar_en(
             c,
-            user_key,
+            user_id,
             valores,
-            user_id=user_id,
             organization_id=organization_id,
             visibility=visibility,
         )
@@ -502,10 +496,9 @@ MARCA_ALERTA_POR_DEFECTO = "alerta_por_defecto"
 
 def crear_reglas_por_defecto(
     organization_id: int,
-    user_key: str,
+    user_id: int,
     valores: Sequence[ValoresRegla],
     *,
-    user_id: int,
     email: str,
     creada_en: str,
 ) -> list[int]:
@@ -546,9 +539,8 @@ def crear_reglas_por_defecto(
         ids = [
             _insertar_en(
                 c,
-                user_key,
+                user_id,
                 v,
-                user_id=user_id,
                 organization_id=organization_id,
                 visibility="private",
                 email=email,
@@ -569,9 +561,7 @@ def crear_reglas_por_defecto(
     return ids
 
 
-def filas_de_reglas(
-    user_key: str, organization_id: int | None = None, *, user_id: int | None = None
-) -> list[dict[str, Any]]:
+def filas_de_reglas(user_id: int, organization_id: int | None = None) -> list[dict[str, Any]]:
     """Reglas del usuario (o visibles en la organización), más recientes primero.
 
     Sin ``organization_id``: las del usuario. Con él: las de esa organización
@@ -582,7 +572,7 @@ def filas_de_reglas(
             cur = c.execute(
                 f"SELECT {_COLS_REGLA} FROM watchlist_rules WHERE {_IDENT} "
                 "ORDER BY created_at DESC, id DESC",
-                (user_id, user_key, user_id),
+                (user_id, user_id),
             )
         else:
             cur = c.execute(
@@ -590,7 +580,7 @@ def filas_de_reglas(
                 "WHERE organization_id = %s "
                 f"AND (visibility = 'organization' OR {_IDENT}) "
                 "ORDER BY created_at DESC, id DESC",
-                (organization_id, user_id, user_key, user_id),
+                (organization_id, user_id, user_id),
             )
         return rows_to_dicts(cur)
 
@@ -650,12 +640,10 @@ def marcar_regla_notificada(rule_id: int, ts: str) -> None:
 
 
 def actualizar_regla(
-    user_key: str,
+    user_id: int,
     rule_id: int,
     valores: ValoresRegla,
     organization_id: int | None = None,
-    *,
-    user_id: int | None = None,
 ) -> bool:
     """Reescribe una regla propia. ``False`` si no existe o no es del usuario."""
     sets = _valores_set(valores)
@@ -663,55 +651,55 @@ def actualizar_regla(
         if organization_id is None:
             cur = c.execute(
                 f"UPDATE watchlist_rules SET {_SETS_REGLA} WHERE id = %s AND {_IDENT}",
-                (*sets, rule_id, user_id, user_key, user_id),
+                (*sets, rule_id, user_id, user_id),
             )
         else:
             cur = c.execute(
                 f"UPDATE watchlist_rules SET {_SETS_REGLA} "
                 f"WHERE id = %s AND {_IDENT} AND organization_id = %s",
-                (*sets, rule_id, user_id, user_key, user_id, organization_id),
+                (*sets, rule_id, user_id, user_id, organization_id),
             )
         return bool(cur.rowcount > 0)
 
 
-def borrar_regla(
-    user_key: str,
-    rule_id: int,
-    organization_id: int | None = None,
-    *,
-    user_id: int | None = None,
-) -> bool:
+def borrar_regla(user_id: int, rule_id: int, organization_id: int | None = None) -> bool:
     """Borra una regla propia. ``False`` si no existe o no es del usuario."""
     with connect() as c:
         if organization_id is None:
             cur = c.execute(
                 f"DELETE FROM watchlist_rules WHERE id = %s AND {_IDENT}",
-                (rule_id, user_id, user_key, user_id),
+                (rule_id, user_id, user_id),
             )
         else:
             cur = c.execute(
                 f"DELETE FROM watchlist_rules WHERE id = %s AND {_IDENT} AND organization_id = %s",
-                (rule_id, user_id, user_key, user_id, organization_id),
+                (rule_id, user_id, user_id, organization_id),
             )
         return bool(cur.rowcount > 0)
 
 
-def borrar_reglas_de_usuario(user_key: str, *, user_id: int | None = None) -> int:
+def borrar_reglas_de_usuario(user_id: int) -> int:
     """Borra todas las reglas del usuario (GDPR). Filas borradas."""
     with connect() as c:
         cur = c.execute(
             f"DELETE FROM watchlist_rules WHERE {_IDENT}",
-            (user_id, user_key, user_id),
+            (user_id, user_id),
         )
         return int(cur.rowcount)
 
 
-def pausar_reglas_de_usuario(user_key: str, *, user_id: int | None = None) -> int:
-    """Pone ``active = 0`` en las reglas activas del usuario. Cuántas pausó."""
+def pausar_reglas_de_usuario(user_key: str) -> int:
+    """Pone ``active = 0`` en las reglas activas con esa clave. Cuántas pausó.
+
+    Es la baja del enlace del pie de un digest y por eso sigue siendo **por
+    clave**: los correos ya enviados llevan la ``user_key`` firmada, no un
+    ``user_id``, y la firma autoriza a la clave sin sesión. Pausa todas las
+    filas que la llevan, tengan ``user_id`` o no.
+    """
     with connect() as c:
         cur = c.execute(
-            f"UPDATE watchlist_rules SET active = 0 WHERE {_IDENT} AND active = 1",
-            (user_id, user_key, user_id),
+            "UPDATE watchlist_rules SET active = 0 WHERE user_key = %s AND active = 1",
+            (user_key,),
         )
         return int(cur.rowcount)
 

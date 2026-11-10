@@ -154,10 +154,11 @@ def test_generate_atom_feed_empty_watchlist_returns_valid_xml():
     from services.watchlist import generate_atom_feed
 
     with patch("services.watchlist_rules.list_rules", return_value=[]):
-        xml = generate_atom_feed("user_key_test")
+        xml = generate_atom_feed(7)
 
     assert '<?xml version="1.0"' in xml
     assert "<feed" in xml
+    assert "<id>urn:watchlist:7</id>" in xml
     assert "<entry>" not in xml
     assert "sin alertas activas" in xml
 
@@ -191,7 +192,7 @@ def test_generate_atom_feed_with_licitaciones_returns_entries():
 
     with patch("services.watchlist_rules.list_rules", return_value=reglas):
         with patch("services.watchlist_rules.list_matches", side_effect=_matches):
-            xml = generate_atom_feed("user_key_test")
+            xml = generate_atom_feed(7)
 
     assert xml.count("<entry>") == 1, "dos reglas que casan lo mismo no lo duplican"
     assert "LIC-001" in xml

@@ -78,8 +78,8 @@ def _leer_todo() -> None:
     from db import radar_dismissals, watchlist_empresas
     from db.repositories.watchlist import WatchlistRepository
 
-    WatchlistRepository().list_items("k", 7, 3)
-    watchlist_empresas.list_entries("k", 7, user_id=3)
+    WatchlistRepository().list_items(3, 7)
+    watchlist_empresas.list_entries(3, 7)
     radar_dismissals.list_detalle("k", user_id=3)
     radar_dismissals.list_ids("k", user_id=3)
 
@@ -101,8 +101,9 @@ def test_encendido_la_pertenencia_sale_de_follows(lectura: Any, sentencias: list
     favoritos, empresas, detalle, ids = sentencias
     for sql in sentencias:
         assert "FROM follows f" in sql
-        # La identidad dual de v129, sobre la fila de `follows`.
-        assert "f.user_id = %s OR (f.user_key = %s" in sql
+        # La identidad dual, sobre la fila de `follows`: la clave legada la
+        # calcula la base desde el id (v181), nadie la pasa.
+        assert "f.user_id = %s OR (f.user_id IS NULL AND f.user_key = clave_legada" in sql
 
     assert "f.target_type = 'licitacion' AND f.kind = 'seguir'" in favoritos
     assert "LEFT JOIN watchlist_items wi" in favoritos

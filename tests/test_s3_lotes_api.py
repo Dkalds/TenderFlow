@@ -245,7 +245,7 @@ def test_el_ics_lleva_el_lote_en_el_titulo(client, api_db):
                 "lote_id": lotes["2"],
             },
         )
-        eventos = _eventos_calendario(_USER_KEY, user_id, organization_id)
+        eventos = _eventos_calendario(user_id, organization_id)
 
         resumenes = [str(evento["summary"]) for evento in eventos]
         assert any("Lote 2" in resumen for resumen in resumenes), resumenes

@@ -101,22 +101,47 @@ def _sembrar_filas_legacy(user_key: str, organization_id: int) -> None:
 
     Salvo ``user_profiles`` y ``radar_dismissals``: desde v135 su PK es
     ``user_id`` y una fila sin él ya no existe (ver ``_CON_PK_USER_ID``).
+    ``watchlist_*`` y ``pending_digests`` se siembran por SQL: desde v181 sus
+    repositorios escriben siempre el id y ya no saben producir una fila así.
     """
     from db.audit import log_action
     from db.database import now_utc_iso
     from db.notifications import insert_user_notification, mark_read
-    from db.repositories.watchlist import WatchlistRepository
     from db.saved_filters import save_filter
-    from db.watchlist import WatchlistEntry, add_entry
-    from db.watchlist_empresas import WatchlistEmpresaEntry
-    from db.watchlist_empresas import add_entry as add_empresa
     from services.notifications import set_modo_email
-    from services.watchlist_rules import WatchlistRule, create_rule
 
-    repo = WatchlistRepository()
-    repo.add_item(user_key, None, "LIC-LEGACY", organization_id)
-    create_rule(user_key, WatchlistRule(keyword="sap"), organization_id=organization_id)
-    add_entry(WatchlistEntry(user_key=user_key, cpv_prefix="72", organization_id=organization_id))
+    ahora = now_utc_iso()
+    with connect() as c:
+        c.execute(
+            "INSERT INTO watchlist_items (user_key, id_externo, created_at, organization_id, "
+            "visibility) VALUES (%s, 'LIC-LEGACY', %s, %s, 'private')",
+            (user_key, ahora, organization_id),
+        )
+        c.execute(
+            "INSERT INTO watchlist_rules (user_key, keyword, frequency, active, created_at, "
+            "organization_id, visibility) VALUES (%s, 'sap', 'daily', 1, %s, %s, 'private')",
+            (user_key, ahora, organization_id),
+        )
+        c.execute(
+            "INSERT INTO watchlist_cpv (user_key, cpv_prefix, created_at, frequency, "
+            "organization_id, visibility) VALUES (%s, '72', %s, 'daily', %s, 'private')",
+            (user_key, ahora, organization_id),
+        )
+        c.execute(
+            "INSERT INTO pending_digests (user_key, recipient_email, entry_id, licitacion_id, "
+            "frequency, matched_at, sent) VALUES (%s, 'x@example.com', 1, 'LIC-LEGACY', "
+            "'daily', %s, 0)",
+            (user_key, ahora),
+        )
+        c.execute(
+            "INSERT INTO empresas (empresa_id, nombre_canonico) VALUES (777, 'ACME') "
+            "ON CONFLICT DO NOTHING"
+        )
+        c.execute(
+            "INSERT INTO watchlist_empresas (user_key, empresa_id, frequency, created_at, "
+            "organization_id, visibility) VALUES (%s, 777, 'daily', %s, %s, 'private')",
+            (user_key, ahora, organization_id),
+        )
     save_filter(user_key, "Vista legacy", "{}", organization_id)
     insert_user_notification(
         user_key=user_key,
@@ -129,22 +154,6 @@ def _sembrar_filas_legacy(user_key: str, organization_id: int) -> None:
     mark_read(user_key, "LIC-LEGACY")
     set_modo_email(user_key, "pursuit.assigned", "off")
     log_action(user_key, "sess", "login", "")
-    repo.store_pending_digest(
-        user_key=user_key,
-        recipient="x@example.com",
-        entry_id=1,
-        licitacion_id="LIC-LEGACY",
-        frequency="daily",
-        matched_at=now_utc_iso(),
-    )
-    with connect() as c:
-        c.execute(
-            "INSERT INTO empresas (empresa_id, nombre_canonico) VALUES (777, 'ACME') "
-            "ON CONFLICT DO NOTHING"
-        )
-    add_empresa(
-        WatchlistEmpresaEntry(user_key=user_key, empresa_id=777, organization_id=organization_id)
-    )
 
 
 def _contar(tabla: str, user_id: int) -> int:
@@ -195,8 +204,10 @@ def test_backfill_resuelve_user_id_en_las_tablas_legacy(tmp_db):
 def test_lectura_dual_sirve_filas_legacy_antes_del_backfill(tmp_db):
     """Una fila sin ``user_id`` sigue siendo del usuario si lleva su clave.
 
-    Y NO es de otro usuario que comparta la clave pero tenga id: es la mitad
-    del predicado que impide heredar los datos de quien tuvo antes el correo.
+    Desde v181 esa clave no la pasa nadie: la calcula la base desde el correo
+    actual (``clave_legada_de_usuario``). Y la fila NO es de otro usuario que
+    comparta la clave pero tenga id: es la mitad del predicado que impide
+    heredar los datos de quien tuvo antes el correo.
     """
     from db.repositories.watchlist import WatchlistRepository
     from db.saved_filters import list_saved_filters
@@ -207,62 +218,43 @@ def test_lectura_dual_sirve_filas_legacy_antes_del_backfill(tmp_db):
     _sembrar_filas_legacy(clave, organization_id)
 
     repo = WatchlistRepository()
-    assert [i["id_externo"] for i in repo.list_items(clave, organization_id, user_id)] == [
-        "LIC-LEGACY"
-    ]
+    assert [i["id_externo"] for i in repo.list_items(user_id, organization_id)] == ["LIC-LEGACY"]
     assert [f["name"] for f in list_saved_filters(clave, organization_id, user_id=user_id)] == [
         "Vista legacy"
     ]
-    # Un tercero con la misma clave (imposible en la práctica, pero es el
-    # predicado el que se prueba) y otro id no ve nada una vez la fila tiene
-    # dueño.
+    # Quien registra después el correo que este usuario dejó tiene su misma
+    # clave, y no ve nada una vez la fila tiene dueño.
     with connect() as c:
         c.execute("UPDATE watchlist_items SET user_id = %s WHERE user_key = %s", (user_id, clave))
-    assert repo.list_items(clave, organization_id, user_id + 1000) == []
+    _cambiar_email(user_id, _EMAIL_NUEVO)
+    heredero = _crear_usuario(_EMAIL_VIEJO)
+    assert user_key_from_email(_EMAIL_VIEJO, heredero) == clave
+    assert repo.list_items(heredero, organization_id) == []
 
 
-def test_watchlist_empresas_sobrevive_al_cambio_de_clave(tmp_db):
-    """Vigilancia de competidores: escrita con las dos identidades, se lee y
-    se borra con la clave nueva."""
+def test_watchlist_empresas_sobrevive_al_cambio_de_correo(tmp_db):
+    """Vigilancia de competidores: escrita con el correo antiguo, se lee, no se
+    duplica y se borra después del cambio."""
     from db.watchlist_empresas import WatchlistEmpresaEntry, add_entry, list_entries, remove_entry
 
     user_id = _crear_usuario(_EMAIL_VIEJO)
     organization_id = _organizacion_personal(user_id)
-    clave_vieja = user_key_from_email(_EMAIL_VIEJO, user_id)
-    clave_nueva = user_key_from_email(_EMAIL_NUEVO, user_id)
     with connect() as c:
         c.execute("INSERT INTO empresas (empresa_id, nombre_canonico) VALUES (778, 'BETA')")
+    entrada = WatchlistEmpresaEntry(
+        user_id=user_id, empresa_id=778, organization_id=organization_id
+    )
 
-    assert (
-        add_entry(
-            WatchlistEmpresaEntry(
-                user_key=clave_vieja,
-                empresa_id=778,
-                organization_id=organization_id,
-                user_id=user_id,
-            )
-        )
-        is not None
-    )
-    # Repetir con la clave nueva no duplica: la identidad dual la reconoce.
-    assert (
-        add_entry(
-            WatchlistEmpresaEntry(
-                user_key=clave_nueva,
-                empresa_id=778,
-                organization_id=organization_id,
-                user_id=user_id,
-            )
-        )
-        is None
-    )
-    assert [
-        e["empresa_id"] for e in list_entries(clave_nueva, organization_id, user_id=user_id)
-    ] == [778]
+    assert add_entry(entrada) is not None
+    _cambiar_email(user_id, _EMAIL_NUEVO)
+    # Repetir tras el cambio no duplica: la identidad es el id.
+    assert add_entry(entrada) is None
+    assert [e["empresa_id"] for e in list_entries(user_id, organization_id)] == [778]
     # Otro usuario del mismo equipo no la ve (es privada) ni la borra.
-    assert list_entries("otra-clave", organization_id, user_id=user_id + 1000) == []
-    assert remove_entry("otra-clave", 778, organization_id, user_id=user_id + 1000) is False
-    assert remove_entry(clave_nueva, 778, organization_id, user_id=user_id) is True
+    otro = _crear_usuario("otra.persona@example.com")
+    assert list_entries(otro, organization_id) == []
+    assert remove_entry(otro, 778, organization_id) is False
+    assert remove_entry(user_id, 778, organization_id) is True
 
 
 # ── Aceptación por la API: el cambio de correo ─────────────────────────────
@@ -422,3 +414,57 @@ def test_escribir_tras_el_cambio_no_duplica(sesion):
     anonymize_user_data(user_key_from_email(_EMAIL_NUEVO, user_id), user_id=user_id)
     for tabla in ("watchlist_items", "saved_filters", "user_profiles", "radar_dismissals"):
         assert _contar(tabla, user_id) == 0, tabla
+
+
+def test_cambiar_de_email_conserva_seguimientos_y_digest_pendiente(sesion):
+    """CU-03 (seguir un expediente) y el digest de CU-04 tras un cambio de correo (ADR-030, v181).
+
+    Seguir otra vez lo mismo con el correo nuevo no lo duplica —antes la clave
+    nueva no chocaba con el ``UNIQUE`` por la antigua— y el digest que encoló
+    el job con la clave antigua sigue saliendo con los criterios de su regla.
+    Lo segundo ya se cumplía antes de v181 (el digest casa con su regla por la
+    clave que copió); se fija aquí para que no se pierda al retirarla. A qué
+    buzón sale no cambia: al ``recipient_email`` que guardó el job, el de la
+    regla en ese momento.
+    """
+    client, csrf, user_id = sesion
+    cab = {"X-CSRF-Token": csrf}
+    seguir = {"target_type": "licitacion", "target_id": "LIC-9"}
+    assert client.post("/api/v1/follows", json=seguir, headers=cab).status_code == 201
+    regla = client.post(
+        "/api/v1/watchlist/rules", json={"keyword": "sap", "nombre": "R"}, headers=cab
+    )
+    assert regla.status_code == 201, regla.text
+    regla_id = int(regla.json()["id"])
+
+    # El job de reglas encola con la clave guardada en la regla.
+    from db.database import now_utc_iso
+    from db.repositories.watchlist import WatchlistRepository
+
+    with connect() as c:
+        fila = c.execute("SELECT user_key FROM watchlist_rules WHERE id = %s", (regla_id,))
+        clave_regla = str(fila.fetchone()[0])
+    assert clave_regla == user_key_from_email(_EMAIL_VIEJO, user_id)
+    repo = WatchlistRepository()
+    assert repo.store_pending_digest(
+        user_key=clave_regla,
+        user_id=user_id,
+        recipient=_EMAIL_VIEJO,
+        entry_id=regla_id,
+        licitacion_id="LIC-9",
+        frequency="daily",
+        matched_at=now_utc_iso(),
+    )
+
+    _cambiar_email(user_id, _EMAIL_NUEVO)
+    cab = {"X-CSRF-Token": _login(client, _EMAIL_NUEVO)}
+
+    assert client.post("/api/v1/follows", json=seguir, headers=cab).status_code == 201
+    seguidos = client.get("/api/v1/follows").json()["items"]
+    assert [f["target_id"] for f in seguidos] == ["LIC-9"]
+    assert _contar("follows", user_id) == 1
+
+    pendientes = [d for d in repo.load_pending_digests("daily") if d["entry_id"] == regla_id]
+    assert [(d["licitacion_id"], d["rule_nombre"], d["keyword"]) for d in pendientes] == [
+        ("LIC-9", "R", "sap")
+    ]

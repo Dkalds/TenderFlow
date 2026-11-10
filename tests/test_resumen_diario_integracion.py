@@ -66,12 +66,7 @@ def correo(tmp_db: Any) -> dict[str, Any]:
         perfiles_equipo=[],
     )
     clave = "clave-resumen"
-    regla = create_rule(
-        clave,
-        WatchlistRule(nombre="SAP", tecnologia="SAP"),
-        user_id=owner,
-        organization_id=org,
-    )
+    regla = create_rule(owner, WatchlistRule(nombre="SAP", tecnologia="SAP"), organization_id=org)
 
     # Con ficha y base declarada; sin ficha y base desconocida.
     _lic(

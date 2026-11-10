@@ -321,8 +321,8 @@ def test_los_seis_criterios_sobreviven_al_crud(corpus, duenya):
         banda_min="Tibia",
         plazo_min_dias=15,
     )
-    rule_id = create_rule("uk-s4", regla, user_id=user_id, organization_id=org_id)
-    guardada = next(r for r in list_rules("uk-s4", org_id) if r.id == rule_id)
+    rule_id = create_rule(user_id, regla, organization_id=org_id)
+    guardada = next(r for r in list_rules(user_id, org_id) if r.id == rule_id)
     assert guardada.tecnologia == "SAP"
     assert guardada.organo == "Ayuntamiento de Alcañiz"
     assert guardada.procedimiento == "1"
@@ -330,8 +330,8 @@ def test_los_seis_criterios_sobreviven_al_crud(corpus, duenya):
     assert guardada.banda_min == "Tibia"
     assert guardada.plazo_min_dias == 15
 
-    assert update_rule("uk-s4", rule_id, regla.model_copy(update={"plazo_min_dias": 5}), org_id)
-    reeditada = next(r for r in list_rules("uk-s4", org_id) if r.id == rule_id)
+    assert update_rule(user_id, rule_id, regla.model_copy(update={"plazo_min_dias": 5}), org_id)
+    reeditada = next(r for r in list_rules(user_id, org_id) if r.id == rule_id)
     assert reeditada.plazo_min_dias == 5
 
 
@@ -343,9 +343,8 @@ def test_organo_norm_se_persiste_plegado(corpus, duenya):
 
     user_id, org_id = duenya
     rule_id = create_rule(
-        "uk-s4-norm",
+        user_id,
         WatchlistRule(organo="Ayuntamiento de Alcañiz, S.A."),
-        user_id=user_id,
         organization_id=org_id,
     )
     with connect_read() as c:

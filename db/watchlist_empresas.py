@@ -1,6 +1,5 @@
 """CRUD sobre ``watchlist_empresas`` — vigilancia de competidores.
 
-``user_key`` es opaco (hash de email o nombre), igual que en watchlist_cpv.
 El scheduler (scheduler/competitor_alerts.py) consume ``list_all`` y
 actualiza ``last_notified_at`` tras cada notificación.
 
@@ -10,8 +9,10 @@ argumento no obtenía «sin filtrar por organización» como decisión, lo
 obtenía por descuido, y el repositorio caía a una query sin ámbito sin
 decir nada. Ahora un llamador que la omita falla al tipar.
 
-Desde v129 (ADR-030 fase 2) la fila lleva también ``user_id`` y la lectura es
-dual: ver ``db/repositories/watchlist.py``.
+Desde v181 (ADR-030 fase 3) el usuario se identifica solo por ``user_id``: la
+fila es suya por el id, o —si el backfill no pudo resolverlo— por la clave
+legada que ``clave_legada_de_usuario(user_id)`` calcula en la base. Ningún
+llamador pasa ya la clave: ver ``db/repositories/follows.py``.
 """
 
 from __future__ import annotations
@@ -23,9 +24,9 @@ from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from db.sql_fragments import iso_guard
 
-#: Predicado de identidad dual. Parámetros: ``(user_id, user_key, user_id)``.
-_IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
-_IDENT_W = "(w.user_id = %s OR (w.user_key = %s AND (w.user_id IS NULL OR %s::int IS NULL)))"
+#: Predicado de identidad. Parámetros: ``(user_id, user_id)``.
+_IDENT = "(user_id = %s OR (user_id IS NULL AND user_key = clave_legada_de_usuario(%s)))"
+_IDENT_W = "(w.user_id = %s OR (w.user_id IS NULL AND w.user_key = clave_legada_de_usuario(%s)))"
 
 
 @dataclass
@@ -37,13 +38,12 @@ class WatchlistEmpresaEntry:
     ámbito: el favorito existía y el usuario no lo veía en ninguna parte.
     """
 
-    user_key: str
+    user_id: int
     empresa_id: int
     organization_id: int
     email: str | None = None
     frequency: str = "daily"  # 'immediate' | 'daily' | 'weekly'
     visibility: str = "private"
-    user_id: int | None = None
 
 
 def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
@@ -51,7 +51,7 @@ def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
     with connect() as c:
         existing = c.execute(
             f"SELECT id FROM watchlist_empresas WHERE {_IDENT} AND empresa_id = %s",
-            (entry.user_id, entry.user_key, entry.user_id, entry.empresa_id),
+            (entry.user_id, entry.user_id, entry.empresa_id),
         ).fetchone()
         if existing is not None:
             return None
@@ -59,9 +59,9 @@ def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
             "INSERT INTO watchlist_empresas "
             "(user_key, user_id, empresa_id, email, frequency, created_at, "
             " organization_id, visibility) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+            "VALUES (clave_legada_de_usuario(%s), %s, %s, %s, %s, %s, %s, %s) RETURNING id",
             (
-                entry.user_key,
+                entry.user_id,
                 entry.user_id,
                 entry.empresa_id,
                 entry.email,
@@ -79,7 +79,6 @@ def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
     from db.repositories import follows as _follows
 
     _follows.registrar(
-        user_key=entry.user_key,
         user_id=entry.user_id,
         organization_id=entry.organization_id,
         target_type="empresa",
@@ -89,21 +88,18 @@ def add_entry(entry: WatchlistEmpresaEntry) -> int | None:
     return nuevo_id
 
 
-def remove_entry(
-    user_key: str, empresa_id: int, organization_id: int, *, user_id: int | None = None
-) -> bool:
+def remove_entry(user_id: int, empresa_id: int, organization_id: int) -> bool:
     with connect() as c:
         cur = c.execute(
             "DELETE FROM watchlist_empresas WHERE organization_id = %s "
             f"AND empresa_id = %s AND (visibility = 'organization' OR {_IDENT})",
-            (organization_id, empresa_id, user_id, user_key, user_id),
+            (organization_id, empresa_id, user_id, user_id),
         )
         borrado = bool(cur.rowcount)
 
     from db.repositories import follows as _follows
 
     _follows.olvidar(
-        user_key=user_key,
         user_id=user_id,
         target_type="empresa",
         target_id=str(empresa_id),
@@ -111,9 +107,7 @@ def remove_entry(
     return borrado
 
 
-def list_entries(
-    user_key: str, organization_id: int, *, user_id: int | None = None
-) -> list[dict[str, Any]]:
+def list_entries(user_id: int, organization_id: int) -> list[dict[str, Any]]:
     """Empresas vigiladas por un usuario, con nombre canónico.
 
     Con ``FOLLOWS_LECTURA`` encendido la pertenencia sale de ``follows``
@@ -123,7 +117,7 @@ def list_entries(
     from db.repositories import follows as _follows
 
     if _follows.lectura_desde_follows():
-        return _follows.empresas_desde_follows(user_key, organization_id, user_id=user_id)
+        return _follows.empresas_desde_follows(organization_id, user_id=user_id)
     with connect() as c:
         return rows_to_dicts(
             c.execute(
@@ -135,7 +129,7 @@ def list_entries(
                 "WHERE w.organization_id = %s "
                 f"AND (w.visibility = 'organization' OR {_IDENT_W}) "
                 "ORDER BY e.nombre_canonico",
-                (organization_id, user_id, user_key, user_id),
+                (organization_id, user_id, user_id),
             )
         )
 
@@ -147,11 +141,10 @@ MOVIMIENTOS_LIMITE = 200
 
 
 def movimientos_vigiladas(
-    user_key: str,
+    user_id: int,
     organization_id: int,
     *,
     desde_iso: str,
-    user_id: int | None = None,
     limit: int = MOVIMIENTOS_LIMITE,
 ) -> dict[str, list[dict[str, Any]]]:
     """Adjudicaciones recientes de las empresas que vigila el usuario.
@@ -169,7 +162,7 @@ def movimientos_vigiladas(
       fecha de adjudicación (lo que pasó en el mercado) y no sobre la de
       extracción (cuándo lo vimos nosotros).
     """
-    ident = (user_id, user_key, user_id)
+    ident = (user_id, user_id)
     vigiladas = (
         "SELECT DISTINCT w.empresa_id FROM watchlist_empresas w "
         "WHERE w.organization_id = %s "
@@ -244,7 +237,7 @@ def list_all() -> list[dict[str, Any]]:
     with connect() as c:
         return rows_to_dicts(
             c.execute(
-                "SELECT w.id, w.user_key, w.user_id, w.empresa_id, e.nombre_canonico, "
+                "SELECT w.id, w.user_id, w.empresa_id, e.nombre_canonico, "
                 "       d.email, w.frequency, w.last_notified_at, w.organization_id "
                 "FROM watchlist_empresas w "
                 "JOIN empresas e ON e.empresa_id = w.empresa_id "

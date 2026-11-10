@@ -193,14 +193,18 @@ def test_quality_organization_scope_counts_real_rows(tmp_db):
 
     org_id = int(OrganizationRepository().create_organization("Quality org", user_id)["id"])
     repo = WatchlistRepository()
-    repo.add_item("scoped-key", user_id, "QUALITY-1", org_id, "private")
+    repo.add_item(user_id, "QUALITY-1", org_id, "private")
     # Fila legacy sin organización: la que dejó una escritura anterior a v129,
-    # con `user_key` y sin `user_id`. Se pasa `user_id=None` a propósito y no el
-    # del usuario: desde la identidad dual de ADR-030 fase 2, dos altas del
-    # mismo expediente con el mismo `user_id` son la misma fila aunque cambie la
-    # clave (es justo lo que evita duplicar la lista tras un cambio de correo),
-    # así que con el id puesto aquí no habría segunda fila que contar.
-    repo.add_item("legacy-key", None, "QUALITY-1", None)
+    # con `user_key` y sin `user_id`. Desde v181 el repositorio no escribe filas
+    # sin id (`add_item` exige un usuario real), así que se siembra por SQL; y
+    # sin `user_id` a propósito: con el del usuario sería la misma fila que la
+    # anterior (índice único por id) y no habría segunda que contar.
+    with db_mod.connect() as conn:
+        conn.execute(
+            "INSERT INTO watchlist_items (user_key, user_id, id_externo, organization_id) "
+            "VALUES (%s, NULL, %s, NULL)",
+            ("legacy-key", "QUALITY-1"),
+        )
 
     with patch("db.dlq.count_unresolved", return_value=0):
         res = q_mod.get_quality()

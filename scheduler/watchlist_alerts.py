@@ -21,7 +21,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from db.events import append_domain_event
-from db.watchlist import list_entries, matches_licitacion, update_last_notified
+from db.watchlist import list_entries_por_clave, matches_licitacion, update_last_notified
 from observability import AlertLevel, get_logger, notify
 from observability.alerts import enviar_email_transaccional
 from services.watchlist import (
@@ -123,7 +123,7 @@ def check_and_notify() -> int:
         Número total de coincidencias emitidas.
     """
     user_key = _user_key()
-    entries = list_entries(user_key)
+    entries = list_entries_por_clave(user_key)
 
     if not entries:
         log.debug("watchlist_empty", user_key=user_key)

@@ -65,25 +65,31 @@ def test_pursuit_rows_acota_por_periodo(tmp_db):
     assert filas == []
 
 
-def test_los_envoltorios_de_watchlist_propagan_el_user_key(tmp_db):
-    """`remove_entry`/`update_frequency` ganaron `user_key` en esta rama (IDOR).
+def test_los_envoltorios_de_watchlist_propagan_el_user_id(tmp_db):
+    """`remove_entry`/`update_frequency` exigen el dueño (IDOR).
 
     El aislamiento por usuario ya está probado en la capa `db`; lo que aquí no
     se recorría es la fachada de `services`, que es la que usan las rutas. Sin
-    esto, un envoltorio que olvidara pasar `user_key` compilaría y pasaría la
+    esto, un envoltorio que olvidara pasar `user_id` compilaría y pasaría la
     suite entera.
     """
+    from db.users import create_user
     from db.watchlist import WatchlistEntry
     from services import watchlist as wl
 
-    wl.add_entry(WatchlistEntry(user_key="duenio@example.test", cpv_prefix="7220"))
-    entry_id = wl.list_entries("duenio@example.test")[0]["id"]
+    duenio = create_user(email="duenio@example.test", password_hash="h")  # pragma: allowlist secret
+    intruso = create_user(
+        email="intruso@example.test",
+        password_hash="h",  # pragma: allowlist secret
+    )
+    wl.add_entry(WatchlistEntry(user_id=duenio, cpv_prefix="7220"))
+    entry_id = wl.list_entries(duenio)[0]["id"]
 
     # Otro usuario no puede tocarla…
-    assert wl.remove_entry(entry_id, "intruso@example.test") is False
-    assert wl.update_frequency(entry_id, "weekly", "intruso@example.test") is False
+    assert wl.remove_entry(entry_id, intruso) is False
+    assert wl.update_frequency(entry_id, "weekly", intruso) is False
 
     # …y su dueño sí.
-    assert wl.update_frequency(entry_id, "weekly", "duenio@example.test") is True
-    assert wl.remove_entry(entry_id, "duenio@example.test") is True
-    assert wl.list_entries("duenio@example.test") == []
+    assert wl.update_frequency(entry_id, "weekly", duenio) is True
+    assert wl.remove_entry(entry_id, duenio) is True
+    assert wl.list_entries(duenio) == []

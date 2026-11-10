@@ -307,7 +307,7 @@ def add_member_by_email(
     return OrganizationMembershipOut.model_validate(row)
 
 
-def claim_legacy_scope(user_id: int, user_key: str) -> None:
+def claim_legacy_scope(user_id: int) -> None:
     """Adjudica al espacio personal las filas del usuario que aún no tienen organización.
 
     Corre **sin ámbito** a propósito (ADR-034): las rutas lo invocan dentro de
@@ -320,7 +320,7 @@ def claim_legacy_scope(user_id: int, user_key: str) -> None:
     ``OrganizationRepository.claim_legacy_rows``.
     """
     with tenant_scope(None):
-        _repo.claim_legacy_rows(user_id, user_key)
+        _repo.claim_legacy_rows(user_id)
 
 
 # ── Invitaciones a correos sin cuenta (S1.1) ───────────────────────────────
