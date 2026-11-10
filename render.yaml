@@ -325,13 +325,6 @@ services:
   # `scheduler/cron_plane.py`) se queda: `python -m scheduler.worker` sigue
   # siendo el consumidor en local, y volver a tener worker es recrear este
   # bloque desde el historial de git en un plan que no hiberne.
-  #
-  # Desde el 2026-11-09 el plano de cron tiene otro destino, sin servicio
-  # nuevo: `tenderflow-api` lo lanza como proceso hijo cuando su entorno lleva
-  # `SCHEDULER_PLANE=worker` (ADR-033, enmienda 2026-11-09). Esa variable y
-  # `REQUIREMENTS_FILE=requirements-pipeline.txt` se ponen en el dashboard
-  # durante el cutover (docs/runbooks/cutover-cron-al-worker.md); no se
-  # declaran aquí hasta que el cutover esté hecho y observado.
 
   # ── Servidor MCP interno (ADR-036, 2026-10-15) ──────────────────────────
   # Acceso de lectura a los datos para el equipo (3 personas, todas admin) desde

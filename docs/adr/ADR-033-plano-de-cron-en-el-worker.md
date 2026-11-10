@@ -13,9 +13,7 @@ tags: [adr]
 
 # ADR-033 — Plano de cron dentro del worker de Render
 
-- **Estado:** aceptado, **enmendado el 2026-10-10** (ver [Enmienda](#enmienda-2026-10-10-lo-que-el-worker-no-hacía-igual-que-actions))
-  y el **2026-11-09**: el plano puede correr como proceso hijo de la API (ver
-  [Enmienda](#enmienda-2026-11-09-el-plano-como-proceso-hijo-de-la-api)).
+- **Estado:** aceptado, **enmendado el 2026-10-10** (ver [Enmienda](#enmienda-2026-10-10-lo-que-el-worker-no-hacía-igual-que-actions)).
   **Sin efecto en producción desde el 2026-10-19:** el servicio
   `tenderflow-worker` se creó el 2026-10-10 con `SCHEDULER_PLANE=worker`, pero
   en el plan `free` de Render, que lo hibernaba a los ~15 min; su plano de cron
@@ -230,55 +228,3 @@ Por último, el servicio de Render de este ADR **no existe todavía** (verificad
 el 2026-09-30) y su plan pasa de `starter` a `standard`: el scoring y la ingesta
 corren en el mismo proceso que la cola y el healthcheck, y ninguno de los dos se
 ha medido fuera de un runner de Actions.
-
-## Enmienda 2026-11-09: el plano como proceso hijo de la API
-
-El worker dedicado no existe y el dueño no va a pagarlo: `tenderflow-api`
-(`standard`, 2 GB, 1 CPU) es el único servicio de cómputo. Medido en el panel
-de Render del 2026-11-03 al 2026-11-09, ese servicio usa entre el 10 y el 13 %
-de su memoria y menos del 2 % de su CPU. El margen que el §4 daba por
-inexistente (`plan: starter`, 512 MB) aquí sobra.
-
-**Decisión.** Con `APP_PROFILE=api` y `SCHEDULER_PLANE=worker`, el lifespan de
-la API lanza `python -m scheduler.cron_plane` como **proceso hijo**
-(`scheduler/cron_proceso.py`) y lo relanza si muere. El hijo ejecuta el mismo
-`CronPlane`, con los mismos jobs, locks y presupuestos. El perfil `worker`
-conserva el plano en un hilo, como hasta ahora.
-
-**Por qué un proceso y no el hilo del §1 y el §4.** En el proceso de la API un
-hilo no sirve, y no por memoria:
-
-1. **El techo de sentencia.** Con `APP_PROFILE=api` cada conexión lleva
-   `statement_timeout` de 30 s, que protege el pool de las peticiones. El
-   cierre de la pasada tiene consultas legítimas de 40 a 76 s
-   (`Settings._relax_batch_statement_timeout`): se cancelarían a medias y en
-   silencio. El hijo arranca con `APP_PROFILE=scraper`, el perfil de los
-   workflows, y hereda el techo de batch y su propio pool.
-2. **La imagen.** El proceso de la API sigue sin importar lxml ni scikit-learn
-   (`tests/test_unit_api_imagen_slim.py`). La imagen sí tiene que llevarlos:
-   el servicio se construye con `REQUIREMENTS_FILE=requirements-pipeline.txt`.
-3. **El aislamiento.** Un job colgado o un pico del scoring no ocupa los hilos
-   ni las conexiones que atienden a los usuarios, y el hijo sí se puede matar.
-
-**Lo que cuesta.**
-
-- Cada despliegue de la API corta la pasada en curso y el hijo nuevo la
-  repite al arrancar: el calendario vive en su memoria. No se pierden datos
-  (upsert idempotente, cursor por fuente). Al recibir SIGTERM el hijo suelta
-  sus locks `cron:<job>` y sale sin esperar al job; si no llega a hacerlo,
-  el lock dura hasta su TTL y esa pasada se salta.
-- Un hijo que muere por su cuenta también empieza con una ingesta al
-  relanzarse. El supervisor dobla la espera en cada caída, de un minuto a
-  una hora, para que un fallo permanente no las encadene; no hay más freno
-  que ese y el aviso `cron_proceso_caido`.
-- El hijo abre su propio pool, de 2 + 2 conexiones, que se suman a las de
-  la API contra el mismo pooler.
-- `tenderflow-api` pasa a tener las credenciales del pipeline (el token de
-  lectura de la Release de modelos, el de PSCP, el SMTP de alertas). El
-  [runbook](../runbooks/cutover-cron-al-worker.md) las lista.
-- El pico de memoria del scoring junto a la API no está medido: es lo primero
-  que hay que mirar en las 48 h de observación.
-
-`ml_retrain_baja` y `documentos_embeddings` siguen en Actions por los motivos
-de la enmienda anterior. La exclusión con Actions sigue siendo la del runbook:
-los workflows se apagan antes de encender la variable.

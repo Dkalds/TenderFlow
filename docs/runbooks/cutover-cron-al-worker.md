@@ -14,44 +14,7 @@ administración del repositorio en GitHub. **Ningún agente puede hacerlo**: los
 pasos 1, 4 y 8 son cambios de configuración en las plataformas, y el 7 toca
 workflows.
 
-**Estado (2026-11-09): el destino es `tenderflow-api`, no un worker.** No hay
-worker ni lo va a haber: la API lanza el plano como proceso hijo
-([ADR-033, enmienda 2026-11-09](../adr/ADR-033-plano-de-cron-en-el-worker.md)).
-Este runbook vale con estos cambios, y donde diga «worker» léase
-`tenderflow-api`:
-
-- **Paso 1** no crea ningún servicio. En `tenderflow-api` → Environment se
-  añaden `REQUIREMENTS_FILE=requirements-pipeline.txt` y las variables de la
-  tabla que la API todavía no tenga (`GITHUB_TOKEN`, `PSCP_*`,
-  `TACRC_INDEX_URL`, las tres de alertas, `HEALTHCHECK_HEARTBEAT_URL`, las
-  `LLM_TECH_*`). **No** se ponen las filas `APP_PROFILE`, `DB_POOL_SIZE`,
-  `DB_READ_POOL_SIZE` ni `JOBS_LOCK_TTL_SEGUNDOS` de esa tabla: eran del
-  worker, y el hijo fija su perfil (`scraper`) y su pool (2 + 2) en
-  `scheduler/cron_proceso.py`, sin tocar los 12 + 12 de la API. Se despliega con
-  `deploy.yml` y se comprueba en la Shell el `import lxml, sklearn, statsmodels`.
-  No hay deploy hook nuevo.
-- La tabla del paso 1 no lista dos variables que `scrape-daily.yml` sí pasa:
-  `PLACSP_AGREGADAS_ATOM_URL` y `PLACSP_MENORES_ATOM_URL`. El 2026-11-09 no
-  están definidas en el repositorio (`gh variable list`), así que manda el
-  default del código; si alguien las define allí, hay que copiarlas aquí.
-  Ese día las variables de repositorio que sí existen y hay que copiar son
-  `PSCP_DATASET_ID`, `TACRC_INDEX_URL` y `LLM_TECH_LABELING_ENABLED`.
-- **Paso 4.2** pone `SCHEDULER_PLANE=worker` en `tenderflow-api`. Guardar una
-  variable en Render despliega `master`: hacerlo sobre un commit en verde.
-- **Paso 4.3**: antes de `cron_plane_arrancado` tiene que salir
-  `cron_proceso_lanzado` con el `pid` del hijo. Un `cron_proceso_caido`
-  repetido (al minuto, a los dos, a los cuatro… hasta una hora) significa
-  que el hijo no aguanta: nada más arrancar, casi siempre la imagen sin
-  `REQUIREMENTS_FILE`; a la media hora, el scoring sin memoria.
-- **Paso 5** añade una comprobación: la memoria de `tenderflow-api` durante el
-  scoring (Render → Metrics). No está medida junto a la API.
-- **Vuelta atrás**: quitar `SCHEDULER_PLANE` de `tenderflow-api` y reactivar
-  los dos workflows.
-- `TenderFlow-1` (`srv-db58n80473hc73a94rsg`), el worker de octubre, **se borra
-  antes de empezar**: tiene `SCHEDULER_PLANE=worker`, código del 2026-10-18 y
-  despierta con cualquier petición (pasó el 2026-11-09).
-
-**Estado anterior (2026-10-19): en pausa, sin worker.** `tenderflow-worker` llegó a
+**Estado (2026-10-19): en pausa, sin worker.** `tenderflow-worker` llegó a
 crearse (2026-10-10) en el plan `free`, que lo hibernaba a los ~15 min, y se
 retiró el 2026-10-19 (nota en `render.yaml`, ADR-033). La ingesta y el scoring
 siguen en Actions y `deploy.yml` ya no despliega ningún worker. Si se retoma,
