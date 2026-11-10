@@ -33,9 +33,10 @@ Generado: 2026-11-10
 | `export_pdf` | cola | tenderflow-api (ADR-028 §G) |
 | `despacho_eventos` | cola | tenderflow-api (ADR-028 §G) |
 | `puntuaciones_acta` | cola | tenderflow-api (ADR-028 §G) |
+| `indexado_adjunto` | cola | tenderflow-api (ADR-028 §G) |
 | `paso_pipeline` | pipeline | cierre de la pasada (Actions) |
 
-**22 jobs, todos con plano verificado.**
+**23 jobs, todos con plano verificado.**
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 

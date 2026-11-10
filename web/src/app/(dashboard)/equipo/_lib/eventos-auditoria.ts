@@ -26,6 +26,7 @@ const ETIQUETAS: Record<string, string> = {
   "export.downloaded": "Descargó una exportación",
   "go_no_go.weights_updated": "Cambió los pesos del go/no-go",
   "pursuit.weights_proposal_applied": "Aplicó la propuesta de pesos",
+  "pursuit_attachment.indexing_changed": "Cambió si un adjunto se puede citar",
 };
 
 export function etiquetaEventoAuditoria(eventType: string): string {

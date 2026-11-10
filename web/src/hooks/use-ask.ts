@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError, apiGet } from "@/lib/api-client";
-import type { OpcionesCorpus } from "@/lib/api-types";
+import type { CitaOrganizacion, OpcionesCorpus } from "@/lib/api-types";
 import {
   streamAsk,
   streamResumen,
@@ -62,6 +62,8 @@ export interface ChatTurn {
    * «sin fuentes»: eso lo dice `sources.sinFuentes`.
    */
   sources?: SourcesInfo | null;
+  /** Extractos de documentos de la organización que acompañan a la respuesta. */
+  fuentesOrganizacion?: CitaOrganizacion[];
   /**
    * Los expedientes sobre los que se **pidió** este turno, cuando el alcance se
    * eligió para esa pregunta (`SendOptions.idsExternos`). Va por turno y no por
@@ -200,6 +202,7 @@ export function useChat(opts?: { idExterno?: string; idsExternos?: string[] }): 
           onDegraded: (degraded) => updateLastAssistant({ degraded }),
           onAskMeta: (askMeta) => updateLastAssistant({ askMeta }),
           onSources: (sources) => updateLastAssistant({ sources }),
+          onFuentesOrganizacion: (fuentesOrganizacion) => updateLastAssistant({ fuentesOrganizacion }),
         });
         updateLastAssistant({
           content: result.answer,

@@ -2,6 +2,7 @@
   "licitacion_id": "LIC-2026-0001",
   "firma": "abc123",
   "sin_guion": null,
+  "citas_organizacion_fallidas": false,
   "criterios": [
     {
       "criterio": "Oferta económica",

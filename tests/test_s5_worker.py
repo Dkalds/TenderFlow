@@ -22,6 +22,7 @@ from services.jobs import (
     TIPO_EMBEDDINGS_EXPEDIENTE,
     TIPO_EXPORT_PDF,
     TIPO_FICHA_PLIEGO,
+    TIPO_INDEXADO_ADJUNTO,
     TIPO_PASO_PIPELINE,
     TIPO_PUNTUACIONES_ACTA,
     TIPOS_A_DEMANDA,
@@ -149,13 +150,15 @@ def test_los_tipos_a_demanda_son_los_declarados() -> None:
     # Más el despacho del outbox a demanda (ADR-027 §C): una mutación que
     # escribe un evento que alguien espera ya pide una pasada sin esperar al
     # cierre de la siguiente ingesta. Y la lectura del acta de la mesa, que el
-    # cierre de la pasada encola por expediente y consume la misma cola.
+    # cierre de la pasada encola por expediente y consume la misma cola. Y el
+    # indexado de un adjunto que su organización permitió citar (ADR-040).
     assert set(TIPOS_A_DEMANDA) == {
         TIPO_FICHA_PLIEGO,
         TIPO_EMBEDDINGS_EXPEDIENTE,
         TIPO_EXPORT_PDF,
         TIPO_DESPACHO_EVENTOS,
         TIPO_PUNTUACIONES_ACTA,
+        TIPO_INDEXADO_ADJUNTO,
     }
 
 
