@@ -373,6 +373,12 @@ CATALOGO: dict[str, EspecificacionEvento] = dict(
 
 TIPOS: frozenset[str] = frozenset(CATALOGO)
 
+#: Tipos que el despachador entrega aunque superen la antigüedad máxima.
+#: Sus productores mueven la ventana de la regla o de la entrada al escribir el
+#: evento, así que caducarlo perdería las coincidencias para siempre: son un
+#: digest, no un aviso que se quede viejo.
+TIPOS_SIN_CADUCIDAD: frozenset[str] = frozenset({"watchlist_rule.matched", "watchlist_match"})
+
 
 def validar_tipo(tipo: str) -> str:
     """Devuelve ``tipo`` si está en el catálogo; si no, lanza.
@@ -659,6 +665,7 @@ __all__ = [
     "FORMATOS",
     "FORMATO_POR_DEFECTO",
     "TIPOS",
+    "TIPOS_SIN_CADUCIDAD",
     "Canal",
     "EspecificacionEvento",
     "Formato",

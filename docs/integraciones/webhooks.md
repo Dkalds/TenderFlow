@@ -206,10 +206,10 @@ Todos llevan `organization_id` y sólo llegan a los webhooks de esa
 organización (más los globales sin dueño). Los eventos de instancia, sin
 organización (`solicitud_acceso.creada`, y `watchlist_match`, la watchlist de
 instancia, que conserva su nombre anterior al catálogo), llegan
-**solo** a los webhooks globales. `watchlist_match` sale una vez por
-destinatario con coincidencias nuevas, sea cual sea la frecuencia de correo de
-sus entradas (hasta 2026-11, solo las `immediate`), y trae `recipient`,
-`total_matches` y `entries` (`entry_id`, `cpv_prefix`, `keyword`, `matches`).
+**solo** a los webhooks globales. `watchlist_match` sale, como siempre, una
+vez por destinatario con coincidencias nuevas en sus entradas `immediate`,
+siempre en formato `json`, y trae `recipient`, `total_matches` y `entries`
+(`cpv_prefix`, `keyword`, `matches` y, desde 2026-11, `entry_id`).
 La lista completa y vigente es la de
 `GET /api/v1/webhooks/event-types`; esta tabla describe los que avisan de algo
 que pasó en un expediente, una cuenta o un competidor que la organización

@@ -144,7 +144,13 @@ def test_una_regla_borrada_no_escribe_campana(monkeypatch: pytest.MonkeyPatch) -
     assert _despachar("in_app", _evento_regla()).in_app == 0
 
 
-def _cuerpos_de_webhook(monkeypatch: pytest.MonkeyPatch, evento: dict[str, Any]) -> list[Any]:
+def _cuerpos_de_webhook(
+    monkeypatch: pytest.MonkeyPatch,
+    evento: dict[str, Any],
+    *,
+    formato: str = "json",
+    entregas: int = 1,
+) -> list[Any]:
     from db.repositories.webhooks import WebhookRepository
 
     cuerpos: list[Any] = []
@@ -157,7 +163,7 @@ def _cuerpos_de_webhook(monkeypatch: pytest.MonkeyPatch, evento: dict[str, Any])
                 "url": "https://hooks.example.test/x",
                 "secret": "s",  # pragma: allowlist secret -- literal de test
                 "event_types": ["*"],
-                "formato": "json",
+                "formato": formato,
             }
         ],
     )
@@ -165,7 +171,7 @@ def _cuerpos_de_webhook(monkeypatch: pytest.MonkeyPatch, evento: dict[str, Any])
         "db.webhooks.entregar_firmado",
         lambda **kw: cuerpos.append(json.loads(kw["body"])) or True,
     )
-    assert _despachar("webhook", evento).webhooks == 1
+    assert _despachar("webhook", evento).webhooks == entregas
     return cuerpos
 
 
@@ -272,3 +278,36 @@ def test_el_webhook_de_la_watchlist_conserva_el_recipient_del_contrato(
     assert cuerpo["data"]["recipient"] == "operador@example.test"
     assert cuerpo["data"]["total_matches"] == 3
     assert "recipient" not in evento["payload"]
+
+
+def test_el_webhook_de_la_watchlist_sale_en_json_aunque_pidan_slack(
+    monkeypatch: pytest.MonkeyPatch, entradas: list[dict[str, Any]]
+) -> None:
+    """``trigger_event`` mandaba siempre ``{event, data, timestamp}``; la
+    plantilla de Slack pintaría el correo del operador en el canal."""
+    (cuerpo,) = _cuerpos_de_webhook(monkeypatch, _evento_watchlist(), formato="slack_blocks")
+
+    assert set(cuerpo) == {"event", "data", "timestamp"}
+
+
+def test_el_webhook_de_la_watchlist_no_sale_sin_entradas_inmediatas(
+    monkeypatch: pytest.MonkeyPatch, entradas: list[dict[str, Any]]
+) -> None:
+    """Como antes del outbox: el webhook acompaña al correo inmediato, no al digest."""
+    for fila in entradas:
+        fila["frequency"] = "daily"
+
+    assert _cuerpos_de_webhook(monkeypatch, _evento_watchlist(), entregas=0) == []
+
+
+def test_las_alertas_de_watchlist_no_caducan(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Su productor ya movió la ventana: caducarlas perdería las coincidencias."""
+    llamadas: list[Any] = []
+    monkeypatch.setattr(
+        "db.events.caducar_pendientes", lambda limite, **kw: llamadas.append(kw) or {}
+    )
+
+    assert event_dispatch.caducar_viejos(48) == 0
+
+    (kw,) = llamadas
+    assert set(kw["salvo"]) == {"watchlist_rule.matched", "watchlist_match"}

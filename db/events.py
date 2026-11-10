@@ -349,7 +349,7 @@ def mark_dispatched(event_id: int) -> None:
         )
 
 
-def caducar_pendientes(creados_antes_de: str) -> dict[str, int]:
+def caducar_pendientes(creados_antes_de: str, *, salvo: Collection[str] = ()) -> dict[str, int]:
     """Da por despachados, **sin entregarlos**, los pendientes anteriores a la marca.
 
     Devuelve el conteo por ``event_type`` de lo que caducó. Es la política de
@@ -367,13 +367,17 @@ def caducar_pendientes(creados_antes_de: str) -> dict[str, int]:
     la de instantes. Se evita el ``::timestamptz`` a propósito: una sola fila
     con una marca ilegible haría fallar la sentencia entera y la cola no se
     podría caducar nunca.
+
+    ``salvo`` son tipos que no caducan nunca: los que su productor ya dio por
+    avisados al escribirlos (``shared.events.TIPOS_SIN_CADUCIDAD``).
     """
     with connect() as c:
         cur = c.execute(
             "UPDATE domain_events SET dispatched_at = %s "
             "WHERE dispatched_at IS NULL AND created_at < %s "
+            "AND NOT (event_type = ANY(%s)) "
             "RETURNING event_type",
-            (now_utc_iso(), creados_antes_de),
+            (now_utc_iso(), creados_antes_de, list(salvo)),
         )
         filas = cur.fetchall()
     conteo: dict[str, int] = {}

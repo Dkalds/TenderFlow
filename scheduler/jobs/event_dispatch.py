@@ -623,12 +623,21 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
             webhooks=len(candidatos),
         )
         return 0
+    formato_fijo: str | None = None
     if spec.tipo == "watchlist_match":
-        # Contrato publicado desde v15: el cuerpo lleva el correo del
-        # destinatario. El evento no lo guarda; se lee de la entrada, y el
+        # Contrato publicado desde v15 por `trigger_event`: sale solo con las
+        # entradas inmediatas, siempre en JSON y con el correo del destinatario
+        # en `recipient`. El evento no lo guarda: se lee de la entrada, y el
         # evento sin organización solo sale por los webhooks globales.
-        correos = [e.get("email") for e in _entradas_de_watchlist(payload).values()]
-        payload = {"recipient": next((c for c in correos if c), None), **payload}
+        inmediatas = [
+            e
+            for e in _entradas_de_watchlist(payload).values()
+            if e.get("frequency") == "immediate" and e.get("email")
+        ]
+        if not inmediatas:
+            return 0
+        payload = {"recipient": str(inmediatas[0]["email"]), **payload}
+        formato_fijo = "json"
 
     marca = str(evento.get("created_at") or now_utc_iso())
     entregados = 0
@@ -637,7 +646,7 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
             renderizar(
                 spec.tipo,
                 payload,
-                formato=str(fila.get("formato") or ""),
+                formato=formato_fijo or str(fila.get("formato") or ""),
                 timestamp=marca,
             ),
             ensure_ascii=False,
@@ -878,15 +887,20 @@ def caducar_viejos(max_age_hours: int | None = None) -> int:
     ``EVENT_DISPATCH_ENABLED=0`` más de dos días— caduca igual en vez de salir
     tarde. El evento no se borra: sigue en ``domain_events`` para la
     cronología y la auditoría, sólo deja de estar pendiente.
+
+    Excepción: ``shared.events.TIPOS_SIN_CADUCIDAD`` (alertas de watchlist),
+    cuyo productor ya movió la ventana al escribir el evento. Caducarlos
+    perdería las coincidencias; salen tarde.
     """
     from datetime import timedelta
 
     from config.settings import event_dispatch_max_age_hours
     from db.events import caducar_pendientes
+    from shared.events import TIPOS_SIN_CADUCIDAD
 
     horas = max_age_hours if max_age_hours is not None else event_dispatch_max_age_hours()
     limite = (now_utc() - timedelta(hours=max(1, int(horas)))).isoformat()
-    conteo = caducar_pendientes(limite)
+    conteo = caducar_pendientes(limite, salvo=TIPOS_SIN_CADUCIDAD)
     total = sum(conteo.values())
     if total:
         log.warning("event_dispatch_caducados", total=total, horas=horas, por_tipo=conteo)

@@ -106,15 +106,18 @@ def avisar_al_momento(
 
 
 def check_and_notify() -> int:
-    """Escribe un ``watchlist_match`` por destinatario con coincidencias nuevas.
+    """Escribe un ``watchlist_match`` por destinatario y modo con coincidencias nuevas.
 
     El reparto —correo inmediato, digest y webhook— lo hace el despachador con
     el correo y la frecuencia de cada entrada leídos al despachar: el evento no
-    los lleva porque se guarda para siempre.
+    los lleva porque se guarda para siempre. Las entradas inmediatas y las de
+    digest van en eventos separados, como iban antes en sus dos bucles: el
+    webhook sale solo con las inmediatas y ``total_matches`` cuenta solo esas.
 
     El evento se escribe antes de mover la ventana: si la marca falla, la
     pasada siguiente vuelve a emitir (el digest no duplica; el webhook sí), y
-    al revés se perderían las coincidencias.
+    al revés se perderían las coincidencias. Un grupo que falla no mueve su
+    ventana ni frena a los demás ni al resto del paso ``watchlist_notify``.
 
     Returns:
         Número total de coincidencias emitidas.
@@ -131,61 +134,74 @@ def check_and_notify() -> int:
 
     from collections import defaultdict
 
-    by_email: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    grupos: dict[tuple[str, bool], list[JsonDict]] = defaultdict(list)
     for entry in entries:
         if entry.get("email"):
-            by_email[entry["email"]].append(entry)
+            inmediata = (entry.get("frequency") or "daily") == "immediate"
+            grupos[(entry["email"], inmediata)].append(entry)
         else:
             # Sin correo no hay a quién avisar: solo se mueve la marca.
             update_last_notified(int(entry["id"]), now_ts)
 
     total_notified = 0
-    for recipient_entries in by_email.values():
-        candidates_by_prefix = _query_licitaciones_batch(recipient_entries, default_since)
-        matches_by_entry: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
-        for entry in recipient_entries:
-            candidates = candidates_by_prefix.get(entry["cpv_prefix"], [])
-            matched = [lic for lic in candidates if matches_licitacion(entry, lic)]
-            log.debug(
-                "watchlist_entry_checked",
-                cpv=entry["cpv_prefix"],
-                keyword=entry.get("keyword"),
-                candidates=len(candidates),
-                matches=len(matched),
-                frequency=entry.get("frequency"),
+    for recipient_entries in grupos.values():
+        try:
+            total_notified += _emitir_grupo(recipient_entries, default_since, now_ts)
+        except Exception:
+            log.error(
+                "watchlist_match_fallo",
+                entradas=[e.get("id") for e in recipient_entries],
+                exc_info=True,
             )
-            if matched:
-                matches_by_entry.append((entry, matched))
-
-        if matches_by_entry:
-            n = sum(len(lics) for _, lics in matches_by_entry)
-            append_domain_event(
-                "watchlist_match",
-                min(int(e["id"]) for e, _ in matches_by_entry),
-                "watchlist_cpv",
-                {
-                    "total_matches": n,
-                    "entries": [
-                        {
-                            "entry_id": int(e["id"]),
-                            "cpv_prefix": e["cpv_prefix"],
-                            "keyword": e.get("keyword"),
-                            "matches": [lic.get("id_externo") for lic in lics],
-                        }
-                        for e, lics in matches_by_entry
-                    ],
-                },
-            )
-            log.info("watchlist_match_emitido", entradas=len(matches_by_entry), total=n)
-            total_notified += n
-
-        for entry in recipient_entries:
-            update_last_notified(int(entry["id"]), now_ts)
 
     if total_notified == 0:
         log.info("watchlist_no_new_matches", entries=len(entries))
 
     return total_notified
+
+
+def _emitir_grupo(recipient_entries: list[JsonDict], default_since: str, now_ts: str) -> int:
+    """Coincidencias de un destinatario y modo al outbox; mueve después su ventana."""
+    candidates_by_prefix = _query_licitaciones_batch(recipient_entries, default_since)
+    matches_by_entry: list[tuple[JsonDict, list[JsonDict]]] = []
+    for entry in recipient_entries:
+        candidates = candidates_by_prefix.get(entry["cpv_prefix"], [])
+        matched = [lic for lic in candidates if matches_licitacion(entry, lic)]
+        log.debug(
+            "watchlist_entry_checked",
+            cpv=entry["cpv_prefix"],
+            keyword=entry.get("keyword"),
+            candidates=len(candidates),
+            matches=len(matched),
+            frequency=entry.get("frequency"),
+        )
+        if matched:
+            matches_by_entry.append((entry, matched))
+
+    n = sum(len(lics) for _, lics in matches_by_entry)
+    if matches_by_entry:
+        append_domain_event(
+            "watchlist_match",
+            min(int(e["id"]) for e, _ in matches_by_entry),
+            "watchlist_cpv",
+            {
+                "total_matches": n,
+                "entries": [
+                    {
+                        "entry_id": int(e["id"]),
+                        "cpv_prefix": e["cpv_prefix"],
+                        "keyword": e.get("keyword"),
+                        "matches": [lic.get("id_externo") for lic in lics],
+                    }
+                    for e, lics in matches_by_entry
+                ],
+            },
+        )
+        log.info("watchlist_match_emitido", entradas=len(matches_by_entry), total=n)
+
+    for entry in recipient_entries:
+        update_last_notified(int(entry["id"]), now_ts)
+    return n
 
 
 def _con_pliegos(bloques: list[BloqueDigest]) -> list[BloqueDigest]:

@@ -239,6 +239,50 @@ def test_check_and_notify_with_email_no_matches_no_notify(tmp_db):
     mock_evento.assert_not_called()
 
 
+def test_inmediatas_y_digest_van_en_eventos_separados_y_un_fallo_no_frena_al_otro():
+    """El webhook sale solo con lo inmediato, así que cada modo es su evento.
+
+    Si escribir uno falla, su ventana no se mueve y el otro sale igual.
+    """
+    from scheduler import watchlist_alerts
+
+    def entrada(entry_id: int, frecuencia: str) -> dict[str, Any]:
+        return {
+            "id": entry_id,
+            "cpv_prefix": "48",
+            "keyword": None,
+            "min_importe": None,
+            "ccaa": None,
+            "email": "op@example.com",
+            "frequency": frecuencia,
+        }
+
+    lic = {"id_externo": "LIC-1", "titulo": "T"}
+    emitidos: list[list[int]] = []
+
+    def emitir(_tipo, _agregado_id, _agregado, payload, **_kw):
+        ids = [e["entry_id"] for e in payload["entries"]]
+        if ids == [1]:
+            raise RuntimeError("outbox no disponible")
+        emitidos.append(ids)
+        return 1
+
+    with (
+        patch(
+            "scheduler.watchlist_alerts.list_entries",
+            return_value=[entrada(1, "immediate"), entrada(2, "daily")],
+        ),
+        patch("scheduler.watchlist_alerts._query_licitaciones_batch", return_value={"48": [lic]}),
+        patch("scheduler.watchlist_alerts.matches_licitacion", return_value=True),
+        patch("scheduler.watchlist_alerts.update_last_notified") as mock_update,
+        patch("scheduler.watchlist_alerts.append_domain_event", side_effect=emitir),
+    ):
+        assert watchlist_alerts.check_and_notify() == 1
+
+    assert emitidos == [[2]]
+    assert [c.args[0] for c in mock_update.call_args_list] == [2]
+
+
 # ---------------------------------------------------------------------------
 # El despachador encola el digest de la watchlist (antes `_store_pending_digests`)
 # ---------------------------------------------------------------------------
