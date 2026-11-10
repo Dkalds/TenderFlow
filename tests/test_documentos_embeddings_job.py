@@ -291,6 +291,8 @@ class TestRunEmbedPhase:
             "reembebidos": 0,
             # Documentos que no cupieron en PLIEGO_EMBED_MAX_SECONDS.
             "aplazados": 0,
+            # La fase se saltó por no tener con qué codificar.
+            "sin_motor": 0,
         }
 
     def test_second_run_is_idempotent_noop(self, repo):
@@ -319,6 +321,7 @@ class TestRunEmbedPhase:
             # progreso observable, que es lo que el ítem vino a arreglar.
             "reembebidos": 0,
             "aplazados": 0,
+            "sin_motor": 0,
         }
         mock_encode.assert_called_once()  # la segunda corrida no reembebe nada
 
@@ -367,6 +370,8 @@ class TestRunEmbedPhase:
 
         assert counts["documentos_procesados"] == 0
         assert counts["error"] == 0  # no cuenta como error -- es un skip esperado
+        # Pero lo dice: en el plano de cron es lo que dispara el aviso.
+        assert counts["sin_motor"] == 1
 
     def test_increments_chunk_count_metric(self, repo):
         before = _metric_value("documento_chunks_total", {})

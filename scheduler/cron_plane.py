@@ -132,15 +132,6 @@ SE_QUEDAN_EN_ACTIONS: dict[str, str] = {
         "pipeline en 2026-08). Puede moverse cuando el artefacto viva en el "
         "almacén de objetos (ADR-029) y ese almacén exista en producción."
     ),
-    "documentos_embeddings": (
-        "en la imagen de la API perdería tres cosas que el runner de pliegos.yml "
-        "sí tiene: el OCR de escaneados (`ocrmypdf` y `tesseract`, binarios del "
-        "sistema que la imagen endurecida no lleva), la lectura de DOCX y ODT "
-        "(`python-docx` y `odfpy`, fuera de `requirements-pipeline.txt`) y, si el "
-        "build no descargó el modelo ONNX, los embeddings: la fase se saltaría "
-        "con un aviso. Puede moverse cuando la imagen tenga las tres; el código "
-        "del job ya vale tal cual."
-    ),
 }
 
 #: Prefijo de los locks en ``job_locks``. Con prefijo y no con el nombre pelado
