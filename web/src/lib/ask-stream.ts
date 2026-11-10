@@ -87,6 +87,11 @@ export interface AskMeta {
    * respuesta no se apoya en las licitaciones porque no se pudieron leer.
    */
   recuperacion_fallida?: boolean;
+  /**
+   * No se pudieron consultar los documentos de la organización: que no haya
+   * citas propias no significa que no las hubiera.
+   */
+  citas_propias_fallidas?: boolean;
 }
 
 export interface AskMetaExpediente {

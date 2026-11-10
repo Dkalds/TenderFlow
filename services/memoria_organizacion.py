@@ -199,6 +199,16 @@ def indexar(
             return {"attachment_id": attachment_id, "estado": "sin_permiso"}
         if fila.get("index_status") == "indexed":
             return {"attachment_id": attachment_id, "estado": "indexed", "repetido": True}
+        if not politica_indexado().disponible:
+            # Apagado después de encolar: un job que ya estaba en la cola no
+            # guarda texto, y el adjunto lo dice en vez de quedarse «pendiente».
+            repo.marcar_sin_texto(
+                attachment_id,
+                organization_id=organization_id,
+                estado="error",
+                error="El indexado de documentos propios está desactivado.",
+            )
+            return {"attachment_id": attachment_id, "estado": "apagado"}
         try:
             return _indexar_fila(
                 repo,
@@ -407,13 +417,19 @@ def citas(
     Con el indexado apagado (``MEMORIA_ORG_MAX_DOCUMENTOS=0``) o sin ningún
     documento indexable no consulta nada más: es el caso de casi todas las
     peticiones, y no debe costarles ni un embedding.
+
+    Un fallo de la base **se propaga**: quien llama decide cómo decir que no
+    pudo consultar, que no es lo mismo que no haber encontrado nada.
     """
     from config.settings import settings
+    from db.connection import lecturas_agrupadas
 
     vacio: list[list[CitaOrganizacion]] = [[] for _ in consultas]
     if not consultas or not politica_indexado().disponible:
         return vacio
-    with tenant_scope(organization_id):
+    # Una conexión y un ámbito para todas las lecturas: un guion de doce
+    # criterios son veinticinco consultas, y cada una por su cuenta son tres viajes.
+    with tenant_scope(organization_id), lecturas_agrupadas():
         repo = _repo()
         if repo.contar_indexables(organization_id) == 0:
             return vacio

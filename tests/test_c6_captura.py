@@ -681,7 +681,7 @@ class TestAdjuntosPropios:
 
         cuerpo = inspect.getsource(mod.borrar).split('"""')[2]
         assert "get_object_store" not in cuerpo
-        assert "repo.delete(" in cuerpo
+        assert "PursuitAttachmentsRepository().delete" in cuerpo
 
     # ── GDPR: dato corporativo ───────────────────────────────────────────
 

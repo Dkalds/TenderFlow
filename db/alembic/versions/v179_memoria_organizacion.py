@@ -26,6 +26,15 @@ que ese permiso autoriza.
 No hay tabla de páginas: el fragmento ya lleva su ``page_number`` y nadie lee
 el texto privado por página. Una copia menos del dato más sensible del producto.
 
+Los permisos anteriores no se heredan
+-------------------------------------
+``PUT /pursuits/adjuntos/{id}/indexable`` existe desde v127, cuando marcar un
+adjunto no hacía nada. Si alguna fila quedó con ``indexable = true``, esta
+revisión la devuelve a ``false``: quien dio ese permiso no lo dio para que se
+guardara el texto, y sin job que la indexe la fila se quedaría «pendiente»
+para siempre y contando contra el tope. Quien lo quiera lo vuelve a dar, ahora
+sabiendo lo que implica.
+
 Aislamiento, en tres capas
 --------------------------
 1. **La fila no puede mentir sobre de quién es.** La FK es compuesta,
@@ -40,7 +49,9 @@ Aislamiento, en tres capas
    las tablas corporativas; para el texto de una propuesta no hay ningún
    proceso sin ámbito que deba leerlo, y el que indexa (el worker) lo fija con
    ``tenant_scope``. Los borrados en cascada no dependen de la política: las
-   consultas de integridad referencial de Postgres la saltan.
+   consultas de integridad referencial de Postgres la saltan. Como toda la
+   RLS de ADR-034, es un respaldo: mientras el runtime conecte con un rol que
+   la salta, la frontera efectiva es la capa 1 y el SQL del repositorio.
 3. **Sin acceso para el MCP interno**: no hay ``GRANT`` a ``tenderflow_mcp``
    (``mcp_server/catalogo.py`` la declara oculta).
 
@@ -112,6 +123,8 @@ def upgrade() -> None:
         # mientras estén solo con texto (búsqueda por palabras).
         "ADD COLUMN IF NOT EXISTS index_embedding_version TEXT"
     )
+    # Ver «Los permisos anteriores no se heredan» en la cabecera.
+    op.execute("UPDATE pursuit_attachments SET indexable = false WHERE indexable")
     # Destino de la FK compuesta de abajo.
     op.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_pursuit_attachments_id_org "

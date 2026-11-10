@@ -208,6 +208,15 @@ function RecuperacionFallidaNotice() {
   );
 }
 
+/** La respuesta sale igual; lo que falta es lo que el equipo ya había escrito. */
+function CitasPropiasFallidasNotice() {
+  return (
+    <p className="mt-2 text-tf-meta text-muted-foreground">
+      No se pudieron consultar los documentos de tu organización, así que esta respuesta no los cita.
+    </p>
+  );
+}
+
 const ESTADO_DOCUMENTO: Record<string, string> = {
   pending: "pendiente",
   downloaded: "descargado",
@@ -354,6 +363,7 @@ const TurnoAsistente = React.memo(function TurnoAsistente({
       {turno.degraded ? <DegradedNotice degraded={turno.degraded} /> : null}
       {turno.sources ? <CitasBlock info={turno.sources} /> : null}
       {turno.fuentesOrganizacion ? <CitasOrganizacion citas={turno.fuentesOrganizacion} /> : null}
+      {turno.askMeta?.citas_propias_fallidas ? <CitasPropiasFallidasNotice /> : null}
       {turno.sources?.sinFuentes ? <SinFuentesNotice /> : null}
       {turno.fuentes && turno.fuentes.length > 0 ? <FuentesBlock fuentes={turno.fuentes} /> : null}
       {turno.content && !turno.degraded && !enCurso ? (

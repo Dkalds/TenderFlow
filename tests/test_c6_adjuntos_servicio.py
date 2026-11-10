@@ -76,7 +76,9 @@ class _RepoFalso:
         fila = self.filas.get(attachment_id)
         return None if fila is None or fila.get("deleted_at") else fila
 
-    def delete(self, attachment_id: int, *, organization_id: int) -> str | None:
+    def delete(
+        self, attachment_id: int, *, organization_id: int, actor_user_id: int | None = None
+    ) -> str | None:
         """Borrado **lógico** desde v131: marca, no saca la fila del diccionario.
 
         El doble replica lo que hace el repositorio de verdad, o el test diría

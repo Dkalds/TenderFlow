@@ -28,6 +28,7 @@ from api.routes.dual_auth import require_any_auth
 from api.routes.licitaciones._base import (
     _lic_repo,
 )
+from api.scopes import organizacion_para_citas
 from api.tenancy import require_organization
 from observability.logging import get_logger
 from services.rag.guion_oferta import (
@@ -75,7 +76,11 @@ async def post_guion_oferta(
     def _trabajo() -> GuionOferta:
         bind_budget_subject(_budget_subject(ctx))
         bind_budget_org(str(ctx["organization_id"]))
-        return con_citas_de_organizacion(generar_guion(id_externo), int(ctx["organization_id"]))
+        guion = generar_guion(id_externo)
+        # Mismo criterio que `/ask`: una clave de API sin `pursuits:read` recibe
+        # el guion, que es del pliego, pero no extractos de los adjuntos.
+        organizacion = organizacion_para_citas(ctx)
+        return guion if organizacion is None else con_citas_de_organizacion(guion, organizacion)
 
     try:
         return await run_db(_trabajo)

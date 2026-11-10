@@ -138,6 +138,12 @@ export function GuionOfertaPanel({ licitacionId }: { licitacionId: string }) {
 
       {guion?.sin_guion && <PanelEmpty size="sm" title="Sin guion para este pliego" hint={guion.sin_guion} />}
 
+      {guion?.citas_organizacion_fallidas && (
+        <p className="mt-3 text-tf-meta text-muted-foreground">
+          No se pudieron consultar los documentos de tu organización. Regenera el guion para volver a intentarlo.
+        </p>
+      )}
+
       {criterios.length > 0 && (
         <ol className="mt-4 space-y-4" aria-live="polite">
           {criterios.map((criterio, i) => (

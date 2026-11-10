@@ -974,6 +974,7 @@ def _content_disposition(nombre: str) -> str:
         403: {"description": "Sin acceso a la organización, o rol de solo lectura"},
         404: {"description": "No existe, o no es de tu organización"},
         422: {"description": "Ese fichero no se puede indexar: tipo, tamaño o tope alcanzado"},
+        503: {"description": "La cola de indexado no está disponible; el permiso no cambió"},
     },
 )
 async def put_adjunto_indexable(
@@ -992,7 +993,11 @@ async def put_adjunto_indexable(
     bajarlo borra el texto y los embeddings antes de responder. Los dos quedan
     en el rastro de auditoría de la organización.
     """
-    from services.pursuit_attachments import IndexadoRechazado, marcar_indexable
+    from services.pursuit_attachments import (
+        IndexadoNoDisponible,
+        IndexadoRechazado,
+        marcar_indexable,
+    )
 
     try:
         fila = await run_db(
@@ -1006,6 +1011,8 @@ async def put_adjunto_indexable(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except IndexadoRechazado as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except IndexadoNoDisponible as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     if fila is None:
         raise HTTPException(status_code=404, detail="Adjunto no encontrado.")
     return PursuitAttachmentOut.model_validate(fila)

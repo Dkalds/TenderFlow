@@ -10461,6 +10461,11 @@ export interface components {
          * @description El guion completo.
          */
         GuionOferta: {
+            /**
+             * Citas Organizacion Fallidas
+             * @default false
+             */
+            citas_organizacion_fallidas: boolean;
             /** Criterios */
             criterios?: components["schemas"]["GuionCriterio"][];
             /** Firma */
@@ -29991,6 +29996,15 @@ export interface operations {
             };
             /** @description Ese fichero no se puede indexar: tipo, tamaño o tope alcanzado */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description La cola de indexado no está disponible; el permiso no cambió */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

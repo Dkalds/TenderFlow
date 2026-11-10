@@ -142,7 +142,10 @@ TIPOS_A_DEMANDA: dict[str, TipoJob] = {
     TIPO_INDEXADO_ADJUNTO: TipoJob(
         nombre=TIPO_INDEXADO_ADJUNTO,
         handler="scheduler.worker:ejecutar_indexado_adjunto",
-        clave_dedupe="attachment_id",
+        # Sin deduplicar, como el despacho de eventos: quitar y volver a dar el
+        # permiso mientras un job corre tiene que encolar otro (ver
+        # `services.pursuit_attachments._encolar_indexado`).
+        clave_dedupe=None,
         descripcion="Indexa un adjunto propio que su organización marcó indexable.",
     ),
 }

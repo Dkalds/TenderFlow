@@ -14,10 +14,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from db.audit import registrar_evento
 from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from db.repositories.documentos import _texto_para_postgres, _to_pg_vector_literal
 from observability.logging import get_logger
+from shared.audit_events import PURSUIT_ATTACHMENT_INDEXING_CHANGED
 
 if TYPE_CHECKING:
     from db.connection import _PgConnAdapter
@@ -205,7 +207,9 @@ class PursuitAttachmentsRepository:
                 )
             )
 
-    def delete(self, attachment_id: int, *, organization_id: int) -> str | None:
+    def delete(
+        self, attachment_id: int, *, organization_id: int, actor_user_id: int | None = None
+    ) -> str | None:
         """Marca el adjunto como borrado (v131). Devuelve su ``blob_key``, o ``None``.
 
         **El objeto del almacén no se toca, y eso es la mitad del cambio.** Antes
@@ -220,27 +224,44 @@ class PursuitAttachmentsRepository:
         para devolver 204 o 404. Quien limpia el almacén es el barrido de
         huérfanos, cuando exista; hasta entonces el objeto se conserva, y eso es
         un coste de almacenamiento consciente.
+
+        Lo que **no** se conserva es su texto indexado (v179): se borra aquí, y
+        si el adjunto era indexable el rastro lo dice en la misma transacción.
         """
         with connect() as c:
-            # Retirar el adjunto retira también el permiso y el estado (v179):
-            # si el mismo fichero vuelve a subirse, la fila resucita sin él.
-            cur = c.execute(
+            previo = _bloquear_vivo(c, attachment_id, organization_id)
+            if previo is None:
+                return None
+            era_indexable, pursuit_id, blob_key = previo
+            # Retirar el adjunto retira también el permiso y el estado: si el
+            # mismo fichero vuelve a subirse, la fila resucita sin él.
+            c.execute(
                 "UPDATE pursuit_attachments SET deleted_at = now(), indexable = false, "
                 "index_status = NULL, index_error = NULL, index_embedding_version = NULL "
-                "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL "
-                "RETURNING blob_key",
+                "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL",
                 (attachment_id, organization_id),
             )
-            fila = cur.fetchone()
-            if fila is None:
-                return None
-            # El binario se conserva; el texto indexado, no: es una copia que
-            # solo existe para citarse, y un adjunto retirado no se cita.
             _borrar_fragmentos(c, attachment_id, organization_id)
-        return str(fila[0] if not isinstance(fila, dict) else fila["blob_key"])
+            if era_indexable:
+                _registrar_permiso(
+                    c,
+                    organization_id,
+                    attachment_id,
+                    pursuit_id,
+                    actor_user_id=actor_user_id,
+                    indexable=False,
+                    motivo="adjunto_retirado",
+                )
+        return blob_key
 
     def set_indexable(
-        self, attachment_id: int, *, organization_id: int, indexable: bool
+        self,
+        attachment_id: int,
+        *,
+        organization_id: int,
+        indexable: bool,
+        actor_user_id: int | None = None,
+        motivo: str = "permiso",
     ) -> dict[str, Any] | None:
         """Levanta o baja el opt-in de indexación del RAG para UN adjunto.
 
@@ -249,30 +270,43 @@ class PursuitAttachmentsRepository:
         vuelva a encolar. Bajarlo borra **en la misma transacción** sus
         fragmentos y sus embeddings: no hay instante en que el permiso esté
         retirado y el texto siga ahí.
+
+        Cuando el valor cambia, el evento de auditoría se escribe también en
+        esa transacción (ADR-039 §3): no hay cambio de permiso sin rastro, y si
+        el rastro no se puede escribir el permiso no cambia.
         """
         with connect() as c:
+            previo = _bloquear_vivo(c, attachment_id, organization_id)
+            if previo is None:
+                return None
+            era_indexable, pursuit_id, _blob_key = previo
             if indexable:
-                cur = c.execute(
+                c.execute(
                     "UPDATE pursuit_attachments SET "
                     "index_status = CASE WHEN indexable THEN index_status ELSE 'pending' END, "
                     "index_error = CASE WHEN indexable THEN index_error ELSE NULL END, "
                     "indexable = true "
-                    "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL "
-                    "RETURNING id",
+                    "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL",
                     (attachment_id, organization_id),
                 )
             else:
-                cur = c.execute(
+                c.execute(
                     "UPDATE pursuit_attachments SET indexable = false, index_status = NULL, "
                     "index_error = NULL, index_embedding_version = NULL "
-                    "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL "
-                    "RETURNING id",
+                    "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL",
                     (attachment_id, organization_id),
                 )
-            if cur.fetchone() is None:
-                return None
-            if not indexable:
                 _borrar_fragmentos(c, attachment_id, organization_id)
+            if era_indexable != indexable:
+                _registrar_permiso(
+                    c,
+                    organization_id,
+                    attachment_id,
+                    pursuit_id,
+                    actor_user_id=actor_user_id,
+                    indexable=indexable,
+                    motivo=motivo,
+                )
         return self.get(attachment_id, organization_id=organization_id)
 
     # ── Texto indexado (v179, ADR-040) ──────────────────────────────────────
@@ -568,6 +602,47 @@ def _borrar_fragmentos(c: _PgConnAdapter, attachment_id: int, organization_id: i
     c.execute(
         "DELETE FROM pursuit_attachment_chunks WHERE attachment_id = %s AND organization_id = %s",
         (attachment_id, organization_id),
+    )
+
+
+def _bloquear_vivo(
+    c: _PgConnAdapter, attachment_id: int, organization_id: int
+) -> tuple[bool, int, str] | None:
+    """Bloquea la fila de un adjunto vivo: ``(indexable, pursuit_id, blob_key)``."""
+    fila = c.execute(
+        "SELECT indexable, pursuit_id, blob_key FROM pursuit_attachments "
+        "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL FOR UPDATE",
+        (attachment_id, organization_id),
+    ).fetchone()
+    if fila is None:
+        return None
+    if isinstance(fila, dict):
+        return bool(fila["indexable"]), int(fila["pursuit_id"]), str(fila["blob_key"])
+    return bool(fila[0]), int(fila[1]), str(fila[2])
+
+
+def _registrar_permiso(
+    c: _PgConnAdapter,
+    organization_id: int,
+    attachment_id: int,
+    pursuit_id: int,
+    *,
+    actor_user_id: int | None,
+    indexable: bool,
+    motivo: str,
+) -> None:
+    """El cambio de permiso, en el rastro de la organización (CU-32). Con ids, sin nombres."""
+    registrar_evento(
+        c,
+        event_type=PURSUIT_ATTACHMENT_INDEXING_CHANGED,
+        user_id=actor_user_id,
+        resource=f"org:{organization_id}",
+        detail={
+            "attachment_id": attachment_id,
+            "pursuit_id": pursuit_id,
+            "indexable": indexable,
+            "motivo": motivo,
+        },
     )
 
 

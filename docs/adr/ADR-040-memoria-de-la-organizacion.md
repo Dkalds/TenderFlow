@@ -83,7 +83,9 @@ se le pasan al modelo para que los resuma ni para que redacte con ellos. Es la
 regla de D33 —esquema con citas, nunca prosa generada— y tiene dos efectos
 más: el texto de una propuesta no sale hacia el proveedor del LLM, y no puede
 acabar en la caché de respuestas ni en la del guion, que son compartidas entre
-organizaciones. Las citas se buscan en cada petición y no se guardan.
+organizaciones. Las citas se buscan en cada petición y no se guardan. Si esa
+búsqueda falla, la respuesta y el guion salen igual y lo dicen: que no haya
+citas propias no se presenta como que no las hubiera.
 
 ### D. El permiso es por fichero, se retira borrando y deja rastro
 
@@ -92,7 +94,14 @@ Desmarcarlo, o retirar el adjunto, borra sus fragmentos y sus embeddings **en
 la misma transacción** que el permiso: no hay instante en que el permiso esté
 retirado y el texto siga ahí. El indexado bloquea la fila del adjunto antes de
 escribir, así que un job que llegue tarde no deja nada. Cada cambio queda en
-el rastro de la organización (`pursuit_attachment.indexing_changed`).
+el rastro de la organización (`pursuit_attachment.indexing_changed`), y esa
+fila se escribe también en la transacción del permiso
+([ADR-039](ADR-039-auditoria-como-condicion-del-control-de-acceso.md) §3): si
+el rastro no se puede escribir, el permiso no cambia.
+
+Las citas las recibe quien podría abrir el adjunto: cualquier sesión de la
+organización, y una clave de API solo si tiene `pursuits:read`. Vale igual
+para el Investigador y para el guion (`api/scopes.py`).
 
 ### E. Indexa la cola; los vectores pueden llegar después
 

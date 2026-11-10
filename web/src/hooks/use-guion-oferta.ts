@@ -27,7 +27,9 @@ export function useGuionOferta(licitacionId: string) {
   const organizationId = useActiveOrganizationId();
 
   const guion = useQuery<GuionOferta>({
-    queryKey: guionKeys.detail(licitacionId),
+    // Con la organización: el guion es del pliego, pero las citas de documentos
+    // propios que lo acompañan son de quien lo pidió.
+    queryKey: [...guionKeys.detail(licitacionId), organizationId],
     // Nunca se ejecuta (`enabled: false`); existe porque `useQuery` exige una.
     queryFn: () => Promise.reject(new Error("El guion sólo se genera a petición")),
     enabled: false,
@@ -43,7 +45,7 @@ export function useGuionOferta(licitacionId: string) {
           : `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/guion`,
       ),
     onSuccess: (resultado) => {
-      queryClient.setQueryData(guionKeys.detail(licitacionId), resultado);
+      queryClient.setQueryData([...guionKeys.detail(licitacionId), organizationId], resultado);
       // Sólo cuenta como generado un guion con contenido: `sin_guion` es el
       // pliego diciendo que no hay criterios, no uso de la herramienta.
       const criterios = resultado.criterios ?? [];

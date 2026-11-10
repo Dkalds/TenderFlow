@@ -7,7 +7,7 @@ y el escenario de ``tests/test_escenario_adjuntos.py``.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Any, ClassVar
 from unittest.mock import patch
 
@@ -29,6 +29,9 @@ class _Repo:
         self.sin_texto: list[tuple[str, str]] = []
         self.busquedas: list[str] = []
         self.permiso_al_guardar = True
+        #: ``(indexable, actor, motivo)`` de cada cambio de permiso pedido.
+        self.permisos: list[tuple[bool, int | None, str]] = []
+        self.retirados: list[tuple[int, int | None]] = []
 
     def get(self, attachment_id: int, *, organization_id: int) -> dict[str, Any] | None:
         return self.fila
@@ -37,10 +40,17 @@ class _Repo:
         return self.indexables
 
     def set_indexable(
-        self, attachment_id: int, *, organization_id: int, indexable: bool
+        self,
+        attachment_id: int,
+        *,
+        organization_id: int,
+        indexable: bool,
+        actor_user_id: int | None = None,
+        motivo: str = "permiso",
     ) -> dict[str, Any] | None:
         if self.fila is None:
             return None
+        self.permisos.append((indexable, actor_user_id, motivo))
         self.fila = {
             **self.fila,
             "indexable": indexable,
@@ -48,7 +58,10 @@ class _Repo:
         }
         return self.fila
 
-    def delete(self, attachment_id: int, *, organization_id: int) -> str | None:
+    def delete(
+        self, attachment_id: int, *, organization_id: int, actor_user_id: int | None = None
+    ) -> str | None:
+        self.retirados.append((attachment_id, actor_user_id))
         return None if self.fila is None else str(self.fila["blob_key"])
 
     def reemplazar_fragmentos(self, attachment_id: int, **kwargs: Any) -> int | None:
@@ -114,6 +127,14 @@ def _fila_cita(**campos: Any) -> dict[str, Any]:
         "extracto": None,
         **campos,
     }
+
+
+@pytest.fixture(autouse=True)
+def _sin_conexion_agrupada(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`citas` agrupa sus lecturas en una conexión; aquí el repositorio es un doble."""
+    import db.connection as conexion
+
+    monkeypatch.setattr(conexion, "lecturas_agrupadas", nullcontext)
 
 
 @pytest.fixture
@@ -319,7 +340,9 @@ def test_el_tipo_de_job_esta_declarado_con_cuota_y_dedupe() -> None:
     from services import jobs
 
     declarado = jobs.TIPOS_A_DEMANDA[jobs.TIPO_INDEXADO_ADJUNTO]
-    assert declarado.clave_dedupe == "attachment_id"
+    # Sin deduplicar: quitar y volver a dar el permiso mientras un job corre
+    # tiene que encolar otro, o el adjunto se queda «pendiente» sin trabajo.
+    assert declarado.clave_dedupe is None
     assert declarado.handler == "scheduler.worker:ejecutar_indexado_adjunto"
     assert jobs.TIPO_INDEXADO_ADJUNTO in jobs.TIPOS_CON_CUOTA
 
@@ -424,53 +447,42 @@ def _alcance(user_id: Any, organization_id: Any = None, *, write: bool = False):
     yield 7, "owner"
 
 
-def _marcar(repo: _Repo, *, indexable: bool, encolar: Any = None) -> tuple[Any, list[Any]]:
-    auditados: list[Any] = []
+def _marcar(repo: _Repo, *, indexable: bool, encolar: Any = None) -> Any:
     with (
         patch.object(adjuntos, "alcance_resuelto", _alcance),
         patch.object(adjuntos, "PursuitAttachmentsRepository", return_value=repo),
         patch.object(adjuntos, "_encolar_indexado", encolar or (lambda *a: 1)),
-        patch("db.audit.log_event", side_effect=lambda **k: auditados.append(k)),
     ):
-        return adjuntos.marcar_indexable(1, 11, indexable=indexable), auditados
+        return adjuntos.marcar_indexable(1, 11, indexable=indexable)
 
 
-def test_activar_deja_pendiente_encola_y_queda_en_el_rastro() -> None:
+def test_activar_deja_pendiente_encola_y_pide_el_rastro_con_su_autor() -> None:
+    """El evento lo escribe el repositorio en su transacción (ADR-039 §3): aquí
+    se fija que el servicio le dice quién fue. El rastro de verdad lo comprueba
+    el escenario de CU-37."""
     encolados: list[tuple[int, int]] = []
     repo = _Repo(_adjunto(indexable=False, index_status=None))
 
-    fila, auditados = _marcar(repo, indexable=True, encolar=lambda a, o: encolados.append((a, o)))
+    fila = _marcar(repo, indexable=True, encolar=lambda a, o: encolados.append((a, o)))
 
     assert fila["index_status"] == "pending"
     assert encolados == [(11, 7)]
-    (evento,) = auditados
-    assert evento["event_type"] == "pursuit_attachment.indexing_changed"
-    assert evento["resource"] == "org:7"
-    assert evento["detail"] == {
-        "attachment_id": 11,
-        "pursuit_id": 42,
-        "indexable": True,
-        "motivo": "permiso",
-    }
+    assert repo.permisos == [(True, 1, "permiso")]
 
 
-def test_repetir_el_mismo_valor_no_encola_ni_audita() -> None:
+def test_repetir_el_mismo_valor_no_vuelve_a_encolar() -> None:
     repo = _Repo(_adjunto(indexable=True, index_status="indexed"))
 
-    _, auditados = _marcar(
-        repo, indexable=True, encolar=lambda *a: pytest.fail("no debe volver a encolar")
-    )
-
-    assert auditados == []
+    _marcar(repo, indexable=True, encolar=lambda *a: pytest.fail("no debe volver a encolar"))
 
 
-def test_desactivar_queda_en_el_rastro() -> None:
+def test_desactivar_pide_el_rastro_y_no_encola() -> None:
     repo = _Repo(_adjunto(indexable=True, index_status="indexed"))
 
-    fila, auditados = _marcar(repo, indexable=False)
+    fila = _marcar(repo, indexable=False, encolar=lambda *a: pytest.fail("no debe encolar"))
 
     assert fila["indexable"] is False
-    assert [e["detail"]["indexable"] for e in auditados] == [False]
+    assert repo.permisos == [(False, 1, "permiso")]
 
 
 @pytest.mark.parametrize(
@@ -490,8 +502,7 @@ def test_no_se_activa_lo_que_no_cabe_en_la_politica(
 
     with pytest.raises(adjuntos.IndexadoRechazado, match=mensaje):
         _marcar(repo, indexable=True)
-    assert repo.fila is not None
-    assert repo.fila["indexable"] is False
+    assert repo.permisos == []
 
 
 def test_con_el_indexado_apagado_no_se_activa_pero_si_se_desactiva(
@@ -502,35 +513,80 @@ def test_con_el_indexado_apagado_no_se_activa_pero_si_se_desactiva(
     with pytest.raises(adjuntos.IndexadoRechazado, match="no está activado"):
         _marcar(_Repo(_adjunto(indexable=False)), indexable=True)
 
-    fila, _ = _marcar(_Repo(_adjunto(indexable=True)), indexable=False)
-    assert fila["indexable"] is False
+    assert _marcar(_Repo(_adjunto(indexable=True)), indexable=False)["indexable"] is False
 
 
-def test_si_no_se_puede_encolar_el_permiso_se_deshace() -> None:
-    def _cola_llena(*_: Any) -> int:
-        raise RuntimeError("cola llena")
+def test_si_la_cola_no_acepta_el_permiso_se_deshace_y_es_un_fallo_del_servicio() -> None:
+    def _cola_caida(*_: Any) -> int:
+        raise RuntimeError("la cola no responde")
 
     repo = _Repo(_adjunto(indexable=False, index_status=None))
 
-    with pytest.raises(adjuntos.IndexadoRechazado, match="cola de indexado"):
-        _marcar(repo, indexable=True, encolar=_cola_llena)
+    with pytest.raises(adjuntos.IndexadoNoDisponible, match="cola de indexado"):
+        _marcar(repo, indexable=True, encolar=_cola_caida)
+    assert repo.fila is not None
+    assert repo.fila["indexable"] is False
+    # Las dos vueltas quedan en el rastro, y la segunda dice por qué.
+    assert repo.permisos == [(True, 1, "permiso"), (False, 1, "cola_no_disponible")]
+
+
+def test_si_la_organizacion_agoto_su_cupo_de_jobs_se_dice_con_su_mensaje() -> None:
+    from services.jobs import CuotaDeJobsExcedida
+
+    def _sin_cupo(*_: Any) -> int:
+        raise CuotaDeJobsExcedida("Tu organización ya tiene 20 trabajos de este tipo en cola.")
+
+    repo = _Repo(_adjunto(indexable=False, index_status=None))
+
+    with pytest.raises(adjuntos.IndexadoRechazado, match="20 trabajos"):
+        _marcar(repo, indexable=True, encolar=_sin_cupo)
     assert repo.fila is not None
     assert repo.fila["indexable"] is False
 
 
-def test_retirar_un_adjunto_indexado_queda_en_el_rastro() -> None:
-    auditados: list[Any] = []
+def test_el_indexado_se_encola_sin_deduplicar() -> None:
+    pedidos: list[dict[str, Any]] = []
+
+    def _enqueue(tipo: str, payload: dict[str, Any], **kwargs: Any) -> int:
+        pedidos.append({"tipo": tipo, "payload": payload, **kwargs})
+        return 1
+
+    with patch("services.jobs.enqueue", _enqueue):
+        adjuntos._encolar_indexado(11, 7)
+
+    assert pedidos == [
+        {
+            "tipo": "indexado_adjunto",
+            "payload": {"attachment_id": 11},
+            "organization_id": 7,
+            "deduplicar": False,
+        }
+    ]
+
+
+def test_retirar_un_adjunto_le_dice_al_repositorio_quien_fue() -> None:
     repo = _Repo(_adjunto(indexable=True, index_status="indexed"))
     with (
         patch.object(adjuntos, "alcance_resuelto", _alcance),
         patch.object(adjuntos, "PursuitAttachmentsRepository", return_value=repo),
-        patch("db.audit.log_event", side_effect=lambda **k: auditados.append(k)),
     ):
         assert adjuntos.borrar(1, 11) is True
 
-    (evento,) = auditados
-    assert evento["detail"]["indexable"] is False
-    assert evento["detail"]["motivo"] == "adjunto_retirado"
+    assert repo.retirados == [(11, 1)]
+
+
+def test_un_job_que_llega_con_el_indexado_apagado_no_guarda_texto(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _extraer(contenido: bytes, tipo: str) -> list[str]:
+        raise AssertionError("apagado: no se lee el documento")
+
+    monkeypatch.setenv("MEMORIA_ORG_MAX_DOCUMENTOS", "0")
+    repo = _Repo(_adjunto())
+
+    assert _indexar(repo, _extraer)["estado"] == "apagado"
+    assert repo.guardado is None
+    assert [estado for estado, _ in repo.sin_texto] == ["error"]
 
 
 # ── Dónde se enseñan ────────────────────────────────────────────────────────
@@ -579,13 +635,18 @@ def test_el_guion_recibe_las_citas_en_una_copia_y_el_cacheado_no_cambia() -> Non
     assert [c.puntos for c in propio.criterios] == [c.puntos for c in cacheado.criterios]
 
 
-def test_si_la_busqueda_falla_el_guion_sale_sin_citas_propias() -> None:
+def test_si_la_busqueda_falla_el_guion_sale_sin_citas_propias_y_lo_dice() -> None:
     from services.rag.guion_oferta import GuionCriterio, GuionOferta, con_citas_de_organizacion
 
     guion = GuionOferta(licitacion_id="EXP-1", criterios=[GuionCriterio(criterio="Equipo")])
 
     with patch.object(memoria, "citas", side_effect=RuntimeError("bd caída")):
-        assert con_citas_de_organizacion(guion, 7) is guion
+        resultado = con_citas_de_organizacion(guion, 7)
+
+    # Sale el guion, sin citas propias, y dice que no se pudieron consultar.
+    assert resultado.criterios == guion.criterios
+    assert resultado.citas_organizacion_fallidas is True
+    assert guion.citas_organizacion_fallidas is False
 
 
 @pytest.mark.parametrize(
@@ -601,16 +662,17 @@ def test_si_la_busqueda_falla_el_guion_sale_sin_citas_propias() -> None:
 def test_que_principal_puede_recibir_citas_de_documentos_propios(
     principal: dict[str, Any], esperada: int | None
 ) -> None:
-    from api.routes.ask import _organizacion_para_citas
+    from api.scopes import organizacion_para_citas
 
-    assert _organizacion_para_citas(principal) == esperada  # type: ignore[arg-type]
+    assert organizacion_para_citas(principal) == esperada
 
 
-def test_las_citas_propias_de_ask_no_rompen_la_pregunta_si_fallan() -> None:
+def test_las_citas_propias_de_ask_no_rompen_la_pregunta_si_fallan_y_se_distinguen() -> None:
     from api.routes.ask import _fuentes_organizacion
 
     with patch.object(memoria, "citas", side_effect=RuntimeError("bd caída")):
-        assert _fuentes_organizacion("¿experiencia en SAP?", 7) == []
+        # `None`, no una lista vacía: no pudo consultar, que no es «no hay nada».
+        assert _fuentes_organizacion("¿experiencia en SAP?", 7) is None
 
     with patch.object(memoria, "citas", return_value=[[_cita()]]):
         (fuente,) = _fuentes_organizacion("¿experiencia en SAP?", 7)

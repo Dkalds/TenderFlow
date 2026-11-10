@@ -122,6 +122,9 @@ class GuionOferta(BaseModel):
     firma: str | None = None
     #: Por qué no hay guion, cuando no lo hay.
     sin_guion: str | None = None
+    #: La búsqueda en los documentos de la organización falló: que no haya
+    #: citas propias no significa que no las hubiera.
+    citas_organizacion_fallidas: bool = False
 
 
 def validar_esquema(guion: GuionOferta) -> list[str]:
@@ -186,7 +189,8 @@ def con_citas_de_organizacion(guion: GuionOferta, organization_id: int) -> Guion
 
     Devuelve una copia. El guion que entra es el de la caché, compartido entre
     organizaciones: escribir las citas sobre él las serviría a la siguiente.
-    Si la búsqueda falla, el guion sale igual sin ellas.
+    Si la búsqueda falla, el guion sale igual sin ellas y lo dice
+    (``citas_organizacion_fallidas``): un fallo no es «no había nada».
     """
     if not guion.criterios:
         return guion
@@ -196,7 +200,7 @@ def con_citas_de_organizacion(guion: GuionOferta, organization_id: int) -> Guion
         por_criterio = citas(organization_id, [c.criterio for c in guion.criterios])
     except Exception:
         log.warning("guion_citas_organizacion_fallidas", exc_info=True)
-        return guion
+        return guion.model_copy(update={"citas_organizacion_fallidas": True})
     if not any(por_criterio):
         return guion
     return guion.model_copy(

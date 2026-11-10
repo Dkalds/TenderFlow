@@ -61,6 +61,10 @@ class IndexadoRechazado(AttachmentError):
     """Ese adjunto no se puede marcar indexable: tipo, tamaño o tope de la organización."""
 
 
+class IndexadoNoDisponible(AttachmentError):
+    """La cola de indexado no aceptó el trabajo: es un fallo nuestro, no de la petición."""
+
+
 #: Tope por fichero. 25 MiB cubre una propuesta con anexos maquetados; por
 #: encima, el sitio de un fichero no es una petición HTTP. Duplicado como CHECK
 #: en `v127`, a propósito: una ruta nueva que olvide validar choca con la base.
@@ -312,37 +316,17 @@ def _exigir_indexable(content_type: str, size_bytes: int, *, ya_indexables: int)
         )
 
 
-def _auditar_permiso(
-    user_id: int,
-    organization_id: int,
-    *,
-    attachment_id: int,
-    pursuit_id: int,
-    indexable: bool,
-    motivo: str,
-) -> None:
-    """El cambio de permiso, en el rastro de la organización (CU-32). Lleva ids, no nombres."""
-    from db.audit import log_event
-    from shared.audit_events import PURSUIT_ATTACHMENT_INDEXING_CHANGED
-
-    log_event(
-        event_type=PURSUIT_ATTACHMENT_INDEXING_CHANGED,
-        user_id=user_id,
-        resource=f"org:{organization_id}",
-        detail={
-            "attachment_id": attachment_id,
-            "pursuit_id": pursuit_id,
-            "indexable": indexable,
-            "motivo": motivo,
-        },
-    )
-
-
 def _encolar_indexado(attachment_id: int, organization_id: int) -> int:
     from services.jobs import TIPO_INDEXADO_ADJUNTO, enqueue
 
+    # Sin deduplicar: un job ya `running` puede haber leído «sin permiso» justo
+    # antes de esta reactivación, y devolverlo como equivalente dejaría el
+    # adjunto «pendiente» sin nadie que lo indexe. El handler es idempotente.
     return enqueue(
-        TIPO_INDEXADO_ADJUNTO, {"attachment_id": attachment_id}, organization_id=organization_id
+        TIPO_INDEXADO_ADJUNTO,
+        {"attachment_id": attachment_id},
+        organization_id=organization_id,
+        deduplicar=False,
     )
 
 
@@ -358,7 +342,8 @@ def marcar_indexable(
     Levantarlo comprueba el tipo, el tamaño y el tope de la organización, deja
     el adjunto ``pending`` y encola su indexado. Bajarlo borra su texto y sus
     embeddings en la misma transacción que el permiso. Los dos cambios quedan
-    en el rastro de auditoría; repetir el mismo valor no hace nada.
+    en el rastro de auditoría —lo escribe el repositorio, en esa misma
+    transacción (ADR-039 §3)—; repetir el mismo valor no hace nada.
 
     shortcut: el tope se cuenta antes de escribir, así que dos altas
     simultáneas pueden pasarlo por uno. Es un tope de coste, no una frontera;
@@ -376,29 +361,33 @@ def marcar_indexable(
                 int(previa["size_bytes"]),
                 ya_indexables=repo.contar_indexables(resuelta),
             )
-        fila = repo.set_indexable(attachment_id, organization_id=resuelta, indexable=indexable)
-        if fila is None or not cambia:
-            return fila
-        if indexable:
-            try:
-                _encolar_indexado(attachment_id, resuelta)
-            except Exception as exc:
-                # Sin job, el adjunto diría «pendiente» para siempre: se deshace
-                # el permiso y se dice, en vez de prometer un indexado que no viene.
-                repo.set_indexable(attachment_id, organization_id=resuelta, indexable=False)
-                log.warning("pursuit_attachment_indexado_no_encolado", error=str(exc)[:200])
-                raise IndexadoRechazado(
-                    "No se pudo poner el documento en la cola de indexado. "
-                    "Vuelve a intentarlo en unos minutos."
-                ) from exc
-        _auditar_permiso(
-            user_id,
-            resuelta,
-            attachment_id=attachment_id,
-            pursuit_id=int(fila["pursuit_id"]),
-            indexable=indexable,
-            motivo="permiso",
+        fila = repo.set_indexable(
+            attachment_id, organization_id=resuelta, indexable=indexable, actor_user_id=user_id
         )
+        if fila is None or not (cambia and indexable):
+            return fila
+        try:
+            _encolar_indexado(attachment_id, resuelta)
+        except Exception as exc:
+            from services.jobs import CuotaDeJobsExcedida
+
+            # Sin job, el adjunto diría «pendiente» para siempre: se deshace el
+            # permiso (y el rastro lo dice) en vez de prometer un indexado que
+            # no viene.
+            repo.set_indexable(
+                attachment_id,
+                organization_id=resuelta,
+                indexable=False,
+                actor_user_id=user_id,
+                motivo="cola_no_disponible",
+            )
+            log.warning("pursuit_attachment_indexado_no_encolado", error=str(exc)[:200])
+            if isinstance(exc, CuotaDeJobsExcedida):
+                raise IndexadoRechazado(str(exc)) from exc
+            raise IndexadoNoDisponible(
+                "No se pudo poner el documento en la cola de indexado. "
+                "Vuelve a intentarlo en unos minutos."
+            ) from exc
         return fila
 
 
@@ -520,23 +509,12 @@ def borrar(user_id: int, attachment_id: int, *, organization_id: int | None = No
     anotado de otro con un clic.
     """
     with alcance_resuelto(user_id, organization_id, write=True) as (resuelta, _role):
-        repo = PursuitAttachmentsRepository()
-        previa = repo.get(attachment_id, organization_id=resuelta)
-        clave = repo.delete(attachment_id, organization_id=resuelta)
+        clave = PursuitAttachmentsRepository().delete(
+            attachment_id, organization_id=resuelta, actor_user_id=user_id
+        )
         if clave is None:
             return False
         log.info("pursuit_attachment_borrado", attachment_id=attachment_id, blob_conservado=True)
-        if previa is not None and previa.get("indexable"):
-            # `delete` ya borró su texto indexado; el rastro dice por qué dejó
-            # de estar disponible para las citas.
-            _auditar_permiso(
-                user_id,
-                resuelta,
-                attachment_id=attachment_id,
-                pursuit_id=int(previa["pursuit_id"]),
-                indexable=False,
-                motivo="adjunto_retirado",
-            )
         return True
 
 
