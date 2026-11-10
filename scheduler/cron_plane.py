@@ -60,7 +60,8 @@ Qué jobs asume, y por qué esos
 ------------------------------
 Los declarados ``plane="actions"`` —los que hoy ejecuta un workflow
 **programado**— menos los de :data:`SE_QUEDAN_EN_ACTIONS`, cada uno con su
-motivo escrito. El cutover es entonces una sustitución 1:1, verificable, de lo
+motivo escrito. Y los ``plane="render"``, que no tienen workflow: solo los
+ejecuta este plano. El cutover es entonces una sustitución 1:1, verificable, de lo
 que el worker puede ejecutar de verdad.
 
 Los otros tres planos se quedan donde están, y no por omisión:
@@ -114,7 +115,7 @@ from scheduler.loop import (
 log = get_logger(__name__)
 
 #: Planos del registry que este plano asume. Ver el docstring del módulo.
-PLANOS_ASUMIDOS: frozenset[str] = frozenset({"actions"})
+PLANOS_ASUMIDOS: frozenset[str] = frozenset({"actions", "render"})
 
 #: Jobs ``plane="actions"`` que el worker **no** asume, con el motivo.
 #:
@@ -128,17 +129,8 @@ SE_QUEDAN_EN_ACTIONS: dict[str, str] = {
         "`gh release upload`; en el worker el artefacto quedaría en el disco "
         "efímero del contenedor y `model_versions` apuntaría a una ruta que "
         "ningún scoring puede resolver (el fallo que sacó este job de la "
-        "pipeline en 2026-08). Además el calendario del plano vive en memoria: "
-        "con un intervalo de 30 días reentrenaría 12 h después de cada reinicio "
-        "del worker. Puede moverse cuando el artefacto viva en el almacén de "
-        "objetos (ADR-029)."
-    ),
-    "documentos_embeddings": (
-        "calcula los embeddings en local con sentence-transformers (extra "
-        "`ml-embeddings`, PyTorch) y extrae con OCR (`ocrmypdf`, binario del "
-        "sistema): ninguno de los dos está en la imagen del worker, y el modelo "
-        "no cabe en su memoria junto a la cola. Trata pliegos públicos, no dato "
-        "personal, así que el motivo de residencia de ADR-033 no le aplica."
+        "pipeline en 2026-08). Puede moverse cuando el artefacto viva en el "
+        "almacén de objetos (ADR-029) y ese almacén exista en producción."
     ),
 }
 
@@ -146,6 +138,16 @@ SE_QUEDAN_EN_ACTIONS: dict[str, str] = {
 #: para no chocar con los que toma la pipeline canónica, que usan el nombre del
 #: paso.
 PREFIJO_LOCK = "cron:"
+
+#: Prefijo de la marca de cadencia en ``job_locks``: «este job ya corrió
+#: dentro de su intervalo». El calendario del plano vive en memoria y el
+#: proceso se reinicia con cada despliegue de la API; sin la marca, cada
+#: reinicio repetía la ingesta y un job diario dependía de que no hubiera
+#: despliegues en sus horas de offset.
+PREFIJO_CADENCIA = "cron-hecho:"
+
+#: Cada cuánto vuelve a preguntar un job al que la marca dijo «todavía no».
+RECHEQUEO = timedelta(minutes=10)
 
 
 def plano_declarado() -> str:
@@ -218,6 +220,60 @@ def _con_lock(nombre: str, ttl_s: int, fn: Callable[[], Any]) -> bool:
                 log.warning("cron_plane_lock_no_liberado", job=nombre, error=str(exc))
 
 
+def _clave_cadencia(nombre: str) -> str:
+    return f"{PREFIJO_CADENCIA}{nombre}"
+
+
+def _toca(nombre: str, presupuesto_s: int) -> bool:
+    """Toma la marca de cadencia de ``nombre``. False si ya corrió en su intervalo.
+
+    Se toma con el presupuesto del job como TTL, no con su intervalo: si el
+    proceso muere a media pasada sin poder devolverla (sin memoria, o un
+    ``kill``), caduca cuando el job ya no puede estar corriendo y la pasada se
+    repite. Quien la alarga hasta el intervalo es :func:`_confirmar_cadencia`,
+    y solo cuando el job terminó bien. Si la tabla no responde, toca: mismo
+    criterio que :func:`_con_lock`.
+    """
+    from db.job_locks import acquire
+
+    try:
+        return acquire(_clave_cadencia(nombre), ttl_seconds=presupuesto_s, holder=_holder())
+    except Exception as exc:
+        log.warning("cron_plane_cadencia_indisponible", job=nombre, error=str(exc))
+        return True
+
+
+def _confirmar_cadencia(nombre: str, intervalo: timedelta) -> None:
+    """Alarga la marca de un job que terminó bien hasta casi su intervalo.
+
+    El 95 %, para que la pasada siguiente no llegue unos segundos antes de que
+    caduque y se quede sin turno.
+    """
+    from db.job_locks import renew
+
+    try:
+        renew(
+            _clave_cadencia(nombre),
+            holder=_holder(),
+            ttl_seconds=max(60, int(intervalo.total_seconds() * 0.95)),
+        )
+    except Exception as exc:
+        # Sin alargar, la marca caduca con el presupuesto y el job se repite
+        # antes de tiempo: trabajo de más, nunca de menos.
+        log.warning("cron_plane_cadencia_no_confirmada", job=nombre, error=str(exc))
+
+
+def _soltar_cadencia(nombres: list[str]) -> None:
+    """Devuelve la marca de los jobs que no llegaron a terminar, para que se repitan."""
+    from db.job_locks import release_many
+
+    try:
+        release_many([_clave_cadencia(n) for n in nombres], holder=_holder())
+    except Exception as exc:
+        # La marca caduca sola con su intervalo: se pierde una pasada, no más.
+        log.warning("cron_plane_cadencia_no_liberada", jobs=nombres, error=str(exc))
+
+
 class CronPlane:
     """El reloj del worker: decide qué toca y lo ejecuta.
 
@@ -266,9 +322,19 @@ class CronPlane:
         instante = ahora or datetime.now(UTC)
         ejecutados: list[str] = []
         for job in self.vencidos(instante):
+            presupuesto_s = _job_timeout_s(job.timeout_seconds)
+            if not _toca(job.name, presupuesto_s):
+                # Ya corrió dentro de su intervalo (antes de un reinicio, o en
+                # otra instancia): se vuelve a preguntar en un rato.
+                self.proxima[job.name] = instante + min(RECHEQUEO, self.intervalos[job.name])
+                continue
             # El presupuesto del job es a la vez su timeout y el TTL del lock:
             # con un TTL más corto que el job, el lock caducaba a media pasada.
-            _con_lock(job.name, _job_timeout_s(job.timeout_seconds), job.fn)
+            if _con_lock(job.name, presupuesto_s, job.fn):
+                _confirmar_cadencia(job.name, self.intervalos[job.name])
+            else:
+                # Falló o lo tiene otro: sin marca, el backoff lo reintenta.
+                _soltar_cadencia([job.name])
             ejecutados.append(job.name)
             self.proxima[job.name] = instante + _backoff_interval(
                 job.name, self.intervalos[job.name]
@@ -352,6 +418,10 @@ def main() -> int:
         except Exception as exc:
             # El TTL los suelta igualmente.
             log.warning("cron_plane_locks_no_liberados", error=str(exc))
+        # Lo que este corte deja a medias tiene que repetirse al arrancar.
+        _soltar_cadencia(
+            [j.name for j in plano.jobs if (h := _active_jobs.get(j.name)) and h.is_alive()]
+        )
         # `_exit` y no `sys.exit`: el `finally` de `_con_lock` vería el hilo
         # del job vivo y renovaría el lock que se acaba de soltar.
         os._exit(0)

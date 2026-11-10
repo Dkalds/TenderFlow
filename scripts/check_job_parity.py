@@ -233,6 +233,16 @@ def check() -> tuple[list[dict[str, Any]], list[str]]:
                     f"{job.name}: plane='actions' pero ningún workflow ejecuta "
                     f"`python -m {job.module}` — job muerto en producción"
                 )
+        elif job.plane == "render":
+            from scheduler.cron_plane import jobs_del_plano
+
+            if job.name in {j.name for j in jobs_del_plano([job])}:
+                cubierto_por = "tenderflow-api (ADR-033, proceso hijo)"
+            else:
+                problems.append(
+                    f"{job.name}: plane='render' pero el plano de cron no lo asume "
+                    "(scheduler/cron_plane.py) — job muerto en producción"
+                )
         elif job.plane == "manual":
             if not job.module:
                 problems.append(f"{job.name}: plane='manual' sin `module` declarado")

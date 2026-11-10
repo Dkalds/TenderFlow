@@ -260,7 +260,9 @@ class TestJobRegistry:
         # 14 -> 15 con `event_dispatch` (ADR-027): el despachador del outbox
         # solo vivía como paso del cierre y el plano APScheduler no lo corría.
         assert "event_dispatch" in names
-        assert len(registry) == 15
+        # 15 -> 16 con `domain_truth_audit`: la auditoría diaria dejó su workflow
+        # y la ejecuta el plano de cron de la API (ADR-033).
+        assert len(registry) == 16
 
     def test_heavy_jobs_marked_correctly(self):
         from scheduler.jobs import build_default_registry
@@ -274,6 +276,7 @@ class TestJobRegistry:
             "ml_scoring_baja",
             "ml_retrain_baja",
             "documentos_embeddings",
+            "domain_truth_audit",
         }
 
     def test_all_jobs_have_callable_fn(self):
