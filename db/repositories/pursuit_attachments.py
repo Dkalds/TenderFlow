@@ -12,11 +12,11 @@ más sensible que guarda el producto.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 
 from db.audit import registrar_evento
 from db.database import connect, connect_read, now_utc_iso
-from db.repositories.base import rows_to_dicts
+from db.repositories.base import rows_to_dicts, typed_rows
 from db.repositories.documentos import _texto_para_postgres, _to_pg_vector_literal
 from observability.logging import get_logger
 from shared.audit_events import PURSUIT_ATTACHMENT_INDEXING_CHANGED
@@ -76,7 +76,28 @@ class FragmentoEncontrado(TypedDict):
     extracto: str | None
 
 
-def _a_fragmentos(filas: list[dict[str, Any]]) -> list[FragmentoEncontrado]:
+class _FilaDeFragmento(TypedDict):
+    """La fila de las dos búsquedas tal como la devuelve psycopg.
+
+    Las claves son los alias de ``_COLUMNAS_DE_CITA`` más ``score``; las tres
+    últimas solo las trae la búsqueda por palabras.
+    """
+
+    attachment_id: int
+    chunk_index: int
+    page_number: int | None
+    texto: str
+    filename: str
+    pursuit_id: int
+    licitacion_id: str
+    licitacion_titulo: str | None
+    score: float | None
+    n_terminos: NotRequired[int]
+    cobertura: NotRequired[int]
+    extracto: NotRequired[str | None]
+
+
+def _a_fragmentos(filas: list[_FilaDeFragmento]) -> list[FragmentoEncontrado]:
     return [
         FragmentoEncontrado(
             attachment_id=int(f["attachment_id"]),
@@ -533,7 +554,7 @@ class PursuitAttachmentsRepository:
                     (list(terminos), organization_id, organization_id, limit, _OPCIONES_EXTRACTO),
                 )
             )
-        return _a_fragmentos(filas)
+        return _a_fragmentos(typed_rows(_FilaDeFragmento, filas))
 
     def buscar_por_significado(
         self,
@@ -562,7 +583,7 @@ class PursuitAttachmentsRepository:
                     (vec, organization_id, organization_id, embedding_version, vec, limit),
                 )
             )
-        return _a_fragmentos(filas)
+        return _a_fragmentos(typed_rows(_FilaDeFragmento, filas))
 
     def keys_de_organizacion(self, organization_id: int) -> list[str]:
         """Todas las claves de una organización, para purgarlas al borrarla.
