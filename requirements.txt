@@ -1163,9 +1163,7 @@ lxml==6.1.3 \
     --hash=sha256:fe91993149523aa59941b9e3c90e2eb45f57ad014697aef6c8b13339a59c019e \
     --hash=sha256:febd35ef45f603c2d74b74655efdbf45e14f55fc0aef4ac82b663ca829b283e0 \
     --hash=sha256:ff88a92cafde90888511242d1c54afcc1a8adbb6dc0a88fa7f87e29e92400d4a
-    # via
-    #   -r requirements.in
-    #   python-docx
+    # via -r requirements.in
 mako==1.4.2 \
     --hash=sha256:7227a060ee3af55a493af61d73d6beef13044b81dba9586736c13945f09464ce \
     --hash=sha256:e70a2a4308952b33a21208bfd6725da79fae5a8c224578f8cfdeb60e5ace03df
@@ -1815,10 +1813,6 @@ python-dateutil==2.9.0.post0 \
     #   -r requirements.in
     #   botocore
     #   pandas
-python-docx==1.2.0 \
-    --hash=sha256:3fd478f3250fbbbfd3b94fe1e985955737c145627498896a8a6bf81f4baf66c7 \
-    --hash=sha256:7bc9d7b7d8a69c9c02ca09216118c86552704edc23bac179283f2e38f86220ce
-    # via -r requirements.in
 python-dotenv==1.2.4 \
     --hash=sha256:42269a8a5b3fd54ffa6f3d84b18abed50064717576b4ecf03dc4a55d8aa04fdc \
     --hash=sha256:f0d53e69935a851c0dcc78f3ab7aaccd8cabef0b92382b576b824212902873c0
@@ -2377,7 +2371,6 @@ typing-extensions==4.15.0 \
     #   pydantic
     #   pydantic-core
     #   pydantic-settings
-    #   python-docx
     #   sqlalchemy
     #   typing-inspection
 typing-inspection==0.4.2 \

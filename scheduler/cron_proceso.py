@@ -10,9 +10,8 @@ motivos que un proceso hijo resuelve a la vez:
   (``Settings._relax_batch_statement_timeout``); el hijo arranca con
   ``APP_PROFILE=scraper``, igual que los workflows, y hereda su techo de batch.
 * **La imagen.** El proceso de la API sigue sin importar lxml ni scikit-learn
-  (``tests/test_unit_api_imagen_slim.py``): solo el hijo los carga. Es de
-  larga vida, así que lo que carga —también el modelo ONNX del lote de
-  pliegos— se queda residente.
+  (``tests/test_unit_api_imagen_slim.py``): solo el hijo los carga, y los
+  devuelve al terminar.
 * **El aislamiento.** Un job colgado o un pico de memoria del scoring no ocupa
   ni el pool ni los hilos que atienden a los usuarios.
 

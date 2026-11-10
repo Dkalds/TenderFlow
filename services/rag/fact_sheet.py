@@ -744,7 +744,7 @@ def ensure_documents_ready(
     # ``skipped`` lo devuelve el fetcher cuando el breaker está abierto: no se
     # llegó a intentar la descarga y la fila sigue ``pending``.
     # ``skipped_no_extra``, cuando el formato se sabe leer pero no en este
-    # proceso (DOCX en una imagen sin ``python-docx``): también sigue ``pending``.
+    # proceso (DOCX/ODT en la imagen de la API): también sigue ``pending``.
     # ``unsupported`` (S8.2) es un formato que no sabemos leer. Se declaran para
     # que el diagnóstico pueda distinguirlos de un fallo real.
     counts = {
@@ -795,9 +795,9 @@ def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
             "La ficha se podrá extraer cuando lo publique."
         )
     if fetched.get("skipped_no_extra"):
-        # Sin pypdf no se intenta nada; sin python-docx (una imagen construida
-        # con requirements-api.txt) se descarga pero la fila sigue `pending`.
-        # En los dos casos los procesa el lote diario, que sí los tiene.
+        # Sin pypdf no se intenta nada; sin python-docx/odfpy (la imagen de la
+        # API no los trae) se descarga pero la fila sigue `pending`. En los dos
+        # casos los procesa el job nocturno, que sí los tiene.
         return (
             "Los pliegos siguen en cola de procesado (este servidor no tiene "
             "instalado el extractor de su formato); el job nocturno los procesará."

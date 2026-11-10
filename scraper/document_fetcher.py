@@ -55,11 +55,10 @@ sólo separadas se puede medir cuánta cobertura falta y de qué formato.
 
 Un content-type que sí sabemos leer pero cuya dependencia opcional falta **en
 este proceso** no es ninguna de las dos: la fila se queda ``pending``
-(:class:`ExtractorAusenteError`). Pasa en una imagen construida con
-``requirements-api.txt``, que no trae ``python-docx``; marcarla ``unsupported``
-allí la sacaría para siempre del lote diario, que sí lo tiene. La imagen de
-producción se construye con ``requirements-pipeline.txt`` desde 2026-11, así
-que allí el DOCX se lee en el acto. Desde 2026-10 OpenDocument ya no pasa por
+(:class:`ExtractorAusenteError`). Pasa en la imagen de la API, que extrae la
+ficha bajo demanda sin ``python-docx`` (trae ``lxml``, fuera de
+``requirements-api.in``); marcarla ``unsupported`` allí la sacaría para siempre
+del lote nocturno, que sí lo tiene. Desde 2026-10 OpenDocument ya no pasa por
 aquí: se lee con la biblioteca estándar y ``odfpy`` no se importa.
 
 Configuración del OCR (variables de entorno, leídas aquí y no en

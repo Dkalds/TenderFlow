@@ -11,7 +11,7 @@ import yaml
 from scheduler.jobs import domain_truth
 from scripts.check_job_parity import check
 
-_WORKFLOWS = Path(__file__).resolve().parent.parent / ".github" / "workflows"
+_WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "domain-truth.yml"
 
 
 def test_avisa_de_los_umbrales_superados() -> None:
@@ -54,11 +54,9 @@ def test_la_paridad_da_el_job_por_cubierto_por_la_api() -> None:
     assert not [p for p in problemas if "domain_truth_audit" in p]
 
 
-@pytest.mark.parametrize("workflow", ["domain-truth.yml", "pliegos.yml"])
-def test_el_workflow_de_un_job_del_plano_ya_no_tiene_cron(workflow: str) -> None:
-    """Con `schedule:` aquí y el job en el plano de la API, correría dos veces:
-    dos correos por umbral, o cada pliego descargado y embebido dos veces.
-    PyYAML lee la clave `on` como True."""
-    disparadores = yaml.safe_load((_WORKFLOWS / workflow).read_text(encoding="utf-8"))[True]
+def test_el_workflow_ya_no_tiene_cron() -> None:
+    """Con `schedule:` aquí y el job en el plano, la auditoría correría dos
+    veces y saldrían dos correos por umbral. PyYAML lee la clave `on` como True."""
+    disparadores = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))[True]
     assert "schedule" not in disparadores
     assert "workflow_dispatch" in disparadores

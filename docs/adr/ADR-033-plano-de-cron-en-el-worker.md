@@ -309,61 +309,16 @@ El cutover se ejecutó el 2026-11-09 a las 23:15 UTC: `scrape-daily.yml` y
   `ml_scoring_baja` siguen declarados `actions` hasta que sus workflows pierdan
   el `schedule:`; hoy están deshabilitados a mano, que el repositorio no ve.
 
-Lo que **no** se mueve, con su motivo:
+Lo que **no** se mueve todavía, con lo que falta en cada caso:
 
+- `documentos_embeddings` (`pliegos.yml`): la imagen de la API no tiene el OCR
+  (`ocrmypdf`, `tesseract`), ni `python-docx` y `odfpy`, y sus embeddings
+  dependen de que el build haya descargado el modelo ONNX. Moverlo sin eso
+  dejaría de leer escaneados, DOCX y ODT sin que nada fallara.
 - `ml_retrain_baja` y el entrenamiento de tecnologías (`ml-entrenar.yml`):
   publican el modelo en una Release de GitHub, que es de donde lo lee quien lo
   sirve. Moverlos pide publicar en el almacén de objetos
-  ([ADR-029](ADR-029-almacen-de-objetos.md)), y en producción no hay ninguno:
-  el 2026-11-10 ningún `documentos.blob_key` tiene valor. Corren dos veces al
-  mes; se quedan en Actions hasta que exista el bucket.
+  ([ADR-029](ADR-029-almacen-de-objetos.md)) y que ese almacén exista en
+  producción.
 - `healthcheck.yml` y `smoke.yml` se quedan en Actions a propósito: vigilan la
   API desde fuera, y dentro de ella caerían con ella.
-
-### Añadido el 2026-11-10 (2): el lote de pliegos, sin OCR
-
-`documentos_embeddings` pasa a `plane="render"` y `pliegos.yml` pierde su
-`schedule:`. Tres decisiones, medidas ese día contra producción (174.777
-documentos, 156.785 todavía `pending`):
-
-- **OCR: no entra en la imagen de la API.** `ocrmypdf`, `tesseract` y
-  `ghostscript` son binarios que procesan ficheros de terceros, en el
-  contenedor que atiende internet. Lo que compran es poco: 84 de los 15.851
-  documentos extraídos (0,5 %) pasaron por OCR. Un PDF escaneado queda
-  `sin_texto`. **Es un coste, no una recuperación resuelta:** `pliegos.yml`
-  conserva el OCR para lanzarlo a mano, pero hoy nada le lleva esos
-  documentos (`reencolar_sin_texto` tiene la fecha fija y, una vez en
-  `pending`, el lote diario se los volvería a llevar). Hace falta un modo que
-  procese los `sin_texto` sin pasar por `pending` cuando pesen.
-- **`python-docx` entra en `requirements-pipeline.txt`; `odfpy`, no.** 24.495
-  documentos son DOC/DOCX, uno de cada siete. Hasta ahora salía del extra
-  `[pliegos]`, que el runner instalaba sin pinar; ahora va con hash en el
-  lock, que es lo único que instala la imagen. El ODT se lee de `content.xml`
-  con la biblioteca estándar desde octubre, así que `odfpy` no hace falta.
-- **Embeddings: el motor ONNX de la imagen.** Es el mismo modelo que
-  sentence-transformers, sin PyTorch. La cautela de
-  `embeddings_masivos_disponibles` (no codificar un corpus dentro de una
-  petición) no aplica: el lote corre en el proceso hijo, no en el que sirve.
-  Si el build no descargó el modelo, la fase se salta y el job manda un
-  correo. Que los vectores coincidan con los de sentence-transformers lo
-  mide `tests/test_embeddings_onnx_paridad.py` donde están los dos motores;
-  por eso `EMBEDDING_VERSION` no cambia.
-
-El plano llama a `run_programado`, no a `run`: da por bueno cualquier retorno
-sin excepción, así que el juicio que el workflow expresaba con su rojo (el
-lote entero de descarga caído, la credencial del LLM rechazada) aquí es un
-correo.
-
-Lo que cuesta:
-
-- El plano ejecuta sus jobs en serie: la ingesta espera mientras corre el
-  lote de pliegos (hasta 100 min, una vez al día).
-- El hijo es de larga vida, así que el modelo ONNX (unos 470 MB) queda
-  residente tras la primera pasada.
-- Un despliegue a media pasada corta el lote; lo ya procesado queda guardado
-  y el resto se repite 90 min después del arranque.
-- Con `python-docx` en la imagen, el proceso de la API también lee DOCX: la
-  ficha bajo demanda (`POST …/ficha-pliego/extract`) lo extrae en línea en
-  vez de dejarlo `pending`. Es un fichero de terceros parseado por una
-  biblioteca Python con `lxml`, no por un binario externo, que es donde se
-  puso el límite con el OCR.
