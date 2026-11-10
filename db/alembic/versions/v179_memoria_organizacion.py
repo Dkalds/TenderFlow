@@ -1,7 +1,7 @@
 """v179: memoria de la organización — el texto indexado de sus adjuntos (ADR-040).
 
 Revision ID: v179_memoria_organizacion
-Revises: v177_rss_autonomico_sin_tramitacion
+Revises: v178_sistema_contratacion
 Create Date: 2026-11-10
 
 Qué añade
@@ -80,7 +80,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "v179_memoria_organizacion"
-down_revision: str | Sequence[str] | None = "v177_rss_autonomico_sin_tramitacion"
+down_revision: str | Sequence[str] | None = "v178_sistema_contratacion"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
