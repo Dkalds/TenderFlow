@@ -114,7 +114,7 @@ export function useMarco(id: string | null) {
         { signal },
       ),
     enabled: Boolean(id) && organizacionResuelta(organizationId),
-    staleTime: 5 * 60 * 1000,
+    // Sin `staleTime`: quien declara su NIF y vuelve a la ficha tiene que ver el cambio.
     meta: META_ERROR_EN_LINEA,
   });
 }

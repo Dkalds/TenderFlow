@@ -11305,8 +11305,9 @@ export interface components {
          * @description Lo que se sabe del acuerdo marco o el SDA de un expediente.
          *
          *     En un marco o un SDA, ``admitidos`` y ``vigencia`` son los suyos. En un
-         *     contrato basado son los de su marco, y solo llegan si la fuente publica
-         *     cuál es y ese marco está en el producto (``marco``). Donde no se sabe,
+         *     contrato basado son los de su marco **entero** —la fuente no dice de qué
+         *     lote cuelga el basado—, y solo llegan si publica cuál es y ese marco está
+         *     en el producto (``marco``). Donde no se sabe,
          *     ``admitidos_total``, ``organizacion_admitida`` y ``basados_total`` son
          *     ``None`` —sin dato—, nunca cero.
          */
@@ -17255,6 +17256,10 @@ export interface components {
         VigenciaMarco: {
             /** Dias Restantes */
             dias_restantes?: number | null;
+            /** Duracion Unidad */
+            duracion_unidad?: ("ANN" | "MON" | "DAY") | null;
+            /** Duracion Valor */
+            duracion_valor?: number | null;
             /** Fecha Fin */
             fecha_fin?: string | null;
             /**

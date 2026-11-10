@@ -65,6 +65,14 @@ def test_cu36_acuerdo_marco_en_la_ficha(client, api_db):
         sistema_contratacion="basado_marco",
     )
     sembrar_licitacion("EXP-ABIERTO-2026", "Soporte SAP", sistema_contratacion="ninguno")
+    # Un marco que aún se licita: la fuente publica cuánto dura, no desde cuándo.
+    sembrar_licitacion(
+        "AM-EN-LICITACION",
+        "Acuerdo marco de ciberseguridad",
+        sistema_contratacion="marco",
+        duracion_valor=4,
+        duracion_unidad="ANN",
+    )
     # TED sí publica el marco de cada basado.
     sembrar_licitacion(
         MARCO_TED,
@@ -178,6 +186,12 @@ def test_cu36_acuerdo_marco_en_la_ficha(client, api_db):
     assert fuera["marco"] is None
     assert fuera["marco_referencia"] == "TED 111111-2020"
     assert fuera["admitidos_total"] is None
+
+    # Sin inicio ni adjudicación no hay fecha de fin, pero la duración publicada sí viaja.
+    en_licitacion = marco_de("AM-EN-LICITACION")["vigencia"]
+    assert en_licitacion["fecha_fin"] is None
+    assert en_licitacion["origen"] == "desconocida"
+    assert (en_licitacion["duracion_valor"], en_licitacion["duracion_unidad"]) == (4, "ANN")
 
     # Un expediente corriente no es un marco.
     corriente = marco_de("EXP-ABIERTO-2026")

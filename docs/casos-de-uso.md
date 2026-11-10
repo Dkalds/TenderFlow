@@ -416,21 +416,27 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 - En un acuerdo marco o un sistema dinámico de adquisición ve cuántas empresas
   están admitidas y cuáles —una por empresa, con sus lotes, no una por fila de
   adjudicación—, y hasta cuándo está vivo, con la fecha rotulada «estimada»
-  cuando sale de la duración.
+  cuando sale de la duración. De un marco que aún se licita ve la duración
+  publicada, sin fecha. De un sistema dinámico casi nunca hay admitidos: las
+  fuentes no los publican, y sale «sin dato».
 - Ve si su organización está entre los admitidos, por sus NIF declarados; sin
   NIF declarado se le pide declararlo, y si algún admitido se publicó sin NIF
   no se le dice que no está.
 - En un contrato basado ve que lo es y que solo compiten los admitidos del
   marco. Si la fuente publica cuál es su marco (TED lo hace) y ese marco está
-  en el producto, ve cuántos admitidos compiten, si su organización es uno de
+  en el producto, ve cuántos admitidos tiene ese marco —en todos sus lotes: la
+  fuente no dice de cuál cuelga el contrato—, si su organización es uno de
   ellos y hasta cuándo vive el marco, con enlace a su ficha. Si el marco se
-  conoce pero no está en el producto, ve su referencia. Si la fuente no lo
+  conoce pero no está en el producto, ve su referencia; si está pero se recogió
+  antes de leerse como marco, ve el enlace y los admitidos «sin dato». Si la fuente no lo
   publica (PLACSP solo lo nombra en el título), todo eso sale como «sin dato»:
   no se deduce.
 - En el marco ve los contratos basados que lo citan, con enlace a cada uno;
   si ninguno lo cita sale «sin dato», no cero.
 - En Renovaciones, el marco que vence va rotulado como tal: lo que se relicita
-  es el marco entero, y cada fila es uno de sus admitidos.
+  es el marco entero, y cada fila es uno de sus admitidos. Un marco sin
+  admitidos publicados —casi todos los sistemas dinámicos— no aparece ahí: el
+  listado es de contratos adjudicados.
 
 ## Trazabilidad
 

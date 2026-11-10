@@ -16,7 +16,7 @@ dato: no se deduce del título.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TypedDict, cast
+from typing import Literal, TypedDict, cast
 
 from db.repositories import marcos as repo
 from db.repositories.marcos import FilaAdmitido, FilaExpedienteMarco
@@ -39,13 +39,20 @@ MAX_ADMITIDOS = 100
 MAX_BASADOS = 20
 
 
-def _clave(fila: FilaAdmitido) -> str:
-    """Qué hace de dos filas la misma empresa: el NIF, la empresa del maestro o el nombre."""
-    nif = normalize_nif(fila["nif"])
+def _clave(fila: FilaAdmitido, nif_de_empresa: dict[int, str]) -> str:
+    """Qué hace de dos filas la misma empresa: el NIF, la empresa del maestro o el nombre.
+
+    ``nif_de_empresa`` une las filas de una empresa del maestro que la fuente
+    publicó unas veces con NIF y otras sin él: sin eso saldría dos veces.
+    """
+    empresa_id = fila["empresa_id"]
+    nif = normalize_nif(fila["nif"]) or (
+        nif_de_empresa.get(empresa_id) if empresa_id is not None else None
+    )
     if nif:
         return f"nif:{nif}"
-    if fila["empresa_id"] is not None:
-        return f"empresa:{fila['empresa_id']}"
+    if empresa_id is not None:
+        return f"empresa:{empresa_id}"
     return f"nombre:{fold_text(fila['nombre'])}"
 
 
@@ -58,9 +65,14 @@ def agrupar_admitidos(
     ha declarado NIF, no hay admitidos publicados, o no coincide con ninguno
     pero alguno llegó sin NIF ni empresa resuelta —podría ser ella—.
     """
+    nif_de_empresa = {
+        f["empresa_id"]: nif
+        for f in filas
+        if f["empresa_id"] is not None and (nif := normalize_nif(f["nif"]))
+    }
     grupos: dict[str, list[FilaAdmitido]] = {}
     for fila in filas:
-        grupos.setdefault(_clave(fila), []).append(fila)
+        grupos.setdefault(_clave(fila, nif_de_empresa), []).append(fila)
 
     admitidos: list[AdmitidoMarco] = []
     sin_identificar = False
@@ -93,6 +105,23 @@ def _sistema(fila: FilaExpedienteMarco) -> SistemaContratacion | None:
     return cast("SistemaContratacion", valor) if valor in SISTEMAS else None
 
 
+class _Duracion(TypedDict):
+    duracion_valor: float | None
+    duracion_unidad: Literal["ANN", "MON", "DAY"] | None
+
+
+def _duracion(marco: FilaExpedienteMarco) -> _Duracion:
+    """La duración publicada, solo si es positiva y en una unidad de CODICE."""
+    valor, unidad = marco["duracion_valor"], marco["duracion_unidad"]
+    if valor is None or valor <= 0 or unidad not in ("ANN", "MON", "DAY"):
+        return {"duracion_valor": None, "duracion_unidad": None}
+    # cast: la comprobación de arriba deja solo los tres valores del Literal.
+    return {
+        "duracion_valor": valor,
+        "duracion_unidad": cast("Literal['ANN', 'MON', 'DAY']", unidad),
+    }
+
+
 class _DelMarco(TypedDict):
     """Los campos de la respuesta que salen del marco, sea el expediente o el de un basado."""
 
@@ -115,6 +144,7 @@ def _admitidos_y_vigencia(marco: FilaExpedienteMarco, identidad: IdentidadFiscal
             # cast: las cuatro ramas de `FECHA_FIN_ORIGEN_SQL`.
             origen=cast("OrigenFechaFin", marco["fecha_fin_origen"]),
             dias_restantes=marco["dias_restantes"],
+            **_duracion(marco),
         ),
     }
 

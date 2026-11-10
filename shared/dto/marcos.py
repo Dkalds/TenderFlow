@@ -32,10 +32,15 @@ class VigenciaMarco(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    #: ``YYYY-MM-DD``. ``None`` si la fuente no publica ni fecha ni duración.
+    #: ``YYYY-MM-DD``. ``None`` si la fuente no publica fecha de fin, o publica
+    #: solo una duración y aún no hay inicio ni adjudicación desde los que contarla.
     fecha_fin: str | None = None
     origen: OrigenFechaFin
     dias_restantes: int | None = None
+    #: La duración publicada, en ``ANN``, ``MON`` o ``DAY``. Es lo único que
+    #: hay de un marco que aún se está licitando.
+    duracion_valor: float | None = None
+    duracion_unidad: Literal["ANN", "MON", "DAY"] | None = None
 
 
 class MarcoEnlazado(BaseModel):
@@ -66,8 +71,9 @@ class MarcoDeLicitacion(BaseModel):
     """Lo que se sabe del acuerdo marco o el SDA de un expediente.
 
     En un marco o un SDA, ``admitidos`` y ``vigencia`` son los suyos. En un
-    contrato basado son los de su marco, y solo llegan si la fuente publica
-    cuál es y ese marco está en el producto (``marco``). Donde no se sabe,
+    contrato basado son los de su marco **entero** —la fuente no dice de qué
+    lote cuelga el basado—, y solo llegan si publica cuál es y ese marco está
+    en el producto (``marco``). Donde no se sabe,
     ``admitidos_total``, ``organizacion_admitida`` y ``basados_total`` son
     ``None`` —sin dato—, nunca cero.
     """
@@ -96,7 +102,8 @@ class MarcoDeLicitacion(BaseModel):
     organizacion_admitida: bool | None = None
     vigencia: VigenciaMarco | None = None
     #: Solo en un marco o un SDA: contratos basados que lo citan. ``None`` si
-    #: su fuente no publica ese enlace; cero solo si lo publica y ninguno lo cita.
+    #: ninguno lo cita: no se distingue de que su fuente no publique el enlace,
+    #: así que nunca es cero.
     basados_total: int | None = Field(default=None, ge=0)
     #: Los más recientes, hasta el tope de la respuesta.
     basados: list[ContratoBasado] = Field(default_factory=list)

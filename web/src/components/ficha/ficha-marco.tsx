@@ -99,8 +99,8 @@ function Marco({ marco, sistema }: { marco: MarcoDeLicitacion; sistema: SistemaR
               </>
             ) : (
               <SinDato>
-                Ningún contrato basado de los que hay aquí lo cita. PLACSP no publica de qué {nombreCorto(sistema)}{" "}
-                cuelga cada uno.
+                Ningún contrato basado de los que hay aquí lo cita. No todas las fuentes publican de qué{" "}
+                {nombreCorto(sistema)} cuelga cada uno.
               </SinDato>
             )
           }
@@ -149,6 +149,8 @@ function Basado({ marco, sistema }: { marco: MarcoDeLicitacion; sistema: Sistema
   const intro = (
     <p className="text-tf-body mb-3 text-pretty">Solo pueden presentar oferta las empresas ya admitidas en {elMarco}.</p>
   );
+  // La fuente enlaza el basado con su marco, no con uno de sus lotes: la cifra es la del marco entero.
+  const admitidosEn = `Admitidos en su ${nombreCorto(sistema)}`;
 
   if (!marco.marco) {
     return (
@@ -199,17 +201,23 @@ function Basado({ marco, sistema }: { marco: MarcoDeLicitacion; sistema: Sistema
         />
         {marco.admitidos_total == null ? (
           <Fact
-            label="Admitidos que compiten"
+            label={admitidosEn}
             value={<SinDato>Todavía no se conocen los admitidos de su {nombreCorto(sistema)}.</SinDato>}
           />
         ) : (
           <>
-            <Admitidos marco={marco} label="Admitidos que compiten" esSda={marco.marco.sistema === "sda"} />
+            <Admitidos marco={marco} label={admitidosEn} esSda={marco.marco.sistema === "sda"} />
             <TuOrganizacion marco={marco} />
             <Vigencia vigencia={marco.vigencia} label={`Vigencia del ${nombreCorto(sistema)}`} />
           </>
         )}
       </div>
+      {marco.admitidos_total ? (
+        <p className="text-muted-foreground text-tf-meta mt-2 text-pretty">
+          Son los de todos sus lotes: la fuente no dice de cuál cuelga este contrato, y a él solo concurren los de
+          ese lote.
+        </p>
+      ) : null}
       <ListaDeAdmitidos marco={marco} />
     </>
   );

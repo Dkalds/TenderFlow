@@ -81,7 +81,7 @@ describe("FichaMarco", () => {
     montar("marco");
 
     expect(await screen.findByText("No está entre los admitidos")).toBeInTheDocument();
-    expect(screen.getByText(/PLACSP no publica de qué acuerdo marco cuelga cada uno/)).toBeInTheDocument();
+    expect(screen.getByText(/No todas las fuentes publican de qué acuerdo marco cuelga cada uno/)).toBeInTheDocument();
     expect(screen.queryByText(/contratos? lo citan?/)).not.toBeInTheDocument();
   });
 
@@ -109,6 +109,26 @@ describe("FichaMarco", () => {
       "/detalle?lic=ted%3A684052-2026",
     );
     expect(screen.getByText("Son los 1 más recientes de 14.")).toBeInTheDocument();
+  });
+
+  it("un marco que aún se licita enseña la duración publicada, no «sin dato»", async () => {
+    servir({
+      admitidos_total: 0,
+      admitidos: [],
+      organizacion_admitida: null,
+      vigencia: {
+        fecha_fin: null,
+        origen: "desconocida",
+        dias_restantes: null,
+        duracion_valor: 4,
+        duracion_unidad: "ANN",
+      },
+    });
+    montar("marco");
+
+    expect(await screen.findByText("4 años")).toBeInTheDocument();
+    expect(screen.getByText(/Todavía sin fecha de fin/)).toBeInTheDocument();
+    expect(screen.queryByText("La fuente no publica fecha de fin ni duración.")).not.toBeInTheDocument();
   });
 
   it("sin NIF declarado manda a declararlo en vez de decir que no estás", async () => {
@@ -141,7 +161,7 @@ describe("FichaMarco", () => {
     });
     montar("sda");
 
-    expect(await screen.findByText(/no publica qué empresas están admitidas en un sistema dinámico/)).toBeInTheDocument();
+    expect(await screen.findByText(/En un sistema dinámico las fuentes casi nunca las publican/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Sistema dinámico de adquisición" })).toBeInTheDocument();
     expect(screen.getByText("La fuente no publica fecha de fin ni duración.")).toBeInTheDocument();
     expect(screen.queryByText(/^Ver l/)).not.toBeInTheDocument();
@@ -165,7 +185,9 @@ describe("FichaMarco", () => {
 
     expect(await screen.findByText("2 empresas")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Contrato basado en un acuerdo marco" })).toBeInTheDocument();
-    expect(screen.getByText("Admitidos que compiten")).toBeInTheDocument();
+    // La cifra es la del marco entero: el enlace no dice de qué lote cuelga el basado.
+    expect(screen.getByText("Admitidos en su acuerdo marco")).toBeInTheDocument();
+    expect(screen.getByText(/Son los de todos sus lotes/)).toBeInTheDocument();
     expect(screen.getByText("Está admitida")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Acuerdo marco de servicios de nube" })).toHaveAttribute(
       "href",

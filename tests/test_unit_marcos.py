@@ -37,6 +37,19 @@ def test_una_empresa_en_tres_lotes_cuenta_una_vez() -> None:
     ]
 
 
+def test_la_misma_empresa_publicada_con_nif_y_sin_el_cuenta_una_vez() -> None:
+    """El maestro la resolvió en las dos filas; la fuente solo dio el NIF en una."""
+    admitidos, _ = agrupar_admitidos(
+        [
+            _fila("Acme SL", "A28000001", "1", empresa_id=7),
+            _fila("ACME S.L.", None, "2", empresa_id=7),
+        ],
+        PROPIA,
+    )
+
+    assert [(a.nif, a.lotes) for a in admitidos] == [("A28000001", ["1", "2"])]
+
+
 def test_la_organizacion_admitida_va_la_primera() -> None:
     admitidos, admitida = agrupar_admitidos(
         [_fila("Acme SL", "A28000001"), _fila("Zeta Mi Empresa SL", NIF_PROPIO)], PROPIA

@@ -45,7 +45,7 @@ export function Admitidos({ marco, label, esSda }: { marco: MarcoDeLicitacion; l
           <span className="tf-tnum">{contar(total, "empresa", "empresas")}</span>
         ) : esSda ? (
           // Medido el 2026-11-10: PLACSP y TED no publican quién entra en un sistema dinámico.
-          <SinDato>La fuente no publica qué empresas están admitidas en un sistema dinámico.</SinDato>
+          <SinDato>No hay empresas admitidas publicadas. En un sistema dinámico las fuentes casi nunca las publican.</SinDato>
         ) : (
           <SinDato>La fuente no ha publicado admitidos. Aparecen cuando se adjudica.</SinDato>
         )
@@ -135,9 +135,33 @@ export function TuOrganizacion({ marco }: { marco: MarcoDeLicitacion }) {
   );
 }
 
+const UNIDAD_DURACION = { ANN: ["año", "años"], MON: ["mes", "meses"], DAY: ["día", "días"] } as const;
+
+function duracionPublicada(vigencia: MarcoDeLicitacion["vigencia"]): string | null {
+  if (vigencia?.duracion_valor == null || !vigencia.duracion_unidad) return null;
+  const [singular, plural] = UNIDAD_DURACION[vigencia.duracion_unidad];
+  return contar(vigencia.duracion_valor, singular, plural);
+}
+
 export function Vigencia({ vigencia, label }: { vigencia: MarcoDeLicitacion["vigencia"]; label: string }) {
   if (!vigencia?.fecha_fin) {
-    return <Fact label={label} value={<SinDato>La fuente no publica fecha de fin ni duración.</SinDato>} />;
+    const duracion = duracionPublicada(vigencia);
+    return (
+      <Fact
+        label={label}
+        value={
+          duracion ? (
+            // Hay duración pero no desde cuándo contarla: típico del marco que aún se licita.
+            <>
+              <span className="tf-tnum">{duracion}</span>
+              <span className={NOTA}>Todavía sin fecha de fin: no se ha publicado el inicio ni la adjudicación.</span>
+            </>
+          ) : (
+            <SinDato>La fuente no publica fecha de fin ni duración.</SinDato>
+          )
+        }
+      />
+    );
   }
   const dias = vigencia.dias_restantes;
   return (

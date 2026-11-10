@@ -115,6 +115,13 @@ def test_ninguno_solo_si_la_fuente_lo_dice(aviso: dict[str, Any], esperado: str 
     assert _sistema_y_marco(aviso, "cn-standard") == (esperado, None)
 
 
+def test_el_numero_del_marco_con_ceros_a_la_izquierda_casa_con_su_id() -> None:
+    """El XML de eForms lo rellena a ocho cifras; ``id_externo`` no."""
+    aviso = {"framework-notice-id": ["00649072-2024"]}
+
+    assert _sistema_y_marco(aviso, "can-standard") == ("basado_marco", "ted:649072-2024")
+
+
 def test_dos_marcos_distintos_en_un_aviso_no_dan_enlace() -> None:
     aviso = {"framework-notice-id": ["649072-2024", "175163-2024"]}
 

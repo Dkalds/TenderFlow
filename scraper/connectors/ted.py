@@ -387,7 +387,9 @@ def _sistema_y_marco(
         numero = _unico(referencias)
         if numero is None or not _NUMERO_PUBLICACION.fullmatch(numero):
             return "basado_marco", None
-        return "basado_marco", f"{SOURCE_ID}:{numero}"
+        # El XML de eForms rellena el número con ceros (``00649072-2024``);
+        # el ``publication-number`` del que sale ``id_externo`` no los lleva.
+        return "basado_marco", f"{SOURCE_ID}:{numero.lstrip('0')}"
     marco = set(_valores(notice.get("framework-agreement-lot")))
     sda = set(_valores(notice.get("dps-usage-lot")))
     if marco - {"none"}:

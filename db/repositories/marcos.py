@@ -44,6 +44,10 @@ class FilaExpedienteMarco(TypedDict):
     #: De dónde sale ``fecha_fin``: ``db.sql_fragments.ORIGENES_FECHA_FIN``.
     fecha_fin_origen: str
     dias_restantes: int | None
+    #: La duración tal como la publica la fuente (``ANN``, ``MON`` o ``DAY``):
+    #: sin inicio ni adjudicación no da una fecha, pero sigue siendo dato.
+    duracion_valor: float | None
+    duracion_unidad: str | None
 
 
 class FilaAdmitido(TypedDict):
@@ -87,7 +91,9 @@ def expediente(id_externo: str) -> FilaExpedienteMarco | None:
                l.marco_ref,
                {fecha_fin} AS fecha_fin,
                {fecha_fin_origen_sql()} AS fecha_fin_origen,
-               {dias_restantes_sql(fecha_fin)} AS dias_restantes
+               {dias_restantes_sql(fecha_fin)} AS dias_restantes,
+               l.duracion_valor,
+               l.duracion_unidad
         FROM licitaciones l
         LEFT JOIN LATERAL (
             SELECT min(fecha_adjudicacion) AS fecha_adjudicacion
