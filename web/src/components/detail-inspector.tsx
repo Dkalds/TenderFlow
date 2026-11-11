@@ -205,7 +205,7 @@ export function DetailInspector({
               </div>
               {/* Lo que el contrato acabó costando, antes de la cronología; sin
                   modificaciones publicadas ni dato del órgano no pinta nada. */}
-              <FichaModificaciones licitacion={l} />
+              <FichaModificaciones licitacion={l} variante="inspector" />
               <div className="border-t border-divider pt-4">
                 <FichaEventos licitacionId={l.id_externo} />
               </div>
@@ -219,7 +219,7 @@ export function DetailInspector({
                   admitidos: va antes que la estimación, como en la ficha
                   completa. En un expediente corriente no pinta nada. */}
               <div className="mb-5 empty:hidden">
-                <FichaMarco licitacion={l} />
+                <FichaMarco licitacion={l} variante="inspector" />
               </div>
               {/* Contra cuántos y contra quién, antes de la baja esperada y del
                   simulador: es el contexto con el que se leen los dos. */}
