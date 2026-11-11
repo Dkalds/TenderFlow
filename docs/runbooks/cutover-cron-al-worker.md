@@ -20,9 +20,9 @@ proceso hijo de la API (PR #710, #712 y #713), y se deshizo el 2026-11-10: el
 dueño prefiere mantener el cron en GitHub Actions. Vuelta atrás aplicada:
 `SCHEDULER_PLANE=actions`, `REQUIREMENTS_FILE=requirements-api.txt` y
 `PLIEGO_FACTS_ENABLED=false` en `tenderflow-api` (el log
-`cron_proceso_inactivo` lo confirmó a las 20:07 UTC). Falta reactivar
-`scrape-daily.yml` y `ml-scoring.yml` en GitHub (Actions → el workflow →
-*Enable workflow*): desde el 2026-11-10 00:10 están `disabled_manually`. `TenderFlow-1`, el worker de octubre, ya
+`cron_proceso_inactivo` lo confirmó a las 20:07 UTC), y `scrape-daily.yml` y
+`ml-scoring.yml` reactivados en GitHub a las 22:46 UTC tras casi 23 h
+deshabilitados. `TenderFlow-1`, el worker de octubre, ya
 no existe en Render (2026-11-10). Lo que se midió en ese intento está en la
 enmienda revertida de ADR-033.
 

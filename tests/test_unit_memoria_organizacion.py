@@ -164,15 +164,23 @@ def test_solo_es_indexable_lo_que_se_adjunta_y_se_sabe_leer() -> None:
     assert supported_content_types() >= memoria.TIPOS_INDEXABLES
 
 
-def test_docx_solo_es_indexable_si_la_imagen_de_la_api_lo_lee() -> None:
-    # El adjunto lo extrae el consumidor de la cola de la API: sin python-docx
-    # en su lock, un DOCX indexable quedaría `unsupported` para siempre.
+def test_el_worker_de_la_api_extrae_un_docx_sin_python_docx(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # El adjunto lo extrae el consumidor de la cola de la API, cuya imagen no
+    # trae python-docx: un DOCX indexable tiene que salir con texto igual.
+    import sys
     from pathlib import Path
 
-    lock = (Path(__file__).resolve().parents[1] / "requirements-api.txt").read_text()
+    from scheduler.worker import _paginas_de_adjunto
+
     docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    if "python-docx==" not in lock:
-        assert docx not in memoria.TIPOS_INDEXABLES
+    assert docx in memoria.TIPOS_INDEXABLES
+    monkeypatch.setitem(sys.modules, "docx", None)
+    fixture = Path(__file__).parent / "fixtures" / "documentos" / "pliego.docx"
+    paginas = _paginas_de_adjunto(fixture.read_bytes(), docx)
+    assert paginas
+    assert "CLAUSULAS ADMINISTRATIVAS" in "\n".join(paginas)
 
 
 def test_los_topes_salen_del_entorno_y_cero_apaga(monkeypatch: pytest.MonkeyPatch) -> None:

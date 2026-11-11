@@ -19,10 +19,10 @@ Formatos soportados
   páginas quedan marcadas ``ocr = true`` en ``documento_pages``. Un PDF que sí
   trae texto **nunca** pasa por OCR: el OCR sólo se invoca en la rama de fallo.
 - ``text/plain`` — una sola página.
-- Office Open XML (``.docx``), con ``python-docx``.
-- OpenDocument (``.odt``, ``.ods``, ``.odp``), con la biblioteca estándar:
-  ``zipfile`` + ``expat`` sobre ``content.xml``, rechazando cualquier DOCTYPE.
-  No depende de ningún extra, así que también se lee en la imagen de la API.
+- Office Open XML (``.docx``) y OpenDocument (``.odt``, ``.ods``, ``.odp``),
+  con la biblioteca estándar: ``zipfile`` + ``expat`` sobre ``word/document.xml``
+  o ``content.xml``, rechazando cualquier DOCTYPE. No dependen de ningún extra,
+  así que también se leen en la imagen de la API.
 - ``application/zip`` — se expande y se procesan los PDF, DOCX y OpenDocument
   de dentro; cada entrada abre su primera página con una línea separadora que
   dice de qué fichero sale (``── nombre ──``).
@@ -38,15 +38,18 @@ no está en el fichero. Se agrupan los párrafos no vacíos en bloques de
 igual que en un PDF (``mark_extracted`` los calcula sobre el texto agregado),
 así que una cita de la ficha sigue anclando a una región concreta y verificable
 del documento; lo que no puede hacer es decir «página 3 de la impresión». Es
-estable frente a re-extracciones porque sólo depende del orden de los párrafos.
+estable frente a re-extracciones porque sólo depende del orden de los párrafos,
+con una excepción: un DOCX extraído antes de 2026-11 con ``python-docx`` (tablas
+al final, sin controles de contenido ni cuadros de texto) sale distinto si se
+re-extrae, y los offsets de sus citas guardadas se moverían.
 
 **Zip bomb**: están acotados el número de entradas (:data:`_ZIP_MAX_ENTRADAS`),
 el tamaño descomprimido por entrada (:data:`_ZIP_MAX_BYTES_POR_ENTRADA`) y
 acumulado (``MAX_DOCUMENT_SIZE_BYTES``) y el ratio de compresión
 (:data:`_ZIP_RATIO_MAX`); la lectura de cada entrada se hace por bloques con
 un tope explícito en vez de fiarse de ``file_size`` de la cabecera, que la
-escribe quien construyó el ZIP. El ``content.xml`` de un OpenDocument pasa por
-la misma lectura acotada. No hay recursión: un ZIP dentro de un ZIP se ignora,
+escribe quien construyó el ZIP. El ``content.xml`` de un OpenDocument y el
+``word/document.xml`` de un DOCX pasan por la misma lectura acotada. No hay recursión: un ZIP dentro de un ZIP se ignora,
 y una entrada con ``..`` o ruta absoluta tampoco se lee.
 
 Un content-type que no sepamos leer marca el documento como ``unsupported``
@@ -55,11 +58,10 @@ sólo separadas se puede medir cuánta cobertura falta y de qué formato.
 
 Un content-type que sí sabemos leer pero cuya dependencia opcional falta **en
 este proceso** no es ninguna de las dos: la fila se queda ``pending``
-(:class:`ExtractorAusenteError`). Pasa en la imagen de la API, que extrae la
-ficha bajo demanda sin ``python-docx`` (trae ``lxml``, fuera de
-``requirements-api.in``); marcarla ``unsupported`` allí la sacaría para siempre
-del lote nocturno, que sí lo tiene. Desde 2026-10 OpenDocument ya no pasa por
-aquí: se lee con la biblioteca estándar y ``odfpy`` no se importa.
+(:class:`ExtractorAusenteError`), porque marcarla ``unsupported`` la sacaría
+para siempre del lote, que sí la tiene. Hoy ningún formato pasa por ahí:
+OpenDocument (2026-10) y DOCX (2026-11) se leen con la biblioteca estándar, sin
+``odfpy`` ni ``python-docx``, que traen ``lxml``.
 
 Configuración del OCR (variables de entorno, leídas aquí y no en
 ``config/settings.py`` porque sólo las usa este módulo y sólo en el runner de
@@ -77,7 +79,6 @@ extractor de texto.
 from __future__ import annotations
 
 import hashlib
-import importlib
 import io
 import multiprocessing
 import os
@@ -714,24 +715,7 @@ def _extract_pdf_paginas_con_ocr(content: bytes) -> list[PaginaExtraida]:
         return [PaginaExtraida(texto=texto, ocr=True) for texto in paginas]
 
 
-# ── DOCX (S8.2) ────────────────────────────────────────────────────────────
-
-
-def _importar_opcional(modulo: str, *, content_type: str, paquete: str) -> Any:
-    """Importa una dependencia opcional o declara el formato ``unsupported``.
-
-    ``importlib`` y no ``import x`` para que el tipo sea ``Any`` sin un
-    ``# type: ignore``: ``python-docx`` no publica stubs, y este
-    módulo pasa mypy strict como el resto de producción.
-    """
-    try:
-        return importlib.import_module(modulo)
-    except ImportError as exc:
-        raise ExtractorAusenteError(
-            f"content-type {content_type!r} soportado pero {paquete} no está "
-            "instalado (extra [pliegos] ausente)",
-            content_type=content_type,
-        ) from exc
+# ── Páginas lógicas (DOCX y OpenDocument) ─────────────────────────────────
 
 
 def _agrupar_en_paginas_logicas(parrafos: list[str]) -> list[str]:
@@ -747,34 +731,6 @@ def _agrupar_en_paginas_logicas(parrafos: list[str]) -> list[str]:
     total = sum(len(p) for p in paginas)
     if total > settings.MAX_DOCUMENT_TEXT_CHARS:
         raise DocumentFetchError("El documento excede el máximo de texto extraíble permitido")
-    return paginas
-
-
-def _extract_docx_paginas(content: bytes) -> list[str]:
-    """Párrafos y celdas de tabla de un ``.docx``, agrupados en páginas lógicas.
-
-    Las tablas van detrás de los párrafos y no intercaladas: ``python-docx`` no
-    expone el orden real entre ambos en su API pública, y fabricar un orden
-    inventado haría que los offsets de una cita apuntaran a otro sitio en
-    cuanto la librería cambiara. En un pliego las tablas son criterios y
-    presupuestos —contenido que la ficha necesita— así que perderlas sería
-    peor que ponerlas al final.
-    """
-    docx = _importar_opcional("docx", content_type=CONTENT_TYPE_DOCX, paquete="python-docx")
-    _acotar_docx(content)
-    try:
-        documento = docx.Document(io.BytesIO(content))
-        parrafos = [str(p.text) for p in documento.paragraphs]
-        for tabla in documento.tables:
-            for fila in tabla.rows:
-                celdas = [str(celda.text).strip() for celda in fila.cells]
-                parrafos.append(" | ".join(c for c in celdas if c))
-    except Exception as exc:
-        raise DocumentFetchError(f"DOCX corrupto o ilegible: {exc}") from exc
-
-    paginas = _agrupar_en_paginas_logicas(parrafos)
-    if not paginas:
-        raise DocumentFetchError("DOCX sin texto extraíble")
     return paginas
 
 
@@ -898,14 +854,13 @@ class _LectorOdf:
 
 def _rechazar_dtd(*_args: object) -> NoReturn:
     raise DocumentFetchError(
-        "OpenDocument con DOCTYPE en content.xml: rechazado (ODF no declara DTD; "
-        "solo serviría para expandir entidades)"
+        "XML del documento con DOCTYPE: rechazado (ni OpenDocument ni Office Open "
+        "XML declaran DTD; solo serviría para expandir entidades)"
     )
 
 
-def _parrafos_de_content_xml(xml: bytes) -> list[str]:
-    """Párrafos de un ``content.xml`` (ver :class:`_LectorOdf`)."""
-    lector = _LectorOdf()
+def _parrafos_de_xml(xml: bytes, lector: _LectorOdf, formato: str) -> list[str]:
+    """Pasa ``xml`` por ``expat`` con el DOCTYPE rechazado y devuelve los párrafos."""
     parser = expat.ParserCreate(namespace_separator=_SEP_NS)
     parser.buffer_text = True
     parser.StartDoctypeDeclHandler = _rechazar_dtd
@@ -917,8 +872,13 @@ def _parrafos_de_content_xml(xml: bytes) -> list[str]:
     try:
         parser.Parse(xml, True)
     except expat.ExpatError as exc:
-        raise DocumentFetchError(f"ODT corrupto o ilegible: {exc}") from exc
+        raise DocumentFetchError(f"{formato} corrupto o ilegible: {exc}") from exc
     return lector.parrafos
+
+
+def _parrafos_de_content_xml(xml: bytes) -> list[str]:
+    """Párrafos de un ``content.xml`` (ver :class:`_LectorOdf`)."""
+    return _parrafos_de_xml(xml, _LectorOdf(), "ODT")
 
 
 def _extract_odf_paginas(content: bytes, content_type: str = CONTENT_TYPE_ODT) -> list[str]:
@@ -947,6 +907,162 @@ def _extract_odf_paginas(content: bytes, content_type: str = CONTENT_TYPE_ODT) -
     paginas = _agrupar_en_paginas_logicas(_parrafos_de_content_xml(xml))
     if not paginas:
         raise DocumentFetchError(f"{formato} sin texto extraíble")
+    return paginas
+
+
+# ── DOCX con la biblioteca estándar ────────────────────────────────────────
+#
+# Hasta 2026-11 el DOCX se leía con ``python-docx``, que trae ``lxml`` y por eso
+# no está en la imagen de la API: un DOCX descargado allí (la ficha bajo demanda
+# o un adjunto de la memoria de la organización) se quedaba sin leer. Su texto
+# está en ``word/document.xml``, XML plano dentro de un ZIP, y se lee como el
+# ``content.xml`` de OpenDocument: ``expat`` con el DOCTYPE rechazado y la
+# entrada leída con la lectura acotada del ZIP.
+
+_NS_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+_NS_MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+_NS_MATH = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+
+#: Parte principal del documento. shortcut: no se resuelve por
+#: ``_rels/.rels``; Word, LibreOffice y Google Docs la escriben siempre aquí.
+#: Si aparece un DOCX que la nombre de otra forma, seguir la relación
+#: ``officeDocument``.
+_DOCX_PARTE_PRINCIPAL = "word/document.xml"
+
+#: Texto de un run y de una fórmula (OMML): en un pliego la fórmula es la de la
+#: puntuación económica, que la ficha necesita.
+_DOCX_TEXTOS = frozenset({f"{_NS_W} t", f"{_NS_MATH} t"})
+_DOCX_TABS = frozenset({f"{_NS_W} tab", f"{_NS_W} ptab"})
+_DOCX_SALTOS = frozenset({f"{_NS_W} br", f"{_NS_W} cr"})
+_DOCX_GUION = f"{_NS_W} noBreakHyphen"
+#: Subárboles cuyo texto no es contenido: las propiedades del párrafo (su
+#: ``w:tabs`` son paradas de tabulación, no tabuladores), lo borrado o movido
+#: del control de cambios y la copia VML de un cuadro de texto
+#: (``mc:Fallback`` repite lo que ya trae ``mc:Choice``; shortcut: un símbolo
+#: que Word escribe como ``w16se:symEx`` sin texto en el ``Choice`` y ``w:t`` en
+#: el ``Fallback`` se pierde; leer el ``Fallback`` cuando el ``Choice`` no aporte
+#: texto si aparece en pliegos reales). El texto de un código
+#: de campo va en ``w:instrText`` y el borrado en ``w:delText``: como solo se
+#: lee ``w:t``, ninguno entra.
+_DOCX_IGNORADOS = frozenset(
+    {
+        f"{_NS_W} pPr",
+        f"{_NS_W} del",
+        f"{_NS_W} moveFrom",
+        f"{_NS_MC} Fallback",
+    }
+)
+
+
+#: Controles de contenido (``w:sdt``) cuyo ``w:sdtContent`` no es contenido: el
+#: texto de marcador de posición de un campo sin rellenar («Elija un elemento.»)
+#: y el índice automático, que repetiría cada encabezado con su número de página.
+_DOCX_SDT = f"{_NS_W} sdt"
+_DOCX_SDT_CONTENIDO = f"{_NS_W} sdtContent"
+_DOCX_SDT_MARCADOR = f"{_NS_W} showingPlcHdr"
+_DOCX_SDT_GALERIA = f"{_NS_W} docPartGallery"
+_DOCX_GALERIA_INDICE = "Table of Contents"
+
+
+class _LectorDocx(_LectorOdf):
+    """Recorre ``word/document.xml`` con las convenciones de :class:`_LectorOdf`.
+
+    Cada ``w:p`` es un párrafo, una fila ``w:tr`` es una línea con sus celdas
+    ``w:tc`` no vacías unidas por `` | ``, y las tablas quedan **en su sitio**
+    del documento. Frente a ``python-docx``, que solo leía los párrafos y
+    tablas hijos directos del cuerpo y ponía las tablas al final, entran
+    además el texto rellenado en controles de contenido, los cuadros de texto,
+    las tablas anidadas (aplanadas en su celda) y las fórmulas.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._en_texto = 0
+        #: Por cada ``w:sdt`` abierto: ¿se salta su ``w:sdtContent``? Se decide
+        #: en ``w:sdtPr``, que siempre lo precede.
+        self._sdt_saltar: list[bool] = []
+
+    def inicio(self, nombre: str, atributos: dict[str, str]) -> None:
+        if self._ignorando or nombre in _DOCX_IGNORADOS:
+            self._ignorando += 1
+            return
+        if nombre == _DOCX_SDT:
+            self._sdt_saltar.append(False)
+        elif self._sdt_saltar and (
+            nombre == _DOCX_SDT_MARCADOR
+            or (
+                nombre == _DOCX_SDT_GALERIA
+                and atributos.get(f"{_NS_W} val") == _DOCX_GALERIA_INDICE
+            )
+        ):
+            self._sdt_saltar[-1] = True
+        elif nombre == _DOCX_SDT_CONTENIDO and self._sdt_saltar and self._sdt_saltar[-1]:
+            self._ignorando += 1
+        elif nombre == f"{_NS_W} p":
+            self._buffers.append([])
+        elif nombre == f"{_NS_W} tr":
+            self._filas.append([])
+        elif nombre == f"{_NS_W} tc":
+            self._celdas.append([])
+        elif nombre in _DOCX_TEXTOS:
+            self._en_texto += 1
+        elif self._buffers and nombre in _DOCX_TABS:
+            self._buffers[-1].append("\t")
+        elif self._buffers and nombre in _DOCX_SALTOS:
+            self._buffers[-1].append("\n")
+        elif self._buffers and nombre == _DOCX_GUION:
+            self._buffers[-1].append("-")
+
+    def fin(self, nombre: str) -> None:
+        if self._ignorando:
+            self._ignorando -= 1
+            return
+        if nombre == _DOCX_SDT and self._sdt_saltar:
+            self._sdt_saltar.pop()
+        elif nombre in _DOCX_TEXTOS:
+            self._en_texto = max(0, self._en_texto - 1)
+        elif nombre == f"{_NS_W} p" and self._buffers:
+            self._emitir("".join(self._buffers.pop()))
+        elif nombre == f"{_NS_W} tc" and self._celdas:
+            celda = " ".join(self._celdas.pop())
+            if self._filas:
+                self._filas[-1].append(celda)
+        elif nombre == f"{_NS_W} tr" and self._filas:
+            self._emitir(" | ".join(c for c in self._filas.pop() if c))
+
+    def texto(self, datos: str) -> None:
+        if not self._ignorando and self._en_texto and self._buffers:
+            self._buffers[-1].append(datos)
+
+
+def _extract_docx_paginas(content: bytes) -> list[str]:
+    """Párrafos y filas de tabla de un ``.docx``, en orden documental y agrupados en
+    páginas lógicas.
+
+    Solo se descomprime ``word/document.xml``, con la lectura acotada del ZIP
+    (tope por entrada, ``MAX_DOCUMENT_SIZE_BYTES`` y ratio): una bomba de deflate
+    se corta antes de materializarse. Cabeceras, pies y notas al pie viven en
+    otras partes y no se leen, como con ``python-docx``.
+    """
+    try:
+        archivo = zipfile.ZipFile(io.BytesIO(content))
+    except (zipfile.BadZipFile, OSError) as exc:
+        raise DocumentFetchError(f"DOCX corrupto o ilegible: {exc}") from exc
+    with archivo:
+        try:
+            info = archivo.getinfo(_DOCX_PARTE_PRINCIPAL)
+        except KeyError as exc:
+            raise DocumentFetchError(f"DOCX sin {_DOCX_PARTE_PRINCIPAL}") from exc
+        xml = _leer_entrada_acotada(
+            archivo,
+            info,
+            tope=min(_ZIP_MAX_BYTES_POR_ENTRADA, int(settings.MAX_DOCUMENT_SIZE_BYTES)),
+            que=f"{_DOCX_PARTE_PRINCIPAL} del DOCX",
+        )
+
+    paginas = _agrupar_en_paginas_logicas(_parrafos_de_xml(xml, _LectorDocx(), "DOCX"))
+    if not paginas:
+        raise DocumentFetchError("DOCX sin texto extraíble")
     return paginas
 
 
@@ -998,43 +1114,6 @@ def _leer_entrada_acotada(
         # acaba en `error` y no se reintenta; escapando crudo, derribaba el lote.
         raise DocumentFetchError(f"{que}: entrada ilegible: {exc}") from exc
     return b"".join(bloques)
-
-
-def _acotar_docx(content: bytes) -> None:
-    """Rechaza una bomba de descompresión **antes** de que ``python-docx`` abra el ZIP.
-
-    ``python-docx`` lee cada parte entera con ``ZipFile.read``, que descomprime
-    sin tope (``file_size`` lo escribe quien construyó el fichero, y ``read()``
-    no lo usa para acotar): un ``word/document.xml`` de ~50 MiB deflatados puede
-    ser decenas de GB y el kernel mata el runner de pliegos, que deja la fila
-    ``pending`` y la repite cada noche. Aquí cada parte se lee por bloques con el
-    mismo tope por entrada, tope total y ratio que el ZIP de pliegos
-    (:func:`_leer_entrada_acotada`). Lo que supera algún tope es
-    :class:`DocumentFetchError` (la fila queda en ``error``, no se reintenta); lo
-    que pasa se descomprime después con ``python-docx`` y da exactamente los
-    mismos bytes, así que está acotado.
-    """
-    try:
-        archivo = zipfile.ZipFile(io.BytesIO(content))
-    except (zipfile.BadZipFile, OSError) as exc:
-        raise DocumentFetchError(f"DOCX corrupto o ilegible: {exc}") from exc
-    presupuesto = int(settings.MAX_DOCUMENT_SIZE_BYTES)
-    with archivo:
-        for info in archivo.infolist():
-            if info.is_dir():
-                continue
-            if presupuesto <= 0:
-                raise DocumentFetchError(
-                    "El contenido descomprimido del DOCX supera "
-                    f"{settings.MAX_DOCUMENT_SIZE_BYTES:,} bytes"
-                )
-            leido = _leer_entrada_acotada(
-                archivo,
-                info,
-                tope=min(_ZIP_MAX_BYTES_POR_ENTRADA, presupuesto),
-                que=f"Parte {info.filename!r} del DOCX",
-            )
-            presupuesto -= len(leido)
 
 
 def _nombre_de_entrada(info: zipfile.ZipInfo) -> str:
@@ -1148,7 +1227,9 @@ def _extract_zip_paginas(content: bytes) -> list[PaginaExtraida]:
                 de_la_entrada = _extraer_paginas_de_tipo(datos, tipo_interno)
             except ExtractorAusenteError:
                 # No es un adjunto roto: saltarlo dejaría el ZIP `extracted`
-                # sin el DOCX de dentro, y ninguna pasada volvería a por él.
+                # sin esa entrada, y ninguna pasada volvería a por ella. Hoy
+                # ningún formato de dentro lo lanza (DOCX y OpenDocument se leen
+                # con la biblioteca estándar); queda para el que lo necesite.
                 raise
             except DocumentFetchError as exc:
                 # Un adjunto roto dentro del ZIP no invalida los demás: mismo

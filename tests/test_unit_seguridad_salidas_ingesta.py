@@ -18,7 +18,6 @@ import asyncio
 import io
 import struct
 import zipfile
-from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -292,50 +291,47 @@ def _mentir_el_tamano(zip_bytes: bytes, declarado: int) -> bytes:
     return bytes(datos)
 
 
-def test_una_bomba_de_deflate_se_rechaza_antes_de_python_docx() -> None:
-    """scraper-datos-no-confiables-1 / ssrf-saliente-3 / deserializacion-ejecucion-2."""
+def test_una_bomba_de_deflate_en_el_docx_se_rechaza_sin_materializarla() -> None:
+    """scraper-datos-no-confiables-1 / ssrf-saliente-3 / deserializacion-ejecucion-2.
+
+    Desde 2026-11 el DOCX se lee con la biblioteca estándar: su
+    ``word/document.xml`` pasa por la lectura acotada del ZIP.
+    """
     from scraper import document_fetcher as df
 
-    docx = MagicMock()
-    with (
-        patch.object(df, "_importar_opcional", return_value=docx),
-        pytest.raises(df.DocumentFetchError, match="ratio de compresión"),
-    ):
+    with pytest.raises(df.DocumentFetchError, match="ratio de compresión"):
         df._extract_docx_paginas(_bomba())
-
-    docx.Document.assert_not_called()
 
 
 def test_una_bomba_con_el_tamano_declarado_mentido_tambien_se_rechaza() -> None:
-    """``ZipFile.read`` no acota por ``file_size``: se mide lo que sale de verdad."""
+    """Un ``file_size`` falso no deja pasar la bomba: ``zipfile`` corta en lo
+    declarado y el CRC no cuadra, así que es ``error`` y no se materializa."""
     from scraper import document_fetcher as df
 
-    with pytest.raises(df.DocumentFetchError):
-        df._acotar_docx(_mentir_el_tamano(_bomba(30), 1000))
+    with pytest.raises(df.DocumentFetchError, match=r"del DOCX: entrada ilegible"):
+        df._extract_docx_paginas(_mentir_el_tamano(_bomba(30), 1000))
 
 
-def test_el_tope_total_del_docx_se_aplica_aunque_cada_parte_sea_pequena() -> None:
+def test_el_tope_de_tamano_se_aplica_a_la_parte_principal_del_docx() -> None:
     from scraper import document_fetcher as df
 
-    docx = _zip({f"word/parte{i}.xml": bytes(range(256)) * 8 for i in range(10)})
+    docx = _zip({"word/document.xml": bytes(range(256)) * 40})
     with (
         patch.object(df.settings, "MAX_DOCUMENT_SIZE_BYTES", 5000),
         pytest.raises(df.DocumentFetchError, match="supera"),
     ):
-        df._acotar_docx(docx)
+        df._extract_docx_paginas(docx)
 
 
 def test_un_docx_normal_sigue_extrayendose() -> None:
     from scraper import document_fetcher as df
 
-    documento = SimpleNamespace(paragraphs=[SimpleNamespace(text="Cláusula primera")], tables=[])
-    docx = MagicMock()
-    docx.Document.return_value = documento
-    contenido = _zip(
-        {"[Content_Types].xml": b"<x/>", "word/document.xml": b"<w>Cl\xc3\xa1usula primera</w>"}
+    xml = (
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        "<w:body><w:p><w:r><w:t>Cl\u00e1usula primera</w:t></w:r></w:p></w:body></w:document>"
     )
-    with patch.object(df, "_importar_opcional", return_value=docx):
-        assert df._extract_docx_paginas(contenido) == ["Cláusula primera"]
+    contenido = _zip({"[Content_Types].xml": b"<x/>", "word/document.xml": xml.encode()})
+    assert df._extract_docx_paginas(contenido) == ["Cláusula primera"]
 
 
 def test_una_entrada_zip_con_crc_roto_es_document_fetch_error() -> None:
