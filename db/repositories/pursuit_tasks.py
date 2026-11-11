@@ -98,12 +98,16 @@ class PursuitTasksRepository:
             return None
         return self.get(organization_id, int(fila[0]))
 
-    def get(self, organization_id: int, task_id: int) -> dict[str, Any] | None:
+    def get(
+        self, organization_id: int, task_id: int, *, pursuit_id: int | None = None
+    ) -> dict[str, Any] | None:
+        where = " WHERE t.id = %s AND t.organization_id = %s AND t.deleted_at IS NULL"
+        params: list[object] = [task_id, organization_id]
+        if pursuit_id is not None:
+            where += " AND t.pursuit_id = %s"
+            params.append(pursuit_id)
         with connect_read() as c:
-            cur = c.execute(
-                _SELECT + " WHERE t.id = %s AND t.organization_id = %s AND t.deleted_at IS NULL",
-                (task_id, organization_id),
-            )
+            cur = c.execute(_SELECT + where, tuple(params))
             filas = rows_to_dicts(cur)
         return filas[0] if filas else None
 
@@ -196,6 +200,7 @@ class PursuitTasksRepository:
         organization_id: int,
         task_id: int,
         *,
+        pursuit_id: int | None = None,
         titulo: str | None = None,
         responsable_user_id: int | None = None,
         vence: str | None = None,
@@ -230,32 +235,39 @@ class PursuitTasksRepository:
             sets.append("estado = %s")
             params.append(estado)
         if not sets:
-            return self.get(organization_id, task_id)
+            return self.get(organization_id, task_id, pursuit_id=pursuit_id)
 
         sets.append("updated_at = %s")
+        where = "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL"
         params.extend([now_utc_iso(), task_id, organization_id])
+        if pursuit_id is not None:
+            where += " AND pursuit_id = %s"
+            params.append(pursuit_id)
         with connect() as c:
             cur = c.execute(
-                "UPDATE pursuit_tasks SET " + ", ".join(sets) + " "
-                "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL",
+                "UPDATE pursuit_tasks SET " + ", ".join(sets) + " " + where,
                 tuple(params),
             )
             if not getattr(cur, "rowcount", 0):
                 return None
-        return self.get(organization_id, task_id)
+        return self.get(organization_id, task_id, pursuit_id=pursuit_id)
 
-    def delete(self, organization_id: int, task_id: int) -> bool:
+    def delete(self, organization_id: int, task_id: int, *, pursuit_id: int | None = None) -> bool:
         """Marca la tarea como borrada (v131). `False` si no existía o ya lo estaba.
 
         Borrado lógico por lo mismo que en el hilo de comentarios: la tarea es
         trabajo del equipo en un espacio compartido, y un `DELETE` dejaba que un
         compañero la hiciera desaparecer sin que quedara quién ni cuándo.
         """
+        where = "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL"
+        params: list[object] = [task_id, organization_id]
+        if pursuit_id is not None:
+            where += " AND pursuit_id = %s"
+            params.append(pursuit_id)
         with connect() as c:
             cur = c.execute(
-                "UPDATE pursuit_tasks SET deleted_at = now() "
-                "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL",
-                (task_id, organization_id),
+                "UPDATE pursuit_tasks SET deleted_at = now() " + where,
+                tuple(params),
             )
             return bool(getattr(cur, "rowcount", 0))
 
@@ -308,13 +320,25 @@ class PursuitTasksRepository:
         """Tareas asignadas al usuario para el export RGPD.
 
         Incluye las borradas lógicamente (siguen en la base, igual que los
-        comentarios) y no devuelve el nombre de otros: solo la tarea.
+        comentarios) y no devuelve el nombre de otros: solo la tarea. Si la
+        persona ya no es miembro activo de la organización, el contenido
+        corporativo (`titulo`, `vence`, `estado`) se enmascara igual que en
+        `pursuits` y `pursuit_comments`.
         """
+        activo = (
+            "EXISTS (SELECT 1 FROM organization_memberships m "
+            "WHERE m.organization_id = pursuit_tasks.organization_id "
+            "AND m.user_id = pursuit_tasks.responsable_user_id AND m.status = 'active')"
+        )
         with connect_read() as c:
             return rows_to_dicts(
                 c.execute(
-                    "SELECT id, pursuit_id, organization_id, titulo, responsable_user_id, "
-                    "vence, estado, created_at, updated_at, deleted_at "
+                    "SELECT id, pursuit_id, organization_id, "
+                    f"CASE WHEN {activo} THEN titulo END AS titulo, "
+                    "responsable_user_id, "
+                    f"CASE WHEN {activo} THEN vence END AS vence, "
+                    f"CASE WHEN {activo} THEN estado END AS estado, "
+                    "created_at, updated_at, deleted_at "
                     "FROM pursuit_tasks WHERE responsable_user_id = %s "
                     "ORDER BY id LIMIT 5000",
                     (user_id,),

@@ -590,7 +590,12 @@ def accept_invitation_token(user_id: int, email: str | None, token: str) -> Orga
         raise OrganizationPermissionError(
             "Esta invitación es para otra dirección de correo. Inicia sesión con ella."
         )
-    aceptadas = _repo.accept_invitations_for_email(email, user_id)
+    inv_id = row.get("id")
+    aceptadas = (
+        _repo.accept_invitation_by_id(int(inv_id), user_id)
+        if inv_id is not None
+        else _repo.accept_invitations_for_email(email, user_id)
+    )
     _aplicar_plantillas_de(aceptadas, user_id)
     organization = _repo.get_for_user(int(row["organization_id"]), user_id)
     if organization is None:

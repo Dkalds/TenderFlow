@@ -216,7 +216,7 @@ class OrganizationRepository:
                     now,
                 ),
             )
-            if status != "active":
+            if status != "active" or role == "viewer":
                 self._retirar_huellas(conn, organization_id, user_id)
             row = conn.execute(
                 "SELECT m.organization_id, m.user_id, m.role, m.status, "
@@ -439,6 +439,51 @@ class OrganizationRepository:
             )
             return int(getattr(cur, "rowcount", 0) or 0) > 0
 
+    @staticmethod
+    def _aceptar_pendientes(
+        conn: _Conexion, pendientes: list[Invitacion], user_id: int, now: datetime
+    ) -> list[Invitacion]:
+        aceptadas: list[Invitacion] = []
+        for invitacion in pendientes:
+            conn.execute(
+                "INSERT INTO organization_memberships "
+                "(organization_id, user_id, role, status, invited_by_user_id, "
+                " created_at, updated_at) VALUES (%s, %s, %s, 'active', %s, %s, %s) "
+                "ON CONFLICT(organization_id, user_id) DO UPDATE SET "
+                "role = excluded.role, status = 'active', "
+                "updated_at = excluded.updated_at "
+                "WHERE organization_memberships.role <> 'owner'",
+                (
+                    invitacion["organization_id"],
+                    user_id,
+                    invitacion["role"],
+                    invitacion["invited_by_user_id"],
+                    now_utc_iso(),
+                    now_utc_iso(),
+                ),
+            )
+            cur = conn.execute(
+                "UPDATE organization_invitations "
+                "SET accepted_at = %s, accepted_user_id = %s WHERE id = %s "
+                f"RETURNING {_INVITATION_COLUMNS}",
+                (now, user_id, invitacion["id"]),
+            )
+            aceptadas.extend(typed_rows(Invitacion, rows_to_dicts(cur)))
+        return aceptadas
+
+    def accept_invitation_by_id(self, invitation_id: int, user_id: int) -> list[Invitacion]:
+        """Acepta únicamente la invitación ``invitation_id`` si sigue vigente."""
+        now = now_utc()
+        with connect() as conn:
+            cur = conn.execute(
+                f"SELECT {_INVITATION_COLUMNS} FROM organization_invitations "
+                "WHERE id = %s AND accepted_at IS NULL "
+                "AND revoked_at IS NULL AND expires_at > %s FOR UPDATE",
+                (invitation_id, now),
+            )
+            pendientes = typed_rows(Invitacion, rows_to_dicts(cur))
+            return self._aceptar_pendientes(conn, pendientes, user_id, now)
+
     def accept_invitations_for_email(self, email: str, user_id: int) -> list[Invitacion]:
         """Convierte en membresías activas las invitaciones vivas de ese correo.
 
@@ -461,33 +506,7 @@ class OrganizationRepository:
                 (email, now),
             )
             pendientes = typed_rows(Invitacion, rows_to_dicts(cur))
-            aceptadas: list[Invitacion] = []
-            for invitacion in pendientes:
-                conn.execute(
-                    "INSERT INTO organization_memberships "
-                    "(organization_id, user_id, role, status, invited_by_user_id, "
-                    " created_at, updated_at) VALUES (%s, %s, %s, 'active', %s, %s, %s) "
-                    "ON CONFLICT(organization_id, user_id) DO UPDATE SET "
-                    "role = excluded.role, status = 'active', "
-                    "updated_at = excluded.updated_at "
-                    "WHERE organization_memberships.role <> 'owner'",
-                    (
-                        invitacion["organization_id"],
-                        user_id,
-                        invitacion["role"],
-                        invitacion["invited_by_user_id"],
-                        now_utc_iso(),
-                        now_utc_iso(),
-                    ),
-                )
-                cur = conn.execute(
-                    "UPDATE organization_invitations "
-                    "SET accepted_at = %s, accepted_user_id = %s WHERE id = %s "
-                    f"RETURNING {_INVITATION_COLUMNS}",
-                    (now, user_id, invitacion["id"]),
-                )
-                aceptadas.extend(typed_rows(Invitacion, rows_to_dicts(cur)))
-        return aceptadas
+            return self._aceptar_pendientes(conn, pendientes, user_id, now)
 
     def anonymize_invitations_for_user(self, user_id: int) -> None:
         """Borra del rastro de invitaciones el correo de quien ejerce el olvido.
@@ -833,8 +852,23 @@ class OrganizationRepository:
             return salio
 
     @staticmethod
-    def _retirar_huellas(conn: _Conexion, organization_id: int, user_id: int) -> None:
-        """Lo que quien deja de ser miembro seguiría ejerciendo en la organización.
+    def _retirar_huellas_de_gestor(conn: _Conexion, organization_id: int, user_id: int) -> None:
+        """Retira lo que exige rol `owner`/`admin` (webhooks e invitaciones pendientes)."""
+        conn.execute(
+            "UPDATE webhooks SET active = 0 "
+            "WHERE organization_id = %s AND created_by = %s AND active = 1",
+            (organization_id, user_id),
+        )
+        conn.execute(
+            "UPDATE organization_invitations SET revoked_at = %s "
+            "WHERE organization_id = %s AND invited_by_user_id = %s "
+            "AND accepted_at IS NULL AND revoked_at IS NULL",
+            (now_utc(), organization_id, user_id),
+        )
+
+    @classmethod
+    def _retirar_huellas(cls, conn: _Conexion, organization_id: int, user_id: int) -> None:
+        """Lo que quien deja de ser miembro (o pasa a `viewer`) seguiría ejerciendo.
 
         La baja solo cambiaba el estado de la membresía, y tres cosas que esa
         persona dejó creadas seguían vivas, en la misma transacción que la baja:
@@ -848,17 +882,7 @@ class OrganizationRepository:
           seguía aplicándose al Radar del equipo y nadie podía quitarlo. Pasa a
           ``private``: el perfil no se borra, deja de heredarlo el equipo.
         """
-        conn.execute(
-            "UPDATE webhooks SET active = 0 "
-            "WHERE organization_id = %s AND created_by = %s AND active = 1",
-            (organization_id, user_id),
-        )
-        conn.execute(
-            "UPDATE organization_invitations SET revoked_at = %s "
-            "WHERE organization_id = %s AND invited_by_user_id = %s "
-            "AND accepted_at IS NULL AND revoked_at IS NULL",
-            (now_utc(), organization_id, user_id),
-        )
+        cls._retirar_huellas_de_gestor(conn, organization_id, user_id)
         conn.execute(
             "UPDATE user_profiles SET visibility = 'private' "
             "WHERE organization_id = %s AND user_id = %s AND visibility = 'organization'",

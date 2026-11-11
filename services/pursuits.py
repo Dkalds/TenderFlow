@@ -1520,25 +1520,29 @@ def apply_weights_proposal(
     # reemplaza la fila entera— lo pisaría con nulos y publicaría como
     # `organization` un perfil que era `private`.
     previo = get_own_user_profile(user_key, user_id=user_id)
+    anterior = (previo or {}).get("organization_id")
+    misma_org = previo is not None and (anterior is None or int(anterior) == resolved_id)
+    base_org = previo if misma_org else {}
     # La propuesta reparte dimensiones; las penalizaciones (F1.4) no son
-    # dimensiones y no las toca. Si el perfil tenía una —p. ej. la de anulación
-    # a cero—, sigue igual tras aplicar.
-    previos_pesos = (previo or {}).get("weights")
+    # dimensiones y no las toca. Si el perfil tenía una en esta organización
+    # —p. ej. la de anulación a cero—, sigue igual tras aplicar.
+    previos_pesos = (base_org or {}).get("weights")
     if isinstance(previos_pesos, dict):
         pesos = {**pesos, **penalty_weights(previos_pesos)}
     visibility: Literal["private", "organization"] = (
-        "private" if str((previo or {}).get("visibility") or "") == "private" else "organization"
+        "private" if str((base_org or {}).get("visibility") or "") == "private" else "organization"
     )
     # El upsert reemplaza el perfil entero (ver su docstring), así que el resto
-    # de los campos se reenvían tal cual: aplicar los pesos no puede borrar de
-    # paso las keywords de afinidad ni los CPV de quien lo aplica.
+    # de los campos de la misma organización se reenvían tal cual: aplicar los
+    # pesos no puede borrar las keywords de afinidad ni los CPV de quien lo
+    # aplica, ni arrastrar a otra organización los de un equipo distinto.
     upsert_user_profile(
         {
             "weights": pesos,
-            "afinidad_keywords": (previo or {}).get("afinidad_keywords"),
-            "cpvs": (previo or {}).get("cpvs"),
-            "importe_min": (previo or {}).get("importe_min"),
-            "importe_max": (previo or {}).get("importe_max"),
+            "afinidad_keywords": (base_org or {}).get("afinidad_keywords"),
+            "cpvs": (base_org or {}).get("cpvs"),
+            "importe_min": (base_org or {}).get("importe_min"),
+            "importe_max": (base_org or {}).get("importe_max"),
         },
         resolved_id,
         visibility,
@@ -1547,7 +1551,6 @@ def apply_weights_proposal(
     # El ranking cacheado se calculó con los pesos viejos, en el scope propio y
     # en el de la organización que tuviera antes el perfil.
     invalidate_user_scoped("analytics", "scoring", user_key)
-    anterior = (previo or {}).get("organization_id")
     for afectada in {resolved_id, int(anterior) if anterior is not None else None}:
         if afectada is not None:
             invalidate_organization_scoped("analytics", "scoring", afectada)

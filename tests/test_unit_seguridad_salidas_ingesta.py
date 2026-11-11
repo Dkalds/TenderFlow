@@ -389,3 +389,255 @@ def test_el_enlace_del_calendario_se_entrega_con_no_store() -> None:
 
     assert salida.headers["cache-control"] == "private, no-store"
     assert enlace.path.endswith("?u=7&t=kid.firma")
+
+
+def test_el_enlace_del_calendario_con_api_key_exige_pursuits_read() -> None:
+    """TF-SEC-10: una API key con solo `exports:read` no puede emitir el enlace."""
+    from fastapi import HTTPException
+
+    from api.routes import exports
+
+    salida = Response()
+    ctx = {
+        "user_id": 7,
+        "user_key": "k",
+        "auth_method": "api_key",
+        "scopes": frozenset({"exports:read"}),
+    }
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(exports.calendario_enlace(salida, ctx=ctx))
+    assert exc.value.status_code == 403
+
+
+def test_metrics_rechaza_api_key_de_administrador_degradado() -> None:
+    """TF-SEC-09: si el dueño perdió `is_admin`, su clave `metrics:read` da 403."""
+    from fastapi import HTTPException
+    from starlette.requests import Request
+
+    from api.auth import AuthContext
+    from api.routes import metrics
+
+    ctx = AuthContext(
+        key_hash="h",
+        key_id=1,
+        scopes=frozenset({"metrics:read"}),
+        user_id=7,
+        owner={"id": 7, "is_admin": 0},
+    )
+    req = Request({"type": "http", "method": "GET", "path": "/metrics", "headers": []})
+    with (
+        patch.object(metrics, "validate_api_key_credential", AsyncMock(return_value=ctx)),
+        pytest.raises(HTTPException) as exc,
+    ):
+        asyncio.run(
+            metrics.require_metrics_reader(
+                req, api_key_raw="raw", bearer=None, background_tasks=BackgroundTasks()
+            )
+        )
+    assert exc.value.status_code == 403
+
+
+def test_rotate_my_key_rechaza_scopes_reservados_tras_degradar_admin() -> None:
+    """TF-SEC-09: rotar una clave `*` exige seguir siendo administrador."""
+    from fastapi import HTTPException
+
+    from api.routes import me
+
+    rotatable = {"id": 9, "user_id": 7, "name": "ops", "scopes": "*"}
+    with (
+        patch.object(me._key_repo, "get_rotatable", return_value=rotatable),
+        pytest.raises(HTTPException) as exc,
+    ):
+        me.rotate_my_key(
+            ctx={"user_id": 7, "user_key": "k", "is_admin": False},
+            key_id=9,
+            grace_days=7,
+        )
+    assert exc.value.status_code == 403
+
+
+def test_accept_invitation_token_acepta_solo_la_invitacion_del_token() -> None:
+    """TF-SEC-07: canjear un token no acepta invitaciones pendientes de otras organizaciones."""
+    from services import organizations as svc
+
+    fila = {"id": 42, "organization_id": 10, "email": "ana@empresa.test"}
+    org = {
+        "id": 10,
+        "name": "Equipo A",
+        "is_personal": False,
+        "role": "member",
+        "created_at": "2026-01-01T00:00:00Z",
+    }
+    with (
+        patch.object(svc, "_invitation_signature_valid", return_value=True),
+        patch.object(svc._repo, "get_pending_invitation_by_token", return_value=fila),
+        patch.object(svc._repo, "accept_invitation_by_id", return_value=[fila]) as por_id,
+        patch.object(svc._repo, "accept_invitations_for_email") as por_correo,
+        patch.object(svc, "_aplicar_plantillas_de"),
+        patch.object(svc._repo, "get_for_user", return_value=org),
+    ):
+        res = svc.accept_invitation_token(7, "Ana@empresa.test", "tok.sig")
+    assert res.id == 10
+    por_id.assert_called_once_with(42, 7)
+    por_correo.assert_not_called()
+
+
+def test_oauth_rechaza_cuenta_desactivada_sin_consumir_invitaciones() -> None:
+    """TF-SEC-12: una cuenta con `deactivated_at` lanza CuentaDesactivadaError."""
+    from contextlib import contextmanager
+
+    from db import users as users_mod
+
+    class _Cur:
+        def fetchone(self) -> tuple[int, str]:
+            return (7, "2026-10-01T00:00:00Z")
+
+    class _Conn:
+        def execute(self, _sql: str, _params: object = ()) -> _Cur:
+            return _Cur()
+
+    @contextmanager
+    def _connect():  # type: ignore[no-untyped-def]
+        yield _Conn()
+
+    with (
+        patch.object(users_mod, "connect", _connect),
+        pytest.raises(users_mod.CuentaDesactivadaError) as exc,
+    ):
+        users_mod.get_or_create_oauth_user(
+            email="Ana@Empresa.test", oauth_provider="google", oauth_sub="sub-1"
+        )
+    assert exc.value.user_id == 7
+
+
+def test_pursuit_tasks_acota_por_pursuit_id_y_enmascara_export_rgpd() -> None:
+    """TF-SEC-04 y P-3: update/delete acotan por pursuit_id y export_for_user enmascara."""
+    from contextlib import contextmanager
+
+    from db.repositories import pursuit_tasks as repo_mod
+    from services import pursuit_tasks as svc_mod
+
+    sqls: list[tuple[str, tuple[object, ...]]] = []
+
+    class _Cur:
+        rowcount = 1
+        description = (("id",), ("titulo",), ("vence",), ("estado",))
+
+        def fetchall(self) -> list[tuple[object, ...]]:
+            return [(1, None, None, None)]
+
+    class _Conn:
+        def execute(self, sql: str, params: tuple[object, ...] = ()) -> _Cur:
+            sqls.append((sql, params))
+            return _Cur()
+
+    @contextmanager
+    def _conn():  # type: ignore[no-untyped-def]
+        yield _Conn()
+
+    with patch.object(repo_mod, "connect_read", _conn):
+        repo_mod.PursuitTasksRepository().export_for_user(7)
+    assert "organization_memberships" in sqls[0][0]
+    assert "m.status = 'active'" in sqls[0][0]
+
+    @contextmanager
+    def _alcance(_uid: int, _oid: int | None, write: bool = False):  # type: ignore[no-untyped-def]
+        assert write is True
+        yield (5, "member")
+
+    with (
+        patch.object(svc_mod, "alcance_resuelto", _alcance),
+        patch.object(svc_mod, "_require_pursuit"),
+        patch.object(svc_mod, "_sincronizar_next_action"),
+        patch.object(svc_mod._repo, "delete", return_value=True) as borrar,
+    ):
+        svc_mod.delete_task(7, 99, 12, organization_id=5)
+    borrar.assert_called_once_with(5, 12, pursuit_id=99)
+
+
+def test_apply_weights_proposal_no_arrastra_afinidad_de_otra_organizacion() -> None:
+    """TF-SEC-05: aplicar pesos en Org B no copia afinidad_keywords ni cpvs de Org A."""
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    from services import pursuits as svc
+
+    @contextmanager
+    def _alcance(_uid: int, _oid: int | None, write: bool = False):  # type: ignore[no-untyped-def]
+        yield (20, "owner")
+
+    propuesta = SimpleNamespace(
+        estado="propuesta",
+        n_cierres=10,
+        n_ganadas=5,
+        n_perdidas=5,
+        n_abiertas=0,
+        n_descartadas=0,
+        fuente="cierres",
+        minimo_cierres=10,
+        pesos_actuales={"afinidad": 25, "competencia": 25, "importe": 25, "plazo": 25},
+        pesos_propuestos={"afinidad": 40, "competencia": 20, "importe": 20, "plazo": 20},
+    )
+    previo_otra_org = {
+        "organization_id": 10,
+        "visibility": "organization",
+        "weights": {"afinidad": 25, "competencia": 25, "importe": 25, "plazo": 25},
+        "afinidad_keywords": ["secreto-org-10"],
+        "cpvs": ["72000000"],
+        "importe_min": 1000.0,
+        "importe_max": 5000.0,
+    }
+    capturado: dict[str, object] = {}
+
+    def _upsert(profile: dict[str, object], org_id: int, vis: str, *, user_id: int) -> None:
+        capturado.update({"profile": profile, "org_id": org_id, "vis": vis, "user_id": user_id})
+
+    with (
+        patch.object(svc, "alcance_resuelto", _alcance),
+        patch.object(svc, "get_weights_proposal", return_value=propuesta),
+        patch("db.repositories.user_profiles.get_own_user_profile", return_value=previo_otra_org),
+        patch("db.repositories.user_profiles.upsert_user_profile", side_effect=_upsert),
+        patch("shared.cache.invalidate_user_scoped"),
+        patch("shared.cache.invalidate_organization_scoped"),
+        patch("db.audit.log_event"),
+    ):
+        svc.apply_weights_proposal(7, user_key="u7", organization_id=20)
+
+    perfil = capturado["profile"]
+    assert isinstance(perfil, dict)
+    assert perfil["afinidad_keywords"] is None
+    assert perfil["cpvs"] is None
+
+
+def test_remove_item_y_remove_entry_exigen_ser_dueno() -> None:
+    """TF-SEC-06: borrar un favorito o empresa vigilada no admite `visibility = 'organization' OR`."""
+    from contextlib import contextmanager
+
+    from db import watchlist_empresas as we_mod
+    from db.repositories import watchlist as wl_mod
+
+    sqls: list[str] = []
+
+    class _Cur:
+        rowcount = 0
+
+    class _Conn:
+        def execute(self, sql: str, _params: object = ()) -> _Cur:
+            sqls.append(sql)
+            return _Cur()
+
+    @contextmanager
+    def _conn():  # type: ignore[no-untyped-def]
+        yield _Conn()
+
+    with (
+        patch.object(wl_mod, "connect", _conn),
+        patch.object(we_mod, "connect", _conn),
+        patch("db.repositories.follows.olvidar"),
+    ):
+        wl_mod.WatchlistRepository().remove_item(7, "EXP-1", 5)
+        we_mod.remove_entry(7, 12, 5)
+
+    assert len(sqls) == 2
+    for sentencia in sqls:
+        assert "visibility = 'organization'" not in sentencia

@@ -26,7 +26,7 @@ from api.middleware import _BodyTooLargeError, _MaxBodyMiddleware
 
 LIMITE = _MaxBodyMiddleware._MAX_BYTES
 TROZO = 256 * 1024
-METODOS_CON_CUERPO = ("POST", "PUT", "PATCH")
+METODOS_CON_CUERPO = ("POST", "PUT", "PATCH", "DELETE")
 
 
 async def _leer_todo(receive: Receive) -> int:

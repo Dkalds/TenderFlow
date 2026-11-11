@@ -70,12 +70,13 @@ Scopes usados en el proyecto:
 
 <!-- BEGIN scopes (generado por scripts/gen_scopes_doc.py — no editar a mano) -->
 
-Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del método y la ruta; hoy son **32** familias. Esta tabla se genera con `python scripts/gen_scopes_doc.py` y CI la verifica con `--check`.
+Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del método y la ruta; hoy son **33** familias. Esta tabla se genera con `python scripts/gen_scopes_doc.py` y CI la verifica con `--check`.
 
 | Scope | Métodos | Familias de ruta |
 |---|---|---|
 | `account:delete` | DELETE | `/me` |
-| `account:read` | GET | `/me/data` |
+| `account:read` | GET | `/me/consultas-recientes`, `/me/data`, `/me/sessions` |
+| `account:write` | POST/DELETE | `/auth/logout-all`, `/me/consultas-recientes`, `/me/sessions` |
 | `admin` | todos | `/admin/api-keys`, `/admin/dlq`, `/admin/ejecuciones`, `/admin/revision`, `/admin/solicitudes-acceso`, `/admin/users`, `/empresas/reviews`, `/feature-flags`, `/security/audit`, `/security/client-error`, `/security/client-errors`, `/security/csp-report`, `/security/leaked-key`, `/webhooks`, `/webhooks/event-types`, `/webhooks/global` |
 | `analytics:read` | GET/POST | `/analytics/calendario`, `/analytics/clusters`, `/analytics/compare-periods`, `/analytics/competitors`, `/analytics/forecast`, `/analytics/geography`, `/analytics/organos`, `/analytics/overview`, `/analytics/pipeline`, `/analytics/proyectos-modulos`, `/analytics/quality`, `/analytics/resumen`, `/analytics/scoring`, `/analytics/source-freshness`, `/analytics/tecnologias`, `/analytics/trends`, `/analytics/trends-cpv`, `/analytics/utes` |
 | `api_keys:read` | GET/POST/DELETE | `/me/keys` |
@@ -84,8 +85,8 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `audit:read` | GET | `/organizations` |
 | `competitive:read` | GET | `/competitive/bajas`, `/competitive/cuota`, `/competitive/empresas`, `/competitive/hhi`, `/competitive/partners`, `/competitive/renovaciones`, `/competitive/watchlist` |
 | `competitive:write` | POST/DELETE | `/competitive/watchlist` |
-| `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/jobs`, `/me/consultas-recientes`, `/me/notification-preferences`, `/me/sessions`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/cobertura`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/radar/proximas`, `/resoluciones`, `/search/global`, `/tecnologias/keywords` |
-| `data:write` | POST/PUT/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/logout-all`, `/auth/password`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/auth/verify-email`, `/me/consultas-recientes`, `/me/notification-preferences`, `/me/sessions`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic`, `/tecnologias/keywords`, `/telemetria/eventos` |
+| `data:read` | GET | `/adjudicaciones`, `/auth/me`, `/auth/oauth`, `/eventos`, `/health`, `/health/live`, `/health/ready`, `/jobs`, `/meta/filters`, `/meta/last-extraction`, `/predicciones/calibracion`, `/publico/cobertura`, `/publico/hubs`, `/publico/licitaciones`, `/publico/sitemap`, `/radar/dismissals`, `/radar/proximas`, `/resoluciones`, `/tecnologias/keywords` |
+| `data:write` | POST/PUT/DELETE | `/auth/dev-login`, `/auth/login`, `/auth/logout`, `/auth/password`, `/auth/password-reset`, `/auth/register`, `/auth/totp`, `/auth/verify-email`, `/publico/solicitudes-acceso`, `/radar/dismissals`, `/search/semantic`, `/tecnologias/keywords`, `/telemetria/eventos` |
 | `empresas:read` | GET | `/empresas`, `/empresas/stats` |
 | `exports:read` | GET | `/exports/calendario`, `/exports/calendario.ics`, `/exports/crm`, `/exports/descargas`, `/exports/download` |
 | `feature_flags:read` | GET | `/feature-flags` |
@@ -94,12 +95,12 @@ Los scopes los resuelve `api/scopes.py::required_scope_for_request` a partir del
 | `licitaciones:read` | GET/POST | `/licitaciones`, `/licitaciones/bulk-get`, `/licitaciones/cursor`, `/licitaciones/search`, `/licitaciones/stream` |
 | `licitaciones:write` | POST | `/licitaciones`, `/licitaciones/comparar` |
 | `models:read` | GET/POST | `/models` |
-| `notifications:read` | GET | `/notifications`, `/notifications/alerts`, `/notifications/baja` |
-| `notifications:write` | POST | `/notifications/alerts`, `/notifications/baja`, `/notifications/read` |
+| `notifications:read` | GET | `/me/notification-preferences`, `/notifications`, `/notifications/alerts`, `/notifications/baja` |
+| `notifications:write` | POST/PUT | `/me/notification-preferences`, `/notifications/alerts`, `/notifications/baja`, `/notifications/read` |
 | `organizations:manage` | POST/PUT/DELETE | `/organizations`, `/organizations/invitations` |
 | `profile:read` | GET | `/me/profile` |
 | `profile:write` | POST/PUT/DELETE | `/me/profile` |
-| `pursuits:read` | GET | `/cuentas`, `/cuentas/buscar-organos`, `/cuentas/resumen`, `/etiquetas`, `/organizations`, `/organizations/active`, `/organizations/go-no-go`, `/pursuits`, `/pursuits/actividad`, `/pursuits/adjuntos`, `/pursuits/agenda`, `/pursuits/cartera`, `/pursuits/direccion`, `/pursuits/metrics`, `/pursuits/mi-baja`, `/pursuits/tasks`, `/pursuits/weights-proposal` |
+| `pursuits:read` | GET | `/cuentas`, `/cuentas/buscar-organos`, `/cuentas/resumen`, `/etiquetas`, `/licitaciones`, `/organizations`, `/organizations/active`, `/organizations/go-no-go`, `/pursuits`, `/pursuits/actividad`, `/pursuits/adjuntos`, `/pursuits/agenda`, `/pursuits/cartera`, `/pursuits/direccion`, `/pursuits/metrics`, `/pursuits/mi-baja`, `/pursuits/tasks`, `/pursuits/weights-proposal`, `/search/global` |
 | `pursuits:write` | POST/PATCH/PUT/DELETE | `/cuentas`, `/cuentas/por-organo`, `/etiquetas`, `/etiquetas/aplicar`, `/etiquetas/por-objeto`, `/etiquetas/quitar`, `/organizations/go-no-go`, `/pursuits`, `/pursuits/adjuntos`, `/pursuits/cartera`, `/pursuits/weights-proposal` |
 | `saved_filters:read` | GET | `/saved-filters` |
 | `saved_filters:write` | POST/DELETE | `/saved-filters` |

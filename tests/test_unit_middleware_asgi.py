@@ -467,6 +467,8 @@ class TestETag:
         assert resp.status_code == 200
         assert resp.content == grande
         assert "ETag" not in resp.headers
+        assert resp.headers["cache-control"] == "private, no-store"
+        assert resp.headers["vary"] == "Cookie, X-API-Key"
 
     def test_lo_que_no_es_get_pasa_intacto(self) -> None:
         async def crear(request: Request) -> Response:

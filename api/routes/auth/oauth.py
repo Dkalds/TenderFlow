@@ -30,6 +30,7 @@ from config import settings
 from db.audit import log_event
 from db.users import (
     CuentaDeOtroProveedorError,
+    CuentaDesactivadaError,
     admin_granted_by,
     get_or_create_oauth_user,
     is_admin,
@@ -293,7 +294,8 @@ def _email_from_claims(
     for clave in claves:
         valor = str(claims.get(clave, "") or "").strip()
         if "@" in valor:
-            return valor if oauth_email_parts(valor) is not None else ""
+            partes = oauth_email_parts(valor)
+            return partes[0] if partes is not None else ""
     return ""
 
 
@@ -549,6 +551,13 @@ async def _oauth_callback_impl(
             },
         )
         return _oauth_error_redirect(frontend_url, OAUTH_OTRO_PROVEEDOR, provider.name)
+    except CuentaDesactivadaError as inactiva:
+        log.warning(
+            "oauth_deactivated_user_rejected",
+            provider=provider.name,
+            user_id=inactiva.user_id,
+        )
+        return _oauth_error_redirect(frontend_url, "account_deactivated", provider.name)
     log.info("oauth_login_success", user_id=user_id, provider=provider.name)
 
     # Con MFA confirmado la sesión nace pendiente: mandarla al dashboard la

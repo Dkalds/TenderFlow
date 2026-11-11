@@ -9,6 +9,30 @@ from api.scopes import has_scope, required_scope_for_request
 
 def test_sensitive_routes_require_explicit_scopes() -> None:
     assert required_scope_for_request("GET", "/api/v1/me/data") == "account:read"
+    assert required_scope_for_request("GET", "/api/v1/me/sessions") == "account:read"
+    assert required_scope_for_request("POST", "/api/v1/auth/logout-all") == "account:write"
+    assert required_scope_for_request("GET", "/api/v1/me/consultas-recientes") == "account:read"
+    assert required_scope_for_request("POST", "/api/v1/me/consultas-recientes") == "account:write"
+    assert (
+        required_scope_for_request("GET", "/api/v1/me/notification-preferences")
+        == "notifications:read"
+    )
+    assert (
+        required_scope_for_request("PUT", "/api/v1/me/notification-preferences")
+        == "notifications:write"
+    )
+    assert (
+        required_scope_for_request("GET", "/api/v1/licitaciones/EXP-1/checklist") == "pursuits:read"
+    )
+    assert (
+        required_scope_for_request("GET", "/api/v1/licitaciones/EXP-1/historial-propio")
+        == "pursuits:read"
+    )
+    assert (
+        required_scope_for_request("GET", "/api/v1/licitaciones/EXP-1/dossier.pdf")
+        == "pursuits:read"
+    )
+    assert required_scope_for_request("GET", "/api/v1/search/global") == "pursuits:read"
     assert required_scope_for_request("DELETE", "/api/v1/me") == "account:delete"
     assert required_scope_for_request("POST", "/api/v1/me/keys/rotate") == "api_keys:rotate"
     assert required_scope_for_request("POST", "/api/v1/webhooks") == "admin"

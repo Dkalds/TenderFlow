@@ -435,7 +435,7 @@ class WatchlistRepository:
         with connect() as c:
             cur = c.execute(
                 "DELETE FROM watchlist_items WHERE organization_id = %s "
-                f"AND id_externo = %s AND (visibility = 'organization' OR {_IDENT})",
+                f"AND id_externo = %s AND {_IDENT}",
                 (organization_id, id_externo, user_id, user_id),
             )
             borrado = bool(cur.rowcount > 0)

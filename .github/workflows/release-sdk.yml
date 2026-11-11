@@ -51,13 +51,21 @@ jobs:
           INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           if [ -n "$INPUT_VERSION" ]; then
-            echo "sdk_version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
+            RAW_VERSION="$INPUT_VERSION"
           else
             # Strip leading 'v' from tag name
-            echo "sdk_version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            RAW_VERSION="${GITHUB_REF_NAME#v}"
           fi
+          if ! [[ "$RAW_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([A-Za-z0-9._-]*)?$ ]]; then
+            echo "::error::Invalid SDK version format: $RAW_VERSION"
+            exit 1
+          fi
+          echo "sdk_version=$RAW_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Generate Python SDK
+        env:
+          SDK_VERSION: ${{ steps.version.outputs.sdk_version }}
+          REPO: ${{ github.repository }}
         run: |
           openapi-generator-cli generate \
             --input-spec openapi.json \
@@ -66,8 +74,8 @@ jobs:
             --additional-properties=\
           packageName=licitaciones_sap_sdk,\
           projectName=licitaciones-sap-sdk,\
-          packageVersion=${{ steps.version.outputs.sdk_version }},\
-          packageUrl=https://github.com/${{ github.repository }}
+          packageVersion="$SDK_VERSION",\
+          packageUrl="https://github.com/$REPO"
 
       - name: Build SDK wheel
         working-directory: sdk

@@ -87,7 +87,7 @@ def update_task(
         estado = cambios.get("estado")
         if estado is not None and estado not in ESTADOS:
             raise ValueError(f"estado inválido: {estado}")
-        fila = _repo.update(resolved_id, task_id, **cambios)
+        fila = _repo.update(resolved_id, task_id, pursuit_id=pursuit_id, **cambios)
         if fila is None:
             raise PursuitTaskNotFoundError("Tarea no encontrada.")
         _sincronizar_next_action(resolved_id, pursuit_id)
@@ -99,7 +99,7 @@ def delete_task(
 ) -> None:
     with alcance_resuelto(user_id, organization_id, write=True) as (resolved_id, _role):
         _require_pursuit(resolved_id, pursuit_id)
-        if not _repo.delete(resolved_id, task_id):
+        if not _repo.delete(resolved_id, task_id, pursuit_id=pursuit_id):
             raise PursuitTaskNotFoundError("Tarea no encontrada.")
         _sincronizar_next_action(resolved_id, pursuit_id)
 

@@ -809,6 +809,7 @@ async def calendario_enlace(
 
     # El cuerpo es una credencial bearer: ningún caché, ni el del navegador.
     response.headers["Cache-Control"] = "private, no-store"
+    _exigir_lectura_del_tablero(ctx)
 
     user_id = int(ctx["user_id"])
     organization_id = await _organizacion_del_calendario(ctx["user_id"])
@@ -869,6 +870,11 @@ async def calendario_ics(
             path="/api/v1/exports/calendario.ics",
             background_tasks=background_tasks,
         )
+        if not ctx.has_scope("pursuits:read"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acceso denegado. Exportar el tablero requiere también el scope pursuits:read.",
+            )
         user_id = ctx.user_id
     elif u is not None and t and _verificar_firma_calendario(u, t):
         user_id = u

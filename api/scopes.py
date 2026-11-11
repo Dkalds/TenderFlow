@@ -57,6 +57,16 @@ _LICITACIONES_READ_POST_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^/api/v1/licitaciones/.+/resumen$"),
 )
 
+# Sub-rutas bajo `/licitaciones/{id}` que cruzan el anuncio con la capacidad,
+# el NIF o el historial de oportunidades (`pursuits`) de la organización activa:
+# pertenecen al tablero (`pursuits:read`), no al `licitaciones:read` que hereda
+# toda API key por defecto (`data:read`).
+_LICITACIONES_PURSUITS_GET_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"^/api/v1/licitaciones/.+/(?:checklist|historial-propio|dossier\.pdf|competencia-esperada)$"
+    ),
+)
+
 # El rastro de auditoría de una organización (``GET /organizations/{id}/audit``)
 # es la superficie más sensible del subárbol: enumera quién hizo qué. Que una
 # API key de lectura del tablero (``pursuits:read``, lo que recibe cualquier
@@ -91,12 +101,18 @@ def required_scope_for_request(method: str, path: str) -> str:
         return "account:read"
     if normalized_path == "/api/v1/me":
         return "account:delete" if normalized_method == "DELETE" else "account:read"
+    if normalized_path == "/api/v1/auth/logout-all":
+        return "account:write"
     if normalized_path.startswith("/api/v1/me/keys/rotate"):
         return "api_keys:rotate"
     if normalized_path.startswith("/api/v1/me/keys"):
         return "api_keys:read"
     if normalized_path.startswith("/api/v1/me/profile"):
         return "profile:read" if normalized_method in _READ_METHODS else "profile:write"
+    if normalized_path.startswith("/api/v1/me/notification-preferences"):
+        return "notifications:read" if normalized_method in _READ_METHODS else "notifications:write"
+    if normalized_path.startswith("/api/v1/me/"):
+        return "account:read" if normalized_method in _READ_METHODS else "account:write"
     if _ORGANIZATION_AUDIT_PATTERN.match(normalized_path):
         return "audit:read"
     if normalized_path.startswith("/api/v1/organizations"):
@@ -150,11 +166,17 @@ def required_scope_for_request(method: str, path: str) -> str:
     # watchlist/notifications/saved-filters, salvo los POST de lectura ya
     # publicados.
     if normalized_path.startswith("/api/v1/licitaciones"):
+        if normalized_method in _READ_METHODS and any(
+            patron.match(normalized_path) for patron in _LICITACIONES_PURSUITS_GET_PATTERNS
+        ):
+            return "pursuits:read"
         if normalized_method in _READ_METHODS or _es_post_de_lectura_de_licitaciones(
             normalized_path
         ):
             return "licitaciones:read"
         return "licitaciones:write"
+    if normalized_path == "/api/v1/search/global":
+        return "pursuits:read"
     if normalized_path.startswith("/api/v1/empresas/reviews"):
         return "admin"
     if normalized_path.startswith("/api/v1/empresas"):

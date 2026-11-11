@@ -130,6 +130,7 @@ def test_un_proveedor_desconocido_es_404():
     ("claims", "esperado"),
     [
         ({"email": "a@empresa.test"}, "a@empresa.test"),
+        ({"email": "Ana@Empresa.TEST"}, "ana@empresa.test"),
         # Entra ID con cuenta de trabajo: sin `email`, el UPN es la identidad.
         ({"preferred_username": "b@empresa.test"}, "b@empresa.test"),
         ({"upn": "c@empresa.test"}, "c@empresa.test"),

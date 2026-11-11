@@ -82,7 +82,13 @@ async def require_metrics_reader(
     credencial = api_key_raw or (bearer.credentials if bearer is not None else None)
     if credencial:
         ctx = await validate_api_key_credential(credencial, background_tasks=background_tasks)
-        return await _exigir_scope_metricas(ctx=ctx)
+        ctx = await _exigir_scope_metricas(ctx=ctx)
+        if ctx.user_id is not None and not (ctx.owner and ctx.owner.get("is_admin")):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acceso denegado. Scope insuficiente.",
+            )
+        return ctx
 
     if settings.ENV not in ("prod", "staging") and _ip_permitida(request):
         return None

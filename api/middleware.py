@@ -899,7 +899,7 @@ class _MaxBodyMiddleware:
 
         # Slow path: para requests con body, envolver receive para contar bytes
         method = scope.get("method", "")
-        if method in ("POST", "PUT", "PATCH"):
+        if method in ("POST", "PUT", "PATCH", "DELETE"):
             body_size = 0
             max_bytes = self._MAX_BYTES
             cortado = False
@@ -1213,9 +1213,10 @@ class ETagMiddleware:
             return
 
         if len(cuerpo) > self._max_bytes:
-            # Demasiado grande: pasa sin ETag y con sus cabeceras tal cual,
-            # igual que antes (entonces sin `Vary` ni `Cache-Control` propios).
-            await send(inicio)
+            # Demasiado grande: pasa sin ETag, pero conserva las cabeceras de
+            # caché privada y Vary que impiden guardar una respuesta autenticada
+            # en un caché compartido.
+            await send(self._sin_etiqueta(inicio, crudas, autenticada))
             await send(primero)
             return
 
