@@ -101,13 +101,12 @@ class PursuitTasksRepository:
     def get(
         self, organization_id: int, task_id: int, *, pursuit_id: int | None = None
     ) -> dict[str, Any] | None:
-        where = " WHERE t.id = %s AND t.organization_id = %s AND t.deleted_at IS NULL"
-        params: list[object] = [task_id, organization_id]
-        if pursuit_id is not None:
-            where += " AND t.pursuit_id = %s"
-            params.append(pursuit_id)
         with connect_read() as c:
-            cur = c.execute(_SELECT + where, tuple(params))
+            cur = c.execute(
+                _SELECT + " WHERE t.id = %s AND t.organization_id = %s "
+                "AND (%s::bigint IS NULL OR t.pursuit_id = %s) AND t.deleted_at IS NULL",
+                (task_id, organization_id, pursuit_id, pursuit_id),
+            )
             filas = rows_to_dicts(cur)
         return filas[0] if filas else None
 
@@ -238,14 +237,12 @@ class PursuitTasksRepository:
             return self.get(organization_id, task_id, pursuit_id=pursuit_id)
 
         sets.append("updated_at = %s")
-        where = "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL"
-        params.extend([now_utc_iso(), task_id, organization_id])
-        if pursuit_id is not None:
-            where += " AND pursuit_id = %s"
-            params.append(pursuit_id)
+        params.extend([now_utc_iso(), task_id, organization_id, pursuit_id, pursuit_id])
         with connect() as c:
             cur = c.execute(
-                "UPDATE pursuit_tasks SET " + ", ".join(sets) + " " + where,
+                "UPDATE pursuit_tasks SET " + ", ".join(sets) + " "
+                "WHERE id = %s AND organization_id = %s "
+                "AND (%s::bigint IS NULL OR pursuit_id = %s) AND deleted_at IS NULL",
                 tuple(params),
             )
             if not getattr(cur, "rowcount", 0):
@@ -259,15 +256,12 @@ class PursuitTasksRepository:
         trabajo del equipo en un espacio compartido, y un `DELETE` dejaba que un
         compañero la hiciera desaparecer sin que quedara quién ni cuándo.
         """
-        where = "WHERE id = %s AND organization_id = %s AND deleted_at IS NULL"
-        params: list[object] = [task_id, organization_id]
-        if pursuit_id is not None:
-            where += " AND pursuit_id = %s"
-            params.append(pursuit_id)
         with connect() as c:
             cur = c.execute(
-                "UPDATE pursuit_tasks SET deleted_at = now() " + where,
-                tuple(params),
+                "UPDATE pursuit_tasks SET deleted_at = now() "
+                "WHERE id = %s AND organization_id = %s "
+                "AND (%s::bigint IS NULL OR pursuit_id = %s) AND deleted_at IS NULL",
+                (task_id, organization_id, pursuit_id, pursuit_id),
             )
             return bool(getattr(cur, "rowcount", 0))
 
