@@ -7,7 +7,7 @@ Derivado de [`skills-lock.json`](../skills-lock.json) y el frontmatter de cada
 `python scripts/gen_skills_inventory.py` tras instalar/actualizar un skill.
 Ver AGENTS.md §7 para qué significa `trust`.
 
-Total: 33 skills.
+Total: 34 skills.
 
 | Skill | Trust | Source | Descripción |
 | --- | --- | --- | --- |
@@ -31,6 +31,7 @@ Total: 33 skills.
 | `redesign-existing-projects` | community | Leonxlnx/taste-skill | Upgrades existing websites and apps to premium quality. Audits current design, identifies generic AI patterns, and applies high-end… |
 | `review-animations` | community | emilkowalski/skill | Reviews animation and motion code against a high craft bar derived from Emil Kowalski's design engineering philosophy. Default to… |
 | `scikit-learn` | community | davila7/claude-code-templates | Machine learning in Python with scikit-learn. Use when working with supervised learning (classification, regression), unsupervised… |
+| `security-audit` | community | cloudflare/security-audit-skill | Security guidance and vulnerability review for codebases, APIs, services, CLI tools, libraries, and daemons. Use for security… |
 | `seo` | community | addyosmani/web-quality-skills | Optimize for search engine visibility and ranking. Use when asked to "improve SEO", "optimize for search", "fix meta tags", "add… |
 | `sqlalchemy` | community | bobmatnyc/claude-mpm-skills | SQLAlchemy Python SQL toolkit and ORM with powerful query builder, relationship mapping, and database migrations via Alembic |
 | `sqlalchemy-alembic-expert-best-practices-code-review` | community | wispbit-ai/skills | SQLAlchemy ORM and Alembic migration best practices for building safe, performant database schemas. This skill should be used when… |
