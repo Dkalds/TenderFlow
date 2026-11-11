@@ -86,6 +86,15 @@ function responder(url: string): Promise<unknown> {
       rivales: { items: [] },
     });
   }
+  if (url.includes("/marco")) {
+    return Promise.resolve({
+      licitacion_id: "PLACSP-1",
+      sistema: "basado_marco",
+      identidad_conocida: true,
+      marco: null,
+      marco_referencia: "TED 601173-2023",
+    });
+  }
   if (url.includes("/resoluciones")) return Promise.resolve({ items: [] });
   if (url.includes("/condiciones-oficiales")) {
     return Promise.resolve({
@@ -168,6 +177,72 @@ describe("DetailInspector", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Competencia" }));
     expect(screen.getByRole("tab", { name: "Competencia" })).toHaveAttribute("aria-selected", "true");
     expect(await screen.findByRole("heading", { name: "Competencia esperada" })).toBeInTheDocument();
+  });
+
+  // Hasta 2026-11 el marco y las modificaciones solo salían en la ficha
+  // completa: quien abría el panel desde la tabla no los veía.
+  it("en un contrato basado, Competencia empieza por los admitidos de su marco", async () => {
+    pintar({}, { sistema_contratacion: "basado_marco" });
+    fireEvent.click(screen.getByRole("tab", { name: "Competencia" }));
+
+    const bloque = (
+      await screen.findByRole("heading", { name: "Contrato basado en un acuerdo marco" })
+    ).closest("section")!;
+    expect(await within(bloque).findByText(/Su marco es el aviso TED 601173-2023/)).toBeInTheDocument();
+    const competencia = await screen.findByRole("heading", { name: "Competencia esperada" });
+    expect(bloque.compareDocumentPosition(competencia) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("un expediente corriente no pide el marco ni pinta su bloque en Competencia", async () => {
+    pintar();
+    fireEvent.click(screen.getByRole("tab", { name: "Competencia" }));
+
+    await screen.findByRole("heading", { name: "Competencia esperada" });
+    expect(screen.queryByRole("heading", { name: /acuerdo marco|sistema dinámico/i })).not.toBeInTheDocument();
+    expect(fetchWithAuth.mock.calls.some(([url]) => String(url).includes("/marco"))).toBe(false);
+  });
+
+  it("Resumen enseña las modificaciones publicadas del contrato", () => {
+    pintar(
+      {},
+      {
+        modificaciones: {
+          items: [
+            {
+              fuente: "placsp",
+              numero: "2",
+              fecha_publicacion: "2026-11-10",
+              importe_modificacion: 2800,
+              importe_modificacion_base: "sin_iva",
+              importe_final: 8400,
+              importe_final_base: "sin_iva",
+            },
+          ],
+          costes: [{ lote_numero: null, adjudicado: 5600, final: 8400, variacion_pct: 50, base: "sin_iva" }],
+          organo: { n: 1, mediana_pct: null, muestra_minima: 10, base: "sin_iva" },
+        },
+      },
+    );
+    const bloque = screen.getByRole("heading", { name: /Modificaciones del contrato/ }).closest("section")!;
+    expect(within(bloque).getByText("Tras modificaciones")).toBeInTheDocument();
+    expect(within(bloque).getByText("+50,0%")).toBeInTheDocument();
+    expect(within(bloque).getByText(/Modificación 2/)).toBeInTheDocument();
+  });
+
+  // Lo que manda la API en un expediente sin nada que contar: el objeto viene
+  // siempre relleno, con las listas vacías y el órgano a cero.
+  it("sin modificaciones ni dato del órgano, Resumen no pinta el bloque", () => {
+    pintar(
+      {},
+      {
+        modificaciones: {
+          items: [],
+          costes: [],
+          organo: { n: 0, mediana_pct: null, muestra_minima: 10, base: "sin_iva" },
+        },
+      },
+    );
+    expect(screen.queryByRole("heading", { name: /Modificaciones del contrato/ })).not.toBeInTheDocument();
   });
 
   it("resume bajo las cifras cómo se adjudica y detalla los requisitos en su pestaña", async () => {

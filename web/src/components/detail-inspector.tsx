@@ -15,6 +15,8 @@ import { FichaAcciones, FichaAvisos, FichaEstado, FichaOrgano } from "@/componen
 import { FichaCifras } from "@/components/ficha/ficha-cifras";
 import { FichaCampos } from "@/components/ficha/ficha-campos";
 import { FichaAdjudicatarios } from "@/components/ficha/ficha-adjudicatarios";
+import { FichaMarco } from "@/components/ficha/ficha-marco";
+import { FichaModificaciones } from "@/components/ficha/ficha-modificaciones";
 import { FichaComoSeAdjudica, FichaRequisitos } from "@/components/ficha/ficha-requisitos";
 import { FichaSimilares } from "@/components/ficha/ficha-similares";
 import {
@@ -45,13 +47,16 @@ import type { LicitacionDetail } from "@/lib/licitacion-detail";
  *
  * - **Resumen**: los campos, quién lo ganó (si ya tiene adjudicatario), el
  *   desglose de la puntuación, la descripción (recortada), las tecnologías, el
- *   enlace al portal y los eventos.
+ *   enlace al portal, las modificaciones del contrato (las publicadas y cuánto
+ *   amplía ese órgano los suyos) y los eventos.
  * - **Requisitos**: lotes, criterios, garantías y solvencia tal como los
  *   publica el anuncio. Antes iban dentro de la ficha de los pliegos, en la
  *   pestaña Pliegos, y eran lo último que se veía de lo que decide si te
  *   presentas.
- * - **Competencia**: competencia esperada, baja esperada, simulador de
- *   puntuación y los expedientes parecidos, que antes alargaban el Resumen.
+ * - **Competencia**: los admitidos del acuerdo marco o el sistema dinámico
+ *   (solo en un marco, un SDA o un contrato basado), competencia esperada,
+ *   baja esperada, simulador de puntuación y los expedientes parecidos, que
+ *   antes alargaban el Resumen.
  * - **Pliegos**: documentos, lo extraído del pliego (lotes, criterios, ANS,
  *   certificaciones citables) y el guion de oferta que se apoya en ello.
  * - (Hasta 2026-10 había una quinta, **IA**, con su propio chat y su resumen.
@@ -198,6 +203,9 @@ export function DetailInspector({
               <div className="[&>*:first-child]:mt-0">
                 <TecnologiasBlock licitacionId={l.id_externo} />
               </div>
+              {/* Lo que el contrato acabó costando, antes de la cronología; sin
+                  modificaciones publicadas ni dato del órgano no pinta nada. */}
+              <FichaModificaciones licitacion={l} variante="inspector" />
               <div className="border-t border-divider pt-4">
                 <FichaEventos licitacionId={l.id_externo} />
               </div>
@@ -207,6 +215,12 @@ export function DetailInspector({
           {tab === "requisitos" && <FichaRequisitos licitacion={l} />}
           {tab === "competencia" && (
             <div>
+              {/* En un marco, un SDA o un contrato basado compiten los
+                  admitidos: va antes que la estimación, como en la ficha
+                  completa. En un expediente corriente no pinta nada. */}
+              <div className="mb-5 empty:hidden">
+                <FichaMarco licitacion={l} variante="inspector" />
+              </div>
               {/* Contra cuántos y contra quién, antes de la baja esperada y del
                   simulador: es el contexto con el que se leen los dos. */}
               <CompetenciaEsperadaBlock licitacionId={l.id_externo} />

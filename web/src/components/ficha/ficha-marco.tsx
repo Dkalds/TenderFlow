@@ -30,7 +30,7 @@ import {
   Vigencia,
   contar,
 } from "@/components/ficha/ficha-marco-celdas";
-import { Fact, PanelError, PanelLoading, PanelTitle } from "@/components/console/panel";
+import { Fact, PanelError, PanelLoading, PanelTitle, SectionTitle } from "@/components/console/panel";
 import { useMarco } from "@/hooks/use-licitacion";
 import type { MarcoDeLicitacion } from "@/lib/api-types";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
@@ -42,16 +42,40 @@ function nombreCorto(sistema: SistemaRotulado): string {
   return sistema === "sda" || sistema === "basado_sda" ? "sistema dinámico" : "acuerdo marco";
 }
 
-export function FichaMarco({ licitacion: l }: { licitacion: LicitacionDetail }) {
+/** En el panel lateral el título es un rótulo de sección, como el de sus vecinos. */
+type Variante = "inspector" | "completa";
+
+export function FichaMarco({
+  licitacion: l,
+  variante = "completa",
+}: {
+  licitacion: LicitacionDetail;
+  variante?: Variante;
+}) {
   const sistema = sistemaRotulado(l.sistema_contratacion);
   if (!sistema) return null;
-  return <Bloque licitacionId={l.id_externo} sistema={sistema} />;
+  return <Bloque licitacionId={l.id_externo} sistema={sistema} variante={variante} />;
 }
 
-function Bloque({ licitacionId, sistema }: { licitacionId: string; sistema: SistemaRotulado }) {
+function Bloque({
+  licitacionId,
+  sistema,
+  variante,
+}: {
+  licitacionId: string;
+  sistema: SistemaRotulado;
+  variante: Variante;
+}) {
   const id = React.useId();
   const { data, isPending, error, refetch } = useMarco(licitacionId);
-  const titulo = <PanelTitle as="h3" id={id} title={ETIQUETA_SISTEMA[sistema]} />;
+  const titulo =
+    variante === "inspector" ? (
+      <SectionTitle as="h3" id={id}>
+        {ETIQUETA_SISTEMA[sistema]}
+      </SectionTitle>
+    ) : (
+      <PanelTitle as="h3" id={id} title={ETIQUETA_SISTEMA[sistema]} />
+    );
 
   if (isPending || error || !data) {
     return (

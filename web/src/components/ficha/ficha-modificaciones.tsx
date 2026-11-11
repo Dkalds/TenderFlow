@@ -13,7 +13,7 @@
  */
 
 import * as React from "react";
-import { Fact, PanelTitle } from "@/components/console/panel";
+import { Fact, PanelTitle, SectionTitle } from "@/components/console/panel";
 import { NOTA, REJILLA, SinDato, contar } from "@/components/ficha/ficha-marco-celdas";
 import { duracionLegible } from "@/components/ficha/ficha-fechas";
 import type { CosteDeContrato, ModificacionPublicada, ModificacionesDeLicitacion } from "@/lib/api-types";
@@ -36,7 +36,14 @@ function variacion(pct: number): string {
   return `${pct > 0 ? "+" : ""}${formatPercent(pct)}`;
 }
 
-export function FichaModificaciones({ licitacion: l }: { licitacion: LicitacionDetail }) {
+export function FichaModificaciones({
+  licitacion: l,
+  variante = "completa",
+}: {
+  licitacion: LicitacionDetail;
+  /** En el panel lateral el título es un rótulo de sección, como el de sus vecinos. */
+  variante?: "inspector" | "completa";
+}) {
   const id = React.useId();
   const datos = l.modificaciones;
   const items = datos?.items ?? [];
@@ -45,12 +52,18 @@ export function FichaModificaciones({ licitacion: l }: { licitacion: LicitacionD
 
   return (
     <section aria-labelledby={id}>
-      <PanelTitle
-        as="h3"
-        id={id}
-        title="Modificaciones del contrato"
-        hint="Lo que el órgano publicó como modificación"
-      />
+      {variante === "inspector" ? (
+        <SectionTitle as="h3" id={id}>
+          Modificaciones del contrato
+        </SectionTitle>
+      ) : (
+        <PanelTitle
+          as="h3"
+          id={id}
+          title="Modificaciones del contrato"
+          hint="Lo que el órgano publicó como modificación"
+        />
+      )}
       {items.length === 0 ? (
         <p className="text-muted-foreground text-tf-body mb-3 text-pretty">
           No consta ninguna modificación publicada de este contrato.
@@ -74,7 +87,8 @@ export function FichaModificaciones({ licitacion: l }: { licitacion: LicitacionD
 
 function Costes({ costes }: { costes: CosteDeContrato[] }) {
   return (
-    <div className={`${REJILLA} mb-2 sm:grid-cols-2`}>
+    // El último coste de un número impar ocupa las dos columnas: suelto dejaba una celda gris vacía.
+    <div className={`${REJILLA} mb-2 sm:grid-cols-2 sm:[&>*:last-child:nth-child(odd)]:col-span-2`}>
       {costes.map((c) => (
         <Fact
           key={c.lote_numero ?? "expediente"}
