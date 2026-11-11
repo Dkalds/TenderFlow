@@ -193,7 +193,7 @@ describe("DetailInspector", () => {
     expect(bloque.compareDocumentPosition(competencia) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("un expediente corriente no pide el marco ni deja su hueco en Competencia", async () => {
+  it("un expediente corriente no pide el marco ni pinta su bloque en Competencia", async () => {
     pintar();
     fireEvent.click(screen.getByRole("tab", { name: "Competencia" }));
 
@@ -202,7 +202,7 @@ describe("DetailInspector", () => {
     expect(fetchWithAuth.mock.calls.some(([url]) => String(url).includes("/marco"))).toBe(false);
   });
 
-  it("Resumen enseña las modificaciones publicadas del contrato, y nada si no las hay", () => {
+  it("Resumen enseña las modificaciones publicadas del contrato", () => {
     pintar(
       {},
       {
@@ -218,17 +218,30 @@ describe("DetailInspector", () => {
               importe_final_base: "sin_iva",
             },
           ],
-          costes: [{ lote_numero: null, adjudicado: 5600, final: 8400, variacion_pct: 0.5 }],
+          costes: [{ lote_numero: null, adjudicado: 5600, final: 8400, variacion_pct: 50, base: "sin_iva" }],
           organo: { n: 1, mediana_pct: null, muestra_minima: 10, base: "sin_iva" },
-        } as LicitacionDetail["modificaciones"],
+        },
       },
     );
     const bloque = screen.getByRole("heading", { name: /Modificaciones del contrato/ }).closest("section")!;
     expect(within(bloque).getByText("Tras modificaciones")).toBeInTheDocument();
+    expect(within(bloque).getByText("+50,0%")).toBeInTheDocument();
     expect(within(bloque).getByText(/Modificación 2/)).toBeInTheDocument();
+  });
 
-    cleanup();
-    pintar();
+  // Lo que manda la API en un expediente sin nada que contar: el objeto viene
+  // siempre relleno, con las listas vacías y el órgano a cero.
+  it("sin modificaciones ni dato del órgano, Resumen no pinta el bloque", () => {
+    pintar(
+      {},
+      {
+        modificaciones: {
+          items: [],
+          costes: [],
+          organo: { n: 0, mediana_pct: null, muestra_minima: 10, base: "sin_iva" },
+        },
+      },
+    );
     expect(screen.queryByRole("heading", { name: /Modificaciones del contrato/ })).not.toBeInTheDocument();
   });
 

@@ -47,7 +47,8 @@ import type { LicitacionDetail } from "@/lib/licitacion-detail";
  *
  * - **Resumen**: los campos, quién lo ganó (si ya tiene adjudicatario), el
  *   desglose de la puntuación, la descripción (recortada), las tecnologías, el
- *   enlace al portal, las modificaciones publicadas del contrato y los eventos.
+ *   enlace al portal, las modificaciones del contrato (las publicadas y cuánto
+ *   amplía ese órgano los suyos) y los eventos.
  * - **Requisitos**: lotes, criterios, garantías y solvencia tal como los
  *   publica el anuncio. Antes iban dentro de la ficha de los pliegos, en la
  *   pestaña Pliegos, y eran lo último que se veía de lo que decide si te
@@ -203,7 +204,7 @@ export function DetailInspector({
                 <TecnologiasBlock licitacionId={l.id_externo} />
               </div>
               {/* Lo que el contrato acabó costando, antes de la cronología; sin
-                  modificaciones publicadas no pinta nada. */}
+                  modificaciones publicadas ni dato del órgano no pinta nada. */}
               <FichaModificaciones licitacion={l} />
               <div className="border-t border-divider pt-4">
                 <FichaEventos licitacionId={l.id_externo} />

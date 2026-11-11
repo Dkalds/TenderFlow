@@ -414,7 +414,8 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 ### CU-36 — Leer un acuerdo marco o un sistema dinámico como tal
 
 - **Quién:** quien evalúa un expediente para su organización. **Dónde:**
-  `/detalle`, ficha completa, sección Competencia; y Mercado › Renovaciones.
+  `/detalle`, pestaña Competencia del panel lateral y sección Competencia de la
+  ficha completa; y Mercado › Renovaciones.
 - En un acuerdo marco o un sistema dinámico de adquisición ve cuántas empresas
   están admitidas y cuáles —una por empresa, con sus lotes, no una por fila de
   adjudicación—, y hasta cuándo está vivo, con la fecha rotulada «estimada»
@@ -461,7 +462,8 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
 ### CU-38 — Ver lo que un contrato ha acabado costando y si su órgano suele ampliarlos
 
 - **Quién:** quien evalúa un expediente o sigue un contrato vigente. **Dónde:**
-  `/detalle`, ficha completa.
+  `/detalle`, pestaña Resumen del panel lateral y sección Historia de la ficha
+  completa.
 - Ve las modificaciones que el órgano publicó del contrato (art. 207.3 LCSP),
   de la más antigua a la más reciente: fecha, motivo, lo que añade cada una en
   importe y en plazo, el importe tras ella y de qué fuente sale (PLACSP o el
