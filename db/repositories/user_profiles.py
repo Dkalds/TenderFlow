@@ -24,6 +24,7 @@ from typing import Any
 
 from db.database import connect, connect_read
 from observability.logging import get_logger
+from shared.tenant_context import tenant_scope
 
 log = get_logger(__name__)
 
@@ -73,7 +74,7 @@ def get_own_user_profile(user_key: str, *, user_id: int | None = None) -> dict[s
     :func:`get_user_profile` para que la ausencia de ámbito sea una decisión
     escrita en el nombre de la función y no el default de un parámetro.
     """
-    with connect_read() as c:
+    with tenant_scope(None), connect_read() as c:
         row = c.execute(
             _PROFILE_COLS + f"WHERE {_IDENT} "
             "ORDER BY CASE WHEN user_key = %s THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
@@ -153,7 +154,7 @@ def upsert_user_profile(
         visibility,
     )
 
-    with connect() as c:
+    with tenant_scope(None), connect() as c:
         c.execute(
             "INSERT INTO user_profiles "
             "(weights_json, afinidad_keywords_json, cpvs_json, ccaa_json, "
@@ -176,7 +177,7 @@ def upsert_user_profile(
 
 def delete_user_profile(user_key: str, *, user_id: int | None = None) -> bool:
     """Elimina el perfil del usuario. Devuelve True si existia."""
-    with connect() as c:
+    with tenant_scope(None), connect() as c:
         cur = c.execute(
             f"DELETE FROM user_profiles WHERE {_IDENT}",
             (user_id, user_key, user_id),

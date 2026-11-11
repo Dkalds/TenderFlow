@@ -92,7 +92,7 @@ def remove_entry(user_id: int, empresa_id: int, organization_id: int) -> bool:
     with connect() as c:
         cur = c.execute(
             "DELETE FROM watchlist_empresas WHERE organization_id = %s "
-            f"AND empresa_id = %s AND (visibility = 'organization' OR {_IDENT})",
+            f"AND empresa_id = %s AND {_IDENT}",
             (organization_id, empresa_id, user_id, user_id),
         )
         borrado = bool(cur.rowcount)

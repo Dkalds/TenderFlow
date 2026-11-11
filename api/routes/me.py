@@ -901,7 +901,7 @@ def rotate_my_key(
     if rotatable is None or rotatable["user_id"] != user_id:
         raise HTTPException(status_code=404, detail="API key no encontrada.")
 
-    name, scopes = rotatable["name"], rotatable["scopes"]
+    name, scopes = rotatable["name"], _validar_scopes(rotatable["scopes"], ctx)
 
     # Marcar la key actual con expires_at = now + grace_days
     grace_expires = (datetime.now(UTC) + timedelta(days=grace_days)).isoformat()

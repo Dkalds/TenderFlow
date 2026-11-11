@@ -19,6 +19,11 @@
           "target": { "key": "x-tf-origin-secret" },
           "args": "$API_ORIGIN_SECRET",
           "env": ["API_ORIGIN_SECRET"]
+        },
+        {
+          "type": "request.headers",
+          "op": "delete",
+          "target": { "key": "x-real-ip" }
         }
       ],
       "continue": true

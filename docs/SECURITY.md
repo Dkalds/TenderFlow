@@ -151,9 +151,7 @@ Límites que conviene tener presentes:
 - Los superusuarios y los roles `BYPASSRLS` no están sujetos a RLS. El rol de
   la suite es superusuario, así que `tests/test_rls_tenant_scope_integration.py`
   ejerce las políticas con un rol sonda que emula a `tenderflow_app`.
-- Solo las rutas que pasan por `api/tenancy.py` fijan ámbito; la vertical de
-  pursuits resuelve la organización en `services/pursuits.py` y aún no lleva
-  respaldo.
+- Las rutas que pasan por `api/tenancy.py` y las que abren `services/organizations.py::alcance_resuelto` (incluida la vertical de `pursuits`) fijan ámbito.
 - Una tabla nueva con `organization_id` debe añadir `FORCE ROW LEVEL SECURITY`
   y las dos políticas en su migración, o declararse excluida con motivo en el
   test estructural; el test falla si no se decide.

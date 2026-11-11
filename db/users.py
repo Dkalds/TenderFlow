@@ -21,6 +21,14 @@ class CuentaDeOtroProveedorError(Exception):
         self.proveedor_existente = proveedor_existente
 
 
+class CuentaDesactivadaError(Exception):
+    """La cuenta asociada al callback OAuth está dada de baja (`deactivated_at`)."""
+
+    def __init__(self, user_id: int) -> None:
+        super().__init__(f"La cuenta {user_id} está desactivada")
+        self.user_id = user_id
+
+
 def get_or_create_oauth_user(
     *,
     email: str,
@@ -48,13 +56,17 @@ def get_or_create_oauth_user(
 
     Raises:
         CuentaDeOtroProveedorError: el correo es de una cuenta de otro proveedor.
+        CuentaDesactivadaError: la cuenta encontrada está desactivada.
     """
+    email_limpio = email.strip().lower() if email else ""
     with connect() as c:
         row = c.execute(
-            "SELECT id FROM users WHERE oauth_provider = %s AND oauth_sub = %s",
+            "SELECT id, deactivated_at FROM users WHERE oauth_provider = %s AND oauth_sub = %s",
             (oauth_provider, oauth_sub),
         ).fetchone()
         if row:
+            if row[1] is not None:
+                raise CuentaDesactivadaError(int(row[0]))
             return int(row[0])
 
         # Si el email ya existe (usuario previo sin OAuth), vincular.
@@ -65,16 +77,22 @@ def get_or_create_oauth_user(
         # alta con este correo antes que su dueño— y se borra: sobrevivir a la
         # vinculación le daría a ese tercero una llave de la cuenta real
         # (RFC 2026-10-21-alta-con-contrasena-tras-concesion §4).
-        if email:
-            # `FOR UPDATE`: dos callbacks a la vez de proveedores distintos no
-            # pueden leer los dos «sin proveedor» y vincular cada uno el suyo.
-            row = c.execute(
-                "SELECT id, oauth_provider FROM users WHERE email = %s FOR UPDATE",
-                (email,),
-            ).fetchone()
-            if row and row[1] and row[1] != oauth_provider:
-                raise CuentaDeOtroProveedorError(int(row[0]), str(row[1]))
-            if row:
+        if email_limpio:
+            # `FOR UPDATE` + `lower(email)`: dos callbacks a la vez o una cuenta
+            # existente con mayúsculas distintas no pueden abrir una segunda fila
+            # ni saltar el control de proveedor o de segundo factor.
+            filas = c.execute(
+                "SELECT id, oauth_provider, deactivated_at FROM users "
+                "WHERE lower(email) = lower(%s) ORDER BY id FOR UPDATE",
+                (email_limpio,),
+            ).fetchall()
+            for existente in filas:
+                if existente[1] and existente[1] != oauth_provider:
+                    raise CuentaDeOtroProveedorError(int(existente[0]), str(existente[1]))
+                if existente[2] is not None:
+                    raise CuentaDesactivadaError(int(existente[0]))
+            if filas:
+                row = filas[0]
                 c.execute(
                     "UPDATE users SET oauth_provider = %s, oauth_sub = %s, "
                     "display_name = COALESCE(%s, display_name), "
@@ -89,7 +107,7 @@ def get_or_create_oauth_user(
         cur = c.execute(
             "INSERT INTO users (email, oauth_provider, oauth_sub, display_name, created_at) "
             "VALUES (%s, %s, %s, %s, %s) RETURNING id",
-            (email or None, oauth_provider, oauth_sub, display_name, now_utc_iso()),
+            (email_limpio or None, oauth_provider, oauth_sub, display_name, now_utc_iso()),
         )
         return int(cur.fetchone()[0])
 
