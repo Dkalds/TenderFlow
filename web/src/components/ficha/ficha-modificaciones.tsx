@@ -74,7 +74,8 @@ export function FichaModificaciones({ licitacion: l }: { licitacion: LicitacionD
 
 function Costes({ costes }: { costes: CosteDeContrato[] }) {
   return (
-    <div className={`${REJILLA} mb-2 sm:grid-cols-2`}>
+    // Dos columnas solo con dos costes: con uno, la segunda quedaba como una celda gris vacía.
+    <div className={`${REJILLA} mb-2 ${costes.length > 1 ? "sm:grid-cols-2" : ""}`}>
       {costes.map((c) => (
         <Fact
           key={c.lote_numero ?? "expediente"}
