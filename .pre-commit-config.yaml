@@ -68,7 +68,7 @@ repos:
         entry: python scripts/check_agent_docs.py
         language: system
         pass_filenames: false
-        files: '^(AGENTS\.md|CLAUDE\.md|Makefile|skills-lock\.json|\.github/copilot-instructions\.md|docs/(AGENT_PLAYBOOK|graphify-first)\.md|\.claude/(settings\.json|commands/.*|skills/.*)|\.agents/.*|\.codex/hooks\.json|\.opencode/.*)$'
+        files: '^(AGENTS\.md|CLAUDE\.md|web/AGENTS\.md|Makefile|skills-lock\.json|\.github/copilot-instructions\.md|docs/(AGENT_PLAYBOOK|windows-happy-path)\.md|\.claude/(settings\.json|commands/.*|skills/.*|hooks/.*)|\.agents/.*|\.codex/.*|\.opencode/.*)$'
 
   - repo: local
     hooks:

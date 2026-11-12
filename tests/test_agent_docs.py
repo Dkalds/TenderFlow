@@ -540,6 +540,7 @@ class SessionStartContextoTests(unittest.TestCase):
         self.prs: list[dict[str, object]] = []
         self.ramas = ""
         self.cli_graphify: str | None = None
+        self.entorno: dict[str, str] = {}
 
     def _fake_run(self, cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
         if "--git-common-dir" in cmd:
@@ -569,6 +570,8 @@ class SessionStartContextoTests(unittest.TestCase):
         ):
             # La suite corre con `ENV=dev` en el entorno; el hook lo vería y callaría.
             os.environ.pop("ENV", None)
+            os.environ.pop("DATABASE_URL", None)  # CI la exporta en algunos jobs
+            os.environ.update(self.entorno)
             runpy.run_path(str(hook), run_name="__main__")
         if not output.getvalue():
             return ""
@@ -595,6 +598,15 @@ class SessionStartContextoTests(unittest.TestCase):
         # Sesión remota: `pip install` contra el Python del sistema, que es el
         # que lanza el hook (y esta suite: fastapi y pytest están).
         self.assertNotIn("Python:", self._contexto())
+
+    def test_una_database_url_heredada_del_entorno_se_avisa(self) -> None:
+        # Sesión remota cuyo entorno exporta la configuración de producción: gana
+        # sobre `.env` y la suite unitaria daba 97 fallos por ella (2026-11-12).
+        _write(self.worktree / ".venv/bin/python", "")
+        (self.worktree / "web/node_modules").mkdir()
+        self.entorno = {"ENV": "prod", "DATABASE_URL": "postgresql://otra-maquina/x"}
+
+        self.assertIn("env -i ", self._contexto())
 
     def test_un_checkout_completo_no_anade_ruido(self) -> None:
         _write(self.worktree / ".venv/bin/python", "")

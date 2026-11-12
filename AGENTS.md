@@ -98,20 +98,12 @@ En Claude Code el orden no depende de acordarse: con el CLI y el grafo
 disponibles, el hook de búsqueda bloquea el primer `grep`/`rg` de la sesión
 hasta que se haya consultado el grafo (`CLAUDE.md`, **Hooks**).
 
-**Graphify local es opcional.** La configuración MCP compartida de VS Code vive
-en `.vscode/mcp.json` y ejecuta `graphify-mcp` sobre
-`graphify-out/graph.json`. Para usarla, instala el extra MCP de Graphify
-(`uv tool install "graphifyy[mcp]"`) y genera el grafo local
-(`graphify extract . --code-only`). MCP consulta ese archivo; no construye ni
-actualiza el grafo. La configuración presupone que `graphify-mcp` está en el
-`PATH`.
-
-**`graphify-out/` no se versiona**: es una caché local. El grafo puede quedar
-desactualizado respecto del código y debe actualizarse con `graphify update .`
-cuando el CLI esté disponible. `--code-only` excluye documentación y otros
-archivos no reconocidos como código; la cobertura de SQL también depende de
-que esté instalado su parser. Usa el grafo como mapa y verifica en los archivos
-fuente los detalles que importen.
+**`graphify-out/` no se versiona**: es una caché local que puede ir por detrás
+del código; se pone al día con `graphify update .` cuando el CLI está
+disponible. El grafo no cubre la documentación, y el SQL solo si está instalado
+su parser: usalo como mapa y verificá en los archivos fuente los detalles que
+importen. La configuración MCP de VS Code (`.vscode/mcp.json`) y cómo generar
+el grafo están en [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md) §2.1.
 
 ---
 
@@ -163,9 +155,13 @@ prerrequisitos están en [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md).
 - Para cambios Python: `make lint`, `make typecheck` y `make test-unit`.
     `make check` es el atajo fail-fast: lint, typecheck y la suite
     `(unit or integration) and not slow` (necesita `TEST_DATABASE_URL`).
-- `/check` es un workflow de Claude que ejecuta los mismos controles de forma
-    independiente para reportar todos los resultados; no es un alias de shell de
-    `make check`.
+- `/check` es un workflow de Claude, no un alias de `make check`: corre
+    `make lint`, `make typecheck` y `make test-unit` por separado y reporta los
+    tres aunque uno falle. No ejecuta los tests de integración.
+- `make gates` corre todos los gates y ratchets que solo necesitan la
+    biblioteca estándar, sin cortar en el primer fallo: es lo que se puede
+    ejecutar en un checkout sin dependencias. `make gates-deps` añade los que
+    importan la app.
 - Para cambios frontend: `make web-lint`, `make web-typecheck` y los tests
     relevantes. Los cambios analíticos también requieren
     `make check-frontend-invariants`.
@@ -191,10 +187,11 @@ prerrequisitos están en [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md).
     por email. `make mutation-sample` y `make web-mutation` (Stryker sobre
     `web/src/lib`) son informes, no gates.
 
-Los tests usan exclusivamente Postgres y requieren `TEST_DATABASE_URL`. Si
-faltan dependencias, Postgres o el CLI de Graphify, ejecutá solo los controles
-disponibles y reportá explícitamente cuáles no se ejecutaron y por qué. Un
-control omitido no cuenta como verde y no se sustituye por otro motor.
+Los tests con BD usan exclusivamente Postgres y requieren `TEST_DATABASE_URL`;
+`make test-unit` no abre Postgres y corre sin ella. Si faltan dependencias,
+Postgres o el CLI de Graphify, ejecutá solo los controles disponibles y reportá
+explícitamente cuáles no se ejecutaron y por qué. Un control omitido no cuenta
+como verde y no se sustituye por otro motor.
 
 [docs/STATUS.md](docs/STATUS.md) se regenera con `make status`; no lo edites a
 mano.
@@ -306,14 +303,11 @@ Para todo lo demás (editar código de feature, añadir tests, refactor local), 
   eventos, notificaciones, documentos binarios, identidad, seguimiento o
   importes**: fijan la forma que esos cambios deben tener.
 
-`AGENTS.md` es la fuente común; `CLAUDE.md` y
-`.github/copilot-instructions.md` solo adaptan plataformas. Los commands viven
-en `.claude/commands/`, sus copias portables en `.agents/skills/source-command-*`
-y los skills instalados en `skills-lock.json`.
-
-`make check-agent-docs` valida targets y rutas citadas, slash-commands, paridad
-recursiva de skills, copias exactas de commands, equivalencia de hooks y plugins
-OpenCode.
+Los commands viven en `.claude/commands/`, sus copias portables en
+`.agents/skills/source-command-*` y los skills instalados en
+`skills-lock.json`. `make check-agent-docs` valida targets y rutas citadas,
+slash-commands, paridad recursiva de skills, copias exactas de commands,
+equivalencia de hooks y plugins OpenCode.
 
 Cada skill de `skills-lock.json` declara `trust` (`first-party`: org del vendor
 de la herramienta que documenta — `anthropics`, `vercel-labs`, `upstash`,

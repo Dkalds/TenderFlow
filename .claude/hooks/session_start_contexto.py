@@ -193,6 +193,14 @@ def entorno(principal: pathlib.Path | None) -> list[str]:
             "arranca en `prod` y aborta pidiendo `SIGNING_KEY`. Prefijá `ENV=dev` (lo que usa "
             "CI) en tests y scripts."
         )
+    if os.environ.get("DATABASE_URL") or os.environ.get("ENV") == "prod":
+        lineas.append(
+            "El entorno de la sesión exporta configuración de la app (`DATABASE_URL` o "
+            "`ENV=prod`, y con ellas suele venir el resto: Redis, LLM, plano del scheduler), "
+            "que gana sobre `.env`: la suite falla por ella y un script apuntaría a esa base. "
+            'Lanzá tests y scripts con el entorno limpio: `env -i PATH="$PATH" HOME="$HOME" '
+            "ENV=dev <comando>`."
+        )
     if (ROOT / "web/package.json").is_file() and not (ROOT / "web/node_modules").is_dir():
         lineas.append(
             "Frontend: falta `web/node_modules`; `npm ci` en `web/` antes de lint o tests."

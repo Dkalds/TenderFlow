@@ -32,7 +32,7 @@ El [Makefile](../Makefile) es la fuente canónica. Targets habituales:
 
 | Necesidad | Comando |
 |---|---|
-| Lint + typecheck + tests unitarios, fail-fast | `make check` |
+| Lint + typecheck + tests unitarios y de integración (sin `slow`), fail-fast | `make check` |
 | Todos los gates y ratchets stdlib, con resumen y sin cortar en el primero | `make gates` (los que importan la app: `make gates-deps`) |
 | Lint Python | `make lint` |
 | Typecheck Python | `make typecheck` |
@@ -57,10 +57,12 @@ El [Makefile](../Makefile) es la fuente canónica. Targets habituales:
 | Regenerar estado calculado | `make status` |
 | Verificar paridad de jobs | `make job-parity` |
 
-`/check` no es un alias de `make check`: ejecuta los mismos tres controles de
-forma independiente para poder reportar todos los resultados aunque uno falle.
+`/check` no es un alias de `make check`: corre `make lint`, `make typecheck` y
+`make test-unit` por separado para reportar los tres aunque uno falle, y no
+ejecuta los tests de integración.
 
-Los tests usan Postgres y requieren `TEST_DATABASE_URL`. En local, levantá la
+Los tests con BD usan Postgres y requieren `TEST_DATABASE_URL` (`make test-unit`
+no la necesita). En local, levantá la
 instancia de desarrollo con `docker compose up -d postgres`; cada test recibe un
 schema aislado mediante las fixtures de `tests/conftest.py`.
 
@@ -78,7 +80,8 @@ schema aislado mediante las fixtures de `tests/conftest.py`.
 | `make check-layers`, `make check-prints`, `make check-any-count` | disponible: stdlib + git | disponible |
 | `make check-api-surface` | requiere deps | disponible |
 | `make inventario-uso` | disponible: stdlib | disponible |
-| `make test-unit`, `make test`, `make check` | no disponible | no disponible sin `TEST_DATABASE_URL` |
+| `make test-unit` | no disponible | disponible: no abre Postgres |
+| `make test`, `make check` | no disponible | no disponible sin `TEST_DATABASE_URL` |
 | `make web-test`, `make web-test-coverage` | no disponible | requiere `web/node_modules` (`cd web && npm ci`) |
 | `graphify *` | solo si el CLI está instalado | igual |
 | `python scripts/code_map.py *` | disponible: stdlib + git | disponible |
@@ -141,7 +144,7 @@ depuración manual; nunca en CI.
 
 ### 2.1 Graphify en el día a día
 
-`graphify` es un CLI local del mantenedor, no un target del Makefile (no hay
+`graphify` es un CLI local y opcional, no un target del Makefile (no hay
 `make graphify-*`); el orden de consulta está en AGENTS.md §1. Se invoca
 directo:
 
@@ -166,6 +169,13 @@ python scripts/code_map.py fichero api/routes/ask.py     # esquema e imports del
 ```
 
 Omití el `update` del post-flight y decilo en el PR.
+
+**MCP en VS Code.** `.vscode/mcp.json` ejecuta `graphify-mcp` sobre
+`graphify-out/graph.json` y presupone que está en el `PATH`. Para usarlo,
+instalá el extra MCP (`uv tool install "graphifyy[mcp]"`) y generá el grafo
+(`graphify extract . --code-only`, que excluye la documentación y lo que no
+reconoce como código). El MCP consulta ese archivo; no lo construye ni lo
+actualiza.
 
 ### 2.2 Entorno local: worktrees y Windows
 
@@ -250,7 +260,7 @@ controles disponibles y reportá los tests como no ejecutados (AGENTS.md §4).
 3. **Lógica de dominio**: si el endpoint transforma datos o aplica una regla de negocio, añade función en `services/<dominio>.py`. Si es CRUD passthrough, la ruta puede llamar a `db.*` directo ([ADR-024](adr/ADR-024-services-biblioteca-no-frontera.md)). SQL nuevo nunca va en la ruta: vive en `db/` (§3).
 4. **Ruta**: crea o edita el router en `api/routes/<recurso>.py`. Inyectá `Depends(get_api_key)` si requiere auth. Registralo en `api/app.py` (sección `include_router`). Cada operación nueva entra en `NUEVAS` de `scripts/check_api_surface.py` con su motivo (AGENTS.md §0); `make check-api-surface` lo comprueba.
 5. **Errores**: si hay condiciones nuevas de error, registra el handler en `api/errors.py` (no lances HTTPException con strings sueltos).
-6. **Tests**: crea `tests/test_<recurso>_api.py` con `fastapi.testclient.TestClient`. Si hace BD, usa fixture `tmp_db` de `conftest.py`. El marker se aplica solo si el nombre del archivo encaja con un token de `_INTEGRATION_TOKENS`.
+6. **Tests**: crea `tests/test_<recurso>_api.py` con `fastapi.testclient.TestClient`. Si hace BD, usa fixture `tmp_db` de `conftest.py`. La categoría sale sola: `integration` en cuanto el test usa `tmp_db`/`api_db` (directo o vía `client`/`api_key`/`auth`), `unit` si no; no pongas marker (AGENTS.md §3.4).
 7. **Documenta**: actualiza el docstring de módulo de `api/app.py` (lista de endpoints en la cabecera).
 8. **Post-flight**: `/check` → `graphify update .`.
 
@@ -267,12 +277,12 @@ controles disponibles y reportá los tests como no ejecutados (AGENTS.md §4).
 2. **Pipeline**: extendé `scraper/pipeline.py` o crea módulo nuevo. Mantén el patrón: descarga → parse → filtrar → clasificar → upsert.
 3. **Upsert**: usa `db.upsert` (idempotente). Si falla, va a DLQ automáticamente. Ver runbook [dlq-replay.md](runbooks/dlq-replay.md).
 4. **Circuit breaker / reintentos**: usa los wrappers existentes en `scraper/` (no implementes uno nuevo).
-5. **Tests integration**: `tests/test_<pipeline>_integration.py` (auto-marker `integration` si el nombre encaja).
+5. **Tests integration**: `tests/test_<pipeline>_integration.py` (queda marcado `integration` por usar `tmp_db`; sin marker manual, AGENTS.md §3.4).
 6. **Schedule**: registrá en `scheduler/run_update.py` y si corresponde en `.github/workflows/scrape*.yml` (**requiere confirmación humana**).
 
 ### 3.4 Fix de bug
 
-1. **Reproducir con test primero**: añadí test que falla con el bug actual (`tests/test_<area>_<bug>.py`). Marker apropiado.
+1. **Reproducir con test primero**: añadí test que falla con el bug actual (`tests/test_<area>_<bug>.py`). Sin marker de categoría: lo infiere `tests/conftest.py` (AGENTS.md §3.4).
 2. **Localiza la causa**: `graphify query "<síntoma>"` o `graphify path "<entry>" "<componente>"`.
 3. **Fix mínimo**: cambio puntual; no aproveches para refactor.
 4. **Verifica**: el test añadido pasa, `/check` verde, no rompiste otros tests.
