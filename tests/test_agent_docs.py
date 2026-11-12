@@ -581,12 +581,17 @@ class SessionStartContextoTests(unittest.TestCase):
         self.cli_graphify: str | None = None
         self.entorno: dict[str, str] = {}
         self.comandos: list[list[str]] = []
-        self.codigo_fetch = 0
+        self.codigo_fetch: int | None = 0  # None: el fetch se cuelga
+        self.hay_remoto = True
 
     def _fake_run(self, cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
         self.comandos.append(cmd)
         if "fetch" in cmd:
+            if self.codigo_fetch is None:
+                raise subprocess.TimeoutExpired(cmd, 10)
             return subprocess.CompletedProcess(cmd, self.codigo_fetch, stdout="", stderr="")
+        if cmd[:2] == ["git", "remote"] and not self.hay_remoto:
+            return subprocess.CompletedProcess(cmd, 2, stdout="", stderr="")
         if "--git-common-dir" in cmd:
             salida = str(self.principal / ".git")
         elif cmd[:3] == ["gh", "pr", "list"]:
@@ -652,9 +657,19 @@ class SessionStartContextoTests(unittest.TestCase):
         self.assertNotIn("origin/master", contexto)
 
     def test_si_no_puede_traer_origin_master_lo_dice(self) -> None:
-        self.codigo_fetch = 128
+        for codigo in (128, None):
+            with self.subTest(codigo=codigo):
+                self.codigo_fetch = codigo
 
-        self.assertIn("No se pudo traer `origin/master`", self._contexto())
+                self.assertIn("No se pudo traer `origin/master`", self._contexto())
+
+    def test_sin_remoto_origin_ni_trae_ni_avisa(self) -> None:
+        self.hay_remoto = False
+
+        contexto = self._contexto()
+
+        self.assertNotIn("origin/master", contexto)
+        self.assertFalse([cmd for cmd in self.comandos if "fetch" in cmd])
 
     def test_una_database_url_heredada_del_entorno_se_avisa(self) -> None:
         # Sesión remota cuyo entorno exporta la configuración de producción: gana
