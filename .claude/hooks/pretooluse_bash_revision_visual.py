@@ -15,7 +15,11 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-_ENTREGA = re.compile(r"\bgit\s+commit\b|\bgh\s+pr\s+create\b")
+# Al principio de un comando de la línea: dentro de un mensaje de commit o del
+# cuerpo de un heredoc, «gh pr create» es texto y no una entrega.
+_ENTREGA = re.compile(
+    r"(?:^|&&|\|\||;|\()\s*(?:\w+=\S+\s+)*(?:git\s+commit|gh\s+pr\s+create)\b", re.MULTILINE
+)
 
 AVISO = (
     "Este cambio toca web/src/ ({ficheros}). La revisión visual de `impeccable` "

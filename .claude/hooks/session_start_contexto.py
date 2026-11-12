@@ -322,6 +322,10 @@ def main() -> None:
         entrada = {}
     ROOT = raiz_del_checkout(str(entrada.get("cwd") or ""))
     principal = checkout_principal()
+    # El clon de una sesión remota trae `origin/master` de cuando se creó la
+    # imagen: contra esa referencia, `revisor` y el aviso de revisión visual
+    # ven como propios los commits que ya están en master.
+    run(["git", "fetch", "--quiet", "origin", "master"], 10)
     bloques: list[str] = []
     lineas = entorno(principal)
     grafo = sembrar_grafo(principal)

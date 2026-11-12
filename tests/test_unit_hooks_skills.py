@@ -220,6 +220,31 @@ def test_sin_web_src_no_avisa(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _entregar(monkeypatch, 'git commit -m "x"', "api/x.py\n")[0] == ""
 
 
+@pytest.mark.parametrize(
+    "comando",
+    [
+        'git commit -m "docs: antes de gh pr create, lanzar el revisor"',
+        "python - <<'EOF'\ntexto = 'antes de gh pr create'\nEOF",
+        "git log --grep 'git commit'",
+    ],
+)
+def test_citar_la_entrega_no_es_entregar_salvo_que_el_comando_lo_sea(
+    monkeypatch: pytest.MonkeyPatch, comando: str
+) -> None:
+    salida, llamadas = _entregar(monkeypatch, comando, "api/x.py\n")
+
+    # El primero sí es un commit (mira el diff, que no trae web/src); los otros no.
+    assert salida == ""
+    assert bool(llamadas) == comando.startswith("git commit")
+
+
+@pytest.mark.parametrize("comando", ["cd web && git commit -m x", "ENV=dev gh pr create --fill"])
+def test_la_entrega_tras_otro_comando_o_una_variable_cuenta(
+    monkeypatch: pytest.MonkeyPatch, comando: str
+) -> None:
+    assert _entregar(monkeypatch, comando, "web/src/a.tsx\n")[0] != ""
+
+
 def test_otros_comandos_no_miran_el_diff(monkeypatch: pytest.MonkeyPatch) -> None:
     salida, llamadas = _entregar(monkeypatch, "git status", "web/src/a.tsx\n")
 

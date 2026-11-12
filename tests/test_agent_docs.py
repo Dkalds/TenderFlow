@@ -233,15 +233,15 @@ class AgentDocsCheckerTests(unittest.TestCase):
             ],
         )
 
-    def test_hook_parity_rejects_divergent_adapters(self) -> None:
+    def test_una_copia_del_hook_en_codex_se_rechaza(self) -> None:
         _write(self.root / ".claude/hooks/demo.py", "print('claude')\n")
-        _write(self.root / ".codex/hooks/demo.py", "print('codex')\n")
+        _write(self.root / ".codex/hooks/demo.py", "print('claude')\n")
 
         check_agent_docs.check_hook_parity()
 
         self.assertEqual(
             check_agent_docs.errors,
-            ["hooks: el hook `demo.py` diverge entre .claude/hooks y .codex/hooks"],
+            ["hooks: `.codex/hooks/demo.py` es una copia: el hook vive en .claude/hooks/"],
         )
 
     def test_opencode_plugins_reject_missing_file(self) -> None:
@@ -541,8 +541,10 @@ class SessionStartContextoTests(unittest.TestCase):
         self.ramas = ""
         self.cli_graphify: str | None = None
         self.entorno: dict[str, str] = {}
+        self.comandos: list[list[str]] = []
 
     def _fake_run(self, cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        self.comandos.append(cmd)
         if "--git-common-dir" in cmd:
             salida = str(self.principal / ".git")
         elif cmd[:3] == ["gh", "pr", "list"]:
@@ -598,6 +600,13 @@ class SessionStartContextoTests(unittest.TestCase):
         # Sesión remota: `pip install` contra el Python del sistema, que es el
         # que lanza el hook (y esta suite: fastapi y pytest están).
         self.assertNotIn("Python:", self._contexto())
+
+    def test_trae_origin_master_antes_de_comparar_ramas(self) -> None:
+        # En el clon de una sesión remota `origin/master` iba 8 commits por
+        # detrás y el aviso de revisión visual saltaba sin tocar `web/src/`.
+        self._contexto()
+
+        self.assertIn(["git", "fetch", "--quiet", "origin", "master"], self.comandos)
 
     def test_una_database_url_heredada_del_entorno_se_avisa(self) -> None:
         # Sesión remota cuyo entorno exporta la configuración de producción: gana

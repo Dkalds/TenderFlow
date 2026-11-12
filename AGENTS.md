@@ -306,8 +306,9 @@ Para todo lo demás (editar código de feature, añadir tests, refactor local), 
 Los commands viven en `.claude/commands/`, sus copias portables en
 `.agents/skills/source-command-*` y los skills instalados en
 `skills-lock.json`. `make check-agent-docs` valida targets y rutas citadas,
-slash-commands, paridad recursiva de skills, copias exactas de commands,
-equivalencia de hooks y plugins OpenCode.
+slash-commands, paridad recursiva de skills, copias exactas de commands, que
+los hooks vivan en un solo árbol (`.claude/hooks/`, que Codex también lanza) y
+los plugins OpenCode.
 
 Cada skill de `skills-lock.json` declara `trust` (`first-party`: org del vendor
 de la herramienta que documenta — `anthropics`, `vercel-labs`, `upstash`,

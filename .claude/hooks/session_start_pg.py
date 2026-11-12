@@ -95,7 +95,13 @@ def ensure_extensions(notes: list[str]) -> None:
     """
     share = pathlib.Path("/usr/share/postgresql/16/extension/vector.control")
     if not share.exists() and shutil.which("apt-get") is not None:
-        installed = run(["apt-get", "install", "-y", "postgresql-16-pgvector"])
+        instalar = ["apt-get", "install", "-y", "postgresql-16-pgvector"]
+        installed = run(instalar)
+        if installed.returncode != 0:
+            # Una imagen recién arrancada trae los índices de apt vacíos y el
+            # paquete «no existe» hasta el primer update (visto el 2026-11-12).
+            run(["apt-get", "update"])
+            installed = run(instalar)
         if installed.returncode != 0:
             notes.append(
                 "no se pudo instalar postgresql-16-pgvector (¿sin red?): "
