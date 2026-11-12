@@ -463,6 +463,45 @@ class AgentHookTests(unittest.TestCase):
         context = payload["hookSpecificOutput"]["additionalContext"]
         self.assertIn("graphify query", context)
 
+    def _arrancar_postgres(self, apt: list[int | type[BaseException]]) -> tuple[str, list[str]]:
+        """Lanza `session_start_pg.py` con un apt que responde, por orden, lo de `apt`."""
+        hook = self._copy_hook("session_start_pg.py")
+        respuestas = iter(apt)
+        lanzados: list[str] = []
+
+        def run(cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            if cmd[0] != "apt-get":
+                return subprocess.CompletedProcess(cmd, 0, stdout="1", stderr="")
+            lanzados.append(cmd[1])
+            respuesta = next(respuestas)
+            if not isinstance(respuesta, int):
+                raise respuesta(cmd, 300)
+            return subprocess.CompletedProcess(cmd, respuesta, stdout="", stderr="")
+
+        salida = StringIO()
+        with (
+            patch("subprocess.run", run),
+            patch("shutil.which", return_value="/usr/bin/x"),
+            patch("pathlib.Path.exists", return_value=False),
+            redirect_stdout(salida),
+        ):
+            runpy.run_path(str(hook), run_name="__main__")
+        contexto = json.loads(salida.getvalue())["hookSpecificOutput"]["additionalContext"]
+        return str(contexto), lanzados
+
+    def test_pgvector_se_instala_tras_actualizar_los_indices_de_apt(self) -> None:
+        # Imagen remota del 2026-11-12: «Unable to locate package» hasta el update.
+        contexto, lanzados = self._arrancar_postgres([100, 0, 0])
+
+        self.assertEqual(lanzados, ["install", "update", "install"])
+        self.assertNotIn("no se pudo instalar", contexto)
+
+    def test_un_apt_colgado_no_deja_la_sesion_sin_la_url_de_tests(self) -> None:
+        contexto, _ = self._arrancar_postgres([100, subprocess.TimeoutExpired])
+
+        self.assertIn("no se pudo instalar postgresql-16-pgvector", contexto)
+        self.assertIn("TEST_DATABASE_URL=", (self.root / ".env").read_text(encoding="utf-8"))
+
     def _otro_checkout(self) -> Path:
         """Un segundo checkout, como el worktree desde el que trabaja la sesión."""
         otro = self.root / "worktrees/otro"
@@ -542,9 +581,12 @@ class SessionStartContextoTests(unittest.TestCase):
         self.cli_graphify: str | None = None
         self.entorno: dict[str, str] = {}
         self.comandos: list[list[str]] = []
+        self.codigo_fetch = 0
 
     def _fake_run(self, cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
         self.comandos.append(cmd)
+        if "fetch" in cmd:
+            return subprocess.CompletedProcess(cmd, self.codigo_fetch, stdout="", stderr="")
         if "--git-common-dir" in cmd:
             salida = str(self.principal / ".git")
         elif cmd[:3] == ["gh", "pr", "list"]:
@@ -604,9 +646,15 @@ class SessionStartContextoTests(unittest.TestCase):
     def test_trae_origin_master_antes_de_comparar_ramas(self) -> None:
         # En el clon de una sesión remota `origin/master` iba 8 commits por
         # detrás y el aviso de revisión visual saltaba sin tocar `web/src/`.
-        self._contexto()
+        contexto = self._contexto()
 
         self.assertIn(["git", "fetch", "--quiet", "origin", "master"], self.comandos)
+        self.assertNotIn("origin/master", contexto)
+
+    def test_si_no_puede_traer_origin_master_lo_dice(self) -> None:
+        self.codigo_fetch = 128
+
+        self.assertIn("No se pudo traer `origin/master`", self._contexto())
 
     def test_una_database_url_heredada_del_entorno_se_avisa(self) -> None:
         # Sesión remota cuyo entorno exporta la configuración de producción: gana

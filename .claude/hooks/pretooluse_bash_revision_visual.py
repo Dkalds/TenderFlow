@@ -15,10 +15,15 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-# Al principio de un comando de la línea: dentro de un mensaje de commit o del
-# cuerpo de un heredoc, «gh pr create» es texto y no una entrega.
+# Solo cuando un comando de la línea empieza por la entrega (tras un separador,
+# `env …` o asignaciones): citada en un mensaje de commit es texto. Una línea de
+# heredoc que empiece por ella sigue casando; da un aviso de más, no uno de menos.
 _ENTREGA = re.compile(
-    r"(?:^|&&|\|\||;|\()\s*(?:\w+=\S+\s+)*(?:git\s+commit|gh\s+pr\s+create)\b", re.MULTILINE
+    r"(?:^|[;|&(]|\b(?:then|else|do|time)\b)\s*"
+    r"(?:env\b(?:\s+-u\s+\S+|\s+-\S+)*\s+)?"
+    r"""(?:\w+=(?:"[^"]*"|'[^']*'|\S+)\s+)*"""
+    r"(?:git\s+commit|gh\s+pr\s+create)\b",
+    re.MULTILINE,
 )
 
 AVISO = (

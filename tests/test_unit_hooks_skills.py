@@ -238,7 +238,19 @@ def test_citar_la_entrega_no_es_entregar_salvo_que_el_comando_lo_sea(
     assert bool(llamadas) == comando.startswith("git commit")
 
 
-@pytest.mark.parametrize("comando", ["cd web && git commit -m x", "ENV=dev gh pr create --fill"])
+@pytest.mark.parametrize(
+    "comando",
+    [
+        "cd web && git commit -m x",
+        "ENV=dev gh pr create --fill",
+        'env -i PATH="$PATH" HOME="$HOME" ENV=dev git commit -m x',
+        "env -u DATABASE_URL git commit -m x",
+        'GIT_AUTHOR_NAME="a b" git commit -m x',
+        "echo msg | git commit -F -",
+        "if true; then :; else git commit -m x; fi",
+        "npm run dev & git commit -m x",
+    ],
+)
 def test_la_entrega_tras_otro_comando_o_una_variable_cuenta(
     monkeypatch: pytest.MonkeyPatch, comando: str
 ) -> None:

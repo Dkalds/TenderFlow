@@ -160,8 +160,8 @@ prerrequisitos están en [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md).
     tres aunque uno falle. No ejecuta los tests de integración.
 - `make gates` corre todos los gates y ratchets que solo necesitan la
     biblioteca estándar, sin cortar en el primer fallo: es lo que se puede
-    ejecutar en un checkout sin dependencias. `make gates-deps` añade los que
-    importan la app.
+    ejecutar en un checkout sin dependencias. `make gates-deps` corre, aparte,
+    los que importan la app.
 - Para cambios frontend: `make web-lint`, `make web-typecheck` y los tests
     relevantes. Los cambios analíticos también requieren
     `make check-frontend-invariants`.
