@@ -26,6 +26,7 @@ según la ruta que se edita:
 | `tests/**` | `python-testing-patterns` (sin SQLite ni markers manuales: AGENTS.md §3.4) |
 
 - **Las filas se suman**: un `.py` de `db/repositories/` exige `ponytail` y `supabase-postgres-best-practices`. El hook `pretooluse_edit_skills.py` bloquea la edición si falta alguno (ver **Hooks**).
+- **Código con Edit o Write**: el hook solo ve las herramientas de edición (Edit, Write, MultiEdit). Reescribir un `.py`, `.ts` o `.tsx` desde Bash (un heredoc, `sed -i`, un script) se salta el control de skills: no se hace con código del repo.
 - **Cargarlo, no recordarlo**: seguir sus reglas a mano no sustituye cargarlo. Un cambio que encaja con un skill que no se cargó no está terminado, aunque los controles de §4 estén en verde.
 - **`ponytail`** se invoca con el argumento lite (sin él arranca en full y queda así toda la sesión): la escalera de AGENTS.md §0 antes de escribir, y una línea final con lo que se dejó fuera (§0 dice qué no exime).
 - **`impeccable`** lee `PRODUCT.md` y `DESIGN.md`. Su hook no es su revisión: la revisión visual (pantallas renderizadas, o la vista previa de Vercel del PR) es parte de todo cambio en `web/src/`. Si en `web/` chocan, `ponytail` decide el alcance (qué se construye) e `impeccable` y los skills de diseño deciden el acabado de lo que sí se construye: recortar accesibilidad, estados vacíos o de error no es «ser lazy», es dejar la pantalla a medias.
@@ -48,7 +49,10 @@ En un worktree, Claude Code lanza los hooks desde el checkout principal: un camb
 —cluster local, rol, base, `pg_trgm`/`vector`— y deja `TEST_DATABASE_URL` en
 `.env`, de donde `tests/conftest.py` la lee. Con eso **la suite sí se ejecuta**:
 `make test-unit` y `make check` son válidos en remoto. Las dependencias Python
-del proyecto no vienen preinstaladas: en un `.venv` (el `pip` del sistema no
+del proyecto no vienen en la imagen. El entorno cloud «Tenderflow» las instala
+con su setup script (se edita en los ajustes del entorno, no en el repo); si al
+arrancar no hay `.venv`, el hook de contexto lo dice y se hace a mano: en un
+`.venv` (el `pip` del sistema no
 puede reemplazar paquetes que instaló Debian), `pip install -r
 requirements-dev.txt` —trae también los paquetes de producción:
 `requirements-dev.in` empieza con `-r requirements.in`— y `pip install -e ".[pliegos]"` (este último lo exigen los

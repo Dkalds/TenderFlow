@@ -50,7 +50,7 @@ class TestCreateWebhook:
 
 class TestTriggerEvent:
     @patch("db.webhooks.pinned_https_request")
-    def test_successful_delivery(self, mock_post, tmp_db):
+    def test_successful_delivery(self, mock_post, tmp_db, dns_de_example_com):
         db_mod, _ = tmp_db
         _create_sample(db_mod)
         mock_resp = MagicMock(status_code=200)
@@ -78,7 +78,7 @@ class TestTriggerEvent:
         mock_post.assert_not_called()
 
     @patch("db.webhooks.pinned_https_request")
-    def test_wildcard_event_type(self, mock_post, tmp_db):
+    def test_wildcard_event_type(self, mock_post, tmp_db, dns_de_example_com):
         _db_mod, _ = tmp_db
         WebhookRepository().create(
             name="catch-all", url="https://example.com/all", event_types=["*"]
@@ -88,7 +88,7 @@ class TestTriggerEvent:
         assert count == 1
 
     @patch("db.webhooks.pinned_https_request")
-    def test_derived_secret_produces_valid_signature(self, mock_post, tmp_db):
+    def test_derived_secret_produces_valid_signature(self, mock_post, tmp_db, dns_de_example_com):
         """Verify that derived secrets produce consistent HMAC signatures."""
         db_mod, _ = tmp_db
         master_key = "test-master-key-for-hmac-derivation!!"  # pragma: allowlist secret

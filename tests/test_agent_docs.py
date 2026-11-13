@@ -468,11 +468,15 @@ class AgentHookTests(unittest.TestCase):
         hook = self._copy_hook("session_start_pg.py")
         respuestas = iter(apt)
         lanzados: list[str] = []
+        self.plazos_apt: list[float] = []
 
-        def run(cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        def run(
+            cmd: list[str], timeout: float = 0, **_: object
+        ) -> subprocess.CompletedProcess[str]:
             if cmd[0] != "apt-get":
                 return subprocess.CompletedProcess(cmd, 0, stdout="1", stderr="")
             lanzados.append(cmd[1])
+            self.plazos_apt.append(timeout)
             respuesta = next(respuestas)
             if not isinstance(respuesta, int):
                 raise respuesta(cmd, 300)
@@ -495,6 +499,9 @@ class AgentHookTests(unittest.TestCase):
 
         self.assertEqual(lanzados, ["install", "update", "install"])
         self.assertNotIn("no se pudo instalar", contexto)
+        # Claude Code cancela a los 600 s un hook sin `timeout` y descarta su
+        # salida: el peor caso de apt tiene que caber con margen para el resto.
+        self.assertLess(sum(self.plazos_apt), 450)
 
     def test_un_apt_colgado_no_deja_la_sesion_sin_la_url_de_tests(self) -> None:
         contexto, _ = self._arrancar_postgres([100, subprocess.TimeoutExpired])
@@ -583,6 +590,7 @@ class SessionStartContextoTests(unittest.TestCase):
         self.comandos: list[list[str]] = []
         self.codigo_fetch: int | None = 0  # None: el fetch se cuelga
         self.hay_remoto = True
+        self.hay_gh = True
 
     def _fake_run(self, cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
         self.comandos.append(cmd)
@@ -605,7 +613,8 @@ class SessionStartContextoTests(unittest.TestCase):
         return subprocess.CompletedProcess(cmd, 0, stdout=salida, stderr="")
 
     def _which(self, nombre: str) -> str | None:
-        return {"gh": "/usr/bin/gh", "graphify": self.cli_graphify}.get(nombre)
+        gh = "/usr/bin/gh" if self.hay_gh else None
+        return {"gh": gh, "graphify": self.cli_graphify}.get(nombre)
 
     def _contexto(self) -> str:
         hook = Path(__file__).resolve().parents[1] / ".claude/hooks/session_start_contexto.py"
@@ -686,6 +695,16 @@ class SessionStartContextoTests(unittest.TestCase):
         (self.worktree / "web/node_modules").mkdir()
 
         self.assertEqual(self._contexto(), "")
+
+    def test_sin_gh_remite_tambien_a_la_herramienta_mcp_de_github(self) -> None:
+        # Sesión remota: no hay `gh` con el que listar los PR, y mandar solo a
+        # `gh pr list` era pedir un comando que allí no funciona.
+        self.hay_gh = False
+
+        contexto = self._contexto()
+
+        self.assertIn("PR abiertos: no se pudieron consultar", contexto)
+        self.assertIn("herramienta MCP de GitHub", contexto)
 
     def test_lista_los_pr_de_personas_y_las_ramas_recientes(self) -> None:
         self.prs = [

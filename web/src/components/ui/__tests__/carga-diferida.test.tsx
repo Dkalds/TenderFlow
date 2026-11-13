@@ -4,7 +4,7 @@
  * al disparador real.
  */
 import { describe, expect, it } from "vitest";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Diferido, type MontajeDiferido, useMontajeDiferido } from "@/components/ui/carga-diferida";
 
 function Real(montaje: MontajeDiferido) {
@@ -59,6 +59,9 @@ describe("Diferido", () => {
     act(() => provisional.focus());
     const real = await screen.findByRole("button", { name: "real" });
     expect(real).toHaveAttribute("data-abierto", "false");
-    expect(real).toHaveFocus();
+    // El foco lo pasa un efecto del disparador real, que React ejecuta después
+    // de montarlo: con el runner cargado, leerlo en el acto lo encontraba aún en
+    // `body` (CI del 2026-11-13).
+    await waitFor(() => expect(real).toHaveFocus());
   });
 });

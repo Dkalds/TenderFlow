@@ -285,7 +285,10 @@ def trabajo_en_curso() -> list[str]:
     lineas: list[str] = []
     prs = prs_abiertos()
     if prs is None:
-        lineas.append("PR abiertos: no se pudieron consultar (`gh pr list` antes de empezar).")
+        lineas.append(
+            "PR abiertos: no se pudieron consultar con `gh`. Antes de empezar, listalos con "
+            "`gh pr list` o, en una sesión remota, con la herramienta MCP de GitHub."
+        )
     elif prs:
         lineas.append("PR abiertos: " + "; ".join(prs) + ".")
     ramas = ramas_vivas()
