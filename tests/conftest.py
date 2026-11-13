@@ -1149,3 +1149,22 @@ def rol_mcp(tmp_db, monkeypatch):
         with db_mod.connect() as c:
             c.execute(f'DROP OWNED BY "{rol}"')
             c.execute(f'DROP ROLE IF EXISTS "{rol}"')
+
+
+@pytest.fixture()
+def dns_de_example_com(monkeypatch):
+    """`example.com` resuelve a una dirección pública sin preguntar a un DNS.
+
+    Para tests de integración que entregan a un destino público: lo que prueban
+    es la entrega, no que ese nombre exista hoy, y con el DNS real fallaban
+    donde no hay salida a la red (sesiones remotas de agente). El resto de
+    nombres sigue yendo al resolutor que hubiera.
+    """
+    real = socket.getaddrinfo
+
+    def getaddrinfo(host, *args, **kwargs):
+        if host == "example.com":
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+        return real(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
