@@ -70,7 +70,8 @@ El ámbito vive en la dirección de la página: **si compartes el enlace, compar
 
 | Pantalla | Filtros del ámbito que aplica |
 | --- | --- |
-| Resumen, Investigador | Todos |
+| Resumen | Todos |
+| Investigador | Ninguno por defecto. Si activas «Aplicar el ámbito» en sus opciones avanzadas, solo comunidad autónoma, tecnología y fechas (la barra muestra todos los chips, pero el resto no viaja) |
 | Detalle | Todos, más tres propios del listado: procedimiento, provincia e importe máximo |
 | Radar | Solo Tecnología, y de una en una |
 | Agenda | Tecnología y comunidad autónoma (admite varias de cada una) |
@@ -202,7 +203,7 @@ Abre el **menú de cuenta** (el icono de persona al pie del rail; en móvil, arr
 
 ### Tus primeros pasos dentro
 
-Mientras a tu organización le quede alguno por hacer (lo normal en una organización recién creada), el Resumen muestra la banda **«Primeros pasos»** con tres tareas, cada una con lo que ganas y un enlace a donde se hace. Con las tres pendientes la banda sale arriba del todo; en cuanto hay una hecha, baja bajo «Tu día».
+Mientras a tu organización le quede alguno por hacer (lo normal en una organización recién creada), el Resumen muestra la banda **«Primeros pasos»** con tres tareas, cada una con lo que ganas y un enlace a donde se hace. Con las tres pendientes (y ninguna «sin comprobar») la banda sale arriba del todo; en cuanto hay una hecha o sin comprobar, baja al pie del Resumen.
 
 1. **Completa la capacidad de tu organización** (NIF, certificaciones y facturación): sin ellos, el checklist de cada pliego contesta «desconocido». Se hace en Equipo › Organización.
 2. **Revisa tu alerta**, en Mi Watchlist: ajusta qué busca y cada cuánto te avisa.
@@ -219,7 +220,7 @@ El móvil está pensado para consultar y hacer triaje (Radar, ficha, Mi Watchlis
 ## Quién puede usarlo
 
 - **Entrar y moverse por la consola:** cualquier persona con acceso concedido.
-- **Roles dentro de una organización:** Propietario, Administrador, Miembro y Solo lectura. Quien tiene «Solo lectura» ve pero no modifica; un Miembro puede trabajar las oportunidades; Propietario y Administrador gestionan además los miembros, las invitaciones y la configuración de la organización (solo un Propietario puede nombrar a otro Propietario), y ven Dirección. Cada persona tiene también una organización personal.
+- **Roles dentro de una organización:** Propietario, Administrador, Miembro y Solo lectura. Quien tiene «Solo lectura» ve pero no modifica; un Miembro puede trabajar las oportunidades; Propietario y Administrador gestionan además los miembros, las invitaciones y la configuración de la organización (solo el Propietario da el rol Administrador; la propiedad no se asigna como rol, se traspasa), y ven Dirección. Cada persona tiene también una organización personal.
 - **Administrador de la plataforma:** ve Ops y Admin, donde, entre otras cosas, se atienden las solicitudes de acceso.
 
 El detalle de roles está en [Equipo y Dirección](12-equipo-y-direccion.md).

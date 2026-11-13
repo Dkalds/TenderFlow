@@ -61,7 +61,7 @@ Las pestañas son: **Resumen**, **Expediente**, **Pliego**, **Precio**, **Adjunt
 En **Resumen**, de arriba abajo:
 
 1. **«Este expediente ya se adjudicó»**: solo aparece si la fuente ya publicó la adjudicación. Muestra adjudicatarios, importe, número de ofertas y fecha y, si el acta de la mesa trae puntuaciones, tu nota frente a la de la ganadora criterio a criterio, con enlace a la página del acta; si TenderFlow no reconoce tu fila, puedes marcar cuál es tu empresa.
-2. **Checklist go/no-go**: cada requisito del pliego frente a lo que tu organización ha declarado, con veredicto «Cumple», «No cumple» o «Desconocido», el «Dato de la organización» (o «sin declarar») y las citas del pliego con su página. Un requisito sin cita nunca sale como «Cumple». El título dice de qué ficha del pliego sale el contraste (fecha, versión del extractor y, si se usó, la publicación oficial de PLACSP).
+2. **Checklist go/no-go**: cada requisito del pliego frente a lo que tu organización ha declarado, con veredicto «Cumple», «No cumple» o «Desconocido», el «Dato de la organización» (o «sin declarar») y las citas del pliego con su página. Un requisito sin cita nunca sale como «Cumple». Una certificación vigente hoy pero que caduca antes de la fecha límite de presentación sale «No cumple», con las dos fechas en el motivo: la solvencia se acredita a esa fecha, y así hay tiempo de renovarla y actualizar su vigencia en Equipo › Organización. El título dice de qué ficha del pliego sale el contraste (fecha, versión del extractor y, si se usó, la publicación oficial de PLACSP).
 3. **«Para salir de «<fase>»»**: lo que falta para pasar a la siguiente fase, con un contador «N de M». Ver la tabla más abajo.
 4. **Decisión del comité**: el GO o NO-GO con su motivo.
 5. A la derecha (o debajo en pantallas estrechas), los **datos**: Oferta prevista, Plazo de presentación, Importe de licitación (o del lote), Responsable y Adjudicación prevista (o Importe adjudicado si está cerrada), más la **Próxima acción**.
@@ -130,7 +130,7 @@ Opcionalmente, abre la **Matriz ponderada** («Opcional: puntúa cinco criterios
 3. Elige un responsable en el desplegable de cada documento: eso **crea una tarea** «Kit: …» a su nombre (o reasigna la existente). El estado y vencimiento de la tarea aparecen bajo el documento.
 4. Si el kit está vacío, dice por qué y, si no hay ficha del pliego, ofrece «Extraer ficha» (o «Reintentar» si la última falló). Nunca propone una lista genérica.
 
-Las tareas se crean, reparten, fechan y cierran en la Agenda; ver [Agenda y Watchlist](06-agenda-y-watchlist.md).
+El reparto de tareas con responsable se hace aquí, desde el kit (y con la plantilla de tu organización al entrar en «Preparando oferta»). Las tareas sueltas se crean, se fechan y se cierran en la Agenda, desde el inspector de la oportunidad; allí no se elige responsable. Ver [Agenda y Watchlist](06-agenda-y-watchlist.md).
 
 ### Fijar el precio
 

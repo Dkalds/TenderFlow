@@ -212,7 +212,7 @@ En cada webhook verás su formato, sus eventos, «Última entrega» con el códi
 
 - **Ajustes** es igual para todos los roles, y cada persona solo ve y toca lo suyo: sus sesiones, sus claves y sus preferencias.
 - **Una clave no puede dar más permisos que tu cuenta.** Los permisos de administración de la plataforma no se pueden pedir desde aquí.
-- **Webhooks:** solo el propietario y los administradores de la organización activa. Un miembro o un lector no los ve. Si quien creó un webhook sale de la organización, el webhook queda inactivo hasta que un propietario o administrador lo reactive.
+- **Webhooks:** solo el propietario y los administradores de la organización activa. Un miembro o un lector no los ve. Si quien creó un webhook sale de la organización o se le retira el acceso, el webhook queda inactivo hasta que un propietario o administrador lo reactive.
 - **Acciones que piden haber entrado hace poco:** activar o desactivar la verificación en dos pasos, generar códigos de recuperación, crear, rotar o revocar claves, cerrar otra sesión y eliminar la cuenta. Si hace rato que entraste, aparece «Vuelve a entrar para…» con el botón «Volver a entrar»: cierra tu sesión, te lleva a la pantalla de entrada y, al volver, te deja en la misma vista para repetir la acción. Al cerrar una sesión o eliminar la cuenta no sale ese aviso, solo «No se pudo cerrar la sesión» o «No se pudo eliminar la cuenta»: en ese caso, sal, vuelve a entrar y repítelo.
 
 ## Límites y avisos

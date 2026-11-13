@@ -29,9 +29,8 @@ Todas las páginas públicas comparten cabecera y pie. En la cabecera: el logoti
 
 De arriba abajo:
 
-- **El titular** «Licitaciones TI: dónde pujar, a qué precio, contra quién», la advertencia «Si vendes obra pública, sanidad o suministros generales, esto no te sirve», los botones «Solicita acceso» y «Cómo funciona», y la nota de fuentes (PLACSP cada cuatro horas, TED y los canales de Galicia y Euskadi).
-- **«Últimos anuncios publicados»**: anuncios reales, con la fecha del más reciente.
-- **La franja de cifras**: «Expedientes publicables ahora mismo», «Comunidades autónomas con índice propio», «Códigos CPV con volumen suficiente» y «Último expediente incorporado». Se leen de la API con hasta una hora de retraso y cuentan solo la parte pública, no toda la contratación. Si la API no responde, la franja no aparece (no se rellena con cifras inventadas).
+- **El titular** «Licitaciones TI: dónde pujar, a qué precio, contra quién», la advertencia «Si vendes obra pública, sanidad o suministros generales, esto no te sirve», los botones «Solicita acceso» y «Cómo funciona», y la nota de fuentes (PLACSP cada cuatro horas, TED y los canales de Galicia y Euskadi). Junto al titular, **«Últimos anuncios publicados»**: cinco anuncios reales, con la fecha del más reciente («El más reciente:») y el enlace «Explorar los anuncios por comunidad autónoma».
+- **La franja de cifras**: «Expedientes publicables ahora mismo», «Comunidades autónomas con índice propio», «Códigos CPV con volumen suficiente» y «Último expediente incorporado». Se leen de la API con hasta una hora de retraso y cuentan solo la parte pública, no toda la contratación. Nunca se rellena con cifras inventadas: si la API falla al regenerar la página, se sigue viendo la última versión buena, y si no hay corpus que citar, la franja no aparece.
 - **«Cómo funciona»**: las tres decisiones (dónde pujar, a qué precio, contra quién) y una captura del Radar. La propia captura avisa de que sus expedientes son datos de demostración.
 - **Secciones explicativas** (qué entra, de dónde sale cada número, qué haces con ello), la **FAQ** y **«Explora los concursos publicados»**.
 - **El cierre**, con el formulario de solicitud de acceso.
@@ -54,30 +53,32 @@ De arriba abajo:
 
 ### Cobertura, Metodología y Seguridad
 
-- **Cobertura** lista las **«Fuentes declaradas»** con su estado: **«Activa»** (se ingiere en cada pasada y su silencio genera una alerta), **«Opcional»** (puede estar apagada porque le falta configuración) o **«Fuera de alcance»**. Cada una dice su alcance, su identificador y tras cuántas horas sin una ingesta correcta se declara atrasada. Debajo, **«Fuera de alcance declarado»**, con la fecha de cada decisión. La lista sale del mismo inventario que vigila la ingesta; si no se pudo leer, la página lo dice en vez de enseñar una lista incompleta. No hay ninguna cuota de mercado: cada fuente cubre un universo distinto y no se suman.
+- **Cobertura** lista las **«Fuentes declaradas»** con su estado: **«Activa»** (se ingiere en cada pasada y su silencio genera una alerta), **«Opcional»** (puede estar apagada porque le falta configuración) o **«Fuera de alcance»**. Cada una dice su alcance, su identificador y tras cuántas horas sin una ingesta correcta se declara atrasada. Debajo, **«Fuera de alcance declarado»**, con la fecha de cada decisión. La lista sale del mismo inventario que vigila la ingesta; si no se pudo leer, la página lo dice en vez de enseñar una lista incompleta. No hay ninguna cuota de mercado: cada fuente cubre un universo distinto y no se suman. Al final, **«Familias observadas»**: los fabricantes y categorías de TI que el producto reconoce.
 - **Metodología** explica el score (de 0 a 100; pesos por defecto 20, 15, 20, 20, 15 y 10 para importe, plazo, competencia, margen, afinidad y señal técnica; bandas Caliente desde 75, Atractiva desde 50, Tibia desde 25 y Descarte por debajo), la referencia de precio (responde «insuficiente» con menos de 30 pares comparables) y el contexto competitivo.
 - **Seguridad** describe los controles de sesión, segundo factor, claves de API y datos. Dice expresamente que no afirma certificaciones (ISO 27001, ENS) ni auditorías externas.
 
 ## Cómo se hace: la web pública
 
-### Comprobar si TenderFlow cubre tus concursos
+### Comprobar si TenderFlow cubre tus concursos (CU-21)
 
 1. Entra en `/licitaciones` y abre tu comunidad, o en `/cpv` y abre el código de lo que vendes.
 2. Recorre el listado y abre una ficha para ver qué datos trae el anuncio.
 3. Si no ves tu sector, mira `/cobertura`: el producto solo recoge contratos con señal de tecnología enterprise, no toda la contratación pública.
 
-### Pedir acceso
+### Pedir acceso (CU-31)
 
 1. Pulsa **«Solicita acceso»** en cualquier página; te lleva al formulario de la portada.
 2. Rellena **«Email de trabajo»** (obligatorio) y, si quieres, **«Empresa»** y **«¿Qué quieres mirar? (opcional)»**.
 3. Marca la casilla de consentimiento (sin ella la solicitud no se guarda) y pulsa **«Enviar solicitud»**.
 4. Verás **«Solicitud recibida»**. Una persona revisa la cola y habilita tu correo o el dominio de tu empresa a mano; la respuesta llega por correo y no hay plazo comprometido.
 
-Si algo falla, la misma página lo explica: «Ese email no parece válido», «Falta aceptar el tratamiento de los datos», «Demasiados envíos desde tu conexión» (espera un minuto) o «No hemos podido registrar la solicitud». En los dos primeros casos lo escrito no se conserva y hay que volver a ponerlo. El formulario funciona aunque el navegador tenga JavaScript desactivado. Qué pasa después (el correo de acceso concedido y la creación de la cuenta) está en [Primeros pasos](01-primeros-pasos.md).
+Si algo falla, la misma página lo explica: «Ese email no parece válido», «Falta aceptar el tratamiento de los datos», «Demasiados envíos desde tu conexión» (espera un minuto) o «No hemos podido registrar la solicitud», con el botón «Volver al formulario». Si el email no era válido, lo demás que escribiste tampoco se guardó y hay que volver a ponerlo. El formulario funciona aunque el navegador tenga JavaScript desactivado. Qué pasa después (el correo de acceso concedido y la creación de la cuenta) está en [Primeros pasos](01-primeros-pasos.md).
 
 ### Compartir una licitación con alguien sin cuenta
 
 Copia la dirección de su ficha pública. La dirección incluye un fragmento del título; si cambia, la referencia sigue llevando a la ficha correcta.
+
+Las páginas públicas (portada, índices, listados y fichas) también se encuentran desde los buscadores: TenderFlow publica para ellos un mapa del sitio y la dirección canónica de cada página, así que quien busque un concurso puede llegar a su ficha pública sin pasar por la portada.
 
 ## Qué ves en pantalla: las integraciones
 
@@ -119,13 +120,13 @@ Al crear la clave, marca «Leer también mis alertas desde un lector de feeds» 
 2. Pulsa **«Crear webhook»** y guarda el secreto del aviso «Guarda este secreto ahora»: solo se ve una vez.
 3. Prueba el receptor con **«Enviar entrega de prueba»**: sale en el formato elegido y con las mismas cabeceras que una entrega real.
 4. Si falla algo, **«Ver entregas»** muestra el historial; en una entrega fallida, **«Reenviar»** la deja en cola para el siguiente ciclo de reintentos.
-5. Para cambiar el secreto, rótalo y confirma con «Sí, rotar». El anterior deja de firmar en el acto: carga el nuevo en el receptor (o desactiva el webhook mientras tanto) y vuelve a probar.
+5. Para cambiar el secreto, pulsa el icono de llave («Rotar el secreto de firma») y confirma con «Sí, rotar». El anterior deja de firmar en el acto: carga el nuevo en el receptor (o desactiva el webhook mientras tanto) y vuelve a probar.
 
 Los pasos de pantalla completos están en [Ajustes](11-ajustes.md). Lo que necesita saber quien recibe las entregas:
 
-- **Qué eventos hay:** cambios en oportunidades (creada, cambio de estado, decisión, asignación, comentario, mención, tarea que vence), cambios en expedientes que la organización sigue (cambio de estado, importe o plazo, documento nuevo, recurso), adjudicaciones de un competidor vigilado en tu terreno, publicaciones y vencimientos en tus cuentas, y la caducidad de la documentación acreditativa.
+- **Qué eventos hay:** cambios en oportunidades (creada, cambio de estado, decisión, asignación, comentario, mención, tarea que vence, fin próximo de un contrato en cartera), cambios en expedientes que la organización sigue (estado, importe, plazo y otros datos; documento nuevo; recurso), coincidencias de reglas de seguimiento, adjudicaciones detectadas, renovaciones en ventana, recordatorios de plazo, ficha del pliego extraída, adjudicaciones de un competidor vigilado en tu terreno, publicaciones y vencimientos en tus cuentas, y la caducidad de la documentación acreditativa. La lista vigente la da la propia API (`/api/v1/webhooks/event-types`).
 - **Firma:** cada entrega lleva `X-Webhook-Signature` (HMAC-SHA256 del cuerpo con el secreto) y `X-Webhook-Signature-V2` con `X-Webhook-Timestamp` (firma sobre el sello y el cuerpo, que permite rechazar repeticiones). `X-Webhook-Event` dice el tipo y `X-Webhook-Delivery` identifica la entrega para deduplicar. Slack y Teams no comprueban la firma; sirve para un receptor propio.
-- **Plazos y reintentos:** el receptor tiene cinco segundos para responder con un `2xx`. Una entrega fallida se reintenta con espera creciente, hasta seis intentos, con el mismo cuerpo y las mismas cabeceras. Si se agotan los reintentos, el webhook se desactiva. Los eventos con más de 48 horas no se entregan.
+- **Plazos y reintentos:** el receptor tiene cinco segundos para responder con un `2xx`. Una entrega fallida se reintenta, hasta seis intentos en total, con el mismo cuerpo y las mismas cabeceras; los reintentos salen en las pasadas siguientes (cada cuatro horas), así que cubren un receptor caído durante horas, no unos segundos. Una entrega que agota sus intentos cuenta como un fallo del webhook, y tras diez entregas fallidas seguidas el webhook se desactiva (una entrega correcta pone la cuenta a cero). Los eventos con más de 48 horas no se entregan.
 - **Cuándo salen:** la mayoría en la pasada siguiente (cada cuatro horas); una asignación sale en segundos.
 
 ### Exportar el ámbito a CSV (CU-16)
@@ -141,7 +142,7 @@ Mercado, Competencia, Investigador y Oportunidades («Exportar a CRM») tienen e
 | Correo | Cuándo llega | Dónde se controla |
 | --- | --- | --- |
 | Activación de cuenta, recuperación de contraseña, invitación a una organización, acceso concedido | Al hacer la acción | No se configuran. |
-| Alertas de tus reglas | Según la frecuencia de cada regla | [Mi Watchlist](06-agenda-y-watchlist.md); el enlace de baja del correo pausa tus reglas. |
+| Alertas de tus reglas | Según la frecuencia de cada regla | [Mi Watchlist](06-agenda-y-watchlist.md) y [Ajustes › Notificaciones](11-ajustes.md); el enlace de baja del correo pausa todas tus reglas. |
 | Avisos de tareas que vencen, menciones, fin de contratos de cartera y documentos que caducan | «Al momento» o en el resumen diario | [Ajustes › Notificaciones](11-ajustes.md) |
 | Aviso de cambio de contraseña | Al cambiarla | No se configura. |
 | Informe semanal de pipeline, con PDF adjunto | El día y la hora que fije la organización | Equipo › Organización (ver [Equipo y Dirección](12-equipo-y-direccion.md)); cada persona se da de baja con el enlace del correo o en Ajustes. |
@@ -149,7 +150,7 @@ Mercado, Competencia, Investigador y Oportunidades («Exportar a CRM») tienen e
 Sobre el informe semanal:
 
 - Nace desactivado y solo lo programan el propietario o los administradores.
-- Sin lista propia, va a los propietarios y administradores de la organización.
+- Sin lista propia, va a los propietarios y administradores de la organización. En «Destinatarios» se puede poner una lista que la sustituye y que admite correos que no son cuentas de TenderFlow (por ejemplo, una lista de distribución); esos correos externos no tienen enlace de baja: se dan de baja quitándolos de la lista.
 - Sale en la primera pasada posterior a la hora elegida (cada cuatro horas), no en punto.
 - Si esa semana no hay oportunidades abiertas, ni cierres, ni plazos próximos, no se envía.
 - No lleva imágenes ni mide aperturas ni clics.
@@ -168,7 +169,7 @@ El texto de los pliegos lo escriben terceros: las respuestas que lo traen lo mar
 
 - **Web pública:** cualquiera, sin cuenta.
 - **Claves de API y feed:** cualquier usuario con cuenta, para sí mismo. Una clave no da más permisos que la cuenta que la crea, y crearla, rotarla o revocarla pide haber entrado hace poco.
-- **Webhooks del equipo:** solo el propietario y los administradores de la organización activa. Un miembro o un lector no los ve, porque la URL de destino funciona como una contraseña. Otra organización no puede verlos, rotarlos ni reenviar sus entregas. Si quien creó un webhook sale de la organización, el webhook queda inactivo hasta que un propietario o administrador lo reactive. Gestionarlos por API con clave exige un permiso de administración de la plataforma: desde una cuenta de organización se gestionan en la consola.
+- **Webhooks del equipo:** solo el propietario y los administradores de la organización activa. Un miembro o un lector no los ve, porque la URL de destino funciona como una contraseña. Otra organización no puede verlos, rotarlos ni reenviar sus entregas. Si quien creó un webhook sale de la organización o se le retira el acceso, el webhook queda inactivo hasta que un propietario o administrador lo reactive. Gestionarlos por API con clave exige un permiso de administración de la plataforma: desde una cuenta de organización se gestionan en la consola.
 - **Informe semanal:** lo programan propietario y administradores.
 - **Servidor MCP:** solo administradores de la plataforma autorizados.
 
@@ -193,4 +194,4 @@ El texto de los pliegos lo escriben terceros: las respuestas que lo traen lo mar
 - [Agenda y Watchlist](06-agenda-y-watchlist.md): reglas de alerta, su frecuencia, la baja desde el correo y el calendario `.ics`.
 - [Ajustes](11-ajustes.md): crear, rotar y revocar claves, el feed de alertas, las preferencias de aviso y los pasos de pantalla de los webhooks.
 - [Equipo y Dirección](12-equipo-y-direccion.md): la pestaña Integraciones, los roles y el informe semanal.
-- [Glosario](15-glosario.md): CPV, clave de API, webhook, HMAC, ámbito.
+- [Glosario](15-glosario.md): CPV, CCAA, ámbito, regla de watchlist.

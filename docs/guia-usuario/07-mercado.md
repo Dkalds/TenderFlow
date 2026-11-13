@@ -137,7 +137,7 @@ Contratos adjudicados, **de cualquier adjudicatario**, que vencen dentro de la v
 
 1. En Órganos, busca el órgano en «Buscar órgano o CCAA…» o localízalo en el mapa o el ranking. También llegas desde la ficha de una licitación, pulsando su órgano.
 2. Púlsalo para abrir su perfil (si llegas desde la ficha, la búsqueda ya viene escrita con su nombre y el perfil abierto es el del primero que encaja con ella).
-3. Para trabajarlo como cliente, pulsa el icono de seguir junto al nombre («Seguir el órgano …»): crea (o completa) la cuenta en [Cuentas](08-cuentas.md). El mismo icono sirve para dejar de seguirlo.
+3. Para trabajarlo como cliente, pulsa el icono de seguir (una campana) junto al nombre («Seguir el órgano …»): crea (o completa) la cuenta en [Cuentas](08-cuentas.md). El mismo icono sirve para dejar de seguirlo.
 4. Cierra el perfil con la X.
 
 ### Anticipar una renovación
