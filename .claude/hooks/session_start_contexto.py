@@ -193,6 +193,14 @@ def entorno(principal: pathlib.Path | None) -> list[str]:
             "arranca en `prod` y aborta pidiendo `SIGNING_KEY`. Prefijá `ENV=dev` (lo que usa "
             "CI) en tests y scripts."
         )
+    if os.environ.get("DATABASE_URL") or os.environ.get("ENV") == "prod":
+        lineas.append(
+            "El entorno de la sesión exporta configuración de la app (`DATABASE_URL` o "
+            "`ENV=prod`, y con ellas suele venir el resto: Redis, LLM, plano del scheduler), "
+            "que gana sobre `.env`: la suite falla por ella y un script apuntaría a esa base. "
+            'Lanzá tests y scripts con el entorno limpio: `env -i PATH="$PATH" HOME="$HOME" '
+            "ENV=dev <comando>`."
+        )
     if (ROOT / "web/package.json").is_file() and not (ROOT / "web/node_modules").is_dir():
         lineas.append(
             "Frontend: falta `web/node_modules`; `npm ci` en `web/` antes de lint o tests."
@@ -292,6 +300,30 @@ def trabajo_en_curso() -> list[str]:
     return lineas
 
 
+def master_al_dia() -> bool:
+    """Trae `origin/master`. ``False`` si hay ese remoto y no se pudo actualizar.
+
+    El clon de una sesión remota lo trae de cuando se creó la imagen: contra
+    esa referencia, `revisor` y el aviso de revisión visual ven como propios
+    los commits que ya están en master.
+    """
+    if not run(["git", "remote", "get-url", "origin"], 5):
+        return True  # sin remoto no hay nada que traer ni que avisar
+    try:
+        proc = subprocess.run(
+            ["git", "fetch", "--quiet", "origin", "master"],  # noqa: S607 - git del PATH, como el resto de hooks
+            cwd=ROOT,
+            capture_output=True,
+            timeout=10,
+            check=False,
+            # Sin esto, un clon HTTPS sin credencial la pide por la terminal.
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode == 0
+
+
 def emit(message: str) -> None:
     """Devuelve contexto al agente por el protocolo de hooks."""
     print(
@@ -316,6 +348,11 @@ def main() -> None:
     principal = checkout_principal()
     bloques: list[str] = []
     lineas = entorno(principal)
+    if not master_al_dia():
+        lineas.append(
+            "No se pudo traer `origin/master` (sin red o sin credenciales): puede ir atrasado, "
+            "y entonces `origin/master...HEAD` cuenta como tuyos commits que ya están en master."
+        )
     grafo = sembrar_grafo(principal)
     if grafo:
         lineas.append(grafo)

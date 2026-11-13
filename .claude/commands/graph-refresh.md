@@ -6,7 +6,7 @@ Re-extrae el código y actualiza `graphify-out/graph.json`. Esto es AST-only (gr
 
 Pasos:
 
-0. Verifica que el CLI existe: `which graphify`. Si no está instalado (CI/sesión remota — es herramienta local del mantenedor, no está en PyPI/npm), reportá eso y pará: no intentes instalarlo ni regenerar el grafo de otra forma.
+0. Verifica que el CLI existe: `which graphify`. Si no está instalado (CI o sesión remota: es una herramienta local y opcional, AGENTS.md §1), reportá eso y pará: no intentes instalarlo ni regenerar el grafo de otra forma.
 1. Captura mtime actual de `graphify-out/graph.json` (si existe).
 2. Ejecuta: `graphify update .`
 3. Si hubo refactor grande (renames, eliminación de módulos), reintenta con: `graphify update . --force`

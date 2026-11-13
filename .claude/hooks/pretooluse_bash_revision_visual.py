@@ -15,7 +15,16 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
-_ENTREGA = re.compile(r"\bgit\s+commit\b|\bgh\s+pr\s+create\b")
+# Solo cuando un comando de la línea empieza por la entrega (tras un separador,
+# `env …` o asignaciones): citada en un mensaje de commit es texto. Una línea de
+# heredoc que empiece por ella sigue casando; da un aviso de más, no uno de menos.
+_ENTREGA = re.compile(
+    r"(?:^|[;|&(]|\b(?:then|else|do|time)\b)\s*"
+    r"(?:env\b(?:\s+-u\s+\S+|\s+-\S+)*\s+)?"
+    r"""(?:\w+=(?:"[^"]*"|'[^']*'|\S+)\s+)*"""
+    r"(?:git\s+commit|gh\s+pr\s+create)\b",
+    re.MULTILINE,
+)
 
 AVISO = (
     "Este cambio toca web/src/ ({ficheros}). La revisión visual de `impeccable` "

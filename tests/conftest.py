@@ -18,7 +18,8 @@ from fastapi.testclient import TestClient
 # Evita anotar manualmente los tests. Reglas, en orden:
 #   - módulo test_*property* / palabra `performance` o `load`  → property/load
 #   - test_*e2e* / test_visual_regression / test_dashboard_smoke → e2e
-#   - test_integration_*, test_*_integration   → integration
+#   - ruta con /integration/ o función con `integration_` en el nombre → integration
+#     (el nombre del módulo no cuenta: `test_x_integration.py` lo es por fixture)
 #   - cierre de fixtures incluye tmp_db/api_db → integration (BD real)
 #   - todo lo demás                            → unit (sin I/O externo, ahora
 #                                                de verdad: un test que abre

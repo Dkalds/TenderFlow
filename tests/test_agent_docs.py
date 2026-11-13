@@ -233,15 +233,15 @@ class AgentDocsCheckerTests(unittest.TestCase):
             ],
         )
 
-    def test_hook_parity_rejects_divergent_adapters(self) -> None:
+    def test_una_copia_del_hook_en_codex_se_rechaza(self) -> None:
         _write(self.root / ".claude/hooks/demo.py", "print('claude')\n")
-        _write(self.root / ".codex/hooks/demo.py", "print('codex')\n")
+        _write(self.root / ".codex/hooks/demo.py", "print('claude')\n")
 
         check_agent_docs.check_hook_parity()
 
         self.assertEqual(
             check_agent_docs.errors,
-            ["hooks: el hook `demo.py` diverge entre .claude/hooks y .codex/hooks"],
+            ["hooks: `.codex/hooks/demo.py` es una copia: el hook vive en .claude/hooks/"],
         )
 
     def test_opencode_plugins_reject_missing_file(self) -> None:
@@ -463,6 +463,45 @@ class AgentHookTests(unittest.TestCase):
         context = payload["hookSpecificOutput"]["additionalContext"]
         self.assertIn("graphify query", context)
 
+    def _arrancar_postgres(self, apt: list[int | type[BaseException]]) -> tuple[str, list[str]]:
+        """Lanza `session_start_pg.py` con un apt que responde, por orden, lo de `apt`."""
+        hook = self._copy_hook("session_start_pg.py")
+        respuestas = iter(apt)
+        lanzados: list[str] = []
+
+        def run(cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+            if cmd[0] != "apt-get":
+                return subprocess.CompletedProcess(cmd, 0, stdout="1", stderr="")
+            lanzados.append(cmd[1])
+            respuesta = next(respuestas)
+            if not isinstance(respuesta, int):
+                raise respuesta(cmd, 300)
+            return subprocess.CompletedProcess(cmd, respuesta, stdout="", stderr="")
+
+        salida = StringIO()
+        with (
+            patch("subprocess.run", run),
+            patch("shutil.which", return_value="/usr/bin/x"),
+            patch("pathlib.Path.exists", return_value=False),
+            redirect_stdout(salida),
+        ):
+            runpy.run_path(str(hook), run_name="__main__")
+        contexto = json.loads(salida.getvalue())["hookSpecificOutput"]["additionalContext"]
+        return str(contexto), lanzados
+
+    def test_pgvector_se_instala_tras_actualizar_los_indices_de_apt(self) -> None:
+        # Imagen remota del 2026-11-12: «Unable to locate package» hasta el update.
+        contexto, lanzados = self._arrancar_postgres([100, 0, 0])
+
+        self.assertEqual(lanzados, ["install", "update", "install"])
+        self.assertNotIn("no se pudo instalar", contexto)
+
+    def test_un_apt_colgado_no_deja_la_sesion_sin_la_url_de_tests(self) -> None:
+        contexto, _ = self._arrancar_postgres([100, subprocess.TimeoutExpired])
+
+        self.assertIn("no se pudo instalar postgresql-16-pgvector", contexto)
+        self.assertIn("TEST_DATABASE_URL=", (self.root / ".env").read_text(encoding="utf-8"))
+
     def _otro_checkout(self) -> Path:
         """Un segundo checkout, como el worktree desde el que trabaja la sesión."""
         otro = self.root / "worktrees/otro"
@@ -540,8 +579,19 @@ class SessionStartContextoTests(unittest.TestCase):
         self.prs: list[dict[str, object]] = []
         self.ramas = ""
         self.cli_graphify: str | None = None
+        self.entorno: dict[str, str] = {}
+        self.comandos: list[list[str]] = []
+        self.codigo_fetch: int | None = 0  # None: el fetch se cuelga
+        self.hay_remoto = True
 
     def _fake_run(self, cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        self.comandos.append(cmd)
+        if "fetch" in cmd:
+            if self.codigo_fetch is None:
+                raise subprocess.TimeoutExpired(cmd, 10)
+            return subprocess.CompletedProcess(cmd, self.codigo_fetch, stdout="", stderr="")
+        if cmd[:2] == ["git", "remote"] and not self.hay_remoto:
+            return subprocess.CompletedProcess(cmd, 2, stdout="", stderr="")
         if "--git-common-dir" in cmd:
             salida = str(self.principal / ".git")
         elif cmd[:3] == ["gh", "pr", "list"]:
@@ -569,6 +619,8 @@ class SessionStartContextoTests(unittest.TestCase):
         ):
             # La suite corre con `ENV=dev` en el entorno; el hook lo vería y callaría.
             os.environ.pop("ENV", None)
+            os.environ.pop("DATABASE_URL", None)  # CI la exporta en algunos jobs
+            os.environ.update(self.entorno)
             runpy.run_path(str(hook), run_name="__main__")
         if not output.getvalue():
             return ""
@@ -595,6 +647,38 @@ class SessionStartContextoTests(unittest.TestCase):
         # Sesión remota: `pip install` contra el Python del sistema, que es el
         # que lanza el hook (y esta suite: fastapi y pytest están).
         self.assertNotIn("Python:", self._contexto())
+
+    def test_trae_origin_master_antes_de_comparar_ramas(self) -> None:
+        # En el clon de una sesión remota `origin/master` iba 8 commits por
+        # detrás y el aviso de revisión visual saltaba sin tocar `web/src/`.
+        contexto = self._contexto()
+
+        self.assertIn(["git", "fetch", "--quiet", "origin", "master"], self.comandos)
+        self.assertNotIn("origin/master", contexto)
+
+    def test_si_no_puede_traer_origin_master_lo_dice(self) -> None:
+        for codigo in (128, None):
+            with self.subTest(codigo=codigo):
+                self.codigo_fetch = codigo
+
+                self.assertIn("No se pudo traer `origin/master`", self._contexto())
+
+    def test_sin_remoto_origin_ni_trae_ni_avisa(self) -> None:
+        self.hay_remoto = False
+
+        contexto = self._contexto()
+
+        self.assertNotIn("origin/master", contexto)
+        self.assertFalse([cmd for cmd in self.comandos if "fetch" in cmd])
+
+    def test_una_database_url_heredada_del_entorno_se_avisa(self) -> None:
+        # Sesión remota cuyo entorno exporta la configuración de producción: gana
+        # sobre `.env` y la suite unitaria daba 97 fallos por ella (2026-11-12).
+        _write(self.worktree / ".venv/bin/python", "")
+        (self.worktree / "web/node_modules").mkdir()
+        self.entorno = {"ENV": "prod", "DATABASE_URL": "postgresql://otra-maquina/x"}
+
+        self.assertIn("env -i ", self._contexto())
 
     def test_un_checkout_completo_no_anade_ruido(self) -> None:
         _write(self.worktree / ".venv/bin/python", "")

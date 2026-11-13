@@ -95,8 +95,19 @@ def ensure_extensions(notes: list[str]) -> None:
     """
     share = pathlib.Path("/usr/share/postgresql/16/extension/vector.control")
     if not share.exists() and shutil.which("apt-get") is not None:
-        installed = run(["apt-get", "install", "-y", "postgresql-16-pgvector"])
-        if installed.returncode != 0:
+        instalar = ["apt-get", "install", "-y", "postgresql-16-pgvector"]
+        try:
+            instalado = run(instalar).returncode == 0
+            if not instalado:
+                # Una imagen recién arrancada trae los índices de apt vacíos y el
+                # paquete «no existe» hasta el primer update (visto el 2026-11-12).
+                run(["apt-get", "update"])
+                instalado = run(instalar).returncode == 0
+        except subprocess.SubprocessError:
+            # apt colgado contra un mirror: se sigue sin la extensión, pero con
+            # el resto del arranque (pg_trgm y TEST_DATABASE_URL en `.env`).
+            instalado = False
+        if not instalado:
             notes.append(
                 "no se pudo instalar postgresql-16-pgvector (¿sin red?): "
                 "la migración v56 fallará y con ella la suite"

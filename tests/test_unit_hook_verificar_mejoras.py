@@ -63,9 +63,3 @@ def test_una_entrada_rara_no_rompe_el_turno(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], entrada: str
 ) -> None:
     assert _lanzar(monkeypatch, capsys, entrada) == ""
-
-
-def test_la_copia_de_codex_es_la_misma() -> None:
-    claude = (RAIZ / ".claude/hooks" / HOOK).read_bytes().replace(b"\r\n", b"\n")
-    codex = (RAIZ / ".codex/hooks" / HOOK).read_bytes().replace(b"\r\n", b"\n")
-    assert claude == codex

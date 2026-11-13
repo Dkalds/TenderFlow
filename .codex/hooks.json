@@ -5,11 +5,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/session_start_pg.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/session_start_pg.py\"; fi"
+            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.claude/hooks/session_start_pg.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.claude/hooks/session_start_pg.py\"; fi"
           },
           {
             "type": "command",
-            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/session_start_contexto.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/session_start_contexto.py\"; fi"
+            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.claude/hooks/session_start_contexto.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.claude/hooks/session_start_contexto.py\"; fi"
           }
         ]
       }
@@ -20,11 +20,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_bash_grep_hint.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_bash_grep_hint.py\"; fi"
+            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.claude/hooks/pretooluse_bash_grep_hint.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.claude/hooks/pretooluse_bash_grep_hint.py\"; fi"
           },
           {
             "type": "command",
-            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_bash_revision_visual.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_bash_revision_visual.py\"; fi"
+            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.claude/hooks/pretooluse_bash_revision_visual.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.claude/hooks/pretooluse_bash_revision_visual.py\"; fi"
           }
         ]
       },
@@ -33,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_edit_stale.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/pretooluse_edit_stale.py\"; fi"
+            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.claude/hooks/pretooluse_edit_stale.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.claude/hooks/pretooluse_edit_stale.py\"; fi"
           }
         ]
       }
@@ -64,7 +64,7 @@
           },
           {
             "type": "command",
-            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/stop_graph_refresh.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/stop_graph_refresh.py\"; fi",
+            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.claude/hooks/stop_graph_refresh.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.claude/hooks/stop_graph_refresh.py\"; fi",
             "timeout": 10
           }
         ]
@@ -75,7 +75,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/userprompt_verificar_mejoras.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.codex/hooks/userprompt_verificar_mejoras.py\"; fi",
+            "command": "if command -v python >/dev/null 2>&1; then python \"${CODEX_PROJECT_DIR:-.}/.claude/hooks/userprompt_verificar_mejoras.py\"; else python3 \"${CODEX_PROJECT_DIR:-.}/.claude/hooks/userprompt_verificar_mejoras.py\"; fi",
             "timeout": 10
           }
         ]

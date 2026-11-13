@@ -1,3 +1,11 @@
+"""PreToolUse(Edit|Write|MultiEdit): marca el grafo de graphify como viejo al editar un `.py`.
+
+Deja `graphify-out/.graph_stale` en el checkout de la sesión; `stop_graph_refresh.py`
+lo ve al acabar el turno y rehace el grafo. Sin `graphify-out/`, o si el fichero
+es de un árbol que no es código del repo (cachés, `.venv`, `node_modules`), no
+hace nada. Nunca bloquea.
+"""
+
 import json
 import pathlib
 import sys

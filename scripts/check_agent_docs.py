@@ -24,7 +24,8 @@ herramienta (`.claude/`, `.agents/`, `.codex/`, `.opencode/`):
    instrucciones (GitHub no los renderiza; van como links markdown relativos),
    ni anidados dentro de links markdown. El frontmatter sí los admite: dentro
    de una propiedad es el único formato que Obsidian reconoce como link.
-9. Los hooks Claude/Codex son equivalentes y los plugins OpenCode existen.
+9. Codex lanza los hooks de `.claude/hooks/` (no hay copia en `.codex/hooks/`)
+   y los plugins OpenCode existen.
 10. No se introducen markers pytest manuales de categoría —ni como decorador
     ni vía `pytestmark`— fuera de las excepciones históricas congeladas.
 
@@ -459,16 +460,9 @@ def check_hooks_and_absolute_paths() -> None:
 
 
 def check_hook_parity() -> None:
-    claude_files = {path.name: path for path in (ROOT / ".claude/hooks").glob("*.py")}
-    codex_files = {path.name: path for path in (ROOT / ".codex/hooks").glob("*.py")}
-    for name in sorted(claude_files.keys() | codex_files.keys()):
-        if name not in claude_files or name not in codex_files:
-            fail("hooks", f"el hook `{name}` no existe en ambos adaptadores Claude/Codex")
-            continue
-        # Normalizado por el mismo motivo que `tree_hashes`: en Windows estos
-        # tres ficheros salían como divergentes siendo el mismo blob en git.
-        if contenido_normalizado(claude_files[name]) != contenido_normalizado(codex_files[name]):
-            fail("hooks", f"el hook `{name}` diverge entre .claude/hooks y .codex/hooks")
+    """Un solo árbol de hooks: `.codex/hooks.json` apunta a `.claude/hooks/`."""
+    for copia in sorted((ROOT / ".codex/hooks").glob("*.py")):
+        fail("hooks", f"`.codex/hooks/{copia.name}` es una copia: el hook vive en .claude/hooks/")
 
 
 def check_opencode_plugins() -> None:
