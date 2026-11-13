@@ -49,7 +49,10 @@ En un worktree, Claude Code lanza los hooks desde el checkout principal: un camb
 —cluster local, rol, base, `pg_trgm`/`vector`— y deja `TEST_DATABASE_URL` en
 `.env`, de donde `tests/conftest.py` la lee. Con eso **la suite sí se ejecuta**:
 `make test-unit` y `make check` son válidos en remoto. Las dependencias Python
-del proyecto no vienen preinstaladas: en un `.venv` (el `pip` del sistema no
+del proyecto no vienen en la imagen. El entorno cloud «Tenderflow» las instala
+con su setup script (se edita en los ajustes del entorno, no en el repo); si al
+arrancar no hay `.venv`, el hook de contexto lo dice y se hace a mano: en un
+`.venv` (el `pip` del sistema no
 puede reemplazar paquetes que instaló Debian), `pip install -r
 requirements-dev.txt` —trae también los paquetes de producción:
 `requirements-dev.in` empieza con `-r requirements.in`— y `pip install -e ".[pliegos]"` (este último lo exigen los
