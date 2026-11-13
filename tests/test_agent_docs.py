@@ -468,11 +468,15 @@ class AgentHookTests(unittest.TestCase):
         hook = self._copy_hook("session_start_pg.py")
         respuestas = iter(apt)
         lanzados: list[str] = []
+        self.plazos_apt: list[float] = []
 
-        def run(cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        def run(
+            cmd: list[str], timeout: float = 0, **_: object
+        ) -> subprocess.CompletedProcess[str]:
             if cmd[0] != "apt-get":
                 return subprocess.CompletedProcess(cmd, 0, stdout="1", stderr="")
             lanzados.append(cmd[1])
+            self.plazos_apt.append(timeout)
             respuesta = next(respuestas)
             if not isinstance(respuesta, int):
                 raise respuesta(cmd, 300)
@@ -495,6 +499,9 @@ class AgentHookTests(unittest.TestCase):
 
         self.assertEqual(lanzados, ["install", "update", "install"])
         self.assertNotIn("no se pudo instalar", contexto)
+        # Claude Code cancela a los 600 s un hook sin `timeout` y descarta su
+        # salida: el peor caso de apt tiene que caber con margen para el resto.
+        self.assertLess(sum(self.plazos_apt), 450)
 
     def test_un_apt_colgado_no_deja_la_sesion_sin_la_url_de_tests(self) -> None:
         contexto, _ = self._arrancar_postgres([100, subprocess.TimeoutExpired])
