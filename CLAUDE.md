@@ -26,6 +26,7 @@ según la ruta que se edita:
 | `tests/**` | `python-testing-patterns` (sin SQLite ni markers manuales: AGENTS.md §3.4) |
 
 - **Las filas se suman**: un `.py` de `db/repositories/` exige `ponytail` y `supabase-postgres-best-practices`. El hook `pretooluse_edit_skills.py` bloquea la edición si falta alguno (ver **Hooks**).
+- **Código con Edit o Write**: el hook solo ve esas dos herramientas. Reescribir un `.py`, `.ts` o `.tsx` desde Bash (un heredoc, `sed -i`, un script) se salta el control de skills: no se hace con código del repo.
 - **Cargarlo, no recordarlo**: seguir sus reglas a mano no sustituye cargarlo. Un cambio que encaja con un skill que no se cargó no está terminado, aunque los controles de §4 estén en verde.
 - **`ponytail`** se invoca con el argumento lite (sin él arranca en full y queda así toda la sesión): la escalera de AGENTS.md §0 antes de escribir, y una línea final con lo que se dejó fuera (§0 dice qué no exime).
 - **`impeccable`** lee `PRODUCT.md` y `DESIGN.md`. Su hook no es su revisión: la revisión visual (pantallas renderizadas, o la vista previa de Vercel del PR) es parte de todo cambio en `web/src/`. Si en `web/` chocan, `ponytail` decide el alcance (qué se construye) e `impeccable` y los skills de diseño deciden el acabado de lo que sí se construye: recortar accesibilidad, estados vacíos o de error no es «ser lazy», es dejar la pantalla a medias.

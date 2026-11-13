@@ -4,12 +4,34 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import socket
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from db import webhooks as wh_mod
 from db.repositories.webhooks import WebhookRepository
 
 # ── helpers ──────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _dns_de_example_com(monkeypatch):
+    """`example.com` resuelve a una dirección pública sin preguntar a un DNS.
+
+    Lo que se prueba es la entrega a un destino público, no que ese nombre
+    exista hoy: con el DNS real, tres tests fallaban donde no hay salida a la
+    red (sesiones remotas de agente). El resto de nombres sigue yendo al
+    resolutor real, para que los casos de IP privada y de rebinding no cambien.
+    """
+    real = socket.getaddrinfo
+
+    def getaddrinfo(host, *args, **kwargs):
+        if host == "example.com":
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+        return real(host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
 
 
 def _create_sample(db_mod) -> tuple[int, str]:

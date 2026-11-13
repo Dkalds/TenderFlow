@@ -72,8 +72,10 @@ def test_feedback_without_idempotency_key_allows_duplicates(app_and_client, api_
     # stored_at puede coincidir si son muy rápidos, pero no debe crashear
 
 
-def test_webhook_create_idempotency(app_and_client, api_key):
+def test_webhook_create_idempotency(app_and_client, api_key, monkeypatch):
     """POST /webhooks con Idempotency-Key no debe crear webhook duplicado."""
+    # La validación SSRF resuelve el host: sin salida a la red daba 422.
+    monkeypatch.setattr("api.routes.webhooks.validate_outbound_url", lambda url, **_: url)
     _, client = app_and_client
     headers = {"X-API-Key": api_key, "Idempotency-Key": "test-idem-wh-001"}
     body = {"name": "my-hook", "url": "https://example.com/hook", "event_types": ["*"]}

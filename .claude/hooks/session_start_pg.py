@@ -41,9 +41,17 @@ TEST_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@localhost:5432/{DB_NAME}"
 REQUIRED_EXTENSIONS = ("pg_trgm", "vector")
 
 
-def run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+def run(cmd: list[str], timeout: float = 300, **kwargs: object) -> subprocess.CompletedProcess[str]:
     """Ejecuta *cmd* capturando salida, sin lanzar en caso de error."""
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=300, check=False, **kwargs)
+    return subprocess.run(
+        cmd, capture_output=True, text=True, timeout=timeout, check=False, **kwargs
+    )
+
+
+# Claude Code cancela un hook `command` sin `timeout` a los 600 s y descarta su
+# salida. Tres llamadas a apt con este plazo caben de sobra, y el hook llega a
+# escribir `TEST_DATABASE_URL` aunque un mirror no conteste.
+PLAZO_APT_S = 120
 
 
 def psql_as_superuser(sql: str) -> subprocess.CompletedProcess[str]:
@@ -97,12 +105,12 @@ def ensure_extensions(notes: list[str]) -> None:
     if not share.exists() and shutil.which("apt-get") is not None:
         instalar = ["apt-get", "install", "-y", "postgresql-16-pgvector"]
         try:
-            instalado = run(instalar).returncode == 0
+            instalado = run(instalar, PLAZO_APT_S).returncode == 0
             if not instalado:
                 # Una imagen recién arrancada trae los índices de apt vacíos y el
                 # paquete «no existe» hasta el primer update (visto el 2026-11-12).
-                run(["apt-get", "update"])
-                instalado = run(instalar).returncode == 0
+                run(["apt-get", "update"], PLAZO_APT_S)
+                instalado = run(instalar, PLAZO_APT_S).returncode == 0
         except subprocess.SubprocessError:
             # apt colgado contra un mirror: se sigue sin la extensión, pero con
             # el resto del arranque (pg_trgm y TEST_DATABASE_URL en `.env`).

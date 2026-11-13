@@ -59,6 +59,7 @@ Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Esta
 - `COMPETITORS_IDENTITY_SQL` en Render — [Migrar la resolución de identidad de `competitors.py` a SQL (union-find + unaccent)](#p3-migrar-la-resolución-de-identidad-de-competitorspy-a-sql-union-find--unaccent)
 - Variable de repo `PLIEGO_FACTS_ENABLED` (coste LLM) — [Poner en producción la rama `claude/funcionalidades-2026-10` (acción del propietario)](#p1-poner-en-producción-la-rama-claudefuncionalidades-2026-10-acción-del-propietario)
 - Topes de la memoria de la organización (`MEMORIA_ORG_MAX_DOCUMENTOS`, `MEMORIA_ORG_MAX_BYTES_POR_DOCUMENTO`) y cuota de adjuntos (`PURSUIT_ATTACHMENT_MAX_BYTES_POR_ORGANIZACION`) en Render — [Memoria de la organización: ponerla en producción, decidir sus topes y medir sus citas](#p2-memoria-de-la-organización-ponerla-en-producción-decidir-sus-topes-y-medir-sus-citas)
+- Quitar la configuración de producción del entorno cloud «Tenderflow» de Claude Code (o abrir las sesiones de código en «TEST») — [Harness de agentes: entorno cloud sin producción, allow-list y Codex (acción del propietario)](#p3-harness-de-agentes-entorno-cloud-sin-producción-allow-list-y-codex-acción-del-propietario)
 - Antes de activar Microsoft: `OAUTH_MICROSOFT_CLIENT_ID` y claims en Entra — [Antes de activar Microsoft en producción: dos comprobaciones del propietario](#p2-antes-de-activar-microsoft-en-producción-dos-comprobaciones-del-propietario)
 
 **Ejecutar en producción**
@@ -97,6 +98,7 @@ Lo que el código ya no puede adelantar: cada línea enlaza al ítem cuyo **Esta
 - OK a dependencias y a pasos de `ci.yml` (SQLAlchemy, bundle, rendimiento) — [SQLAlchemy se usa en producción y no está declarada como dependencia directa](#p3-sqlalchemy-se-usa-en-producción-y-no-está-declarada-como-dependencia-directa), [El marco común del dashboard pesa ~850 KB y el paso de CI del analizador de bundle no produce nada](#p3-el-marco-común-del-dashboard-pesa-850-kb-y-el-paso-de-ci-del-analizador-de-bundle-no-produce-nada), [Flecos de la rama de rendimiento](#p3-rendimiento-2026-09-flecos-de-la-rama-de-rendimiento)
 - Cuántos documentos propios puede citar cada organización, y si el registro de tratamientos lo recoge — [Memoria de la organización: ponerla en producción, decidir sus topes y medir sus citas](#p2-memoria-de-la-organización-ponerla-en-producción-decidir-sus-topes-y-medir-sus-citas)
 - Fase 2 del RFC de funcionalidades, cuota de adjuntos y `FAMILIA_DE_FABRICANTE` — [Flecos de la rama `claude/funcionalidades-2026-10`](#p3-flecos-de-la-rama-claudefuncionalidades-2026-10)
+- Ampliar `permissions.allow` de `.claude/settings.json` y probar los hooks en una sesión de Codex — [Harness de agentes: entorno cloud sin producción, allow-list y Codex (acción del propietario)](#p3-harness-de-agentes-entorno-cloud-sin-producción-allow-list-y-codex-acción-del-propietario)
 - Borrar o reclasificar los ~900 eventos de «prórroga» que eran un dato nuevo — [`contrato_eventos` llama «prórroga» a un campo que pasa de vacío a tener valor](#p2-contrato_eventos-llama-prórroga-a-un-campo-que-pasa-de-vacío-a-tener-valor)
 - Avisos fantasma de Dependabot — [Descartar los avisos fantasma de Dependabot (manifest `uv.lock` inexistente)](#p3-descartar-los-avisos-fantasma-de-dependabot-manifest-uvlock-inexistente)
 
@@ -1130,6 +1132,17 @@ _Sin ítems abiertos._
 - **Acceptance criteria:** las cuatro rutas en su `objetivo` de `web/bundle-budget.json`; el paso de CI cambiado a `next analyze --output` (editar `ci.yml` pide OK, AGENTS.md §6).
 - **Files de partida:** [web/bundle-budget.json](../web/bundle-budget.json), [web/src/__tests__/first-load-diferido.test.ts](../web/src/__tests__/first-load-diferido.test.ts), [scripts/check_bundle_budget.py](../scripts/check_bundle_budget.py)
 - **Riesgo:** bajo.
+
+### [P3] Harness de agentes: entorno cloud sin producción, allow-list y Codex (acción del propietario)
+- **Estado actual (2026-11-13):** `propietario` — El código está (PR #728 y el que añade este ítem): el hook de arranque avisa del entorno heredado y da el comando con entorno limpio. Quedan tres acciones que el agente no puede hacer: (1) quitar del entorno cloud «Tenderflow» las variables de producción, o abrir las sesiones de código en «TEST»; (2) añadir a `permissions.allow` los comandos de solo lectura que las instrucciones mandan usar; (3) abrir una sesión de Codex y ver que los hooks arrancan desde `.claude/hooks/`.
+- **Área:** entorno cloud de Claude Code (fuera del repo), .claude/settings.json, .codex/hooks.json
+- **Problema:** visto el 2026-11-12: el entorno «Tenderflow» exporta a cada sesión remota `ENV=prod`, `DATABASE_URL`, `SCHEDULER_PLANE` y las credenciales de Redis, LLM y SMTP. Con ellas `make test-unit` daba 97 fallos y 26 errores, y un script que cargue `config.settings` apuntaría a la base de producción (no llega a hacerlo porque la `DATABASE_URL` lleva comillas literales y la validación la rechaza). Aparte, el clasificador de permisos no deja al agente ampliar su propia allow-list, y el cambio de ruta de los hooks de Codex no se ha probado en Codex.
+- **Acceptance criteria:**
+  - Una sesión remota nueva arranca sin el aviso «El entorno de la sesión exporta configuración de la app» y `make test-unit` pasa sin `env -i`.
+  - `permissions.allow` incluye `Bash(make gates)`, `Bash(make check-layers)`, `Bash(make check-api-surface)`, `Bash(make check-casos-uso)`, `Bash(make backlog-estado)` y `Bash(python scripts/code_map.py *)`.
+  - En una sesión de Codex, el arranque muestra el contexto de `session_start_contexto.py`.
+- **Files de partida:** [.claude/settings.json](../.claude/settings.json), [.codex/hooks.json](../.codex/hooks.json), [.claude/hooks/session_start_contexto.py](../.claude/hooks/session_start_contexto.py)
+- **Riesgo:** bajo — son ajustes de configuración; el de las variables borra los valores guardados en ese entorno, que siguen en Render.
 
 ## Plantilla nueva entrada
 
