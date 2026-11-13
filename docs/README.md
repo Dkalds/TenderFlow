@@ -25,6 +25,8 @@ añade aquí en el mismo cambio.
 - [UX_AUDIT.md](UX_AUDIT.md) — diagnóstico UX/UI del frontend y su roadmap por olas.
 - [casos-de-uso.md](casos-de-uso.md) — lo que una persona hace con el producto
   de punta a punta, y el test que lo recorre.
+- [guia-usuario/README.md](guia-usuario/README.md) — guía de usuario: para qué
+  sirve cada pantalla de la consola y cómo se usa.
 
 ## Decisiones
 
