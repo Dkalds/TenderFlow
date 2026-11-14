@@ -382,6 +382,7 @@ def test_unit_el_aviso_lleva_la_organizacion_del_favorito_y_salta_al_huerfano():
         patch("db.repositories.watchlist.connect_read", return_value=conexion),
         patch.object(mod, "agregados_con_evento", return_value=set()),
         patch.object(mod, "append_domain_event", side_effect=_append),
+        patch.object(mod, "condiciones_oficiales", return_value=None),
     ):
         total = mod.check_deadlines_and_notify(3)
 

@@ -19,6 +19,7 @@ export type CriterioOficial = Schemas["CriterioOficial"];
 export type GarantiaOficial = Schemas["GarantiaOficial"];
 export type RequisitoSolvenciaOficial = Schemas["RequisitoSolvenciaOficial"];
 export type IndicioPliego = Schemas["IndicioPliego"];
+export type PlazoRecursoEspecial = Schemas["PlazoRecursoEspecial"];
 
 const clave = (licitacionId: string) => ["condiciones-oficiales", licitacionId] as const;
 
