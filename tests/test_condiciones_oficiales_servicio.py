@@ -287,8 +287,11 @@ def test_quince_dias_habiles_saltan_fines_de_semana_y_festivos_nacionales(
     assert sumar_dias_habiles(publicada, 15) == vence
 
 
+_ANUNCIOS = "DOC_CD,DOC_CN"
+
+
 def test_servicios_por_encima_de_100_000_tienen_plazo_aunque_el_tipo_venga_en_catalan() -> None:
-    plazo = plazo_recurso_especial("Serveis", 120_000.0, "2026-03-27", "ES511")
+    plazo = plazo_recurso_especial("Serveis", 120_000.0, "2026-03-27", "ES511", _ANUNCIOS)
 
     assert plazo is not None
     assert (plazo.desde, plazo.vence, plazo.dias_habiles) == ("2026-03-27", "2026-04-20", 15)
@@ -296,29 +299,41 @@ def test_servicios_por_encima_de_100_000_tienen_plazo_aunque_el_tipo_venga_en_ca
 
 
 @pytest.mark.parametrize(
-    ("tipo", "valor", "fecha", "nuts"),
+    ("tipo", "valor", "fecha", "nuts", "anuncios"),
     [
-        pytest.param("2", 100_000.0, "2026-03-27", "ES30", id="servicios-en-el-umbral"),
-        pytest.param("3", 2_000_000.0, "2026-03-27", "ES30", id="obras-bajo-3M"),
-        pytest.param("8", 900_000.0, "2026-03-27", "ES30", id="privado-sin-umbral-seguro"),
-        pytest.param(None, 900_000.0, "2026-03-27", "ES30", id="sin-tipo"),
-        pytest.param("2", None, "2026-03-27", "ES30", id="sin-valor-estimado"),
-        pytest.param("2", 900_000.0, "no-es-fecha", "ES30", id="fecha-ilegible"),
-        pytest.param("2", 900_000.0, "2026-03-27", "ES220", id="navarra-tiene-su-regimen"),
+        pytest.param("2", 100_000.0, "2026-03-27", "ES30", _ANUNCIOS, id="servicios-en-el-umbral"),
+        pytest.param("3", 2_000_000.0, "2026-03-27", "ES30", _ANUNCIOS, id="obras-bajo-3M"),
+        pytest.param("8", 900_000.0, "2026-03-27", "ES30", _ANUNCIOS, id="privado-sin-umbral"),
+        pytest.param(None, 900_000.0, "2026-03-27", "ES30", _ANUNCIOS, id="sin-tipo"),
+        pytest.param("2", None, "2026-03-27", "ES30", _ANUNCIOS, id="sin-valor-estimado"),
+        pytest.param("2", 900_000.0, "no-es-fecha", "ES30", _ANUNCIOS, id="fecha-ilegible"),
+        pytest.param("2", 900_000.0, "2026-03-27", "ES220", _ANUNCIOS, id="navarra"),
+        # La fecha guardada sería la del anuncio previo, meses antes.
+        pytest.param(
+            "2", 900_000.0, "2026-03-27", "ES30", "DOC_CN,DOC_PIN_RTL", id="con-anuncio-previo"
+        ),
+        # Sin anuncio de licitación la fecha puede ser la de la última actualización.
+        pytest.param("2", 900_000.0, "2026-03-27", "ES30", None, id="sin-anuncios"),
+        pytest.param("2", 900_000.0, "2026-03-27", "ES30", "DOC_CD", id="sin-licitacion"),
     ],
 )
-def test_sin_sujecion_segura_o_sin_fecha_no_hay_plazo(
-    tipo: str | None, valor: float | None, fecha: str, nuts: str
+def test_sin_sujecion_segura_o_sin_fecha_fiable_no_hay_plazo(
+    tipo: str | None, valor: float | None, fecha: str, nuts: str, anuncios: str | None
 ) -> None:
-    assert plazo_recurso_especial(tipo, valor, fecha, nuts) is None
+    assert plazo_recurso_especial(tipo, valor, fecha, nuts, anuncios) is None
 
 
 def test_obras_por_encima_de_3_millones_tienen_plazo() -> None:
-    assert plazo_recurso_especial("3", 3_500_000.0, "2026-11-30", None) is not None
+    assert plazo_recurso_especial("3", 3_500_000.0, "2026-11-30", None, "DOC_CN") is not None
 
 
 def test_construir_condiciones_trae_el_plazo_de_recurso() -> None:
-    datos = _datos(valor_estimado=500_000.0, tipo_contrato="2", fecha_publicacion="2026-11-30")
+    datos = _datos(
+        valor_estimado=500_000.0,
+        tipo_contrato="2",
+        fecha_publicacion="2026-11-30",
+        tipos_anuncio=_ANUNCIOS,
+    )
 
     plazo = construir_condiciones("EXP-1", datos).plazo_recurso
 

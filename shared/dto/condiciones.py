@@ -115,12 +115,11 @@ class PlazoRecursoEspecial(BaseModel):
     """Hasta cuándo se pueden recurrir los pliegos (art. 50.1.b LCSP), orientativo.
 
     Quince días hábiles desde el día siguiente a ``fecha_publicacion``, sin
-    sábados, domingos ni festivos nacionales. Los festivos autonómicos y locales
-    no entran, y si el expediente tuvo un anuncio previo se cuenta desde el
-    primero: en los dos casos la fecha real es posterior. Sin ``IssueDate`` la
-    ingesta guarda el día de la última actualización, y entonces la real puede
-    ser anterior. Es un indicio para no dejar pasar el plazo, no asesoramiento
-    jurídico: la UI pide comprobarla en el anuncio.
+    sábados, domingos ni festivos nacionales. Solo se da cuando esa fecha es la
+    del anuncio de licitación (hay ``DOC_CN`` y ningún anuncio previo). Los
+    festivos autonómicos y locales no entran, y los pliegos pueden haberse
+    publicado después del anuncio: por eso es un indicio para no dejar pasar el
+    plazo, no asesoramiento jurídico, y la UI pide comprobarla en el anuncio.
     """
 
     model_config = ConfigDict(extra="forbid")

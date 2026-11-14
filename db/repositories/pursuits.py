@@ -261,6 +261,7 @@ class DeadlineRow(TypedDict):
     next_action_due: str | None
     titulo: str
     fecha_limite: str | None
+    fecha_publicacion: str | None
 
 
 class CalendarRow(TypedDict):
@@ -951,6 +952,7 @@ class PursuitRepository:
         organization_id: int | None = None,
         desde: str | None = None,
         hasta: str | None = None,
+        publicadas_desde: str | None = None,
         limit: int = 5000,
     ) -> list[DeadlineRow]:
         """Pursuits abiertos con responsable y alguna fecha que recordar.
@@ -971,7 +973,10 @@ class PursuitRepository:
         sección de plazos salía vacía, y al despachador de recordatorios.
 
         ``organization_id`` acota además por tenant; el despachador lo omite
-        porque las quiere todas.
+        porque las quiere todas. ``publicadas_desde`` añade al rango los
+        expedientes publicados desde ese día, cierre cuando cierre su
+        presentación: el plazo para recurrir los pliegos corre desde la
+        publicación, no desde ``fecha_limite``.
         """
         condiciones = [
             "p.status NOT IN " + _ESTADOS_TERMINALES_SQL,
@@ -987,15 +992,18 @@ class PursuitRepository:
             # traer la hora y `next_action_due` no.
             condiciones.append(
                 "(LEFT(l.fecha_limite, 10) BETWEEN %s AND %s "
-                " OR LEFT(p.next_action_due, 10) BETWEEN %s AND %s)"
+                " OR LEFT(p.next_action_due, 10) BETWEEN %s AND %s"
+                " OR LEFT(l.fecha_publicacion, 10) >= %s)"
             )
-            parametros += [desde, hasta, desde, hasta]
+            # Sin `publicadas_desde`, el centinela no casa con ninguna fecha ISO.
+            parametros += [desde, hasta, desde, hasta, publicadas_desde or "9999-12-31"]
         parametros.append(max(1, min(int(limit), 20000)))
         with connect_read() as conn:
             cur = conn.execute(
                 "SELECT p.id AS pursuit_id, p.organization_id, p.licitacion_id, "
                 "p.responsible_user_id, ru.email AS responsible_email, "
-                "p.next_action, p.next_action_due, l.titulo, l.fecha_limite "
+                "p.next_action, p.next_action_due, l.titulo, l.fecha_limite, "
+                "l.fecha_publicacion "
                 "FROM pursuits p "
                 "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
                 "JOIN users ru ON ru.id = p.responsible_user_id "

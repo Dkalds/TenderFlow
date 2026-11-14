@@ -345,7 +345,8 @@ class _ConexionFalsa:
             return _CursorFalso(self._favoritos)
         return _CursorFalso(
             self._licitaciones,
-            ["id_externo", "titulo", "fecha_limite", "fecha_fin"],
+            # Las filas de cuatro valores se leen sin `fecha_publicacion`.
+            ["id_externo", "titulo", "fecha_limite", "fecha_fin", "fecha_publicacion"],
         )
 
     def __enter__(self) -> _ConexionFalsa:
@@ -391,6 +392,42 @@ def test_unit_el_aviso_lleva_la_organizacion_del_favorito_y_salta_al_huerfano():
     assert {e["licitacion_id"] for e in escritas} == {"EXP-A"}
     assert {e["organization_id"] for e in escritas} == {42}
     assert sorted(e["aviso"] for e in escritas) == ["deadline_30", "deadline_7"]
+
+
+def test_unit_un_favorito_con_indicios_avisa_del_plazo_de_recurso_con_la_presentacion_cerrada():
+    """El aviso de recurso no depende de ``fecha_limite``: aquí ya pasó."""
+    import services.deadline_reminders as mod
+    from shared.dto import CondicionesOficiales, IndicioPliego, PlazoRecursoEspecial
+
+    vence = (datetime.now(UTC) + timedelta(days=1)).date().isoformat()
+    condiciones = CondicionesOficiales(
+        licitacion_id="EXP-R",
+        indicios=[
+            IndicioPliego(
+                codigo="juicio_de_valor_mayoritario",
+                titulo="Juicio de valor",
+                detalle="60 %.",
+                base_legal="Art. 146.2.a) LCSP",
+            )
+        ],
+        plazo_recurso=PlazoRecursoEspecial(vence=vence, desde="2026-01-01", base_legal="Art. 50"),
+    )
+    conexion = _ConexionFalsa(
+        favoritos=[("EXP-R", 42)],
+        licitaciones=[("EXP-R", "Servicio TI", _iso_in(-3), None, _iso_in(-14)[:10])],
+    )
+    escritas: list[dict[str, Any]] = []
+
+    with (
+        patch("db.repositories.watchlist.connect_read", return_value=conexion),
+        patch.object(mod, "agregados_con_evento", return_value=set()),
+        patch.object(mod, "append_domain_event", side_effect=lambda *a, **_: escritas.append(a[3])),
+        patch.object(mod, "condiciones_oficiales", return_value=condiciones),
+    ):
+        mod.check_deadlines_and_notify(3)
+
+    assert sorted(e["aviso"] for e in escritas) == ["recurso_1", "recurso_5"]
+    assert {e["organization_id"] for e in escritas} == {42}
 
 
 def test_unit_todos_los_favoritos_huerfanos_equivalen_a_no_tener_favoritos():

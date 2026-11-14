@@ -82,6 +82,7 @@ def test_cu35_decidir_desde_la_ficha(client, api_db):
         fecha_limite="2027-01-15T10:00:00+00:00",
         valor_estimado=300_000.0,
         tipo_contrato="2",
+        tipos_anuncio="DOC_CD,DOC_CN",
     )
     # Otro órgano y otro CPV, para que no cuente en el historial del segmento;
     # adjudicado hace cien días, dentro de los tres años de las referencias.

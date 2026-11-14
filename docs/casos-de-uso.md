@@ -404,9 +404,11 @@ consola se reorganiza, el caso se queda y su recorrido se actualiza.
   de 1,5 veces el valor estimado, más de la mitad de los puntos por juicio de
   valor, o una ISO 9001 o 14001 sin mención de equivalentes. Son indicios, no
   infracciones, y la ficha lo dice. Si el contrato está sujeto a recurso
-  especial, junto a ellos ve hasta qué día puede recurrir el pliego (orientativo,
-  15 días hábiles desde la publicación), y si sigue el expediente o es
-  responsable de su oportunidad, la campana se lo recuerda a 5 días y a 1.
+  especial y se conoce la fecha del anuncio de licitación (sin anuncio previo),
+  junto a ellos ve hasta qué día puede recurrir el pliego (orientativo, 15 días
+  hábiles desde el anuncio), y si sigue el expediente o es responsable de su
+  oportunidad, la campana se lo recuerda a 5 días y a 1, aunque la presentación
+  ya haya cerrado.
 - En Competencia ve lo que su organización ya ganó con ese órgano y en ese
   CPV, y cómo acabaron sus oportunidades con el órgano; sin NIF declarado se
   le pide declararlo en vez de enseñar ceros. El órgano enlaza a su perfil en

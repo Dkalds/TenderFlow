@@ -207,7 +207,13 @@ def indicios_de(
 _UMBRAL_RECURSO = dict.fromkeys(("1", "2"), 100_000.0) | dict.fromkeys(("3", "22", "32"), 3e6)
 _DIAS_RECURSO = 15
 #: Navarra tiene su propia reclamación (Ley Foral 2/2018), con otro plazo.
+#: shortcut: se mira el NUTS del lugar de ejecución, no quién contrata; subirlo
+#: si un órgano foral contrata fuera de Navarra o la AGE dentro.
 _NUTS_NAVARRA = "ES22"
+#: `NoticeTypeCode` del anuncio de licitación, desde el que corre el plazo, y
+#: prefijo del anuncio previo, cuya fecha sería la que guarda `fecha_publicacion`.
+_ANUNCIO_LICITACION = "DOC_CN"
+_ANUNCIO_PREVIO = "DOC_PIN"
 #: (mes, día): Año Nuevo, Reyes, Trabajo, Asunción, Hispanidad, Todos los Santos,
 #: Constitución, Inmaculada y Navidad.
 _FESTIVOS_NACIONALES = frozenset(
@@ -231,8 +237,9 @@ def _pascua(anio: int) -> date:
 def _es_habil(dia: date) -> bool:
     """Sin sábados, domingos, festivos nacionales ni Viernes Santo.
 
-    shortcut: sin festivos autonómicos ni locales, así que la fecha sale igual o
-    antes que la real; subirlo si alguien pide la fecha exacta por comunidad.
+    shortcut: sin festivos autonómicos ni locales (ni los que una comunidad
+    traslada), así que la fecha puede no ser la real; subirlo si alguien pide
+    la fecha exacta por comunidad.
     """
     return (
         dia.weekday() < 5
@@ -256,17 +263,26 @@ def plazo_recurso_especial(
     valor_estimado: float | None,
     fecha_publicacion: str | None,
     nuts_code: str | None,
+    tipos_anuncio: str | None,
 ) -> PlazoRecursoEspecial | None:
     """Hasta cuándo se pueden recurrir los pliegos, o ``None`` si no se sabe.
 
     Solo con un tipo cuyo umbral es seguro (:data:`_UMBRAL_RECURSO`), un valor
     estimado que lo supera y una fecha de publicación legible. Fuera de Navarra,
-    que tiene su propio régimen. Pura: ni lee ni escribe BD.
+    que tiene su propio régimen. Y solo si los anuncios publicados
+    (``tipos_anuncio``, CSV de v138) incluyen el de licitación y ningún anuncio
+    previo: ``fecha_publicacion`` es el primero de todos, y con un previo sería
+    su fecha, meses antes; sin ``ValidNoticeInfo`` sería la de la última
+    actualización. En los dos casos el plazo saldría mal, así que no se da.
+    Pura: ni lee ni escribe BD.
     """
     umbral = _UMBRAL_RECURSO.get(codigo_tipo_contrato(tipo_contrato) or "")
     if umbral is None or not valor_estimado or valor_estimado <= umbral:
         return None
     if (nuts_code or "").upper().startswith(_NUTS_NAVARRA):
+        return None
+    anuncios = [a.strip() for a in (tipos_anuncio or "").split(",")]
+    if _ANUNCIO_LICITACION not in anuncios or any(a.startswith(_ANUNCIO_PREVIO) for a in anuncios):
         return None
     try:
         publicada = date.fromisoformat(str(fecha_publicacion or "")[:10])
@@ -332,6 +348,7 @@ def construir_condiciones(licitacion_id: str, datos: Mapping[str, Any]) -> Condi
             valor_estimado,
             datos.get("fecha_publicacion"),
             datos.get("nuts_code"),
+            datos.get("tipos_anuncio"),
         ),
     )
 

@@ -238,12 +238,14 @@ function PlazoRecurso({ plazo }: { plazo: PlazoRecursoEspecial }) {
   return (
     <div className="mt-2.5 space-y-0.5 border-t border-divider pt-2.5">
       <p className="text-tf-body leading-snug font-medium">
-        {plazo.vence < diaISO() ? `El plazo para recurrir los pliegos venció el ${vence}` : `Puedes recurrir los pliegos hasta el ${vence}`}
+        {plazo.vence < diaISO()
+          ? `Según la fecha del anuncio, el plazo para recurrir los pliegos habría vencido el ${vence}`
+          : `Puedes recurrir los pliegos hasta el ${vence}`}
       </p>
       <p className="text-muted-foreground">
-        Fecha orientativa: {plazo.dias_habiles} días hábiles desde la primera publicación del expediente (
-        {formatDate(plazo.desde, "es-ES", "UTC")}), sin contar festivos autonómicos ni locales. Compruébala con la fecha
-        del anuncio en la publicación oficial.
+        Fecha orientativa: {plazo.dias_habiles} días hábiles desde el anuncio de licitación (
+        {formatDate(plazo.desde, "es-ES", "UTC")}), sin contar festivos autonómicos ni locales. Si los pliegos se
+        publicaron más tarde, el plazo corre desde entonces: compruébalo en la publicación oficial.
       </p>
       <p className="text-muted-foreground">{plazo.base_legal}</p>
     </div>

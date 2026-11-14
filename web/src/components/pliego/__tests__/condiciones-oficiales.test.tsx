@@ -227,11 +227,11 @@ describe("CondicionesOficialesBloque", () => {
 
     const nota = screen.getByRole("note");
     expect(within(nota).getByText(/Puedes recurrir los pliegos hasta el 22 dic 2999/)).toBeInTheDocument();
-    expect(within(nota).getByText(/15 días hábiles desde la primera publicación/)).toHaveTextContent("30 nov 2026");
+    expect(within(nota).getByText(/15 días hábiles desde el anuncio de licitación/)).toHaveTextContent("30 nov 2026");
     expect(within(nota).getByText("Art. 50.1.b) LCSP")).toBeInTheDocument();
   });
 
-  it("un plazo ya pasado se dice en pasado", () => {
+  it("un plazo ya pasado se dice en condicional, sin darlo por cierto", () => {
     render(
       <CondicionesOficialesBloque
         datos={datos({ indicios: [INDICIO], plazo_recurso: plazo("2020-01-15") })}
@@ -239,7 +239,7 @@ describe("CondicionesOficialesBloque", () => {
       />,
     );
 
-    expect(screen.getByText(/El plazo para recurrir los pliegos venció el 15 ene 2020/)).toBeInTheDocument();
+    expect(screen.getByText(/plazo para recurrir los pliegos habría vencido el 15 ene 2020/)).toBeInTheDocument();
   });
 
   it("sin indicios no pinta el plazo de recurso aunque la API lo traiga", () => {

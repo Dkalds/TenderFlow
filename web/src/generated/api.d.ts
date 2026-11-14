@@ -13562,12 +13562,12 @@ export interface components {
          * PlazoRecursoEspecial
          * @description Hasta cuándo se pueden recurrir los pliegos (art. 50.1.b LCSP), orientativo.
          *
-         *     Quince días hábiles desde el día siguiente a la publicación, sin sábados,
-         *     domingos ni festivos nacionales. Los festivos autonómicos y locales no
-         *     entran, así que la fecha real puede ser posterior, nunca anterior; y si el
-         *     expediente tuvo un anuncio previo, la publicación que se cuenta es la
-         *     primera, así que la fecha real también puede ser posterior. Es un indicio
-         *     para no dejar pasar el plazo, no asesoramiento jurídico.
+         *     Quince días hábiles desde el día siguiente a ``fecha_publicacion``, sin
+         *     sábados, domingos ni festivos nacionales. Solo se da cuando esa fecha es la
+         *     del anuncio de licitación (hay ``DOC_CN`` y ningún anuncio previo). Los
+         *     festivos autonómicos y locales no entran, y los pliegos pueden haberse
+         *     publicado después del anuncio: por eso es un indicio para no dejar pasar el
+         *     plazo, no asesoramiento jurídico, y la UI pide comprobarla en el anuncio.
          */
         PlazoRecursoEspecial: {
             /** Base Legal */

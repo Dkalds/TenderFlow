@@ -51,8 +51,8 @@ class CondicionesOficialesRepository:
         reciente de las tres familias, o ``None`` si no hay ninguna fila—,
         ``"existe"`` (si el expediente está en ``licitaciones``), ``"url"``, el
         enlace a su publicación en la Plataforma, ``"valor_estimado"``,
-        ``"tipo_contrato"`` (crudo), ``"fecha_publicacion"`` y ``"nuts_code"``,
-        con los que se calcula el plazo del recurso especial.
+        ``"tipo_contrato"`` (crudo), ``"fecha_publicacion"``, ``"nuts_code"`` y
+        ``"tipos_anuncio"``, con los que se calcula el plazo del recurso especial.
 
         Sin las tablas (código desplegado antes que v148) responde como un
         expediente sin condiciones, que es lo cierto: no hay ninguna guardada.
@@ -60,11 +60,18 @@ class CondicionesOficialesRepository:
         """
         with connect_read() as c:
             fila = c.execute(
-                "SELECT url, valor_estimado, tipo_contrato, fecha_publicacion, nuts_code "
-                "FROM licitaciones WHERE id_externo = %s",
+                "SELECT url, valor_estimado, tipo_contrato, fecha_publicacion, nuts_code, "
+                "tipos_anuncio FROM licitaciones WHERE id_externo = %s",
                 (licitacion_id,),
             ).fetchone()
-        claves = ("url", "valor_estimado", "tipo_contrato", "fecha_publicacion", "nuts_code")
+        claves = (
+            "url",
+            "valor_estimado",
+            "tipo_contrato",
+            "fecha_publicacion",
+            "nuts_code",
+            "tipos_anuncio",
+        )
         base: dict[str, object] = {"existe": fila is not None}
         base.update(zip(claves, fila or (None,) * len(claves), strict=True))
         if fila is None:

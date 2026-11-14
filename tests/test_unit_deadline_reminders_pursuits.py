@@ -29,6 +29,7 @@ def _fila(**extra: Any) -> dict[str, Any]:
         "responsible_email": "ana@example.com",
         "titulo": "Servicio TI",
         "fecha_limite": None,
+        "fecha_publicacion": _en(-10),
         "next_action": None,
         "next_action_due": None,
     }
@@ -132,6 +133,32 @@ def test_plazo_de_recurso_sin_indicios_vencido_o_lejano_no_avisa(
 ) -> None:
     escritas = _correr([_fila(fecha_limite=_en(20))], condiciones=condiciones)
     assert [e["aviso"] for e in escritas] == ["deadline_30"]
+
+
+def test_plazo_de_recurso_avisa_aunque_la_presentacion_ya_haya_cerrado() -> None:
+    escritas = _correr([_fila(fecha_limite=_en(-3))], condiciones=_condiciones(vence=_en(1)))
+    assert sorted(e["aviso"] for e in escritas) == ["recurso_1", "recurso_5"]
+
+
+def test_lo_publicado_antes_del_horizonte_no_lee_las_condiciones() -> None:
+    viejo = _fila(fecha_limite=_en(1), fecha_publicacion=_en(-41))
+    with (
+        patch.object(mod.PursuitRepository, "deadline_rows", return_value=[viejo]),
+        patch.object(mod, "agregados_con_evento", return_value=set()),
+        patch.object(mod, "append_domain_event"),
+        patch.object(mod, "condiciones_oficiales") as condiciones,
+    ):
+        mod.check_pursuit_deadlines()
+    condiciones.assert_not_called()
+
+
+def test_la_consulta_pide_lo_publicado_dentro_del_horizonte_del_recurso() -> None:
+    with (
+        patch.object(mod.PursuitRepository, "deadline_rows", return_value=[]) as consulta,
+        patch.object(mod, "append_domain_event"),
+    ):
+        mod.check_pursuit_deadlines()
+    assert consulta.call_args.kwargs["publicadas_desde"] == _en(-40)
 
 
 def test_un_fallo_al_leer_las_condiciones_no_tapa_el_plazo_de_presentacion() -> None:

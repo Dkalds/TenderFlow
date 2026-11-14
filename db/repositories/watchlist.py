@@ -58,13 +58,13 @@ class WatchlistRepository:
         return [(str(fila[0]), None if fila[1] is None else int(fila[1])) for fila in filas]
 
     def plazos_de_licitaciones(self, ids: list[str]) -> list[dict[str, Any]]:
-        """``titulo``, ``fecha_limite`` y ``fecha_fin`` de esas licitaciones."""
+        """``titulo``, ``fecha_limite``, ``fecha_fin`` y ``fecha_publicacion``."""
         if not ids:
             return []
         placeholders = ",".join(["%s"] * len(ids))
         with connect_read() as c:
             cur = c.execute(
-                f"SELECT id_externo, titulo, fecha_limite, fecha_fin "
+                f"SELECT id_externo, titulo, fecha_limite, fecha_fin, fecha_publicacion "
                 f"FROM licitaciones WHERE id_externo IN ({placeholders})",
                 ids,
             )

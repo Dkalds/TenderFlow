@@ -39,6 +39,10 @@ _ACCION_WINDOWS = [7, 1, 0]
 
 #: Ventanas del plazo para recurrir los pliegos, en días naturales.
 _RECURSO_WINDOWS = [5, 1]
+#: Días naturales desde la publicación en los que el plazo de recurso puede
+#: seguir abierto: 15 hábiles no pasan de 25 naturales ni con Navidad o Semana
+#: Santa por medio. Más atrás no se leen las condiciones del expediente.
+_HORIZONTE_RECURSO = 40
 
 #: Agregado de los eventos de este módulo: su id es la clave del recordatorio.
 _AGREGADO = "recordatorio"
@@ -126,13 +130,21 @@ def _vence_recurso(lic_id: str, plazos: _PlazosRecurso) -> date | None:
 def _candidatos_recurso(
     lic_id: str,
     *,
+    fecha_publicacion: object,
     organization_id: int,
     titulo: str,
     user_id: int,
     hoy: date,
     plazos: _PlazosRecurso,
 ) -> list[_Candidato]:
-    """Los avisos ``recurso_<n>`` del expediente para esa persona."""
+    """Los avisos ``recurso_<n>`` del expediente para esa persona.
+
+    No depende del plazo de presentación: en servicios y suministros suele
+    cerrar antes que el de recurso, y el pliego sigue siendo recurrible.
+    """
+    publicada = _dias_hasta(fecha_publicacion, hoy)
+    if publicada is None or publicada < -_HORIZONTE_RECURSO:
+        return []
     vence = _vence_recurso(lic_id, plazos)
     if vence is None:
         return []
@@ -234,6 +246,15 @@ def check_deadlines_and_notify(user_id: int, plazos: _PlazosRecurso | None = Non
             # este camino evita, así que se salta.
             continue
         titulo = str(lic.get("titulo") or lic_id)
+        candidatos += _candidatos_recurso(
+            lic_id,
+            fecha_publicacion=lic.get("fecha_publicacion"),
+            organization_id=organization_id,
+            titulo=titulo,
+            user_id=user_id,
+            hoy=now.date(),
+            plazos=plazos,
+        )
 
         for field in ("fecha_limite", "fecha_fin"):
             raw_date = lic.get(field)
@@ -246,17 +267,6 @@ def check_deadlines_and_notify(user_id: int, plazos: _PlazosRecurso | None = Non
             days_left = (dt - now).days
             if days_left < 0:
                 continue  # ya vencida
-            if field == "fecha_limite":
-                # Solo con el plazo de presentación abierto: después no hay
-                # pliego que recurrir que le importe a quien lo sigue.
-                candidatos += _candidatos_recurso(
-                    lic_id,
-                    organization_id=organization_id,
-                    titulo=titulo,
-                    user_id=user_id,
-                    hoy=now.date(),
-                    plazos=plazos,
-                )
 
             for window in _DEADLINE_WINDOWS:
                 if days_left > window:
@@ -307,7 +317,11 @@ def check_pursuit_deadlines(plazos: _PlazosRecurso | None = None) -> int:
     # mandar, y pedirlo en SQL es lo que impide que el `LIMIT` corte un plazo
     # de mañana por ser de un pursuit creado ayer.
     horizonte = hoy + timedelta(days=max([*_DEADLINE_WINDOWS, *_ACCION_WINDOWS]))
-    rows = PursuitRepository().deadline_rows(desde=hoy.isoformat(), hasta=horizonte.isoformat())
+    rows = PursuitRepository().deadline_rows(
+        desde=hoy.isoformat(),
+        hasta=horizonte.isoformat(),
+        publicadas_desde=(hoy - timedelta(days=_HORIZONTE_RECURSO)).isoformat(),
+    )
     plazos = {} if plazos is None else plazos
     candidatos: list[_Candidato] = []
     for row in rows:
@@ -318,17 +332,20 @@ def check_pursuit_deadlines(plazos: _PlazosRecurso | None = None) -> int:
         lic_id = str(row["licitacion_id"])
         titulo = str(row.get("titulo") or lic_id)
         organization_id = int(row["organization_id"])
+        candidatos += _candidatos_recurso(
+            lic_id,
+            fecha_publicacion=row.get("fecha_publicacion"),
+            organization_id=organization_id,
+            titulo=titulo,
+            user_id=int(responsable),
+            hoy=hoy,
+            plazos=plazos,
+        )
 
+        # Las ventanas filtran el resto: lo publicado hace poco entra en la
+        # consulta aunque su presentación quede más allá de 30 días.
         dias = _dias_hasta(row.get("fecha_limite"), hoy)
         if dias is not None and dias >= 0:
-            candidatos += _candidatos_recurso(
-                lic_id,
-                organization_id=organization_id,
-                titulo=titulo,
-                user_id=int(responsable),
-                hoy=hoy,
-                plazos=plazos,
-            )
             for window in _DEADLINE_WINDOWS:
                 if dias > window:
                     continue
