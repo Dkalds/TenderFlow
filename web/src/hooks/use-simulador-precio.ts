@@ -17,18 +17,23 @@ export type { EscenarioPuntos, SimulacionPrecio };
  *
  * La respuesta es 200 también cuando no se puede calcular (`sin_calculo`), así
  * que un error aquí es un fallo de verdad, no «el pliego no trae fórmula».
+ *
+ * `bajaMedia` solo cuenta si el pliego mide la temeridad sobre la media de las
+ * ofertas (`temeridad_sobre_media`): sin ella ese umbral no se conoce.
  */
 export function useSimuladorPrecio(
   licitacionId: string | null,
   bajas: readonly number[] = [],
   bajaReferencia: number | null = null,
+  bajaMedia: number | null = null,
 ) {
   return useQuery({
-    queryKey: simuladorKeys.detail(licitacionId ?? "", bajas, bajaReferencia),
+    queryKey: simuladorKeys.detail(licitacionId ?? "", bajas, bajaReferencia, bajaMedia),
     queryFn: () => {
       const query = new URLSearchParams();
       for (const baja of bajas) query.append("baja", String(baja));
       if (bajaReferencia != null) query.set("baja_referencia", String(bajaReferencia));
+      if (bajaMedia != null) query.set("baja_media", String(bajaMedia));
       const qs = query.toString();
       return fetchWithAuth<SimulacionPrecio>(
         `/api/v1/licitaciones/${encodeURIComponent(licitacionId!)}/simulador${qs ? `?${qs}` : ""}`,

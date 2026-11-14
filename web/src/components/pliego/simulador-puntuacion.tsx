@@ -113,32 +113,40 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
   const { data: ficha } = useTenderFactSheet(licitacionId);
   const [propiaTexto, setPropiaTexto] = React.useState("");
   const [rivalTexto, setRivalTexto] = React.useState("");
-  const [enviada, setEnviada] = React.useState<{ propia: number; rival: number | null } | null>(
-    null,
-  );
+  const [mediaTexto, setMediaTexto] = React.useState("");
+  const [enviada, setEnviada] = React.useState<{
+    propia: number;
+    rival: number | null;
+    media: number | null;
+  } | null>(null);
   const idPropia = React.useId();
   const idRival = React.useId();
+  const idMedia = React.useId();
   const idError = React.useId();
 
   const propia = parsearBajaPct(propiaTexto);
   const rivalValida = rivalTexto.trim() === "" || parsearBajaPct(rivalTexto) != null;
+  const mediaValida = mediaTexto.trim() === "" || parsearBajaPct(mediaTexto) != null;
   const errorForm = propiaTexto.trim() !== "" && propia == null
     ? "Tu baja tiene que ser un porcentaje entre 0 y 100."
     : !rivalValida
       ? "La baja del rival tiene que ser un porcentaje entre 0 y 100."
-      : null;
+      : !mediaValida
+        ? "La baja media tiene que ser un porcentaje entre 0 y 100."
+        : null;
 
   const propio = useSimuladorPrecio(
     enviada ? licitacionId : null,
     enviada ? [enviada.propia] : [],
     enviada?.rival ?? null,
+    enviada?.media ?? null,
   );
 
   // Telemetría una vez por simulación con respuesta, no por pulsación.
   const emitida = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (!enviada || !propio.data || propio.isPlaceholderData) return;
-    const clave = `${enviada.propia}|${enviada.rival}`;
+    const clave = `${enviada.propia}|${enviada.rival}|${enviada.media}`;
     if (emitida.current === clave) return;
     emitida.current = clave;
     const tarifas = conTarifas(ficha);
@@ -162,7 +170,12 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
   const simular = (event: React.FormEvent) => {
     event.preventDefault();
     if (propia == null || errorForm) return;
-    setEnviada({ propia, rival: parsearBajaPct(rivalTexto) });
+    setEnviada({
+      propia,
+      rival: parsearBajaPct(rivalTexto),
+      // Solo pesa si el pliego mide la temeridad sobre la media.
+      media: data?.temeridad_sobre_media ? parsearBajaPct(mediaTexto) : null,
+    });
   };
 
   return (
@@ -205,6 +218,13 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
               </span>
             )}
           </div>
+
+          {data.temeridad_sobre_media && (
+            <p className="text-tf-meta text-muted-foreground">
+              El pliego mide la temeridad sobre la baja media de las ofertas (art. 85 RGLCAP):
+              indica la media que esperas para saber desde qué baja habría que justificarla.
+            </p>
+          )}
 
           <table className="w-full text-tf-body">
             <caption className="sr-only">Puntos de precio por baja de referencia</caption>
@@ -273,6 +293,22 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
                   aria-describedby={errorForm ? idError : undefined}
                 />
               </div>
+              {data.temeridad_sobre_media && (
+                <div className="space-y-1">
+                  <label htmlFor={idMedia} className={ETIQUETA_CAMPO}>
+                    Baja media esperada (%)
+                  </label>
+                  <Input
+                    id={idMedia}
+                    inputMode="decimal"
+                    placeholder="Opcional"
+                    value={mediaTexto}
+                    onChange={(e) => setMediaTexto(e.target.value)}
+                    aria-invalid={!mediaValida}
+                    aria-describedby={errorForm ? idError : undefined}
+                  />
+                </div>
+              )}
             </div>
             {(p90 != null || bajaIncumbente != null || bajaGanador != null) && (
               <div className="flex flex-col items-start gap-1">
@@ -326,6 +362,14 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
                   puntos de precio.{e.temeraria && " Cae en temeridad: habría que justificarla."}{" "}
                 </span>
               ))}
+              {propio.data.temeridad_sobre_media &&
+                propio.data.baja_media != null &&
+                propio.data.umbral_temeridad != null && (
+                  <>
+                    Con una baja media del {pctDe(propio.data.baja_media)}, es temeraria la baja
+                    por encima del {pctDe(propio.data.umbral_temeridad)}.{" "}
+                  </>
+                )}
               {propio.data.hueco_vs_referencia != null && (
                 <Hueco hueco={propio.data.hueco_vs_referencia} />
               )}

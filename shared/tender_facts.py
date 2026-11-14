@@ -152,8 +152,16 @@ class PriceFormulaFact(FactItem):
     formula_type: PriceFormulaType = "otra"
     max_points: float | None = Field(default=None, ge=0, le=100)
     #: Umbral de baja a partir del cual la oferta se considera anormalmente
-    #: baja, en tanto por uno (0.25 = 25 %).
+    #: baja, en tanto por uno (0.25 = 25 %). Cómo se lee depende de
+    #: ``umbral_temeridad_sobre``.
     umbral_temeridad: float | None = Field(default=None, ge=0, le=1)
+    #: Sobre qué se mide el umbral. ``presupuesto``: la baja sobre el
+    #: presupuesto base (temeraria desde el 25 %). ``media_ofertas``: los puntos
+    #: porcentuales que la baja supera a la baja media de las ofertas (art. 85
+    #: RGLCAP; 0.10 = diez puntos por encima de la media), así que el umbral
+    #: real no se sabe hasta conocer la media. ``None``: fichas extraídas antes
+    #: de este campo, que se leen como ``presupuesto`` porque así se calculaban.
+    umbral_temeridad_sobre: Literal["presupuesto", "media_ofertas"] | None = None
     #: Parámetros numéricos del tipo. Claves libres pero **valores numéricos**:
     #: es lo que hace que el cálculo sea reproducible.
     params: dict[str, float] = Field(default_factory=dict)

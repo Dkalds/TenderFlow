@@ -194,6 +194,48 @@ class TestTemeridad:
         assert [e.temeraria for e in sim.escenarios] == [False, False]
 
 
+class TestTemeridadSobreLaMedia:
+    """Art. 85 RGLCAP: temeraria la baja que supera en X puntos a la media."""
+
+    @staticmethod
+    def _sobre_media() -> PriceFormulaFact:
+        return _formula(
+            formula_type="con_umbral_temeridad",
+            max_points=40,
+            umbral_temeridad=0.10,
+            umbral_temeridad_sobre="media_ofertas",
+        )
+
+    def test_el_umbral_es_la_media_mas_el_margen(self) -> None:
+        """Media del 12 % y margen de 10 puntos: temeraria por encima del 22 %.
+
+        «Más de» diez puntos: la baja que se queda justo en el 22 % no lo es.
+        """
+        sim = simular("EXP-1", [self._sobre_media()], bajas=[0.20, 0.22, 0.25], baja_media=0.12)
+        assert [e.temeraria for e in sim.escenarios] == [False, False, True]
+        assert sim.umbral_temeridad == 0.22
+        assert sim.temeridad_sobre_media is True
+
+    def test_sin_media_no_se_marca_contra_el_margen(self) -> None:
+        """Antes un margen de 0,10 se leía como «temeraria desde el 10 %»."""
+        sim = simular("EXP-1", [self._sobre_media()], bajas=[0.15, 0.40])
+        assert [e.temeraria for e in sim.escenarios] == [False, False]
+        assert sim.umbral_temeridad is None
+        assert sim.temeridad_sobre_media is True
+
+    def test_el_umbral_sobre_el_presupuesto_ignora_la_media(self) -> None:
+        formula = _formula(
+            formula_type="con_umbral_temeridad",
+            max_points=40,
+            umbral_temeridad=0.25,
+            umbral_temeridad_sobre="presupuesto",
+        )
+        sim = simular("EXP-1", [formula], bajas=[0.20, 0.30], baja_media=0.05)
+        assert [e.temeraria for e in sim.escenarios] == [False, True]
+        assert sim.umbral_temeridad == 0.25
+        assert sim.temeridad_sobre_media is False
+
+
 class TestHuecoContraElRival:
     def test_ventaja_positiva(self) -> None:
         """Bajo el 20 % contra un rival que baja el 10 %: 45 - 22,5 = +22,5."""

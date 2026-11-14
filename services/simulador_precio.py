@@ -80,6 +80,13 @@ class SimulacionPrecio(BaseModel):
     #: signo es lo informativo: negativo = hay que compensar en juicio de valor.
     hueco_vs_referencia: float | None = None
     baja_referencia: float | None = None
+    #: Baja por encima de la cual una oferta es temeraria, ya resuelta. `None` = el
+    #: pliego no publica umbral, o lo publica sobre la media y no se conoce.
+    umbral_temeridad: float | None = None
+    #: ``True`` si el pliego mide la temeridad sobre la media de las ofertas
+    #: (art. 85 RGLCAP): el umbral se mueve con ellas y pide ``baja_media``.
+    temeridad_sobre_media: bool = False
+    baja_media: float | None = None
     #: `None` = se calculó. Con valor, `escenarios` va vacío.
     sin_calculo: MotivoSinCalculo | None = None
 
@@ -133,8 +140,14 @@ def simular(
     baja_referencia: float | None = None,
     baja_mayor_esperada: float | None = None,
     peso_precio_pct: float | None = None,
+    baja_media: float | None = None,
 ) -> SimulacionPrecio:
     """Puntos de precio por cada baja de ``bajas``.
+
+    ``baja_media`` es la baja media que se espera de las ofertas. Solo la usa
+    un pliego que mide la temeridad sobre la media: sin ella ese umbral no se
+    conoce y ninguna baja se marca, en vez de marcarla contra un número fijo
+    que el pliego no publica.
 
     ``baja_mayor_esperada`` es la baja de la mejor oferta rival que se prevé
     (p90 de ``prediccion-baja``, o la de referencia del CPV). Sin ella se usa
@@ -191,11 +204,16 @@ def simular(
     # Un umbral de 0 marcaría temeraria cualquier baja: es el extractor
     # rellenando el campo, no un pliego.
     umbral = formula.umbral_temeridad or None
+    sobre_media = umbral is not None and formula.umbral_temeridad_sobre == "media_ofertas"
+    if sobre_media and umbral is not None:
+        # Puntos porcentuales sobre la baja media (art. 85 RGLCAP).
+        umbral = round(baja_media + umbral, 4) if baja_media is not None else None
     escenarios = [
         EscenarioPuntos(
             baja=baja,
             puntos=round(_puntos(baja), 2),
-            temeraria=bool(umbral is not None and baja >= umbral),
+            # «Más de» X unidades (art. 85 RGLCAP): la baja justo en el umbral no lo es.
+            temeraria=bool(umbral is not None and baja > umbral),
         )
         for baja in sorted(candidatas)
     ]
@@ -215,6 +233,9 @@ def simular(
         escenarios=escenarios,
         hueco_vs_referencia=hueco,
         baja_referencia=baja_referencia,
+        umbral_temeridad=umbral,
+        temeridad_sobre_media=sobre_media,
+        baja_media=baja_media,
     )
 
 
@@ -229,6 +250,7 @@ def simular_precio_de(
     *,
     bajas: list[float] | None = None,
     baja_referencia: float | None = None,
+    baja_media: float | None = None,
 ) -> SimulacionPrecio:
     """Lee la ficha del pliego y simula. Es la entrada que usa la ruta.
 
@@ -260,4 +282,5 @@ def simular_precio_de(
         bajas=list(bajas) if bajas else list(BAJAS_POR_DEFECTO),
         baja_referencia=baja_referencia,
         peso_precio_pct=peso_precio,
+        baja_media=baja_media,
     )

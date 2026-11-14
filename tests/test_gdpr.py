@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from db.database import connect, now_utc_iso
 
+#: Caducidad de las claves sembradas: una clave activa sin ella viola v183.
+_CADUCA = "2099-01-01T00:00:00+00:00"
+
 
 def _seed_user_and_key(db_mod, *, user_id: int = 1, key_id: int = 1, key_hash: str = "hash1"):
     """Inserta un usuario y una API key vinculada."""
@@ -26,8 +29,9 @@ def _seed_user_and_key(db_mod, *, user_id: int = 1, key_id: int = 1, key_hash: s
             base += ", prefix"
             vals.append("lsp_")
         if "expires_at" in cols:
+            # v183: una clave activa necesita caducidad.
             base += ", expires_at"
-            vals.append(None)
+            vals.append(_CADUCA)
         base += ") VALUES (" + ",".join("%s" for _ in vals) + ")"
         c.execute(base, vals)
 
@@ -299,6 +303,9 @@ def test_revoke_all_api_keys_for_user(tmp_db):
         if "user_id" in cols:
             base += ", user_id"
             vals.append(20)
+        if "expires_at" in cols:
+            base += ", expires_at"
+            vals.append(_CADUCA)
         base += ") VALUES (" + ",".join("%s" for _ in vals) + ")"
         c.execute(base, vals)
 
@@ -347,7 +354,9 @@ def test_get_user_id_from_key_id_null_user_id_returns_none(tmp_db):
         if "user_id" in cols:
             # Insert key with NULL user_id
             base = "INSERT INTO api_keys (id, key_hash, name, created_at, is_active"
-            vals: list[object] = [77, "nullkey", "null-key", now_utc_iso(), 1]
+            # Revocada: una activa sin dueño ya no se puede insertar (v183), y
+            # `get_user_id` no mira `is_active`.
+            vals: list[object] = [77, "nullkey", "null-key", now_utc_iso(), 0]
             if "scopes" in cols:
                 base += ", scopes"
                 vals.append("read")

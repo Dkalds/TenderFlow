@@ -170,6 +170,39 @@ describe("SimuladorPuntuacion", () => {
     expect(screen.queryByRole("button", { name: /baja típica del ganador/ })).not.toBeInTheDocument();
   });
 
+  it("sin temeridad sobre la media no pide la baja media", async () => {
+    fetchPorRuta([/simulador/, REFERENCIA], [/prediccion-baja/, {}, 404]);
+    renderConQuery(<SimuladorPuntuacion licitacionId="LIC-1" />);
+    await screen.findByRole("table");
+
+    expect(screen.queryByLabelText("Baja media esperada (%)")).not.toBeInTheDocument();
+  });
+
+  it("con temeridad sobre la media pide la media y dice desde dónde empieza (art. 85)", async () => {
+    const sobreMedia = { ...REFERENCIA, temeridad_sobre_media: true, umbral_temeridad: null };
+    const fetch = fetchPorRuta(
+      [
+        /simulador\?baja=0\.12/,
+        { ...PROPIA, temeridad_sobre_media: true, baja_media: 0.1, umbral_temeridad: 0.2 },
+      ],
+      [/simulador/, sobreMedia],
+      [/prediccion-baja/, {}, 404],
+    );
+    renderConQuery(<SimuladorPuntuacion licitacionId="LIC-1" />);
+    await screen.findByRole("table");
+
+    expect(screen.getByText(/sobre la baja media de las ofertas/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Tu baja (%)"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Baja media esperada (%)"), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Simular" }));
+
+    expect(await screen.findByText(/es temeraria la baja/)).toHaveTextContent(
+      "Con una baja media del 10,0%, es temeraria la baja por encima del 20,0%.",
+    );
+    const pedida = fetch.mock.calls.map((c) => callUrl(c)).find((u) => u.includes("baja=0.12"));
+    expect(pedida).toBe("/api/v1/licitaciones/LIC-1/simulador?baja=0.12&baja_media=0.1");
+  });
+
   it("una baja fuera de rango no se envía y lo dice", async () => {
     fetchPorRuta([/simulador/, REFERENCIA], [/prediccion-baja/, {}, 404]);
     renderConQuery(<SimuladorPuntuacion licitacionId="LIC-1" />);
