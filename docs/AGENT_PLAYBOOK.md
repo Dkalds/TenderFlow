@@ -40,6 +40,8 @@ El [Makefile](../Makefile) es la fuente canónica. Targets habituales:
 | Suite estándar | `make test` |
 | Tests de integración | `make test-integration` |
 | Validar customizaciones agénticas | `make check-agent-docs` |
+| Cobertura de las líneas del diff, el gate de CI (80 %); por defecto con la suite unitaria | `make diff-cover` (`TESTS="tests/test_x.py"` para otros tests) |
+| Los hooks de pre-commit sobre todo el árbol, como en CI | `make pre-commit` |
 | Qué queda de cada ítem del backlog, antes de proponer mejoras (AGENTS.md §0) | `make backlog-estado` |
 | Validar contrato API | `make check-api-contract` |
 | Dirección de imports entre paquetes | `make check-layers` |
@@ -81,6 +83,8 @@ schema aislado mediante las fixtures de `tests/conftest.py`.
 | `make check-api-surface` | requiere deps | disponible |
 | `make inventario-uso` | disponible: stdlib | disponible |
 | `make test-unit` | no disponible | disponible: no abre Postgres |
+| `make diff-cover` | no disponible | requiere `pip install diff-cover` (no es dependencia del proyecto; CI lo instala al vuelo) |
+| `make pre-commit` | no disponible | disponible con red: la primera vez descarga los entornos de sus hooks |
 | `make test`, `make check` | no disponible | no disponible sin `TEST_DATABASE_URL` |
 | `make web-test`, `make web-test-coverage` | no disponible | requiere `web/node_modules` (`cd web && npm ci`) |
 | `graphify *` | solo si el CLI está instalado | igual |

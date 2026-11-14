@@ -136,9 +136,9 @@ def test_list_no_cruza_organizaciones(db, repo, org, otra_org):
     """Segunda dimensión: ni siquiera lo COMPARTIDO sale de su organización.
 
     Se usan dos licitaciones distintas, y no la misma en las dos
-    organizaciones, porque ``watchlist_items`` conserva el
-    ``UNIQUE(user_key, id_externo)`` anterior a v64 (y el índice parcial por
-    ``user_id`` de v181): un mismo usuario no puede
+    organizaciones, porque ``watchlist_items`` es única por usuario y
+    expediente sin contar la organización (``uq_watchlist_items_user_id``,
+    v181; v182 dejó la de ``user_key`` solo para filas sin id): un mismo usuario no puede
     tener hoy el mismo favorito en dos organizaciones. Esa estrechez está
     documentada como deuda de transición en la propia migración v64 y es
     ortogonal a lo que aquí se comprueba: que el predicado de organización

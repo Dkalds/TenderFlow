@@ -83,11 +83,11 @@ log = get_logger(__name__)
 # la pregunta solo ofrecía `proporcional_inversa` definida como
 # `max * baja / baja_mayor`, otra fórmula. La pregunta separa ahora las dos.
 #
-# v10 (2026-11-14): `regla_rglcap_85` en los params de `price_formula`. En la
-# oportunidad 18 el modelo guardó como `umbral_temeridad` el 0,25 de una
-# cláusula que remite al art. 85 RGLCAP, cuyo umbral es relativo a la media de
-# las ofertas, y el simulador marcaba «Temeraria» solo desde el 25 %. El bump
-# reencola las fichas con ese umbral fijo mal leído.
+# v10 (2026-11-14): `umbral_temeridad_sobre`. La temeridad del art. 85 RGLCAP
+# es relativa a la media de las ofertas, y el umbral se guardaba como baja fija:
+# en la oportunidad 18 quedó 0,25, el tope absoluto de la cláusula, y el
+# simulador marcaba «Temeraria» desde el 25 % cuando puede serlo antes. El bump
+# reencola las fichas guardadas sin saber sobre qué se mide su umbral.
 EXTRACTION_VERSION = "tender-facts-v10"
 # Por debajo de ``MAX_CONTEXT_CHARS_EXTRACTION`` (llm/prompts.py): cada página
 # añade su cabecera ``--- Fragmento de pliego (…) ---``, y el bloque de CONTEXTO
@@ -190,7 +190,7 @@ extensions: {description, confidence, evidence},
 critical_deadlines: {description, confidence, evidence, name, date_value},
 technologies: {description, confidence, evidence, name},
 price_formula: {description, confidence, evidence, formula_type, max_points,
-umbral_temeridad, params},
+umbral_temeridad, umbral_temeridad_sobre, params},
 required_documents: {description, confidence, evidence, name, scope, subsanable},
 rate_cards: {description, confidence, evidence, role, max_rate_eur_hour, estimated_hours},
 budget_breakdown: {description, confidence, evidence, concept, category, amount_eur, pct}.
@@ -215,12 +215,10 @@ inversa), "lineal_por_tramos", "con_umbral_temeridad" u "otra"; usa "otra"
 cuando la fórmula no encaje, nunca la más parecida. params es un objeto
 {nombre: número} (los tramos, el umbral), {} si no hay, jamás prosa ni lista;
 umbral_temeridad en tanto por uno
-(0,25 para un 25%), solo si es un umbral fijo de baja. Si el pliego remite
-expresamente al art. 85 RGLCAP, pon "regla_rglcap_85": 1 en params y
-umbral_temeridad a null, aunque cite un 25%. Si mide la temeridad con otra
-regla respecto a la media de las ofertas, umbral_temeridad a null y sin
-"regla_rglcap_85": no es la del art. 85.
-Una entrada por lote si el pliego publica varias.
+(0,25 para un 25%) y umbral_temeridad_sobre "presupuesto" si es una baja sobre
+el presupuesto base, o "media_ofertas" si son puntos por encima de la baja media
+de las ofertas (art. 85 RGLCAP: "10 unidades porcentuales" → 0,10); null si el
+pliego no lo dice. Una entrada por lote si el pliego publica varias.
 required_documents: scope "sobre_a" (documentación administrativa), "sobre_b"
 (criterios sujetos a juicio de valor), "sobre_c" (criterios automáticos) u
 "otro"; subsanable solo si el pliego lo dice, si no null.

@@ -251,6 +251,35 @@ def list_all() -> list[dict[str, Any]]:
         )
 
 
+def exportar_de_usuario(user_id: int) -> list[dict[str, object]]:
+    """Empresas que vigila el usuario, con su correo de aviso (RGPD Art. 15/20).
+
+    Solo las suyas: una vigilancia que un compañero comparte con la
+    organización es dato de ese compañero, no del solicitante.
+    """
+    with connect_read() as c:
+        return rows_to_dicts(
+            c.execute(
+                "SELECT w.id, w.empresa_id, e.nombre_canonico, w.email, w.frequency, "
+                "       w.created_at, w.last_notified_at, w.organization_id, w.visibility "
+                "FROM watchlist_empresas w "
+                "JOIN empresas e ON e.empresa_id = w.empresa_id "
+                f"WHERE {_IDENT_W} ORDER BY w.id LIMIT 5000",
+                (user_id, user_id),
+            )
+        )
+
+
+def borrar_de_usuario(user_id: int) -> int:
+    """Borra la vigilancia del usuario (RGPD Art. 17): es dato personal (ADR-030 §D).
+
+    Sin ``except``: un borrado RGPD que falla en silencio es incumplimiento.
+    """
+    with connect() as c:
+        cur = c.execute(f"DELETE FROM watchlist_empresas WHERE {_IDENT}", (user_id, user_id))
+        return int(cur.rowcount or 0)
+
+
 def update_last_notified(entry_id: int, ts: str | None = None) -> None:
     with connect() as c:
         c.execute(

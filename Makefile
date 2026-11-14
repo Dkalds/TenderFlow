@@ -368,7 +368,7 @@ runbook-disaster-recovery:
 
 # ── Extras ───────────────────────────────────────────────────────────────────
 
-.PHONY: docker-build security coverage-html pre-commit
+.PHONY: docker-build security coverage-html pre-commit diff-cover
 
 docker-build:  ## Build all Docker images
 	docker compose build
@@ -385,3 +385,13 @@ coverage-html:  ## Generate HTML coverage report
 
 pre-commit:  ## Run all pre-commit hooks
 	pre-commit run --all-files
+
+# El mismo gate que el job de tests de CI: 80 % de cobertura sobre las líneas
+# que la rama cambia frente a origin/master. CI lo mide con la suite entera;
+# aquí, por defecto, con la unitaria, así que una línea que solo ejercita un
+# test de integración sale como falta: pasá esos tests en TESTS. diff-cover no
+# es dependencia del proyecto (CI lo instala al vuelo): `pip install diff-cover`.
+diff-cover:  ## Cobertura de las líneas del diff frente a origin/master, el gate de CI (TESTS="tests/test_x.py")
+	@command -v diff-cover >/dev/null || { echo "Falta diff-cover: pip install diff-cover"; exit 1; }
+	pytest $(or $(TESTS),tests/ -m "unit and not slow") -q --cov=. --cov-report=xml --cov-fail-under=0
+	diff-cover coverage.xml --compare-branch=origin/master --fail-under=80

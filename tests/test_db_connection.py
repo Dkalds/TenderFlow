@@ -74,7 +74,8 @@ def test_connect_read_after_write(tmp_db):
         conn.execute(
             "INSERT INTO api_keys(name, key_hash, created_at, is_active) "
             "VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
-            ("test-read", "hash-abc", now_utc_iso(), 1),
+            # Inactiva: una activa sin dueño ni caducidad viola v183.
+            ("test-read", "hash-abc", now_utc_iso(), 0),
         )
 
     # Leer con connect_read

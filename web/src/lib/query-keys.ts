@@ -138,8 +138,12 @@ export const fichaKeys = {
  */
 export const simuladorKeys = {
   all: ["simulador-precio"] as const,
-  detail: (licitacionId: string, bajas: readonly number[], referencia: number | null) =>
-    ["simulador-precio", licitacionId, [...bajas], referencia] as const,
+  detail: (
+    licitacionId: string,
+    bajas: readonly number[],
+    referencia: number | null,
+    media: number | null = null,
+  ) => ["simulador-precio", licitacionId, [...bajas], referencia, media] as const,
 };
 
 export const paginaKeys = {

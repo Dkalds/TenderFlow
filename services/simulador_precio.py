@@ -21,7 +21,6 @@ no se calcula, por lo mismo.
 
 from __future__ import annotations
 
-from statistics import fmean
 from typing import Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -51,14 +50,6 @@ MotivoSinCalculo = Literal[
 #: Derivado del `Literal`, no repetido. Ver `services/avisos.py::SUBTIPOS`.
 MOTIVOS_SIN_CALCULO: tuple[str, ...] = get_args(MotivoSinCalculo)
 
-#: Con qué regla se marcó ``EscenarioPuntos.temeraria``. ``art85_dos_ofertas``
-#: solo ve tu baja y la del rival: con tres o más ofertas el art. 85 RGLCAP
-#: mide contra la media y el resultado puede cambiar.
-TemeridadRegla = Literal["umbral_fijo", "art85_dos_ofertas", "sin_umbral"]
-
-#: Clave de ``PriceFormulaFact.params`` que marca la temeridad del art. 85.
-CLAVE_ART85 = "regla_rglcap_85"
-
 
 class EscenarioPuntos(BaseModel):
     """Los puntos de precio que da una baja concreta."""
@@ -69,8 +60,7 @@ class EscenarioPuntos(BaseModel):
     baja: float = Field(ge=0, le=1)
     puntos: float = Field(ge=0)
     #: ``True`` si esta baja cae por debajo del umbral de temeridad publicado y
-    #: por tanto obligaría a justificarla. Con qué regla, lo dice
-    #: ``SimulacionPrecio.temeridad_regla``.
+    #: por tanto obligaría a justificarla.
     temeraria: bool = False
 
 
@@ -90,10 +80,15 @@ class SimulacionPrecio(BaseModel):
     #: signo es lo informativo: negativo = hay que compensar en juicio de valor.
     hueco_vs_referencia: float | None = None
     baja_referencia: float | None = None
+    #: Baja por encima de la cual una oferta es temeraria, ya resuelta. `None` = el
+    #: pliego no publica umbral, o lo publica sobre la media y no se conoce.
+    umbral_temeridad: float | None = None
+    #: ``True`` si el pliego mide la temeridad sobre la media de las ofertas
+    #: (art. 85 RGLCAP): el umbral se mueve con ellas y pide ``baja_media``.
+    temeridad_sobre_media: bool = False
+    baja_media: float | None = None
     #: `None` = se calculó. Con valor, `escenarios` va vacío.
     sin_calculo: MotivoSinCalculo | None = None
-    #: Regla con la que se marcó ``temeraria`` en los escenarios.
-    temeridad_regla: TemeridadRegla = "sin_umbral"
 
 
 def _puntos_proporcional_inversa(baja: float, baja_mayor: float, maximo: float) -> float:
@@ -137,56 +132,6 @@ def _puntos_por_tramos(baja: float, tramos: dict[str, float], maximo: float) -> 
     return min(max(p for _u, p in aplicables), maximo)
 
 
-def _mas_de(diferencia: float, unidades: float) -> bool:
-    """«En más de N unidades porcentuales», estricto y sin ruido de coma flotante."""
-    return round(diferencia - unidades, 9) > 0
-
-
-def _es_temeraria_art85(baja: float, otras: list[float]) -> bool:
-    """¿Es ``baja`` desproporcionada según el art. 85 RGLCAP (RD 1098/2001)?
-
-    ``otras`` son las bajas de las demás ofertas. El artículo habla de precios;
-    aquí se escribe en bajas sobre el presupuesto (precio = 1 - baja), así que
-    «inferior en más de N unidades porcentuales» es una baja mayor en más de N
-    puntos, y «la oferta de cuantía más elevada» es la de menor baja.
-
-    Hay otra lectura de «unidades porcentuales» (relativa al precio de la otra
-    oferta: precio < 0,8 por el de la otra) que con bajas altas da otro veredicto;
-    aquí se toman como puntos de baja sobre el presupuesto, y lo fija
-    ``tests/test_simulador_precio.py``. Cambiarla es una decisión del dueño.
-
-    1 oferta: baja de más de 25 puntos. 2: más de 20 por encima de la otra.
-    3: más de 10 por encima de la media, sacando de la media la de menor baja
-    si queda más de 10 por debajo de ella; y siempre, más de 25. 4 o más: más
-    de 10 por encima de la media; si alguna queda más de 10 por debajo, nueva
-    media sin ellas, y si quedan menos de tres, la de las tres mayores bajas.
-
-    shortcut: no aplica la reducción de un tercio del apartado 5 (la decide el
-    pliego); subirlo cuando el extractor la lea.
-    """
-    bajas = [baja, *otras]
-    if len(bajas) == 1:
-        return _mas_de(baja, 0.25)
-    if len(bajas) == 2:
-        return _mas_de(baja - otras[0], 0.20)
-    media = fmean(bajas)
-    if len(bajas) == 3:
-        if _mas_de(baja, 0.25):
-            return True
-        menor = min(bajas)
-        if _mas_de(media - menor, 0.10):
-            resto = list(bajas)
-            resto.remove(menor)
-            media = fmean(resto)
-        return _mas_de(baja - media, 0.10)
-    restantes = [b for b in bajas if not _mas_de(media - b, 0.10)]
-    if len(restantes) < len(bajas):
-        if len(restantes) < 3:
-            restantes = sorted(bajas, reverse=True)[:3]
-        media = fmean(restantes)
-    return _mas_de(baja - media, 0.10)
-
-
 def simular(
     licitacion_id: str,
     formulas: list[PriceFormulaFact],
@@ -195,8 +140,14 @@ def simular(
     baja_referencia: float | None = None,
     baja_mayor_esperada: float | None = None,
     peso_precio_pct: float | None = None,
+    baja_media: float | None = None,
 ) -> SimulacionPrecio:
     """Puntos de precio por cada baja de ``bajas``.
+
+    ``baja_media`` es la baja media que se espera de las ofertas. Solo la usa
+    un pliego que mide la temeridad sobre la media: sin ella ese umbral no se
+    conoce y ninguna baja se marca, en vez de marcarla contra un número fijo
+    que el pliego no publica.
 
     ``baja_mayor_esperada`` es la baja de la mejor oferta rival que se prevé
     (p90 de ``prediccion-baja``, o la de referencia del CPV). Sin ella se usa
@@ -237,9 +188,7 @@ def simular(
     else:
         rival = [baja_referencia] if baja_referencia is not None else []
         mayor = max([*candidatas, *rival], default=0.0)
-    art85 = bool(formula.params.get(CLAVE_ART85))
-    # La clave del art. 85 no es un tramo: `float("regla_rglcap_85")` rompería.
-    tramos = {k: v for k, v in formula.params.items() if k != CLAVE_ART85}
+    tramos = formula.params
 
     def _puntos(baja: float) -> float:
         if formula.formula_type == "lineal_por_tramos":
@@ -255,23 +204,17 @@ def simular(
     # Un umbral de 0 marcaría temeraria cualquier baja: es el extractor
     # rellenando el campo, no un pliego.
     umbral = formula.umbral_temeridad or None
-    regla: TemeridadRegla
-    if art85 and baja_referencia is not None:
-        regla = "art85_dos_ofertas"
-    elif umbral is not None and not art85:
-        regla = "umbral_fijo"
-    else:
-        # Con el art. 85 y sin rival no hay contra qué medir; el umbral fijo
-        # que traiga la ficha es justo el que la regla dice que no vale.
-        regla = "sin_umbral"
-
-    def _temeraria(baja: float) -> bool:
-        if regla == "art85_dos_ofertas" and baja_referencia is not None:
-            return _es_temeraria_art85(baja, [baja_referencia])
-        return regla == "umbral_fijo" and umbral is not None and baja >= umbral
-
+    sobre_media = umbral is not None and formula.umbral_temeridad_sobre == "media_ofertas"
+    if sobre_media and umbral is not None:
+        # Puntos porcentuales sobre la baja media (art. 85 RGLCAP).
+        umbral = round(baja_media + umbral, 4) if baja_media is not None else None
     escenarios = [
-        EscenarioPuntos(baja=baja, puntos=round(_puntos(baja), 2), temeraria=_temeraria(baja))
+        EscenarioPuntos(
+            baja=baja,
+            puntos=round(_puntos(baja), 2),
+            # «Más de» X unidades (art. 85 RGLCAP): la baja justo en el umbral no lo es.
+            temeraria=bool(umbral is not None and baja > umbral),
+        )
         for baja in sorted(candidatas)
     ]
 
@@ -290,7 +233,9 @@ def simular(
         escenarios=escenarios,
         hueco_vs_referencia=hueco,
         baja_referencia=baja_referencia,
-        temeridad_regla=regla,
+        umbral_temeridad=umbral,
+        temeridad_sobre_media=sobre_media,
+        baja_media=baja_media,
     )
 
 
@@ -305,6 +250,7 @@ def simular_precio_de(
     *,
     bajas: list[float] | None = None,
     baja_referencia: float | None = None,
+    baja_media: float | None = None,
 ) -> SimulacionPrecio:
     """Lee la ficha del pliego y simula. Es la entrada que usa la ruta.
 
@@ -336,4 +282,5 @@ def simular_precio_de(
         bajas=list(bajas) if bajas else list(BAJAS_POR_DEFECTO),
         baja_referencia=baja_referencia,
         peso_precio_pct=peso_precio,
+        baja_media=baja_media,
     )

@@ -207,3 +207,40 @@ def test_client_errors_respeta_su_tope_sin_dejar_de_contar_los_conocidos(tmp_db,
     filas = {f["mensaje"]: f for f in client_errors.listar()}
     assert set(filas) == {"uno", "dos"}  # "tres" no cabe
     assert filas["uno"]["ocurrencias"] == 2 and filas["uno"]["build"] == "b2"
+
+
+# ── watchlist_empresas: guarda el correo de aviso ──────────────────────────
+
+
+def test_export_y_borrado_alcanzan_las_empresas_vigiladas(tmp_db):
+    from db import watchlist_empresas as vigilancia
+    from services.gdpr import export_account_data
+
+    db_mod, _ = tmp_db
+    yo = _user("vigila@example.test")
+    otra = _user("companera@example.test")
+    org = int(OrganizationRepository().ensure_personal_organization(yo)["id"])
+    with db_mod.connect() as c:
+        empresa_id = int(
+            c.execute(
+                "INSERT INTO empresas (nombre_canonico, created_at, updated_at) "
+                "VALUES (%s, %s, %s) RETURNING empresa_id",
+                ("ACME SL", "2026-09-01T00:00:00+00:00", "2026-09-01T00:00:00+00:00"),
+            ).fetchone()[0]
+        )
+    for uid, correo in ((yo, "vigila@example.test"), (otra, "companera@example.test")):
+        vigilancia.add_entry(
+            vigilancia.WatchlistEmpresaEntry(
+                user_id=uid, empresa_id=empresa_id, organization_id=org, email=correo
+            )
+        )
+
+    (fila,) = export_account_data(yo, "clave")["vigilancia_empresas"]
+    assert fila["email"] == "vigila@example.test"
+    assert fila["nombre_canonico"] == "ACME SL"
+
+    anonymize_user_data("clave", user_id=yo)
+
+    assert vigilancia.exportar_de_usuario(yo) == []
+    # La vigilancia de la compañera es dato suyo: el borrado no la toca.
+    assert [f["email"] for f in vigilancia.exportar_de_usuario(otra)] == ["companera@example.test"]
