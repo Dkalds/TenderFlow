@@ -328,6 +328,7 @@ const FABRICAS: readonly Fabrica[] = [
       { nombre: "adminKeys.health", clave: adminKeys.health },
       { nombre: "adminKeys.accessGrants", clave: adminKeys.accessGrants },
       { nombre: "adminKeys.clientErrors", clave: adminKeys.clientErrors },
+      { nombre: "adminKeys.cspViolations", clave: adminKeys.cspViolations },
       { nombre: "adminKeys.ejecuciones", clave: adminKeys.ejecuciones },
     ],
   },

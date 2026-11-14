@@ -169,9 +169,12 @@ prerrequisitos están en [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md).
     agentes: `make check-agent-docs`.
 - Si añadís un módulo, movés código entre paquetes o tocás imports entre
     ellos: `make check-layers`. Si añadís o retirás una ruta de la API:
-    `make check-api-surface` y `make status`. Los dos corren también dentro
-    de la suite (`tests/test_unit_ratchet_*.py`), así que CI los ejecuta
-    aunque no tengan paso propio en el workflow.
+    `make check-api-surface` y `make status`. En CI corren dos veces: en
+    `make gates` y `make gates-deps` (`scripts/run_gates.py`), y dentro de
+    la suite (`tests/test_unit_ratchet_*.py`). Cuáles de esos tests de
+    ratchet repiten un gate de `run_gates.py` lo congela
+    `tests/test_unit_run_gates.py`; fuera de ese patrón hay otros tests que
+    también corren un gate sobre el árbol (p. ej. el de `user_key`).
 - Si añadís, cambiás o retirás algo que una persona hace con el producto de
     punta a punta: [docs/casos-de-uso.md](docs/casos-de-uso.md) es el catálogo,
     y cada caso necesita un recorrido —un test de escenario por la API

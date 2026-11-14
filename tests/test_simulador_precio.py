@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from services.simulador_precio import simular
+from services.simulador_precio import _es_temeraria_art85, simular
 from shared.tender_facts import EvidenceRef, PriceFormulaFact
 
 
@@ -192,6 +192,124 @@ class TestTemeridad:
         formula = _formula(formula_type="proporcional_inversa", max_points=40, umbral_temeridad=0)
         sim = simular("EXP-1", [formula], bajas=[0.05, 0.25])
         assert [e.temeraria for e in sim.escenarios] == [False, False]
+
+
+class TestArt85Rglcap:
+    """Art. 85 RGLCAP (RD 1098/2001), leído en bajas sobre el presupuesto.
+
+    Interpretación que fija este test: el artículo habla de precios, y aquí
+    precio = 1 - baja. «Inferior en más de N unidades porcentuales» es una baja
+    que supera a la otra (o a la media de bajas) en más de N puntos, estricto:
+    justo N puntos no es temeraria. «La oferta de cuantía más elevada» es la de
+    menor baja, y «las tres de menor cuantía», las tres de mayor baja.
+    """
+
+    def test_un_licitador_mas_de_25_puntos(self) -> None:
+        assert _es_temeraria_art85(0.26, []) is True
+        assert _es_temeraria_art85(0.25, []) is False
+
+    def test_dos_licitadores_mas_de_20_sobre_la_otra(self) -> None:
+        """30 % contra 10 %: 20 puntos justos, no; 31 % contra 10 %: sí."""
+        assert _es_temeraria_art85(0.30, [0.10]) is False
+        assert _es_temeraria_art85(0.31, [0.10]) is True
+
+    def test_tres_licitadores_contra_la_media(self) -> None:
+        """Bajas 8, 10 y 25: media 14,33; 25 − 14,33 = 10,67 > 10.
+
+        El 8 queda 6,33 por debajo de la media: no se excluye.
+        """
+        assert _es_temeraria_art85(0.25, [0.08, 0.10]) is True
+        assert _es_temeraria_art85(0.10, [0.08, 0.25]) is False
+
+    def test_tres_licitadores_excluye_la_mas_cara_de_la_media(self) -> None:
+        """Bajas 0, 15 y 25: media 13,33; el 0 queda 13,33 por debajo → fuera.
+
+        Nueva media (15 + 25) / 2 = 20: 25 − 20 = 5, no temeraria. Con la media
+        de las tres, 25 − 13,33 = 11,67, lo habría sido.
+        """
+        assert _es_temeraria_art85(0.25, [0.0, 0.15]) is False
+
+    def test_tres_licitadores_mas_de_25_siempre(self) -> None:
+        """Bajas 20, 22 y 27: media 23; 27 − 23 = 4, pero pasa de 25 puntos."""
+        assert _es_temeraria_art85(0.27, [0.20, 0.22]) is True
+
+    def test_cuatro_licitadores_contra_la_media(self) -> None:
+        """Bajas 10, 12, 14 y 30: media 16,5; ninguna queda >10 por debajo.
+
+        30 − 16,5 = 13,5 > 10 → temeraria; 14 − 16,5 < 0 → no.
+        """
+        assert _es_temeraria_art85(0.30, [0.10, 0.12, 0.14]) is True
+        assert _es_temeraria_art85(0.14, [0.10, 0.12, 0.30]) is False
+
+    def test_cuatro_licitadores_nueva_media_sin_las_caras(self) -> None:
+        """Bajas 0, 20, 22 y 31: media 18,25; el 0 queda 18,25 por debajo → fuera.
+
+        Nueva media (20 + 22 + 31) / 3 = 24,33: 31 − 24,33 = 6,67, no temeraria.
+        Con la media de todas habría sido 31 − 18,25 = 12,75: sí.
+        """
+        assert _es_temeraria_art85(0.31, [0.0, 0.20, 0.22]) is False
+
+    def test_cuatro_licitadores_menos_de_tres_restantes_usa_las_tres_mayores(self) -> None:
+        """Bajas 0, 0, 30 y 35: media 16,25; los dos 0 quedan >10 por debajo.
+
+        Restan dos (30 y 35), menos de tres: la media es la de las tres de
+        mayor baja (0, 30, 35) = 21,67. 35 − 21,67 = 13,33 > 10 → temeraria.
+        Con la media de las dos restantes (32,5) no lo sería.
+        """
+        assert _es_temeraria_art85(0.35, [0.0, 0.0, 0.30]) is True
+
+
+class TestTemeridadArt85EnLaSimulacion:
+    def _art85(self, **kwargs: object) -> PriceFormulaFact:
+        return _formula(
+            formula_type="inversa_precio",
+            max_points=40,
+            params={"regla_rglcap_85": 1},
+            **kwargs,
+        )
+
+    def test_con_rival_mide_contra_su_baja(self) -> None:
+        """Rival al 5 %: 20 % no (15 puntos), 30 % sí (25 > 20)."""
+        sim = simular("EXP-1", [self._art85()], bajas=[0.20, 0.30], baja_referencia=0.05)
+        assert [e.temeraria for e in sim.escenarios] == [False, True]
+        assert sim.temeridad_regla == "art85_dos_ofertas"
+
+    def test_ignora_el_umbral_fijo_que_traiga_la_ficha(self) -> None:
+        """El 0,25 de la cláusula del art. 85 no es un umbral fijo.
+
+        Rival al 20 %: 30 % no pasa de 20 puntos sobre él, aunque supere el 25 %.
+        """
+        sim = simular(
+            "EXP-1",
+            [self._art85(umbral_temeridad=0.25)],
+            bajas=[0.30],
+            baja_referencia=0.20,
+        )
+        assert sim.escenarios[0].temeraria is False
+
+    def test_sin_rival_no_marca_nada(self) -> None:
+        """Sin otra oferta no hay contra qué medir: ni el 25 % fijo."""
+        sim = simular("EXP-1", [self._art85(umbral_temeridad=0.25)], bajas=[0.30])
+        assert sim.escenarios[0].temeraria is False
+        assert sim.temeridad_regla == "sin_umbral"
+
+    def test_la_clave_no_se_lee_como_tramo(self) -> None:
+        """Tramos ≥10 % → 30 pts; la clave del art. 85 no es un umbral de baja."""
+        formula = _formula(
+            formula_type="lineal_por_tramos",
+            max_points=30,
+            params={"0.10": 30, "regla_rglcap_85": 1},
+        )
+        sim = simular("EXP-1", [formula], bajas=[0.15], baja_referencia=0.10)
+        assert sim.escenarios[0].puntos == 30.0
+
+    def test_sin_la_clave_la_regla_es_el_umbral_fijo(self) -> None:
+        formula = _formula(
+            formula_type="con_umbral_temeridad", max_points=40, umbral_temeridad=0.25
+        )
+        sim = simular("EXP-1", [formula], bajas=[0.30], baja_referencia=0.05)
+        assert sim.escenarios[0].temeraria is True
+        assert sim.temeridad_regla == "umbral_fijo"
 
 
 class TestHuecoContraElRival:

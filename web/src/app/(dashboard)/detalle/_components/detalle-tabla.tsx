@@ -74,19 +74,47 @@ function DetalleCabecera({
   );
 }
 
+/**
+ * Lo que pinta el cuerpo de la tabla: uno de cuatro, nunca dos a la vez.
+ *
+ * - `vacia.conRecorte`: el texto y el botón cambian si además hay recorte por
+ *   cierre.
+ * - `filas.refrescando`: hay otra página o filtro en vuelo; las filas que se
+ *   ven son las anteriores y se atenúan.
+ */
+export type EstadoTabla =
+  | { tipo: "cargando" }
+  | { tipo: "error"; error: unknown }
+  | { tipo: "vacia"; conRecorte: boolean }
+  | { tipo: "filas"; refrescando: boolean };
+
+export function estadoDeTabla({
+  isLoading,
+  isFetching,
+  error,
+  hayFilas,
+  conRecorte,
+}: {
+  isLoading: boolean;
+  isFetching: boolean;
+  error: unknown;
+  hayFilas: boolean;
+  conRecorte: boolean;
+}): EstadoTabla {
+  if (isLoading) return { tipo: "cargando" };
+  if (error != null) return { tipo: "error", error };
+  if (!hayFilas) return { tipo: "vacia", conRecorte };
+  return { tipo: "filas", refrescando: isFetching };
+}
+
 export interface DetalleTablaProps {
   rows: MergedRow[];
   sorting: SortingState;
   allPageSelected: boolean;
   onToggleAllPage: () => void;
   onToggleSort: (columnId: string) => void;
-  isLoading: boolean;
-  isFetching: boolean;
-  error: unknown;
+  estado: EstadoTabla;
   onRetry: () => void;
-  vacia: boolean;
-  /** Bloque vacío/error: el texto cambia si además hay recorte por cierre. */
-  conRecorte: boolean;
   onLimpiar: () => void;
   detailId: string | null;
   cursor: number;
@@ -103,7 +131,7 @@ export interface DetalleTablaProps {
 
 /** La tabla y sus tres estados: carga, fallo y sin resultados. */
 export function DetalleTabla(props: DetalleTablaProps) {
-  const { rows, isLoading, error, vacia } = props;
+  const { rows, estado } = props;
 
   return (
     <div className="relative min-h-0 flex-1 overflow-auto">
@@ -122,15 +150,15 @@ export function DetalleTabla(props: DetalleTablaProps) {
           />
 
           <tbody>
-            {isLoading ? (
+            {estado.tipo === "cargando" &&
               Array.from({ length: 12 }, (_, index) => (
                 <tr key={index} className="border-b border-divider-subtle">
                   <td colSpan={COLUMNS.length} className="px-3.5 py-1.5">
                     <Skeleton className="h-6 w-full rounded-sm" />
                   </td>
                 </tr>
-              ))
-            ) : error || vacia ? null : (
+              ))}
+            {estado.tipo === "filas" &&
               rows.map((row, index) => (
                 <DetalleFila
                   key={row.id_externo}
@@ -143,41 +171,40 @@ export function DetalleTabla(props: DetalleTablaProps) {
                   tecOn={row.tecnologia ? props.tecnologias.includes(row.tecnologia) : false}
                   compact={props.compact}
                   rowHeight={props.rowHeight}
-                  atenuada={props.isFetching}
+                  atenuada={estado.refrescando}
                   onOpen={props.onOpen}
                   onToggleSelect={props.onToggleSelect}
                   onToggleCcaa={props.onToggleCcaa}
                   onToggleTecnologia={props.onToggleTecnologia}
                 />
-              ))
-            )}
+              ))}
           </tbody>
         </table>
 
         {/* Los tres estados viven fuera de la `<table>`: una alerta dentro
             de una celda se anuncia como dato de la tabla, que es lo que no
             es. La cabecera de columnas se queda visible en los tres. */}
-        {error != null && (
+        {estado.tipo === "error" && (
           <PanelError
             title="No se pudo cargar la tabla"
-            error={error}
+            error={estado.error}
             onRetry={props.onRetry}
             className="mx-auto my-10 max-w-[560px]"
           />
         )}
 
-        {vacia && (
+        {estado.tipo === "vacia" && (
           <PanelEmpty
             className="py-20"
             title="Sin resultados"
             hint={
-              props.conRecorte
+              estado.conRecorte
                 ? "Ninguna licitación encaja con el ámbito actual ni con el recorte por fecha de cierre."
                 : "Ninguna licitación encaja con el ámbito actual."
             }
             action={
               <Button type="button" variant="outline" size="sm" onClick={props.onLimpiar}>
-                {props.conRecorte ? "Limpiar ámbito y recorte" : "Limpiar ámbito"}
+                {estado.conRecorte ? "Limpiar ámbito y recorte" : "Limpiar ámbito"}
               </Button>
             }
           />

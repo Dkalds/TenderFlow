@@ -28,7 +28,7 @@ import type { EvidenceRef } from "@/lib/api-types";
  * pide con el botón. Cada cita abre la página del pliego (F2.5).
  */
 export function GuionOfertaPanel({ licitacionId }: { licitacionId: string }) {
-  const { guion, generar } = useGuionOferta(licitacionId);
+  const { guion, generar, organizationId } = useGuionOferta(licitacionId);
   const documentos = useFactSheetDocumentos(licitacionId);
   const [cita, setCita] = React.useState<EvidenceRef | null>(null);
   const tituloId = React.useId();
@@ -60,8 +60,9 @@ export function GuionOfertaPanel({ licitacionId }: { licitacionId: string }) {
   const descargarPdf = async () => {
     setDescargandoPdf(true);
     try {
+      const ruta = `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/guion.pdf`;
       const blob = await fetchBlobWithAuth(
-        `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/guion.pdf`,
+        organizationId != null ? `${ruta}?organization_id=${organizationId}` : ruta,
       );
       descargarBlob(`guion-oferta-${licitacionId.replace(/[^\w-]+/g, "_")}.pdf`, blob, "guion");
     } catch (e) {

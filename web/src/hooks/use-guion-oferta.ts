@@ -57,7 +57,9 @@ export function useGuionOferta(licitacionId: string) {
     meta: { silent: true },
   });
 
-  return { guion: guion.data ?? null, generar };
+  // `organizationId` sale para la descarga del PDF: lleva las citas propias de
+  // la misma organización que pidió el guion.
+  return { guion: guion.data ?? null, generar, organizationId };
 }
 
 /**
@@ -66,7 +68,9 @@ export function useGuionOferta(licitacionId: string) {
  * Es formato, no contenido: cada línea sale de un campo de la respuesta, con
  * la misma forma que `services/rag/guion_oferta.py::a_markdown` —la cita como
  * referencia a documento y página, no como el texto citado—. `nombreDoc`
- * resuelve el id del documento a su nombre de fichero cuando se conoce.
+ * resuelve el id del documento a su nombre de fichero cuando se conoce. Las
+ * citas de documentos propios (ADR-040) sí llevan el extracto, en un bloque
+ * «De tus documentos» por criterio.
  */
 export function guionAMarkdown(
   guion: GuionOferta,
@@ -88,6 +92,15 @@ export function guionAMarkdown(
       lineas.push(`- ${punto.texto}${marca}`);
     }
     lineas.push("");
+    const propias = criterio.citas_organizacion ?? [];
+    if (propias.length > 0) {
+      lineas.push("### De tus documentos", "");
+      for (const cita of propias) {
+        const origen = cita.page_number != null ? `${cita.filename} p. ${cita.page_number}` : cita.filename;
+        lineas.push(`- «${cita.cita}» _(${origen})_`);
+      }
+      lineas.push("");
+    }
   }
   return lineas.join("\n");
 }

@@ -2,9 +2,12 @@
 
 `docs/IMPROVEMENT_BACKLOG.md` contiene, por convención del propio documento,
 «solo ítems abiertos»: cerrar uno es borrarlo, y el rastro es el PR. Un ítem
-abierto que cita una revisión Alembic que ya está en `db/alembic/versions/`
-probablemente esté hecho y nadie lo borró, que es exactamente el estado que
-hace que alguien lo trabaje dos veces.
+abierto que cita una revisión Alembic creada **después** de su Estado actual
+(`Create Date` de la cabecera de `db/alembic/versions/v*.py`) probablemente
+esté hecho y nadie lo borró, que es exactamente el estado que hace que alguien
+lo trabaje dos veces. Una revisión anterior al Estado actual ya la tuvo en
+cuenta quien lo escribió («aplicar `v178` en producción»), y una sin fecha en
+la cabecera no avisa.
 
 Este script no cierra nada: avisa. Cerrar un ítem es una decisión, y borrarlo
 con el PR que lo resolvió es trabajo de quien lo cerró.
@@ -13,6 +16,11 @@ Lo que sí falla siempre: un ítem sin su primera línea **Estado actual** (fech
 y clase `código|propietario|medir|mixto`), o con una nota de progreso de fecha
 posterior a la de esa línea. Es lo que se lee para saber qué queda; sin ella, o
 sin reescribirla al avanzar, quien lea el ítem tomará el Problema por el estado.
+
+También falla un backlog más largo que `TOPE_ITEMS` ítems o `TOPE_LINEAS`
+líneas. Es un ratchet: los topes son lo que medía el backlog al fijarlos y solo
+bajan; si el backlog queda por debajo, el script lo dice para que el mismo
+cambio los apriete.
 
 Uso::
 
@@ -23,8 +31,8 @@ Uso::
 `--estado` (`make backlog-estado`) es la forma de leer el backlog para proponer
 o planificar: título, clase y Estado actual, sin el resto del texto.
 
-Exit 1 si falta o está desactualizado algún Estado actual, o con `--strict` y
-avisos; 0 en el resto (y siempre con `--estado`).
+Exit 1 si falta o está desactualizado algún Estado actual, si el backlog supera
+sus topes, o con `--strict` y avisos; 0 en el resto (y siempre con `--estado`).
 """
 
 from __future__ import annotations
@@ -37,10 +45,16 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _BACKLOG = _REPO_ROOT / "docs" / "IMPROVEMENT_BACKLOG.md"
 _VERSIONS = _REPO_ROOT / "db" / "alembic" / "versions"
 
+#: Ítems abiertos y líneas del backlog congelados (9003ce6e, 2026-11-14). Solo bajan.
+TOPE_ITEMS = 73
+TOPE_LINEAS = 1127
+
 #: Encabezado de un ítem: `### [P2] Título del ítem`.
 _ITEM = re.compile(r"^###\s*\[(P[0-3])\]\s*(.+?)\s*$", re.M)
 #: Revisión Alembic citada en el cuerpo de un ítem (`v98`, `v112`…).
 _REVISION = re.compile(r"\bv(\d{2,3})\b")
+#: Fecha de creación en la cabecera que escribe `alembic revision`.
+_CREATE_DATE = re.compile(r"^Create Date: (\d{4}-\d{2}-\d{2})", re.M)
 #: Primera línea obligatoria de cada ítem: lo que queda hoy, con fecha y clase.
 #: El «Problema» se queda en el día en que se abrió y leerlo como estado hizo
 #: proponer como pendientes cosas hechas (AGENTS.md §0).
@@ -135,12 +149,33 @@ def _cuerpo_de_items(texto: str) -> list[tuple[str, str, str]]:
     return items
 
 
-def _revisiones_presentes() -> set[str]:
-    return {
-        m.group(1)
-        for f in _VERSIONS.glob("v*.py")
-        if (m := re.match(r"^v(\d+)_", f.name)) is not None
-    }
+def _fechas_de_revisiones() -> dict[str, str]:
+    """`{número: Create Date}` de las revisiones del árbol que llevan fecha."""
+    fechas: dict[str, str] = {}
+    for f in _VERSIONS.glob("v*.py"):
+        numero = re.match(r"^v(\d+)_", f.name)
+        fecha = _CREATE_DATE.search(f.read_text(encoding="utf-8"))
+        if numero and fecha:
+            fechas[numero.group(1)] = fecha.group(1)
+    return fechas
+
+
+def _errores_de_tamano(items: int, lineas: int) -> tuple[list[str], list[str]]:
+    """`(errores, notas)` del ratchet de tamaño: pasarse falla; quedarse corto pide apretar."""
+    errores: list[str] = []
+    notas: list[str] = []
+    for que, valor, tope, nombre in (
+        ("ítems abiertos", items, TOPE_ITEMS, "TOPE_ITEMS"),
+        ("líneas", lineas, TOPE_LINEAS, "TOPE_LINEAS"),
+    ):
+        if valor > tope:
+            errores.append(
+                f"El backlog tiene {valor} {que} y el tope es {tope}: cerrá o fusioná ítems "
+                "antes de añadir (AGENTS.md §0, un backlog que nadie lee entero no prioriza)."
+            )
+        elif valor < tope:
+            notas.append(f"{nombre} puede bajar de {tope} a {valor} en este mismo cambio.")
+    return errores, notas
 
 
 def main() -> int:
@@ -148,31 +183,40 @@ def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     estricto = "--strict" in sys.argv
-    items = _cuerpo_de_items(_BACKLOG.read_text(encoding="utf-8"))
+    texto = _BACKLOG.read_text(encoding="utf-8")
+    items = _cuerpo_de_items(texto)
     if "--estado" in sys.argv:
         print(resumen(items))
         return 0
-    revisiones = _revisiones_presentes()
+    fechas = _fechas_de_revisiones()
 
     errores = _errores_de_estado(items)
+    errores_de_tamano, notas = _errores_de_tamano(len(items), len(texto.splitlines()))
+    errores += errores_de_tamano
     for e in errores:
         print(f"ERROR {e}")
 
     avisos: list[str] = []
     for prioridad, titulo, cuerpo in items:
-        citadas = {rev for rev in _REVISION.findall(cuerpo) if rev in revisiones}
+        estado = _estado(cuerpo)
+        if estado is None:
+            continue  # ya es un error
+        citadas = {rev for rev in _REVISION.findall(cuerpo) if fechas.get(rev, "") > estado[0]}
         if citadas:
             avisos.append(
                 f"[{prioridad}] {titulo!r} cita la/s revisión/es "
-                f"{', '.join('v' + r for r in sorted(citadas))}, ya presentes en "
-                f"db/alembic/versions/. ¿Sigue abierto?"
+                f"{', '.join('v' + r for r in sorted(citadas, key=int))}, creadas en "
+                f"db/alembic/versions/ después de su Estado actual ({estado[0]}). "
+                "¿Sigue abierto?"
             )
 
     for a in avisos:
         print(f"WARN  {a}")
+    for n in notas:
+        print(f"NOTA  {n}")
 
     if errores:
-        print(f"\n{len(errores)} ítem/s sin «Estado actual» o con él desactualizado.")
+        print(f"\n{len(errores)} error/es en el backlog (Estado actual o tamaño).")
         return 1
     if estricto and avisos:
         print(f"\n{len(avisos)} problema/s de frescura en el backlog.")

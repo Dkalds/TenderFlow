@@ -3203,6 +3203,9 @@ export interface paths {
          *     LLM sin que se vea. Si el pliego cambió desde la última generación, la
          *     firma no coincide y la respuesta es 404 — el guion guardado sería de otro
          *     pliego.
+         *
+         *     Lleva las citas de los documentos de la organización activa con el mismo
+         *     criterio que el `POST` (ADR-040); se buscan al descargar, no se guardan.
          */
         get: operations["get_guion_oferta_pdf_api_v1_licitaciones__id_externo__guion_pdf_get"];
         put?: never;
@@ -5801,6 +5804,31 @@ export interface paths {
          *     de API keys.
          */
         get: operations["list_client_errors_api_v1_security_client_errors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/security/csp-violations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Violaciones de CSP agrupadas por directiva y origen
+         * @description Lo que la política CSP bloquea en el navegador de los usuarios.
+         *
+         *     `POST /csp-report` las guarda desde 2026-06 y nada las leía. Agrupadas, una
+         *     fila es una decisión: un dominio que falta en la política o un recurso que
+         *     sobra en la página. `require_admin` por lo mismo que `/client-errors`.
+         *     La retención (`RETENTION_CLIENT_ERRORS_DAYS`) acota cuánto atrás hay datos.
+         */
+        get: operations["list_csp_violations_api_v1_security_csp_violations_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8689,6 +8717,31 @@ export interface components {
             organo: string;
             /** Tecnologia */
             tecnologia: string;
+        };
+        /**
+         * CspViolacionAgrupada
+         * @description Violaciones de CSP con la misma directiva y el mismo origen bloqueado.
+         */
+        CspViolacionAgrupada: {
+            /** Directiva */
+            directiva: string;
+            /** Documento Ejemplo */
+            documento_ejemplo?: string | null;
+            /** Origen */
+            origen: string;
+            /** Primera Vez */
+            primera_vez: string;
+            /** Ultima Vez */
+            ultima_vez: string;
+            /** Veces */
+            veces: number;
+        };
+        /** CspViolacionesResult */
+        CspViolacionesResult: {
+            /** Dias */
+            dias: number;
+            /** Items */
+            items?: components["schemas"]["CspViolacionAgrupada"][];
         };
         /**
          * CuadroDireccion
@@ -16204,6 +16257,12 @@ export interface components {
             puntos_precio_origen: "pliego" | "peso_precio" | "desconocido";
             /** Sin Calculo */
             sin_calculo?: ("sin_formula" | "formula_no_calculable" | "sin_puntos_de_precio") | null;
+            /**
+             * Temeridad Regla
+             * @default sin_umbral
+             * @enum {string}
+             */
+            temeridad_regla: "umbral_fijo" | "art85_dos_ofertas" | "sin_umbral";
         };
         /**
          * SocioSugerido
@@ -25946,7 +26005,10 @@ export interface operations {
     };
     get_guion_oferta_pdf_api_v1_licitaciones__id_externo__guion_pdf_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Organización activa; por defecto la personal del usuario. */
+                organization_id?: number | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -32528,6 +32590,51 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ClientErroresResult"];
+                };
+            };
+            /** @description La petición no pasó la validación (``errors`` por campo). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Error: cualquier código no listado (RFC 9457). */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    list_csp_violations_api_v1_security_csp_violations_get: {
+        parameters: {
+            query?: {
+                dias?: number;
+                limit?: number;
+            };
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: {
+                session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CspViolacionesResult"];
                 };
             };
             /** @description La petición no pasó la validación (``errors`` por campo). */

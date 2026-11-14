@@ -20,7 +20,6 @@ _COLABORADORES = (
     "services.gdpr._organization_repo",
     "services.gdpr._api_key_repo",
     "services.watchlist_rules.delete_all_for_user",
-    "db.saved_filters.delete_all_for_user",
     "services.notifications.delete_all_alerts",
     "services.notifications.delete_email_prefs",
 )
@@ -35,6 +34,7 @@ def _anonimizar(**kwargs: object) -> dict[str, MagicMock]:
         for ruta in _COLABORADORES:
             pila.enter_context(patch(ruta))
         follows = pila.enter_context(patch("db.repositories.follows.borrar_de_usuario"))
+        vistas = pila.enter_context(patch("db.saved_filters.delete_all_for_user"))
         votos = pila.enter_context(patch("db.repositories.asistente_feedback.borrar_de_usuario"))
         prefs = pila.enter_context(
             patch("db.repositories.notification_preferences.borrar_de_usuario")
@@ -43,12 +43,19 @@ def _anonimizar(**kwargs: object) -> dict[str, MagicMock]:
             patch("db.repositories.consultas_recientes.borrar_de_usuario")
         )
         anonymize_user_data("clave", **kwargs)  # type: ignore[arg-type]  # kwargs de test
-    return {"follows": follows, "votos": votos, "prefs": prefs, "consultas": consultas}
+    return {
+        "follows": follows,
+        "vistas": vistas,
+        "votos": votos,
+        "prefs": prefs,
+        "consultas": consultas,
+    }
 
 
 def test_el_borrado_alcanza_follows_votos_y_preferencias() -> None:
     llamadas = _anonimizar(user_id=5)
     llamadas["follows"].assert_called_once_with(user_id=5)
+    llamadas["vistas"].assert_called_once_with(user_id=5)
     llamadas["votos"].assert_called_once_with(5)
     llamadas["prefs"].assert_called_once_with(5)
     llamadas["consultas"].assert_called_once_with(5)
@@ -56,8 +63,9 @@ def test_el_borrado_alcanza_follows_votos_y_preferencias() -> None:
 
 def test_sin_user_id_solo_se_borra_lo_que_se_guarda_por_clave() -> None:
     llamadas = _anonimizar()
-    # `follows` se identifica por id desde v181: sin él no hay nada suyo.
+    # `follows` y las vistas se identifican por id desde v181: sin él no hay nada suyo.
     llamadas["follows"].assert_not_called()
+    llamadas["vistas"].assert_not_called()
     llamadas["votos"].assert_not_called()
     llamadas["prefs"].assert_not_called()
     llamadas["consultas"].assert_not_called()

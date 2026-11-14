@@ -35,18 +35,13 @@
 
 import * as React from "react";
 import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
-import { useQuery } from "@tanstack/react-query";
 import { Aviso, EnlaceIr, PanelEmpty, PanelError, PanelLoading, ROTULO_DATO, Segmented } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
-import { fetchWithAuth } from "@/lib/api-client";
+import { useBatallasContraMi } from "@/hooks/use-empresa-competencia";
 import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { competitiveKeys } from "@/lib/query-keys";
 import { EMPTY, formatCurrency, formatDate, formatPercent, truncate } from "@/lib/utils";
 
-type BatallasContraMi = Schemas["BatallasContraMi"];
 type Batalla = Schemas["Batalla"];
 type ResultadoBatalla = Batalla["resultado"];
 
@@ -68,31 +63,6 @@ const OPCIONES_VENTANA = VENTANAS.map((valor) => ({ value: String(valor), label:
 
 /** Orden del resumen: lo que se puede afirmar de este rival, primero. */
 const ORDEN_RESULTADOS: ResultadoBatalla[] = ["ellos_ganaron", "perdimos", "ganamos", "sin_resolver"];
-
-export function useBatallasContraMi(empresaKey: string, meses: number, empresaIds: readonly number[] = []) {
-  const organizationId = useActiveOrganizationId();
-  // Con una sola identidad no hay grupo que mandar: la ruta cruza la del path.
-  const grupo = empresaIds.length > 1 ? empresaIds.join(",") : null;
-  return useQuery<BatallasContraMi>({
-    queryKey: competitiveKeys.contraMi(empresaKey, organizationId, meses, grupo),
-    // Ruta con parámetro de path: va por `fetchWithAuth` con el retorno tipado
-    // desde el esquema generado (la regla de `apiGet` para rutas dinámicas).
-    queryFn: () => {
-      const query = new URLSearchParams({ meses: String(meses) });
-      if (organizationId != null) query.set("organization_id", String(organizationId));
-      if (grupo) query.set("empresa_ids", grupo);
-      return fetchWithAuth<BatallasContraMi>(
-        `/api/v1/competitive/empresas/${encodeURIComponent(empresaKey)}/contra-mi?${query}`,
-      );
-    },
-    // «Contra mí» es contra la organización activa: sin saber cuál es, la
-    // comparación saldría contra la personal, que no ha competido con nadie.
-    enabled: empresaKey.length > 0 && organizacionResuelta(organizationId),
-    staleTime: 5 * 60_000,
-    // El fallo se dice en la pestaña (PanelError): sin toast además.
-    meta: META_ERROR_EN_LINEA,
-  });
-}
 
 function baja(valor: number | null | undefined): string {
   return valor == null ? EMPTY : formatPercent(valor * 100);

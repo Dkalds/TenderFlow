@@ -117,3 +117,36 @@ def test_parametrized_nuts_to_ccaa(nuts, expected):
     from shared.geo import nuts_to_ccaa
 
     assert nuts_to_ccaa(nuts) == expected
+
+
+@pytest.mark.parametrize(
+    ("nuts", "esperado"),
+    [
+        # NUTS1: siempre agrupa varias provincias.
+        ("ES7", True),
+        ("ES3", True),
+        (" es6 ", True),
+        # NUTS2 con varias provincias.
+        ("ES70", True),
+        ("ES61", True),
+        ("ES41", True),
+        ("ES11", True),
+        # NUTS2 uniprovinciales: el nombre que publica PLACSP es la provincia.
+        ("ES30", False),
+        ("ES12", False),
+        ("ES62", False),
+        ("ES63", False),
+        ("ES53", False),  # tres NUTS3, pero son islas de una sola provincia
+        # Ni NUTS3, ni país, ni otro país, ni código desconocido.
+        ("ES300", False),
+        ("ES", False),
+        ("PT1", False),
+        ("ES99", False),
+        ("", False),
+        (None, False),
+    ],
+)
+def test_es_nuts_supraprovincial(nuts: str | None, esperado: bool) -> None:
+    from shared.geo import es_nuts_supraprovincial
+
+    assert es_nuts_supraprovincial(nuts) is esperado

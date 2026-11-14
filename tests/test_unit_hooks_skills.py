@@ -106,12 +106,15 @@ def test_el_slash_command_del_usuario_cuenta_como_cargado(
 
 
 def _editar_desde_subagente(
-    repo: Path, monkeypatch: pytest.MonkeyPatch, skills_del_agente: list[str]
+    repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    skills_del_agente: list[str],
+    carpeta: str = "subagents",
 ) -> int:
     """El hook recibe el transcript principal (vacío) y el `agent_id` del subagente."""
     principal = repo.parent / "sesion.jsonl"
     principal.write_text("", encoding="utf-8")
-    del_agente = repo.parent / "sesion" / "subagents" / "agent-abc123.jsonl"
+    del_agente = repo.parent / "sesion" / carpeta / "agent-abc123.jsonl"
     del_agente.parent.mkdir(parents=True, exist_ok=True)
     del_agente.write_text(
         "\n".join(json.dumps(_skill(s)) for s in skills_del_agente), encoding="utf-8"
@@ -136,6 +139,15 @@ def test_dentro_de_un_subagente_cuentan_sus_skills(
 ) -> None:
     """Antes solo se leía el transcript principal y se bloqueaba al subagente que sí los cargó."""
     assert _editar_desde_subagente(repo, monkeypatch, ["ponytail", "python-testing-patterns"]) == 0
+
+
+def test_un_subagente_de_workflow_cuenta_sus_skills(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Un workflow guarda el transcript del agente en subagents/workflows/<wf>/."""
+    skills = ["ponytail", "python-testing-patterns"]
+    carpeta = "subagents/workflows/wf_1"
+    assert _editar_desde_subagente(repo, monkeypatch, skills, carpeta) == 0
 
 
 def test_dentro_de_un_subagente_sin_skills_sigue_bloqueando(

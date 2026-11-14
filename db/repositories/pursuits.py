@@ -11,7 +11,11 @@ from db.database import connect, connect_read, now_utc_iso
 from db.events import append_domain_event
 from db.repositories.base import ambito_agenda_sql, rows_to_dicts, typed_rows
 from db.sql_fragments import FOLD_TABLE, empresa_key_sql, escape_like, fold_expr, iso_guard
-from shared.events import payload_asignacion
+from shared.events import (
+    eventos_de_cambio_pursuit,
+    payload_asignacion,
+    payload_creacion_pursuit,
+)
 
 # El LEFT JOIN contra ``lotes`` va por la clave de negocio ``(licitacion_id,
 # numero)`` y no por un id guardado: hasta 2026-10 ``db/upsert.py::replace_lotes``
@@ -484,6 +488,17 @@ class PursuitRepository:
                     idempotency_key=idempotency_key,
                     created_at=now,
                 )
+                # Outbox (ADR-027): en la transacción del INSERT y solo si
+                # insertó, así que el reintento idempotente no publica otro.
+                append_domain_event(
+                    "pursuit.created",
+                    int(pursuit["id"]),
+                    "pursuit",
+                    payload_creacion_pursuit(pursuit),
+                    organization_id=organization_id,
+                    actor_id=actor_user_id,
+                    conn=conn,
+                )
                 self._emitir_asignacion(conn, pursuit, actor_user_id=actor_user_id)
             return pursuit, was_created
 
@@ -685,6 +700,18 @@ class PursuitRepository:
                 idempotency_key=idempotency_key,
                 created_at=now,
             )
+            # `pursuit_events` es el historial de la ficha; el outbox es lo que
+            # sale (webhooks). Mismo commit: si el UPDATE se revierte, no se publica.
+            for tipo, payload in eventos_de_cambio_pursuit(current, changes):
+                append_domain_event(
+                    tipo,
+                    pursuit_id,
+                    "pursuit",
+                    payload,
+                    organization_id=organization_id,
+                    actor_id=actor_user_id,
+                    conn=conn,
+                )
             resultado = self._get_scoped(conn, organization_id, pursuit_id=pursuit_id)
             if (
                 resultado is not None

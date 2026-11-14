@@ -41,12 +41,14 @@ vez (:class:`_IndiceServing`).
 
 Antes de entrenar nada: auditar una muestra manual con
 ``python scripts/audit_retencion.py`` (acceptance: precisión del
-emparejamiento ≥90% sobre 50 pares).
+emparejamiento ≥90% sobre 50 pares). Con ``--resueltos`` audita los
+vencimientos que el scoring da por resueltos (:func:`muestra_resueltos`).
 """
 
 from __future__ import annotations
 
 import calendar
+from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -54,7 +56,8 @@ from datetime import date, datetime, timedelta
 from typing import Any
 
 from db.contrato_eventos import contar_por_licitacion_y_tipo
-from db.repositories.adjudicaciones import AdjudicacionRepository
+from db.repositories.adjudicaciones import AdjudicacionRepository, AdjudicacionRetencionRow
+from db.repositories.renovaciones import HORIZONTE_RENOVACIONES_MAX_MESES
 from observability.logging import get_logger
 from services.dedupe import normalize_organo
 from services.ml.features import _fecha_dt, _fecha_opt
@@ -140,8 +143,8 @@ class _Emparejamiento:
     necesita las etiquetas): el emparejamiento se implementa una vez.
     """
 
-    adj: dict[str, Any]
-    sucesora: dict[str, Any]
+    adj: AdjudicacionRetencionRow
+    sucesora: AdjudicacionRetencionRow
     licitacion_id: str
     sucesor_id: str
     empresa_id: int
@@ -158,7 +161,7 @@ class _Emparejamiento:
     ventana_cerrada: bool = True
 
 
-def _cargar_adjudicaciones() -> list[dict[str, Any]]:
+def _cargar_adjudicaciones() -> list[AdjudicacionRetencionRow]:
     """Histórico ordenado por fecha de adjudicación (ver ``load_para_retencion``).
 
     Descarta las filas con ``fecha_adjudicacion`` imposible. El resto del módulo
@@ -189,10 +192,10 @@ def _eventos_por_licitacion() -> dict[str, dict[str, int]]:
 
 
 def _features_historicas(
-    adjudicaciones: list[dict[str, Any]],
+    adjudicaciones: list[AdjudicacionRetencionRow],
     eventos: dict[str, dict[str, int]],
     *,
-    adj: dict[str, Any],
+    adj: AdjudicacionRetencionRow,
     ancla: str,
     ancla_dt: datetime,
     organo_n: str,
@@ -216,12 +219,11 @@ def _features_historicas(
     filas en ``adjudicaciones`` y a alguna podría corresponderle una fecha
     anterior al ancla.
 
-    Es la implementación de **referencia**: el entrenamiento la llama par a par
-    (cada par tiene su ancla y su sucesora excluida), y el índice de serving
-    (:class:`_IndiceServing`) tiene que reproducir sus valores exactos con
-    ``ancla = hoy`` y sin exclusiones. Recorre el histórico entero dos veces
-    por llamada: aceptable al entrenar, cuadrático si se llama por fila al
-    servir.
+    Es la implementación de **referencia**, y ya no la llama el código de
+    producción: recorre el histórico entero dos veces por llamada. Los dos
+    índices tienen que reproducir sus valores exactos: el de entrenamiento
+    (:class:`_IndiceHistorico`, cada par con su ancla y su sucesora excluida) y
+    el de serving (:class:`_IndiceServing`, ``ancla = hoy`` y sin exclusiones).
     """
     previos = [
         c
@@ -239,13 +241,36 @@ def _features_historicas(
         and str(c["licitacion_id"]) not in excluir_licitaciones
         and (c.get("importe_adjudicado") or 0) > 0
     ]
-    total_seg = sum(float(c["importe_adjudicado"]) for c in segmento_previo)
-    importe_empresa = sum(
-        float(c["importe_adjudicado"]) for c in segmento_previo if c.get("empresa_id") == empresa_id
+    return _agregar_historico(
+        previos, segmento_previo, adj=adj, eventos=eventos, ancla_dt=ancla_dt, empresa_id=empresa_id
     )
-    por_empresa: dict[Any, float] = defaultdict(float)
+
+
+def _agregar_historico(
+    previos: Sequence[AdjudicacionRetencionRow],
+    segmento_previo: Sequence[AdjudicacionRetencionRow],
+    *,
+    adj: AdjudicacionRetencionRow,
+    eventos: dict[str, dict[str, int]],
+    ancla_dt: datetime,
+    empresa_id: int,
+) -> dict[str, float | None]:
+    """Las features a partir del histórico ya filtrado, en el orden de la carga.
+
+    La comparten la referencia y :class:`_IndiceHistorico`: lo único que
+    cambia entre las dos es cómo se filtra, así que las sumas (``sum()`` de
+    floats es compensada desde Python 3.12 y depende del orden) recorren la
+    misma secuencia y dan el mismo último bit.
+    """
+    total_seg = sum(float(c["importe_adjudicado"] or 0.0) for c in segmento_previo)
+    importe_empresa = sum(
+        float(c["importe_adjudicado"] or 0.0)
+        for c in segmento_previo
+        if c.get("empresa_id") == empresa_id
+    )
+    por_empresa: dict[int | str, float] = defaultdict(float)
     for c in segmento_previo:
-        por_empresa[c.get("empresa_id") or c.get("nombre")] += float(c["importe_adjudicado"])
+        por_empresa[c.get("empresa_id") or c.get("nombre")] += float(c["importe_adjudicado"] or 0.0)
     hhi = sum((v * 100.0 / total_seg) ** 2 for v in por_empresa.values()) if total_seg > 0 else None
 
     antiguedad = (
@@ -263,7 +288,7 @@ def _features_historicas(
 
 
 def _features_del_contrato(
-    adj: dict[str, Any], eventos: dict[str, dict[str, int]]
+    adj: AdjudicacionRetencionRow, eventos: dict[str, dict[str, int]]
 ) -> dict[str, float | None]:
     """Las features del propio contrato: baja, importe, modificaciones y prórrogas.
 
@@ -287,6 +312,89 @@ def _features_del_contrato(
     }
 
 
+class _IndiceHistorico:
+    """El histórico indexado una vez para las features de **entrenamiento**.
+
+    :func:`construir_pares` llamaba a :func:`_features_historicas` por par
+    (~5,5K pares por ~698K adjudicaciones, dos pasadas). Al entrenar, a diferencia
+    del serving, cada par tiene su propia ancla y su sucesora excluida, así que
+    no basta con agregar una vez: aquí se indexan las filas por ``(empresa,
+    órgano normalizado)`` y por CPV-4, cada clave con sus fechas ordenadas para
+    cortar por ``bisect_left`` lo anterior al ancla.
+
+    Del prefijo se vuelve al orden de la carga antes de agregar, y la agregación
+    es la misma función que usa la referencia (:func:`_agregar_historico`): las
+    filas que entran, su orden y las sumas son los de la referencia, bit a bit
+    (lo fija ``tests/test_ml_retencion_indices.py``). No hay sumas prefijas a
+    propósito: cambiarían el último bit.
+    """
+
+    def __init__(self, adjudicaciones: list[AdjudicacionRetencionRow]) -> None:
+        self._adjudicaciones = adjudicaciones
+        fechas = [str(c["fecha_adjudicacion"]) for c in adjudicaciones]
+        relaciones: defaultdict[tuple[object, str | None], list[int]] = defaultdict(list)
+        segmentos: defaultdict[str, list[int]] = defaultdict(list)
+        # ``normalize_organo`` son varias pasadas de regex: una por texto crudo.
+        organos: dict[object, str | None] = {}
+        for i, c in enumerate(adjudicaciones):
+            organo = c.get("organo")
+            if organo not in organos:
+                organos[organo] = normalize_organo(organo)
+            # La clave lleva el ``empresa_id`` crudo de la fila: el lookup con el
+            # entero del par iguala con el mismo ``==`` que la referencia.
+            relaciones[(c.get("empresa_id"), organos[organo])].append(i)
+            cpv4 = _cpv4(c.get("cpv"))
+            if cpv4 is not None and (c.get("importe_adjudicado") or 0) > 0:
+                segmentos[cpv4].append(i)
+        self._relaciones = {k: self._por_fecha(v, fechas) for k, v in relaciones.items()}
+        self._segmentos = {k: self._por_fecha(v, fechas) for k, v in segmentos.items()}
+
+    @staticmethod
+    def _por_fecha(indices: list[int], fechas: list[str]) -> tuple[list[str], list[int]]:
+        """``(fechas ordenadas, posiciones en la carga)``; los empates, en orden de carga."""
+        orden = sorted(indices, key=fechas.__getitem__)
+        return [fechas[i] for i in orden], orden
+
+    def _anteriores(
+        self,
+        entrada: tuple[list[str], list[int]] | None,
+        ancla: str,
+        excluir: frozenset[str],
+    ) -> list[AdjudicacionRetencionRow]:
+        """Las filas con ``fecha_adjudicacion < ancla`` (texto), en el orden de la carga."""
+        if entrada is None:
+            return []
+        fechas, orden = entrada
+        # ``sorted`` sobre un prefijo ya ordenado es lineal (timsort): es el
+        # caso normal, porque la carga llega ordenada por fecha.
+        filas = (self._adjudicaciones[i] for i in sorted(orden[: bisect_left(fechas, ancla)]))
+        return [c for c in filas if str(c["licitacion_id"]) not in excluir]
+
+    def features(
+        self,
+        eventos: dict[str, dict[str, int]],
+        *,
+        adj: AdjudicacionRetencionRow,
+        ancla: str,
+        ancla_dt: datetime,
+        organo_n: str,
+        cpv4: str,
+        empresa_id: int,
+        excluir_licitaciones: frozenset[str] = frozenset(),
+    ) -> dict[str, float | None]:
+        """Lo mismo que :func:`_features_historicas` con los mismos argumentos."""
+        return _agregar_historico(
+            self._anteriores(
+                self._relaciones.get((empresa_id, organo_n)), ancla, excluir_licitaciones
+            ),
+            self._anteriores(self._segmentos.get(cpv4), ancla, excluir_licitaciones),
+            adj=adj,
+            eventos=eventos,
+            ancla_dt=ancla_dt,
+            empresa_id=empresa_id,
+        )
+
+
 def _corte_de_datos(adjudicaciones: Sequence[Mapping[str, object]]) -> datetime:
     """Último instante observado: la ``fecha_adjudicacion`` más reciente cargada.
 
@@ -301,7 +409,7 @@ def _corte_de_datos(adjudicaciones: Sequence[Mapping[str, object]]) -> datetime:
 
 
 def _emparejar(
-    adjudicaciones: list[dict[str, Any]],
+    adjudicaciones: list[AdjudicacionRetencionRow],
     *,
     ventana_meses: int = VENTANA_MESES,
     anticipacion_meses: int = VENTANA_ANTICIPACION_MESES,
@@ -321,18 +429,38 @@ def _emparejar(
     No toca las features: quien solo necesita etiquetas (el baseline de
     ``services.ml.scoring``) no puede pagar el coste de
     :func:`_features_historicas`, que recorre el histórico entero por par.
+
+    Las candidatas de un vencimiento se buscan solo dentro de su ventana, por
+    ``bisect`` sobre las fechas del segmento ya parseadas y ordenadas: antes se
+    recorría el segmento entero por vencimiento, O(Σ n²) por segmento. La
+    elegida es la misma: la de menor distancia al fin y, en empate, la primera
+    en el orden de la carga, que es la que devolvía ``min()`` (lo fija
+    ``tests/test_ml_retencion_indices.py``). A diferencia de entonces, se
+    parsean todas las fechas de un segmento con vencimientos y no solo las que
+    pasaban los otros filtros: una fecha imposible lanza aunque no fuese
+    candidata. La carga (:func:`_cargar_adjudicaciones`) ya las descarta.
     """
     delta_post = timedelta(days=ventana_meses * 30)
     delta_pre = timedelta(days=anticipacion_meses * 30)
     corte = _corte_de_datos(adjudicaciones)
 
     # Índice de candidatas a sucesora por (órgano normalizado, CPV-4).
-    por_segmento: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    por_segmento: dict[tuple[str, str], list[AdjudicacionRetencionRow]] = defaultdict(list)
     for adj in adjudicaciones:
         organo_n = normalize_organo(adj.get("organo"))
         cpv4 = _cpv4(adj.get("cpv"))
         if organo_n and cpv4:
             por_segmento[(organo_n, cpv4)].append(adj)
+    # Por segmento, y solo en los que tienen algún vencimiento: las fechas
+    # parseadas en orden y la posición de cada una en ``por_segmento``.
+    por_fecha: dict[tuple[str, str], tuple[list[datetime], list[int]]] = {}
+
+    def _ordenado(clave: tuple[str, str]) -> tuple[list[datetime], list[int]]:
+        if clave not in por_fecha:
+            fechas = [_fecha_dt(str(c["fecha_adjudicacion"])) for c in por_segmento[clave]]
+            orden = sorted(range(len(fechas)), key=fechas.__getitem__)
+            por_fecha[clave] = ([fechas[j] for j in orden], orden)
+        return por_fecha[clave]
 
     emparejados: list[_Emparejamiento] = []
     vistos: set[str] = set()
@@ -352,18 +480,25 @@ def _emparejar(
         if lic_id in vistos:
             continue  # contratos multi-lote: un par por contrato
 
-        candidatas = [
-            c
-            for c in por_segmento[(organo_n, cpv4)]
-            if c["licitacion_id"] != adj["licitacion_id"]
-            and str(c["fecha_adjudicacion"]) > str(adj["fecha_adjudicacion"])
-            and -delta_pre <= _fecha_dt(str(c["fecha_adjudicacion"])) - fin_dt <= delta_post
-        ]
-        if not candidatas:
+        segmento = por_segmento[(organo_n, cpv4)]
+        fechas, orden = _ordenado((organo_n, cpv4))
+        fecha_adj = str(adj["fecha_adjudicacion"])
+        # (distancia al fin, posición en el segmento): el mínimo es el de ``min()``.
+        mejor: tuple[timedelta, int] | None = None
+        # Un fin centinela (``9999-12-31``) desbordaría ``fin_dt + delta_post``.
+        hasta = fin_dt + delta_post if fin_dt <= datetime.max - delta_post else datetime.max
+        for k in range(bisect_left(fechas, fin_dt - delta_pre), bisect_right(fechas, hasta)):
+            c = segmento[orden[k]]
+            if (
+                c["licitacion_id"] != adj["licitacion_id"]
+                and str(c["fecha_adjudicacion"]) > fecha_adj
+            ):
+                clave = (abs(fechas[k] - fin_dt), orden[k])
+                if mejor is None or clave < mejor:
+                    mejor = clave
+        if mejor is None:
             continue
-        sucesora = min(
-            candidatas, key=lambda c: abs(_fecha_dt(str(c["fecha_adjudicacion"])) - fin_dt)
-        )
+        sucesora = segmento[mejor[1]]
         vistos.add(lic_id)
 
         # Ancla anti-fuga: en cuanto la sucesora existe, el pasado se corta ahí.
@@ -395,6 +530,7 @@ def construir_pares(
     """Pares etiquetados, en orden cronológico de vencimiento."""
     adjudicaciones = _cargar_adjudicaciones()
     eventos = _eventos_por_licitacion()
+    indice = _IndiceHistorico(adjudicaciones)
 
     pares: list[ParRetencion] = [
         ParRetencion(
@@ -405,8 +541,7 @@ def construir_pares(
             fecha_fin=e.fin[:10],
             fecha_sucesor=str(e.sucesora["fecha_adjudicacion"])[:10],
             label=e.label,
-            features=_features_historicas(
-                adjudicaciones,
+            features=indice.features(
                 eventos,
                 adj=e.adj,
                 ancla=e.ancla,
@@ -470,7 +605,7 @@ class EtiquetasPorSegmento:
 
 
 def etiquetas_por_segmento(
-    adjudicaciones: list[dict[str, Any]] | None = None,
+    adjudicaciones: list[AdjudicacionRetencionRow] | None = None,
     *,
     ventana_meses: int = VENTANA_MESES,
     anticipacion_meses: int = VENTANA_ANTICIPACION_MESES,
@@ -511,7 +646,7 @@ def tasas_retencion_por_segmento(
     min_obs: int = MIN_OBS_SEGMENTO,
     ventana_meses: int = VENTANA_MESES,
     anticipacion_meses: int = VENTANA_ANTICIPACION_MESES,
-    adjudicaciones: list[dict[str, Any]] | None = None,
+    adjudicaciones: list[AdjudicacionRetencionRow] | None = None,
 ) -> dict[tuple[str, str], float]:
     """Tasa de retención **cruda** por ``(órgano normalizado, CPV-4)``.
 
@@ -598,7 +733,7 @@ class _Vencimiento:
     ninguna de las dos viaja en :class:`ParRetencion`.
     """
 
-    adj: dict[str, Any]
+    adj: AdjudicacionRetencionRow
     licitacion_id: str
     empresa_id: int
     organo_n: str
@@ -623,7 +758,7 @@ class _Vencimiento:
 
 
 def _vencimientos(
-    adjudicaciones: list[dict[str, Any]], *, desde: str, hasta: str
+    adjudicaciones: list[AdjudicacionRetencionRow], *, desde: str, hasta: str
 ) -> list[_Vencimiento]:
     """Contratos con empresa cuyo fin cae en ``[desde, hasta]``, uno por expediente y empresa.
 
@@ -694,7 +829,7 @@ class _IndiceServing:
 
     def __init__(
         self,
-        adjudicaciones: list[dict[str, Any]],
+        adjudicaciones: list[AdjudicacionRetencionRow],
         vencimientos: list[_Vencimiento],
         *,
         ancla: str,
@@ -737,7 +872,7 @@ class _IndiceServing:
                 and str(c["fecha_adjudicacion"]) < ancla
                 and (c.get("importe_adjudicado") or 0) > 0
             ):
-                importe = float(c["importe_adjudicado"])
+                importe = float(c["importe_adjudicado"] or 0.0)
                 self._importes[cpv4].append(importe)
                 if (cpv4, empresa) in cuotas:
                     self._importes_empresa[(cpv4, empresa)].append(importe)
@@ -775,7 +910,7 @@ class _IndiceServing:
 
 
 def vencimientos_proximos(
-    adjudicaciones: list[dict[str, Any]], *, months_ahead: int, hoy: str | None = None
+    adjudicaciones: list[AdjudicacionRetencionRow], *, months_ahead: int, hoy: str | None = None
 ) -> list[ParRetencion]:
     """Población de scoring **sin features**: lo único que necesita el baseline.
 
@@ -789,7 +924,7 @@ def vencimientos_proximos(
 
 
 def vencimientos_con_features(
-    adjudicaciones: list[dict[str, Any]],
+    adjudicaciones: list[AdjudicacionRetencionRow],
     *,
     months_ahead: int,
     hoy: str | None = None,
@@ -844,4 +979,47 @@ def muestra_auditoria(n: int = 50) -> list[dict[str, Any]]:
             "label": p.label,
         }
         for p in pares[::paso][:n]
+    ]
+
+
+def muestra_resueltos(
+    n: int = 50,
+    *,
+    months_ahead: int = HORIZONTE_RENOVACIONES_MAX_MESES,
+    hoy: str | None = None,
+) -> list[dict[str, Any]]:
+    """Muestra determinista de los vencimientos que el scoring da por **resueltos**.
+
+    Son los de ``resueltos_detectados``: contratos de la población de scoring
+    (:func:`vencimientos_proximos`, el mismo horizonte que el batch) con
+    sucesora según :func:`_emparejar`, sin filtrar la ventana cerrada, que es
+    lo que hace ``con_sucesora`` en ``services.ml.scoring._separar_resueltos``.
+    Auditarlos a mano es lo que falta para decidir
+    ``ML_RETENCION_EXCLUIR_RESUELTOS``: la heurística da por sucesora un
+    contrato paralelo del mismo órgano y CPV-4 en segmentos con mucha actividad.
+    """
+    adjudicaciones = _cargar_adjudicaciones()
+    poblacion = {
+        p.licitacion_id
+        for p in vencimientos_proximos(adjudicaciones, months_ahead=months_ahead, hoy=hoy)
+    }
+    resueltos = sorted(
+        (e for e in _emparejar(adjudicaciones) if e.licitacion_id in poblacion),
+        key=lambda e: (e.fin, e.licitacion_id),
+    )
+    paso = max(1, len(resueltos) // n)
+    return [
+        {
+            "original": e.licitacion_id,
+            "titulo_original": e.adj.get("titulo"),
+            "empresa_original": e.adj.get("nombre"),
+            "sucesor": e.sucesor_id,
+            "titulo_sucesor": e.sucesora.get("titulo"),
+            "empresa_sucesora": e.sucesora.get("nombre"),
+            "fecha_fin": e.fin[:10],
+            "fecha_sucesor": str(e.sucesora["fecha_adjudicacion"])[:10],
+            "label": e.label,
+            "ventana_cerrada": e.ventana_cerrada,
+        }
+        for e in resueltos[::paso][:n]
     ]

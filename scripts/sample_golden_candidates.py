@@ -174,10 +174,12 @@ def _puntuar(candidatos: list[dict[str, Any]]) -> list[float | None]:
     try:
         from services.ml.sap_classifier import SAPClassifier
 
-        if not SAPClassifier.is_available():
+        # ``load()`` sin ruta no coteja la versión activa: cae al pkl local.
+        artefacto = SAPClassifier.resolve_artifact()
+        if artefacto is None:
             print("[aviso] no hay modelo disponible: se muestreará sin banda de probabilidad")
             return [None] * len(candidatos)
-        clf = SAPClassifier.load()
+        clf = SAPClassifier.load(artefacto)
         probas = clf.predict_proba(
             [f"{c.get('titulo') or ''} {c.get('descripcion') or ''}".strip() for c in candidatos],
             cpvs=[(str(c["cpv"]) if c.get("cpv") is not None else None) for c in candidatos],

@@ -355,6 +355,121 @@ def test_el_handler_no_indexa_un_job_sin_organizacion() -> None:
         worker.ejecutar_indexado_adjunto(_Job())  # type: ignore[arg-type]
 
 
+def _agotar(repo: _Repo, *, otro_job: Any = None) -> bool:
+    from services import jobs
+
+    with (
+        patch.object(memoria, "_repo", return_value=repo),
+        patch.object(jobs, "job_activo", return_value=otro_job) as activo,
+    ):
+        marcado = memoria.marcar_agotado(11, 7)
+    activo.assert_called_once_with(jobs.TIPO_INDEXADO_ADJUNTO, campo="attachment_id", valor="11")
+    return marcado
+
+
+def test_un_indexado_agotado_deja_el_adjunto_en_error() -> None:
+    repo = _Repo(_adjunto())
+
+    assert _agotar(repo) is True
+    assert [estado for estado, _ in repo.sin_texto] == ["error"]
+    assert "vuelve a activarlo" in repo.sin_texto[0][1]
+
+
+@pytest.mark.parametrize(
+    "fila",
+    [_adjunto(index_status="indexed"), _adjunto(indexable=False, index_status=None), None],
+    ids=["ya_indexado", "sin_permiso", "borrado"],
+)
+def test_agotar_no_toca_un_adjunto_que_ya_no_esta_pendiente(fila: dict[str, Any] | None) -> None:
+    repo = _Repo(fila)
+
+    assert _agotar(repo) is False
+    assert repo.sin_texto == []
+
+
+def test_agotar_no_toca_un_adjunto_con_otro_indexado_en_marcha() -> None:
+    """Quitar y volver a dar el permiso encola otro job: ese es el que manda."""
+    repo = _Repo(_adjunto())
+
+    assert _agotar(repo, otro_job=object()) is False
+    assert repo.sin_texto == []
+
+
+class _ColaCaducada:
+    """Lo justo de ``JobsRepository`` para la barrida de locks caducados."""
+
+    def __init__(self, filas: list[dict[str, Any]], jobs: dict[int, dict[str, Any]]) -> None:
+        self.filas = filas
+        self.jobs = jobs
+
+    def reclamar_caducados(self, *, ttl_segundos: int, max_intentos: int) -> list[Any]:
+        return self.filas
+
+    def obtener(self, job_id: int) -> dict[str, Any] | None:
+        return self.jobs.get(job_id)
+
+
+def _fila_job(job_id: int, tipo: str, *, organization_id: int | None = 7) -> dict[str, Any]:
+    return {
+        "id": job_id,
+        "tipo": tipo,
+        "payload_json": '{"attachment_id": 11}',
+        "organization_id": organization_id,
+        "estado": "failed",
+        "intentos": 3,
+        "run_after": None,
+        "locked_by": None,
+        "locked_at": None,
+        "resultado_json": None,
+        "error_detail": "lock caducado",
+        "created_at": None,
+        "updated_at": None,
+    }
+
+
+def test_la_barrida_marca_el_adjunto_solo_de_los_indexados_agotados() -> None:
+    from services import jobs
+
+    indexado = jobs.TIPO_INDEXADO_ADJUNTO
+    cola = _ColaCaducada(
+        filas=[
+            {"id": 1, "estado": "failed", "tipo": indexado},
+            {"id": 2, "estado": "pending", "tipo": indexado},
+            {"id": 3, "estado": "failed", "tipo": jobs.TIPO_FICHA_PLIEGO},
+            {"id": 4, "estado": "failed", "tipo": indexado},
+        ],
+        jobs={
+            1: _fila_job(1, indexado),
+            4: _fila_job(4, indexado, organization_id=None),
+        },
+    )
+
+    with (
+        patch.object(jobs, "_repo", cola),
+        patch.object(memoria, "marcar_agotado", return_value=True) as agotar,
+    ):
+        assert jobs.reclamar_caducados(ttl_segundos=0, max_intentos=3) == ([2], [1, 3, 4])
+
+    # El reintento (2) no, la ficha (3) no, y sin organización (4) no se puede acotar.
+    agotar.assert_called_once_with(11, 7)
+
+
+def test_si_marcar_el_adjunto_falla_la_barrida_sigue() -> None:
+    from services import jobs
+
+    indexado = jobs.TIPO_INDEXADO_ADJUNTO
+    cola = _ColaCaducada(
+        filas=[{"id": 1, "estado": "failed", "tipo": indexado}],
+        jobs={1: _fila_job(1, indexado)},
+    )
+
+    with (
+        patch.object(jobs, "_repo", cola),
+        patch.object(memoria, "marcar_agotado", side_effect=RuntimeError("bd caída")),
+    ):
+        assert jobs.reclamar_caducados(ttl_segundos=0, max_intentos=3) == ([], [1])
+
+
 def test_el_tipo_de_job_esta_declarado_con_cuota_y_dedupe() -> None:
     from services import jobs
 

@@ -19,7 +19,7 @@ import pytest
 from pydantic import SecretStr
 
 import scripts.eval_ficha as eval_ficha
-from services.rag.fact_sheet import ExtraccionHechos
+from services.rag.fact_sheet import EXTRACTION_VERSION, ExtraccionHechos
 from services.rag.ficha_eval import CLAVES_DE_MINIMOS, MetricasFamilia, agregar, medir_caso
 from services.rag.ficha_golden import (
     CasoGolden,
@@ -364,7 +364,7 @@ def test_fijar_minimos_escribe_la_base_con_tres_ejecuciones(
         "selector_cobertura": 1.0,
     }
     assert (escrito["ejecuciones"], escrito["model"]) == (3, "modelo-y")
-    assert escrito["extraction_version"] == "tender-facts-v9"
+    assert escrito["extraction_version"] == EXTRACTION_VERSION
     assert escrito["medido_el"] == date.today().isoformat()
 
 

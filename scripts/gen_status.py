@@ -9,6 +9,10 @@ de la realidad —el ítem "cablear TED" siguió abierto semanas después de que
 deriva del árbol de código en el momento de ejecutarlo, así que no puede
 mentir.
 
+La excepción es la línea «Último descenso» de cada ratchet: la tendencia no
+está en el árbol, así que se lee del ``docs/STATUS.md`` que se va a
+sobrescribir (ver ``_tendencia``).
+
 Uso::
 
     python scripts/gen_status.py            # escribe docs/STATUS.md
@@ -66,12 +70,31 @@ def _user_key_ratchet() -> tuple[int, int]:
     )
 
 
-def _capas_ratchet() -> list[str]:
-    """Imports que hoy van contra el orden de capas (``scripts/check_layers.py``)."""
+def _capas_ratchet() -> tuple[list[str], tuple[str, ...]]:
+    """``(imports contra el orden de capas, ese orden)`` según ``scripts/check_layers.py``."""
     sys.path.insert(0, str(_ROOT / "scripts"))
     import check_layers
 
-    return check_layers.violaciones()
+    return check_layers.violaciones(), check_layers.CAPAS
+
+
+_DESCENSO = re.compile(r"^Último descenso: .*$", re.MULTILINE)
+
+
+def _tendencia(previo: str, titulo: str, valor: int, hoy: str) -> str:
+    """Línea «Último descenso» de un ratchet, leída del STATUS.md anterior.
+
+    Si el valor de la sección ``titulo`` bajó respecto a ``previo``, el descenso
+    es de ``hoy``; si no, se conserva la línea que ya había, así que ``--check``
+    sigue siendo determinista mientras el valor no cambie.
+    """
+    inicio = previo.find(titulo)
+    seccion = previo[inicio:].split("\n## ", 1)[0] if inicio != -1 else ""
+    antes = re.search(r"^\*\*(\d+) ", seccion, re.MULTILINE)
+    if antes and valor < int(antes.group(1)):
+        return f"Último descenso: {hoy} (desde {antes.group(1)})"
+    linea = _DESCENSO.search(seccion)
+    return linea.group(0) if linea else "Último descenso: sin registrar"
 
 
 def _superficie_ratchet() -> tuple[int, int]:
@@ -121,6 +144,11 @@ def render() -> str:
     jobs, problems = _jobs_table()
     whitelist = _tid251_whitelist()
     endpoints = _endpoints()
+    hoy = datetime.now(UTC).date().isoformat()
+    previo = _OUT.read_text(encoding="utf-8") if _OUT.exists() else ""
+    tid251 = "## Ratchet TID251 — acceso directo a BD fuera de repositories"
+    user_key = "## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)"
+    capas_titulo = "## Ratchet de capas — imports contra el orden de paquetes"
 
     lines: list[str] = [
         "---",
@@ -131,7 +159,7 @@ def render() -> str:
         "",
         _MARKER,
         "",
-        f"Generado: {datetime.now(UTC).date().isoformat()}",
+        f"Generado: {hoy}",
         "",
         "## Paridad de planos de orquestación (ADR-012)",
         "",
@@ -147,9 +175,11 @@ def render() -> str:
             else f"**{len(jobs)} jobs, todos con plano verificado.**"
         ),
         "",
-        "## Ratchet TID251 — acceso directo a BD fuera de repositories",
+        tid251,
         "",
         f"**{len(whitelist)} archivos** en whitelist (solo puede decrecer).",
+        "",
+        _tendencia(previo, tid251, len(whitelist), hoy),
         "",
     ]
     stale = _stale_whitelist_entries(whitelist)
@@ -163,28 +193,31 @@ def render() -> str:
         lines += [""]
     lines += [f"- `{f}`" for f in whitelist if f not in stale]
     usan_user_key, congelados = _user_key_ratchet()
-    capas = _capas_ratchet()
+    capas, orden_capas = _capas_ratchet()
     base_superficie, nuevas_superficie = _superficie_ratchet()
     lines += [
         "",
-        "## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)",
+        user_key,
         "",
         f"**{usan_user_key} ficheros** de producción usan `user_key` "
         f"(lista congelada: {congelados}; solo puede decrecer).",
+        "",
+        _tendencia(previo, user_key, usan_user_key, hoy),
         "",
         "`scripts/check_user_key_ratchet.py` falla ante un fichero nuevo que la "
         "use. Llega a cero con T4, que migra a `user_id` con columna doble y "
         "lectura dual; hasta entonces cambiar de correo pierde los datos que "
         "cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.",
         "",
-        "## Ratchet de capas — imports contra el orden de paquetes",
+        capas_titulo,
         "",
         f"**{len(capas)} imports** van de una capa a otra superior (lista congelada; "
         "solo puede decrecer).",
         "",
+        _tendencia(previo, capas_titulo, len(capas), hoy),
+        "",
         "`scripts/check_layers.py` falla ante uno nuevo, también si está dentro de "
-        "una función. Orden, de abajo arriba: `config < observability < shared < "
-        "llm < db < services < scraper < scheduler < api`.",
+        f"una función. Orden, de abajo arriba: `{' < '.join(orden_capas)}`.",
         "",
         *[f"- `{v}`" for v in capas],
         "",

@@ -10,7 +10,7 @@ import { useModoInspector } from "../../radar/_hooks/use-media-query";
 import { DetalleBarra } from "./detalle-barra";
 import { etiquetaDeOrden } from "./detalle-columnas";
 import { DetallePie, lineaMostrando } from "./detalle-pie";
-import { DetalleTabla } from "./detalle-tabla";
+import { DetalleTabla, estadoDeTabla } from "./detalle-tabla";
 import { useBusquedaListado } from "../_hooks/use-busqueda-listado";
 import { useDetalleFavoritos } from "../_hooks/use-detalle-favoritos";
 import { useDetalleQueries, useDetailWithScore } from "../_hooks/use-detalle-queries";
@@ -169,7 +169,7 @@ export function DetalleView() {
   });
 
   const detailWithScore = useDetailWithScore(queries.detailData, filas.scoreMap);
-  const isEmpty = !queries.isLoading && !queries.error && mergedRows.length === 0;
+  const estadoTabla = estadoDeTabla({ ...queries, hayFilas: mergedRows.length > 0, conRecorte: Boolean(cierre.label) });
 
   const sortLabel = etiquetaDeOrden(sorting);
   const showingLine = lineaMostrando({ hayDatos: Boolean(queries.data), ...pagination, total });
@@ -225,12 +225,8 @@ export function DetalleView() {
                 allPageSelected={filas.allPageSelected}
                 onToggleAllPage={filas.toggleAllPage}
                 onToggleSort={tabla.toggleSort}
-                isLoading={queries.isLoading}
-                isFetching={queries.isFetching}
-                error={queries.error}
+                estado={estadoTabla}
                 onRetry={() => void queries.refetch()}
-                vacia={isEmpty}
-                conRecorte={Boolean(cierre.label)}
                 onLimpiar={() => {
                   resetFilters();
                   // El recorte por cierre también: si sólo se limpiara el ámbito, el

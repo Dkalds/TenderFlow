@@ -252,3 +252,34 @@ def test_dos_importes_float8_que_redondean_igual_no_se_cruzan(tmp_db: Any) -> No
     cambiadas = asignar_lotes([AsignacionLote(_LIC, "Gemela SL", "B28000005", 12345678.91, "1")])
 
     assert cambiadas == 1
+
+
+def test_un_importe_no_informado_casa_con_el_0_que_se_guardaba_antes(tmp_db: Any) -> None:
+    """Hasta el 2026-10-25 la ingesta guardaba como 0 el importe no informado.
+
+    Hoy el parser lo da como ``None``. Sin casar los dos, un reproceso sobre las
+    filas de antes no les pondría nunca el lote. Un importe informado no casa
+    con el 0: solo el ``None`` lo hace.
+    """
+    from db.database import connect
+
+    fecha = "2026-09-01T10:00:00+00:00"
+    with connect() as conn:
+        _sembrar(conn, _LIC, [])
+        conn.execute(
+            "INSERT INTO adjudicaciones "
+            "(licitacion_id, nombre, nif, importe_adjudicado, fecha_extraccion) "
+            "VALUES (%s, 'Antigua SL', 'B28000006', 0, %s), "
+            "       (%s, 'Informada SL', 'B28000007', 0, %s)",
+            (_LIC, fecha, _LIC, fecha),
+        )
+
+    cambiadas = asignar_lotes(
+        [
+            AsignacionLote(_LIC, "Antigua SL", "B28000006", None, "1"),
+            AsignacionLote(_LIC, "Informada SL", "B28000007", 500.0, "2"),
+        ]
+    )
+
+    assert cambiadas == 1
+    assert _lotes_de(_LIC) == {"Antigua SL": "1", "Informada SL": None}

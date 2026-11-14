@@ -20,26 +20,18 @@
  */
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { RotateCcw } from "lucide-react";
-import { toast } from "@/lib/toast";
 
 import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle, Segmented } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Pista } from "@/components/ui/pista";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ApiError, apiGet, apiMutate } from "@/lib/api-client";
-import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { adminKeys, analyticsKeys } from "@/lib/query-keys";
+import { ApiError } from "@/lib/api-client";
 import { formatDate, formatNumber } from "@/lib/utils";
+import { useDescartarDlq, useDlq, useReencolarDlq, type EstadoDlq as Estado } from "../../_hooks/use-dlq";
 
-type Estado = "abiertas" | "agotadas";
 type Accion = "reencolar" | "descartar";
-type DlqListado = Schemas["DlqListado"];
-type DlqReintento = Schemas["DlqReintento"];
-type DlqDescarte = Schemas["DlqDescarte"];
 
 const VACIO: Record<Estado, { title: string; hint: string }> = {
   abiertas: { title: "No hay entradas abiertas", hint: "Nada espera a un reintento." },
@@ -56,42 +48,9 @@ export function DlqCard() {
   // Una sola confirmación armada a la vez, entre todas las filas y las dos
   // acciones: con dos, un segundo clic distraído ejecuta la que no se miraba.
   const [confirmando, setConfirmando] = useState<{ id: number; accion: Accion } | null>(null);
-  const queryClient = useQueryClient();
-
-  const { data, isLoading, error, refetch } = useQuery<DlqListado>({
-    queryKey: adminKeys.dlq.estado(estado),
-    queryFn: () =>
-      apiGet("/api/v1/admin/dlq", { params: { query: { estado, limit: 50 } } }) as Promise<DlqListado>,
-    // El fallo (y el «sin permisos») se pinta en el panel: sin toast encima.
-    meta: META_ERROR_EN_LINEA,
-  });
-
-  const alTerminar = () => {
-    void queryClient.invalidateQueries({ queryKey: adminKeys.dlq.all });
-    void queryClient.invalidateQueries({ queryKey: analyticsKeys.quality });
-  };
-
-  const reintentar = useMutation({
-    mutationFn: (id: number) => apiMutate<DlqReintento>("POST", `/api/v1/admin/dlq/${id}/reintentar`),
-    onSuccess: (res) => {
-      if (res.reencolada) toast.success(res.detalle);
-      else toast.info(res.detalle);
-      alTerminar();
-    },
-    meta: { errorTitle: "No se pudo reencolar la entrada" },
-    onSettled: () => setConfirmando(null),
-  });
-
-  const descartar = useMutation({
-    mutationFn: (id: number) => apiMutate<DlqDescarte>("POST", `/api/v1/admin/dlq/${id}/descartar`),
-    onSuccess: (res) => {
-      if (res.descartada) toast.success(res.detalle);
-      else toast.info(res.detalle);
-      alTerminar();
-    },
-    meta: { errorTitle: "No se pudo descartar la entrada" },
-    onSettled: () => setConfirmando(null),
-  });
+  const { data, isLoading, error, refetch } = useDlq(estado);
+  const reintentar = useReencolarDlq();
+  const descartar = useDescartarDlq();
 
   const ocupado = reintentar.isPending || descartar.isPending;
   const errores = data?.resumen_errores ?? [];
@@ -179,7 +138,9 @@ export function DlqCard() {
                         setConfirmando({ id: item.id, accion });
                         return;
                       }
-                      (accion === "reencolar" ? reintentar : descartar).mutate(item.id);
+                      (accion === "reencolar" ? reintentar : descartar).mutate(item.id, {
+                        onSettled: () => setConfirmando(null),
+                      });
                     }}
                   >
                     {accion === "reencolar" && <RotateCcw aria-hidden="true" />}

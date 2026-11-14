@@ -190,6 +190,52 @@ const importacionSonner = {
   message: "Importa `toast` de @/lib/toast: Sonner se carga aparte y no viaja en el First Load (ver ese módulo).",
 };
 
+// Acceso a la API desde componentes (2026-11): un `useQuery` con su `queryFn`
+// escrita dentro del componente no se comparte —la tira de salud de Ops y la
+// vista de Calidad pedían `/analytics/quality` bajo la misma clave con dos
+// funciones distintas—, no se prueba sin montar la pantalla y mezcla qué se pide
+// con cómo se pinta. Las peticiones viven en hooks (`src/hooks/` o el `_hooks/`
+// de la ruta), con su clave en `@/lib/query-keys`. `ApiError`, `urlApi` y los
+// tipos sí se importan desde cualquier sitio: no piden nada.
+//
+// `accesoDirectoALaApi` es la deuda medida al crear la regla y **solo puede
+// encoger**: cada fichero que se pasa a un hook sale de la lista en el mismo
+// cambio. No se le añaden entradas.
+const importacionApiCliente = {
+  name: "@/lib/api-client",
+  importNames: ["fetchWithAuth", "apiGet", "apiMutate", "fetchBlobWithAuth"],
+  message:
+    "Pide a la API desde un hook (src/hooks/ o el _hooks/ de la ruta), con la clave en @/lib/query-keys: el componente consume el hook. ApiError, urlApi y los tipos sí se importan aquí.",
+};
+const capasConAccesoALaApi = [
+  "src/hooks/**/*.{ts,tsx}",
+  "src/lib/**/*.{ts,tsx}",
+  "src/**/_hooks/**/*.{ts,tsx}",
+  "src/test/**/*.{ts,tsx}",
+];
+const accesoDirectoALaApi = [
+  "src/app/(dashboard)/ajustes/_components/cuenta-view.tsx",
+  "src/app/(dashboard)/detalle/_components/detalle-comparador.tsx",
+  "src/app/(dashboard)/detalle/_components/triaje-resumen.tsx",
+  "src/app/(dashboard)/direccion/_components/actividad-equipo.tsx",
+  "src/app/(dashboard)/direccion/_components/carga-equipo.tsx",
+  "src/app/(dashboard)/resumen/_components/cola-cierre.tsx",
+  "src/app/(dashboard)/resumen/_components/desde-ultima-visita.tsx",
+  "src/app/restablecer-contrasena/page.tsx",
+  "src/app/verificar-correo/_components/verificacion-correo.tsx",
+  "src/components/calibracion-baja.tsx",
+  "src/components/campana/avisos.ts",
+  "src/components/eventos-timeline.tsx",
+  "src/components/feedback-buttons.tsx",
+  "src/components/layout/menu-cuenta.tsx",
+  "src/components/layout/scope-bar.tsx",
+  "src/components/notification-bell.tsx",
+  "src/components/onboarding/use-estado-onboarding.ts",
+  "src/components/pliego/guion-oferta.tsx",
+  "src/components/resoluciones-block.tsx",
+  "src/components/tecnologias-block.tsx",
+];
+
 const importacionesRetiradas = [
   {
     name: "@/components/ui/card",
@@ -442,8 +488,26 @@ const eslintConfig = defineConfig([
   // Primitivos e iconos retirados (ver `importacionesRetiradas`). Los tests
   // quedan fuera: los de `card`, `empty-state` y `kpi-card` prueban el propio
   // módulo, y `navigation.test.ts` importa Sparkles para asertar su ausencia.
+  //
+  // Y el cliente de la API (`importacionApiCliente`): fuera de `hooks/`, `lib/`
+  // y los `_hooks/` de cada ruta, salvo la deuda congelada. Es un segundo bloque
+  // con la misma lista **más** esa entrada, no un bloque aparte para el cliente:
+  // en flat config el último bloque que declara `no-restricted-imports` la gana
+  // entera, y uno que solo nombrara el cliente soltaría Card y Sonner en todo
+  // `src`. Por eso el orden: primero todo `src` con las tres, después las capas
+  // que pueden pedir a la API (y la deuda) con todo menos el cliente.
   {
     files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/**/__tests__/**", "src/**/*.test.{ts,tsx}", ...deudaCard, ...usoDirectoDeSonner],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { paths: [...importacionesRetiradas, importacionSonner, importacionApiCliente] },
+      ],
+    },
+  },
+  {
+    files: [...capasConAccesoALaApi, ...accesoDirectoALaApi],
     ignores: ["src/**/__tests__/**", "src/**/*.test.{ts,tsx}", ...deudaCard, ...usoDirectoDeSonner],
     rules: {
       "no-restricted-imports": ["error", { paths: [...importacionesRetiradas, importacionSonner] }],

@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-11-10
+Generado: 2026-11-14
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -39,7 +39,9 @@ Generado: 2026-11-10
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 
-**8 archivos** en whitelist (solo puede decrecer).
+**7 archivos** en whitelist (solo puede decrecer).
+
+Último descenso: 2026-11-14 (desde 8)
 
 - `scheduler/anomaly_alerts.py`
 - `scheduler/concept_drift.py`
@@ -48,11 +50,12 @@ Generado: 2026-11-10
 - `scraper/seed_negatives.py`
 - `scripts/seed_dev.py`
 - `services/contract_events.py`
-- `services/entity_resolution.py`
 
 ## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)
 
-**47 ficheros** de producción usan `user_key` (lista congelada: 47; solo puede decrecer).
+**45 ficheros** de producción usan `user_key` (lista congelada: 45; solo puede decrecer).
+
+Último descenso: 2026-11-14 (desde 47)
 
 `scripts/check_user_key_ratchet.py` falla ante un fichero nuevo que la use. Llega a cero con T4, que migra a `user_id` con columna doble y lectura dual; hasta entonces cambiar de correo pierde los datos que cuelgan de esa clave. No cuenta `tests/` ni `db/alembic/versions/`.
 
@@ -60,7 +63,9 @@ Generado: 2026-11-10
 
 **10 imports** van de una capa a otra superior (lista congelada; solo puede decrecer).
 
-`scripts/check_layers.py` falla ante uno nuevo, también si está dentro de una función. Orden, de abajo arriba: `config < observability < shared < llm < db < services < scraper < scheduler < api`.
+Último descenso: 2026-11-05 (desde 12)
+
+`scripts/check_layers.py` falla ante uno nuevo, también si está dentro de una función. Orden, de abajo arriba: `config < observability < shared < llm < db < services < scraper < scheduler < api < mcp_server`.
 
 - `api/routes/publico.py -> scraper.connectors`
 - `config/secrets.py -> observability.logging`
@@ -79,9 +84,9 @@ Generado: 2026-11-10
 
 ## Superficie de la API
 
-**315 endpoints** expuestos.
+**316 endpoints** expuestos.
 
-Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **23** (`scripts/check_api_surface.py`).
+Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada uno con su motivo: **24** (`scripts/check_api_surface.py`).
 
 <details><summary>Ver listado</summary>
 
@@ -369,6 +374,7 @@ Línea base congelada: **292** (solo puede decrecer). Añadidos después, cada u
 | POST | `/api/v1/security/client-error` |
 | GET | `/api/v1/security/client-errors` |
 | POST | `/api/v1/security/csp-report` |
+| GET | `/api/v1/security/csp-violations` |
 | POST | `/api/v1/security/leaked-key` |
 | DELETE | `/api/v1/tecnologias/keywords` |
 | GET | `/api/v1/tecnologias/keywords` |

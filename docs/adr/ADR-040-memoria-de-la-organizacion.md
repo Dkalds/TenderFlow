@@ -137,5 +137,7 @@ la salta (ADR-034, «Producción hoy»), la frontera efectiva es el SQL. Por eso
 el escenario de CU-37 prueba el aislamiento por la API, y los tests con rol
 sonda prueban la política aparte.
 
-**Lo que este ADR no decide.** La cuota por organización, el coste de los
-embeddings, ni si las citas propias deben salir en el PDF del guion.
+**Lo que este ADR no decide.** La cuota por organización ni el coste de los
+embeddings. Que las citas propias salgan en el PDF y el Markdown del guion se
+resolvió después: salen, buscadas al exportar con la misma organización que
+el `POST` (`organizacion_para_citas`), y nunca se guardan con el guion.

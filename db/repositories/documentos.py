@@ -869,7 +869,7 @@ class DocumentosRepository:
                 "LEFT JOIN licitaciones l ON l.id_externo = d.licitacion_id "
                 "WHERE d.licitacion_id = %s "
                 "ORDER BY CASE d.tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1 ELSE 2 END, "
-                "d.created_at DESC, d.id",
+                f"{instante_sql('documentos', 'created_at', 'd')} DESC, d.id",
                 (licitacion_id,),
             )
             return typed_rows(DocumentoMeta, rows_to_dicts(cur))

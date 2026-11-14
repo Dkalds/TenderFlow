@@ -169,3 +169,85 @@ def test_el_despachador_saca_de_la_cola_los_eventos_sin_canal(tmp_db):
     assert resultado.ignorados == 1
     assert resultado.procesados == 0
     assert count_pending_events() == 0
+
+
+# ── Ciclo de vida de una oportunidad: `pursuit.created/state_changed/decided` ──
+
+
+def _oportunidad(tmp_db, *, idempotency_key=None):
+    from db.repositories.organizations import OrganizationRepository
+    from db.repositories.pursuits import PursuitRepository
+    from db.users import create_user
+
+    db_mod, _ = tmp_db
+    owner = create_user(email="ciclo@example.test", password_hash="h", display_name="ciclo")
+    organization_id = int(OrganizationRepository().create_organization("Ciclo", owner)["id"])
+    with db_mod.connect() as conn:
+        conn.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) VALUES (%s, %s, %s)",
+            ("LIC-CICLO-1", "Servicio SAP", "2026-07-30T10:00:00+00:00"),
+        )
+    repo = PursuitRepository()
+    kwargs = {
+        "organization_id": organization_id,
+        "licitacion_id": "LIC-CICLO-1",
+        "responsible_user_id": owner,
+        "actor_user_id": owner,
+        "idempotency_key": idempotency_key,
+    }
+    pursuit, _ = repo.create(**kwargs)
+    return repo, pursuit, owner, kwargs
+
+
+def _eventos(pursuit_id, tipo):
+    from db.events import get_events
+
+    return get_events("pursuit", pursuit_id, event_type=tipo)
+
+
+def test_crear_una_oportunidad_publica_created_una_vez(tmp_db):
+    repo, pursuit, _owner, kwargs = _oportunidad(tmp_db, idempotency_key="crear-1")
+    repo.create(**kwargs)  # reintento idempotente: no inserta, no publica
+
+    (evento,) = _eventos(pursuit["id"], "pursuit.created")
+    assert evento["payload"]["licitacion_id"] == "LIC-CICLO-1"
+    assert evento["payload"]["titulo"] == "Servicio SAP"
+    assert "@" not in str(evento["payload"])
+
+
+def test_cambiar_estado_y_decidir_publica_en_la_transaccion_y_el_reintento_no(tmp_db):
+    repo, pursuit, owner, _ = _oportunidad(tmp_db)
+    cambio = {
+        "organization_id": pursuit["organization_id"],
+        "pursuit_id": pursuit["id"],
+        "actor_user_id": owner,
+        "changes": {"status": "go_no_go", "decision": "go", "decision_reason": "encaja"},
+        "expected_version": pursuit["version"],
+        "event_payload": {},
+        "idempotency_key": "cambio-1",
+    }
+    repo.update(**cambio)
+    repo.update(**cambio)  # misma clave: retorna antes de escribir nada
+
+    (estado,) = _eventos(pursuit["id"], "pursuit.state_changed")
+    assert (estado["payload"]["estado_anterior"], estado["payload"]["estado_nuevo"]) == (
+        "identified",
+        "go_no_go",
+    )
+    (decision,) = _eventos(pursuit["id"], "pursuit.decided")
+    assert decision["payload"]["decision"] == "go"
+    assert "encaja" not in str(decision["payload"])
+
+
+def test_un_cambio_sin_estado_ni_decision_no_publica(tmp_db):
+    repo, pursuit, owner, _ = _oportunidad(tmp_db)
+    repo.update(
+        organization_id=pursuit["organization_id"],
+        pursuit_id=pursuit["id"],
+        actor_user_id=owner,
+        changes={"next_action": "Llamar al órgano"},
+        expected_version=pursuit["version"],
+        event_payload={},
+    )
+    assert _eventos(pursuit["id"], "pursuit.state_changed") == []
+    assert _eventos(pursuit["id"], "pursuit.decided") == []

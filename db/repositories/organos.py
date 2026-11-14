@@ -9,25 +9,47 @@ El esquema lo crea ``v114``; ``licitaciones.organo_id`` lo añade ``v115``.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict
 
 from db.database import connect, connect_read, now_utc_iso
-from db.repositories.base import rows_to_dicts
+from db.repositories.base import rows_to_dicts, typed_rows
 from observability.logging import get_logger
 
 log = get_logger(__name__)
 
 
-def get_by_dir3(dir3: str) -> dict[str, Any] | None:
+class OrganoClave(TypedDict):
+    """Lo que ``services/organos.py`` lee de un órgano resuelto: su id y su
+    grafía canónica plegada, para no registrar como alias la misma grafía."""
+
+    organo_id: int
+    nombre_normalizado: str
+
+
+#: Columnas de :class:`OrganoClave`, en el orden del ``SELECT``.
+COLUMNAS_ORGANO_CLAVE: tuple[str, ...] = tuple(OrganoClave.__annotations__)
+
+
+def _columnas(alias: str) -> str:
+    return ", ".join(f"{alias}.{col}" for col in COLUMNAS_ORGANO_CLAVE)
+
+
+def get_by_dir3(dir3: str) -> OrganoClave | None:
     """Órgano por su código DIR3. Es la resolución sin ambigüedad."""
     with connect_read() as c:
-        filas = rows_to_dicts(
-            c.execute("SELECT * FROM organos WHERE dir3 = %s LIMIT 1", (dir3,))
-        )  # SELECT *: el maestro entero lo consume services/organos.py
+        filas = typed_rows(
+            OrganoClave,
+            rows_to_dicts(
+                c.execute(
+                    f"SELECT {_columnas('o')} FROM organos o WHERE o.dir3 = %s LIMIT 1",
+                    (dir3,),
+                )
+            ),
+        )
     return filas[0] if filas else None
 
 
-def get_by_nombre_normalizado(nombre_normalizado: str) -> dict[str, Any] | None:
+def get_by_nombre_normalizado(nombre_normalizado: str) -> OrganoClave | None:
     """Órgano por su nombre normalizado, mirando también los alias.
 
     Los alias importan: el maestro guarda **una** grafía canónica, y las demás
@@ -35,17 +57,20 @@ def get_by_nombre_normalizado(nombre_normalizado: str) -> dict[str, Any] | None:
     órgano nuevo y el maestro no serviría de nada.
     """
     with connect_read() as c:
-        filas = rows_to_dicts(
-            c.execute(
-                "SELECT o.* FROM organos o "
-                "WHERE o.nombre_normalizado = %s "
-                "UNION ALL "
-                "SELECT o.* FROM organos o "
-                "JOIN organo_aliases a ON a.organo_id = o.organo_id "
-                "WHERE a.alias_normalizado = %s "
-                "LIMIT 1",
-                (nombre_normalizado, nombre_normalizado),
-            )
+        filas = typed_rows(
+            OrganoClave,
+            rows_to_dicts(
+                c.execute(
+                    f"SELECT {_columnas('o')} FROM organos o "
+                    "WHERE o.nombre_normalizado = %s "
+                    "UNION ALL "
+                    f"SELECT {_columnas('o')} FROM organos o "
+                    "JOIN organo_aliases a ON a.organo_id = o.organo_id "
+                    "WHERE a.alias_normalizado = %s "
+                    "LIMIT 1",
+                    (nombre_normalizado, nombre_normalizado),
+                )
+            ),
         )
     return filas[0] if filas else None
 

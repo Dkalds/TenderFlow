@@ -15,7 +15,8 @@ Los umbrales (``KS_ALPHA``) salen de :mod:`services.ml.thresholds`, la tabla
 única de umbrales de drift; el mapa de los seis mecanismos que se solapan está
 en el docstring de :mod:`services.ml.drift`.
 
-Scheduler: añadir `scheduler.drift_report.run_drift_report` como tarea semanal.
+Lo ejecuta ``scheduler.drift_monitor.run_drift_checks`` (paso ``drift_checks``
+de la pasada canónica y job ``drift_report``), justo antes del monitor PSI/F1.
 """
 
 from __future__ import annotations
@@ -376,6 +377,7 @@ def compute_f1_drop(
         from db.database import connect as db_connect
         from db.model_registry import get_active
         from db.repositories.feedback import FUENTE_REVISION_TI
+        from services.ml.model_artifacts import resolve_active_artifact
         from services.ml.sap_classifier import SAPClassifier
 
     except ImportError as exc:
@@ -443,12 +445,15 @@ def compute_f1_drop(
         log.info("compute_f1_drop_insufficient_data", n=len(rows), min=min_labelled)
         return 0.0
 
-    # Cargar modelo activo desde registry path
-    model_path = active.get("path")
+    # El ``path`` del registro es la ruta del runner que entrenó: en este runner
+    # no existe y ``load()`` caía al ``sap_classifier.pkl`` local sin cotejar
+    # nada. El artefacto activo se resuelve (y verifica por sha256) aquí.
     try:
-        from pathlib import Path
-
-        clf = SAPClassifier.load(Path(model_path)) if model_path else SAPClassifier.load()
+        artefacto = resolve_active_artifact(model_name)
+        if artefacto is None:
+            log.warning("compute_f1_drop_artefacto_irresoluble", model=model_name)
+            return 0.0
+        clf = SAPClassifier.load(artefacto)
     except Exception as exc:
         log.warning("compute_f1_drop_load_failed", error=str(exc))
         return 0.0

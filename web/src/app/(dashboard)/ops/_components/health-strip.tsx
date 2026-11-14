@@ -1,15 +1,12 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth } from "@/lib/api-client";
 import { useSession } from "@/lib/auth";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { analyticsKeys } from "@/lib/query-keys";
 import { useSourceFreshness } from "@/hooks/use-source-freshness";
 import { StatCell, StatStrip } from "@/components/console/panel";
 import { formatNumber, formatRelativeHours } from "@/lib/utils";
+import { useQuality } from "../_hooks/use-calidad-datos";
 import { useEjecuciones } from "../_hooks/use-ejecuciones";
-import { freshnessInfo, type QualityData } from "./calidad-datos/quality-data";
+import { freshnessInfo } from "./calidad-datos/quality-data";
 
 /**
  * Tira de salud común a las vistas de Ops.
@@ -40,13 +37,7 @@ export function OpsHealthStrip() {
   const conPasos = isAdmin || sesionCargando;
   const sources = useSourceFreshness();
 
-  const quality = useQuery<QualityData>({
-    queryKey: analyticsKeys.quality,
-    queryFn: () => fetchWithAuth<QualityData>("/api/v1/analytics/quality"),
-    staleTime: 60_000,
-    // Su fallo se pinta en la celda («sin dato»): sin toast encima.
-    meta: META_ERROR_EN_LINEA,
-  });
+  const quality = useQuality({ staleTime: 60_000 });
 
   const ejecuciones = useEjecuciones({ enabled: isAdmin });
 

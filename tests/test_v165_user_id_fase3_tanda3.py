@@ -219,12 +219,14 @@ def test_la_vista_con_id_nace_sin_clave_y_arbitra_por_id() -> None:
 
     connect, conn = _conexion_simulada(rowcount=0)
     with patch.object(saved_filters, "connect", connect):
-        saved_filters.save_filter("k", "Mi vista", "{}", 3, user_id=7)
+        saved_filters.save_filter("Mi vista", "{}", 3, user_id=7)
 
     actualizar, insertar = conn.execute.call_args_list
     assert "CASE WHEN EXISTS (SELECT 1 FROM saved_filters o" in _sql(actualizar)
     assert "ON CONFLICT (user_id, name) WHERE user_id IS NOT NULL DO UPDATE" in _sql(insertar)
-    assert insertar[0][1][:3] == (None, 7, "Mi vista")
+    # Desde v181 el INSERT ni siquiera nombra la columna: nace NULL.
+    assert "user_key" not in _sql(insertar)
+    assert insertar[0][1][:2] == (7, "Mi vista")
 
 
 def test_la_lectura_de_preferencia_prefiere_la_fila_del_id() -> None:
@@ -393,29 +395,33 @@ def test_vista_por_id_sin_clave_y_sin_duplicar(tmp_db: Any) -> None:
 
     user_id = _crear_usuario("vistas@v165.test")
     org = _organizacion_personal(user_id)
-    save_filter("clave-vieja", "Mi vista", '{"q":"a"}', org, user_id=user_id)
-    save_filter("clave-nueva", "Mi vista", '{"q":"b"}', org, user_id=user_id)
+    save_filter("Mi vista", '{"q":"a"}', org, user_id=user_id)
+    save_filter("Mi vista", '{"q":"b"}', org, user_id=user_id)
 
     assert _filas("saved_filters", "name", user_id) == [(None, "Mi vista")]
-    vistas = list_saved_filters("otra-clave", org, user_id=user_id)
+    vistas = list_saved_filters(org, user_id=user_id)
     assert [(v["name"], v["filters_json"]) for v in vistas] == [("Mi vista", '{"q":"b"}')]
 
 
 def test_vista_sin_resolver_junto_a_la_del_id_no_rompe_el_indice(tmp_db: Any) -> None:
     from db.database import connect, now_utc_iso
     from db.saved_filters import save_filter
+    from shared.identity import user_key_from_email
 
-    user_id = _crear_usuario("vistas-mezcla@v165.test")
+    email = "vistas-mezcla@v165.test"
+    user_id = _crear_usuario(email)
     org = _organizacion_personal(user_id)
-    save_filter("k", "Mi vista", "{}", org, user_id=user_id)
+    save_filter("Mi vista", "{}", org, user_id=user_id)
+    # La vista sin resolver lleva la clave de su correo: desde v181 es la que
+    # la base deriva (`clave_legada_de_usuario`) y la que el UPDATE alcanza.
     with connect() as c:
         c.execute(
             "INSERT INTO saved_filters "
             "(user_key, user_id, name, filters_json, created_at, organization_id, visibility) "
-            "VALUES ('k', NULL, 'Mi vista', '{}', %s, %s, 'private')",
-            (now_utc_iso(), org),
+            "VALUES (%s, NULL, 'Mi vista', '{}', %s, %s, 'private')",
+            (user_key_from_email(email, user_id), now_utc_iso(), org),
         )
-    save_filter("k", "Mi vista", '{"q":"c"}', org, user_id=user_id)
+    save_filter("Mi vista", '{"q":"c"}', org, user_id=user_id)
     assert _filas("saved_filters", "name", user_id) == [(None, "Mi vista")]
 
 

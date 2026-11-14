@@ -136,6 +136,34 @@ class TestRunOnce:
             # Should not raise despite alerts import failure
 
 
+class TestRunDriftChecks:
+    """El paso ``drift_checks`` y el job ``drift_report`` comparten entrada:
+    el job llamaba solo al informe y el monitor PSI/F1 (el que alerta) no
+    corría en ese plano."""
+
+    def test_llama_al_informe_y_despues_al_monitor(self):
+        from scheduler import drift_monitor
+
+        orden: list[str] = []
+        with (
+            patch(
+                "scheduler.drift_report.run_drift_report",
+                side_effect=lambda: orden.append("informe"),
+            ),
+            patch.object(drift_monitor, "run_once", side_effect=lambda: orden.append("monitor")),
+        ):
+            drift_monitor.run_drift_checks()
+
+        assert orden == ["informe", "monitor"]
+
+    def test_el_job_drift_report_del_registro_la_usa(self):
+        from scheduler.drift_monitor import run_drift_checks
+        from scheduler.jobs import build_default_registry
+
+        job = next(j for j in build_default_registry() if j.name == "drift_report")
+        assert job.fn is run_drift_checks
+
+
 class TestDriftStatus:
     def test_dataclass(self):
         from scheduler.drift_monitor import DriftStatus

@@ -105,11 +105,11 @@ def export_watchlist_rules(user_id: int) -> list[dict[str, Any]]:
     return [r.model_dump() for r in list_rules(user_id)]
 
 
-def export_saved_filters(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+def export_saved_filters(user_id: int) -> list[dict[str, Any]]:
     """Exporta las vistas guardadas del usuario (todas, sin ámbito de equipo)."""
     from db.saved_filters import list_own_saved_filters
 
-    return list_own_saved_filters(user_key, user_id=user_id)
+    return list_own_saved_filters(user_id=user_id)
 
 
 def export_user_profile(user_key: str, *, user_id: int | None = None) -> dict[str, Any] | None:
@@ -242,14 +242,14 @@ def anonymize_user_data(
     from services.notifications import delete_all_alerts, delete_email_prefs
     from services.watchlist_rules import delete_all_for_user
 
-    delete_all_saved_filters(user_key, user_id=user_id)
     delete_user_profile(user_key, user_id=user_id)
     delete_all_alerts(user_key, user_id=user_id)
     delete_email_prefs(user_key, user_id=user_id)
     radar_dismissals.delete_all_for_user(user_key, user_id=user_id)
     if user_id is not None:
-        # watchlist_*, reglas y follows se identifican por id desde v181: lo
-        # guardado bajo un correo anterior lleva ese mismo id.
+        # watchlist_*, reglas, follows y vistas guardadas se identifican por id
+        # desde v181: lo guardado bajo un correo anterior lleva ese mismo id.
+        delete_all_saved_filters(user_id=user_id)
         _watchlist_repo.anonymize_cpv(user_id)
         _watchlist_repo.anonymize_items(user_id)
         delete_all_for_user(user_id)

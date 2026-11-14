@@ -146,6 +146,35 @@ def test_los_explode_de_tecnologia_van_por_el_indice_parcial(llamada):
         assert "tecnologia IS NOT NULL" in sql
 
 
+@pytest.mark.parametrize(
+    ("llamada", "cola"),
+    [
+        (
+            lambda r: r.tecnologia_detalle_items(
+                LicitacionesFilters(ccaa="Madrid"), tech_codes=["SAP", "SALESFORCE"], limit=5
+            ),
+            [5],
+        ),
+        (
+            lambda r: r.tecnologia_detalle_kpis(
+                LicitacionesFilters(ccaa="Madrid"), tech_codes=["SAP", "SALESFORCE"]
+            ),
+            [],
+        ),
+    ],
+    ids=["detalle_items", "detalle_kpis"],
+)
+def test_el_detalle_de_tecnologia_solapa_arrays_sin_explotar_el_csv(llamada, cola):
+    """Sin ``unnest`` no hay filas repetidas que deduplicar: ni ``DISTINCT ON``
+    ni ``trim(code)``. Los parámetros siguen el orden ámbito → códigos → límite."""
+    sentencias, _ = _sql_de(llamada)
+    [(sql, params)] = sentencias
+    assert "unnest" not in sql
+    assert "DISTINCT ON" not in sql
+    assert "&& ARRAY[%s,%s]::text[]" in sql
+    assert params == ["Madrid", "SAP", "SALESFORCE", *cola]
+
+
 def test_sin_clasificar_se_calcula_como_complemento_de_las_etiquetadas():
     """El total y las etiquetadas van en subconsultas separadas, cada una por
     su índice; las sin clasificar salen de restar, con el ámbito repetido."""
@@ -275,3 +304,21 @@ def test_sin_tecnologia_no_cuela_por_el_explode(corpus):
             LicitacionesFilters(), tech_codes=["SAP", "SALESFORCE", "ORACLE"], limit=50
         )
     }
+
+
+def test_el_detalle_cuenta_una_vez_la_licitacion_con_dos_codigos_pedidos(corpus):
+    """W-02 es ``"SAP,SALESFORCE"`` y se piden los dos: sale y suma una sola vez."""
+    repo = AggregateRepository()
+    codigos = ["SAP", "SALESFORCE"]
+    ids = [
+        row["id_externo"]
+        for row in repo.tecnologia_detalle_items(
+            LicitacionesFilters(), tech_codes=codigos, limit=50
+        )
+    ]
+    assert sorted(ids) == ["W-01", "W-02", "W-03"]
+    assert repo.tecnologia_detalle_kpis(LicitacionesFilters(), tech_codes=codigos) == (
+        3,
+        300000.0,
+        100000.0,
+    )

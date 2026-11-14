@@ -52,6 +52,7 @@ __all__ = [
     "citas",
     "completar_embeddings",
     "indexar",
+    "marcar_agotado",
     "politica_indexado",
     "terminos_de",
 ]
@@ -230,9 +231,47 @@ def indexar(
                     attachment_id,
                     organization_id=organization_id,
                     estado="error",
-                    error="No se pudo indexar el documento. Desactívalo y vuelve a activarlo.",
+                    error=_ERROR_AGOTADO,
                 )
             raise
+
+
+#: Lo que la pantalla dice de un adjunto cuyo indexado agotó los intentos.
+_ERROR_AGOTADO: Final = "No se pudo indexar el documento. Desactívalo y vuelve a activarlo."
+
+
+def marcar_agotado(attachment_id: int, organization_id: int) -> bool:
+    """Deja en ``error`` un adjunto cuyo job de indexado murió sin cerrarlo.
+
+    Si el proceso muere en cada intento (un PDF que agota la memoria), ni
+    :func:`indexar` ni ``services.jobs.fail`` llegan a correr: lo cierra la
+    barrida de locks caducados, y sin esto el adjunto diría «pendiente» para
+    siempre. ``False`` si no había nada que marcar: ya no es indexable, ya no
+    está pendiente, o hay otro job en marcha para él (se retiró y se volvió a
+    dar el permiso).
+
+    shortcut: lee y luego escribe sin bloquear; un indexado que termine justo
+    entre las dos quedaría en ``error`` y se arregla quitando y dando el
+    permiso. Subirlo a un ``UPDATE … WHERE index_status = 'pending'`` en el
+    repositorio si se ve en producción.
+    """
+    from services.jobs import TIPO_INDEXADO_ADJUNTO, job_activo
+
+    # La cola no es dato de la organización: se pregunta fuera de su ámbito.
+    otro = job_activo(TIPO_INDEXADO_ADJUNTO, campo="attachment_id", valor=str(attachment_id))
+    if otro is not None:
+        return False
+    with tenant_scope(organization_id):
+        repo = _repo()
+        fila = repo.get(attachment_id, organization_id=organization_id)
+        if fila is None or not fila.get("indexable") or fila.get("index_status") != "pending":
+            return False
+        marcado = repo.marcar_sin_texto(
+            attachment_id, organization_id=organization_id, estado="error", error=_ERROR_AGOTADO
+        )
+    if marcado:
+        log.warning("memoria_org_indexado_agotado", attachment_id=attachment_id)
+    return marcado
 
 
 def _a_listas(vectores: Iterable[Iterable[float]]) -> list[list[float]]:

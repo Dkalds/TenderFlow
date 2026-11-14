@@ -334,6 +334,8 @@ export const searchKeys = {
 export const pursuitKeys = {
   all: PURSUITS_RAIZ,
   list: (filters: object) => ["pursuits", "list", filters] as const,
+  /** Todos los `licitacion_id` con oportunidad (`useLicitacionesConPursuit`, todas las páginas). */
+  licitaciones: (organizationId: OrganizacionDeClave) => ["pursuits", "licitaciones", organizationId] as const,
   detail: (id: string) => ["pursuits", "detail", id] as const,
   metrics: ["pursuits", "metrics"] as const,
   /**
@@ -548,6 +550,7 @@ export const adminKeys = {
   /** Claves de API de toda la instancia (`/admin/api-keys`), no las de quien mira. */
   apiKeys: ["admin-api-keys"] as const,
   clientErrors: ["admin-client-errors"] as const,
+  cspViolations: ["admin-csp-violations"] as const,
   ejecuciones: ["admin-ejecuciones"] as const,
   dlq: {
     all: ["admin", "dlq"] as const,

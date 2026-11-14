@@ -331,6 +331,14 @@ export function SimuladorPuntuacion({ licitacionId }: { licitacionId: string }) 
               )}
             </p>
           )}
+          {enviada && propio.data?.temeridad_regla === "art85_dos_ofertas" && (
+            // La API solo ve tu baja y la del rival; el pliego remite al art. 85
+            // RGLCAP, que con más ofertas mide contra la media.
+            <p className="text-tf-meta text-muted-foreground">
+              Temeridad calculada con dos ofertas, la tuya y la del rival (art. 85 RGLCAP). Con tres
+              o más ofertas el umbral se recalcula sobre la media de todas y puede cambiar.
+            </p>
+          )}
         </>
       )}
     </section>
