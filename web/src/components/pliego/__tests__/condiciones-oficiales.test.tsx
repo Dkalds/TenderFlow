@@ -202,6 +202,57 @@ describe("CondicionesOficialesBloque", () => {
     expect(within(nota).getByText("Art. 87.1.a) LCSP")).toBeInTheDocument();
   });
 
+  const INDICIO = {
+    codigo: "juicio_de_valor_mayoritario" as const,
+    lote_numero: null,
+    titulo: "Más de la mitad de los puntos, por juicio de valor",
+    detalle: "El 60 % de la puntuación depende de un juicio de valor.",
+    base_legal: "Art. 146.2.a) LCSP",
+    cita: null,
+  };
+  const plazo = (vence: string) => ({
+    vence,
+    desde: "2026-11-30",
+    dias_habiles: 15,
+    base_legal: "Art. 50.1.b) LCSP",
+  });
+
+  it("junto a los indicios pinta hasta cuándo se puede recurrir el pliego y desde qué fecha", () => {
+    render(
+      <CondicionesOficialesBloque
+        datos={datos({ indicios: [INDICIO], plazo_recurso: plazo("2999-12-22") })}
+        licitacionId="LIC-1"
+      />,
+    );
+
+    const nota = screen.getByRole("note");
+    expect(within(nota).getByText(/Puedes recurrir los pliegos hasta el 22 dic 2999/)).toBeInTheDocument();
+    expect(within(nota).getByText(/15 días hábiles desde el anuncio de licitación/)).toHaveTextContent("30 nov 2026");
+    expect(within(nota).getByText("Art. 50.1.b) LCSP")).toBeInTheDocument();
+  });
+
+  it("un plazo ya pasado se dice en condicional, sin darlo por cierto", () => {
+    render(
+      <CondicionesOficialesBloque
+        datos={datos({ indicios: [INDICIO], plazo_recurso: plazo("2020-01-15") })}
+        licitacionId="LIC-1"
+      />,
+    );
+
+    expect(screen.getByText(/plazo para recurrir los pliegos habría vencido el 15 ene 2020/)).toBeInTheDocument();
+  });
+
+  it("sin indicios no pinta el plazo de recurso aunque la API lo traiga", () => {
+    render(
+      <CondicionesOficialesBloque
+        datos={datos({ indicios: [], plazo_recurso: plazo("2999-12-22") })}
+        licitacionId="LIC-1"
+      />,
+    );
+
+    expect(screen.queryByText(/recurrir los pliegos/)).not.toBeInTheDocument();
+  });
+
   it("sin indicios no pinta la nota", () => {
     render(<CondicionesOficialesBloque datos={datos({ indicios: [] })} licitacionId="LIC-1" />);
 

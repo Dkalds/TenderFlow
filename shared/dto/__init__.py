@@ -122,6 +122,7 @@ from shared.dto.condiciones import (
     CriterioOficial,
     GarantiaOficial,
     IndicioPliego,
+    PlazoRecursoEspecial,
     RequisitoSolvenciaOficial,
 )
 from shared.dto.cuentas import (
@@ -397,6 +398,7 @@ __all__ = [
     "PipelineAgendaItem",
     "PipelineAgendaKpis",
     "PipelineAgendaResponse",
+    "PlazoRecursoEspecial",
     "ProblemDetail",
     "PublicacionCuenta",
     "PuntuacionesActa",

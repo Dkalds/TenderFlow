@@ -237,6 +237,20 @@ def test_el_repositorio_devuelve_las_familias_y_los_titulos_de_lote(db: Any) -> 
     assert leido["existe"] is True
 
 
+def test_el_servicio_calcula_el_plazo_de_recurso_con_lo_guardado(db: Any) -> None:
+    from services.condiciones_oficiales import condiciones_oficiales
+
+    lic = _lic(_completas())
+    lic.tipo_contrato, lic.valor_estimado, lic.fecha_publicacion = "2", 640_000.0, "2026-11-30"
+    lic.tipos_anuncio = "DOC_CD,DOC_CN"
+    upsert_licitaciones([lic])
+
+    condiciones = condiciones_oficiales("COND-1")
+
+    assert condiciones is not None and condiciones.plazo_recurso is not None
+    assert condiciones.plazo_recurso.vence == "2026-12-22"
+
+
 def test_el_repositorio_sin_filas_devuelve_listas_vacias(db: Any) -> None:
     from db.repositories.condiciones_oficiales import CondicionesOficialesRepository
 
@@ -251,6 +265,10 @@ def test_el_repositorio_sin_filas_devuelve_listas_vacias(db: Any) -> None:
         "existe": False,
         "url": None,
         "valor_estimado": None,
+        "tipo_contrato": None,
+        "fecha_publicacion": None,
+        "nuts_code": None,
+        "tipos_anuncio": None,
     }
 
 

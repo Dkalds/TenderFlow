@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from datetime import date, timedelta
 from typing import Any
 
 from db.repositories.condiciones_oficiales import CondicionesOficialesRepository
@@ -24,8 +25,10 @@ from shared.dto import (
     CriterioOficial,
     GarantiaOficial,
     IndicioPliego,
+    PlazoRecursoEspecial,
     RequisitoSolvenciaOficial,
 )
+from shared.procedimientos import codigo_tipo_contrato
 
 _repo = CondicionesOficialesRepository()
 
@@ -197,6 +200,106 @@ def indicios_de(
     return [*volumen, *juicio, *certificados]
 
 
+#: Umbral de valor estimado del recurso especial por tipo CODICE (art. 44.1.a
+#: LCSP): suministros y servicios, más de 100.000 €; obras y concesiones, más de
+#: 3 millones. Los demás tipos no se juzgan: su sujeción depende de quién
+#: contrata, y eso la publicación no lo dice.
+_UMBRAL_RECURSO = dict.fromkeys(("1", "2"), 100_000.0) | dict.fromkeys(("3", "22", "32"), 3e6)
+_DIAS_RECURSO = 15
+#: Navarra tiene su propia reclamación (Ley Foral 2/2018), con otro plazo.
+#: shortcut: se mira el NUTS del lugar de ejecución, no quién contrata; subirlo
+#: si un órgano foral contrata fuera de Navarra o la AGE dentro.
+_NUTS_NAVARRA = "ES22"
+#: `NoticeTypeCode` del anuncio de licitación, desde el que corre el plazo, y
+#: prefijo del anuncio previo, cuya fecha sería la que guarda `fecha_publicacion`.
+_ANUNCIO_LICITACION = "DOC_CN"
+_ANUNCIO_PREVIO = "DOC_PIN"
+#: (mes, día): Año Nuevo, Reyes, Trabajo, Asunción, Hispanidad, Todos los Santos,
+#: Constitución, Inmaculada y Navidad.
+_FESTIVOS_NACIONALES = frozenset(
+    {(1, 1), (1, 6), (5, 1), (8, 15), (10, 12), (11, 1), (12, 6), (12, 8), (12, 25)}
+)
+
+
+def _pascua(anio: int) -> date:
+    """Domingo de Pascua (algoritmo anónimo gregoriano)."""
+    a, b, c = anio % 19, anio // 100, anio % 100
+    d, e = divmod(b, 4)
+    g = (8 * b + 13) // 25
+    h = (19 * a + b - d - g + 15) % 30
+    i, k = divmod(c, 4)
+    l_ = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l_) // 451
+    mes, dia = divmod(h + l_ - 7 * m + 114, 31)
+    return date(anio, mes, dia + 1)
+
+
+def _es_habil(dia: date) -> bool:
+    """Sin sábados, domingos, festivos nacionales ni Viernes Santo.
+
+    shortcut: sin festivos autonómicos ni locales (ni los que una comunidad
+    traslada), así que la fecha puede no ser la real; subirlo si alguien pide
+    la fecha exacta por comunidad.
+    """
+    return (
+        dia.weekday() < 5
+        and (dia.month, dia.day) not in _FESTIVOS_NACIONALES
+        and dia != _pascua(dia.year) - timedelta(days=2)
+    )
+
+
+def sumar_dias_habiles(desde: date, dias: int) -> date:
+    """El día hábil número ``dias`` contando desde el siguiente a ``desde``."""
+    dia = desde
+    while dias > 0:
+        dia += timedelta(days=1)
+        if _es_habil(dia):
+            dias -= 1
+    return dia
+
+
+def plazo_recurso_especial(
+    tipo_contrato: str | None,
+    valor_estimado: float | None,
+    fecha_publicacion: str | None,
+    nuts_code: str | None,
+    tipos_anuncio: str | None,
+) -> PlazoRecursoEspecial | None:
+    """Hasta cuándo se pueden recurrir los pliegos, o ``None`` si no se sabe.
+
+    Solo con un tipo cuyo umbral es seguro (:data:`_UMBRAL_RECURSO`), un valor
+    estimado que lo supera y una fecha de publicación legible. Fuera de Navarra,
+    que tiene su propio régimen. Y solo si los anuncios publicados
+    (``tipos_anuncio``, CSV de v138) incluyen el de licitación y ningún anuncio
+    previo: ``fecha_publicacion`` es el primero de todos, y con un previo sería
+    su fecha, meses antes; sin ``ValidNoticeInfo`` sería la de la última
+    actualización. En los dos casos el plazo saldría mal, así que no se da.
+    Pura: ni lee ni escribe BD.
+    """
+    umbral = _UMBRAL_RECURSO.get(codigo_tipo_contrato(tipo_contrato) or "")
+    if umbral is None or not valor_estimado or valor_estimado <= umbral:
+        return None
+    if (nuts_code or "").upper().startswith(_NUTS_NAVARRA):
+        return None
+    anuncios = [a.strip() for a in (tipos_anuncio or "").split(",")]
+    if _ANUNCIO_LICITACION not in anuncios or any(a.startswith(_ANUNCIO_PREVIO) for a in anuncios):
+        return None
+    try:
+        publicada = date.fromisoformat(str(fecha_publicacion or "")[:10])
+    except ValueError:
+        return None
+    return PlazoRecursoEspecial(
+        vence=sumar_dias_habiles(publicada, _DIAS_RECURSO).isoformat(),
+        desde=publicada.isoformat(),
+        dias_habiles=_DIAS_RECURSO,
+        base_legal=(
+            "Art. 50.1.b) LCSP: 15 días hábiles desde el día siguiente a la publicación del "
+            "anuncio, si los pliegos estaban accesibles ese día; recurso especial del art. 44, "
+            "para contratos por encima de su umbral."
+        ),
+    )
+
+
 def construir_condiciones(licitacion_id: str, datos: Mapping[str, Any]) -> CondicionesOficiales:
     """Agrupa las filas del repositorio por ámbito. Pura: ni lee ni escribe BD.
 
@@ -240,6 +343,13 @@ def construir_condiciones(licitacion_id: str, datos: Mapping[str, Any]) -> Condi
         ambitos=ordenados,
         valor_estimado=valor_estimado,
         indicios=indicios_de(ordenados, valor_estimado),
+        plazo_recurso=plazo_recurso_especial(
+            datos.get("tipo_contrato"),
+            valor_estimado,
+            datos.get("fecha_publicacion"),
+            datos.get("nuts_code"),
+            datos.get("tipos_anuncio"),
+        ),
     )
 
 

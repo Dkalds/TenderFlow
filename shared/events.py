@@ -259,8 +259,9 @@ CATALOGO: dict[str, EspecificacionEvento] = dict(
         ),
         # Los emite `services/deadline_reminders`: plazo de presentación de un
         # favorito o de una oportunidad (`deadline_<n>`), próxima acción de una
-        # oportunidad (`accion_<n>`) y aplazamiento del Radar que vence
-        # (`radar_recordatorio_<fecha>`). `aviso` es el `type` de la campana.
+        # oportunidad (`accion_<n>`), plazo para recurrir los pliegos de un
+        # expediente con indicios (`recurso_<n>`) y aplazamiento del Radar que
+        # vence (`radar_recordatorio_<fecha>`). `aviso` es el `type` de la campana.
         _spec(
             "plazo.recordatorio",
             "Recordatorio de plazo",

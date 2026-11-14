@@ -111,6 +111,27 @@ class IndicioPliego(BaseModel):
     cita: str | None = None
 
 
+class PlazoRecursoEspecial(BaseModel):
+    """Hasta cuándo se pueden recurrir los pliegos (art. 50.1.b LCSP), orientativo.
+
+    Quince días hábiles desde el día siguiente a ``fecha_publicacion``, sin
+    sábados, domingos ni festivos nacionales. Solo se da cuando esa fecha es la
+    del anuncio de licitación (hay ``DOC_CN`` y ningún anuncio previo). Los
+    festivos autonómicos y locales no entran, y los pliegos pueden haberse
+    publicado después del anuncio: por eso es un indicio para no dejar pasar el
+    plazo, no asesoramiento jurídico, y la UI pide comprobarla en el anuncio.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Último día para recurrir (ISO 8601, fecha).
+    vence: str
+    #: La fecha desde la que se cuenta: la primera publicación del expediente.
+    desde: str
+    dias_habiles: int = 15
+    base_legal: str
+
+
 class CondicionesOficiales(BaseModel):
     """Lo que la publicación oficial dice de un expediente, por ámbito.
 
@@ -134,3 +155,6 @@ class CondicionesOficiales(BaseModel):
     #: la base contra la que se mide la solvencia económica.
     valor_estimado: float | None = None
     indicios: list[IndicioPliego] = Field(default_factory=list)
+    #: Plazo para recurrir los pliegos, si el contrato está sujeto a recurso
+    #: especial (art. 44.1.a LCSP) y se conoce su publicación. Nulo si no.
+    plazo_recurso: PlazoRecursoEspecial | None = None

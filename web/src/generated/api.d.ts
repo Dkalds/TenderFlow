@@ -8357,6 +8357,7 @@ export interface components {
             indicios?: components["schemas"]["IndicioPliego"][];
             /** Licitacion Id */
             licitacion_id: string;
+            plazo_recurso?: components["schemas"]["PlazoRecursoEspecial"] | null;
             /** Url Publicacion */
             url_publicacion?: string | null;
             /** Valor Estimado */
@@ -13556,6 +13557,30 @@ export interface components {
              * @default false
              */
             puede_editar: boolean;
+        };
+        /**
+         * PlazoRecursoEspecial
+         * @description Hasta cuándo se pueden recurrir los pliegos (art. 50.1.b LCSP), orientativo.
+         *
+         *     Quince días hábiles desde el día siguiente a ``fecha_publicacion``, sin
+         *     sábados, domingos ni festivos nacionales. Solo se da cuando esa fecha es la
+         *     del anuncio de licitación (hay ``DOC_CN`` y ningún anuncio previo). Los
+         *     festivos autonómicos y locales no entran, y los pliegos pueden haberse
+         *     publicado después del anuncio: por eso es un indicio para no dejar pasar el
+         *     plazo, no asesoramiento jurídico, y la UI pide comprobarla en el anuncio.
+         */
+        PlazoRecursoEspecial: {
+            /** Base Legal */
+            base_legal: string;
+            /** Desde */
+            desde: string;
+            /**
+             * Dias Habiles
+             * @default 15
+             */
+            dias_habiles: number;
+            /** Vence */
+            vence: string;
         };
         /**
          * PrediccionBajaLote

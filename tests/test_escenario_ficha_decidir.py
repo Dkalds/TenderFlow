@@ -81,6 +81,8 @@ def test_cu35_decidir_desde_la_ficha(client, api_db):
         organo_contratacion="Ayuntamiento de Getafe",
         fecha_limite="2027-01-15T10:00:00+00:00",
         valor_estimado=300_000.0,
+        tipo_contrato="2",
+        tipos_anuncio="DOC_CD,DOC_CN",
     )
     # Otro órgano y otro CPV, para que no cuente en el historial del segmento;
     # adjudicado hace cien días, dentro de los tres años de las referencias.
@@ -137,6 +139,8 @@ def test_cu35_decidir_desde_la_ficha(client, api_db):
     (indicio,) = condiciones.json()["indicios"]
     assert indicio["codigo"] == "solvencia_economica_excesiva"
     assert indicio["base_legal"].startswith("Art. 87.1.a) LCSP")
+    # Servicios de más de 100.000 €: recurso especial, 15 días hábiles desde el 1 de septiembre.
+    assert condiciones.json()["plazo_recurso"]["vence"] == "2026-09-22"
 
     # Sin NIF declarado, el historial lo dice en vez de enseñar ceros.
     sin_nif = sesion.get("/licitaciones/EXP-DEC-2026/historial-propio", params=org).json()

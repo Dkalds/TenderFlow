@@ -11,10 +11,11 @@ import type {
   CriterioOficial,
   GarantiaOficial,
   IndicioPliego,
+  PlazoRecursoEspecial,
   RequisitoSolvenciaOficial,
 } from "@/hooks/use-condiciones-oficiales";
 import { urlHttp } from "@/lib/url-http";
-import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
+import { diaISO, formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
 
 /**
  * v148 — criterios, garantías y solvencia tal como los publica PLACSP.
@@ -191,7 +192,7 @@ function Ambito({ ambito }: { ambito: CondicionesAmbito }) {
  * banda con la lista dentro, no una por indicio: son notas para leer, no
  * alertas que compitan entre sí.
  */
-function Indicios({ indicios }: { indicios: IndicioPliego[] }) {
+function Indicios({ indicios, plazo }: { indicios: IndicioPliego[]; plazo: PlazoRecursoEspecial | null }) {
   if (indicios.length === 0) return null;
   return (
     <Aviso
@@ -218,11 +219,36 @@ function Indicios({ indicios }: { indicios: IndicioPliego[] }) {
           </li>
         ))}
       </ul>
+      {plazo && <PlazoRecurso plazo={plazo} />}
       <p className="text-muted-foreground mt-2.5">
         Son indicios: la ley admite excepciones justificadas en el expediente. Si te afectan, pide aclaración al órgano
         dentro del plazo de preguntas.
       </p>
     </Aviso>
+  );
+}
+
+/**
+ * Hasta cuándo se puede recurrir el pliego. La fecha llega calculada de la
+ * API; aquí solo se elige el verbo según si ya pasó. Se formatea en UTC
+ * porque es un día de calendario, no un instante.
+ */
+function PlazoRecurso({ plazo }: { plazo: PlazoRecursoEspecial }) {
+  const vence = formatDate(plazo.vence, "es-ES", "UTC");
+  return (
+    <div className="mt-2.5 space-y-0.5 border-t border-divider pt-2.5">
+      <p className="text-tf-body leading-snug font-medium">
+        {plazo.vence < diaISO()
+          ? `Según la fecha del anuncio, el plazo para recurrir los pliegos habría vencido el ${vence}`
+          : `Puedes recurrir los pliegos hasta el ${vence}`}
+      </p>
+      <p className="text-muted-foreground">
+        Fecha orientativa: {plazo.dias_habiles} días hábiles desde el anuncio de licitación (
+        {formatDate(plazo.desde, "es-ES", "UTC")}), sin contar festivos autonómicos ni locales. Si los pliegos se
+        publicaron más tarde, el plazo corre desde entonces: compruébalo en la publicación oficial.
+      </p>
+      <p className="text-muted-foreground">{plazo.base_legal}</p>
+    </div>
   );
 }
 
@@ -262,7 +288,7 @@ export function CondicionesOficialesBloque({
           es su republicación.
         </Aviso>
       )}
-      <Indicios indicios={datos.indicios ?? []} />
+      <Indicios indicios={datos.indicios ?? []} plazo={datos.plazo_recurso ?? null} />
       {ambitos.map((ambito) => (
         <Ambito key={ambito.lote_numero ?? "expediente"} ambito={ambito} />
       ))}

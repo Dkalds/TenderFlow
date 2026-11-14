@@ -10,7 +10,10 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
 import services.deadline_reminders as mod
+from shared.dto import CondicionesOficiales, IndicioPliego, PlazoRecursoEspecial
 
 
 def _en(dias: int) -> str:
@@ -26,6 +29,7 @@ def _fila(**extra: Any) -> dict[str, Any]:
         "responsible_email": "ana@example.com",
         "titulo": "Servicio TI",
         "fecha_limite": None,
+        "fecha_publicacion": _en(-10),
         "next_action": None,
         "next_action_due": None,
     }
@@ -33,7 +37,31 @@ def _fila(**extra: Any) -> dict[str, Any]:
     return base
 
 
-def _correr(filas: list[dict[str, Any]], *, ya_emitidos: bool = False) -> list[dict[str, Any]]:
+def _condiciones(*, vence: str | None, indicios: bool = True) -> CondicionesOficiales:
+    return CondicionesOficiales(
+        licitacion_id="LIC-1",
+        indicios=[
+            IndicioPliego(
+                codigo="juicio_de_valor_mayoritario",
+                titulo="Más de la mitad de los puntos, por juicio de valor",
+                detalle="60 % juicio de valor.",
+                base_legal="Art. 146.2.a) LCSP",
+            )
+        ]
+        if indicios
+        else [],
+        plazo_recurso=PlazoRecursoEspecial(vence=vence, desde="2026-01-01", base_legal="Art. 50")
+        if vence
+        else None,
+    )
+
+
+def _correr(
+    filas: list[dict[str, Any]],
+    *,
+    ya_emitidos: bool = False,
+    condiciones: CondicionesOficiales | None = None,
+) -> list[dict[str, Any]]:
     """Payloads que la pasada escribe en el outbox."""
     escritos: list[dict[str, Any]] = []
 
@@ -48,6 +76,7 @@ def _correr(filas: list[dict[str, Any]], *, ya_emitidos: bool = False) -> list[d
         patch.object(mod.PursuitRepository, "deadline_rows", return_value=filas),
         patch.object(mod, "agregados_con_evento", side_effect=_ya),
         patch.object(mod, "append_domain_event", side_effect=_append),
+        patch.object(mod, "condiciones_oficiales", return_value=condiciones),
     ):
         total = mod.check_pursuit_deadlines()
     assert total == len(escritos)
@@ -83,6 +112,68 @@ def test_lo_ya_emitido_no_se_vuelve_a_emitir() -> None:
     assert _correr([_fila(fecha_limite=_en(1))], ya_emitidos=True) == []
 
 
+def test_plazo_de_recurso_con_indicios_avisa_a_cinco_y_a_un_dia() -> None:
+    escritas = _correr([_fila(fecha_limite=_en(20))], condiciones=_condiciones(vence=_en(1)))
+    recurso = sorted(e["aviso"] for e in escritas if e["aviso"].startswith("recurso_"))
+    assert recurso == ["recurso_1", "recurso_5"]
+    assert all(_en(1) in e["detalle"] for e in escritas if e["aviso"].startswith("recurso_"))
+
+
+@pytest.mark.parametrize(
+    "condiciones",
+    [
+        pytest.param(_condiciones(vence=_en(1), indicios=False), id="sin-indicios"),
+        pytest.param(_condiciones(vence=_en(-1)), id="vencido"),
+        pytest.param(_condiciones(vence=_en(9)), id="fuera-de-ventana"),
+        pytest.param(_condiciones(vence=None), id="sin-plazo"),
+    ],
+)
+def test_plazo_de_recurso_sin_indicios_vencido_o_lejano_no_avisa(
+    condiciones: CondicionesOficiales,
+) -> None:
+    escritas = _correr([_fila(fecha_limite=_en(20))], condiciones=condiciones)
+    assert [e["aviso"] for e in escritas] == ["deadline_30"]
+
+
+def test_plazo_de_recurso_avisa_aunque_la_presentacion_ya_haya_cerrado() -> None:
+    escritas = _correr([_fila(fecha_limite=_en(-3))], condiciones=_condiciones(vence=_en(1)))
+    assert sorted(e["aviso"] for e in escritas) == ["recurso_1", "recurso_5"]
+
+
+def test_lo_publicado_antes_del_horizonte_no_lee_las_condiciones() -> None:
+    viejo = _fila(fecha_limite=_en(1), fecha_publicacion=_en(-41))
+    with (
+        patch.object(mod.PursuitRepository, "deadline_rows", return_value=[viejo]),
+        patch.object(mod, "agregados_con_evento", return_value=set()),
+        patch.object(mod, "append_domain_event"),
+        patch.object(mod, "condiciones_oficiales") as condiciones,
+    ):
+        mod.check_pursuit_deadlines()
+    condiciones.assert_not_called()
+
+
+def test_la_consulta_pide_lo_publicado_dentro_del_horizonte_del_recurso() -> None:
+    with (
+        patch.object(mod.PursuitRepository, "deadline_rows", return_value=[]) as consulta,
+        patch.object(mod, "append_domain_event"),
+    ):
+        mod.check_pursuit_deadlines()
+    assert consulta.call_args.kwargs["publicadas_desde"] == _en(-40)
+
+
+def test_un_fallo_al_leer_las_condiciones_no_tapa_el_plazo_de_presentacion() -> None:
+    escritos: list[dict[str, Any]] = []
+    filas = [_fila(fecha_limite=_en(1))]
+    with (
+        patch.object(mod.PursuitRepository, "deadline_rows", return_value=filas),
+        patch.object(mod, "agregados_con_evento", return_value=set()),
+        patch.object(mod, "append_domain_event", side_effect=lambda *a, **_: escritos.append(a[3])),
+        patch.object(mod, "condiciones_oficiales", side_effect=RuntimeError("sin base")),
+    ):
+        mod.check_pursuit_deadlines()
+    assert sorted(e["aviso"] for e in escritos) == ["deadline_1", "deadline_30", "deadline_7"]
+
+
 def test_check_all_users_suma_favoritos_y_pursuits_y_sobrevive_a_un_fallo() -> None:
     sentencias: list[str] = []
 
@@ -114,5 +205,5 @@ def test_check_all_users_suma_favoritos_y_pursuits_y_sobrevive_a_un_fallo() -> N
     ):
         assert mod.check_all_users_deadlines() == 2
 
-    assert [c.args for c in comprobar.call_args_list] == [(7,), (8,)]
+    assert [c.args[0] for c in comprobar.call_args_list] == [7, 8]
     assert "user_id IS NOT NULL" in sentencias[0]

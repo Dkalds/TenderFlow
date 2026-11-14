@@ -6,7 +6,8 @@ licitaciones favoritas cuyo plazo (``fecha_limite``) o fin de contrato
 aplazamientos del Radar que vencen; el despachador los reparte a la campana y a
 los webhooks.
 
-Ventanas: 30 dias, 7 dias, 1 dia.
+Ventanas: 30 dias, 7 dias, 1 dia. El plazo para recurrir los pliegos de un
+expediente con indicios (``recurso_<n>``) avisa a 5 y 1 días.
 El ``aviso`` de cada evento lleva la ventana y es el ``type`` de la alerta en la
 campana, como antes de pasar al outbox. La idempotencia entre pasadas la da la
 clave del agregado ``recordatorio`` (:func:`_emitir`), y la campana deduplica
@@ -22,6 +23,7 @@ from db.events import agregados_con_evento, append_domain_event
 from db.repositories.pursuits import PursuitRepository
 from db.repositories.watchlist import WatchlistRepository
 from observability.logging import get_logger
+from services.condiciones_oficiales import condiciones_oficiales
 from shared.dates import instante_utc
 
 log = get_logger(__name__)
@@ -35,8 +37,19 @@ _DEADLINE_WINDOWS = [30, 7, 1]
 #: fijó el propio equipo y el día señalado merece aviso aunque no falte nada.
 _ACCION_WINDOWS = [7, 1, 0]
 
+#: Ventanas del plazo para recurrir los pliegos, en días naturales.
+_RECURSO_WINDOWS = [5, 1]
+#: Días naturales desde la publicación en los que el plazo de recurso puede
+#: seguir abierto: 15 hábiles no pasan de 25 naturales ni con Navidad o Semana
+#: Santa por medio. Más atrás no se leen las condiciones del expediente.
+_HORIZONTE_RECURSO = 40
+
 #: Agregado de los eventos de este módulo: su id es la clave del recordatorio.
 _AGREGADO = "recordatorio"
+
+#: Plazo de recurso por expediente dentro de una pasada: ``None`` si no hay
+#: aviso que dar. Un expediente seguido por varios usuarios se lee una vez.
+_PlazosRecurso = dict[str, date | None]
 
 #: ``(tipo de evento, clave, payload, organization_id)`` de un recordatorio.
 _Candidato = tuple[str, str, dict[str, Any], int]
@@ -96,6 +109,64 @@ def _emitir(candidatos: list[_Candidato]) -> int:
     return emitidos
 
 
+def _vence_recurso(lic_id: str, plazos: _PlazosRecurso) -> date | None:
+    """Último día para recurrir los pliegos, solo si hay indicios que lo motiven.
+
+    Sin indicios no hay aviso: recurrir un pliego sin nada que revisar no es una
+    acción que el producto deba proponer.
+    """
+    if lic_id not in plazos:
+        try:
+            condiciones = condiciones_oficiales(lic_id)
+        except Exception as exc:
+            # Sin este aviso, el resto de recordatorios del usuario sigue saliendo.
+            log.warning("recurso_plazo_error", licitacion_id=lic_id, error=str(exc)[:200])
+            condiciones = None
+        plazo = condiciones.plazo_recurso if condiciones and condiciones.indicios else None
+        plazos[lic_id] = date.fromisoformat(plazo.vence) if plazo else None
+    return plazos[lic_id]
+
+
+def _candidatos_recurso(
+    lic_id: str,
+    *,
+    fecha_publicacion: object,
+    organization_id: int,
+    titulo: str,
+    user_id: int,
+    hoy: date,
+    plazos: _PlazosRecurso,
+) -> list[_Candidato]:
+    """Los avisos ``recurso_<n>`` del expediente para esa persona.
+
+    No depende del plazo de presentación: en servicios y suministros suele
+    cerrar antes que el de recurso, y el pliego sigue siendo recurrible.
+    """
+    publicada = _dias_hasta(fecha_publicacion, hoy)
+    if publicada is None or publicada < -_HORIZONTE_RECURSO:
+        return []
+    vence = _vence_recurso(lic_id, plazos)
+    if vence is None:
+        return []
+    dias = (vence - hoy).days
+    return [
+        _candidato(
+            aviso=f"recurso_{window}",
+            lic_id=lic_id,
+            organization_id=organization_id,
+            titulo=titulo[:80],
+            aviso_titulo=f"Plazo para recurrir los pliegos en {dias} dia(s)",
+            detalle=(
+                f"La licitacion '{titulo[:80]}' tiene condiciones a revisar y el plazo "
+                f"orientativo del recurso especial vence el {vence.isoformat()}."
+            ),
+            user_id=user_id,
+        )
+        for window in _RECURSO_WINDOWS
+        if 0 <= dias <= window
+    ]
+
+
 def _get_watchlist_items(user_id: int) -> dict[str, int]:
     """``id_externo -> organization_id`` de los favoritos del usuario.
 
@@ -147,11 +218,12 @@ def _deadline_type(days_left: int, field: str) -> str:
     return f"{prefix}_{days_left}"
 
 
-def check_deadlines_and_notify(user_id: int) -> int:
+def check_deadlines_and_notify(user_id: int, plazos: _PlazosRecurso | None = None) -> int:
     """Emite los recordatorios de plazo de los favoritos del usuario.
 
     Cada recordatorio lleva la ``organization_id`` del favorito: una alerta sin
-    ella no aparece en ninguna campana.
+    ella no aparece en ninguna campana. ``plazos`` comparte entre usuarios los
+    plazos de recurso ya leídos en la misma pasada.
 
     Returns:
         Número de eventos nuevos escritos.
@@ -160,6 +232,7 @@ def check_deadlines_and_notify(user_id: int) -> int:
     if not favoritos:
         return 0
 
+    plazos = {} if plazos is None else plazos
     lics = _get_licitaciones_for_deadlines(list(favoritos))
     now = datetime.now(UTC)
     candidatos: list[_Candidato] = []
@@ -173,6 +246,15 @@ def check_deadlines_and_notify(user_id: int) -> int:
             # este camino evita, así que se salta.
             continue
         titulo = str(lic.get("titulo") or lic_id)
+        candidatos += _candidatos_recurso(
+            lic_id,
+            fecha_publicacion=lic.get("fecha_publicacion"),
+            organization_id=organization_id,
+            titulo=titulo,
+            user_id=user_id,
+            hoy=now.date(),
+            plazos=plazos,
+        )
 
         for field in ("fecha_limite", "fecha_fin"):
             raw_date = lic.get(field)
@@ -218,7 +300,7 @@ def _dias_hasta(raw: object, hoy: date) -> int | None:
         return None
 
 
-def check_pursuit_deadlines() -> int:
+def check_pursuit_deadlines(plazos: _PlazosRecurso | None = None) -> int:
     """Recordatorios para los pursuits abiertos con responsable.
 
     Dos fechas por pursuit: el plazo de presentación del expediente, con las
@@ -235,7 +317,12 @@ def check_pursuit_deadlines() -> int:
     # mandar, y pedirlo en SQL es lo que impide que el `LIMIT` corte un plazo
     # de mañana por ser de un pursuit creado ayer.
     horizonte = hoy + timedelta(days=max([*_DEADLINE_WINDOWS, *_ACCION_WINDOWS]))
-    rows = PursuitRepository().deadline_rows(desde=hoy.isoformat(), hasta=horizonte.isoformat())
+    rows = PursuitRepository().deadline_rows(
+        desde=hoy.isoformat(),
+        hasta=horizonte.isoformat(),
+        publicadas_desde=(hoy - timedelta(days=_HORIZONTE_RECURSO)).isoformat(),
+    )
+    plazos = {} if plazos is None else plazos
     candidatos: list[_Candidato] = []
     for row in rows:
         email = row.get("responsible_email")
@@ -245,7 +332,18 @@ def check_pursuit_deadlines() -> int:
         lic_id = str(row["licitacion_id"])
         titulo = str(row.get("titulo") or lic_id)
         organization_id = int(row["organization_id"])
+        candidatos += _candidatos_recurso(
+            lic_id,
+            fecha_publicacion=row.get("fecha_publicacion"),
+            organization_id=organization_id,
+            titulo=titulo,
+            user_id=int(responsable),
+            hoy=hoy,
+            plazos=plazos,
+        )
 
+        # Las ventanas filtran el resto: lo publicado hace poco entra en la
+        # consulta aunque su presentación quede más allá de 30 días.
         dias = _dias_hasta(row.get("fecha_limite"), hoy)
         if dias is not None and dias >= 0:
             for window in _DEADLINE_WINDOWS:
@@ -298,13 +396,14 @@ def check_all_users_deadlines() -> int:
     usuarios = _repo_watchlist.usuarios_con_favoritos()
 
     total = 0
+    plazos: _PlazosRecurso = {}
     for user_id in usuarios:
         try:
-            total += check_deadlines_and_notify(user_id)
+            total += check_deadlines_and_notify(user_id, plazos)
         except Exception as exc:
             log.warning("deadline_check_error", user_id=user_id, error=str(exc))
     try:
-        total += check_pursuit_deadlines()
+        total += check_pursuit_deadlines(plazos)
     except Exception as exc:
         log.warning("pursuit_deadline_check_error", error=str(exc)[:200])
     try:
