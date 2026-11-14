@@ -196,6 +196,12 @@ describe("guionAMarkdown", () => {
     expect(md).toContain("- Oficina de proyecto con PMO propia. _[sin base en el pliego]_");
     expect(md).not.toContain("migración»");
     expect(md).not.toContain("De tus documentos");
+    expect(md).not.toContain("No se pudieron consultar");
+  });
+
+  it("si falló la búsqueda de citas propias, lo dice en vez de callarlo", () => {
+    const md = guionAMarkdown({ ...GUION, citas_organizacion_fallidas: true }, () => "PPT.pdf");
+    expect(md).toContain("No se pudieron consultar los documentos de tu organización");
   });
 
   it("lleva las citas de documentos propios con su extracto, fichero y página", () => {

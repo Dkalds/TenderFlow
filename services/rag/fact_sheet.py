@@ -215,9 +215,11 @@ inversa), "lineal_por_tramos", "con_umbral_temeridad" u "otra"; usa "otra"
 cuando la fórmula no encaje, nunca la más parecida. params es un objeto
 {nombre: número} (los tramos, el umbral), {} si no hay, jamás prosa ni lista;
 umbral_temeridad en tanto por uno
-(0,25 para un 25%), solo si es un umbral fijo de baja. Si el pliego remite al
-art. 85 RGLCAP o mide la temeridad respecto a la media de las ofertas, pon
-"regla_rglcap_85": 1 en params y umbral_temeridad a null, aunque cite un 25%.
+(0,25 para un 25%), solo si es un umbral fijo de baja. Si el pliego remite
+expresamente al art. 85 RGLCAP, pon "regla_rglcap_85": 1 en params y
+umbral_temeridad a null, aunque cite un 25%. Si mide la temeridad con otra
+regla respecto a la media de las ofertas, umbral_temeridad a null y sin
+"regla_rglcap_85": no es la del art. 85.
 Una entrada por lote si el pliego publica varias.
 required_documents: scope "sobre_a" (documentación administrativa), "sobre_b"
 (criterios sujetos a juicio de valor), "sobre_c" (criterios automáticos) u

@@ -18,7 +18,7 @@ con una expresión regular en SQL, que además evita traer el snapshot entero.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, TypedDict
 
 from db.database import connect, connect_read
@@ -105,35 +105,9 @@ def candidatos_ruido_importe(desde_id: int, lote: int) -> list[CandidatoRuido]:
     ]
 
 
-def filas_a_borrar(ids: Sequence[int]) -> dict[str, list[dict[str, Any]]]:
-    """Las filas enteras que ``borrar_ruido_importe(ids)`` borraría, por tabla.
-
-    Es el respaldo con el que se deshace el borrado: con todas las columnas, un
-    ``INSERT`` las restaura tal cual. Mismos predicados que el DELETE.
-    """
-    if not ids:
-        return {"licitaciones_history": [], "contrato_eventos": []}
-    lista = list(ids)
-    with connect_read() as c:
-        historial = rows_to_dicts(
-            c.execute(
-                "SELECT * FROM licitaciones_history "  # SELECT *: respaldo de la fila entera
-                "WHERE id = ANY(%s) AND changed_fields = 'importe' ORDER BY id",
-                (lista,),
-            )
-        )
-        eventos = rows_to_dicts(
-            c.execute(
-                "SELECT * FROM contrato_eventos "  # SELECT *: respaldo de la fila entera
-                "WHERE history_id = ANY(%s) AND tipo = 'modificacion' AND campo = 'importe' "
-                "ORDER BY id",
-                (lista,),
-            )
-        )
-    return {"licitaciones_history": historial, "contrato_eventos": eventos}
-
-
-def borrar_ruido_importe(ids: Sequence[int]) -> tuple[int, int]:
+def borrar_ruido_importe(
+    ids: Sequence[int], respaldar: Callable[[dict[str, list[dict[str, Any]]]], None]
+) -> tuple[int, int]:
     """Borra estas filas de historial y los eventos de importe derivados de ellas.
 
     Devuelve ``(eventos, filas_de_historial)`` borrados. Una transacción: si
@@ -142,18 +116,30 @@ def borrar_ruido_importe(ids: Sequence[int]) -> tuple[int, int]:
     ``importe``, que es lo único que ``services/contract_events.py`` deriva de
     una fila con ``changed_fields='importe'``. El ``changed_fields`` del DELETE
     impide borrar por error una fila con otro cambio.
+
+    ``respaldar`` recibe las filas enteras que se borraron, por tabla (lo que
+    devuelve el ``RETURNING``), **antes** del commit: es lo único que deshace el
+    borrado, así que si falla, el borrado se revierte. Va en la misma
+    transacción que el DELETE para que el respaldo sea exactamente lo borrado.
     """
     if not ids:
         return 0, 0
     lista = list(ids)
     with connect() as c:
-        eventos = c.execute(
-            "DELETE FROM contrato_eventos "
-            "WHERE history_id = ANY(%s) AND tipo = 'modificacion' AND campo = 'importe'",
-            (lista,),
-        ).rowcount
-        historial = c.execute(
-            "DELETE FROM licitaciones_history WHERE id = ANY(%s) AND changed_fields = 'importe'",
-            (lista,),
-        ).rowcount
-    return eventos or 0, historial or 0
+        eventos = rows_to_dicts(
+            c.execute(
+                "DELETE FROM contrato_eventos "
+                "WHERE history_id = ANY(%s) AND tipo = 'modificacion' AND campo = 'importe' "
+                "RETURNING *",  # *: respaldo de la fila entera
+                (lista,),
+            )
+        )
+        historial = rows_to_dicts(
+            c.execute(
+                "DELETE FROM licitaciones_history "
+                "WHERE id = ANY(%s) AND changed_fields = 'importe' RETURNING *",
+                (lista,),
+            )
+        )
+        respaldar({"licitaciones_history": historial, "contrato_eventos": eventos})
+    return len(eventos), len(historial)

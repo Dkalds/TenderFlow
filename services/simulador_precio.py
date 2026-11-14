@@ -150,6 +150,11 @@ def _es_temeraria_art85(baja: float, otras: list[float]) -> bool:
     «inferior en más de N unidades porcentuales» es una baja mayor en más de N
     puntos, y «la oferta de cuantía más elevada» es la de menor baja.
 
+    Hay otra lectura de «unidades porcentuales» (relativa al precio de la otra
+    oferta: precio < 0,8 por el de la otra) que con bajas altas da otro veredicto;
+    aquí se toman como puntos de baja sobre el presupuesto, y lo fija
+    ``tests/test_simulador_precio.py``. Cambiarla es una decisión del dueño.
+
     1 oferta: baja de más de 25 puntos. 2: más de 20 por encima de la otra.
     3: más de 10 por encima de la media, sacando de la media la de menor baja
     si queda más de 10 por debajo de ella; y siempre, más de 25. 4 o más: más

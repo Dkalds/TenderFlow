@@ -66,6 +66,10 @@ SIN_BASE = "sin base en el pliego"
 
 #: Rótulo del bloque de citas propias de cada criterio en las exportaciones.
 DE_TUS_DOCUMENTOS = "De tus documentos"
+#: Lo mismo que dice la pantalla: un fallo de la búsqueda no es «no había nada».
+CITAS_FALLIDAS = (
+    "No se pudieron consultar los documentos de tu organización: este guion sale sin sus citas."
+)
 
 
 def _origen(cita: CitaOrganizacion) -> str:
@@ -235,6 +239,8 @@ def a_markdown(guion: GuionOferta) -> str:
     if guion.sin_guion:
         lineas.append(f"_{guion.sin_guion}_")
         return "\n".join(lineas)
+    if guion.citas_organizacion_fallidas:
+        lineas.extend([f"_{CITAS_FALLIDAS}_", ""])
 
     for criterio in guion.criterios:
         peso = f" ({criterio.peso_pct:g} puntos)" if criterio.peso_pct is not None else ""
@@ -623,6 +629,8 @@ def a_pdf(guion: GuionOferta, nombres: dict[int, str] | None = None) -> bytes:
     ]
     if guion.sin_guion:
         story.append(Paragraph(_t(guion.sin_guion), base["Italic"]))
+    elif guion.citas_organizacion_fallidas:
+        story.append(Paragraph(_t(CITAS_FALLIDAS), base["Italic"]))
     for criterio in guion.criterios:
         peso = f" ({criterio.peso_pct:g} puntos)" if criterio.peso_pct is not None else ""
         story.append(Paragraph(_t(f"{criterio.criterio}{peso}"), seccion))

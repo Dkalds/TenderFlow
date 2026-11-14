@@ -231,7 +231,6 @@ const accesoDirectoALaApi = [
   "src/components/layout/scope-bar.tsx",
   "src/components/notification-bell.tsx",
   "src/components/onboarding/use-estado-onboarding.ts",
-  "src/components/pliego/guion-oferta.tsx",
   "src/components/resoluciones-block.tsx",
   "src/components/tecnologias-block.tsx",
 ];
@@ -515,6 +514,13 @@ const eslintConfig = defineConfig([
   },
   {
     files: usoDirectoDeSonner,
+    ignores: ["src/lib/**"],
+    rules: {
+      "no-restricted-imports": ["error", { paths: [...importacionesRetiradas, importacionApiCliente] }],
+    },
+  },
+  {
+    files: usoDirectoDeSonner.filter((f) => f.startsWith("src/lib/")),
     rules: {
       "no-restricted-imports": ["error", { paths: importacionesRetiradas }],
     },

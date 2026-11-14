@@ -45,7 +45,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _BACKLOG = _REPO_ROOT / "docs" / "IMPROVEMENT_BACKLOG.md"
 _VERSIONS = _REPO_ROOT / "db" / "alembic" / "versions"
 
-#: Ítems abiertos y líneas del backlog congelados (9003ce6e, 2026-11-14). Solo bajan.
+#: Ítems abiertos y líneas del backlog congelados tras la revisión del 2026-11-14. Solo bajan.
 TOPE_ITEMS = 73
 TOPE_LINEAS = 1127
 

@@ -75,28 +75,22 @@ _RESPALDO = {
 }
 
 
+def _borrar_y_respaldar(ids: list[int], respaldar: Any) -> tuple[int, int]:
+    """Como el de db/: entrega lo borrado a `respaldar` dentro de la transacción."""
+    respaldar(_RESPALDO)
+    return 1, 2
+
+
 def _correr(tmp_path: Path, *extra: str) -> tuple[Any, Any, list[list[str]]]:
     salida = tmp_path / "ruido.csv"
-    orden: list[str] = []
     with (
         patch.object(script, "candidatos_ruido_importe", side_effect=[_LOTE, []]) as candidatos,
-        patch.object(
-            script,
-            "filas_a_borrar",
-            side_effect=lambda ids: orden.append("respaldo") or _RESPALDO,
-        ),
-        patch.object(
-            script,
-            "borrar_ruido_importe",
-            side_effect=lambda ids: orden.append("borrar") or (1, 2),
-        ) as borrar,
+        patch.object(script, "borrar_ruido_importe", side_effect=_borrar_y_respaldar) as borrar,
         patch.object(script, "configure_logging"),
     ):
         assert script.main(["--csv", str(salida), "--desde-id", "5", *extra]) == 0
     with salida.open(encoding="utf-8") as f:
         filas = list(csv.reader(f))
-    if borrar.called:
-        assert orden == ["respaldo", "borrar"]  # el respaldo llega a disco antes de borrar
     return candidatos, borrar, filas
 
 
@@ -112,7 +106,8 @@ def test_sin_aplicar_no_borra_y_vuelca_el_plan(tmp_path: Path) -> None:
 def test_aplicar_borra_solo_el_ruido(tmp_path: Path) -> None:
     _, borrar, filas = _correr(tmp_path, "--aplicar")
 
-    borrar.assert_called_once_with([10, 13])
+    borrar.assert_called_once()
+    assert borrar.call_args.args[0] == [10, 13]
     assert [f[0] for f in filas] == ["history_id", "10", "13"]
 
 
@@ -123,6 +118,23 @@ def test_aplicar_respalda_las_filas_enteras(tmp_path: Path) -> None:
     assert [json.loads(linea) for linea in lineas] == [
         {"tabla": tabla, "fila": fila} for tabla, filas in _RESPALDO.items() for fila in filas
     ]
+
+
+def test_si_el_respaldo_falla_el_borrado_no_sigue(tmp_path: Path) -> None:
+    """El respaldo va antes del commit: un fallo al escribirlo aborta (y revierte) el lote."""
+
+    def _borrar(ids: list[int], respaldar: Any) -> tuple[int, int]:
+        with patch("builtins.open", side_effect=OSError("disco lleno")):
+            respaldar(_RESPALDO)
+        return 1, 2  # pragma: no cover - no se llega: respaldar lanza
+
+    with (
+        patch.object(script, "candidatos_ruido_importe", side_effect=[_LOTE, []]),
+        patch.object(script, "borrar_ruido_importe", side_effect=_borrar),
+        patch.object(script, "configure_logging"),
+        pytest.raises(OSError, match="disco lleno"),
+    ):
+        script.main(["--csv", str(tmp_path / "ruido.csv"), "--aplicar"])
 
 
 def test_sin_aplicar_no_escribe_respaldo(tmp_path: Path) -> None:

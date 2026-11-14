@@ -97,6 +97,13 @@ class TestPdf:
     def test_sin_citas_propias_no_hay_bloque(self) -> None:
         assert "De tus documentos" not in _texto(a_pdf(_guion()))
 
+    def test_si_fallo_la_busqueda_de_citas_lo_dice(self) -> None:
+        """Un fallo no es «no había nada»: el PDF y el Markdown lo avisan."""
+        fallido = _guion().model_copy(update={"citas_organizacion_fallidas": True})
+        assert "No se pudieron consultar" in _texto(a_pdf(fallido))
+        assert "No se pudieron consultar" in a_markdown(fallido)
+        assert "No se pudieron consultar" not in a_markdown(_guion())
+
     def test_el_markdown_lleva_las_mismas_citas_propias(self) -> None:
         md = a_markdown(_con_propias(_guion()))
         assert "### De tus documentos" in md

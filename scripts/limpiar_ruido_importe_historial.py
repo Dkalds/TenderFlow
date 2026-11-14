@@ -29,10 +29,12 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import sys
 from datetime import UTC, datetime
+from typing import Any
 
-from db.historial_ruido import borrar_ruido_importe, candidatos_ruido_importe, filas_a_borrar
+from db.historial_ruido import borrar_ruido_importe, candidatos_ruido_importe
 from observability import configure_logging
 from shared.numeric import FLOAT_REL_TOL, values_equal
 
@@ -86,14 +88,20 @@ def main(argv: list[str] | None = None) -> int:
                 ruido += 1
             f.flush()
             if args.aplicar:
-                ids = [c["history_id"] for c in lote]
-                # Filas enteras en disco antes de borrar: es lo único que deshace el borrado.
-                with open(respaldo, "a", encoding="utf-8") as r:
-                    for tabla, filas in filas_a_borrar(ids).items():
-                        for fila in filas:
-                            r.write(json.dumps({"tabla": tabla, "fila": fila}, default=str))
-                            r.write("\n")
-                n_eventos, n_filas = borrar_ruido_importe(ids)
+
+                def _respaldar(por_tabla: dict[str, list[dict[str, Any]]]) -> None:
+                    # Antes del commit: si no llega a disco, el borrado se revierte.
+                    with open(respaldo, "a", encoding="utf-8") as r:
+                        for tabla, filas in por_tabla.items():
+                            for fila in filas:
+                                r.write(json.dumps({"tabla": tabla, "fila": fila}, default=str))
+                                r.write("\n")
+                        r.flush()
+                        os.fsync(r.fileno())
+
+                n_eventos, n_filas = borrar_ruido_importe(
+                    [c["history_id"] for c in lote], _respaldar
+                )
                 eventos += n_eventos
                 borradas += n_filas
 

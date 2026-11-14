@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useActiveOrganizationId } from "@/hooks/use-organization";
-import { apiMutate } from "@/lib/api-client";
+import { apiMutate, fetchBlobWithAuth } from "@/lib/api-client";
 import type { GuionCriterio, GuionOferta, PuntoGuion } from "@/lib/api-types";
 import { registrarEvento, tramoDeCriterios } from "@/lib/analytics";
 import { guionKeys } from "@/lib/query-keys";
@@ -57,9 +57,13 @@ export function useGuionOferta(licitacionId: string) {
     meta: { silent: true },
   });
 
-  // `organizationId` sale para la descarga del PDF: lleva las citas propias de
-  // la misma organización que pidió el guion.
-  return { guion: guion.data ?? null, generar, organizationId };
+  // El PDF lleva las citas propias de la misma organización que pidió el guion.
+  const obtenerPdf = () => {
+    const ruta = `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/guion.pdf`;
+    return fetchBlobWithAuth(organizationId != null ? `${ruta}?organization_id=${organizationId}` : ruta);
+  };
+
+  return { guion: guion.data ?? null, generar, obtenerPdf };
 }
 
 /**
@@ -80,6 +84,13 @@ export function guionAMarkdown(
   if (guion.sin_guion) {
     lineas.push(`_${guion.sin_guion}_`);
     return lineas.join("\n");
+  }
+  if (guion.citas_organizacion_fallidas) {
+    // Un fallo de la búsqueda no es «no había nada»: lo mismo que dice la pantalla.
+    lineas.push(
+      "_No se pudieron consultar los documentos de tu organización: este guion sale sin sus citas._",
+      "",
+    );
   }
   for (const criterio of guion.criterios ?? []) {
     const peso = criterio.peso_pct != null ? ` (${criterio.peso_pct} puntos)` : "";

@@ -518,6 +518,13 @@
       "path": "/api/v1/competitive/empresas/{empresa_id}/adjudicaciones",
       "kind": "response",
       "status": "200"
+    },
+    {
+      "fixture": "empresa-detalle.json",
+      "method": "GET",
+      "path": "/api/v1/empresas/{empresa_id}",
+      "kind": "response",
+      "status": "200"
     }
   ]
 }

@@ -378,6 +378,10 @@ def test_extraction_question_pide_la_clave_del_art85_y_no_el_umbral_fijo():
 
     assert f'"{CLAVE_ART85}": 1' in _EXTRACTION_QUESTION
     assert "umbral_temeridad a null" in _EXTRACTION_QUESTION
+    # Otra regla relativa a la media no es la del art. 85: sin la clave, el
+    # simulador dice «sin umbral» en vez de un veredicto con números ajenos al pliego.
+    assert "expresamente al art. 85" in _EXTRACTION_QUESTION
+    assert f'sin\n"{CLAVE_ART85}": no es la del art. 85' in _EXTRACTION_QUESTION
 
 
 class TestPartialPayloadSurvives:

@@ -11,6 +11,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import pytest
+
 _A = "ted:ruido-a"
 _B = "ted:ruido-b"
 _C = "ted:ruido-c"
@@ -110,8 +112,15 @@ def test_integration_borrar_quita_filas_y_eventos_de_importe(tmp_db: Any) -> Non
     with connect() as c:
         ids = _sembrar(c)
 
+    respaldos: list[dict[str, list[dict[str, Any]]]] = []
     # a2 tiene otro cambio: el DELETE no la toca aunque venga en la lista.
-    assert borrar_ruido_importe([ids["a1"], ids["a3"], ids["a2"]]) == (1, 2)
+    assert borrar_ruido_importe([ids["a1"], ids["a3"], ids["a2"]], respaldos.append) == (1, 2)
+
+    # El respaldo son las filas enteras que se borraron, ni una más.
+    (respaldo,) = respaldos
+    assert sorted(f["id"] for f in respaldo["licitaciones_history"]) == [ids["a1"], ids["a3"]]
+    assert {"snapshot_json", "changed_fields"} <= set(respaldo["licitaciones_history"][0])
+    assert [f["campo"] for f in respaldo["contrato_eventos"]] == ["importe"]
 
     with connect_read() as c:
         quedan = sorted(r[0] for r in c.execute("SELECT id FROM licitaciones_history").fetchall())
@@ -120,3 +129,21 @@ def test_integration_borrar_quita_filas_y_eventos_de_importe(tmp_db: Any) -> Non
         )
     assert quedan == sorted([ids["a2"], ids["b1"], ids["c1"]])
     assert eventos == sorted([ids["a2"], ids["b1"]])
+
+
+def test_integration_si_el_respaldo_falla_no_se_borra_nada(tmp_db: Any) -> None:
+    from db.database import connect, connect_read
+    from db.historial_ruido import borrar_ruido_importe
+
+    with connect() as c:
+        ids = _sembrar(c)
+
+    def _falla(_: object) -> None:
+        raise OSError("disco lleno")
+
+    with pytest.raises(OSError):
+        borrar_ruido_importe([ids["a1"], ids["a3"]], _falla)
+
+    with connect_read() as c:
+        quedan = {r[0] for r in c.execute("SELECT id FROM licitaciones_history").fetchall()}
+    assert {ids["a1"], ids["a3"]} <= quedan

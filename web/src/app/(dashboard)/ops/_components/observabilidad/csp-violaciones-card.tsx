@@ -83,6 +83,10 @@ export function CspViolacionesCard() {
                         {fila.origen}
                       </span>
                     </Pista>
+                    {/* La pista no es focusable: el documento también va en el texto. */}
+                    {fila.documento_ejemplo && (
+                      <span className="sr-only">Visto en {fila.documento_ejemplo}</span>
+                    )}
                   </td>
                   <td className="tf-tnum px-3 py-2 text-right font-medium">
                     {formatNumber(fila.veces)}
