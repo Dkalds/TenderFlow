@@ -392,5 +392,6 @@ pre-commit:  ## Run all pre-commit hooks
 # test de integración sale como falta: pasá esos tests en TESTS. diff-cover no
 # es dependencia del proyecto (CI lo instala al vuelo): `pip install diff-cover`.
 diff-cover:  ## Cobertura de las líneas del diff frente a origin/master, el gate de CI (TESTS="tests/test_x.py")
+	@command -v diff-cover >/dev/null || { echo "Falta diff-cover: pip install diff-cover"; exit 1; }
 	pytest $(or $(TESTS),tests/ -m "unit and not slow") -q --cov=. --cov-report=xml --cov-fail-under=0
 	diff-cover coverage.xml --compare-branch=origin/master --fail-under=80

@@ -163,7 +163,9 @@ prerrequisitos están en [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md).
     ejecutar en un checkout sin dependencias. `make gates-deps` corre, aparte,
     los que importan la app.
 - Antes de subir: `make diff-cover` reproduce el gate de CI que exige un 80 %
-    de cobertura sobre las líneas que cambia la rama, y `git commit` pasa los
+    de cobertura sobre las líneas que cambia la rama (por defecto con la suite
+    unitaria: lo que solo cubre un test de integración sale como falta hasta
+    que se le pasa en `TESTS=`), y `git commit` pasa los
     hooks de pre-commit solo si su hook de git está instalado
     (`pre-commit install`; §3.7). Sin ellos, esos dos fallos llegan por el CI.
 - Para cambios frontend: `make web-lint`, `make web-typecheck` y los tests
