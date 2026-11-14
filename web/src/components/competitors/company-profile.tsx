@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import { parseAsStringLiteral, useQueryState } from "nuqs";
 
@@ -11,9 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { SeguirBoton } from "@/components/seguir-boton";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchWithAuth } from "@/lib/api-client";
+import { usePerfilCompetidor } from "@/hooks/use-empresa-competencia";
 import { useFilters } from "@/lib/filters";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { cn, diaISO, formatDate, formatNumber } from "@/lib/utils";
 
 import {
@@ -34,8 +32,6 @@ import { ProfileSkeleton } from "./company-profile-esqueleto";
 import { CompanyAwards } from "./company-awards";
 import { CompanyProfileSummary } from "./company-profile-summary";
 import { CompanyUteParticipations } from "./company-ute-participations";
-import type { CompanyProfileData } from "./company-profile-types";
-import { competitiveKeys } from "@/lib/query-keys";
 
 // «Identidad» y «Contra mí» son pestañas: no se ven al entrar, y esta ruta va
 // justa de presupuesto de First Load (`web/bundle-budget.json`). Se cargan al
@@ -144,20 +140,7 @@ export function CompanyProfile({ empresaId, groupIds }: CompanyProfileProps) {
     isPlaceholderData,
     error,
     refetch,
-  } = useQuery<CompanyProfileData>({
-    queryKey: competitiveKeys.companyProfile(empresaId, scopeQuery),
-    queryFn: () =>
-      fetchWithAuth(`/api/v1/competitive/empresas/${empresaId}/perfil${scopeQuery ? `?${scopeQuery}` : ""}`),
-    staleTime: 5 * 60 * 1000,
-    // Cambiar de alcance o de periodo deja la ficha anterior, atenuada, hasta
-    // que llega la nueva. Antes volvía al esqueleto de página entera, que se
-    // llevaba también los botones recién pulsados. Sólo si es la misma
-    // empresa: al saltar a otra (un socio de UTE), su nombre no puede ir
-    // encima de las cifras de la anterior.
-    placeholderData: (previo, consultaPrevia) => (consultaPrevia?.queryKey[1] === empresaId ? previo : undefined),
-    // El fallo se dice en la propia ficha (PanelError): sin toast además.
-    meta: META_ERROR_EN_LINEA,
-  });
+  } = usePerfilCompetidor(empresaId, scopeQuery);
 
   if (isLoading) return <ProfileSkeleton />;
 

@@ -28,8 +28,9 @@ Dos reglas que conviene no perder de vista:
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 # ── Vocabulario ──────────────────────────────────────────────────────────────
 
@@ -446,6 +447,84 @@ def payload_asignacion(
             "y la próxima acción."
         ),
     }
+
+
+class OportunidadEvento(TypedDict):
+    """Las columnas de la oportunidad que leen sus eventos de ciclo de vida.
+
+    Es un subconjunto de ``db.repositories.pursuits.PursuitRow`` (que ``shared``
+    no puede importar): cualquier ``PursuitRow`` encaja aquí tal cual.
+    """
+
+    id: int
+    organization_id: int
+    licitacion_id: str
+    lote_numero: str | None
+    tender_title: str
+    status: str
+    decision: str
+
+
+def _identidad_pursuit(pursuit: OportunidadEvento) -> dict[str, object]:
+    """Lo que todo ``pursuit.*`` de ciclo de vida lleva para enrutarse y pintarse.
+
+    ``titulo`` es el del expediente (dato público), recortado como en
+    :func:`payload_asignacion`; es lo que Slack y Teams ponen en la cabecera.
+    """
+    licitacion_id = str(pursuit["licitacion_id"])
+    return {
+        "pursuit_id": int(pursuit["id"]),
+        "licitacion_id": licitacion_id,
+        "organization_id": int(pursuit["organization_id"]),
+        "lote_numero": pursuit["lote_numero"],
+        "titulo": str(pursuit["tender_title"] or licitacion_id)[:80],
+    }
+
+
+def payload_creacion_pursuit(pursuit: OportunidadEvento) -> dict[str, object]:
+    """Payload de ``pursuit.created`` a partir de la oportunidad recién insertada."""
+    return {**_identidad_pursuit(pursuit), "estado": str(pursuit["status"])}
+
+
+def tipos_de_cambio_pursuit(
+    anterior: Mapping[str, object], changes: Mapping[str, object]
+) -> list[str]:
+    """Qué ``pursuit.*`` de ciclo de vida publica un cambio; solo mira ``status`` y ``decision``.
+
+    - ``pursuit.state_changed`` solo si ``status`` cambia de valor.
+    - ``pursuit.decided`` solo si ``decision`` pasa a un valor distinto de
+      ``pending``: volver a «pendiente» no es una decisión.
+    """
+    tipos: list[str] = []
+    if "status" in changes and changes["status"] != anterior.get("status"):
+        tipos.append("pursuit.state_changed")
+    decision = changes.get("decision")
+    if decision not in (None, "pending") and decision != anterior.get("decision"):
+        tipos.append("pursuit.decided")
+    return tipos
+
+
+def eventos_de_cambio_pursuit(
+    anterior: OportunidadEvento, changes: Mapping[str, object]
+) -> list[tuple[str, dict[str, object]]]:
+    """``(tipo, payload)`` de lo que un cambio de oportunidad publica en el outbox.
+
+    Los tipos los decide :func:`tipos_de_cambio_pursuit`. ``decision_reason`` no
+    viaja a propósito: es texto libre que la persona escribe para su equipo, y
+    el evento sale por webhook a sistemas de terceros.
+    """
+    identidad = _identidad_pursuit(anterior)
+    detalle: dict[str, dict[str, object]] = {
+        "pursuit.state_changed": {
+            "estado_anterior": str(anterior["status"]),
+            "estado_nuevo": str(changes.get("status")),
+        },
+        "pursuit.decided": {"decision": str(changes.get("decision"))},
+    }
+    return [
+        (tipo, {**identidad, **detalle[tipo]})
+        for tipo in tipos_de_cambio_pursuit(anterior, changes)
+    ]
 
 
 def tipos_de_canal(canal: Canal) -> list[str]:

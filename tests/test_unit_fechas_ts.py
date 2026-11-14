@@ -530,6 +530,62 @@ def test_ultima_extraccion_prefiere_la_sombra_y_cae_al_texto(
     assert len(conexion.sql) == 2
 
 
+def test_documentos_de_una_licitacion_con_el_flag_apagado_es_el_sql_de_siempre(
+    lectura: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import db.repositories.documentos as docs
+
+    lectura(False)
+    conexion = _Conexion([])
+    monkeypatch.setattr(docs, "connect_read", lambda: conexion)
+    docs.DocumentosRepository().list_by_licitacion("placsp:1")
+    (sql,) = conexion.sql
+    assert "END, d.created_at DESC, d.id" in sql
+    assert "_ts" not in sql
+
+
+def test_documentos_de_una_licitacion_con_el_flag_encendido_ordena_por_instante(
+    lectura: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import db.repositories.documentos as docs
+
+    lectura(True)
+    conexion = _Conexion([])
+    monkeypatch.setattr(docs, "connect_read", lambda: conexion)
+    docs.DocumentosRepository().list_by_licitacion("placsp:1")
+    (sql,) = conexion.sql
+    d = "COALESCE(d.created_at_ts, nucleo_iso_a_timestamptz(d.created_at))"
+    assert f"END, {d} DESC, d.id" in sql
+    # Lo proyectado sigue siendo el texto: DocumentoMeta.created_at no cambia de tipo.
+    assert "d.status, d.created_at, " in sql
+
+
+@pytest.mark.parametrize(
+    ("encendido", "orden"),
+    [
+        (False, "ORDER BY a.licitacion_id, a.fecha_adjudicacion "),
+        (
+            True,
+            "ORDER BY a.licitacion_id, COALESCE(a.fecha_adjudicacion_ts, "
+            "nucleo_iso_a_timestamptz(a.fecha_adjudicacion)) ",
+        ),
+    ],
+)
+def test_lead_time_elige_el_primer_lote_por_instante_solo_con_el_flag(
+    lectura: Any, monkeypatch: pytest.MonkeyPatch, encendido: bool, orden: str
+) -> None:
+    import db.repositories.adjudicaciones as adj
+
+    lectura(encendido)
+    conexion = _Conexion([])
+    monkeypatch.setattr(adj, "connect_read", lambda: conexion)
+    adj.lead_time_por_organo(["Ayto"], desde_iso="2026-01-01")
+    (sql,) = conexion.sql
+    assert orden in sql
+    # La diferencia en días sigue calculándose sobre el texto validado por iso_guard.
+    assert "(a.fecha_adjudicacion::date - l.fecha_publicacion::date) AS dias" in sql
+
+
 # ── Script de backfill ────────────────────────────────────────────────────
 
 

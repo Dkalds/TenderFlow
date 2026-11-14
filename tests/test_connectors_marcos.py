@@ -10,6 +10,7 @@ dataset vivo. El parser de PLACSP está en
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,7 @@ def _parsear(numero: str) -> Any:
         ("649072-2024", "marco", None),
         # Contrato basado, con el aviso de su marco como número de publicación.
         ("684052-2026", "basado_marco", "ted:649072-2024"),
-        # Contrato basado cuyo marco va como UUID del aviso: basado, sin enlace.
+        # Contrato basado cuyo marco va como UUID del aviso: sin resolverlo, sin enlace.
         ("689453-2026", "basado_marco", None),
         # Convocatorias que establecen un sistema dinámico; en la segunda, un lote no lo usa.
         ("724362-2025", "sda", None),
@@ -126,6 +127,133 @@ def test_dos_marcos_distintos_en_un_aviso_no_dan_enlace() -> None:
     aviso = {"framework-notice-id": ["649072-2024", "175163-2024"]}
 
     assert _sistema_y_marco(aviso, "can-standard") == ("basado_marco", None)
+
+
+#: El UUID con el que 689453-2026 cita a su marco, y un número de publicación
+#: ficticio para él: lo que contesta la API falsa de abajo.
+_UUID_MARCO = "9ddd55cd-9841-43b8-9e66-1def6be7b930"
+_NUMERO_MARCO = "1-2024"
+
+
+def test_el_marco_citado_por_uuid_se_enlaza_con_su_numero_resuelto() -> None:
+    aviso = _AVISOS["689453-2026"]
+
+    assert _sistema_y_marco(aviso, "can-standard", {_UUID_MARCO: _NUMERO_MARCO}) == (
+        "basado_marco",
+        f"ted:{_NUMERO_MARCO}",
+    )
+
+
+def test_el_marco_citado_por_uuid_sin_resolver_queda_sin_enlace() -> None:
+    aviso = _AVISOS["689453-2026"]
+
+    assert _sistema_y_marco(aviso, "can-standard", {"otro": "2-2024"}) == ("basado_marco", None)
+
+
+class _Respuesta:
+    def __init__(self, cuerpo: dict[str, Any]) -> None:
+        self._cuerpo = cuerpo
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict[str, Any]:
+        return self._cuerpo
+
+
+class _SesionTed:
+    """Sirve *paginas* a la búsqueda y resuelve ``notice-identifier IN (…)`` con *numeros*."""
+
+    def __init__(
+        self, paginas: list[list[dict[str, Any]]], numeros: dict[str, str], *, falla: bool = False
+    ) -> None:
+        self.paginas = paginas
+        self.numeros = numeros
+        self.falla = falla
+        self.resoluciones: list[list[str]] = []
+
+    def post(self, _url: str, *, json: dict[str, Any], timeout: float) -> _Respuesta:
+        del timeout
+        if not json["query"].startswith("notice-identifier IN"):
+            total = sum(len(p) for p in self.paginas)
+            notices = self.paginas[json["page"] - 1]
+            return _Respuesta({"notices": notices, "totalNoticeCount": total})
+        uuids = re.findall(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", json["query"])
+        self.resoluciones.append(uuids)
+        if self.falla:
+            raise ConnectionError("sin red")
+        avisos = [
+            {"notice-identifier": u, "publication-number": self.numeros[u]}
+            for u in uuids
+            if u in self.numeros
+        ]
+        return _Respuesta({"notices": avisos})
+
+
+def _ingerir(sesion: _SesionTed) -> dict[str, Any]:
+    """``id_externo → marco_ref`` de los avisos que la pasada parsea, como en ``run_connector``."""
+    conector = TedConnector(session=sesion)  # type: ignore[arg-type]
+    marcos: dict[str, Any] = {}
+    for raw in conector.fetch(None):
+        parsed = conector.parse(raw)
+        assert parsed is not None
+        marcos[parsed.licitacion.id_externo] = parsed.licitacion.marco_ref
+    return marcos
+
+
+def _basado_con_uuid(numero: str, uuid: str) -> dict[str, Any]:
+    """Una copia de 689453-2026 con otro número y otro marco citado por UUID."""
+    return {
+        **_AVISOS["689453-2026"],
+        "publication-number": numero,
+        "framework-notice-id": [f"{uuid}-01"],
+    }
+
+
+@pytest.fixture(autouse=True)
+def _sin_pausa(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("scraper.connectors.ted._PAGE_PAUSE_S", 0)
+
+
+def test_fetch_resuelve_los_uuid_de_marco_una_vez_por_pagina() -> None:
+    otro_uuid = "0a0a0a0a-1b1b-2c2c-3d3d-4e4e4e4e4e4e"
+    sesion = _SesionTed(
+        [
+            [_AVISOS["689453-2026"], _AVISOS["684052-2026"]],
+            [_basado_con_uuid("900001-2026", otro_uuid)],
+            # El mismo marco que en la primera página: ya resuelto, no se pide otra vez.
+            [_basado_con_uuid("900002-2026", _UUID_MARCO)],
+        ],
+        {_UUID_MARCO: _NUMERO_MARCO, otro_uuid: "3-2024"},
+    )
+
+    marcos = _ingerir(sesion)
+
+    assert sesion.resoluciones == [[_UUID_MARCO], [otro_uuid]]
+    assert marcos == {
+        "ted:689453-2026": f"ted:{_NUMERO_MARCO}",
+        "ted:684052-2026": "ted:649072-2024",
+        "ted:900001-2026": "ted:3-2024",
+        "ted:900002-2026": f"ted:{_NUMERO_MARCO}",
+    }
+
+
+def test_fetch_no_pide_nada_si_ningun_marco_va_por_uuid() -> None:
+    sesion = _SesionTed([[_AVISOS["684052-2026"], _AVISOS["686159-2026"]]], {})
+
+    marcos = _ingerir(sesion)
+
+    assert sesion.resoluciones == []
+    assert marcos["ted:684052-2026"] == "ted:649072-2024"
+
+
+def test_fetch_sigue_si_la_api_no_resuelve_los_uuid() -> None:
+    sesion = _SesionTed([[_AVISOS["689453-2026"]]], {}, falla=True)
+
+    marcos = _ingerir(sesion)
+
+    assert sesion.resoluciones == [[_UUID_MARCO]]
+    assert marcos == {"ted:689453-2026": None}
 
 
 def test_el_conector_pide_los_campos_a_la_api() -> None:

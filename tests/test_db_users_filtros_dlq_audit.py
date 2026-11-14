@@ -226,17 +226,28 @@ def _organizacion_de_pruebas(nombre: str) -> int:
     return int(OrganizationRepository().create_organization(nombre, owner)["id"])
 
 
+def _usuario_de_pruebas(nombre: str) -> int:
+    """Crea un usuario real: desde v181 ``db/saved_filters.py`` solo recibe ``user_id``."""
+    from db.users import create_user
+
+    return create_user(
+        email=f"{nombre}@example.test",
+        password_hash="test-hash",  # pragma: allowlist secret -- literal de test
+        display_name=nombre,
+    )
+
+
 def test_filtros_save_list_roundtrip(tmp_db):
     """Guardar un filtro y listarlo devuelve la entrada esperada."""
     from db.saved_filters import list_saved_filters, save_filter
 
     organizacion = _organizacion_de_pruebas("filtros-roundtrip")
-    user_key = "user-filtros-001"
+    user_id = _usuario_de_pruebas("user-filtros-001")
     payload = json.dumps({"q": "SAP", "estados": ["PUB"]})
 
-    save_filter(user_key, "Mi búsqueda SAP", payload, organizacion)
+    save_filter("Mi búsqueda SAP", payload, organizacion, user_id=user_id)
 
-    filtros = list_saved_filters(user_key, organizacion)
+    filtros = list_saved_filters(organizacion, user_id=user_id)
     assert isinstance(filtros, list)
     assert len(filtros) == 1
     assert filtros[0]["name"] == "Mi búsqueda SAP"
@@ -249,27 +260,27 @@ def test_filtros_save_multiples(tmp_db):
     from db.saved_filters import list_saved_filters, save_filter
 
     organizacion = _organizacion_de_pruebas("filtros-multiples")
-    user_key = "user-filtros-002"
+    user_id = _usuario_de_pruebas("user-filtros-002")
     nombres = ["Filtro A", "Filtro B", "Filtro C"]
     for nombre in nombres:
-        save_filter(user_key, nombre, json.dumps({"q": nombre}), organizacion)
+        save_filter(nombre, json.dumps({"q": nombre}), organizacion, user_id=user_id)
 
-    filtros = list_saved_filters(user_key, organizacion)
+    filtros = list_saved_filters(organizacion, user_id=user_id)
     assert len(filtros) == 3
     nombres_guardados = {f["name"] for f in filtros}
     assert nombres_guardados == set(nombres)
 
 
 def test_filtros_save_upsert_sobreescribe(tmp_db):
-    """Guardar con el mismo (user_key, name) sobreescribe el payload."""
+    """Guardar con el mismo (user_id, name) sobreescribe el payload."""
     from db.saved_filters import list_saved_filters, save_filter
 
     organizacion = _organizacion_de_pruebas("filtros-upsert")
-    user_key = "user-filtros-003"
-    save_filter(user_key, "Búsqueda única", json.dumps({"q": "inicial"}), organizacion)
-    save_filter(user_key, "Búsqueda única", json.dumps({"q": "actualizado"}), organizacion)
+    user_id = _usuario_de_pruebas("user-filtros-003")
+    save_filter("Búsqueda única", json.dumps({"q": "inicial"}), organizacion, user_id=user_id)
+    save_filter("Búsqueda única", json.dumps({"q": "actualizado"}), organizacion, user_id=user_id)
 
-    filtros = list_saved_filters(user_key, organizacion)
+    filtros = list_saved_filters(organizacion, user_id=user_id)
     assert len(filtros) == 1
     assert json.loads(filtros[0]["filters_json"])["q"] == "actualizado"
 
@@ -279,16 +290,16 @@ def test_filtros_delete_roundtrip(tmp_db):
     from db.saved_filters import delete_saved_filter, list_saved_filters, save_filter
 
     organizacion = _organizacion_de_pruebas("filtros-delete")
-    user_key = "user-filtros-004"
-    save_filter(user_key, "Para borrar", json.dumps({"q": "x"}), organizacion)
+    user_id = _usuario_de_pruebas("user-filtros-004")
+    save_filter("Para borrar", json.dumps({"q": "x"}), organizacion, user_id=user_id)
 
-    filtros = list_saved_filters(user_key, organizacion)
+    filtros = list_saved_filters(organizacion, user_id=user_id)
     assert len(filtros) == 1
     fid = filtros[0]["id"]
 
-    delete_saved_filter(fid, user_key=user_key, organization_id=organizacion)
+    delete_saved_filter(fid, organization_id=organizacion, user_id=user_id)
 
-    filtros_tras_borrado = list_saved_filters(user_key, organizacion)
+    filtros_tras_borrado = list_saved_filters(organizacion, user_id=user_id)
     assert filtros_tras_borrado == []
 
 
@@ -307,13 +318,15 @@ def test_filtros_aislamiento_por_usuario(tmp_db):
     equipo = _organizacion_de_pruebas("filtros-equipo")
     otro_equipo = _organizacion_de_pruebas("filtros-otro-equipo")
 
-    save_filter("user-A", "Solo A", json.dumps({"q": "A"}), equipo)
-    save_filter("user-B", "Solo B", json.dumps({"q": "B"}), equipo)
-    save_filter("user-A", "A en el otro equipo", json.dumps({"q": "A2"}), otro_equipo)
+    user_a = _usuario_de_pruebas("user-A")
+    user_b = _usuario_de_pruebas("user-B")
+    save_filter("Solo A", json.dumps({"q": "A"}), equipo, user_id=user_a)
+    save_filter("Solo B", json.dumps({"q": "B"}), equipo, user_id=user_b)
+    save_filter("A en el otro equipo", json.dumps({"q": "A2"}), otro_equipo, user_id=user_a)
 
-    filtros_a = list_saved_filters("user-A", equipo)
-    filtros_b = list_saved_filters("user-B", equipo)
-    filtros_a_otro = list_saved_filters("user-A", otro_equipo)
+    filtros_a = list_saved_filters(equipo, user_id=user_a)
+    filtros_b = list_saved_filters(equipo, user_id=user_b)
+    filtros_a_otro = list_saved_filters(otro_equipo, user_id=user_a)
 
     assert [f["name"] for f in filtros_a] == ["Solo A"]
     assert [f["name"] for f in filtros_b] == ["Solo B"]
@@ -325,7 +338,7 @@ def test_filtros_usuario_sin_filtros_devuelve_lista_vacia(tmp_db):
     from db.saved_filters import list_saved_filters
 
     organizacion = _organizacion_de_pruebas("filtros-vacios")
-    resultado = list_saved_filters("usuario-inexistente-xyz", organizacion)
+    resultado = list_saved_filters(organizacion, user_id=_usuario_de_pruebas("sin-filtros-xyz"))
     assert resultado == []
 
 

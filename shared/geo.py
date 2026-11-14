@@ -58,6 +58,31 @@ def es_nuts_de_pais(nuts: str | None) -> bool:
     return len(n) == 2 and n.isalpha()
 
 
+#: NUTS2 de una sola provincia cuyos NUTS3 son islas, no provincias.
+_NUTS2_UNIPROVINCIAL_POR_ISLAS = frozenset({"ES53"})  # Illes Balears
+
+
+def es_nuts_supraprovincial(nuts: str | None) -> bool:
+    """¿Es un NUTS de España que abarca más de una provincia?
+
+    NUTS1 (``"ES7"``, ``ES`` + 1 carácter) siempre; NUTS2 (``"ES70"``) cuando
+    agrupa más de un NUTS3 de la tabla. Con uno de esos códigos PLACSP publica
+    como ``CountrySubentity`` la región o la CCAA (``ES70`` → «Canarias»), que
+    no es una provincia. Un NUTS2 uniprovincial (``ES30`` Madrid, ``ES53``
+    Illes Balears) da ``False``: su nombre sí es la provincia.
+    """
+    if not nuts:
+        return False
+    n = nuts.strip().upper()
+    if not n.startswith("ES"):
+        return False
+    if len(n) == 3:
+        return True
+    if len(n) != 4 or n in _NUTS2_UNIPROVINCIAL_POR_ISLAS:
+        return False
+    return sum(code.startswith(n) for code in NUTS3_TO_CCAA) > 1
+
+
 def nuts_to_ccaa(nuts: str | None) -> str | None:
     """Convierte un código NUTS3 (o NUTS2) a su Comunidad Autónoma.
 

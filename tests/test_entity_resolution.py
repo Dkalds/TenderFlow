@@ -602,7 +602,8 @@ def test_un_lote_escribe_alias_y_enlaces_en_dos_viajes_y_no_en_dos_por_fila(monk
     def conectar():
         yield conexion
 
-    monkeypatch.setattr(er, "connect", conectar)
+    # La transacción del lote la abre `db.empresas.en_transaccion` (TID251).
+    monkeypatch.setattr("db.empresas.connect", conectar)
     monkeypatch.setattr(
         er,
         "load_caches",
@@ -655,8 +656,10 @@ def test_integration_los_viajes_de_un_lote_no_crecen_con_sus_filas(db, monkeypat
         setup_lic(db, f"LIC-{i:03d}")
         insert_adj(db, "ACME CONSULTING SLU", nif="B12345674", lic_id=f"LIC-{i:03d}")
 
+    import db.empresas as empresas_db
+
     viajes: list[str] = []
-    conectar_de_verdad = er.connect
+    conectar_de_verdad = empresas_db.connect
 
     class _Contando:
         def __init__(self, conn):
@@ -675,7 +678,8 @@ def test_integration_los_viajes_de_un_lote_no_crecen_con_sus_filas(db, monkeypat
         with conectar_de_verdad() as conn:
             yield _Contando(conn)
 
-    monkeypatch.setattr(er, "connect", contando)
+    # La transacción del lote la abre `db.empresas.en_transaccion` (TID251).
+    monkeypatch.setattr(empresas_db, "connect", contando)
 
     stats = er.resolve_unlinked_adjudicaciones()
 

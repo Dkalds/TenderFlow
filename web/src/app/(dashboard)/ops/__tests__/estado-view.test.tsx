@@ -144,6 +144,7 @@ describe("Ops › Estado", () => {
 
     await screen.findByText("En línea");
     expect(fetchMock.mock.calls.some((c) => callUrl(c).includes("/security/client-errors"))).toBe(false);
+    expect(fetchMock.mock.calls.some((c) => callUrl(c).includes("/security/csp-violations"))).toBe(false);
     expect(screen.queryByText("Errores en el navegador")).not.toBeInTheDocument();
   });
 });

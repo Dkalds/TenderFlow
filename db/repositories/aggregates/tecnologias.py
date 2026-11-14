@@ -14,6 +14,7 @@ from db.repositories.aggregates.filtros import (
 from db.repositories.base import rows_to_dicts, typed_rows
 from db.sql_fragments import (
     iso_guard,
+    tecnologia_en_csv_sql,
     tecnologia_tokens_sql,
 )
 
@@ -224,7 +225,6 @@ class TecnologiasMixin(_AgregadosBase):
         if not tech_codes:
             return []
         where, params = _build_where(filters)
-        placeholders = ",".join("%s" for _ in tech_codes)
         # C3.2: el top-N se recorta en SQL, no en Python.
         #
         # Hasta 2026-09 este método materializaba **todas** las licitaciones del
@@ -232,23 +232,16 @@ class TecnologiasMixin(_AgregadosBase):
         # en memoria y devolvía las `limit` primeras. Pagaba en RSS de la API lo
         # que la BD sabe hacer con un `LIMIT`.
         #
-        # El `DISTINCT ON` obliga a ordenar primero por `id_externo`, así que el
-        # orden por importe va en la consulta externa. `id_externo` como segundo
-        # criterio no es decorativo: sin él, dos filas con el mismo importe
-        # saldrían en orden indefinido y la lista cambiaría entre peticiones
-        # idénticas. La ordenación de Python que esto sustituye era estable, y
-        # esta lo sigue siendo.
+        # Solapamiento de arrays en vez de explotar el CSV: cada licitación sale
+        # una vez aunque lleve varios de los códigos pedidos, sin `DISTINCT ON`.
+        # `id_externo` desempata: sin él, dos filas con el mismo importe saldrían
+        # en orden indefinido y la lista cambiaría entre peticiones idénticas.
         sql = (
-            "SELECT * FROM ("
-            "  SELECT DISTINCT ON (l.id_externo) "
-            "         l.id_externo, l.titulo, l.organo_contratacion, l.importe, "
-            "         l.estado, l.ccaa, l.fecha_publicacion "
-            "  FROM licitaciones l, "
-            "       unnest(string_to_array(COALESCE(l.tecnologia, ''), ',')) AS code "
-            f"  WHERE {where} AND {self._CON_TECNOLOGIA} AND trim(code) IN ({placeholders}) "
-            "  ORDER BY l.id_externo, l.importe DESC NULLS LAST"
-            ") AS distintas "
-            "ORDER BY distintas.importe DESC NULLS LAST, distintas.id_externo "
+            "SELECT l.id_externo, l.titulo, l.organo_contratacion, l.importe, "
+            "       l.estado, l.ccaa, l.fecha_publicacion "
+            "FROM licitaciones l "
+            f"WHERE {where} AND {tecnologia_en_csv_sql('l.tecnologia', n=len(tech_codes))} "
+            "ORDER BY l.importe DESC NULLS LAST, l.id_externo "
             "LIMIT %s"
         )
         with connect_read() as c:
@@ -259,24 +252,21 @@ class TecnologiasMixin(_AgregadosBase):
     def tecnologia_detalle_kpis(
         self, filters: LicitacionesFilters, *, tech_codes: list[str]
     ) -> tuple[int, float, float]:
-        """(n, importe_total, importe_medio) — dedup por id_externo (evita doble
-
-        conteo del explode). ``importe_medio`` usa ``AVG`` (ignora NULLs, igual
-        que ``Series.mean(skipna=True)``) — puede diferir de
-        ``importe_total / n`` si hay filas con ``importe`` nulo entre las ``n``.
+        """(n, importe_total, importe_medio) — una vez por licitación: el
+        solapamiento de arrays no explota el CSV, así que una fila con varios de
+        los códigos pedidos no se cuenta dos veces. ``importe_medio`` usa
+        ``AVG`` (ignora NULLs, igual que ``Series.mean(skipna=True)``) — puede
+        diferir de ``importe_total / n`` si hay filas con ``importe`` nulo
+        entre las ``n``.
         """
         if not tech_codes:
             return 0, 0.0, 0.0
         where, params = _build_where(filters)
-        placeholders = ",".join("%s" for _ in tech_codes)
         sql = (
-            "SELECT COUNT(*) AS n, COALESCE(SUM(importe), 0) AS importe_total, "
-            "       AVG(importe) AS importe_medio FROM ("
-            "  SELECT DISTINCT ON (l.id_externo) l.id_externo, l.importe "
-            "  FROM licitaciones l, "
-            "       unnest(string_to_array(COALESCE(l.tecnologia, ''), ',')) AS code "
-            f"  WHERE {where} AND {self._CON_TECNOLOGIA} AND trim(code) IN ({placeholders}) "
-            ") sub"
+            "SELECT COUNT(*) AS n, COALESCE(SUM(l.importe), 0) AS importe_total, "
+            "       AVG(l.importe) AS importe_medio "
+            "FROM licitaciones l "
+            f"WHERE {where} AND {tecnologia_en_csv_sql('l.tecnologia', n=len(tech_codes))}"
         )
         with connect_read() as c:
             row = c.execute(sql, [*params, *tech_codes]).fetchone()

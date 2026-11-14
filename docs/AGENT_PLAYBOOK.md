@@ -113,7 +113,7 @@ copia coincida:
 | `make gates` | `check_casos_uso.py` | cada caso de uso tiene recorrido |
 | `make gates` | `check_env_parity.py` | settings ↔ render.yaml ↔ .env.example |
 | `make gates` | `check_requirements_sync.py` | requirements.txt cubre requirements.in |
-| `make gates` | `check_backlog_freshness.py` | Estado actual de cada ítem; frescura (informe) |
+| `make gates` | `check_backlog_freshness.py --strict` | Estado actual, frescura y tamaño del backlog (ratchet) |
 | `make gates` | `check_agent_docs.py` | instrucciones, skills, commands y hooks |
 | `make gates-deps` | `check_job_parity.py` | todo job tiene plano (ADR-012) |
 | `make gates-deps` | `check_api_surface.py` | operación nueva con motivo (AGENTS.md §0) |

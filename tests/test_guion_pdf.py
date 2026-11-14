@@ -19,11 +19,13 @@ from unittest.mock import patch
 import pytest
 from pypdf import PdfReader
 
+from services.memoria_organizacion import CitaOrganizacion
 from services.rag import guion_oferta as mod
 from services.rag.guion_oferta import (
     GuionCriterio,
     GuionOferta,
     PuntoGuion,
+    a_markdown,
     a_pdf,
     generar_guion,
     guion_generado,
@@ -85,6 +87,41 @@ class TestPdf:
     def test_sin_guion_lo_dice(self) -> None:
         pdf = a_pdf(GuionOferta(licitacion_id="EXP-1", sin_guion="No hay criterios."))
         assert "No hay criterios." in _texto(pdf)
+
+    def test_lleva_las_citas_propias_con_extracto_fichero_y_pagina(self) -> None:
+        texto = _texto(a_pdf(_con_propias(_guion())))
+        assert "De tus documentos" in texto
+        assert "Migramos el ERP <en> nueve meses." in texto
+        assert "Propuesta.pdf p. 3" in texto
+
+    def test_sin_citas_propias_no_hay_bloque(self) -> None:
+        assert "De tus documentos" not in _texto(a_pdf(_guion()))
+
+    def test_si_fallo_la_busqueda_de_citas_lo_dice(self) -> None:
+        """Un fallo no es «no había nada»: el PDF y el Markdown lo avisan."""
+        fallido = _guion().model_copy(update={"citas_organizacion_fallidas": True})
+        assert "No se pudieron consultar" in _texto(a_pdf(fallido))
+        assert "No se pudieron consultar" in a_markdown(fallido)
+        assert "No se pudieron consultar" not in a_markdown(_guion())
+
+    def test_el_markdown_lleva_las_mismas_citas_propias(self) -> None:
+        md = a_markdown(_con_propias(_guion()))
+        assert "### De tus documentos" in md
+        assert "- «Migramos el ERP <en> nueve meses.» _(Propuesta.pdf p. 3)_" in md
+
+
+def _con_propias(guion: GuionOferta) -> GuionOferta:
+    cita = CitaOrganizacion(
+        attachment_id=11,
+        filename="Propuesta.pdf",
+        page_number=3,
+        # Con `<`: el extracto es texto del cliente y `Paragraph` interpreta marcado.
+        cita="Migramos el ERP <en> nueve meses.",
+        pursuit_id=42,
+        licitacion_id="EXP-0",
+    )
+    criterios = [c.model_copy(update={"citas_organizacion": [cita]}) for c in guion.criterios]
+    return guion.model_copy(update={"criterios": criterios})
 
 
 def _ficha() -> Any:
@@ -174,6 +211,35 @@ class TestCacheYDescarga:
         ):
             assert guion_generado("EXP-1") is None
 
+    def test_la_descarga_sin_organizacion_no_busca_citas_propias(self) -> None:
+        """Una clave sin `pursuits:read` descarga el guion del pliego, sin extractos."""
+        with self._parches(), patch("llm.client.stream_llm_response", side_effect=_respuesta_llm):
+            generar_guion("EXP-1")
+            with patch.object(mod, "con_citas_de_organizacion") as citas:
+                pdf = guion_pdf("EXP-1")
+        citas.assert_not_called()
+        assert pdf is not None
+        assert "De tus documentos" not in _texto(pdf)
+
+    def test_la_descarga_con_organizacion_lleva_solo_sus_citas(self) -> None:
+        pedidas: list[int] = []
+
+        def _citas(guion: GuionOferta, organization_id: int) -> GuionOferta:
+            pedidas.append(organization_id)
+            return _con_propias(guion)
+
+        with self._parches(), patch("llm.client.stream_llm_response", side_effect=_respuesta_llm):
+            generar_guion("EXP-1")
+            with patch.object(mod, "con_citas_de_organizacion", _citas):
+                pdf = guion_pdf("EXP-1", 7)
+            # La caché sigue sin citas: es la misma para todas las organizaciones.
+            cacheado = guion_generado("EXP-1")
+        assert pedidas == [7]
+        assert pdf is not None
+        assert "Propuesta.pdf p. 3" in _texto(pdf)
+        assert cacheado is not None
+        assert all(c.citas_organizacion == [] for c in cacheado.criterios)
+
     def test_un_guion_vacio_no_se_cachea(self) -> None:
         def _roto(*_a: Any, **_k: Any) -> Any:
             yield "no es json"
@@ -190,3 +256,14 @@ class TestRuta:
         operacion = app.openapi()["paths"]["/api/v1/licitaciones/{id_externo}/guion.pdf"]["get"]
         assert "application/pdf" in operacion["responses"]["200"]["content"]
         assert "404" in operacion["responses"]
+
+    def test_acepta_la_organizacion_activa_como_el_post(self) -> None:
+        """Sin ella, las citas propias serían las de la organización personal."""
+        from api.app import app
+
+        rutas = app.openapi()["paths"]
+        pdf = rutas["/api/v1/licitaciones/{id_externo}/guion.pdf"]["get"]
+        post = rutas["/api/v1/licitaciones/{id_externo}/guion"]["post"]
+        nombres = {p["name"] for p in pdf.get("parameters", []) if p["in"] == "query"}
+        assert "organization_id" in nombres
+        assert nombres == {p["name"] for p in post.get("parameters", []) if p["in"] == "query"}

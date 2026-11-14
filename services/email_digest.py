@@ -105,6 +105,21 @@ class BloqueDigest:
     #: Organización de la regla: contra su capacidad se calcula el checklist
     #: (B3). ``None`` en los avisos y en las entradas legadas.
     organization_id: int | None = None
+    #: El aviso es sobre un expediente que la persona sigue (favorito u
+    #: oportunidad). ``False`` para :data:`TIPOS_FUERA_DE_LO_SEGUIDO`: la
+    #: cabecera no puede llamarlos «novedades en los expedientes que sigues».
+    sobre_lo_seguido: bool = True
+
+
+#: Avisos del digest que no tratan de un expediente seguido.
+#:
+#: - ``organizacion.documento_caduca``: un certificado del perfil de capacidad.
+#: - ``pursuit.cartera_vence``: un contrato **ya ganado** de la cartera. La
+#:   oportunidad está cerrada (``won``), fuera de la agenda y de lo que el
+#:   producto llama «seguir» (favoritos y oportunidades abiertas).
+TIPOS_FUERA_DE_LO_SEGUIDO: frozenset[str] = frozenset(
+    {"organizacion.documento_caduca", "pursuit.cartera_vence"}
+)
 
 
 def _payload(crudo: Any) -> dict[str, Any]:
@@ -148,9 +163,12 @@ def bloques_de_avisos(filas: list[dict[str, Any]]) -> list[BloqueDigest]:
     from services.avisos import SUBTIPOS
 
     grupos: dict[str, tuple[str, list[dict[str, Any]]]] = {}
+    fuera_de_lo_seguido: set[str] = set()
     for fila in filas:
         payload = _payload(fila.get("evento_payload"))
         clave, etiqueta = clave_de_aviso(fila.get("evento_tipo"), payload)
+        if fila.get("evento_tipo") in TIPOS_FUERA_DE_LO_SEGUIDO:
+            fuera_de_lo_seguido.add(clave)
         licitacion = {
             "id_externo": fila.get("licitacion_id"),
             "titulo": fila.get("titulo") or payload.get("titulo") or fila.get("licitacion_id"),
@@ -170,7 +188,12 @@ def bloques_de_avisos(filas: list[dict[str, Any]]) -> list[BloqueDigest]:
         return (SUBTIPOS.index(clave), "") if clave in SUBTIPOS else (len(SUBTIPOS), clave)
 
     return [
-        BloqueDigest(etiqueta=etiqueta, licitaciones=lics, es_aviso=True)
+        BloqueDigest(
+            etiqueta=etiqueta,
+            licitaciones=lics,
+            es_aviso=True,
+            sobre_lo_seguido=clave not in fuera_de_lo_seguido,
+        )
         for clave, (etiqueta, lics) in sorted(grupos.items(), key=lambda kv: _orden(kv[0]))
     ]
 
@@ -360,32 +383,52 @@ def _plural_avisos(n: int) -> str:
     return "novedad" if n == 1 else "novedades"
 
 
-def asunto_digest(frecuencia: str, total: int, *, avisos: int = 0) -> str:
-    """Asunto del digest. ``total`` son las licitaciones nuevas de reglas y
-    ``avisos`` las novedades sobre lo seguido (F5.3): se cuentan aparte porque
-    un plazo ampliado no es una licitación nueva."""
+def _frase_avisos(seguidos: int, otros: int, *, donde: str) -> str:
+    """«2 novedades <donde> y 1 aviso sobre tu organización», sin las partes a cero."""
+    partes: list[str] = []
+    if seguidos:
+        partes.append(f"{seguidos} {_plural_avisos(seguidos)} {donde}")
+    if otros:
+        partes.append(f"{contar(otros, 'aviso', 'avisos')} sobre tu organización")
+    return " y ".join(partes)
+
+
+def asunto_digest(frecuencia: str, total: int, *, avisos: int = 0, otros_avisos: int = 0) -> str:
+    """Asunto del digest. ``total`` son las licitaciones nuevas de reglas,
+    ``avisos`` las novedades sobre lo seguido (F5.3) y ``otros_avisos`` los
+    de :data:`TIPOS_FUERA_DE_LO_SEGUIDO`: se cuentan aparte porque un plazo
+    ampliado no es una licitación nueva, y un certificado que caduca no es algo
+    «que sigues»."""
     cuando = _ETIQUETA_FRECUENCIA.get(frecuencia, "")
     plural = "licitación nueva" if total == 1 else "licitaciones nuevas"
-    if avisos and not total:
-        return f"TenderFlow · {avisos} {_plural_avisos(avisos)} en lo que sigues".strip()
-    if avisos:
+    novedades = avisos + otros_avisos
+    if novedades and not total:
+        return f"TenderFlow · {_frase_avisos(avisos, otros_avisos, donde='en lo que sigues')}"
+    if novedades:
         return (
-            f"TenderFlow · {total} {plural} {cuando} y {avisos} {_plural_avisos(avisos)}"
+            f"TenderFlow · {total} {plural} {cuando} y {novedades} {_plural_avisos(novedades)}"
         ).strip()
     return f"TenderFlow · {total} {plural} {cuando}".strip()
 
 
+def contar_avisos(bloques: list[BloqueDigest]) -> tuple[int, int]:
+    """``(sobre lo seguido, el resto)``: los dos recuentos de avisos del digest."""
+    seguidos = sum(len(b.licitaciones) for b in bloques if b.es_aviso and b.sobre_lo_seguido)
+    otros = sum(len(b.licitaciones) for b in bloques if b.es_aviso and not b.sobre_lo_seguido)
+    return seguidos, otros
+
+
 def _cabecera(bloques: list[BloqueDigest], cuando: str) -> str:
     nuevas = sum(len(b.licitaciones) for b in bloques if not b.es_aviso)
-    avisos = sum(len(b.licitaciones) for b in bloques if b.es_aviso)
+    seguidos, otros = contar_avisos(bloques)
     reglas = (
         f"{contar(nuevas, 'licitación nueva', 'licitaciones nuevas')} {cuando} "
         "para tus reglas de seguimiento."
     )
-    if not avisos:
+    if not (seguidos or otros):
         return reglas
-    seguidos = f"{avisos} {_plural_avisos(avisos)} en los expedientes que sigues."
-    return seguidos if not nuevas else f"{reglas} Además, {seguidos}"
+    avisos = _frase_avisos(seguidos, otros, donde="en los expedientes que sigues") + "."
+    return avisos if not nuevas else f"{reglas} Además, {avisos}"
 
 
 def render_digest(

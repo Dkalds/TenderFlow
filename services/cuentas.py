@@ -656,15 +656,6 @@ def _copiar_para_miembro(
     Está separado del bucle para que el `try` de arriba envuelva una unidad
     entera: media plantilla copiada sería peor que ninguna.
     """
-    from db.users import get_user_by_id
-    from shared.identity import user_key_from_email
-
-    usuario = get_user_by_id(user_id)
-    email = str((usuario or {}).get("email") or "")
-    if not email:
-        raise ValueError("El miembro no tiene email: no hay clave de usuario a la que copiar.")
-    user_key = user_key_from_email(email, user_id)
-
     if tipo == "regla":
         from services.watchlist_rules import WatchlistRule, create_rule
 
@@ -681,7 +672,6 @@ def _copiar_para_miembro(
         from db.saved_filters import save_filter
 
         save_filter(
-            user_key,
             str(contenido.get("nombre") or "Vista del equipo"),
             json.dumps(contenido.get("criterio") or {}, ensure_ascii=False),
             organization_id,

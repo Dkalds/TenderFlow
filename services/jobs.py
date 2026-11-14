@@ -523,7 +523,9 @@ def reclamar_caducados(
 
     Los que aún tienen intentos vuelven a ``pending``; los que ya gastaron
     ``JOBS_MAX_INTENTOS`` quedan ``failed``. Es el único sitio donde se aplica
-    el tope a un job que mata al proceso: :func:`fail` no llega a correr.
+    el tope a un job que mata al proceso: :func:`fail` no llega a correr. Por
+    eso también es aquí donde un indexado de adjunto agotado deja su adjunto en
+    ``error`` (:func:`_agotar_adjunto`).
     """
     filas = _repo.reclamar_caducados(
         ttl_segundos=jobs_lock_ttl_segundos() if ttl_segundos is None else ttl_segundos,
@@ -538,7 +540,27 @@ def reclamar_caducados(
         log.warning("jobs_lock_caducado_devueltos", ids=devueltos)
     if fallidos:
         log.error("jobs_lock_caducado_fallidos", ids=fallidos)
+    for f in filas:
+        if f["estado"] == "failed" and f["tipo"] == TIPO_INDEXADO_ADJUNTO:
+            _agotar_adjunto(f["id"])
     return devueltos, fallidos
+
+
+def _agotar_adjunto(job_id: int) -> None:
+    """Deja en ``error`` el adjunto de un indexado que murió en su último intento.
+
+    Nunca lanza: la barrida ya liberó la cola, y un fallo aquí solo deja el
+    adjunto «pendiente», que es como quedaba antes.
+    """
+    from services.memoria_organizacion import marcar_agotado
+
+    try:
+        job = obtener(job_id)
+        if job is None or job.organization_id is None:
+            return
+        marcar_agotado(int(job.payload["attachment_id"]), job.organization_id)
+    except Exception:
+        log.warning("indexado_adjunto_no_marcado", job_id=job_id, exc_info=True)
 
 
 def obtener(job_id: int) -> Job | None:

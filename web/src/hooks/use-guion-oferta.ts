@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useActiveOrganizationId } from "@/hooks/use-organization";
-import { apiMutate } from "@/lib/api-client";
+import { apiMutate, fetchBlobWithAuth } from "@/lib/api-client";
 import type { GuionCriterio, GuionOferta, PuntoGuion } from "@/lib/api-types";
 import { registrarEvento, tramoDeCriterios } from "@/lib/analytics";
 import { guionKeys } from "@/lib/query-keys";
@@ -57,7 +57,13 @@ export function useGuionOferta(licitacionId: string) {
     meta: { silent: true },
   });
 
-  return { guion: guion.data ?? null, generar };
+  // El PDF lleva las citas propias de la misma organización que pidió el guion.
+  const obtenerPdf = () => {
+    const ruta = `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/guion.pdf`;
+    return fetchBlobWithAuth(organizationId != null ? `${ruta}?organization_id=${organizationId}` : ruta);
+  };
+
+  return { guion: guion.data ?? null, generar, obtenerPdf };
 }
 
 /**
@@ -66,7 +72,9 @@ export function useGuionOferta(licitacionId: string) {
  * Es formato, no contenido: cada línea sale de un campo de la respuesta, con
  * la misma forma que `services/rag/guion_oferta.py::a_markdown` —la cita como
  * referencia a documento y página, no como el texto citado—. `nombreDoc`
- * resuelve el id del documento a su nombre de fichero cuando se conoce.
+ * resuelve el id del documento a su nombre de fichero cuando se conoce. Las
+ * citas de documentos propios (ADR-040) sí llevan el extracto, en un bloque
+ * «De tus documentos» por criterio.
  */
 export function guionAMarkdown(
   guion: GuionOferta,
@@ -76,6 +84,13 @@ export function guionAMarkdown(
   if (guion.sin_guion) {
     lineas.push(`_${guion.sin_guion}_`);
     return lineas.join("\n");
+  }
+  if (guion.citas_organizacion_fallidas) {
+    // Un fallo de la búsqueda no es «no había nada»: lo mismo que dice la pantalla.
+    lineas.push(
+      "_No se pudieron consultar los documentos de tu organización: este guion sale sin sus citas._",
+      "",
+    );
   }
   for (const criterio of guion.criterios ?? []) {
     const peso = criterio.peso_pct != null ? ` (${criterio.peso_pct} puntos)` : "";
@@ -88,6 +103,15 @@ export function guionAMarkdown(
       lineas.push(`- ${punto.texto}${marca}`);
     }
     lineas.push("");
+    const propias = criterio.citas_organizacion ?? [];
+    if (propias.length > 0) {
+      lineas.push("### De tus documentos", "");
+      for (const cita of propias) {
+        const origen = cita.page_number != null ? `${cita.filename} p. ${cita.page_number}` : cita.filename;
+        lineas.push(`- «${cita.cita}» _(${origen})_`);
+      }
+      lineas.push("");
+    }
   }
   return lineas.join("\n");
 }

@@ -2,6 +2,7 @@
 
 GET  /api/v1/security/csp-report      — recibe CSP violations del navegador
 POST /api/v1/security/client-error    — recibe errores JS del navegador (solo log)
+GET  /api/v1/security/csp-violations  — violaciones CSP agrupadas, para Ops (admin)
 POST /api/v1/security/leaked-key      — recibe notificaciones de GitHub Secret Scanning
 """
 
@@ -10,6 +11,7 @@ from __future__ import annotations
 import base64
 import re
 import time
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -514,3 +516,46 @@ async def list_client_errors(
 
     filas = await run_db(listar, limit=limit)
     return ClientErroresResult(items=[ClientErrorRow(**fila) for fila in filas])
+
+
+class CspViolacionAgrupada(BaseModel):
+    """Violaciones de CSP con la misma directiva y el mismo origen bloqueado."""
+
+    directiva: str
+    #: Esquema y host del recurso bloqueado, o `inline`/`eval`/`data` tal cual.
+    origen: str
+    veces: int
+    primera_vez: str
+    ultima_vez: str
+    #: Una página donde ocurrió, sin query ni fragmento.
+    documento_ejemplo: str | None = None
+
+
+class CspViolacionesResult(BaseModel):
+    dias: int
+    items: list[CspViolacionAgrupada] = Field(default_factory=list)
+
+
+@router.get(
+    "/csp-violations",
+    summary="Violaciones de CSP agrupadas por directiva y origen",
+)
+async def list_csp_violations(
+    dias: int = Query(30, ge=1, le=90),
+    limit: int = Query(50, ge=1, le=200),
+    _ctx: Principal = Depends(require_admin),
+) -> CspViolacionesResult:
+    """Lo que la política CSP bloquea en el navegador de los usuarios.
+
+    `POST /csp-report` las guarda desde 2026-06 y nada las leía. Agrupadas, una
+    fila es una decisión: un dominio que falta en la política o un recurso que
+    sobra en la página. `require_admin` por lo mismo que `/client-errors`.
+    La retención (`RETENTION_CLIENT_ERRORS_DAYS`) acota cuánto atrás hay datos.
+    """
+    from db.repositories.csp_violations import agrupadas
+
+    desde = (datetime.now(UTC) - timedelta(days=dias)).isoformat()
+    filas = await run_db(agrupadas, desde=desde, limit=limit)
+    return CspViolacionesResult(
+        dias=dias, items=[CspViolacionAgrupada.model_validate(f) for f in filas]
+    )

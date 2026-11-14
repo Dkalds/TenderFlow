@@ -155,7 +155,10 @@ class PriceFormulaFact(FactItem):
     #: baja, en tanto por uno (0.25 = 25 %).
     umbral_temeridad: float | None = Field(default=None, ge=0, le=1)
     #: Parámetros numéricos del tipo. Claves libres pero **valores numéricos**:
-    #: es lo que hace que el cálculo sea reproducible.
+    #: es lo que hace que el cálculo sea reproducible. Una clave con nombre
+    #: propio: ``regla_rglcap_85: 1`` cuando el pliego remite al art. 85 RGLCAP
+    #: o fija la temeridad relativa a la media de las ofertas; entonces
+    #: ``umbral_temeridad`` no es un umbral fijo y el simulador no lo usa.
     params: dict[str, float] = Field(default_factory=dict)
 
 

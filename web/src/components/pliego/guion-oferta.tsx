@@ -10,7 +10,7 @@ import { PaginaPliegoDialog } from "@/components/pliego/pagina-pliego-dialog";
 import { CitasOrganizacion } from "@/components/pursuits/citas-organizacion";
 import { guionAMarkdown, useGuionOferta } from "@/hooks/use-guion-oferta";
 import { useFactSheetDocumentos } from "@/hooks/use-tender-fact-sheet";
-import { ApiError, fetchBlobWithAuth } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-client";
 import { descargarBlob } from "@/lib/export";
 import { getErrorMessage } from "@/lib/query-feedback";
 import { cn } from "@/lib/utils";
@@ -28,7 +28,7 @@ import type { EvidenceRef } from "@/lib/api-types";
  * pide con el botón. Cada cita abre la página del pliego (F2.5).
  */
 export function GuionOfertaPanel({ licitacionId }: { licitacionId: string }) {
-  const { guion, generar } = useGuionOferta(licitacionId);
+  const { guion, generar, obtenerPdf } = useGuionOferta(licitacionId);
   const documentos = useFactSheetDocumentos(licitacionId);
   const [cita, setCita] = React.useState<EvidenceRef | null>(null);
   const tituloId = React.useId();
@@ -60,9 +60,7 @@ export function GuionOfertaPanel({ licitacionId }: { licitacionId: string }) {
   const descargarPdf = async () => {
     setDescargandoPdf(true);
     try {
-      const blob = await fetchBlobWithAuth(
-        `/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/guion.pdf`,
-      );
+      const blob = await obtenerPdf();
       descargarBlob(`guion-oferta-${licitacionId.replace(/[^\w-]+/g, "_")}.pdf`, blob, "guion");
     } catch (e) {
       toast.error("No se pudo descargar el PDF", {

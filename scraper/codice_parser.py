@@ -38,7 +38,7 @@ from observability.logging import get_logger
 from scraper.puerta_tecnologica import MOTIVO_ADMITIDA, senal_tecnologica
 from services.normalization import fold_text
 from shared.dates import to_iso_date, to_iso_datetime
-from shared.geo import es_nuts_de_pais, nuts_to_ccaa
+from shared.geo import es_nuts_de_pais, es_nuts_supraprovincial, nuts_to_ccaa
 from shared.identidad_placsp import clave_placsp
 from shared.sistema_contratacion import SistemaContratacion, desde_codice
 from shared.texto import sin_tildes
@@ -547,13 +547,16 @@ def _provincia_y_nuts(entry: Any, project_xp: str) -> tuple[str | None, str | No
 
     La provincia es el ``CountrySubentity`` que publica el órgano. Con un NUTS de
     nivel país (``ES``) ese texto es «España», que no es una provincia: queda
-    ``None``, como la CCAA (``nuts_to_ccaa("ES")`` ya da ``None``). El NUTS se
-    conserva tal cual: dice que el contrato es de ámbito estatal.
+    ``None``, como la CCAA (``nuts_to_ccaa("ES")`` ya da ``None``). Lo mismo con
+    un NUTS1 o un NUTS2 que abarca varias provincias (``ES70`` → «Canarias»):
+    el texto es la región o la CCAA, y la CCAA ya sale del NUTS. Un NUTS2
+    uniprovincial (``ES30`` → «Madrid») conserva la provincia. El NUTS se
+    conserva siempre tal cual: dice el ámbito del contrato.
     """
     ubicacion = f"{project_xp}/cac:RealizedLocation"
     provincia = _text(entry, f"{ubicacion}/cbc:CountrySubentity")
     nuts_code = _text(entry, f"{ubicacion}/cbc:CountrySubentityCode")
-    if es_nuts_de_pais(nuts_code):
+    if es_nuts_de_pais(nuts_code) or es_nuts_supraprovincial(nuts_code):
         provincia = None
     return provincia, nuts_code
 

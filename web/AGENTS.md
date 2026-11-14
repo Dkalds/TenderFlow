@@ -43,6 +43,16 @@ Sparkles ni emojis, tuteo y una interfaz que no narra su implementación. Lo
 vigilan `npm run lint` (`importacionesRetiradas` y `restriccionesDeAspecto` en
 `web/eslint.config.mjs`) y `web/src/__tests__/voz-de-la-interfaz.test.ts`.
 
+# Peticiones a la API desde hooks
+
+Un componente no importa `fetchWithAuth`, `apiGet`, `apiMutate` ni
+`fetchBlobWithAuth` de `@/lib/api-client`: la petición vive en un hook
+(`web/src/hooks/` o el `_hooks/` de la ruta) con su clave en `@/lib/query-keys`, y
+el componente consume el hook. `ApiError`, `urlApi` y los tipos sí se importan
+en cualquier sitio. Lo vigila `npm run lint` (`importacionApiCliente` en
+`web/eslint.config.mjs`); la deuda que había al crear la regla está en
+`accesoDirectoALaApi`, que solo encoge.
+
 # Motion (Emil Kowalski design engineering)
 
 Tokens de easing, duraciones por tipo de elemento, primitivos enter/exit,

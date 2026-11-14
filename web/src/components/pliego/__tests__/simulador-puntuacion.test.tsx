@@ -145,6 +145,25 @@ describe("SimuladorPuntuacion", () => {
     expect(registrarEvento).toHaveBeenCalledTimes(1);
   });
 
+  it("con el art. 85 avisa de que con más ofertas la temeridad se mide contra la media", async () => {
+    fetchPorRuta(
+      [/simulador\?baja=0\.12/, { ...PROPIA, temeridad_regla: "art85_dos_ofertas" }],
+      [/simulador/, REFERENCIA],
+      [/prediccion-baja/, {}, 404],
+    );
+    renderConQuery(<SimuladorPuntuacion licitacionId="LIC-1" />);
+    await screen.findByRole("table");
+    expect(screen.queryByText(/art\. 85 RGLCAP/)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Tu baja (%)"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Baja del rival (%)"), { target: { value: "18" } });
+    fireEvent.click(screen.getByRole("button", { name: "Simular" }));
+
+    expect(await screen.findByText(/art\. 85 RGLCAP/)).toHaveTextContent(
+      "Con tres o más ofertas el umbral se recalcula sobre la media",
+    );
+  });
+
   it("ofrece como rival la baja del incumbente y la típica del ganador del segmento", async () => {
     competencia.data = {
       incumbente: { baja_pct: 13.16, es_propia: false },

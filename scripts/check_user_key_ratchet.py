@@ -196,6 +196,16 @@ _REPORTEROS = frozenset(
 # caso de la cuarta tanda —`log_event(user_key=…)` con un actor que no era la
 # clave— y pasan `actor=shared.identity.actor_del_principal(ctx)`, la
 # convención única del autor en `audit_log` (ADR-030 §D).
+#
+# ── Primera tanda tras v181, 2026-11-14: 47 → 45 ───────────────────────────
+#
+# `db/saved_filters.py` solo recibe `user_id` y resuelve la mitad legacy del
+# predicado con `clave_legada_de_usuario(user_id)` en la base, como
+# `db/repositories/follows.py`. Salen sus dos llamadores que derivaban la clave
+# para pasársela: `api/routes/saved_filters.py` y `services/cuentas.py`
+# (copia de plantillas de vista). `db/saved_filters.py` sigue aquí porque su
+# SQL nombra la columna, y `services/gdpr.py` y `api/routes/me.py` por sus
+# otras tablas.
 CONGELADOS: frozenset[str] = frozenset(
     {
         "db/repositories/follows.py",
@@ -215,7 +225,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "api/routes/notifications.py",
         "api/routes/pursuits.py",
         "api/routes/radar.py",
-        "api/routes/saved_filters.py",
         "api/routes/watchlist_rules.py",
         "db/audit.py",
         "db/events.py",
@@ -237,7 +246,6 @@ CONGELADOS: frozenset[str] = frozenset(
         "scheduler/watchlist_rules_alerts.py",
         "services/analytics/scoring.py",
         "services/contract_events.py",
-        "services/cuentas.py",
         "services/deadline_reminders.py",
         "services/email_digest.py",
         "services/gdpr.py",

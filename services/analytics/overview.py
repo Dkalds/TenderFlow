@@ -618,7 +618,15 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
     # que arrancó tarde. Las que llegan del snapshot nacen resueltas y no
     # cuestan nada.
     t_adj = _Tarea.resuelta(snap_adj) if snap_adj is not None else _Tarea(_adj_indicadores)
-    t_ccaa = _Tarea(partial(_repo.overview_ccaa_cubiertas, repo_filters))
+    # Con filtros, las CCAA cubiertas son las filas de `overview_por_ccaa`:
+    # mismo WHERE, `ccaa IS NOT NULL` y una fila por comunidad, lo mismo que
+    # contaba el `COUNT(DISTINCT ccaa)` de su consulta propia, que así sobra.
+    # Sin filtros esa consulta se queda: salta por el índice (loose index scan).
+    t_ccaa = (
+        _Tarea(partial(_repo.overview_ccaa_cubiertas, repo_filters))
+        if repo_filters.is_empty()
+        else None
+    )
     t_tasa = (
         _Tarea.resuelta(snap_tasa)
         if snap_tasa is not None
@@ -660,7 +668,7 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
     _en_paralelo(
         [
             t_adj,
-            t_ccaa,
+            *([t_ccaa] if t_ccaa is not None else []),
             t_tasa,
             t_kpis,
             t_para_hoy,
@@ -695,7 +703,7 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
     total_imp_geo = total_imp_geo or 1.0
     concentracion_geo_top3 = top3_imp / total_imp_geo * 100
 
-    ccaa_cubiertas = t_ccaa.resultado()
+    ccaa_cubiertas = t_ccaa.resultado() if t_ccaa is not None else len(filas_ccaa)
     para_hoy = t_para_hoy.resultado()
 
     por_estado = [

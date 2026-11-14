@@ -123,6 +123,31 @@ def test_rechaza_un_issuer_que_no_corresponde_al_tid(clave_rsa, jwks_simulado):
     assert _verificar(token) is None
 
 
+def test_un_iss_no_ascii_se_rechaza_sin_lanzar(clave_rsa, jwks_simulado):
+    # `hmac.compare_digest` con `str` lanza TypeError ante un no ASCII.
+    token = _firmar(clave_rsa, _claims(iss="https://login.microsoftonline.com/ñ/v2.0"))
+
+    assert _verificar(token) is None
+
+
+def test_admite_una_coleccion_de_emisores_con_plantilla(clave_rsa, jwks_simulado):
+    emisores = ("https://otro.example", _ISSUER_MULTITENANT)
+
+    def _con(iss: str) -> dict[str, Any] | None:
+        return identity.verify_oidc_id_token(
+            _firmar(clave_rsa, _claims(iss=iss)),
+            jwks_uri=_JWKS_URI,
+            issuer=emisores,
+            audience=_AUDIENCE,
+            expected_nonce="nonce-de-prueba",
+            email_verified_claim="xms_edov",
+        )
+
+    assert _con("https://otro.example") is not None
+    assert _con(f"https://login.microsoftonline.com/{_TENANT}/v2.0") is not None
+    assert _con("https://tercero.example") is None
+
+
 def test_rechaza_una_audiencia_ajena(clave_rsa, jwks_simulado):
     assert _verificar(_firmar(clave_rsa, _claims(aud="otra-aplicacion"))) is None
 

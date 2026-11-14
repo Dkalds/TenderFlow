@@ -368,12 +368,14 @@ def _unico(value: object) -> str | None:
 
 #: ``framework-notice-id`` (OPT-100) en su forma de número de publicación,
 #: ``649072-2024``: la de ``id_externo`` de un aviso. La otra forma, el UUID
-#: del aviso con su versión (``9ddd55cd-…-01``), no lleva a ninguna fila.
+#: del aviso con su versión (``9ddd55cd-…-01``), hay que traducirla antes.
 _NUMERO_PUBLICACION = re.compile(r"\d{1,8}-\d{4}")
 
 
 def _sistema_y_marco(
-    notice: Mapping[str, object], tipo_aviso: str
+    notice: Mapping[str, object],
+    tipo_aviso: str,
+    numeros_de_avisos: Mapping[str, str] | None = None,
 ) -> tuple[SistemaContratacion | None, str | None]:
     """``(sistema de contratación, id_externo del marco)`` de un aviso eForms.
 
@@ -393,13 +395,16 @@ def _sistema_y_marco(
 
     Los dos campos presentes y a ``none`` es «ninguno»; sin ellos, sin dato.
 
-    shortcut: el 23 % de los ``framework-notice-id`` va como UUID del aviso y
-    no como número de publicación; no se guarda. Subirlo pide el
-    ``notice-identifier`` de cada fila o resolverlo contra la API.
+    El 23 % de los ``framework-notice-id`` va como UUID del aviso con su
+    versión y no como número de publicación. *numeros_de_avisos*
+    (``{uuid: publication-number}``, lo que ``TedConnector.fetch`` resolvió
+    contra la API) lo traduce; un UUID que no esté ahí deja el marco sin enlace.
     """
     referencias = _valores(notice.get("framework-notice-id"))
     if referencias or "true" in _valores(notice.get("contract-framework-agreement")):
         numero = _unico(referencias)
+        if numero is not None and (uuid := _UUID_CON_VERSION.fullmatch(numero)):
+            numero = (numeros_de_avisos or {}).get(uuid.group(1))
         if numero is None or not _NUMERO_PUBLICACION.fullmatch(numero):
             return "basado_marco", None
         # El XML de eForms rellena el número con ceros (``00649072-2024``);
@@ -621,6 +626,8 @@ class TedConnector:
         self._max_pub_date: str | None = None
         self._referencias: dict[str, ReferenciaCruzada] = {}
         self._modificaciones: list[ModificacionContrato] = []
+        # UUID del aviso de un marco → su número de publicación. Ver _resolver_marcos.
+        self._numeros_marco: dict[str, str] = {}
 
     # ── fetch ────────────────────────────────────────────────────────────
 
@@ -672,6 +679,8 @@ class TedConnector:
                 total = int(data.get("totalNoticeCount") or 0)
                 log.info("ted_fetch_start", query=query, total=total)
             log.info("ted_fetch_page", page=page, records=len(notices), seen=seen)
+            # Antes de ceder la página: `run_connector` parsea cada aviso según sale.
+            self._resolver_marcos(notices)
             for notice in notices:
                 pub_number = notice.get("publication-number")
                 if not pub_number:
@@ -695,6 +704,31 @@ class TedConnector:
             watermark_previo=watermark,
             en_solapamiento=tras_watermark,
         )
+
+    def _resolver_marcos(self, notices: list[dict[str, Any]]) -> None:
+        """Traduce los ``framework-notice-id`` en forma de UUID de una página de avisos.
+
+        Una petición a la API como mucho (una página son ``_PAGE_SIZE`` avisos y
+        :meth:`_numeros_de_avisos` pide de ``_PAGE_SIZE`` en ``_PAGE_SIZE``), y
+        ninguna si la página no trae UUIDs nuevos. Fail-open: un UUID sin
+        resolver deja el basado sin ``marco_ref``, y el upsert (COALESCE) no
+        borra el que una pasada anterior sí resolvió.
+
+        shortcut: lo que no se resuelva se reintenta solo mientras el
+        solapamiento de ``_OVERLAP_DAYS`` vuelva a leer el aviso; si
+        ``ted_marcos_resueltos`` muestra huecos sostenidos, guardar el UUID.
+        """
+        uuids = {
+            encontrado.group(1)
+            for notice in notices
+            if (ref := _unico(notice.get("framework-notice-id")))
+            and (encontrado := _UUID_CON_VERSION.fullmatch(ref))
+        } - self._numeros_marco.keys()
+        if not uuids:
+            return
+        resueltos = self._numeros_de_avisos(sorted(uuids))
+        self._numeros_marco.update(resueltos)
+        log.info("ted_marcos_resueltos", pedidos=len(uuids), resueltos=len(resueltos))
 
     # ── parse ────────────────────────────────────────────────────────────
 
@@ -744,7 +778,7 @@ class TedConnector:
         naturalezas = n.get("contract-nature") or []
         tipo = str(naturalezas[0]) if isinstance(naturalezas, list) and naturalezas else None
 
-        sistema, marco_ref = _sistema_y_marco(n, notice_type)
+        sistema, marco_ref = _sistema_y_marco(n, notice_type, self._numeros_marco)
         # shortcut: la vigencia solo se guarda en marcos y sistemas dinámicos.
         # eForms la publica en cualquier aviso, pero guardarla en todos metería
         # las adjudicaciones de TED en Renovaciones sin haber medido cuántas son

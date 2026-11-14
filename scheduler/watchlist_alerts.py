@@ -257,6 +257,7 @@ def send_pending_digests(frequency: str = "daily") -> int:
         BloqueDigest,
         asunto_digest,
         bloques_de_avisos,
+        contar_avisos,
         etiqueta_de_regla,
         render_digest,
         url_de_baja_alertas,
@@ -325,7 +326,7 @@ def send_pending_digests(frequency: str = "daily") -> int:
         bloques = _con_pliegos(bloques)
 
         n = sum(len(b.licitaciones) for b in bloques if not b.es_aviso)
-        n_avisos = sum(len(b.licitaciones) for b in bloques if b.es_aviso)
+        n_avisos, n_otros = contar_avisos(bloques)
         baja_url = url_de_baja_alertas(user_key_de.get(recipient) or "", base_url)
         texto, html = render_digest(
             bloques=bloques,
@@ -340,7 +341,7 @@ def send_pending_digests(frequency: str = "daily") -> int:
         # el correo como spam.
         enviado = enviar_email_transaccional(
             to_addr=recipient,
-            subject=asunto_digest(frequency, n, avisos=n_avisos),
+            subject=asunto_digest(frequency, n, avisos=n_avisos, otros_avisos=n_otros),
             texto=texto,
             html=html,
             unsubscribe_url=baja_url,

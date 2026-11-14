@@ -121,6 +121,47 @@ def test_main_escribe_el_fichero_desde_el_export(tmp_path, sin_modelo):
     assert len(lineas) == 5
 
 
+_CANDIDATO_SAP = {"titulo": "SAP S/4HANA", "descripcion": "", "cpv": "72000000", "importe": 1}
+
+
+class TestPuntuar:
+    """Puntúa con lo que resuelve ``resolve_artifact`` (versión activa verificada
+    por sha256): ``load()`` sin ruta caía al pkl local sin cotejar nada."""
+
+    def test_carga_la_ruta_resuelta(self, monkeypatch, tmp_path):
+        from unittest.mock import MagicMock
+
+        from services.ml.sap_classifier import SAPClassifier
+
+        resuelto = tmp_path / "sap_classifier-abc123.pkl"
+        clf = MagicMock()
+        clf.predict_proba.return_value = [(0.2, 0.8)]
+        cargas: list[object] = []
+
+        def _load(cls, path=None):
+            cargas.append(path)
+            return clf
+
+        monkeypatch.setattr(SAPClassifier, "resolve_artifact", classmethod(lambda cls: resuelto))
+        monkeypatch.setattr(SAPClassifier, "load", classmethod(_load))
+
+        assert sgc._puntuar([_CANDIDATO_SAP]) == [0.8]
+        assert cargas == [resuelto]
+
+    def test_sin_artefacto_no_carga_y_sigue_sin_probabilidades(self, monkeypatch):
+        from services.ml.sap_classifier import SAPClassifier
+
+        # ``_puntuar`` se traga cualquier excepción: se registra, no se lanza.
+        cargas: list[object] = []
+        monkeypatch.setattr(SAPClassifier, "resolve_artifact", classmethod(lambda cls: None))
+        monkeypatch.setattr(
+            SAPClassifier, "load", classmethod(lambda cls, p=None: cargas.append(p))
+        )
+
+        assert sgc._puntuar([_CANDIDATO_SAP]) == [None]
+        assert cargas == []
+
+
 def test_un_export_vacio_falla_con_codigo_1(tmp_path):
     ruta = tmp_path / "export.csv"
     _csv(ruta, [])

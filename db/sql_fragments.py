@@ -380,6 +380,24 @@ def exclude_duplicados_presentacion_sql(col: str = "l.id_externo") -> str:
     return f"{col} NOT IN {subquery}"
 
 
+def excluir_contratos_menores_sql(col: str = "a.licitacion_id") -> str:
+    """Cláusula SQL que deja fuera los contratos menores (fuente ``placsp_menores``).
+
+    Para la analítica de competidores: un contrato menor (mediana de 4.950 € en
+    la muestra del 2026-10-24) no compite con una licitación abierta, y mezclado
+    en la cuota de mercado o el HHI infla el recuento de adjudicaciones de quien
+    acumula menores. El prefijo del ``id_externo`` es la fuente
+    (``placsp_menores:<órgano>:<expediente>``, ver
+    ``scraper/connectors/placsp_menores.py``), así que no hace falta el JOIN con
+    ``licitaciones``. El ``IS NULL``: con una columna NULL (lado derecho de un
+    LEFT JOIN) la fila se conserva en vez de caerse en silencio (no se usa
+    ``IS DISTINCT FROM 'x'``, que el test de tablas citadas lee como tabla).
+    Sin placeholders: no desalinea los ``%s`` de quien la siembra.
+    """
+    # S608: `col` es una referencia de columna fija escrita por el llamante.
+    return f"({col} IS NULL OR split_part({col}, ':', 1) <> 'placsp_menores')"
+
+
 # ── Plegado de acentos en SQL ─────────────────────────────────────────────
 # Pares de `translate()` para que una tilde distinta no convierta dos valores
 # iguales en dos valores distintos. Hasta 2026-09 estaban además copiados como

@@ -1,13 +1,14 @@
-"""Drift monitor programado (F3).
+"""Monitor de drift del clasificador SAP: PSI + caída de F1, con alerta.
 
 Capa fina sobre :mod:`scheduler.concept_drift` y :mod:`scheduler.drift_report`
-que orquesta la detección periódica y dispara alertas vía
-:mod:`observability.alerts` cuando los KPIs degradan más de un umbral.
+que calcula los dos KPIs y dispara alertas vía :mod:`observability.alerts`
+cuando degradan más de un umbral (:mod:`services.ml.thresholds`).
 
-Concebido para ejecutarse desde APScheduler::
-
-    from scheduler.drift_monitor import run_once
-    run_once()              # cron diario (06:00 UTC)
+Lo ejecuta :func:`run_drift_checks` desde el paso ``drift_checks`` de la
+pasada canónica (``scheduler/pipeline_pasos_impl.py``): **una vez por
+semana** (ventana de ``db.job_locks``) y **advisory** (un fallo no saca la
+pasada en rojo). El job ``drift_report`` del registro (``scheduler/jobs``)
+apunta a la misma función, así que ambos planos hacen lo mismo.
 """
 
 from __future__ import annotations
@@ -93,4 +94,15 @@ def run_once(model_name: str = "sap_classifier") -> DriftStatus:
     return status
 
 
-__all__ = ["DriftStatus", "run_once"]
+def run_drift_checks() -> None:
+    """Informe de drift de features y, después, este monitor con alertas.
+
+    Punto de entrada único del paso ``drift_checks`` y del job ``drift_report``.
+    """
+    from scheduler.drift_report import run_drift_report
+
+    run_drift_report()
+    run_once()
+
+
+__all__ = ["DriftStatus", "run_drift_checks", "run_once"]

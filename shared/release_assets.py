@@ -89,11 +89,11 @@ _TIMEOUT_DESCARGA_SEGUNDOS = 120.0
 def fetch_latest_release(repo: str, *, token: str = "") -> dict[str, Any] | None:
     """Metadata de la Release marcada como *latest*, o ``None`` si no se pudo.
 
-    Es donde sigue subiendo ``ml-entrenar.yml`` (modelo ``tecnologias``), y la que consulta
-    directamente ``TechnologyClassifier.ensure_downloaded``.
-    ``train-model.yml`` (hoy ``ml-entrenar.yml``, modelo ``sap``) publica en la Release fija desde 2026-10, y
-    ``SAPClassifier.ensure_downloaded`` busca por :func:`locate_release_asset`.
-    Para los artefactos de ``model_versions`` ya no es el primer sitio.
+    Es donde sigue subiendo ``ml-entrenar.yml`` (modelo ``tecnologias``), pero
+    ningún clasificador la consulta ya directamente: ``SAPClassifier`` y
+    ``TechnologyClassifier`` buscan por :func:`locate_release_asset`, que mira
+    *latest* después del tag fijo. Para los artefactos de ``model_versions``
+    tampoco es el primer sitio.
     """
     if not REPO_RE.fullmatch(repo):
         log.warning("release_assets.invalid_repository", repository=repo)
@@ -173,8 +173,10 @@ def locate_release_asset(
 ) -> AssetLocalizado | None:
     """Primera Release que publica un asset llamado exactamente ``asset_name``.
 
-    Orden: la Release de ``tag_fijo`` (donde publican ``ml-entrenar.yml`` (modelo ``predictivos``) y
-    ``ml-entrenar.yml`` (modelo ``sap``)), *latest* (donde sigue subiendo ``ml-entrenar.yml`` (modelo ``tecnologias``)) y
+    Orden: la Release de ``tag_fijo`` (donde publica ``ml-entrenar.yml`` los
+    modelos ``predictivos`` y ``sap``), *latest* (donde sigue subiendo el modelo
+    ``tecnologias``: ``TechnologyClassifier.ensure_downloaded`` lo encuentra en
+    este segundo paso) y
     las ``recientes`` más recientes, que es donde quedaron los assets subidos a
     una *latest* que dejó de serlo: las filas de ``model_versions`` con nombre
     fijo (``baja_model.pkl``), anteriores al tag fijo, se resuelven por aquí.

@@ -21,21 +21,15 @@
  */
 
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "@/lib/toast";
 import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { apiGet, apiMutate } from "@/lib/api-client";
-import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA, getErrorMessage } from "@/lib/query-feedback";
-import { featureFlagKeys } from "@/lib/query-keys";
+import { getErrorMessage } from "@/lib/query-feedback";
 import { formatDate } from "@/lib/utils";
-
-type FlagOut = Schemas["FlagOut"];
+import { useFeatureFlagsAdmin, useGuardarFeatureFlags, type FlagOut } from "../../_hooks/use-feature-flags";
 
 /** Lo que se puede cambiar de una flag. */
 interface Ajuste {
@@ -56,15 +50,9 @@ const iguales = (a: Ajuste, b: Ajuste) =>
   a.enabled === b.enabled && (!a.enabled || a.rollout_pct === b.rollout_pct);
 
 export function FeatureFlagsCard() {
-  const queryClient = useQueryClient();
   const [borrador, setBorrador] = useState<Borrador>({});
 
-  const { data, isLoading, error, refetch } = useQuery<FlagOut[]>({
-    queryKey: featureFlagKeys.list,
-    queryFn: () => apiGet("/api/v1/feature-flags"),
-    // El fallo lo dice el panel: sin toast encima.
-    meta: META_ERROR_EN_LINEA,
-  });
+  const { data, isLoading, error, refetch } = useFeatureFlagsAdmin();
 
   const flags = data ?? [];
   const efectivo = (flag: FlagOut): Ajuste => borrador[flag.flag] ?? ajusteDe(flag);
@@ -90,24 +78,7 @@ export function FeatureFlagsCard() {
     editar(flag, { enabled, rollout_pct });
   };
 
-  const guardar = useMutation({
-    mutationFn: (pendientes: FlagOut[]) =>
-      apiMutate("PUT", "/api/v1/feature-flags", {
-        flags: pendientes.map((flag) => ({ flag: flag.flag, ...efectivo(flag) })),
-      }),
-    onSuccess: (_respuesta, pendientes) => {
-      // Lo guardado pasa a ser «lo del servidor» antes de soltar el borrador:
-      // sin esto la lista volvía un instante a los valores viejos mientras
-      // llegaba la relectura.
-      const guardadas = new Map(pendientes.map((flag) => [flag.flag, efectivo(flag)]));
-      queryClient.setQueryData<FlagOut[]>(featureFlagKeys.list, (previas) =>
-        previas?.map((flag) => ({ ...flag, ...guardadas.get(flag.flag) })),
-      );
-      setBorrador({});
-      void queryClient.invalidateQueries({ queryKey: featureFlagKeys.all });
-      toast.success("Cambios guardados");
-    },
-  });
+  const guardar = useGuardarFeatureFlags();
 
   // Cerrar o recargar la pestaña con cambios a medias los perdía sin avisar.
   useEffect(() => {
@@ -138,7 +109,12 @@ export function FeatureFlagsCard() {
               )}
               <Button
                 size="sm"
-                onClick={() => guardar.mutate(cambiadas)}
+                onClick={() =>
+                  guardar.mutate(
+                    cambiadas.map((flag) => ({ flag: flag.flag, ...efectivo(flag) })),
+                    { onSuccess: () => setBorrador({}) },
+                  )
+                }
                 disabled={!hayCambios || guardar.isPending}
               >
                 {guardar.isPending ? "Guardando…" : "Guardar cambios"}

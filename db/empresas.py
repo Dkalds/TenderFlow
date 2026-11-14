@@ -11,12 +11,27 @@ en transacciones grandes (mismo motivo que ``replace_adjudicaciones_batch``).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from db.database import connect, now_utc_iso
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
+
+T = TypeVar("T")
+
+
+def en_transaccion(fn: Callable[[object], T]) -> T:
+    """Corre ``fn(conn)`` en una única transacción de escritura y devuelve su resultado.
+
+    Commit al salir; si ``fn`` lanza, rollback y la excepción sigue su curso.
+    Es la frontera con la que ``services.entity_resolution`` agrupa un lote
+    entero sin abrir conexiones fuera de ``db/`` (ADR-022). Para ``fn`` la
+    conexión es opaca (``object``): solo la reenvía a las funciones de este
+    módulo, que son las que la usan.
+    """
+    with connect() as conn:
+        return fn(conn)
 
 
 @dataclass

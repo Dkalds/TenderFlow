@@ -20,15 +20,13 @@
  */
 
 import Link from "next/link";
-import { useQueries, type UseQueryResult } from "@tanstack/react-query";
+import type { UseQueryResult } from "@tanstack/react-query";
 
 import { EnlaceIr, PanelError, SUPERFICIE_PANEL, SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchWithAuth } from "@/lib/api-client";
+import { useIdentidadesEmpresa } from "@/hooks/use-empresa-competencia";
 import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { empresasKeys } from "@/lib/query-keys";
 import { cn, formatNumber } from "@/lib/utils";
 
 type EmpresaDetalle = Schemas["EmpresaDetail"];
@@ -37,15 +35,8 @@ type EmpresaDetalle = Schemas["EmpresaDetail"];
 const ALIAS_VISIBLES = 12;
 
 export function CompanyIdentidad({ empresaIds }: { empresaIds: number[] }) {
-  const consultas = useQueries({
-    queries: empresaIds.map((empresaId) => ({
-      queryKey: empresasKeys.detail(empresaId),
-      queryFn: () => fetchWithAuth<EmpresaDetalle>(`/api/v1/empresas/${empresaId}`),
-      staleTime: 5 * 60 * 1000,
-      // Cada fallo se dice en su tarjeta (PanelError): sin toast además.
-      meta: META_ERROR_EN_LINEA,
-    })),
-  });
+  // Cada fallo se dice en su tarjeta (PanelError).
+  const consultas = useIdentidadesEmpresa(empresaIds);
 
   return (
     <section aria-labelledby="identidad-titulo" className="space-y-4">

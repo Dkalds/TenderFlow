@@ -163,8 +163,8 @@ class MLSettings(BaseSettings):
     # (`resueltos_detectados`), pero la heurística da falsos positivos en
     # segmentos con mucha actividad, y excluir un contrato lo deja sin riesgo y
     # lo esconde del orden «score» de Renovaciones. Encenderlo exige auditar
-    # antes una muestra a mano, como hace `scripts/audit_retencion.py` con los
-    # pares de entrenamiento. Ver services.ml.scoring._separar_resueltos.
+    # antes una muestra a mano: `scripts/audit_retencion.py --resueltos`.
+    # Ver services.ml.scoring._separar_resueltos.
     ML_RETENCION_EXCLUIR_RESUELTOS: bool = False
 
     @field_validator("ML_CONFIDENCE_THRESHOLD", mode="before")

@@ -28,7 +28,7 @@ def build_default_registry() -> list[ScheduledJob]:
     """
     from scheduler.anomaly_alerts import run_anomaly_checks
     from scheduler.dlq_retry import retry_failed_extractions
-    from scheduler.drift_report import run_drift_report
+    from scheduler.drift_monitor import run_drift_checks
     from scheduler.jobs.daily_atom import run as run_daily_atom
     from scheduler.jobs.documentos_embeddings import run as run_documentos_embeddings
     from scheduler.jobs.event_dispatch import run as run_event_dispatch
@@ -217,7 +217,7 @@ def build_default_registry() -> list[ScheduledJob]:
         ScheduledJob(
             name="drift_report",
             plane="pipeline",
-            fn=run_drift_report,
+            fn=run_drift_checks,  # informe + monitor PSI/F1, como el paso drift_checks
             interval_env="SCHEDULER_DRIFT_INTERVAL_MINUTES",
             default_interval_minutes=10080,  # weekly
             initial_offset_minutes=360,  # 6h after start

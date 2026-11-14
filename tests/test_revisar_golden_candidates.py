@@ -14,6 +14,7 @@ from scripts.revisar_golden_candidates import (
     _escribir_jsonl,
     _leer_jsonl,
     anexar,
+    cargar_modelo_local,
     estado,
     informe_umbral,
     revisar,
@@ -283,4 +284,38 @@ class TestInformeUmbral:
         _escribir(golden, _golden_separable(10))
 
         estado(golden)
-        assert "sin modelo local" in capsys.readouterr().out
+        assert "sin modelo: no se mide" in capsys.readouterr().out
+
+
+class TestCargarModelo:
+    """Se carga el artefacto que resuelve ``resolve_artifact`` (versión activa
+    verificada por sha256): ``load()`` sin ruta caía al pkl local sin cotejar."""
+
+    def test_carga_la_ruta_resuelta(self, monkeypatch, tmp_path):
+        from services.ml.sap_classifier import SAPClassifier
+
+        resuelto = tmp_path / "sap_classifier-abc123.pkl"
+        cargas: list[object] = []
+
+        def _load(cls, path=None):
+            cargas.append(path)
+            return "clf"
+
+        monkeypatch.setattr(SAPClassifier, "resolve_artifact", classmethod(lambda cls: resuelto))
+        monkeypatch.setattr(SAPClassifier, "load", classmethod(_load))
+
+        assert cargar_modelo_local() == "clf"
+        assert cargas == [resuelto]
+
+    def test_sin_artefacto_devuelve_none_sin_cargar(self, monkeypatch):
+        from services.ml.sap_classifier import SAPClassifier
+
+        # ``cargar_modelo_local`` se traga cualquier excepción: se registra, no se lanza.
+        cargas: list[object] = []
+        monkeypatch.setattr(SAPClassifier, "resolve_artifact", classmethod(lambda cls: None))
+        monkeypatch.setattr(
+            SAPClassifier, "load", classmethod(lambda cls, p=None: cargas.append(p))
+        )
+
+        assert cargar_modelo_local() is None
+        assert cargas == []

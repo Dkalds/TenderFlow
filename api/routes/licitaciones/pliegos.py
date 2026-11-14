@@ -101,7 +101,7 @@ async def post_guion_oferta(
     },
 )
 async def get_guion_oferta_pdf(
-    _ctx: Principal = Depends(require_any_auth),
+    ctx: Principal = Depends(require_organization()),
     id_externo: str = Depends(resolver_id_externo),
 ) -> Response:
     """F2.6 — descarga en PDF del guion **ya generado**.
@@ -110,8 +110,11 @@ async def get_guion_oferta_pdf(
     LLM sin que se vea. Si el pliego cambió desde la última generación, la
     firma no coincide y la respuesta es 404 — el guion guardado sería de otro
     pliego.
+
+    Lleva las citas de los documentos de la organización activa con el mismo
+    criterio que el `POST` (ADR-040); se buscan al descargar, no se guardan.
     """
-    pdf = await run_db(guion_pdf, id_externo)
+    pdf = await run_db(guion_pdf, id_externo, organizacion_para_citas(ctx))
     if pdf is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

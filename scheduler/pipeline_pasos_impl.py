@@ -500,15 +500,9 @@ def _run_drift_checks() -> str:
     ``drift_monitor.run_once`` calcula PSI + caída de F1 y **notifica** si
     superan umbral — la única detección de degradación de modelo del sistema.
     """
+    from scheduler.drift_monitor import run_drift_checks
 
-    def _both() -> None:
-        from scheduler.drift_monitor import run_once
-        from scheduler.drift_report import run_drift_report
-
-        run_drift_report()
-        run_once()
-
-    return _run_periodic("drift_checks", _SEGUNDOS_SEMANA, _both)
+    return _run_periodic("drift_checks", _SEGUNDOS_SEMANA, run_drift_checks)
 
 
 def _run_dlq_retry(lane: str = LANE_BULK) -> None:

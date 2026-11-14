@@ -56,6 +56,12 @@ MOTIVO_MINIMO = 40
 # alcanza"``. Una por línea, en orden alfabético de ruta, para que dos ramas
 # que añaden operaciones distintas no choquen al fusionar.
 NUEVAS: dict[str, str] = {
+    "GET /api/v1/security/csp-violations": (
+        "Se miró GET /security/client-errors, que es la vista gemela pero lee client_errors "
+        "(errores de JavaScript agregados por huella), no csp_violations; y POST "
+        "/security/csp-report, que solo escribe. csp_violations no tenía ninguna ruta de "
+        "lectura (backlog P3 «Las violaciones de CSP se guardan y nadie las lee»)."
+    ),
     "GET /api/v1/licitaciones/{id_externo:path}/marco": (
         "Se miró GET /licitaciones/{id}, que ya trae los adjudicatarios y la duración de "
         "un acuerdo marco, pero fila a fila por lote y sin organización: no puede decir "

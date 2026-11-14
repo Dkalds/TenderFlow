@@ -170,7 +170,6 @@ ignore = [
 "scraper/seed_negatives.py" = ["TID251", "S608"]  # SQL built from internal schema strings
 "scripts/seed_dev.py" = ["TID251"]
 "services/contract_events.py" = ["TID251"]
-"services/entity_resolution.py" = ["TID251"]
 # ── fin RATCHET TID251 ──
 # Archivos no-TID con permisos especiales
 "db/database.py" = ["E402", "RUF022"]  # E402 intentional facade re-exports

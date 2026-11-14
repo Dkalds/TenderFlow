@@ -36,12 +36,15 @@ _ADJ_SNAPSHOT: dict[str, float | None] = {
 }
 _ADJ_EN_VIVO: dict[str, float | None] = {**_ADJ_SNAPSHOT, "hhi": 999.0}
 
+#: Las tres primeras de la cola con filtros (con filtros, ``ccaa`` no se lanza).
+_EN_BARRERA = {"adj", "tasa", "kpis"}
+
 
 class _RepoAnotador:
     """Repositorio doble: formas válidas y una traza de quién pidió qué, y desde dónde.
 
-    ``barrera`` retiene las tres primeras consultas hasta que coinciden, para
-    demostrar que corren a la vez; ``falla`` hace lanzar a una concreta.
+    ``barrera`` retiene las consultas de ``_EN_BARRERA`` hasta que coinciden,
+    para demostrar que corren a la vez; ``falla`` hace lanzar a una concreta.
     """
 
     def __init__(
@@ -57,7 +60,7 @@ class _RepoAnotador:
             self.llamadas.append((nombre, threading.get_ident(), current_organization()))
         if self.falla == nombre:
             raise RuntimeError(f"{nombre} caída")
-        if self.barrera is not None and nombre in {"adj", "ccaa", "tasa"}:
+        if self.barrera is not None and nombre in _EN_BARRERA:
             self.barrera.wait()
 
     @property
@@ -176,9 +179,11 @@ def test_en_serie_y_en_paralelo_dan_la_misma_respuesta(
     _preparar(monkeypatch, paralelo, cupo=2)
     en_paralelo = ov.get_overview(filtros)
 
+    # Con filtros, las CCAA cubiertas salen de `por_ccaa` y su consulta no se lanza.
+    esperadas = _TODAS if filtros == ov.OverviewFilters() else _TODAS - {"ccaa"}
     assert en_paralelo.model_dump() == en_serie.model_dump()
-    assert set(serie.nombres) == set(paralelo.nombres) == _TODAS
-    assert len(paralelo.nombres) == len(_TODAS), "ninguna consulta se repite"
+    assert set(serie.nombres) == set(paralelo.nombres) == esperadas
+    assert len(paralelo.nombres) == len(esperadas), "ninguna consulta se repite"
     # Los números salen de las consultas, no de valores por defecto.
     assert en_serie.total_licitaciones == 20
     assert en_serie.tasa_anulacion == pytest.approx(5.0)
@@ -199,7 +204,7 @@ def test_tres_consultas_corren_a_la_vez(monkeypatch: pytest.MonkeyPatch) -> None
 
     ov.get_overview(ov.OverviewFilters(ccaa="Madrid"))
 
-    hilos = {hilo for nombre, hilo, _org in repo.llamadas if nombre in {"adj", "ccaa", "tasa"}}
+    hilos = {hilo for nombre, hilo, _org in repo.llamadas if nombre in _EN_BARRERA}
     assert len(hilos) == 3
 
 
@@ -277,13 +282,39 @@ def test_el_cupo_global_es_una_cuarta_parte_del_pool_de_lectura_con_tope(
 
 def test_un_fallo_se_relanza_y_no_arranca_mas_consultas(monkeypatch: pytest.MonkeyPatch) -> None:
     """En serie el corte es exacto: lo que venía detrás de la consulta caída no corre."""
-    repo = _RepoAnotador(falla="ccaa")
+    repo = _RepoAnotador(falla="tasa")
     _preparar(monkeypatch, repo, cupo=0)
 
-    with pytest.raises(RuntimeError, match="ccaa caída"):
+    with pytest.raises(RuntimeError, match="tasa caída"):
         ov.get_overview(ov.OverviewFilters(ccaa="Madrid"))
 
-    assert repo.nombres == ["adj", "ccaa"]
+    assert repo.nombres == ["adj", "tasa"]
+
+
+# ── CCAA cubiertas ─────────────────────────────────────────────────────────
+
+
+def test_con_filtros_las_ccaa_cubiertas_salen_de_por_ccaa(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mismo WHERE y una fila por comunidad: su consulta propia sería un segundo escaneo."""
+    repo = _RepoAnotador()
+    _preparar(monkeypatch, repo, cupo=0)
+
+    resultado = ov.get_overview(ov.OverviewFilters(tecnologia="SAP"))
+
+    assert "ccaa" not in repo.nombres
+    # Las cinco filas que devuelve `overview_por_ccaa` del doble, no su 4.
+    assert resultado.ccaa_cubiertas == 5
+
+
+def test_sin_filtros_las_ccaa_cubiertas_usan_su_consulta(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sin filtros, ``overview_ccaa_cubiertas`` va por el índice y se mantiene."""
+    repo = _RepoAnotador()
+    _preparar(monkeypatch, repo, cupo=0)
+
+    resultado = ov.get_overview(ov.OverviewFilters())
+
+    assert repo.nombres.count("ccaa") == 1
+    assert resultado.ccaa_cubiertas == 4
 
 
 def test_un_fallo_en_paralelo_tambien_llega_al_llamante(monkeypatch: pytest.MonkeyPatch) -> None:
