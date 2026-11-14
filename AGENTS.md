@@ -162,6 +162,10 @@ prerrequisitos están en [docs/AGENT_PLAYBOOK.md](docs/AGENT_PLAYBOOK.md).
     biblioteca estándar, sin cortar en el primer fallo: es lo que se puede
     ejecutar en un checkout sin dependencias. `make gates-deps` corre, aparte,
     los que importan la app.
+- Antes de subir: `make diff-cover` reproduce el gate de CI que exige un 80 %
+    de cobertura sobre las líneas que cambia la rama, y `git commit` pasa los
+    hooks de pre-commit solo si su hook de git está instalado
+    (`pre-commit install`; §3.7). Sin ellos, esos dos fallos llegan por el CI.
 - Para cambios frontend: `make web-lint`, `make web-typecheck` y los tests
     relevantes. Los cambios analíticos también requieren
     `make check-frontend-invariants`.

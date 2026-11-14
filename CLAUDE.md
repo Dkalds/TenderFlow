@@ -10,6 +10,8 @@
 
 **Subagente `revisor`** (`.claude/agents/revisor.md`): antes de abrir el PR de un cambio de código (`gh pr create`, o la herramienta MCP de GitHub en una sesión remota), lanzalo con el rango del diff y lo que pidió el usuario, sin tu razonamiento, para que su lectura no se ancle en la tuya. Busca lo que los ratchets no ven (capa equivocada según ADR-024, DTO que cambia de significado, escritura no idempotente, dato inventado, test que no prueba el caso). Sus hallazgos se verifican antes de aplicarlos; no sustituye a §4. Es de solo lectura por instrucción, no por permisos: su Bash no está acotado.
 
+**Subagente `ci-log`** (`.claude/agents/ci-log.md`): cuando un check de CI falla, pasale `owner`, `repo` y el `job_id` y devuelve el step que falló con su error literal. Los logs de este repo acaban en cientos de líneas del contenedor de Postgres y en remoto no se pueden descargar por URL: leerlos en la sesión principal, o con un subagente genérico, costó más de cien mil tokens por fallo. Corre con un modelo pequeño y no edita ni publica nada.
+
 **Skills**: Claude Code carga `.claude/skills/` (`.agents/skills/` es para Codex/OpenCode; ambos árboles se instalan desde `skills-lock.json` y deben tener el mismo contenido — `make check-agent-docs` lo verifica). La excepción es un skill que su instalador compila distinto por herramienta, como `impeccable`: el lock lo declara con `harnessVariants`, un hash por árbol (`.claude`, `.agents`, `.github`, `.opencode`), y lo que se verifica es que cada árbol siga siendo el instalado. Su binario no se versiona (está en `.gitignore`): el lanzador lo descarga la primera vez y lo verifica contra su `.sha256`.
 
 **Son obligatorios cuando la tarea encaja, no sugerencias** (AGENTS.md §0): se
@@ -37,7 +39,7 @@ según la ruta que se edita:
 
 **Hooks** (`.claude/settings.json`; cómo funciona cada uno está en su docstring, en `.claude/hooks/`, que es el único árbol: `.codex/hooks.json` lanza estos mismos ficheros):
 - **Bloquean (exit 2):** `pretooluse_bash_grep_hint.py` frena la primera búsqueda de texto de la sesión hasta una llamada a `graphify query`, `explain` o `path`, si hay grafo y el CLI arranca; si no, avisa una vez y remite a `scripts/code_map.py`. `pretooluse_edit_skills.py` frena la edición si falta algún skill que la tabla de **Skills** exige para esa ruta (solo en Claude Code: Codex no tiene herramienta `Skill`).
-- **Avisan:** `pretooluse_bash_revision_visual.py`, ante `git commit` o `gh pr create` con cambios en `web/src/`, recuerda la revisión visual (no ve un PR abierto por MCP: lo cubre el commit que lo precede). `userprompt_verificar_mejoras.py` (UserPromptSubmit), cuando el mensaje pide mejoras o lo que queda, recuerda leer `make backlog-estado` y verificar en el código antes de proponer (AGENTS.md §0). `session_start_contexto.py` trae `origin/master` (el clon remoto lo tiene atrasado; si no puede, lo avisa) y dice qué le falta al checkout, si la sesión hereda `ENV=prod` o una `DATABASE_URL`, si graphify o WSL no sirven en esta máquina, y qué PR y ramas hay en curso.
+- **Avisan:** `pretooluse_bash_revision_visual.py`, ante `git commit` o `gh pr create` con cambios en `web/src/`, recuerda la revisión visual (no ve un PR abierto por MCP: lo cubre el commit que lo precede). `userprompt_verificar_mejoras.py` (UserPromptSubmit), cuando el mensaje pide mejoras o lo que queda, recuerda leer `make backlog-estado` y verificar en el código antes de proponer (AGENTS.md §0). `session_start_contexto.py` trae `origin/master` (el clon remoto lo tiene atrasado; si no puede, lo avisa) y dice qué le falta al checkout (dependencias, `web/node_modules`, el hook de git de pre-commit), si la sesión hereda `ENV=prod` o una `DATABASE_URL`, si graphify o WSL no sirven en esta máquina, y qué PR y ramas hay en curso.
 - **Mantienen:** `pretooluse_edit_stale.py` marca el grafo como viejo al editar un `.py`, y `stop_graph_refresh.py` lo rehace en segundo plano al acabar el turno. `session_start_pg.py` provisiona Postgres en sesiones remotas. El hook de Impeccable (SessionStart, PostToolUse y Stop) revisa los ficheros de UI; se configura en `.impeccable/config.json`.
 
 Todos se lanzan con `if command -v python …; then python …; else python3 …; fi`: con `python … || python3 …`, cualquier código distinto de 0 (también el `exit 2` de bloqueo) hace correr `python3`, que en Windows es el alias de la Microsoft Store y devuelve 49.
@@ -50,8 +52,10 @@ En un worktree, Claude Code lanza los hooks desde el checkout principal: un camb
 `.env`, de donde `tests/conftest.py` la lee. Con eso **la suite sí se ejecuta**:
 `make test-unit` y `make check` son válidos en remoto. Las dependencias Python
 del proyecto no vienen en la imagen. El entorno cloud «Tenderflow» las instala
-con su setup script (se edita en los ajustes del entorno, no en el repo); si al
-arrancar no hay `.venv`, el hook de contexto lo dice y se hace a mano: en un
+con su setup script (se edita en los ajustes del entorno, no en el repo), junto
+con `web/node_modules`, `diff-cover` y el hook de git de pre-commit. Lo que
+falte al arrancar lo dice el hook de contexto y se hace a mano (`npm ci` en
+`web/`, `pre-commit install`); para Python, en un
 `.venv` (el `pip` del sistema no
 puede reemplazar paquetes que instaló Debian), `pip install -r
 requirements-dev.txt` —trae también los paquetes de producción:

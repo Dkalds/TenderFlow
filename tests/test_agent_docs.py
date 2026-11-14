@@ -600,6 +600,10 @@ class SessionStartContextoTests(unittest.TestCase):
             return subprocess.CompletedProcess(cmd, self.codigo_fetch, stdout="", stderr="")
         if cmd[:2] == ["git", "remote"] and not self.hay_remoto:
             return subprocess.CompletedProcess(cmd, 2, stdout="", stderr="")
+        if "--git-path" in cmd:
+            # Como git: la ruta del hook, exista o no el fichero.
+            ruta = self.principal / ".git/hooks/pre-commit"
+            return subprocess.CompletedProcess(cmd, 0, stdout=str(ruta), stderr="")
         if "--git-common-dir" in cmd:
             salida = str(self.principal / ".git")
         elif cmd[:3] == ["gh", "pr", "list"]:
@@ -695,6 +699,20 @@ class SessionStartContextoTests(unittest.TestCase):
         (self.worktree / "web/node_modules").mkdir()
 
         self.assertEqual(self._contexto(), "")
+
+    def test_sin_el_hook_de_git_de_precommit_lo_avisa(self) -> None:
+        # Sesión remota del 2026-11-13: nadie había corrido `pre-commit install`,
+        # los commits no pasaban detect-secrets y el fallo llegó por el CI.
+        _write(self.worktree / ".pre-commit-config.yaml", "repos: []\n")
+
+        self.assertIn("pre-commit install", self._contexto())
+
+    def test_con_el_hook_de_git_de_precommit_no_avisa(self) -> None:
+        # En un worktree el hook vive en el `.git` del checkout principal.
+        _write(self.worktree / ".pre-commit-config.yaml", "repos: []\n")
+        _write(self.principal / ".git/hooks/pre-commit", "#!/bin/sh\n")
+
+        self.assertNotIn("Pre-commit", self._contexto())
 
     def test_sin_gh_remite_tambien_a_la_herramienta_mcp_de_github(self) -> None:
         # Sesión remota: no hay `gh` con el que listar los PR, y mandar solo a
