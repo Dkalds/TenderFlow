@@ -8,7 +8,7 @@ tags: [database, schema, generado]
 
 Generado: 2026-11-10
 
-Revisión Alembic aplicada: `v181_user_id_watchlist_follows`.
+Revisión Alembic aplicada: `v183_api_keys_activa_con_dueno`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -29,11 +29,11 @@ migración que los declara— y, por supuesto, cualquier dato.
 | Empresas y mercado | 6 | 34 | 11 |
 | Organizaciones y oportunidades | 16 | 156 | 35 |
 | Identidad, acceso y auditoría | 16 | 113 | 25 |
-| Seguimiento y notificaciones | 12 | 135 | 40 |
+| Seguimiento y notificaciones | 12 | 135 | 42 |
 | ML y predicciones | 8 | 63 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
-| Otras | 25 | 215 | 39 |
-| **Total** | **110** | **1032** | **255** |
+| Otras | 25 | 215 | 40 |
+| **Total** | **110** | **1032** | **258** |
 
 ## Licitaciones y fuente
 
@@ -1282,9 +1282,9 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, cpv_prefix, keyword, ccaa)`
 | `visibility` | `text` | no |
 | `user_id` | `integer` | sí |
 
-Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, empresa_id)`
+Claves: `PRIMARY KEY (id)`
 
-Índices: `idx_watchlist_empresas_organization`, `idx_watchlist_empresas_user_id`, `idx_wl_emp_user`, `uq_watchlist_empresas_user_id` (único)
+Índices: `idx_watchlist_empresas_organization`, `idx_watchlist_empresas_user_id`, `idx_wl_emp_user`, `uq_watchlist_empresas_user_id` (único), `uq_watchlist_empresas_user_key` (único)
 
 ### `watchlist_items`
 
@@ -1299,9 +1299,9 @@ Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, empresa_id)`
 | `visibility` | `text` | no |
 | `nota` | `text` | sí |
 
-Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, id_externo)`
+Claves: `PRIMARY KEY (id)`
 
-Índices: `idx_watchlist_items_organization`, `idx_watchlist_items_user_id`, `idx_wl_items_user`, `uq_watchlist_items_user_id` (único)
+Índices: `idx_watchlist_items_organization`, `idx_watchlist_items_user_id`, `idx_wl_items_user`, `uq_watchlist_items_user_id` (único), `uq_watchlist_items_user_key` (único)
 
 ### `watchlist_rules`
 
@@ -1827,9 +1827,9 @@ Claves: `PRIMARY KEY (id)`
 | `hasta` | `timestamp with time zone` | sí |
 | `created_at` | `timestamp with time zone` | no |
 
-Claves: `PRIMARY KEY (id)` · `UNIQUE (user_key, target_type, target_id, kind)`
+Claves: `PRIMARY KEY (id)`
 
-Índices: `idx_follows_hasta`, `idx_follows_organization`, `idx_follows_target`, `idx_follows_user`, `idx_follows_user_id`, `uq_follows_user_id` (único)
+Índices: `idx_follows_hasta`, `idx_follows_organization`, `idx_follows_target`, `idx_follows_user`, `idx_follows_user_id`, `uq_follows_user_id` (único), `uq_follows_user_key` (único)
 
 ### `go_no_go_scores`
 

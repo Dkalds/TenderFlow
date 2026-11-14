@@ -170,6 +170,15 @@ async def get_simulador_precio(
         le=1,
         description="Baja del rival contra el que medirse (p. ej. el p90 de la predicción)",
     ),
+    baja_media: float | None = Query(
+        default=None,
+        ge=0,
+        le=1,
+        description=(
+            "Baja media esperada de las ofertas. Solo cuenta si el pliego mide la "
+            "temeridad sobre la media (art. 85 RGLCAP); sin ella ese umbral no se marca."
+        ),
+    ),
     _ctx: Principal = Depends(require_any_auth),
     id_externo: str = Depends(resolver_id_externo),
 ) -> SimulacionPrecio:
@@ -186,6 +195,7 @@ async def get_simulador_precio(
         id_externo,
         bajas=list(baja),
         baja_referencia=baja_referencia,
+        baja_media=baja_media,
     )
 
 

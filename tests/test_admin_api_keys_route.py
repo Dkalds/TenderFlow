@@ -12,15 +12,26 @@ from tests.claves import clave_de_prueba, dueno_de_prueba
 
 
 def _insertar_clave_legada(nombre: str) -> int:
-    """Una clave como las de producción: activa, sin dueño y sin caducidad."""
+    """Una clave como las de producción: activa, sin dueño y sin caducidad.
+
+    v183 prohíbe crearlas, pero con ``NOT VALID``: las heredadas siguen ahí. El
+    test reproduce ese estado quitando la restricción, insertando y volviéndola
+    a poner igual, en la misma transacción.
+    """
     from db.database import connect, now_utc_iso
 
+    restriccion = "ck_api_keys_activa_con_dueno"  # v183
     with connect() as c:
+        c.execute(f"ALTER TABLE api_keys DROP CONSTRAINT IF EXISTS {restriccion}")
         fila = c.execute(
             "INSERT INTO api_keys (key_hash, name, created_at, is_active) "
             "VALUES (%s, %s, %s, 1) RETURNING id",
             (f"legacy-{nombre}-" + "0" * 40, nombre, now_utc_iso()),
         ).fetchone()
+        c.execute(
+            f"ALTER TABLE api_keys ADD CONSTRAINT {restriccion} CHECK "
+            "(is_active = 0 OR (user_id IS NOT NULL AND expires_at IS NOT NULL)) NOT VALID"
+        )
     return int(fila[0])
 
 

@@ -42,8 +42,15 @@ def _anonimizar(**kwargs: object) -> dict[str, MagicMock]:
         consultas = pila.enter_context(
             patch("db.repositories.consultas_recientes.borrar_de_usuario")
         )
+        vigilancia = pila.enter_context(patch("db.watchlist_empresas.borrar_de_usuario"))
         anonymize_user_data("clave", **kwargs)  # type: ignore[arg-type]  # kwargs de test
-    return {"follows": follows, "votos": votos, "prefs": prefs, "consultas": consultas}
+    return {
+        "follows": follows,
+        "votos": votos,
+        "prefs": prefs,
+        "consultas": consultas,
+        "vigilancia": vigilancia,
+    }
 
 
 def test_el_borrado_alcanza_follows_votos_y_preferencias() -> None:
@@ -54,13 +61,16 @@ def test_el_borrado_alcanza_follows_votos_y_preferencias() -> None:
     llamadas["consultas"].assert_called_once_with(5)
 
 
+def test_el_borrado_alcanza_las_empresas_vigiladas() -> None:
+    """`watchlist_empresas` guarda el correo de aviso y el borrado no la nombraba."""
+    _anonimizar(user_id=5)["vigilancia"].assert_called_once_with(5)
+
+
 def test_sin_user_id_solo_se_borra_lo_que_se_guarda_por_clave() -> None:
     llamadas = _anonimizar()
     # `follows` se identifica por id desde v181: sin él no hay nada suyo.
-    llamadas["follows"].assert_not_called()
-    llamadas["votos"].assert_not_called()
-    llamadas["prefs"].assert_not_called()
-    llamadas["consultas"].assert_not_called()
+    for nombre in ("follows", "votos", "prefs", "consultas", "vigilancia"):
+        llamadas[nombre].assert_not_called()
 
 
 def test_export_follows_delega_en_el_repositorio() -> None:

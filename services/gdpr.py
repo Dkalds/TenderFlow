@@ -25,7 +25,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from db import radar_dismissals
+from db import radar_dismissals, watchlist_empresas
 from db.repositories.api_keys import ApiKeyRepository
 from db.repositories.audit import AuditRepository
 from db.repositories.feedback import FeedbackRepository
@@ -62,6 +62,7 @@ EXPORT_TOPES: dict[str, int] = {
     "pursuit_tasks": 5000,
     "accesos": 5000,
     "asistente_feedback": 5000,
+    "vigilancia_empresas": 5000,
 }
 
 
@@ -167,8 +168,9 @@ def export_account_data(user_id: int, user_key: str) -> dict[str, list[dict[str,
 
     La fila de ``users`` (sin credenciales), los accesos, las sesiones activas
     (con el id público, nunca el hash), las preferencias de notificación, los
-    descartes vigentes del Radar, los votos del asistente, las tareas asignadas
-    y las consultas recientes del Investigador: todo lo que el borrado alcanza.
+    descartes vigentes del Radar, los votos del asistente, las tareas asignadas,
+    las empresas que vigila (con su correo de aviso) y las consultas recientes
+    del Investigador: todo lo que el borrado alcanza.
     Las claves son nombres de fichero del ZIP.
     """
     from db import sessions, users
@@ -188,6 +190,7 @@ def export_account_data(user_id: int, user_key: str) -> dict[str, list[dict[str,
         "descartes_radar": radar_dismissals.list_detalle(user_key, user_id=user_id),
         "asistente_feedback": asistente_feedback.exportar_de_usuario(user_id),
         "pursuit_tasks": _pursuit_task_repo.export_for_user(user_id),
+        "vigilancia_empresas": watchlist_empresas.exportar_de_usuario(user_id),
         "consultas_recientes": [
             {"consulta": consulta} for consulta in consultas_recientes.listar(user_id)
         ],
@@ -223,8 +226,8 @@ def anonymize_user_data(
 ) -> None:
     """Anonimiza/borra los datos personales del usuario (RGPD Art. 17).
 
-    Cubre watchlist (empresa/CPV), favoritos, reglas de watchlist por criterio,
-    perfil de scoring, alertas in-app y sus marcas de lectura, descartes del Radar, seguimientos
+    Cubre watchlist CPV, empresas vigiladas (``watchlist_empresas``),
+    favoritos, reglas de watchlist por criterio, perfil de scoring, alertas in-app y sus marcas de lectura, descartes del Radar, seguimientos
     (``follows``), votos del asistente, consultas recientes del Investigador, preferencias de notificación y de
     correo, el segundo factor (TOTP), las tareas asignadas y el nombre de la
     organización personal — todo lo persistido bajo ``user_key`` **o** ``user_id`` (v129: un
@@ -252,6 +255,7 @@ def anonymize_user_data(
         # guardado bajo un correo anterior lleva ese mismo id.
         _watchlist_repo.anonymize_cpv(user_id)
         _watchlist_repo.anonymize_items(user_id)
+        watchlist_empresas.borrar_de_usuario(user_id)
         delete_all_for_user(user_id)
         follows.borrar_de_usuario(user_id=user_id)
         _feedback_repo.delete_for_user(user_id)
