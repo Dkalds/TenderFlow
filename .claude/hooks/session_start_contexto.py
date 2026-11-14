@@ -158,6 +158,13 @@ def dependencias_en_el_python_del_sistema() -> bool:
     return all(importlib.util.find_spec(nombre) is not None for nombre in ("fastapi", "pytest"))
 
 
+def hook_de_git_instalado() -> bool:
+    """¿Hay `hooks/pre-commit` en el repo? (en un worktree vive en el checkout principal)"""
+    ruta = run(["git", "rev-parse", "--git-path", "hooks/pre-commit"], 5)
+    # Sin git no hay forma de saberlo: mejor callar que avisar en falso.
+    return not ruta or (ROOT / ruta).is_file()
+
+
 def env_definido() -> bool:
     """¿Alguien fija ``ENV``? Sin ella, ``config.settings`` asume producción."""
     if os.environ.get("ENV"):
@@ -200,6 +207,12 @@ def entorno(principal: pathlib.Path | None) -> list[str]:
             "que gana sobre `.env`: la suite falla por ella y un script apuntaría a esa base. "
             'Lanzá tests y scripts con el entorno limpio: `env -i PATH="$PATH" HOME="$HOME" '
             "ENV=dev <comando>`."
+        )
+    if (ROOT / ".pre-commit-config.yaml").is_file() and not hook_de_git_instalado():
+        lineas.append(
+            "Pre-commit: su hook de git no está instalado, así que `git commit` no pasa ruff, "
+            "detect-secrets ni el resto (AGENTS.md §3.7) y el fallo lo verá el CI. Con el `.venv` "
+            "activo: `pre-commit install`."
         )
     if (ROOT / "web/package.json").is_file() and not (ROOT / "web/node_modules").is_dir():
         lineas.append(
