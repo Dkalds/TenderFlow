@@ -13688,6 +13688,8 @@ export interface components {
             };
             /** Umbral Temeridad */
             umbral_temeridad?: number | null;
+            /** Umbral Temeridad Sobre */
+            umbral_temeridad_sobre?: ("presupuesto" | "media_ofertas") | null;
         };
         /** PriceScenario */
         PriceScenario: {
@@ -16184,6 +16186,8 @@ export interface components {
          * @description Respuesta del simulador: puntos por escenario, o el motivo de no calcular.
          */
         SimulacionPrecio: {
+            /** Baja Media */
+            baja_media?: number | null;
             /** Baja Referencia */
             baja_referencia?: number | null;
             /** Escenarios */
@@ -16204,6 +16208,13 @@ export interface components {
             puntos_precio_origen: "pliego" | "peso_precio" | "desconocido";
             /** Sin Calculo */
             sin_calculo?: ("sin_formula" | "formula_no_calculable" | "sin_puntos_de_precio") | null;
+            /**
+             * Temeridad Sobre Media
+             * @default false
+             */
+            temeridad_sobre_media: boolean;
+            /** Umbral Temeridad */
+            umbral_temeridad?: number | null;
         };
         /**
          * SocioSugerido
@@ -26332,6 +26343,8 @@ export interface operations {
                 baja?: number[];
                 /** @description Baja del rival contra el que medirse (p. ej. el p90 de la predicción) */
                 baja_referencia?: number | null;
+                /** @description Baja media esperada de las ofertas. Solo cuenta si el pliego mide la temeridad sobre la media (art. 85 RGLCAP); sin ella ese umbral no se marca. */
+                baja_media?: number | null;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;

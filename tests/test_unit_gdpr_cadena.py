@@ -77,6 +77,7 @@ def test_la_cadena_de_borrado_alcanza_tareas_y_segundo_factor(
         ("db.repositories.asistente_feedback", "borrar_de_usuario"),
         ("db.repositories.consultas_recientes", "borrar_de_usuario"),
         ("db.repositories.notification_preferences", "borrar_de_usuario"),
+        ("db.watchlist_empresas", "borrar_de_usuario"),
     ):
         monkeypatch.setattr(f"{modulo}.{funcion}", lambda *a, **k: 0)
     monkeypatch.setattr(gdpr, "delete_user_profile", lambda *a, **k: None)
@@ -160,6 +161,11 @@ def test_la_sesion_se_exporta_con_su_id_publico_y_sin_el_hash(
     monkeypatch.setattr("db.repositories.asistente_feedback.exportar_de_usuario", lambda uid: [])
     monkeypatch.setattr(gdpr._pursuit_task_repo, "export_for_user", lambda uid: [])
     monkeypatch.setattr("db.repositories.consultas_recientes.listar", lambda uid: ["sap"])
+    monkeypatch.setattr(
+        gdpr.watchlist_empresas,
+        "exportar_de_usuario",
+        lambda uid: [{"empresa_id": 8, "email": "yo@example.test"}],
+    )
 
     cuenta = gdpr.export_account_data(3, "clave")
 
@@ -171,9 +177,11 @@ def test_la_sesion_se_exporta_con_su_id_publico_y_sin_el_hash(
         "descartes_radar",
         "asistente_feedback",
         "pursuit_tasks",
+        "vigilancia_empresas",
         "consultas_recientes",
     }
     assert cuenta["consultas_recientes"] == [{"consulta": "sap"}]
+    assert cuenta["vigilancia_empresas"] == [{"empresa_id": 8, "email": "yo@example.test"}]
     (sesion,) = cuenta["sesiones"]
     assert "token_hash" not in sesion
     assert sesion["ip"] == "10.0.0.1"
