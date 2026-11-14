@@ -28,6 +28,10 @@ A la derecha: «Restaurar N descartadas» (solo si tienes alguna), un filtro por
 
 ### Radar: la lista
 
+![Radar con el inspector abierto](img/03-radar.webp)
+
+*El Radar: la bandeja ordenada por score y, a la derecha, el inspector de la señal seleccionada con su desglose.*
+
 La lista es **el top de hasta 24 licitaciones abiertas que mejor encajan con tu perfil**, no todas las abiertas; el pie lo recuerda («hasta 24 abiertas, las que mejor encajan con tu perfil»). Solo entran expedientes vivos (estado no terminal y plazo por vencer): lo resuelto, adjudicado o anulado no aparece.
 
 En pantallas anchas es una tabla con estas columnas:
@@ -89,6 +93,10 @@ Al seleccionar una fila se abre a la derecha (en pantallas muy anchas, fijo; en 
 - **Precisión de la banda Caliente en tu organización**: cuántas de las oportunidades abiertas desde esa banda se ganaron, sobre las ya resueltas. Por debajo del mínimo dice «sin datos suficientes» y cuántas resueltas lleva de las necesarias; si ninguna abierta desde Caliente ha llegado aún a un cierre, lo dice así. «Ver todas las bandas» despliega el cuadro completo, con la ventana de fechas y cuántas oportunidades guardan su banda. Solo aparece cuando hay oportunidades con banda guardada.
 
 ### Mi perfil
+
+![Mi perfil](img/03-mi-perfil.webp)
+
+*Mi perfil: palabras clave, CPV, rango de importe y pesos, con la vista previa «Así quedaría tu Radar».*
 
 La página tiene tres secciones y, a la derecha (debajo en pantallas estrechas), la vista previa:
 

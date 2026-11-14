@@ -24,6 +24,11 @@ Dos principios recorren todo el producto:
 - **No da probabilidad de ganar**, y tampoco sustituye a la fuente oficial:
   enlaza a ella.
 
+Las capturas de pantalla están tomadas de una instalación de prueba con
+**datos de ejemplo** (expedientes `SEED-2026-…`, un equipo ficticio y sus
+oportunidades): sirven para reconocer cada pantalla, no como cifras reales del
+mercado.
+
 ## Por dónde empezar según tu papel
 
 | Si eres… | Empieza por |

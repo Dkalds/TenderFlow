@@ -15,6 +15,10 @@
 
 ### Agenda: la franja de contadores
 
+![Agenda](img/06-agenda.webp)
+
+*La Agenda: contadores arriba, compromisos por tramos y el inspector del seleccionado.*
+
 Arriba, cinco botones con su cifra. Cada uno **filtra la lista** al pulsarlo y se quita pulsándolo otra vez; con cifra cero no se puede pulsar.
 
 | Contador | Qué cuenta |
@@ -59,6 +63,10 @@ En pantallas muy anchas, a la derecha, el panel **Detalle del compromiso** ense�
 Por debajo de ese ancho el inspector no se muestra; las acciones de cada fila siguen disponibles en la propia fila.
 
 ### Mi Watchlist: pestañas
+
+![Mi Watchlist](img/06-watchlist.webp)
+
+*Mi Watchlist: el formulario de nueva regla, las reglas guardadas y los resultados que casan.*
 
 Dos pestañas: **Reglas** (por defecto) y **Favoritos**.
 

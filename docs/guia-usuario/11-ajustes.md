@@ -29,6 +29,10 @@ Ajustes tiene cinco vistas, en este orden. La vista activa queda en la URL (`/aj
 
 ### Sesiones
 
+![Ajustes, Sesiones](img/11-ajustes-sesiones.webp)
+
+*Ajustes › Sesiones: dónde tienes la sesión abierta y cómo cerrarla.*
+
 El panel «Sesiones activas (N)» lista cada sesión abierta y sin caducar. Para cada una ves:
 
 - **Navegador y sistema**, deducidos de lo que el navegador declara (por ejemplo «Chrome · Windows»). Es una pista, no una identificación exacta del equipo. Si no hay datos, pone «Origen desconocido».
@@ -44,12 +48,20 @@ De arriba abajo:
 
 ### Claves de API
 
+![Ajustes, Claves de API](img/11-ajustes-claves.webp)
+
+*Ajustes › Claves de API: crear, rotar y revocar claves.*
+
 - **Nueva clave:** el campo «Nombre» (hasta 80 caracteres), el botón «Crear» y la casilla «Leer también mis alertas desde un lector de feeds».
 - **Tus claves (N):** cada clave con su nombre, una etiqueta con su **plan de uso** (el *tier*, por ejemplo `free`, que fija cuántas peticiones por minuto admite; no se cambia desde aquí) y, si ya no sirve, la etiqueta «Revocada» o «Caducada». Debajo, cuándo se creó, su último uso («Sin usar todavía» si nunca entró) y cuándo caduca o caducó. Las claves vivas tienen los botones «Rotar» y «Revocar».
 
 El último uso es el dato que te dice qué clave retirar: una que nadie usa desde hace meses es la primera candidata.
 
 ### Notificaciones
+
+![Ajustes, Notificaciones](img/11-ajustes-notificaciones.webp)
+
+*Ajustes › Notificaciones: para cada tipo de aviso, qué llega a la aplicación, al correo y al webhook.*
 
 Un panel «Qué avisos quieres recibir» con una fila por tipo de aviso. La lista la manda el servidor, así que si aparece un tipo nuevo lo verás aquí sin que nadie toque la pantalla. Hoy los tipos son:
 

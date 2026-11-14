@@ -39,6 +39,10 @@ En el Resumen, el atajo a Tiempo se llama «Tendencias». En ⌘K cada vista apa
 
 ### Tiempo
 
+![Mercado, vista Tiempo](img/07-mercado-tiempo.webp)
+
+*Mercado › Tiempo: cuánto se publica cada mes y el importe acumulado.*
+
 - **Tira de KPIs:** «Licitaciones» e «Importe total» (suma de la serie del ámbito), «Variación interanual (licitaciones)» y «Variación interanual (importe)» (últimos 365 días frente a los 365 anteriores; con «—» y «Hace falta el año anterior completo» si no hay un año previo completo) y «Mes con más importe», con su importe y número de licitaciones.
 - **Licitaciones por mes:** barras; pulsar una abre en Detalle las licitaciones publicadas ese mes.
 - **Importe acumulado**, **Variación mensual del número de licitaciones** y **Licitaciones por tramo de importe** (pasa a escala logarítmica cuando los tramos son muy desiguales, y lo indica).
@@ -62,6 +66,10 @@ Arriba, el conmutador **«Vencimientos» / «Publicaciones»** y el selector de 
 
 ### Geografía
 
+![Mercado, vista Geografía](img/07-mercado-geografia.webp)
+
+*Mercado › Geografía: el mapa por comunidad autónoma.*
+
 - **KPIs:** «CCAA más activa», «Concentración en las 3 primeras» (porcentaje del total de licitaciones), «CCAA con licitaciones» y «Mayor importe medio» (la CCAA con más importe por licitación).
 - **Mapa** por comunidad autónoma, con el conmutador «Licitaciones» / «Importe».
 - **CCAA por número de licitaciones** y **Reparto del importe por CCAA** (con más de diez comunidades, las nueve primeras y «Otros»). Los dos dicen «Pulsa una para filtrar».
@@ -70,6 +78,10 @@ Arriba, el conmutador **«Vencimientos» / «Publicaciones»** y el selector de 
 - Botón **«Exportar geografía»** (CSV o Excel).
 
 ### Tecnologías
+
+![Mercado, vista Tecnologías](img/07-mercado-tecnologias.webp)
+
+*Mercado › Tecnologías: qué tecnologías se licitan y cómo evolucionan.*
 
 - **KPIs:** «Tecnologías detectadas» (con cuántas licitaciones quedan sin clasificar), «Tecnología líder», «Importe medio por tecnología» y «Tasa de adjudicación» (media por tecnología).
 - **Licitaciones con tecnología identificada:** porcentaje del ámbito que el clasificador ha asignado a alguna tecnología, con «N sin clasificar de M licitaciones». Por debajo del 70 % se pone en ámbar y avisa: «las cifras de esta vista se quedan cortas».

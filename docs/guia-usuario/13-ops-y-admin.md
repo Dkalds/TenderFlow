@@ -18,6 +18,10 @@ El espacio aparece solo a quien tiene el rol de administrador de plataforma: en 
 
 ### La tira de salud (encima de todas las vistas)
 
+![Ops y Admin, vista Estado](img/13-ops.webp)
+
+*Ops y Admin › Estado: la tira de salud, los componentes y los errores del navegador.*
+
 Cuatro cifras que no cambian al cambiar de vista. Cada una es un enlace a la vista donde se contesta entera:
 
 | Celda | Qué dice | Lleva a |

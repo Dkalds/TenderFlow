@@ -28,6 +28,10 @@ La pestaña elegida queda en la URL (`/cuentas?vista=mercado` para la segunda), 
 
 ### La tabla de cuentas
 
+![Cuentas seguidas](img/08-cuentas.webp)
+
+*Cuentas: los órganos que el equipo trabaja como clientes.*
+
 Cada fila es una cuenta. Debajo del nombre aparece el órgano (si la cuenta tiene uno con otro nombre), o «N órganos» si tiene varios, y la nota en cursiva si la hay.
 
 | Columna | Qué significa |
@@ -47,6 +51,10 @@ Bajo la tabla, el desplegable **Qué cuentan estas cifras** explica, para cada c
 Si tu equipo aún no sigue nada, la pantalla lo dice («Tu equipo todavía no sigue ninguna cuenta») y, si tu rol puede escribir, ofrece el botón **Nueva cuenta**.
 
 ### La ficha de una cuenta (`/cuentas/<número>`)
+
+![Ficha de una cuenta](img/08-ficha-cuenta.webp)
+
+*La ficha de una cuenta: publicaciones, contratos que vencen, oportunidades del equipo y análisis por órgano.*
 
 Arriba, el enlace **Cuentas** para volver, las etiquetas, el nombre y la nota. A la derecha, **Editar** y **Dejar de seguir** (solo si tu rol puede escribir) y la X para cerrar la ficha (vuelve a la lista).
 

@@ -17,6 +17,10 @@ El espacio tiene tres vistas, que se eligen en la cabecera: **Tablero** (la de e
 
 ### Tablero
 
+![Tablero de oportunidades](img/05-tablero.webp)
+
+*El tablero de Oportunidades, con una columna por fase.*
+
 Una franja de cuatro cifras de toda la organización y, debajo, una columna por fase:
 
 | Columna | Qué significa |
@@ -46,6 +50,10 @@ Los porcentajes por fase son **supuestos de la organización**, no una probabili
 En la cabecera del tablero están los filtros y la exportación: «Exportar a CRM», el selector de responsable (solo si la organización tiene al menos dos miembros activos), el de plazo («Cualquier plazo», «Plazo vencido», «Vence en 7 días», «Vence en 30 días»), el de etiqueta (solo si tu organización usa etiquetas) y la búsqueda «Título, referencia o responsable».
 
 ### Ficha de una oportunidad
+
+![Ficha de una oportunidad](img/05-ficha-oportunidad.webp)
+
+*La ficha de una oportunidad: fases arriba, checklist GO/NO-GO, condiciones para avanzar y decisión del comité.*
 
 Al pulsar el título de una tarjeta se abre `/oportunidades/<id>`. Arriba: el expediente, el lote (o «Expediente completo»), las etiquetas (con el control para ponerlas o quitarlas), el título, el órgano y el responsable, y los botones «Descargar PDF» (una hoja resumen de la oportunidad), «Preguntar a la IA» (abre el asistente con este expediente como contexto), «Ver en Detalle» y la X para volver al tablero.
 
@@ -90,6 +98,10 @@ La tabla «Contratos en ejecución» tiene las columnas Contrato, Fin efectivo, 
 En pantallas anchas, el botón «Detalle» de cada fila abre a la derecha el contrato con su inicio, importe, enlace al expediente y la **Cronología del contrato** (adjudicación, formalización, modificaciones de importe, prórrogas, anulación) tal como la publica la fuente.
 
 ### Rendimiento
+
+![Vista Rendimiento](img/05-rendimiento.webp)
+
+*Rendimiento: embudo, valor ponderado del pipeline y calidad del Radar.*
 
 `/oportunidades?vista=rendimiento` mide el embudo en una ventana que eliges arriba a la derecha: «12 meses», «Este año» o «Histórico» (por defecto). La línea «Ventana:» dice las fechas exactas. Todas las cifras las calcula el servidor sobre esa ventana:
 

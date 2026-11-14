@@ -36,6 +36,10 @@ Un panel plegado debajo de la caja. Lo que cambies se guarda **solo en este nave
 
 ### La lista de resultados
 
+![Investigador con resultados](img/10-investigador.webp)
+
+*El Investigador tras una búsqueda: la barra del asistente y la lista de resultados con los términos resaltados.*
+
 Arriba, el recuento («12 resultados», o «Los primeros 10 resultados» si hay más) y una etiqueta con **cómo se buscó**, con su explicación debajo:
 
 | Etiqueta | Qué significa |

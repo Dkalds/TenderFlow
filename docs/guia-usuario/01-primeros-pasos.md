@@ -16,6 +16,10 @@ TenderFlow no tiene alta libre ni planes de pago: el acceso es por concesión. S
 
 ### La puerta de entrada (`/login`)
 
+![Pantalla de acceso](img/01-login.webp)
+
+*La puerta de entrada: pestañas «Iniciar sesión» y «Crear cuenta», acceso con Google y formulario de correo y contraseña.*
+
 Junto al título «Entra en TenderFlow» hay un panel con, de arriba abajo:
 
 - Dos pestañas: **«Iniciar sesión»** y **«Crear cuenta»**.
@@ -28,6 +32,10 @@ Si llegas con un enlace de invitación a un equipo, encima de los botones de acc
 Si ya tienes la sesión abierta, la puerta no te pide nada: dice «Ya has entrado como …» y ofrece «Ir a Resumen» (o «Continuar», si venías de otra pantalla) y «Entrar con otra cuenta».
 
 ### La consola
+
+![Consola con el rail, la barra de ámbito y el aviso del ámbito](img/01-consola-ambito.webp)
+
+*La consola: el rail de espacios a la izquierda, la barra de ámbito arriba y, la primera vez, el aviso que explica qué es el ámbito.*
 
 Una vez dentro, toda pantalla tiene las mismas piezas fijas:
 
@@ -151,6 +159,10 @@ Las vistas se guardan en tu cuenta, no en el navegador, y van ligadas a la organ
 
 ### Buscar y saltar con la paleta ⌘K
 
+![Paleta de comandos abierta](img/01-paleta.webp)
+
+*La paleta ⌘K: acciones, espacios y vistas a un atajo de distancia.*
+
 1. Pulsa `Ctrl+K` (`⌘K` en Mac) desde cualquier sitio, o el botón «Buscar» de la barra.
 2. Escribe. La paleta ofrece:
    - **Saltar a:** «Ir a licitación …» si lo escrito parece un identificador de expediente, o «Buscar «…» en licitaciones», que abre Detalle con esa búsqueda.
@@ -183,6 +195,10 @@ Los atajos de una sola tecla no actúan mientras escribes en un campo o estás d
 Con `Ctrl`-clic (`⌘`-clic en Mac), `Mayús`-clic o el botón central del ratón, el enlace se comporta como cualquier enlace del navegador: abre Detalle con esa licitación seleccionada (por ejemplo, en otra pestaña). En Detalle y en el Radar el clic abre su propio panel de la lista, no este. Qué contiene la ficha está en [Detalle y ficha de la licitación](04-detalle-y-ficha.md).
 
 ### Revisar la campana
+
+![Campana de notificaciones abierta](img/01-campana.webp)
+
+*La campana abierta, aquí todavía sin avisos.*
 
 1. El número sobre la campana son tus avisos sin leer en la organización activa. Se actualiza solo cada pocos minutos.
 2. Pulsa la campana: verás las notificaciones más recientes, con un punto en las no leídas. Mirar la lista no marca nada; cada aviso se marca como leído al abrirlo. «Marcar todo como leído» es una acción aparte.

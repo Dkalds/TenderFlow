@@ -30,6 +30,10 @@ Qué filtros de la barra de ámbito aplica cada vista:
 
 ### Vista Competidores
 
+![Competencia, vista Competidores](img/09-competencia.webp)
+
+*Competencia › Competidores: reparto del mercado, mapa de competidores y empresas vigiladas.*
+
 Primero el dibujo y después la lista. De arriba abajo:
 
 - **Titular**: la conclusión en una frase, por ejemplo «5 empresas se reparten el 45 % de los 312,4 M€ adjudicados en el ámbito». Debajo, cuántas empresas adjudicatarias hay. Si el sistema solo ha recibido las empresas con más adjudicaciones, lo dice («la cifra cuenta solo las N con más adjudicaciones»).

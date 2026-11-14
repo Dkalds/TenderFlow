@@ -18,6 +18,10 @@ TenderFlow solo recoge contratos tecnológicos: Detalle es el listado de ese rad
 
 ### La tabla
 
+![Detalle](img/04-detalle.webp)
+
+*Detalle: todas las licitaciones del ámbito, campo a campo.*
+
 Arriba, la barra de la tabla: «Detalle — Las licitaciones del ámbito, campo a campo», los recortes activos (cada uno con su «×» para quitarlo), «Ordenar por», el filtro de etiqueta y la densidad («Cómoda» / «Compacta»).
 
 | Columna | Qué muestra |
@@ -36,6 +40,10 @@ La comunidad autónoma y la tecnología de cada fila son botones: al pulsarlos s
 Al pie: «Mostrando 26–50 de 1.204», los atajos de teclado (en pantallas anchas) y la paginación (25 filas por página). Si aparece la etiqueta **«Orden sobre esta página»**, el orden que has elegido solo reordena las 25 filas que ves, no el total: solo Título, Importe y Publicación se ordenan sobre todas las licitaciones.
 
 ### La ficha en el panel lateral
+
+![Ficha de la licitación en el panel lateral](img/04-ficha-lateral.webp)
+
+*La ficha en el panel lateral, sin salir del listado.*
 
 Al pulsar una fila se abre su ficha. Dónde aparece depende del ancho de la pantalla: al lado de la tabla en pantallas muy anchas, como panel superpuesto en pantallas medianas, y a pantalla entera (la ficha completa) en el móvil.
 

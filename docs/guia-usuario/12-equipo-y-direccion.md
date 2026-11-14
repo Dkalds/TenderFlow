@@ -15,6 +15,10 @@ Todo lo que ves en los dos espacios es de la **organización activa**. Se cambia
 
 ### Equipo
 
+![Equipo, pestaña Miembros](img/12-equipo.webp)
+
+*Equipo › Miembros: la organización activa, sus personas con su rol y las invitaciones pendientes.*
+
 Arriba, el panel **«Crear organización»** (para trabajar en equipo con otras personas). Debajo, cuatro pestañas: **Miembros**, **Organización**, **Actividad** e **Integraciones** (esta última solo si eres propietario o administrador).
 
 **Miembros**
@@ -49,6 +53,10 @@ Identidad fiscal, perfil de capacidad, tareas y probabilidades no aparecen en la
 **Integraciones**: los webhooks de la organización. Se explican en [Web pública e integraciones](14-web-publica-e-integraciones.md).
 
 ### Dirección
+
+![Dirección](img/12-direccion.webp)
+
+*Dirección › Resultado, aquí con menos de cinco cierres: la pantalla dice por qué todavía no da tasa de éxito.*
 
 Tres vistas: **Resultado**, **Carga del equipo** y **Actividad del equipo**. Quien no es propietario ni administrador ve en las tres «Dirección es solo para propietarios y administradores».
 
@@ -101,6 +109,10 @@ Hay un tope de 100 altas e invitaciones al día por persona.
 El propietario no se puede degradar ni revocar desde aquí: se traspasa.
 
 ### Declarar el ámbito tecnológico
+
+![Equipo, pestaña Organización](img/12-equipo-organizacion.webp)
+
+*Equipo › Organización: las tecnologías de la organización y el informe semanal por correo.*
 
 1. En **Organización › Tecnologías de tu organización**, marca las familias.
 2. Pulsa **«Guardar tecnologías»**. El Radar ya puntúa con ese ámbito.

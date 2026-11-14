@@ -27,6 +27,10 @@ Todas las páginas públicas comparten cabecera y pie. En la cabecera: el logoti
 
 ### La portada
 
+![Portada de la web pública](img/14-portada.webp)
+
+*La portada pública, con los últimos anuncios publicados.*
+
 De arriba abajo:
 
 - **El titular** «Licitaciones TI: dónde pujar, a qué precio, contra quién», la advertencia «Si vendes obra pública, sanidad o suministros generales, esto no te sirve», los botones «Solicita acceso» y «Cómo funciona», y la nota de fuentes (PLACSP cada cuatro horas, TED y los canales de Galicia y Euskadi). Junto al titular, **«Últimos anuncios publicados»**: cinco anuncios reales, con la fecha del más reciente («El más reciente:») y el enlace «Explorar los anuncios por comunidad autónoma».
@@ -52,6 +56,10 @@ De arriba abajo:
 - Los botones **«Más licitaciones en <comunidad>»** y **«Ya tengo cuenta»**, y el cierre «Esto es solo la parte pública» con «Solicita acceso».
 
 ### Cobertura, Metodología y Seguridad
+
+![Página de Cobertura](img/14-cobertura.webp)
+
+*Cobertura: qué entra en TenderFlow y qué queda fuera.*
 
 - **Cobertura** lista las **«Fuentes declaradas»** con su estado: **«Activa»** (se ingiere en cada pasada y su silencio genera una alerta), **«Opcional»** (puede estar apagada porque le falta configuración) o **«Fuera de alcance»**. Cada una dice su alcance, su identificador y tras cuántas horas sin una ingesta correcta se declara atrasada. Debajo, **«Fuera de alcance declarado»**, con la fecha de cada decisión. La lista sale del mismo inventario que vigila la ingesta; si no se pudo leer, la página lo dice en vez de enseñar una lista incompleta. No hay ninguna cuota de mercado: cada fuente cubre un universo distinto y no se suman. Al final, **«Familias observadas»**: los fabricantes y categorías de TI que el producto reconoce.
 - **Metodología** explica el score (de 0 a 100; pesos por defecto 20, 15, 20, 20, 15 y 10 para importe, plazo, competencia, margen, afinidad y señal técnica; bandas Caliente desde 75, Atractiva desde 50, Tibia desde 25 y Descarte por debajo), la referencia de precio (responde «insuficiente» con menos de 30 pares comparables) y el contexto competitivo.

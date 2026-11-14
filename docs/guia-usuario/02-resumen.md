@@ -15,6 +15,10 @@ Para llegar: el logotipo y la entrada «Resumen» de la barra lateral, o la tecl
 
 ## Qué ves en pantalla
 
+![Resumen](img/02-resumen.webp)
+
+*El Resumen: Tu día, Mercado hoy, la cola de cierre, los cambios en lo que sigues y las publicaciones del ámbito.*
+
 La cabecera lleva el título, la frase «Qué tienes que hacer hoy y qué ha cambiado desde tu última visita.» (en pantallas anchas) y un campo «Pregúntale a tus licitaciones…» que abre el asistente con tu pregunta, sobre todas las licitaciones.
 
 Debajo, de arriba abajo (en un móvil las columnas se apilan en este mismo orden):
