@@ -638,6 +638,10 @@ def adjudicaciones_empresa(
 
     # S608 no aplica: `full_where` y `order_sql` salen de fragmentos constantes
     # y de la whitelist de orden; los valores van con %s.
+    # La baja va contra el lote y sin los pares imposibles, como en el dossier:
+    # contra el expediente, un lote de 100 € adjudicado en 87.095 € pasaba por
+    # una baja del 29,5 %. Este comentario no puede ir dentro del SQL: con
+    # parámetros, psycopg lee cualquier `%` como marcador.
     with connect_read() as c:
         total = int(
             c.execute(
@@ -663,9 +667,6 @@ def adjudicaciones_empresa(
                        l.importe AS presupuesto_licitacion,
                        {BASE_COMPARABLE_SQL} AS presupuesto_comparable,
                        a.importe_adjudicado,
-                       -- Contra el lote y sin los pares imposibles, como el
-                       -- dossier: contra el expediente, un lote de 100 €
-                       -- adjudicado en 87.095 € pasaba por una baja del 29,5 %.
                        CASE WHEN {VALID_PAIR_LOTE} THEN {BAJA_PCT_SQL} END AS baja_pct,
                        a.n_ofertas_recibidas
                 FROM adjudicaciones a
