@@ -132,6 +132,27 @@ def test_la_baja_media_del_dossier_descarta_los_pares_imposibles(
     assert perfil["totales"]["contratos"] == 7
 
 
+def test_los_contratos_recientes_no_ensenan_la_baja_de_un_par_imposible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    perfil = _perfil(monkeypatch, _abiertos() + _imposibles())
+    bajas = {c["licitacion_id"]: c["baja_pct"] for c in perfil["contratos_recientes"]}
+    # Contra el expediente, el lote de 100 € enseñaba un 29,5 % y el adjudicado de 0, un 100 %.
+    assert bajas["LIC-20"] is None
+    assert bajas["LIC-21"] is None
+    assert bajas["LIC-0"] == pytest.approx(20.0)
+
+
+def test_la_baja_de_un_contrato_reciente_se_mide_contra_el_lote(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Un lote de 20.000 € de un expediente de 100.000 €, adjudicado en 15.000 €.
+    fila = _adjudicacion(30, procedimiento="1", presupuesto=100_000, lote=20_000, adjudicado=15_000)
+    perfil = _perfil(monkeypatch, [fila])
+    (contrato,) = perfil["contratos_recientes"]
+    assert contrato["baja_pct"] == pytest.approx(25.0)
+
+
 def _filas_corte() -> list[Any]:
     return [
         {**fila, "importe": fila["presupuesto_licitacion"]} for fila in _abiertos() + _imposibles()

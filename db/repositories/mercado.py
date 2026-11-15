@@ -50,9 +50,11 @@ from typing import Any, Final, Literal, NamedTuple
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from db.sql_fragments import (
+    BAJA_PCT_SQL,
     BASE_COMPARABLE_SQL,
     FOLD_TABLE,
     TECHNOLOGY_OBSERVED_SQL,
+    VALID_PAIR_LOTE,
     WATCHED_COMPANY_AWARDS_SQL,
     escape_like,
     exclude_duplicados_sql,
@@ -660,14 +662,14 @@ def adjudicaciones_empresa(
                        l.tecnologia,
                        l.importe AS presupuesto_licitacion,
                        a.importe_adjudicado,
-                       CASE
-                         WHEN l.importe > 0 AND a.importe_adjudicado IS NOT NULL
-                         THEN (1.0 - (a.importe_adjudicado * 1.0) / l.importe) * 100
-                         ELSE NULL
-                       END AS baja_pct,
+                       -- Contra el lote y sin los pares imposibles, como el
+                       -- dossier: contra el expediente, un lote de 100 €
+                       -- adjudicado en 87.095 € pasaba por una baja del 29,5 %.
+                       CASE WHEN {VALID_PAIR_LOTE} THEN {BAJA_PCT_SQL} END AS baja_pct,
                        a.n_ofertas_recibidas
                 FROM adjudicaciones a
                 JOIN licitaciones l ON l.id_externo = a.licitacion_id
+                LEFT JOIN lotes lo ON lo.id = a.lote_id
                 WHERE {full_where}
                 ORDER BY {order_sql}
                 LIMIT %s OFFSET %s
