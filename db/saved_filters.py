@@ -9,11 +9,16 @@ argumento no obtenía «sin filtrar por organización» como decisión, lo
 obtenía por descuido, y el repositorio caía a una query sin ámbito sin
 decir nada. Ahora un llamador que la omita falla al tipar.
 
-Desde v129 (ADR-030 fase 2) la fila lleva también ``user_id`` y la lectura es
-dual: ver ``db/repositories/watchlist.py``. Desde v165 (fase 3) la vista se
-teclea por ``(user_id, name)`` —índice único parcial— y quien la guarda con id
-ya no escribe ``user_key``; el ``UNIQUE (user_key, name)`` queda para las filas
-sin id (API keys sin usuario).
+Identidad
+---------
+Desde v165 (ADR-030 fase 3) la vista se teclea por ``(user_id, name)`` —índice
+único parcial— y se guarda sin ``user_key``; el ``UNIQUE (user_key, name)``
+queda para las filas antiguas sin id. Desde v181 las funciones de este módulo
+solo reciben ``user_id``: la mitad legacy del predicado dual la resuelve la base
+con ``clave_legada_de_usuario(user_id)`` —la clave que daría el correo actual—,
+igual que ``db/repositories/follows.py``. Una fila con OTRO id y tu misma clave
+no es tuya: es lo que impide que quien registre mañana el correo que tú usabas
+herede tus vistas.
 """
 
 from __future__ import annotations
@@ -22,11 +27,11 @@ from typing import Any
 
 from db.database import connect, now_utc_iso
 
-#: Predicado de identidad dual. Parámetros: ``(user_id, user_key, user_id)``.
-_IDENT = "(user_id = %s OR (user_key = %s AND (user_id IS NULL OR %s::int IS NULL)))"
+#: Predicado de identidad. Parámetros: ``(user_id, user_id)``.
+_IDENT = "(user_id = %s OR (user_id IS NULL AND user_key = clave_legada_de_usuario(%s)))"
 
 #: El mismo predicado con el alias ``f`` (el ``UPDATE`` de :func:`save_filter`).
-_IDENT_F = "(f.user_id = %s OR (f.user_key = %s AND (f.user_id IS NULL OR %s::int IS NULL)))"
+_IDENT_F = "(f.user_id = %s OR (f.user_id IS NULL AND f.user_key = clave_legada_de_usuario(%s)))"
 
 #: El id que adopta una vista sin él al actualizarla: ``NULL`` si la persona ya
 #: tiene otra vista con ese nombre bajo su id (adoptarlo chocaría con el índice
@@ -38,33 +43,27 @@ _ADOPTAR_ID = (
 
 
 def save_filter(
-    user_key: str,
     name: str,
     filters_json: str,
     organization_id: int,
     visibility: str = "private",
     *,
-    user_id: int | None = None,
+    user_id: int,
 ) -> None:
     """Guarda o actualiza un filtro con nombre para el usuario.
 
     Si el usuario ya tiene una vista con ese ``name`` la sobreescribe. «Ya la
-    tiene» se decide con la identidad dual y no sólo con ``UNIQUE(user_key,
-    name)``: tras un cambio de correo la vista antigua lleva otra clave, y el
-    ``ON CONFLICT`` a secas habría creado una segunda «Mi vista» en vez de
-    actualizar la que existe. Primero se intenta el ``UPDATE`` por identidad;
-    el ``INSERT ... ON CONFLICT`` queda para la fila nueva y para la carrera.
+    tiene» se decide con la identidad dual y no sólo con el índice: una vista
+    anterior a v129 lleva solo la clave del correo, y el ``ON CONFLICT`` a secas
+    habría creado una segunda «Mi vista» en vez de actualizar la que existe.
+    Primero se intenta el ``UPDATE`` por identidad; el ``INSERT ... ON
+    CONFLICT`` queda para la fila nueva y para la carrera.
 
-    Con ``user_id`` la vista nueva nace **sin** ``user_key`` y el árbitro es el
-    índice parcial ``(user_id, name)`` de v165; sin él, la clave y el
-    ``UNIQUE (user_key, name)`` de siempre. El ``UPDATE`` adopta el id en una
-    vista que no lo tenía salvo que ya haya otra con ese nombre bajo el id.
+    La vista nueva nace sin ``user_key`` y su árbitro es el índice parcial
+    ``(user_id, name)`` de v165. El ``UPDATE`` adopta el id en una vista que no
+    lo tenía salvo que ya haya otra con ese nombre bajo el id.
     """
     now = now_utc_iso()
-    if user_id is not None:
-        clave, conflicto = None, "ON CONFLICT (user_id, name) WHERE user_id IS NOT NULL"
-    else:
-        clave, conflicto = user_key, "ON CONFLICT (user_key, name)"
     with connect() as c:
         cur = c.execute(
             "UPDATE saved_filters AS f SET filters_json = %s, created_at = %s, "
@@ -79,7 +78,6 @@ def save_filter(
                 user_id,
                 user_id,
                 user_id,
-                user_key,
                 user_id,
                 name,
             ),
@@ -88,17 +86,16 @@ def save_filter(
             return
         c.execute(
             "INSERT INTO saved_filters "
-            "(user_key, user_id, name, filters_json, created_at, organization_id, visibility) "
-            f"VALUES (%s, %s, %s, %s, %s, %s, %s) {conflicto} DO UPDATE SET "
+            "(user_id, name, filters_json, created_at, organization_id, visibility) "
+            "VALUES (%s, %s, %s, %s, %s, %s) "
+            "ON CONFLICT (user_id, name) WHERE user_id IS NOT NULL DO UPDATE SET "
             "filters_json = excluded.filters_json, created_at = excluded.created_at, "
             "organization_id = excluded.organization_id, visibility = excluded.visibility",
-            (clave, user_id, name, filters_json, now, organization_id, visibility),
+            (user_id, name, filters_json, now, organization_id, visibility),
         )
 
 
-def list_saved_filters(
-    user_key: str, organization_id: int, *, user_id: int | None = None
-) -> list[dict[str, Any]]:
+def list_saved_filters(organization_id: int, *, user_id: int) -> list[dict[str, Any]]:
     """Devuelve los filtros guardados del usuario, más recientes primero."""
     with connect() as c:
         cur = c.execute(
@@ -106,13 +103,13 @@ def list_saved_filters(
             "FROM saved_filters WHERE organization_id = %s "
             f"AND (visibility = 'organization' OR {_IDENT}) "
             "ORDER BY created_at DESC",
-            (organization_id, user_id, user_key, user_id),
+            (organization_id, user_id, user_id),
         )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
 
-def list_own_saved_filters(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+def list_own_saved_filters(*, user_id: int) -> list[dict[str, Any]]:
     """Todas las vistas propias del usuario, sin ámbito de organización.
 
     Es el camino del export GDPR (Art. 15/20): la pregunta es qué guarda el
@@ -124,19 +121,13 @@ def list_own_saved_filters(user_key: str, *, user_id: int | None = None) -> list
         cur = c.execute(
             "SELECT id, name, filters_json, created_at, organization_id, visibility "
             f"FROM saved_filters WHERE {_IDENT} ORDER BY created_at DESC",
-            (user_id, user_key, user_id),
+            (user_id, user_id),
         )
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
 
-def delete_saved_filter(
-    filter_id: int,
-    *,
-    user_key: str,
-    organization_id: int,
-    user_id: int | None = None,
-) -> bool:
+def delete_saved_filter(filter_id: int, *, organization_id: int, user_id: int) -> bool:
     """Elimina un filtro guardado por ID, siempre acotado a su dueño.
 
     ``False`` si no existe, no es del usuario o es de otra organización.
@@ -158,20 +149,21 @@ def delete_saved_filter(
     with connect() as c:
         cur = c.execute(
             f"DELETE FROM saved_filters WHERE id = %s AND organization_id = %s AND {_IDENT}",
-            (filter_id, organization_id, user_id, user_key, user_id),
+            (filter_id, organization_id, user_id, user_id),
         )
         return bool(cur.rowcount > 0)
 
 
-def delete_all_for_user(user_key: str, *, user_id: int | None = None) -> int:
+def delete_all_for_user(*, user_id: int) -> int:
     """Borra todas las vistas del usuario (GDPR Art. 17). Filas borradas.
 
     Son dato personal (ADR-030 §D): hasta v129 el borrado de cuenta no las
-    tocaba y una vista guardada sobrevivía a su dueño.
+    tocaba y una vista guardada sobrevivía a su dueño. Va antes de anonimizar
+    ``users``: ``clave_legada_de_usuario`` deriva la clave del correo vigente.
     """
     with connect() as c:
         cur = c.execute(
             f"DELETE FROM saved_filters WHERE {_IDENT}",
-            (user_id, user_key, user_id),
+            (user_id, user_id),
         )
         return int(cur.rowcount)

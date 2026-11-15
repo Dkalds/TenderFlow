@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Download, Search } from "lucide-react";
 
 import { Panel, PanelError, PanelTitle } from "@/components/console/panel";
@@ -14,13 +13,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useDebounce } from "@/hooks/use-debounce";
-import { fetchWithAuth } from "@/lib/api-client";
+import { todasLasAdjudicaciones, useAdjudicacionesEmpresa } from "@/hooks/use-empresa-competencia";
 import { csvBlob, descargarBlob } from "@/lib/export";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { EMPTY, formatCurrency, formatDate, formatNumber, formatPercent, truncate } from "@/lib/utils";
-
-import type { CompanyAward, CompanyAwardsData } from "./company-profile-types";
-import { competitiveKeys } from "@/lib/query-keys";
 
 interface CompanyAwardsProps {
   empresaId: number;
@@ -36,23 +31,22 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
   const debouncedSearch = useDebounce(search, 300);
   const debouncedOrgan = useDebounce(organ, 300);
 
-  const params = useMemo(() => {
+  // Filtros y orden, sin la página: lo que comparten la tabla y la exportación.
+  const filtros = useMemo(() => {
     const next = new URLSearchParams(scopeQuery);
     if (debouncedSearch) next.set("q", debouncedSearch);
     if (debouncedOrgan) next.set("organo", debouncedOrgan);
     next.set("sort", sort);
+    return next.toString();
+  }, [debouncedOrgan, debouncedSearch, scopeQuery, sort]);
+  const params = useMemo(() => {
+    const next = new URLSearchParams(filtros);
     next.set("limit", "25");
     next.set("offset", String(offset));
     return next.toString();
-  }, [debouncedOrgan, debouncedSearch, offset, scopeQuery, sort]);
+  }, [filtros, offset]);
 
-  const { data, isLoading, error, refetch } = useQuery<CompanyAwardsData>({
-    queryKey: competitiveKeys.companyAwards(empresaId, params),
-    queryFn: () => fetchWithAuth(`/api/v1/competitive/empresas/${empresaId}/adjudicaciones?${params}`),
-    placeholderData: keepPreviousData,
-    // El fallo se dice en la tabla (PanelError), no como «no hay adjudicaciones».
-    meta: META_ERROR_EN_LINEA,
-  });
+  const { data, isLoading, error, refetch } = useAdjudicacionesEmpresa(empresaId, params);
 
   function updateSearch(value: string) {
     setSearch(value);
@@ -72,28 +66,7 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
   async function exportAwards() {
     setIsExporting(true);
     try {
-      const pedirPagina = (pageOffset: number) => {
-        const exportParams = new URLSearchParams(scopeQuery);
-        if (debouncedSearch) exportParams.set("q", debouncedSearch);
-        if (debouncedOrgan) exportParams.set("organo", debouncedOrgan);
-        exportParams.set("sort", sort);
-        exportParams.set("limit", "500");
-        exportParams.set("offset", String(pageOffset));
-        return fetchWithAuth<CompanyAwardsData>(
-          `/api/v1/competitive/empresas/${empresaId}/adjudicaciones?${exportParams.toString()}`,
-        );
-      };
-      const primera = await pedirPagina(0);
-      const rows: CompanyAward[] = [...(primera.items ?? [])];
-      // El paso es lo que devolvió la primera página: el backend puede recortar el `limit`.
-      const paso = rows.length;
-      const restantes: number[] = [];
-      if (paso > 0) for (let o = paso; o < primera.total; o += paso) restantes.push(o);
-      // De tres en tres: en paralelo, pero sin disparar decenas de peticiones a la vez.
-      for (let i = 0; i < restantes.length; i += 3) {
-        const paginas = await Promise.all(restantes.slice(i, i + 3).map(pedirPagina));
-        for (const pagina of paginas) rows.push(...(pagina.items ?? []));
-      }
+      const rows = await todasLasAdjudicaciones(empresaId, filtros);
 
       const header = [
         "Fecha",

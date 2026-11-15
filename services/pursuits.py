@@ -92,6 +92,7 @@ from shared.dto import (
     RadarBandaCalidad,
     RadarQuality,
 )
+from shared.events import tipos_de_cambio_pursuit
 from shared.tender_facts import RequiredDocumentFact
 
 _repo = PursuitRepository()
@@ -204,7 +205,9 @@ def create_pursuit(
             desglose_al_abrir=_serializar_desglose(body.desglose_al_abrir),
         )
         if created:
-            _adelantar_aviso_de_asignacion(row, actor_user_id=user_id)
+            # `pursuit.created` (y el `pursuit.assigned` si lo hay) ya están en
+            # el outbox: una pasada a demanda reparte los dos.
+            solicitar_despacho_de_eventos("pursuit.created")
         return PursuitSummary.model_validate(row), created
 
 
@@ -536,7 +539,10 @@ def update_pursuit(
             raise PursuitNotFoundError("Oportunidad no encontrada.")
         if fila_acta is not None:
             _anotar_fila_acta(resolved_id, pursuit_id, user_id, fila_acta, idempotency_key)
-        if changes.get("responsible_user_id") is not None:
+        if tipos_de_cambio_pursuit(current, changes):
+            # Una pasada reparte también el `pursuit.assigned` del mismo cambio.
+            solicitar_despacho_de_eventos("pursuit.state_changed")
+        elif changes.get("responsible_user_id") is not None:
             _adelantar_aviso_de_asignacion(updated, actor_user_id=user_id)
         if changes.get("status") == "preparing":
             _instanciar_plantilla_tareas(updated, resolved_id, pursuit_id, user_id)

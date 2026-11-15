@@ -29,13 +29,23 @@ export interface CalidadDatos {
   fechasNoIso: number;
 }
 
-export function useCalidadDatos(): CalidadDatos {
-  const { data, isLoading, isError, error, refetch } = useQuery<QualityData>({
+/**
+ * `GET /analytics/quality` tal cual. La única `queryFn` de su clave: la tira de
+ * salud la usa con `staleTime` (está en todas las vistas de Ops y no debe
+ * repetir la petición al cambiar de una a otra) y la vista de Calidad sin él.
+ */
+export function useQuality({ staleTime }: { staleTime?: number } = {}) {
+  return useQuery<QualityData>({
     queryKey: analyticsKeys.quality,
     queryFn: () => fetchWithAuth<QualityData>("/api/v1/analytics/quality"),
-    // El fallo se pinta en la pantalla (`PanelError`): sin toast encima.
+    staleTime,
+    // El fallo se pinta donde se lee (`PanelError` o la celda «sin dato»): sin toast encima.
     meta: META_ERROR_EN_LINEA,
   });
+}
+
+export function useCalidadDatos(): CalidadDatos {
+  const { data, isLoading, isError, error, refetch } = useQuality();
 
   return {
     data,

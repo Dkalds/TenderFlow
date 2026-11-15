@@ -417,8 +417,70 @@ class TestComputeF1Drop:
         ):
             with patch("db.database.connect", return_value=mock_connect):
                 with patch("services.ml.sap_classifier.SAPClassifier", mock_clf_cls):
-                    result = compute_f1_drop(min_labelled=5)
+                    with patch(
+                        "services.ml.model_artifacts.resolve_active_artifact",
+                        return_value=Path("resuelto.pkl"),
+                    ):
+                        result = compute_f1_drop(min_labelled=5)
         assert result > 0.0  # there should be a drop since predictions are all wrong
+
+    def _filas_y_conexion(self) -> MagicMock:
+        mock_connect = MagicMock()
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value.fetchall.return_value = [
+            ("exp", 1, "titulo", "desc", "cpv", 100)
+        ] * 25
+        mock_connect.__enter__ = MagicMock(return_value=mock_conn)
+        mock_connect.__exit__ = MagicMock(return_value=False)
+        return mock_connect
+
+    def test_carga_el_artefacto_resuelto_no_el_path_del_registro(self):
+        """El ``path`` del registro es la ruta del runner que entrenó la versión:
+        en otro runner no existe. Se carga lo que resuelve
+        ``resolve_active_artifact`` (verificado por sha256)."""
+        from scheduler.drift_report import compute_f1_drop
+
+        mock_clf_cls = MagicMock()
+        mock_clf_cls.load.return_value.predict.return_value = (1, 0.9)
+        resuelto = Path("cache") / "sap_classifier-abc123.pkl"
+
+        with patch(
+            "db.model_registry.get_active",
+            return_value={
+                "metrics": {"golden_holdout_f1": 0.9},
+                "path": "/home/runner/work/data/models/sap_classifier-abc123.pkl",
+            },
+        ):
+            with patch("db.database.connect", return_value=self._filas_y_conexion()):
+                with patch("services.ml.sap_classifier.SAPClassifier", mock_clf_cls):
+                    with patch(
+                        "services.ml.model_artifacts.resolve_active_artifact",
+                        return_value=resuelto,
+                    ) as resolver:
+                        compute_f1_drop(min_labelled=5)
+
+        resolver.assert_called_once_with("sap_classifier")
+        mock_clf_cls.load.assert_called_once_with(resuelto)
+
+    def test_artefacto_irresoluble_devuelve_cero_sin_cargar(self):
+        from scheduler.drift_report import compute_f1_drop
+
+        mock_clf_cls = MagicMock()
+
+        with patch(
+            "db.model_registry.get_active",
+            return_value={"metrics": {"golden_holdout_f1": 0.9}, "path": "model.pkl"},
+        ):
+            with patch("db.database.connect", return_value=self._filas_y_conexion()):
+                with patch("services.ml.sap_classifier.SAPClassifier", mock_clf_cls):
+                    with patch(
+                        "services.ml.model_artifacts.resolve_active_artifact",
+                        return_value=None,
+                    ):
+                        result = compute_f1_drop(min_labelled=5)
+
+        assert result == 0.0
+        mock_clf_cls.load.assert_not_called()
 
     def test_cuenta_una_revision_por_expediente_la_mas_reciente(self):
         """Con correcciones hay varias filas ``revision_ti`` por expediente: la

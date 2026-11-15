@@ -298,18 +298,30 @@ export interface ChatThreadProps {
   onRegenerarResumen?: (indice: number) => void;
 }
 
+/**
+ * En qué punto está un turno del asistente. Solo el último pasa por las tres
+ * primeras; los anteriores están siempre `terminado`.
+ *
+ * - `esperando`: sin primer token todavía → esqueleto en vez de burbuja vacía.
+ * - `emitiendo`: el stream sigue abierto → cursor al final del texto.
+ * - `cerrando`: el stream cerró pero la petición no ha terminado.
+ * - `terminado`: ya se puede votar y regenerar.
+ */
+type FaseTurno = "esperando" | "emitiendo" | "cerrando" | "terminado";
+
+function faseDelUltimoTurno(turno: ChatTurn | undefined, streaming: boolean, loading: boolean): FaseTurno {
+  if (!streaming && !loading) return "terminado";
+  if (loading && turno?.role === "assistant" && !turno.content) return "esperando";
+  return streaming ? "emitiendo" : "cerrando";
+}
+
 interface TurnoAsistenteProps {
   turno: ChatTurn;
   /** Posición en el hilo: es lo que se regenera. */
   indice: number;
   /** La pregunta que lo originó: la hashea el voto de los pulgares. */
   pregunta: string | undefined;
-  /** Último turno sin su primer token todavía: esqueleto en vez de burbuja vacía. */
-  esperandoPrimerToken: boolean;
-  /** Último turno con el stream abierto: cursor al final del texto. */
-  emitiendo: boolean;
-  /** Último turno con la respuesta en curso: aún no se puede votar. */
-  enCurso: boolean;
+  fase: FaseTurno;
   expectLicitacionContext?: boolean;
   onRegenerarResumen?: (indice: number) => void;
 }
@@ -325,9 +337,7 @@ const TurnoAsistente = React.memo(function TurnoAsistente({
   turno,
   indice,
   pregunta,
-  esperandoPrimerToken,
-  emitiendo,
-  enCurso,
+  fase,
   expectLicitacionContext,
   onRegenerarResumen,
 }: TurnoAsistenteProps) {
@@ -343,14 +353,14 @@ const TurnoAsistente = React.memo(function TurnoAsistente({
       ) : null}
       {turno.content ? (
         <MarkdownAnswer text={turno.content} />
-      ) : esperandoPrimerToken ? (
+      ) : fase === "esperando" ? (
         <div className="space-y-2">
           <Skeleton className="h-4 w-3/4" />
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-5/6" />
         </div>
       ) : null}
-      {emitiendo && turno.content ? (
+      {fase === "emitiendo" && turno.content ? (
         <span className="text-primary motion-safe:animate-pulse" aria-hidden="true">
           ▌
         </span>
@@ -366,7 +376,7 @@ const TurnoAsistente = React.memo(function TurnoAsistente({
       {turno.askMeta?.citas_propias_fallidas ? <CitasPropiasFallidasNotice /> : null}
       {turno.sources?.sinFuentes ? <SinFuentesNotice /> : null}
       {turno.fuentes && turno.fuentes.length > 0 ? <FuentesBlock fuentes={turno.fuentes} /> : null}
-      {turno.content && !turno.degraded && !enCurso ? (
+      {turno.content && !turno.degraded && fase === "terminado" ? (
         <>
           <p className="mt-2 text-tf-micro text-muted-foreground">
             {esperaExpediente ? AVISO_GENERADO : AVISO_GENERADO_VARIOS}
@@ -376,7 +386,7 @@ const TurnoAsistente = React.memo(function TurnoAsistente({
           <FeedbackButtons modo={esResumen ? "resumen" : "pregunta"} pregunta={esResumen ? undefined : pregunta} />
         </>
       ) : null}
-      {esResumen && !enCurso && onRegenerarResumen ? (
+      {esResumen && fase === "terminado" && onRegenerarResumen ? (
         <div className="mt-2 flex items-center gap-2">
           {/* Regenerar fuerza al proveedor: el acierto de caché ya se sirvió. */}
           <Button variant="ghost" size="sm" onClick={() => onRegenerarResumen(indice)}>
@@ -415,8 +425,7 @@ export function ChatThread({
     return () => cancelAnimationFrame(frame);
   }, [messages]);
 
-  const last = messages[messages.length - 1];
-  const waitingFirstToken = loading && last?.role === "assistant" && !last.content;
+  const faseUltimo = faseDelUltimoTurno(messages[messages.length - 1], streaming, loading);
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -428,16 +437,13 @@ export function ChatThread({
             </div>
           );
         }
-        const isLast = i === messages.length - 1;
         return (
           <TurnoAsistente
             key={i}
             indice={i}
             turno={m}
             pregunta={messages[i - 1]?.content}
-            esperandoPrimerToken={isLast && waitingFirstToken}
-            emitiendo={isLast && streaming}
-            enCurso={isLast && (streaming || loading)}
+            fase={i === messages.length - 1 ? faseUltimo : "terminado"}
             expectLicitacionContext={expectLicitacionContext}
             onRegenerarResumen={onRegenerarResumen}
           />

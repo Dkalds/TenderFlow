@@ -25,12 +25,10 @@ import hmac
 import os
 import secrets
 import time
-from typing import TYPE_CHECKING, Any, Protocol
+from collections.abc import Mapping
+from typing import Any, Protocol
 
 from observability.logging import get_logger
-
-if TYPE_CHECKING:
-    from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 
 log = get_logger(__name__)
 
@@ -490,25 +488,20 @@ def generate_pkce_pair() -> tuple[str, str]:
 # Validación de tokens de identidad Google (id_token)
 # ---------------------------------------------------------------------------
 
-# Campos obligatorios de un id_token de Google según la especificación OpenID.
+# Google firma con cualquiera de estos dos emisores (con y sin esquema).
 _GOOGLE_ISS_VALUES = frozenset({"accounts.google.com", "https://accounts.google.com"})
 _GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
-_google_jwks_cache: tuple[float, dict[str, dict[str, Any]]] | None = None
 
 
-def _rsa_public_key_from_jwk(jwk: dict[str, Any]) -> RSAPublicKey:
-    """Reconstruye una clave pública RSA a partir de los campos JWK ``n``/``e``.
+def _google_email_verified(claims: Mapping[str, object]) -> bool:
+    """``email_verified`` de Google: el booleano ``true`` o la cadena ``"true"``.
 
-    El endpoint v3 de Google devuelve JWK Set estándar (RFC 7517): cada clave
-    trae el módulo (``n``) y el exponente (``e``) en base64url, no una cadena
-    de certificados X.509 (``x5c`` es opcional y Google no lo incluye aquí).
+    Más laxo que el genérico (``is True``) a propósito: es lo que el camino de
+    Google aceptaba antes de unificarse con ``verify_oidc_id_token`` (2026-11),
+    y endurecerlo de paso podría dejar fuera logins que hoy entran. La cadena
+    viene igualmente dentro del token firmado por Google.
     """
-    from cryptography.hazmat.primitives.asymmetric import rsa
-
-    def _b64url_uint(value: str) -> int:
-        return int.from_bytes(_base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)), "big")
-
-    return rsa.RSAPublicNumbers(e=_b64url_uint(jwk["e"]), n=_b64url_uint(jwk["n"])).public_key()
+    return str(claims.get("email_verified")).lower() == "true"
 
 
 def verify_google_id_token(
@@ -516,79 +509,28 @@ def verify_google_id_token(
 ) -> dict[str, Any] | None:
     """Verifica firma RS256 de un ID token de Google y después sus claims.
 
-    La clave pública se obtiene exclusivamente del endpoint oficial de Google y
-    se mantiene en caché breve. Un fallo de red, formato o firma se rechaza:
-    nunca se aceptan claims simplemente decodificados desde el JWT.
+    Envoltorio de :func:`shared.identity.verify_oidc_id_token` con el JWKS
+    oficial de Google y sus dos emisores; la caché de claves y el refresco ante
+    una rotación son los del genérico. Un fallo de red, formato o firma se
+    rechaza: nunca se aceptan claims simplemente decodificados desde el JWT.
+    ``email_verified`` lo comprueba este envoltorio (:func:`_google_email_verified`).
     """
-    global _google_jwks_cache
+    from shared.identity import verify_oidc_id_token
 
-    try:
-        import httpx
-        from cryptography.hazmat.primitives import hashes
-        from cryptography.hazmat.primitives.asymmetric import padding
-
-        encoded_header, encoded_claims, encoded_signature = jwt_token.split(".")
-        header = json_loads_b64url(encoded_header)
-        if header.get("alg") != "RS256" or not isinstance(header.get("kid"), str):
-            return None
-
-        now = time.time()
-        if _google_jwks_cache is None or now >= _google_jwks_cache[0]:
-            response = httpx.get(_GOOGLE_JWKS_URL, timeout=5.0)
-            response.raise_for_status()
-            keys = response.json().get("keys", [])
-            parsed_keys = {
-                str(item["kid"]): item
-                for item in keys
-                if isinstance(item, dict) and item.get("kid") and item.get("n") and item.get("e")
-            }
-            if not parsed_keys:
-                raise ValueError("Google JWKS response had no usable keys")
-            _google_jwks_cache = (now + 3600, parsed_keys)
-
-        jwk = _google_jwks_cache[1].get(header["kid"])
-        if jwk is None:
-            # Una rotación de clave puede ocurrir antes del TTL: refresco único.
-            response = httpx.get(_GOOGLE_JWKS_URL, timeout=5.0)
-            response.raise_for_status()
-            keys = response.json().get("keys", [])
-            refreshed = {
-                str(item["kid"]): item
-                for item in keys
-                if isinstance(item, dict) and item.get("kid") and item.get("n") and item.get("e")
-            }
-            _google_jwks_cache = (now + 3600, refreshed)
-            jwk = refreshed.get(header["kid"])
-            if jwk is None:
-                raise ValueError("Google signing key not found")
-
-        public_key = _rsa_public_key_from_jwk(jwk)
-        public_key.verify(
-            _base64.urlsafe_b64decode(encoded_signature + "=" * (-len(encoded_signature) % 4)),
-            f"{encoded_header}.{encoded_claims}".encode("ascii"),
-            padding.PKCS1v15(),
-            hashes.SHA256(),
-        )
-        claims = json_loads_b64url(encoded_claims)
-        return (
-            claims
-            if validate_google_id_token(claims, audience=audience, expected_nonce=expected_nonce)
-            else None
-        )
-    except Exception:
-        log.warning("google_id_token_signature_invalid", exc_info=True)
+    claims = verify_oidc_id_token(
+        jwt_token,
+        jwks_uri=_GOOGLE_JWKS_URL,
+        issuer=_GOOGLE_ISS_VALUES,
+        audience=audience,
+        expected_nonce=expected_nonce,
+        email_verified_claim=None,
+    )
+    if claims is None:
         return None
-
-
-def json_loads_b64url(encoded: str) -> dict[str, Any]:
-    """Decodifica un fragmento JWT JSON de forma estricta."""
-    import json
-
-    decoded = _base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
-    data = json.loads(decoded)
-    if not isinstance(data, dict):
-        raise ValueError("JWT JSON value must be an object")
-    return data
+    if not _google_email_verified(claims):
+        log.warning("google_id_token_email_not_verified")
+        return None
+    return claims
 
 
 def validate_google_id_token(
@@ -600,8 +542,9 @@ def validate_google_id_token(
 ) -> bool:
     """Valida los claims de un id_token de Google ya decodificado.
 
-    Sólo valida los claims (no la firma JWT — eso lo hace la librería
-    oauth o la llamada a tokeninfo). Comprueba:
+    Sólo valida los claims, no la firma. El login no pasa por aquí:
+    :func:`verify_google_id_token` verifica firma y claims con el genérico de
+    ``shared.identity``. Comprueba:
 
     * ``iss`` pertenece a los valores permitidos de Google.
     * ``aud`` coincide con el ``client_id`` de la aplicación (``audience``).
@@ -657,13 +600,11 @@ def validate_google_id_token(
         log.warning("google_id_token_invalid_exp", exp=exp)
         return False
 
-    if require_email_verified:
-        email_verified = id_token_claims.get("email_verified")
-        if email_verified is not True and str(email_verified).lower() != "true":
-            log.warning(
-                "google_id_token_email_not_verified",
-                email=id_token_claims.get("email", "unknown"),
-            )
-            return False
+    if require_email_verified and not _google_email_verified(id_token_claims):
+        log.warning(
+            "google_id_token_email_not_verified",
+            email=id_token_claims.get("email", "unknown"),
+        )
+        return False
 
     return True

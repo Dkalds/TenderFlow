@@ -17,22 +17,17 @@
  */
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "@/lib/toast";
 
 import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle, ROTULO_DATO } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ApiError, apiGet, apiMutate } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { adminKeys, analyticsKeys } from "@/lib/query-keys";
 import { formatNumber, formatPercent } from "@/lib/utils";
+import { useOrganosPendientes, useResolverOrgano } from "../../_hooks/use-revision";
 
-type Listado = Schemas["OrganosPendientes"];
 type Pendiente = Schemas["OrganoPendiente"];
-type Resuelto = Schemas["OrganoResuelto"];
 type Decision = "fusionar" | "separar";
 
 const ETIQUETA: Record<Decision, { pedir: string; confirmar: string }> = {
@@ -42,31 +37,8 @@ const ETIQUETA: Record<Decision, { pedir: string; confirmar: string }> = {
 
 export function RevisionOrganosCard() {
   const [confirmando, setConfirmando] = useState<{ id: number; decision: Decision } | null>(null);
-  const queryClient = useQueryClient();
-
-  const { data, isLoading, error, refetch } = useQuery<Listado>({
-    queryKey: adminKeys.revision.organos,
-    queryFn: () =>
-      apiGet("/api/v1/admin/revision/organos", { params: { query: { limit: 50 } } }) as Promise<Listado>,
-    meta: META_ERROR_EN_LINEA,
-  });
-
-  const resolver = useMutation({
-    mutationFn: ({ id, decision }: { id: number; decision: Decision }) =>
-      apiMutate<Resuelto>("POST", `/api/v1/admin/revision/organos/${id}/resolver`, {
-        aceptar: decision === "fusionar",
-      }),
-    onSuccess: (res) => {
-      toast.success(res.detalle);
-      void queryClient.invalidateQueries({ queryKey: adminKeys.revision.organos });
-      void queryClient.invalidateQueries({ queryKey: analyticsKeys.quality });
-    },
-    meta: { errorTitle: "No se pudo resolver la revisión" },
-    onError: () => {
-      void queryClient.invalidateQueries({ queryKey: adminKeys.revision.organos });
-    },
-    onSettled: () => setConfirmando(null),
-  });
+  const { data, isLoading, error, refetch } = useOrganosPendientes();
+  const resolver = useResolverOrgano();
 
   const items: Pendiente[] = data?.items ?? [];
   const sinPermiso = error instanceof ApiError && error.status === 403;
@@ -117,7 +89,10 @@ export function RevisionOrganosCard() {
                       setConfirmando({ id: item.id, decision });
                       return;
                     }
-                    resolver.mutate({ id: item.id, decision });
+                    resolver.mutate(
+                      { id: item.id, aceptar: decision === "fusionar" },
+                      { onSettled: () => setConfirmando(null) },
+                    );
                   }}
                 >
                   {pidiendo ? ETIQUETA[decision].confirmar : ETIQUETA[decision].pedir}

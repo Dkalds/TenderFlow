@@ -37,7 +37,7 @@ Muestrear (necesita BD, o un export con ``--desde``) y luego etiquetar::
     python -m scripts.revisar_golden_candidates data/candidatos.jsonl
 
 Ver si el golden set ya sostiene lo que se le pide (no necesita BD; si hay un
-modelo en ``data/models/`` mide además la estabilidad del umbral por
+modelo servible —local o de la Release— mide además la estabilidad del umbral por
 bootstrap, con la misma rejilla que ``services.ml_eval.tune_threshold_on_golden``)::
 
     python -m scripts.revisar_golden_candidates --estado
@@ -285,13 +285,19 @@ def informe_umbral(
 
 
 def cargar_modelo_local() -> _Predictor | None:
-    """El clasificador SAP de ``data/models/``, o ``None`` si no hay (sin red)."""
+    """El clasificador SAP servible, o ``None`` si no hay.
+
+    Usa ``SAPClassifier.resolve_artifact()``: la versión activa verificada por
+    sha256, el artefacto local o el de la Release, así que **puede bajarlo de
+    la red** (y consultar ``model_versions`` si hay BD). ``--sin-modelo`` lo evita.
+    """
     try:
         from services.ml.sap_classifier import SAPClassifier
 
-        if not SAPClassifier.is_available():
+        artefacto = SAPClassifier.resolve_artifact()
+        if artefacto is None:
             return None
-        return SAPClassifier.load()
+        return SAPClassifier.load(artefacto)
     except Exception as exc:  # el informe de conteos no debe morir por el modelo
         print(f"[aviso] no se pudo cargar el modelo ({exc}); se omite el bootstrap del umbral")
         return None
@@ -299,7 +305,7 @@ def cargar_modelo_local() -> _Predictor | None:
 
 def _imprimir_umbral(filas_tune: list[dict[str, Any]], clf: _Predictor | None) -> None:
     if clf is None:
-        print("  umbral (bootstrap)  sin modelo local: no se mide (data/models/ vacío)")
+        print("  umbral (bootstrap)  sin modelo: no se mide (--sin-modelo o ningún artefacto)")
         return
     informe = informe_umbral(filas_tune, clf, beta=_beta_de_produccion())
     if informe is None:
@@ -419,7 +425,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--sin-modelo",
         action="store_true",
-        help="no cargar el modelo local (omite el bootstrap del umbral)",
+        help="no cargar ni bajar el modelo (omite el bootstrap del umbral)",
     )
     args = parser.parse_args(argv)
 

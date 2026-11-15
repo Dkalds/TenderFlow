@@ -101,13 +101,13 @@ def _sembrar_filas_legacy(user_key: str, organization_id: int) -> None:
 
     Salvo ``user_profiles`` y ``radar_dismissals``: desde v135 su PK es
     ``user_id`` y una fila sin él ya no existe (ver ``_CON_PK_USER_ID``).
-    ``watchlist_*`` y ``pending_digests`` se siembran por SQL: desde v181 sus
-    repositorios escriben siempre el id y ya no saben producir una fila así.
+    ``watchlist_*``, ``pending_digests`` y ``saved_filters`` se siembran por SQL:
+    desde v181 sus repositorios escriben siempre el id y ya no saben producir
+    una fila así.
     """
     from db.audit import log_action
     from db.database import now_utc_iso
     from db.notifications import insert_user_notification, mark_read
-    from db.saved_filters import save_filter
     from services.notifications import set_modo_email
 
     ahora = now_utc_iso()
@@ -142,7 +142,11 @@ def _sembrar_filas_legacy(user_key: str, organization_id: int) -> None:
             "organization_id, visibility) VALUES (%s, 777, 'daily', %s, %s, 'private')",
             (user_key, ahora, organization_id),
         )
-    save_filter(user_key, "Vista legacy", "{}", organization_id)
+        c.execute(
+            "INSERT INTO saved_filters (user_key, name, filters_json, created_at, "
+            "organization_id, visibility) VALUES (%s, 'Vista legacy', '{}', %s, %s, 'private')",
+            (user_key, ahora, organization_id),
+        )
     insert_user_notification(
         user_key=user_key,
         type_="rule_match",
@@ -219,7 +223,7 @@ def test_lectura_dual_sirve_filas_legacy_antes_del_backfill(tmp_db):
 
     repo = WatchlistRepository()
     assert [i["id_externo"] for i in repo.list_items(user_id, organization_id)] == ["LIC-LEGACY"]
-    assert [f["name"] for f in list_saved_filters(clave, organization_id, user_id=user_id)] == [
+    assert [f["name"] for f in list_saved_filters(organization_id, user_id=user_id)] == [
         "Vista legacy"
     ]
     # Quien registra después el correo que este usuario dejó tiene su misma

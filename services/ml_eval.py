@@ -21,7 +21,9 @@ Uso típico::
     from services.ml.sap_classifier import SAPClassifier
     from services.ml_eval import evaluate_classifier, load_golden_set
 
-    clf = SAPClassifier.load()
+    artefacto = SAPClassifier.resolve_artifact()  # versión activa, verificada
+    assert artefacto is not None, "no hay modelo servible"
+    clf = SAPClassifier.load(artefacto)
     result = evaluate_classifier(clf)
     print(result.recall_no_keyword)  # ¿pescamos SAP sin keyword?
 """

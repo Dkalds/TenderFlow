@@ -12,17 +12,27 @@ gane al nombre y que la sospecha no cree nada por su cuenta.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any
 
 import pytest
+
+from db.repositories.organos import COLUMNAS_ORGANO_CLAVE, OrganoClave
+
+_ESQUEMA = Path(__file__).resolve().parents[1] / "docs" / "database-schema.md"
+
+
+def _organo(organo_id: int, nombre_normalizado: str = "organo") -> OrganoClave:
+    return {"organo_id": organo_id, "nombre_normalizado": nombre_normalizado}
 
 
 class _RepoDoble:
     def __init__(
         self,
         *,
-        por_dir3: dict[str, Any] | None = None,
-        por_nombre: dict[str, Any] | None = None,
+        por_dir3: OrganoClave | None = None,
+        por_nombre: OrganoClave | None = None,
         nuevo_id: int = 99,
     ) -> None:
         self._por_dir3 = por_dir3
@@ -32,10 +42,10 @@ class _RepoDoble:
         self.revisiones: list[dict[str, Any]] = []
         self.creados: list[dict[str, Any]] = []
 
-    def get_by_dir3(self, dir3: str) -> dict[str, Any] | None:
+    def get_by_dir3(self, dir3: str) -> OrganoClave | None:
         return self._por_dir3
 
-    def get_by_nombre_normalizado(self, nombre: str) -> dict[str, Any] | None:
+    def get_by_nombre_normalizado(self, nombre: str) -> OrganoClave | None:
         return self._por_nombre
 
     def anadir_alias(self, organo_id: int, **kwargs: Any) -> None:
@@ -73,8 +83,8 @@ class TestDir3Manda:
         self, mod: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         repo = _RepoDoble(
-            por_dir3={"organo_id": 5, "nombre_normalizado": "ayuntamiento de leon"},
-            por_nombre={"organo_id": 404},
+            por_dir3=_organo(5, "ayuntamiento de leon"),
+            por_nombre=_organo(404),
         )
         monkeypatch.setattr(mod, "repo", repo)
 
@@ -85,7 +95,7 @@ class TestDir3Manda:
         self, mod: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Así la próxima vez resuelve por nombre aunque la fuente omita el DIR3."""
-        repo = _RepoDoble(por_dir3={"organo_id": 5, "nombre_normalizado": "ayuntamiento de leon"})
+        repo = _RepoDoble(por_dir3=_organo(5, "ayuntamiento de leon"))
         monkeypatch.setattr(mod, "repo", repo)
 
         mod.resolver("Excmo. Ayuntamiento de León (Servicios)", dir3="L01240891")
@@ -96,7 +106,7 @@ class TestDir3Manda:
     def test_la_misma_grafia_no_se_vuelve_a_registrar(
         self, mod: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        repo = _RepoDoble(por_dir3={"organo_id": 5, "nombre_normalizado": "ayuntamiento de leon"})
+        repo = _RepoDoble(por_dir3=_organo(5, "ayuntamiento de leon"))
         monkeypatch.setattr(mod, "repo", repo)
 
         mod.resolver("Ayuntamiento de León", dir3="L01240891")
@@ -105,7 +115,7 @@ class TestDir3Manda:
     def test_un_dir3_desconocido_no_impide_seguir_por_nombre(
         self, mod: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        repo = _RepoDoble(por_dir3=None, por_nombre={"organo_id": 8})
+        repo = _RepoDoble(por_dir3=None, por_nombre=_organo(8))
         monkeypatch.setattr(mod, "repo", repo)
 
         r = mod.resolver("Ayuntamiento de León", dir3="NO-EXISTE")
@@ -116,7 +126,7 @@ class TestNombreExacto:
     def test_el_nombre_normalizado_resuelve(
         self, mod: Any, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(mod, "repo", _RepoDoble(por_nombre={"organo_id": 8}))
+        monkeypatch.setattr(mod, "repo", _RepoDoble(por_nombre=_organo(8)))
 
         r = mod.resolver("Excmo. Ayuntamiento de León")
         assert (r.organo_id, r.via) == (8, "nombre")
@@ -221,3 +231,58 @@ class TestCandidatos:
 
     def test_la_similitud_de_lo_vacio_es_cero(self, mod: Any) -> None:
         assert mod.similitud("", "ayuntamiento") == 0.0
+
+
+class TestColumnasNombradas:
+    """Las lecturas del maestro nombran columnas: un typo tiene que fallar sin BD."""
+
+    def test_las_columnas_existen_en_organos(self) -> None:
+        # `db.models` no declara `organos`; el esquema documentado lo genera
+        # `scripts/gen_schema_doc.py` desde una base en `head` y CI lo vigila.
+        seccion = (
+            _ESQUEMA.read_text(encoding="utf-8").split("### `organos`", 1)[1].split("\n### ", 1)[0]
+        )
+        columnas = set(re.findall(r"^\| `([a-z0-9_]+)` \|", seccion, flags=re.MULTILINE))
+        assert "organo_id" in columnas  # si el parseo fallara, el subset pasaría vacío
+        assert set(COLUMNAS_ORGANO_CLAVE) <= columnas
+
+    @pytest.mark.parametrize(
+        ("llamada", "selects"),
+        [
+            (lambda r: r.get_by_dir3("L01240891"), 1),
+            (lambda r: r.get_by_nombre_normalizado("ayuntamiento de leon"), 2),
+        ],
+        ids=["dir3", "nombre"],
+    )
+    def test_las_lecturas_piden_solo_esas_columnas(
+        self, monkeypatch: pytest.MonkeyPatch, llamada: Any, selects: int
+    ) -> None:
+        import db.repositories.organos as repo_mod
+
+        class _Cursor:
+            description = tuple((col,) for col in COLUMNAS_ORGANO_CLAVE)
+
+            def fetchall(self) -> list[tuple[Any, ...]]:
+                return [(5, "ayuntamiento de leon")]
+
+        class _Conexion:
+            def __init__(self) -> None:
+                self.sql: list[str] = []
+
+            def __enter__(self) -> _Conexion:
+                return self
+
+            def __exit__(self, *_: object) -> None:
+                return None
+
+            def execute(self, sql: str, _params: Any = None) -> _Cursor:
+                self.sql.append(sql)
+                return _Cursor()
+
+        conexion = _Conexion()
+        monkeypatch.setattr(repo_mod, "connect_read", lambda: conexion)
+
+        assert llamada(repo_mod) == _organo(5, "ayuntamiento de leon")
+        (sql,) = conexion.sql
+        assert "*" not in sql
+        assert sql.count("SELECT o.organo_id, o.nombre_normalizado FROM organos o") == selects
