@@ -14,6 +14,8 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import patch
 
+import pytest
+
 from services.analytics.competitors import CompetitorFilters, get_competitors
 
 _PATCH_TARGET = "services.analytics.competitors.load_for_competitors"
@@ -431,3 +433,25 @@ def test_grouping_joins_curated_deloitte_legal_entities():
     assert competitor.empresa_ids == [66, 116, 551]
     assert competitor.nifs == ["B16436099", "B81690471", "B86466448"]
     assert competitor.es_agrupacion is True
+
+
+def test_baja_media_descarta_los_pares_imposibles():
+    # Accenture gana L1 con un 20 % y L2 con un 10 % de baja. L2 se duplica con
+    # el error visto en producción (87.095 € adjudicados sobre un lote de 100 €)
+    # y con un adjudicado a cero: ninguno de los dos es una baja que medir.
+    rows = [{**r, "presupuesto_efectivo": r["importe_licitacion"]} for r in _rows()]
+    rows.append(
+        {
+            **rows[1],
+            "licitacion_id": "L5",
+            "importe_adjudicado": 87095.0,
+            "presupuesto_efectivo": 100.0,
+        }
+    )
+    rows.append({**rows[1], "licitacion_id": "L6", "importe_adjudicado": 0.0})
+
+    with patch(_PATCH_TARGET, return_value=rows):
+        res = get_competitors(CompetitorFilters())
+
+    acc = next(c for c in res.competitors if c.nombre == "Accenture")
+    assert acc.baja_media == pytest.approx(15.0)
