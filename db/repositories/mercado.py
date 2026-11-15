@@ -661,6 +661,7 @@ def adjudicaciones_empresa(
                        l.ccaa,
                        l.tecnologia,
                        l.importe AS presupuesto_licitacion,
+                       {BASE_COMPARABLE_SQL} AS presupuesto_comparable,
                        a.importe_adjudicado,
                        -- Contra el lote y sin los pares imposibles, como el
                        -- dossier: contra el expediente, un lote de 100 €

@@ -184,9 +184,26 @@ class CompetitiveCompanyAwardDTO(BaseModel):
     cpv: str | None = None
     ccaa: str | None = None
     tecnologia: str | None = None
-    presupuesto_licitacion: float | None = Field(default=None, ge=0)
+    presupuesto_licitacion: float | None = Field(
+        default=None, ge=0, description="Presupuesto del expediente completo."
+    )
+    presupuesto_comparable: float | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Presupuesto contra el que se mide `baja_pct`: el del lote si la "
+            "adjudicación tiene uno; si no, la base sin IVA declarada o el del "
+            "expediente. Solo lo trae el listado de adjudicaciones."
+        ),
+    )
     importe_adjudicado: float | None = Field(default=None, ge=0)
-    baja_pct: float | None = None
+    baja_pct: float | None = Field(
+        default=None,
+        description=(
+            "Baja contra `presupuesto_comparable`, en %. Nula si el adjudicado es 0 "
+            "o supera 1,5 veces ese presupuesto (par imposible)."
+        ),
+    )
     n_ofertas_recibidas: int | None = Field(default=None, ge=0)
     expediente_url: str | None = None
 

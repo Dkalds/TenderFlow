@@ -683,9 +683,19 @@ def test_listar_adjudicaciones_empresa_mide_la_baja_contra_el_lote(db):
     bajas = {item["licitacion_id"]: item["baja_pct"] for item in page["items"]}
     assert bajas["LB-LIST-1"] is None
     assert bajas["LB-LIST-2"] == pytest.approx(25.0)
-    # El presupuesto que enseña la fila sigue siendo el del expediente.
-    presupuestos = {i["licitacion_id"]: i["presupuesto_licitacion"] for i in page["items"]}
-    assert presupuestos["LB-LIST-1"] == 123_504
+    # La fila trae los dos presupuestos: el del expediente y el de la baja.
+    filas = {i["licitacion_id"]: i for i in page["items"]}
+    assert filas["LB-LIST-1"]["presupuesto_licitacion"] == 123_504
+    assert filas["LB-LIST-1"]["presupuesto_comparable"] == 100
+    assert filas["LB-LIST-2"]["presupuesto_comparable"] == 20_000
+    # Y el contrato de la ruta lo deja pasar: sin el campo en el DTO, FastAPI lo descartaría.
+    from shared.dto import CompetitiveCompanyAwardsDTO
+
+    contrato = CompetitiveCompanyAwardsDTO.model_validate(page)
+    assert {i.licitacion_id: i.presupuesto_comparable for i in contrato.items} == {
+        "LB-LIST-1": 100,
+        "LB-LIST-2": 20_000,
+    }
 
 
 def test_listar_adjudicaciones_empresa_pliega_tildes(db):

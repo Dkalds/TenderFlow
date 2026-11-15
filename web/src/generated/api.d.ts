@@ -7809,7 +7809,10 @@ export interface components {
          * @description Award row in the paginated company history.
          */
         CompetitiveCompanyAwardDTO: {
-            /** Baja Pct */
+            /**
+             * Baja Pct
+             * @description Baja contra `presupuesto_comparable`, en %. Nula si el adjudicado es 0 o supera 1,5 veces ese presupuesto (par imposible).
+             */
             baja_pct?: number | null;
             /** Ccaa */
             ccaa?: string | null;
@@ -7827,7 +7830,15 @@ export interface components {
             n_ofertas_recibidas?: number | null;
             /** Organo Contratacion */
             organo_contratacion?: string | null;
-            /** Presupuesto Licitacion */
+            /**
+             * Presupuesto Comparable
+             * @description Presupuesto contra el que se mide `baja_pct`: el del lote si la adjudicación tiene uno; si no, la base sin IVA declarada o el del expediente. Solo lo trae el listado de adjudicaciones.
+             */
+            presupuesto_comparable?: number | null;
+            /**
+             * Presupuesto Licitacion
+             * @description Presupuesto del expediente completo.
+             */
             presupuesto_licitacion?: number | null;
             /** Tecnologia */
             tecnologia?: string | null;
