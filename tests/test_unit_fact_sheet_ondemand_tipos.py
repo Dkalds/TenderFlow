@@ -16,9 +16,20 @@ from services.rag.fact_sheet import ensure_documents_ready
 
 
 def _doc(
-    documento_id: int, tipo: str, status: str = "pending", *, sin_publicar: bool = False
+    documento_id: int,
+    tipo: str,
+    status: str = "pending",
+    *,
+    sin_publicar: bool = False,
+    rechazado: bool = False,
 ) -> dict[str, Any]:
-    return {"id": documento_id, "tipo": tipo, "status": status, "sin_publicar": sin_publicar}
+    return {
+        "id": documento_id,
+        "tipo": tipo,
+        "status": status,
+        "sin_publicar": sin_publicar,
+        "rechazado": rechazado,
+    }
 
 
 def _ejecutar(filas: list[dict[str, Any]], **kwargs: Any) -> tuple[dict[str, int], list[int]]:
@@ -145,3 +156,20 @@ def test_missing_pages_detail_un_acta_sin_publicar_no_es_un_pliego_sin_publicar(
     detalle = _detalle([_doc(1, "legal", "error"), _doc(2, TIPO_ACTA, sin_publicar=True)])
 
     assert "todavía no ha publicado el pliego" not in detalle
+
+
+def test_missing_pages_detail_el_rechazo_del_cortafuegos_se_dice_tal_cual():
+    """Ni «formato que no se sabe leer» ni «enlaces que caducan»: PLACSP lo rechazó."""
+    detalle = _detalle([_doc(1, "legal", "error", rechazado=True), _doc(2, "technical", "error")])
+
+    assert "cortafuegos" in detalle
+    assert "caducan" not in detalle
+    assert "formato" not in detalle
+
+
+def test_missing_pages_detail_con_el_circuito_abierto_por_los_rechazos_dice_el_rechazo():
+    """Los rechazos abren el circuito: «no está respondiendo» mandaría a esperar minutos."""
+    detalle = _detalle([_doc(1, "legal", "error", rechazado=True)], {"attempted": 0, "skipped": 1})
+
+    assert "cortafuegos" in detalle
+    assert "no está respondiendo" not in detalle

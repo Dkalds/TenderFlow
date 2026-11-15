@@ -812,6 +812,17 @@ def _missing_pages_detail(licitacion_id: str, fetched: dict[str, int]) -> str:
             "Los pliegos siguen en cola de procesado (este servidor no tiene "
             "instalado el extractor de su formato); el job nocturno los procesará."
         )
+    if any(row.get("rechazado") for row in rows):
+        # Ni enlace caducado ni formato sin soporte: PLACSP contestó, y fue su
+        # cortafuegos rechazando la petición. Va antes que el circuito abierto
+        # porque son esos rechazos los que lo abren: «no está respondiendo»
+        # mandaría a reintentar en minutos algo que no cambia en minutos.
+        return (
+            "PLACSP ha rechazado la descarga de los pliegos (su cortafuegos bloqueó "
+            "la petición), así que todavía no hay texto del que extraer la ficha. "
+            "Se vuelve a intentar cada vez que se abre la ficha; mientras tanto, "
+            "los pliegos se pueden consultar en PLACSP."
+        )
     if fetched.get("skipped") and not fetched.get("error"):
         # Breaker abierto: no se intentó ninguna descarga, así que hablar de
         # "descargas fallaron" mandaría a mirar los pliegos cuando el problema
