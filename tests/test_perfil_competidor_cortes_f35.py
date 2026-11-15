@@ -15,11 +15,18 @@ import pytest
 
 from db.repositories.mercado import FilasPerfil
 from services.competitive import mercado as svc
-from services.competitive.batallas import corte_por_procedimiento
+from services.competitive.batallas import corte_por_procedimiento, corte_por_tramo
 from shared.dto import CompetitiveCompanyProfileDTO
 
 
-def _adjudicacion(i: int, *, procedimiento: str, presupuesto: float, adjudicado: float) -> Any:
+def _adjudicacion(
+    i: int,
+    *,
+    procedimiento: str,
+    presupuesto: float,
+    adjudicado: float,
+    lote: float | None = None,
+) -> Any:
     return {
         "licitacion_id": f"LIC-{i}",
         "titulo": f"Expediente {i}",
@@ -27,6 +34,8 @@ def _adjudicacion(i: int, *, procedimiento: str, presupuesto: float, adjudicado:
         "importe_adjudicado": adjudicado,
         "n_ofertas_recibidas": 3,
         "presupuesto_licitacion": presupuesto,
+        # `BASE_COMPARABLE_SQL`: el lote si lo hay, si no el expediente.
+        "presupuesto_comparable": presupuesto if lote is None else lote,
         "organo_contratacion": "Órgano",
         "ccaa": "Madrid",
         "cpv": "72000000",
@@ -45,9 +54,10 @@ def _abiertos() -> list[Any]:
 
 def _imposibles() -> list[Any]:
     """Los dos pares que no son una baja: el real de 87.095 € sobre un lote de
-    100 € (muy por encima de 1,5 veces el presupuesto) y un adjudicado de 0."""
+    100 € de un expediente de 123.504 € (contra el expediente parecería una baja
+    del 29,5 %) y un adjudicado de 0."""
     return [
-        _adjudicacion(20, procedimiento="1", presupuesto=100, adjudicado=87_095),
+        _adjudicacion(20, procedimiento="1", presupuesto=123_504, lote=100, adjudicado=87_095),
         _adjudicacion(21, procedimiento="1", presupuesto=100_000, adjudicado=0),
     ]
 
@@ -115,16 +125,27 @@ def test_la_baja_media_del_dossier_descarta_los_pares_imposibles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     perfil = _perfil(monkeypatch, _abiertos() + _imposibles())
-    # Con los dos pares dentro, la media era -12.399,3 %.
+    # Contra el expediente y sin filtro, la media era del 32,8 %: el lote de
+    # 100 € pasaba por una baja del 29,5 % y el adjudicado de 0, por una del 100 %.
     assert perfil["totales"]["baja_media_pct"] == pytest.approx(20.0)
     # Siguen siendo contratos de la empresa: solo salen de la media.
     assert perfil["totales"]["contratos"] == 7
 
 
-def test_el_corte_cuenta_los_pares_imposibles_pero_no_los_promedia() -> None:
-    filas = [
+def _filas_corte() -> list[Any]:
+    return [
         {**fila, "importe": fila["presupuesto_licitacion"]} for fila in _abiertos() + _imposibles()
     ]
-    (celda,) = corte_por_procedimiento(filas)
+
+
+def test_el_corte_cuenta_los_pares_imposibles_pero_no_los_promedia() -> None:
+    (celda,) = corte_por_procedimiento(_filas_corte())
     assert celda.n == 7
     assert celda.baja_media == pytest.approx(0.2)
+
+
+def test_el_tramo_sigue_siendo_el_del_expediente() -> None:
+    # La baja se mide contra el lote, pero el régimen LCSP lo fija el expediente:
+    # el lote de 100 € de un expediente de 123.504 € no es un contrato menor.
+    celdas = {c.clave: c.n for c in corte_por_tramo(_filas_corte())}
+    assert celdas == {"60k-140k": 7}

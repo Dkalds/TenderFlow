@@ -50,6 +50,7 @@ from typing import Any, Final, Literal, NamedTuple
 from db.database import connect_read
 from db.repositories.base import rows_to_dicts
 from db.sql_fragments import (
+    BASE_COMPARABLE_SQL,
     FOLD_TABLE,
     TECHNOLOGY_OBSERVED_SQL,
     WATCHED_COMPANY_AWARDS_SQL,
@@ -433,13 +434,18 @@ def filas_perfil_empresa(
     scope_where, scope_params = alcance
     market_where, market_params = alcance_mercado
     history_where, history_params = alcance_historia
-    activity_select = """
+    # `presupuesto_licitacion` es el del expediente (el tramo LCSP se mide con
+    # él); `presupuesto_comparable`, el del lote con la base de `VALID_PAIR_LOTE`
+    # (la baja se mide con él: contra el expediente, un lote de 100 € adjudicado
+    # en 87.095 € pasaba por una baja del 29,5 %).
+    activity_select = f"""
         SELECT a.licitacion_id,
                l.titulo,
                a.fecha_adjudicacion,
                a.importe_adjudicado,
                a.n_ofertas_recibidas,
                l.importe AS presupuesto_licitacion,
+               {BASE_COMPARABLE_SQL} AS presupuesto_comparable,
                l.organo_contratacion,
                l.ccaa,
                l.cpv,
@@ -447,6 +453,7 @@ def filas_perfil_empresa(
                l.procedimiento
         FROM adjudicaciones a
         JOIN licitaciones l ON l.id_externo = a.licitacion_id
+        LEFT JOIN lotes lo ON lo.id = a.lote_id
     """
     # S608 no aplica en todo el bloque: los WHERE salen de `alcance_sql` y los
     # placeholders se generan por conteo; todos los valores van con %s.

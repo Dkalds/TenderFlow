@@ -467,16 +467,17 @@ def perfil_empresa(
         for row in scope_rows
         if row.get("n_ofertas_recibidas") is not None
     ]
-    # Sin los pares imposibles (adjudicado 0 o por encima de la tolerancia): una
-    # sola fila de 87.095 € sobre 100 € deja la baja media en cifras absurdas.
+    # Contra el presupuesto del lote y sin los pares imposibles (adjudicado 0 o
+    # por encima de la tolerancia), como `VALID_PAIR_LOTE`: una sola fila de
+    # 87.095 € sobre un lote de 100 € deja la baja media en cifras absurdas.
     discounts = [
-        (1.0 - float(row["importe_adjudicado"]) / float(row["presupuesto_licitacion"])) * 100
+        (1.0 - float(row["importe_adjudicado"]) / float(row["presupuesto_comparable"])) * 100
         for row in scope_rows
         if row.get("importe_adjudicado") is not None
-        and row.get("presupuesto_licitacion") is not None
+        and row.get("presupuesto_comparable") is not None
         and 0
         < float(row["importe_adjudicado"])
-        <= float(row["presupuesto_licitacion"]) * TOLERANCIA_SOBRECOSTE
+        <= float(row["presupuesto_comparable"]) * TOLERANCIA_SOBRECOSTE
     ]
     valid_dates = [
         parsed
@@ -641,11 +642,11 @@ def perfil_empresa(
 def _cortes_f35(scope_rows: list[dict[str, Any]]) -> dict[str, Any]:
     """F3.5 — los cortes por procedimiento y por tramo sobre la actividad filtrada.
 
-    `corte_por_procedimiento`/`corte_por_tramo` agrupan por ``importe`` (el de
-    licitación: la baja se mide contra él y el tramo LCSP también). En las
-    filas del dossier ese número se llama ``presupuesto_licitacion``, así que
-    se renombra aquí en vez de tocar la consulta que comparten todas las
-    secciones del perfil.
+    `corte_por_tramo` agrupa por ``importe``, el de licitación (el tramo LCSP
+    es del expediente). En las filas del dossier ese número se llama
+    ``presupuesto_licitacion``, así que se renombra aquí en vez de tocar la
+    consulta que comparten todas las secciones del perfil. La baja de las
+    celdas se mide contra ``presupuesto_comparable``, el del lote.
     """
     filas = [{**row, "importe": row.get("presupuesto_licitacion")} for row in scope_rows]
     return {

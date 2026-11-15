@@ -272,11 +272,17 @@ def _agrupar(filas: list[dict[str, Any]], clave_de: Any, *, minimo: int) -> list
             clave, {"n": 0.0, "bajas": 0.0, "con_baja": 0.0, "importe": 0.0}
         )
         celda["n"] += 1
-        baja = _baja(fila.get("importe"), fila.get("importe_adjudicado"))
-        # El par imposible (adjudicado 0 o por encima de la tolerancia) cuenta
-        # en `n` pero no en la media: una sola fila hunde la baja de la celda.
-        if baja is not None and 1 - TOLERANCIA_SOBRECOSTE <= baja < 1:
-            celda["bajas"] += baja
+        # La baja se mide contra el lote si la fila lo trae (el dossier); el par
+        # imposible (adjudicado 0 o por encima de la tolerancia) cuenta en `n`
+        # pero no en la media: una sola fila hunde la baja de la celda.
+        presupuesto = fila.get("presupuesto_comparable", fila.get("importe"))
+        adjudicado = fila.get("importe_adjudicado")
+        if (
+            presupuesto is not None
+            and adjudicado is not None
+            and 0 < adjudicado <= presupuesto * TOLERANCIA_SOBRECOSTE
+        ):
+            celda["bajas"] += 1 - adjudicado / presupuesto
             celda["con_baja"] += 1
         try:
             celda["importe"] += float(fila.get("importe_adjudicado") or 0)

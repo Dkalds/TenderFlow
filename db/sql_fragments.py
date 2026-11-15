@@ -318,9 +318,9 @@ TOLERANCIA_SOBRECOSTE = 1.5
 # contra l.importe sobreestimaba sistemáticamente la baja de cualquier
 # expediente con más de un lote — db/repositories/pricing.py lo parcheaba
 # descartando ratios > 1 en vez de corregir el denominador, perdiendo esas
-# filas de la distribución en vez de arreglarlas. Usa `BASE_COMPARABLE_SQL` y
-# no `EFFECTIVE_BUDGET_SQL` (``services/sql_fragments.py``): prefiere la base
-# sin IVA declarada y cae al `importe` histórico cuando no la hay. La diferencia
+# filas de la distribución en vez de arreglarlas. Usa `BASE_COMPARABLE_SQL`, no
+# `COALESCE(lo.importe, l.importe)`: prefiere la base sin IVA declarada y cae
+# al `importe` histórico cuando no la hay. La diferencia
 # solo se nota en las filas re-ingeridas tras v113, que son las únicas que
 # tienen ese dato — para el resto es el mismo número. Descarta pares sin
 # importes positivos y outliers donde el adjudicado supera el presupuesto en
@@ -332,8 +332,9 @@ VALID_PAIR_LOTE = (
 )
 
 # Baja porcentual de una fila de adjudicación contra su presupuesto real.
-# Único punto de esta fórmula fuera de la agregación por licitación — ver la
-# nota de ``VALID_PAIR`` en ``services/sql_fragments.py`` sobre cuál usar.
+# Único punto de esta fórmula fuera de la agregación por licitación
+# (``db/repositories/ml_dataset.py``, que suma lo adjudicado por expediente
+# antes de dividir).
 BAJA_PCT_SQL = f"(({BASE_COMPARABLE_SQL}) - a.importe_adjudicado) / ({BASE_COMPARABLE_SQL}) * 100"
 
 
