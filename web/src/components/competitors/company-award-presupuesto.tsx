@@ -17,7 +17,10 @@ export function CeldaPresupuesto({ award }: { award: CompanyAward }) {
   return (
     <TableCell numeric>
       <p>{presupuesto}</p>
-      {otroExpediente ? <p className="text-tf-meta text-muted-foreground">Expediente: {expediente}</p> : null}
+      {/* nowrap: la tabla ya se desplaza en horizontal; partida, la línea dejaba filas de alto desigual. */}
+      {otroExpediente ? (
+        <p className="whitespace-nowrap text-tf-meta text-muted-foreground">Expediente: {expediente}</p>
+      ) : null}
     </TableCell>
   );
 }
