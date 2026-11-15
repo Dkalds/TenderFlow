@@ -58,12 +58,18 @@ def multilote_sin_lote() -> set[str]:
 # escrita antes de `v156`), bajando los dos lados a `real`. Bajarlos siempre
 # haría iguales dos importes en float8 que difieren en céntimos y redondean al
 # mismo float4, y el lote de una adjudicación caería también en la otra.
+#
+# Un importe `None` del parser casa también con un 0 guardado: hasta el
+# 2026-10-25 la ingesta guardaba como 0 el importe no informado, que hoy el
+# parser da como `None` (`_importe_informado`); esas filas siguen con 0 hasta
+# que se reingiera su expediente.
 _ASIGNAR_SQL = (
     "UPDATE adjudicaciones a SET lote_id = lo.id "
     "FROM lotes lo "
     "WHERE lo.licitacion_id = a.licitacion_id AND lo.numero = %(lote_numero)s "
     "  AND a.licitacion_id = %(licitacion_id)s AND a.lote_id IS NULL "
     "  AND (a.importe_adjudicado IS NOT DISTINCT FROM %(importe_adjudicado)s::float8 "
+    "       OR (%(importe_adjudicado)s::float8 IS NULL AND a.importe_adjudicado = 0) "
     "       OR (a.importe_adjudicado = a.importe_adjudicado::real::float8 "
     "           AND a.importe_adjudicado::real = %(importe_adjudicado)s::real)) "
     "  AND CASE WHEN %(nif)s::text IS NOT NULL THEN a.nif = %(nif)s "

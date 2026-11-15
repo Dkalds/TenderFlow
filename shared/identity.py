@@ -15,7 +15,7 @@ import hashlib
 import hmac
 import json
 import time
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from typing import TYPE_CHECKING, Any, Literal, Required, TypedDict
 
 from observability.logging import get_logger
@@ -107,14 +107,14 @@ def actor_del_principal(ctx: Mapping[str, Any]) -> str:
 
 # ── Verificación genérica de id_token OIDC (S1.2) ──────────────────────────
 #
-# `shared.auth_core.verify_google_id_token` sigue siendo el camino de Google y
-# no se toca: es el flujo que ya funciona en producción y la regla del stream
-# es no romperlo. Lo de aquí es su equivalente para cualquier proveedor que
-# publique un documento de descubrimiento OpenID, y es lo que sirve a Microsoft
-# Entra ID.
+# Es el único verificador de firma: Microsoft Entra ID lo usa con el emisor de
+# su documento de descubrimiento, y `shared.auth_core.verify_google_id_token`
+# es un envoltorio fino que le pasa el JWKS y los dos emisores de Google. Hasta
+# 2026-11 Google tenía su propia copia —caché de JWKS y parser de JWK
+# incluidos— y cada arreglo había que hacerlo dos veces.
 
-#: Vida de las cachés de descubrimiento y JWKS. Una hora es lo mismo que usa el
-#: camino de Google y lo que recomienda Microsoft para su JWKS.
+#: Vida de las cachés de descubrimiento y JWKS. Una hora es lo que recomienda
+#: Microsoft para su JWKS, y Google rota sus claves con más margen.
 _CACHE_TTL_SECONDS = 3600
 
 _discovery_cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -188,29 +188,36 @@ def _rsa_public_key(jwk: dict[str, Any]) -> RSAPublicKey:
     return rsa.RSAPublicNumbers(e=_uint(jwk["e"]), n=_uint(jwk["n"])).public_key()
 
 
-def _issuer_matches(expected: str, claims: dict[str, Any]) -> bool:
-    """Compara ``iss`` admitiendo la plantilla multi-tenant de Microsoft.
+def _issuer_matches(expected: str | Collection[str], claims: dict[str, Any]) -> bool:
+    """Compara ``iss`` con el emisor esperado, o con cualquiera de una colección.
 
-    Con el tenant ``common``, el documento de descubrimiento declara el emisor
-    como ``https://login.microsoftonline.com/{tenantid}/v2.0``: no es un emisor
-    literal sino una plantilla que cada tenant rellena con su propio id. Se
-    sustituye por el ``tid`` del token y se compara exacto — aceptar cualquier
-    cosa que «se parezca» sería aceptar un emisor arbitrario.
+    Google firma con dos emisores equivalentes (``accounts.google.com`` con y
+    sin esquema); por eso se admite una colección. Cada uno puede ser la
+    plantilla multi-tenant de Microsoft: con el tenant ``common``, el documento
+    de descubrimiento declara el emisor como
+    ``https://login.microsoftonline.com/{tenantid}/v2.0``, que cada tenant
+    rellena con su propio id. Se sustituye por el ``tid`` del token y se
+    compara exacto — aceptar cualquier cosa que «se parezca» sería aceptar un
+    emisor arbitrario.
     """
     actual = str(claims.get("iss", ""))
-    if "{tenantid}" in expected:
-        tid = str(claims.get("tid", ""))
-        if not tid:
-            return False
-        expected = expected.replace("{tenantid}", tid)
-    return hmac.compare_digest(expected, actual)
+    tid = str(claims.get("tid", ""))
+    for candidato in (expected,) if isinstance(expected, str) else expected:
+        if "{tenantid}" in candidato:
+            if not tid:
+                continue
+            candidato = candidato.replace("{tenantid}", tid)
+        # En bytes: con `str`, compare_digest lanza ante un `iss` no ASCII.
+        if hmac.compare_digest(candidato.encode(), actual.encode()):
+            return True
+    return False
 
 
 def verify_oidc_id_token(
     raw_token: str,
     *,
     jwks_uri: str,
-    issuer: str,
+    issuer: str | Collection[str],
     audience: str,
     expected_nonce: str | None = None,
     email_verified_claim: str | None,
@@ -222,9 +229,13 @@ def verify_oidc_id_token(
     ``aud``, ``exp``, ``sub``, —si se pide— ``nonce`` y el claim que acredita
     el correo.
 
+    ``issuer`` es un emisor o una colección de emisores aceptables (Google
+    tiene dos); cualquiera puede llevar la plantilla ``{tenantid}``.
+
     ``email_verified_claim`` es ese claim, y tiene que valer exactamente el
     booleano ``true``. Cada proveedor lo llama a su manera: Google,
-    ``email_verified`` (y tiene su propio verificador); Microsoft Entra ID no
+    ``email_verified`` (su envoltorio pasa ``None`` y lo comprueba él, porque
+    también acepta la cadena ``"true"``); Microsoft Entra ID no
     emite ese, sino ``xms_edov`` —«el dueño del dominio del correo está
     verificado»—, que además es opcional y hay que pedirlo en el manifiesto de
     la aplicación (ADR-037). Hasta 2026-10 aquí no se exigía nada y la
@@ -268,7 +279,7 @@ def verify_oidc_id_token(
 def _oidc_claims_valid(
     claims: dict[str, Any],
     audience: str,
-    issuer: str,
+    issuer: str | Collection[str],
     expected_nonce: str | None,
     email_verified_claim: str | None,
 ) -> bool:

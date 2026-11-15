@@ -28,7 +28,7 @@ import { abrirFicha } from "@/components/ficha/enlace-ficha";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { useCreatePursuit, usePursuits } from "@/hooks/use-pursuits";
+import { useCreatePursuit, useLicitacionesConPursuit } from "@/hooks/use-pursuits";
 import { useCartera } from "@/hooks/use-cartera";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useOrganizationStore } from "@/hooks/use-organization";
@@ -204,21 +204,21 @@ export function useRenovaciones() {
    *
    * Sin organización resuelta las dos consultas están deshabilitadas y el mapa
    * queda vacío: la tabla se pinta entera ofreciendo «Anticipar», que es el
-   * comportamiento de siempre. Lo mismo si la organización tiene más
-   * oportunidades que la primera página del listado (50): puede faltar una
-   * marca, nunca sobrar una — el falso negativo deja el CTA que ya había.
+   * comportamiento de siempre. Las oportunidades se piden todas, página a
+   * página (`useLicitacionesConPursuit`): con solo la primera del listado (50)
+   * una organización con más se quedaba sin la marca de las que no cabían.
    */
   const cartera = useCartera();
-  const pursuits = usePursuits();
+  const conPursuit = useLicitacionesConPursuit();
   const marcasPropias = useMemo(() => {
     const marcas = new Map<string, MarcaPropia>();
-    for (const pursuit of pursuits.data?.items ?? []) marcas.set(pursuit.licitacion_id, "anticipada");
+    for (const licitacionId of conPursuit.data ?? []) marcas.set(licitacionId, "anticipada");
     // La cartera pisa a la oportunidad a propósito: si el contrato es tuyo, su
     // renovación se prepara desde `Oportunidades → Cartera` (con la ventana de
     // relicitación delante), no con el «Anticipar» de esta tabla.
     for (const contrato of cartera.data ?? []) marcas.set(contrato.licitacion_id, "cartera");
     return marcas;
-  }, [cartera.data, pursuits.data]);
+  }, [cartera.data, conPursuit.data]);
 
   const horizonteDias = Number(meses) * DIAS_POR_MES;
 

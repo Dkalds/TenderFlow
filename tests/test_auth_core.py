@@ -236,21 +236,6 @@ def test_oauth_state_nonce_is_extractable_only_from_expected_format():
     assert oauth_state_nonce("not:a:nonce") is None
 
 
-def test_google_id_token_nonce_must_match_authorization_flow():
-    from shared.auth_core import validate_google_id_token
-
-    claims: dict[str, object] = {
-        "iss": "https://accounts.google.com",
-        "aud": "client-id",
-        "sub": "google-subject",
-        "exp": int(time.time()) + 300,
-        "email_verified": True,
-        "nonce": "expected-nonce",
-    }
-    assert validate_google_id_token(claims, audience="client-id", expected_nonce="expected-nonce")
-    assert not validate_google_id_token(claims, audience="client-id", expected_nonce="other-nonce")
-
-
 def test_verify_google_id_token_accepts_real_jwks_shape_without_x5c():
     """Regresión: el JWKS v3 real de Google trae RSA n/e, nunca x5c.
 
@@ -313,7 +298,9 @@ def test_verify_google_id_token_accepts_real_jwks_shape_without_x5c():
     mock_response.json.return_value = jwks_response
     mock_response.raise_for_status.return_value = None
 
-    auth_core._google_jwks_cache = None
+    from shared import identity
+
+    identity.reset_oidc_caches()
     try:
         with patch("httpx.get", return_value=mock_response):
             result = auth_core.verify_google_id_token(
@@ -322,7 +309,114 @@ def test_verify_google_id_token_accepts_real_jwks_shape_without_x5c():
         assert result is not None
         assert result["sub"] == "google-subject"
     finally:
-        auth_core._google_jwks_cache = None
+        identity.reset_oidc_caches()
+
+
+# ---------------------------------------------------------------------------
+# verify_google_id_token sobre el verificador genérico de shared.identity
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def jwks_pedidos() -> list[str]:
+    """URLs de JWKS que pidió el verificador, en orden."""
+    return []
+
+
+@pytest.fixture()
+def google_firmante(monkeypatch, jwks_pedidos):
+    """Clave RSA efímera servida como JWKS de Google; devuelve un firmador de claims."""
+    import base64
+    import json
+
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import padding, rsa
+
+    from shared import identity
+
+    clave = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    numeros = clave.public_key().public_numbers()
+
+    def _b64u(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+    def _uint(valor: int) -> str:
+        return _b64u(valor.to_bytes((valor.bit_length() + 7) // 8, "big"))
+
+    jwks = {"keys": [{"kid": "kid-g", "kty": "RSA", "n": _uint(numeros.n), "e": _uint(numeros.e)}]}
+
+    def _servir(url: str) -> dict:
+        jwks_pedidos.append(url)
+        return jwks
+
+    monkeypatch.setattr(identity, "_http_get_json", _servir)
+    identity.reset_oidc_caches()
+
+    def _firmar(**overrides: object) -> str:
+        claims = {
+            "iss": "https://accounts.google.com",
+            "aud": "client-id",
+            "sub": "google-subject",
+            "exp": int(time.time()) + 300,
+            "email_verified": True,
+            "nonce": "n-1",
+            **overrides,
+        }
+        header = _b64u(json.dumps({"alg": "RS256", "kid": "kid-g"}).encode())
+        cuerpo = _b64u(json.dumps(claims).encode())
+        firma = clave.sign(f"{header}.{cuerpo}".encode(), padding.PKCS1v15(), hashes.SHA256())
+        return f"{header}.{cuerpo}.{_b64u(firma)}"
+
+    yield _firmar
+    identity.reset_oidc_caches()
+
+
+@pytest.mark.parametrize("iss", ["accounts.google.com", "https://accounts.google.com"])
+def test_verify_google_id_token_acepta_los_dos_emisores_de_google(
+    google_firmante, jwks_pedidos, iss
+):
+    from shared.auth_core import _GOOGLE_JWKS_URL, verify_google_id_token
+
+    claims = verify_google_id_token(
+        google_firmante(iss=iss), audience="client-id", expected_nonce="n-1"
+    )
+
+    assert claims is not None and claims["iss"] == iss
+    assert jwks_pedidos == [_GOOGLE_JWKS_URL]
+
+
+@pytest.mark.parametrize(
+    "iss", ["https://evil.example", "https://accounts.google.com.evil.example", ""]
+)
+def test_verify_google_id_token_rechaza_otro_emisor(google_firmante, iss):
+    from shared.auth_core import verify_google_id_token
+
+    token = google_firmante(iss=iss)
+
+    assert verify_google_id_token(token, audience="client-id", expected_nonce="n-1") is None
+
+
+@pytest.mark.parametrize(
+    ("valor", "aceptado"), [(True, True), ("true", True), (False, False), ("false", False)]
+)
+def test_verify_google_id_token_conserva_email_verified_como_cadena(
+    google_firmante, valor, aceptado
+):
+    """El genérico exige el booleano; Google sigue aceptando también ``"true"``."""
+    from shared.auth_core import verify_google_id_token
+
+    token = google_firmante(email_verified=valor)
+
+    resultado = verify_google_id_token(token, audience="client-id", expected_nonce="n-1")
+    assert (resultado is not None) is aceptado
+
+
+def test_verify_google_id_token_sin_email_verified_se_rechaza(google_firmante):
+    from shared.auth_core import verify_google_id_token
+
+    token = google_firmante(email_verified=None)
+
+    assert verify_google_id_token(token, audience="client-id", expected_nonce="n-1") is None
 
 
 # ---------------------------------------------------------------------------
@@ -765,101 +859,6 @@ class TestPKCE:
         verifier, challenge = generate_pkce_pair()
         digest = hashlib.sha256(verifier.encode("ascii")).digest()
         assert base64.urlsafe_b64encode(digest).rstrip(b"=").decode() == challenge
-
-
-# ---------------------------------------------------------------------------
-# validate_google_id_token — claim validation branches
-# ---------------------------------------------------------------------------
-
-
-class TestValidateGoogleIdToken:
-    """Lines 403-440: validate_google_id_token."""
-
-    def test_empty_claims(self):
-        from shared.auth_core import validate_google_id_token
-
-        assert validate_google_id_token({}, audience="aud") is False
-        assert validate_google_id_token(None, audience="aud") is False
-
-    def test_invalid_iss(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {"iss": "evil.com", "aud": "aud", "exp": int(time.time()) + 600}
-        assert validate_google_id_token(claims, audience="aud") is False
-
-    def test_invalid_aud(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {"iss": "accounts.google.com", "aud": "wrong", "exp": int(time.time()) + 600}
-        assert validate_google_id_token(claims, audience="myapp") is False
-
-    def test_missing_exp(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {"iss": "accounts.google.com", "aud": "myapp"}
-        assert validate_google_id_token(claims, audience="myapp") is False
-
-    def test_expired_token(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {"iss": "accounts.google.com", "aud": "myapp", "exp": int(time.time()) - 600}
-        assert validate_google_id_token(claims, audience="myapp") is False
-
-    def test_invalid_exp_format(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {"iss": "accounts.google.com", "aud": "myapp", "exp": "not_a_number"}
-        assert validate_google_id_token(claims, audience="myapp") is False
-
-    def test_email_not_verified(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {
-            "iss": "accounts.google.com",
-            "aud": "myapp",
-            "exp": int(time.time()) + 600,
-            "email_verified": False,
-        }
-        assert validate_google_id_token(claims, audience="myapp") is False
-
-    def test_valid_token(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {
-            "iss": "accounts.google.com",
-            "aud": "myapp",
-            "sub": "google-subject-123",
-            "exp": int(time.time()) + 600,
-            "email_verified": True,
-        }
-        assert validate_google_id_token(claims, audience="myapp") is True
-
-    def test_valid_token_no_email_verify_required(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {
-            "iss": "https://accounts.google.com",
-            "aud": "myapp",
-            "sub": "google-subject-123",
-            "exp": int(time.time()) + 600,
-            "email_verified": False,
-        }
-        assert (
-            validate_google_id_token(claims, audience="myapp", require_email_verified=False) is True
-        )
-
-    def test_aud_as_list(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {
-            "iss": "accounts.google.com",
-            "aud": ["myapp", "other"],
-            "azp": "myapp",
-            "sub": "google-subject-123",
-            "exp": int(time.time()) + 600,
-            "email_verified": True,
-        }
-        assert validate_google_id_token(claims, audience="myapp") is True
 
 
 # ---------------------------------------------------------------------------

@@ -13,7 +13,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth } from "@/lib/api-client";
+import { apiGet, fetchWithAuth } from "@/lib/api-client";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { adminKeys } from "@/lib/query-keys";
 import {
@@ -66,4 +66,19 @@ export function useObservabilidad(): Observabilidad {
     estado: estadoGlobal(health, { cargando: isLoading, fallo: isError }),
     componentes: componentesDeSalud(health),
   };
+}
+
+/**
+ * Los últimos errores de JavaScript del navegador, agrupados por huella
+ * (`GET /security/client-errors`). La ruta es de administrador: quien la monta
+ * decide, y así la consulta ni sale para quien iba a recibir un 403.
+ */
+export function useErroresNavegador(limite: number) {
+  return useQuery({
+    queryKey: adminKeys.clientErrors,
+    queryFn: () => apiGet("/api/v1/security/client-errors", { params: { query: { limit: limite } } }),
+    staleTime: 60_000,
+    // El fallo lo dice el panel: sin toast encima.
+    meta: META_ERROR_EN_LINEA,
+  });
 }

@@ -647,6 +647,43 @@ class TestPliegoSinPublicar:
         assert repo.list_by_licitacion("EXP-SP-7")[0]["sin_publicar"] is False
 
 
+class TestRechazoDelCortafuegos:
+    """La ficha dice «PLACSP lo rechazó» solo si la fila lleva lo que escribe el fetcher."""
+
+    def _documento(self, repo, licitacion_id: str) -> dict:
+        _insert_licitacion(licitacion_id, estado="PUB", tipos_anuncio="DOC_CD,DOC_CN")
+        repo.upsert_meta(licitacion_id, [_ref_servlet()])
+        return dict(repo.list_by_licitacion(licitacion_id)[0])
+
+    def test_el_rechazo_que_guarda_el_fetcher_va_marcado(self, repo):
+        from unittest.mock import patch
+
+        import requests
+
+        from db.repositories.documentos import RECHAZO_DEL_CORTAFUEGOS
+        from scraper.document_fetcher import fetch_and_extract
+
+        doc = self._documento(repo, "EXP-CF-1")
+        # El error con el texto exacto lo prueba ``test_document_fetcher``; aquí,
+        # que el ``error_detail`` que deja ``fetch_and_extract`` casa con la marca.
+        rechazo = requests.HTTPError(f"Pinned HTTPS response status 200: {RECHAZO_DEL_CORTAFUEGOS}")
+        with patch("scraper.document_fetcher._download_bytes", side_effect=rechazo):
+            assert fetch_and_extract(doc) == "error"
+
+        assert repo.list_by_licitacion("EXP-CF-1")[0]["rechazado"] is True
+
+    def test_otro_error_de_descarga_no_va_marcado(self, repo):
+        doc = self._documento(repo, "EXP-CF-2")
+        repo.mark_error(doc["id"], error_detail="descarga fallida: token caducado (500): 500")
+
+        assert repo.list_by_licitacion("EXP-CF-2")[0]["rechazado"] is False
+
+    def test_sin_error_no_va_marcado(self, repo):
+        self._documento(repo, "EXP-CF-3")
+
+        assert repo.list_by_licitacion("EXP-CF-3")[0]["rechazado"] is False
+
+
 class TestListByLicitacion:
     def test_returns_docs_of_that_licitacion_only(self, repo):
         _insert_licitacion("EXP-DOC1")

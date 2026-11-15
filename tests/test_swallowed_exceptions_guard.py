@@ -193,9 +193,6 @@ _LEGITIMATE_SILENT: frozenset[str] = frozenset(
         # `_PgConnAdapter.close`, `_return_pg_connection`, `get_table_columns`)
         # salieron el 2026-10-25: se estrecharon a `psycopg.Error` o cuentan en
         # `db_connection_errores_total`.
-        # Probes de disponibilidad: el `return False` ES el resultado que el
-        # llamante espera, no un fallback que oculte un fallo.
-        "db/search_backend.py::PgTsBackend.available",
     }
 )
 

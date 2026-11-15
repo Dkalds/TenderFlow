@@ -8,6 +8,7 @@
  */
 
 import { errorDeRespuesta, getCsrfToken, type ApiError } from "./api-client";
+import { conOrganizacion } from "./utils";
 import type { CitaOrganizacion, OpcionesCorpus } from "./api-types";
 import { registrarEvento } from "./analytics";
 
@@ -154,14 +155,6 @@ export interface ResumenParams extends StreamCallbacks {
   /** Organización activa: el gasto cuenta contra su tope diario (C2.9). */
   organizationId?: number | null;
   signal?: AbortSignal;
-}
-
-/**
- * `?organization_id=` de la organización activa, o nada: sin ella el backend
- * atribuye el gasto a la personal y el tope del equipo no lo ve.
- */
-function conOrganizacion(url: string, organizationId: number | null | undefined): string {
-  return organizationId != null ? `${url}?organization_id=${organizationId}` : url;
 }
 
 /**

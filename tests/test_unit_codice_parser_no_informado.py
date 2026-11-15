@@ -219,6 +219,29 @@ def test_nuts_de_provincia_conserva_provincia_y_ccaa(parse: Any) -> None:
     assert lic.ccaa == "Madrid"
 
 
+@pytest.mark.parametrize("parse", [parse_entry, parse_entry_unfiltered])
+@pytest.mark.parametrize(
+    ("nuts", "subentity", "ccaa"),
+    [("ES70", "Canarias", "Canarias"), ("ES4", "Centro", None), ("ES61", "Andalucía", "Andalucía")],
+)
+def test_nuts_supraprovincial_no_da_provincia(
+    parse: Any, nuts: str, subentity: str, ccaa: str | None
+) -> None:
+    """Caso golden 17: ``ES70`` publica «Canarias», que es una CCAA, no una provincia."""
+    lic = parse(_entry(nuts=nuts, subentity=subentity))
+    assert lic is not None
+    assert lic.provincia is None
+    assert lic.ccaa == ccaa
+    assert lic.nuts_code == nuts
+
+
+@pytest.mark.parametrize("parse", [parse_entry, parse_entry_unfiltered])
+def test_nuts2_uniprovincial_conserva_provincia(parse: Any) -> None:
+    lic = parse(_entry(nuts="ES30", subentity="Madrid"))
+    assert lic is not None
+    assert lic.provincia == "Madrid"
+
+
 @pytest.mark.parametrize(
     ("nuts", "esperado"),
     [

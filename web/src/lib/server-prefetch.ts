@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { QueryClient, dehydrate, type DehydratedState, type QueryKey } from "@tanstack/react-query";
+import { origenApi } from "@/lib/runtime-config";
 
 /**
  * Prefetch en servidor con hidratación (S5.1 del plan de septiembre, S7.1 del
@@ -79,16 +80,6 @@ export interface ConsultaServidor {
    * defecto, nada: el cuerpo JSON tal cual (`fetchWithAuth`, `apiGet`).
    */
   transformar?: (cuerpo: unknown) => unknown;
-}
-
-/**
- * Origen de la API para llamadas desde el servidor. Los rewrites de
- * `next.config.ts` sólo se aplican a lo que entra desde el navegador, así que
- * aquí se apunta al backend directamente (igual que `lib/publico-api.ts`).
- */
-function origenApi(): string {
-  // fdi-allow:localhost-url — fallback de desarrollo para fetch SSR; no es dato renderizado.
-  return process.env.API_BASE_URL ?? "http://localhost:8080";
 }
 
 /**

@@ -23,12 +23,13 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from db.database import connect, get_cursor, set_cursor
+from db.database import get_cursor, set_cursor
 from db.empresas import (
     EmpresaCaches,
     add_aliases,
     add_ute_member,
     create_empresa,
+    en_transaccion,
     enqueue_review,
     fetch_unlinked,
     link_adjudicaciones,
@@ -298,7 +299,8 @@ def resolve_unlinked_adjudicaciones(
     """
     stats = ResolutionStats(last_id=after_id)
     escrituras = _EscriturasDelLote()
-    with connect() as conn:
+
+    def _resolver_lote(conn: object) -> None:
         caches = load_caches(conn)
         pending = pending_review_keys(conn)
         rows = fetch_unlinked(conn, batch_size, after_id, fuente=scope_fuente)
@@ -357,6 +359,8 @@ def resolve_unlinked_adjudicaciones(
             if empresa_id is not None:
                 escrituras.anotar_enlace(int(row["id"]), empresa_id)
         escrituras.volcar(conn)
+
+    en_transaccion(_resolver_lote)
 
     if stats.processed or stats.queued_review:
         log.info("entity_resolution_batch", **stats.as_dict())

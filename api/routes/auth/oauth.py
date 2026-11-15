@@ -73,11 +73,10 @@ class OAuthAuthorizeResult(BaseModel):
 # para todos, y lo único que cambia por proveedor son sus endpoints, sus
 # credenciales y cómo se verifica su `id_token`.
 #
-# Google conserva su verificador específico (`shared.auth_core.
-# verify_google_id_token`) a propósito: es el camino que hoy funciona en
-# producción y el riesgo de este stream está justamente en tocarlo. Lo genérico
-# —descubrimiento OpenID + JWKS— sirve a Microsoft y a cualquier proveedor que
-# venga después.
+# La firma de todos se verifica con `shared.identity.verify_oidc_id_token`.
+# Google entra por `shared.auth_core.verify_google_id_token`, un envoltorio que
+# le pasa su JWKS fijo y sus dos emisores y comprueba él `email_verified`; los
+# demás, con el emisor y el JWKS de su documento de descubrimiento.
 
 
 @dataclass(frozen=True)
@@ -107,7 +106,7 @@ class _OAuthProvider:
     scope: str
     #: Claim booleano del ``id_token`` que acredita que quien entra controla el
     #: correo (ADR-037). Sin valor por defecto: un proveedor nuevo tiene que
-    #: decirlo. ``None`` solo para Google, cuyo verificador propio ya exige
+    #: decirlo. ``None`` solo para Google, cuyo envoltorio ya exige
     #: ``email_verified``.
     claim_correo_verificado: str | None
     #: Claims de los que se toma el correo, por orden. Solo los que el claim
@@ -116,7 +115,7 @@ class _OAuthProvider:
     claims_de_correo: tuple[str, ...] = ("email",)
     #: Parámetros propios del proveedor en la URL de autorización.
     extra_authorize_params: Mapping[str, str] = field(default_factory=dict)
-    #: ``True`` cuando el proveedor tiene su propio verificador ya probado.
+    #: ``True`` para Google: su ``id_token`` va por ``verify_google_id_token``.
     usa_verificador_google: bool = False
 
 
@@ -153,8 +152,8 @@ _PROVIDERS: dict[str, _OAuthProvider] = {
             # argumento, no el valor. La razón va aquí arriba y no detrás del
             # `nosec` porque bandit lee todo lo que le sigue como ids de test.
             token_url="https://oauth2.googleapis.com/token",  # noqa: S106  # nosec B106
-            # Google verifica con su propio camino: estos dos no se usan y se
-            # dejan por completitud del registro.
+            # Google verifica con su envoltorio, que fija su JWKS y sus dos
+            # emisores: estos dos no se usan y se dejan por completitud.
             jwks_uri="https://www.googleapis.com/oauth2/v3/certs",
             issuer="https://accounts.google.com",
         ),

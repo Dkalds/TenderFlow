@@ -139,6 +139,11 @@ _FALLO_DE_DESCARGA = "descarga fallida:"
 #: escribe ``scraper/document_fetcher.py`` (``content-type no soportado: …``).
 _FORMATO_SIN_SOPORTE = "content-type no soportado:"
 
+#: Lo que lleva el ``error_detail`` de una descarga que el cortafuegos de la
+#: plataforma rechazó con su página «Request Rejected» (un 200 con HTML). Lo
+#: escribe ``scraper/document_fetcher.py`` y lo busca la ficha para decirlo.
+RECHAZO_DEL_CORTAFUEGOS = "el cortafuegos de la plataforma rechazó la petición"
+
 
 def normalizar_content_type(content_type: str | None) -> str:
     """Forma comparable de un content-type: sin parámetros, minúsculas y sin guiones.
@@ -303,6 +308,8 @@ class DocumentoMeta(TypedDict):
     #: Texto ISO: ``documentos.created_at`` no es ``timestamptz``.
     created_at: str
     sin_publicar: bool
+    #: La última descarga la rechazó el cortafuegos (:data:`RECHAZO_DEL_CORTAFUEGOS`).
+    rechazado: bool
 
 
 class ConvocatoriaPscp(TypedDict):
@@ -864,13 +871,14 @@ class DocumentosRepository:
         with connect_read() as c:
             cur = c.execute(
                 "SELECT d.id, d.tipo, d.uri, d.filename, d.content_type, d.size_bytes, "
-                f"d.status, d.created_at, {_sin_publicar_sql()} AS sin_publicar "
+                f"d.status, d.created_at, {_sin_publicar_sql()} AS sin_publicar, "
+                "(d.status = 'error' AND strpos(d.error_detail, %s) > 0) IS TRUE AS rechazado "
                 "FROM documentos d "
                 "LEFT JOIN licitaciones l ON l.id_externo = d.licitacion_id "
                 "WHERE d.licitacion_id = %s "
                 "ORDER BY CASE d.tipo WHEN 'legal' THEN 0 WHEN 'technical' THEN 1 ELSE 2 END, "
-                "d.created_at DESC, d.id",
-                (licitacion_id,),
+                f"{instante_sql('documentos', 'created_at', 'd')} DESC, d.id",
+                (RECHAZO_DEL_CORTAFUEGOS, licitacion_id),
             )
             return typed_rows(DocumentoMeta, rows_to_dicts(cur))
 

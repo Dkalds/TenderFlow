@@ -41,7 +41,7 @@ def run_daily_pipeline(*, con_cierre: bool = True) -> dict[str, Any]:
 
     Raises:
         RuntimeError: Solo si la ingesta falla con un status inesperado.
-            Los errores ya manejados en ``process_daily`` (``error_fetch``,
+            Los errores ya manejados en la ingesta (``error_fetch``,
             ``error_persistencia``) no relanzarán excepción para evitar
             doble-alerta — las notificaciones ya se enviaron dentro del pipeline.
     """
@@ -54,7 +54,7 @@ def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
     Mantiene el contrato que tenía el camino legacy (``update_daily``, retirado):
 
     - ``ingestion_result`` expone ``inserted``/``modified`` como **listas de
-      id_externo** (mismo contrato que ``process_daily``; ``_log_daily_summary``
+      id_externo** (el contrato que tenía ``process_daily``; ``_log_daily_summary``
       hace ``len()`` y ``join()`` sobre ellas).
     - Los errores por-entry (parse → DLQ) **no** marcan el run como fallido —
       igual que ``entries_error`` en legacy. Solo un fallo fatal de ``fetch``

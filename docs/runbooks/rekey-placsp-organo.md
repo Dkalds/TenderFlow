@@ -18,7 +18,7 @@ cifras: [RFC de identidad PLACSP](../rfc/2026-10-24-rfc-identidad-placsp-organo-
 > **No dejar correr los escritores nuevos contra filas sin re-key.** El PR de
 > la fase B cambia a la vez la migración y **todos** los escritores de la
 > familia (conector PLACSP en sus dos carriles, empresas vigiladas, agregadas,
-> el carril legacy `process_daily` que usa el reintento de la DLQ,
+> el carril legacy `process_daily` que usaba el reintento de la DLQ (retirado en 2026-11),
 > `seed_negatives` y `reproceso_lotes`). Un expediente que la fuente republique
 > entre el merge y la migración entraría como fila **nueva** junto a la vieja,
 > y `v164` aborta al encontrarla. Por eso la ingesta se para **antes** del

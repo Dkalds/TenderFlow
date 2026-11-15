@@ -24,6 +24,7 @@ import { descargarBlob } from "@/lib/export";
 import { callMethod, callUrl } from "@/hooks/__tests__/fetch-call";
 import { GuionOfertaPanel } from "@/components/pliego/guion-oferta";
 import { guionAMarkdown, type GuionOferta } from "@/hooks/use-guion-oferta";
+import { useOrganizationStore } from "@/lib/organization-store";
 import { fetchPorRuta, renderConQuery } from "./pliego-render";
 
 const GUION: GuionOferta = {
@@ -194,5 +195,70 @@ describe("guionAMarkdown", () => {
     expect(md).toContain("- Plan de migración por fases. _(PPT.pdf p. 4)_");
     expect(md).toContain("- Oficina de proyecto con PMO propia. _[sin base en el pliego]_");
     expect(md).not.toContain("migración»");
+    expect(md).not.toContain("De tus documentos");
+    expect(md).not.toContain("No se pudieron consultar");
+  });
+
+  it("si falló la búsqueda de citas propias, lo dice en vez de callarlo", () => {
+    const md = guionAMarkdown({ ...GUION, citas_organizacion_fallidas: true }, () => "PPT.pdf");
+    expect(md).toContain("No se pudieron consultar los documentos de tu organización");
+  });
+
+  it("lleva las citas de documentos propios con su extracto, fichero y página", () => {
+    const [criterio] = GUION.criterios!;
+    const conPropias: GuionOferta = {
+      ...GUION,
+      criterios: [
+        {
+          ...criterio,
+          citas_organizacion: [
+            {
+              attachment_id: 11,
+              filename: "Propuesta.pdf",
+              page_number: 3,
+              cita: "Migramos el ERP en nueve meses.",
+              pursuit_id: 42,
+              licitacion_id: "EXP-1",
+            },
+            {
+              attachment_id: 12,
+              filename: "Notas.txt",
+              page_number: null,
+              cita: "Equipo de seis personas.",
+              pursuit_id: 42,
+              licitacion_id: "EXP-1",
+            },
+          ],
+        },
+      ],
+    };
+    const md = guionAMarkdown(conPropias, () => "PPT.pdf");
+    expect(md).toContain("### De tus documentos");
+    expect(md).toContain("- «Migramos el ERP en nueve meses.» _(Propuesta.pdf p. 3)_");
+    expect(md).toContain("- «Equipo de seis personas.» _(Notas.txt)_");
+  });
+});
+
+describe("GuionOfertaPanel · PDF de la organización activa", () => {
+  it("pide el PDF con la misma organización que el guion", async () => {
+    useOrganizationStore.setState({ activeOrganizationId: 9 });
+    try {
+      const fetch = fetchPorRuta(
+        [/guion\.pdf/, { ok: true }],
+        [/\/guion\?/, GUION],
+        [/documentos$/, DOCUMENTOS],
+      );
+      renderConQuery(<GuionOfertaPanel licitacionId="LIC-1" />);
+      fireEvent.click(screen.getByRole("button", { name: "Generar guion" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Descargar PDF" }));
+
+      await vi.waitFor(() =>
+        expect(fetch.mock.calls.some((c) => callUrl(c).includes("/guion.pdf"))).toBe(true),
+      );
+      const pdf = fetch.mock.calls.find((c) => callUrl(c).includes("/guion.pdf"))!;
+      expect(callUrl(pdf)).toMatch(/guion\.pdf\?organization_id=9$/);
+    } finally {
+      useOrganizationStore.setState({ activeOrganizationId: null });
+    }
   });
 });

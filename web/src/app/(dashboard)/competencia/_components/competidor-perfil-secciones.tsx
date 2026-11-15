@@ -10,8 +10,9 @@
  */
 
 import { EnlaceIr, PanelError, SectionTitle } from "@/components/console/panel";
-import { RESULTADO_BATALLA, useBatallasContraMi } from "@/components/competitors/company-contra-mi";
+import { RESULTADO_BATALLA } from "@/components/competitors/company-contra-mi";
 import type { CompanyBreakdown } from "@/components/competitors/company-profile-types";
+import { useBatallasContraMi } from "@/hooks/use-empresa-competencia";
 import { Pista } from "@/components/ui/pista";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Schemas } from "@/lib/api-types";

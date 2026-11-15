@@ -93,21 +93,8 @@ def _descarga_que_escribe(contenido: bytes):
     return _descargar
 
 
-def _bajar_tech(destino: Path, *, sidecar: bool) -> bool:
-    release = {"id": 1, "tag_name": "v1", "assets": []}
-    with (
-        patch("shared.release_assets.fetch_latest_release", return_value=release),
-        patch("shared.release_assets.find_asset_id", return_value=7),
-        patch(
-            "shared.release_assets.download_asset",
-            side_effect=_descarga_que_escribe(b"pkl descargado"),
-        ),
-        patch("shared.release_assets.download_checksum_sidecar", return_value=sidecar),
-    ):
-        return tech_classifier.TechnologyClassifier.ensure_downloaded(path=destino)
-
-
-def _bajar_sap(destino: Path, *, sidecar: bool) -> bool:
+def _bajar(clase: type, destino: Path, *, sidecar: bool) -> bool:
+    """Los dos cargadores localizan el asset igual: ``locate_release_asset``."""
     from shared.release_assets import AssetLocalizado
 
     release = {"id": 1, "tag_name": "v1", "assets": []}
@@ -122,7 +109,16 @@ def _bajar_sap(destino: Path, *, sidecar: bool) -> bool:
         ),
         patch("shared.release_assets.download_checksum_sidecar", return_value=sidecar),
     ):
-        return sap_classifier.SAPClassifier.ensure_downloaded(path=destino)
+        resultado: bool = clase.ensure_downloaded(path=destino)
+        return resultado
+
+
+def _bajar_tech(destino: Path, *, sidecar: bool) -> bool:
+    return _bajar(tech_classifier.TechnologyClassifier, destino, sidecar=sidecar)
+
+
+def _bajar_sap(destino: Path, *, sidecar: bool) -> bool:
+    return _bajar(sap_classifier.SAPClassifier, destino, sidecar=sidecar)
 
 
 _CARGADORES = [
@@ -131,6 +127,24 @@ _CARGADORES = [
     ),
     pytest.param(_bajar_sap, sap_classifier, "ML_MODEL_SHA256", "ml_classifier", id="sap"),
 ]
+
+
+@pytest.mark.parametrize(
+    "clase",
+    [tech_classifier.TechnologyClassifier, sap_classifier.SAPClassifier],
+    ids=["tech", "sap"],
+)
+def test_sin_asset_en_ninguna_release_no_descarga(tmp_path: Path, clase: type) -> None:
+    """Ni tag fijo, ni *latest*, ni recientes: ``False`` y el caller degrada."""
+    destino = tmp_path / "descargado.pkl"
+    with (
+        patch("shared.release_assets.locate_release_asset", return_value=None) as localizar,
+        patch("shared.release_assets.download_asset") as descargar,
+    ):
+        assert clase.ensure_downloaded(path=destino) is False
+    localizar.assert_called_once()
+    descargar.assert_not_called()
+    assert not destino.exists()
 
 
 @pytest.mark.parametrize(("bajar", "modulo", "ajuste", "prefijo"), _CARGADORES)

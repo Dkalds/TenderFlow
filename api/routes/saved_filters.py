@@ -1,13 +1,13 @@
 """Rutas /api/v1/saved-filters — vistas/filtros guardados por el usuario.
 
 Persiste snapshots con nombre de la combinación de filtros (estado ``nuqs`` del
-frontend) para que el usuario pueda restaurar vistas frecuentes. Cada vista se
-asocia a una clave opaca y estable derivada de la sesión o API key.
+frontend) para que el usuario pueda restaurar vistas frecuentes. Cada vista es
+del ``user_id`` del principal (sesión o API key con dueño); ``db/saved_filters.py``
+resuelve en la base las vistas antiguas que solo llevan la clave del correo.
 """
 
 from __future__ import annotations
 
-import hashlib
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -31,20 +31,6 @@ log = get_logger(__name__)
 router = APIRouter(prefix="/saved-filters", tags=["saved-filters"])
 
 _MAX_FILTERS_JSON = 8_000
-
-
-def _user_key(ctx: Principal) -> str:
-    """Clave opaca y estable por usuario (email de sesión o hash de API key)."""
-    if ctx.get("user_key"):
-        return str(ctx["user_key"])
-    seed = str(ctx.get("email") or ctx.get("key_hash") or "anon")
-    return hashlib.sha256(seed.encode("utf-8")).hexdigest()[:16]
-
-
-def _user_id(ctx: Principal) -> int | None:
-    """Identidad interna del principal (v129): la lectura dual va por ella."""
-    raw = ctx.get("user_id")
-    return int(raw) if raw is not None else None
 
 
 class SavedFilter(BaseModel):
@@ -81,9 +67,7 @@ async def get_saved_filters(
 ) -> SavedFiltersResult:
     if organization_id is not None:
         await run_db(claim_legacy_scope, int(ctx["user_id"]))
-    rows = await run_db(
-        list_saved_filters, _user_key(ctx), ctx["organization_id"], user_id=_user_id(ctx)
-    )
+    rows = await run_db(list_saved_filters, ctx["organization_id"], user_id=int(ctx["user_id"]))
     return SavedFiltersResult(items=[SavedFilter(**row) for row in rows])
 
 
@@ -104,12 +88,11 @@ async def post_saved_filter(
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
     await run_db(
         save_filter,
-        _user_key(ctx),
         body.name.strip(),
         body.filters_json,
         ctx["organization_id"],
         body.visibility,
-        user_id=_user_id(ctx),
+        user_id=int(ctx["user_id"]),
     )
     log.info("saved_filter_upsert", name=body.name)
     return SavedFilterSaved(status="ok", name=body.name.strip())
@@ -120,12 +103,11 @@ async def delete_saved_filter_route(
     filter_id: int,
     ctx: Principal = Depends(require_organization(write=True)),
 ) -> StatusOk:
-    user_key = _user_key(ctx)
-    user_id = _user_id(ctx)
+    user_id = int(ctx["user_id"])
     # Comprobar visibilidad antes de borrar (previene IDOR — OWASP A01). No
     # basta con esto: la lista incluye las vistas *compartidas* de los demás
     # miembros, y ésas se ven pero no se borran.
-    rows = await run_db(list_saved_filters, user_key, ctx["organization_id"], user_id=user_id)
+    rows = await run_db(list_saved_filters, ctx["organization_id"], user_id=user_id)
     if not any(row["id"] == filter_id for row in rows):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -139,7 +121,6 @@ async def delete_saved_filter_route(
     deleted = await run_db(
         delete_saved_filter,
         filter_id,
-        user_key=user_key,
         organization_id=ctx["organization_id"],
         user_id=user_id,
     )

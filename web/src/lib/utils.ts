@@ -390,3 +390,19 @@ export function foldText(text: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 }
+
+/**
+ * La ruta de la API con el `?organization_id=` del equipo dado, o tal cual si
+ * es la personal. Sin ese valor el backend resuelve la personal: olvidarlo en
+ * una ruta de equipo ya dio un 404 (`use-webhooks.ts`).
+ */
+export function conOrganizacion(
+  url: string,
+  organizationId: number | null | undefined,
+  extra?: Record<string, string>,
+): string {
+  const params = new URLSearchParams(extra);
+  if (organizationId != null) params.set("organization_id", String(organizationId));
+  const query = params.toString();
+  return query ? `${url}?${query}` : url;
+}

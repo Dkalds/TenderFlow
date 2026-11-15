@@ -18,22 +18,17 @@
  */
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "@/lib/toast";
 
 import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle, ROTULO_DATO } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ApiError, apiGet, apiMutate } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { adminKeys, analyticsKeys } from "@/lib/query-keys";
 import { formatCurrency, formatDate, formatNumber, formatPercent } from "@/lib/utils";
+import { useDuplicadosPendientes, useResolverDuplicado } from "../../_hooks/use-revision";
 
-type Listado = Schemas["DuplicadosPendientes"];
 type Par = Schemas["DuplicadoPendiente"];
-type Resuelto = Schemas["DuplicadoResuelto"];
 type Decision = "mismo" | "distinto";
 
 const ETIQUETA: Record<Decision, { pedir: string; confirmar: string }> = {
@@ -75,34 +70,8 @@ export function RevisionDuplicadosCard() {
   // Una sola confirmación armada a la vez, entre todas las filas y las dos
   // decisiones: con dos, un segundo clic distraído ejecuta la que no se miraba.
   const [confirmando, setConfirmando] = useState<{ id: string; decision: Decision } | null>(null);
-  const queryClient = useQueryClient();
-
-  const { data, isLoading, error, refetch } = useQuery<Listado>({
-    queryKey: adminKeys.revision.duplicados,
-    queryFn: () =>
-      apiGet("/api/v1/admin/revision/duplicados", { params: { query: { limit: 50 } } }) as Promise<Listado>,
-    meta: META_ERROR_EN_LINEA,
-  });
-
-  const resolver = useMutation({
-    mutationFn: ({ id, decision }: { id: string; decision: Decision }) =>
-      apiMutate<Resuelto>(
-        "POST",
-        `/api/v1/admin/revision/duplicados/${encodeURIComponent(id)}/resolver`,
-        { aceptar: decision === "mismo" },
-      ),
-    onSuccess: (res) => {
-      toast.success(res.detalle);
-      void queryClient.invalidateQueries({ queryKey: adminKeys.revision.duplicados });
-      void queryClient.invalidateQueries({ queryKey: analyticsKeys.quality });
-    },
-    meta: { errorTitle: "No se pudo resolver el par" },
-    onError: () => {
-      // Un 404 es que otra persona ya lo decidió: la lista tiene que ponerse al día.
-      void queryClient.invalidateQueries({ queryKey: adminKeys.revision.duplicados });
-    },
-    onSettled: () => setConfirmando(null),
-  });
+  const { data, isLoading, error, refetch } = useDuplicadosPendientes();
+  const resolver = useResolverDuplicado();
 
   const items: Par[] = data?.items ?? [];
   const sinPermiso = error instanceof ApiError && error.status === 403;
@@ -153,7 +122,10 @@ export function RevisionDuplicadosCard() {
                       setConfirmando({ id: par.licitacion_id, decision });
                       return;
                     }
-                    resolver.mutate({ id: par.licitacion_id, decision });
+                    resolver.mutate(
+                      { id: par.licitacion_id, aceptar: decision === "mismo" },
+                      { onSettled: () => setConfirmando(null) },
+                    );
                   }}
                 >
                   {pidiendo ? ETIQUETA[decision].confirmar : ETIQUETA[decision].pedir}

@@ -65,6 +65,7 @@ COLUMNA_FECHA: dict[str, str] = {
     # Un error que sigue pasando cada día no puede caducar por haber
     # empezado hace un mes.
     "client_errors": "ultima_vez",
+    "csp_violations": "created_at",
     "asistente_feedback": "created_at",
     # Por fecha de caducidad y no de creación: una invitación vive hasta que
     # caduca y solo entonces empieza a contar el plazo.
@@ -174,6 +175,14 @@ POLITICA_RETENCION: tuple[ReglaRetencion, ...] = (
         "RETENTION_CLIENT_ERRORS_DAYS",
         "Huella sin PII de un fallo de JavaScript. No hace falta guardarla más de "
         "lo que dura investigar una regresión.",
+    ),
+    # Mismo ajuste que `client_errors`: es el otro informe del navegador que se
+    # guarda al lado, sin PII, y sirve para lo mismo (ver qué rompió un cambio).
+    ReglaRetencion(
+        "csp_violations",
+        "RETENTION_CLIENT_ERRORS_DAYS",
+        "Informes de la política CSP del navegador: directiva, recurso bloqueado y "
+        "página, sin identidad. Sirven para ajustar la política tras un cambio.",
     ),
     ReglaRetencion(
         "asistente_feedback",
@@ -323,6 +332,7 @@ def run_retention(
                 _plazo("password_reset_tokens"),
             ),  # pragma: allowlist secret
             ("client_errors", _plazo("client_errors")),
+            ("csp_violations", _plazo("csp_violations")),
             ("asistente_feedback", _plazo("asistente_feedback")),
             ("organization_invitations", _plazo("organization_invitations")),
             ("domain_events", _plazo("domain_events")),
