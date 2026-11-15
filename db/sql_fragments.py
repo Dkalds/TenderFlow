@@ -305,6 +305,14 @@ BASE_COMPARABLE_SQL = "COALESCE(lo.importe, l.importe_base_sin_iva, l.importe)"
 BASE_SIN_IVA = "sin_iva"
 BASE_MIXTA = "mixta"
 
+#: Cuántas veces el presupuesto puede llegar a ser lo adjudicado antes de que el
+#: par cuente como imposible (error de fuente o modificado mal atribuido). Una
+#: sola constante para el SQL de `db/` y para las bajas que `services/` calcula
+#: en Python: con el número escrito a mano en cada sitio, el Mapa de
+#: competidores llegó a no filtrar nada y una fila de 87.095 € sobre un lote de
+#: 100 € hundió la baja media de una empresa a -1.692 %.
+TOLERANCIA_SOBRECOSTE = 1.5
+
 # Para comparar una fila de adjudicación contra su presupuesto real (el del
 # lote, no el del expediente completo). Antes de v65_lotes, comparar un lote
 # contra l.importe sobreestimaba sistemáticamente la baja de cualquier
@@ -320,7 +328,7 @@ BASE_MIXTA = "mixta"
 # ``l`` (licitaciones), ``a`` (adjudicaciones) y ``lo`` (``LEFT JOIN lotes``).
 VALID_PAIR_LOTE = (
     f"({BASE_COMPARABLE_SQL}) > 0 AND a.importe_adjudicado > 0 "
-    f"AND a.importe_adjudicado <= ({BASE_COMPARABLE_SQL}) * 1.5"
+    f"AND a.importe_adjudicado <= ({BASE_COMPARABLE_SQL}) * {TOLERANCIA_SOBRECOSTE}"
 )
 
 # Baja porcentual de una fila de adjudicación contra su presupuesto real.

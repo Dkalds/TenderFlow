@@ -23,6 +23,7 @@ from statistics import median
 from typing import Any
 
 from db.repositories import mercado as mercado_repo
+from db.sql_fragments import TOLERANCIA_SOBRECOSTE
 from services.competitive.batallas import (
     MIN_POR_CELDA,
     corte_por_procedimiento,
@@ -466,12 +467,16 @@ def perfil_empresa(
         for row in scope_rows
         if row.get("n_ofertas_recibidas") is not None
     ]
+    # Sin los pares imposibles (adjudicado 0 o por encima de la tolerancia): una
+    # sola fila de 87.095 € sobre 100 € deja la baja media en cifras absurdas.
     discounts = [
         (1.0 - float(row["importe_adjudicado"]) / float(row["presupuesto_licitacion"])) * 100
         for row in scope_rows
         if row.get("importe_adjudicado") is not None
         and row.get("presupuesto_licitacion") is not None
-        and float(row["presupuesto_licitacion"]) > 0
+        and 0
+        < float(row["importe_adjudicado"])
+        <= float(row["presupuesto_licitacion"]) * TOLERANCIA_SOBRECOSTE
     ]
     valid_dates = [
         parsed

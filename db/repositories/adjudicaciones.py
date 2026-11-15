@@ -9,6 +9,7 @@ from db.database import connect_read
 from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_where
 from db.repositories.base import count_where, csv_values, rows_to_dicts, typed_rows
 from db.sql_fragments import (
+    BASE_COMPARABLE_SQL,
     exclude_duplicados_sql,
     fecha_fin_sql,
     iso_guard,
@@ -317,7 +318,7 @@ class AdjudicacionRepository:
         # el segmento. Son dos columnas de la misma fila ya unida: traerlas aquí
         # evita una segunda consulta, y los demás consumidores las ignoran.
         "l.cpv, l.titulo, "
-        "COALESCE(lo.importe, l.importe) AS presupuesto_efectivo, "
+        f"{BASE_COMPARABLE_SQL} AS presupuesto_efectivo, "
         "e.nombre_canonico AS empresa_nombre_master, "
         "e.nif_canonico AS empresa_nif_master, "
         "e.grupo_id AS empresa_grupo_id, "

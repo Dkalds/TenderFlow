@@ -155,3 +155,43 @@ def test_filtro_sin_resultados(db):
     res = get_competitors(CompetitorFilters(tecnologia="ORACLE"))
     assert res.total_adjudicaciones == 0
     assert res.competitors == []
+
+
+def test_presupuesto_efectivo_prefiere_la_base_sin_iva(tmp_db):
+    """La baja del mapa se mide contra la misma base que ``VALID_PAIR_LOTE``
+    (``BASE_COMPARABLE_SQL``, ADR-032 §B): la base sin IVA declarada antes que
+    el ``importe`` histórico, que puede llevar IVA."""
+    from db.repositories.adjudicaciones import AdjudicacionRepository
+    from db.upsert import (
+        Adjudicacion,
+        Licitacion,
+        replace_adjudicaciones_batch,
+        upsert_licitaciones,
+    )
+
+    upsert_licitaciones(
+        [
+            Licitacion(
+                id_externo="CF-IVA",
+                titulo="Contrato con IVA",
+                organo_contratacion="Organo X",
+                importe=121_000.0,
+                importe_base_sin_iva=100_000.0,
+                estado="ADJ",
+                tecnologia="SAP",
+                ccaa="Madrid",
+                fecha_publicacion=_iso(-500),
+            )
+        ]
+    )
+    adj = Adjudicacion(
+        licitacion_id="CF-IVA",
+        nombre="Accenture",
+        importe_adjudicado=80_000.0,
+        fecha_adjudicacion=_iso(-10),
+        ccaa="Madrid",
+    )
+    assert replace_adjudicaciones_batch({"CF-IVA": [adj]})[2] == 0
+
+    (fila,) = AdjudicacionRepository().load_for_competitors()
+    assert fila["presupuesto_efectivo"] == pytest.approx(100_000.0)

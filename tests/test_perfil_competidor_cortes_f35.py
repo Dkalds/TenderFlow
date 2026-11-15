@@ -15,6 +15,7 @@ import pytest
 
 from db.repositories.mercado import FilasPerfil
 from services.competitive import mercado as svc
+from services.competitive.batallas import corte_por_procedimiento
 from shared.dto import CompetitiveCompanyProfileDTO
 
 
@@ -34,17 +35,35 @@ def _adjudicacion(i: int, *, procedimiento: str, presupuesto: float, adjudicado:
     }
 
 
-@pytest.fixture()
-def perfil(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    # Cinco abiertos de 100k adjudicados a 80k (baja 0,20) y dos negociados de
-    # 10k: la primera celda llega al mínimo y la segunda no.
-    actividad = [
+def _abiertos() -> list[Any]:
+    """Cinco abiertos de 100k adjudicados a 80k: baja 0,20."""
+    return [
         _adjudicacion(i, procedimiento="1", presupuesto=100_000, adjudicado=80_000)
         for i in range(5)
-    ] + [
+    ]
+
+
+def _imposibles() -> list[Any]:
+    """Los dos pares que no son una baja: el real de 87.095 € sobre un lote de
+    100 € (muy por encima de 1,5 veces el presupuesto) y un adjudicado de 0."""
+    return [
+        _adjudicacion(20, procedimiento="1", presupuesto=100, adjudicado=87_095),
+        _adjudicacion(21, procedimiento="1", presupuesto=100_000, adjudicado=0),
+    ]
+
+
+@pytest.fixture()
+def perfil(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    # Los cinco abiertos y dos negociados de 10k: la primera celda llega al
+    # mínimo y la segunda no.
+    actividad = _abiertos() + [
         _adjudicacion(10 + i, procedimiento="3", presupuesto=10_000, adjudicado=9_000)
         for i in range(2)
     ]
+    return _perfil(monkeypatch, actividad)
+
+
+def _perfil(monkeypatch: pytest.MonkeyPatch, actividad: list[Any]) -> dict[str, Any]:
     filas = FilasPerfil(
         identidades=[{"empresa_id": 1, "nombre_canonico": "Rival SA", "nif_canonico": None}],
         historia=[{"contratos": 7, "importe_total": 418_000}],
@@ -90,3 +109,22 @@ def test_por_tramo_mide_contra_el_presupuesto_de_licitacion(perfil: dict[str, An
     assert celdas["60k-140k"]["baja_media"] == pytest.approx(0.2)
     assert celdas["< 15k"]["n"] == 2
     assert celdas["< 15k"]["baja_media"] is None
+
+
+def test_la_baja_media_del_dossier_descarta_los_pares_imposibles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    perfil = _perfil(monkeypatch, _abiertos() + _imposibles())
+    # Con los dos pares dentro, la media era -12.399,3 %.
+    assert perfil["totales"]["baja_media_pct"] == pytest.approx(20.0)
+    # Siguen siendo contratos de la empresa: solo salen de la media.
+    assert perfil["totales"]["contratos"] == 7
+
+
+def test_el_corte_cuenta_los_pares_imposibles_pero_no_los_promedia() -> None:
+    filas = [
+        {**fila, "importe": fila["presupuesto_licitacion"]} for fila in _abiertos() + _imposibles()
+    ]
+    (celda,) = corte_por_procedimiento(filas)
+    assert celda.n == 7
+    assert celda.baja_media == pytest.approx(0.2)

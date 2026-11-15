@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from db.sql_fragments import TOLERANCIA_SOBRECOSTE
 from observability.logging import get_logger
 
 if TYPE_CHECKING:
@@ -272,7 +273,9 @@ def _agrupar(filas: list[dict[str, Any]], clave_de: Any, *, minimo: int) -> list
         )
         celda["n"] += 1
         baja = _baja(fila.get("importe"), fila.get("importe_adjudicado"))
-        if baja is not None:
+        # El par imposible (adjudicado 0 o por encima de la tolerancia) cuenta
+        # en `n` pero no en la media: una sola fila hunde la baja de la celda.
+        if baja is not None and 1 - TOLERANCIA_SOBRECOSTE <= baja < 1:
             celda["bajas"] += baja
             celda["con_baja"] += 1
         try:

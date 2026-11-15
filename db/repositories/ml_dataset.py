@@ -64,6 +64,7 @@ from db.repositories.base import rows_to_dicts
 from db.repositories.feedback import FUENTE_REVISION_TI, FUENTES_HUMANAS
 from db.sql_fragments import (
     TECHNOLOGY_OBSERVED_SQL,
+    TOLERANCIA_SOBRECOSTE,
     UNIVERSOS_TECNOLOGICOS,
     exclude_duplicados_sql,
     fecha_referencia_abierta_sql,
@@ -86,12 +87,6 @@ _UNIVERSO = TECHNOLOGY_OBSERVED_SQL
 # 0 por construcción: medido el 2026-11-07, el 83 % de sus pares valía
 # exactamente 0. Solo sale del target; el scoring de abiertas no cambia.
 _CON_PRESUPUESTO = "l.fuente <> 'ted'"
-
-# Tolerancia de validez del par agregado: descarta expedientes donde lo
-# adjudicado supera el presupuesto en más de un 50% (errores de fuente o
-# modificados mal atribuidos). Mismo criterio que ``VALID_PAIR``, aplicado al
-# agregado.
-_TOLERANCIA_SOBRECOSTE = 1.5
 
 # Primer día plausible de una ``fecha_adjudicacion`` (``shared.dates``, C4.4).
 # Desde C4.4 el conector de PSCP corta en origen el ``1899-12-30`` —el cero de
@@ -211,7 +206,7 @@ def _sql_agregado(hasta: str | None) -> tuple[str, list[Any]]:
             WHERE l.importe > 0 AND {_UNIVERSO} AND {_CON_PRESUPUESTO}
         ) t
         WHERE t.presupuesto_efectivo > 0
-          AND t.total_adjudicado <= t.presupuesto_efectivo * {_TOLERANCIA_SOBRECOSTE}
+          AND t.total_adjudicado <= t.presupuesto_efectivo * {TOLERANCIA_SOBRECOSTE}
     """  # Interpola solo fragmentos constantes del módulo; los valores van con %s.
     return sql, params
 
@@ -312,7 +307,7 @@ def _sql_por_lote(hasta: str | None) -> tuple[str, list[Any]]:
               )
         ) t
         WHERE t.presupuesto_efectivo > 0
-          AND t.total_adjudicado <= t.presupuesto_efectivo * {_TOLERANCIA_SOBRECOSTE}
+          AND t.total_adjudicado <= t.presupuesto_efectivo * {TOLERANCIA_SOBRECOSTE}
     """  # Interpola solo fragmentos constantes del módulo; los valores van con %s.
     return sql, params
 

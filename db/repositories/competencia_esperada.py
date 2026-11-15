@@ -35,6 +35,7 @@ from db.sql_fragments import (
     BAJA_PCT_SQL,
     BASE_COMPARABLE_SQL,
     SIN_IVA_CONOCIDO_SQL,
+    TOLERANCIA_SOBRECOSTE,
     VALID_PAIR_LOTE,
     empresa_key_sql,
     exclude_duplicados_sql,
@@ -284,7 +285,7 @@ def rivales_del_segmento(
     baja_minima = f"(({BASE_COMPARABLE_SQL}) - a.oferta_minima) / ({BASE_COMPARABLE_SQL}) * 100"
     oferta_minima_valida = (
         f"({BASE_COMPARABLE_SQL}) > 0 AND a.oferta_minima > 0 "
-        f"AND a.oferta_minima <= ({BASE_COMPARABLE_SQL}) * 1.5"
+        f"AND a.oferta_minima <= ({BASE_COMPARABLE_SQL}) * {TOLERANCIA_SOBRECOSTE}"
     )
     propia = f"(a.empresa_id = ANY(%s) OR {_NIF_NORMALIZADO} = ANY(%s))"
     # Solo fragmentos constantes de `db.sql_fragments` y predicados de este
