@@ -313,6 +313,60 @@ class TestServletNoSirveElDocumento:
         assert transporte.call_count == 4
 
 
+#: Lo que el cortafuegos de contrataciondelestado.es contesta, con un 200, en
+#: lugar del pliego (medido el 2026-11-15: 245 bytes; el «support ID» cambia).
+_CUERPO_CORTAFUEGOS = (
+    b"<html><head><title>Request Rejected</title></head><body>The requested URL was "
+    b"rejected. Please consult with your administrator.<br><br>Your support ID is: "
+    b"<12205169783260119849><br><br><a href='javascript:history.back();'>[Go Back]"
+    b"</body></html>"
+)
+
+
+class TestCortafuegosRechazaLaPeticion:
+    """Del 2026-11-03 al 2026-11-15, ~1.200 pliegos de PLACSP quedaron así.
+
+    El cortafuegos contesta 200 con una página HTML, y el fetcher la guardaba
+    como el documento: ``unsupported`` por ``text/html``, que es terminal, y la
+    ficha decía que el pliego estaba «en un formato que todavía no se sabe leer».
+    """
+
+    def test_es_un_fallo_de_descarga_y_no_un_documento(self, circuito):
+        from db.repositories.documentos import RECHAZO_DEL_CORTAFUEGOS
+
+        with _servir(200, _CUERPO_CORTAFUEGOS, "text/html"):
+            with pytest.raises(requests.HTTPError) as fallo:
+                _download_bytes(_URI_SERVLET)
+
+        assert RECHAZO_DEL_CORTAFUEGOS in str(fallo.value)
+
+    def test_no_se_reintenta_en_el_acto_pero_cuenta_para_el_circuito(self, circuito):
+        """Pedir otra vez en segundos da lo mismo; si lo rechaza todo, el circuito
+        se abre y el resto del lote se queda ``pending`` en vez de gastarse."""
+        with _servir(200, _CUERPO_CORTAFUEGOS, "text/html") as transporte:
+            with pytest.raises(requests.HTTPError):
+                _download_bytes(_URI_SERVLET)
+
+        assert transporte.call_count == 1
+        assert circuito.fail_counter == 1
+
+    def test_el_fallo_es_de_la_fuente_y_se_revive(self, circuito):
+        from db.repositories.documentos import _fallo_achacable_a_la_fuente
+
+        with _servir(200, _CUERPO_CORTAFUEGOS, "text/html"):
+            with pytest.raises(requests.HTTPError) as fallo:
+                _download_bytes(_URI_SERVLET)
+
+        # El prefijo es el que ``fetch_and_extract`` pone a todo fallo de descarga.
+        assert _fallo_achacable_a_la_fuente(f"descarga fallida: {fallo.value}")
+
+    def test_un_html_cualquiera_sigue_siendo_el_documento(self, circuito):
+        cuerpo = b"<html><body>Pliego de prescripciones</body></html>"
+
+        with _servir(200, cuerpo, "text/html"):
+            assert _download_bytes(_URI_SERVLET) == (cuerpo, "text/html")
+
+
 class _RespuestaQueSeCorta(_RespuestaCruda):
     """Un 200 cuyo cuerpo se interrumpe después del primer trozo."""
 
