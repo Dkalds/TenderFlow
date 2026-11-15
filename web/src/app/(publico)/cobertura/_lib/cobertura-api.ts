@@ -1,5 +1,6 @@
 import { PHASE_PRODUCTION_BUILD } from "next/constants";
 import type { Schemas } from "@/lib/api-types";
+import { origenApi } from "@/lib/runtime-config";
 
 /**
  * La cobertura declarada, leída de `GET /api/v1/publico/cobertura`.
@@ -45,11 +46,6 @@ export type Cobertura = Schemas["Cobertura"];
 export type EstadoCobertura = FuenteCobertura["estado"];
 
 const REVALIDAR_SEGUNDOS = 3600;
-
-function origenApi(): string {
-  // fdi-allow:localhost-url — fallback de desarrollo para fetch SSR; no es dato renderizado.
-  return process.env.API_BASE_URL ?? "http://localhost:8080";
-}
 
 function buildSinBackend(): boolean {
   return process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD && !process.env.API_BASE_URL;

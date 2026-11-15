@@ -243,20 +243,18 @@ def test_retry_without_bulk_still_drains_other_sources(tmp_db, monkeypatch):
 
     for i in range(1, 7):
         dlq.record_failure("run-1", f"bulk_2026{i:02d}", RuntimeError("err"))
-    dlq.record_failure("run-1", "place_live_atom", RuntimeError("err"))
+    dlq.record_failure("run-1", "placsp", RuntimeError("err"))
 
     monkeypatch.setattr("scheduler.dlq_retry._is_due", lambda f: True)
     monkeypatch.setenv("DLQ_BATCH_SIZE", "2")
-    with (
-        patch("scraper.pipeline.process_daily", return_value={"status": "ok"}) as process_daily,
-        _patch_bulk_connector() as run_connector,
-    ):
+    with _patch_bulk_connector() as run_connector:
         from scheduler.dlq_retry import retry_failed_extractions
 
         result = retry_failed_extractions(include_bulk=False)
 
-    process_daily.assert_called_once()
-    run_connector.assert_not_called()
+    # Un solo reintento y es el del carril diario, no el de un mes bulk.
+    run_connector.assert_called_once()
+    assert type(run_connector.call_args.args[0]).__name__ == "PlacspAtomConnector"
     assert result == 1
     assert {f["fuente"] for f in dlq.list_unresolved()} == {
         f"bulk_2026{i:02d}" for i in range(1, 7)
@@ -264,15 +262,16 @@ def test_retry_without_bulk_still_drains_other_sources(tmp_db, monkeypatch):
 
 
 def test_retry_atom_success(tmp_db, monkeypatch):
-    """Reintento place_live_atom exitoso → resuelto."""
+    """Una fila con la etiqueta del carril diario retirado se reintenta por el conector."""
     from db import dlq
 
     dlq.record_failure("run-1", "place_live_atom", RuntimeError("err"))
     monkeypatch.setattr("scheduler.dlq_retry._is_due", lambda f: True)
-    with patch("scraper.pipeline.process_daily", return_value={"status": "ok"}):
+    with _patch_bulk_connector() as run_connector:
         from scheduler.dlq_retry import retry_failed_extractions
 
         result = retry_failed_extractions()
+    assert type(run_connector.call_args.args[0]).__name__ == "PlacspAtomConnector"
     assert result == 1
     assert dlq.list_unresolved() == []
 
@@ -283,11 +282,23 @@ def test_retry_atom_failure(tmp_db, monkeypatch):
 
     dlq.record_failure("run-1", "atom_live", RuntimeError("err"))
     monkeypatch.setattr("scheduler.dlq_retry._is_due", lambda f: True)
-    with patch("scraper.pipeline.process_daily", return_value={"status": "timeout"}):
+    with patch("scraper.connectors.base.run_connector", return_value=SimpleNamespace(errores=1)):
         from scheduler.dlq_retry import retry_failed_extractions
 
         result = retry_failed_extractions()
     assert result == 0
+
+
+def test_las_etiquetas_del_carril_diario_retirado_van_por_el_conector_atom():
+    """``place_live_atom`` y ``atom*`` no tienen pipeline propio: mismo feed, por el conector."""
+    from scheduler.dlq_retry import dispatch_retry
+
+    for fuente in ("placsp", "place_live_atom", "atom_live"):
+        with patch(
+            "scraper.connectors.base.run_connector", return_value=SimpleNamespace(errores=0)
+        ) as run_connector:
+            assert dispatch_retry(fuente, "fetch", "run-1") is True
+        assert type(run_connector.call_args.args[0]).__name__ == "PlacspAtomConnector"
 
 
 def test_retry_exception_in_scraper(tmp_db, monkeypatch):

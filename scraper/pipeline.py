@@ -1,12 +1,11 @@
-"""Clasificación compartida + ``process_daily`` para el replay de la DLQ.
+"""Clasificación compartida del camino connector y métricas de run.
 
-.. deprecated:: 2026-07-11 (F2, ADR-009)
-   Los carriles de producción no pasan por aquí: ``scheduler/pipeline_runs.py``
-   enruta por ``PlacspAtomConnector`` / ``PlacspBulkConnector`` +
-   ``run_connector`` (``scraper/connectors/``). Este módulo NO debe recibir
-   features nuevas de ingesta.
+Los carriles de producción no ingieren desde aquí: ``scheduler/pipeline_runs.py``
+enruta por ``PlacspAtomConnector`` / ``PlacspBulkConnector`` +
+``run_connector`` (``scraper/connectors/``). Este módulo NO debe recibir
+features nuevas de ingesta.
 
-**Qué queda vivo aquí y por qué** (tras la retirada S2.1, 2026-09):
+**Qué vive aquí y por qué**:
 
 - ``_ml_classify_entry`` / ``_load_classifiers`` / ``_apply_tech_prediction``
   y las constantes ``INCLUSION_*``: el fallback ML compartido, que consume
@@ -14,12 +13,12 @@
   connector**, no legacy; vive en este fichero por historia, no por diseño.
 - ``_summarize``: métricas de run que reutiliza el bucle bulk de
   ``scheduler/pipeline_runs.py``.
-- ``process_daily``: el carril diario legacy, que solo usa ya el dispatch de
-  la DLQ para las entradas históricas del cursor ``place_live_atom``. **Sí**
-  escribe historial y linaje (``upsert_licitaciones_with_history``), que es lo
-  que lo distingue del bulk legacy que se retiró. ``update_daily`` y el flag
-  ``PLACSP_CONNECTOR_ENABLED`` que lo hacía alcanzable se retiraron el
-  2026-09-28.
+
+**Qué se retiró en 2026-11** — ``process_daily``, el carril diario legacy.
+Desde el 2026-09-28 solo lo alcanzaba el replay de la DLQ para la etiqueta
+``place_live_atom``, que solo escribía él mismo: no quedaba ninguna fila en
+``failed_extractions`` con esa etiqueta. ``scheduler/dlq_retry.py`` la enruta
+ahora por ``PlacspAtomConnector``, como ``placsp``.
 
 **Qué se retiró en 2026-09 (S2.1)** — ``process_month``,
 ``_process_month_impl``, ``update_recent`` y ``backfill``. Eran los dos
@@ -40,28 +39,9 @@ import functools
 from typing import TYPE_CHECKING, Any
 
 from config import CPV_PREFIXES_TI, CPV_PREFIXES_UNIVERSO
-from db.database import (
-    Licitacion,
-    UpsertResult,
-    get_cursor,
-    init_db,
-    replace_adjudicaciones_batch,
-    set_cursor,
-    upsert_licitaciones_with_history,
-)
-from db.dlq import record_failure
-from observability import (
-    AlertLevel,
-    get_logger,
-    notify,
-)
-from scraper.codice_parser import (
-    NS,
-    acotar_por_organo,
-    parse_adjudicaciones,
-    parse_entry,
-    parse_entry_unfiltered,
-)
+from db.database import Licitacion
+from observability import get_logger
+from scraper.codice_parser import NS, parse_entry_unfiltered
 
 if TYPE_CHECKING:
     # Solo para anotar. El import real sigue dentro de ``_load_classifiers``:
@@ -70,63 +50,6 @@ if TYPE_CHECKING:
     from services.ml.tech_classifier import TechnologyClassifier
 
 log = get_logger(__name__)
-
-_DAILY_SOURCE = "place_live_atom"
-# OJO: `_DAILY_SOURCE` es la etiqueta del CARRIL (nombre del cursor de ingesta,
-# scope de DLQ y de métricas), no el valor de `licitaciones.fuente`. Las filas
-# que escribe el carril diario se quedan con el default del modelo, `placsp`
-# (db/upsert.py:175) -- en producción no existe ni una licitación con
-# fuente='place_live_atom'. Acotar la resolución por la etiqueta en vez de por
-# la fuente real no resolvería nada.
-_DAILY_FUENTE = "placsp"
-
-
-def _resolve_empresas_post_ingestion(fuente: str, *, scope_fuente: str | None) -> None:
-    """Enlaza las adjudicaciones pendientes con el maestro de empresas.
-
-    ``fuente`` es la etiqueta del carril (procedencia de los aliases, logs);
-    ``scope_fuente`` es el valor de ``licitaciones.fuente`` al que se acota el
-    recorrido, o ``None`` para recorrer la tabla entera. Van separados y
-    explícitos a propósito: no siempre coinciden (ver ``_DAILY_FUENTE``), y
-    confundirlos fue justamente el bug de 2026-08 que dejó la resolución
-    barriendo el millón de filas de PSCP en cada ingesta de cualquier fuente.
-    """
-    try:
-        from services.entity_resolution import HOOK_TIME_BUDGET_S, resolve_all_unlinked
-
-        resolve_all_unlinked(
-            fuente=fuente,
-            scope_fuente=scope_fuente,
-            resume=True,
-            time_budget_s=HOOK_TIME_BUDGET_S,
-        )
-    except Exception as e:
-        log.warning("entity_resolution_post_ingestion_failed", fuente=fuente, error=str(e))
-    # Eventos de contrato (v38): deriva adjudicación/modificación/prórroga
-    # de las filas nuevas de licitaciones_history. Fail-open.
-    try:
-        from services.contract_events import derive_new_events
-
-        derive_new_events()
-    except Exception as e:
-        log.warning("contract_events_post_ingestion_failed", fuente=fuente, error=str(e))
-
-
-def _signal_post_ingestion(fuente: str) -> None:
-    """Invalida la caché del API tras una ingestión (db.cache_signal).
-
-    Fail-open: cualquier error se loguea como debug sin propagar. El evento
-    ``faiss.index_stale`` que también se emitía aquí se retiró en 2026-08:
-    FAISS salió del producto en la Fase 3 de reducción de superficie
-    (2026-07-04) y ningún consumidor leía ese evento.
-    """
-    try:
-        from db.cache_signal import signal_cache_invalidation
-
-        signal_cache_invalidation()
-    except Exception:
-        log.debug("cache_signal_failed", fuente=fuente)
-
 
 # ── ML fallback para entries sin keywords ─────────────────────────────────
 # Las entradas del universo CPV (`config.CPV_PREFIXES_UNIVERSO`: 48/72/32) que
@@ -372,159 +295,3 @@ def _summarize(results: list[dict[str, Any]], metrics: Any) -> None:
                 metrics.errores_descarga += 1
     if adj_errors_total:
         metrics.notas = f"adj_persist_errors:{adj_errors_total}"
-
-
-# ---------------------------------------------------------------------------
-# Carril diario — feed ATOM en vivo
-# ---------------------------------------------------------------------------
-
-
-def process_daily(*, run_id: str | None = None) -> dict[str, Any]:
-    """Procesa el feed ATOM en vivo: pagina, filtra por tecnología, persiste con historial.
-
-    Returns:
-        dict con status, contadores y listas de ids insertados/modificados.
-    """
-    from scraper.atom_live import iter_live_entries
-
-    init_db()
-    fuente = _DAILY_SOURCE
-
-    # Leer cursor actual
-    cursor = get_cursor(fuente)
-    last_seen_updated = cursor["last_seen_updated"] if cursor else None
-
-    try:
-        entries, meta = iter_live_entries(last_seen_updated=last_seen_updated)
-    except Exception as e:
-        log.exception("daily_fetch_error")
-        record_failure(run_id, fuente, e, scope="fetch")
-        notify(
-            AlertLevel.ERROR,
-            "Feed diario ATOM falló al descargar",
-            body=str(e),
-        )
-        return {"status": "error_fetch", "source": fuente}
-
-    if not entries:
-        log.info("daily_no_new_entries", stopped=meta.get("stopped_reason"))
-        # Actualizar cursor etag/last_modified incluso sin entries
-        if meta.get("etag") or meta.get("last_modified"):
-            set_cursor(
-                fuente,
-                last_seen_updated=last_seen_updated,
-                etag=meta.get("etag"),
-                last_modified=meta.get("last_modified"),
-            )
-        return {
-            "status": "ok",
-            "source": fuente,
-            "tech_matches": 0,
-            "inserted": [],
-            "modified": [],
-            "unchanged": [],
-            "pages_fetched": meta["pages_fetched"],
-            "entries_seen": meta["entries_seen"],
-        }
-
-    # Parsear entries y filtrar por tecnología
-    encontradas = []
-    adj_por_lic: dict[str, list[Any]] = {}
-    entries_error = 0
-    sin_organo = 0
-
-    for entry_elem, updated_str in entries:
-        try:
-            lic = parse_entry(entry_elem)
-            inclusion_reason = INCLUSION_KEYWORD
-            if lic is None:
-                lic = _ml_classify_entry(entry_elem)
-                # El fallback decide el motivo (rescate ML o universo CPV).
-                inclusion_reason = (
-                    (lic.inclusion_reason or INCLUSION_ML_RESCUE) if lic else INCLUSION_ML_RESCUE
-                )
-            if lic and acotar_por_organo(lic, entry_elem) is None:
-                # Misma clave que el conector (`placsp:<órgano>:<expediente>`,
-                # RFC de identidad PLACSP): sin órgano no se escribe.
-                sin_organo += 1
-                lic = None
-            if lic:
-                from scraper.lineage import current_filter_version
-
-                lic.filter_version = current_filter_version()
-                lic.inclusion_reason = inclusion_reason
-                lic.analysis_universe = "technology_observed"
-                # Actualizar fecha_actualizacion_fuente con el <updated> de la entry
-                if updated_str:
-                    lic.fecha_actualizacion_fuente = updated_str
-                encontradas.append(lic)
-                adj = parse_adjudicaciones(entry_elem, lic.id_externo)
-                if adj:
-                    adj_por_lic[lic.id_externo] = adj
-        except Exception as e:
-            log.warning("daily_entry_parse_error", error=str(e))
-            record_failure(run_id, fuente, e, scope="parse")
-            entries_error += 1
-
-    # Persistir con detección de cambios
-    try:
-        from config import settings as _cfg
-
-        upsert_result: UpsertResult = upsert_licitaciones_with_history(
-            encontradas,
-            source=fuente,
-            chunk_size=_cfg.UPSERT_CHUNK_SIZE,
-        )
-    except Exception as e:
-        log.exception("daily_persist_error")
-        record_failure(run_id, fuente, e, scope="persist_licitaciones")
-        return {"status": "error_persistencia", "source": fuente}
-
-    # Adjudicaciones
-    n_adj = 0
-    if adj_por_lic:
-        n_adj, n_adj_dropped, _adj_failed = replace_adjudicaciones_batch(
-            adj_por_lic, run_id=run_id, fuente=fuente
-        )
-        if n_adj_dropped:
-            log.warning("adj_rows_dropped", dropped=n_adj_dropped, persisted=n_adj)
-
-    # Actualizar cursor
-    newest = meta.get("newest_updated") or last_seen_updated
-    set_cursor(
-        fuente,
-        last_seen_updated=newest,
-        etag=meta.get("etag"),
-        last_modified=meta.get("last_modified"),
-    )
-
-    log.info(
-        "daily_pipeline_done",
-        tech_matches=len(encontradas),
-        inserted=upsert_result.nuevas,
-        modified=len(upsert_result.modified),
-        unchanged=len(upsert_result.unchanged),
-        adjudicaciones=n_adj,
-        placsp_sin_identificador_de_organo=sin_organo,
-        pages=meta["pages_fetched"],
-        entries_seen=meta["entries_seen"],
-    )
-
-    # Enlace con el maestro de empresas + señal de invalidación de caché.
-    # `fuente` es `place_live_atom` (etiqueta del carril); lo que este pipeline
-    # graba en `licitaciones.fuente` es `placsp`. Ver `_DAILY_FUENTE`.
-    _resolve_empresas_post_ingestion(fuente, scope_fuente=_DAILY_FUENTE)
-    _signal_post_ingestion(fuente)
-
-    return {
-        "status": "ok",
-        "source": fuente,
-        "tech_matches": len(encontradas),
-        "adjudicaciones": n_adj,
-        "inserted": upsert_result.inserted,
-        "modified": upsert_result.modified,
-        "unchanged": upsert_result.unchanged,
-        "entries_error": entries_error,
-        "pages_fetched": meta["pages_fetched"],
-        "entries_seen": meta["entries_seen"],
-    }

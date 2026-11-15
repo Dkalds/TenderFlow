@@ -15,27 +15,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 
 import { apiGet, apiMutate } from "@/lib/api-client";
+import { conOrganizacion } from "@/lib/utils";
 import type { Schemas } from "@/lib/api-types";
 import { registrarEvento } from "@/lib/analytics";
 import { cuentaKeys } from "@/lib/query-keys";
-import {
-  organizacionResuelta,
-  useActiveOrganizationId,
-  type OrganizacionActiva,
-} from "@/hooks/use-organization";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 
 type Cuenta = Schemas["CuentaObjetivo"];
-
-export function conOrganizacion(
-  url: string,
-  organizationId: OrganizacionActiva,
-  extra?: Record<string, string>,
-): string {
-  const params = new URLSearchParams(extra);
-  if (organizationId != null) params.set("organization_id", String(organizationId));
-  const query = params.toString();
-  return query ? `${url}?${query}` : url;
-}
 
 /**
  * La cuenta que contiene un órgano, o `null` si la organización no lo sigue.

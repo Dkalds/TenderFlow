@@ -14,12 +14,9 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiMutate } from "@/lib/api-client";
+import { conOrganizacion } from "@/lib/utils";
 import type { Schemas } from "@/lib/api-types";
-import {
-  organizacionResuelta,
-  useActiveOrganizationId,
-  type OrganizacionActiva,
-} from "@/hooks/use-organization";
+import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { etiquetaKeys } from "@/lib/query-keys";
 import { registrarEvento } from "@/lib/analytics";
 
@@ -41,10 +38,6 @@ export const COLORES_ETIQUETA = [
   "#dc2626",
   "#9333ea",
 ] as const;
-
-function conOrganizacion(url: string, organizationId: OrganizacionActiva): string {
-  return organizationId != null ? `${url}?organization_id=${organizationId}` : url;
-}
 
 export function useEtiquetas() {
   const organizationId = useActiveOrganizationId();

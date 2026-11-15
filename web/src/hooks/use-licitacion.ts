@@ -16,6 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import type { GoNoGoChecklist } from "@/hooks/use-pursuit-checklist";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { conOrganizacion } from "@/lib/utils";
 import type {
   HistorialPropio,
   LicitacionDetail,
@@ -58,11 +59,6 @@ export function useSimilares(id: string | null, limite = 5) {
     staleTime: 5 * 60 * 1000,
     meta: META_ERROR_EN_LINEA,
   });
-}
-
-/** `?organization_id=` de la organización activa, o nada si es la personal. */
-function conOrganizacion(url: string, organizationId: number | null | undefined): string {
-  return organizationId != null ? `${url}?organization_id=${organizationId}` : url;
 }
 
 /**

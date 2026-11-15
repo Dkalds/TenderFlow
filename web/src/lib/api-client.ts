@@ -10,6 +10,7 @@
 
 import createClient from "openapi-fetch";
 import type { paths } from "@/generated/api";
+import { origenApi } from "@/lib/runtime-config";
 
 /**
  * Origen al que apunta el cliente tipado.
@@ -24,8 +25,7 @@ import type { paths } from "@/generated/api";
  */
 function resolveBaseUrl(): string {
   if (typeof window !== "undefined") return window.location.origin;
-  // fdi-allow:localhost-url — fallback SSR/Node legítimo cuando API_BASE_URL no está set; no es dato renderizado.
-  return process.env.API_BASE_URL ?? "http://localhost:8080";
+  return origenApi();
 }
 
 /**

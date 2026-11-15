@@ -1,5 +1,6 @@
 import { PHASE_PRODUCTION_BUILD } from "next/constants";
 import type { components } from "@/generated/api";
+import { origenApi } from "@/lib/runtime-config";
 
 /**
  * Acceso a `/api/v1/publico` desde Server Components.
@@ -63,19 +64,6 @@ export type LicitacionPublica = components["schemas"]["LicitacionPublica"];
 export type EntradaSitemap = components["schemas"]["EntradaSitemap"];
 export type Hubs = components["schemas"]["Hubs"];
 export type ResumenSitemap = components["schemas"]["ResumenSitemap"];
-
-/**
- * Origen de la API para llamadas desde el servidor.
- *
- * `next.config.ts` reescribe `/api/*` hacia el backend, pero esos rewrites los
- * aplica el proxy a las peticiones que **entran** desde el navegador: un
- * `fetch` que hace el propio servidor de Next no pasa por ahí. Hay que apuntar
- * al backend directamente.
- */
-function origenApi(): string {
-  // fdi-allow:localhost-url — fallback de desarrollo para fetch SSR; no es dato renderizado.
-  return process.env.API_BASE_URL ?? "http://localhost:8080";
-}
 
 /**
  * Cada cuánto se revalida el dato público.

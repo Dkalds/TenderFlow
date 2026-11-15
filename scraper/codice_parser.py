@@ -753,8 +753,8 @@ def acotar_por_organo(
     ``parse_adjudicaciones``/``parse_lotes``, que copian el id a las hijas.
 
     Es la única puerta de todos los escritores de la familia: el conector
-    PLACSP (feed vivo y ZIP), agregadas, empresas vigiladas, el carril legacy
-    ``process_daily``, ``seed_negatives`` y ``reproceso_lotes`` (este último
+    PLACSP (feed vivo y ZIP), agregadas, empresas vigiladas,
+    ``seed_negatives`` y ``reproceso_lotes`` (este último
     con :func:`clave_de_entry`, sin ``Licitacion``).
     """
     organo = organo_de_entry(entry, esquemas=esquemas)

@@ -9,7 +9,7 @@ camino legacy que los 16 tests de contrato/paridad de datos no tocan:
 - ``record_run`` escrito en el camino connector. (``log_extraccion`` se
   retiró con la tabla `extracciones` en C4.6/`v125`: era la cuarta tabla de
   salud y no la leía nadie.)
-- Fallback one-time del cursor legacy ``place_live_atom`` → ``placsp``.
+- El cursor legacy ``place_live_atom`` ya no se hereda (fallback retirado).
 """
 
 from __future__ import annotations
@@ -124,9 +124,9 @@ class TestDailyConnectorWrapper:
         assert result["ingestion_result"]["entries_error"] == 1
 
 
-class TestAtomConnectorCursorFallback:
-    def test_falls_back_to_legacy_cursor_when_empty(self, tmp_db):
-        """Sin cursor propio, el conector retoma desde place_live_atom."""
+class TestAtomConnectorCursor:
+    def test_sin_cursor_propio_no_hereda_el_del_carril_retirado(self, tmp_db):
+        """El fallback one-time a ``place_live_atom`` se retiró: sin cursor, feed entero."""
         db_mod, _ = tmp_db
         db_mod.set_cursor("place_live_atom", last_seen_updated="2026-07-01T00:00:00Z")
 
@@ -139,7 +139,7 @@ class TestAtomConnectorCursorFallback:
         with patch("scraper.atom_live.iter_live_entries", side_effect=_fake_iter):
             list(PlacspAtomConnector().fetch(None))
 
-        assert captured["last_seen_updated"] == "2026-07-01T00:00:00Z"
+        assert captured["last_seen_updated"] is None
 
     def test_own_cursor_wins_over_legacy(self, tmp_db):
         """Con cursor propio ('placsp'), el legacy no se consulta."""
