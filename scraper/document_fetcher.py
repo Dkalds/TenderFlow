@@ -277,6 +277,20 @@ _FIRMA_NO_SERVIDO = b"java.lang.NullPointerException"
 #: Cuánto cuerpo de un 500 se lee para buscar la firma.
 _MAX_CUERPO_DE_ERROR = 512
 
+#: Lo que escribe el cortafuegos de contrataciondelestado.es en la página con la
+#: que rechaza una petición. La sirve con un 200 y ``text/html`` en lugar del
+#: pliego: desde el 2026-11-03, a casi todas las descargas de ``TenderflowBot``.
+_FIRMA_CORTAFUEGOS = b"The requested URL was rejected"
+
+
+def _es_rechazo_del_cortafuegos(content_type: str | None, cuerpo: bytes) -> bool:
+    """¿Es *cuerpo* la página «Request Rejected» y no el documento pedido?
+
+    Guardarla como el documento lo dejaba ``unsupported`` por ``text/html``,
+    que es terminal: ~1.200 pliegos de PLACSP del 2026-11-03 al 2026-11-15.
+    """
+    return content_type == "text/html" and _FIRMA_CORTAFUEGOS in cuerpo[:_MAX_CUERPO_DE_ERROR]
+
 
 def _no_sirve_el_documento(uri: str, respuesta: PinnedHttpsResponse) -> bool:
     """¿Es el 500 con el que el servlet de PLACSP dice que no sirve ESTE documento?
@@ -421,7 +435,18 @@ def _descargar_un_intento(uri: str) -> tuple[bytes, str | None]:
                 )
             chunks.append(chunk)
 
-    return b"".join(chunks), content_type
+        contenido = b"".join(chunks)
+        if _es_rechazo_del_cortafuegos(content_type, contenido):
+            from db.repositories.documentos import RECHAZO_DEL_CORTAFUEGOS
+
+            # Con el prefijo de ``raise_for_status``: ``status_de`` lee el 200 (no
+            # se reintenta en el acto, pedir otra vez da lo mismo), el circuito lo
+            # cuenta y ``revivir_descargas_fallidas`` lo reconoce como de la fuente.
+            raise requests.HTTPError(
+                f"Pinned HTTPS response status {r.status_code}: {RECHAZO_DEL_CORTAFUEGOS}"
+            )
+
+    return contenido, content_type
 
 
 def _extract_pdf_pages_local(content: bytes, *, max_pages: int, max_text_chars: int) -> list[str]:
