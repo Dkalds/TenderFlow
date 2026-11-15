@@ -34,6 +34,7 @@ import requests
 
 from db.database import connect, now_utc, now_utc_iso
 from db.repositories.webhooks import (
+    _get_webhook_master_key,
     crear_entrega,
     marcar_para_reintento,
     marcar_webhook_tras_intento,
@@ -61,16 +62,6 @@ def _allowed_webhook_hosts() -> frozenset[str]:
     return frozenset(
         host.strip() for host in settings.WEBHOOK_ALLOWED_HOSTS.split(",") if host.strip()
     )
-
-
-def _get_webhook_master_key() -> str:
-    """Obtiene la clave maestra para derivar secretos de webhook."""
-    from config.settings import settings
-
-    key = settings.WEBHOOK_SIGNING_KEY.get_secret_value()
-    if not key:
-        key = settings.SIGNING_KEY.get_secret_value()
-    return key
 
 
 def _resolve_secret(webhook_id: int, stored_secret: str) -> str:

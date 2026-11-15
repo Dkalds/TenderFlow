@@ -14,6 +14,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/lib/toast";
 import { ApiError, apiGet, apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { conOrganizacion } from "@/lib/utils";
 import type {
   Schemas,
   WebhookCreate,
@@ -31,18 +32,11 @@ export type WebhookSecretRotated = Schemas["WebhookSecretRotated"];
 
 const WEBHOOKS_KEY = webhookKeys.all;
 
-/**
- * La organización del webhook en la query (`?organization_id=`).
- *
- * Todas las rutas por id resuelven el ámbito con `require_organization`, que
- * sin el parámetro mira la organización **personal**. Las mutaciones de la
- * ficha no lo mandaban, así que desde /equipo, con un equipo activo, activar,
- * probar o borrar un webhook del equipo daba 404. La fila sabe de qué
- * organización es su webhook; es lo que se pasa aquí.
- */
-function conOrganizacion(ruta: string, organizationId: number | null | undefined): string {
-  return organizationId == null ? ruta : `${ruta}?organization_id=${organizationId}`;
-}
+// Las rutas por id llevan la organización del webhook (`conOrganizacion`):
+// `require_organization` sin el parámetro mira la **personal**. Las mutaciones
+// de la ficha no lo mandaban, así que desde /equipo, con un equipo activo,
+// activar, probar o borrar un webhook del equipo daba 404. La fila sabe de qué
+// organización es su webhook; es lo que se pasa.
 
 /** Cuerpo del alta, tal y como lo declara la API. */
 export type WebhookCreateInput = WebhookCreate;

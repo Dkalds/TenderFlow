@@ -82,7 +82,8 @@ decisiones bloqueantes:
   días, 6.320 entries → 196 licitaciones y 166 adjudicaciones idénticas campo
   a campo entre legacy y connector). Diferencias documentadas del flip:
   (1) el cursor diario pasa de la clave `place_live_atom` a `placsp`, con
-  fallback one-time de lectura del cursor legacy; (2) `licitaciones_history.source`
+  fallback one-time de lectura del cursor legacy (retirado en 2026-11, con el
+  cursor `placsp` ya en uso); (2) `licitaciones_history.source`
   y la `fuente` de `extracciones` del carril diario pasan a `placsp`;
   (3) el camino connector ejecuta además `services/dedupe.py` post-ingesta
   (el legacy no lo hacía). `scraper/pipeline.py` queda DEPRECATED como camino

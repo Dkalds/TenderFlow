@@ -127,7 +127,10 @@ def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
         # ``no_publicado`` que devolvía ``process_month``.
         return not run_result.fetch_failed
 
-    if fuente == "placsp":
+    # ``place_live_atom`` y ``atom*`` son etiquetas del carril diario legacy
+    # (``scraper.pipeline.process_daily``, retirado en 2026-11): si queda
+    # alguna fila, se reintenta por el mismo feed con el conector.
+    if fuente in ("placsp", "place_live_atom") or fuente.startswith("atom"):
         from scraper.connectors.base import run_connector
         from scraper.connectors.placsp import PlacspAtomConnector
 
@@ -177,12 +180,6 @@ def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
         watched_nifs = WatchedCompanyRepository().list_canonical_nifs()
         watched_connector = PlacspWatchedCompanyAwardsConnector(watched_nifs)
         return run_connector(watched_connector).errores == 0
-
-    from scraper.pipeline import _DAILY_SOURCE, process_daily
-
-    if fuente == _DAILY_SOURCE or fuente.startswith("atom"):
-        result = process_daily(run_id=run_id)
-        return result.get("status") in ("ok", "no_publicado")
 
     raise ValueError(f"Unsupported DLQ source: {fuente!r}")
 

@@ -3,55 +3,17 @@
 Los tests de ``process_month`` / ``backfill`` / ``update_recent`` se retiraron
 con esas funciones (S2.1, 2026-09): el carril bulk y el backfill pasaron al
 conector, y su comportamiento vive ahora en
-``tests/test_s2_backfill_connector.py``.
+``tests/test_s2_backfill_connector.py``. Los de ``process_daily`` y sus pasos
+post-ingesta se retiraron con él (2026-11): la resolución acotada, los eventos
+de contrato y la señal de caché del camino vivo los cubre
+``tests/test_connectors.py``.
 """
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from scraper.pipeline import _resolve_empresas_post_ingestion, _summarize
-
-
-def test_post_ingestion_scopes_resolution_and_bounds_it():
-    """Acotado, reanudable y con presupuesto: los tres controles que faltaban.
-
-    Sin ellos, cada ingesta barría la tabla de adjudicaciones entera desde el
-    id 0 y se comía el timeout del step.
-    """
-    from services.entity_resolution import HOOK_TIME_BUDGET_S
-
-    with (
-        patch("services.entity_resolution.resolve_all_unlinked") as resolve_all,
-        patch("services.contract_events.derive_new_events"),
-    ):
-        _resolve_empresas_post_ingestion("place_live_atom", scope_fuente="placsp")
-
-    resolve_all.assert_called_once_with(
-        fuente="place_live_atom",
-        scope_fuente="placsp",
-        resume=True,
-        time_budget_s=HOOK_TIME_BUDGET_S,
-    )
-
-
-def test_daily_fuente_matches_the_model_default():
-    """El ámbito del carril diario tiene que ser el `fuente` que ese carril graba.
-
-    `_DAILY_SOURCE` ('place_live_atom') es la etiqueta del carril, no un valor
-    de `licitaciones.fuente`: las filas del ATOM se quedan con el default del
-    modelo. Si ese default cambia y `_DAILY_FUENTE` no, el ámbito quedaría
-    vacío y el carril diario dejaría de resolver empresas en silencio.
-    """
-    from dataclasses import fields
-
-    from db.upsert import Licitacion
-    from scraper.pipeline import _DAILY_FUENTE, _DAILY_SOURCE
-
-    default = next(f for f in fields(Licitacion) if f.name == "fuente").default
-    assert default == _DAILY_FUENTE
-    assert _DAILY_FUENTE != _DAILY_SOURCE
-
+from scraper.pipeline import _summarize
 
 # ─── _summarize ──────────────────────────────────────────────────────────────
 
@@ -183,188 +145,6 @@ class TestSummarize:
         ]
         _summarize(results, metrics)
         assert metrics.notas == "adj_persist_errors:2"
-
-
-# ── _signal_post_ingestion ────────────────────────────────────────────────────
-
-
-class TestSignalPostIngestion:
-    @patch("scraper.pipeline.log")
-    def test_success(self, mock_log):
-        with patch.dict(
-            "sys.modules",
-            {
-                "db.cache_signal": MagicMock(),
-                "db.events": MagicMock(),
-            },
-        ):
-            from scraper.pipeline import _signal_post_ingestion
-
-            _signal_post_ingestion("test_source")
-
-    @patch("scraper.pipeline.log")
-    def test_cache_signal_fails(self, mock_log):
-        # Remove cached module to force re-import failure
-        mod = MagicMock()
-        mod.signal_cache_invalidation.side_effect = RuntimeError("boom")
-        with patch.dict("sys.modules", {"db.cache_signal": mod, "db.events": MagicMock()}):
-            from scraper.pipeline import _signal_post_ingestion
-
-            _signal_post_ingestion("test")
-            # Should not raise
-
-    @patch("scraper.pipeline.log")
-    def test_faiss_event_fails(self, mock_log):
-        cache_mod = MagicMock()
-        events_mod = MagicMock()
-        events_mod.append_event.side_effect = RuntimeError("boom")
-        with patch.dict("sys.modules", {"db.cache_signal": cache_mod, "db.events": events_mod}):
-            from scraper.pipeline import _signal_post_ingestion
-
-            _signal_post_ingestion("test")
-
-
-# ── process_daily (carril ATOM en vivo) ──────────────────────────────────────
-
-
-class TestProcessDaily:
-    @patch("scraper.pipeline._signal_post_ingestion")
-    @patch("scraper.pipeline.set_cursor")
-    @patch("scraper.pipeline.replace_adjudicaciones_batch", return_value=(1, 0, 0))
-    @patch("scraper.pipeline.get_cursor", return_value=None)
-    @patch("scraper.pipeline.init_db")
-    def test_no_entries(self, init, get_cur, repl, set_cur, signal):
-        mock_meta = {
-            "pages_fetched": 1,
-            "entries_seen": 0,
-            "stopped_reason": "no_new",
-            "etag": "e1",
-            "last_modified": "lm1",
-            "newest_updated": None,
-        }
-        with patch("scraper.atom_live.iter_live_entries", return_value=([], mock_meta)):
-            with patch("scraper.pipeline.log"):
-                from scraper.pipeline import process_daily
-
-                result = process_daily()
-        assert result["status"] == "ok"
-        assert result["tech_matches"] == 0
-
-    @patch("scraper.pipeline._signal_post_ingestion")
-    @patch("scraper.pipeline.set_cursor")
-    @patch("scraper.pipeline.replace_adjudicaciones_batch", return_value=(1, 0, 0))
-    @patch("scraper.pipeline.get_cursor", return_value={"last_seen_updated": "2024-01-01"})
-    @patch("scraper.pipeline.init_db")
-    def test_with_entries(self, init, get_cur, repl, set_cur, signal):
-        from db.upsert import Licitacion, UpsertResult
-
-        lic = Licitacion(id_externo="D1", titulo="Daily test")
-        entry_elem = MagicMock()
-        entries = [(entry_elem, "2024-01-02T00:00:00")]
-        meta = {
-            "pages_fetched": 1,
-            "entries_seen": 1,
-            "etag": None,
-            "last_modified": None,
-            "newest_updated": "2024-01-02T00:00:00",
-        }
-
-        upsert_result = UpsertResult(inserted=["D1"], modified=[], unchanged=[])
-
-        with patch("scraper.atom_live.iter_live_entries", return_value=(entries, meta)):
-            with patch("scraper.pipeline.parse_entry", return_value=lic):
-                with patch("scraper.pipeline.parse_adjudicaciones", return_value=[]):
-                    with patch(
-                        "scraper.pipeline.upsert_licitaciones_with_history",
-                        return_value=upsert_result,
-                    ):
-                        with patch("scraper.pipeline.log"):
-                            # La entrada es un MagicMock sin órgano: se fija aquí.
-                            with patch("scraper.pipeline.acotar_por_organo", return_value=True):
-                                from scraper.pipeline import process_daily
-
-                                result = process_daily()
-
-        assert result["status"] == "ok"
-        assert result["tech_matches"] == 1
-
-    @patch("scraper.pipeline.set_cursor")
-    @patch("scraper.pipeline.get_cursor", return_value=None)
-    @patch("scraper.pipeline.init_db")
-    def test_sin_organo_la_entrada_no_se_escribe(self, init, get_cur, set_cur):
-        """Misma regla que el conector (RFC de identidad PLACSP): sin órgano, fuera."""
-        from db.upsert import Licitacion, UpsertResult
-
-        lic = Licitacion(id_externo="D1", titulo="Daily test")
-        entries = [(MagicMock(), "2024-01-02T00:00:00")]
-        meta = {
-            "pages_fetched": 1,
-            "entries_seen": 1,
-            "etag": None,
-            "last_modified": None,
-            "newest_updated": "2024-01-02T00:00:00",
-        }
-        vacio = UpsertResult(inserted=[], modified=[], unchanged=[])
-        with (
-            patch("scraper.atom_live.iter_live_entries", return_value=(entries, meta)),
-            patch("scraper.pipeline.parse_entry", return_value=lic),
-            patch("scraper.pipeline.acotar_por_organo", return_value=None),
-            patch(
-                "scraper.pipeline.upsert_licitaciones_with_history", return_value=vacio
-            ) as upsert,
-            patch("scraper.pipeline.log"),
-        ):
-            from scraper.pipeline import process_daily
-
-            result = process_daily()
-
-        assert result["tech_matches"] == 0
-        assert upsert.call_args.args[0] == []
-
-    @patch("scraper.pipeline.record_failure")
-    @patch("scraper.pipeline.notify")
-    @patch("scraper.pipeline.get_cursor", return_value=None)
-    @patch("scraper.pipeline.init_db")
-    def test_fetch_error(self, init, get_cur, notify, rec):
-        with patch("scraper.atom_live.iter_live_entries", side_effect=ConnectionError("fail")):
-            with patch("scraper.pipeline.log"):
-                from scraper.pipeline import process_daily
-
-                result = process_daily(run_id="r1")
-        assert result["status"] == "error_fetch"
-
-    @patch("scraper.pipeline._signal_post_ingestion")
-    @patch("scraper.pipeline.set_cursor")
-    @patch("scraper.pipeline.record_failure")
-    @patch("scraper.pipeline.replace_adjudicaciones_batch", return_value=(0, 0, 0))
-    @patch("scraper.pipeline.get_cursor", return_value={"last_seen_updated": "2024-01-01"})
-    @patch("scraper.pipeline.init_db")
-    def test_persist_error(self, init, get_cur, repl, rec, set_cur, signal):
-        entry_elem = MagicMock()
-        entries = [(entry_elem, "2024-01-02")]
-        meta = {
-            "pages_fetched": 1,
-            "entries_seen": 1,
-            "etag": None,
-            "last_modified": None,
-            "newest_updated": None,
-        }
-
-        with patch("scraper.atom_live.iter_live_entries", return_value=(entries, meta)):
-            with patch(
-                "scraper.pipeline.parse_entry",
-                return_value=MagicMock(id_externo="X", fecha_actualizacion_fuente=None),
-            ):
-                with patch("scraper.pipeline.parse_adjudicaciones", return_value=[]):
-                    with patch(
-                        "scraper.pipeline.upsert_licitaciones_with_history",
-                        side_effect=RuntimeError("db"),
-                    ):
-                        with patch("scraper.pipeline.log"):
-                            from scraper.pipeline import process_daily
-
-                            result = process_daily(run_id="r1")
-        assert result["status"] == "error_persistencia"
 
 
 # ── _apply_tech_prediction / _ml_classify_entry ──────────────────────────────

@@ -1,8 +1,7 @@
 """Abstracción de búsqueda full-text (ADR-016, ADR-021).
 
-Implementación única, ``PgTsBackend``: ``tsvector``/``ts_rank_cd`` de Postgres, con relajación
-  AND→OR de la tsquery, fallback ``pg_trgm`` y búsqueda híbrida (RRF sobre
-  ``pg_trgm`` + pgvector).
+Implementación única, ``PgTsBackend``: búsqueda híbrida de Postgres (RRF sobre
+``tsvector`` + pgvector).
 
 ``Fts5Backend`` (SQLite) se retiró en ADR-021 junto con el motor, y con él (el
 2026-09-28) el protocolo ``SearchBackend``, su factoría y los métodos que solo
@@ -107,167 +106,13 @@ def _to_pg_vector_literal(vec: list[float]) -> str:
 
 
 class PgTsBackend:
-    """Implementación tsvector/tsquery para Postgres (ADR-016).
+    """Búsqueda híbrida sobre Postgres (ADR-016): tsvector + pgvector, fusión RRF.
 
-    Usa ``websearch_to_tsquery('spanish', query)`` — inmune a inyección SQL,
-    sustituye a ``escape_fts5``. Si esa query (AND de todos los términos) no
-    casa con nada, relaja a OR sobre ``plainto_tsquery`` antes de rendirse;
-    solo si ``search_vector`` no existe (BD anterior a v50) cae al ILIKE.
-
-    ``ts_rank_cd`` (cover density) para ranking, con los pesos y la
-    normalización de ``TS_RANK_WEIGHTS``/``TS_RANK_NORMALIZATION``.
+    La búsqueda solo por texto (``search_ids``, con su relajación AND→OR y su
+    fallback ILIKE para BD anteriores a v50) se retiró en 2026-11: producción
+    no la llamaba y el texto del Investigador vive en
+    ``db/repositories/investigador.py``.
     """
-
-    _LANG = "spanish"
-
-    # Las dos tsquery de ``_ts_search``, de más a menos precisa. Ambas dejan
-    # sus dos ``%s`` (configuración + texto) en el mismo orden.
-    _STRICT_TSQUERY = "websearch_to_tsquery(%s, %s)"
-    # Se relaja sobre ``plainto_tsquery`` y NO sobre ``websearch_to_tsquery``
-    # a propósito: la salida de ``plainto_tsquery`` es siempre una conjunción
-    # plana de lexemas, así que sustituir ` & ` por ` | ` no puede cambiar la
-    # semántica de nada más. Relajar la de ``websearch_to_tsquery`` sí podría:
-    # un `-término` del usuario se volvería «… o NO contiene término», que casa
-    # con casi todo el corpus, y una frase entrecomillada (`<->`) perdería su
-    # razón de ser.
-    _RELAXED_TSQUERY = "replace(plainto_tsquery(%s, %s)::text, ' & ', ' | ')::tsquery"
-
-    def available(self) -> bool:
-        """True si la columna ``search_vector`` existe."""
-        try:
-            from db.database import connect_read
-
-            with connect_read() as conn:
-                cur = conn.execute(
-                    "SELECT 1 FROM information_schema.columns "
-                    "WHERE table_name='licitaciones' AND column_name='search_vector' LIMIT 1"
-                )
-                return cur.fetchone() is not None
-        except Exception:
-            return False
-
-    def search_ids(
-        self,
-        conn: Any,
-        query: str,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[str]:
-        rows = self._ts_search(conn, query, limit=limit, offset=offset)
-        return [r[0] for r in rows]
-
-    def _ts_search(
-        self,
-        conn: Any,
-        query: str,
-        *,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> list[tuple[str, float]]:
-        """Búsqueda ``tsvector`` rankeada por ``ts_rank_cd``, en dos pasadas.
-
-        ``websearch_to_tsquery`` combina los términos con AND, así que una
-        pregunta en lenguaje natural —"migración a Oracle Cloud **llamada**
-        Aurora Boreal"— solo casa si el documento contiene *todas* sus
-        palabras de contenido, incluidas las que solo existen en la pregunta
-        ("llamada", "denominado", "apodado"). Cuando no casa, la consulta no
-        devuelve un mal orden: devuelve **cero filas**, y quien llama se queda
-        sin ranking que usar.
-
-        Por eso hay una segunda pasada: la misma búsqueda con los términos
-        en OR, ordenada otra vez por ``ts_rank_cd``, que puntúa cuántos
-        términos cubre cada documento y con qué peso (título = A en
-        ``search_vector``). Es recall recuperado *con* orden, en lugar de
-        recall recuperado sin orden.
-
-        El desempate por ``id_externo`` hace el orden total y estable: sin él,
-        dos documentos con el mismo rank salen en el orden que quiera el plan
-        de ejecución, lo que rompe tanto la paginación por ``OFFSET`` como
-        cualquier medición reproducible del ranking.
-
-        La tercera pasada (ILIKE) es para BD anteriores a v50, donde no existe
-        ``search_vector`` y las dos primeras fallan con error —no con cero
-        filas—; de ahí que ``_ts_search_pass`` distinga ambos casos.
-        """
-        rows = self._ts_search_pass(conn, query, self._STRICT_TSQUERY, limit=limit, offset=offset)
-        if rows is None:
-            return self._ilike_search(conn, query, limit=limit, offset=offset)
-        if rows:
-            return rows
-
-        relaxed = self._ts_search_pass(
-            conn, query, self._RELAXED_TSQUERY, limit=limit, offset=offset
-        )
-        if relaxed is None:
-            return self._ilike_search(conn, query, limit=limit, offset=offset)
-        return relaxed
-
-    def _ts_search_pass(
-        self,
-        conn: Any,
-        query: str,
-        tsquery_sql: str,
-        *,
-        limit: int,
-        offset: int,
-    ) -> list[tuple[str, float]] | None:
-        """Una pasada FTS con la tsquery dada, o ``None`` si no se pudo buscar.
-
-        La distinción importa: ``[]`` significa "el motor buscó y no hay
-        coincidencias" (relajar la query puede ayudar), mientras que ``None``
-        significa "la consulta ni siquiera se pudo ejecutar" —típicamente una
-        BD sin ``search_vector``— y ahí lo único que queda es el ILIKE.
-        """
-        rank_expr = (
-            f"ts_rank_cd('{TS_RANK_WEIGHTS}'::float4[], search_vector, "
-            f"{tsquery_sql}, {TS_RANK_NORMALIZATION})"
-        )
-        sql = (
-            f"SELECT id_externo, {rank_expr} AS rank "
-            "FROM licitaciones "
-            f"WHERE search_vector @@ {tsquery_sql} "
-            "ORDER BY rank DESC, id_externo "
-            "LIMIT %s OFFSET %s"
-        )
-        try:
-            rows = conn.execute(
-                sql, (self._LANG, query, self._LANG, query, limit, offset)
-            ).fetchall()
-        except Exception:
-            # Sin log, una búsqueda degradada es indistinguible de una
-            # búsqueda que simplemente no encontró nada.
-            log.warning("ts_search_pass_failed", exc_info=True)
-            return None
-        return [(r[0], float(r[1])) for r in rows]
-
-    def _ilike_search(
-        self,
-        conn: Any,
-        query: str,
-        *,
-        limit: int,
-        offset: int,
-    ) -> list[tuple[str, float]]:
-        """Último recurso para BD sin ``search_vector`` (antes de v50).
-
-        Sin ranking posible: todas las filas comparten score, así que el orden
-        lo fija ``id_externo`` para que al menos sea determinista.
-        """
-        try:
-            pattern = f"%{query}%"
-            sql = (
-                "SELECT id_externo, 0.5 AS rank "
-                "FROM licitaciones "
-                "WHERE titulo ILIKE %s OR descripcion ILIKE %s "
-                "ORDER BY id_externo "
-                "LIMIT %s OFFSET %s"
-            )
-            rows = conn.execute(sql, (pattern, pattern, limit, offset)).fetchall()
-            return [(r[0], float(r[1])) for r in rows]
-        except Exception:
-            log.warning("ts_search_failed", exc_info=True)
-            return []
 
     # ── Retrieval híbrido (plan Pliegos+RAG, F9 — cierra la deuda F3b) ──────
 
@@ -307,7 +152,7 @@ class PgTsBackend:
         RAG y que este parámetro no altera. Solo Postgres — requiere
         ``search_vector`` (v50) y ``documento_chunks``/pgvector (v56).
         Fail-open: cualquier error (extensión ausente, tabla vacía) devuelve
-        lista vacía, igual que ``_ts_search``.
+        lista vacía.
 
         Los filtros (``ccaa``, ``tecnologia``, ``fecha_desde``/``fecha_hasta`` y,
         desde el Investigador, ``importe_min``/``importe_max``/``solo_abiertas``,

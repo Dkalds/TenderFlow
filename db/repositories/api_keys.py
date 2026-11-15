@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 from typing import Any
 
 from db.database import connect, connect_read, get_table_columns, now_utc_iso
@@ -20,14 +18,6 @@ _COLUMNAS_API_KEYS: frozenset[str] | None = None
 
 
 class ApiKeyRepository:
-    def _hash(self, raw: str) -> str:
-        from config import settings
-
-        secret = settings.API_HMAC_SECRET.get_secret_value()
-        if secret:
-            return hmac.new(secret.encode(), raw.encode(), hashlib.sha256).hexdigest()
-        return hashlib.sha256(raw.encode()).hexdigest()
-
     # ── Lookups ──────────────────────────────────────────────
 
     def get_by_hash(self, key_hash: str) -> dict[str, Any] | None:

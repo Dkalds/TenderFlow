@@ -163,7 +163,7 @@ docker compose exec scheduler python -c \
   `MODULE_THRESHOLDS` en el propio script, y no incluye `web/`).
 * F7: PKCE (RFC 7636) + validación de Google ID token en
   `shared/auth_core.py` (`generate_pkce_pair`, `verify_pkce`,
-  `validate_google_id_token`).
+  `verify_google_id_token`, que verifica firma y claims).
 * F7: CI con Bandit (`pyproject.toml [tool.bandit]`) y Trivy
   (escaneo CRITICAL/HIGH sobre la imagen Docker, allowlist en
   `.trivyignore`).

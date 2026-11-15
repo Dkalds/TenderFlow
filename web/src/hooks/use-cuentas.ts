@@ -30,6 +30,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { toast } from "@/lib/toast";
 
 import { apiGet, apiMutate, fetchWithAuth } from "@/lib/api-client";
+import { conOrganizacion } from "@/lib/utils";
 import type { Schemas } from "@/lib/api-types";
 import { registrarEvento } from "@/lib/analytics";
 import { cuentaKeys, etiquetaKeys } from "@/lib/query-keys";
@@ -37,7 +38,6 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { MIN_LONGITUD_BUSQUEDA } from "@/hooks/use-busqueda-global";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { conOrganizacion } from "@/hooks/use-seguir-cuenta";
 
 // Seguir y dejar de seguir un órgano viven en `use-seguir-cuenta.ts` (ver allí
 // por qué); se reexportan para quien gestiona cuentas desde aquí.

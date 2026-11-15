@@ -236,21 +236,6 @@ def test_oauth_state_nonce_is_extractable_only_from_expected_format():
     assert oauth_state_nonce("not:a:nonce") is None
 
 
-def test_google_id_token_nonce_must_match_authorization_flow():
-    from shared.auth_core import validate_google_id_token
-
-    claims: dict[str, object] = {
-        "iss": "https://accounts.google.com",
-        "aud": "client-id",
-        "sub": "google-subject",
-        "exp": int(time.time()) + 300,
-        "email_verified": True,
-        "nonce": "expected-nonce",
-    }
-    assert validate_google_id_token(claims, audience="client-id", expected_nonce="expected-nonce")
-    assert not validate_google_id_token(claims, audience="client-id", expected_nonce="other-nonce")
-
-
 def test_verify_google_id_token_accepts_real_jwks_shape_without_x5c():
     """Regresión: el JWKS v3 real de Google trae RSA n/e, nunca x5c.
 
@@ -874,101 +859,6 @@ class TestPKCE:
         verifier, challenge = generate_pkce_pair()
         digest = hashlib.sha256(verifier.encode("ascii")).digest()
         assert base64.urlsafe_b64encode(digest).rstrip(b"=").decode() == challenge
-
-
-# ---------------------------------------------------------------------------
-# validate_google_id_token — claim validation branches
-# ---------------------------------------------------------------------------
-
-
-class TestValidateGoogleIdToken:
-    """Lines 403-440: validate_google_id_token."""
-
-    def test_empty_claims(self):
-        from shared.auth_core import validate_google_id_token
-
-        assert validate_google_id_token({}, audience="aud") is False
-        assert validate_google_id_token(None, audience="aud") is False
-
-    def test_invalid_iss(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {"iss": "evil.com", "aud": "aud", "exp": int(time.time()) + 600}
-        assert validate_google_id_token(claims, audience="aud") is False
-
-    def test_invalid_aud(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {"iss": "accounts.google.com", "aud": "wrong", "exp": int(time.time()) + 600}
-        assert validate_google_id_token(claims, audience="myapp") is False
-
-    def test_missing_exp(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {"iss": "accounts.google.com", "aud": "myapp"}
-        assert validate_google_id_token(claims, audience="myapp") is False
-
-    def test_expired_token(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {"iss": "accounts.google.com", "aud": "myapp", "exp": int(time.time()) - 600}
-        assert validate_google_id_token(claims, audience="myapp") is False
-
-    def test_invalid_exp_format(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {"iss": "accounts.google.com", "aud": "myapp", "exp": "not_a_number"}
-        assert validate_google_id_token(claims, audience="myapp") is False
-
-    def test_email_not_verified(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {
-            "iss": "accounts.google.com",
-            "aud": "myapp",
-            "exp": int(time.time()) + 600,
-            "email_verified": False,
-        }
-        assert validate_google_id_token(claims, audience="myapp") is False
-
-    def test_valid_token(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {
-            "iss": "accounts.google.com",
-            "aud": "myapp",
-            "sub": "google-subject-123",
-            "exp": int(time.time()) + 600,
-            "email_verified": True,
-        }
-        assert validate_google_id_token(claims, audience="myapp") is True
-
-    def test_valid_token_no_email_verify_required(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {
-            "iss": "https://accounts.google.com",
-            "aud": "myapp",
-            "sub": "google-subject-123",
-            "exp": int(time.time()) + 600,
-            "email_verified": False,
-        }
-        assert (
-            validate_google_id_token(claims, audience="myapp", require_email_verified=False) is True
-        )
-
-    def test_aud_as_list(self):
-        from shared.auth_core import validate_google_id_token
-
-        claims = {
-            "iss": "accounts.google.com",
-            "aud": ["myapp", "other"],
-            "azp": "myapp",
-            "sub": "google-subject-123",
-            "exp": int(time.time()) + 600,
-            "email_verified": True,
-        }
-        assert validate_google_id_token(claims, audience="myapp") is True
 
 
 # ---------------------------------------------------------------------------
