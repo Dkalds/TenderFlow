@@ -12,26 +12,17 @@
  * así la consulta ni sale para quien iba a recibir un 403.
  */
 
-import { useQuery } from "@tanstack/react-query";
 import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Pista } from "@/components/ui/pista";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CABECERA_COLUMNA } from "@/components/ui/table";
-import { apiGet } from "@/lib/api-client";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { adminKeys } from "@/lib/query-keys";
 import { cn, formatDateTime, formatNumber } from "@/lib/utils";
+import { useErroresNavegador } from "../../_hooks/use-observabilidad";
 
 const LIMITE = 20;
 
 export function ErroresNavegadorCard() {
-  const { data, isLoading, error, refetch } = useQuery({
-    queryKey: adminKeys.clientErrors,
-    queryFn: () => apiGet("/api/v1/security/client-errors", { params: { query: { limit: LIMITE } } }),
-    staleTime: 60_000,
-    // El fallo lo dice el panel: sin toast encima.
-    meta: META_ERROR_EN_LINEA,
-  });
+  const { data, isLoading, error, refetch } = useErroresNavegador(LIMITE);
 
   const filas = data?.items ?? [];
 

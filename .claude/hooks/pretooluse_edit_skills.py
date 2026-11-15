@@ -9,9 +9,10 @@ falta alguno bloquea la edición (exit 2) diciendo cuál cargar.
 
 Dentro de un subagente, el `transcript_path` que recibe el hook es el de la
 sesión principal: los `Skill` que carga el subagente quedan en su propio
-transcript (`<sesión>/subagents/agent-<agent_id>.jsonl`) y antes no se veían,
-así que se bloqueaban sus ediciones aunque los hubiera cargado. Ahora cuentan
-los dos.
+transcript (`<sesión>/subagents/agent-<agent_id>.jsonl`, o
+`<sesión>/subagents/workflows/<wf>/agent-<agent_id>.jsonl` si lo lanzó un
+workflow) y antes no se veían, así que se bloqueaban sus ediciones aunque los
+hubiera cargado. Ahora cuentan los dos.
 
 Es best-effort al revés que un control de CI: si no puede leer el transcript
 o algo falla, deja pasar. Un hook roto no puede bloquear el trabajo.
@@ -114,7 +115,9 @@ def transcripts(d: dict[str, object]) -> list[pathlib.Path]:
     rutas = [principal]
     agente = str(d.get("agent_id") or "")
     if agente and re.fullmatch(r"[\w-]+", agente):
-        rutas.append(principal.with_suffix("") / "subagents" / f"agent-{agente}.jsonl")
+        # Los subagentes de un workflow guardan el suyo en subagents/workflows/<wf>/.
+        subagentes = principal.with_suffix("") / "subagents"
+        rutas.extend(subagentes.rglob(f"agent-{agente}.jsonl"))
     if d.get("agent_transcript_path"):
         rutas.append(pathlib.Path(str(d["agent_transcript_path"])))
     return [r for r in rutas if r.is_file()]

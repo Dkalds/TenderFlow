@@ -30,6 +30,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from db.database import now_utc_iso
+from db.repositories.adjudicaciones import AdjudicacionRetencionRow
 from db.repositories.predicciones import PrediccionesRepository
 from db.repositories.renovaciones import HORIZONTE_RENOVACIONES_MAX_MESES
 from observability.logging import get_logger
@@ -393,7 +394,9 @@ def _baseline_retencion(
     )
 
 
-def _etiquetas_retencion(adjudicaciones: list[dict[str, Any]]) -> EtiquetasPorSegmento | None:
+def _etiquetas_retencion(
+    adjudicaciones: list[AdjudicacionRetencionRow],
+) -> EtiquetasPorSegmento | None:
     """Emparejamiento del histórico (tasas del baseline y resueltos), fail-open.
 
     Mide lo mismo que entrena el modelo: ``AVG(label)`` sobre los MISMOS pares
@@ -431,7 +434,8 @@ def _separar_resueltos(
     CPV-4 pasa por sucesora), y excluir un contrato no es neutro: sin fila, su
     ``riesgo_cambio`` es NULL y el orden «score» de Renovaciones lo manda al
     fondo con score 0. Encender el flag exige antes auditar una muestra de los
-    resueltos a mano, como ``scripts/audit_retencion.py`` hace con los pares.
+    resueltos a mano: ``scripts/audit_retencion.py --resueltos``
+    (``retencion_labels.muestra_resueltos``).
 
     ``None`` en detectados si el emparejamiento falló: no es lo mismo no haber
     encontrado ninguno que no haber podido buscarlos.

@@ -101,6 +101,30 @@ def test_el_where_queda_bien_formado(
         )
 
 
+_MENORES = "(a.licitacion_id IS NULL OR split_part(a.licitacion_id, ':', 1) <> 'placsp_menores')"
+
+# Las analíticas de competidores: `load_for_competitors` y las cuatro que
+# siembran sus condiciones con `_adj_filter_conditions`.
+_SIN_MENORES = [fila for fila in _ANALITICAS if fila[0] != "load_licitadores"]
+
+
+@pytest.mark.parametrize(("metodo", "sin_filtros", "con_filtros"), _SIN_MENORES)
+def test_los_contratos_menores_quedan_fuera_en_ambos_caminos(
+    metodo: str, sin_filtros: dict[str, Any], con_filtros: dict[str, Any]
+) -> None:
+    """Un menor (mediana 4.950 €) no compite con una licitación abierta: fuera del ranking."""
+    for kwargs in (sin_filtros, con_filtros):
+        sql, params = _capture(metodo, **kwargs)
+        assert _MENORES in sql, f"{metodo}({kwargs}) cuenta los contratos menores"
+        assert sql.count("%s") == len(params)
+
+
+def test_la_exclusion_de_menores_conserva_las_filas_sin_licitacion_id() -> None:
+    """Con NULL, `<>` solo da NULL y la fila caería en silencio: el `IS NULL` la conserva."""
+    sql, _ = _capture("load_for_competitors")
+    assert "a.licitacion_id IS NULL OR split_part(a.licitacion_id" in sql
+
+
 def test_el_dedupe_referencia_la_columna_del_lado_izquierdo_del_join() -> None:
     """`a.licitacion_id`, no `l.id_externo`.
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -134,6 +135,45 @@ def test_el_playbook_lleva_la_tabla_al_dia(gates):
 
     assert copia == gates.tabla(), (
         "Regenerá la tabla de docs/AGENT_PLAYBOOK.md con python scripts/run_gates.py --list"
+    )
+
+
+#: Gates que CI corre dos veces: en su grupo de ``run_gates.py`` (paso
+#: ``make gates``/``make gates-deps``) y en un ``tests/test_unit_ratchet_*.py``
+#: que los ejecuta sobre el árbol de hoy. Solo encoge: elegir una vía por gate
+#: es decisión del propietario (backlog «Agrupar la veintena de gates stdlib»).
+POR_LAS_DOS_VIAS = frozenset(
+    {
+        "check_any_count.py",
+        "check_api_convencion.py",
+        "check_api_surface.py",
+        "check_casos_uso.py",
+        "check_layers.py",
+        "check_prints.py",
+    }
+)
+
+#: Test que corre el gate sobre el repo real: ``test_el_arbol_de_hoy_pasa_el_gate``,
+#: ``test_la_api_de_hoy_pasa_el_gate``, ``test_el_catalogo_de_hoy_pasa_el_gate``…
+_SOBRE_EL_ARBOL = re.compile(r"^def test_\w*(?:de_hoy|del_repo)\w*\(", re.M)
+
+
+def test_la_lista_de_gates_duplicados_solo_encoge(gates):
+    """Un ratchet nuevo con su test sobre el árbol y su sitio en run_gates.py falla aquí."""
+    en_grupo = {g.script for g in (*gates.STDLIB, *gates.DEPS)}
+    duplicados = set()
+    for test in (_ROOT / "tests").glob("test_unit_ratchet_*.py"):
+        fuente = test.read_text(encoding="utf-8")
+        if _SOBRE_EL_ARBOL.search(fuente):
+            duplicados |= set(re.findall(r"\b(check_\w+\.py)\b", fuente)) & en_grupo
+
+    assert duplicados <= POR_LAS_DOS_VIAS, (
+        f"{sorted(duplicados - POR_LAS_DOS_VIAS)} correrían en CI por dos vías: quitá el "
+        "test sobre el árbol o el gate de run_gates.py, no los dos."
+    )
+    assert duplicados == POR_LAS_DOS_VIAS, (
+        f"{sorted(POR_LAS_DOS_VIAS - duplicados)} ya corren por una sola vía: "
+        "borralos de POR_LAS_DOS_VIAS."
     )
 
 

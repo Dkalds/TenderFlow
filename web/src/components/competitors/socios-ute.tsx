@@ -23,16 +23,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
 import { PanelEmpty, PanelError, PanelLoading, SectionTitle } from "@/components/console/panel";
+import { useSociosUte } from "@/hooks/use-empresa-competencia";
 import { registrarEvento } from "@/lib/analytics";
-import { apiGet } from "@/lib/api-client";
-import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { competitiveKeys } from "@/lib/query-keys";
 import { formatCompactCurrency, formatNumber, formatPercent } from "@/lib/utils";
-
-type SugerenciaSocios = Schemas["SugerenciaSocios"];
 
 /** Sugerencias pedidas: las que se leen en una columna lateral. */
 const LIMITE = 5;
@@ -54,20 +48,6 @@ export function prefijoCpv(cpv: string | null | undefined): string | null {
   return sinCeros.length >= 2 ? sinCeros : digitos.slice(0, 2);
 }
 
-function useSociosUte(cpv: string | null, ccaa: string | null) {
-  return useQuery<SugerenciaSocios>({
-    queryKey: competitiveKeys.partners(cpv, ccaa),
-    queryFn: () =>
-      apiGet("/api/v1/competitive/partners", {
-        params: { query: { cpv: cpv ?? undefined, ccaa: ccaa ?? undefined, limit: LIMITE } },
-      }),
-    enabled: cpv != null,
-    staleTime: 10 * 60_000,
-    // El fallo se dice en el panel (PanelError): sin toast además.
-    meta: META_ERROR_EN_LINEA,
-  });
-}
-
 /** Enlace al dossier sólo cuando la clave es un id del maestro. */
 function Empresa({ nombre, clave }: { nombre: string; clave: string }) {
   if (/^\d+$/.test(clave)) {
@@ -83,7 +63,7 @@ function Empresa({ nombre, clave }: { nombre: string; clave: string }) {
 export function SociosUte({ cpv, ccaa }: { cpv: string | null | undefined; ccaa: string | null | undefined }) {
   const prefijo = prefijoCpv(cpv);
   const region = ccaa?.trim() ? ccaa.trim() : null;
-  const { data, isLoading, error, refetch } = useSociosUte(prefijo, region);
+  const { data, isLoading, error, refetch } = useSociosUte(prefijo, region, LIMITE);
   const medida = React.useRef(false);
 
   React.useEffect(() => {

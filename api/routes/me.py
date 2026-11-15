@@ -177,7 +177,7 @@ def export_my_data(ctx: Principal = Depends(require_any_auth)) -> Response:
         profile = export_user_profile(user_key, user_id=uid)
         zf.writestr("perfil_scoring.json", json.dumps(profile, ensure_ascii=False, indent=2))
 
-        vistas = export_saved_filters(user_key, user_id=uid)
+        vistas = export_saved_filters(uid)
         zf.writestr("vistas_guardadas.json", json.dumps(vistas, ensure_ascii=False, indent=2))
 
         notifications = export_user_notifications(user_key, user_id=uid)

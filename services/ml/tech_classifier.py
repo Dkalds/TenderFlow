@@ -1181,7 +1181,11 @@ class TechnologyClassifier:
         artefacto y salía ``no_model`` en **todas** las pasadas de
         ``scrape-daily.yml``, no solo desde el 2026-07-27.
 
-        Quien publica el asset es ``.github/workflows/ml-entrenar.yml`` (modelo ``tecnologias``).
+        Quien publica el asset es ``.github/workflows/ml-entrenar.yml`` (modelo
+        ``tecnologias``), en *latest*. Se busca como el SAP: tag fijo, luego
+        *latest* y luego las recientes (``locate_release_asset``), así que una
+        *latest* que deja de serlo porque otra Release se publica después no
+        deja al clasificador sin modelo.
 
         Returns:
             True si el modelo está disponible (ya existía o se descargó).
@@ -1190,10 +1194,10 @@ class TechnologyClassifier:
         import os
 
         from shared.release_assets import (
+            ML_MODELS_RELEASE_TAG,
             download_asset,
             download_checksum_sidecar,
-            fetch_latest_release,
-            find_asset_id,
+            locate_release_asset,
         )
 
         target = path or _MODEL_PATH
@@ -1202,14 +1206,19 @@ class TechnologyClassifier:
             return True
 
         github_token = os.environ.get("GITHUB_TOKEN", "")
-        release = fetch_latest_release(repo, token=github_token)
-        if release is None:
+        localizado = locate_release_asset(
+            repo, asset_name, token=github_token, tag_fijo=ML_MODELS_RELEASE_TAG
+        )
+        if localizado is None:
             return False
-        asset_id = find_asset_id(release, asset_name)
-        if asset_id is None:
-            return False
+        release, asset_id = localizado.release, localizado.asset_id
 
-        log.info("tech_classifier.downloading_model", asset_id=asset_id, dest=str(target))
+        log.info(
+            "tech_classifier.downloading_model",
+            asset_id=asset_id,
+            release=release.get("tag_name"),
+            dest=str(target),
+        )
         if not download_asset(repo, asset_id, target, token=github_token):
             return False
 

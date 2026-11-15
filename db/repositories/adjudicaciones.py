@@ -10,7 +10,9 @@ from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_w
 from db.repositories.base import count_where, csv_values, rows_to_dicts, typed_rows
 from db.sql_fragments import (
     exclude_duplicados_sql,
+    excluir_contratos_menores_sql,
     fecha_fin_sql,
+    instante_sql,
     iso_guard,
     tecnologia_en_csv_sql,
 )
@@ -24,8 +26,24 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # (v156) → ``float``; ``es_pyme`` y ``n_ofertas_recibidas`` son ``INTEGER``.
 # ``COUNT`` → ``int`` y ``COALESCE(SUM(double), 0)`` → ``float``. Las consultas
 # que alimentan un DataFrame con columnas de varias tablas
-# (``load_for_competitors``, ``load_para_retencion``) siguen como
-# ``dict[str, Any]``: su forma la fija pandas, no un DTO.
+# (``load_for_competitors``) siguen como ``dict[str, Any]``: su forma la fija
+# pandas, no un DTO.
+
+
+class AdjudicacionRetencionRow(TypedDict):
+    """Un contrato adjudicado del histórico de retención (:meth:`load_para_retencion`)."""
+
+    licitacion_id: str
+    empresa_id: int | None
+    nombre: str
+    fecha_adjudicacion: str | None
+    importe_adjudicado: float | None
+    organo: str | None
+    cpv: str | None
+    ccaa: str | None
+    importe: float | None
+    titulo: str | None
+    fecha_fin_efectiva: str | None
 
 
 class AdjudicacionFichaRow(TypedDict):
@@ -222,10 +240,16 @@ def _adj_filter_conditions(
     KPIs, en el ranking y en la serie mensual. Sembrarla aquí en vez de repetirla
     en cada query hace imposible olvidarla al añadir la quinta.
 
-    El fragmento no lleva placeholders (es una subconsulta constante), así que no
-    desalinea ``params`` con los ``%s`` de los filtros que vienen detrás.
+    Los contratos menores también quedan fuera, por la misma razón que en
+    :meth:`AdjudicacionRepository.load_for_competitors`.
+
+    Ningún fragmento sembrado lleva placeholders (son constantes), así que no
+    desalinean ``params`` con los ``%s`` de los filtros que vienen detrás.
     """
-    conditions: list[str] = [exclude_duplicados_sql("a.licitacion_id")]
+    conditions: list[str] = [
+        exclude_duplicados_sql("a.licitacion_id"),
+        excluir_contratos_menores_sql("a.licitacion_id"),
+    ]
     params: list[object] = []
     if ccaa_filter:
         placeholders = ",".join("%s" for _ in ccaa_filter)
@@ -370,7 +394,12 @@ class AdjudicacionRepository:
         # sobre `l.id_externo` porque el JOIN con licitaciones es LEFT: con la
         # columna de la derecha, una fila huérfana daría NULL y `NULL NOT IN`
         # la descartaría en silencio.
-        conditions: list[str] = [exclude_duplicados_sql("a.licitacion_id")]
+        # Los contratos menores tampoco: no compiten con una licitación abierta
+        # y en volumen dominarían el recuento de adjudicaciones del ranking.
+        conditions: list[str] = [
+            exclude_duplicados_sql("a.licitacion_id"),
+            excluir_contratos_menores_sql("a.licitacion_id"),
+        ]
         params: list[object] = []
         if ccaa:
             conditions.append("a.ccaa = %s")
@@ -709,7 +738,7 @@ class AdjudicacionRepository:
 
     # ── Etiquetado de retención (Fase 6.2) ───────────────────────────────
 
-    def load_para_retencion(self) -> list[dict[str, Any]]:
+    def load_para_retencion(self) -> list[AdjudicacionRetencionRow]:
         """Histórico de adjudicaciones con la fecha de fin efectiva del contrato.
 
         Base del etiquetado de retención (``services/ml/retencion_labels.py``):
@@ -739,7 +768,7 @@ class AdjudicacionRepository:
             ORDER BY a.fecha_adjudicacion ASC
         """
         with connect_read() as c:
-            return rows_to_dicts(c.execute(sql))
+            return typed_rows(AdjudicacionRetencionRow, rows_to_dicts(c.execute(sql)))
 
 
 #: Mínimo de adjudicaciones con lead-time medible para publicar una estimación.
@@ -815,7 +844,7 @@ def lead_time_por_organo(
         # `DISTINCT ON` exige que el `ORDER BY` empiece por su expresión; la
         # fecha más temprana es la adjudicación del primer lote, que es la que
         # mide el plazo del procedimiento.
-        "  ORDER BY a.licitacion_id, a.fecha_adjudicacion "
+        f"  ORDER BY a.licitacion_id, {instante_sql('adjudicaciones', 'fecha_adjudicacion', 'a')} "
         ") d "
         "WHERE dias > 0 "
         "GROUP BY organo "

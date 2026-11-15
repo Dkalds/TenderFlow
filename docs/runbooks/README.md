@@ -142,7 +142,9 @@ docker compose exec scheduler python -c \
   externas en `shared/stopwords_es.txt`).
 * F2: motor analítico DuckDB opcional en `db/analytics.py`.
 * F3: `services/threshold_tuning.py` para tuning con coste asimétrico.
-* F3: `scheduler/drift_monitor.py` orquesta detección + alertas.
+* F3: `scheduler/drift_monitor.py` orquesta detección + alertas; lo corre
+  `run_drift_checks` desde el paso `drift_checks` de la pasada canónica
+  (semanal, advisory).
 * F4: `shared/signing.py` con rotación `kid`; backend Redis opcional en
   `services/rate_limit_redis.py`.
 * F4: Trivy en `.github/workflows/security.yml` para imágenes Docker.

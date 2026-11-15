@@ -64,6 +64,19 @@ MAX_FRASES_POR_PUNTO = 2
 #: suelto porque la UI lo pinta distinto y el test lo comprueba.
 SIN_BASE = "sin base en el pliego"
 
+#: Rótulo del bloque de citas propias de cada criterio en las exportaciones.
+DE_TUS_DOCUMENTOS = "De tus documentos"
+#: Lo mismo que dice la pantalla: un fallo de la búsqueda no es «no había nada».
+CITAS_FALLIDAS = (
+    "No se pudieron consultar los documentos de tu organización: este guion sale sin sus citas."
+)
+
+
+def _origen(cita: CitaOrganizacion) -> str:
+    """«Propuesta.pdf p. 3», o solo el fichero si la cita no tiene página."""
+    return cita.filename if cita.page_number is None else f"{cita.filename} p. {cita.page_number}"
+
+
 _FIN_DE_FRASE = re.compile(r"[.!?]+(?:\s|$)")
 
 
@@ -218,12 +231,16 @@ def a_markdown(guion: GuionOferta) -> str:
 
     La cita se imprime como referencia al documento y la página, no como el
     texto citado: el texto ya está en el pliego, y repetirlo aquí convertiría
-    un esquema de una página en un documento de veinte.
+    un esquema de una página en un documento de veinte. Las citas propias
+    (ADR-040) sí llevan el extracto: son pocas por criterio y salen de un
+    fichero de la organización que quien lee el guion no tiene delante.
     """
     lineas: list[str] = [f"# Guion de la oferta técnica — {guion.licitacion_id}", ""]
     if guion.sin_guion:
         lineas.append(f"_{guion.sin_guion}_")
         return "\n".join(lineas)
+    if guion.citas_organizacion_fallidas:
+        lineas.extend([f"_{CITAS_FALLIDAS}_", ""])
 
     for criterio in guion.criterios:
         peso = f" ({criterio.peso_pct:g} puntos)" if criterio.peso_pct is not None else ""
@@ -234,6 +251,10 @@ def a_markdown(guion: GuionOferta) -> str:
             marca = f" _[{SIN_BASE}]_" if punto.sin_base else (f" _({refs})_" if refs else "")
             lineas.append(f"- {punto.texto}{marca}")
         lineas.append("")
+        if criterio.citas_organizacion:
+            lineas.extend([f"### {DE_TUS_DOCUMENTOS}", ""])
+            lineas.extend(f"- «{c.cita}» _({_origen(c)})_" for c in criterio.citas_organizacion)
+            lineas.append("")
     return "\n".join(lineas)
 
 
@@ -504,12 +525,16 @@ def guion_generado(licitacion_id: str) -> GuionOferta | None:
     return _leer_cache(licitacion_id, firma_de(record.facts, paginas))
 
 
-def guion_pdf(licitacion_id: str) -> bytes | None:
+def guion_pdf(licitacion_id: str, organization_id: int | None = None) -> bytes | None:
     """El PDF del guion ya generado, o ``None`` si no lo hay. Nunca llama al LLM.
 
     Resuelve el nombre de cada documento citado para que el papel diga «pliego
     técnico.pdf p. 12» y no «doc 4812 p. 12»; si esa lectura falla, el PDF sale
     igual con los ids, que siguen siendo verificables.
+
+    Con ``organization_id`` lleva además las citas de los documentos de esa
+    organización, como el guion que devuelve el ``POST`` (ADR-040). Quien llama
+    decide si la tiene: la ruta pasa la de ``organizacion_para_citas``.
     """
     from db.repositories.documentos import DocumentosRepository
     from services.dedupe import expediente_del_pliego
@@ -517,6 +542,8 @@ def guion_pdf(licitacion_id: str) -> bytes | None:
     guion = guion_generado(licitacion_id)
     if guion is None:
         return None
+    if organization_id is not None:
+        guion = con_citas_de_organizacion(guion, organization_id)
     nombres: dict[int, str] = {}
     try:
         documentos = DocumentosRepository().list_by_licitacion(expediente_del_pliego(licitacion_id))
@@ -533,7 +560,9 @@ def a_pdf(guion: GuionOferta, nombres: dict[int, str] | None = None) -> bytes:
     """El guion en PDF, con la misma forma que :func:`a_markdown`.
 
     ``nombres`` traduce ``documento_id`` a nombre de fichero cuando se conoce;
-    sin él la cita sale como «doc N». Los imports de ``reportlab`` van dentro,
+    sin él la cita sale como «doc N». Las citas propias de cada criterio, si
+    el guion las trae, van en un bloque aparte con su extracto, fichero y
+    página. Los imports de ``reportlab`` van dentro,
     como en ``services/ficha_pdf.py``: tarda en cargar y este módulo lo importa
     la API entera.
     """
@@ -600,6 +629,8 @@ def a_pdf(guion: GuionOferta, nombres: dict[int, str] | None = None) -> bytes:
     ]
     if guion.sin_guion:
         story.append(Paragraph(_t(guion.sin_guion), base["Italic"]))
+    elif guion.citas_organizacion_fallidas:
+        story.append(Paragraph(_t(CITAS_FALLIDAS), base["Italic"]))
     for criterio in guion.criterios:
         peso = f" ({criterio.peso_pct:g} puntos)" if criterio.peso_pct is not None else ""
         story.append(Paragraph(_t(f"{criterio.criterio}{peso}"), seccion))
@@ -617,6 +648,18 @@ def a_pdf(guion: GuionOferta, nombres: dict[int, str] | None = None) -> bytes:
             items.append(ListItem(Paragraph(_t(punto.texto) + marca, punto_estilo)))
         if items:
             story.append(ListFlowable(items, bulletType="bullet", leftIndent=10))
+        if criterio.citas_organizacion:
+            story.append(Paragraph(f"<b>{DE_TUS_DOCUMENTOS}</b>", punto_estilo))
+            propias = [
+                ListItem(
+                    Paragraph(
+                        f'«{_t(c.cita)}» <font color="#5b6b7c"><i>({_t(_origen(c))})</i></font>',
+                        punto_estilo,
+                    )
+                )
+                for c in criterio.citas_organizacion
+            ]
+            story.append(ListFlowable(propias, bulletType="bullet", leftIndent=10))
         story.append(Spacer(1, 8))
     doc.build(story)
     return buf.getvalue()

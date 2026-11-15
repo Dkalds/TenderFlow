@@ -11,18 +11,14 @@
  * que no se pudo medir lo dice, en vez de enseñar un cero.
  */
 
-import { useQuery } from "@tanstack/react-query";
-
 import { Aviso, Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ApiError, apiGet } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { adminKeys } from "@/lib/query-keys";
 import { formatDateTime, formatNumber } from "@/lib/utils";
+import { useVerdadDominio } from "../../_hooks/use-revision";
 
-type Verdad = Schemas["VerdadDominio"];
 type Seccion = Schemas["VerdadSeccion"];
 type Metrica = Schemas["VerdadMetrica"];
 
@@ -62,13 +58,7 @@ function FilaMetrica({ metrica }: { metrica: Metrica }) {
 }
 
 export function VerdadDominioCard() {
-  const { data, isLoading, error, refetch } = useQuery<Verdad>({
-    queryKey: adminKeys.revision.verdad,
-    queryFn: () => apiGet("/api/v1/admin/revision/verdad") as Promise<Verdad>,
-    // La medición es cara y se renueva cada hora: no se repite al volver a la pestaña.
-    staleTime: 15 * 60 * 1000,
-    meta: META_ERROR_EN_LINEA,
-  });
+  const { data, isLoading, error, refetch } = useVerdadDominio();
 
   const secciones = data?.secciones ?? [];
   const violaciones = data?.violaciones ?? [];

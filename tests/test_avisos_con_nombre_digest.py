@@ -20,6 +20,7 @@ from services.email_digest import (
     asunto_digest,
     bloques_de_avisos,
     clave_de_aviso,
+    contar_avisos,
     render_digest,
 )
 from shared.events import CATALOGO, FAMILIAS, especificacion, suscripciones_validas
@@ -233,6 +234,50 @@ def test_un_digest_solo_de_avisos_no_habla_de_licitaciones_nuevas() -> None:
 )
 def test_asunto_del_digest_separa_novedades(total: int, avisos: int, esperado: str) -> None:
     assert asunto_digest("daily", total, avisos=avisos) == esperado
+
+
+def _caduca(licitacion_id: str) -> dict[str, Any]:
+    return _fila(
+        "organizacion.documento_caduca", {"aviso_titulo": "Caduca en 30 días"}, licitacion_id
+    )
+
+
+def test_un_digest_solo_de_documentos_que_caducan_no_habla_de_lo_que_sigues() -> None:
+    bloques = bloques_de_avisos([_caduca("DOC-1")])
+
+    texto, _ = render_digest(bloques=bloques, frecuencia="daily", base_url=None, baja_url=None)
+
+    assert [b.sobre_lo_seguido for b in bloques] == [False]
+    assert texto.splitlines()[0] == "1 aviso sobre tu organización."
+    assert "que sigues" not in texto
+    assert asunto_digest("daily", 0, otros_avisos=1) == (
+        "TenderFlow · 1 aviso sobre tu organización"
+    )
+
+
+def test_la_cartera_que_vence_no_cuenta_como_expediente_seguido() -> None:
+    (bloque,) = bloques_de_avisos([_fila("pursuit.cartera_vence", {}, "LIC-GANADA")])
+    assert not bloque.sobre_lo_seguido
+
+
+def test_un_digest_mixto_cuenta_por_separado_lo_seguido_y_lo_de_la_organizacion() -> None:
+    bloques = bloques_de_avisos(
+        [
+            _fila("licitacion.recurso", {"subtipo": "recurso"}, "A"),
+            _fila("pursuit.commented", {}, "B"),
+            _caduca("DOC-1"),
+        ]
+    )
+
+    texto, _ = render_digest(bloques=bloques, frecuencia="daily", base_url=None, baja_url=None)
+
+    assert contar_avisos(bloques) == (2, 1)
+    assert texto.splitlines()[0] == (
+        "2 novedades en los expedientes que sigues y 1 aviso sobre tu organización."
+    )
+    assert asunto_digest("daily", 0, avisos=2, otros_avisos=1) == (
+        "TenderFlow · 2 novedades en lo que sigues y 1 aviso sobre tu organización"
+    )
 
 
 # ── F3.4: evento de competidor en mi segmento ────────────────────────────────

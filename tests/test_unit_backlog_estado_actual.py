@@ -19,11 +19,11 @@ _CABECERA = "# Improvement Backlog\n\n## P1 — Alta\n\n"
 _PLANTILLA = "\n## Plantilla nueva entrada\n\n### [P0|P1|P2|P3] Título\n- **Área:** x\n"
 
 
-def _correr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, items: str) -> int:
+def _correr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, items: str, *flags: str) -> int:
     backlog = tmp_path / "IMPROVEMENT_BACKLOG.md"
     backlog.write_text(_CABECERA + items + _PLANTILLA, encoding="utf-8")
     monkeypatch.setattr(chequeo, "_BACKLOG", backlog)
-    monkeypatch.setattr(chequeo.sys, "argv", ["check_backlog_freshness.py"])
+    monkeypatch.setattr(chequeo.sys, "argv", ["check_backlog_freshness.py", *flags])
     return chequeo.main()
 
 
@@ -151,3 +151,68 @@ def test_el_resumen_no_falla_con_una_salida_cp1252(
     assert chequeo.main() == 0
     salida.flush()
     assert "con ≥ 30 pares.".encode() in salida.buffer.getvalue()
+
+
+def _revision(directorio: Path, nombre: str, cabecera: str) -> None:
+    directorio.mkdir(exist_ok=True)
+    (directorio / nombre).write_text(f'"""{nombre}\n\n{cabecera}\n"""\n', encoding="utf-8")
+
+
+_CITA_V901 = "### [P2] Algo\n- **Estado actual (2026-11-08):** `propietario` — aplicar v901.\n"
+
+
+@pytest.mark.parametrize(
+    ("cabecera", "avisa"),
+    [
+        ("Revision ID: v901\nCreate Date: 2026-11-10", True),
+        ("Revision ID: v901\nCreate Date: 2026-11-08", False),
+        ("Revision ID: v901\nCreate Date: 2026-10-01", False),
+        ("Revision ID: v901", False),
+    ],
+    ids=["posterior", "mismo-dia", "anterior", "sin-fecha"],
+)
+def test_solo_avisa_de_una_revision_creada_despues_del_estado_actual(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cabecera: str,
+    avisa: bool,
+) -> None:
+    """Una revisión anterior al Estado actual ya la contó quien lo escribió."""
+    versiones = tmp_path / "versions"
+    _revision(versiones, "v901_algo.py", cabecera)
+    monkeypatch.setattr(chequeo, "_VERSIONS", versiones)
+
+    assert _correr(tmp_path, monkeypatch, _CITA_V901, "--strict") == (1 if avisa else 0)
+    assert ("WARN" in capsys.readouterr().out) is avisa
+
+
+def test_una_revision_citada_que_no_esta_en_el_arbol_no_avisa(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(chequeo, "_VERSIONS", tmp_path / "vacio")
+
+    assert _correr(tmp_path, monkeypatch, _CITA_V901, "--strict") == 0
+
+
+@pytest.mark.parametrize("tope", ["TOPE_ITEMS", "TOPE_LINEAS"])
+def test_un_backlog_por_encima_de_su_tope_falla(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tope: str,
+) -> None:
+    monkeypatch.setattr(chequeo, tope, 0)
+
+    assert _correr(tmp_path, monkeypatch, _CITA_V901) == 1
+    assert "y el tope es 0" in capsys.readouterr().out
+
+
+def test_un_backlog_por_debajo_del_tope_pide_apretarlo_sin_fallar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Como `check_any_count.py`: quedarse corto no rompe, pero el cambio debe bajar el tope."""
+    monkeypatch.setattr(chequeo, "TOPE_ITEMS", 5)
+
+    assert _correr(tmp_path, monkeypatch, _CITA_V901, "--strict") == 0
+    assert "TOPE_ITEMS puede bajar de 5 a 1" in capsys.readouterr().out

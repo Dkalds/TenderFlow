@@ -136,6 +136,40 @@ export function usePursuits(filters: PursuitFilters = {}) {
   });
 }
 
+/** Tope de `limit` de la API (`MAX_PAGE_LIMIT` en `shared/dto/paginacion.py`). */
+const LIMITE_MAXIMO_PAGINA = 500;
+
+/**
+ * Los expedientes (`licitacion_id`) que ya tienen oportunidad en la
+ * organización activa, **todos**: pide `/pursuits` al tope de página y sigue por
+ * `offset` hasta `total`. Para marcar filas de otro listado (renovaciones), donde
+ * la primera página de `usePursuits` dejaba sin marca las que no cabían.
+ */
+export function useLicitacionesConPursuit() {
+  const organizationId = useActiveOrganizationId();
+  return useQuery({
+    queryKey: pursuitKeys.licitaciones(organizationId),
+    queryFn: async ({ signal }) => {
+      const ids = new Set<string>();
+      for (let offset = 0; ;) {
+        const pagina = await apiGet("/api/v1/pursuits", {
+          params: { query: { ...organizationQuery(organizationId), limit: LIMITE_MAXIMO_PAGINA, offset } },
+          signal,
+        });
+        const items = pagina.items ?? [];
+        for (const pursuit of items) ids.add(pursuit.licitacion_id);
+        offset += items.length;
+        // Una página vacía corta aunque `total` diga más: si no, un total que
+        // cambia entre páginas dejaría el bucle pidiendo para siempre.
+        if (items.length === 0 || offset >= pagina.total) return ids;
+      }
+    },
+    enabled: organizacionResuelta(organizationId),
+    staleTime: 30_000,
+    meta: META_ERROR_EN_LINEA,
+  });
+}
+
 export function usePursuit(id: string | null) {
   const organizationId = useActiveOrganizationId();
   return useQuery({

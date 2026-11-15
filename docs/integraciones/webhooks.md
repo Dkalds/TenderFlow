@@ -199,9 +199,10 @@ El formato `json` no cambia.
 Los reparte el despachador del outbox (`scheduler/jobs/event_dispatch.py`),
 que corre en cada pasada del cierre (paso `event_dispatch`, cada cuatro horas)
 y, a demanda, en cuanto una persona provoca un evento que alguien espera ya
-—una asignación (`pursuit.assigned`) o una solicitud de acceso
-(`solicitud_acceso.creada`)—: esos salen en segundos, no en la siguiente
-pasada.
+—abrir una oportunidad, cambiar su estado, decidirla o asignarla
+(`pursuit.created`, `pursuit.state_changed`, `pursuit.decided`,
+`pursuit.assigned`), o una solicitud de acceso (`solicitud_acceso.creada`)—:
+esos salen en segundos, no en la siguiente pasada.
 Todos llevan `organization_id` y sólo llegan a los webhooks de esa
 organización (más los globales sin dueño). Los eventos de instancia, sin
 organización (`solicitud_acceso.creada`, y `watchlist_match`, la watchlist de
@@ -294,6 +295,25 @@ no recibirá nunca un aviso de hace una semana.
 Los destinatarios (`seguidores`, que no viajan en el cuerpo) son el propietario y los administradores activos: quienes
 pueden renovar el documento y cambiar el perfil. Es un evento con
 `clave_ajustes`, así que le aplica el opt-out unánime de arriba.
+
+## Ciclo de vida de una oportunidad
+
+Salen **solo por webhook** (ni campana ni correo) y los escribe el
+repositorio de oportunidades en la misma transacción que el cambio: si el
+cambio se revierte, el evento no sale. Un reintento con la misma
+`X-Idempotency-Key` no publica otro. Los payloads los construye
+`shared/events.py` (`payload_creacion_pursuit` y
+`eventos_de_cambio_pursuit`).
+
+| Evento | Cuándo sale | Campos que siempre trae |
+|---|---|---|
+| `pursuit.created` | Se abre una oportunidad (expediente completo o un lote). | `pursuit_id`, `licitacion_id`, `organization_id`, `lote_numero` (`null` si es el expediente completo), `titulo`, `estado` (`identified`) |
+| `pursuit.state_changed` | Cambia el `status` de la oportunidad. Guardar el mismo estado no publica nada. | Los cinco primeros de `pursuit.created`, más `estado_anterior` y `estado_nuevo` |
+| `pursuit.decided` | La decisión pasa a `go` o `no_go`. Volver a `pending` no es una decisión y no publica nada. | Los cinco primeros de `pursuit.created`, más `decision` |
+
+`titulo` es el del expediente, recortado a 80 caracteres. El motivo de la
+decisión (`decision_reason`) **no viaja**: es texto libre para el equipo y el
+webhook lo entrega a un sistema de terceros. Tampoco viaja ningún correo.
 
 ## Cabeceras
 

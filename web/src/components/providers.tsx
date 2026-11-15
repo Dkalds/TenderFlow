@@ -42,6 +42,9 @@ const CLAVES_FRESCAS_AL_VOLVER: readonly (readonly unknown[])[] = [
   // el PATCH lleva `expected_version`. Arrastrar una tarjeta sobre un tablero
   // rancio acaba en un 409 y en deshacer el movimiento.
   [...PURSUITS_RAIZ, "list"],
+  // Qué expedientes ya tienen oportunidad (Renovaciones): si otra persona
+  // anticipa una renovación, la fila deja de ofrecer «Anticipar» al volver.
+  [...PURSUITS_RAIZ, "licitaciones"],
   [...PURSUITS_RAIZ, "detail"],
   [...PURSUITS_RAIZ, "tasks"],
 ];

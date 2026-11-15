@@ -1,0 +1,13 @@
+{
+  "empresa_id": 42,
+  "nombre_canonico": "Sistemas Ejemplo SL",
+  "nif_canonico": "B00000000",
+  "es_ute": 0,
+  "es_pyme": 1,
+  "grupo": null,
+  "created_at": "2026-10-01T08:00:00+00:00",
+  "updated_at": "2026-11-01T08:00:00+00:00",
+  "aliases": [],
+  "ute_miembros": [],
+  "participa_en_utes": []
+}

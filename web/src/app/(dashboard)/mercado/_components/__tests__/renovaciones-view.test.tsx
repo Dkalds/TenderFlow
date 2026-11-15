@@ -47,7 +47,9 @@ const propias = vi.hoisted(() => ({
 }));
 vi.mock("@/hooks/use-cartera", () => ({ useCartera: () => ({ data: propias.cartera }) }));
 vi.mock("@/hooks/use-pursuits", () => ({
-  usePursuits: () => ({ data: propias.pursuits }),
+  useLicitacionesConPursuit: () => ({
+    data: propias.pursuits && new Set(propias.pursuits.items?.map((p) => p.licitacion_id)),
+  }),
   useCreatePursuit: () => ({ mutateAsync: vi.fn() }),
 }));
 
