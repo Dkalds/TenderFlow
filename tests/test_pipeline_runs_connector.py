@@ -141,11 +141,8 @@ class TestAtomConnectorCursor:
 
         assert captured["last_seen_updated"] is None
 
-    def test_own_cursor_wins_over_legacy(self, tmp_db):
-        """Con cursor propio ('placsp'), el legacy no se consulta."""
-        db_mod, _ = tmp_db
-        db_mod.set_cursor("place_live_atom", last_seen_updated="2026-01-01T00:00:00Z")
-
+    def test_el_cursor_propio_llega_tal_cual_al_feed(self, tmp_db):
+        """El cursor que recibe ``fetch`` es el que se pasa a la paginación."""
         captured: dict = {}
 
         def _fake_iter(last_seen_updated=None, **kwargs):

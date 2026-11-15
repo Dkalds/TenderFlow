@@ -392,9 +392,9 @@ export function foldText(text: string): string {
 }
 
 /**
- * La ruta de la API con `?organization_id=` de la organizaci\u00f3n dada, o tal
- * cual si es la personal. Sin el par\u00e1metro el backend resuelve la personal:
- * olvidarlo en una ruta de equipo ya dio un 404 (`use-webhooks.ts`).
+ * La ruta de la API con el `?organization_id=` del equipo dado, o tal cual si
+ * es la personal. Sin ese valor el backend resuelve la personal: olvidarlo en
+ * una ruta de equipo ya dio un 404 (`use-webhooks.ts`).
  */
 export function conOrganizacion(
   url: string,
