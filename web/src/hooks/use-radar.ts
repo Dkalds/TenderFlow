@@ -136,9 +136,13 @@ function useScoringPorIds(segmento: SegmentoPorIds, ids: readonly string[], enab
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[2] === organizationId ? previous : undefined,
   });
+  // El dato previo trae también las que se acaban de quitar (restaurar, dejar
+  // de seguir), y con la lista vacía la consulta no se lanza y se quedaría
+  // para siempre: sólo se pinta lo que sigue en la lista.
+  const vigentes = new Set(visibles);
 
   return {
-    items: (query.data?.opportunities ?? []) as RadarTender[],
+    items: (query.data?.opportunities ?? []).filter((t) => vigentes.has(t.id_externo)) as RadarTender[],
     isLoading: query.isPending && enabled && visibles.length > 0,
     truncadas: Math.max(0, ids.length - visibles.length),
   };

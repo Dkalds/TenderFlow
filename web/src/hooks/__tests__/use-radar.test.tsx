@@ -6,6 +6,7 @@ import {
   useDismissRadarTender,
   useRadar,
   useRadarDismissals,
+  useRadarDismissedTenders,
   useRadarFollowedTenders,
   useRestoreRadarTender,
 } from "@/hooks/use-radar";
@@ -254,7 +255,7 @@ describe("useRadar — datos previos al cambiar un filtro", () => {
     stubPorTecnologia("ninguna");
     const { result, rerender } = renderHook(({ ids }) => useRadarFollowedTenders(ids, true), {
       wrapper: wrapperEstable(),
-      initialProps: { ids: ["A"] },
+      initialProps: { ids: ["GLOBAL"] },
     });
     await waitFor(() => expect(result.current.items).toHaveLength(1));
 
@@ -262,15 +263,49 @@ describe("useRadar — datos previos al cambiar un filtro", () => {
       "fetch",
       vi.fn().mockImplementation(() => new Promise(() => {})),
     );
-    rerender({ ids: ["A", "B"] });
+    rerender({ ids: ["GLOBAL", "B"] });
 
     expect(result.current.isLoading).toBe(false);
     expect(result.current.items).toHaveLength(1);
   });
 
+  it("restaurar una descartada la quita del segmento sin esperar a la nueva respuesta", async () => {
+    // El dato previo se conserva, pero sin la que ya no está en la lista.
+    stubPorTecnologia("ninguna");
+    const { result, rerender } = renderHook(({ ids }) => useRadarDismissedTenders(ids, true), {
+      wrapper: wrapperEstable(),
+      initialProps: { ids: ["GLOBAL", "B"] },
+    });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => new Promise(() => {})),
+    );
+    rerender({ ids: ["B"] });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.items).toEqual([]);
+  });
+
+  it("restaurar la última descartada vacía el segmento", async () => {
+    // Con la lista vacía la consulta no se lanza: el dato previo quedaría
+    // pintado para siempre con el contador a 0.
+    stubPorTecnologia("ninguna");
+    const { result, rerender } = renderHook(({ ids }) => useRadarDismissedTenders(ids, true), {
+      wrapper: wrapperEstable(),
+      initialProps: { ids: ["GLOBAL"] },
+    });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+
+    rerender({ ids: [] });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.items).toEqual([]);
+  });
+
   it("no conserva las seguidas de otra organización", async () => {
     stubPorTecnologia("ninguna");
-    const { result, rerender } = renderHook(() => useRadarFollowedTenders(["A"], true), {
+    const { result, rerender } = renderHook(() => useRadarFollowedTenders(["GLOBAL"], true), {
       wrapper: wrapperEstable(),
     });
     await waitFor(() => expect(result.current.items).toHaveLength(1));
