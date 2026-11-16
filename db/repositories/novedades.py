@@ -23,16 +23,11 @@ __all__ = ["AvisosSeguidosRepository", "NovedadesRepository"]
 _IDENT_W = "(w.user_id = %s OR (w.user_key = %s AND (w.user_id IS NULL OR %s::int IS NULL)))"
 
 
-def _dia_de(desde_iso: str) -> str:
-    """El día de la marca, para comparar con ``resoluciones_recurso.fecha`` (``YYYY-MM-DD``).
-
-    Contra el instante entero, ``'2026-11-15' < '2026-11-15T08:00…'`` dejaba
-    fuera la resolución fechada el mismo día de la visita.
-    shortcut: compara la fecha de la resolución, no su llegada: repite la del
-    mismo día en cada visita de ese día y no ve la ingerida o vinculada días
-    después; subirlo cuando la tabla tenga una marca de llegada (migración).
-    """
-    return desde_iso[:10]
+#: Cuándo llegó una resolución a lo que el usuario sigue (v186): al vincularse
+#: con su licitación si fue después de entrar, y si no al entrar. Su ``fecha``
+#: no sirve: una resolución ingerida o vinculada días después de dictarse ya
+#: tiene una fecha anterior a la visita y no saldría nunca.
+_LLEGADA_R = "COALESCE(r.vinculada_en, r.llegada_en)"
 
 
 class NovedadesRepository:
@@ -113,17 +108,18 @@ class NovedadesRepository:
     def recursos_en_seguidos(
         self, user_key: str, *, desde_iso: str, limit: int = 20, user_id: int | None = None
     ) -> list[dict[str, object]]:
-        """Resoluciones de recurso sobre expedientes seguidos (F5.2)."""
+        """Resoluciones de recurso llegadas a expedientes seguidos después de ``desde_iso`` (F5.2)."""
         with connect_read() as c:
             cur = c.execute(
-                "SELECT r.licitacion_id, r.sentido, r.fecha, r.organo, l.titulo "
+                "SELECT r.licitacion_id, r.sentido, r.fecha, r.organo, l.titulo, "
+                f"       {_LLEGADA_R} AS llegada "
                 "FROM resoluciones_recurso r "
                 "JOIN watchlist_items w ON w.id_externo = r.licitacion_id "
                 "JOIN licitaciones l ON l.id_externo = r.licitacion_id "
-                f"WHERE {_IDENT_W} AND r.fecha >= %s "
-                "ORDER BY r.fecha DESC "
+                f"WHERE {_IDENT_W} AND {_LLEGADA_R} > %s::timestamptz "
+                "ORDER BY llegada DESC "
                 "LIMIT %s",
-                (user_id, user_key, user_id, _dia_de(desde_iso), limit),
+                (user_id, user_key, user_id, desde_iso, limit),
             )
             return rows_to_dicts(cur)
 
@@ -178,15 +174,15 @@ class NovedadesRepository:
     def recursos_de(
         self, id_externo: str, *, desde_iso: str, limit: int = 10
     ) -> list[dict[str, object]]:
-        """Resoluciones de recurso de un expediente desde ``desde_iso``."""
+        """Resoluciones de recurso llegadas a un expediente después de ``desde_iso``."""
         with connect_read() as c:
             cur = c.execute(
-                "SELECT r.licitacion_id, r.sentido, r.fecha "
+                f"SELECT r.licitacion_id, r.sentido, r.fecha, {_LLEGADA_R} AS llegada "
                 "FROM resoluciones_recurso r "
-                "WHERE r.licitacion_id = %s AND r.fecha >= %s "
-                "ORDER BY r.fecha DESC "
+                f"WHERE r.licitacion_id = %s AND {_LLEGADA_R} > %s::timestamptz "
+                "ORDER BY llegada DESC "
                 "LIMIT %s",
-                (id_externo, _dia_de(desde_iso), limit),
+                (id_externo, desde_iso, limit),
             )
             return rows_to_dicts(cur)
 

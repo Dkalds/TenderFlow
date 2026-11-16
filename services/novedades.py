@@ -250,7 +250,7 @@ def desde_ultima_visita(
                 _a_novedad(
                     aviso_recurso(_texto(fila.get("sentido"))),
                     _texto(fila.get("licitacion_id")),
-                    fila.get("fecha"),
+                    fila.get("llegada"),
                 )
             )
     except Exception:
@@ -368,7 +368,7 @@ def _novedades_de_ficha(licitacion_id: str, *, desde_iso: str, limit: int) -> li
         for fila in _repo.recursos_de(licitacion_id, desde_iso=desde_iso):
             items.append(
                 _a_novedad(
-                    aviso_recurso(_texto(fila.get("sentido"))), licitacion_id, fila.get("fecha")
+                    aviso_recurso(_texto(fila.get("sentido"))), licitacion_id, fila.get("llegada")
                 )
             )
     except Exception:

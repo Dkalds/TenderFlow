@@ -105,13 +105,31 @@ def _documento(licitacion_id: str, *, uri: str, creado: datetime, tipo: str = "t
         )
 
 
-def _recurso(licitacion_id: str, *, numero: str, fecha: str, sentido: str = "estimado") -> None:
+def _recurso(
+    licitacion_id: str | None,
+    *,
+    numero: str,
+    fecha: str,
+    sentido: str = "estimado",
+    llegada: datetime | None = None,
+    vinculada: datetime | None = None,
+) -> None:
+    """Sin ``llegada``, la resolución entra a la medianoche UTC de su ``fecha``."""
     with connect() as c:
         c.execute(
             "INSERT INTO resoluciones_recurso "
-            "(numero_resolucion, fecha, sentido, licitacion_id, fecha_extraccion) "
-            "VALUES (%s, %s, %s, %s, %s)",
-            (numero, fecha, sentido, licitacion_id, _iso()),
+            "(numero_resolucion, fecha, sentido, licitacion_id, fecha_extraccion, "
+            " llegada_en, vinculada_en) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            (
+                numero,
+                fecha,
+                sentido,
+                licitacion_id,
+                _iso(),
+                llegada or datetime.fromisoformat(f"{fecha}T00:00:00+00:00"),
+                vinculada,
+            ),
         )
 
 
@@ -630,20 +648,51 @@ def test_un_pliego_publicado_el_dia_de_la_visita_pero_despues_es_novedad(tmp_db)
     assert del_mismo_dia.por_subtipo == {"documento_nuevo": 1}
 
 
-def test_una_resolucion_fechada_el_dia_de_la_visita_es_novedad(tmp_db):
-    """La resolución solo trae fecha (``YYYY-MM-DD``) y la visita es un instante:
-    comparar el texto entero dejaba fuera la del mismo día, que es justo la que
-    no se pudo ver. Vale para la banda del Resumen y para la de la ficha."""
-    _licitacion("NOV-REC-DIA")
-    _seguir(_UK_ANA, "NOV-REC-DIA")
-    visita = _hace(seconds=30)
-    _recurso("NOV-REC-DIA", numero="R-DIA/2026", fecha=visita.date().isoformat())
+def test_una_resolucion_que_llega_tarde_es_novedad_una_sola_vez(tmp_db):
+    """Dictada hace diez días, ingerida hace una hora: la fecha es anterior a la
+    visita de ayer, pero el usuario no la ha visto. Lo que manda es la llegada,
+    en la banda del Resumen y en la de la ficha; y en la visita siguiente ya no
+    sale, aunque sea del mismo día."""
+    _licitacion("NOV-REC-TARDE")
+    _seguir(_UK_ANA, "NOV-REC-TARDE")
+    llegada = _hace(hours=1)
+    _recurso(
+        "NOV-REC-TARDE",
+        numero="R-TARDE/2026",
+        fecha=_hace(days=10).date().isoformat(),
+        llegada=llegada,
+    )
+    repo = NovedadesRepository()
 
-    resumen = desde_ultima_visita(_UK_ANA, last_seen=visita.isoformat())
-    ficha = NovedadesRepository().recursos_de("NOV-REC-DIA", desde_iso=visita.isoformat())
+    resumen = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=1))
+    ficha = repo.recursos_de("NOV-REC-TARDE", desde_iso=_iso(days=1))
+    despues = desde_ultima_visita(_UK_ANA, last_seen=_iso(minutes=30))
 
     assert resumen.por_subtipo == {"recurso": 1}
-    assert [f["licitacion_id"] for f in ficha] == ["NOV-REC-DIA"]
+    assert resumen.items[0].cuando == llegada.isoformat()
+    assert [f["licitacion_id"] for f in ficha] == ["NOV-REC-TARDE"]
+    assert despues.items == []
+    assert repo.recursos_de("NOV-REC-TARDE", desde_iso=_iso(minutes=30)) == []
+
+
+def test_una_resolucion_vinculada_tarde_es_novedad(tmp_db):
+    """Entró hace una semana sin licitación (feed de jurisprudencia) y se
+    vinculó hace una hora: para quien sigue el expediente es nueva ahora."""
+    _licitacion("NOV-REC-VINC")
+    _seguir(_UK_ANA, "NOV-REC-VINC")
+    _recurso(
+        "NOV-REC-VINC",
+        numero="R-VINC/2026",
+        fecha=_hace(days=9).date().isoformat(),
+        llegada=_hace(days=7),
+        vinculada=_hace(hours=1),
+    )
+
+    resumen = desde_ultima_visita(_UK_ANA, last_seen=_iso(days=1))
+    ficha = NovedadesRepository().recursos_de("NOV-REC-VINC", desde_iso=_iso(days=1))
+
+    assert resumen.por_subtipo == {"recurso": 1}
+    assert [f["licitacion_id"] for f in ficha] == ["NOV-REC-VINC"]
 
 
 def test_un_pliego_de_hoy_va_por_delante_de_un_cambio_de_hoy_anterior(tmp_db):
