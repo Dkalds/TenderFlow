@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { semanaEnCarriles } from "../tu-dia-semana-data";
+import { diasDeLaSemana, semanaEnCarriles } from "../tu-dia-semana-data";
 import type { PipelineAgendaItem } from "@/hooks/use-pursuits";
 
 function item(id: string, urgencia: PipelineAgendaItem["urgencia"], dias: number | null): PipelineAgendaItem {
@@ -47,5 +47,30 @@ describe("semanaEnCarriles", () => {
   it("deja fuera lo que no vence esta semana", () => {
     const tramos = semanaEnCarriles([item("M", "mes", 12), item("S", "sin_fecha", null)], hoy);
     expect(tramos.flatMap((t) => (t.tipo === "carril" ? t.items : []))).toHaveLength(0);
+  });
+});
+
+describe("diasDeLaSemana", () => {
+  it("da hoy y los siete días siguientes, cada uno con lo que vence ese día", () => {
+    const dias = diasDeLaSemana(
+      [item("V", "vencida", -1), item("H", "hoy", 0), item("D1", "semana", 1), item("D1b", "semana", 1), item("D7", "semana", 7)],
+      hoy,
+    );
+    expect(dias.map((d) => `${d.etiqueta} ${d.numero}:${d.n}`)).toEqual([
+      "hoy 8:1",
+      "vie 9:2",
+      "sáb 10:0",
+      "dom 11:0",
+      "lun 12:0",
+      "mar 13:0",
+      "mié 14:0",
+      "jue 15:1",
+    ]);
+  });
+
+  it("marca el fin de semana y solo hoy como hoy", () => {
+    const dias = diasDeLaSemana([], hoy);
+    expect(dias.filter((d) => d.findeSemana).map((d) => d.numero)).toEqual([10, 11]);
+    expect(dias.filter((d) => d.hoy).map((d) => d.numero)).toEqual([8]);
   });
 });

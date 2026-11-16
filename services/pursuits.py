@@ -71,6 +71,7 @@ from shared.audit_events import PURSUIT_WEIGHTS_PROPOSAL_APPLIED
 from shared.dates import a_fecha, hora_local_de_plazo, hoy_peninsular
 from shared.dates import instante_utc as _parse_iso_datetime
 from shared.dto import (
+    EstadoDelPipeline,
     FilaActaRef,
     OrganizationSettings,
     PerdidaPorMotivo,
@@ -667,6 +668,34 @@ def _perdidas_por_motivo(rows: Sequence[Mapping[str, Any]]) -> list[PerdidaPorMo
     ]
 
 
+#: Estados en los que el plazo de presentación todavía cuenta (CU-28).
+_ESTADOS_CON_PLAZO = frozenset({"identified", "qualifying", "go_no_go", "preparing"})
+
+
+def _por_estado(rows: Sequence[Mapping[str, Any]], hoy: date) -> list[EstadoDelPipeline]:
+    """Reparto por estado actual, con el plazo por delante más cercano de cada uno.
+
+    Va un elemento por cada valor de ``PursuitStatus``, también con cero: la
+    pantalla pinta las fases que existen, no las que hoy tienen algo. Un estado
+    que no está en el vocabulario no se cuenta en ninguno. El plazo solo se
+    busca antes de presentar: una presentada o cerrada no tiene que cerrar nada.
+    """
+    conteo: dict[str, int] = {}
+    cierre: dict[str, date] = {}
+    for row in rows:
+        estado = str(row.get("status") or "")
+        conteo[estado] = conteo.get(estado, 0) + 1
+        plazo = a_fecha(row.get("tender_deadline"))
+        if estado not in _ESTADOS_CON_PLAZO or plazo is None or plazo < hoy:
+            continue
+        if estado not in cierre or plazo < cierre[estado]:
+            cierre[estado] = plazo
+    return [
+        EstadoDelPipeline(estado=estado, n=conteo.get(estado, 0), proximo_cierre=cierre.get(estado))
+        for estado in get_args(PursuitStatus)
+    ]
+
+
 def _trimestre(iso: Any) -> str | None:
     """``2026-Q4`` a partir de una fecha ISO; ``None`` si no se entiende."""
     fecha = a_fecha(iso)
@@ -792,6 +821,7 @@ def get_metrics(
             probabilidades_etapa_usadas=probabilidades,
             prevision_trimestral=prevision,
             pipeline_sin_importe=sin_importe,
+            oportunidades_por_estado=_por_estado(rows, hoy_peninsular()),
         )
 
 

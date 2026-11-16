@@ -7,6 +7,7 @@ import {
   ScrollEdgeSentinel,
 } from "@/components/layout/scroll-edge";
 import { BarraAsistente } from "@/components/asistente/barra-asistente";
+import { Panel } from "@/components/console/panel";
 import { CONSOLE_SPACES } from "@/lib/console-spaces";
 import { TuDia } from "./tu-dia";
 import { DesdeUltimaVisita } from "./desde-ultima-visita";
@@ -14,40 +15,40 @@ import { PrimerosPasos } from "./primeros-pasos";
 import { AtencionCards, ColaCierreHoy } from "./atencion-cards";
 import { PublicacionesPanel } from "./publicaciones-panel";
 import { UltimasPublicaciones } from "./ultimas-publicaciones";
-import { EventosFeed } from "./eventos-feed";
 import { AtajosAnalisis } from "./atajos-analisis";
-import { ComposicionPanel } from "./composicion-panel";
-import { ComunidadesPanel } from "./comunidades-panel";
+import { ParaTi } from "./para-ti";
+import { TusOportunidades } from "./tus-oportunidades";
 
 /**
  * Resumen — la entrada del producto. Es la parte cliente de la pantalla; el
  * `page.tsx` de servidor la envuelve con el prefetch de sus primeros datos.
  *
- * La página va **de dentro hacia fuera**, y desde 2026-10-31 en una rejilla
- * compacta de cuatro filas en vez de diez bandas apiladas (unos 3.400 px a
- * 1920 de ancho, que pedían tres pantallas de scroll para ver la foto entera).
- * Es el diseño aprobado del Resumen compacto:
+ * La página va **de dentro hacia fuera**, en una rejilla de cuatro filas
+ * (rediseño del 2026-11-16, que sustituye al Resumen compacto del
+ * 2026-10-31). Cada bloque es un panel con su título dentro:
  *
- * 1. **Dos tiras de cifras, lado a lado.** «Tu día» (`GET /pursuits/agenda`,
- *    los cuatro contadores; la semana en carriles se despliega bajo demanda) y
- *    «Mercado hoy», con el ámbito de la barra: cierran en 48 h, grandes en
- *    plazo, nuevas desde tu última visita y activas. Con el mismo peso: lo
- *    tuyo y el mercado se leen de un vistazo, sin scroll.
- * 2. **Qué cierra y qué cambió.** La cola de cierre de 48 h a siete doceavos
- *    y «Desde tu última visita» (F5.4) al lado; la cola se estira hasta el
- *    alto de la banda con más filas en vez de dejar un hueco.
- * 3. **El periodo y la foto del ámbito.** Las publicaciones del mes con sus
- *    cifras, la composición por estado y el mapa por comunidad, que filtran al
- *    pulsarlos.
- * 4. **Las listas.** Últimas publicaciones a dos tercios y los movimientos
- *    del mercado en el tercio restante.
+ * 1. **Lo de hoy.** «Tu día» (`GET /pursuits/agenda`: Go/No-Go, sin próxima
+ *    acción y la semana por días) a cinco doceavos y «Cierran en 48 h» (la
+ *    cola de cierre con su recuento) a siete.
+ * 2. **Lo tuyo.** «Para ti», lo primero de la bandeja del Radar, y «Tus
+ *    oportunidades», el tablero de la organización por fases
+ *    (`GET /pursuits/metrics`).
+ * 3. **El mercado.** «Mercado hoy», con el ámbito de la barra: la tira de
+ *    cifras y las publicaciones del periodo debajo; al lado, «Lo que sigues»
+ *    (F5.4).
+ * 4. **La lista.** Últimas publicaciones a todo el ancho.
+ *
+ * La composición por estado, el mapa por comunidad y los movimientos del
+ * mercado salieron del Resumen en ese rediseño. El análisis del ámbito sigue en
+ * Mercado, a un clic desde los atajos de «Mercado hoy»; el feed de movimientos
+ * (`GET /eventos`) se quedó sin pantalla.
  *
  * «Primeros pasos» va al pie, salvo en una cuenta sin ningún paso hecho, donde
  * sube arriba del todo (`posicionDe`).
  *
  * Desde `xl` cada fila es una rejilla; por debajo las columnas se apilan en
- * ese mismo orden, así que en un teléfono la lectura sigue siendo lo tuyo,
- * lo de hoy y después el resto.
+ * ese mismo orden, así que en un teléfono la lectura sigue siendo lo de hoy,
+ * lo tuyo y después el mercado.
  *
  * Cada panel pide su propio dato y pinta su propio error. Antes un fallo de
  * `/analytics/overview` dejaba la pantalla entera en una tarjeta de error, con
@@ -104,55 +105,44 @@ export function ResumenView() {
           <div className="flex flex-col gap-3">
             <PrimerosPasos posicion="arriba" onDescartar={recogerFoco} />
 
-            {/* Fila 1: las dos tiras de cifras. Arriba y no estiradas: el aviso
-                de «Tu día» alarga su columna y la tira del mercado no tiene con
-                qué llenar ese alto. */}
-            <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-2">
+            {/* Fila 1: lo de hoy. Las dos se estiran al mismo alto: la cola
+                de cierre crece con filas en vez de dejar un hueco. */}
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
               <TuDia />
-              <section aria-labelledby="resumen-mercado" className="min-w-0">
-                {/* Como el `PanelTitle` de «Tu día», pero los atajos bajan de
-                    línea: en el hueco de acciones no se parten, y a 375 px
-                    sacaban «Órganos» por la derecha y la página hacía scroll
-                    horizontal. */}
-                <div className="mb-2.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-                  <h2 id="resumen-mercado" className="flex-none text-tf-body font-semibold">
-                    Mercado hoy
-                  </h2>
-                  <span className="min-w-0 text-tf-meta text-muted-foreground">con el ámbito de la barra</span>
-                  <AtajosAnalisis className="sm:ml-auto" />
-                </div>
-                <AtencionCards />
-              </section>
+              <ColaCierreHoy />
             </div>
 
-            {/* Fila 2: qué cierra y qué cambió. Las dos se estiran al mismo
-                alto: la cola de cierre crece con filas en vez de dejar un
-                hueco. */}
+            {/* Fila 2: lo tuyo, la bandeja del Radar y el tablero. */}
             <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-              <ColaCierreHoy />
+              <ParaTi />
+              <TusOportunidades />
+            </div>
+
+            {/* Fila 3: el mercado con el ámbito de la barra y lo que cambió en
+                lo que sigues. */}
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,8fr)_minmax(0,4fr)]">
+              <Panel className="flex min-w-0 flex-col gap-4">
+                <section aria-labelledby="resumen-mercado" className="contents">
+                  {/* Como un `PanelTitle`, pero los atajos bajan de línea: en el
+                      hueco de acciones no se parten, y a 375 px sacaban
+                      «Órganos» por la derecha y la página hacía scroll
+                      horizontal. */}
+                  <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+                    <h2 id="resumen-mercado" className="flex-none text-tf-body font-semibold">
+                      Mercado hoy
+                    </h2>
+                    <span className="min-w-0 text-tf-meta text-muted-foreground">con el ámbito de la barra</span>
+                    <AtajosAnalisis className="sm:ml-auto" />
+                  </div>
+                  <AtencionCards />
+                  <PublicacionesPanel />
+                </section>
+              </Panel>
               <DesdeUltimaVisita />
             </div>
 
-            {/* Fila 3: el periodo y la foto del ámbito. */}
-            <section
-              aria-labelledby="resumen-periodo"
-              className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,3fr)_minmax(0,4fr)]"
-            >
-              <h2 id="resumen-periodo" className="sr-only">
-                El periodo y el ámbito
-              </h2>
-              <div className="flex min-w-0 flex-col lg:col-span-2 xl:col-span-1">
-                <PublicacionesPanel />
-              </div>
-              <ComposicionPanel />
-              <ComunidadesPanel />
-            </section>
-
-            {/* Fila 4: las listas. */}
-            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,8fr)_minmax(0,4fr)]">
-              <UltimasPublicaciones />
-              <EventosFeed />
-            </div>
+            {/* Fila 4: la lista. */}
+            <UltimasPublicaciones />
 
             <PrimerosPasos posicion="abajo" onDescartar={recogerFoco} />
           </div>

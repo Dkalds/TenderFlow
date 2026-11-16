@@ -82,3 +82,43 @@ export function semanaEnCarriles(
 
   return tramos;
 }
+
+/** Un día de la tira «Próximos 7 días»: cuántos compromisos vencen ese día. */
+export interface DiaSemana {
+  clave: string;
+  /** Día de la semana en tres letras («mar»), u «hoy». */
+  etiqueta: string;
+  /** Día del mes. */
+  numero: number;
+  n: number;
+  hoy: boolean;
+  findeSemana: boolean;
+}
+
+const DIA_CORTO = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"] as const;
+
+/**
+ * Hoy y los `dias` siguientes, cada uno con lo que vence ese día. Como los
+ * carriles, coloca por la `urgencia` y los `dias_restantes` del backend; lo
+ * vencido no entra: no es de ningún día de la semana que viene.
+ */
+export function diasDeLaSemana(
+  items: readonly PipelineAgendaItem[],
+  hoy: Date,
+  dias = DIAS_SEMANA,
+): DiaSemana[] {
+  return Array.from({ length: dias + 1 }, (_, dia) => {
+    const fecha = diaDentroDe(hoy, dia);
+    const n = items.filter((item) =>
+      dia === 0 ? item.urgencia === "hoy" : item.urgencia === "semana" && item.dias_restantes === dia,
+    ).length;
+    return {
+      clave: `dia-${dia}`,
+      etiqueta: dia === 0 ? "hoy" : DIA_CORTO[fecha.getDay()],
+      numero: fecha.getDate(),
+      n,
+      hoy: dia === 0,
+      findeSemana: fecha.getDay() === 0 || fecha.getDay() === 6,
+    };
+  });
+}
