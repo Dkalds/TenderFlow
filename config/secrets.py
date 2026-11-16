@@ -19,9 +19,11 @@ import os
 import threading
 import time
 
-from observability.logging import get_logger
+import structlog
 
-log = get_logger(__name__)
+# structlog directo y no `observability.logging.get_logger`: `config` es la capa
+# de abajo; el logger es el mismo (structlog se configura una vez por proceso).
+log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 _BACKEND = os.environ.get("SECRETS_BACKEND", "env").lower()
 _AZURE_VAULT_URL = os.environ.get("AZURE_KEYVAULT_URL", "")

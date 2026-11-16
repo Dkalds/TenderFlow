@@ -221,7 +221,7 @@ búsqueda.
 | Señal | Fuente |
 |-------|--------|
 | Métricas de proceso | `observability/runtime_metrics.py` → `/metrics` de la API (el exportador por textfile del scheduler se retiró el 2026-09-28) |
-| Métricas sistema | `observability/metrics.py` → `kpi_snapshots` |
+| Métricas por run del pipeline | `services/extraction_runs.py` (`record_run`) → `extraction_runs` |
 | Trazas distribuidas | `observability/tracing.py` → OTLP endpoint |
 | Logs estructurados | `observability/logging.py` → structlog JSON |
 | Alertas de anomalías | `scheduler/anomaly_alerts.py` → email |

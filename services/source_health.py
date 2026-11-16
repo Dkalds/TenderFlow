@@ -55,9 +55,7 @@ def get_source_freshness(*, degraded_after_hours: float = 36.0) -> SourceFreshne
     panel marcaba degradada una RSS semanal que el healthcheck daba por buena.
     ``degraded_after_hours`` queda para las fuentes sin registro.
     """
-    # Diferido, como el resto de usos de `scraper` desde `services/`: el registro
-    # de fuentes no hace falta para importar este módulo.
-    from scraper.connectors import REGISTERED_SOURCES_BY_ID
+    from shared.fuentes import REGISTERED_SOURCES_BY_ID
 
     repo = SourceHealthRepository()
     rows = repo.list_health()

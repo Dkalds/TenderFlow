@@ -1,0 +1,429 @@
+"""Inventario de fuentes de ingesta y cobertura declarada (T7/D16).
+
+``REGISTERED_SOURCES`` es el **inventario de frescura** que consume
+``scheduler/healthcheck.py`` (S2.3): sin él, una fuente muerta durante semanas
+no se distingue de una fuente que simplemente no tenía nada que ingerir, porque
+seis de los conectores corren en ``scrape-daily.yml`` con
+``continue-on-error: true`` y el job sale verde igual.
+
+Desde T7/D16 (2026-09-06) es también la **cobertura declarada**: cada fuente
+lleva su nombre público, su ``alcance`` honesto y su ``estado``, y el módulo
+declara además qué queda ``FUERA_DE_ALCANCE`` y por qué. Lo publica
+``GET /api/v1/publico/cobertura`` y lo pinta ``/cobertura``. Vive en código, y
+no en una prosa aparte, porque una página de cobertura escrita a mano envejece
+contra el código sin que falle nada.
+
+Vive en ``shared/`` y no en ``scraper/connectors`` (que lo reexporta) porque
+son datos puros que leen también la API y ``services/``, que no importan del
+paquete de ingesta (AGENTS.md §2).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Literal
+
+#: Los tres estados en los que una fuente puede estar declarada (D16).
+#:
+#: - ``activa``: corre y se le exige frescura. Su ausencia alerta.
+#: - ``opcional``: puede estar legítimamente apagada —le falta su variable de
+#:   entorno, o no tiene nada que vigilar—. «Sin registro de salud» no alerta;
+#:   un registro viejo sí, porque eso significa que corría y dejó de correr.
+#: - ``fuera_de_alcance``: declarada fuera del alcance del producto. Ni se
+#:   ingiere ni se vigila, y el healthcheck la salta entera. Es el estado que
+#:   permite retirar una fuente **diciéndolo** en `/cobertura`, en vez de
+#:   borrarla del inventario y dejar de contarla.
+EstadoCobertura = Literal["activa", "opcional", "fuera_de_alcance"]
+
+
+@dataclass(frozen=True)
+class RegisteredSource:
+    """Una fuente de ingesta: su SLA de frescura y su cobertura declarada.
+
+    Attributes:
+        source_id: Nombre canónico, **tal como se escribe en
+            ``source_ingestion_health.source``** (o sea, el ``source_id`` del
+            conector). Es la clave de unión con el repositorio de salud: si no
+            coincide, el chequeo mide otra cosa, o no mide nada.
+        nombre: Cómo se llama la fuente para un lector que no conoce el
+            ``source_id``. Se publica en `/cobertura`; el ``source_id`` viaja
+            igualmente, porque es el que aparece en una alerta o en un ticket.
+        modulo: Módulo importable del conector. Documental —el healthcheck no
+            importa nada— pero permite ir del nombre de una alerta al código.
+        max_lag_hours: Horas sin un run exitoso a partir de las cuales la
+            fuente se considera atrasada.
+        motivo: Por qué ese umbral y no otro. Un umbral sin motivo escrito se
+            «ajusta» a la primera alerta molesta hasta que deja de alertar.
+            Es razonamiento operativo interno y NO se publica.
+        alcance: Qué universo cubre la fuente y qué no. Esto sí se publica: es
+            la frase que impide leer un feed de descubrimiento como un censo
+            de mercado (ver ``docs/regional-source-coverage.md``).
+        estado: Ver ``EstadoCobertura``.
+    """
+
+    source_id: str
+    nombre: str
+    modulo: str
+    max_lag_hours: int
+    motivo: str
+    alcance: str
+    estado: EstadoCobertura = "activa"
+    #: Dominios desde los que esta fuente enlaza documentos (pliegos, anexos).
+    #: Es lo que alimenta ``DOCUMENT_ALLOWED_HOSTS`` (2026-09-14): hasta
+    #: entonces la allowlist era un literal de settings que solo nombraba
+    #: PLACSP, y ninguna otra fuente podía aportar un pliego aunque lo
+    #: enlazara. Vacío significa «esta fuente no emite referencias a
+    #: documentos». Desde el 2026-10-02 las emiten PLACSP, TED (el PDF de su
+    #: anuncio, ``scraper.documentos_plataforma``) y PSCP (los pliegos de la
+    #: ficha de cada publicación), desde 2026-10 TACRC (el PDF de la
+    #: resolución vinculada) y desde el 2026-11-09 las agregadas de la Junta de
+    #: Andalucía (los pliegos de su ficha). Galicia y Euskadi no: su RSS no enlaza ningún
+    #: documento (ver ``docs/regional-source-coverage.md``). Cuando un
+    #: conector empiece a emitir ``DocumentoReferencia``, su dominio se declara
+    #: aquí y el test de paridad exige que la allowlist por defecto lo incluya.
+    dominios_documentos: tuple[str, ...] = ()
+    #: Horas sin **dato** nuevo a partir de las cuales la fuente está atascada
+    #: aunque sus runs terminen bien. Se mide sobre el ``last_seen_updated`` de
+    #: su cursor, no sobre ``last_success_at``: son dos preguntas distintas
+    #: —«¿el conector corre?» y «¿la fuente publica?»— y ``max_lag_hours`` solo
+    #: contesta la primera.
+    #:
+    #: ``None`` = no se mide. Solo tiene sentido en fuentes cuyo cursor es la
+    #: marca de tiempo del dato publicado (el ``<updated>`` del ATOM de PLACSP,
+    #: la ``publication-date`` de TED), no en las que guardan una posición de
+    #: paginación o de recuperación, cuyo cursor puede ir legítimamente atrasado.
+    #:
+    #: Existe por lo que pasó desde el 2026-09-08: el feed ATOM de PLACSP dejó
+    #: de publicar entradas nuevas, cada pasada terminaba en ``success`` con 0
+    #: avisos y el healthcheck dio la fuente por «fresca» durante 16 días.
+    max_antiguedad_dato_hours: int | None = None
+
+    @property
+    def opcional(self) -> bool:
+        """¿«Sin registro de salud» es un estado legítimo para esta fuente?
+
+        Se conserva como propiedad derivada —y no como campo— porque
+        ``scheduler/healthcheck.py`` y sus tests preguntan exactamente esto y
+        la respuesta no cambió al abrir el tercer estado: lo que cambió es que
+        ahora hay dos motivos distintos para que no alerte. Un booleano no
+        podía distinguir «apagada porque le falta su variable» de «retirada del
+        alcance del producto», y esa diferencia es justo la que `/cobertura`
+        tiene que contarle a quien lee la página.
+        """
+        return self.estado != "activa"
+
+
+#: Umbral de referencia del carril diario: la pipeline corre cada 4 h, así que
+#: 36 h son nueve ciclos. Es el mismo número que usa ``--freshness-hours`` del
+#: healthcheck para el último ``extraction_run``, y a propósito: la fuente que
+#: sostiene el corpus y la pasada que lo ingiere no pueden tener SLAs distintos.
+_LAG_CARRIL_DIARIO = 36
+#: Dos días de margen para fuentes que corren a diario pero cuyo fallo no pierde
+#: datos de forma irreversible (la fuente conserva el histórico y el siguiente
+#: run lo recupera).
+_LAG_DIARIO_TOLERANTE = 72
+#: Una semana. Para las fuentes declaradas explícitamente como *cobertura de
+#: descubrimiento*, no como censo (ver el docstring de ``regional_rss``).
+_LAG_SEMANAL = 168
+#: Antigüedad máxima del dato del feed ATOM de PLACSP. Su cursor es el
+#: ``<updated>`` más reciente de **todas** las entradas del feed, antes de
+#: filtrar por tecnología, y la plataforma mueve expedientes de todo el país a
+#: cualquier hora: en un feed sano el cursor va minutos por detrás. Dos días sin
+#: una sola entrada nueva no es un fin de semana tranquilo, es un feed parado.
+_DATO_PLACSP = 48
+
+#: Inventario de fuentes vivas. Las fuentes ``bulk_YYYYMM`` NO están aquí: son
+#: efímeras por diseño (una por mes reprocesado) y no tienen frescura que vigilar.
+REGISTERED_SOURCES: tuple[RegisteredSource, ...] = (
+    RegisteredSource(
+        source_id="placsp",
+        nombre="PLACSP — Plataforma de Contratación del Sector Público",
+        modulo="scraper.connectors.placsp",
+        max_lag_hours=_LAG_CARRIL_DIARIO,
+        motivo=(
+            "Feed ATOM nacional: es el corpus, no un complemento. Corre en cada "
+            "pasada de 4 h; 36 h sin un run exitoso son nueve ciclos perdidos. "
+            "El dato se vigila aparte (48 h sin ninguna entrada nueva): un feed "
+            "congelado no hace fallar el run, que termina en 'success' con 0 avisos."
+        ),
+        alcance=(
+            "Feed ATOM oficial. Es el corpus: los anuncios de los órganos que "
+            "publican allí su perfil del contratante, acotados a la señal de "
+            "tecnología enterprise. Se consulta cada cuatro horas con cursor "
+            "incremental e historial de cambios por expediente."
+        ),
+        dominios_documentos=("contrataciondelestado.es", "*.contrataciondelestado.es"),
+        max_antiguedad_dato_hours=_DATO_PLACSP,
+    ),
+    RegisteredSource(
+        source_id="ted",
+        nombre="TED — Diario Oficial de la Unión Europea",
+        modulo="scraper.connectors.ted",
+        max_lag_hours=_LAG_SEMANAL,
+        motivo=(
+            "Cobertura europea complementaria. Corre a diario, pero un run sin "
+            "avisos TI se registra igual como 'success', así que el lag solo "
+            "crece cuando el conector de verdad no completa. El dato (la "
+            "publication-date más reciente vista) tiene el mismo umbral semanal: "
+            "el DOUE no publica todos los días y el cursor es una fecha sin hora."
+        ),
+        alcance=(
+            "Cobertura europea complementaria. Ni sustituye a PLACSP ni "
+            "completa su histórico: aporta los anuncios que llegan al diario "
+            "europeo, no una segunda copia del mercado español."
+        ),
+        dominios_documentos=("ted.europa.eu",),
+        max_antiguedad_dato_hours=_LAG_SEMANAL,
+    ),
+    RegisteredSource(
+        source_id="galicia_rss",
+        nombre="Galicia — RSS oficial de contratación",
+        modulo="scraper.connectors.galicia",
+        max_lag_hours=_LAG_SEMANAL,
+        motivo=(
+            "RSS autonómico declarado como cobertura de descubrimiento, no como "
+            "censo de mercado (ver `regional_rss`). Su SLA es más flojo por "
+            "diseño, y una indisponibilidad regional no debe generar ruido diario."
+        ),
+        alcance=(
+            "Publicaciones recientes del RSS oficial, filtradas por señal "
+            "tecnológica. Descubrimiento, no censo: el feed no es histórico ni "
+            "comunica todos los cambios de un expediente."
+        ),
+    ),
+    RegisteredSource(
+        source_id="euskadi_rss",
+        nombre="Euskadi — RSS de Open Data Euskadi",
+        modulo="scraper.connectors.euskadi",
+        max_lag_hours=_LAG_SEMANAL,
+        motivo="Mismo criterio que galicia_rss.",
+        alcance=(
+            "Anuncios recientes del RSS oficial de Open Data Euskadi, "
+            "filtrados por señal tecnológica. Descubrimiento, no censo: el RSS "
+            "tiene ventana y tamaño limitados, y la API REST oficial exige una "
+            "integración paginada que aún no se ha validado."
+        ),
+    ),
+    RegisteredSource(
+        source_id="pscp",
+        nombre="Catalunya — PSCP (dataset Socrata)",
+        modulo="scraper.connectors.pscp",
+        max_lag_hours=_LAG_DIARIO_TOLERANTE,
+        motivo=(
+            "Dataset Socrata de ~1,86 M filas con paginación por cursor: un run "
+            "puede agotar su presupuesto de 10 min sin terminar y aun así haber "
+            "progresado. Dos días seguidos sin completar sí es señal."
+        ),
+        alcance=(
+            "Dataset Socrata incremental de la Plataforma de Serveis de "
+            "Contractació Pública. Lo que entra depende del dataset "
+            "configurado y de los campos que ese dataset publica."
+        ),
+        estado="opcional",
+        dominios_documentos=("contractaciopublica.cat",),
+    ),
+    RegisteredSource(
+        source_id="tacrc",
+        nombre="TACRC — resoluciones de recurso",
+        modulo="scraper.connectors.tacrc",
+        max_lag_hours=_LAG_SEMANAL,
+        motivo=(
+            "Índice de resoluciones: el contenido nuevo llega en tandas "
+            "semanales, así que exigirle cadencia diaria solo produciría ruido."
+        ),
+        alcance=(
+            "Índice de resoluciones del Tribunal Administrativo Central de "
+            "Recursos Contractuales. No aporta anuncios de licitación: aporta "
+            "cómo terminaron los recursos presentados."
+        ),
+        estado="opcional",
+        # El PDF de cada resolución vinculada a una licitación (2026-10,
+        # ``scraper.connectors.tacrc.registrar_documentos``).
+        dominios_documentos=("www.hacienda.gob.es",),
+    ),
+    RegisteredSource(
+        source_id="placsp_watched_company_awards",
+        nombre="PLACSP — adjudicaciones de empresas vigiladas",
+        modulo="scraper.connectors.watched_company_awards",
+        max_lag_hours=_LAG_DIARIO_TOLERANTE,
+        motivo=(
+            "Carril de radar por NIF vigilado. Corre a diario, pero sin NIFs "
+            "canónicos vigilados el CLI termina antes de tocar la fuente y no "
+            "deja registro de salud — de ahí que sea opcional."
+        ),
+        alcance=(
+            "Carril específico sobre la misma fuente PLACSP: conserva las "
+            "adjudicaciones de las empresas que una organización vigila desde "
+            "el momento del alta. Sin empresas vigiladas no ingiere nada."
+        ),
+        estado="opcional",
+        dominios_documentos=("contrataciondelestado.es", "*.contrataciondelestado.es"),
+    ),
+    RegisteredSource(
+        source_id="placsp_agregadas",
+        nombre="PLACSP — plataformas autonómicas agregadas",
+        modulo="scraper.connectors.placsp_agregadas",
+        max_lag_hours=_LAG_DIARIO_TOLERANTE,
+        motivo=(
+            "Encendida desde el 2026-11-04 (PLACSP_AGREGADAS_ATOM_URL con la URL de "
+            "la sindicación 1044 por defecto; 'off' la apaga y escribe 'disabled' sin "
+            "alertar). Corre en cada pasada como el feed principal; 72 h sin completar "
+            "son dieciocho ciclos. Su dato se vigila con el mismo umbral que PLACSP "
+            "(48 h): es el mismo tipo de feed ATOM, con el cursor en la entrada más "
+            "reciente de todas las plataformas."
+        ),
+        alcance=(
+            "Las licitaciones que las plataformas autonómicas (Comunidad de Madrid, "
+            "Euskadi, Catalunya y las demás que agregan) vierten en PLACSP por "
+            "agregación, sin contratos menores, acotadas a la misma señal de "
+            "tecnología que el feed principal. Un contrato que ya entra por otra "
+            "fuente se marca como duplicado y no se cuenta dos veces."
+        ),
+        estado="opcional",
+        # Los pliegos de las agregadas apuntan a hosts autonómicos, no a PLACSP
+        # (medido 2026-10-24): 544 de 1.057 al catalán, 346 al vasco y 167 al de
+        # Madrid. Los dos últimos entran en la allowlist el 2026-11-04. Los de la
+        # Junta de Andalucía no vienen en el feed: los lee el paso de documentos
+        # de su ficha (2026-11-09).
+        dominios_documentos=(
+            "contrataciondelestado.es",
+            "*.contrataciondelestado.es",
+            "contractaciopublica.cat",
+            "www.contratacion.euskadi.eus",
+            "contratos-publicos.comunidad.madrid",
+            "www.juntadeandalucia.es",
+        ),
+        max_antiguedad_dato_hours=_DATO_PLACSP,
+    ),
+    RegisteredSource(
+        source_id="placsp_menores",
+        nombre="PLACSP — contratos menores",
+        modulo="scraper.connectors.placsp_menores",
+        max_lag_hours=_LAG_SEMANAL,
+        motivo=(
+            "Apagada por defecto (PLACSP_MENORES_ATOM_URL vacía): sin variable escribe "
+            "'disabled' y no alerta. Es inteligencia competitiva sobre contratos ya "
+            "adjudicados, no una ventana de licitación: una semana sin completar no "
+            "hace perder ninguna oportunidad, y el feed conserva lo publicado. El "
+            "dato, con el mismo umbral, porque los órganos publican sus menores por "
+            "tandas."
+        ),
+        alcance=(
+            "Conector escrito y apagado: no ingiere nada hasta que se active, y los "
+            "contratos menores siguen fuera del alcance declarado. Cuando lo esté, "
+            "aportará las adjudicaciones de contratos menores de tecnología de los "
+            "perfiles alojados en PLACSP —quién gana qué y a quién—. Nunca como "
+            "licitaciones abiertas: no tienen convocatoria a la que presentarse."
+        ),
+        estado="opcional",
+        max_antiguedad_dato_hours=_LAG_SEMANAL,
+    ),
+    RegisteredSource(
+        source_id="placsp_consultas",
+        nombre="PLACSP — consultas preliminares de mercado",
+        modulo="scraper.connectors.placsp_consultas",
+        max_lag_hours=_LAG_SEMANAL,
+        motivo=(
+            "Apagada por defecto (PLACSP_CONSULTAS_ATOM_URL vacía) y todavía sin "
+            "programar: no corre en ninguna pasada, así que no deja fila de salud, "
+            "y por ser opcional el healthcheck no lo avisa. Programada y sin "
+            "variable escribirá 'disabled'. Son unas cuatrocientas consultas al año "
+            "en todo el sector público y su plazo de respuesta se cuenta en semanas: "
+            "una semana sin completar no hace perder ninguna. El dato, con el mismo "
+            "umbral: hay días enteros sin una consulta nueva en todo el país."
+        ),
+        alcance=(
+            "Conector escrito y apagado: no ingiere nada hasta que se active. Cuando "
+            "lo esté, aportará las consultas preliminares de mercado de tecnología "
+            "publicadas en PLACSP —lo que un órgano pregunta al mercado antes de "
+            "redactar los pliegos— a la bandeja «Próximas». No son licitaciones en "
+            "plazo: no tienen pliego ni plazo de ofertas."
+        ),
+        estado="opcional",
+        max_antiguedad_dato_hours=_LAG_SEMANAL,
+    ),
+)
+
+
+#: Índice por nombre canónico, que es como llegan las filas de
+#: ``source_ingestion_health``.
+REGISTERED_SOURCES_BY_ID: dict[str, RegisteredSource] = {s.source_id: s for s in REGISTERED_SOURCES}
+
+
+@dataclass(frozen=True)
+class AmbitoExcluido:
+    """Un trozo de contratación pública que el producto NO cubre, con fecha.
+
+    No es un ``RegisteredSource`` sin conector: es lo contrario de una fuente.
+    No tiene módulo, ni SLA de frescura, ni fila en ``source_ingestion_health``,
+    y meterlo en ``REGISTERED_SOURCES`` haría que el healthcheck lo reclamara
+    cada seis horas como una fuente muerta.
+
+    Lo que sí comparte con una fuente es el sitio donde vive. La alternativa
+    —escribir la lista en la página— es la que crea el fallo de siempre: la
+    prosa y el código dicen cosas distintas y nada falla.
+
+    Attributes:
+        ambito: Qué queda fuera, en los términos en los que lo preguntaría un
+            cliente («contratos menores», no «tabla X»).
+        motivo: Por qué. Una exclusión sin motivo se lee como un olvido.
+        decision: Identificador de la decisión que lo dejó fuera, para poder
+            ir del párrafo publicado al acta que lo decidió.
+        desde: Fecha (ISO) de esa decisión. Sin fecha, «fuera de alcance» no se
+            distingue de «todavía no llegamos», y la segunda caduca sola.
+    """
+
+    ambito: str
+    motivo: str
+    decision: str
+    desde: str
+
+
+#: Cómo entra algo que hoy está fuera. No por descubrimiento nuestro: por
+#: petición escrita, que es lo que D16 fijó el 2026-09-06.
+VIA_DE_ENTRADA_FUERA_DE_ALCANCE = (
+    "Se abre un conector cuando una organización cliente lo pide por escrito. "
+    "No hay una fecha comprometida para ninguno de estos ámbitos."
+)
+
+#: Fecha de la decisión D16. Se escribe una vez y viaja con cada exclusión.
+_FECHA_D16 = "2026-09-06"
+
+#: Lo que queda fuera del alcance declarado (D16, 2026-09-06).
+FUERA_DE_ALCANCE: tuple[AmbitoExcluido, ...] = (
+    AmbitoExcluido(
+        ambito="Contratos menores",
+        motivo=(
+            "Se adjudican sin concurrencia previa y se publican agregados "
+            "después del hecho. No hay ventana de licitación que anticipar, "
+            "que es exactamente lo que el producto sirve. Hay un conector "
+            "escrito para la sindicación de PLACSP (placsp_menores), apagado: "
+            "no ingiere nada mientras esta exclusión siga vigente."
+        ),
+        decision="D16",
+        desde=_FECHA_D16,
+    ),
+    AmbitoExcluido(
+        ambito="BOE",
+        motivo=(
+            "Sus anuncios de contratación remiten al perfil del contratante. "
+            "No se ha medido qué expedientes aportaría que PLACSP no traiga ya, "
+            "y sin esa medición no se integra."
+        ),
+        decision="D16",
+        desde=_FECHA_D16,
+    ),
+    AmbitoExcluido(
+        ambito="Portales autonómicos no integrados (Madrid, Andalucía, Comunidad Valenciana)",
+        motivo=(
+            "Cada portal es una integración propia, con su formato y su "
+            "mantenimiento. Hoy hay conector para Catalunya, Galicia y "
+            "Euskadi; lo que publiquen los demás por su cuenta no se descubre "
+            "y tampoco se cuenta. Lo que esos portales vierten en PLACSP por "
+            "agregación sí entra desde el 2026-11-04 (placsp_agregadas): queda "
+            "fuera solo lo que no agregan."
+        ),
+        decision="D16",
+        desde=_FECHA_D16,
+    ),
+)

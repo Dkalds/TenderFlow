@@ -63,10 +63,11 @@ def _run_daily_pipeline_connector(*, con_cierre: bool = True) -> dict[str, Any]:
       envuelve el run en ``record_run`` para que la página de observabilidad
       siga viendo los runs diarios tras el flip.
     """
-    from observability import bind_run_context, record_run
+    from observability import bind_run_context
     from scheduler import respaldo_zip_placsp
     from scraper.connectors.base import run_connector
     from scraper.connectors.placsp import PlacspAtomConnector
+    from services.extraction_runs import record_run
 
     cursor_atom_antes = respaldo_zip_placsp.cursor_atom_actual()
     run_id = bind_run_context(entrypoint="run_daily_pipeline_connector")
@@ -374,10 +375,11 @@ def _run_bulk_pipeline_connector(
             ``PlacspBulkConnector``); vacío, el mes entero.
         label: Etiqueta del run en logs y alertas de degradación.
     """
-    from observability import bind_run_context, record_run
+    from observability import bind_run_context
     from scraper.connectors.base import run_connector
     from scraper.connectors.placsp import PlacspBulkConnector
     from scraper.pipeline import _summarize
+    from services.extraction_runs import record_run
 
     meses = meses_a_procesar(months, desde=desde, hasta=hasta)
     month_results: list[dict[str, Any]] = []

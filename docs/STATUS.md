@@ -6,7 +6,7 @@ tags: [status, generado]
 
 <!-- generado por scripts/gen_status.py — no editar a mano -->
 
-Generado: 2026-11-14
+Generado: 2026-11-16
 
 ## Paridad de planos de orquestación (ADR-012)
 
@@ -61,22 +61,17 @@ Generado: 2026-11-14
 
 ## Ratchet de capas — imports contra el orden de paquetes
 
-**10 imports** van de una capa a otra superior (lista congelada; solo puede decrecer).
+**5 imports** van de una capa a otra superior (lista congelada; solo puede decrecer).
 
-Último descenso: 2026-11-05 (desde 12)
+Último descenso: 2026-11-16 (desde 10)
 
 `scripts/check_layers.py` falla ante uno nuevo, también si está dentro de una función. Orden, de abajo arriba: `config < observability < shared < llm < db < services < scraper < scheduler < api < mcp_server`.
 
-- `api/routes/publico.py -> scraper.connectors`
-- `config/secrets.py -> observability.logging`
 - `observability/alerts.py -> db.job_locks`
 - `observability/mailer.py -> shared.outbound_http`
-- `observability/metrics.py -> services.extraction_runs`
 - `observability/ops_events.py -> db.connection`
 - `observability/runtime_metrics.py -> db.connection`
 - `services/rag/fact_sheet.py -> scraper.document_fetcher`
-- `services/source_health.py -> scraper.connectors`
-- `services/tech_signal.py -> scraper.filters`
 
 ## Motor de la suite de tests (ADR-018)
 
