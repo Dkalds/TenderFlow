@@ -55,7 +55,6 @@ def _capture(method: str, **kwargs: Any) -> tuple[str, list[Any]]:
 # (método, kwargs sin filtros, kwargs con filtros)
 _ANALITICAS = [
     ("load_for_competitors", {}, {"ccaa": "Madrid", "fecha_desde": "2026-01-01"}),
-    ("load_licitadores", {}, {"ccaa_filter": ("Madrid", "Cataluña")}),
     ("ute_kpis", {"pattern": "UTE"}, {"pattern": "UTE", "ccaa_filter": ("Madrid",)}),
     ("ute_top_miembros", {"pattern": "UTE"}, {"pattern": "UTE", "fecha_hasta": "2026-12-31"}),
     ("ute_evolucion", {"pattern": "UTE"}, {"pattern": "UTE", "ccaa_filter": ("Madrid",)}),
@@ -103,12 +102,10 @@ def test_el_where_queda_bien_formado(
 
 _MENORES = "(a.licitacion_id IS NULL OR split_part(a.licitacion_id, ':', 1) <> 'placsp_menores')"
 
+
 # Las analíticas de competidores: `load_for_competitors` y las cuatro que
 # siembran sus condiciones con `_adj_filter_conditions`.
-_SIN_MENORES = [fila for fila in _ANALITICAS if fila[0] != "load_licitadores"]
-
-
-@pytest.mark.parametrize(("metodo", "sin_filtros", "con_filtros"), _SIN_MENORES)
+@pytest.mark.parametrize(("metodo", "sin_filtros", "con_filtros"), _ANALITICAS)
 def test_los_contratos_menores_quedan_fuera_en_ambos_caminos(
     metodo: str, sin_filtros: dict[str, Any], con_filtros: dict[str, Any]
 ) -> None:

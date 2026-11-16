@@ -536,49 +536,6 @@ class SAPClassifier:
         confidence = float(proba[1])
         return confidence >= self._threshold, confidence
 
-    def predict_batch(
-        self,
-        texts: list[str],
-        *,
-        cpvs: list[str | None] | None = None,
-        importes: list[float | None] | None = None,
-        organos: list[str | None] | None = None,
-    ) -> list[tuple[bool, float]]:
-        """Predicción en batch (más eficiente que llamadas individuales).
-
-        Args:
-            texts: Textos combinados (título + descripción).
-            cpvs: Lista paralela de códigos CPV (opcional). Mejora la
-                predicción con tokens estructurales vía ``_augment_text``.
-            importes: Lista paralela de importes EUR (opcional). Codifica
-                rangos logarítmicos como tokens.
-
-        Si ``cpvs`` o ``importes`` no se proporcionan, se usa el texto tal
-        cual (backward compatible).
-        """
-        if not self._trained:
-            raise RuntimeError("Clasificador no entrenado.")
-        import time
-
-        from observability.runtime_metrics import ml_inference_duration_seconds
-
-        t0 = time.perf_counter()
-        augmented = [
-            _augment_text(
-                t,
-                cpv=cpvs[i] if cpvs and i < len(cpvs) else None,
-                importe=importes[i] if importes and i < len(importes) else None,
-                organo=organos[i] if organos and i < len(organos) else None,
-            )
-            for i, t in enumerate(texts)
-        ]
-        probas = self.pipeline.predict_proba(augmented)
-        ml_inference_duration_seconds.labels(method="predict_batch").observe(
-            time.perf_counter() - t0
-        )
-        threshold = self._threshold
-        return [(float(p[1]) >= threshold, float(p[1])) for p in probas]
-
     def predict_proba(
         self,
         texts: list[str],
@@ -596,9 +553,8 @@ class SAPClassifier:
 
             El modelo se entrena sobre texto **aumentado** con los tokens
             estructurales de :func:`_augment_text` (``CPV_TI``, ``CPV2_72``,
-            ``IMPORTE_M``…). Este método los aplica igual que ``predict`` y
-            ``predict_batch``; hasta ahora no lo hacía, y era el único de los
-            tres que no. Como es el que puntúa la cola de active learning,
+            ``IMPORTE_M``…). Este método los aplica igual que ``predict``;
+            antes no lo hacía. Como es el que puntúa la cola de active learning,
             el conjunto de licitaciones que un humano llegaba a etiquetar
             —y por tanto todo el feedback que realimenta el modelo— se
             ordenaba con una probabilidad calculada sin las señales más

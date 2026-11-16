@@ -50,9 +50,8 @@ log = get_logger(__name__)
 
 # El ``except`` solo corre en un intérprete al que le falta el paquete ``redis``
 # (una instalación que no salió de los ficheros de dependencias). Entonces
-# ``has_redis()`` da False, ``check_rate_limit_redis`` devuelve None y tanto
-# ``check_rate_limit`` como ``services.rate_limiting`` usan la base de datos, en
-# vez de fallar con ImportError al importar este módulo. En los tests ``redis``
+# ``has_redis()`` da False, ``check_rate_limit_redis`` devuelve None y
+# ``services.rate_limiting`` usa la base de datos, en vez de fallar con ImportError al importar este módulo. En los tests ``redis``
 # está instalado y el ``except`` no corre: de ahí los ``pragma: no cover``.
 try:  # pragma: no cover
     import redis
@@ -225,34 +224,9 @@ def check_rate_limit_redis(
     return allowed
 
 
-def check_rate_limit(
-    key: str,
-    *,
-    max_calls: int = 120,
-    window_seconds: float = 60.0,
-) -> bool:
-    """Dispatcher: Redis si configurado y operativo; BD como fallback.
-
-    Sigue la misma regla que ``services.rate_limiting.get_rate_limiter``:
-    ``RATE_LIMIT_BACKEND=auto`` (por defecto) o ``redis`` intentan Redis y caen
-    a la BD; ``db`` (o su alias histórico ``sqlite``) va siempre a la BD.
-    """
-    backend = os.getenv("RATE_LIMIT_BACKEND", "auto").strip().lower()
-    if backend not in ("db", "sqlite"):
-        result = check_rate_limit_redis(key, max_calls=max_calls, window_seconds=window_seconds)
-        if result is not None:
-            return result
-        log.debug("ratelimit_redis_fallback_to_db", key=key)
-
-    from db.rate_limits import check_rate_limit_db
-
-    return check_rate_limit_db(key, max_calls=max_calls, window_seconds=window_seconds)
-
-
 __all__ = [
     "ENFRIAMIENTO_S",
     "PREFIJO_CLAVE",
-    "check_rate_limit",
     "check_rate_limit_redis",
     "has_redis",
     "reset_client",

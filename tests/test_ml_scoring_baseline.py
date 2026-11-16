@@ -17,7 +17,7 @@ noche. Estos tests fijan lo contrario — que la tasa mide retención y que dos
 segmentos con retención distinta salen con probabilidades distintas.
 
 Desde 2026-09 el fallback tampoco es un corte: los segmentos con al menos
-``MIN_OBS_SEGMENTO`` pares servían su tasa cruda y el resto una media NO
+5 pares servían su tasa cruda y el resto una media NO
 ponderada de las tasas publicadas. Ahora cada segmento se encoge hacia su
 CPV-4 y este hacia la tasa global agregada (shrinkage empirical-Bayes,
 ``_baseline_retencion``), y la búsqueda cae de segmento a CPV-4 y a global.
@@ -151,14 +151,11 @@ def _vencimiento(lic_id: str, organo: str, cpv4: str = _CPV4) -> rl.ParRetencion
 # ---------------------------------------------------------------------------
 
 
-def test_la_tasa_por_segmento_es_la_fraccion_retenida():
+def test_los_conteos_por_segmento_miden_la_retencion():
     with patch.object(rl, "_cargar_adjudicaciones", return_value=_historico()):
-        tasas = rl.tasas_retencion_por_segmento()
         etiquetas = rl.etiquetas_por_segmento()
 
-    assert tasas[(normalize_organo(_ORGANO_FIEL), _CPV4)] == pytest.approx(1.0)
-    assert tasas[(normalize_organo(_ORGANO_ROTATORIO), _CPV4)] == pytest.approx(0.0)
-    # Lo que consume el baseline son los conteos, no las tasas publicadas.
+    # (retenidos, pares): el fiel retiene los cinco, el rotatorio ninguno.
     assert etiquetas.conteos == {
         (normalize_organo(_ORGANO_FIEL), _CPV4): (5, 5),
         (normalize_organo(_ORGANO_ROTATORIO), _CPV4): (0, 5),
@@ -166,8 +163,8 @@ def test_la_tasa_por_segmento_es_la_fraccion_retenida():
     assert etiquetas.pares == 10
 
 
-def test_un_segmento_sin_historia_suficiente_no_publica_tasa_cruda_pero_si_cuenta():
-    """Menos de ``MIN_OBS_SEGMENTO`` pares: sin tasa cruda, pero su par sí pesa."""
+def test_un_segmento_con_un_solo_par_cuenta():
+    """Un solo par también entra en los conteos: el shrinkage decide cuánto pesa."""
     historico = [
         _adj(
             "U1",
@@ -179,7 +176,6 @@ def test_un_segmento_sin_historia_suficiente_no_publica_tasa_cruda_pero_si_cuent
         _adj("U1-SIG", empresa_id=_INCUMBENTE, fecha_adj="2022-03-01", organo="Organo Unico"),
     ]
     with patch.object(rl, "_cargar_adjudicaciones", return_value=historico):
-        assert rl.tasas_retencion_por_segmento() == {}
         assert rl.etiquetas_por_segmento().conteos == {
             (normalize_organo("Organo Unico"), _CPV4): (1, 1)
         }
@@ -189,10 +185,8 @@ def test_las_etiquetas_aceptan_el_historico_ya_cargado():
     """El batch comparte una carga: pasar la lista no vuelve a la BD."""
     with patch.object(rl, "_cargar_adjudicaciones", side_effect=AssertionError("recarga")):
         etiquetas = rl.etiquetas_por_segmento(_historico())
-        tasas = rl.tasas_retencion_por_segmento(adjudicaciones=_historico())
 
     assert etiquetas.pares == 10
-    assert len(tasas) == 2
 
 
 # ---------------------------------------------------------------------------

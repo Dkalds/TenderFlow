@@ -13,7 +13,6 @@ import pytest
 from services.normalization import (
     clasificar_nif,
     nif_espanol_malformado,
-    nif_valido,
     normalize_nif,
 )
 
@@ -30,7 +29,6 @@ from services.normalization import (
 )
 def test_dni_valido(valor: str) -> None:
     assert clasificar_nif(valor) == "dni"
-    assert nif_valido(valor)
 
 
 @pytest.mark.parametrize(
@@ -63,7 +61,6 @@ def test_nie_valido(valor: str) -> None:
 )
 def test_cif_valido(valor: str) -> None:
     assert clasificar_nif(valor) == "cif"
-    assert nif_valido(valor)
 
 
 @pytest.mark.parametrize(
@@ -79,7 +76,6 @@ def test_cif_valido(valor: str) -> None:
 )
 def test_forma_espanola_con_control_incorrecto_es_invalido(valor: str) -> None:
     assert clasificar_nif(valor) == "invalido"
-    assert not nif_valido(valor)
     assert nif_espanol_malformado(valor)
 
 
@@ -96,7 +92,6 @@ def test_forma_espanola_con_control_incorrecto_es_invalido(valor: str) -> None:
 def test_identificador_extranjero_no_es_valido_ni_malformado(valor: str) -> None:
     """Un id extranjero no es un NIF, pero tampoco una errata: se conserva opaco."""
     assert clasificar_nif(valor) == "extranjero"
-    assert not nif_valido(valor)
     assert not nif_espanol_malformado(valor)
 
 
@@ -104,7 +99,6 @@ def test_identificador_extranjero_no_es_valido_ni_malformado(valor: str) -> None
 def test_vacio_es_invalido_pero_no_malformado(valor: str | None) -> None:
     assert normalize_nif(valor) is None
     assert clasificar_nif(valor) == "invalido"
-    assert not nif_valido(valor)
     assert not nif_espanol_malformado(valor)
 
 

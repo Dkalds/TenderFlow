@@ -351,9 +351,9 @@ def _baseline_retencion(
     - CPV-4: ``p_c = (Σ_c + k·p_g) / (n_c + k)``;
     - segmento: ``p_s = (Σ_s + k·p_c) / (n_s + k)``.
 
-    Sustituye al corte anterior: los segmentos con ``MIN_OBS_SEGMENTO`` pares o
-    más servían su tasa cruda y el resto una media **no ponderada** de las
-    tasas publicadas. Era un escalón —con 5 pares se pasaba de la media a un
+    Sustituye al corte anterior: los segmentos con 5 pares o más servían su
+    tasa cruda y el resto una media **no ponderada** de las tasas publicadas.
+    Era un escalón —con 5 pares se pasaba de la media a un
     0.0 o un 1.0— y la media pesaba igual un segmento de 5 pares que uno de
     500. El 2026-09-24 dejaba fuera 1.076 segmentos frente a 208 publicados.
 

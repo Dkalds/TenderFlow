@@ -103,15 +103,6 @@ def test_load_runs_devuelve_dicts_del_mas_reciente_atras(bd: dict[str, Any]) -> 
     assert params == (7,)
 
 
-def test_load_calidad_runs_pide_solo_las_columnas_de_calidad(bd: dict[str, Any]) -> None:
-    ExtractionRunRepository().load_calidad_runs()
-
-    ((sql, params),) = bd["sentencias"]
-    assert "errores_parseo" in sql and "months_failed" in sql
-    assert "licitaciones_nuevas" not in sql
-    assert params == (90,), "el límite por defecto es el de la pantalla de calidad"
-
-
 # ── Escritura ────────────────────────────────────────────────────────────────
 
 

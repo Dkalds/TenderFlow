@@ -2,14 +2,16 @@
 
 ADR-022: todo el SQL (lecturas de novedades, alertas in-app y preferencias de
 correo) vive en ``db/notifications.py``. Aquí queda la regla: el modo de correo
-por defecto de cada evento, la validación contra el catálogo y el fail-safe de
-la lectura de preferencias.
+por defecto de cada evento y el fail-safe de la lectura de preferencias.
 
-Desde S4.6 del plan 2026-09 v2 este modulo guarda ademas la **preferencia de
+Desde S4.6 del plan 2026-09 v2 este modulo lee ademas la **preferencia de
 correo por usuario y tipo de evento** (``immediate | daily | off``), que es lo
 que consulta el despachador antes de mandar un aviso de asignacion o de
-comentario. Vive aqui y no en el despachador porque es estado de usuario, no
-mecanica de reparto: la misma preferencia la leera la pantalla de perfil.
+comentario. Ninguna pantalla ni ruta la escribe: el escritor
+(``set_modo_email``) se retiró sin llamadores el 2026-11-16 y la tabla
+``user_event_prefs`` sigue en el esquema, vacía, así que hoy manda siempre el
+modo por defecto. Quitar la tabla es una migración aparte; darle una pantalla,
+volver a escribir la fila.
 
 Desde v129 (ADR-030 fase 2) ``user_notifications`` y ``user_event_prefs``
 llevan ``user_id`` junto a ``user_key``. Todas las funciones aceptan
@@ -27,14 +29,12 @@ from db.notifications import borrar_alertas_de_usuario as _borrar_alertas_de_usu
 from db.notifications import borrar_preferencias_email as _borrar_preferencias_email
 from db.notifications import contar_alertas_sin_leer as _contar_alertas_sin_leer
 from db.notifications import get_unread_ids as _get_unread_ids
-from db.notifications import guardar_modo_email as _guardar_modo_email
 from db.notifications import leer_modo_email as _leer_modo_email
 from db.notifications import marcar_alertas_leidas as _marcar_alertas_leidas
 from db.notifications import marcar_todas_alertas_leidas as _marcar_todas_alertas_leidas
 from db.notifications import mark_all_read as _mark_all_read
 from db.notifications import mark_read as _mark_read
 from observability.logging import get_logger
-from shared.events import CATALOGO
 
 log = get_logger(__name__)
 
@@ -117,8 +117,6 @@ def delete_all_alerts(user_key: str, *, user_id: int | None = None) -> int:
 
 ModoEmail = Literal["immediate", "daily", "off"]
 
-MODOS_EMAIL: tuple[ModoEmail, ...] = ("immediate", "daily", "off")
-
 #: Qué se hace cuando el usuario no ha elegido nada.
 #:
 #: ``immediate`` para la asignación y ``daily`` para los comentarios, y la
@@ -160,39 +158,6 @@ def modo_email_de(user_key: str, event_type: str, *, user_id: int | None = None)
         log.warning("user_event_prefs_lectura_fallida", event_type=event_type, exc_info=True)
         return _modo_por_defecto(event_type)
     return _normalizar_modo(guardado) or _modo_por_defecto(event_type)
-
-
-def set_modo_email(
-    user_key: str, event_type: str, modo: str, *, user_id: int | None = None
-) -> ModoEmail:
-    """Fija la preferencia de correo del usuario para un tipo de evento.
-
-    La fila a actualizar se localiza por identidad dual (v129): tras un cambio
-    de correo vive bajo la clave antigua y ``ON CONFLICT(user_key, event_type)``
-    a secas guardaría una segunda preferencia en vez de cambiar la que hay.
-
-    Raises:
-        ValueError: el tipo no admite preferencia de correo, o el modo no es
-            uno de los tres. Se valida contra el catálogo y no contra una lista
-            propia para que un tipo nuevo no necesite tocar esto.
-    """
-    spec = CATALOGO.get(event_type)
-    if spec is None or not spec.preferencia_email:
-        raise ValueError(f"El evento {event_type!r} no admite preferencia de correo.")
-    normalizado = _normalizar_modo(modo)
-    if normalizado is None:
-        raise ValueError(f"Modo inválido: {modo!r}. Permitidos: {', '.join(MODOS_EMAIL)}")
-    _guardar_modo_email(user_key, event_type, normalizado, user_id=user_id)
-    return normalizado
-
-
-def preferencias_email(user_key: str, *, user_id: int | None = None) -> dict[str, ModoEmail]:
-    """Preferencia efectiva del usuario para cada tipo que admite correo."""
-    return {
-        tipo: modo_email_de(user_key, tipo, user_id=user_id)
-        for tipo, spec in sorted(CATALOGO.items())
-        if spec.preferencia_email
-    }
 
 
 def delete_email_prefs(user_key: str, *, user_id: int | None = None) -> int:

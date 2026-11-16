@@ -1,9 +1,9 @@
 """Los tres caminos de predicción tienen que dar la misma probabilidad.
 
-``SAPClassifier`` expone ``predict``, ``predict_batch`` y ``predict_proba``.
-Los dos primeros aplican ``_augment_text`` —que inyecta los tokens
-estructurales (``CPV_TI``, ``CPV2_72``, ``IMPORTE_M``…) con los que el modelo
-se entrenó— y el tercero no lo hacía.
+``SAPClassifier`` expone ``predict``, ``predict_proba`` y ``explain``.
+``predict`` aplica ``_augment_text`` —que inyecta los tokens estructurales
+(``CPV_TI``, ``CPV2_72``, ``IMPORTE_M``…) con los que el modelo se entrenó— y
+``predict_proba`` no lo hacía.
 
 Como ``predict_proba`` es el que puntúa la cola de active learning
 (``api/routes/feedback.py``), el conjunto de licitaciones que un humano llegaba
@@ -68,14 +68,6 @@ class TestParidadEntreCaminos:
         _, proba_predict = clasificador.predict(texto, cpv=cpv, importe=importe)
         matriz = clasificador.predict_proba([texto], cpvs=[cpv], importes=[importe])
         assert matriz[0][1] == pytest.approx(proba_predict, abs=1e-9)
-
-    @pytest.mark.parametrize(("texto", "cpv", "importe"), _CASOS)
-    def test_predict_batch_coincide_con_predict(
-        self, clasificador: SAPClassifier, texto: str, cpv: str, importe: float
-    ) -> None:
-        _, proba_predict = clasificador.predict(texto, cpv=cpv, importe=importe)
-        ((_, proba_batch),) = clasificador.predict_batch([texto], cpvs=[cpv], importes=[importe])
-        assert proba_batch == pytest.approx(proba_predict, abs=1e-9)
 
     @pytest.mark.parametrize(("texto", "cpv", "importe"), _CASOS)
     def test_explain_coincide_con_predict(

@@ -36,9 +36,6 @@ from db.repositories.pursuits import PursuitRepository
 from db.repositories.user_profiles import delete_user_profile, get_own_user_profile
 from db.repositories.watchlist import WatchlistRepository
 from db.totp import delete_totp
-from observability.logging import get_logger
-
-log = get_logger(__name__)
 
 _api_key_repo = ApiKeyRepository()
 _watchlist_repo = WatchlistRepository()
@@ -67,22 +64,6 @@ EXPORT_TOPES: dict[str, int] = {
     "asistente_feedback": 5000,
     "vigilancia_empresas": 5000,
 }
-
-
-def get_user_id_from_key_id(key_id: int) -> int | None:
-    """Obtiene el ``user_id`` vinculado a la API key, si la columna existe.
-
-    Returns ``None`` (never an arbitrary user) when the column is missing
-    or the value is NULL.  See issue #44.
-    """
-    result = _api_key_repo.get_user_id(key_id)
-    if result is None:
-        log.warning(
-            "gdpr_user_id_null_or_missing",
-            key_id=key_id,
-            msg="user_id is NULL, column missing, or key not found",
-        )
-    return result
 
 
 def export_watchlist(user_id: int) -> list[dict[str, Any]]:

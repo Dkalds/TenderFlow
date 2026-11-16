@@ -435,22 +435,6 @@ def derive_new_events(batch_size: int = 1000) -> int:
     return inserted
 
 
-def derive_all_events(batch_size: int = 1000) -> int:
-    """Backfill: itera lotes hasta agotar el historial pendiente."""
-    total = 0
-    while True:
-        n = derive_new_events(batch_size)
-        if n == 0:
-            cursor = get_cursor(_CURSOR_SOURCE)
-            with connect_read() as c:
-                max_hist = c.execute("SELECT COALESCE(MAX(id), 0) FROM licitaciones_history")
-                max_hist_id = int(max_hist.fetchone()[0])
-            if int((cursor or {}).get("last_entry_id") or 0) >= max_hist_id:
-                break
-        total += n
-    return total
-
-
 def timeline(licitacion_id: str) -> list[dict[str, Any]]:
     """Línea de tiempo completa de un contrato.
 

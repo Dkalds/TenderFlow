@@ -78,26 +78,6 @@ class AdjudicacionResumenRow(TypedDict):
     n_ofertas_recibidas: int | None
 
 
-class LicitadorRow(TypedDict):
-    """Una adjudicación con su licitación, para el ranking de licitadores."""
-
-    id: int
-    licitacion_id: str
-    nif: str | None
-    nombre: str
-    ccaa: str | None
-    provincia: str | None
-    importe_adjudicado: float | None
-    importe_pagable: float | None
-    fecha_adjudicacion: str | None
-    es_pyme: int | None
-    n_ofertas_recibidas: int | None
-    titulo: str
-    organo_contratacion: str | None
-    cpv: str | None
-    tecnologia: str | None
-
-
 class UteKpis(TypedDict):
     """Los KPIs UTE frente a individual de :meth:`AdjudicacionRepository.ute_kpis`."""
 
@@ -432,34 +412,6 @@ class AdjudicacionRepository:
         sql += "ORDER BY a.fecha_adjudicacion DESC NULLS LAST, a.id DESC LIMIT %s"
         with connect_read() as c:
             return rows_to_dicts(c.execute(sql, [*params, max(1, int(limit))]))
-
-    def load_licitadores(
-        self,
-        *,
-        ccaa_filter: tuple[str, ...] | None = None,
-        limit: int = 10000,
-    ) -> list[LicitadorRow]:
-        """Carga adjudicaciones con datos para el ranking de licitadores."""
-        sql = (
-            "SELECT a.id, a.licitacion_id, a.nif, a.nombre, a.ccaa, a.provincia, "
-            "       a.importe_adjudicado, a.importe_pagable, a.fecha_adjudicacion, "
-            "       a.es_pyme, a.n_ofertas_recibidas, "
-            "       l.titulo, l.organo_contratacion, l.cpv, l.tecnologia "
-            "FROM adjudicaciones a "
-            "JOIN licitaciones l ON l.id_externo = a.licitacion_id "
-        )
-        # Dedupe cross-fuente obligatorio: una adjudicación duplicada entre
-        # fuentes cuenta dos veces en el ranking de licitadores.
-        conditions: list[str] = [exclude_duplicados_sql("a.licitacion_id")]
-        params: list[object] = []
-        if ccaa_filter:
-            placeholders = ",".join("%s" for _ in ccaa_filter)
-            conditions.append(f"a.ccaa IN ({placeholders})")
-            params.extend(ccaa_filter)
-        sql += "WHERE " + " AND ".join(conditions) + " "
-        sql += f"ORDER BY a.fecha_adjudicacion DESC LIMIT {int(limit)}"
-        with connect_read() as c:
-            return typed_rows(LicitadorRow, rows_to_dicts(c.execute(sql, params)))
 
     # ── Analítica UTE (ADR-023) ──────────────────────────────────────────
     #

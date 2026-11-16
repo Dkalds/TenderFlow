@@ -57,23 +57,6 @@ class ApiKeyRepository:
             row = c.execute("SELECT key_hash FROM api_keys WHERE id = %s", (key_id,)).fetchone()
         return str(row[0]) if row else None
 
-    def get_user_id(self, key_id: int) -> int | None:
-        """Obtiene ``user_id`` vinculado a la API key, si la columna existe."""
-        with connect_read() as c:
-            try:
-                cols = get_table_columns(c, "api_keys")
-                if "user_id" not in cols:
-                    return None
-                row = c.execute(
-                    "SELECT user_id FROM api_keys WHERE id = %s LIMIT 1", (key_id,)
-                ).fetchone()
-                if row and row[0]:
-                    return int(row[0])
-                return None
-            except Exception:
-                log.warning("api_key_user_id_lookup_failed", key_id=key_id, exc_info=True)
-                return None
-
     def get_rotatable(self, key_id: int) -> dict[str, Any] | None:
         """Devuelve ``{user_id, name, scopes, expires_at}`` de una key rotable, o ``None``.
 

@@ -238,17 +238,6 @@ def test_derivacion_idempotente(db):
     assert len(eventos(db)) == 1
 
 
-def test_derive_all_procesa_en_lotes(db):
-    from services.contract_events import derive_all_events
-
-    for i in range(5):
-        upsert(db, lic_id=f"C-{i:03d}", estado="PUB", importe=100000.0)
-        upsert(db, lic_id=f"C-{i:03d}", estado="ADJ", importe=100000.0)
-
-    total = derive_all_events(batch_size=2)
-    assert total == 5
-
-
 # ---------------------------------------------------------------------------
 # Timeline y feed
 # ---------------------------------------------------------------------------

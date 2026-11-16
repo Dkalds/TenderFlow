@@ -310,17 +310,6 @@ _PURSUIT_DE_LA_ALERTA = (
     "ORDER BY p.lote_numero IS NOT NULL, p.id LIMIT 1) AS pursuit_id"
 )
 
-#: Predicado de identidad dual con el alias ``p`` de ``user_event_prefs``.
-_IDENT_P = "(p.user_id = %s OR (p.user_key = %s AND (p.user_id IS NULL OR %s::int IS NULL)))"
-
-#: El id que adopta una fila de ``user_event_prefs`` sin él al actualizarla:
-#: ``NULL`` si la persona ya tiene la fila del id para ese evento (adoptarlo
-#: chocaría con el índice parcial de v165). Parámetros: ``(user_id, user_id)``.
-_ADOPTAR_ID = (
-    "CASE WHEN EXISTS (SELECT 1 FROM user_event_prefs o WHERE o.user_id = %s "
-    "AND o.event_type = p.event_type) THEN NULL ELSE %s::int END"
-)
-
 
 class PaginaAlertas(TypedDict):
     """Una página de la bandeja de alertas de una persona en una organización."""
@@ -538,40 +527,6 @@ def leer_modo_email(user_key: str, event_type: str, *, user_id: int | None = Non
     if row is None:
         return None
     return None if row[0] is None else str(row[0])
-
-
-def guardar_modo_email(
-    user_key: str, event_type: str, modo: str, *, user_id: int | None = None
-) -> None:
-    """Escribe la preferencia de correo; el modo llega ya validado.
-
-    La fila se localiza primero por identidad dual (v129): una que el
-    backfill no resolvió vive sólo bajo la clave, y un ``INSERT`` a secas
-    guardaría una segunda preferencia en vez de cambiar la que hay. Solo si no
-    hay ninguna se inserta, y con ``user_id`` la fila nace sin clave (v165).
-
-    El ``UPDATE`` adopta el id en la fila sin él **salvo** que ya exista la
-    fila del id para ese evento: adoptarlo entonces violaría el índice único
-    parcial de v165. La sin id se queda como está; la lectura prefiere la del
-    id y las dos reciben el mismo modo.
-    """
-    now = now_utc_iso()
-    clave, conflicto = _identidad_de_escritura(user_key, user_id, "event_type")
-    with connect() as c:
-        cur = c.execute(
-            "UPDATE user_event_prefs AS p SET modo = %s, updated_at = %s, "
-            f"user_id = COALESCE(p.user_id, {_ADOPTAR_ID}) "
-            f"WHERE {_IDENT_P} AND p.event_type = %s",
-            (modo, now, user_id, user_id, user_id, user_key, user_id, event_type),
-        )
-        if int(getattr(cur, "rowcount", 0) or 0) > 0:
-            return
-        c.execute(
-            "INSERT INTO user_event_prefs (user_key, user_id, event_type, modo, updated_at) "
-            f"VALUES (%s, %s, %s, %s, %s) {conflicto} DO UPDATE SET "
-            "modo = excluded.modo, updated_at = excluded.updated_at",
-            (clave, user_id, event_type, modo, now),
-        )
 
 
 def borrar_preferencias_email(user_key: str, *, user_id: int | None = None) -> int:

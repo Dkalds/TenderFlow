@@ -141,14 +141,14 @@ class TestBatchPrediction:
             "Suministro de papel A4",
             "Consultoría SAP ABAP Fiori",
         ]
-        results = clf.predict_batch(texts)
-        assert len(results) == 3
+        p_sap = clf.predict_proba(texts)[:, 1]
+        assert len(p_sap) == 3
         # Primer y tercer texto deberían tener P(SAP) > 50%
         # (usamos confianza directa para no depender del threshold óptimo)
-        assert results[0][1] > 0.5, f"SAP text should have P(SAP) > 0.5, got {results[0][1]}"
-        assert results[2][1] > 0.5, f"SAP text should have P(SAP) > 0.5, got {results[2][1]}"
+        assert p_sap[0] > 0.5, f"SAP text should have P(SAP) > 0.5, got {p_sap[0]}"
+        assert p_sap[2] > 0.5, f"SAP text should have P(SAP) > 0.5, got {p_sap[2]}"
         # Segundo texto no debería ser SAP
-        assert results[1][1] < 0.5, f"non-SAP text should have P(SAP) < 0.5, got {results[1][1]}"
+        assert p_sap[1] < 0.5, f"non-SAP text should have P(SAP) < 0.5, got {p_sap[1]}"
 
 
 class TestNewMetrics:
@@ -311,20 +311,6 @@ class TestPredictProba:
         proba = clf.predict_proba(["Implantación SAP S/4HANA"])
         # P(SAP) > P(no-SAP) para texto claramente SAP
         assert proba[0][1] > proba[0][0], "P(SAP) debería ser mayor que P(no-SAP)"
-
-    def test_predict_proba_consistent_with_predict_batch(self, sample_df):
-        """predict_proba y predict_batch deben dar las mismas confianzas."""
-        from services.ml.sap_classifier import SAPClassifier
-
-        clf = SAPClassifier()
-        clf.train(sample_df)
-        texts = ["Implantación SAP S/4HANA", "Compra de vehículos"]
-        proba = clf.predict_proba(texts)
-        batch = clf.predict_batch(texts)
-        for i, (_, conf) in enumerate(batch):
-            assert abs(float(proba[i][1]) - conf) < 1e-6, (
-                f"Discrepancia entre predict_proba y predict_batch en idx {i}"
-            )
 
 
 class TestCPVTokenAugmentation:
@@ -489,42 +475,32 @@ class TestRound2Improvements:
 
         assert _expected_calibration_error(np.array([]), np.array([])) == 0.0
 
-    def test_registry_append_and_read(self, tmp_path):
-        from services.ml.classifier_training import _append_to_registry, read_registry
+    def test_registry_append_acumula(self, tmp_path):
+        import json
+
+        from services.ml.classifier_training import _append_to_registry
 
         reg_path = tmp_path / "registry.json"
         entry1 = {"trained_at": "2025-01-01T00:00:00", "f1": 0.85, "fbeta": 0.88}
         entry2 = {"trained_at": "2025-01-02T00:00:00", "f1": 0.87, "fbeta": 0.90}
         _append_to_registry(entry1, path=reg_path)
         _append_to_registry(entry2, path=reg_path)
-        history = read_registry(path=reg_path)
+        history = json.loads(reg_path.read_text(encoding="utf-8"))
         assert len(history) == 2
         assert history[0]["f1"] == 0.85
         assert history[1]["f1"] == 0.87
 
-    def test_read_registry_missing_file(self, tmp_path):
-        from services.ml.classifier_training import read_registry
-
-        missing = tmp_path / "does_not_exist.json"
-        assert read_registry(path=missing) == []
-
-    def test_read_registry_corrupt_file(self, tmp_path):
-        from services.ml.classifier_training import read_registry
-
-        bad = tmp_path / "bad.json"
-        bad.write_text("{not valid json", encoding="utf-8")
-        assert read_registry(path=bad) == []
-
     def test_train_appends_to_registry(self, sample_df, tmp_path, monkeypatch):
+        import json
+
         from services.ml import classifier_training as ml_training
-        from services.ml.classifier_training import read_registry
         from services.ml.sap_classifier import SAPClassifier
 
         reg_path = tmp_path / "reg.json"
         monkeypatch.setattr(ml_training, "_REGISTRY_PATH", reg_path)
         clf = SAPClassifier()
         clf.train(sample_df)
-        history = read_registry(path=reg_path)
+        history = json.loads(reg_path.read_text(encoding="utf-8"))
         assert len(history) == 1
         assert "f1" in history[0]
         assert "trained_at" in history[0]
