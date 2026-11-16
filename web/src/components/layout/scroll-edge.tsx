@@ -149,12 +149,3 @@ export function ScrollEdge({ active, className }: { active: boolean; className?:
 export function ScrollEdgeDelProveedor({ className }: { className?: string }) {
   return <ScrollEdge active={useScrollEdgeState()} className={className} />;
 }
-
-/**
- * Variante anclada **dentro** del propio cromo: sirve cuando la barra ya tiene
- * posicionamiento propio (`sticky`) y no recorta, y evita depender de cómo esté
- * colocada esa barra entre sus hermanos.
- */
-export function ScrollEdgeUnder({ active, className }: { active: boolean; className?: string }) {
-  return <EdgeGradient active={active} className={cn("top-full", className)} />;
-}

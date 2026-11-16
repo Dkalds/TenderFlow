@@ -9,16 +9,8 @@ import { formatPercent } from "@/lib/utils";
  * que daban por presentes listas que la API declara opcionales.
  */
 export type CompanyProfileData = Schemas["CompetitiveCompanyProfileDTO"];
-export type CompanyIdentity = Schemas["CompetitiveCompanyIdentityDTO"];
-export type CompanyTotals = Schemas["CompetitiveCompanyTotalsDTO"];
 export type CompanyBreakdown = Schemas["CompetitiveCompanyBreakdownDTO"];
 export type CompanyYear = Schemas["CompetitiveCompanyYearDTO"];
-export type CompanyPosition = Schemas["CompetitiveCompanyPositionDTO"];
-export type CompanyComparison = Schemas["CompetitiveCompanyComparisonDTO"];
-export type CompanyConcentration = Schemas["CompetitiveCompanyConcentrationDTO"];
-export type CompanyMovement = Schemas["CompetitiveCompanySignalDTO"];
-export type CompanyScope = Schemas["CompetitiveCompanyScopeDTO"];
-export type CompanyHistory = Schemas["CompetitiveCompanyHistoryDTO"];
 
 /**
  * UTE en la que la empresa participa como miembro (`CompetitiveCompanyUteParticipationDTO`).

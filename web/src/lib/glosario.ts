@@ -13,9 +13,7 @@
  * los sirve `GET /meta/filters` con su `descripcion`, porque son una lista
  * controlada de la fuente y copiarlos aquí rompería el invariante 3 de
  * `web/AGENTS.md` (sin hardcode que el backend debe proveer) y, sobre todo,
- * los dejaría envejeciendo en dos sitios. Use `glosarioDeOpcion()` para
- * convertir una opción del catálogo en una entrada de glosario y renderizarla
- * con el mismo componente.
+ * los dejaría envejeciendo en dos sitios.
  *
  * `test/glosario.test.ts` exige una entrada por cada estado de `estados.ts`:
  * un estado nuevo sin definición falla en CI, no en la pantalla.
@@ -212,19 +210,6 @@ export function glosario(clave: string | null | undefined): EntradaGlosario | un
   if (!clave) return undefined;
   const limpia = clave.trim();
   return GLOSARIO[limpia] ?? GLOSARIO[limpia.toUpperCase()] ?? GLOSARIO[limpia.toLowerCase()];
-}
-
-/**
- * Convierte una opción de lista controlada de `GET /meta/filters` en una
- * entrada de glosario, para que procedimiento y tramitación (F1.7) usen el
- * mismo componente de ayuda sin que la consola guarde su propia copia del
- * vocabulario.
- */
-export function glosarioDeOpcion(opcion: {
-  etiqueta: string;
-  descripcion: string;
-}): EntradaGlosario {
-  return { termino: opcion.etiqueta, definicion: opcion.descripcion, ancla: "procedimientos" };
 }
 
 /**

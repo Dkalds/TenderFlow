@@ -69,20 +69,6 @@ export function celdaSalud(
 }
 
 /**
- * ¿El backend ni siquiera llegó a medir la cobertura de esta métrica?
- *
- * `cobertura_pct == null` es «no lo sé», que no es lo mismo que «es baja» — el
- * DTO lo dice explícitamente. La distinción decide qué se hace con la celda: con
- * una cobertura medida y baja hay algo que contar («solo 3,4 % de las
- * adjudicaciones traen el dato» es información sobre el corpus), pero con la
- * cobertura sin medir la celda sólo puede repetir que no sabe, y hacerlo en
- * todas las cargas. Eso no es abstenerse: es ruido con forma de KPI.
- */
-export function coberturaSinMedir(cobertura: CoberturaMetrica | undefined): boolean {
-  return cobertura?.cobertura_pct == null;
-}
-
-/**
  * Porcentaje suelto, sin objeto de cobertura pero con su denominador a mano.
  *
  * Es el caso de `/competidores`: la API manda `pct_oferta_unica` junto a

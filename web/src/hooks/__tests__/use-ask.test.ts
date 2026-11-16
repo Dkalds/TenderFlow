@@ -433,19 +433,27 @@ describe("useAskModels", () => {
     expect(callUrl(fetchMock.mock.calls[0])).toBe("/api/v1/ask/models");
   });
 
-  it("returns [] on non-ok response", async () => {
-    // El selector de modelo degrada al valor por defecto en vez de tumbar el
-    // panel del copiloto.
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation(() => Promise.resolve(jsonResponse({ detail: "boom" }, 500))),
-    );
+  it("no guarda un 5xx como lista vacía: queda en error y se vuelve a pedir", async () => {
+    // Con `staleTime: Infinity`, convertir el fallo en `[]` lo dejaba en caché
+    // como éxito toda la sesión: un 500 pasajero vaciaba el selector de modelo
+    // hasta recargar. El selector se queda igual con `undefined` (valor por
+    // defecto) y una consulta en error sí se reintenta al volver a montarse.
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => Promise.resolve(jsonResponse({ detail: "boom" }, 500)))
+      .mockImplementation(() => Promise.resolve(jsonResponse({ default: "gpt-4", models: ["gpt-4"] })));
+    vi.stubGlobal("fetch", fetchMock);
 
     const { result } = renderHook(() => useAskModels(), {
       wrapper: createWrapper(),
     });
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual([]);
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.data).toBeUndefined();
+
+    await act(async () => {
+      await result.current.refetch();
+    });
+    await waitFor(() => expect(result.current.data).toEqual(["gpt-4"]));
   });
 });

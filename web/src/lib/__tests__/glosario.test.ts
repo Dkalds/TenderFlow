@@ -3,7 +3,6 @@ import {
   GLOSARIO,
   estadosSinGlosario,
   glosario,
-  glosarioDeOpcion,
 } from "@/lib/glosario";
 import { ESTADO_LABELS } from "@/lib/estados";
 
@@ -54,17 +53,5 @@ describe("glosario", () => {
       expect(entrada.termino.trim(), clave).not.toBe("");
       expect(entrada.definicion.trim().length, clave).toBeGreaterThan(20);
     }
-  });
-
-  it("adapta una opción de lista controlada de la API sin copiarla", () => {
-    // F1.7 sirve procedimiento y tramitación desde `GET /meta/filters`; el
-    // glosario los pinta con el mismo componente pero no los guarda.
-    const entrada = glosarioDeOpcion({
-      etiqueta: "Abierto simplificado",
-      descripcion: "Abierto con plazos y trámites reducidos.",
-    });
-    expect(entrada.termino).toBe("Abierto simplificado");
-    expect(entrada.definicion).toBe("Abierto con plazos y trámites reducidos.");
-    expect(GLOSARIO["Abierto simplificado"]).toBeUndefined();
   });
 });

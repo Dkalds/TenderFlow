@@ -12,7 +12,8 @@ export function descargarSeleccion(rows: LicitacionSummary[]) {
   const filename = `seleccion_${new Date().toISOString().slice(0, 10)}.csv`;
   // Vía `descargarBlob` y no con un ancla propia: esta exportación se arma en el
   // cliente, no pasa por `/exports/download` y por eso no emitía ningún evento.
-  descargarBlob(filename, new Blob([buildCsv(rows)], { type: "text/csv" }), "detalle");
+  // El BOM delante, como `csvBlob`: sin él Excel lee las tildes como «Ã³».
+  descargarBlob(filename, new Blob(["﻿", buildCsv(rows)], { type: "text/csv;charset=utf-8" }), "detalle");
 }
 
 /**

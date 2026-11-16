@@ -196,20 +196,23 @@ export { neutralizarFormula };
 
 /**
  * Una celda de CSV compuesto en el cliente: entre comillas, con las comillas
- * internas dobladas y **neutralizada como fórmula** ({@link neutralizarFormula}).
+ * internas dobladas y, si es texto, **neutralizada como fórmula**
+ * ({@link neutralizarFormula}). Un número negativo es un número, no una fórmula.
  */
 export function csvCell(value: string | number | null | undefined): string {
-  const text = neutralizarFormula(value == null ? "" : String(value));
+  const text = typeof value === "string" ? neutralizarFormula(value) : value == null ? "" : String(value);
   return `"${text.replaceAll('"', '""')}"`;
 }
 
 /**
  * Un CSV listo para `descargarBlob`: filas de celdas ya escapadas con
- * {@link csvCell}, y el BOM de UTF-8 delante, sin el cual Excel abre las
- * tildes como «Ã³».
+ * {@link csvCell}, separadas por punto y coma y con el BOM de UTF-8 delante,
+ * como el CSV de la API (`services/exports.py::generate_csv`). Con coma, Excel
+ * en español abre la fila entera en una columna; sin BOM, lee las tildes como
+ * «Ã³». Los decimales van con punto, igual que en el de la API.
  */
 export function csvBlob(filas: readonly (readonly (string | number | null | undefined)[])[]): Blob {
-  const csv = filas.map((fila) => fila.map(csvCell).join(",")).join("\n");
+  const csv = filas.map((fila) => fila.map(csvCell).join(";")).join("\n");
   return new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" });
 }
 
