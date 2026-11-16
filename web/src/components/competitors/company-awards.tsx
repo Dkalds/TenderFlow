@@ -18,8 +18,6 @@ import { csvBlob, descargarBlob } from "@/lib/export";
 import { EMPTY, formatCurrency, formatDate, formatNumber, formatPercent, truncate } from "@/lib/utils";
 
 import { CeldaPresupuesto } from "./company-award-presupuesto";
-import type { CompanyAward, CompanyAwardsData } from "./company-profile-types";
-import { competitiveKeys } from "@/lib/query-keys";
 
 interface CompanyAwardsProps {
   empresaId: number;
