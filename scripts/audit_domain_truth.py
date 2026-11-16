@@ -338,7 +338,11 @@ def main() -> int:
         return 0
 
     from db.database import init_db
+    from observability import configure_logging
 
+    # Sin configurar, structlog escribe en stdout y rompe el JSON de `--json`;
+    # configurado, los logs van a stderr.
+    configure_logging()
     init_db()
 
     datos = medir_todo(args.max_zips)

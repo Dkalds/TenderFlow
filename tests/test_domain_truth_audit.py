@@ -143,18 +143,42 @@ def test_evaluar_no_reporta_nada_en_rango() -> None:
 
 
 def test_json_con_alerta_deja_en_stdout_solo_el_json(monkeypatch, capsys) -> None:
-    """El workflow mide una vez: ``--json --check --alert > fichero`` tiene que dar JSON válido."""
+    """El workflow mide una vez: ``--json --check --alert > fichero`` tiene que dar JSON válido.
+
+    La medición real loguea (``pg_pool_created``, secciones fallidas) y structlog
+    sin configurar escribe en stdout: el falso ``medir_todo`` loguea igual para
+    que el test lo vea.
+    """
     import json
+    import logging
     import sys
+
+    import structlog
 
     import scripts.audit_domain_truth as auditoria
 
-    monkeypatch.setattr(auditoria, "medir_todo", lambda _max_zips: _datos())
+    def _medir_logueando(_max_zips: int) -> dict[str, Any]:
+        structlog.get_logger("test").warning("verdad_dominio_seccion_fallida")
+        return _datos()
+
+    # main() configura el logging global: se restaura al salir.
+    config_previa = structlog.get_config()
+    raiz = logging.getLogger()
+    handlers_previos, nivel_previo = raiz.handlers[:], raiz.level
+    structlog.reset_defaults()
+    monkeypatch.setattr(auditoria, "medir_todo", _medir_logueando)
     monkeypatch.setattr("db.database.init_db", lambda: None)
     monkeypatch.setattr(sys, "argv", ["audit_domain_truth.py", "--json", "--check", "--alert"])
+    try:
+        assert auditoria.main() == 0
+    finally:
+        structlog.configure(**config_previa)
+        raiz.handlers[:] = handlers_previos
+        raiz.setLevel(nivel_previo)
 
-    assert auditoria.main() == 0
-    assert json.loads(capsys.readouterr().out) == json.loads(json.dumps(_datos(), default=str))
+    salida = capsys.readouterr()
+    assert json.loads(salida.out) == json.loads(json.dumps(_datos(), default=str))
+    assert "verdad_dominio_seccion_fallida" in salida.err
 
 
 def test_evaluar_detecta_fuente_sin_plazo() -> None:

@@ -98,7 +98,7 @@ jobs:
     # `data/downloads/` cacheado (ningún workflow del repo lo cachea; los ZIP
     # son grandes y una caché de varios GB para un job manual se desalojaría
     # entre ejecuciones). La referencia del repo para trabajo de bulks es
-    # `scrape-bulk.yml`, que presupuesta 120 min; 60 cubre 6 descargas más el
+    # `scrape-bulk.yml`, que presupuesta 240 min; 60 cubre 6 descargas más el
     # entrenamiento con margen.
     timeout-minutes: 60
 

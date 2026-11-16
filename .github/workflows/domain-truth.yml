@@ -67,7 +67,8 @@ jobs:
       #
       # Una sola medición: el JSON (para diffear entre ejecuciones y calibrar
       # los umbrales, ver el docstring del script) va a stdout y al fichero, y
-      # el veredicto y las violaciones a stderr, que es lo que queda en el log.
+      # el veredicto, las violaciones y los logs (el script configura structlog
+      # hacia stderr) quedan en el log del job.
       # Antes un segundo step volvía a medir todo contra producción solo para
       # sacar el JSON.
       - name: Run domain truth audit
