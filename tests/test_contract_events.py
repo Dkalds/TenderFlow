@@ -1,4 +1,5 @@
-"""Tests para services/contract_events (derivación desde licitaciones_history)."""
+"""Tests para services/contract_events (derivación desde licitaciones_history)
+y las lecturas de ``db/contrato_eventos`` (línea de tiempo y feed)."""
 
 from __future__ import annotations
 
@@ -255,8 +256,9 @@ def test_derivacion_idempotente(db):
 
 
 def test_timeline_une_hitos_implicitos_y_eventos(db):
+    from db.contrato_eventos import timeline
     from db.upsert import Adjudicacion, replace_adjudicaciones_batch
-    from services.contract_events import derive_new_events, timeline
+    from services.contract_events import derive_new_events
 
     upsert(db, estado="PUB", fecha_publicacion="2026-01-10")
     upsert(db, estado="ADJ")
@@ -283,8 +285,9 @@ def test_timeline_une_hitos_implicitos_y_eventos(db):
 
 def test_eventos_recientes_acota_por_ambito(db):
     """El feed mide el mismo universo de licitaciones que el resto del Resumen."""
+    from db.contrato_eventos import eventos_recientes
     from db.repositories.aggregates import LicitacionesFilters
-    from services.contract_events import derive_new_events, eventos_recientes
+    from services.contract_events import derive_new_events
 
     upsert(db, lic_id="C-MAD", ccaa="Madrid", tecnologia="SAP", importe=100000.0)
     upsert(db, lic_id="C-MAD", ccaa="Madrid", tecnologia="SAP", importe=150000.0)
@@ -311,8 +314,9 @@ def test_eventos_recientes_acota_por_ambito(db):
 
 def test_eventos_recientes_acota_por_fecha_del_movimiento(db):
     """`desde`/`hasta` recortan por la fecha del evento, no por la publicación."""
+    from db.contrato_eventos import eventos_recientes
     from db.database import connect
-    from services.contract_events import derive_new_events, eventos_recientes
+    from services.contract_events import derive_new_events
 
     upsert(db, importe=100000.0)
     upsert(db, importe=150000.0)
@@ -326,7 +330,8 @@ def test_eventos_recientes_acota_por_fecha_del_movimiento(db):
 
 
 def test_eventos_recientes_filtra_por_tipo(db):
-    from services.contract_events import derive_new_events, eventos_recientes
+    from db.contrato_eventos import eventos_recientes
+    from services.contract_events import derive_new_events
 
     upsert(db, importe=100000.0, fecha_fin="2026-12-31")
     upsert(db, importe=150000.0, fecha_fin="2027-12-31")
@@ -342,8 +347,9 @@ def test_eventos_recientes_filtra_por_tipo(db):
 
 def test_eventos_por_tipo_cuenta_la_ventana_entera(db):
     """El reparto cuenta todos los movimientos de la ventana, sin el tope del feed."""
+    from db.contrato_eventos import eventos_por_tipo, eventos_recientes
     from db.repositories.aggregates import LicitacionesFilters
-    from services.contract_events import derive_new_events, eventos_por_tipo, eventos_recientes
+    from services.contract_events import derive_new_events
 
     upsert(db, lic_id="C-MAD", ccaa="Madrid", importe=100000.0, fecha_fin="2026-12-31")
     upsert(db, lic_id="C-MAD", ccaa="Madrid", importe=150000.0, fecha_fin="2027-12-31")

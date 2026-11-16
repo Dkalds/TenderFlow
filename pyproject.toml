@@ -169,7 +169,9 @@ ignore = [
 "scheduler/healthcheck.py" = ["TID251"]
 "scraper/seed_negatives.py" = ["TID251", "S608"]  # SQL built from internal schema strings
 "scripts/seed_dev.py" = ["TID251"]
-"services/contract_events.py" = ["TID251"]
+# 2026-11-16: sale `services/contract_events.py` (7 → 6). Su SQL —historial,
+# escritura de eventos, línea de tiempo y feed— vive en `db/contrato_eventos.py`,
+# y la transacción del lote la abre `db.contrato_eventos.en_transaccion`.
 # ── fin RATCHET TID251 ──
 # Archivos no-TID con permisos especiales
 "db/database.py" = ["RUF022"]

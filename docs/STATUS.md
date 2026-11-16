@@ -39,9 +39,9 @@ Generado: 2026-11-16
 
 ## Ratchet TID251 — acceso directo a BD fuera de repositories
 
-**7 archivos** en whitelist (solo puede decrecer).
+**6 archivos** en whitelist (solo puede decrecer).
 
-Último descenso: 2026-11-14 (desde 8)
+Último descenso: 2026-11-16 (desde 7)
 
 - `scheduler/anomaly_alerts.py`
 - `scheduler/concept_drift.py`
@@ -49,7 +49,6 @@ Generado: 2026-11-16
 - `scheduler/healthcheck.py`
 - `scraper/seed_negatives.py`
 - `scripts/seed_dev.py`
-- `services/contract_events.py`
 
 ## Ratchet `user_key` — identidad derivada del correo (D18, fase 1)
 
