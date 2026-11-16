@@ -53,6 +53,9 @@ _pursuit_task_repo = PursuitTasksRepository()
 #: sección que llega al tope puede estar truncada: ``GET /me/data`` lo declara en
 #: ``metadata.json`` en vez de entregar un export que parece completo y no lo es.
 EXPORT_TOPES: dict[str, int] = {
+    "watchlist": 5000,
+    "watchlist_items": 5000,
+    "feedback": 10_000,
     "audit": 1000,
     "follows": 5000,
     "notificaciones": 5000,
@@ -129,7 +132,7 @@ def export_user_notifications(user_key: str, *, user_id: int | None = None) -> l
 
 def export_feedback(user_id: int) -> list[dict[str, Any]]:
     """Exporta todo el ML feedback (anónimo, sin FK a usuario)."""
-    return _feedback_repo.export_for_user(user_id)
+    return _feedback_repo.export_for_user(user_id, limit=EXPORT_TOPES["feedback"])
 
 
 def export_audit_log(key_hash: str, *, user_id: int | None = None) -> list[dict[str, Any]]:

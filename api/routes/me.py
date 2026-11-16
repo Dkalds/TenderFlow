@@ -212,6 +212,9 @@ def export_my_data(ctx: Principal = Depends(require_any_auth)) -> Response:
             # Secciones que llegaron a su tope de filas: pueden estar truncadas.
             "truncated_sections": secciones_truncadas(
                 {
+                    "watchlist": watchlist,
+                    "watchlist_items": watchlist_items,
+                    "feedback": feedback,
                     "audit": audit,
                     "follows": seguimientos,
                     "notificaciones": notifications,

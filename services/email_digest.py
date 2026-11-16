@@ -505,6 +505,9 @@ class _Tarjeta:
     pliego: list[str]
     #: ``(me_interesa, no_encaja)`` o ``None`` (ver :func:`enlaces_de_triaje`).
     triaje: tuple[str, str] | None = None
+    #: ``False`` en un aviso sin expediente (un documento que caduca): sin la
+    #: línea de órgano, importe y plazo, que saldría «no publicado» y vacía.
+    de_licitacion: bool = True
 
 
 def _datos_tarjeta(
@@ -521,6 +524,7 @@ def _datos_tarjeta(
         enlace=enlace_ficha(lic, base_url),
         aviso=" — ".join(str(x) for x in (lic.get("aviso"), lic.get("aviso_detalle")) if x),
         pliego=lineas_de_pliego(cast(PliegoDigest, pliego) if isinstance(pliego, dict) else None),
+        de_licitacion=bool(lic.get("id_externo")),
     )
 
 
@@ -528,10 +532,11 @@ def _tarjeta_texto(t: _Tarjeta) -> list[str]:
     lineas = [f"* {t.titulo}"]
     if t.aviso:
         lineas.append(f"  {t.aviso}")
-    lineas.append(
-        f"  {t.organo} | {t.importe} | fecha límite {t.plazo}"
-        + (f" | {t.extras}" if t.extras else "")
-    )
+    if t.de_licitacion:
+        lineas.append(
+            f"  {t.organo} | {t.importe} | fecha límite {t.plazo}"
+            + (f" | {t.extras}" if t.extras else "")
+        )
     lineas.extend(f"  {linea}" for linea in t.pliego)
     if t.enlace:
         lineas.append(f"  Ficha: {t.enlace}")
@@ -567,16 +572,21 @@ def _tarjeta_html(t: _Tarjeta) -> str:
             + "<br>".join(html.escape(linea) for linea in t.pliego)
             + "</div>"
         )
+    datos_html = ""
+    if t.de_licitacion:
+        datos_html = (
+            f'<div style="color:{SECUNDARIO}">{html.escape(t.organo)}</div>'
+            f"<div><strong>{html.escape(t.importe)}</strong>"
+            f" · fecha límite {html.escape(t.plazo)}"
+            + (f" · {html.escape(t.extras)}" if t.extras else "")
+            + "</div>"
+        )
     return (
         f'<div style="padding:10px 12px;margin:0 0 8px;border:1px solid {PAPEL};'
         'border-radius:8px">'
         f'<div style="font-weight:600">{titulo_html}</div>'
         + (f"<div>{html.escape(t.aviso)}</div>" if t.aviso else "")
-        + f'<div style="color:{SECUNDARIO}">{html.escape(t.organo)}</div>'
-        f"<div><strong>{html.escape(t.importe)}</strong>"
-        f" · fecha límite {html.escape(t.plazo)}"
-        + (f" · {html.escape(t.extras)}" if t.extras else "")
-        + "</div>"
+        + datos_html
         + pliego_html
         + enlace_html
         + "</div>"
