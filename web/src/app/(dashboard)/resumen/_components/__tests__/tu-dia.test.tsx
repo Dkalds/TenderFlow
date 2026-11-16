@@ -96,8 +96,7 @@ describe("TuDia", () => {
   it("cuenta lo que todavía se puede hacer, no lo que ya pasó", () => {
     render(<TuDia />);
 
-    expect(within(celda("Plazos en 7 días")).getByText("1")).toBeInTheDocument();
-    expect(within(celda("Plazos en 7 días")).getByText("940 mil € en juego")).toBeInTheDocument();
+    expect(screen.getByText(/1 plazo en 7 días \(940 mil € en juego\)/)).toBeInTheDocument();
     expect(within(celda("Go/No-Go pendientes")).getByText("2")).toBeInTheDocument();
     expect(within(celda("Sin próxima acción")).getByText("2")).toBeInTheDocument();
   });
@@ -158,7 +157,17 @@ describe("TuDia", () => {
     agendaState.data = payload({ contadores: undefined });
     render(<TuDia />);
 
-    expect(within(celda("Plazos en 7 días")).getByText("6")).toBeInTheDocument();
+    expect(screen.getByText(/6 plazos en 7 días/)).toBeInTheDocument();
     expect(within(celda("Go/No-Go pendientes")).getByText("7")).toBeInTheDocument();
+  });
+
+  it("la tira de días pone cada compromiso en su día y los contadores llevan a su filtro", () => {
+    agendaState.data = payload({ items: [item({})] });
+    render(<TuDia />);
+
+    const dias = within(screen.getByRole("list", { name: "Próximos 7 días" })).getAllByRole("listitem");
+    expect(dias).toHaveLength(8);
+    expect(dias.filter((dia) => /: 1 compromiso$/.test(dia.textContent ?? ""))).toHaveLength(1);
+    expect(celda("Go/No-Go pendientes").closest("a")).toHaveAttribute("href", "/mi-pipeline?filtro=go_no_go");
   });
 });

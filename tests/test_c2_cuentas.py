@@ -355,10 +355,6 @@ class TestCspEstilosInline:
 
         web = Path(__file__).resolve().parent.parent / "web" / "src"
         casos = [
-            (
-                web / "app/(dashboard)/resumen/_components/composicion-panel.tsx",
-                web / "app/(dashboard)/resumen/_components/composicion-panel.tsx",
-            ),
             # Los tres cortes de Publicaciones comparten la clase como
             # `ALTO_MINIMO`, declarada junto a su `ALTO`.
             (

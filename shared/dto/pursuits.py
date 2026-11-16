@@ -483,6 +483,20 @@ class PerdidaPorMotivo(BaseModel):
     pct: float = Field(ge=0, le=1)
 
 
+class EstadoDelPipeline(BaseModel):
+    """Cuántas oportunidades hay en un estado y cuándo cierra la primera."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    estado: PursuitStatus
+    n: int = Field(ge=0)
+    #: Plazo de presentación más cercano que aún no ha pasado (hoy cuenta)
+    #: entre las de este estado. Solo en los estados previos a presentar: el
+    #: plazo cuenta en las abiertas sin presentar (CU-28). ``None`` si ninguna
+    #: tiene plazo por delante.
+    proximo_cierre: date | None = None
+
+
 class PursuitMetrics(BaseModel):
     """Métricas reproducibles de funnel y resultado por organización/periodo.
 
@@ -534,6 +548,13 @@ class PursuitMetrics(BaseModel):
     #: importe ausente como cero: un pipeline que ignora en silencio la mitad
     #: de su cartera es peor que uno que dice cuánta no pudo valorar.
     pipeline_sin_importe: int = Field(default=0, ge=0)
+    #: Campo ADITIVO. Reparto por estado **actual**, uno por cada valor de
+    #: ``PursuitStatus`` y en su orden, con ceros incluidos: el Resumen pinta
+    #: las fases del tablero sin contar oportunidades en el navegador. Sale de
+    #: las mismas filas que el resto de métricas, así que con periodo solo
+    #: reparte las identificadas en él. No es el ``por_estado`` de
+    #: ``/analytics/overview``, que reparte licitaciones del corpus.
+    oportunidades_por_estado: list[EstadoDelPipeline] = Field(default_factory=list)
 
 
 # ── ANCLA S3 — oportunidad por lote y calidad del Radar ────────────────────

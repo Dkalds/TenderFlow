@@ -9722,6 +9722,21 @@ export interface components {
             n: number;
         };
         /**
+         * EstadoDelPipeline
+         * @description Cuántas oportunidades hay en un estado y cuándo cierra la primera.
+         */
+        EstadoDelPipeline: {
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "identified" | "qualifying" | "go_no_go" | "preparing" | "submitted" | "won" | "lost" | "withdrawn";
+            /** N */
+            n: number;
+            /** Proximo Cierre */
+            proximo_cierre?: string | null;
+        };
+        /**
          * Etiqueta
          * @description Una etiqueta de la organización.
          */
@@ -14483,6 +14498,8 @@ export interface components {
             awarded_amount_eur: number;
             /** Median Decision Time Hours */
             median_decision_time_hours?: number | null;
+            /** Oportunidades Por Estado */
+            oportunidades_por_estado?: components["schemas"]["EstadoDelPipeline"][];
             /** Organization Id */
             organization_id: number;
             /**

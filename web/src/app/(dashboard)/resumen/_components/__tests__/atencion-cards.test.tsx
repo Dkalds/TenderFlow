@@ -103,9 +103,10 @@ describe("AtencionCards", () => {
 
   it("pinta las cuatro cifras del mercado de hoy en una tira", () => {
     renderCards();
-    // 37 sale dos veces: en la tira y en la cabecera de la cola, que lo desglosa.
-    expect(hrefDe("Cierran en 48 h")).toContain("solo_abiertas=true");
-    expect(screen.getAllByText("37")).toHaveLength(2);
+    // 37 sale una vez: «Cierran en 48 h» dejó la tira por su propio panel, que
+    // lo encabeza con su universo al lado.
+    expect(screen.getAllByText("37")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Cierran en 48 h" })).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
     expect(screen.getByText("8")).toBeInTheDocument();
     expect(screen.getByText("42.100")).toBeInTheDocument();
@@ -124,7 +125,7 @@ describe("AtencionCards", () => {
     // y su enlace abría /detalle sin la CCAA — otro universo, mismo número.
     scope.qs = "?ccaa=Madrid&tecnologia=SAP";
     renderCards();
-    for (const titulo of ["Ver la cola de cierre", "Cierran en 48 h", "Grandes en plazo", "Nuevas", "Activas"]) {
+    for (const titulo of ["Ver la cola de cierre", "Grandes en plazo", "Nuevas", "Activas"]) {
       expect(hrefDe(titulo)).toContain("ccaa=Madrid");
       expect(hrefDe(titulo)).toContain("tecnologia=SAP");
     }
@@ -165,8 +166,7 @@ describe("AtencionCards", () => {
     // El contador ya no cuenta las cerradas con plazo en la ventana: el listado
     // que abre tampoco.
     expect(href).toContain("solo_abiertas=true");
-    expect(screen.getByText("Abre Detalle: cierran en 48 h")).toBeInTheDocument();
-    expect(screen.queryByText(/Aprox\. · Abre Detalle: cierran/)).not.toBeInTheDocument();
+    expect(screen.getByText(/^de [\d.]+ activas$/)).toBeInTheDocument();
   });
 
   it("«Grandes en plazo» corta por el P75 que publica el endpoint, y en plazo", () => {
