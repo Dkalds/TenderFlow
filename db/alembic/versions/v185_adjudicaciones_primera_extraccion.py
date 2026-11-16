@@ -35,12 +35,25 @@ nuevo ya inserta la columna) se lee como ``COALESCE(primera_extraccion,
 fecha_extraccion)``, en la alerta y al conservarla en la siguiente reingesta:
 se comporta como antes de esta revisión hasta que se reingiere una vez.
 
+Lo que aún avisa una vez más: la conservación casa por la clave exacta. Una
+fila guardada cuya clave ya no coincide con la que da el parseo actual se trata
+como nueva en su próxima reingesta y recibe la hora de escritura: importes de
+``real`` promovidos por ``v156`` y no reingeridos (11 782 155,0 frente a
+11 782 154,55), adjudicatarios compuestos partidos con importe ``NULL`` que el
+parser ahora reparte, ``lote_id`` resuelto después (cambia la clave de tres a
+cuatro campos) o un importe que corrige la fuente. Avisa una vez y, desde ahí,
+la clave ya coincide; antes de esta revisión avisaba en cada reingesta.
+
 Coste
 -----
-``ADD COLUMN`` anulable sin default es solo de catálogo. El ``UPDATE`` toca
-todas las filas una vez, como el de ``v100``: ``statement_timeout = 0`` porque
-puede pasar de los 30 s del rol, y ``lock_timeout`` para no esperar detrás de
-una ingesta. Idempotente: solo toca las filas a ``NULL``.
+``ADD COLUMN`` anulable sin default es solo de catálogo, pero ``env.py`` corre
+la revisión en una transacción, así que su lock ``ACCESS EXCLUSIVE`` sigue
+tomado durante todo el ``UPDATE``: las lecturas de la API y la ingesta sobre
+``adjudicaciones`` esperan hasta el commit. Es el patrón de ``v100``; con unas
+80 000 filas (130 MB según ``v156``) se esperan segundos, no minutos.
+``statement_timeout = 0`` porque puede pasar de los 30 s del rol, y
+``lock_timeout`` para no esperar detrás de una ingesta. Idempotente: solo toca
+las filas a ``NULL``.
 
 Downgrade: borra la columna.
 

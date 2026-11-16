@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field, fields
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 from config import HISTORY_TRACKED_FIELDS
 from db.connection import connect, connect_read, now_utc_iso
@@ -606,6 +606,11 @@ _ADJ_BORRADAS_RETURNING = (
     "RETURNING licitacion_id, lote_id, nif, importe_adjudicado, "
     "COALESCE(primera_extraccion, fecha_extraccion)"
 )
+# Una fila de ese RETURNING, y la clave de deduplicado (`_clave_adj`) que sale de ella.
+_AdjBorrada: TypeAlias = tuple[str, int | None, str | None, float | None, str | None]
+_ClaveAdj: TypeAlias = (
+    tuple[str, int, str | None, float | None] | tuple[str, str | None, float | None]
+)
 
 _LOTE_KEYS = tuple(f.name for f in fields(Lote))
 _LOTE_COLS = ", ".join(_LOTE_KEYS)
@@ -812,20 +817,20 @@ def _detectar_colision_de_organo(lic: Licitacion, organo_guardado: str | None) -
 
 def _clave_adj(
     licitacion_id: str, lote_id: int | None, nif: str | None, importe: float | None
-) -> tuple[Any, ...]:
+) -> _ClaveAdj:
     """Clave de deduplicado de una adjudicación: ver :func:`_dedup_adj_rows`."""
     if lote_id is not None:
         return (licitacion_id, lote_id, nif, importe)
     return (licitacion_id, nif, importe)
 
 
-def _primeras_extracciones(borradas: Iterable[Any]) -> dict[tuple[Any, ...], str]:
+def _primeras_extracciones(borradas: Iterable[_AdjBorrada]) -> dict[_ClaveAdj, str]:
     """``primera_extraccion`` de las filas que borró el reemplazo, por clave.
 
     Si varias comparten clave (alguna con NIF o importe ``NULL``, que la BD no
     deduplica) se queda la más antigua: el instante en que se vio la primera.
     """
-    primeras: dict[tuple[Any, ...], str] = {}
+    primeras: dict[_ClaveAdj, str] = {}
     for lic_id, lote_id, nif, importe, primera in borradas:
         clave = _clave_adj(lic_id, lote_id, nif, importe)
         if primera is not None and (clave not in primeras or primera < primeras[clave]):
@@ -836,7 +841,7 @@ def _primeras_extracciones(borradas: Iterable[Any]) -> dict[tuple[Any, ...], str
 def _dedup_adj_rows(
     licitacion_id: str,
     adjs: Iterable[Adjudicacion],
-    primeras: dict[tuple[Any, ...], str],
+    primeras: dict[_ClaveAdj, str],
 ) -> list[tuple[Adjudicacion, list[Any]]]:
     """Deduplica en memoria replicando las dos unique parciales de la BD
     (v65_lotes: ``..._sin_lote`` y ``..._lic_lote_nif_importe``).
@@ -1032,7 +1037,7 @@ def replace_adjudicaciones_batch(
         # DELETE agrupado, particionado para respetar el límite de parámetros
         # por sentencia (SQLITE_MAX_VARIABLE_NUMBER).
         _CHUNK = 500
-        borradas: list[Any] = []
+        borradas: list[_AdjBorrada] = []
         for i in range(0, len(lic_ids), _CHUNK):
             id_chunk = lic_ids[i : i + _CHUNK]
             placeholders = ", ".join("%s" for _ in id_chunk)
