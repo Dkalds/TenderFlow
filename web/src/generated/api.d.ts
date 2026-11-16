@@ -4620,14 +4620,9 @@ export interface paths {
          * @description Alimenta la página `/cobertura`.
          *
          *     Único endpoint de este router que no toca la base: la cobertura declarada
-         *     es una constante del despliegue (``scraper.connectors``), no un agregado del
+         *     es una constante del despliegue (``shared.fuentes``), no un agregado del
          *     corpus. Por eso también es el único que no puede quedarse sin respuesta
          *     porque Postgres esté lento.
-         *
-         *     El import va dentro de la función y no arriba: importar
-         *     ``scraper.connectors`` en el arranque de la API traería ``requests``,
-         *     ``lxml`` y el diccionario propietario de ``scraper.filters`` a un proceso
-         *     que no ingiere nada.
          */
         get: operations["cobertura_api_v1_publico_cobertura_get"];
         put?: never;

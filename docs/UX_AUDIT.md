@@ -362,13 +362,14 @@ en las tres páginas de evidencia, enlazadas desde el cuerpo y desde el pie.
   v158 ya está aplicada en producción (la cadena es lineal, así que v98 también).
   No hay cambio de código pendiente: falta comprobar que la cifra publicada bajó
   de los 417.182 del censo PSCP.
-- **La variante clara de las capturas.** Se sirve una sola imagen, oscura, a
-  quien tiene el sistema en claro. `e2e/capturas-landing.spec.ts` ya genera
-  también `radar-hero-claro.webp` y `radar-hero-movil-claro.webp`, pero
-  necesita el stack sembrado (Postgres + API + dev server): `cd web && npm run
-  capturas:landing`. Falta ejecutarlo, commitear los dos `.webp` y poner en
-  `CapturaProducto` los `<source media="(prefers-color-scheme: dark)">` con los
-  oscuros, en el mismo cambio (un import a un fichero inexistente rompe el build).
+- ~~**La variante clara de las capturas.**~~ ✅ **Resuelto el 2026-11-16**:
+  `CapturaProducto` sirve las cuatro capturas (ancha y estrecha, clara y
+  oscura) por `prefers-color-scheme`. Se regeneraron todas con el producto
+  actual: las publicadas eran de una interfaz anterior y enseñaban
+  identificadores en crudo y «ADR-014 · backend». El spec se tuvo que
+  actualizar (el clic en el título ya no abre el inspector, y «Desglose de
+  score» ya no vive en `/detalle`), y se toma contra `npm run build && npm run
+  start`, porque `next dev` pinta su insignia encima.
 - **Identidad publicada.** Razón social, NIF, domicilio y un buzón de contacto
   del dominio son variables de entorno que sólo el responsable puede rellenar.
 - **Dominio propio.** El sitio se sirve desde `*.vercel.app`.

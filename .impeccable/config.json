@@ -1,5 +1,20 @@
 {
   "hook": {
     "enabled": true
+  },
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "web/src/app/(publico)/_components/landing-captura.tsx"
+        ],
+        "createdAt": "2026-11-16T23:57:06.145Z",
+        "reason": "agent: el src del <img> llega por el spread de getImageProps (next/image); el detector no ve el spread. Patrón previo al cambio"
+      }
+    ]
   }
 }

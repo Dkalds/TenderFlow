@@ -371,15 +371,6 @@ _Sin ítems abiertos._
   - Search Console verá una caída grande de URLs indexadas: es el objetivo, no un incidente.
 - **Riesgo:** medio — el cambio es de datos publicados, no de código.
 
-### [P2] La portada sirve una captura oscura a quien tiene el sistema en claro
-- **Estado actual (2026-11-08):** `código` — Ejecutar `npm run capturas:landing` con el stack sembrado, commitear las dos variantes `-claro` y servirlas con `<source media="(prefers-color-scheme: dark)">` en `CapturaProducto`.
-- **Área:** web/src/app/(publico)/page.tsx, web/e2e/capturas-landing.spec.ts
-- **Problema:** la superficie pública usa `defaultTheme="system"` y no tiene selector de tema, así que un visitante con el sistema en claro ve una página clara con una captura del producto en oscuro incrustada. Las dos imágenes de `_assets/` son las únicas que hay.
-- **Cómo empezar:** el spec ya genera las variantes `-claro` (`npm run capturas:landing`, con el stack sembrado). Falta ejecutarlo, commitear `radar-hero-claro.webp` y `radar-hero-movil-claro.webp` y dar a `CapturaProducto` los `<source media="(prefers-color-scheme: dark)">` con los oscuros en el mismo cambio.
-- **Acceptance criteria:** las dos variantes existen, se sirve una sola por visita (no dos descargas), y el spec de capturas las genera juntas.
-- **Files de partida:** [web/e2e/capturas-landing.spec.ts](../web/e2e/capturas-landing.spec.ts), [web/src/app/(publico)/page.tsx](../web/src/app/%28publico%29/page.tsx)
-- **Riesgo:** bajo.
-
 ### [P2] Dar de alta el check externo del latido del healthcheck (acción del propietario)
 - **Estado actual (2026-11-08):** `propietario` — El propietario crea el check externo (periodo 6 h, gracia 2 h), guarda su URL en el secret `HEALTHCHECK_HEARTBEAT_URL` y lanza `healthcheck.yml` para ver `latido_enviado`.
 - **Área:** healthchecks.io (o equivalente), GitHub (variables cifradas de Actions), Render
