@@ -24,6 +24,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from db.dlq import (
+    get_failure,
     increment_retry,
     list_unresolved,
     mark_exhausted,
@@ -113,9 +114,38 @@ def _reintento_no_relee(failure: dict[str, Any]) -> bool:
     )
 
 
-def _pasada_sin_errores(resultado: ConnectorRunResult | None) -> bool:
-    """``None`` es una fuente apagada: no hubo pasada que dé la entrada por buena."""
-    return resultado is not None and resultado.errores == 0
+def _es_feed_atom(fuente: str) -> bool:
+    """``place_live_atom`` y ``atom*`` son etiquetas del carril diario legacy
+    (``scraper.pipeline.process_daily``, retirado en 2026-11) para el mismo
+    feed que ``placsp``: se reintentan con el mismo conector."""
+    return fuente in ("placsp", "place_live_atom") or fuente.startswith("atom")
+
+
+def _clave_de_pasada(fuente: str) -> str:
+    """Fuentes que despachan al mismo conector comparten una sola pasada."""
+    return "placsp" if _es_feed_atom(fuente) else fuente
+
+
+class FuenteApagadaError(Exception):
+    """La fuente está apagada (sin URL): no hay pasada que reintentar."""
+
+
+def _pasada_sin_errores(fuente: str, resultado: ConnectorRunResult | None) -> bool:
+    if resultado is None:
+        raise FuenteApagadaError(fuente)
+    return resultado.errores == 0
+
+
+def _recayo(failure_id: int, desde: datetime) -> bool:
+    """¿La pasada que empezó en *desde* volvió a registrar este mismo fallo?
+
+    ``record_failure`` deduplica por (fuente, scope, payload_ref) y actualiza
+    ``last_attempt_at`` de la fila abierta, así que tocarla durante la pasada
+    es la señal de que el aviso volvió a fallar.
+    """
+    fila = get_failure(failure_id)
+    ultimo = instante_utc(fila.get("last_attempt_at")) if fila else None
+    return ultimo is not None and ultimo >= desde
 
 
 def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
@@ -126,6 +156,7 @@ def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
 
     Raises:
         ValueError: si *fuente* es desconocida (no se puede reintentar).
+        FuenteApagadaError: si la fuente está apagada (sin URL configurada).
     """
     bulk_match = _BULK_SOURCE_RE.match(fuente)
     if bulk_match:
@@ -152,10 +183,7 @@ def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
         # ``no_publicado`` que devolvía ``process_month``.
         return not run_result.fetch_failed
 
-    # ``place_live_atom`` y ``atom*`` son etiquetas del carril diario legacy
-    # (``scraper.pipeline.process_daily``, retirado en 2026-11): si queda
-    # alguna fila, se reintenta por el mismo feed con el conector.
-    if fuente in ("placsp", "place_live_atom") or fuente.startswith("atom"):
+    if _es_feed_atom(fuente):
         from scraper.connectors.base import run_connector
         from scraper.connectors.placsp import PlacspAtomConnector
 
@@ -227,34 +255,42 @@ def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
     if fuente == "placsp_agregadas":
         from scraper.connectors.placsp_agregadas import ejecutar as ejecutar_agregadas
 
-        return _pasada_sin_errores(ejecutar_agregadas())
+        return _pasada_sin_errores(fuente, ejecutar_agregadas())
 
     if fuente == "placsp_menores":
         from scraper.connectors.placsp_menores import ejecutar as ejecutar_menores
 
-        return _pasada_sin_errores(ejecutar_menores())
+        return _pasada_sin_errores(fuente, ejecutar_menores())
 
     if fuente == "placsp_consultas":
         from scraper.connectors.placsp_consultas import ejecutar as ejecutar_consultas
 
-        return _pasada_sin_errores(ejecutar_consultas())
+        return _pasada_sin_errores(fuente, ejecutar_consultas())
 
     raise ValueError(f"Unsupported DLQ source: {fuente!r}")
 
 
-def _retry_failure(failure: dict[str, Any], run_id: str) -> bool | None:
+def _retry_failure(failure: dict[str, Any], run_id: str) -> bool | str:
     """Intenta re-ejecutar la extracción correspondiente a *failure*.
 
     Returns:
-        True si el reintento fue exitoso; False si falló de nuevo; ``None`` si
-        la fuente no tiene dispatch (reintentar jamás va a funcionar — el
-        caller la marca agotada de inmediato en vez de quemar ciclos).
+        True si el reintento fue exitoso; False si falló de nuevo; un texto
+        con el motivo si reintentar jamás va a funcionar (fuente sin dispatch
+        o apagada) — el caller la marca agotada de inmediato en vez de quemar
+        ciclos y acabar en una alerta de «agotó reintentos» que culpa a la
+        extracción.
     """
     fuente: str = str(failure.get("fuente") or "")
     scope: str = str(failure.get("scope") or "")
 
     try:
         return dispatch_retry(fuente, scope, run_id)
+    except FuenteApagadaError:
+        log.warning("dlq_retry_source_off", failure_id=failure["id"], fuente=fuente)
+        return (
+            "está apagada (sin URL configurada). Al encenderla, reencolar las "
+            "entradas desde la consola si siguen haciendo falta."
+        )
     except ValueError:
         log.warning(
             "dlq_retry_unknown_source",
@@ -262,7 +298,10 @@ def _retry_failure(failure: dict[str, Any], run_id: str) -> bool | None:
             fuente=fuente,
             scope=scope,
         )
-        return None
+        return (
+            "no tiene mapeo en dispatch_retry(). Si la fuente es legítima, "
+            "añadir su dispatch en scheduler/dlq_retry.py."
+        )
     except Exception as exc:
         log.exception(
             "dlq_retry_exception",
@@ -361,7 +400,7 @@ def retry_failed_extractions(
         if _reintento_no_relee(failure):
             sin_releer.setdefault(fuente, []).append(int(failure["id"]))
         else:
-            por_fuente.setdefault(fuente, []).append(failure)
+            por_fuente.setdefault(_clave_de_pasada(fuente), []).append(failure)
 
     for fuente, ids in sin_releer.items():
         # Correr el conector daría la entrada por resuelta sin haber vuelto a
@@ -383,28 +422,38 @@ def retry_failed_extractions(
     resolved = 0
     for fuente, entradas in por_fuente.items():
         # Una pasada del conector cubre todas las entradas de su fuente.
+        inicio = datetime.now(UTC)
         success = _retry_failure(entradas[0], run_id)
         ids = [int(f["id"]) for f in entradas]
-        if success is None:
-            # Fuente sin dispatch: agotarla ya, con causa exacta, en vez de
-            # quemar max_retries ciclos y alertar "agotó reintentos" como si
-            # la extracción hubiera fallado max_retries veces.
+        if isinstance(success, str):
+            # Reintentar jamás va a funcionar: agotarla ya, con causa exacta,
+            # en vez de quemar max_retries ciclos y alertar "agotó reintentos"
+            # como si la extracción hubiera fallado max_retries veces.
             for fid in ids:
                 mark_exhausted(fid)
             notify(
                 AlertLevel.WARN,
-                "DLQ: entrada sin dispatch de reintento",
+                "DLQ: fuente que no se puede reintentar",
                 (
-                    f"La fuente {fuente!r} no tiene mapeo en dispatch_retry(); "
-                    f"las entradas {ids} se marcan agotadas sin reintentos. Si la "
-                    "fuente es legítima, añadir su dispatch en scheduler/dlq_retry.py."
+                    f"La fuente {fuente!r} {success} Las entradas {ids} se marcan "
+                    "agotadas sin reintentos."
                 ),
                 fuente=fuente,
             )
             continue
+        recaidas: list[int] = []
         for failure in entradas:
             fid = int(failure["id"])
-            if success:
+            if success and _recayo(fid, inicio):
+                # La pasada volvió a registrar este fallo (``record_failure``
+                # ya contó el intento). Un aviso que no parsea o no persiste al
+                # releerlo es determinista: se agota en vez de reprocesar el mes
+                # otra vez; cualquier otro ámbito sigue en su ciclo.
+                if failure.get("scope") in _AMBITOS_DE_AVISO:
+                    mark_exhausted(fid)
+                    recaidas.append(fid)
+                log.warning("dlq_retry_relapsed", failure_id=fid, fuente=fuente)
+            elif success:
                 mark_resolved(fid)
                 resolved += 1
                 log.info("dlq_retry_resolved", failure_id=fid, fuente=fuente)
@@ -418,6 +467,18 @@ def retry_failed_extractions(
                 )
                 # Si esta actualización lo lleva a max_retries, el siguiente
                 # ciclo lo capturará vía sweep_exhausted.
+        if recaidas:
+            notify(
+                AlertLevel.WARN,
+                "DLQ: avisos que vuelven a fallar al releerlos",
+                (
+                    f"El reproceso de {fuente!r} volvió a registrar el mismo fallo de "
+                    f"parseo o persistencia en las entradas {recaidas}: reintentarlo no "
+                    "lo arregla. Marcadas agotadas; descartarlas desde la consola o "
+                    "reencolarlas tras corregir el parser o el dato."
+                ),
+                fuente=fuente,
+            )
 
     log.info("dlq_retry_done", resolved=resolved, attempted=len(due))
     return resolved

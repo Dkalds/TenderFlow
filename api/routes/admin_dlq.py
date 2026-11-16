@@ -172,7 +172,12 @@ async def listar_dlq(
 
 _DETALLES = {
     "abierta": "Reencolada: se reintentará en el próximo ciclo de reintentos de la ingesta.",
-    "agotada": "Reabierta con el contador a cero: vuelve al ciclo de reintentos de la ingesta.",
+    "agotada": (
+        "Reabierta con el contador a cero: vuelve al ciclo de reintentos de la ingesta. "
+        "Un aviso que no se pudo parsear o persistir (ámbito parse o adjudicacion) "
+        "solo se relee reprocesando su mes: en una fuente incremental el ciclo la "
+        "volverá a agotar, y lo que cabe es descartarla."
+    ),
     "duplicada": (
         "No se reabre: ya hay otra entrada abierta para la misma fuente y ámbito, "
         "que es la que se reintentará."

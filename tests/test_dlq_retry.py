@@ -346,6 +346,85 @@ def test_retry_parse_entry_of_bulk_month_is_reread(tmp_db, monkeypatch):
     assert result == 1
 
 
+@pytest.mark.parametrize("fuente", ["bulk_202601", "placsp_watched_company_awards_bulk_202601"])
+def test_retry_parse_entry_failing_again_in_month_reprocess_is_exhausted(
+    tmp_db, monkeypatch, fuente
+):
+    """El reproceso del mes vuelve a registrar el mismo aviso: no se da por resuelto.
+
+    ``fetch_failed`` es False (el mes se descargó), pero ``record_failure``
+    volvió a tocar la fila durante la pasada: el aviso sigue sin entrar. Es
+    determinista (mismos bytes, mismo parser), así que se agota con su causa
+    en vez de reprocesar el mes otras cuatro veces.
+    """
+    from db import dlq
+
+    dlq.record_failure(None, fuente, ValueError("x"), scope="parse", payload_ref="f.xml")
+    dlq.record_failure(None, fuente, RuntimeError("x"), scope="download")
+    monkeypatch.setattr("scheduler.dlq_retry._is_due", lambda f: True)
+
+    def _pasada_que_recae(_conector: Any) -> SimpleNamespace:
+        dlq.record_failure(None, fuente, ValueError("x"), scope="parse", payload_ref="f.xml")
+        return SimpleNamespace(fetch_failed=False, errores=1)
+
+    with (
+        patch(
+            "db.repositories.watched_companies.WatchedCompanyRepository.list_canonical_nifs",
+            return_value={"A00000000"},
+        ),
+        patch("scraper.connectors.base.run_connector", side_effect=_pasada_que_recae),
+        patch("scheduler.dlq_retry.notify") as notify,
+    ):
+        from scheduler.dlq_retry import retry_failed_extractions
+
+        result = retry_failed_extractions()
+
+    # La descarga sí se arregló; el aviso, no.
+    assert result == 1
+    assert dlq.list_unresolved() == []
+    assert [f["scope"] for f in dlq.list_exhausted()] == ["parse"]
+    notify.assert_called_once()
+
+
+def test_retry_groups_atom_legacy_labels_in_one_pass(tmp_db, monkeypatch):
+    """``placsp``, ``place_live_atom`` y ``atom*`` son el mismo feed: una pasada."""
+    from db import dlq
+
+    for fuente in ("placsp", "place_live_atom", "atom_live"):
+        dlq.record_failure(None, fuente, RuntimeError("x"), scope="fetch")
+    monkeypatch.setattr("scheduler.dlq_retry._is_due", lambda f: True)
+    with patch(
+        "scraper.connectors.base.run_connector", return_value=SimpleNamespace(errores=0)
+    ) as run_connector:
+        from scheduler.dlq_retry import retry_failed_extractions
+
+        result = retry_failed_extractions()
+
+    run_connector.assert_called_once()
+    assert result == 3
+
+
+def test_retry_switched_off_syndication_is_exhausted_with_its_cause(tmp_db, monkeypatch):
+    """Una sindicación apagada no quema reintentos ni acaba en «agotó reintentos»."""
+    from db import dlq
+
+    for ref in ("p1", "p2"):
+        dlq.record_failure(None, "placsp_menores", RuntimeError("x"), payload_ref=ref)
+    monkeypatch.setattr("scheduler.dlq_retry._is_due", lambda f: True)
+    with (
+        patch("scraper.connectors.placsp_menores.ejecutar", return_value=None),
+        patch("scheduler.dlq_retry.notify") as notify,
+    ):
+        from scheduler.dlq_retry import retry_failed_extractions
+
+        assert retry_failed_extractions() == 0
+
+    assert dlq.list_unresolved() == []
+    assert len(dlq.list_exhausted()) == 2
+    notify.assert_called_once()
+    assert "apagada" in notify.call_args.args[2]
+
+
 def test_retry_runs_one_connector_pass_per_source(tmp_db, monkeypatch):
     """Tres entradas de la misma fuente son una pasada del conector, no tres."""
     from db import dlq
@@ -399,8 +478,10 @@ def test_dispatch_retry_sindicaciones_placsp(modulo):
     with patch(destino, return_value=SimpleNamespace(errores=2)):
         assert dispatch_retry(modulo, "fetch", "run-1") is False
     # Fuente apagada (sin URL): no hay pasada que dé la entrada por buena.
-    with patch(destino, return_value=None):
-        assert dispatch_retry(modulo, "fetch", "run-1") is False
+    from scheduler.dlq_retry import FuenteApagadaError
+
+    with patch(destino, return_value=None), pytest.raises(FuenteApagadaError):
+        dispatch_retry(modulo, "fetch", "run-1")
 
 
 def test_dispatch_retry_watched_awards_bulk_month():
