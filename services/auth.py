@@ -3,8 +3,8 @@
 Encapsula las operaciones de lectura/escritura sobre las API keys para
 mantener `api/auth.py` libre de acceso directo a la BD. Mantiene la
 compatibilidad con esquemas legacy (columnas ``expires_at`` / ``scopes`` /
-``user_id`` / ``prefix`` opcionales) inspeccionando ``PRAGMA table_info``
-cuando el backend lo soporta.
+``user_id`` / ``prefix`` opcionales) inspeccionando las columnas de la tabla
+(``get_table_columns``).
 """
 
 from __future__ import annotations

@@ -57,11 +57,6 @@ def _extract_host(url: str) -> str | None:
 class BaseDatosSettings(EntornoSettings):
     """Postgres/Supabase: DSN, TLS, pools, timeouts y flags de lectura de columnas nuevas."""
 
-    # ── DB / Upsert ──────────────────────────────────────────────────────
-    # Tamaño de chunk para upsert_licitaciones_with_history. Cada chunk
-    # se ejecuta en su propia transacción, liberando el write lock entre chunks.
-    UPSERT_CHUNK_SIZE: int = 500
-
     # ── Postgres / Supabase (ADR-016, F3) ────────────────────────────────
     # Único motor desde ADR-021 (SQLite retirado).
     # Formato: postgresql://user:pass@host:5432/db?sslmode=require  # pragma: allowlist secret

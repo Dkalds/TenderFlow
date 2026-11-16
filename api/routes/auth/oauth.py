@@ -170,7 +170,7 @@ _PROVIDERS: dict[str, _OAuthProvider] = {
         static_endpoints=None,
         discovery_url=_microsoft_discovery_url,
         # `offline_access` queda fuera: no se guarda refresh token, la sesión de
-        # TenderFlow es propia y dura 24 h.
+        # TenderFlow es propia (`SESSION_IDLE_HOURS` y `SESSION_ABSOLUTE_DAYS`).
         scope="openid email profile",
         # `xms_edov`: el dueño del dominio del correo está verificado en el
         # tenant que emite el token. Es un claim opcional: hay que añadirlo en
