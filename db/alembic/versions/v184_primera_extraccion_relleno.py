@@ -88,11 +88,14 @@ la fecha real.
 
 Orden de despliegue
 -------------------
-**Después** del código que escribe la columna en el ``INSERT``: aplicada antes,
-las filas que entren entre la migración y el despliegue nacerían otra vez a
-``NULL`` y esta revisión ya no volvería a correr. Y después de ``v183``, que
-tiene su propio paso previo del propietario (las claves de API sin dueño): las
-dos van juntas en ``alembic upgrade head``.
+Con la ingesta parada entre la migración y el despliegue. ``v185`` tiene que
+estar aplicada **antes** del código nuevo, porque su ``INSERT`` nombra
+``adjudicaciones.primera_extraccion``, y ``alembic upgrade head`` la aplica
+junto con esta. Las filas que el código anterior ingiriera entre la migración y
+el despliegue nacerían otra vez a ``NULL``, y esta revisión ya no volvería a
+correr. El orden es: parar el scheduler, ``alembic upgrade head``, desplegar y
+reanudar. Va también después de ``v183``, que tiene su propio paso previo del
+propietario (las claves de API sin dueño).
 
 Coste
 -----
