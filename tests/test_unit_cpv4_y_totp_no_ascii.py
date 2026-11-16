@@ -15,7 +15,7 @@ from db.totp import verify_totp
         ("722", ""),  # el SQL exige cuatro dígitos (`^[0-9]{4}`): tres no son clave
         (" 72200000", ""),
         # Dígitos arábigo-índicos: `isdigit` los acepta, el regex de Postgres no.
-        ("\\u0667\\u0662\\u0662\\u06600000", ""),
+        ("".join(map(chr, (0x667, 0x662, 0x662, 0x660))) + "0000", ""),
         (None, ""),
     ],
 )
