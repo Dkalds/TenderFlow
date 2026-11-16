@@ -533,8 +533,9 @@ def _adj_indicadores() -> dict[str, float | None]:
 def construir_embudo(conteos: dict[str, int]) -> tuple[list[FunnelStep], int, int]:
     """Tramos del embudo, su denominador y lo que queda fuera.
 
-    ``conteos`` es la salida de ``AggregateRepository.overview_funnel``: un
-    conteo por código más ``total`` (todas las filas del ámbito).
+    ``conteos`` es la segunda mitad de
+    ``AggregateRepository.overview_por_estado_y_embudo``: un conteo por código
+    más ``total`` (todas las filas del ámbito).
 
     Los cinco escalones se dividen entre su propia suma, así que suman 100 y el
     embudo se lee como embudo. Lo que no es escalón (``FUERA_DEL_EMBUDO`` y lo
@@ -662,8 +663,7 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
     t_por_ccaa = _Tarea(partial(_repo.overview_por_ccaa, repo_filters))
     t_top_organos = _Tarea(partial(_repo.overview_top_organos, repo_filters))
     t_por_mes = _Tarea(partial(_repo.overview_por_mes, repo_filters))
-    t_por_estado = _Tarea(partial(_repo.overview_por_estado, repo_filters))
-    t_funnel = _Tarea(partial(_repo.overview_funnel, repo_filters))
+    t_estados = _Tarea(partial(_repo.overview_por_estado_y_embudo, repo_filters))
 
     _en_paralelo(
         [
@@ -677,8 +677,7 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
             t_por_ccaa,
             t_top_organos,
             t_por_mes,
-            t_por_estado,
-            t_funnel,
+            t_estados,
         ]
     )
 
@@ -706,9 +705,8 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
     ccaa_cubiertas = t_ccaa.resultado() if t_ccaa is not None else len(filas_ccaa)
     para_hoy = t_para_hoy.resultado()
 
-    por_estado = [
-        EstadoCount(estado=row["estado"], n=int(row["n"])) for row in t_por_estado.resultado()
-    ]
+    filas_estado, conteos_embudo = t_estados.resultado()
+    por_estado = [EstadoCount(estado=row["estado"], n=int(row["n"])) for row in filas_estado]
     por_ccaa = [
         CcaaCount(ccaa=row["ccaa"], n=int(row["n"]), importe=float(row["importe"] or 0.0))
         for row in filas_ccaa
@@ -728,7 +726,7 @@ def get_overview(filters: OverviewFilters) -> OverviewResult:
         for row in t_top_organos.resultado()
     ]
 
-    funnel_estados, funnel_denominador, fuera_del_embudo = construir_embudo(t_funnel.resultado())
+    funnel_estados, funnel_denominador, fuera_del_embudo = construir_embudo(conteos_embudo)
 
     result = OverviewResult(
         total_licitaciones=k["total"],

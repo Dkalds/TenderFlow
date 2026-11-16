@@ -115,13 +115,12 @@ class _RepoAnotador:
         self._anota("por_mes")
         return [{"mes": "2026-08", "n_licitaciones": 20, "importe": 2000.0}]
 
-    def overview_por_estado(self, _f: Any) -> list[dict[str, Any]]:
-        self._anota("por_estado")
-        return [{"estado": "PUB", "n": 20}]
-
-    def overview_funnel(self, _f: Any) -> dict[str, int]:
-        self._anota("funnel")
-        return {"total": 20, "PUB": 10, "EV": 4, "RES": 3, "ADJ": 2, "ANUL": 1}
+    def overview_por_estado_y_embudo(self, _f: Any) -> tuple[list[dict[str, Any]], dict[str, int]]:
+        self._anota("estados")
+        return (
+            [{"estado": "PUB", "n": 20}],
+            {"total": 20, "PUB": 10, "EV": 4, "RES": 3, "ADJ": 2, "ANUL": 1},
+        )
 
 
 _TODAS = {
@@ -135,8 +134,7 @@ _TODAS = {
     "por_ccaa",
     "top_organos",
     "por_mes",
-    "por_estado",
-    "funnel",
+    "estados",
 }
 
 
@@ -318,10 +316,10 @@ def test_sin_filtros_las_ccaa_cubiertas_usan_su_consulta(monkeypatch: pytest.Mon
 
 
 def test_un_fallo_en_paralelo_tambien_llega_al_llamante(monkeypatch: pytest.MonkeyPatch) -> None:
-    repo = _RepoAnotador(falla="funnel")
+    repo = _RepoAnotador(falla="estados")
     semaforo = _preparar(monkeypatch, repo, cupo=2)
 
-    with pytest.raises(RuntimeError, match="funnel caída"):
+    with pytest.raises(RuntimeError, match="estados caída"):
         ov.get_overview(ov.OverviewFilters(ccaa="Madrid"))
 
     # Y los ayudantes no se quedan con el cupo aunque la petición falle.
@@ -383,13 +381,13 @@ def test_el_log_nombra_la_consulta_aunque_vaya_envuelta_en_partial(
 ) -> None:
     grabador = _LogGrabador()
     monkeypatch.setattr(ov, "log", grabador)
-    repo = _RepoAnotador(falla="funnel")
+    repo = _RepoAnotador(falla="estados")
 
-    tarea = ov._Tarea(partial(repo.overview_funnel, None))
+    tarea = ov._Tarea(partial(repo.overview_por_estado_y_embudo, None))
     assert isinstance(tarea.ejecutar(), RuntimeError)
 
     assert grabador.avisos[0][0] == "overview_consulta_fallida"
-    assert grabador.avisos[0][1]["consulta"] == "overview_funnel"
+    assert grabador.avisos[0][1]["consulta"] == "overview_por_estado_y_embudo"
 
 
 def test_una_tarea_guarda_su_excepcion_y_la_relanza_al_pedir_el_resultado() -> None:
