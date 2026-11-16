@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
@@ -430,6 +431,48 @@ def test_rotate_rota_la_key_propia(monkeypatch: pytest.MonkeyPatch) -> None:
     assert expiries[0][0] == 11
     assert creadas[0]["user_id"] == 4
     assert creadas[0]["scopes"] == "read"
+
+
+@pytest.mark.parametrize(
+    ("caduca_en", "acotada"),
+    [(timedelta(days=1), True), (timedelta(days=365), False)],
+    ids=["caduca-antes-que-la-gracia", "caduca-despues"],
+)
+def test_rotate_no_alarga_la_vida_de_la_key_vieja(
+    monkeypatch: pytest.MonkeyPatch, caduca_en: timedelta, acotada: bool
+) -> None:
+    """La gracia acorta la vida de la key vieja, nunca la alarga.
+
+    Una key que caducaba mañana, rotada con 30 días de gracia, vivía 30 días
+    más; y rotarla otra vez le daba otros 30. La vieja caduca en
+    ``min(caducidad actual, ahora + gracia)``.
+    """
+    actual = datetime.now(UTC) + caduca_en
+    expiries: list[tuple[int, str]] = []
+    monkeypatch.setattr(
+        me_routes._key_repo,
+        "get_rotatable",
+        lambda key_id: {
+            "user_id": 4,
+            "name": "mi-key",
+            "scopes": "read",
+            "expires_at": actual.isoformat(),
+        },
+    )
+    monkeypatch.setattr(
+        me_routes, "set_key_expiry", lambda key_id, expires: expiries.append((key_id, expires))
+    )
+    monkeypatch.setattr(me_routes, "create_api_key", lambda **kw: "token-nuevo")
+    monkeypatch.setattr(me_routes, "log_event", lambda **kw: None)
+
+    resultado = me_routes.rotate_my_key(
+        ctx={"user_id": 4, "auth_method": "session"}, key_id=11, grace_days=30
+    )
+
+    nueva = datetime.fromisoformat(expiries[0][1])
+    assert (nueva == actual) is acotada
+    assert nueva <= actual
+    assert resultado.old_key_expires_at == expiries[0][1]
 
 
 # ---------------------------------------------------------------------------

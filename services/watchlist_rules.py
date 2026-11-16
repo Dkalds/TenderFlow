@@ -293,9 +293,14 @@ def update_rule(
     rule_id: int,
     rule: WatchlistRule,
     organization_id: int | None = None,
+    *,
+    visibility: str | None = None,
 ) -> bool:
-    """Actualiza una regla propia. ``False`` si no existe o no es del usuario."""
-    return actualizar_regla(user_id, rule_id, _valores(rule), organization_id)
+    """Actualiza una regla propia. ``False`` si no existe o no es del usuario.
+
+    ``visibility=None`` conserva la que tenga la regla.
+    """
+    return actualizar_regla(user_id, rule_id, _valores(rule), organization_id, visibility)
 
 
 def delete_rule(user_id: int, rule_id: int, organization_id: int | None = None) -> bool:

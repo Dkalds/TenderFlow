@@ -644,18 +644,24 @@ def actualizar_regla(
     rule_id: int,
     valores: ValoresRegla,
     organization_id: int | None = None,
+    visibility: str | None = None,
 ) -> bool:
-    """Reescribe una regla propia. ``False`` si no existe o no es del usuario."""
-    sets = _valores_set(valores)
+    """Reescribe una regla propia. ``False`` si no existe o no es del usuario.
+
+    ``visibility=None`` deja la que tenga: quien pausa una regla no la manda.
+    """
+    # COALESCE: sin visibilidad nueva, la columna se queda como estaba.
+    sets = (*_valores_set(valores), visibility)
+    sql_sets = f"{_SETS_REGLA}, visibility = COALESCE(%s, visibility)"
     with connect() as c:
         if organization_id is None:
             cur = c.execute(
-                f"UPDATE watchlist_rules SET {_SETS_REGLA} WHERE id = %s AND {_IDENT}",
+                f"UPDATE watchlist_rules SET {sql_sets} WHERE id = %s AND {_IDENT}",
                 (*sets, rule_id, user_id, user_id),
             )
         else:
             cur = c.execute(
-                f"UPDATE watchlist_rules SET {_SETS_REGLA} "
+                f"UPDATE watchlist_rules SET {sql_sets} "
                 f"WHERE id = %s AND {_IDENT} AND organization_id = %s",
                 (*sets, rule_id, user_id, user_id, organization_id),
             )

@@ -92,7 +92,7 @@ class ApiKeyRepository:
                 return None
 
     def get_rotatable(self, key_id: int) -> dict[str, Any] | None:
-        """Devuelve ``{user_id, name, scopes}`` de una key rotable, o ``None``.
+        """Devuelve ``{user_id, name, scopes, expires_at}`` de una key rotable, o ``None``.
 
         Rotable = existe, sigue activa y no ha caducado. El filtro no es
         cosmético: mientras la rotación se autenticaba con la propia key
@@ -105,7 +105,7 @@ class ApiKeyRepository:
         """
         with connect_read() as c:
             row = c.execute(
-                "SELECT user_id, name, scopes FROM api_keys "
+                "SELECT user_id, name, scopes, expires_at FROM api_keys "
                 "WHERE id = %s AND is_active = 1 "
                 "AND (expires_at IS NULL OR expires_at > %s)",
                 (key_id, now_utc_iso()),
@@ -116,6 +116,7 @@ class ApiKeyRepository:
             "user_id": int(row[0]) if row[0] is not None else None,
             "name": str(row[1]),
             "scopes": str(row[2] or "*"),
+            "expires_at": str(row[3]) if row[3] is not None else None,
         }
 
     def get_name(self, key_hash: str) -> str | None:

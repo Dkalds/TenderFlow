@@ -117,6 +117,40 @@ def test_crear_pausar_y_borrar_dejan_rastro_en_la_organizacion(client, api_key):
     assert '"active": false' in pausada["detail"]
 
 
+def test_update_guarda_la_visibilidad_y_sin_ella_la_conserva(client, api_key):
+    """El PUT aceptaba ``visibility`` y no la escribía: compartir no compartía.
+
+    Omitida, no cambia: el cliente que pausa una regla (``avisos.ts``) no la
+    manda, y volverla privada por eso sería otra pérdida silenciosa.
+    """
+    from db.database import connect
+
+    h = _auth(api_key)
+    rid = client.post(
+        "/api/v1/watchlist/rules", json={"nombre": "SAP", "keyword": "SAP"}, headers=h
+    ).json()["id"]
+
+    def visibilidad() -> str:
+        with connect() as c:
+            fila = c.execute(
+                "SELECT visibility FROM watchlist_rules WHERE id = %s", (rid,)
+            ).fetchone()
+        return str(fila[0])
+
+    url = f"/api/v1/watchlist/rules/{rid}"
+    compartir = {"keyword": "SAP", "visibility": "organization"}
+    assert client.put(url, json=compartir, headers=h).status_code == 200
+    assert visibilidad() == "organization"
+
+    pausar = {"keyword": "SAP", "active": False}
+    assert client.put(url, json=pausar, headers=h).status_code == 200
+    assert visibilidad() == "organization"
+
+    privada = {"keyword": "SAP", "visibility": "private"}
+    assert client.put(url, json=privada, headers=h).status_code == 200
+    assert visibilidad() == "private"
+
+
 def test_update_inexistente_404(client, api_key):
     r = client.put("/api/v1/watchlist/rules/9999", json={"keyword": "x"}, headers=_auth(api_key))
     assert r.status_code == 404
