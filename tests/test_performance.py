@@ -255,14 +255,15 @@ class TestXMLParsingPerformance:
 class TestFTSPerformance:
     """La búsqueda de texto encuentra lo que escribió el upsert, y puede ir por su índice.
 
-    Se busca con ``search_fts``, la del producto; antes el test llevaba su propia
-    consulta. Que una búsqueda sobre muchas filas sea rápida depende de que pueda
-    usar el índice GIN de ``search_vector``, y eso se le pregunta al planificador
-    en vez de cronometrarlo.
+    Se busca con ``LicitacionRepository.search_fts_ids``, la del producto; antes
+    el test llevaba su propia consulta. Que una búsqueda sobre muchas filas sea
+    rápida depende de que pueda usar el índice GIN de ``search_vector``, y eso se
+    le pregunta al planificador en vez de cronometrarlo.
     """
 
     def test_fts_search_10k(self, perf_db):
-        from db.database import Licitacion, search_fts, upsert_licitaciones
+        from db.database import Licitacion, upsert_licitaciones
+        from db.repositories.licitaciones import LicitacionRepository
 
         now_iso = datetime.now(UTC).isoformat()
         lics = [
@@ -279,12 +280,14 @@ class TestFTSPerformance:
         ]
         upsert_licitaciones(lics)
 
-        pagina, todas = search_fts("SAP HANA", limit=20)
-        _, la_mitad = search_fts("finanzas", limit=1)
-        _, ninguna = search_fts("oracle", limit=1)
+        repo = LicitacionRepository()
+        pagina = repo.search_fts_ids("SAP HANA", limit=20) or []
+        todas = repo.search_fts_ids("SAP HANA", limit=20_000) or []
+        la_mitad = repo.search_fts_ids("finanzas", limit=20_000) or []
+        ninguna = repo.search_fts_ids("oracle", limit=20_000)
 
-        assert (len(pagina), todas, la_mitad, ninguna) == (20, 10_000, 5_000, 0)
-        # El mismo predicado que usa `search_fts`.
+        assert (len(pagina), len(todas), len(la_mitad), ninguna) == (20, 10_000, 5_000, [])
+        # El mismo predicado que usa `search_fts_ids`.
         assert "idx_licitaciones_search_vector" in _indices_del_plan(
             perf_db,
             "SELECT COUNT(*) FROM licitaciones "

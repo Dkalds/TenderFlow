@@ -174,13 +174,14 @@ def test_extract_async_es_idempotente(client, cabeceras):
 
 def test_extract_async_404_antes_de_encolar(client, cabeceras):
     """Un id inexistente no deja un job girando contra una FK que lo rechaza."""
-    from db.repositories.jobs import JobsRepository
+    from db.database import connect_read
 
     resp = client.post(
         "/api/v1/licitaciones/NO-EXISTE/ficha-pliego/extract-async", headers=cabeceras
     )
     assert resp.status_code == 404
-    assert JobsRepository().contar_por_estado() == {}
+    with connect_read() as c:
+        assert c.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 0
 
 
 def test_el_estado_de_la_ficha_lee_la_cola(client, cabeceras):

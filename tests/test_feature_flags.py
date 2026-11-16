@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 
@@ -10,50 +12,51 @@ def db(tmp_db):
     yield tmp_db[0]
 
 
-# ── set_flag / get_flag ────────────────────────────────────────────────────────
+def _flag(name: str) -> dict[str, Any] | None:
+    """La fila del flag tal como la lista Administración (``list_flags``)."""
+    from db.feature_flags import list_flags
+
+    return next((f for f in list_flags() if f["name"] == name), None)
+
+
+# ── set_flag ──────────────────────────────────────────────────────────────────
 
 
 def test_set_flag_creates_new_flag(db):
-    from db.feature_flags import get_flag, set_flag
+    from db.feature_flags import set_flag
 
     set_flag("my_flag", enabled=True, rollout_pct=100)
-    row = get_flag("my_flag")
+    row = _flag("my_flag")
     assert row is not None
     assert row["name"] == "my_flag"
     assert row["enabled"] == 1
 
 
 def test_set_flag_updates_existing_flag(db):
-    from db.feature_flags import get_flag, set_flag
+    from db.feature_flags import set_flag
 
     set_flag("flag_a", enabled=True, rollout_pct=100)
     set_flag("flag_a", enabled=False, rollout_pct=0)
-    row = get_flag("flag_a")
+    row = _flag("flag_a")
     assert row is not None
     assert row["enabled"] == 0
     assert row["rollout_pct"] == 0
 
 
-def test_get_flag_returns_none_for_missing(db):
-    from db.feature_flags import get_flag
-
-    assert get_flag("nonexistent_flag") is None
-
-
 def test_set_flag_stores_description(db):
-    from db.feature_flags import get_flag, set_flag
+    from db.feature_flags import set_flag
 
     set_flag("described_flag", description="My description")
-    row = get_flag("described_flag")
+    row = _flag("described_flag")
     assert row is not None
     assert row["description"] == "My description"
 
 
 def test_set_flag_stores_user_emails(db):
-    from db.feature_flags import get_flag, set_flag
+    from db.feature_flags import set_flag
 
     set_flag("email_flag", user_emails="a@b.com,c@d.com")
-    row = get_flag("email_flag")
+    row = _flag("email_flag")
     assert row is not None
     assert row["user_emails"] == "a@b.com,c@d.com"
 
@@ -125,30 +128,6 @@ def test_is_enabled_partial_rollout_without_email(db):
     set_flag("partial_no_email", enabled=True, rollout_pct=50)
     # Without email, rollout_pct > 0 but < 100 → False (needs email for deterministic hash)
     assert is_enabled("partial_no_email") is False
-
-
-# ── delete_flag ───────────────────────────────────────────────────────────────
-
-
-def test_delete_flag_returns_true_when_existed(db):
-    from db.feature_flags import delete_flag, set_flag
-
-    set_flag("to_delete")
-    assert delete_flag("to_delete") is True
-
-
-def test_delete_flag_returns_false_when_missing(db):
-    from db.feature_flags import delete_flag
-
-    assert delete_flag("never_existed") is False
-
-
-def test_delete_flag_removes_flag(db):
-    from db.feature_flags import delete_flag, get_flag, set_flag
-
-    set_flag("remove_me")
-    delete_flag("remove_me")
-    assert get_flag("remove_me") is None
 
 
 # ── list_flags ────────────────────────────────────────────────────────────────

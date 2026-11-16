@@ -44,12 +44,10 @@ class _ConexionVacia:
 
 _LECTURAS: list[tuple[str, str, Callable[[Any], Any]]] = [
     ("db.feature_flags", "is_enabled", lambda f: f("flag", "ana@example.com")),
-    ("db.feature_flags", "get_flag", lambda f: f("flag")),
     ("db.users", "get_user_by_email", lambda f: f("ana@example.com")),
     ("db.users", "get_users_by_email_ci", lambda f: f("ana@example.com")),
     ("db.users", "get_active_user_by_email_ci", lambda f: f("ana@example.com")),
     ("db.users", "list_users", lambda f: f()),
-    ("db.sessions", "validate_session", lambda f: f("token")),
     ("db.sessions", "list_active_sessions", lambda f: f(7)),
     ("db.events", "get_events_by_type", lambda f: f("feedback.submitted")),
     ("db.dlq", "count_unresolved", lambda f: f()),

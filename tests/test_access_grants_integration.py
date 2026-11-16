@@ -28,13 +28,13 @@ import pytest
 from api.routes.dual_auth import require_any_auth
 from db.access_grants import (
     ConcesionInvalida,
-    grant_access,
     grant_access_request,
     is_access_granted,
     list_access_grants,
     revoke_access,
 )
 from db.solicitudes_acceso import crear_solicitud, obtener_solicitud
+from tests.concesiones import conceder
 
 RUTA = "/api/v1/admin/solicitudes-acceso"
 
@@ -139,8 +139,8 @@ def test_conceder_dos_veces_la_misma_solicitud_no_duplica_nada(api_db):
 
 def test_el_listado_resuelve_el_nombre_de_quien_concedio(api_db):
     admin = _crear_admin()
-    grant_access("email", "ana@example.com", granted_by=admin)
-    grant_access("email", "bea@example.com", granted_by=None)
+    conceder("email", "ana@example.com", granted_by=admin)
+    conceder("email", "bea@example.com")
 
     por_valor = {g["value"]: g for g in list_access_grants()}
 
@@ -149,8 +149,8 @@ def test_el_listado_resuelve_el_nombre_de_quien_concedio(api_db):
 
 
 def test_el_listado_con_revocadas_las_trae_despues_de_las_vivas(api_db):
-    viva = grant_access("email", "viva@example.com", granted_by=None)
-    muerta = grant_access("email", "muerta@example.com", granted_by=None)
+    viva = conceder("email", "viva@example.com")
+    muerta = conceder("email", "muerta@example.com")
     assert revoke_access(muerta["id"]) is not None
 
     assert [g["id"] for g in list_access_grants()] == [viva["id"]]
@@ -233,11 +233,6 @@ def test_volver_a_conceder_tras_revocar_reactiva_la_misma_fila(api_db):
     assert de_nuevo["grant"]["granted_by"] == admin
     assert is_access_granted("ana@example.com") is True
     assert len(list_access_grants(include_inactive=True)) == 1
-
-    # Y lo mismo por la función directa, sin solicitud de por medio.
-    assert revoke_access(grant_id) is not None
-    assert grant_access("email", " Ana@Example.com ", granted_by=None)["id"] == grant_id
-    assert is_access_granted("ana@example.com") is True
 
 
 # ── La ruta, con el login de verdad detrás ──────────────────────────────────
@@ -353,7 +348,7 @@ def test_avisar_sin_conceder_solo_escribe_a_quien_ya_puede_entrar(client, api_db
     sin_acceso = _solicitud("nadie@example.com")
     con_acceso = _solicitud("ana@empresa.example", empresa="Empresa SL")
     # Esta dirección ya entra por una concesión de dominio anterior.
-    assert grant_access("domain", "empresa.example", granted_by=admin)["active"] is True
+    assert conceder("domain", "empresa.example", granted_by=admin)["active"] is True
 
     _autenticar(admin)
     try:

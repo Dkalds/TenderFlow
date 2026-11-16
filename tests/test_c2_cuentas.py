@@ -474,36 +474,20 @@ class TestEntregaReintentable:
 
     `decidir()` sabía cuándo tocaba el siguiente intento y `pendientes_de_reintento`
     sabía leerlos, pero `trigger_event` no dejaba nada `pending` y ningún job
-    miraba la cola: la capacidad estaba escrita y no tenía puerta.
+    miraba la cola: la capacidad estaba escrita y no tenía puerta. El primer
+    intento vive hoy en `entregar_firmado`, el único camino de salida (lo usa el
+    despachador del outbox).
     """
 
     @staticmethod
     def _webhook_falso(monkeypatch, status_code: int):
-        """Aísla `trigger_event` de la red y de Postgres, y devuelve lo escrito."""
+        """Aísla `entregar_firmado` de la red y de Postgres, y devuelve lo escrito."""
         import db.webhooks as wh
 
         escrito: dict[str, object] = {}
         enviado: list[dict[str, object]] = []
 
-        class _Cursor:
-            def execute(self, *_a, **_k):
-                return self
-
-            def fetchall(self):
-                return [(7, "https://hook.example.com/x", "s3cret", "*")]
-
-            def fetchone(self):
-                return None
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_a):
-                return False
-
-        monkeypatch.setattr(wh, "connect", lambda: _Cursor())
         monkeypatch.setattr(wh, "validate_outbound_url", lambda *_a, **_k: None)
-        monkeypatch.setattr(wh, "_allowed_webhook_hosts", frozenset)
         monkeypatch.setattr(wh, "_resolve_secret", lambda _wid, s: s)
         monkeypatch.setattr(wh, "_record_delivery", lambda *_a, **_k: None)
         monkeypatch.setattr(wh, "marcar_webhook_tras_intento", lambda *_a, **_k: None)
@@ -516,37 +500,43 @@ class TestEntregaReintentable:
         monkeypatch.setattr(wh, "_intentar_entrega", _fake_send)
         return escrito, enviado
 
-    def test_una_entrega_fallida_queda_pendiente_con_fecha(self, monkeypatch) -> None:
+    @staticmethod
+    def _entregar() -> bool:
         import db.webhooks as wh
 
+        return wh.entregar_firmado(
+            webhook_id=7,
+            url="https://hook.example.com/x",
+            stored_secret="s3cret",  # pragma: allowlist secret
+            event_type="watchlist_match",
+            body=b'{"event":"watchlist_match","data":{"id":1}}',
+            momento_iso="2026-09-06T00:00:00+00:00",
+            allowed_hosts=frozenset(),
+        )
+
+    def test_una_entrega_fallida_queda_pendiente_con_fecha(self, monkeypatch) -> None:
         escrito, _ = self._webhook_falso(monkeypatch, 503)
-        assert wh.trigger_event("watchlist_match", {"id": 1}) == 0
+        assert self._entregar() is False
         assert escrito["estado"] == "pending"
         assert escrito["proximo_intento"] is not None, (
             "sin fecha de reintento la fila es un registro histórico, no una cola"
         )
 
     def test_una_entrega_correcta_no_deja_cola(self, monkeypatch) -> None:
-        import db.webhooks as wh
-
         escrito, _ = self._webhook_falso(monkeypatch, 200)
-        assert wh.trigger_event("watchlist_match", {"id": 1}) == 1
+        assert self._entregar() is True
         assert escrito["estado"] == "delivered"
         assert escrito["proximo_intento"] is None
 
     def test_la_entrega_guarda_el_cuerpo_que_firmó(self, monkeypatch) -> None:
         """Reconstruirlo en el reintento cambiaría el `timestamp`, y con él la firma."""
-        import db.webhooks as wh
-
         escrito, enviado = self._webhook_falso(monkeypatch, 500)
-        wh.trigger_event("watchlist_match", {"id": 1})
+        self._entregar()
         assert escrito["payload_json"].encode("utf-8") == enviado[0]["body"]
 
     def test_el_identificador_de_entrega_viaja_en_la_cabecera(self, monkeypatch) -> None:
-        import db.webhooks as wh
-
         escrito, enviado = self._webhook_falso(monkeypatch, 500)
-        wh.trigger_event("watchlist_match", {"id": 1})
+        self._entregar()
         assert enviado[0]["headers"]["X-Webhook-Delivery"] == escrito["delivery_uid"]
 
     def test_el_reenvío_repite_cuerpo_firma_e_identificador(self, monkeypatch) -> None:

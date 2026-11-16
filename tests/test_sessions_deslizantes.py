@@ -161,22 +161,6 @@ def test_renovacion_extiende_expires_at(tmp_db: object) -> None:
     assert _parse(principal["expires_at"]) == expires
 
 
-def test_renovacion_tambien_en_validate_session(tmp_db: object) -> None:
-    """El camino legado aplica el mismo modelo que el principal."""
-    from db.sessions import create_session, validate_session
-
-    token = create_session(_make_user())
-    now = datetime.now(UTC)
-    _age_row(token, last_seen=now - timedelta(minutes=10), expires=now + timedelta(hours=1))
-
-    result = validate_session(token)
-
-    assert result is not None
-    _, expires, _, _, _ = _row(token)
-    assert expires >= now + timedelta(hours=settings.SESSION_IDLE_HOURS)
-    assert _parse(result["expires_at"]) == expires
-
-
 def test_renovacion_respeta_el_throttle(tmp_db: object) -> None:
     """Dentro del minuto de throttle no se escribe: ni ``last_seen_at`` ni ``expires_at``."""
     from db.sessions import create_session, validate_session_principal
@@ -274,22 +258,6 @@ def test_sesion_mas_alla_del_techo_se_rechaza_aunque_este_fresca(tmp_db: object)
 
     _, _, _, revoked, _ = _row(token)
     assert revoked, "una sesión pasada de techo queda revocada, no solo rechazada"
-
-
-def test_validate_session_tambien_aplica_el_techo(tmp_db: object) -> None:
-    from db.sessions import create_session, validate_session
-
-    token = create_session(_make_user())
-    now = datetime.now(UTC)
-    _age_row(
-        token,
-        created=now - timedelta(days=settings.SESSION_ABSOLUTE_DAYS + 1),
-        last_seen=now,
-        expires=now + timedelta(hours=12),
-    )
-
-    assert validate_session(token) is None
-    assert _row(token)[3]
 
 
 def test_sesion_inactiva_se_rechaza_aunque_no_llegue_al_techo(tmp_db: object) -> None:

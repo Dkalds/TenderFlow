@@ -557,8 +557,8 @@ def _ambitos_del_webhook(organization_id: object, seguidores: object) -> list[in
 def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
     """Entrega el evento a los webhooks suscritos. Devuelve entregas con 2xx.
 
-    La salida es :func:`db.webhooks.entregar_firmado`, la misma que usa
-    ``trigger_event``: firmas HMAC v1 y v2, allowlist SSRF, pinning de DNS,
+    La salida es :func:`db.webhooks.entregar_firmado`: firmas HMAC v1 y v2,
+    allowlist SSRF, pinning de DNS,
     ``X-Webhook-Delivery`` estable y, si el primer intento falla, reintento con
     backoff por ``webhook_reintentos`` (C2.4). Hasta 2026-10 el despachador
     tenía su propia copia sin reintento, así que un receptor caído perdía el
@@ -625,7 +625,8 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
         return 0
     formato_fijo: str | None = None
     if spec.tipo == "watchlist_match":
-        # Contrato publicado desde v15 por `trigger_event`: sale solo con las
+        # Contrato publicado desde v15 (antes lo emitía `trigger_event`, ya
+        # retirado): sale solo con las
         # entradas inmediatas, siempre en JSON y con el correo del destinatario
         # en `recipient`. El evento no lo guarda: se lee de la entrada, y el
         # evento sin organización solo sale por los webhooks globales.
@@ -652,7 +653,7 @@ def _canal_webhook(evento: dict[str, Any], spec: EspecificacionEvento) -> int:
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode("utf-8")
-        # Misma salida que `trigger_event`: firma v1 y v2, allowlist SSRF,
+        # Única salida a webhooks: firma v1 y v2, allowlist SSRF,
         # pinning de DNS, fila en `webhook_deliveries` con el cuerpo y, si el
         # primer intento falla, reintento por `webhook_reintentos` (C2.4). El
         # fallo HTTP no lanza: el canal queda resuelto y lo que falta es del

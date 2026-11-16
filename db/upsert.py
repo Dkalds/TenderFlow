@@ -16,7 +16,6 @@ from db.connection import connect, connect_read, now_utc_iso
 from db.dlq import record_failure
 from db.fechas_ts import LIC_COLUMNAS_UPSERT, sombra, sombras_presentes, valores_lic
 from db.nucleo_tipado import COLUMNAS_SOMBRA, sombras_disponibles, valores_sombra
-from db.sql_fragments import instante_sql
 from observability.logging import get_logger
 from observability.runtime_metrics import (
     placsp_colision_expediente_total,
@@ -1466,21 +1465,6 @@ def upsert_licitaciones_with_history(
     return result
 
 
-def get_history(id_externo: str, limit: int = 50) -> list[dict[str, Any]]:
-    """Devuelve el historial de cambios de una licitación."""
-    limit = max(1, min(limit, 1000))  # clamp to [1, 1000]
-    with connect() as c:
-        cur = c.execute(
-            "SELECT id, id_externo, captured_at, source, snapshot_json, changed_fields "
-            "FROM licitaciones_history "
-            "WHERE id_externo = %s "
-            f"ORDER BY {instante_sql('licitaciones_history', 'captured_at')} DESC LIMIT %s",
-            [id_externo, limit],
-        )
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
-
-
 # ---------------------------------------------------------------------------
 # Full-text search
 # ---------------------------------------------------------------------------
@@ -1508,32 +1492,3 @@ def fts_available() -> bool:
         ).fetchone()
     _fts_confirmado = row is not None
     return _fts_confirmado
-
-
-def search_fts(query: str, limit: int = 50, offset: int = 0) -> tuple[list[dict[str, Any]], int]:
-    """Busca licitaciones usando ``search_vector``. Devuelve (rows, total)."""
-    query = query.strip()
-    if not query:
-        return [], 0
-    limit = max(1, min(limit, 500))
-    offset = max(0, offset)
-    with connect() as c:
-        count_row = c.execute(
-            "SELECT COUNT(*) FROM licitaciones "
-            "WHERE search_vector @@ websearch_to_tsquery('spanish', %s)",
-            [query],
-        ).fetchone()
-        total = int(count_row[0])
-        cur = c.execute(
-            "SELECT * FROM licitaciones "  # SELECT *: ficha completa por búsqueda FTS; se descarta search_vector abajo
-            "WHERE search_vector @@ websearch_to_tsquery('spanish', %s) "
-            "ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('spanish', %s)) DESC "
-            "LIMIT %s OFFSET %s",
-            [query, query, limit, offset],
-        )
-        cols = [d[0] for d in cur.description]
-        rows = [
-            {k: v for k, v in zip(cols, r, strict=False) if k != "search_vector"}
-            for r in cur.fetchall()
-        ]
-    return rows, total

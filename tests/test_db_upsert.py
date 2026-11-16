@@ -904,33 +904,27 @@ def test_fts_available(db):
     assert isinstance(result, bool)
 
 
-def test_search_fts_empty_query(db):
-    from db.upsert import search_fts
-
-    rows, total = search_fts("")
-    assert rows == []
-    assert total == 0
-
-
 def test_get_history_empty(db):
-    from db.upsert import get_history, upsert_licitaciones
+    from db.repositories.licitaciones import LicitacionRepository
+    from db.upsert import upsert_licitaciones
 
     upsert_licitaciones([make_licitacion()])
-    history = get_history("TEST-001")
+    history = LicitacionRepository().get_history("TEST-001")
     assert isinstance(history, list)
     # Sin cambios registrados, historial vacío
     assert len(history) == 0
 
 
 def test_get_history_with_changes(db):
-    from db.upsert import get_history, upsert_licitaciones_with_history
+    from db.repositories.licitaciones import LicitacionRepository
+    from db.upsert import upsert_licitaciones_with_history
 
     lic1 = make_licitacion(importe=1.0)
     lic2 = make_licitacion(importe=2.0)
     upsert_licitaciones_with_history([lic1], source="src")
     upsert_licitaciones_with_history([lic2], source="src")
 
-    history = get_history("TEST-001")
+    history = LicitacionRepository().get_history("TEST-001")
     assert len(history) == 1
     assert "snapshot_json" in history[0]
 

@@ -1271,26 +1271,10 @@ def fila_canonica_sql(*, alias: str = "l", gemelo: str = "l2", filtro_gemelo: st
 # resultados distintos porque cada uno los volvía a escribir: el SQL con sus
 # cuatro fragmentos y el detector con `republicacion_key`, que compone
 # `plegar_organo` + `_cpv4` (suyo) + `normalize_titulo` (suyo) + el año-mes.
-# El bloque de abajo es ese punto único. Su gemela Python
-# (`componentes_republicacion`/`clave_republicacion`) solo la usaba
+# El punto único son los cuatro fragmentos (`organo_normalizado_sql`,
+# `cpv4_sql`, `periodo_publicacion_sql`, `titulo_normalizado_sql`). Su gemela
+# Python (`componentes_republicacion`/`clave_republicacion`) solo la usaba
 # `scripts/detectar_republicaciones.py` y se retiró con él el 2026-09-28.
-
-
-def componentes_republicacion_sql(alias: str = "l") -> tuple[str, str, str, str]:
-    """Las cuatro expresiones SQL que definen «el mismo contrato», en orden.
-
-    Es la tupla que :func:`fila_canonica_sql` compara igualdad a igualdad y que
-    :func:`clave_canonica_sql` concatena para su hash. Se expone como tupla —y
-    no sólo a través de esas dos— para que el gemelo Python pueda compararse
-    componente a componente en vez de contra una cadena ya compuesta, que es
-    donde una divergencia se esconde.
-    """
-    return (
-        organo_normalizado_sql(alias),
-        cpv4_sql(alias),
-        periodo_publicacion_sql(alias),
-        titulo_normalizado_sql(alias),
-    )
 
 
 def cpv4(valor: str | None) -> str:

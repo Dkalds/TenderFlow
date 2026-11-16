@@ -264,36 +264,6 @@ def test_sin_organizacion_el_repositorio_solo_pide_los_globales(
     assert params_org == [7]
 
 
-def test_trigger_event_legado_solo_lee_los_webhooks_globales(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`watchlist_match` lleva el correo y los criterios del operador."""
-    import db.webhooks as salida
-
-    sqls: list[str] = []
-
-    class _Cursor:
-        def __enter__(self) -> _Cursor:
-            return self
-
-        def __exit__(self, *_a: object) -> bool:
-            return False
-
-        def execute(self, sql: str, *_a: object) -> _Cursor:
-            sqls.append(sql)
-            return self
-
-        def fetchall(self) -> list[Any]:
-            return []
-
-    monkeypatch.setattr(salida, "connect", lambda: _Cursor())
-    monkeypatch.setattr(salida, "_allowed_webhook_hosts", frozenset)
-
-    assert salida.trigger_event("watchlist_match", {"recipient": "op@example.test"}) == 0
-    assert len(sqls) == 1
-    assert "organization_id IS NULL" in sqls[0]
-
-
 # ── Plantillas: lo que escribe un visitante no es marcado ────────────────────
 
 _HOSTIL = "<https://phish.example/login|Caducó tu sesión> <!channel> & [x](https://evil.example)"

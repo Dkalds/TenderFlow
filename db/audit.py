@@ -471,48 +471,6 @@ def log_event(
         log.debug("audit_metric_unavailable", event_type=event_type, exc_info=True)
 
 
-def list_recent(
-    limit: int = 200,
-    *,
-    user_key: str | None = None,
-    action: str | None = None,
-    user_id: int | None = None,
-) -> list[dict[str, Any]]:
-    """Devuelve entradas recientes del audit log (para el panel de Observabilidad).
-
-    Args:
-        limit: Máximo de entradas a devolver.
-        user_key: Filtra por usuario si se proporciona.
-        action: Filtra por tipo de acción si se proporciona.
-        user_id: Filtra por identidad interna (v129); combinado con
-            ``user_key`` es la lectura dual, solo o sin clave es ``user_id = %s``.
-    """
-    clauses: list[str] = []
-    params: list[object] = []
-    if user_key and user_id is not None:
-        clauses.append("(user_id = %s OR (user_key = %s AND user_id IS NULL))")
-        params.extend([user_id, user_key])
-    elif user_key:
-        clauses.append("user_key = %s")
-        params.append(user_key)
-    elif user_id is not None:
-        clauses.append("user_id = %s")
-        params.append(user_id)
-    if action:
-        clauses.append("action = %s")
-        params.append(action)
-    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    params.append(limit)
-    with connect() as c:
-        cur = c.execute(
-            "SELECT id, user_key, session_hash, action, detail, created_at "
-            "FROM audit_log " + where + " ORDER BY created_at DESC, id DESC LIMIT %s",
-            params,
-        )
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
-
-
 def verify_hash_chain() -> dict[str, object]:
     """Verifica la integridad del audit log recalculando el hash chain.
 

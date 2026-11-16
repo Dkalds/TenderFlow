@@ -180,13 +180,10 @@ class TestScopeDeLaRuta:
 
 
 class _Cursor:
-    """Sustituye ``connect()``: una fila de webhook para el abanico y para el reintento."""
+    """Sustituye ``connect()``: la fila del webhook que lee el reintento."""
 
     def execute(self, *_a: Any, **_k: Any) -> _Cursor:
         return self
-
-    def fetchall(self) -> list[tuple[Any, ...]]:
-        return [(7, "https://hook.example.com/x", "s3cret", "*")]
 
     def fetchone(self) -> tuple[Any, ...]:
         return ("https://hook.example.com/x", "s3cret")
@@ -221,14 +218,29 @@ def _aislar(monkeypatch: pytest.MonkeyPatch, respuestas: list[int]) -> tuple[dic
     return escrito, enviado
 
 
+def _entregar() -> bool:
+    """Primer intento por ``entregar_firmado``, con el instante dentro del cuerpo."""
+    import db.webhooks as wh
+
+    momento = wh.now_utc().isoformat()
+    cuerpo = json.dumps({"event": "watchlist_match", "data": {"id": 1}, "timestamp": momento})
+    return wh.entregar_firmado(
+        webhook_id=7,
+        url="https://hook.example.com/x",
+        stored_secret="s3cret",  # pragma: allowlist secret
+        event_type="watchlist_match",
+        body=cuerpo.encode("utf-8"),
+        momento_iso=momento,
+        allowed_hosts=frozenset(),
+    )
+
+
 class TestEntregaConSello:
     def test_la_entrega_lleva_las_tres_cabeceras_y_el_sello_es_el_del_cuerpo(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import db.webhooks as wh
-
         escrito, enviado = _aislar(monkeypatch, [200])
-        wh.trigger_event("watchlist_match", {"id": 1})
+        _entregar()
 
         cabeceras, cuerpo = enviado[0]["headers"], enviado[0]["body"]
         sello = int(cabeceras["X-Webhook-Timestamp"])
@@ -251,7 +263,7 @@ class TestEntregaConSello:
         import db.webhooks as wh
 
         escrito, enviado = _aislar(monkeypatch, [503, 200])
-        wh.trigger_event("watchlist_match", {"id": 1})
+        _entregar()
         primera = enviado[0]["headers"]
 
         # El reloj avanza un día entre el primer intento y el reintento.

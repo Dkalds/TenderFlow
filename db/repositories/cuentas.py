@@ -1074,18 +1074,6 @@ class EtiquetasRepository:
             )
         return agrupado
 
-    def objetos_con_etiqueta(
-        self, organization_id: int, etiqueta_id: int, objeto_tipo: str
-    ) -> list[str]:
-        """Los objetos que llevan una etiqueta. Es el filtro «por etiqueta»."""
-        with connect_read() as conn:
-            cur = conn.execute(
-                "SELECT objeto_id FROM etiquetas_aplicadas "
-                "WHERE organization_id = %s AND etiqueta_id = %s AND objeto_tipo = %s",
-                (organization_id, etiqueta_id, objeto_tipo),
-            )
-            return [str(row[0]) for row in cur.fetchall()]
-
 
 class SegmentoRepository:
     """Cruce de una adjudicación con lo que una organización tiene abierto.

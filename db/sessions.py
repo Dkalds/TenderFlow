@@ -170,61 +170,6 @@ def create_session(
     return token
 
 
-def validate_session(token: str) -> dict[str, Any] | None:
-    """Verifica token, devuelve datos de sesión o None si inválida/expirada.
-
-    Camino legado (``validate_session_principal`` es el que recorre el SPA);
-    aplica el mismo modelo: rechazo por revocación, por plazo de inactividad o
-    por techo absoluto, y renovación throttled de ``expires_at``.
-    """
-    token_hash = _hash_token(token)
-    # Lectura por el pool de lectura y escrituras aparte, como en
-    # ``validate_session_principal``.
-    with connect_read() as c:
-        row = c.execute(
-            "SELECT user_id, created_at, expires_at, revoked, ip, last_seen_at, mfa_verified_at "
-            "FROM sessions WHERE token_hash = %s",
-            (token_hash,),
-        ).fetchone()
-    if row is None:
-        return None
-    user_id, created_at, expires_at, revoked, ip, last_seen_at, mfa_verified_at = row
-    if revoked:
-        return None
-    now = datetime.now(UTC)
-    try:
-        created = _as_utc(created_at)
-        exp = _as_utc(expires_at)
-        last_seen = _as_utc(last_seen_at) if last_seen_at else None
-    except Exception:
-        # Camino de autenticación: sin log, un fallo de BD se presenta al
-        # usuario como "sesión inválida" y nadie puede distinguirlo de un
-        # token realmente caducado.
-        log.warning("session_validation_failed", exc_info=True)
-        return None
-
-    if now > exp or now > _absolute_ceiling(created):
-        revoke_session(token)
-        return None
-
-    if last_seen is None or (now - last_seen).total_seconds() >= _LAST_SEEN_THROTTLE_SECONDS:
-        renewed = _renewed_expiry(now, created, _window_in_effect(exp, last_seen))
-        with connect() as c:
-            c.execute(
-                "UPDATE sessions SET last_seen_at = %s, expires_at = %s "
-                "WHERE token_hash = %s AND revoked = 0",
-                (now.isoformat(), renewed.isoformat(), token_hash),
-            )
-        expires_at = renewed.isoformat()
-    return {
-        "user_id": user_id,
-        "authenticated_at": created_at,
-        "expires_at": expires_at,
-        "ip": ip,
-        "mfa_verified_at": mfa_verified_at,
-    }
-
-
 def _revocar_caducada(token_hash: str, now: datetime) -> None:
     """Revoca una sesión que superó su plazo, para que ninguna renovación la reviva."""
     with connect() as c:
@@ -248,7 +193,7 @@ def validate_session_principal(token: str) -> dict[str, Any] | None:
     """Valida la sesión y devuelve sesión + usuario + estado MFA en UNA consulta.
 
     Es el camino que recorre **toda** petición autenticada por cookie del SPA.
-    Componerlo con ``validate_session`` + ``get_user_by_id`` +
+    Componerlo validando la sesión + ``get_user_by_id`` +
     ``is_totp_required`` costaba de 3 a 5 aperturas de conexión en serie, cada
     una con su transacción de escritura: a los ~80 ms de RTT contra Supabase,
     varias décimas de segundo gastadas antes de empezar el trabajo real de la

@@ -1,6 +1,6 @@
 """Repository para webhooks: CRUD de suscripciones, entregas, reintentos e idempotencia.
 
-La entrega saliente firmada (``trigger_event``, ``reenviar``) vive en
+La entrega saliente firmada (``entregar_firmado``, ``reenviar``) vive en
 ``db/webhooks.py`` (ADR-022, «Entidades con las dos caras»).
 """
 

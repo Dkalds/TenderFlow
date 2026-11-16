@@ -6,6 +6,8 @@ from db.database import (
     Adjudicacion,
     Licitacion,
 )
+from db.repositories.licitaciones import LicitacionRepository
+from db.repositories.licitaciones.filas import HistorialRow
 
 # Usa el fixture tmp_db de conftest.py (simplificado con DI hook).
 
@@ -16,6 +18,11 @@ def _make_lic(id_externo: str = "TEST-001", titulo: str = "Test SAP") -> Licitac
 
 def _make_adj(lic_id: str = "TEST-001", nombre: str = "Empresa SA") -> Adjudicacion:
     return Adjudicacion(licitacion_id=lic_id, nombre=nombre, importe_adjudicado=50000.0)
+
+
+def _historial(id_externo: str) -> list[HistorialRow]:
+    """El historial como lo lee la ficha (``LicitacionRepository.get_history``)."""
+    return LicitacionRepository().get_history(id_externo)
 
 
 class TestUpsertLicitaciones:
@@ -143,7 +150,7 @@ class TestUpsertWithHistory:
         assert result.nuevas == 1
         assert result.modified == []
         assert result.unchanged == []
-        history = db_mod.get_history("NEW-001")
+        history = _historial("NEW-001")
         assert len(history) == 0
 
     def test_same_data_no_history(self, tmp_db):
@@ -154,7 +161,7 @@ class TestUpsertWithHistory:
         assert result.inserted == []
         assert result.modified == []
         assert result.unchanged == ["SAME-001"]
-        assert len(db_mod.get_history("SAME-001")) == 0
+        assert len(_historial("SAME-001")) == 0
 
     def test_changed_importe_creates_history(self, tmp_db):
         db_mod, _ = tmp_db
@@ -167,7 +174,7 @@ class TestUpsertWithHistory:
         result = db_mod.upsert_licitaciones_with_history([lic2], source="daily")
 
         assert result.modified == ["CHG-001"]
-        history = db_mod.get_history("CHG-001")
+        history = _historial("CHG-001")
         assert len(history) == 1
         assert "importe" in history[0]["changed_fields"]
         assert history[0]["source"] == "daily"
@@ -183,7 +190,7 @@ class TestUpsertWithHistory:
         result = db_mod.upsert_licitaciones_with_history([lic2], source="daily")
 
         assert result.modified == ["EST-001"]
-        history = db_mod.get_history("EST-001")
+        history = _historial("EST-001")
         assert len(history) == 1
         assert "estado" in history[0]["changed_fields"]
 
@@ -199,12 +206,11 @@ class TestUpsertWithHistory:
         lic2.estado = "ADJUDICADA"
         db_mod.upsert_licitaciones_with_history([lic2], source="daily")
 
-        history = db_mod.get_history("MULTI-001")
+        history = _historial("MULTI-001")
         assert len(history) == 1
         changed = history[0]["changed_fields"].split(",")
         assert "importe" in changed
         assert "estado" in changed
 
     def test_get_history_empty(self, tmp_db):
-        db_mod, _ = tmp_db
-        assert db_mod.get_history("NONEXISTENT") == []
+        assert _historial("NONEXISTENT") == []

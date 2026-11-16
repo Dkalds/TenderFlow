@@ -146,7 +146,11 @@ def test_dos_consumidores_procesan_cien_jobs_exactamente_una_vez(tmp_db) -> None
 
     assert len(reclamados) == total, "algún job se quedó sin procesar"
     assert len(set(reclamados)) == total, "algún job se procesó dos veces"
-    assert _REPO.contar_por_estado() == {"done": total}
+    from db.database import connect_read
+
+    with connect_read() as c:
+        estados = c.execute("SELECT estado, COUNT(*) FROM jobs GROUP BY estado").fetchall()
+    assert [tuple(f) for f in estados] == [("done", total)]
 
 
 # ---------------------------------------------------------------------------

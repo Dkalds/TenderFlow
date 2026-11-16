@@ -57,23 +57,6 @@ class ApiKeyRepository:
             row = c.execute("SELECT key_hash FROM api_keys WHERE id = %s", (key_id,)).fetchone()
         return str(row[0]) if row else None
 
-    def get_active_scopes(self, key_hash: str) -> str | None:
-        """Devuelve scopes de una key activa, o ``None`` si no existe."""
-        try:
-            with connect_read() as c:
-                row = c.execute(
-                    "SELECT scopes FROM api_keys WHERE key_hash = %s AND is_active = 1",
-                    (key_hash,),
-                ).fetchone()
-        except Exception:
-            # Un fallo de BD aquí se presenta como "clave inválida": sin log no
-            # hay forma de distinguir un ataque de una caída de infraestructura.
-            log.warning("api_key_scopes_lookup_failed", exc_info=True)
-            return None
-        if not row:
-            return None
-        return str(row[0]) if row[0] is not None else "*"
-
     def get_user_id(self, key_id: int) -> int | None:
         """Obtiene ``user_id`` vinculado a la API key, si la columna existe."""
         with connect_read() as c:
@@ -118,13 +101,6 @@ class ApiKeyRepository:
             "scopes": str(row[2] or "*"),
             "expires_at": str(row[3]) if row[3] is not None else None,
         }
-
-    def get_name(self, key_hash: str) -> str | None:
-        with connect_read() as c:
-            row = c.execute(
-                "SELECT name FROM api_keys WHERE key_hash = %s LIMIT 1", (key_hash,)
-            ).fetchone()
-        return str(row[0]) if row else None
 
     def get_all_for_user(self, user_id: int) -> list[dict[str, Any]]:
         """Lista las keys del usuario. Nunca incluye el hash ni el token.

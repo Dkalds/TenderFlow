@@ -183,33 +183,6 @@ class PursuitCommentRepository:
             return 0
         return len(user_ids)
 
-    def menciones_de_usuario(self, user_id: int, *, limit: int = 50) -> list[dict[str, Any]]:
-        """En qué comentarios se ha mencionado a alguien, del más reciente atrás.
-
-        Es la consulta del destinatario («dónde me han mencionado»). El aviso
-        no sale de aquí: lo lleva el evento ``pursuit.mentioned``, que
-        ``services/pursuit_comments.add_comment`` escribe en el outbox con los
-        mismos ids que se guardan en ``pursuit_comment_mentions``, y reparte el
-        despachador. Va acotada por el `organization_id`
-        del propio comentario: una mención solo existe dentro de la organización
-        donde se escribió, así que no hace falta un filtro extra que alguien
-        pueda olvidar.
-        """
-        with connect_read() as conn:
-            cur = conn.execute(
-                "SELECT m.comment_id, c.pursuit_id, c.organization_id, c.body, "
-                "       c.created_at, c.author_user_id "
-                "FROM pursuit_comment_mentions m "
-                "JOIN pursuit_comments c ON c.id = m.comment_id "
-                # Sin este filtro (v131) la mención seguía sirviendo el texto de
-                # un comentario ya borrado: la única lectura por la que lo
-                # borrado volvía a verse, y precisamente al destinatario.
-                "WHERE m.user_id = %s AND c.deleted_at IS NULL "
-                "ORDER BY m.id DESC LIMIT %s",
-                (user_id, max(1, min(int(limit), 200))),
-            )
-            return rows_to_dicts(cur)
-
     @staticmethod
     def _get_scoped(
         conn: Any, organization_id: int, pursuit_id: int, comment_id: int

@@ -383,8 +383,8 @@ def test_dejar_de_seguir_una_cuenta_se_lleva_sus_etiquetas(como: Como) -> None:
 
     ``shared/dto.py`` lo avisa junto a ``ObjetoEtiquetable``: añadir un tipo
     exige decidir cómo se limpia al borrar el objeto. Para ``cuenta`` no se
-    hizo hasta 2026-09-25, y ``objetos_con_etiqueta`` —el filtro «por
-    etiqueta» del repositorio— seguía devolviendo el id de la cuenta borrada.
+    hizo hasta 2026-09-25, y el repositorio de etiquetas seguía devolviendo
+    el id de la cuenta borrada.
     Ahora ``CuentasRepository.unfollow`` las borra en la misma transacción.
 
     También fija el alcance del arreglo. La misma etiqueta va aplicada a otra
@@ -421,11 +421,19 @@ def test_dejar_de_seguir_una_cuenta_se_lleva_sus_etiquetas(como: Como) -> None:
     if borrada.status_code != 204:
         pytest.fail(f"precondición: dejar de seguir devolvió {borrada.status_code}")
 
-    oportunidades = etiquetas.objetos_con_etiqueta(e.org_a, etiqueta_id, "oportunidad")
-    if oportunidades != [borrada_id]:
+    def _con_la_etiqueta(objeto_tipo: str) -> set[str]:
+        """Los objetos (de los sembrados) que siguen llevando la etiqueta."""
+        aplicadas = etiquetas.por_objeto(e.org_a, objeto_tipo, [borrada_id, otra_id])
+        return {
+            objeto_id
+            for objeto_id, lista in aplicadas.items()
+            if any(et["id"] == etiqueta_id for et in lista)
+        }
+
+    oportunidades = _con_la_etiqueta("oportunidad")
+    if oportunidades != {borrada_id}:
         pytest.fail(f"se borró la etiqueta de la oportunidad con el mismo id: {oportunidades}")
-    cuentas_etiquetadas = set(etiquetas.objetos_con_etiqueta(e.org_a, etiqueta_id, "cuenta"))
-    assert cuentas_etiquetadas == {otra_id}
+    assert _con_la_etiqueta("cuenta") == {otra_id}
 
 
 def test_sin_organization_id_la_cuenta_va_a_la_organizacion_personal(como: Como) -> None:

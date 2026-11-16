@@ -37,10 +37,6 @@ Uso:
         {"pursuit_id": 1, "licitacion_id": "X", "organization_id": 7},
         organization_id=7, actor_id=user_id, conn=c,
     )
-
-Replay helpers:
-    replay_watchlist(user_id)  → estado actual reconstruido desde eventos
-    replay_feedback()          → lista de feedback desde eventos
 """
 
 from __future__ import annotations
@@ -528,48 +524,3 @@ def get_latest_cache_invalidation_timestamp() -> float:
         log.warning("cache_invalidation_timestamp_invalid", value=str(row[0]))
         return 0.0
     return parsed.timestamp()
-
-
-# ── Replay helpers ─────────────────────────────────────────────────────────────
-
-
-def replay_watchlist(user_id: int | str) -> list[dict[str, Any]]:
-    """Reconstruye el estado de la watchlist de un usuario reproduciendo sus eventos.
-
-    Eventos soportados:
-    - ``watchlist.item_added``   → añade item al estado
-    - ``watchlist.item_removed`` → elimina item del estado
-
-    Devuelve lista de items activos (en el mismo orden en que se añadieron).
-    """
-    events = get_events("user", user_id)
-    state: dict[str, dict[str, Any]] = {}  # id_externo → item
-
-    for ev in events:
-        if ev["event_type"] == "watchlist.item_added":
-            key = ev["payload"].get("id_externo") or ev["payload"].get("rule_id") or str(ev["id"])
-            state[key] = ev["payload"]
-        elif ev["event_type"] == "watchlist.item_removed":
-            key = ev["payload"].get("id_externo") or ev["payload"].get("rule_id")
-            if key:
-                state.pop(key, None)
-
-    return list(state.values())
-
-
-def replay_feedback() -> list[dict[str, Any]]:
-    """Devuelve el feedback efectivo reconstruido desde eventos (el último por expediente)."""
-    events = get_events_by_type("feedback.submitted")
-    # Last-write-wins per expediente
-    by_expediente: dict[str, dict[str, Any]] = {}
-    for ev in events:
-        exp = ev["payload"].get("expediente")
-        if exp:
-            by_expediente[exp] = {
-                "expediente": exp,
-                "relevante": ev["payload"].get("relevante"),
-                "nota": ev["payload"].get("nota", ""),
-                "submitted_at": ev["created_at"],
-                "actor_id": ev["actor_id"],
-            }
-    return list(by_expediente.values())

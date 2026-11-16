@@ -383,8 +383,15 @@ def test_un_despliegue_a_mitad_no_pierde_el_trabajo(tmp_db) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _jobs_por_estado() -> dict[str, int]:
+    from db.database import connect_read
+
+    with connect_read() as c:
+        filas = c.execute("SELECT estado, COUNT(*) FROM jobs GROUP BY estado").fetchall()
+    return {str(f[0]): int(f[1]) for f in filas}
+
+
 def test_el_cierre_por_cola_deja_una_fila_por_paso(tmp_db) -> None:
-    from db.repositories.jobs import JobsRepository
     from scheduler.pipeline_cierre import _cierre_por_cola
     from scheduler.pipeline_runs import CANONICAL_STEPS
 
@@ -394,7 +401,7 @@ def test_el_cierre_por_cola_deja_una_fila_por_paso(tmp_db) -> None:
 
     assert set(resultados) == set(CANONICAL_STEPS)
     assert all(estado == "ok" for estado in resultados.values())
-    assert JobsRepository().contar_por_estado() == {"done": len(CANONICAL_STEPS)}
+    assert _jobs_por_estado() == {"done": len(CANONICAL_STEPS)}
 
 
 def test_el_cierre_avisa_de_los_restos_de_una_pasada_que_murio(tmp_db) -> None:
@@ -423,7 +430,6 @@ def test_el_cierre_avisa_de_los_restos_de_una_pasada_que_murio(tmp_db) -> None:
 
 def test_el_cierre_por_cola_no_reintenta_un_paso_roto(tmp_db) -> None:
     """Reintentar con backoff se comería la ventana de 55 min del job."""
-    from db.repositories.jobs import JobsRepository
     from scheduler.pipeline_cierre import _cierre_por_cola
     from scheduler.pipeline_runs import CANONICAL_STEPS
 
@@ -437,4 +443,4 @@ def test_el_cierre_por_cola_no_reintenta_un_paso_roto(tmp_db) -> None:
 
     assert resultados["kpi_precompute"] == "error"
     assert resultados["watchlist_notify"] == "ok"
-    assert JobsRepository().contar_por_estado()["failed"] == 1
+    assert _jobs_por_estado()["failed"] == 1

@@ -76,11 +76,6 @@ def is_enabled(name: str, user_email: str | None = None) -> bool:
     return pct >= 100
 
 
-def get_flag(name: str) -> dict[str, Any] | None:
-    """Devuelve el dict del flag o None si no existe."""
-    return _get_flag_row(name)
-
-
 def set_flag(
     name: str,
     *,
@@ -101,13 +96,6 @@ def set_flag(
             (name, int(enabled), rollout_pct, user_emails, description, now_utc_iso()),
         )
     log.info("feature_flag.set", name=name, enabled=enabled, rollout_pct=rollout_pct)
-
-
-def delete_flag(name: str) -> bool:
-    """Elimina un flag. Devuelve True si existía."""
-    with connect() as c:
-        cur = c.execute("DELETE FROM feature_flags WHERE name=%s", (name,))
-        return (cur.rowcount or 0) > 0
 
 
 def list_flags() -> list[dict[str, Any]]:

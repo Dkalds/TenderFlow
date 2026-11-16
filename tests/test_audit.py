@@ -1,4 +1,4 @@
-"""Tests for db/audit.py — log_event and list_recent (uncovered paths)."""
+"""Tests for db/audit.py — log_event and log_action (uncovered paths)."""
 
 from __future__ import annotations
 
@@ -160,107 +160,21 @@ def test_log_event_dict_detail_truncated(tmp_db):
     assert len(rows) == 1  # Should succeed without error
 
 
-# ── list_recent ─────────────────────────────────────────────────────────────
+# ── log_action ──────────────────────────────────────────────────────────────
 
 
-def test_list_recent_empty_returns_empty_list(tmp_db):
-    """list_recent on empty table returns []."""
-    from db.audit import list_recent
+def test_log_action_writes_row(tmp_db):
+    """log_action persists user_key, session_hash, action and detail as given."""
+    db_mod, _ = tmp_db
 
-    result = list_recent()
-    assert result == []
-
-
-def test_list_recent_returns_all_rows(tmp_db):
-    """list_recent returns all logged actions when no filters applied."""
-    from db.audit import list_recent, log_action
-
-    log_action("u1", "s1", "action_a", "detail_a")
-    log_action("u2", "s2", "action_b", "detail_b")
-    log_action("u1", "s3", "action_c", "detail_c")
-
-    result = list_recent()
-    assert len(result) == 3
-
-
-def test_list_recent_contains_expected_keys(tmp_db):
-    """list_recent rows are dicts with id, user_key, session_hash, action, detail, created_at."""
-    from db.audit import list_recent, log_action
+    from db.audit import log_action
 
     log_action("alice", "s1", "export_excel", "file.xlsx")
 
-    result = list_recent()
-    assert len(result) == 1
-    row = result[0]
-    assert "id" in row
-    assert row["user_key"] == "alice"
-    assert row["action"] == "export_excel"
-    assert row["detail"] == "file.xlsx"
-    assert "created_at" in row
+    with db_mod.connect_read() as c:
+        rows = c.execute("SELECT user_key, session_hash, action, detail FROM audit_log").fetchall()
 
-
-def test_list_recent_filter_by_user_key(tmp_db):
-    """list_recent with user_key filter returns only that user's actions."""
-    from db.audit import list_recent, log_action
-
-    log_action("user_a", "s1", "login", "")
-    log_action("user_b", "s2", "login", "")
-    log_action("user_a", "s3", "logout", "")
-
-    result = list_recent(user_key="user_a")
-    assert len(result) == 2
-    assert all(r["user_key"] == "user_a" for r in result)
-
-
-def test_list_recent_filter_by_action(tmp_db):
-    """list_recent with action filter returns only matching actions."""
-    from db.audit import list_recent, log_action
-
-    log_action("u1", "s1", "login", "")
-    log_action("u2", "s2", "logout", "")
-    log_action("u3", "s3", "login", "")
-
-    result = list_recent(action="login")
-    assert len(result) == 2
-    assert all(r["action"] == "login" for r in result)
-
-
-def test_list_recent_filter_both_user_and_action(tmp_db):
-    """list_recent with both filters combines them with AND."""
-    from db.audit import list_recent, log_action
-
-    log_action("alice", "s1", "login", "")
-    log_action("alice", "s2", "logout", "")
-    log_action("bob", "s3", "login", "")
-
-    result = list_recent(user_key="alice", action="login")
-    assert len(result) == 1
-    assert result[0]["user_key"] == "alice"
-    assert result[0]["action"] == "login"
-
-
-def test_list_recent_respects_limit(tmp_db):
-    """list_recent respects the limit parameter."""
-    from db.audit import list_recent, log_action
-
-    for i in range(10):
-        log_action("u", "s", f"action_{i}", "")
-
-    result = list_recent(limit=3)
-    assert len(result) == 3
-
-
-def test_list_recent_ordered_by_created_at_desc(tmp_db):
-    """list_recent returns rows ordered by created_at DESC (most recent first)."""
-    from db.audit import list_recent, log_action
-
-    log_action("u", "s", "first", "")
-    log_action("u", "s", "second", "")
-    log_action("u", "s", "third", "")
-
-    result = list_recent()
-    assert result[0]["action"] == "third"
-    assert result[-1]["action"] == "first"
+    assert [tuple(r) for r in rows] == [("alice", "s1", "export_excel", "file.xlsx")]
 
 
 def test_verify_hash_chain_detects_deleted_intermediate_entry(tmp_db):

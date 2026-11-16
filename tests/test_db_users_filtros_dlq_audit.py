@@ -1,4 +1,6 @@
-"""Tests de users, saved_filters, dlq y audit en `db/` (antes vía wrappers de `services/`).
+"""Tests de users, saved_filters y dlq en `db/` (antes vía wrappers de `services/`).
+
+La escritura de ``log_action`` se prueba en ``tests/test_audit.py``.
 
 Todos los tests usan ``tmp_db`` (BD real con migraciones), sin mocks.
 """
@@ -431,87 +433,3 @@ def test_dlq_incrementa_retry_count(tmp_db):
     entradas = [e for e in list_unresolved() if e["fuente"] == "fuente_retry"]
     assert len(entradas) == 1
     assert entradas[0]["retry_count"] >= 1
-
-
-# ---------------------------------------------------------------------------
-# db/audit.py
-# ---------------------------------------------------------------------------
-
-
-def test_auditoria_log_action_y_list_recent(tmp_db):
-    """log_action + list_recent devuelve la acción registrada."""
-    from db.audit import list_recent, log_action
-
-    log_action("user-hash-001", "sess-abc", "export_excel", "detalle de prueba")
-
-    entradas = list_recent()
-    assert isinstance(entradas, list)
-    acciones = [e["action"] for e in entradas]
-    assert "export_excel" in acciones
-
-
-def test_auditoria_list_recent_filtro_user_key(tmp_db):
-    """list_recent con user_key filtra correctamente."""
-    from db.audit import list_recent, log_action
-
-    log_action("user-AAA", "sess-1", "login", "")
-    log_action("user-BBB", "sess-2", "logout", "")
-
-    entradas_aaa = list_recent(user_key="user-AAA")
-    assert all(e["user_key"] == "user-AAA" for e in entradas_aaa)
-    assert any(e["action"] == "login" for e in entradas_aaa)
-
-
-def test_auditoria_list_recent_filtro_action(tmp_db):
-    """list_recent con action filtra solo ese tipo de acción."""
-    from db.audit import list_recent, log_action
-
-    log_action("user-CCC", "sess-3", "watchlist_add", "")
-    log_action("user-CCC", "sess-3", "export_pdf", "")
-
-    watchlist_entries = list_recent(action="watchlist_add")
-    assert all(e["action"] == "watchlist_add" for e in watchlist_entries)
-
-
-def test_auditoria_list_recent_respeta_limit(tmp_db):
-    """list_recent con limit=1 no devuelve más de 1 entrada."""
-    from db.audit import list_recent, log_action
-
-    for i in range(5):
-        log_action(f"user-limit-{i}", "sess-x", "login", "")
-
-    resultado = list_recent(limit=1)
-    assert len(resultado) <= 1
-
-
-def test_auditoria_multiples_acciones_misma_sesion(tmp_db):
-    """Múltiples acciones de un mismo usuario se registran todas."""
-    from db.audit import list_recent, log_action
-
-    acciones = ["login", "watchlist_add", "export_excel", "logout"]
-    for accion in acciones:
-        log_action("user-DDD", "sess-DDD", accion, f"detalle {accion}")
-
-    entradas = list_recent(user_key="user-DDD")
-    acciones_registradas = {e["action"] for e in entradas}
-    assert acciones_registradas == set(acciones)
-
-
-def test_auditoria_bd_vacia_devuelve_lista(tmp_db):
-    """list_recent en BD vacía devuelve lista (vacía o no falla)."""
-    from db.audit import list_recent
-
-    resultado = list_recent()
-    assert isinstance(resultado, list)
-
-
-def test_auditoria_detail_persiste(tmp_db):
-    """El campo detail se persiste y recupera correctamente."""
-    from db.audit import list_recent, log_action
-
-    detalle_esperado = "exportado 42 filas en formato xlsx"
-    log_action("user-EEE", "sess-EEE", "export_excel", detalle_esperado)
-
-    entradas = list_recent(user_key="user-EEE", action="export_excel")
-    assert len(entradas) >= 1
-    assert entradas[0]["detail"] == detalle_esperado
