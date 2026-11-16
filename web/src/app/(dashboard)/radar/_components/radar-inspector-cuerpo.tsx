@@ -6,8 +6,8 @@ import { Fact, SectionTitle } from "@/components/console/panel";
 import { DESGLOSE_LABELS } from "@/components/score-desglose";
 import { GlosarioHint } from "@/components/ui/glosario-hint";
 import type { RadarTender } from "@/hooks/use-radar";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
-import { daysLeft, urgency } from "./radar-shared";
+import { cn, daysLeft, formatCurrency, formatDate } from "@/lib/utils";
+import { urgency } from "./radar-shared";
 
 /**
  * Cuerpo del inspector: los ocho datos del anuncio, el desglose del score, la

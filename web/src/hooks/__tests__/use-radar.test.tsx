@@ -2,7 +2,13 @@ import * as React from "react";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { useDismissRadarTender, useRadar, useRadarDismissals, useRestoreRadarTender } from "@/hooks/use-radar";
+import {
+  useDismissRadarTender,
+  useRadar,
+  useRadarDismissals,
+  useRadarFollowedTenders,
+  useRestoreRadarTender,
+} from "@/hooks/use-radar";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
 import { registrarEvento } from "@/lib/analytics";
 
@@ -239,6 +245,45 @@ describe("useRadar — datos previos al cambiar un filtro", () => {
 
     expect(result.current.isLoading).toBe(true);
     expect(result.current.data).toBeUndefined();
+  });
+
+  it("seguir otra licitación conserva el segmento de seguidas en vez de volver al esqueleto", async () => {
+    // Seguir cambia los ids y con ellos la clave; la organización va en la
+    // posición 2 de `radarKeys.porIds`. Comparando otra posición nunca
+    // coincidía y el segmento parpadeaba a esqueleto en cada gesto.
+    stubPorTecnologia("ninguna");
+    const { result, rerender } = renderHook(({ ids }) => useRadarFollowedTenders(ids, true), {
+      wrapper: wrapperEstable(),
+      initialProps: { ids: ["A"] },
+    });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => new Promise(() => {})),
+    );
+    rerender({ ids: ["A", "B"] });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.items).toHaveLength(1);
+  });
+
+  it("no conserva las seguidas de otra organización", async () => {
+    stubPorTecnologia("ninguna");
+    const { result, rerender } = renderHook(() => useRadarFollowedTenders(["A"], true), {
+      wrapper: wrapperEstable(),
+    });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => new Promise(() => {})),
+    );
+    organizacionRef.current = 8;
+    rerender();
+
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.items).toEqual([]);
   });
 });
 

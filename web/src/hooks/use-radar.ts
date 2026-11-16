@@ -131,9 +131,10 @@ function useScoringPorIds(segmento: SegmentoPorIds, ids: readonly string[], enab
     staleTime: 5 * 60_000,
     // Seguir, dejar de seguir o restaurar cambian los ids, y con ellos la clave:
     // sin esto el segmento pasaba por el esqueleto en cada gesto. Mismo criterio
-    // que `useRadar`: sólo dentro de la misma organización (posición 3).
+    // que `useRadar`: sólo dentro de la misma organización (posición 2 de
+    // `radarKeys.porIds`; la 3 son los ids, que es justo lo que cambia).
     placeholderData: (previous, previousQuery) =>
-      previousQuery?.queryKey[3] === organizationId ? previous : undefined,
+      previousQuery?.queryKey[2] === organizationId ? previous : undefined,
   });
 
   return {
