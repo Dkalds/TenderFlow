@@ -352,6 +352,29 @@ class TestContrato:
         assert formula.evidence
         assert formula.evidence[0].page_number == 3
 
+    def test_una_clave_que_no_es_un_umbral_no_tira_la_simulacion(self) -> None:
+        """`params` admite claves libres: «umbral» no es un tramo y antes era un 500."""
+        sim = simular(
+            "EXP-1",
+            [
+                _formula(
+                    formula_type="lineal_por_tramos",
+                    max_points=30,
+                    params={"umbral": 0.25, "0.1": 30},
+                )
+            ],
+            bajas=[0.15],
+        )
+        assert sim.sin_calculo is None
+
+    def test_por_tramos_sin_ningun_tramo_legible_se_declara_no_calculable(self) -> None:
+        sim = simular(
+            "EXP-1",
+            [_formula(formula_type="lineal_por_tramos", max_points=30, params={"umbral": 0.25})],
+            bajas=[0.15],
+        )
+        assert sim.sin_calculo == "formula_no_calculable"
+
     def test_el_tipo_se_publica_para_la_telemetria(self) -> None:
         """`simulador_usado.formula_tipo` mide qué fórmulas cubre el extractor."""
         sim = simular(

@@ -44,7 +44,7 @@ from services.cartera import listar_cartera
 from services.ficha_pdf import BloqueFicha, FichaOportunidad, construir_pdf
 from services.jobs import solicitar_despacho_de_eventos
 from services.kit_presentacion import EstadoFicha, KitPresentacion, construir_kit, marcar_item
-from services.organizations import alcance_resuelto, require_active_member
+from services.organizations import ajustes_guardados, alcance_resuelto, require_active_member
 from services.puntuaciones_acta import puntuaciones_de_pursuit, validar_fila_acta
 from services.pursuit_awards import resultado_sugerido
 from services.pursuits_agenda import (
@@ -757,8 +757,11 @@ def get_metrics(
         # que falle deja los defaults de D34: la cifra sigue siendo correcta y
         # declarada, sólo que sin la personalización.
         try:
-            ajustes = OrganizationSettings.model_validate(
-                OrganizationRepository().get_settings(resolved_id)
+            # `ajustes_guardados` y no `model_validate` sobre el blob: la marca
+            # `alerta_por_defecto` que se guarda ahí no es un campo del modelo
+            # (`extra="forbid"`) y tiraba las probabilidades propias.
+            ajustes = ajustes_guardados(
+                OrganizationRepository().get_settings(resolved_id), resolved_id
             )
         except Exception as exc:
             log.warning("pursuit_metrics_settings_error", error=str(exc)[:200])

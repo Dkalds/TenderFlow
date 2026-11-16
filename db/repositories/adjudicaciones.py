@@ -327,7 +327,9 @@ class AdjudicacionRepository:
             sql = "SELECT " + _SUMMARY_COLS + " FROM adjudicaciones"
             if where:
                 sql += " WHERE " + where
-            sql += " ORDER BY fecha_adjudicacion DESC LIMIT %s OFFSET %s"
+            # Con desempate: muchas filas comparten día y, sin él, las páginas
+            # por OFFSET repiten o se saltan filas.
+            sql += " ORDER BY fecha_adjudicacion DESC NULLS LAST, id DESC LIMIT %s OFFSET %s"
             params.extend([limit, offset])
             items = typed_rows(AdjudicacionResumenRow, rows_to_dicts(c.execute(sql, tuple(params))))
 
@@ -457,7 +459,9 @@ class AdjudicacionRepository:
             conditions.append(f"a.ccaa IN ({placeholders})")
             params.extend(ccaa_filter)
         sql += "WHERE " + " AND ".join(conditions) + " "
-        sql += f"ORDER BY a.fecha_adjudicacion DESC LIMIT {int(limit)}"
+        # NULLS LAST: sin él las adjudicaciones sin fecha ocupan los primeros
+        # huecos del corte, por delante de las recientes.
+        sql += f"ORDER BY a.fecha_adjudicacion DESC NULLS LAST, a.id DESC LIMIT {int(limit)}"
         with connect_read() as c:
             return typed_rows(LicitadorRow, rows_to_dicts(c.execute(sql, params)))
 

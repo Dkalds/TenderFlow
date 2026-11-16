@@ -65,6 +65,7 @@ from structlog.contextvars import bind_contextvars, clear_contextvars
 
 from api.rutas import plantilla_de_ruta
 from observability.logging import get_logger
+from services.pursuit_attachments import MAX_BYTES as _ADJUNTO_MAX_BYTES
 from services.rate_limiting import get_rate_limiter, ip_de_cuota
 from shared.etag import coincide_if_none_match, etag_debil
 
@@ -865,9 +866,14 @@ class _MaxBodyMiddleware:
 
     Comprueba Content-Length (fast path) y acumula tamaño en streaming
     (slow path) sin buffering completo del body.
+
+    La subida de un adjunto es la única ruta cuyo cuerpo es un fichero: su tope
+    es el del adjunto. Con el de 1 MB, el 413 salía de aquí antes de llegar a
+    la ruta y ningún fichero mayor podía subirse.
     """
 
     _MAX_BYTES = 1 * 1024 * 1024  # 1 MB
+    _RUTA_ADJUNTOS = re.compile(r"^/api/v1/pursuits/\d+/adjuntos/?$")
     # RFC 7807 como el resto de la API. El 413 se emite en ASGI crudo (el body
     # se corta antes de llegar al router, así que no hay exception handler que
     # lo formatee), pero el contrato que ve el cliente es el mismo: un
@@ -886,22 +892,25 @@ class _MaxBodyMiddleware:
             await self.app(scope, receive, send)
             return
 
+        method = scope.get("method", "")
+        max_bytes = self._MAX_BYTES
+        if method == "POST" and self._RUTA_ADJUNTOS.match(scope.get("path", "")):
+            max_bytes = _ADJUNTO_MAX_BYTES
+
         # Fast path: rechazar inmediatamente si Content-Length lo delata
         headers = dict(scope.get("headers") or [])
         cl_raw = headers.get(b"content-length")
         if cl_raw is not None:
             try:
-                if int(cl_raw) > self._MAX_BYTES:
-                    await self._send_413(send)
+                if int(cl_raw) > max_bytes:
+                    await self._send_413(send, max_bytes)
                     return
             except (ValueError, UnicodeDecodeError):
                 pass
 
         # Slow path: para requests con body, envolver receive para contar bytes
-        method = scope.get("method", "")
         if method in ("POST", "PUT", "PATCH", "DELETE"):
             body_size = 0
-            max_bytes = self._MAX_BYTES
             cortado = False
             respuesta_empezada = False
 
@@ -937,22 +946,23 @@ class _MaxBodyMiddleware:
                 if respuesta_empezada:
                     raise
             if cortado and not respuesta_empezada:
-                await self._send_413(send)
+                await self._send_413(send, max_bytes)
         else:
             await self.app(scope, receive, send)
 
-    async def _send_413(self, send: Send) -> None:
+    async def _send_413(self, send: Send, max_bytes: int = _MAX_BYTES) -> None:
+        cuerpo = self._413_BODY.replace(b"1 MB", f"{max_bytes // (1024 * 1024)} MB".encode())
         await send(
             {
                 "type": "http.response.start",
                 "status": 413,
                 "headers": [
                     (b"content-type", b"application/problem+json"),
-                    (b"content-length", str(len(self._413_BODY)).encode()),
+                    (b"content-length", str(len(cuerpo)).encode()),
                 ],
             }
         )
-        await send({"type": "http.response.body", "body": self._413_BODY})
+        await send({"type": "http.response.body", "body": cuerpo})
 
 
 class _RejectNulMiddleware:

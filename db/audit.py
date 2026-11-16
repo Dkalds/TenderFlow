@@ -601,7 +601,7 @@ def verify_hash_chain() -> dict[str, object]:
                         if expected != stored:
                             return {
                                 "valid": False,
-                                "checked": row_id,
+                                "checked": checked,
                                 "first_tampered_id": row_id,
                                 "error": f"Hash no coincide en fila id={row_id}",
                             }

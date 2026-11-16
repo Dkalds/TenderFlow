@@ -159,7 +159,10 @@ async def get_organization_audit(
         _repo.list_for_organization,
         resolved_id,
         desde=desde.isoformat() if desde is not None else None,
-        hasta=(hasta + timedelta(days=1)).isoformat() if hasta is not None else None,
+        # `date.max` no tiene día siguiente (OverflowError): equivale a no acotar.
+        hasta=(hasta + timedelta(days=1)).isoformat()
+        if hasta is not None and hasta < date.max
+        else None,
         cursor=_decodificar_cursor(cursor) if cursor else None,
         # Una fila de más dice si hay página siguiente sin un COUNT(*).
         limit=limit + 1,

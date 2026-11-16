@@ -213,6 +213,15 @@ def sugerir_socios(
             cpv=cpv, ccaa=ccaa, sin_resultados="No hay adjudicaciones en este segmento."
         )
 
+    # El segmento es CPV + CCAA, el mismo corte que aplica `suggest_partners`:
+    # sin él, los líderes, su cuota y `n_adjudicaciones` eran los de toda la
+    # carga y se presentaban como los del segmento.
+    segmento = adjudicaciones
+    if cpv and "cpv" in segmento.columns:
+        segmento = segmento[segmento["cpv"].fillna("").astype(str).str.startswith(cpv)]
+    if ccaa and ccaa != "Todas" and "ccaa" in segmento.columns:
+        segmento = segmento[segmento["ccaa"] == ccaa]
+
     ranking = suggest_partners(
         adjudicaciones,
         cpv_prefijo=cpv or None,
@@ -220,7 +229,7 @@ def sugerir_socios(
     )
     if ranking.empty:
         return SugerenciaSocios(
-            n_adjudicaciones=len(adjudicaciones),
+            n_adjudicaciones=len(segmento),
             cpv=cpv,
             ccaa=ccaa,
             sin_resultados="Ninguna empresa acumula adjudicaciones en este segmento.",
@@ -256,7 +265,7 @@ def sugerir_socios(
 
     if not socios:
         return SugerenciaSocios(
-            n_adjudicaciones=len(adjudicaciones),
+            n_adjudicaciones=len(segmento),
             cpv=cpv,
             ccaa=ccaa,
             sin_resultados=(
@@ -266,8 +275,8 @@ def sugerir_socios(
 
     return SugerenciaSocios(
         socios=socios,
-        lideres=_lideres(adjudicaciones, excluir=fuera),
-        n_adjudicaciones=len(adjudicaciones),
+        lideres=_lideres(segmento, excluir=fuera),
+        n_adjudicaciones=len(segmento),
         cpv=cpv,
         ccaa=ccaa,
     )

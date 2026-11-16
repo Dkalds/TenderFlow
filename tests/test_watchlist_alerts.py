@@ -187,7 +187,7 @@ def test_check_and_notify_with_matches_emite_el_evento(tmp_db):
 
     with (
         patch("scheduler.watchlist_alerts.list_entries_por_clave", return_value=[entry]),
-        patch("scheduler.watchlist_alerts._query_licitaciones_batch", return_value={"48": [lic]}),
+        patch("scheduler.watchlist_alerts._query_licitaciones_batch", return_value={2: [lic]}),
         patch("scheduler.watchlist_alerts.matches_licitacion", return_value=True),
         patch("scheduler.watchlist_alerts.update_last_notified") as mock_update,
         patch("scheduler.watchlist_alerts.append_domain_event") as mock_evento,
@@ -272,7 +272,10 @@ def test_inmediatas_y_digest_van_en_eventos_separados_y_un_fallo_no_frena_al_otr
             "scheduler.watchlist_alerts.list_entries_por_clave",
             return_value=[entrada(1, "immediate"), entrada(2, "daily")],
         ),
-        patch("scheduler.watchlist_alerts._query_licitaciones_batch", return_value={"48": [lic]}),
+        patch(
+            "scheduler.watchlist_alerts._query_licitaciones_batch",
+            return_value={1: [lic], 2: [lic]},
+        ),
         patch("scheduler.watchlist_alerts.matches_licitacion", return_value=True),
         patch("scheduler.watchlist_alerts.update_last_notified") as mock_update,
         patch("scheduler.watchlist_alerts.append_domain_event", side_effect=emitir),

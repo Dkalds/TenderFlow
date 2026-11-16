@@ -578,8 +578,9 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
         .reset_index()
     )
 
-    total_importe = float(g["importe"].sum(skipna=True)) or 1.0
-    g["cuota"] = g["importe"] / total_importe * 100
+    total_importe = float(g["importe"].sum(skipna=True))
+    # El `or 1.0` solo protege la división: devolverlo decía «1 €» de mercado.
+    g["cuota"] = g["importe"] / (total_importe or 1.0) * 100
 
     # Compute extra fields
     active_years_by_empresa: dict[str, int] = {}

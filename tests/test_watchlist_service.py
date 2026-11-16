@@ -11,27 +11,25 @@ _REPO_PATH = "services.watchlist._repo"
 # ── query_licitaciones_batch ──────────────────────────────────────────────────
 
 
-def test_query_licitaciones_batch_groups_by_prefix():
-    """query_licitaciones_batch devuelve dict keyed por cpv_prefix."""
+def test_query_licitaciones_batch_groups_by_entry():
+    """query_licitaciones_batch devuelve dict keyed por id de la entrada."""
     from services.watchlist import query_licitaciones_batch
 
     entries = [
-        {"cpv_prefix": "7221", "last_notified_at": "2026-01-01"},
-        {"cpv_prefix": "4800", "last_notified_at": "2026-01-01"},
+        {"id": 1, "cpv_prefix": "7221", "last_notified_at": "2026-01-01"},
+        {"id": 2, "cpv_prefix": "4800", "last_notified_at": "2026-01-01"},
     ]
     expected = {
-        "7221": [{"id_externo": "L1", "titulo": "Tit1", "cpv": "72210000"}],
-        "4800": [{"id_externo": "L2", "titulo": "Tit2", "cpv": "48000000"}],
+        1: [{"id_externo": "L1", "titulo": "Tit1", "cpv": "72210000"}],
+        2: [{"id_externo": "L2", "titulo": "Tit2", "cpv": "48000000"}],
     }
 
     with patch(_REPO_PATH) as mock_repo:
         mock_repo.query_licitaciones_batch.return_value = expected
         result = query_licitaciones_batch(entries, default_since="2026-01-01")
 
-    assert "7221" in result
-    assert "4800" in result
-    assert result["7221"][0]["id_externo"] == "L1"
-    assert result["4800"][0]["id_externo"] == "L2"
+    assert result[1][0]["id_externo"] == "L1"
+    assert result[2][0]["id_externo"] == "L2"
     mock_repo.query_licitaciones_batch.assert_called_once_with(entries, "2026-01-01")
 
 

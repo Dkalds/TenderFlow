@@ -67,7 +67,12 @@ def build_forecast_df(
             adjudicaciones.groupby("licitacion_id")
             .agg(
                 fecha_adj_calc=("fecha_adjudicacion", "min"),
-                importe_adjudicado_total=("importe_adjudicado", "sum"),
+                # min_count=1: sin ningún importe la suma es NaN, no un 0 que
+                # después se lee como una baja del 100 %.
+                importe_adjudicado_total=(
+                    "importe_adjudicado",
+                    lambda s: s.sum(min_count=1),
+                ),
                 n_ofertas=("n_ofertas_recibidas", "max"),
                 adjudicatarios=("nombre", lambda s: ", ".join(s.dropna().unique()[:3])),
             )

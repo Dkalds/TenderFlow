@@ -78,7 +78,8 @@ def verify_totp(secret: str, code: str) -> bool:
         import hmac
         import time
 
-        if len(code) != 6 or not code.isdecimal():
+        # isascii: «١٢٣٤٥٦» también es isdecimal y haría lanzar a compare_digest.
+        if len(code) != 6 or not (code.isascii() and code.isdecimal()):
             return False
         try:
             key = base64.b32decode(secret.upper() + "=" * (-len(secret) % 8), casefold=True)

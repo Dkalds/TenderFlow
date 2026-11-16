@@ -29,7 +29,8 @@ variable de entorno ``CSRF_ACEPTAR_LEGACY``:
   en el que hay que desplegar.
 * ``0`` — solo el formato nuevo. Es el fin del periodo de gracia; se pone
   cuando ya no queden sesiones anteriores al despliegue, es decir tras
-  ``_SESSION_MAX_AGE`` (24 h) desde que salió a producción.
+  ``_SESSION_MAX_AGE`` (el techo absoluto de la sesión,
+  ``SESSION_ABSOLUTE_DAYS``) desde que salió a producción.
 
 El formato legacy **no** se emite nunca más: el periodo de gracia solo acepta,
 no produce. Y como el token legacy no lleva ``kid``, se valida contra la clave
@@ -174,7 +175,8 @@ def csrf_token_valido(
         return True
     if not legacy_aceptado():
         return False
-    return hmac.compare_digest(token, legacy_csrf_token(session_id))
+    # En bytes: con `str`, compare_digest lanza ante un token no ASCII.
+    return hmac.compare_digest(token.encode(), legacy_csrf_token(session_id).encode())
 
 
 __all__ = [

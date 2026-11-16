@@ -64,7 +64,8 @@ def extraer(texto: str) -> list[str]:
     """Textos mencionados, en orden y sin repetir."""
     vistos: list[str] = []
     for entre_llaves, suelto in _MENCION.findall(texto or ""):
-        crudo = (entre_llaves or suelto).strip()
+        # «Gracias @ana.»: el punto final es de la frase, no del nombre.
+        crudo = (entre_llaves or suelto.rstrip("._-")).strip()
         if crudo and crudo not in vistos:
             vistos.append(crudo)
     return vistos

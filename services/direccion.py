@@ -61,6 +61,7 @@ from db.repositories.pursuits import PursuitRepository
 from observability.logging import get_logger
 from services.organizations import (
     OrganizationPermissionError,
+    ajustes_guardados,
     alcance_resuelto,
 )
 from services.pursuits import (
@@ -861,8 +862,10 @@ def _ajustes(organization_id: int) -> OrganizationSettings:
     declarada (`probabilidades_etapa_usadas`), sólo que sin personalizar.
     """
     try:
-        return OrganizationSettings.model_validate(
-            OrganizationRepository().get_settings(organization_id)
+        # Lectura tolerante: el blob guarda claves que no son campos del modelo
+        # (`alerta_por_defecto`) y `model_validate` las rechazaba enteras.
+        return ajustes_guardados(
+            OrganizationRepository().get_settings(organization_id), organization_id
         )
     except Exception as exc:
         log.warning("direccion_settings_error", error=str(exc)[:200])
