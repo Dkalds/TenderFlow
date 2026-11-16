@@ -77,14 +77,14 @@ def record_failure(
 
 
 def list_unresolved(
-    limit: int = 100, *, exclude_fuente_prefix: str | None = None
+    limit: int = 100, *, exclude_fuente_prefixes: tuple[str, ...] = ()
 ) -> list[dict[str, Any]]:
     """Devuelve fallos abiertos (no resueltos y no agotados).
 
     Args:
         limit: Máximo de filas a devolver.
-        exclude_fuente_prefix: Si se indica, descarta las entradas cuya
-            ``fuente`` empieza por ese prefijo. El filtro va en SQL, **no**
+        exclude_fuente_prefixes: Descarta las entradas cuya ``fuente`` empieza
+            por alguno de estos prefijos. El filtro va en SQL, **no**
             sobre el resultado: filtrar en Python después del ``LIMIT`` deja
             sin candidatos al caller cuando el prefijo excluido copa las
             primeras filas del orden (exactamente el caso del carril diario,
@@ -92,11 +92,9 @@ def list_unresolved(
     """
     where = "WHERE resolved_at IS NULL AND exhausted_at IS NULL"
     params: list[object] = []
-    if exclude_fuente_prefix:
-        # `%%`: psycopg interpreta `%` dentro del literal como placeholder
-        # cuando la sentencia lleva parámetros.
-        where += " AND fuente NOT LIKE %s || '%%'"
-        params.append(exclude_fuente_prefix)
+    if exclude_fuente_prefixes:
+        where += " AND NOT (fuente LIKE ANY(%s))"
+        params.append([f"{prefijo}%" for prefijo in exclude_fuente_prefixes])
     params.append(limit)
 
     with connect() as c:
