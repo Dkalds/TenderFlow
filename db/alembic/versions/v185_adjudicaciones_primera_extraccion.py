@@ -13,9 +13,12 @@ que la re-sella: cada reingesta de un expediente ya avisado volvía a mandar la
 misma adjudicación como novedad a quien vigila a esa empresa (y re-calculaba
 ``ccaa_nueva``/``cpv_nuevo`` contra un historial que también se movía).
 
-Esta revisión crea ``primera_extraccion``: la primera vez que se vio la fila.
-El upsert la conserva de la fila borrada con la misma clave de deduplicado
-(licitación, lote, NIF, importe) y a las nuevas les pone su hora de escritura.
+Esta revisión crea ``primera_extraccion``: desde cuándo la vigilancia de la
+empresa puede ver la fila. El upsert la conserva de la fila borrada con la
+misma clave de deduplicado (licitación, lote, NIF, importe), junto con su
+``empresa_id``. Una fila nueva entra sin empresa y con la hora del parseo, y al
+enlazarla ``db.empresas`` le pone la hora del enlace. Si una alerta corre entre
+la ingesta y el enlace, la fila sigue saliendo en la siguiente.
 Como en ``licitaciones`` (``v100``), es ``text`` en el formato de
 ``now_utc_iso()``; ``fecha_extraccion`` de ``adjudicaciones`` no tiene sombra
 ``_ts`` (``v159``), así que esta tampoco.
@@ -37,7 +40,8 @@ se comporta como antes de esta revisión hasta que se reingiere una vez.
 
 Lo que aún avisa una vez más: la conservación casa por la clave exacta. Una
 fila guardada cuya clave ya no coincide con la que da el parseo actual se trata
-como nueva en su próxima reingesta y recibe la hora de escritura: importes de
+como nueva en su próxima reingesta: pierde el enlace y, al volver a enlazarse,
+recibe la hora del enlace. Pasa con importes de
 ``real`` promovidos por ``v156`` y no reingeridos (11 782 155,0 frente a
 11 782 154,55), adjudicatarios compuestos partidos con importe ``NULL`` que el
 parser ahora reparte, ``lote_id`` resuelto después (cambia la clave de tres a

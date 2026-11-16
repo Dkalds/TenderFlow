@@ -595,18 +595,22 @@ def _fila_licitacion(
 # lote_numero_raw es parse-only (ver docstring de Adjudicacion): nunca es
 # columna de `adjudicaciones`, así que se excluye de las columnas del INSERT.
 _ADJ_KEYS = tuple(f.name for f in fields(Adjudicacion) if f.name != "lote_numero_raw")
-# `primera_extraccion` (v185) no sale del parseo: la pone `_dedup_adj_rows`
-# desde la fila que borra el reemplazo, o la hora de escritura si es nueva.
-_ADJ_COLS = ", ".join((*_ADJ_KEYS, "primera_extraccion"))
-_ADJ_PLACEHOLDERS = ", ".join("%s" for _ in range(len(_ADJ_KEYS) + 1))
-# Lo que devuelve el DELETE del reemplazo para conservar `primera_extraccion`.
-# El COALESCE cubre las filas que escribió el código anterior a v185.
+# `primera_extraccion` (v185) y `empresa_id` no salen del parseo: los pone
+# `_dedup_adj_rows` desde la fila que borra el reemplazo. Una fila nueva entra
+# sin empresa y con su `fecha_extraccion`; al enlazarla, `db.empresas` le pone
+# la hora del enlace, que es cuando la vigilancia de esa empresa puede verla.
+_ADJ_COLS = ", ".join((*_ADJ_KEYS, "primera_extraccion", "empresa_id"))
+_ADJ_PLACEHOLDERS = ", ".join("%s" for _ in range(len(_ADJ_KEYS) + 2))
+# Lo que devuelve el DELETE del reemplazo para conservar `primera_extraccion` y
+# el enlace. El COALESCE cubre las filas que escribió el código anterior a v185.
 _ADJ_BORRADAS_RETURNING = (
     "RETURNING licitacion_id, lote_id, nif, importe_adjudicado, "
-    "COALESCE(primera_extraccion, fecha_extraccion)"
+    "COALESCE(primera_extraccion, fecha_extraccion), empresa_id"
 )
 # Una fila de ese RETURNING, y la clave de deduplicado (`_clave_adj`) que sale de ella.
-_AdjBorrada: TypeAlias = tuple[str, int | None, str | None, float | None, str | None]
+_AdjBorrada: TypeAlias = tuple[str, int | None, str | None, float | None, str | None, int | None]
+# Lo que se conserva de la fila borrada: ``(primera_extraccion, empresa_id)``.
+_Conservado: TypeAlias = tuple[str | None, int | None]
 _ClaveAdj: TypeAlias = (
     tuple[str, int, str | None, float | None] | tuple[str, str | None, float | None]
 )
@@ -823,24 +827,29 @@ def _clave_adj(
     return (licitacion_id, nif, importe)
 
 
-def _primeras_extracciones(borradas: Iterable[_AdjBorrada]) -> dict[_ClaveAdj, str]:
-    """``primera_extraccion`` de las filas que borró el reemplazo, por clave.
+def _primeras_extracciones(borradas: Iterable[_AdjBorrada]) -> dict[_ClaveAdj, _Conservado]:
+    """``(primera_extraccion, empresa_id)`` de las filas que borró el reemplazo, por clave.
 
     Si varias comparten clave (alguna con NIF o importe ``NULL``, que la BD no
-    deduplica) se queda la más antigua: el instante en que se vio la primera.
+    deduplica) se queda la ``primera_extraccion`` más antigua, el instante en
+    que se vio la primera, y la primera empresa enlazada que aparezca. Sin el
+    enlace, cada reingesta dejaba la fila sin empresa hasta que la resolución
+    de entidades la volvía a enlazar.
     """
-    primeras: dict[_ClaveAdj, str] = {}
-    for lic_id, lote_id, nif, importe, primera in borradas:
+    conservado: dict[_ClaveAdj, _Conservado] = {}
+    for lic_id, lote_id, nif, importe, primera, empresa_id in borradas:
         clave = _clave_adj(lic_id, lote_id, nif, importe)
-        if primera is not None and (clave not in primeras or primera < primeras[clave]):
-            primeras[clave] = primera
-    return primeras
+        prev_primera, prev_empresa = conservado.get(clave, (None, None))
+        if prev_primera is None or (primera is not None and primera < prev_primera):
+            prev_primera = primera
+        conservado[clave] = (prev_primera, prev_empresa if prev_empresa is not None else empresa_id)
+    return conservado
 
 
 def _dedup_adj_rows(
     licitacion_id: str,
     adjs: Iterable[Adjudicacion],
-    primeras: dict[_ClaveAdj, str],
+    primeras: dict[_ClaveAdj, _Conservado],
 ) -> list[tuple[Adjudicacion, list[Any]]]:
     """Deduplica en memoria replicando las dos unique parciales de la BD
     (v65_lotes: ``..._sin_lote`` y ``..._lic_lote_nif_importe``).
@@ -861,9 +870,11 @@ def _dedup_adj_rows(
     perderían adjudicaciones sin NIF que la BD sí acepta.
 
     La misma clave recupera de ``primeras`` (:func:`_primeras_extracciones`)
-    la ``primera_extraccion`` de la fila borrada: sin ella, cada reingesta
-    haría pasar por nueva una adjudicación ya avisada (v185). Una fila sin
-    gemela borrada es nueva y se queda con su ``fecha_extraccion``.
+    la ``primera_extraccion`` y la ``empresa_id`` de la fila borrada. Sin la
+    primera, cada reingesta haría pasar por nueva una adjudicación ya avisada
+    (v185); sin la segunda, la fila perdería su enlace. Una fila sin gemela
+    borrada es nueva: entra sin empresa y con su ``fecha_extraccion`` (la hora
+    del parseo), que el enlace con la empresa sustituye después.
     """
     seen: set[tuple[Any, ...]] = set()
     out: list[tuple[Adjudicacion, list[Any]]] = []
@@ -877,8 +888,10 @@ def _dedup_adj_rows(
                 _log.debug("adj_dedup_unique", licitacion_id=licitacion_id, nif=adj.nif)
                 continue
             seen.add(key)
-        primera = primeras.get(key, data["fecha_extraccion"])
-        out.append((adj, [*(data[k] for k in _ADJ_KEYS), primera]))
+        primera, empresa_id = primeras.get(key, (None, None))
+        out.append(
+            (adj, [*(data[k] for k in _ADJ_KEYS), primera or data["fecha_extraccion"], empresa_id])
+        )
     return out
 
 

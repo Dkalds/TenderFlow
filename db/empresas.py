@@ -161,11 +161,24 @@ def add_ute_member(conn: Any, ute_empresa_id: int, miembro_empresa_id: int) -> N
     )
 
 
+# Enlazar una adjudicación sin empresa le pone la hora del enlace como
+# `primera_extraccion` (v185): la alerta de competidores
+# (`watchlist_empresas.nuevas_adjudicaciones_de_empresa`) solo la ve desde
+# entonces, y con la hora del parseo una alerta pasada entre la ingesta y el
+# enlace la dejaría atrás para siempre. El reemplazo conserva el enlace
+# (`db.upsert._dedup_adj_rows`), así que una reingesta no vuelve a pasar por aquí.
+_ENLAZAR_SET = "SET empresa_id = %s, primera_extraccion = %s"
+
+
 def link_adjudicaciones(conn: Any, enlaces: Sequence[tuple[int, int]]) -> None:
     """Enlaza adjudicaciones con su empresa: ``(empresa_id, adjudicacion_id)``, en un viaje."""
     if not enlaces:
         return
-    conn.executemany("UPDATE adjudicaciones SET empresa_id = %s WHERE id = %s", list(enlaces))
+    ahora = now_utc_iso()
+    conn.executemany(
+        f"UPDATE adjudicaciones {_ENLAZAR_SET} WHERE id = %s AND empresa_id IS NULL",
+        [(empresa_id, ahora, adj_id) for empresa_id, adj_id in enlaces],
+    )
 
 
 def fetch_unlinked(
@@ -305,9 +318,9 @@ def apply_review(review_id: int, *, accept: bool, resolved_by: str = "") -> int 
 
         # Vincular las adjudicaciones que estaban esperando esta decisión
         c.execute(
-            "UPDATE adjudicaciones SET empresa_id = %s "
+            f"UPDATE adjudicaciones {_ENLAZAR_SET} "
             "WHERE empresa_id IS NULL AND nombre = %s AND COALESCE(nif, '') = COALESCE(%s, '')",
-            (empresa_id, nombre_original, nif),
+            (empresa_id, now_utc_iso(), nombre_original, nif),
         )
         c.execute(
             "UPDATE empresa_review_queue SET status = %s, resolved_at = %s, resolved_by = %s "
