@@ -76,10 +76,13 @@ def _purgar_tabla(table: str, date_col: str, cutoff: str, *, apply: bool) -> int
 
 
 def _contar_rate_limits_expirados() -> int:
+    """Lo que borraría ``db.rate_limits.cleanup_expired``: mismo corte, por ``ts``."""
     import time
 
     with connect() as conn:
-        fila = conn.execute("SELECT COUNT(*) FROM rate_limits WHERE reset_at < %s", (time.time(),))
+        fila = conn.execute(
+            "SELECT COUNT(*) FROM rate_limits WHERE ts < %s", (time.time() - 86_400,)
+        )
         return int(fila.fetchone()[0])
 
 

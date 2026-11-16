@@ -41,6 +41,12 @@ import { ColaCierre } from "./cola-cierre";
  * activas de `/resumen/hoy`, las activas dentro del ámbito de
  * `/analytics/overview`—, así que la proporción es la del dato, no una
  * cuenta del navegador entre universos distintos.
+ *
+ * **«Cierran en 48 h» sale de la tira** (2026-11-16, rediseño del Resumen):
+ * tiene panel propio junto a «Tu día» (`ColaCierreHoy`), con su recuento
+ * encima de la lista. En su sitio entra «Importe 30 d», que antes iba en el
+ * panel de publicaciones; la tira encabeza ahora «Mercado hoy», con el gráfico
+ * del periodo debajo.
  */
 
 /** `/analytics/resumen/hoy` con la clave y las opciones que comparten la tira y la cola. */
@@ -94,9 +100,10 @@ export function ColaCierreHoy() {
   return (
     <ColaCierre
       total={hoy.data?.vencen_48h}
+      activas={hoy.data?.total_activas}
       loading={hoy.isLoading}
       href={scopedHref(vencenHref)}
-      target="Abre Detalle: cierran en 48 h"
+      className="h-full"
     />
   );
 }
@@ -104,14 +111,12 @@ export function ColaCierreHoy() {
 export function AtencionCards() {
   const scopedHref = useScopedHref();
   const hoy = useResumenHoy();
-  // Misma clave y opciones que `composicion-panel.tsx`: una sola petición.
+  // Misma clave y opciones que `cifras-periodo.tsx`: una sola petición.
   const overview = useFilteredQuery(
     ["analytics", "overview"],
     "/api/v1/analytics/overview",
     { staleTime: 5 * 60 * 1000, meta: META_ERROR_EN_LINEA },
   );
-  const vencenHref = useVencenHref();
-
   // «En plazo» del contador de grandes: plazo posterior a ahora. El listado
   // corta por día, así que abre también las que cerraron hoy antes de esta
   // hora — el mismo redondeo que la cola de cierre.
@@ -156,36 +161,6 @@ export function AtencionCards() {
   return (
     <StatStrip columns={4}>
       <StatCell
-        label="Cierran en 48 h"
-        loading={cargando}
-        value={data ? formatNumber(data.vencen_48h) : EMPTY}
-        tono={data && data.vencen_48h > 0 ? "destructive" : undefined}
-        href={scopedHref(vencenHref)}
-        hint={data ? `de ${formatNumber(data.total_activas)} activas` : undefined}
-      />
-      {/* Se llamaba «Calientes»: el KPI homónimo de la extinta
-          /pipeline-alertas contaba otra cosa (banda del score ≥ 75). El campo
-          del DTO conserva su nombre porque es contrato. */}
-      <StatCell
-        label="Grandes en plazo"
-        loading={cargando}
-        value={data ? formatNumber(data.calientes) : EMPTY}
-        href={scopedHref(
-          p75 !== null
-            ? `/detalle?solo_abiertas=true&cierre_desde=${hoyIso}&importe_min=${p75}`
-            : `/detalle?solo_abiertas=true&cierre_desde=${hoyIso}`,
-        )}
-        grafico={
-          data && data.total_activas > 0 ? (
-            <Proporcion parte={data.calientes} total={data.total_activas} de="de las activas" />
-          ) : undefined
-        }
-        // El umbral se dice en cifra: «el 25 % de mayor importe» no dice si
-        // eso empieza en 50 k€ o en 2 M€, y depende del ámbito. Pie corto: la
-        // celda es un cuarto de media pantalla.
-        hint={p75 !== null ? `desde ${formatCompactCurrency(p75)}` : "Aprox.: sin importes"}
-      />
-      <StatCell
         label="Nuevas"
         loading={novedades.isLoading}
         value={novedades.data ? formatNumber(novedades.data.count) : EMPTY}
@@ -211,6 +186,34 @@ export function AtencionCards() {
           ) : undefined
         }
         hint="abiertas"
+      />
+      {/* Se llamaba «Calientes»: el KPI homónimo de la extinta
+          /pipeline-alertas contaba otra cosa (banda del score ≥ 75). El campo
+          del DTO conserva su nombre porque es contrato. */}
+      <StatCell
+        label="Grandes en plazo"
+        loading={cargando}
+        value={data ? formatNumber(data.calientes) : EMPTY}
+        href={scopedHref(
+          p75 !== null
+            ? `/detalle?solo_abiertas=true&cierre_desde=${hoyIso}&importe_min=${p75}`
+            : `/detalle?solo_abiertas=true&cierre_desde=${hoyIso}`,
+        )}
+        grafico={
+          data && data.total_activas > 0 ? (
+            <Proporcion parte={data.calientes} total={data.total_activas} de="de las activas" />
+          ) : undefined
+        }
+        // El umbral se dice en cifra: «el 25 % de mayor importe» no dice si
+        // eso empieza en 50 k€ o en 2 M€, y depende del ámbito. Pie corto: la
+        // celda es un cuarto de media pantalla.
+        hint={p75 !== null ? `desde ${formatCompactCurrency(p75)}` : "Aprox.: sin importes"}
+      />
+      <StatCell
+        label="Importe 30 d"
+        loading={overview.isLoading}
+        value={overview.data ? formatCompactCurrency(overview.data.importe_30d) : EMPTY}
+        hint={overview.error ? "No se pudo cargar" : "de lo publicado en el periodo"}
       />
     </StatStrip>
   );

@@ -171,10 +171,6 @@ async def get_pagina_documento(
     ficha) la respuesta trae los índices **ya relativos a esta página**. Unos
     offsets incoherentes no son un error del usuario: la página se devuelve
     entera y sin resaltar, y `resaltado_omitido` dice por qué.
-
-    Sin `:path` en `id_externo`, al revés que sus vecinas: aquí el id va en
-    medio de la ruta y un comodín de camino se comería los segmentos
-    siguientes. Los ids con barra se piden con la barra codificada.
     """
     # Aquí y no como dependencia: el orden de los parámetros de ruta es
     # contrato (OpenAPI → SDK) y el id va el primero.

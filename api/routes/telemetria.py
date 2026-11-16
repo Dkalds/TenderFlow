@@ -41,7 +41,7 @@ async def post_evento_producto(
 ) -> Response:
     if body.evento not in PROPIEDADES:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Evento fuera del catálogo.",
         )
     producto_eventos_total.labels(evento=body.evento).inc()

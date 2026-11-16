@@ -73,7 +73,9 @@ async def _app_que_responde_antes_de_leer(scope: Scope, receive: Receive, send: 
     await send({"type": "http.response.body", "body": b"ok"})
 
 
-def _ejecutar(app: ASGIApp, metodo: str, trozos: list[bytes], enviados: list[Message]) -> None:
+def _ejecutar(
+    app: ASGIApp, metodo: str, trozos: list[bytes], enviados: list[Message], path: str = "/"
+) -> None:
     """Pasa `trozos` por el middleware real, un mensaje por trozo y sin `Content-Length`.
 
     Lo que el middleware manda al servidor queda en `enviados`, también si lanza.
@@ -90,16 +92,18 @@ def _ejecutar(app: ASGIApp, metodo: str, trozos: list[bytes], enviados: list[Mes
     scope: Scope = {
         "type": "http",
         "method": metodo,
-        "path": "/",
+        "path": path,
         "headers": [(b"content-type", b"application/json")],
     }
     asyncio.run(_MaxBodyMiddleware(app)(scope, receive, send))
 
 
-def _enviar_troceado(metodo: str, trozos: list[bytes]) -> tuple[_AppQueLeeTodo, list[Message]]:
+def _enviar_troceado(
+    metodo: str, trozos: list[bytes], path: str = "/"
+) -> tuple[_AppQueLeeTodo, list[Message]]:
     app = _AppQueLeeTodo()
     enviados: list[Message] = []
-    _ejecutar(app, metodo, trozos, enviados)
+    _ejecutar(app, metodo, trozos, enviados, path)
     return app, enviados
 
 
@@ -108,6 +112,40 @@ def _inicios(enviados: list[Message]) -> list[Message]:
 
 
 _CUERPO_413: Message = {"type": "http.response.body", "body": _MaxBodyMiddleware._413_BODY}
+
+
+_RUTA_ADJUNTOS = "/api/v1/pursuits/7/adjuntos"
+
+
+def test_un_adjunto_de_mas_de_1_mib_llega_a_la_ruta() -> None:
+    """La subida de adjuntos admite el tope del adjunto, no el de un JSON.
+
+    Con el tope general, el 413 salía del middleware y ningún fichero mayor de
+    1 MiB podía subirse, aunque la política anuncia 25.
+    """
+    app, enviados = _enviar_troceado("POST", [b"x" * TROZO] * 8, _RUTA_ADJUNTOS)
+
+    assert [m["status"] for m in _inicios(enviados)] == [200]
+    assert app.bytes_recibidos == 8 * TROZO
+
+
+def test_un_adjunto_por_encima_de_su_tope_da_413_con_su_cifra() -> None:
+    from services.pursuit_attachments import MAX_BYTES
+
+    trozos = [b"x" * (4 * 1024 * 1024)] * (MAX_BYTES // (4 * 1024 * 1024) + 1)
+
+    app, enviados = _enviar_troceado("POST", trozos, _RUTA_ADJUNTOS)
+
+    assert [m["status"] for m in _inicios(enviados)] == [413]
+    assert b"25 MB" in enviados[-1]["body"]
+    assert app.leyo_el_cuerpo_entero is False
+
+
+@pytest.mark.parametrize("metodo", ["PUT", "PATCH", "DELETE"])
+def test_el_tope_del_adjunto_es_solo_para_su_post(metodo: str) -> None:
+    _, enviados = _enviar_troceado(metodo, [b"x" * TROZO] * 8, _RUTA_ADJUNTOS)
+
+    assert [m["status"] for m in _inicios(enviados)] == [413]
 
 
 @pytest.mark.parametrize("metodo", METODOS_CON_CUERPO)

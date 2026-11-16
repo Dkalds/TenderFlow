@@ -125,9 +125,9 @@ bcrypt==5.0.0 \
     --hash=sha256:f8429e1c410b4073944f03bd778a9e066e7fad723564a52ff91841d278dfc822 \
     --hash=sha256:fc746432b951e92b58317af8e0ca746efe93e66555f1b40888865ef5bf56446b
     # via -r requirements.in
-boto3==1.43.123 \
-    --hash=sha256:055fabb990c5d2f31fce4ca569255bd640cdd11a3ca68c9ecad35f4f8a5b83b5 \
-    --hash=sha256:d18d66e1e13faa0c25d0b1b8c5ce946e29fb5fc0b6456b655a93a678ff4cc313
+boto3==1.43.126 \
+    --hash=sha256:5fda4a3dd2782c134a01d1678911962c2860dd8de8cd10bef168ba1507b371a9 \
+    --hash=sha256:dd701a973b02a73930e546a6a15d13edbfbedc3180bb3d55b0a88678c284ccd6
     # via -r requirements.in
 botocore==1.43.127 \
     --hash=sha256:93bae360fb3a6f1b8e36593faa8bbbfa05b19866f7a37e9606a98f13394156f8 \
@@ -284,9 +284,9 @@ brotli-asgi==1.7.0 \
     --hash=sha256:29d410f30e3fe5c062780270d907e212af2ea05ee79449179c9d72487b6ba5b5 \
     --hash=sha256:ff6ef116800d8f13b33ed6b1db2168ac5a27da7426f85f40d7ea3db1f03519a6
     # via -r requirements.in
-cachetools==7.3.0 \
-    --hash=sha256:2105787c94619bde7072624fec0fe7b8a08bb7bf6c757c318f8925573c6f07c9 \
-    --hash=sha256:3f63fc208410f0c3a3b37883c4903ecdacd6f0b259134e6d2e82debd5b2e01de
+cachetools==8.0.0 \
+    --hash=sha256:5af562e5078f0086771a1e3832a9c3dbf5d336b6e2794a2c12a64680a4c9087d \
+    --hash=sha256:5ed01bd676800d51f0025605e4fd8ad0891550513e7b0a4c3da478463764e5c3
     # via -r requirements.in
 certifi==2026.10.19 \
     --hash=sha256:035c1e85572b141bf1c3a3eff0e33a8eb74917522f2559075ff8d2fea780a1ae \

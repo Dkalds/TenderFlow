@@ -299,7 +299,10 @@ class AdjudicacionRepository:
             sql = "SELECT " + _SUMMARY_COLS + " FROM adjudicaciones"
             if where:
                 sql += " WHERE " + where
-            sql += " ORDER BY fecha_adjudicacion DESC LIMIT %s OFFSET %s"
+            # Con desempate: muchas filas comparten día y, sin él, las páginas
+            # por OFFSET repiten o se saltan filas. Sin `NULLS LAST` a
+            # propósito: `idx_adj_fecha` recorrido hacia atrás da este orden.
+            sql += " ORDER BY fecha_adjudicacion DESC, id DESC LIMIT %s OFFSET %s"
             params.extend([limit, offset])
             items = typed_rows(AdjudicacionResumenRow, rows_to_dicts(c.execute(sql, tuple(params))))
 

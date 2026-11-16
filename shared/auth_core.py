@@ -377,7 +377,8 @@ def verify_oauth_state(
         hashlib.sha256,
         # Truncated to 128 bits — see generate_oauth_state() for rationale.
     ).hexdigest()[:32]
-    valid = hmac.compare_digest(signature, expected)
+    # En bytes: con `str`, compare_digest lanza ante una firma no ASCII.
+    valid = hmac.compare_digest(signature.encode(), expected.encode())
     if valid and not store.add(nonce, max_age):
         # Otro proceso (o esta misma petición en paralelo) registró el nonce
         # entre el `contains` de arriba y este `add`.

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import {
-  Panel,
   PanelError,
   PanelLoading,
   PanelTabs,
@@ -77,15 +76,13 @@ export function PublicacionesPanel() {
   }, []);
 
   return (
-    // En columna: el corte ocupa el alto que sobra cuando la composición o el
-    // mapa, al lado, son más altos, y el panel no deja un hueco debajo.
-    <Panel className="flex flex-1 flex-col">
-      {/* `h3`: un apartado de la zona de mercado (`h2`), al nivel de los
-          movimientos y de la tabla; así lo lee el lector de encabezados. */}
-      <PanelTitle as="h3" title="Publicaciones en el periodo" hint={HINTS[corte]} />
-      {/* El resumen en cifras del mes y los cortes en una línea: en dos, el
-          panel marcaba un alto que dejaba un hueco bajo la composición y el
-          mapa de al lado. */}
+    // Sin marco propio: va dentro del panel «Mercado hoy», bajo su tira de
+    // cifras (2026-11-16, rediseño del Resumen). En columna, el corte ocupa
+    // el alto que sobra cuando «Lo que sigues», al lado, es más alto.
+    <div className="flex min-w-0 flex-1 flex-col">
+      {/* `h3`: un apartado de «Mercado hoy» (`h2`). */}
+      <PanelTitle as="h3" title="Publicaciones en el periodo" hint={HINTS[corte]} className="mb-2" />
+      {/* La cifra del mes y los cortes en una línea. */}
       <div className="mb-2.5 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
         <CifrasPeriodo />
         <PanelTabs
@@ -132,6 +129,6 @@ export function PublicacionesPanel() {
           />
         )}
       </div>
-    </Panel>
+    </div>
   );
 }

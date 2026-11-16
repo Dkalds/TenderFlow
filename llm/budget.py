@@ -7,8 +7,8 @@ RFC 2026-06-30 (llm-dependencia-gestionada): el RFC de tokens cerró la
   (``INCRBYFLOAT`` + TTL, consistente con ADR-006) con fallback in-memory si
   Redis no está disponible.
 - ``check()`` se llama antes de iniciar un stream LLM. Si una ventana está
-  agotada: en modo ``enforce`` lanza :class:`LLMBudgetExceeded` (que ``/ask``
-  traduce a 429); en modo ``monitor`` (default) solo sube la métrica
+  agotada: en modo ``enforce`` (default) lanza :class:`LLMBudgetExceeded` (que
+  ``/ask`` traduce a 429); en modo ``monitor`` solo sube la métrica
   ``llm_budget_exceeded_total`` y loguea — medir antes de cortar.
 - ``record(cost_usd)`` lo alimenta ``llm/client.py::_record_usage`` con el
   mismo cálculo de coste que ya nutre ``llm_cost_usd_total``.

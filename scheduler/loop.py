@@ -173,6 +173,7 @@ def _run_job(
     prev = _active_jobs.get(name)
     if prev is not None and prev.is_alive():
         log.warning("scheduler_loop_job_skipped_overlap", job=name)
+        scheduler_job_total.labels(job=name, status="skipped").inc()
         return False
 
     timeout_s = _job_timeout_s(timeout_s)

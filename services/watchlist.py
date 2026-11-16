@@ -20,8 +20,8 @@ _repo = WatchlistRepository()
 
 def query_licitaciones_batch(
     entries: list[dict[str, Any]], default_since: str
-) -> dict[str, list[dict[str, Any]]]:
-    """Consulta licitaciones para múltiples entradas watchlist en queries agrupadas por fecha."""
+) -> dict[int, list[dict[str, Any]]]:
+    """Candidatas de cada entrada watchlist, por su ``id``; una consulta por ventana."""
     return _repo.query_licitaciones_batch(entries, default_since)
 
 

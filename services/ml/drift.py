@@ -63,7 +63,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from observability.logging import get_logger
-from services.ml.thresholds import PSI_CRIT, PSI_WARN
+from services.ml.thresholds import MISSING_DELTA_CRIT, MISSING_DELTA_WARN, PSI_CRIT, PSI_WARN
 
 if TYPE_CHECKING:
     from services.ml.features import FilaDataset
@@ -88,8 +88,8 @@ _PSI_CRIT = PSI_CRIT
 # absoluto: el sentido contrario --presente al servir, NaN en media serie de
 # entrenamiento-- manda producción por una rama del GBM que se ajustó sobre
 # otra subpoblación.
-_MISSING_DELTA_WARN = 0.20
-_MISSING_DELTA_CRIT = 0.50
+_MISSING_DELTA_WARN = MISSING_DELTA_WARN
+_MISSING_DELTA_CRIT = MISSING_DELTA_CRIT
 
 # Cuantil de las anclas de scoring que fija el inicio de la ventana de
 # referencia. No se usa el mínimo: basta una licitación abierta publicada hace

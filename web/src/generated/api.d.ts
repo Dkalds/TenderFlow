@@ -2974,10 +2974,6 @@ export interface paths {
          *     ficha) la respuesta trae los índices **ya relativos a esta página**. Unos
          *     offsets incoherentes no son un error del usuario: la página se devuelve
          *     entera y sin resaltar, y `resaltado_omitido` dice por qué.
-         *
-         *     Sin `:path` en `id_externo`, al revés que sus vecinas: aquí el id va en
-         *     medio de la ruta y un comodín de camino se comería los segmentos
-         *     siguientes. Los ids con barra se piden con la barra codificada.
          */
         get: operations["get_pagina_documento_api_v1_licitaciones__id_externo__documentos__documento_id__paginas__page_number__get"];
         put?: never;
@@ -9723,6 +9719,21 @@ export interface components {
             n: number;
         };
         /**
+         * EstadoDelPipeline
+         * @description Cuántas oportunidades hay en un estado y cuándo cierra la primera.
+         */
+        EstadoDelPipeline: {
+            /**
+             * Estado
+             * @enum {string}
+             */
+            estado: "identified" | "qualifying" | "go_no_go" | "preparing" | "submitted" | "won" | "lost" | "withdrawn";
+            /** N */
+            n: number;
+            /** Proximo Cierre */
+            proximo_cierre?: string | null;
+        };
+        /**
          * Etiqueta
          * @description Una etiqueta de la organización.
          */
@@ -14484,6 +14495,8 @@ export interface components {
             awarded_amount_eur: number;
             /** Median Decision Time Hours */
             median_decision_time_hours?: number | null;
+            /** Oportunidades Por Estado */
+            oportunidades_por_estado?: components["schemas"]["EstadoDelPipeline"][];
             /** Organization Id */
             organization_id: number;
             /**
@@ -33707,7 +33720,7 @@ export interface operations {
                     "application/json": components["schemas"]["WebhookCreateResponse"];
                 };
             };
-            /** @description URL inválida o SSRF detectado */
+            /** @description `Idempotency-Key` mal formada */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -33734,7 +33747,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetail"];
                 };
             };
-            /** @description La petición no pasó la validación (``errors`` por campo). */
+            /** @description URL inválida o SSRF detectado */
             422: {
                 headers: {
                     [name: string]: unknown;

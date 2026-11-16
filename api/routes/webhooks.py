@@ -321,9 +321,10 @@ registrar_metrica_pendientes()
     response_model=WebhookCreateResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
-        400: {"description": "URL inválida o SSRF detectado"},
+        400: {"description": "`Idempotency-Key` mal formada"},
         401: {"description": "API key inválida"},
         403: {"description": "Scope insuficiente"},
+        422: {"description": "URL inválida o SSRF detectado"},
     },
 )
 async def create(
