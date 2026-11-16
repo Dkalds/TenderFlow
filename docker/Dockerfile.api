@@ -1,5 +1,5 @@
 # ── Etapa 1: builder ──────────────────────────────────────────────────────────
-FROM python:3.13.17-slim-bookworm@sha256:e32be0e55814a08977501ca863271d9bd02443710db8f2afaf8372e2c4508530 AS builder
+FROM python:3.13.18-slim-bookworm@sha256:a5a7017efc5969e00ae2b91c8eb0631049a569652aa4ffc4501769049ae45c72 AS builder
 
 # Cache-bust: 2026-05-31 (force dep reinstall after httpx addition)
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -75,7 +75,7 @@ RUN python descargar_modelo_embeddings.py --destino /modelos/embeddings
 
 
 # ── Etapa 2: imagen de producción — FastAPI / uvicorn ────────────────────────
-FROM python:3.13.17-slim-bookworm@sha256:e32be0e55814a08977501ca863271d9bd02443710db8f2afaf8372e2c4508530 AS runtime
+FROM python:3.13.18-slim-bookworm@sha256:a5a7017efc5969e00ae2b91c8eb0631049a569652aa4ffc4501769049ae45c72 AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
