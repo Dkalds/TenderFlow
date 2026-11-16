@@ -630,6 +630,22 @@ def test_un_pliego_publicado_el_dia_de_la_visita_pero_despues_es_novedad(tmp_db)
     assert del_mismo_dia.por_subtipo == {"documento_nuevo": 1}
 
 
+def test_una_resolucion_fechada_el_dia_de_la_visita_es_novedad(tmp_db):
+    """La resolución solo trae fecha (``YYYY-MM-DD``) y la visita es un instante:
+    comparar el texto entero dejaba fuera la del mismo día, que es justo la que
+    no se pudo ver. Vale para la banda del Resumen y para la de la ficha."""
+    _licitacion("NOV-REC-DIA")
+    _seguir(_UK_ANA, "NOV-REC-DIA")
+    visita = _hace(seconds=30)
+    _recurso("NOV-REC-DIA", numero="R-DIA/2026", fecha=visita.date().isoformat())
+
+    resumen = desde_ultima_visita(_UK_ANA, last_seen=visita.isoformat())
+    ficha = NovedadesRepository().recursos_de("NOV-REC-DIA", desde_iso=visita.isoformat())
+
+    assert resumen.por_subtipo == {"recurso": 1}
+    assert [f["licitacion_id"] for f in ficha] == ["NOV-REC-DIA"]
+
+
 def test_un_pliego_de_hoy_va_por_delante_de_un_cambio_de_hoy_anterior(tmp_db):
     """La visita fue otro día, así que el filtro deja pasar el pliego; lo que
     falla es dónde cae en el diff y, con límite, si llega a salir."""

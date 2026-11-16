@@ -23,6 +23,18 @@ __all__ = ["AvisosSeguidosRepository", "NovedadesRepository"]
 _IDENT_W = "(w.user_id = %s OR (w.user_key = %s AND (w.user_id IS NULL OR %s::int IS NULL)))"
 
 
+def _dia_de(desde_iso: str) -> str:
+    """El día de la marca, para comparar con ``resoluciones_recurso.fecha`` (``YYYY-MM-DD``).
+
+    Contra el instante entero, ``'2026-11-15' < '2026-11-15T08:00…'`` dejaba
+    fuera la resolución fechada el mismo día de la visita.
+    shortcut: compara la fecha de la resolución, no su llegada: repite la del
+    mismo día en cada visita de ese día y no ve la ingerida o vinculada días
+    después; subirlo cuando la tabla tenga una marca de llegada (migración).
+    """
+    return desde_iso[:10]
+
+
 class NovedadesRepository:
     """Lo que ha pasado, desde una fecha, en lo que el usuario sigue."""
 
@@ -111,7 +123,7 @@ class NovedadesRepository:
                 f"WHERE {_IDENT_W} AND r.fecha >= %s "
                 "ORDER BY r.fecha DESC "
                 "LIMIT %s",
-                (user_id, user_key, user_id, desde_iso, limit),
+                (user_id, user_key, user_id, _dia_de(desde_iso), limit),
             )
             return rows_to_dicts(cur)
 
@@ -174,7 +186,7 @@ class NovedadesRepository:
                 "WHERE r.licitacion_id = %s AND r.fecha >= %s "
                 "ORDER BY r.fecha DESC "
                 "LIMIT %s",
-                (id_externo, desde_iso, limit),
+                (id_externo, _dia_de(desde_iso), limit),
             )
             return rows_to_dicts(cur)
 
