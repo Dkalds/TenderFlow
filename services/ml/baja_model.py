@@ -774,29 +774,6 @@ def _buscar_hiper(
     return mejor, len(combos)
 
 
-def _offset_conformal(
-    p10: npt.NDArray[np.float64],
-    p90: npt.NDArray[np.float64],
-    y: npt.NDArray[np.float64],
-    cobertura: float = _COBERTURA_NOMINAL,
-) -> float:
-    """Corrección split-CQR para que el intervalo cubra ``cobertura``.
-
-    Score de conformidad de Romano et al.: ``E = max(p10 - y, y - p90)``, que es
-    positivo cuando el punto queda fuera del intervalo y negativo cuando queda
-    holgadamente dentro. El cuantil ``⌈(n+1)·cobertura⌉/n`` de esos scores es la
-    cantidad que hay que sumar a cada extremo para alcanzar la cobertura
-    deseada; puede ser **negativa**, y entonces estrecha un intervalo que
-    sobraba de ancho. Esa simetría es lo que hace que la cobertura empírica
-    aterrice en el objetivo en vez de simplemente superarlo.
-    """
-    import numpy as np
-
-    if len(y) < _MIN_VALID_SAMPLES:
-        return 0.0
-    return _cuantil_conformal(np.maximum(p10 - y, y - p90), cobertura)
-
-
 def _offsets_conformal_por_lado(
     p10: npt.NDArray[np.float64],
     p90: npt.NDArray[np.float64],
@@ -1333,7 +1310,8 @@ def offset_conformal_baseline(pares: list[tuple[float, float]]) -> float:
     crudo reconstruido desde ``p50``, no contra el que se guardó: así la
     corrección es idempotente y converge en vez de congelarse.
 
-    Misma matemática que la del modelo (:func:`_offset_conformal`): un baseline
+    Mismo cuantil que el del modelo (:func:`_cuantil_conformal`) sobre el
+    score simétrico de Romano, ``max(p10 - y, y - p90)``: un baseline
     que dice "p10-p90" tiene que ganarse ese nombre igual que se lo gana el
     modelo. Devuelve ``0.0`` con menos de :data:`_MIN_VALID_SAMPLES` pares —
     sin muestra suficiente la corrección sería ruido, y ensanchar por ruido

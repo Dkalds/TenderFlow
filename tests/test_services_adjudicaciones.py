@@ -6,9 +6,8 @@ en SQL y se prueban donde se consumen: baja_pct y lead-time en
 ``test_analytics_organos.py``, patrón UTE en ``test_analytics_utes.py`` /
 ``test_analytics_ecosistema_partners.py``, identidad canónica en
 ``test_analytics_red_organo_empresa.py``, filtros de competidores en
-``test_analytics_competitors_sql_filters.py``. Aquí quedan los caminos vivos
-del servicio (``load_licitadores``) y las garantías de persistencia
-(idempotencia, lotes múltiples) vía ``AdjudicacionRepository``.
+``test_analytics_competitors_sql_filters.py``. Aquí quedan las garantías de
+persistencia (idempotencia, lotes múltiples) vía ``AdjudicacionRepository``.
 """
 
 from __future__ import annotations
@@ -133,36 +132,3 @@ def test_adjudicaciones_multiples_por_licitacion():
     )
 
     assert len(_rows_for("ADJ-MULTI-001")) == 2
-
-
-# ---------------------------------------------------------------------------
-# load_licitadores: proyección acotada con datos de la licitación
-# ---------------------------------------------------------------------------
-
-
-def test_load_licitadores_incluye_datos_de_licitacion():
-    _seed_licitacion("ADJ-LIC-001")
-    _seed_adjudicacion("ADJ-LIC-001")
-
-    from services.adjudicaciones import load_licitadores
-
-    rows = load_licitadores()
-    fila = next(r for r in rows if r["licitacion_id"] == "ADJ-LIC-001")
-    assert fila["nombre"] == "Empresa SAP SL"
-    assert fila["titulo"] == "Implantación SAP ERP"
-    assert fila["organo_contratacion"] == "Ministerio de Hacienda"
-    assert fila["tecnologia"] == "SAP"
-
-
-def test_load_licitadores_filtra_por_ccaa():
-    _seed_licitacion("ADJ-CCAA-MAD")
-    _seed_adjudicacion("ADJ-CCAA-MAD", ccaa="Madrid")
-    _seed_licitacion("ADJ-CCAA-CAT")
-    _seed_adjudicacion("ADJ-CCAA-CAT", nombre="Empresa Catalana", ccaa="Cataluña")
-
-    from services.adjudicaciones import load_licitadores
-
-    rows = load_licitadores(ccaa_filter=("Madrid",))
-    ids = {r["licitacion_id"] for r in rows}
-    assert "ADJ-CCAA-MAD" in ids
-    assert "ADJ-CCAA-CAT" not in ids

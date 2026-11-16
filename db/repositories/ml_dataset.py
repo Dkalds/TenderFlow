@@ -63,6 +63,7 @@ from db.database import connect, connect_read, now_utc_iso
 from db.repositories.base import rows_to_dicts
 from db.repositories.feedback import FUENTE_REVISION_TI, FUENTES_HUMANAS
 from db.sql_fragments import (
+    CON_PRESUPUESTO_BASE_SQL,
     TECHNOLOGY_OBSERVED_SQL,
     TOLERANCIA_SOBRECOSTE,
     UNIVERSOS_TECNOLOGICOS,
@@ -81,12 +82,9 @@ _NO_DUPLICADOS = exclude_duplicados_sql("a.licitacion_id")
 
 _UNIVERSO = TECHNOLOGY_OBSERVED_SQL
 
-# TED no publica presupuesto base: su ``importe`` es el valor estimado (BT-27,
-# que incluye prórrogas) o, sin él, el propio valor adjudicado (BT-161), ver
-# ``scraper/connectors/ted.py``. Contra lo adjudicado da una baja inflada o un
-# 0 por construcción: medido el 2026-11-07, el 83 % de sus pares valía
-# exactamente 0. Solo sale del target; el scoring de abiertas no cambia.
-_CON_PRESUPUESTO = "l.fuente <> 'ted'"
+# TED no publica presupuesto base (ver el fragmento). Solo sale del target; el
+# scoring de abiertas no cambia.
+_CON_PRESUPUESTO = CON_PRESUPUESTO_BASE_SQL
 
 # Primer día plausible de una ``fecha_adjudicacion`` (``shared.dates``, C4.4).
 # Desde C4.4 el conector de PSCP corta en origen el ``1899-12-30`` —el cero de

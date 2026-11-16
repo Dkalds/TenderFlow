@@ -8,6 +8,7 @@ reparto real están en ``test_avisos_outbox_integracion.py`` (Postgres).
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -231,10 +232,12 @@ class _CuentasRepo:
         self.vencimientos = vencimientos or []
         self.consultas_miembros: list[int] = []
         self.franja: tuple[int, int] | None = None
+        self.hasta: str | None = None
 
     def publicaciones_nuevas(
         self, *, desde_iso: str, hasta_iso: str, limit: int
     ) -> list[dict[str, Any]]:
+        self.hasta = hasta_iso
         return self.publicaciones[:limit]
 
     def vencimientos_entrando(
@@ -268,6 +271,44 @@ def test_cuentas_primera_pasada_fija_el_cursor(
     assert avisos_outbox.emitir_avisos_de_cuentas() == 0
     assert eventos == []
     assert cursores.filas[avisos_outbox.CURSOR_CUENTAS]["last_seen_updated"]
+
+
+def test_cuentas_no_leen_hasta_ahora_sino_hasta_ahora_menos_el_margen(
+    monkeypatch: pytest.MonkeyPatch, eventos: list[dict[str, Any]]
+) -> None:
+    """``primera_extraccion`` se fija antes del COMMIT de la ingesta: una fila
+    que commitea tras la pasada con un valor anterior a ``ahora`` quedaría bajo
+    el cursor y su aviso no saldría nunca. El cursor no pasa de ``ahora`` menos
+    el margen."""
+    repo = _CuentasRepo([])
+    monkeypatch.setattr(avisos_outbox, "_cuentas", repo)
+    cursores = _cursores(
+        monkeypatch,
+        {avisos_outbox.CURSOR_CUENTAS: {"last_seen_updated": "2026-09-18T00:00:00+00:00"}},
+    )
+    ahora = datetime(2026, 9, 19, 12, 0, tzinfo=UTC)
+
+    assert avisos_outbox.emitir_avisos_de_cuentas(ahora) == 0
+
+    hasta = (ahora - avisos_outbox.MARGEN_COMMIT_CUENTAS).isoformat()
+    assert repo.hasta == hasta
+    assert cursores.filas[avisos_outbox.CURSOR_CUENTAS]["last_seen_updated"] == hasta
+
+
+def test_cuentas_el_cursor_por_delante_del_margen_no_retrocede(
+    monkeypatch: pytest.MonkeyPatch, eventos: list[dict[str, Any]]
+) -> None:
+    """El código anterior al margen dejaba el cursor en ``ahora``: la primera
+    pasada tras desplegar no lo devuelve diez minutos atrás."""
+    repo = _CuentasRepo([_publicacion(1, "A")])
+    monkeypatch.setattr(avisos_outbox, "_cuentas", repo)
+    previo = "2026-09-19T11:57:00+00:00"
+    cursores = _cursores(monkeypatch, {avisos_outbox.CURSOR_CUENTAS: {"last_seen_updated": previo}})
+
+    assert avisos_outbox.emitir_avisos_de_cuentas(datetime(2026, 9, 19, 12, 0, tzinfo=UTC)) == 0
+
+    assert eventos == []
+    assert cursores.filas[avisos_outbox.CURSOR_CUENTAS]["last_seen_updated"] == previo
 
 
 def test_publicacion_nueva_de_una_cuenta_avisa_a_los_miembros_de_cada_organizacion(

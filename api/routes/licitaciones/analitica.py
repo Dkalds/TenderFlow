@@ -100,7 +100,7 @@ async def explain_licitacion(
     if result is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No encontrado.")
 
-    titulo, descripcion, tecnologia = result
+    titulo, descripcion, tecnologia, cpv, importe, organo = result
     text = f"{titulo} {descripcion}".strip()
     if not text:
         return ExplainResult(
@@ -110,9 +110,14 @@ async def explain_licitacion(
             warning="Texto vacío.",
         )
 
+    from config import settings
+
+    # Mismas señales que `precompute_ml_proba`: si no, la confianza no es su `ml_proba`.
+    organo_ml = organo if settings.ML_USE_ORGANO_FEATURE else None
+
     def _explain() -> Any:
         clf = _get_classifier()
-        return clf.explain(text, top_k=top_k)
+        return clf.explain(text, top_k=top_k, cpv=cpv, importe=importe, organo=organo_ml)
 
     try:
         explanation = await run_ml(_explain)

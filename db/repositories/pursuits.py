@@ -83,6 +83,20 @@ _CAMPOS_DE_VINCULO_PURSUIT = (
     "updated_at",
 )
 
+# Adjudicaciones (alias ``a``) que dicen algo de la oportunidad ``p``. Con
+# lote, solo las **de ese lote** —la de otro lote no cierra el suyo—, unidas
+# por número como en ``_PURSUIT_SELECT`` porque los ids de ``lotes`` cambian en
+# cada re-ingesta. Una adjudicación sin ``lote_id`` no dice de qué lote es y no
+# se le atribuye a ninguno. La comparten la agenda y el cierre asistido
+# (``open_with_award_rows``): con dos reglas, el aviso «ya está adjudicada»
+# llegaba a la oportunidad de un lote que la agenda seguía pintando abierta.
+_ADJUDICACION_DEL_PURSUIT_SQL = (
+    "a.licitacion_id = p.licitacion_id "
+    "AND (p.lote_numero IS NULL OR EXISTS (SELECT 1 FROM lotes la "
+    "     WHERE la.id = a.lote_id AND la.licitacion_id = p.licitacion_id "
+    "       AND la.numero = p.lote_numero))"
+)
+
 _AGENDA_SELECT = (
     "SELECT p.id AS pursuit_id, p.licitacion_id, "
     # Mismo criterio que ``calendar_rows``: dos lotes del mismo expediente son
@@ -95,21 +109,10 @@ _AGENDA_SELECT = (
     "p.responsible_user_id, u.display_name AS responsible_name, "
     "p.status, p.decision, p.next_action, p.next_action_due, p.version, "
     # Lo que la ingesta sabe del expediente: sin esto la agenda trataba como
-    # viva una oportunidad sobre una licitación ya adjudicada. Con lote, solo
-    # cuentan las adjudicaciones **de ese lote** —la de otro lote no cierra el
-    # suyo—, unidas por número como en ``_PURSUIT_SELECT`` porque los ids de
-    # ``lotes`` cambian en cada re-ingesta. Una adjudicación sin ``lote_id``
-    # no dice de qué lote es y no se le atribuye a ninguno.
+    # viva una oportunidad sobre una licitación ya adjudicada.
     "l.estado AS tender_estado, "
-    "CASE WHEN p.lote_numero IS NULL THEN "
-    "  (SELECT string_agg(DISTINCT a.nombre, ', ') FROM adjudicaciones a "
-    "    WHERE a.licitacion_id = p.licitacion_id) "
-    "ELSE "
-    "  (SELECT string_agg(DISTINCT a.nombre, ', ') FROM adjudicaciones a "
-    "    JOIN lotes la ON la.id = a.lote_id "
-    "    WHERE a.licitacion_id = p.licitacion_id "
-    "      AND la.licitacion_id = p.licitacion_id AND la.numero = p.lote_numero) "
-    "END AS adjudicatarios "
+    "(SELECT string_agg(DISTINCT a.nombre, ', ') FROM adjudicaciones a "
+    " WHERE " + _ADJUDICACION_DEL_PURSUIT_SQL + ") AS adjudicatarios "
     "FROM pursuits p "
     "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
     "LEFT JOIN users u ON u.id = p.responsible_user_id "
@@ -959,15 +962,15 @@ class PursuitRepository:
                 "p.responsible_user_id, ru.email AS responsible_email, "
                 "l.titulo, l.estado AS tender_estado, "
                 "(SELECT string_agg(DISTINCT a.nombre, ', ') FROM adjudicaciones a "
-                " WHERE a.licitacion_id = p.licitacion_id) AS adjudicatarios, "
+                " WHERE " + _ADJUDICACION_DEL_PURSUIT_SQL + ") AS adjudicatarios, "
                 "(SELECT SUM(a.importe_adjudicado) FROM adjudicaciones a "
-                " WHERE a.licitacion_id = p.licitacion_id) AS importe_total "
+                " WHERE " + _ADJUDICACION_DEL_PURSUIT_SQL + ") AS importe_total "
                 "FROM pursuits p "
                 "JOIN licitaciones l ON l.id_externo = p.licitacion_id "
                 "LEFT JOIN users ru ON ru.id = p.responsible_user_id "
                 "WHERE p.status NOT IN " + _ESTADOS_TERMINALES_SQL + " "
                 "AND EXISTS (SELECT 1 FROM adjudicaciones a "
-                "            WHERE a.licitacion_id = p.licitacion_id) "
+                "            WHERE " + _ADJUDICACION_DEL_PURSUIT_SQL + ") "
                 "ORDER BY p.id LIMIT %s",
                 (max(1, min(int(limit), 5000)),),
             )

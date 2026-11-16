@@ -82,7 +82,7 @@ redis>=5.0,<9
 
 # ── Analítica servida en request ─────────────────────────────────────────────
 # statsmodels y networkx viven en requirements-pipeline.in (ver cabecera).
-pandas>=2.1.0,<4
+pandas>=3,<4
 python-dateutil>=2.8.2,<3
 
 # ── Exports ──────────────────────────────────────────────────────────────────

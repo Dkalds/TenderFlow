@@ -156,8 +156,8 @@ def get_user_by_id(user_id: int, *, include_deactivated: bool = False) -> dict[s
 
 
 def get_user_by_email(email: str, *, include_deactivated: bool = False) -> dict[str, Any] | None:
-    """Busca usuario por email."""
-    with connect() as c:
+    """Busca usuario por email (pool de lectura, como :func:`get_user_by_id`)."""
+    with connect_read() as c:
         sql = "SELECT * FROM users WHERE email = %s"  # SELECT *: fila de cuenta entera
         if not include_deactivated:
             sql += " AND deactivated_at IS NULL"
@@ -181,7 +181,7 @@ def get_users_by_email_ci(email: str, *, include_deactivated: bool = False) -> l
     sql = "SELECT * FROM users WHERE lower(email) = lower(%s)"  # SELECT *: fila de cuenta entera
     if not include_deactivated:
         sql += " AND deactivated_at IS NULL"
-    with connect() as c:
+    with connect_read() as c:
         cur = c.execute(sql + " ORDER BY id", (email,))
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
@@ -202,7 +202,7 @@ def get_active_user_by_email_ci(
     su contraseña pudo fijarla un tercero, y meterla en una organización antes
     de verificar la daría por buena.
     """
-    with connect() as c:
+    with connect_read() as c:
         cur = c.execute(
             "SELECT * FROM users WHERE lower(email) = lower(%s) AND deactivated_at IS NULL "  # SELECT *: fila de cuenta entera
             "AND (NOT %s OR email_verified_at IS NOT NULL)",
@@ -216,7 +216,12 @@ def get_active_user_by_email_ci(
 
 
 def is_admin(user_id: int) -> bool:
-    """Devuelve True si el usuario tiene el flag is_admin activo."""
+    """Devuelve True si el usuario tiene el flag is_admin activo.
+
+    Por el pool de escritura a propósito, como :func:`admin_granted_by`: el
+    callback OAuth los lee justo después de ``get_or_create_oauth_user`` y
+    ``set_admin`` en la misma petición, y deciden autorización.
+    """
     with connect() as c:
         row = c.execute("SELECT is_admin FROM users WHERE id = %s", (user_id,)).fetchone()
         return bool(row and row[0])
@@ -261,7 +266,7 @@ def set_admin_by_email(email: str, *, is_admin: bool) -> None:
 
 def list_users(limit: int = 200, *, include_deactivated: bool = False) -> list[dict[str, Any]]:
     """Devuelve todos los usuarios registrados con su último acceso."""
-    with connect() as c:
+    with connect_read() as c:
         where = "" if include_deactivated else "WHERE u.deactivated_at IS NULL "
         cur = c.execute(
             "SELECT u.id, u.email, u.display_name, u.oauth_provider, u.is_admin, "

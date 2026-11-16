@@ -980,9 +980,68 @@ def test_competitor_alerts_detecta_nuevas_y_territorio(db, monkeypatch):
     sent.clear()
     assert competitor_alerts.check_and_notify() == 0
 
+    # Reingerir W-01 borra e inserta su adjudicación y re-sella su
+    # `fecha_extraccion`: no es una novedad y no debe volver a avisar.
+    insert_contract(db, "W-01", "Watched SL", nif="B99999997")
+    resolve(db)
+    assert competitor_alerts.check_and_notify() == 0
+    assert sent == []
+
     # Nueva adjudicación en CCAA nueva → alerta con marca de territorio
     insert_contract(db, "W-02", "Watched SL", nif="B99999997", ccaa="Galicia")
     resolve(db)
+    assert competitor_alerts.check_and_notify() == 1
+    assert "Galicia" in sent[0]["body"]
+
+
+def _empresa_de_adjudicacion(lic_id: str) -> int | None:
+    from db.database import connect_read
+
+    with connect_read() as c:
+        row = c.execute(
+            "SELECT empresa_id FROM adjudicaciones WHERE licitacion_id = %s", (lic_id,)
+        ).fetchone()
+    return row[0]
+
+
+def test_reingesta_conserva_el_enlace_con_la_empresa(db):
+    """El reemplazo borra e inserta la fila: sin conservar ``empresa_id`` la dejaba sin enlazar."""
+    empresa_id = _watched_empresa(db)
+    assert _empresa_de_adjudicacion("W-01") == empresa_id
+
+    insert_contract(db, "W-01", "Watched SL", nif="B99999997")
+
+    assert _empresa_de_adjudicacion("W-01") == empresa_id
+
+
+def test_competitor_alerts_avisa_la_adjudicacion_enlazada_tras_una_pasada(db, monkeypatch):
+    """Una adjudicación que se enlaza después de una pasada de la alerta sale en la siguiente.
+
+    Con la hora del parseo como ``primera_extraccion`` quedaba por debajo del
+    ``last_notified_at`` que fijó la pasada intermedia y no se avisaba nunca.
+    """
+    from db.watchlist_empresas import WatchlistEmpresaEntry, add_entry
+    from scheduler import competitor_alerts
+
+    empresa_id = _watched_empresa(db)
+    dueno, organizacion = _usuario_y_organizacion("competidores-enlace-tardio")
+    add_entry(
+        WatchlistEmpresaEntry(
+            user_id=dueno, empresa_id=empresa_id, organization_id=organizacion, email="a@b.com"
+        )
+    )
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        competitor_alerts, "notify", lambda level, title, body, **kw: sent.append({"body": body})
+    )
+    assert competitor_alerts.check_and_notify() == 1  # W-01, dentro del lookback inicial
+
+    insert_contract(db, "W-03", "Watched SL", nif="B99999997", ccaa="Galicia")
+    assert _empresa_de_adjudicacion("W-03") is None  # aún sin enlazar
+    assert competitor_alerts.check_and_notify() == 0  # la pasada no la ve
+
+    resolve(db)
+    sent.clear()
     assert competitor_alerts.check_and_notify() == 1
     assert "Galicia" in sent[0]["body"]
 

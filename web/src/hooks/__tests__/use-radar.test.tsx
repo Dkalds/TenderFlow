@@ -2,7 +2,14 @@ import * as React from "react";
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { useDismissRadarTender, useRadar, useRadarDismissals, useRestoreRadarTender } from "@/hooks/use-radar";
+import {
+  useDismissRadarTender,
+  useRadar,
+  useRadarDismissals,
+  useRadarDismissedTenders,
+  useRadarFollowedTenders,
+  useRestoreRadarTender,
+} from "@/hooks/use-radar";
 import { callMethod, callUrl, jsonResponse } from "./fetch-call";
 import { registrarEvento } from "@/lib/analytics";
 
@@ -239,6 +246,79 @@ describe("useRadar — datos previos al cambiar un filtro", () => {
 
     expect(result.current.isLoading).toBe(true);
     expect(result.current.data).toBeUndefined();
+  });
+
+  it("seguir otra licitación conserva el segmento de seguidas en vez de volver al esqueleto", async () => {
+    // Seguir cambia los ids y con ellos la clave; la organización va en la
+    // posición 2 de `radarKeys.porIds`. Comparando otra posición nunca
+    // coincidía y el segmento parpadeaba a esqueleto en cada gesto.
+    stubPorTecnologia("ninguna");
+    const { result, rerender } = renderHook(({ ids }) => useRadarFollowedTenders(ids, true), {
+      wrapper: wrapperEstable(),
+      initialProps: { ids: ["GLOBAL"] },
+    });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => new Promise(() => {})),
+    );
+    rerender({ ids: ["GLOBAL", "B"] });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.items).toHaveLength(1);
+  });
+
+  it("restaurar una descartada la quita del segmento sin esperar a la nueva respuesta", async () => {
+    // El dato previo se conserva, pero sin la que ya no está en la lista.
+    stubPorTecnologia("ninguna");
+    const { result, rerender } = renderHook(({ ids }) => useRadarDismissedTenders(ids, true), {
+      wrapper: wrapperEstable(),
+      initialProps: { ids: ["GLOBAL", "B"] },
+    });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => new Promise(() => {})),
+    );
+    rerender({ ids: ["B"] });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.items).toEqual([]);
+  });
+
+  it("restaurar la última descartada vacía el segmento", async () => {
+    // Con la lista vacía la consulta no se lanza: el dato previo quedaría
+    // pintado para siempre con el contador a 0.
+    stubPorTecnologia("ninguna");
+    const { result, rerender } = renderHook(({ ids }) => useRadarDismissedTenders(ids, true), {
+      wrapper: wrapperEstable(),
+      initialProps: { ids: ["GLOBAL"] },
+    });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+
+    rerender({ ids: [] });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.items).toEqual([]);
+  });
+
+  it("no conserva las seguidas de otra organización", async () => {
+    stubPorTecnologia("ninguna");
+    const { result, rerender } = renderHook(() => useRadarFollowedTenders(["GLOBAL"], true), {
+      wrapper: wrapperEstable(),
+    });
+    await waitFor(() => expect(result.current.items).toHaveLength(1));
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => new Promise(() => {})),
+    );
+    organizacionRef.current = 8;
+    rerender();
+
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.items).toEqual([]);
   });
 });
 

@@ -71,7 +71,7 @@ class TestOrganoToken:
         import pandas as pd
 
         from config import settings
-        from services.ml.classifier_pipeline import _build_dataset
+        from services.ml.classifier_pipeline import build_dataset_rows
 
         monkeypatch.setattr(settings, "ML_USE_ORGANO_FEATURE", False)
         rows = [
@@ -94,5 +94,5 @@ class TestOrganoToken:
             }
             for i in range(10)
         ]
-        texts, _labels = _build_dataset(pd.DataFrame(rows))
-        assert all("ORG_" not in t for t in texts)
+        filas = build_dataset_rows(pd.DataFrame(rows))
+        assert all("ORG_" not in f.text for f in filas)

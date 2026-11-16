@@ -7,8 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useRadar } from "@/hooks/use-radar";
 import { useSeguimiento } from "@/hooks/use-seguimiento";
 import { useFilters } from "@/lib/filters";
-import { cn, EMPTY, formatCompactCurrency, formatNumber } from "@/lib/utils";
-import { claseTextoBanda, daysLeft } from "@/app/(dashboard)/radar/_components/radar-shared";
+import { cn, daysLeft, EMPTY, formatCompactCurrency, formatNumber } from "@/lib/utils";
+import { claseTextoBanda } from "@/app/(dashboard)/radar/_components/radar-shared";
 
 /** Filas que caben junto a «Tus oportunidades» sin estirar la fila. */
 export const VISIBLES_PARA_TI = 5;

@@ -563,6 +563,33 @@ describe("ScopeBar — editor del ámbito", () => {
     expect(filtersRef.current.setRango).toHaveBeenCalledWith({ desde: null, hasta: null });
   });
 
+  describe("los presets cuentan el día de Madrid, no el UTC", () => {
+    // Entre las 00:00 y las 01:00/02:00 de Madrid el día UTC es todavía ayer:
+    // «hasta hoy» salía ayer, y el 1 de enero «Este año» quedaba invertido
+    // (desde el 1 de enero del año nuevo hasta el 31 de diciembre del viejo).
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("«Este año» el 1 de enero a las 00:30 va del 1 de enero al 1 de enero", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2027-01-01T00:30:00+01:00"));
+      renderBar();
+      await abrirEditorDelAmbito();
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Este año (YTD)" }));
+      expect(filtersRef.current.setRango).toHaveBeenCalledWith({ desde: "2027-01-01", hasta: "2027-01-01" });
+    });
+
+    it("«Últimos 7 días» a las 00:30 de Madrid termina hoy", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-11-16T00:30:00+01:00"));
+      renderBar();
+      await abrirEditorDelAmbito();
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Últimos 7 días" }));
+      expect(filtersRef.current.setRango).toHaveBeenCalledWith({ desde: "2026-11-09", hasta: "2026-11-16" });
+    });
+  });
+
   it("añadir una CCAA la acumula sin perder las que ya estaban", async () => {
     filtersRef.current = { ...filtersRef.current, ccaas: ["Cataluña"] };
     renderBar();

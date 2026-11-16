@@ -155,6 +155,13 @@ export function SearchAutocomplete({
           setActiveIndex(-1);
         }}
         onFocus={() => setOpen(true)}
+        // Salir con Tab (o con cualquier cosa que mueva el foco) cierra la
+        // lista. El clic en una opción no pasa por aquí: su `mouseDown` hace
+        // `preventDefault` y el campo no pierde el foco.
+        onBlur={() => {
+          setOpen(false);
+          setActiveIndex(-1);
+        }}
         onKeyDown={handleKeyDown}
       />
       {rightElement && (

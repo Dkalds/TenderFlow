@@ -200,10 +200,6 @@ def _psi_detalle(ref: list[float], cur: list[float], n_bins: int = 10) -> _Psi:
     )
 
 
-def _psi(ref: list[float], cur: list[float], n_bins: int = 10) -> float:
-    return _psi_detalle(ref, cur, n_bins).valor
-
-
 def _mediana(valores: list[float]) -> float | None:
     if not valores:
         return None

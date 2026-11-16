@@ -40,21 +40,6 @@ def test_dynamic_allowlist_failure_is_closed():
         assert asyncio.run(_oauth_access_allowed("unknown@example.test")) is False
 
 
-def test_dynamic_grant_is_normalized_idempotent_and_revocable(tmp_db):
-    from db.access_grants import grant_access, is_access_granted, revoke_access
-
-    first = grant_access("email", " Allowed@Example.Test ", granted_by=None)
-    second = grant_access("email", "allowed@example.test", granted_by=None)
-
-    assert second["id"] == first["id"]
-    assert is_access_granted("ALLOWED@example.test") is True
-
-    revoked = revoke_access(first["id"])
-    assert revoked is not None
-    assert revoked["active"] is False
-    assert is_access_granted("allowed@example.test") is False
-
-
 # ── Sin BD: lo que se decide antes de tocar la tabla ────────────────────────
 #
 # Los tests con Postgres de estas mismas funciones (concesión de dominio,
@@ -138,17 +123,6 @@ def test_la_concesion_invalida_sigue_siendo_un_value_error():
     from db.access_grants import ConcesionInvalida
 
     assert issubclass(ConcesionInvalida, ValueError)
-
-
-def test_grant_access_rechaza_un_dominio_publico_antes_de_escribir():
-    """La normalización no sirve para esquivar la regla: ``@Gmail.com`` es ``gmail.com``."""
-    from db.access_grants import ConcesionInvalida, grant_access
-
-    with (
-        patch("db.access_grants.connect", side_effect=_no_debe_abrir_conexion),
-        pytest.raises(ConcesionInvalida, match=r"gmail\.com"),
-    ):
-        grant_access("domain", " @Gmail.com ", granted_by=None)
 
 
 @pytest.mark.parametrize(

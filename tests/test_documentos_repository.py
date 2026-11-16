@@ -955,24 +955,6 @@ class TestListTextosByLicitacion:
         assert textos[0]["texto"] == "contenido del PCAP"
 
 
-class TestCountAll:
-    def test_counts_across_licitaciones(self, repo):
-        _insert_licitacion("EXP-N1")
-        _insert_licitacion("EXP-N2")
-        assert repo.count_all() == 0
-
-        repo.upsert_meta("EXP-N1", [DocumentoReferencia(tipo="legal", uri="https://x/a.pdf")])
-        repo.upsert_meta(
-            "EXP-N2",
-            [
-                DocumentoReferencia(tipo="legal", uri="https://x/b.pdf"),
-                DocumentoReferencia(tipo="technical", uri="https://x/c.pdf"),
-            ],
-        )
-
-        assert repo.count_all() == 3
-
-
 # ── Reintento acotado de las descargas fallidas ─────────────────────────────
 
 

@@ -6,8 +6,7 @@ Reutilizable desde scraper, API REST y otros servicios.
 Las funciones públicas son:
     normalize_company(name)  →  str | None
     normalize_nif(nif)       →  str | None
-    clasificar_nif(nif)      →  "dni" | "nie" | "cif" | "invalido"
-    nif_valido(nif)          →  bool
+    clasificar_nif(nif)      →  "dni" | "nie" | "cif" | "extranjero" | "invalido"
     parse_ute_members(name)  →  list[str]
     fold_text(text)          →  str
 """
@@ -109,8 +108,7 @@ def normalize_nif(nif: str | None) -> str | None:
     Solo normaliza, no valida: TED trae identificadores de empresas de toda la
     UE (IVA intracomunitario, registros mercantiles extranjeros) que no son
     NIF españoles y que hay que conservar tal cual. Quien necesite saber si el
-    valor es un NIF español válido usa :func:`nif_valido` o
-    :func:`clasificar_nif`.
+    valor es un NIF español válido usa :func:`clasificar_nif`.
     """
     if not nif or not isinstance(nif, str):
         return None
@@ -194,11 +192,6 @@ def clasificar_nif(nif: str | None) -> TipoNif:
             control_valido = control in {str(esperado), _LETRAS_CIF[esperado]}
         return "cif" if control_valido else "invalido"
     return "extranjero"
-
-
-def nif_valido(nif: str | None) -> bool:
-    """``True`` si el valor es un DNI, NIE o CIF español con control correcto."""
-    return clasificar_nif(nif) in {"dni", "nie", "cif"}
 
 
 def nif_espanol_malformado(nif: str | None) -> bool:

@@ -21,11 +21,6 @@ def load_runs(limit: int = 200) -> list[dict[str, Any]]:
     return _repo.load_runs(limit)
 
 
-def load_calidad_runs(limit: int = 90) -> list[dict[str, Any]]:
-    """Carga runs con columnas de calidad (subconjunto para calidad_datos)."""
-    return _repo.load_calidad_runs(limit)
-
-
 def persist_run(
     run_id: str,
     started_at: str,

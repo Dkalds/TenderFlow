@@ -52,38 +52,10 @@ def test_create_session_different_tokens(tmp_db: object) -> None:
     assert t1 != t2
 
 
-# ---------------------------------------------------------------------------
-# validate_session
-# ---------------------------------------------------------------------------
-
-
-def test_validate_session_valid(tmp_db: object) -> None:
-    token = _make_session(tmp_db, user_id=42)
-    result = smod.validate_session(token)
-    assert result is not None
-    assert result["user_id"] == 42
-
-
-def test_validate_session_invalid_token(tmp_db: object) -> None:
-    assert smod.validate_session("bogus-token") is None
-
-
-def test_validate_session_returns_none_after_revoke(tmp_db: object) -> None:
-    token = _make_session(tmp_db)
-    smod.revoke_session(token)
-    assert smod.validate_session(token) is None
-
-
-def test_validate_session_expired_returns_none(tmp_db: object) -> None:
-    token = _make_session(tmp_db, ttl_hours=-1)  # expired immediately
-    assert smod.validate_session(token) is None
-
-
-def test_validate_session_has_ip(tmp_db: object) -> None:
-    token = smod.create_session(1, ip="1.2.3.4")
-    result = smod.validate_session(token)
-    assert result is not None
-    assert result["ip"] == "1.2.3.4"
+def _activa(token: str, user_id: int) -> bool:
+    """La sesión sigue entre las activas de su usuario (sin revocar ni caducar)."""
+    token_hash = smod._hash_token(token)
+    return any(s["token_hash"] == token_hash for s in smod.list_active_sessions(user_id))
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +67,7 @@ def test_revoke_session_idempotent(tmp_db: object) -> None:
     token = _make_session(tmp_db)
     smod.revoke_session(token)
     smod.revoke_session(token)  # second call should not raise
-    assert smod.validate_session(token) is None
+    assert not _activa(token, 1)
 
 
 def test_revoke_nonexistent_session_no_error(tmp_db: object) -> None:
@@ -118,14 +90,14 @@ def test_revoke_all_sessions_revokes_all(tmp_db: object) -> None:
     t1 = _make_session(tmp_db, user_id=88)
     t2 = _make_session(tmp_db, user_id=88)
     smod.revoke_all_sessions(88)
-    assert smod.validate_session(t1) is None
-    assert smod.validate_session(t2) is None
+    assert not _activa(t1, 88)
+    assert not _activa(t2, 88)
 
 
 def test_revoke_all_sessions_no_cross_user(tmp_db: object) -> None:
     t_other = _make_session(tmp_db, user_id=77)
     smod.revoke_all_sessions(55)  # different user
-    assert smod.validate_session(t_other) is not None
+    assert _activa(t_other, 77)
 
 
 # ---------------------------------------------------------------------------

@@ -100,29 +100,3 @@ def test_cache_invalidation_event_is_visible_to_a_new_read(tmp_db):
 
     assert event_id > 0
     assert get_latest_cache_invalidation_timestamp() > 0.0
-
-
-def test_replay_watchlist_reconstructs_state(tmp_db):
-    """replay_watchlist returns active items after add/remove events."""
-    from db.events import append_event, replay_watchlist
-
-    append_event("watchlist.item_added", "u1", "user", {"id_externo": "E-001", "title": "A"})
-    append_event("watchlist.item_added", "u1", "user", {"id_externo": "E-002", "title": "B"})
-    append_event("watchlist.item_removed", "u1", "user", {"id_externo": "E-001"})
-
-    state = replay_watchlist("u1")
-    assert len(state) == 1
-    assert state[0]["id_externo"] == "E-002"
-
-
-def test_replay_feedback_returns_last_write_wins(tmp_db):
-    """replay_feedback returns the last feedback per expediente."""
-    from db.events import append_event, replay_feedback
-
-    append_event("feedback.submitted", "u1", "user", {"expediente": "EXP-1", "relevante": True})
-    append_event("feedback.submitted", "u2", "user", {"expediente": "EXP-1", "relevante": False})
-
-    result = replay_feedback()
-    assert len(result) == 1
-    assert result[0]["expediente"] == "EXP-1"
-    assert result[0]["relevante"] is False  # last write wins

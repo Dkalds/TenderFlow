@@ -1,7 +1,7 @@
 """Utilidades de entrenamiento y operaciones sobre la BD para el clasificador SAP.
 
 Contiene:
-  - ``_append_to_registry()`` / ``read_registry()`` — histórico de entrenamientos
+  - ``_append_to_registry()`` — histórico de entrenamientos
   - ``train_from_db()`` — orquesta entrenamiento completo desde la BD
   - ``precompute_ml_proba()`` — pre-computa ml_proba para todas las licitaciones
 """
@@ -47,18 +47,6 @@ def _append_to_registry(entry: dict[str, Any], path: Path | None = None) -> Path
     history.append(dict(entry))
     target.write_text(json.dumps(history, indent=2, ensure_ascii=False), encoding="utf-8")
     return target
-
-
-def read_registry(path: Path | None = None) -> list[dict[str, Any]]:
-    """Lee el histórico de entrenamientos como lista de dicts (vacía si no existe)."""
-    target = path or _REGISTRY_PATH
-    if not target.exists():
-        return []
-    try:
-        data = json.loads(target.read_text(encoding="utf-8"))
-        return data if isinstance(data, list) else []
-    except json.JSONDecodeError:
-        return []
 
 
 def etiquetar_dataset_sap(lic: pd.DataFrame, feedback: list[dict[str, Any]]) -> pd.DataFrame:

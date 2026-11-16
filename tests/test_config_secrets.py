@@ -87,29 +87,6 @@ def test_clear_cache_allows_re_read():
 
 
 # ---------------------------------------------------------------------------
-# Rotación
-# ---------------------------------------------------------------------------
-
-
-def test_rotate_secret_env_backend():
-    import config.secrets as m
-
-    m.clear_cache()
-    original = os.environ.get("ROTATED_KEY")
-    try:
-        m.rotate_secret("ROTATED_KEY", "rotated_value")
-        assert os.environ.get("ROTATED_KEY") == "rotated_value"
-        # Cache limpiada — re-leer del env
-        assert m.get_secret("ROTATED_KEY") == "rotated_value"
-    finally:
-        if original is None:
-            os.environ.pop("ROTATED_KEY", None)
-        else:
-            os.environ["ROTATED_KEY"] = original
-        m.clear_cache()
-
-
-# ---------------------------------------------------------------------------
 # Backend Azure KeyVault (mock)
 # ---------------------------------------------------------------------------
 

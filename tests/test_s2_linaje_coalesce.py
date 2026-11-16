@@ -116,16 +116,18 @@ def test_el_update_cubre_todas_las_columnas_menos_la_clave_y_las_de_solo_insert(
     assert columnas == esperadas
 
 
-def test_el_mecanismo_de_solo_insert_existe_y_esta_vacio() -> None:
-    """Preparado para ``primera_extraccion``, que aún no existe en el modelo.
+def test_primera_extraccion_se_escribe_solo_en_el_insert() -> None:
+    """``primera_extraccion`` (v100) es el primer avistamiento: entra en el
+    INSERT y el ``DO UPDATE SET`` no la nombra, ni siquiera con COALESCE (una
+    fila con NULL recibiría la fecha de hoy y se re-notificaría)."""
+    assert frozenset({"primera_extraccion"}) == _LIC_INSERT_ONLY_FIELDS
+    assert "primera_extraccion" in _LIC_KEYS
+    assert "primera_extraccion" not in _LIC_UPDATES
 
-    Cuando el agente que la añada la declare en ``db/models.py`` y en el
-    dataclass ``Licitacion``, basta con listarla en ``_LIC_INSERT_ONLY_FIELDS``:
-    ``_LIC_UPDATES`` ya la excluye del ``DO UPDATE SET`` sin más cambios. Este
-    test falla si alguien la añade al dataclass sin declararla ahí.
-    """
-    assert frozenset() == _LIC_INSERT_ONLY_FIELDS
-    assert "primera_extraccion" not in {f.name for f in fields(Licitacion)}, (
-        "primera_extraccion ya existe en el modelo: añadila a "
-        "_LIC_INSERT_ONLY_FIELDS y actualizá este test"
-    )
+
+def test_primera_extraccion_no_la_fija_el_parseo() -> None:
+    """Sin valor explícito la pone el upsert al escribir, no el parseo."""
+    lic = Licitacion(id_externo="X", titulo="t", fecha_extraccion="2026-09-01T08:00:00+00:00")
+    assert lic.primera_extraccion is None
+    explicita = Licitacion(id_externo="X", titulo="t", primera_extraccion="2025-01-01")
+    assert explicita.primera_extraccion == "2025-01-01"

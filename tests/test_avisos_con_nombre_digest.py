@@ -255,6 +255,32 @@ def test_un_digest_solo_de_documentos_que_caducan_no_habla_de_lo_que_sigues() ->
     )
 
 
+def test_un_documento_que_caduca_no_se_pinta_como_tarjeta_de_licitacion() -> None:
+    # Como llega de `load_pending_digests`: sin licitación (el despachador la
+    # encola con `licitacion_id` vacío) y el título en el payload.
+    fila = {
+        "licitacion_id": "",
+        "titulo": None,
+        "evento_tipo": "organizacion.documento_caduca",
+        "evento_payload": json.dumps(
+            {"titulo": "ISO 27001", "aviso_titulo": "Caduca en 30 días", "aviso_detalle": "x"}
+        ),
+    }
+
+    texto, html = render_digest(
+        bloques=bloques_de_avisos([fila]),
+        frecuencia="daily",
+        base_url="https://tenderflow.example",
+        baja_url=None,
+    )
+
+    assert "* ISO 27001" in texto
+    assert "Caduca en 30 días — x" in texto
+    for impostor in ("Órgano no publicado", "base desconocida", "fecha límite"):
+        assert impostor not in texto
+        assert impostor not in html
+
+
 def test_la_cartera_que_vence_no_cuenta_como_expediente_seguido() -> None:
     (bloque,) = bloques_de_avisos([_fila("pursuit.cartera_vence", {}, "LIC-GANADA")])
     assert not bloque.sobre_lo_seguido

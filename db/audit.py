@@ -19,8 +19,7 @@ from __future__ import annotations
 import hmac
 from typing import TYPE_CHECKING, Any
 
-from db.database import connect, now_utc_iso
-from db.database import get_table_columns as _get_cols
+from db.database import connect, get_table_columns, now_utc_iso
 from observability.logging import get_logger
 from shared.audit_events import es_evento_conocido
 
@@ -48,6 +47,27 @@ _AUDIT_LOCK_TIMEOUT_MS = 2000
 
 #: Filas por lote al verificar la cadena (paginación por clave dentro de un snapshot).
 _VERIFY_BATCH = 2000
+
+#: Columnas de cada tabla de la cadena, inspeccionadas una vez por proceso.
+_COLUMNAS: dict[str, frozenset[str]] = {}
+
+
+def _get_cols(c: _PgConnAdapter, table: str) -> frozenset[str]:
+    """Columnas de ``table``, sin volver a ``information_schema`` en cada escritura.
+
+    Antes eran dos consultas por evento de auditoría. Solo se guarda una tabla
+    que existe: la que aún no está (``audit_chain_state`` en una base a medio
+    migrar) se vuelve a mirar, porque crearla es justo lo que hace la migración.
+    """
+    cols = _COLUMNAS.get(table)
+    if cols is None:
+        cols = frozenset(get_table_columns(c, table))
+        if cols:
+            # shortcut: una columna que añada una migración con el proceso vivo
+            # no se ve hasta reiniciarlo; las de la cadena (migración 26, v129)
+            # ya están en toda base. Si una migración nueva toca estas tablas, reiniciar.
+            _COLUMNAS[table] = cols
+    return cols
 
 
 def _audit_hmac(value: str) -> str:
@@ -449,48 +469,6 @@ def log_event(
         # La métrica es accesoria (el evento ya está persistido), pero perderla
         # en silencio deja los paneles de auditoría mintiendo por omisión.
         log.debug("audit_metric_unavailable", event_type=event_type, exc_info=True)
-
-
-def list_recent(
-    limit: int = 200,
-    *,
-    user_key: str | None = None,
-    action: str | None = None,
-    user_id: int | None = None,
-) -> list[dict[str, Any]]:
-    """Devuelve entradas recientes del audit log (para el panel de Observabilidad).
-
-    Args:
-        limit: Máximo de entradas a devolver.
-        user_key: Filtra por usuario si se proporciona.
-        action: Filtra por tipo de acción si se proporciona.
-        user_id: Filtra por identidad interna (v129); combinado con
-            ``user_key`` es la lectura dual, solo o sin clave es ``user_id = %s``.
-    """
-    clauses: list[str] = []
-    params: list[object] = []
-    if user_key and user_id is not None:
-        clauses.append("(user_id = %s OR (user_key = %s AND user_id IS NULL))")
-        params.extend([user_id, user_key])
-    elif user_key:
-        clauses.append("user_key = %s")
-        params.append(user_key)
-    elif user_id is not None:
-        clauses.append("user_id = %s")
-        params.append(user_id)
-    if action:
-        clauses.append("action = %s")
-        params.append(action)
-    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    params.append(limit)
-    with connect() as c:
-        cur = c.execute(
-            "SELECT id, user_key, session_hash, action, detail, created_at "
-            "FROM audit_log " + where + " ORDER BY created_at DESC, id DESC LIMIT %s",
-            params,
-        )
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
 
 def verify_hash_chain() -> dict[str, object]:

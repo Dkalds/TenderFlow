@@ -4,7 +4,6 @@ Contiene:
   - ``_make_pipeline()`` — FeatureUnion(TF-IDF word + char_wb) + MaxAbsScaler + CalibratedLR
   - ``_augment_text()`` — añade tokens estructurales (CPV, importe) al texto
   - ``build_dataset_rows()`` — filas del dataset **en el orden del DataFrame**
-  - ``_build_dataset()`` — atajo (texts, labels) sobre lo anterior
   - ``_expected_calibration_error()`` — ECE con bins equi-anchos
 """
 
@@ -12,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal, overload
+from typing import TYPE_CHECKING, Any
 
 from sklearn.base import BaseEstimator, TransformerMixin
 
@@ -404,7 +403,7 @@ def validate_training_data(
 class DatasetRow:
     """Una fila del dataset, con todo lo que el split necesita para no filtrar.
 
-    ``_build_dataset`` devolvía solo ``(texts, labels)`` concatenando el bloque
+    El antiguo ``_build_dataset`` devolvía solo ``(texts, labels)`` concatenando el bloque
     de positivos y luego el de negativos, lo que destruía el orden del
     DataFrame y dejaba el split temporal de ``SAPClassifier.train`` sin nada
     que cortar (ver el docstring de :func:`build_dataset_rows`). Esta fila
@@ -766,39 +765,6 @@ def split_dataset_rows(filas: list[DatasetRow], *, seed: int = 42) -> DatasetSpl
         f"filas en test (n={n}, con fecha={n_datadas}, "
         f"positivos={sum(1 for f in filas if f.label == 1)})."
     )
-
-
-@overload
-def _build_dataset(df: pd.DataFrame) -> tuple[list[str], list[int]]: ...
-
-
-@overload
-def _build_dataset(
-    df: pd.DataFrame, *, return_weights: Literal[False]
-) -> tuple[list[str], list[int]]: ...
-
-
-@overload
-def _build_dataset(
-    df: pd.DataFrame, *, return_weights: Literal[True]
-) -> tuple[list[str], list[int], list[float]]: ...
-
-
-def _build_dataset(
-    df: pd.DataFrame, *, return_weights: bool = False
-) -> tuple[list[str], list[int]] | tuple[list[str], list[int], list[float]]:
-    """Atajo ``(texts, labels[, weights])`` sobre :func:`build_dataset_rows`.
-
-    Se mantiene por compatibilidad con los call sites que solo necesitan los
-    textos y las etiquetas. El orden es el del DataFrame de entrada, no el de
-    positivos-y-luego-negativos que devolvía antes.
-    """
-    filas = build_dataset_rows(df)
-    texts = [f.text for f in filas]
-    labels = [f.label for f in filas]
-    if not return_weights:
-        return texts, labels
-    return texts, labels, [f.weight for f in filas]
 
 
 def _expected_calibration_error(y_true: Any, y_proba: Any, n_bins: int = 10) -> float:

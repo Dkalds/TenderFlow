@@ -129,16 +129,3 @@ def clear_cache() -> None:
     """Limpia la cache de secretos (útil en tests o tras rotación)."""
     with _cache_lock:
         _cache.clear()
-
-
-def rotate_secret(name: str, new_value: str) -> None:
-    """Actualiza un secreto en el backend y limpia la cache local.
-
-    Solo implementado para el backend ``env`` (actualiza os.environ).
-    Para vault real, usar la CLI/SDK del proveedor.
-    """
-    if _BACKEND == "env":
-        os.environ[name] = new_value
-    with _cache_lock:
-        _cache.pop(name, None)
-    log.info("secret_rotated", name=name, backend=_BACKEND)

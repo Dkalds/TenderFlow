@@ -9,7 +9,7 @@ import { GlosarioHint } from "@/components/ui/glosario-hint";
 import type { RadarTender } from "@/hooks/use-radar";
 import { estadoLabel } from "@/lib/estados";
 import { riesgoLabel } from "@/lib/riesgos";
-import { daysLeft } from "./radar-shared";
+import { daysLeft } from "@/lib/utils";
 
 /**
  * Cabecera del inspector: banda, referencia, score, título y la línea que

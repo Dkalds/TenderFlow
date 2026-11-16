@@ -209,26 +209,6 @@ def test_un_fallo_del_sondeo_bloquea_con_el_motivo_en_una_linea_y_sin_credencial
     assert "secreta" not in campos["error"]
 
 
-def test_estado_schema_devuelve_el_vocabulario_y_nunca_propaga(
-    monkeypatch: pytest.MonkeyPatch, eventos: MagicMock
-) -> None:
-    """La API en proceso: la misma cadena que publica ``/health/ready``."""
-    _fuentes(monkeypatch, aplicadas=(_ANTERIOR,))
-    assert schema_revision.estado_schema() == f"behind ({_ANTERIOR} < {_CABEZA})"
-    assert eventos.method_calls == []
-
-    def _revienta() -> tuple[tuple[str, ...], tuple[str, ...]]:
-        raise OSError("alembic no disponible")
-
-    monkeypatch.setattr(schema_revision, "revisiones_repo", _revienta)
-
-    assert schema_revision.estado_schema() == "unknown"
-    (llamada,) = eventos.method_calls
-    nivel, argumentos, campos = llamada
-    assert (nivel, argumentos) == ("warning", ("schema_revision_check_failed",))
-    assert campos["error"] == "OSError: alembic no disponible"
-
-
 # ---------------------------------------------------------------------------
 # La receta de conexión: NullPool, cerrada siempre, fuera del pool de db/
 # ---------------------------------------------------------------------------

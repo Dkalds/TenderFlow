@@ -159,8 +159,8 @@ describe("exportCSV", () => {
   it("escribe la fuente de la respuesta en cada fila, no un campo por resultado", async () => {
     const csv = await csvEmitido([resultado({ titulo: "Obra" })], "fts");
     const [cabecera, fila] = csv.split("\n");
-    expect(cabecera.split(",").at(-1)).toBe('"source"');
-    expect(fila.split(",").at(-1)).toBe('"fts"');
+    expect(cabecera.split(";").at(-1)).toBe('"source"');
+    expect(fila.split(";").at(-1)).toBe('"fts"');
   });
 
   it("dice dónde casa cada resultado, no un porcentaje", async () => {
@@ -176,9 +176,9 @@ describe("exportCSV", () => {
     expect(csv.split("\n")[1]).toContain('"Obra ""grande"""');
   });
 
-  it("un id de expediente con comas no parte la fila", async () => {
-    const csv = await csvEmitido([resultado({ id_externo: "7783/2025, ABI MIXTO" })], null);
-    expect(csv.split("\n")[1].startsWith('"7783/2025, ABI MIXTO",')).toBe(true);
+  it("un id de expediente con comas o punto y coma no parte la fila", async () => {
+    const csv = await csvEmitido([resultado({ id_externo: "7783/2025; ABI, MIXTO" })], null);
+    expect(csv.split("\n")[1].startsWith('"7783/2025; ABI, MIXTO";')).toBe(true);
   });
 
   it("lleva el BOM de UTF-8, sin el cual Excel rompe las tildes", async () => {

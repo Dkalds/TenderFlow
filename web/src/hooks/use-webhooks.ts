@@ -44,23 +44,6 @@ export type WebhookCreateInput = WebhookCreate;
 /** Cuerpo de la edición; el `id` va en la ruta, no en el body. */
 export type WebhookUpdateInput = WebhookUpdate & { id: number };
 
-/**
- * `GET /webhooks` es la única ruta de webhooks sin DTO: el backend la anota
- * `-> list[dict[str, Any]]` (su hermana `GET /webhooks/{id}` sí devuelve
- * `WebhookOut`), así que el esquema generado la describe como una lista de
- * objetos opacos. Pasarla por `apiGet` cambiaría `WebhookOut[]` por
- * `{ [k: string]: unknown }[]` y rompería a quien la pinta, de modo que se
- * queda en `fetchWithAuth` hasta que la ruta declare su modelo. El tipo de
- * abajo es, hasta entonces, una suposición del frontend.
- */
-export function useWebhooks() {
-  return useQuery({
-    queryKey: WEBHOOKS_KEY,
-    queryFn: () => fetchWithAuth<WebhookOut[]>("/api/v1/webhooks"),
-    meta: META_ERROR_EN_LINEA,
-  });
-}
-
 /** Tipos de evento válidos, servidos por el backend (la UI no los duplica). */
 export function useWebhookEventTypes() {
   return useQuery({

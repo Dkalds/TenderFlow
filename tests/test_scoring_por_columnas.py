@@ -1305,6 +1305,32 @@ def test_afinidad_por_columnas_identica(portfolio, columnas_fuera, embeddings):
     assert textos["nuevo"] == textos["antes"]
 
 
+def test_afinidad_no_lee_la_opcion_future_infer_string():
+    """pandas 4 retira ``future.infer_string``: con pandas>=3 inferir texto es fijo."""
+    df = _df_afinidad(())
+    cartera = _PORTFOLIOS["todo"]
+    textos: dict[str, list[list[str]]] = {"nuevo": [], "antes": []}
+
+    def _codificar(destino: str):
+        def _encode(textos_pedidos: list[str], **kwargs: Any) -> np.ndarray:
+            textos[destino].append(list(textos_pedidos))
+            return _vectores_deterministas(textos_pedidos)
+
+        return _encode
+
+    with patch("services.embeddings.embeddings_available", return_value=True):
+        with patch("services.embeddings.encode_texts", side_effect=_codificar("antes")):
+            antes = _score_affinity_batch_por_filas(df, cartera)
+        with (
+            patch.object(af_mod.pd, "get_option", side_effect=pd.errors.OptionError("retirada")),
+            patch("services.embeddings.encode_texts", side_effect=_codificar("nuevo")),
+        ):
+            nuevo = af_mod.score_affinity_batch(df, cartera)
+
+    assert nuevo == antes
+    assert textos["nuevo"] == textos["antes"]
+
+
 def test_afinidad_sin_columna_de_ids_revienta_igual_que_antes():
     df = pd.DataFrame(_LOTE[:5]).drop(columns=["id_externo"])
     cartera = _PORTFOLIOS["keywords"]

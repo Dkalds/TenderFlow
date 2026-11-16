@@ -540,17 +540,17 @@ def test_offset_conformal_baseline_cuenta_el_clip_en_cero():
     """
     import numpy as np
 
-    from services.ml.baja_model import _offset_conformal
+    from services.ml.baja_model import _cuantil_conformal
 
     pares = [(0.05, -0.005)] * 20
     pares += [(0.20, 0.20 + k * 0.005) for k in range(-40, 40)]
 
     crudos = [intervalo_baseline(p50) for p50, _ in pares]
-    ingenuo = _offset_conformal(
-        np.array([c[0] for c in crudos]),
-        np.array([c[1] for c in crudos]),
-        np.array([y for _, y in pares]),
-    )
+    p10 = np.array([c[0] for c in crudos])
+    p90 = np.array([c[1] for c in crudos])
+    y = np.array([realizada for _, realizada in pares])
+    # El cuantil ingenuo: el score de Romano sin descartar lo inalcanzable.
+    ingenuo = _cuantil_conformal(np.maximum(p10 - y, y - p90), 0.80)
     corregido = offset_conformal_baseline(pares)
 
     assert corregido > ingenuo
@@ -880,41 +880,6 @@ def test_scoring_sin_modelo_activo_no_marca_degradado(db):
 # ---------------------------------------------------------------------------
 # Conformal (split-CQR) y monitor de nulos
 # ---------------------------------------------------------------------------
-
-
-def test_offset_conformal_lleva_la_cobertura_al_objetivo():
-    """Un intervalo demasiado estrecho se ensancha hasta cubrir el 80%."""
-    import numpy as np
-
-    from services.ml.baja_model import _offset_conformal
-
-    rng = np.random.default_rng(42)
-    y = rng.uniform(0.0, 0.5, 400)
-    centro = np.full(400, 0.25)
-    p10, p90 = centro - 0.02, centro + 0.02  # cubre muy poco
-
-    offset = _offset_conformal(p10, p90, y)
-    cobertura = float(np.mean((y >= p10 - offset) & (y <= p90 + offset)))
-
-    assert offset > 0
-    assert cobertura == pytest.approx(0.80, abs=0.05)
-
-
-def test_offset_conformal_estrecha_un_intervalo_que_sobra():
-    """Simétrico: si el intervalo cubre de más, el offset es negativo.
-
-    Es lo que hace que la cobertura aterrice EN el objetivo en vez de limitarse
-    a superarlo, que es la diferencia entre un intervalo informativo y uno
-    inútilmente ancho.
-    """
-    import numpy as np
-
-    from services.ml.baja_model import _offset_conformal
-
-    y = np.full(200, 0.25)
-    p10, p90 = np.full(200, 0.0), np.full(200, 0.9)  # cubre el 100%
-
-    assert _offset_conformal(p10, p90, y) < 0
 
 
 def _fila_drift(fecha, **numericas):
@@ -1268,12 +1233,12 @@ def test_offset_simetrico_se_clava_en_cero_con_masa_en_cero():
     de ancho, no se puede estrechar."""
     import numpy as np
 
-    from services.ml.baja_model import _offset_conformal, _offsets_conformal_por_lado
+    from services.ml.baja_model import _cuantil_conformal, _offsets_conformal_por_lado
 
     y = _con_masa_en_cero()
     p10, p90 = np.zeros(len(y)), np.full(len(y), 0.50)  # p90 muy holgado
 
-    assert _offset_conformal(p10, p90, y) == 0.0
+    assert _cuantil_conformal(np.maximum(p10 - y, y - p90), 0.80) == 0.0
     inferior, superior = _offsets_conformal_por_lado(p10, p90, y)
     assert superior < 0, "el extremo superior debe estrecharse"
     assert float(np.mean(y > p90 + superior)) == pytest.approx(0.10, abs=0.02)

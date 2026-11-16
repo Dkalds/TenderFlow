@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from shared.csrf import generate_csrf_token, validate_csrf_token
+from shared.csrf import csrf_token_valido, generate_csrf_token, validate_csrf_token
 
 
 @pytest.fixture(autouse=True)
@@ -97,6 +97,35 @@ class TestValidateCsrfToken:
         token = generate_csrf_token(session)
         # With very short max_age and slight time shift, should still pass
         assert validate_csrf_token(token, session, max_age=10) is True
+
+    def test_legacy_token_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """El periodo de gracia del formato anterior (HMAC plano, sin kid) se cerró."""
+        import hashlib
+        import hmac
+
+        from shared.auth_core import get_signing_key
+
+        session = "sess"
+        legacy = hmac.new(get_signing_key(), session.encode(), hashlib.sha256).hexdigest()
+        # La variable que abría la gracia ya no tiene efecto.
+        monkeypatch.setenv("CSRF_ACEPTAR_LEGACY", "1")
+
+        assert csrf_token_valido(legacy, session) is False
+        assert csrf_token_valido(generate_csrf_token(session), session) is True
+
+    @pytest.mark.parametrize(
+        "token",
+        ["ñ", "kid:ñ:sig", "kid:١٢٣:sig", "ñ:123:sig"],
+        ids=["entero", "ts", "ts-digitos-unicode", "kid"],
+    )
+    def test_non_ascii_token_rejected_without_raising(self, token: str) -> None:
+        """Un X-CSRF-Token no ASCII se rechaza; lanzar daría un 500 (lo que arregló #752)."""
+        session = "sess"
+        real = generate_csrf_token(session)
+        con_sig_no_ascii = real.rsplit(":", 1)[0] + ":ñ"
+
+        assert csrf_token_valido(token, session) is False
+        assert csrf_token_valido(con_sig_no_ascii, session) is False
 
     def test_non_numeric_timestamp_rejected(self) -> None:
         session = "sess"

@@ -3634,8 +3634,9 @@ export interface paths {
          *     key "actual" implícita, de modo que ``key_id`` es obligatorio y se
          *     comprueba que pertenezca al usuario autenticado.
          *
-         *     La key anterior permanece activa durante ``grace_days`` (default 7 días)
-         *     para permitir migración gradual. Después de ese período, se desactiva
+         *     La key anterior permanece activa durante ``grace_days`` (default 7 días),
+         *     o hasta su caducidad si llega antes, para permitir migración gradual.
+         *     Después de ese período, se desactiva
          *     automáticamente (requiere que el scheduler ejecute el job de cleanup).
          *
          *     El token nuevo solo se devuelve en esta respuesta — guárdalo de forma segura.
@@ -16468,6 +16469,11 @@ export interface components {
             sin_resultados?: string | null;
             /** Socios */
             socios?: components["schemas"]["SocioSugerido"][];
+            /**
+             * Truncado
+             * @default false
+             */
+            truncado: boolean;
         };
         /**
          * TareaPlantilla
@@ -27141,7 +27147,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Nueva key generada. La key anterior sigue activa N días. */
+            /** @description Nueva key generada. La key anterior sigue activa `grace_days` días, o hasta su caducidad si llega antes. */
             201: {
                 headers: {
                     [name: string]: unknown;

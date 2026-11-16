@@ -50,7 +50,7 @@ from db.repositories.organization_capabilities import (
 from db.repositories.pursuits import PursuitRepository
 from db.repositories.tender_fact_sheets import TenderFactSheetsRepository
 from observability.logging import get_logger
-from services.condiciones_oficiales import condiciones_oficiales
+from services.condiciones_oficiales import VOLUMEN_NEGOCIOS, condiciones_oficiales
 from services.normalization import fold_text
 from services.organizations import alcance_resuelto
 from shared.dto import (
@@ -231,13 +231,15 @@ class _Requisito:
 
     ``umbral`` es el importe que el requisito declara aparte (``amount_eur`` de
     la ficha, ``ThresholdAmount`` de CODICE); si no lo hay, las reglas lo buscan
-    en el texto. ``evidencia`` solo la trae la ficha.
+    en el texto. ``evidencia`` solo la trae la ficha. ``tipo_codigo`` es el
+    ``EvaluationCriteriaTypeCode`` de CODICE; la ficha no lo trae.
     """
 
     texto: str
     umbral: float | None
     evidencia: list[EvidenceRef]
     fuente: ChecklistFuente
+    tipo_codigo: str | None = None
 
 
 def _origen(fuente: ChecklistFuente) -> str:
@@ -432,6 +434,23 @@ def _evaluar_solvencia_economica(
         # La frase de la publicación oficial dice de dónde sale el umbral: no
         # hay cita del pliego que lo enseñe.
         de_donde = "" if fuente == "pliego" else " que fija la publicación oficial"
+        if requisito.tipo_codigo not in (None, VOLUMEN_NEGOCIOS):
+            # Un seguro de RC o un patrimonio neto no se mide con la facturación,
+            # y el perfil de capacidad no declara otra cosa con que medirlo.
+            items.append(
+                ChecklistItem(
+                    familia="economic_solvency",
+                    requisito=requisito.texto,
+                    veredicto="desconocido",
+                    motivo=(
+                        f"{_origen(fuente)} pide un requisito económico que no es volumen "
+                        "anual de negocios: no se puede contrastar con la facturación declarada."
+                    ),
+                    evidencia=list(requisito.evidencia),
+                    fuente=fuente,
+                )
+            )
+            continue
         if mejor is None or mejor_ejercicio is None:
             items.append(
                 ChecklistItem(
@@ -775,6 +794,7 @@ def _requisitos_oficiales(
                     umbral=oficial.umbral_importe,
                     evidencia=[],
                     fuente="placsp",
+                    tipo_codigo=oficial.tipo_codigo,
                 )
             )
     return requisitos

@@ -21,9 +21,10 @@ from __future__ import annotations
 import os
 import re as _re
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from db.dlq import (
+    get_failure,
     increment_retry,
     list_unresolved,
     mark_exhausted,
@@ -33,6 +34,9 @@ from db.dlq import (
 from observability.alerts import AlertLevel, notify
 from observability.logging import bind_run_context, get_logger
 from shared.dates import instante_utc
+
+if TYPE_CHECKING:
+    from scraper.connectors.base import ConnectorRunResult
 
 log = get_logger(__name__)
 
@@ -85,12 +89,63 @@ def _is_due(failure: dict[str, Any]) -> bool:
 # ---------------------------------------------------------------------------
 
 _BULK_SOURCE_RE = _re.compile(r"^bulk_(?P<year>\d{4})(?P<month>\d{2})$")
+_WATCHED_BULK_SOURCE_RE = _re.compile(
+    r"^placsp_watched_company_awards_bulk_(?P<year>\d{4})(?P<month>\d{2})$"
+)
 
-# Prefijo de las fuentes bulk (``bulk_YYYYMM``). Reintentarlas significa
-# reprocesar el mes entero con ``PlacspBulkConnector``, que es trabajo de
-# horas: el carril diario las excluye y las cubre el workflow manual
-# `scrape-bulk.yml`.
-_BULK_SOURCE_PREFIX = "bulk_"
+# Prefijos de las fuentes de un mes (``bulk_YYYYMM`` y el backfill mensual de
+# empresas vigiladas). Reintentarlas significa descargar y reprocesar el mes
+# entero, que es trabajo de horas: el carril diario las excluye y las cubre el
+# workflow manual `scrape-bulk.yml`.
+_BULK_SOURCE_PREFIXES = ("bulk_", "placsp_watched_company_awards_bulk_")
+
+# Ámbitos que apuntan a UN aviso ya leído (``payload_ref``), no a la pasada:
+# un parseo fallido (``run_connector``) o una adjudicación rechazada al
+# persistir (``db.upsert``). Solo un reproceso de mes vuelve a leer ese aviso;
+# las fuentes incrementales lo dejaron detrás de su cursor.
+_AMBITOS_DE_AVISO = frozenset({"parse", "adjudicacion"})
+
+
+def _reintento_no_relee(failure: dict[str, Any]) -> bool:
+    """¿Reintentar esta entrada correría el conector sin volver a leer su aviso?"""
+    fuente = str(failure.get("fuente") or "")
+    return failure.get("scope") in _AMBITOS_DE_AVISO and not fuente.startswith(
+        _BULK_SOURCE_PREFIXES
+    )
+
+
+def _es_feed_atom(fuente: str) -> bool:
+    """``place_live_atom`` y ``atom*`` son etiquetas del carril diario legacy
+    (``scraper.pipeline.process_daily``, retirado en 2026-11) para el mismo
+    feed que ``placsp``: se reintentan con el mismo conector."""
+    return fuente in ("placsp", "place_live_atom") or fuente.startswith("atom")
+
+
+def _clave_de_pasada(fuente: str) -> str:
+    """Fuentes que despachan al mismo conector comparten una sola pasada."""
+    return "placsp" if _es_feed_atom(fuente) else fuente
+
+
+class FuenteApagadaError(Exception):
+    """La fuente está apagada (sin URL): no hay pasada que reintentar."""
+
+
+def _pasada_sin_errores(fuente: str, resultado: ConnectorRunResult | None) -> bool:
+    if resultado is None:
+        raise FuenteApagadaError(fuente)
+    return resultado.errores == 0
+
+
+def _recayo(failure_id: int, desde: datetime) -> bool:
+    """¿La pasada que empezó en *desde* volvió a registrar este mismo fallo?
+
+    ``record_failure`` deduplica por (fuente, scope, payload_ref) y actualiza
+    ``last_attempt_at`` de la fila abierta, así que tocarla durante la pasada
+    es la señal de que el aviso volvió a fallar.
+    """
+    fila = get_failure(failure_id)
+    ultimo = instante_utc(fila.get("last_attempt_at")) if fila else None
+    return ultimo is not None and ultimo >= desde
 
 
 def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
@@ -101,6 +156,7 @@ def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
 
     Raises:
         ValueError: si *fuente* es desconocida (no se puede reintentar).
+        FuenteApagadaError: si la fuente está apagada (sin URL configurada).
     """
     bulk_match = _BULK_SOURCE_RE.match(fuente)
     if bulk_match:
@@ -127,10 +183,7 @@ def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
         # ``no_publicado`` que devolvía ``process_month``.
         return not run_result.fetch_failed
 
-    # ``place_live_atom`` y ``atom*`` son etiquetas del carril diario legacy
-    # (``scraper.pipeline.process_daily``, retirado en 2026-11): si queda
-    # alguna fila, se reintenta por el mismo feed con el conector.
-    if fuente in ("placsp", "place_live_atom") or fuente.startswith("atom"):
+    if _es_feed_atom(fuente):
         from scraper.connectors.base import run_connector
         from scraper.connectors.placsp import PlacspAtomConnector
 
@@ -181,22 +234,63 @@ def dispatch_retry(fuente: str, scope: str, run_id: str) -> bool:
         watched_connector = PlacspWatchedCompanyAwardsConnector(watched_nifs)
         return run_connector(watched_connector).errores == 0
 
+    watched_bulk = _WATCHED_BULK_SOURCE_RE.match(fuente)
+    if watched_bulk:
+        from db.repositories.watched_companies import WatchedCompanyRepository
+        from scraper.connectors.base import run_connector
+        from scraper.connectors.watched_company_awards import (
+            PlacspWatchedCompanyAwardsBulkConnector,
+        )
+
+        mes = PlacspWatchedCompanyAwardsBulkConnector(
+            int(watched_bulk.group("year")),
+            int(watched_bulk.group("month")),
+            WatchedCompanyRepository().list_canonical_nifs(),
+        )
+        # Mismo criterio que ``bulk_YYYYMM``: un mes no publicado no es un fallo.
+        return not run_connector(mes).fetch_failed
+
+    # Sindicaciones de PLACSP con URL propia: su ``ejecutar`` devuelve None si
+    # la fuente está apagada.
+    if fuente == "placsp_agregadas":
+        from scraper.connectors.placsp_agregadas import ejecutar as ejecutar_agregadas
+
+        return _pasada_sin_errores(fuente, ejecutar_agregadas())
+
+    if fuente == "placsp_menores":
+        from scraper.connectors.placsp_menores import ejecutar as ejecutar_menores
+
+        return _pasada_sin_errores(fuente, ejecutar_menores())
+
+    if fuente == "placsp_consultas":
+        from scraper.connectors.placsp_consultas import ejecutar as ejecutar_consultas
+
+        return _pasada_sin_errores(fuente, ejecutar_consultas())
+
     raise ValueError(f"Unsupported DLQ source: {fuente!r}")
 
 
-def _retry_failure(failure: dict[str, Any], run_id: str) -> bool | None:
+def _retry_failure(failure: dict[str, Any], run_id: str) -> bool | str:
     """Intenta re-ejecutar la extracción correspondiente a *failure*.
 
     Returns:
-        True si el reintento fue exitoso; False si falló de nuevo; ``None`` si
-        la fuente no tiene dispatch (reintentar jamás va a funcionar — el
-        caller la marca agotada de inmediato en vez de quemar ciclos).
+        True si el reintento fue exitoso; False si falló de nuevo; un texto
+        con el motivo si reintentar jamás va a funcionar (fuente sin dispatch
+        o apagada) — el caller la marca agotada de inmediato en vez de quemar
+        ciclos y acabar en una alerta de «agotó reintentos» que culpa a la
+        extracción.
     """
     fuente: str = str(failure.get("fuente") or "")
     scope: str = str(failure.get("scope") or "")
 
     try:
         return dispatch_retry(fuente, scope, run_id)
+    except FuenteApagadaError:
+        log.warning("dlq_retry_source_off", failure_id=failure["id"], fuente=fuente)
+        return (
+            "está apagada (sin URL configurada). Al encenderla, reencolar las "
+            "entradas desde la consola si siguen haciendo falta."
+        )
     except ValueError:
         log.warning(
             "dlq_retry_unknown_source",
@@ -204,7 +298,10 @@ def _retry_failure(failure: dict[str, Any], run_id: str) -> bool | None:
             fuente=fuente,
             scope=scope,
         )
-        return None
+        return (
+            "no tiene mapeo en dispatch_retry(). Si la fuente es legítima, "
+            "añadir su dispatch en scheduler/dlq_retry.py."
+        )
     except Exception as exc:
         log.exception(
             "dlq_retry_exception",
@@ -237,7 +334,8 @@ def retry_failed_extractions(
     Args:
         max_retries: Máximo de reintentos (default: env ``DLQ_MAX_RETRIES`` o 5).
         batch_size:  Entradas por ciclo (default: env ``DLQ_BATCH_SIZE`` o 10).
-        include_bulk: Si es False, ignora las entradas ``bulk_YYYYMM``.
+        include_bulk: Si es False, ignora las entradas de un mes
+            (``bulk_YYYYMM`` y ``placsp_watched_company_awards_bulk_YYYYMM``).
             Reintentar una es correr ``PlacspBulkConnector`` sobre ese mes —
             descarga y reparseo de los ZIP del mes entero. Con el default (True) el
             carril diario se comía su propio timeout drenando meses bulk:
@@ -272,7 +370,7 @@ def retry_failed_extractions(
     # ── Paso 2: cargar candidatos activos ────────────────────────────────────
     unresolved = list_unresolved(
         limit=batch_size * 3,
-        exclude_fuente_prefix=None if include_bulk else _BULK_SOURCE_PREFIX,
+        exclude_fuente_prefixes=() if include_bulk else _BULK_SOURCE_PREFIXES,
     )
 
     if not unresolved:
@@ -295,43 +393,92 @@ def retry_failed_extractions(
     run_id = bind_run_context(entrypoint="dlq_retry", batch=len(due))
 
     # ── Paso 3: reintentar ───────────────────────────────────────────────────
-    resolved = 0
+    sin_releer: dict[str, list[int]] = {}
+    por_fuente: dict[str, list[dict[str, Any]]] = {}
     for failure in due:
-        fid = int(failure["id"])
-        success = _retry_failure(failure, run_id)
-        if success is None:
-            # Fuente sin dispatch: agotarla ya, con causa exacta, en vez de
-            # quemar max_retries ciclos y alertar "agotó reintentos" como si
-            # la extracción hubiera fallado max_retries veces.
+        fuente = str(failure.get("fuente") or "")
+        if _reintento_no_relee(failure):
+            sin_releer.setdefault(fuente, []).append(int(failure["id"]))
+        else:
+            por_fuente.setdefault(_clave_de_pasada(fuente), []).append(failure)
+
+    for fuente, ids in sin_releer.items():
+        # Correr el conector daría la entrada por resuelta sin haber vuelto a
+        # leer el aviso: se agota ya, con su causa, y la decide una persona.
+        for fid in ids:
             mark_exhausted(fid)
+        notify(
+            AlertLevel.WARN,
+            "DLQ: avisos que el reintento no vuelve a leer",
+            (
+                f"{len(ids)} entrada(s) de la fuente {fuente!r} señalan un aviso que "
+                "no se pudo parsear o persistir, y la fuente solo lee hacia delante "
+                f"desde su cursor: reintentarla no lo relee. Entradas {ids} marcadas "
+                "agotadas; descartarlas desde la consola o reprocesar su mes."
+            ),
+            fuente=fuente,
+        )
+
+    resolved = 0
+    for fuente, entradas in por_fuente.items():
+        # Una pasada del conector cubre todas las entradas de su fuente.
+        inicio = datetime.now(UTC)
+        success = _retry_failure(entradas[0], run_id)
+        ids = [int(f["id"]) for f in entradas]
+        if isinstance(success, str):
+            # Reintentar jamás va a funcionar: agotarla ya, con causa exacta,
+            # en vez de quemar max_retries ciclos y alertar "agotó reintentos"
+            # como si la extracción hubiera fallado max_retries veces.
+            for fid in ids:
+                mark_exhausted(fid)
             notify(
                 AlertLevel.WARN,
-                "DLQ: entrada sin dispatch de reintento",
+                "DLQ: fuente que no se puede reintentar",
                 (
-                    f"La fuente {failure.get('fuente')!r} no tiene mapeo en "
-                    f"dispatch_retry(); la entrada {fid} se marca agotada sin "
-                    "reintentos. Si la fuente es legítima, añadir su dispatch "
-                    "en scheduler/dlq_retry.py."
+                    f"La fuente {fuente!r} {success} Las entradas {ids} se marcan "
+                    "agotadas sin reintentos."
                 ),
-                fuente=failure.get("fuente"),
-                scope=failure.get("scope"),
+                fuente=fuente,
             )
             continue
-        if success:
-            mark_resolved(fid)
-            resolved += 1
-            log.info("dlq_retry_resolved", failure_id=fid, fuente=failure.get("fuente"))
-        else:
-            new_count = int(failure.get("retry_count") or 0) + 1
-            increment_retry(fid)
-            log.warning(
-                "dlq_retry_still_failing",
-                failure_id=fid,
-                fuente=failure.get("fuente"),
-                new_retry_count=new_count,
+        recaidas: list[int] = []
+        for failure in entradas:
+            fid = int(failure["id"])
+            if success and _recayo(fid, inicio):
+                # La pasada volvió a registrar este fallo (``record_failure``
+                # ya contó el intento). Un aviso que no parsea o no persiste al
+                # releerlo es determinista: se agota en vez de reprocesar el mes
+                # otra vez; cualquier otro ámbito sigue en su ciclo.
+                if failure.get("scope") in _AMBITOS_DE_AVISO:
+                    mark_exhausted(fid)
+                    recaidas.append(fid)
+                log.warning("dlq_retry_relapsed", failure_id=fid, fuente=fuente)
+            elif success:
+                mark_resolved(fid)
+                resolved += 1
+                log.info("dlq_retry_resolved", failure_id=fid, fuente=fuente)
+            else:
+                increment_retry(fid)
+                log.warning(
+                    "dlq_retry_still_failing",
+                    failure_id=fid,
+                    fuente=fuente,
+                    new_retry_count=int(failure.get("retry_count") or 0) + 1,
+                )
+                # Si esta actualización lo lleva a max_retries, el siguiente
+                # ciclo lo capturará vía sweep_exhausted.
+        if recaidas:
+            notify(
+                AlertLevel.WARN,
+                "DLQ: avisos que vuelven a fallar al releerlos",
+                (
+                    f"El reproceso de {fuente!r} volvió a registrar el mismo fallo de "
+                    f"parseo o persistencia en las entradas {recaidas}: reintentarlo no "
+                    "lo arregla. Marcadas agotadas; descartarlas desde la consola o "
+                    "reencolarlas tras corregir el parser o el dato."
+                ),
+                fuente=fuente,
             )
-            # Si esta actualización lo lleva a max_retries, el siguiente ciclo
-            # lo capturará vía sweep_exhausted.
 
     log.info("dlq_retry_done", resolved=resolved, attempted=len(due))
     return resolved

@@ -312,6 +312,32 @@ class TestAgrupacionDelAviso:
 
         notify.assert_called_once()
 
+    def test_una_bd_de_cuotas_caida_no_silencia_el_aviso(self, monkeypatch):
+        """El limiter real no lanza: con la BD caída deniega. Para el aviso, eso era silencio."""
+        from services.rate_limiting import DbRateLimiter
+
+        def _bd_caida():
+            raise RuntimeError("BD caída")
+
+        monkeypatch.setattr("db.rate_limits._connect", _bd_caida)
+        monkeypatch.setattr("services.rate_limiting.get_rate_limiter", DbRateLimiter)
+
+        with patch("services.solicitudes_acceso.notify") as notify:
+            assert self._avisar() is True
+
+        notify.assert_called_once()
+
+    def test_la_bd_de_cuotas_caida_sigue_denegando_al_resto(self, monkeypatch):
+        """El fail-open es solo del aviso: el limiter sigue cerrado para los demás."""
+        from services.rate_limiting import DbRateLimiter
+
+        def _bd_caida():
+            raise RuntimeError("BD caída")
+
+        monkeypatch.setattr("db.rate_limits._connect", _bd_caida)
+
+        assert DbRateLimiter().check("api:ip:203.0.113.9", max_calls=120) is False
+
 
 class TestPatchNotifica:
     @pytest.fixture(autouse=True)

@@ -91,6 +91,107 @@ def test_cada_fila_una_vez_y_en_orden(sembrado: Any, sort: str, esperado: list[s
     assert total == len(_FILAS)
 
 
+_FECHADAS_DESC = ["C-07", "C-06", "C-05", "C-04", "C-03", "C-02", "C-01"]
+
+
+def _sembrar_fecha(fecha: str | None, *ids: str) -> None:
+    from db.database import connect
+
+    with connect() as c:
+        for id_externo in ids:
+            c.execute(
+                "INSERT INTO licitaciones "
+                "(id_externo, titulo, fecha_publicacion, tecnologia, fecha_extraccion) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (id_externo, f"Fecha {fecha!r} {id_externo}", fecha, "SAP", "2026-01-01"),
+            )
+        c.commit()
+
+
+def _recorrer_por_defecto(cliente: Any) -> list[str]:
+    """Todas las páginas del orden por defecto (sin ``sort``), de dos en dos."""
+    ids: list[str] = []
+    cursor: str | None = None
+    for _ in range(20):
+        params: dict[str, Any] = {"limit": 2}
+        if cursor:
+            params["cursor"] = cursor
+        resp = cliente.get("/api/v1/licitaciones/cursor", params=params)
+        assert resp.status_code == 200, resp.text
+        pagina = resp.json()
+        ids.extend(item["id_externo"] for item in pagina["items"])
+        if not pagina["has_more"]:
+            return ids
+        cursor = pagina["next_cursor"]
+    raise AssertionError(f"la paginación no terminó: {ids}")
+
+
+def test_orden_por_defecto_atraviesa_las_fechas_nulas(sembrado: Any) -> None:
+    """Una página que acaba en fecha nula no puede dejar vacía la siguiente.
+
+    El orden por defecto es ``fecha_publicacion DESC`` con los nulos delante
+    (el de ``idx_lic_cursor``), y el cursor de una fila sin fecha viaja como
+    ``|id``: tiene que seguir por la cola de nulos y luego por las fechadas.
+    """
+    _sembrar_fecha(None, "C-08", "C-09", "C-10")
+
+    assert _recorrer_por_defecto(sembrado) == ["C-10", "C-09", "C-08", *_FECHADAS_DESC]
+
+
+def test_orden_por_defecto_con_fechas_vacias_heredadas_termina(sembrado: Any) -> None:
+    """``''`` guardado y fecha nula viajan igual en el cursor (``|id``).
+
+    El CHECK de formato de v59 es ``NOT VALID``: el histórico puede tener
+    ``''``, que en el texto ordena **detrás** de todas las fechadas. Leer
+    ``|id`` siempre como «nulo» volvía a empezar por las fechadas al acabar
+    una página en una fila ``''``, y el recorrido no terminaba nunca.
+    """
+    from db.database import connect
+
+    restriccion = "ck_licitaciones_fecha_publicacion_iso"
+    with connect() as c:
+        c.execute(f"ALTER TABLE licitaciones DROP CONSTRAINT {restriccion}")
+        c.commit()
+    _sembrar_fecha(None, "C-08", "C-09", "C-10")
+    _sembrar_fecha("", "V-01", "V-02", "V-03")
+    with connect() as c:  # el estado de producción: CHECK presente, histórico sin validar
+        c.execute(
+            f"ALTER TABLE licitaciones ADD CONSTRAINT {restriccion} "
+            "CHECK (fecha_publicacion IS NULL OR fecha_publicacion ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}') "
+            "NOT VALID"
+        )
+        c.commit()
+
+    assert _recorrer_por_defecto(sembrado) == [
+        "C-10",
+        "C-09",
+        "C-08",
+        *_FECHADAS_DESC,
+        "V-03",
+        "V-02",
+        "V-01",
+    ]
+
+
+def test_orden_por_defecto_con_la_sombra_atraviesa_las_fechas_nulas(
+    sembrado: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Con ``NUCLEO_TIPADO_LECTURA`` el cursor ``|id`` no puede llegar a un cast de ``''``."""
+    from config import settings
+    from db.database import connect
+
+    _sembrar_fecha(None, "C-08", "C-09", "C-10")
+    with connect() as c:
+        c.execute(
+            "UPDATE licitaciones SET fecha_publicacion_ts = fecha_publicacion::timestamptz "
+            "WHERE fecha_publicacion IS NOT NULL"
+        )
+        c.commit()
+    monkeypatch.setattr(settings, "NUCLEO_TIPADO_LECTURA", True, raising=False)
+
+    assert _recorrer_por_defecto(sembrado) == ["C-10", "C-09", "C-08", *_FECHADAS_DESC]
+
+
 def test_un_cursor_de_otro_orden_es_400(sembrado: Any) -> None:
     primera = sembrado.get("/api/v1/licitaciones/cursor", params={"sort": "importe", "limit": 2})
     cursor = primera.json()["next_cursor"]

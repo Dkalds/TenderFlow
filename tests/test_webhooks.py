@@ -48,16 +48,28 @@ class TestCreateWebhook:
         assert secret != "derived:v1"
 
 
-class TestTriggerEvent:
+def _entregar(webhook_id: int) -> bool:
+    """Una entrega como la hace el despachador del outbox: fila de suscriptor + ``entregar_firmado``."""
+    fila = next(f for f in WebhookRepository().list_active_subscribers() if f["id"] == webhook_id)
+    return wh_mod.entregar_firmado(
+        webhook_id=webhook_id,
+        url=str(fila["url"]),
+        stored_secret=str(fila["secret"]),
+        event_type="watchlist_match",
+        body=b'{"event":"watchlist_match","data":{"id":1}}',
+        momento_iso=wh_mod.now_utc().isoformat(),
+    )
+
+
+class TestEntregarFirmado:
     @patch("db.webhooks.pinned_https_request")
     def test_successful_delivery(self, mock_post, tmp_db, dns_de_example_com):
         db_mod, _ = tmp_db
-        _create_sample(db_mod)
+        wid, _ = _create_sample(db_mod)
         mock_resp = MagicMock(status_code=200)
         mock_post.return_value = mock_resp
 
-        count = wh_mod.trigger_event("watchlist_match", {"id": 1})
-        assert count == 1
+        assert _entregar(wid) is True
         mock_post.assert_called_once()
 
         # Verify signature header was sent
@@ -66,36 +78,14 @@ class TestTriggerEvent:
         assert "X-Webhook-Signature" in headers
 
     @patch("db.webhooks.pinned_https_request")
-    def test_filters_by_event_type(self, mock_post, tmp_db):
-        db_mod, _ = tmp_db
-        # Webhook subscribed to watchlist_match only
-        _create_sample(db_mod)
-        mock_post.return_value = MagicMock(status_code=200)
-
-        # Fire a different event
-        count = wh_mod.trigger_event("daily_summary", {"msg": "hi"})
-        assert count == 0
-        mock_post.assert_not_called()
-
-    @patch("db.webhooks.pinned_https_request")
-    def test_wildcard_event_type(self, mock_post, tmp_db, dns_de_example_com):
-        _db_mod, _ = tmp_db
-        WebhookRepository().create(
-            name="catch-all", url="https://example.com/all", event_types=["*"]
-        )
-        mock_post.return_value = MagicMock(status_code=200)
-        count = wh_mod.trigger_event("any_event", {})
-        assert count == 1
-
-    @patch("db.webhooks.pinned_https_request")
     def test_derived_secret_produces_valid_signature(self, mock_post, tmp_db, dns_de_example_com):
         """Verify that derived secrets produce consistent HMAC signatures."""
         db_mod, _ = tmp_db
         master_key = "test-master-key-for-hmac-derivation!!"  # pragma: allowlist secret
         with patch("db.webhooks._get_webhook_master_key", return_value=master_key):
-            _wid, secret = _create_sample(db_mod)
+            wid, secret = _create_sample(db_mod)
             mock_post.return_value = MagicMock(status_code=200)
-            wh_mod.trigger_event("watchlist_match", {"id": 1})
+            _entregar(wid)
 
         call_kwargs = mock_post.call_args
         headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers", {})
@@ -113,15 +103,13 @@ class TestTriggerEvent:
         real (no solo en el ping manual). Un webhook apuntando a una IP privada
         nunca debe llegar a ``requests.post`` — cierra la ventana TOCTOU."""
         _db_mod, _ = tmp_db
-        WebhookRepository().create(
+        wid, _ = WebhookRepository().create(
             name="ssrf-attempt",
             url="http://127.0.0.1:9999/hook",
             event_types=["watchlist_match"],
         )
 
-        count = wh_mod.trigger_event("watchlist_match", {"id": 1})
-
-        assert count == 0
+        assert _entregar(wid) is False
         mock_post.assert_not_called()
         rows = WebhookRepository().list_all()
         hook = next(r for r in rows if r["url"] == "http://127.0.0.1:9999/hook")
@@ -129,17 +117,15 @@ class TestTriggerEvent:
 
     @patch("db.webhooks.pinned_https_request")
     def test_dns_rebinding_domain_rejected_at_delivery_time(self, mock_post, tmp_db):
-        """Sufijo de dominio de rebinding conocido también bloqueado en trigger_event."""
+        """Sufijo de dominio de rebinding conocido también bloqueado en la entrega."""
         _db_mod, _ = tmp_db
-        WebhookRepository().create(
+        wid, _ = WebhookRepository().create(
             name="rebinding-attempt",
             url="https://10.0.0.1.nip.io/hook",
             event_types=["*"],
         )
 
-        count = wh_mod.trigger_event("any_event", {})
-
-        assert count == 0
+        assert _entregar(wid) is False
         mock_post.assert_not_called()
 
 

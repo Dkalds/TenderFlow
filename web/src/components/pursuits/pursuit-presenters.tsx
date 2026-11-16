@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import type { PursuitDecision, PursuitOutcome, PursuitStatus } from "@/hooks/use-pursuits";
-import { formatDate as formatDateBase } from "@/lib/utils";
+import { daysLeft, formatDate as formatDateBase } from "@/lib/utils";
 
 const statusCopy: Record<PursuitStatus, string> = {
   identified: "Identificada",
@@ -52,9 +52,8 @@ export function formatDate(value: string | null | undefined): string {
 }
 
 export function daysUntil(value: string | null | undefined, ahora: number = Date.now()): string | null {
-  if (!value) return null;
-  const difference = Math.ceil((new Date(value).getTime() - ahora) / 86_400_000);
-  if (Number.isNaN(difference)) return null;
+  const difference = daysLeft(value, ahora);
+  if (difference === null) return null;
   if (difference < 0) return `Vencida hace ${Math.abs(difference)} d`;
   if (difference === 0) return "Vence hoy";
   return `${difference} d para cierre`;
@@ -150,9 +149,8 @@ export interface PlazoVisual {
  * es lo que lee quien no distingue los tonos de la rampa.
  */
 export function plazoVisual(value: string | null | undefined, ahora: number = Date.now()): PlazoVisual | null {
-  if (!value) return null;
-  const dias = Math.ceil((new Date(value).getTime() - ahora) / 86_400_000);
-  if (Number.isNaN(dias)) return null;
+  const dias = daysLeft(value, ahora);
+  if (dias === null) return null;
   const banda: BandaPlazo =
     dias < 0 ? "pasado" : dias <= 3 ? "critico" : dias <= 7 ? "alto" : dias <= 21 ? "medio" : "holgado";
   const pct = dias < 0 ? 0 : Math.max(6, Math.round(((60 - Math.min(dias, 60)) / 60) * 100));

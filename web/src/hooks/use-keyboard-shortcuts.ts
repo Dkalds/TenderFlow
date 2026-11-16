@@ -17,7 +17,7 @@ export const NUMBER_SHORTCUTS: ReadonlyArray<{ key: string; href: string; label:
   { key: "2", href: "/oportunidades", label: "Oportunidades" },
   { key: "3", href: "/resumen", label: "Resumen" },
   { key: "4", href: "/detalle", label: "Detalle" },
-  { key: "5", href: "/competidores", label: "Competidores" },
+  { key: "5", href: "/competencia", label: "Competencia" },
   { key: "6", href: "/investigador", label: "Investigador" },
 ];
 

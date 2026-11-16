@@ -87,15 +87,6 @@ def insert_api_key(
     )
 
 
-def get_active_scopes(key_hash: str) -> str | None:
-    """Devuelve el string de scopes de una key activa, o ``None`` si no existe.
-
-    Versión ligera para validaciones síncronas (p. ej. middleware /metrics)
-    donde no se necesita el registro completo.
-    """
-    return _repo.get_active_scopes(key_hash)
-
-
 def deactivate_key(key_hash: str) -> bool:
     """Desactiva una key por su hash. Devuelve ``True`` si afectó alguna fila."""
     return _repo.revoke(key_hash)

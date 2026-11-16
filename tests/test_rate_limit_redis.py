@@ -106,47 +106,6 @@ class TestRateLimitRedis:
             result = self._mod.check_rate_limit_redis("key1")
         assert result is None
 
-    def test_check_rate_limit_dispatcher_redis(self):
-        with patch.dict(os.environ, {"RATE_LIMIT_BACKEND": "redis"}):
-            with patch.object(self._mod, "check_rate_limit_redis", return_value=True):
-                result = self._mod.check_rate_limit("k")
-        assert result is True
-
-    def test_check_rate_limit_dispatcher_redis_fallback(self):
-        with patch.dict(os.environ, {"RATE_LIMIT_BACKEND": "redis"}):
-            with patch.object(self._mod, "check_rate_limit_redis", return_value=None):
-                with patch("db.rate_limits.check_rate_limit_db", return_value=True) as mock_db:
-                    result = self._mod.check_rate_limit("k")
-        assert result is True
-        mock_db.assert_called_once()
-
-    def test_check_rate_limit_dispatcher_sqlite(self):
-        with patch.dict(os.environ, {"RATE_LIMIT_BACKEND": "sqlite"}):
-            with patch("db.rate_limits.check_rate_limit_db", return_value=False) as mock_db:
-                result = self._mod.check_rate_limit("k", max_calls=50, window_seconds=30.0)
-        assert result is False
-        mock_db.assert_called_once_with("k", max_calls=50, window_seconds=30.0)
-
-    def test_check_rate_limit_dispatcher_db_no_toca_redis(self):
-        """``db`` explícito es el interruptor para volver a la BD: ni la prueba."""
-        with patch.dict(os.environ, {"RATE_LIMIT_BACKEND": "db"}):
-            with (
-                patch.object(self._mod, "check_rate_limit_redis") as redis_check,
-                patch("db.rate_limits.check_rate_limit_db", return_value=True),
-            ):
-                assert self._mod.check_rate_limit("k") is True
-        redis_check.assert_not_called()
-
-    def test_check_rate_limit_dispatcher_default_auto_sin_redis_va_a_bd(self):
-        """El default es ``auto``: sin ``REDIS_URL`` resuelve la BD."""
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("RATE_LIMIT_BACKEND", None)
-            os.environ.pop("REDIS_URL", None)
-            with patch("db.rate_limits.check_rate_limit_db", return_value=True) as mock_db:
-                result = self._mod.check_rate_limit("k")
-        assert result is True
-        mock_db.assert_called_once()
-
 
 class TestSemanticaDeLaVentana:
     """Lo que el backend Redis tiene que hacer igual que el de BD."""

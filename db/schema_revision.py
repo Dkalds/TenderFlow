@@ -267,24 +267,12 @@ def diagnosticar(
     except Exception as exc:
         error = _describir(exc)
         # El aviso lo emite quien llama (`schema_preflight_failed`,
-        # `health_schema_check_failed`, `schema_revision_check_failed`) con este
-        # mismo `error`; aquí queda el punto de observación del propio sondeo.
+        # `health_schema_check_failed`) con este mismo `error`; aquí queda el
+        # punto de observación del propio sondeo.
         # Sin `exc_info`: la traza puede arrastrar el DSN con la contraseña, y
         # `_describir` ya lo deja redactado.
         _log.debug("schema_revision_sondeo_fallido", error=error)
         return Diagnostico("unknown", error=error)
-
-
-def estado_schema() -> str:
-    """El estado en el vocabulario de ``/health/ready``. Nunca propaga.
-
-    Para quien quiera comprobarlo dentro de su propio proceso; el fallo del
-    sondeo queda en el log como ``schema_revision_check_failed``.
-    """
-    diagnostico = diagnosticar()
-    if diagnostico.error is not None:
-        get_logger(_LOGGER).warning("schema_revision_check_failed", error=diagnostico.error)
-    return diagnostico.estado
 
 
 #: Qué decir ante cada desenlace que no es ``ok``: título de la anotación de

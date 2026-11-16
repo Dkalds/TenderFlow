@@ -33,7 +33,8 @@ Uso::
 
 Un valor desconocido se trata como ``auto`` y se avisa en el log.
 
-**Ante fallos nunca se abre el límite:**
+**Ante fallos no se abre el límite** (salvo quien pase ``abierto_si_falla=True``,
+que hoy es solo el aviso al operador de ``services/solicitudes_acceso.py``):
 
 * Error de BD → se deniega (fail-closed, ``db.rate_limits.check_rate_limit_db``).
 * Error de Redis → esa comprobación cae a la BD (y, si la BD también falla, se
@@ -90,8 +91,12 @@ class RateLimiter(Protocol):
         *,
         max_calls: int = 120,
         window_seconds: float = 60.0,
+        abierto_si_falla: bool = False,
     ) -> bool:
-        """Devuelve ``True`` si el request está dentro del límite; ``False`` si lo excede."""
+        """Devuelve ``True`` si el request está dentro del límite; ``False`` si lo excede.
+
+        Si ningún almacén puede comprobarlo devuelve ``abierto_si_falla``.
+        """
         ...
 
 
@@ -107,10 +112,16 @@ class DbRateLimiter:
         *,
         max_calls: int = 120,
         window_seconds: float = 60.0,
+        abierto_si_falla: bool = False,
     ) -> bool:
         from db.rate_limits import check_rate_limit_db
 
-        return check_rate_limit_db(key, max_calls=max_calls, window_seconds=window_seconds)
+        return check_rate_limit_db(
+            key,
+            max_calls=max_calls,
+            window_seconds=window_seconds,
+            abierto_si_falla=abierto_si_falla,
+        )
 
 
 class RedisRateLimiter:
@@ -125,6 +136,7 @@ class RedisRateLimiter:
         *,
         max_calls: int = 120,
         window_seconds: float = 60.0,
+        abierto_si_falla: bool = False,
     ) -> bool:
         from services.rate_limit_redis import check_rate_limit_redis
 
@@ -133,7 +145,12 @@ class RedisRateLimiter:
             return result
         # Redis no disponible — fallback al backend de BD
         log.debug("rate_limiting_redis_fallback_db", key=key)
-        return DbRateLimiter().check(key, max_calls=max_calls, window_seconds=window_seconds)
+        return DbRateLimiter().check(
+            key,
+            max_calls=max_calls,
+            window_seconds=window_seconds,
+            abierto_si_falla=abierto_si_falla,
+        )
 
 
 # ── Factory ──────────────────────────────────────────────────────────────────

@@ -20,12 +20,13 @@ from mcp.server.auth.provider import AuthorizationParams
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 from pydantic import AnyUrl
 
-from db.access_grants import grant_access, revoke_access
+from db.access_grants import revoke_access
 from db.connection import connect_read
 from db.mcp_oauth import hash_token
 from db.users import create_user, deactivate_user, set_admin
 from mcp_server.auth.google import IdentidadGoogle
 from mcp_server.auth.proveedor import AlmacenOAuthPostgres, ProveedorTenderFlow
+from tests.concesiones import conceder
 
 pytestmark = pytest.mark.anyio
 
@@ -61,7 +62,7 @@ def admin(tmp_db: Any) -> Iterator[int]:
         email="luis@empresa.example", password_hash="x"
     )  # pragma: allowlist secret
     for email in ("ana@empresa.example", "luis@empresa.example"):
-        grant_access("email", email, granted_by=None)
+        conceder("email", email)
     assert no_admin != user_id
     # Mitad estática en «no»: la allowlist la decide `access_grants`.
     with patch("services.access_grants.oauth_email_allowed", return_value=False):

@@ -69,8 +69,9 @@ jobs:
     runs-on: ubuntu-latest
     # Un mes de PLACSP son varios ZIP de miles de avisos, y el step reintenta
     # hasta dos veces: el bulk necesita un único step largo, mientras que el
-    # carril diario reparte sus 120 min entre la ingesta (45), seis conectores
-    # y el cierre (20). Al ser manual, un job largo no bloquea ninguna cadencia.
+    # carril diario reparte sus 155 min entre la ingesta (45), los conectores
+    # (65) y el cierre (35). Al ser manual, un job largo no bloquea ninguna
+    # cadencia.
     #
     # 240 y no 120: el run de `months=3` del 2026-10-19 (#502) llegó a registrar
     # `status: ok, months_ok: 3` en el healthcheck pero el job se canceló

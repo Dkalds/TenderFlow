@@ -261,7 +261,10 @@ async def put_rule(
 
     def _update() -> bool:
         rule = body.to_rule()
-        ok = update_rule(user_id, rule_id, rule, organization_id)
+        # Solo si viene en el cuerpo: su default "private" despublicaría la regla
+        # compartida que alguien pausa sin mandarla.
+        visibility = body.visibility if "visibility" in body.model_fields_set else None
+        ok = update_rule(user_id, rule_id, rule, organization_id, visibility=visibility)
         if not ok:
             return False
         if email is not None:

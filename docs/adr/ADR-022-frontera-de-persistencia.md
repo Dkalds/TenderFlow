@@ -77,7 +77,7 @@ por entidad: es una división por responsabilidad que cada cabecera debe decir.
 | Entidad | Módulo `db/<x>.py` | Repositorio `db/repositories/<x>.py` |
 |---|---|---|
 | `audit` | escritura y verificación de la cadena hash (`log_action`, `log_event`, `verify_hash_chain`) | lecturas para la API y la exportación RGPD |
-| `webhooks` | entrega saliente firmada (`trigger_event`, `reenviar`) | CRUD de suscripciones, entregas, reintentos e idempotencia |
+| `webhooks` | entrega saliente firmada (`entregar_firmado`, `reenviar`) | CRUD de suscripciones, entregas, reintentos e idempotencia |
 | `watchlist` | CRUD de entradas por CPV y su matching | ítems de seguimiento, digests pendientes y exportación/anonimización |
 | `empresas` | resolución de entidades, aliases y cola de revisión (escritura) | buscador y detalle (lectura) |
 

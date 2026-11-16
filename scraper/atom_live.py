@@ -10,6 +10,7 @@ from __future__ import annotations
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, cast
 
 import requests
@@ -125,6 +126,19 @@ def _entry_updated(entry: etree._Element) -> str | None:
     return None
 
 
+def _posterior(a: str, b: str) -> bool:
+    """``a`` es estrictamente posterior a ``b``, como instantes y no como texto.
+
+    PLACE da ``<updated>`` en hora local con offset: al volver al horario de
+    invierno, ``02:10+01:00`` va después de ``02:50+02:00`` aunque como texto
+    vaya antes.
+    """
+    try:
+        return datetime.fromisoformat(a) > datetime.fromisoformat(b)
+    except (ValueError, TypeError):  # no ISO, o naive contra aware: orden de texto
+        return a > b
+
+
 def iter_live_entries(
     *,
     last_seen_updated: str | None = None,
@@ -204,11 +218,11 @@ def iter_live_entries(
                 continue
 
             # Actualizar el timestamp más nuevo visto
-            if meta["newest_updated"] is None or updated > meta["newest_updated"]:
+            if meta["newest_updated"] is None or _posterior(updated, meta["newest_updated"]):
                 meta["newest_updated"] = updated
 
             # Comprobar si la entry es anterior al cursor
-            if last_seen_updated and updated <= last_seen_updated:
+            if last_seen_updated and not _posterior(updated, last_seen_updated):
                 stop = True
                 meta["stopped_reason"] = "cursor_reached"
                 break

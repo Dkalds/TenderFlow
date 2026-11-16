@@ -104,11 +104,6 @@ _ALLOWLIST: dict[str, str] = {
         "expediente marcado como duplicado despues de abrirse como pursuit "
         "dejaria su ficha sin adjudicatarios y el cierre asistido mudo."
     ),
-    "adjudicaciones.find_publicacion_posterior_a_adjudicacion": (
-        "Deteccion de anomalias de calidad del dato. Su objeto ES encontrar "
-        "filas raras; excluir duplicados cross-fuente esconderia justo el tipo "
-        "de caso que busca."
-    ),
     "adjudicaciones.completitud_por_fuente": (
         "C4.7: mide QUE TRAE CADA FUENTE, no que contratos hay. Deduplicar "
         "cambiaria la pregunta: una fila descartada por duplicada sigue siendo "

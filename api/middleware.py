@@ -658,7 +658,9 @@ class RateLimitMiddleware:
         # C2.3 — una request con una API key viva se limita por SU clave y por
         # el tier que declara `api_key_tiers`, no por la IP compartida. Una
         # clave que no existe no cuenta (ver `_tier_bucket`): va por la IP.
-        por_clave = _tier_bucket(conexion, client)
+        # El formulario público no: es anónimo, y una clave viva le cambiaba
+        # los 5/min por IP por el tope de su tier.
+        por_clave = None if path == SOLICITUDES_PATH else _tier_bucket(conexion, client)
         rate_key, tope_propio = por_clave or _rate_bucket(path, client)
         # Endpoints pesados (ML inference, exports): límite inferior **y cubo
         # propio**.

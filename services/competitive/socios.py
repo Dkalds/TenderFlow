@@ -100,6 +100,9 @@ class SugerenciaSocios(BaseModel):
     lideres: list[LiderSegmento] = Field(default_factory=list)
     #: Adjudicaciones sobre las que se calculó. Es el `n` que ADR-014 exige.
     n_adjudicaciones: int = Field(default=0, ge=0)
+    #: La carga llegó a su tope (`LIMITE_COMPETIDORES`): el segmento es una
+    #: muestra de sus adjudicaciones más recientes, no el segmento entero.
+    truncado: bool = False
     cpv: str | None = None
     ccaa: str | None = None
     #: Por qué la lista está vacía, cuando lo está.
@@ -353,13 +356,15 @@ def socios_del_segmento(
     error: un usuario anónimo o un job sin contexto no tiene identidad fiscal,
     y excluir a una organización arbitraria sería peor que no excluir a nadie.
     """
-    return sugerir_socios(
-        cargar_adjudicaciones_resueltas(ccaa=ccaa),
+    adjudicaciones, truncado = cargar_adjudicaciones_resueltas(ccaa=ccaa, cpv=cpv)
+    sugerencia = sugerir_socios(
+        adjudicaciones,
         cpv=cpv,
         ccaa=ccaa,
         identidad=_identidad_de(user_id, organization_id),
         limit=limit,
     )
+    return sugerencia.model_copy(update={"truncado": truncado})
 
 
 def _identidad_de(user_id: int | None, organization_id: int | None) -> IdentidadFiscal | None:

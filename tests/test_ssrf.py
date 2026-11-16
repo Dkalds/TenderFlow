@@ -1,10 +1,10 @@
 """Tests de shared/ssrf.py — validación SSRF/DNS-rebinding compartida.
 
 Extraído de api/routes/webhooks.py (RFC llm-dependencia-gestionada §C3.0) para
-que db/webhooks.py::trigger_event use la misma validación que el ping manual.
+que db/webhooks.py::entregar_firmado use la misma validación que el ping manual.
 Los tests de comportamiento contra dominios reales/privados ya viven en
 test_ola3_security.py (vía api.routes.webhooks) y test_webhooks.py (vía
-db.webhooks.trigger_event); este archivo cubre el módulo compartido directo.
+db.webhooks.entregar_firmado); este archivo cubre el módulo compartido directo.
 """
 
 from __future__ import annotations

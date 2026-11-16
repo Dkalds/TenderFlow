@@ -197,23 +197,6 @@ def test_las_marcas_de_lectura_con_id_nacen_sin_clave(
     assert visita[0][1][:3] == (clave, user_id, notifications.MARCA_VISITA)
 
 
-def test_la_preferencia_con_id_nace_sin_clave_y_arbitra_por_id() -> None:
-    from db import notifications
-
-    connect, conn = _conexion_simulada(rowcount=0)
-    with patch.object(notifications, "connect", connect):
-        notifications.guardar_modo_email("k", "pursuit.assigned", "off", user_id=7)
-
-    actualizar, insertar = conn.execute.call_args_list
-    # El UPDATE no adopta el id si la fila del id ya existe (índice de v165).
-    assert "CASE WHEN EXISTS (SELECT 1 FROM user_event_prefs o" in _sql(actualizar)
-    parametros = actualizar[0][1]
-    assert parametros[0] == "off"
-    assert parametros[2:] == (7, 7, 7, "k", 7, "pursuit.assigned")
-    assert "ON CONFLICT (user_id, event_type) WHERE user_id IS NOT NULL DO UPDATE" in _sql(insertar)
-    assert insertar[0][1][:3] == (None, 7, "pursuit.assigned")
-
-
 def test_la_vista_con_id_nace_sin_clave_y_arbitra_por_id() -> None:
     from db import saved_filters
 
@@ -335,59 +318,25 @@ def test_sin_user_id_las_marcas_siguen_por_clave(tmp_db: Any) -> None:
     assert str(get_last_seen_ts("solo-clave")) >= marca
 
 
-def test_preferencia_por_id_sin_clave_y_sin_duplicar(tmp_db: Any) -> None:
-    from services.notifications import modo_email_de, set_modo_email
+def test_preferencia_por_id_sin_clave_se_lee_por_id(tmp_db: Any) -> None:
+    """La fila de v165 (id, sin clave) la lee quien trae el id, sea cual sea su clave.
+
+    Se siembra por SQL: la app ya no tiene escritor de preferencias.
+    """
+    from db.database import connect, now_utc_iso
+    from services.notifications import modo_email_de
 
     user_id = _crear_usuario("prefs@v165.test")
-    set_modo_email("clave-vieja", "pursuit.assigned", "off", user_id=user_id)
-    set_modo_email("clave-nueva", "pursuit.assigned", "daily", user_id=user_id)
+    with connect() as c:
+        c.execute(
+            "INSERT INTO user_event_prefs (user_key, user_id, event_type, modo, updated_at) "
+            "VALUES (NULL, %s, 'pursuit.assigned', 'daily', %s)",
+            (user_id, now_utc_iso()),
+        )
 
-    assert _filas("user_event_prefs", "event_type", user_id) == [(None, "pursuit.assigned")]
     assert modo_email_de("otra-clave", "pursuit.assigned", user_id=user_id) == "daily"
     # Sin id, la fila sin clave no es de nadie que sólo traiga clave.
     assert modo_email_de("clave-nueva", "pursuit.assigned") == "immediate"
-
-
-def test_preferencia_sin_resolver_junto_a_la_del_id_no_rompe_el_indice(tmp_db: Any) -> None:
-    """Una fila que el backfill no resolvió (clave, sin id) y la del id para
-    el mismo evento: guardar no puede adoptar el id en la primera, o violaría
-    el índice parcial. Se actualizan las dos y la lectura prefiere la del id."""
-    from db.database import connect, now_utc_iso
-    from services.notifications import modo_email_de, set_modo_email
-
-    user_id = _crear_usuario("prefs-mezcla@v165.test")
-    set_modo_email("k", "pursuit.assigned", "off", user_id=user_id)
-    with connect() as c:
-        c.execute(
-            "INSERT INTO user_event_prefs (user_key, user_id, event_type, modo, updated_at) "
-            "VALUES ('k', NULL, 'pursuit.assigned', 'immediate', %s)",
-            (now_utc_iso(),),
-        )
-
-    set_modo_email("k", "pursuit.assigned", "daily", user_id=user_id)
-
-    assert _filas("user_event_prefs", "event_type", user_id) == [(None, "pursuit.assigned")]
-    with connect() as c:
-        sin_id = c.execute(
-            "SELECT modo FROM user_event_prefs WHERE user_key = 'k' AND user_id IS NULL"
-        ).fetchall()
-    assert [f[0] for f in sin_id] == ["daily"]
-    assert modo_email_de("k", "pursuit.assigned", user_id=user_id) == "daily"
-
-
-def test_la_preferencia_sin_resolver_adopta_el_id_si_no_hay_otra(tmp_db: Any) -> None:
-    from db.database import connect, now_utc_iso
-    from services.notifications import set_modo_email
-
-    user_id = _crear_usuario("prefs-adopta@v165.test")
-    with connect() as c:
-        c.execute(
-            "INSERT INTO user_event_prefs (user_key, user_id, event_type, modo, updated_at) "
-            "VALUES ('k-sola', NULL, 'pursuit.assigned', 'immediate', %s)",
-            (now_utc_iso(),),
-        )
-    set_modo_email("k-sola", "pursuit.assigned", "off", user_id=user_id)
-    assert _filas("user_event_prefs", "event_type", user_id) == [("k-sola", "pursuit.assigned")]
 
 
 def test_vista_por_id_sin_clave_y_sin_duplicar(tmp_db: Any) -> None:

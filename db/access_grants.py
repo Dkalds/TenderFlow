@@ -62,8 +62,8 @@ def _valor_concedible(kind: AccessGrantKind, value: str) -> str:
 
     El criterio de qué no se concede (hoy: el dominio de un proveedor de correo
     público) vive en ``shared/concesiones_acceso.py``; aquí solo se le pregunta.
-    Se le pregunta en las dos funciones que escriben, y no en la ruta, para que
-    ningún llamador pueda saltárselo.
+    Se le pregunta en la función que escribe, y no en la ruta, para que ningún
+    llamador pueda saltárselo.
     """
     normalized = normalize_grant(kind, value)
     validar_concesion(kind, normalized)
@@ -85,29 +85,6 @@ def is_access_granted(email: str) -> bool:
             (normalized, domain),
         ).fetchone()
     return row is not None
-
-
-def grant_access(
-    kind: AccessGrantKind,
-    value: str,
-    *,
-    granted_by: int | None,
-) -> AccessGrant:
-    normalized = _valor_concedible(kind, value)
-    with connect() as connection:
-        cursor = connection.execute(
-            "INSERT INTO access_grants (kind, value, active, granted_by) "
-            "VALUES (%s, %s, TRUE, %s) "
-            "ON CONFLICT(kind, value) DO UPDATE SET "
-            "active = TRUE, granted_by = excluded.granted_by, "
-            "updated_at = NOW(), revoked_at = NULL "
-            "RETURNING id, kind, value, active, granted_by, created_at, updated_at, revoked_at",
-            (kind, normalized, granted_by),
-        )
-        row = cursor.fetchone()
-    if row is None:
-        raise RuntimeError("No se pudo persistir la concesión")
-    return _row_to_grant(row)
 
 
 def grant_access_request(

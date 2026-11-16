@@ -223,31 +223,6 @@ def _materializar_artefacto(asset_name: str, dest: Path) -> bool:
     return _download_bucket_asset(asset_name, dest) or _download_release_asset(asset_name, dest)
 
 
-def publish_artifact_to_bucket(path: Path, *, asset_name: str | None = None) -> bool:
-    """Sube un artefacto ya publicado al bucket, para que la API pueda servirlo.
-
-    Contrapartida de :func:`_download_bucket_asset`: sin alguien que suba, el
-    camino del bucket no resuelve nunca. La invoca quien publica una versión
-    (promoción de modelos); es best-effort y su fallo no puede tumbar una
-    promoción que por lo demás fue bien.
-    """
-    try:
-        from shared.object_store import get_object_store, model_artifact_key
-
-        clave = model_artifact_key(asset_name or path.name)
-        if clave is None:
-            return False
-        almacen = get_object_store()
-        if not almacen.enabled:
-            return False
-        almacen.put(clave, path.read_bytes(), content_type="application/octet-stream")
-    except Exception as exc:
-        log.warning("model_artifact_publish_failed", path=str(path), error=str(exc))
-        return False
-    log.info("model_artifact_published_to_bucket", path=str(path))
-    return True
-
-
 def content_addressed_path(path: Path, sha256: str) -> Path:
     """``<stem>-<sha256[:12]><suffix>`` en el directorio de ``path``.
 
@@ -496,9 +471,9 @@ def check_published_artifact(
     (``shared.release_assets.published_sha256``).
 
     Solo mira las Releases. El almacén de objetos, que el resolvedor consulta
-    antes, queda fuera: hoy nadie publica modelos ahí
-    (:func:`publish_artifact_to_bucket` no tiene llamadores de producción). El
-    día que los tenga, una versión publicada solo en el bucket saldría aquí
+    antes, queda fuera: hoy nadie publica modelos ahí (el escritor,
+    ``publish_artifact_to_bucket``, se retiró sin llamadores). El día que
+    alguien los suba, una versión publicada solo en el bucket saldría aquí
     como ``sin_publicar`` y esta función tendrá que mirarlo también.
     """
     from shared.release_assets import find_asset_in_releases, published_sha256

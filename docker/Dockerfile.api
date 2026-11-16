@@ -15,44 +15,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# C3.1 — corte API / pipeline (2026-09-18).
-#
-# La imagen instala por defecto `requirements-api.txt`: sin lxml, scikit-learn,
-# scipy, statsmodels ni networkx. Los caminos de request que los usaban
-# degradan de forma visible (cabecera de `requirements-api.in`) y
-# `tests/test_unit_api_imagen_slim.py` prueba en un proceso aparte que
-# `api.app` arranca con esos paquetes vetados.
-#
-# `REQUIREMENTS_FILE` elige la variante, y hay dos usos legítimos de la otra:
-#
-# - **El worker** (`render.yaml::tenderflow-worker`, `APP_PROFILE=worker`)
-#   corre la misma imagen pero ejecuta el plano de cron —drift, precálculo de
-#   clusters, reintentos de la DLQ contra TACRC— y necesita el conjunto del
-#   pipeline. Render pasa las variables de entorno del servicio como build
-#   args, así que la declara allí.
-# - **Vuelta atrás sin tocar código**: si retirar `/explain` de la imagen
-#   resulta inaceptable antes de que la RFC
-#   `docs/rfc/2026-09-18-rfc-explain-fuera-del-proceso-api.md` se resuelva,
-#   `REQUIREMENTS_FILE=requirements-pipeline.txt` devuelve el conjunto anterior
-#   (mismos pines que `requirements.txt`, salvo el plano MCP;
-#   `check_requirements_sync.py` lo vigila).
-# - **El servidor MCP interno** (`render.yaml::tenderflow-mcp`, 2026-10-15)
-#   corre esta misma imagen con `REQUIREMENTS_FILE=requirements-mcp.txt`: el
-#   conjunto de la API más el SDK `mcp`. Arranca con `python -m mcp_server`, que
-#   el entrypoint ejecuta tal cual cuando recibe un comando en vez de opciones.
-#
-# El CI construye las dos variantes (`.github/workflows/ci.yml::docker-build`).
-ARG REQUIREMENTS_FILE=requirements-api.txt
-COPY requirements-api.txt requirements-pipeline.txt requirements-mcp.txt pyproject.toml ./
-RUN pip install --upgrade "pip>=26.1" \
-    && pip install --prefix=/install --no-cache-dir --require-hashes -r "${REQUIREMENTS_FILE}"
-
 # Modelo ONNX con el que la API codifica la CONSULTA de la búsqueda por
 # significado (`services/embeddings_onnx.py`; backlog P2 «La búsqueda por
 # significado no corre en producción»). Es el mismo
 # `paraphrase-multilingual-MiniLM-L12-v2` con el que el pipeline embebió
 # `documento_chunks`, exportado a ONNX: ~470 MB en disco y en memoria una vez
 # cargado (perezosamente, en la primera búsqueda), sin PyTorch.
+#
+# Va antes de las dependencias: el script es solo biblioteca estándar, así que
+# la capa depende únicamente de él y de estos build args, y un cambio de
+# lockfile no vuelve a bajar ~470 MB.
 #
 # Revisión fija (un commit del repo de Hugging Face, no una rama) y sha256 de
 # cada fichero: `descargar_modelo_embeddings.py` no tiene modo «sin
@@ -72,6 +44,44 @@ ARG EMBEDDINGS_ONNX_SHA256_TOKENIZADOR=
 ARG EMBEDDINGS_ONNX_SHA256_CONFIG=
 COPY scripts/descargar_modelo_embeddings.py ./
 RUN python descargar_modelo_embeddings.py --destino /modelos/embeddings
+
+# C3.1 — corte API / pipeline (2026-09-18).
+#
+# La imagen instala por defecto `requirements-api.txt`: sin lxml, scikit-learn,
+# scipy, statsmodels ni networkx. Los caminos de request que los usaban
+# degradan de forma visible (cabecera de `requirements-api.in`) y
+# `tests/test_unit_api_imagen_slim.py` prueba en un proceso aparte que
+# `api.app` arranca con esos paquetes vetados.
+#
+# `REQUIREMENTS_FILE` elige la variante, y hay tres usos legítimos de las otras:
+#
+# - **El worker** (`APP_PROFILE=worker`) ejecuta el plano de cron —drift,
+#   precálculo de clusters, reintentos de la DLQ contra TACRC— y necesita el
+#   conjunto del pipeline (`requirements-pipeline.txt`). Hoy no corre en Render:
+#   `tenderflow-worker` se retiró el 2026-10-19 (ver `render.yaml`); si se
+#   recrea, Render pasa las variables de entorno del servicio como build args y
+#   la variante se declara allí.
+# - **Vuelta atrás sin tocar código**: si retirar `/explain` de la imagen
+#   resulta inaceptable antes de que la RFC
+#   `docs/rfc/2026-09-18-rfc-explain-fuera-del-proceso-api.md` se resuelva,
+#   `REQUIREMENTS_FILE=requirements-pipeline.txt` devuelve el conjunto anterior
+#   (mismos pines que `requirements.txt`, salvo el plano MCP;
+#   `check_requirements_sync.py` lo vigila).
+# - **El servidor MCP interno** (`render.yaml::tenderflow-mcp`, 2026-10-15)
+#   corre esta misma imagen con `REQUIREMENTS_FILE=requirements-mcp.txt`: el
+#   conjunto de la API más el SDK `mcp`. Arranca con `python -m mcp_server`, que
+#   el entrypoint ejecuta tal cual cuando recibe un comando en vez de opciones.
+#
+# El CI construye las tres variantes (`.github/workflows/ci.yml::docker-build`).
+#
+# Solo se copian los lockfiles: `pyproject.toml` no lo lee este `pip install`,
+# y copiarlo aquí invalidaba la capa (y las siguientes) en cada cambio de
+# configuración de ruff o mypy.
+ARG REQUIREMENTS_FILE=requirements-api.txt
+COPY requirements-api.txt requirements-pipeline.txt requirements-mcp.txt ./
+RUN pip install --upgrade "pip>=26.1" \
+    && pip install --prefix=/install --no-cache-dir --require-hashes -r "${REQUIREMENTS_FILE}"
+
 
 
 # ── Etapa 2: imagen de producción — FastAPI / uvicorn ────────────────────────
@@ -99,7 +109,7 @@ COPY --chown=appuser:appuser . .
 
 # El `pip` que viaja en la imagen NO es el de la etapa builder: `COPY
 # --from=builder /install /usr/local` trae las dependencias, pero el instalador
-# que queda en la etapa runtime es el que trae `python:3.13.13-slim`, y ese es
+# que queda en la etapa runtime es el que trae la imagen base, y ese es
 # el que Trivy escanea — por él reportaba un CVE alto.
 #
 # **No se actualiza: se RETIRA.** Actualizarlo fue el primer intento y salió
@@ -130,7 +140,7 @@ ENV EMBEDDINGS_ONNX_DIR=${EMBEDDINGS_ONNX_REVISION:+/opt/modelos/embeddings}
 # DATABASE_URL.
 ENV DATA_DIR=/data \
     FORWARDED_ALLOW_IPS=127.0.0.1 \
-    # ── Memoria — Render Free es 512 MB. ────────────────────────────────────
+    # ── Memoria — `tenderflow-mcp` corre esta imagen en `starter` (512 MB). ──
     # glibc malloc abre por defecto 8×CPU arenas que fragmentan el heap; con
     # 2 arenas el RSS baja 50-150 MB en stacks pandas/numpy/sklearn. Y bajar
     # el trim threshold fuerza a devolver páginas libres al SO antes.

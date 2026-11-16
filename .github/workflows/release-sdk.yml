@@ -25,21 +25,20 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install dependencies (FastAPI + uvicorn to export OpenAPI schema)
+      # Exportar el schema importa `api.app` entera (rutas, middleware,
+      # Prometheus, BD): con solo fastapi/uvicorn/pydantic el import fallaba y el
+      # job no llegaba a generar nada. Misma instalación y mismo script que el
+      # job `codegen-drift` de ci.yml, que exporta el mismo fichero en cada PR.
+      - name: Install Python dependencies
         run: |
-          pip install --quiet fastapi uvicorn pydantic pydantic-settings
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e .
 
-      - name: Export OpenAPI JSON
-        run: |
-          python - <<'EOF'
-          import json, sys
-          sys.path.insert(0, ".")
-          from api.app import app
-          schema = app.openapi()
-          with open("openapi.json", "w") as f:
-              json.dump(schema, f, indent=2)
-          print(f"OpenAPI schema written: {len(json.dumps(schema))} bytes")
-          EOF
+      - name: Export OpenAPI JSON (offline)
+        env:
+          ENV: dev
+        run: python scripts/export_openapi.py openapi.json
 
       - name: Install openapi-generator-cli
         run: |

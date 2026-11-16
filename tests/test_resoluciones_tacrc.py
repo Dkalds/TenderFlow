@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 import requests
@@ -151,6 +151,54 @@ def test_link_estimado_genera_evento_recurso(db):
 
     # Re-vincular no duplica el evento
     assert link_unlinked() == {"vinculadas": 0, "eventos": 0}
+
+
+_ENERO = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def test_la_reingesta_no_resella_la_llegada_y_la_vinculacion_se_marca(db):
+    """v186: novedades decide por ``COALESCE(vinculada_en, llegada_en)``. La
+    reingesta no puede mover ``llegada_en`` (cada pasada la haría novedad otra
+    vez), y enlazarla —por el vinculador o por una reingesta que ya trae el
+    vínculo— tiene que dejar ``vinculada_en``."""
+    from db.database import connect
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, fuente, "
+            " fecha_extraccion) VALUES (%s, %s, %s, 'placsp', CURRENT_TIMESTAMP)",
+            ("EXP-2026-42", "Contrato recurrido", "DEPARTAMENT DE SALUT"),
+        )
+    upsert_resoluciones(
+        [
+            _resolucion_estimada(),
+            _resolucion_estimada(numero_resolucion="124/2026", expediente="NO-EXISTE"),
+        ]
+    )
+    with connect() as c:
+        c.execute(
+            "UPDATE resoluciones_recurso SET llegada_en = '2026-01-01T00:00:00+00:00'::timestamptz"
+        )
+
+    upsert_resoluciones([_resolucion_estimada()])
+    with connect() as c:
+        llegada, vinculada = c.execute(
+            "SELECT llegada_en, vinculada_en FROM resoluciones_recurso "
+            "WHERE numero_resolucion = '123/2026'"
+        ).fetchone()
+    assert llegada == _ENERO
+    assert vinculada is None
+
+    assert link_unlinked()["vinculadas"] == 1
+    upsert_resoluciones(
+        [_resolucion_estimada(numero_resolucion="124/2026", licitacion_id="EXP-2026-42")]
+    )
+    with connect() as c:
+        filas = c.execute(
+            "SELECT numero_resolucion, llegada_en, vinculada_en IS NOT NULL "
+            "FROM resoluciones_recurso ORDER BY numero_resolucion"
+        ).fetchall()
+    assert [tuple(f) for f in filas] == [("123/2026", _ENERO, True), ("124/2026", _ENERO, True)]
 
 
 def test_link_sin_match_conserva_resolucion(db):

@@ -393,13 +393,15 @@ def bucket(tmp_path, monkeypatch):
 
 
 def _publicar_en_bucket(path_registrado: Path, contenido: bytes) -> None:
-    """Deja el artefacto en el bucket con el nombre por el que se pedirá."""
-    from services.ml.model_artifacts import publish_artifact_to_bucket
+    """Deja el artefacto en el bucket con el nombre por el que se pedirá.
 
-    fuente = path_registrado.parent / "publicado" / path_registrado.name
-    fuente.parent.mkdir(parents=True, exist_ok=True)
-    fuente.write_bytes(contenido)
-    assert publish_artifact_to_bucket(fuente) is True
+    Directo al almacén: la app no tiene escritor de modelos en el bucket.
+    """
+    from shared.object_store import get_object_store, model_artifact_key
+
+    clave = model_artifact_key(path_registrado.name)
+    assert clave is not None
+    get_object_store().put(clave, contenido, content_type="application/octet-stream")
 
 
 def test_el_bucket_resuelve_sin_token_de_github(tmp_db, tmp_path, cache_dir, bucket, monkeypatch):

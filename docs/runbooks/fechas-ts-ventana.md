@@ -13,7 +13,7 @@ lock exclusivo largo. Es la misma receta que el
 
 | Tabla | Columnas con sombra | Quién mantiene la sombra |
 |---|---|---|
-| `licitaciones` | `fecha_extraccion`, `primera_extraccion`, `fecha_inicio`, `fecha_fin`, `fecha_actualizacion_fuente` | escritura dual de `db/upsert.py` (salvo `primera_extraccion`, que no escribe nadie: solo backfill) |
+| `licitaciones` | `fecha_extraccion`, `primera_extraccion`, `fecha_inicio`, `fecha_fin`, `fecha_actualizacion_fuente` | escritura dual de `db/upsert.py` (`primera_extraccion` y su sombra, solo en el `INSERT`; las filas que quedaron a `NULL` las rellena `v184`) |
 | `adjudicaciones` | `fecha_adjudicacion` | trigger `trg_fechas_ts_adjudicaciones` |
 | `licitaciones_history` | `captured_at` | trigger |
 | `documentos` | `created_at`, `fetched_at`, `updated_at` | trigger |

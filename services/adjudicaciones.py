@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from db.repositories.adjudicaciones import AdjudicacionRepository, LicitadorRow
+from db.repositories.adjudicaciones import AdjudicacionRepository
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -28,6 +28,7 @@ def load_for_competitors(
     fecha_desde: str | None = None,
     fecha_hasta: str | None = None,
     importe_min: float | None = None,
+    cpv_prefijo: str | None = None,
 ) -> list[dict[str, Any]]:
     """Carga filtrada+proyectada para ``services/analytics/competitors.py``.
 
@@ -41,12 +42,5 @@ def load_for_competitors(
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         importe_min=importe_min,
+        cpv_prefijo=cpv_prefijo,
     )
-
-
-def load_licitadores(
-    ccaa_filter: tuple[str, ...] | None = None,
-    limit: int = 10000,
-) -> list[LicitadorRow]:
-    """Carga adjudicaciones con datos para el ranking de licitadores."""
-    return _repo.load_licitadores(ccaa_filter=ccaa_filter, limit=limit)

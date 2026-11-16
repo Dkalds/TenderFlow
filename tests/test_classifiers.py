@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from services.classification import (
     cpv_label,
-    detect_modules,
     detect_project_type,
     estado_label,
     nuts_to_ccaa,
@@ -42,47 +41,6 @@ class TestNutsToCcaa:
 
         for code in NUTS3_TO_CCAA:
             assert nuts_to_ccaa(code) is not None
-
-
-class TestDetectModules:
-    def test_detecta_s4hana(self):
-        mods = detect_modules("Migración S/4HANA al nuevo sistema")
-        assert "S/4HANA" in mods
-
-    def test_detecta_fiori(self):
-        mods = detect_modules("Desarrollo Fiori para portal empleados")
-        assert "Fiori/UI5" in mods
-
-    def test_detecta_abap(self):
-        mods = detect_modules("Consultoría ABAP especializada")
-        assert "ABAP" in mods
-
-    def test_detecta_modulo_fi(self):
-        mods = detect_modules("Implantación SAP FI módulo financiero")
-        assert "FI (Finanzas)" in mods
-
-    def test_detecta_modulo_mm(self):
-        mods = detect_modules("Soporte módulo SAP MM")
-        assert "MM (Materiales)" in mods
-
-    def test_detecta_successfactors(self):
-        mods = detect_modules("Proyecto SuccessFactors RRHH")
-        assert "SuccessFactors" in mods
-
-    def test_texto_generico_sap_devuelve_sap_generico(self):
-        mods = detect_modules("Mantenimiento SAP genérico")
-        assert "SAP (genérico)" in mods
-
-    def test_texto_vacio_devuelve_lista_vacia(self):
-        assert detect_modules("") == []
-
-    def test_none_devuelve_lista_vacia(self):
-        assert detect_modules(None) == []
-
-    def test_multiples_modulos_detectados(self):
-        mods = detect_modules("SAP FI y SAP MM para gestión integral")
-        assert "FI (Finanzas)" in mods
-        assert "MM (Materiales)" in mods
 
 
 class TestDetectProjectType:

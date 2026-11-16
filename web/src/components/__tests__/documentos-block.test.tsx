@@ -188,6 +188,18 @@ describe("DocumentosBlock", () => {
     expect(link2).toHaveAttribute("href", "https://example.org/ppt.pdf");
   });
 
+  it("escribe el tamaño con el formateador común, en castellano", () => {
+    // Tenía su propio `formatBytes` («1.5 MB», «200.0 KB»), distinto del que
+    // usan los adjuntos de la oportunidad (`formatTamano`).
+    withData(
+      "L-tam",
+      { items: [ITEMS.items[0], { ...ITEMS.items[0], id: 5, filename: "Anexo.pdf", size_bytes: 1572864 }] },
+      <DocumentosBlock licitacionId="L-tam" />,
+    );
+    expect(screen.getByText(/· 200 KB$/)).toBeInTheDocument();
+    expect(screen.getByText(/· 1,5 MB$/)).toBeInTheDocument();
+  });
+
   it("marks as «Nuevo» only the document added after the first batch (F5.1)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-19T12:00:00Z"));

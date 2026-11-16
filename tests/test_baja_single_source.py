@@ -148,11 +148,14 @@ def test_pricing_repository_uses_effective_budget() -> None:
     cadena literal: el lote sigue mandando, y el `importe` crudo sigue siendo el
     último recurso.
     """
+    from db.sql_fragments import BASE_COMPARABLE_SQL
+
     text = (_REPO_ROOT / "db/repositories/pricing.py").read_text(encoding="utf-8")
     base = "COALESCE(lo.importe, l.importe_base_sin_iva, l.importe)"
-    assert base in text, "el presupuesto efectivo dejó de preferir el lote"
+    assert base == BASE_COMPARABLE_SQL
+    assert "BASE_COMPARABLE_SQL" in text, "el presupuesto efectivo dejó de preferir el lote"
     # Y lo que se sabe que lleva IVA queda fuera de la distribución de bajas:
     # sin esto, una baja del 21 % podía ser exactamente el impuesto.
-    assert "importe_tipo" in text
+    assert "SIN_IVA_CONOCIDO_SQL" in text
     for pattern in _BROKEN_PATTERNS:
         assert not pattern.search(text)

@@ -259,6 +259,24 @@ export function diaISO(instante: number | Date = Date.now(), timeZone = ZONA_ES)
 }
 
 /**
+ * Días naturales hasta una fecha ISO, negativo si ya pasó: cuenta días de
+ * calendario del navegador, no bloques de 24 h, así que un cierre de hoy a las
+ * 14:00 es 0 a cualquier hora de hoy. Es la cuenta del Radar y la de las
+ * oportunidades: si cada pantalla redondea a su manera, la misma licitación
+ * «vence hoy» en una y «en 1 d» en la otra.
+ */
+export function daysLeft(iso: string | null | undefined, ahora: number = Date.now()): number | null {
+  if (!iso) return null;
+  const target = new Date(iso);
+  if (Number.isNaN(target.getTime())) return null;
+  const today = new Date(ahora);
+  // `Date.UTC` sobre los campos locales solo para restar sin que el cambio de
+  // hora meta una hora de más o de menos.
+  const startOfDay = (d: Date) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.round((startOfDay(target) - startOfDay(today)) / 86400000);
+}
+
+/**
  * Fecha + hora ("12 ago 2026, 14:30").
  *
  * Faltaba en este módulo, y por eso media docena de componentes se escribían su

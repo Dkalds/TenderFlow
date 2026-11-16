@@ -10,11 +10,11 @@ import pytest
 import services.ml.retencion_labels as rl
 import services.ml.retencion_model as retencion_model_mod
 from config import settings
-from services.ml.drift import _psi, _psi_detalle, comprobar_drift_baja
+from services.ml.drift import _psi_detalle, comprobar_drift_baja
 from services.ml.retencion_labels import (
     construir_pares,
-    features_para_vencimientos,
     muestra_auditoria,
+    vencimientos_con_features,
 )
 from services.ml.retencion_model import MODEL_NAME, RetencionModel, entrenar
 from services.ml.scoring import score_predicciones_retencion
@@ -74,7 +74,7 @@ def _dia(offset_dias: int) -> str:
     """Fecha ISO a ``offset_dias`` de hoy (negativo = pasado).
 
     Todo lo que se siembre para las pruebas de **vencimientos** tiene que salir
-    de aquí, nunca de una fecha escrita a mano. ``features_para_vencimientos``
+    de aquí, nunca de una fecha escrita a mano. ``vencimientos_con_features``
     (y el batch) filtran por una ventana anclada en el reloj —``hoy <= fin <=
     hoy + months_ahead`` meses de calendario más un margen de días, ver
     ``retencion_labels.ventana_vencimientos``—, así que una constante solo es
@@ -228,7 +228,7 @@ def test_features_anti_fuga_y_auditoria(db):
     assert muestra and {"original", "sucesor", "label", "empresa_original"} <= set(muestra[0])
 
 
-def test_features_para_vencimientos_solo_futuros(db):
+def test_vencimientos_con_features_solo_futuros(db):
     from db.database import connect
 
     with connect() as c:
@@ -240,7 +240,7 @@ def test_features_para_vencimientos_solo_futuros(db):
         _contrato(c, "PROXIMO", fecha_adj=_dia(-730), fecha_fin=_dia(90), empresa_id=e1)
         _contrato(c, "LEJANO", fecha_adj=_dia(-730), fecha_fin=_dia(365 * 5), empresa_id=e1)
 
-    filas = features_para_vencimientos(months_ahead=12)
+    filas = vencimientos_con_features(rl._cargar_adjudicaciones(), months_ahead=12)
 
     assert [f.licitacion_id for f in filas] == ["PROXIMO"]
     assert filas[0].label == -1
@@ -360,9 +360,9 @@ def test_entrenar_y_puntuar_retencion(db, monkeypatch, tmp_path):
 
 def test_psi_detecta_cambio_de_distribucion():
     ref = [float(i % 100) for i in range(500)]
-    assert _psi(ref, ref) == pytest.approx(0.0, abs=1e-6)
+    assert _psi_detalle(ref, ref).valor == pytest.approx(0.0, abs=1e-6)
     desplazada = [v + 80 for v in ref]
-    assert _psi(ref, desplazada) > 0.25
+    assert _psi_detalle(ref, desplazada).valor > 0.25
 
 
 def test_psi_no_da_falso_verde_cuando_los_bins_colapsan():

@@ -78,6 +78,7 @@ from shared.audit_events import (
     GDPR_EXPORT,
 )
 from shared.cache import ainvalidate_organization_scoped, ainvalidate_user_scoped
+from shared.dates import instante_utc
 from shared.dto import SessionsRevoked, StatusMessage, StatusOk
 from shared.identity import Principal, actor_del_principal
 
@@ -212,6 +213,9 @@ def export_my_data(ctx: Principal = Depends(require_any_auth)) -> Response:
             # Secciones que llegaron a su tope de filas: pueden estar truncadas.
             "truncated_sections": secciones_truncadas(
                 {
+                    "watchlist": watchlist,
+                    "watchlist_items": watchlist_items,
+                    "feedback": feedback,
                     "audit": audit,
                     "follows": seguimientos,
                     "notificaciones": notifications,
@@ -859,7 +863,12 @@ async def revoke_my_key(
     summary="Rotar API key — genera una nueva con grace period",
     status_code=201,
     responses={
-        201: {"description": "Nueva key generada. La key anterior sigue activa N días."},
+        201: {
+            "description": (
+                "Nueva key generada. La key anterior sigue activa `grace_days` días, "
+                "o hasta su caducidad si llega antes."
+            )
+        },
         400: {"description": "Falta key_id — la sesión no identifica qué key rotar"},
         403: {"description": "Requiere una sesión de navegador reciente"},
         404: {"description": "La key no existe o no pertenece al usuario"},
@@ -878,8 +887,9 @@ def rotate_my_key(
     key "actual" implícita, de modo que ``key_id`` es obligatorio y se
     comprueba que pertenezca al usuario autenticado.
 
-    La key anterior permanece activa durante ``grace_days`` (default 7 días)
-    para permitir migración gradual. Después de ese período, se desactiva
+    La key anterior permanece activa durante ``grace_days`` (default 7 días),
+    o hasta su caducidad si llega antes, para permitir migración gradual.
+    Después de ese período, se desactiva
     automáticamente (requiere que el scheduler ejecute el job de cleanup).
 
     El token nuevo solo se devuelve en esta respuesta — guárdalo de forma segura.
@@ -903,8 +913,11 @@ def rotate_my_key(
 
     name, scopes = rotatable["name"], _validar_scopes(rotatable["scopes"], ctx)
 
-    # Marcar la key actual con expires_at = now + grace_days
-    grace_expires = (datetime.now(UTC) + timedelta(days=grace_days)).isoformat()
+    # La gracia acorta la vida de la key actual, nunca la alarga: una que
+    # caducaba mañana no gana `grace_days` más (ni otros tantos en cada rotación).
+    grace = datetime.now(UTC) + timedelta(days=grace_days)
+    actual = instante_utc(rotatable.get("expires_at"))
+    grace_expires = (min(grace, actual) if actual else grace).isoformat()
     set_key_expiry(key_id, grace_expires)
 
     # Crear la nueva key. El sufijo se pone una vez: rotar una ya rotada no
@@ -929,8 +942,7 @@ def rotate_my_key(
     return RotatedKey(
         new_token=new_raw,
         message=(
-            f"Guarda el token — no es recuperable. "
-            f"La key anterior expira en {grace_days} días ({grace_expires[:10]})."
+            f"Guarda el token — no es recuperable. La key anterior expira el {grace_expires[:10]}."
         ),
         old_key_expires_at=grace_expires,
     )

@@ -310,6 +310,41 @@ def test_la_verificacion_sigue_detectando_la_manipulacion(fake: FakeAuditDb) -> 
     assert resultado["valid"] is False and resultado["first_tampered_id"] == 2
 
 
+# ── Esquema de la cadena: una inspección por proceso, no por escritura ─────
+
+
+@pytest.mark.parametrize(
+    ("estado", "esperadas"),
+    [
+        ({"chain_name"}, ["audit_log", "audit_chain_state"]),
+        # Una tabla que aún no existe se vuelve a mirar: la puede crear una migración.
+        (set(), ["audit_log", "audit_chain_state", "audit_chain_state"]),
+    ],
+    ids=["migrada", "sin_audit_chain_state"],
+)
+def test_escribir_no_consulta_information_schema_en_cada_evento(
+    monkeypatch: pytest.MonkeyPatch, estado: set[str], esperadas: list[str]
+) -> None:
+    db = FakeAuditDb()
+    inspecciones: list[str] = []
+
+    def columnas(_c: Any, table: str) -> set[str]:
+        inspecciones.append(table)
+        return {"id", "prev_hash", "this_hash", "hash_version"} if table == "audit_log" else estado
+
+    monkeypatch.setattr(audit, "connect", db.connection)
+    monkeypatch.setattr(audit, "get_table_columns", columnas, raising=False)
+    monkeypatch.setattr(audit, "_COLUMNAS", {}, raising=False)
+    monkeypatch.setattr(
+        audit, "_audit_hmac", lambda value: hashlib.sha256(value.encode()).hexdigest()
+    )
+
+    _escribir(2)
+
+    assert len(db.rows) == 2
+    assert inspecciones == esperadas
+
+
 # ── lock_timeout de la cadena (bd-rls-roles-migraciones-4) ─────────────────
 
 

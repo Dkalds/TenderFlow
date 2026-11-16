@@ -210,6 +210,22 @@ def test_cursor_encendido_pagina_por_la_sombra(lectura: Any, sentencias: list[st
     assert "CAST(licitaciones.importe_num AS double precision) AS importe" in sql
 
 
+def test_cursor_vacio_encendido_mira_la_fila_y_no_compara_con_texto(
+    lectura: Any, sentencias: list[str]
+) -> None:
+    """El cursor ``|id`` lee la sombra de su fila; nula, sigue sin comparar con ``''``."""
+    from db.repositories.licitaciones import LicitacionRepository
+
+    lectura(True)
+    LicitacionRepository().list_cursor(cursor_fecha="", cursor_id="X-1")
+    consulta_fila, listado = sentencias
+    assert "SELECT licitaciones.fecha_publicacion_ts" in consulta_fila
+    assert "WHERE licitaciones.id_externo = %s" in consulta_fila
+    assert "licitaciones.fecha_publicacion_ts IS NULL AND licitaciones.id_externo < %s" in listado
+    assert "licitaciones.fecha_publicacion_ts IS NOT NULL" in listado
+    assert "licitaciones.fecha_publicacion_ts <" not in listado
+
+
 # ── 3. Scoring (universo del Radar y su distribución de importes) ────────
 
 

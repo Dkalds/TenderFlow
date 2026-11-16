@@ -334,7 +334,9 @@ def test_la_clave_canonica_es_identica_durante_la_lectura_dual(lectura: Any) -> 
         lambda: sf.clave_canonica_sql("l"),
         lambda: sf.clave_canonica_agrupable_sql("l"),
         lambda: sf.orden_canonico_sql("l"),
-        lambda: sf.componentes_republicacion_sql("l"),
+        lambda: sf.organo_normalizado_sql("l"),
+        lambda: sf.cpv4_sql("l"),
+        lambda: sf.titulo_normalizado_sql("l"),
         lambda: sf.periodo_publicacion_sql("l"),
         lambda: sf.fila_canonica_sql(filtro_gemelo="TRUE"),
     )

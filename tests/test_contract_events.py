@@ -168,6 +168,53 @@ def test_ampliar_la_duracion_es_prorroga():
     assert evento[0] == "prorroga"
 
 
+@pytest.mark.parametrize(
+    ("antes", "despues", "esperado"),
+    [
+        (
+            {"duracion_valor": 24, "duracion_unidad": "MON"},
+            {"duracion_valor": 3, "duracion_unidad": "ANN"},
+            "prorroga",
+        ),
+        (
+            {"duracion_valor": 2, "duracion_unidad": "ANN"},
+            {"duracion_valor": 18, "duracion_unidad": "MON"},
+            "modificacion",
+        ),
+        (
+            {"duracion_valor": 12, "duracion_unidad": "MON"},
+            {"duracion_valor": 1, "duracion_unidad": "ANN"},
+            None,
+        ),
+        (
+            {"duracion_valor": 365, "duracion_unidad": "DAY"},
+            {"duracion_valor": 1, "duracion_unidad": "ANN"},
+            None,
+        ),
+    ],
+)
+@pytest.mark.parametrize("campo", ["duracion_valor", "duracion_unidad"])
+def test_la_duracion_se_compara_en_la_misma_unidad(campo, antes, despues, esperado):
+    """24 meses → 3 años amplía el contrato aunque el número baje."""
+    from services.contract_events import _classify
+
+    evento = _classify(
+        campo, antes[campo], despues[campo], antes_estado=antes, despues_estado=despues
+    )
+    assert (evento[0] if evento else None) == esperado
+
+
+def test_cambiar_valor_y_unidad_de_la_duracion_es_una_sola_prorroga(db):
+    """24 meses → 3 años en una fila de historial: un evento, no uno por campo."""
+    from services.contract_events import derive_new_events
+
+    upsert(db, duracion_valor=24, duracion_unidad="MON")
+    upsert(db, duracion_valor=3, duracion_unidad="ANN")
+    derive_new_events()
+
+    assert [e["tipo"] for e in eventos(db)] == ["prorroga"]
+
+
 def test_modificacion_real_de_importe_sigue_generando_evento():
     from services.contract_events import _classify
 
@@ -200,17 +247,6 @@ def test_derivacion_idempotente(db):
     assert derive_new_events() == 1
     assert derive_new_events() == 0  # cursor avanzado, nada nuevo
     assert len(eventos(db)) == 1
-
-
-def test_derive_all_procesa_en_lotes(db):
-    from services.contract_events import derive_all_events
-
-    for i in range(5):
-        upsert(db, lic_id=f"C-{i:03d}", estado="PUB", importe=100000.0)
-        upsert(db, lic_id=f"C-{i:03d}", estado="ADJ", importe=100000.0)
-
-    total = derive_all_events(batch_size=2)
-    assert total == 5
 
 
 # ---------------------------------------------------------------------------

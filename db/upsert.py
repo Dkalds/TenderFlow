@@ -9,14 +9,13 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field, fields
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 from config import HISTORY_TRACKED_FIELDS
 from db.connection import connect, connect_read, now_utc_iso
 from db.dlq import record_failure
 from db.fechas_ts import LIC_COLUMNAS_UPSERT, sombra, sombras_presentes, valores_lic
 from db.nucleo_tipado import COLUMNAS_SOMBRA, sombras_disponibles, valores_sombra
-from db.sql_fragments import instante_sql
 from observability.logging import get_logger
 from observability.runtime_metrics import (
     placsp_colision_expediente_total,
@@ -361,6 +360,14 @@ class Licitacion:
     #: entonces el upsert no toca lo que hubiera.
     condiciones: CondicionesCodice | None = None
     fecha_extraccion: str = field(default_factory=now_utc_iso)
+    #: Primer avistamiento del expediente (v100): solo entra en el INSERT
+    #: (``_LIC_INSERT_ONLY_FIELDS``), así que una re-ingesta no lo mueve. Sin
+    #: valor explícito, el upsert pone la hora de la escritura, ya dentro de su
+    #: transacción, y no la del parseo: ``run_connector`` parsea un lote entero
+    #: (con fetches de red y reintentos) antes de escribirlo, y una fila que
+    #: commitea con una hora vieja caería bajo el cursor del aviso de
+    #: «publicación nueva» (``services/avisos_outbox.py``) que ya pasó por ahí.
+    primera_extraccion: str | None = None
 
 
 @dataclass
@@ -479,13 +486,13 @@ _LIC_COALESCE_UPDATE_FIELDS = frozenset(
 # re-ingesta traiga uno distinto (COALESCE no bastaría: un valor no nulo nuevo
 # pisaría al viejo).
 #
-# Vacío a propósito. El hueco existe porque `primera_extraccion` —la fecha en
-# que el expediente se vio por primera vez, distinta de `fecha_extraccion`, que
-# es la de la última pasada— está pedida pero AÚN NO EXISTE como columna en
-# `db/models.py` ni en el dataclass `Licitacion`. Cuando el agente que la añada
-# la declare, basta con listarla aquí: el `_LIC_UPDATES` de abajo ya la excluye
-# del UPDATE sin más cambios.
-_LIC_INSERT_ONLY_FIELDS: frozenset[str] = frozenset()
+# `primera_extraccion` (v100) es la fecha en que el expediente se vio por
+# primera vez, distinta de `fecha_extraccion`, que es la de la última pasada. Si
+# el UPDATE la escribiera volvería a moverse en cada pasada; con COALESCE, una
+# fila que la tiene a NULL (ingerida antes de que el upsert la escribiera)
+# recibiría la fecha de hoy y el aviso de «publicación nueva» la re-notificaría.
+# Esas filas las rellena una migración, no la ingesta.
+_LIC_INSERT_ONLY_FIELDS: frozenset[str] = frozenset({"primera_extraccion"})
 
 _LIC_UPDATES = ", ".join(
     f"{k}=COALESCE(excluded.{k}, licitaciones.{k})"
@@ -529,6 +536,7 @@ _LIC_FECHAS_TS_UPDATES = ", ".join(
     if vieja in _LIC_COALESCE_UPDATE_FIELDS
     else f"{s}=excluded.{s}"
     for s, vieja in _LIC_FECHAS_TS_PARES
+    if vieja not in _LIC_INSERT_ONLY_FIELDS
 )
 
 
@@ -587,8 +595,25 @@ def _fila_licitacion(
 # lote_numero_raw es parse-only (ver docstring de Adjudicacion): nunca es
 # columna de `adjudicaciones`, así que se excluye de las columnas del INSERT.
 _ADJ_KEYS = tuple(f.name for f in fields(Adjudicacion) if f.name != "lote_numero_raw")
-_ADJ_COLS = ", ".join(_ADJ_KEYS)
-_ADJ_PLACEHOLDERS = ", ".join("%s" for _ in _ADJ_KEYS)
+# `primera_extraccion` (v185) y `empresa_id` no salen del parseo: los pone
+# `_dedup_adj_rows` desde la fila que borra el reemplazo. Una fila nueva entra
+# sin empresa y con su `fecha_extraccion`; al enlazarla, `db.empresas` le pone
+# la hora del enlace, que es cuando la vigilancia de esa empresa puede verla.
+_ADJ_COLS = ", ".join((*_ADJ_KEYS, "primera_extraccion", "empresa_id"))
+_ADJ_PLACEHOLDERS = ", ".join("%s" for _ in range(len(_ADJ_KEYS) + 2))
+# Lo que devuelve el DELETE del reemplazo para conservar `primera_extraccion` y
+# el enlace. El COALESCE cubre las filas que escribió el código anterior a v185.
+_ADJ_BORRADAS_RETURNING = (
+    "RETURNING licitacion_id, lote_id, nif, importe_adjudicado, "
+    "COALESCE(primera_extraccion, fecha_extraccion), empresa_id"
+)
+# Una fila de ese RETURNING, y la clave de deduplicado (`_clave_adj`) que sale de ella.
+_AdjBorrada: TypeAlias = tuple[str, int | None, str | None, float | None, str | None, int | None]
+# Lo que se conserva de la fila borrada: ``(primera_extraccion, empresa_id)``.
+_Conservado: TypeAlias = tuple[str | None, int | None]
+_ClaveAdj: TypeAlias = (
+    tuple[str, int, str | None, float | None] | tuple[str, str | None, float | None]
+)
 
 _LOTE_KEYS = tuple(f.name for f in fields(Lote))
 _LOTE_COLS = ", ".join(_LOTE_KEYS)
@@ -722,8 +747,10 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
         con_sombras = _con_sombras(c)
         con_fechas_ts = _con_fechas_ts(c)
         lic_rows: list[list[Any]] = []
+        ahora = now_utc_iso()
         for lic in batch:
             data = asdict(lic)
+            data["primera_extraccion"] = data["primera_extraccion"] or ahora
             if lic.id_externo in existing_pub:
                 # No sobrescribir con una fecha de publicación posterior (fase
                 # de adjudicación/formalización): conservar el primer anuncio.
@@ -791,8 +818,38 @@ def _detectar_colision_de_organo(lic: Licitacion, organo_guardado: str | None) -
     )
 
 
+def _clave_adj(
+    licitacion_id: str, lote_id: int | None, nif: str | None, importe: float | None
+) -> _ClaveAdj:
+    """Clave de deduplicado de una adjudicación: ver :func:`_dedup_adj_rows`."""
+    if lote_id is not None:
+        return (licitacion_id, lote_id, nif, importe)
+    return (licitacion_id, nif, importe)
+
+
+def _primeras_extracciones(borradas: Iterable[_AdjBorrada]) -> dict[_ClaveAdj, _Conservado]:
+    """``(primera_extraccion, empresa_id)`` de las filas que borró el reemplazo, por clave.
+
+    Si varias comparten clave (alguna con NIF o importe ``NULL``, que la BD no
+    deduplica) se queda la ``primera_extraccion`` más antigua, el instante en
+    que se vio la primera, y la primera empresa enlazada que aparezca. Sin el
+    enlace, cada reingesta dejaba la fila sin empresa hasta que la resolución
+    de entidades la volvía a enlazar.
+    """
+    conservado: dict[_ClaveAdj, _Conservado] = {}
+    for lic_id, lote_id, nif, importe, primera, empresa_id in borradas:
+        clave = _clave_adj(lic_id, lote_id, nif, importe)
+        prev_primera, prev_empresa = conservado.get(clave, (None, None))
+        if prev_primera is None or (primera is not None and primera < prev_primera):
+            prev_primera = primera
+        conservado[clave] = (prev_primera, prev_empresa if prev_empresa is not None else empresa_id)
+    return conservado
+
+
 def _dedup_adj_rows(
-    licitacion_id: str, adjs: Iterable[Adjudicacion]
+    licitacion_id: str,
+    adjs: Iterable[Adjudicacion],
+    primeras: dict[_ClaveAdj, _Conservado],
 ) -> list[tuple[Adjudicacion, list[Any]]]:
     """Deduplica en memoria replicando las dos unique parciales de la BD
     (v65_lotes: ``..._sin_lote`` y ``..._lic_lote_nif_importe``).
@@ -811,22 +868,30 @@ def _dedup_adj_rows(
     SQL trata NULL como distinto de NULL, así que una clave con cualquier
     componente NULL nunca conflictúa: esas filas **no** se deduplican, o se
     perderían adjudicaciones sin NIF que la BD sí acepta.
+
+    La misma clave recupera de ``primeras`` (:func:`_primeras_extracciones`)
+    la ``primera_extraccion`` y la ``empresa_id`` de la fila borrada. Sin la
+    primera, cada reingesta haría pasar por nueva una adjudicación ya avisada
+    (v185); sin la segunda, la fila perdería su enlace. Una fila sin gemela
+    borrada es nueva: entra sin empresa y con su ``fecha_extraccion`` (la hora
+    del parseo), que el enlace con la empresa sustituye después.
     """
     seen: set[tuple[Any, ...]] = set()
     out: list[tuple[Adjudicacion, list[Any]]] = []
     for adj in adjs:
         data = asdict(adj)
-        key: tuple[Any, ...]
-        if data["lote_id"] is not None:
-            key = (data["licitacion_id"], data["lote_id"], data["nif"], data["importe_adjudicado"])
-        else:
-            key = (data["licitacion_id"], data["nif"], data["importe_adjudicado"])
+        key = _clave_adj(
+            data["licitacion_id"], data["lote_id"], data["nif"], data["importe_adjudicado"]
+        )
         if None not in key:
             if key in seen:
                 _log.debug("adj_dedup_unique", licitacion_id=licitacion_id, nif=adj.nif)
                 continue
             seen.add(key)
-        out.append((adj, [data[k] for k in _ADJ_KEYS]))
+        primera, empresa_id = primeras.get(key, (None, None))
+        out.append(
+            (adj, [*(data[k] for k in _ADJ_KEYS), primera or data["fecha_extraccion"], empresa_id])
+        )
     return out
 
 
@@ -866,8 +931,9 @@ def _insert_adj_rowwise(
             if kind == "unique":
                 _log.debug("adj_dedup_unique", licitacion_id=licitacion_id, nif=adj.nif)
             else:
+                # La métrica la sube el llamador tras el COMMIT: aquí el
+                # descarte aún puede deshacerse con su licitación.
                 dropped += 1
-                upsert_rows_dropped_total.labels(table="adjudicaciones").inc()
                 _log.warning(
                     "upsert_row_dropped",
                     table="adjudicaciones",
@@ -929,12 +995,16 @@ def replace_adjudicaciones(
     """
     failures: list[tuple[BaseException, str]] = []
     with connect() as c:
-        c.execute("DELETE FROM adjudicaciones WHERE licitacion_id = %s", [licitacion_id])
-        rows = _dedup_adj_rows(licitacion_id, items)
+        borradas = c.execute(
+            f"DELETE FROM adjudicaciones WHERE licitacion_id = %s {_ADJ_BORRADAS_RETURNING}",
+            [licitacion_id],
+        ).fetchall()
+        rows = _dedup_adj_rows(licitacion_id, items, _primeras_extracciones(borradas))
         if _try_insert_adj_batch(c, [vals for _, vals in rows]):
             persisted, dropped = len(rows), 0
         else:
             persisted, dropped = _insert_adj_rowwise(c, licitacion_id, rows, failures)
+    upsert_rows_dropped_total.labels(table="adjudicaciones").inc(dropped)
     # Persistir failures fuera de la transacción del upsert para no
     # interferir con su lock; record_failure es best-effort.
     for caught_exc, payload_ref in failures:
@@ -973,29 +1043,50 @@ def replace_adjudicaciones_batch(
     failures: list[tuple[BaseException, str]] = []
     with connect() as c:
         lic_ids = list(adj_por_lic)
+        # El camino lento vuelve aquí para que una licitación que falle conserve
+        # sus adjudicaciones anteriores, como en `replace_adjudicaciones`.
+        c.execute("SAVEPOINT adj_delete")
         # DELETE agrupado, particionado para respetar el límite de parámetros
         # por sentencia (SQLITE_MAX_VARIABLE_NUMBER).
         _CHUNK = 500
+        borradas: list[_AdjBorrada] = []
         for i in range(0, len(lic_ids), _CHUNK):
             id_chunk = lic_ids[i : i + _CHUNK]
             placeholders = ", ".join("%s" for _ in id_chunk)
-            c.execute(
-                f"DELETE FROM adjudicaciones WHERE licitacion_id IN ({placeholders})",
+            borradas += c.execute(
+                f"DELETE FROM adjudicaciones WHERE licitacion_id IN ({placeholders}) "
+                f"{_ADJ_BORRADAS_RETURNING}",
                 id_chunk,
-            )
+            ).fetchall()
 
-        grupos = [(lic_id, _dedup_adj_rows(lic_id, adjs)) for lic_id, adjs in adj_por_lic.items()]
+        # El camino lento reutiliza estas filas: su DELETE por licitación vuelve
+        # a borrar exactamente lo que deshizo el ROLLBACK de `adj_delete`.
+        primeras = _primeras_extracciones(borradas)
+        grupos = [
+            (lic_id, _dedup_adj_rows(lic_id, adjs, primeras))
+            for lic_id, adjs in adj_por_lic.items()
+        ]
         todas = [vals for _, rows in grupos for _, vals in rows]
 
         if _try_insert_adj_batch(c, todas):
             persisted = len(todas)
         else:
+            c.execute("ROLLBACK TO SAVEPOINT adj_delete")
             for lic_id, rows in grupos:
+                # SAVEPOINT por licitación: un error que no es de constraint
+                # aborta la transacción en Postgres, y sin él las siguientes
+                # fallaban en cadena y el commit final deshacía todo en silencio
+                # mientras `persisted` contaba filas que no llegaban a la BD.
+                c.execute("SAVEPOINT adj_lic")
+                n_failures = len(failures)
                 try:
+                    c.execute("DELETE FROM adjudicaciones WHERE licitacion_id = %s", [lic_id])
                     p, d = _insert_adj_rowwise(c, lic_id, rows, failures)
-                    persisted += p
-                    dropped += d
                 except Exception:
+                    c.execute("ROLLBACK TO SAVEPOINT adj_lic")
+                    c.execute("RELEASE SAVEPOINT adj_lic")
+                    # Lo de esta licitación se deshizo: tampoco va a la DLQ.
+                    del failures[n_failures:]
                     # `failures` recoge el detalle para record_failure, pero solo
                     # en el camino por lotes; aquí el contador subía sin dejar
                     # ninguna traza de qué expediente falló ni por qué.
@@ -1003,6 +1094,11 @@ def replace_adjudicaciones_batch(
                         "adjudicaciones_rowwise_failed", licitacion_id=lic_id, exc_info=True
                     )
                     failed += 1
+                    continue
+                c.execute("RELEASE SAVEPOINT adj_lic")
+                persisted += p
+                dropped += d
+    upsert_rows_dropped_total.labels(table="adjudicaciones").inc(dropped)
     # Persistir failures fuera de la transacción del upsert (best-effort).
     for caught_exc, payload_ref in failures:
         record_failure(run_id, fuente, caught_exc, scope="adjudicacion", payload_ref=payload_ref)
@@ -1235,32 +1331,37 @@ def _upsert_chunk(
     with connect() as c:
         placeholders = ", ".join("%s" for _ in chunk)
         ids = [lic.id_externo for lic in chunk]
-        # fecha_publicacion se pide como columna extra al final (fuera de
-        # col_names) para conservar el primer anuncio sin alterar el snapshot
-        # de historial (que solo cubre _HISTORY_SELECT_COLS).
+        # fecha_publicacion y organo_ref_fuente se piden como columnas extra al
+        # final (fuera de col_names) para conservar el primer anuncio y detectar
+        # la colisión de órgano sin alterar el snapshot de historial (que solo
+        # cubre _HISTORY_SELECT_COLS).
         existing_rows = c.execute(
-            f"SELECT {_HISTORY_SELECT_COLS}, fecha_publicacion FROM licitaciones "
-            f"WHERE id_externo IN ({placeholders})",
+            f"SELECT {_HISTORY_SELECT_COLS}, fecha_publicacion, organo_ref_fuente "
+            f"FROM licitaciones WHERE id_externo IN ({placeholders})",
             ids,
         ).fetchall()
         existing: dict[str, dict[str, Any]] = {
             row[0]: dict(zip(col_names, row, strict=False)) for row in existing_rows
         }
-        existing_pub: dict[str, str | None] = {row[0]: row[-1] for row in existing_rows}
+        existing_pub: dict[str, str | None] = {row[0]: row[-2] for row in existing_rows}
+        existing_organo: dict[str, str | None] = {row[0]: row[-1] for row in existing_rows}
 
         con_sombras = _con_sombras(c)
         con_fechas_ts = _con_fechas_ts(c)
         lic_rows: list[list[Any]] = []
         history_rows: list[tuple[str, str, str, str, str]] = []
+        ahora = now_utc_iso()
 
         for lic in chunk:
             data = asdict(lic)
+            data["primera_extraccion"] = data["primera_extraccion"] or ahora
             if lic.id_externo in existing_pub:
                 # No sobrescribir con una fecha de publicación posterior (fase
                 # de adjudicación/formalización): conservar el primer anuncio.
                 data["fecha_publicacion"] = _earliest_iso_date(
                     existing_pub[lic.id_externo], data["fecha_publicacion"]
                 )
+                _detectar_colision_de_organo(lic, existing_organo[lic.id_externo])
             lic_rows.append(
                 _fila_licitacion(data, con_sombras=con_sombras, con_fechas_ts=con_fechas_ts)
             )
@@ -1377,21 +1478,6 @@ def upsert_licitaciones_with_history(
     return result
 
 
-def get_history(id_externo: str, limit: int = 50) -> list[dict[str, Any]]:
-    """Devuelve el historial de cambios de una licitación."""
-    limit = max(1, min(limit, 1000))  # clamp to [1, 1000]
-    with connect() as c:
-        cur = c.execute(
-            "SELECT id, id_externo, captured_at, source, snapshot_json, changed_fields "
-            "FROM licitaciones_history "
-            "WHERE id_externo = %s "
-            f"ORDER BY {instante_sql('licitaciones_history', 'captured_at')} DESC LIMIT %s",
-            [id_externo, limit],
-        )
-        cols = [d[0] for d in cur.description]
-        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
-
-
 # ---------------------------------------------------------------------------
 # Full-text search
 # ---------------------------------------------------------------------------
@@ -1419,32 +1505,3 @@ def fts_available() -> bool:
         ).fetchone()
     _fts_confirmado = row is not None
     return _fts_confirmado
-
-
-def search_fts(query: str, limit: int = 50, offset: int = 0) -> tuple[list[dict[str, Any]], int]:
-    """Busca licitaciones usando ``search_vector``. Devuelve (rows, total)."""
-    query = query.strip()
-    if not query:
-        return [], 0
-    limit = max(1, min(limit, 500))
-    offset = max(0, offset)
-    with connect() as c:
-        count_row = c.execute(
-            "SELECT COUNT(*) FROM licitaciones "
-            "WHERE search_vector @@ websearch_to_tsquery('spanish', %s)",
-            [query],
-        ).fetchone()
-        total = int(count_row[0])
-        cur = c.execute(
-            "SELECT * FROM licitaciones "  # SELECT *: ficha completa por búsqueda FTS; se descarta search_vector abajo
-            "WHERE search_vector @@ websearch_to_tsquery('spanish', %s) "
-            "ORDER BY ts_rank_cd(search_vector, websearch_to_tsquery('spanish', %s)) DESC "
-            "LIMIT %s OFFSET %s",
-            [query, query, limit, offset],
-        )
-        cols = [d[0] for d in cur.description]
-        rows = [
-            {k: v for k, v in zip(cols, r, strict=False) if k != "search_vector"}
-            for r in cur.fetchall()
-        ]
-    return rows, total

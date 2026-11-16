@@ -1683,13 +1683,6 @@ class DocumentosRepository:
             ).fetchone()
             return int(row[0] if row else 0)
 
-    def count_all(self) -> int:
-        """Total de filas en ``documentos`` -- usado por scripts de backfill para
-        reportar progreso (antes/después)."""
-        with connect_read() as c:
-            row = c.execute("SELECT COUNT(*) FROM documentos").fetchone()
-            return int(row[0] if row else 0)
-
     def status_counts(self) -> dict[str, int]:
         """Recuento de ``documentos`` por ``status`` + total de chunks.
 

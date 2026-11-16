@@ -281,6 +281,37 @@ class TestIterLiveEntries:
 
         assert meta["newest_updated"] == "2026-05-01T10:00:00Z"
 
+    @patch("scraper.atom_live.fetch_atom_page")
+    @patch("scraper.atom_live.time.sleep")
+    def test_cambio_de_hora_compara_instantes_no_texto(self, mock_sleep, mock_fetch):
+        """PLACE publica ``<updated>`` en hora local con offset.
+
+        Al volver al horario de invierno, ``02:10+01:00`` (01:10 UTC) es
+        posterior a un cursor ``02:50+02:00`` (00:50 UTC), aunque como texto
+        vaya antes: comparar texto cortaba ahí y perdía la entry.
+        """
+        pagina = b"""\
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <entry><id>a</id><updated>2026-10-25T02:10:00.5+01:00</updated></entry>
+  <entry><id>b</id><updated>2026-10-25T02:55:00+02:00</updated></entry>
+  <entry><id>c</id><updated>2026-10-25T02:50:00+02:00</updated></entry>
+</feed>
+"""
+        mock_fetch.return_value = FetchResult(content=pagina, status_code=200)
+
+        entries, meta = iter_live_entries(
+            last_seen_updated="2026-10-25T02:50:00+02:00",
+            start_url="https://x.com/feed",
+        )
+
+        assert [u for _, u in entries] == [
+            "2026-10-25T02:10:00.5+01:00",
+            "2026-10-25T02:55:00+02:00",
+        ]
+        assert meta["stopped_reason"] == "cursor_reached"
+        assert meta["newest_updated"] == "2026-10-25T02:10:00.5+01:00"
+
 
 # ─── Tope de páginas y caché condicional ──────────────────────────────────────
 

@@ -40,6 +40,7 @@ def check_rate_limit_db(
     *,
     max_calls: int = 5,
     window_seconds: float = 300.0,
+    abierto_si_falla: bool = False,
 ) -> bool:
     """Verifica el rate limit persistido en la BD.
 
@@ -47,6 +48,8 @@ def check_rate_limit_db(
         key: Identificador de la operación + cliente (e.g. "login:192.168.1.1").
         max_calls: Máximo de llamadas permitidas en la ventana.
         window_seconds: Tamaño de la ventana en segundos.
+        abierto_si_falla: Qué devolver si la BD falla. Por defecto se deniega
+            (fail-closed); solo lo abre quien prefiere el ruido al silencio.
 
     Returns:
         True si la operación está dentro del límite, False si se excedió.
@@ -71,7 +74,7 @@ def check_rate_limit_db(
     except Exception:
         # Si la tabla no existe o hay error de BD, denegar la operación (fail closed)
         log.warning("check_rate_limit_db_error", key=key, exc_info=True)
-        return False
+        return abierto_si_falla
 
 
 def record_failed_login(

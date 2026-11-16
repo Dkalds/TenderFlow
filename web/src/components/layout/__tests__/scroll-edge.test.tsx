@@ -16,7 +16,6 @@ import {
   ScrollEdge,
   ScrollEdgeProvider,
   ScrollEdgeSentinel,
-  ScrollEdgeUnder,
   useScrollEdgeState,
 } from "@/components/layout/scroll-edge";
 
@@ -184,13 +183,8 @@ describe("ScrollEdge — variantes de anclaje", () => {
     expect(borde().className).toContain("top-0");
   });
 
-  it("la variante interior cuelga del borde inferior del cromo", () => {
-    render(<ScrollEdgeUnder active />);
-    expect(borde().className).toContain("top-full");
-  });
-
   it("es invisible para los lectores de pantalla", () => {
-    render(<ScrollEdgeUnder active />);
+    render(<ScrollEdge active />);
     expect(borde()).toHaveAttribute("aria-hidden", "true");
   });
 });

@@ -11,7 +11,23 @@ from __future__ import annotations
 import pytest
 
 from db.events import append_domain_event
-from services.notifications import modo_email_de, preferencias_email, set_modo_email
+from services.notifications import modo_email_de
+
+
+def _preferencia(user_key: str, event_type: str, modo: str) -> None:
+    """Siembra la preferencia por SQL: ningún código de la app la escribe hoy.
+
+    El escritor (``set_modo_email``) se retiró sin llamadores; lo que se prueba
+    aquí es que el despachador obedece la fila si existe.
+    """
+    from db.database import connect, now_utc_iso
+
+    with connect() as c:
+        c.execute(
+            "INSERT INTO user_event_prefs (user_key, event_type, modo, updated_at) "
+            "VALUES (%s, %s, %s, %s)",
+            (user_key, event_type, modo, now_utc_iso()),
+        )
 
 
 def _usuario(email: str) -> tuple[int, int, str]:
@@ -80,33 +96,14 @@ def test_los_defectos_distinguen_asignacion_de_comentario(tmp_db):
     assert modo_email_de("uk-nueva", "pursuit.commented") == "daily"
 
 
-def test_set_modo_email_es_idempotente_y_devuelve_el_modo(tmp_db):
-    assert set_modo_email("uk-1", "pursuit.assigned", "off") == "off"
-    assert set_modo_email("uk-1", "pursuit.assigned", "off") == "off"
+def test_la_fila_guardada_gana_al_defecto(tmp_db):
+    _preferencia("uk-1", "pursuit.assigned", "off")
     assert modo_email_de("uk-1", "pursuit.assigned") == "off"
 
 
-def test_un_tipo_sin_preferencia_de_correo_se_rechaza(tmp_db):
-    with pytest.raises(ValueError):
-        set_modo_email("uk-1", "pursuit.created", "daily")
-
-
-def test_un_modo_inventado_se_rechaza(tmp_db):
-    with pytest.raises(ValueError):
-        set_modo_email("uk-1", "pursuit.assigned", "cuando-me-apetezca")
-
-
-def test_preferencias_email_solo_expone_los_tipos_personales(tmp_db):
-    """F5.3 añade los avisos sobre expedientes seguidos: van al digest y cada
-    persona elige cómo recibirlos, igual que las asignaciones."""
-    claves = set(preferencias_email("uk-1"))
-    assert claves == {
-        "pursuit.assigned",
-        "pursuit.commented",
-        "licitacion.cambiada",
-        "licitacion.documento_nuevo",
-        "licitacion.recurso",
-    }
+def test_un_modo_desconocido_en_la_fila_cae_al_defecto(tmp_db):
+    _preferencia("uk-1", "pursuit.assigned", "cuando-me-apetezca")
+    assert modo_email_de("uk-1", "pursuit.assigned") == "immediate"
 
 
 def test_los_avisos_de_lo_seguido_van_al_digest_diario_por_defecto(tmp_db):
@@ -124,7 +121,7 @@ def test_immediate_sale_en_la_siguiente_pasada_del_despachador(tmp_db, correos):
 
     actor, org_id, _ = _usuario("s4-actor@example.test")
     responsable, _, uk_resp = _usuario("s4-responsable@example.test")
-    set_modo_email(uk_resp, "pursuit.assigned", "immediate")
+    _preferencia(uk_resp, "pursuit.assigned", "immediate")
     _evento_asignacion(org_id=org_id, responsable=responsable, actor=actor)
 
     resultado = event_dispatch.dispatch_pending()
@@ -140,7 +137,7 @@ def test_daily_se_agrupa_en_el_digest_y_no_manda_correo_ya(tmp_db, correos):
 
     actor, org_id, _ = _usuario("s4-actor-d@example.test")
     responsable, _, uk_resp = _usuario("s4-responsable-d@example.test")
-    set_modo_email(uk_resp, "pursuit.assigned", "daily")
+    _preferencia(uk_resp, "pursuit.assigned", "daily")
     _evento_asignacion(org_id=org_id, responsable=responsable, actor=actor)
 
     resultado = event_dispatch.dispatch_pending()
@@ -158,7 +155,7 @@ def test_off_no_escribe_en_pending_digests(tmp_db, correos):
 
     actor, org_id, _ = _usuario("s4-actor-off@example.test")
     responsable, _, uk_resp = _usuario("s4-responsable-off@example.test")
-    set_modo_email(uk_resp, "pursuit.assigned", "off")
+    _preferencia(uk_resp, "pursuit.assigned", "off")
     _evento_asignacion(org_id=org_id, responsable=responsable, actor=actor)
 
     event_dispatch.dispatch_pending()
@@ -172,7 +169,7 @@ def test_quien_se_asigna_a_si_mismo_no_recibe_email_ni_alerta(tmp_db, correos):
     from services.notifications import get_alerts_unread_count
 
     user_id, org_id, user_key = _usuario("s4-solo@example.test")
-    set_modo_email(user_key, "pursuit.assigned", "immediate")
+    _preferencia(user_key, "pursuit.assigned", "immediate")
     _evento_asignacion(org_id=org_id, responsable=user_id, actor=user_id)
 
     event_dispatch.dispatch_pending()
@@ -187,7 +184,7 @@ def test_el_comentario_avisa_a_los_destinatarios_menos_al_autor(tmp_db, correos)
 
     autor, org_id, _ = _usuario("s4-autor@example.test")
     otro, _, uk_otro = _usuario("s4-otro@example.test")
-    set_modo_email(uk_otro, "pursuit.commented", "immediate")
+    _preferencia(uk_otro, "pursuit.commented", "immediate")
 
     append_domain_event(
         "pursuit.commented",

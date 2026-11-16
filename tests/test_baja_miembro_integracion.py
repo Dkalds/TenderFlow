@@ -111,6 +111,32 @@ def test_que_un_admin_lo_retire_hace_lo_mismo(equipo):
     _comprobar_baja(equipo)
 
 
+def test_degradar_a_un_admin_a_member_retira_lo_que_exige_ser_gestor(equipo):
+    """Webhooks e invitaciones solo los crea owner/admin: degradado, no los conserva.
+
+    El perfil compartido no exige ser gestor y sigue en la organización.
+    """
+    organization_id = equipo["organization_id"]
+    equipo["repo"].add_membership(
+        organization_id, equipo["miembro"], "member", invited_by_user_id=equipo["owner"]
+    )
+
+    assert not _webhook_activo(equipo["webhook_miembro"])
+    assert _webhook_activo(equipo["webhook_owner"]), "el webhook de otro no se toca"
+    assert _invitaciones_pendientes(organization_id) == 0
+    perfil = get_user_profile("user-key-que-no-existe", organization_id, user_id=equipo["owner"])
+    assert perfil is not None, "un member puede seguir compartiendo su perfil"
+
+
+def test_repetir_el_rol_de_admin_no_retira_nada(equipo):
+    equipo["repo"].add_membership(
+        equipo["organization_id"], equipo["miembro"], "admin", invited_by_user_id=equipo["owner"]
+    )
+
+    assert _webhook_activo(equipo["webhook_miembro"])
+    assert _invitaciones_pendientes(equipo["organization_id"]) == 1
+
+
 def test_la_tarea_de_quien_salio_vence_sin_destinatario(equipo):
     organization_id = equipo["organization_id"]
     with connect() as c:

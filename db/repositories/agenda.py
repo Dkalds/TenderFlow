@@ -6,23 +6,26 @@ pursuit en la organización (seguida) ni descarte en ``radar_dismissals``
 (descartada). El triaje reutiliza los mismos gestos y persistencia que el
 Radar — no se inventa un segundo mecanismo de descarte.
 
-El matching replica la semántica de ``services/watchlist_rules._rule_clauses``
-(keyword sobre título/descripción, CPV por prefijo, importe mínimo, CCAA) con
-el mismo escapado de comodines LIKE. Vive aquí y no en ese módulo porque el
-SQL nuevo pertenece a ``db/`` (ADR-022); el módulo legacy de services está
-congelado en la whitelist TID251.
+El matching **no** se replica aquí: llega como las cláusulas SA Core de
+``services.watchlist_rules.predicado_de_regla``, el mismo predicado de la vista
+previa y del job de alertas, y aquí se compone con lo propio de la agenda.
+La copia que vivía aquí solo sabía de keyword, CPV, importe y CCAA, y con
+``LIKE`` sensible a mayúsculas: una regla de solo tecnología —la alerta por
+defecto— señalaba las abiertas más próximas del corpus entero.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from typing import Any
 
+from sqlalchemy import and_, select
+
 from db.database import connect_read
+from db.models import compile_query, licitaciones
 from db.radar_dismissals import VIGENTE_SQL
 from db.repositories.base import ambito_agenda_sql, rows_to_dicts
-from db.sql_fragments import ISO_MAX, escape_like
+from db.sql_fragments import ISO_MAX
 from shared.estados import abierta_sql
 
 # Techo de fecha bien formada. Sale de la misma constante que usa
@@ -44,20 +47,8 @@ _SIGNAL_COLS = (
 )
 
 
-@dataclass(frozen=True)
-class SignalCriteria:
-    """Criterios de una regla de watchlist, sin acoplar ``db/`` a services."""
-
-    rule_id: int
-    nombre: str | None
-    keyword: str | None
-    cpv: str | None
-    min_importe: float | None
-    ccaa: str | None
-
-
 def signal_rows(
-    criteria: SignalCriteria,
+    match_clauses: Sequence[Any],
     *,
     user_key: str,
     organization_id: int,
@@ -71,10 +62,13 @@ def signal_rows(
     ``user_id`` (v129) hace dual la lectura de los descartes: sin él, los
     descartados bajo la clave de un correo anterior volverían a la Agenda.
 
+    ``match_clauses`` es el predicado de la regla sobre ``licitaciones``
+    (``services.watchlist_rules.predicado_de_regla``); entra como subconsulta
+    por ``id_externo`` porque aquí la tabla va con alias.
+
     ``tecnologias``/``ccaas`` son el ámbito de la agenda (OR dentro de cada
     lista, mismo criterio que los pursuits: ``ambito_agenda_sql``). La CCAA de
-    la **regla** (``criteria.ccaa``) es otra cosa —forma parte del match— y se
-    aplica aparte.
+    la **regla** es otra cosa —forma parte del match— y se aplica aparte.
     """
     clauses = [
         abierta_sql("l.estado"),
@@ -94,19 +88,12 @@ def signal_rows(
         f"AND rd.id_externo = l.id_externo AND {VIGENTE_SQL})",
     ]
     params: list[object] = [organization_id, user_id, user_key, user_id]
-    if criteria.keyword:
-        like = f"%{escape_like(criteria.keyword)}%"
-        clauses.append("(l.titulo LIKE %s OR l.descripcion LIKE %s)")
-        params.extend([like, like])
-    if criteria.cpv:
-        clauses.append("l.cpv LIKE %s")
-        params.append(f"{escape_like(criteria.cpv)}%")
-    if criteria.min_importe is not None:
-        clauses.append("l.importe >= %s")
-        params.append(criteria.min_importe)
-    if criteria.ccaa:
-        clauses.append("l.ccaa = %s")
-        params.append(criteria.ccaa)
+    if match_clauses:
+        sub_sql, sub_params = compile_query(
+            select(licitaciones.c.id_externo).where(and_(*match_clauses))
+        )
+        clauses.append(f"l.id_externo IN ({sub_sql})")
+        params.extend(sub_params)
     ambito, valores = ambito_agenda_sql("l", tecnologias=tecnologias, ccaas=ccaas)
     clauses.extend(ambito)
     params.extend(valores)

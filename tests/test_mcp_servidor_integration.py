@@ -25,12 +25,12 @@ from mcp_types.version import LATEST_HANDSHAKE_VERSION
 from starlette.testclient import TestClient
 
 from db import mcp_oauth
-from db.access_grants import grant_access
 from db.connection import connect_read
 from db.upsert import Licitacion, upsert_licitaciones
 from db.users import create_user, set_admin
 from mcp_server.servidor import crear_app
 from mcp_server.tools.esquema import glosario
+from tests.concesiones import conceder
 
 URL_PUBLICA = "http://localhost:8080"
 CLIENTE = "cliente-e2e"
@@ -52,7 +52,7 @@ def usuarios(tmp_db: Any, rol_mcp: str) -> Iterator[dict[str, int]]:
         email="luis@empresa.example", password_hash="x"
     )  # pragma: allowlist secret
     for email in ("ana@empresa.example", "luis@empresa.example"):
-        grant_access("email", email, granted_by=None)
+        conceder("email", email)
     mcp_oauth.guardar_cliente(CLIENTE, "E2E", ["http://localhost:3000/cb"], {"client_id": CLIENTE})
     # Mitad estática de la allowlist en «no», como en producción: decide `access_grants`.
     with patch("services.access_grants.oauth_email_allowed", return_value=False):

@@ -142,6 +142,35 @@ def test_trae_la_oportunidad_del_expediente_si_existe(organizaciones):
     assert alerta["pursuit_id"] == int(fila[0])
 
 
+def test_expediente_con_dos_oportunidades_no_duplica_la_alerta(organizaciones):
+    """Dos lotes del mismo expediente son dos pursuits (v110): la alerta sale una vez."""
+    from db.database import connect
+    from db.notifications import alertas_de_usuario, listar_alertas
+
+    org, _ = organizaciones
+    _aviso("ana", org, 8)
+    with connect() as c:
+        c.execute(
+            "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) VALUES (%s, %s, %s)",
+            ("EXP-8", "Expediente ocho", "2026-10-01"),
+        )
+        ids = [
+            c.execute(
+                "INSERT INTO pursuits (organization_id, licitacion_id, lote_numero, status, "
+                " created_at, updated_at) VALUES (%s, 'EXP-8', %s, 'identified', "
+                " '2026-10-01', '2026-10-01') RETURNING id",
+                (org, lote),
+            ).fetchone()[0]
+            for lote in ("1", "2")
+        ]
+
+    pagina = listar_alertas("ana", org, estado="todas", limit=10, offset=0)
+    assert len(pagina["items"]) == pagina["total"] == 1
+    assert pagina["items"][0]["pursuit_id"] == min(ids)
+    (alerta,) = alertas_de_usuario("ana", organization_id=org)
+    assert alerta["pursuit_id"] == min(ids)
+
+
 def test_identidad_dual_por_user_id(organizaciones):
     """Tras un cambio de correo la clave cambia; el id no (ADR-030)."""
     from db.notifications import listar_alertas

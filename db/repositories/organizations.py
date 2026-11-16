@@ -17,6 +17,9 @@ log = get_logger(__name__)
 #: Las filas de ``connect()``: tuplas, como en el resto de ``db/``.
 _Conexion: TypeAlias = Connection[tuple[object, ...]]
 
+#: Roles que crean webhooks e invitaciones (:meth:`_retirar_huellas_de_gestor`).
+_GESTORES = frozenset({"owner", "admin"})
+
 #: Nombre con el que queda la organización personal de una cuenta anonimizada.
 NOMBRE_ORGANIZACION_ELIMINADA = "Cuenta eliminada"
 
@@ -198,6 +201,11 @@ class OrganizationRepository:
         """Crea o actualiza una membresía de forma idempotente."""
         now = now_utc_iso()
         with connect() as conn:
+            previo = conn.execute(
+                "SELECT role FROM organization_memberships "
+                "WHERE organization_id = %s AND user_id = %s FOR UPDATE",
+                (organization_id, user_id),
+            ).fetchone()
             conn.execute(
                 "INSERT INTO organization_memberships "
                 "(organization_id, user_id, role, status, invited_by_user_id, "
@@ -218,6 +226,9 @@ class OrganizationRepository:
             )
             if status != "active" or role == "viewer":
                 self._retirar_huellas(conn, organization_id, user_id)
+            elif previo and str(previo[0]) in _GESTORES and role not in _GESTORES:
+                # Degradado a `member`: deja de gestionar webhooks e invitaciones.
+                self._retirar_huellas_de_gestor(conn, organization_id, user_id)
             row = conn.execute(
                 "SELECT m.organization_id, m.user_id, m.role, m.status, "
                 "m.created_at, m.updated_at, u.display_name, u.email "

@@ -2,8 +2,10 @@ name: Pliegos (fetch + chunking + embeddings + fichas)
 
 on:
   schedule:
-    # Nocturno, tras la ingesta diaria y el scoring ML (07:30 UTC) — deja
-    # tiempo a que haya documentos `pending` nuevos del día antes de procesarlos.
+    # 09:00 UTC, con el scoring ML del día ya hecho (se encadena a la primera
+    # pasada de `scrape-daily.yml`; su red de seguridad es a las 07:13) y los
+    # documentos `pending` nuevos de las pasadas de la madrugada. Coincide con
+    # la pasada de las 08:23 del scrape: no comparten grupo de concurrencia.
     - cron: "0 9 * * *"
   workflow_dispatch:
     inputs:

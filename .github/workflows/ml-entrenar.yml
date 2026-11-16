@@ -14,23 +14,29 @@ name: Entrenar y publicar modelos ML
 #     `scrape-daily.yml` por `workflow_dispatch` sin entradas
 #     (`scheduler/concept_drift.py`), que por eso es el valor por defecto;
 #   - `predictivos`: el día 1 de cada mes a las 03:00 UTC, o a mano;
-#   - `tecnologias`: el día 1 de cada mes a las 05:00 UTC, o a mano.
+#   - `tecnologias`: el día 1 de cada mes a las 11:07 UTC, o a mano.
 #
 # Los dos `cron` de abajo deciden el job por `github.event.schedule`: cambiar
 # uno exige cambiar el mismo literal en el `if:` de su job.
 
 on:
   schedule:
-    # Predictivos: día 1 a las 03:00 UTC, fuera de la ventana del scrape (cada
-    # 4 h desde las 00:23, 120 min de presupuesto: la de las 00:23 acaba como
-    # tarde a las 02:23). El scoring diario se encadena al final de las pasadas
-    # de `scrape-daily` (ver `ml-scoring.yml`), y el modelo nuevo no se sirve
-    # hasta que alguien lo activa.
+    # Cada cron, con el techo de su job (45 min), cae entre dos pasadas del
+    # scrape: cada 4 h desde las 00:23 y con 155 min de presupuesto, así que
+    # los huecos van de las 02:58 a las 04:23, de las 06:58 a las 08:23, etc.
+    # `tests/test_unit_workflows_agrupados.py` lo comprueba contra el
+    # `timeout-minutes` real de `scrape-daily.yml`.
+    #
+    # Predictivos: día 1 a las 03:00 UTC (acaba como tarde a las 03:45). El
+    # scoring diario se encadena al final de las pasadas de `scrape-daily` (ver
+    # `ml-scoring.yml`), y el modelo nuevo no se sirve hasta que alguien lo
+    # activa.
     - cron: "0 3 1 * *"
-    # Tecnologías: día 1 a las 05:00 UTC, después de los predictivos para no
-    # competir por la BD. Las etiquetas no circulares (feedback humano +
+    # Tecnologías: día 1 a las 11:07 UTC, después de los predictivos para no
+    # competir con ellos por la BD. Hasta 2026-11 era 05:00, dentro de la
+    # pasada de las 04:23. Las etiquetas no circulares (feedback humano +
     # `llm_tech_labeling`) se acumulan despacio y no justifican más.
-    - cron: "0 5 1 * *"
+    - cron: "7 11 1 * *"
   workflow_dispatch:
     inputs:
       modelo:
@@ -92,7 +98,7 @@ jobs:
     # `data/downloads/` cacheado (ningún workflow del repo lo cachea; los ZIP
     # son grandes y una caché de varios GB para un job manual se desalojaría
     # entre ejecuciones). La referencia del repo para trabajo de bulks es
-    # `scrape-bulk.yml`, que presupuesta 120 min; 60 cubre 6 descargas más el
+    # `scrape-bulk.yml`, que presupuesta 240 min; 60 cubre 6 descargas más el
     # entrenamiento con margen.
     timeout-minutes: 60
 
@@ -450,7 +456,7 @@ jobs:
   # summary. Es el desenlace correcto, no un fallo — pero significa que
   # `ml_tecnologias` sigue sin modelo hasta que haya etiquetas de verdad.
   tecnologias:
-    if: github.event.schedule == '0 5 1 * *' || inputs.modelo == 'tecnologias'
+    if: github.event.schedule == '7 11 1 * *' || inputs.modelo == 'tecnologias'
     name: Train tech classifier & upload to release
     runs-on: ubuntu-latest
     # Un OneVsRest sobre ~13 etiquetas y el corpus entero de `licitaciones`

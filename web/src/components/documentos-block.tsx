@@ -8,7 +8,7 @@ import { documentosNuevos } from "@/lib/documento-nuevo";
 import { urlHttp } from "@/lib/url-http";
 import { ExternalLink, FileText } from "lucide-react";
 import { AvisoPestanaNueva } from "@/components/ui/aviso-pestana-nueva";
-import { cn } from "@/lib/utils";
+import { cn, formatTamano } from "@/lib/utils";
 
 const TIPO_LABELS: Record<string, string> = {
   legal: "Pliego administrativo (PCAP)",
@@ -51,18 +51,6 @@ function textosFicha(url: string): { ver: string; verTodos: string } {
 function etiquetaTipo(doc: DocumentoSummary): string {
   if (enDominio(hostDe(doc.uri), "ted.europa.eu")) return "Anuncio publicado en TED";
   return TIPO_LABELS[doc.tipo] ?? doc.tipo;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const units = ["KB", "MB", "GB"];
-  let value = bytes / 1024;
-  let i = 0;
-  while (value >= 1024 && i < units.length - 1) {
-    value /= 1024;
-    i += 1;
-  }
-  return `${value.toFixed(1)} ${units[i]}`;
 }
 
 /** Enlace a la ficha del expediente en la plataforma de origen.
@@ -191,7 +179,7 @@ export function DocumentosBlock({
                     </Badge>
                   )}
                   {etiquetaTipo(doc)}
-                  {doc.size_bytes != null && ` · ${formatBytes(doc.size_bytes)}`}
+                  {doc.size_bytes != null && ` · ${formatTamano(doc.size_bytes)}`}
                   {sinPublicar && " · sin publicar todavía"}
                   {caducado && " · el enlace original puede haber caducado"}
                   {escaneado && " · escaneado sin texto: la ficha no lo ha podido leer"}

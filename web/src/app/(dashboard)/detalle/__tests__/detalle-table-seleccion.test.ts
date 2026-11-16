@@ -2,8 +2,10 @@
  * Orden, selección, ventana de paginación y CSV: las funciones puras con las
  * que la tabla decide qué está marcado, qué página se pinta y qué se exporta.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { RowSelectionState, SortingState } from "@tanstack/react-table";
+import { descargarBlob } from "@/lib/export";
+import { descargarSeleccion } from "../_components/detalle-seleccion";
 import {
   buildCsv,
   isClientSorted,
@@ -15,6 +17,8 @@ import {
   totalPagesFor,
 } from "../_hooks/detalle-table-model";
 import { row } from "./detalle-fixtures";
+
+vi.mock("@/lib/export", () => ({ descargarBlob: vi.fn() }));
 
 
 describe("isClientSorted", () => {
@@ -116,21 +120,28 @@ describe("paginación", () => {
 describe("buildCsv", () => {
   it("emite la cabecera aunque no haya filas", () => {
     expect(buildCsv([])).toBe(
-      "id_externo,titulo,organo_contratacion,importe,estado,fecha_publicacion,ccaa,cpv,tecnologia",
+      "id_externo;titulo;organo_contratacion;importe;estado;fecha_publicacion;ccaa;cpv;tecnologia",
     );
   });
 
-  it("entrecomilla los valores con coma y duplica las comillas internas", () => {
+  it("separa con punto y coma, como el CSV de la API: Excel en español lo abre en columnas", () => {
+    // Con coma, Excel con configuración regional española metía la fila entera
+    // en la columna A; `services/exports.py::generate_csv` ya usaba `;`.
+    const csv = buildCsv([row({ id_externo: "A", titulo: "Obras, fase 2; lote 1", importe: 1000 })]);
+    expect(csv.split("\n")[1]).toBe('A;"Obras, fase 2; lote 1";;1000;;;;;');
+  });
+
+  it("entrecomilla y duplica las comillas internas", () => {
     const csv = buildCsv([
-      row({ id_externo: "A", titulo: 'Obras, fase 2 con "acta"', importe: 1000 }),
+      row({ id_externo: "A", titulo: 'Obras con "acta"', importe: 1000 }),
     ]);
     const [, line] = csv.split("\n");
-    expect(line).toContain('"Obras, fase 2 con ""acta"""');
+    expect(line).toContain('"Obras con ""acta"""');
   });
 
   it("escribe los nulos como celda vacía, no como «null»", () => {
     const [, line] = buildCsv([row({ id_externo: "A" })]).split("\n");
-    expect(line).toBe("A,,,,,,,,");
+    expect(line).toBe("A;;;;;;;;");
   });
 
   it("neutraliza como fórmula el texto de terceros que Excel ejecutaría al abrirlo", () => {
@@ -141,27 +152,36 @@ describe("buildCsv", () => {
       row({ id_externo: "D", titulo: "  =cmd|' /C calc'!A0" }),
     ]);
     const [, a, b, c, d] = csv.split("\n");
-    expect(a).toBe(`A,"'=HYPERLINK(""https://evil.example"",""ver"")",,,,,,,`);
-    expect(b).toBe("B,'@SUM(1+1),,,,,,,");
-    expect(c).toBe("C,'-2+3,,,,,,,");
+    expect(a).toBe(`A;"'=HYPERLINK(""https://evil.example"",""ver"")";;;;;;;`);
+    expect(b).toBe("B;'@SUM(1+1);;;;;;;");
+    expect(c).toBe("C;'-2+3;;;;;;;");
     // Los blancos de delante no la salvan: algunos motores los recortan antes
     // de decidir si es una fórmula.
-    expect(d).toBe("D,'  =cmd|' /C calc'!A0,,,,,,,");
+    expect(d).toBe("D;'  =cmd|' /C calc'!A0;;;;;;;");
   });
 
   it("no toca un importe negativo: es un número, no una fórmula", () => {
     const [, line] = buildCsv([row({ id_externo: "A", importe: -50 })]).split("\n");
-    expect(line).toBe("A,,,-50,,,,,");
+    expect(line).toBe("A;;;-50;;;;;");
   });
 
   it("entrecomilla los saltos de línea para que no partan la fila", () => {
-    expect(buildCsv([row({ id_externo: "A", titulo: "uno\ndos" })])).toContain('A,"uno\ndos"');
+    expect(buildCsv([row({ id_externo: "A", titulo: "uno\ndos" })])).toContain('A;"uno\ndos"');
   });
 
   it("exporta solo las nueve columnas del contrato, en orden", () => {
     const csv = buildCsv([
       row({ id_externo: "A", ccaa: "MD", cpv: "72000000" } as never),
     ]);
-    expect(csv.split("\n")[0].split(",")).toHaveLength(9);
+    expect(csv.split("\n")[0].split(";")).toHaveLength(9);
+  });
+});
+
+describe("descargarSeleccion", () => {
+  it("entrega el CSV con el BOM de UTF-8, sin el cual Excel rompe las tildes", async () => {
+    descargarSeleccion([row({ id_externo: "A", titulo: "Gestión" })]);
+    const blob = vi.mocked(descargarBlob).mock.calls[0][1];
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
   });
 });

@@ -354,29 +354,55 @@ class ListadoMixin(FiltrosMixin):
         # en el token—; con la sombra, Postgres lo interpreta como
         # `timestamptz` al compararlo, así que la clave (instante, id) ordena
         # igual siempre que el texto guardado sea el mismo instante.
+        #
+        # El orden es `DESC` a secas, con los nulos **delante** (`NULLS FIRST`
+        # implícito): es el que recorren `idx_lic_cursor` y, al revés, el de la
+        # sombra; `NULLS LAST` los dejaría sin uso.
+        #
+        # El cursor `|id` (texto vacío) es ambiguo: lo emite tanto una fila sin
+        # fecha como una con `''` guardado —el CHECK de formato de v59 es
+        # `NOT VALID` y el histórico no se validó—, y en el texto `''` ordena
+        # detrás de todas las fechadas. Lo decide el valor vigente de la fila
+        # del cursor: nulo (o la fila ya no está) sigue por el resto de la cola
+        # de nulos y después por todas las fechadas; si no, keyset normal con
+        # ese valor. Sin la lectura, `fecha < ''` dejaba la página siguiente
+        # vacía tras un nulo (o fallaba el cast con la sombra), y leer siempre
+        # «nulo» volvía a empezar tras una fila `''`.
         fecha = _nucleo("fecha_publicacion")
-        if cursor_fecha is not None and cursor_id is not None:
-            clauses.append(
-                or_(
-                    fecha < cursor_fecha,
-                    and_(
-                        fecha == cursor_fecha,
-                        licitaciones.c.id_externo < cursor_id,
-                    ),
-                )
-            )
-
-        stmt = (
-            select(*_columnas_resumen())
-            .where(and_(*clauses))
-            .order_by(
-                fecha.desc(),
-                licitaciones.c.id_externo.desc(),
-            )
-            .limit(limit + 1)
-        )
-        sql, params = compile_query(stmt)
         with connect_read() as c:
+            if cursor_fecha is not None and cursor_id is not None:
+                desde: object = cursor_fecha
+                if cursor_fecha == "":
+                    sql, params = compile_query(
+                        select(fecha).where(licitaciones.c.id_externo == cursor_id)
+                    )
+                    fila = c.execute(sql, params).fetchone()
+                    desde = fila[0] if fila else None
+                if desde is None:
+                    clauses.append(
+                        or_(
+                            and_(fecha.is_(None), licitaciones.c.id_externo < cursor_id),
+                            fecha.is_not(None),
+                        )
+                    )
+                else:
+                    clauses.append(
+                        or_(
+                            fecha < desde,
+                            and_(fecha == desde, licitaciones.c.id_externo < cursor_id),
+                        )
+                    )
+
+            stmt = (
+                select(*_columnas_resumen())
+                .where(and_(*clauses))
+                .order_by(
+                    fecha.desc(),
+                    licitaciones.c.id_externo.desc(),
+                )
+                .limit(limit + 1)
+            )
+            sql, params = compile_query(stmt)
             return typed_rows(LicitacionResumenRow, rows_to_dicts(c.execute(sql, params)))
 
     @staticmethod

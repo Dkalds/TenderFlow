@@ -16,26 +16,16 @@ reimplementaba inline esa misma comparación, y este módulo, que es el que tien
 las tres propiedades que se quieren, **no lo importaba nadie fuera de su test**.
 Ahora este módulo es el formato único; los otros dos llaman aquí.
 
-Periodo de gracia
------------------
+Periodo de gracia (cerrado el 2026-11-16)
+-----------------------------------------
 
-Emitir el formato nuevo invalidaría de golpe la cookie ``csrf_token`` de todo
-el que tenga sesión abierta: su siguiente mutación saldría 403 y, para el
-usuario, eso es un logout con un error raro. Por eso :func:`csrf_token_valido`
-acepta **los dos formatos** durante el periodo de gracia, controlado por la
-variable de entorno ``CSRF_ACEPTAR_LEGACY``:
-
-* ``1`` (default) — se acepta el token legacy además del nuevo. Es el estado
-  en el que hay que desplegar.
-* ``0`` — solo el formato nuevo. Es el fin del periodo de gracia; se pone
-  cuando ya no queden sesiones anteriores al despliegue, es decir tras
-  ``_SESSION_MAX_AGE`` (el techo absoluto de la sesión,
-  ``SESSION_ABSOLUTE_DAYS``) desde que salió a producción.
-
-El formato legacy **no** se emite nunca más: el periodo de gracia solo acepta,
-no produce. Y como el token legacy no lleva ``kid``, se valida contra la clave
-de firma activa: al rotar ``SIGNING_KEY`` los tokens legacy dejan de verificar
-—el nuevo formato sí sobrevive a la rotación, que es medio motivo del cambio—.
+Al cambiar de formato, :func:`csrf_token_valido` aceptó también el token
+anterior —HMAC-SHA256 plano de la clave de firma, sin ``kid`` ni caducidad—
+mientras lo dijera ``CSRF_ACEPTAR_LEGACY`` (por defecto, sí), para no dar un 403
+a quien tenía sesión abierta. Tenía que durar un ciclo de sesión desde
+septiembre, pero nadie fijó la variable a ``0`` y la gracia seguía abierta dos
+meses después. Se retiró el código y la variable: hoy solo vale el formato
+vigente, y una sesión anterior a septiembre ya caducó por su techo absoluto.
 
 Uso::
 
@@ -48,17 +38,12 @@ Uso::
 from __future__ import annotations
 
 import hashlib
-import hmac
-import os
 import time
 
 from shared.signing import sign, verify
 
 # Default max age: 1 hour
 DEFAULT_MAX_AGE_SECONDS: int = 3600
-
-#: Nombre de la variable de entorno que gobierna el periodo de gracia.
-LEGACY_GRACE_ENV = "CSRF_ACEPTAR_LEGACY"
 
 
 def _session_hash(session_id: str) -> str:
@@ -136,55 +121,25 @@ def validate_csrf_token(
     return verify(payload, sig)
 
 
-# ── Formato legacy: se acepta durante la gracia, no se emite nunca ──────────
-
-
-def legacy_csrf_token(session_id: str) -> str:
-    """Token en el formato anterior: HMAC-SHA256 plano de la clave de firma.
-
-    Se conserva **solo** para poder reconocer las cookies ya emitidas mientras
-    dure el periodo de gracia. No lleva ``kid`` (no sobrevive a una rotación)
-    ni caducidad propia (vive lo que viva la sesión), que son justo las dos
-    razones por las que se sustituye.
-    """
-    from shared.auth_core import get_signing_key
-
-    return hmac.new(get_signing_key(), session_id.encode(), hashlib.sha256).hexdigest()
-
-
-def legacy_aceptado() -> bool:
-    """¿Sigue abierto el periodo de gracia? Ver el docstring del módulo."""
-    return os.getenv(LEGACY_GRACE_ENV, "1").strip().lower() not in ("0", "false", "no")
-
-
 def csrf_token_valido(
     token: str | None,
     session_id: str,
     *,
     max_age: int = DEFAULT_MAX_AGE_SECONDS,
 ) -> bool:
-    """Punto de validación único del sistema. Acepta el formato nuevo siempre.
+    """Punto de validación único del sistema: solo el formato vigente.
 
-    Acepta además el legacy mientras dure el periodo de gracia
-    (``CSRF_ACEPTAR_LEGACY``). Un token vacío o ausente nunca es válido: la
-    ausencia de credencial no es un caso a tolerar, es el ataque.
+    Un token vacío o ausente nunca es válido: la ausencia de credencial no es
+    un caso a tolerar, es el ataque.
     """
     if not token or not session_id:
         return False
-    if validate_csrf_token(token, session_id, max_age=max_age):
-        return True
-    if not legacy_aceptado():
-        return False
-    # En bytes: con `str`, compare_digest lanza ante un token no ASCII.
-    return hmac.compare_digest(token.encode(), legacy_csrf_token(session_id).encode())
+    return validate_csrf_token(token, session_id, max_age=max_age)
 
 
 __all__ = [
     "DEFAULT_MAX_AGE_SECONDS",
-    "LEGACY_GRACE_ENV",
     "csrf_token_valido",
     "generate_csrf_token",
-    "legacy_aceptado",
-    "legacy_csrf_token",
     "validate_csrf_token",
 ]

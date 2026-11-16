@@ -333,7 +333,7 @@ def test_con_pliegos_con_oficiales_de_placsp() -> None:
                 "lote_numero": None,
                 "orden": 1,
                 "clase": "economica",
-                "tipo_codigo": "1",
+                "tipo_codigo": "5",
                 "descripcion": "Volumen anual de negocios",
                 "umbral_importe": 480_000.0,
                 "moneda": "EUR",
