@@ -113,6 +113,20 @@ class TestValidateCsrfToken:
         assert csrf_token_valido(legacy, session) is False
         assert csrf_token_valido(generate_csrf_token(session), session) is True
 
+    @pytest.mark.parametrize(
+        "token",
+        ["ñ", "kid:ñ:sig", "kid:١٢٣:sig", "ñ:123:sig"],
+        ids=["entero", "ts", "ts-digitos-unicode", "kid"],
+    )
+    def test_non_ascii_token_rejected_without_raising(self, token: str) -> None:
+        """Un X-CSRF-Token no ASCII se rechaza; lanzar daría un 500 (lo que arregló #752)."""
+        session = "sess"
+        real = generate_csrf_token(session)
+        con_sig_no_ascii = real.rsplit(":", 1)[0] + ":ñ"
+
+        assert csrf_token_valido(token, session) is False
+        assert csrf_token_valido(con_sig_no_ascii, session) is False
+
     def test_non_numeric_timestamp_rejected(self) -> None:
         session = "sess"
         token = generate_csrf_token(session)
