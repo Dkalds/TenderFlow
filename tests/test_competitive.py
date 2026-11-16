@@ -980,6 +980,13 @@ def test_competitor_alerts_detecta_nuevas_y_territorio(db, monkeypatch):
     sent.clear()
     assert competitor_alerts.check_and_notify() == 0
 
+    # Reingerir W-01 borra e inserta su adjudicación y re-sella su
+    # `fecha_extraccion`: no es una novedad y no debe volver a avisar.
+    insert_contract(db, "W-01", "Watched SL", nif="B99999997")
+    resolve(db)
+    assert competitor_alerts.check_and_notify() == 0
+    assert sent == []
+
     # Nueva adjudicación en CCAA nueva → alerta con marca de territorio
     insert_contract(db, "W-02", "Watched SL", nif="B99999997", ccaa="Galicia")
     resolve(db)

@@ -6,9 +6,9 @@ tags: [database, schema, generado]
 
 <!-- generado por scripts/gen_schema_doc.py — no editar a mano -->
 
-Generado: 2026-11-10
+Generado: 2026-11-16
 
-Revisión Alembic aplicada: `v183_api_keys_activa_con_dueno`.
+Revisión Alembic aplicada: `v185_adjudicaciones_primera_extraccion`.
 
 Catálogo de una base Postgres recién migrada con `alembic upgrade head`. Se listan
 las tablas de `public` agrupadas por familia, con sus columnas
@@ -24,7 +24,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 
 | Familia | Tablas | Columnas | Índices |
 |---|---:|---:|---:|
-| Licitaciones y fuente | 15 | 203 | 67 |
+| Licitaciones y fuente | 15 | 204 | 67 |
 | Documentos y pliegos | 6 | 67 | 13 |
 | Empresas y mercado | 6 | 34 | 11 |
 | Organizaciones y oportunidades | 16 | 156 | 35 |
@@ -33,7 +33,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | ML y predicciones | 8 | 63 | 14 |
 | Operación y observabilidad | 6 | 46 | 11 |
 | Otras | 25 | 215 | 40 |
-| **Total** | **110** | **1032** | **258** |
+| **Total** | **110** | **1033** | **258** |
 
 ## Licitaciones y fuente
 
@@ -61,6 +61,7 @@ migración que los declara— y, por supuesto, cualquier dato.
 | `empresa_id` | `integer` | sí |
 | `lote_id` | `integer` | sí |
 | `fecha_adjudicacion_ts` | `timestamp with time zone` | sí |
+| `primera_extraccion` | `text` | sí |
 
 Claves: `PRIMARY KEY (id)`
 

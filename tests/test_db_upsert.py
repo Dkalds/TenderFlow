@@ -418,6 +418,61 @@ def test_replace_adjudicaciones_replaces(db):
     assert "Empresa A" not in names
 
 
+@pytest.mark.parametrize("camino", ["simple", "batch", "batch_fila_a_fila"])
+def test_replace_adjudicaciones_conserva_primera_extraccion(db, camino):
+    """v185: la reingesta re-sella ``fecha_extraccion`` y conserva ``primera_extraccion``.
+
+    La alerta de competidores decide «nueva» por ``primera_extraccion``; si el
+    reemplazo (DELETE + INSERT) la moviera, cada reingesta repetiría el aviso.
+    La fila sin gemela borrada es nueva y se queda con su hora de escritura.
+    ``batch_fila_a_fila`` mete una fila inválida para forzar el camino lento,
+    que deshace el DELETE y vuelve a borrar licitación a licitación.
+    """
+    from db.database import connect
+    from db.upsert import (
+        Adjudicacion,
+        replace_adjudicaciones,
+        replace_adjudicaciones_batch,
+        upsert_licitaciones,
+    )
+
+    upsert_licitaciones([make_licitacion()])
+    antes, ahora = "2026-01-01T00:00:00+00:00", "2026-11-16T12:00:00+00:00"
+
+    def adj(nif: str, extraccion: str, **kw) -> Adjudicacion:
+        return Adjudicacion(
+            licitacion_id="TEST-001",
+            nombre=f"Empresa {nif}",
+            nif=nif,
+            importe_adjudicado=1000.0,
+            fecha_extraccion=extraccion,
+            **kw,
+        )
+
+    def reemplazar(items: list[Adjudicacion]) -> None:
+        if camino == "simple":
+            replace_adjudicaciones("TEST-001", items)
+        else:
+            replace_adjudicaciones_batch({"TEST-001": items})
+
+    reemplazar([adj("B11111111", antes)])
+    segunda = [adj("B11111111", ahora), adj("B22222222", ahora)]
+    if camino == "batch_fila_a_fila":
+        segunda.append(adj("B33333333", ahora, fecha_adjudicacion="01/01/2026"))
+    reemplazar(segunda)
+
+    with connect() as c:
+        filas = c.execute(
+            "SELECT nif, fecha_extraccion, primera_extraccion FROM adjudicaciones "
+            "WHERE licitacion_id = %s ORDER BY nif",
+            ["TEST-001"],
+        ).fetchall()
+    assert [tuple(f) for f in filas] == [
+        ("B11111111", ahora, antes),
+        ("B22222222", ahora, ahora),
+    ]
+
+
 def _drop_count() -> float | None:
     """Lee upsert_rows_dropped_total{table='adjudicaciones'} desde el REGISTRY.
 

@@ -596,8 +596,16 @@ def _fila_licitacion(
 # lote_numero_raw es parse-only (ver docstring de Adjudicacion): nunca es
 # columna de `adjudicaciones`, así que se excluye de las columnas del INSERT.
 _ADJ_KEYS = tuple(f.name for f in fields(Adjudicacion) if f.name != "lote_numero_raw")
-_ADJ_COLS = ", ".join(_ADJ_KEYS)
-_ADJ_PLACEHOLDERS = ", ".join("%s" for _ in _ADJ_KEYS)
+# `primera_extraccion` (v185) no sale del parseo: la pone `_dedup_adj_rows`
+# desde la fila que borra el reemplazo, o la hora de escritura si es nueva.
+_ADJ_COLS = ", ".join((*_ADJ_KEYS, "primera_extraccion"))
+_ADJ_PLACEHOLDERS = ", ".join("%s" for _ in range(len(_ADJ_KEYS) + 1))
+# Lo que devuelve el DELETE del reemplazo para conservar `primera_extraccion`.
+# El COALESCE cubre las filas que escribió el código anterior a v185.
+_ADJ_BORRADAS_RETURNING = (
+    "RETURNING licitacion_id, lote_id, nif, importe_adjudicado, "
+    "COALESCE(primera_extraccion, fecha_extraccion)"
+)
 
 _LOTE_KEYS = tuple(f.name for f in fields(Lote))
 _LOTE_COLS = ", ".join(_LOTE_KEYS)
@@ -802,8 +810,33 @@ def _detectar_colision_de_organo(lic: Licitacion, organo_guardado: str | None) -
     )
 
 
+def _clave_adj(
+    licitacion_id: str, lote_id: int | None, nif: str | None, importe: float | None
+) -> tuple[Any, ...]:
+    """Clave de deduplicado de una adjudicación: ver :func:`_dedup_adj_rows`."""
+    if lote_id is not None:
+        return (licitacion_id, lote_id, nif, importe)
+    return (licitacion_id, nif, importe)
+
+
+def _primeras_extracciones(borradas: Iterable[Any]) -> dict[tuple[Any, ...], str]:
+    """``primera_extraccion`` de las filas que borró el reemplazo, por clave.
+
+    Si varias comparten clave (alguna con NIF o importe ``NULL``, que la BD no
+    deduplica) se queda la más antigua: el instante en que se vio la primera.
+    """
+    primeras: dict[tuple[Any, ...], str] = {}
+    for lic_id, lote_id, nif, importe, primera in borradas:
+        clave = _clave_adj(lic_id, lote_id, nif, importe)
+        if primera is not None and (clave not in primeras or primera < primeras[clave]):
+            primeras[clave] = primera
+    return primeras
+
+
 def _dedup_adj_rows(
-    licitacion_id: str, adjs: Iterable[Adjudicacion]
+    licitacion_id: str,
+    adjs: Iterable[Adjudicacion],
+    primeras: dict[tuple[Any, ...], str],
 ) -> list[tuple[Adjudicacion, list[Any]]]:
     """Deduplica en memoria replicando las dos unique parciales de la BD
     (v65_lotes: ``..._sin_lote`` y ``..._lic_lote_nif_importe``).
@@ -822,22 +855,26 @@ def _dedup_adj_rows(
     SQL trata NULL como distinto de NULL, así que una clave con cualquier
     componente NULL nunca conflictúa: esas filas **no** se deduplican, o se
     perderían adjudicaciones sin NIF que la BD sí acepta.
+
+    La misma clave recupera de ``primeras`` (:func:`_primeras_extracciones`)
+    la ``primera_extraccion`` de la fila borrada: sin ella, cada reingesta
+    haría pasar por nueva una adjudicación ya avisada (v185). Una fila sin
+    gemela borrada es nueva y se queda con su ``fecha_extraccion``.
     """
     seen: set[tuple[Any, ...]] = set()
     out: list[tuple[Adjudicacion, list[Any]]] = []
     for adj in adjs:
         data = asdict(adj)
-        key: tuple[Any, ...]
-        if data["lote_id"] is not None:
-            key = (data["licitacion_id"], data["lote_id"], data["nif"], data["importe_adjudicado"])
-        else:
-            key = (data["licitacion_id"], data["nif"], data["importe_adjudicado"])
+        key = _clave_adj(
+            data["licitacion_id"], data["lote_id"], data["nif"], data["importe_adjudicado"]
+        )
         if None not in key:
             if key in seen:
                 _log.debug("adj_dedup_unique", licitacion_id=licitacion_id, nif=adj.nif)
                 continue
             seen.add(key)
-        out.append((adj, [data[k] for k in _ADJ_KEYS]))
+        primera = primeras.get(key, data["fecha_extraccion"])
+        out.append((adj, [*(data[k] for k in _ADJ_KEYS), primera]))
     return out
 
 
@@ -941,8 +978,11 @@ def replace_adjudicaciones(
     """
     failures: list[tuple[BaseException, str]] = []
     with connect() as c:
-        c.execute("DELETE FROM adjudicaciones WHERE licitacion_id = %s", [licitacion_id])
-        rows = _dedup_adj_rows(licitacion_id, items)
+        borradas = c.execute(
+            f"DELETE FROM adjudicaciones WHERE licitacion_id = %s {_ADJ_BORRADAS_RETURNING}",
+            [licitacion_id],
+        ).fetchall()
+        rows = _dedup_adj_rows(licitacion_id, items, _primeras_extracciones(borradas))
         if _try_insert_adj_batch(c, [vals for _, vals in rows]):
             persisted, dropped = len(rows), 0
         else:
@@ -992,15 +1032,23 @@ def replace_adjudicaciones_batch(
         # DELETE agrupado, particionado para respetar el límite de parámetros
         # por sentencia (SQLITE_MAX_VARIABLE_NUMBER).
         _CHUNK = 500
+        borradas: list[Any] = []
         for i in range(0, len(lic_ids), _CHUNK):
             id_chunk = lic_ids[i : i + _CHUNK]
             placeholders = ", ".join("%s" for _ in id_chunk)
-            c.execute(
-                f"DELETE FROM adjudicaciones WHERE licitacion_id IN ({placeholders})",
+            borradas += c.execute(
+                f"DELETE FROM adjudicaciones WHERE licitacion_id IN ({placeholders}) "
+                f"{_ADJ_BORRADAS_RETURNING}",
                 id_chunk,
-            )
+            ).fetchall()
 
-        grupos = [(lic_id, _dedup_adj_rows(lic_id, adjs)) for lic_id, adjs in adj_por_lic.items()]
+        # El camino lento reutiliza estas filas: su DELETE por licitación vuelve
+        # a borrar exactamente lo que deshizo el ROLLBACK de `adj_delete`.
+        primeras = _primeras_extracciones(borradas)
+        grupos = [
+            (lic_id, _dedup_adj_rows(lic_id, adjs, primeras))
+            for lic_id, adjs in adj_por_lic.items()
+        ]
         todas = [vals for _, rows in grupos for _, vals in rows]
 
         if _try_insert_adj_batch(c, todas):

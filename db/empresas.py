@@ -378,10 +378,11 @@ _PARTIR_SQL = (
     f"WITH partes AS ({_PARTES_SQL}) "
     "INSERT INTO adjudicaciones (licitacion_id, nif, nombre, provincia, ccaa, nuts_code, "
     "       fecha_adjudicacion, n_ofertas_recibidas, oferta_minima, oferta_maxima, "
-    "       result_code, result_description, fecha_extraccion, lote_id) "
+    "       result_code, result_description, fecha_extraccion, primera_extraccion, lote_id) "
     "SELECT a.licitacion_id, p.nif, p.nombre, a.provincia, a.ccaa, a.nuts_code, "
     "       a.fecha_adjudicacion, a.n_ofertas_recibidas, a.oferta_minima, a.oferta_maxima, "
-    "       a.result_code, a.result_description, a.fecha_extraccion, a.lote_id "
+    "       a.result_code, a.result_description, a.fecha_extraccion, "
+    "       COALESCE(a.primera_extraccion, a.fecha_extraccion), a.lote_id "
     "  FROM partes p JOIN adjudicaciones a ON a.id = p.origen"
 )
 
