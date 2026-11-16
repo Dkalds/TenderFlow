@@ -348,7 +348,7 @@ def test_explain_responde_503_sin_sklearn(monkeypatch: pytest.MonkeyPatch) -> No
     from api.routes.licitaciones import analitica
 
     async def fake_run_db(fn: Any, *args: Any, **kwargs: Any) -> Any:
-        return ("Implantación SAP S/4HANA", "Migración", "sap")
+        return ("Implantación SAP S/4HANA", "Migración", "sap", None, None, None)
 
     async def fake_run_ml(fn: Any, *args: Any, **kwargs: Any) -> Any:
         return fn(*args, **kwargs)
@@ -369,7 +369,7 @@ def test_explain_sigue_dando_500_ante_otro_error(monkeypatch: pytest.MonkeyPatch
     from api.routes.licitaciones import analitica
 
     async def fake_run_db(fn: Any, *args: Any, **kwargs: Any) -> Any:
-        return ("Implantación SAP S/4HANA", "Migración", "sap")
+        return ("Implantación SAP S/4HANA", "Migración", "sap", None, None, None)
 
     async def fake_run_ml(fn: Any, *args: Any, **kwargs: Any) -> Any:
         return fn(*args, **kwargs)

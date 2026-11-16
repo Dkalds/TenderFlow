@@ -79,7 +79,7 @@ def test_repo_get_by_ids_no_existe(tmp_db):
 
 
 def test_repo_get_text_for_ml_encontrado(tmp_db):
-    """get_text_for_ml devuelve (titulo, descripcion, tecnologia) para id existente."""
+    """get_text_for_ml devuelve texto, tecnologia y las señales estructurales del modelo."""
     db_mod, _ = tmp_db
     seed_licitaciones(db_mod, 1)
 
@@ -88,10 +88,13 @@ def test_repo_get_text_for_ml_encontrado(tmp_db):
     repo = LicitacionRepository()
     result = repo.get_text_for_ml("L000")
     assert result is not None
-    titulo, desc, tech = result
+    titulo, desc, tech, cpv, importe, organo = result
     assert "SAP" in titulo
     assert isinstance(desc, str)
     assert tech == "SAP"
+    assert cpv == "72000000"
+    assert importe is None  # la semilla no trae importe
+    assert organo == "Ministerio"
 
 
 def test_repo_get_text_for_ml_no_existe(tmp_db):

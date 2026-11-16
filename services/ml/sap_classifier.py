@@ -678,12 +678,25 @@ class SAPClassifier:
 
     # ── Explicabilidad ────────────────────────────────────────────────────
 
-    def explain(self, text: str, top_k: int = 5) -> dict[str, Any]:
+    def explain(
+        self,
+        text: str,
+        top_k: int = 5,
+        *,
+        cpv: str | None = None,
+        importe: float | None = None,
+        organo: str | None = None,
+    ) -> dict[str, Any]:
         """Devuelve los términos que más contribuyen a la predicción.
 
         Con CalibratedClassifierCV, extrae el coeficiente medio de los
-        clasificadores base de cada fold y lo multiplica por la contribución
-        TF-IDF del texto. Equivalente al SHAP value para modelos lineales.
+        clasificadores base de cada fold y lo multiplica por la feature del
+        texto **ya escalada** (lo que de verdad entra al clasificador).
+        Equivalente al SHAP value para modelos lineales.
+
+        ``cpv``/``importe``/``organo`` se aplican con :func:`_augment_text`
+        igual que en ``predict``: sin ellos la confianza no era la del
+        ``ml_proba`` de la misma licitación.
 
         Returns:
             Dict con ``prediction``, ``confidence``, ``top_features`` (lista
@@ -694,6 +707,7 @@ class SAPClassifier:
 
         import numpy as np
 
+        text = _augment_text(text, cpv=cpv, importe=importe, organo=organo)
         proba = self.pipeline.predict_proba([text])[0]
         confidence = float(proba[1])
 
@@ -709,8 +723,9 @@ class SAPClassifier:
                 "warning": "No se pudieron extraer pasos del pipeline.",
             }
 
-        # Transformar el texto a través del FeatureUnion
-        tfidf_matrix = feature_step.transform([text])
+        # Transformar el texto con todos los pasos previos al clasificador
+        # (FeatureUnion + MaxAbsScaler): el coef pondera la feature escalada.
+        tfidf_matrix = self.pipeline[:-1].transform([text])
         feature_names = feature_step.get_feature_names_out()
 
         # CalibratedClassifierCV: extraer coef promedio de los estimadores base

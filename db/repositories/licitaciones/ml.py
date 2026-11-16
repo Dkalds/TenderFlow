@@ -61,14 +61,31 @@ def etiqueta_humana(
 class MlMixin:
     """Lecturas que alimentan el entrenamiento y la vigilancia del modelo."""
 
-    def get_text_for_ml(self, id_externo: str) -> tuple[str, str, str | None] | None:
-        """Devuelve (titulo, descripcion, tecnologia) o None."""
+    def get_text_for_ml(
+        self, id_externo: str
+    ) -> tuple[str, str, str | None, str | None, float | None, str | None] | None:
+        """Devuelve (titulo, descripcion, tecnologia, cpv, importe, organo) o None.
+
+        ``cpv``/``importe``/``organo`` son las señales estructurales con las que
+        se puntúa ``ml_proba``: ``/explain`` las necesita para dar la misma
+        probabilidad.
+        """
         with connect_read() as c:
             row = c.execute(
-                "SELECT titulo, descripcion, tecnologia FROM licitaciones WHERE id_externo = %s",
+                "SELECT titulo, descripcion, tecnologia, cpv, importe, organo_contratacion "
+                "FROM licitaciones WHERE id_externo = %s",
                 (id_externo,),
             ).fetchone()
-        return (str(row[0] or ""), str(row[1] or ""), row[2]) if row else None
+        if not row:
+            return None
+        return (
+            str(row[0] or ""),
+            str(row[1] or ""),
+            row[2],
+            str(row[3]) if row[3] else None,
+            float(row[4]) if row[4] else None,
+            str(row[5]) if row[5] else None,
+        )
 
     def get_unlabelled_candidates(self, limit: int = 500) -> list[CandidatoEtiquetadoRow]:
         """Licitaciones sin etiqueta humana en ml_feedback, para active learning.
