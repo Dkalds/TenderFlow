@@ -125,8 +125,9 @@ def test_primera_extraccion_se_escribe_solo_en_el_insert() -> None:
     assert "primera_extraccion" not in _LIC_UPDATES
 
 
-def test_primera_extraccion_es_por_defecto_la_fecha_de_extraccion() -> None:
+def test_primera_extraccion_no_la_fija_el_parseo() -> None:
+    """Sin valor explícito la pone el upsert al escribir, no el parseo."""
     lic = Licitacion(id_externo="X", titulo="t", fecha_extraccion="2026-09-01T08:00:00+00:00")
-    assert lic.primera_extraccion == "2026-09-01T08:00:00+00:00"
+    assert lic.primera_extraccion is None
     explicita = Licitacion(id_externo="X", titulo="t", primera_extraccion="2025-01-01")
     assert explicita.primera_extraccion == "2025-01-01"

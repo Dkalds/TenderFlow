@@ -56,8 +56,8 @@ _GOLDEN = _FIXTURES / "golden.jsonl"
 # ajuste: significa que alguien borró un caso que un incidente real justificó.
 _MIN_CASOS = 25
 
-# Rellenados por `default_factory=now_utc_iso` (`primera_extraccion` la copia
-# de `fecha_extraccion` en `__post_init__`): no son salida del parseo.
+# No son salida del parseo: `fecha_extraccion` la rellena
+# `default_factory=now_utc_iso` y `primera_extraccion` el upsert al escribir.
 _CAMPOS_NO_DETERMINISTAS = frozenset({"fecha_extraccion", "primera_extraccion"})
 
 

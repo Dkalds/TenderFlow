@@ -27,7 +27,7 @@ Tres reglas comunes:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from db.database import get_cursor, set_cursor
@@ -61,6 +61,13 @@ DIAS_VENCIMIENTO = 183
 #: caído un fin de semana largo no se salta ningún contrato, y la idempotencia
 #: por ``(cuenta, expediente, fecha_fin)`` impide repetir los que ya avisaron.
 FRANJA_VENCIMIENTO_DIAS = 7
+#: Lo más reciente que lee el aviso de publicación: ``primera_extraccion`` se
+#: fija dentro de la transacción del upsert, antes de su COMMIT, así que una
+#: fila puede hacerse visible después de una pasada con un valor anterior a
+#: ella; si el cursor ya la hubiera rebasado, su aviso no saldría nunca. Cubre
+#: con holgura una transacción de ``db/upsert.py::_upsert_chunk`` (cada
+#: sentencia acotada por ``statement_timeout``); el aviso sale ese rato tarde.
+MARGEN_COMMIT_CUENTAS = timedelta(minutes=10)
 
 #: Techo de filas por productor y pasada. Si se llena, el cursor avanza sólo
 #: hasta la última fila leída y el resto sale en la pasada siguiente.
@@ -260,7 +267,7 @@ def emitir_avisos_de_cuentas(ahora: datetime | None = None) -> int:
     órgano reciben cada una el suyo, y los destinatarios son los miembros
     activos de cada una —seguir una cuenta es una decisión de equipo—.
     """
-    marca = (ahora or datetime.now(UTC)).isoformat()
+    marca = ((ahora or datetime.now(UTC)) - MARGEN_COMMIT_CUENTAS).isoformat()
     cursor = get_cursor(CURSOR_CUENTAS)
     desde = (cursor or {}).get("last_seen_updated")
     if not desde:

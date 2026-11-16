@@ -1305,6 +1305,41 @@ def test_replace_adjudicaciones_batch_error_inesperado_no_tumba_el_resto(db, mon
     assert (persisted, dropped, failed) == (2, 1, 1)
 
 
+def test_replace_adjudicaciones_batch_no_cuenta_descartes_de_una_licitacion_deshecha(
+    db, monkeypatch
+):
+    """Una fila descartada por constraint en una licitación que luego se
+    deshace (``ROLLBACK TO SAVEPOINT adj_lic``) no sube
+    ``upsert_rows_dropped_total``: el descarte no llegó a la BD, igual que no
+    llega a la DLQ."""
+    import db.upsert as upsert_mod
+    from db.upsert import replace_adjudicaciones_batch, upsert_licitaciones
+
+    antes = _drop_count()
+    if antes is None:
+        pytest.skip("prometheus_client no instalado: la métrica es no-op")
+    upsert_licitaciones([make_licitacion(id_externo=i) for i in ("LIC-B", "LIC-C")])
+    real = upsert_mod._insert_adj_rowwise
+
+    def _rowwise_que_rompe_tras_descartar_en_c(c, lic_id, rows, failures):
+        resultado = real(c, lic_id, rows, failures)
+        if lic_id == "LIC-C":
+            c.execute("SELECT 1/0")  # tras descartar su fila mala
+        return resultado
+
+    monkeypatch.setattr(upsert_mod, "_insert_adj_rowwise", _rowwise_que_rompe_tras_descartar_en_c)
+    batch = {
+        "LIC-B": [_make_adj(licitacion_id="LIC-B", nif="B1", fecha_adjudicacion="bad")],
+        "LIC-C": [
+            _make_adj(licitacion_id="LIC-C", nif="C0", fecha_adjudicacion="bad"),
+            _make_adj(licitacion_id="LIC-C", nif="C1"),
+        ],
+    }
+
+    assert replace_adjudicaciones_batch(batch) == (0, 1, 1)
+    assert _drop_count() - antes == 1.0
+
+
 def _leer_extracciones(id_externo: str) -> tuple:
     from db.database import connect
 
@@ -1319,7 +1354,14 @@ def _leer_extracciones(id_externo: str) -> tuple:
 @pytest.mark.parametrize("camino", ["simple", "con_historial"])
 def test_primera_extraccion_se_escribe_en_el_insert_y_no_se_mueve(db, camino):
     """``primera_extraccion`` (v100) es el primer avistamiento: entra con la
-    primera ingesta y una re-ingesta posterior no la toca (ni a su sombra)."""
+    primera ingesta y una re-ingesta posterior no la toca (ni a su sombra).
+
+    Es la hora de la escritura, no la del parseo (``fecha_extraccion``): el
+    conector parsea un lote entero, con fetches de red de por medio, antes de
+    escribirlo, y una fila que commitea con una hora vieja puede caer bajo el
+    cursor del aviso de «publicación nueva» que ya pasó."""
+    from datetime import UTC, datetime
+
     from db.fechas_ts import a_timestamptz
     from db.upsert import upsert_licitaciones, upsert_licitaciones_with_history
 
@@ -1329,13 +1371,31 @@ def test_primera_extraccion_se_escribe_en_el_insert_y_no_se_mueve(db, camino):
         else:
             upsert_licitaciones_with_history([lic], source="placsp")
 
-    ingerir(make_licitacion(fecha_extraccion="2026-09-01T08:00:00+00:00"))
+    parseada = make_licitacion(fecha_extraccion="2026-09-01T08:00:00+00:00")
+    antes = datetime.now(UTC)
+    ingerir(parseada)
+    despues = datetime.now(UTC)
+    primera, _, primera_ts = _leer_extracciones("TEST-001")
+    assert antes <= datetime.fromisoformat(primera) <= despues
+    assert primera_ts == a_timestamptz(primera)
+
     ingerir(make_licitacion(fecha_extraccion="2026-10-01T08:00:00+00:00", estado="ADJ"))
 
-    primera, ultima, primera_ts = _leer_extracciones("TEST-001")
-    assert primera == "2026-09-01T08:00:00+00:00"
-    assert ultima == "2026-10-01T08:00:00+00:00"
-    assert primera_ts == a_timestamptz("2026-09-01T08:00:00+00:00")
+    assert tuple(_leer_extracciones("TEST-001")) == (
+        primera,
+        "2026-10-01T08:00:00+00:00",
+        primera_ts,
+    )
+
+
+def test_primera_extraccion_explicita_se_respeta(db):
+    from db.upsert import upsert_licitaciones_with_history
+
+    upsert_licitaciones_with_history(
+        [make_licitacion(primera_extraccion="2025-01-01T00:00:00+00:00")], source="placsp"
+    )
+
+    assert _leer_extracciones("TEST-001")[0] == "2025-01-01T00:00:00+00:00"
 
 
 def test_reingesta_no_rellena_una_primera_extraccion_nula(db):

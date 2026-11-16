@@ -329,7 +329,8 @@ def test_fila_licitacion_anade_las_fechas_traducidas() -> None:
     assert fila[: len(base)] == base
     assert fila[len(base) :] == valores_lic(data)
     extraccion, inicio, fin, actualizacion, primera = fila[len(base) :]
-    assert primera == extraccion
+    # Sin valor en el dataclass: la rellena el upsert antes de llamar aquí.
+    assert primera is None
     assert extraccion == a_timestamptz(data["fecha_extraccion"]) and extraccion is not None
     assert inicio == datetime(2026, 1, 1, tzinfo=_UTC)
     assert fin == datetime(2026, 12, 31, tzinfo=_UTC)

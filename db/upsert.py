@@ -363,12 +363,12 @@ class Licitacion:
     fecha_extraccion: str = field(default_factory=now_utc_iso)
     #: Primer avistamiento del expediente (v100): solo entra en el INSERT
     #: (``_LIC_INSERT_ONLY_FIELDS``), así que una re-ingesta no lo mueve. Sin
-    #: valor explícito, es esta misma extracción.
+    #: valor explícito, el upsert pone la hora de la escritura, ya dentro de su
+    #: transacción, y no la del parseo: ``run_connector`` parsea un lote entero
+    #: (con fetches de red y reintentos) antes de escribirlo, y una fila que
+    #: commitea con una hora vieja caería bajo el cursor del aviso de
+    #: «publicación nueva» (``services/avisos_outbox.py``) que ya pasó por ahí.
     primera_extraccion: str | None = None
-
-    def __post_init__(self) -> None:
-        if self.primera_extraccion is None:
-            self.primera_extraccion = self.fecha_extraccion
 
 
 @dataclass
@@ -731,8 +731,10 @@ def upsert_licitaciones(items: Iterable[Licitacion]) -> tuple[int, int]:
         con_sombras = _con_sombras(c)
         con_fechas_ts = _con_fechas_ts(c)
         lic_rows: list[list[Any]] = []
+        ahora = now_utc_iso()
         for lic in batch:
             data = asdict(lic)
+            data["primera_extraccion"] = data["primera_extraccion"] or ahora
             if lic.id_externo in existing_pub:
                 # No sobrescribir con una fecha de publicación posterior (fase
                 # de adjudicación/formalización): conservar el primer anuncio.
@@ -875,8 +877,9 @@ def _insert_adj_rowwise(
             if kind == "unique":
                 _log.debug("adj_dedup_unique", licitacion_id=licitacion_id, nif=adj.nif)
             else:
+                # La métrica la sube el llamador tras el COMMIT: aquí el
+                # descarte aún puede deshacerse con su licitación.
                 dropped += 1
-                upsert_rows_dropped_total.labels(table="adjudicaciones").inc()
                 _log.warning(
                     "upsert_row_dropped",
                     table="adjudicaciones",
@@ -944,6 +947,7 @@ def replace_adjudicaciones(
             persisted, dropped = len(rows), 0
         else:
             persisted, dropped = _insert_adj_rowwise(c, licitacion_id, rows, failures)
+    upsert_rows_dropped_total.labels(table="adjudicaciones").inc(dropped)
     # Persistir failures fuera de la transacción del upsert para no
     # interferir con su lock; record_failure es best-effort.
     for caught_exc, payload_ref in failures:
@@ -1029,6 +1033,7 @@ def replace_adjudicaciones_batch(
                 c.execute("RELEASE SAVEPOINT adj_lic")
                 persisted += p
                 dropped += d
+    upsert_rows_dropped_total.labels(table="adjudicaciones").inc(dropped)
     # Persistir failures fuera de la transacción del upsert (best-effort).
     for caught_exc, payload_ref in failures:
         record_failure(run_id, fuente, caught_exc, scope="adjudicacion", payload_ref=payload_ref)
@@ -1280,9 +1285,11 @@ def _upsert_chunk(
         con_fechas_ts = _con_fechas_ts(c)
         lic_rows: list[list[Any]] = []
         history_rows: list[tuple[str, str, str, str, str]] = []
+        ahora = now_utc_iso()
 
         for lic in chunk:
             data = asdict(lic)
+            data["primera_extraccion"] = data["primera_extraccion"] or ahora
             if lic.id_externo in existing_pub:
                 # No sobrescribir con una fecha de publicación posterior (fase
                 # de adjudicación/formalización): conservar el primer anuncio.
