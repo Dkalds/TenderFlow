@@ -277,8 +277,8 @@ def _columnas_como_iterrows(df: pd.DataFrame, nombres: tuple[str, ...]) -> list[
     """Los valores de cada columna tal como los daba ``row.get`` de ``iterrows``.
 
     ``iterrows`` construye cada fila como una ``Series`` a partir de la matriz
-    intercalada (``df.values``), y con pandas 3 (``future.infer_string``) esa
-    ``Series`` infiere el dtype de texto cuando todos los valores de la fila son
+    intercalada (``df.values``), y desde pandas 3 (el mínimo de
+    ``requirements.in``) esa ``Series`` infiere el dtype de texto cuando todos los valores de la fila son
     texto o ausentes: entonces un ``None`` sale como ``nan``. En el resto de
     filas se queda ``None``. Aquí importa porque ``str(nan or "")`` es «nan» y
     ``str(None or "")`` es «»: el texto que se codifica, y con él el embedding
@@ -288,7 +288,6 @@ def _columnas_como_iterrows(df: pd.DataFrame, nombres: tuple[str, ...]) -> list[
     no existe, como ``row.get``.
     """
     matriz = df.values
-    infiere_texto = bool(pd.get_option("future.infer_string"))
     es_fila_de_texto: dict[int, bool] = {}
     columnas: list[list[object]] = []
     for nombre in nombres:
@@ -296,14 +295,13 @@ def _columnas_como_iterrows(df: pd.DataFrame, nombres: tuple[str, ...]) -> list[
             columnas.append([None] * len(df))
             continue
         valores: list[object] = list(matriz[:, df.columns.get_loc(nombre)])
-        if infiere_texto:
-            for i, valor in enumerate(valores):
-                if valor is not None:
-                    continue
-                if i not in es_fila_de_texto:
-                    es_fila_de_texto[i] = infer_dtype(matriz[i], skipna=True) == "string"
-                if es_fila_de_texto[i]:
-                    valores[i] = math.nan
+        for i, valor in enumerate(valores):
+            if valor is not None:
+                continue
+            if i not in es_fila_de_texto:
+                es_fila_de_texto[i] = infer_dtype(matriz[i], skipna=True) == "string"
+            if es_fila_de_texto[i]:
+                valores[i] = math.nan
         columnas.append(valores)
     return columnas
 

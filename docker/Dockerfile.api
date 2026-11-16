@@ -15,6 +15,36 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libffi-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Modelo ONNX con el que la API codifica la CONSULTA de la búsqueda por
+# significado (`services/embeddings_onnx.py`; backlog P2 «La búsqueda por
+# significado no corre en producción»). Es el mismo
+# `paraphrase-multilingual-MiniLM-L12-v2` con el que el pipeline embebió
+# `documento_chunks`, exportado a ONNX: ~470 MB en disco y en memoria una vez
+# cargado (perezosamente, en la primera búsqueda), sin PyTorch.
+#
+# Va antes de las dependencias: el script es solo biblioteca estándar, así que
+# la capa depende únicamente de él y de estos build args, y un cambio de
+# lockfile no vuelve a bajar ~470 MB.
+#
+# Revisión fija (un commit del repo de Hugging Face, no una rama) y sha256 de
+# cada fichero: `descargar_modelo_embeddings.py` no tiene modo «sin
+# verificar». Sin `EMBEDDINGS_ONNX_REVISION` no descarga nada y la imagen sale
+# como antes: es el caso del CI y de los servicios que no la declaran (el
+# worker y el MCP no codifican consultas). Render pasa las variables del
+# servicio como build args, así que se declaran en `tenderflow-api`; los
+# valores y cómo obtenerlos están en `docs/runbooks/model-rollback.md`
+# § «Modelo ONNX de embeddings», verificados el 2026-10-25. No van como valores
+# por defecto aquí porque esta imagen también la construyen el CI y servicios
+# que no codifican consultas: con defaults, todos bajarían ~470 MB. La fusión
+# que el modelo habilita está además detrás de la flag `busqueda_semantica`.
+ARG EMBEDDINGS_ONNX_REPO=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+ARG EMBEDDINGS_ONNX_REVISION=
+ARG EMBEDDINGS_ONNX_SHA256_MODELO=
+ARG EMBEDDINGS_ONNX_SHA256_TOKENIZADOR=
+ARG EMBEDDINGS_ONNX_SHA256_CONFIG=
+COPY scripts/descargar_modelo_embeddings.py ./
+RUN python descargar_modelo_embeddings.py --destino /modelos/embeddings
+
 # C3.1 — corte API / pipeline (2026-09-18).
 #
 # La imagen instala por defecto `requirements-api.txt`: sin lxml, scikit-learn,
@@ -43,36 +73,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #   el entrypoint ejecuta tal cual cuando recibe un comando en vez de opciones.
 #
 # El CI construye las tres variantes (`.github/workflows/ci.yml::docker-build`).
+#
+# Solo se copian los lockfiles: `pyproject.toml` no lo lee este `pip install`,
+# y copiarlo aquí invalidaba la capa (y las siguientes) en cada cambio de
+# configuración de ruff o mypy.
 ARG REQUIREMENTS_FILE=requirements-api.txt
-COPY requirements-api.txt requirements-pipeline.txt requirements-mcp.txt pyproject.toml ./
+COPY requirements-api.txt requirements-pipeline.txt requirements-mcp.txt ./
 RUN pip install --upgrade "pip>=26.1" \
     && pip install --prefix=/install --no-cache-dir --require-hashes -r "${REQUIREMENTS_FILE}"
 
-# Modelo ONNX con el que la API codifica la CONSULTA de la búsqueda por
-# significado (`services/embeddings_onnx.py`; backlog P2 «La búsqueda por
-# significado no corre en producción»). Es el mismo
-# `paraphrase-multilingual-MiniLM-L12-v2` con el que el pipeline embebió
-# `documento_chunks`, exportado a ONNX: ~470 MB en disco y en memoria una vez
-# cargado (perezosamente, en la primera búsqueda), sin PyTorch.
-#
-# Revisión fija (un commit del repo de Hugging Face, no una rama) y sha256 de
-# cada fichero: `descargar_modelo_embeddings.py` no tiene modo «sin
-# verificar». Sin `EMBEDDINGS_ONNX_REVISION` no descarga nada y la imagen sale
-# como antes: es el caso del CI y de los servicios que no la declaran (el
-# worker y el MCP no codifican consultas). Render pasa las variables del
-# servicio como build args, así que se declaran en `tenderflow-api`; los
-# valores y cómo obtenerlos están en `docs/runbooks/model-rollback.md`
-# § «Modelo ONNX de embeddings», verificados el 2026-10-25. No van como valores
-# por defecto aquí porque esta imagen también la construyen el CI y servicios
-# que no codifican consultas: con defaults, todos bajarían ~470 MB. La fusión
-# que el modelo habilita está además detrás de la flag `busqueda_semantica`.
-ARG EMBEDDINGS_ONNX_REPO=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-ARG EMBEDDINGS_ONNX_REVISION=
-ARG EMBEDDINGS_ONNX_SHA256_MODELO=
-ARG EMBEDDINGS_ONNX_SHA256_TOKENIZADOR=
-ARG EMBEDDINGS_ONNX_SHA256_CONFIG=
-COPY scripts/descargar_modelo_embeddings.py ./
-RUN python descargar_modelo_embeddings.py --destino /modelos/embeddings
 
 
 # ── Etapa 2: imagen de producción — FastAPI / uvicorn ────────────────────────

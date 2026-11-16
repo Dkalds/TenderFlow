@@ -1,14 +1,15 @@
 # ── Stage 1: Dependencies ─────────────────────────────────────────────
+# Contexto de build: `web/` (docker-compose.yml), con `web/.dockerignore`.
 FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS deps
 WORKDIR /app
-COPY web/package.json web/package-lock.json ./
+COPY package.json package-lock.json ./
 RUN npm ci --production=false --ignore-scripts
 
 # ── Stage 2: Build ───────────────────────────────────────────────────
 FROM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY web/ .
+COPY . .
 
 # Build args for API URL (same-origin in prod, so empty base)
 ARG API_BASE_URL=""

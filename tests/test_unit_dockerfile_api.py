@@ -252,6 +252,85 @@ def test_entrypoint_ejecuta_un_comando_completo_y_conserva_las_opciones(tmp_path
     assert por_defecto.endswith("--workers 1")
 
 
+def _compose_servicio(nombre: str) -> dict[str, object]:
+    import yaml
+
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    servicio: dict[str, object] = compose["services"][nombre]
+    return servicio
+
+
+def _instrucciones(dockerfile: str) -> list[str]:
+    return [
+        linea.strip()
+        for linea in dockerfile.splitlines()
+        if linea.strip() and not linea.lstrip().startswith("#")
+    ]
+
+
+def test_el_scheduler_de_compose_construye_con_las_dependencias_de_ingesta() -> None:
+    """``scheduler.loop`` corre el scraper (lxml, sklearn): la imagen de la API no los trae."""
+    scheduler = _compose_servicio("scheduler")
+    build = scheduler["build"]
+    assert isinstance(build, dict)
+    assert build.get("args", {}).get("REQUIREMENTS_FILE") == "requirements-pipeline.txt"
+    # Con la misma etiqueta que la API, un build pisaría la imagen del otro.
+    assert scheduler["image"] != _compose_servicio("api")["image"]
+
+
+def test_el_scheduler_de_compose_puede_escribir_en_data_dir() -> None:
+    """Con ``read_only`` el scraper no puede bajar ficheros ni escribir informes en ``/data``."""
+    scheduler = _compose_servicio("scheduler")
+    assert scheduler.get("read_only") is True
+    volumenes = scheduler.get("volumes", [])
+    assert isinstance(volumenes, list)
+    assert any(str(v).split(":")[1] == "/data" for v in volumenes), volumenes
+
+
+def test_la_web_de_compose_ve_lo_que_copia_su_dockerfile() -> None:
+    """El ``.dockerignore`` del contexto no puede excluir lo que ``Dockerfile.web`` copia.
+
+    El de la raíz excluye ``web/`` (no va en la imagen de la API), así que la web
+    se construye con ``web/`` como contexto y su propio ``.dockerignore``.
+    """
+    build = _compose_servicio("web")["build"]
+    assert isinstance(build, dict)
+    contexto = (ROOT / str(build["context"])).resolve()
+    dockerfile = (contexto / str(build["dockerfile"])).read_text(encoding="utf-8")
+    ignore = contexto / ".dockerignore"
+    excluidos = (
+        {
+            linea.strip().rstrip("/")
+            for linea in ignore.read_text(encoding="utf-8").splitlines()
+            if linea.strip() and not linea.startswith("#")
+        }
+        if ignore.exists()
+        else set()
+    )
+    for instruccion in _instrucciones(dockerfile):
+        partes = instruccion.split()
+        if partes[0] != "COPY" or any(p.startswith("--from") for p in partes):
+            continue
+        for origen in partes[1:-1]:
+            assert (contexto / origen).exists(), f"{origen} no está en el contexto {contexto}"
+            primero = Path(origen).parts[0] if origen != "." else "."
+            assert primero not in excluidos, f"{origen} lo excluye {ignore}"
+
+
+def test_la_descarga_del_modelo_no_depende_de_pyproject_ni_de_los_lockfiles() -> None:
+    """Tocar ``pyproject.toml`` o un lockfile no debe volver a bajar ~470 MB de modelo.
+
+    En la etapa builder la descarga va antes de copiar los lockfiles, y la
+    instalación de dependencias no copia ``pyproject.toml`` (no lo lee).
+    """
+    dockerfile = (ROOT / "docker" / "Dockerfile.api").read_text(encoding="utf-8")
+    builder = _instrucciones(dockerfile.split("AS runtime")[0])
+    descarga = next(i for i, linea in enumerate(builder) if "descargar_modelo_embeddings" in linea)
+    copias = [i for i, linea in enumerate(builder) if linea.startswith("COPY requirements-")]
+    assert copias and all(descarga < i for i in copias)
+    assert not any("pyproject.toml" in linea for linea in builder if linea.startswith("COPY"))
+
+
 def test_dockerfile_copia_el_lockfile_mcp_y_el_healthcheck_es_configurable() -> None:
     content = (ROOT / "docker" / "Dockerfile.api").read_text()
     copias = [linea for linea in content.splitlines() if linea.startswith("COPY requirements-")]
