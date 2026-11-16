@@ -354,8 +354,24 @@ class ListadoMixin(FiltrosMixin):
         # en el token—; con la sombra, Postgres lo interpreta como
         # `timestamptz` al compararlo, así que la clave (instante, id) ordena
         # igual siempre que el texto guardado sea el mismo instante.
+        #
+        # El orden es `DESC` a secas, con los nulos **delante** (`NULLS FIRST`
+        # implícito): es el que recorren `idx_lic_cursor` y, al revés, el de la
+        # sombra; `NULLS LAST` los dejaría sin uso. Una fila sin fecha viaja en
+        # el cursor como texto vacío (el CHECK de formato de v59 impide guardar
+        # `''`), y entonces lo que sigue es el resto de la cola de nulos y
+        # después todas las fechadas. Sin esta rama, `fecha < ''` no casaba
+        # nada (o fallaba el cast con la sombra) y la página siguiente salía
+        # vacía.
         fecha = _nucleo("fecha_publicacion")
-        if cursor_fecha is not None and cursor_id is not None:
+        if cursor_fecha == "" and cursor_id is not None:
+            clauses.append(
+                or_(
+                    and_(fecha.is_(None), licitaciones.c.id_externo < cursor_id),
+                    fecha.is_not(None),
+                )
+            )
+        elif cursor_fecha is not None and cursor_id is not None:
             clauses.append(
                 or_(
                     fecha < cursor_fecha,

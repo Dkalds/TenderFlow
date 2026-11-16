@@ -91,6 +91,42 @@ def test_cada_fila_una_vez_y_en_orden(sembrado: Any, sort: str, esperado: list[s
     assert total == len(_FILAS)
 
 
+def test_orden_por_defecto_atraviesa_las_fechas_nulas(sembrado: Any) -> None:
+    """Una página que acaba en fecha nula no puede dejar vacía la siguiente.
+
+    El orden por defecto es ``fecha_publicacion DESC`` con los nulos delante
+    (el de ``idx_lic_cursor``), y el cursor de una fila sin fecha viaja como
+    ``|id``: tiene que seguir por la cola de nulos y luego por las fechadas.
+    """
+    from db.database import connect
+
+    with connect() as c:
+        for id_externo in ("C-08", "C-09", "C-10"):
+            c.execute(
+                "INSERT INTO licitaciones "
+                "(id_externo, titulo, fecha_publicacion, tecnologia, fecha_extraccion) "
+                "VALUES (%s, %s, NULL, %s, %s)",
+                (id_externo, f"Sin fecha {id_externo}", "SAP", "2026-01-01"),
+            )
+        c.commit()
+
+    ids: list[str] = []
+    cursor: str | None = None
+    for _ in range(20):
+        params: dict[str, Any] = {"limit": 2}
+        if cursor:
+            params["cursor"] = cursor
+        resp = sembrado.get("/api/v1/licitaciones/cursor", params=params)
+        assert resp.status_code == 200, resp.text
+        pagina = resp.json()
+        ids.extend(item["id_externo"] for item in pagina["items"])
+        if not pagina["has_more"]:
+            break
+        cursor = pagina["next_cursor"]
+
+    assert ids == ["C-10", "C-09", "C-08", "C-07", "C-06", "C-05", "C-04", "C-03", "C-02", "C-01"]
+
+
 def test_un_cursor_de_otro_orden_es_400(sembrado: Any) -> None:
     primera = sembrado.get("/api/v1/licitaciones/cursor", params={"sort": "importe", "limit": 2})
     cursor = primera.json()["next_cursor"]
