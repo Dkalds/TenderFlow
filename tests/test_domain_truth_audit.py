@@ -142,6 +142,21 @@ def test_evaluar_no_reporta_nada_en_rango() -> None:
     assert evaluar(_datos()) == []
 
 
+def test_json_con_alerta_deja_en_stdout_solo_el_json(monkeypatch, capsys) -> None:
+    """El workflow mide una vez: ``--json --check --alert > fichero`` tiene que dar JSON válido."""
+    import json
+    import sys
+
+    import scripts.audit_domain_truth as auditoria
+
+    monkeypatch.setattr(auditoria, "medir_todo", lambda _max_zips: _datos())
+    monkeypatch.setattr("db.database.init_db", lambda: None)
+    monkeypatch.setattr(sys, "argv", ["audit_domain_truth.py", "--json", "--check", "--alert"])
+
+    assert auditoria.main() == 0
+    assert json.loads(capsys.readouterr().out) == json.loads(json.dumps(_datos(), default=str))
+
+
 def test_evaluar_detecta_fuente_sin_plazo() -> None:
     datos = _datos(
         fecha_limite={

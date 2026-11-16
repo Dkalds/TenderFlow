@@ -83,6 +83,7 @@ jobs:
       - name: Run bandit
         run: |
           bandit -c pyproject.toml -r api/ db/ scraper/ scheduler/ config/ shared/ \
+            mcp_server/ services/ llm/ observability/ \
             --severity-level medium \
             --confidence-level medium \
             -f json \

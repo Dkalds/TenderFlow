@@ -342,7 +342,7 @@ exclude_lines = [
 
 [tool.bandit]
 # Configuración para el hook de pre-commit: bandit -c pyproject.toml -r
-targets = ["api", "db", "scraper", "scheduler", "shared", "config", "mcp_server"]
+targets = ["api", "db", "scraper", "scheduler", "shared", "config", "mcp_server", "services", "llm", "observability"]
 skips = [
     "B101",  # assert — cubierto por ruff S101 ya ignorado en tests
     "B603",  # subprocess sin shell — permitido en scheduler

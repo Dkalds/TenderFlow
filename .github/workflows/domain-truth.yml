@@ -7,7 +7,9 @@ name: Domain truth audit
 # solo cuando alguien lo ejecutaba a mano — así que en la práctica se
 # descubrían semanas después, mirando la aplicación.
 #
-# Corre después del scrape mensual de las 06:00 para medir sobre datos frescos.
+# Corre a las 07:30 UTC, en el hueco entre la pasada de las 04:23 de
+# `scrape-daily.yml` (acaba como tarde a las 06:58) y la de las 08:23, para
+# medir sobre datos frescos y sin ingesta a medias.
 # La alerta viaja por email (observability.notify): el job en rojo significa
 # "la auditoría no pudo ejecutarse", no "el dato está mal". Mismo contrato que
 # healthcheck.yml.
@@ -62,6 +64,12 @@ jobs:
       # La sección (b) (multi-lote) necesita los ZIP mensuales en disco y este
       # runner es efímero: reporta "sin ZIP cacheados" y no evalúa umbral. Las
       # otras tres miden contra la BD, que es donde está la señal accionable.
+      #
+      # Una sola medición: el JSON (para diffear entre ejecuciones y calibrar
+      # los umbrales, ver el docstring del script) va a stdout y al fichero, y
+      # el veredicto y las violaciones a stderr, que es lo que queda en el log.
+      # Antes un segundo step volvía a medir todo contra producción solo para
+      # sacar el JSON.
       - name: Run domain truth audit
         env:
           ENV: prod
@@ -72,18 +80,7 @@ jobs:
           ALERT_SMTP_USER: ${{ secrets.ALERT_SMTP_USER }}
           ALERT_SMTP_PASSWORD: ${{ secrets.ALERT_SMTP_PASSWORD }}
           LOG_FORMAT: json
-        run: python scripts/audit_domain_truth.py --check --alert
-
-      # El JSON permite diffear entre ejecuciones para calibrar los umbrales
-      # con datos reales antes de apretarlos (ver el docstring del script).
-      - name: Export measurements as JSON
-        if: always()
-        env:
-          ENV: prod
-          APP_PROFILE: scraper
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
-        run: python scripts/audit_domain_truth.py --json > domain-truth.json
+        run: python scripts/audit_domain_truth.py --json --check --alert > domain-truth.json
 
       - name: Upload measurements
         if: always()
