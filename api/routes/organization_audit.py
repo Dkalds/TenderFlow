@@ -148,7 +148,7 @@ async def get_organization_audit(
         )
     if desde is not None and hasta is not None and hasta < desde:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="«hasta» es anterior a «desde».",
         )
 

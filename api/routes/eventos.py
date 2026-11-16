@@ -138,7 +138,7 @@ async def get_eventos(
     if tipo:
         if tipo not in _TIPOS_VALIDOS:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Tipo inválido. Válidos: {sorted(_TIPOS_VALIDOS)}",
             )
         tipos = (tipo,)

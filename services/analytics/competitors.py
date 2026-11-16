@@ -416,7 +416,9 @@ def _identity_summary(df: pd.DataFrame) -> pd.DataFrame:
         lambda values: values[0] if len(values) == 1 else None
     )
     single_nif = summary["nifs"].str.len().eq(1)
-    preferred_nif = summary["master_nifs"].str[0].fillna(summary["nifs"].str[0])
+    # combine_first y no fillna: sin ningún maestro la columna sale float64 y
+    # pandas 4 dejará de aceptar rellenarla con texto.
+    preferred_nif = summary["master_nifs"].str[0].combine_first(summary["nifs"].str[0])
     summary["nif"] = preferred_nif.where(single_nif)
     summary["es_agrupacion"] = (
         summary["empresa_ids"].str.len().gt(1)

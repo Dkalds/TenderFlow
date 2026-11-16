@@ -209,7 +209,7 @@ async def get_escenarios_precio(
     """
     if competencia_esperada is not None and competencia_esperada < 1:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="competencia_esperada debe ser al menos 1.",
         )
     data = await run_db(

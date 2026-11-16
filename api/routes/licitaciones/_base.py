@@ -43,7 +43,7 @@ def _validate_date(value: str | None, field: str) -> None:
     """Raise 422 si el valor no es YYYY-MM-DD."""
     if value is not None and not _DATE_RE.match(value):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Parámetro '{field}' debe tener formato YYYY-MM-DD, recibido: {value!r}",
         )
 
@@ -52,7 +52,7 @@ def _validate_query(value: str | None) -> None:
     """Raise 422 si la query de búsqueda excede el límite de caracteres."""
     if value is not None and len(value) > _MAX_QUERY_LENGTH:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Parámetro 'q' excede el máximo de {_MAX_QUERY_LENGTH} caracteres.",
         )
 
