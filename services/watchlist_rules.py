@@ -569,6 +569,21 @@ def _ids_desde_banda(rule: WatchlistRule, *, hoy_iso: str | None = None) -> list
     ]
 
 
+def predicado_de_regla(rule: WatchlistRule, *, hoy_iso: str | None = None) -> list[Any] | None:
+    """Las cláusulas con que casa ``rule``, banda incluida, para otro lector.
+
+    Es el predicado de la vista previa y del job de alertas, para que la
+    agenda (``db.repositories.agenda.signal_rows``) no lleve una copia que se
+    quede atrás: la suya solo sabía de keyword, CPV, importe y CCAA, y la
+    alerta por defecto —solo tecnología— señalaba el corpus entero. ``None``
+    si la banda mínima no deja ninguna candidata: la regla no casa con nada.
+    """
+    if not rule.banda_min:
+        return _rule_clauses(rule, hoy_iso=hoy_iso)
+    ids = _ids_desde_banda(rule, hoy_iso=hoy_iso)
+    return [licitaciones.c.id_externo.in_(ids)] if ids else None
+
+
 def count_matches(rule: WatchlistRule, *, hoy_iso: str | None = None) -> int:
     """Conteo de matches sobre el dataset COMPLETO (no un ``limit=20`` cliente).
 

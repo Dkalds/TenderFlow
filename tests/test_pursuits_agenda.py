@@ -1055,8 +1055,16 @@ def agenda_deps(monkeypatch: pytest.MonkeyPatch) -> _Dependencias:
 
     monkeypatch.setattr(sp, "listar_cartera", _listar_cartera)
 
+    predicado_real = sp.predicado_de_regla
+
+    def _predicado(regla: WatchlistRule, **kwargs: Any) -> list[Any] | None:
+        assert regla.id is not None
+        deps.reglas_consultadas.append(regla.id)
+        return predicado_real(regla, **kwargs)
+
+    monkeypatch.setattr(sp, "predicado_de_regla", _predicado)
+
     def _signal_rows(criterios: Any, **kwargs: Any) -> list[dict[str, Any]]:
-        deps.reglas_consultadas.append(criterios.rule_id)
         deps.senales_kwargs = kwargs
         return [
             {
@@ -1251,6 +1259,35 @@ def test_get_agenda_la_senal_lleva_la_hora_de_su_plazo(
     # Las 10:00 UTC son las 11:00 o las 12:00 peninsulares, según la época.
     assert senal.due_hora in {"11:00", "12:00"}
     assert senal.banda == "semana"
+
+
+def test_agenda_senales_salta_la_regla_que_no_se_puede_evaluar_o_no_casa(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Un scorer caído (``banda_min``) o una banda sin candidatas no señalan nada."""
+
+    def _predicado(regla: WatchlistRule, **_kwargs: Any) -> list[Any] | None:
+        if regla.id == 1:
+            raise RuntimeError("scorer caído")
+        return None
+
+    consultas: list[object] = []
+    monkeypatch.setattr(sp, "predicado_de_regla", _predicado)
+    monkeypatch.setattr(sp, "signal_rows", lambda c, **_k: consultas.append(c) or [])
+
+    senales, truncadas = sp._agenda_senales(
+        [
+            WatchlistRule(id=1, banda_min="Caliente"),
+            WatchlistRule(id=2, banda_min="Caliente"),
+        ],
+        "uk",
+        7,
+        date(2026, 11, 16),
+        tecnologias=[],
+        ccaas=[],
+    )
+
+    assert (senales, truncadas, consultas) == ([], False, [])
 
 
 def test_update_normaliza_next_action_y_serializa_fecha() -> None:

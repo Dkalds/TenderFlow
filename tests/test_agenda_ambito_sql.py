@@ -25,6 +25,7 @@ import pytest
 from db.repositories.organizations import OrganizationRepository
 from db.repositories.pursuit_tasks import PursuitTasksRepository
 from db.repositories.pursuits import PursuitRepository
+from services.watchlist_rules import WatchlistRule
 from shared.dto import PursuitCreate
 
 _SAP = "LIC-AMB-SAP"
@@ -368,3 +369,108 @@ def test_la_adjudicacion_de_otro_lote_no_cierra_la_oportunidad(
     fila = _agenda_con_lote(escenario, _SAP, "2")
 
     assert fila["adjudicatarios"] is None
+
+
+# ── El cierre asistido aplica la misma regla de lote que la agenda ─────────
+
+
+def _con_adjudicacion(escenario: _Escenario, licitacion_id: str) -> list[dict[str, Any]]:
+    """Las filas de ``open_with_award_rows`` de ese expediente en la organización."""
+    return [
+        dict(f)
+        for f in PursuitRepository().open_with_award_rows()
+        if str(f["licitacion_id"]) == licitacion_id
+        and int(f["organization_id"]) == escenario.organizacion
+    ]
+
+
+def test_el_cierre_asistido_no_avisa_al_lote_por_la_adjudicacion_de_otro(
+    escenario: _Escenario,
+) -> None:
+    """Quién se llevó el lote 1 no cierra la oportunidad del lote 2."""
+    _lotes_con_adjudicacion(_SAP, {"1": "Indra"})
+    _agenda_con_lote(escenario, _SAP, "2")
+
+    assert _con_adjudicacion(escenario, _SAP) == []
+
+
+def test_el_cierre_asistido_no_atribuye_al_lote_una_adjudicacion_sin_lote(
+    escenario: _Escenario,
+) -> None:
+    _adjudicar(_SAP, "Indra")
+    _agenda_con_lote(escenario, _SAP, "2")
+
+    assert _con_adjudicacion(escenario, _SAP) == []
+
+
+def test_el_cierre_asistido_avisa_al_lote_solo_con_su_adjudicatario(
+    escenario: _Escenario,
+) -> None:
+    _lotes_con_adjudicacion(_SAP, {"1": "Accenture", "2": "Indra"})
+    _agenda_con_lote(escenario, _SAP, "2")
+
+    [fila] = _con_adjudicacion(escenario, _SAP)
+
+    assert fila["adjudicatarios"] == "Indra"
+
+
+def test_el_cierre_asistido_sin_lote_sigue_viendo_todo_el_expediente(
+    escenario: _Escenario,
+) -> None:
+    _lotes_con_adjudicacion(_SAP, {"1": "Accenture", "2": "Indra"})
+
+    [fila] = _con_adjudicacion(escenario, _SAP)
+
+    assert fila["adjudicatarios"] == "Accenture, Indra"
+
+
+# ── Señales: la regla entera, no solo keyword/CPV/importe/CCAA ────────────
+
+
+def _senales_de(regla: WatchlistRule) -> set[str]:
+    """Siembra dos expedientes vivos y devuelve los que la agenda señala."""
+    from datetime import timedelta
+
+    from db.database import connect
+    from services.pursuits import _agenda_senales
+    from shared.dates import hoy_peninsular
+
+    hoy = hoy_peninsular()
+    with connect() as conn:
+        for id_externo, titulo, organo, tecnologia, dias in (
+            ("SEN-SAP", "Soporte SAP S/4HANA", "Ayuntamiento de Vigo", "SAP", 3),
+            ("SEN-ORA", "Licencias Oracle", "Xunta de Galicia", "Oracle,SAP", 20),
+        ):
+            conn.execute(
+                "INSERT INTO licitaciones (id_externo, titulo, organo_contratacion, "
+                "tecnologia, estado, fecha_limite, fecha_extraccion) "
+                "VALUES (%s, %s, %s, %s, 'PUB', %s, %s)",
+                (
+                    id_externo,
+                    titulo,
+                    organo,
+                    tecnologia,
+                    (hoy + timedelta(days=dias)).isoformat(),
+                    "2026-09-01T10:00:00+00:00",
+                ),
+            )
+    senales, _truncadas = _agenda_senales([regla], "uk-senales", 1, hoy, tecnologias=[], ccaas=[])
+    return {str(s.licitacion_id) for s in senales}
+
+
+@pytest.mark.parametrize(
+    ("regla", "esperadas"),
+    [
+        # La alerta por defecto: solo tecnología. Listaba todo el corpus.
+        pytest.param(WatchlistRule(id=1, tecnologia="Oracle"), {"SEN-ORA"}, id="tecnologia"),
+        pytest.param(WatchlistRule(id=1, keyword="s/4hana"), {"SEN-SAP"}, id="keyword_sin_caja"),
+        pytest.param(WatchlistRule(id=1, organo="Xunta de Galicia"), {"SEN-ORA"}, id="organo"),
+        pytest.param(WatchlistRule(id=1, plazo_min_dias=10), {"SEN-ORA"}, id="plazo_min"),
+        pytest.param(WatchlistRule(id=1, tecnologia="SAP"), {"SEN-SAP", "SEN-ORA"}, id="csv"),
+    ],
+)
+def test_la_senal_aplica_todos_los_criterios_de_la_regla(
+    tmp_db: Any, regla: WatchlistRule, esperadas: set[str]
+) -> None:
+    """Mismo predicado que la vista previa y las alertas de la regla."""
+    assert _senales_de(regla) == esperadas

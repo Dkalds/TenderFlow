@@ -122,19 +122,12 @@ def _ids(filas: list[dict[str, Any]]) -> set[str]:
 
 
 def _senales(**criterios: Any) -> set[str]:
-    from db.repositories.agenda import SignalCriteria, signal_rows
+    from db.repositories.agenda import signal_rows
+    from services.watchlist_rules import WatchlistRule, predicado_de_regla
 
-    base: dict[str, Any] = {
-        "rule_id": 1,
-        "nombre": None,
-        "keyword": None,
-        "cpv": None,
-        "min_importe": None,
-        "ccaa": None,
-    }
-    return _ids(
-        signal_rows(SignalCriteria(**{**base, **criterios}), user_key="uk", organization_id=1)
-    )
+    clausulas = predicado_de_regla(WatchlistRule(id=1, **criterios))
+    assert clausulas is not None
+    return _ids(signal_rows(clausulas, user_key="uk", organization_id=1))
 
 
 def test_agenda_la_keyword_se_busca_como_literal(tmp_db):

@@ -28,7 +28,7 @@ from db.repositories.adjudicaciones import (
     LeadTimeOrgano,
     lead_time_por_organo,
 )
-from db.repositories.agenda import SignalCriteria, signal_rows
+from db.repositories.agenda import signal_rows
 from db.repositories.base import csv_values
 from db.repositories.licitaciones import LicitacionRepository
 from db.repositories.organizations import OrganizationRepository
@@ -66,7 +66,7 @@ from services.pursuits_agenda import (
     _pursuit_item,
     _urgencia,
 )
-from services.watchlist_rules import WatchlistRule, list_rules
+from services.watchlist_rules import WatchlistRule, list_rules, predicado_de_regla
 from shared.audit_events import PURSUIT_WEIGHTS_PROPOSAL_APPLIED
 from shared.dates import a_fecha, hora_local_de_plazo, hoy_peninsular
 from shared.dates import instante_utc as _parse_iso_datetime
@@ -1115,14 +1115,17 @@ def _agenda_senales(
     for regla in reglas[:AGENDA_REGLAS_MAX]:
         if regla.id is None:
             continue
-        criterios = SignalCriteria(
-            rule_id=regla.id,
-            nombre=regla.nombre,
-            keyword=regla.keyword,
-            cpv=regla.cpv,
-            min_importe=regla.min_importe,
-            ccaa=regla.ccaa,
-        )
+        try:
+            # El mismo predicado de la vista previa y de las alertas: los diez
+            # criterios, keyword sin caja y la banda del Radar.
+            criterios = predicado_de_regla(regla, hoy_iso=hoy.isoformat())
+        except Exception as exc:
+            # Fail-open por regla, como ``ids_abiertas_que_casan``: un scorer
+            # caído (``banda_min``) no puede tumbar la agenda entera.
+            log.warning("agenda_regla_no_evaluable", rule_id=regla.id, error=str(exc))
+            continue
+        if criterios is None:
+            continue
         etiqueta = regla.nombre or regla.keyword or regla.cpv or f"Regla {regla.id}"
         for row in signal_rows(
             criterios,
