@@ -300,6 +300,16 @@ _PREDICADO_LECTURA: dict[str, str] = {
 #: Predicado de identidad dual con el alias de ``user_notifications``.
 _IDENT_N = "(n.user_id = %s OR (n.user_key = %s AND (n.user_id IS NULL OR %s::int IS NULL)))"
 
+#: La oportunidad a la que enlaza una alerta. Subconsulta escalar y no
+#: ``LEFT JOIN``: un expediente por lotes tiene una oportunidad por lote (v110)
+#: y el join repetía la alerta una vez por cada una. Gana la del expediente
+#: entero; si no la hay, la más antigua.
+_PURSUIT_DE_LA_ALERTA = (
+    "(SELECT p.id FROM pursuits p WHERE p.organization_id = n.organization_id "
+    "AND p.licitacion_id = n.licitacion_id "
+    "ORDER BY p.lote_numero IS NOT NULL, p.id LIMIT 1) AS pursuit_id"
+)
+
 #: Predicado de identidad dual con el alias ``p`` de ``user_event_prefs``.
 _IDENT_P = "(p.user_id = %s OR (p.user_key = %s AND (p.user_id IS NULL OR %s::int IS NULL)))"
 
@@ -357,10 +367,8 @@ def listar_alertas(
     with connect_read() as c:
         cur = c.execute(
             "SELECT n.id, n.created_at, n.type, n.title, n.body, n.licitacion_id, "
-            "n.rule_id, n.read_at, p.id AS pursuit_id "
+            f"n.rule_id, n.read_at, {_PURSUIT_DE_LA_ALERTA} "
             "FROM user_notifications n "
-            "LEFT JOIN pursuits p ON p.organization_id = n.organization_id "
-            "AND p.licitacion_id = n.licitacion_id "
             f"WHERE {_IDENT_N} AND n.organization_id = %s{filtro} "
             f"ORDER BY {instante_sql('user_notifications', 'created_at', 'n')} DESC, "
             "n.id DESC LIMIT %s OFFSET %s",
@@ -400,15 +408,13 @@ def alertas_de_usuario(
 ) -> list[dict[str, Any]]:
     """Alertas de reglas/plazos, las no leídas primero y luego por fecha.
 
-    ``pursuit_id`` sale de un ``LEFT JOIN`` por ``(organization_id,
+    ``pursuit_id`` sale de ``_PURSUIT_DE_LA_ALERTA`` por ``(organization_id,
     licitacion_id)``: ver ``services.notifications.get_user_alerts``.
     """
     select = (
         "SELECT n.id, n.created_at, n.type, n.title, n.body, n.licitacion_id, "
-        "n.rule_id, n.read_at, p.id AS pursuit_id "
+        f"n.rule_id, n.read_at, {_PURSUIT_DE_LA_ALERTA} "
         "FROM user_notifications n "
-        "LEFT JOIN pursuits p ON p.organization_id = n.organization_id "
-        "AND p.licitacion_id = n.licitacion_id "
     )
     creado = instante_sql("user_notifications", "created_at", "n")
     with connect_read() as c:

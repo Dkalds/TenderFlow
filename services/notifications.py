@@ -74,9 +74,9 @@ def get_user_alerts(
 
     ``pursuit_id`` llega resuelto por ``(organization_id, licitacion_id)``: si
     el expediente de la alerta ya es una oportunidad de esa organización, la
-    campana enlaza a la ficha de la oportunidad y no al inspector genérico. Es
-    un ``LEFT JOIN`` a propósito —una alerta de regla sobre un expediente sin
-    pursuit sigue siendo válida— y cuesta un índice de PK, nada más.
+    campana enlaza a la ficha de la oportunidad y no al inspector genérico.
+    Sin pursuit sale ``None`` —una alerta de regla sobre un expediente sin
+    pursuit sigue siendo válida— y con varios (uno por lote) sale uno solo.
     """
     return _alertas_de_usuario(user_key, limit, organization_id, user_id=user_id)
 
