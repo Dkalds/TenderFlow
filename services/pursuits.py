@@ -672,7 +672,7 @@ def _perdidas_por_motivo(rows: Sequence[Mapping[str, Any]]) -> list[PerdidaPorMo
 _ESTADOS_CON_PLAZO = frozenset({"identified", "qualifying", "go_no_go", "preparing"})
 
 
-def _por_estado(rows: Sequence[Mapping[str, Any]], hoy: date) -> list[EstadoDelPipeline]:
+def _por_estado(rows: Sequence[Mapping[str, object]], hoy: date) -> list[EstadoDelPipeline]:
     """Reparto por estado actual, con el plazo por delante más cercano de cada uno.
 
     Va un elemento por cada valor de ``PursuitStatus``, también con cero: la
