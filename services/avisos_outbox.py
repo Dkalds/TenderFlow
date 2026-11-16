@@ -274,6 +274,10 @@ def emitir_avisos_de_cuentas(ahora: datetime | None = None) -> int:
         set_cursor(CURSOR_CUENTAS, last_seen_updated=marca)
         log.info("avisos_outbox_cursor_inicializado", fuente=CURSOR_CUENTAS, hasta=marca)
         return 0
+    if str(desde) >= marca:
+        # El cursor nunca retrocede: el que dejó el código anterior al margen
+        # (``now``) va hasta 10 min por delante de ``marca`` en el despliegue.
+        return 0
 
     filas = _cuentas.publicaciones_nuevas(
         desde_iso=str(desde), hasta_iso=marca, limit=LOTE_PUBLICACIONES

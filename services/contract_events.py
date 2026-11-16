@@ -391,6 +391,10 @@ def derive_new_events(batch_size: int = 1000) -> int:
             for campo in changed:
                 if campo not in _CAMPOS_EVENTO:
                     continue
+                if campo == "duracion_unidad" and "duracion_valor" in changed:
+                    # `_classify` compara la duración entera (valor y unidad):
+                    # el cambio de los dos campos es un solo evento, no dos.
+                    continue
                 evento = _classify(
                     campo,
                     snapshot.get(campo),

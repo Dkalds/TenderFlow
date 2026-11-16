@@ -295,6 +295,22 @@ def test_cuentas_no_leen_hasta_ahora_sino_hasta_ahora_menos_el_margen(
     assert cursores.filas[avisos_outbox.CURSOR_CUENTAS]["last_seen_updated"] == hasta
 
 
+def test_cuentas_el_cursor_por_delante_del_margen_no_retrocede(
+    monkeypatch: pytest.MonkeyPatch, eventos: list[dict[str, Any]]
+) -> None:
+    """El código anterior al margen dejaba el cursor en ``ahora``: la primera
+    pasada tras desplegar no lo devuelve diez minutos atrás."""
+    repo = _CuentasRepo([_publicacion(1, "A")])
+    monkeypatch.setattr(avisos_outbox, "_cuentas", repo)
+    previo = "2026-09-19T11:57:00+00:00"
+    cursores = _cursores(monkeypatch, {avisos_outbox.CURSOR_CUENTAS: {"last_seen_updated": previo}})
+
+    assert avisos_outbox.emitir_avisos_de_cuentas(datetime(2026, 9, 19, 12, 0, tzinfo=UTC)) == 0
+
+    assert eventos == []
+    assert cursores.filas[avisos_outbox.CURSOR_CUENTAS]["last_seen_updated"] == previo
+
+
 def test_publicacion_nueva_de_una_cuenta_avisa_a_los_miembros_de_cada_organizacion(
     monkeypatch: pytest.MonkeyPatch, eventos: list[dict[str, Any]]
 ) -> None:

@@ -863,7 +863,12 @@ async def revoke_my_key(
     summary="Rotar API key — genera una nueva con grace period",
     status_code=201,
     responses={
-        201: {"description": "Nueva key generada. La key anterior sigue activa N días."},
+        201: {
+            "description": (
+                "Nueva key generada. La key anterior sigue activa `grace_days` días, "
+                "o hasta su caducidad si llega antes."
+            )
+        },
         400: {"description": "Falta key_id — la sesión no identifica qué key rotar"},
         403: {"description": "Requiere una sesión de navegador reciente"},
         404: {"description": "La key no existe o no pertenece al usuario"},

@@ -27134,7 +27134,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Nueva key generada. La key anterior sigue activa N días. */
+            /** @description Nueva key generada. La key anterior sigue activa `grace_days` días, o hasta su caducidad si llega antes. */
             201: {
                 headers: {
                     [name: string]: unknown;

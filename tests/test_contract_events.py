@@ -204,6 +204,17 @@ def test_la_duracion_se_compara_en_la_misma_unidad(campo, antes, despues, espera
     assert (evento[0] if evento else None) == esperado
 
 
+def test_cambiar_valor_y_unidad_de_la_duracion_es_una_sola_prorroga(db):
+    """24 meses → 3 años en una fila de historial: un evento, no uno por campo."""
+    from services.contract_events import derive_new_events
+
+    upsert(db, duracion_valor=24, duracion_unidad="MON")
+    upsert(db, duracion_valor=3, duracion_unidad="ANN")
+    derive_new_events()
+
+    assert [e["tipo"] for e in eventos(db)] == ["prorroga"]
+
+
 def test_modificacion_real_de_importe_sigue_generando_evento():
     from services.contract_events import _classify
 
