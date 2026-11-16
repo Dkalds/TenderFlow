@@ -86,7 +86,10 @@ class PricingRepository:
         y lote: tres adjudicaciones sin lote de un mismo expediente se suman
         contra su presupuesto, en vez de dar tres bajas del 67 % por tercios.
         Fuera los duplicados confirmados entre fuentes (pesaban doble en la
-        cohorte) y TED, que no publica presupuesto base.
+        cohorte) y TED, que no publica presupuesto base. Un lote cuyos
+        adjudicatarios declaran cada uno el importe total (acuerdo marco
+        multiadjudicatario) suma más que su base y sale de la cohorte: antes
+        entraba como N bajas de 0.
         """
         # S608 no aplica: solo se interpolan constantes de
         # ``db/sql_fragments.py``; el valor va con %s.

@@ -235,12 +235,16 @@ def get_forecast_volume(filters: ForecastFilters) -> ForecastVolumeResult:
     fin = datetime.now(UTC).date()
     if filters.fecha_hasta is not None:
         fin = min(fin, filters.fecha_hasta + timedelta(days=1))
-    hist = hist[hist["mes"] < pd.Timestamp(fin.year, fin.month, 1)]
+    corte = pd.Timestamp(fin.year, fin.month, 1)
+    hist = hist[hist["mes"] < corte]
     if hist.empty:
         return ForecastVolumeResult(cpv=filters.cpv)
     # El GROUP BY no devuelve los meses sin publicaciones: son ceros, y sin
     # ellos el modelo tomaba meses separados por un hueco como consecutivos.
-    hist = hist.set_index("mes").sort_index().asfreq("MS", fill_value=0.0).reset_index()
+    # La serie llega hasta el último mes cerrado, no hasta la última
+    # publicación: si no, se proyectarían meses ya cerrados que valieron 0.
+    meses = pd.date_range(hist["mes"].min(), corte - pd.offsets.MonthBegin(1), freq="MS")
+    hist = hist.set_index("mes").reindex(meses, fill_value=0.0).rename_axis("mes").reset_index()
     result_df = forecast_volume_from_monthly(hist, months_ahead=filters.months_ahead)
     if result_df.empty:
         return ForecastVolumeResult(cpv=filters.cpv)
