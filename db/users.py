@@ -6,6 +6,34 @@ from typing import Any
 
 from db.database import connect, connect_read, now_utc_iso
 
+# Columnas de ``users`` que devuelve cada lectura de cuenta, con nombre y no
+# ``SELECT *``: una columna nueva no viaja sola a quien ya recibe la fila (la
+# de ``get_user_by_id`` acaba en ``AuthContext.owner`` en cada petición con API
+# key). Cada lista es lo que leen sus llamadores, inventariado el 2026-11-16;
+# quien necesite otra columna la añade aquí, a la lectura que usa.
+#
+# ``get_user_by_id``: ``api/auth.py`` → ``dual_auth``/``metrics`` (email,
+# display_name, is_admin), ``admin_users._safe_user`` (id, email, display_name,
+# oauth_provider, is_admin, created_at, deactivated_at), cambio de contraseña
+# (password_hash), login del MCP (id, email, is_admin, deactivated_at) y los
+# tests de vinculación y verificación (oauth_sub, email_verified_at).
+_COLUMNAS_POR_ID = (
+    "id, email, display_name, oauth_provider, oauth_sub, password_hash, is_admin, "
+    "created_at, deactivated_at, email_verified_at"
+)
+# ``get_user_by_email``: login con contraseña (id, email, display_name,
+# password_hash, email_verified_at), alta y scripts de siembra (id) y los tests
+# de vinculación OAuth (oauth_provider, oauth_sub).
+_COLUMNAS_POR_EMAIL = (
+    "id, email, display_name, oauth_provider, oauth_sub, password_hash, email_verified_at"
+)
+# ``get_users_by_email_ci``: ``scripts/mcp_revocar.py`` (id, email) y los
+# tests del alta cerrada (password_hash, email_verified_at).
+_COLUMNAS_POR_EMAIL_CI = "id, email, password_hash, email_verified_at"
+# ``get_active_user_by_email_ci``: alta de miembros (id) y login del MCP (id,
+# email, is_admin, deactivated_at, oauth_provider, oauth_sub).
+_COLUMNAS_ACTIVA_POR_EMAIL_CI = "id, email, is_admin, deactivated_at, oauth_provider, oauth_sub"
+
 
 class CuentaDeOtroProveedorError(Exception):
     """El correo ya es de una cuenta vinculada a otro proveedor OAuth.
@@ -144,7 +172,7 @@ def get_user_by_id(user_id: int, *, include_deactivated: bool = False) -> dict[s
     sin confirmar de quien lo llamara: lee exactamente lo mismo.
     """
     with connect_read() as c:
-        sql = "SELECT * FROM users WHERE id = %s"  # SELECT *: fila de cuenta entera: la leen auth y /notifications
+        sql = f"SELECT {_COLUMNAS_POR_ID} FROM users WHERE id = %s"
         if not include_deactivated:
             sql += " AND deactivated_at IS NULL"
         cur = c.execute(sql, (user_id,))
@@ -158,7 +186,7 @@ def get_user_by_id(user_id: int, *, include_deactivated: bool = False) -> dict[s
 def get_user_by_email(email: str, *, include_deactivated: bool = False) -> dict[str, Any] | None:
     """Busca usuario por email (pool de lectura, como :func:`get_user_by_id`)."""
     with connect_read() as c:
-        sql = "SELECT * FROM users WHERE email = %s"  # SELECT *: fila de cuenta entera
+        sql = f"SELECT {_COLUMNAS_POR_EMAIL} FROM users WHERE email = %s"
         if not include_deactivated:
             sql += " AND deactivated_at IS NULL"
         cur = c.execute(sql, (email,))
@@ -178,7 +206,7 @@ def get_users_by_email_ci(email: str, *, include_deactivated: bool = False) -> l
     mano (``scripts/mcp_revocar.py``) debe poder alcanzar las mismas cuentas, y
     por eso devuelve todas las que casan, no una.
     """
-    sql = "SELECT * FROM users WHERE lower(email) = lower(%s)"  # SELECT *: fila de cuenta entera
+    sql = f"SELECT {_COLUMNAS_POR_EMAIL_CI} FROM users WHERE lower(email) = lower(%s)"
     if not include_deactivated:
         sql += " AND deactivated_at IS NULL"
     with connect_read() as c:
@@ -204,7 +232,8 @@ def get_active_user_by_email_ci(
     """
     with connect_read() as c:
         cur = c.execute(
-            "SELECT * FROM users WHERE lower(email) = lower(%s) AND deactivated_at IS NULL "  # SELECT *: fila de cuenta entera
+            f"SELECT {_COLUMNAS_ACTIVA_POR_EMAIL_CI} FROM users "
+            "WHERE lower(email) = lower(%s) AND deactivated_at IS NULL "
             "AND (NOT %s OR email_verified_at IS NOT NULL)",
             (email, solo_verificadas),
         )
