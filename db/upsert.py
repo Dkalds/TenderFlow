@@ -361,6 +361,14 @@ class Licitacion:
     #: entonces el upsert no toca lo que hubiera.
     condiciones: CondicionesCodice | None = None
     fecha_extraccion: str = field(default_factory=now_utc_iso)
+    #: Primer avistamiento del expediente (v100): solo entra en el INSERT
+    #: (``_LIC_INSERT_ONLY_FIELDS``), así que una re-ingesta no lo mueve. Sin
+    #: valor explícito, es esta misma extracción.
+    primera_extraccion: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.primera_extraccion is None:
+            self.primera_extraccion = self.fecha_extraccion
 
 
 @dataclass
@@ -479,13 +487,13 @@ _LIC_COALESCE_UPDATE_FIELDS = frozenset(
 # re-ingesta traiga uno distinto (COALESCE no bastaría: un valor no nulo nuevo
 # pisaría al viejo).
 #
-# Vacío a propósito. El hueco existe porque `primera_extraccion` —la fecha en
-# que el expediente se vio por primera vez, distinta de `fecha_extraccion`, que
-# es la de la última pasada— está pedida pero AÚN NO EXISTE como columna en
-# `db/models.py` ni en el dataclass `Licitacion`. Cuando el agente que la añada
-# la declare, basta con listarla aquí: el `_LIC_UPDATES` de abajo ya la excluye
-# del UPDATE sin más cambios.
-_LIC_INSERT_ONLY_FIELDS: frozenset[str] = frozenset()
+# `primera_extraccion` (v100) es la fecha en que el expediente se vio por
+# primera vez, distinta de `fecha_extraccion`, que es la de la última pasada. Si
+# el UPDATE la escribiera volvería a moverse en cada pasada; con COALESCE, una
+# fila que la tiene a NULL (ingerida antes de que el upsert la escribiera)
+# recibiría la fecha de hoy y el aviso de «publicación nueva» la re-notificaría.
+# Esas filas las rellena una migración, no la ingesta.
+_LIC_INSERT_ONLY_FIELDS: frozenset[str] = frozenset({"primera_extraccion"})
 
 _LIC_UPDATES = ", ".join(
     f"{k}=COALESCE(excluded.{k}, licitaciones.{k})"
@@ -529,6 +537,7 @@ _LIC_FECHAS_TS_UPDATES = ", ".join(
     if vieja in _LIC_COALESCE_UPDATE_FIELDS
     else f"{s}=excluded.{s}"
     for s, vieja in _LIC_FECHAS_TS_PARES
+    if vieja not in _LIC_INSERT_ONLY_FIELDS
 )
 
 
@@ -973,6 +982,9 @@ def replace_adjudicaciones_batch(
     failures: list[tuple[BaseException, str]] = []
     with connect() as c:
         lic_ids = list(adj_por_lic)
+        # El camino lento vuelve aquí para que una licitación que falle conserve
+        # sus adjudicaciones anteriores, como en `replace_adjudicaciones`.
+        c.execute("SAVEPOINT adj_delete")
         # DELETE agrupado, particionado para respetar el límite de parámetros
         # por sentencia (SQLITE_MAX_VARIABLE_NUMBER).
         _CHUNK = 500
@@ -990,12 +1002,22 @@ def replace_adjudicaciones_batch(
         if _try_insert_adj_batch(c, todas):
             persisted = len(todas)
         else:
+            c.execute("ROLLBACK TO SAVEPOINT adj_delete")
             for lic_id, rows in grupos:
+                # SAVEPOINT por licitación: un error que no es de constraint
+                # aborta la transacción en Postgres, y sin él las siguientes
+                # fallaban en cadena y el commit final deshacía todo en silencio
+                # mientras `persisted` contaba filas que no llegaban a la BD.
+                c.execute("SAVEPOINT adj_lic")
+                n_failures = len(failures)
                 try:
+                    c.execute("DELETE FROM adjudicaciones WHERE licitacion_id = %s", [lic_id])
                     p, d = _insert_adj_rowwise(c, lic_id, rows, failures)
-                    persisted += p
-                    dropped += d
                 except Exception:
+                    c.execute("ROLLBACK TO SAVEPOINT adj_lic")
+                    c.execute("RELEASE SAVEPOINT adj_lic")
+                    # Lo de esta licitación se deshizo: tampoco va a la DLQ.
+                    del failures[n_failures:]
                     # `failures` recoge el detalle para record_failure, pero solo
                     # en el camino por lotes; aquí el contador subía sin dejar
                     # ninguna traza de qué expediente falló ni por qué.
@@ -1003,6 +1025,10 @@ def replace_adjudicaciones_batch(
                         "adjudicaciones_rowwise_failed", licitacion_id=lic_id, exc_info=True
                     )
                     failed += 1
+                    continue
+                c.execute("RELEASE SAVEPOINT adj_lic")
+                persisted += p
+                dropped += d
     # Persistir failures fuera de la transacción del upsert (best-effort).
     for caught_exc, payload_ref in failures:
         record_failure(run_id, fuente, caught_exc, scope="adjudicacion", payload_ref=payload_ref)
@@ -1235,18 +1261,20 @@ def _upsert_chunk(
     with connect() as c:
         placeholders = ", ".join("%s" for _ in chunk)
         ids = [lic.id_externo for lic in chunk]
-        # fecha_publicacion se pide como columna extra al final (fuera de
-        # col_names) para conservar el primer anuncio sin alterar el snapshot
-        # de historial (que solo cubre _HISTORY_SELECT_COLS).
+        # fecha_publicacion y organo_ref_fuente se piden como columnas extra al
+        # final (fuera de col_names) para conservar el primer anuncio y detectar
+        # la colisión de órgano sin alterar el snapshot de historial (que solo
+        # cubre _HISTORY_SELECT_COLS).
         existing_rows = c.execute(
-            f"SELECT {_HISTORY_SELECT_COLS}, fecha_publicacion FROM licitaciones "
-            f"WHERE id_externo IN ({placeholders})",
+            f"SELECT {_HISTORY_SELECT_COLS}, fecha_publicacion, organo_ref_fuente "
+            f"FROM licitaciones WHERE id_externo IN ({placeholders})",
             ids,
         ).fetchall()
         existing: dict[str, dict[str, Any]] = {
             row[0]: dict(zip(col_names, row, strict=False)) for row in existing_rows
         }
-        existing_pub: dict[str, str | None] = {row[0]: row[-1] for row in existing_rows}
+        existing_pub: dict[str, str | None] = {row[0]: row[-2] for row in existing_rows}
+        existing_organo: dict[str, str | None] = {row[0]: row[-1] for row in existing_rows}
 
         con_sombras = _con_sombras(c)
         con_fechas_ts = _con_fechas_ts(c)
@@ -1261,6 +1289,7 @@ def _upsert_chunk(
                 data["fecha_publicacion"] = _earliest_iso_date(
                     existing_pub[lic.id_externo], data["fecha_publicacion"]
                 )
+                _detectar_colision_de_organo(lic, existing_organo[lic.id_externo])
             lic_rows.append(
                 _fila_licitacion(data, con_sombras=con_sombras, con_fechas_ts=con_fechas_ts)
             )

@@ -1260,3 +1260,127 @@ def test_replace_adjudicaciones_same_nif_importe_different_lote_both_persist(db)
             "SELECT COUNT(*) FROM adjudicaciones WHERE licitacion_id = 'TEST-001'"
         ).fetchone()[0]
     assert count == 2
+
+
+def test_replace_adjudicaciones_batch_error_inesperado_no_tumba_el_resto(db, monkeypatch):
+    """Un error no-constraint en una licitación del camino lento no envenena la
+    transacción: las demás se escriben, los contadores dicen lo que quedó en la
+    BD y la licitación que falló conserva sus adjudicaciones anteriores.
+
+    Antes, Postgres abortaba la transacción, las siguientes fallaban en cadena y
+    el ``commit`` final la deshacía entera en silencio — devolviendo ``persisted``
+    con filas que nunca llegaron a la BD.
+    """
+    import db.upsert as upsert_mod
+    from db.database import connect
+    from db.upsert import replace_adjudicaciones, replace_adjudicaciones_batch, upsert_licitaciones
+
+    ids = ("LIC-A", "LIC-B", "LIC-C", "LIC-D")
+    upsert_licitaciones([make_licitacion(id_externo=i) for i in ids])
+    replace_adjudicaciones("LIC-C", [_make_adj(licitacion_id="LIC-C", nif="VIEJA")])
+
+    real = upsert_mod._insert_adj_rowwise
+
+    def _rowwise_que_rompe_en_c(c, lic_id, rows, failures):
+        if lic_id == "LIC-C":
+            c.execute("SELECT 1/0")  # error de BD que no es de constraint
+        return real(c, lic_id, rows, failures)
+
+    monkeypatch.setattr(upsert_mod, "_insert_adj_rowwise", _rowwise_que_rompe_en_c)
+    batch = {
+        "LIC-A": [_make_adj(licitacion_id="LIC-A", nif="A1")],
+        # La violación CHECK manda el lote entero al camino lento.
+        "LIC-B": [_make_adj(licitacion_id="LIC-B", nif="B1", fecha_adjudicacion="bad")],
+        "LIC-C": [_make_adj(licitacion_id="LIC-C", nif="C1")],
+        "LIC-D": [_make_adj(licitacion_id="LIC-D", nif="D1")],
+    }
+
+    persisted, dropped, failed = replace_adjudicaciones_batch(batch)
+
+    with connect() as c:
+        filas = c.execute(
+            "SELECT licitacion_id, nif FROM adjudicaciones ORDER BY licitacion_id"
+        ).fetchall()
+    assert [tuple(f) for f in filas] == [("LIC-A", "A1"), ("LIC-C", "VIEJA"), ("LIC-D", "D1")]
+    assert (persisted, dropped, failed) == (2, 1, 1)
+
+
+def _leer_extracciones(id_externo: str) -> tuple:
+    from db.database import connect
+
+    with connect() as c:
+        return c.execute(
+            "SELECT primera_extraccion, fecha_extraccion, primera_extraccion_ts "
+            "FROM licitaciones WHERE id_externo = %s",
+            (id_externo,),
+        ).fetchone()
+
+
+@pytest.mark.parametrize("camino", ["simple", "con_historial"])
+def test_primera_extraccion_se_escribe_en_el_insert_y_no_se_mueve(db, camino):
+    """``primera_extraccion`` (v100) es el primer avistamiento: entra con la
+    primera ingesta y una re-ingesta posterior no la toca (ni a su sombra)."""
+    from db.fechas_ts import a_timestamptz
+    from db.upsert import upsert_licitaciones, upsert_licitaciones_with_history
+
+    def ingerir(lic):
+        if camino == "simple":
+            upsert_licitaciones([lic])
+        else:
+            upsert_licitaciones_with_history([lic], source="placsp")
+
+    ingerir(make_licitacion(fecha_extraccion="2026-09-01T08:00:00+00:00"))
+    ingerir(make_licitacion(fecha_extraccion="2026-10-01T08:00:00+00:00", estado="ADJ"))
+
+    primera, ultima, primera_ts = _leer_extracciones("TEST-001")
+    assert primera == "2026-09-01T08:00:00+00:00"
+    assert ultima == "2026-10-01T08:00:00+00:00"
+    assert primera_ts == a_timestamptz("2026-09-01T08:00:00+00:00")
+
+
+def test_reingesta_no_rellena_una_primera_extraccion_nula(db):
+    """Una fila con ``primera_extraccion`` NULL (ingerida entre v100 y este
+    arreglo) no la recibe en la re-ingesta: ponerle ahora la fecha de hoy la
+    haría pasar por «publicación nueva» y re-notificaría. Eso lo cura una
+    migración de relleno, no el upsert."""
+    from db.database import connect
+    from db.upsert import upsert_licitaciones_with_history
+
+    upsert_licitaciones_with_history([make_licitacion()], source="placsp")
+    with connect() as c:
+        c.execute(
+            "UPDATE licitaciones SET primera_extraccion = NULL, primera_extraccion_ts = NULL "
+            "WHERE id_externo = 'TEST-001'"
+        )
+    upsert_licitaciones_with_history([make_licitacion(estado="ADJ")], source="placsp")
+
+    primera, _ultima, primera_ts = _leer_extracciones("TEST-001")
+    assert primera is None
+    assert primera_ts is None
+
+
+def _colisiones_placsp() -> float | None:
+    try:
+        from prometheus_client import REGISTRY
+    except ImportError:
+        return None
+    val = REGISTRY.get_sample_value("placsp_colision_expediente_total", {"fuente": "placsp"})
+    return float(val) if val is not None else 0.0
+
+
+def test_upsert_con_historial_cuenta_la_colision_de_organo(db):
+    """El detector de colisión PLACSP (fase A del RFC de identidad) corre en el
+    camino real de ingesta, ``upsert_licitaciones_with_history``, y no solo en
+    ``upsert_licitaciones``, que la ingesta no usa."""
+    from db.upsert import upsert_licitaciones_with_history
+
+    antes = _colisiones_placsp()
+    if antes is None:
+        pytest.skip("prometheus_client no instalado: la métrica es no-op")
+    upsert_licitaciones_with_history([make_licitacion(organo_ref_fuente="ORG-1")], "placsp")
+    upsert_licitaciones_with_history([make_licitacion(organo_ref_fuente="ORG-1")], "placsp")
+    assert _colisiones_placsp() == antes
+
+    upsert_licitaciones_with_history([make_licitacion(organo_ref_fuente="ORG-2")], "placsp")
+
+    assert _colisiones_placsp() == antes + 1

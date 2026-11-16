@@ -989,13 +989,12 @@ def periodo_publicacion_sql(alias: str = "l") -> str:
     (``v100``) guarda el primer avistamiento y no se vuelve a tocar.
 
     El ``coalesce`` conserva ``fecha_extraccion`` como tercer término **a
-    propósito**: mientras ``db/upsert.py`` no escriba ``primera_extraccion`` en
-    el INSERT, las filas nuevas la traen a ``NULL`` y sin ese respaldo perderían
-    la componente temporal entera (todas caerían en la cadena vacía y volverían
-    a colapsar ediciones de años distintos). Cuando el upsert la escriba —**y
-    sólo en el INSERT, nunca en el UPDATE**, ver el docstring de ``v100``— el
-    tercer término queda vestigial para las filas nuevas y sólo cubre el legado
-    sin historial.
+    propósito**: ``db/upsert.py`` escribe ``primera_extraccion`` solo en el
+    INSERT (nunca en el UPDATE, ver el docstring de ``v100``), pero las filas
+    ingeridas entre ``v100`` y ese cambio la tienen a ``NULL`` hasta que una
+    migración las rellene, y sin ese respaldo perderían la componente temporal
+    entera (todas caerían en la cadena vacía y volverían a colapsar ediciones de
+    años distintos).
     """
     return (
         f"substr(coalesce({alias}.fecha_publicacion, {alias}.primera_extraccion, "
