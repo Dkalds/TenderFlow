@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from db.repositories.adjudicaciones import LIMITE_COMPETIDORES
+from db.sql_fragments import TOLERANCIA_SOBRECOSTE
 from observability.logging import get_logger
 from services.adjudicaciones import load_for_competitors
 from services.normalization import normalize_company, normalize_nif, parse_ute_members
@@ -596,12 +597,11 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
     # del expediente completo: la baja es por fila de adjudicación, así que usar
     # el presupuesto total sobreestimaría la baja media de cualquier empresa con
     # adjudicaciones en expedientes multi-lote. Solo cuentan los pares con el
-    # mismo umbral que ``VALID_PAIR_LOTE`` (``db/sql_fragments.py``): importes
-    # positivos y un adjudicado que no pase de 1,5 veces el presupuesto. Más
-    # allá es un error de la fuente, y una sola fila así (87.095 € sobre un lote
-    # de 100 €) hundía la media de una empresa con 1.600 adjudicaciones a
-    # -1.692 %. La base no es la misma: ``presupuesto_efectivo`` no prefiere el
-    # importe sin IVA como ``BASE_COMPARABLE_SQL``.
+    # mismo filtro y la misma base que ``VALID_PAIR_LOTE`` (``db/sql_fragments.py``):
+    # importes positivos y un adjudicado que no pase de ``TOLERANCIA_SOBRECOSTE``
+    # veces el presupuesto. Más allá es un error de la fuente, y una sola fila así
+    # (87.095 € sobre un lote de 100 €) hundía la media de una empresa con 1.600
+    # adjudicaciones a -1.692 %.
     baja_by_empresa: dict[str, float] = {}
     if "importe_adjudicado" in df.columns and "presupuesto_efectivo" in df.columns:
         adj_col = df.get("importe_adjudicado")
@@ -611,7 +611,7 @@ def get_competitors(filters: CompetitorFilters) -> CompetitorResult:
             imp_lic = pd.to_numeric(lic_col, errors="coerce")
             df_baja = df.copy()
             df_baja["_baja"] = ((1 - imp_adj / imp_lic) * 100).where(
-                (imp_lic > 0) & (imp_adj > 0) & (imp_adj <= imp_lic * 1.5)
+                (imp_lic > 0) & (imp_adj > 0) & (imp_adj <= imp_lic * TOLERANCIA_SOBRECOSTE)
             )
             baja_means = df_baja.groupby(_GROUP_KEY, observed=True)["_baja"].mean()
             baja_by_empresa = {str(k): float(v) for k, v in baja_means.items() if pd.notna(v)}

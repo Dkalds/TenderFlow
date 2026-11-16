@@ -18,11 +18,13 @@ universo, por nombre) y el servicio los entrega al repositorio como
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
 from statistics import median
 from typing import Any
 
 from db.repositories import mercado as mercado_repo
+from db.sql_fragments import TOLERANCIA_SOBRECOSTE
 from services.competitive.batallas import (
     MIN_POR_CELDA,
     corte_por_procedimiento,
@@ -466,13 +468,7 @@ def perfil_empresa(
         for row in scope_rows
         if row.get("n_ofertas_recibidas") is not None
     ]
-    discounts = [
-        (1.0 - float(row["importe_adjudicado"]) / float(row["presupuesto_licitacion"])) * 100
-        for row in scope_rows
-        if row.get("importe_adjudicado") is not None
-        and row.get("presupuesto_licitacion") is not None
-        and float(row["presupuesto_licitacion"]) > 0
-    ]
+    discounts = [baja for row in scope_rows if (baja := _baja_pct(row)) is not None]
     valid_dates = [
         parsed
         for row in scope_rows
@@ -553,19 +549,14 @@ def perfil_empresa(
         key=lambda item: str(item.get("fecha_adjudicacion") or ""),
         reverse=True,
     )[:12]:
-        budget = float(row.get("presupuesto_licitacion") or 0)
-        awarded = row.get("importe_adjudicado")
-        baja_pct = (
-            (1.0 - float(awarded) / budget) * 100 if budget > 0 and awarded is not None else None
-        )
         recent_contracts.append(
             {
                 "licitacion_id": row["licitacion_id"],
                 "titulo": row.get("titulo"),
                 "organo_contratacion": row.get("organo_contratacion"),
                 "fecha_adjudicacion": row.get("fecha_adjudicacion"),
-                "importe_adjudicado": awarded,
-                "baja_pct": baja_pct,
+                "importe_adjudicado": row.get("importe_adjudicado"),
+                "baja_pct": _baja_pct(row),
             }
         )
     acta = perfil_por_criterio(group_ids) if identity_rows else None
@@ -633,14 +624,30 @@ def perfil_empresa(
     }
 
 
+def _baja_pct(row: Mapping[str, float | None]) -> float | None:
+    """Baja de una fila contra el presupuesto del lote, o ``None`` si el par es imposible.
+
+    Mismo criterio que `VALID_PAIR_LOTE`: adjudicado positivo y no mayor que la
+    tolerancia sobre el presupuesto. Contra el expediente, 87.095 € sobre un lote
+    de 100 € pasaba por una baja del 29,5 %; contra el lote, por una de -86.995 %.
+    """
+    adjudicado = row.get("importe_adjudicado")
+    presupuesto = row.get("presupuesto_comparable")
+    if adjudicado is None or presupuesto is None:
+        return None
+    if not 0 < float(adjudicado) <= float(presupuesto) * TOLERANCIA_SOBRECOSTE:
+        return None
+    return (1.0 - float(adjudicado) / float(presupuesto)) * 100
+
+
 def _cortes_f35(scope_rows: list[dict[str, Any]]) -> dict[str, Any]:
     """F3.5 — los cortes por procedimiento y por tramo sobre la actividad filtrada.
 
-    `corte_por_procedimiento`/`corte_por_tramo` agrupan por ``importe`` (el de
-    licitación: la baja se mide contra él y el tramo LCSP también). En las
-    filas del dossier ese número se llama ``presupuesto_licitacion``, así que
-    se renombra aquí en vez de tocar la consulta que comparten todas las
-    secciones del perfil.
+    `corte_por_tramo` agrupa por ``importe``, el de licitación (el tramo LCSP
+    es del expediente). En las filas del dossier ese número se llama
+    ``presupuesto_licitacion``, así que se renombra aquí en vez de tocar la
+    consulta que comparten todas las secciones del perfil. La baja de las
+    celdas se mide contra ``presupuesto_comparable``, el del lote.
     """
     filas = [{**row, "importe": row.get("presupuesto_licitacion")} for row in scope_rows]
     return {

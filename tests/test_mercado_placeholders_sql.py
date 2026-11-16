@@ -95,10 +95,14 @@ def _renderizar(sql: str, params: list[Valor]) -> str:
 
 
 def _assert_placeholders_cuadran(sql: str, params: list[Valor], contexto: str) -> None:
-    """Tantos ``%s`` como parámetros, y ningún ``AND`` duplicado o colgando."""
+    """Tantos ``%s`` como parámetros, ningún ``%`` suelto y ningún ``AND`` duplicado o colgando."""
     assert sql.count("%s") == len(params), (
         f"{contexto}: {sql.count('%s')} placeholders y {len(params)} parámetros\n{sql}"
     )
+    # Con parámetros, psycopg rechaza cualquier `%` que no sea `%s` o `%%`: un
+    # «29,5 %» en un comentario SQL tumbó el listado de adjudicaciones en #740.
+    suelto = re.search(r"%(?![s%])", sql.replace("%%", ""))
+    assert suelto is None, f"{contexto}: `%` suelto\n{sql}"
     normalizado = " ".join(sql.split())
     assert " AND AND " not in normalizado, f"{contexto}: AND duplicado\n{normalizado}"
     assert not normalizado.startswith("AND "), f"{contexto}: AND inicial\n{normalizado}"

@@ -444,6 +444,7 @@ def _insert_lote_contract(
     importe_expediente: float,
     importe_lote: float,
     adjudicado: float,
+    nif: str | None = None,
 ):
     """Como insert_contract, pero la adjudicación referencia un lote propio
     cuyo presupuesto es distinto (menor) que el del expediente completo."""
@@ -470,6 +471,7 @@ def _insert_lote_contract(
     adj = Adjudicacion(
         licitacion_id=lic_id,
         nombre=empresa,
+        nif=nif,
         importe_adjudicado=adjudicado,
         fecha_adjudicacion="2025-06-01",
         n_ofertas_recibidas=3,
@@ -644,6 +646,56 @@ def test_listar_adjudicaciones_empresa_filtra_ordena_y_pagina(db):
     filtered = listar_adjudicaciones_empresa(empresa_id, q="M-LIST-A")
     assert filtered["total"] == 1
     assert filtered["items"][0]["presupuesto_licitacion"] == 100000
+
+
+def test_listar_adjudicaciones_empresa_mide_la_baja_contra_el_lote(db):
+    """La baja de cada fila se mide contra el lote, y el par imposible sale sin baja.
+
+    Contra el expediente, el caso real (87.095 € en un lote de 100 € de un
+    expediente de 123.504 €) pasaba por una baja del 29,5 %, y el lote de 20.000 €
+    adjudicado en 15.000 €, por una del 85 %.
+    """
+    from db.database import connect_read
+    from services.competitive.mercado import listar_adjudicaciones_empresa
+
+    for lic_id, expediente, lote, adjudicado in (
+        ("LB-LIST-1", 123_504, 100, 87_095),
+        ("LB-LIST-2", 100_000, 20_000, 15_000),
+    ):
+        _insert_lote_contract(
+            db,
+            lic_id,
+            "Lotera Listado SL",
+            importe_expediente=expediente,
+            importe_lote=lote,
+            adjudicado=adjudicado,
+            nif="B12340048",
+        )
+    resolve(db)
+    with connect_read() as c:
+        empresa_id = int(
+            c.execute(
+                "SELECT empresa_id FROM empresas WHERE nif_canonico = 'B12340048'"
+            ).fetchone()[0]
+        )
+
+    page = listar_adjudicaciones_empresa(empresa_id)
+    bajas = {item["licitacion_id"]: item["baja_pct"] for item in page["items"]}
+    assert bajas["LB-LIST-1"] is None
+    assert bajas["LB-LIST-2"] == pytest.approx(25.0)
+    # La fila trae los dos presupuestos: el del expediente y el de la baja.
+    filas = {i["licitacion_id"]: i for i in page["items"]}
+    assert filas["LB-LIST-1"]["presupuesto_licitacion"] == 123_504
+    assert filas["LB-LIST-1"]["presupuesto_comparable"] == 100
+    assert filas["LB-LIST-2"]["presupuesto_comparable"] == 20_000
+    # Y el contrato de la ruta lo deja pasar: sin el campo en el DTO, FastAPI lo descartaría.
+    from shared.dto import CompetitiveCompanyAwardsDTO
+
+    contrato = CompetitiveCompanyAwardsDTO.model_validate(page)
+    assert {i.licitacion_id: i.presupuesto_comparable for i in contrato.items} == {
+        "LB-LIST-1": 100,
+        "LB-LIST-2": 20_000,
+    }
 
 
 def test_listar_adjudicaciones_empresa_pliega_tildes(db):

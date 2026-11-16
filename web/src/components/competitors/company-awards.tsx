@@ -17,6 +17,8 @@ import { todasLasAdjudicaciones, useAdjudicacionesEmpresa } from "@/hooks/use-em
 import { csvBlob, descargarBlob } from "@/lib/export";
 import { EMPTY, formatCurrency, formatDate, formatNumber, formatPercent, truncate } from "@/lib/utils";
 
+import { CeldaPresupuesto } from "./company-award-presupuesto";
+
 interface CompanyAwardsProps {
   empresaId: number;
   scopeQuery: string;
@@ -75,6 +77,7 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
         "CPV",
         "CCAA",
         "Presupuesto",
+        "Presupuesto del expediente",
         "Importe adjudicado",
         "Baja %",
         "Ofertas",
@@ -87,6 +90,7 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
           row.organo_contratacion,
           row.cpv,
           row.ccaa,
+          row.presupuesto_comparable,
           row.presupuesto_licitacion,
           row.importe_adjudicado,
           row.baja_pct,
@@ -223,7 +227,7 @@ export function CompanyAwards({ empresaId, scopeQuery }: CompanyAwardsProps) {
                         ) : null}
                       </div>
                     </TableCell>
-                    <TableCell numeric>{formatCurrency(award.presupuesto_licitacion)}</TableCell>
+                    <CeldaPresupuesto award={award} />
                     <TableCell numeric className="font-medium">
                       {formatCurrency(award.importe_adjudicado)}
                     </TableCell>
