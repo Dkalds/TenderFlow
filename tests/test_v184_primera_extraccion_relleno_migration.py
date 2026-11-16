@@ -1,11 +1,11 @@
 """v184: ``primera_extraccion`` a ``NULL`` se rellena sin re-notificar.
 
-Lo que se fija: el valor es lo más temprano que se sabe de la fila
-(publicación, historia, fecha de ``v100``), nunca ``fecha_extraccion``; queda
-por debajo del cursor del aviso de cuentas comparado como texto, que es como
-lo compara ``CuentasRepository.publicaciones_nuevas``; la sombra lleva el mismo
-instante; no toca las filas que ya tenían valor, y una segunda pasada no cambia
-nada.
+Lo que se fija: el valor es la publicación o la historia, nunca
+``fecha_extraccion``, y nunca anterior al relleno de ``v100``; queda por debajo
+del cursor del aviso de cuentas comparado como texto, que es como lo compara
+``CuentasRepository.publicaciones_nuevas``; la sombra lleva el mismo instante;
+no toca las filas que ya tenían valor, una segunda pasada no cambia nada, y la
+canónica de un grupo con una gemela rellenada por ``v100`` no cambia.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from typing import Any
 from unittest.mock import patch
 
 from db.database import connect
+from db.sql_fragments import orden_canonico_sql
 
 _RUTA = (
     Path(__file__).resolve().parents[1]
@@ -27,6 +28,10 @@ _RUTA = (
 )
 
 _CURSOR = "2026-11-14T18:32:51.626036+00:00"
+#: El mayor valor que dejó el relleno de `v100` en producción (medido el
+#: 2026-11-16) y el suelo de `v184`, que tiene que quedar por encima como texto.
+_MAX_V100 = "2026-09-04T08:29:46.152168+00:00"
+_SUELO = "2026-09-04T08:30:00.000000+00:00"
 
 
 def _cargar() -> Any:
@@ -88,7 +93,7 @@ def test_fuera_de_postgres_no_emite_nada() -> None:
     assert _sql_emitido("upgrade", dialecto="sqlite") == []
 
 
-def test_rellena_con_lo_mas_temprano_y_bajo_el_cursor(tmp_db) -> None:
+def test_rellena_entre_el_suelo_de_v100_y_el_cursor(tmp_db) -> None:
     with connect() as c:
         c.execute(
             "INSERT INTO ingestion_cursors (source, last_seen_updated, updated_at) "
@@ -101,6 +106,7 @@ def test_rellena_con_lo_mas_temprano_y_bajo_el_cursor(tmp_db) -> None:
         _historia(c, "solo-historia", "2026-10-20T08:00:00+00:00")
         _historia(c, "solo-historia", "2026-10-05T10:00:00.5+00:00")
         _licitacion(c, "sin-nada", pub=None)
+        _licitacion(c, "publicada-antes-de-v100", pub="2012-03-01")
         _licitacion(c, "publicada-tras-el-cursor", pub="2026-11-15")
         _licitacion(c, "ya-tenia", pub="2026-10-01", primera="2026-10-02T09:00:00+00:00")
 
@@ -110,7 +116,8 @@ def test_rellena_con_lo_mas_temprano_y_bajo_el_cursor(tmp_db) -> None:
     assert texto == {
         "pub-antes-que-historia": "2026-10-01T00:00:00.000000+00:00",
         "solo-historia": "2026-10-05T10:00:00.500000+00:00",
-        "sin-nada": "2026-09-03T00:00:00.000000+00:00",
+        "sin-nada": _SUELO,
+        "publicada-antes-de-v100": _SUELO,
         "publicada-tras-el-cursor": "2026-11-14T17:32:51.626036+00:00",
         "ya-tenia": "2026-10-02T09:00:00+00:00",
     }
@@ -119,6 +126,22 @@ def test_rellena_con_lo_mas_temprano_y_bajo_el_cursor(tmp_db) -> None:
     for id_externo, (valor, sombra) in valores.items():
         if id_externo != "ya-tenia":
             assert sombra == datetime.fromisoformat(str(valor))
+
+
+def test_no_cambia_la_canonica_frente_a_una_gemela_de_v100(tmp_db) -> None:
+    # Misma fuente y misma publicación: desempata `primera_extraccion`. Hoy la
+    # fila a NULL cae a su `fecha_extraccion` de hoy y pierde; con la
+    # publicación como relleno ganaría y el sitemap cambiaría de URL.
+    criterio = orden_canonico_sql("l")
+    orden = f"SELECT id_externo FROM licitaciones l ORDER BY {criterio} LIMIT 1"  # noqa: S608 -- fragmento constante de db/sql_fragments
+    with connect() as c:
+        _licitacion(c, "b-rellenada-por-v100", pub="2026-08-20", primera=_MAX_V100)
+        _licitacion(c, "a-a-null", pub="2026-08-20")
+        antes = c.execute(orden).fetchone()
+        _aplicar(c)
+        despues = c.execute(orden).fetchone()
+
+    assert antes == despues == ("b-rellenada-por-v100",)
 
 
 def test_sin_cursor_queda_por_debajo_de_ahora(tmp_db) -> None:

@@ -31,16 +31,23 @@ con ``now() - 1 hora`` si el cursor aún no existe (su primera pasada lo fija en
 margen hace que el texto escrito quede por debajo del cursor también al
 compararlo como texto, aunque uno lleve microsegundos y el otro no.
 
-La estimación es lo más temprano que se sabe de la fila:
+La estimación es::
 
-* ``fecha_publicacion``: la fecha que declara la fuente. Ordena la ficha como
-  la ve el usuario, y una fuente que se ingirió tarde (contratos de 2012
-  entrados después de ``v100``) no los pinta como recientes.
+    GREATEST(suelo, LEAST(fecha_publicacion, MIN(captured_at)))
+
+* El **suelo** es el instante del relleno de ``v100``: el mayor valor que dejó
+  en producción es ``2026-09-04T08:29:46.152168+00:00`` (medido el 2026-11-16),
+  y el suelo es el minuto siguiente, ``2026-09-04T08:30:00``. Una fila está a
+  ``NULL`` porque entró después de ese relleno, así que no se vio antes; y el
+  suelo la deja por detrás, comparando texto, de toda gemela que rellenó
+  ``v100`` (ver «Efecto en la canónica»).
+* ``fecha_publicacion``, cuando cae después del suelo: ordena la ficha como la
+  ve el usuario. Antes del suelo no sirve (un contrato de 2012 ingerido en
+  octubre se vio en octubre, no en 2012).
 * ``MIN(captured_at)`` de ``licitaciones_history``: un momento en que la fila ya
   existía, la misma cota que usó ``v100``.
-* Si no hay ninguna de las dos (116 filas el 2026-11-16), la fecha de ``v100``
-  (2026-09-03): la fila no se veía antes de que la columna existiera, así que es
-  la cota inferior de su primer avistamiento.
+* Sin ninguna de las dos (116 filas el 2026-11-16), el suelo: ``GREATEST``
+  ignora los ``NULL``.
 
 ``fecha_extraccion`` no entra: las reingestas la re-sellan en cada pasada, así
 que para casi todas valdría «hace un rato» y la ficha las enseñaría como nuevas.
@@ -48,19 +55,44 @@ que para casi todas valdría «hace un rato» y la ficha las enseñaría como nu
 El texto se escribe en el formato de ``now_utc_iso()`` (``…T…+00:00``), el que
 ya escribe el upsert, y la sombra con el mismo instante.
 
-Efecto en la clave canónica
----------------------------
-``clave_canonica_sql`` usa ``coalesce(fecha_publicacion, primera_extraccion,
-fecha_extraccion)``: solo cambia la componente de las filas sin
-``fecha_publicacion``, que hasta ahora se movía con ``fecha_extraccion`` cada
-mes y desde aquí queda fija (lo que buscaba ``v100``). ``mv_licitaciones_canonicas``
-lo recoge en su siguiente refresco programado.
+Efecto en la canónica
+---------------------
+``primera_extraccion`` entra en dos sitios de ``db/sql_fragments.py``, y los
+dos los congela el cuerpo de ``mv_licitaciones_canonicas``, que lo recoge en su
+siguiente refresco programado:
+
+* El **desempate** de la canónica (``_criterios_canonicos_sql``: rango de
+  fuente, ``fecha_publicacion`` y después ``coalesce(primera_extraccion,
+  fecha_extraccion)``), para **todas** las filas. Una fila a ``NULL`` desempata
+  hoy por su ``fecha_extraccion``, reciente, y pierde frente a su gemela
+  rellenada por ``v100`` (≤ ``08:29:46`` del 2026-09-04). Con el suelo sigue
+  perdiendo, así que la canónica y la URL del sitemap de esos grupos no
+  cambian: con ``fecha_publicacion`` como relleno, sin suelo, la fila ganaba y
+  cambiaba la URL de hasta 313 grupos (1 317 pares con la misma clave, el mismo
+  rango y la misma publicación, medidos el 2026-11-16), lo que ``v100`` se
+  escribió para evitar. Entre dos gemelas que estaban las dos a ``NULL`` el
+  orden puede cambiar una vez; hasta hoy lo movía cada reingesta.
+* El **año-mes** de la clave (``periodo_publicacion_sql``), solo para las filas
+  sin ``fecha_publicacion``: hasta ahora se movía con ``fecha_extraccion`` cada
+  mes y desde aquí queda fijo, lo que buscaba ``v100``.
+
+Efecto en la auditoría del importe
+----------------------------------
+``domain_truth_audit.importe_sin_base_declarada`` cuenta como «nuevas» las filas
+con ``COALESCE(primera_extraccion, fecha_extraccion) >= '2026-09-06'``. Las
+66 940 filas a ``NULL`` con importe y publicadas antes de esa fecha cuentan hoy
+por su ``fecha_extraccion`` y, con el suelo, salen de esa población (sobre
+76 540 el 2026-11-16; 0 sin tipo entre ellas, así que no se esconde ningún
+fallo). Las filas que entren desde el despliegue del upsert sí cuentan: llevan
+la fecha real.
 
 Orden de despliegue
 -------------------
 **Después** del código que escribe la columna en el ``INSERT``: aplicada antes,
 las filas que entren entre la migración y el despliegue nacerían otra vez a
-``NULL`` y esta revisión ya no volvería a correr.
+``NULL`` y esta revisión ya no volvería a correr. Y después de ``v183``, que
+tiene su propio paso previo del propietario (las claves de API sin dueño): las
+dos van juntas en ``alembic upgrade head``.
 
 Coste
 -----
@@ -90,8 +122,9 @@ depends_on: str | tuple[str, ...] | None = None
 #: no importa la app, y ese nombre es un dato ya escrito en producción.
 CURSOR_CUENTAS = "outbox_cuentas_publicaciones"
 
-#: ``Create Date`` de ``v100``: cota inferior para la fila sin otra fecha.
-SUELO_V100 = "2026-09-03 00:00:00+00"
+#: El minuto siguiente al mayor valor que escribió el relleno de ``v100``
+#: (``2026-09-04T08:29:46.152168+00:00`` en producción): ver el docstring.
+SUELO_V100 = "2026-09-04 08:30:00+00"
 
 RELLENAR = (
     "WITH corte AS ("
@@ -100,11 +133,11 @@ RELLENAR = (
     f"    WHERE source = '{CURSOR_CUENTAS}'), now()) - interval '1 hour' AS ts"
     "), estimado AS ("
     "  SELECT l.id_externo, LEAST("
-    "    COALESCE(LEAST("
+    f"    GREATEST(TIMESTAMPTZ '{SUELO_V100}', LEAST("
     "      nucleo_iso_a_timestamptz(l.fecha_publicacion), "
     "      (SELECT MIN(nucleo_iso_a_timestamptz(h.captured_at)) FROM licitaciones_history h "
     "       WHERE h.id_externo = l.id_externo)"
-    f"    ), TIMESTAMPTZ '{SUELO_V100}'), "
+    "    )), "
     "    (SELECT ts FROM corte)) AS ts "
     "  FROM licitaciones l WHERE l.primera_extraccion IS NULL"
     ") "
