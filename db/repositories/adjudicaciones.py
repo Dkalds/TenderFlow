@@ -10,6 +10,7 @@ from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_w
 from db.repositories.base import count_where, csv_values, rows_to_dicts, typed_rows
 from db.sql_fragments import (
     BASE_COMPARABLE_SQL,
+    escape_like,
     exclude_duplicados_sql,
     excluir_contratos_menores_sql,
     fecha_fin_sql,
@@ -358,9 +359,14 @@ class AdjudicacionRepository:
         fecha_desde: str | None = None,
         fecha_hasta: str | None = None,
         importe_min: float | None = None,
+        cpv_prefijo: str | None = None,
         limit: int = LIMITE_COMPETIDORES,
     ) -> list[dict[str, Any]]:
         """Carga la proyección/filtro necesarios para ``services.analytics.competitors``.
+
+        ``cpv_prefijo`` acota por CPV **antes** del ``LIMIT``: el buscador de
+        socios lo pide por segmento, y filtrarlo en pandas dejaba el segmento en
+        lo que cupiera de las ``limit`` adjudicaciones más recientes de todos.
 
         Unión adjudicaciones + licitaciones + maestro de empresas, con solo
         las columnas que consume la resolución de identidad + las 16
@@ -427,6 +433,9 @@ class AdjudicacionRepository:
         if importe_min is not None:
             conditions.append("l.importe >= %s")
             params.append(importe_min)
+        if cpv_prefijo:
+            conditions.append("l.cpv LIKE %s")
+            params.append(f"{escape_like(cpv_prefijo)}%")
         if conditions:
             sql += "WHERE " + " AND ".join(conditions) + " "
         sql += "ORDER BY a.fecha_adjudicacion DESC NULLS LAST, a.id DESC LIMIT %s"

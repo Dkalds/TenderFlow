@@ -16455,6 +16455,11 @@ export interface components {
             sin_resultados?: string | null;
             /** Socios */
             socios?: components["schemas"]["SocioSugerido"][];
+            /**
+             * Truncado
+             * @default false
+             */
+            truncado: boolean;
         };
         /**
          * TareaPlantilla

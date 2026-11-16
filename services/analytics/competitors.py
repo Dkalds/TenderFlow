@@ -427,18 +427,21 @@ def _identity_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def cargar_adjudicaciones_resueltas(
-    *, ccaa: str | None = None, tecnologia: str | None = None
-) -> pd.DataFrame:
-    """Adjudicaciones del segmento **con la identidad de empresa resuelta**.
+    *, ccaa: str | None = None, tecnologia: str | None = None, cpv: str | None = None
+) -> tuple[pd.DataFrame, bool]:
+    """Adjudicaciones del segmento **con la identidad de empresa resuelta**, y si se truncó.
 
     `empresa_key` no sale del SQL: la calcula `_prepare_company_identity`
     (union-find sobre NIF y nombre normalizados), así que cualquier consumidor
     que agrupe por ella tiene que pasar por aquí. Agrupar sobre las filas
     crudas del repositorio era un `KeyError: 'empresa_key'`, es decir un 500.
+
+    ``cpv`` es un prefijo y se aplica en SQL, antes del tope de filas. El
+    segundo elemento es la misma señal de truncado que ``CompetitorResult``.
     """
-    df, _truncado = _load_df(CompetitorFilters(ccaa=ccaa, tecnologia=tecnologia))
+    df, truncado = _load_df(CompetitorFilters(ccaa=ccaa, tecnologia=tecnologia), cpv_prefijo=cpv)
     if df.empty:
-        return df
+        return df, truncado
 
     # Adaptación de nombres, no cálculo nuevo. `services/partners.py` se
     # escribió contra un DataFrame que ningún cargador producía —era código sin
@@ -457,10 +460,12 @@ def cargar_adjudicaciones_resueltas(
     adaptado["es_ute"] = _optional_text_column(adaptado, "nombre").apply(
         lambda n: len(parse_ute_members(n)) >= 2
     )
-    return adaptado
+    return adaptado, truncado
 
 
-def _load_df(filters: CompetitorFilters) -> tuple[pd.DataFrame, bool]:
+def _load_df(
+    filters: CompetitorFilters, *, cpv_prefijo: str | None = None
+) -> tuple[pd.DataFrame, bool]:
     """Carga adjudicaciones ya filtradas+proyectadas en SQL, y si se truncó.
 
     ``_apply_filters`` se mantiene como red de seguridad redundante — corre
@@ -484,6 +489,7 @@ def _load_df(filters: CompetitorFilters) -> tuple[pd.DataFrame, bool]:
         fecha_desde=filters.fecha_desde.isoformat() if filters.fecha_desde else None,
         fecha_hasta=filters.fecha_hasta.isoformat() if filters.fecha_hasta else None,
         importe_min=filters.importe_min,
+        cpv_prefijo=cpv_prefijo,
     )
     truncado = len(rows) >= LIMITE_COMPETIDORES
     df = pd.DataFrame(rows)

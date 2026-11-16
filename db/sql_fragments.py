@@ -301,6 +301,13 @@ BASE_DECLARADA_SQL = "l.importe_tipo = 'sin_iva' AND l.importe_base_sin_iva IS N
 #: `TaxExclusiveAmount` del lote, así que ya es base sin IVA.
 BASE_COMPARABLE_SQL = "COALESCE(lo.importe, l.importe_base_sin_iva, l.importe)"
 
+#: Filas cuyo ``importe`` es un presupuesto base contra el que medir una baja.
+#: TED no lo publica: su ``importe`` es el valor estimado (BT-27, con
+#: prórrogas) o, sin él, el propio adjudicado (BT-161), ver
+#: ``scraper/connectors/ted.py``. Contra lo adjudicado da una baja inflada o un
+#: 0 por construcción: medido el 2026-11-07, el 83 % de sus pares valía 0.
+CON_PRESUPUESTO_BASE_SQL = "l.fuente <> 'ted'"
+
 #: Valores del campo `base` que las respuestas comparativas declaran.
 BASE_SIN_IVA = "sin_iva"
 BASE_MIXTA = "mixta"

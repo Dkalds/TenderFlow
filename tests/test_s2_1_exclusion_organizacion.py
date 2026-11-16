@@ -168,10 +168,22 @@ class TestSociosDelSegmento:
     def _df(self) -> pd.DataFrame:
         return _resueltas([{"id": i, "_nif_key": _NIF_PROPIO} for i in range(5)])
 
+    def test_el_cpv_se_filtra_en_la_carga_y_el_corte_se_declara(self) -> None:
+        """El tope de filas va después del CPV, no antes, y si muerde se dice.
+
+        Filtrar el CPV en pandas sobre las 5.000 adjudicaciones más recientes de
+        todos los CPV dejaba el segmento en lo que cupiera de ese corte.
+        """
+        with patch(_CARGA, return_value=(self._df(), True)) as carga:
+            resultado = socios_del_segmento(cpv="72", ccaa="Madrid")
+
+        carga.assert_called_once_with(ccaa="Madrid", cpv="72")
+        assert resultado.truncado is True
+
     def test_sin_usuario_no_se_resuelve_ninguna_organizacion(self) -> None:
         """Un job sin contexto no tiene identidad fiscal: no se inventa una."""
         with (
-            patch(_CARGA, return_value=self._df()),
+            patch(_CARGA, return_value=(self._df(), False)),
             patch("services.competitive.socios.alcance_resuelto") as resolver,
         ):
             resultado = socios_del_segmento()
@@ -189,7 +201,7 @@ class TestSociosDelSegmento:
             return (7, "owner")
 
         with (
-            patch(_CARGA, return_value=self._df()),
+            patch(_CARGA, return_value=(self._df(), False)),
             patch("services.competitive.socios.alcance_resuelto", alcance_doble(_anotando)),
             patch("services.competitive.socios.identidad_fiscal", return_value=_PROPIA),
         ):
@@ -201,7 +213,7 @@ class TestSociosDelSegmento:
     def test_un_fallo_leyendo_la_identidad_no_tumba_la_pantalla(self) -> None:
         """Sin exclusión la lista sigue sirviendo; sin lista, no."""
         with (
-            patch(_CARGA, return_value=self._df()),
+            patch(_CARGA, return_value=(self._df(), False)),
             patch(
                 "services.competitive.socios.alcance_resuelto",
                 alcance_fijo(),
@@ -218,7 +230,7 @@ class TestSociosDelSegmento:
     def test_pedir_una_organizacion_ajena_sigue_siendo_un_403(self) -> None:
         """Tragarse el permiso convertiría un 403 en una respuesta distinta."""
         with (
-            patch(_CARGA, return_value=self._df()),
+            patch(_CARGA, return_value=(self._df(), False)),
             patch(
                 "services.competitive.socios.alcance_resuelto",
                 side_effect=OrganizationAccessError("No perteneces a esta organización."),
@@ -263,7 +275,7 @@ def test_la_carga_resuelta_conserva_las_columnas_de_identidad() -> None:
     from services.analytics.competitors import cargar_adjudicaciones_resueltas
 
     with patch("services.analytics.competitors.load_for_competitors", return_value=_FILAS_CRUDAS):
-        df = cargar_adjudicaciones_resueltas()
+        df, _truncado = cargar_adjudicaciones_resueltas()
 
     assert {"empresa_key", "_nif_key", "_empresa_id_key"} <= set(df.columns)
     assert claves_de_la_organizacion(df, _PROPIA) == set(df["empresa_key"].astype(str))

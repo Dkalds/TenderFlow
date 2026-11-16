@@ -36,6 +36,7 @@ def _insert(
     importe_adjudicado: float,
     fecha_adjudicacion: str,
     ccaa: str = "Madrid",
+    cpv: str | None = None,
 ) -> None:
     from db.upsert import (
         Adjudicacion,
@@ -52,6 +53,7 @@ def _insert(
         estado=estado,
         tecnologia=tecnologia,
         ccaa=ccaa,
+        cpv=cpv,
         fecha_publicacion=_iso(-500),
     )
     upsert_licitaciones([lic])
@@ -155,6 +157,39 @@ def test_filtro_sin_resultados(db):
     res = get_competitors(CompetitorFilters(tecnologia="ORACLE"))
     assert res.total_adjudicaciones == 0
     assert res.competitors == []
+
+
+def test_el_cpv_se_filtra_antes_del_tope_de_filas(tmp_db):
+    """Socios pide un CPV: el ``LIMIT`` tiene que cortar sobre ese CPV.
+
+    Con el filtro en pandas, un tope de 1 se gastaba en la adjudicación más
+    reciente de otro CPV y el segmento pedido salía vacío.
+    """
+    from db.repositories.adjudicaciones import AdjudicacionRepository
+
+    comun = {"tecnologia": "SAP", "estado": "ADJ", "importe_licitacion": 1000.0}
+    _insert(
+        tmp_db[0],
+        "CPV-72",
+        "Indra",
+        importe_adjudicado=900.0,
+        fecha_adjudicacion=_iso(-30),
+        cpv="72260000",
+        **comun,
+    )
+    _insert(
+        tmp_db[0],
+        "CPV-48",
+        "Accenture",
+        importe_adjudicado=900.0,
+        fecha_adjudicacion=_iso(-1),
+        cpv="48000000",
+        **comun,
+    )
+
+    filas = AdjudicacionRepository().load_for_competitors(cpv_prefijo="72", limit=1)
+
+    assert [f["licitacion_id"] for f in filas] == ["CPV-72"]
 
 
 def test_presupuesto_efectivo_prefiere_la_base_sin_iva(tmp_db):

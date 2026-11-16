@@ -12,7 +12,7 @@ endpoints vacíos en producción.
 from __future__ import annotations
 
 from collections import Counter
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
@@ -230,6 +230,17 @@ def get_forecast_volume(filters: ForecastFilters) -> ForecastVolumeResult:
             "valor": [float(r["valor"] or 0) for r in monthly],
         }
     )
+    # El mes en curso —o el que `fecha_hasta` corta a medias— está incompleto:
+    # como última observación se lee como una caída y arrastra la proyección.
+    fin = datetime.now(UTC).date()
+    if filters.fecha_hasta is not None:
+        fin = min(fin, filters.fecha_hasta + timedelta(days=1))
+    hist = hist[hist["mes"] < pd.Timestamp(fin.year, fin.month, 1)]
+    if hist.empty:
+        return ForecastVolumeResult(cpv=filters.cpv)
+    # El GROUP BY no devuelve los meses sin publicaciones: son ceros, y sin
+    # ellos el modelo tomaba meses separados por un hueco como consecutivos.
+    hist = hist.set_index("mes").sort_index().asfreq("MS", fill_value=0.0).reset_index()
     result_df = forecast_volume_from_monthly(hist, months_ahead=filters.months_ahead)
     if result_df.empty:
         return ForecastVolumeResult(cpv=filters.cpv)
