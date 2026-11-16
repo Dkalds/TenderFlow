@@ -1297,8 +1297,7 @@ def cpv4(valor: str | None) -> str:
     resuelve aquí por el lado del SQL: es el que decide lo que se publica.
     """
     texto = valor or ""
-    prefijo = texto[:4]
-    return prefijo if len(prefijo) == 4 and prefijo.isascii() and prefijo.isdigit() else ""
+    return texto[:4] if texto[:4].isdigit() and texto[:4].isascii() else ""
 
 
 def clave_organo_sql(alias: str = "f") -> str:
