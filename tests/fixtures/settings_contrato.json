@@ -1576,14 +1576,6 @@
       "tipo": "<class 'pydantic.types.SecretStr'>",
       "validation_alias": "None"
     },
-    "UPSERT_CHUNK_SIZE": {
-      "alias": "None",
-      "default": "500",
-      "default_factory": "None",
-      "metadata": "[]",
-      "tipo": "<class 'int'>",
-      "validation_alias": "None"
-    },
     "WATCHLIST_RULES_JOB_ENABLED": {
       "alias": "None",
       "default": "False",

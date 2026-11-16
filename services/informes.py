@@ -13,9 +13,7 @@ De las mismas consultas que la pantalla, y **no** de consultas nuevas:
 ``PursuitRepository.metric_rows`` para el embudo y los cierres,
 ``deadline_rows`` para los vencimientos. Es deliberado: dos caminos para la
 misma cifra acaban dando dos cifras, y entonces el correo y la pantalla se
-contradicen delante del cliente. El win rate por corte lo calcula
-``services.direccion.corte_con_minimo``, que ya aplica el mínimo de cinco
-cierres por celda — su propio docstring anticipaba este consumidor.
+contradicen delante del cliente.
 
 Universo, ventana y fecha del dato (ADR-014)
 --------------------------------------------

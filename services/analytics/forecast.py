@@ -63,17 +63,17 @@ def build_forecast_df(
 
     # Sacar datos de adjudicación agregados por licitación
     if not adjudicaciones.empty:
-        adj_agg = (
-            adjudicaciones.groupby("licitacion_id")
-            .agg(
-                fecha_adj_calc=("fecha_adjudicacion", "min"),
-                importe_adjudicado_total=("importe_adjudicado", "sum"),
-                n_ofertas=("n_ofertas_recibidas", "max"),
-                adjudicatarios=("nombre", lambda s: ", ".join(s.dropna().unique()[:3])),
-            )
-            .reset_index()
-            .rename(columns={"licitacion_id": "id_externo"})
+        por_licitacion = adjudicaciones.groupby("licitacion_id")
+        adj_agg = por_licitacion.agg(
+            fecha_adj_calc=("fecha_adjudicacion", "min"),
+            importe_adjudicado_total=("importe_adjudicado", "sum"),
+            n_ofertas=("n_ofertas_recibidas", "max"),
+            adjudicatarios=("nombre", lambda s: ", ".join(s.dropna().unique()[:3])),
         )
+        # min_count=1: sin ningún importe la suma es NaN, no un 0 que después
+        # se lee como una baja del 100 %.
+        adj_agg["importe_adjudicado_total"] = por_licitacion["importe_adjudicado"].sum(min_count=1)
+        adj_agg = adj_agg.reset_index().rename(columns={"licitacion_id": "id_externo"})
         df = df.merge(adj_agg, on="id_externo", how="left")
     else:
         df["fecha_adj_calc"] = pd.NaT

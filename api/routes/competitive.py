@@ -650,7 +650,7 @@ async def post_watchlist(
     correo = ctx.get("email")
     if body.email and body.email.strip().lower() != str(correo or "").strip().lower():
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Las alertas van al correo de tu cuenta; no se puede indicar otro.",
         )
     ambito = idem_scope(

@@ -131,7 +131,12 @@ async def csp_report(request: Request) -> None:
     except Exception:
         return  # Ignorar body inválido
 
+    # JSON válido que no es un objeto (`[]`, una cadena): se ignora, no es un 500.
+    if not isinstance(body, dict):
+        return
     csp_data = body.get("csp-report") or body
+    if not isinstance(csp_data, dict):
+        return
     blocked_uri = str(csp_data.get("blocked-uri", ""))[:500]
     violated_directive = str(csp_data.get("violated-directive", ""))[:200]
     document_uri = str(csp_data.get("document-uri", ""))[:500]

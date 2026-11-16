@@ -72,7 +72,7 @@ def render_block() -> str:
     ]
     for regla in POLITICA_RETENCION:
         comando = (
-            "`python scripts/retention_cleanup.py --apply` (por `reset_at`, no por plazo)"
+            "`python scripts/retention_cleanup.py --apply` (por `ts`, las de más de 24 h)"
             if regla.tabla == "rate_limits"
             else _COMANDO_GENERAL
         )

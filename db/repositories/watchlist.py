@@ -87,8 +87,13 @@ class WatchlistRepository:
 
     def query_licitaciones_batch(
         self, entries: list[dict[str, Any]], default_since: str
-    ) -> dict[str, list[dict[str, Any]]]:
-        """Consulta licitaciones para múltiples entradas watchlist agrupadas por fecha."""
+    ) -> dict[int, list[dict[str, Any]]]:
+        """Candidatas de cada entrada, por su ``id``: una consulta por ventana.
+
+        Por ``id`` y no por ``cpv_prefix``: dos entradas con el mismo prefijo y
+        distinta ventana (una recién creada junto a otra ya avisada) compartían
+        la de la última consulta, y la nueva perdía su ventana inicial.
+        """
         from collections import defaultdict
 
         by_since: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -96,7 +101,7 @@ class WatchlistRepository:
             raw_since = entry.get("last_notified_at") or default_since
             by_since[str(raw_since)].append(entry)
 
-        result: dict[str, list[dict[str, Any]]] = {}
+        result: dict[int, list[dict[str, Any]]] = {}
 
         with connect_read() as c:
             for since_date, grp_entries in by_since.items():
@@ -111,8 +116,10 @@ class WatchlistRepository:
                 )
                 rows = rows_to_dicts(cur)
 
-                for prefix in cpv_prefixes:
-                    result[prefix] = [r for r in rows if (r.get("cpv") or "").startswith(prefix)]
+                for entry in grp_entries:
+                    result[int(entry["id"])] = [
+                        r for r in rows if (r.get("cpv") or "").startswith(entry["cpv_prefix"])
+                    ]
 
         return result
 

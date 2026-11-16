@@ -838,12 +838,14 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
     """Ejecuta un ciclo completo de ingesta para una fuente.
 
     Procesa en lotes de ``batch_size`` para acotar transacciones. Un aviso
-    que falla al parsear va a la DLQ y no interrumpe el resto. El cursor
-    avanza después de cada lote persistido con éxito (no solo al final):
-    un fallo en ``fetch`` -- o una interrupción externa por timeout del job,
-    que no es una excepción Python y corta el proceso a mitad de camino --
-    conserva el progreso hasta el último lote; la próxima ejecución retoma
-    desde ahí en vez de reiniciar siempre desde el mismo punto.
+    que falla al parsear va a la DLQ y no interrumpe el resto. En un conector
+    con ``advances_incrementally`` (PSCP) el cursor avanza después de cada
+    lote persistido con éxito: un fallo en ``fetch`` -- o una interrupción
+    externa por timeout del job, que no es una excepción Python y corta el
+    proceso a mitad de camino -- conserva el progreso hasta el último lote.
+    En el resto (feeds del más nuevo al más viejo: ATOM, TED) avanza solo al
+    final, tras persistir todo el fetch; el motivo está en
+    ``_LoteDeIngesta.flush``.
     """
     inicio = time.monotonic()
     # Toda fila que parsee esta pasada lleva una `fecha_extraccion` posterior.
@@ -882,9 +884,10 @@ def run_connector(connector: Connector, *, batch_size: int = 200) -> ConnectorRu
                 lote.flush()
         lote.flush()
     except Exception as e:
-        # El cursor ya avanzó (en lote.flush) hasta el último lote persistido
-        # con éxito; solo se pierde el progreso del lote aún sin flushear
-        # en el momento del fallo -- la próxima corrida no reinicia desde cero.
+        # Con ``advances_incrementally`` el cursor ya avanzó (en lote.flush)
+        # hasta el último lote persistido: solo se pierde el lote aún sin
+        # flushear. Sin él, el cursor no se ha movido y la próxima corrida
+        # relee desde el mismo punto (el upsert es idempotente).
         result.errores += 1
         result.fetch_failed = True
         _contar_error("fetch")

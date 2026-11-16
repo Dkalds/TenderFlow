@@ -159,8 +159,13 @@ def _validar_credencial(api_key_raw: str, method: str | None, path: str | None) 
     try:
         record = auth_service.lookup_active_key(key_hash)
     except Exception as exc:
+        # 503 y no 401: una caída de la base no es una clave inválida, y un 401
+        # manda al integrador a rotar una clave que está bien.
         log.warning("api_key_db_error", error=str(exc))
-        raise _UNAUTHORIZED from exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Servicio temporalmente no disponible.",
+        ) from exc
 
     if record is None:
         # Comparación dummy para mantener tiempo constante ante timing attacks

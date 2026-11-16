@@ -81,7 +81,7 @@ async def post_saved_filter(
         json.loads(body.filters_json)
     except (ValueError, TypeError) as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="filters_json no es JSON válido.",
         ) from exc
 

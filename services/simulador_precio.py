@@ -117,19 +117,32 @@ def _puntos_inversa_precio(baja: float, baja_mayor: float, maximo: float) -> flo
     return maximo * (1 - baja_mayor) / (1 - baja)
 
 
-def _puntos_por_tramos(baja: float, tramos: dict[str, float], maximo: float) -> float:
+def _tramos_numericos(params: dict[str, float]) -> dict[float, float]:
+    """Los tramos cuya clave es un umbral de baja.
+
+    ``params`` admite claves libres («umbral», «tramo_1»): las que no son un
+    número no son un tramo, y convertirlas a ciegas tiraba la simulación.
+    """
+    tramos: dict[float, float] = {}
+    for clave, puntos in params.items():
+        try:
+            tramos[float(clave)] = puntos
+        except ValueError:
+            continue
+    return tramos
+
+
+def _puntos_por_tramos(baja: float, tramos: dict[float, float], maximo: float) -> float:
     """Escalones: la clave es la baja mínima del tramo, el valor sus puntos.
 
     Se elige el tramo de mayor umbral que la baja alcanza. Fuera de todos los
     tramos (baja por debajo del primero) son cero puntos, que es lo que dice
     un pliego por tramos: por debajo del primer escalón no se puntúa.
     """
-    aplicables = [
-        (float(umbral), puntos) for umbral, puntos in tramos.items() if baja >= float(umbral)
-    ]
+    aplicables = [puntos for umbral, puntos in tramos.items() if baja >= umbral]
     if not aplicables:
         return 0.0
-    return min(max(p for _u, p in aplicables), maximo)
+    return min(max(aplicables), maximo)
 
 
 def simular(
@@ -164,7 +177,12 @@ def simular(
     formula = formulas[0] if formulas else None
     if formula is None:
         return SimulacionPrecio(licitacion_id=licitacion_id, sin_calculo="sin_formula")
-    if formula.formula_type == "otra":
+    tramos = _tramos_numericos(formula.params)
+    # Por tramos y sin ningún tramo legible no hay nada que calcular: decirlo
+    # es mejor que dar cero puntos a todas las bajas.
+    if formula.formula_type == "otra" or (
+        formula.formula_type == "lineal_por_tramos" and not tramos
+    ):
         return SimulacionPrecio(
             licitacion_id=licitacion_id,
             formula_tipo=formula.formula_type,
@@ -188,7 +206,6 @@ def simular(
     else:
         rival = [baja_referencia] if baja_referencia is not None else []
         mayor = max([*candidatas, *rival], default=0.0)
-    tramos = formula.params
 
     def _puntos(baja: float) -> float:
         if formula.formula_type == "lineal_por_tramos":

@@ -8,8 +8,11 @@ Secuencia canónica::
 
     ingesta → ML scoring → analytics export → KPI precompute
             → aggregates precompute → watchlist notify → event dispatch → digests
-            → DLQ retry → anomaly checks → retention cleanup
-            → ML retrain → drift checks
+            → DLQ retry → anomaly checks → retention cleanup → drift checks
+
+Es un resumen: la lista completa y su orden son ``CANONICAL_STEPS``
+(``scheduler/pipeline_pasos.py``). El reentrenamiento no es un paso de la
+pasada: es el job periódico ``ml_retrain_baja``.
 
 ``tech_signal_merge`` corre justo después de ``ml_tecnologias``: aplica la
 señal de tecnología detectada en los pliegos (``services/tech_signal.py``)

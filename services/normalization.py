@@ -213,8 +213,10 @@ def nif_espanol_malformado(nif: str | None) -> bool:
 
 
 # ── UTE member extraction ────────────────────────────────────────────────
+#: Con frontera tras «UTE»: sin ella «UTECO SERVICIOS Y SISTEMAS SL» se leía
+#: como una UTE de «CO SERVICIOS» y «SISTEMAS».
 _UTE_PREFIX_RE = re.compile(
-    r"^\s*U\.?\s*T\.?\s*E\.?\s*[:\-\s]*",
+    r"^\s*U\.?\s*T\.?\s*E(?:\.|(?=[\s:\-]|$))\s*[:\-\s]*",
     flags=re.IGNORECASE,
 )
 _UTE_TAIL_PAREN_RE = re.compile(r"\s*\([^)]*\)\s*$")

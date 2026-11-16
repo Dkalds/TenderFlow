@@ -260,6 +260,26 @@ class TestLideresDelSegmento:
         # opuestas —con quién ir, contra quién se va—.
         assert isinstance(resultado.lideres, list)
 
+    def test_lideres_y_muestra_son_los_del_cpv_pedido(self) -> None:
+        """Con ``cpv``, ni el líder ni el tamaño de muestra salen de otro CPV."""
+        filas = [{"id": i} for i in range(4)]
+        filas += [
+            {
+                "id": 100 + i,
+                "cpv": "48000000",
+                "empresa_key": "ajena",
+                "nombre_canonico": "Ajena",
+                "importe_adjudicado": 9_000_000.0,
+            }
+            for i in range(6)
+        ]
+
+        resultado = sugerir_socios(_adjudicaciones(filas), cpv="72")
+
+        assert resultado.n_adjudicaciones == 4
+        assert [lider.empresa_key for lider in resultado.lideres] == ["acme"]
+        assert resultado.lideres[0].cuota_pct == 100.0
+
     def test_la_cuota_esta_acotada(self) -> None:
         filas = [{"id": i} for i in range(5)]
         for lider in sugerir_socios(_adjudicaciones(filas)).lideres:

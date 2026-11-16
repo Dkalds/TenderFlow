@@ -26,7 +26,7 @@ Lo que no copia es el código de salida. Las fallas que el workflow pone en rojo
 —ingesta con status de error, cierre con pasos bloqueantes en error— ya avisan
 por correo desde la pipeline; relanzarlas aquí mandaría el aviso dos veces y,
 peor, activaría el backoff del plano, que espacia el job: una caída de PLACSP
-dejaría a las otras seis fuentes ingiriendo cada 8 h en vez de cada 4. Solo se
+dejaría a las demás fuentes ingiriendo cada 8 h en vez de cada 4. Solo se
 relanza una excepción inesperada de la ingesta, como hacía el job antes.
 
 ``tests/test_daily_atom.py`` compara la lista de conectores y sus presupuestos

@@ -124,6 +124,12 @@ class TestMenciones:
         assert r.user_ids == []
         assert r.ambiguos == ["Ana"]
 
+    def test_el_punto_final_de_la_frase_no_es_parte_del_nombre(self) -> None:
+        """«Gracias @marta.» mencionaba a «marta.», que no es nadie."""
+        from services.pursuit_menciones import resolver
+
+        assert resolver("Gracias @marta. Mañana lo vemos", self.MIEMBROS).user_ids == [2]
+
     def test_las_tildes_y_las_mayusculas_no_importan(self) -> None:
         from services.pursuit_menciones import resolver
 
