@@ -172,7 +172,12 @@ def get_events(
     event_type: str | None = None,
     limit: int = 1000,
 ) -> list[dict[str, Any]]:
-    """Devuelve todos los eventos de un agregado, ordenados por created_at."""
+    """Devuelve todos los eventos de un agregado, ordenados por created_at.
+
+    Por el pool de escritura a propósito, como :func:`agregados_con_evento`: los
+    productores la leen para no emitir dos veces, y esa decisión tiene que ver
+    lo que acaban de escribir.
+    """
     params: list[object] = [aggregate_type, str(aggregate_id)]
     extra = ""
     if event_type:
@@ -245,7 +250,7 @@ def get_events_by_type(
         extra = " AND created_at >= %s"
         params.append(since)
     params.append(limit)
-    with connect() as c:
+    with connect_read() as c:
         cur = c.execute(
             f"SELECT id, event_type, aggregate_id, aggregate_type, payload_json, actor_id, created_at "
             f"FROM domain_events "

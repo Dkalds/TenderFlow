@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from db.database import connect, now_utc_iso
+from db.database import connect, connect_read, now_utc_iso
 from shared.types import JsonDict
 
 #: Predicado de identidad. Parámetros: ``(user_id, user_id)``. Una fila con OTRO
@@ -130,7 +130,7 @@ def list_entries(
     *,
     organization_id: int | None = None,
 ) -> list[dict[str, Any]]:
-    with connect() as c:
+    with connect_read() as c:
         if organization_id is not None:
             cur = c.execute(
                 f"SELECT {_COLS_PROPIAS}, organization_id, visibility "

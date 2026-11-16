@@ -178,7 +178,9 @@ def validate_session(token: str) -> dict[str, Any] | None:
     por techo absoluto, y renovación throttled de ``expires_at``.
     """
     token_hash = _hash_token(token)
-    with connect() as c:
+    # Lectura por el pool de lectura y escrituras aparte, como en
+    # ``validate_session_principal``.
+    with connect_read() as c:
         row = c.execute(
             "SELECT user_id, created_at, expires_at, revoked, ip, last_seen_at, mfa_verified_at "
             "FROM sessions WHERE token_hash = %s",
@@ -452,7 +454,7 @@ def list_active_sessions(user_id: int) -> list[dict[str, Any]]:
     no la vida máxima: esa es ``created_at`` + ``SESSION_ABSOLUTE_DAYS``.
     """
     now = datetime.now(UTC).isoformat()
-    with connect() as c:
+    with connect_read() as c:
         cur = c.execute(
             "SELECT token_hash, created_at, expires_at, ip, user_agent "
             "FROM sessions "

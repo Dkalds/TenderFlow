@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from db.database import connect, now_utc_iso
+from db.database import connect, connect_read, now_utc_iso
 from observability.logging import get_logger
 
 log = get_logger(__name__)
@@ -115,7 +115,7 @@ def count_unresolved() -> int:
     Misma condición que :func:`list_unresolved`, pero un ``COUNT(*)`` barato:
     lo usa el panel de Calidad de Datos para no infracontar la pérdida real.
     """
-    with connect() as c:
+    with connect_read() as c:
         row = c.execute(
             "SELECT COUNT(*) FROM failed_extractions "
             "WHERE resolved_at IS NULL AND exhausted_at IS NULL"
@@ -125,7 +125,7 @@ def count_unresolved() -> int:
 
 def list_exhausted(limit: int = 100) -> list[dict[str, Any]]:
     """Devuelve fallos agotados (retry_count >= max_retries, nunca resueltos)."""
-    with connect() as c:
+    with connect_read() as c:
         cur = c.execute(
             "SELECT id, run_id, fuente, scope, error_type, error_message, "
             "retry_count, created_at, last_attempt_at, exhausted_at "
@@ -140,7 +140,7 @@ def list_exhausted(limit: int = 100) -> list[dict[str, Any]]:
 
 def get_failure(failure_id: int) -> dict[str, Any] | None:
     """Devuelve un fallo por ID, incluyendo resueltos y agotados."""
-    with connect() as c:
+    with connect_read() as c:
         cur = c.execute(
             "SELECT id, run_id, fuente, scope, error_type, error_message, "
             "payload_ref, retry_count, resolved_at, exhausted_at, "
@@ -157,7 +157,7 @@ def get_failure(failure_id: int) -> dict[str, Any] | None:
 
 def unresolved_summary() -> list[dict[str, Any]]:
     """Agrupa fallos abiertos por fuente/scope para priorizar acciones."""
-    with connect() as c:
+    with connect_read() as c:
         cur = c.execute(
             "SELECT fuente, COALESCE(scope, '') AS scope, COUNT(*) AS n, "
             "SUM(retry_count) AS retries, MIN(created_at) AS first_seen, "
@@ -292,7 +292,7 @@ def unresolved_error_summary() -> list[dict[str, Any]]:
     aquí no es «qué se va a reintentar» sino «de qué está hecha la cola», y una
     entrada agotada sigue en ella hasta que alguien la reencola o la descarta.
     """
-    with connect() as c:
+    with connect_read() as c:
         cur = c.execute(
             "SELECT COALESCE(error_type, '') AS error_type, COUNT(*) AS n, "
             "COUNT(*) FILTER (WHERE exhausted_at IS NULL) AS abiertas, "

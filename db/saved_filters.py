@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from db.database import connect, now_utc_iso
+from db.database import connect, connect_read, now_utc_iso
 
 #: Predicado de identidad. Parámetros: ``(user_id, user_id)``.
 _IDENT = "(user_id = %s OR (user_id IS NULL AND user_key = clave_legada_de_usuario(%s)))"
@@ -96,7 +96,11 @@ def save_filter(
 
 
 def list_saved_filters(organization_id: int, *, user_id: int) -> list[dict[str, Any]]:
-    """Devuelve los filtros guardados del usuario, más recientes primero."""
+    """Devuelve los filtros guardados del usuario, más recientes primero.
+
+    Por el pool de escritura a propósito: ``GET /saved-filters`` corre
+    ``claim_legacy_scope`` (escritura) justo antes en la misma petición.
+    """
     with connect() as c:
         cur = c.execute(
             "SELECT id, name, filters_json, created_at, organization_id, visibility "
@@ -117,7 +121,7 @@ def list_own_saved_filters(*, user_id: int) -> list[dict[str, Any]]:
     :func:`list_saved_filters` para que la ausencia de ámbito sea una decisión
     con nombre y no el default de un parámetro.
     """
-    with connect() as c:
+    with connect_read() as c:
         cur = c.execute(
             "SELECT id, name, filters_json, created_at, organization_id, visibility "
             f"FROM saved_filters WHERE {_IDENT} ORDER BY created_at DESC",

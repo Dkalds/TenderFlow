@@ -19,8 +19,7 @@ from __future__ import annotations
 import hmac
 from typing import TYPE_CHECKING, Any
 
-from db.database import connect, now_utc_iso
-from db.database import get_table_columns as _get_cols
+from db.database import connect, get_table_columns, now_utc_iso
 from observability.logging import get_logger
 from shared.audit_events import es_evento_conocido
 
@@ -48,6 +47,27 @@ _AUDIT_LOCK_TIMEOUT_MS = 2000
 
 #: Filas por lote al verificar la cadena (paginación por clave dentro de un snapshot).
 _VERIFY_BATCH = 2000
+
+#: Columnas de cada tabla de la cadena, inspeccionadas una vez por proceso.
+_COLUMNAS: dict[str, frozenset[str]] = {}
+
+
+def _get_cols(c: _PgConnAdapter, table: str) -> frozenset[str]:
+    """Columnas de ``table``, sin volver a ``information_schema`` en cada escritura.
+
+    Antes eran dos consultas por evento de auditoría. Solo se guarda una tabla
+    que existe: la que aún no está (``audit_chain_state`` en una base a medio
+    migrar) se vuelve a mirar, porque crearla es justo lo que hace la migración.
+    """
+    cols = _COLUMNAS.get(table)
+    if cols is None:
+        cols = frozenset(get_table_columns(c, table))
+        if cols:
+            # shortcut: una columna que añada una migración con el proceso vivo
+            # no se ve hasta reiniciarlo; las de la cadena (migración 26, v129)
+            # ya están en toda base. Si una migración nueva toca estas tablas, reiniciar.
+            _COLUMNAS[table] = cols
+    return cols
 
 
 def _audit_hmac(value: str) -> str:
