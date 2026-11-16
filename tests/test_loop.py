@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import os
+import signal
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -190,15 +191,20 @@ class TestRunJob:
 
         ``shutdown(cancel_futures=True)`` solo cancela lo que no ha empezado: el
         worker colgado seguía vivo (con su conexión a la BD) mientras el pool
-        nuevo arrancaba otro.
+        nuevo arrancaba otro. Como en ``main()``, hay un handler de SIGTERM
+        instalado: con ``fork`` el worker lo hereda y un SIGTERM no lo mata.
         """
         from scheduler import loop
 
         pid_file = tmp_path / "pid"
-        with patch("scheduler.loop.notify"), patch("scheduler.loop.log"):
-            ok = loop._run_heavy_job(
-                "test_heavy_colgado", functools.partial(_job_colgado, pid_file), timeout_s=2
-            )
+        previo = signal.signal(signal.SIGTERM, lambda signum, frame: None)
+        try:
+            with patch("scheduler.loop.notify"), patch("scheduler.loop.log"):
+                ok = loop._run_heavy_job(
+                    "test_heavy_colgado", functools.partial(_job_colgado, pid_file), timeout_s=2
+                )
+        finally:
+            signal.signal(signal.SIGTERM, previo)
         loop._consecutive_failures.pop("test_heavy_colgado", None)
         loop._active_heavy_futures.pop("test_heavy_colgado", None)
 

@@ -77,13 +77,15 @@ def _terminar_pool(executor: concurrent.futures.ProcessPoolExecutor) -> None:
 
     ``shutdown(cancel_futures=True)`` solo cancela lo que no ha empezado: el
     worker colgado seguía vivo, con su conexión a la BD, junto al pool nuevo.
+    SIGKILL y no SIGTERM: con ``fork`` el worker hereda el handler de SIGTERM
+    de ``main()``, que solo marca ``_stop_event`` y no lo termina.
     """
     # shortcut: lee el atributo privado `_processes` porque 3.13 no tiene
-    # `terminate_workers()`; al subir a Python 3.14, usar ese método.
+    # `kill_workers()`; al subir a Python 3.14, usar ese método.
     procesos = list((executor._processes or {}).values())
     executor.shutdown(wait=False, cancel_futures=True)
     for proceso in procesos:
-        proceso.terminate()
+        proceso.kill()
 
 
 def _run_heavy_job(name: str, fn: Callable[[], Any], *, timeout_s: int | None = None) -> bool:
@@ -330,7 +332,7 @@ def main() -> int:
                 return 0
     finally:
         if _heavy_executor is not None:
-            _heavy_executor.shutdown(wait=False, cancel_futures=True)
+            _terminar_pool(_heavy_executor)
             _heavy_executor = None
 
 
