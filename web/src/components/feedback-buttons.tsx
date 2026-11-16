@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import { ThumbsDown, ThumbsUp } from "lucide-react";
+import { useVotoAsistente } from "@/hooks/use-feedback";
 import { registrarEvento } from "@/lib/analytics";
-import { apiMutate } from "@/lib/api-client";
 
 /**
  * Pulgares de calidad sobre una respuesta completa del asistente.
@@ -36,18 +36,18 @@ export function FeedbackButtons({
   licitacionId?: string;
 }) {
   const [voted, setVoted] = React.useState<"si" | "no" | null>(null);
+  const votar = useVotoAsistente();
 
   const vote = (util: "si" | "no") => {
     if (voted) return;
     setVoted(util);
     registrarEvento("asistente_feedback", { modo, util });
-    void apiMutate("POST", "/api/v1/feedback/asistente", {
+    // `mutate` no lanza: el voto ya está reflejado en la UI y un fallo aquí no es del usuario.
+    votar.mutate({
       pregunta: pregunta?.trim() || `[${modo}]`,
       modo,
       voto: util,
       licitacion_id: licitacionId,
-    }).catch(() => {
-      /* el voto ya está reflejado en la UI; un fallo aquí no es del usuario */
     });
   };
 

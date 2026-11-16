@@ -9,7 +9,7 @@ import {
   PASOS,
 } from "@/components/onboarding/pasos";
 import { faltaCapacidad, hayNif, hayRegla, tienePursuits } from "@/components/onboarding/senales";
-import { senalCapacidad } from "@/components/onboarding/use-estado-onboarding";
+import { senalCapacidad } from "@/hooks/use-estado-onboarding";
 import type { Schemas, WatchlistRuleOut } from "@/lib/api-types";
 import { findConsoleSpace } from "@/lib/console-spaces";
 

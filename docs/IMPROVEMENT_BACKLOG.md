@@ -1077,16 +1077,6 @@ _Sin ítems abiertos._
 - **Files de partida:** [services/notifications.py](../services/notifications.py), [services/watchlist_rules.py](../services/watchlist_rules.py), [db/notifications.py](../db/notifications.py), [db/repositories/watchlist_rules.py](../db/repositories/watchlist_rules.py)
 - **Riesgo:** bajo — movimiento de SQL con tests de integración existentes para ambos módulos.
 
-### [P3] Frontend: navegación con `window.location.href` y acceso a la API desde componentes
-- **Estado actual (2026-11-14):** `código` — La navegación está hecha (cero avisos `no-location-assign-relative-destination`; las asignaciones que quedan son fronteras de sesión con su motivo). El acceso directo a la API lo fija `no-restricted-imports` en `web/eslint.config.mjs` desde el 2026-11-14: quedan 20 módulos en la lista `accesoDirectoALaApi`, que solo encoge. Falta pasarlos a hooks con clave en `query-keys.ts`, sacándolos de la lista en el mismo cambio.
-- **Área:** web/src/lib/api-client.ts, web/src/app/login/_hooks/use-login-form.ts, web/src/components/layout/console-rail.tsx, web/src/components/**
-- **Problema:** `npm run lint` da seis avisos `@next/next/no-location-assign-relative-destination` (medido el 2026-10-17: `api-client.ts:60`, `use-login-form.ts:195/215/257`, `console-rail.tsx:143`, `ajustes/_components/cuenta-view.tsx:88`): una navegación interna con recarga completa pierde el estado de React Query y el prefetch. Y 18 componentes fuera de `web/src/hooks/` llaman a `fetchWithAuth`/`apiGet`/`apiMutate` directamente, con lo que la clave de caché, el manejo de error y el toast se deciden en cada componente en vez de en un hook; es la misma dispersión que D6 del UX_AUDIT (doble toast en mutaciones) ve desde el otro lado.
-- **Acceptance criteria:**
-  - Cero avisos de lint en `web/`: `useRouter().push()`/`redirect()` donde la navegación es interna; donde la recarga es intencionada (cambio de organización, cierre de sesión) un comentario `eslint-disable-next-line` con el motivo.
-  - Las 18 llamadas directas pasan por un hook de `web/src/hooks/` (o un `_hooks/` de su ruta) con clave en `query-keys.ts`; una regla de ESLint (`no-restricted-imports` de `api-client` fuera de `hooks/` y `lib/`) lo fija.
-- **Files de partida:** [web/src/lib/api-client.ts](../web/src/lib/api-client.ts), [web/src/app/login/_hooks/use-login-form.ts](../web/src/app/login/_hooks/use-login-form.ts), [web/eslint.config.mjs](../web/eslint.config.mjs), [web/src/lib/query-keys.ts](../web/src/lib/query-keys.ts)
-- **Riesgo:** bajo — refactor mecánico con tests de hooks existentes; el E2E de login cubre las recargas.
-
 ### [P3] SQLAlchemy se usa en producción y no está declarada como dependencia directa
 - **Estado actual (2026-11-08):** `mixto` — Propietario: OK al cambio de dependencias (§6). Código después: declarar `sqlalchemy` en `requirements.in`, regenerar `requirements.txt` y `check_requirements_sync` en verde.
 - **Área:** requirements.in, pyproject.toml (`[project] dependencies`)

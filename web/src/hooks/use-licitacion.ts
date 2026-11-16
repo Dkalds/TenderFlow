@@ -12,7 +12,7 @@
  * deje de enviar rompe el typecheck aquí y no la pantalla.
  */
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import type { GoNoGoChecklist } from "@/hooks/use-pursuit-checklist";
 import { apiMutate, fetchWithAuth } from "@/lib/api-client";
@@ -38,6 +38,23 @@ export function useLicitacion(id: string | null) {
     // pestañas: revalidar en cada foco sería tráfico sin información nueva.
     staleTime: 5 * 60 * 1000,
     meta: META_ERROR_EN_LINEA,
+  });
+}
+
+/**
+ * Las fichas de varios expedientes a la vez (el comparador de /detalle), con
+ * la misma clave que `useLicitacion`: lo ya abierto no se vuelve a pedir. Una
+ * consulta por id, en el mismo orden.
+ */
+export function useFichasLicitacion(ids: readonly string[]) {
+  return useQueries({
+    queries: ids.map((id) => ({
+      queryKey: licitacionKeys.detail(id),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        fetchWithAuth<LicitacionDetail>(`/api/v1/licitaciones/${encodeURIComponent(id)}`, { signal }),
+      staleTime: 5 * 60 * 1000,
+      meta: META_ERROR_EN_LINEA,
+    })),
   });
 }
 

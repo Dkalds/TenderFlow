@@ -2,7 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { fetchWithAuth } from "@/lib/api-client";
-import type { PrediccionBajaResult } from "@/lib/api-types";
+import type { CalibracionBajaDTO, PrediccionBajaResult } from "@/lib/api-types";
+import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { prediccionKeys } from "@/lib/query-keys";
 
 export type { PrediccionBajaResult };
@@ -24,5 +25,16 @@ export function usePrediccionBaja(licitacionId: string) {
       ),
     staleTime: 5 * 60 * 1000,
     retry: false,
+  });
+}
+
+/** Cobertura empírica del intervalo p10-p90 servido (`GET /predicciones/calibracion`). */
+export function useCalibracionBaja() {
+  return useQuery<CalibracionBajaDTO>({
+    queryKey: prediccionKeys.calibracion,
+    queryFn: () => fetchWithAuth("/api/v1/predicciones/calibracion"),
+    staleTime: 10 * 60 * 1000,
+    // El fallo se pinta en el panel: sin toast encima.
+    meta: META_ERROR_EN_LINEA,
   });
 }

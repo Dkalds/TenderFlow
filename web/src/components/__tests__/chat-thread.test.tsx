@@ -7,9 +7,21 @@
  * `react-markdown` se dobla por un componente que anota qué texto le llega:
  * cada anotación es un parseo.
  */
+import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render as renderRTL, screen, waitFor } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
 import type { ChatTurn } from "@/hooks/use-ask";
+import { crearQueryClientDePrueba } from "@/test/query-client";
+
+// Los pulgares votan con una mutación: todo el hilo se monta con su cliente.
+// `rerender` conserva el `wrapper`.
+function render(ui: React.ReactElement) {
+  const client = crearQueryClientDePrueba();
+  return renderRTL(ui, {
+    wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+  });
+}
 
 const { parseados, apiMutate, registrarEvento } = vi.hoisted(() => ({
   parseados: [] as string[],
@@ -34,6 +46,7 @@ vi.mock("@/lib/analytics", () => ({ registrarEvento }));
 import { ChatThread, detalleDeFalloIA, mensajeDeFalloIA } from "@/components/chat-thread";
 import { FeedbackButtons } from "@/components/feedback-buttons";
 import { ApiError, MENSAJE_SIN_CONEXION, mensajePorEstado } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 
 const pregunta1: ChatTurn = { role: "user", content: "¿Qué plazo tiene?" };
 const respuesta1: ChatTurn = { role: "assistant", content: "Tres meses." };
@@ -218,7 +231,7 @@ describe("fallo de una llamada del asistente", () => {
 });
 
 describe("FeedbackButtons", () => {
-  it("vota una sola vez y manda el voto con la pregunta", () => {
+  it("vota una sola vez y manda el voto con la pregunta", async () => {
     render(<FeedbackButtons modo="pregunta" pregunta=" ¿Qué plazo tiene? " />);
 
     fireEvent.click(screen.getByRole("button", { name: "Respuesta útil" }));
@@ -226,7 +239,7 @@ describe("FeedbackButtons", () => {
     expect(screen.getByText("Gracias por tu valoración.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Respuesta no útil" })).toBeNull();
     expect(registrarEvento).toHaveBeenCalledWith("asistente_feedback", { modo: "pregunta", util: "si" });
-    expect(apiMutate).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(1));
     expect(apiMutate).toHaveBeenCalledWith("POST", "/api/v1/feedback/asistente", {
       pregunta: "¿Qué plazo tiene?",
       modo: "pregunta",
@@ -235,17 +248,33 @@ describe("FeedbackButtons", () => {
     });
   });
 
-  it("sin pregunta (resumen, ficha) manda la etiqueta del modo", () => {
+  it("sin pregunta (resumen, ficha) manda la etiqueta del modo", async () => {
     render(<FeedbackButtons modo="ficha" licitacionId="EXP-1" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Respuesta no útil" }));
 
-    expect(apiMutate).toHaveBeenCalledWith("POST", "/api/v1/feedback/asistente", {
-      pregunta: "[ficha]",
-      modo: "ficha",
-      voto: "no",
-      licitacion_id: "EXP-1",
-    });
+    await waitFor(() =>
+      expect(apiMutate).toHaveBeenCalledWith("POST", "/api/v1/feedback/asistente", {
+        pregunta: "[ficha]",
+        modo: "ficha",
+        voto: "no",
+        licitacion_id: "EXP-1",
+      }),
+    );
+  });
+
+  it("un fallo al guardar el voto no sale en pantalla", async () => {
+    apiMutate.mockRejectedValue(new Error("tabla caída"));
+    const avisoDeError = vi.spyOn(toast, "error");
+    render(<FeedbackButtons modo="pregunta" pregunta="¿Plazo?" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Respuesta útil" }));
+
+    await waitFor(() => expect(apiMutate).toHaveBeenCalledTimes(1));
+    // El cliente de prueba lleva el aviso global de mutaciones: ni ese toast.
+    await new Promise((resolver) => setTimeout(resolver, 0));
+    expect(avisoDeError).not.toHaveBeenCalled();
+    expect(screen.getByText("Gracias por tu valoración.")).toBeInTheDocument();
   });
 });
 
