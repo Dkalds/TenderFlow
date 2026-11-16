@@ -36,6 +36,7 @@ que duplicar las dos cosas y habrían divergido.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from typing import Any
 
 from pydantic import BaseModel
@@ -45,6 +46,7 @@ from db.events import append_domain_event, seguidores_de_licitacion
 from db.repositories.aggregates import LicitacionesFilters, build_licitaciones_where
 from db.repositories.base import rows_to_dicts
 from observability.logging import get_logger
+from shared.duracion import DIAS_POR_MES, meses_de
 from shared.numeric import values_equal
 
 log = get_logger(__name__)
@@ -246,8 +248,19 @@ def _emitir_cambio_seguido(
     return True
 
 
-def _classify(campo: str, antes: Any, despues: Any) -> tuple[str, float | None, str] | None:
-    """Devuelve (tipo, importe_delta, detalle) o None si el cambio no es evento."""
+def _classify(
+    campo: str,
+    antes: Any,
+    despues: Any,
+    *,
+    antes_estado: Mapping[str, Any] | None = None,
+    despues_estado: Mapping[str, Any] | None = None,
+) -> tuple[str, float | None, str] | None:
+    """Devuelve (tipo, importe_delta, detalle) o None si el cambio no es evento.
+
+    ``antes_estado`` y ``despues_estado`` son las filas completas: una duración
+    solo se compara con su unidad (24 meses → 3 años amplía, aunque el número baje).
+    """
     # Con tolerancia y no `==`: `importe` es `real` en producción y el snapshot
     # de historial puede diferir del valor actual sólo por el redondeo a
     # float4, sin que nadie haya modificado el contrato. Esto además protege
@@ -277,7 +290,20 @@ def _classify(campo: str, antes: Any, despues: Any) -> tuple[str, float | None, 
     if campo in ("duracion_valor", "duracion_unidad"):
         if despues is None:
             return None
-        if campo == "duracion_valor":
+        meses_antes = meses_de(
+            (antes_estado or {}).get("duracion_valor"), (antes_estado or {}).get("duracion_unidad")
+        )
+        meses_despues = meses_de(
+            (despues_estado or {}).get("duracion_valor"),
+            (despues_estado or {}).get("duracion_unidad"),
+        )
+        if meses_antes is not None and meses_despues is not None:
+            # Menos de un día de diferencia es la misma duración en otra unidad
+            # (12 meses → 1 año, 365 días → 1 año), no un cambio de contrato.
+            if abs(meses_despues - meses_antes) < 1 / DIAS_POR_MES:
+                return None
+            tipo = "prorroga" if meses_despues > meses_antes else "modificacion"
+        elif campo == "duracion_valor":
             try:
                 extiende = float(despues) > float(antes)
             except (TypeError, ValueError):
@@ -365,7 +391,13 @@ def derive_new_events(batch_size: int = 1000) -> int:
             for campo in changed:
                 if campo not in _CAMPOS_EVENTO:
                     continue
-                evento = _classify(campo, snapshot.get(campo), despues_state.get(campo))
+                evento = _classify(
+                    campo,
+                    snapshot.get(campo),
+                    despues_state.get(campo),
+                    antes_estado=snapshot,
+                    despues_estado=despues_state,
+                )
                 if evento is None:
                     continue
                 tipo, delta, detalle = evento

@@ -168,6 +168,42 @@ def test_ampliar_la_duracion_es_prorroga():
     assert evento[0] == "prorroga"
 
 
+@pytest.mark.parametrize(
+    ("antes", "despues", "esperado"),
+    [
+        (
+            {"duracion_valor": 24, "duracion_unidad": "MON"},
+            {"duracion_valor": 3, "duracion_unidad": "ANN"},
+            "prorroga",
+        ),
+        (
+            {"duracion_valor": 2, "duracion_unidad": "ANN"},
+            {"duracion_valor": 18, "duracion_unidad": "MON"},
+            "modificacion",
+        ),
+        (
+            {"duracion_valor": 12, "duracion_unidad": "MON"},
+            {"duracion_valor": 1, "duracion_unidad": "ANN"},
+            None,
+        ),
+        (
+            {"duracion_valor": 365, "duracion_unidad": "DAY"},
+            {"duracion_valor": 1, "duracion_unidad": "ANN"},
+            None,
+        ),
+    ],
+)
+@pytest.mark.parametrize("campo", ["duracion_valor", "duracion_unidad"])
+def test_la_duracion_se_compara_en_la_misma_unidad(campo, antes, despues, esperado):
+    """24 meses → 3 años amplía el contrato aunque el número baje."""
+    from services.contract_events import _classify
+
+    evento = _classify(
+        campo, antes[campo], despues[campo], antes_estado=antes, despues_estado=despues
+    )
+    assert (evento[0] if evento else None) == esperado
+
+
 def test_modificacion_real_de_importe_sigue_generando_evento():
     from services.contract_events import _classify
 

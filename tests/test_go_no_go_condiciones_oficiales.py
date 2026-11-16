@@ -123,6 +123,30 @@ def test_umbral_oficial_por_encima_de_la_facturacion_no_cumple() -> None:
     assert item.requisito == "Solvencia económica (publicación oficial)"
 
 
+def test_requisito_economico_que_no_es_volumen_de_negocios_es_desconocido() -> None:
+    # Un seguro de RC (o un patrimonio neto) no se mide contra la cifra de
+    # negocio: con 1,2 M de facturación saldría «cumple» sin que nadie lo sepa.
+    oficiales = _oficiales(
+        CondicionesAmbito(
+            solvencia=[
+                _solvencia(
+                    "economica",
+                    tipo_codigo="3",
+                    descripcion="Seguro de responsabilidad civil",
+                    umbral_importe=600_000,
+                ),
+                _solvencia("economica", orden=2, tipo_codigo="5", umbral_importe=2_000_000),
+            ]
+        )
+    )
+
+    seguro, volumen = _familia(_evaluar(oficiales), "economic_solvency").items
+
+    assert seguro.veredicto == "desconocido"
+    assert "volumen anual de negocios" in seguro.motivo
+    assert volumen.veredicto == "no_cumple"
+
+
 def test_solvencia_tecnica_oficial_con_importe_en_el_texto() -> None:
     oficiales = _oficiales(
         CondicionesAmbito(
