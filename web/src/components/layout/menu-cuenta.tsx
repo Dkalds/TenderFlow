@@ -14,10 +14,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DisparadorCuenta } from "@/components/layout/menus-diferidos";
-import { apiMutate } from "@/lib/api-client";
 import { useDensity } from "@/lib/density";
 import { ICONO_ESPACIO } from "@/lib/iconos";
-import { reportError } from "@/lib/report-error";
+import { cerrarSesion } from "@/lib/reautenticacion";
 
 // El selector de organización solo existe con el menú abierto: llega al
 // abrirlo. Su hueco mide lo mismo que su disparador para que el menú no salte.
@@ -41,11 +40,7 @@ export function MenuCuenta(montaje: MontajeDiferido) {
   const { disparador, abiertoAlMontar } = useMontajeDiferido(montaje);
 
   const handleLogout = async () => {
-    try {
-      await apiMutate("POST", "/api/v1/auth/logout");
-    } catch (err) {
-      reportError("ConsoleRail.logout", err);
-    }
+    await cerrarSesion("ConsoleRail.logout");
     // Recarga completa a propósito: tira la caché de React Query de la sesión
     // que se cierra y el `SessionProvider` arranca sin cookie.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- frontera de sesión, ver arriba

@@ -1,0 +1,32 @@
+{
+  "licitacion_id": "PA-S 2026/000058",
+  "items": [
+    {
+      "fecha": "2026-03-02",
+      "tipo": "publicacion",
+      "campo": null,
+      "valor_antes": null,
+      "valor_despues": null,
+      "importe_delta": null,
+      "detalle": "Anuncio de licitación en la Plataforma de Contratación del Sector Público"
+    },
+    {
+      "fecha": "2026-05-14",
+      "tipo": "adjudicacion",
+      "campo": "adjudicatario",
+      "valor_antes": null,
+      "valor_despues": "Integraciones Cloud Iberia, S.L.",
+      "importe_delta": null,
+      "detalle": null
+    },
+    {
+      "fecha": "2026-09-30",
+      "tipo": "modificacion",
+      "campo": "importe_adjudicacion",
+      "valor_antes": "1180000.00",
+      "valor_despues": "1298000.00",
+      "importe_delta": 118000.0,
+      "detalle": "Modificado n.º 1: ampliación del alcance de la migración a S/4HANA"
+    }
+  ]
+}

@@ -469,7 +469,7 @@ def deshacer_palabras_clave_vetadas() -> int:
 
 def ingest_llm_technologies(record: TenderFactSheetRecord) -> int:
     """Normaliza ``record.facts.technologies`` (nombre libre extraído por el
-    LLM) a ``TECH_LABELS`` reutilizando los patrones de ``scraper.filters``,
+    LLM) a ``TECH_LABELS`` reutilizando los patrones del diccionario vigente,
     persiste la señal ``method='llm'`` y funde el resultado hacia
     ``ml_tecnologias``.
 
@@ -485,7 +485,7 @@ def ingest_llm_technologies(record: TenderFactSheetRecord) -> int:
     if record.facts is None or not record.facts.technologies:
         return 0
 
-    from scraper.filters import matches_technology
+    from services.tecnologias_diccionario import matches_technology
 
     scores: dict[str, TechSignal] = {}
     for mention in record.facts.technologies:

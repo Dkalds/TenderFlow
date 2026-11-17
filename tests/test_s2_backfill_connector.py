@@ -168,7 +168,7 @@ def _correr_bucle(**kwargs: Any) -> list[str]:
     with (
         patch("scraper.connectors.base.run_connector", side_effect=_fake_run_connector),
         patch("observability.bind_run_context", return_value="run-test"),
-        patch("observability.record_run", return_value=nullcontext(MagicMock())),
+        patch("services.extraction_runs.record_run", return_value=nullcontext(MagicMock())),
         patch("scraper.pipeline._summarize"),
         patch("scheduler.pipeline_carriles._finalize_ingestion", return_value={"status": "ok"}),
     ):
@@ -215,7 +215,7 @@ def test_un_mes_que_revienta_no_aborta_los_siguientes() -> None:
     with (
         patch("scraper.connectors.base.run_connector", side_effect=_fake_run_connector),
         patch("observability.bind_run_context", return_value="run-test"),
-        patch("observability.record_run", return_value=nullcontext(MagicMock())),
+        patch("services.extraction_runs.record_run", return_value=nullcontext(MagicMock())),
         patch("scraper.pipeline._summarize"),
         patch("scheduler.pipeline_carriles._finalize_ingestion", side_effect=_fake_finalize),
         patch(

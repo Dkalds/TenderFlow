@@ -1,16 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "@/lib/toast";
 import { Aviso, esBandaConocida } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
-import { organizacionResuelta, useActiveOrganizationId, useOrganizationStore } from "@/hooks/use-organization";
+import { useOrganizationStore } from "@/hooks/use-organization";
 import { useCreatePursuit } from "@/hooks/use-pursuits";
 import { useDismissRadarTender, useRestoreRadarTender } from "@/hooks/use-radar";
-import { fetchWithAuth } from "@/lib/api-client";
-import { analyticsKeys } from "@/lib/query-keys";
-import { parametrosScoring, type ScoringResponse } from "../_hooks/detalle-table-model";
+import { usePuntuacionTriaje } from "../_hooks/use-triaje-resumen";
 import type { IntencionTriaje } from "../_lib/triaje-resumen";
 
 /**
@@ -38,17 +35,7 @@ export function TriajeResumen({
   intencion: IntencionTriaje;
   onCerrar: () => void;
 }) {
-  const organizationId = useActiveOrganizationId();
-  const { data: puntuacion } = useQuery({
-    queryKey: analyticsKeys.scoringBatch(organizationId, [idExterno]),
-    queryFn: ({ signal }) =>
-      fetchWithAuth<ScoringResponse>(`/api/v1/analytics/scoring?${parametrosScoring([idExterno], organizationId)}`, {
-        signal,
-      }),
-    enabled: organizacionResuelta(organizationId),
-    staleTime: 5 * 60_000,
-    select: (respuesta) => respuesta.opportunities?.find((item) => item.id_externo === idExterno) ?? null,
-  });
+  const { data: puntuacion } = usePuntuacionTriaje(idExterno);
   const score = puntuacion?.score ?? null;
   const banda = puntuacion?.band;
   const router = useRouter();

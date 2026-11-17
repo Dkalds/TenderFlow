@@ -127,7 +127,7 @@ def _senales(**criterios: Any) -> set[str]:
 
     clausulas = predicado_de_regla(WatchlistRule(id=1, **criterios))
     assert clausulas is not None
-    return _ids(signal_rows(clausulas, user_key="uk", organization_id=1))
+    return _ids(signal_rows(clausulas, user_id=1, organization_id=1))
 
 
 def test_agenda_la_keyword_se_busca_como_literal(tmp_db):

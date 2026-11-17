@@ -187,7 +187,7 @@ def _con_fuentes_frescas() -> None:
 
 def test_healthcheck_healthy_after_successful_run(tmp_db):
     """Sano de verdad: extracción reciente Y todas las fuentes dentro de su SLA."""
-    from observability.metrics import record_run
+    from services.extraction_runs import record_run
 
     with record_run("run-ok") as m:
         m.months_attempted = 1
@@ -217,7 +217,7 @@ def _error_de_frontend(veces: int) -> None:
 
 def test_un_error_de_frontend_que_se_repite_degrada_un_sistema_sano(tmp_db):
     """``client_errors`` se escribía y solo la leía la purga: ahora llega al informe."""
-    from observability.metrics import record_run
+    from services.extraction_runs import record_run
 
     with record_run("run-ok") as m:
         m.months_attempted = 1
@@ -238,7 +238,7 @@ def test_un_error_de_frontend_que_se_repite_degrada_un_sistema_sano(tmp_db):
 
 def test_un_error_de_frontend_suelto_no_degrada(tmp_db):
     """Una sola ocurrencia —una extensión, un corte de red— no es una regresión."""
-    from observability.metrics import record_run
+    from services.extraction_runs import record_run
 
     with record_run("run-ok") as m:
         m.months_attempted = 1
@@ -259,7 +259,7 @@ def test_un_error_de_frontend_que_dejo_de_ocurrir_no_degrada(tmp_db):
     from datetime import datetime, timedelta
 
     from db.database import connect
-    from observability.metrics import record_run
+    from services.extraction_runs import record_run
 
     with record_run("run-ok") as m:
         m.months_attempted = 1
@@ -287,7 +287,7 @@ def test_una_fuente_muerta_degrada_aunque_la_pasada_global_este_fresca(tmp_db):
     from unittest.mock import patch
 
     from db.database import connect
-    from observability.metrics import record_run
+    from services.extraction_runs import record_run
 
     with record_run("run-ok-fuentes") as m:
         m.months_attempted = 1
@@ -493,7 +493,7 @@ def test_healthcheck_normaliza_una_vez_por_identidad_y_no_por_fila(tmp_db, monke
 def test_healthcheck_main_returns_0_for_healthy(tmp_db):
     from unittest.mock import patch
 
-    from observability.metrics import record_run
+    from services.extraction_runs import record_run
 
     with record_run("run-main-ok") as m:
         m.months_attempted = 1
@@ -595,7 +595,7 @@ def _con_run_exitoso() -> None:
     `test_healthcheck_critical_without_runs`). Afirmar `degraded` sin esto mide
     el estado de arranque, no el check que se quiere probar.
     """
-    from observability.metrics import record_run
+    from services.extraction_runs import record_run
 
     with record_run("run-ok-canonicas") as m:
         m.months_attempted = 1

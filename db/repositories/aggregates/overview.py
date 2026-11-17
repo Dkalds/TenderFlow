@@ -60,6 +60,13 @@ class KpisOverview(TypedDict):
     organos: int
 
 
+#: Códigos con cubo propio en el embudo del Resumen. AGR, EJEC y CPM entran desde
+#: v91, y no son un detalle: AGR es el 93% del corpus (la publicación agregada
+#: de la PSCP catalana). Sin su cubo, los cinco tramos originales sumaban el 7%
+#: de `total` y el embudo presentaba esa diferencia como si no existiera.
+_CODIGOS_EMBUDO = ("PUB", "EV", "RES", "ADJ", "ANUL", "PRE", "AGR", "EJEC", "CPM")
+
+
 class EstadoConteoFila(TypedDict):
     estado: str
     n: int
@@ -117,15 +124,30 @@ class OverviewMixin:
             "organos": int(row[3] or 0),
         }
 
-    def overview_por_estado(self, filters: LicitacionesFilters) -> list[EstadoConteoFila]:
+    def overview_por_estado_y_embudo(
+        self, filters: LicitacionesFilters
+    ) -> tuple[list[EstadoConteoFila], dict[str, int]]:
+        """Reparto por estado y conteos del embudo, en una sola pasada.
+
+        Eran dos consultas sobre el mismo conjunto: el reparto (sin las filas
+        sin estado, de más a menos) y el embudo, un conteo por código de
+        `_CODIGOS_EMBUDO` más ``total``, que sí cuenta las filas sin estado.
+        """
         where, params = _build_where(filters, presentacion=True)
         sql = (
             "SELECT estado, COUNT(*) AS n FROM licitaciones "
-            "WHERE " + where + " AND estado IS NOT NULL "
-            "GROUP BY estado ORDER BY n DESC"
+            "WHERE " + where + " GROUP BY estado ORDER BY n DESC, estado"
         )
         with connect_read() as c:
-            return typed_rows(EstadoConteoFila, rows_to_dicts(c.execute(sql, params)))
+            filas = [(estado, int(n)) for estado, n in c.execute(sql, params).fetchall()]
+        por_estado: list[EstadoConteoFila] = [
+            {"estado": str(estado), "n": n} for estado, n in filas if estado is not None
+        ]
+        conteos = dict.fromkeys(_CODIGOS_EMBUDO, 0)
+        for estado, n in filas:
+            if estado in conteos:
+                conteos[estado] = n
+        return por_estado, {**conteos, "total": sum(n for _, n in filas)}
 
     def overview_por_mes(self, filters: LicitacionesFilters) -> list[MesImporteFila]:
         where, params = _build_where(filters, presentacion=True)
@@ -152,28 +174,6 @@ class OverviewMixin:
         )
         with connect_read() as c:
             return typed_rows(OrganoTopFila, rows_to_dicts(c.execute(sql, [*params, n])))
-
-    def overview_funnel(self, filters: LicitacionesFilters) -> dict[str, int]:
-        where, params = _build_where(filters, presentacion=True)
-        # AGR, EJEC y CPM entran aquí desde v91, y no son un detalle: AGR es el
-        # 93% del corpus (la publicación agregada de la PSCP catalana). Sin su
-        # cubo, los cinco tramos originales sumaban el 7% de `total` y el embudo
-        # del Resumen presentaba esa diferencia como si no existiera.
-        codigos = ("PUB", "EV", "RES", "ADJ", "ANUL", "PRE", "AGR", "EJEC", "CPM")
-        # Los códigos son constantes del vocabulario de `services.classification`
-        # (ESTADO_LABELS), nunca entrada de usuario: se interpolan como literales
-        # igual que hace `abierta_sql()`.
-        filtros = ", ".join(
-            f"COUNT(*) FILTER (WHERE estado = '{codigo}') AS c{i}"
-            for i, codigo in enumerate(codigos)
-        )
-        sql = f"SELECT {filtros}, COUNT(*) AS total FROM licitaciones WHERE {where}"
-        with connect_read() as c:
-            row = c.execute(sql, params).fetchone()
-        if row is None:
-            return {**dict.fromkeys(codigos, 0), "total": 0}
-        conteos = {codigo: int(row[i] or 0) for i, codigo in enumerate(codigos)}
-        return {**conteos, "total": int(row[len(codigos)] or 0)}
 
     def overview_adjudicaciones_indicadores(
         self, *, conn: Any | None = None
@@ -320,19 +320,26 @@ class OverviewMixin:
     def overview_concentracion_organos(
         self, filters: LicitacionesFilters, *, top_n: int = 10
     ) -> tuple[float, float]:
-        """(top_n_importe, total_importe) agrupado por organo (dropna, min_count=1)."""
+        """(top_n_importe, total_importe) agrupado por organo (dropna, min_count=1).
+
+        Las dos sumas salen de la base: antes viajaban a Python las sumas de
+        todos los órganos del ámbito para quedarse con diez.
+        """
         where, params = _build_where(filters, presentacion=True)
         sql = (
-            "SELECT SUM(importe) AS s FROM licitaciones "
-            "WHERE " + where + " AND organo_contratacion IS NOT NULL "
-            "GROUP BY organo_contratacion "
-            "HAVING SUM(importe) IS NOT NULL "
-            "ORDER BY s DESC"
+            "SELECT COALESCE(SUM(s) FILTER (WHERE puesto <= %s), 0), COALESCE(SUM(s), 0) "
+            "FROM (SELECT SUM(importe) AS s, "
+            "             ROW_NUMBER() OVER (ORDER BY SUM(importe) DESC) AS puesto "
+            "      FROM licitaciones "
+            "      WHERE " + where + " AND organo_contratacion IS NOT NULL "
+            "      GROUP BY organo_contratacion "
+            "      HAVING SUM(importe) IS NOT NULL) AS por_organo"
         )
         with connect_read() as c:
-            rows = c.execute(sql, params).fetchall()
-        sums = [float(r[0]) for r in rows]
-        return sum(sums[:top_n]), sum(sums)
+            row = c.execute(sql, [top_n, *params]).fetchone()
+        if row is None:
+            return 0.0, 0.0
+        return float(row[0]), float(row[1])
 
     def overview_por_ccaa(self, filters: LicitacionesFilters) -> list[CcaaConteoFila]:
         """(ccaa, n, importe) por comunidad, de más a menos expedientes.

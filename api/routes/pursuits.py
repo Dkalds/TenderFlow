@@ -481,7 +481,6 @@ async def get_pursuits_agenda(
         return await run_db(
             get_agenda,
             int(ctx["user_id"]),
-            user_key=str(ctx["user_key"]),
             organization_id=organization_id,
             solo_mios=solo_mios,
             tecnologia=tecnologia,
@@ -514,7 +513,6 @@ async def get_pursuits_weights_proposal(
         return await run_db(
             get_weights_proposal,
             int(ctx["user_id"]),
-            user_key=str(ctx["user_key"]),
             organization_id=organization_id,
         )
     except OrganizationAccessError as exc:

@@ -54,9 +54,10 @@ _PYPROJECT = _REPO_ROOT / "pyproject.toml"
 #: `scheduler/aggregates_precompute.py`, y a 8 el 2026-11-05 con los agregados de
 #: baja de `services/analytics/scoring_signals.py` (→ `db/repositories/bajas.py`),
 #: y a 7 el 2026-11-14 al sacar `services/entity_resolution.py`, que abre la
-#: transacción de su lote con `db.empresas.en_transaccion`.
+#: transacción de su lote con `db.empresas.en_transaccion`, y a 6 el 2026-11-16
+#: al sacar `services/contract_events.py` (su SQL, a `db/contrato_eventos.py`).
 #: El objetivo del plan de arquitectura de septiembre (≤ 24) queda cumplido.
-MAX_ENTRADAS_WHITELIST = 7
+MAX_ENTRADAS_WHITELIST = 6
 
 #: Las cuatro rutas liberadas en esta ola. Su SQL vive ahora en
 #: ``db/repositories/{empresas,licitaciones,watchlist,watchlist_rules}.py``.

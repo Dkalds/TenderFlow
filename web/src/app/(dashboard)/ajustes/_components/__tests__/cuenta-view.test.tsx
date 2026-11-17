@@ -1,6 +1,8 @@
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { crearQueryClientDePrueba } from "@/test/query-client";
 
 vi.mock("@/lib/toast", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -10,6 +12,14 @@ const session = { user: { email: "ana@example.test" }, isLoading: false };
 vi.mock("@/lib/auth", () => ({ useSession: () => session }));
 
 import CuentaView from "@/app/(dashboard)/ajustes/_components/cuenta-view";
+
+function renderVista() {
+  return render(
+    <QueryClientProvider client={crearQueryClientDePrueba()}>
+      <CuentaView />
+    </QueryClientProvider>,
+  );
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -25,14 +35,14 @@ afterEach(() => {
  */
 describe("Datos y cuenta", () => {
   it("ofrece el export de datos, que antes solo se alcanzaba con curl", () => {
-    render(<CuentaView />);
+    renderVista();
     expect(screen.getByRole("button", { name: /Descargar mis datos/ })).toBeInTheDocument();
   });
 
   it("el borrado está bloqueado hasta escribir el email exacto", () => {
     // Es irreversible y anonimiza todo el histórico: un "¿estás seguro?" de un
     // clic no es confirmación suficiente.
-    render(<CuentaView />);
+    renderVista();
     const boton = screen.getByRole("button", { name: /Eliminar mi cuenta definitivamente/ });
     expect(boton).toBeDisabled();
 
@@ -48,7 +58,7 @@ describe("Datos y cuenta", () => {
   });
 
   it("advierte de que el borrado no se puede deshacer", () => {
-    render(<CuentaView />);
+    renderVista();
     expect(screen.getByText(/No se puede deshacer/)).toBeInTheDocument();
   });
 
@@ -67,7 +77,7 @@ describe("Datos y cuenta", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<CuentaView />);
+    renderVista();
     fireEvent.change(screen.getByLabelText(/para confirmar/), {
       target: { value: "ana@example.test" },
     });
@@ -85,7 +95,7 @@ describe("Datos y cuenta", () => {
     const original = session.user;
     // @ts-expect-error — se fuerza el caso de sesión sin email.
     session.user = null;
-    render(<CuentaView />);
+    renderVista();
     expect(
       screen.queryByRole("button", { name: /Eliminar mi cuenta definitivamente/ }),
     ).not.toBeInTheDocument();

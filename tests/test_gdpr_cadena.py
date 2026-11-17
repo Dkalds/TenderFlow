@@ -235,7 +235,7 @@ def test_export_y_borrado_alcanzan_las_empresas_vigiladas(tmp_db):
             )
         )
 
-    (fila,) = export_account_data(yo, "clave")["vigilancia_empresas"]
+    (fila,) = export_account_data(yo)["vigilancia_empresas"]
     assert fila["email"] == "vigila@example.test"
     assert fila["nombre_canonico"] == "ACME SL"
 

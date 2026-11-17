@@ -1,10 +1,10 @@
-"""Tests para observability.metrics (RunMetrics + record_run)."""
+"""Tests para RunMetrics + record_run (``services.extraction_runs``)."""
 
 from __future__ import annotations
 
 import pytest
 
-from observability.metrics import RunMetrics, record_run, to_dict
+from services.extraction_runs import RunMetrics, record_run, to_dict
 
 
 def test_run_metrics_defaults():

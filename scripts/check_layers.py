@@ -92,6 +92,10 @@ _EXCLUIDOS = ("db/alembic/versions/",)
 # los módulos de `shared/` que abrían la BD: `jobs` a `services/`,
 # `model_artifacts` a `services/ml/`, `cache_signal` a `db/`. Ya no queda
 # ninguna violación `db/* -> services.*`.
+# 2026-11-16: 10 → 5. El inventario de fuentes (datos puros) baja a
+# `shared/fuentes.py`, `matches_technology` a `services/tecnologias_diccionario`,
+# `record_run` sube a `services/extraction_runs`, y `config/secrets` usa
+# structlog directamente.
 # **Añadir líneas está prohibido.** Para quitar una: mové la pieza compartida a
 # la capa de abajo (o invertí la dependencia pasando el colaborador como
 # argumento) y borrá su entrada.
@@ -99,16 +103,11 @@ _EXCLUIDOS = ("db/alembic/versions/",)
 # Formato: ``"fichero -> módulo importado"``.
 CONGELADAS: frozenset[str] = frozenset(
     {
-        "api/routes/publico.py -> scraper.connectors",
-        "config/secrets.py -> observability.logging",
         "observability/alerts.py -> db.job_locks",
         "observability/mailer.py -> shared.outbound_http",
-        "observability/metrics.py -> services.extraction_runs",
         "observability/ops_events.py -> db.connection",
         "observability/runtime_metrics.py -> db.connection",
         "services/rag/fact_sheet.py -> scraper.document_fetcher",
-        "services/source_health.py -> scraper.connectors",
-        "services/tech_signal.py -> scraper.filters",
     }
 )
 

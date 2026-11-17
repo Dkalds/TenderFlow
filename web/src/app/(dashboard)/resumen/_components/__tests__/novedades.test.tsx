@@ -43,7 +43,7 @@ vi.mock("@/lib/filters", async () => {
 });
 
 import { useNovedades } from "../../_hooks/use-novedades";
-import { useMarcarVisto } from "../desde-ultima-visita";
+import { useMarcarVisto } from "../../_hooks/use-desde-ultima-visita";
 import { UltimasPublicaciones } from "../ultimas-publicaciones";
 import { analyticsKeys } from "@/lib/query-keys";
 

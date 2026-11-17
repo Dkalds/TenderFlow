@@ -10,9 +10,20 @@
  * La navegación dura se comprueba con la prop `irA` del componente: jsdom no
  * navega. El resto pasa por la página tal cual.
  */
-import { StrictMode } from "react";
+import { StrictMode, type ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render as renderRTL, screen, waitFor } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { crearQueryClientDePrueba } from "@/test/query-client";
+
+// El canje es una mutación: la pantalla se monta con el cliente que lleva el
+// aviso global, así que un toast de más también se vería.
+function render(ui: ReactElement) {
+  const client = crearQueryClientDePrueba();
+  return renderRTL(ui, {
+    wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+  });
+}
 
 vi.mock("@/lib/analytics", () => ({ registrarEvento: vi.fn(), primeraVez: vi.fn() }));
 

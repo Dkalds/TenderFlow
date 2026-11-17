@@ -25,6 +25,20 @@ export function destinoTrasVolver(ruta: string, consulta: string): string {
 }
 
 /**
+ * `POST /auth/logout`. Un fallo se reporta con la etiqueta de quien cierra y
+ * no se propaga: quien llama navega al login igualmente, y allí la sesión se
+ * comprueba de nuevo. Función y no `useMutation`: tras ella la página se
+ * recarga entera y no queda caché que invalidar.
+ */
+export async function cerrarSesion(contexto: string): Promise<void> {
+  try {
+    await apiMutate("POST", "/api/v1/auth/logout");
+  } catch (error) {
+    reportError(contexto, error);
+  }
+}
+
+/**
  * Cierra la sesión y lleva al login con la vuelta preparada.
  *
  * Cerrarla primero no es un detalle: con la cookie viva el login ofrece
@@ -37,11 +51,6 @@ export async function volverAEntrar(
     window.location.href = destino;
   },
 ): Promise<void> {
-  try {
-    await apiMutate("POST", "/api/v1/auth/logout");
-  } catch (error) {
-    // Aunque falle, se va al login: allí la sesión se comprueba de nuevo.
-    reportError("volverAEntrar.logout", error);
-  }
+  await cerrarSesion("volverAEntrar.logout");
   irA(destinoTrasVolver(window.location.pathname, window.location.search));
 }

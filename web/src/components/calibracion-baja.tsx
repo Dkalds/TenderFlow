@@ -1,14 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth } from "@/lib/api-client";
+import { useCalibracionBaja } from "@/hooks/use-prediccion-baja";
 import type { CalibracionBajaDTO } from "@/lib/api-types";
 import { Panel, PanelError, PanelTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { cn, formatPercent } from "@/lib/utils";
-import { prediccionKeys } from "@/lib/query-keys";
 
 /** Fracción → «82,0%»: la coma decimal de la casa (`formatPercent`), no el punto de `toFixed`. */
 function pct(v: number): string {
@@ -54,13 +51,7 @@ const REGIMEN_INFO: Record<
  *
  * On-demand (sin tabla materializada), cacheado ~15 min en el backend. */
 export function CalibracionBajaBlock() {
-  const { data, isLoading, isError, error, refetch } = useQuery<CalibracionBajaDTO>({
-    queryKey: prediccionKeys.calibracion,
-    queryFn: () => fetchWithAuth("/api/v1/predicciones/calibracion"),
-    staleTime: 10 * 60 * 1000,
-    // El fallo se pinta en el panel: sin toast encima.
-    meta: META_ERROR_EN_LINEA,
-  });
+  const { data, isLoading, isError, error, refetch } = useCalibracionBaja();
 
   const info = data ? ESTADO_INFO[data.estado] : null;
 

@@ -26,19 +26,17 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiMutate, fetchBlobWithAuth } from "@/lib/api-client";
 import { useSession } from "@/lib/auth";
+import { useEliminarMiCuenta, useExportarMisDatos } from "../_hooks/use-datos-cuenta";
 
 function ExportCard() {
   const [downloading, setDownloading] = React.useState(false);
+  const exportar = useExportarMisDatos();
 
   const download = async () => {
     setDownloading(true);
     try {
-      // El endpoint devuelve un ZIP, no JSON: `fetchBlobWithAuth` es la
-      // variante de `fetchWithAuth` que no parsea la respuesta, pero conserva
-      // la redirección a /login en 401 y el `ApiError` con el `detail` RFC-7807.
-      const blob = await fetchBlobWithAuth("/api/v1/me/data");
+      const blob = await exportar.mutateAsync();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -71,19 +69,13 @@ function ExportCard() {
 function DeleteAccountCard({ email }: { email: string }) {
   const [confirmation, setConfirmation] = React.useState("");
   const [deleting, setDeleting] = React.useState(false);
+  const eliminar = useEliminarMiCuenta();
   const matches = confirmation.trim().toLowerCase() === email.toLowerCase();
 
   const remove = async () => {
     setDeleting(true);
     try {
-      // Dos motivos por los que este botón devolvía 403/422 y nunca borró nada:
-      //   1. `DELETE /me` cuelga de `require_recent_session` → `require_any_auth`,
-      //      que rechaza toda mutación por cookie sin `X-CSRF-Token`
-      //      (`api/routes/dual_auth.py`). El `fetch` crudo no lo adjuntaba;
-      //      `apiMutate` sí.
-      //   2. El endpoint exige cuerpo `{"confirmation": "DELETE"}`
-      //      (`DeleteMyDataRequest`, `api/routes/me.py`). Se enviaba vacío.
-      await apiMutate("DELETE", "/api/v1/me", { confirmation: "DELETE" });
+      await eliminar.mutateAsync();
       toast.success("Cuenta eliminada");
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- recarga completa a propósito: la cuenta ya no existe y la caché de React Query y el SessionProvider tienen que arrancar sin sesión
       window.location.href = "/login";

@@ -138,11 +138,11 @@ def test_descartes_iguales_y_la_caducidad_sale_de_follows(tmp_db: Any, lectura: 
     )
 
     lectura(False)
-    ids_viejos = radar_dismissals.list_ids(user_key, user_id=user_id)
-    detalle_viejo = radar_dismissals.list_detalle(user_key, user_id=user_id)
+    ids_viejos = radar_dismissals.list_ids(user_id=user_id)
+    detalle_viejo = radar_dismissals.list_detalle(user_id=user_id)
     lectura(True)
-    ids_nuevos = radar_dismissals.list_ids(user_key, user_id=user_id)
-    detalle_nuevo = radar_dismissals.list_detalle(user_key, user_id=user_id)
+    ids_nuevos = radar_dismissals.list_ids(user_id=user_id)
+    detalle_nuevo = radar_dismissals.list_detalle(user_id=user_id)
 
     # El caducado (LIC-Z) no cuenta en ninguna de las dos.
     assert sorted(ids_viejos) == sorted(ids_nuevos) == ["LIC-X", "LIC-Y"]

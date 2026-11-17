@@ -176,7 +176,7 @@ def test_quien_se_asigna_a_si_mismo_no_recibe_email_ni_alerta(tmp_db, correos):
 
     assert correos == []
     assert _digests_pendientes() == []
-    assert get_alerts_unread_count(user_key, organization_id=org_id) == 0
+    assert get_alerts_unread_count(organization_id=org_id, user_id=user_id) == 0
 
 
 def test_el_comentario_avisa_a_los_destinatarios_menos_al_autor(tmp_db, correos):

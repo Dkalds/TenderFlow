@@ -195,7 +195,7 @@ def test_el_descarte_del_radar_deja_fila_con_signo_negativo(tmp_db: Any) -> None
     descartes = repo.listar(user_id=user_id, organization_id=org_id, kind="descartar")
     assert [f["target_id"] for f in descartes] == ["LIC-DESC"]
 
-    radar_dismissals.remove(user_key, "LIC-DESC", user_id=user_id)
+    radar_dismissals.remove("LIC-DESC", user_id=user_id)
     assert repo.listar(user_id=user_id, organization_id=org_id, kind="descartar") == []
 
 

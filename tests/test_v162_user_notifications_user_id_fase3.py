@@ -249,16 +249,20 @@ def test_la_alerta_escrita_por_la_fase_2_frena_a_la_nueva(tmp_db: Any) -> None:
 def test_sin_user_id_sigue_valiendo_la_clave(tmp_db: Any) -> None:
     """Favoritos que el backfill no resolvió: la alerta sale sólo con clave y
     la identidad vieja sigue deduplicando."""
+    from shared.identity import user_key_from_email
+
     user_id = _crear_usuario("legacy@v162.test")
+    otro = _crear_usuario("ajeno@v162.test")
     org = _organizacion_personal(user_id)
-    assert _alerta(user_key="solo-clave", organization_id=org) is True
-    assert _alerta(user_key="solo-clave", organization_id=org) is False
+    clave = user_key_from_email("legacy@v162.test", user_id)
+    assert _alerta(user_key=clave, organization_id=org) is True
+    assert _alerta(user_key=clave, organization_id=org) is False
 
     from db.notifications import alertas_de_usuario
 
-    # La lectura dual la sirve por clave, y no se la enseña a un id ajeno.
-    assert [a["licitacion_id"] for a in alertas_de_usuario("solo-clave", 10, org)] == ["LIC-1"]
-    assert alertas_de_usuario("otra", 10, org, user_id=user_id) == []
+    # La base la sirve a quien tiene hoy ese correo, y no a un id ajeno.
+    assert [a["licitacion_id"] for a in alertas_de_usuario(10, org, user_id=user_id)] == ["LIC-1"]
+    assert alertas_de_usuario(10, org, user_id=otro) == []
 
 
 def test_la_bandeja_y_el_gdpr_ven_la_alerta_sin_clave_tras_cambiar_de_correo(
@@ -272,44 +276,36 @@ def test_la_bandeja_y_el_gdpr_ven_la_alerta_sin_clave_tras_cambiar_de_correo(
     assert _alerta(user_id=user_id, organization_id=org) is True
 
     clave_nueva = user_key_from_email("despues@v162.test", user_id)
-    assert [
-        a["licitacion_id"] for a in export_user_notifications(clave_nueva, user_id=user_id)
-    ] == ["LIC-1"]
+    assert [a["licitacion_id"] for a in export_user_notifications(user_id)] == ["LIC-1"]
     anonymize_user_data(clave_nueva, user_id=user_id)
     assert _filas(user_id) == []
 
 
 def test_la_campana_lee_una_alerta_escrita_solo_con_user_id(tmp_db: Any) -> None:
     """Una fila con una sola identidad (``user_id``, sin clave) la ven el
-    listado, el badge y «marcar todas», leyendo con la clave que toque: la
-    lectura dual cubre filas con una sola de las dos columnas. Y un lector que
-    sólo trae clave —un favorito sin id— no la ve, porque no es suya."""
+    listado, el badge y «marcar todas». Y otro id no la ve, porque no es suya."""
     from db.notifications import (
         alertas_de_usuario,
         contar_alertas_sin_leer,
         listar_alertas,
         marcar_todas_alertas_leidas,
     )
-    from shared.identity import user_key_from_email
 
     user_id = _crear_usuario("Solo-Id@v162.test")
+    otro = _crear_usuario("otro-correo@v162.test")
     org = _organizacion_personal(user_id)
     assert _alerta(user_id=user_id, organization_id=org) is True
-    clave = user_key_from_email("otro-correo@v162.test", user_id)
 
-    assert [a["licitacion_id"] for a in alertas_de_usuario(clave, 10, org, user_id=user_id)] == [
-        "LIC-1"
-    ]
-    pagina = listar_alertas(clave, org, user_id=user_id, estado="sin_leer")
+    assert [a["licitacion_id"] for a in alertas_de_usuario(10, org, user_id=user_id)] == ["LIC-1"]
+    pagina = listar_alertas(org, user_id=user_id, estado="sin_leer")
     assert pagina["total"] == 1
-    assert contar_alertas_sin_leer(clave, org, user_id=user_id) == 1
-    marcar_todas_alertas_leidas(clave, org, user_id=user_id)
-    assert contar_alertas_sin_leer(clave, org, user_id=user_id) == 0
-    assert listar_alertas(clave, org, user_id=user_id, estado="leidas")["total"] == 1
+    assert contar_alertas_sin_leer(org, user_id=user_id) == 1
+    marcar_todas_alertas_leidas(org, user_id=user_id)
+    assert contar_alertas_sin_leer(org, user_id=user_id) == 0
+    assert listar_alertas(org, user_id=user_id, estado="leidas")["total"] == 1
 
-    # Un lector sin id (clave sola) no la ve: la fila no lleva clave.
-    assert alertas_de_usuario(clave, 10, org) == []
-    assert contar_alertas_sin_leer(clave, org) == 0
+    assert alertas_de_usuario(10, org, user_id=otro) == []
+    assert contar_alertas_sin_leer(org, user_id=otro) == 0
 
 
 def test_la_comprobacion_aborta_con_dos_avisos_de_la_misma_persona(tmp_db: Any) -> None:

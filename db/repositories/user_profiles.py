@@ -11,10 +11,11 @@ filas que el backfill no resolvió—; sin él, por ``user_key`` como siempre.
 
 Desde v135 (fase 3) la PK es ``user_id`` y **la escritura ya no pone
 ``user_key``**: el upsert es un ``ON CONFLICT (user_id)`` y un usuario tiene,
-por construcción, un único perfil. La lectura dual se queda: no cuesta nada
-(todas las filas tienen ``user_id``) y es la que sigue sirviendo las filas
-viejas a quien llame sin id. Por eso todo llamador debe pasar ``user_id``:
-sin él sólo se ven los perfiles escritos antes de esta fase.
+por construcción, un único perfil. Las lecturas solo reciben ``user_id``: es
+la PK, toda fila lo tiene, y la mitad legacy del predicado dual no encontraba
+nada que el id no encontrase ya. La columna ``user_key`` se sigue devolviendo
+porque ``GET /me/profile`` la publica (``UserProfileOut.user_key``), y el
+borrado GDPR (:func:`delete_user_profile`) sigue aceptando la clave.
 """
 
 from __future__ import annotations
@@ -39,9 +40,7 @@ _PROFILE_COLS = (
 )
 
 
-def get_user_profile(
-    user_key: str, organization_id: int, *, user_id: int | None = None
-) -> dict[str, Any] | None:
+def get_user_profile(organization_id: int, *, user_id: int) -> dict[str, Any] | None:
     """Perfil visible dentro de ``organization_id``. ``None`` si no hay.
 
     ``organization_id`` es obligatoria. Tenía default ``None`` y esa rama caía
@@ -50,22 +49,21 @@ def get_user_profile(
     existiendo, pero hay que pedirlo por su nombre
     (:func:`get_own_user_profile`).
 
-    El propio va antes que el compartido; entre varios propios (un usuario que
-    cambió de correo y guardó bajo las dos claves antes de v129), el de la
-    clave actual y después el más reciente.
+    El propio va antes que el compartido; entre compartidos, el más reciente.
+    Solo por ``user_id``: desde v135 es la PK, así que toda fila lo tiene y la
+    mitad legacy del predicado dual ya no encontraba nada.
     """
     with connect_read() as c:
         row = c.execute(
             _PROFILE_COLS + "WHERE organization_id = %s "
-            f"AND (visibility = 'organization' OR {_IDENT}) "
-            f"ORDER BY CASE WHEN {_IDENT} THEN 0 ELSE 1 END, "
-            "CASE WHEN user_key = %s THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
-            (organization_id, user_id, user_key, user_id, user_id, user_key, user_id, user_key),
+            "AND (visibility = 'organization' OR user_id = %s) "
+            "ORDER BY CASE WHEN user_id = %s THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
+            (organization_id, user_id, user_id),
         ).fetchone()
     return _row_to_profile(row)
 
 
-def get_own_user_profile(user_key: str, *, user_id: int | None = None) -> dict[str, Any] | None:
+def get_own_user_profile(*, user_id: int) -> dict[str, Any] | None:
     """Perfil propio del usuario, deliberadamente sin ámbito de organización.
 
     Es el camino del export GDPR (Art. 15/20) y de los llamadores que todavía
@@ -75,11 +73,7 @@ def get_own_user_profile(user_key: str, *, user_id: int | None = None) -> dict[s
     escrita en el nombre de la función y no el default de un parámetro.
     """
     with tenant_scope(None), connect_read() as c:
-        row = c.execute(
-            _PROFILE_COLS + f"WHERE {_IDENT} "
-            "ORDER BY CASE WHEN user_key = %s THEN 0 ELSE 1 END, updated_at DESC LIMIT 1",
-            (user_id, user_key, user_id, user_key),
-        ).fetchone()
+        row = c.execute(_PROFILE_COLS + "WHERE user_id = %s", (user_id,)).fetchone()
     return _row_to_profile(row)
 
 

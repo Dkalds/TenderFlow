@@ -87,9 +87,7 @@ def _comprobar_baja(equipo: dict) -> None:
     assert not _webhook_activo(equipo["webhook_miembro"])
     assert _webhook_activo(equipo["webhook_owner"]), "el webhook de otro no se toca"
     assert _invitaciones_pendientes(equipo["organization_id"]) == 0
-    perfil = get_user_profile(
-        "user-key-que-no-existe", equipo["organization_id"], user_id=equipo["owner"]
-    )
+    perfil = get_user_profile(equipo["organization_id"], user_id=equipo["owner"])
     assert perfil is None, "el perfil del que salió ya no lo hereda el equipo"
 
 
@@ -124,7 +122,7 @@ def test_degradar_a_un_admin_a_member_retira_lo_que_exige_ser_gestor(equipo):
     assert not _webhook_activo(equipo["webhook_miembro"])
     assert _webhook_activo(equipo["webhook_owner"]), "el webhook de otro no se toca"
     assert _invitaciones_pendientes(organization_id) == 0
-    perfil = get_user_profile("user-key-que-no-existe", organization_id, user_id=equipo["owner"])
+    perfil = get_user_profile(organization_id, user_id=equipo["owner"])
     assert perfil is not None, "un member puede seguir compartiendo su perfil"
 
 

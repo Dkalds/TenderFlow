@@ -1,8 +1,19 @@
-import { useEffect } from "react";
+import { useEffect, type ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render as renderRTL, screen, waitFor } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
 
 import PasswordResetPage from "@/app/restablecer-contrasena/page";
+import { crearQueryClientDePrueba } from "@/test/query-client";
+
+// Las dos escrituras son mutaciones: la página se monta con el cliente que
+// lleva el aviso global, como en la aplicación.
+function render(ui: ReactElement) {
+  const client = crearQueryClientDePrueba();
+  return renderRTL(ui, {
+    wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+  });
+}
 
 beforeEach(() => {
   window.history.replaceState({}, "", "/restablecer-contrasena");

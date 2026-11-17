@@ -1107,7 +1107,7 @@ def agenda_deps(monkeypatch: pytest.MonkeyPatch) -> _Dependencias:
 
 
 def test_get_agenda_fusiona_los_cuatro_compromisos_propios(agenda_deps: _Dependencias) -> None:
-    respuesta = sp.get_agenda(1, user_key="uk", organization_id=7)
+    respuesta = sp.get_agenda(1, organization_id=7)
 
     assert respuesta.organization_id == 7
     # Señal (1d); la oportunidad (3d) con su tarea (2d) detrás, colocadas por
@@ -1139,7 +1139,7 @@ def test_get_agenda_no_trae_el_mercado_salvo_que_se_pida(agenda_deps: _Dependenc
     Y no basta con filtrarla al final: sin ``incluir_mercado`` la consulta no
     se hace, que es lo que la sacó del camino por defecto.
     """
-    respuesta = sp.get_agenda(1, user_key="uk", organization_id=7)
+    respuesta = sp.get_agenda(1, organization_id=7)
 
     assert "renovacion" not in {item.kind for item in respuesta.items}
     assert agenda_deps.renovaciones_kwargs == []
@@ -1148,7 +1148,7 @@ def test_get_agenda_no_trae_el_mercado_salvo_que_se_pida(agenda_deps: _Dependenc
 def test_get_agenda_con_mercado_anade_las_renovaciones_sin_pursuit(
     agenda_deps: _Dependencias,
 ) -> None:
-    respuesta = sp.get_agenda(1, user_key="uk", organization_id=7, incluir_mercado=True)
+    respuesta = sp.get_agenda(1, organization_id=7, incluir_mercado=True)
 
     renovaciones = [item for item in respuesta.items if item.kind == "renovacion"]
     # `EXP-1` ya tiene pursuit en la organización: no se ofrece dos veces.
@@ -1160,7 +1160,7 @@ def test_get_agenda_con_mercado_anade_las_renovaciones_sin_pursuit(
 
 def test_get_agenda_solo_mios_limita_pursuits_y_tareas(agenda_deps: _Dependencias) -> None:
     """Los contratos no: son de la organización, no de una persona."""
-    sp.get_agenda(1, user_key="uk", organization_id=7, solo_mios=True)
+    sp.get_agenda(1, organization_id=7, solo_mios=True)
 
     assert agenda_deps.pursuits.kwargs["responsible_user_id"] == 1
     assert agenda_deps.tareas.kwargs["responsible_user_id"] == 1
@@ -1168,7 +1168,7 @@ def test_get_agenda_solo_mios_limita_pursuits_y_tareas(agenda_deps: _Dependencia
 
 
 def test_get_agenda_sin_solo_mios_no_filtra_por_responsable(agenda_deps: _Dependencias) -> None:
-    sp.get_agenda(1, user_key="uk", organization_id=7)
+    sp.get_agenda(1, organization_id=7)
 
     assert agenda_deps.pursuits.kwargs["responsible_user_id"] is None
     assert agenda_deps.tareas.kwargs["responsible_user_id"] is None
@@ -1193,7 +1193,7 @@ def test_get_agenda_explota_el_ambito_en_listas(
 ) -> None:
     """El mismo ámbito llega a las tres consultas: si una lo leyera distinto,
     el mismo filtro daría universos distintos según el ``kind``."""
-    sp.get_agenda(1, user_key="uk", organization_id=7, tecnologia=tecnologia, ccaa=ccaa)
+    sp.get_agenda(1, organization_id=7, tecnologia=tecnologia, ccaa=ccaa)
 
     for repo in (agenda_deps.pursuits, agenda_deps.tareas):
         assert repo.kwargs["tecnologias"] == tecnologias
@@ -1204,7 +1204,7 @@ def test_get_agenda_explota_el_ambito_en_listas(
 
 def test_get_agenda_acota_los_contratos_con_el_mismo_ambito(agenda_deps: _Dependencias) -> None:
     """El contrato de la cartera es de Andalucía: pedir Galicia lo deja fuera."""
-    respuesta = sp.get_agenda(1, user_key="uk", organization_id=7, ccaa="Galicia")
+    respuesta = sp.get_agenda(1, organization_id=7, ccaa="Galicia")
 
     assert "contrato" not in {item.kind for item in respuesta.items}
 
@@ -1215,7 +1215,6 @@ def test_get_agenda_con_varias_ccaa_consulta_el_mercado_una_vez_por_region(
     """``proximas_renovaciones`` filtra por **una** CCAA; la unión se reordena."""
     sp.get_agenda(
         1,
-        user_key="uk",
         organization_id=7,
         ccaa="Galicia,Madrid",
         tecnologia="SAP,Oracle",
@@ -1234,7 +1233,7 @@ def test_get_agenda_declara_el_corte_de_tareas(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(sp, "listar_cartera", lambda organization_id: [])
     monkeypatch.setattr(sp, "list_rules", lambda *a, **k: [])
 
-    respuesta = sp.get_agenda(1, user_key="uk", organization_id=7)
+    respuesta = sp.get_agenda(1, organization_id=7)
 
     assert respuesta.tareas_truncadas is True
     assert respuesta.pursuits_truncados is False
@@ -1253,7 +1252,7 @@ def test_get_agenda_la_senal_lleva_la_hora_de_su_plazo(
         lambda criterios, **kwargs: [{"id_externo": "SEN-1", "fecha_limite": plazo}],
     )
 
-    respuesta = sp.get_agenda(1, user_key="uk", organization_id=7)
+    respuesta = sp.get_agenda(1, organization_id=7)
 
     [senal] = [item for item in respuesta.items if item.kind == "senal"]
     # Las 10:00 UTC son las 11:00 o las 12:00 peninsulares, según la época.
@@ -1280,7 +1279,7 @@ def test_agenda_senales_salta_la_regla_que_no_se_puede_evaluar_o_no_casa(
             WatchlistRule(id=1, banda_min="Caliente"),
             WatchlistRule(id=2, banda_min="Caliente"),
         ],
-        "uk",
+        1,
         7,
         date(2026, 11, 16),
         tecnologias=[],
@@ -1324,7 +1323,7 @@ def test_get_agenda_cuenta_los_dias_desde_el_hoy_peninsular(
     agenda_deps.pursuits._rows[:] = [_pursuit_row(tender_deadline="2026-10-15")]
     agenda_deps.tareas._rows[:] = []
 
-    respuesta = sp.get_agenda(1, user_key="uk", organization_id=7)
+    respuesta = sp.get_agenda(1, organization_id=7)
 
     [oportunidad] = [item for item in respuesta.items if item.kind == "pursuit"]
     assert (oportunidad.dias_restantes, oportunidad.banda) == (0, "hoy")

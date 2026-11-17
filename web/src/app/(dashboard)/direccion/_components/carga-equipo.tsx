@@ -11,17 +11,14 @@
  * Una fila por miembro activo, también los que no tienen nada: que alguien
  * esté libre es parte de la respuesta.
  */
-import { useQuery } from "@tanstack/react-query";
-
 import { Panel, PanelEmpty, PanelError, PanelTitle } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { organizacionResuelta, type OrganizacionActiva } from "@/hooks/use-organization";
-import { ApiError, apiGet } from "@/lib/api-client";
+import type { OrganizacionActiva } from "@/hooks/use-organization";
+import { ApiError } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { pursuitKeys } from "@/lib/query-keys";
 import { cn, formatNumber } from "@/lib/utils";
+import { useCargaEquipo } from "../_hooks/use-carga-equipo";
 import { SinPermisoDireccion } from "./sin-permiso";
 
 type Responsable = Schemas["CargaResponsable"];
@@ -77,16 +74,7 @@ function FilaCarga({ persona, maximo }: { persona: Responsable; maximo: number }
 }
 
 export function CargaEquipoView({ organizationId }: { organizationId: OrganizacionActiva }) {
-  const { data, isPending, isError, error, refetch } = useQuery({
-    queryKey: pursuitKeys.direccionCarga(organizationId),
-    queryFn: () =>
-      apiGet("/api/v1/pursuits/direccion/carga", {
-        params: { query: { organization_id: organizationId ?? undefined } },
-      }),
-    enabled: organizacionResuelta(organizationId),
-    retry: false,
-    meta: META_ERROR_EN_LINEA,
-  });
+  const { data, isPending, isError, error, refetch } = useCargaEquipo(organizationId);
 
   if (isError) {
     return error instanceof ApiError && error.status === 403 ? (

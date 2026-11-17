@@ -1,0 +1,32 @@
+{
+  "estado": "ok",
+  "granularidad": "expediente",
+  "cobertura": 0.81,
+  "cobertura_nominal": 0.8,
+  "mae_p50": 0.042,
+  "sesgo_p50": -0.006,
+  "n_evaluadas": 412,
+  "regimen_servido": "modelo",
+  "modelo": {
+    "estado": "ok",
+    "cobertura": 0.81,
+    "mae_p50": 0.042,
+    "sesgo_p50": -0.006,
+    "n_evaluadas": 412
+  },
+  "baseline": {
+    "estado": "degradado",
+    "cobertura": 0.66,
+    "mae_p50": 0.071,
+    "sesgo_p50": 0.018,
+    "n_evaluadas": 412
+  },
+  "por_lote": {
+    "estado": "insuficiente",
+    "cobertura": null,
+    "mae_p50": null,
+    "sesgo_p50": null,
+    "n_evaluadas": 23,
+    "n_prediccion_por_lote": 23
+  }
+}

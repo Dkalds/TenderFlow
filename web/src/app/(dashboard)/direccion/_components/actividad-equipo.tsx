@@ -20,29 +20,21 @@
 import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useInfiniteQuery } from "@tanstack/react-query";
 
 import { PanelEmpty, PanelError } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  organizacionResuelta,
-  useOrganizationMembers,
-  type OrganizacionActiva,
-} from "@/hooks/use-organization";
+import { useOrganizationMembers, type OrganizacionActiva } from "@/hooks/use-organization";
 import { agruparPorDia } from "@/lib/agrupar-por-dia";
-import { apiGet } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { pursuitKeys } from "@/lib/query-keys";
 import { queryActual, reemplazarQuery } from "@/lib/url-superficial";
 import { formatHoraMinuto, formatRelativeTime } from "@/lib/utils";
+import { useActividadEquipo } from "../_hooks/use-actividad-equipo";
 import { etiquetaCambio, verboDeEvento } from "../_lib/actividad";
 
 type ItemActividad = Schemas["ItemActividad"];
 
-const PAGINA = 50;
 const TODOS = "todos";
 
 /** `?persona=7` → 7; cualquier otra cosa, sin filtro. */
@@ -122,27 +114,7 @@ export function ActividadEquipo({ organizationId }: { organizationId: Organizaci
     reemplazarQuery(search);
   }, []);
 
-  const feed = useInfiniteQuery({
-    queryKey: pursuitKeys.actividad(organizationId, usuario),
-    queryFn: ({ pageParam }) =>
-      apiGet("/api/v1/pursuits/actividad", {
-        params: {
-          query: {
-            organization_id: organizationId ?? undefined,
-            usuario: usuario ?? undefined,
-            antes_de_id: pageParam ?? undefined,
-            limit: PAGINA,
-          },
-        },
-      }),
-    initialPageParam: null as number | null,
-    getNextPageParam: (pagina) => pagina.siguiente_cursor ?? undefined,
-    // La actividad es la del equipo: sin saber de cuál, el feed sale con la de
-    // la organización personal y se reemplaza a la vista del usuario.
-    enabled: organizacionResuelta(organizationId),
-    // El fallo se pinta en el feed (`PanelError`): sin toast encima.
-    meta: META_ERROR_EN_LINEA,
-  });
+  const feed = useActividadEquipo(organizationId, usuario);
 
   const items = React.useMemo(
     () => feed.data?.pages.flatMap((pagina) => pagina.items ?? []) ?? [],

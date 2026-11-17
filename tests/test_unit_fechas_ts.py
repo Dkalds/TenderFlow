@@ -472,8 +472,8 @@ def test_novedades_con_el_flag_apagado_es_el_sql_de_siempre(
     conexion = _Conexion([])
     monkeypatch.setattr(nov, "connect_read", lambda: conexion)
     repo = nov.NovedadesRepository()
-    repo.cambios_en_seguidos("u", desde_iso="2026-09-04T00:00:00+00:00")
-    repo.documentos_nuevos_en_seguidos("u", desde_iso="2026-09-04T00:00:00+00:00")
+    repo.cambios_en_seguidos(user_id=1, desde_iso="2026-09-04T00:00:00+00:00")
+    repo.documentos_nuevos_en_seguidos(user_id=1, desde_iso="2026-09-04T00:00:00+00:00")
     repo.pursuits_movidos(1, desde_iso="2026-09-04T00:00:00+00:00")
     historial, documentos, pursuits = conexion.sql
     assert "AND h.captured_at >= %s ORDER BY h.captured_at DESC" in historial
@@ -491,8 +491,8 @@ def test_novedades_con_el_flag_encendido_compara_instantes(
     conexion = _Conexion([])
     monkeypatch.setattr(nov, "connect_read", lambda: conexion)
     repo = nov.NovedadesRepository()
-    repo.cambios_en_seguidos("u", desde_iso="2026-09-04T00:00:00+00:00")
-    repo.documentos_nuevos_en_seguidos("u", desde_iso="2026-09-04T00:00:00+00:00")
+    repo.cambios_en_seguidos(user_id=1, desde_iso="2026-09-04T00:00:00+00:00")
+    repo.documentos_nuevos_en_seguidos(user_id=1, desde_iso="2026-09-04T00:00:00+00:00")
     repo.pursuits_movidos(1, desde_iso="2026-09-04T00:00:00+00:00")
     historial, documentos, pursuits = conexion.sql
     h = "COALESCE(h.captured_at_ts, nucleo_iso_a_timestamptz(h.captured_at))"

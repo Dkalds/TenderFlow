@@ -2,15 +2,12 @@
 
 import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { EnlaceIr, PanelError, SUPERFICIE_PANEL, TONO_PANEL } from "@/components/console/panel";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchWithAuth } from "@/lib/api-client";
 import { useFilterParams } from "@/lib/filters";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
 import { cn, diaISO, formatCompactCurrency, formatNumber } from "@/lib/utils";
-import type { LicitacionesCursorPage } from "@/lib/api-types";
+import { useColaCierre } from "../_hooks/use-cola-cierre";
 import { RelojCierre } from "./cifras-graficos";
 import { BarraImporte } from "./ultimas-publicaciones-tabla";
 import {
@@ -133,20 +130,9 @@ export function ColaCierre({
 
   const hayCola = (total ?? 0) > 0;
 
-  const cola = useQuery<LicitacionesCursorPage>({
-    queryKey: ["licitaciones", "cola-cierre", params],
-    queryFn: ({ signal }) =>
-      fetchWithAuth<LicitacionesCursorPage>(
-        `/api/v1/licitaciones/cursor?${new URLSearchParams(params)}`,
-        { signal },
-      ),
-    staleTime: 2 * 60 * 1000,
-    // Sin cola que desglosar la petición no aporta nada: la tarjeta ya sabe que
-    // va a pintar el estado resuelto.
-    enabled: hayCola,
-    // El fallo del desglose se dice dentro de la tarjeta: sin toast encima.
-    meta: META_ERROR_EN_LINEA,
-  });
+  // Sin cola que desglosar la petición no aporta nada: la tarjeta ya sabe que
+  // va a pintar el estado resuelto.
+  const cola = useColaCierre(params, hayCola);
 
   const recortada = cola.data?.has_more === true;
   const cargandoFilas = hayCola && cola.isLoading;

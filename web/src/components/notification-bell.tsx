@@ -30,18 +30,19 @@ import {
 import { type MontajeDiferido, useMontajeDiferido } from "@/components/ui/carga-diferida";
 import { useActiveOrganizationId } from "@/hooks/use-organization";
 import { registrarEvento } from "@/lib/analytics";
-import { apiMutate } from "@/lib/api-client";
 import { pursuitKeys, radarKeys } from "@/lib/query-keys";
 import { reportError } from "@/lib/report-error";
 import {
+  aplazarExpediente,
   type Aviso,
   AVISOS_EN_VISTA_PREVIA,
   cambiarActivaRegla,
+  deshacerAplazamiento,
   destinoDeAviso,
   refrescarReglas,
   useAvisos,
   useMarcarLeidos,
-} from "./campana/avisos";
+} from "@/hooks/use-avisos";
 import {
   CLASE_DISPARADOR_CAMPANA,
   ContenidoDisparadorCampana,
@@ -183,9 +184,7 @@ function FilaAviso({
   const destino = destinoDeAviso(aviso);
   const titulo = aviso.title ?? aviso.type;
 
-  // F5.6 — silenciar y posponer el expediente con el backend del Radar:
-  // `silenciar` lo saca del Radar y de la Agenda hasta que vence; `posponer`
-  // además lo devuelve como recordatorio ese día.
+  // F5.6 — silenciar y posponer el expediente (`aplazarExpediente`).
   const refrescarRadar = () =>
     Promise.all([
       queryClient.invalidateQueries({ queryKey: radarKeys.dismissals }),
@@ -194,13 +193,7 @@ function FilaAviso({
     ]);
   const aplazar = async (idExterno: string, accion: "silenciar" | "posponer", dias: number) => {
     try {
-      await apiMutate("POST", "/api/v1/radar/dismissals", {
-        id_externo: idExterno,
-        score: null,
-        banda: null,
-        accion,
-        dias,
-      });
+      await aplazarExpediente(idExterno, accion, dias);
     } catch (err) {
       reportError("NotificationBell.aplazar", err);
       toast.error("No se pudo aplazar el expediente");
@@ -212,7 +205,7 @@ function FilaAviso({
       action: {
         label: "Deshacer",
         onClick: () =>
-          void apiMutate("DELETE", `/api/v1/radar/dismissals/${encodeURIComponent(idExterno)}`)
+          void deshacerAplazamiento(idExterno)
             .then(refrescarRadar)
             .catch((err: unknown) => reportError("NotificationBell.deshacer", err)),
       },

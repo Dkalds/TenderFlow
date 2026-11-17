@@ -28,7 +28,7 @@ import {
   type EstadoLectura,
   useAvisos,
   useMarcarLeidos,
-} from "./avisos";
+} from "@/hooks/use-avisos";
 
 const FILTROS: readonly { value: EstadoLectura; label: string }[] = [
   { value: "todas", label: "Todas" },

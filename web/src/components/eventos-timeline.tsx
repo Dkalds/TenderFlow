@@ -1,23 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth } from "@/lib/api-client";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
+import { useEventosLicitacion } from "@/hooks/use-eventos-licitacion";
 import { PanelEmpty, PanelError } from "@/components/console/panel";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
-import { eventosKeys } from "@/lib/query-keys";
-
-interface EventoContrato {
-  fecha: string | null;
-  tipo: string;
-  campo: string | null;
-  valor_antes: string | null;
-  valor_despues: string | null;
-  importe_delta: number | null;
-  detalle: string | null;
-}
 
 /**
  * El vocabulario de `contrato_eventos.tipo`, exportado porque lo comparten las
@@ -60,14 +47,7 @@ const TIPO_DOT: Record<string, string> = {
 };
 
 export function EventosTimeline({ licitacionId }: { licitacionId: string }) {
-  const { data, isLoading, error, refetch } = useQuery<{ items: EventoContrato[] }>({
-    queryKey: eventosKeys.byLicitacion(licitacionId),
-    queryFn: () =>
-      fetchWithAuth(`/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/eventos`),
-    staleTime: 5 * 60 * 1000,
-    // El fallo se pinta aquí mismo (`PanelError`): sin toast encima.
-    meta: META_ERROR_EN_LINEA,
-  });
+  const { data, isLoading, error, refetch } = useEventosLicitacion(licitacionId);
 
   if (isLoading) {
     return (

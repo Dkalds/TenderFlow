@@ -2,19 +2,15 @@
 
 import type * as React from "react";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { fetchWithAuth, type ApiGetResult } from "@/lib/api-client";
 import { ChevronRight, Cpu } from "lucide-react";
 import { PanelEmpty, PanelError, SectionTitle } from "@/components/console/panel";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useTecnologias } from "@/hooks/use-tecnologias";
 import type { Schemas } from "@/lib/api-types";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { tecnologiasKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
 type TecnologiaDetalle = Schemas["TecnologiaDetalle"];
-type TecnologiasResult = ApiGetResult<"/api/v1/licitaciones/{id_externo}/tecnologias">;
 
 function origenes(item: TecnologiaDetalle): string[] {
   const result: string[] = [];
@@ -89,14 +85,7 @@ function TecnologiaRow({ item }: { item: TecnologiaDetalle }) {
  *  `conTitulo={false}` cuando el contenedor ya rotula la sección (la ficha de
  *  la oportunidad la llama «Señal tecnológica»). */
 export function TecnologiasBlock({ licitacionId, conTitulo = true }: { licitacionId: string; conTitulo?: boolean }) {
-  const { data, isPending, error, refetch } = useQuery({
-    queryKey: tecnologiasKeys.byLicitacion(licitacionId),
-    queryFn: () =>
-      fetchWithAuth<TecnologiasResult>(`/api/v1/licitaciones/${encodeURIComponent(licitacionId)}/tecnologias`),
-    staleTime: 5 * 60 * 1000,
-    // El fallo se pinta aquí mismo (`PanelError`): sin toast encima.
-    meta: META_ERROR_EN_LINEA,
-  });
+  const { data, isPending, error, refetch } = useTecnologias(licitacionId);
 
   const items = data?.items ?? [];
   let cuerpo: React.ReactNode;

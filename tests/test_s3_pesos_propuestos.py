@@ -170,7 +170,7 @@ def test_con_menos_de_veinte_cierres_devuelve_insuficiente(
     """Diecinueve cierres no sostienen un ajuste, y se dice con su base."""
     monkeypatch.setattr(pursuits_svc, "_repo", _RepoFalso(_filas_cerradas(10, 9)))
 
-    propuesta = pursuits_svc.get_weights_proposal(1, user_key="uk", organization_id=7)
+    propuesta = pursuits_svc.get_weights_proposal(1, organization_id=7)
 
     assert propuesta.estado == "insuficiente"
     assert propuesta.pesos_propuestos is None
@@ -186,7 +186,7 @@ def test_con_veinte_cierres_ya_hay_propuesta(
 ) -> None:
     monkeypatch.setattr(pursuits_svc, "_repo", _RepoFalso(_filas_cerradas(10, 10)))
 
-    propuesta = pursuits_svc.get_weights_proposal(1, user_key="uk", organization_id=7)
+    propuesta = pursuits_svc.get_weights_proposal(1, organization_id=7)
 
     assert propuesta.estado == "propuesta"
     assert propuesta.n_cierres == PESOS_MINIMO_CIERRES
@@ -203,7 +203,7 @@ def test_un_desglose_ilegible_no_entra_ni_en_el_numerador_ni_en_el_denominador(
     filas.append({"id": 9999, "outcome": "won", "desglose_al_abrir": "{no es json"})
     monkeypatch.setattr(pursuits_svc, "_repo", _RepoFalso(filas))
 
-    propuesta = pursuits_svc.get_weights_proposal(1, user_key="uk", organization_id=7)
+    propuesta = pursuits_svc.get_weights_proposal(1, organization_id=7)
 
     assert propuesta.n_cierres == 20
     assert propuesta.n_ganadas == 10
@@ -253,7 +253,7 @@ def test_con_pocos_cierres_el_triaje_sostiene_la_propuesta(
     minimo = PESOS_MINIMO_TRIAJE_POR_LADO
     _triaje(monkeypatch, cierres=(2, 1), abiertas=minimo, descartadas=minimo)
 
-    propuesta = pursuits_svc.get_weights_proposal(1, user_key="uk", organization_id=7)
+    propuesta = pursuits_svc.get_weights_proposal(1, organization_id=7)
 
     assert propuesta.estado == "propuesta"
     assert propuesta.fuente == "triaje"
@@ -272,7 +272,7 @@ def test_un_lado_del_triaje_por_debajo_del_minimo_no_propone(
     minimo = PESOS_MINIMO_TRIAJE_POR_LADO
     _triaje(monkeypatch, cierres=(0, 0), abiertas=30, descartadas=minimo - 1)
 
-    propuesta = pursuits_svc.get_weights_proposal(1, user_key="uk", organization_id=7)
+    propuesta = pursuits_svc.get_weights_proposal(1, organization_id=7)
 
     assert propuesta.estado == "insuficiente"
     assert propuesta.fuente == "cierres"
@@ -287,7 +287,7 @@ def test_con_cierres_suficientes_mandan_los_cierres(
     """Lo que se gana es la pregunta más dura: con veinte cierres, manda."""
     _triaje(monkeypatch, cierres=(10, 10), abiertas=50, descartadas=50)
 
-    propuesta = pursuits_svc.get_weights_proposal(1, user_key="uk", organization_id=7)
+    propuesta = pursuits_svc.get_weights_proposal(1, organization_id=7)
 
     assert propuesta.fuente == "cierres"
     assert propuesta.pesos_propuestos is not None
@@ -301,7 +301,7 @@ def test_un_desglose_de_triaje_ilegible_no_cuenta(
     _triaje(monkeypatch, cierres=(0, 0), abiertas=minimo, descartadas=minimo)
     pursuits_svc._repo.abiertas.append("{no es json")
 
-    propuesta = pursuits_svc.get_weights_proposal(1, user_key="uk", organization_id=7)
+    propuesta = pursuits_svc.get_weights_proposal(1, organization_id=7)
 
     assert propuesta.n_abiertas == minimo
 

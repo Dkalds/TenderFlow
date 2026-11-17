@@ -97,18 +97,18 @@ def export_saved_filters(user_id: int) -> list[dict[str, Any]]:
     return list_own_saved_filters(user_id=user_id)
 
 
-def export_user_profile(user_key: str, *, user_id: int | None = None) -> dict[str, Any] | None:
+def export_user_profile(user_id: int) -> dict[str, Any] | None:
     """Exporta el perfil de scoring personalizado del usuario, si existe."""
     # Export GDPR: la pregunta es qué guarda el sistema sobre esta persona,
     # no qué ve un equipo. Camino sin ámbito, pedido por su nombre.
-    return get_own_user_profile(user_key, user_id=user_id)
+    return get_own_user_profile(user_id=user_id)
 
 
-def export_user_notifications(user_key: str, *, user_id: int | None = None) -> list[dict[str, Any]]:
+def export_user_notifications(user_id: int) -> list[dict[str, Any]]:
     """Exporta las alertas in-app (user_notifications) del usuario."""
     from services.notifications import get_user_alerts
 
-    return get_user_alerts(user_key, limit=5000, user_id=user_id)
+    return get_user_alerts(limit=5000, user_id=user_id)
 
 
 def export_feedback(user_id: int) -> list[dict[str, Any]]:
@@ -147,7 +147,7 @@ def secciones_truncadas(secciones: Mapping[str, Sequence[object]]) -> dict[str, 
     }
 
 
-def export_account_data(user_id: int, user_key: str) -> dict[str, list[dict[str, object]]]:
+def export_account_data(user_id: int) -> dict[str, list[dict[str, object]]]:
     """Lo que se guarda de la cuenta y no cubre ningún otro export (RGPD Art. 15/20).
 
     La fila de ``users`` (sin credenciales), los accesos, las sesiones activas
@@ -171,7 +171,7 @@ def export_account_data(user_id: int, user_key: str) -> dict[str, list[dict[str,
             for fila in sessions.list_active_sessions(user_id)
         ],
         "preferencias_notificacion": notification_preferences.listar(user_id),
-        "descartes_radar": radar_dismissals.list_detalle(user_key, user_id=user_id),
+        "descartes_radar": radar_dismissals.list_detalle(user_id=user_id),
         "asistente_feedback": asistente_feedback.exportar_de_usuario(user_id),
         "pursuit_tasks": _pursuit_task_repo.export_for_user(user_id),
         "vigilancia_empresas": watchlist_empresas.exportar_de_usuario(user_id),

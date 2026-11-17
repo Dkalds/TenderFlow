@@ -14,10 +14,10 @@ modo por defecto. Quitar la tabla es una migración aparte; darle una pantalla,
 volver a escribir la fila.
 
 Desde v129 (ADR-030 fase 2) ``user_notifications`` y ``user_event_prefs``
-llevan ``user_id`` junto a ``user_key``. Todas las funciones aceptan
-``user_id`` opcional: con él la lectura es dual (por id, o por clave en las
-filas que el backfill no resolvió) y, desde v162/v165 (fase 3), la escritura
-pone sólo el id; sin él se comportan exactamente como antes.
+llevan ``user_id`` junto a ``user_key``. Las marcas de lectura y la bandeja de
+alertas solo reciben ``user_id`` (la clave de las filas sin id la resuelve
+``db/notifications.py`` en la base); el borrado GDPR y las preferencias de
+correo aceptan todavía la clave, con ``user_id`` opcional.
 """
 
 from __future__ import annotations
@@ -39,23 +39,19 @@ from observability.logging import get_logger
 log = get_logger(__name__)
 
 
-def mark_read(user_key: str, notification_id: str, *, user_id: int | None = None) -> None:
+def mark_read(notification_id: str, *, user_id: int) -> None:
     """Marca una notificacion de novedad como leida."""
-    _mark_read(user_key, notification_id, user_id=user_id)
+    _mark_read(notification_id, user_id=user_id)
 
 
-def mark_all_read(
-    user_key: str, notification_ids: list[str], *, user_id: int | None = None
-) -> None:
+def mark_all_read(notification_ids: list[str], *, user_id: int) -> None:
     """Marca un batch de notificaciones de novedad como leidas."""
-    _mark_all_read(user_key, notification_ids, user_id=user_id)
+    _mark_all_read(notification_ids, user_id=user_id)
 
 
-def get_unread_ids(
-    user_key: str, candidate_ids: list[str], *, user_id: int | None = None
-) -> list[str]:
+def get_unread_ids(candidate_ids: list[str], *, user_id: int) -> list[str]:
     """Devuelve IDs de novedades que el usuario NO ha leido."""
-    return _get_unread_ids(user_key, candidate_ids, user_id=user_id)
+    return _get_unread_ids(candidate_ids, user_id=user_id)
 
 
 # ---------------------------------------------------------------------------
@@ -64,11 +60,10 @@ def get_unread_ids(
 
 
 def get_user_alerts(
-    user_key: str,
     limit: int = 50,
     organization_id: int | None = None,
     *,
-    user_id: int | None = None,
+    user_id: int,
 ) -> list[dict[str, Any]]:
     """Devuelve alertas de reglas/deadlines pendientes (unread primero).
 
@@ -78,32 +73,27 @@ def get_user_alerts(
     Sin pursuit sale ``None`` —una alerta de regla sobre un expediente sin
     pursuit sigue siendo válida— y con varios (uno por lote) sale uno solo.
     """
-    return _alertas_de_usuario(user_key, limit, organization_id, user_id=user_id)
+    return _alertas_de_usuario(limit, organization_id, user_id=user_id)
 
 
-def get_alerts_unread_count(
-    user_key: str, organization_id: int | None = None, *, user_id: int | None = None
-) -> int:
+def get_alerts_unread_count(organization_id: int | None = None, *, user_id: int) -> int:
     """Numero de alertas no leidas para el usuario."""
-    return _contar_alertas_sin_leer(user_key, organization_id, user_id=user_id)
+    return _contar_alertas_sin_leer(organization_id, user_id=user_id)
 
 
 def mark_alerts_read(
-    user_key: str,
     alert_ids: list[int],
     organization_id: int | None = None,
     *,
-    user_id: int | None = None,
+    user_id: int,
 ) -> None:
     """Marca alertas especificas como leidas."""
-    _marcar_alertas_leidas(user_key, alert_ids, organization_id, user_id=user_id)
+    _marcar_alertas_leidas(alert_ids, organization_id, user_id=user_id)
 
 
-def mark_all_alerts_read(
-    user_key: str, organization_id: int | None = None, *, user_id: int | None = None
-) -> None:
+def mark_all_alerts_read(organization_id: int | None = None, *, user_id: int) -> None:
     """Marca todas las alertas del usuario como leidas."""
-    _marcar_todas_alertas_leidas(user_key, organization_id, user_id=user_id)
+    _marcar_todas_alertas_leidas(organization_id, user_id=user_id)
 
 
 def delete_all_alerts(user_key: str, *, user_id: int | None = None) -> int:

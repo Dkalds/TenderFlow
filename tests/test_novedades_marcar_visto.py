@@ -25,8 +25,8 @@ from db.notifications import MARCA_VISITA
 def test_la_ruta_marca_con_la_identidad_del_principal() -> None:
     llamadas: list[tuple[Any, ...]] = []
 
-    def _marcar(user_key: str, *, user_id: int | None = None) -> str:
-        llamadas.append((user_key, user_id))
+    def _marcar(*, user_id: int) -> str:
+        llamadas.append((user_id,))
         return "2026-09-19T10:00:00+00:00"
 
     with patch.object(rutas, "marcar_visita", _marcar):
@@ -34,7 +34,7 @@ def test_la_ruta_marca_con_la_identidad_del_principal() -> None:
             rutas.resumen_marcar_visto(ctx={"user_key": "clave-del-principal", "user_id": "7"})
         )
 
-    assert llamadas == [("clave-del-principal", 7)]
+    assert llamadas == [(7,)]
     assert respuesta.visto_en == "2026-09-19T10:00:00+00:00"
 
 
@@ -48,37 +48,43 @@ def test_la_marca_reservada_no_parece_un_expediente() -> None:
 
 
 @pytest.fixture()
-def db(tmp_db: Any) -> Any:
-    return tmp_db
+def user_id(tmp_db: Any) -> int:
+    from db.users import create_user
+
+    return create_user(
+        email="visto@novedades.test",
+        password_hash="test-hash",  # pragma: allowlist secret
+        display_name="Visto",
+    )
 
 
-def test_marcar_visita_mueve_la_ultima_visita(db: Any) -> None:
+def test_marcar_visita_mueve_la_ultima_visita(user_id: int) -> None:
     from db.notifications import get_last_seen_ts, marcar_visita, mark_read
 
-    mark_read("u-visto", "LIC-1")
-    antes = get_last_seen_ts("u-visto")
-    marca = marcar_visita("u-visto")
+    mark_read("LIC-1", user_id=user_id)
+    antes = get_last_seen_ts(user_id=user_id)
+    marca = marcar_visita(user_id=user_id)
 
-    assert get_last_seen_ts("u-visto") == marca
+    assert get_last_seen_ts(user_id=user_id) == marca
     assert marca >= str(antes)
 
 
-def test_marcar_dos_veces_no_crece(db: Any) -> None:
+def test_marcar_dos_veces_no_crece(user_id: int) -> None:
     from db.database import connect
     from db.notifications import marcar_visita
 
-    marcar_visita("u-visto-2")
-    segunda = marcar_visita("u-visto-2")
+    marcar_visita(user_id=user_id)
+    segunda = marcar_visita(user_id=user_id)
     with connect() as c:
         filas = c.execute(
-            "SELECT read_at FROM notification_reads WHERE user_key = %s",
-            ("u-visto-2",),
+            "SELECT read_at FROM notification_reads WHERE user_id = %s",
+            (user_id,),
         ).fetchall()
     assert [f[0] for f in filas] == [segunda]
 
 
-def test_la_marca_no_cuenta_como_notificacion_leida(db: Any) -> None:
+def test_la_marca_no_cuenta_como_notificacion_leida(user_id: int) -> None:
     from db.notifications import get_unread_ids, marcar_visita
 
-    marcar_visita("u-visto-3")
-    assert get_unread_ids("u-visto-3", ["LIC-9"]) == ["LIC-9"]
+    marcar_visita(user_id=user_id)
+    assert get_unread_ids(["LIC-9"], user_id=user_id) == ["LIC-9"]

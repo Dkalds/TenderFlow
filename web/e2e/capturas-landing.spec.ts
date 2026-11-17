@@ -40,23 +40,26 @@ import { SEED_LICITACION } from "./fixtures";
  * un visitante.
  *
  * Se capturan los dos recortes en **los dos temas**: `radar-hero.webp` y
- * `radar-hero-movil.webp` (oscuro, los que la portada importa hoy) y sus
- * variantes `-claro` (`radar-hero-claro.webp`, `radar-hero-movil-claro.webp`).
- * La portada las servirá con un `<source media="(prefers-color-scheme: dark)">`
- * para que quien tiene el sistema en claro no vea una consola oscura; el
- * `<picture>` de `CapturaProducto` se cambia en el mismo commit que añade los
- * `.webp` claros, porque un import a un fichero que no existe rompe el build.
+ * `radar-hero-movil.webp` (oscuro) y sus variantes `-claro`
+ * (`radar-hero-claro.webp`, `radar-hero-movil-claro.webp`).
+ * `CapturaProducto` las sirve con `<source media="(prefers-color-scheme: dark)">`
+ * para que quien tiene el sistema en claro no vea una consola oscura. Importa
+ * los cuatro ficheros: borrar uno rompe el build.
  *
  * El recorte estrecho no es la misma imagen reducida: una consola de escritorio
- * a 375 px deja el texto de la tabla por debajo de 2 px. Se captura el panel de
- * detalle, que es estrecho por naturaleza y cuenta la misma historia.
+ * a 375 px deja el texto de la tabla por debajo de 2 px. Se captura el cuerpo
+ * del inspector del Radar (score, banda y desglose), que es estrecho por
+ * naturaleza y cuenta la misma historia. Hasta el 2026-11-16 se tomaba de
+ * `/detalle` a 375 px esperando «Desglose de score», que ya no vive allí.
+ *
+ * Con `next dev` la captura saca la insignia de desarrollo de Next: se toma
+ * contra `npm run build && npm run start`.
  */
 
 const DESTINO = path.resolve(__dirname, "..", "src", "app", "(publico)", "_assets");
 
-/** Mismos anchos que `responsive.spec.ts`, para no inventar un tercer juego. */
+/** Mismo ancho que `responsive.spec.ts`, para no inventar otro. */
 const ESCRITORIO = { width: 1440, height: 900 };
-const MOVIL = { width: 375, height: 812 };
 
 /** Calidad alta pero con pérdida: son capturas de interfaz, no fotografía, y
  *  el peso viaja en el LCP de la portada. Los ficheros anteriores rondaban los
@@ -89,9 +92,29 @@ async function guardarWebp(png: Buffer, nombre: string): Promise<void> {
   await writeFile(path.join(DESTINO, nombre), webp);
 }
 
+/**
+ * Radar con el expediente del seed seleccionado y su inspector abierto.
+ *
+ * Se selecciona como en `responsive.spec.ts`: por la celda de selección de su
+ * fila (`[data-active]` solo lo emite `radar-fila.tsx`), no con un clic en el
+ * título, que no abre el inspector. Antes se cierra la franja de primer uso
+ * del ámbito, que no forma parte de lo que la portada enseña.
+ */
+async function abrirInspector(page: import("@playwright/test").Page): Promise<void> {
+  await page.goto("/radar");
+  await page.getByRole("button", { name: "Entendido, no volver a mostrar" }).click();
+  const fila = page.locator("[data-active]").filter({ hasText: SEED_LICITACION.tituloRadar }).first();
+  await fila.waitFor({ timeout: 20_000 });
+  await fila.locator('[data-slot="radar-fila-seleccion"]').click();
+  await page.getByText("Desglose de score").waitFor();
+}
+
 test.describe("Capturas de la landing", () => {
   test.skip(!process.env.CAPTURAS, "Herramienta, no test: se ejecuta con CAPTURAS=1");
   test.skip(({ browserName }) => browserName !== "chromium", "Una sola familia de capturas");
+  // La imagen ocupa hasta 1104 px CSS en la portada: a 1x se vería borrosa en
+  // una pantalla de densidad 2. `next/image` sirve después el ancho que toque.
+  test.use({ deviceScaleFactor: 2 });
 
   for (const tema of ["dark", "light"] as const) {
     const sufijo = tema === "light" ? "-claro" : "";
@@ -99,26 +122,31 @@ test.describe("Capturas de la landing", () => {
     test(`bandeja del Radar (${tema})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: tema });
       await page.setViewportSize(ESCRITORIO);
-      await page.goto("/radar");
-
-      // La fila del expediente con histórico: sin ella la bandeja podría estar
-      // aún cargando y la captura saldría con esqueletos.
-      await page.getByText(SEED_LICITACION.tituloRadar).first().waitFor();
-      // Abrir su panel de detalle, que es la mitad derecha de la composición.
-      await page.getByText(SEED_LICITACION.tituloRadar).first().click();
-      await page.getByText("Desglose de score").waitFor();
+      await abrirInspector(page);
 
       const png = await page.screenshot({ animations: "disabled" });
       await guardarWebp(png, `radar-hero${sufijo}.webp`);
     });
 
-    test(`recorte estrecho del detalle (${tema})`, async ({ page }) => {
+    test(`recorte estrecho del inspector (${tema})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: tema });
-      await page.setViewportSize(MOVIL);
-      await page.goto(`/detalle?lic=${SEED_LICITACION.radarId}`);
-      await page.getByText("Desglose de score").waitFor();
+      await page.setViewportSize(ESCRITORIO);
+      await abrirInspector(page);
 
-      const png = await page.screenshot({ animations: "disabled" });
+      // El inspector desde su cabecera (score, banda y título) hasta el final
+      // del desglose. Mide 432 px de ancho, así que no hace falta reducir una
+      // pantalla de escritorio. La cabecera queda fuera de la región con
+      // scroll, por eso se recorta sobre la columna y no sobre la región.
+      const columna = await page
+        .getByRole("region", { name: "Detalle de la señal" })
+        .locator("..")
+        .boundingBox();
+      const finDesglose = await page.getByText("Línea de tiempo").boundingBox();
+      if (!columna || !finDesglose) throw new Error("No se encontró el inspector del Radar");
+      const png = await page.screenshot({
+        animations: "disabled",
+        clip: { ...columna, height: finDesglose.y - columna.y - 8 },
+      });
       await guardarWebp(png, `radar-hero-movil${sufijo}.webp`);
     });
   }

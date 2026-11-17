@@ -1,14 +1,11 @@
 "use client";
 
-import { useQueries } from "@tanstack/react-query";
 import { Aviso } from "@/components/console/panel";
 import { Comparator } from "@/components/comparator";
+import { useFichasLicitacion } from "@/hooks/use-licitacion";
 import { useMetaFilters } from "@/hooks/use-meta-filters";
-import { fetchWithAuth } from "@/lib/api-client";
 import type { LicitacionDetail as FichaApi } from "@/lib/api-types";
 import type { LicitacionDetail } from "@/lib/licitacion-detail";
-import { META_ERROR_EN_LINEA } from "@/lib/query-feedback";
-import { licitacionKeys } from "@/lib/query-keys";
 import type { MergedRow } from "../_hooks/detalle-table-model";
 
 /**
@@ -24,15 +21,7 @@ import type { MergedRow } from "../_hooks/detalle-table-model";
  */
 export function DetalleComparador({ filas, onClose }: { filas: MergedRow[]; onClose: () => void }) {
   const catalogo = useMetaFilters().data;
-  const fichas = useQueries({
-    queries: filas.map((row) => ({
-      queryKey: licitacionKeys.detail(row.id_externo),
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        fetchWithAuth<FichaApi>(`/api/v1/licitaciones/${encodeURIComponent(row.id_externo)}`, { signal }),
-      staleTime: 5 * 60 * 1000,
-      meta: META_ERROR_EN_LINEA,
-    })),
-  });
+  const fichas = useFichasLicitacion(filas.map((row) => row.id_externo));
 
   const items: LicitacionDetail[] = filas.map((row, indice) => {
     const ficha = fichas[indice]?.data;

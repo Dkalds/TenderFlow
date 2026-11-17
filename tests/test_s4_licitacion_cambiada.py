@@ -120,15 +120,25 @@ def test_un_cambio_de_fecha_limite_en_expediente_seguido_genera_evento(org_segui
 
 def test_el_despachador_escribe_la_alerta_in_app_con_campo_y_valores(org_seguidora):
     """Criterio de S4.5: el seguidor ve QUÉ cambió y a QUÉ, no un «algo cambió»."""
+    from db.database import connect
     from scheduler.jobs import event_dispatch
-    from services.notifications import get_user_alerts
 
     _seguir(_ID, org_seguidora)
     _historial(_ID, snapshot={"fecha_limite": "2026-11-01"}, changed="fecha_limite")
     derive_new_events()
     event_dispatch.dispatch_pending()
 
-    alertas = get_user_alerts(_UK_SEGUIDOR, organization_id=org_seguidora)
+    # El seguidor es un favorito sin `user_id` (solo clave): su alerta se lee
+    # por esa clave, que la bandeja (por id) ya no acepta.
+    with connect() as c:
+        alertas = [
+            {"licitacion_id": fila[0], "body": fila[1]}
+            for fila in c.execute(
+                "SELECT licitacion_id, body FROM user_notifications "
+                "WHERE user_key = %s AND organization_id = %s",
+                (_UK_SEGUIDOR, org_seguidora),
+            ).fetchall()
+        ]
     assert len(alertas) == 1
     assert alertas[0]["licitacion_id"] == _ID
     assert "fecha_limite" in alertas[0]["body"]

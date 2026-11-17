@@ -30,12 +30,22 @@ def organizaciones(tmp_db) -> tuple[int, int]:
     return una, otra
 
 
-def _aviso(clave: str, org: int, n: int, *, leida: bool = False, user_id: int | None = None) -> int:
+def _persona(nombre: str) -> int:
+    """``users.id`` de ``nombre``, creándolo si falta: la bandeja se lee por id."""
+    from db.users import create_user, get_user_by_email
+
+    email = f"{nombre}@campana.test"
+    existente = get_user_by_email(email)
+    if existente is not None:
+        return int(existente["id"])
+    return create_user(email=email, password_hash="x")  # pragma: allowlist secret
+
+
+def _aviso(user_id: int, org: int, n: int, *, leida: bool = False) -> int:
     from db.database import connect
     from db.notifications import insert_user_notification
 
     assert insert_user_notification(
-        user_key=clave,
         user_id=user_id,
         type_=f"rule_match:{n}",
         title=f"Aviso {n}",
@@ -46,11 +56,9 @@ def _aviso(clave: str, org: int, n: int, *, leida: bool = False, user_id: int | 
         created_at=f"2026-10-{n:02d}T09:00:00+00:00",
     )
     with connect() as c:
-        # Con ``user_id`` la fila nace sin clave (v162): se localiza por el id.
         fila = c.execute(
-            "SELECT id FROM user_notifications WHERE type = %s "
-            "AND (user_id = %s OR (user_id IS NULL AND user_key = %s))",
-            (f"rule_match:{n}", user_id, clave),
+            "SELECT id FROM user_notifications WHERE type = %s AND user_id = %s",
+            (f"rule_match:{n}", user_id),
         ).fetchone()
         assert fila is not None
         if leida:
@@ -65,23 +73,24 @@ def test_filtra_por_leidas_y_cuenta_cada_universo(organizaciones):
     from db.notifications import listar_alertas
 
     org, _ = organizaciones
+    ana = _persona("ana")
     for n in (1, 2, 3):
-        _aviso("ana", org, n)
+        _aviso(ana, org, n)
     for n in (4, 5):
-        _aviso("ana", org, n, leida=True)
+        _aviso(ana, org, n, leida=True)
 
-    todas = listar_alertas("ana", org, estado="todas", limit=10, offset=0)
+    todas = listar_alertas(org, user_id=ana, estado="todas", limit=10, offset=0)
     assert todas["total"] == 5
     assert todas["sin_leer"] == 3
     # Cronológico, lo más reciente arriba.
     assert [a["title"] for a in todas["items"]] == [f"Aviso {n}" for n in (5, 4, 3, 2, 1)]
 
-    sin_leer = listar_alertas("ana", org, estado="sin_leer", limit=10, offset=0)
+    sin_leer = listar_alertas(org, user_id=ana, estado="sin_leer", limit=10, offset=0)
     assert sin_leer["total"] == 3
     assert {a["title"] for a in sin_leer["items"]} == {"Aviso 1", "Aviso 2", "Aviso 3"}
     assert all(a["read_at"] is None for a in sin_leer["items"])
 
-    leidas = listar_alertas("ana", org, estado="leidas", limit=10, offset=0)
+    leidas = listar_alertas(org, user_id=ana, estado="leidas", limit=10, offset=0)
     assert leidas["total"] == 2
     # El distintivo no depende del filtro.
     assert leidas["sin_leer"] == 3
@@ -92,14 +101,15 @@ def test_pagina_sin_saltos_aunque_cambie_el_estado_de_lectura(organizaciones):
     from services.notifications import mark_alerts_read
 
     org, _ = organizaciones
-    ids = {n: _aviso("ana", org, n) for n in range(1, 6)}
+    ana = _persona("ana")
+    ids = {n: _aviso(ana, org, n) for n in range(1, 6)}
 
-    primera = listar_alertas("ana", org, estado="todas", limit=2, offset=0)
+    primera = listar_alertas(org, user_id=ana, estado="todas", limit=2, offset=0)
     assert [a["title"] for a in primera["items"]] == ["Aviso 5", "Aviso 4"]
 
     # Abrir uno de la primera página no reordena: la segunda sigue donde estaba.
-    mark_alerts_read("ana", [ids[5]], org)
-    segunda = listar_alertas("ana", org, estado="todas", limit=2, offset=2)
+    mark_alerts_read([ids[5]], org, user_id=ana)
+    segunda = listar_alertas(org, user_id=ana, estado="todas", limit=2, offset=2)
     assert [a["title"] for a in segunda["items"]] == ["Aviso 3", "Aviso 2"]
     assert segunda["total"] == 5
     assert segunda["sin_leer"] == 4
@@ -109,11 +119,12 @@ def test_no_mezcla_personas_ni_organizaciones(organizaciones):
     from db.notifications import listar_alertas
 
     org, otra = organizaciones
-    _aviso("ana", org, 1)
-    _aviso("bea", org, 2)
-    _aviso("ana", otra, 3)
+    ana = _persona("ana")
+    _aviso(ana, org, 1)
+    _aviso(_persona("bea"), org, 2)
+    _aviso(ana, otra, 3)
 
-    pagina = listar_alertas("ana", org, estado="todas", limit=10, offset=0)
+    pagina = listar_alertas(org, user_id=ana, estado="todas", limit=10, offset=0)
     assert [a["title"] for a in pagina["items"]] == ["Aviso 1"]
     assert pagina["total"] == 1
     assert pagina["sin_leer"] == 1
@@ -125,7 +136,8 @@ def test_trae_la_oportunidad_del_expediente_si_existe(organizaciones):
     from db.notifications import listar_alertas
 
     org, _ = organizaciones
-    _aviso("ana", org, 7)
+    ana = _persona("ana")
+    _aviso(ana, org, 7)
     with connect() as c:
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) VALUES (%s, %s, %s)",
@@ -138,7 +150,7 @@ def test_trae_la_oportunidad_del_expediente_si_existe(organizaciones):
         ).fetchone()
     assert fila is not None
 
-    (alerta,) = listar_alertas("ana", org, estado="todas", limit=10, offset=0)["items"]
+    (alerta,) = listar_alertas(org, user_id=ana, estado="todas", limit=10, offset=0)["items"]
     assert alerta["pursuit_id"] == int(fila[0])
 
 
@@ -148,7 +160,8 @@ def test_expediente_con_dos_oportunidades_no_duplica_la_alerta(organizaciones):
     from db.notifications import alertas_de_usuario, listar_alertas
 
     org, _ = organizaciones
-    _aviso("ana", org, 8)
+    ana = _persona("ana")
+    _aviso(ana, org, 8)
     with connect() as c:
         c.execute(
             "INSERT INTO licitaciones (id_externo, titulo, fecha_extraccion) VALUES (%s, %s, %s)",
@@ -164,35 +177,56 @@ def test_expediente_con_dos_oportunidades_no_duplica_la_alerta(organizaciones):
             for lote in ("1", "2")
         ]
 
-    pagina = listar_alertas("ana", org, estado="todas", limit=10, offset=0)
+    pagina = listar_alertas(org, user_id=ana, estado="todas", limit=10, offset=0)
     assert len(pagina["items"]) == pagina["total"] == 1
     assert pagina["items"][0]["pursuit_id"] == min(ids)
-    (alerta,) = alertas_de_usuario("ana", organization_id=org)
+    (alerta,) = alertas_de_usuario(organization_id=org, user_id=ana)
     assert alerta["pursuit_id"] == min(ids)
 
 
-def test_identidad_dual_por_user_id(organizaciones):
-    """Tras un cambio de correo la clave cambia; el id no (ADR-030)."""
-    from db.notifications import listar_alertas
-    from db.users import create_user
+def test_una_alerta_sin_id_es_de_quien_tiene_hoy_su_correo(organizaciones):
+    """La mitad legacy (ADR-030): una alerta que el backfill no resolvió se
+    lee por la clave del correo **actual**, que calcula la base."""
+    from db.notifications import insert_user_notification, listar_alertas
+    from shared.identity import user_key_from_email
 
     org, _ = organizaciones
-    uid = create_user(email="dual@example.test", password_hash="x")  # pragma: allowlist secret
-    _aviso("clave-antigua", org, 1, user_id=uid)
+    uid = _persona("dual")
+    clave = user_key_from_email("dual@campana.test", uid)
+    assert insert_user_notification(
+        user_key=clave,
+        type_="rule_match:1",
+        title="Aviso sin id",
+        body=None,
+        licitacion_id="EXP-1",
+        organization_id=org,
+    )
 
-    pagina = listar_alertas("clave-nueva", org, user_id=uid, estado="todas", limit=10, offset=0)
-    assert pagina["total"] == 1
+    assert listar_alertas(org, user_id=uid, estado="todas", limit=10, offset=0)["total"] == 1
+    otra = _persona("otra")
+    assert listar_alertas(org, user_id=otra, estado="todas", limit=10, offset=0)["total"] == 0
 
 
 def test_varias_alertas_en_una_conexion_son_idempotentes(organizaciones):
-    """``insert_user_notifications`` (el job de reglas): cuenta solo lo que inserta."""
+    """``insert_user_notifications`` (el job de reglas): cuenta solo lo que inserta.
+
+    Se escribe por clave (un favorito sin ``user_id``) y se lee por el id de
+    quien tiene hoy ese correo.
+    """
     from db.notifications import insert_user_notifications, listar_alertas
+    from shared.identity import user_key_from_email
 
     una, _ = organizaciones
+    uid = _persona("k1")
     filas = [("EXP-1", "uno"), ("EXP-2", None)]
-    comunes = {"type_": "rule_match", "title": "Regla", "organization_id": una, "user_key": "k1"}
+    comunes = {
+        "type_": "rule_match",
+        "title": "Regla",
+        "organization_id": una,
+        "user_key": user_key_from_email("k1@campana.test", uid),
+    }
 
     assert insert_user_notifications(filas=filas, **comunes) == 2
     assert insert_user_notifications(filas=[*filas, ("EXP-3", "tres")], **comunes) == 1
     assert insert_user_notifications(filas=[], **comunes) == 0
-    assert listar_alertas("k1", una)["total"] == 3
+    assert listar_alertas(una, user_id=uid)["total"] == 3

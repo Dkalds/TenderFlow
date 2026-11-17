@@ -43,6 +43,7 @@ from db.repositories.publico import FilaLicitacionPublica, FilaLotePublico, Publ
 from observability.logging import get_logger
 from services._data_cache import SignalAwareCache
 from shared.dto import LicitacionPublica, LotePublico, Pagina, PgDateTime
+from shared.fuentes import FUERA_DE_ALCANCE, REGISTERED_SOURCES, VIA_DE_ENTRADA_FUERA_DE_ALCANCE
 from shared.identidad_placsp import expediente_natural
 from shared.public_ref import codificar_ref, decodificar_ref
 
@@ -526,14 +527,10 @@ def entradas_sitemap(
 
 #: Vocabulario de estados del contrato público.
 #:
-#: Es una copia deliberada de ``scraper.connectors.EstadoCobertura``, y no un
-#: import: ``scraper.connectors`` arrastra ``requests``, ``lxml`` y el
-#: diccionario propietario de ``scraper.filters`` al importarse, y este proceso
-#: es la API, no el scraper (mismo criterio que ``api/model_cache.py`` y
-#: ``api/routes/feedback.py``, que también difieren ese import al uso). La copia
-#: no puede derivar en silencio: ``tests/test_t7_cobertura.py`` compara los dos
-#: vocabularios, y además Pydantic rechazaría en el acto un estado que el
-#: inventario declarara y este ``Literal`` no.
+#: Copia de ``shared.fuentes.EstadoCobertura`` con nombre propio en el esquema
+#: OpenAPI. No puede derivar en silencio: ``tests/test_t7_cobertura.py`` compara
+#: los dos vocabularios, y además Pydantic rechazaría en el acto un estado que
+#: el inventario declarara y este ``Literal`` no.
 EstadoCoberturaApi = Literal["activa", "opcional", "fuera_de_alcance"]
 
 
@@ -594,21 +591,10 @@ async def cobertura(response: Response) -> Cobertura:
     """Alimenta la página `/cobertura`.
 
     Único endpoint de este router que no toca la base: la cobertura declarada
-    es una constante del despliegue (``scraper.connectors``), no un agregado del
+    es una constante del despliegue (``shared.fuentes``), no un agregado del
     corpus. Por eso también es el único que no puede quedarse sin respuesta
     porque Postgres esté lento.
-
-    El import va dentro de la función y no arriba: importar
-    ``scraper.connectors`` en el arranque de la API traería ``requests``,
-    ``lxml`` y el diccionario propietario de ``scraper.filters`` a un proceso
-    que no ingiere nada.
     """
-    from scraper.connectors import (
-        FUERA_DE_ALCANCE,
-        REGISTERED_SOURCES,
-        VIA_DE_ENTRADA_FUERA_DE_ALCANCE,
-    )
-
     response.headers["Cache-Control"] = _CACHE_PUBLICA
     return Cobertura(
         fuentes=[

@@ -33,59 +33,20 @@
 
 import * as React from "react";
 import { EnlaceFicha } from "@/components/ficha/enlace-ficha";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { SUPERFICIE_PANEL } from "@/components/console/panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { organizacionResuelta, useActiveOrganizationId } from "@/hooks/use-organization";
 import { registrarEvento } from "@/lib/analytics";
-import { apiGet, apiMutate } from "@/lib/api-client";
 import type { Schemas } from "@/lib/api-types";
-import { analyticsKeys } from "@/lib/query-keys";
 import { cn, formatDateTime, formatRelativeTime, truncate } from "@/lib/utils";
+import { useDesdeUltimaVisita, useMarcarVisto } from "../_hooks/use-desde-ultima-visita";
 import { estiloSubtipo, repartoPorSubtipo, type TramoReparto } from "./novedades-subtipos";
 
-type NovedadesDesdeUltimaVisita = Schemas["NovedadesDesdeUltimaVisita"];
 type Novedad = Schemas["Novedad"];
-type VisitaMarcada = Schemas["VisitaMarcada"];
-
-/**
- * «Marcar todo como visto»: mueve la marca y vuelve a pedir lo que cuelga de
- * ella — esta banda y las licitaciones nuevas del mercado
- * (`_hooks/use-novedades.ts`: la tarjeta «Nuevas» y los puntos de la tabla),
- * que cuentan desde la misma última visita.
- */
-export function useMarcarVisto() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: () => apiMutate<VisitaMarcada>("POST", "/api/v1/analytics/resumen/desde-mi-ultima-visita/visto"),
-    onSuccess: () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["analytics", "resumen", "desde-mi-ultima-visita"] }),
-        queryClient.invalidateQueries({ queryKey: analyticsKeys.novedades }),
-      ]),
-    meta: { errorTitle: "No se pudo marcar como visto" },
-  });
-}
 
 /** Líneas visibles sin desplegar: las que caben en la primera pantalla. */
 const VISIBLES = 4;
-
-function useDesdeUltimaVisita() {
-  const organizationId = useActiveOrganizationId();
-  return useQuery<NovedadesDesdeUltimaVisita>({
-    queryKey: analyticsKeys.desdeUltimaVisita(organizationId),
-    queryFn: () =>
-      apiGet("/api/v1/analytics/resumen/desde-mi-ultima-visita", {
-        params: { query: { organization_id: organizationId ?? undefined } },
-      }),
-    enabled: organizacionResuelta(organizationId),
-    // El endpoint no cachea a propósito (es un diff por usuario y marca). En
-    // cliente basta con no repetirlo en cada re-montaje de la pantalla.
-    staleTime: 60_000,
-  });
-}
 
 /**
  * Barra del reparto por clase de cambio, con los recuentos que trae

@@ -26,12 +26,13 @@ import { ArrowLeft } from "lucide-react";
 import { Puerta } from "@/app/(publico)/_components/puerta";
 import { Aviso } from "@/components/console/aviso";
 import { Button } from "@/components/ui/button";
-import { apiMutate, ApiError } from "@/lib/api-client";
+import { ApiError } from "@/lib/api-client";
 import { registrarEvento } from "@/lib/analytics";
 import { solicitarAccesoHref } from "@/lib/contacto";
 // Del store y no de `hooks/use-organization`, que arrastraría todos sus hooks.
 import { olvidarOrganizacionPorDefecto } from "@/lib/organization-store";
 import { getErrorMessage } from "@/lib/query-feedback";
+import { useVerificarCorreo } from "../_hooks/use-verificar-correo";
 
 /** `detail` del 403 de `/auth/verify-email`: se revocó el acceso tras el alta. */
 const SIN_ACCESO = "access_not_granted";
@@ -73,9 +74,9 @@ function tokenDelFragmento(): string | null {
 }
 
 /** Lo que dice la API del canje, traducido a la pantalla que toca. */
-async function canjear(token: string): Promise<Estado> {
+async function canjear(enviar: () => Promise<unknown>): Promise<Estado> {
   try {
-    await apiMutate("POST", "/api/v1/auth/verify-email", { token });
+    await enviar();
     return { fase: "activada" };
   } catch (err) {
     if (err instanceof ApiError && err.status === 400) return { fase: "caducado" };
@@ -90,10 +91,11 @@ export function VerificacionCorreo({ irA = navegarDuro }: { irA?: (ruta: string)
   // El token que ya se mandó a la API. Guarda contra el doble montaje y contra
   // un `hashchange` con el mismo enlace.
   const canjeado = useRef<string | null>(null);
+  const verificar = useVerificarCorreo();
 
   async function activar(token: string) {
     setEstado({ fase: "activando" });
-    const resultado = await canjear(token);
+    const resultado = await canjear(() => verificar.mutateAsync(token));
     setEstado(resultado.fase === "fallo" ? { ...resultado, token } : resultado);
     if (resultado.fase === "activada") {
       // Sesión nueva: la organización por defecto que recordaba este navegador

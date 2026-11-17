@@ -474,6 +474,12 @@ _LEGITIMATE_SWEEPS: frozenset[str] = frozenset(
         # llamador es `services/novedades.py::visita_a_ficha`, con el
         # `user_id` del principal de la sesión.
         "db/notifications.py::ultima_visita_ficha",
+        # Perfil propio para el export RGPD y el Radar (2026-11-16): una sola
+        # fila, la de ese `user_id`, que es la PK de `user_profiles` desde v135
+        # —toda fila lo tiene, y la mitad por clave del predicado dual no
+        # encontraba nada más—. El predicado de aislamiento es `user_id = %s`;
+        # sus llamadores pasan el `user_id` del principal.
+        "db/repositories/user_profiles.py::get_own_user_profile",
     }
 )
 

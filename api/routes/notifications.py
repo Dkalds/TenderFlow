@@ -54,25 +54,13 @@ SUNSET_CAMPANA_ANTIGUA = sunset_anunciado(date(2027, 2, 1), anunciado=date(2026,
 _RFC_CAMPANA_ANTIGUA = "docs/rfc/2026-10-23-rfc-retirada-campana-antigua-y-stream.md"
 
 
-def _user_key(ctx: Principal) -> str:
-    """Clave opaca y estable por usuario.
+def _user_id(ctx: Principal) -> int:
+    """Identidad del principal: ``require_any_auth`` la adjunta a sesión y API key.
 
-    ``require_any_auth`` (sesión o API key) siempre adjunta ``user_key`` al
-    contexto vía ``shared.identity.user_key_from_email`` — es la única
-    derivación canónica. Antes esta función tenía un fallback local con una
-    fórmula distinta (sin ``.strip().lower()``, usando ``key_hash`` en vez de
-    ``user_id`` como semilla alternativa) que nunca se ejercitaba en la
-    práctica pero podía divergir silenciosamente si algún día lo hiciera.
+    Las alertas y las marcas de lectura antiguas que solo llevan la clave del
+    correo las resuelve ``db/notifications.py`` en la base.
     """
-    return str(ctx["user_key"])
-
-
-def _user_id_int(ctx: Principal) -> int | None:
-    uid = ctx.get("user_id")
-    try:
-        return int(uid) if uid is not None else None
-    except (ValueError, TypeError):
-        return None
+    return int(ctx["user_id"])
 
 
 class NotificationItem(BaseModel):
@@ -195,15 +183,14 @@ async def get_notifications(
     # enseñe solo lo tuyo; el campo sigue en el contrato, vacío y deprecado,
     # porque quitarlo rompería a quien lo lea. `hoy` se sigue sirviendo por lo
     # mismo, aunque la campana ya no lo pinte.
-    user_id = _user_id_int(ctx)
-    user_key = _user_key(ctx)
+    user_id = _user_id(ctx)
     resolved_id = ctx["organization_id"]
 
     def _trabajo() -> NotificationsResult:
         with lecturas_agrupadas():
             hoy = get_resumen_hoy(ResumenHoyFilters())
-            raw_alerts = get_user_alerts(user_key, 30, resolved_id, user_id=user_id)
-            alerts_unread = get_alerts_unread_count(user_key, resolved_id, user_id=user_id)
+            raw_alerts = get_user_alerts(30, resolved_id, user_id=user_id)
+            alerts_unread = get_alerts_unread_count(resolved_id, user_id=user_id)
 
         return NotificationsResult(
             alerts=[_alerta(a) for a in raw_alerts],
@@ -234,9 +221,8 @@ async def get_alertas(
     """
     pagina = await run_db(
         listar_alertas,
-        _user_key(ctx),
         int(ctx["organization_id"]),
-        user_id=_user_id_int(ctx),
+        user_id=_user_id(ctx),
         estado=estado,
         limit=limit,
         offset=offset,
@@ -273,7 +259,7 @@ async def post_mark_read(
         rfc=_RFC_CAMPANA_ANTIGUA,
     )
     if body.ids:
-        await run_db(mark_all_read, _user_key(ctx), body.ids, user_id=_user_id_int(ctx))
+        await run_db(mark_all_read, body.ids, user_id=_user_id(ctx))
     return StatusOk(status="ok")
 
 
@@ -283,13 +269,12 @@ async def post_mark_alerts_read(
     ctx: Principal = Depends(require_any_auth),
 ) -> StatusOk:
     ctx = await resolve_organization_ctx(ctx, body.organization_id, write=True)
-    user_key = _user_key(ctx)
-    user_id = _user_id_int(ctx)
+    user_id = _user_id(ctx)
     resolved_id = ctx["organization_id"]
     if body.all:
-        await run_db(mark_all_alerts_read, user_key, resolved_id, user_id=user_id)
+        await run_db(mark_all_alerts_read, resolved_id, user_id=user_id)
     elif body.ids:
-        await run_db(mark_alerts_read, user_key, body.ids, resolved_id, user_id=user_id)
+        await run_db(mark_alerts_read, body.ids, resolved_id, user_id=user_id)
     return StatusOk(status="ok")
 
 

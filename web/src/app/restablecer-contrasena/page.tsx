@@ -23,9 +23,9 @@ import { Aviso } from "@/components/console/aviso";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { apiMutate } from "@/lib/api-client";
 import { getErrorMessage } from "@/lib/query-feedback";
 import { CampoContrasena } from "@/app/login/_components/campo-contrasena";
+import { useConfirmarRestablecimiento, usePedirRestablecimiento } from "./_hooks/use-restablecer-contrasena";
 
 const GENERIC_MESSAGE = "Si ese correo entra en TenderFlow con contraseña, te llegará un enlace para cambiarla.";
 
@@ -65,6 +65,8 @@ function PasswordResetContent() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const pedir = usePedirRestablecimiento();
+  const confirmar = useConfirmarRestablecimiento();
 
   useEffect(() => {
     // El token se guarda en estado y sale de la URL en cuanto se lee. Antes se
@@ -96,11 +98,7 @@ function PasswordResetContent() {
     setLoading(true);
     setError(null);
     try {
-      // `apiMutate` en vez de `fetch` crudo: adjunta `X-CSRF-Token` cuando hay
-      // sesión y normaliza el error a `ApiError` con el `detail` RFC-7807.
-      // La respuesta sigue siendo indistinguible exista o no la cuenta: la API
-      // devuelve 202 con el mismo cuerpo en ambos casos (y también al limitar).
-      await apiMutate("POST", "/api/v1/auth/password-reset/request", { email });
+      await pedir.mutateAsync(email);
       setMessage(GENERIC_MESSAGE);
     } catch {
       setError("No se pudo enviar la solicitud. Inténtalo de nuevo.");
@@ -120,7 +118,7 @@ function PasswordResetContent() {
     try {
       // `apiMutate` ya extrae el `detail` RFC-7807 y lo pone en `ApiError.
       // message`, que es lo que lee el `catch` de abajo.
-      await apiMutate("POST", "/api/v1/auth/password-reset/confirm", { token, password });
+      await confirmar.mutateAsync({ token, password });
       setMessage("Contraseña actualizada. Ya puedes iniciar sesión.");
       setPassword("");
       setConfirmation("");
