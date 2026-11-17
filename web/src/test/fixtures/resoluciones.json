@@ -1,0 +1,18 @@
+{
+  "items": [
+    {
+      "id": 4182,
+      "tribunal": "TACRC",
+      "numero_resolucion": "1123/2026",
+      "numero_recurso": "1054/2026",
+      "fecha": "2026-07-09",
+      "organo": "Ministerio de Hacienda. Subsecretaría",
+      "expediente": "PA-S 2026/000058",
+      "sentido": "desestimado",
+      "resumen": "Recurso especial contra la adjudicación por valoración de los criterios sujetos a juicio de valor. Se desestima.",
+      "url_pdf": "https://www.hacienda.gob.es/TACRC/Resoluciones/2026/1123-2026.pdf",
+      "licitacion_id": "PA-S 2026/000058",
+      "licitacion_titulo": "Servicios de evolución y soporte de la plataforma SAP ERP"
+    }
+  ]
+}

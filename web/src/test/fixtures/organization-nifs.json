@@ -1,0 +1,13 @@
+{
+  "organization_id": 7,
+  "nifs": [
+    {
+      "id": 31,
+      "nif": "B12345674",
+      "razon_social": "Integraciones Cloud Iberia, S.L.",
+      "empresa_id": 88213,
+      "principal": true,
+      "created_at": "2026-09-02T10:20:00+00:00"
+    }
+  ]
+}

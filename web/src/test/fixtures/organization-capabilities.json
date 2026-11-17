@@ -1,0 +1,55 @@
+{
+  "organization_id": 7,
+  "certificaciones": [
+    {
+      "nombre": "ISO/IEC 27001:2022",
+      "tipo": "certificacion_tecnica",
+      "ambito": "company",
+      "vigente_hasta": "2027-06-30"
+    },
+    {
+      "nombre": "Certificado de estar al corriente con la AEAT",
+      "tipo": "corriente_aeat",
+      "ambito": "company",
+      "vigente_hasta": "2026-12-04"
+    }
+  ],
+  "facturacion": [
+    { "ejercicio": 2024, "importe_eur": 4820000.0 },
+    { "ejercicio": 2025, "importe_eur": 5310000.0 }
+  ],
+  "referencias": [
+    {
+      "organo": "Agencia Estatal de Administración Tributaria",
+      "anio": 2024,
+      "importe_eur": 640000.0,
+      "tecnologia": "SAP",
+      "expediente_id": "24700012300"
+    }
+  ],
+  "referencias_sugeridas": [],
+  "perfiles_equipo": [
+    { "rol": "Jefe de proyecto SAP", "anios": 8, "cantidad": 1 },
+    { "rol": "Consultor SAP FI/CO", "anios": 4, "cantidad": 3 }
+  ],
+  "campos_incompletos": [],
+  "vigencias": [
+    {
+      "nombre": "ISO/IEC 27001:2022",
+      "tipo": "certificacion_tecnica",
+      "categoria": "tecnica",
+      "vigente_hasta": "2027-06-30",
+      "dias_restantes": 225,
+      "estado": "vigente"
+    },
+    {
+      "nombre": "Certificado de estar al corriente con la AEAT",
+      "tipo": "corriente_aeat",
+      "categoria": "administrativa",
+      "vigente_hasta": "2026-12-04",
+      "dias_restantes": 17,
+      "estado": "caduca_pronto"
+    }
+  ],
+  "updated_at": "2026-11-10T09:12:44+00:00"
+}

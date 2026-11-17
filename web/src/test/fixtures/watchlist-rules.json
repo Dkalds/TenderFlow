@@ -1,0 +1,24 @@
+{
+  "items": [
+    {
+      "id": 14,
+      "nombre": "SAP en ministerios",
+      "email": "ana@example.test",
+      "keyword": "SAP",
+      "cpv": "72000000",
+      "min_importe": 200000.0,
+      "ccaa": null,
+      "frequency": "daily",
+      "tecnologia": "SAP",
+      "organo": null,
+      "procedimiento": null,
+      "tipo_contrato": "2",
+      "banda_min": "Atractiva",
+      "plazo_min_dias": 10,
+      "active": true,
+      "visibility": "private",
+      "organization_id": 7,
+      "match_count": 23
+    }
+  ]
+}

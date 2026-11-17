@@ -1,0 +1,34 @@
+{
+  "id_externo": "PA-S 2026/000058",
+  "items": [
+    {
+      "tecnologia": "SAP",
+      "en_titulo": true,
+      "ml_probabilidad": 0.97,
+      "ml_threshold_aplicado": 0.5,
+      "pliego_keywords_score": 0.82,
+      "pliego_keywords_terms": ["SAP S/4HANA", "SAP Fiori"],
+      "pliego_llm_score": 0.9,
+      "pliego_llm_evidence": [
+        {
+          "documento_id": 3071,
+          "page_number": 12,
+          "quote": "La solución deberá desplegarse sobre SAP S/4HANA en modalidad RISE.",
+          "start_offset": 418,
+          "end_offset": 486,
+          "ocr": false
+        }
+      ]
+    },
+    {
+      "tecnologia": "Microsoft",
+      "en_titulo": false,
+      "ml_probabilidad": 0.31,
+      "ml_threshold_aplicado": 0.5,
+      "pliego_keywords_score": null,
+      "pliego_keywords_terms": null,
+      "pliego_llm_score": null,
+      "pliego_llm_evidence": null
+    }
+  ]
+}
