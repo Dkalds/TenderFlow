@@ -37,11 +37,14 @@ concurrency:
 env:
   # ENV=prod porque lee (y en `recalcular` escribe) la BD de producción.
   # APP_PROFILE=scraper omite los secretos que solo exige el proceso HTTP.
+  #
+  # Aquí no hay secretos: `DATABASE_URL` y `DATABASE_SSL_ROOT_CERT` van en el
+  # `env:` de cada step que ejecuta un script. En el `env:` del workflow los
+  # veían también el checkout, `setup-python` y `pip install` (Semgrep,
+  # `gha-workflow-env-secret`, issue #592).
   ENV: prod
   APP_PROFILE: scraper
   SCHEDULER_PLANE: actions
-  DATABASE_URL: ${{ secrets.DATABASE_URL }}
-  DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
   # `rehacer` descarga el artefacto del clasificador de las Releases; sin token
   # la llamada va anónima y se queda sin cuota.
   GITHUB_TOKEN: ${{ github.token }}
@@ -69,6 +72,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Medir
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
         run: |
           set -euo pipefail
           python -m scripts.medir_etiquetas_tecnologia resumen | tee resumen.txt
@@ -121,6 +127,8 @@ jobs:
       - name: Re-puntuar
         env:
           SHARD: ${{ matrix.shard }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
         run: |
           set -euo pipefail
           python -m scripts.medir_etiquetas_tecnologia repuntuar \
@@ -157,6 +165,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Rehacer
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_SSL_ROOT_CERT: ${{ secrets.DATABASE_SSL_ROOT_CERT }}
         run: |
           set -euo pipefail
           python -m scripts.medir_etiquetas_tecnologia rehacer | tee rehecho.json
