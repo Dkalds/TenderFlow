@@ -9,14 +9,17 @@ from db.database import connect, connect_read, now_utc_iso
 # Columnas de ``users`` que devuelve cada lectura de cuenta, con nombre y no
 # ``SELECT *``: una columna nueva no viaja sola a quien ya recibe la fila (la
 # de ``get_user_by_id`` acaba en ``AuthContext.owner`` en cada petición con API
-# key). Cada lista es lo que leen sus llamadores, inventariado el 2026-11-16;
-# quien necesite otra columna la añade aquí, a la lectura que usa.
+# key). Cada lista cubre lo que leen sus llamadores, inventariado el
+# 2026-11-16; quien necesite otra columna la añade aquí, a la lectura que usa.
+# Debajo de cada una van los llamadores que piden algo más que ``id``,
+# ``email`` y ``display_name``; los demás (exportaciones, feed de la
+# watchlist, alta, eventos, restablecer contraseña…) solo leen esas tres.
 #
-# ``get_user_by_id``: ``api/auth.py`` → ``dual_auth``/``metrics`` (email,
-# display_name, is_admin), ``admin_users._safe_user`` (id, email, display_name,
-# oauth_provider, is_admin, created_at, deactivated_at), cambio de contraseña
-# (password_hash), login del MCP (id, email, is_admin, deactivated_at) y los
-# tests de vinculación y verificación (oauth_sub, email_verified_at).
+# ``get_user_by_id``: ``api/auth.py`` → ``dual_auth``/``metrics`` (is_admin),
+# ``admin_users._safe_user`` (oauth_provider, is_admin, created_at,
+# deactivated_at), cambio de contraseña (password_hash), login del MCP
+# (is_admin, deactivated_at) y los tests de vinculación y verificación
+# (oauth_sub, email_verified_at).
 _COLUMNAS_POR_ID = (
     "id, email, display_name, oauth_provider, oauth_sub, password_hash, is_admin, "
     "created_at, deactivated_at, email_verified_at"
