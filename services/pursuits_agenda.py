@@ -567,9 +567,8 @@ def _marcar(items: Sequence[PipelineAgendaItem]) -> list[PipelineAgendaItem]:
                     cuenta_en.append("go_no_go")
                 if not item.next_action and tareas_abiertas == 0:
                     cuenta_en.append("sin_paso")
-        elif item.kind == "tarea":
-            if item.dias_restantes is not None and item.dias_restantes <= 0:
-                cuenta_en.append("accion_vencida")
+        elif item.kind == "tarea" and item.dias_restantes is not None and item.dias_restantes <= 0:
+            cuenta_en.append("accion_vencida")
         marcados.append(
             item.model_copy(update={"cuenta_en": cuenta_en, "tareas_abiertas": tareas_abiertas})
         )
