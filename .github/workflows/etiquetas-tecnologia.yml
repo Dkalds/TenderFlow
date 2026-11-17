@@ -38,10 +38,11 @@ env:
   # ENV=prod porque lee (y en `recalcular` escribe) la BD de producción.
   # APP_PROFILE=scraper omite los secretos que solo exige el proceso HTTP.
   #
-  # Aquí no hay secretos: `DATABASE_URL` y `DATABASE_SSL_ROOT_CERT` van en el
+  # Ningún `secrets.*` aquí: `DATABASE_URL` y `DATABASE_SSL_ROOT_CERT` van en el
   # `env:` de cada step que ejecuta un script. En el `env:` del workflow los
-  # veían también el checkout, `setup-python` y `pip install` (Semgrep,
-  # `gha-workflow-env-secret`, issue #592).
+  # veían también el checkout, `setup-python`, `pip install` y la subida del
+  # artefacto (Semgrep, `gha-workflow-env-secret`, issue #592). `GITHUB_TOKEN`
+  # es el de solo lectura del propio run (`permissions: contents: read`).
   ENV: prod
   APP_PROFILE: scraper
   SCHEDULER_PLANE: actions
