@@ -9857,7 +9857,7 @@ export interface components {
          *     ``por_tipo`` cuenta **todos** los movimientos de la ventana y el ámbito, por
          *     tipo y de mayor a menor; ``items`` es solo la página más reciente, con su
          *     ``limit``. El reparto sale de la misma cláusula que la lista
-         *     (:func:`_filtro_eventos`), así que ``total`` —la suma de ``por_tipo``— es el
+         *     (``db.contrato_eventos._filtro_eventos``), así que ``total`` —la suma de ``por_tipo``— es el
          *     total del que ``items`` es una muestra.
          */
         EventosFeedResult: {
